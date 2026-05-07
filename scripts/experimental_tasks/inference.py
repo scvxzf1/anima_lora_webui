@@ -86,11 +86,11 @@ def cmd_test_apex(extra):
             *INFERENCE_BASE,
             *lora_args,
             "--infer_steps",
-            "2",
+            "8",
             "--guidance_scale",
             "1.0",
             "--sampler",
-            "euler",
+            "lcm",
             *extra,
         ]
     )

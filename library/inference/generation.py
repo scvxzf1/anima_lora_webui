@@ -228,10 +228,13 @@ def generate_body_tiled(
     timesteps /= 1000
     timesteps = timesteps.to(device, dtype=torch.bfloat16)
 
-    # Create sampler
+    # Create sampler. Variable kept named `er_sde` for historic minimum-diff
+    # reasons; both ERSDESampler and LCMSampler share the same .step interface.
     er_sde = None
     if args.sampler == "er_sde":
         er_sde = inference_utils.ERSDESampler(sigmas, seed=args.seed, device=device)
+    elif args.sampler == "lcm":
+        er_sde = inference_utils.LCMSampler(sigmas, seed=args.seed, device=device)
 
     do_cfg = args.guidance_scale != 1.0
     autocast_enabled = args.fp8
@@ -563,10 +566,13 @@ def generate_body(
             if not dcw_calibrator.is_active:
                 dcw_calibrator = None  # graceful degrade to scalar/none
 
-    # Create sampler
+    # Create sampler. Variable kept named `er_sde` for historic minimum-diff
+    # reasons; both ERSDESampler and LCMSampler share the same .step interface.
     er_sde = None
     if args.sampler == "er_sde":
         er_sde = inference_utils.ERSDESampler(sigmas, seed=args.seed, device=device)
+    elif args.sampler == "lcm":
+        er_sde = inference_utils.LCMSampler(sigmas, seed=args.seed, device=device)
 
     # Denoising loop
     do_cfg = args.guidance_scale != 1.0

@@ -228,7 +228,7 @@ def spectrum_denoise(
     negative_embed: torch.Tensor,
     padding_mask: torch.Tensor,
     guidance_scale: float,
-    sampler,  # ERSDESampler or None
+    sampler,  # ERSDESampler / LCMSampler / None — anything with .step(latents, denoised, i)
     device: torch.device,
     *,
     window_size: float = 2.0,

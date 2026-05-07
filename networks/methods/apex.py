@@ -24,6 +24,7 @@ from typing import Optional
 import torch
 import torch.nn as nn
 
+from library.datasets.base import LossRecorder
 from library.training.method_adapter import (
     ForwardArtifacts,
     MethodAdapter,
@@ -43,6 +44,7 @@ class ConditionShift(nn.Module):
         mode: str = "scalar",
         init_a: float = -1.0,
         init_b: float = 0.5,
+        freeze_b: bool = False,
     ) -> None:
         super().__init__()
         if mode not in self.MODES:
@@ -61,6 +63,13 @@ class ConditionShift(nn.Module):
         else:  # full
             self.A = nn.Parameter(float(init_a) * torch.eye(self.dim))
             self.b = nn.Parameter(torch.full((self.dim,), float(init_b)))
+
+        # b lives in the softmax-null subspace under RMSNorm cross-attn — gradient
+        # on b is large (broadcast across tokens) but mostly invisible end-to-end,
+        # so under sign-flip init (init_b=0) the optimizer drains capacity into b
+        # while a barely moves. See docs/experimental/apex-0506.md.
+        if freeze_b:
+            self.b.requires_grad_(False)
 
     def forward(self, c: torch.Tensor) -> torch.Tensor:
         """Apply the shift to a cross-attention embedding tensor.
@@ -188,6 +197,16 @@ class ApexMethodAdapter(MethodAdapter):
         # so L_mix collapses to the trivial self-consistency fixed point and
         # the adversarial signal vanishes. None until the first train step.
         self._last_v_fake_divergence: float | None = None
+        # Cumulative-since-start moving averages for the noisy adapter scalars
+        # — point-in-time loss_mix / loss_fake / v_fake_divergence are jittery
+        # under typical batch sizes (per-step CV ~50%), and the cumulative avg
+        # tracks trend much better. Same LossRecorder semantics as `loss/average`
+        # so the TB curves are directly comparable. Recorders are also stashed
+        # on the network in ``on_network_built`` so losses.py can update them
+        # at the same site that writes ``_last_apex_{mix,fake}_value``.
+        self._mix_recorder = LossRecorder()
+        self._fake_recorder = LossRecorder()
+        self._v_fake_div_recorder = LossRecorder()
 
     def on_network_built(self, ctx: SetupCtx) -> None:
         args = ctx.args
@@ -208,6 +227,11 @@ class ApexMethodAdapter(MethodAdapter):
                 "(warm-start). Cold-start training is known to regress vs. "
                 "plain FM on the one-step objective; see proposal.md §7.3."
             )
+        # Expose loss-side recorders to ``library/training/losses.py`` so the
+        # _apex_mix_loss / _apex_fake_loss sites can append every step.
+        if ctx.network is not None:
+            ctx.network._apex_mix_recorder = self._mix_recorder
+            ctx.network._apex_fake_recorder = self._fake_recorder
 
     def on_step_start(self, ctx: StepCtx, batch, *, is_train: bool) -> None:
         # Counts at process_batch granularity; aligns with global_step under
@@ -284,6 +308,9 @@ class ApexMethodAdapter(MethodAdapter):
             # no adversarial gradient (collapses to 0.25·MSE(F_real, v_data)).
             self._last_v_fake_divergence = float(
                 (v_fake_sg - model_pred.detach()).pow(2).mean().item()
+            )
+            self._v_fake_div_recorder.add(
+                epoch=0, step=self.step, loss=self._last_v_fake_divergence
             )
 
         # Resolve warmup/rampup schedule. inner-lambda controls T_mix's
@@ -401,14 +428,22 @@ class ApexMethodAdapter(MethodAdapter):
         }
         if self._last_v_fake_divergence is not None:
             out["apex/v_fake_divergence"] = float(self._last_v_fake_divergence)
+        if len(self._v_fake_div_recorder.loss_list) > 0:
+            out["apex/v_fake_divergence_avg"] = float(
+                self._v_fake_div_recorder.moving_average
+            )
 
         network = ctx.network
         mix_v = getattr(network, "_last_apex_mix_value", None)
         if mix_v is not None:
             out["apex/loss_mix"] = float(mix_v)
+        if len(self._mix_recorder.loss_list) > 0:
+            out["apex/loss_mix_avg"] = float(self._mix_recorder.moving_average)
         fake_v = getattr(network, "_last_apex_fake_value", None)
         if fake_v is not None:
             out["apex/loss_fake"] = float(fake_v)
+        if len(self._fake_recorder.loss_list) > 0:
+            out["apex/loss_fake_avg"] = float(self._fake_recorder.moving_average)
 
         cs = getattr(network, "apex_condition_shift", None)
         if cs is not None:

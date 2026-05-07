@@ -491,6 +491,15 @@ def add_anima_training_arguments(parser: argparse.ArgumentParser):
         help="APEX ConditionShift initial 'b' (bias). Table 7 stable range [0.1, 1.0].",
     )
     parser.add_argument(
+        "--apex_condition_shift_freeze_b",
+        action="store_true",
+        default=False,
+        help="APEX: freeze ConditionShift 'b' parameter at init. Recommended with "
+        "init_b=0 sign-flip mode — under RMSNorm cross-attn, b lives in softmax's "
+        "null space, so its gradient drains capacity that should go into 'a'. See "
+        "docs/experimental/apex-0506.md.",
+    )
+    parser.add_argument(
         "--apex_shift_lr_scale",
         type=float,
         default=0.1,

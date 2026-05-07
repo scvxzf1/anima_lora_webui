@@ -1755,7 +1755,9 @@ class LoRANetwork(torch.nn.Module):
         # so they are already captured by the unet_loras param group above.
 
         if getattr(self, "apex_condition_shift", None) is not None:
-            shift_params = list(self.apex_condition_shift.parameters())
+            shift_params = [
+                p for p in self.apex_condition_shift.parameters() if p.requires_grad
+            ]
             if len(shift_params) > 0:
                 shift_lr_scale = float(getattr(self, "_apex_shift_lr_scale", 0.1))
                 base_lr = unet_lr if unet_lr is not None else default_lr

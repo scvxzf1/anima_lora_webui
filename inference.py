@@ -215,8 +215,8 @@ def parse_args() -> argparse.Namespace:
         "--sampler",
         type=str,
         default="euler",
-        choices=["euler", "er_sde"],
-        help="Sampler to use: 'euler' (deterministic ODE) or 'er_sde' (Extended Reverse-Time SDE). Default is euler.",
+        choices=["euler", "er_sde", "lcm"],
+        help="Sampler to use: 'euler' (deterministic ODE), 'er_sde' (Extended Reverse-Time SDE), or 'lcm' (x0 re-noise — for distilled few-step models like APEX). Default is euler.",
     )
 
     parser.add_argument(

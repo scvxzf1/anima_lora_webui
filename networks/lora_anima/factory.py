@@ -69,17 +69,20 @@ def _maybe_attach_apex_shift(network: "LoRANetwork", kwargs: Dict[str, object]) 
     init_b = float(kwargs.get("apex_condition_shift_init_b", 0.5))
     shift_lr_scale = float(kwargs.get("apex_shift_lr_scale", 0.1))
     shift_dim = int(kwargs.get("apex_condition_shift_dim", 1024))
+    freeze_b_raw = kwargs.get("apex_condition_shift_freeze_b", False)
+    freeze_b = str(freeze_b_raw).lower() in ("true", "1", "yes")
     cs = ConditionShift(
         dim=shift_dim,
         mode=str(mode),
         init_a=init_a,
         init_b=init_b,
+        freeze_b=freeze_b,
     )
     network.apex_condition_shift = cs
     network._apex_shift_lr_scale = shift_lr_scale
     logger.info(
         f"APEX ConditionShift attached: mode={mode} "
-        f"(a={init_a}, b={init_b}), lr_scale={shift_lr_scale}"
+        f"(a={init_a}, b={init_b}, freeze_b={freeze_b}), lr_scale={shift_lr_scale}"
     )
 
 

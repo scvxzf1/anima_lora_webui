@@ -265,7 +265,11 @@ def _apex_mix_loss(ctx: LossContext) -> torch.Tensor:
     l_mix = l_mix * ctx.loss_weights
     # Stash unweighted scalar for the metric layer (read by _apex_loss_breakdown).
     if ctx.network is not None:
-        ctx.network._last_apex_mix_value = float(l_mix.detach().mean().item())
+        mix_value = float(l_mix.detach().mean().item())
+        ctx.network._last_apex_mix_value = mix_value
+        recorder = getattr(ctx.network, "_apex_mix_recorder", None)
+        if recorder is not None:
+            recorder.add(epoch=0, step=len(recorder.loss_list), loss=mix_value)
     return lam_c * l_mix
 
 
@@ -292,7 +296,11 @@ def _apex_fake_loss(ctx: LossContext) -> torch.Tensor:
     l_fake = l_fake.mean(dim=list(range(1, l_fake.ndim)))
     l_fake = l_fake * ctx.loss_weights
     if ctx.network is not None:
-        ctx.network._last_apex_fake_value = float(l_fake.detach().mean().item())
+        fake_value = float(l_fake.detach().mean().item())
+        ctx.network._last_apex_fake_value = fake_value
+        recorder = getattr(ctx.network, "_apex_fake_recorder", None)
+        if recorder is not None:
+            recorder.add(epoch=0, step=len(recorder.loss_list), loss=fake_value)
     return lam_f_eff * l_fake
 
 

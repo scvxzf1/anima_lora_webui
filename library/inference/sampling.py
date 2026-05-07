@@ -174,6 +174,58 @@ class ERSDESampler:
         return x
 
 
+class LCMSampler:
+    """LCM-style stochastic sampler for distilled few-step flow-matching models.
+
+    On each step, treats the model's x0 estimate as a refinement target and
+    re-noises to the next timestep via the flow-matching CONST schedule:
+
+        x_next = (1 - σ_next) * x0_hat + σ_next * ε
+
+    Final step (σ_next == 0) returns x0_hat directly. The caller computes
+    `denoised = latents - σ * v_pred` (x0 estimate) before invoking .step,
+    matching the ERSDESampler interface.
+
+    Targeted at under-converged few-step distillations (APEX et al.) where
+    deterministic Euler can look dead — the per-step noise re-injection
+    gives the next forward something to refine. Trades seed determinism
+    for texture / detail recovery.
+
+    Reference: Luo et al. 2023 (Latent Consistency Models, arXiv:2310.04378);
+    ComfyUI's `comfy/k_diffusion/sampling.py::sample_lcm`.
+    """
+
+    def __init__(
+        self,
+        sigmas: torch.Tensor,
+        seed: Optional[int] = None,
+        device: torch.device = torch.device("cpu"),
+    ):
+        self.sigmas = sigmas.clone().float()
+        self._generator = None
+        if seed is not None:
+            self._generator = torch.Generator(device=device)
+            self._generator.manual_seed(seed)
+        self._noise_device = device
+
+    def step(
+        self, latents: torch.Tensor, denoised: torch.Tensor, step_i: int
+    ) -> torch.Tensor:
+        denoised = denoised.float()
+        sigma_next = float(self.sigmas[step_i + 1])
+
+        if sigma_next == 0.0:
+            return denoised
+
+        noise = torch.randn(
+            denoised.shape,
+            dtype=denoised.dtype,
+            device=self._noise_device,
+            generator=self._generator,
+        )
+        return (1.0 - sigma_next) * denoised + sigma_next * noise
+
+
 class GradualLatent:
     def __init__(
         self,

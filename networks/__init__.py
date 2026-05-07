@@ -105,6 +105,7 @@ SHARED_KWARG_FLAGS: Tuple[str, ...] = (
     "apex_condition_shift_mode",
     "apex_condition_shift_init_a",
     "apex_condition_shift_init_b",
+    "apex_condition_shift_freeze_b",
     "apex_shift_lr_scale",
     "apex_condition_shift_dim",
     # REPA-style auxiliary alignment (composes with any variant). The factory
