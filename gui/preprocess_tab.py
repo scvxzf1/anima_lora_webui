@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import html
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -51,6 +52,7 @@ from gui.config_tab import ClickableLabel
 from gui.explanations import preprocess_field_help, preprocess_guide
 from gui.i18n import t
 from gui.process import kill_process_tree, make_subprocess_env, setup_kill_safe
+from gui.progress import TQDM_RE, TqdmProgressTracker, make_progress_bar
 
 SAM_YAML = ROOT / "configs" / "sam_mask.yaml"
 SETTINGS_FILE = Path(__file__).resolve().parent / "gui_settings.json"
@@ -100,10 +102,33 @@ def _load_sam_yaml() -> dict:
         return {}
 
 
+class _IndentedListDumper(yaml.SafeDumper):
+    """SafeDumper that indents list items under mapping keys.
+
+    PyYAML's default dumper writes list items flush with the parent key,
+    which is valid YAML but doesn't match the canonical sam_mask.yaml
+    formatting (2-space indent on the dash). Overriding ``increase_indent``
+    to disable ``indentless`` mode gives us the indented form so saving
+    from the GUI doesn't churn the file's whitespace.
+    """
+
+    def increase_indent(self, flow=False, indentless=False):  # noqa: D401
+        return super().increase_indent(flow, False)
+
+
 def _save_sam_yaml(prompts: list[str], threshold: float, dilate: int) -> None:
     SAM_YAML.parent.mkdir(parents=True, exist_ok=True)
     payload = {"prompts": prompts, "threshold": threshold, "dilate": dilate}
-    SAM_YAML.write_text(yaml.safe_dump(payload, sort_keys=False), encoding="utf-8")
+    text = yaml.dump(
+        payload,
+        Dumper=_IndentedListDumper,
+        default_flow_style=False,
+        sort_keys=False,
+    )
+    # Match the canonical layout's blank line between the prompts list and
+    # the scalar settings.
+    text = text.replace("\nthreshold:", "\n\nthreshold:", 1)
+    SAM_YAML.write_text(text, encoding="utf-8")
 
 
 def _count_masks(mask_dir: Path) -> int:
@@ -135,52 +160,50 @@ class PreprocessingTab(QWidget):
         outer = QVBoxLayout(self)
 
         # ── Top action bar ────────────────────────────────────────
-        # Mirrors ConfigTab: refresh + Save + per-step Run buttons + Stop,
-        # all under the tab strip on a single row.
+        # Mirrors ConfigTab: Save + per-step Run buttons + Stop, all under
+        # the tab strip on a single row. No manual refresh — the status
+        # one-liner is rebuilt automatically on every _on_finished.
         top = QHBoxLayout()
-        refresh_btn = QPushButton("↻")
-        refresh_btn.setFixedWidth(28)
-        refresh_btn.clicked.connect(self._refresh_status)
-        top.addWidget(refresh_btn)
+
+        # Color semantics (matches ConfigTab):
+        #   Save           → neutral (default styling, no background tint)
+        #   Cache / mask   → blue   (#2980b9) — run a specific preprocess step
+        #   Merge          → green  (#27ae60) — combine prior results
+        #   Stop           → red    (#c0392b) — abort the running subprocess
+        run_step_style = (
+            "background:#2980b9;color:white;font-weight:bold;padding:4px 16px;"
+        )
+        merge_style = (
+            "background:#27ae60;color:white;font-weight:bold;padding:4px 16px;"
+        )
 
         self.save_btn = QPushButton(t("preprocess_save_settings"))
         self.save_btn.setToolTip(t("preprocess_save_settings_tip"))
-        self.save_btn.setStyleSheet(
-            "background:#2980b9;color:white;font-weight:bold;padding:4px 16px;"
-        )
         self.save_btn.clicked.connect(self._save_all_clicked)
         top.addWidget(self.save_btn)
 
         # Per-step Run buttons. Save is implicit on each Run (same pattern
         # as ConfigTab's auto-save before Train/Preprocess).
         self.run_te_btn = QPushButton(t("preprocess_run_te"))
-        self.run_te_btn.setStyleSheet(
-            "background:#27ae60;color:white;font-weight:bold;padding:4px 16px;"
-        )
+        self.run_te_btn.setStyleSheet(run_step_style)
         self.run_te_btn.clicked.connect(self._run_te)
         self._run_buttons.append(self.run_te_btn)
         top.addWidget(self.run_te_btn)
 
         self.run_sam_btn = QPushButton(t("preprocess_run_sam"))
-        self.run_sam_btn.setStyleSheet(
-            "background:#27ae60;color:white;font-weight:bold;padding:4px 16px;"
-        )
+        self.run_sam_btn.setStyleSheet(run_step_style)
         self.run_sam_btn.clicked.connect(self._run_sam)
         self._run_buttons.append(self.run_sam_btn)
         top.addWidget(self.run_sam_btn)
 
         self.run_mit_btn = QPushButton(t("preprocess_run_mit"))
-        self.run_mit_btn.setStyleSheet(
-            "background:#27ae60;color:white;font-weight:bold;padding:4px 16px;"
-        )
+        self.run_mit_btn.setStyleSheet(run_step_style)
         self.run_mit_btn.clicked.connect(self._run_mit)
         self._run_buttons.append(self.run_mit_btn)
         top.addWidget(self.run_mit_btn)
 
         self.run_merge_btn = QPushButton(t("preprocess_run_merge"))
-        self.run_merge_btn.setStyleSheet(
-            "background:#8e44ad;color:white;font-weight:bold;padding:4px 16px;"
-        )
+        self.run_merge_btn.setStyleSheet(merge_style)
         self.run_merge_btn.clicked.connect(self._run_merge)
         self._run_buttons.append(self.run_merge_btn)
         top.addWidget(self.run_merge_btn)
@@ -195,8 +218,14 @@ class PreprocessingTab(QWidget):
         top.addWidget(self.stop_btn)
         outer.addLayout(top)
 
-        # Status one-liner stays directly under the action bar (same vertical
-        # rhythm as ConfigTab's progress bar).
+        # tqdm bar (same look as ConfigTab — shared QSS in gui/progress.py).
+        # Shown when a child process emits a parseable tqdm line, hidden again
+        # on _on_finished.
+        self.progress = make_progress_bar()
+        self._progress_tracker = TqdmProgressTracker(self.progress)
+        outer.addWidget(self.progress)
+
+        # Status one-liner stays directly under the progress bar.
         self.status_lbl = QLabel("")
         self.status_lbl.setStyleSheet("color:#dcdcdc; padding: 2px 0;")
         outer.addWidget(self.status_lbl)
@@ -495,6 +524,7 @@ class PreprocessingTab(QWidget):
             self._proc.setProcessEnvironment(env)
         self.log.clear()
         self._buf = ""
+        self._progress_tracker.reset()
         self.log.appendPlainText("> " + " ".join([sys.executable, *argv]))
         self._proc.start(sys.executable, argv)
         for btn in self._run_buttons:
@@ -510,19 +540,29 @@ class PreprocessingTab(QWidget):
         kill_process_tree(self._proc)
 
     def _read_stdout(self) -> None:
+        # Split on \n and \r so tqdm's carriage-return updates feed the bar
+        # without spamming the log. Mirrors ConfigTab._handle_stream.
         data = bytes(self._proc.readAllStandardOutput()).decode(
             "utf-8", errors="replace"
         )
         self._buf += data
-        while "\n" in self._buf:
-            line, self._buf = self._buf.split("\n", 1)
-            self.log.appendPlainText(line)
+        parts = re.split(r"[\r\n]", self._buf)
+        self._buf = parts[-1]  # incomplete trailing fragment stays buffered
+        for line in parts[:-1]:
+            if self._progress_tracker.feed(line):
+                continue
+            if line:
+                self.log.appendPlainText(line)
 
     def _on_finished(self, code: int, _status) -> None:
-        if self._buf:
+        # Flush any leftover non-tqdm tail before the finish banner. A
+        # trailing tqdm fragment is dropped — the bar already reflected its
+        # state and a half-written progress line in the log is just noise.
+        if self._buf and not TQDM_RE.search(self._buf):
             self.log.appendPlainText(self._buf)
-            self._buf = ""
+        self._buf = ""
         self.log.appendPlainText(t("finished", code=code))
+        self._progress_tracker.reset()
         for btn in self._run_buttons:
             btn.setEnabled(True)
         self.save_btn.setEnabled(True)

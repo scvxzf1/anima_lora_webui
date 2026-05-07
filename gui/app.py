@@ -94,9 +94,9 @@ def _dark(app: QApplication):
         QTabWidget::pane { border: 1px solid #444; }
         QTabBar::tab {
             background: #2a2a2a; color: #dcdcdc; border: 1px solid #444;
-            padding: 10px 24px; min-width: 110px;
-            font-size: 13px; font-weight: 500;
-            border-bottom: none; border-top-left-radius: 5px; border-top-right-radius: 5px;
+            padding: 6px 14px;
+            font-size: 12.5px; font-weight: 500;
+            border-bottom: none; border-top-left-radius: 4px; border-top-right-radius: 4px;
         }
         QTabBar::tab:selected { background: #1e1e1e; color: #ffffff; }
         QTabBar::tab:hover { background: #3a3a3a; }

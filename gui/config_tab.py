@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import re
 import sys
-import time
 from pathlib import Path
 from typing import Any
 
@@ -23,7 +22,6 @@ from PySide6.QtWidgets import (
     QLabel,
     QMessageBox,
     QPlainTextEdit,
-    QProgressBar,
     QPushButton,
     QScrollArea,
     QSplitter,
@@ -54,15 +52,7 @@ from gui import (
 from gui.explanations import field_help, method_guide
 from gui.i18n import t
 from gui.process import kill_process_tree, make_subprocess_env, setup_kill_safe
-
-# Matches tqdm lines like:
-#   "Denoising steps:  40%|####      | 12/30 [00:12<00:34,  2.50it/s]"
-# The trailing "[...]" block carries the rate as either "X.XXit/s" or
-# "X.XXs/it"; both are captured optionally so non-timed bars still parse.
-_TQDM_RE = re.compile(
-    r"^(?P<label>.*?):?\s*(?P<pct>\d+)%\|[^|]*\|\s*(?P<cur>\d+)/(?P<tot>\d+)"
-    r"(?:[^\[]*\[[^\]]*?(?P<rate>[\d.]+)(?P<unit>it/s|s/it)[^\]]*\])?"
-)
+from gui.progress import TQDM_RE, TqdmProgressTracker, make_progress_bar
 
 
 class ClickableLabel(QLabel):
@@ -92,10 +82,6 @@ class ConfigTab(QWidget):
         # Train/Preprocess auto-saves before launching, since the subprocess
         # re-reads the file from disk and would otherwise miss form edits.
         self._dirty = False
-        # (monotonic_anchor_time, anchor_step, label, total) — we measure
-        # s/step from the first step *completion*, not process launch, so
-        # warmup (model load, compilation) doesn't inflate the reported rate.
-        self._rate_anchor: tuple[float, int, str, int] | None = None
         lay = QVBoxLayout(self)
 
         # Top bar: method + save + preprocess + train + stop
@@ -207,17 +193,8 @@ class ConfigTab(QWidget):
 
         lay.addLayout(top)
 
-        self.progress = QProgressBar()
-        self.progress.setRange(0, 100)
-        self.progress.setValue(0)
-        self.progress.setTextVisible(True)
-        self.progress.setFormat("")
-        self.progress.setVisible(False)
-        self.progress.setStyleSheet(
-            "QProgressBar { border: 1px solid #444; border-radius: 3px;"
-            " text-align: center; padding: 1px; font-size: 11px; }"
-            "QProgressBar::chunk { background: #27ae60; }"
-        )
+        self.progress = make_progress_bar()
+        self._progress_tracker = TqdmProgressTracker(self.progress)
         lay.addWidget(self.progress)
 
         # Vertical splitter: config form on top, log on bottom
@@ -801,56 +778,22 @@ class ConfigTab(QWidget):
         parts = re.split(r"[\r\n]", buf)
         tail = parts[-1]  # incomplete trailing fragment — keep buffered
         for line in parts[:-1]:
-            m = _TQDM_RE.search(line)
-            if m:
-                cur = int(m.group("cur"))
-                tot = int(m.group("tot"))
-                label = m.group("label").strip() or "progress"
-                rate_str = self._update_rate(label, cur, tot)
-                if tot > 0:
-                    self.progress.setMaximum(tot)
-                    self.progress.setValue(cur)
-                    self.progress.setFormat(f"{label}: {cur}/{tot} (%p%){rate_str}")
-                    if not self.progress.isVisible():
-                        self.progress.setVisible(True)
+            if self._progress_tracker.feed(line):
                 continue
             if line:
                 self._log(line + "\n")
         return tail
 
-    def _update_rate(self, label: str, cur: int, tot: int) -> str:
-        """Return a ' — X.XXs/step' suffix measured from the first completed
-        step of this bar. The first-step timing is excluded so model-load and
-        compile overhead don't skew the rate."""
-        now = time.monotonic()
-        anchor = self._rate_anchor
-        # New bar (label/total changed, or progress rewound) → drop anchor.
-        if anchor is None or anchor[2] != label or anchor[3] != tot or cur < anchor[1]:
-            if cur >= 1:
-                self._rate_anchor = (now, cur, label, tot)
-            else:
-                self._rate_anchor = None
-            return ""
-        anchor_time, anchor_step, _, _ = anchor
-        steps = cur - anchor_step
-        if steps <= 0:
-            return ""
-        spi = (now - anchor_time) / steps
-        return f" — {spi:.2f}s/step"
-
     def _reset_progress(self):
         self._stdout_buf = ""
         self._stderr_buf = ""
-        self.progress.setValue(0)
-        self.progress.setFormat("")
-        self.progress.setVisible(False)
-        self._rate_anchor = None
+        self._progress_tracker.reset()
 
     def _on_finished(self, exit_code: int, _status: QProcess.ExitStatus):
         # Flush any buffered partial lines before the finish banner.
         for buf_name in ("_stdout_buf", "_stderr_buf"):
             leftover = getattr(self, buf_name, "")
-            if leftover and not _TQDM_RE.search(leftover):
+            if leftover and not TQDM_RE.search(leftover):
                 self._log(leftover + "\n")
             setattr(self, buf_name, "")
         self.progress.setVisible(False)
