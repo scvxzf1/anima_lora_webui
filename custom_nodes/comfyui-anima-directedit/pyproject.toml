@@ -1,0 +1,14 @@
+[project]
+name = "comfyui-anima-directedit"
+description = "Anima DirectEdit for ComfyUI: image + 'tag to add' -> edited image. Bundles AnimaTagger (PE-Core + classification head) for psi_src and DirectEdit (flow inversion + delta_z-anchored resampling) for the edit pass. Self-contained: loads its own DiT / TE / VAE / tagger from disk."
+version = "0.1.0"
+license = { file = "LICENSE" }
+dependencies = []
+
+[project.urls]
+Repository = "https://github.com/sorryhyun/anima_lora/tree/main/custom_nodes/comfyui-anima-directedit"
+
+[tool.comfy]
+PublisherId = "sorryhyun"
+DisplayName = "Anima DirectEdit"
+Icon = ""

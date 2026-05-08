@@ -11,9 +11,14 @@ Checkpoint layout (produced by ``scripts/train_anima_tagger.py``):
     ckpt_dir/
       config.json              # model config + training metadata
       model.safetensors        # AnimaTaggerHead state dict
+      pe_lora.safetensors      # PE-LoRA delta on PE-Core trailing blocks (optional)
       thresholds.safetensors   # per-tag F1-optimal thresholds
       vocab.json               # tag list with category + median_pos info
       rules.yaml               # caption-normalization rules snapshot
+
+If ``config.json`` has ``pe_lora: true`` and ``pe_lora.safetensors`` exists,
+the wrapper injects PE-LoRA on the encoder's trailing blocks and loads the
+delta weights — same code path as ``scripts/train_anima_tagger.py``.
 
 The vision encoder (PE-Core-L14-336 by default) is loaded lazily on first
 ``predict`` call. Captions are emitted in Anima's canonical slot order:
@@ -106,6 +111,7 @@ class AnimaTagger:
             cfg_d = json.load(f)
         self.encoder_name: str = cfg_d.get("encoder", "pe")
         self.cfg = AnimaTaggerConfig.from_dict(cfg_d["model"])
+        self._cfg_d = cfg_d
 
         self.model = AnimaTaggerHead(self.cfg)
         self.model.load_state_dict(st_load(str(self.ckpt_dir / "model.safetensors")))
@@ -148,7 +154,65 @@ class AnimaTagger:
             self._encoder = load_pe_encoder(
                 self.device, name=self.encoder_name, dtype=self.dtype
             )
+            self._maybe_apply_pe_lora(self._encoder)
         return self._encoder
+
+    def _maybe_apply_pe_lora(self, bundle: VisionEncoderBundle) -> None:
+        """Inject PE-LoRA on the encoder's trailing blocks and load delta weights.
+
+        Idempotent on a fresh bundle. Skips when the checkpoint was trained
+        without PE-LoRA (``config.pe_lora`` False / missing) or when the
+        ``pe_lora.safetensors`` sidecar is absent. The injected LoRA params
+        are switched to ``eval()`` and ``requires_grad_(False)`` since this
+        is the inference path.
+        """
+        cfg_d = self._cfg_d
+        if not cfg_d.get("pe_lora", False):
+            return
+        pe_lora_path = self.ckpt_dir / "pe_lora.safetensors"
+        if not pe_lora_path.exists():
+            logger.warning(
+                "config.pe_lora=true but %s is missing — encoder will run frozen "
+                "without the trained delta",
+                pe_lora_path,
+            )
+            return
+        from networks.methods.ip_adapter_pe_lora import inject_pe_lora
+
+        pe_inner = bundle.encoder.inner
+        pe_lora = inject_pe_lora(
+            pe_inner,
+            rank=int(cfg_d.get("pe_lora_rank", 16)),
+            alpha=float(cfg_d.get("pe_lora_alpha", 16.0)),
+            target_qkv=bool(cfg_d.get("pe_lora_qkv", True)),
+            target_attn_out=bool(cfg_d.get("pe_lora_attn_out", True)),
+            target_mlp=bool(cfg_d.get("pe_lora_mlp", True)),
+            layer_from=int(cfg_d.get("pe_lora_layers", 8)),
+        )
+        state = st_load(str(pe_lora_path))
+        missing, unexpected = pe_lora.load_state_dict(state, strict=False)
+        if missing or unexpected:
+            logger.warning(
+                "PE-LoRA load: missing=%d unexpected=%d (e.g. missing=%s unexpected=%s)",
+                len(missing),
+                len(unexpected),
+                missing[:3],
+                unexpected[:3],
+            )
+        pe_lora.to(device=self.device, dtype=torch.float32)
+        pe_lora.eval()
+        for p in pe_lora.parameters():
+            p.requires_grad_(False)
+        # Stash a reference so it isn't GC'd. The patched forward closures
+        # in inject_pe_lora hold strong refs already, but keeping this on
+        # the wrapper makes the LoRA params introspectable post-init.
+        self._pe_lora = pe_lora
+        logger.info(
+            "applied PE-LoRA (rank=%s, last %s blocks) from %s",
+            cfg_d.get("pe_lora_rank"),
+            cfg_d.get("pe_lora_layers"),
+            pe_lora_path.name,
+        )
 
     @torch.no_grad()
     def _encode_image(self, pil_img: Image.Image) -> torch.Tensor:
