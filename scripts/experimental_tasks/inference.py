@@ -277,17 +277,44 @@ def cmd_test_directedit(extra):
     if not edit_prompt:
         edit_prompt = "double peace"
 
-    # 3. Run wd-tagger on the source.
+    # 3. Run a tagger on the source. ``TAGGER`` env picks the backend
+    #    (``anima`` / ``wd``); default is auto — Anima if the checkpoint
+    #    is present, else wd-tagger as a portable fallback.
     sys.path.insert(0, str(ROOT))
     from PIL import Image  # noqa: PLC0415
-    from library.captioning.wd_tagger import WDTagger  # noqa: PLC0415
 
-    print(f"  > tagging source: {ref_image}")
-    tagger = WDTagger()
+    tagger_choice = os.environ.get("TAGGER", "").strip().lower() or "auto"
+    anima_ckpt = ROOT / "models" / "captioners" / "anima-tagger-v1" / "model.safetensors"
+    if tagger_choice == "auto":
+        tagger_choice = "anima" if anima_ckpt.exists() else "wd"
+
+    print(f"  > tagging source: {ref_image} (tagger={tagger_choice})")
+    if tagger_choice == "anima":
+        if not anima_ckpt.exists():
+            print(
+                f"  ! TAGGER=anima requested but {anima_ckpt} is missing — "
+                "train via `python scripts/train_anima_tagger.py`. "
+                "Falling back to wd-tagger.",
+                file=sys.stderr,
+            )
+            tagger_choice = "wd"
+    if tagger_choice == "anima":
+        from library.captioning.anima_tagger import AnimaTagger  # noqa: PLC0415
+
+        tagger = AnimaTagger(ckpt_dir=anima_ckpt.parent)
+    elif tagger_choice == "wd":
+        from library.captioning.wd_tagger import WDTagger  # noqa: PLC0415
+
+        tagger = WDTagger()
+    else:
+        raise SystemExit(
+            f"unknown TAGGER={tagger_choice!r} — expected 'anima', 'wd', or 'auto'"
+        )
+
     src_caption = tagger.predict_caption(Image.open(ref_image))
     if not src_caption:
         print(
-            "  ! wd-tagger produced no tags above threshold; using empty source "
+            "  ! tagger produced no tags above threshold; using empty source "
             "prompt — DirectEdit reconstruction will be weaker than usual.",
             file=sys.stderr,
         )

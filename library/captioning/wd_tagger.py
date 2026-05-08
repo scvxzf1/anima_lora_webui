@@ -26,7 +26,7 @@ import csv
 import logging
 from dataclasses import dataclass
 from pathlib import Path
-from typing import List, Optional, Tuple
+from typing import Iterable, List, Optional, Tuple
 
 import numpy as np
 import torch
@@ -47,6 +47,20 @@ DEFAULT_CHARACTER_THRESHOLD = 0.85
 _CATEGORY_GENERAL = 0
 _CATEGORY_CHARACTER = 4
 _CATEGORY_RATING = 9
+
+# Tags the model fires on too eagerly for the Anima dataset (manga / stylized
+# anime). The bench at bench/wd_tagger_dataset/ shows these as the dominant
+# false positives — `no_humans` is plain wrong on character art, the two
+# "background" tags overfit to manga page artifacts (white pages → predicted
+# as transparent/simple). Filtered by default at the predict() boundary so
+# both predict() and predict_caption() get a clean output. Pass
+# ``tag_blocklist=()`` (or any custom iterable) to override.
+DEFAULT_TAG_BLOCKLIST: Tuple[str, ...] = (
+    "no_humans",
+    "transparent_background",
+    "greyscale",
+    "monochrome"
+)
 
 
 @dataclass
@@ -136,6 +150,7 @@ class WDTagger:
         character_threshold: float = DEFAULT_CHARACTER_THRESHOLD,
         device: Optional[torch.device] = None,
         dtype: torch.dtype = torch.float32,
+        tag_blocklist: Optional[Iterable[str]] = None,
     ):
         self.general_threshold = general_threshold
         self.character_threshold = character_threshold
@@ -143,6 +158,13 @@ class WDTagger:
             "cuda" if torch.cuda.is_available() else "cpu"
         )
         self._dtype = dtype
+        # None → use module default; pass () to disable filtering. Normalize
+        # to underscore form so callers can pass either "no humans" or
+        # "no_humans" interchangeably.
+        bl = DEFAULT_TAG_BLOCKLIST if tag_blocklist is None else tag_blocklist
+        self.tag_blocklist: frozenset[str] = frozenset(
+            t.strip().lower().replace(" ", "_") for t in bl
+        )
         self._model: Optional[torch.nn.Module] = None
         self._schema: Optional[_TagSchema] = None
         self._input_size: int = 448
@@ -229,6 +251,7 @@ class WDTagger:
                 (names[i], float(probs[i]))
                 for i in self._schema.character_idx
                 if float(probs[i]) >= self.character_threshold
+                and names[i] not in self.tag_blocklist
             ],
             key=lambda t: t[1],
             reverse=True,
@@ -238,6 +261,7 @@ class WDTagger:
                 (names[i], float(probs[i]))
                 for i in self._schema.general_idx
                 if float(probs[i]) >= self.general_threshold
+                and names[i] not in self.tag_blocklist
             ],
             key=lambda t: t[1],
             reverse=True,

@@ -96,9 +96,21 @@ def parse_args() -> argparse.Namespace:
         "drift in invert/edit_forward.",
     )
     p.add_argument(
+        "--cached_embed_variants",
+        default="all",
+        help="Which variants to run from the --cached_embed cache. "
+        "'all' (default) sweeps every stored variant. Otherwise pass a "
+        "comma-separated list of indices, e.g. '0' for the pristine caption "
+        "only, '0,2' for v0 + v2. Out-of-range indices fail loud. "
+        "Ignored unless --cached_embed is set.",
+    )
+    p.add_argument(
         "--negative_prompt",
         default="",
-        help="Negative prompt for CFG on the edit pass (default empty).",
+        help="Negative prompt for CFG on the edit pass (default empty). In "
+        "--cached_embed mode, an empty value is auto-replaced with 'worst "
+        "quality' so CFG can still fire (the TE is loaded briefly to encode "
+        "just the neg, then dropped).",
     )
     p.add_argument(
         "--mask",
@@ -151,6 +163,20 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--lora_weight", nargs="*", default=None)
     p.add_argument("--lora_multiplier", nargs="*", type=float, default=1.0)
     p.add_argument("--lycoris", action="store_true")
+    p.add_argument(
+        "--compile_blocks",
+        action="store_true",
+        default=True,
+        help="torch.compile each transformer block's _forward individually "
+        "(per-block compile, not full-model). Speeds up the inversion + edit "
+        "loops; first call per shape pays a compile cost.",
+    )
+    p.add_argument(
+        "--compile_inductor_mode",
+        default=None,
+        help="Inductor preset passed through to torch.compile(mode=...). "
+        "e.g. 'reduce-overhead' for per-block CUDAGraphs.",
+    )
 
     args = p.parse_args()
     args.fp8 = False
@@ -166,26 +192,59 @@ def _pick_bucket(img: Image.Image) -> tuple[int, int]:
     return best[1], best[0]  # bucket is (W, H); we return (H, W)
 
 
+def _parse_variant_selector(selector: str, n_available: int) -> list[int]:
+    """Parse `--cached_embed_variants` into a list of variant indices.
+
+    'all' yields [0..n_available-1]; comma-separated indices yield those.
+    Out-of-range indices fail loud so a typo doesn't silently fall back to
+    the full sweep.
+    """
+    if selector == "all":
+        return list(range(n_available))
+    try:
+        wanted = [int(s.strip()) for s in selector.split(",") if s.strip()]
+    except ValueError as e:
+        raise ValueError(
+            f"--cached_embed_variants={selector!r}: expected 'all' or a "
+            "comma-separated list of integers"
+        ) from e
+    if not wanted:
+        raise ValueError("--cached_embed_variants is empty")
+    bad = [i for i in wanted if i < 0 or i >= n_available]
+    if bad:
+        raise ValueError(
+            f"--cached_embed_variants={selector!r}: indices {bad} out of "
+            f"range — cache has {n_available} variant(s) (0..{n_available - 1})"
+        )
+    return wanted
+
+
 def _load_cached_embed_variants(
-    cache_path: str, anima, device: torch.device
+    cache_path: str,
+    anima,
+    device: torch.device,
+    selector: str = "all",
 ) -> list[tuple[str, torch.Tensor]]:
     """Load preprocessed crossattn embeds from a `_anima_te.safetensors` cache.
 
     Returns a list of `(variant_label, crossattn_emb)` ready to feed
     DirectEdit. Mirrors `AnimaTextEncoderOutputsCachingStrategy.load_outputs_npz`
-    but emits *all* variants instead of stochastically sampling one — this is
-    a sweep, not training.
+    but emits the variants requested by `selector` (default 'all') instead of
+    stochastically sampling one — this is a sweep, not training.
 
     Behavior:
-      * Multi-variant caches (`num_variants` key present): yields v0..v{N-1}.
-        v0 is the pristine caption; v1..v{N-1} are tag-shuffled re-encodings.
-      * Single-variant caches: yields one pass.
+      * Multi-variant caches (`num_variants` key present): yields v_i for every
+        i selected by `selector`.  v0 is the pristine caption; v1..v{N-1} are
+        tag-shuffled re-encodings.
+      * Single-variant caches: yields one pass.  `selector` must be 'all' or
+        '0'.
       * Pre-baked `crossattn_emb*` (cached when training was preprocessed
         with `cache_llm_adapter_outputs=True`) is used directly. Otherwise
         we run `anima._preprocess_text_embeds` ourselves so the cache stays
         usable regardless of how it was preprocessed.
 
-    Fails loud if the file is missing or shape-mismatched.
+    Fails loud if the file is missing, shape-mismatched, or `selector` names a
+    missing variant.
     """
     from safetensors import safe_open
 
@@ -202,8 +261,11 @@ def _load_cached_embed_variants(
         has_variants = "num_variants" in keys
         if has_variants:
             n = int(f.get_tensor("num_variants"))
-            indices = [(f"v{i}", f"_v{i}") for i in range(n)]
+            wanted = _parse_variant_selector(selector, n)
+            indices = [(f"v{i}", f"_v{i}") for i in wanted]
         else:
+            # Single-variant cache: only v0 exists; reject anything else.
+            _parse_variant_selector(selector, 1)
             indices = [("v0", "")]
 
         for label, suf in indices:
@@ -293,6 +355,19 @@ def main() -> None:
     # 3. Load DiT first (needed by prepare_text_inputs's _preprocess_text_embeds).
     logger.info("Loading DiT model...")
     anima = load_dit_model(args, device, dit_weight_dtype=torch.bfloat16)
+    if args.compile_blocks:
+        # split_attn=True (the inference default) slices q/k/v per batch
+        # element with `attn_params.seqlens[i]` as the slice end — a 0-dim
+        # CUDA tensor whose use as a Python slice forces a `.item()` sync,
+        # which breaks the dynamo graph inside every block._forward.
+        # Batch=1 DirectEdit at a single bucket has no real per-element
+        # trimming to do, so we disable split_attn for the compile path.
+        # Self-attn now sees the ~0–1.6% image-token padding (zero keys
+        # /values) instead of trimming it; cross-attn is unchanged from the
+        # trained zero-padded-text invariant (see CLAUDE.md "Text encoder
+        # padding").
+        anima.split_attn = False
+        anima.compile_blocks(mode=args.compile_inductor_mode)
 
     # 4. Encode source + target text — or, in --cached_embed mode, load
     #    preprocessed crossattn variants from the TE cache file (one pass per
@@ -300,15 +375,42 @@ def main() -> None:
     cached_variants: list[tuple[str, torch.Tensor]] | None = None
     if args.cached_embed is not None:
         cached_variants = _load_cached_embed_variants(
-            args.cached_embed, anima, device
+            args.cached_embed, anima, device, args.cached_embed_variants
         )
         embed_src = embed_tar = None  # filled per-variant below
-        embed_neg = None  # No real negative concept; CFG silently disabled in _v_pred.
+
+        # Cache file has no neg slot — encode one on the fly so CFG can fire.
+        # Default to 'worst quality' when --negative_prompt is empty.
+        neg_prompt = args.negative_prompt or "worst quality"
+        if not args.negative_prompt:
+            logger.info(
+                "DirectEdit dry: --negative_prompt empty; defaulting to "
+                "'worst quality' for CFG."
+            )
+
+        # Reuse prepare_text_inputs: set prompt == negative_prompt so the
+        # positive forward hits the conds_cache and only one TE pass actually
+        # runs. We discard the positive ctx and keep ctx_neg.
+        args_neg = SimpleNamespace(**vars(args))
+        args_neg.prompt = neg_prompt
+        args_neg.negative_prompt = neg_prompt
+
+        te_dtype = torch.bfloat16
+        te_device = torch.device("cpu") if args.text_encoder_cpu else device
+        text_encoder = load_text_encoder(args, dtype=te_dtype, device=te_device)
+        shared = {"text_encoder": text_encoder, "conds_cache": {}}
+        _, ctx_neg = prepare_text_inputs(args_neg, device, anima, shared)
+        text_encoder.to("cpu")
+        del text_encoder, shared
+        clean_memory_on_device(device)
+
+        embed_neg = ctx_neg["embed"][0].to(device, dtype=torch.bfloat16)
         logger.info(
-            "DirectEdit dry: loaded %d variant(s) from %s; CFG silently "
-            "disabled (embed_neg=None).",
+            "DirectEdit dry: loaded %d variant(s) from %s; CFG enabled "
+            "(neg=%r).",
             len(cached_variants),
             args.cached_embed,
+            neg_prompt,
         )
     else:
         args_src = SimpleNamespace(**vars(args))
