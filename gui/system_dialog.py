@@ -45,9 +45,7 @@ _MODEL_GROUPS: list[tuple[str, str, list[str]]] = [
     ),
     ("sam3", "model_sam3", ["models/sam3/sam3.pt"]),
     ("mit", "model_mit", ["models/mit/model.pth"]),
-    ("tipsv2", "model_tipsv2", ["models/tipsv2/config.json"]),
     ("pe", "model_pe", ["models/pe/PE-Core-L14-336.pt"]),
-    ("pe-g", "model_pe_g", ["models/pe/PE-Core-G14-448.pt"]),
 ]
 
 
@@ -144,7 +142,7 @@ class ModelsDialog(_StreamingDialog):
     """One row per model group: label · status · download button.
 
     Download-all button at the top runs ``download-models`` (Anima + SAM3 +
-    MIT + TIPSv2). Per-group buttons let users pick just one (re)download.
+    MIT + PE). Per-group buttons let users pick just one (re)download.
     """
 
     def __init__(self, parent=None):
@@ -159,7 +157,7 @@ class ModelsDialog(_StreamingDialog):
         intro.setStyleSheet("color:#aaa;")
         layout.addWidget(intro)
 
-        # Download-all button (Anima + SAM3 + MIT + TIPSv2).
+        # Download-all button (Anima + SAM3 + MIT + PE).
         all_row = QHBoxLayout()
         self.all_btn = QPushButton(t("models_download_all"))
         self.all_btn.setStyleSheet(

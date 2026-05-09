@@ -202,8 +202,8 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         # Models dialog
         "models_title": "Download Models",
         "models_intro": "Pick a model group below or use 'Download all' for the standard set "
-        "(Anima + SAM3 + MIT + TIPSv2). Files are saved under models/.",
-        "models_download_all": "Download all (Anima + SAM3 + MIT + TIPSv2)",
+        "(Anima + SAM3 + MIT + PE). Files are saved under models/.",
+        "models_download_all": "Download all (Anima + SAM3 + MIT + PE)",
         "models_download": "Download",
         "models_redownload": "Re-download",
         "models_installed": "✓ Installed",
@@ -211,9 +211,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "model_anima": "Anima — DiT + text encoder + VAE",
         "model_sam3": "SAM3 — text-bubble masking",
         "model_mit": "MIT — manga text masking",
-        "model_tipsv2": "TIPSv2-L/14 — img2emb encoder",
         "model_pe": "PE-Core-L14-336 — IP-Adapter vision encoder",
-        "model_pe_g": "PE-Core-G14-448 — larger IP-Adapter vision encoder",
         # Update dialog
         "update_title": "Update anima_lora",
         "update_warning": "Update will pull the latest release from GitHub and overwrite the working "
@@ -465,8 +463,8 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         # Models dialog
         "models_title": "모델 다운로드",
         "models_intro": "아래에서 모델 그룹을 선택하거나 '전체 다운로드'로 표준 세트 "
-        "(Anima + SAM3 + MIT + TIPSv2)를 받으세요. 파일은 models/ 아래에 저장됩니다.",
-        "models_download_all": "전체 다운로드 (Anima + SAM3 + MIT + TIPSv2)",
+        "(Anima + SAM3 + MIT + PE)를 받으세요. 파일은 models/ 아래에 저장됩니다.",
+        "models_download_all": "전체 다운로드 (Anima + SAM3 + MIT + PE)",
         "models_download": "다운로드",
         "models_redownload": "재다운로드",
         "models_installed": "✓ 설치됨",
@@ -474,9 +472,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "model_anima": "Anima — DiT + 텍스트 인코더 + VAE",
         "model_sam3": "SAM3 — 말풍선 마스킹",
         "model_mit": "MIT — 만화 텍스트 마스킹",
-        "model_tipsv2": "TIPSv2-L/14 — img2emb 인코더",
         "model_pe": "PE-Core-L14-336 — IP-Adapter 비전 인코더",
-        "model_pe_g": "PE-Core-G14-448 — 대형 IP-Adapter 비전 인코더",
         # Update dialog
         "update_title": "anima_lora 업데이트",
         "update_warning": "업데이트는 GitHub에서 최신 릴리스를 받아 작업 트리를 덮어씁니다 "

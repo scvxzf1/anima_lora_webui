@@ -37,14 +37,29 @@ class TagRules:
     replacements: Tuple[Tuple[str, str], ...]
     remove: frozenset
     dedup: Dict[str, frozenset]
+    # Per-tag category override consulted *before* the booru tag cache in
+    # ``vocab.categorize()``. Useful when the cache mis-types a tag (e.g.
+    # GFL character tags stored as type_id=0 ``general``). Empty by default
+    # — overrides only apply when the curator lists the tag explicitly.
+    category_overrides: Dict[str, str]
 
     def to_dict(self) -> dict:
         """Round-trippable dict for snapshotting into the checkpoint dir."""
-        return {
+        out: dict = {
             "replacements": dict(self.replacements),
             "remove": sorted(self.remove),
-            **{base: sorted(variants) for base, variants in self.dedup.items()},
         }
+        if self.category_overrides:
+            out["category_overrides"] = dict(self.category_overrides)
+        out.update(
+            {base: sorted(variants) for base, variants in self.dedup.items()}
+        )
+        return out
+
+
+# Top-level YAML keys that are NOT dedup base→variants entries. Centralized
+# so :func:`load_rules` and :func:`from_dict` agree on what to exclude.
+_RESERVED_KEYS = frozenset({"replacements", "remove", "category_overrides"})
 
 
 def load_rules(path: str | Path) -> TagRules:
@@ -54,23 +69,35 @@ def load_rules(path: str | Path) -> TagRules:
 
     repl_map = raw.pop("replacements", {}) or {}
     remove = frozenset(raw.pop("remove", []) or [])
+    overrides = dict(raw.pop("category_overrides", {}) or {})
     # Everything else in the YAML is a dedup base→variants entry.
     dedup = {str(base): frozenset(variants) for base, variants in raw.items()}
     replacements = tuple((str(k), str(v)) for k, v in repl_map.items())
-    return TagRules(replacements=replacements, remove=remove, dedup=dedup)
+    return TagRules(
+        replacements=replacements,
+        remove=remove,
+        dedup=dedup,
+        category_overrides={str(k): str(v) for k, v in overrides.items()},
+    )
 
 
 def from_dict(d: dict) -> TagRules:
     """Inverse of :meth:`TagRules.to_dict` — load a snapshot from JSON."""
     repl_map = d.get("replacements", {}) or {}
     remove = frozenset(d.get("remove", []) or [])
+    overrides = dict(d.get("category_overrides", {}) or {})
     dedup = {
         k: frozenset(v)
         for k, v in d.items()
-        if k not in {"replacements", "remove"}
+        if k not in _RESERVED_KEYS
     }
     replacements = tuple((str(k), str(v)) for k, v in repl_map.items())
-    return TagRules(replacements=replacements, remove=remove, dedup=dedup)
+    return TagRules(
+        replacements=replacements,
+        remove=remove,
+        dedup=dedup,
+        category_overrides={str(k): str(v) for k, v in overrides.items()},
+    )
 
 
 def apply_replacements(content: str, rules: TagRules) -> str:

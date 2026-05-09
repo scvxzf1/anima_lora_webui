@@ -71,6 +71,7 @@ def parse_args() -> argparse.Namespace:
             "train",
             "calibrate",
             "predict",
+            "scan_role_markers",
         ],
         default="build_vocab",
     )
@@ -216,6 +217,58 @@ def parse_args() -> argparse.Namespace:
         help="Predict mode: number of top kept tags to show with --show_scores.",
     )
 
+    # scan_role_markers mode: rank character-typed tags by solo co-occurrence
+    # (high ratio → likely a class/affiliation marker mis-typed as character).
+    p.add_argument(
+        "--min_solo",
+        type=int,
+        default=5,
+        help="scan_role_markers: drop tags with fewer than this many solo "
+        "occurrences (default: 5).",
+    )
+    p.add_argument(
+        "--min_ratio",
+        type=float,
+        default=0.5,
+        help="scan_role_markers: drop tags whose conditional co-occurrence "
+        "ratio with another character on solo images is below this (default: 0.5).",
+    )
+    p.add_argument(
+        "--top_partners",
+        type=int,
+        default=3,
+        help="scan_role_markers: how many top co-occurring partners to print "
+        "per row (default: 3).",
+    )
+    p.add_argument(
+        "--min_role_partners",
+        type=int,
+        default=5,
+        help="scan_role_markers: a candidate with at least this many distinct "
+        "co-occurrence partners is classified D_role (broad pool → "
+        "affiliation marker). Default: 5.",
+    )
+    p.add_argument(
+        "--pair_dominance",
+        type=float,
+        default=0.6,
+        help="scan_role_markers: a candidate whose top-1 partner accounts for "
+        "at least this fraction of co-occurrences is classified C_pair "
+        "(narrow pool → genuine couple/sibling). Default: 0.6.",
+    )
+    p.add_argument(
+        "--limit",
+        type=int,
+        default=200,
+        help="scan_role_markers: cap rows printed in the table (default: 200).",
+    )
+    p.add_argument(
+        "--out_yaml",
+        default=None,
+        help="scan_role_markers: optional path for a YAML stub of candidates, "
+        "ready to paste into tag_rules.yaml.",
+    )
+
     # Output.
     p.add_argument(
         "--out_dir",
@@ -276,6 +329,10 @@ def main() -> None:
         from .predict import cmd_predict
 
         cmd_predict(args)
+    elif args.mode == "scan_role_markers":
+        from .role_markers import cmd_scan_role_markers
+
+        cmd_scan_role_markers(args)
     else:
         raise SystemExit(f"unknown --mode={args.mode!r}")
 

@@ -1,4 +1,4 @@
-"""Model download entry-points (Anima base, SAM3, MIT, TIPSv2, PE-Core).
+"""Model download entry-points (Anima base, SAM3, MIT, PE-Core).
 
 All targets shell out to ``hf download`` (rather than the SDK) so the user's
 ``hf auth login`` cache is honored.
@@ -16,13 +16,6 @@ def cmd_download_sam3(_extra):
     run(["hf", "download", "facebook/sam3", "--local-dir", "models/sam3"])
 
 
-def cmd_download_tipsv2(_extra):
-    # TIPSv2 ships custom code consumed via trust_remote_code; grab the whole
-    # repo so local-dir load works offline. See scripts/img2emb/preprocess.py.
-    (ROOT / "models" / "tipsv2").mkdir(parents=True, exist_ok=True)
-    run(["hf", "download", "google/tipsv2-l14", "--local-dir", "models/tipsv2"])
-
-
 def cmd_download_pe(_extra):
     # PE-Core-L14-336 — only the .pt checkpoint is needed; vision tower is
     # vendored at library/models/pe.py (no perception_models clone required).
@@ -33,22 +26,6 @@ def cmd_download_pe(_extra):
             "download",
             "facebook/PE-Core-L14-336",
             "PE-Core-L14-336.pt",
-            "--local-dir",
-            "models/pe",
-        ]
-    )
-
-
-def cmd_download_pe_g(_extra):
-    # PE-Core-G14-448 — larger PE sibling (50-layer 1536-wide, 1024 patch tokens
-    # at 448 px, no CLS). Same vendored vision tower in library/models/pe.py.
-    (ROOT / "models" / "pe").mkdir(parents=True, exist_ok=True)
-    run(
-        [
-            "hf",
-            "download",
-            "facebook/PE-Core-G14-448",
-            "PE-Core-G14-448.pt",
             "--local-dir",
             "models/pe",
         ]
@@ -101,4 +78,4 @@ def cmd_download_models(_extra):
     cmd_download_anima(_extra)
     cmd_download_sam3(_extra)
     cmd_download_mit(_extra)
-    cmd_download_tipsv2(_extra)
+    cmd_download_pe(_extra)

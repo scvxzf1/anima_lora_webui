@@ -48,7 +48,7 @@ Perceiver resampler ──► IP tokens     [B, K=16, 1024]   (trainable)
 
 ### Why PE-Core
 
-PE-Core-L14-336 supports **dynamic resolution** out of the box — each ref image is resized to its closest patch-14 bucket (`library/vision/buckets.py:PE_CORE_L14_336_SPEC`, ~576 patch tokens, aspects 1:2 to 2:1). TIPSv2 also works (set `network_args = ["encoder=tipsv2"]`) but its bucket count is larger (~1024 tokens) and you need `make download-tipsv2` plus `trust_remote_code=True`.
+PE-Core-L14-336 supports **dynamic resolution** out of the box — each ref image is resized to its closest patch-14 bucket (`library/vision/buckets.py:PE_CORE_L14_336_SPEC`, ~576 patch tokens, aspects 1:2 to 2:1).
 
 ---
 
@@ -197,7 +197,7 @@ python inference.py \
 | Parameter | Default | Description |
 |-----------|---------|-------------|
 | `network_dim` | 16 | K = number of IP tokens (resampler output slots) |
-| `network_args.encoder` | `pe` | Vision encoder name (`pe`, `tipsv2`, `pe-g`) |
+| `network_args.encoder` | `pe` | Vision encoder name (only `pe` is supported) |
 | `network_args.encoder_dim` | 1024 | Encoder hidden dim — must match the encoder |
 | `network_args.resampler_layers` | 2 | Perceiver resampler depth |
 | `network_args.resampler_heads` | 8 | Perceiver resampler attention heads |

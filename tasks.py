@@ -29,6 +29,7 @@ from scripts.tasks import (
     inference,
     masking,
     preprocess,
+    tagger,
     training,
     utilities,
 )
@@ -101,26 +102,33 @@ COMMANDS = {
     ),
     "preprocess-pe": (
         preprocess.cmd_preprocess_pe,
-        "Cache PE-Core (or other registered) vision-encoder features into the "
-        "LoRA cache dir. Consumed by REPA (--use_repa) and IP-Adapter live-disk "
-        "mode. PE_ENCODER=pe|pe-g.",
+        "Cache PE-Core vision-encoder features into the LoRA cache dir. "
+        "Consumed by REPA (--use_repa) and IP-Adapter live-disk mode.",
+    ),
+    # ── Anima Tagger ──────────────────────────────────────────────────
+    "preprocess-tagger": (
+        tagger.cmd_preprocess_tagger,
+        "Build the Anima Tagger vocab/manifest + cache pooled PE features "
+        "(build_vocab + build_features). Needs CAPTION_CORPUS_DIR in .env.",
+    ),
+    "tagger": (
+        tagger.cmd_tagger,
+        "Train the Anima Tagger head on cached PE features "
+        "(cached-encoder fast path).",
+    ),
+    "test-tagger": (
+        tagger.cmd_test_tagger,
+        "Predict tags for a single image (--image <path>) or sample a random "
+        "val-split stem. Pass --show_scores for rating + top-K kept tags.",
     ),
     # ── Downloads ─────────────────────────────────────────────────────
     "download-models": (downloads.cmd_download_models, "Download all models"),
     "download-anima": (downloads.cmd_download_anima, "Download Anima model"),
     "download-sam3": (downloads.cmd_download_sam3, "Download SAM3 model"),
     "download-mit": (downloads.cmd_download_mit, "Download MIT model"),
-    "download-tipsv2": (
-        downloads.cmd_download_tipsv2,
-        "Download TIPSv2-L/14 (img2emb encoder)",
-    ),
     "download-pe": (
         downloads.cmd_download_pe,
         "Download PE-Core-L14-336 (img2emb encoder)",
-    ),
-    "download-pe-g": (
-        downloads.cmd_download_pe_g,
-        "Download PE-Core-G14-448 (larger img2emb encoder)",
     ),
     # ── Masking ───────────────────────────────────────────────────────
     "mask": (masking.cmd_mask, "Generate SAM3 + MIT masks, then merge"),

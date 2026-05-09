@@ -90,19 +90,17 @@ def cmd_preprocess_pooled(extra):
 
 
 def cmd_preprocess_pe(extra):
-    """Cache PE-Core (or other registered) vision-encoder features.
+    """Cache PE-Core-L14-336 vision-encoder features.
 
     Reads pre-resized images from ``post_image_dataset/resized/`` (the
     standard LoRA pipeline source) and writes
-    ``{stem}_anima_{encoder}.safetensors`` sidecars into the LoRA cache dir
-    so the dataset's existing ``cache_dir`` lookup finds them.
+    ``{stem}_anima_pe.safetensors`` sidecars into the LoRA cache dir so the
+    dataset's existing ``cache_dir`` lookup finds them.
 
     Consumed by methods that align against frozen vision features —
     currently REPA (--use_repa) and IP-Adapter when reading PE features off
-    disk. PE_ENCODER env var overrides the encoder registry name (default
-    ``pe`` = PE-Core-L14-336).
+    disk.
     """
-    encoder = os.environ.get("PE_ENCODER", "pe")
     run(
         [
             PY,
@@ -112,7 +110,7 @@ def cmd_preprocess_pe(extra):
             "--cache_dir",
             _path("lora_cache_dir", "post_image_dataset/lora"),
             "--encoder",
-            encoder,
+            "pe",
             *extra,
         ]
     )

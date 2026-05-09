@@ -36,7 +36,7 @@ class VisionEncoderBundle:
     """Loaded encoder + its registry info — what callers need to produce features."""
 
     name: str
-    encoder: object  # _PEEncoder / _TIPSv2Encoder, callable on pixel_values
+    encoder: object  # _PEEncoder, callable on pixel_values
     info: EncoderInfo
     device: torch.device
     dtype: torch.dtype

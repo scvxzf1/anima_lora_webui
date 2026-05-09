@@ -92,7 +92,7 @@ DEFAULT_HIDDEN_SIZE = 2048  # query_dim
 DEFAULT_NUM_HEADS = 16
 DEFAULT_HEAD_DIM = DEFAULT_HIDDEN_SIZE // DEFAULT_NUM_HEADS  # 128
 DEFAULT_CONTEXT_DIM = (
-    1024  # crossattn_emb_channels — also matches PE-Core / TIPSv2 d_enc
+    1024  # crossattn_emb_channels — also matches PE-Core d_enc
 )
 DEFAULT_NUM_IP_TOKENS = 16
 DEFAULT_RESAMPLER_HEADS = 8
@@ -633,20 +633,12 @@ class IPAdapterNetwork(nn.Module):
 
     def _build_pe_with_lora(self) -> None:
         """Instantiate PE base + inject LoRA. Called from __init__ when enabled."""
-        from library.models.pe import PE_CONFIGS, build_pe_vision
+        from library.models.pe import build_pe_vision
 
         info = get_encoder_info(self.encoder_name)
-        # encoder_name is the registry key ("pe", "pe-g"); the underlying PE
-        # config name is what build_pe_vision wants. The registry's
-        # default_model_id() points at the .pt path; we infer the config from
-        # the encoder_name and validate dim consistency below.
-        config_name = {
-            "pe": "PE-Core-L14-336",
-            "pe-g": "PE-Core-G14-448",
-        }.get(self.encoder_name)
-        if config_name is None or config_name not in PE_CONFIGS:
+        if self.encoder_name != "pe":
             raise ValueError(
-                f"PE-LoRA: unknown encoder_name={self.encoder_name!r} (need 'pe' or 'pe-g')"
+                f"PE-LoRA: unknown encoder_name={self.encoder_name!r} (only 'pe' is supported)"
             )
         if info.d_enc != self.encoder_dim:
             raise ValueError(
@@ -654,7 +646,7 @@ class IPAdapterNetwork(nn.Module):
             )
 
         ckpt_path = info.default_model_id()
-        pe = build_pe_vision(config_name)
+        pe = build_pe_vision("PE-Core-L14-336")
         pe.load_pe_checkpoint(ckpt_path, verbose=True)
         pe.requires_grad_(False)  # base PE frozen; LoRA params trainable
 
@@ -677,9 +669,9 @@ class IPAdapterNetwork(nn.Module):
         Inference-only safety valve: at generation time the PE encoder runs
         exactly once (in ``_setup_ip_adapter``) to produce ``ip_features``;
         ``set_ip_tokens`` then materializes the per-block K/V and the
-        encoder is never touched again. PE-Core-L14-336 is ~600 MB bf16 and
-        PE-Core-G14-448 is ~2 GB; freeing them claws back significant VRAM
-        for the actual diffusion forward.
+        encoder is never touched again. PE-Core-L14-336 is ~600 MB bf16;
+        freeing it claws back significant VRAM for the actual diffusion
+        forward.
 
         After this call ``encode_images`` / ``encode_ip_tokens`` will fail —
         do not call it during training.
