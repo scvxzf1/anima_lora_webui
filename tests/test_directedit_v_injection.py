@@ -63,59 +63,72 @@ def test_resolve_rejects_out_of_range():
 # ─── _VInjectionState ───────────────────────────────────────────────────────
 
 
-def test_capture_then_inject_swaps_v():
+def test_set_rows_swaps_v_at_configured_block():
+    """In-batch swap: ``v[tar_row] = v[src_row]`` on configured blocks."""
     state = _VInjectionState({0})
-    src_v = torch.tensor([1.0, 2.0, 3.0])
-    tar_v = torch.tensor([10.0, 20.0, 30.0])
+    v = torch.stack([
+        torch.tensor([1.0, 2.0, 3.0]),    # row 0 (src)
+        torch.tensor([10.0, 20.0, 30.0]),  # row 1 (tar)
+    ])
+    state.set_rows(src_row=0, tar_row=1)
+    out = state.hook(0, v)
 
-    state.mode = state.CAPTURE
-    pass_through = state.hook(0, src_v)
-    assert torch.equal(pass_through, src_v)
-    assert torch.equal(state.cache[0], src_v)
+    # Row 1 now mirrors row 0; row 0 unchanged.
+    assert torch.equal(out[0], torch.tensor([1.0, 2.0, 3.0]))
+    assert torch.equal(out[1], torch.tensor([1.0, 2.0, 3.0]))
 
-    state.mode = state.INJECT
-    injected = state.hook(0, tar_v)
-    assert torch.equal(injected, src_v)
+
+def test_hook_does_not_mutate_input_in_place():
+    """Hook clones before writing — input tensor must be left untouched."""
+    state = _VInjectionState({0})
+    v = torch.stack([torch.tensor([1.0]), torch.tensor([2.0])])
+    v_orig = v.clone()
+    state.set_rows(src_row=0, tar_row=1)
+    state.hook(0, v)
+    assert torch.equal(v, v_orig)
 
 
 def test_block_outside_index_set_is_noop():
     state = _VInjectionState({0})
-    state.mode = state.CAPTURE
-    state.hook(99, torch.tensor([1.0]))
-    assert 99 not in state.cache
+    state.set_rows(src_row=0, tar_row=1)
+    v = torch.stack([torch.tensor([1.0]), torch.tensor([2.0])])
+    out = state.hook(99, v)
+    # Untouched: row 1 still differs from row 0.
+    assert torch.equal(out, v)
 
 
-def test_inject_broadcasts_across_cfg_batch_doubling():
+def test_cfg_three_row_batch_swaps_only_tar():
+    """CFG layout ``[neg_tar, cond_src, cond_tar]`` — only row 2 gets row 1's V."""
     state = _VInjectionState({0})
-    src_v = torch.randn(1, 16, 8, 64)  # [B=1, L, H, D] (cond src)
-    state.mode = state.CAPTURE
-    state.hook(0, src_v)
+    v = torch.randn(3, 16, 8, 64)  # [B=3, L, H, D]
+    v_orig = v.clone()
+    state.set_rows(src_row=1, tar_row=2)
+    out = state.hook(0, v)
 
-    state.mode = state.INJECT
-    tar_v = torch.randn(2, 16, 8, 64)  # [B=2: CFG cond+uncond on tar]
-    injected = state.hook(0, tar_v)
-
-    assert injected.shape == tar_v.shape
-    # Both batch rows should equal the single src row.
-    assert torch.equal(injected[0], src_v[0])
-    assert torch.equal(injected[1], src_v[0])
+    assert out.shape == v.shape
+    assert torch.equal(out[0], v_orig[0])  # neg_tar untouched
+    assert torch.equal(out[1], v_orig[1])  # cond_src untouched
+    assert torch.equal(out[2], v_orig[1])  # cond_tar mirrors cond_src
 
 
-def test_inject_with_no_cache_passes_through():
-    """Tar step at i < t_inj but src capture didn't touch this block: leave v alone."""
+def test_unset_rows_passes_through():
+    """Default state (rows = None): no swap, no copy."""
     state = _VInjectionState({0})
-    state.mode = state.INJECT
-    v = torch.tensor([1.0])
+    v = torch.stack([torch.tensor([1.0]), torch.tensor([2.0])])
     out = state.hook(0, v)
     assert torch.equal(out, v)
 
 
-def test_mode_none_is_pure_passthrough():
+def test_only_one_row_set_passes_through():
+    """Either row None disables the swap — guards against half-configured state."""
     state = _VInjectionState({0})
-    state.mode = None
-    v = torch.tensor([1.0])
-    state.hook(0, v)
-    assert 0 not in state.cache  # capture didn't fire
+    v = torch.stack([torch.tensor([1.0]), torch.tensor([2.0])])
+
+    state.set_rows(src_row=0, tar_row=None)
+    assert torch.equal(state.hook(0, v), v)
+
+    state.set_rows(src_row=None, tar_row=1)
+    assert torch.equal(state.hook(0, v), v)
 
 
 # ─── _v_injection_scope (patch + restore) ───────────────────────────────────
@@ -152,14 +165,15 @@ def test_scope_restores_on_exception():
 
 
 def test_scope_clears_state_on_exit():
+    """``set_rows`` mid-scope is reset to (None, None) on exit so a leaked
+    state reference can't accidentally swap V on a subsequent unrelated forward."""
     m = _FakeAnima(n=2)
     with _v_injection_scope(m, {0}) as state:
-        state.mode = state.CAPTURE
-        state.hook(0, torch.tensor([1.0]))
-        assert state.cache  # populated mid-scope
+        state.set_rows(src_row=0, tar_row=1)
+        assert state.src_row == 0 and state.tar_row == 1
 
-    assert not state.cache
-    assert state.mode is None
+    assert state.src_row is None
+    assert state.tar_row is None
 
 
 def test_empty_block_set_is_inert():

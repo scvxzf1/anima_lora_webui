@@ -702,6 +702,22 @@ class LoRANetwork(torch.nn.Module):
         (cudagraph_trees log: "static input data pointer changed"). Pointer
         only changes on the first call (placeholder → full-shape) and on a
         rare batch-shape change; both re-alias every module to the new tensor.
+
+        Aliasing-recovery: ``Module._apply`` (i.e. ``network.to(device)``)
+        reallocates each registered buffer independently, breaking the
+        identity established by ``_wire_shared_sigma_buffers``. The
+        ``self._shared_sigma`` Python attribute is *not* touched by
+        ``Module._apply`` (it isn't a registered buffer), so post-``.to(...)``
+        we may have a stale CPU shared tensor while the modules' ``_sigma``
+        buffers all live on GPU and are no longer aliased to anything. Detect
+        this on every call (cheap identity check against the canonical module's
+        live buffer) and force the rebind path to re-establish aliasing —
+        otherwise the in-place ``copy_`` writes to the orphaned CPU tensor
+        and every module silently keeps reading its own zero-initialized
+        ``_sigma``. This bug only manifests at B=1 (placeholder shape (1,)
+        matches runtime shape so the historical rebind path was skipped),
+        which is why σ-band partition and σ-feature router were both dead at
+        ``batch_size=1`` despite the unit tests passing in eager mode.
         """
         sigmas = sigmas.detach()
         self._last_sigma = sigmas
@@ -716,29 +732,48 @@ class LoRANetwork(torch.nn.Module):
         if not sigma_loras:
             return
 
-        shared_sigma = self._shared_sigma
-        target_dtype = shared_sigma.dtype
-        cast = sigmas.to(dtype=target_dtype, device=shared_sigma.device)
-        if shared_sigma.shape == cast.shape:
-            shared_sigma.copy_(cast)
-        else:
+        # Canonical = the live buffer on the first sigma-aware module. After
+        # ``network.to(device)`` this is the GPU-allocated tensor; before any
+        # device move it's still the CPU placeholder from
+        # ``_wire_shared_sigma_buffers``.
+        canonical = sigma_loras[0]._buffers["_sigma"]
+        cast = sigmas.to(dtype=canonical.dtype, device=canonical.device)
+        # Rebind whenever (a) the shared attribute lost identity with the
+        # canonical (e.g. ``.to()`` rebinding broke aliasing) or (b) the
+        # shape changed (placeholder → full batch). Both branches need to
+        # re-alias every module so the next call's fast path actually
+        # propagates.
+        needs_rebind = (
+            self._shared_sigma is not canonical
+            or canonical.shape != cast.shape
+        )
+        if needs_rebind:
             new_sigma = cast.detach().clone()
             for lora in sigma_loras:
                 lora._buffers["_sigma"] = new_sigma
             self._shared_sigma = new_sigma
             shared_sigma = new_sigma
+        else:
+            canonical.copy_(cast)
+            shared_sigma = canonical
 
         for dim, loras in self._sigma_aware_loras_by_dim.items():
+            canonical_feat = loras[0]._buffers["_sigma_features"]
             feat = _sigma_sinusoidal_features(shared_sigma, dim).detach()
-            shared_feat = self._shared_sigma_features[dim]
-            cast_feat = feat.to(dtype=shared_feat.dtype, device=shared_feat.device)
-            if shared_feat.shape == cast_feat.shape:
-                shared_feat.copy_(cast_feat)
-            else:
+            cast_feat = feat.to(
+                dtype=canonical_feat.dtype, device=canonical_feat.device
+            )
+            feat_needs_rebind = (
+                self._shared_sigma_features.get(dim) is not canonical_feat
+                or canonical_feat.shape != cast_feat.shape
+            )
+            if feat_needs_rebind:
                 new_feat = cast_feat.clone()
                 for lora in loras:
                     lora._buffers["_sigma_features"] = new_feat
                 self._shared_sigma_features[dim] = new_feat
+            else:
+                canonical_feat.copy_(cast_feat)
 
     def clear_sigma(self) -> None:
         """Reset cached σ to zeros.
@@ -749,27 +784,39 @@ class LoRANetwork(torch.nn.Module):
         and by inference teardown (``clear_hydra_sigma``). Zero in place to
         keep the cudagraph data pointer stable (see ``set_sigma`` note).
 
-        Operates on the shared buffers populated by
-        ``_wire_shared_sigma_buffers`` — one zero per shared tensor flows to
-        every aliased module.
+        Like ``set_sigma``, must operate on the *live* per-module buffer —
+        ``Module._apply`` (``.to(device)``) breaks the init-time aliasing,
+        and ``self._shared_sigma`` may then point at an orphaned CPU tensor
+        whose zeroing wouldn't reach any module. Zero the canonical module
+        buffer instead and re-establish aliasing if it was broken.
         """
         self._last_sigma = None
         if not self._sigma_aware_loras:
             return
-        if self._shared_sigma is not None:
-            self._shared_sigma.zero_()
-            for dim, shared_feat in self._shared_sigma_features.items():
-                zero_feat = _sigma_sinusoidal_features(self._shared_sigma, dim)
-                cast_feat = zero_feat.to(
-                    dtype=shared_feat.dtype, device=shared_feat.device
-                )
-                if shared_feat.shape == cast_feat.shape:
-                    shared_feat.copy_(cast_feat)
-                else:
-                    new_feat = cast_feat.detach().clone()
-                    for lora in self._sigma_aware_loras_by_dim[dim]:
-                        lora._buffers["_sigma_features"] = new_feat
-                    self._shared_sigma_features[dim] = new_feat
+        sigma_loras = self._sigma_aware_loras
+        canonical = sigma_loras[0]._buffers["_sigma"]
+        if self._shared_sigma is not canonical:
+            for lora in sigma_loras:
+                lora._buffers["_sigma"] = canonical
+            self._shared_sigma = canonical
+        canonical.zero_()
+        for dim, loras in self._sigma_aware_loras_by_dim.items():
+            canonical_feat = loras[0]._buffers["_sigma_features"]
+            if self._shared_sigma_features.get(dim) is not canonical_feat:
+                for lora in loras:
+                    lora._buffers["_sigma_features"] = canonical_feat
+                self._shared_sigma_features[dim] = canonical_feat
+            zero_feat = _sigma_sinusoidal_features(canonical, dim)
+            cast_feat = zero_feat.to(
+                dtype=canonical_feat.dtype, device=canonical_feat.device
+            )
+            if canonical_feat.shape == cast_feat.shape:
+                canonical_feat.copy_(cast_feat)
+            else:
+                new_feat = cast_feat.detach().clone()
+                for lora in loras:
+                    lora._buffers["_sigma_features"] = new_feat
+                self._shared_sigma_features[dim] = new_feat
 
     def clear_step_caches(self) -> None:
         """Drop per-step tensor references (``_last_gate``) between training
