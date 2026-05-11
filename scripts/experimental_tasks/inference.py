@@ -260,13 +260,16 @@ def cmd_test_directedit(extra):
         )
     print(f"  > src caption: {src_caption[:120]}{'...' if len(src_caption) > 120 else ''}")
 
-    tar_caption = (
-        f"{src_caption}, {edit_prompt}" if src_caption else edit_prompt
-    )
-
     # 4. Save dir + edit.py invocation. Reuse INFERENCE_BASE for the model
     #    path trio (--dit / --text_encoder / --vae) so this stays in sync with
     #    the other test commands automatically.
+    #
+    #    Hand the edit instruction to edit.py via --edit_instruction so the
+    #    dispatcher (Qwen3 last-token cosine + threshold/gap gate; see
+    #    library/inference/edit_dispatcher.py and plan.md) runs in-process —
+    #    REPLACE on confident matches, REMOVE on explicit `-X` / `no X`,
+    #    APPEND otherwise. Running the dispatcher in this wrapper would load
+    #    Qwen3 a second time; we'd rather edit.py do it once.
     save_dir = ROOT / "output" / "tests" / "directedit"
     save_dir.mkdir(parents=True, exist_ok=True)
 
@@ -278,7 +281,7 @@ def cmd_test_directedit(extra):
     args += [
         "--image", str(ref_image),
         "--prompt_src", src_caption,
-        "--prompt_tar", tar_caption,
+        "--edit_instruction", edit_prompt,
         "--save_path", str(save_dir),
     ]
     args += list(extra)

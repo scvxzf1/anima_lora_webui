@@ -339,7 +339,6 @@ def run_training_loop(trainer, state: LoopState) -> None:
             state.text_encoder,
             state.unet,
         )
-        state.progress_bar.unpause()
         state.optimizer_train_fn()
 
     state.metadata["ss_training_finished_at"] = str(time.time())
@@ -549,7 +548,6 @@ def _sample_at_step(trainer, state: LoopState) -> None:
         state.text_encoder,
         state.unet,
     )
-    state.progress_bar.unpause()
 
 
 def _log_step(

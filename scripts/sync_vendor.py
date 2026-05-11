@@ -112,6 +112,8 @@ SHARED_TRIMMED: list[tuple[str, str]] = [
 
 DIRECTEDIT_VERBATIM: list[tuple[str, str]] = [
     ("library/inference/directedit.py", "library/inference/directedit.py"),
+    ("library/inference/edit_dispatcher.py", "library/inference/edit_dispatcher.py"),
+    ("library/inference/directedit_splice.py", "library/inference/directedit_splice.py"),
 ]
 
 DIRECTEDIT_PACKAGE_DIRS: list[str] = [

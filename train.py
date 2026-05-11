@@ -1399,7 +1399,11 @@ class AnimaTrainer:
                         )
                     )
             else:
-                base_ds = load_dataset_config_from_base(overrides=vars(args))
+                base_ds = load_dataset_config_from_base(
+                    overrides=vars(args),
+                    method=getattr(args, "method", None),
+                    methods_subdir=getattr(args, "methods_subdir", None) or "methods",
+                )
                 if base_ds is not None:
                     logger.info("Loading dataset config from configs/base.toml")
                     user_config = base_ds
@@ -2066,7 +2070,6 @@ class AnimaTrainer:
         if hasattr(unwrapped_unet, "switch_block_swap_for_training"):
             unwrapped_unet.switch_block_swap_for_training()
         clean_memory_on_device(accelerator.device)
-        progress_bar.unpause()
 
     def train(self, args):
         session_id = random.randint(0, 2**32)

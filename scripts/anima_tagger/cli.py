@@ -128,13 +128,13 @@ def parse_args() -> argparse.Namespace:
         "Optional — pass empty / unset to build a flat-vocab checkpoint. "
         "Default: $CAPTION_CORPUS_DIR/tag_groups.yaml.",
     )
-    p.add_argument("--min_freq", type=int, default=4)
+    p.add_argument("--min_freq", type=int, default=10)
     p.add_argument("--val_frac", type=float, default=0.05)
     p.add_argument("--seed", type=int, default=42)
 
     # Train-mode knobs.
     p.add_argument("--epochs", type=int, default=10)
-    p.add_argument("--batch_size", type=int, default=64)
+    p.add_argument("--batch_size", type=int, default=48)
     p.add_argument(
         "--postfix_every",
         type=int,

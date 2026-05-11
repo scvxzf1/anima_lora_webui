@@ -50,6 +50,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from library.anima import strategy as strategy_anima, text_strategies  # noqa: E402
 from library.datasets.buckets import CONSTANT_TOKEN_BUCKETS  # noqa: E402
 from library.inference import directedit, sampling as inference_utils  # noqa: E402
+from library.inference.directedit_splice import splice_crossattn_emb  # noqa: E402
+from library.inference.edit_dispatcher import (  # noqa: E402
+    derive_target_caption,
+    encode_last_pooled_via_anima_strategy,
+)
 from library.inference.models import load_dit_model, load_text_encoder  # noqa: E402
 from library.inference.output import save_images  # noqa: E402
 from library.inference.text import prepare_text_inputs  # noqa: E402
@@ -84,7 +89,43 @@ def parse_args() -> argparse.Namespace:
         "--prompt_tar",
         default="",
         help="Target caption (for the edit pass). Usually `prompt_src + edit`. "
-        "Ignored when --cached_embed is set.",
+        "Ignored when --cached_embed is set. When --edit_instruction is given "
+        "and --prompt_tar is empty, the dispatcher derives this automatically.",
+    )
+    p.add_argument(
+        "--edit_instruction",
+        default="",
+        help="Short tag-phrase edit (e.g. 'large breasts', '-hair ornament', "
+        "'no hair ornament'). When set, the dispatcher derives --prompt_tar "
+        "from --prompt_src + this instruction: explicit '-X' or 'no X' "
+        "(matching an existing tag) does REMOVE; Qwen3 last-pool cosine + "
+        "threshold gate fires REPLACE on confident matches; otherwise APPEND. "
+        "Ignored when --prompt_tar is set explicitly or when --cached_embed "
+        "is set.",
+    )
+    p.add_argument(
+        "--replace_threshold",
+        type=float,
+        default=0.92,
+        help="Dispatcher: top-1 cosine must exceed this to fire REPLACE. "
+        "Tuned against scripts/probes/edit_nearest_tag.py.",
+    )
+    p.add_argument(
+        "--replace_gap",
+        type=float,
+        default=0.04,
+        help="Dispatcher: top1−top2 cosine gap must exceed this to fire "
+        "REPLACE. Probe ambiguous cases (huge+large both present, medium-vs-"
+        "grey hair near-tie) sit at gap < 0.01 and abstain into APPEND.",
+    )
+    p.add_argument(
+        "--use_slot_surgery",
+        action="store_true",
+        help="Build embed_tar by transplanting only the T5-diff-span slots of "
+        "ψ_tar's crossattn_emb into ψ_src's encoding. Off by default (uses "
+        "the full ψ_tar encoding as today). Requires --prompt_src non-empty. "
+        "Untouched slots come from ψ_src — see library/inference/"
+        "directedit_splice.py for the invariant.",
     )
     p.add_argument(
         "--cached_embed",
@@ -472,6 +513,50 @@ def main() -> None:
             neg_prompt,
         )
     else:
+        # Load TE first — the dispatcher (when --edit_instruction is set) needs
+        # Qwen3 hidden states before we can build the args for prepare_text_inputs.
+        logger.info("Loading text encoder...")
+        te_dtype = torch.bfloat16
+        te_device = torch.device("cpu") if args.text_encoder_cpu else device
+        text_encoder = load_text_encoder(args, dtype=te_dtype, device=te_device)
+        text_encoder.eval()
+
+        # Dispatcher: derive ψ_tar from (ψ_src + edit_instruction) if requested
+        # and --prompt_tar wasn't given. Explicit --prompt_tar always wins so
+        # users can override the dispatcher's choice without removing the flag.
+        if args.edit_instruction and not args.prompt_tar:
+            tokenize_strategy = text_strategies.TokenizeStrategy.get_strategy()
+            encoding_strategy = text_strategies.TextEncodingStrategy.get_strategy()
+            # Dispatcher needs TE on-device; move there if --text_encoder_cpu
+            # parked it on CPU, then restore.
+            te_was_on = text_encoder.device
+            text_encoder.to(device)
+            encode_fn = lambda phrases: encode_last_pooled_via_anima_strategy(  # noqa: E731
+                phrases, text_encoder, tokenize_strategy, encoding_strategy, device,
+            )
+            plan = derive_target_caption(
+                args.prompt_src,
+                args.edit_instruction,
+                encode_last_pooled=encode_fn,
+                replace_threshold=args.replace_threshold,
+                replace_gap=args.replace_gap,
+            )
+            text_encoder.to(te_was_on)
+            args.prompt_tar = plan.tar_caption
+            logger.info(plan.log_line())
+            logger.info("DirectEdit dispatcher: ψ_tar=%r", plan.tar_caption)
+        elif args.use_slot_surgery and not args.prompt_tar:
+            raise SystemExit(
+                "--use_slot_surgery requires a ψ_tar source: pass --prompt_tar "
+                "explicitly or --edit_instruction to derive it."
+            )
+
+        if args.use_slot_surgery and not args.prompt_src:
+            raise SystemExit(
+                "--use_slot_surgery requires a non-empty --prompt_src "
+                "(surgery transplants from ψ_src's encoding)."
+            )
+
         args_src = SimpleNamespace(**vars(args))
         args_src.prompt = args.prompt_src
         args_src.negative_prompt = args.negative_prompt
@@ -482,22 +567,42 @@ def main() -> None:
 
         logger.info("Encoding prompts...")
         # Share the text-encoder instance across both prompt encodings.
-        te_dtype = torch.bfloat16
-        te_device = torch.device("cpu") if args.text_encoder_cpu else device
-        text_encoder = load_text_encoder(args, dtype=te_dtype, device=te_device)
         shared = {"text_encoder": text_encoder, "conds_cache": {}}
 
         ctx_src, ctx_neg = prepare_text_inputs(args_src, device, anima, shared)
         ctx_tar, _ = prepare_text_inputs(args_tar, device, anima, shared)
 
-        # Drop TE; conds_cache hands us bare tensors.
-        text_encoder.to("cpu")
-        del text_encoder, shared
-        clean_memory_on_device(device)
-
         embed_src = ctx_src["embed"][0].to(device, dtype=torch.bfloat16)
         embed_tar = ctx_tar["embed"][0].to(device, dtype=torch.bfloat16)
         embed_neg = ctx_neg["embed"][0].to(device, dtype=torch.bfloat16)
+
+        if args.use_slot_surgery:
+            # ctx["embed"] = [crossattn_emb_cpu, qwen3_attn_mask, t5_ids, t5_attn_mask].
+            # T5 IDs were never moved off CPU (encode_tokens only moves qwen3
+            # tensors), so a fresh `.tolist()` in splice_crossattn_emb is fine.
+            t5_ids_src = ctx_src["embed"][2]
+            t5_ids_tar = ctx_tar["embed"][2]
+            tokenize_strategy = text_strategies.TokenizeStrategy.get_strategy()
+            pad_id = tokenize_strategy.t5_tokenizer.pad_token_id
+            embed_tar_full = embed_tar
+            embed_tar, span = splice_crossattn_emb(
+                crossattn_emb_src=embed_src,
+                crossattn_emb_tar=embed_tar_full,
+                t5_ids_src=t5_ids_src.to(device),
+                t5_ids_tar=t5_ids_tar.to(device),
+                pad_id=pad_id,
+            )
+            logger.info(
+                "DirectEdit slot surgery: diff span src[%d:%d] -> tar[%d:%d] "
+                "(src_len=%d tar_len=%d suffix_len=%d)",
+                span.start, span.src_end, span.start, span.tar_end,
+                span.src_len, span.tar_len, span.suffix_len,
+            )
+
+        # Drop TE; conds_cache hands us bare tensors and surgery is done.
+        text_encoder.to("cpu")
+        del text_encoder, shared
+        clean_memory_on_device(device)
 
         with torch.no_grad():
             d_st = (embed_src.float() - embed_tar.float()).abs().mean().item()

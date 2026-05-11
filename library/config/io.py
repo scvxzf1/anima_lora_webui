@@ -120,9 +120,64 @@ def _substitute_templates(value: Any, ctx: dict) -> Any:
     return value
 
 
+def _read_dataset_sections(toml_path: str) -> dict:
+    """Return ``{general, datasets}`` sections from a TOML file, or ``{}``.
+
+    Used to harvest dataset-blueprint overrides from method TOMLs without
+    going through the flat method+preset merge (which deliberately skips
+    these sections).
+    """
+    if not os.path.exists(toml_path):
+        return {}
+    with open(toml_path, "r", encoding="utf-8") as f:
+        raw = toml.load(f)
+    return {k: v for k, v in raw.items() if k in _DATASET_CONFIG_SECTIONS}
+
+
+def _apply_dataset_overrides(blueprint: dict, override: dict) -> None:
+    """Shallow-merge override sections into ``blueprint`` in place.
+
+    - ``[general]``: per-key overwrite.
+    - ``[[datasets]]``: matched by index against the base blueprint; only
+      top-level scalars on the dataset table are overwritten. ``subsets``
+      arrays in the override are ignored with a warning — subset-level
+      overrides are intentionally out of scope to keep the merge predictable.
+    """
+    g_override = override.get("general")
+    if isinstance(g_override, dict):
+        base_general = blueprint.setdefault("general", {})
+        for k, v in g_override.items():
+            base_general[k] = v
+
+    override_datasets = override.get("datasets") or []
+    base_datasets = blueprint.get("datasets") or []
+    for i, override_ds in enumerate(override_datasets):
+        if not isinstance(override_ds, dict):
+            continue
+        if i >= len(base_datasets):
+            logger.warning(
+                "Dataset override index %d has no matching base dataset; ignoring.",
+                i,
+            )
+            continue
+        if "subsets" in override_ds:
+            logger.warning(
+                "Dataset override index %d declares [[datasets.subsets]]; "
+                "subset-level overrides are not supported. Ignoring `subsets`.",
+                i,
+            )
+        for k, v in override_ds.items():
+            if k == "subsets":
+                continue
+            base_datasets[i][k] = v
+
+
 def load_dataset_config_from_base(
     configs_dir: str = "configs",
     overrides: Optional[dict] = None,
+    *,
+    method: Optional[str] = None,
+    methods_subdir: str = "methods",
 ) -> Optional[dict]:
     """Extract the dataset blueprint (``[general]`` + ``[[datasets]]``) from
     ``configs/base.toml``. Returns ``None`` if no dataset sections are present,
@@ -133,6 +188,11 @@ def load_dataset_config_from_base(
     (typically the merged preset/method args namespace) wins over the raw
     base.toml top-level — that's how preset / CLI overrides of
     ``resized_image_dir`` etc. propagate into the dataset subset paths.
+
+    When ``method`` is given, ``[general]`` and ``[[datasets]]`` sections in
+    the matching method TOML shallow-override the base blueprint (top-level
+    scalars only — see ``_apply_dataset_overrides``). This lets a method file
+    bump ``batch_size`` etc. without duplicating the whole blueprint.
     """
     base_path = os.path.join(configs_dir, "base.toml")
     if not os.path.exists(base_path):
@@ -142,6 +202,13 @@ def load_dataset_config_from_base(
     sections = {k: v for k, v in raw.items() if k in _DATASET_CONFIG_SECTIONS}
     if not sections.get("datasets"):
         return None
+
+    if method is not None:
+        method_path = os.path.join(configs_dir, methods_subdir, f"{method}.toml")
+        method_override = _read_dataset_sections(method_path)
+        if method_override:
+            _apply_dataset_overrides(sections, method_override)
+
     ctx = {
         k: v
         for k, v in raw.items()

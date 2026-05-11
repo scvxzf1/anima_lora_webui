@@ -66,7 +66,12 @@ def _resolve_anima_modules():
         buckets_mod = importlib.import_module("library.datasets.buckets")
         directedit_mod = importlib.import_module("library.inference.directedit")
         sampling_mod = importlib.import_module("library.inference.sampling")
-        return anima_tagger, buckets_mod, directedit_mod, sampling_mod
+        dispatcher_mod = importlib.import_module("library.inference.edit_dispatcher")
+        splice_mod = importlib.import_module("library.inference.directedit_splice")
+        return (
+            anima_tagger, buckets_mod, directedit_mod, sampling_mod,
+            dispatcher_mod, splice_mod,
+        )
 
     try:
         return _imports()
@@ -96,9 +101,17 @@ import comfy.utils  # noqa: E402  ComfyUI module; only resolvable inside ComfyUI
     _buckets_mod,
     directedit,
     inference_utils,
+    _dispatcher_mod,
+    _splice_mod,
 ) = _resolve_anima_modules()
 AnimaTagger = _anima_tagger_mod.AnimaTagger
 CONSTANT_TOKEN_BUCKETS = _buckets_mod.CONSTANT_TOKEN_BUCKETS
+derive_target_caption = _dispatcher_mod.derive_target_caption
+splice_crossattn_emb = _splice_mod.splice_crossattn_emb
+
+# T5 (T5xxl) PAD token id is 0 across the T5 family; vendor doesn't bundle the
+# T5 tokenizer config so we hardcode rather than `load_t5_tokenizer().pad_token_id`.
+_T5_PAD_ID = 0
 
 logger = logging.getLogger(__name__)
 
@@ -125,7 +138,7 @@ def _pil_to_comfy_image(pil_img: Image.Image) -> torch.Tensor:
 
 def _encode_prompt_comfy(
     clip, unet, text: str, device: torch.device, dtype: torch.dtype
-) -> torch.Tensor:
+) -> Tuple[torch.Tensor, torch.Tensor]:
     """Tokenize + encode + LLMAdapter preprocess via the comfy CLIP socket.
 
     Mirrors ``model_base.Anima.extra_conds``: tokenize through the comfy
@@ -133,6 +146,10 @@ def _encode_prompt_comfy(
     then run the DiT's ``preprocess_text_embeds`` (LLMAdapter + 512 pad)
     once. Verified to produce embeddings within numerical noise of the
     library's ``prepare_text_inputs`` for the prompts we feed DirectEdit.
+
+    Returns ``(embed, t5xxl_ids_512)`` — the 512-padded crossattn tensor and
+    the 1-D T5 ids right-padded to 512 with the T5 pad id. Both are needed
+    for slot-surgery to align span endpoints with crossattn slot indices.
     """
     tokens = clip.tokenize(text)
     out = clip.encode_from_tokens(tokens, return_pooled=False, return_dict=True)
@@ -146,7 +163,83 @@ def _encode_prompt_comfy(
     cond = cond.to(device, dtype=dtype)
 
     embed = unet.preprocess_text_embeds(cond, t5xxl_ids, t5xxl_weights=t5xxl_weights)
-    return embed
+
+    # Pad T5 ids out to embed.shape[1] (512) with the T5 pad id so splice
+    # invariants line up — preprocess_text_embeds 0-pads crossattn, we 0-pad
+    # the IDs alongside it.
+    t_emb = embed.shape[1]
+    if t5xxl_ids.shape[1] < t_emb:
+        pad_n = t_emb - t5xxl_ids.shape[1]
+        t5xxl_ids = torch.nn.functional.pad(t5xxl_ids, (0, pad_n), value=_T5_PAD_ID)
+    elif t5xxl_ids.shape[1] > t_emb:
+        t5xxl_ids = t5xxl_ids[:, :t_emb]
+    return embed, t5xxl_ids
+
+
+_QWEN3_PAD_ID = 151643  # see comfy/text_encoders/anima.py::Qwen3Tokenizer
+
+
+def _comfy_encode_last_pooled(clip, phrases: list[str]) -> torch.Tensor:
+    """Dispatcher's ``EncodeLastPooledFn`` over the comfy ``CLIP`` socket.
+
+    Naive approach (one ``clip.encode_from_tokens`` per phrase) makes comfy's
+    ``CLIP.load_model`` fire N+1 times — each call logs "Model AnimaTEModel_
+    prepared for dynamic VRAM loading" and re-walks the patcher, which spams
+    the terminal and is needlessly slow on long captions.
+
+    Instead we:
+      1. Tokenize each phrase (CPU-only).
+      2. Pad all chunks to the longest length with the Qwen3 pad token
+         (151643). The mask logic in ``SDClipModel.process_tokens`` treats
+         pad as EOS — masked attention from the first pad onward — so each
+         row's "last non-pad" index is well-defined.
+      3. ``comfy.model_management.load_models_gpu(...)`` once.
+      4. Call the bare ``Qwen3_06BModel`` (``clip.cond_stage_model.qwen3_06b``)
+         once on the (N+1, T) batch. The wrapper ``encode_token_weights``
+         concatenates rows along the time dim — bypass it.
+      5. For each row, slice the actual last non-pad token by its tokenized
+         length.
+
+    Same Qwen3 last-hidden-state semantics as the probe — just batched.
+    """
+    qwen3_tok = clip.tokenizer.qwen3_06b
+    chunks: list[list[tuple]] = []
+    seq_lens: list[int] = []
+    for phrase in phrases:
+        # Tokenizer config: pad_to_max_length=False, min_length=1, no
+        # start/end tokens — one chunk per short phrase. Tag-length phrases
+        # never spill into multi-chunk; assert defensively.
+        tw = qwen3_tok.tokenize_with_weights(phrase, return_word_ids=False)
+        if len(tw) != 1:
+            raise RuntimeError(
+                f"comfy qwen3 tokenizer produced {len(tw)} chunks for "
+                f"phrase {phrase!r}; dispatcher assumes 1. Phrase too long?"
+            )
+        chunk = list(tw[0])
+        chunks.append(chunk)
+        seq_lens.append(len(chunk))
+
+    max_len = max(seq_lens) if seq_lens else 0
+    for i, chunk in enumerate(chunks):
+        if len(chunk) < max_len:
+            chunks[i] = chunk + [(_QWEN3_PAD_ID, 1.0)] * (max_len - len(chunk))
+
+    comfy.model_management.load_models_gpu([clip.patcher])
+    qwen3 = clip.cond_stage_model.qwen3_06b
+    qwen3.set_clip_options({"execution_device": clip.patcher.load_device})
+    # forward() returns (z, pooled[, extra]); z has shape (B=N+1, T, D).
+    result = qwen3(chunks)
+    z = result[0].float()
+    qwen3.reset_clip_options()
+
+    vecs: list[torch.Tensor] = []
+    for i, seqlen in enumerate(seq_lens):
+        # seqlen-1 is the last real (non-pad) position. SDClipModel.process_tokens
+        # already masks attention from the first pad onward, so column index
+        # seqlen-1 is the genuine last Qwen3 hidden state for this phrase.
+        idx = max(seqlen - 1, 0)
+        vecs.append(z[i, idx])
+    return torch.stack(vecs, dim=0)
 
 
 class AnimaDirectEdit:
@@ -249,6 +342,61 @@ class AnimaDirectEdit:
                         ),
                     },
                 ),
+                "use_dispatcher": (
+                    "BOOLEAN",
+                    {
+                        "default": True,
+                        "tooltip": (
+                            "Run the smart-edit dispatcher: explicit '-X' / "
+                            "'no X' (matching an existing tag) does REMOVE; "
+                            "Qwen3 last-pool cosine fires REPLACE on confident "
+                            "matches; otherwise APPEND (= legacy behaviour). "
+                            "Off = always APPEND. Adds N+1 short encode "
+                            "passes through the CLIP socket."
+                        ),
+                    },
+                ),
+                "replace_threshold": (
+                    "FLOAT",
+                    {
+                        "default": 0.92,
+                        "min": 0.5,
+                        "max": 1.0,
+                        "step": 0.01,
+                        "tooltip": (
+                            "Dispatcher REPLACE gate: top-1 cosine must "
+                            "exceed this. Tuned against scripts/probes/"
+                            "edit_nearest_tag.py."
+                        ),
+                    },
+                ),
+                "replace_gap": (
+                    "FLOAT",
+                    {
+                        "default": 0.04,
+                        "min": 0.0,
+                        "max": 0.5,
+                        "step": 0.005,
+                        "tooltip": (
+                            "Dispatcher REPLACE gate: top1-top2 cosine gap "
+                            "must exceed this. Probe ambiguous near-ties "
+                            "sit at gap<0.01 and abstain into APPEND."
+                        ),
+                    },
+                ),
+                "use_slot_surgery": (
+                    "BOOLEAN",
+                    {
+                        "default": False,
+                        "tooltip": (
+                            "Build embed_tar by transplanting only the "
+                            "T5-diff-span slots of psi_tar's crossattn_emb "
+                            "into psi_src's encoding. Off by default. "
+                            "Untouched slots come from psi_src — see "
+                            "library/inference/directedit_splice.py."
+                        ),
+                    },
+                ),
             },
         }
 
@@ -280,6 +428,10 @@ class AnimaDirectEdit:
         t_inj: int = 0,
         tagger: AnimaTagger | None = None,
         prompt_src_override: str = "",
+        use_dispatcher: bool = True,
+        replace_threshold: float = 0.92,
+        replace_gap: float = 0.04,
+        use_slot_surgery: bool = False,
     ):
         device = comfy.model_management.get_torch_device()
         dtype = torch.bfloat16
@@ -302,8 +454,27 @@ class AnimaDirectEdit:
             logger.info("DirectEdit: psi_src = %r", psi_src)
 
         edit = (edit_text or "").strip()
-        psi_tar = f"{psi_src}, {edit}" if edit else psi_src
+        if edit and use_dispatcher:
+            plan = derive_target_caption(
+                psi_src,
+                edit,
+                encode_last_pooled=lambda phrases: _comfy_encode_last_pooled(
+                    clip, phrases,
+                ),
+                replace_threshold=replace_threshold,
+                replace_gap=replace_gap,
+            )
+            psi_tar = plan.tar_caption
+            logger.info(plan.log_line())
+        else:
+            psi_tar = f"{psi_src}, {edit}" if edit else psi_src
         logger.info("DirectEdit: psi_tar = %r", psi_tar)
+
+        if use_slot_surgery and not psi_src.strip():
+            raise ValueError(
+                "use_slot_surgery requires a non-empty psi_src — surgery "
+                "transplants from the source encoding."
+            )
 
         h_pix, w_pix = _pick_bucket(pil_src)
         pil_src_resized = pil_src.resize((w_pix, h_pix), Image.LANCZOS)
@@ -319,9 +490,31 @@ class AnimaDirectEdit:
         unet = model.model.diffusion_model
 
         with torch.no_grad():
-            embed_src = _encode_prompt_comfy(clip, unet, psi_src, device, dtype)
-            embed_tar = _encode_prompt_comfy(clip, unet, psi_tar, device, dtype)
-            embed_neg = _encode_prompt_comfy(clip, unet, negative_prompt, device, dtype)
+            embed_src, t5_ids_src = _encode_prompt_comfy(
+                clip, unet, psi_src, device, dtype,
+            )
+            embed_tar, t5_ids_tar = _encode_prompt_comfy(
+                clip, unet, psi_tar, device, dtype,
+            )
+            embed_neg, _ = _encode_prompt_comfy(
+                clip, unet, negative_prompt, device, dtype,
+            )
+
+        if use_slot_surgery:
+            embed_tar_full = embed_tar
+            embed_tar, span = splice_crossattn_emb(
+                crossattn_emb_src=embed_src,
+                crossattn_emb_tar=embed_tar_full,
+                t5_ids_src=t5_ids_src,
+                t5_ids_tar=t5_ids_tar,
+                pad_id=_T5_PAD_ID,
+            )
+            logger.info(
+                "DirectEdit slot surgery: diff span src[%d:%d] -> tar[%d:%d] "
+                "(src_len=%d tar_len=%d suffix_len=%d)",
+                span.start, span.src_end, span.start, span.tar_end,
+                span.src_len, span.tar_len, span.suffix_len,
+            )
 
         # Diagnostic: if psi_src and psi_tar collapse to the same embedding, the
         # edit pass will reconstruct the source by design (deltaz anchors + same
