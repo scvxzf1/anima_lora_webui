@@ -168,7 +168,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument(
         "--pool_n_queries",
         type=int,
-        default=4,
+        default=2,
         help="MAP pool: number of learnable queries (default 4). Each query "
         "produces one [d_enc] vector; trunk input is "
         "(K + use_cls + use_mean) * d_enc.",
@@ -176,7 +176,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument(
         "--pool_n_heads",
         type=int,
-        default=8,
+        default=4,
         help="MAP pool: number of attention heads (default 8). Must divide "
         "the encoder dim (d_enc=1024 for PE-Core).",
     )

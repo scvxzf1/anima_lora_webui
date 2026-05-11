@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Anima — LoRA/T-LoRA training and inference pipeline for the Anima diffusion model (DiT-based, flow-matching). Supports several adapter families (LoRA / OrthoLoRA / T-LoRA / HydraLoRA / ReFT / postfix-prefix / IP-Adapter / EasyControl) selectable via method config + hardware preset.
+Anima — LoRA/T-LoRA training and inference pipeline for the Anima diffusion model (DiT-based, flow-matching). Supports several adapter families (LoRA / OrthoLoRA / T-LoRA / HydraLoRA / ReFT / postfix / IP-Adapter / EasyControl) selectable via method config + hardware preset.
 
 ## Setup
 
@@ -29,7 +29,7 @@ Both `make` (Unix) and `python tasks.py` (cross-platform) are supported. The exa
 # uncomment the target block to switch:
 #   lora.toml             — classic LoRA / OrthoLoRA / T-LoRA / HydraLoRA / ReFT
 #                           (default stacks LoRA + OrthoLoRA + T-LoRA + ReFT)
-#   postfix.toml          — postfix / postfix_exp / postfix_func / postfix_sigma / prefix
+#   postfix.toml          — postfix (free param) / cond+ortho (caption-conditional, Cayley-rotated SVD basis)
 #   ip_adapter.toml       — decoupled image cross-attention (PE-Core resampler)
 #   easycontrol.toml      — extended self-attn image conditioning (per-block cond LoRA)
 #   soft_tokens.toml      — SoftREPA-style per-layer × per-t soft text tokens (frozen DiT)
@@ -41,7 +41,7 @@ make lora PRESET=half       # Override preset: methods/lora.toml + presets.toml[
 # Experimental methods are exposed under exp-* (postfix, ip-adapter,
 # easycontrol). They may produce broken output, change without notice, or be
 # removed.
-make exp-postfix                # Postfix/prefix family (methods/postfix.toml)
+make exp-postfix                # Postfix family (methods/postfix.toml — postfix or cond+ortho)
 make exp-ip-adapter             # IP-Adapter image cross-attention (methods/ip_adapter.toml)
                                 # Reuses LoRA paths: source image_dataset/, cache post_image_dataset/lora/
 make exp-ip-adapter-preprocess  # Alias for `make preprocess` + `make preprocess-pe`
@@ -81,13 +81,11 @@ make dcw                   # Sample 5 aspect buckets + train fusion head (~3-5h 
 make dcw-train             # Train-only on existing pool under bench/dcw/results/ (~30s)
 
 # Experimental inference (matched to make exp-* training)
-make exp-test-prefix           # Test with prefix tuning
 make exp-test-postfix          # Test with postfix tuning
 make exp-test-postfix-exp      # Test with postfix tuning (exp variant)
 make exp-test-postfix-func     # Test with postfix tuning (func variant)
 make exp-test-ip REF_IMAGE=... # IP-Adapter inference (image-conditioned)
 make exp-test-easycontrol REF_IMAGE=...  # EasyControl inference (image-conditioned)
-make exp-test-ref              # Inference with a learned prefix-slot weight (--prefix_weight)
 make exp-test-directedit PROMPT='double peace'  # DirectEdit on random source image
                                                 # (anima_tagger if present, else wd-tagger seeds prompt_src;
                                                 # PROMPT becomes the edit instruction)
@@ -112,7 +110,7 @@ make merge ADAPTER_DIR=output/ckpt                    # bake latest bakeable LoR
 make merge ADAPTER_DIR=output/ckpt MULTIPLIER=0.8     # scale strength
 python scripts/merge_to_dit.py --adapter path/to/lora.safetensors --allow-partial
 # Supports: LoRA / OrthoLoRA / DoRA / T-LoRA. Refuses ReFT / Hydra moe / postfix
-# / prefix by default (they can't be folded into Linear weights); --allow-partial
+# by default (they can't be folded into Linear weights); --allow-partial
 # drops them and bakes only the LoRA portion.
 
 # Batch
@@ -160,11 +158,11 @@ Layout:
 - `configs/presets.toml` — all hardware profiles in one file as TOML sections: `[default]`, `[fast_16gb]`, `[low_vram]` (also serves as Windows 8GB), `[half]` (experiment preset — sets `sample_ratio=0.5` for every subset via the global `--sample_ratio` override). Holds `blocks_to_swap`, `gradient_checkpointing`, `unsloth_offload_checkpointing`, etc.
 - `configs/methods/` — one file per algorithm family. Holds rank, method flags (`use_hydra`, `add_reft`, …), and the method's opinionated learning rate / epochs / output_name. Eight files:
   - `lora.toml` — LoRA / OrthoLoRA / T-LoRA / HydraLoRA / ReFT. Variants are toggle blocks; default stacks classic LoRA + OrthoLoRA + T-LoRA + ReFT. Default ships `save_every_n_epochs = 2` / `checkpointing_epochs = 2` (mid-run snapshots, not just final).
-  - `postfix.toml` — postfix / postfix_exp / postfix_func / postfix_sigma / prefix. Toggle blocks.
+  - `postfix.toml` — two modes wired in `networks/methods/postfix.py`: `mode=postfix` (free-parameter K×D shared postfix) and `mode=cond` (caption-conditional, always uses an orthonormal SVD-of-cached-TE basis + Cayley rotation). Default block runs `mode=cond`.
   - `ip_adapter.toml` — IP-Adapter image cross-attention (DiT frozen; trains resampler + per-block `to_k_ip`/`to_v_ip`). Reuses the LoRA pipeline's data layout (`post_image_dataset/resized/` + `post_image_dataset/lora/`). Defaults to PRE-CACHED PE features (`make preprocess-pe`).
   - `easycontrol.toml` — EasyControl image conditioning (DiT frozen; trains per-block cond LoRA on self-attn + FFN + scalar `b_cond` gate). Source: `easycontrol-dataset/`. Caches: `post_image_dataset/easycontrol/`. Reuses cached VAE latents — no new sidecar.
   - `soft_tokens.toml` — SoftREPA-style per-layer × per-t soft text tokens (DiT frozen; per-block `Block.forward` monkey-patch splices `s^(k,t)` into `crossattn_emb`). ~1M params. Training-only v1 — inference path not wired.
-- `configs/gui-methods/` — GUI-friendly parallel tree. One self-contained TOML per **variant** instead of per family (`lora`, `lora-8gb`, `lora_longer`, `lora_repa`, `ortholora`, `tlora`, `tlora_ortho`, `tlora_ortho_reft`, `reft`, `hydralora_experimental`, `hydralora_sigma`, `postfix_ortho_cond`, `ip_adapter`, `easycontrol`, `soft_tokens`). No toggle blocks — what you see is what runs. Selected via `train.py --methods_subdir gui-methods` (wrapped by `make lora-gui GUI_PRESETS=<variant>` / `python tasks.py lora-gui <variant>`). Intended for basic users and as the eventual source of truth for the GUI's variant picker. The legacy `postfix*` / `prefix` GUI variants were removed in commit 990a82f (postfix/archive) — `postfix_ortho_cond` is the surviving GUI-exposed postfix path. Run `ls configs/gui-methods/` for the live list — variants get added/renamed.
+- `configs/gui-methods/` — GUI-friendly parallel tree. One self-contained TOML per **variant** instead of per family (`lora`, `lora-8gb`, `lora_longer`, `lora_repa`, `ortholora`, `tlora`, `tlora_ortho`, `tlora_ortho_reft`, `reft`, `hydralora_experimental`, `hydralora_sigma`, `postfix_ortho_cond`, `ip_adapter`, `easycontrol`, `soft_tokens`). No toggle blocks — what you see is what runs. Selected via `train.py --methods_subdir gui-methods` (wrapped by `make lora-gui GUI_PRESETS=<variant>` / `python tasks.py lora-gui <variant>`). `postfix_ortho_cond` is the GUI-exposed postfix path. Run `ls configs/gui-methods/` for the live list — variants get added/renamed.
 
 Subsets accept an optional `cache_dir` key — when set, all VAE / text-encoder / PE caches are written to (and read from) that directory using stem-mirrored filenames, instead of sitting next to the source image. IP-Adapter and EasyControl method configs use this to keep `ip-adapter-dataset/` and `easycontrol-dataset/` purely user-facing source dirs while caches live under `post_image_dataset/`.
 

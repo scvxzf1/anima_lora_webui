@@ -178,7 +178,7 @@ COMMANDS = {
     # surface. May produce broken output, change without notice, or be removed.
     "exp-postfix": (
         exp_training.cmd_postfix,
-        "[experimental] Postfix/prefix tuning (mode selected in configs/methods/postfix.toml)",
+        "[experimental] Postfix tuning (mode selected in configs/methods/postfix.toml)",
     ),
     "exp-soft-tokens": (
         exp_training.cmd_soft_tokens,
@@ -201,14 +201,6 @@ COMMANDS = {
         exp_training.cmd_easycontrol_preprocess,
         "[experimental] Full EasyControl preprocess: latents + text emb. "
         "Source: easycontrol-dataset/  Cache: post_image_dataset/easycontrol/.",
-    ),
-    "exp-test-prefix": (
-        exp_inference.cmd_test_prefix,
-        "[experimental] Inference with latest prefix weight",
-    ),
-    "exp-test-ref": (
-        exp_inference.cmd_test_ref,
-        "[experimental] Inference with latest reference-inversion prefix (output/ckpt/anima_ref*.safetensors)",
     ),
     "exp-test-postfix": (
         exp_inference.cmd_test_postfix,

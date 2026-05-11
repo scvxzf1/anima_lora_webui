@@ -1,20 +1,13 @@
 # gui-methods/postfix_ortho_cond.toml — caption-conditional postfix with
-# structural orthogonality (cond+ortho C1 v1).
+# structural orthogonality (the sole cond variant in networks/methods/postfix.py).
 #
 # cond_mlp predicts (S(c), λ(c)) per caption — K(K-1)/2 + 1 scalars per
-# pooled-caption forward instead of the legacy K·D direct postfix tensor.
-# Each caption's postfix is `Cayley(S(c) − S(c)ᵀ) @ basis · λ(c)`, so
+# pooled-caption forward instead of a direct K·D postfix tensor. Each
+# caption's postfix is `Cayley(S(c) − S(c)ᵀ) @ basis · λ(c)`, so
 # `postfix(c) @ postfix(c).T = λ(c)² · I_K` structurally — uniform per-slot
 # magnitude WITHIN a caption, magnitude varies ACROSS captions.
 # Basis = top-K right singular vectors of cached `_anima_te.safetensors`,
-# row-shuffled deterministically by `ortho_basis_seed`. Same recipe as the
-# postfix-mode v2 (postfix_ortho.toml), but caption-conditional.
-#
-# Drops:
-#   - slot_embed (basis rows are already K different SVD directions)
-#   - contrastive_weight (cond_mlp output is now (S, λ), not direct postfix —
-#     the v1 contrastive surface no longer applies)
-# cond-timestep+ortho is deferred (raises NotImplementedError).
+# row-shuffled deterministically by `ortho_basis_seed`.
 #
 # Rationale: docs/proposal/orthogonal_postfix.md §C.
 
@@ -24,7 +17,6 @@ network_args = [
     "mode=cond",
     "splice_position=end_of_sequence",
     "cond_hidden_dim=256",
-    "ortho=true",
     "ortho_basis=svd_te",
     "te_cache_dir=post_image_dataset/lora",
     "svd_num_files=256",

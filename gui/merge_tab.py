@@ -99,8 +99,8 @@ def _scan_adapter(path: Path) -> dict:
         "dora": 0,
         "other": 0,
     }
-    # Postfix/prefix weights store their mode in safetensors metadata; detect
-    # that first since the key names (cond_mlp, sigma_mlp, slots, shift, ...)
+    # Postfix weights store their mode in safetensors metadata; detect that
+    # first since the key names (cond_mlp / postfix_embeds / ortho_basis)
     # don't share a useful prefix we could grep.
     metadata_mode: str | None = None
     try:
@@ -123,8 +123,7 @@ def _scan_adapter(path: Path) -> dict:
         "postfix",
         "postfix_exp",
         "postfix_func",
-        "postfix_sigma",
-        "prefix",
+        "cond",
     }
 
     for k in keys:

@@ -67,7 +67,7 @@ def test_postfix_func_activates_functional():
     assert "functional" in composer.active_losses
 
 
-def test_prefix_activates_multiscale_when_weight_set():
-    args = _make_args(method="prefix", multiscale_loss_weight=0.5)
+def test_postfix_activates_multiscale_when_weight_set():
+    args = _make_args(method="postfix", multiscale_loss_weight=0.5)
     composer = build_loss_composer(args, _net())
     assert "multiscale" in composer.active_losses

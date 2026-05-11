@@ -1,10 +1,9 @@
 """Experimental inference entry-points (exp-test-* commands).
 
 Covers the unstable methods kept under ``make exp-*``:
-postfix / postfix_exp / postfix_func / prefix / reference-inversion prefix,
-IP-Adapter, EasyControl. Reference-image variants (exp-test-ip /
-exp-test-easycontrol) accept REF_IMAGE env or first positional arg, copy the
-ref alongside the generated output.
+postfix / postfix_exp / postfix_func, IP-Adapter, EasyControl. Reference-image
+variants (exp-test-ip / exp-test-easycontrol) accept REF_IMAGE env or first
+positional arg, copy the ref alongside the generated output.
 """
 
 from __future__ import annotations
@@ -34,19 +33,6 @@ def _random_ref_image(directory: Path) -> str | None:
     pick = random.choice(pool)
     print(f"  > Random ref: {pick}")
     return str(pick)
-
-
-def cmd_test_prefix(extra):
-    run(
-        [*INFERENCE_BASE, "--prefix_weight", str(latest_output("anima_prefix")), *extra]
-    )
-
-
-def cmd_test_ref(extra):
-    # Reference-inversion prefixes ride the same loader as prefix-mode tuning;
-    # the prefix loader at inference hard-prepends the K slots to crossattn_emb
-    # (matches exactly how invert_reference.py assembled them at training time).
-    run([*INFERENCE_BASE, "--prefix_weight", str(latest_output("anima_ref")), *extra])
 
 
 def cmd_test_postfix(extra):

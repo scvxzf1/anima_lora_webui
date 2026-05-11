@@ -442,7 +442,7 @@ class AnimaTrainer:
             logger.info(f"Using attention mode: {attn_mode}")
 
         # Frozen LoRA: merged into DiT weights at load time (no runtime hooks).
-        # Used by postfix/prefix runs that train on top of a fixed LoRA.
+        # Used by postfix runs that train on top of a fixed LoRA.
         lora_weights_list = None
         lora_multipliers = None
         if getattr(args, "lora_path", None):
@@ -743,18 +743,13 @@ class AnimaTrainer:
                     source_attention_mask=attn_mask,
                 )
             else:
-                # crossattn_emb is already in target (T5-compatible) space
-                # Prefix/postfix mode: inject learned vectors before DiT forward.
+                # crossattn_emb is already in target (T5-compatible) space.
+                # Postfix mode: inject learned vectors before DiT forward.
                 # Pool text BEFORE injection so modulation guidance sees only real text.
-                has_prefix_postfix = getattr(
-                    network, "mode", None
-                ) == "prefix" or hasattr(network, "append_postfix")
+                has_postfix = hasattr(network, "append_postfix")
                 kw = {}
-                if has_prefix_postfix:
+                if has_postfix:
                     kw["pooled_text_override"] = crossattn_emb.max(dim=1).values
-                if getattr(network, "mode", None) == "prefix":
-                    crossattn_emb = network.prepend_prefix(crossattn_emb)
-                elif hasattr(network, "append_postfix"):
                     seqlens = t5_attn_mask.sum(dim=-1).to(torch.int32)
                     crossattn_emb = network.append_postfix(
                         crossattn_emb, seqlens, timesteps=timesteps
@@ -762,7 +757,7 @@ class AnimaTrainer:
                 if args.trim_crossattn_kv:
                     kw["crossattn_seqlens"] = t5_attn_mask.sum(dim=-1).to(torch.int32)
                     max_cs = _max_crossattn_seqlen
-                    if has_prefix_postfix:
+                    if has_postfix:
                         kw["crossattn_seqlens"] = (
                             kw["crossattn_seqlens"] + network.num_postfix_tokens
                         )
@@ -847,7 +842,7 @@ class AnimaTrainer:
                     # Same pooled_text_override so AdaLN modulation is identical;
                     # only cross-attn K/V differs between the two forwards.
                     inv_kw = {}
-                    if has_prefix_postfix and "pooled_text_override" in kw:
+                    if has_postfix and "pooled_text_override" in kw:
                         inv_kw["pooled_text_override"] = kw["pooled_text_override"]
 
                     with torch.no_grad():

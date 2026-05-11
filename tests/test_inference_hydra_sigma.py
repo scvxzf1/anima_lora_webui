@@ -70,7 +70,6 @@ def _args(**overrides):
         tiled_diffusion=False,
         tile_size=4,
         tile_overlap=0,
-        prefix_weight=None,
         postfix_weight=None,
         spectrum=False,
         lora_cutoff_step=None,
