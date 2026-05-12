@@ -128,6 +128,26 @@ class LoRANetwork(torch.nn.Module):
             else None
         )
 
+        # FEI router (FeRA-style content-aware routing). Mirrors the σ-router
+        # filter machinery: explicit name set wins (from-weights path), regex
+        # otherwise. ``cfg.fei_router_layers`` defaults to the same default as
+        # ``hydra_router_layers`` when unset (most users want one FEI router
+        # per Hydra-routed module).
+        self._fei_router_names = (
+            set(cfg.fei_router_names) if cfg.fei_router_names else None
+        )
+        self._fei_router_re = (
+            re.compile(cfg.fei_router_layers)
+            if (
+                cfg.use_fei_router
+                and cfg.fei_router_layers
+                and self._fei_router_names is None
+            )
+            else None
+        )
+        self._fei_router_hits = 0
+        self.use_fei_router = bool(cfg.use_fei_router)
+
         # Per-module HydraLoRA gating. Matching modules get the Hydra class;
         # non-matching modules fall back to plain LoRA / OrthoLoRAExp so MoE
         # capacity is concentrated where specialization is actually learnable.
@@ -397,6 +417,30 @@ class LoRANetwork(torch.nn.Module):
                         extra_kwargs["sigma_hidden_dim"] = cfg.sigma_hidden_dim
                         self._sigma_router_hits += 1
 
+                # FEI-conditional router (FeRA-style). Same gating as σ —
+                # widen the router input with the per-sample FEI simplex on
+                # modules whose name matches the layer filter. The FEI tensor
+                # itself is computed once per step in the train/inference loop
+                # and propagated via ``LoRANetwork.set_fei``.
+                if (
+                    cfg.use_fei_router
+                    and effective_module_class
+                    in (
+                        HydraLoRAModule,
+                        OrthoHydraLoRAExpModule,
+                    )
+                    and is_unet
+                ):
+                    if self._fei_router_names is not None:
+                        enable_fei = lora_name in self._fei_router_names
+                    elif self._fei_router_re is not None:
+                        enable_fei = bool(self._fei_router_re.search(original_name))
+                    else:
+                        enable_fei = True
+                    if enable_fei:
+                        extra_kwargs["fei_feature_dim"] = cfg.fei_feature_dim
+                        self._fei_router_hits += 1
+
                 # Per-channel scaling is DiT-only: the bench script hooks DiT
                 # linears, text encoder activations are never calibrated.
                 if cfg.channel_scales_dict is not None and is_unet:
@@ -541,6 +585,7 @@ class LoRANetwork(torch.nn.Module):
         # buffer sees the new value through shared storage — instead of
         # ~56 per-module ``copy_`` calls per training step.
         self._wire_shared_sigma_buffers()
+        self._wire_shared_fei_buffers()
 
     def _wire_shared_sigma_buffers(self) -> None:
         """Replace each HydraLoRA / OrthoHydraLoRA module's ``_sigma`` and
@@ -585,6 +630,43 @@ class LoRANetwork(torch.nn.Module):
             for lora in loras:
                 lora._buffers["_sigma_features"] = shared_feat
             self._shared_sigma_features[dim] = shared_feat
+
+    def _wire_shared_fei_buffers(self) -> None:
+        """Replace each FEI-aware module's ``_fei`` buffer with a single
+        network-level shared tensor (per FEI feature dim).
+
+        Mirrors ``_wire_shared_sigma_buffers``. ``set_fei`` writes to one
+        shared buffer per dim; aliased module ``_fei`` buffers see the
+        update through shared storage. The aliasing-recovery dance from
+        ``set_sigma`` (rebind whenever shape or device drift breaks the
+        identity) applies here too — ``Module._apply`` (``.to(device)``)
+        independently reallocates buffers and silently breaks the link if
+        we don't identity-check. See ``[[project_set_sigma_aliasing_bug]]``.
+        """
+        fei_loras: List[torch.nn.Module] = []
+        by_dim: Dict[int, List[torch.nn.Module]] = {}
+        for lora in self.unet_loras + self.text_encoder_loras:
+            d = int(getattr(lora, "fei_feature_dim", 0))
+            if d <= 0:
+                continue
+            if "_fei" not in lora._buffers:
+                continue
+            fei_loras.append(lora)
+            by_dim.setdefault(d, []).append(lora)
+        self._fei_aware_loras = fei_loras
+        self._fei_aware_loras_by_dim = by_dim
+        if not fei_loras:
+            self._shared_fei: Dict[int, torch.Tensor] = {}
+            return
+
+        # One shared placeholder per dim — ``set_fei`` rebinds to full-shape
+        # ``(B, dim)`` on first call.
+        self._shared_fei = {}
+        for dim, loras in by_dim.items():
+            shared_feat = loras[0]._buffers["_fei"]
+            for lora in loras:
+                lora._buffers["_fei"] = shared_feat
+            self._shared_fei[dim] = shared_feat
 
     def prepare_network(self, args):
         if getattr(args, "lora_fp32_accumulation", False):
@@ -817,6 +899,67 @@ class LoRANetwork(torch.nn.Module):
                 for lora in loras:
                     lora._buffers["_sigma_features"] = new_feat
                 self._shared_sigma_features[dim] = new_feat
+
+    def set_fei(self, fei: torch.Tensor) -> None:
+        """Stash per-sample FEI ``[B, fei_dim]`` on every FEI-aware module.
+
+        Parallel to ``set_sigma`` — one call per training/inference step.
+        Same shared-buffer aliasing recovery: identity-check ``self._shared_fei``
+        against the canonical module's live buffer, rebind on shape change
+        or after ``Module._apply`` orphans the link
+        (``[[project_set_sigma_aliasing_bug]]``).
+
+        ``fei`` must be ``(B, fei_feature_dim)`` matching
+        ``cfg.fei_feature_dim`` (default 2 for the simplex). Caller is the
+        train/inference loop running ``library.runtime.fei.compute_fei_2band``
+        on ``z_t`` once per step.
+        """
+        fei = fei.detach()
+        if not getattr(self, "_fei_aware_loras", None):
+            return
+        if not self.use_fei_router:
+            return
+        # Group loras by their feature dim — every fei-aware module currently
+        # in our network shares the same dim (cfg-level), but the loop is
+        # robust to a future per-layer dim override.
+        for dim, loras in self._fei_aware_loras_by_dim.items():
+            canonical = loras[0]._buffers["_fei"]
+            cast = fei.to(dtype=canonical.dtype, device=canonical.device)
+            if cast.dim() == 1:
+                cast = cast.unsqueeze(0)
+            if cast.shape[-1] != dim:
+                raise ValueError(
+                    f"set_fei: fei.shape[-1]={cast.shape[-1]} != fei_feature_dim={dim}"
+                )
+            current_shared = self._shared_fei.get(dim)
+            needs_rebind = (
+                current_shared is not canonical or canonical.shape != cast.shape
+            )
+            if needs_rebind:
+                new_fei = cast.detach().clone()
+                for lora in loras:
+                    lora._buffers["_fei"] = new_fei
+                self._shared_fei[dim] = new_fei
+            else:
+                canonical.copy_(cast)
+
+    def clear_fei(self) -> None:
+        """Reset cached FEI to zeros without rebinding pointers.
+
+        Same in-place-zero pattern as ``clear_sigma`` — keeps cudagraph
+        data pointers stable. Re-establishes aliasing if ``Module._apply``
+        broke it since the last call.
+        """
+        if not getattr(self, "_fei_aware_loras", None):
+            return
+        for dim, loras in self._fei_aware_loras_by_dim.items():
+            canonical = loras[0]._buffers["_fei"]
+            current_shared = self._shared_fei.get(dim)
+            if current_shared is not canonical:
+                for lora in loras:
+                    lora._buffers["_fei"] = canonical
+                self._shared_fei[dim] = canonical
+            canonical.zero_()
 
     def clear_step_caches(self) -> None:
         """Drop per-step tensor references (``_last_gate``) between training
@@ -1853,6 +1996,16 @@ class LoRANetwork(torch.nn.Module):
                 metadata["ss_sigma_bucket_boundaries"] = _json.dumps(
                     list(self.cfg.sigma_bucket_boundaries)
                 )
+
+        # FEI router state (FeRA-style content-aware routing). Same rationale
+        # as the σ-band metadata: the router-input width on disk is
+        # ``lora_dim + sigma_feature_dim + fei_feature_dim``, and the from-
+        # weights factory has to know the ``fei_feature_dim`` slice width to
+        # reserve for FEI vs σ before falling back to σ-only assumptions.
+        if self.cfg.use_fei_router and self.cfg.fei_feature_dim > 0:
+            metadata["ss_use_fei_router"] = "true"
+            metadata["ss_fei_feature_dim"] = str(int(self.cfg.fei_feature_dim))
+            metadata["ss_fei_sigma_low_div"] = str(float(self.cfg.fei_sigma_low_div))
 
         state_dict = self.state_dict()
         # Drop training-only auxiliary heads from the on-disk artifact. ``repa_head``

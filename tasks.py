@@ -180,6 +180,11 @@ COMMANDS = {
         exp_training.cmd_postfix,
         "[experimental] Postfix tuning (mode selected in configs/methods/postfix.toml)",
     ),
+    "exp-fera": (
+        exp_training.cmd_fera,
+        "[experimental] FeRA-style content-aware HydraLoRA routing "
+        "(2-band FEI router; configs/methods/fera.toml)",
+    ),
     "exp-soft-tokens": (
         exp_training.cmd_soft_tokens,
         "[experimental] SoftREPA-style per-layer × per-t soft tokens (training-only v1)",

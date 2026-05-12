@@ -13,7 +13,12 @@ from tqdm import tqdm
 from diffusers.utils.torch_utils import randn_tensor
 
 from library.anima import models as anima_models
-from library.inference.adapters import clear_hydra_sigma, set_hydra_sigma
+from library.inference.adapters import (
+    clear_hydra_fei,
+    clear_hydra_sigma,
+    compute_and_set_hydra_fei,
+    set_hydra_sigma,
+)
 from library.inference import sampling as inference_utils
 from library.inference.output import check_inputs
 from library.inference.text import prepare_text_inputs
@@ -236,6 +241,10 @@ def generate_body_tiled(
 
                 t_expand = t.expand(latents.shape[0])
                 set_hydra_sigma(anima, t_expand)
+                # FEI router input — computed on the full latent (pre-tile)
+                # so every tile in this step sees the same per-sample FEI.
+                # No-op when no FEI router is attached.
+                compute_and_set_hydra_fei(anima, latents)
 
                 noise_acc = torch.zeros_like(latents)
                 weight_acc = torch.zeros(
@@ -339,6 +348,7 @@ def generate_body_tiled(
                 pbar.update()
     finally:
         clear_hydra_sigma(anima)
+        clear_hydra_fei(anima)
         # P-GRAFT: restore LoRA for next generation
         if pgraft_network is not None and lora_cutoff_step is not None:
             pgraft_network.set_enabled(True)
@@ -577,6 +587,7 @@ def generate_body(
 
                     t_expand = t.expand(latents.shape[0])
                     set_hydra_sigma(anima, t_expand)
+                    compute_and_set_hydra_fei(anima, latents)
 
                     with (
                         torch.no_grad(),
@@ -685,6 +696,7 @@ def generate_body(
                     pbar.update()
         finally:
             clear_hydra_sigma(anima)
+            clear_hydra_fei(anima)
             # P-GRAFT: restore LoRA for next generation
             if pgraft_network is not None and lora_cutoff_step is not None:
                 pgraft_network.set_enabled(True)

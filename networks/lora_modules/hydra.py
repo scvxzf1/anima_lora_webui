@@ -83,6 +83,33 @@ def _clear_sigma_feature_cache(module: torch.nn.Module) -> None:
         _copy_or_rebind_buffer(module, "_sigma_features", zero_feat)
 
 
+def _register_fei_feature_cache(
+    module: torch.nn.Module, fei_feature_dim: int
+) -> None:
+    """Register pointer-stable FEI buffer for router conditioning.
+
+    Always registers ``_fei`` (zero placeholder, shape ``(1, max(fei_feature_dim, 1))``)
+    so the cat path in ``_compute_gate`` has a Tensor to read pre-set_fei,
+    same pattern as ``_sigma`` / ``_sigma_features``. When
+    ``fei_feature_dim == 0`` the placeholder is still registered (cheap, 1
+    float) but unused — keeps ``Module._apply`` parity with the σ side.
+    """
+    width = max(int(fei_feature_dim), 1)
+    module.register_buffer(
+        "_fei", torch.zeros(1, width, dtype=torch.float32), persistent=False
+    )
+
+
+def _set_fei_feature_cache(module: torch.nn.Module, fei: torch.Tensor) -> None:
+    """Update per-module FEI state without changing buffer pointers per step."""
+    fei = fei.detach()
+    _copy_or_rebind_buffer(module, "_fei", fei)
+
+
+def _clear_fei_feature_cache(module: torch.nn.Module) -> None:
+    module._fei.zero_()
+
+
 def _register_sigma_band_partition(
     module: torch.nn.Module,
     num_experts: int,
@@ -186,6 +213,7 @@ class HydraLoRAModule(BaseLoRAModule):
         specialize_experts_by_sigma_buckets: bool = False,
         num_sigma_buckets: int = 1,
         sigma_bucket_boundaries: Optional[List[float]] = None,
+        fei_feature_dim: int = 0,
     ):
         super().__init__(
             lora_name,
@@ -233,11 +261,22 @@ class HydraLoRAModule(BaseLoRAModule):
         # sigma_hidden_dim retained as an attribute for API compatibility but
         # is no longer used — the sigma_mlp hidden layer is gone.
         self.sigma_hidden_dim = int(sigma_hidden_dim)
-        router_in_dim = self.lora_dim + self.sigma_feature_dim
+        # FEI router input (FeRA-style content-aware routing). When
+        # ``fei_feature_dim > 0``, the per-sample 2-band FEI ``[B, fei_dim]``
+        # is concatenated to the router input alongside the rank-R signal
+        # and (optional) sinusoidal(σ). All three sources can coexist; the
+        # toggle blocks in ``configs/methods/lora.toml`` keep them in
+        # opposition for clean A/B. Default ``fei_dim=2`` = the raw simplex
+        # ``(e_low, e_high)`` from ``library.runtime.fei.compute_fei_2band``
+        # (bench-validated 2-band collapse — see
+        # ``[[project_fera_probe_2band_decision]]``).
+        self.fei_feature_dim = int(fei_feature_dim)
+        router_in_dim = self.lora_dim + self.sigma_feature_dim + self.fei_feature_dim
         self.router = torch.nn.Linear(router_in_dim, num_experts, bias=True)
         # Split init: small-std on the pooled rank-R columns, zeros on the
-        # σ-feature columns. Step 0 gate is then identical to the σ=off
-        # router, and σ influence emerges only as those columns train.
+        # σ- and FEI-feature columns. Step 0 gate is then identical to the
+        # σ=off, FEI=off router, and σ/FEI influence emerges only as those
+        # columns train.
         with torch.no_grad():
             self.router.weight.zero_()
             torch.nn.init.normal_(
@@ -263,6 +302,11 @@ class HydraLoRAModule(BaseLoRAModule):
         # before every forward, so the placeholder is only used if set_sigma
         # is somehow skipped.
         _register_sigma_feature_cache(self, self.sigma_feature_dim)
+        # Same register-on-init rationale as ``_sigma`` — keep ``_fei`` a Tensor
+        # at all times so ``_compute_gate``'s cat path needs no None-vs-Tensor
+        # guard. ``set_fei`` rebinds it once the network's shared FEI buffer
+        # is wired in (see ``LoRANetwork._wire_shared_fei_buffers``).
+        _register_fei_feature_cache(self, self.fei_feature_dim)
         # Hard σ-band expert partition (Track C). Independent of σ-feature
         # router — when on, the E experts are split into ``num_sigma_buckets``
         # bands of ``E // num_sigma_buckets`` each; out-of-band logits are
@@ -313,15 +357,21 @@ class HydraLoRAModule(BaseLoRAModule):
         # lx is fp32 (bottleneck policy) but router weights follow the adapter's
         # storage dtype (bf16 at inference) — align before matmul.
         pooled = pooled.to(self.router.weight.dtype)
+        parts = [pooled]
         if self.sigma_feature_dim > 0:
             sigma_feat = self._sigma_features.to(pooled.dtype)
             # Broadcast placeholder (shape (1, D) before first set_sigma) to
             # batch size. Once set_sigma has run, _sigma matches pooled.shape[0]
             # and the expand is a no-op.
             sigma_feat = sigma_feat.expand(pooled.shape[0], -1)
-            router_in = torch.cat([pooled, sigma_feat], dim=-1)
-        else:
-            router_in = pooled
+            parts.append(sigma_feat)
+        if self.fei_feature_dim > 0:
+            # Same broadcast rule as σ: ``_fei`` placeholder is shape
+            # ``(1, fei_dim)`` until ``set_fei`` rebinds it to ``(B, fei_dim)``.
+            fei_feat = self._fei.to(pooled.dtype)
+            fei_feat = fei_feat.expand(pooled.shape[0], -1)
+            parts.append(fei_feat)
+        router_in = parts[0] if len(parts) == 1 else torch.cat(parts, dim=-1)
         logits = self.router(router_in)  # (B, num_experts)
         if self._sigma_band_partition:
             logits = _apply_sigma_band_mask(
@@ -336,6 +386,12 @@ class HydraLoRAModule(BaseLoRAModule):
 
     def clear_sigma(self) -> None:
         _clear_sigma_feature_cache(self)
+
+    def set_fei(self, fei: torch.Tensor) -> None:
+        _set_fei_feature_cache(self, fei)
+
+    def clear_fei(self) -> None:
+        _clear_fei_feature_cache(self)
 
     def forward(self, x):
         # Policy: bf16 storage, fp32 for the bottleneck matmuls. See

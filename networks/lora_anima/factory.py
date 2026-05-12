@@ -179,6 +179,17 @@ def create_network(
             "use_sigma_router=true but no modules matched sigma_router_layers "
             f"regex {cfg.sigma_router_layers!r} — σ-routing is inactive"
         )
+    if cfg.use_fei_router and network._fei_router_hits > 0:
+        logger.info(
+            f"FEI-conditional HydraLoRA router: {network._fei_router_hits} modules "
+            f"with FEI ({cfg.fei_feature_dim}-band simplex) concatenated to router input "
+            f"(σ_low_div={cfg.fei_sigma_low_div}). FeRA-style content-aware routing."
+        )
+    elif cfg.use_fei_router:
+        logger.warning(
+            "use_fei_router=true but no modules matched fei_router_layers "
+            f"regex {cfg.fei_router_layers!r} — FEI-routing is inactive"
+        )
     if cfg.specialize_experts_by_sigma_buckets:
         experts_per_band = cfg.num_experts // cfg.num_sigma_buckets
         edges_str = (
@@ -400,12 +411,29 @@ def create_network_from_weights(
         )
 
     # Old-format per-module router — was Linear(in_dim, E). Current router is
-    # Linear(lora_dim + sigma_feature_dim, E); width >= lora_dim, with any
-    # excess = σ feature dim. The old broken shape (width ≈ in_dim, often
+    # Linear(lora_dim + sigma_feature_dim + fei_feature_dim, E); width >= lora_dim,
+    # with any excess split between σ + FEI features. The FEI slice width is
+    # stamped into safetensors metadata (``ss_fei_feature_dim``) when
+    # ``use_fei_router`` was on at save time — subtract it from the excess to
+    # recover the σ slice. The old broken shape (width ≈ in_dim, often
     # thousands) is caught by a sanity cap on excess width.
+    use_fei_router_meta = (
+        str(file_metadata.get("ss_use_fei_router", "")).lower() == "true"
+    )
+    fei_feature_dim_detected: Optional[int] = (
+        int(file_metadata["ss_fei_feature_dim"])
+        if use_fei_router_meta and "ss_fei_feature_dim" in file_metadata
+        else None
+    )
+    fei_sigma_low_div_meta: Optional[float] = (
+        float(file_metadata["ss_fei_sigma_low_div"])
+        if use_fei_router_meta and "ss_fei_sigma_low_div" in file_metadata
+        else None
+    )
     sigma_feature_dim_detected: Optional[int] = None
     if has_hydra or has_ortho_hydra:
         _SIGMA_FEATURE_CAP = 1024
+        fei_slice = int(fei_feature_dim_detected or 0)
         for k, v in weights_sd.items():
             if not k.endswith(".router.weight"):
                 continue
@@ -419,7 +447,14 @@ def create_network_from_weights(
                     f"router.weight at {k!r} has width {width} < expected "
                     f"rank {expected_rank}; checkpoint is malformed."
                 )
-            extra = width - expected_rank
+            extra = width - expected_rank - fei_slice
+            if extra < 0:
+                raise RuntimeError(
+                    f"router.weight at {k!r} has width {width}; expected "
+                    f"rank {expected_rank} + fei_feature_dim {fei_slice}. "
+                    "Metadata fei_feature_dim does not match the saved router "
+                    "shape — checkpoint is malformed."
+                )
             if extra == 0:
                 continue
             if extra > _SIGMA_FEATURE_CAP:
@@ -544,6 +579,14 @@ def create_network_from_weights(
             )
         band_boundaries = [float(v) for v in parsed]
 
+    # FEI router presence is metadata-stamped; the per-module activation list
+    # falls back to the same set as σ-router (or all hydra modules if σ off).
+    # Phase 1's hydralora_fei variant turns on FEI router on the same regex as
+    # σ, so this mirroring is correct in practice.
+    fei_router_names: Optional[List[str]] = None
+    if use_fei_router_meta and (has_hydra or has_ortho_hydra):
+        fei_router_names = sigma_router_names or sorted(hydra_module_names) or None
+
     cfg = LoRANetworkCfg.from_weights(
         modules_dim=modules_dim,
         modules_alpha=modules_alpha,
@@ -561,6 +604,10 @@ def create_network_from_weights(
         specialize_experts_by_sigma_buckets=band_partition_on,
         num_sigma_buckets=band_num_buckets if band_partition_on else None,
         sigma_bucket_boundaries=band_boundaries if band_partition_on else None,
+        use_fei_router=use_fei_router_meta,
+        fei_feature_dim=int(fei_feature_dim_detected or 0),
+        fei_sigma_low_div=fei_sigma_low_div_meta,
+        fei_router_names=fei_router_names,
     )
 
     network = LoRANetwork(text_encoders, unet, cfg, multiplier=multiplier)

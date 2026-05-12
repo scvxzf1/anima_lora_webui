@@ -12,13 +12,13 @@
 # Per-variant dim/alpha/lr/epochs are experiment drift, not calibrated
 # defaults — tune freely.
 
-network_alpha = 48
-network_dim = 48
+network_alpha = 64
+network_dim = 64
 
-learning_rate = 2e-5
-max_train_epochs = 12
-save_every_n_epochs = 2
-checkpointing_epochs = 2
+learning_rate = 1e-5
+max_train_epochs = 24
+save_every_n_epochs = 4
+checkpointing_epochs = 4
 
 use_shuffled_caption_variants = true
 cache_llm_adapter_outputs = true
@@ -60,14 +60,14 @@ per_bucket_balance_weight = 0.3   # × balance_loss_weight, per-bucket term
 num_sigma_buckets = 3
 
 specialize_experts_by_sigma_buckets = true
-sigma_bucket_boundaries = [0.0, 0.6, 0.85, 1.0]
+sigma_bucket_boundaries = [0.0, 0.5, 0.8, 1.0]
 
 # -------------
 # reft
 
 add_reft = true
-reft_dim = 48
-reft_alpha = 48
+reft_dim = 64
+reft_alpha = 64
 reft_layers = "last_8"
 
 
@@ -98,3 +98,21 @@ compile_inductor_mode = "reduce-overhead"
 # repa_weight = 0.5
 # repa_layer = 8
 # repa_lr_scale = 1.0       # head LR = repa_lr_scale * unet_lr
+
+# -------------
+# hydralora-fei (FeRA-style content-aware routing — Phase 1 of plan.md)
+# Swaps the σ-keyed router for a 2-band FEI router (DoG-banded latent energy).
+# A/B target: this block vs the default σ-router block above. To activate:
+#   1. Comment out lines 55–63 (use_sigma_router, sigma_*, num_sigma_buckets,
+#      specialize_experts_by_sigma_buckets, sigma_bucket_boundaries).
+#   2. Uncomment the FEI block below.
+#   3. Change `output_name` on line 46 to `"anima_hydra_fei"` so artifacts
+#      don't collide with the σ-router run.
+# The bench probe collapsed FeRA's 3 bands → 2 (mid was structurally sparse
+# on flow-matching latents at every σ_mid we tried). σ_low scaling defaults
+# to D/8 across aspect buckets — see [[project_fera_probe_2band_decision]].
+
+# use_fei_router = true
+# fei_feature_dim = 2          # raw simplex (e_low, e_high)
+# fei_sigma_low_div = 8.0      # σ_low = min(H_lat, W_lat) / 8 — bench-validated
+# fei_router_layers = ".*(mlp\\.layer[12])$"

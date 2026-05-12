@@ -469,8 +469,8 @@ def cmd_invert_directedit(extra):
     # 2. Inversion knobs — env overrides for the common dials, defaults match
     #    the proposal (and the invert_postfix_tail.py CLI defaults).
     K = int(os.environ.get("K", "32"))
-    invert_steps = int(os.environ.get("INVERT_STEPS", "50"))
-    invert_lr = float(os.environ.get("INVERT_LR", "0.01"))
+    invert_steps = int(os.environ.get("INVERT_STEPS", "100"))
+    invert_lr = float(os.environ.get("INVERT_LR", "5e-3"))
     lambda_zero = float(os.environ.get("LAMBDA_ZERO", "0.0"))
     sigma_min = float(os.environ.get("SIGMA_MIN", "0.0"))
     basis_kind = os.environ.get("BASIS", "svd_te").strip()

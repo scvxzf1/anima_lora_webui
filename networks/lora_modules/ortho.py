@@ -9,9 +9,12 @@ from networks.lora_modules.base import BaseLoRAModule
 from networks.lora_modules.custom_autograd import lora_down_project
 from networks.lora_modules.hydra import (
     _apply_sigma_band_mask,
+    _clear_fei_feature_cache,
     _clear_sigma_feature_cache,
+    _register_fei_feature_cache,
     _register_sigma_band_partition,
     _register_sigma_feature_cache,
+    _set_fei_feature_cache,
     _set_sigma_feature_cache,
 )
 
@@ -212,6 +215,7 @@ class OrthoHydraLoRAExpModule(BaseLoRAModule):
         specialize_experts_by_sigma_buckets: bool = False,
         num_sigma_buckets: int = 1,
         sigma_bucket_boundaries: Optional[List[float]] = None,
+        fei_feature_dim: int = 0,
     ):
         super().__init__(
             lora_name,
@@ -284,7 +288,12 @@ class OrthoHydraLoRAExpModule(BaseLoRAModule):
         # rationale on direct-input σ vs additive-bias sigma_mlp.
         self.sigma_feature_dim = int(sigma_feature_dim)
         self.sigma_hidden_dim = int(sigma_hidden_dim)  # unused; kept for API compat
-        router_in_dim = lora_dim + self.sigma_feature_dim
+        # FEI router input — see ``HydraLoRAModule.__init__`` for the full
+        # rationale. OrthoHydra inherits the exact same routing surface so
+        # ``hydralora_fei`` works whether the LoRA stack uses plain Hydra or
+        # OrthoHydra.
+        self.fei_feature_dim = int(fei_feature_dim)
+        router_in_dim = lora_dim + self.sigma_feature_dim + self.fei_feature_dim
         self.router = torch.nn.Linear(router_in_dim, num_experts, bias=True)
         with torch.no_grad():
             self.router.weight.zero_()
@@ -305,6 +314,7 @@ class OrthoHydraLoRAExpModule(BaseLoRAModule):
         # buffer so .to(device) moves the placeholder with the module.
         # See ``HydraLoRAModule`` for the None-vs-Tensor guard rationale.
         _register_sigma_feature_cache(self, self.sigma_feature_dim)
+        _register_fei_feature_cache(self, self.fei_feature_dim)
         # Hard σ-band expert partition (see HydraLoRAModule for rationale).
         self._sigma_band_partition: bool = bool(specialize_experts_by_sigma_buckets)
         if self._sigma_band_partition:
@@ -361,12 +371,15 @@ class OrthoHydraLoRAExpModule(BaseLoRAModule):
         else:
             pooled = lx
         pooled = pooled.to(self.router.weight.dtype)
+        parts = [pooled]
         if self.sigma_feature_dim > 0:
             sigma_feat = self._sigma_features.to(pooled.dtype)
             sigma_feat = sigma_feat.expand(pooled.shape[0], -1)
-            router_in = torch.cat([pooled, sigma_feat], dim=-1)
-        else:
-            router_in = pooled
+            parts.append(sigma_feat)
+        if self.fei_feature_dim > 0:
+            fei_feat = self._fei.to(pooled.dtype).expand(pooled.shape[0], -1)
+            parts.append(fei_feat)
+        router_in = parts[0] if len(parts) == 1 else torch.cat(parts, dim=-1)
         logits = self.router(router_in)  # (B, num_experts)
         if self._sigma_band_partition:
             logits = _apply_sigma_band_mask(
@@ -381,6 +394,12 @@ class OrthoHydraLoRAExpModule(BaseLoRAModule):
 
     def clear_sigma(self) -> None:
         _clear_sigma_feature_cache(self)
+
+    def set_fei(self, fei: torch.Tensor) -> None:
+        _set_fei_feature_cache(self, fei)
+
+    def clear_fei(self) -> None:
+        _clear_fei_feature_cache(self)
 
     def forward(self, x):
         org_forwarded = self.org_forward(x)

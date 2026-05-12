@@ -1,0 +1,75 @@
+# fera.toml — FeRA-style content-aware HydraLoRA routing (Phase 1 of plan.md).
+#
+# Self-contained alternative to lora.toml's default stack: same
+# LoRA + OrthoLoRA + T-LoRA + HydraLoRA + ReFT skeleton, but the
+# routing key is the per-step 2-band FEI of z_t instead of σ. The FEI
+# probes (bench/fera/results/) collapsed FeRA's 3-band design to 2 on
+# Anima's flow-matching latents — see [[project_fera_probe_2band_decision]].
+#
+# Same shape as lora.toml so an A/B vs `make lora` is a routing-only swap:
+#   - identical network_dim/alpha, lr, epochs, ReFT/OrthoLoRA/T-LoRA flags
+#   - σ-router OFF (use_sigma_router=false, no σ-band partition)
+#   - FEI router ON, regex == hydra_router_layers (one FEI router per
+#     Hydra-routed module).
+#
+# Both-on (σ + FEI) is supported by the code; sweep as a follow-up cell.
+
+network_alpha = 64
+network_dim = 64
+
+learning_rate = 1e-5
+max_train_epochs = 24
+save_every_n_epochs = 4
+checkpointing_epochs = 4
+
+use_shuffled_caption_variants = true
+cache_llm_adapter_outputs = true
+caption_dropout_rate = 0.1
+
+logging_dir = "output/logs"
+log_with = "tensorboard"
+
+# -------------
+# Ortho-lora
+
+use_ortho = true
+
+# -------------
+# Timestep mask
+
+use_timestep_mask = true
+min_rank = 8
+alpha_rank_scale = 1.0
+
+# -------------
+# hydralora-fei (FeRA-style content-aware router)
+
+output_name = "anima_hydra_fei"
+use_hydra = true
+num_experts = 12
+balance_loss_weight = 2e-7   # see [[project_hydra_balance_weight_ceiling]]
+balance_loss_warmup_ratio = 0.4
+network_router_lr_scale = 10
+hydra_router_layers = ".*(mlp\\.layer[12])$"
+
+# σ-router off — Phase 1 isolates the routing-key swap.
+use_sigma_router = false
+
+# 2-band FEI router. fei_sigma_low_div=8 = bucket-adaptive σ_low validated
+# by bench/fera/results/20260512-1814-fera-pilot/.
+use_fei_router = true
+fei_feature_dim = 2
+fei_sigma_low_div = 8.0
+fei_router_layers = ".*(mlp\\.layer[12])$"
+
+# -------------
+# reft
+
+add_reft = true
+reft_dim = 64
+reft_alpha = 64
+reft_layers = "last_8"
+
+
+compile_mode = "full"
+compile_inductor_mode = "reduce-overhead"

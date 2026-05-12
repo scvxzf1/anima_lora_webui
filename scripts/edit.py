@@ -182,7 +182,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument(
         "--t_inj",
         type=int,
-        default=2,
+        default=0,
         help="Number of early editing steps to inject src self-attn V into "
         "the tar pass (paper Eq. 13). Default 0 = pure ΔZ-anchored edit. "
         "Typical paper setting: t_inj ≈ T/10..T/3 (e.g. 3..9 at T=28). "

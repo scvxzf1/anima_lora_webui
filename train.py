@@ -633,6 +633,22 @@ class AnimaTrainer:
         # unless use_sigma_router is on and the variant is hydra/ortho_hydra.
         if hasattr(network, "set_sigma"):
             network.set_sigma(timesteps)
+        # FEI-conditional HydraLoRA router (FeRA-style content-aware). FEI is
+        # a function of the actual input the model sees this step
+        # (``noisy_model_input``), not a leak from the target — see plan.md
+        # Phase 1. No-op unless use_fei_router is on and the variant is
+        # hydra/ortho_hydra. Same hookpoint as set_sigma so cudagraph capture
+        # sees a stable order.
+        if getattr(network, "use_fei_router", False):
+            from library.runtime.fei import compute_fei_2band, fei_sigma_low
+
+            _fei_z = noisy_model_input
+            if _fei_z.dim() == 5:
+                _fei_z = _fei_z.squeeze(2)
+            _h_lat, _w_lat = int(_fei_z.shape[-2]), int(_fei_z.shape[-1])
+            _div = float(getattr(network.cfg, "fei_sigma_low_div", 8.0))
+            _fei = compute_fei_2band(_fei_z, fei_sigma_low(_h_lat, _w_lat, _div))
+            network.set_fei(_fei)
         # HydraLoRA expert-warmup: during the first ``expert_warmup_ratio`` of
         # training, only one randomly-chosen expert per module receives
         # gradient (forward still uses all experts via the learned gate).

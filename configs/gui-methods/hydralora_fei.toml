@@ -1,0 +1,50 @@
+# gui-methods/hydralora_fei.toml — HydraLoRA + FEI-conditional router.
+#
+# FeRA-style content-aware routing (paper 2511.17979v1) collapsed to 2 bands
+# on Anima's flow-matching latents — see [[project_fera_probe_2band_decision]].
+# Per-step 2-band FEI of ``z_t`` is concatenated to the rank-R router input;
+# step-0 gate is identical to the FEI=off router (FEI columns zero-init), so
+# FEI dependence emerges only as gradient pushes those columns.
+#
+# A/B counterpart: ``hydralora_sigma.toml`` (σ-keyed router). Same network
+# capacity, same dataset slice, same seed — only the routing key swaps.
+
+network_dim = 32
+network_alpha = 32
+
+learning_rate = 2e-5
+max_train_epochs = 4
+save_every_n_epochs = 2
+checkpointing_epochs = 2
+
+use_shuffled_caption_variants = true
+cache_llm_adapter_outputs = true
+caption_dropout_rate = 0.1
+
+use_ortho = true
+
+use_timestep_mask = true
+min_rank = 1
+alpha_rank_scale = 1.0
+
+use_hydra = true
+num_experts = 4
+balance_loss_weight = 3e-7
+
+hydra_router_layers = ".*(mlp\\.layer[12])$"
+
+# σ-router intentionally OFF for clean FEI-only A/B vs hydralora_sigma.
+# Both-on (σ + FEI) is supported by the code; sweep as a follow-up.
+use_sigma_router = false
+
+# FeRA-style FEI router (Phase 1 of plan.md). 2-band simplex on the rank-R
+# router input. fei_sigma_low_div=8 = bucket-adaptive σ_low validated by
+# bench/fera/results/20260512-1814-fera-pilot/.
+use_fei_router = true
+fei_feature_dim = 2
+fei_sigma_low_div = 8.0
+fei_router_layers = ".*(mlp\\.layer[12])$"
+
+output_name = "anima_hydra_fei"
+
+blocks_to_swap = 0

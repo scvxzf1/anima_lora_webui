@@ -17,6 +17,17 @@ def cmd_postfix(extra):
     train("postfix", extra)
 
 
+def cmd_fera(extra):
+    """FeRA-style content-aware routing on HydraLoRA (Phase 1 of plan.md).
+
+    Drives ``configs/methods/fera.toml`` — same LoRA + OrthoLoRA + T-LoRA +
+    Hydra + ReFT stack as ``make lora`` but with a 2-band FEI router in
+    place of the σ-router. A/B counterpart for measuring whether
+    content-aware routing beats σ-keyed routing on Anima.
+    """
+    train("fera", extra)
+
+
 def cmd_soft_tokens(extra):
     train("soft_tokens", extra)
 

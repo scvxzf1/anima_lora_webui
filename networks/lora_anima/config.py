@@ -211,6 +211,17 @@ class LoRANetworkCfg:
     sigma_router_layers: Optional[str] = None
     sigma_router_names: Optional[List[str]] = None
 
+    # FEI-conditional router (FeRA-style content-aware routing on hydra).
+    # ``fei_feature_dim`` defaults to 2 = the simplex ``(e_low, e_high)`` from
+    # ``library.runtime.fei.compute_fei_2band``. Bench-validated default
+    # ``fei_sigma_low_div=8.0`` for σ_low scaling — see
+    # ``[[project_fera_probe_2band_decision]]``.
+    use_fei_router: bool = False
+    fei_feature_dim: int = 2
+    fei_sigma_low_div: float = 8.0
+    fei_router_layers: Optional[str] = None
+    fei_router_names: Optional[List[str]] = None
+
     # SmoothQuant-style per-channel input pre-scaling
     channel_scales_dict: Optional[Dict[str, torch.Tensor]] = None
 
@@ -328,6 +339,15 @@ class LoRANetworkCfg:
             "sigma_router_layers", _DEFAULT_SIGMA_ROUTER_LAYERS
         )
 
+        use_fei_router = _as_bool(kwargs.get("use_fei_router"))
+        fei_feature_dim = int(kwargs.get("fei_feature_dim", 2))
+        fei_sigma_low_div = float(kwargs.get("fei_sigma_low_div", 8.0))
+        # Default to the same regex as σ — most users want one FEI router per
+        # Hydra-routed module. Override per variant if needed.
+        fei_router_layers = kwargs.get(
+            "fei_router_layers", _DEFAULT_SIGMA_ROUTER_LAYERS
+        )
+
         reg_dims_str = kwargs.get("network_reg_dims")
         reg_dims = _parse_kv_pairs(reg_dims_str, is_int=True) if reg_dims_str else None
         reg_lrs_str = kwargs.get("network_reg_lrs")
@@ -371,6 +391,10 @@ class LoRANetworkCfg:
             sigma_feature_dim=sigma_feature_dim,
             sigma_hidden_dim=sigma_hidden_dim,
             sigma_router_layers=sigma_router_layers,
+            use_fei_router=use_fei_router,
+            fei_feature_dim=fei_feature_dim,
+            fei_sigma_low_div=fei_sigma_low_div,
+            fei_router_layers=fei_router_layers,
             channel_scales_dict=channel_scales_dict,
             verbose=verbose,
         )
@@ -395,6 +419,10 @@ class LoRANetworkCfg:
         specialize_experts_by_sigma_buckets: bool = False,
         num_sigma_buckets: Optional[int] = None,
         sigma_bucket_boundaries: Optional[List[float]] = None,
+        use_fei_router: bool = False,
+        fei_feature_dim: int = 0,
+        fei_sigma_low_div: Optional[float] = None,
+        fei_router_names: Optional[List[str]] = None,
     ) -> "LoRANetworkCfg":
         """Build cfg from a checkpoint key-sniff (warm-start / inference path).
 
@@ -432,4 +460,10 @@ class LoRANetworkCfg:
                 int(num_sigma_buckets) if num_sigma_buckets else 3
             ),
             sigma_bucket_boundaries=sigma_bucket_boundaries,
+            use_fei_router=bool(use_fei_router),
+            fei_feature_dim=int(fei_feature_dim),
+            fei_sigma_low_div=(
+                float(fei_sigma_low_div) if fei_sigma_low_div is not None else 8.0
+            ),
+            fei_router_names=fei_router_names,
         )

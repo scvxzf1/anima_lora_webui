@@ -146,7 +146,7 @@ def parse_args() -> argparse.Namespace:
         "host-device sync) every N steps. Higher = fewer syncs / faster "
         "training; lower = more responsive progress bar (default: 10).",
     )
-    p.add_argument("--lr", type=float, default=2e-4)
+    p.add_argument("--lr", type=float, default=1e-4)
     p.add_argument("--weight_decay", type=float, default=0.01)
     p.add_argument("--d_hidden", type=int, default=1024)
     p.add_argument("--dropout", type=float, default=0.1)
@@ -168,7 +168,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument(
         "--pool_n_queries",
         type=int,
-        default=2,
+        default=4,
         help="MAP pool: number of learnable queries (default 4). Each query "
         "produces one [d_enc] vector; trunk input is "
         "(K + use_cls + use_mean) * d_enc.",

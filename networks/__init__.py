@@ -148,6 +148,11 @@ _HYDRA_KWARG_FLAGS: Tuple[str, ...] = (
     "num_sigma_buckets",
     "specialize_experts_by_sigma_buckets",
     "sigma_bucket_boundaries",
+    # FEI-conditional router (FeRA-style content-aware routing, hydra-only)
+    "use_fei_router",
+    "fei_feature_dim",
+    "fei_sigma_low_div",
+    "fei_router_layers",
 )
 
 
