@@ -105,7 +105,6 @@ def test_numeric_string_parsing():
         "expert_best_warmup_ratio": "0.0",
         "network_router_lr_scale": "0.5",
         "sigma_feature_dim": "32",
-        "sigma_hidden_dim": "256",
         "per_bucket_balance_weight": "0.4",
         "num_sigma_buckets": "5",
         "rank_dropout": "0.05",
@@ -129,7 +128,6 @@ def test_numeric_string_parsing():
     assert cfg.expert_warmup_k == 3
     assert cfg.router_lr_scale == pytest.approx(0.5)
     assert cfg.sigma_feature_dim == 32
-    assert cfg.sigma_hidden_dim == 256
     assert cfg.per_bucket_balance_weight == pytest.approx(0.4)
     assert cfg.num_sigma_buckets == 5
     assert cfg.rank_dropout == pytest.approx(0.05)

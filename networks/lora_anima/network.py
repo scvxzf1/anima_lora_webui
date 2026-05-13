@@ -191,34 +191,37 @@ class LoRANetwork(torch.nn.Module):
         reft_alpha = cfg.reft_alpha
         reft_layers = cfg.reft_layers
 
-        # Either regex (fresh-from-kwargs path) or explicit name set
-        # (from-weights path, detected from checkpoint keys). Explicit set wins.
+        # Unified routing scope. ``cfg.router_targets`` is the single regex
+        # that governs which Linears participate in routed adaptation (Hydra
+        # MoE leaves + σ-feature concat + FEI-feature concat all share it).
+        # From-weights path supplies an explicit name set per router family
+        # (different families may have different module memberships in older
+        # checkpoints); when present, the explicit set wins over the regex.
+        _router_re = (
+            re.compile(cfg.router_targets) if cfg.router_targets else None
+        )
+
         self._sigma_router_names = (
             set(cfg.sigma_router_names) if cfg.sigma_router_names else None
         )
         self._sigma_router_re = (
-            re.compile(cfg.sigma_router_layers)
+            _router_re
             if (
                 cfg.router_source == "sigma"
-                and cfg.sigma_router_layers
+                and _router_re is not None
                 and self._sigma_router_names is None
             )
             else None
         )
 
-        # FEI router (FeRA-style content-aware routing). Mirrors the σ-router
-        # filter machinery: explicit name set wins (from-weights path), regex
-        # otherwise. ``cfg.fei_router_layers`` defaults to the same default as
-        # ``hydra_router_layers`` when unset (most users want one FEI router
-        # per Hydra-routed module).
         self._fei_router_names = (
             set(cfg.fei_router_names) if cfg.fei_router_names else None
         )
         self._fei_router_re = (
-            re.compile(cfg.fei_router_layers)
+            _router_re
             if (
                 cfg.router_source == "fei"
-                and cfg.fei_router_layers
+                and _router_re is not None
                 and self._fei_router_names is None
             )
             else None
@@ -233,14 +236,13 @@ class LoRANetwork(torch.nn.Module):
         # non-matching modules fall back to plain LoRA / OrthoLoRAExp so MoE
         # capacity is concentrated where specialization is actually learnable.
         # Fresh path: regex over `original_name`. From-weights path: explicit
-        # name set detected from checkpoint keys (mirrors sigma_router_names).
-        # Explicit set wins. None on both = apply MoE everywhere (legacy).
+        # name set detected from checkpoint keys. Explicit set wins. None on
+        # both = apply MoE everywhere (legacy).
         self._hydra_router_names = (
             set(cfg.hydra_router_names) if cfg.hydra_router_names else None
         )
         self._hydra_router_re = (
-            re.compile(cfg.hydra_router_layers)
-            if cfg.hydra_router_layers and self._hydra_router_names is None
+            _router_re if (_router_re is not None and self._hydra_router_names is None)
             else None
         )
 
@@ -495,7 +497,6 @@ class LoRANetwork(torch.nn.Module):
                         enable = True
                     if enable:
                         extra_kwargs["sigma_feature_dim"] = cfg.sigma_feature_dim
-                        extra_kwargs["sigma_hidden_dim"] = cfg.sigma_hidden_dim
                         self._sigma_router_hits += 1
 
                 # FEI-conditional router (FeRA-style). Same gating as σ —

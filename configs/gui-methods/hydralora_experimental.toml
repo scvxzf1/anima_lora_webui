@@ -31,11 +31,9 @@ num_experts = 6
 balance_loss_weight = 3e-7
 
 
-hydra_router_layers = ".*(mlp\\.layer[12])$"
+router_targets = ".*(mlp\\.layer[12])$"
 
 sigma_feature_dim = 16
-sigma_hidden_dim = 16   # unused; retained for API compat
-sigma_router_layers = ".*(mlp\\.layer[12])$"
 per_bucket_balance_weight = 0.3
 num_sigma_buckets = 3
 

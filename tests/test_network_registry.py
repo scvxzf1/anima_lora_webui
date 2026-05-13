@@ -51,8 +51,10 @@ def test_all_network_kwargs_is_union_of_shared_and_specs():
     """`all_network_kwargs()` must cover every kwarg any variant declares.
 
     Guards against the drift mode that previously silently dropped
-    `hydra_router_layers` (and its σ-router siblings): a kwarg declared on
-    a NetworkSpec but missing from the forwarding list.
+    `router_targets` (originally a trio of `hydra_router_layers` /
+    `sigma_router_layers` / `fei_router_layers` before they were
+    consolidated): a kwarg declared on a NetworkSpec but missing from the
+    forwarding list.
     """
     all_kw = set(all_network_kwargs())
     assert set(SHARED_KWARG_FLAGS).issubset(all_kw)
@@ -66,16 +68,14 @@ def test_all_network_kwargs_is_union_of_shared_and_specs():
 def test_hydra_router_kwargs_registered():
     """Regression pin: the bug that motivated the M2 finish.
 
-    `hydra_router_layers` + σ-conditional router kwargs must be registered
-    on the hydra / ortho_hydra specs so they flow through argparse schema
+    `router_targets` + σ-conditional router kwargs must be registered on
+    the hydra / ortho_hydra specs so they flow through argparse schema
     and into `create_network`. If these drop off the spec, the router
     silently defaults to uniform MoE over every target module.
     """
     must_have = {
-        "hydra_router_layers",
-        "sigma_router_layers",
+        "router_targets",
         "sigma_feature_dim",
-        "sigma_hidden_dim",
         "per_bucket_balance_weight",
         "num_sigma_buckets",
         "num_experts",
@@ -244,7 +244,7 @@ def test_save_hydra_moe_roundtrip(tmp_path: Path):
 
 
 def test_save_hydra_moe_mixed_with_plain_lora_qkv_defuses_up(tmp_path: Path):
-    """Regression: when ``hydra_router_layers`` filters some fused-qkv modules
+    """Regression: when ``router_targets`` filters some fused-qkv modules
     out of MoE, the resulting plain-LoRA leg for those modules must also be
     q/k/v-defused by the hydra save pipeline. Previously only ``lora_down`` /
     ``alpha`` were split; ``lora_up.weight`` stayed fused, producing a
@@ -254,7 +254,7 @@ def test_save_hydra_moe_mixed_with_plain_lora_qkv_defuses_up(tmp_path: Path):
 
     # Hydra-routed module (cross_attn.kv — regex-matched target)
     hydra_prefix = "lora_unet_blocks_0_cross_attn_kv_proj"
-    # Plain-LoRA module (self_attn.qkv — regex-excluded by hydra_router_layers)
+    # Plain-LoRA module (self_attn.qkv — regex-excluded by router_targets)
     plain_prefix = "lora_unet_blocks_0_self_attn_qkv_proj"
 
     sd = {

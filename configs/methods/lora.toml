@@ -9,8 +9,7 @@
 #
 # To switch routing modes:
 #   - Plain LoRA stack (no MoE): set `use_moe_style = false` and drop every
-#     `*router*` / `num_experts` / `balance_*` / `hydra_*` / `sigma_*` /
-#     `fei_*` key.
+#     `*router*` / `num_experts` / `balance_*` / `sigma_*` / `fei_*` key.
 #   - FEI-on-Hydra (Phase 1, FeRA-style content-aware on the shared-A stack):
 #     comment out the σ-router block and uncomment the FEI block near the
 #     bottom of this file.
@@ -54,28 +53,30 @@ alpha_rank_scale = 1.0
 
 output_name = "anima_hydra"
 use_moe_style = "shared_A"  # False | "shared_A" | "independent_A"
+
 route_per_layer = true  # true | false
+
+
 router_source = "sigma" # "sigma" | "fei"
 num_experts = 12
 balance_loss_weight = 2e-7 # seems lr * 1/100 is proper
 
 balance_loss_warmup_ratio = 0.4
-
 network_router_lr_scale = 10
-
-hydra_router_layers = ".*(mlp\\.layer[12])$" # ".*(cross_attn\\.kv_proj)$"
-
+router_targets = ".*(mlp\\.layer[12])$" # ".*\\.(qkv_proj|q_proj|kv_proj|output_proj|layer[12])$"
 
 # Under router_source = "sigma"
 sigma_feature_dim = 16
-sigma_hidden_dim = 16   # unused; retained for API compat
-sigma_router_layers = ".*(mlp\\.layer[12])$"
-
 per_bucket_balance_weight = 0.3   # × balance_loss_weight, per-bucket term
 num_sigma_buckets = 3
 specialize_experts_by_sigma_buckets = true
 sigma_bucket_boundaries = [0.0, 0.5, 0.8, 1.0]
 
+# Under router_source = "fei"
+# fei_feature_dim = 2          # raw simplex (e_low, e_high)
+# fei_sigma_low_div = 4.0      # σ_low = min(H_lat, W_lat) / 4 — 2026-05-13 dataset sweep
+# fera_num_bands = 2
+# fera_fecl_weight = 0.0
 
 # -------------
 # reft
@@ -119,9 +120,10 @@ compile_inductor_mode = "reduce-overhead"
 # Swaps the σ-keyed router for a 2-band FEI router (DoG-banded latent energy).
 # A/B target: this block vs the default σ-router block above. To activate:
 #   1. Replace `router_source = "sigma"` above with `router_source = "fei"`.
-#   2. Comment out the σ-router block (sigma_feature_dim, sigma_router_layers,
+#   2. Comment out the σ-router block (sigma_feature_dim,
 #      per_bucket_balance_weight, num_sigma_buckets,
 #      specialize_experts_by_sigma_buckets, sigma_bucket_boundaries).
+#      `router_targets` is shared across σ / FEI / Hydra — leave it as is.
 #   3. Uncomment the FEI block below.
 #   4. Change `output_name` to `"anima_hydra_fei"` so artifacts don't collide.
 # The bench probe collapsed FeRA's 3 bands → 2 (mid was structurally sparse
@@ -131,4 +133,4 @@ compile_inductor_mode = "reduce-overhead"
 
 # fei_feature_dim = 2          # raw simplex (e_low, e_high)
 # fei_sigma_low_div = 4.0      # σ_low = min(H_lat, W_lat) / 4 — 2026-05-13 dataset sweep
-# fei_router_layers = ".*(mlp\\.layer[12])$"
+# (layer scope is `router_targets` above — shared with Hydra / σ-router)

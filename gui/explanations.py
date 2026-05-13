@@ -69,13 +69,9 @@ FIELD_HELP: dict[str, dict[str, str]] = {
         "en": "Sinusoidal σ feature dimension fed into the σ-router bias MLP. Typical: 128.",
         "ko": "σ 라우터 바이어스 MLP에 입력되는 sinusoidal σ 특징 차원. 일반적: 128.",
     },
-    "sigma_hidden_dim": {
-        "en": "σ-router bias MLP hidden dimension. Typical: 128.",
-        "ko": "σ 라우터 바이어스 MLP 히든 차원. 일반적: 128.",
-    },
-    "sigma_router_layers": {
-        "en": "Regex over layer names — only matching layers get a σ-conditional router branch. Typical: limit to cross_attn.q_proj and self_attn.qkv_proj where σ-signal lives.",
-        "ko": "레이어 이름에 대한 정규식 — 일치하는 레이어만 σ-조건부 라우터 분기 추가. 일반적: σ 신호가 있는 cross_attn.q_proj 및 self_attn.qkv_proj로 제한.",
+    "router_targets": {
+        "en": "Regex over layer names — only matching Linears participate in routed adaptation (Hydra MoE leaves + σ / FEI feature concatenation share the same scope). Typical: '.*(mlp\\.layer[12])$' to confine MoE to the FFN sublayers.",
+        "ko": "레이어 이름에 대한 정규식 — 일치하는 Linear만 라우팅된 적응에 참여 (Hydra MoE leaves + σ / FEI 특징 연결이 동일한 범위를 공유). 일반적: '.*(mlp\\.layer[12])$' — FFN 서브레이어로 MoE 제한.",
     },
     "per_bucket_balance_weight": {
         "en": "Extra per-σ-bucket load-balance penalty, scaled by balance_loss_weight. Encourages routing diversity within each timestep bucket. Typical: 0.3.",

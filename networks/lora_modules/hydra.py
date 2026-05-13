@@ -208,7 +208,6 @@ class HydraLoRAModule(BaseLoRAModule):
         num_experts=4,
         channel_scale=None,
         sigma_feature_dim: int = 0,
-        sigma_hidden_dim: int = 128,
         expert_init_std: float = 0.0,
         specialize_experts_by_sigma_buckets: bool = False,
         num_sigma_buckets: int = 1,
@@ -258,9 +257,6 @@ class HydraLoRAModule(BaseLoRAModule):
         # §Fixes). `lora_down` is trained jointly, so signal-carrying directions
         # accumulate here and there are no large outliers to saturate softmax in bf16.
         self.sigma_feature_dim = int(sigma_feature_dim)
-        # sigma_hidden_dim retained as an attribute for API compatibility but
-        # is no longer used — the sigma_mlp hidden layer is gone.
-        self.sigma_hidden_dim = int(sigma_hidden_dim)
         # FEI router input (FeRA-style content-aware routing). When
         # ``fei_feature_dim > 0``, the per-sample 2-band FEI ``[B, fei_dim]``
         # is concatenated to the router input alongside the rank-R signal

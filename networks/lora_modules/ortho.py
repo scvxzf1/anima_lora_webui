@@ -211,7 +211,6 @@ class OrthoHydraLoRAExpModule(BaseLoRAModule):
         num_experts=4,
         channel_scale=None,
         sigma_feature_dim: int = 0,
-        sigma_hidden_dim: int = 128,
         specialize_experts_by_sigma_buckets: bool = False,
         num_sigma_buckets: int = 1,
         sigma_bucket_boundaries: Optional[List[float]] = None,
@@ -287,7 +286,6 @@ class OrthoHydraLoRAExpModule(BaseLoRAModule):
         # when σ routing is enabled. See HydraLoRAModule.__init__ for the full
         # rationale on direct-input σ vs additive-bias sigma_mlp.
         self.sigma_feature_dim = int(sigma_feature_dim)
-        self.sigma_hidden_dim = int(sigma_hidden_dim)  # unused; kept for API compat
         # FEI router input — see ``HydraLoRAModule.__init__`` for the full
         # rationale. OrthoHydra inherits the exact same routing surface so
         # ``hydralora_fei`` works whether the LoRA stack uses plain Hydra or

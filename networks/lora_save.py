@@ -373,7 +373,7 @@ def _build_hydra_moe_state_dict(
         ups = [hydra_sd.pop(k) for k in ups_keys]
         ups_chunked = [u.chunk(n, dim=0) for u in ups]
 
-        # Plain-LoRA leg (present when hydra_router_layers excluded this
+        # Plain-LoRA leg (present when router_targets excluded this
         # module — the fused qkv then carries the standard ``.lora_up.weight``
         # and optional DoRA ``.dora_scale`` instead of the hydra stack).
         # Split these per-component so q/k/v keys are consistent with the

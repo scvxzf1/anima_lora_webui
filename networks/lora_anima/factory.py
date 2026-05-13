@@ -177,8 +177,8 @@ def create_network(
         )
     elif cfg.router_source == "sigma":
         logger.warning(
-            "router_source='sigma' but no modules matched sigma_router_layers "
-            f"regex {cfg.sigma_router_layers!r} — σ-routing is inactive"
+            "router_source='sigma' but no modules matched router_targets "
+            f"regex {cfg.router_targets!r} — σ-routing is inactive"
         )
     if cfg.router_source == "fei" and network._fei_router_hits > 0:
         logger.info(
@@ -188,8 +188,8 @@ def create_network(
         )
     elif cfg.router_source == "fei":
         logger.warning(
-            "router_source='fei' but no modules matched fei_router_layers "
-            f"regex {cfg.fei_router_layers!r} — FEI-routing is inactive"
+            "router_source='fei' but no modules matched router_targets "
+            f"regex {cfg.router_targets!r} — FEI-routing is inactive"
         )
     if cfg.specialize_experts_by_sigma_buckets:
         experts_per_band = cfg.num_experts // cfg.num_sigma_buckets
@@ -223,11 +223,11 @@ def create_network(
         logger.info(
             f"HydraLoRA layer filter: {network._hydra_router_hits} MoE modules, "
             f"{network._hydra_router_misses} fell back to plain {fallback_name} "
-            f"(regex={cfg.hydra_router_layers!r})"
+            f"(regex={cfg.router_targets!r})"
         )
         if network._hydra_router_hits == 0:
             logger.warning(
-                "hydra_router_layers regex matched zero modules — no MoE routing "
+                "router_targets regex matched zero modules — no MoE routing "
                 "is active, every target became plain LoRA."
             )
     if cfg.add_reft:
@@ -326,7 +326,7 @@ def create_network_from_weights(
     # Per-module hydra flag: which lora_names were trained as MoE (Hydra) vs
     # plain LoRA / OrthoLoRAExp. Populated below by key sniff, then passed
     # through as `hydra_router_names` so create_modules can pick the right
-    # class per module in mixed checkpoints (result of hydra_router_layers).
+    # class per module in mixed checkpoints (result of router_targets).
     hydra_module_names: set[str] = set()
     plain_module_names: set[str] = set()
     # Block-level ReFT key pattern: reft_unet_blocks_<idx>.<...>
@@ -381,7 +381,7 @@ def create_network_from_weights(
             hydra_module_names.add(lora_name)
         elif key.endswith(".lora_up.weight"):
             # Plain (non-stacked) LoRA up — either vanilla LoRA or the
-            # plain-fallback leg of a mixed hydra_router_layers checkpoint.
+            # plain-fallback leg of a mixed router_targets checkpoint.
             plain_module_names.add(lora_name)
         elif "lora_down" in key:
             dim = value.size()[0]
@@ -555,7 +555,7 @@ def create_network_from_weights(
 
     # Per-module Hydra selection from the checkpoint: if the file contains
     # *both* hydra-style and plain-LoRA-style leaves, we're reloading a mixed
-    # hydra_router_layers result and need to build each leaf with its original
+    # router_targets result and need to build each leaf with its original
     # class. If every module is hydra, leave as None (= apply the nominal
     # hydra class everywhere, legacy behaviour).
     hydra_router_names = (

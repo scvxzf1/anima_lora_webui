@@ -33,7 +33,7 @@ router_source = "fei"
 num_experts = 4
 balance_loss_weight = 3e-7
 
-hydra_router_layers = ".*(mlp\\.layer[12])$"
+router_targets = ".*(mlp\\.layer[12])$"
 
 # FeRA-style FEI router (Phase 1 of plan2.md). 2-band simplex on the rank-R
 # router input. fei_sigma_low_div=4 = bucket-adaptive σ_low chosen by the
@@ -43,7 +43,7 @@ hydra_router_layers = ".*(mlp\\.layer[12])$"
 # [[project_fera_probe_2band_decision]] for the full table.
 fei_feature_dim = 2
 fei_sigma_low_div = 4.0
-fei_router_layers = ".*(mlp\\.layer[12])$"
+# (layer scope is `router_targets` above — shared with Hydra / σ-router)
 
 output_name = "anima_hydra_fei"
 

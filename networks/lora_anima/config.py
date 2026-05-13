@@ -164,9 +164,6 @@ _DEFAULT_EXCLUDE = (
     r"pooled_text_proj).*"
 )
 
-_DEFAULT_SIGMA_ROUTER_LAYERS = r".*(cross_attn\.q_proj|self_attn\.qkv_proj)$"
-
-
 @dataclass(frozen=True)
 class LoRANetworkCfg:
     """Run-fixed configuration for a ``LoRANetwork``.
@@ -222,7 +219,12 @@ class LoRANetworkCfg:
     expert_warmup_k: int = 1
     expert_best_warmup_ratio: float = 0.0
     router_lr_scale: float = 1.0
-    hydra_router_layers: Optional[str] = None
+    # Single regex that scopes which Linear modules participate in routed
+    # adaptation. Matched modules become HydraLoRA leaves; non-matching
+    # modules fall back to plain LoRA / OrthoLoRAExp. Sigma- and FEI-feature
+    # router inputs piggyback on the same set — there is no separate sub-
+    # filter for σ vs FEI vs Hydra anymore. ``None`` = apply MoE everywhere.
+    router_targets: Optional[str] = None
     hydra_router_names: Optional[List[str]] = None
     per_bucket_balance_weight: float = 0.3
     num_sigma_buckets: int = 3
@@ -256,9 +258,8 @@ class LoRANetworkCfg:
     router_source: RouterSource = "none"
 
     # σ-conditional router parameters (consumed when ``router_source="sigma"``).
+    # Layer scope is shared with Hydra and FEI via ``router_targets`` above.
     sigma_feature_dim: int = 16
-    sigma_hidden_dim: int = 128
-    sigma_router_layers: Optional[str] = None
     sigma_router_names: Optional[List[str]] = None
 
     # FEI-conditional router parameters (consumed when ``router_source="fei"``).
@@ -270,7 +271,6 @@ class LoRANetworkCfg:
     # ``[[project_fera_probe_2band_decision]]``.
     fei_feature_dim: int = 2
     fei_sigma_low_div: float = 4.0
-    fei_router_layers: Optional[str] = None
     fei_router_names: Optional[List[str]] = None
 
     # GlobalRouter parameters (consumed when ``route_per_layer=False``).
@@ -363,7 +363,19 @@ class LoRANetworkCfg:
         router_lr_scale = kwargs.get("network_router_lr_scale")
         router_lr_scale = float(router_lr_scale) if router_lr_scale is not None else 1.0
 
-        hydra_router_layers = kwargs.get("hydra_router_layers", None)
+        _legacy_router_keys = [
+            k
+            for k in ("hydra_router_layers", "sigma_router_layers", "fei_router_layers")
+            if k in kwargs
+        ]
+        if _legacy_router_keys:
+            raise ValueError(
+                f"{_legacy_router_keys} are no longer supported — the three "
+                "router layer filters were consolidated into a single "
+                "`router_targets` regex. Replace them with one `router_targets = "
+                "...` entry in your method TOML."
+            )
+        router_targets = kwargs.get("router_targets", None)
         per_bucket_balance_weight = kwargs.get("per_bucket_balance_weight")
         per_bucket_balance_weight = (
             float(per_bucket_balance_weight)
@@ -401,18 +413,9 @@ class LoRANetworkCfg:
             sigma_bucket_boundaries = None
 
         sigma_feature_dim = int(kwargs.get("sigma_feature_dim", 16))
-        sigma_hidden_dim = int(kwargs.get("sigma_hidden_dim", 128))
-        sigma_router_layers = kwargs.get(
-            "sigma_router_layers", _DEFAULT_SIGMA_ROUTER_LAYERS
-        )
 
         fei_feature_dim = int(kwargs.get("fei_feature_dim", 2))
         fei_sigma_low_div = float(kwargs.get("fei_sigma_low_div", 4.0))
-        # Default to the same regex as σ — most users want one FEI router per
-        # Hydra-routed module. Override per variant if needed.
-        fei_router_layers = kwargs.get(
-            "fei_router_layers", _DEFAULT_SIGMA_ROUTER_LAYERS
-        )
 
         # GlobalRouter knobs (only consumed when ``route_per_layer=False``).
         router_hidden_dim = int(kwargs.get("router_hidden_dim", kwargs.get("router_hidden", 64)))
@@ -510,7 +513,7 @@ class LoRANetworkCfg:
             expert_warmup_k=expert_warmup_k,
             expert_best_warmup_ratio=expert_best_warmup_ratio,
             router_lr_scale=router_lr_scale,
-            hydra_router_layers=hydra_router_layers,
+            router_targets=router_targets,
             per_bucket_balance_weight=per_bucket_balance_weight,
             num_sigma_buckets=num_sigma_buckets,
             specialize_experts_by_sigma_buckets=specialize_experts_by_sigma_buckets,
@@ -519,11 +522,8 @@ class LoRANetworkCfg:
             route_per_layer=route_per_layer,
             router_source=router_source,
             sigma_feature_dim=sigma_feature_dim,
-            sigma_hidden_dim=sigma_hidden_dim,
-            sigma_router_layers=sigma_router_layers,
             fei_feature_dim=fei_feature_dim,
             fei_sigma_low_div=fei_sigma_low_div,
-            fei_router_layers=fei_router_layers,
             router_hidden_dim=router_hidden_dim,
             router_tau=router_tau,
             fera_fecl_weight=fera_fecl_weight,
@@ -618,7 +618,6 @@ class LoRANetworkCfg:
             route_per_layer=route_per_layer,
             router_source=router_source,
             sigma_feature_dim=sigma_feature_dim_detected or 128,
-            sigma_hidden_dim=128,
             sigma_router_names=sigma_router_names,
             hydra_router_names=hydra_router_names,
             specialize_experts_by_sigma_buckets=specialize_experts_by_sigma_buckets,

@@ -162,12 +162,11 @@ _HYDRA_KWARG_FLAGS: Tuple[str, ...] = (
     "expert_warmup_ratio",
     "expert_warmup_k",
     "expert_best_warmup_ratio",
-    # Layer filter — concentrates MoE routers on cross-attn + MLP
-    "hydra_router_layers",
+    # Unified layer filter — scopes which Linears participate in routed
+    # adaptation (Hydra MoE leaves + σ / FEI feature concatenation).
+    "router_targets",
     # σ-conditional router add-on (router_source="sigma")
-    "sigma_router_layers",
     "sigma_feature_dim",
-    "sigma_hidden_dim",
     "per_bucket_balance_weight",
     "num_sigma_buckets",
     "specialize_experts_by_sigma_buckets",
@@ -175,7 +174,6 @@ _HYDRA_KWARG_FLAGS: Tuple[str, ...] = (
     # FEI-conditional router (router_source="fei"; FeRA-style content-aware)
     "fei_feature_dim",
     "fei_sigma_low_div",
-    "fei_router_layers",
 )
 
 

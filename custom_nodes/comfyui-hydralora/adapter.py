@@ -859,7 +859,7 @@ def apply_adapter(
             applied_any = True
     if bundle["lora"] is not None:
         # Plain LoRA — apply directly. Hydra + plain-LoRA coexist in the same
-        # file when ``hydra_router_layers`` is a subset regex (e.g. mlp only):
+        # file when ``router_targets`` is a subset regex (e.g. mlp only):
         # hydra handles mlp prefixes, plain LoRA handles cross_attn / self_attn.
         # ``_parse_hydra`` filters itself to hydra-only prefixes and
         # ``_extract_lora_sd`` skips ``.lora_ups.*`` keys, so the two paths
