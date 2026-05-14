@@ -1,0 +1,4 @@
+<h2 style='margin:0 0 10px 0; font-size:17px;'>OrthoLoRA</h2>
+<p>SVD-based orthogonal parameterization of the update matrix (linear layers only). Uses QR-decomposed orthonormal bases with learned singular values: <code>P @ diag(&lambda;) @ Q</code>. Orthogonality regularization keeps the update structured, which tends to reduce interference with unrelated concepts.</p>
+<p>Saved as a plain LoRA at checkpoint time via thin SVD on &Delta;W &mdash; the result is a regular LoRA <code>.safetensors</code> bakeable into the base DiT. The orthogonality machinery is training-only.</p>
+<p>Toggle: <code>use_ortho = true</code>.</p>

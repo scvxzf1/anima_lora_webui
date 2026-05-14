@@ -1,0 +1,4 @@
+<h2 style='margin:0 0 10px 0; font-size:17px;'>OrthoLoRA</h2>
+<p>업데이트 행렬의 SVD 기반 직교 파라미터화 (선형 레이어 전용). QR 분해된 정규 직교 기저와 학습된 특이값을 사용: <code>P @ diag(&lambda;) @ Q</code>. 직교성 정규화로 업데이트가 구조화되며, 무관한 컨셉과의 간섭을 줄이는 경향이 있습니다.</p>
+<p>저장 시 &Delta;W에 대한 thin SVD로 일반 LoRA로 변환됨 &mdash; 결과물은 베이스 DiT에 베이킹 가능한 일반 LoRA <code>.safetensors</code>입니다. 직교성 메커니즘은 학습 시에만 작동합니다.</p>
+<p>토글: <code>use_ortho = true</code>.</p>

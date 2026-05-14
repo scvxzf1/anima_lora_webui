@@ -1,8 +1,34 @@
-"""Bilingual help text for config fields and LoRA variant descriptions."""
+"""Bilingual help text for config fields and LoRA variant descriptions.
+
+Per-field tooltips (short, dense, frequently looked up) live inline as
+``FIELD_HELP`` / ``PREPROCESS_FIELD_HELP``. The bulky method/variant guide
+HTML blocks live under ``guides/<name>.<lang>.html`` — one file per method
+per language — and are loaded lazily on first access. Shared snippets
+(``_apply_note``, ``_not_mergeable``) follow the same convention with an
+underscore prefix.
+"""
 
 from __future__ import annotations
 
+import functools
+from pathlib import Path
+
 from gui.i18n import current_language
+
+_GUIDES_DIR = Path(__file__).parent / "guides"
+
+
+@functools.lru_cache(maxsize=None)
+def _read_guide(name: str, lang: str) -> str:
+    path = _GUIDES_DIR / f"{name}.{lang}.html"
+    if not path.exists():
+        path = _GUIDES_DIR / f"{name}.en.html"
+    return path.read_text(encoding="utf-8")
+
+
+def _guide(name: str) -> str:
+    return _read_guide(name, current_language())
+
 
 # ── Per-field tooltips ─────────────────────────────────────────
 # Keys match config field names. Each maps to {lang: description}.
@@ -10,8 +36,8 @@ from gui.i18n import current_language
 FIELD_HELP: dict[str, dict[str, str]] = {
     # Architecture
     "network_dim": {
-        "en": "LoRA rank (dimension of low-rank matrices). Higher = more expressive but more VRAM. Typical: 8\u201364.",
-        "ko": "LoRA 랭크 (저랭크 행렬의 차원). 높을수록 표현력이 좋지만 VRAM 사용량 증가. 일반적: 8\u201364.",
+        "en": "LoRA rank (dimension of low-rank matrices). Higher = more expressive but more VRAM. Typical: 8–64.",
+        "ko": "LoRA 랭크 (저랭크 행렬의 차원). 높을수록 표현력이 좋지만 VRAM 사용량 증가. 일반적: 8–64.",
     },
     "network_alpha": {
         "en": "LoRA scaling factor. Effective scale = alpha / dim. When alpha == dim, scale is 1.0. Lower alpha = more conservative updates.",
@@ -131,8 +157,8 @@ FIELD_HELP: dict[str, dict[str, str]] = {
         "ko": "N 에폭마다 학습 재개 상태 저장. 상태 파일이 크므로 save_every_n_epochs보다 큰 간격 권장.",
     },
     "gradient_accumulation_steps": {
-        "en": "Accumulate gradients over N steps before updating. Effective batch size = batch_size \u00d7 accumulation_steps.",
-        "ko": "N 스텝 동안 그레이디언트 누적 후 업데이트. 실효 배치 크기 = batch_size \u00d7 accumulation_steps.",
+        "en": "Accumulate gradients over N steps before updating. Effective batch size = batch_size × accumulation_steps.",
+        "ko": "N 스텝 동안 그레이디언트 누적 후 업데이트. 실효 배치 크기 = batch_size × accumulation_steps.",
     },
     "use_shuffled_caption_variants": {
         "en": "Consume preprocessed caption-shuffle variants from the text-encoder cache. When the cache holds multiple variants, a random one is drawn per sample. Falls back silently to single-variant if no variants were preprocessed.",
@@ -200,8 +226,8 @@ FIELD_HELP: dict[str, dict[str, str]] = {
         "ko": "혼합 정밀도 모드. bf16: 최신 GPU 권장. fp16: bf16 미지원 구형 GPU용.",
     },
     "static_token_count": {
-        "en": "Fixed 4096 token count for all batches. Gives torch.compile a single static shape \u2014 no recompilation across aspect ratios.",
-        "ko": "모든 배치에 4096 토큰 고정. torch.compile에 단일 정적 셰이프 제공 \u2014 화면비별 재컴파일 없음.",
+        "en": "Fixed 4096 token count for all batches. Gives torch.compile a single static shape — no recompilation across aspect ratios.",
+        "ko": "모든 배치에 4096 토큰 고정. torch.compile에 단일 정적 셰이프 제공 — 화면비별 재컴파일 없음.",
     },
     "vae_chunk_size": {
         "en": "VAE decoding chunk size. Larger = faster but more VRAM. 64 is a good balance.",
@@ -220,8 +246,8 @@ FIELD_HELP: dict[str, dict[str, str]] = {
         "ko": "캐시된 레이턴트를 RAM 대신 디스크에 저장. 디스크 I/O 대신 시스템 메모리 절약.",
     },
     "cache_text_encoder_outputs": {
-        "en": "Cache text encoder outputs. Essential for lazy loading: encode \u2192 cache \u2192 free encoder \u2192 load DiT.",
-        "ko": "텍스트 인코더 출력 캐싱. 지연 로딩 필수: 인코딩 \u2192 캐시 \u2192 인코더 해제 \u2192 DiT 로드.",
+        "en": "Cache text encoder outputs. Essential for lazy loading: encode → cache → free encoder → load DiT.",
+        "ko": "텍스트 인코더 출력 캐싱. 지연 로딩 필수: 인코딩 → 캐시 → 인코더 해제 → DiT 로드.",
     },
     "cache_text_encoder_outputs_to_disk": {
         "en": "Save cached text encoder outputs to disk. Required for the lazy loading sequence to free VRAM before loading DiT.",
@@ -439,466 +465,24 @@ def preprocess_field_help(key: str) -> str | None:
     return entry.get(lang) or entry.get("en")
 
 
-PREPROCESS_GUIDE: dict[str, str] = {
-    "en": (
-        "<h2 style='margin:0 0 10px 0; font-size:18px;'>Preprocessing</h2>"
-        "<p>Three artifact lanes feed training:</p>"
-        "<p><b>1. Text caching</b> &mdash; tokenizes captions through Qwen3 "
-        "+ T5 and writes <code>{stem}_anima_te.safetensors</code> sidecars. "
-        "When <i>shuffle variants</i> &gt; 0, each cache holds N captions and "
-        "the dataloader samples one per training step (turn on "
-        "<code>use_shuffled_caption_variants</code> in your method config to "
-        "use them).</p>"
-        "<p><b>2. SAM3 masking</b> &mdash; finds text-bubble regions using "
-        "natural-language prompts. Saved to <code>masks/sam/</code>.</p>"
-        "<p><b>3. MIT masking</b> &mdash; runs a manga-specific text "
-        "segmenter trained on glyph-level data. Saved to "
-        "<code>masks/mit/</code>.</p>"
-        "<p>The <b>Merge</b> step unions SAM + MIT into "
-        "<code>masks/merged/</code>. When the merged dir exists, training "
-        "subsets pick it up automatically (see <code>masked_loss</code> in "
-        "the method config).</p>"
-        "<p style='color:#888; font-style:italic; margin-top:12px;'>"
-        "Click any field label on the left to see its explanation here.</p>"
-    ),
-    "ko": (
-        "<h2 style='margin:0 0 10px 0; font-size:18px;'>전처리</h2>"
-        "<p>학습은 세 가지 산출물 레인을 사용합니다:</p>"
-        "<p><b>1. 텍스트 캐싱</b> &mdash; Qwen3 + T5로 캡션을 토큰화하고 "
-        "<code>{stem}_anima_te.safetensors</code> 파일로 저장합니다. "
-        "<i>셔플 변형 수</i>가 0보다 크면 각 캐시에 N개의 캡션이 들어가며 "
-        "데이터로더는 학습 스텝마다 하나를 샘플링합니다 (메소드 설정에서 "
-        "<code>use_shuffled_caption_variants</code>를 켜야 사용됩니다).</p>"
-        "<p><b>2. SAM3 마스킹</b> &mdash; 자연어 프롬프트로 말풍선 영역을 "
-        "찾습니다. <code>masks/sam/</code>에 저장.</p>"
-        "<p><b>3. MIT 마스킹</b> &mdash; 글리프 단위 데이터로 학습된 "
-        "만화 전용 텍스트 분할기를 실행합니다. <code>masks/mit/</code>에 "
-        "저장.</p>"
-        "<p><b>병합</b> 단계는 SAM + MIT의 합집합을 "
-        "<code>masks/merged/</code>에 만듭니다. 병합 디렉토리가 있으면 "
-        "학습 서브셋이 자동으로 사용합니다 (메소드 설정의 "
-        "<code>masked_loss</code> 참조).</p>"
-        "<p style='color:#888; font-style:italic; margin-top:12px;'>"
-        "왼쪽 필드 라벨을 클릭하면 여기에 설명이 표시됩니다.</p>"
-    ),
-}
-
-
 def preprocess_guide() -> str:
-    lang = current_language()
-    return PREPROCESS_GUIDE.get(lang) or PREPROCESS_GUIDE["en"]
+    return _guide("preprocess")
 
 
-# ── LoRA variant guide (rich HTML) ────────────────────────────
-
-APPLY_NOTE_HTML: dict[str, str] = {
-    "en": (
-        "<p style='margin:0 0 12px 0; color:#f0c14b; font-size:12px;'>"
-        "<b>Apply</b> fills the form with the picked variant's defaults — "
-        "<b>nothing is saved until you click Save</b>.</p>"
-    ),
-    "ko": (
-        "<p style='margin:0 0 12px 0; color:#f0c14b; font-size:12px;'>"
-        "<b>Apply</b>는 선택한 variant의 기본값으로 폼을 채웁니다 — "
-        "<b>Save를 누르기 전까지는 저장되지 않습니다</b>.</p>"
-    ),
-}
-
-
-LORA_GUIDE: dict[str, str] = {
-    "en": (
-        "<h2 style='margin:0 0 10px 0; font-size:17px;'>LoRA</h2>"
-        "<p>Classic low-rank adaptation. Adds small trainable matrices "
-        "(down &times; up) to existing weight layers.<br>"
-        "<code>y = x + (x @ down @ up) &times; scale &times; multiplier</code><br>"
-        "Simple, effective, and the default choice for most fine-tuning tasks. "
-        "Fully bakeable into the base DiT.</p>"
-        "<p><b>Variants</b><br>"
-        "&bull; <b>lora</b> &mdash; default 16GB+ profile.<br>"
-        "&bull; <b>lora_longer</b> &mdash; same architecture, more epochs for "
-        "datasets that haven't converged.<br>"
-        "&bull; <b>lora-8gb</b> &mdash; low-VRAM profile (block swap + offload "
-        "checkpointing); pick this if you OOM on the default.</p>"
-    ),
-    "ko": (
-        "<h2 style='margin:0 0 10px 0; font-size:17px;'>LoRA</h2>"
-        "<p>클래식 저랭크 적응. 기존 가중치 레이어에 작은 학습 가능한 "
-        "행렬(down &times; up)을 추가.<br>"
-        "<code>y = x + (x @ down @ up) &times; scale &times; multiplier</code><br>"
-        "간단하고 효과적이며, 대부분의 파인튜닝에 기본 선택. 베이스 DiT에 "
-        "완전히 베이킹 가능.</p>"
-        "<p><b>변형</b><br>"
-        "&bull; <b>lora</b> &mdash; 기본 16GB+ 프로필.<br>"
-        "&bull; <b>lora_longer</b> &mdash; 동일 아키텍처, 더 긴 에폭 (수렴이 "
-        "느린 데이터셋용).<br>"
-        "&bull; <b>lora-8gb</b> &mdash; 저VRAM 프로필 (블록 스왑 + 오프로드 "
-        "체크포인팅); 기본 프로필에서 OOM이 나면 이 변형을 사용.</p>"
-    ),
-}
-
-
-def lora_guide() -> str:
-    """Return the LoRA method guide HTML for the current language."""
-    lang = current_language()
-    return LORA_GUIDE.get(lang) or LORA_GUIDE["en"]
-
-
-# ── OrthoLoRA guide ─────────────────────────────────────────
-
-ORTHOLORA_GUIDE: dict[str, str] = {
-    "en": (
-        "<h2 style='margin:0 0 10px 0; font-size:17px;'>OrthoLoRA</h2>"
-        "<p>SVD-based orthogonal parameterization of the update matrix "
-        "(linear layers only). Uses QR-decomposed orthonormal bases with "
-        "learned singular values: <code>P @ diag(&lambda;) @ Q</code>. "
-        "Orthogonality regularization keeps the update structured, which "
-        "tends to reduce interference with unrelated concepts.</p>"
-        "<p>Saved as a plain LoRA at checkpoint time via thin SVD on "
-        "&Delta;W &mdash; the result is a regular LoRA "
-        "<code>.safetensors</code> bakeable into the base DiT. The "
-        "orthogonality machinery is training-only.</p>"
-        "<p>Toggle: <code>use_ortho = true</code>.</p>"
-    ),
-    "ko": (
-        "<h2 style='margin:0 0 10px 0; font-size:17px;'>OrthoLoRA</h2>"
-        "<p>업데이트 행렬의 SVD 기반 직교 파라미터화 (선형 레이어 전용). "
-        "QR 분해된 정규 직교 기저와 학습된 특이값을 사용: "
-        "<code>P @ diag(&lambda;) @ Q</code>. 직교성 정규화로 업데이트가 "
-        "구조화되며, 무관한 컨셉과의 간섭을 줄이는 경향이 있습니다.</p>"
-        "<p>저장 시 &Delta;W에 대한 thin SVD로 일반 LoRA로 변환됨 &mdash; "
-        "결과물은 베이스 DiT에 베이킹 가능한 일반 LoRA "
-        "<code>.safetensors</code>입니다. 직교성 메커니즘은 학습 시에만 "
-        "작동합니다.</p>"
-        "<p>토글: <code>use_ortho = true</code>.</p>"
-    ),
-}
-
-
-def ortholora_guide() -> str:
-    lang = current_language()
-    return ORTHOLORA_GUIDE.get(lang) or ORTHOLORA_GUIDE["en"]
-
-
-# ── T-LoRA guide ────────────────────────────────────────────
-
-TLORA_GUIDE: dict[str, str] = {
-    "en": (
-        "<h2 style='margin:0 0 10px 0; font-size:17px;'>T-LoRA</h2>"
-        "<p>Timestep-dependent rank masking. The effective LoRA rank varies "
-        "with the denoising timestep via a power-law schedule:<br>"
-        "&bull; High noise (early steps) &rarr; full rank (maximum expressiveness)<br>"
-        "&bull; Low noise (late steps) &rarr; reduced rank (down to "
-        "<code>min_rank</code>)<br>"
-        "Concentrates capacity where structure is being decided. The mask is "
-        "training-only — inference uses full rank at every t by design — so "
-        "the saved <code>.safetensors</code> is a regular bakeable LoRA. "
-        "See <code>docs/methods/timestep_mask.md</code>.</p>"
-        "<p>Toggle: <code>use_timestep_mask = true</code>.</p>"
-        "<p><b>Variants</b><br>"
-        "&bull; <b>tlora</b> &mdash; pure T-LoRA, no orthogonality constraint.<br>"
-        "&bull; <b>tlora_ortho</b> &mdash; T-LoRA stacked on OrthoLoRA "
-        "(<code>use_ortho = true</code> + <code>use_timestep_mask = true</code>). "
-        "Recommended general-purpose pick when you want both rank-by-σ scheduling "
-        "and orthogonal regularization. Still fully bakeable.</p>"
-    ),
-    "ko": (
-        "<h2 style='margin:0 0 10px 0; font-size:17px;'>T-LoRA</h2>"
-        "<p>타임스텝 의존 랭크 마스킹. 디노이징 타임스텝에 따라 유효 LoRA "
-        "랭크가 거듭제곱 스케줄로 변동:<br>"
-        "&bull; 높은 노이즈 (초기 스텝) &rarr; 전체 랭크 (최대 표현력)<br>"
-        "&bull; 낮은 노이즈 (후기 스텝) &rarr; 축소된 랭크 (<code>min_rank</code>까지)<br>"
-        "구조가 결정되는 시점에 표현력을 집중시킵니다. 마스크는 학습 시에만 "
-        "적용되며 추론은 모든 t에서 전체 랭크를 사용하므로, 저장된 "
-        "<code>.safetensors</code>는 베이킹 가능한 일반 LoRA입니다. "
-        "<code>docs/methods/timestep_mask.md</code> 참조.</p>"
-        "<p>토글: <code>use_timestep_mask = true</code>.</p>"
-        "<p><b>변형</b><br>"
-        "&bull; <b>tlora</b> &mdash; 순수 T-LoRA, 직교성 제약 없음.<br>"
-        "&bull; <b>tlora_ortho</b> &mdash; T-LoRA + OrthoLoRA 스택 "
-        "(<code>use_ortho = true</code> + <code>use_timestep_mask = true</code>). "
-        "σ별 랭크 스케줄링과 직교성 정규화를 모두 원할 때 추천하는 범용 선택. "
-        "여전히 완전히 베이킹 가능합니다.</p>"
-    ),
-}
-
-
-def tlora_guide() -> str:
-    lang = current_language()
-    return TLORA_GUIDE.get(lang) or TLORA_GUIDE["en"]
-
-
-POSTFIX_GUIDE: dict[str, str] = {
-    "en": (
-        "<h2 style='margin:0 0 10px 0; font-size:17px;'>Postfix (cond + ortho)</h2>"
-        "<p><b>postfix_ortho_cond</b> &mdash; Caption-conditional postfix with "
-        "structural orthogonality. A small <code>cond_mlp</code> reads the pooled "
-        "caption embedding and emits <code>(S(c), λ(c))</code> per caption — "
-        "<code>K(K-1)/2 + 1</code> scalars — instead of a direct <code>K·D</code> "
-        "postfix tensor. Each caption's postfix is "
-        "<code>Cayley(S(c) − S(c)ᵀ) @ basis · λ(c)</code>, so "
-        "<code>postfix(c) @ postfix(c).T = λ(c)² · I_K</code> structurally: "
-        "uniform per-slot magnitude within a caption, magnitude varies across "
-        "captions.</p>"
-        "<p>Basis is the top-K right singular vectors of cached "
-        "<code>_anima_te.safetensors</code>, row-shuffled deterministically by "
-        "<code>ortho_basis_seed</code>. Trainable surface ~390k params at "
-        "K=32 / hidden=256 / D=1024 (vs ~8.65M for a legacy unconstrained cond "
-        "postfix at K=64). See "
-        "<code>docs/proposal/orthogonal_postfix.md §C</code>.</p>"
-    ),
-    "ko": (
-        "<h2 style='margin:0 0 10px 0; font-size:17px;'>Postfix (cond + ortho)</h2>"
-        "<p><b>postfix_ortho_cond</b> &mdash; 구조적 직교성을 갖춘 캡션 조건부 postfix. "
-        "작은 <code>cond_mlp</code>이 풀링된 캡션 임베딩을 읽어 캡션별로 "
-        "<code>(S(c), λ(c))</code>를 내놓습니다 — 직접적인 <code>K·D</code> "
-        "postfix 텐서 대신 캡션당 <code>K(K-1)/2 + 1</code>개의 스칼라만 출력. "
-        "각 캡션의 postfix는 <code>Cayley(S(c) − S(c)ᵀ) @ basis · λ(c)</code>이며, "
-        "따라서 구조적으로 <code>postfix(c) @ postfix(c).T = λ(c)² · I_K</code>: "
-        "캡션 내 슬롯별 크기는 균일하고, 캡션 간에는 크기가 변동합니다.</p>"
-        "<p>basis는 캐시된 <code>_anima_te.safetensors</code>의 top-K 우특이벡터로, "
-        "<code>ortho_basis_seed</code>에 따라 결정론적으로 행-셔플됩니다. "
-        "학습 가능한 파라미터는 K=32 / hidden=256 / D=1024 기준 약 390k개 "
-        "(K=64에서 제약 없는 레거시 cond postfix의 ~8.65M 대비). "
-        "<code>docs/proposal/orthogonal_postfix.md §C</code> 참조.</p>"
-    ),
-}
-
-
-def postfix_guide() -> str:
-    """Return the postfix variant guide HTML for the current language."""
-    lang = current_language()
-    return POSTFIX_GUIDE.get(lang) or POSTFIX_GUIDE["en"]
-
-
-# ── FeRA guide ───────────────────────────────────────────────
-
-FERA_GUIDE: dict[str, str] = {
-    "en": (
-        "<h2 style='margin:0 0 10px 0; font-size:17px;'>FeRA</h2>"
-        "<p>Author-faithful FeRA (Yin et al., arXiv:2511.17979). "
-        "<b>Independent-A</b> stacked experts &mdash; each expert owns its own "
-        "<code>lora_down</code>/<code>lora_up</code> &mdash; gated by a "
-        "<b>single global router</b> fed by a frequency-energy index "
-        "<code>FEI(z_t)</code> rather than the per-layer activation router used "
-        "by HydraLoRA. Lives on the LoRA-family network module via the three-"
-        "axis cfg <code>use_moe_style=\"independent_A\"</code> + "
-        "<code>route_per_layer=false</code> + <code>router_source=\"fei\"</code>.</p>"
-        "<p>Each expert is OrthoLoRA-parameterized "
-        "(<code>use_ortho=true</code>) so per-expert (down, up) factors share "
-        "PSOFT-style SVD bases with per-expert Cayley rotation + diagonal λ. "
-        "FECL (frequency-energy consistency loss) is wired but defaults off "
-        "&mdash; activating it doubles per-step cost via a second no-grad DiT "
-        "forward.</p>"
-        "<p><b>Bench notes.</b> The paper's 3-band split collapses to ~2 bands "
-        "on Anima flow-matching latents (mid band &lt;8% energy). Default keeps "
-        "<code>fera_num_bands=3</code> for author fidelity; flip to 2 with "
-        "<code>fera_fecl_weight=0</code> for the Anima-validated split. The "
-        "<code>σ_low = min(H_lat, W_lat) / fei_sigma_low_div</code> rule "
-        "(default div=4) is bench-validated for Anima &mdash; the paper's "
-        "pixel-domain <code>min(H, W)/128</code> is SD2-512²-specific.</p>"
-        "<p>Training produces <code>anima_fera*.safetensors</code> + a "
-        "<code>*_moe.safetensors</code> sibling holding the global router; "
-        "router-live inference uses <code>make test-hydra</code> / ComfyUI "
-        "<i>Anima Adapter Loader</i> (the same sniff path as HydraLoRA). "
-        "Requires <code>cache_llm_adapter_outputs=true</code>.</p>"
-    ),
-    "ko": (
-        "<h2 style='margin:0 0 10px 0; font-size:17px;'>FeRA</h2>"
-        "<p>저자 충실 FeRA (Yin et al., arXiv:2511.17979). "
-        "<b>Independent-A</b> 스택드 전문가 &mdash; 각 전문가가 자체 "
-        "<code>lora_down</code>/<code>lora_up</code>을 가지며 &mdash; "
-        "<b>단일 글로벌 라우터</b>가 주파수-에너지 지수 "
-        "<code>FEI(z_t)</code>를 입력으로 받아 게이팅합니다 (HydraLoRA의 레이어별 "
-        "활성화 라우터와 대조). LoRA 계열 네트워크 모듈에서 3축 설정 "
-        "<code>use_moe_style=\"independent_A\"</code> + "
-        "<code>route_per_layer=false</code> + <code>router_source=\"fei\"</code>로 "
-        "선택됩니다.</p>"
-        "<p>각 전문가는 OrthoLoRA 파라미터화 (<code>use_ortho=true</code>) — "
-        "전문가별 (down, up)이 PSOFT 스타일 SVD 베이시스를 공유하며 전문가별 "
-        "Cayley 회전 + 대각 λ를 가집니다. FECL (주파수-에너지 일관성 손실)은 "
-        "배선되어 있지만 기본 비활성 &mdash; 활성화하면 두 번째 no-grad DiT "
-        "포워드 때문에 스텝당 비용이 ~2배가 됩니다.</p>"
-        "<p><b>벤치 노트.</b> 논문의 3밴드 분할은 Anima flow-matching 잠재공간에서 "
-        "~2밴드로 수렴합니다 (중간 밴드 &lt;8% 에너지). 기본값은 저자 충실성을 위해 "
-        "<code>fera_num_bands=3</code>; Anima-검증 분할은 "
-        "<code>fera_fecl_weight=0</code>과 함께 2로 설정. "
-        "<code>σ_low = min(H_lat, W_lat) / fei_sigma_low_div</code> 규칙 "
-        "(기본 div=4)은 Anima에서 벤치-검증; 논문의 픽셀 도메인 "
-        "<code>min(H, W)/128</code>은 SD2-512² 전용입니다.</p>"
-        "<p>학습 시 <code>anima_fera*.safetensors</code> + 글로벌 라우터를 담은 "
-        "<code>*_moe.safetensors</code> 동반 파일이 생성됩니다. 라우터-라이브 "
-        "추론은 <code>make test-hydra</code> / ComfyUI "
-        "<i>Anima Adapter Loader</i> 사용 (HydraLoRA와 동일 sniff 경로). "
-        "<code>cache_llm_adapter_outputs=true</code> 필요.</p>"
-    ),
-}
-
-
-def fera_guide() -> str:
-    lang = current_language()
-    return FERA_GUIDE.get(lang) or FERA_GUIDE["en"]
-
-
-# ── "Not mergeable" callout ───────────────────────────────────
-# Reused by HydraLoRA / ReFT / Postfix guides — these methods can't be
-# baked into a plain DiT via scripts/merge_to_dit.py (router is layer-local
-# / hook-only / not a weight delta), so the user has to load the adapter at
-# inference time instead of distributing a merged checkpoint.
-
-NOT_MERGEABLE_HTML: dict[str, str] = {
-    "en": (
-        "<div style='background:#33231e; padding:10px 14px; border-left:3px solid #e67e22; "
-        "margin-bottom:14px; border-radius:3px;'>"
-        "<p style='margin:0; color:#f0c14b;'><b>⚠ Not mergeable into the base DiT.</b> "
-        "This method can't be baked via the Merge tab / "
-        "<code>scripts/merge_to_dit.py</code> — it relies on a runtime hook, "
-        "layer-local router, or non-weight delta. Distribute the adapter "
-        "<code>.safetensors</code> alongside the base model and load it at "
-        "inference time (e.g. ComfyUI <i>Anima Adapter Loader</i>).</p>"
-        "</div>"
-    ),
-    "ko": (
-        "<div style='background:#33231e; padding:10px 14px; border-left:3px solid #e67e22; "
-        "margin-bottom:14px; border-radius:3px;'>"
-        "<p style='margin:0; color:#f0c14b;'><b>⚠ 베이스 DiT에 병합 불가능.</b> "
-        "이 방식은 Merge 탭 / <code>scripts/merge_to_dit.py</code>로 베이킹할 수 "
-        "없습니다 — 런타임 훅, 레이어 로컬 라우터, 또는 가중치 델타가 아닌 형태로 동작하기 "
-        "때문입니다. 어댑터 <code>.safetensors</code>를 베이스 모델과 함께 배포하고 추론 "
-        "시점에 로드하세요 (예: ComfyUI <i>Anima Adapter Loader</i>).</p>"
-        "</div>"
-    ),
-}
-
-
-def not_mergeable_note() -> str:
-    lang = current_language()
-    return NOT_MERGEABLE_HTML.get(lang) or NOT_MERGEABLE_HTML["en"]
-
-
-# ── HydraLoRA guide ──────────────────────────────────────────
-
-HYDRALORA_GUIDE: dict[str, str] = {
-    "en": (
-        "<h2 style='margin:0 0 10px 0; font-size:17px;'>HydraLoRA</h2>"
-        "<p>MoE-style routing on top of LoRA: shared <code>lora_down</code> + "
-        "<code>num_experts</code> per-expert <code>lora_up</code> heads, routed "
-        "layer-locally from the adapted Linear's input. A load-balance loss "
-        "(<code>balance_loss_weight</code>) discourages router collapse onto a "
-        "single expert.</p>"
-        "<p><b>hydralora_sigma</b> &mdash; Adds a tiny sinusoidal(σ)→E bias MLP per "
-        "router so expert choice can vary with denoising timestep. Zero-init at "
-        "the final layer means step-0 starts identical to base HydraLoRA; σ-"
-        "dependence only emerges if gradients push it.</p>"
-        "<p><b>hydralora_experimental</b> &mdash; <code>hydralora_sigma</code> plus "
-        "hard σ-band specialization: <code>specialize_experts_by_sigma_buckets = "
-        "true</code> partitions the expert pool by timestep bucket so each σ-"
-        "band only routes to its assigned experts (e.g. with "
-        "<code>num_experts = 6</code> and 3 buckets, 2 experts per band). "
-        "<code>sigma_bucket_boundaries = [0.0, 0.5, 0.8, 1.0]</code> places the "
-        "splits unevenly &mdash; more capacity in the late, low-noise refinement "
-        "regime. More opinionated than the soft σ-bias router; useful when you "
-        "want experts to diverge along the timestep axis rather than "
-        "co-specialize.</p>"
-        "<p>Training produces a <code>*_moe.safetensors</code> sibling next to "
-        "the adapter; both files are needed for router-live inference "
-        "(<code>make test-hydra</code> / ComfyUI <i>Anima Adapter Loader</i>). "
-        "Requires <code>cache_llm_adapter_outputs = true</code>.</p>"
-    ),
-    "ko": (
-        "<h2 style='margin:0 0 10px 0; font-size:17px;'>HydraLoRA</h2>"
-        "<p>LoRA 위에 MoE 스타일 라우팅을 얹은 방식: 공유 <code>lora_down</code> + "
-        "<code>num_experts</code>개의 전문가별 <code>lora_up</code> 헤드를, 적응된 "
-        "Linear의 입력으로부터 레이어 로컬하게 라우팅합니다. 부하 균형 손실"
-        "(<code>balance_loss_weight</code>)이 단일 전문가 붕괴를 방지합니다.</p>"
-        "<p><b>hydralora_sigma</b> &mdash; 각 라우터에 sinusoidal(σ)→E 바이어스 MLP를 "
-        "추가하여 전문가 선택이 디노이징 타임스텝에 따라 변동. 최종 레이어 zero-init → "
-        "초기에는 기본 HydraLoRA와 동일하며, σ-의존성은 그래디언트가 발생시킬 때만 "
-        "발현합니다.</p>"
-        "<p><b>hydralora_experimental</b> &mdash; <code>hydralora_sigma</code>에 "
-        "σ-밴드 하드 특화를 추가: <code>specialize_experts_by_sigma_buckets = "
-        "true</code>로 전문가 풀을 타임스텝 버킷별로 분할하여 각 σ-밴드가 할당된 "
-        "전문가만 사용합니다 (예: <code>num_experts = 6</code>, 버킷 3개일 때 밴드당 "
-        "전문가 2개). <code>sigma_bucket_boundaries = [0.0, 0.5, 0.8, 1.0]</code>로 "
-        "분할 지점을 비균등하게 배치 &mdash; 후반 저노이즈 디테일 단계에 더 많은 용량을 "
-        "할당합니다. 소프트 σ-바이어스 라우터보다 강한 제약이며, 전문가가 타임스텝 축을 "
-        "따라 분화되도록 명시적으로 강제하고 싶을 때 유용합니다.</p>"
-        "<p>학습 시 어댑터 옆에 <code>*_moe.safetensors</code> 동반 파일이 생성되며, "
-        "라우터-라이브 추론에는 두 파일 모두 필요합니다 "
-        "(<code>make test-hydra</code> / ComfyUI <i>Anima Adapter Loader</i>). "
-        "<code>cache_llm_adapter_outputs = true</code> 필요.</p>"
-    ),
-}
-
-
-def hydralora_guide() -> str:
-    lang = current_language()
-    return HYDRALORA_GUIDE.get(lang) or HYDRALORA_GUIDE["en"]
-
-
-# ── ReFT guide ──────────────────────────────────────────────
-
-REFT_GUIDE: dict[str, str] = {
-    "en": (
-        "<h2 style='margin:0 0 10px 0; font-size:17px;'>ReFT</h2>"
-        "<p>Block-level residual-stream intervention (Wu et al., NeurIPS 2024). "
-        "One <code>ReFTModule</code> per selected DiT block adds "
-        "<code>R^T &middot; (&Delta;W&middot;h + b) &middot; scale</code> to the "
-        "block's output — an additive side-channel, not a weight delta on any "
-        "Linear. Composes with any LoRA variant and lives in the same "
-        "<code>.safetensors</code>.</p>"
-        "<p>Pick blocks with <code>reft_layers</code> (e.g. <code>last_8</code>, "
-        "<code>stride_2</code>, or comma-separated indices). <code>reft_dim</code> "
-        "controls intervention rank; <code>reft_alpha</code> sets effective scale "
-        "via <code>alpha / dim</code>.</p>"
-        "<p><b>tlora_ortho_reft</b> bundles ReFT with T-LoRA + OrthoLoRA in one "
-        "training run — the LoRA half is bakeable, but the ReFT block hooks "
-        "aren't, so the merged DiT loses ReFT's contribution (the merge tool "
-        "warns and asks for <code>--allow-partial</code>).</p>"
-    ),
-    "ko": (
-        "<h2 style='margin:0 0 10px 0; font-size:17px;'>ReFT</h2>"
-        "<p>블록 수준 잔차 스트림 개입 (Wu et al., NeurIPS 2024). 선택된 각 DiT "
-        "블록에 하나의 <code>ReFTModule</code>이 "
-        "<code>R^T &middot; (&Delta;W&middot;h + b) &middot; scale</code>을 블록 "
-        "출력에 추가합니다 — Linear의 가중치 델타가 아닌 추가 사이드 채널입니다. 모든 "
-        "LoRA 변형과 함께 사용 가능하며 동일한 <code>.safetensors</code>에 저장됩니다.</p>"
-        "<p><code>reft_layers</code>로 블록 선택 (예: <code>last_8</code>, "
-        "<code>stride_2</code>, 또는 쉼표 구분 인덱스). <code>reft_dim</code>은 개입 "
-        "랭크를, <code>reft_alpha</code>는 <code>alpha / dim</code>으로 실효 스케일을 "
-        "설정합니다.</p>"
-        "<p><b>tlora_ortho_reft</b>는 ReFT를 T-LoRA + OrthoLoRA와 한 번의 학습으로 "
-        "묶은 변형입니다. LoRA 부분은 베이킹 가능하지만 ReFT 블록 훅은 베이킹할 수 "
-        "없어 병합된 DiT에서는 ReFT 기여가 사라집니다 (Merge 도구가 경고하고 "
-        "<code>--allow-partial</code>을 요구합니다).</p>"
-    ),
-}
-
-
-def reft_guide() -> str:
-    lang = current_language()
-    return REFT_GUIDE.get(lang) or REFT_GUIDE["en"]
-
-
-def apply_note() -> str:
-    """HTML block explaining Apply semantics — shown above variant guides."""
-    lang = current_language()
-    return APPLY_NOTE_HTML.get(lang) or APPLY_NOTE_HTML["en"]
+# ── Method guide dispatch ─────────────────────────────────────
+# Methods that can't be baked into a plain DiT via scripts/merge_to_dit.py
+# (router is layer-local / hook-only / not a weight delta) — render the
+# "not mergeable" callout above their guide.
+_NOT_MERGEABLE = frozenset({"postfix", "hydralora", "reft", "fera"})
+_KNOWN_METHODS = frozenset({"lora", "ortholora", "tlora", "postfix", "hydralora", "reft", "fera"})
 
 
 def method_guide(method: str) -> str | None:
     """Right-panel default HTML for *method*, or None if no guide is registered."""
-    if method == "lora":
-        return apply_note() + lora_guide()
-    if method == "ortholora":
-        return apply_note() + ortholora_guide()
-    if method == "tlora":
-        return apply_note() + tlora_guide()
-    if method == "postfix":
-        return apply_note() + not_mergeable_note() + postfix_guide()
-    if method == "hydralora":
-        return apply_note() + not_mergeable_note() + hydralora_guide()
-    if method == "reft":
-        return apply_note() + not_mergeable_note() + reft_guide()
-    if method == "fera":
-        return apply_note() + not_mergeable_note() + fera_guide()
-    return None
+    if method not in _KNOWN_METHODS:
+        return None
+    parts = [_guide("_apply_note")]
+    if method in _NOT_MERGEABLE:
+        parts.append(_guide("_not_mergeable"))
+    parts.append(_guide(method))
+    return "".join(parts)
