@@ -54,3 +54,7 @@ class ValCtx:
     train_loss_recorder: Any
     original_t_min: float
     original_t_max: float
+    # The val DatasetGroup itself. Held so CMMD-style validation can enumerate
+    # held-out items (absolute_path, caption, bucket_reso, text_encoder_outputs_npz)
+    # for paired sample generation against the cached PE reference pool.
+    dataset_group: Any = None

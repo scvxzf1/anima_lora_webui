@@ -55,7 +55,7 @@ def parse_args(description: str | None = None) -> argparse.Namespace:
         default="flash",
         help="torch | sdpa | xformers | sage | flash",
     )
-    p.add_argument("--n_images", type=int, default=8, help="Cached samples to use")
+    p.add_argument("--n_images", type=int, default=2, help="Cached samples to use")
     p.add_argument("--n_seeds", type=int, default=1, help="Seeds per sample")
     p.add_argument(
         "--image_h",

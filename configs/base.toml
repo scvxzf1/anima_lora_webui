@@ -64,7 +64,12 @@ keep_tokens = 3
 resolution = 1024
 batch_size = 1
 enable_bucket = true
+# Validation set size — used both for held-out paired CMMD eval (the live
+# val signal that replaced the legacy FM-MSE pass) and for any downstream
+# val machinery. Set `validation_split_num` (integer) to pin an exact
+# count; when non-zero it wins over the fractional `validation_split`.
 validation_split = 0.025
+validation_split_num = 0
 validation_seed = 42
 
   [[datasets.subsets]]

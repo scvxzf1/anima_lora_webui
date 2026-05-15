@@ -1025,3 +1025,64 @@ def _sample_image_inference(
         wandb_tracker.log(
             {f"sample_{i}": wandb.Image(image, caption=prompt)}, commit=False
         )
+
+
+def sample_image_to_tensor(
+    *,
+    accelerator: Accelerator,
+    dit: anima_models.Anima,
+    vae,
+    height: int,
+    width: int,
+    crossattn_emb: torch.Tensor,
+    neg_crossattn_emb: Optional[torch.Tensor] = None,
+    sample_steps: int = 20,
+    guidance_scale: float = 4.0,
+    flow_shift: float = 3.0,
+    seed: Optional[int] = None,
+) -> torch.Tensor:
+    """Sample one image and return the decoded pixel tensor in ``[-1, 1]``.
+
+    Sibling of :func:`_sample_image_inference` that skips disk I/O and the
+    PIL conversion. Returned tensor is ``[3, H, W]`` float (on
+    ``accelerator.device``), suitable for direct PE-Core encoding.
+
+    ``crossattn_emb`` is the prepared cross-attention embedding (already
+    LLM-adapter'd and padded to the model's expected length); CMMD val
+    builds it from cached TE outputs so we don't re-run the text encoder.
+    """
+    height = max(64, height - height % 16)
+    width = max(64, width - width % 16)
+    crossattn_emb = crossattn_emb.to(accelerator.device, dtype=dit.dtype)
+    if neg_crossattn_emb is not None:
+        neg_crossattn_emb = neg_crossattn_emb.to(accelerator.device, dtype=dit.dtype)
+
+    clean_memory_on_device(accelerator.device)
+    latents = do_sample(
+        height,
+        width,
+        seed,
+        dit,
+        crossattn_emb,
+        sample_steps,
+        dit.dtype,
+        accelerator.device,
+        guidance_scale,
+        flow_shift,
+        neg_crossattn_emb,
+    )
+
+    gc.collect()
+    synchronize_device(accelerator.device)
+    clean_memory_on_device(accelerator.device)
+    org_vae_device = vae.device
+    vae.to(accelerator.device)
+    decoded = vae.decode_to_pixels(latents)
+    vae.to(org_vae_device)
+    clean_memory_on_device(accelerator.device)
+
+    image = decoded.float()[0]
+    if image.ndim == 4:
+        # Drop temporal dim if the VAE returned [C, T, H, W].
+        image = image[:, 0, :, :]
+    return image.clamp(-1.0, 1.0)

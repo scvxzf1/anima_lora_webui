@@ -107,6 +107,7 @@ def build_loop_state(
     training_model,
     train_dataloader,
     val_dataloader,
+    val_dataset_group,
     optimizer,
     lr_scheduler,
     lr_descriptions,
@@ -248,6 +249,7 @@ def build_loop_state(
         train_loss_recorder=loss_recorder,
         original_t_min=args.t_min,
         original_t_max=args.t_max,
+        dataset_group=val_dataset_group,
     )
 
     # nsys workflow: --profile_steps START-END toggles the cuda profiler API

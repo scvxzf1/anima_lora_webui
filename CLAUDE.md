@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Anima — LoRA/T-LoRA training and inference pipeline for the Anima diffusion model (DiT-based, flow-matching). Supports several adapter families (LoRA / OrthoLoRA / T-LoRA / HydraLoRA / FeRA / ReFT / postfix / IP-Adapter / EasyControl) selectable via method config + hardware preset. As of plan2 the LoRA-family routing flags (`use_hydra`, `use_fei_router`, …) collapsed into a three-axis surface — `use_moe_style` / `route_per_layer` / `router_source` — see `configs/methods/lora.toml` header and `plan2.md`.
+Anima — LoRA/T-LoRA training and inference pipeline for the Anima diffusion model (DiT-based, flow-matching). Supports several adapter families (LoRA / OrthoLoRA / T-LoRA / HydraLoRA / FeRA / ReFT / postfix / IP-Adapter / EasyControl) selectable via method config + hardware preset. The LoRA family is routed via a three-axis surface — `use_moe_style` / `route_per_layer` / `router_source` — see `configs/methods/lora.toml`.
 
 ## Setup
 
@@ -64,11 +64,6 @@ make lora-gui GUI_PRESETS=hydralora_fei                        # Hydra with FEI-
 
 # Modulation guidance distillation
 make distill-mod           # Train pooled_text_proj MLP (text → AdaLN modulation)
-
-# Embedding inversion (archived — run scripts directly under archive/inversion/)
-# python archive/inversion/invert_embedding.py ...
-# python archive/inversion/invert_reference.py ...
-# python archive/inversion/interpret_inversion.py ...
 
 # Inference (test with most recent output)
 make test
@@ -154,7 +149,7 @@ On Windows, use `python tasks.py <command>` instead of `make <command>`. Extra a
 | `scripts/tasks/` | Per-domain task implementations (`training`, `inference`, `preprocess`, `masking`, `gui`, `downloads`, `utilities`, `tagger`, `dcw`) — where command bodies actually live; `_common.py` holds shared helpers. |
 | `scripts/experimental_tasks/` | Bodies for the `exp-*` commands (postfix, ip-adapter, easycontrol training + their `exp-test-*` inference). Reuses helpers from `scripts/tasks/_common.py`. |
 
-Deep-dives in `docs/methods/` (shipped): `dcw.md`, `hydra-lora.md`, `invert.md`, `mod-guidance.md`, `psoft-integrated-ortholora.md`, `reft.md`, `spectrum.md`, `timestep_mask.md`. Experimental method docs live under `docs/experimental/`: `anima_tagger.md`, `directedit_editing_v3.md`, `easycontrol.md`, `fera.md`, `ip-adapter.md`, `postfix.md`, `soft_token_idea.md`, `soft_tokens.md`. Active proposals are in `docs/proposal/`: `img2emb_plan.md`, `ip-adapter-0502.md`, `orthogonal_postfix.md`, `postfix_residual_for_directedit.md`, `postfix_residual_per_image_inversion.md`. Retired/superseded design docs (DCW v1–v4 proposals, DirectEdit v2, ip-adapter_plan) live under `archive/proposals/` and `archive/dcw-learnable-calibrator/proposals/`. APEX (proposal + bench + method + adapter) is archived under `archive/apex/`.
+Method deep-dives in `docs/methods/` (shipped); experimental method docs in `docs/experimental/`; active proposals in `docs/proposal/`. Retired material lives under `archive/`.
 
 ## Config flow
 
@@ -164,7 +159,7 @@ Layout:
 - `configs/base.toml` — shared infrastructure (model paths, optimizer, compile flags, etc.) AND the default LoRA dataset blueprint (`[general]` + `[[datasets]]` + `[[datasets.subsets]]`). LoRA reads resized images from `post_image_dataset/resized/` with caches redirected to `post_image_dataset/lora/` via `cache_dir`. Captions live in `image_dataset/` (master) — TE caching reads `.txt` from there, training reads only the cached prompt embeddings. The dataset sections are consumed by `BlueprintGenerator` and skipped by the flat method+preset merge chain (see `_DATASET_CONFIG_SECTIONS` in `library/train_util.py`); use `--dataset_config <path>` for a wholly different blueprint, or drop a `[general]` / `[[datasets]]` block into the method TOML to shallow-override top-level scalars (e.g. `batch_size`) on the base blueprint — see `_apply_dataset_overrides` in `library/config/io.py`. Subset-level overrides are not supported via this path.
 - `configs/presets.toml` — all hardware profiles in one file as TOML sections: `[default]`, `[fast_16gb]`, `[low_vram]` (also serves as Windows 8GB), `[half]` (experiment preset — sets `sample_ratio=0.5` for every subset via the global `--sample_ratio` override). Holds `blocks_to_swap`, `gradient_checkpointing`, `unsloth_offload_checkpointing`, etc.
 - `configs/methods/` — one file per algorithm family. Holds rank, the three-axis routing knobs (`use_moe_style` / `route_per_layer` / `router_source`), other method flags (`add_reft`, `use_ortho`, `use_timestep_mask`, …), and the method's opinionated learning rate / epochs / output_name. Five files:
-  - `lora.toml` — LoRA / OrthoLoRA / T-LoRA / HydraLoRA / FeRA / ReFT. The three-axis routing surface (plan2) replaced the old `use_hydra` / `use_fei_router` / `use_sigma_router` flags. Variants are toggle blocks; default stacks LoRA + OrthoLoRA + T-LoRA + Hydra (`use_moe_style="shared_A"` + `route_per_layer=False` + `router_source="fei"`). The σ-routed Hydra and ReFT blocks are present but commented. Default ships `save_every_n_epochs = 4` / `checkpointing_epochs = 4`. **Pre-plan2 checkpoints with `ss_use_hydra`/`ss_use_fei_router` metadata no longer load** — the legacy fallback was removed in plan2 task #6.
+  - `lora.toml` — LoRA / OrthoLoRA / T-LoRA / HydraLoRA / FeRA / ReFT. Variants are toggle blocks; default stacks LoRA + OrthoLoRA + T-LoRA + Hydra (`use_moe_style="shared_A"` + `route_per_layer=False` + `router_source="fei"`). The σ-routed Hydra and ReFT blocks are present but commented. Default ships `save_every_n_epochs = 4` / `checkpointing_epochs = 4`. **Pre-three-axis checkpoints with `ss_use_hydra`/`ss_use_fei_router` metadata no longer load** — the legacy fallback was removed.
   - `postfix.toml` — two modes wired in `networks/methods/postfix.py`: `mode=postfix` (free-parameter K×D shared postfix) and `mode=cond` (caption-conditional, always uses an orthonormal SVD-of-cached-TE basis + Cayley rotation). Default block runs `mode=cond`.
   - `ip_adapter.toml` — IP-Adapter image cross-attention (DiT frozen; trains resampler + per-block `to_k_ip`/`to_v_ip`). Reuses the LoRA pipeline's data layout (`post_image_dataset/resized/` + `post_image_dataset/lora/`). Defaults to PRE-CACHED PE features (`make preprocess-pe`).
   - `easycontrol.toml` — EasyControl image conditioning (DiT frozen; trains per-block cond LoRA on self-attn + FFN + scalar `b_cond` gate). Source: `easycontrol-dataset/`. Caches: `post_image_dataset/easycontrol/`. Reuses cached VAE latents — no new sidecar.
@@ -173,7 +168,7 @@ Layout:
 
 Subsets accept an optional `cache_dir` key — when set, all VAE / text-encoder / PE caches are written to (and read from) that directory using stem-mirrored filenames, instead of sitting next to the source image. IP-Adapter and EasyControl method configs use this to keep `ip-adapter-dataset/` and `easycontrol-dataset/` purely user-facing source dirs while caches live under `post_image_dataset/`.
 
-`library.train_util.load_method_preset(method, preset, methods_subdir="methods")` is the reusable merge helper. Pass `methods_subdir="gui-methods"` to resolve against the clean per-variant tree instead of the toggle-block method files. All paths in configs are relative to `anima_lora/` (e.g., `models/...`, `output/ckpt/`). Runtime outputs are split by kind: trained checkpoints (+ `.snapshot.toml` + `_moe` siblings) in `output/ckpt/`, inference images in `output/tests/`, embedding-inversion results in `output/inversions/`, img2emb artifacts in `output/img2embs/`.
+`library.train_util.load_method_preset(method, preset, methods_subdir="methods")` is the reusable merge helper. Pass `methods_subdir="gui-methods"` to resolve against the clean per-variant tree instead of the toggle-block method files. All paths in configs are relative to `anima_lora/` (e.g., `models/...`, `output/ckpt/`). Runtime outputs are split by kind: trained checkpoints (+ `.snapshot.toml` + `_moe` siblings) in `output/ckpt/`, inference images in `output/tests/`.
 
 ## Architecture
 
@@ -184,7 +179,7 @@ Subsets accept an optional `cache_dir` key — when set, all VAE / text-encoder 
   - `library/inference/` — generation, sampling, output, plus `dcw_calibrator.py` (DCW v4 controller + scalar mode), `directedit.py` + `directedit_splice.py` + `edit_dispatcher.py` (DirectEdit invert+edit primitive + ψ-splice variant + multi-dispatch entry), `postfix_inversion.py` (postfix-tail per-image inversion — see `scripts/inversion/invert_postfix_tail.py`), `mod_guidance.py`, `adapters.py`.
   - `library/models/` — ancillary model defs: `qwen_vae.py` (VAE), `sai_spec.py` (metadata spec).
   - `library/captioning/` — Anima Tagger used by DirectEdit's case-1 ψ_src path (`anima_tagger.py`, shared `tag_rules.py`, plus `anima_tagger_data.py` / `anima_tagger_model.py` for training).
-  - `library/vision/` — shared vision tower / resampler / bucket helpers (extracted from `archive/img2emb`; live consumer is IP-Adapter).
+  - `library/vision/` — shared vision tower / resampler / bucket helpers (live consumer is IP-Adapter).
   - `library/config/` — `schema.py` (validation), `loader.py` (TOML merge chain).
   - `library/io/` — `cache.py` (disk cache helpers), `safetensors.py`.
   - `library/runtime/` — `device.py`, `offloading.py`, `noise.py` (flow-matching sampling).
@@ -192,15 +187,6 @@ Subsets accept an optional `cache_dir` key — when set, all VAE / text-encoder 
   - `library/log.py` — logging setup + `fire_in_thread`.
 - **Strategy pattern** for model-specific tokenization/encoding (`library/anima/strategy.py`, `library/strategy_base.py`)
 - **Pluggable adapters** under `networks/` — selected via `network_module` config key plus (for the LoRA family) the three-axis routing cfg. Covers LoRA / OrthoLoRA / T-LoRA / HydraLoRA / FeRA / ReFT (in `networks/lora_modules/` — including `stacked_experts.py` for FeRA's independent-A layout) coordinated by `networks/lora_anima/` (`network.py`, `factory.py`, `loading.py`, `config.py`, `attn_fuse.py`); postfix / IP-Adapter / EasyControl / REPA (in `networks/methods/`); the unified attention-backend dispatcher (`networks/attention_dispatch.py`); and Spectrum inference (`networks/spectrum.py`). See `networks/CLAUDE.md` for the per-module map, three-axis surface, variant details, and dispatch invariants.
-
-### Training flow (train.py)
-
-1. Load text encoder -> cache text encoder outputs to disk -> unload text encoder
-2. Load VAE -> cache latents to disk -> unload VAE
-3. Load DiT lazily (after caching frees VRAM)
-4. Create LoRA/Postfix network, apply to target modules via monkey-patching
-5. Training loop: noise sampling -> DiT forward -> loss -> backward -> optimizer step
-6. Optional validation: multi-timestep loss + sample generation
 
 ## Critical invariants
 
@@ -214,7 +200,7 @@ All bucket resolutions ensure `(H/16)*(W/16) ~ 4096` patches. Batch elements are
 
 ### Lazy model loading
 
-DiT is loaded AFTER text encoder/VAE caching and unloading to avoid OOM. The sequence is: text encoder -> cache -> free -> VAE -> cache -> free -> load DiT.
+DiT is loaded AFTER text encoder/VAE caching and unloading to avoid OOM. The sequence is: text encoder → cache → free → VAE → cache → free → load DiT → attach LoRA/postfix network → training loop.
 
 ## Spectrum inference acceleration
 
@@ -240,7 +226,7 @@ Image-editing primitive that pairs an inversion (DDIM-style trajectory through t
 
 Use `make exp-test-directedit-dry` to verify ψ_tar == ψ_src reconstructs the source — gates whether the inversion is well-conditioned independent of edit semantics.
 
-See `docs/experimental/directedit_editing_v3.md` (what's built) and `docs/experimental/anima_tagger.md` (tagger architecture). The earlier v2 proposal lives in `archive/proposals/directedit_editing_v2.md` (alongside `directedit_editing.md` and `directedit_gaps.md`).
+See `docs/experimental/directedit_editing_v3.md` (what's built) and `docs/experimental/anima_tagger.md` (tagger architecture).
 
 ## Modulation guidance
 
@@ -258,11 +244,9 @@ Extended self-attention image conditioning. DiT is frozen; trains per-block cond
 
 Per-layer time-indexed soft text tokens (Lee et al., arXiv:2503.08250, NeurIPS 2025). DiT frozen; trains a `(n_layers, K, D)` token bank + `(n_t_buckets, n_layers, D)` t-offsets — ~1M params at default. For each of the first `n_layers` blocks, a `(layer, t-bucket)`-specific token slice is spliced into `crossattn_emb` via a per-block `Block.forward` monkey-patch (ReFT-pattern); end-of-sequence overwrite of zero-padding tail (or `front_of_padding` scatter) keeps `_run_blocks` torch.compile shape-static. Anima's cross-attention (not joint-stream MM-DiT) means each block independently sees a different `crossattn_emb` — no strip/re-prepend dance. Adopts only the parameterization from the SoftREPA paper; the contrastive InfoNCE objective is intentionally skipped (caused SD3 FID regression). Training-only v1: `inference.py` will refuse to load these checkpoints until per-step block hooks are wired into the denoising loop. See `docs/experimental/soft_tokens.md`.
 
-## Embedding inversion
+## Postfix-tail per-image inversion
 
-Optimizes text embeddings (post-T5, pre-DiT space) to minimize flow-matching loss for a target image through the frozen DiT. Reveals how the model interprets images in embedding space. Archived — run `python archive/inversion/invert_embedding.py` (or `invert_reference.py` / `interpret_inversion.py`) directly. See `docs/methods/invert.md`.
-
-A related but live path is **postfix-tail per-image inversion** (`library/inference/postfix_inversion.py`, `scripts/inversion/invert_postfix_tail.py`): given a postfix-trained checkpoint, optimize a per-image residual on the postfix tail to reconstruct a target image without retraining the base LoRA. Wired in `tasks.py`; see `docs/proposal/postfix_residual_per_image_inversion.md` for the design.
+Given a postfix-trained checkpoint, optimize a per-image residual on the postfix tail to reconstruct a target image without retraining the base LoRA. Code in `library/inference/postfix_inversion.py` + `scripts/inversion/invert_postfix_tail.py`; wired in `tasks.py`. See `docs/proposal/postfix_residual_per_image_inversion.md`.
 
 ## Preprocessing
 
@@ -287,8 +271,6 @@ Utility scripts in `scripts/`:
 - `anima_tagger/cli.py` — Train the Anima Tagger checkpoint used by DirectEdit (invoke as `python -m scripts.anima_tagger.cli`). See `docs/experimental/anima_tagger.md`.
 - `edit.py` — Standalone DirectEdit CLI entry (the `make exp-test-directedit` wrapper around it lives in `scripts/experimental_tasks/inference.py`).
 - `scripts/dcw/` — DCW v4 calibration pipeline: `measure_bias.py` (per-aspect trajectory dump), `train_fusion_head.py` (fusion-head trainer), `trajectory.py`, `haar.py`, etc. Driven by `make dcw` / `make dcw-train` (`scripts/tasks/dcw.py`).
-
-Archived utilities (legacy, no longer wired up): `archive/img2emb/` (resampler training + inference) and `archive/inversion/` (embedding/reference inversion). The shared resampler/encoder/bucket modules they used have been extracted into `library/vision/` for live IP-Adapter use.
 
 ## Custom nodes
 

@@ -14,31 +14,62 @@ Thanks for considering a contribution. This repo welcomes targeted fixes and new
 
 ## Priority areas
 
-Two areas where outside contributions would have the biggest impact right now. Both are wired and training end-to-end — what's missing is productionization, ecosystem, and breadth. Tier annotations below map each item to the requirements in the rest of this document.
+Four areas where outside contributions would have the biggest impact right now. Each item below carries a tier annotation that maps to the requirements in the rest of this document. Open a draft PR or issue early on anything bigger than Tier 1 — happy to scope and review.
 
-### IP-Adapter
+### 1. EasyControl adapters
 
-Decoupled image cross-attention (Ye et al. 2023). DiT frozen; resampler + per-block `to_k_ip`/`to_v_ip` train end-to-end and inference works via `inference.py`. See [`docs/experimental/ip-adapter.md`](docs/experimental/ip-adapter.md).
-
-What's missing:
-
-- **Integration tests** — fixed reference images, recorded resampler outputs, per-block IP KV shape contract, end-to-end seeded SSIM range. *[Tier 1.5]*
-- **Reference checkpoint on HuggingFace** — `anima-ip-adapter-v1` with a model card (training recipe, samples, numbers) so contributors have a baseline to compare against. *[ecosystem; no new code, treat as Tier 1.5 — paste training command + numbers]*
-- **Pluggable vision encoder** — PE-Core-L14-336 is the install-friction tax. SigLIP-L or CLIP-L as a swappable lighter default; PE-Core stays as the high-quality option. *[Tier 1.5]*
-- **ComfyUI parity** — verify `AnimaAdapterLoader` (in `custom_nodes/comfyui-hydralora/`) covers IP-Adapter (resampler + per-block IP KV) or file the gap. *[Tier 1]*
-- **Image-only CFG, batched multi-reference, `--ip_scale` schedule** — small self-contained PRs. *[Tier 1]*
-
-### EasyControl adapters
-
-Per-block cond LoRA on self-attn + FFN with a logit-bias gate. The architecture is naturally contribution-friendly: each control type is one independent adapter. See [`docs/experimental/easycontrol.md`](docs/experimental/easycontrol.md). What's missing is the **adapter zoo** around it.
+Per-block cond LoRA on self-attn + FFN with a logit-bias gate. DiT frozen; trains a handful of cond LoRA blocks plus a scalar gate. The architecture is naturally contribution-friendly: each control type is one independent adapter, no method changes required. See [`docs/experimental/easycontrol.md`](docs/experimental/easycontrol.md). The wall right now is the **adapter zoo** around it.
 
 - **Trained adapters** — canny, depth, pose, lineart, scribble, segmentation, … each one a self-contained PR with model card, training config, and samples. Hosted under a HuggingFace collection (planned: `anima-easycontrol`). *[Tier 1.5 — bench numbers and side-by-side samples carry the PR; no new method code]*
 - **Per-task dataset spec** — one doc per control type covering pair format, recommended size (~2k pairs), where to source signal images. Currently undocumented. *[Tier 1]*
 - **Toy datasets** — 200-pair CC-licensed bundles per control type so a contributor can validate the pipeline before committing to a full dataset. *[Tier 1]*
 - **One-command training aliases** — `make easycontrol-canny`, `make easycontrol-depth`, … as per-task preset configs in `configs/methods/easycontrol/`. *[Tier 1]*
-- **Eval harness** — held-out ~100-pair sets per control type with a control-fidelity metric (re-extract signal from generation, compare to input). Lets adapter PRs be reviewed on numbers rather than vibes. *[Tier 1.5]*
+- **Control-fidelity eval harness** — held-out ~100-pair sets per control type that re-extract the signal from generation (canny→canny, depth→depth, …) and report a fidelity metric vs the input. Lets adapter PRs be reviewed on numbers rather than vibes. The current `bench/easycontrol/` directory has equivalence + smoke scripts only; the harness slot is empty. *[Tier 1.5]*
 
-Open a draft PR or issue early — happy to scope and review.
+### 2. Turbo LoRA (Decoupled DMD distillation)
+
+Distill 28-step Anima @ CFG=4 into a 4–8 step generator using **co-LoRA** (LoRA for both the student and the fake score model on the same frozen DiT). The deployment story is that `turbo_anima_lora.safetensors` stacks on top of any existing concept LoRA at inference, the same way LCM-LoRA composes with style LoRAs. See [`docs/proposal/turbo_anima_dmd_lora.md`](docs/proposal/turbo_anima_dmd_lora.md) — Decoupled DMD reference: Liu et al., arXiv:2511.22677.
+
+Status: proposal only — no code, no checkpoints, no bench. The proposal is fully scoped (file-level plan, phased validation, risk register) and is waiting on an implementer.
+
+What's missing — this is one Tier 2 PR by definition (new method + paper + `bench/turbo/` + docs/methods entry + `make exp-turbo` / `make exp-test-turbo`), but it splits cleanly along phase boundaries:
+
+- **Phase 0: single-prompt overfit (~1 day).** Implement `networks/methods/turbo_dmd.py` (two LoRA networks, attachment toggle), `scripts/distill_turbo.py` (CA + DM gradient assembly, two optimizer states, the renoise primitive), `configs/methods/turbo.toml`, `make exp-turbo`. Prove the loop converges on one prompt at batch 1, 2k iterations. *[Tier 2 — drop a `bench/turbo/results/<ts>-phase0/` with teacher@28 vs student@4 side-by-side on a fixed seed]*
+- **Phase 1: 100-prompt sweep (~3 days).** Image Reward + HPS v2.1 + per-aspect breakdown (1024², 832×1248, 1248×832). Pass = student IR ≥ 80% of teacher, no aspect below 60%. *[Tier 2 continuation]*
+- **Phase 2: full HPS bench (~1 week).** 1k COCO-prompt sample, all 4 schedule configs from the paper's Table 1 as an ablation, replicates the paper's Decoupled-Hybrid claim on Anima. *[Tier 1.5 once Phase 1 has landed]*
+- **Phase 3: composition test (~2 days).** (turbo only) vs (concept LoRA @ 28) vs (turbo + concept @ 4) on three existing concept checkpoints. Validates the deployment story. *[Tier 1.5]*
+
+If Phase 1 fails after one rank bump, the proposal explicitly says kill it — don't grind. The phase gates are there to bound the contributor's downside.
+
+### 3. DCW calibration
+
+DCW v4 (`make dcw` → `fusion_head.safetensors`) ships. The wall is calibration coverage: each released LoRA needs its own fusion head, and several v4 controller paths are stubbed. See [`docs/methods/dcw.md`](docs/methods/dcw.md) "Limitations / open questions".
+
+- **σ̂² channel re-train (3-seed rerun).** Prototype fails Gate B on the variance head. Default is to ship with `--dcw_v4_disable_shrinkage` until this clears. Run `make dcw` across 3 independent seeds, retrain `train_fusion_head.py` with the combined pool, re-evaluate Gate B. If it still fails, document the failure and harden the disable flag as permanent. *[Tier 1.5 — bench script exists, the contribution is the seed sweep + write-up]*
+- **Tiled inference path.** v4 controller currently no-ops under tiled VAE/DiT. The single-tile `c_pool` / `g_obs` is ill-defined at tile boundaries. Two paths: (a) compute one global `c_pool` / `g_obs` before tiling and broadcast it across tiles, (b) keep the no-op and document. Either is a valid PR; (a) is preferred. *[Tier 1.5]*
+- **CFG drift.** v4 is calibrated at CFG=4 only — the production setting. CFGs other than 4 fall back to scalar. A CFG=1 / CFG=7 calibration pool + a `--dcw_v4_cfg_select` switch would close the gap. The CFG=1 case in particular intersects with paper-direction sign-flips (`project_dcw_cfg_aspect_signflip`). *[Tier 2-shaped — new calibration pool counts as a bench artifact]*
+- **Cached-Spectrum `x0_pred` ablation.** v4 should still help under Spectrum because the correction is bias-agnostic, but the Chebyshev forecaster biases `x0_pred` and the row hasn't been measured. One bench run, one ablation table. *[Tier 1.5]*
+- **Per-released-LoRA fusion heads.** Each major LoRA release should ship its calibrated head as a sibling artifact (`<lora_name>.fusion_head.safetensors`). The current `make dcw` is incremental — the contribution is running it on each released checkpoint and publishing the head. *[Tier 1 — operational, no code]*
+- **`scripts/dcw/` documentation pass.** `measure_bias.py`, `train_fusion_head.py`, `haar.py`, `trajectory.py`, `collect_fei_sidecar.py` are under-commented. Reviewing each as a contributor would, and improving the docstrings / `--help` strings, is welcome. *[Tier 1]*
+
+### 4. Filling the bench gaps
+
+The `bench/<method>/` convention from Tier 2 below requires every method bench to ship a `README.md` (what it measures, run command, output layout, baseline run, interpretation). Several existing subdirs predate that requirement and are missing it:
+
+| Subdir | Status | What it has | What's needed |
+|---|---|---|---|
+| `bench/dcw/` | **No README** | `measure_bias.py`, `train_fusion_head.py`, `covariance_ceiling.py`, `k_supervision_sweep.py`, `stability_predictor_check.py`, `sweep_buckets.py`, `transfer_hypothesis_check.py`, `plot_seed_band.py` — large `results/` corpus | One README that maps each script to a finding and links to a canonical results dir |
+| `bench/easycontrol/` | **No README** | `step0_equivalence.py`, `step1p5_lse_equivalence.py`, `two_stream_smoke.py` | README + the control-fidelity harness slot from (1) above |
+| `bench/fera/` | **No README** | `probe_fei.py`, `probe_fei_dataset.py`, `probe_fei_3band_dataset.py`, `probe_closed_loop.py`, `expressivity_analysis.py`, `refactor_lowdim_forward.py` | README explaining the probe ladder + linking to the 2-band decision in `project_fera_probe_2band_decision` |
+| `bench/hydralora/` | **No README** | `bench.py`, `analyze_drift.py`, `prompts.example.txt`, plus `hydralora_proposal.md` + `progress0421.md` | README that promotes the proposal/progress notes into a runnable-bench entry |
+| `bench/spectrum/` | Has README | analytical drift simulator + image bench | None — use this one as the shape template |
+
+Each missing README is a self-contained Tier 1 PR. Use `bench/spectrum/README.md` as the model: headline, what each script does, a copy-pasteable run command, the headline number(s) and what "good" looks like, links to representative `results/<timestamp>/` runs, and an "Observed on Anima" section.
+
+A second-order bench-gap contribution worth calling out:
+
+- **Envelope conformance.** Older bench scripts predate `bench/_common.py` and don't drop a `result.json` via `make_run_dir` + `write_result`. Auditing each script and converting the holdouts (so cross-run indexing actually works) is a clean Tier 1 PR per script.
+- **`bench/turbo/` doesn't exist yet** — it lands as part of the Turbo LoRA contribution in (2) above.
 
 ## Tier 1 — bug fixes, typos, UI, arg/CLI tweaks
 
@@ -67,7 +98,7 @@ These sit between Tier 1 and Tier 2: no new paper or new docs page is required, 
    - **Add to an existing `bench/<method>/`** if the change is scoped to one method (e.g. a HydraLoRA router tweak goes under `bench/hydralora/`). Append a new script and a new section to that bench's README.
    - **Add a small `bench/<topic>/`** for cross-cutting changes (e.g. an attention dispatch optimization belongs in something like `bench/attention/`).
 
-   The script must report the headline number(s) it claims to move — wall-clock, peak VRAM, loss-at-N-steps, drift, whatever the change targets — for **both before and after**. A single-number claim ("20% faster") with no reproducible script does not clear the bar.
+   The script must report the headline number(s) it claims to move — wall-clock, peak VRAM, loss-at-N-steps, drift, whatever the change targets — for **both before and after**. A single-number claim ("20% faster") with no reproducible script does not clear the bar. If the script loads the DiT, use `bench/_anima.py` (`add_common_args` + `build_anima`) — same rationale as Tier 2 §2 below: every DiT-loading bench needs to expose `--compile` and load the adapter in the right order, and the helper enforces both.
 
 2. **New or extended tests.** At least one test that locks in the invariant the change is supposed to preserve. Examples:
    - For a kernel rewrite: a numerical-equivalence test against the previous path within a stated tolerance.
@@ -115,6 +146,23 @@ A new entry in `networks/lora_modules/` or `networks/methods/`, or a new variant
    write_result(out_dir, script=__file__, args=args,
                 metrics={...}, artifacts=[...], device=device)
    ```
+
+   **Benches that load the DiT must use `bench/_anima.py`.** It owns the model-side boilerplate — argparse surface, DiT + adapter loading in the correct order, bucketed sample discovery from `post_image_dataset/lora/`. `add_common_args(parser)` injects `--label`, `--seed`, `--device`, `--dtype`, `--attn_mode`, `--gradient_checkpointing`, `--cpu_offload_checkpointing`, `--compile`, `--compile_mode`. `build_anima(args, adapter=..., train_mode=...)` does the load in the right order — in particular, **`compile_blocks` runs after `apply_to` + `load_weights`** so adapter monkey-patches are part of the compiled graph. Open-coding this is a footgun (skipping `--compile` entirely, or compiling in the wrong order so the adapter is bypassed). Use the helper:
+
+   ```python
+   from bench._anima import add_common_args, build_anima, discover_bucketed_samples
+
+   p = argparse.ArgumentParser()
+   p.add_argument("--dit", required=True)
+   p.add_argument("--adapter", default=None)
+   add_common_args(p)
+   args = p.parse_args()
+
+   bundle = build_anima(args, adapter=args.adapter, train_mode=False)
+   anima, network = bundle.anima, bundle.network
+   ```
+
+   Benches that don't load the DiT (analytical simulators, post-hoc result-aggregators) don't import `bench/_anima.py` — both modules are opt-in.
 
    The bench README must include:
    - **What it measures** — the headline number(s) and what "good" looks like.

@@ -1677,6 +1677,7 @@ class DreamBoothDataset(BaseDataset):
         validation_split: float,
         validation_seed: Optional[int],
         resize_interpolation: Optional[str],
+        validation_split_num: int = 0,
     ) -> None:
         super().__init__(
             resolution, network_multiplier, debug_dataset, resize_interpolation
@@ -1691,6 +1692,7 @@ class DreamBoothDataset(BaseDataset):
         self.is_training_dataset = is_training_dataset
         self.validation_seed = validation_seed
         self.validation_split = validation_split
+        self.validation_split_num = int(validation_split_num or 0)
 
         self.enable_bucket = enable_bucket
         if self.enable_bucket:
@@ -1806,7 +1808,7 @@ class DreamBoothDataset(BaseDataset):
                         f"set image size from cache files: {size_set_count}/{len(img_paths)}"
                     )
 
-            if self.validation_split > 0.0:
+            if self.validation_split > 0.0 or self.validation_split_num > 0:
                 if subset.is_reg is True:
                     if self.is_training_dataset is False:
                         img_paths = []
@@ -1818,6 +1820,7 @@ class DreamBoothDataset(BaseDataset):
                         self.is_training_dataset,
                         self.validation_split,
                         self.validation_seed,
+                        validation_split_num=self.validation_split_num,
                     )
 
             if subset.sample_ratio < 1.0 and len(img_paths) > 0:

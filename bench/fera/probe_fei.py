@@ -322,6 +322,13 @@ def main() -> None:
     )
     p.add_argument("--attn_mode", default="flash")
     p.add_argument(
+        "--compile",
+        action="store_true",
+        help="Wrap the DiT with torch.compile after load. One compile pass per "
+        "bucket shape (3 shapes for the default bucket list); amortizes over "
+        "n_prompts × n_seeds × infer_steps forwards per shape.",
+    )
+    p.add_argument(
         "--dog_low_div",
         type=float,
         default=8.0,
@@ -368,6 +375,10 @@ def main() -> None:
     )
     anima.to(device, dtype=dtype).eval().requires_grad_(False)
     anima.reset_mod_guidance()
+
+    if args.compile:
+        log.info("torch.compile(anima) — first forward per bucket will pay compile cost")
+        anima = torch.compile(anima)
 
     # Transient TE block — encode all prompts (+ optional uncond), then free.
     _setup_text_strategies(args.text_encoder)

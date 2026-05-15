@@ -41,7 +41,6 @@ from library.training.method_adapter import (
     MethodAdapter,
     SetupCtx,
     StepCtx,
-    ValidationBaseline,
     resolve_adapters,
 )
 from library.config.io import (
@@ -91,6 +90,12 @@ from library.training import (
     verify_training_args,
 )
 from library.training.loop import build_loop_state, run_training_loop
+from library.training.cmmd import (
+    cmmd_from_pools,
+    load_reference_features,
+    pool_and_normalize,
+    resolve_pe_sidecar,
+)
 from library.training.router_conditioning import apply_router_conditioning
 from library.training.text_conds import prepare_text_conds
 from library.training.forward_kwargs import build_forward_kwargs
@@ -1836,9 +1841,29 @@ class AnimaTrainer:
         log_div_key,
         logging_fn,
     ):
-        """Run a validation pass over val.dataloader x val.sigmas."""
+        """Validation = CMMD between the live model's samples and the held-out
+        reference's cached PE features.
+
+        Replaces the legacy FM-MSE per-sigma pass — that loss did not track
+        sample quality on Anima (see project_fm_val_loss_uninformative). For
+        each item in the validation split we load the cached TE outputs,
+        sample one image at the item's bucket resolution, pool its PE-Core
+        features, and report ``MMD²(ref_pool, gen_pool) × 1000`` against the
+        cached reference pool — same kernel/scale as Jayasumana et al. (CVPR
+        2024, google-research/cmmd).
+        """
         args = ctx.args
         accelerator = ctx.accelerator
+
+        if val.dataset_group is None:
+            return
+
+        val_items: list = []
+        for ds in val.dataset_group.datasets:
+            val_items.extend(ds.image_data.values())
+        if not val_items:
+            return
+
         ctx.optimizer_eval_fn()
         accelerator.unwrap_model(ctx.network).eval()
         unwrapped_unet = accelerator.unwrap_model(ctx.unet)
@@ -1848,166 +1873,156 @@ class AnimaTrainer:
             args.validation_seed if args.validation_seed is not None else args.seed
         )
 
-        # Adapter-supplied "without-this-method" baselines (e.g. IP-Adapter's
-        # "no_ip"). For each (val_step, sigma) we'll re-run process_batch with
-        # the adapter perturbed and log the delta -- this is what isolates the
-        # method's actual contribution when the primary FM loss is dominated
-        # by paths the method shortcircuits.
-        baselines: list[ValidationBaseline] = []
-        for adapter in self._adapters:
-            baselines.extend(adapter.validation_baselines())
-
-        val_progress_bar = tqdm(
-            range(val.total_steps * (1 + len(baselines))),
-            smoothing=0,
-            disable=not accelerator.is_local_main_process,
-            desc=progress_desc,
-        )
-        val_timesteps_step = 0
-        per_sigma_losses = {s: [] for s in val.sigmas}
-        per_baseline_per_sigma: dict[str, dict[float, list[float]]] = {
-            b.name: {s: [] for s in val.sigmas} for b in baselines
-        }
-
-        def _cudagraph_step_begin() -> None:
-            if not self._cudagraph_mark_step:
-                return
-            net_unwrapped = accelerator.unwrap_model(ctx.network)
-            if hasattr(net_unwrapped, "clear_step_caches"):
-                net_unwrapped.clear_step_caches()
-            torch.compiler.cudagraph_mark_step_begin()
-
-        for val_step, batch in enumerate(val.dataloader):
-            if val_step >= val.steps:
-                break
-
-            for sigma in val.sigmas:
-                self.on_step_start(ctx, batch, is_train=False)
-
-                # Pin sigma via t_min/t_max (what the noise function reads)
-                args.t_min = args.t_max = sigma
-
-                # Snapshot RNG so each baseline forward sees the same noise
-                # the primary did -- only the adapter state differs, so the
-                # delta is the adapter's contribution rather than noise.
-                rng_pre_primary = (
-                    (
-                        torch.get_rng_state(),
-                        torch.cuda.get_rng_state(),
-                        random.getstate(),
-                    )
-                    if baselines
-                    else None
-                )
-
-                # Mirror the training loop's cudagraph step-begin marker so
-                # cudagraph_trees doesn't re-record / leak a memory pool on
-                # each val forward (see the train-loop call site for context).
-                _cudagraph_step_begin()
-
-                loss = self.process_batch(ctx, batch, is_train=False)
-
-                current_loss = loss.detach().item()
-                val_loss_recorder.add(
-                    epoch=epoch, step=val_timesteps_step, loss=current_loss
-                )
-                per_sigma_losses[sigma].append(current_loss)
-                val_progress_bar.update(1)
-                val_progress_bar.set_postfix(
-                    {
-                        postfix_label: val_loss_recorder.moving_average,
-                        "sigma": f"{sigma:.2f}",
-                    }
-                )
-
-                self.on_validation_step_end(ctx, batch)
-                val_timesteps_step += 1
-
-                # --- Baseline sweep: same (batch, sigma, noise), perturbed
-                # adapter state. Logged separately as `<prefix>_baseline_<n>`.
-                if baselines:
-                    rng_post_primary = (
-                        torch.get_rng_state(),
-                        torch.cuda.get_rng_state(),
-                        random.getstate(),
-                    )
-                    for baseline in baselines:
-                        # Rewind RNG to pre-primary so the baseline draws the
-                        # same noise (and any other randomness) the primary
-                        # saw -- without this, the delta is dominated by
-                        # noise variance not the adapter's contribution.
-                        torch.set_rng_state(rng_pre_primary[0])
-                        torch.cuda.set_rng_state(rng_pre_primary[1])
-                        random.setstate(rng_pre_primary[2])
-
-                        baseline.enter()
-                        try:
-                            _cudagraph_step_begin()
-                            bl_loss = (
-                                self.process_batch(ctx, batch, is_train=False)
-                                .detach()
-                                .item()
-                            )
-                        finally:
-                            baseline.exit()
-                        per_baseline_per_sigma[baseline.name][sigma].append(bl_loss)
-                        val_progress_bar.update(1)
-                        val_progress_bar.set_postfix(
-                            {
-                                postfix_label: val_loss_recorder.moving_average,
-                                "sigma": f"{sigma:.2f}",
-                                f"Δ_{baseline.name}": f"{bl_loss - current_loss:+.4f}",
-                            }
-                        )
-                        self.on_validation_step_end(ctx, batch)
-                    # Resume the RNG stream where the primary left it so the
-                    # next (val_step, sigma) draws fresh noise as before.
-                    torch.set_rng_state(rng_post_primary[0])
-                    torch.cuda.set_rng_state(rng_post_primary[1])
-                    random.setstate(rng_post_primary[2])
-
-        if ctx.is_tracking:
-            loss_validation_divergence = (
-                val_loss_recorder.moving_average
-                - val.train_loss_recorder.moving_average
-            )
-            logs = {
-                log_avg_key: val_loss_recorder.moving_average,
-                log_div_key: loss_validation_divergence,
-            }
-            for s, losses in per_sigma_losses.items():
-                if losses:
-                    logs[f"loss/validation/sigma_{s:.2f}"] = sum(losses) / len(losses)
-
-            # Baseline aggregates. Prefix mirrors the primary key
-            # ("loss/validation/step_average" → "loss/validation/step") so
-            # step- and epoch-validation get distinct baseline series.
-            primary_avg = val_loss_recorder.moving_average
-            base_prefix = log_avg_key.removesuffix("_average")
-            for b in baselines:
-                per_sigma = per_baseline_per_sigma[b.name]
-                all_losses = [v for losses in per_sigma.values() for v in losses]
-                if not all_losses:
+        try:
+            # Reference PE features sit next to each val item's cached TE
+            # output (both produced by `make preprocess-pe` / `-te`).
+            ref_sidecars = []
+            ref_items = []
+            for item in val_items:
+                te_path = item.text_encoder_outputs_npz
+                if te_path is None:
                     continue
-                bl_avg = sum(all_losses) / len(all_losses)
-                logs[f"{base_prefix}_baseline_{b.name}"] = bl_avg
-                logs[f"{base_prefix}_baseline_{b.name}_delta"] = bl_avg - primary_avg
-                for s, losses in per_sigma.items():
-                    if losses:
-                        logs[f"{base_prefix}_baseline_{b.name}/sigma_{s:.2f}"] = sum(
-                            losses
-                        ) / len(losses)
+                cache_dir = os.path.dirname(te_path)
+                ref_sidecars.append(
+                    resolve_pe_sidecar(
+                        item.absolute_path, encoder="pe", cache_dir=cache_dir
+                    )
+                )
+                ref_items.append(item)
+            if not ref_sidecars:
+                logger.warning(
+                    "CMMD val: no items had cached TE outputs; skipping."
+                )
+                return
+            try:
+                ref_pool = load_reference_features(ref_sidecars).to(
+                    accelerator.device
+                )
+            except RuntimeError as exc:
+                logger.warning(f"CMMD val skipped: {exc}")
+                return
 
-            logging_fn(accelerator, logs, global_step, epoch + 1)
+            # Reuse a single PE-Core load across val passes (cached on the
+            # trainer). load_pe_encoder is ~1GB so reloading every val is
+            # wasteful — and the encoder is frozen, so caching is safe.
+            from library.vision.encoder import (
+                encode_pe_from_imageminus1to1,
+                load_pe_encoder,
+            )
 
-        self._restore_rng_state(rng_states)
-        args.t_min = val.original_t_min
-        args.t_max = val.original_t_max
-        ctx.optimizer_train_fn()
-        accelerator.unwrap_model(ctx.network).train()
-        if hasattr(unwrapped_unet, "switch_block_swap_for_training"):
-            unwrapped_unet.switch_block_swap_for_training()
-        clean_memory_on_device(accelerator.device)
+            if getattr(self, "_cmmd_pe_bundle", None) is None:
+                self._cmmd_pe_bundle = load_pe_encoder(accelerator.device)
+            bundle = self._cmmd_pe_bundle
+
+            sample_steps = int(getattr(args, "validation_sample_steps", 20))
+            cfg_scale = float(getattr(args, "validation_cfg_scale", 1.0))
+            flow_shift = float(getattr(args, "discrete_flow_shift", 1.0))
+
+            val_progress_bar = tqdm(
+                range(len(ref_items)),
+                smoothing=0,
+                disable=not accelerator.is_local_main_process,
+                desc=progress_desc,
+            )
+
+            from safetensors.torch import load_file as _load_safetensors
+
+            gen_pooled: list[torch.Tensor] = []
+            seed_base = (
+                args.validation_seed
+                if args.validation_seed is not None
+                else args.seed
+            )
+
+            with torch.no_grad(), accelerator.autocast():
+                unwrapped_unet.prepare_block_swap_before_forward()
+                for i, item in enumerate(ref_items):
+                    sd = _load_safetensors(item.text_encoder_outputs_npz)
+                    crossattn_emb = self._build_val_crossattn_emb(
+                        unwrapped_unet, sd, accelerator
+                    )
+
+                    bucket_w, bucket_h = item.bucket_reso
+
+                    image = anima_train_utils.sample_image_to_tensor(
+                        accelerator=accelerator,
+                        dit=unwrapped_unet,
+                        vae=ctx.vae,
+                        height=int(bucket_h),
+                        width=int(bucket_w),
+                        crossattn_emb=crossattn_emb,
+                        sample_steps=sample_steps,
+                        guidance_scale=cfg_scale,
+                        flow_shift=flow_shift,
+                        seed=seed_base + i,
+                    )
+
+                    feats_list = encode_pe_from_imageminus1to1(
+                        bundle, image.unsqueeze(0), same_bucket=True
+                    )
+                    gen_pooled.append(pool_and_normalize(feats_list[0]).cpu())
+                    val_progress_bar.update(1)
+                    val_progress_bar.set_postfix({"items": f"{i + 1}/{len(ref_items)}"})
+
+                    self.on_validation_step_end(ctx, {})
+
+            val_progress_bar.close()
+
+            gen_pool = torch.stack(gen_pooled, dim=0).to(accelerator.device)
+            cmmd_value = cmmd_from_pools(ref_pool, gen_pool)
+            val_loss_recorder.add(epoch=epoch, step=global_step, loss=cmmd_value)
+
+            if ctx.is_tracking:
+                logs = {
+                    log_avg_key: cmmd_value,
+                    log_div_key: cmmd_value
+                    - val.train_loss_recorder.moving_average,
+                    log_avg_key.removesuffix("_average") + "_cmmd": cmmd_value,
+                    log_avg_key.removesuffix("_average") + "_n": len(ref_items),
+                }
+                logging_fn(accelerator, logs, global_step, epoch + 1)
+        finally:
+            self._restore_rng_state(rng_states)
+            args.t_min = val.original_t_min
+            args.t_max = val.original_t_max
+            ctx.optimizer_train_fn()
+            accelerator.unwrap_model(ctx.network).train()
+            if hasattr(unwrapped_unet, "switch_block_swap_for_training"):
+                unwrapped_unet.switch_block_swap_for_training()
+            clean_memory_on_device(accelerator.device)
+
+    def _build_val_crossattn_emb(self, dit, sd, accelerator):
+        """Construct the cross-attention embedding the DiT expects from a
+        cached TE sidecar — using the saved post-LLM-adapter ``crossattn_emb``
+        when present, otherwise running ``llm_adapter`` exactly like
+        ``_sample_image_inference`` does. Pads to 512 tokens (the model's
+        fixed context length)."""
+        device = accelerator.device
+        dtype = dit.dtype
+        if "crossattn_emb" in sd:
+            ce = sd["crossattn_emb"].unsqueeze(0).to(device, dtype=dtype)
+            if ce.shape[1] < 512:
+                ce = torch.nn.functional.pad(ce, (0, 0, 0, 512 - ce.shape[1]))
+            return ce
+
+        prompt_embeds = sd["prompt_embeds"].unsqueeze(0).to(device, dtype=dtype)
+        attn_mask = sd["attn_mask"].unsqueeze(0).to(device)
+        t5_ids = sd["t5_input_ids"].unsqueeze(0).to(device, dtype=torch.long)
+        t5_attn_mask = sd["t5_attn_mask"].unsqueeze(0).to(device)
+
+        if getattr(dit, "use_llm_adapter", False):
+            ce = dit.llm_adapter(
+                source_hidden_states=prompt_embeds,
+                target_input_ids=t5_ids,
+                target_attention_mask=t5_attn_mask,
+                source_attention_mask=attn_mask,
+            )
+            ce[~t5_attn_mask.bool()] = 0
+        else:
+            ce = prompt_embeds
+        if ce.shape[1] < 512:
+            ce = torch.nn.functional.pad(ce, (0, 0, 0, 512 - ce.shape[1]))
+        return ce
 
     def train(self, args):
         session_id = random.randint(0, 2**32)
@@ -2353,11 +2368,11 @@ class AnimaTrainer:
                 )
                 initial_step = 0  # do not skip
 
-        # Drop dataset-group locals before loop entry so the cached references
-        # release memory; the dataloaders already hold the data they need.
+        # Drop the train dataset-group local before loop entry — the
+        # dataloader already holds the data it needs. Keep val_dataset_group
+        # alive: CMMD validation enumerates its image_data to pair held-out
+        # references with generated samples.
         del train_dataset_group
-        if val_dataset_group is not None:
-            del val_dataset_group
 
         loop_state = build_loop_state(
             self,
@@ -2373,6 +2388,7 @@ class AnimaTrainer:
             training_model=training_model,
             train_dataloader=train_dataloader,
             val_dataloader=val_dataloader,
+            val_dataset_group=val_dataset_group,
             optimizer=optimizer,
             lr_scheduler=lr_scheduler,
             lr_descriptions=lr_descriptions,
@@ -2499,6 +2515,16 @@ def setup_parser() -> argparse.ArgumentParser:
         help="Split for validation images out of the training dataset",
     )
     parser.add_argument(
+        "--validation_split_num",
+        type=int,
+        default=0,
+        help=(
+            "Count-based validation split (number of held-out images). When "
+            "set (>0), wins over the fractional `--validation_split`. Also "
+            "determines how many samples CMMD evaluation generates per pass."
+        ),
+    )
+    parser.add_argument(
         "--validate_every_n_steps",
         type=int,
         default=None,
@@ -2521,7 +2547,19 @@ def setup_parser() -> argparse.ArgumentParser:
         type=float,
         nargs="+",
         default=None,
-        help="Sigma values for validation loss (0.0~1.0). Low values = fine detail. Default: 0.1 0.4 0.7",
+        help="Sigma values for validation loss (0.0~1.0). Low values = fine detail. Default: 0.1 0.4 0.7. (Legacy FM-val path — unused under the CMMD val replacement.)",
+    )
+    parser.add_argument(
+        "--validation_sample_steps",
+        type=int,
+        default=20,
+        help="Denoising steps used by CMMD validation when sampling each held-out item. Default 20.",
+    )
+    parser.add_argument(
+        "--validation_cfg_scale",
+        type=float,
+        default=1.0,
+        help="CFG scale used by CMMD validation. Default 1.0 (no CFG, fastest). Bump to 4.0 to match production sampling but generation cost ~2×.",
     )
     parser.add_argument(
         "--unsloth_offload_checkpointing",
