@@ -1,0 +1,19 @@
+# Imported from DiffPipeForge2/output/肋骨女神/dataset.toml.
+# Original source path is intentionally omitted from version control.
+# Set ANIMA_ROKKOTSU_DATASET_DIR in .env to point at your local image folder.
+
+[general]
+caption_extension = '.txt'
+keep_tokens = 3
+
+[[datasets]]
+resolution = 1024
+batch_size = 1
+enable_bucket = true
+validation_split = 0.025
+validation_seed = 42
+
+  [[datasets.subsets]]
+  image_dir = '${ANIMA_ROKKOTSU_DATASET_DIR}'
+  cache_dir = 'post_image_dataset/rokkotsu_goddess'
+  num_repeats = 5

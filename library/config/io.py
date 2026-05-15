@@ -21,8 +21,11 @@ from typing import Any, Optional
 import toml
 
 from library.config import schema as _config_schema
+from library.env import expand_env_vars_in_obj, load_dotenv
 
 logger = logging.getLogger(__name__)
+
+load_dotenv()
 
 _DATASET_CONFIG_SECTIONS = {"general", "datasets"}
 _SNAPSHOT_SUFFIX = ".snapshot.toml"
@@ -67,6 +70,7 @@ def _flatten_toml(
     src_text = _read_text_silent(source)
 
     def _visit(key: str, value: Any) -> None:
+        value = expand_env_vars_in_obj(value)
         line = _config_schema.find_line(src_text, key)
         resolved, coerced = _config_schema.validate_entry(
             key,
@@ -108,11 +112,11 @@ def _substitute_templates(value: Any, ctx: dict) -> Any:
     """
     if isinstance(value, str):
         if "{" not in value:
-            return value
+            return expand_env_vars_in_obj(value)
         try:
-            return value.format_map(_SafeFormatDict(ctx))
+            return expand_env_vars_in_obj(value.format_map(_SafeFormatDict(ctx)))
         except (ValueError, IndexError):
-            return value
+            return expand_env_vars_in_obj(value)
     if isinstance(value, dict):
         return {k: _substitute_templates(v, ctx) for k, v in value.items()}
     if isinstance(value, list):
@@ -131,7 +135,9 @@ def _read_dataset_sections(toml_path: str) -> dict:
         return {}
     with open(toml_path, "r", encoding="utf-8") as f:
         raw = toml.load(f)
-    return {k: v for k, v in raw.items() if k in _DATASET_CONFIG_SECTIONS}
+    return expand_env_vars_in_obj(
+        {k: v for k, v in raw.items() if k in _DATASET_CONFIG_SECTIONS}
+    )
 
 
 def _apply_dataset_overrides(blueprint: dict, override: dict) -> None:
@@ -198,7 +204,7 @@ def load_dataset_config_from_base(
     if not os.path.exists(base_path):
         return None
     with open(base_path, "r", encoding="utf-8") as f:
-        raw = toml.load(f)
+        raw = expand_env_vars_in_obj(toml.load(f))
     sections = {k: v for k, v in raw.items() if k in _DATASET_CONFIG_SECTIONS}
     if not sections.get("datasets"):
         return None
@@ -216,7 +222,7 @@ def load_dataset_config_from_base(
     }
     if overrides:
         ctx.update({k: v for k, v in overrides.items() if isinstance(v, str)})
-    return _substitute_templates(sections, ctx)
+    return expand_env_vars_in_obj(_substitute_templates(sections, ctx))
 
 
 def load_path_overrides(
@@ -251,7 +257,7 @@ def load_path_overrides(
     base_path = os.path.join(configs_dir, "base.toml")
     if os.path.exists(base_path):
         with open(base_path, "r", encoding="utf-8") as f:
-            out.update(_flat_scalars(toml.load(f)))
+            out.update(_flat_scalars(expand_env_vars_in_obj(toml.load(f))))
 
     try:
         section, _path, _tag = _resolve_preset(preset, configs_dir)
@@ -263,15 +269,15 @@ def load_path_overrides(
         method_path = os.path.join(configs_dir, methods_subdir, f"{method}.toml")
         if os.path.exists(method_path):
             with open(method_path, "r", encoding="utf-8") as f:
-                out.update(_flat_scalars(toml.load(f)))
+                out.update(_flat_scalars(expand_env_vars_in_obj(toml.load(f))))
 
-    return out
+    return expand_env_vars_in_obj(out)
 
 
 def _load_toml_with_base(path: str, *, strict: bool = False) -> dict:
     """Load a TOML file and recursively resolve its 'base_config' reference."""
     with open(path, "r", encoding="utf-8") as f:
-        config_dict = toml.load(f)
+        config_dict = expand_env_vars_in_obj(toml.load(f))
     base_ref = config_dict.pop("base_config", None)
     if base_ref is None:
         return _flatten_toml(config_dict, source=path, strict=strict)
@@ -303,14 +309,18 @@ def _resolve_preset(
                 raise ValueError(
                     f"Preset '{preset}' in {presets_path} is not a table"
                 )
-            return dict(section), presets_path, f"{presets_path}[{preset}]"
+            return (
+                expand_env_vars_in_obj(dict(section)),
+                presets_path,
+                f"{presets_path}[{preset}]",
+            )
     custom_path = os.path.join(configs_dir, "custom", f"{preset}.toml")
     if os.path.exists(custom_path):
         with open(custom_path, "r", encoding="utf-8") as f:
             data = toml.load(f)
         if not isinstance(data, dict):
             raise ValueError(f"Custom preset {custom_path} is not a TOML table")
-        return data, custom_path, custom_path
+        return expand_env_vars_in_obj(data), custom_path, custom_path
     available: list[str] = []
     if os.path.exists(presets_path):
         with open(presets_path, "r", encoding="utf-8") as f:
@@ -329,7 +339,7 @@ def _resolve_preset(
 def load_preset_section(preset: str, configs_dir: str = "configs") -> dict:
     """Load a named preset section from configs/presets.toml or configs/custom/."""
     section, _path, _tag = _resolve_preset(preset, configs_dir)
-    return section
+    return expand_env_vars_in_obj(section)
 
 
 def load_method_preset(
@@ -365,7 +375,7 @@ def load_method_preset(
     provenance: dict[str, str] = {}
 
     with open(base_path, "r", encoding="utf-8") as f:
-        base_raw = toml.load(f)
+        base_raw = expand_env_vars_in_obj(toml.load(f))
     base_flat = _flatten_toml(base_raw, source=base_path, strict=strict)
     for k, v in base_flat.items():
         merged[k] = v
@@ -380,7 +390,7 @@ def load_method_preset(
         provenance[k] = preset_tag
 
     with open(method_path, "r", encoding="utf-8") as f:
-        method_raw = toml.load(f)
+        method_raw = expand_env_vars_in_obj(toml.load(f))
     method_flat = _flatten_toml(method_raw, source=method_path, strict=strict)
     for k, v in method_flat.items():
         merged[k] = v

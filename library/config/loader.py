@@ -33,11 +33,14 @@ from library.training import (
     add_training_arguments,
 )
 from library.log import setup_logging
+from library.env import expand_env_vars_in_obj, load_dotenv
 
 setup_logging()
 import logging  # noqa: E402
 
 logger = logging.getLogger(__name__)
+
+load_dotenv()
 
 
 def add_config_arguments(parser: argparse.ArgumentParser):
@@ -560,13 +563,13 @@ def load_user_config(file: str) -> dict:
     if file.name.lower().endswith(".json"):
         try:
             with open(file, "r") as f:
-                config = json.load(f)
+                config = expand_env_vars_in_obj(json.load(f))
         except Exception:
             logger.error("Error on parsing JSON config file. Please check the format.")
             raise
     elif file.name.lower().endswith(".toml"):
         try:
-            config = toml.load(file)
+            config = expand_env_vars_in_obj(toml.load(file))
         except Exception:
             logger.error("Error on parsing TOML config file. Please check the format.")
             raise

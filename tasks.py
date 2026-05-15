@@ -32,6 +32,7 @@ from scripts.tasks import (
     tagger,
     training,
     utilities,
+    web,
 )
 
 COMMANDS = {
@@ -149,6 +150,7 @@ COMMANDS = {
         gui.cmd_gui_shortcut,
         "Create a Windows desktop shortcut that launches the GUI (no console window)",
     ),
+    "web": (web.cmd_web, "Launch lightweight Web UI on port 20102 (--port N to override)"),
     # ── Utilities ─────────────────────────────────────────────────────
     "merge": (
         utilities.cmd_merge,

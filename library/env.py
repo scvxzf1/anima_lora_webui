@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 
 def project_root() -> Path:
@@ -53,3 +53,28 @@ def load_dotenv(path: Optional[Path] = None) -> dict[str, str]:
             os.environ[key] = val
             added[key] = val
     return added
+
+
+def expand_env_vars(value: str) -> str:
+    """Expand ``$VAR`` / ``${VAR}`` in user-facing config strings.
+
+    ``.env`` is loaded first so TOML configs can use placeholders without
+    requiring callers to export every path in their shell profile.
+    """
+    load_dotenv()
+    return os.path.expanduser(os.path.expandvars(value))
+
+
+def expand_env_vars_in_obj(value: Any) -> Any:
+    """Recursively expand environment placeholders in TOML/JSON-like trees."""
+    if isinstance(value, str):
+        if "$" not in value and not value.startswith("~"):
+            return value
+        return expand_env_vars(value)
+    if isinstance(value, dict):
+        return {k: expand_env_vars_in_obj(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [expand_env_vars_in_obj(v) for v in value]
+    if isinstance(value, tuple):
+        return tuple(expand_env_vars_in_obj(v) for v in value)
+    return value
