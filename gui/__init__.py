@@ -43,6 +43,7 @@ _METHOD_ORDER = (
     "reft",
     "postfix",
     "fera",
+    "chimera",
     "ip_adapter",
     "easycontrol",
 )

@@ -36,6 +36,7 @@ import logging
 import torch
 
 from networks.lora_modules.base import BaseLoRAModule, _absorb_channel_scale
+from networks.lora_modules.custom_autograd import lora_down_project
 
 logger = logging.getLogger(__name__)
 
@@ -202,11 +203,11 @@ class ChimeraHydraLoRAExpModule(BaseLoRAModule):
         self.P_bases_c = self.P_bases_c.to(torch.bfloat16)
         self.P_bases_f = self.P_bases_f.to(torch.bfloat16)
 
-        # Custom autograd path is the OrthoLoRA-style "store bf16 lx"
-        # trick; both pools' down-projects are independent so it composes,
-        # but the parent OrthoHydra had use_custom_down_autograd=False as
-        # default and chimera follows suit (kept off until a bench
-        # confirms the activation-budget win is real for dual-A).
+        # Default off; the factory flips this to True when
+        # ``use_custom_down_autograd=true`` is in the config (see
+        # ``factory.py``). Forward branches on the flag — when on, both
+        # pools' down-projects go through ``lora_down_project`` and the
+        # rebalanced ``x_lora`` (B, L, in) is not materialized per Linear.
         self.use_custom_down_autograd = False
 
         # Pre-allocated identity for the batched Cayley solve. (E_c + E_f
@@ -328,9 +329,19 @@ class ChimeraHydraLoRAExpModule(BaseLoRAModule):
         Q_eff_c = R_q_c @ self.Q_basis_c  # (r, in)
         Q_eff_f = R_q_f @ self.Q_basis_f  # (r, in)
 
-        x_lora = self._rebalance(x.to(work))
-        lx_c = torch.nn.functional.linear(x_lora, Q_eff_c)
-        lx_f = torch.nn.functional.linear(x_lora, Q_eff_f)
+        if self.use_custom_down_autograd and self.training:
+            # Avoids materializing a per-Linear rebalanced ``x_lora``
+            # (B, L, in) — saved-for-backward becomes the upstream ``x``
+            # (already held by the parent block) + the small ``inv_scale``
+            # buffer. ``x`` and ``inv_scale`` dedupe across the two
+            # Functions; only Q_eff_{c,f} are saved per call.
+            inv_scale = self.inv_scale if self._has_channel_scale else None
+            lx_c = lora_down_project(x, Q_eff_c, inv_scale).to(work)
+            lx_f = lora_down_project(x, Q_eff_f, inv_scale).to(work)
+        else:
+            x_lora = self._rebalance(x.to(work))
+            lx_c = torch.nn.functional.linear(x_lora, Q_eff_c)
+            lx_f = torch.nn.functional.linear(x_lora, Q_eff_f)
 
         # Content router pools lx_c (pre-λ; zero-init λ would zero the
         # router input at step 0 and freeze the router gradient).

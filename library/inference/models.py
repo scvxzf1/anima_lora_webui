@@ -14,21 +14,25 @@ logger = logging.getLogger(__name__)
 
 
 def _is_hydra_moe(path: str) -> bool:
-    """Cheap check: peek at the safetensors header for a `.lora_ups.` key.
+    """Cheap check: peek at the safetensors header for a per-expert ups key.
 
-    HydraLoRA moe files carry per-expert `lora_ups.N.weight` keys; regular
-    LoRA files do not. Uses `safe_open` so only the header is read.
+    HydraLoRA moe files carry per-expert ``.lora_ups.N.weight`` keys;
+    chimera files carry the dual-pool variants ``.lora_ups_c.N.weight`` /
+    ``.lora_ups_f.N.weight``. Either signal means router-live: skip static
+    merge. Regular LoRA files have none of these. Uses ``safe_open`` so
+    only the header is read.
 
-    Chimera files also carry ``.lora_ups.`` keys (they're saved in the
-    Hydra-MoE distilled layout) and thus return True from this check —
-    callers that need to disambiguate should also consult
-    ``_is_chimera_moe``.
+    Callers that need to disambiguate chimera from plain Hydra should also
+    consult ``_is_chimera_moe``.
     """
     from safetensors import safe_open
 
     try:
         with safe_open(path, framework="pt") as f:
-            return any(".lora_ups." in k for k in f.keys())
+            return any(
+                ".lora_ups." in k or ".lora_ups_c." in k or ".lora_ups_f." in k
+                for k in f.keys()
+            )
     except Exception:
         return False
 

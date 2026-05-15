@@ -270,7 +270,7 @@ class MainWindow(QMainWindow):
         # own preprocess/dataset lifecycles, so they keep dedicated tabs.
         self.experimental_tabs = QTabWidget()
         self.experimental_tabs.addTab(
-            ConfigTab(methods=["postfix", "fera"]),
+            ConfigTab(methods=["postfix", "fera", "chimera"]),
             t("tab_methods"),
         )
         self.experimental_tabs.addTab(IPAdapterTab(), t("tab_ip_adapter"))

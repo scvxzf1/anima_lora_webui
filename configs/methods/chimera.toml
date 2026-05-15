@@ -20,10 +20,10 @@ network_alpha = 32
 network_dim = 32
 
 
-learning_rate = 5e-5
-max_train_epochs = 4
-save_every_n_epochs = 4
-checkpointing_epochs = 4
+learning_rate = 3e-5
+max_train_epochs = 2
+save_every_n_epochs = 2
+checkpointing_epochs = 2
 
 use_shuffled_caption_variants = true
 cache_llm_adapter_outputs = true
@@ -67,12 +67,12 @@ num_experts_freq = 2
 # only scalars on the balance loss. Default per-pool weights match the
 # OrthoHydra production value (~2e-5, see
 # [[project_hydra_balance_weight_ceiling]]).
-balance_loss_warmup_ratio = 0.4
+balance_loss_warmup_ratio = 0.2
 balance_loss_weight = 1.0
 balance_w_content = 2e-7
-balance_w_freq = 0
+balance_w_freq = 2e-7
 network_content_router_lr_scale = 10
-network_freq_router_lr_scale = 1.0
+network_freq_router_lr_scale = 2.0
 
 # FreqRouter input. FEI = 2-band simplex (e_low, e_high); σ-features =
 # 16-dim sinusoidal (same functional form as the DiT t_embedder). Total
@@ -86,7 +86,7 @@ sigma_feature_dim = 0
 # load-bearing — zero-init would make the freq pool a fixed point of the
 # additive composition and the router weights would never escape zero.
 # See chimera.py::FreqRouter class docstring.
-freq_router_init_std = 0.1
+freq_router_init_std = 0.02
 
 # Routing scope. Every Linear matched by this regex becomes a chimera
 # leaf; non-matching layers fall back to OrthoLoRAExp (single-pool Cayley,
