@@ -29,6 +29,8 @@ load_dotenv()
 
 _DATASET_CONFIG_SECTIONS = {"general", "datasets"}
 _SNAPSHOT_SUFFIX = ".snapshot.toml"
+_DEFAULT_RESIZED_IMAGE_DIR = "post_image_dataset/resized"
+_DEFAULT_LORA_CACHE_DIR = "post_image_dataset/lora"
 _DUMP_SKIP_KEYS = {
     "print_config",
     "config_snapshot",
@@ -225,6 +227,23 @@ def load_dataset_config_from_base(
     return expand_env_vars_in_obj(_substitute_templates(sections, ctx))
 
 
+def substitute_dataset_config_templates(config: dict, overrides: dict | None = None) -> dict:
+    """Expand ``{path_key}`` placeholders inside an external dataset config.
+
+    Imported WebUI configs often keep their dataset blueprint in a separate
+    TOML file while the concrete directories live in the merged training
+    config. Apply the same path-template behavior as the built-in base
+    dataset blueprint so ``image_dir = "{resized_image_dir}"`` resolves before
+    the dataset loader sees it.
+    """
+    ctx = {
+        k: v
+        for k, v in (overrides or {}).items()
+        if isinstance(v, str)
+    }
+    return expand_env_vars_in_obj(_substitute_templates(config, ctx))
+
+
 def load_path_overrides(
     preset: str = "default",
     configs_dir: str = "configs",
@@ -271,7 +290,7 @@ def load_path_overrides(
             with open(method_path, "r", encoding="utf-8") as f:
                 out.update(_flat_scalars(expand_env_vars_in_obj(toml.load(f))))
 
-    return expand_env_vars_in_obj(out)
+    return _apply_auto_data_dirs(expand_env_vars_in_obj(out))
 
 
 def _load_toml_with_base(path: str, *, strict: bool = False) -> dict:
@@ -396,9 +415,39 @@ def load_method_preset(
         merged[k] = v
         provenance[k] = method_path
 
+    merged = _apply_auto_data_dirs(merged)
+
     if return_provenance:
         return merged, provenance
     return merged
+
+
+def _apply_auto_data_dirs(config: dict) -> dict:
+    out = dict(config)
+    source = str(out.get("source_image_dir") or "").strip()
+    if not source:
+        return out
+    source_path = pathlib.Path(source)
+    if not source_path.is_absolute():
+        source_path = pathlib.Path(source).resolve()
+    out["resized_image_dir"] = _auto_data_dir_for_key(
+        out.get("resized_image_dir"), source_path, "resized"
+    )
+    out["lora_cache_dir"] = _auto_data_dir_for_key(
+        out.get("lora_cache_dir"), source_path, "lora_cache"
+    )
+    return out
+
+
+def _auto_data_dir_for_key(value: Any, source_path: pathlib.Path, suffix: str) -> str:
+    raw = str(value or "").replace("\\", "/").strip().strip("/")
+    if raw and raw not in {_DEFAULT_RESIZED_IMAGE_DIR, _DEFAULT_LORA_CACHE_DIR}:
+        path = pathlib.Path(str(value))
+        if not path.is_absolute():
+            path = pathlib.Path(str(value)).resolve()
+        if path.exists():
+            return str(value)
+    return str((source_path.parent / f"{source_path.name}_{suffix}").resolve())
 
 
 def _git_sha() -> Optional[str]:

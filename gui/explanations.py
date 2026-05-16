@@ -29,6 +29,14 @@ FIELD_HELP: dict[str, dict[str, str]] = {
         "en": "Enable OrthoLoRA: SVD-based orthogonal parameterization of the update matrix (linear layers only). Regularizes toward structured updates; saved as plain LoRA via thin SVD at checkpoint time.",
         "ko": "OrthoLoRA 활성화: 업데이트 행렬의 SVD 기반 직교 파라미터화 (선형 레이어 전용). 구조화된 업데이트로 정규화되며, 저장 시 thin SVD로 일반 LoRA로 변환.",
     },
+    "use_lokr": {
+        "en": "Enable LoKr (Low-Rank Kronecker Product): decomposes the weight delta as kron(W1, W2) and saves LyCORIS-compatible lokr_w1/lokr_w2 tensors.",
+        "ko": "LoKr (Low-Rank Kronecker Product) 활성화: 가중치 델타를 kron(W1, W2)로 분해하고 LyCORIS 호환 lokr_w1/lokr_w2 텐서로 저장합니다.",
+    },
+    "lokr_factor": {
+        "en": "LoKr Kronecker factor. W1 is factor×factor and W2 is (out/factor)×(in/factor). Default 8 works for common Anima DiT dimensions.",
+        "ko": "LoKr Kronecker 인자. W1은 factor×factor, W2는 (out/factor)×(in/factor)입니다. 기본값 8은 일반적인 Anima DiT 차원에 맞습니다.",
+    },
     "use_hydra": {
         "en": "Enable HydraLoRA: MoE-style multi-head routing with shared lora_down and per-expert lora_up heads. Produces a *_moe.safetensors sibling for router-live inference. Requires cache_llm_adapter_outputs=true.",
         "ko": "HydraLoRA 활성화: 공유 lora_down + 전문가별 lora_up 헤드를 가진 MoE 스타일 멀티헤드 라우팅. 라우터-라이브 추론용 *_moe.safetensors 동반 파일 생성. cache_llm_adapter_outputs=true 필요.",

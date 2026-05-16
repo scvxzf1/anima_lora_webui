@@ -5,9 +5,14 @@ from __future__ import annotations
 from aiohttp import web
 
 from web.services.config_service import (
+    create_config_file_group,
+    delete_raw_file,
+    delete_config_file_group,
+    estimate_training_steps,
     get_config_file_meta,
     get_field_help,
     get_groups,
+    load_sample_prompts_file,
     list_all_variants,
     list_config_file_groups,
     list_config_files,
@@ -17,7 +22,15 @@ from web.services.config_service import (
     load_merged_config,
     load_raw_file,
     patch_raw_file_values,
+    restore_system_presets,
     save_raw_file,
+    save_sample_prompts_file,
+    set_user_file_lock,
+    set_user_group_lock,
+    move_config_file_to_group,
+    rename_config_file_group,
+    reorder_config_file_in_group,
+    suggest_data_dirs,
 )
 
 
@@ -26,10 +39,23 @@ def setup_config_routes(app: web.Application) -> None:
     app.router.add_get("/api/methods/{method}/variants", handle_variants)
     app.router.add_get("/api/presets", handle_presets)
     app.router.add_get("/api/config/merged", handle_merged)
+    app.router.add_get("/api/config/steps", handle_steps)
+    app.router.add_get("/api/config/data-dirs/suggest", handle_data_dirs_suggest)
     app.router.add_get("/api/config/raw", handle_raw_get)
     app.router.add_put("/api/config/raw", handle_raw_put)
     app.router.add_patch("/api/config/raw", handle_raw_patch)
+    app.router.add_delete("/api/config/raw", handle_raw_delete)
     app.router.add_post("/api/config/raw/save-as", handle_raw_save_as)
+    app.router.add_get("/api/config/sample-prompts", handle_sample_prompts_get)
+    app.router.add_put("/api/config/sample-prompts", handle_sample_prompts_put)
+    app.router.add_post("/api/config/lock", handle_config_lock)
+    app.router.add_post("/api/config/group-lock", handle_config_group_lock)
+    app.router.add_post("/api/config/file-groups", handle_file_group_create)
+    app.router.add_patch("/api/config/file-groups/{group_id}", handle_file_group_update)
+    app.router.add_delete("/api/config/file-groups/{group_id}", handle_file_group_delete)
+    app.router.add_post("/api/config/file-groups/move-file", handle_file_group_move_file)
+    app.router.add_post("/api/config/file-groups/reorder-file", handle_file_group_reorder_file)
+    app.router.add_post("/api/config/restore-system", handle_restore_system)
     app.router.add_get("/api/config/files", handle_files)
     app.router.add_get("/api/config/file-groups", handle_file_groups)
     app.router.add_get("/api/config/field-help", handle_field_help)
@@ -58,6 +84,26 @@ async def handle_merged(request: web.Request) -> web.Response:
         return web.json_response(config)
     except Exception as e:
         return web.json_response({"error": str(e)}, status=400)
+
+
+async def handle_steps(request: web.Request) -> web.Response:
+    variant = request.query.get("variant", "lora")
+    preset = request.query.get("preset", "default")
+    methods_subdir = request.query.get("methods_subdir", "gui-methods")
+    try:
+        return web.json_response(estimate_training_steps(variant, preset, methods_subdir))
+    except Exception as e:
+        return web.json_response({"ok": False, "error": str(e)}, status=400)
+
+
+async def handle_data_dirs_suggest(request: web.Request) -> web.Response:
+    source_image_dir = request.query.get("source_image_dir", "")
+    try:
+        result = suggest_data_dirs(source_image_dir)
+        status = 200 if result.get("ok") else 400
+        return web.json_response(result, status=status)
+    except Exception as e:
+        return web.json_response({"ok": False, "error": str(e)}, status=400)
 
 
 async def handle_raw_get(request: web.Request) -> web.Response:
@@ -99,16 +145,134 @@ async def handle_raw_patch(request: web.Request) -> web.Response:
     return web.json_response({"ok": False, "error": msg}, status=400)
 
 
+async def handle_raw_delete(request: web.Request) -> web.Response:
+    file_path = request.query.get("file", "")
+    if not file_path:
+        try:
+            data = await request.json()
+        except Exception:
+            data = {}
+        file_path = data.get("file", "")
+    if not file_path:
+        return web.json_response({"ok": False, "error": "缺少 file 参数"}, status=400)
+
+    ok, msg = delete_raw_file(file_path)
+    if ok:
+        return web.json_response({"ok": True, "file": file_path, "message": msg})
+    return web.json_response({"ok": False, "error": msg}, status=400)
+
+
 async def handle_raw_save_as(request: web.Request) -> web.Response:
     data = await request.json()
     file_path = data.get("file", "")
     content = data.get("content", "")
     if not file_path:
         return web.json_response({"error": "缺少 file 参数"}, status=400)
-    ok, msg = save_raw_file(file_path, content)
+    ok, msg = save_raw_file(file_path, content, overwrite=False)
     if ok:
         return web.json_response({"ok": True, "file": file_path, "message": msg})
     return web.json_response({"ok": False, "error": msg}, status=400)
+
+
+async def handle_sample_prompts_get(request: web.Request) -> web.Response:
+    file_path = request.query.get("file", "")
+    try:
+        return web.json_response(load_sample_prompts_file(file_path or None))
+    except ValueError as e:
+        return web.json_response({"ok": False, "error": str(e)}, status=400)
+
+
+async def handle_sample_prompts_put(request: web.Request) -> web.Response:
+    data = await request.json()
+    file_path = data.get("file", "")
+    content = data.get("content", "")
+    try:
+        return web.json_response(save_sample_prompts_file(content, file_path or None))
+    except ValueError as e:
+        return web.json_response({"ok": False, "error": str(e)}, status=400)
+
+
+async def handle_config_lock(request: web.Request) -> web.Response:
+    data = await request.json()
+    file_path = data.get("file", "")
+    locked = bool(data.get("locked", False))
+    if not file_path:
+        return web.json_response({"error": "缺少 file 参数"}, status=400)
+    ok, msg, meta = set_user_file_lock(file_path, locked)
+    if ok:
+        return web.json_response({"ok": True, "file": file_path, "locked": locked, "message": msg, "meta": meta})
+    return web.json_response({"ok": False, "error": msg, "meta": meta}, status=400)
+
+
+async def handle_config_group_lock(request: web.Request) -> web.Response:
+    data = await request.json()
+    group_id = data.get("group", "")
+    locked = bool(data.get("locked", False))
+    if not group_id:
+        return web.json_response({"error": "缺少 group 参数"}, status=400)
+    ok, msg, group = set_user_group_lock(group_id, locked)
+    if ok:
+        return web.json_response({"ok": True, "group": group_id, "locked": locked, "message": msg, "meta": group})
+    return web.json_response({"ok": False, "error": msg, "meta": group}, status=400)
+
+
+async def handle_file_group_create(request: web.Request) -> web.Response:
+    data = await request.json()
+    ok, msg, group = create_config_file_group(data.get("label", ""))
+    if ok:
+        return web.json_response({"ok": True, "message": msg, "group": group})
+    return web.json_response({"ok": False, "error": msg, "group": group}, status=400)
+
+
+async def handle_file_group_update(request: web.Request) -> web.Response:
+    group_id = request.match_info["group_id"]
+    data = await request.json()
+    ok, msg, group = rename_config_file_group(group_id, data.get("label", ""))
+    if ok:
+        return web.json_response({"ok": True, "message": msg, "group": group})
+    return web.json_response({"ok": False, "error": msg, "group": group}, status=400)
+
+
+async def handle_file_group_delete(request: web.Request) -> web.Response:
+    group_id = request.match_info["group_id"]
+    ok, msg = delete_config_file_group(group_id)
+    if ok:
+        return web.json_response({"ok": True, "message": msg})
+    return web.json_response({"ok": False, "error": msg}, status=400)
+
+
+async def handle_file_group_move_file(request: web.Request) -> web.Response:
+    data = await request.json()
+    ok, msg, group = move_config_file_to_group(data.get("file", ""), data.get("group", ""))
+    if ok:
+        return web.json_response({"ok": True, "message": msg, "group": group})
+    return web.json_response({"ok": False, "error": msg, "group": group}, status=400)
+
+
+async def handle_file_group_reorder_file(request: web.Request) -> web.Response:
+    data = await request.json()
+    ok, msg, group = reorder_config_file_in_group(
+        data.get("file", ""),
+        data.get("group", ""),
+        data.get("direction", ""),
+    )
+    if ok:
+        return web.json_response({"ok": True, "message": msg, "group": group})
+    return web.json_response({"ok": False, "error": msg, "group": group}, status=400)
+
+
+async def handle_restore_system(request: web.Request) -> web.Response:
+    data = await request.json()
+    files = data.get("files")
+    single_file = data.get("file")
+    if isinstance(single_file, str) and single_file:
+        files = [single_file]
+    elif files is not None and not isinstance(files, list):
+        return web.json_response({"ok": False, "error": "files 必须是数组"}, status=400)
+
+    result = restore_system_presets(files)
+    status = 200 if result.get("ok") else 400
+    return web.json_response(result, status=status)
 
 
 async def handle_files(request: web.Request) -> web.Response:

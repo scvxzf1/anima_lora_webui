@@ -1,0 +1,261 @@
+{"id": 1, "kind": "status", "line": "预处理命令: /home/scv/nvme0n1p1/训练器相关/anima_lora/.venv/bin/python tasks.py preprocess", "ts": 1778902530.725318}
+{"id": 2, "kind": "log", "line": "> /home/scv/nvme0n1p1/训练器相关/anima_lora/.venv/bin/python preprocess/resize_images.py --src /home/scv/图片/安/5-14 --dst /home/scv/图片/安/5-15-a --no_copy_captions", "ts": 1778902530.815849}
+{"id": 3, "kind": "log", "line": "Resizing 57 images to constant-token buckets", "ts": 1778902535.2204459}
+{"id": 4, "kind": "progress", "line": "Resizing:   0%|          | 0/57 [00:00<?, ?it/s]", "ts": 1778902535.8822408}
+{"id": 5, "kind": "progress", "line": "Resizing:   0%|          | 0/57 [00:00<?, ?it/s, 0.png_202604200135 (4).jpeg → 896x1152]", "ts": 1778902535.8831816}
+{"id": 6, "kind": "progress", "line": "Resizing:   2%|▏         | 1/57 [00:00<00:32,  1.72it/s, 0.png_202604200135 (4).jpeg → 896x1152]", "ts": 1778902535.898166}
+{"id": 7, "kind": "progress", "line": "Resizing:   2%|▏         | 1/57 [00:00<00:32,  1.72it/s, 0.png_202604200135 (2).jpeg → 896x1152]", "ts": 1778902535.9172688}
+{"id": 8, "kind": "progress", "line": "Resizing:   2%|▏         | 1/57 [00:00<00:32,  1.72it/s, 0.png_202604200135 (3).jpeg → 896x1152]", "ts": 1778902535.9283772}
+{"id": 9, "kind": "progress", "line": "Resizing:   2%|▏         | 1/57 [00:00<00:32,  1.72it/s, 0.png_202604200135 (1).jpeg → 896x1152]", "ts": 1778902536.3557045}
+{"id": 10, "kind": "progress", "line": "Resizing:   2%|▏         | 1/57 [00:01<00:32,  1.72it/s, 0.png_202604200135 (6).jpeg → 896x1152]", "ts": 1778902536.3566701}
+{"id": 11, "kind": "progress", "line": "Resizing:   9%|▉         | 5/57 [00:01<00:09,  5.33it/s, 0.png_202604200135 (6).jpeg → 896x1152]", "ts": 1778902536.4392123}
+{"id": 12, "kind": "progress", "line": "Resizing:   9%|▉         | 5/57 [00:01<00:09,  5.33it/s, 0.png_202604200135 (7).jpeg → 896x1152]", "ts": 1778902536.4721947}
+{"id": 13, "kind": "progress", "line": "Resizing:   9%|▉         | 5/57 [00:01<00:09,  5.33it/s, 0.png_202604200135 (8).jpeg → 896x1152]", "ts": 1778902536.4729416}
+{"id": 14, "kind": "progress", "line": "Resizing:  12%|█▏        | 7/57 [00:01<00:06,  7.22it/s, 0.png_202604200135 (8).jpeg → 896x1152]", "ts": 1778902536.5014427}
+{"id": 15, "kind": "progress", "line": "Resizing:  12%|█▏        | 7/57 [00:01<00:06,  7.22it/s, 0.png_202604200135 (5).jpeg → 896x1152]", "ts": 1778902536.7969303}
+{"id": 16, "kind": "progress", "line": "Resizing:  12%|█▏        | 7/57 [00:01<00:06,  7.22it/s, 0.png_202604200135 (9).jpeg → 896x1152]", "ts": 1778902536.7976933}
+{"id": 17, "kind": "progress", "line": "Resizing:  16%|█▌        | 9/57 [00:01<00:07,  6.81it/s, 0.png_202604200135 (9).jpeg → 896x1152]", "ts": 1778902536.9722574}
+{"id": 18, "kind": "progress", "line": "Resizing:  16%|█▌        | 9/57 [00:01<00:07,  6.81it/s, 0.png_202604200218 (2).jpeg → 896x1152]", "ts": 1778902536.9729476}
+{"id": 19, "kind": "progress", "line": "Resizing:  18%|█▊        | 10/57 [00:01<00:07,  6.55it/s, 0.png_202604200218 (2).jpeg → 896x1152]", "ts": 1778902536.9834356}
+{"id": 20, "kind": "progress", "line": "Resizing:  18%|█▊        | 10/57 [00:01<00:07,  6.55it/s, 0.png_202604200218 (1).jpeg → 896x1152]", "ts": 1778902537.0442657}
+{"id": 21, "kind": "progress", "line": "Resizing:  18%|█▊        | 10/57 [00:01<00:07,  6.55it/s, 0.png_202604200135.jpeg → 896x1152]", "ts": 1778902537.28227}
+{"id": 22, "kind": "progress", "line": "Resizing:  18%|█▊        | 10/57 [00:01<00:07,  6.55it/s, 0.png_202604200218 (3).jpeg → 896x1152]", "ts": 1778902537.283095}
+{"id": 23, "kind": "progress", "line": "Resizing:  23%|██▎       | 13/57 [00:01<00:05,  7.70it/s, 0.png_202604200218 (3).jpeg → 896x1152]", "ts": 1778902537.4712873}
+{"id": 24, "kind": "progress", "line": "Resizing:  23%|██▎       | 13/57 [00:02<00:05,  7.70it/s, 0.png_202604200219 (1).jpeg → 896x1152]", "ts": 1778902537.4723034}
+{"id": 25, "kind": "progress", "line": "Resizing:  25%|██▍       | 14/57 [00:02<00:06,  7.12it/s, 0.png_202604200219 (1).jpeg → 896x1152]", "ts": 1778902537.4822068}
+{"id": 26, "kind": "progress", "line": "Resizing:  25%|██▍       | 14/57 [00:02<00:06,  7.12it/s, 0.png_202604200218.jpeg → 896x1152]", "ts": 1778902537.668089}
+{"id": 27, "kind": "progress", "line": "Resizing:  25%|██▍       | 14/57 [00:02<00:06,  7.12it/s, 0.png_202604200219 (2).jpeg → 896x1152]", "ts": 1778902537.6691604}
+{"id": 28, "kind": "progress", "line": "Resizing:  28%|██▊       | 16/57 [00:02<00:05,  7.92it/s, 0.png_202604200219 (2).jpeg → 896x1152]", "ts": 1778902537.7896879}
+{"id": 29, "kind": "progress", "line": "Resizing:  28%|██▊       | 16/57 [00:02<00:05,  7.92it/s, 0.png_202604200219.jpeg → 896x1152]", "ts": 1778902537.7906907}
+{"id": 30, "kind": "progress", "line": "Resizing:  30%|██▉       | 17/57 [00:02<00:05,  7.98it/s, 0.png_202604200219.jpeg → 896x1152]", "ts": 1778902537.9693766}
+{"id": 31, "kind": "progress", "line": "Resizing:  30%|██▉       | 17/57 [00:02<00:05,  7.98it/s, 0.png_202604200228 (2).jpeg → 896x1152]", "ts": 1778902537.9703712}
+{"id": 32, "kind": "progress", "line": "Resizing:  32%|███▏      | 18/57 [00:02<00:05,  7.29it/s, 0.png_202604200228 (2).jpeg → 896x1152]", "ts": 1778902537.9944918}
+{"id": 33, "kind": "progress", "line": "Resizing:  32%|███▏      | 18/57 [00:02<00:05,  7.29it/s, 0.png_202604200228 (1).jpeg → 896x1152]", "ts": 1778902538.2069983}
+{"id": 34, "kind": "progress", "line": "Resizing:  32%|███▏      | 18/57 [00:02<00:05,  7.29it/s, 0.png_202604200228 (3).jpeg → 896x1152]", "ts": 1778902538.207938}
+{"id": 35, "kind": "progress", "line": "Resizing:  35%|███▌      | 20/57 [00:02<00:04,  7.68it/s, 0.png_202604200228 (3).jpeg → 896x1152]", "ts": 1778902538.3319466}
+{"id": 36, "kind": "progress", "line": "Resizing:  35%|███▌      | 20/57 [00:03<00:04,  7.68it/s, 0.png_202604200228 (4).jpeg → 896x1152]", "ts": 1778902538.332882}
+{"id": 37, "kind": "progress", "line": "Resizing:  37%|███▋      | 21/57 [00:03<00:04,  7.75it/s, 0.png_202604200228 (4).jpeg → 896x1152]", "ts": 1778902538.4627106}
+{"id": 38, "kind": "progress", "line": "Resizing:  37%|███▋      | 21/57 [00:03<00:04,  7.75it/s, 0.png_202604200228 (5).jpeg → 896x1152]", "ts": 1778902538.463664}
+{"id": 39, "kind": "progress", "line": "Resizing:  39%|███▊      | 22/57 [00:03<00:04,  7.73it/s, 0.png_202604200228 (5).jpeg → 896x1152]", "ts": 1778902538.475212}
+{"id": 40, "kind": "progress", "line": "Resizing:  39%|███▊      | 22/57 [00:03<00:04,  7.73it/s, 0.png_202604200228.jpeg → 896x1152]", "ts": 1778902538.6960268}
+{"id": 41, "kind": "progress", "line": "Resizing:  39%|███▊      | 22/57 [00:03<00:04,  7.73it/s, 0.png_202604200229 (1).jpeg → 896x1152]", "ts": 1778902538.6971529}
+{"id": 42, "kind": "progress", "line": "Resizing:  42%|████▏     | 24/57 [00:03<00:04,  8.05it/s, 0.png_202604200229 (1).jpeg → 896x1152]", "ts": 1778902538.8281898}
+{"id": 43, "kind": "progress", "line": "Resizing:  42%|████▏     | 24/57 [00:03<00:04,  8.05it/s, 0.png_202604200229 (2).jpeg → 896x1152]", "ts": 1778902538.8291304}
+{"id": 44, "kind": "progress", "line": "Resizing:  44%|████▍     | 25/57 [00:03<00:04,  7.93it/s, 0.png_202604200229 (2).jpeg → 896x1152]", "ts": 1778902538.981924}
+{"id": 45, "kind": "progress", "line": "Resizing:  44%|████▍     | 25/57 [00:03<00:04,  7.93it/s, 0.png_202604200229.jpeg → 896x1152]", "ts": 1778902538.9826424}
+{"id": 46, "kind": "progress", "line": "Resizing:  46%|████▌     | 26/57 [00:03<00:04,  7.53it/s, 0.png_202604200229.jpeg → 896x1152]", "ts": 1778902539.238539}
+{"id": 47, "kind": "progress", "line": "Resizing:  46%|████▌     | 26/57 [00:03<00:04,  7.53it/s, 1._【古老禁书库_·_202604200124.png → 896x1152]", "ts": 1778902539.2396274}
+{"id": 48, "kind": "progress", "line": "Resizing:  47%|████▋     | 27/57 [00:03<00:04,  6.08it/s, 1._【古老禁书库_·_202604200124.png → 896x1152]", "ts": 1778902539.5661714}
+{"id": 49, "kind": "progress", "line": "Resizing:  47%|████▋     | 27/57 [00:04<00:04,  6.08it/s, 1._【浮空岛屿_·_202604200154.png → 896x1152]", "ts": 1778902539.5672536}
+{"id": 50, "kind": "progress", "line": "Resizing:  49%|████▉     | 28/57 [00:04<00:06,  4.80it/s, 1._【浮空岛屿_·_202604200154.png → 896x1152]", "ts": 1778902539.6272624}
+{"id": 51, "kind": "progress", "line": "Resizing:  49%|████▉     | 28/57 [00:04<00:06,  4.80it/s, 1._【静谧之森_·_202604200142.png → 896x1152]", "ts": 1778902539.8539991}
+{"id": 52, "kind": "progress", "line": "Resizing:  49%|████▉     | 28/57 [00:04<00:06,  4.80it/s, 10._【极光云海_·_202604200126.png → 896x1152]", "ts": 1778902539.8550808}
+{"id": 53, "kind": "progress", "line": "Resizing:  53%|█████▎    | 30/57 [00:04<00:04,  5.55it/s, 10._【极光云海_·_202604200126.png → 896x1152]", "ts": 1778902540.0061457}
+{"id": 54, "kind": "progress", "line": "Resizing:  53%|█████▎    | 30/57 [00:04<00:04,  5.55it/s, 10._【虚空之径_·_202604200150.png → 896x1152]", "ts": 1778902540.007205}
+{"id": 55, "kind": "progress", "line": "Resizing:  54%|█████▍    | 31/57 [00:04<00:04,  5.76it/s, 10._【虚空之径_·_202604200150.png → 896x1152]", "ts": 1778902540.4200847}
+{"id": 56, "kind": "progress", "line": "Resizing:  54%|█████▍    | 31/57 [00:05<00:04,  5.76it/s, 2._【星辰图书馆_·_202604200142.png → 896x1152]", "ts": 1778902540.4211566}
+{"id": 57, "kind": "progress", "line": "Resizing:  56%|█████▌    | 32/57 [00:05<00:05,  4.27it/s, 2._【星辰图书馆_·_202604200142.png → 896x1152]", "ts": 1778902540.4419255}
+{"id": 58, "kind": "progress", "line": "Resizing:  56%|█████▌    | 32/57 [00:05<00:05,  4.27it/s, 2._【发光森林_·_202604200125.png → 896x1152]", "ts": 1778902540.6260319}
+{"id": 59, "kind": "progress", "line": "Resizing:  56%|█████▌    | 32/57 [00:05<00:05,  4.27it/s, 2._【晶簇深渊_·_202604200154.png → 896x1152]", "ts": 1778902540.6267364}
+{"id": 60, "kind": "progress", "line": "Resizing:  60%|█████▉    | 34/57 [00:05<00:04,  5.58it/s, 2._【晶簇深渊_·_202604200154.png → 896x1152]", "ts": 1778902540.7592654}
+{"id": 61, "kind": "progress", "line": "Resizing:  60%|█████▉    | 34/57 [00:05<00:04,  5.58it/s, 3._【圣域森林_·_202604200154.png → 896x1152]", "ts": 1778902540.7603352}
+{"id": 62, "kind": "progress", "line": "Resizing:  61%|██████▏   | 35/57 [00:05<00:03,  5.93it/s, 3._【圣域森林_·_202604200154.png → 896x1152]", "ts": 1778902541.2079747}
+{"id": 63, "kind": "progress", "line": "Resizing:  61%|██████▏   | 35/57 [00:05<00:03,  5.93it/s, 3._【星辰观测台_·_202604200125.png → 896x1152]", "ts": 1778902541.209179}
+{"id": 64, "kind": "progress", "line": "Resizing:  63%|██████▎   | 36/57 [00:05<00:04,  4.20it/s, 3._【星辰观测台_·_202604200125.png → 896x1152]", "ts": 1778902541.3286383}
+{"id": 65, "kind": "progress", "line": "Resizing:  63%|██████▎   | 36/57 [00:06<00:04,  4.20it/s, 3._【水晶之湖_·_202604200142.png → 896x1152]", "ts": 1778902541.329776}
+{"id": 66, "kind": "progress", "line": "Resizing:  65%|██████▍   | 37/57 [00:06<00:04,  4.82it/s, 3._【水晶之湖_·_202604200142.png → 896x1152]", "ts": 1778902541.4147553}
+{"id": 67, "kind": "progress", "line": "Resizing:  65%|██████▍   | 37/57 [00:06<00:04,  4.82it/s, 4._【古老遗迹_·_202604200154.png → 896x1152]", "ts": 1778902541.4926305}
+{"id": 68, "kind": "progress", "line": "Resizing:  65%|██████▍   | 37/57 [00:06<00:04,  4.82it/s, 4._【浮空之城_·_202604200142.png → 896x1152]", "ts": 1778902541.493585}
+{"id": 69, "kind": "progress", "line": "Resizing:  68%|██████▊   | 39/57 [00:06<00:02,  6.50it/s, 4._【浮空之城_·_202604200142.png → 896x1152]", "ts": 1778902541.992698}
+{"id": 70, "kind": "progress", "line": "Resizing:  68%|██████▊   | 39/57 [00:06<00:02,  6.50it/s, 4._【浮空岛边缘_·_202604200125.png → 896x1152]", "ts": 1778902541.9936543}
+{"id": 71, "kind": "progress", "line": "Resizing:  70%|███████   | 40/57 [00:06<00:03,  4.26it/s, 4._【浮空岛边缘_·_202604200125.png → 896x1152]", "ts": 1778902542.111038}
+{"id": 72, "kind": "progress", "line": "Resizing:  70%|███████   | 40/57 [00:06<00:03,  4.26it/s, 5._【晶体矿洞_·_202604200125.png → 896x1152]", "ts": 1778902542.1121137}
+{"id": 73, "kind": "progress", "line": "Resizing:  72%|███████▏  | 41/57 [00:06<00:03,  4.86it/s, 5._【晶体矿洞_·_202604200125.png → 896x1152]", "ts": 1778902542.209434}
+{"id": 74, "kind": "progress", "line": "Resizing:  72%|███████▏  | 41/57 [00:06<00:03,  4.86it/s, 5._【古老祭坛_·_202604200140.png → 896x1152]", "ts": 1778902542.2776835}
+{"id": 75, "kind": "progress", "line": "Resizing:  72%|███████▏  | 41/57 [00:06<00:03,  4.86it/s, 5._【月光之湖_·_202604200154.png → 896x1152]", "ts": 1778902542.2787254}
+{"id": 76, "kind": "progress", "line": "Resizing:  75%|███████▌  | 43/57 [00:06<00:02,  6.47it/s, 5._【月光之湖_·_202604200154.png → 896x1152]", "ts": 1778902542.8520927}
+{"id": 77, "kind": "progress", "line": "Resizing:  75%|███████▌  | 43/57 [00:07<00:02,  6.47it/s, 6._【废弃哥特教堂_·_202604200125.png → 896x1152]", "ts": 1778902542.8530526}
+{"id": 78, "kind": "progress", "line": "Resizing:  77%|███████▋  | 44/57 [00:07<00:03,  3.98it/s, 6._【废弃哥特教堂_·_202604200125.png → 896x1152]", "ts": 1778902542.8639798}
+{"id": 79, "kind": "progress", "line": "Resizing:  77%|███████▋  | 44/57 [00:07<00:03,  3.98it/s, 8._【遗忘之塔_·_202604200150.png → 896x1152]", "ts": 1778902543.0093682}
+{"id": 80, "kind": "progress", "line": "Resizing:  77%|███████▋  | 44/57 [00:07<00:03,  3.98it/s, 8._【银月湖畔_·_202604200126.png → 896x1152]", "ts": 1778902543.0104916}
+{"id": 81, "kind": "progress", "line": "Resizing:  81%|████████  | 46/57 [00:07<00:02,  5.47it/s, 8._【银月湖畔_·_202604200126.png → 896x1152]", "ts": 1778902543.0111861}
+{"id": 82, "kind": "progress", "line": "Resizing:  81%|████████  | 46/57 [00:07<00:02,  5.47it/s, 9._【萤火之谷_·_202604200150.png → 896x1152]", "ts": 1778902543.6172574}
+{"id": 83, "kind": "progress", "line": "Resizing:  81%|████████  | 46/57 [00:08<00:02,  5.47it/s, Descending_from_a_202604200121.png → 896x1152]", "ts": 1778902543.61835}
+{"id": 84, "kind": "progress", "line": "Resizing:  84%|████████▍ | 48/57 [00:08<00:02,  4.41it/s, Descending_from_a_202604200121.png → 896x1152]", "ts": 1778902543.620582}
+{"id": 85, "kind": "progress", "line": "Resizing:  84%|████████▍ | 48/57 [00:08<00:02,  4.41it/s, 9._【蒸汽魔导之城_·_202604200126.png → 896x1152]", "ts": 1778902543.6885438}
+{"id": 86, "kind": "progress", "line": "Resizing:  84%|████████▍ | 48/57 [00:08<00:02,  4.41it/s, Standing_on_a_202604200117.png → 896x1152]", "ts": 1778902543.83586}
+{"id": 87, "kind": "progress", "line": "Resizing:  84%|████████▍ | 48/57 [00:08<00:02,  4.41it/s, Floating_in_a_202604200120.png → 896x1152]", "ts": 1778902543.8366477}
+{"id": 88, "kind": "progress", "line": "Resizing:  89%|████████▉ | 51/57 [00:08<00:00,  6.27it/s, Floating_in_a_202604200120.png → 896x1152]", "ts": 1778902544.2903922}
+{"id": 89, "kind": "progress", "line": "Resizing:  89%|████████▉ | 51/57 [00:08<00:00,  6.27it/s, Surrounded_by_floating_202604200117.png → 896x1152]", "ts": 1778902544.2915802}
+{"id": 90, "kind": "progress", "line": "Resizing:  91%|█████████ | 52/57 [00:08<00:01,  4.76it/s, Surrounded_by_floating_202604200117.png → 896x1152]", "ts": 1778902544.3872976}
+{"id": 91, "kind": "progress", "line": "Resizing:  91%|█████████ | 52/57 [00:09<00:01,  4.76it/s, 、Inside_a_colossal_202604200117.png → 896x1152]", "ts": 1778902544.3883324}
+{"id": 92, "kind": "progress", "line": "Resizing:  91%|█████████ | 52/57 [00:09<00:01,  4.76it/s, Standing_on_a_202604200118.png → 896x1152]", "ts": 1778902544.5756004}
+{"id": 93, "kind": "progress", "line": "Resizing:  91%|█████████ | 52/57 [00:09<00:01,  4.76it/s, 场景描述：_角色坐在世界树巨大的分叉枝干上，周围是发光的萤火虫和垂下的发光藤蔓。_时间_光影：_202604200122.png → 896x1152]", "ts": 1778902544.5766635}
+{"id": 94, "kind": "progress", "line": "Resizing:  96%|█████████▋| 55/57 [00:09<00:00,  6.20it/s, 场景描述：_角色坐在世界树巨大的分叉枝干上，周围是发光的萤火虫和垂下的发光藤蔓。_时间_光影：_202604200122.png → 896x1152]", "ts": 1778902544.9982648}
+{"id": 95, "kind": "progress", "line": "Resizing:  96%|█████████▋| 55/57 [00:09<00:00,  6.20it/s, 繁花温室_·_午后】_202604200150.png → 896x1152]", "ts": 1778902544.9988604}
+{"id": 96, "kind": "progress", "line": "Resizing:  98%|█████████▊| 56/57 [00:09<00:00,  4.87it/s, 繁花温室_·_午后】_202604200150.png → 896x1152]", "ts": 1778902545.003533}
+{"id": 97, "kind": "progress", "line": "Resizing:  98%|█████████▊| 56/57 [00:09<00:00,  4.87it/s, 角色低头看向镜头_202604200221.jpeg → 896x1152]", "ts": 1778902545.0041277}
+{"id": 98, "kind": "progress", "line": "Resizing: 100%|██████████| 57/57 [00:09<00:00,  5.87it/s, 角色低头看向镜头_202604200221.jpeg → 896x1152]", "ts": 1778902545.0045362}
+{"id": 99, "kind": "log", "line": "Bucket distribution:", "ts": 1778902545.023217}
+{"id": 100, "kind": "log", "line": "896x1152:  57 images  (4032 tokens)", "ts": 1778902545.02363}
+{"id": 101, "kind": "log", "line": "> /home/scv/nvme0n1p1/训练器相关/anima_lora/.venv/bin/python preprocess/cache_latents.py --dir /home/scv/图片/安/5-15-a --cache_dir /home/scv/图片/安/5-15-b --vae /home/scv/nvme0n1p1/ComfyUI/models/vae/anima/anima_vae.safetensors --batch_size 4 --chunk_size 64", "ts": 1778902546.0828834}
+{"id": 102, "kind": "log", "line": "Loading VAE from /home/scv/nvme0n1p1/ComfyUI/models/vae/anima/anima_vae.safetensors ...", "ts": 1778902550.6376324}
+{"id": 103, "kind": "log", "line": "2026-05-16 11:35:50 INFO     Initializing VAE                   qwen_vae.py:1870", "ts": 1778902550.6415951}
+{"id": 104, "kind": "log", "line": "2026-05-16 11:35:51 INFO     Loading VAE from                   qwen_vae.py:1894", "ts": 1778902551.5822575}
+{"id": 105, "kind": "log", "line": "/home/scv/nvme0n1p1/ComfyUI/models", "ts": 1778902551.5830681}
+{"id": 106, "kind": "log", "line": "/vae/anima/anima_vae.safetensors", "ts": 1778902551.5837088}
+{"id": 107, "kind": "log", "line": "INFO     Converted ComfyUI AutoencoderKL    qwen_vae.py:1799", "ts": 1778902551.6958437}
+{"id": 108, "kind": "log", "line": "state dict keys to official format", "ts": 1778902551.6966512}
+{"id": 109, "kind": "log", "line": "INFO     Loaded VAE: <All keys matched      qwen_vae.py:1901", "ts": 1778902551.7370567}
+{"id": 110, "kind": "log", "line": "successfully>", "ts": 1778902551.737911}
+{"id": 111, "kind": "progress", "line": "Caching latents:   0%|          | 0/57 [00:00<?, ?it/s]", "ts": 1778902554.0064738}
+{"id": 112, "kind": "progress", "line": "Caching latents:   2%|▏         | 1/57 [00:02<01:53,  2.02s/it]", "ts": 1778902554.0074975}
+{"id": 113, "kind": "progress", "line": "Caching latents:   2%|▏         | 1/57 [00:02<01:53,  2.02s/it, 0.png_202604200135 (1).png → 896x1152]", "ts": 1778902554.0092447}
+{"id": 114, "kind": "progress", "line": "Caching latents:   4%|▎         | 2/57 [00:02<01:51,  2.02s/it, 0.png_202604200135 (2).png → 896x1152]", "ts": 1778902554.011604}
+{"id": 115, "kind": "progress", "line": "Caching latents:   5%|▌         | 3/57 [00:02<01:49,  2.02s/it, 0.png_202604200135 (3).png → 896x1152]", "ts": 1778902554.0139375}
+{"id": 116, "kind": "progress", "line": "Caching latents:   7%|▋         | 4/57 [00:02<01:47,  2.02s/it, 0.png_202604200135 (4).png → 896x1152]", "ts": 1778902555.7421815}
+{"id": 117, "kind": "progress", "line": "Caching latents:   9%|▉         | 5/57 [00:03<00:34,  1.49it/s, 0.png_202604200135 (4).png → 896x1152]", "ts": 1778902555.7431076}
+{"id": 118, "kind": "progress", "line": "Caching latents:   9%|▉         | 5/57 [00:03<00:34,  1.49it/s, 0.png_202604200135 (5).png → 896x1152]", "ts": 1778902555.7445486}
+{"id": 119, "kind": "progress", "line": "Caching latents:  11%|█         | 6/57 [00:03<00:34,  1.49it/s, 0.png_202604200135 (6).png → 896x1152]", "ts": 1778902555.7470748}
+{"id": 120, "kind": "progress", "line": "Caching latents:  12%|█▏        | 7/57 [00:03<00:33,  1.49it/s, 0.png_202604200135 (7).png → 896x1152]", "ts": 1778902555.749446}
+{"id": 121, "kind": "progress", "line": "Caching latents:  14%|█▍        | 8/57 [00:03<00:32,  1.49it/s, 0.png_202604200135 (8).png → 896x1152]", "ts": 1778902557.4540048}
+{"id": 122, "kind": "progress", "line": "Caching latents:  16%|█▌        | 9/57 [00:05<00:25,  1.86it/s, 0.png_202604200135 (8).png → 896x1152]", "ts": 1778902557.4551623}
+{"id": 123, "kind": "progress", "line": "Caching latents:  16%|█▌        | 9/57 [00:05<00:25,  1.86it/s, 0.png_202604200135 (9).png → 896x1152]", "ts": 1778902557.4568923}
+{"id": 124, "kind": "progress", "line": "Caching latents:  18%|█▊        | 10/57 [00:05<00:25,  1.86it/s, 0.png_202604200135.png → 896x1152]", "ts": 1778902557.4596777}
+{"id": 125, "kind": "progress", "line": "Caching latents:  19%|█▉        | 11/57 [00:05<00:24,  1.86it/s, 0.png_202604200218 (1).png → 896x1152]", "ts": 1778902557.4625082}
+{"id": 126, "kind": "progress", "line": "Caching latents:  21%|██        | 12/57 [00:05<00:24,  1.86it/s, 0.png_202604200218 (2).png → 896x1152]", "ts": 1778902559.1903107}
+{"id": 127, "kind": "progress", "line": "Caching latents:  23%|██▎       | 13/57 [00:07<00:21,  2.03it/s, 0.png_202604200218 (2).png → 896x1152]", "ts": 1778902559.1912982}
+{"id": 128, "kind": "progress", "line": "Caching latents:  23%|██▎       | 13/57 [00:07<00:21,  2.03it/s, 0.png_202604200218 (3).png → 896x1152]", "ts": 1778902559.1925774}
+{"id": 129, "kind": "progress", "line": "Caching latents:  25%|██▍       | 14/57 [00:07<00:21,  2.03it/s, 0.png_202604200218.png → 896x1152]", "ts": 1778902559.19504}
+{"id": 130, "kind": "progress", "line": "Caching latents:  26%|██▋       | 15/57 [00:07<00:20,  2.03it/s, 0.png_202604200219 (1).png → 896x1152]", "ts": 1778902559.1973274}
+{"id": 131, "kind": "progress", "line": "Caching latents:  28%|██▊       | 16/57 [00:07<00:20,  2.03it/s, 0.png_202604200219 (2).png → 896x1152]", "ts": 1778902560.8875508}
+{"id": 132, "kind": "progress", "line": "Caching latents:  30%|██▉       | 17/57 [00:08<00:18,  2.15it/s, 0.png_202604200219 (2).png → 896x1152]", "ts": 1778902560.8883092}
+{"id": 133, "kind": "progress", "line": "Caching latents:  30%|██▉       | 17/57 [00:08<00:18,  2.15it/s, 0.png_202604200219.png → 896x1152]", "ts": 1778902560.889891}
+{"id": 134, "kind": "progress", "line": "Caching latents:  32%|███▏      | 18/57 [00:08<00:18,  2.15it/s, 0.png_202604200228 (1).png → 896x1152]", "ts": 1778902560.8922195}
+{"id": 135, "kind": "progress", "line": "Caching latents:  33%|███▎      | 19/57 [00:08<00:17,  2.15it/s, 0.png_202604200228 (2).png → 896x1152]", "ts": 1778902560.8946195}
+{"id": 136, "kind": "progress", "line": "Caching latents:  35%|███▌      | 20/57 [00:08<00:17,  2.15it/s, 0.png_202604200228 (3).png → 896x1152]", "ts": 1778902562.5855513}
+{"id": 137, "kind": "progress", "line": "Caching latents:  37%|███▋      | 21/57 [00:10<00:16,  2.22it/s, 0.png_202604200228 (3).png → 896x1152]", "ts": 1778902562.5865774}
+{"id": 138, "kind": "progress", "line": "Caching latents:  37%|███▋      | 21/57 [00:10<00:16,  2.22it/s, 0.png_202604200228 (4).png → 896x1152]", "ts": 1778902562.5879953}
+{"id": 139, "kind": "progress", "line": "Caching latents:  39%|███▊      | 22/57 [00:10<00:15,  2.22it/s, 0.png_202604200228 (5).png → 896x1152]", "ts": 1778902562.5903082}
+{"id": 140, "kind": "progress", "line": "Caching latents:  40%|████      | 23/57 [00:10<00:15,  2.22it/s, 0.png_202604200228.png → 896x1152]", "ts": 1778902562.5925093}
+{"id": 141, "kind": "progress", "line": "Caching latents:  42%|████▏     | 24/57 [00:10<00:14,  2.22it/s, 0.png_202604200229 (1).png → 896x1152]", "ts": 1778902564.2808442}
+{"id": 142, "kind": "progress", "line": "Caching latents:  44%|████▍     | 25/57 [00:12<00:14,  2.26it/s, 0.png_202604200229 (1).png → 896x1152]", "ts": 1778902564.2817707}
+{"id": 143, "kind": "progress", "line": "Caching latents:  44%|████▍     | 25/57 [00:12<00:14,  2.26it/s, 0.png_202604200229 (2).png → 896x1152]", "ts": 1778902564.2832468}
+{"id": 144, "kind": "progress", "line": "Caching latents:  46%|████▌     | 26/57 [00:12<00:13,  2.26it/s, 0.png_202604200229.png → 896x1152]", "ts": 1778902564.2856}
+{"id": 145, "kind": "progress", "line": "Caching latents:  47%|████▋     | 27/57 [00:12<00:13,  2.26it/s, 1._【古老禁书库_·_202604200124.png → 896x1152]", "ts": 1778902564.2879386}
+{"id": 146, "kind": "progress", "line": "Caching latents:  49%|████▉     | 28/57 [00:12<00:12,  2.26it/s, 1._【浮空岛屿_·_202604200154.png → 896x1152]", "ts": 1778902565.9818754}
+{"id": 147, "kind": "progress", "line": "Caching latents:  51%|█████     | 29/57 [00:13<00:12,  2.29it/s, 1._【浮空岛屿_·_202604200154.png → 896x1152]", "ts": 1778902565.9826458}
+{"id": 148, "kind": "progress", "line": "Caching latents:  51%|█████     | 29/57 [00:13<00:12,  2.29it/s, 1._【静谧之森_·_202604200142.png → 896x1152]", "ts": 1778902565.984203}
+{"id": 149, "kind": "progress", "line": "Caching latents:  53%|█████▎    | 30/57 [00:14<00:11,  2.29it/s, 10._【极光云海_·_202604200126.png → 896x1152]", "ts": 1778902565.9865682}
+{"id": 150, "kind": "progress", "line": "Caching latents:  54%|█████▍    | 31/57 [00:14<00:11,  2.29it/s, 10._【虚空之径_·_202604200150.png → 896x1152]", "ts": 1778902565.9888906}
+{"id": 151, "kind": "progress", "line": "Caching latents:  56%|█████▌    | 32/57 [00:14<00:10,  2.29it/s, 2._【发光森林_·_202604200125.png → 896x1152]", "ts": 1778902567.702092}
+{"id": 152, "kind": "progress", "line": "Caching latents:  58%|█████▊    | 33/57 [00:15<00:10,  2.30it/s, 2._【发光森林_·_202604200125.png → 896x1152]", "ts": 1778902567.7031822}
+{"id": 153, "kind": "progress", "line": "Caching latents:  58%|█████▊    | 33/57 [00:15<00:10,  2.30it/s, 2._【星辰图书馆_·_202604200142.png → 896x1152]", "ts": 1778902567.7042236}
+{"id": 154, "kind": "progress", "line": "Caching latents:  60%|█████▉    | 34/57 [00:15<00:09,  2.30it/s, 2._【晶簇深渊_·_202604200154.png → 896x1152]", "ts": 1778902567.7060149}
+{"id": 155, "kind": "progress", "line": "Caching latents:  61%|██████▏   | 35/57 [00:15<00:09,  2.30it/s, 3._【圣域森林_·_202604200154.png → 896x1152]", "ts": 1778902567.7078784}
+{"id": 156, "kind": "progress", "line": "Caching latents:  63%|██████▎   | 36/57 [00:15<00:09,  2.30it/s, 3._【星辰观测台_·_202604200125.png → 896x1152]", "ts": 1778902569.4057753}
+{"id": 157, "kind": "progress", "line": "Caching latents:  65%|██████▍   | 37/57 [00:17<00:08,  2.32it/s, 3._【星辰观测台_·_202604200125.png → 896x1152]", "ts": 1778902569.4068167}
+{"id": 158, "kind": "progress", "line": "Caching latents:  65%|██████▍   | 37/57 [00:17<00:08,  2.32it/s, 3._【水晶之湖_·_202604200142.png → 896x1152]", "ts": 1778902569.4081054}
+{"id": 159, "kind": "progress", "line": "Caching latents:  67%|██████▋   | 38/57 [00:17<00:08,  2.32it/s, 4._【古老遗迹_·_202604200154.png → 896x1152]", "ts": 1778902569.4104626}
+{"id": 160, "kind": "progress", "line": "Caching latents:  68%|██████▊   | 39/57 [00:17<00:07,  2.32it/s, 4._【浮空之城_·_202604200142.png → 896x1152]", "ts": 1778902569.4127157}
+{"id": 161, "kind": "progress", "line": "Caching latents:  70%|███████   | 40/57 [00:17<00:07,  2.32it/s, 4._【浮空岛边缘_·_202604200125.png → 896x1152]", "ts": 1778902571.0903995}
+{"id": 162, "kind": "progress", "line": "Caching latents:  72%|███████▏  | 41/57 [00:19<00:06,  2.33it/s, 4._【浮空岛边缘_·_202604200125.png → 896x1152]", "ts": 1778902571.0913012}
+{"id": 163, "kind": "progress", "line": "Caching latents:  72%|███████▏  | 41/57 [00:19<00:06,  2.33it/s, 5._【古老祭坛_·_202604200140.png → 896x1152]", "ts": 1778902571.0928416}
+{"id": 164, "kind": "progress", "line": "Caching latents:  74%|███████▎  | 42/57 [00:19<00:06,  2.33it/s, 5._【晶体矿洞_·_202604200125.png → 896x1152]", "ts": 1778902571.095219}
+{"id": 165, "kind": "progress", "line": "Caching latents:  75%|███████▌  | 43/57 [00:19<00:05,  2.33it/s, 5._【月光之湖_·_202604200154.png → 896x1152]", "ts": 1778902571.0974982}
+{"id": 166, "kind": "progress", "line": "Caching latents:  77%|███████▋  | 44/57 [00:19<00:05,  2.33it/s, 6._【废弃哥特教堂_·_202604200125.png → 896x1152]", "ts": 1778902572.7853644}
+{"id": 167, "kind": "progress", "line": "Caching latents:  79%|███████▉  | 45/57 [00:20<00:05,  2.34it/s, 6._【废弃哥特教堂_·_202604200125.png → 896x1152]", "ts": 1778902572.7864034}
+{"id": 168, "kind": "progress", "line": "Caching latents:  79%|███████▉  | 45/57 [00:20<00:05,  2.34it/s, 8._【遗忘之塔_·_202604200150.png → 896x1152]", "ts": 1778902572.7873118}
+{"id": 169, "kind": "progress", "line": "Caching latents:  81%|████████  | 46/57 [00:20<00:04,  2.34it/s, 8._【银月湖畔_·_202604200126.png → 896x1152]", "ts": 1778902572.7894635}
+{"id": 170, "kind": "progress", "line": "Caching latents:  82%|████████▏ | 47/57 [00:20<00:04,  2.34it/s, 9._【萤火之谷_·_202604200150.png → 896x1152]", "ts": 1778902572.7912278}
+{"id": 171, "kind": "progress", "line": "Caching latents:  84%|████████▍ | 48/57 [00:20<00:03,  2.34it/s, 9._【蒸汽魔导之城_·_202604200126.png → 896x1152]", "ts": 1778902574.5076003}
+{"id": 172, "kind": "progress", "line": "Caching latents:  86%|████████▌ | 49/57 [00:22<00:03,  2.34it/s, 9._【蒸汽魔导之城_·_202604200126.png → 896x1152]", "ts": 1778902574.5083754}
+{"id": 173, "kind": "progress", "line": "Caching latents:  86%|████████▌ | 49/57 [00:22<00:03,  2.34it/s, Descending_from_a_202604200121.png → 896x1152]", "ts": 1778902574.509398}
+{"id": 174, "kind": "progress", "line": "Caching latents:  88%|████████▊ | 50/57 [00:22<00:02,  2.34it/s, Floating_in_a_202604200120.png → 896x1152]", "ts": 1778902574.5113196}
+{"id": 175, "kind": "progress", "line": "Caching latents:  89%|████████▉ | 51/57 [00:22<00:02,  2.34it/s, Standing_on_a_202604200117.png → 896x1152]", "ts": 1778902574.5129683}
+{"id": 176, "kind": "progress", "line": "Caching latents:  91%|█████████ | 52/57 [00:22<00:02,  2.34it/s, Standing_on_a_202604200118.png → 896x1152]", "ts": 1778902576.207855}
+{"id": 177, "kind": "progress", "line": "Caching latents:  93%|█████████▎| 53/57 [00:24<00:01,  2.34it/s, Standing_on_a_202604200118.png → 896x1152]", "ts": 1778902576.208903}
+{"id": 178, "kind": "progress", "line": "Caching latents:  93%|█████████▎| 53/57 [00:24<00:01,  2.34it/s, Surrounded_by_floating_202604200117.png → 896x1152]", "ts": 1778902576.2100377}
+{"id": 179, "kind": "progress", "line": "Caching latents:  95%|█████████▍| 54/57 [00:24<00:01,  2.34it/s, 、Inside_a_colossal_202604200117.png → 896x1152]", "ts": 1778902576.212088}
+{"id": 180, "kind": "progress", "line": "Caching latents:  96%|█████████▋| 55/57 [00:24<00:00,  2.34it/s, 场景描述：_角色坐在世界树巨大的分叉枝干上，周围是发光的萤火虫和垂下的发光藤蔓。_时间_光影：_202604200122.png → 896x1152]", "ts": 1778902576.214017}
+{"id": 181, "kind": "progress", "line": "Caching latents:  98%|█████████▊| 56/57 [00:24<00:00,  2.34it/s, 繁花温室_·_午后】_202604200150.png → 896x1152]", "ts": 1778902576.6512039}
+{"id": 182, "kind": "progress", "line": "Caching latents: 100%|██████████| 57/57 [00:24<00:00,  3.01it/s, 繁花温室_·_午后】_202604200150.png → 896x1152]", "ts": 1778902576.6521275}
+{"id": 183, "kind": "progress", "line": "Caching latents: 100%|██████████| 57/57 [00:24<00:00,  3.01it/s, 角色低头看向镜头_202604200221.png → 896x1152]", "ts": 1778902576.65314}
+{"id": 184, "kind": "progress", "line": "Caching latents: 100%|██████████| 57/57 [00:24<00:00,  2.31it/s, 角色低头看向镜头_202604200221.png → 896x1152]", "ts": 1778902576.6538768}
+{"id": 185, "kind": "log", "line": "Latent caching complete: 57 cached, 0 skipped (already existed)", "ts": 1778902576.6544883}
+{"id": 186, "kind": "log", "line": "> /home/scv/nvme0n1p1/训练器相关/anima_lora/.venv/bin/python preprocess/cache_text_embeddings.py --dir /home/scv/图片/安/5-14 --cache_dir /home/scv/图片/安/5-15-b --qwen3 /home/scv/nvme0n1p1/ComfyUI/models/text_encoders/anima/anima_qwen_3_06b_base.safetensors --dit /home/scv/nvme0n1p1/ComfyUI/models/diffusion_models/anima/anima-preview3-base.safetensors --caption_shuffle_variants 4 --caption_tag_dropout_rate 0.1", "ts": 1778902577.9068825}
+{"id": 187, "kind": "log", "line": "Loading Qwen3 text encoder from /home/scv/nvme0n1p1/ComfyUI/models/text_encoders/anima/anima_qwen_3_06b_base.safetensors ...", "ts": 1778902582.3178957}
+{"id": 188, "kind": "log", "line": "2026-05-16 11:36:22 INFO     Loading Qwen3 text encoder from      weights.py:389", "ts": 1778902582.3985682}
+{"id": 189, "kind": "log", "line": "/home/scv/nvme0n1p1/ComfyUI/models/t", "ts": 1778902582.399339}
+{"id": 190, "kind": "log", "line": "ext_encoders/anima/anima_qwen_3_06b_", "ts": 1778902582.399915}
+{"id": 191, "kind": "log", "line": "base.safetensors", "ts": 1778902582.4004056}
+{"id": 192, "kind": "log", "line": "2026-05-16 11:36:33 INFO     Loaded Qwen3 state dict: <All keys   weights.py:442", "ts": 1778902593.0236838}
+{"id": 193, "kind": "log", "line": "matched successfully>", "ts": 1778902593.0242999}
+{"id": 194, "kind": "log", "line": "INFO     Loaded Qwen3 text encoder.           weights.py:450", "ts": 1778902593.664741}
+{"id": 195, "kind": "log", "line": "Parameters: 596,049,920", "ts": 1778902593.6652212}
+{"id": 196, "kind": "log", "line": "Loading LLM adapter from /home/scv/nvme0n1p1/ComfyUI/models/diffusion_models/anima/anima-preview3-base.safetensors ...", "ts": 1778902593.7637668}
+{"id": 197, "kind": "log", "line": "Caption shuffle variants: 4 (v0=pristine, v1..v3=shuffled + tag dropout p=0.100)", "ts": 1778902594.860433}
+{"id": 198, "kind": "progress", "line": "Caching text embeddings:   0%|          | 0/54 [00:00<?, ?it/s]", "ts": 1778902599.1797357}
+{"id": 199, "kind": "progress", "line": "Caching text embeddings:   2%|▏         | 1/54 [00:04<03:48,  4.32s/it]", "ts": 1778902599.1807382}
+{"id": 200, "kind": "progress", "line": "Caching text embeddings:   2%|▏         | 1/54 [00:04<03:48,  4.32s/it, 0.png_202604200135 (1).jpeg (4v)]", "ts": 1778902599.1856873}
+{"id": 201, "kind": "progress", "line": "Caching text embeddings:   4%|▎         | 2/54 [00:04<03:44,  4.32s/it, 0.png_202604200135 (2).jpeg (4v)]", "ts": 1778902599.1913176}
+{"id": 202, "kind": "progress", "line": "Caching text embeddings:   6%|▌         | 3/54 [00:04<03:40,  4.32s/it, 0.png_202604200135 (3).jpeg (4v)]", "ts": 1778902599.1974008}
+{"id": 203, "kind": "progress", "line": "Caching text embeddings:   7%|▋         | 4/54 [00:04<03:35,  4.32s/it, 0.png_202604200135 (4).jpeg (4v)]", "ts": 1778902599.203583}
+{"id": 204, "kind": "progress", "line": "Caching text embeddings:   9%|▉         | 5/54 [00:04<03:31,  4.32s/it, 0.png_202604200135 (5).jpeg (4v)]", "ts": 1778902599.209349}
+{"id": 205, "kind": "progress", "line": "Caching text embeddings:  11%|█         | 6/54 [00:04<03:27,  4.32s/it, 0.png_202604200135 (6).jpeg (4v)]", "ts": 1778902599.2155406}
+{"id": 206, "kind": "progress", "line": "Caching text embeddings:  13%|█▎        | 7/54 [00:04<03:22,  4.32s/it, 0.png_202604200135 (7).jpeg (4v)]", "ts": 1778902599.221378}
+{"id": 207, "kind": "progress", "line": "Caching text embeddings:  15%|█▍        | 8/54 [00:04<03:18,  4.32s/it, 0.png_202604200135 (8).jpeg (4v)]", "ts": 1778902599.227155}
+{"id": 208, "kind": "progress", "line": "Caching text embeddings:  17%|█▋        | 9/54 [00:04<03:14,  4.32s/it, 0.png_202604200135 (9).jpeg (4v)]", "ts": 1778902599.2327719}
+{"id": 209, "kind": "progress", "line": "Caching text embeddings:  19%|█▊        | 10/54 [00:04<03:09,  4.32s/it, 0.png_202604200135.jpeg (4v)]", "ts": 1778902599.2389736}
+{"id": 210, "kind": "progress", "line": "Caching text embeddings:  20%|██        | 11/54 [00:04<03:05,  4.32s/it, 0.png_202604200218 (1).jpeg (4v)]", "ts": 1778902599.2446563}
+{"id": 211, "kind": "progress", "line": "Caching text embeddings:  22%|██▏       | 12/54 [00:04<03:01,  4.32s/it, 0.png_202604200218 (2).jpeg (4v)]", "ts": 1778902599.250564}
+{"id": 212, "kind": "progress", "line": "Caching text embeddings:  24%|██▍       | 13/54 [00:04<02:57,  4.32s/it, 0.png_202604200218 (3).jpeg (4v)]", "ts": 1778902599.2560573}
+{"id": 213, "kind": "progress", "line": "Caching text embeddings:  26%|██▌       | 14/54 [00:04<02:52,  4.32s/it, 0.png_202604200218.jpeg (4v)]", "ts": 1778902599.261737}
+{"id": 214, "kind": "progress", "line": "Caching text embeddings:  28%|██▊       | 15/54 [00:04<02:48,  4.32s/it, 0.png_202604200219 (1).jpeg (4v)]", "ts": 1778902599.2680569}
+{"id": 215, "kind": "progress", "line": "Caching text embeddings:  30%|██▉       | 16/54 [00:04<02:44,  4.32s/it, 0.png_202604200219 (2).jpeg (4v)]", "ts": 1778902601.4537597}
+{"id": 216, "kind": "progress", "line": "Caching text embeddings:  31%|███▏      | 17/54 [00:06<00:11,  3.15it/s, 0.png_202604200219 (2).jpeg (4v)]", "ts": 1778902601.454734}
+{"id": 217, "kind": "progress", "line": "Caching text embeddings:  31%|███▏      | 17/54 [00:06<00:11,  3.15it/s, 0.png_202604200228 (1).jpeg (4v)]", "ts": 1778902601.4589875}
+{"id": 218, "kind": "progress", "line": "Caching text embeddings:  33%|███▎      | 18/54 [00:06<00:11,  3.15it/s, 0.png_202604200228 (2).jpeg (4v)]", "ts": 1778902601.4639556}
+{"id": 219, "kind": "progress", "line": "Caching text embeddings:  35%|███▌      | 19/54 [00:06<00:11,  3.15it/s, 0.png_202604200228 (3).jpeg (4v)]", "ts": 1778902601.4693346}
+{"id": 220, "kind": "progress", "line": "Caching text embeddings:  37%|███▋      | 20/54 [00:06<00:10,  3.15it/s, 0.png_202604200228 (4).jpeg (4v)]", "ts": 1778902601.4746768}
+{"id": 221, "kind": "progress", "line": "Caching text embeddings:  39%|███▉      | 21/54 [00:06<00:10,  3.15it/s, 0.png_202604200228 (5).jpeg (4v)]", "ts": 1778902601.479824}
+{"id": 222, "kind": "progress", "line": "Caching text embeddings:  41%|████      | 22/54 [00:06<00:10,  3.15it/s, 0.png_202604200228.jpeg (4v)]", "ts": 1778902601.4851959}
+{"id": 223, "kind": "progress", "line": "Caching text embeddings:  43%|████▎     | 23/54 [00:06<00:09,  3.15it/s, 0.png_202604200229 (1).jpeg (4v)]", "ts": 1778902601.4904003}
+{"id": 224, "kind": "progress", "line": "Caching text embeddings:  44%|████▍     | 24/54 [00:06<00:09,  3.15it/s, 0.png_202604200229 (2).jpeg (4v)]", "ts": 1778902601.4956536}
+{"id": 225, "kind": "progress", "line": "Caching text embeddings:  46%|████▋     | 25/54 [00:06<00:09,  3.15it/s, 0.png_202604200229.jpeg (4v)]", "ts": 1778902601.500785}
+{"id": 226, "kind": "progress", "line": "Caching text embeddings:  48%|████▊     | 26/54 [00:06<00:08,  3.15it/s, 1._【古老禁书库_·_202604200124.png (4v)]", "ts": 1778902601.5059738}
+{"id": 227, "kind": "progress", "line": "Caching text embeddings:  50%|█████     | 27/54 [00:06<00:08,  3.15it/s, 1._【浮空岛屿_·_202604200154.png (4v)]", "ts": 1778902601.5111258}
+{"id": 228, "kind": "progress", "line": "Caching text embeddings:  52%|█████▏    | 28/54 [00:06<00:08,  3.15it/s, 1._【静谧之森_·_202604200142.png (4v)]", "ts": 1778902601.5163481}
+{"id": 229, "kind": "progress", "line": "Caching text embeddings:  54%|█████▎    | 29/54 [00:06<00:07,  3.15it/s, 10._【极光云海_·_202604200126.png (4v)]", "ts": 1778902601.5215747}
+{"id": 230, "kind": "progress", "line": "Caching text embeddings:  56%|█████▌    | 30/54 [00:06<00:07,  3.15it/s, 10._【虚空之径_·_202604200150.png (4v)]", "ts": 1778902601.5267627}
+{"id": 231, "kind": "progress", "line": "Caching text embeddings:  57%|█████▋    | 31/54 [00:06<00:07,  3.15it/s, 2._【发光森林_·_202604200125.png (4v)]", "ts": 1778902601.5319145}
+{"id": 232, "kind": "progress", "line": "Caching text embeddings:  59%|█████▉    | 32/54 [00:06<00:06,  3.15it/s, 2._【星辰图书馆_·_202604200142.png (4v)]", "ts": 1778902603.7012358}
+{"id": 233, "kind": "progress", "line": "Caching text embeddings:  61%|██████    | 33/54 [00:08<00:04,  4.65it/s, 2._【星辰图书馆_·_202604200142.png (4v)]", "ts": 1778902603.7019918}
+{"id": 234, "kind": "progress", "line": "Caching text embeddings:  61%|██████    | 33/54 [00:08<00:04,  4.65it/s, 2._【晶簇深渊_·_202604200154.png (4v)]", "ts": 1778902603.7066567}
+{"id": 235, "kind": "progress", "line": "Caching text embeddings:  63%|██████▎   | 34/54 [00:08<00:04,  4.65it/s, 3._【圣域森林_·_202604200154.png (4v)]", "ts": 1778902603.7119005}
+{"id": 236, "kind": "progress", "line": "Caching text embeddings:  65%|██████▍   | 35/54 [00:08<00:04,  4.65it/s, 3._【星辰观测台_·_202604200125.png (4v)]", "ts": 1778902603.717476}
+{"id": 237, "kind": "progress", "line": "Caching text embeddings:  67%|██████▋   | 36/54 [00:08<00:03,  4.65it/s, 3._【水晶之湖_·_202604200142.png (4v)]", "ts": 1778902603.7228162}
+{"id": 238, "kind": "progress", "line": "Caching text embeddings:  69%|██████▊   | 37/54 [00:08<00:03,  4.65it/s, 4._【古老遗迹_·_202604200154.png (4v)]", "ts": 1778902603.728338}
+{"id": 239, "kind": "progress", "line": "Caching text embeddings:  70%|███████   | 38/54 [00:08<00:03,  4.65it/s, 4._【浮空之城_·_202604200142.png (4v)]", "ts": 1778902603.7336326}
+{"id": 240, "kind": "progress", "line": "Caching text embeddings:  72%|███████▏  | 39/54 [00:08<00:03,  4.65it/s, 4._【浮空岛边缘_·_202604200125.png (4v)]", "ts": 1778902603.7389312}
+{"id": 241, "kind": "progress", "line": "Caching text embeddings:  74%|███████▍  | 40/54 [00:08<00:03,  4.65it/s, 5._【古老祭坛_·_202604200140.png (4v)]", "ts": 1778902603.7444944}
+{"id": 242, "kind": "progress", "line": "Caching text embeddings:  76%|███████▌  | 41/54 [00:08<00:02,  4.65it/s, 5._【月光之湖_·_202604200154.png (4v)]", "ts": 1778902603.7497096}
+{"id": 243, "kind": "progress", "line": "Caching text embeddings:  78%|███████▊  | 42/54 [00:08<00:02,  4.65it/s, 6._【废弃哥特教堂_·_202604200125.png (4v)]", "ts": 1778902603.7549486}
+{"id": 244, "kind": "progress", "line": "Caching text embeddings:  80%|███████▉  | 43/54 [00:08<00:02,  4.65it/s, 8._【遗忘之塔_·_202604200150.png (4v)]", "ts": 1778902603.7603009}
+{"id": 245, "kind": "progress", "line": "Caching text embeddings:  81%|████████▏ | 44/54 [00:08<00:02,  4.65it/s, 8._【银月湖畔_·_202604200126.png (4v)]", "ts": 1778902603.7656457}
+{"id": 246, "kind": "progress", "line": "Caching text embeddings:  83%|████████▎ | 45/54 [00:08<00:01,  4.65it/s, 9._【萤火之谷_·_202604200150.png (4v)]", "ts": 1778902603.7711844}
+{"id": 247, "kind": "progress", "line": "Caching text embeddings:  85%|████████▌ | 46/54 [00:08<00:01,  4.65it/s, 9._【蒸汽魔导之城_·_202604200126.png (4v)]", "ts": 1778902603.7765324}
+{"id": 248, "kind": "progress", "line": "Caching text embeddings:  87%|████████▋ | 47/54 [00:08<00:01,  4.65it/s, Descending_from_a_202604200121.png (4v)]", "ts": 1778902603.781889}
+{"id": 249, "kind": "progress", "line": "Caching text embeddings:  89%|████████▉ | 48/54 [00:08<00:01,  4.65it/s, Floating_in_a_202604200120.png (4v)]", "ts": 1778902604.6415129}
+{"id": 250, "kind": "progress", "line": "Caching text embeddings:  91%|█████████ | 49/54 [00:09<00:00,  6.93it/s, Floating_in_a_202604200120.png (4v)]", "ts": 1778902604.6421943}
+{"id": 251, "kind": "progress", "line": "Caching text embeddings:  91%|█████████ | 49/54 [00:09<00:00,  6.93it/s, Standing_on_a_202604200118.png (4v)]", "ts": 1778902604.6474433}
+{"id": 252, "kind": "progress", "line": "Caching text embeddings:  93%|█████████▎| 50/54 [00:09<00:00,  6.93it/s, Surrounded_by_floating_202604200117.png (4v)]", "ts": 1778902604.653295}
+{"id": 253, "kind": "progress", "line": "Caching text embeddings:  94%|█████████▍| 51/54 [00:09<00:00,  6.93it/s, 、Inside_a_colossal_202604200117.png (4v)]", "ts": 1778902604.658894}
+{"id": 254, "kind": "progress", "line": "Caching text embeddings:  96%|█████████▋| 52/54 [00:09<00:00,  6.93it/s, 场景描述：_角色坐在世界树巨大的分叉枝干上，周围是发光的萤火虫和垂下的发光藤蔓。_时间_光影：_202604200122.png (4v)]", "ts": 1778902604.6645234}
+{"id": 255, "kind": "progress", "line": "Caching text embeddings:  98%|█████████▊| 53/54 [00:09<00:00,  6.93it/s, 繁花温室_·_午后】_202604200150.png (4v)]", "ts": 1778902604.6702948}
+{"id": 256, "kind": "progress", "line": "Caching text embeddings: 100%|██████████| 54/54 [00:09<00:00,  6.93it/s, 角色低头看向镜头_202604200221.jpeg (4v)]", "ts": 1778902604.6709988}
+{"id": 257, "kind": "progress", "line": "Caching text embeddings: 100%|██████████| 54/54 [00:09<00:00,  5.51it/s, 角色低头看向镜头_202604200221.jpeg (4v)]", "ts": 1778902604.6713855}
+{"id": 258, "kind": "log", "line": "Text embedding caching complete: 54 cached, 0 skipped (already existed)", "ts": 1778902604.6717563}
+{"id": 259, "kind": "status", "line": "预处理完成", "ts": 1778902606.8685763}
+{"id": 260, "kind": "status", "line": "预处理完成，自动开始训练", "ts": 1778902606.8709662}
+{"id": 261, "kind": "log", "line": "[状态] 预处理完成，自动开始训练", "ts": 1778902606.8711607}

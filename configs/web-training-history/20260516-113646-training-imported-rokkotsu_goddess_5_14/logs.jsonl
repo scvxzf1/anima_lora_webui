@@ -1,0 +1,1033 @@
+{"id": 262, "kind": "status", "line": "训练命令: /home/scv/nvme0n1p1/训练器相关/anima_lora/.venv/bin/python -m accelerate.commands.accelerate_cli launch --num_cpu_threads_per_process 3 --mixed_precision bf16 /home/scv/nvme0n1p1/训练器相关/anima_lora/train.py --method rokkotsu_goddess_5_14 --preset default --methods_subdir imported", "ts": 1778902606.906039}
+{"id": 263, "kind": "log", "line": "The following values were not passed to `accelerate launch` and had defaults used instead:", "ts": 1778902611.5213683}
+{"id": 264, "kind": "log", "line": "`--num_processes` was set to a value of `1`", "ts": 1778902611.5218341}
+{"id": 265, "kind": "log", "line": "`--num_machines` was set to a value of `1`", "ts": 1778902611.5221288}
+{"id": 266, "kind": "log", "line": "`--dynamo_backend` was set to a value of `'no'`", "ts": 1778902611.5223632}
+{"id": 267, "kind": "log", "line": "To avoid this warning pass in values for each of the problematic parameters or run `accelerate config`.", "ts": 1778902611.5226142}
+{"id": 268, "kind": "log", "line": "2026-05-16 11:36:56 INFO     Loading chain: base → presets/default →   io.py:582", "ts": 1778902616.306178}
+{"id": 269, "kind": "log", "line": "imported/rokkotsu_goddess_5_14", "ts": 1778902616.3069336}
+{"id": 270, "kind": "log", "line": "INFO     Config snapshot written:                  io.py:541", "ts": 1778902616.3200788}
+{"id": 271, "kind": "log", "line": "/home/scv/sda1/DiffPipeForge2/output/肋骨", "ts": 1778902616.3207793}
+{"id": 272, "kind": "log", "line": "女神/mylora/rokkotsu_goddess_5_14.snapsho", "ts": 1778902616.3211806}
+{"id": 273, "kind": "log", "line": "t.toml", "ts": 1778902616.3216202}
+{"id": 274, "kind": "log", "line": "2026-05-16 11:36:56 INFO     Loading dataset config from           train.py:1410", "ts": 1778902616.9895077}
+{"id": 275, "kind": "log", "line": "configs/datasets/rokkotsu_goddess_5_1", "ts": 1778902616.9902155}
+{"id": 276, "kind": "log", "line": "4.toml", "ts": 1778902616.9907167}
+{"id": 277, "kind": "log", "line": "INFO     prepare images.                        base.py:1940", "ts": 1778902616.991342}
+{"id": 278, "kind": "log", "line": "INFO     get image size from name of cache      base.py:1769", "ts": 1778902616.9942808}
+{"id": 279, "kind": "log", "line": "files", "ts": 1778902616.994876}
+{"id": 280, "kind": "progress", "line": "0%|          | 0/57 [00:00<?, ?it/s]", "ts": 1778902616.9959013}
+{"id": 281, "kind": "progress", "line": "100%|██████████| 57/57 [00:00<00:00, 617765.71it/s]", "ts": 1778902616.9964576}
+{"id": 282, "kind": "log", "line": "INFO     set image size from cache files: 0/57  base.py:1805", "ts": 1778902616.9973855}
+{"id": 283, "kind": "log", "line": "INFO     Using validation seed: 42             subsets.py:43", "ts": 1778902616.998526}
+{"id": 284, "kind": "log", "line": "INFO     found directory                        base.py:1837", "ts": 1778902616.9999335}
+{"id": 285, "kind": "log", "line": "/home/scv/图片/安/5-15-a contains 56", "ts": 1778902617.000547}
+{"id": 286, "kind": "log", "line": "image files", "ts": 1778902617.001052}
+{"id": 287, "kind": "progress", "line": "read caption:   0%|          | 0/56 [00:00<?, ?it/s]2026-05-16 11:36:57 WARNING  neither caption file nor class tokens  base.py:1875", "ts": 1778902617.0020587}
+{"id": 288, "kind": "log", "line": "are found. use empty caption for", "ts": 1778902617.0026195}
+{"id": 289, "kind": "log", "line": "/home/scv/图片/安/5-15-a/0.png_2026042", "ts": 1778902617.0030842}
+{"id": 290, "kind": "log", "line": "00219.png", "ts": 1778902617.0035682}
+{"id": 291, "kind": "log", "line": "WARNING  neither caption file nor class tokens  base.py:1875", "ts": 1778902617.0045469}
+{"id": 292, "kind": "log", "line": "are found. use empty caption for", "ts": 1778902617.0050309}
+{"id": 293, "kind": "log", "line": "/home/scv/图片/安/5-15-a/5._【晶体矿洞", "ts": 1778902617.0054677}
+{"id": 294, "kind": "log", "line": "_·_202604200125.png", "ts": 1778902617.0059016}
+{"id": 295, "kind": "log", "line": "WARNING  neither caption file nor class tokens  base.py:1875", "ts": 1778902617.0064807}
+{"id": 296, "kind": "log", "line": "are found. use empty caption for", "ts": 1778902617.007143}
+{"id": 297, "kind": "log", "line": "/home/scv/图片/安/5-15-a/Standing_on_a", "ts": 1778902617.0077238}
+{"id": 298, "kind": "log", "line": "_202604200117.png", "ts": 1778902617.0083487}
+{"id": 299, "kind": "progress", "line": "read caption: 100%|██████████| 56/56 [00:00<00:00, 10932.33it/s]", "ts": 1778902617.0088644}
+{"id": 300, "kind": "log", "line": "WARNING  No caption file found for 3 images.    base.py:1897", "ts": 1778902617.0094838}
+{"id": 301, "kind": "log", "line": "Training will continue without", "ts": 1778902617.00995}
+{"id": 302, "kind": "log", "line": "captions for these images. If class", "ts": 1778902617.0103738}
+{"id": 303, "kind": "log", "line": "token exists, it will be used.", "ts": 1778902617.010805}
+{"id": 304, "kind": "log", "line": "WARNING  /home/scv/图片/安/5-15-a/0.png_2026042 base.py:1907", "ts": 1778902617.0112107}
+{"id": 305, "kind": "log", "line": "00219.png", "ts": 1778902617.0116587}
+{"id": 306, "kind": "log", "line": "WARNING  /home/scv/图片/安/5-15-a/5._【晶体矿洞 base.py:1907", "ts": 1778902617.012053}
+{"id": 307, "kind": "log", "line": "_·_202604200125.png", "ts": 1778902617.0124793}
+{"id": 308, "kind": "log", "line": "WARNING  /home/scv/图片/安/5-15-a/Standing_on_a base.py:1907", "ts": 1778902617.013053}
+{"id": 309, "kind": "log", "line": "_202604200117.png", "ts": 1778902617.0135076}
+{"id": 310, "kind": "log", "line": "INFO     280 train images with repeats.         base.py:2000", "ts": 1778902617.0139477}
+{"id": 311, "kind": "log", "line": "INFO     0 reg images with repeats.             base.py:2004", "ts": 1778902617.014382}
+{"id": 312, "kind": "log", "line": "WARNING  no regularization images               base.py:2009", "ts": 1778902617.0149605}
+{"id": 313, "kind": "log", "line": "INFO     prepare images.                        base.py:1940", "ts": 1778902617.0155492}
+{"id": 314, "kind": "log", "line": "INFO     get image size from name of cache      base.py:1769", "ts": 1778902617.0175452}
+{"id": 315, "kind": "log", "line": "files", "ts": 1778902617.0181396}
+{"id": 316, "kind": "progress", "line": "0%|          | 0/57 [00:00<?, ?it/s]", "ts": 1778902617.0187478}
+{"id": 317, "kind": "progress", "line": "100%|██████████| 57/57 [00:00<00:00, 756567.49it/s]", "ts": 1778902617.019211}
+{"id": 318, "kind": "log", "line": "INFO     set image size from cache files: 0/57  base.py:1805", "ts": 1778902617.0198123}
+{"id": 319, "kind": "log", "line": "INFO     Using validation seed: 42             subsets.py:43", "ts": 1778902617.0205164}
+{"id": 320, "kind": "log", "line": "INFO     found directory                        base.py:1837", "ts": 1778902617.021606}
+{"id": 321, "kind": "log", "line": "/home/scv/图片/安/5-15-a contains 1", "ts": 1778902617.022136}
+{"id": 322, "kind": "log", "line": "image files", "ts": 1778902617.0226026}
+{"id": 323, "kind": "progress", "line": "read caption:   0%|          | 0/1 [00:00<?, ?it/s]", "ts": 1778902617.023152}
+{"id": 324, "kind": "progress", "line": "read caption: 100%|██████████| 1/1 [00:00<00:00, 21509.25it/s]", "ts": 1778902617.0236247}
+{"id": 325, "kind": "log", "line": "INFO     1 validation images with repeats.      base.py:2000", "ts": 1778902617.0240777}
+{"id": 326, "kind": "log", "line": "INFO     0 reg images with repeats.             base.py:2004", "ts": 1778902617.0247102}
+{"id": 327, "kind": "log", "line": "WARNING  no regularization images               base.py:2009", "ts": 1778902617.0252795}
+{"id": 328, "kind": "log", "line": "INFO     [Dataset 0]                           loader.py:484", "ts": 1778902617.0298872}
+{"id": 329, "kind": "log", "line": "batch_size: 1", "ts": 1778902617.030501}
+{"id": 330, "kind": "log", "line": "resolution: (1024, 1024)", "ts": 1778902617.0309412}
+{"id": 331, "kind": "log", "line": "resize_interpolation: None", "ts": 1778902617.0313766}
+{"id": 332, "kind": "log", "line": "enable_bucket: True", "ts": 1778902617.03183}
+{"id": 333, "kind": "log", "line": "min_bucket_reso: 256", "ts": 1778902617.0322847}
+{"id": 334, "kind": "log", "line": "max_bucket_reso: 1024", "ts": 1778902617.0327096}
+{"id": 335, "kind": "log", "line": "bucket_reso_steps: 64", "ts": 1778902617.0331125}
+{"id": 336, "kind": "log", "line": "bucket_no_upscale: False", "ts": 1778902617.0338268}
+{"id": 337, "kind": "log", "line": "[Subset 0 of Dataset 0]", "ts": 1778902617.0344026}
+{"id": 338, "kind": "log", "line": "image_dir:", "ts": 1778902617.0348861}
+{"id": 339, "kind": "log", "line": "\"/home/scv/图片/安/5-15-a\"", "ts": 1778902617.035301}
+{"id": 340, "kind": "log", "line": "image_count: 56", "ts": 1778902617.035747}
+{"id": 341, "kind": "log", "line": "num_repeats: 5", "ts": 1778902617.0361333}
+{"id": 342, "kind": "log", "line": "sample_ratio: 1.0", "ts": 1778902617.0365343}
+{"id": 343, "kind": "log", "line": "keep_tokens: 3", "ts": 1778902617.0369143}
+{"id": 344, "kind": "log", "line": "caption_dropout_rate: 0.0", "ts": 1778902617.0372999}
+{"id": 345, "kind": "log", "line": "caption_dropout_every_n_epochs: 0", "ts": 1778902617.0376992}
+{"id": 346, "kind": "log", "line": "caption_tag_dropout_rate: 0.0", "ts": 1778902617.0380924}
+{"id": 347, "kind": "log", "line": "caption_prefix: None", "ts": 1778902617.0384827}
+{"id": 348, "kind": "log", "line": "caption_suffix: None", "ts": 1778902617.0388606}
+{"id": 349, "kind": "log", "line": "color_aug: False", "ts": 1778902617.0392246}
+{"id": 350, "kind": "log", "line": "flip_aug: False", "ts": 1778902617.0396132}
+{"id": 351, "kind": "log", "line": "face_crop_aug_range: None", "ts": 1778902617.0401354}
+{"id": 352, "kind": "log", "line": "random_crop: False", "ts": 1778902617.0407598}
+{"id": 353, "kind": "log", "line": "token_warmup_min: 1,", "ts": 1778902617.0412877}
+{"id": 354, "kind": "log", "line": "token_warmup_step: 0,", "ts": 1778902617.0418596}
+{"id": 355, "kind": "log", "line": "alpha_mask: False", "ts": 1778902617.0422828}
+{"id": 356, "kind": "log", "line": "resize_interpolation: None", "ts": 1778902617.042706}
+{"id": 357, "kind": "log", "line": "custom_attributes: {}", "ts": 1778902617.0430892}
+{"id": 358, "kind": "log", "line": "is_reg: False", "ts": 1778902617.043502}
+{"id": 359, "kind": "log", "line": "class_tokens: None", "ts": 1778902617.0438862}
+{"id": 360, "kind": "log", "line": "caption_extension: .txt", "ts": 1778902617.044268}
+{"id": 361, "kind": "log", "line": "INFO     [Validation Dataset 0]                loader.py:484", "ts": 1778902617.044902}
+{"id": 362, "kind": "log", "line": "batch_size: 1", "ts": 1778902617.0453413}
+{"id": 363, "kind": "log", "line": "resolution: (1024, 1024)", "ts": 1778902617.0457458}
+{"id": 364, "kind": "log", "line": "resize_interpolation: None", "ts": 1778902617.0461226}
+{"id": 365, "kind": "log", "line": "enable_bucket: True", "ts": 1778902617.0465186}
+{"id": 366, "kind": "log", "line": "min_bucket_reso: 256", "ts": 1778902617.0468872}
+{"id": 367, "kind": "log", "line": "max_bucket_reso: 1024", "ts": 1778902617.0472515}
+{"id": 368, "kind": "log", "line": "bucket_reso_steps: 64", "ts": 1778902617.0476398}
+{"id": 369, "kind": "log", "line": "bucket_no_upscale: False", "ts": 1778902617.04803}
+{"id": 370, "kind": "log", "line": "[Subset 0 of Validation Dataset 0]", "ts": 1778902617.0484414}
+{"id": 371, "kind": "log", "line": "image_dir:", "ts": 1778902617.0488408}
+{"id": 372, "kind": "log", "line": "\"/home/scv/图片/安/5-15-a\"", "ts": 1778902617.0492156}
+{"id": 373, "kind": "log", "line": "image_count: 1", "ts": 1778902617.0496254}
+{"id": 374, "kind": "log", "line": "num_repeats: 5", "ts": 1778902617.050005}
+{"id": 375, "kind": "log", "line": "sample_ratio: 1.0", "ts": 1778902617.0504878}
+{"id": 376, "kind": "log", "line": "keep_tokens: 3", "ts": 1778902617.0509145}
+{"id": 377, "kind": "log", "line": "caption_dropout_rate: 0.0", "ts": 1778902617.0513213}
+{"id": 378, "kind": "log", "line": "caption_dropout_every_n_epochs: 0", "ts": 1778902617.051816}
+{"id": 379, "kind": "log", "line": "caption_tag_dropout_rate: 0.0", "ts": 1778902617.0523686}
+{"id": 380, "kind": "log", "line": "caption_prefix: None", "ts": 1778902617.0528984}
+{"id": 381, "kind": "log", "line": "caption_suffix: None", "ts": 1778902617.053499}
+{"id": 382, "kind": "log", "line": "color_aug: False", "ts": 1778902617.0538838}
+{"id": 383, "kind": "log", "line": "flip_aug: False", "ts": 1778902617.054233}
+{"id": 384, "kind": "log", "line": "face_crop_aug_range: None", "ts": 1778902617.0546114}
+{"id": 385, "kind": "log", "line": "random_crop: False", "ts": 1778902617.0549347}
+{"id": 386, "kind": "log", "line": "token_warmup_min: 1,", "ts": 1778902617.055261}
+{"id": 387, "kind": "log", "line": "token_warmup_step: 0,", "ts": 1778902617.055598}
+{"id": 388, "kind": "log", "line": "alpha_mask: False", "ts": 1778902617.0559368}
+{"id": 389, "kind": "log", "line": "resize_interpolation: None", "ts": 1778902617.0562594}
+{"id": 390, "kind": "log", "line": "custom_attributes: {}", "ts": 1778902617.056598}
+{"id": 391, "kind": "log", "line": "is_reg: False", "ts": 1778902617.0569177}
+{"id": 392, "kind": "log", "line": "class_tokens: None", "ts": 1778902617.0572276}
+{"id": 393, "kind": "log", "line": "caption_extension: .txt", "ts": 1778902617.0575538}
+{"id": 394, "kind": "log", "line": "INFO     [Prepare dataset 0]                   loader.py:496", "ts": 1778902617.0578783}
+{"id": 395, "kind": "log", "line": "INFO     loading image sizes.                    base.py:461", "ts": 1778902617.05826}
+{"id": 396, "kind": "progress", "line": "0%|          | 0/56 [00:00<?, ?it/s]", "ts": 1778902617.129499}
+{"id": 397, "kind": "progress", "line": "100%|██████████| 56/56 [00:00<00:00, 607.49it/s]", "ts": 1778902617.1302867}
+{"id": 398, "kind": "log", "line": "INFO     make buckets                            base.py:467", "ts": 1778902617.1308517}
+{"id": 399, "kind": "log", "line": "INFO     number of images (including repeats)    base.py:518", "ts": 1778902617.1319416}
+{"id": 400, "kind": "log", "line": "INFO     bucket 0: resolution (896, 1152),       base.py:528", "ts": 1778902617.1331146}
+{"id": 401, "kind": "log", "line": "count: 280", "ts": 1778902617.13378}
+{"id": 402, "kind": "log", "line": "INFO     mean ar error (without repeats): 0.0    base.py:536", "ts": 1778902617.1346843}
+{"id": 403, "kind": "log", "line": "INFO     [Prepare validation dataset 0]        loader.py:501", "ts": 1778902617.135731}
+{"id": 404, "kind": "log", "line": "INFO     loading image sizes.                    base.py:461", "ts": 1778902617.1366835}
+{"id": 405, "kind": "progress", "line": "0%|          | 0/1 [00:00<?, ?it/s]", "ts": 1778902617.138605}
+{"id": 406, "kind": "progress", "line": "100%|██████████| 1/1 [00:00<00:00, 627.89it/s]", "ts": 1778902617.139272}
+{"id": 407, "kind": "log", "line": "INFO     make buckets                            base.py:467", "ts": 1778902617.1398966}
+{"id": 408, "kind": "log", "line": "INFO     number of images (including repeats)    base.py:518", "ts": 1778902617.140668}
+{"id": 409, "kind": "log", "line": "INFO     bucket 0: resolution (896, 1152),       base.py:528", "ts": 1778902617.1418679}
+{"id": 410, "kind": "log", "line": "count: 1", "ts": 1778902617.1423717}
+{"id": 411, "kind": "log", "line": "INFO     mean ar error (without repeats): 0.0    base.py:536", "ts": 1778902617.142996}
+{"id": 412, "kind": "log", "line": "INFO     caption dropout DISABLED (rate=0.0 on train.py:1484", "ts": 1778902617.1444867}
+{"id": 413, "kind": "log", "line": "all subsets)", "ts": 1778902617.1451077}
+{"id": 414, "kind": "log", "line": "INFO     preparing accelerator                 train.py:2166", "ts": 1778902617.1470141}
+{"id": 415, "kind": "log", "line": "accelerator device: cuda", "ts": 1778902617.1931005}
+{"id": 416, "kind": "log", "line": "INFO     Loading Qwen3 text encoder...          train.py:391", "ts": 1778902617.1943812}
+{"id": 417, "kind": "log", "line": "INFO     Loading Qwen3 text encoder from      weights.py:389", "ts": 1778902617.1956592}
+{"id": 418, "kind": "log", "line": "/home/scv/nvme0n1p1/ComfyUI/models/t", "ts": 1778902617.1961737}
+{"id": 419, "kind": "log", "line": "ext_encoders/anima/anima_qwen_3_06b_", "ts": 1778902617.1966305}
+{"id": 420, "kind": "log", "line": "base.safetensors", "ts": 1778902617.197075}
+{"id": 421, "kind": "log", "line": "2026-05-16 11:37:08 INFO     Loaded Qwen3 state dict: <All keys   weights.py:442", "ts": 1778902628.040399}
+{"id": 422, "kind": "log", "line": "matched successfully>", "ts": 1778902628.0408115}
+{"id": 423, "kind": "log", "line": "INFO     Loaded Qwen3 text encoder.           weights.py:450", "ts": 1778902628.4146018}
+{"id": 424, "kind": "log", "line": "Parameters: 596,049,920", "ts": 1778902628.4153447}
+{"id": 425, "kind": "log", "line": "INFO     Loading Anima VAE...                   train.py:398", "ts": 1778902628.4576037}
+{"id": 426, "kind": "log", "line": "INFO     Initializing VAE                   qwen_vae.py:1870", "ts": 1778902628.458512}
+{"id": 427, "kind": "log", "line": "2026-05-16 11:37:09 INFO     Loading VAE from                   qwen_vae.py:1894", "ts": 1778902629.3498101}
+{"id": 428, "kind": "log", "line": "/home/scv/nvme0n1p1/ComfyUI/models", "ts": 1778902629.3505685}
+{"id": 429, "kind": "log", "line": "/vae/anima/anima_vae.safetensors", "ts": 1778902629.351103}
+{"id": 430, "kind": "log", "line": "INFO     Converted ComfyUI AutoencoderKL    qwen_vae.py:1799", "ts": 1778902629.4590948}
+{"id": 431, "kind": "log", "line": "state dict keys to official format", "ts": 1778902629.4599688}
+{"id": 432, "kind": "log", "line": "INFO     Loaded VAE: <All keys matched      qwen_vae.py:1901", "ts": 1778902629.4906936}
+{"id": 433, "kind": "log", "line": "successfully>", "ts": 1778902629.4914327}
+{"id": 434, "kind": "log", "line": "INFO     [Dataset 0]                            base.py:2074", "ts": 1778902629.7814608}
+{"id": 435, "kind": "log", "line": "INFO     caching latents with caching strategy.  base.py:634", "ts": 1778902629.7823718}
+{"id": 436, "kind": "log", "line": "INFO     caching latents...                      base.py:688", "ts": 1778902629.7832494}
+{"id": 437, "kind": "progress", "line": "0%|          | 0/56 [00:00<?, ?it/s]", "ts": 1778902629.7845225}
+{"id": 438, "kind": "progress", "line": "100%|██████████| 56/56 [00:00<00:00, 56803.15it/s]", "ts": 1778902629.785097}
+{"id": 439, "kind": "log", "line": "INFO     [Dataset 0]                            base.py:2074", "ts": 1778902629.7857764}
+{"id": 440, "kind": "log", "line": "INFO     caching latents with caching strategy.  base.py:634", "ts": 1778902629.7865312}
+{"id": 441, "kind": "log", "line": "INFO     caching latents...                      base.py:688", "ts": 1778902629.7873669}
+{"id": 442, "kind": "progress", "line": "0%|          | 0/1 [00:00<?, ?it/s]", "ts": 1778902629.7882261}
+{"id": 443, "kind": "progress", "line": "100%|██████████| 1/1 [00:00<00:00, 15477.14it/s]", "ts": 1778902629.7887423}
+{"id": 444, "kind": "log", "line": "2026-05-16 11:37:10 INFO     move vae to cpu to save memory        train.py:1282", "ts": 1778902630.0348666}
+{"id": 445, "kind": "log", "line": "INFO     move text encoder to gpu              train.py:1287", "ts": 1778902630.2397504}
+{"id": 446, "kind": "log", "line": "INFO     Loading LLM adapter for caching       train.py:1293", "ts": 1778902630.468131}
+{"id": 447, "kind": "log", "line": "outputs...", "ts": 1778902630.468979}
+{"id": 448, "kind": "log", "line": "2026-05-16 11:37:11 INFO     [Dataset 0]                            base.py:2126", "ts": 1778902631.4235244}
+{"id": 449, "kind": "log", "line": "INFO     caching Text Encoder outputs with       base.py:857", "ts": 1778902631.4245672}
+{"id": 450, "kind": "log", "line": "caching strategy.", "ts": 1778902631.4252274}
+{"id": 451, "kind": "log", "line": "INFO     checking cache validity...              base.py:868", "ts": 1778902631.4260554}
+{"id": 452, "kind": "progress", "line": "0%|          | 0/56 [00:00<?, ?it/s]", "ts": 1778902631.4268951}
+{"id": 453, "kind": "progress", "line": "100%|██████████| 56/56 [00:00<00:00, 55685.40it/s]", "ts": 1778902631.4275854}
+{"id": 454, "kind": "log", "line": "INFO     caching Text Encoder outputs...         base.py:902", "ts": 1778902631.4283807}
+{"id": 455, "kind": "progress", "line": "0%|          | 0/3 [00:00<?, ?it/s]", "ts": 1778902633.0916524}
+{"id": 456, "kind": "progress", "line": "33%|███▎      | 1/3 [00:01<00:03,  1.66s/it]", "ts": 1778902633.2167583}
+{"id": 457, "kind": "progress", "line": "67%|██████▋   | 2/3 [00:01<00:00,  7.99it/s]", "ts": 1778902633.3340056}
+{"id": 458, "kind": "progress", "line": "100%|██████████| 3/3 [00:01<00:00,  8.53it/s]", "ts": 1778902633.3351696}
+{"id": 459, "kind": "progress", "line": "100%|██████████| 3/3 [00:01<00:00,  1.57it/s]", "ts": 1778902633.3357217}
+{"id": 460, "kind": "log", "line": "2026-05-16 11:37:13 INFO     cache Text Encoder outputs for sample train.py:1307", "ts": 1778902633.336381}
+{"id": 461, "kind": "log", "line": "prompts: configs/sample_prompts.txt", "ts": 1778902633.3369167}
+{"id": 462, "kind": "log", "line": "INFO       cache TE outputs for:               train.py:1325", "ts": 1778902633.3408942}
+{"id": 463, "kind": "log", "line": "RokkotsuGoddess, masterpiece, best", "ts": 1778902633.3415878}
+{"id": 464, "kind": "log", "line": "quality, highres, 1girl, solo, silver", "ts": 1778902633.3421082}
+{"id": 465, "kind": "log", "line": "hair, long hair, braid, purple eyes,", "ts": 1778902633.342613}
+{"id": 466, "kind": "log", "line": "off-shoulder, crop top, white sheer", "ts": 1778902633.3430939}
+{"id": 467, "kind": "log", "line": "dress, large bow, gold trim, blue", "ts": 1778902633.3435743}
+{"id": 468, "kind": "log", "line": "translucent puff sleeves, mermaid", "ts": 1778902633.3440304}
+{"id": 469, "kind": "log", "line": "skirt, white iridescent skirt,", "ts": 1778902633.3445268}
+{"id": 470, "kind": "log", "line": "pearlescent, ruffled hem, gold", "ts": 1778902633.3449705}
+{"id": 471, "kind": "log", "line": "choker, purple diamond pendant, gold", "ts": 1778902633.3454027}
+{"id": 472, "kind": "log", "line": "waistband, hanging chains, purple", "ts": 1778902633.3458698}
+{"id": 473, "kind": "log", "line": "beads, barefoot, ancient ruins, stone", "ts": 1778902633.346342}
+{"id": 474, "kind": "log", "line": "pillar, ivy, sunset, golden hour,", "ts": 1778902633.3468335}
+{"id": 475, "kind": "log", "line": "warm lighting, soft lighting, rim", "ts": 1778902633.347301}
+{"id": 476, "kind": "log", "line": "lighting, outdoors, standing, leaning", "ts": 1778902633.3477905}
+{"id": 477, "kind": "log", "line": "against pillar, hand on wall, looking", "ts": 1778902633.3482459}
+{"id": 478, "kind": "log", "line": "at viewer, sad expression, from side,", "ts": 1778902633.3487744}
+{"id": 479, "kind": "log", "line": "upper body, detailed background,", "ts": 1778902633.3492332}
+{"id": 480, "kind": "log", "line": "depth of field", "ts": 1778902633.3497381}
+{"id": 481, "kind": "log", "line": "INFO       cache TE outputs for:               train.py:1325", "ts": 1778902633.4194882}
+{"id": 482, "kind": "log", "line": "INFO       cache TE outputs for:               train.py:1325", "ts": 1778902633.4894688}
+{"id": 483, "kind": "log", "line": "RokkotsuGoddess, masterpiece, best", "ts": 1778902633.4901173}
+{"id": 484, "kind": "log", "line": "quality, highres, 1girl, solo, silver", "ts": 1778902633.4905794}
+{"id": 485, "kind": "log", "line": "hair, long hair, braid, purple eyes,", "ts": 1778902633.4909992}
+{"id": 486, "kind": "log", "line": "off-shoulder, crop top, white sheer", "ts": 1778902633.491519}
+{"id": 487, "kind": "log", "line": "dress, large bow, gold trim, blue", "ts": 1778902633.4921432}
+{"id": 488, "kind": "log", "line": "translucent puff sleeves, mermaid", "ts": 1778902633.492771}
+{"id": 489, "kind": "log", "line": "skirt, white iridescent skirt,", "ts": 1778902633.4933624}
+{"id": 490, "kind": "log", "line": "pearlescent, ruffled hem, gold", "ts": 1778902633.493958}
+{"id": 491, "kind": "log", "line": "choker, purple diamond pendant, gold", "ts": 1778902633.4945676}
+{"id": 492, "kind": "log", "line": "waistband, hanging chains, purple", "ts": 1778902633.4951608}
+{"id": 493, "kind": "log", "line": "beads, barefoot, forest, enchanted", "ts": 1778902633.4957511}
+{"id": 494, "kind": "log", "line": "forest, night, glowing flower, blue", "ts": 1778902633.4963868}
+{"id": 495, "kind": "log", "line": "flower, bioluminescent, glowing", "ts": 1778902633.4970176}
+{"id": 496, "kind": "log", "line": "plants, glowing mushrooms, vines,", "ts": 1778902633.4976354}
+{"id": 497, "kind": "log", "line": "trees, moss, full body, standing,", "ts": 1778902633.4982421}
+{"id": 498, "kind": "log", "line": "leaning forward, side view, looking", "ts": 1778902633.4996421}
+{"id": 499, "kind": "log", "line": "at flower, gentle expression, soft", "ts": 1778902633.5002694}
+{"id": 500, "kind": "log", "line": "smile, hands near flower, soft", "ts": 1778902633.5008848}
+{"id": 501, "kind": "log", "line": "lighting, blue ambient light,", "ts": 1778902633.501484}
+{"id": 502, "kind": "log", "line": "moonlight, sparkles, fantasy, magical", "ts": 1778902633.5021043}
+{"id": 503, "kind": "log", "line": "atmosphere", "ts": 1778902633.5027573}
+{"id": 504, "kind": "log", "line": "INFO     move LLM adapter back to cpu          train.py:1339", "ts": 1778902633.5599236}
+{"id": 505, "kind": "log", "line": "INFO     move text encoder back to cpu         train.py:1343", "ts": 1778902633.640394}
+{"id": 506, "kind": "log", "line": "2026-05-16 11:37:14 INFO     move vae back to original device      train.py:1347", "ts": 1778902634.4486043}
+{"id": 507, "kind": "log", "line": "INFO     move vae to cpu to save memory        train.py:1282", "ts": 1778902634.6966813}
+{"id": 508, "kind": "log", "line": "INFO     move text encoder to gpu              train.py:1287", "ts": 1778902634.905665}
+{"id": 509, "kind": "log", "line": "2026-05-16 11:37:15 INFO     Loading LLM adapter for caching       train.py:1293", "ts": 1778902635.1885889}
+{"id": 510, "kind": "log", "line": "outputs...", "ts": 1778902635.1893954}
+{"id": 511, "kind": "log", "line": "2026-05-16 11:37:16 INFO     [Dataset 0]                            base.py:2126", "ts": 1778902636.4171715}
+{"id": 512, "kind": "log", "line": "INFO     caching Text Encoder outputs with       base.py:857", "ts": 1778902636.418467}
+{"id": 513, "kind": "log", "line": "caching strategy.", "ts": 1778902636.4191158}
+{"id": 514, "kind": "log", "line": "INFO     checking cache validity...              base.py:868", "ts": 1778902636.4199152}
+{"id": 515, "kind": "progress", "line": "0%|          | 0/1 [00:00<?, ?it/s]", "ts": 1778902636.420906}
+{"id": 516, "kind": "progress", "line": "100%|██████████| 1/1 [00:00<00:00, 10979.85it/s]", "ts": 1778902636.4216535}
+{"id": 517, "kind": "log", "line": "INFO     no Text Encoder outputs to cache        base.py:898", "ts": 1778902636.4225764}
+{"id": 518, "kind": "log", "line": "INFO     cache Text Encoder outputs for sample train.py:1307", "ts": 1778902636.4235106}
+{"id": 519, "kind": "log", "line": "prompts: configs/sample_prompts.txt", "ts": 1778902636.42421}
+{"id": 520, "kind": "log", "line": "INFO       cache TE outputs for:               train.py:1325", "ts": 1778902636.4258914}
+{"id": 521, "kind": "log", "line": "RokkotsuGoddess, masterpiece, best", "ts": 1778902636.426655}
+{"id": 522, "kind": "log", "line": "quality, highres, 1girl, solo, silver", "ts": 1778902636.4273179}
+{"id": 523, "kind": "log", "line": "hair, long hair, braid, purple eyes,", "ts": 1778902636.4280071}
+{"id": 524, "kind": "log", "line": "off-shoulder, crop top, white sheer", "ts": 1778902636.428684}
+{"id": 525, "kind": "log", "line": "dress, large bow, gold trim, blue", "ts": 1778902636.429328}
+{"id": 526, "kind": "log", "line": "translucent puff sleeves, mermaid", "ts": 1778902636.430037}
+{"id": 527, "kind": "log", "line": "skirt, white iridescent skirt,", "ts": 1778902636.43072}
+{"id": 528, "kind": "log", "line": "pearlescent, ruffled hem, gold", "ts": 1778902636.43132}
+{"id": 529, "kind": "log", "line": "choker, purple diamond pendant, gold", "ts": 1778902636.4319406}
+{"id": 530, "kind": "log", "line": "waistband, hanging chains, purple", "ts": 1778902636.4325814}
+{"id": 531, "kind": "log", "line": "beads, barefoot, ancient ruins, stone", "ts": 1778902636.433178}
+{"id": 532, "kind": "log", "line": "pillar, ivy, sunset, golden hour,", "ts": 1778902636.4338403}
+{"id": 533, "kind": "log", "line": "warm lighting, soft lighting, rim", "ts": 1778902636.4344614}
+{"id": 534, "kind": "log", "line": "lighting, outdoors, standing, leaning", "ts": 1778902636.4350603}
+{"id": 535, "kind": "log", "line": "against pillar, hand on wall, looking", "ts": 1778902636.4356914}
+{"id": 536, "kind": "log", "line": "at viewer, sad expression, from side,", "ts": 1778902636.4362931}
+{"id": 537, "kind": "log", "line": "upper body, detailed background,", "ts": 1778902636.4369175}
+{"id": 538, "kind": "log", "line": "depth of field", "ts": 1778902636.4375257}
+{"id": 539, "kind": "log", "line": "INFO       cache TE outputs for:               train.py:1325", "ts": 1778902636.4940798}
+{"id": 540, "kind": "log", "line": "INFO       cache TE outputs for:               train.py:1325", "ts": 1778902636.5601623}
+{"id": 541, "kind": "log", "line": "RokkotsuGoddess, masterpiece, best", "ts": 1778902636.5607336}
+{"id": 542, "kind": "log", "line": "quality, highres, 1girl, solo, silver", "ts": 1778902636.5610516}
+{"id": 543, "kind": "log", "line": "hair, long hair, braid, purple eyes,", "ts": 1778902636.5613673}
+{"id": 544, "kind": "log", "line": "off-shoulder, crop top, white sheer", "ts": 1778902636.561688}
+{"id": 545, "kind": "log", "line": "dress, large bow, gold trim, blue", "ts": 1778902636.561988}
+{"id": 546, "kind": "log", "line": "translucent puff sleeves, mermaid", "ts": 1778902636.5622985}
+{"id": 547, "kind": "log", "line": "skirt, white iridescent skirt,", "ts": 1778902636.562614}
+{"id": 548, "kind": "log", "line": "pearlescent, ruffled hem, gold", "ts": 1778902636.5629084}
+{"id": 549, "kind": "log", "line": "choker, purple diamond pendant, gold", "ts": 1778902636.5632095}
+{"id": 550, "kind": "log", "line": "waistband, hanging chains, purple", "ts": 1778902636.5635207}
+{"id": 551, "kind": "log", "line": "beads, barefoot, forest, enchanted", "ts": 1778902636.5638208}
+{"id": 552, "kind": "log", "line": "forest, night, glowing flower, blue", "ts": 1778902636.5641327}
+{"id": 553, "kind": "log", "line": "flower, bioluminescent, glowing", "ts": 1778902636.564445}
+{"id": 554, "kind": "log", "line": "plants, glowing mushrooms, vines,", "ts": 1778902636.5647616}
+{"id": 555, "kind": "log", "line": "trees, moss, full body, standing,", "ts": 1778902636.5650692}
+{"id": 556, "kind": "log", "line": "leaning forward, side view, looking", "ts": 1778902636.565365}
+{"id": 557, "kind": "log", "line": "at flower, gentle expression, soft", "ts": 1778902636.565682}
+{"id": 558, "kind": "log", "line": "smile, hands near flower, soft", "ts": 1778902636.5659742}
+{"id": 559, "kind": "log", "line": "lighting, blue ambient light,", "ts": 1778902636.5662751}
+{"id": 560, "kind": "log", "line": "moonlight, sparkles, fantasy, magical", "ts": 1778902636.5665698}
+{"id": 561, "kind": "log", "line": "atmosphere", "ts": 1778902636.566857}
+{"id": 562, "kind": "log", "line": "INFO     move LLM adapter back to cpu          train.py:1339", "ts": 1778902636.6246402}
+{"id": 563, "kind": "log", "line": "INFO     move text encoder back to cpu         train.py:1343", "ts": 1778902636.7132308}
+{"id": 564, "kind": "log", "line": "2026-05-16 11:37:17 INFO     move vae back to original device      train.py:1347", "ts": 1778902637.5848951}
+{"id": 565, "kind": "log", "line": "INFO     Using Flash Attention 2 (flash_attn    train.py:435", "ts": 1778902637.835795}
+{"id": 566, "kind": "log", "line": "2.8.3)", "ts": 1778902637.8365607}
+{"id": 567, "kind": "log", "line": "INFO     Loading Anima DiT model with           train.py:463", "ts": 1778902637.8373904}
+{"id": 568, "kind": "log", "line": "split_attn: False, attn_softmax_scale:", "ts": 1778902637.8381813}
+{"id": 569, "kind": "log", "line": "None...", "ts": 1778902637.8388963}
+{"id": 570, "kind": "log", "line": "INFO     Loading DiT model from               weights.py:163", "ts": 1778902637.9342926}
+{"id": 571, "kind": "log", "line": "/home/scv/nvme0n1p1/ComfyUI/models/d", "ts": 1778902637.934728}
+{"id": 572, "kind": "log", "line": "iffusion_models/anima/anima-preview3", "ts": 1778902637.935067}
+{"id": 573, "kind": "log", "line": "-base.safetensors, device=cuda", "ts": 1778902637.9354382}
+{"id": 574, "kind": "log", "line": "INFO     Loading model files:              lora_utils.py:156", "ts": 1778902637.9360723}
+{"id": 575, "kind": "log", "line": "['/home/scv/nvme0n1p1/ComfyUI/mod", "ts": 1778902637.936644}
+{"id": 576, "kind": "log", "line": "els/diffusion_models/anima/anima-", "ts": 1778902637.9371314}
+{"id": 577, "kind": "log", "line": "preview3-base.safetensors']", "ts": 1778902637.937626}
+{"id": 578, "kind": "log", "line": "INFO     Loading state dict. Dtype of      lora_utils.py:329", "ts": 1778902637.9382308}
+{"id": 579, "kind": "log", "line": "weight: torch.bfloat16, hook", "ts": 1778902637.9387798}
+{"id": 580, "kind": "log", "line": "enabled: False", "ts": 1778902637.939282}
+{"id": 581, "kind": "progress", "line": "Loading anima-preview3-base.safetensors:   0%|          | 0/545 [00:00<?, ?it/s]", "ts": 1778902638.0451093}
+{"id": 582, "kind": "progress", "line": "Loading anima-preview3-base.safetensors:   8%|▊         | 41/545 [00:00<00:01, 387.09it/s]", "ts": 1778902638.1473336}
+{"id": 583, "kind": "progress", "line": "Loading anima-preview3-base.safetensors:  15%|█▍        | 81/545 [00:00<00:01, 389.66it/s]", "ts": 1778902638.264257}
+{"id": 584, "kind": "progress", "line": "Loading anima-preview3-base.safetensors:  22%|██▏       | 120/545 [00:00<00:01, 362.37it/s]", "ts": 1778902638.3667157}
+{"id": 585, "kind": "progress", "line": "Loading anima-preview3-base.safetensors:  29%|██▉       | 160/545 [00:00<00:01, 373.07it/s]", "ts": 1778902638.4724545}
+{"id": 586, "kind": "progress", "line": "Loading anima-preview3-base.safetensors:  36%|███▋      | 198/545 [00:00<00:00, 368.17it/s]", "ts": 1778902638.579141}
+{"id": 587, "kind": "progress", "line": "Loading anima-preview3-base.safetensors:  43%|████▎     | 236/545 [00:00<00:00, 364.03it/s]", "ts": 1778902638.6796064}
+{"id": 588, "kind": "progress", "line": "Loading anima-preview3-base.safetensors:  51%|█████     | 276/545 [00:00<00:00, 374.67it/s]", "ts": 1778902638.7936327}
+{"id": 589, "kind": "progress", "line": "Loading anima-preview3-base.safetensors:  58%|█████▊    | 314/545 [00:00<00:00, 360.70it/s]", "ts": 1778902638.8978717}
+{"id": 590, "kind": "progress", "line": "Loading anima-preview3-base.safetensors:  65%|██████▌   | 355/545 [00:00<00:00, 370.65it/s]", "ts": 1778902639.0008326}
+{"id": 591, "kind": "progress", "line": "Loading anima-preview3-base.safetensors:  72%|███████▏  | 393/545 [00:01<00:00, 370.33it/s]", "ts": 1778902639.1008067}
+{"id": 592, "kind": "progress", "line": "Loading anima-preview3-base.safetensors:  83%|████████▎ | 452/545 [00:01<00:00, 435.05it/s]", "ts": 1778902639.1797297}
+{"id": 593, "kind": "log", "line": "2026-05-16 11:37:19 INFO     Loaded DiT model from                weights.py:206", "ts": 1778902639.197642}
+{"id": 594, "kind": "log", "line": "/home/scv/nvme0n1p1/ComfyUI/models/d", "ts": 1778902639.198583}
+{"id": 595, "kind": "log", "line": "iffusion_models/anima/anima-preview3", "ts": 1778902639.1990743}
+{"id": 596, "kind": "log", "line": "-base.safetensors, unexpected", "ts": 1778902639.19953}
+{"id": 597, "kind": "log", "line": "missing keys: 0, unexpected keys: 0", "ts": 1778902639.1999776}
+{"id": 598, "kind": "log", "line": "Anima: compiled 28 block._forward with backend=inductor, mode=None", "ts": 1778902640.0503426}
+{"id": 599, "kind": "log", "line": "2026-05-16 11:37:20 INFO     static_token_count=4096                train.py:498", "ts": 1778902640.051472}
+{"id": 600, "kind": "log", "line": "import network module: networks.lora_anima", "ts": 1778902640.0521276}
+{"id": 601, "kind": "log", "line": "INFO     create LoRA network. base dim        network.py:269", "ts": 1778902640.060013}
+{"id": 602, "kind": "log", "line": "(rank): 32, alpha: 32.0", "ts": 1778902640.0606546}
+{"id": 603, "kind": "log", "line": "INFO     neuron dropout: p=None, rank         network.py:272", "ts": 1778902640.0612826}
+{"id": 604, "kind": "log", "line": "dropout: p=None, module dropout:", "ts": 1778902640.0618386}
+{"id": 605, "kind": "log", "line": "p=None", "ts": 1778902640.0625608}
+{"id": 606, "kind": "log", "line": "INFO     create LoRA for Text Encoder 1:      network.py:605", "ts": 1778902640.06324}
+{"id": 607, "kind": "progress", "line": "Creating TE1 LoRA:   0%|          | 0/196 [00:00<?, ?it/s]", "ts": 1778902640.1657288}
+{"id": 608, "kind": "progress", "line": "Creating TE1 LoRA:  45%|████▍     | 88/196 [00:00<00:00, 865.47it/s]", "ts": 1778902640.2658486}
+{"id": 609, "kind": "progress", "line": "Creating TE1 LoRA:  91%|█████████ | 178/196 [00:00<00:00, 885.11it/s]", "ts": 1778902640.2867632}
+{"id": 610, "kind": "log", "line": "INFO     create LoRA for Text Encoder 1: 196  network.py:612", "ts": 1778902640.2881129}
+{"id": 611, "kind": "log", "line": "modules.", "ts": 1778902640.2887034}
+{"id": 612, "kind": "progress", "line": "Creating DiT LoRA:   0%|          | 0/196 [00:00<?, ?it/s]", "ts": 1778902640.3930163}
+{"id": 613, "kind": "progress", "line": "Creating DiT LoRA:  26%|██▌       | 51/196 [00:00<00:00, 500.58it/s]", "ts": 1778902640.5226831}
+{"id": 614, "kind": "progress", "line": "Creating DiT LoRA:  52%|█████▏    | 102/196 [00:00<00:00, 431.52it/s]", "ts": 1778902640.636978}
+{"id": 615, "kind": "progress", "line": "Creating DiT LoRA:  74%|███████▍  | 146/196 [00:00<00:00, 410.53it/s]", "ts": 1778902640.7388122}
+{"id": 616, "kind": "progress", "line": "Creating DiT LoRA:  97%|█████████▋| 190/196 [00:00<00:00, 418.33it/s]", "ts": 1778902640.7518458}
+{"id": 617, "kind": "log", "line": "INFO     create LoRA for Anima DiT: 196       network.py:626", "ts": 1778902640.7533195}
+{"id": 618, "kind": "log", "line": "modules.", "ts": 1778902640.7539105}
+{"id": 619, "kind": "log", "line": "INFO     use_custom_down_autograd: enabled on factory.py:163", "ts": 1778902640.7569194}
+{"id": 620, "kind": "log", "line": "392 LoRA-family modules (saves", "ts": 1778902640.757597}
+{"id": 621, "kind": "log", "line": "~32-128 MiB/Linear of fp32", "ts": 1778902640.7581272}
+{"id": 622, "kind": "log", "line": "activation per step)", "ts": 1778902640.7586474}
+{"id": 623, "kind": "log", "line": "INFO     enable LoRA for DiT: 196 modules    network.py:1990", "ts": 1778902640.7595494}
+{"id": 624, "kind": "log", "line": "prepare optimizer, data loader etc.", "ts": 1778902640.761659}
+{"id": 625, "kind": "log", "line": "INFO     use AdamW optimizer |             optimizers.py:272", "ts": 1778902640.7658753}
+{"id": 626, "kind": "log", "line": "{'weight_decay': 0.01, 'eps':", "ts": 1778902640.7664363}
+{"id": 627, "kind": "log", "line": "1e-08, 'betas': (0.9, 0.99)}", "ts": 1778902640.7668939}
+{"id": 628, "kind": "log", "line": "override steps. steps for 16 epochs is", "ts": 1778902640.7674868}
+{"id": 629, "kind": "log", "line": "running training", "ts": 1778902640.9046514}
+{"id": 630, "kind": "log", "line": "num train images * repeats", "ts": 1778902640.9052863}
+{"id": 631, "kind": "log", "line": "num validation images * repeats", "ts": 1778902640.9057827}
+{"id": 632, "kind": "log", "line": "num reg images", "ts": 1778902640.9062645}
+{"id": 633, "kind": "log", "line": "num batches per epoch", "ts": 1778902640.9066997}
+{"id": 634, "kind": "log", "line": "num epochs", "ts": 1778902640.9071536}
+{"id": 635, "kind": "log", "line": "batch size per device", "ts": 1778902640.9076273}
+{"id": 636, "kind": "log", "line": "gradient accumulation steps", "ts": 1778902640.9080386}
+{"id": 637, "kind": "log", "line": "total optimization steps", "ts": 1778902640.9084828}
+{"id": 638, "kind": "log", "line": "2026-05-16 11:37:32 INFO     auto-resuming from checkpoint at checkpoints.py:383", "ts": 1778902652.9801562}
+{"id": 639, "kind": "log", "line": "step 840:", "ts": 1778902652.9810836}
+{"id": 640, "kind": "log", "line": "/home/scv/sda1/DiffPipeForge2/ou", "ts": 1778902652.9818902}
+{"id": 641, "kind": "log", "line": "tput/肋骨女神/mylora/rokkotsu_go", "ts": 1778902652.982738}
+{"id": 642, "kind": "log", "line": "ddess_5_14-checkpoint-state", "ts": 1778902652.983562}
+{"id": 643, "kind": "log", "line": "INFO     resume training from local state: accelerator.py:30", "ts": 1778902652.984499}
+{"id": 644, "kind": "log", "line": "/home/scv/sda1/DiffPipeForge2/out", "ts": 1778902652.9853148}
+{"id": 645, "kind": "log", "line": "put/肋骨女神/mylora/rokkotsu_godd", "ts": 1778902652.98609}
+{"id": 646, "kind": "log", "line": "ess_5_14-checkpoint-state", "ts": 1778902652.9868636}
+{"id": 647, "kind": "log", "line": "INFO     [RANK 0] Loading states from    accelerator.py:3784", "ts": 1778902652.987359}
+{"id": 648, "kind": "log", "line": "/home/scv/sda1/DiffPipeForge2/o", "ts": 1778902652.987863}
+{"id": 649, "kind": "log", "line": "utput/肋骨女神/mylora/rokkotsu_", "ts": 1778902652.988451}
+{"id": 650, "kind": "log", "line": "goddess_5_14-checkpoint-state", "ts": 1778902652.989197}
+{"id": 651, "kind": "log", "line": "INFO     load train state from            checkpoints.py:358", "ts": 1778902652.9899511}
+{"id": 652, "kind": "log", "line": "/home/scv/sda1/DiffPipeForge2/ou", "ts": 1778902652.990768}
+{"id": 653, "kind": "log", "line": "tput/肋骨女神/mylora/rokkotsu_go", "ts": 1778902652.99137}
+{"id": 654, "kind": "log", "line": "ddess_5_14-checkpoint-state/trai", "ts": 1778902652.9918685}
+{"id": 655, "kind": "log", "line": "n_state.json: {'current_epoch':", "ts": 1778902652.99228}
+{"id": 656, "kind": "log", "line": "3, 'current_step': 840}", "ts": 1778902652.9929917}
+{"id": 657, "kind": "log", "line": "2026-05-16 11:37:33 INFO     [RANK 0] All model weights     checkpointing.py:247", "ts": 1778902653.1134946}
+{"id": 658, "kind": "log", "line": "loaded successfully", "ts": 1778902653.1143334}
+{"id": 659, "kind": "log", "line": "INFO     [RANK 0] All optimizer states  checkpointing.py:255", "ts": 1778902653.5062613}
+{"id": 660, "kind": "log", "line": "loaded successfully", "ts": 1778902653.5072696}
+{"id": 661, "kind": "log", "line": "INFO     [RANK 0] All scheduler states  checkpointing.py:263", "ts": 1778902653.5081165}
+{"id": 662, "kind": "log", "line": "loaded successfully", "ts": 1778902653.5086505}
+{"id": 663, "kind": "log", "line": "INFO     [RANK 0] All dataloader        checkpointing.py:281", "ts": 1778902653.5092351}
+{"id": 664, "kind": "log", "line": "sampler states loaded", "ts": 1778902653.5099814}
+{"id": 665, "kind": "log", "line": "successfully", "ts": 1778902653.5107374}
+{"id": 666, "kind": "log", "line": "INFO     [RANK 0] All random states     checkpointing.py:314", "ts": 1778902653.5121498}
+{"id": 667, "kind": "log", "line": "loaded successfully", "ts": 1778902653.5127208}
+{"id": 668, "kind": "log", "line": "INFO     [RANK 0] Loading in 0 custom    accelerator.py:3881", "ts": 1778902653.5230196}
+{"id": 669, "kind": "log", "line": "states", "ts": 1778902653.5239909}
+{"id": 670, "kind": "log", "line": "INFO     skipping 840 steps                    train.py:2428", "ts": 1778902653.5247028}
+{"id": 671, "kind": "log", "line": "INFO     text_encoder is not needed for          loop.py:151", "ts": 1778902653.5264666}
+{"id": 672, "kind": "log", "line": "training. deleting to save memory.", "ts": 1778902653.5273104}
+{"id": 673, "kind": "log", "line": "2026-05-16 11:37:34 INFO     skipping epoch 1 because initial_step   loop.py:205", "ts": 1778902654.0306811}
+{"id": 674, "kind": "log", "line": "(multiplied) is 840", "ts": 1778902654.031782}
+{"id": 675, "kind": "log", "line": "INFO     skipping epoch 2 because initial_step   loop.py:205", "ts": 1778902654.0326393}
+{"id": 676, "kind": "log", "line": "(multiplied) is 560", "ts": 1778902654.0331573}
+{"id": 677, "kind": "log", "line": "INFO     skipping epoch 3 because initial_step   loop.py:205", "ts": 1778902654.0336397}
+{"id": 678, "kind": "log", "line": "(multiplied) is 280", "ts": 1778902654.034106}
+{"id": 679, "kind": "log", "line": "INFO     unet dtype: torch.bfloat16, device:     loop.py:211", "ts": 1778902654.034882}
+{"id": 680, "kind": "log", "line": "cuda:0", "ts": 1778902654.0356908}
+{"id": 681, "kind": "progress", "line": "steps:   0%|          | 0/3640 [00:00<?, ?it/s]", "ts": 1778902654.2830503}
+{"id": 682, "kind": "log", "line": "epoch 4/16", "ts": 1778902654.2838578}
+{"id": 683, "kind": "log", "line": "INFO     epoch is incremented. current_epoch: 0, base.py:209", "ts": 1778902654.5635087}
+{"id": 684, "kind": "log", "line": "epoch: 4", "ts": 1778902654.5641818}
+{"id": 685, "kind": "log", "line": "INFO     epoch is incremented. current_epoch: 0, base.py:209", "ts": 1778902654.5646226}
+{"id": 686, "kind": "log", "line": "epoch: 4", "ts": 1778902654.565037}
+{"id": 687, "kind": "log", "line": "INFO     epoch is incremented. current_epoch: 0, base.py:209", "ts": 1778902654.5655487}
+{"id": 688, "kind": "log", "line": "epoch: 4", "ts": 1778902654.5659347}
+{"id": 689, "kind": "log", "line": "INFO     epoch is incremented. current_epoch: 0, base.py:209", "ts": 1778902654.5662904}
+{"id": 690, "kind": "log", "line": "epoch: 4", "ts": 1778902654.5666695}
+{"id": 691, "kind": "progress", "line": "steps:   0%|          | 1/3640 [00:11<11:46:00, 11.64s/it]", "ts": 1778902667.4703772}
+{"id": 692, "kind": "progress", "line": "steps:   0%|          | 2/3640 [00:13<6:39:47,  6.59s/it, avr_loss=0.0979]", "ts": 1778902669.3345158}
+{"id": 693, "kind": "progress", "line": "steps:   0%|          | 3/3640 [00:15<5:04:07,  5.02s/it, avr_loss=0.0995]", "ts": 1778902671.1994998}
+{"id": 694, "kind": "progress", "line": "steps:   0%|          | 4/3640 [00:16<4:16:16,  4.23s/it, avr_loss=0.0853]", "ts": 1778902673.0605855}
+{"id": 695, "kind": "progress", "line": "steps:   0%|          | 5/3640 [00:18<3:47:31,  3.76s/it, avr_loss=0.0912]", "ts": 1778902674.9222405}
+{"id": 696, "kind": "progress", "line": "steps:   0%|          | 6/3640 [00:20<3:28:20,  3.44s/it, avr_loss=0.0957]", "ts": 1778902676.797093}
+{"id": 697, "kind": "progress", "line": "steps:   0%|          | 7/3640 [00:22<3:14:44,  3.22s/it, avr_loss=0.0915]", "ts": 1778902678.6699278}
+{"id": 698, "kind": "progress", "line": "steps:   0%|          | 8/3640 [00:24<3:04:31,  3.05s/it, avr_loss=0.0946]", "ts": 1778902680.53722}
+{"id": 699, "kind": "progress", "line": "steps:   0%|          | 9/3640 [00:26<2:56:32,  2.92s/it, avr_loss=0.0924]", "ts": 1778902682.4158123}
+{"id": 700, "kind": "progress", "line": "steps:   0%|          | 10/3640 [00:28<2:50:12,  2.81s/it, avr_loss=0.0914]", "ts": 1778902684.2828095}
+{"id": 701, "kind": "progress", "line": "steps:   0%|          | 11/3640 [00:29<2:44:57,  2.73s/it, avr_loss=0.0928]", "ts": 1778902686.1614394}
+{"id": 702, "kind": "progress", "line": "steps:   0%|          | 12/3640 [00:31<2:40:37,  2.66s/it, avr_loss=0.0925]", "ts": 1778902688.0316923}
+{"id": 703, "kind": "progress", "line": "steps:   0%|          | 13/3640 [00:33<2:36:55,  2.60s/it, avr_loss=0.0913]", "ts": 1778902689.912241}
+{"id": 704, "kind": "progress", "line": "steps:   0%|          | 14/3640 [00:35<2:33:47,  2.54s/it, avr_loss=0.105]", "ts": 1778902691.7916458}
+{"id": 705, "kind": "progress", "line": "steps:   0%|          | 15/3640 [00:37<2:31:04,  2.50s/it, avr_loss=0.105]", "ts": 1778902693.6753418}
+{"id": 706, "kind": "progress", "line": "steps:   0%|          | 16/3640 [00:39<2:28:42,  2.46s/it, avr_loss=0.103]", "ts": 1778902695.5463307}
+{"id": 707, "kind": "progress", "line": "steps:   0%|          | 17/3640 [00:41<2:26:33,  2.43s/it, avr_loss=0.103]", "ts": 1778902697.4381416}
+{"id": 708, "kind": "progress", "line": "steps:   0%|          | 18/3640 [00:43<2:24:43,  2.40s/it, avr_loss=0.103]", "ts": 1778902699.3120067}
+{"id": 709, "kind": "progress", "line": "steps:   1%|          | 19/3640 [00:45<2:23:01,  2.37s/it, avr_loss=0.105]", "ts": 1778902701.3967018}
+{"id": 710, "kind": "progress", "line": "steps:   1%|          | 20/3640 [00:47<2:22:07,  2.36s/it, avr_loss=0.103]", "ts": 1778902703.28289}
+{"id": 711, "kind": "progress", "line": "steps:   1%|          | 21/3640 [00:48<2:20:44,  2.33s/it, avr_loss=0.103]", "ts": 1778902705.173487}
+{"id": 712, "kind": "progress", "line": "steps:   1%|          | 22/3640 [00:50<2:19:29,  2.31s/it, avr_loss=0.102]", "ts": 1778902707.0532098}
+{"id": 713, "kind": "progress", "line": "steps:   1%|          | 23/3640 [00:52<2:18:18,  2.29s/it, avr_loss=0.101]", "ts": 1778902708.941191}
+{"id": 714, "kind": "progress", "line": "steps:   1%|          | 24/3640 [00:54<2:17:15,  2.28s/it, avr_loss=0.101]", "ts": 1778902710.8302934}
+{"id": 715, "kind": "progress", "line": "steps:   1%|          | 25/3640 [00:56<2:16:16,  2.26s/it, avr_loss=0.0982]", "ts": 1778902712.7273738}
+{"id": 716, "kind": "progress", "line": "steps:   1%|          | 26/3640 [00:58<2:15:23,  2.25s/it, avr_loss=0.097]", "ts": 1778902714.6202285}
+{"id": 717, "kind": "progress", "line": "steps:   1%|          | 27/3640 [01:00<2:14:33,  2.23s/it, avr_loss=0.0977]", "ts": 1778902716.5150619}
+{"id": 718, "kind": "progress", "line": "steps:   1%|          | 28/3640 [01:02<2:13:47,  2.22s/it, avr_loss=0.0992]", "ts": 1778902718.4215746}
+{"id": 719, "kind": "progress", "line": "steps:   1%|          | 29/3640 [01:04<2:13:06,  2.21s/it, avr_loss=0.102]", "ts": 1778902720.312974}
+{"id": 720, "kind": "progress", "line": "steps:   1%|          | 30/3640 [01:06<2:12:25,  2.20s/it, avr_loss=0.101]", "ts": 1778902722.2154684}
+{"id": 721, "kind": "progress", "line": "steps:   1%|          | 31/3640 [01:07<2:11:48,  2.19s/it, avr_loss=0.0996]", "ts": 1778902724.1099057}
+{"id": 722, "kind": "progress", "line": "steps:   1%|          | 32/3640 [01:09<2:11:12,  2.18s/it, avr_loss=0.1]", "ts": 1778902726.0097451}
+{"id": 723, "kind": "progress", "line": "steps:   1%|          | 33/3640 [01:11<2:10:39,  2.17s/it, avr_loss=0.0984]", "ts": 1778902727.9080303}
+{"id": 724, "kind": "progress", "line": "steps:   1%|          | 34/3640 [01:13<2:10:08,  2.17s/it, avr_loss=0.0975]", "ts": 1778902729.8286421}
+{"id": 725, "kind": "progress", "line": "steps:   1%|          | 35/3640 [01:15<2:09:41,  2.16s/it, avr_loss=0.0984]", "ts": 1778902731.7178612}
+{"id": 726, "kind": "progress", "line": "steps:   1%|          | 36/3640 [01:17<2:09:12,  2.15s/it, avr_loss=0.0981]", "ts": 1778902733.6568327}
+{"id": 727, "kind": "progress", "line": "steps:   1%|          | 37/3640 [01:19<2:08:49,  2.15s/it, avr_loss=0.0976]", "ts": 1778902735.5434399}
+{"id": 728, "kind": "progress", "line": "steps:   1%|          | 38/3640 [01:21<2:08:22,  2.14s/it, avr_loss=0.0967]", "ts": 1778902737.4590597}
+{"id": 729, "kind": "progress", "line": "steps:   1%|          | 39/3640 [01:23<2:07:59,  2.13s/it, avr_loss=0.0967]", "ts": 1778902739.3703508}
+{"id": 730, "kind": "progress", "line": "steps:   1%|          | 40/3640 [01:25<2:07:37,  2.13s/it, avr_loss=0.0968]", "ts": 1778902741.2674303}
+{"id": 731, "kind": "progress", "line": "steps:   1%|          | 41/3640 [01:26<2:07:15,  2.12s/it, avr_loss=0.098]", "ts": 1778902743.1900766}
+{"id": 732, "kind": "progress", "line": "steps:   1%|          | 42/3640 [01:28<2:06:56,  2.12s/it, avr_loss=0.098]", "ts": 1778902745.0916424}
+{"id": 733, "kind": "progress", "line": "steps:   1%|          | 43/3640 [01:30<2:06:36,  2.11s/it, avr_loss=0.0998]", "ts": 1778902746.9765046}
+{"id": 734, "kind": "progress", "line": "steps:   1%|          | 44/3640 [01:32<2:06:15,  2.11s/it, avr_loss=0.103]", "ts": 1778902748.8601623}
+{"id": 735, "kind": "progress", "line": "steps:   1%|          | 45/3640 [01:34<2:05:55,  2.10s/it, avr_loss=0.102]", "ts": 1778902750.7522233}
+{"id": 736, "kind": "progress", "line": "steps:   1%|▏         | 46/3640 [01:36<2:05:37,  2.10s/it, avr_loss=0.103]", "ts": 1778902752.6357515}
+{"id": 737, "kind": "progress", "line": "steps:   1%|▏         | 47/3640 [01:38<2:05:18,  2.09s/it, avr_loss=0.102]", "ts": 1778902754.5406144}
+{"id": 738, "kind": "progress", "line": "steps:   1%|▏         | 48/3640 [01:40<2:05:02,  2.09s/it, avr_loss=0.102]", "ts": 1778902756.427405}
+{"id": 739, "kind": "progress", "line": "steps:   1%|▏         | 49/3640 [01:42<2:04:45,  2.08s/it, avr_loss=0.102]", "ts": 1778902758.3239052}
+{"id": 740, "kind": "progress", "line": "steps:   1%|▏         | 50/3640 [01:44<2:04:30,  2.08s/it, avr_loss=0.104]", "ts": 1778902760.2205956}
+{"id": 741, "kind": "progress", "line": "steps:   1%|▏         | 51/3640 [01:45<2:04:15,  2.08s/it, avr_loss=0.104]", "ts": 1778902762.1210022}
+{"id": 742, "kind": "progress", "line": "steps:   1%|▏         | 52/3640 [01:47<2:04:00,  2.07s/it, avr_loss=0.105]", "ts": 1778902764.0054884}
+{"id": 743, "kind": "progress", "line": "steps:   1%|▏         | 53/3640 [01:49<2:03:45,  2.07s/it, avr_loss=0.105]", "ts": 1778902765.9089713}
+{"id": 744, "kind": "progress", "line": "steps:   1%|▏         | 54/3640 [01:51<2:03:32,  2.07s/it, avr_loss=0.105]", "ts": 1778902767.797586}
+{"id": 745, "kind": "progress", "line": "steps:   2%|▏         | 55/3640 [01:53<2:03:19,  2.06s/it, avr_loss=0.105]", "ts": 1778902769.6749582}
+{"id": 746, "kind": "progress", "line": "steps:   2%|▏         | 56/3640 [01:55<2:03:05,  2.06s/it, avr_loss=0.106]", "ts": 1778902771.5691473}
+{"id": 747, "kind": "progress", "line": "steps:   2%|▏         | 57/3640 [01:57<2:02:52,  2.06s/it, avr_loss=0.106]", "ts": 1778902773.4810903}
+{"id": 748, "kind": "progress", "line": "steps:   2%|▏         | 58/3640 [01:59<2:02:41,  2.06s/it, avr_loss=0.106]", "ts": 1778902775.4000902}
+{"id": 749, "kind": "progress", "line": "steps:   2%|▏         | 59/3640 [02:01<2:02:31,  2.05s/it, avr_loss=0.106]", "ts": 1778902777.3215134}
+{"id": 750, "kind": "progress", "line": "steps:   2%|▏         | 60/3640 [02:03<2:02:21,  2.05s/it, avr_loss=0.106]", "ts": 1778902779.2308981}
+{"id": 751, "kind": "progress", "line": "steps:   2%|▏         | 61/3640 [02:04<2:02:10,  2.05s/it, avr_loss=0.106]", "ts": 1778902781.154061}
+{"id": 752, "kind": "progress", "line": "steps:   2%|▏         | 62/3640 [02:06<2:02:01,  2.05s/it, avr_loss=0.105]", "ts": 1778902783.0619473}
+{"id": 753, "kind": "progress", "line": "steps:   2%|▏         | 63/3640 [02:08<2:01:51,  2.04s/it, avr_loss=0.105]", "ts": 1778902784.9908564}
+{"id": 754, "kind": "progress", "line": "steps:   2%|▏         | 64/3640 [02:10<2:01:43,  2.04s/it, avr_loss=0.104]", "ts": 1778902786.9098701}
+{"id": 755, "kind": "progress", "line": "steps:   2%|▏         | 65/3640 [02:12<2:01:34,  2.04s/it, avr_loss=0.103]", "ts": 1778902788.838451}
+{"id": 756, "kind": "progress", "line": "steps:   2%|▏         | 66/3640 [02:14<2:01:26,  2.04s/it, avr_loss=0.104]", "ts": 1778902790.7577076}
+{"id": 757, "kind": "progress", "line": "steps:   2%|▏         | 67/3640 [02:16<2:01:17,  2.04s/it, avr_loss=0.103]", "ts": 1778902792.6773803}
+{"id": 758, "kind": "progress", "line": "steps:   2%|▏         | 68/3640 [02:18<2:01:09,  2.04s/it, avr_loss=0.103]", "ts": 1778902794.5804074}
+{"id": 759, "kind": "progress", "line": "steps:   2%|▏         | 69/3640 [02:20<2:01:00,  2.03s/it, avr_loss=0.104]", "ts": 1778902796.494937}
+{"id": 760, "kind": "progress", "line": "steps:   2%|▏         | 70/3640 [02:22<2:00:52,  2.03s/it, avr_loss=0.103]", "ts": 1778902798.4031289}
+{"id": 761, "kind": "progress", "line": "steps:   2%|▏         | 71/3640 [02:24<2:00:44,  2.03s/it, avr_loss=0.103]", "ts": 1778902800.3115644}
+{"id": 762, "kind": "progress", "line": "steps:   2%|▏         | 72/3640 [02:26<2:00:36,  2.03s/it, avr_loss=0.102]", "ts": 1778902802.237897}
+{"id": 763, "kind": "progress", "line": "steps:   2%|▏         | 73/3640 [02:27<2:00:29,  2.03s/it, avr_loss=0.102]", "ts": 1778902804.1411297}
+{"id": 764, "kind": "progress", "line": "steps:   2%|▏         | 74/3640 [02:29<2:00:21,  2.03s/it, avr_loss=0.102]", "ts": 1778902806.0681858}
+{"id": 765, "kind": "progress", "line": "steps:   2%|▏         | 75/3640 [02:31<2:00:14,  2.02s/it, avr_loss=0.102]", "ts": 1778902807.9804668}
+{"id": 766, "kind": "progress", "line": "steps:   2%|▏         | 76/3640 [02:33<2:00:07,  2.02s/it, avr_loss=0.102]", "ts": 1778902809.8954756}
+{"id": 767, "kind": "progress", "line": "steps:   2%|▏         | 77/3640 [02:35<2:00:00,  2.02s/it, avr_loss=0.102]", "ts": 1778902811.8131475}
+{"id": 768, "kind": "progress", "line": "steps:   2%|▏         | 78/3640 [02:37<1:59:53,  2.02s/it, avr_loss=0.101]", "ts": 1778902813.7318594}
+{"id": 769, "kind": "progress", "line": "steps:   2%|▏         | 79/3640 [02:39<1:59:47,  2.02s/it, avr_loss=0.101]", "ts": 1778902815.6402545}
+{"id": 770, "kind": "progress", "line": "steps:   2%|▏         | 80/3640 [02:41<1:59:40,  2.02s/it, avr_loss=0.104]", "ts": 1778902817.5740442}
+{"id": 771, "kind": "progress", "line": "steps:   2%|▏         | 81/3640 [02:43<1:59:34,  2.02s/it, avr_loss=0.104]", "ts": 1778902819.4843562}
+{"id": 772, "kind": "progress", "line": "steps:   2%|▏         | 82/3640 [02:45<1:59:28,  2.01s/it, avr_loss=0.106]", "ts": 1778902821.407176}
+{"id": 773, "kind": "progress", "line": "steps:   2%|▏         | 83/3640 [02:47<1:59:22,  2.01s/it, avr_loss=0.106]", "ts": 1778902823.3218515}
+{"id": 774, "kind": "progress", "line": "steps:   2%|▏         | 84/3640 [02:49<1:59:15,  2.01s/it, avr_loss=0.107]", "ts": 1778902825.2358234}
+{"id": 775, "kind": "progress", "line": "steps:   2%|▏         | 85/3640 [02:50<1:59:09,  2.01s/it, avr_loss=0.108]", "ts": 1778902827.1493716}
+{"id": 776, "kind": "progress", "line": "steps:   2%|▏         | 86/3640 [02:52<1:59:03,  2.01s/it, avr_loss=0.108]", "ts": 1778902829.0720708}
+{"id": 777, "kind": "progress", "line": "steps:   2%|▏         | 87/3640 [02:54<1:58:58,  2.01s/it, avr_loss=0.108]", "ts": 1778902831.0131505}
+{"id": 778, "kind": "progress", "line": "steps:   2%|▏         | 88/3640 [02:56<1:58:53,  2.01s/it, avr_loss=0.107]", "ts": 1778902832.9430418}
+{"id": 779, "kind": "progress", "line": "steps:   2%|▏         | 89/3640 [02:58<1:58:48,  2.01s/it, avr_loss=0.108]", "ts": 1778902834.8661835}
+{"id": 780, "kind": "progress", "line": "steps:   2%|▏         | 90/3640 [03:00<1:58:42,  2.01s/it, avr_loss=0.108]", "ts": 1778902836.7779136}
+{"id": 781, "kind": "progress", "line": "steps:   2%|▎         | 91/3640 [03:02<1:58:37,  2.01s/it, avr_loss=0.107]", "ts": 1778902838.7102}
+{"id": 782, "kind": "progress", "line": "steps:   3%|▎         | 92/3640 [03:04<1:58:32,  2.00s/it, avr_loss=0.107]", "ts": 1778902840.6332397}
+{"id": 783, "kind": "progress", "line": "steps:   3%|▎         | 93/3640 [03:06<1:58:27,  2.00s/it, avr_loss=0.107]", "ts": 1778902842.5355937}
+{"id": 784, "kind": "progress", "line": "steps:   3%|▎         | 94/3640 [03:08<1:58:21,  2.00s/it, avr_loss=0.107]", "ts": 1778902844.4659288}
+{"id": 785, "kind": "progress", "line": "steps:   3%|▎         | 95/3640 [03:10<1:58:16,  2.00s/it, avr_loss=0.107]", "ts": 1778902846.3823965}
+{"id": 786, "kind": "progress", "line": "steps:   3%|▎         | 96/3640 [03:12<1:58:11,  2.00s/it, avr_loss=0.107]", "ts": 1778902848.3018153}
+{"id": 787, "kind": "progress", "line": "steps:   3%|▎         | 97/3640 [03:14<1:58:06,  2.00s/it, avr_loss=0.106]", "ts": 1778902850.2357435}
+{"id": 788, "kind": "progress", "line": "steps:   3%|▎         | 98/3640 [03:15<1:58:02,  2.00s/it, avr_loss=0.107]", "ts": 1778902852.141727}
+{"id": 789, "kind": "progress", "line": "steps:   3%|▎         | 99/3640 [03:17<1:57:56,  2.00s/it, avr_loss=0.107]", "ts": 1778902854.069622}
+{"id": 790, "kind": "progress", "line": "steps:   3%|▎         | 100/3640 [03:19<1:57:52,  2.00s/it, avr_loss=0.107]", "ts": 1778902855.997607}
+{"id": 791, "kind": "progress", "line": "steps:   3%|▎         | 101/3640 [03:21<1:57:47,  2.00s/it, avr_loss=0.107]", "ts": 1778902857.911723}
+{"id": 792, "kind": "progress", "line": "steps:   3%|▎         | 102/3640 [03:23<1:57:43,  2.00s/it, avr_loss=0.107]", "ts": 1778902859.8308969}
+{"id": 793, "kind": "progress", "line": "steps:   3%|▎         | 103/3640 [03:25<1:57:38,  2.00s/it, avr_loss=0.107]", "ts": 1778902861.7590563}
+{"id": 794, "kind": "progress", "line": "steps:   3%|▎         | 104/3640 [03:27<1:57:34,  1.99s/it, avr_loss=0.107]", "ts": 1778902863.6629603}
+{"id": 795, "kind": "progress", "line": "steps:   3%|▎         | 105/3640 [03:29<1:57:29,  1.99s/it, avr_loss=0.107]", "ts": 1778902865.605995}
+{"id": 796, "kind": "progress", "line": "steps:   3%|▎         | 106/3640 [03:31<1:57:25,  1.99s/it, avr_loss=0.106]", "ts": 1778902867.5215843}
+{"id": 797, "kind": "progress", "line": "steps:   3%|▎         | 107/3640 [03:33<1:57:20,  1.99s/it, avr_loss=0.106]", "ts": 1778902869.4455144}
+{"id": 798, "kind": "progress", "line": "steps:   3%|▎         | 108/3640 [03:35<1:57:16,  1.99s/it, avr_loss=0.107]", "ts": 1778902871.3664804}
+{"id": 799, "kind": "progress", "line": "steps:   3%|▎         | 109/3640 [03:37<1:57:12,  1.99s/it, avr_loss=0.108]", "ts": 1778902873.293822}
+{"id": 800, "kind": "progress", "line": "steps:   3%|▎         | 110/3640 [03:39<1:57:08,  1.99s/it, avr_loss=0.108]", "ts": 1778902875.2082403}
+{"id": 801, "kind": "progress", "line": "steps:   3%|▎         | 111/3640 [03:40<1:57:03,  1.99s/it, avr_loss=0.108]", "ts": 1778902877.1397274}
+{"id": 802, "kind": "progress", "line": "steps:   3%|▎         | 112/3640 [03:42<1:56:59,  1.99s/it, avr_loss=0.109]", "ts": 1778902879.0475748}
+{"id": 803, "kind": "progress", "line": "steps:   3%|▎         | 113/3640 [03:44<1:56:55,  1.99s/it, avr_loss=0.109]", "ts": 1778902880.9780993}
+{"id": 804, "kind": "progress", "line": "steps:   3%|▎         | 114/3640 [03:46<1:56:51,  1.99s/it, avr_loss=0.11]", "ts": 1778902882.903553}
+{"id": 805, "kind": "progress", "line": "steps:   3%|▎         | 115/3640 [03:48<1:56:47,  1.99s/it, avr_loss=0.11]", "ts": 1778902884.8212106}
+{"id": 806, "kind": "progress", "line": "steps:   3%|▎         | 116/3640 [03:50<1:56:43,  1.99s/it, avr_loss=0.11]", "ts": 1778902886.7556632}
+{"id": 807, "kind": "progress", "line": "steps:   3%|▎         | 117/3640 [03:52<1:56:40,  1.99s/it, avr_loss=0.11]", "ts": 1778902888.674163}
+{"id": 808, "kind": "progress", "line": "steps:   3%|▎         | 118/3640 [03:54<1:56:35,  1.99s/it, avr_loss=0.11]", "ts": 1778902890.5930917}
+{"id": 809, "kind": "progress", "line": "steps:   3%|▎         | 119/3640 [03:56<1:56:31,  1.99s/it, avr_loss=0.11]", "ts": 1778902892.5182476}
+{"id": 810, "kind": "progress", "line": "steps:   3%|▎         | 120/3640 [03:58<1:56:28,  1.99s/it, avr_loss=0.11]", "ts": 1778902894.447747}
+{"id": 811, "kind": "progress", "line": "steps:   3%|▎         | 121/3640 [04:00<1:56:24,  1.98s/it, avr_loss=0.11]", "ts": 1778902896.3690581}
+{"id": 812, "kind": "progress", "line": "steps:   3%|▎         | 122/3640 [04:02<1:56:20,  1.98s/it, avr_loss=0.111]", "ts": 1778902898.2972987}
+{"id": 813, "kind": "progress", "line": "steps:   3%|▎         | 123/3640 [04:04<1:56:17,  1.98s/it, avr_loss=0.111]", "ts": 1778902900.211459}
+{"id": 814, "kind": "progress", "line": "steps:   3%|▎         | 124/3640 [04:05<1:56:13,  1.98s/it, avr_loss=0.111]", "ts": 1778902902.1407788}
+{"id": 815, "kind": "progress", "line": "steps:   3%|▎         | 125/3640 [04:07<1:56:09,  1.98s/it, avr_loss=0.111]", "ts": 1778902904.0638123}
+{"id": 816, "kind": "progress", "line": "steps:   3%|▎         | 126/3640 [04:09<1:56:06,  1.98s/it, avr_loss=0.111]", "ts": 1778902905.9849725}
+{"id": 817, "kind": "progress", "line": "steps:   3%|▎         | 127/3640 [04:11<1:56:02,  1.98s/it, avr_loss=0.111]", "ts": 1778902907.9150605}
+{"id": 818, "kind": "progress", "line": "steps:   4%|▎         | 128/3640 [04:13<1:55:59,  1.98s/it, avr_loss=0.112]", "ts": 1778902909.849336}
+{"id": 819, "kind": "progress", "line": "steps:   4%|▎         | 129/3640 [04:15<1:55:55,  1.98s/it, avr_loss=0.112]", "ts": 1778902911.7646904}
+{"id": 820, "kind": "progress", "line": "steps:   4%|▎         | 130/3640 [04:17<1:55:52,  1.98s/it, avr_loss=0.113]", "ts": 1778902913.6978564}
+{"id": 821, "kind": "progress", "line": "steps:   4%|▎         | 131/3640 [04:19<1:55:48,  1.98s/it, avr_loss=0.113]", "ts": 1778902915.6204004}
+{"id": 822, "kind": "progress", "line": "steps:   4%|▎         | 132/3640 [04:21<1:55:45,  1.98s/it, avr_loss=0.113]", "ts": 1778902917.5485008}
+{"id": 823, "kind": "progress", "line": "steps:   4%|▎         | 133/3640 [04:23<1:55:41,  1.98s/it, avr_loss=0.113]", "ts": 1778902919.471759}
+{"id": 824, "kind": "progress", "line": "steps:   4%|▎         | 134/3640 [04:25<1:55:38,  1.98s/it, avr_loss=0.113]", "ts": 1778902921.4066682}
+{"id": 825, "kind": "progress", "line": "steps:   4%|▎         | 135/3640 [04:27<1:55:35,  1.98s/it, avr_loss=0.113]", "ts": 1778902923.3243213}
+{"id": 826, "kind": "progress", "line": "steps:   4%|▎         | 136/3640 [04:29<1:55:31,  1.98s/it, avr_loss=0.113]", "ts": 1778902925.2564576}
+{"id": 827, "kind": "progress", "line": "steps:   4%|▍         | 137/3640 [04:30<1:55:28,  1.98s/it, avr_loss=0.113]", "ts": 1778902927.1766968}
+{"id": 828, "kind": "progress", "line": "steps:   4%|▍         | 138/3640 [04:32<1:55:25,  1.98s/it, avr_loss=0.113]", "ts": 1778902929.0951552}
+{"id": 829, "kind": "progress", "line": "steps:   4%|▍         | 139/3640 [04:34<1:55:21,  1.98s/it, avr_loss=0.113]", "ts": 1778902931.050928}
+{"id": 830, "kind": "progress", "line": "steps:   4%|▍         | 140/3640 [04:36<1:55:19,  1.98s/it, avr_loss=0.113]", "ts": 1778902932.9631665}
+{"id": 831, "kind": "progress", "line": "steps:   4%|▍         | 141/3640 [04:38<1:55:15,  1.98s/it, avr_loss=0.113]", "ts": 1778902934.8927321}
+{"id": 832, "kind": "progress", "line": "steps:   4%|▍         | 142/3640 [04:40<1:55:12,  1.98s/it, avr_loss=0.113]", "ts": 1778902936.822225}
+{"id": 833, "kind": "progress", "line": "steps:   4%|▍         | 143/3640 [04:42<1:55:09,  1.98s/it, avr_loss=0.113]", "ts": 1778902938.7441864}
+{"id": 834, "kind": "progress", "line": "steps:   4%|▍         | 144/3640 [04:44<1:55:06,  1.98s/it, avr_loss=0.113]", "ts": 1778902940.6677291}
+{"id": 835, "kind": "progress", "line": "steps:   4%|▍         | 145/3640 [04:46<1:55:02,  1.98s/it, avr_loss=0.113]", "ts": 1778902942.598569}
+{"id": 836, "kind": "progress", "line": "steps:   4%|▍         | 146/3640 [04:48<1:54:59,  1.97s/it, avr_loss=0.115]", "ts": 1778902944.5132587}
+{"id": 837, "kind": "progress", "line": "steps:   4%|▍         | 147/3640 [04:50<1:54:56,  1.97s/it, avr_loss=0.115]", "ts": 1778902946.442739}
+{"id": 838, "kind": "progress", "line": "steps:   4%|▍         | 148/3640 [04:52<1:54:53,  1.97s/it, avr_loss=0.115]", "ts": 1778902948.358639}
+{"id": 839, "kind": "progress", "line": "steps:   4%|▍         | 149/3640 [04:54<1:54:50,  1.97s/it, avr_loss=0.114]", "ts": 1778902950.285627}
+{"id": 840, "kind": "progress", "line": "steps:   4%|▍         | 150/3640 [04:56<1:54:46,  1.97s/it, avr_loss=0.114]", "ts": 1778902952.2083802}
+{"id": 841, "kind": "progress", "line": "steps:   4%|▍         | 151/3640 [04:57<1:54:43,  1.97s/it, avr_loss=0.115]", "ts": 1778902954.1283786}
+{"id": 842, "kind": "progress", "line": "steps:   4%|▍         | 152/3640 [04:59<1:54:40,  1.97s/it, avr_loss=0.115]", "ts": 1778902956.05221}
+{"id": 843, "kind": "progress", "line": "steps:   4%|▍         | 153/3640 [05:01<1:54:37,  1.97s/it, avr_loss=0.114]", "ts": 1778902957.9957845}
+{"id": 844, "kind": "progress", "line": "steps:   4%|▍         | 154/3640 [05:03<1:54:34,  1.97s/it, avr_loss=0.114]", "ts": 1778902959.9120002}
+{"id": 845, "kind": "progress", "line": "steps:   4%|▍         | 155/3640 [05:05<1:54:31,  1.97s/it, avr_loss=0.114]", "ts": 1778902961.8507495}
+{"id": 846, "kind": "progress", "line": "steps:   4%|▍         | 156/3640 [05:07<1:54:29,  1.97s/it, avr_loss=0.114]", "ts": 1778902963.774904}
+{"id": 847, "kind": "progress", "line": "steps:   4%|▍         | 157/3640 [05:09<1:54:25,  1.97s/it, avr_loss=0.114]", "ts": 1778902965.6976616}
+{"id": 848, "kind": "progress", "line": "steps:   4%|▍         | 158/3640 [05:11<1:54:22,  1.97s/it, avr_loss=0.114]", "ts": 1778902967.626186}
+{"id": 849, "kind": "progress", "line": "steps:   4%|▍         | 159/3640 [05:13<1:54:20,  1.97s/it, avr_loss=0.114]", "ts": 1778902969.5520368}
+{"id": 850, "kind": "progress", "line": "steps:   4%|▍         | 160/3640 [05:15<1:54:17,  1.97s/it, avr_loss=0.114]", "ts": 1778902971.467865}
+{"id": 851, "kind": "progress", "line": "steps:   4%|▍         | 161/3640 [05:17<1:54:13,  1.97s/it, avr_loss=0.114]", "ts": 1778902973.405083}
+{"id": 852, "kind": "progress", "line": "steps:   4%|▍         | 162/3640 [05:19<1:54:11,  1.97s/it, avr_loss=0.114]", "ts": 1778902975.3164637}
+{"id": 853, "kind": "progress", "line": "steps:   4%|▍         | 163/3640 [05:21<1:54:08,  1.97s/it, avr_loss=0.114]", "ts": 1778902977.2481265}
+{"id": 854, "kind": "progress", "line": "steps:   5%|▍         | 164/3640 [05:22<1:54:05,  1.97s/it, avr_loss=0.114]", "ts": 1778902979.167704}
+{"id": 855, "kind": "progress", "line": "steps:   5%|▍         | 165/3640 [05:24<1:54:02,  1.97s/it, avr_loss=0.114]", "ts": 1778902981.0900006}
+{"id": 856, "kind": "progress", "line": "steps:   5%|▍         | 166/3640 [05:26<1:53:59,  1.97s/it, avr_loss=0.113]", "ts": 1778902983.0245273}
+{"id": 857, "kind": "progress", "line": "steps:   5%|▍         | 167/3640 [05:28<1:53:56,  1.97s/it, avr_loss=0.113]", "ts": 1778902984.9531734}
+{"id": 858, "kind": "progress", "line": "steps:   5%|▍         | 168/3640 [05:30<1:53:53,  1.97s/it, avr_loss=0.113]", "ts": 1778902986.8747427}
+{"id": 859, "kind": "progress", "line": "steps:   5%|▍         | 169/3640 [05:32<1:53:50,  1.97s/it, avr_loss=0.113]", "ts": 1778902988.814121}
+{"id": 860, "kind": "progress", "line": "steps:   5%|▍         | 170/3640 [05:34<1:53:48,  1.97s/it, avr_loss=0.113]", "ts": 1778902990.739729}
+{"id": 861, "kind": "progress", "line": "steps:   5%|▍         | 171/3640 [05:36<1:53:45,  1.97s/it, avr_loss=0.113]", "ts": 1778902992.6672964}
+{"id": 862, "kind": "progress", "line": "steps:   5%|▍         | 172/3640 [05:38<1:53:42,  1.97s/it, avr_loss=0.113]", "ts": 1778902994.5984626}
+{"id": 863, "kind": "progress", "line": "steps:   5%|▍         | 173/3640 [05:40<1:53:40,  1.97s/it, avr_loss=0.113]", "ts": 1778902996.5231707}
+{"id": 864, "kind": "progress", "line": "steps:   5%|▍         | 174/3640 [05:42<1:53:37,  1.97s/it, avr_loss=0.113]", "ts": 1778902998.4514802}
+{"id": 865, "kind": "progress", "line": "steps:   5%|▍         | 175/3640 [05:44<1:53:34,  1.97s/it, avr_loss=0.113]", "ts": 1778903000.3801744}
+{"id": 866, "kind": "progress", "line": "steps:   5%|▍         | 176/3640 [05:46<1:53:31,  1.97s/it, avr_loss=0.112]", "ts": 1778903002.3045316}
+{"id": 867, "kind": "progress", "line": "steps:   5%|▍         | 177/3640 [05:48<1:53:29,  1.97s/it, avr_loss=0.112]", "ts": 1778903004.2323203}
+{"id": 868, "kind": "progress", "line": "steps:   5%|▍         | 178/3640 [05:49<1:53:26,  1.97s/it, avr_loss=0.112]", "ts": 1778903006.1767597}
+{"id": 869, "kind": "progress", "line": "steps:   5%|▍         | 179/3640 [05:51<1:53:23,  1.97s/it, avr_loss=0.112]", "ts": 1778903008.0931726}
+{"id": 870, "kind": "progress", "line": "steps:   5%|▍         | 180/3640 [05:53<1:53:21,  1.97s/it, avr_loss=0.112]", "ts": 1778903010.033126}
+{"id": 871, "kind": "progress", "line": "steps:   5%|▍         | 181/3640 [05:55<1:53:18,  1.97s/it, avr_loss=0.112]", "ts": 1778903012.0135539}
+{"id": 872, "kind": "progress", "line": "steps:   5%|▌         | 182/3640 [05:57<1:53:16,  1.97s/it, avr_loss=0.112]", "ts": 1778903013.94161}
+{"id": 873, "kind": "progress", "line": "steps:   5%|▌         | 183/3640 [05:59<1:53:14,  1.97s/it, avr_loss=0.112]", "ts": 1778903015.8719506}
+{"id": 874, "kind": "progress", "line": "steps:   5%|▌         | 184/3640 [06:01<1:53:11,  1.97s/it, avr_loss=0.112]", "ts": 1778903017.8145237}
+{"id": 875, "kind": "progress", "line": "steps:   5%|▌         | 185/3640 [06:03<1:53:09,  1.97s/it, avr_loss=0.112]", "ts": 1778903019.741696}
+{"id": 876, "kind": "progress", "line": "steps:   5%|▌         | 186/3640 [06:05<1:53:06,  1.96s/it, avr_loss=0.112]", "ts": 1778903021.683803}
+{"id": 877, "kind": "progress", "line": "steps:   5%|▌         | 187/3640 [06:07<1:53:04,  1.96s/it, avr_loss=0.112]", "ts": 1778903023.6116254}
+{"id": 878, "kind": "progress", "line": "steps:   5%|▌         | 188/3640 [06:09<1:53:01,  1.96s/it, avr_loss=0.112]", "ts": 1778903025.545017}
+{"id": 879, "kind": "progress", "line": "steps:   5%|▌         | 189/3640 [06:11<1:52:58,  1.96s/it, avr_loss=0.112]", "ts": 1778903027.4841316}
+{"id": 880, "kind": "progress", "line": "steps:   5%|▌         | 190/3640 [06:13<1:52:56,  1.96s/it, avr_loss=0.113]", "ts": 1778903029.4108007}
+{"id": 881, "kind": "progress", "line": "steps:   5%|▌         | 191/3640 [06:15<1:52:53,  1.96s/it, avr_loss=0.113]", "ts": 1778903031.335278}
+{"id": 882, "kind": "progress", "line": "steps:   5%|▌         | 192/3640 [06:17<1:52:51,  1.96s/it, avr_loss=0.113]", "ts": 1778903033.2770638}
+{"id": 883, "kind": "progress", "line": "steps:   5%|▌         | 193/3640 [06:18<1:52:48,  1.96s/it, avr_loss=0.113]", "ts": 1778903035.201706}
+{"id": 884, "kind": "progress", "line": "steps:   5%|▌         | 194/3640 [06:20<1:52:46,  1.96s/it, avr_loss=0.113]", "ts": 1778903037.1432235}
+{"id": 885, "kind": "progress", "line": "steps:   5%|▌         | 195/3640 [06:22<1:52:43,  1.96s/it, avr_loss=0.113]", "ts": 1778903039.0712516}
+{"id": 886, "kind": "progress", "line": "steps:   5%|▌         | 196/3640 [06:24<1:52:41,  1.96s/it, avr_loss=0.113]", "ts": 1778903040.9978774}
+{"id": 887, "kind": "progress", "line": "steps:   5%|▌         | 197/3640 [06:26<1:52:38,  1.96s/it, avr_loss=0.113]", "ts": 1778903042.9330204}
+{"id": 888, "kind": "progress", "line": "steps:   5%|▌         | 198/3640 [06:28<1:52:36,  1.96s/it, avr_loss=0.113]", "ts": 1778903044.86057}
+{"id": 889, "kind": "progress", "line": "steps:   5%|▌         | 199/3640 [06:30<1:52:33,  1.96s/it, avr_loss=0.113]", "ts": 1778903046.7839296}
+{"id": 890, "kind": "progress", "line": "steps:   5%|▌         | 200/3640 [06:32<1:52:31,  1.96s/it, avr_loss=0.113]", "ts": 1778903048.7286193}
+{"id": 891, "kind": "progress", "line": "steps:   6%|▌         | 201/3640 [06:34<1:52:28,  1.96s/it, avr_loss=0.113]", "ts": 1778903050.6531239}
+{"id": 892, "kind": "progress", "line": "steps:   6%|▌         | 202/3640 [06:36<1:52:26,  1.96s/it, avr_loss=0.114]", "ts": 1778903052.5792408}
+{"id": 893, "kind": "progress", "line": "steps:   6%|▌         | 203/3640 [06:38<1:52:23,  1.96s/it, avr_loss=0.114]", "ts": 1778903054.516258}
+{"id": 894, "kind": "progress", "line": "steps:   6%|▌         | 204/3640 [06:40<1:52:21,  1.96s/it, avr_loss=0.114]", "ts": 1778903056.4560688}
+{"id": 895, "kind": "progress", "line": "steps:   6%|▌         | 205/3640 [06:42<1:52:18,  1.96s/it, avr_loss=0.114]", "ts": 1778903058.3859916}
+{"id": 896, "kind": "progress", "line": "steps:   6%|▌         | 206/3640 [06:44<1:52:16,  1.96s/it, avr_loss=0.113]", "ts": 1778903060.2902987}
+{"id": 897, "kind": "progress", "line": "steps:   6%|▌         | 207/3640 [06:46<1:52:13,  1.96s/it, avr_loss=0.114]", "ts": 1778903062.2161136}
+{"id": 898, "kind": "progress", "line": "steps:   6%|▌         | 208/3640 [06:47<1:52:10,  1.96s/it, avr_loss=0.113]", "ts": 1778903064.0933185}
+{"id": 899, "kind": "progress", "line": "steps:   6%|▌         | 209/3640 [06:49<1:52:07,  1.96s/it, avr_loss=0.114]", "ts": 1778903066.0196505}
+{"id": 900, "kind": "progress", "line": "steps:   6%|▌         | 210/3640 [06:51<1:52:05,  1.96s/it, avr_loss=0.113]", "ts": 1778903067.9210634}
+{"id": 901, "kind": "progress", "line": "steps:   6%|▌         | 211/3640 [06:53<1:52:02,  1.96s/it, avr_loss=0.113]", "ts": 1778903069.8358495}
+{"id": 902, "kind": "progress", "line": "steps:   6%|▌         | 212/3640 [06:55<1:51:59,  1.96s/it, avr_loss=0.113]", "ts": 1778903071.757664}
+{"id": 903, "kind": "progress", "line": "steps:   6%|▌         | 213/3640 [06:57<1:51:56,  1.96s/it, avr_loss=0.113]", "ts": 1778903073.6816857}
+{"id": 904, "kind": "progress", "line": "steps:   6%|▌         | 214/3640 [06:59<1:51:54,  1.96s/it, avr_loss=0.113]", "ts": 1778903075.60434}
+{"id": 905, "kind": "progress", "line": "steps:   6%|▌         | 215/3640 [07:01<1:51:51,  1.96s/it, avr_loss=0.113]", "ts": 1778903077.5397778}
+{"id": 906, "kind": "progress", "line": "steps:   6%|▌         | 216/3640 [07:03<1:51:49,  1.96s/it, avr_loss=0.113]", "ts": 1778903079.465726}
+{"id": 907, "kind": "progress", "line": "steps:   6%|▌         | 217/3640 [07:05<1:51:46,  1.96s/it, avr_loss=0.113]", "ts": 1778903081.388525}
+{"id": 908, "kind": "progress", "line": "steps:   6%|▌         | 218/3640 [07:07<1:51:44,  1.96s/it, avr_loss=0.114]", "ts": 1778903083.6017854}
+{"id": 909, "kind": "progress", "line": "steps:   6%|▌         | 219/3640 [07:09<1:51:46,  1.96s/it, avr_loss=0.113]", "ts": 1778903085.521149}
+{"id": 910, "kind": "progress", "line": "steps:   6%|▌         | 220/3640 [07:11<1:51:43,  1.96s/it, avr_loss=0.113]", "ts": 1778903087.441991}
+{"id": 911, "kind": "progress", "line": "steps:   6%|▌         | 221/3640 [07:13<1:51:41,  1.96s/it, avr_loss=0.113]", "ts": 1778903089.374271}
+{"id": 912, "kind": "progress", "line": "steps:   6%|▌         | 222/3640 [07:15<1:51:38,  1.96s/it, avr_loss=0.113]", "ts": 1778903091.2842953}
+{"id": 913, "kind": "progress", "line": "steps:   6%|▌         | 223/3640 [07:17<1:51:36,  1.96s/it, avr_loss=0.113]", "ts": 1778903093.2154763}
+{"id": 914, "kind": "progress", "line": "steps:   6%|▌         | 224/3640 [07:18<1:51:33,  1.96s/it, avr_loss=0.113]", "ts": 1778903095.1300879}
+{"id": 915, "kind": "progress", "line": "steps:   6%|▌         | 225/3640 [07:20<1:51:31,  1.96s/it, avr_loss=0.113]", "ts": 1778903097.057917}
+{"id": 916, "kind": "progress", "line": "steps:   6%|▌         | 226/3640 [07:22<1:51:28,  1.96s/it, avr_loss=0.113]", "ts": 1778903098.9778178}
+{"id": 917, "kind": "progress", "line": "steps:   6%|▌         | 227/3640 [07:24<1:51:26,  1.96s/it, avr_loss=0.114]", "ts": 1778903100.891401}
+{"id": 918, "kind": "progress", "line": "steps:   6%|▋         | 228/3640 [07:26<1:51:23,  1.96s/it, avr_loss=0.113]", "ts": 1778903102.7971678}
+{"id": 919, "kind": "progress", "line": "steps:   6%|▋         | 229/3640 [07:28<1:51:20,  1.96s/it, avr_loss=0.113]", "ts": 1778903104.7175677}
+{"id": 920, "kind": "progress", "line": "steps:   6%|▋         | 230/3640 [07:30<1:51:18,  1.96s/it, avr_loss=0.113]", "ts": 1778903106.6268456}
+{"id": 921, "kind": "progress", "line": "steps:   6%|▋         | 231/3640 [07:32<1:51:15,  1.96s/it, avr_loss=0.114]", "ts": 1778903108.5525618}
+{"id": 922, "kind": "progress", "line": "steps:   6%|▋         | 232/3640 [07:34<1:51:13,  1.96s/it, avr_loss=0.113]", "ts": 1778903110.489247}
+{"id": 923, "kind": "progress", "line": "steps:   6%|▋         | 233/3640 [07:36<1:51:10,  1.96s/it, avr_loss=0.114]", "ts": 1778903112.409788}
+{"id": 924, "kind": "progress", "line": "steps:   6%|▋         | 234/3640 [07:38<1:51:08,  1.96s/it, avr_loss=0.113]", "ts": 1778903114.336803}
+{"id": 925, "kind": "progress", "line": "steps:   6%|▋         | 235/3640 [07:40<1:51:05,  1.96s/it, avr_loss=0.113]", "ts": 1778903116.2656903}
+{"id": 926, "kind": "progress", "line": "steps:   6%|▋         | 236/3640 [07:41<1:51:03,  1.96s/it, avr_loss=0.114]", "ts": 1778903118.1979074}
+{"id": 927, "kind": "progress", "line": "steps:   7%|▋         | 237/3640 [07:43<1:51:01,  1.96s/it, avr_loss=0.114]", "ts": 1778903120.124008}
+{"id": 928, "kind": "progress", "line": "steps:   7%|▋         | 238/3640 [07:45<1:50:58,  1.96s/it, avr_loss=0.114]", "ts": 1778903122.070991}
+{"id": 929, "kind": "progress", "line": "steps:   7%|▋         | 239/3640 [07:47<1:50:56,  1.96s/it, avr_loss=0.114]", "ts": 1778903123.9997785}
+{"id": 930, "kind": "progress", "line": "steps:   7%|▋         | 240/3640 [07:49<1:50:54,  1.96s/it, avr_loss=0.114]", "ts": 1778903125.925943}
+{"id": 931, "kind": "progress", "line": "steps:   7%|▋         | 241/3640 [07:51<1:50:51,  1.96s/it, avr_loss=0.114]", "ts": 1778903127.8607209}
+{"id": 932, "kind": "progress", "line": "steps:   7%|▋         | 242/3640 [07:53<1:50:49,  1.96s/it, avr_loss=0.114]", "ts": 1778903129.7951233}
+{"id": 933, "kind": "progress", "line": "steps:   7%|▋         | 243/3640 [07:55<1:50:47,  1.96s/it, avr_loss=0.114]", "ts": 1778903131.721517}
+{"id": 934, "kind": "progress", "line": "steps:   7%|▋         | 244/3640 [07:57<1:50:45,  1.96s/it, avr_loss=0.114]", "ts": 1778903133.6607373}
+{"id": 935, "kind": "progress", "line": "steps:   7%|▋         | 245/3640 [07:59<1:50:42,  1.96s/it, avr_loss=0.114]", "ts": 1778903135.5826063}
+{"id": 936, "kind": "progress", "line": "steps:   7%|▋         | 246/3640 [08:01<1:50:40,  1.96s/it, avr_loss=0.114]", "ts": 1778903137.5138164}
+{"id": 937, "kind": "progress", "line": "steps:   7%|▋         | 247/3640 [08:03<1:50:38,  1.96s/it, avr_loss=0.114]", "ts": 1778903139.4294777}
+{"id": 938, "kind": "progress", "line": "steps:   7%|▋         | 248/3640 [08:05<1:50:35,  1.96s/it, avr_loss=0.114]", "ts": 1778903141.3582067}
+{"id": 939, "kind": "progress", "line": "steps:   7%|▋         | 249/3640 [08:07<1:50:33,  1.96s/it, avr_loss=0.114]", "ts": 1778903143.2835324}
+{"id": 940, "kind": "progress", "line": "steps:   7%|▋         | 250/3640 [08:09<1:50:30,  1.96s/it, avr_loss=0.114]", "ts": 1778903145.2164564}
+{"id": 941, "kind": "progress", "line": "steps:   7%|▋         | 251/3640 [08:10<1:50:28,  1.96s/it, avr_loss=0.114]", "ts": 1778903147.1558459}
+{"id": 942, "kind": "progress", "line": "steps:   7%|▋         | 252/3640 [08:12<1:50:26,  1.96s/it, avr_loss=0.114]", "ts": 1778903149.093148}
+{"id": 943, "kind": "progress", "line": "steps:   7%|▋         | 253/3640 [08:14<1:50:24,  1.96s/it, avr_loss=0.114]", "ts": 1778903151.0228322}
+{"id": 944, "kind": "progress", "line": "steps:   7%|▋         | 254/3640 [08:16<1:50:21,  1.96s/it, avr_loss=0.114]", "ts": 1778903152.955592}
+{"id": 945, "kind": "progress", "line": "steps:   7%|▋         | 255/3640 [08:18<1:50:19,  1.96s/it, avr_loss=0.114]", "ts": 1778903154.862438}
+{"id": 946, "kind": "progress", "line": "steps:   7%|▋         | 256/3640 [08:20<1:50:17,  1.96s/it, avr_loss=0.114]", "ts": 1778903156.8007686}
+{"id": 947, "kind": "progress", "line": "steps:   7%|▋         | 257/3640 [08:22<1:50:14,  1.96s/it, avr_loss=0.114]", "ts": 1778903158.7318711}
+{"id": 948, "kind": "progress", "line": "steps:   7%|▋         | 258/3640 [08:24<1:50:12,  1.96s/it, avr_loss=0.114]", "ts": 1778903160.6471496}
+{"id": 949, "kind": "progress", "line": "steps:   7%|▋         | 259/3640 [08:26<1:50:10,  1.96s/it, avr_loss=0.114]", "ts": 1778903162.5671546}
+{"id": 950, "kind": "progress", "line": "steps:   7%|▋         | 260/3640 [08:28<1:50:07,  1.95s/it, avr_loss=0.114]", "ts": 1778903164.4818408}
+{"id": 951, "kind": "progress", "line": "steps:   7%|▋         | 261/3640 [08:30<1:50:05,  1.95s/it, avr_loss=0.114]", "ts": 1778903166.4060247}
+{"id": 952, "kind": "progress", "line": "steps:   7%|▋         | 262/3640 [08:32<1:50:02,  1.95s/it, avr_loss=0.114]", "ts": 1778903168.3330479}
+{"id": 953, "kind": "progress", "line": "steps:   7%|▋         | 263/3640 [08:34<1:50:00,  1.95s/it, avr_loss=0.114]", "ts": 1778903170.2559268}
+{"id": 954, "kind": "progress", "line": "steps:   7%|▋         | 264/3640 [08:35<1:49:58,  1.95s/it, avr_loss=0.114]", "ts": 1778903172.179138}
+{"id": 955, "kind": "progress", "line": "steps:   7%|▋         | 265/3640 [08:37<1:49:55,  1.95s/it, avr_loss=0.114]", "ts": 1778903174.1172385}
+{"id": 956, "kind": "progress", "line": "steps:   7%|▋         | 266/3640 [08:39<1:49:53,  1.95s/it, avr_loss=0.114]", "ts": 1778903176.0269682}
+{"id": 957, "kind": "progress", "line": "steps:   7%|▋         | 267/3640 [08:41<1:49:51,  1.95s/it, avr_loss=0.114]", "ts": 1778903177.9646587}
+{"id": 958, "kind": "progress", "line": "steps:   7%|▋         | 268/3640 [08:43<1:49:49,  1.95s/it, avr_loss=0.114]", "ts": 1778903179.8787475}
+{"id": 959, "kind": "progress", "line": "steps:   7%|▋         | 269/3640 [08:45<1:49:46,  1.95s/it, avr_loss=0.113]", "ts": 1778903181.7989185}
+{"id": 960, "kind": "progress", "line": "steps:   7%|▋         | 270/3640 [08:47<1:49:44,  1.95s/it, avr_loss=0.113]", "ts": 1778903183.7290611}
+{"id": 961, "kind": "progress", "line": "steps:   7%|▋         | 271/3640 [08:49<1:49:41,  1.95s/it, avr_loss=0.113]", "ts": 1778903185.654763}
+{"id": 962, "kind": "progress", "line": "steps:   7%|▋         | 272/3640 [08:51<1:49:39,  1.95s/it, avr_loss=0.113]", "ts": 1778903187.5608904}
+{"id": 963, "kind": "progress", "line": "steps:   8%|▊         | 273/3640 [08:53<1:49:37,  1.95s/it, avr_loss=0.113]", "ts": 1778903189.5051048}
+{"id": 964, "kind": "progress", "line": "steps:   8%|▊         | 274/3640 [08:55<1:49:35,  1.95s/it, avr_loss=0.113]", "ts": 1778903191.4191322}
+{"id": 965, "kind": "progress", "line": "steps:   8%|▊         | 275/3640 [08:57<1:49:32,  1.95s/it, avr_loss=0.113]", "ts": 1778903193.3534265}
+{"id": 966, "kind": "progress", "line": "steps:   8%|▊         | 276/3640 [08:59<1:49:30,  1.95s/it, avr_loss=0.113]", "ts": 1778903195.2800198}
+{"id": 967, "kind": "progress", "line": "steps:   8%|▊         | 277/3640 [09:00<1:49:28,  1.95s/it, avr_loss=0.113]", "ts": 1778903197.2121913}
+{"id": 968, "kind": "progress", "line": "steps:   8%|▊         | 278/3640 [09:02<1:49:25,  1.95s/it, avr_loss=0.113]", "ts": 1778903199.1262636}
+{"id": 969, "kind": "progress", "line": "steps:   8%|▊         | 279/3640 [09:04<1:49:23,  1.95s/it, avr_loss=0.113]", "ts": 1778903201.045256}
+{"id": 970, "kind": "progress", "line": "steps:   8%|▊         | 280/3640 [09:06<1:49:21,  1.95s/it, avr_loss=0.113]", "ts": 1778903201.383457}
+{"id": 971, "kind": "progress", "line": "epoch validation steps:   0%|          | 0/3 [00:00<?, ?it/s]2026-05-16 11:46:41 INFO     epoch is incremented. current_epoch: 0, base.py:209", "ts": 1778903201.7394378}
+{"id": 972, "kind": "log", "line": "epoch: 4", "ts": 1778903201.740381}
+{"id": 973, "kind": "progress", "line": "epoch validation steps:  33%|███▎      | 1/3 [00:02<00:05,  2.91s/it]", "ts": 1778903204.2957025}
+{"id": 974, "kind": "progress", "line": "epoch validation steps:  33%|███▎      | 1/3 [00:02<00:05,  2.91s/it, val_epoch_avg_loss=0.279, sigma=0.10]", "ts": 1778903204.833198}
+{"id": 975, "kind": "progress", "line": "epoch validation steps:  67%|██████▋   | 2/3 [00:03<00:01,  1.72s/it, val_epoch_avg_loss=0.279, sigma=0.10]", "ts": 1778903204.8346894}
+{"id": 976, "kind": "progress", "line": "epoch validation steps:  67%|██████▋   | 2/3 [00:03<00:01,  1.72s/it, val_epoch_avg_loss=0.178, sigma=0.40]", "ts": 1778903205.377204}
+{"id": 977, "kind": "progress", "line": "epoch validation steps: 100%|██████████| 3/3 [00:03<00:00,  1.33s/it, val_epoch_avg_loss=0.178, sigma=0.40]", "ts": 1778903205.3787234}
+{"id": 978, "kind": "progress", "line": "epoch validation steps: 100%|██████████| 3/3 [00:03<00:00,  1.33s/it, val_epoch_avg_loss=0.137, sigma=0.70]", "ts": 1778903205.8453915}
+{"id": 979, "kind": "progress", "line": "epoch validation steps: 100%|██████████| 3/3 [00:04<00:00,  1.49s/it, val_epoch_avg_loss=0.137, sigma=0.70]", "ts": 1778903205.8470554}
+{"id": 980, "kind": "log", "line": "saving checkpoint: /home/scv/sda1/DiffPipeForge2/output/肋骨女神/mylora/rokkotsu_goddess_5_14-000004.safetensors", "ts": 1778903205.8484883}
+{"id": 981, "kind": "log", "line": "saving checkpoint: /home/scv/sda1/DiffPipeForge2/output/肋骨女神/mylora/rokkotsu_goddess_5_14-checkpoint.safetensors", "ts": 1778903206.84004}
+{"id": 982, "kind": "log", "line": "2026-05-16 11:46:47 INFO                                      checkpoints.py:229", "ts": 1778903207.777524}
+{"id": 983, "kind": "log", "line": "INFO     saving checkpoint state to       checkpoints.py:230", "ts": 1778903207.7795699}
+{"id": 984, "kind": "log", "line": "/home/scv/sda1/DiffPipeForge2/ou", "ts": 1778903207.780124}
+{"id": 985, "kind": "log", "line": "tput/肋骨女神/mylora/rokkotsu_go", "ts": 1778903207.7806113}
+{"id": 986, "kind": "log", "line": "ddess_5_14-checkpoint-state", "ts": 1778903207.7810624}
+{"id": 987, "kind": "log", "line": "(overwriting)", "ts": 1778903207.7816243}
+{"id": 988, "kind": "log", "line": "INFO     [RANK 0] Saving current state   accelerator.py:3632", "ts": 1778903207.8972802}
+{"id": 989, "kind": "log", "line": "to", "ts": 1778903207.8981173}
+{"id": 990, "kind": "log", "line": "/home/scv/sda1/DiffPipeForge2/o", "ts": 1778903207.8987007}
+{"id": 991, "kind": "log", "line": "utput/肋骨女神/mylora/rokkotsu_", "ts": 1778903207.899244}
+{"id": 992, "kind": "log", "line": "goddess_5_14-checkpoint-state", "ts": 1778903207.8998253}
+{"id": 993, "kind": "log", "line": "INFO     save train state to              checkpoints.py:332", "ts": 1778903207.9100738}
+{"id": 994, "kind": "log", "line": "/home/scv/sda1/DiffPipeForge2/ou", "ts": 1778903207.9108436}
+{"id": 995, "kind": "log", "line": "tput/肋骨女神/mylora/rokkotsu_go", "ts": 1778903207.9114544}
+{"id": 996, "kind": "log", "line": "ddess_5_14-checkpoint-state/trai", "ts": 1778903207.9120123}
+{"id": 997, "kind": "log", "line": "n_state.json at epoch 4 step", "ts": 1778903207.9125752}
+{"id": 998, "kind": "log", "line": "1120", "ts": 1778903207.9131446}
+{"id": 999, "kind": "log", "line": "2026-05-16 11:46:48 INFO     [RANK 0] Model weights saved   checkpointing.py:115", "ts": 1778903208.1587925}
+{"id": 1000, "kind": "log", "line": "in", "ts": 1778903208.1596098}
+{"id": 1001, "kind": "log", "line": "/home/scv/sda1/DiffPipeForge2/", "ts": 1778903208.1601856}
+{"id": 1002, "kind": "log", "line": "output/肋骨女神/mylora/rokkots", "ts": 1778903208.1607318}
+{"id": 1003, "kind": "log", "line": "u_goddess_5_14-checkpoint-stat", "ts": 1778903208.1612678}
+{"id": 1004, "kind": "log", "line": "e/model.safetensors", "ts": 1778903208.1618724}
+{"id": 1005, "kind": "log", "line": "INFO     [RANK 0] Optimizer state saved checkpointing.py:122", "ts": 1778903208.6039398}
+{"id": 1006, "kind": "log", "line": "in", "ts": 1778903208.6047192}
+{"id": 1007, "kind": "log", "line": "/home/scv/sda1/DiffPipeForge2/", "ts": 1778903208.605276}
+{"id": 1008, "kind": "log", "line": "output/肋骨女神/mylora/rokkots", "ts": 1778903208.6058471}
+{"id": 1009, "kind": "log", "line": "u_goddess_5_14-checkpoint-stat", "ts": 1778903208.6063895}
+{"id": 1010, "kind": "log", "line": "e/optimizer.bin", "ts": 1778903208.6069338}
+{"id": 1011, "kind": "log", "line": "INFO     [RANK 0] Scheduler state saved checkpointing.py:129", "ts": 1778903208.6076548}
+{"id": 1012, "kind": "log", "line": "in", "ts": 1778903208.6081998}
+{"id": 1013, "kind": "log", "line": "/home/scv/sda1/DiffPipeForge2/", "ts": 1778903208.6087463}
+{"id": 1014, "kind": "log", "line": "output/肋骨女神/mylora/rokkots", "ts": 1778903208.609275}
+{"id": 1015, "kind": "log", "line": "u_goddess_5_14-checkpoint-stat", "ts": 1778903208.6098247}
+{"id": 1016, "kind": "log", "line": "e/scheduler.bin", "ts": 1778903208.6103415}
+{"id": 1017, "kind": "log", "line": "INFO     [RANK 0] Sampler state for     checkpointing.py:146", "ts": 1778903208.6111224}
+{"id": 1018, "kind": "log", "line": "dataloader 0 saved in", "ts": 1778903208.6116884}
+{"id": 1019, "kind": "log", "line": "/home/scv/sda1/DiffPipeForge2/", "ts": 1778903208.6122205}
+{"id": 1020, "kind": "log", "line": "output/肋骨女神/mylora/rokkots", "ts": 1778903208.6127615}
+{"id": 1021, "kind": "log", "line": "u_goddess_5_14-checkpoint-stat", "ts": 1778903208.6132874}
+{"id": 1022, "kind": "log", "line": "e/sampler.bin", "ts": 1778903208.6137714}
+{"id": 1023, "kind": "log", "line": "INFO     [RANK 0] Sampler state for     checkpointing.py:146", "ts": 1778903208.6142604}
+{"id": 1024, "kind": "log", "line": "dataloader 1 saved in", "ts": 1778903208.6147807}
+{"id": 1025, "kind": "log", "line": "/home/scv/sda1/DiffPipeForge2/", "ts": 1778903208.615279}
+{"id": 1026, "kind": "log", "line": "output/肋骨女神/mylora/rokkots", "ts": 1778903208.6158006}
+{"id": 1027, "kind": "log", "line": "u_goddess_5_14-checkpoint-stat", "ts": 1778903208.6162868}
+{"id": 1028, "kind": "log", "line": "e/sampler_1.bin", "ts": 1778903208.6167977}
+{"id": 1029, "kind": "log", "line": "INFO     [RANK 0] Random states saved   checkpointing.py:179", "ts": 1778903208.617483}
+{"id": 1030, "kind": "log", "line": "in", "ts": 1778903208.6179938}
+{"id": 1031, "kind": "log", "line": "/home/scv/sda1/DiffPipeForge2/", "ts": 1778903208.6185017}
+{"id": 1032, "kind": "log", "line": "output/肋骨女神/mylora/rokkots", "ts": 1778903208.6189952}
+{"id": 1033, "kind": "log", "line": "u_goddess_5_14-checkpoint-stat", "ts": 1778903208.6195023}
+{"id": 1034, "kind": "log", "line": "e/random_states_0.pkl", "ts": 1778903208.6199849}
+{"id": 1035, "kind": "log", "line": "INFO     Generating sample images at step    training.py:763", "ts": 1778903208.6205041}
+{"id": 1036, "kind": "log", "line": "1120", "ts": 1778903208.6210916}
+{"id": 1037, "kind": "log", "line": "INFO       prompt: RokkotsuGoddess,          training.py:856", "ts": 1778903208.6217847}
+{"id": 1038, "kind": "log", "line": "masterpiece, best quality, highres,", "ts": 1778903208.6222944}
+{"id": 1039, "kind": "log", "line": "1girl, solo, silver hair, long", "ts": 1778903208.6228428}
+{"id": 1040, "kind": "log", "line": "hair, braid, purple eyes,", "ts": 1778903208.6233664}
+{"id": 1041, "kind": "log", "line": "off-shoulder, crop top, white sheer", "ts": 1778903208.6239011}
+{"id": 1042, "kind": "log", "line": "dress, large bow, gold trim, blue", "ts": 1778903208.6244376}
+{"id": 1043, "kind": "log", "line": "translucent puff sleeves, mermaid", "ts": 1778903208.624962}
+{"id": 1044, "kind": "log", "line": "skirt, white iridescent skirt,", "ts": 1778903208.6254973}
+{"id": 1045, "kind": "log", "line": "pearlescent, ruffled hem, gold", "ts": 1778903208.6260219}
+{"id": 1046, "kind": "log", "line": "choker, purple diamond pendant,", "ts": 1778903208.626583}
+{"id": 1047, "kind": "log", "line": "gold waistband, hanging chains,", "ts": 1778903208.6270974}
+{"id": 1048, "kind": "log", "line": "purple beads, barefoot, ancient", "ts": 1778903208.627625}
+{"id": 1049, "kind": "log", "line": "ruins, stone pillar, ivy, sunset,", "ts": 1778903208.6281464}
+{"id": 1050, "kind": "log", "line": "golden hour, warm lighting, soft", "ts": 1778903208.6286883}
+{"id": 1051, "kind": "log", "line": "lighting, rim lighting, outdoors,", "ts": 1778903208.629212}
+{"id": 1052, "kind": "log", "line": "standing, leaning against pillar,", "ts": 1778903208.6297386}
+{"id": 1053, "kind": "log", "line": "hand on wall, looking at viewer,", "ts": 1778903208.630246}
+{"id": 1054, "kind": "log", "line": "sad expression, from side, upper", "ts": 1778903208.630779}
+{"id": 1055, "kind": "log", "line": "body, detailed background, depth of", "ts": 1778903208.631286}
+{"id": 1056, "kind": "log", "line": "field, size: 1024x1024, steps: 28,", "ts": 1778903208.631826}
+{"id": 1057, "kind": "log", "line": "scale: 7.5, flow_shift: 3.0, seed:", "ts": 1778903208.6323583}
+{"id": 1058, "kind": "log", "line": "42", "ts": 1778903208.6329017}
+{"id": 1059, "kind": "progress", "line": "Sampling:   0%|          | 0/28 [00:00<?, ?it/s]W0516 11:46:50.949000 2016786 .venv/lib/python3.13/site-packages/torch/_inductor/utils.py:1709] [0/4] Not enough SMs to use max_autotune_gemm mode", "ts": 1778903210.950033}
+{"id": 1060, "kind": "progress", "line": "Sampling:   4%|▎         | 1/28 [00:08<03:59,  8.88s/it]", "ts": 1778903218.9956326}
+{"id": 1061, "kind": "progress", "line": "Sampling:   7%|▋         | 2/28 [00:09<01:51,  4.28s/it]", "ts": 1778903220.0573814}
+{"id": 1062, "kind": "progress", "line": "Sampling:  11%|█         | 3/28 [00:11<01:10,  2.81s/it]", "ts": 1778903221.11939}
+{"id": 1063, "kind": "progress", "line": "Sampling:  14%|█▍        | 4/28 [00:12<00:50,  2.12s/it]", "ts": 1778903222.1873581}
+{"id": 1064, "kind": "progress", "line": "Sampling:  18%|█▊        | 5/28 [00:13<00:40,  1.74s/it]", "ts": 1778903223.2457037}
+{"id": 1065, "kind": "progress", "line": "Sampling:  21%|██▏       | 6/28 [00:14<00:33,  1.51s/it]", "ts": 1778903224.3141093}
+{"id": 1066, "kind": "progress", "line": "Sampling:  25%|██▌       | 7/28 [00:15<00:28,  1.36s/it]", "ts": 1778903225.3980742}
+{"id": 1067, "kind": "progress", "line": "Sampling:  29%|██▊       | 8/28 [00:16<00:25,  1.28s/it]", "ts": 1778903226.4612682}
+{"id": 1068, "kind": "progress", "line": "Sampling:  32%|███▏      | 9/28 [00:17<00:22,  1.21s/it]", "ts": 1778903227.5262995}
+{"id": 1069, "kind": "progress", "line": "Sampling:  36%|███▌      | 10/28 [00:18<00:20,  1.16s/it]", "ts": 1778903228.5801516}
+{"id": 1070, "kind": "progress", "line": "Sampling:  39%|███▉      | 11/28 [00:19<00:19,  1.13s/it]", "ts": 1778903229.5540693}
+{"id": 1071, "kind": "progress", "line": "Sampling:  43%|████▎     | 12/28 [00:20<00:17,  1.08s/it]", "ts": 1778903230.5114965}
+{"id": 1072, "kind": "progress", "line": "Sampling:  46%|████▋     | 13/28 [00:21<00:15,  1.04s/it]", "ts": 1778903231.4813695}
+{"id": 1073, "kind": "progress", "line": "Sampling:  50%|█████     | 14/28 [00:22<00:14,  1.02s/it]", "ts": 1778903232.4646502}
+{"id": 1074, "kind": "progress", "line": "Sampling:  54%|█████▎    | 15/28 [00:23<00:13,  1.01s/it]", "ts": 1778903233.4794993}
+{"id": 1075, "kind": "progress", "line": "Sampling:  57%|█████▋    | 16/28 [00:24<00:12,  1.01s/it]", "ts": 1778903234.5075305}
+{"id": 1076, "kind": "progress", "line": "Sampling:  61%|██████    | 17/28 [00:25<00:11,  1.02s/it]", "ts": 1778903235.502369}
+{"id": 1077, "kind": "progress", "line": "Sampling:  64%|██████▍   | 18/28 [00:26<00:10,  1.01s/it]", "ts": 1778903236.4779143}
+{"id": 1078, "kind": "progress", "line": "Sampling:  68%|██████▊   | 19/28 [00:27<00:08,  1.00it/s]", "ts": 1778903237.491772}
+{"id": 1079, "kind": "progress", "line": "Sampling:  71%|███████▏  | 20/28 [00:28<00:08,  1.00s/it]", "ts": 1778903238.4298625}
+{"id": 1080, "kind": "progress", "line": "Sampling:  75%|███████▌  | 21/28 [00:29<00:06,  1.02it/s]", "ts": 1778903239.39167}
+{"id": 1081, "kind": "progress", "line": "Sampling:  79%|███████▊  | 22/28 [00:30<00:05,  1.02it/s]", "ts": 1778903240.3690693}
+{"id": 1082, "kind": "progress", "line": "Sampling:  82%|████████▏ | 23/28 [00:31<00:04,  1.02it/s]", "ts": 1778903241.3359191}
+{"id": 1083, "kind": "progress", "line": "Sampling:  86%|████████▌ | 24/28 [00:32<00:03,  1.03it/s]", "ts": 1778903242.3019042}
+{"id": 1084, "kind": "progress", "line": "Sampling:  89%|████████▉ | 25/28 [00:33<00:02,  1.03it/s]", "ts": 1778903243.2677176}
+{"id": 1085, "kind": "progress", "line": "Sampling:  93%|█████████▎| 26/28 [00:34<00:01,  1.03it/s]", "ts": 1778903244.2171543}
+{"id": 1086, "kind": "progress", "line": "Sampling:  96%|█████████▋| 27/28 [00:35<00:00,  1.04it/s]", "ts": 1778903245.200115}
+{"id": 1087, "kind": "progress", "line": "Sampling: 100%|██████████| 28/28 [00:36<00:00,  1.03it/s]", "ts": 1778903245.201084}
+{"id": 1088, "kind": "progress", "line": "Sampling: 100%|██████████| 28/28 [00:36<00:00,  1.29s/it]", "ts": 1778903245.201645}
+{"id": 1089, "kind": "log", "line": "2026-05-16 11:47:27 INFO       prompt: RokkotsuGoddess,          training.py:856", "ts": 1778903247.9485185}
+{"id": 1090, "kind": "log", "line": "masterpiece, best quality, highres,", "ts": 1778903247.9491305}
+{"id": 1091, "kind": "log", "line": "1girl, solo, silver hair, long", "ts": 1778903247.9495034}
+{"id": 1092, "kind": "log", "line": "hair, braid, purple eyes,", "ts": 1778903247.9498022}
+{"id": 1093, "kind": "log", "line": "off-shoulder, crop top, white sheer", "ts": 1778903247.9501207}
+{"id": 1094, "kind": "log", "line": "dress, large bow, gold trim, blue", "ts": 1778903247.9504592}
+{"id": 1095, "kind": "log", "line": "translucent puff sleeves, mermaid", "ts": 1778903247.9507825}
+{"id": 1096, "kind": "log", "line": "skirt, white iridescent skirt,", "ts": 1778903247.9510982}
+{"id": 1097, "kind": "log", "line": "pearlescent, ruffled hem, gold", "ts": 1778903247.9514258}
+{"id": 1098, "kind": "log", "line": "choker, purple diamond pendant,", "ts": 1778903247.9517481}
+{"id": 1099, "kind": "log", "line": "gold waistband, hanging chains,", "ts": 1778903247.952066}
+{"id": 1100, "kind": "log", "line": "purple beads, barefoot, forest,", "ts": 1778903247.952383}
+{"id": 1101, "kind": "log", "line": "enchanted forest, night, glowing", "ts": 1778903247.9527256}
+{"id": 1102, "kind": "log", "line": "flower, blue flower,", "ts": 1778903247.9530551}
+{"id": 1103, "kind": "log", "line": "bioluminescent, glowing plants,", "ts": 1778903247.953381}
+{"id": 1104, "kind": "log", "line": "glowing mushrooms, vines, trees,", "ts": 1778903247.9537332}
+{"id": 1105, "kind": "log", "line": "moss, full body, standing, leaning", "ts": 1778903247.9540637}
+{"id": 1106, "kind": "log", "line": "forward, side view, looking at", "ts": 1778903247.9543965}
+{"id": 1107, "kind": "log", "line": "flower, gentle expression, soft", "ts": 1778903247.9547095}
+{"id": 1108, "kind": "log", "line": "smile, hands near flower, soft", "ts": 1778903247.9550073}
+{"id": 1109, "kind": "log", "line": "lighting, blue ambient light,", "ts": 1778903247.9553065}
+{"id": 1110, "kind": "log", "line": "moonlight, sparkles, fantasy,", "ts": 1778903247.9556189}
+{"id": 1111, "kind": "log", "line": "magical atmosphere, size:", "ts": 1778903247.9558837}
+{"id": 1112, "kind": "log", "line": "1024x1024, steps: 28, scale: 7.5,", "ts": 1778903247.9561408}
+{"id": 1113, "kind": "log", "line": "flow_shift: 3.0, seed: 1234", "ts": 1778903247.956437}
+{"id": 1114, "kind": "progress", "line": "Sampling:   0%|          | 0/28 [00:00<?, ?it/s]", "ts": 1778903249.0877528}
+{"id": 1115, "kind": "progress", "line": "Sampling:   4%|▎         | 1/28 [00:00<00:19,  1.40it/s]", "ts": 1778903250.0381284}
+{"id": 1116, "kind": "progress", "line": "Sampling:   7%|▋         | 2/28 [00:01<00:22,  1.17it/s]", "ts": 1778903250.9803307}
+{"id": 1117, "kind": "progress", "line": "Sampling:  11%|█         | 3/28 [00:02<00:22,  1.12it/s]", "ts": 1778903251.9677086}
+{"id": 1118, "kind": "progress", "line": "Sampling:  14%|█▍        | 4/28 [00:03<00:22,  1.07it/s]", "ts": 1778903252.931258}
+{"id": 1119, "kind": "progress", "line": "Sampling:  18%|█▊        | 5/28 [00:04<00:21,  1.06it/s]", "ts": 1778903253.892612}
+{"id": 1120, "kind": "progress", "line": "Sampling:  21%|██▏       | 6/28 [00:05<00:20,  1.05it/s]", "ts": 1778903254.8853896}
+{"id": 1121, "kind": "progress", "line": "Sampling:  25%|██▌       | 7/28 [00:06<00:20,  1.04it/s]", "ts": 1778903255.82918}
+{"id": 1122, "kind": "progress", "line": "Sampling:  29%|██▊       | 8/28 [00:07<00:19,  1.04it/s]", "ts": 1778903256.7833211}
+{"id": 1123, "kind": "progress", "line": "Sampling:  32%|███▏      | 9/28 [00:08<00:18,  1.05it/s]", "ts": 1778903257.7788403}
+{"id": 1124, "kind": "progress", "line": "Sampling:  36%|███▌      | 10/28 [00:09<00:17,  1.03it/s]", "ts": 1778903258.7230804}
+{"id": 1125, "kind": "progress", "line": "Sampling:  39%|███▉      | 11/28 [00:10<00:16,  1.04it/s]", "ts": 1778903259.6578288}
+{"id": 1126, "kind": "progress", "line": "Sampling:  43%|████▎     | 12/28 [00:11<00:15,  1.05it/s]", "ts": 1778903260.640185}
+{"id": 1127, "kind": "progress", "line": "Sampling:  46%|████▋     | 13/28 [00:12<00:14,  1.04it/s]", "ts": 1778903261.6248164}
+{"id": 1128, "kind": "progress", "line": "Sampling:  50%|█████     | 14/28 [00:13<00:13,  1.03it/s]", "ts": 1778903262.5661702}
+{"id": 1129, "kind": "progress", "line": "Sampling:  54%|█████▎    | 15/28 [00:14<00:12,  1.04it/s]", "ts": 1778903263.5287392}
+{"id": 1130, "kind": "progress", "line": "Sampling:  57%|█████▋    | 16/28 [00:15<00:11,  1.04it/s]", "ts": 1778903264.509501}
+{"id": 1131, "kind": "progress", "line": "Sampling:  61%|██████    | 17/28 [00:16<00:10,  1.03it/s]", "ts": 1778903265.46374}
+{"id": 1132, "kind": "progress", "line": "Sampling:  64%|██████▍   | 18/28 [00:17<00:09,  1.04it/s]", "ts": 1778903266.4390512}
+{"id": 1133, "kind": "progress", "line": "Sampling:  68%|██████▊   | 19/28 [00:18<00:08,  1.03it/s]", "ts": 1778903267.4469345}
+{"id": 1134, "kind": "progress", "line": "Sampling:  71%|███████▏  | 20/28 [00:19<00:07,  1.02it/s]", "ts": 1778903268.452367}
+{"id": 1135, "kind": "progress", "line": "Sampling:  75%|███████▌  | 21/28 [00:20<00:06,  1.01it/s]", "ts": 1778903269.434154}
+{"id": 1136, "kind": "progress", "line": "Sampling:  79%|███████▊  | 22/28 [00:21<00:05,  1.01it/s]", "ts": 1778903270.3944378}
+{"id": 1137, "kind": "progress", "line": "Sampling:  82%|████████▏ | 23/28 [00:22<00:04,  1.02it/s]", "ts": 1778903271.3533876}
+{"id": 1138, "kind": "progress", "line": "Sampling:  86%|████████▌ | 24/28 [00:22<00:03,  1.03it/s]", "ts": 1778903272.3186483}
+{"id": 1139, "kind": "progress", "line": "Sampling:  89%|████████▉ | 25/28 [00:23<00:02,  1.03it/s]", "ts": 1778903273.3171113}
+{"id": 1140, "kind": "progress", "line": "Sampling:  93%|█████████▎| 26/28 [00:24<00:01,  1.02it/s]", "ts": 1778903274.2825892}
+{"id": 1141, "kind": "progress", "line": "Sampling:  96%|█████████▋| 27/28 [00:25<00:00,  1.03it/s]", "ts": 1778903275.2884836}
+{"id": 1142, "kind": "progress", "line": "Sampling: 100%|██████████| 28/28 [00:26<00:00,  1.02it/s]", "ts": 1778903275.2898345}
+{"id": 1143, "kind": "progress", "line": "Sampling: 100%|██████████| 28/28 [00:26<00:00,  1.04it/s]", "ts": 1778903275.29069}
+{"id": 1144, "kind": "log", "line": "epoch 5/16", "ts": 1778903277.9502187}
+{"id": 1145, "kind": "log", "line": "2026-05-16 11:47:57 INFO     epoch is incremented. current_epoch: 4, base.py:209", "ts": 1778903277.962972}
+{"id": 1146, "kind": "log", "line": "epoch: 5", "ts": 1778903277.9640312}
+{"id": 1147, "kind": "log", "line": "2026-05-16 11:47:57 INFO     epoch is incremented. current_epoch: 4, base.py:209", "ts": 1778903277.964918}
+{"id": 1148, "kind": "log", "line": "epoch: 5", "ts": 1778903277.9654503}
+{"id": 1149, "kind": "log", "line": "2026-05-16 11:47:57 INFO     epoch is incremented. current_epoch: 4, base.py:209", "ts": 1778903277.966028}
+{"id": 1150, "kind": "log", "line": "epoch: 5", "ts": 1778903277.966523}
+{"id": 1151, "kind": "log", "line": "2026-05-16 11:47:57 INFO     epoch is incremented. current_epoch: 4, base.py:209", "ts": 1778903277.9670932}
+{"id": 1152, "kind": "log", "line": "epoch: 5", "ts": 1778903277.9679224}
+{"id": 1153, "kind": "progress", "line": "steps:   8%|▊         | 281/3640 [10:25<2:04:34,  2.23s/it, avr_loss=0.113]", "ts": 1778903281.19007}
+{"id": 1154, "kind": "progress", "line": "steps:   8%|▊         | 282/3640 [10:26<2:04:25,  2.22s/it, avr_loss=0.113]", "ts": 1778903282.889744}
+{"id": 1155, "kind": "progress", "line": "steps:   8%|▊         | 283/3640 [10:28<2:04:16,  2.22s/it, avr_loss=0.113]", "ts": 1778903284.5761738}
+{"id": 1156, "kind": "progress", "line": "steps:   8%|▊         | 284/3640 [10:30<2:04:08,  2.22s/it, avr_loss=0.113]", "ts": 1778903286.2977247}
+{"id": 1157, "kind": "progress", "line": "steps:   8%|▊         | 285/3640 [10:32<2:04:00,  2.22s/it, avr_loss=0.113]", "ts": 1778903288.1245925}
+{"id": 1158, "kind": "progress", "line": "steps:   8%|▊         | 286/3640 [10:33<2:03:53,  2.22s/it, avr_loss=0.113]", "ts": 1778903289.8910468}
+{"id": 1159, "kind": "progress", "line": "steps:   8%|▊         | 287/3640 [10:35<2:03:45,  2.21s/it, avr_loss=0.113]", "ts": 1778903291.6286592}
+{"id": 1160, "kind": "progress", "line": "steps:   8%|▊         | 288/3640 [10:37<2:03:37,  2.21s/it, avr_loss=0.113]", "ts": 1778903293.4315338}
+{"id": 1161, "kind": "progress", "line": "steps:   8%|▊         | 289/3640 [10:39<2:03:31,  2.21s/it, avr_loss=0.113]", "ts": 1778903295.183293}
+{"id": 1162, "kind": "progress", "line": "steps:   8%|▊         | 290/3640 [10:40<2:03:23,  2.21s/it, avr_loss=0.113]", "ts": 1778903296.9447649}
+{"id": 1163, "kind": "progress", "line": "steps:   8%|▊         | 291/3640 [10:42<2:03:16,  2.21s/it, avr_loss=0.113]", "ts": 1778903298.750159}
+{"id": 1164, "kind": "progress", "line": "steps:   8%|▊         | 292/3640 [10:44<2:03:09,  2.21s/it, avr_loss=0.113]", "ts": 1778903300.5307875}
+{"id": 1165, "kind": "progress", "line": "steps:   8%|▊         | 293/3640 [10:46<2:03:02,  2.21s/it, avr_loss=0.113]", "ts": 1778903302.223013}
+{"id": 1166, "kind": "progress", "line": "steps:   8%|▊         | 294/3640 [10:47<2:02:54,  2.20s/it, avr_loss=0.113]", "ts": 1778903303.9201796}
+{"id": 1167, "kind": "progress", "line": "steps:   8%|▊         | 295/3640 [10:49<2:02:46,  2.20s/it, avr_loss=0.112]", "ts": 1778903305.6511822}
+{"id": 1168, "kind": "progress", "line": "steps:   8%|▊         | 296/3640 [10:51<2:02:38,  2.20s/it, avr_loss=0.112]", "ts": 1778903307.326067}
+{"id": 1169, "kind": "progress", "line": "steps:   8%|▊         | 297/3640 [10:53<2:02:30,  2.20s/it, avr_loss=0.112]", "ts": 1778903309.0458405}
+{"id": 1170, "kind": "progress", "line": "steps:   8%|▊         | 298/3640 [10:54<2:02:23,  2.20s/it, avr_loss=0.112]", "ts": 1778903310.7243915}
+{"id": 1171, "kind": "progress", "line": "steps:   8%|▊         | 299/3640 [10:56<2:02:15,  2.20s/it, avr_loss=0.112]", "ts": 1778903312.5381346}
+{"id": 1172, "kind": "progress", "line": "steps:   8%|▊         | 300/3640 [10:58<2:02:08,  2.19s/it, avr_loss=0.113]", "ts": 1778903314.5400023}
+{"id": 1173, "kind": "progress", "line": "steps:   8%|▊         | 301/3640 [11:00<2:02:04,  2.19s/it, avr_loss=0.113]", "ts": 1778903316.5345976}
+{"id": 1174, "kind": "progress", "line": "steps:   8%|▊         | 302/3640 [11:02<2:01:59,  2.19s/it, avr_loss=0.113]", "ts": 1778903318.5426679}
+{"id": 1175, "kind": "progress", "line": "steps:   8%|▊         | 303/3640 [11:04<2:01:55,  2.19s/it, avr_loss=0.113]", "ts": 1778903320.5140412}
+{"id": 1176, "kind": "progress", "line": "steps:   8%|▊         | 304/3640 [11:06<2:01:51,  2.19s/it, avr_loss=0.113]", "ts": 1778903322.4806814}
+{"id": 1177, "kind": "progress", "line": "steps:   8%|▊         | 305/3640 [11:08<2:01:46,  2.19s/it, avr_loss=0.113]", "ts": 1778903324.4699569}
+{"id": 1178, "kind": "progress", "line": "steps:   8%|▊         | 306/3640 [11:10<2:01:41,  2.19s/it, avr_loss=0.114]", "ts": 1778903326.4739614}
+{"id": 1179, "kind": "progress", "line": "steps:   8%|▊         | 307/3640 [11:12<2:01:37,  2.19s/it, avr_loss=0.114]", "ts": 1778903328.4574625}
+{"id": 1180, "kind": "progress", "line": "steps:   8%|▊         | 308/3640 [11:14<2:01:33,  2.19s/it, avr_loss=0.113]", "ts": 1778903330.491114}
+{"id": 1181, "kind": "progress", "line": "steps:   8%|▊         | 309/3640 [11:16<2:01:29,  2.19s/it, avr_loss=0.113]", "ts": 1778903332.453393}
+{"id": 1182, "kind": "progress", "line": "steps:   9%|▊         | 310/3640 [11:18<2:01:24,  2.19s/it, avr_loss=0.113]", "ts": 1778903334.365464}
+{"id": 1183, "kind": "progress", "line": "steps:   9%|▊         | 311/3640 [11:20<2:01:19,  2.19s/it, avr_loss=0.113]", "ts": 1778903336.092434}
+{"id": 1184, "kind": "progress", "line": "steps:   9%|▊         | 312/3640 [11:21<2:01:12,  2.19s/it, avr_loss=0.113]", "ts": 1778903337.9335518}
+{"id": 1185, "kind": "progress", "line": "steps:   9%|▊         | 313/3640 [11:23<2:01:06,  2.18s/it, avr_loss=0.113]", "ts": 1778903339.727356}
+{"id": 1186, "kind": "progress", "line": "steps:   9%|▊         | 314/3640 [11:25<2:01:00,  2.18s/it, avr_loss=0.113]", "ts": 1778903341.5326653}
+{"id": 1187, "kind": "progress", "line": "steps:   9%|▊         | 315/3640 [11:27<2:00:54,  2.18s/it, avr_loss=0.113]", "ts": 1778903343.3095253}
+{"id": 1188, "kind": "progress", "line": "steps:   9%|▊         | 316/3640 [11:29<2:00:47,  2.18s/it, avr_loss=0.113]", "ts": 1778903345.073583}
+{"id": 1189, "kind": "progress", "line": "steps:   9%|▊         | 317/3640 [11:30<2:00:41,  2.18s/it, avr_loss=0.113]", "ts": 1778903346.8102098}
+{"id": 1190, "kind": "progress", "line": "steps:   9%|▊         | 318/3640 [11:32<2:00:34,  2.18s/it, avr_loss=0.113]", "ts": 1778903348.5622427}
+{"id": 1191, "kind": "progress", "line": "steps:   9%|▉         | 319/3640 [11:34<2:00:27,  2.18s/it, avr_loss=0.113]", "ts": 1778903350.312628}
+{"id": 1192, "kind": "progress", "line": "steps:   9%|▉         | 320/3640 [11:36<2:00:21,  2.18s/it, avr_loss=0.113]", "ts": 1778903352.0494077}
+{"id": 1193, "kind": "progress", "line": "steps:   9%|▉         | 321/3640 [11:37<2:00:14,  2.17s/it, avr_loss=0.115]", "ts": 1778903353.8091955}
+{"id": 1194, "kind": "progress", "line": "steps:   9%|▉         | 322/3640 [11:39<2:00:08,  2.17s/it, avr_loss=0.115]", "ts": 1778903355.5456924}
+{"id": 1195, "kind": "progress", "line": "steps:   9%|▉         | 323/3640 [11:41<2:00:01,  2.17s/it, avr_loss=0.114]", "ts": 1778903357.3105638}
+{"id": 1196, "kind": "progress", "line": "steps:   9%|▉         | 324/3640 [11:43<1:59:55,  2.17s/it, avr_loss=0.114]", "ts": 1778903359.056009}
+{"id": 1197, "kind": "progress", "line": "steps:   9%|▉         | 325/3640 [11:44<1:59:48,  2.17s/it, avr_loss=0.114]", "ts": 1778903360.9445124}
+{"id": 1198, "kind": "progress", "line": "steps:   9%|▉         | 326/3640 [11:46<1:59:43,  2.17s/it, avr_loss=0.114]", "ts": 1778903362.7424994}
+{"id": 1199, "kind": "progress", "line": "steps:   9%|▉         | 327/3640 [11:48<1:59:37,  2.17s/it, avr_loss=0.114]", "ts": 1778903364.5343697}
+{"id": 1200, "kind": "progress", "line": "steps:   9%|▉         | 328/3640 [11:50<1:59:31,  2.17s/it, avr_loss=0.114]", "ts": 1778903366.3078754}
+{"id": 1201, "kind": "progress", "line": "steps:   9%|▉         | 329/3640 [11:52<1:59:25,  2.16s/it, avr_loss=0.114]", "ts": 1778903368.0668418}
+{"id": 1202, "kind": "progress", "line": "steps:   9%|▉         | 330/3640 [11:53<1:59:19,  2.16s/it, avr_loss=0.114]", "ts": 1778903369.8462133}
+{"id": 1203, "kind": "progress", "line": "steps:   9%|▉         | 331/3640 [11:55<1:59:13,  2.16s/it, avr_loss=0.114]", "ts": 1778903371.6120229}
+{"id": 1204, "kind": "progress", "line": "steps:   9%|▉         | 332/3640 [11:57<1:59:07,  2.16s/it, avr_loss=0.113]", "ts": 1778903373.423326}
+{"id": 1205, "kind": "progress", "line": "steps:   9%|▉         | 333/3640 [11:59<1:59:01,  2.16s/it, avr_loss=0.114]", "ts": 1778903375.2552807}
+{"id": 1206, "kind": "progress", "line": "steps:   9%|▉         | 334/3640 [12:00<1:58:56,  2.16s/it, avr_loss=0.113]", "ts": 1778903377.0765653}
+{"id": 1207, "kind": "progress", "line": "steps:   9%|▉         | 335/3640 [12:02<1:58:50,  2.16s/it, avr_loss=0.113]", "ts": 1778903378.8937106}
+{"id": 1208, "kind": "progress", "line": "steps:   9%|▉         | 336/3640 [12:04<1:58:45,  2.16s/it, avr_loss=0.113]", "ts": 1778903380.7168858}
+{"id": 1209, "kind": "progress", "line": "steps:   9%|▉         | 337/3640 [12:06<1:58:39,  2.16s/it, avr_loss=0.113]", "ts": 1778903382.5628028}
+{"id": 1210, "kind": "progress", "line": "steps:   9%|▉         | 338/3640 [12:08<1:58:34,  2.15s/it, avr_loss=0.113]", "ts": 1778903384.4132}
+{"id": 1211, "kind": "progress", "line": "steps:   9%|▉         | 339/3640 [12:10<1:58:29,  2.15s/it, avr_loss=0.113]", "ts": 1778903386.2739248}
+{"id": 1212, "kind": "progress", "line": "steps:   9%|▉         | 340/3640 [12:11<1:58:24,  2.15s/it, avr_loss=0.113]", "ts": 1778903388.0460103}
+{"id": 1213, "kind": "progress", "line": "steps:   9%|▉         | 341/3640 [12:13<1:58:18,  2.15s/it, avr_loss=0.113]", "ts": 1778903389.8472905}
+{"id": 1214, "kind": "progress", "line": "steps:   9%|▉         | 342/3640 [12:15<1:58:13,  2.15s/it, avr_loss=0.113]", "ts": 1778903391.6144865}
+{"id": 1215, "kind": "progress", "line": "steps:   9%|▉         | 343/3640 [12:17<1:58:07,  2.15s/it, avr_loss=0.113]", "ts": 1778903393.407862}
+{"id": 1216, "kind": "progress", "line": "steps:   9%|▉         | 344/3640 [12:19<1:58:01,  2.15s/it, avr_loss=0.114]", "ts": 1778903395.1762443}
+{"id": 1217, "kind": "progress", "line": "steps:   9%|▉         | 345/3640 [12:20<1:57:56,  2.15s/it, avr_loss=0.114]", "ts": 1778903396.9578075}
+{"id": 1218, "kind": "progress", "line": "steps:  10%|▉         | 346/3640 [12:22<1:57:50,  2.15s/it, avr_loss=0.114]", "ts": 1778903398.7394521}
+{"id": 1219, "kind": "progress", "line": "steps:  10%|▉         | 347/3640 [12:24<1:57:44,  2.15s/it, avr_loss=0.114]", "ts": 1778903400.524486}
+{"id": 1220, "kind": "progress", "line": "steps:  10%|▉         | 348/3640 [12:26<1:57:39,  2.14s/it, avr_loss=0.114]", "ts": 1778903402.3109999}
+{"id": 1221, "kind": "progress", "line": "steps:  10%|▉         | 349/3640 [12:28<1:57:33,  2.14s/it, avr_loss=0.114]", "ts": 1778903404.0810592}
+{"id": 1222, "kind": "progress", "line": "steps:  10%|▉         | 350/3640 [12:29<1:57:28,  2.14s/it, avr_loss=0.114]", "ts": 1778903405.8738134}
+{"id": 1223, "kind": "progress", "line": "steps:  10%|▉         | 351/3640 [12:31<1:57:22,  2.14s/it, avr_loss=0.114]", "ts": 1778903407.6815836}
+{"id": 1224, "kind": "progress", "line": "steps:  10%|▉         | 352/3640 [12:33<1:57:17,  2.14s/it, avr_loss=0.114]", "ts": 1778903409.502126}
+{"id": 1225, "kind": "progress", "line": "steps:  10%|▉         | 353/3640 [12:35<1:57:12,  2.14s/it, avr_loss=0.114]", "ts": 1778903411.2782245}
+{"id": 1226, "kind": "progress", "line": "steps:  10%|▉         | 354/3640 [12:36<1:57:06,  2.14s/it, avr_loss=0.114]", "ts": 1778903413.09445}
+{"id": 1227, "kind": "progress", "line": "steps:  10%|▉         | 355/3640 [12:38<1:57:01,  2.14s/it, avr_loss=0.114]", "ts": 1778903414.9123652}
+{"id": 1228, "kind": "progress", "line": "steps:  10%|▉         | 356/3640 [12:40<1:56:56,  2.14s/it, avr_loss=0.114]", "ts": 1778903416.6926382}
+{"id": 1229, "kind": "progress", "line": "steps:  10%|▉         | 357/3640 [12:42<1:56:51,  2.14s/it, avr_loss=0.114]", "ts": 1778903418.481118}
+{"id": 1230, "kind": "progress", "line": "steps:  10%|▉         | 358/3640 [12:44<1:56:45,  2.13s/it, avr_loss=0.115]", "ts": 1778903420.2626483}
+{"id": 1231, "kind": "progress", "line": "steps:  10%|▉         | 359/3640 [12:45<1:56:40,  2.13s/it, avr_loss=0.115]", "ts": 1778903422.0473034}
+{"id": 1232, "kind": "progress", "line": "steps:  10%|▉         | 360/3640 [12:47<1:56:35,  2.13s/it, avr_loss=0.114]", "ts": 1778903423.8251622}
+{"id": 1233, "kind": "progress", "line": "steps:  10%|▉         | 361/3640 [12:49<1:56:29,  2.13s/it, avr_loss=0.115]", "ts": 1778903425.6178796}
+{"id": 1234, "kind": "progress", "line": "steps:  10%|▉         | 362/3640 [12:51<1:56:24,  2.13s/it, avr_loss=0.114]", "ts": 1778903427.3935952}
+{"id": 1235, "kind": "progress", "line": "steps:  10%|▉         | 363/3640 [12:53<1:56:19,  2.13s/it, avr_loss=0.114]", "ts": 1778903429.189124}
+{"id": 1236, "kind": "progress", "line": "steps:  10%|█         | 364/3640 [12:54<1:56:14,  2.13s/it, avr_loss=0.113]", "ts": 1778903430.9566193}
+{"id": 1237, "kind": "progress", "line": "steps:  10%|█         | 365/3640 [12:56<1:56:08,  2.13s/it, avr_loss=0.113]", "ts": 1778903432.7387478}
+{"id": 1238, "kind": "progress", "line": "steps:  10%|█         | 366/3640 [12:58<1:56:03,  2.13s/it, avr_loss=0.113]", "ts": 1778903434.8205774}
+{"id": 1239, "kind": "progress", "line": "steps:  10%|█         | 367/3640 [13:00<1:56:01,  2.13s/it, avr_loss=0.113]", "ts": 1778903436.5971894}
+{"id": 1240, "kind": "progress", "line": "steps:  10%|█         | 368/3640 [13:02<1:55:55,  2.13s/it, avr_loss=0.113]", "ts": 1778903438.3871937}
+{"id": 1241, "kind": "progress", "line": "steps:  10%|█         | 369/3640 [13:04<1:55:50,  2.12s/it, avr_loss=0.113]", "ts": 1778903440.1585124}
+{"id": 1242, "kind": "progress", "line": "steps:  10%|█         | 370/3640 [13:05<1:55:45,  2.12s/it, avr_loss=0.113]", "ts": 1778903441.9618204}
+{"id": 1243, "kind": "progress", "line": "steps:  10%|█         | 371/3640 [13:07<1:55:40,  2.12s/it, avr_loss=0.113]", "ts": 1778903443.7355437}
+{"id": 1244, "kind": "progress", "line": "steps:  10%|█         | 372/3640 [13:09<1:55:35,  2.12s/it, avr_loss=0.113]", "ts": 1778903445.53919}
+{"id": 1245, "kind": "progress", "line": "steps:  10%|█         | 373/3640 [13:11<1:55:30,  2.12s/it, avr_loss=0.113]", "ts": 1778903447.3127804}
+{"id": 1246, "kind": "progress", "line": "steps:  10%|█         | 374/3640 [13:13<1:55:25,  2.12s/it, avr_loss=0.113]", "ts": 1778903449.1111848}
+{"id": 1247, "kind": "progress", "line": "steps:  10%|█         | 375/3640 [13:14<1:55:20,  2.12s/it, avr_loss=0.113]", "ts": 1778903450.892186}
+{"id": 1248, "kind": "progress", "line": "steps:  10%|█         | 376/3640 [13:16<1:55:15,  2.12s/it, avr_loss=0.113]", "ts": 1778903452.6755235}
+{"id": 1249, "kind": "progress", "line": "steps:  10%|█         | 377/3640 [13:18<1:55:10,  2.12s/it, avr_loss=0.114]", "ts": 1778903454.45928}
+{"id": 1250, "kind": "progress", "line": "steps:  10%|█         | 378/3640 [13:20<1:55:05,  2.12s/it, avr_loss=0.113]", "ts": 1778903456.2367134}
+{"id": 1251, "kind": "progress", "line": "steps:  10%|█         | 379/3640 [13:21<1:55:00,  2.12s/it, avr_loss=0.113]", "ts": 1778903458.0317614}
+{"id": 1252, "kind": "progress", "line": "steps:  10%|█         | 380/3640 [13:23<1:54:55,  2.12s/it, avr_loss=0.113]", "ts": 1778903459.815273}
+{"id": 1253, "kind": "progress", "line": "steps:  10%|█         | 381/3640 [13:25<1:54:50,  2.11s/it, avr_loss=0.113]", "ts": 1778903461.620281}
+{"id": 1254, "kind": "progress", "line": "steps:  10%|█         | 382/3640 [13:27<1:54:45,  2.11s/it, avr_loss=0.113]", "ts": 1778903463.3968327}
+{"id": 1255, "kind": "progress", "line": "steps:  11%|█         | 383/3640 [13:29<1:54:40,  2.11s/it, avr_loss=0.113]", "ts": 1778903465.1902177}
+{"id": 1256, "kind": "progress", "line": "steps:  11%|█         | 384/3640 [13:30<1:54:35,  2.11s/it, avr_loss=0.113]", "ts": 1778903466.9710953}
+{"id": 1257, "kind": "progress", "line": "steps:  11%|█         | 385/3640 [13:32<1:54:30,  2.11s/it, avr_loss=0.113]", "ts": 1778903468.7576468}
+{"id": 1258, "kind": "progress", "line": "steps:  11%|█         | 386/3640 [13:34<1:54:26,  2.11s/it, avr_loss=0.113]", "ts": 1778903470.5429652}
+{"id": 1259, "kind": "progress", "line": "steps:  11%|█         | 387/3640 [13:36<1:54:21,  2.11s/it, avr_loss=0.113]", "ts": 1778903472.3235297}
+{"id": 1260, "kind": "progress", "line": "steps:  11%|█         | 388/3640 [13:38<1:54:16,  2.11s/it, avr_loss=0.113]", "ts": 1778903474.115302}
+{"id": 1261, "kind": "progress", "line": "steps:  11%|█         | 389/3640 [13:39<1:54:11,  2.11s/it, avr_loss=0.113]", "ts": 1778903475.8854814}
+{"id": 1262, "kind": "progress", "line": "steps:  11%|█         | 390/3640 [13:41<1:54:06,  2.11s/it, avr_loss=0.112]", "ts": 1778903477.6843343}
+{"id": 1263, "kind": "progress", "line": "steps:  11%|█         | 391/3640 [13:43<1:54:02,  2.11s/it, avr_loss=0.112]", "ts": 1778903479.458218}
+{"id": 1264, "kind": "progress", "line": "steps:  11%|█         | 392/3640 [13:45<1:53:57,  2.11s/it, avr_loss=0.112]", "ts": 1778903481.2465534}
+{"id": 1265, "kind": "progress", "line": "steps:  11%|█         | 393/3640 [13:46<1:53:52,  2.10s/it, avr_loss=0.112]", "ts": 1778903483.0166962}
+{"id": 1266, "kind": "progress", "line": "steps:  11%|█         | 394/3640 [13:48<1:53:47,  2.10s/it, avr_loss=0.112]", "ts": 1778903484.8007774}
+{"id": 1267, "kind": "progress", "line": "steps:  11%|█         | 395/3640 [13:50<1:53:42,  2.10s/it, avr_loss=0.111]", "ts": 1778903486.5731916}
+{"id": 1268, "kind": "progress", "line": "steps:  11%|█         | 396/3640 [13:52<1:53:38,  2.10s/it, avr_loss=0.111]", "ts": 1778903488.3571644}
+{"id": 1269, "kind": "progress", "line": "steps:  11%|█         | 397/3640 [13:54<1:53:33,  2.10s/it, avr_loss=0.111]", "ts": 1778903490.141181}
+{"id": 1270, "kind": "progress", "line": "steps:  11%|█         | 398/3640 [13:55<1:53:28,  2.10s/it, avr_loss=0.111]", "ts": 1778903491.9092536}
+{"id": 1271, "kind": "progress", "line": "steps:  11%|█         | 399/3640 [13:57<1:53:23,  2.10s/it, avr_loss=0.111]", "ts": 1778903493.7069504}
+{"id": 1272, "kind": "progress", "line": "steps:  11%|█         | 400/3640 [13:59<1:53:19,  2.10s/it, avr_loss=0.111]", "ts": 1778903495.4890134}
+{"id": 1273, "kind": "progress", "line": "steps:  11%|█         | 401/3640 [14:01<1:53:14,  2.10s/it, avr_loss=0.112]", "ts": 1778903497.2798407}
+{"id": 1274, "kind": "progress", "line": "steps:  11%|█         | 402/3640 [14:02<1:53:10,  2.10s/it, avr_loss=0.112]", "ts": 1778903499.0577054}
+{"id": 1275, "kind": "progress", "line": "steps:  11%|█         | 403/3640 [14:04<1:53:05,  2.10s/it, avr_loss=0.112]", "ts": 1778903500.8462636}
+{"id": 1276, "kind": "progress", "line": "steps:  11%|█         | 404/3640 [14:06<1:53:00,  2.10s/it, avr_loss=0.112]", "ts": 1778903502.6352365}
+{"id": 1277, "kind": "progress", "line": "steps:  11%|█         | 405/3640 [14:08<1:52:56,  2.09s/it, avr_loss=0.112]", "ts": 1778903504.4271116}
+{"id": 1278, "kind": "progress", "line": "steps:  11%|█         | 406/3640 [14:10<1:52:51,  2.09s/it, avr_loss=0.112]", "ts": 1778903506.1987233}
+{"id": 1279, "kind": "progress", "line": "steps:  11%|█         | 407/3640 [14:11<1:52:47,  2.09s/it, avr_loss=0.112]", "ts": 1778903507.9622593}
+{"id": 1280, "kind": "progress", "line": "steps:  11%|█         | 408/3640 [14:13<1:52:42,  2.09s/it, avr_loss=0.111]", "ts": 1778903509.763955}
+{"id": 1281, "kind": "progress", "line": "steps:  11%|█         | 409/3640 [14:15<1:52:38,  2.09s/it, avr_loss=0.111]", "ts": 1778903511.5282466}
+{"id": 1282, "kind": "progress", "line": "steps:  11%|█▏        | 410/3640 [14:17<1:52:33,  2.09s/it, avr_loss=0.11]", "ts": 1778903513.3249173}
+{"id": 1283, "kind": "progress", "line": "steps:  11%|█▏        | 411/3640 [14:19<1:52:29,  2.09s/it, avr_loss=0.111]", "ts": 1778903515.1068053}
+{"id": 1284, "kind": "progress", "line": "steps:  11%|█▏        | 412/3640 [14:20<1:52:24,  2.09s/it, avr_loss=0.111]", "ts": 1778903516.888769}
+{"id": 1285, "kind": "progress", "line": "steps:  11%|█▏        | 413/3640 [14:22<1:52:20,  2.09s/it, avr_loss=0.111]", "ts": 1778903518.67969}
+{"id": 1286, "kind": "progress", "line": "steps:  11%|█▏        | 414/3640 [14:24<1:52:15,  2.09s/it, avr_loss=0.111]", "ts": 1778903520.464152}
+{"id": 1287, "kind": "progress", "line": "steps:  11%|█▏        | 415/3640 [14:26<1:52:11,  2.09s/it, avr_loss=0.111]", "ts": 1778903522.3126624}
+{"id": 1288, "kind": "progress", "line": "steps:  11%|█▏        | 416/3640 [14:28<1:52:07,  2.09s/it, avr_loss=0.111]", "ts": 1778903524.1307845}
+{"id": 1289, "kind": "progress", "line": "steps:  11%|█▏        | 417/3640 [14:29<1:52:03,  2.09s/it, avr_loss=0.111]", "ts": 1778903525.913226}
+{"id": 1290, "kind": "progress", "line": "steps:  11%|█▏        | 418/3640 [14:31<1:51:58,  2.09s/it, avr_loss=0.111]", "ts": 1778903527.6757162}
+{"id": 1291, "kind": "progress", "line": "steps:  12%|█▏        | 419/3640 [14:33<1:51:54,  2.08s/it, avr_loss=0.111]", "ts": 1778903529.4744794}
+{"id": 1292, "kind": "progress", "line": "steps:  12%|█▏        | 420/3640 [14:35<1:51:49,  2.08s/it, avr_loss=0.111]", "ts": 1778903531.2890766}
+{"id": 1293, "kind": "progress", "line": "steps:  12%|█▏        | 421/3640 [14:37<1:51:45,  2.08s/it, avr_loss=0.111]", "ts": 1778903532.7976372}
+{"id": 1294, "kind": "status", "line": "训练已停止", "ts": 1778903532.7981489}

@@ -44,7 +44,7 @@ COMMANDS = {
     "lora-gui": (
         training.cmd_lora_gui,
         "Train from a self-contained configs/gui-methods/<variant>.toml "
-        "(variant from GUI_PRESETS env or 1st positional; e.g. tlora, hydralora, reft, postfix_exp).",
+        "(variant from GUI_PRESETS env or 1st positional; e.g. tlora, lokr, hydralora, reft, postfix_exp).",
     ),
     # ── Inference ─────────────────────────────────────────────────────
     "test": (

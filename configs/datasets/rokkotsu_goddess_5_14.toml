@@ -1,0 +1,18 @@
+# Imported from /home/scv/sda1/DiffPipeForge2/output/肋骨女神/dataset.toml.
+# Source image directory: /home/scv/图片/安/5-14
+
+[general]
+caption_extension = '.txt'
+keep_tokens = 3
+
+[[datasets]]
+resolution = 1024
+batch_size = 1
+enable_bucket = true
+validation_split = 0.025
+validation_seed = 42
+
+  [[datasets.subsets]]
+  image_dir = '{resized_image_dir}'
+  cache_dir = '{lora_cache_dir}'
+  num_repeats = 5

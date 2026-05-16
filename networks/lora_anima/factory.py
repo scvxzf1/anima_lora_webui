@@ -18,6 +18,7 @@ from networks.lora_anima.config import LoRANetworkCfg
 from networks.lora_anima.loading import (
     _refuse_split_hydra_keys,
     _refuse_split_stacked_experts_keys,
+    _refuse_unfused_attn_lokr_keys,
     _refuse_unfused_attn_lora_keys,
     _stack_lora_ups,
 )
@@ -328,6 +329,7 @@ def create_network_from_weights(
     weights_sd = _stack_lora_ups(weights_sd)
     weights_sd = _refuse_split_stacked_experts_keys(weights_sd)
     weights_sd = _refuse_split_hydra_keys(weights_sd)
+    weights_sd = _refuse_unfused_attn_lokr_keys(weights_sd)
     # Refuse unfused attn projections so modules_dim reflects the runtime (qkv/kv fused).
     weights_sd = _refuse_unfused_attn_lora_keys(weights_sd)
 
@@ -335,6 +337,9 @@ def create_network_from_weights(
     modules_alpha = {}
     train_llm_adapter = False
     has_dora = False
+    has_lokr = False
+    lokr_module_names: set[str] = set()
+    lokr_factor_detected: Optional[int] = None
     has_ortho = False
     has_ortho_hydra = False
     has_hydra = False
@@ -390,6 +395,21 @@ def create_network_from_weights(
 
         if "alpha" in key:
             modules_alpha[lora_name] = value
+        elif key.endswith(".lokr_w1"):
+            has_lokr = True
+            lokr_module_names.add(lora_name)
+            if value.dim() >= 1:
+                factor = int(value.size(0))
+                if lokr_factor_detected is None:
+                    lokr_factor_detected = factor
+                elif lokr_factor_detected != factor:
+                    raise RuntimeError(
+                        "Inconsistent LoKr factors across checkpoint: "
+                        f"expected {lokr_factor_detected}, found {factor} at {key!r}."
+                    )
+        elif key.endswith(".lokr_w2"):
+            has_lokr = True
+            lokr_module_names.add(lora_name)
         elif key.endswith(".lora_down_weight") and value.dim() == 3:
             # StackedExperts (independent-A) per-expert lora_down.
             # Shape: (E, r, in). Discriminator vs Hydra (whose down is the
@@ -430,6 +450,33 @@ def create_network_from_weights(
 
         if "llm_adapter" in lora_name:
             train_llm_adapter = True
+
+    if has_lokr:
+        raw_lokr_args = file_metadata.get("ss_network_args")
+        lokr_factor_meta: Optional[int] = None
+        if raw_lokr_args:
+            try:
+                parsed_args = json.loads(raw_lokr_args)
+            except (json.JSONDecodeError, TypeError):
+                parsed_args = {}
+            if isinstance(parsed_args, dict) and str(parsed_args.get("algo", "")).lower() == "lokr":
+                raw_factor = parsed_args.get("factor")
+                if raw_factor is not None:
+                    lokr_factor_meta = int(raw_factor)
+
+        lokr_factor = int(lokr_factor_meta or lokr_factor_detected or 8)
+        raw_network_dim = file_metadata.get("ss_network_dim")
+        network_dim_meta = int(float(raw_network_dim)) if raw_network_dim else None
+        for lora_name in lokr_module_names:
+            if network_dim_meta is not None:
+                dim = network_dim_meta
+            elif lora_name in modules_alpha:
+                alpha_val = modules_alpha[lora_name]
+                dim = int(float(alpha_val.item() if torch.is_tensor(alpha_val) else alpha_val))
+            else:
+                dim = 4
+            modules_dim[lora_name] = max(1, dim)
+            modules_alpha.setdefault(lora_name, torch.tensor(float(modules_dim[lora_name])))
 
     # Finalize the MoE shape now that the full scan is done. A module that
     # has only ``lora_up_weight`` (3-D) but no matching ``lora_down_weight``
@@ -530,6 +577,9 @@ def create_network_from_weights(
                     f"Inconsistent σ-feature dims across modules: expected "
                     f"{sigma_feature_dim_detected}, found {extra} at {k!r}."
                 )
+    elif has_lokr:
+        spec = NETWORK_REGISTRY["lokr"]
+        module_class = spec.module_class
     elif for_inference:
         # Force the plain LoRA spec even for dora/ortho checkpoints — the
         # merge_to / fuse_weight path expects flat down/up weights, and dora /
@@ -685,6 +735,7 @@ def create_network_from_weights(
         new_use_moe_style=new_use_moe_style,
         new_route_per_layer=new_route_per_layer,
         new_router_source=new_router_source_stamp,
+        lokr_factor=int(lokr_factor if has_lokr else 8),
     )
 
     network = LoRANetwork(text_encoders, unet, cfg, multiplier=multiplier)

@@ -1,0 +1,4 @@
+[preview]
+training_dir = "output/ckpt/sample"
+inference_dir = "output/tests"
+custom_dir = ""

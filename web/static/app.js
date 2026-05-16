@@ -6,7 +6,6 @@
 
     // ── 状态 ──
     let fieldHelp = {};
-    let configGroups = { groups: {}, basic: [] };
     let currentConfig = {};
     let ws = null;
     let lossChart = null;
@@ -16,11 +15,35 @@
     let tomlFileGroups = [];
     let tomlFileMeta = {};
     let currentTomlFile = '';
+    let tomlSavedContent = '';
+    let previewSettings = null;
+    let currentPreviewSource = 'training';
+    let currentStepEstimate = null;
+    let trainingSampleState = null;
+    let samplePromptsPath = 'configs/sample_prompts.txt';
+    let samplePromptsContent = '';
+    let viewingHistoryTaskId = '';
+    let historyTasks = [];
+    let showArchivedHistory = false;
     let currentTrainingSource = {
         method: 'lora',
         methods_subdir: 'gui-methods',
         file: 'configs/gui-methods/lora.toml',
     };
+    const FORM_UI_DEFAULTS = {
+        train_batch_size: 1,
+        gradient_accumulation_steps: 1,
+        sample_prompts: '',
+        sample_every_n_epochs: '',
+        sample_every_n_steps: '',
+        sample_at_first: false,
+        sample_sampler: 'ddim',
+    };
+    const OPTIONAL_EMPTY_FIELDS = new Set([
+        'sample_prompts',
+        'sample_every_n_epochs',
+        'sample_every_n_steps',
+    ]);
     const trainingRuntime = {
         state: 'idle',
         lastOutputAt: 0,
@@ -29,8 +52,224 @@
         quietHintShown: false,
         lastLogId: 0,
         logLineCount: 0,
+        outputDir: '',
+        sampleDir: '',
+        sampleConfig: null,
     };
     const MAX_LOG_LINES = 2000;
+    const FORM_SECTION_DEFS = [
+        {
+            title: '常用训练设置',
+            description: '最常改：输出命名、训练时长、学习率和保存频率。',
+            open: true,
+            className: 'config-group-primary',
+            keys: [
+                'output_name',
+                'output_dir',
+                'learning_rate',
+            ],
+        },
+        {
+            title: '步数与训练量',
+            description: '集中设置训练轮数、批大小、梯度累积和保存间隔；下方会实时估算总步数。',
+            open: true,
+            className: 'config-group-steps',
+            keys: [
+                'max_train_epochs',
+                'train_batch_size',
+                'gradient_accumulation_steps',
+                'sample_ratio',
+                'save_every_n_epochs',
+                'checkpointing_epochs',
+            ],
+        },
+        {
+            title: '训练中预览图',
+            description: '控制训练过程中是否生成样张；默认关闭，填写提示词文件并设置采样频率后才会出图。',
+            open: true,
+            className: 'config-group-sampling',
+            keys: [
+                'sample_prompts',
+                'sample_every_n_epochs',
+                'sample_every_n_steps',
+                'sample_at_first',
+                'sample_sampler',
+            ],
+        },
+        {
+            title: '基础模型路径',
+            description: '训练必须用到的底模、文本编码器和 VAE；路径错误会直接影响预处理和训练启动。',
+            open: true,
+            className: 'config-group-model',
+            keys: [
+                'pretrained_model_name_or_path',
+                'qwen3',
+                'vae',
+            ],
+        },
+        {
+            title: 'LoRA / LoKr 核心参数',
+            description: '控制适配器类型、容量和热启动；不确定时保持默认。',
+            open: true,
+            className: 'lora-tuning-group',
+            keys: [
+                'network_dim',
+                'network_alpha',
+                'use_lokr',
+                'lokr_factor',
+                'network_weights',
+                'dim_from_weights',
+            ],
+        },
+        {
+            title: '数据与标注',
+            description: '训练图、缓存目录、数据集蓝图和 caption 行为。',
+            open: true,
+            className: 'config-group-data',
+            keys: [
+                'source_image_dir',
+                'resized_image_dir',
+                'lora_cache_dir',
+                'dataset_config',
+                'use_shuffled_caption_variants',
+                'caption_dropout_rate',
+                'masked_loss',
+            ],
+        },
+        {
+            title: '显存与速度',
+            description: 'OOM、训练速度和编译相关；显存不足时先看这里。',
+            open: false,
+            className: 'config-group-resource',
+            keys: [
+                'blocks_to_swap',
+                'gradient_checkpointing',
+                'unsloth_offload_checkpointing',
+                'mixed_precision',
+                'attn_mode',
+                'torch_compile',
+                'compile_mode',
+                'compile_inductor_mode',
+                'static_token_count',
+                'trim_crossattn_kv',
+                'vae_chunk_size',
+                'vae_disable_cache',
+                'use_custom_down_autograd',
+                'dataloader_pin_memory',
+                'persistent_data_loader_workers',
+            ],
+        },
+        {
+            title: '缓存与预处理',
+            description: '控制 latent、文本编码器和方法特征缓存。',
+            open: false,
+            keys: [
+                'cache_latents',
+                'cache_latents_to_disk',
+                'cache_text_encoder_outputs',
+                'cache_text_encoder_outputs_to_disk',
+                'cache_llm_adapter_outputs',
+                'skip_cache_check',
+                'ip_features_cache_to_disk',
+            ],
+        },
+        {
+            title: '优化器与采样',
+            description: '进阶训练动态；默认值通常已经足够。',
+            open: false,
+            keys: [
+                'optimizer_type',
+                'optimizer_args',
+                'lr_scheduler',
+                'timestep_sampling',
+                'discrete_flow_shift',
+                'log_every_n_steps',
+                'logging_dir',
+                'log_with',
+            ],
+        },
+        {
+            title: '输出格式与训练范围',
+            description: '模型保存格式、保存精度和训练目标范围。',
+            open: false,
+            keys: [
+                'save_model_as',
+                'save_precision',
+                'network_train_unet_only',
+            ],
+        },
+        {
+            title: '方法内部与实验架构',
+            description: 'Hydra、FeRA、ReFT、IP-Adapter、EasyControl 等高级方法开关。',
+            open: false,
+            className: 'config-group-methods',
+            keys: [
+                'network_module',
+                'network_args',
+                'use_ortho',
+                'use_timestep_mask',
+                'min_rank',
+                'alpha_rank_scale',
+                'layer_start',
+                'per_channel_scaling',
+                'add_reft',
+                'reft_dim',
+                'reft_alpha',
+                'reft_layers',
+                'use_repa',
+                'repa_weight',
+                'repa_layer',
+                'repa_lr_scale',
+                'use_moe_style',
+                'route_per_layer',
+                'router_source',
+                'num_experts',
+                'balance_loss_weight',
+                'balance_loss_warmup_ratio',
+                'network_router_lr_scale',
+                'router_targets',
+                'sigma_feature_dim',
+                'per_bucket_balance_weight',
+                'num_sigma_buckets',
+                'specialize_experts_by_sigma_buckets',
+                'sigma_bucket_boundaries',
+                'use_ip_adapter',
+                'ip_image_drop_p',
+                'use_easycontrol',
+                'easycontrol_drop_p',
+                'easycontrol_cond_noise_max',
+                'use_hydra',
+                'use_sigma_router',
+                'fera_num_bands',
+                'fei_feature_dim',
+                'fei_sigma_low_div',
+                'router_hidden_dim',
+                'router_tau',
+                'fera_fecl_weight',
+            ],
+        },
+    ];
+
+    const VARIANT_METHOD_FAMILY = {
+        lora: 'lora',
+        lora_longer: 'lora',
+        'lora-8gb': 'lora',
+        lora_repa: 'lora',
+        lokr: 'lokr',
+        ortholora: 'ortholora',
+        tlora: 'tlora',
+        tlora_ortho: 'tlora',
+        hydralora_sigma: 'hydralora',
+        hydralora_experimental: 'hydralora',
+        hydralora_fei: 'hydralora',
+        fera: 'hydralora',
+        reft: 'reft',
+        tlora_ortho_reft: 'reft',
+        postfix_ortho_cond: 'postfix',
+        ip_adapter: 'ip_adapter',
+        easycontrol: 'easycontrol',
+        soft_tokens: 'lora',
+    };
 
     function help(summary, fill, benefit, cost, risk, recommend) {
         return { summary, fill, benefit, cost, risk, recommend };
@@ -61,6 +300,7 @@
         fei_sigma_low_div: 'FEI 低 Sigma 除数',
         fera_fecl_weight: 'FeRA FECL 权重',
         fera_num_bands: 'FeRA 分带数',
+        train_batch_size: '批大小',
         gradient_accumulation_steps: '梯度累积步数',
         gradient_checkpointing: '梯度检查点',
         ip_features_cache_to_disk: 'IP 特征写入磁盘',
@@ -83,6 +323,8 @@
         network_train_unet_only: '仅训练 DiT',
         num_experts: '专家数量',
         num_sigma_buckets: 'Sigma 桶数量',
+        lokr_factor: 'LoKr Factor',
+        use_lokr: '启用 LoKr',
         optimizer_args: '优化器参数',
         optimizer_type: '优化器',
         output_dir: '输出目录',
@@ -104,6 +346,11 @@
         router_targets: '路由目标层',
         router_tau: '路由温度',
         sample_ratio: '数据采样比例',
+        sample_at_first: '开始前生成样张',
+        sample_every_n_epochs: '按轮生成样张',
+        sample_every_n_steps: '按步生成样张',
+        sample_prompts: '样张提示词文件',
+        sample_sampler: '样张采样器',
         save_every_n_epochs: '模型保存间隔',
         save_model_as: '模型保存格式',
         save_precision: '保存精度',
@@ -139,8 +386,10 @@
             'configs/datasets/easycontrol.toml',
             'configs/datasets/rokkotsu_goddess.toml',
         ],
+        train_batch_size: [1, 2, 4, 8],
         gradient_accumulation_steps: [1, 2, 4, 8],
         log_with: ['tensorboard'],
+        lokr_factor: [2, 4, 8, 16],
         lr_scheduler: ['constant', 'cosine', 'cosine_with_restarts', 'polynomial'],
         max_train_epochs: [1, 2, 4, 8, 12, 16, 24],
         min_rank: [1, 2, 4, 8],
@@ -163,6 +412,19 @@
         route_per_layer: [true, false],
         router_source: ['fei', 'sigma', 'input', 'none'],
         sample_ratio: [1.0, 0.5, 0.25, 0.1, 0.01],
+        sample_sampler: [
+            'ddim',
+            'euler',
+            'euler_a',
+            'dpmsolver++',
+            'dpmsolver',
+            'heun',
+            'lms',
+            'pndm',
+            'k_euler',
+            'k_euler_a',
+            'k_lms',
+        ],
         save_every_n_epochs: [1, 2, 4, 8, 12],
         save_model_as: ['safetensors'],
         save_precision: ['bf16', 'fp16', 'float'],
@@ -195,6 +457,12 @@
             'MoE 专家路由类方法，让不同专家处理不同时间步或特征区域。',
             '容量和分工更强；代价是显存、速度、推理兼容性和调参复杂度都更高。',
             '只在普通 LoRA 不够表达时再试。'
+        ),
+        lokr: choiceHelp(
+            'LoKr',
+            '使用 Kronecker 积分解代替标准低秩分解，参数效率更高。',
+            '适合复杂画风或多角色；代价是推理需要 LyCORIS/LoKr 兼容加载器。',
+            '需要 LoKr 训练时选，简单单角色仍可用普通 LoRA。'
         ),
         reft: choiceHelp(
             'ReFT',
@@ -300,6 +568,12 @@
             '独立 A 矩阵的 FEI 路由专家结构。',
             '容量更高、专家更独立；代价是参数、显存和训练复杂度更高。',
             '普通 Hydra 不够时再试。'
+        ),
+        lokr: choiceHelp(
+            'LoKr',
+            '输出 LyCORIS 兼容的 lokr_w1/lokr_w2 权重，默认 factor=8。',
+            '收敛快、参数效率高；过拟合风险更高，推理侧需要 LoKr 支持。',
+            '多角色/复杂画风可试；注意控制训练轮数。'
         ),
         postfix_ortho_cond: choiceHelp(
             'Postfix 条件正交版',
@@ -449,6 +723,22 @@
             ["多一个时间步相关超参，调试复杂度上升。"],
             ["min_rank 太低可能削弱低噪声阶段的细节修正。"],
             "推荐直接使用 tlora 或 tlora_ortho 变体。"
+        ),
+        use_lokr: help(
+            "启用 LoKr（Low-Rank Kronecker Product）。",
+            "用 Kronecker 积分解 ΔW = kron(W1, W2)，保存为 lokr_w1/lokr_w2。",
+            ["参数效率高，常适合复杂画风或多角色训练。"],
+            ["不是普通 LoRA 的低秩矩阵形式，推理侧需要 LyCORIS/LoKr 兼容加载器。"],
+            ["与 OrthoLoRA、Hydra/FeRA、DoRA 互斥；小数据更要注意过拟合。"],
+            "推荐使用 lokr 变体默认值：learning_rate=1e-4，factor=8。"
+        ),
+        lokr_factor: help(
+            "LoKr 的 Kronecker 分解因子。",
+            "W1 为 factor×factor，W2 为 (out/factor)×(in/factor)。",
+            ["factor 越大，W2 越小，结构约束越强。"],
+            ["factor 必须能整除输入/输出维度，否则运行时会自动降级。"],
+            ["过大可能限制表达，过小则更接近大矩阵更新、参数量上升。"],
+            "Anima DiT 默认用 8；不确定时保持默认。"
         ),
         min_rank: help(
             "T-LoRA 在低噪声时间步保留的最小活跃 rank。",
@@ -778,6 +1068,14 @@
             ["轮数太高会记住训练图构图，泛化下降。"],
             "先用默认，样张仍欠拟合再增加。"
         ),
+        train_batch_size: help(
+            "每个训练 step 一次送入 GPU 的样本数量。",
+            "显存足够时可试 2/4；显存紧张或 1024 分辨率训练保持 1。",
+            ["批大小越大，单次更新看到的数据越多，梯度更稳定。"],
+            ["显存占用会明显上升，可能触发 OOM。"],
+            ["调大批大小会减少每轮 step 数，常需要重新理解总步数和学习率。"],
+            "默认 1 最稳；想要更大有效批大小时优先配合梯度累积。"
+        ),
         save_every_n_epochs: help(
             "每隔多少轮保存一次模型检查点。",
             "填 1/2/4；设成 max_train_epochs 表示只保存最终模型。",
@@ -865,6 +1163,46 @@
             ["有效数据减少，结果不能代表完整训练。"],
             ["长期训练使用过低比例会欠拟合或偏向子集。"],
             "正式训练用 1.0 或不设置；试跑可用 half/quarter/tiny 预设。"
+        ),
+        sample_prompts: help(
+            "训练中生成预览图时使用的提示词，一行一个。",
+            "直接在输入框里每行填写一条提示词；保存时 WebUI 会自动写入 configs/sample_prompts.txt。",
+            ["能在训练过程中直接看到当前模型效果。"],
+            ["采样会额外占用训练时间和显存。"],
+            ["提示词越多，每次采样生成的图片越多，训练被打断的时间越长。"],
+            "想看训练中预览图时，至少填一行提示词，再设置按轮或按步采样。"
+        ),
+        sample_every_n_epochs: help(
+            "每隔多少轮生成一次训练样张。",
+            "填 1 表示每轮结束出图；留空表示不按轮采样。",
+            ["最容易理解，适合按 epoch 保存模型一起观察。"],
+            ["每轮都会额外跑一次推理，训练总耗时会增加。"],
+            ["数据集很小或采样图很多时，出图会比较频繁。"],
+            "新手建议填 1 或 2；只需要按步采样时留空。"
+        ),
+        sample_every_n_steps: help(
+            "每隔多少优化步生成一次训练样张。",
+            "例如 500；留空表示不按步采样。设置按轮采样时，按轮逻辑优先。",
+            ["长 epoch 训练时能更早看到趋势。"],
+            ["步数过小会频繁打断训练。"],
+            ["需要结合预计总步数理解频率。"],
+            "多数情况用按轮采样即可；只有单轮很长时再填。"
+        ),
+        sample_at_first: help(
+            "训练开始前先生成一组初始样张。",
+            "开启后可对比训练前后变化；仍需要 sample_prompts 文件。",
+            ["能确认提示词和采样链路是否正常。"],
+            ["启动训练时会多等一轮采样。"],
+            ["显存紧张时，首次采样也可能触发 OOM。"],
+            "排查预览图是否能生成时开启；稳定训练可关闭。"
+        ),
+        sample_sampler: help(
+            "训练中样张使用的采样器。",
+            "常用 ddim、euler、euler_a、dpmsolver++。",
+            ["会影响样张风格和速度。"],
+            ["和最终推理采样器不同，样张观感会有差异。"],
+            ["频繁切换会让训练过程对比不直观。"],
+            "默认 ddim；想贴近常用推理体验可试 euler_a 或 dpmsolver++。"
         ),
         attn_mode: help(
             "注意力计算后端。",
@@ -1181,6 +1519,9 @@
                 if (btn.dataset.tab === 'training' && lossChart?.resize) {
                     lossChart.resize();
                 }
+                if (btn.dataset.tab === 'preview') {
+                    loadPreviewImages();
+                }
             });
         });
     }
@@ -1192,19 +1533,20 @@
             return;
         }
         try {
-            const [methods, presets, help, groups] = await Promise.all([
+            const [methods, presets, help] = await Promise.all([
                 api('/api/methods'),
                 api('/api/presets'),
                 api('/api/config/field-help'),
-                api('/api/config/groups'),
             ]);
             fieldHelp = help;
-            configGroups = groups;
             populateSelect('method-select', methods, 'lora');
             populateSelect('preset-select', presets, 'default');
             await loadVariants();
             await loadConfig();
             await loadTomlFileList();
+            await loadPreviewSettings();
+            await loadSamplePrompts();
+            await loadTrainingHistoryList();
         } catch (e) {
             console.error('初始化失败:', e);
         }
@@ -1222,18 +1564,14 @@
         ].join('');
         form.appendChild(panel);
         setTomlStatus('error', '静态打开没有后端 API，保存/另存为/读取配置不可用', { persist: true });
+        setPreviewEmpty('静态打开没有后端 API，无法读取项目预览图。');
     }
 
     async function loadVariants({ reset = false } = {}) {
         const method = val('method-select');
         const variants = await api(`/api/methods/${method}/variants`);
         populateSelect('variant-select', variants, reset ? (variants[0] || method) : method);
-        const variant = val('variant-select');
-        currentTrainingSource = {
-            method: variant,
-            methods_subdir: 'gui-methods',
-            file: `configs/gui-methods/${variant}.toml`,
-        };
+        setCurrentTrainingSourceFromVariant(val('variant-select'));
         updateChoiceGuide();
     }
 
@@ -1244,7 +1582,10 @@
         const methodsSubdir = currentTrainingSource.methods_subdir || 'gui-methods';
         currentConfig = await api(`/api/config/merged?variant=${encodeURIComponent(variant)}&preset=${encodeURIComponent(preset)}&methods_subdir=${encodeURIComponent(methodsSubdir)}`);
         renderConfigForm(currentConfig);
+        loadSamplePrompts();
+        loadStepEstimate();
         updateChoiceGuide();
+        updateLoraFamilySwitch();
         // 同步加载对应的 TOML 文件到右侧编辑器
         const tomlFile = currentTrainingSource.file || `configs/${methodsSubdir}/${variant}.toml`;
         if (tomlFiles.includes(tomlFile) && currentTomlFile !== tomlFile) {
@@ -1257,88 +1598,254 @@
         const container = document.getElementById('config-form');
         container.innerHTML = '';
 
-        const groups = configGroups.groups || {};
-        const basicSet = new Set(configGroups.basic || []);
-        const grouped = {};
-        const ungrouped = {};
-
+        const fieldsByKey = {};
         for (const [key, value] of Object.entries(config)) {
             if (key === 'general' || key === 'datasets') continue;
             if (typeof value === 'object' && value !== null && !Array.isArray(value)) continue;
+            fieldsByKey[key] = value;
+        }
+        for (const [key, value] of Object.entries(FORM_UI_DEFAULTS)) {
+            if (!(key in fieldsByKey)) fieldsByKey[key] = value;
+        }
+        fieldsByKey.sample_prompts = currentSamplePromptText(config);
 
-            let found = false;
-            for (const [gname, gkeys] of Object.entries(groups)) {
-                if (gkeys.includes(key)) {
-                    if (!grouped[gname]) grouped[gname] = [];
-                    grouped[gname].push([key, value]);
-                    found = true;
-                    break;
-                }
-            }
-            if (!found) {
-                ungrouped[key] = value;
-            }
-        }
-
-        // 路径设置置顶但默认折叠，避免占用首屏训练参数空间。
-        const pathFields = (grouped.Paths || []);
-        if (pathFields.length > 0) {
-            container.appendChild(createGroup('路径设置', pathFields, false));
-        }
-
-        // 基本设置（默认展开），排除已经置顶的路径字段。
-        const basicFields = [];
-        for (const [gname, fields] of Object.entries(grouped)) {
-            if (gname === 'Paths') continue;
-            for (const [key, value] of fields) {
-                if (basicSet.has(key)) basicFields.push([key, value]);
-            }
-        }
-        for (const [key, value] of Object.entries(ungrouped)) {
-            if (basicSet.has(key)) basicFields.push([key, value]);
-        }
-        if (basicFields.length > 0) {
-            container.appendChild(createGroup('基本设置', basicFields, true));
-        }
-
-        // 分组高级设置
-        const groupNameZh = {
-            'Architecture': '网络架构',
-            'Training': '训练参数',
-            'Performance': '性能优化',
-            'Paths': '路径设置',
-        };
-        const groupOrder = ['Architecture', 'Training', 'Performance'];
-        for (const gname of groupOrder) {
-            if (!grouped[gname]) continue;
-            const advFields = grouped[gname].filter(([k]) => !basicSet.has(k));
-            if (advFields.length > 0) {
-                container.appendChild(createGroup(groupNameZh[gname] || gname, advFields, false));
+        const consumed = new Set();
+        for (const section of FORM_SECTION_DEFS) {
+            const fields = collectSectionFields(fieldsByKey, section.keys, consumed);
+            if (fields.length > 0) {
+                container.appendChild(createGroup(
+                    section.title,
+                    fields,
+                    section.open,
+                    section.className || '',
+                    section.description || ''
+                ));
             }
         }
 
-        // 未分组
-        const ungroupedAdv = Object.entries(ungrouped).filter(([k]) => !basicSet.has(k));
-        if (ungroupedAdv.length > 0) {
-            container.appendChild(createGroup('其他参数', ungroupedAdv, false));
+        const otherFields = Object.entries(fieldsByKey).filter(([key]) => !consumed.has(key));
+        if (otherFields.length > 0) {
+            container.appendChild(createGroup(
+                '其他高级选项',
+                otherFields,
+                false,
+                '',
+                '未归类的新字段或低频字段；保留给高级调试使用。'
+            ));
         }
     }
 
-    function createGroup(name, fields, open) {
+    function collectSectionFields(fieldsByKey, orderedKeys, consumed) {
+        const fields = [];
+        for (const key of orderedKeys) {
+            if (consumed.has(key) || !(key in fieldsByKey)) continue;
+            fields.push([key, fieldsByKey[key]]);
+            consumed.add(key);
+        }
+        return fields;
+    }
+
+    async function loadStepEstimate() {
+        const variant = currentTrainingSource.method || val('variant-select');
+        const preset = val('preset-select');
+        const methodsSubdir = currentTrainingSource.methods_subdir || 'gui-methods';
+        if (!variant || location.protocol === 'file:') return;
+        try {
+            currentStepEstimate = await api(`/api/config/steps?variant=${encodeURIComponent(variant)}&preset=${encodeURIComponent(preset)}&methods_subdir=${encodeURIComponent(methodsSubdir)}`);
+        } catch {
+            currentStepEstimate = null;
+        }
+        updateStepEstimatePanel();
+    }
+
+    function createStepEstimatePanel() {
+        const panel = document.createElement('div');
+        panel.id = 'step-estimate-panel';
+        panel.className = 'step-estimate-panel';
+        panel.innerHTML = [
+            '<div class="step-estimate-title">预计训练步数</div>',
+            '<div class="step-estimate-grid">',
+            '<div><span>训练图片</span><strong id="step-train-images">-</strong></div>',
+            '<div><span>重复后样本</span><strong id="step-repeated-images">-</strong></div>',
+            '<div><span>有效批大小</span><strong id="step-effective-batch">-</strong></div>',
+            '<div><span>每轮步数</span><strong id="step-per-epoch">-</strong></div>',
+            '<div><span>总步数</span><strong id="step-total">-</strong></div>',
+            '</div>',
+            '<p id="step-estimate-note" class="step-estimate-note"></p>',
+        ].join('');
+        return panel;
+    }
+
+    function updateStepEstimatePanel() {
+        const panel = document.getElementById('step-estimate-panel');
+        if (!panel || !currentStepEstimate) return;
+
+        const epochs = readLiveNumber('max_train_epochs', currentStepEstimate.max_train_epochs || 1);
+        const batchSize = readLiveNumber('train_batch_size', currentStepEstimate.train_batch_size || 1);
+        const gradAccum = readLiveNumber('gradient_accumulation_steps', currentStepEstimate.gradient_accumulation_steps || 1);
+        const sampleRatio = readLiveNumber('sample_ratio', currentStepEstimate.sample_ratio || 1);
+        const repeats = Number(currentStepEstimate.dataset_num_repeats || 1);
+        const trainImages = Number(currentStepEstimate.train_image_count || 0);
+        const effectiveBatch = Math.max(1, batchSize * gradAccum);
+        const repeatedImages = Math.max(0, Math.floor(trainImages * repeats * sampleRatio));
+        const stepsPerEpoch = repeatedImages ? Math.ceil(repeatedImages / effectiveBatch) : 0;
+        const totalSteps = stepsPerEpoch * epochs;
+
+        setText('step-train-images', String(trainImages));
+        setText('step-repeated-images', `${repeatedImages} (${repeats}x, ${sampleRatio} ratio)`);
+        setText('step-effective-batch', `${effectiveBatch} = ${batchSize} x ${gradAccum}`);
+        setText('step-per-epoch', String(stepsPerEpoch));
+        setText('step-total', String(totalSteps));
+
+        const sourceLabel = currentStepEstimate.uses_preprocessed_images
+            ? `使用缩放图目录: ${currentStepEstimate.resized_dir}`
+            : `缩放图为空，暂按源图目录估算: ${currentStepEstimate.source_dir}`;
+        setText('step-estimate-note', `${sourceLabel}。预处理完成后图片数会按缩放图目录重新计算。`);
+    }
+
+    function readLiveNumber(key, fallback) {
+        const input = document.querySelector(`#config-form .field-input[data-key="${CSS.escape(key)}"]`);
+        if (!input) return Number(fallback) || 0;
+        const raw = input.type === 'checkbox' ? input.checked : input.value;
+        const n = Number(raw);
+        return Number.isFinite(n) && n > 0 ? n : (Number(fallback) || 0);
+    }
+
+    function setText(id, text) {
+        const el = document.getElementById(id);
+        if (el) el.textContent = text;
+    }
+
+    function createGroup(name, fields, open, extraClass = '', description = '') {
         const details = document.createElement('details');
-        details.className = 'config-group';
+        details.className = ['config-group', extraClass].filter(Boolean).join(' ');
         if (open) details.open = true;
 
         const summary = document.createElement('summary');
-        summary.textContent = `${name} (${fields.length} 项)`;
+        const title = document.createElement('span');
+        title.textContent = `${name} (${fields.length} 项)`;
+        summary.appendChild(title);
         details.appendChild(summary);
 
         const content = document.createElement('div');
+        if (description) {
+            const hint = document.createElement('p');
+            hint.className = 'config-group-hint';
+            hint.textContent = description;
+            content.appendChild(hint);
+        }
+        if (extraClass === 'config-group-data') {
+            content.appendChild(createDataDirTools());
+        }
         for (const [key, value] of fields) {
             content.appendChild(createFieldRow(key, value));
         }
+        if (extraClass === 'config-group-steps') {
+            content.appendChild(createStepEstimatePanel());
+            updateStepEstimatePanel();
+        }
         details.appendChild(content);
         return details;
+    }
+
+    function createDataDirTools() {
+        const panel = document.createElement('div');
+        panel.className = 'data-dir-tools';
+        const text = document.createElement('span');
+        text.textContent = '源图目录确定后，可自动生成缩放图像目录和 LoRA 缓存目录。';
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'btn btn-small';
+        btn.textContent = '根据源图目录生成缓存路径';
+        btn.addEventListener('click', applySuggestedDataDirs);
+        panel.append(text, btn);
+        return panel;
+    }
+
+    async function applySuggestedDataDirs() {
+        const sourceInput = document.querySelector('#config-form .field-input[data-key="source_image_dir"]');
+        const resizedInput = document.querySelector('#config-form .field-input[data-key="resized_image_dir"]');
+        const cacheInput = document.querySelector('#config-form .field-input[data-key="lora_cache_dir"]');
+        const source = sourceInput?.value?.trim() || '';
+        if (!source) {
+            alert('请先填写源图像目录 / source_image_dir');
+            return;
+        }
+        try {
+            const result = await api(`/api/config/data-dirs/suggest?source_image_dir=${encodeURIComponent(source)}`);
+            if (!result.ok) {
+                alert(result.error || '生成路径失败');
+                return;
+            }
+            if (resizedInput) resizedInput.value = result.resized_image_dir || '';
+            if (cacheInput) cacheInput.value = result.lora_cache_dir || '';
+            handleFormFieldChange();
+            setTomlStatus('ok', '已根据源图目录填入缩放图像目录和 LoRA 缓存目录，请保存更新当前选中配置后再训练', { persist: true });
+        } catch (e) {
+            alert('生成路径失败: ' + e.message);
+        }
+    }
+
+    function setCurrentTrainingSourceFromVariant(variant) {
+        if (!variant) return;
+        currentTrainingSource = {
+            method: variant,
+            methods_subdir: 'gui-methods',
+            file: `configs/gui-methods/${variant}.toml`,
+        };
+    }
+
+    function currentMethodFamily() {
+        const variant = currentTrainingSource.method || val('variant-select');
+        if (currentConfig.use_lokr === true) return 'lokr';
+        return VARIANT_METHOD_FAMILY[variant] || val('method-select') || 'lora';
+    }
+
+    function updateLoraFamilySwitch() {
+        const container = document.getElementById('lora-family-switch');
+        if (!container) return;
+        const activeFamily = currentMethodFamily();
+        const choices = [
+            {
+                family: 'lora',
+                title: 'LoRA',
+                summary: '标准低秩训练，兼容性最好。',
+                variant: 'lora',
+            },
+            {
+                family: 'lokr',
+                title: 'LoKr',
+                summary: 'Kronecker 积训练，输出 LyCORIS 兼容权重。',
+                variant: 'lokr',
+            },
+        ];
+
+        container.innerHTML = '';
+        for (const choice of choices) {
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'lora-family-option';
+            if (activeFamily === choice.family) btn.classList.add('active');
+            btn.innerHTML = `<strong>${choice.title}</strong><span>${choice.summary}</span>`;
+            btn.addEventListener('click', () => switchLoraFamily(choice.family, choice.variant));
+            container.appendChild(btn);
+        }
+    }
+
+    async function switchLoraFamily(method, variant) {
+        const methodSelect = document.getElementById('method-select');
+        const variantSelect = document.getElementById('variant-select');
+        if ([...methodSelect.options].some((opt) => opt.value === method)) {
+            methodSelect.value = method;
+        }
+        const variants = await api(`/api/methods/${encodeURIComponent(method)}/variants`);
+        populateSelect('variant-select', variants, variant);
+        if (![...variantSelect.options].some((opt) => opt.value === variant)) {
+            return;
+        }
+        variantSelect.value = variant;
+        setCurrentTrainingSourceFromVariant(variant);
+        await loadConfig();
     }
 
     function updateChoiceGuide() {
@@ -1433,7 +1940,9 @@
 
         const input = createFieldInput(key, value);
         input.dataset.key = key;
-        input.dataset.valueType = fieldValueType(value);
+        input.dataset.valueType = fieldValueTypeForKey(key, value);
+        input.addEventListener('input', handleFormFieldChange);
+        input.addEventListener('change', handleFormFieldChange);
         main.appendChild(input);
 
         const btn = document.createElement('button');
@@ -1457,12 +1966,25 @@
         return row;
     }
 
+    function handleFormFieldChange() {
+        updateTomlDirtyState();
+        updateStepEstimatePanel();
+    }
+
     function formatFieldName(key) {
         const label = FIELD_LABEL_ZH[key];
         return label ? `${label} / ${key}` : key;
     }
 
     function createFieldInput(key, value) {
+        if (key === 'sample_prompts') {
+            const textarea = document.createElement('textarea');
+            textarea.rows = 5;
+            textarea.placeholder = '一行一个提示词，例如:\nmasterpiece, best quality, 1girl --w 1024 --h 1024 --d 42';
+            textarea.value = value ?? '';
+            textarea.className = 'field-input field-textarea sample-prompts-input';
+            return textarea;
+        }
         const options = FIELD_OPTIONS[key];
         if (options && !Array.isArray(value)) {
             return createSelectInput(key, value, options);
@@ -1475,11 +1997,40 @@
             input.checked = value;
         } else {
             input = document.createElement('input');
-            input.type = 'text';
+            input.type = isNumericField(key, value) ? 'number' : 'text';
+            if (input.type === 'number') {
+                input.step = isIntegerNumericField(key, value) ? '1' : '0.01';
+                input.min = '0';
+            }
             input.value = Array.isArray(value) ? JSON.stringify(value) : (value ?? '');
         }
         input.className = 'field-input';
         return input;
+    }
+
+    function isNumericField(key, value) {
+        return typeof value === 'number' || [
+            'max_train_epochs',
+            'train_batch_size',
+            'gradient_accumulation_steps',
+            'sample_ratio',
+            'sample_every_n_epochs',
+            'sample_every_n_steps',
+            'save_every_n_epochs',
+            'checkpointing_epochs',
+        ].includes(key);
+    }
+
+    function isIntegerNumericField(key, value) {
+        return [
+            'max_train_epochs',
+            'train_batch_size',
+            'gradient_accumulation_steps',
+            'sample_every_n_epochs',
+            'sample_every_n_steps',
+            'save_every_n_epochs',
+            'checkpointing_epochs',
+        ].includes(key) || Number.isInteger(value);
     }
 
     function createSelectInput(key, value, options) {
@@ -1507,6 +2058,11 @@
         if (typeof value === 'boolean') return 'boolean';
         if (typeof value === 'number') return 'number';
         return 'string';
+    }
+
+    function fieldValueTypeForKey(key, value) {
+        if (isNumericField(key, value)) return 'number';
+        return fieldValueType(value);
     }
 
     function optionValue(value) {
@@ -1612,7 +2168,7 @@
                 tomlFileMeta[item.path] = item;
             }
         }
-        populateTomlFileSelect(tomlFileGroups);
+        populateTomlFileSelect(reorderTomlFileGroups(tomlFileGroups));
         if (preferredFile && tomlFiles.includes(preferredFile)) {
             await loadTomlFile(preferredFile);
             return;
@@ -1629,28 +2185,29 @@
     }
 
     async function loadTomlFile(filePath, options = {}) {
+        if (!options.force && !confirmDiscardTomlChanges('当前 TOML 有未保存修改，切换文件会丢失这些修改。是否继续？')) {
+            return;
+        }
         const data = await api(`/api/config/raw?file=${encodeURIComponent(filePath)}`);
         currentTomlFile = filePath;
         document.getElementById('toml-file-select').value = filePath;
-        document.getElementById('toml-editor').value = data.content || '';
+        tomlSavedContent = data.content || '';
+        document.getElementById('toml-editor').value = tomlSavedContent;
         if (data.meta) tomlFileMeta[filePath] = data.meta;
         updateTomlSelectionUI(filePath);
         applyTomlLockState(filePath);
+        updateTomlDirtyState();
         setTomlStatus('', '');
-        if (options.applyTrainable && tomlFileMeta[filePath]?.trainable) {
-            await applyTomlToConfig({ silent: true });
-            setTomlStatus('ok', `已加载并应用 ${filePath}`);
-        }
     }
 
     async function saveTomlFile() {
         const file = currentTomlFile || val('toml-file-select');
         if (!file) {
-            setTomlStatus('error', '请先选择一个配置文件，或使用“另存为”保存导入内容');
+            setTomlStatus('error', '请先选择一个配置文件，或使用“保存新配置”保存导入内容');
             return;
         }
         if (isTomlLocked(file)) {
-            setTomlStatus('error', '该配置文件已锁定，请使用“另存为”创建可编辑副本');
+            setTomlStatus('error', '该配置文件已锁定，请使用“保存新配置”创建可编辑配置');
             return;
         }
         if (currentTrainingSource.file === file) {
@@ -1667,6 +2224,8 @@
                 body: JSON.stringify({ file, content }),
             });
             if (res.ok) {
+                tomlSavedContent = content;
+                updateTomlDirtyState();
                 setTomlStatus('ok', '✓ 已保存');
                 await loadTomlFileList(file);
                 if (currentTrainingSource.file === file) {
@@ -1683,9 +2242,10 @@
     async function saveFormPatchToToml(file, values) {
         const content = document.getElementById('toml-editor').value;
         try {
+            const preparedValues = await prepareFormPatchValues(values);
             const res = await api('/api/config/raw', {
                 method: 'PATCH',
-                body: JSON.stringify({ file, values, content }),
+                body: JSON.stringify({ file, values: preparedValues, content }),
             });
             if (!res.ok) {
                 setTomlStatus('error', res.error || '保存失败');
@@ -1694,8 +2254,10 @@
 
             if (typeof res.content === 'string') {
                 document.getElementById('toml-editor').value = res.content;
+                tomlSavedContent = res.content;
             }
-            setTomlStatus('ok', `✓ 已保存 ${res.changed?.length || Object.keys(values).length} 个表单修改`);
+            updateTomlDirtyState();
+            setTomlStatus('ok', `✓ 已保存 ${res.changed?.length || Object.keys(preparedValues).length} 个表单修改`);
             await loadTomlFileList(file);
             await loadConfig();
         } catch (e) {
@@ -1707,16 +2269,48 @@
         const values = {};
         document.querySelectorAll('#config-form .field-input[data-key]').forEach((input) => {
             const key = input.dataset.key;
-            if (!key || !(key in currentConfig)) return;
-            const next = readFieldInputValue(input, currentConfig[key]);
-            if (!valuesEqual(next, currentConfig[key])) {
+            if (!key) return;
+            if (key === 'sample_prompts') {
+                const nextPrompts = readFieldInputValue(input, samplePromptsContent);
+                if (nextPrompts !== samplePromptsContent) {
+                    values[key] = nextPrompts;
+                }
+                return;
+            }
+            const hasOriginal = key in currentConfig;
+            const original = hasOriginal ? currentConfig[key] : FORM_UI_DEFAULTS[key];
+            const next = readFieldInputValue(input, original);
+            if (!hasOriginal && shouldSkipUiDefaultField(key, next)) return;
+            if (!valuesEqual(next, original)) {
                 values[key] = next;
             }
         });
         return values;
     }
 
+    async function prepareFormPatchValues(values) {
+        const nextValues = { ...values };
+        if ('sample_prompts' in nextValues) {
+            const promptText = String(nextValues.sample_prompts || '');
+            if (promptText.trim()) {
+                const saved = await saveSamplePrompts(promptText);
+                nextValues.sample_prompts = saved.file || samplePromptsPath;
+            } else {
+                await saveSamplePrompts('');
+                nextValues.sample_prompts = '';
+            }
+        }
+        return nextValues;
+    }
+
+    function shouldSkipUiDefaultField(key, value) {
+        if (!(key in FORM_UI_DEFAULTS)) return false;
+        if (OPTIONAL_EMPTY_FIELDS.has(key) && value === '') return true;
+        return valuesEqual(value, FORM_UI_DEFAULTS[key]);
+    }
+
     function readFieldInputValue(input, originalValue) {
+        if (input.tagName === 'TEXTAREA') return normalizeMultilineText(input.value);
         if (input.type === 'checkbox') return input.checked;
         const raw = input.value;
         switch (input.dataset.valueType || fieldValueType(originalValue)) {
@@ -1733,6 +2327,7 @@
 
     function parseNumberValue(raw, fallback) {
         const trimmed = String(raw).trim();
+        if (trimmed === '' && fallback === '') return '';
         if (trimmed === '') return fallback;
         const n = Number(trimmed);
         return Number.isFinite(n) ? n : fallback;
@@ -1753,7 +2348,55 @@
         return JSON.stringify(a) === JSON.stringify(b);
     }
 
+    function normalizeMultilineText(value) {
+        return String(value || '')
+            .split(/\r?\n/)
+            .map((line) => line.trim())
+            .filter(Boolean)
+            .join('\n');
+    }
+
+    function currentSamplePromptText(config) {
+        const raw = config.sample_prompts;
+        if (typeof raw === 'string' && raw.endsWith('.txt')) {
+            samplePromptsPath = raw;
+            return FORM_UI_DEFAULTS.sample_prompts;
+        }
+        return typeof raw === 'string' ? raw : FORM_UI_DEFAULTS.sample_prompts;
+    }
+
+    async function loadSamplePrompts(filePath = samplePromptsPath) {
+        if (location.protocol === 'file:') return;
+        try {
+            const data = await api(`/api/config/sample-prompts?file=${encodeURIComponent(filePath || samplePromptsPath)}`);
+            samplePromptsPath = data.file || samplePromptsPath;
+            samplePromptsContent = data.content || '';
+            const input = document.querySelector('#config-form .field-input[data-key="sample_prompts"]');
+            if (input) {
+                input.value = samplePromptsContent;
+            }
+        } catch (e) {
+            console.warn('读取预览提示词失败:', e);
+        }
+    }
+
+    async function saveSamplePrompts(content) {
+        const res = await api('/api/config/sample-prompts', {
+            method: 'PUT',
+            body: JSON.stringify({ file: samplePromptsPath, content }),
+        });
+        if (!res.ok) {
+            throw new Error(res.error || '保存预览提示词失败');
+        }
+        samplePromptsPath = res.file || samplePromptsPath;
+        samplePromptsContent = res.content || '';
+        return res;
+    }
+
     function importTomlFile() {
+        if (!confirmDiscardTomlChanges('当前 TOML 有未保存修改，导入会覆盖编辑器内容。是否继续？')) {
+            return;
+        }
         const input = document.getElementById('toml-import-input');
         if (!input) return;
         input.value = '';
@@ -1767,12 +2410,14 @@
         const reader = new FileReader();
         reader.onload = () => {
             currentTomlFile = '';
+            tomlSavedContent = '';
             document.getElementById('toml-current-file').textContent = `未保存导入: ${file.name}`;
             document.getElementById('toml-file-select').value = '';
             document.getElementById('toml-editor').value = reader.result || '';
             setTomlEditorLocked(false);
             updateTomlSelectionUI('');
             applyTomlLockState('');
+            updateTomlDirtyState();
             setTomlStatus('ok', `已导入 ${file.name}，点击保存或另存为写入项目`, { persist: true });
         };
         reader.onerror = () => {
@@ -1800,17 +2445,21 @@
     async function saveTomlAs() {
         const editor = document.getElementById('toml-editor');
         const currentFile = currentTomlFile;
-        const target = prompt('另存为 configs/ 下的 TOML 路径:', suggestTomlSaveAsPath(currentFile));
+        const target = await showTomlSaveAsDialog(currentFile);
         if (target === null) return;
 
         const file = normalizeTomlSaveAsPath(target);
         if (!file) {
-            setTomlStatus('error', '另存为失败: 文件路径不能为空');
+            setTomlStatus('error', '保存新配置失败: 请先输入新的配置名称');
             return;
         }
-        if (tomlFiles.includes(file) && file !== currentFile) {
-            const overwrite = confirm(`${file} 已存在，是否覆盖?`);
-            if (!overwrite) return;
+        if (file === currentFile) {
+            setTomlStatus('error', '保存新配置失败: 新配置不能和当前选中文件同名');
+            return;
+        }
+        if (tomlFiles.includes(file)) {
+            setTomlStatus('error', `${file} 已存在，请换一个新的配置名称`);
+            return;
         }
 
         try {
@@ -1823,21 +2472,48 @@
                 return;
             }
 
+            tomlSavedContent = editor.value;
             await loadTomlFileList(file);
-            setTomlStatus('ok', `已另存为 ${file}`);
+            updateTomlDirtyState();
+            setTomlStatus('ok', `已保存新配置: ${file}`);
         } catch (e) {
             setTomlStatus('error', '请求失败: ' + e.message);
         }
     }
 
-    function suggestTomlSaveAsPath(currentFile) {
-        if (currentFile) {
-            if (currentFile.startsWith('configs/imported/')) {
-                return currentFile.replace(/\.toml$/i, '_copy.toml');
-            }
-            return `configs/imported/${exportTomlFilename(currentFile).replace(/\.toml$/i, '_copy.toml')}`;
-        }
-        return 'configs/imported/custom_copy.toml';
+    async function showTomlSaveAsDialog(currentFile) {
+        const wrap = document.createElement('div');
+        wrap.className = 'toml-save-as-dialog-body';
+
+        const label = document.createElement('label');
+        label.className = 'history-task-dialog-field';
+        const labelText = document.createElement('span');
+        labelText.textContent = '新配置名称或 configs/ 路径';
+        const input = document.createElement('input');
+        input.type = 'text';
+        input.value = '';
+        input.placeholder = '例如 rokkotsu_v2 或 configs/imported/rokkotsu_v2.toml';
+        input.className = 'history-task-dialog-input';
+        label.append(labelText, input);
+
+        const hint = document.createElement('p');
+        hint.className = 'toml-save-as-hint';
+        hint.textContent = '只填写文件名时会保存到 configs/imported/；必须使用新名称，不会覆盖当前选中配置。';
+
+        const current = document.createElement('p');
+        current.className = 'toml-save-as-current';
+        current.textContent = currentFile ? `当前选中配置: ${currentFile}` : '当前没有选中的配置文件，将使用编辑器内容创建新配置。';
+
+        wrap.append(label, hint, current);
+
+        return showHistoryTaskDialog({
+            title: '保存新配置',
+            description: '输入一个新名称，确认后创建新的 TOML 配置文件。',
+            body: wrap,
+            confirmText: '创建配置文件',
+            onOpen: () => input.focus(),
+            getValue: () => input.value,
+        });
     }
 
     function normalizeTomlSaveAsPath(rawPath) {
@@ -1859,6 +2535,24 @@
         return base.toLowerCase().endsWith('.toml') ? base : `${base}.toml`;
     }
 
+    function reorderTomlFileGroups(groups) {
+        const scoreGroup = (group) => {
+            if (group.user_managed) return 30;
+            if (group.id === 'gui_methods') return 10;
+            if (group.id === 'imported' || group.methods_subdir === 'imported') return 20;
+            if (group.id === 'datasets') return 40;
+            if (group.locked || group.group_locked || group.system_locked) return 90;
+            return 50;
+        };
+        return [...(groups || [])]
+            .filter((group) => group.user_managed || (group.files || []).length > 0)
+            .sort((a, b) => {
+                const delta = scoreGroup(a) - scoreGroup(b);
+                if (delta !== 0) return delta;
+                return String(a.label || a.id).localeCompare(String(b.label || b.id), 'zh-CN');
+            });
+    }
+
     function populateTomlFileSelect(groups) {
         const sel = document.getElementById('toml-file-select');
         const prev = sel.value;
@@ -1869,7 +2563,7 @@
             for (const item of group.files || []) {
                 const opt = document.createElement('option');
                 opt.value = item.path;
-                opt.textContent = `${item.locked ? '锁定 / ' : ''}${item.path}`;
+                opt.textContent = `${tomlLockLabel(item) ? `${tomlLockLabel(item)} / ` : ''}${item.path}`;
                 opt.dataset.locked = item.locked ? '1' : '0';
                 optgroup.appendChild(opt);
             }
@@ -1887,9 +2581,20 @@
         container.innerHTML = '';
         const stored = readTomlGroupState();
 
+        const toolbar = document.createElement('div');
+        toolbar.className = 'toml-group-toolbar';
+        const createBtn = document.createElement('button');
+        createBtn.type = 'button';
+        createBtn.className = 'toml-group-action-btn';
+        createBtn.textContent = '新建分组';
+        createBtn.addEventListener('click', createTomlGroup);
+        toolbar.appendChild(createBtn);
+        container.appendChild(toolbar);
+
         for (const group of groups) {
             const details = document.createElement('details');
             details.className = 'toml-file-group';
+            if (group.locked) details.classList.add('readonly');
             details.dataset.groupId = group.id;
             details.open = stored[group.id] ?? Boolean(group.open);
             details.addEventListener('toggle', () => {
@@ -1902,31 +2607,96 @@
             const title = document.createElement('span');
             title.textContent = `${group.label || group.id} (${(group.files || []).length})`;
             summary.appendChild(title);
+            const actions = createTomlGroupActions(group);
+            if (actions) summary.appendChild(actions);
+            if (group.lockable) {
+                const groupLockBtn = document.createElement('button');
+                groupLockBtn.type = 'button';
+                groupLockBtn.className = 'toml-group-lock-btn';
+                groupLockBtn.textContent = group.user_group_locked ? '解除分组锁定' : '锁定分组';
+                groupLockBtn.title = group.user_group_locked
+                    ? '解除该分组的用户锁定'
+                    : '锁定该分组内所有文件，防止误保存';
+                groupLockBtn.addEventListener('click', (event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    toggleTomlGroupLock(group);
+                });
+                summary.appendChild(groupLockBtn);
+            }
             if (group.locked) {
                 const badge = document.createElement('em');
-                badge.textContent = '锁定';
+                badge.textContent = group.user_group_locked ? '分组锁定' : '锁定';
                 summary.appendChild(badge);
             }
             details.appendChild(summary);
 
             const list = document.createElement('div');
             list.className = 'toml-file-list';
-            for (const item of group.files || []) {
-                list.appendChild(createTomlFileButton(item));
+            const files = group.files || [];
+            if (!files.length) {
+                const empty = document.createElement('div');
+                empty.className = 'toml-file-group-empty';
+                empty.textContent = group.user_managed ? '空分组，可使用“移动”放入当前配置。' : '暂无配置文件。';
+                list.appendChild(empty);
             }
+            files.forEach((item, index) => {
+                list.appendChild(createTomlFileButton(item, group, index, files.length));
+            });
             details.appendChild(list);
             container.appendChild(details);
         }
         updateTomlSelectionUI(currentTomlFile);
     }
 
-    function createTomlFileButton(item) {
+    function createTomlGroupActions(group) {
+        if (!group.user_managed && !group.renamable && !group.deletable) return null;
+        const wrap = document.createElement('span');
+        wrap.className = 'toml-group-actions';
+
+        if (group.renamable) {
+            wrap.appendChild(createTomlGroupActionButton('重命名', () => renameTomlGroup(group), {
+                title: '重命名这个自定义分组',
+            }));
+        }
+        if (group.deletable) {
+            wrap.appendChild(createTomlGroupActionButton('删除空组', () => deleteTomlGroup(group), {
+                disabled: (group.files || []).length > 0,
+                title: (group.files || []).length > 0 ? '分组内还有配置文件，不能删除' : '删除这个空分组',
+                danger: true,
+            }));
+        }
+        return wrap;
+    }
+
+    function createTomlGroupActionButton(label, handler, options = {}) {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = ['toml-group-action-btn', options.danger ? 'danger' : ''].filter(Boolean).join(' ');
+        btn.textContent = label;
+        btn.disabled = Boolean(options.disabled);
+        btn.title = options.title || label;
+        btn.addEventListener('click', (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            if (!btn.disabled) handler();
+        });
+        return btn;
+    }
+
+    function createTomlFileButton(item, group = null, index = 0, total = 1) {
+        const row = document.createElement('div');
+        row.className = 'toml-file-row-wrap';
+        row.dataset.file = item.path;
+        row.dataset.groupId = group?.id || item.group || '';
+
         const btn = document.createElement('button');
         btn.type = 'button';
         btn.className = 'toml-file-item';
+        if (item.locked) btn.classList.add('readonly');
         btn.dataset.file = item.path;
         btn.title = item.path;
-        btn.addEventListener('click', () => loadTomlFile(item.path, { applyTrainable: true }));
+        btn.addEventListener('click', () => loadTomlFile(item.path));
 
         const name = document.createElement('span');
         name.className = 'toml-file-name';
@@ -1936,11 +2706,37 @@
         const meta = document.createElement('span');
         meta.className = 'toml-file-meta';
         const tags = [];
-        if (item.locked) tags.push('锁定');
-        if (item.trainable) tags.push('可训练');
-        if (item.methods_subdir) tags.push(item.methods_subdir);
+        if (currentTrainingSource.file === item.path) tags.push('当前训练');
+        const lockLabel = tomlLockLabel(item);
+        if (lockLabel) tags.push(lockLabel);
+        tags.push(item.trainable ? '可训练' : '非训练');
+        tags.push(item.path);
         meta.textContent = tags.join(' / ');
         btn.appendChild(meta);
+        row.appendChild(btn);
+
+        if (group && total > 1) {
+            const actions = document.createElement('div');
+            actions.className = 'toml-file-order-actions';
+            actions.appendChild(createTomlFileOrderButton('↑', '上移', item, group, 'up', index <= 0));
+            actions.appendChild(createTomlFileOrderButton('↓', '下移', item, group, 'down', index >= total - 1));
+            row.appendChild(actions);
+        }
+        return row;
+    }
+
+    function createTomlFileOrderButton(label, title, item, group, direction, disabled) {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'toml-file-order-btn';
+        btn.textContent = label;
+        btn.title = `${title}: ${item.label || item.path}`;
+        btn.disabled = Boolean(disabled);
+        btn.addEventListener('click', (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            if (!btn.disabled) reorderTomlFileInGroup(item.path, group.id, direction);
+        });
         return btn;
     }
 
@@ -1949,12 +2745,116 @@
             btn.classList.toggle('active', btn.dataset.file === filePath);
         });
         const label = document.getElementById('toml-current-file');
-        if (label && filePath) label.textContent = filePath;
+        if (label) label.textContent = filePath || '未保存导入内容';
         const applyBtn = document.getElementById('btn-apply-toml');
         if (applyBtn) {
             const meta = tomlFileMeta[filePath];
-            applyBtn.disabled = !meta?.trainable;
-            applyBtn.title = meta?.trainable ? '将该配置作为当前表单和训练入口' : '该文件不是完整训练配置';
+            const dirty = hasPendingConfigChanges(filePath);
+            applyBtn.disabled = !meta?.trainable || dirty;
+            applyBtn.title = dirty
+                ? '当前配置尚未保存，请先保存或另存为'
+                : (meta?.trainable ? '将该配置作为当前表单和训练入口' : '该文件不是完整训练配置');
+        }
+        updateTomlBadges(filePath);
+    }
+
+    function isTomlDirty() {
+        const editor = document.getElementById('toml-editor');
+        if (!editor) return false;
+        return editor.value !== tomlSavedContent;
+    }
+
+    function hasUnsavedFormChanges(filePath = currentTomlFile) {
+        if (!filePath || currentTrainingSource.file !== filePath) return false;
+        if (!currentConfig || Object.keys(currentConfig).length === 0) return false;
+        return Object.keys(collectChangedFormValues()).length > 0;
+    }
+
+    function hasPendingConfigChanges(filePath = currentTomlFile) {
+        return isTomlDirty() || hasUnsavedFormChanges(filePath);
+    }
+
+    function confirmDiscardTomlChanges(message) {
+        if (!hasPendingConfigChanges(currentTomlFile)) return true;
+        return confirm(message);
+    }
+
+    function updateTomlDirtyState() {
+        updateTomlBadges(currentTomlFile);
+        updateTomlActionState(currentTomlFile);
+    }
+
+    function updateTomlBadges(filePath) {
+        const meta = tomlFileMeta[filePath];
+        setBadge('toml-current-badge', Boolean(filePath && currentTrainingSource.file === filePath), '当前训练');
+        setBadge('toml-trainable-badge', Boolean(filePath), meta?.trainable ? '可训练' : '非训练');
+        setBadge('toml-lock-badge', Boolean(meta?.locked), tomlLockLabel(meta) || '只读');
+        setBadge('toml-dirty-badge', hasPendingConfigChanges(filePath), '未保存');
+    }
+
+    function setBadge(id, visible, text) {
+        const badge = document.getElementById(id);
+        if (!badge) return;
+        badge.hidden = !visible;
+        badge.textContent = text;
+    }
+
+    function updateTomlActionState(filePath) {
+        const meta = tomlFileMeta[filePath];
+        const editorDirty = isTomlDirty();
+        const formDirty = hasUnsavedFormChanges(filePath);
+        const dirty = editorDirty || formDirty;
+        const saveBtn = document.getElementById('btn-save-toml');
+        if (saveBtn) {
+            saveBtn.disabled = Boolean(meta?.locked) || !filePath || !dirty;
+            saveBtn.title = meta?.locked
+                ? '该配置文件已锁定，请使用新名称保存新配置后编辑'
+                : (dirty
+                    ? (formDirty ? '保存左侧表单修改到当前 TOML' : '保存当前 TOML 修改')
+                    : '当前配置没有未保存修改');
+        }
+        const applyBtn = document.getElementById('btn-apply-toml');
+        if (applyBtn) {
+            applyBtn.disabled = !meta?.trainable || dirty;
+            applyBtn.title = dirty
+                ? '当前配置尚未保存，请先保存更新当前选中配置或保存新配置'
+                : (meta?.trainable ? '加载渲染配置文件中的配置，并作为当前训练入口' : '该文件不是完整训练配置');
+        }
+        const moveBtn = document.getElementById('btn-move-toml-group');
+        if (moveBtn) {
+            const canMove = Boolean(filePath && meta && !meta.locked && !dirty && getMovableTomlGroups(meta.group).length > 0);
+            moveBtn.disabled = !canMove;
+            moveBtn.title = dirty
+                ? '当前配置尚未保存，请先保存或放弃修改后再移动分组位置'
+                : (meta?.locked
+                    ? `${tomlLockLabel(meta) || '只读'}配置不能移动分组位置`
+                    : (canMove ? '选择目标分组并移动当前配置' : '当前没有其他可移入的分组'));
+        }
+        const reloadBtn = document.getElementById('btn-reload-toml');
+        if (reloadBtn) reloadBtn.disabled = !filePath;
+        const lockBtn = document.getElementById('btn-lock-toml');
+        if (lockBtn) {
+            const hasFile = Boolean(filePath && meta);
+            const isSystemOrGroupLocked = Boolean(meta?.system_locked || meta?.group_locked);
+            lockBtn.disabled = !hasFile || isSystemOrGroupLocked || dirty;
+            lockBtn.textContent = meta?.user_locked ? '解除锁定' : '锁定当前文件';
+            lockBtn.title = dirty
+                ? '当前配置尚未保存，请先保存更新当前选中配置或保存新配置'
+                : lockTomlButtonTitle(meta);
+        }
+        const deleteBtn = document.getElementById('btn-delete-toml');
+        if (deleteBtn) {
+            deleteBtn.disabled = !filePath || !meta || Boolean(meta.locked) || dirty;
+            deleteBtn.title = dirty
+                ? '当前配置尚未保存，请先保存或放弃修改后再删除'
+                : deleteTomlButtonTitle(meta);
+        }
+        const restoreBtn = document.getElementById('btn-restore-system-toml');
+        if (restoreBtn) {
+            restoreBtn.disabled = dirty;
+            restoreBtn.title = dirty
+                ? '当前配置尚未保存，请先保存更新当前选中配置或保存新配置'
+                : '从项目内置版本还原系统预设；还原前会自动备份当前文件';
         }
     }
 
@@ -1977,19 +2877,37 @@
     function applyTomlLockState(filePath) {
         const locked = isTomlLocked(filePath);
         setTomlEditorLocked(locked);
-        const badge = document.getElementById('toml-lock-badge');
-        if (badge) badge.hidden = !locked;
-        const saveBtn = document.getElementById('btn-save-toml');
-        if (saveBtn) {
-            saveBtn.disabled = locked || !filePath;
-            saveBtn.title = locked ? '该配置文件已锁定，请另存为副本后编辑' : '';
-        }
+        updateTomlActionState(filePath);
     }
 
     function setTomlEditorLocked(locked) {
         const editor = document.getElementById('toml-editor');
         editor.readOnly = locked;
-        editor.title = locked ? '该配置文件已锁定，只能导出或另存为副本' : '';
+        editor.title = locked ? '该配置文件已锁定，只能导出或使用新名称保存新配置' : '';
+    }
+
+    function tomlLockLabel(meta) {
+        if (!meta?.locked) return '';
+        if (meta.system_locked) return '系统只读';
+        if (meta.user_locked) return '用户锁定';
+        if (meta.user_group_locked) return '分组锁定';
+        if (meta.group_locked) return '分组只读';
+        return meta.lock_reason_label || '只读';
+    }
+
+    function lockTomlButtonTitle(meta) {
+        if (!meta) return '请先选择一个配置文件';
+        if (meta.system_locked) return '系统预设已内置锁定，不能手动解除';
+        if (meta.group_locked) return '该文件属于只读分组，不能手动解除';
+        if (meta.user_group_locked) return '该文件所在分组已锁定，请在分组标题解除锁定';
+        if (meta.user_locked) return '解除你为该文件设置的锁定';
+        return '锁定当前文件，防止误保存';
+    }
+
+    function deleteTomlButtonTitle(meta) {
+        if (!meta) return '请先选择一个配置文件';
+        if (meta.locked) return `${tomlLockLabel(meta) || '只读'}配置不能删除`;
+        return '删除当前选中的配置文件';
     }
 
     function setTomlStatus(cls, text, options = {}) {
@@ -2011,8 +2929,13 @@
     async function applyTomlToConfig(options = {}) {
         const file = currentTomlFile || val('toml-file-select');
         const meta = tomlFileMeta[file];
+        if (hasPendingConfigChanges(file)) {
+            setTomlStatus('error', '当前配置尚未保存，请先保存更新当前选中配置或保存新配置，再加载渲染配置文件中的配置');
+            updateTomlActionState(file);
+            return;
+        }
         if (!meta?.trainable) {
-            setTomlStatus('error', '该文件不是完整训练配置，不能应用到表单');
+            setTomlStatus('error', '该文件不是完整训练配置，不能加载渲染配置文件中的配置');
             return;
         }
 
@@ -2023,15 +2946,417 @@
         };
 
         if (meta.methods_subdir === 'gui-methods') {
+            const methodFamily = VARIANT_METHOD_FAMILY[meta.method] || meta.method || 'lora';
+            const methodSelect = document.getElementById('method-select');
+            if ([...methodSelect.options].some((opt) => opt.value === methodFamily)) {
+                methodSelect.value = methodFamily;
+            }
             const variantSelect = document.getElementById('variant-select');
+            if (![...variantSelect.options].some((opt) => opt.value === meta.method)) {
+                const variants = await api(`/api/methods/${encodeURIComponent(methodFamily)}/variants`);
+                populateSelect('variant-select', variants, meta.method);
+            }
             if ([...variantSelect.options].some((opt) => opt.value === meta.method)) {
                 variantSelect.value = meta.method;
             }
         }
 
         await loadConfig();
+        renderTomlFileGroups(reorderTomlFileGroups(tomlFileGroups));
+        updateTomlDirtyState();
         if (!options.silent) {
             setTomlStatus('ok', `已应用 ${meta.path} 到表单`);
+        }
+    }
+
+    async function toggleTomlUserLock() {
+        const file = currentTomlFile || val('toml-file-select');
+        const meta = tomlFileMeta[file];
+        if (!file || !meta) {
+            setTomlStatus('error', '请先选择一个配置文件');
+            return;
+        }
+        if (hasPendingConfigChanges(file)) {
+            setTomlStatus('error', '当前配置尚未保存，请先保存更新当前选中配置或保存新配置，再调整锁定');
+            updateTomlActionState(file);
+            return;
+        }
+        if (meta.system_locked) {
+            setTomlStatus('error', '系统预设已内置锁定，不能手动解除');
+            return;
+        }
+        if (meta.group_locked) {
+            setTomlStatus('error', '该文件属于只读分组，不能手动解除');
+            return;
+        }
+        if (meta.user_group_locked) {
+            setTomlStatus('error', '该文件所在分组已锁定，请在分组标题解除锁定');
+            return;
+        }
+
+        const nextLocked = !meta.user_locked;
+        const message = nextLocked
+            ? `锁定 ${file}？锁定后不能直接保存，仍可使用新名称保存新配置。`
+            : `解除 ${file} 的用户锁定？解除后可以直接编辑保存。`;
+        if (!confirm(message)) return;
+
+        try {
+            const res = await api('/api/config/lock', {
+                method: 'POST',
+                body: JSON.stringify({ file, locked: nextLocked }),
+            });
+            if (!res.ok) {
+                setTomlStatus('error', res.error || '锁定操作失败');
+                if (res.meta) tomlFileMeta[file] = res.meta;
+                updateTomlDirtyState();
+                return;
+            }
+            if (res.meta) tomlFileMeta[file] = res.meta;
+            await loadTomlFileList(file);
+            applyTomlLockState(file);
+            updateTomlDirtyState();
+            setTomlStatus('ok', res.message || (nextLocked ? '已锁定当前文件' : '已解除用户锁定'));
+        } catch (e) {
+            setTomlStatus('error', '请求失败: ' + e.message);
+        }
+    }
+
+    async function toggleTomlGroupLock(groupOrId) {
+        if (!confirmDiscardTomlChanges('当前 TOML 有未保存修改，调整分组锁定前会丢失这些修改。是否继续？')) {
+            return;
+        }
+        const group = typeof groupOrId === 'string'
+            ? tomlFileGroups.find((item) => item.id === groupOrId)
+            : groupOrId;
+        if (!group) {
+            setTomlStatus('error', '分组不存在，请先刷新文件列表');
+            return;
+        }
+        if (!group.lockable) {
+            setTomlStatus('error', '该分组不能手动锁定或解锁');
+            return;
+        }
+
+        const nextLocked = !group.user_group_locked;
+        const sourceGroupIds = group.sourceGroupIds?.length ? group.sourceGroupIds : [group.id];
+        const message = nextLocked
+            ? `锁定分组“${group.label || group.id}”？该分组内文件将不能直接保存，仍可使用新名称保存新配置。`
+            : `解除分组“${group.label || group.id}”的锁定？解除后该分组内文件可恢复编辑保存。`;
+        if (!confirm(message)) return;
+
+        try {
+            let lastResponse = null;
+            for (const groupId of sourceGroupIds) {
+                const res = await api('/api/config/group-lock', {
+                    method: 'POST',
+                    body: JSON.stringify({ group: groupId, locked: nextLocked }),
+                });
+                if (!res.ok) {
+                    setTomlStatus('error', res.error || '分组锁定操作失败');
+                    return;
+                }
+                lastResponse = res;
+            }
+            await loadTomlFileList(currentTomlFile || '');
+            applyTomlLockState(currentTomlFile);
+            updateTomlDirtyState();
+            setTomlStatus('ok', lastResponse?.message || (nextLocked ? '已锁定当前分组' : '已解除分组锁定'));
+        } catch (e) {
+            setTomlStatus('error', '请求失败: ' + e.message);
+        }
+    }
+
+    async function createTomlGroup() {
+        const label = await showHistoryTaskInputDialog({
+            title: '新建配置分组',
+            description: '用于整理右侧 TOML 配置文件。新分组默认可训练，可移入 imported 配置。',
+            label: '分组名称',
+            placeholder: '例如：角色配置 / 试验配置 / 正式配置',
+            confirmText: '创建分组',
+        });
+        if (label === null) return;
+        if (!label.trim()) {
+            setTomlStatus('error', '分组名称不能为空');
+            return;
+        }
+        try {
+            const res = await api('/api/config/file-groups', {
+                method: 'POST',
+                body: JSON.stringify({ label: label.trim() }),
+            });
+            if (!res.ok) {
+                setTomlStatus('error', res.error || '创建分组失败');
+                return;
+            }
+            await loadTomlFileList(currentTomlFile || '');
+            setTomlStatus('ok', res.message || '分组已创建');
+        } catch (e) {
+            setTomlStatus('error', '请求失败: ' + e.message);
+        }
+    }
+
+    async function renameTomlGroup(group) {
+        const label = await showHistoryTaskInputDialog({
+            title: '重命名配置分组',
+            description: '只修改分组显示名称，不会改动配置文件路径。',
+            label: '分组名称',
+            value: group.label || group.id,
+            placeholder: '例如：正式配置',
+            confirmText: '保存名称',
+        });
+        if (label === null) return;
+        if (!label.trim()) {
+            setTomlStatus('error', '分组名称不能为空');
+            return;
+        }
+        try {
+            const res = await api(`/api/config/file-groups/${encodeURIComponent(group.id)}`, {
+                method: 'PATCH',
+                body: JSON.stringify({ label: label.trim() }),
+            });
+            if (!res.ok) {
+                setTomlStatus('error', res.error || '重命名分组失败');
+                return;
+            }
+            await loadTomlFileList(currentTomlFile || '');
+            setTomlStatus('ok', res.message || '分组已重命名');
+        } catch (e) {
+            setTomlStatus('error', '请求失败: ' + e.message);
+        }
+    }
+
+    async function moveCurrentTomlToGroup() {
+        const file = currentTomlFile || val('toml-file-select');
+        if (!file) {
+            setTomlStatus('error', '请先选择一个配置文件');
+            return;
+        }
+        if (hasPendingConfigChanges(file)) {
+            setTomlStatus('error', '当前配置尚未保存，请先保存或放弃修改后再移动分组');
+            updateTomlActionState(file);
+            return;
+        }
+        const meta = tomlFileMeta[file];
+        if (meta?.locked) {
+            setTomlStatus('error', `${tomlLockLabel(meta) || '只读'}配置不能移动分组`);
+            return;
+        }
+
+        const groups = getMovableTomlGroups(meta?.group);
+        if (!groups.length) {
+            setTomlStatus('error', '当前没有其他可移入的分组，请先新建分组或解除目标分组锁定');
+            return;
+        }
+        const targetGroupId = await showMoveTomlDialog(file, meta, groups);
+        if (!targetGroupId) return;
+        try {
+            const res = await api('/api/config/file-groups/move-file', {
+                method: 'POST',
+                body: JSON.stringify({ file, group: targetGroupId }),
+            });
+            if (!res.ok) {
+                setTomlStatus('error', res.error || '移动分组失败');
+                return;
+            }
+            await loadTomlFileList(file);
+            setTomlStatus('ok', res.message || '配置已移动到分组');
+        } catch (e) {
+            setTomlStatus('error', '请求失败: ' + e.message);
+        }
+    }
+
+    function getMovableTomlGroups(currentGroupId = '') {
+        return reorderTomlFileGroups(tomlFileGroups)
+            .filter((group) => group.movable && !group.locked && !group.user_group_locked && group.id !== currentGroupId);
+    }
+
+    function showMoveTomlDialog(file, meta, groups) {
+        const wrap = document.createElement('div');
+        wrap.className = 'toml-move-dialog-body';
+
+        const current = document.createElement('p');
+        current.className = 'toml-move-current';
+        current.textContent = `当前配置: ${file}`;
+        wrap.appendChild(current);
+
+        const list = document.createElement('div');
+        list.className = 'toml-move-option-list';
+        const radios = [];
+        for (const group of groups) {
+            const label = document.createElement('label');
+            label.className = 'toml-move-option';
+
+            const input = document.createElement('input');
+            input.type = 'radio';
+            input.name = 'toml-move-target-group';
+            input.value = group.id;
+            input.checked = group.id !== meta?.group && !radios.some((item) => item.checked);
+            radios.push(input);
+
+            const text = document.createElement('span');
+            const title = document.createElement('strong');
+            title.textContent = group.label || group.id;
+            const detail = document.createElement('small');
+            const count = (group.files || []).length;
+            detail.textContent = `${count} 个配置`;
+            text.append(title, detail);
+
+            label.append(input, text);
+            list.appendChild(label);
+        }
+        wrap.appendChild(list);
+
+        return showHistoryTaskDialog({
+            title: '移动配置',
+            description: '选择目标分组后确认，配置文件路径不会改变，只调整右侧分组归属。',
+            body: wrap,
+            confirmText: '移动到分组',
+            onOpen: () => {
+                const checked = radios.find((item) => item.checked) || radios[0];
+                checked?.focus();
+            },
+            getValue: () => {
+                const checked = wrap.querySelector('input[name="toml-move-target-group"]:checked');
+                return checked?.value || '';
+            },
+        });
+    }
+
+    async function reorderTomlFileInGroup(file, groupId, direction) {
+        if (!file || !groupId) return;
+        if (hasPendingConfigChanges(currentTomlFile)) {
+            setTomlStatus('error', '当前配置尚未保存，请先保存或放弃修改后再调整排序');
+            updateTomlActionState(currentTomlFile);
+            return;
+        }
+        try {
+            const res = await api('/api/config/file-groups/reorder-file', {
+                method: 'POST',
+                body: JSON.stringify({ file, group: groupId, direction }),
+            });
+            if (!res.ok) {
+                setTomlStatus('error', res.error || '排序失败');
+                return;
+            }
+            await loadTomlFileList(currentTomlFile || file);
+            setTomlStatus('ok', res.message || '配置排序已更新');
+        } catch (e) {
+            setTomlStatus('error', '请求失败: ' + e.message);
+        }
+    }
+
+    async function deleteTomlGroup(group) {
+        if ((group.files || []).length > 0) {
+            setTomlStatus('error', '分组内还有配置文件，请先移动或删除文件');
+            return;
+        }
+        const ok = await showHistoryTaskConfirmDialog({
+            title: '删除配置分组',
+            description: group.label || group.id,
+            message: '只删除这个空分组，不会删除任何 TOML 文件。',
+            confirmText: '删除空分组',
+            danger: true,
+        });
+        if (!ok) return;
+        try {
+            const res = await api(`/api/config/file-groups/${encodeURIComponent(group.id)}`, {
+                method: 'DELETE',
+            });
+            if (!res.ok) {
+                setTomlStatus('error', res.error || '删除分组失败');
+                return;
+            }
+            await loadTomlFileList(currentTomlFile || '');
+            setTomlStatus('ok', res.message || '分组已删除');
+        } catch (e) {
+            setTomlStatus('error', '请求失败: ' + e.message);
+        }
+    }
+
+    async function deleteTomlFile() {
+        const file = currentTomlFile || val('toml-file-select');
+        const meta = tomlFileMeta[file];
+        if (!file || !meta) {
+            setTomlStatus('error', '请先选择一个配置文件');
+            return;
+        }
+        if (hasPendingConfigChanges(file)) {
+            setTomlStatus('error', '当前配置尚未保存，请先保存或放弃修改后再删除');
+            updateTomlActionState(file);
+            return;
+        }
+        if (meta.locked) {
+            setTomlStatus('error', `${tomlLockLabel(meta) || '只读'}配置不能删除`);
+            updateTomlActionState(file);
+            return;
+        }
+
+        const ok = confirm(
+            `删除当前配置文件？\n\n${file}\n\n此操作会从项目 configs 目录中删除该 TOML 文件，不能从 WebUI 直接撤销。`
+        );
+        if (!ok) return;
+
+        try {
+            const res = await api(`/api/config/raw?file=${encodeURIComponent(file)}`, {
+                method: 'DELETE',
+            });
+            if (!res.ok) {
+                setTomlStatus('error', res.error || '删除失败');
+                return;
+            }
+
+            if (currentTrainingSource.file === file) {
+                currentTrainingSource = {
+                    method: val('variant-select') || 'lora',
+                    methods_subdir: 'gui-methods',
+                    file: `configs/gui-methods/${val('variant-select') || 'lora'}.toml`,
+                };
+            }
+            currentTomlFile = '';
+            tomlSavedContent = '';
+            document.getElementById('toml-editor').value = '';
+            document.getElementById('toml-current-file').textContent = '未选择配置';
+            await loadTomlFileList('');
+            updateTomlDirtyState();
+            setTomlStatus('ok', `已删除配置: ${file}`, { persist: true });
+        } catch (e) {
+            setTomlStatus('error', '请求失败: ' + e.message);
+        }
+    }
+
+    async function restoreSystemTomlPresets() {
+        const file = currentTomlFile || val('toml-file-select');
+        const meta = tomlFileMeta[file];
+        if (hasPendingConfigChanges(file)) {
+            setTomlStatus('error', '当前配置尚未保存，请先保存更新当前选中配置或保存新配置，再还原系统预设');
+            updateTomlActionState(file);
+            return;
+        }
+
+        const currentHint = meta?.restorable ? `\n当前文件 ${file} 也会一起还原。` : '';
+        const ok = confirm(
+            `即将还原全部系统预设：base、presets、methods、gui-methods。${currentHint}\n\n还原会覆盖系统预设文件，但会先自动备份当前内容。\n用户导入/副本和数据集配置不会被还原。\n\n是否继续？`
+        );
+        if (!ok) return;
+
+        try {
+            const res = await api('/api/config/restore-system', {
+                method: 'POST',
+                body: JSON.stringify({}),
+            });
+            if (!res.ok) {
+                setTomlStatus('error', res.error || '还原失败');
+                return;
+            }
+
+            const preferredFile = file && tomlFiles.includes(file) ? file : '';
+            await loadTomlFileList(preferredFile);
+            const restoredCount = res.restored?.length || 0;
+            const skippedCount = res.skipped?.length || 0;
+            const backupText = res.backup_dir ? `，备份在 ${res.backup_dir}` : '';
+            setTomlStatus('ok', `已还原 ${restoredCount} 个系统预设，跳过 ${skippedCount} 个${backupText}`, { persist: true });
+        } catch (e) {
+            setTomlStatus('error', '请求失败: ' + e.message);
         }
     }
 
@@ -2044,12 +3369,19 @@
         const preflight = await runPreflight(variant, preset, methodsSubdir);
         if (!preflight) return;
         if (!preflight.ok) {
-            showPreflightDialog(preflight, false);
+            const action = await showPreflightDialog(preflight, false);
+            if (action === 'preprocess') {
+                await startPreprocessFromPreflight(preflight);
+            }
             return;
         }
         if ((preflight.summary?.warnings || 0) > 0) {
-            const shouldContinue = await showPreflightDialog(preflight, true);
-            if (!shouldContinue) return;
+            const action = await showPreflightDialog(preflight, true);
+            if (action === 'preprocess') {
+                await startPreprocessFromPreflight(preflight);
+                return;
+            }
+            if (action !== 'continue') return;
         }
         await startTrainingUnchecked(variant, preset, methodsSubdir);
     }
@@ -2075,7 +3407,14 @@
             if (res.ok) {
                 document.querySelector('[data-tab="training"]').click();
             } else {
-                alert(res.error || '启动失败');
+                if (res.preflight) {
+                    const action = await showPreflightDialog(res.preflight, false);
+                    if (action === 'preprocess') {
+                        await startPreprocessFromPreflight(res.preflight);
+                    }
+                } else {
+                    alert(res.error || '启动失败');
+                }
             }
         } catch (e) {
             alert('请求失败: ' + e.message);
@@ -2085,13 +3424,13 @@
     function showPreflightDialog(result, allowContinue) {
         const dialog = document.getElementById('preflight-dialog');
         if (!dialog) {
-            return Promise.resolve(allowContinue && confirm(preflightPlainText(result) + '\n\n是否继续训练?'));
+            return Promise.resolve(allowContinue && confirm(preflightPlainText(result) + '\n\n是否继续训练?') ? 'continue' : 'cancel');
         }
         renderPreflightResult(result, allowContinue);
         dialog.showModal();
         return new Promise((resolve) => {
             dialog.addEventListener('close', () => {
-                resolve(dialog.returnValue === 'continue');
+                resolve(dialog.returnValue || 'cancel');
             }, { once: true });
         });
     }
@@ -2100,16 +3439,22 @@
         const summary = document.getElementById('preflight-summary');
         const list = document.getElementById('preflight-results');
         const continueBtn = document.getElementById('btn-preflight-continue');
+        const preprocessBtn = document.getElementById('btn-preflight-preprocess');
         const errors = result.summary?.errors || 0;
         const warnings = result.summary?.warnings || 0;
         const checks = result.summary?.checks || 0;
+        const canPreprocess = preflightCanStartPreprocess(result);
 
         summary.className = `preflight-summary ${errors ? 'error' : warnings ? 'warning' : 'ok'}`;
-        summary.textContent = errors
-            ? `发现 ${errors} 个错误，已阻止训练。`
-            : warnings
-                ? `通过基础检查，但有 ${warnings} 个警告。`
-                : `基础路径检查通过，共 ${checks} 项。`;
+        if (errors && canPreprocess) {
+            summary.textContent = `发现 ${errors} 个错误：当前数据需要先预处理。点击“开始预处理”后，完成再启动训练。`;
+        } else {
+            summary.textContent = errors
+                ? `发现 ${errors} 个错误，已阻止训练。`
+                : warnings
+                    ? `通过基础检查，但有 ${warnings} 个警告。`
+                    : `基础路径检查通过，共 ${checks} 项。`;
+        }
 
         list.innerHTML = '';
         for (const item of result.checks || []) {
@@ -2138,9 +3483,50 @@
             list.appendChild(row);
         }
 
+        preprocessBtn.hidden = !canPreprocess;
+        preprocessBtn.disabled = !canPreprocess;
         continueBtn.hidden = !allowContinue;
         continueBtn.disabled = !allowContinue;
         continueBtn.textContent = warnings ? '忽略警告并继续训练' : '继续训练';
+    }
+
+    function preflightCanStartPreprocess(result) {
+        const checks = result.checks || [];
+        const errors = result.errors || [];
+        const allowedErrorKeys = new Set(['training_images', 'resized_image_dir']);
+        if (errors.some((item) => !allowedErrorKeys.has(item.key))) return false;
+        const sourceOk = checks.some((item) => item.key === 'source_image_dir' && item.level === 'ok');
+        if (!sourceOk) return false;
+        return checks.some((item) =>
+            ['training_images', 'resized_image_dir', 'lora_cache_dir', 'latent_cache', 'text_cache'].includes(item.key)
+            && ['error', 'warning'].includes(item.level)
+        );
+    }
+
+    async function startPreprocessFromPreflight(result) {
+        const variant = result.variant || currentTrainingSource.method || val('variant-select');
+        const preset = result.preset || val('preset-select');
+        const methodsSubdir = result.methods_subdir || currentTrainingSource.methods_subdir || 'gui-methods';
+        try {
+            const res = await api('/api/training/preprocess', {
+                method: 'POST',
+                body: JSON.stringify({
+                    variant,
+                    preset,
+                    methods_subdir: methodsSubdir,
+                    extra_args: [],
+                    train_after: true,
+                }),
+            });
+            if (!res.ok) {
+                alert(res.error || '预处理启动失败');
+                return;
+            }
+            document.querySelector('[data-tab="training"]').click();
+            appendLog(`[状态] ${res.message || '预处理已启动'}`);
+        } catch (e) {
+            alert('预处理请求失败: ' + e.message);
+        }
     }
 
     function preflightPlainText(result) {
@@ -2180,19 +3566,28 @@
     function handleWsMessage(msg) {
         switch (msg.type) {
             case 'log':
+                if (viewingHistoryTaskId) break;
                 markTrainingActivity(msg.ts);
                 appendLogRecord(msg);
                 break;
             case 'progress':
+                if (viewingHistoryTaskId) break;
                 updateProgress(msg);
                 break;
             case 'metrics':
+                if (viewingHistoryTaskId) break;
                 updateMetrics(msg);
                 break;
             case 'status':
+                if (viewingHistoryTaskId) {
+                    loadTrainingHistoryList();
+                    break;
+                }
                 updateStatus(msg);
+                loadTrainingHistoryList();
                 break;
             case 'system':
+                if (viewingHistoryTaskId) break;
                 updateSystem(msg);
                 break;
         }
@@ -2222,6 +3617,7 @@
     }
 
     async function replayTrainingLogs() {
+        if (viewingHistoryTaskId) return;
         try {
             const payload = await api(`/api/training/logs?after=${trainingRuntime.lastLogId}&limit=1000`);
             for (const record of payload.records || []) {
@@ -2237,6 +3633,7 @@
     }
 
     async function replayMetricsHistory() {
+        if (viewingHistoryTaskId) return;
         try {
             const records = await api('/api/training/metrics');
             for (const record of records || []) {
@@ -2274,6 +3671,7 @@
     }
 
     function updateProgress(msg) {
+        if (viewingHistoryTaskId) return;
         markTrainingActivity(msg.ts);
         const pct = msg.total > 0 ? (msg.current / msg.total * 100) : 0;
         document.getElementById('progress-bar').style.width = pct.toFixed(1) + '%';
@@ -2285,6 +3683,7 @@
     }
 
     function updateMetrics(msg) {
+        if (viewingHistoryTaskId) return;
         markTrainingActivity(msg.ts);
         if (msg.loss !== undefined) {
             document.getElementById('metric-loss').textContent = msg.loss.toFixed(5);
@@ -2300,16 +3699,34 @@
     }
 
     function updateStatus(msg) {
+        if (viewingHistoryTaskId) return;
         const dot = document.querySelector('.dot');
         const text = document.getElementById('status-text');
         const stopBtn = document.getElementById('btn-stop-training');
 
         dot.className = 'dot ' + msg.state;
         const stateMap = { idle: '空闲', running: '训练中', error: '错误', compiling: '编译中' };
-        text.textContent = stateMap[msg.state] || msg.state;
+        const jobLabel = msg.job === 'preprocess' ? '预处理中' : (stateMap[msg.state] || msg.state);
+        text.textContent = msg.state === 'running' ? jobLabel : (stateMap[msg.state] || msg.state);
         trainingRuntime.state = msg.state;
+        trainingRuntime.job = msg.job || trainingRuntime.job || '';
         if (msg.last_output_at) {
             markTrainingActivity(msg.last_output_at);
+        }
+        if (msg.output_dir !== undefined) {
+            trainingRuntime.outputDir = msg.output_dir || '';
+        }
+        if (msg.sample_dir !== undefined) {
+            trainingRuntime.sampleDir = msg.sample_dir || '';
+            if (previewSettings) {
+                previewSettings.current_task_sample_dir = trainingRuntime.sampleDir;
+                previewSettings.effective_training_dir = trainingRuntime.sampleDir || previewSettings.training_dir;
+                updatePreviewDirectorySummary();
+            }
+        }
+        if (msg.sample_config !== undefined) {
+            trainingRuntime.sampleConfig = msg.sample_config || null;
+            trainingSampleState = trainingRuntime.sampleConfig;
         }
 
         stopBtn.disabled = msg.state !== 'running';
@@ -2322,11 +3739,13 @@
         if (msg.state === 'idle' || msg.state === 'error') {
             document.getElementById('progress-bar').style.width = '0%';
             trainingRuntime.quietHintShown = false;
+            trainingRuntime.job = '';
         }
         refreshTrainingHealth();
     }
 
     function updateSystem(msg) {
+        if (viewingHistoryTaskId) return;
         if (msg.last_output_at) {
             markTrainingActivity(msg.last_output_at);
         }
@@ -2365,9 +3784,11 @@
             : null;
         ageEl.textContent = ageSeconds == null ? '-' : formatDuration(ageSeconds);
 
+        const jobName = trainingRuntime.job === 'preprocess' ? '预处理' : '训练';
+
         if (trainingRuntime.state !== 'running') {
             el.className = 'training-health';
-            el.textContent = '未运行训练。';
+            el.textContent = '未运行任务。';
             return;
         }
 
@@ -2376,14 +3797,14 @@
         if (ageSeconds == null) {
             el.className = 'training-health';
             el.textContent = gpuActive
-                ? `训练运行中，GPU ${gpu}% 活跃，等待第一条日志。`
-                : '训练运行中，等待日志和系统指标。';
+                ? `${jobName}运行中，GPU ${gpu}% 活跃，等待第一条日志。`
+                : `${jobName}运行中，等待日志和系统指标。`;
             return;
         }
 
         if (ageSeconds >= 180 && gpuActive) {
             el.className = 'training-health warning';
-            el.textContent = `已有 ${formatDuration(ageSeconds)} 没有新日志，但 GPU ${gpu}% 仍在工作；通常是单步较慢或训练脚本未输出进度。`;
+            el.textContent = `已有 ${formatDuration(ageSeconds)} 没有新日志，但 GPU ${gpu}% 仍在工作；通常是单步较慢或任务脚本未输出进度。`;
             if (!trainingRuntime.quietHintShown) {
                 appendLog(`[提示] ${el.textContent}`);
                 trainingRuntime.quietHintShown = true;
@@ -2399,8 +3820,8 @@
 
         el.className = 'training-health ok';
         el.textContent = gpu == null
-            ? `训练运行中，最近 ${formatDuration(ageSeconds)} 前收到输出。`
-            : `训练运行中，最近 ${formatDuration(ageSeconds)} 前收到输出，GPU ${gpu}%。`;
+            ? `${jobName}运行中，最近 ${formatDuration(ageSeconds)} 前收到输出。`
+            : `${jobName}运行中，最近 ${formatDuration(ageSeconds)} 前收到输出，GPU ${gpu}%。`;
     }
 
     function formatDuration(totalSeconds) {
@@ -2414,8 +3835,209 @@
         return restMinutes ? `${hours}h ${restMinutes}m` : `${hours}h`;
     }
 
+    // ── 预览图 ──
+    async function loadPreviewSettings() {
+        if (location.protocol === 'file:') return;
+        try {
+            previewSettings = await api('/api/preview/settings');
+            document.getElementById('preview-training-dir').value = previewSettings.training_dir || '';
+            document.getElementById('preview-inference-dir').value = previewSettings.inference_dir || '';
+            document.getElementById('preview-custom-dir').value = previewSettings.custom_dir || '';
+            updatePreviewDirectorySummary();
+        } catch (e) {
+            setPreviewStatus('读取路径设置失败: ' + e.message, 'error');
+        }
+    }
+
+    async function savePreviewSettings() {
+        try {
+            const res = await api('/api/preview/settings', {
+                method: 'PUT',
+                body: JSON.stringify({
+                    training_dir: val('preview-training-dir'),
+                    inference_dir: val('preview-inference-dir'),
+                    custom_dir: val('preview-custom-dir'),
+                }),
+            });
+            if (!res.ok) {
+                setPreviewStatus(res.error || '保存失败', 'error');
+                return;
+            }
+            setPreviewStatus(res.message || '路径设置已保存', 'ok');
+            await loadPreviewSettings();
+            await loadPreviewImages();
+        } catch (e) {
+            setPreviewStatus('保存失败: ' + e.message, 'error');
+        }
+    }
+
+    async function resetPreviewSettings() {
+        if (!previewSettings?.defaults) return;
+        document.getElementById('preview-training-dir').value = previewSettings.defaults.training_dir || 'output/ckpt/sample';
+        document.getElementById('preview-inference-dir').value = previewSettings.defaults.inference_dir || 'output/tests';
+        document.getElementById('preview-custom-dir').value = previewSettings.defaults.custom_dir || '';
+        await savePreviewSettings();
+    }
+
+    async function loadPreviewImages() {
+        if (location.protocol === 'file:') {
+            setPreviewEmpty('静态打开没有后端 API，无法读取项目预览图。');
+            return;
+        }
+        setPreviewLoading();
+        try {
+            if (!previewSettings) {
+                await loadPreviewSettings();
+            }
+            const payload = await api(`/api/preview/images?source=${encodeURIComponent(currentPreviewSource)}`);
+            if (!payload.ok) {
+                setPreviewEmpty(payload.error || '读取预览图失败');
+                return;
+            }
+            renderPreviewImages(payload);
+            trainingSampleState = payload.sample_config || trainingSampleState;
+        } catch (e) {
+            setPreviewEmpty('读取预览图失败: ' + e.message);
+        }
+    }
+
+    function setPreviewSource(source) {
+        currentPreviewSource = source || 'training';
+        document.querySelectorAll('.preview-source-btn').forEach((btn) => {
+            btn.classList.toggle('active', btn.dataset.previewSource === currentPreviewSource);
+        });
+        updatePreviewDirectorySummary();
+        loadPreviewImages();
+    }
+
+    function renderPreviewImages(payload) {
+        const grid = document.getElementById('preview-grid');
+        const empty = document.getElementById('preview-empty');
+        const title = document.getElementById('preview-title');
+        const subtitle = document.getElementById('preview-subtitle');
+        const count = document.getElementById('preview-count');
+
+        title.textContent = payload.label || previewSourceLabel(currentPreviewSource);
+        subtitle.textContent = payload.directory
+            ? `目录: ${payload.directory}`
+            : '尚未设置目录。';
+        count.textContent = `${payload.count || 0} 张`;
+        document.getElementById('preview-current-dir').textContent = payload.directory || '-';
+
+        grid.innerHTML = '';
+        if (!payload.images?.length) {
+            setPreviewEmpty(previewEmptyMessage(payload));
+            return;
+        }
+        empty.hidden = true;
+        for (const image of payload.images) {
+            grid.appendChild(createPreviewCard(image));
+        }
+    }
+
+    function createPreviewCard(image) {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'preview-card';
+        button.addEventListener('click', () => openPreviewDialog(image));
+
+        const img = document.createElement('img');
+        img.src = image.url;
+        img.alt = image.name;
+        img.loading = 'lazy';
+        img.addEventListener('error', () => {
+            button.classList.add('preview-card-error');
+            img.alt = '图片加载失败';
+        });
+
+        const meta = document.createElement('div');
+        meta.className = 'preview-card-meta';
+        const title = document.createElement('strong');
+        title.textContent = image.name;
+        const detail = document.createElement('span');
+        const dims = image.width && image.height ? `${image.width}x${image.height}` : '尺寸未知';
+        detail.textContent = `${dims} · ${formatBytes(image.size_bytes)} · ${image.mtime_text || ''}`;
+        meta.append(title, detail);
+
+        button.append(img, meta);
+        return button;
+    }
+
+    function openPreviewDialog(image) {
+        const dialog = document.getElementById('preview-dialog');
+        const img = document.getElementById('preview-dialog-image');
+        document.getElementById('preview-dialog-title').textContent = image.name;
+        const dims = image.width && image.height ? `${image.width}x${image.height}` : '尺寸未知';
+        document.getElementById('preview-dialog-meta').textContent =
+            `${image.file} · ${dims} · ${formatBytes(image.size_bytes)} · ${image.mtime_text || ''}`;
+        img.src = image.url;
+        img.alt = image.name;
+        if (dialog?.showModal) {
+            dialog.showModal();
+        }
+    }
+
+    function setPreviewLoading() {
+        document.getElementById('preview-count').textContent = '读取中';
+        document.getElementById('preview-grid').innerHTML = '';
+        setPreviewEmpty('正在读取预览图...');
+    }
+
+    function setPreviewEmpty(message) {
+        const empty = document.getElementById('preview-empty');
+        if (!empty) return;
+        empty.textContent = message;
+        empty.hidden = false;
+        document.getElementById('preview-grid').innerHTML = '';
+    }
+
+    function previewEmptyMessage(payload) {
+        const base = payload.message || '暂无预览图。';
+        if (currentPreviewSource !== 'training') return base;
+        const cfg = payload.sample_config || trainingSampleState || trainingRuntime.sampleConfig || {};
+        const msg = cfg.message || '';
+        if (!msg || base.includes(msg)) return base;
+        if (cfg.enabled) return `${base} 如果训练刚开始，可能还没到达采样频率。`;
+        return `${base} ${msg}。`;
+    }
+
+    function updatePreviewDirectorySummary() {
+        const el = document.getElementById('preview-current-dir');
+        if (!el || !previewSettings) return;
+        if (currentPreviewSource === 'training') {
+            el.textContent = previewSettings.effective_training_dir || previewSettings.training_dir || '-';
+        } else if (currentPreviewSource === 'inference') {
+            el.textContent = previewSettings.inference_dir || '-';
+        } else {
+            el.textContent = previewSettings.custom_dir || '-';
+        }
+    }
+
+    function setPreviewStatus(text, state = '') {
+        const el = document.getElementById('preview-settings-status');
+        if (!el) return;
+        el.textContent = text;
+        el.className = `preview-status ${state}`.trim();
+    }
+
+    function previewSourceLabel(source) {
+        return {
+            training: '当前任务样张',
+            inference: '推理预览',
+            custom: '自定义路径',
+        }[source] || '预览图';
+    }
+
+    function formatBytes(bytes) {
+        const n = Number(bytes) || 0;
+        if (n < 1024) return `${n} B`;
+        if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
+        return `${(n / 1024 / 1024).toFixed(1)} MB`;
+    }
+
     // ── 状态轮询 ──
     async function pollStatus() {
+        if (viewingHistoryTaskId) return;
         try {
             const status = await api('/api/training/status');
             updateStatus({
@@ -2424,11 +4046,412 @@
                 preset: status.preset,
                 last_output_at: status.last_output_at,
                 last_log_id: status.last_log_id,
+                output_dir: status.output_dir,
+                sample_dir: status.sample_dir,
+                sample_config: status.sample_config,
             });
             if ((status.last_log_id || 0) > trainingRuntime.lastLogId) {
                 await replayTrainingLogs();
             }
         } catch (e) { /* ignore */ }
+    }
+
+    async function loadTrainingHistoryList() {
+        if (location.protocol === 'file:') return;
+        try {
+            const payload = await api('/api/training/history');
+            historyTasks = payload.tasks || [];
+            renderTrainingHistoryList();
+        } catch (e) {
+            const list = document.getElementById('task-history-list');
+            if (list) list.textContent = '读取任务列表失败';
+        }
+    }
+
+    function renderTrainingHistoryList() {
+        const list = document.getElementById('task-history-list');
+        if (!list) return;
+        list.innerHTML = '';
+        const visibleTasks = historyTasks.filter((task) => showArchivedHistory || !task.archived);
+        if (!visibleTasks.length) {
+            const empty = document.createElement('div');
+            empty.className = 'task-history-empty';
+            empty.textContent = historyTasks.length
+                ? '没有未归档任务。勾选“显示归档”可查看已归档记录。'
+                : '暂无历史任务。下一次训练启动后会自动记录。';
+            list.appendChild(empty);
+            return;
+        }
+        const groups = groupHistoryTasks(visibleTasks);
+        for (const group of groups) {
+            const section = document.createElement('section');
+            section.className = 'task-history-group';
+            const heading = document.createElement('div');
+            heading.className = 'task-history-group-title';
+            heading.textContent = `${group.name} · ${group.tasks.length}`;
+            section.appendChild(heading);
+            for (const task of group.tasks) {
+                section.appendChild(createHistoryTaskItem(task));
+            }
+            list.appendChild(section);
+        }
+    }
+
+    function groupHistoryTasks(tasks) {
+        const map = new Map();
+        for (const task of tasks) {
+            const group = (task.group || '').trim() || '未分组';
+            if (!map.has(group)) map.set(group, []);
+            map.get(group).push(task);
+        }
+        return Array.from(map.entries())
+            .map(([name, groupTasks]) => ({ name, tasks: groupTasks }))
+            .sort((a, b) => {
+                if (a.name === '未分组') return -1;
+                if (b.name === '未分组') return 1;
+                return a.name.localeCompare(b.name, 'zh-CN');
+            });
+    }
+
+    function createHistoryTaskItem(task) {
+        const card = document.createElement('article');
+        card.className = 'task-history-item';
+        if (task.id === viewingHistoryTaskId) card.classList.add('active');
+        if (task.archived) card.classList.add('archived');
+
+        const main = document.createElement('button');
+        main.type = 'button';
+        main.className = 'task-history-main';
+        main.addEventListener('click', () => loadHistoryTask(task.id));
+
+        const title = document.createElement('strong');
+        title.textContent = task.name || `${task.methods_subdir || '-'} / ${task.variant || '-'}`;
+        const meta = document.createElement('span');
+        meta.textContent = [
+            task.job === 'preprocess' ? '预处理' : '训练',
+            historyStateLabel(task.state),
+            task.started_at_text || task.id,
+            task.archived ? '已归档' : '',
+        ].filter(Boolean).join(' · ');
+        const paths = document.createElement('em');
+        paths.textContent = `目录: ${task.history_dir || task.id}`;
+        const counts = document.createElement('em');
+        counts.textContent = `${task.metric_count || 0} loss点 / ${task.log_count || 0} 日志`;
+        main.append(title, meta, paths, counts);
+
+        const actions = document.createElement('div');
+        actions.className = 'task-history-actions';
+        actions.append(
+            createHistoryActionButton('重命名', () => renameHistoryTask(task)),
+            createHistoryActionButton('分组', () => regroupHistoryTask(task)),
+            createHistoryActionButton(task.archived ? '取消归档' : '归档', () => archiveHistoryTask(task)),
+            createHistoryActionButton('删除', () => deleteHistoryTask(task), 'danger'),
+        );
+
+        card.append(main, actions);
+        return card;
+    }
+
+    function createHistoryActionButton(label, handler, tone = '') {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = ['task-history-action', tone].filter(Boolean).join(' ');
+        btn.textContent = label;
+        btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            handler();
+        });
+        return btn;
+    }
+
+    async function renameHistoryTask(task) {
+        const fallback = task.name || `${task.methods_subdir || '-'} / ${task.variant || '-'}`;
+        const name = await showHistoryTaskInputDialog({
+            title: '重命名任务',
+            description: '只修改任务列表中的显示名称，不会改动磁盘目录。',
+            label: '任务名称',
+            value: fallback,
+            placeholder: '例如：肋骨女神 5.14 第一次训练',
+            confirmText: '保存名称',
+        });
+        if (name === null) return;
+        await updateHistoryTaskMeta(task.id, { name: name.trim() });
+    }
+
+    async function regroupHistoryTask(task) {
+        const group = await showHistoryTaskInputDialog({
+            title: '设置任务分组',
+            description: '相同分组名的任务会在左侧任务列表中归到一起。留空表示未分组。',
+            label: '分组名称',
+            value: task.group || '',
+            placeholder: '例如：肋骨女神 / 测试组 / 正式训练',
+            confirmText: '保存分组',
+        });
+        if (group === null) return;
+        await updateHistoryTaskMeta(task.id, { group: group.trim() });
+    }
+
+    async function archiveHistoryTask(task) {
+        const ok = await showHistoryTaskConfirmDialog({
+            title: task.archived ? '取消归档任务' : '归档任务',
+            description: historyTaskLabel(task),
+            message: task.archived
+                ? '取消归档后，这个任务会重新出现在默认任务列表中。'
+                : '归档后默认会隐藏这个任务，可勾选“显示归档”再次查看。',
+            confirmText: task.archived ? '取消归档' : '确认归档',
+        });
+        if (!ok) return;
+        await updateHistoryTaskMeta(task.id, { archived: !task.archived });
+    }
+
+    async function deleteHistoryTask(task) {
+        const ok = await showHistoryTaskConfirmDialog({
+            title: '删除历史任务',
+            description: historyTaskLabel(task),
+            message: '会删除该任务的日志、loss 指标和 TOML 快照。此操作不可撤销。',
+            confirmText: '确认删除',
+            danger: true,
+        });
+        if (!ok) return;
+        try {
+            const res = await api(`/api/training/history/${encodeURIComponent(task.id)}`, { method: 'DELETE' });
+            if (!res.ok) {
+                alert(res.error || '删除失败');
+                return;
+            }
+            if (viewingHistoryTaskId === task.id) {
+                returnToLiveTraining();
+            }
+            await loadTrainingHistoryList();
+        } catch (e) {
+            alert('删除失败: ' + e.message);
+        }
+    }
+
+    async function updateHistoryTaskMeta(taskId, patch) {
+        try {
+            const res = await api(`/api/training/history/${encodeURIComponent(taskId)}`, {
+                method: 'PATCH',
+                body: JSON.stringify(patch),
+            });
+            if (!res.ok) {
+                alert(res.error || '更新任务失败');
+                return;
+            }
+            await loadTrainingHistoryList();
+            if (viewingHistoryTaskId === taskId) {
+                const payload = await api(`/api/training/history/${encodeURIComponent(taskId)}`);
+                if (payload.ok) renderHistoryTask(payload);
+            }
+        } catch (e) {
+            alert('更新任务失败: ' + e.message);
+        }
+    }
+
+    function historyTaskLabel(task) {
+        return task.name || `${task.methods_subdir || '-'} / ${task.variant || task.id}`;
+    }
+
+    function showHistoryTaskInputDialog(options) {
+        const input = document.createElement('input');
+        input.type = 'text';
+        input.value = options.value || '';
+        input.placeholder = options.placeholder || '';
+        input.className = 'history-task-dialog-input';
+
+        const label = document.createElement('label');
+        label.className = 'history-task-dialog-field';
+        const span = document.createElement('span');
+        span.textContent = options.label || '输入内容';
+        label.append(span, input);
+
+        return showHistoryTaskDialog({
+            title: options.title,
+            description: options.description,
+            body: label,
+            confirmText: options.confirmText || '确认',
+            onOpen: () => {
+                input.focus();
+                input.select();
+            },
+            getValue: () => input.value,
+        });
+    }
+
+    function showHistoryTaskConfirmDialog(options) {
+        const wrap = document.createElement('div');
+        wrap.className = 'history-task-dialog-message';
+        const strong = document.createElement('strong');
+        strong.textContent = options.description || '';
+        const p = document.createElement('p');
+        p.textContent = options.message || '';
+        wrap.append(strong, p);
+        return showHistoryTaskDialog({
+            title: options.title,
+            description: '',
+            body: wrap,
+            confirmText: options.confirmText || '确认',
+            danger: options.danger,
+            getValue: () => true,
+        });
+    }
+
+    function showHistoryTaskDialog(options) {
+        const dialog = document.getElementById('history-task-dialog');
+        const title = document.getElementById('history-task-dialog-title');
+        const desc = document.getElementById('history-task-dialog-desc');
+        const body = document.getElementById('history-task-dialog-body');
+        const confirmBtn = document.getElementById('history-task-dialog-confirm');
+        if (!dialog || !title || !desc || !body || !confirmBtn) {
+            return Promise.resolve(null);
+        }
+
+        title.textContent = options.title || '任务操作';
+        desc.textContent = options.description || '';
+        body.innerHTML = '';
+        if (options.body) body.appendChild(options.body);
+        confirmBtn.textContent = options.confirmText || '确认';
+        confirmBtn.classList.toggle('btn-danger', Boolean(options.danger));
+        confirmBtn.classList.toggle('btn-primary', !options.danger);
+
+        return new Promise((resolve) => {
+            const cleanup = () => {
+                dialog.removeEventListener('close', handleClose);
+            };
+            const handleClose = () => {
+                cleanup();
+                if (dialog.returnValue === 'confirm') {
+                    resolve(options.getValue ? options.getValue() : true);
+                } else {
+                    resolve(null);
+                }
+            };
+            dialog.addEventListener('close', handleClose);
+            if (dialog.showModal) {
+                dialog.showModal();
+            } else {
+                dialog.setAttribute('open', 'open');
+            }
+            requestAnimationFrame(() => options.onOpen?.());
+        });
+    }
+
+    async function loadHistoryTask(taskId) {
+        try {
+            const payload = await api(`/api/training/history/${encodeURIComponent(taskId)}`);
+            if (!payload.ok) {
+                alert(payload.error || '读取历史任务失败');
+                return;
+            }
+            viewingHistoryTaskId = taskId;
+            renderTrainingHistoryList();
+            renderHistoryTask(payload);
+        } catch (e) {
+            alert('读取历史任务失败: ' + e.message);
+        }
+    }
+
+    function renderHistoryTask(payload) {
+        const task = payload.task || {};
+        const banner = document.getElementById('history-view-banner');
+        const bannerTitle = document.getElementById('history-view-title');
+        if (banner) banner.hidden = false;
+        if (bannerTitle) {
+            bannerTitle.textContent = `历史任务: ${task.name || `${task.methods_subdir || '-'} / ${task.variant || '-'}`} · ${historyStateLabel(task.state)}`;
+        }
+        document.getElementById('train-variant').textContent = task.variant || '-';
+        document.getElementById('train-preset').textContent = task.preset || '-';
+        document.getElementById('progress-bar').style.width = task.state === 'idle' ? '100%' : '0%';
+        document.getElementById('progress-text').textContent = `${task.started_at_text || '-'} → ${task.finished_at_text || '未结束'}`;
+        document.getElementById('metric-vram').textContent = '-';
+        document.getElementById('metric-gpu').textContent = '-';
+        document.getElementById('metric-log-age').textContent = '-';
+        document.getElementById('metric-rate').textContent = '-';
+
+        const metrics = payload.metrics || [];
+        const lossPoints = metrics.filter((item) => item.loss !== undefined);
+        lossChart?.setData(lossPoints.map((item) => ({ step: item.step || 0, loss: item.loss })));
+        const lastMetric = lossPoints[lossPoints.length - 1] || {};
+        document.getElementById('metric-loss').textContent = lastMetric.loss !== undefined ? Number(lastMetric.loss).toFixed(5) : '-';
+        document.getElementById('metric-lr').textContent = lastMetric.lr !== undefined ? Number(lastMetric.lr).toExponential(2) : '-';
+        document.getElementById('metric-step').textContent = lastMetric.step !== undefined ? lastMetric.step : '-';
+
+        const logEl = document.getElementById('log-output');
+        logEl.textContent = (payload.logs || [])
+            .map((record) => `${record.kind === 'progress' ? '[进度] ' : ''}${record.line || ''}`)
+            .join('\n');
+        if (logEl.textContent) logEl.textContent += '\n';
+        logEl.scrollTop = logEl.scrollHeight;
+        setLogStatus(`历史 · ${(payload.logs || []).length} 行`, 'warning');
+
+        const health = document.getElementById('training-health');
+        health.className = 'training-health';
+        health.textContent = [
+            task.message || '历史任务记录',
+            task.history_dir ? `历史目录: ${task.history_dir}` : '',
+            task.output_dir ? `输出目录: ${task.output_dir}` : '',
+            task.sample_dir ? `样张目录: ${task.sample_dir}` : '',
+        ].filter(Boolean).join(' · ');
+
+        const configPanel = document.getElementById('history-config-panel');
+        const configOutput = document.getElementById('history-config-output');
+        if (configPanel) configPanel.hidden = false;
+        if (configOutput) configOutput.textContent = payload.config_toml || '# 无配置快照';
+        renderHistoryPaths(task);
+    }
+
+    function returnToLiveTraining() {
+        viewingHistoryTaskId = '';
+        const banner = document.getElementById('history-view-banner');
+        if (banner) banner.hidden = true;
+        const configPanel = document.getElementById('history-config-panel');
+        if (configPanel) configPanel.hidden = true;
+        const configOutput = document.getElementById('history-config-output');
+        if (configOutput) configOutput.textContent = '';
+        const paths = document.getElementById('history-paths');
+        if (paths) paths.innerHTML = '';
+        document.getElementById('log-output').textContent = '';
+        trainingRuntime.lastLogId = 0;
+        trainingRuntime.logLineCount = 0;
+        stepCounter = 0;
+        lossChart?.clear();
+        renderTrainingHistoryList();
+        pollStatus();
+        replayTrainingLogs();
+    }
+
+    function renderHistoryPaths(task) {
+        const el = document.getElementById('history-paths');
+        if (!el) return;
+        el.innerHTML = '';
+        const items = [
+            ['历史目录', task.history_dir_abs || task.history_dir],
+            ['源图像目录', task.source_image_dir],
+            ['缩放图像目录', task.resized_image_dir],
+            ['LoRA 缓存目录', task.lora_cache_dir],
+            ['输出目录', task.output_dir],
+            ['样张目录', task.sample_dir],
+            ['日志文件', task.logs_path],
+            ['指标文件', task.metrics_path],
+            ['TOML 快照', task.config_snapshot],
+        ].filter(([, value]) => value);
+        for (const [label, value] of items) {
+            const row = document.createElement('div');
+            const key = document.createElement('span');
+            key.textContent = label;
+            const valEl = document.createElement('code');
+            valEl.textContent = value;
+            row.append(key, valEl);
+            el.appendChild(row);
+        }
+    }
+
+    function historyStateLabel(state) {
+        return {
+            running: '运行中',
+            idle: '完成',
+            error: '异常',
+        }[state] || state || '未知';
     }
 
     // ── 事件绑定 ──
@@ -2439,6 +4462,7 @@
             await loadConfig();
         });
         document.getElementById('variant-select').addEventListener('change', async () => {
+            setCurrentTrainingSourceFromVariant(val('variant-select'));
             updateChoiceGuide();
             await loadConfig();
         });
@@ -2450,23 +4474,44 @@
         document.getElementById('btn-start-from-config').addEventListener('click', startTraining);
         document.getElementById('btn-stop-training').addEventListener('click', stopTraining);
         document.getElementById('btn-apply-toml').addEventListener('click', applyTomlToConfig);
+        document.getElementById('btn-move-toml-group').addEventListener('click', moveCurrentTomlToGroup);
         document.getElementById('btn-save-toml').addEventListener('click', saveTomlFile);
         document.getElementById('btn-import-toml').addEventListener('click', importTomlFile);
         document.getElementById('btn-export-toml').addEventListener('click', exportTomlFile);
         document.getElementById('btn-save-as-toml').addEventListener('click', saveTomlAs);
+        document.getElementById('btn-lock-toml').addEventListener('click', toggleTomlUserLock);
+        document.getElementById('btn-delete-toml').addEventListener('click', deleteTomlFile);
+        document.getElementById('btn-restore-system-toml').addEventListener('click', restoreSystemTomlPresets);
         document.getElementById('toml-import-input').addEventListener('change', handleTomlImport);
         document.getElementById('btn-reload-toml').addEventListener('click', () => {
             const file = currentTomlFile || val('toml-file-select');
-            if (file) loadTomlFile(file, { applyTrainable: true });
+            if (file && confirmDiscardTomlChanges('当前 TOML 有未保存修改，重载会丢失这些修改。是否继续？')) {
+                loadTomlFile(file, { force: true });
+            }
         });
         document.getElementById('toml-file-select').addEventListener('change', (e) => {
             loadTomlFile(e.target.value);
         });
+        document.getElementById('toml-editor').addEventListener('input', updateTomlDirtyState);
         document.getElementById('btn-clear-log').addEventListener('click', () => {
+            if (viewingHistoryTaskId) return;
             document.getElementById('log-output').textContent = '';
             trainingRuntime.logLineCount = 0;
             updateLogStatusText();
         });
+        document.getElementById('btn-refresh-history').addEventListener('click', loadTrainingHistoryList);
+        document.getElementById('btn-live-training').addEventListener('click', returnToLiveTraining);
+        document.getElementById('btn-close-history').addEventListener('click', returnToLiveTraining);
+        document.getElementById('history-show-archived').addEventListener('change', (e) => {
+            showArchivedHistory = e.target.checked;
+            renderTrainingHistoryList();
+        });
+        document.querySelectorAll('.preview-source-btn').forEach((btn) => {
+            btn.addEventListener('click', () => setPreviewSource(btn.dataset.previewSource));
+        });
+        document.getElementById('btn-refresh-preview').addEventListener('click', loadPreviewImages);
+        document.getElementById('btn-save-preview-settings').addEventListener('click', savePreviewSettings);
+        document.getElementById('btn-reset-preview-settings').addEventListener('click', resetPreviewSettings);
     }
 
     // ── 工具函数 ──

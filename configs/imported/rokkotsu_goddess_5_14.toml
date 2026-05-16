@@ -1,0 +1,45 @@
+# Imported from /home/scv/sda1/DiffPipeForge2/output/肋骨女神/trainconfig.toml.
+# Source dataset: /home/scv/sda1/DiffPipeForge2/output/肋骨女神/dataset.toml
+# Original output_dir: /home/scv/sda1/DiffPipeForge2/output/肋骨女神/mylora
+
+dataset_config = "configs/datasets/rokkotsu_goddess_5_14.toml"
+
+pretrained_model_name_or_path = "/home/scv/nvme0n1p1/ComfyUI/models/diffusion_models/anima/anima-preview3-base.safetensors"
+qwen3 = "/home/scv/nvme0n1p1/ComfyUI/models/text_encoders/anima/anima_qwen_3_06b_base.safetensors"
+vae = "/home/scv/nvme0n1p1/ComfyUI/models/vae/anima/anima_vae.safetensors"
+
+source_image_dir = "/home/scv/图片/安/5-14"
+resized_image_dir = "/home/scv/图片/安/5-15-a"
+lora_cache_dir = "/home/scv/图片/安/5-15-b"
+
+network_dim = 32
+network_alpha = 32
+
+learning_rate = 2e-5
+max_train_epochs = 16
+train_batch_size = 1
+gradient_accumulation_steps = 1
+lr_warmup_steps = 500
+
+save_every_n_epochs = 1
+checkpointing_epochs = 1
+log_every_n_steps = 1
+
+optimizer_type = "AdamW"
+optimizer_args = ["weight_decay=0.01", "eps=1e-8", "betas=0.9,0.99"]
+lr_scheduler = "linear"
+max_grad_norm = 1.0
+
+mixed_precision = "bf16"
+save_precision = "bf16"
+gradient_checkpointing = true
+cache_llm_adapter_outputs = true
+caption_dropout_rate = 0.0
+
+output_dir = "/home/scv/sda1/DiffPipeForge2/output/肋骨女神/mylora"
+output_name = "rokkotsu_goddess_5_14"
+
+blocks_to_swap = 0
+sample_prompts = "configs/sample_prompts.txt"
+sample_every_n_epochs = 1
+sample_sampler = "euler"

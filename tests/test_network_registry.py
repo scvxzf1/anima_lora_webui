@@ -24,6 +24,7 @@ from networks import (
     resolve_network_spec,
 )
 from networks import lora_save
+from networks.lora_anima.loading import _refuse_unfused_attn_lokr_keys
 
 
 # ---------------------------------------------------------------------------
@@ -33,6 +34,7 @@ from networks import lora_save
 
 EXPECTED_VARIANTS = {
     "lora",
+    "lokr",
     "ortho",
     "hydra",
     "ortho_hydra",
@@ -111,6 +113,7 @@ def test_hydra_router_kwargs_registered():
         ({"use_moe_style": False}, "lora"),
         ({"use_moe_style": "false"}, "lora"),
         ({"use_moe_style": ""}, "lora"),
+        ({"use_lokr": "true"}, "lokr"),
     ],
 )
 def test_resolve_precedence(kwargs, expected):
@@ -123,6 +126,9 @@ def test_resolve_precedence(kwargs, expected):
     [
         {"use_dora": "true", "use_moe_style": "shared_A"},
         {"use_dora": "true", "use_ortho": "true"},
+        {"use_dora": "true", "use_lokr": "true"},
+        {"use_lokr": "true", "use_ortho": "true"},
+        {"use_lokr": "true", "use_moe_style": "shared_A"},
     ],
 )
 def test_resolve_ambiguous_raises(kwargs):
@@ -371,6 +377,52 @@ def test_save_dora_roundtrip(tmp_path: Path):
     for k in loaded:
         assert not k.endswith(".magnitude")
         assert not k.endswith("._org_weight_norm")
+
+
+def test_save_lokr_roundtrip(tmp_path: Path):
+    """LoKr save pipeline: fused qkv defuses lokr_w2 by output dim."""
+    factor, in_dim, out_dim = 4, 16, 12
+    prefix = "lora_unet_blocks_0_self_attn_qkv_proj"
+    sd = {
+        f"{prefix}.lokr_w1": torch.randn(factor, factor),
+        f"{prefix}.lokr_w2": torch.randn((3 * out_dim) // factor, in_dim // factor),
+        f"{prefix}.alpha": _alpha(32),
+    }
+
+    loaded = _save_and_reload(sd, tmp_path, save_variant="lokr")
+
+    base = "lora_unet_blocks_0_self_attn"
+    for suffix in ("q_proj", "k_proj", "v_proj"):
+        assert loaded[f"{base}_{suffix}.lokr_w1"].shape == (factor, factor)
+        assert loaded[f"{base}_{suffix}.lokr_w2"].shape == (
+            out_dim // factor,
+            in_dim // factor,
+        )
+        assert loaded[f"{base}_{suffix}.alpha"].shape == ()
+    assert f"{prefix}.lokr_w1" not in loaded
+    assert f"{prefix}.lokr_w2" not in loaded
+
+
+def test_refuse_split_lokr_attn_keys():
+    factor, in_dim, out_dim = 4, 16, 12
+    base = "lora_unet_blocks_0_self_attn"
+    w1 = torch.randn(factor, factor)
+    sd = {}
+    for suffix in ("q_proj", "k_proj", "v_proj"):
+        sd[f"{base}_{suffix}.lokr_w1"] = w1.clone()
+        sd[f"{base}_{suffix}.lokr_w2"] = torch.randn(out_dim // factor, in_dim // factor)
+        sd[f"{base}_{suffix}.alpha"] = _alpha(32)
+
+    refused = _refuse_unfused_attn_lokr_keys(sd)
+    fused = "lora_unet_blocks_0_self_attn_qkv_proj"
+
+    assert refused[f"{fused}.lokr_w1"].shape == (factor, factor)
+    assert refused[f"{fused}.lokr_w2"].shape == (
+        (3 * out_dim) // factor,
+        in_dim // factor,
+    )
+    assert f"{base}_q_proj.lokr_w1" not in refused
+    assert f"{base}_q_proj.lokr_w2" not in refused
 
 
 # ---------------------------------------------------------------------------

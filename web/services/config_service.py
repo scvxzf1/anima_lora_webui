@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import shutil
+import subprocess
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -16,19 +19,51 @@ GUI_METHODS_DIR = CONFIGS_DIR / "gui-methods"
 IMPORTED_CONFIGS_DIR = CONFIGS_DIR / "imported"
 PRESETS_FILE = CONFIGS_DIR / "presets.toml"
 WEB_FILE_GROUPS_FILE = CONFIGS_DIR / "web-file-groups.toml"
+WEB_USER_LOCKS_FILE = CONFIGS_DIR / "web-user-locks.toml"
+DEFAULT_SAMPLE_PROMPTS_FILE = "configs/sample_prompts.txt"
+DEFAULT_RESIZED_IMAGE_DIR = "post_image_dataset/resized"
+DEFAULT_LORA_CACHE_DIR = "post_image_dataset/lora"
+SYSTEM_PRESET_FILES = frozenset({
+    "configs/base.toml",
+    "configs/presets.toml",
+})
+SYSTEM_PRESET_PREFIXES = ("configs/methods/", "configs/gui-methods/")
+SYSTEM_MANAGED_FILES = frozenset({
+    "configs/web-file-groups.toml",
+    "configs/web-user-locks.toml",
+})
+SYSTEM_CONFIG_GROUP_IDS = frozenset({
+    "web_config",
+    "presets",
+    "methods",
+    "gui_methods",
+    "rokkotsu_goddess",
+    "imported",
+    "datasets",
+})
+FILE_MOVE_TARGET_GROUPS = frozenset({
+    "imported",
+    "datasets",
+})
+USER_LOCKABLE_GROUPS = frozenset({
+    "imported",
+    "rokkotsu_goddess",
+    "datasets",
+})
 
 load_dotenv()
 
 
 def list_methods() -> list[str]:
     return [
-        "lora", "ortholora", "tlora", "hydralora",
+        "lora", "lokr", "ortholora", "tlora", "hydralora",
         "reft", "postfix", "ip_adapter", "easycontrol",
     ]
 
 
 _FAMILY_VARIANTS: dict[str, list[str]] = {
     "lora": ["lora", "lora_longer", "lora-8gb", "lora_repa"],
+    "lokr": ["lokr"],
     "ortholora": ["ortholora"],
     "tlora": ["tlora", "tlora_ortho"],
     "hydralora": ["hydralora_sigma", "hydralora_experimental", "hydralora_fei", "fera"],
@@ -77,11 +112,40 @@ def load_merged_config(variant: str, preset: str, methods_subdir: str = "gui-met
         merged[k] = v
     for k, v in meth.items():
         merged[k] = v
-    return expand_env_vars_in_obj(merged)
+    merged = expand_env_vars_in_obj(merged)
+    return apply_auto_data_dirs(merged)
+
+
+def suggest_data_dirs(source_image_dir: str) -> dict[str, Any]:
+    source_path = _resolve_project_path(str(source_image_dir or ""))
+    if not str(source_image_dir or "").strip():
+        return {"ok": False, "error": "请先填写源图像目录 / source_image_dir"}
+    return {
+        "ok": True,
+        "source_image_dir": _display_path(source_path),
+        "resized_image_dir": _display_path(_derived_data_dir(source_path, "resized")),
+        "lora_cache_dir": _display_path(_derived_data_dir(source_path, "lora_cache")),
+    }
+
+
+def apply_auto_data_dirs(cfg: dict[str, Any], *, create: bool = False) -> dict[str, Any]:
+    next_cfg = dict(cfg)
+    source_raw = str(next_cfg.get("source_image_dir") or "").strip()
+    if not source_raw:
+        return next_cfg
+    source_path = _resolve_project_path(source_raw)
+    resized_path = _auto_data_dir_for_key(next_cfg.get("resized_image_dir"), source_path, "resized")
+    cache_path = _auto_data_dir_for_key(next_cfg.get("lora_cache_dir"), source_path, "lora_cache")
+    next_cfg["resized_image_dir"] = _display_path(resized_path)
+    next_cfg["lora_cache_dir"] = _display_path(cache_path)
+    if create:
+        resized_path.mkdir(parents=True, exist_ok=True)
+        cache_path.mkdir(parents=True, exist_ok=True)
+    return next_cfg
 
 
 def preflight_training_config(variant: str, preset: str, methods_subdir: str = "gui-methods") -> dict[str, Any]:
-    cfg = load_merged_config(variant, preset, methods_subdir)
+    cfg = apply_auto_data_dirs(load_merged_config(variant, preset, methods_subdir))
     checks: list[dict[str, str]] = []
     errors: list[dict[str, str]] = []
     warnings: list[dict[str, str]] = []
@@ -144,7 +208,7 @@ def preflight_training_config(variant: str, preset: str, methods_subdir: str = "
         check_file("dataset_config", "数据集配置", (".toml",))
 
     check_dir("source_image_dir", "源图像目录", must_exist=True, warn_empty=True)
-    check_dir("resized_image_dir", "缩放图像目录", must_exist=True, warn_empty=True)
+    check_dir("resized_image_dir", "缩放图像目录", must_exist=False, warn_empty=True)
     check_dir("lora_cache_dir", "LoRA 缓存目录", must_exist=False, warn_empty=True)
     check_dir("output_dir", "输出目录", must_exist=False)
 
@@ -167,20 +231,142 @@ def preflight_training_config(variant: str, preset: str, methods_subdir: str = "
     }
 
 
+def estimate_training_steps(variant: str, preset: str, methods_subdir: str = "gui-methods") -> dict[str, Any]:
+    cfg = apply_auto_data_dirs(load_merged_config(variant, preset, methods_subdir))
+    image_exts = {".png", ".jpg", ".jpeg", ".webp", ".bmp"}
+    source_dir = _resolve_project_path(str(cfg.get("source_image_dir") or ""))
+    resized_dir = _resolve_project_path(str(cfg.get("resized_image_dir") or ""))
+    source_images = _count_images(source_dir, image_exts)
+    resized_images = _count_images(resized_dir, image_exts)
+    dataset_repeats = _dataset_num_repeats(cfg)
+
+    train_images = resized_images or source_images
+    sample_ratio = _positive_float(cfg.get("sample_ratio"), 1.0)
+    epochs = _positive_int(cfg.get("max_train_epochs"), 1)
+    batch_size = _positive_int(cfg.get("train_batch_size"), 1)
+    grad_accum = _positive_int(cfg.get("gradient_accumulation_steps"), 1)
+    effective_batch = max(1, batch_size * grad_accum)
+    repeated_images = int(train_images * dataset_repeats * sample_ratio)
+    steps_per_epoch = (repeated_images + effective_batch - 1) // effective_batch if repeated_images else 0
+    total_steps = steps_per_epoch * epochs
+
+    return {
+        "ok": True,
+        "variant": variant,
+        "preset": preset,
+        "methods_subdir": methods_subdir,
+        "source_image_count": source_images,
+        "resized_image_count": resized_images,
+        "train_image_count": train_images,
+        "dataset_num_repeats": dataset_repeats,
+        "sample_ratio": sample_ratio,
+        "max_train_epochs": epochs,
+        "train_batch_size": batch_size,
+        "gradient_accumulation_steps": grad_accum,
+        "effective_batch_size": effective_batch,
+        "repeated_image_count": repeated_images,
+        "steps_per_epoch": steps_per_epoch,
+        "total_steps": total_steps,
+        "uses_preprocessed_images": resized_images > 0,
+        "source_dir": _display_path(source_dir),
+        "resized_dir": _display_path(resized_dir),
+        "lora_cache_dir": _display_path(_resolve_project_path(str(cfg.get("lora_cache_dir") or ""))),
+    }
+
+
+def _count_images(path: Path, image_exts: set[str]) -> int:
+    if not path.is_dir():
+        return 0
+    return sum(1 for item in path.iterdir() if item.is_file() and item.suffix.lower() in image_exts)
+
+
+def _dataset_num_repeats(cfg: dict[str, Any]) -> int:
+    dataset_config = cfg.get("dataset_config")
+    if dataset_config:
+        path = _safe_resolve(_normalize_config_rel_path(str(dataset_config)))
+        if path is not None and path.exists():
+            try:
+                data = toml.loads(path.read_text(encoding="utf-8"))
+                repeats = []
+                for dataset in data.get("datasets") or []:
+                    for subset in dataset.get("subsets") or []:
+                        repeats.append(_positive_int(subset.get("num_repeats"), 1))
+                return max(1, sum(repeats) or 1)
+            except Exception:
+                return 1
+    return 1
+
+
+def _positive_int(value: Any, fallback: int) -> int:
+    try:
+        n = int(value)
+    except (TypeError, ValueError):
+        return fallback
+    return n if n > 0 else fallback
+
+
+def _positive_float(value: Any, fallback: float) -> float:
+    try:
+        n = float(value)
+    except (TypeError, ValueError):
+        return fallback
+    return n if n > 0 else fallback
+
+
 def load_raw_file(rel_path: str) -> str:
-    path = _safe_resolve(rel_path)
+    path = _safe_resolve(_normalize_config_rel_path(rel_path))
     if path is None or not path.exists():
         return ""
     return path.read_text(encoding="utf-8")
 
 
-def save_raw_file(rel_path: str, content: str, *, allow_locked: bool = False) -> tuple[bool, str]:
-    path = _safe_resolve(rel_path)
+def load_sample_prompts_file(rel_path: str | None = None) -> dict[str, Any]:
+    normalized = _normalize_prompt_file_path(rel_path or DEFAULT_SAMPLE_PROMPTS_FILE)
+    path = (ROOT / normalized).resolve()
+    if not path.exists():
+        return {"ok": True, "file": normalized, "content": "", "prompts": []}
+    lines = path.read_text(encoding="utf-8").splitlines()
+    prompts = [line.strip() for line in lines if line.strip() and not line.lstrip().startswith("#")]
+    return {
+        "ok": True,
+        "file": normalized,
+        "content": "\n".join(prompts),
+        "prompts": prompts,
+    }
+
+
+def save_sample_prompts_file(content: str, rel_path: str | None = None) -> dict[str, Any]:
+    normalized = _normalize_prompt_file_path(rel_path or DEFAULT_SAMPLE_PROMPTS_FILE)
+    lines = [line.strip() for line in str(content or "").splitlines()]
+    prompts = [line for line in lines if line and not line.startswith("#")]
+    path = (ROOT / normalized).resolve()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("\n".join(prompts) + ("\n" if prompts else ""), encoding="utf-8")
+    return {
+        "ok": True,
+        "file": normalized,
+        "content": "\n".join(prompts),
+        "prompts": prompts,
+        "message": f"已保存 {len(prompts)} 条预览提示词",
+    }
+
+
+def save_raw_file(
+    rel_path: str,
+    content: str,
+    *,
+    allow_locked: bool = False,
+    overwrite: bool = True,
+) -> tuple[bool, str]:
+    normalized = _normalize_config_rel_path(rel_path)
+    path = _safe_resolve(normalized)
     if path is None:
         return False, "路径不合法"
-    meta = get_config_file_meta(rel_path)
+    if path.exists() and not overwrite:
+        return False, "配置文件已存在，请换一个新的名称"
+    meta = get_config_file_meta(normalized)
     if meta.get("locked") and not allow_locked:
-        return False, "该配置文件已锁定，只能另存为副本后编辑"
+        return False, f"{_lock_reason_message(meta)}，请使用新名称保存新配置后编辑"
     try:
         toml.loads(content)
     except toml.TomlDecodeError as e:
@@ -190,18 +376,46 @@ def save_raw_file(rel_path: str, content: str, *, allow_locked: bool = False) ->
     return True, "保存成功"
 
 
+def delete_raw_file(rel_path: str) -> tuple[bool, str]:
+    normalized = _normalize_config_rel_path(rel_path)
+    path = _safe_resolve(normalized)
+    if path is None or path.suffix.lower() != ".toml":
+        return False, "路径不合法，只能删除 configs/ 下的 TOML 文件"
+    if not path.exists():
+        return False, "配置文件不存在或已被删除"
+    if not path.is_file():
+        return False, "目标不是文件，已拒绝删除"
+
+    meta = get_config_file_meta(normalized)
+    if meta.get("locked"):
+        return False, f"{_lock_reason_message(meta)}，不能删除"
+
+    try:
+        path.unlink()
+    except OSError as e:
+        return False, f"删除失败: {e}"
+
+    user_locks, user_group_locks = _load_user_locks()
+    if normalized in user_locks:
+        user_locks.discard(normalized)
+        _save_user_locks(user_locks, user_group_locks)
+
+    return True, "删除成功"
+
+
 def patch_raw_file_values(
     rel_path: str,
     values: dict[str, Any],
     *,
     content: str | None = None,
 ) -> tuple[bool, str, str, list[str]]:
-    path = _safe_resolve(rel_path)
+    normalized = _normalize_config_rel_path(rel_path)
+    path = _safe_resolve(normalized)
     if path is None:
         return False, "路径不合法", "", []
-    meta = get_config_file_meta(rel_path)
+    meta = get_config_file_meta(normalized)
     if meta.get("locked"):
-        return False, "该配置文件已锁定，只能另存为副本后编辑", "", []
+        return False, f"{_lock_reason_message(meta)}，请使用新名称保存新配置后编辑", "", []
     if not isinstance(values, dict):
         return False, "字段补丁格式不合法", "", []
 
@@ -217,12 +431,266 @@ def patch_raw_file_values(
     return True, "保存成功", next_content, sorted(values.keys())
 
 
+def set_user_file_lock(rel_path: str, locked: bool) -> tuple[bool, str, dict[str, Any]]:
+    normalized = _normalize_config_rel_path(rel_path)
+    path = _safe_resolve(normalized)
+    if path is None or path.suffix != ".toml":
+        return False, "路径不合法，只能锁定 configs/ 下的 TOML 文件", {}
+    if not path.exists():
+        return False, "只能锁定已经存在的 TOML 文件", {}
+
+    meta = get_config_file_meta(normalized)
+    if meta.get("system_locked"):
+        return False, "系统预设为内置只读，不能手动锁定或解锁", meta
+    if meta.get("group_locked"):
+        return False, "该文件属于只读分组，不能手动锁定或解锁", meta
+    if meta.get("user_group_locked"):
+        return False, "该文件所在分组已锁定，请先解除分组锁定", meta
+
+    user_locks, user_group_locks = _load_user_locks()
+    if locked:
+        user_locks.add(normalized)
+    else:
+        user_locks.discard(normalized)
+    _save_user_locks(user_locks, user_group_locks)
+
+    next_meta = get_config_file_meta(normalized)
+    return True, ("已锁定当前文件" if locked else "已解除用户锁定"), next_meta
+
+
+def set_user_group_lock(group_id: str, locked: bool) -> tuple[bool, str, dict[str, Any]]:
+    normalized = _normalize_group_id(group_id)
+    if not normalized:
+        return False, "缺少 group 参数", {}
+
+    group = _get_config_file_group(normalized)
+    if group is None:
+        return False, "分组不存在", {}
+    if normalized not in _lockable_group_ids():
+        return False, "该分组属于系统或只读参考，不能手动锁定或解锁", group
+    if any(item.get("system_locked") for item in group.get("files", [])):
+        return False, "该分组包含系统预设，不能手动锁定或解锁", group
+
+    user_locks, user_group_locks = _load_user_locks()
+    if locked:
+        user_group_locks.add(normalized)
+    else:
+        user_group_locks.discard(normalized)
+    _save_user_locks(user_locks, user_group_locks)
+
+    next_group = _get_config_file_group(normalized) or group
+    return True, ("已锁定当前分组" if locked else "已解除分组锁定"), next_group
+
+
+def create_config_file_group(label: str) -> tuple[bool, str, dict[str, Any] | None]:
+    clean_label = _normalize_group_label(label)
+    if not clean_label:
+        return False, "分组名称不能为空", None
+
+    specs = _load_config_file_group_specs()
+    group_id = _unique_group_id(_slugify_group_label(clean_label), specs)
+    spec = _new_user_config_group_spec(group_id, clean_label)
+    specs.append(spec)
+    _save_config_file_group_specs(specs)
+    return True, "分组已创建", _build_config_file_group(spec)
+
+
+def rename_config_file_group(group_id: str, label: str) -> tuple[bool, str, dict[str, Any] | None]:
+    normalized = _normalize_group_id(group_id)
+    clean_label = _normalize_group_label(label)
+    if not normalized:
+        return False, "缺少 group 参数", None
+    if not clean_label:
+        return False, "分组名称不能为空", None
+
+    specs = _load_config_file_group_specs()
+    spec = _find_config_group_spec(specs, normalized)
+    if spec is None:
+        return False, "分组不存在", None
+    if not _is_user_managed_group(spec):
+        return False, "系统分组不能重命名", _build_config_file_group(spec)
+
+    spec["label"] = clean_label
+    _save_config_file_group_specs(specs)
+    return True, "分组已重命名", _build_config_file_group(spec)
+
+
+def delete_config_file_group(group_id: str) -> tuple[bool, str]:
+    normalized = _normalize_group_id(group_id)
+    if not normalized:
+        return False, "缺少 group 参数"
+
+    specs = _load_config_file_group_specs()
+    spec = _find_config_group_spec(specs, normalized)
+    if spec is None:
+        return False, "分组不存在"
+    if not _is_user_managed_group(spec):
+        return False, "系统分组不能删除"
+    if _build_config_file_group(spec)["files"]:
+        return False, "分组内还有配置文件，请先移动或删除文件"
+
+    specs = [item for item in specs if item["id"] != normalized]
+    user_locks, user_group_locks = _load_user_locks()
+    if normalized in user_group_locks:
+        user_group_locks.discard(normalized)
+        _save_user_locks(user_locks, user_group_locks)
+    _save_config_file_group_specs(specs)
+    return True, "分组已删除"
+
+
+def move_config_file_to_group(rel_path: str, group_id: str) -> tuple[bool, str, dict[str, Any] | None]:
+    normalized_file = _normalize_config_rel_path(rel_path)
+    target_group_id = _normalize_group_id(group_id)
+    path = _safe_resolve(normalized_file)
+    if path is None or path.suffix.lower() != ".toml" or not path.exists():
+        return False, "配置文件不存在或路径不合法", None
+    if _is_system_locked_path(normalized_file):
+        return False, "系统预设和 Web 管理配置不能移动分组", None
+    if not normalized_file.startswith(("configs/imported/", "configs/datasets/")):
+        return False, "当前仅支持移动导入配置和数据集配置", None
+
+    specs = _load_config_file_group_specs()
+    target = _find_config_group_spec(specs, target_group_id)
+    if target is None:
+        return False, "目标分组不存在", None
+    if not _is_move_target_group(target):
+        return False, "只能移动到导入配置、数据集配置或用户自定义分组", _build_config_file_group(target)
+    if target.get("locked") or _is_user_group_locked(target_group_id):
+        return False, "目标分组已锁定，不能移入配置", _build_config_file_group(target)
+
+    for spec in specs:
+        files = [item for item in spec.get("files", []) if item != normalized_file]
+        spec["files"] = files
+        spec["order"] = [item for item in spec.get("order", []) if item != normalized_file]
+        exclude = [item for item in spec.get("exclude", []) if item != normalized_file]
+        if _group_patterns_include_file(spec, normalized_file) and spec["id"] != target_group_id:
+            exclude.append(normalized_file)
+        spec["exclude"] = sorted(dict.fromkeys(exclude))
+
+    target.setdefault("files", [])
+    if normalized_file not in target["files"]:
+        target["files"].append(normalized_file)
+    target["files"] = list(dict.fromkeys(target["files"]))
+    target.setdefault("order", [])
+    target["order"] = [item for item in target["order"] if item != normalized_file]
+    target["order"].append(normalized_file)
+    if normalized_file in target.get("exclude", []):
+        target["exclude"] = [item for item in target["exclude"] if item != normalized_file]
+
+    _save_config_file_group_specs(specs)
+    return True, "配置已移动到分组", _build_config_file_group(target)
+
+
+def reorder_config_file_in_group(
+    rel_path: str,
+    group_id: str,
+    direction: str,
+) -> tuple[bool, str, dict[str, Any] | None]:
+    normalized_file = _normalize_config_rel_path(rel_path)
+    target_group_id = _normalize_group_id(group_id)
+    clean_direction = str(direction or "").strip().lower()
+    if clean_direction not in {"up", "down"}:
+        return False, "排序方向必须是 up 或 down", None
+
+    path = _safe_resolve(normalized_file)
+    if path is None or path.suffix.lower() != ".toml" or not path.exists():
+        return False, "配置文件不存在或路径不合法", None
+
+    specs = _load_config_file_group_specs()
+    spec = _find_config_group_spec(specs, target_group_id)
+    if spec is None:
+        return False, "分组不存在", None
+
+    files = [item["path"] for item in _build_config_file_group(spec).get("files", [])]
+    if normalized_file not in files:
+        return False, "配置文件不在该分组中", _build_config_file_group(spec)
+
+    index = files.index(normalized_file)
+    next_index = index - 1 if clean_direction == "up" else index + 1
+    if next_index < 0 or next_index >= len(files):
+        return True, "排序未变化", _build_config_file_group(spec)
+
+    files[index], files[next_index] = files[next_index], files[index]
+    spec["order"] = files
+    _save_config_file_group_specs(specs)
+    return True, "配置排序已更新", _build_config_file_group(spec)
+
+
+def restore_system_presets(files: list[str] | None = None) -> dict[str, Any]:
+    targets = _list_system_preset_files() if files is None else files
+    normalized_targets: list[str] = []
+    errors: list[dict[str, str]] = []
+    seen: set[str] = set()
+
+    for raw in targets:
+        normalized = _normalize_config_rel_path(raw)
+        path = _safe_resolve(normalized)
+        if path is None or path.suffix != ".toml":
+            errors.append({"file": normalized, "reason": "路径不合法"})
+            continue
+        if not _is_system_preset_path(normalized):
+            errors.append({"file": normalized, "reason": "不是系统预设文件"})
+            continue
+        if normalized in seen:
+            continue
+        seen.add(normalized)
+        normalized_targets.append(normalized)
+
+    if errors:
+        return {
+            "ok": False,
+            "error": "还原请求包含不合法文件",
+            "restored": [],
+            "skipped": [],
+            "errors": errors,
+            "backup_dir": "",
+        }
+
+    timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    backup_root = CONFIGS_DIR / ".restore-backups" / timestamp
+    restored: list[str] = []
+    skipped: list[dict[str, str]] = []
+
+    for rel_path in normalized_targets:
+        path = _safe_resolve(rel_path)
+        if path is None or not path.exists():
+            skipped.append({"file": rel_path, "reason": "当前文件不存在"})
+            continue
+
+        baseline = _read_git_head_file(rel_path)
+        if baseline is None:
+            skipped.append({"file": rel_path, "reason": "没有可还原的系统基线"})
+            continue
+
+        backup_path = backup_root / _backup_relative_path(rel_path)
+        backup_path.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(path, backup_path)
+        path.write_text(baseline, encoding="utf-8")
+        restored.append(rel_path)
+
+    return {
+        "ok": True,
+        "restored": restored,
+        "skipped": skipped,
+        "errors": [],
+        "backup_dir": _display_path(backup_root) if restored else "",
+    }
+
+
 def list_config_files() -> list[str]:
     return [item["path"] for group in list_config_file_groups() for item in group["files"]]
 
 
 def list_config_file_groups() -> list[dict[str, Any]]:
     return [_build_config_file_group(spec) for spec in _load_config_file_group_specs()]
+
+
+def _get_config_file_group(group_id: str) -> dict[str, Any] | None:
+    normalized = _normalize_group_id(group_id)
+    for group in list_config_file_groups():
+        if group.get("id") == normalized:
+            return group
+    return None
 
 
 def get_config_file_meta(
@@ -233,7 +701,7 @@ def get_config_file_meta(
     trainable: bool | None = None,
     methods_subdir: str | None = None,
 ) -> dict[str, Any]:
-    normalized = rel_path.replace("\\", "/")
+    normalized = _normalize_config_rel_path(rel_path)
     inferred = (
         {
             "id": group_id,
@@ -247,12 +715,33 @@ def get_config_file_meta(
         else _infer_config_file_group(normalized)
     )
     stem = Path(normalized).stem
+    group_locked = bool(inferred["locked"] if locked is None else locked)
+    system_locked = _is_system_locked_path(normalized)
+    user_locked = _is_user_locked(normalized)
+    user_group_locked = _is_user_group_locked(group_id or inferred["id"])
+    effective_locked = system_locked or user_locked or user_group_locked or group_locked
+    lock_reason = ""
+    if system_locked:
+        lock_reason = "system"
+    elif user_locked:
+        lock_reason = "user"
+    elif user_group_locked:
+        lock_reason = "user_group"
+    elif group_locked:
+        lock_reason = "group"
     return {
         "path": normalized,
         "label": Path(normalized).name,
         "group": group_id or inferred["id"],
         "group_label": group_label or inferred["label"],
-        "locked": inferred["locked"] if locked is None else locked,
+        "locked": effective_locked,
+        "group_locked": group_locked,
+        "user_group_locked": user_group_locked,
+        "system_locked": system_locked,
+        "user_locked": user_locked,
+        "lock_reason": lock_reason,
+        "lock_reason_label": _lock_reason_label(lock_reason),
+        "restorable": _is_system_preset_path(normalized),
         "open": inferred["open"],
         "trainable": inferred["trainable"] if trainable is None else trainable,
         "method": stem,
@@ -306,11 +795,43 @@ def _load_config_file_group_specs() -> list[dict[str, Any]]:
             "locked": bool(raw.get("locked", False)),
             "trainable": bool(raw.get("trainable", False)),
             "methods_subdir": str(raw.get("methods_subdir") or ""),
+            "user_managed": bool(raw.get("user_managed", False)),
             "files": _string_list(raw.get("files")),
+            "order": _string_list(raw.get("order")),
             "patterns": _string_list(raw.get("patterns")),
             "exclude": set(_string_list(raw.get("exclude"))),
         })
     return specs
+
+
+def _save_config_file_group_specs(specs: list[dict[str, Any]]) -> None:
+    doc = tomlkit.document()
+    doc.add(tomlkit.comment("Web UI 配置文件管理注册表，由 WebUI 自动维护。"))
+    doc.add(tomlkit.comment("系统分组请谨慎修改；user_managed=true 的分组可在 WebUI 中重命名/删除。"))
+    group_array = tomlkit.aot()
+    for spec in specs:
+        table = tomlkit.table()
+        table.add("id", spec["id"])
+        table.add("label", spec["label"])
+        table.add("open", bool(spec.get("open", True)))
+        table.add("locked", bool(spec.get("locked", False)))
+        table.add("trainable", bool(spec.get("trainable", False)))
+        if spec.get("methods_subdir"):
+            table.add("methods_subdir", str(spec.get("methods_subdir") or ""))
+        if spec.get("user_managed"):
+            table.add("user_managed", True)
+        if spec.get("files"):
+            table.add("files", list(spec.get("files") or []))
+        if spec.get("order"):
+            table.add("order", list(spec.get("order") or []))
+        if spec.get("patterns"):
+            table.add("patterns", list(spec.get("patterns") or []))
+        if spec.get("exclude"):
+            table.add("exclude", list(spec.get("exclude") or []))
+        group_array.append(table)
+    doc.add("groups", group_array)
+    WEB_FILE_GROUPS_FILE.parent.mkdir(parents=True, exist_ok=True)
+    WEB_FILE_GROUPS_FILE.write_text(tomlkit.dumps(doc), encoding="utf-8")
 
 
 def _build_config_file_group(spec: dict[str, Any]) -> dict[str, Any]:
@@ -332,11 +853,24 @@ def _build_config_file_group(spec: dict[str, Any]) -> dict[str, Any]:
         seen_files.add(normalized)
         unique_files.append(normalized)
 
+    order = [item for item in spec.get("order", []) if item in seen_files]
+    if order:
+        rank = {file_path: idx for idx, file_path in enumerate(order)}
+        unique_files.sort(key=lambda item: (0, rank[item]) if item in rank else (1, 0))
+
     return {
         "id": spec["id"],
         "label": spec["label"],
         "open": spec["open"],
-        "locked": spec["locked"],
+        "locked": spec["locked"] or _is_user_group_locked(spec["id"]),
+        "group_locked": spec["locked"],
+        "user_group_locked": _is_user_group_locked(spec["id"]),
+        "system_locked": spec["id"] not in USER_LOCKABLE_GROUPS and spec["locked"],
+        "lockable": spec["id"] in USER_LOCKABLE_GROUPS or _is_user_managed_group(spec),
+        "user_managed": _is_user_managed_group(spec),
+        "renamable": _is_user_managed_group(spec),
+        "deletable": _is_user_managed_group(spec),
+        "movable": _is_move_target_group(spec),
         "trainable": spec["trainable"],
         "methods_subdir": spec["methods_subdir"],
         "files": [
@@ -390,6 +924,217 @@ def _group_defaults(
     }
 
 
+def _find_config_group_spec(specs: list[dict[str, Any]], group_id: str) -> dict[str, Any] | None:
+    normalized = _normalize_group_id(group_id)
+    for spec in specs:
+        if spec.get("id") == normalized:
+            return spec
+    return None
+
+
+def _new_user_config_group_spec(group_id: str, label: str) -> dict[str, Any]:
+    return {
+        "id": group_id,
+        "label": label,
+        "open": True,
+        "locked": False,
+        "trainable": True,
+        "methods_subdir": "imported",
+        "user_managed": True,
+        "files": [],
+        "order": [],
+        "patterns": [],
+        "exclude": set(),
+    }
+
+
+def _is_user_managed_group(spec: dict[str, Any]) -> bool:
+    return bool(spec.get("user_managed")) and str(spec.get("id") or "") not in SYSTEM_CONFIG_GROUP_IDS
+
+
+def _is_move_target_group(spec: dict[str, Any]) -> bool:
+    group_id = str(spec.get("id") or "")
+    return _is_user_managed_group(spec) or group_id in FILE_MOVE_TARGET_GROUPS
+
+
+def _lockable_group_ids() -> set[str]:
+    ids = set(USER_LOCKABLE_GROUPS)
+    ids.update(
+        spec["id"]
+        for spec in _load_config_file_group_specs()
+        if _is_user_managed_group(spec)
+    )
+    return ids
+
+
+def _unique_group_id(base: str, specs: list[dict[str, Any]]) -> str:
+    used = {str(spec.get("id") or "") for spec in specs}
+    root = base or "custom_group"
+    candidate = root
+    idx = 2
+    while candidate in used:
+        candidate = f"{root}_{idx}"
+        idx += 1
+    return candidate
+
+
+def _slugify_group_label(label: str) -> str:
+    chars: list[str] = []
+    for ch in label.strip().lower():
+        if ch.isascii() and ch.isalnum():
+            chars.append(ch)
+        elif ch in {"-", "_"}:
+            chars.append(ch)
+        elif ch.isspace():
+            chars.append("_")
+    slug = "".join(chars).strip("_-")
+    return slug or "custom_group"
+
+
+def _normalize_group_label(label: str) -> str:
+    return " ".join(str(label or "").strip().split())[:48]
+
+
+def _group_patterns_include_file(spec: dict[str, Any], rel_path: str) -> bool:
+    path = _safe_resolve(rel_path)
+    if path is None:
+        return False
+    normalized = _normalize_config_rel_path(rel_path)
+    for pattern in spec.get("patterns") or []:
+        if not str(pattern).startswith("configs/") or ".." in Path(str(pattern)).parts:
+            continue
+        if normalized in _glob_config_files(str(pattern)):
+            return True
+    return False
+
+
+def _normalize_config_rel_path(rel_path: str) -> str:
+    return str(rel_path or "").strip().replace("\\", "/").lstrip("/")
+
+
+def _normalize_group_id(group_id: str) -> str:
+    return str(group_id or "").strip()
+
+
+def _is_system_preset_path(rel_path: str) -> bool:
+    normalized = _normalize_config_rel_path(rel_path)
+    return normalized in SYSTEM_PRESET_FILES or normalized.startswith(SYSTEM_PRESET_PREFIXES)
+
+
+def _is_system_locked_path(rel_path: str) -> bool:
+    normalized = _normalize_config_rel_path(rel_path)
+    return _is_system_preset_path(normalized) or normalized in SYSTEM_MANAGED_FILES
+
+
+def _is_user_locked(rel_path: str) -> bool:
+    file_locks, _ = _load_user_locks()
+    return _normalize_config_rel_path(rel_path) in file_locks
+
+
+def _is_user_group_locked(group_id: str | None) -> bool:
+    _, group_locks = _load_user_locks()
+    return _normalize_group_id(group_id or "") in group_locks
+
+
+def _load_user_locks() -> tuple[set[str], set[str]]:
+    if not WEB_USER_LOCKS_FILE.exists():
+        return set(), set()
+    try:
+        data = toml.loads(WEB_USER_LOCKS_FILE.read_text(encoding="utf-8"))
+    except toml.TomlDecodeError:
+        return set(), set()
+
+    file_locks: set[str] = set()
+    for raw in _string_list(data.get("locked")):
+        normalized = _normalize_config_rel_path(raw)
+        path = _safe_resolve(normalized)
+        if path is None or path.suffix != ".toml":
+            continue
+        if _is_system_locked_path(normalized):
+            continue
+        file_locks.add(normalized)
+
+    group_locks: set[str] = set()
+    for raw in _string_list(data.get("locked_groups")):
+        normalized = _normalize_group_id(raw)
+        if normalized in _lockable_group_ids():
+            group_locks.add(normalized)
+    return file_locks, group_locks
+
+
+def _save_user_locks(file_locks: set[str], group_locks: set[str]) -> None:
+    WEB_USER_LOCKS_FILE.parent.mkdir(parents=True, exist_ok=True)
+    WEB_USER_LOCKS_FILE.write_text(
+        toml.dumps({
+            "locked": sorted(file_locks),
+            "locked_groups": sorted(group_locks),
+        }),
+        encoding="utf-8",
+    )
+
+
+def _lock_reason_label(reason: str) -> str:
+    labels = {
+        "system": "系统只读",
+        "user": "用户锁定",
+        "user_group": "分组锁定",
+        "group": "分组只读",
+    }
+    return labels.get(reason, "")
+
+
+def _lock_reason_message(meta: dict[str, Any]) -> str:
+    reason = str(meta.get("lock_reason") or "")
+    if reason == "system":
+        return "该配置文件是系统预设，已内置锁定"
+    if reason == "user":
+        return "该配置文件已被用户锁定"
+    if reason == "user_group":
+        return "该配置文件所在分组已被用户锁定"
+    if reason == "group":
+        return "该配置文件属于只读分组"
+    return "该配置文件已锁定"
+
+
+def _list_system_preset_files() -> list[str]:
+    files: list[str] = []
+    for rel_path in sorted(SYSTEM_PRESET_FILES):
+        path = _safe_resolve(rel_path)
+        if path is not None and path.exists():
+            files.append(rel_path)
+    for prefix in SYSTEM_PRESET_PREFIXES:
+        folder = _safe_resolve(prefix.rstrip("/"))
+        if folder is None or not folder.is_dir():
+            continue
+        files.extend(
+            _display_path(path)
+            for path in sorted(folder.glob("*.toml"))
+            if path.is_file()
+        )
+    return sorted(dict.fromkeys(files))
+
+
+def _read_git_head_file(rel_path: str) -> str | None:
+    result = subprocess.run(
+        ["git", "show", f"HEAD:{rel_path}"],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if result.returncode != 0:
+        return None
+    return result.stdout
+
+
+def _backup_relative_path(rel_path: str) -> Path:
+    path = Path(rel_path)
+    try:
+        return path.relative_to("configs")
+    except ValueError:
+        return path
+
+
 def _string_list(value: Any) -> list[str]:
     if isinstance(value, str):
         return [value]
@@ -405,8 +1150,23 @@ def _patch_toml_top_level(content: str, values: dict[str, Any]) -> str:
             continue
         if "." in key or key in {"general", "datasets"}:
             raise ValueError(f"不支持写入嵌套字段: {key}")
-        doc[key] = value
+        doc[key] = _normalize_patch_value(key, value)
     return tomlkit.dumps(doc)
+
+
+def _normalize_patch_value(key: str, value: Any) -> Any:
+    if key in {"sample_every_n_epochs", "sample_every_n_steps"}:
+        if value in ("", None):
+            return None
+        try:
+            return int(value)
+        except (TypeError, ValueError) as exc:
+            raise ValueError(f"{key} 必须是整数") from exc
+    if key == "sample_at_first":
+        if isinstance(value, bool):
+            return value
+        return str(value).strip().lower() in {"1", "true", "yes", "on"}
+    return value
 
 
 def get_field_help() -> dict[str, dict[str, str]]:
@@ -432,13 +1192,33 @@ def _load(p: Path) -> dict:
 
 
 def _safe_resolve(rel_path: str) -> Path | None:
-    resolved = (ROOT / rel_path).resolve()
+    resolved = (ROOT / _normalize_config_rel_path(rel_path)).resolve()
     configs_root = CONFIGS_DIR.resolve()
     try:
         resolved.relative_to(configs_root)
     except ValueError:
         return None
     return resolved
+
+
+def _normalize_prompt_file_path(value: str) -> str:
+    clean = str(value or "").replace("\\", "/").strip()
+    if not clean:
+        clean = DEFAULT_SAMPLE_PROMPTS_FILE
+    path = Path(clean)
+    if path.is_absolute():
+        try:
+            clean = path.resolve().relative_to(ROOT.resolve()).as_posix()
+        except ValueError as exc:
+            raise ValueError("提示词文件必须在项目目录内") from exc
+        path = Path(clean)
+    if ".." in path.parts:
+        raise ValueError("提示词文件路径不能包含 ..")
+    if path.suffix.lower() != ".txt":
+        raise ValueError("提示词文件必须是 .txt")
+    if not path.as_posix().startswith("configs/"):
+        raise ValueError("提示词文件必须保存在 configs/ 下")
+    return path.as_posix().lstrip("/")
 
 
 def _safe_config_subdir(subdir: str) -> Path | None:
@@ -460,6 +1240,27 @@ def _resolve_project_path(value: str) -> Path:
     return path.resolve()
 
 
+def _auto_data_dir_for_key(value: Any, source_path: Path, suffix: str) -> Path:
+    raw = str(value or "").strip()
+    if not raw:
+        return _derived_data_dir(source_path, suffix)
+    path = _resolve_project_path(raw)
+    if _is_builtin_default_data_dir(raw) or not path.exists():
+        return _derived_data_dir(source_path, suffix)
+    return path
+
+
+def _derived_data_dir(source_path: Path, suffix: str) -> Path:
+    parent = source_path.parent if source_path.name else source_path
+    name = source_path.name or "dataset"
+    return (parent / f"{name}_{suffix}").resolve()
+
+
+def _is_builtin_default_data_dir(value: str) -> bool:
+    clean = str(value or "").replace("\\", "/").strip().strip("/")
+    return clean in {DEFAULT_RESIZED_IMAGE_DIR, DEFAULT_LORA_CACHE_DIR}
+
+
 def _display_path(path: Path) -> str:
     try:
         return str(path.relative_to(ROOT))
@@ -475,7 +1276,7 @@ def _check_training_images(cfg: dict[str, Any], add) -> None:
     image_exts = {".png", ".jpg", ".jpeg", ".webp", ".bmp"}
     images = sorted(p for p in image_dir.iterdir() if p.suffix.lower() in image_exts)
     if not images:
-        add("warning", "training_images", "缩放图像目录里没有可训练图片", image_dir)
+        add("error", "training_images", "缩放图像目录里没有可训练图片，请先预处理生成训练图", image_dir)
         return
     missing_captions = []
     for image in images[:50]:

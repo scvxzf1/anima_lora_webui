@@ -980,6 +980,15 @@ def verify_training_args(args: argparse.Namespace):
             "zero_terminal_snr is enabled, but v_parameterization is not enabled. training will be unexpected"
         )
 
+    args.sample_every_n_epochs = _coerce_optional_positive_int(
+        args.sample_every_n_epochs,
+        "sample_every_n_epochs",
+    )
+    args.sample_every_n_steps = _coerce_optional_positive_int(
+        args.sample_every_n_steps,
+        "sample_every_n_steps",
+    )
+
     if args.sample_every_n_epochs is not None and args.sample_every_n_epochs <= 0:
         logger.warning(
             "sample_every_n_epochs is less than or equal to 0, so it will be disabled"
@@ -991,6 +1000,17 @@ def verify_training_args(args: argparse.Namespace):
             "sample_every_n_steps is less than or equal to 0, so it will be disabled"
         )
         args.sample_every_n_steps = None
+
+
+def _coerce_optional_positive_int(value, name: str):
+    if value in (None, ""):
+        return None
+    if isinstance(value, int):
+        return value
+    try:
+        return int(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"{name} must be an integer, got {value!r}") from exc
 
 
 def add_dataset_arguments(

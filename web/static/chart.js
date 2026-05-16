@@ -56,6 +56,21 @@ class MetricsChart {
         this.render();
     }
 
+    setData(points) {
+        this.data = [];
+        for (const point of points || []) {
+            const step = Number(point.step);
+            const value = Number(point.value ?? point.loss);
+            if (Number.isFinite(step) && Number.isFinite(value)) {
+                this.data.push({ step, value });
+            }
+        }
+        if (this.data.length > this.maxPoints) {
+            this.data = this.data.slice(-this.maxPoints);
+        }
+        this.render();
+    }
+
     render() {
         const ctx = this.ctx;
         const w = this.canvas.width / this.pixelRatio;

@@ -1,0 +1,38 @@
+# Imported from a local DiffPipeForge run.
+# Source training config: trainconfig.toml, LoRA rank 32, lr 2e-5, 50 epochs.
+# This is an imported reference config, not a built-in GUI training variant.
+# Set the ANIMA_* variables in .env before training this imported variant.
+
+dataset_config = "configs/datasets/rokkotsu_goddess.toml"
+
+pretrained_model_name_or_path = "${ANIMA_DIT_MODEL}"
+qwen3 = "${ANIMA_QWEN3_MODEL}"
+vae = "${ANIMA_VAE_MODEL}"
+
+source_image_dir = "${ANIMA_ROKKOTSU_SOURCE_DIR}"
+resized_image_dir = "${ANIMA_ROKKOTSU_RESIZED_DIR}"
+lora_cache_dir = "${ANIMA_ROKKOTSU_CACHE_DIR}"
+
+network_dim = 32
+network_alpha = 32
+
+learning_rate = 2e-5
+max_train_epochs = 50
+save_every_n_epochs = 1
+checkpointing_epochs = 1
+gradient_accumulation_steps = 1
+
+optimizer_type = "AdamW"
+optimizer_args = ["weight_decay=0.01", "eps=1e-8", "betas=0.9,0.99"]
+lr_scheduler = "linear"
+mixed_precision = "bf16"
+save_precision = "bf16"
+
+gradient_checkpointing = true
+caption_dropout_rate = 0.0
+cache_llm_adapter_outputs = true
+
+output_dir = "${ANIMA_ROKKOTSU_OUTPUT_DIR}"
+output_name = "RokkotsuGoddess_anima_v1"
+
+blocks_to_swap = 0

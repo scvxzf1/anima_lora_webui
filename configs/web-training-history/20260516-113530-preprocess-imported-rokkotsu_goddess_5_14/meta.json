@@ -1,0 +1,36 @@
+{
+  "id": "20260516-113530-preprocess-imported-rokkotsu_goddess_5_14",
+  "name": "",
+  "group": "",
+  "archived": false,
+  "job": "preprocess",
+  "state": "idle",
+  "variant": "rokkotsu_goddess_5_14",
+  "preset": "default",
+  "methods_subdir": "imported",
+  "output_dir": "/home/scv/sda1/DiffPipeForge2/output/肋骨女神/mylora",
+  "sample_dir": "/home/scv/sda1/DiffPipeForge2/output/肋骨女神/mylora/sample",
+  "sample_config": {
+    "enabled": true,
+    "sample_prompts": "configs/sample_prompts.txt",
+    "sample_prompts_exists": true,
+    "sample_every_n_epochs": 1,
+    "sample_every_n_steps": null,
+    "sample_at_first": false,
+    "sample_sampler": "euler",
+    "message": "训练中采样已配置"
+  },
+  "command": [
+    "/home/scv/nvme0n1p1/训练器相关/anima_lora/.venv/bin/python",
+    "tasks.py",
+    "preprocess"
+  ],
+  "started_at": 1778902530.7180805,
+  "started_at_text": "2026-05-16 11:35:30",
+  "finished_at": 1778902606.8691132,
+  "finished_at_text": "2026-05-16 11:36:46",
+  "message": "预处理完成",
+  "returncode": 0,
+  "log_count": 259,
+  "metric_count": 0
+}

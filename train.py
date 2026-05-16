@@ -47,6 +47,7 @@ from library.training.method_adapter import (
 from library.config.io import (
     load_dataset_config_from_base,
     read_config_from_file,
+    substitute_dataset_config_templates,
 )
 from library.datasets import (
     DatasetGroup,
@@ -1408,6 +1409,10 @@ class AnimaTrainer:
             if use_user_config:
                 logger.info(f"Loading dataset config from {args.dataset_config}")
                 user_config = config_util.load_user_config(args.dataset_config)
+                user_config = substitute_dataset_config_templates(
+                    user_config,
+                    vars(args),
+                )
                 ignored = ["train_data_dir", "reg_data_dir", "in_json"]
                 if any(getattr(args, attr) is not None for attr in ignored):
                     logger.warning(

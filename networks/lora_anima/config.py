@@ -298,6 +298,9 @@ class LoRANetworkCfg:
     fera_fecl_weight: float = 0.0
     fera_num_bands: int = 3
 
+    # LoKr (Low-Rank Kronecker Product) factor.
+    lokr_factor: int = 8
+
     # SmoothQuant-style per-channel input pre-scaling
     channel_scales_dict: Optional[Dict[str, torch.Tensor]] = None
 
@@ -436,6 +439,7 @@ class LoRANetworkCfg:
         # to be a meaningful objective (see compute_fecl docstring).
         fera_fecl_weight = float(kwargs.get("fera_fecl_weight", 0.0))
         fera_num_bands = int(kwargs.get("fera_num_bands", kwargs.get("num_bands", 3)))
+        lokr_factor = int(kwargs.get("lokr_factor", 8))
 
         # Three-axis routing resolution (plan2.md §three-axis-config). The
         # legacy ``use_hydra`` / ``use_sigma_router`` / ``use_fei_router``
@@ -541,6 +545,7 @@ class LoRANetworkCfg:
             ortho_init_std=ortho_init_std,
             fera_fecl_weight=fera_fecl_weight,
             fera_num_bands=fera_num_bands,
+            lokr_factor=lokr_factor,
             channel_scales_dict=channel_scales_dict,
             verbose=verbose,
         )
@@ -574,6 +579,7 @@ class LoRANetworkCfg:
         new_use_moe_style: Optional[str] = None,
         new_route_per_layer: Optional[bool] = None,
         new_router_source: Optional[str] = None,
+        lokr_factor: int = 8,
     ) -> "LoRANetworkCfg":
         """Build cfg from a checkpoint key-sniff (warm-start / inference path).
 
@@ -643,4 +649,5 @@ class LoRANetworkCfg:
                 float(fei_sigma_low_div) if fei_sigma_low_div is not None else 4.0
             ),
             fei_router_names=fei_router_names,
+            lokr_factor=int(lokr_factor),
         )

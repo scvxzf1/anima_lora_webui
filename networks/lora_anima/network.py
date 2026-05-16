@@ -18,11 +18,13 @@ from networks.lora_anima.loading import (
     _parse_reft_layers,
     _refuse_split_hydra_keys,
     _refuse_split_stacked_experts_keys,
+    _refuse_unfused_attn_lokr_keys,
     _refuse_unfused_attn_lora_keys,
     _stack_lora_ups,
 )
 from networks.lora_modules import (
     HydraLoRAModule,
+    LoKrModule,
     LoRAModule,
     OrthoHydraLoRAExpModule,
     OrthoLoRAExpModule,
@@ -463,6 +465,8 @@ class LoRANetwork(torch.nn.Module):
                 extra_kwargs = {}
                 if effective_module_class == OrthoLoRAExpModule:
                     pass  # no extra kwargs — SVD init reads from org_module directly
+                elif effective_module_class == LoKrModule:
+                    extra_kwargs["factor"] = cfg.lokr_factor
                 elif effective_module_class == OrthoHydraLoRAExpModule:
                     extra_kwargs["num_experts"] = cfg.num_experts
                     if self._use_global_router_for_hydra:
@@ -1966,6 +1970,7 @@ class LoRANetwork(torch.nn.Module):
         # but running hydra first means any non-hydra attention still goes
         # through the normal code path cleanly.
         weights_sd = _refuse_split_hydra_keys(weights_sd)
+        weights_sd = _refuse_unfused_attn_lokr_keys(weights_sd)
         # Refuse unfused attn projections (inverse of save_weights defusing).
         weights_sd = _refuse_unfused_attn_lora_keys(weights_sd)
 
@@ -2339,6 +2344,14 @@ class LoRANetwork(torch.nn.Module):
         if self.cfg.router_source == "fei" and self.cfg.fei_feature_dim > 0:
             metadata["ss_fei_feature_dim"] = str(int(self.cfg.fei_feature_dim))
             metadata["ss_fei_sigma_low_div"] = str(float(self.cfg.fei_sigma_low_div))
+
+        if spec.name == "lokr":
+            import json as _json
+
+            metadata["ss_network_module"] = "lycoris.kohya"
+            metadata["ss_network_args"] = _json.dumps(
+                {"algo": "lokr", "factor": int(self.cfg.lokr_factor)}
+            )
 
         state_dict = self.state_dict()
         # Drop training-only auxiliary heads from the on-disk artifact. ``repa_head``

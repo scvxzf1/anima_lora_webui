@@ -588,6 +588,56 @@ def _build_stacked_experts_state_dict(
 # ---------------------------------------------------------------------------
 
 
+def _defuse_lokr(state_dict: Dict[str, torch.Tensor]) -> None:
+    """Split fused qkv/kv LoKr runtime keys into per-component file keys.
+
+    The runtime trains fused ``qkv_proj`` / ``kv_proj`` modules. On disk we
+    mirror LyCORIS naming by cloning ``lokr_w1`` and chunking ``lokr_w2`` for
+    the component projections.
+    """
+    fused_groups: List[tuple] = []
+    for key in list(state_dict.keys()):
+        if not key.endswith(".lokr_w2"):
+            continue
+        prefix = key.removesuffix(".lokr_w2")
+        spec = _match_fused_spec(prefix)
+        if spec is not None:
+            fused_groups.append((prefix, spec))
+
+    for prefix, spec in fused_groups:
+        w1_key = f"{prefix}.lokr_w1"
+        w2_key = f"{prefix}.lokr_w2"
+        if w1_key not in state_dict or w2_key not in state_dict:
+            logger.warning("LoKr defuse: missing w1/w2 pair at %s, skipping", prefix)
+            continue
+
+        suffixes = spec.component_letters
+        n = len(suffixes)
+        w1 = state_dict.pop(w1_key)
+        w2 = state_dict.pop(w2_key)
+        alpha = state_dict.pop(f"{prefix}.alpha", None)
+
+        if w2.size(0) % n != 0:
+            logger.warning(
+                "LoKr defuse: lokr_w2 rows at %s are not divisible by %d, skipping",
+                prefix,
+                n,
+            )
+            state_dict[w1_key] = w1
+            state_dict[w2_key] = w2
+            if alpha is not None:
+                state_dict[f"{prefix}.alpha"] = alpha
+            continue
+
+        base_prefix = prefix.removesuffix(spec.fused_frag)
+        for letter, w2_chunk in zip(suffixes, w2.chunk(n, dim=0)):
+            new_prefix = base_prefix + spec.component_frag(letter)
+            state_dict[f"{new_prefix}.lokr_w1"] = w1.clone()
+            state_dict[f"{new_prefix}.lokr_w2"] = w2_chunk.contiguous()
+            if alpha is not None:
+                state_dict[f"{new_prefix}.alpha"] = alpha.clone()
+
+
 def save_network_weights(
     state_dict: Dict[str, torch.Tensor],
     *,
@@ -648,8 +698,11 @@ def save_network_weights(
         # a uniform expert average defeats layer-local routing.
         return
 
-    # Standard (lora / ortho / dora) path.
-    _rename_dora_and_defuse_standard(state_dict)
+    if save_variant == "lokr":
+        _defuse_lokr(state_dict)
+    else:
+        # Standard (lora / ortho / dora) path.
+        _rename_dora_and_defuse_standard(state_dict)
 
     if dtype is not None:
         for key in list(state_dict.keys()):

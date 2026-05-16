@@ -28,6 +28,7 @@ from typing import Any, Callable, Dict, Mapping, Optional, Tuple, Type
 from networks.lora_deprecated import DoRAModule
 from networks.lora_modules import (
     HydraLoRAModule,
+    LoKrModule,
     LoRAModule,
     OrthoHydraLoRAExpModule,
     OrthoLoRAExpModule,
@@ -99,6 +100,7 @@ SHARED_KWARG_FLAGS: Tuple[str, ...] = (
     "use_custom_down_autograd",
     # Variant selectors (read by resolve_network_spec)
     "use_dora",
+    "use_lokr",
     "use_ortho",
     # PSOFT-style Cayley-init magnitude (consumed by OrthoHydra +
     # StackedExperts in ortho mode).
@@ -222,6 +224,12 @@ NETWORK_REGISTRY: Dict[str, NetworkSpec] = {
         module_class=DoRAModule,
         save_variant="standard",
     ),
+    "lokr": NetworkSpec(
+        name="lokr",
+        module_class=LoKrModule,
+        save_variant="lokr",
+        kwarg_flags=("lokr_factor",),
+    ),
 }
 
 
@@ -262,6 +270,7 @@ def resolve_network_spec(kwargs: Mapping[str, Any]) -> NetworkSpec:
     TOML still carries it.
     """
     use_dora = _parse_bool_flag(kwargs, "use_dora")
+    use_lokr = _parse_bool_flag(kwargs, "use_lokr")
     use_ortho = _parse_bool_flag(kwargs, "use_ortho")
 
     raw_moe = kwargs.get("use_moe_style")
@@ -280,9 +289,13 @@ def resolve_network_spec(kwargs: Mapping[str, Any]) -> NetworkSpec:
             f"use_moe_style={raw_moe!r}: expected False, 'shared_A', or 'independent_A'."
         )
 
-    if use_dora and (use_ortho or moe_style):
+    if use_dora and (use_ortho or moe_style or use_lokr):
         raise ValueError(
-            "use_dora is mutually exclusive with use_ortho / use_moe_style"
+            "use_dora is mutually exclusive with use_ortho / use_moe_style / use_lokr"
+        )
+    if use_lokr and (use_ortho or moe_style):
+        raise ValueError(
+            "use_lokr is mutually exclusive with use_ortho / use_moe_style"
         )
 
     if moe_style == "independent_A":
@@ -293,6 +306,8 @@ def resolve_network_spec(kwargs: Mapping[str, Any]) -> NetworkSpec:
         )
     if use_dora:
         return NETWORK_REGISTRY["dora"]
+    if use_lokr:
+        return NETWORK_REGISTRY["lokr"]
     if use_ortho:
         return NETWORK_REGISTRY["ortho"]
     return NETWORK_REGISTRY["lora"]

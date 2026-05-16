@@ -7,6 +7,7 @@
 
 from networks.lora_modules.base import BaseLoRAModule, _absorb_channel_scale
 from networks.lora_modules.hydra import HydraLoRAModule, _sigma_sinusoidal_features
+from networks.lora_modules.lokr import LoKrModule
 from networks.lora_modules.lora import LoRAModule
 from networks.lora_modules.ortho import (
     OrthoHydraLoRAExpModule,
@@ -18,6 +19,7 @@ from networks.lora_modules.stacked_experts import StackedExpertsLoRAModule
 __all__ = [
     "BaseLoRAModule",
     "HydraLoRAModule",
+    "LoKrModule",
     "LoRAModule",
     "OrthoHydraLoRAExpModule",
     "OrthoLoRAExpModule",
