@@ -38,7 +38,7 @@ EXPECTED_VARIANTS = {
     "ortho",
     "hydra",
     "ortho_hydra",
-    "dora",
+    "chimera_hydra",
 }
 
 
@@ -83,9 +83,6 @@ def test_hydra_router_kwargs_registered():
         "num_experts",
         "balance_loss_weight",
         "balance_loss_warmup_ratio",
-        "expert_warmup_ratio",
-        "expert_warmup_k",
-        "expert_best_warmup_ratio",
     }
     for variant in ("hydra", "ortho_hydra"):
         flags = set(NETWORK_REGISTRY[variant].kwarg_flags)
@@ -108,12 +105,12 @@ def test_hydra_router_kwargs_registered():
         ({"use_moe_style": "shared_A"}, "hydra"),
         ({"use_moe_style": "shared_A", "use_ortho": "true"}, "ortho_hydra"),
         ({"use_moe_style": "independent_A"}, "stacked_experts_global_fei"),
-        ({"use_dora": "true"}, "dora"),
+        ({"use_lokr": "true"}, "lokr"),
+        ({"use_chimera_hydra": "true"}, "chimera_hydra"),
         # Falsey forms of use_moe_style resolve to plain LoRA.
         ({"use_moe_style": False}, "lora"),
         ({"use_moe_style": "false"}, "lora"),
         ({"use_moe_style": ""}, "lora"),
-        ({"use_lokr": "true"}, "lokr"),
     ],
 )
 def test_resolve_precedence(kwargs, expected):
@@ -124,11 +121,10 @@ def test_resolve_precedence(kwargs, expected):
 @pytest.mark.parametrize(
     "kwargs",
     [
-        {"use_dora": "true", "use_moe_style": "shared_A"},
-        {"use_dora": "true", "use_ortho": "true"},
-        {"use_dora": "true", "use_lokr": "true"},
         {"use_lokr": "true", "use_ortho": "true"},
         {"use_lokr": "true", "use_moe_style": "shared_A"},
+        {"use_lokr": "true", "use_chimera_hydra": "true"},
+        {"use_dora": "true"},
     ],
 )
 def test_resolve_ambiguous_raises(kwargs):
@@ -311,7 +307,7 @@ def test_save_hydra_moe_mixed_with_plain_lora_qkv_defuses_up(tmp_path: Path):
 def test_save_ortho_hydra_roundtrip(tmp_path: Path):
     E, r, in_dim, out_dim = 4, 4, 8, 12
     prefix = "lora_unet_blocks_0_self_attn_qkv_proj"
-    # OrthoHydraLoRAExp runtime keys: S_p is 3-D (E, r, r); P_bases is (E, out, r)
+    # OrthoHydraLoRA runtime keys: S_p is 3-D (E, r, r); P_bases is (E, out, r)
     sd = {
         f"{prefix}.S_p": torch.randn(E, r, r),
         f"{prefix}.S_q": torch.randn(r, r),
@@ -381,12 +377,12 @@ def test_save_dora_roundtrip(tmp_path: Path):
 
 def test_save_lokr_roundtrip(tmp_path: Path):
     """LoKr save pipeline: fused qkv defuses lokr_w2 by output dim."""
-    factor, in_dim, out_dim = 4, 16, 12
+    factor, in_dim, out_dim = 4, 8, 12
     prefix = "lora_unet_blocks_0_self_attn_qkv_proj"
     sd = {
         f"{prefix}.lokr_w1": torch.randn(factor, factor),
         f"{prefix}.lokr_w2": torch.randn((3 * out_dim) // factor, in_dim // factor),
-        f"{prefix}.alpha": _alpha(32),
+        f"{prefix}.alpha": _alpha(factor),
     }
 
     loaded = _save_and_reload(sd, tmp_path, save_variant="lokr")
@@ -398,24 +394,22 @@ def test_save_lokr_roundtrip(tmp_path: Path):
             out_dim // factor,
             in_dim // factor,
         )
-        assert loaded[f"{base}_{suffix}.alpha"].shape == ()
     assert f"{prefix}.lokr_w1" not in loaded
     assert f"{prefix}.lokr_w2" not in loaded
 
 
 def test_refuse_split_lokr_attn_keys():
-    factor, in_dim, out_dim = 4, 16, 12
+    factor, in_dim, out_dim = 4, 8, 12
     base = "lora_unet_blocks_0_self_attn"
-    w1 = torch.randn(factor, factor)
     sd = {}
+    w1 = torch.randn(factor, factor)
     for suffix in ("q_proj", "k_proj", "v_proj"):
         sd[f"{base}_{suffix}.lokr_w1"] = w1.clone()
         sd[f"{base}_{suffix}.lokr_w2"] = torch.randn(out_dim // factor, in_dim // factor)
-        sd[f"{base}_{suffix}.alpha"] = _alpha(32)
 
     refused = _refuse_unfused_attn_lokr_keys(sd)
-    fused = "lora_unet_blocks_0_self_attn_qkv_proj"
 
+    fused = f"{base}_qkv_proj"
     assert refused[f"{fused}.lokr_w1"].shape == (factor, factor)
     assert refused[f"{fused}.lokr_w2"].shape == (
         (3 * out_dim) // factor,

@@ -106,7 +106,7 @@ python scripts/edit.py \
     --image path/to/source.png \
     --prompt_src "1girl, smile, school_uniform" \
     --prompt_tar "1girl, smile, school_uniform, double peace" \
-    --dit models/diffusion_models/anima-preview3-base.safetensors \
+    --dit models/diffusion_models/anima-base-v1.0.safetensors \
     --text_encoder models/text_encoders/qwen_3_06b_base.safetensors \
     --vae models/vae/qwen_image_vae.safetensors \
     --save_path output/tests/directedit/
@@ -117,7 +117,7 @@ Notable flags:
 | Flag | Default | Notes |
 |---|---|---|
 | `--infer_steps` | 28 | Both inversion and edit step count. |
-| `--flow_shift` | 1.0 | Anima preview3 standard. |
+| `--flow_shift` | 1.0 | Anima base-v1.0 standard. |
 | `--guidance_scale` | 2.0 | CFG on the edit (target) pass. |
 | `--invert_guidance` | 1.0 | CFG during inversion. Raise only if you need the inverted noise to match a high-CFG generation seed. |
 | `--t_inj` | 12 | First N steps inject src self-attn V into tar (paper Eq. 13). 0 = pure ΔZ-anchored edit. Typical paper setting `T/10..T/3`. Higher = stronger source-feature preservation, weaker edit leverage. |

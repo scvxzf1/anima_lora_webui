@@ -40,3 +40,11 @@ easycontrol_cond_noise_max = 0.0  # >0 (e.g. 0.5) degrades cond to a lossy hint
 
 blocks_to_swap = 0
 compile_mode = "full"
+
+use_cmmd = false
+
+[variant]
+family = "easycontrol"
+label = "EasyControl"
+description = "Extended self-attention image conditioning."
+order = 10

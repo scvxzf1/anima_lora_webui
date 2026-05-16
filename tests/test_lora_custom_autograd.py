@@ -22,7 +22,10 @@ def _reference_unscaled(x, weight):
 
 
 def _reference_scaled(x, weight, inv_scale):
-    x_lora = x * inv_scale
+    # Match the legacy `_rebalance` path: cast inv_scale to x.dtype before the
+    # multiply so the rebalance stays in bf16 (the custom autograd is meant to
+    # be equivalent to that, NOT to a fp32-promoted multiply).
+    x_lora = x * inv_scale.to(x.dtype)
     return torch.nn.functional.linear(x_lora.float(), weight.float())
 
 
@@ -257,17 +260,17 @@ def test_hydra_sigma_feature_cache_updates_and_clears():
 
 
 def test_ortho_flag_on_matches_legacy_gradients():
-    """OrthoLoRAExpModule: custom fn treats Q_eff as the 'weight' input.
+    """OrthoLoRAModule: custom fn treats Q_eff as the 'weight' input.
     grad_Q_eff must propagate through R_q @ Q_basis into S_q, and through
     the P path into S_p + lambda_layer — all bitwise equal to the legacy
     path."""
-    from networks.lora_modules.ortho import OrthoLoRAExpModule
+    from networks.lora_modules.ortho import OrthoLoRAModule
 
     def run(use_custom: bool):
         torch.manual_seed(0)
         base = torch.nn.Linear(32, 24, bias=False).to(torch.bfloat16)
         base.weight.requires_grad_(False)
-        module = OrthoLoRAExpModule("o", base, multiplier=1.0, lora_dim=4, alpha=4)
+        module = OrthoLoRAModule("o", base, multiplier=1.0, lora_dim=4, alpha=4)
         module.apply_to()
         module.train()
         module.use_custom_down_autograd = use_custom
@@ -297,16 +300,16 @@ def test_ortho_flag_on_matches_legacy_gradients():
 
 
 def test_ortho_hydra_flag_on_matches_legacy_gradients():
-    """OrthoHydraLoRAExpModule: Cayley-on-Q + MoE per-expert P. Flag toggles
+    """OrthoHydraLoRAModule: Cayley-on-Q + MoE per-expert P. Flag toggles
     only the shared Q_eff projection; router / P_eff / λ paths are unchanged.
     """
-    from networks.lora_modules.ortho import OrthoHydraLoRAExpModule
+    from networks.lora_modules.ortho import OrthoHydraLoRAModule
 
     def run(use_custom: bool):
         torch.manual_seed(0)
         base = torch.nn.Linear(32, 24, bias=False).to(torch.bfloat16)
         base.weight.requires_grad_(False)
-        module = OrthoHydraLoRAExpModule(
+        module = OrthoHydraLoRAModule(
             "oh", base, multiplier=1.0, lora_dim=4, alpha=4,
             num_experts=3, sigma_feature_dim=0,
         )
@@ -332,3 +335,269 @@ def test_ortho_hydra_flag_on_matches_legacy_gradients():
     _assert_grads_equal(g_legacy, g_custom, "OrthoHydra")
     assert torch.equal(gx_legacy, gx_custom), "OrthoHydra grad_x differs"
     assert "S_q" in g_legacy and g_legacy["S_q"].abs().sum() > 0
+
+
+# ---------------------------------------------------------------------------
+# channel_scale: flag-on vs flag-off equality must also hold under the
+# SmoothQuant-style rebalance. Pre-fix, the scaled Function silently promoted
+# the rebalanced activation to fp32 (inv_scale stored as fp32 → bf16 × fp32
+# → fp32) and diverged from the legacy `_rebalance` bf16 path.
+# ---------------------------------------------------------------------------
+
+
+def _make_channel_scale(in_features: int, seed: int = 7) -> torch.Tensor:
+    g = torch.Generator().manual_seed(seed)
+    # Match the magnitude range used elsewhere ([0.5, 2.5)): broad enough to
+    # exercise the rebalance, bounded so the absorbed weights stay sensible.
+    return torch.rand(in_features, generator=g, dtype=torch.float32) * 2.0 + 0.5
+
+
+def test_lora_channel_scale_flag_on_matches_legacy_gradients():
+    """LoRAModule + channel_scale: pre-fix, the scaled custom path drifted
+    away from the legacy bf16 ``_rebalance`` because ``inv_scale`` was applied
+    in fp32. Toggling the flag must leave forward / grads bitwise identical.
+    """
+    from networks.lora_modules.lora import LoRAModule
+
+    cs = _make_channel_scale(32)
+
+    def run(use_custom: bool):
+        torch.manual_seed(0)
+        base = torch.nn.Linear(32, 24, bias=False).to(torch.bfloat16)
+        base.weight.requires_grad_(False)
+        module = LoRAModule(
+            "t", base, multiplier=1.0, lora_dim=4, alpha=4,
+            channel_scale=cs.clone(),
+        )
+        module.apply_to()
+        module.train()
+        module.use_custom_down_autograd = use_custom
+
+        # Wake up lora_up so the down branch carries a non-zero loss
+        # gradient; default zero-init would zero out every comparison.
+        with torch.no_grad():
+            module.lora_up.weight.copy_(
+                torch.randn_like(module.lora_up.weight) * 0.05
+            )
+
+        torch.manual_seed(1)
+        x = torch.randn(2, 8, 32, dtype=torch.bfloat16, requires_grad=True)
+        out = base.forward(x)
+        out.sum().backward()
+        return out.detach().clone(), _named_trainable_grads(module), x.grad.detach().clone()
+
+    o_legacy, g_legacy, gx_legacy = run(False)
+    o_custom, g_custom, gx_custom = run(True)
+
+    assert torch.equal(o_legacy, o_custom), "LoRA+channel_scale forward differs"
+    _assert_grads_equal(g_legacy, g_custom, "LoRA+channel_scale")
+    assert torch.equal(gx_legacy, gx_custom), "LoRA+channel_scale grad_x differs"
+    assert g_legacy["lora_down.weight"].abs().sum() > 0, (
+        "lora_down grad is zero — test would pass vacuously"
+    )
+
+
+def test_hydra_channel_scale_flag_on_matches_legacy_gradients():
+    """HydraLoRAModule + channel_scale."""
+    from networks.lora_modules.hydra import HydraLoRAModule
+
+    cs = _make_channel_scale(32)
+
+    def run(use_custom: bool):
+        torch.manual_seed(0)
+        base = torch.nn.Linear(32, 24, bias=False).to(torch.bfloat16)
+        base.weight.requires_grad_(False)
+        module = HydraLoRAModule(
+            "h", base, multiplier=1.0, lora_dim=4, alpha=4,
+            num_experts=3, sigma_feature_dim=0,
+            channel_scale=cs.clone(),
+        )
+        module.apply_to()
+        module.train()
+        module.use_custom_down_autograd = use_custom
+
+        with torch.no_grad():
+            module.lora_up_weight.copy_(
+                torch.randn_like(module.lora_up_weight) * 0.05
+            )
+
+        torch.manual_seed(1)
+        x = torch.randn(2, 8, 32, dtype=torch.bfloat16, requires_grad=True)
+        out = base.forward(x)
+        out.sum().backward()
+        return out.detach().clone(), _named_trainable_grads(module), x.grad.detach().clone()
+
+    o_legacy, g_legacy, gx_legacy = run(False)
+    o_custom, g_custom, gx_custom = run(True)
+
+    assert torch.equal(o_legacy, o_custom), "Hydra+channel_scale forward differs"
+    _assert_grads_equal(g_legacy, g_custom, "Hydra+channel_scale")
+    assert torch.equal(gx_legacy, gx_custom), "Hydra+channel_scale grad_x differs"
+    assert g_legacy["lora_down.weight"].abs().sum() > 0
+
+
+def test_ortho_channel_scale_flag_on_matches_legacy_gradients():
+    """OrthoLoRAModule + channel_scale."""
+    from networks.lora_modules.ortho import OrthoLoRAModule
+
+    cs = _make_channel_scale(32)
+
+    def run(use_custom: bool):
+        torch.manual_seed(0)
+        base = torch.nn.Linear(32, 24, bias=False).to(torch.bfloat16)
+        base.weight.requires_grad_(False)
+        module = OrthoLoRAModule(
+            "o", base, multiplier=1.0, lora_dim=4, alpha=4,
+            channel_scale=cs.clone(),
+        )
+        module.apply_to()
+        module.train()
+        module.use_custom_down_autograd = use_custom
+
+        with torch.no_grad():
+            module.S_q.copy_(torch.randn_like(module.S_q) * 0.1)
+            module.S_p.copy_(torch.randn_like(module.S_p) * 0.1)
+            module.lambda_layer.copy_(torch.randn_like(module.lambda_layer) * 0.1)
+
+        torch.manual_seed(1)
+        x = torch.randn(2, 8, 32, dtype=torch.bfloat16, requires_grad=True)
+        out = base.forward(x)
+        out.sum().backward()
+        return out.detach().clone(), _named_trainable_grads(module), x.grad.detach().clone()
+
+    o_legacy, g_legacy, gx_legacy = run(False)
+    o_custom, g_custom, gx_custom = run(True)
+
+    assert torch.equal(o_legacy, o_custom), "Ortho+channel_scale forward differs"
+    _assert_grads_equal(g_legacy, g_custom, "Ortho+channel_scale")
+    assert torch.equal(gx_legacy, gx_custom), "Ortho+channel_scale grad_x differs"
+    assert "S_q" in g_legacy and g_legacy["S_q"].abs().sum() > 0
+
+
+def test_ortho_hydra_channel_scale_flag_on_matches_legacy_gradients():
+    """OrthoHydraLoRAModule + channel_scale."""
+    from networks.lora_modules.ortho import OrthoHydraLoRAModule
+
+    cs = _make_channel_scale(32)
+
+    def run(use_custom: bool):
+        torch.manual_seed(0)
+        base = torch.nn.Linear(32, 24, bias=False).to(torch.bfloat16)
+        base.weight.requires_grad_(False)
+        module = OrthoHydraLoRAModule(
+            "oh", base, multiplier=1.0, lora_dim=4, alpha=4,
+            num_experts=3, sigma_feature_dim=0,
+            channel_scale=cs.clone(),
+        )
+        module.apply_to()
+        module.train()
+        module.use_custom_down_autograd = use_custom
+
+        with torch.no_grad():
+            module.S_q.copy_(torch.randn_like(module.S_q) * 0.1)
+            module.S_p.copy_(torch.randn_like(module.S_p) * 0.1)
+            module.lambda_layer.copy_(torch.randn_like(module.lambda_layer) * 0.1)
+
+        torch.manual_seed(1)
+        x = torch.randn(2, 8, 32, dtype=torch.bfloat16, requires_grad=True)
+        out = base.forward(x)
+        out.sum().backward()
+        return out.detach().clone(), _named_trainable_grads(module), x.grad.detach().clone()
+
+    o_legacy, g_legacy, gx_legacy = run(False)
+    o_custom, g_custom, gx_custom = run(True)
+
+    assert torch.equal(o_legacy, o_custom), "OrthoHydra+channel_scale forward differs"
+    _assert_grads_equal(g_legacy, g_custom, "OrthoHydra+channel_scale")
+    assert torch.equal(gx_legacy, gx_custom), "OrthoHydra+channel_scale grad_x differs"
+    assert "S_q" in g_legacy and g_legacy["S_q"].abs().sum() > 0
+
+
+def test_chimera_flag_on_matches_legacy_gradients():
+    """ChimeraHydraLoRAModule (no channel_scale): two down-projections per
+    Linear go through ``lora_down_project``. Flag toggle must leave forward,
+    every trainable grad, and grad_x bitwise identical.
+    """
+    from networks.lora_modules.chimera import ChimeraHydraLoRAModule
+
+    def run(use_custom: bool):
+        torch.manual_seed(0)
+        base = torch.nn.Linear(32, 24, bias=False).to(torch.bfloat16)
+        base.weight.requires_grad_(False)
+        module = ChimeraHydraLoRAModule(
+            "c", base, multiplier=1.0, lora_dim=4, alpha=4,
+            num_experts_content=3, num_experts_freq=3,
+        )
+        module.apply_to()
+        module.train()
+        module.use_custom_down_autograd = use_custom
+
+        # Randomize Cayley S + λ so Cayley(0)=I + λ=0 doesn't make the
+        # adapter contribute zero (vacuous comparison).
+        with torch.no_grad():
+            module.S_q_c.copy_(torch.randn_like(module.S_q_c) * 0.1)
+            module.S_q_f.copy_(torch.randn_like(module.S_q_f) * 0.1)
+            module.S_p_c.copy_(torch.randn_like(module.S_p_c) * 0.1)
+            module.S_p_f.copy_(torch.randn_like(module.S_p_f) * 0.1)
+            module.lambda_c.copy_(torch.randn_like(module.lambda_c) * 0.1)
+            module.lambda_f.copy_(torch.randn_like(module.lambda_f) * 0.1)
+
+        torch.manual_seed(1)
+        x = torch.randn(2, 8, 32, dtype=torch.bfloat16, requires_grad=True)
+        out = base.forward(x)
+        out.sum().backward()
+        return out.detach().clone(), _named_trainable_grads(module), x.grad.detach().clone()
+
+    o_legacy, g_legacy, gx_legacy = run(False)
+    o_custom, g_custom, gx_custom = run(True)
+
+    assert torch.equal(o_legacy, o_custom), "Chimera forward differs with flag on"
+    _assert_grads_equal(g_legacy, g_custom, "Chimera")
+    assert torch.equal(gx_legacy, gx_custom), "Chimera grad_x differs"
+    # Sanity: both pools' Cayley parameters got non-zero gradient
+    assert g_legacy["S_q_c"].abs().sum() > 0 and g_legacy["S_q_f"].abs().sum() > 0
+
+
+def test_chimera_channel_scale_flag_on_matches_legacy_gradients():
+    """ChimeraHydraLoRAModule + channel_scale: both pools share the same
+    inv_scale, applied per-pool in the custom path. Pre-fix this would have
+    silently broken — there were no Chimera channel_scale tests.
+    """
+    from networks.lora_modules.chimera import ChimeraHydraLoRAModule
+
+    cs = _make_channel_scale(32)
+
+    def run(use_custom: bool):
+        torch.manual_seed(0)
+        base = torch.nn.Linear(32, 24, bias=False).to(torch.bfloat16)
+        base.weight.requires_grad_(False)
+        module = ChimeraHydraLoRAModule(
+            "c", base, multiplier=1.0, lora_dim=4, alpha=4,
+            num_experts_content=3, num_experts_freq=3,
+            channel_scale=cs.clone(),
+        )
+        module.apply_to()
+        module.train()
+        module.use_custom_down_autograd = use_custom
+
+        with torch.no_grad():
+            module.S_q_c.copy_(torch.randn_like(module.S_q_c) * 0.1)
+            module.S_q_f.copy_(torch.randn_like(module.S_q_f) * 0.1)
+            module.S_p_c.copy_(torch.randn_like(module.S_p_c) * 0.1)
+            module.S_p_f.copy_(torch.randn_like(module.S_p_f) * 0.1)
+            module.lambda_c.copy_(torch.randn_like(module.lambda_c) * 0.1)
+            module.lambda_f.copy_(torch.randn_like(module.lambda_f) * 0.1)
+
+        torch.manual_seed(1)
+        x = torch.randn(2, 8, 32, dtype=torch.bfloat16, requires_grad=True)
+        out = base.forward(x)
+        out.sum().backward()
+        return out.detach().clone(), _named_trainable_grads(module), x.grad.detach().clone()
+
+    o_legacy, g_legacy, gx_legacy = run(False)
+    o_custom, g_custom, gx_custom = run(True)
+
+    assert torch.equal(o_legacy, o_custom), "Chimera+channel_scale forward differs"
+    _assert_grads_equal(g_legacy, g_custom, "Chimera+channel_scale")
+    assert torch.equal(gx_legacy, gx_custom), "Chimera+channel_scale grad_x differs"
+    assert g_legacy["S_q_c"].abs().sum() > 0 and g_legacy["S_q_f"].abs().sum() > 0

@@ -157,7 +157,7 @@ lora_unet_blocks_0_self_attn_qkv_proj.lora_down.weight
 diffusion_model.blocks.0.self_attn.qkv_proj.weight   (target in the ComfyUI model)
 ```
 
-`scripts/convert_lora_to_comfy.py` exists for the *PEFT-style* flavor (`lora_A` / `lora_B` naming, `diffusion_model.` prefix baked in) if a downstream tool needs that, but for the stock ComfyUI LoRA path no conversion is needed. This is also why OrthoLoRA's save pipeline converts its native `S_p` / `S_q` / `λ` / `P_basis` / `Q_basis` back to `lora_up.weight` / `lora_down.weight` / `alpha` on write (see `ortholora.md` §7) — fitting this key schema is what lets it ride the stock loader for free.
+For the stock ComfyUI LoRA path no conversion is needed. This is also why OrthoLoRA's save pipeline converts its native `S_p` / `S_q` / `λ` / `P_basis` / `Q_basis` back to `lora_up.weight` / `lora_down.weight` / `alpha` on write (see `ortholora.md` §7) — fitting this key schema is what lets it ride the stock loader for free.
 
 Caveat: this applies to **plain weight-patch LoRA only**. ReFT (`reft.md`) and HydraLoRA router-live inference (`hydralora.md`) write extra keys (`reft_*`, `router.*`, stacked `lora_ups.N.*`) that ComfyUI's stock loader silently drops — those variants require the `custom_nodes/comfyui-hydralora/` Anima Adapter Loader node.
 

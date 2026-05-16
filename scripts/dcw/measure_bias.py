@@ -46,7 +46,7 @@ Usage
 -----
     # A1: production-env baseline (CFG=4, 28 steps, mod-on by default)
     uv run python scripts/dcw/measure_bias.py \\
-        --dit models/diffusion_models/anima-preview3-base.safetensors \\
+        --dit models/diffusion_models/anima-base-v1.0.safetensors \\
         --infer_steps 28 --n_images 48 --n_seeds 2 \\
         --guidance_scale 4.0 \\
         --dump_per_sample_gaps --label v2-prod-env

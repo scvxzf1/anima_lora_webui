@@ -7,17 +7,20 @@ class it instantiates and a ``save_variant`` label consumed by
 
 Flag precedence (evaluated top to bottom, first match wins):
 
+    use_chimera_hydra                    → chimera_hydra
     use_moe_style="independent_A"        → stacked_experts_global_fei
     use_moe_style="shared_A" + use_ortho → ortho_hydra
     use_moe_style="shared_A"             → hydra
-    use_dora                             → dora
+    use_lokr                             → lokr
     use_ortho                            → ortho
     (none)                               → lora
 
-Ambiguous combinations (``use_dora`` + ``use_ortho``, …) raise. The legacy
-``use_hydra`` / ``use_sigma_router`` / ``use_fei_router`` kwargs were
-retired in plan2 task #6 — see ``LoRANetworkCfg.from_kwargs`` for the
-rejection message.
+The legacy ``use_hydra`` / ``use_sigma_router`` / ``use_fei_router``
+kwargs were retired in plan2 task #6 — see ``LoRANetworkCfg.from_kwargs``
+for the rejection message. ``use_dora`` was retired alongside the
+``lora_deprecated`` module; ``.dora_scale`` keys in external LoRAs still
+load through the plain ``lora`` spec. ``use_lokr`` is the WebUI/LyCORIS
+LoKr path and remains mutually exclusive with MoE and OrthoLoRA variants.
 """
 
 from __future__ import annotations
@@ -25,13 +28,13 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, Mapping, Optional, Tuple, Type
 
-from networks.lora_deprecated import DoRAModule
 from networks.lora_modules import (
+    ChimeraHydraLoRAModule,
     HydraLoRAModule,
     LoKrModule,
     LoRAModule,
-    OrthoHydraLoRAExpModule,
-    OrthoLoRAExpModule,
+    OrthoHydraLoRAModule,
+    OrthoLoRAModule,
     StackedExpertsLoRAModule,
 )
 
@@ -99,9 +102,11 @@ SHARED_KWARG_FLAGS: Tuple[str, ...] = (
     # Memory-saving down-projection autograd (classic LoRA only; bitwise-equal grads)
     "use_custom_down_autograd",
     # Variant selectors (read by resolve_network_spec)
-    "use_dora",
     "use_lokr",
     "use_ortho",
+    # Retired selector kept in the allowlist so configs fail with a targeted
+    # message instead of being silently forwarded nowhere.
+    "use_dora",
     # PSOFT-style Cayley-init magnitude (consumed by OrthoHydra +
     # StackedExperts in ortho mode).
     "ortho_init_std",
@@ -158,15 +163,28 @@ def _post_init_hydra(network: Any, kwargs: Mapping[str, Any]) -> None:
     else:
         network.fecl_weight = float(kwargs.get("fera_fecl_weight", 0.0) or 0.0)
 
+    # ChimeraHydra: stamp the chimera flag + per-pool balance weights for
+    # ``get_balance_loss`` to consume. Falls back to the shared
+    # ``balance_loss_weight`` (the OrthoHydra default) when the user didn't
+    # set explicit per-pool weights — matches the proposal §"Balance loss"
+    # ("``w_c`` keeps the current ortho-hydra value; ``w_f`` starts at the
+    # same value, tunable").
+    cfg = getattr(network, "cfg", None)
+    if cfg is not None and getattr(cfg, "use_chimera_hydra", False):
+        network._use_chimera_hydra = True
+        w_c = cfg.balance_w_content if cfg.balance_w_content is not None else target
+        w_f = cfg.balance_w_freq if cfg.balance_w_freq is not None else target
+        network._balance_w_content = float(w_c)
+        network._balance_w_freq = float(w_f)
+    else:
+        network._use_chimera_hydra = False
+
 
 _HYDRA_KWARG_FLAGS: Tuple[str, ...] = (
     "num_experts",
     "balance_loss_weight",
     "balance_loss_warmup_ratio",
     "expert_init_std",
-    "expert_warmup_ratio",
-    "expert_warmup_k",
-    "expert_best_warmup_ratio",
     # Unified layer filter — scopes which Linears participate in routed
     # adaptation (Hydra MoE leaves + σ / FEI feature concatenation).
     "router_targets",
@@ -181,6 +199,27 @@ _HYDRA_KWARG_FLAGS: Tuple[str, ...] = (
     "fei_sigma_low_div",
 )
 
+_CHIMERA_KWARG_FLAGS: Tuple[str, ...] = (
+    "use_chimera_hydra",
+    "num_experts_content",
+    "num_experts_freq",
+    # Per-pool balance weights. Fall back to balance_loss_weight when unset.
+    "balance_w_content",
+    "balance_w_freq",
+    # FreqRouter init magnitude (small N(0, std)) — non-zero so the freq
+    # pool differentiates at step 0.
+    "freq_router_init_std",
+    # Per-modality LayerNorm on FreqRouter input. Active only when both
+    # FEI and σ feature blocks are enabled — equalizes the variance budget
+    # so the higher-dim σ block doesn't fan-in-overpower the 2-D FEI simplex.
+    "freq_router_layer_norm",
+    # Per-pool router LR multipliers — stack on top of network_router_lr_scale.
+    # Defaults to 1.0 (no-op). Bump content when the per-layer router stays
+    # near-uniform too long (std=0.01 init is slow to break symmetry).
+    "network_content_router_lr_scale",
+    "network_freq_router_lr_scale",
+)
+
 
 NETWORK_REGISTRY: Dict[str, NetworkSpec] = {
     "lora": NetworkSpec(
@@ -190,7 +229,7 @@ NETWORK_REGISTRY: Dict[str, NetworkSpec] = {
     ),
     "ortho": NetworkSpec(
         name="ortho",
-        module_class=OrthoLoRAExpModule,
+        module_class=OrthoLoRAModule,
         save_variant="ortho_to_lora",
     ),
     "hydra": NetworkSpec(
@@ -202,10 +241,33 @@ NETWORK_REGISTRY: Dict[str, NetworkSpec] = {
     ),
     "ortho_hydra": NetworkSpec(
         name="ortho_hydra",
-        module_class=OrthoHydraLoRAExpModule,
+        module_class=OrthoHydraLoRAModule,
         save_variant="ortho_hydra_to_hydra",
         kwarg_flags=_HYDRA_KWARG_FLAGS,
         post_init=_post_init_hydra,
+    ),
+    # ChimeraHydra: dual-pool additive routing on the OrthoHydra Cayley
+    # parameterization (proposal: docs/proposal/chimera_hydra.md). Training
+    # builds Cayley params via ``ChimeraHydraLoRAModule``; save distills
+    # them to the Hydra-MoE on-disk layout (shared ``lora_down`` + per-expert
+    # ``lora_ups.{i}.weight``, q/k/v defused, top-level ``freq_router.*``)
+    # written to a ``*_chimera.safetensors`` sibling. Load goes through
+    # ``HydraLoRAModule`` with ``num_experts_content > 0`` (the dual-pool
+    # runtime form added in this commit), so the Cayley class is training-
+    # only — checkpoint resume silently loses the orthogonal parameterization
+    # (matches the OrthoHydra → Hydra trade-off).
+    "chimera_hydra": NetworkSpec(
+        name="chimera_hydra",
+        module_class=ChimeraHydraLoRAModule,
+        save_variant="chimera_hydra_moe",
+        kwarg_flags=_HYDRA_KWARG_FLAGS + _CHIMERA_KWARG_FLAGS,
+        post_init=_post_init_hydra,
+    ),
+    "lokr": NetworkSpec(
+        name="lokr",
+        module_class=LoKrModule,
+        save_variant="lokr",
+        kwarg_flags=("lokr_factor",),
     ),
     # FeRA paper-faithful: independent-A stacked experts, single network-level
     # router fed by FEI(z_t). See plan2.md §three-axis-config — selected via
@@ -218,17 +280,6 @@ NETWORK_REGISTRY: Dict[str, NetworkSpec] = {
         save_variant="stacked_experts_global_fei",
         kwarg_flags=_HYDRA_KWARG_FLAGS,
         post_init=_post_init_hydra,
-    ),
-    "dora": NetworkSpec(
-        name="dora",
-        module_class=DoRAModule,
-        save_variant="standard",
-    ),
-    "lokr": NetworkSpec(
-        name="lokr",
-        module_class=LoKrModule,
-        save_variant="lokr",
-        kwarg_flags=("lokr_factor",),
     ),
 }
 
@@ -268,10 +319,26 @@ def resolve_network_spec(kwargs: Mapping[str, Any]) -> NetworkSpec:
     ``"shared_A"`` routes to ``hydra``. The legacy ``use_hydra`` kwarg was
     retired in plan2 task #6 — ``LoRANetworkCfg.from_kwargs`` raises if a
     TOML still carries it.
+
+    ``use_chimera_hydra=True`` short-circuits to the chimera variant. The
+    chimera config requires ``use_moe_style="shared_A"`` semantics under
+    the hood (OrthoHydra parameterization), but uses K_c + K_f instead of
+    a single ``num_experts`` — the user only sets the chimera flag.
     """
     use_dora = _parse_bool_flag(kwargs, "use_dora")
+    if use_dora:
+        raise ValueError(
+            "use_dora was retired with networks/lora_deprecated.py; external "
+            ".dora_scale LoRAs still load through the plain lora spec."
+        )
+
     use_lokr = _parse_bool_flag(kwargs, "use_lokr")
     use_ortho = _parse_bool_flag(kwargs, "use_ortho")
+    use_chimera = _parse_bool_flag(kwargs, "use_chimera_hydra")
+    if use_chimera and use_lokr:
+        raise ValueError("use_lokr is mutually exclusive with use_chimera_hydra")
+    if use_chimera:
+        return NETWORK_REGISTRY["chimera_hydra"]
 
     raw_moe = kwargs.get("use_moe_style")
     if isinstance(raw_moe, str):
@@ -289,10 +356,6 @@ def resolve_network_spec(kwargs: Mapping[str, Any]) -> NetworkSpec:
             f"use_moe_style={raw_moe!r}: expected False, 'shared_A', or 'independent_A'."
         )
 
-    if use_dora and (use_ortho or moe_style or use_lokr):
-        raise ValueError(
-            "use_dora is mutually exclusive with use_ortho / use_moe_style / use_lokr"
-        )
     if use_lokr and (use_ortho or moe_style):
         raise ValueError(
             "use_lokr is mutually exclusive with use_ortho / use_moe_style"
@@ -304,8 +367,6 @@ def resolve_network_spec(kwargs: Mapping[str, Any]) -> NetworkSpec:
         return (
             NETWORK_REGISTRY["ortho_hydra"] if use_ortho else NETWORK_REGISTRY["hydra"]
         )
-    if use_dora:
-        return NETWORK_REGISTRY["dora"]
     if use_lokr:
         return NETWORK_REGISTRY["lokr"]
     if use_ortho:

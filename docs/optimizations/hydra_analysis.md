@@ -95,7 +95,7 @@ for the same reason — one zero per shared tensor instead of 56 × 2.
 
 ### 1. `_eye_r` buffer — `networks/lora_modules/ortho.py`
 
-`OrthoLoRAExpModule.__init__` and `OrthoHydraLoRAExpModule.__init__`
+`OrthoLoRAModule.__init__` and `OrthoHydraLoRAModule.__init__`
 register a non-persistent `_eye_r` buffer (`lora_dim × lora_dim`, fp32).
 The forward path reads it directly; broadcasting handles the
 `(r,r) + (E,r,r)` addition, so the prior `eye.unsqueeze(0).expand_as(A)`
@@ -121,13 +121,11 @@ Bit-equivalent to a fresh recompute (verified `0.0` max diff).
 Both forwards now do a single `torch.linalg.solve` per call by
 concatenating the skew matrices:
 
-- `OrthoLoRAExpModule.forward`: `stack([S_q, S_p])` → `(2, r, r)` →
+- `OrthoLoRAModule.forward`: `stack([S_q, S_p])` → `(2, r, r)` →
   one solve → split into `R_q`, `R_p`.
-- `OrthoHydraLoRAExpModule.forward`:
-  `cat([S_q.unsqueeze(0), S_p_eff])` → `(E+1, r, r)` → one solve →
-  `R_q = R[0]`, `R_p = R[1:]`. The expert-warmup mask
-  (`S_p_eff = S_p * mask + S_p.detach() * (1 − mask)`) is hoisted to the
-  top of the forward so its output flows into the same batched solve.
+- `OrthoHydraLoRAModule.forward`:
+  `cat([S_q.unsqueeze(0), S_p])` → `(E+1, r, r)` → one solve →
+  `R_q = R[0]`, `R_p = R[1:]`.
 
 Halves the LU / TRSM launch count per OrthoHydra module per fwd: one
 batched `getrf_pivot` + `batch_trsm_left` per module instead of two
@@ -138,7 +136,7 @@ Verified parity vs. the previous separate `_cayley(S_q)` /
 `_cayley(S_p)` path to ~1e-7 (bf16-clean); gradients still reach `S_q`
 and `S_p`.
 
-`OrthoLoRAExpModule._cayley` and `OrthoHydraLoRAExpModule._cayley` are
+`OrthoLoRAModule._cayley` and `OrthoHydraLoRAModule._cayley` are
 kept as static methods because `networks/lora_save.py` calls them at
 save-time SVD distillation.
 
@@ -182,17 +180,7 @@ bit-equivalent (`F.linear(x, w) = x @ w.T`, so
 `F.linear(δ, R.T) = δ @ R`). × 8 ReFT blocks × every step. Drop-in;
 not yet applied.
 
-### D. OrthoHydra expert-warmup mask outside warmup — `ortho.py`
-
-When `_expert_grad_mask` is all-ones (the default outside warmup, i.e.
-most of training) `S_p * 1 + S_p.detach() * 0` is autograd-equivalent
-to `S_p`. Three fp32 elementwise ops per Ortho module per fwd. Small
-in absolute terms (~168 modules × 31 steps × 3 ops in this capture);
-a short-circuit on a known-warmup-inactive flag would remove them.
-Note that the mask now feeds the batched Cayley solve (§Implemented 3),
-so any short-circuit needs to keep `S_p_eff` shape-stable for the cat.
-
-### E. Small-tile cutlass dominance — structural
+### D. Small-tile cutlass dominance — structural
 
 49 % of GPU time is `64×64×32` bf16 tiles. Each `K=48` GEMM has low
 arithmetic intensity. Two avenues:
@@ -208,7 +196,7 @@ arithmetic intensity. Two avenues:
   marginal win and drop the ones that don't pull weight. The current
   default composes LoRA + OrthoLoRA + T-LoRA + ReFT on every block.
 
-### F. cudaStreamSynchronize — 17 s in 489 calls
+### E. cudaStreamSynchronize — 17 s in 489 calls
 
 Median 3.4 µs, max 632 ms, stddev 136 ms — a few huge syncs dominate.
 Likely the warm-up `torch.cuda.synchronize()` in `_profiler_step_begin`
@@ -228,8 +216,7 @@ inside `:step=N` ranges and correlate with the Python-sampling track
 | `matrix_exp(-2A)` swap (§A) | deferred — parameterisation change |
 | Cross-module Cayley (§B) | deferred — autograd vs. cudagraph |
 | ReFT `weight.T` (§C) | deferred — drop-in, not yet applied |
-| Expert-warmup mask short-circuit (§D) | deferred — small impact |
-| Adapter stack pruning (§E) | deferred — bench-driven |
-| cudaStreamSynchronize hunt (§F) | deferred — needs GUI dive |
+| Adapter stack pruning (§D) | deferred — bench-driven |
+| cudaStreamSynchronize hunt (§E) | deferred — needs GUI dive |
 
 Re-profile after the implemented fixes to refresh the bucket table.

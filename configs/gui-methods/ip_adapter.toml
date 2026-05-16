@@ -48,3 +48,11 @@ caption_dropout_rate = 0.2
 
 blocks_to_swap = 0
 compile_mode = "full"
+
+use_cmmd = false
+
+[variant]
+family = "ip_adapter"
+label = "IP-Adapter"
+description = "Decoupled image cross-attention (Ye et al., 2023)."
+order = 10

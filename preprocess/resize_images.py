@@ -131,6 +131,15 @@ def main() -> None:
             "them from the original raw dataset directly)."
         ),
     )
+    parser.add_argument(
+        "--recursive",
+        action="store_true",
+        help=(
+            "Walk subfolders under --src. Output is still flat under --dst "
+            "(stem-based filenames); image stems must therefore be unique "
+            "across the entire source tree."
+        ),
+    )
     args = parser.parse_args()
 
     if args.no_constant_token_buckets:
@@ -149,9 +158,29 @@ def main() -> None:
         use_constant,
     )
 
-    image_files = sorted(
-        p for p in src.iterdir() if p.suffix.lower() in IMAGE_EXTENSIONS
-    )
+    if args.recursive:
+        image_files = sorted(
+            p
+            for p in src.rglob("*")
+            if p.is_file() and p.suffix.lower() in IMAGE_EXTENSIONS
+        )
+        stems: dict[str, Path] = {}
+        collisions: list[tuple[str, Path, Path]] = []
+        for p in image_files:
+            if p.stem in stems:
+                collisions.append((p.stem, stems[p.stem], p))
+            else:
+                stems[p.stem] = p
+        if collisions:
+            print("Duplicate image stems found under --src (output is flat):")
+            for stem, a, b in collisions:
+                print(f"  '{stem}': {a} <-> {b}")
+            print("Rename so every image has a unique stem across all subfolders.")
+            sys.exit(1)
+    else:
+        image_files = sorted(
+            p for p in src.iterdir() if p.suffix.lower() in IMAGE_EXTENSIONS
+        )
 
     if args.min_pixels > 0:
         kept: list[Path] = []

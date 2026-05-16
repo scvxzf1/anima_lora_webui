@@ -67,6 +67,6 @@ When benchmarking against standard OrthoLoRA:
 
 | File | What changed |
 |------|-------------|
-| `networks/lora_modules/ortho.py` | `OrthoLoRAExpModule` class |
+| `networks/lora_modules/ortho.py` | `OrthoLoRAModule` class |
 | `networks/lora_anima/` | Config parsing, module selection, save conversion |
 | `configs/methods/lora.toml` | `use_ortho` toggle |

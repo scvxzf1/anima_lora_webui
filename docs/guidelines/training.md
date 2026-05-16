@@ -2,17 +2,6 @@
 
 ## LoRA Variants
 
-### DoRA (Weight-Decomposed Low-Rank Adaptation)
-
-Separates magnitude and direction in weight updates for improved learning efficiency at lower ranks ([arXiv:2402.09353](https://arxiv.org/abs/2402.09353)).
-
-```toml
-# network_args
-use_dora = true
-```
-
-During inference/merge, the magnitude vector is exported as `dora_scale` for ComfyUI compatibility. Not compatible with `use_ortho` or `use_hydra`.
-
 ### OrthoLoRA (Cayley + PSOFT-inspired)
 
 Cayley-parameterized orthogonal rotation of frozen SVD bases with a zero-init guarantee. Orthogonality is structural — no regularization hyperparameter.
@@ -26,7 +15,7 @@ Linear layers only (no Conv2d). See [`../methods/psoft-integrated-ortholora.md`]
 
 ### T-LoRA (Timestep-Dependent Rank Masking)
 
-Dynamically adjusts effective LoRA rank based on the denoising timestep. Early (high-noise) steps use full rank; later steps use reduced rank. Composes with LoRA, DoRA, OrthoLoRA, HydraLoRA, and ReFT. See [`../methods/timestep_mask.md`](../methods/timestep_mask.md).
+Dynamically adjusts effective LoRA rank based on the denoising timestep. Early (high-noise) steps use full rank; later steps use reduced rank. Composes with LoRA, OrthoLoRA, HydraLoRA, and ReFT. See [`../methods/timestep_mask.md`](../methods/timestep_mask.md).
 
 ```toml
 # network_args
@@ -124,4 +113,4 @@ Each image needs a corresponding `.txt` caption sidecar file in the same directo
 
 The repo is single-GPU only. The launcher (`scripts/tasks/_common.py::accelerate_launch`) hardcodes a single-process invocation, and the trainer no longer carries DDP plumbing — the `--ddp_*` CLI flags, `InitProcessGroupKwargs` / `DistributedDataParallelKwargs` setup, and the manual `all_reduce_network()` grad sync were all removed. Accelerate's built-in collectives still work (so `accelerator.num_processes` scaling for batch size and LR scheduler steps is harmless at 1 process), but nothing in this repo turns them on.
 
-If you re-add multi-GPU later, the non-obvious design choice to preserve is **don't `accelerator.prepare(network)` and rely on the default DDP wrap.** With the DiT frozen and only the adapter trainable, wrapping the LoRA `nn.Module` directly is awkward (the buckets don't match the frozen base) and wrapping the DiT wastes bandwidth on params that never get gradients. The previous approach was: leave the network unwrapped, run a manual fused all-reduce on `[p.grad for p in network.parameters() if p.grad is not None]` once per `sync_gradients` step, fused via `_flatten_dense_tensors` to avoid N serialized collectives. The HydraLoRA `step_expert_best_warmup_post_backward` and any grad-clip must run *after* that all-reduce so they see global-mean grads.
+If you re-add multi-GPU later, the non-obvious design choice to preserve is **don't `accelerator.prepare(network)` and rely on the default DDP wrap.** With the DiT frozen and only the adapter trainable, wrapping the LoRA `nn.Module` directly is awkward (the buckets don't match the frozen base) and wrapping the DiT wastes bandwidth on params that never get gradients. The previous approach was: leave the network unwrapped, run a manual fused all-reduce on `[p.grad for p in network.parameters() if p.grad is not None]` once per `sync_gradients` step, fused via `_flatten_dense_tensors` to avoid N serialized collectives. Any grad-clip must run *after* that all-reduce so it sees global-mean grads.

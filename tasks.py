@@ -186,6 +186,12 @@ COMMANDS = {
         exp_training.cmd_postfix,
         "[experimental] Postfix tuning (mode selected in configs/methods/postfix.toml)",
     ),
+    "exp-turbo": (
+        exp_training.cmd_turbo,
+        "[experimental] Decoupled DMD2 distillation — bakes CFG=4 / 28-step Anima "
+        "into a 4-step LoRA student (configs/methods/turbo.toml). "
+        "Single-GPU bespoke loop (bypasses train.py/accelerate, like distill-mod).",
+    ),
     "exp-fera": (
         exp_training.cmd_fera,
         "[experimental] Author-faithful FeRA (independent-A stacked experts + "
@@ -194,6 +200,11 @@ COMMANDS = {
     "exp-soft-tokens": (
         exp_training.cmd_soft_tokens,
         "[experimental] SoftREPA-style per-layer × per-t soft tokens (training-only v1)",
+    ),
+    "exp-chimera": (
+        exp_training.cmd_chimera,
+        "[experimental] ChimeraHydra dual-pool additive routing "
+        "(content + freq pools on OrthoHydra; configs/methods/chimera.toml)",
     ),
     "exp-ip-adapter": (
         exp_training.cmd_ip_adapter,
@@ -216,6 +227,11 @@ COMMANDS = {
     "exp-test-postfix": (
         exp_inference.cmd_test_postfix,
         "[experimental] Inference with latest postfix weight",
+    ),
+    "exp-test-turbo": (
+        exp_inference.cmd_test_turbo,
+        "[experimental] Inference with latest turbo student LoRA at 4 steps, cfg=1.0 "
+        "(CFG is baked into the student).",
     ),
     "exp-test-postfix-exp": (
         exp_inference.cmd_test_postfix_exp,

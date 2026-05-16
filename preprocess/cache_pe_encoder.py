@@ -121,6 +121,15 @@ def main() -> None:
         choices=["bfloat16", "float16", "float32"],
         help="Storage dtype for cached features (default: bfloat16, matches train-time).",
     )
+    parser.add_argument(
+        "--recursive",
+        action="store_true",
+        help=(
+            "Walk subfolders under --dir. Caches are still written flat "
+            "(stem-based filenames); image stems must therefore be unique "
+            "across the entire source tree."
+        ),
+    )
     args = parser.parse_args()
 
     from safetensors.torch import save_file as _save_safetensors
@@ -143,9 +152,28 @@ def main() -> None:
 
     # Group images by their post-resize pixel dimensions so a single forward
     # serves the whole group (same encoder bucket -> same T_pe -> same shape).
-    image_files = sorted(
-        p for p in data_dir.iterdir() if p.suffix.lower() in IMAGE_EXTENSIONS
-    )
+    if args.recursive:
+        image_files = sorted(
+            p
+            for p in data_dir.rglob("*")
+            if p.is_file() and p.suffix.lower() in IMAGE_EXTENSIONS
+        )
+        stems: dict[str, Path] = {}
+        collisions: list[tuple[str, Path, Path]] = []
+        for p in image_files:
+            if p.stem in stems:
+                collisions.append((p.stem, stems[p.stem], p))
+            else:
+                stems[p.stem] = p
+        if collisions:
+            print("Duplicate image stems found under --dir (caches are stem-keyed):")
+            for stem, a, b in collisions:
+                print(f"  '{stem}': {a} <-> {b}")
+            sys.exit(1)
+    else:
+        image_files = sorted(
+            p for p in data_dir.iterdir() if p.suffix.lower() in IMAGE_EXTENSIONS
+        )
     if not image_files:
         print(f"No images found in {data_dir}/", file=sys.stderr)
         sys.exit(1)

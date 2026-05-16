@@ -1,6 +1,6 @@
 # Shared infrastructure settings — rarely change between experiments.
 
-pretrained_model_name_or_path = "models/diffusion_models/anima-preview3-base.safetensors"
+pretrained_model_name_or_path = "models/diffusion_models/anima-base-v1.0.safetensors"
 qwen3 = "models/text_encoders/qwen_3_06b_base.safetensors"
 vae = "models/vae/qwen_image_vae.safetensors"
 
@@ -22,7 +22,6 @@ resized_image_dir = "post_image_dataset/resized"
 lora_cache_dir = "post_image_dataset/lora"
 
 optimizer_type = "AdamW"
-optimizer_args = ["fused=True"]
 lr_scheduler = "constant"
 
 timestep_sampling = "sigmoid"
@@ -48,7 +47,8 @@ save_precision= "bf16"
 use_custom_down_autograd = true
 log_every_n_steps=2
 dataloader_pin_memory = true
-persistent_data_loader_workers=true
+persistent_data_loader_workers= false
+use_cmmd = false
 
 # ── Dataset config ───────────────────────────────────────────────────────
 # Formerly configs/dataset_config.toml. Consumed directly by the dataset
@@ -65,7 +65,12 @@ keep_tokens = 3
 resolution = 1024
 batch_size = 1
 enable_bucket = true
-validation_split = 0.025
+# Validation set size — used both for held-out paired CMMD eval (the live
+# val signal that replaced the legacy FM-MSE pass) and for any downstream
+# val machinery. Set `validation_split_num` (integer) to pin an exact
+# count; when non-zero it wins over the fractional `validation_split`.
+# validation_split = 0.025
+validation_split_num = 16
 validation_seed = 42
 
   [[datasets.subsets]]
@@ -75,11 +80,8 @@ validation_seed = 42
   image_dir = '{resized_image_dir}'
   cache_dir = '{lora_cache_dir}'
   num_repeats = 1
-  # sample_ratio defaults to 1.0; use `--preset half` for 0.5.
-  # caption_dropout_rate is set per-method via args (see configs/methods/*.toml)
-  # Captions live in `image_dataset/` (master). The dataset loader reads
-  # captions as sidecars next to the image and will warn on missing .txt
-  # for resized/, but training reads cached prompt embeddings from
-  # post_image_dataset/lora/{stem}_anima_te.safetensors so the warning is
-  # cosmetic. Run `make preprocess-te` (which scans `image_dataset/`) to
-  # populate that cache before training.
+  # Walk subfolders under image_dir. Caches and resized output stay flat in
+  # cache_dir / resized_image_dir (stem-keyed filenames), so image stems must
+  # be unique across the entire tree. Preprocess scripts accept the matching
+  # --recursive flag.
+  # recursive = true

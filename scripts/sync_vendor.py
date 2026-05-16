@@ -4,7 +4,7 @@ Each ComfyUI node tries to import the live ``library.*`` first, falling back
 to a bundled vendor copy when the host install isn't sitting inside the
 anima_lora repo. This script keeps those vendor copies fresh.
 
-Two targets:
+Three targets:
 
 * ``custom_nodes/comfyui-anima-tagger/_vendor/`` — captioning + PE encoder
   inference path (AnimaTagger, tag rules/groups, vision encoder, vendored PE).
@@ -15,6 +15,14 @@ Two targets:
   dispatcher — its node consumes ``source_tag`` / ``target_tag`` STRINGs
   directly, with image-driven captioning handled externally by
   ``AnimaTaggerCaption``.
+* ``custom_nodes/comfyui-hydralora/_vendor/`` — the pure-compute router
+  kernels imported by ``adapter.py`` + ``fera.py`` (FEI 2-band / n-band,
+  σ sinusoidal features, σ-band partition mask). ``library/inference/
+  router_compute.py`` is the single import surface; it pulls
+  ``library/runtime/fei.py`` and ``networks/lora_modules/router_state.py``
+  transitively, so we vendor all three verbatim. Trained router weights are
+  bit-sensitive to these kernels, so any drift between the live tree and
+  vendored copy produces silently corrupted gates at inference.
 
 Run before bumping a node version / publishing:
 
@@ -32,6 +40,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 TAGGER_VENDOR = ROOT / "custom_nodes" / "comfyui-anima-tagger" / "_vendor"
 DIRECTEDIT_VENDOR = ROOT / "custom_nodes" / "comfyui-anima-directedit" / "_vendor"
+HYDRALORA_VENDOR = ROOT / "custom_nodes" / "comfyui-hydralora" / "_vendor"
 
 # ---------------------------------------------------------------------------
 # Tagger-only captioning + vision subset. After the directedit node was
@@ -41,14 +50,20 @@ DIRECTEDIT_VENDOR = ROOT / "custom_nodes" / "comfyui-anima-directedit" / "_vendo
 
 TAGGER_VERBATIM: list[tuple[str, str]] = [
     ("library/captioning/anima_tagger.py", "library/captioning/anima_tagger.py"),
-    ("library/captioning/anima_tagger_model.py", "library/captioning/anima_tagger_model.py"),
+    (
+        "library/captioning/anima_tagger_model.py",
+        "library/captioning/anima_tagger_model.py",
+    ),
     ("library/captioning/tag_rules.py", "library/captioning/tag_rules.py"),
     ("library/captioning/tag_groups.py", "library/captioning/tag_groups.py"),
     ("library/vision/encoder.py", "library/vision/encoder.py"),
     ("library/vision/encoders.py", "library/vision/encoders.py"),
     ("library/vision/buckets.py", "library/vision/buckets.py"),
     ("library/models/pe.py", "library/models/pe.py"),
-    ("networks/methods/ip_adapter_pe_lora.py", "networks/methods/ip_adapter_pe_lora.py"),
+    (
+        "networks/methods/ip_adapter_pe_lora.py",
+        "networks/methods/ip_adapter_pe_lora.py",
+    ),
 ]
 
 TAGGER_PACKAGE_DIRS: list[str] = [
@@ -116,7 +131,10 @@ TAGGER_TRIMMED: list[tuple[str, str]] = [
 
 DIRECTEDIT_VERBATIM: list[tuple[str, str]] = [
     ("library/inference/directedit.py", "library/inference/directedit.py"),
-    ("library/inference/directedit_splice.py", "library/inference/directedit_splice.py"),
+    (
+        "library/inference/directedit_splice.py",
+        "library/inference/directedit_splice.py",
+    ),
 ]
 
 DIRECTEDIT_PACKAGE_DIRS: list[str] = [
@@ -244,9 +262,7 @@ def _resolve_directedit_trimmed() -> list[tuple[str, str]]:
     out: list[tuple[str, str]] = []
     bucket_literal = _read_constant_token_buckets_literal()
     for dst_rel, template in DIRECTEDIT_TRIMMED_TEMPLATES:
-        content = template.replace(
-            "{{CONSTANT_TOKEN_BUCKETS_LITERAL}}", bucket_literal
-        )
+        content = template.replace("{{CONSTANT_TOKEN_BUCKETS_LITERAL}}", bucket_literal)
         out.append((dst_rel, content))
     return out
 
@@ -281,9 +297,46 @@ def build_directedit_vendor() -> None:
     _write_trimmed(DIRECTEDIT_VENDOR, _resolve_directedit_trimmed())
 
 
+# ---------------------------------------------------------------------------
+# Hydralora vendor tree — the pure-compute kernels imported by
+# adapter.py + fera.py via the live-or-vendor resolver in adapter.py.
+# router_compute.py is the single import surface; it pulls in fei.py and
+# router_state.py transitively, so we vendor all three verbatim.
+# ---------------------------------------------------------------------------
+
+HYDRALORA_VERBATIM: list[tuple[str, str]] = [
+    ("library/inference/router_compute.py", "library/inference/router_compute.py"),
+    ("library/runtime/fei.py", "library/runtime/fei.py"),
+    ("networks/lora_modules/router_state.py", "networks/lora_modules/router_state.py"),
+]
+
+HYDRALORA_PACKAGE_DIRS: list[str] = [
+    "library",
+    "library/inference",
+    "library/runtime",
+    "networks",
+    "networks/lora_modules",
+]
+
+
+def build_hydralora_vendor() -> None:
+    print(f"\n[hydralora] -> {HYDRALORA_VENDOR.relative_to(ROOT)}")
+    if HYDRALORA_VENDOR.exists():
+        shutil.rmtree(HYDRALORA_VENDOR)
+    HYDRALORA_VENDOR.mkdir(parents=True)
+    (HYDRALORA_VENDOR / "__init__.py").write_text(
+        '"""Bundled inference subset of anima_lora.\n\n'
+        "Synced by scripts/sync_vendor.py — do not edit by hand.\n"
+        '"""\n'
+    )
+    _write_pkg_markers(HYDRALORA_VENDOR, HYDRALORA_PACKAGE_DIRS)
+    _copy_verbatim(HYDRALORA_VENDOR, HYDRALORA_VERBATIM)
+
+
 def main() -> None:
     build_tagger_vendor()
     build_directedit_vendor()
+    build_hydralora_vendor()
     print("\nvendor trees fresh.")
 
 

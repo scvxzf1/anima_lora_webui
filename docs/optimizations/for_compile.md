@@ -274,13 +274,13 @@ def lora_down_project(x, weight, inv_scale):            # dispatch at module ini
 
 Each adapted LoRA module carries a boolean attribute `use_custom_down_autograd` set once by the network factory — Dynamo sees a static Python branch inside `forward`, not a runtime dispatch.
 
-Wired through `LoRAModule`, `HydraLoRAModule`, `OrthoLoRAExpModule`, and `OrthoHydraLoRAExpModule`. The Ortho variants pass `Q_eff = R_q @ Q_basis` as the "weight" argument — autograd returns `grad_Q_eff`, which the existing graph propagates into `S_q` unchanged. ReFT (block-level intervention) and Conv2d LoRA are intentionally out of scope and take the legacy path.
+Wired through `LoRAModule`, `HydraLoRAModule`, `OrthoLoRAModule`, `OrthoHydraLoRAModule`, and `ChimeraHydraLoRAModule`. The Ortho/Chimera variants pass `Q_eff = R_q @ Q_basis` as the "weight" argument — autograd returns `grad_Q_eff`, which the existing graph propagates into `S_q` unchanged; Chimera issues two such calls (one per pool) on a shared rebalanced `x_in`, deduping the saved-for-backward input. ReFT (block-level intervention) and Conv2d LoRA are intentionally out of scope and take the legacy path.
 
 **Measured (60-step A/B under `torch.compile`, default stack):** loss/average matched within 0.7 % (run-to-run noise), per-step loss statistically indistinguishable at z = +1.84, wall/step matched within 0.4 %, peak VRAM dropped ~4 GiB. The wall-clock parity is the compile-relevant signal: if Dynamo had broken the graph at each LoRA-patched Linear (once per `autograd.Function.apply`), kernel-launch overhead across 28 × ~5–6 sites would have erased the memory win. It didn't.
 
 **sd-scripts**: No equivalent — plain `F.linear(x.float(), ...)` retains the fp32 cast unconditionally.
 
-**Opt-in flag:** `use_custom_down_autograd = true` in `configs/methods/lora.toml` (or `--network_args use_custom_down_autograd=true`). Default off for now; ready to flip to default-on once a wider set of runs confirms the compile-graph behavior.
+**Default-on:** `use_custom_down_autograd = true` lives in `configs/base.toml` and is on for every method. Opt out per run with `--network_args use_custom_down_autograd=false` if the legacy path is needed for debugging.
 
 ---
 

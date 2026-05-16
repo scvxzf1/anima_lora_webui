@@ -84,6 +84,43 @@ def cmd_test_postfix_func(extra):
     )
 
 
+def cmd_test_turbo(extra):
+    """Inference with the latest turbo student LoRA at 4 steps, cfg=1.0.
+
+    CFG is baked into the student during distillation, so production inference
+    runs cfg=1.0 (no double-CFG). Step count defaults to 4 — the value the
+    student was distilled at — but extra args can override.
+    """
+    weight = latest_output("anima_turbo")
+    base = list(INFERENCE_BASE)
+    # Replace defaults so `--infer_steps`/`--guidance_scale` reflect the turbo
+    # contract (4 steps, cfg=1.0). User extra args still win since they come last.
+    base = _override_arg(base, "--sampler", "lcm")
+    base = _override_arg(base, "--infer_steps", "4")
+    base = _override_arg(base, "--guidance_scale", "1.0")
+    run(
+        [
+            *base,
+            "--lora_weight",
+            str(weight),
+            *extra,
+        ]
+    )
+
+
+def _override_arg(argv: list[str], flag: str, value: str) -> list[str]:
+    """Replace a ``--flag VALUE`` (or ``--flag V1 V2``) pair in argv with a
+    fresh ``--flag value`` pair. Used to retarget INFERENCE_BASE defaults
+    for the turbo contract (4 steps, cfg=1.0) without rewriting the whole list.
+    """
+    if flag not in argv:
+        return argv + [flag, value]
+    i = argv.index(flag)
+    # Drop the flag and its single value; INFERENCE_BASE doesn't use multi-arg
+    # flags for these two keys.
+    return argv[:i] + [flag, value] + argv[i + 2 :]
+
+
 def cmd_test_ip(extra):
     """Inference with latest IP-Adapter weight.
 
@@ -403,7 +440,8 @@ def cmd_invert_directedit(extra):
       INVERT_STEPS (100)     — inversion optimization steps
       INVERT_LR (0.01)       — AdamW lr
       LAMBDA_ZERO (0.0)      — ‖s‖² regularization
-      SIGMA_MIN (0.0)        — P-GRAFT low-σ skip
+      SIGMA_MIN (0.0)        — P-GRAFT low-σ skip (lower σ bound)
+      SIGMA_MAX (1.0)        — upper σ bound; <1.0 restricts to low-σ supervision
       BASIS (svd_te)         — basis kind (svd_te|random)
       SEED (0)               — per-image inversion seed
       TIMESTEPS_PER_STEP (1) — batched sigmas per forward (× GRAD_ACCUM = total)
@@ -451,14 +489,15 @@ def cmd_invert_directedit(extra):
     # 2. Inversion knobs — env overrides for the common dials, defaults match
     #    the proposal (and the invert_postfix_tail.py CLI defaults).
     K = int(os.environ.get("K", "32"))
-    invert_steps = int(os.environ.get("INVERT_STEPS", "100"))
-    invert_lr = float(os.environ.get("INVERT_LR", "5e-3"))
+    invert_steps = int(os.environ.get("INVERT_STEPS", "15"))
+    invert_lr = float(os.environ.get("INVERT_LR", "2e-2"))
     lambda_zero = float(os.environ.get("LAMBDA_ZERO", "0.0"))
-    sigma_min = float(os.environ.get("SIGMA_MIN", "0.0"))
+    sigma_min = float(os.environ.get("SIGMA_MIN", "0"))
+    sigma_max = float(os.environ.get("SIGMA_MAX", "0.25"))
     basis_kind = os.environ.get("BASIS", "svd_te").strip()
     seed = int(os.environ.get("SEED", "0"))
-    timesteps_per_step = int(os.environ.get("TIMESTEPS_PER_STEP", "1"))
-    grad_accum = int(os.environ.get("GRAD_ACCUM", "2"))
+    timesteps_per_step = int(os.environ.get("TIMESTEPS_PER_STEP", "2"))
+    grad_accum = int(os.environ.get("GRAD_ACCUM", "8"))
 
     run_root = ROOT / "output" / "tests" / "invert_directedit"
     run_root.mkdir(parents=True, exist_ok=True)
@@ -530,10 +569,12 @@ def cmd_invert_directedit(extra):
                 "--lr", str(invert_lr),
                 "--lambda_zero", str(lambda_zero),
                 "--sigma_min", str(sigma_min),
+                "--sigma_max", str(sigma_max),
                 "--seed", str(seed),
                 "--timesteps_per_step", str(timesteps_per_step),
                 "--grad_accum", str(grad_accum),
                 "--output_dir", str(invert_out),
+                "--vr"
             ]
             run(invert_cmd)
             if not s_path.exists():

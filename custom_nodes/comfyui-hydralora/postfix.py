@@ -211,8 +211,6 @@ def apply_postfix(model, file_path: str, strength: float) -> bool:
     if prev is None:
         prev = dit.forward  # bound method — preserves self
 
-    new_fn = _make_forward_wrapper(
-        dit, prev, mode, payload, splice_position, strength
-    )
+    new_fn = _make_forward_wrapper(dit, prev, mode, payload, splice_position, strength)
     model.add_object_patch("diffusion_model.forward", new_fn)
     return True

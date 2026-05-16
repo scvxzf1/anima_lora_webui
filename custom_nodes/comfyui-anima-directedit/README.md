@@ -66,7 +66,7 @@ python scripts/sync_vendor.py     # from the anima_lora repo root
 | `target_tag` | STRING (multiline) | ψ_tar — caption for the edited image. Empty → falls back to `source_tag` (reconstruction sanity check). Typical usage: copy `source_tag` and add / replace / remove tags. |
 | `negative_prompt` | STRING | CFG negative for the edit pass. Default `"worst quality"`. |
 | `infer_steps` | INT | Both inversion and edit step count. Default 20. |
-| `flow_shift` | FLOAT | Sigma-shift schedule. Default 1.0 (Anima preview3 standard). |
+| `flow_shift` | FLOAT | Sigma-shift schedule. Default 1.0 (Anima base-v1.0 standard). |
 | `guidance_scale` | FLOAT | CFG for the edit (target) pass. Default 2.0. |
 | `invert_guidance` | FLOAT | CFG during inversion. Default 1.0 (no CFG). |
 | `t_inj` | INT | Number of early steps to inject src self-attn V into the tar pass. 0 = pure ΔZ-anchored edit; higher = stronger source-feature preservation, weaker edit leverage. Default 6. |

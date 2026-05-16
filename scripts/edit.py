@@ -10,7 +10,7 @@ Usage:
         --image path/to/source.png \
         --prompt_src "1girl, smile, school_uniform" \
         --prompt_tar "1girl, smile, school_uniform, double peace" \
-        --dit models/diffusion_models/anima-preview3-base.safetensors \
+        --dit models/diffusion_models/anima-base-v1.0.safetensors \
         --text_encoder models/text_encoders/qwen_3_06b_base.safetensors \
         --vae models/vae/qwen_image_vae.safetensors \
         --save_path output/tests/directedit/
@@ -26,7 +26,7 @@ v1.1 status:
     the block subset (default = all but the final block, SD3.5-style).
   * Mask blending: still inactive — ``--mask`` reserved (paper Eq. 12 v3).
   * Inversion runs at ``--invert_guidance 1.0`` (no CFG); the edit pass uses
-    the user's ``--guidance_scale`` (default 4.0, Anima preview3 standard).
+    the user's ``--guidance_scale`` (default 4.0, Anima base-v1.0 standard).
 """
 
 from __future__ import annotations
@@ -151,7 +151,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument(
         "--negative_prompt",
         # default="",
-        default="worst quality, lowres, score_1, old, blurry, simple background, monochrome, sepia",
+        default="",
         help="Negative prompt for CFG on the edit pass (default empty). In "
         "--cached_embed mode, an empty value is auto-replaced with 'worst "
         "quality' so CFG can still fire (the TE is loaded briefly to encode "
@@ -164,12 +164,12 @@ def parse_args() -> argparse.Namespace:
     )
 
     # Sampling knobs.
-    p.add_argument("--infer_steps", type=int, default=24)
+    p.add_argument("--infer_steps", type=int, default=28)
     p.add_argument("--flow_shift", type=float, default=1.0)
     p.add_argument(
         "--guidance_scale",
         type=float,
-        default=3.0,
+        default=4.0,
         help="CFG scale for the edit (target) pass.",
     )
     p.add_argument(
@@ -182,7 +182,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument(
         "--t_inj",
         type=int,
-        default=0,
+        default=2,
         help="Number of early editing steps to inject src self-attn V into "
         "the tar pass (paper Eq. 13). Default 0 = pure ΔZ-anchored edit. "
         "Typical paper setting: t_inj ≈ T/10..T/3 (e.g. 3..9 at T=28). "
@@ -484,7 +484,7 @@ def main() -> None:
         if not args.negative_prompt:
             logger.info(
                 "DirectEdit dry: --negative_prompt empty; defaulting to "
-                "'worst quality' for CFG."
+                "'' for CFG."
             )
 
         # Reuse prepare_text_inputs: set prompt == negative_prompt so the

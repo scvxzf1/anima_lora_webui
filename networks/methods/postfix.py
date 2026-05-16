@@ -23,6 +23,7 @@ import torch
 import torch.nn as nn
 
 from library.log import setup_logging
+from networks.methods.base import AdapterNetworkBase
 
 import logging
 
@@ -320,7 +321,10 @@ def _make_orthonormal_basis(
     )
 
 
-class PostfixNetwork(nn.Module):
+class PostfixNetwork(AdapterNetworkBase):
+    network_module = "networks.methods.postfix"
+    network_spec = "postfix"
+
     def __init__(
         self,
         num_postfix_tokens: int,
@@ -608,21 +612,6 @@ class PostfixNetwork(nn.Module):
         idx = offsets.unsqueeze(-1).expand(-1, -1, D)  # [B, K, D]
         return crossattn_emb.scatter(1, idx, postfix)
 
-    def set_multiplier(self, multiplier):
-        self.multiplier = multiplier
-
-    def is_mergeable(self):
-        return False
-
-    def enable_gradient_checkpointing(self):
-        pass
-
-    def prepare_grad_etc(self, text_encoder, unet):
-        self.requires_grad_(True)
-
-    def on_epoch_start(self, text_encoder, unet):
-        self.train()
-
     def clear_step_caches(self) -> None:
         """Drop per-step tensor references between training/validation steps.
 
@@ -652,6 +641,7 @@ class PostfixNetwork(nn.Module):
     def prepare_optimizer_params_with_multiple_te_lrs(
         self, text_encoder_lr, unet_lr, default_lr
     ):
+        del text_encoder_lr
         lr = unet_lr or default_lr
         if self.mode == "cond":
             params = [{"params": list(self.cond_mlp.parameters()), "lr": lr}]
@@ -661,57 +651,36 @@ class PostfixNetwork(nn.Module):
             descriptions = ["postfix_embeds"]
         return params, descriptions
 
-    def prepare_optimizer_params(self, text_encoder_lr, unet_lr, default_lr=None):
-        lr = unet_lr or default_lr
+    def state_dict_for_save(self, dtype):
         if self.mode == "cond":
-            return [{"params": list(self.cond_mlp.parameters()), "lr": lr}]
-        return [{"params": [self.postfix_embeds], "lr": lr}]
-
-    def save_weights(self, file, dtype, metadata):
-        dtype = dtype or torch.bfloat16
-        if self.mode == "cond":
-            state_dict = {
+            sd = {
                 f"cond_mlp.{k}": v.detach().clone().cpu().to(dtype)
                 for k, v in self.cond_mlp.state_dict().items()
             }
             # Frozen SVD basis must be persisted at fp32 — bf16 truncation
             # blows the orthogonality gate (‖postfix @ postfix.T - λ²·I‖_F).
-            state_dict["ortho_basis"] = self.postfix_basis.detach().clone().cpu().float()
-        else:
-            state_dict = {
-                "postfix_embeds": self.postfix_embeds.detach().clone().cpu().to(dtype)
-            }
+            sd["ortho_basis"] = self.postfix_basis.detach().clone().cpu().float()
+            return sd
+        return {
+            "postfix_embeds": self.postfix_embeds.detach().clone().cpu().to(dtype)
+        }
 
-        if os.path.splitext(file)[1] == ".safetensors":
-            from safetensors.torch import save_file
-            from library.training.hashing import precalculate_safetensors_hashes
-
-            if metadata is None:
-                metadata = {}
-            metadata["ss_network_module"] = "networks.methods.postfix"
-            metadata["ss_network_spec"] = "postfix"
-            metadata["ss_num_postfix_tokens"] = str(self.num_postfix_tokens)
-            metadata["ss_embed_dim"] = str(self.embed_dim)
-            metadata["ss_mode"] = self.mode
-            metadata["ss_splice_position"] = self.splice_position
-            if self.mode == "cond":
-                metadata["ss_cond_hidden_dim"] = str(self.cond_hidden_dim)
-                metadata["ss_ortho_basis"] = self.ortho_basis_kind
-                metadata["ss_ortho_basis_seed"] = str(self.ortho_basis_seed)
-                if self.te_cache_dir is not None:
-                    metadata["ss_te_cache_dir"] = str(self.te_cache_dir)
-                metadata["ss_svd_num_files"] = str(self.svd_num_files)
-                metadata["ss_lambda_init"] = str(self.lambda_init)
-
-            model_hash, legacy_hash = precalculate_safetensors_hashes(
-                state_dict, metadata
-            )
-            metadata["sshs_model_hash"] = model_hash
-            metadata["sshs_legacy_hash"] = legacy_hash
-
-            save_file(state_dict, file, metadata)
-        else:
-            torch.save(state_dict, file)
+    def metadata_fields(self) -> dict[str, str]:
+        meta: dict[str, str] = {
+            "ss_num_postfix_tokens": str(self.num_postfix_tokens),
+            "ss_embed_dim": str(self.embed_dim),
+            "ss_mode": self.mode,
+            "ss_splice_position": self.splice_position,
+        }
+        if self.mode == "cond":
+            meta["ss_cond_hidden_dim"] = str(self.cond_hidden_dim)
+            meta["ss_ortho_basis"] = self.ortho_basis_kind
+            meta["ss_ortho_basis_seed"] = str(self.ortho_basis_seed)
+            if self.te_cache_dir is not None:
+                meta["ss_te_cache_dir"] = str(self.te_cache_dir)
+            meta["ss_svd_num_files"] = str(self.svd_num_files)
+            meta["ss_lambda_init"] = str(self.lambda_init)
+        return meta
 
     def load_weights(self, file):
         if os.path.splitext(file)[1] == ".safetensors":

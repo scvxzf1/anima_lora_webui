@@ -32,8 +32,22 @@ use_shuffled_caption_variants = true
 cache_llm_adapter_outputs = true
 caption_dropout_rate = 0.1
 
+# CMMD val (PE-Core MMD²) is the primary val signal. Set to false on
+# tight VRAM if the PE encoder + sampling path OOMs even after the
+# CPU-park / two-phase mitigations in `_try_cmmd_validation`. With
+# CMMD off, val falls back to the legacy per-σ FM-MSE pass (cheaper
+# but uninformative — see project_fm_val_loss_uninformative).
+use_cmmd = false
+
 logging_dir = "output/logs"
 log_with = "tensorboard"
+
+# output_name = "anima_vr"
+# vr_loss_weight = 1.0
+# vr_fei_sigma_low_div = 4.0
+
+# compile_mode = "full"
+# compile_inductor_mode = "reduce-overhead"
 
 # -------------
 # Ortho-lora
@@ -43,9 +57,9 @@ use_ortho = true
 # -------------
 # Timestep mask
 
-# use_timestep_mask = true
-# min_rank = 8
-# alpha_rank_scale = 1.0
+use_timestep_mask = true
+min_rank = 8
+alpha_rank_scale = 1.0
 
 # -------------
 # "independent_A" and route_per_layer=true -> hydralora
@@ -64,24 +78,23 @@ use_ortho = true
 # -------------
 # "shared_A" and route_per_layer=false -> fera
 
-use_moe_style = "independent_A"
-route_per_layer = false 
-router_source = "fei"
-ortho_init_std = 0.05
+# use_moe_style = "independent_A"
+# route_per_layer = false 
+# router_source = "fei"
+# ortho_init_std = 0.05
 
-fei_feature_dim = 2          # raw simplex (e_low, e_high)
-fei_sigma_low_div = 4.0      # σ_low = min(H_lat, W_lat) / 4 — 2026-05-13 dataset sweep
-fera_num_bands = 2
-fera_fecl_weight = 0.0
+# fei_feature_dim = 2          # raw simplex (e_low, e_high)
+# fei_sigma_low_div = 4.0      # σ_low = min(H_lat, W_lat) / 4 — 2026-05-13 dataset sweep
+# fera_num_bands = 2
+# fera_fecl_weight = 0.0
 
-output_name = "anima_fera"
+# output_name = "anima_fera"
 
-num_experts = 4
-balance_loss_weight = 2e-7 # seems lr * 1/100 is proper
+# num_experts = 6
+# balance_loss_weight = 2e-7 # seems lr * 1/100 is proper
 
-balance_loss_warmup_ratio = 0.4
-# network_router_lr_scale = 10
-router_targets = ".*\\.(qkv_proj|q_proj|kv_proj|output_proj|layer[12])$"
+# balance_loss_warmup_ratio = 0.4
+# router_targets = ".*\\.(qkv_proj|q_proj|kv_proj|output_proj|layer[12])$"
 
 # -------------
 # reft
@@ -90,9 +103,6 @@ router_targets = ".*\\.(qkv_proj|q_proj|kv_proj|output_proj|layer[12])$"
 # reft_dim = 64
 # reft_alpha = 64
 # reft_layers = "last_8"
-
-# compile_mode = "full"
-# compile_inductor_mode = "reduce-overhead"
 
 
 # ── Per-channel input pre-scaling (SmoothQuant-style, optional) ─────────
@@ -106,6 +116,16 @@ router_targets = ".*\\.(qkv_proj|q_proj|kv_proj|output_proj|layer[12])$"
 # per_channel_scaling = true
 # channel_stats_path = "archive/bench/results/channel_stats.safetensors"
 # channel_scaling_alpha = 0.5
+
+# -------------
+# Variance-reduced FM loss (AsymFlow §5.2, arXiv:2605.12964). One extra
+# no-grad forward per step on the FEI-low-passed latent, with an online
+# control-variate λ. The control-variate forward reuses the trainable DiT
+# with adapter multiplier=0 (equivalent to a frozen base DiT for LoRA-family
+# runs), so there is no extra model copy in VRAM — only ~+40% step compute.
+# See bench/fm_vr_headroom/proposal.md.
+# vr_loss_weight = 1.0
+# vr_fei_sigma_low_div = 4.0
 
 # -------------
 # REPA (Yu et al., arxiv:2410.06940) — auxiliary alignment loss between a

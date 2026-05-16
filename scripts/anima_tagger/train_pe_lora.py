@@ -224,7 +224,8 @@ def cmd_train_pe_lora(args: argparse.Namespace) -> None:
              "weight_decay": args.weight_decay},
             {"params": list(pe_lora.parameters()), "lr": args.pe_lora_lr,
              "weight_decay": 0.0},
-        ]
+        ],
+        fused=torch.cuda.is_available(),
     )
     sched = build_warmup_cosine_scheduler(
         opt,

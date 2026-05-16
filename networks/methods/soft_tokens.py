@@ -34,6 +34,7 @@ import torch
 import torch.nn as nn
 
 from library.log import setup_logging
+from networks.methods.base import AdapterNetworkBase
 
 import logging
 
@@ -140,7 +141,7 @@ def create_network_from_weights(
     return network, weights_sd
 
 
-class SoftTokensNetwork(nn.Module):
+class SoftTokensNetwork(AdapterNetworkBase):
     """Per-layer time-indexed soft tokens.
 
     Parameters:
@@ -152,6 +153,9 @@ class SoftTokensNetwork(nn.Module):
     Param count: n_layers·K·D + n_t_buckets·n_layers·D
     With defaults (n_layers=10, K=4, D=1024, n_t_buckets=100): 40k + 1.0M ≈ 1.05M.
     """
+
+    network_module = "networks.methods.soft_tokens"
+    network_spec = "soft_tokens"
 
     def __init__(
         self,
@@ -384,67 +388,35 @@ class SoftTokensNetwork(nn.Module):
 
     # ── Standard adapter API ────────────────────────────────────────────
 
-    def set_multiplier(self, multiplier):
-        self.multiplier = multiplier
-
-    def is_mergeable(self):
-        return False
-
-    def enable_gradient_checkpointing(self):
-        pass
-
-    def prepare_grad_etc(self, text_encoder, unet):
-        self.requires_grad_(True)
-
-    def on_epoch_start(self, text_encoder, unet):
-        self.train()
-
     def get_trainable_params(self):
         return [self.tokens, self.t_offsets.weight]
 
     def prepare_optimizer_params_with_multiple_te_lrs(
         self, text_encoder_lr, unet_lr, default_lr
     ):
+        del text_encoder_lr
         lr = unet_lr or default_lr
         params = [{"params": self.get_trainable_params(), "lr": lr}]
         descriptions = ["soft_tokens(tokens+t_offsets)"]
         return params, descriptions
 
-    def prepare_optimizer_params(self, text_encoder_lr, unet_lr, default_lr=None):
-        lr = unet_lr or default_lr
-        return [{"params": self.get_trainable_params(), "lr": lr}]
-
-    def save_weights(self, file, dtype, metadata):
-        dtype = dtype or torch.bfloat16
-        state_dict = {
+    def state_dict_for_save(self, dtype):
+        return {
             "tokens": self.tokens.detach().clone().cpu().to(dtype),
             "t_offsets.weight": self.t_offsets.weight.detach().clone().cpu().to(dtype),
         }
-        if os.path.splitext(file)[1] == ".safetensors":
-            from safetensors.torch import save_file
-            from library.training.hashing import precalculate_safetensors_hashes
 
-            if metadata is None:
-                metadata = {}
-            metadata["ss_network_module"] = "networks.methods.soft_tokens"
-            metadata["ss_network_spec"] = "soft_tokens"
-            metadata["ss_num_tokens"] = str(self.num_tokens)
-            metadata["ss_embed_dim"] = str(self.embed_dim)
-            metadata["ss_n_layers"] = str(self.n_layers)
-            metadata["ss_n_t_buckets"] = str(self.n_t_buckets)
-            metadata["ss_splice_position"] = self.splice_position
-            metadata["ss_contrastive_weight"] = str(self.contrastive_weight)
-            metadata["ss_contrastive_k"] = str(self.contrastive_k)
-            metadata["ss_contrastive_tau"] = str(self.contrastive_tau)
-
-            model_hash, legacy_hash = precalculate_safetensors_hashes(
-                state_dict, metadata
-            )
-            metadata["sshs_model_hash"] = model_hash
-            metadata["sshs_legacy_hash"] = legacy_hash
-            save_file(state_dict, file, metadata)
-        else:
-            torch.save(state_dict, file)
+    def metadata_fields(self) -> dict[str, str]:
+        return {
+            "ss_num_tokens": str(self.num_tokens),
+            "ss_embed_dim": str(self.embed_dim),
+            "ss_n_layers": str(self.n_layers),
+            "ss_n_t_buckets": str(self.n_t_buckets),
+            "ss_splice_position": self.splice_position,
+            "ss_contrastive_weight": str(self.contrastive_weight),
+            "ss_contrastive_k": str(self.contrastive_k),
+            "ss_contrastive_tau": str(self.contrastive_tau),
+        }
 
     def load_weights(self, file):
         if os.path.splitext(file)[1] == ".safetensors":

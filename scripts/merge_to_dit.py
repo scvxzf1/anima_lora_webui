@@ -111,7 +111,7 @@ def main() -> int:
     parser.add_argument(
         "--dit",
         type=Path,
-        default=Path("models/diffusion_models/anima-preview3-base.safetensors"),
+        default=Path("models/diffusion_models/anima-base-v1.0.safetensors"),
         help="Base DiT safetensors.",
     )
     parser.add_argument(

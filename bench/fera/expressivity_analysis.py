@@ -34,7 +34,7 @@ H1. SUBSPACE PROJECTION ERROR  — load-bearing test
 
       r_OH(M, R_OH)   = ‖ΔW − Π_OH(ΔW)‖_F / ‖ΔW‖_F
 
-         OrthoHydra(`OrthoHydraLoRAExpModule`) reachable operators are
+         OrthoHydra(`OrthoHydraLoRAModule`) reachable operators are
          constrained to:
            - col space ⊂ span(U_base[:, :M·R_OH])    (disjoint per-expert
              slices of the pretrained W's SVD — see ortho.py:240-269)
@@ -110,7 +110,7 @@ Usage
     python -m bench.fera.expressivity_analysis \\
         --lora output/ckpt/anima-hydra-0511-4812.safetensors \\
         --lora output/ckpt/anima-tlora-0509-12.safetensors \\
-        --base-dit models/diffusion_models/anima-preview3-base.safetensors \\
+        --base-dit models/diffusion_models/anima-base-v1.0.safetensors \\
         --num-experts 4 \\
         --label hydra-vs-tlora
 
@@ -393,7 +393,7 @@ def parse_args() -> argparse.Namespace:
         "--base-dit",
         required=True,
         type=Path,
-        help="Path to the base DiT safetensors (e.g. models/diffusion_models/anima-preview3-base.safetensors).",
+        help="Path to the base DiT safetensors (e.g. models/diffusion_models/anima-base-v1.0.safetensors).",
     )
     p.add_argument(
         "--num-experts",

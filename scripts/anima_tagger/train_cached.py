@@ -240,7 +240,10 @@ def _train_cached_mean(args: argparse.Namespace) -> None:
         logger.info("no typed groups — pure BCE on every tag")
 
     opt = torch.optim.AdamW(
-        model.parameters(), lr=args.lr, weight_decay=args.weight_decay,
+        model.parameters(),
+        lr=args.lr,
+        weight_decay=args.weight_decay,
+        fused=torch.cuda.is_available(),
     )
     n_train = len(train_ds)
     steps_per_epoch = (n_train + args.batch_size - 1) // args.batch_size
@@ -671,7 +674,10 @@ def _train_cached_map(args: argparse.Namespace) -> None:
     )
 
     opt = torch.optim.AdamW(
-        model.parameters(), lr=args.lr, weight_decay=args.weight_decay,
+        model.parameters(),
+        lr=args.lr,
+        weight_decay=args.weight_decay,
+        fused=torch.cuda.is_available(),
     )
     sched = build_warmup_cosine_scheduler(
         opt,

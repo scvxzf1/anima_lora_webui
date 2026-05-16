@@ -83,6 +83,49 @@ def _path(key: str, default: str) -> str:
     return str(val) if val is not None else default
 
 
+def bespoke_preset_flags(preset: str) -> list[str]:
+    """Translate ``configs/presets.toml[<preset>]`` into CLI flags for the
+    bespoke distillation loops (``distill_modulation.py`` / ``distill_turbo.py``)
+    that bypass ``train.py``'s config merge chain.
+
+    Honored keys:
+      - ``blocks_to_swap`` → ``--blocks_to_swap N``
+      - ``gradient_checkpointing`` (bool) → ``--grad_ckpt`` / ``--no_grad_ckpt``
+      - ``sample_ratio`` → ``--sample_ratio R`` (per-bucket subsample; makes
+        ``PRESET=debug/half/quarter/tenth`` actually run on a small slice).
+
+    When the preset omits ``gradient_checkpointing`` we default to
+    ``--no_grad_ckpt`` (the trainable footprints here are tiny; ckpt is a perf
+    loss when VRAM isn't tight). Other preset keys are silently dropped.
+    """
+    sys.path.insert(0, str(ROOT))
+    try:
+        from library.config.io import load_preset_section
+    except Exception as e:  # noqa: BLE001
+        print(f"warn: could not import preset loader: {e}", file=sys.stderr)
+        return ["--no_grad_ckpt"]
+
+    try:
+        section = load_preset_section(preset)
+    except (FileNotFoundError, KeyError) as e:
+        print(
+            f"warn: preset '{preset}' not found ({e}); using bespoke-loop defaults",
+            file=sys.stderr,
+        )
+        return ["--no_grad_ckpt"]
+
+    flags: list[str] = []
+    if "blocks_to_swap" in section:
+        flags += ["--blocks_to_swap", str(int(section["blocks_to_swap"]))]
+    if "gradient_checkpointing" in section:
+        flags.append("--grad_ckpt" if section["gradient_checkpointing"] else "--no_grad_ckpt")
+    else:
+        flags.append("--no_grad_ckpt")
+    if "sample_ratio" in section:
+        flags += ["--sample_ratio", str(float(section["sample_ratio"]))]
+    return flags
+
+
 def latest_output(prefix: str = "", exclude: str | None = None) -> Path:
     """Return the most recently modified .safetensors file in output/ckpt/ matching prefix.
 
@@ -460,7 +503,7 @@ INFERENCE_BASE = [
     PY,
     "inference.py",
     "--dit",
-    "models/diffusion_models/anima-preview3-base.safetensors",
+    "models/diffusion_models/anima-base-v1.0.safetensors",
     "--text_encoder",
     "models/text_encoders/qwen_3_06b_base.safetensors",
     "--vae",

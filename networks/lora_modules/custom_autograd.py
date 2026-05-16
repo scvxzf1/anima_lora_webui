@@ -1,20 +1,13 @@
-# Memory-saving autograd functions for the LoRA down projection.
+# Memory-saving autograd for the LoRA down projection.
 #
-# Motivation: ``F.linear(x.float(), weight.float())`` causes autograd to save
-# the fp32-cast input for backward. With static_token_count=4096 that's
-# ~32 MiB per 2048-wide Linear and ~128 MiB for the 8192-wide MLP layer2 input,
-# accumulated across adapted modules. These two Functions save the original
-# low-precision ``x`` instead and recompute the fp32 cast in backward — a
-# targeted application of the gradient-checkpointing idea to a single op.
+# `F.linear(x.float(), weight.float())` saves the fp32-cast input for backward
+# (~32 MiB per 2048-wide Linear at 4096 tokens, ×N adapted modules). These
+# Functions save the bf16 `x` and recompute the cast in backward. Forward and
+# backward matmuls run in fp32 — bitwise-identical to the existing path for
+# deterministic kernels.
 #
-# The fp32 accumulation of the bottleneck matmul is preserved: forward still
-# runs ``F.linear(x_work.float(), weight.float())`` and backward runs the same
-# shape/precision matmuls (``go.float() @ w.float()`` / ``go.float().T @ x_f``),
-# so gradients are bitwise-identical to the existing path for deterministic
-# kernels.
-#
-# Two separate functions (scaled vs. unscaled) keep the graph shape fixed for
-# ``torch.compile`` — no optional tensors, no shape-dependent branches.
+# Two Functions (scaled / unscaled) instead of one with an optional tensor:
+# keeps the compile graph shape fixed.
 
 from __future__ import annotations
 
@@ -22,7 +15,6 @@ import torch
 
 
 class LoRADownProjectFn(torch.autograd.Function):
-    """``F.linear(x.float(), weight.float())`` without retaining the fp32 cast."""
 
     @staticmethod
     def forward(ctx, x, weight):
@@ -45,7 +37,11 @@ class LoRADownProjectFn(torch.autograd.Function):
 
 
 class ScaledLoRADownProjectFn(torch.autograd.Function):
-    """Scaled variant: forward is ``F.linear((x * inv_scale).float(), weight.float())``.
+    """Scaled variant: forward is ``F.linear((x * inv_scale.to(x.dtype)).float(), weight.float())``.
+
+    Matches the legacy ``_rebalance`` path exactly — ``inv_scale`` is cast to
+    ``x.dtype`` (bf16 under full_bf16) before the multiply, so the rebalance
+    keeps the bf16 activation chain instead of getting promoted to fp32.
 
     ``inv_scale`` is a calibration buffer (no gradient). Saving bf16 ``x`` plus
     the 1-D ``inv_scale`` (size == in_features) avoids retaining the
@@ -54,7 +50,8 @@ class ScaledLoRADownProjectFn(torch.autograd.Function):
 
     @staticmethod
     def forward(ctx, x, weight, inv_scale):
-        x_work = x * inv_scale
+        inv = inv_scale.to(x.dtype)
+        x_work = x * inv  # bf16 = bf16 * bf16, matches legacy _rebalance
         out = torch.nn.functional.linear(x_work.float(), weight.float())
         ctx.save_for_backward(x, weight, inv_scale)
         return out
@@ -62,18 +59,22 @@ class ScaledLoRADownProjectFn(torch.autograd.Function):
     @staticmethod
     def backward(ctx, grad_out):
         x, weight, inv_scale = ctx.saved_tensors
-        x_work = x * inv_scale
+        inv = inv_scale.to(x.dtype)
+        x_work = x * inv  # bf16 recompute matches forward
         go = grad_out.float()
         w_f = weight.float()
         x_f = x_work.float()
 
-        grad_x_work = go.matmul(w_f)
         grad_weight = go.reshape(-1, go.shape[-1]).transpose(0, 1).matmul(
             x_f.reshape(-1, x_f.shape[-1])
         )
 
-        # dL/dx = dL/dx_work * inv_scale  (elementwise broadcast over in-features)
-        grad_x = (grad_x_work * inv_scale).to(x.dtype)
+        # Legacy autograd for ``out = F.linear((x * inv).float(), w.float())``:
+        #   grad_y_fp32 = go @ w_f          (fp32)
+        #   grad_x_work = grad_y_fp32.to(x.dtype)   (bf16, from .float() backward)
+        #   grad_x      = grad_x_work * inv         (bf16, from multiply backward)
+        grad_x_work = go.matmul(w_f).to(x.dtype)
+        grad_x = grad_x_work * inv
         return grad_x, grad_weight.to(weight.dtype), None
 
 

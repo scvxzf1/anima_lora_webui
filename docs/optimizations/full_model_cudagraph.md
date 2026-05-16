@@ -99,17 +99,11 @@ t_emb_block = t_embedding_B_T_D + (
 ```
 
 ```python
-# networks/lora_modules/hydra.py:140  — sigma router input
+# networks/lora_modules/hydra.py  — sigma router input
 self.register_buffer("_sigma", torch.zeros(1, dtype=torch.float32), persistent=False)
-
-# networks/lora_modules/hydra.py:150  — expert-warmup gradient mask
-# Default ones → up*1 + up.detach()*0 == up, so the warmup branch is
-# always-on and a no-op when warmup is disabled.
-self.register_buffer("_expert_grad_mask", torch.ones(num_experts, dtype=torch.float32),
-                     persistent=False)
 ```
 
-Each of these buffers is set up so the forward never sees a `None`, never sees a Python `if warmup:`, never sees a shape change. The arithmetic is unconditional; zero / one is the off state.
+The buffer is set up so the forward never sees a `None`, never sees a Python `if`, never sees a shape change. The arithmetic is unconditional; zero / one is the off state.
 
 The same trick covers per-block guidance schedules (`_mod_guidance_schedule[block_idx] * delta`), T-LoRA timestep masks (zero rows = full rank), and ReFT timestep masks. They're all the same shape, so a per-block index becomes a tensor read instead of a Python branch.
 
@@ -145,7 +139,6 @@ Inventory of per-step setters (all in `networks/lora_anima/network.py`):
 | `clear_timestep_mask` | reset to ones | `shared.fill_(1.0)` |
 | `set_sigma` | per-module σ buffer | `buf.copy_(sigmas)` (shape-fast-path) |
 | `clear_sigma` | per-module σ buffer | `sigma.zero_()` |
-| Hydra warmup step | `_expert_grad_mask` | `.scatter_` / `.fill_` |
 
 The diagnostic for getting this wrong is loud once you know what to look for:
 

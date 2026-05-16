@@ -29,14 +29,17 @@ def split_train_val(
     is_training_dataset: bool,
     validation_split: float,
     validation_seed: int | None,
+    validation_split_num: int = 0,
 ) -> Tuple[List[str], List[Optional[Tuple[int, int]]]]:
     """
-    Split the dataset into train and validation
+    Split the dataset into train and validation.
 
-    Shuffle the dataset based on the validation_seed or the current random seed.
-    For example if the split of 0.2 of 100 images.
-    [0:80] = 80 training images
-    [80:] = 20 validation images
+    Shuffle the dataset based on ``validation_seed`` (or current RNG when
+    None), then carve off a validation slice. When ``validation_split_num > 0``
+    the count-based split wins over the fractional ``validation_split``
+    (clamped to ``len(paths)``); otherwise the original fraction-based split
+    is used. For example, with ``validation_split=0.2`` on 100 paths:
+    [0:80] = 80 training, [80:] = 20 validation.
     """
     dataset = list(zip(paths, sizes))
     if validation_seed is not None:
@@ -51,15 +54,18 @@ def split_train_val(
     paths, sizes = zip(*dataset)
     paths = list(paths)
     sizes = list(sizes)
-    # Split the dataset between training and validation
-    if is_training_dataset:
-        # Training dataset we split to the first part
+
+    if validation_split_num and validation_split_num > 0:
+        n_val = min(int(validation_split_num), len(paths))
+        split = len(paths) - n_val
+    elif is_training_dataset:
         split = math.ceil(len(paths) * (1 - validation_split))
-        return paths[0:split], sizes[0:split]
     else:
-        # Validation dataset we split to the second part
         split = len(paths) - round(len(paths) * validation_split)
-        return paths[split:], sizes[split:]
+
+    if is_training_dataset:
+        return paths[0:split], sizes[0:split]
+    return paths[split:], sizes[split:]
 
 
 class ImageInfo:
@@ -169,11 +175,14 @@ class BaseSubset:
         custom_attributes: Optional[Dict[str, Any]] = None,
         validation_seed: Optional[int] = None,
         validation_split: Optional[float] = 0.0,
+        validation_split_num: int = 0,
         resize_interpolation: Optional[str] = None,
+        recursive: bool = False,
     ) -> None:
         self.image_dir = image_dir
         self.alpha_mask = alpha_mask if alpha_mask is not None else False
         self.num_repeats = num_repeats
+        self.recursive = recursive
         self.sample_ratio = sample_ratio
         self.caption_separator = caption_separator
         self.keep_tokens = keep_tokens
@@ -201,6 +210,7 @@ class BaseSubset:
 
         self.validation_seed = validation_seed
         self.validation_split = validation_split
+        self.validation_split_num = int(validation_split_num or 0)
 
         self.resize_interpolation = resize_interpolation
 
@@ -235,9 +245,11 @@ class DreamBoothSubset(BaseSubset):
         custom_attributes: Optional[Dict[str, Any]] = None,
         validation_seed: Optional[int] = None,
         validation_split: Optional[float] = 0.0,
+        validation_split_num: int = 0,
         resize_interpolation: Optional[str] = None,
         mask_dir: Optional[str] = None,
         cache_dir: Optional[str] = None,
+        recursive: bool = False,
     ) -> None:
         assert image_dir is not None, "image_dir must be specified"
 
@@ -265,7 +277,9 @@ class DreamBoothSubset(BaseSubset):
             custom_attributes=custom_attributes,
             validation_seed=validation_seed,
             validation_split=validation_split,
+            validation_split_num=validation_split_num,
             resize_interpolation=resize_interpolation,
+            recursive=recursive,
         )
 
         self.is_reg = is_reg

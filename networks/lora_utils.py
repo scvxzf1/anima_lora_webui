@@ -11,6 +11,7 @@ from library.io.safetensors import (
     get_split_weight_filenames,
 )
 from library.log import setup_logging
+from networks.attn_fuse import ATTN_FUSE_SPECS
 
 setup_logging()
 import logging  # noqa: E402
@@ -51,10 +52,16 @@ def filter_lora_state_dict(
     return weights_sd
 
 
+# Derived from `ATTN_FUSE_SPECS` so the q/k/v ↔ qkv fusion layout has a single
+# source of truth. Save / adapter-load walk the underscore-fragment form via
+# `iter_split_groups`; this base-model merge path needs the dotted module-path
+# form (e.g. `self_attn.qkv_proj` matches against `blocks.0.self_attn.qkv_proj`).
 _FUSED_PROJ_FALLBACK = {
-    # model key fragment -> (replacement for each old component, list of old suffixes)
-    "self_attn.qkv_proj": ("self_attn.{}_proj", ("q", "k", "v")),
-    "cross_attn.kv_proj": ("cross_attn.{}_proj", ("k", "v")),
+    f"{spec.attn_type}.{spec.fused_letters}_proj": (
+        f"{spec.attn_type}.{{}}_proj",
+        spec.component_letters,
+    )
+    for spec in ATTN_FUSE_SPECS
 }
 
 

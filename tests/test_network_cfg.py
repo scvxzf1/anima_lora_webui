@@ -100,9 +100,6 @@ def test_numeric_string_parsing():
         "reft_dim": "16",
         "reft_alpha": "8.0",
         "num_experts": "8",
-        "expert_warmup_ratio": "0.2",
-        "expert_warmup_k": "3",
-        "expert_best_warmup_ratio": "0.0",
         "network_router_lr_scale": "0.5",
         "sigma_feature_dim": "32",
         "per_bucket_balance_weight": "0.4",
@@ -124,8 +121,6 @@ def test_numeric_string_parsing():
     assert cfg.reft_dim == 16
     assert cfg.reft_alpha == pytest.approx(8.0)
     assert cfg.num_experts == 8
-    assert cfg.expert_warmup_ratio == pytest.approx(0.2)
-    assert cfg.expert_warmup_k == 3
     assert cfg.router_lr_scale == pytest.approx(0.5)
     assert cfg.sigma_feature_dim == 32
     assert cfg.per_bucket_balance_weight == pytest.approx(0.4)
@@ -221,10 +216,6 @@ def test_from_weights_warm_start_shape():
     assert cfg.router_source == "sigma"
     assert cfg.sigma_feature_dim == 16
     assert cfg.sigma_router_names == ["foo"]
-    # Training-time schedules off in warm-start
-    assert cfg.expert_warmup_ratio == 0.0
-    assert cfg.expert_warmup_k == 1
-    assert cfg.expert_best_warmup_ratio == 0.0
 
 
 def test_from_weights_no_reft_no_sigma():

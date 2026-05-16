@@ -22,3 +22,10 @@ output_name = "anima"
 blocks_to_swap = 0
 gradient_checkpointing = true
 unsloth_offload_checkpointing = true
+use_cmmd = false
+
+[variant]
+family = "lora"
+label = "LoRA (8GB hardware)"
+description = "Plain LoRA tuned for low-VRAM cards (gradient checkpointing + offload)."
+order = 30

@@ -71,7 +71,7 @@ def cmd_download_anima(_extra):
             "hf",
             "download",
             "circlestone-labs/Anima",
-            "split_files/diffusion_models/anima-preview3-base.safetensors",
+            "split_files/diffusion_models/anima-base-v1.0.safetensors",
             "split_files/text_encoders/qwen_3_06b_base.safetensors",
             "split_files/vae/qwen_image_vae.safetensors",
             "--local-dir",

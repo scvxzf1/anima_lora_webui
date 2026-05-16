@@ -76,7 +76,9 @@ class BaseSubsetParams:
     custom_attributes: Optional[Dict[str, Any]] = None
     validation_seed: int = 0
     validation_split: float = 0.0
+    validation_split_num: int = 0
     resize_interpolation: Optional[str] = None
+    recursive: bool = False
 
 
 @dataclass
@@ -97,6 +99,7 @@ class BaseDatasetParams:
     debug_dataset: bool = False
     validation_seed: Optional[int] = None
     validation_split: float = 0.0
+    validation_split_num: int = 0
     resize_interpolation: Optional[str] = None
 
 
@@ -191,6 +194,7 @@ class ConfigSanitizer:
         "alpha_mask": bool,
         "cache_dir": str,
         "mask_dir": str,
+        "recursive": bool,
     }
     # datasets schema
     DATASET_ASCENDABLE_SCHEMA = {
@@ -202,6 +206,7 @@ class ConfigSanitizer:
         "min_bucket_reso": int,
         "validation_seed": int,
         "validation_split": float,
+        "validation_split_num": int,
         "resolution": functools.partial(
             __validate_and_convert_scalar_or_twodim.__func__, int
         ),
@@ -413,7 +418,10 @@ def generate_dataset_group_by_blueprint(
             )
             continue
 
-        if dataset_blueprint.params.validation_split == 0.0:
+        if (
+            dataset_blueprint.params.validation_split == 0.0
+            and dataset_blueprint.params.validation_split_num <= 0
+        ):
             continue
 
         subsets = [

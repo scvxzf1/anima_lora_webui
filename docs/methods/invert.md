@@ -19,7 +19,7 @@ Or with a single image:
 ```bash
 python archive/inversion/invert_embedding.py \
     --image path/to/image.png \
-    --dit models/diffusion_models/anima-preview3-base.safetensors \
+    --dit models/diffusion_models/anima-base-v1.0.safetensors \
     --vae models/vae/qwen_image_vae.safetensors \
     --output_dir inversions
 ```
@@ -43,7 +43,7 @@ Encodes the image via VAE on the fly. Requires `--vae`. The VAE is loaded, used,
 
 ```bash
 python archive/inversion/invert_embedding.py --image photo.png \
-    --dit models/diffusion_models/anima-preview3-base.safetensors \
+    --dit models/diffusion_models/anima-base-v1.0.safetensors \
     --vae models/vae/qwen_image_vae.safetensors \
     --init_prompt "a photo of a cat" --text_encoder models/text_encoders/qwen_3_06b_base.safetensors
 ```
@@ -54,7 +54,7 @@ Uses cached latents (`.npz`) and optionally cached text encoder outputs (`_anima
 
 ```bash
 python archive/inversion/invert_embedding.py --image_dir post_image_dataset \
-    --dit models/diffusion_models/anima-preview3-base.safetensors \
+    --dit models/diffusion_models/anima-base-v1.0.safetensors \
     --num_images 10 --shuffle
 ```
 
@@ -87,7 +87,7 @@ Add `--verify` to generate an image from the inverted embedding after optimizati
 
 ```bash
 python archive/inversion/invert_embedding.py --image photo.png \
-    --dit models/diffusion_models/anima-preview3-base.safetensors \
+    --dit models/diffusion_models/anima-base-v1.0.safetensors \
     --vae models/vae/qwen_image_vae.safetensors \
     --verify --verify_steps 50 --verify_seed 42
 ```
@@ -211,7 +211,7 @@ python inference.py --prefix_weight output/anima_ref_cat.safetensors \
 ```bash
 python archive/inversion/invert_reference.py \
     --image path/to/ref.png \
-    --dit models/diffusion_models/anima-preview3-base.safetensors \
+    --dit models/diffusion_models/anima-base-v1.0.safetensors \
     --vae models/vae/qwen_image_vae.safetensors \
     --text_encoder models/text_encoders/qwen_3_06b_base.safetensors \
     --template "a photo of <REF> in a scene" \

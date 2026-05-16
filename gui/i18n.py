@@ -104,6 +104,23 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "test_output_title": "Latest test output",
         "test_output_empty": "output/tests/ is empty.",
         "finished": "--- Finished (exit code {code}) ---",
+        "starting": "Starting… (loading torch / accelerate)",
+        "update_success_title": "Update applied",
+        "update_success_message": (
+            "anima_lora was updated to {v}.\n\n"
+            "Close and relaunch the GUI to load the new code."
+        ),
+        "update_success_badge": "Updated → {v} (relaunch to apply)",
+        "update_dryrun_done_title": "Dry run finished",
+        "update_dryrun_done_message": (
+            "Dry run completed — no files were written. "
+            "Review the log to see what a real update would change."
+        ),
+        "update_failed_title": "Update failed",
+        "update_failed_message": (
+            "Update exited with code {code}. "
+            "See the log for details; the working tree may be partially modified."
+        ),
         "resume_checkpoint_title": "Resume training?",
         "resume_checkpoint_question": (
             "A resumable checkpoint was found at step {step}.\n\n"
@@ -365,6 +382,23 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "test_output_title": "최신 테스트 출력",
         "test_output_empty": "output/tests/가 비어 있습니다.",
         "finished": "--- 완료 (종료 코드 {code}) ---",
+        "starting": "시작 중… (torch / accelerate 로딩)",
+        "update_success_title": "업데이트 완료",
+        "update_success_message": (
+            "anima_lora이(가) {v}(으)로 업데이트되었습니다.\n\n"
+            "변경 사항을 적용하려면 GUI를 종료하고 다시 실행해 주세요."
+        ),
+        "update_success_badge": "{v}(으)로 업데이트됨 (재실행 필요)",
+        "update_dryrun_done_title": "드라이런 완료",
+        "update_dryrun_done_message": (
+            "드라이런이 완료되었습니다. 실제 변경된 파일은 없습니다. "
+            "어떤 변경이 일어날지 로그를 확인하세요."
+        ),
+        "update_failed_title": "업데이트 실패",
+        "update_failed_message": (
+            "업데이트가 코드 {code}(으)로 종료되었습니다. "
+            "자세한 내용은 로그를 확인하세요. 작업 트리가 일부만 변경되었을 수 있습니다."
+        ),
         "resume_checkpoint_title": "학습을 재개할까요?",
         "resume_checkpoint_question": (
             "재개 가능한 체크포인트가 감지되었습니다 (스텝 {step}).\n\n"

@@ -169,6 +169,15 @@ def main() -> None:
             "resize time. Set to 0 to disable."
         ),
     )
+    parser.add_argument(
+        "--recursive",
+        action="store_true",
+        help=(
+            "Walk subfolders under --dir. Caches are still written flat "
+            "(stem-based filenames); image stems must therefore be unique "
+            "across the entire source tree."
+        ),
+    )
     args = parser.parse_args()
 
     from safetensors.torch import save_file as _save_safetensors
@@ -205,9 +214,30 @@ def main() -> None:
 
     # Collect images that have caption sidecars. Mirror the resize filter so
     # we don't cache TE for images that would be dropped at resize time.
+    if args.recursive:
+        candidates = sorted(
+            p
+            for p in data_dir.rglob("*")
+            if p.is_file() and p.suffix.lower() in IMAGE_EXTENSIONS
+        )
+        seen_stems: dict[str, Path] = {}
+        collisions: list[tuple[str, Path, Path]] = []
+        for p in candidates:
+            if p.stem in seen_stems:
+                collisions.append((p.stem, seen_stems[p.stem], p))
+            else:
+                seen_stems[p.stem] = p
+        if collisions:
+            print("Duplicate image stems found under --dir (caches are stem-keyed):")
+            for stem, a, b in collisions:
+                print(f"  '{stem}': {a} <-> {b}")
+            sys.exit(1)
+    else:
+        candidates = sorted(data_dir.iterdir())
+
     entries: list[tuple[Path, str]] = []
     skipped_small = 0
-    for p in sorted(data_dir.iterdir()):
+    for p in candidates:
         if p.suffix.lower() not in IMAGE_EXTENSIONS:
             continue
         caption_path = p.with_suffix(".txt")

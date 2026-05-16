@@ -1,0 +1,7 @@
+<h2 style='margin:0 0 10px 0; font-size:18px;'>전처리</h2>
+<p>학습은 세 가지 산출물 레인을 사용합니다:</p>
+<p><b>1. 텍스트 캐싱</b> &mdash; Qwen3 + T5로 캡션을 토큰화하고 <code>{stem}_anima_te.safetensors</code> 파일로 저장합니다. <i>셔플 변형 수</i>가 0보다 크면 각 캐시에 N개의 캡션이 들어가며 데이터로더는 학습 스텝마다 하나를 샘플링합니다 (메소드 설정에서 <code>use_shuffled_caption_variants</code>를 켜야 사용됩니다).</p>
+<p><b>2. SAM3 마스킹</b> &mdash; 자연어 프롬프트로 말풍선 영역을 찾습니다. <code>masks/sam/</code>에 저장.</p>
+<p><b>3. MIT 마스킹</b> &mdash; 글리프 단위 데이터로 학습된 만화 전용 텍스트 분할기를 실행합니다. <code>masks/mit/</code>에 저장.</p>
+<p><b>병합</b> 단계는 SAM + MIT의 합집합을 <code>masks/merged/</code>에 만듭니다. 병합 디렉토리가 있으면 학습 서브셋이 자동으로 사용합니다 (메소드 설정의 <code>masked_loss</code> 참조).</p>
+<p style='color:#888; font-style:italic; margin-top:12px;'>왼쪽 필드 라벨을 클릭하면 여기에 설명이 표시됩니다.</p>

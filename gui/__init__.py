@@ -37,51 +37,78 @@ CUSTOM_VARIANTS_DIR = GUI_METHODS_DIR / "custom"
 
 _METHOD_ORDER = (
     "lora",
-    "ortholora",
     "tlora",
     "hydralora",
     "reft",
     "postfix",
+    "fera",
+    "chimera",
     "ip_adapter",
     "easycontrol",
 )
 
-# GUI variant picker maps method families → self-contained gui-methods files.
-# Order is display order in the variant combo. Any gui-methods/*.toml not
-# listed here is attached to its best-guess family by prefix.
+# Built-in variant families are discovered from each gui-methods/*.toml file's
+# ``[variant]`` table (``family`` / ``label`` / ``description`` / optional
+# ``order`` / ``experimental``). The hand-curated _FAMILY_VARIANTS map was
+# retired in the Track 2 refactor — adding or renaming a variant is now a
+# one-file change.
 #
-# Each family holds the variants of a single algorithmic method. Hardware
-# presets (e.g. `lora-8gb`) and run-length presets (`lora_longer`) sit under
-# their parent algorithm. Combinations like `tlora_ortho` go under the
-# dominant axis (T-LoRA), `tlora_ortho_reft` lives under ReFT (the only
-# component that breaks mergeability, so it dictates the family).
-_FAMILY_VARIANTS: dict[str, list[str]] = {
-    "lora": [
-        "lora",
-        "lora_longer",
-        "lora-8gb",
-    ],
-    "ortholora": [
-        "ortholora",
-    ],
-    "tlora": [
-        "tlora",
-        "tlora_ortho",
-    ],
-    "hydralora": [
-        "hydralora_sigma",
-        "hydralora_experimental",
-    ],
-    "reft": [
-        "reft",
-        "tlora_ortho_reft",
-    ],
-    "postfix": [
-        "postfix_ortho_cond",
-    ],
-    "ip_adapter": ["ip_adapter"],
-    "easycontrol": ["easycontrol"],
-}
+# Display order within a family is ``[variant].order`` (ascending; ties broken
+# by file stem). Family ordering in the method combo stays curated via
+# ``_METHOD_ORDER`` so we can keep training-only families (e.g. ``soft_tokens``)
+# off the GUI without renaming files. Customs under
+# ``configs/gui-methods/custom/`` are intentionally permissive — they don't
+# need a ``[variant]`` block and are surfaced under every family the same way
+# they were before.
+
+
+def _read_variant_metadata(path: Path) -> dict:
+    """Return the ``[variant]`` table from a gui-methods TOML, or ``{}``.
+
+    Failures (missing file, parse error, missing table) yield an empty dict
+    so callers can treat "no metadata" uniformly — built-in validation is
+    handled by ``tests/test_gui_variants.py``, not here.
+    """
+    if not path.is_file():
+        return {}
+    try:
+        data = toml.loads(path.read_text(encoding="utf-8"))
+    except (toml.TomlDecodeError, OSError):
+        return {}
+    meta = data.get("variant")
+    return meta if isinstance(meta, dict) else {}
+
+
+def _builtin_variants_by_family() -> dict[str, list[tuple[int, str, str]]]:
+    """Map family → list of (order, stem, label) tuples for built-in variants.
+
+    Built-in = directly under ``configs/gui-methods/`` (not the ``custom/``
+    subdir). Files without a ``[variant].family`` are dropped silently —
+    they're either malformed or intentionally hidden, and listing them under
+    a guessed family would just re-introduce the stale-map problem.
+    """
+    by_family: dict[str, list[tuple[int, str, str]]] = {}
+    if not GUI_METHODS_DIR.is_dir():
+        return by_family
+    for path in GUI_METHODS_DIR.glob("*.toml"):
+        meta = _read_variant_metadata(path)
+        family = meta.get("family")
+        if not isinstance(family, str) or not family:
+            continue
+        order = meta.get("order")
+        order_int = order if isinstance(order, int) else 100
+        label = meta.get("label") if isinstance(meta.get("label"), str) else path.stem
+        by_family.setdefault(family, []).append((order_int, path.stem, label))
+    for entries in by_family.values():
+        entries.sort(key=lambda e: (e[0], e[1]))
+    return by_family
+
+
+def variant_metadata(variant: str) -> dict:
+    """Return the ``[variant]`` metadata for a built-in or ``custom/<name>``
+    variant. Empty dict when the file has no ``[variant]`` block (custom
+    variants may legitimately omit it)."""
+    return _read_variant_metadata(variant_path(variant))
 
 
 def list_methods() -> list[str]:
@@ -92,19 +119,14 @@ def list_methods() -> list[str]:
 def list_gui_variants(method: str) -> list[str]:
     """gui-methods/*.toml files for the method family + all user customs.
 
-    The GUI training path uses gui-methods as the source of truth (each variant
-    is a self-contained TOML — no toggle blocks), so the variant combo lists
-    actual files, not overlay presets.
-
-    Custom variants in ``configs/gui-methods/custom/*.toml`` are surfaced for
-    every method family — users name them freely and we don't try to bind a
-    file to a specific family.
+    Built-in variants are filtered to those whose ``[variant].family`` matches
+    ``method``, sorted by ``[variant].order`` then by file stem. Custom
+    variants in ``configs/gui-methods/custom/*.toml`` are surfaced for every
+    family — users name them freely and we don't try to bind a file to a
+    specific family.
     """
-    if not GUI_METHODS_DIR.exists():
-        return []
-    have = {p.stem for p in GUI_METHODS_DIR.glob("*.toml")}
-    want = _FAMILY_VARIANTS.get(method, [])
-    ordered = [v for v in want if v in have]
+    by_family = _builtin_variants_by_family()
+    ordered = [stem for _order, stem, _label in by_family.get(method, [])]
     if CUSTOM_VARIANTS_DIR.exists():
         for p in sorted(CUSTOM_VARIANTS_DIR.glob("*.toml")):
             ordered.append(f"custom/{p.stem}")
@@ -162,9 +184,10 @@ _GROUPS = {
         "network_args",
         "use_ortho",
         "use_timestep_mask",
-        "use_hydra",
+        "use_moe_style",
+        "route_per_layer",
+        "router_source",
         "add_reft",
-        "use_sigma_router",
         "min_rank",
         "alpha_rank_scale",
         "num_experts",
@@ -213,7 +236,8 @@ _GROUPS = {
         "cache_text_encoder_outputs",
         "cache_text_encoder_outputs_to_disk",
         "skip_cache_check",
-        "layer_start"
+        "layer_start",
+        "use_cmmd",
     },
     "Paths": {
         "pretrained_model_name_or_path",
@@ -228,7 +252,7 @@ _GROUPS = {
     },
 }
 _K2G = {k: g for g, ks in _GROUPS.items() for k in ks}
-_SKIP = {"base_config", "dataset_config", "general", "datasets"}
+_SKIP = {"base_config", "dataset_config", "general", "datasets", "variant"}
 
 # Fields shown under the "Basic" section. Everything else falls under the
 # collapsible "Advanced" section. Picked to cover the knobs a first-time user

@@ -220,6 +220,64 @@ def _flow_match_loss(ctx: LossContext) -> torch.Tensor:
     return loss
 
 
+def _flow_matching_vr_loss(ctx: LossContext) -> torch.Tensor:
+    """AsymFlow §5.2 control-variate FM loss.
+
+    Replaces ``y² → (y + λ·z)²`` per element, where::
+
+        y = model_pred − target                (gradient flows here)
+        z = ref_pred_L − (noise − x_0^L)       (no_grad, supplied by trainer)
+
+    λ is estimated online as ``λ* = −Cov(y, z) / Var(z)`` on the *detached*
+    residuals and tracked through an EMA across batches (β default 0.01).
+    Theory only applies to the squared-error loss, so we always compute
+    ``(y + λz)²`` regardless of ``args.loss_type``.
+
+    Trainer contract: when active, ``train.py::get_noise_pred_and_target``
+    stashes ``ctx.aux['vr'] = {'z': Tensor, 'state': mutable_dict}``; this
+    handler updates ``state['lambda_ema']`` in place. If the aux entry is
+    missing (e.g. validation step), falls back to standard flow-match.
+    """
+    vr_aux = ctx.aux.get("vr") or {}
+    z = vr_aux.get("z")
+    weight = float(getattr(ctx.args, "vr_loss_weight", 0.0) or 0.0)
+    if weight <= 0.0 or z is None:
+        return _flow_match_loss(ctx)
+
+    y = ctx.model_pred.float() - ctx.target.float()
+    z_f = z.float()
+
+    # Per-batch λ_batch on detached residuals, then EMA across batches.
+    with torch.no_grad():
+        y_d = y.detach()
+        cov = (y_d * z_f).sum()
+        var = (z_f * z_f).sum().clamp_min(1e-12)
+        lambda_batch = float(-(cov / var).item())
+
+    beta = float(getattr(ctx.args, "vr_lambda_beta", 0.01) or 0.0)
+    state = vr_aux.get("state")
+    prev = state.get("lambda_ema") if isinstance(state, dict) else None
+    if prev is None or not isinstance(prev, float):
+        lambda_ema = lambda_batch
+    else:
+        lambda_ema = (1.0 - beta) * prev + beta * lambda_batch
+    if isinstance(state, dict):
+        state["lambda_ema"] = lambda_ema
+        state["lambda_batch"] = lambda_batch
+
+    diff = y + lambda_ema * z_f
+    loss = diff.pow(2)
+    if ctx.weighting is not None:
+        loss = loss * ctx.weighting
+    if ctx.args.masked_loss or (
+        "alpha_masks" in ctx.batch and ctx.batch["alpha_masks"] is not None
+    ):
+        loss = apply_masked_loss(loss, ctx.batch)
+    loss = loss.mean(dim=list(range(1, loss.ndim)))
+    loss = loss * ctx.loss_weights
+    return weight * loss
+
+
 # ---------------------------------------------------------------------------
 # Scalar-broadcast regularizers (added to the per-sample [B] tensor)
 # ---------------------------------------------------------------------------
@@ -407,6 +465,7 @@ def _multiscale_loss(ctx: LossContext) -> torch.Tensor:
 
 LOSS_REGISTRY: dict[str, LossFn] = {
     "flow_match": _flow_match_loss,
+    "flow_matching_vr": _flow_matching_vr_loss,
     "ortho_reg": _ortho_reg_loss,
     "hydra_balance": _hydra_balance_loss,
     "functional": _functional_loss,
@@ -418,7 +477,9 @@ LOSS_REGISTRY: dict[str, LossFn] = {
 
 
 # Which stage each registered loss runs in (see module docstring).
-_STAGE_PER_SAMPLE = ("flow_match",)
+# `flow_match` and `flow_matching_vr` are mutually exclusive — both produce
+# the per-sample [B] tensor that downstream stages add into.
+_STAGE_PER_SAMPLE = ("flow_match", "flow_matching_vr")
 _STAGE_SCALAR_BROADCAST = (
     "ortho_reg",
     "hydra_balance",
@@ -471,11 +532,11 @@ class LossComposer:
             per_sample = contribution if first else (per_sample + contribution)
             first = False
         if first:
-            # flow_match should always be present; defend against a caller
-            # passing an empty composer.
+            # exactly one of {flow_match, flow_matching_vr} must always be
+            # present; defend against a caller passing an empty composer.
             raise RuntimeError(
                 "LossComposer: no per-sample loss registered; "
-                "'flow_match' must be among active_losses"
+                "one of {'flow_match', 'flow_matching_vr'} must be in active_losses"
             )
 
         # Stage 2: scalar-broadcast regularizers (added to the per-sample [B]).
@@ -508,13 +569,20 @@ def build_loss_composer(args: argparse.Namespace, network: object) -> LossCompos
     """Inspect args + network and return the active LossComposer.
 
     Rules:
-      - flow_match is always active.
+      - exactly one of flow_match / flow_matching_vr is active. VR wins when
+        args.vr_loss_weight > 0 (the trainer is responsible for running the
+        adapter-bypass no-grad forward and stashing ctx.aux['vr']).
       - ortho_reg active iff network._ortho_reg_weight > 0.
       - hydra_balance active iff network._balance_loss_weight > 0.
       - functional active iff args.functional_loss_weight > 0.
       - multiscale active iff args.multiscale_loss_weight > 0.
     """
-    active: list[str] = ["flow_match"]
+    fm_name = (
+        "flow_matching_vr"
+        if float(getattr(args, "vr_loss_weight", 0.0) or 0.0) > 0.0
+        else "flow_match"
+    )
+    active: list[str] = [fm_name]
 
     method = getattr(args, "method", None) or ""
 

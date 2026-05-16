@@ -14,16 +14,44 @@ logger = logging.getLogger(__name__)
 
 
 def _is_hydra_moe(path: str) -> bool:
-    """Cheap check: peek at the safetensors header for a `.lora_ups.` key.
+    """Cheap check: peek at the safetensors header for a per-expert ups key.
 
-    HydraLoRA moe files carry per-expert `lora_ups.N.weight` keys; regular
-    LoRA files do not. Uses `safe_open` so only the header is read.
+    HydraLoRA moe files carry per-expert ``.lora_ups.N.weight`` keys;
+    chimera files carry the dual-pool variants ``.lora_ups_c.N.weight`` /
+    ``.lora_ups_f.N.weight``. Either signal means router-live: skip static
+    merge. Regular LoRA files have none of these. Uses ``safe_open`` so
+    only the header is read.
+
+    Callers that need to disambiguate chimera from plain Hydra should also
+    consult ``_is_chimera_moe``.
     """
     from safetensors import safe_open
 
     try:
         with safe_open(path, framework="pt") as f:
-            return any(".lora_ups." in k for k in f.keys())
+            return any(
+                ".lora_ups." in k or ".lora_ups_c." in k or ".lora_ups_f." in k
+                for k in f.keys()
+            )
+    except Exception:
+        return False
+
+
+def _is_chimera_moe(path: str) -> bool:
+    """Peek at safetensors metadata for ``ss_use_chimera_hydra="true"``.
+
+    Chimera files share the Hydra-MoE on-disk shape (so ``_is_hydra_moe``
+    also returns True) but carry the dual-pool runtime contract — they
+    additionally hold a top-level ``freq_router.*`` block and need the
+    per-Linear router narrowed to K_c outputs. Inference / load paths
+    must read this flag to wire the network correctly.
+    """
+    from safetensors import safe_open
+
+    try:
+        with safe_open(path, framework="pt") as f:
+            md = f.metadata() or {}
+            return str(md.get("ss_use_chimera_hydra", "")).strip().lower() == "true"
     except Exception:
         return False
 
@@ -154,8 +182,22 @@ def load_dit_model(
 
         logger.info("HydraLoRA: loading moe file as router-live dynamic hooks")
         for lora_weight_path in args.lora_weight:
-            lora_sd = load_file(lora_weight_path)
-            lora_sd = {k: v for k, v in lora_sd.items() if k.startswith("lora_unet_")}
+            # Chimera files (dual-pool) carry top-level ``freq_router.*``
+            # keys outside the ``lora_unet_*`` namespace and require the
+            # factory to read ``ss_use_chimera_hydra`` from on-disk metadata.
+            # Pass file=path and skip the lora_unet_* filter so both bits
+            # survive into create_network_from_weights.
+            is_chimera = _is_chimera_moe(lora_weight_path)
+            if is_chimera:
+                lora_sd = None
+                factory_file = lora_weight_path
+                logger.info("HydraLoRA: chimera file — dual-pool routing wired")
+            else:
+                lora_sd = load_file(lora_weight_path)
+                lora_sd = {
+                    k: v for k, v in lora_sd.items() if k.startswith("lora_unet_")
+                }
+                factory_file = None
 
             multiplier = (
                 args.lora_multiplier
@@ -164,7 +206,7 @@ def load_dit_model(
             )
             network, weights_sd = lora_anima.create_network_from_weights(
                 multiplier=multiplier,
-                file=None,
+                file=factory_file,
                 ae=None,
                 text_encoders=[],
                 unet=model,

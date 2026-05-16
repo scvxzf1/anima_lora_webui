@@ -16,10 +16,12 @@ from networks import NETWORK_REGISTRY, resolve_network_spec
 from networks.methods.repa import REPAHead
 from networks.lora_anima.config import LoRANetworkCfg
 from networks.lora_anima.loading import (
+    _refuse_split_chimera_keys,
     _refuse_split_hydra_keys,
     _refuse_split_stacked_experts_keys,
     _refuse_unfused_attn_lokr_keys,
     _refuse_unfused_attn_lora_keys,
+    _stack_chimera_lora_ups,
     _stack_lora_ups,
 )
 from networks.lora_anima.network import LoRANetwork
@@ -237,6 +239,12 @@ def create_network(
             f"OrthoHydraLoRA: Cayley + MoE, num_experts={cfg.num_experts}, "
             f"balance_loss_weight={network._balance_loss_weight}"
         )
+    elif spec.name == "chimera_hydra":
+        logger.info(
+            f"ChimeraHydra: dual-pool additive, K_c={cfg.num_experts_content}, "
+            f"K_f={cfg.num_experts_freq}, balance(w_c={network._balance_w_content}, "
+            f"w_f={network._balance_w_freq}), outer={network._balance_loss_weight}"
+        )
     elif spec.name == "ortho":
         logger.info("OrthoLoRA: Cayley parameterization + SVD-informed init")
     elif spec.name == "hydra":
@@ -246,7 +254,7 @@ def create_network(
     if spec.name in ("hydra", "ortho_hydra") and (
         network._hydra_router_re is not None or network._hydra_router_names is not None
     ):
-        fallback_name = "OrthoLoRAExp" if spec.name == "ortho_hydra" else "LoRA"
+        fallback_name = "OrthoLoRA" if spec.name == "ortho_hydra" else "LoRA"
         logger.info(
             f"HydraLoRA layer filter: {network._hydra_router_hits} MoE modules, "
             f"{network._hydra_router_misses} fell back to plain {fallback_name} "
@@ -326,9 +334,14 @@ def create_network_from_weights(
     # MoE files: stack per-expert ups (and downs, for StackedExperts) and
     # fuse split q/k/v first so the fused training-runtime keys are what
     # the regular attention refuser and the downstream detection loop see.
+    # Chimera dual-A files have their own per-pool ups (.lora_ups_c.{i} /
+    # .lora_ups_f.{i}) and stacked Parameters (.lora_up_c_weight /
+    # .lora_up_f_weight); a separate stack/refuse pair handles them.
     weights_sd = _stack_lora_ups(weights_sd)
+    weights_sd = _stack_chimera_lora_ups(weights_sd)
     weights_sd = _refuse_split_stacked_experts_keys(weights_sd)
     weights_sd = _refuse_split_hydra_keys(weights_sd)
+    weights_sd = _refuse_split_chimera_keys(weights_sd)
     weights_sd = _refuse_unfused_attn_lokr_keys(weights_sd)
     # Refuse unfused attn projections so modules_dim reflects the runtime (qkv/kv fused).
     weights_sd = _refuse_unfused_attn_lora_keys(weights_sd)
@@ -336,7 +349,6 @@ def create_network_from_weights(
     modules_dim = {}
     modules_alpha = {}
     train_llm_adapter = False
-    has_dora = False
     has_lokr = False
     lokr_module_names: set[str] = set()
     lokr_factor_detected: Optional[int] = None
@@ -355,13 +367,17 @@ def create_network_from_weights(
     reft_dim = None
     reft_block_indices: set[int] = set()
     # Per-module hydra flag: which lora_names were trained as MoE (Hydra) vs
-    # plain LoRA / OrthoLoRAExp. Populated below by key sniff, then passed
+    # plain LoRA / OrthoLoRA. Populated below by key sniff, then passed
     # through as `hydra_router_names` so create_modules can pick the right
     # class per module in mixed checkpoints (result of router_targets).
     hydra_module_names: set[str] = set()
     plain_module_names: set[str] = set()
     # Block-level ReFT key pattern: reft_unet_blocks_<idx>.<...>
     _reft_block_re = re.compile(r"^reft_unet_blocks_(\d+)$")
+    # Discriminator for chimera dual-A keys: any module with a
+    # ``.lora_up_c_weight`` (post-stack form) is a chimera Linear and
+    # should NOT be classified as plain Hydra. Collected in the loop below.
+    chimera_dual_a_modules: set[str] = set()
     for key, value in weights_sd.items():
         if "." not in key:
             continue
@@ -410,6 +426,21 @@ def create_network_from_weights(
         elif key.endswith(".lokr_w2"):
             has_lokr = True
             lokr_module_names.add(lora_name)
+        elif key.endswith(".lora_up_c_weight") or key.endswith(".lora_up_f_weight"):
+            # Chimera dual-A per-pool stacked ups (post-stack form). r is
+            # the last dim; out_dim of this side is dim 1; pool size is
+            # dim 0. Track for the post-loop chimera detection — modules_dim
+            # is filled by the matching ``.lora_down_{c,f}.weight`` branch
+            # below (same r, same prefix).
+            chimera_dual_a_modules.add(lora_name)
+        elif (
+            key.endswith(".lora_down_c.weight") or key.endswith(".lora_down_f.weight")
+        ):
+            # Chimera dual-A per-pool down. Same r as the matching ups; the
+            # pair (down_c, down_f) lives under one prefix. Both keys hit
+            # this branch and overwrite modules_dim with the same r → safe.
+            chimera_dual_a_modules.add(lora_name)
+            modules_dim[lora_name] = value.size(0)
         elif key.endswith(".lora_down_weight") and value.dim() == 3:
             # StackedExperts (independent-A) per-expert lora_down.
             # Shape: (E, r, in). Discriminator vs Hydra (whose down is the
@@ -445,38 +476,31 @@ def create_network_from_weights(
                 has_ortho = True
                 modules_dim[lora_name] = value.size(0)
                 plain_module_names.add(lora_name)
-        elif "dora_scale" in key:
-            has_dora = True
-
         if "llm_adapter" in lora_name:
             train_llm_adapter = True
 
+    lokr_factor = 8
     if has_lokr:
         raw_lokr_args = file_metadata.get("ss_network_args")
         lokr_factor_meta: Optional[int] = None
         if raw_lokr_args:
             try:
                 parsed_args = json.loads(raw_lokr_args)
-            except (json.JSONDecodeError, TypeError):
-                parsed_args = {}
+            except json.JSONDecodeError:
+                parsed_args = None
             if isinstance(parsed_args, dict) and str(parsed_args.get("algo", "")).lower() == "lokr":
                 raw_factor = parsed_args.get("factor")
                 if raw_factor is not None:
                     lokr_factor_meta = int(raw_factor)
-
         lokr_factor = int(lokr_factor_meta or lokr_factor_detected or 8)
-        raw_network_dim = file_metadata.get("ss_network_dim")
-        network_dim_meta = int(float(raw_network_dim)) if raw_network_dim else None
+
         for lora_name in lokr_module_names:
-            if network_dim_meta is not None:
-                dim = network_dim_meta
-            elif lora_name in modules_alpha:
-                alpha_val = modules_alpha[lora_name]
-                dim = int(float(alpha_val.item() if torch.is_tensor(alpha_val) else alpha_val))
-            else:
-                dim = 4
-            modules_dim[lora_name] = max(1, dim)
-            modules_alpha.setdefault(lora_name, torch.tensor(float(modules_dim[lora_name])))
+            w2 = weights_sd.get(f"{lora_name}.lokr_w2")
+            if w2 is None:
+                continue
+            if w2.dim() != 2:
+                raise RuntimeError(f"LoKr weight {lora_name}.lokr_w2 must be 2-D.")
+            modules_dim[lora_name] = lokr_factor
 
     # Finalize the MoE shape now that the full scan is done. A module that
     # has only ``lora_up_weight`` (3-D) but no matching ``lora_down_weight``
@@ -487,7 +511,10 @@ def create_network_from_weights(
     # has_hydra / has_ortho_hydra / has_stacked_experts win over for_inference:
     # the router is sample-dependent and can't be folded into a static-merge
     # path. The dynamic forward-hook path works in eval mode too.
-    if has_stacked_experts:
+    if has_lokr:
+        spec = NETWORK_REGISTRY["lokr"]
+        module_class = spec.module_class
+    elif has_stacked_experts:
         spec = NETWORK_REGISTRY["stacked_experts_global_fei"]
         module_class = spec.module_class
     elif has_ortho_hydra:
@@ -577,17 +604,13 @@ def create_network_from_weights(
                     f"Inconsistent σ-feature dims across modules: expected "
                     f"{sigma_feature_dim_detected}, found {extra} at {k!r}."
                 )
-    elif has_lokr:
-        spec = NETWORK_REGISTRY["lokr"]
-        module_class = spec.module_class
     elif for_inference:
-        # Force the plain LoRA spec even for dora/ortho checkpoints — the
-        # merge_to / fuse_weight path expects flat down/up weights, and dora /
+        # Force the plain LoRA spec even for ortho checkpoints — the
+        # merge_to / fuse_weight path expects flat down/up weights, and
         # ortho checkpoints are distilled to LoRA shape at save time.
+        # External ``.dora_scale`` keys also flow through this branch and
+        # are applied by the merge helper in ``lora_utils.merge_to``.
         spec = NETWORK_REGISTRY["lora"]
-        module_class = spec.module_class
-    elif has_dora:
-        spec = NETWORK_REGISTRY["dora"]
         module_class = spec.module_class
     elif has_ortho:
         spec = NETWORK_REGISTRY["ortho"]
@@ -633,14 +656,23 @@ def create_network_from_weights(
     # *both* hydra-style and plain-LoRA-style leaves, we're reloading a mixed
     # router_targets result and need to build each leaf with its original
     # class. If every module is hydra, leave as None (= apply the nominal
-    # hydra class everywhere, legacy behaviour).
-    hydra_router_names = (
-        sorted(hydra_module_names)
-        if (
-            (has_hydra or has_ortho_hydra) and plain_module_names and hydra_module_names
-        )
-        else None
+    # hydra class everywhere, legacy behaviour). For chimera dual-A files,
+    # use ``chimera_dual_a_modules`` as the routing-aware set so unrouted
+    # Linears (saved as OrthoLoRA fallback with ``.S_p`` keys) fall back to
+    # ``OrthoLoRAModule`` instead of being mis-typed as chimera.
+    _is_chimera_meta = (
+        str(file_metadata.get("ss_use_chimera_hydra", "")).strip().lower() == "true"
     )
+    if _is_chimera_meta and chimera_dual_a_modules:
+        hydra_router_names = sorted(chimera_dual_a_modules)
+    else:
+        hydra_router_names = (
+            sorted(hydra_module_names)
+            if (
+                (has_hydra or has_ortho_hydra) and plain_module_names and hydra_module_names
+            )
+            else None
+        )
 
     # Hard σ-band partition is non-persistent at the tensor level (`_expert_band`
     # is registered persistent=False; `_sigma_band_partition` is a Python attr).
@@ -711,6 +743,93 @@ def create_network_from_weights(
         new_router_source if new_router_source else None
     )
 
+    # ChimeraHydra stamps. Presence of ``ss_use_chimera_hydra="true"``
+    # flips the loader to the chimera spec. The chimera-native save format
+    # preserves the Cayley params (S_p / S_q / P_bases / Q_basis /
+    # lambda_layer) so the reload directly rebuilds a chimera network from
+    # the same kwargs the trainer used. The FreqRouter input dim depends
+    # on FEI + σ feature dims, both stamped via the chimera-specific keys
+    # (``router_source="input"`` for chimera, so the standard
+    # ``ss_fei_feature_dim`` stamp is not fired).
+    is_chimera_hydra = (
+        str(file_metadata.get("ss_use_chimera_hydra", "")).strip().lower() == "true"
+    )
+    chimera_num_experts_content: Optional[int] = (
+        int(file_metadata["ss_num_experts_content"])
+        if is_chimera_hydra and "ss_num_experts_content" in file_metadata
+        else None
+    )
+    chimera_num_experts_freq: Optional[int] = (
+        int(file_metadata["ss_num_experts_freq"])
+        if is_chimera_hydra and "ss_num_experts_freq" in file_metadata
+        else None
+    )
+    chimera_fei_feature_dim: Optional[int] = (
+        int(file_metadata["ss_chimera_fei_feature_dim"])
+        if is_chimera_hydra and "ss_chimera_fei_feature_dim" in file_metadata
+        else None
+    )
+    chimera_sigma_feature_dim: Optional[int] = (
+        int(file_metadata["ss_chimera_sigma_feature_dim"])
+        if is_chimera_hydra and "ss_chimera_sigma_feature_dim" in file_metadata
+        else None
+    )
+    chimera_fei_sigma_low_div: Optional[float] = (
+        float(file_metadata["ss_chimera_fei_sigma_low_div"])
+        if is_chimera_hydra and "ss_chimera_fei_sigma_low_div" in file_metadata
+        else None
+    )
+    # Default false when the stamp is absent — pre-LN checkpoints were
+    # trained on raw concat(FEI, σ); rebuilding with LN on would feed the
+    # trained MLP a different-statistics input and silently shift outputs.
+    chimera_freq_router_layer_norm: bool = (
+        is_chimera_hydra
+        and str(file_metadata.get("ss_chimera_freq_router_layer_norm", "")).strip().lower()
+        == "true"
+    )
+    if is_chimera_hydra:
+        # On-disk format: per-pool distilled chimera (lora_down_{c,f} +
+        # stacked lora_up_{c,f}_weight + content router) with q/k/v defused
+        # on both pools, plus top-level freq_router.*. The 1-A chimera
+        # legacy fallback was removed — pre-2-A checkpoints stop loading.
+        if not chimera_dual_a_modules:
+            raise RuntimeError(
+                "Checkpoint is stamped ss_use_chimera_hydra=true but contains "
+                "no dual-A chimera keys (.lora_up_c_weight / .lora_up_f_weight). "
+                "The 1-A chimera format is no longer supported — retrain to "
+                "produce the dual-A format."
+            )
+        spec = NETWORK_REGISTRY["chimera_hydra"]
+        from networks.lora_modules import ChimeraHydraInferenceModule
+
+        module_class = ChimeraHydraInferenceModule
+        # Chimera dual-A keys are NOT Hydra; clear the auto-set has_hydra
+        # flag from the key sniff above so cfg.from_weights doesn't demand
+        # the three-axis stamps via the MoE branch (the chimera path supplies
+        # them via its own pin in cfg.from_kwargs / from_weights).
+        has_hydra = False
+        # hydra_num_experts is needed only for the chimera consistency
+        # check (K_c + K_f == E); derive from the stamped pool sizes.
+        if (
+            chimera_num_experts_content is not None
+            and chimera_num_experts_freq is not None
+        ):
+            hydra_num_experts = (
+                chimera_num_experts_content + chimera_num_experts_freq
+            )
+        # Surface the chimera-specific σ/FEI dims into the cfg slots the
+        # FreqRouter reads (``cfg.fei_feature_dim`` / ``cfg.sigma_feature_dim``).
+        # Without these overrides the loader would fall back to the legacy
+        # auto-detected ``sigma_feature_dim_detected`` (default 128) and the
+        # FreqRouter would be built with the wrong input width — load_state_dict
+        # then fails with a Linear weight shape mismatch.
+        if chimera_sigma_feature_dim is not None:
+            sigma_feature_dim_detected = chimera_sigma_feature_dim
+        if chimera_fei_feature_dim is not None:
+            fei_feature_dim_detected = chimera_fei_feature_dim
+        if chimera_fei_sigma_low_div is not None:
+            fei_sigma_low_div_meta = chimera_fei_sigma_low_div
+
     cfg = LoRANetworkCfg.from_weights(
         modules_dim=modules_dim,
         modules_alpha=modules_alpha,
@@ -736,6 +855,10 @@ def create_network_from_weights(
         new_route_per_layer=new_route_per_layer,
         new_router_source=new_router_source_stamp,
         lokr_factor=int(lokr_factor if has_lokr else 8),
+        is_chimera_hydra=is_chimera_hydra,
+        num_experts_content=chimera_num_experts_content,
+        num_experts_freq=chimera_num_experts_freq,
+        freq_router_layer_norm=chimera_freq_router_layer_norm,
     )
 
     network = LoRANetwork(text_encoders, unet, cfg, multiplier=multiplier)

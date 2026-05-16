@@ -10,6 +10,17 @@ import toml
 from ._common import PY, ROOT, _path, _path_overrides, run
 
 
+def _project_path(value: str) -> str:
+    text = os.path.expandvars(str(value or ""))
+    for key, raw in _path_overrides().items():
+        if isinstance(raw, str):
+            text = text.replace("{" + key + "}", raw)
+    path = Path(text)
+    if path.is_absolute():
+        return str(path)
+    return str(path)
+
+
 def _dataset_rows():
     overrides = _path_overrides()
     dataset_config = str(overrides.get("dataset_config") or "").strip()
@@ -23,30 +34,31 @@ def _dataset_rows():
             for dataset in data.get("datasets") or []:
                 for subset in dataset.get("subsets") or []:
                     attrs = subset.get("custom_attributes") or {}
-                    source = attrs.get("source_dir") or overrides.get("source_image_dir") or subset.get("image_dir")
-                    rows.append({
-                        "source": _project_path(str(source or "image_dataset")),
-                        "resized": _project_path(str(subset.get("image_dir") or "post_image_dataset/resized")),
-                        "cache": _project_path(str(subset.get("cache_dir") or "post_image_dataset/lora")),
-                    })
+                    source = (
+                        attrs.get("source_dir")
+                        or overrides.get("source_image_dir")
+                        or subset.get("image_dir")
+                    )
+                    rows.append(
+                        {
+                            "source": _project_path(str(source or "image_dataset")),
+                            "resized": _project_path(
+                                str(subset.get("image_dir") or "post_image_dataset/resized")
+                            ),
+                            "cache": _project_path(
+                                str(subset.get("cache_dir") or "post_image_dataset/lora")
+                            ),
+                        }
+                    )
     if rows:
         return rows
-    return [{
-        "source": _path("source_image_dir", "image_dataset"),
-        "resized": _path("resized_image_dir", "post_image_dataset/resized"),
-        "cache": _path("lora_cache_dir", "post_image_dataset/lora"),
-    }]
-
-
-def _project_path(value: str) -> str:
-    text = os.path.expandvars(str(value or ""))
-    for key, raw in _path_overrides().items():
-        if isinstance(raw, str):
-            text = text.replace("{" + key + "}", raw)
-    path = Path(text)
-    if path.is_absolute():
-        return str(path)
-    return str(path)
+    return [
+        {
+            "source": _path("source_image_dir", "image_dataset"),
+            "resized": _path("resized_image_dir", "post_image_dataset/resized"),
+            "cache": _path("lora_cache_dir", "post_image_dataset/lora"),
+        }
+    ]
 
 
 def cmd_preprocess_resize(extra):
@@ -76,7 +88,7 @@ def cmd_preprocess_vae(extra):
                 "--cache_dir",
                 row["cache"],
                 "--vae",
-                _path("vae", "models/vae/qwen_image_vae.safetensors"),
+                "models/vae/qwen_image_vae.safetensors",
                 "--batch_size",
                 "4",
                 "--chunk_size",
@@ -103,9 +115,9 @@ def cmd_preprocess_te(extra):
                 "--cache_dir",
                 row["cache"],
                 "--qwen3",
-                _path("qwen3", "models/text_encoders/qwen_3_06b_base.safetensors"),
+                "models/text_encoders/qwen_3_06b_base.safetensors",
                 "--dit",
-                _path("pretrained_model_name_or_path", "models/diffusion_models/anima-preview3-base.safetensors"),
+                "models/diffusion_models/anima-base-v1.0.safetensors",
                 "--caption_shuffle_variants",
                 shuffle_variants,
                 "--caption_tag_dropout_rate",
@@ -167,3 +179,4 @@ def cmd_preprocess(extra):
     cmd_preprocess_resize(extra)
     cmd_preprocess_vae(extra)
     cmd_preprocess_te(extra)
+    cmd_preprocess_pe(extra)

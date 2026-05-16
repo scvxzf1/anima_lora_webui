@@ -21,3 +21,11 @@ lokr_factor = 8
 output_name = "anima_lokr"
 
 blocks_to_swap = 0
+use_cmmd = false
+
+[variant]
+family = "lokr"
+label = "LoKr"
+description = "LyCORIS-compatible Kronecker adapter saved as lokr_w1/lokr_w2."
+order = 20
+experimental = true

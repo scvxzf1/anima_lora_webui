@@ -105,11 +105,11 @@ There's a load-bearing symmetry problem HydraLoRA has to solve **before** the ba
 
 Zero-init `lora_up_weight` has every expert identical. Under a near-uniform router, all experts receive *identical gradient*, so they evolve permutation-symmetrically — they stay identical forever, and the router in turn has no signal to differentiate them. End state: the network trains as a single LoRA averaged over 4 heads, paying 4× the parameter cost for no specialization.
 
-Plain HydraLoRA's mitigation is `expert_warmup_ratio` (`networks/lora_anima/network.py:step_expert_warmup`): for the first `r·max_train_steps` steps, only one randomly-chosen expert per module receives gradient at each step (forward still uses all experts via the learned gate, so each expert learns in the full MoE context). Each expert is guaranteed to accumulate a distinct gradient direction during the warmup window, breaking the cold-start deadlock. An earlier mitigation, a small Gaussian perturbation (`expert_init_std`) on `lora_up_weight`, was removed on 2026-04-24 — bench `0424-484` confirmed the failure mode is router-side collapse (router-ignored experts), not expert symmetry, so the init perturb didn't help and was misleading.
+The supported fix is the structural one in §5.2 (OrthoHydra disjoint subspaces). An earlier per-step random expert-gradient mask (`expert_warmup_ratio` / `expert_warmup_k` / `expert_best_warmup_ratio`) was removed — it was unstable in practice and OrthoHydra obsoletes it. An even earlier mitigation, a small Gaussian perturbation (`expert_init_std`) on `lora_up_weight`, was removed on 2026-04-24 — bench `0424-484` confirmed the failure mode is router-side collapse (router-ignored experts), not expert symmetry, so the init perturb didn't help and was misleading.
 
 ### 5.2 Orthogonalized experts
 
-`OrthoHydraLoRAExpModule` (`networks/lora_modules/ortho.py:137–404`) is the structural fix. It combines HydraLoRA with the OrthoLoRA Cayley re-parameterization (`ortholora.md`) and adds one crucial change: **per-expert disjoint output subspaces**.
+`OrthoHydraLoRAModule` (`networks/lora_modules/ortho.py:137–404`) is the structural fix. It combines HydraLoRA with the OrthoLoRA Cayley re-parameterization (`ortholora.md`) and adds one crucial change: **per-expert disjoint output subspaces**.
 
 Recall from `ortholora.md` that OrthoLoRA freezes the top-$r$ SVD singular vectors as `P_basis` (output-side) and `Q_basis` (input-side), then rotates them with Cayley-parameterized $r \times r$ matrices. OrthoHydra keeps `Q_basis` shared (because `lora_down` is shared) but partitions the **top-$(E \cdot r)$** left singular vectors of $W_0$ into $E$ disjoint slices of $r$ columns each:
 
@@ -122,18 +122,17 @@ Each expert then rotates **inside its own slice** via its own Cayley $R_p[e] \in
 
 Why this is a *structural* deadlock breaker: with a shared basis, every $P_\text{eff}[e]$ lives in the same rank-$r$ column span, so $P_\text{eff}[i]^\top\,P_\text{eff}[j]$ is an orthogonal matrix — it *cannot* be zero. The router's per-expert score is near-identical at init and there is no gradient to differentiate experts. **Disjoint slices** make the router's score genuinely different at step 0 because each expert writes into a distinct output subspace, so the router has signal to latch onto before any expert has been trained.
 
-If $\min(d_\text{in}, d_\text{out}) < E \cdot r$ the partition cannot fit and `P_bases` falls back to the legacy shared `P_basis` replicated $E$ times (with a warning). In that fallback, every expert starts identical (shared basis + zero $S_p$ + zero $\lambda$); `expert_warmup_ratio` is the only symmetry-breaker, so it must not be zero for narrow-layer Hydra.
+If $\min(d_\text{in}, d_\text{out}) < E \cdot r$ the partition cannot fit and `P_bases` falls back to the legacy shared `P_basis` replicated $E$ times (with a warning). In that fallback, every expert starts identical (shared basis + zero $S_p$ + zero $\lambda$) and must diverge through training-time updates to $S_p$ — if the router collapses they never will. Prefer to size $E$ so the disjoint partition fits.
 
 Activated by setting both `use_ortho = true` and `use_hydra = true`, which is the configured default in the HydraLoRA block of `configs/methods/lora.toml`.
 
 ---
 
-## 6. Compile friendliness and expert-warmup
+## 6. Compile friendliness
 
-Two subtleties matter to keep the router fast:
+One subtlety matters to keep the router fast:
 
 - **Gate is dynamic-shape-safe.** The gate tensor is `(B, E)`; `einsum("be,eod->bod", gate, lora_up_weight)` and the `bmm` that follows have fixed shapes. Everything stays in one `torch.compile` graph.
-- **Expert-warmup masking.** Optional early-training mode (`hydra.py:231–244`) that runs inference with all experts but lets gradient flow only into a single, randomly-chosen expert's `lora_up` slice per step. The "active expert" is carried in a buffer (`_expert_grad_mask`) whose **value** mutations don't trigger dynamo recompiles; the "are we in warmup" gate is a Python bool that flips only twice per run (enter/leave). This breaks the cold-start deadlock on plain HydraLoRA without the per-step recompile storm a naive implementation would produce.
 
 ---
 
@@ -170,7 +169,7 @@ The **Anima Adapter Loader** node installs per-Linear `forward_hook`s that repro
 | Stacks with              | How it composes                                                                                  |
 | ------------------------ | ------------------------------------------------------------------------------------------------ |
 | **T-LoRA**               | Mask applies to shared `lora_down`, before the router already cached its gate. Default on.       |
-| **OrthoLoRA**            | Supported via `OrthoHydraLoRAExpModule`. Per-expert Cayley rotations, disjoint output subspaces. |
+| **OrthoLoRA**            | Supported via `OrthoHydraLoRAModule`. Per-expert Cayley rotations, disjoint output subspaces. |
 | **ReFT**                 | Orthogonal side-channel. No interaction.                                                         |
 | **DoRA**                 | Not supported — would require per-expert magnitude vectors, unimplemented.                       |
 | **Spectrum**             | Cached steps skip all transformer blocks (router included) — hydra just runs fewer times.        |
@@ -196,6 +195,6 @@ Requires `cache_llm_adapter_outputs = true` (same as standard LoRA in this repo 
 
 1. Shared `lora_down`, stacked per-expert `lora_up`, layer-local router.
 2. Router reads **RMS-pooled rank-$r$** activation, softmax over $E$. Per-sample, per-layer gate.
-3. Symmetry break comes from either (a) `expert_warmup_ratio` (per-step random expert-gradient masking — plain HydraLoRA and OrthoHydra-narrow fallback) or (b) disjoint SVD-slice output subspaces for each expert (OrthoHydra-disjoint — the configured default). (b) is structural at init; (a) is a training-time schedule.
+3. Symmetry break comes from disjoint SVD-slice output subspaces for each expert (OrthoHydra-disjoint — the configured default). Structural at init.
 4. Switch Transformer balance loss at $\alpha_\text{bal} = 0.001$ averaged across all hydra modules keeps experts alive.
 5. Ships as two files: a merged-down plain LoRA (lossy, ComfyUI native) and a full moe file (lossless, requires the custom node).

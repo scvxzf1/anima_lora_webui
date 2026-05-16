@@ -185,14 +185,15 @@ def cmd_dcw(extra):
     Other extra args pass through to every measure_bias invocation
     (--dit, --lora_weight, --pooled_text_proj '', --guidance_scale, etc.).
     """
-    n_images, extra = _pop_kv(extra, "--n_images", "60")
+    n_images, extra = _pop_kv(extra, "--n_images", "4")
     n_seeds, extra = _pop_kv(extra, "--n_seeds", "2")
     shuffle_seed, extra = _pop_kv(extra, "--shuffle_seed", "0")
     label, extra = _pop_kv(extra, "--label", "make-dcw")
     # Match make-test-dcw's default scalar so the trained head learns
     # the residual α̂ on top — kills the v4 dead-zone mismatch (head
     # observes / acts on the same trajectory inference will).
-    baseline_lambda, extra = _pop_kv(extra, "--baseline_lambda", "0.01")
+    baseline_lambda, extra = _pop_kv(extra, "--baseline_lambda", "0.0")
+
     allow_repeats, extra = _pop_flag(extra, "--allow_repeats")
 
     out_root = "output/dcw"

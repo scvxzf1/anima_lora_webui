@@ -16,7 +16,11 @@ import torch
 
 from networks.lora_anima.config import LoRANetworkCfg
 from networks.lora_anima.network import GlobalRouter, LoRANetwork
-from networks.lora_modules import StackedExpertsLoRAModule
+from networks.lora_modules import (
+    HydraLoRAModule,
+    OrthoHydraLoRAModule,
+    StackedExpertsLoRAModule,
+)
 
 
 def _make_minimal_stacked_experts_network(
@@ -63,7 +67,6 @@ def _make_minimal_stacked_experts_network(
     net.use_sigma_router = False
     net._channel_scale_misses = []
     net._channel_scale_hits = 0
-    net._last_expert_warmup_picks = None
     net._last_up_grad_stats = {}
     net._use_hydra = True
     net._balance_loss_weight = 0.0
@@ -340,3 +343,212 @@ def test_router_receives_gradient_from_expert_forward():
         "GlobalRouter final-layer.weight.grad is all zeros — gates are not "
         "carrying gradient through the broadcast."
     )
+
+
+def _make_minimal_hydra_global_router_network(
+    *,
+    module_cls,
+    num_experts: int = 3,
+    fei_dim: int = 2,
+    in_dim: int = 16,
+    out_dim: int = 16,
+    lora_dim: int = 4,
+) -> LoRANetwork:
+    """Hand-roll a tiny LoRANetwork with two ``shared_A`` Hydra-family modules
+    built with ``use_global_router=True``.
+
+    Mirrors ``_make_minimal_stacked_experts_network`` but for the
+    ``use_moe_style="shared_A" + route_per_layer=False`` cell. The Hydra /
+    OrthoHydra modules drop their per-layer router and consume gates broadcast
+    from the network-level ``GlobalRouter``.
+    """
+    cfg = LoRANetworkCfg(
+        num_experts=num_experts,
+        use_moe_style="shared_A",
+        route_per_layer=False,
+        router_source="fei",
+        fei_feature_dim=fei_dim,
+        router_hidden_dim=32,
+        router_tau=0.7,
+        lora_dim=lora_dim,
+        alpha=float(lora_dim),
+    )
+    net = LoRANetwork.__new__(LoRANetwork)
+    torch.nn.Module.__init__(net)
+    net.cfg = cfg
+    net.unet_loras = []
+    net.text_encoder_loras = []
+    net.text_encoder_refts = []
+    net.unet_refts = []
+    net._last_sigma = None
+    net._router_stats_cache = None
+    net._sigma_router_hits = 0
+    net._sigma_router_names = None
+    net._sigma_router_re = None
+    net._hydra_router_re = None
+    net._hydra_router_names = None
+    net._hydra_router_hits = 0
+    net._hydra_router_misses = 0
+    net._fei_router_hits = 0
+    net._fei_router_re = None
+    net._fei_router_names = None
+    net.use_fei_router = True
+    net.use_sigma_router = False
+    net._channel_scale_misses = []
+    net._channel_scale_hits = 0
+    net._last_up_grad_stats = {}
+    net._use_hydra = True
+    net._balance_loss_weight = 0.0
+    for i in range(2):
+        org = torch.nn.Linear(in_dim, out_dim, bias=False)
+        mod = module_cls(
+            lora_name=f"m{i}",
+            org_module=org,
+            lora_dim=cfg.lora_dim,
+            alpha=cfg.alpha,
+            num_experts=cfg.num_experts,
+            use_global_router=True,
+        )
+        net.add_module(f"lora_m{i}", mod)
+        net.unet_loras.append(mod)
+    net._wire_shared_sigma_buffers()
+    net._wire_shared_fei_buffers()
+    net._wire_shared_routing_buffers()
+    net.global_router = GlobalRouter(
+        input_dim=fei_dim,
+        num_experts=num_experts,
+        hidden_dim=cfg.router_hidden_dim,
+        tau=cfg.router_tau,
+    )
+    net.add_module("global_router", net.global_router)
+    return net
+
+
+def test_hydra_global_router_receives_gradient_from_expert_forward():
+    """Same FeRA-style autograd contract for the shared_A path: ``set_fei``
+    fires the GlobalRouter, gates land on every ``HydraLoRAModule(use_global_router=True)``
+    via a live (non-detached) buffer reference, and ``L_denoise`` backprop
+    populates ``global_router.net[-1].weight.grad``.
+
+    Regression for the latent failure mode where ``HydraLoRAModule.set_routing_weights``
+    (or the equivalent on OrthoHydra) detaches the broadcast tensor — the
+    network-level set_routing_weights bypasses the module method today, but
+    the module-level fallback path must not silently break the gradient path
+    either.
+    """
+    torch.manual_seed(0)
+    net = _make_minimal_hydra_global_router_network(
+        module_cls=HydraLoRAModule, num_experts=3, fei_dim=2
+    )
+    with torch.no_grad():
+        net.global_router.net[-1].weight.normal_(std=0.1)
+        net.global_router.net[-1].bias.normal_(std=0.1)
+        for lora in net._routing_aware_loras:
+            # Break shared-A zero-init so the per-expert sum is non-constant
+            # and the gate gradient has signal to land on.
+            lora.lora_up_weight.data.normal_(std=0.1)
+
+    for lora in net._routing_aware_loras:
+        lora.apply_to()
+    fei = torch.tensor([[0.7, 0.3]])
+    net.set_fei(fei)
+    x = torch.randn(1, 16, requires_grad=False)
+    y = net._routing_aware_loras[0](x)
+    loss = y.pow(2).sum()
+    loss.backward()
+
+    final_layer = net.global_router.net[-1]
+    assert final_layer.weight.grad is not None, (
+        "Hydra GlobalRouter final-layer.weight.grad is None — autograd path "
+        "from expert forward to router is broken."
+    )
+    assert final_layer.weight.grad.abs().sum().item() > 0.0, (
+        "Hydra GlobalRouter final-layer.weight.grad is all zeros — gates are "
+        "not carrying gradient through the broadcast."
+    )
+
+
+def test_ortho_hydra_global_router_receives_gradient_from_expert_forward():
+    """OrthoHydra equivalent. The current module-level ``set_routing_weights``
+    contains a detach/clone fallback; this test exercises the live network
+    path (``LoRANetwork.set_routing_weights`` via ``set_fei``) and asserts
+    gradient flow survives end-to-end.
+    """
+    torch.manual_seed(0)
+    # in/out ≥ E*r = 12 so OrthoHydra's disjoint-slice SVD path is taken.
+    net = _make_minimal_hydra_global_router_network(
+        module_cls=OrthoHydraLoRAModule,
+        num_experts=3,
+        fei_dim=2,
+        in_dim=16,
+        out_dim=16,
+        lora_dim=4,
+    )
+    with torch.no_grad():
+        net.global_router.net[-1].weight.normal_(std=0.1)
+        net.global_router.net[-1].bias.normal_(std=0.1)
+        for lora in net._routing_aware_loras:
+            # Zero-init λ + zero-init S_p ⇒ ΔW=0; perturb λ so the routed
+            # adapter output carries non-trivial signal.
+            lora.lambda_layer.data.normal_(std=0.1)
+
+    for lora in net._routing_aware_loras:
+        lora.apply_to()
+    fei = torch.tensor([[0.7, 0.3]])
+    net.set_fei(fei)
+    x = torch.randn(1, 16, requires_grad=False)
+    y = net._routing_aware_loras[0](x)
+    loss = y.pow(2).sum()
+    loss.backward()
+
+    final_layer = net.global_router.net[-1]
+    assert final_layer.weight.grad is not None, (
+        "OrthoHydra GlobalRouter final-layer.weight.grad is None — autograd "
+        "path from expert forward to router is broken."
+    )
+    assert final_layer.weight.grad.abs().sum().item() > 0.0, (
+        "OrthoHydra GlobalRouter final-layer.weight.grad is all zeros — gates "
+        "are not carrying gradient through the broadcast."
+    )
+
+
+def test_clear_routing_weights_restores_uniform_hydra():
+    """Module-level ``clear_routing_weights`` must restore the uniform 1/E
+    placeholder for ``HydraLoRAModule(use_global_router=True)``.
+    """
+    net = _make_minimal_hydra_global_router_network(
+        module_cls=HydraLoRAModule, num_experts=4, fei_dim=2
+    )
+    net.set_routing_weights(torch.tensor([[0.7, 0.1, 0.1, 0.1]]))
+    net.clear_routing_weights()
+    canonical = net._routing_aware_loras[0]._buffers["_routing_weights"]
+    assert torch.allclose(canonical, torch.full_like(canonical, 0.25))
+
+
+def test_clear_routing_weights_restores_uniform_ortho_hydra():
+    """Same contract for ``OrthoHydraLoRAModule(use_global_router=True)``."""
+    net = _make_minimal_hydra_global_router_network(
+        module_cls=OrthoHydraLoRAModule,
+        num_experts=4,
+        fei_dim=2,
+        in_dim=16,
+        out_dim=16,
+        lora_dim=4,
+    )
+    net.set_routing_weights(torch.tensor([[0.7, 0.1, 0.1, 0.1]]))
+    net.clear_routing_weights()
+    canonical = net._routing_aware_loras[0]._buffers["_routing_weights"]
+    assert torch.allclose(canonical, torch.full_like(canonical, 0.25))
+
+
+def test_clear_routing_weights_restores_uniform_stacked_experts():
+    """StackedExperts equivalent — the existing
+    ``test_clear_routing_weights_resets_to_uniform`` covers the network path;
+    this pins the contract alongside the Hydra / OrthoHydra companions so
+    the router_state.py refactor can't silently regress one of them.
+    """
+    net = _make_minimal_stacked_experts_network(num_experts=4, fei_dim=2)
+    net.set_routing_weights(torch.tensor([[0.7, 0.1, 0.1, 0.1]]))
+    net.clear_routing_weights()
+    canonical = net._routing_aware_loras[0]._buffers["_routing_weights"]
+    assert torch.allclose(canonical, torch.full_like(canonical, 0.25))

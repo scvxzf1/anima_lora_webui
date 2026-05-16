@@ -68,7 +68,7 @@ reflects real angular spread). `norm_H` = marginal-gate normalized entropy
    per module, but wastes the `num_experts=4` capacity.
 
 6. **OrthoHydra fixes the cold-start deadlock structurally.** Switching to
-   `OrthoHydraLoRAExpModule` (`use_ortho=true + use_hydra=true`) partitions
+   `OrthoHydraLoRAModule` (`use_ortho=true + use_hydra=true`) partitions
    the top-`E·r` SVD columns of the pretrained weight into `E` disjoint
    slices, giving each expert its own orthonormal output basis. `P_eff[i]^T
    P_eff[j] = 0` for `i ≠ j` is structurally guaranteed, so the router's

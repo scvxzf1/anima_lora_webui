@@ -376,6 +376,41 @@ def add_anima_training_arguments(parser: argparse.ArgumentParser):
         help="Path to EMA model safetensors file to resume EMA state from a previous run",
     )
 
+    # Variance-reduced flow-matching loss (AsymFlow §5.2, arXiv:2605.12964).
+    # See bench/fm_vr_headroom/proposal.md. Gated off by default.
+    parser.add_argument(
+        "--vr_loss_weight",
+        type=float,
+        default=0.0,
+        help="Weight of the VR control-variate correction on the FM loss. "
+        "0 = standard FM (default). 1.0 = paper recipe. When > 0, the trainer "
+        "runs one extra no-grad forward per step on the FEI-low-passed latent "
+        "through the *same* trainable DiT with the adapter zeroed "
+        "(network.set_multiplier(0)) — equivalent to a frozen base DiT for "
+        "LoRA-family runs, without holding a second model copy in VRAM.",
+    )
+    parser.add_argument(
+        "--vr_fei_sigma_low_div",
+        type=float,
+        default=4.0,
+        help="Divisor for the FEI low-pass kernel used to build x_0^L "
+        "(σ_low = min(H_lat, W_lat) / div). Matches live FEI default (4.0).",
+    )
+    parser.add_argument(
+        "--vr_sigma_min",
+        type=float,
+        default=1e-3,
+        help="Floor on σ_t in the VR loss denominator (AsymFlow §6.1). "
+        "Defensive against low-σ instability in the 1/σ_t factor. 0 disables.",
+    )
+    parser.add_argument(
+        "--vr_lambda_beta",
+        type=float,
+        default=0.01,
+        help="EMA rate for the online λ estimator: "
+        "λ_ema ← (1−β)·λ_ema + β·λ_batch. Default 0.01 over typically B=4.",
+    )
+
     # Functional MSE loss against inversion runs (postfix-func)
     parser.add_argument(
         "--inversion_dir",
@@ -656,6 +691,7 @@ def do_sample(
     guidance_scale: float = 1.0,
     flow_shift: float = 3.0,
     neg_crossattn_emb: Optional[torch.Tensor] = None,
+    show_progress: bool = True,
 ) -> torch.Tensor:
     """Generate a sample using Euler discrete sampling for rectified flow.
 
@@ -706,7 +742,7 @@ def do_sample(
 
     use_cfg = guidance_scale > 1.0 and neg_crossattn_emb is not None
 
-    for i in tqdm(range(steps), desc="Sampling"):
+    for i in tqdm(range(steps), desc="Sampling", disable=not show_progress):
         sigma = sigmas[i]
         t = sigma.unsqueeze(0)  # (1,)
 
@@ -990,3 +1026,66 @@ def _sample_image_inference(
         wandb_tracker.log(
             {f"sample_{i}": wandb.Image(image, caption=prompt)}, commit=False
         )
+
+
+def sample_image_to_tensor(
+    *,
+    accelerator: Accelerator,
+    dit: anima_models.Anima,
+    vae,
+    height: int,
+    width: int,
+    crossattn_emb: torch.Tensor,
+    neg_crossattn_emb: Optional[torch.Tensor] = None,
+    sample_steps: int = 20,
+    guidance_scale: float = 4.0,
+    flow_shift: float = 3.0,
+    seed: Optional[int] = None,
+    show_progress: bool = True,
+) -> torch.Tensor:
+    """Sample one image and return the decoded pixel tensor in ``[-1, 1]``.
+
+    Sibling of :func:`_sample_image_inference` that skips disk I/O and the
+    PIL conversion. Returned tensor is ``[3, H, W]`` float (on
+    ``accelerator.device``), suitable for direct PE-Core encoding.
+
+    ``crossattn_emb`` is the prepared cross-attention embedding (already
+    LLM-adapter'd and padded to the model's expected length); CMMD val
+    builds it from cached TE outputs so we don't re-run the text encoder.
+    """
+    height = max(64, height - height % 16)
+    width = max(64, width - width % 16)
+    crossattn_emb = crossattn_emb.to(accelerator.device, dtype=dit.dtype)
+    if neg_crossattn_emb is not None:
+        neg_crossattn_emb = neg_crossattn_emb.to(accelerator.device, dtype=dit.dtype)
+
+    clean_memory_on_device(accelerator.device)
+    latents = do_sample(
+        height,
+        width,
+        seed,
+        dit,
+        crossattn_emb,
+        sample_steps,
+        dit.dtype,
+        accelerator.device,
+        guidance_scale,
+        flow_shift,
+        neg_crossattn_emb,
+        show_progress=show_progress,
+    )
+
+    gc.collect()
+    synchronize_device(accelerator.device)
+    clean_memory_on_device(accelerator.device)
+    org_vae_device = vae.device
+    vae.to(accelerator.device)
+    decoded = vae.decode_to_pixels(latents)
+    vae.to(org_vae_device)
+    clean_memory_on_device(accelerator.device)
+
+    image = decoded.float()[0]
+    if image.ndim == 4:
+        # Drop temporal dim if the VAE returned [C, T, H, W].
+        image = image[:, 0, :, :]
+    return image.clamp(-1.0, 1.0)

@@ -107,6 +107,7 @@ def build_loop_state(
     training_model,
     train_dataloader,
     val_dataloader,
+    val_dataset_group,
     optimizer,
     lr_scheduler,
     lr_descriptions,
@@ -248,6 +249,7 @@ def build_loop_state(
         train_loss_recorder=loss_recorder,
         original_t_min=args.t_min,
         original_t_max=args.t_max,
+        dataset_group=val_dataset_group,
     )
 
     # nsys workflow: --profile_steps START-END toggles the cuda profiler API
@@ -409,21 +411,26 @@ def _run_step(trainer, state: LoopState, batch) -> torch.Tensor:
         # preprocess batch for each model
         trainer.on_step_start(state.train_ctx, batch, is_train=True)
 
-        # CUDAGraphs (reduce-overhead / max-autotune) need an explicit
+        # Clear last-step gate/σ tensor refs + memoized router-stats caches
+        # before the next forward. Called unconditionally — the cudagraph
+        # branch below also needs it (lingering refs into the cudagraph
+        # memory pool block pool reclamation, demoting the run to eager),
+        # and the eager path needs it so per-step memoized stats
+        # (``_router_stats_cache`` / ``_chimera_router_stats_cache``) get
+        # invalidated each step instead of freezing at their first computed
+        # values. Cost is ~60 Python attr writes; stats compute itself is
+        # already log-step-gated by callers.
+        net_unwrapped = accelerator.unwrap_model(network)
+        if hasattr(net_unwrapped, "clear_step_caches"):
+            net_unwrapped.clear_step_caches()
+
+        # CUDAGraphs (reduce-overhead / max-autotune) also need an explicit
         # iteration boundary for inductor's cudagraph_trees. Without this
         # call, the "pending, uninvoked backwards" fast-path check fails
         # every step and cudagraphs silently fall back to the eager path —
         # you pay compile latency and keep launch overhead. Must be called
         # before the forward on every step.
-        #
-        # Also clear Python references to last-step gate/σ tensors *before*
-        # marking — those tensors live in the cudagraph memory pool, and a
-        # lingering self._last_gate/self._sigma reference keeps the pool
-        # pinned regardless of the mark call, which defeats the whole point.
         if trainer._cudagraph_mark_step:
-            net_unwrapped = accelerator.unwrap_model(network)
-            if hasattr(net_unwrapped, "clear_step_caches"):
-                net_unwrapped.clear_step_caches()
             torch.compiler.cudagraph_mark_step_begin()
 
         if state.profile_started:
@@ -439,16 +446,7 @@ def _run_step(trainer, state: LoopState, batch) -> torch.Tensor:
             torch.cuda.nvtx.range_pop()
 
         if accelerator.sync_gradients:
-            # HydraLoRA "best-expert" warmup: keep grads only on top-k experts
-            # by per-expert grad-norm during warmup. No-op unless
-            # expert_best_warmup_ratio > 0. Runs before clip_grad_norm so
-            # clipping sees the masked grads.
             net_unwrapped = accelerator.unwrap_model(network)
-            if hasattr(net_unwrapped, "step_expert_best_warmup_post_backward"):
-                net_unwrapped.step_expert_best_warmup_post_backward(
-                    int(getattr(trainer, "_hydra_warmup_step", 0)),
-                    int(getattr(args, "max_train_steps", 0) or 0),
-                )
             # Snapshot Hydra up-weight grad norms before zero_grad wipes them.
             # The metric ``hydra_up_grad`` reads this stash later in the step.
             # Also runs pre-clip so absolute magnitudes aren't distorted by

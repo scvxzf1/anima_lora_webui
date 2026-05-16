@@ -17,8 +17,8 @@ def parse_args(description: str | None = None) -> argparse.Namespace:
     p.add_argument(
         "--dit",
         type=str,
-        default="models/diffusion_models/anima-preview3-base.safetensors",
-        help="DiT .safetensors path (default: anima-preview3-base).",
+        default="models/diffusion_models/anima-base-v1.0.safetensors",
+        help="DiT .safetensors path (default: anima-base-v1.0).",
     )
     p.add_argument(
         "--lora_weight",
@@ -55,7 +55,7 @@ def parse_args(description: str | None = None) -> argparse.Namespace:
         default="flash",
         help="torch | sdpa | xformers | sage | flash",
     )
-    p.add_argument("--n_images", type=int, default=8, help="Cached samples to use")
+    p.add_argument("--n_images", type=int, default=2, help="Cached samples to use")
     p.add_argument("--n_seeds", type=int, default=1, help="Seeds per sample")
     p.add_argument(
         "--image_h",

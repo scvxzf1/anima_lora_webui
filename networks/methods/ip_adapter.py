@@ -80,6 +80,7 @@ from library.vision import (
 )
 from library.vision.encoders import get_encoder_info
 from library.vision.resampler import PerceiverResampler
+from networks.methods.base import AdapterNetworkBase
 from networks.methods.ip_adapter_pe_lora import inject_pe_lora
 
 setup_logging()
@@ -284,7 +285,10 @@ def create_network_from_weights(
     return network, weights_sd
 
 
-class IPAdapterNetwork(nn.Module):
+class IPAdapterNetwork(AdapterNetworkBase):
+    network_module = "networks.methods.ip_adapter"
+    network_spec = "ip_adapter"
+
     def __init__(
         self,
         *,
@@ -900,29 +904,12 @@ class IPAdapterNetwork(nn.Module):
 
     # ------------------------------------------------------------ trainer hooks
 
-    def set_multiplier(self, multiplier):
-        self.multiplier = multiplier
-
-    def is_mergeable(self):
-        return False
-
-    def enable_gradient_checkpointing(self):
-        # Resampler is shallow; no-op. (Block-level grad checkpointing on the
-        # DiT is handled by Anima's Block.enable_gradient_checkpointing.)
-        pass
-
     def prepare_grad_etc(self, text_encoder, unet):
-        self.requires_grad_(True)
+        super().prepare_grad_etc(text_encoder, unet)
         if self.pe_lora_enabled and self._pe_inner is not None:
             # Re-freeze the base PE; only the injected LoRA params train.
             for p in self._pe_inner.parameters():
                 p.requires_grad_(False)
-
-    def on_epoch_start(self, text_encoder, unet):
-        self.train()
-
-    def get_trainable_params(self):
-        return [p for p in self.parameters() if p.requires_grad]
 
     def prepare_optimizer_params_with_multiple_te_lrs(
         self, text_encoder_lr, unet_lr, default_lr
@@ -953,58 +940,40 @@ class IPAdapterNetwork(nn.Module):
             descriptions.append("ip_pe_lora")
         return params, descriptions
 
-    def prepare_optimizer_params(self, text_encoder_lr, unet_lr, default_lr=None):
-        params, _ = self.prepare_optimizer_params_with_multiple_te_lrs(
-            text_encoder_lr, unet_lr, default_lr
-        )
-        return params
-
     # ------------------------------------------------------------ I/O
 
-    def save_weights(self, file, dtype, metadata):
-        dtype = dtype or torch.bfloat16
+    def state_dict_for_save(self, dtype):
         # Drop the frozen PE base — it's loaded fresh from the .pt checkpoint
         # at create_network_from_weights time. Only the LoRA delta + adapter
         # state actually need to be persisted.
-        sd = {
+        return {
             k: v.detach().cpu().to(dtype)
             for k, v in self.state_dict().items()
             if not k.startswith("_pe_inner.")
         }
 
-        if os.path.splitext(file)[1] == ".safetensors":
-            from safetensors.torch import save_file
-            from library.training.hashing import precalculate_safetensors_hashes
-
-            if metadata is None:
-                metadata = {}
-            metadata["ss_network_module"] = "networks.methods.ip_adapter"
-            metadata["ss_network_spec"] = "ip_adapter"
-            metadata["ss_num_ip_tokens"] = str(self.num_ip_tokens)
-            metadata["ss_encoder"] = self.encoder_name
-            metadata["ss_encoder_dim"] = str(self.encoder_dim)
-            metadata["ss_context_dim"] = str(self.context_dim)
-            metadata["ss_num_blocks"] = str(self.num_blocks)
-            metadata["ss_hidden_size"] = str(self.hidden_size)
-            metadata["ss_num_heads"] = str(self.num_heads)
-            metadata["ss_resampler_layers"] = str(self.resampler_layers)
-            metadata["ss_resampler_heads"] = str(self.resampler_heads)
-            metadata["ss_ip_scale"] = str(self.ip_scale)
-            metadata["ss_pe_lora_enabled"] = str(self.pe_lora_enabled)
-            if self.pe_lora_enabled:
-                metadata["ss_pe_lora_rank"] = str(self.pe_lora_rank)
-                metadata["ss_pe_lora_alpha"] = str(self.pe_lora_alpha)
-                metadata["ss_pe_lora_qkv"] = str(self.pe_lora_qkv)
-                metadata["ss_pe_lora_attn_out"] = str(self.pe_lora_attn_out)
-                metadata["ss_pe_lora_mlp"] = str(self.pe_lora_mlp)
-                metadata["ss_pe_lora_layer_from"] = str(self.pe_lora_layer_from)
-
-            model_hash, legacy_hash = precalculate_safetensors_hashes(sd, metadata)
-            metadata["sshs_model_hash"] = model_hash
-            metadata["sshs_legacy_hash"] = legacy_hash
-            save_file(sd, file, metadata)
-        else:
-            torch.save(sd, file)
+    def metadata_fields(self) -> dict[str, str]:
+        meta: dict[str, str] = {
+            "ss_num_ip_tokens": str(self.num_ip_tokens),
+            "ss_encoder": self.encoder_name,
+            "ss_encoder_dim": str(self.encoder_dim),
+            "ss_context_dim": str(self.context_dim),
+            "ss_num_blocks": str(self.num_blocks),
+            "ss_hidden_size": str(self.hidden_size),
+            "ss_num_heads": str(self.num_heads),
+            "ss_resampler_layers": str(self.resampler_layers),
+            "ss_resampler_heads": str(self.resampler_heads),
+            "ss_ip_scale": str(self.ip_scale),
+            "ss_pe_lora_enabled": str(self.pe_lora_enabled),
+        }
+        if self.pe_lora_enabled:
+            meta["ss_pe_lora_rank"] = str(self.pe_lora_rank)
+            meta["ss_pe_lora_alpha"] = str(self.pe_lora_alpha)
+            meta["ss_pe_lora_qkv"] = str(self.pe_lora_qkv)
+            meta["ss_pe_lora_attn_out"] = str(self.pe_lora_attn_out)
+            meta["ss_pe_lora_mlp"] = str(self.pe_lora_mlp)
+            meta["ss_pe_lora_layer_from"] = str(self.pe_lora_layer_from)
+        return meta
 
     def load_weights(self, file):
         if os.path.splitext(file)[1] == ".safetensors":
@@ -1017,8 +986,9 @@ class IPAdapterNetwork(nn.Module):
         # Force a re-check of ip_centroid on the next encode_ip_tokens call.
         self._centroid_active = None
         # PE base params are intentionally absent from the saved state dict
-        # (see save_weights) — they come from the .pt checkpoint loaded inside
-        # _build_pe_with_lora. Filter them so the warning only flags real gaps.
+        # (see state_dict_for_save) — they come from the .pt checkpoint loaded
+        # inside _build_pe_with_lora. Filter them so the warning only flags
+        # real gaps.
         real_missing = [m for m in missing if not m.startswith("_pe_inner.")]
         if real_missing or unexpected:
             logger.warning(

@@ -7,25 +7,18 @@ import torch
 
 
 class ReFTModule(torch.nn.Module):
-    """
-    LoReFT: Low-Rank Representation Fine-Tuning.
-    Applies a learned low-rank subspace edit to the output representation:
+    """LoReFT: low-rank residual-stream intervention.
+
         h_new = h + R^T(ΔW·h + b) * scale * multiplier
-    where R is an orthogonal rotation selecting the intervention subspace and
-    ΔW (``learned_source``) is the learned delta within that subspace. The
-    paper's form ``(Wh + b) − Rh`` is algebraically identical under
-    ``ΔW = W − R``; parameterizing ΔW directly avoids the activation-level
-    cancellation, so the module runs in the ambient dtype (bf16 under mixed
-    precision) without fp32 upcasts.
 
-    Intervention target: the paper defines ReFT on the residual stream at
-    specific layers (Wu et al., 2024 §3.3). ``org_module`` here is usually a
-    DiT Block whose output is the block-level residual-stream hidden state;
-    wrapping Blocks (not each internal Linear) keeps the parameter and
-    activation budget aligned with the paper.
+    R is an orthogonal rotation; ΔW (``learned_source``) is the learned delta
+    in that subspace. Direct ΔW parameterisation (vs the paper's ``Wh + b − Rh``
+    form) avoids activation-level cancellation, so the module runs in bf16
+    without fp32 upcasts.
 
-    Zero-init: learned_source is zero-initialized so delta=0 at init.
-    Reference: Wu et al., "ReFT: Representation Finetuning for Language Models" (NeurIPS 2024)
+    ``org_module`` is normally a DiT Block — wrapping at the residual-stream
+    level matches the paper (Wu et al., NeurIPS 2024 §3.3). Zero-init keeps
+    delta=0 at step 0.
     """
 
     def __init__(
@@ -52,15 +45,15 @@ class ReFTModule(torch.nn.Module):
                 )
         self.reft_dim = reft_dim
 
-        # R: orthogonal rotation (projects to intervention subspace)
+        # R: orthogonal rotation into the intervention subspace.
         self.rotate_layer = torch.nn.Linear(embed_dim, reft_dim, bias=False)
         init_device = "cuda" if torch.cuda.is_available() else "cpu"
         r_rand = torch.randn(embed_dim, reft_dim, device=init_device)
-        r_orth, _ = torch.linalg.qr(r_rand)  # (embed_dim, reft_dim)
+        r_orth, _ = torch.linalg.qr(r_rand)
         self.rotate_layer.weight.data = r_orth.T.cpu().clone().contiguous()
         del r_rand, r_orth
 
-        # ΔW: learned delta in R's subspace — zero-init gives delta=0 at step 0.
+        # ΔW within R's subspace; zero-init → delta=0 at step 0.
         self.learned_source = torch.nn.Linear(embed_dim, reft_dim)
         torch.nn.init.zeros_(self.learned_source.weight)
         torch.nn.init.zeros_(self.learned_source.bias)
@@ -76,12 +69,8 @@ class ReFTModule(torch.nn.Module):
         self.dropout = dropout
         self.module_dropout = module_dropout
 
-        # Default timestep-rank mask: a shape-(1, reft_dim) all-ones buffer.
-        # Same rationale as ``BaseLoRAModule._timestep_mask`` — unconditional
-        # multiply is a no-op under the neutral default, so no None-vs-Tensor
-        # guard fires under ``compile_mode=full``. ``set_reft_timestep_mask``
-        # rebinds to a shared live-updated mask; ``clear_timestep_mask`` fills
-        # the shared mask with ones.
+        # See BaseLoRAModule._timestep_mask: all-ones default → identity, no
+        # None-vs-Tensor guard. T-LoRA rebinds via set_reft_timestep_mask.
         self.register_buffer(
             "_timestep_mask",
             torch.ones(1, reft_dim, dtype=torch.float32),
@@ -94,23 +83,17 @@ class ReFTModule(torch.nn.Module):
         del self.org_module
 
     def forward(self, *args, **kwargs):
-        # Works for wrapped Linear (forward(x)) and wrapped DiT Block
-        # (forward(x_B_T_H_W_D, emb, crossattn, attn_params, rope, adaln_lora_3D)).
+        # Works for wrapped Linear (x) and wrapped DiT Block (multi-arg).
         h = self.org_forward(*args, **kwargs)
 
-        # module dropout
         if self.module_dropout is not None and self.training:
             if torch.rand(1) < self.module_dropout:
                 return h
 
-        # ΔW·h + b in ambient dtype — no cancellation, no fp32 copy of h.
-        # Last-dim linear broadcasts over any leading shape (B,L,D) or (B,T,H,W,D).
         delta = torch.nn.functional.linear(
             h, self.learned_source.weight, self.learned_source.bias
         )
 
-        # Mask is always a Tensor (default all-ones → identity); no None
-        # branch to recompile on under compile_mode=full.
         if self.training:
             delta = delta * self._timestep_mask
 
@@ -121,7 +104,7 @@ class ReFTModule(torch.nn.Module):
         return h + edit * (self.multiplier * self.scale)
 
     def regularization(self):
-        """Orthogonality regularization: ||R R^T - I||^2"""
-        R = self.rotate_layer.weight  # (reft_dim, embed_dim)
+        """||R R^T - I||^2."""
+        R = self.rotate_layer.weight
         reg = torch.sum((R @ R.T - torch.eye(self.reft_dim, device=R.device)) ** 2)
         return reg

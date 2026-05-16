@@ -18,4 +18,4 @@ sample_ratio = 0.25
 sample_ratio = 0.1
 
 [debug]
-sample_ratio = 0.01
+sample_ratio = 0.001

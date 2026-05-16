@@ -23,11 +23,13 @@ from networks.lora_anima.loading import (
     _stack_lora_ups,
 )
 from networks.lora_modules import (
+    ChimeraHydraInferenceModule,
+    ChimeraHydraLoRAModule,
     HydraLoRAModule,
     LoKrModule,
     LoRAModule,
-    OrthoHydraLoRAExpModule,
-    OrthoLoRAExpModule,
+    OrthoHydraLoRAModule,
+    OrthoLoRAModule,
     ReFTModule,
     StackedExpertsLoRAModule,
     _sigma_sinusoidal_features,
@@ -100,7 +102,12 @@ class GlobalRouter(torch.nn.Module):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         # x: (B, input_dim). Promote to fp32 for the matmul + softmax —
-        # bf16 logits + softmax(τ<1) underflow at low energies.
+        # bf16 logits + softmax(τ<1) underflow at low energies. Inference
+        # casts the parent LoRANetwork to bf16, which would otherwise drag
+        # the router weights along; re-pin to fp32 on first forward so the
+        # matmul dtype matches the upcast input.
+        if self.net[0].weight.dtype != torch.float32:
+            self.net.float()
         x32 = x.float()
         logits = self.net(x32)
         gates = torch.softmax(logits / self.tau, dim=-1)
@@ -112,6 +119,118 @@ class GlobalRouter(torch.nn.Module):
         # router-source variants.
         self._last_input = x32.detach()
         self._last_fei = self._last_input
+        return gates
+
+
+class FreqRouter(torch.nn.Module):
+    """ChimeraHydra freq-pool router (one per network).
+
+    Two-layer MLP feeding softmax/τ over the ``K_f`` freq experts. Input is
+    ``concat(FEI(z_t), sinusoidal-σ-features)`` — both functions of the
+    per-step σ/z_t. The router lives at network top level and broadcasts
+    ``π_f`` to every chimera module's ``_freq_routing_weights`` buffer; the
+    broadcast preserves grad_fn so ``∂L_denoise/∂π_f`` reaches the router's
+    parameters along the same path FeRA's GlobalRouter uses (eq. 6-7, 11).
+
+    Critical: the output layer uses NON-zero init (small N(0, std)). Unlike
+    GlobalRouter (which zero-inits to guarantee ΔW=0 at step 0), a
+    zero-init freq router would be a fixed point of the additive
+    composition — the freq pool would receive uniform gates that fail to
+    differentiate the experts and the gradient `∂L/∂W_router` would never
+    leave zero. The chimera proposal mandates non-zero output init for
+    exactly this reason (see proposal §"Init").
+
+    Per-modality LayerNorm (``apply_layer_norm=True``): when both
+    ``fei_dim`` and ``sigma_dim`` are > 0, each modality's slice of the
+    concat input is passed through a parameterless ``LayerNorm`` before
+    the MLP. The 2-D FEI simplex and the 16/32-D sinusoidal-σ block have
+    different per-channel variance budgets at init (variance contribution
+    scales as ``n_channels``), so without LN the higher-dim σ block can
+    fan-in-overpower FEI ~``sigma_dim/fei_dim``× at init. LN is
+    intentionally parameterless (``elementwise_affine=False``) — keeps the
+    save/load surface unchanged, no metadata stamp needed for the LN
+    weights themselves (only for the on/off flag).
+    """
+
+    def __init__(
+        self,
+        input_dim: int,
+        num_freq_experts: int,
+        *,
+        hidden_dim: int = 32,
+        tau: float = 1.0,
+        init_std: float = 0.1,
+        fei_dim: int = 0,
+        sigma_dim: int = 0,
+        apply_layer_norm: bool = False,
+    ) -> None:
+        super().__init__()
+        if input_dim <= 0:
+            raise ValueError(f"FreqRouter: input_dim must be > 0, got {input_dim}")
+        if num_freq_experts <= 1:
+            raise ValueError(
+                f"FreqRouter: num_freq_experts must be > 1, got {num_freq_experts}"
+            )
+        self.input_dim = int(input_dim)
+        self.num_freq_experts = int(num_freq_experts)
+        self.tau = float(tau)
+        self.fei_dim = int(fei_dim)
+        self.sigma_dim = int(sigma_dim)
+        # LN only fires when both modalities are present — its job is
+        # variance balance across the concat, which is a no-op (or worse,
+        # destructive on the 2-D simplex) when only one modality is in
+        # play. The dim-sum check guards against the rebuild path where
+        # fei_dim+sigma_dim wasn't threaded through; in that case LN stays
+        # off and the router behaves like the pre-LN build.
+        self.apply_layer_norm = bool(apply_layer_norm) and (
+            self.fei_dim > 0
+            and self.sigma_dim > 0
+            and self.fei_dim + self.sigma_dim == self.input_dim
+        )
+        # SiLU (proposal §Routers): smoother than ReLU on small-input MLPs
+        # and consistent with the DiT's own activation choice.
+        self.net = torch.nn.Sequential(
+            torch.nn.Linear(input_dim, hidden_dim),
+            torch.nn.SiLU(),
+            torch.nn.Linear(hidden_dim, num_freq_experts),
+        )
+        with torch.no_grad():
+            # Hidden layer keeps default Linear init. Only the output layer
+            # gets the small-std non-zero init that breaks the freq-pool
+            # cold-start fixed point — see class docstring.
+            torch.nn.init.normal_(self.net[-1].weight, std=float(init_std))
+            torch.nn.init.zeros_(self.net[-1].bias)
+
+        # Parameterless per-modality LN. elementwise_affine=False keeps the
+        # state_dict free of ln_* keys, so old (LN-off) checkpoints stay
+        # load-compatible — the on/off semantics are carried by the
+        # ``apply_layer_norm`` flag (stamped to metadata), not by tensor
+        # presence in the state_dict.
+        self.ln_fei: Optional[torch.nn.LayerNorm] = None
+        self.ln_sigma: Optional[torch.nn.LayerNorm] = None
+        if self.apply_layer_norm:
+            self.ln_fei = torch.nn.LayerNorm(self.fei_dim, elementwise_affine=False)
+            self.ln_sigma = torch.nn.LayerNorm(self.sigma_dim, elementwise_affine=False)
+
+        # Per-step diagnostics, parallel to GlobalRouter.
+        self._last_gates: Optional[torch.Tensor] = None
+        self._last_input: Optional[torch.Tensor] = None
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        # See GlobalRouter.forward — fp32 compute is load-bearing for the
+        # softmax(logits / τ) precision at small τ. Inference casts the
+        # parent LoRANetwork to bf16; re-pin router weights to fp32.
+        if self.net[0].weight.dtype != torch.float32:
+            self.net.float()
+        x32 = x.float()
+        if self.apply_layer_norm:
+            fei_part = self.ln_fei(x32[..., : self.fei_dim])
+            sigma_part = self.ln_sigma(x32[..., self.fei_dim : self.fei_dim + self.sigma_dim])
+            x32 = torch.cat([fei_part, sigma_part], dim=-1)
+        logits = self.net(x32)
+        gates = torch.softmax(logits / self.tau, dim=-1)
+        self._last_gates = gates.detach()
+        self._last_input = x32.detach()
         return gates
 
 
@@ -160,10 +279,6 @@ class LoRANetwork(torch.nn.Module):
         self._hydra_router_hits: int = 0
         self._hydra_router_misses: int = 0
         self._last_sigma: Optional[torch.Tensor] = None
-        # Per-expert pick fraction across hydra modules on the most recent
-        # warmup step (random or best-by-grad path). None outside the warmup
-        # window — the metric in metrics.py drops out of the dashboard then.
-        self._last_expert_warmup_picks: Optional[torch.Tensor] = None
         # Hydra up-weight grad-norm snapshot (T-LoRA / σ-bucket conflict
         # diagnostic). Filled by ``capture_up_grad_stats`` between backward
         # and ``optimizer.zero_grad``; consumed by the ``hydra_up_grad``
@@ -175,6 +290,10 @@ class LoRANetwork(torch.nn.Module):
         # postfix and the metrics layer call it on log steps. Cleared in
         # ``clear_step_caches`` so the next forward recomputes.
         self._router_stats_cache: Optional[Dict[str, object]] = None
+        # Separate cache for the chimera dual-pool router stats — different
+        # reduction (mean gates per pool, not argmax-histogram) and different
+        # entropy normalization (per-pool log(K_pool)). Same lifecycle.
+        self._chimera_router_stats_cache: Optional[Dict[str, object]] = None
 
         # Local aliases for the closure body and the post-closure ReFT block.
         # Reading via `cfg.foo` works too; aliases just keep the diff small.
@@ -250,7 +369,7 @@ class LoRANetwork(torch.nn.Module):
         )
 
         # Per-module HydraLoRA gating. Matching modules get the Hydra class;
-        # non-matching modules fall back to plain LoRA / OrthoLoRAExp so MoE
+        # non-matching modules fall back to plain LoRA / OrthoLoRA so MoE
         # capacity is concentrated where specialization is actually learnable.
         # Fresh path: regex over `original_name`. From-weights path: explicit
         # name set detected from checkpoint keys. Explicit set wins. None on
@@ -439,11 +558,17 @@ class LoRANetwork(torch.nn.Module):
                 # Per-module class resolution: when the network's nominal class
                 # is Hydra (MoE), narrow it to only the layers in the hydra
                 # filter. Non-matching layers fall back to plain LoRA /
-                # OrthoLoRAExp so router overhead + balance-loss pressure are
+                # OrthoLoRA so router overhead + balance-loss pressure are
                 # concentrated on sites where specialization is learnable.
                 effective_module_class = module_class
                 if (
-                    module_class in (HydraLoRAModule, OrthoHydraLoRAExpModule)
+                    module_class
+                    in (
+                        HydraLoRAModule,
+                        OrthoHydraLoRAModule,
+                        ChimeraHydraLoRAModule,
+                        ChimeraHydraInferenceModule,
+                    )
                     and is_unet
                 ):
                     if self._hydra_router_names is not None:
@@ -456,18 +581,41 @@ class LoRANetwork(torch.nn.Module):
                         self._hydra_router_hits += 1
                     else:
                         self._hydra_router_misses += 1
-                        effective_module_class = (
-                            OrthoLoRAExpModule
-                            if module_class is OrthoHydraLoRAExpModule
-                            else LoRAModule
-                        )
+                        if module_class is HydraLoRAModule:
+                            effective_module_class = LoRAModule
+                        elif module_class is ChimeraHydraInferenceModule:
+                            # Load path. Unrouted leg was saved as plain LoRA
+                            # (OrthoLoRA distilled to ``.lora_down.weight`` +
+                            # ``.lora_up.weight`` at save time — see
+                            # ``_convert_ortho_to_lora``).
+                            effective_module_class = LoRAModule
+                        else:
+                            # Train path (ChimeraHydraLoRAModule) and
+                            # OrthoHydra: unrouted leg uses the OrthoLoRA
+                            # Cayley parameterization.
+                            effective_module_class = OrthoLoRAModule
 
                 extra_kwargs = {}
-                if effective_module_class == OrthoLoRAExpModule:
+                if effective_module_class == OrthoLoRAModule:
                     pass  # no extra kwargs — SVD init reads from org_module directly
                 elif effective_module_class == LoKrModule:
                     extra_kwargs["factor"] = cfg.lokr_factor
-                elif effective_module_class == OrthoHydraLoRAExpModule:
+                elif effective_module_class == ChimeraHydraLoRAModule:
+                    # Pool split is the chimera's only constructor surface;
+                    # σ/FEI feature dims are 0 by design (the network-level
+                    # FreqRouter owns those axes — see chimera.py module
+                    # docstring). The pool sum must equal cfg.num_experts
+                    # by ``LoRANetworkCfg.from_kwargs`` invariant.
+                    extra_kwargs["num_experts_content"] = cfg.num_experts_content
+                    extra_kwargs["num_experts_freq"] = cfg.num_experts_freq
+                elif effective_module_class == ChimeraHydraInferenceModule:
+                    # Inference (free-form) twin of the chimera training
+                    # class. Same constructor surface — both pool sizes
+                    # arrive from the chimera-stamped metadata via
+                    # ``cfg.from_weights``.
+                    extra_kwargs["num_experts_content"] = cfg.num_experts_content
+                    extra_kwargs["num_experts_freq"] = cfg.num_experts_freq
+                elif effective_module_class == OrthoHydraLoRAModule:
                     extra_kwargs["num_experts"] = cfg.num_experts
                     if self._use_global_router_for_hydra:
                         extra_kwargs["use_global_router"] = True
@@ -479,6 +627,14 @@ class LoRANetwork(torch.nn.Module):
                     if self._use_global_router_for_hydra:
                         extra_kwargs["use_global_router"] = True
                         self._global_router_hits += 1
+                    if cfg.use_chimera_hydra:
+                        # Dual-pool runtime form (load path from a distilled
+                        # chimera checkpoint — see factory.py is_chimera_hydra
+                        # branch). HydraLoRAModule narrows its router to K_c
+                        # outputs and registers _freq_routing_weights for the
+                        # network-level FreqRouter broadcast. σ/FEI feature
+                        # dims must stay 0 here — FreqRouter owns those axes.
+                        extra_kwargs["num_experts_content"] = cfg.num_experts_content
                 elif effective_module_class == StackedExpertsLoRAModule:
                     # Independent-A (FeRA). Gates arrive via the network-level
                     # ``GlobalRouter`` through the shared ``_routing_weights``
@@ -499,7 +655,7 @@ class LoRANetwork(torch.nn.Module):
                 if (
                     cfg.specialize_experts_by_sigma_buckets
                     and effective_module_class
-                    in (HydraLoRAModule, OrthoHydraLoRAExpModule)
+                    in (HydraLoRAModule, OrthoHydraLoRAModule)
                     and is_unet
                 ):
                     extra_kwargs["specialize_experts_by_sigma_buckets"] = True
@@ -523,7 +679,7 @@ class LoRANetwork(torch.nn.Module):
                     and effective_module_class
                     in (
                         HydraLoRAModule,
-                        OrthoHydraLoRAExpModule,
+                        OrthoHydraLoRAModule,
                     )
                     and is_unet
                     and not self._use_global_router_for_hydra
@@ -550,7 +706,7 @@ class LoRANetwork(torch.nn.Module):
                     and effective_module_class
                     in (
                         HydraLoRAModule,
-                        OrthoHydraLoRAExpModule,
+                        OrthoHydraLoRAModule,
                     )
                     and is_unet
                     and not self._use_global_router_for_hydra
@@ -596,8 +752,10 @@ class LoRANetwork(torch.nn.Module):
         self.text_encoder_loras: List[LoRAModule] = []
         skipped_te = []
         if text_encoders is not None and module_class not in (
-            OrthoLoRAExpModule,
-            OrthoHydraLoRAExpModule,
+            OrthoLoRAModule,
+            OrthoHydraLoRAModule,
+            ChimeraHydraLoRAModule,
+            ChimeraHydraInferenceModule,
         ):
             for i, text_encoder in enumerate(text_encoders):
                 if text_encoder is None:
@@ -711,6 +869,7 @@ class LoRANetwork(torch.nn.Module):
         self._wire_shared_sigma_buffers()
         self._wire_shared_fei_buffers()
         self._wire_shared_routing_buffers()
+        self._wire_shared_freq_routing_buffers()
 
         # Build the network-level GlobalRouter when the cfg selects MoE
         # without per-Linear routers. The input dim is derived from the
@@ -741,6 +900,46 @@ class LoRANetwork(torch.nn.Module):
                     f"hidden={cfg.router_hidden_dim}, τ={cfg.router_tau:.2f}, "
                     f"routing-aware modules={len(self._routing_aware_loras)}"
                 )
+
+        # ChimeraHydra FreqRouter: one per network, broadcasts ``π_f`` over
+        # the freq pool of every chimera module. Input is
+        # ``concat(FEI, sinusoidal-σ-features)`` — owned by the freq router
+        # exclusively (the per-layer content router never sees σ/FEI). Built
+        # only when at least one chimera module was actually constructed; the
+        # router_targets regex can narrow the chimera class to a subset of
+        # layers (others fall back to OrthoLoRA).
+        self.freq_router: Optional[FreqRouter] = None
+        if cfg.use_chimera_hydra and self._chimera_aware_loras:
+            freq_input_dim = int(cfg.fei_feature_dim) + int(cfg.sigma_feature_dim)
+            if freq_input_dim <= 0:
+                raise ValueError(
+                    "use_chimera_hydra=True requires fei_feature_dim + "
+                    f"sigma_feature_dim > 0 for the FreqRouter input (got "
+                    f"FEI={cfg.fei_feature_dim}, σ={cfg.sigma_feature_dim})."
+                )
+            self.freq_router = FreqRouter(
+                input_dim=freq_input_dim,
+                num_freq_experts=int(cfg.num_experts_freq),
+                hidden_dim=int(cfg.router_hidden_dim),
+                tau=float(cfg.router_tau),
+                init_std=float(cfg.freq_router_init_std),
+                fei_dim=int(cfg.fei_feature_dim),
+                sigma_dim=int(cfg.sigma_feature_dim),
+                apply_layer_norm=bool(cfg.freq_router_layer_norm),
+            )
+            # Force the per-step conditioning hook to fire set_fei every
+            # step (router_conditioning.py reads this flag). Chimera ties
+            # σ + FEI together for the freq router input, so the set_fei
+            # path is where we re-fire FreqRouter.
+            self.use_fei_router = True
+            logger.info(
+                f"ChimeraHydra FreqRouter: input_dim={freq_input_dim} "
+                f"(FEI={cfg.fei_feature_dim} + σ={cfg.sigma_feature_dim}), "
+                f"K_f={cfg.num_experts_freq}, hidden={cfg.router_hidden_dim}, "
+                f"τ={cfg.router_tau:.2f}, init_std={cfg.freq_router_init_std}, "
+                f"LN={self.freq_router.apply_layer_norm}, "
+                f"chimera modules={len(self._chimera_aware_loras)}"
+            )
 
     def _wire_shared_sigma_buffers(self) -> None:
         """Replace each HydraLoRA / OrthoHydraLoRA module's ``_sigma`` and
@@ -852,6 +1051,33 @@ class LoRANetwork(torch.nn.Module):
         for lora in routing_loras:
             lora._buffers["_routing_weights"] = canonical
         self._shared_routing_weights = canonical
+
+    def _wire_shared_freq_routing_buffers(self) -> None:
+        """Alias every chimera module's ``_freq_routing_weights`` buffer to one
+        shared tensor.
+
+        Parallel to ``_wire_shared_routing_buffers`` but on the chimera-
+        specific buffer name. FreqRouter broadcasts ``π_f`` once per step via
+        direct slot assignment; aliased buffers on every chimera module see
+        the new gates through shared storage. The buffer must carry the
+        router's grad_fn (NO .detach(), NO .copy_()) so ``∂L_denoise/∂π_f``
+        reaches the FreqRouter — same contract as
+        ``router_state._set_routing_weights``.
+        """
+        freq_loras: List[torch.nn.Module] = []
+        for lora in self.unet_loras + self.text_encoder_loras:
+            if "_freq_routing_weights" not in lora._buffers:
+                continue
+            freq_loras.append(lora)
+        self._chimera_aware_loras = freq_loras
+        if not freq_loras:
+            self._shared_freq_routing_weights: Optional[torch.Tensor] = None
+            return
+
+        canonical = freq_loras[0]._buffers["_freq_routing_weights"]
+        for lora in freq_loras:
+            lora._buffers["_freq_routing_weights"] = canonical
+        self._shared_freq_routing_weights = canonical
 
     def prepare_network(self, args):
         if getattr(args, "lora_fp32_accumulation", False):
@@ -1106,8 +1332,8 @@ class LoRANetwork(torch.nn.Module):
         call — one entry point for the FeRA-style global-router path.
         """
         fei = fei.detach()
-        # Fast-path: if there are no per-Linear FEI consumers and no global
-        # router needs FEI either, nothing to do.
+        # Fast-path: if there are no per-Linear FEI consumers, no global
+        # router, and no chimera FreqRouter needing FEI, nothing to do.
         has_per_layer_fei = bool(getattr(self, "_fei_aware_loras", None))
         global_fei_router = (
             self.global_router
@@ -1118,9 +1344,25 @@ class LoRANetwork(torch.nn.Module):
             )
             else None
         )
-        if not (has_per_layer_fei or global_fei_router is not None):
+        chimera_freq_router = (
+            self.freq_router
+            if (
+                getattr(self, "freq_router", None) is not None
+                and getattr(self, "_chimera_aware_loras", None)
+            )
+            else None
+        )
+        if not (
+            has_per_layer_fei
+            or global_fei_router is not None
+            or chimera_freq_router is not None
+        ):
             return
-        if not (self.use_fei_router or global_fei_router is not None):
+        if not (
+            self.use_fei_router
+            or global_fei_router is not None
+            or chimera_freq_router is not None
+        ):
             return
 
         # Per-layer FEI broadcast (legacy path — FEI-on-Hydra Phase 1).
@@ -1158,6 +1400,33 @@ class LoRANetwork(torch.nn.Module):
         if global_fei_router is not None:
             gates = global_fei_router(fei)
             self.set_routing_weights(gates)
+
+        # ChimeraHydra FreqRouter: input is concat(FEI, sinusoidal-σ-features).
+        # σ already arrived through ``set_sigma`` (which fires before
+        # ``set_fei`` in ``apply_router_conditioning``); the freq router lives
+        # at network level and computes its features fresh each step rather
+        # than relying on per-module shared σ-feature buffers (chimera modules
+        # are built with ``sigma_feature_dim=0`` since the freq router owns
+        # the σ axis exclusively).
+        if chimera_freq_router is not None:
+            sigma = self._last_sigma
+            if sigma is None:
+                raise RuntimeError(
+                    "ChimeraHydra FreqRouter requires set_sigma to fire before "
+                    "set_fei within the same step (apply_router_conditioning "
+                    "preserves this order — check custom call sites)."
+                )
+            sigma_dim = int(self.cfg.sigma_feature_dim)
+            sigma_feat = _sigma_sinusoidal_features(sigma, sigma_dim)
+            # Match the FEI tensor's device/dtype and batch axis. Both should
+            # share the same B by construction (one σ per sample, one FEI per
+            # sample), so a straight cat is correct.
+            fei_cast = fei.to(device=sigma_feat.device, dtype=sigma_feat.dtype)
+            if fei_cast.dim() == 1:
+                fei_cast = fei_cast.unsqueeze(0)
+            router_in = torch.cat([fei_cast, sigma_feat], dim=-1)
+            freq_gates = chimera_freq_router(router_in)
+            self.set_freq_routing_weights(freq_gates)
 
     def clear_fei(self) -> None:
         """Reset cached FEI to zeros without rebinding pointers.
@@ -1225,17 +1494,61 @@ class LoRANetwork(torch.nn.Module):
         E = int(canonical.shape[-1])
         canonical.fill_(1.0 / max(E, 1))
 
-    def clear_step_caches(self) -> None:
-        """Drop per-step tensor references (``_last_gate``) between training
-        steps.
+    def set_freq_routing_weights(self, weights: torch.Tensor) -> None:
+        """Broadcast ``π_f`` from the FreqRouter to every chimera module.
 
-        ``_last_gate`` caches a tensor produced inside the compiled forward —
-        under ``torch.compile(mode='reduce-overhead')`` that tensor lives in
-        the inductor cudagraph memory pool. Holding a Python reference across
-        the step boundary prevents ``cudagraph_trees`` from reclaiming pool
-        memory and silently demotes the run to the eager fallback path. Call
-        this right before ``torch.compiler.cudagraph_mark_step_begin()`` so
-        the pool is free to reuse memory on the next iteration.
+        Direct slot assignment (NO .detach(), NO .copy_()) so the buffer
+        carries the router's grad_fn — same contract as
+        ``set_routing_weights`` for the GlobalRouter. The chimera module's
+        ``_compute_gate`` reads ``_freq_routing_weights`` to build the
+        ``[π_c | π_f]`` concatenation, so the autograd path
+        ``L_denoise → out_f → π_f → FreqRouter params`` is intact.
+        """
+        if not getattr(self, "_chimera_aware_loras", None):
+            return
+        freq_loras = self._chimera_aware_loras
+        canonical_buf = freq_loras[0]._buffers["_freq_routing_weights"]
+        w = weights.to(dtype=canonical_buf.dtype, device=canonical_buf.device)
+        if w.dim() == 1:
+            w = w.unsqueeze(0)
+        for lora in freq_loras:
+            lora._freq_routing_weights = w
+        self._shared_freq_routing_weights = w
+
+    def clear_freq_routing_weights(self) -> None:
+        """Reset chimera freq gates to uniform ``1/K_f`` in place."""
+        if not getattr(self, "_chimera_aware_loras", None):
+            return
+        freq_loras = self._chimera_aware_loras
+        canonical = freq_loras[0]._buffers["_freq_routing_weights"]
+        if self._shared_freq_routing_weights is not canonical:
+            for lora in freq_loras:
+                lora._buffers["_freq_routing_weights"] = canonical
+            self._shared_freq_routing_weights = canonical
+        K_f = int(canonical.shape[-1])
+        canonical.fill_(1.0 / max(K_f, 1))
+
+    def clear_step_caches(self) -> None:
+        """Drop per-step tensor references (``_last_gate``) and invalidate
+        memoized router-stats caches between training steps.
+
+        Called unconditionally from the training loop before each forward,
+        for two reasons:
+
+        (1) ``_last_gate`` caches a tensor produced inside the compiled
+        forward — under ``torch.compile(mode='reduce-overhead')`` that tensor
+        lives in the inductor cudagraph memory pool. Holding a Python
+        reference across the step boundary prevents ``cudagraph_trees`` from
+        reclaiming pool memory and silently demotes the run to the eager
+        fallback path. Call must precede ``cudagraph_mark_step_begin()``.
+
+        (2) ``_router_stats_cache`` / ``_chimera_router_stats_cache`` memoize
+        per-step router diagnostics so the progress-bar postfix and the TB
+        logging layer share one D2H sync. Without per-step invalidation
+        these freeze at their first computed values — and on runs without
+        cudagraph mode (``_cudagraph_mark_step=False``) the invalidation has
+        no other trigger, so TB shows the same usage/entropy on every log
+        step.
 
         ``_sigma`` is intentionally *not* cleared: it's rebound by
         ``set_sigma`` before every forward, the caller passes a tensor from
@@ -1249,6 +1562,7 @@ class LoRANetwork(torch.nn.Module):
         """
         self._last_sigma = None
         self._router_stats_cache = None
+        self._chimera_router_stats_cache = None
         for lora in self.unet_loras + self.text_encoder_loras:
             if hasattr(lora, "_last_gate"):
                 lora._last_gate = None
@@ -1260,6 +1574,10 @@ class LoRANetwork(torch.nn.Module):
             self.global_router._last_gates = None
             self.global_router._last_input = None
             self.global_router._last_fei = None
+        # Same treatment for the chimera FreqRouter.
+        if getattr(self, "freq_router", None) is not None:
+            self.freq_router._last_gates = None
+            self.freq_router._last_input = None
 
     def step_balance_loss_warmup(self, global_step: int, max_train_steps: int) -> None:
         """Activate the MoE load-balance penalty once training crosses the
@@ -1278,129 +1596,6 @@ class LoRANetwork(torch.nn.Module):
             return
         warmup_steps = int(max_train_steps * ratio)
         self._balance_loss_weight = 0.0 if global_step < warmup_steps else target
-
-    def step_expert_warmup(self, global_step: int, max_train_steps: int) -> None:
-        """Per-step random expert-gradient masking during the warmup window.
-
-        Forward stays full MoE (every expert contributes via the learned gate),
-        but only one randomly-sampled expert per module receives gradient this
-        step. Breaks the zero-init expert symmetry without ever training an
-        expert in isolation — each expert always sees the other experts'
-        contribution when it updates. See ``docs/methods/hydra-lora.md``
-        §Expert-warmup for motivation.
-
-        Expert index is sampled independently per module so that different
-        modules can route the same sample to different experts. After the
-        warmup window the mask is filled with ones, so the unconditional
-        ``up*m + up.detach()*(1-m)`` term in the adapter forward collapses to
-        identity — every expert receives gradient normally.
-
-        State lives entirely in the ``_expert_grad_mask`` buffer; dynamo
-        treats buffer mutations as dynamic (no recompile per step and no
-        recompile at the warmup→post-warmup transition).
-        """
-        if self.cfg.expert_warmup_ratio <= 0.0 or max_train_steps <= 0:
-            return
-        warmup_steps = int(max_train_steps * self.cfg.expert_warmup_ratio)
-        in_warmup = global_step < warmup_steps
-        k = self.cfg.expert_warmup_k
-        pick_counts: Optional[torch.Tensor] = None
-        n_modules = 0
-        for lora in self.unet_loras + self.text_encoder_loras:
-            if not hasattr(lora, "_expert_grad_mask"):
-                continue
-            mask = lora._expert_grad_mask
-            if in_warmup:
-                k_eff = max(1, min(k, lora.num_experts))
-                if k_eff >= lora.num_experts:
-                    mask.fill_(1.0)
-                else:
-                    idx = torch.randperm(lora.num_experts, device=mask.device)[:k_eff]
-                    mask.zero_()
-                    mask[idx] = 1.0
-                if pick_counts is None or pick_counts.numel() < lora.num_experts:
-                    new = torch.zeros(lora.num_experts, device=mask.device)
-                    if pick_counts is not None:
-                        new[: pick_counts.numel()] = pick_counts
-                    pick_counts = new
-                pick_counts[: lora.num_experts] += mask[: lora.num_experts].detach()
-                n_modules += 1
-            else:
-                mask.fill_(1.0)
-        if in_warmup and pick_counts is not None and n_modules > 0:
-            self._last_expert_warmup_picks = pick_counts / n_modules
-        else:
-            self._last_expert_warmup_picks = None
-
-    def step_expert_best_warmup_post_backward(
-        self, global_step: int, max_train_steps: int
-    ) -> None:
-        """Greedy counterpart to ``step_expert_warmup``: during the warmup
-        window, keep gradient only on the top-k experts ranked by per-expert
-        grad-norm; zero the rest. Forward stays full MoE (mask all-ones), so
-        every expert produces a proper gradient — we then drop the experts
-        whose update would do least to lower loss this step. Score is
-        ``‖∂L/∂P_e‖_F`` where ``P_e`` is the per-expert parameter
-        (``lora_up_weight[e]`` for plain Hydra, ``S_p[e]`` for OrthoHydra);
-        grad-norm is a first-order proxy for the loss decrease an SGD step on
-        that expert would buy.
-
-        Must be called AFTER backward (so .grad is populated) and BEFORE
-        optimizer.step. Outside the warmup window this is a no-op.
-
-        Mutually exclusive with ``expert_warmup_ratio``: that path zeros the
-        forward mask so non-selected experts have zero grad anyway, which
-        would make this top-k selection redundant. ``factory.py`` warns if
-        both are set; behaviorally the random path's pre-forward masking
-        wins because it produces zero grads that this method then sees.
-        """
-        ratio = self.cfg.expert_best_warmup_ratio
-        if ratio <= 0.0 or max_train_steps <= 0:
-            return
-        warmup_steps = int(max_train_steps * ratio)
-        if global_step >= warmup_steps:
-            self._last_expert_warmup_picks = None
-            return
-        k = self.cfg.expert_warmup_k
-        pick_counts: Optional[torch.Tensor] = None
-        n_modules = 0
-        for lora in self.unet_loras + self.text_encoder_loras:
-            param = None
-            if hasattr(lora, "lora_up_weight") and lora.lora_up_weight.dim() == 3:
-                param = lora.lora_up_weight
-            elif hasattr(lora, "S_p") and lora.S_p.dim() == 3:
-                param = lora.S_p
-            if param is None or param.grad is None:
-                continue
-            E = param.shape[0]
-            k_eff = max(1, min(k, E))
-            if k_eff >= E:
-                continue
-            norms = param.grad.detach().reshape(E, -1).norm(dim=-1)
-            topk = torch.topk(norms, k_eff).indices
-            keep = torch.zeros(E, dtype=param.grad.dtype, device=param.grad.device)
-            keep[topk] = 1.0
-            param.grad.mul_(keep.view(E, *([1] * (param.dim() - 1))))
-            if pick_counts is None or pick_counts.numel() < E:
-                new = torch.zeros(E, device=keep.device)
-                if pick_counts is not None:
-                    new[: pick_counts.numel()] = pick_counts
-                pick_counts = new
-            pick_counts[:E] += keep.float()
-            n_modules += 1
-        if pick_counts is not None and n_modules > 0:
-            self._last_expert_warmup_picks = pick_counts / n_modules
-        else:
-            self._last_expert_warmup_picks = None
-
-    def get_expert_warmup_pick_stats(self) -> Optional[List[float]]:
-        """Per-expert pick fraction (0.0–1.0) across hydra modules on the most
-        recent warmup step. None when not in warmup. ``metrics.py`` consumes
-        this and emits ``hydra/expert_warmup_pick/{i}`` scalars."""
-        picks = self._last_expert_warmup_picks
-        if picks is None:
-            return None
-        return picks.detach().cpu().tolist()
 
     @staticmethod
     def _switch_balance(gate: torch.Tensor) -> torch.Tensor:
@@ -1422,7 +1617,21 @@ class LoRANetwork(torch.nn.Module):
         low σ: globally balanced but per-bucket one-hot). Buckets are fixed
         thresholds on σ∈[0,1]; for N=3 that's [1/3, 2/3]. Under logit-normal
         σ sampling this is ~30/40/30 — close enough to equal-frequency for v1.
+
+        ChimeraHydra path: ``_use_chimera_hydra=True`` splits each module's
+        cached gate into the content slice ``[:K_c]`` and the freq slice
+        ``[K_c:]``, then accumulates two independent switch losses weighted
+        by ``_balance_w_content`` / ``_balance_w_freq``. A single combined
+        term would let the optimizer satisfy the constraint by flattening
+        one pool to uniform while concentrating the other — see proposal
+        §"Balance loss".
         """
+        # Chimera: dual-pool branch. Computed entirely separately from the
+        # legacy single-pool / σ-bucket aggregation since the weights and
+        # accumulation are independent per pool.
+        if getattr(self, "_use_chimera_hydra", False):
+            return self._get_chimera_balance_loss()
+
         total = None
         per_bucket_total = None
         count = 0
@@ -1484,12 +1693,79 @@ class LoRANetwork(torch.nn.Module):
             out = out + bucket_w * (per_bucket_total / per_bucket_count)
         return out
 
+    def _get_chimera_balance_loss(self) -> torch.Tensor:
+        """Dual-pool switch loss for the chimera path.
+
+        Each module's cached gate is shape ``(B, K_c + K_f)``: the first
+        ``K_c`` entries are π_c (per-layer content router), the rest are
+        π_f (broadcast freq router). Compute Switch balance independently
+        on each slice, average across modules, then combine with the
+        per-pool weights ``_balance_w_content`` / ``_balance_w_freq``.
+
+        Mathematically equivalent to ``w_c · L_balance(π_c) + w_f · L_balance(π_f)``
+        from the proposal §Balance loss — independent terms force each
+        pool to spread on its own pressure, unlike a single combined term
+        which can collapse one pool to uniform while the other concentrates.
+        """
+        K_c_default = int(getattr(self.cfg, "num_experts_content", 0))
+        total_c = None
+        total_f = None
+        count_c = 0
+        count_f = 0
+        for lora in self.unet_loras + self.text_encoder_loras:
+            gate = getattr(lora, "_last_gate", None)
+            if gate is None:
+                continue
+            K_c = int(getattr(lora, "num_experts_content", K_c_default))
+            if K_c <= 0:
+                continue
+            gate_c = gate[..., :K_c]
+            gate_f = gate[..., K_c:]
+            if gate_c.shape[-1] > 1:
+                term_c = self._switch_balance(gate_c)
+                total_c = term_c if total_c is None else total_c + term_c
+                count_c += 1
+            if gate_f.shape[-1] > 1:
+                term_f = self._switch_balance(gate_f)
+                total_f = term_f if total_f is None else total_f + term_f
+                count_f += 1
+
+        if total_c is None and total_f is None:
+            return torch.tensor(0.0)
+        w_c = float(getattr(self, "_balance_w_content", 0.0) or 0.0)
+        w_f = float(getattr(self, "_balance_w_freq", 0.0) or 0.0)
+        # ``_balance_loss_weight`` is the warmup-gated outer multiplier
+        # (held at 0 during warmup, flipped to the target after). It's
+        # already applied by the trainer when consuming this scalar, so
+        # we just produce the unweighted-by-outer sum here. Per-pool
+        # weights are baked in directly — they are independent scalars,
+        # not warmup-gated.
+        out = torch.tensor(0.0)
+        if total_c is not None and count_c > 0:
+            out = out + w_c * (total_c / count_c)
+        if total_f is not None and count_f > 0:
+            out = out + w_f * (total_f / count_f)
+        return out
+
     def get_router_entropy(self) -> Optional[float]:
         """Mean per-sample normalized entropy of hydra router gates, averaged
         across modules. Returns None when no hydra module has cached a gate
         this step. Thin wrapper over :meth:`get_router_stats` kept for the
         progress-bar postfix path; prefer ``get_router_stats`` for logging.
+
+        Chimera path returns the simple mean of the per-pool entropies
+        (each already normalized to [0, 1] by ``log(K_pool)``) so the
+        postfix shows a sensible scalar; the legacy single-vector entropy
+        would read >1.0 on chimera (concat sums to 2, not 1).
         """
+        if getattr(self, "_use_chimera_hydra", False):
+            cstats = self.get_chimera_router_stats()
+            if not cstats:
+                return None
+            parts = [cstats[k] for k in ("content_entropy", "freq_entropy") if k in cstats]
+            if not parts:
+                return None
+            return sum(parts) / len(parts)
         stats = self.get_router_stats()
         return stats.get("entropy_mean") if stats else None
 
@@ -1633,6 +1909,97 @@ class LoRANetwork(torch.nn.Module):
             out["bucket_counts"] = bucket_counts_t.cpu().tolist()
 
         self._router_stats_cache = out
+        return out
+
+    def get_chimera_router_stats(
+        self,
+    ) -> Dict[str, Union[float, List[float]]]:
+        """Per-pool router diagnostics for the chimera dual-pool routing.
+
+        Chimera's ``_last_gate`` is ``cat([π_c, π_f])`` of shape
+        ``(B, K_c + K_f)`` — two independent softmaxes glued together, so the
+        whole vector sums to 2 and ``argmax`` across the concat is doubly
+        misleading: it (a) only ever names one slot per sample so the
+        per-pool view collapses to a single histogram summing to 1, and
+        (b) biases toward whichever pool happens to have higher initialization
+        variance (FreqRouter's ``init_std=0.1`` vs the content router's 0.01).
+        This routine reports each pool independently, using **mean gates**
+        (same approach as ``fera/expert_usage`` — see
+        ``[[project_fera_expert_usage_mean_gates]]``):
+
+          * Content pool: aggregate ``π_c = gate[..., :K_c]`` across every
+            chimera module that cached a gate this step. Mean over modules
+            then over batch gives the per-content-expert usage vector
+            ``(K_c,)``, which sums to ~1.
+          * Freq pool: the FreqRouter broadcasts the same ``π_f`` to every
+            module, so we read it once from ``freq_router._last_gates``
+            (shape ``(B, K_f)``) — no module aggregation needed. Mean over
+            batch gives the per-freq-expert usage vector ``(K_f,)``.
+
+        Returned entropy / margin are normalized per pool: entropy by
+        ``log(K_pool)`` (so [0, 1] is the right range — the legacy
+        ``hydra/router_entropy`` would read >1.0 on chimera because it
+        divided the sum-to-2 vector's entropy by ``log(E)``, not
+        ``log(2·K_pool)``).
+
+        Empty dict on non-chimera networks or when no gate has been cached
+        this step.
+        """
+        if not getattr(self, "_use_chimera_hydra", False):
+            return {}
+        if self._chimera_router_stats_cache is not None:
+            return self._chimera_router_stats_cache
+
+        out: Dict[str, Union[float, List[float]]] = {}
+        K_c_default = int(getattr(self.cfg, "num_experts_content", 0))
+
+        # --- Content pool: aggregate π_c across modules ----------------------
+        pi_c_list: List[torch.Tensor] = []
+        K_c_ref: Optional[int] = None
+        for lora in self.unet_loras + self.text_encoder_loras:
+            gate = getattr(lora, "_last_gate", None)
+            if gate is None:
+                continue
+            K_c = int(getattr(lora, "num_experts_content", K_c_default))
+            if K_c <= 0:
+                continue
+            if K_c_ref is None:
+                K_c_ref = K_c
+            elif K_c != K_c_ref:
+                continue
+            pi_c_list.append(gate[..., :K_c])
+
+        if pi_c_list and K_c_ref is not None and K_c_ref > 1:
+            pi_c = torch.stack(pi_c_list, dim=0).float().clamp_min(1e-12)  # (M, B, K_c)
+            norm_c = math.log(K_c_ref)
+            H_c_per_mod = -(pi_c * pi_c.log()).sum(dim=-1).mean(dim=-1) / norm_c
+            top2_c = pi_c.topk(2, dim=-1).values
+            margin_c_per_mod = (top2_c[..., 0] - top2_c[..., 1]).mean(dim=-1)
+            usage_c = pi_c.mean(dim=(0, 1))  # (K_c,)
+            summary_c = torch.stack(
+                [H_c_per_mod.mean().detach(), margin_c_per_mod.mean().detach()]
+            ).cpu()
+            out["content_entropy"] = float(summary_c[0])
+            out["content_margin"] = float(summary_c[1])
+            out["content_usage"] = usage_c.detach().cpu().tolist()
+
+        # --- Freq pool: single broadcast tensor from FreqRouter --------------
+        fr = getattr(self, "freq_router", None)
+        pi_f = fr._last_gates if fr is not None else None
+        if pi_f is not None and pi_f.dim() == 2 and pi_f.shape[-1] > 1:
+            K_f = int(pi_f.shape[-1])
+            pf = pi_f.float().clamp_min(1e-12)
+            norm_f = math.log(K_f)
+            H_f = (-(pf * pf.log()).sum(dim=-1).mean() / norm_f).detach()
+            top2_f = pf.topk(2, dim=-1).values
+            margin_f = (top2_f[..., 0] - top2_f[..., 1]).mean().detach()
+            usage_f = pf.mean(dim=0).detach()
+            summary_f = torch.stack([H_f, margin_f]).cpu()
+            out["freq_entropy"] = float(summary_f[0])
+            out["freq_margin"] = float(summary_f[1])
+            out["freq_usage"] = usage_f.cpu().tolist()
+
+        self._chimera_router_stats_cache = out
         return out
 
     def capture_up_grad_stats(self) -> None:
@@ -1812,11 +2179,10 @@ class LoRANetwork(torch.nn.Module):
     def metrics(self, ctx: MetricContext) -> dict[str, float]:
         """Emit log-step keys owned by the LoRA network.
 
-        Covers ortho regularization, hydra balance loss, router stats, hydra
-        up-weight grad-norm diagnostics, and the per-expert warmup pick
-        distribution. Each block returns nothing if its driver is off
-        (``_ortho_reg_weight == 0``, ``_use_hydra == False``, etc.) so the
-        cost on inactive paths is one attr check.
+        Covers ortho regularization, hydra balance loss, router stats, and
+        hydra up-weight grad-norm diagnostics. Each block returns nothing
+        if its driver is off (``_ortho_reg_weight == 0``, ``_use_hydra ==
+        False``, etc.) so the cost on inactive paths is one attr check.
         """
         out: dict[str, float] = {}
 
@@ -1841,21 +2207,39 @@ class LoRANetwork(torch.nn.Module):
         if not getattr(self, "_use_hydra", False):
             return out
 
-        # Router diagnostics.
-        stats = self.get_router_stats()
-        if stats:
-            out["hydra/router_entropy"] = float(stats["entropy_mean"])
-            out["hydra/router_entropy_p05"] = float(stats["entropy_p05"])
-            out["hydra/router_entropy_p50"] = float(stats["entropy_p50"])
-            out["hydra/router_entropy_p95"] = float(stats["entropy_p95"])
-            out["hydra/router_margin"] = float(stats["margin_mean"])
-            for i, v in enumerate(stats.get("expert_usage", [])):
-                out[f"hydra/expert_usage/{i}"] = float(v)
-            for b, row in enumerate(stats.get("expert_usage_per_bucket", [])):
-                for i, v in enumerate(row):
-                    out[f"hydra/expert_usage_b{b}/{i}"] = float(v)
-            for b, c in enumerate(stats.get("bucket_counts", [])):
-                out[f"hydra/bucket_count/{b}"] = float(c)
+        # Router diagnostics. Chimera takes a different path because its
+        # ``_last_gate`` is a concat of two independent softmaxes, so the
+        # argmax-histogram aggregation under ``hydra/*`` is doubly misleading
+        # (sums to 1 instead of 2; biased toward whichever pool has higher
+        # init variance — see ``get_chimera_router_stats`` docstring).
+        if getattr(self, "_use_chimera_hydra", False):
+            cstats = self.get_chimera_router_stats()
+            if cstats:
+                if "content_entropy" in cstats:
+                    out["chimera/content_entropy"] = float(cstats["content_entropy"])
+                    out["chimera/content_margin"] = float(cstats["content_margin"])
+                    for i, v in enumerate(cstats.get("content_usage", [])):
+                        out[f"chimera/content_usage/{i}"] = float(v)
+                if "freq_entropy" in cstats:
+                    out["chimera/freq_entropy"] = float(cstats["freq_entropy"])
+                    out["chimera/freq_margin"] = float(cstats["freq_margin"])
+                    for i, v in enumerate(cstats.get("freq_usage", [])):
+                        out[f"chimera/freq_usage/{i}"] = float(v)
+        else:
+            stats = self.get_router_stats()
+            if stats:
+                out["hydra/router_entropy"] = float(stats["entropy_mean"])
+                out["hydra/router_entropy_p05"] = float(stats["entropy_p05"])
+                out["hydra/router_entropy_p50"] = float(stats["entropy_p50"])
+                out["hydra/router_entropy_p95"] = float(stats["entropy_p95"])
+                out["hydra/router_margin"] = float(stats["margin_mean"])
+                for i, v in enumerate(stats.get("expert_usage", [])):
+                    out[f"hydra/expert_usage/{i}"] = float(v)
+                for b, row in enumerate(stats.get("expert_usage_per_bucket", [])):
+                    for i, v in enumerate(row):
+                        out[f"hydra/expert_usage_b{b}/{i}"] = float(v)
+                for b, c in enumerate(stats.get("bucket_counts", [])):
+                    out[f"hydra/bucket_count/{b}"] = float(c)
 
         # Hydra up-weight grad norms by rank region and σ-band.
         up = self.get_up_grad_stats()
@@ -1892,12 +2276,6 @@ class LoRANetwork(torch.nn.Module):
                     ) ** 0.5 / (float(bv) ** 0.5 + eps)
             if "sp_total_band" in up:
                 _emit_per_band("sp_total", up["sp_total_band"])
-
-        # Per-expert pick distribution during expert warmup.
-        picks = self.get_expert_warmup_pick_stats()
-        if picks is not None:
-            for i, v in enumerate(picks):
-                out[f"hydra/expert_warmup_pick/{i}"] = float(v)
 
         # GlobalRouter stats — for stacked-experts + per-network routing
         # (plan2 §three-axis-config). Mirrors the per-Linear hydra keys but
@@ -2080,6 +2458,17 @@ class LoRANetwork(torch.nn.Module):
                 list(self.cfg.reg_lrs.items()) if self.cfg.reg_lrs is not None else []
             )
             router_scale = float(self.cfg.router_lr_scale)
+            # Chimera content-router multiplier (stacks on router_scale). The
+            # per-Linear ``router.*`` group below collects chimera's content
+            # router params (chimera modules own the only per-Linear
+            # ``router.*`` in their network). Off-by-default for non-chimera
+            # runs so plain Hydra is unaffected.
+            content_router_scale = (
+                float(self.cfg.content_router_lr_scale)
+                if getattr(self.cfg, "use_chimera_hydra", False)
+                else 1.0
+            )
+            router_lr_mult = router_scale * content_router_scale
 
             def _is_router_param(pname: str) -> bool:
                 # named_parameters() yields top-level names like "router.weight"
@@ -2153,7 +2542,7 @@ class LoRANetwork(torch.nn.Module):
                             else reg_lr
                         )
                     elif key == "router":
-                        param_data["lr"] = reg_lr * router_scale
+                        param_data["lr"] = reg_lr * router_lr_mult
                     else:
                         param_data["lr"] = reg_lr
                     if (
@@ -2181,7 +2570,7 @@ class LoRANetwork(torch.nn.Module):
                     if key == "plus":
                         param_data["lr"] = lr * loraplus_ratio
                     elif key == "router":
-                        param_data["lr"] = lr * router_scale
+                        param_data["lr"] = lr * router_lr_mult
                     else:
                         param_data["lr"] = lr
                 if (
@@ -2289,6 +2678,27 @@ class LoRANetwork(torch.nn.Module):
                         f"({router_scale}x of unet_lr={base_lr})"
                     )
 
+        # ChimeraHydra FreqRouter mirrors the GlobalRouter param-group
+        # treatment. Same router_lr_scale convention so a single knob tunes
+        # both router families.
+        if getattr(self, "freq_router", None) is not None:
+            fr_params = list(self.freq_router.parameters())
+            if len(fr_params) > 0:
+                router_scale = float(self.cfg.router_lr_scale)
+                freq_scale = float(self.cfg.freq_router_lr_scale)
+                base_lr = unet_lr if unet_lr is not None else default_lr
+                if base_lr is None or base_lr == 0:
+                    logger.info("FreqRouter: no base LR, skipping param group")
+                else:
+                    fr_lr = float(base_lr) * router_scale * freq_scale
+                    all_params.append({"params": fr_params, "lr": fr_lr})
+                    lr_descriptions.append("chimera freq router")
+                    logger.info(
+                        f"ChimeraHydra FreqRouter param group: lr={fr_lr:.2e} "
+                        f"({router_scale}x router_lr_scale × {freq_scale}x "
+                        f"freq_router_lr_scale of unet_lr={base_lr})"
+                    )
+
         return all_params, lr_descriptions
 
     def enable_gradient_checkpointing(self):
@@ -2351,6 +2761,32 @@ class LoRANetwork(torch.nn.Module):
             metadata["ss_network_module"] = "lycoris.kohya"
             metadata["ss_network_args"] = _json.dumps(
                 {"algo": "lokr", "factor": int(self.cfg.lokr_factor)}
+            )
+
+        # ChimeraHydra: the pool split is the only non-key info the loader
+        # cannot reconstruct from state_dict (P_bases shape encodes E = K_c +
+        # K_f but not the split point). FreqRouter weights survive as plain
+        # ``freq_router.*`` keys without dedicated handling. FEI/σ feature
+        # dims are also stamped so the loader can re-size the freq router
+        # input — they live outside the standard ``router_source`` flow
+        # (chimera uses BOTH simultaneously).
+        if self.cfg.use_chimera_hydra:
+            metadata["ss_use_chimera_hydra"] = "true"
+            metadata["ss_num_experts_content"] = str(int(self.cfg.num_experts_content))
+            metadata["ss_num_experts_freq"] = str(int(self.cfg.num_experts_freq))
+            metadata["ss_chimera_fei_feature_dim"] = str(int(self.cfg.fei_feature_dim))
+            metadata["ss_chimera_sigma_feature_dim"] = str(
+                int(self.cfg.sigma_feature_dim)
+            )
+            metadata["ss_chimera_fei_sigma_low_div"] = str(
+                float(self.cfg.fei_sigma_low_div)
+            )
+            # FreqRouter input LN flag. Parameterless LN leaves no tensor
+            # footprint in the state_dict, so the loader can't sniff it from
+            # weights — has to come from metadata. Default-off on rebuild
+            # when absent preserves pre-LN checkpoint inference.
+            metadata["ss_chimera_freq_router_layer_norm"] = (
+                "true" if self.cfg.freq_router_layer_norm else "false"
             )
 
         state_dict = self.state_dict()

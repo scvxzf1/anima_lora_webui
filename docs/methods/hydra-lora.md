@@ -40,15 +40,15 @@ Use the **Anima Adapter Loader** node (`custom_nodes/comfyui-hydralora/`), which
 
 ## Orthogonalized experts — fallback behavior
 
-The `OrthoHydraLoRAExpModule` default (both `use_ortho = true` and `use_hydra = true`) is the structural deadlock fix described in `docs/structure/hydralora.md` §5. One operational detail worth knowing:
+The `OrthoHydraLoRAModule` default (both `use_ortho = true` and `use_hydra = true`) is the structural deadlock fix described in `docs/structure/hydralora.md` §5. One operational detail worth knowing:
 
-**Fallback.** If `min(out_dim, in_dim) < num_experts · lora_dim` the disjoint SVD-slice partition can't fit, so `P_bases` degenerates to the legacy shared `P_basis` replicated `E` times (with a warning in the log). In that case all experts start identical (shared basis + zero `S_p` + zero `lambda_layer`); `expert_warmup_ratio` is the only symmetry-breaker — narrow-layer Hydra must not run with `expert_warmup_ratio = 0`. Implementation: `networks/lora_modules/ortho.py:OrthoHydraLoRAExpModule`.
+**Fallback.** If `min(out_dim, in_dim) < num_experts · lora_dim` the disjoint SVD-slice partition can't fit, so `P_bases` degenerates to the legacy shared `P_basis` replicated `E` times (with a warning in the log). In that case all experts start identical (shared basis + zero `S_p` + zero `lambda_layer`) and must diverge through training-time updates to `S_p` — if the router collapses they never will. Prefer to size `num_experts` so the partition fits. Implementation: `networks/lora_modules/ortho.py:OrthoHydraLoRAModule`.
 
 ## Composition with other variants
 
 - **T-LoRA** — timestep rank masking applies to `lora_down` (shared across experts), so it composes directly. HydraLoRA + T-LoRA is the configured default.
 - **DoRA** — currently not supported on HydraLoRA. Each expert would need its own magnitude vector, which is an unimplemented extension.
-- **OrthoLoRA** — supported via `OrthoHydraLoRAExpModule` (`networks/lora_modules/ortho.py`). Cayley-parameterized orthogonal `S_p` becomes per-expert (`(num_experts, r, r)`), `S_q` stays shared (matching the shared `lora_down` story). Activated by setting both `use_ortho = true` and `use_hydra = true` — this is the configured default.
+- **OrthoLoRA** — supported via `OrthoHydraLoRAModule` (`networks/lora_modules/ortho.py`). Cayley-parameterized orthogonal `S_p` becomes per-expert (`(num_experts, r, r)`), `S_q` stays shared (matching the shared `lora_down` story). Activated by setting both `use_ortho = true` and `use_hydra = true` — this is the configured default.
 - **Spectrum** — composes cleanly. Cached steps skip all transformer blocks entirely (router included), so hydra just runs fewer times.
 - **Modulation guidance** — orthogonal. Touches AdaLN only, outside the hydra-adapted Linears.
 
@@ -94,7 +94,7 @@ Applied:
 2. **Gate computed before T-LoRA mask / dropout** so the gate is identical at train and inference time.
 3. **Balance-loss weight pre-cut** from 0.01 → 0.001 in `lora.toml`, `gui-methods/hydralora.toml`, `gui-methods/hydralora_sigma.toml`, since with real router gradient restored the old weight would dominate.
 4. **Old-shape router refused at load.** `create_network_from_weights` raises when `router.weight.shape[1] != rank`, with a retrain message — pre-fix routers never learned anything, so there's no salvage path.
-5. **OrthoHydraLoRAExpModule mirrored** with the same change. Pool runs on the post-`Q_eff` `lx` but *before* λ scaling — λ is zero-init, so pooling post-λ would zero the router input at step 0 and freeze gradient.
+5. **OrthoHydraLoRAModule mirrored** with the same change. Pool runs on the post-`Q_eff` `lx` but *before* λ scaling — λ is zero-init, so pooling post-λ would zero the router input at step 0 and freeze gradient.
 6. **ComfyUI live-routing hook updated** to mirror the training-time forward exactly (rank-R RMS pool). See `custom_nodes/comfyui-hydralora/README.md` for node-side details.
 
 Exit criteria for the first retrain: `‖router.weight‖` at final step > 1.5× init (init for `(E=4, rank=32)` @ std=0.01 ≈ 0.113); median normalized entropy ∈ [0.6, 0.95]; mean dominant-top1 > 0.2; zero dead experts; `make test-hydra` quality ≥ non-hydra LoRA baseline; ComfyUI `Anima Adapter Loader` visually matches CLI at `strength_lora=1.0`.

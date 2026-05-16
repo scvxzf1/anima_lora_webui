@@ -1,0 +1,111 @@
+# ChimeraHydra — dual-pool additive routing for timestep-aware MoE.
+#
+# Proposal: docs/proposal/chimera_hydra.md
+# Module:   networks/lora_modules/chimera.py
+# Spec:     networks/__init__.py::NETWORK_REGISTRY["chimera_hydra"]
+#
+# Two pools of B-heads share one A per adapted Linear:
+#   • content pool (K_c=3) routed by the per-layer rank-R router on pooled lx.
+#   • freq    pool (K_f=3) routed by the network-level FreqRouter on
+#                          concat(FEI(z_t), sinusoidal-σ-features).
+# Pool outputs are added (no multiplicative gate, no σ-band overlap mask).
+# Specialization is enforced by router-input separation — the content router
+# can't see σ; the freq router can't see pooled text features.
+#
+# Single phase: both pools, both routers, and shared A train jointly under
+# the denoise loss + per-pool balance loss. T-LoRA's mask is applied to
+# the content branch only (the freq branch keeps full rank at every t).
+
+network_alpha = 32
+network_dim = 32
+
+
+learning_rate = 2e-5
+max_train_epochs = 4
+save_every_n_epochs = 4
+checkpointing_epochs = 4
+
+use_shuffled_caption_variants = true
+cache_llm_adapter_outputs = true
+caption_dropout_rate = 0.1
+
+# CMMD val (PE-Core MMD²) is the primary val signal.
+# use_cmmd = true
+
+logging_dir = "output/logs"
+log_with = "tensorboard"
+
+# -------------
+# Ortho-lora — Cayley-rotated SVD basis on the shared-A leg. ChimeraHydra
+# inherits the OrthoHydra parameterization; ``use_ortho=true`` is implicit
+# in the chimera module but kept here for the unrouted-fallback Linears
+# (router_targets-excluded modules become OrthoLoRA).
+
+use_ortho = true
+
+# -------------
+# Timestep mask (T-LoRA) — applied to the content branch only inside the
+# chimera forward. Freq branch sees full rank at every t.
+
+use_timestep_mask = true
+min_rank = 8
+alpha_rank_scale = 1.0
+
+# -------------
+# ChimeraHydra activation. The three-axis routing fields
+# (use_moe_style / route_per_layer / router_source) are auto-pinned to
+# ("shared_A", true, "input") by LoRANetworkCfg.from_kwargs when
+# use_chimera_hydra=true — they get stamped into save metadata so the
+# loader can re-instantiate the chimera without a parallel discrimination
+# path.
+
+use_chimera_hydra = true
+num_experts_content = 4
+num_experts_freq = 2
+
+# Outer balance multiplier is 1.0 so the per-pool weights below are the
+# only scalars on the balance loss. Default per-pool weights match the
+# OrthoHydra production value (~2e-5, see
+# [[project_hydra_balance_weight_ceiling]]).
+balance_loss_warmup_ratio = 0.2
+balance_loss_weight = 1.0
+balance_w_content = 2e-7
+balance_w_freq = 5e-7
+network_content_router_lr_scale = 10
+network_freq_router_lr_scale = 2.0
+
+# FreqRouter input. FEI = 2-band simplex (e_low, e_high). σ-features
+# disabled by default (sigma_feature_dim = 0), so the FreqRouter input
+# dim = 2. Flip sigma_feature_dim > 0 to add sinusoidal σ features (same
+# functional form as the DiT t_embedder); the proposal targets "F ≈ 32".
+
+fei_feature_dim = 2
+fei_sigma_low_div = 4.0
+sigma_feature_dim = 16
+
+# Per-modality LayerNorm on the FreqRouter input. Active only when BOTH
+# FEI and σ feature blocks are enabled (variance balance is the only job
+# — with σ off, LN either no-ops or destroys the 2-D FEI simplex). At
+# fei_feature_dim=2 + sigma_feature_dim=16 the σ block fan-in-overpowers
+# FEI ~8× at init; LN equalizes per-modality contribution variance so
+# the router can actually learn from FEI instead of routing on σ alone.
+# Parameterless (elementwise_affine=False) — no state_dict footprint.
+freq_router_layer_norm = true
+
+# FreqRouter init magnitude (N(0, std) on the output Linear). Non-zero is
+# load-bearing — zero-init would make the freq pool a fixed point of the
+# additive composition and the router weights would never escape zero.
+# See chimera.py::FreqRouter class docstring.
+freq_router_init_std = 0.02
+
+# Routing scope. Every Linear matched by this regex becomes a chimera
+# leaf; non-matching layers fall back to OrthoLoRA (single-pool Cayley,
+# no router). Same default as the other hydra variants.
+router_targets = ".*(mlp\\.layer[12])$"
+output_name = "anima_chimera"
+
+
+# -------------
+# REPA / VR-loss compositions are not gated. Both modify what shared A
+# learns, so co-train compat is unknown — sanity-check at bench before
+# stacking on top of chimera.

@@ -134,7 +134,12 @@ def train_one_fold(
         log_sigma2_init=float(np.log(max(sigma2_pop, 1e-6))),
         fei_k=fei_k,
     ).to(device)
-    opt = torch.optim.AdamW(head.parameters(), lr=lr, weight_decay=weight_decay)
+    opt = torch.optim.AdamW(
+        head.parameters(),
+        lr=lr,
+        weight_decay=weight_decay,
+        fused=(device.type == "cuda"),
+    )
 
     def to_dev(idx):
         base = (

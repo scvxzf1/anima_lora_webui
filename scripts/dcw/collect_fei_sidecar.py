@@ -329,7 +329,7 @@ def main() -> None:
     p.add_argument(
         "--dit",
         type=str,
-        default="models/diffusion_models/anima-preview3-base.safetensors",
+        default="models/diffusion_models/anima-base-v1.0.safetensors",
     )
     p.add_argument(
         "--text_encoder",

@@ -37,7 +37,7 @@ from gui import ROOT, _adapter_dirs, _safetensors_in
 from gui.i18n import t
 from gui.process import kill_process_tree, setup_kill_safe
 
-_DEFAULT_DIT = "models/diffusion_models/anima-preview3-base.safetensors"
+_DEFAULT_DIT = "models/diffusion_models/anima-base-v1.0.safetensors"
 
 
 class PickerLineEdit(QLineEdit):

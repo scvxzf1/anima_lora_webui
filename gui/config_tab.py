@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import importlib.util
 import re
 import sys
 from pathlib import Path
@@ -86,7 +87,7 @@ class ConfigTab(QWidget):
 
         # Top bar: method + save + preprocess + train + stop
         # The preset combo is intentionally absent — gui-methods variants
-        # (lora-8gb, lora_longer, etc.) already encode the hardware/perf knobs
+        # (lora-8gb, tlora, etc.) already encode the hardware/perf knobs
         # users used to pick via presets, and all saves now write directly to
         # the current variant file (no preset/variant routing distinction).
         # `methods=` lets callers restrict the picker (e.g. the standard tab
@@ -98,7 +99,7 @@ class ConfigTab(QWidget):
         top.addWidget(self._method_label)
         self.method_combo = QComboBox()
         self.method_combo.addItems(method_items)
-        # Size to the longest entry so names like "ortholora" / "hydralora"
+        # Size to the longest entry so names like "easycontrol" / "hydralora"
         # don't get visually clipped on first show. setMinimumContentsLength
         # reserves char-width room; the AdjustToContents policy keeps the
         # combo from shrinking back below that on re-layout.
@@ -122,7 +123,7 @@ class ConfigTab(QWidget):
         top.addWidget(self._variant_label)
         self.variant_combo = QComboBox()
         # Reserve room for the longest variant stem we ship (e.g.
-        # "tlora_ortho_reft", "hydralora_sigma", "custom/<name>"). Without
+        # "tlora_ortho_reft", "hydralora-8gb", "custom/<name>"). Without
         # this, Qt sizes to the shortest entry and the displayed text on
         # selection ends up elided with "…".
         self.variant_combo.setSizeAdjustPolicy(QComboBox.AdjustToContents)
@@ -369,9 +370,7 @@ class ConfigTab(QWidget):
                 notes = (note,)
 
                 lbl.clicked.connect(
-                    lambda _k=k, _h=help_text, _n=notes: self._show_explain(
-                        _k, _h, _n
-                    )
+                    lambda _k=k, _h=help_text, _n=notes: self._show_explain(_k, _h, _n)
                 )
                 form.addRow(lbl, w)
             box.setLayout(form)
@@ -601,7 +600,24 @@ class ConfigTab(QWidget):
             QMessageBox.warning(self, t("error"), t("new_variant_exists", name=name))
             return
         new_path.parent.mkdir(parents=True, exist_ok=True)
-        new_path.write_text("", encoding="utf-8")
+        # Seed from the currently-selected variant so the form has all
+        # method-specific knobs. network_dim / network_alpha only live in
+        # gui-methods/<variant>.toml — an empty seed silently drops them from
+        # the form, then sparse-diff Save persists nothing, then training
+        # falls back to argparse defaults (network_alpha=1) and produces a
+        # near-zero-scale adapter. Strip [variant] since it described the
+        # source family.
+        seed: dict[str, Any] = {}
+        current = self.variant_combo.currentText()
+        if current:
+            seed_path = variant_path(current)
+            if seed_path.is_file():
+                seed = _load(seed_path)
+                seed.pop("variant", None)
+        if seed:
+            _save(new_path, seed)
+        else:
+            new_path.write_text("", encoding="utf-8")
         # Rebuild combo and select the new entry. _reload fires via the
         # currentTextChanged signal once we set the index.
         method = self.method_combo.currentText()
@@ -635,6 +651,7 @@ class ConfigTab(QWidget):
 
         self.log.clear()
         self._reset_progress()
+        self._progress_tracker.mark_starting(t("starting"))
         self._log(f"> python {' '.join(args)}\n")
         self._running_mode = "test"
         self._proc.start(python, args)
@@ -682,6 +699,7 @@ class ConfigTab(QWidget):
 
         self.log.clear()
         self._reset_progress()
+        self._progress_tracker.mark_starting(t("starting"))
         self._log(
             f"> METHOD={variant} METHODS_SUBDIR=gui-methods python {' '.join(args)}\n"
         )
@@ -725,11 +743,17 @@ class ConfigTab(QWidget):
         self.new_variant_btn.setEnabled(False)
         self.log.clear()
         self._reset_progress()
+        # Indeterminate "busy" bar bridges the gap until the child's first
+        # tqdm line — without it, Windows reads the gray button + still GUI
+        # as "Not Responding" during the multi-second torch import.
+        self._progress_tracker.mark_starting(t("starting"))
         QApplication.processEvents()
 
-        try:
-            import accelerate.commands.accelerate_cli  # noqa: F401
-        except ImportError:
+        # find_spec, not import: actually importing accelerate transitively
+        # imports torch, which blocks the GUI thread for several seconds on
+        # Windows and freezes the marquee. find_spec just resolves the module
+        # location without executing it.
+        if importlib.util.find_spec("accelerate.commands.accelerate_cli") is None:
             QMessageBox.warning(self, t("error"), t("accelerate_not_found"))
             self._restore_train_idle()
             return

@@ -8,6 +8,7 @@ happens in the Config tab (these methods are listed there as variants).
 
 from __future__ import annotations
 
+import re
 import sys
 from pathlib import Path
 
@@ -38,6 +39,7 @@ from gui import (
 )
 from gui.i18n import t
 from gui.process import kill_process_tree, setup_kill_safe
+from gui.progress import TqdmProgressTracker, make_progress_bar
 
 LATENT_SUFFIX = "_anima.npz"
 TE_SUFFIX = "_anima_te.safetensors"
@@ -155,6 +157,14 @@ class _AdapterTab(QWidget):
 
         bar.addStretch()
         lay.addLayout(bar)
+
+        # Indeterminate-capable progress bar — animates as a marquee from
+        # subprocess launch until the child emits its first tqdm line, then
+        # switches to determinate mode. Keeps Windows from flagging the GUI
+        # as "Not Responding" during torch/accelerate import in the child.
+        self.progress = make_progress_bar()
+        self._progress_tracker = TqdmProgressTracker(self.progress)
+        lay.addWidget(self.progress)
 
         # ── Body: dataset browser on top, log on bottom ────────────
         vsplit = QSplitter(Qt.Vertical)
@@ -274,6 +284,8 @@ class _AdapterTab(QWidget):
             return
         self.log.clear()
         self._buf = ""
+        self._progress_tracker.reset()
+        self._progress_tracker.mark_starting(t("starting"))
         self.log.appendPlainText("> " + " ".join(argv))
         self._proc.start(argv[0], argv[1:])
         self.preprocess_btn.setEnabled(False)
@@ -291,15 +303,21 @@ class _AdapterTab(QWidget):
         data = bytes(self._proc.readAllStandardOutput()).decode(
             "utf-8", errors="replace"
         )
+        # Split on \n and \r so tqdm carriage-return updates feed the bar.
         self._buf += data
-        while "\n" in self._buf:
-            line, self._buf = self._buf.split("\n", 1)
-            self.log.appendPlainText(line)
+        parts = re.split(r"[\r\n]", self._buf)
+        self._buf = parts[-1]
+        for line in parts[:-1]:
+            if self._progress_tracker.feed(line):
+                continue
+            if line:
+                self.log.appendPlainText(line)
 
     def _on_finished(self, code: int, _status):
         if self._buf:
             self.log.appendPlainText(self._buf)
             self._buf = ""
+        self._progress_tracker.reset()
         self.log.appendPlainText(t("finished", code=code))
         self.preprocess_btn.setEnabled(True)
         self.stop_btn.setEnabled(False)

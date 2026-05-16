@@ -19,7 +19,7 @@ caption_dropout_rate = 0.1
 use_ortho = true
 
 use_timestep_mask = true
-min_rank = 1
+min_rank = 8
 alpha_rank_scale = 1.0
 
 add_reft = true
@@ -27,6 +27,14 @@ reft_dim = 32
 reft_alpha = 32
 reft_layers = "last_8"
 
-output_name = "anima_tlora"
+output_name = "anima_tlora_reft"
 
 blocks_to_swap = 0
+
+use_cmmd = false
+
+[variant]
+family = "reft"
+label = "T-LoRA + OrthoLoRA + ReFT"
+description = "Default recommended stack — OrthoLoRA + T-LoRA + per-block ReFT."
+order = 20

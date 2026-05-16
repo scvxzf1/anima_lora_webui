@@ -89,6 +89,7 @@ from torch.utils.checkpoint import checkpoint as torch_checkpoint
 
 from library.log import setup_logging
 from library.training.method_adapter import MethodAdapter, SetupCtx, StepCtx
+from networks.methods.base import AdapterNetworkBase
 
 setup_logging()
 logger = logging.getLogger(__name__)
@@ -250,7 +251,10 @@ def create_network_from_weights(
     return network, weights_sd
 
 
-class EasyControlNetwork(nn.Module):
+class EasyControlNetwork(AdapterNetworkBase):
+    network_module = "networks.methods.easycontrol"
+    network_spec = "easycontrol"
+
     def __init__(
         self,
         *,
@@ -684,77 +688,24 @@ class EasyControlNetwork(nn.Module):
 
     # ------------------------------------------------------------ trainer hooks
 
-    def set_multiplier(self, multiplier):
-        self.multiplier = multiplier
-
-    def is_mergeable(self):
-        return False
-
-    def enable_gradient_checkpointing(self):
-        # The two-stream design relies on the existing per-Block checkpoint
-        # wrappers (configured by ``Block.enable_gradient_checkpointing``).
-        # The patched ``Block.forward`` re-implements the same dispatch with
-        # the two-stream inner function as its target. No EasyControl-side
-        # state is needed here — kept as a no-op for trainer-side parity.
-        pass
-
-    def prepare_grad_etc(self, text_encoder, unet):
-        self.requires_grad_(True)
-
-    def on_epoch_start(self, text_encoder, unet):
-        self.train()
-
     def get_trainable_params(self):
         return list(self.parameters())
 
-    def prepare_optimizer_params_with_multiple_te_lrs(
-        self, text_encoder_lr, unet_lr, default_lr
-    ):
-        del text_encoder_lr
-        lr = unet_lr or default_lr
-        # Single param group keeps configuration simple. b_cond is included so
-        # it learns alongside the LoRA branches.
-        params = [{"params": list(self.parameters()), "lr": lr}]
-        descriptions = ["easycontrol"]
-        return params, descriptions
-
-    def prepare_optimizer_params(self, text_encoder_lr, unet_lr, default_lr=None):
-        params, _ = self.prepare_optimizer_params_with_multiple_te_lrs(
-            text_encoder_lr, unet_lr, default_lr
-        )
-        return params
-
     # ------------------------------------------------------------ I/O
 
-    def save_weights(self, file, dtype, metadata):
-        dtype = dtype or torch.bfloat16
-        sd = {k: v.detach().cpu().to(dtype) for k, v in self.state_dict().items()}
-
-        if os.path.splitext(file)[1] == ".safetensors":
-            from safetensors.torch import save_file
-            from library.training.hashing import precalculate_safetensors_hashes
-
-            if metadata is None:
-                metadata = {}
-            metadata["ss_network_module"] = "networks.methods.easycontrol"
-            metadata["ss_network_spec"] = "easycontrol"
-            metadata["ss_num_blocks"] = str(self.num_blocks)
-            metadata["ss_hidden_size"] = str(self.hidden_size)
-            metadata["ss_num_heads"] = str(self.num_heads)
-            metadata["ss_mlp_ratio"] = str(self.mlp_ratio)
-            metadata["ss_cond_lora_dim"] = str(self.cond_lora_dim)
-            metadata["ss_cond_lora_alpha"] = str(self.cond_lora_alpha)
-            metadata["ss_b_cond_init"] = str(self.b_cond_init)
-            metadata["ss_cond_scale"] = str(self.cond_scale)
-            metadata["ss_apply_ffn_lora"] = str(int(self.apply_ffn_lora))
-            metadata["ss_cond_token_count"] = str(self.cond_token_count)
-
-            model_hash, legacy_hash = precalculate_safetensors_hashes(sd, metadata)
-            metadata["sshs_model_hash"] = model_hash
-            metadata["sshs_legacy_hash"] = legacy_hash
-            save_file(sd, file, metadata)
-        else:
-            torch.save(sd, file)
+    def metadata_fields(self) -> dict[str, str]:
+        return {
+            "ss_num_blocks": str(self.num_blocks),
+            "ss_hidden_size": str(self.hidden_size),
+            "ss_num_heads": str(self.num_heads),
+            "ss_mlp_ratio": str(self.mlp_ratio),
+            "ss_cond_lora_dim": str(self.cond_lora_dim),
+            "ss_cond_lora_alpha": str(self.cond_lora_alpha),
+            "ss_b_cond_init": str(self.b_cond_init),
+            "ss_cond_scale": str(self.cond_scale),
+            "ss_apply_ffn_lora": str(int(self.apply_ffn_lora)),
+            "ss_cond_token_count": str(self.cond_token_count),
+        }
 
     def load_weights(self, file):
         if os.path.splitext(file)[1] == ".safetensors":

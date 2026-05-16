@@ -66,9 +66,22 @@ class TqdmProgressTracker:
 
     def reset(self) -> None:
         """Zero the bar, hide it, drop the rate anchor."""
+        self._bar.setRange(0, 100)
         self._bar.setValue(0)
         self._bar.setFormat("")
         self._bar.setVisible(False)
+        self._anchor = None
+
+    def mark_starting(self, label: str) -> None:
+        """Show the bar in indeterminate "busy" mode (Qt animates range 0-0).
+
+        Used between subprocess launch and the first tqdm line so Windows
+        doesn't flag the GUI as "Not Responding" during the multi-second
+        torch/accelerate import inside the child.
+        """
+        self._bar.setRange(0, 0)  # indeterminate / marquee
+        self._bar.setFormat(label)
+        self._bar.setVisible(True)
         self._anchor = None
 
     def feed(self, line: str) -> bool:
@@ -84,7 +97,10 @@ class TqdmProgressTracker:
         label = m.group("label").strip() or "progress"
         rate_str = self._update_rate(label, cur, tot)
         if tot > 0:
-            self._bar.setMaximum(tot)
+            # Leaving indeterminate mode: setRange(0, tot) clears the marquee
+            # animation; first determinate update replaces the "Starting…"
+            # label seamlessly.
+            self._bar.setRange(0, tot)
             self._bar.setValue(cur)
             self._bar.setFormat(f"{label}: {cur}/{tot} (%p%){rate_str}")
             if not self._bar.isVisible():

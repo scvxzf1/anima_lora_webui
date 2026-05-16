@@ -250,26 +250,27 @@ class MainWindow(QMainWindow):
         # Both sets stay alive across switches so subprocess state and log
         # buffers survive toggling between modes.
         # Standard set: the official adapter families — plain LoRA (with
-        # hardware variants), OrthoLoRA, T-LoRA (incl. T-LoRA + OrthoLoRA
-        # combo), HydraLoRA, and ReFT. Postfix and the image-conditioning
-        # adapters (IP-Adapter / EasyControl) live behind the experimental
-        # toggle.
+        # hardware variants), T-LoRA (stacked with OrthoLoRA by default, plus
+        # a low-VRAM sibling), HydraLoRA, and ReFT. Postfix and the
+        # image-conditioning adapters (IP-Adapter / EasyControl) live behind
+        # the experimental toggle.
         self.tabs = QTabWidget()
         self.tabs.addTab(
-            ConfigTab(methods=["lora", "ortholora", "tlora", "hydralora", "reft"]),
+            ConfigTab(methods=["lora", "tlora", "hydralora", "reft"]),
             t("tab_config"),
         )
         self.tabs.addTab(PreprocessingTab(), t("tab_preprocess"))
         self.tabs.addTab(ImageViewerTab(), t("tab_images"))
         self.tabs.addTab(MergeTab(), t("tab_merge"))
 
-        # Experimental set: Postfix + image-conditioning adapters. The first
-        # tab hosts a ConfigTab for Postfix. IP-Adapter and EasyControl have
-        # their own preprocess/dataset lifecycles, so they keep dedicated
-        # tabs.
+        # Experimental set: Postfix + FeRA + image-conditioning adapters. The
+        # first tab hosts a ConfigTab whose method picker exposes Postfix and
+        # FeRA (both LoRA-family but author-faithful research variants kept
+        # behind the experimental gate). IP-Adapter and EasyControl have their
+        # own preprocess/dataset lifecycles, so they keep dedicated tabs.
         self.experimental_tabs = QTabWidget()
         self.experimental_tabs.addTab(
-            ConfigTab(methods=["postfix"]),
+            ConfigTab(methods=["postfix", "fera", "chimera"]),
             t("tab_methods"),
         )
         self.experimental_tabs.addTab(IPAdapterTab(), t("tab_ip_adapter"))

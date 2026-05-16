@@ -33,3 +33,4 @@ logs
 .env
 .anima-update-backups
 node.zip
+_archive/

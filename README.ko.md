@@ -45,7 +45,7 @@
 | **OrthoLoRA** | SVD 파라미터화 + 직교성 정규화. 저장 시 일반 LoRA로 내보냄. | [psoft-integrated-ortholora.md](docs/methods/psoft-integrated-ortholora.md) |
 | **T-LoRA** | 타임스텝 의존 랭크 마스킹 — 고노이즈 구간은 저랭크, 저노이즈 구간은 풀 랭크. 마스크가 학습 전용이라 머지 결과는 비트 동일. | [timestep_mask.md](docs/methods/timestep_mask.md) |
 
-**사이드 바이 사이드** — 동일 프롬프트, `er_sde` 30 스텝, `cfg=4.0`, 1024². 각 LoRA는 rank 16, 2 에포크, 20% 서브셋, 학습 seed 42로 학습했고 추론 seed는 `{41, 42, 43}`. 재현은 `python scripts/bench_methods.py`.
+**사이드 바이 사이드** — 동일 프롬프트, `er_sde` 30 스텝, `cfg=4.0`, 1024². 각 LoRA는 rank 16, 2 에포크, 20% 서브셋, 학습 seed 42로 학습했고 추론 seed는 `{41, 42, 43}`. 재현은 `python archive/bench_methods.py`.
 
 |  | **LoRA** | **OrthoLoRA + T-LoRA** |
 |:---:|:---:|:---:|

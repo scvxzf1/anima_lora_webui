@@ -21,7 +21,7 @@ not by regularization" is the right shape:
    pipeline can route around. Both are gradient-pressure tools, not
    architectural constraints.
 
-2. **OrthoHydraLoRA succeeded with exactly this move.** `OrthoHydraLoRAExpModule`
+2. **OrthoHydraLoRA succeeded with exactly this move.** `OrthoHydraLoRAModule`
    (`networks/lora_modules/ortho.py:166`) replaced soft orthogonality
    regularization with a Cayley-parameterized rotation of *disjoint
    per-expert SVD-derived bases*. Per the docstring: "Because the SVD columns
@@ -345,7 +345,7 @@ Bench script lives at `bench/postfix_ortho/` per the
 ## Estimated cost
 
 Implementation: ~1 day (the Cayley parameterization mirrors
-`OrthoLoRAExpModule` almost line-for-line; the only postfix-specific
+`OrthoLoRAModule` almost line-for-line; the only postfix-specific
 work is the basis-choice surface and save/load round-trip for the new
 keys).
 

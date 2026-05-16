@@ -331,6 +331,7 @@ def run_validation(
             else:
                 if model.blocks_to_swap:
                     model.prepare_block_swap_before_forward()
+                torch.compiler.cudagraph_mark_step_begin()
                 with torch.autocast("cuda", dtype=dtype):
                     teacher_pred = model.forward_mini_train_dit(
                         noisy,
@@ -339,11 +340,13 @@ def run_validation(
                         padding_mask=padding_mask,
                         skip_pooled_text_proj=True,
                     )
+                teacher_pred = teacher_pred.clone()
                 if teacher_cache is not None:
                     teacher_cache.put(i, s_idx, teacher_pred)
 
             if model.blocks_to_swap:
                 model.prepare_block_swap_before_forward()
+            torch.compiler.cudagraph_mark_step_begin()
             with torch.autocast("cuda", dtype=dtype):
                 student_pred = model.forward_mini_train_dit(
                     noisy,
@@ -382,7 +385,7 @@ def main():
     parser.add_argument(
         "--dit_path",
         type=str,
-        default="models/diffusion_models/anima-preview3-base.safetensors",
+        default="models/diffusion_models/anima-base-v1.0.safetensors",
     )
     parser.add_argument(
         "--output_path",
@@ -390,8 +393,8 @@ def main():
         default="output/ckpt/pooled_text_proj.safetensors",
         help="Where to save the trained projection weights",
     )
-    parser.add_argument("--iterations", type=int, default=30000)
-    parser.add_argument("--lr", type=float, default=1e-5)
+    parser.add_argument("--iterations", type=int, default=25000)
+    parser.add_argument("--lr", type=float, default=2e-5)
     parser.add_argument("--batch_size", type=int, default=1, help="Batch size")
     parser.add_argument(
         "--blocks_to_swap",
@@ -400,7 +403,7 @@ def main():
         help="Number of transformer blocks to offload to CPU",
     )
     parser.add_argument(
-        "--save_every", type=int, default=500, help="Save checkpoint every N iterations"
+        "--save_every", type=int, default=2500, help="Save checkpoint every N iterations"
     )
     parser.add_argument(
         "--attn_mode",
@@ -440,7 +443,7 @@ def main():
         "--compile_mode",
         type=str,
         choices=["blocks", "full"],
-        default="full",
+        default="blocks",
         help="'blocks': compile each block._forward (default). "
         "'full': compile the constant-shape _run_blocks stack (one CUDAGraph "
         "across buckets — requires --no_grad_ckpt and --blocks_to_swap 0).",
@@ -448,7 +451,7 @@ def main():
     parser.add_argument(
         "--compile_inductor_mode",
         type=str,
-        default="reduce-overhead",
+        default="",
         help="Inductor preset, e.g. 'reduce-overhead' for CUDAGraphs",
     )
     parser.add_argument(
@@ -466,7 +469,7 @@ def main():
     parser.add_argument(
         "--warmup",
         type=float,
-        default=0.05,
+        default=0.02,
         help="Warmup steps: int >= 1 for absolute steps, float < 1 for ratio of iterations",
     )
     parser.add_argument(
@@ -514,7 +517,7 @@ def main():
     parser.add_argument(
         "--validate_every_n_steps",
         type=int,
-        default=500,
+        default=2500,
         help="Run validation every N optimizer steps (only if validation_split>0)",
     )
     parser.add_argument(
@@ -697,7 +700,11 @@ def main():
     )
 
     # --- Optimizer ---
-    optimizer = torch.optim.AdamW(model.pooled_text_proj.parameters(), lr=args.lr)
+    optimizer = torch.optim.AdamW(
+        model.pooled_text_proj.parameters(),
+        lr=args.lr,
+        fused=torch.cuda.is_available(),
+    )
 
     # Warmup + cosine annealing
     warmup_steps = (
@@ -915,6 +922,8 @@ def main():
             else:
                 if model.blocks_to_swap:
                     model.prepare_block_swap_before_forward()
+                # Fresh CUDA-graph epoch so teacher_pred outlives the student call.
+                torch.compiler.cudagraph_mark_step_begin()
                 with torch.no_grad(), torch.autocast("cuda", dtype=dtype):
                     teacher_pred = model.forward_mini_train_dit(
                         noisy_input,
@@ -923,6 +932,9 @@ def main():
                         padding_mask=padding_mask,
                         skip_pooled_text_proj=True,
                     )
+                # Detach from the static buffer in case a future caller adds
+                # a third compiled-fn invocation in the same step.
+                teacher_pred = teacher_pred.clone()
                 if teacher_cache is not None:
                     for i in range(B):
                         if cached_list[i] is None:
@@ -936,6 +948,7 @@ def main():
             if model.blocks_to_swap:
                 model.prepare_block_swap_before_forward()
             uncond_crossattn = torch.zeros_like(crossattn_emb)
+            torch.compiler.cudagraph_mark_step_begin()
             with torch.autocast("cuda", dtype=dtype):
                 student_pred = model.forward_mini_train_dit(
                     noisy_input,

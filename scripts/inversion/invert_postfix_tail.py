@@ -32,7 +32,7 @@ expensive SVD over the corpus.
 Usage::
 
     uv run python scripts/inversion/invert_postfix_tail.py \\
-        --dit models/diffusion_models/anima-preview3-base.safetensors \\
+        --dit models/diffusion_models/anima-base-v1.0.safetensors \\
         --image_dir post_image_dataset/lora \\
         --num_images 30 --shuffle --seed 0 \\
         --K 48 --basis svd_te \\
@@ -87,7 +87,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument(
         "--blocks_to_swap",
         type=int,
-        default=18,
+        default=16,
         help="Number of transformer blocks to swap to CPU (0 = none, "
         "<0 = gradient checkpointing instead)",
     )
@@ -96,6 +96,28 @@ def parse_args() -> argparse.Namespace:
         type=str,
         default=None,
         help="Device (default: cuda if available)",
+    )
+    p.add_argument(
+        "--compile_blocks",
+        action="store_true",
+        default=True,
+        help="torch.compile each transformer block's _forward (default on). "
+        "Incompatible with block swap — silently skipped when "
+        "--blocks_to_swap > 0.",
+    )
+    p.add_argument(
+        "--no_compile_blocks",
+        dest="compile_blocks",
+        action="store_false",
+        help="Disable torch.compile (run eager). Use for debugging or when "
+        "compile time outweighs runtime gain.",
+    )
+    p.add_argument(
+        "--compile_inductor_mode",
+        type=str,
+        default=None,
+        help="Inductor preset passed through to torch.compile(mode=...). "
+        "e.g. 'reduce-overhead' for per-block CUDAGraphs. None = inductor default.",
     )
 
     # Data
@@ -199,12 +221,15 @@ def parse_args() -> argparse.Namespace:
         "--timesteps_per_step",
         type=int,
         default=1,
-        help="Random sigmas sampled per micro-batch (× grad_accum per update)",
+        help="Extra σ samples per optimizer update — multiplies into grad_accum "
+        "(total micro-iterations = grad_accum × timesteps_per_step). Each "
+        "micro-iteration is a separate forward at batch=1, so raising this "
+        "trades wall-time for variance reduction without growing VRAM.",
     )
     p.add_argument(
         "--sigma_sampling",
         type=str,
-        default="uniform",
+        default="sigmoid",
         choices=["uniform", "sigmoid"],
     )
     p.add_argument("--sigmoid_scale", type=float, default=1.0)
@@ -214,6 +239,14 @@ def parse_args() -> argparse.Namespace:
         default=0.0,
         help="Lower bound for sampled sigmas (P-GRAFT-style low-σ skip — proposal "
         "calls out sigma_min ∈ {0, 0.1, 0.2} as a relevant sweep here)",
+    )
+    p.add_argument(
+        "--sigma_max",
+        type=float,
+        default=0.25,
+        help="Upper bound for sampled sigmas. Set < 1.0 to restrict supervision "
+        "to low-σ steps (e.g. 0.25), where the FM target carries more per-image "
+        "identity. Must be > --sigma_min.",
     )
     p.add_argument(
         "--lambda_zero",
@@ -230,7 +263,38 @@ def parse_args() -> argparse.Namespace:
         "archive script's 0.149 default is here as a documented ablation.",
     )
     p.add_argument("--seed", type=int, default=0, help="Per-image RNG seed")
-    p.add_argument("--log_every", type=int, default=10)
+    p.add_argument("--log_every", type=int, default=5)
+
+    # Variance-reduced FM (AsymFlow §5.2 control variate, adapted per-image)
+    p.add_argument(
+        "--vr",
+        dest="vr_enabled",
+        action="store_true",
+        help="Use VR-FM loss: per microstep, blend in a no-grad reference forward "
+        "at s=0 on FEI-low-passed latents and supervise (y + λ·z)² with λ "
+        "estimated online via EMA. (σ, noise, z) tuples are pre-sampled to a "
+        "pool of --vr_pool_size to amortize the extra reference forwards.",
+    )
+    p.add_argument(
+        "--vr_pool_size",
+        type=int,
+        default=32,
+        help="VR pool size — # of (σ, noise, z) tuples precomputed per image",
+    )
+    p.add_argument(
+        "--vr_lambda_beta",
+        type=float,
+        default=0.2,
+        help="EMA β for λ. Training default is 0.01; per-image inversion bumps "
+        "this to ~0.2 because the horizon is only ~50 microsteps per image.",
+    )
+    p.add_argument(
+        "--vr_fei_sigma_low_div",
+        type=float,
+        default=4.0,
+        help="FEI low-pass divisor (σ_low = min(H_lat, W_lat) / div). Matches "
+        "FeRA's bench-validated 8.0 default — aspect-invariant on Anima.",
+    )
 
     # Output
     p.add_argument(
@@ -333,15 +397,20 @@ def _load_anima(args, device: torch.device):
             anima.enable_gradient_checkpointing()
             for block in anima.blocks:  # type: ignore[union-attr]
                 block.train()
-        # Per-block compile against the 4096-token bucket. Pinning the token
-        # count once means every aspect bucket in the run traces through the
-        # same shape — no Dynamo recompile when we move from a 720×1440 image
-        # to a 1024×1024 one. Compiles block._forward (not .forward) so the
-        # unsloth_checkpoint @torch._disable_dynamo decorator doesn't blow
-        # the trace under grad_ckpt — same contract as train.py's
-        # compile_mode='blocks' path.
-        anima.set_static_token_count(4096)
-        anima.compile_blocks(backend="inductor")
+        if args.compile_blocks:
+            # Per-block compile against the 4096-token bucket. Pinning the token
+            # count once means every aspect bucket in the run traces through the
+            # same shape — no Dynamo recompile when we move from a 720×1440 image
+            # to a 1024×1024 one. Compiles block._forward (not .forward) so the
+            # unsloth_checkpoint @torch._disable_dynamo decorator doesn't blow
+            # the trace under grad_ckpt — same contract as train.py's
+            # compile_mode='blocks' path.
+            anima.set_static_token_count(4096)
+            anima.compile_blocks(
+                backend="inductor", mode=args.compile_inductor_mode
+            )
+        else:
+            logger.info("torch.compile disabled (--no_compile_blocks)")
     return anima
 
 
@@ -384,9 +453,14 @@ def main() -> None:
         sigma_sampling=args.sigma_sampling,
         sigmoid_scale=args.sigmoid_scale,
         sigma_min=args.sigma_min,
+        sigma_max=args.sigma_max,
         lambda_zero=args.lambda_zero,
         init_std=args.init_std,
         log_every=args.log_every,
+        vr_enabled=args.vr_enabled,
+        vr_pool_size=args.vr_pool_size,
+        vr_lambda_beta=args.vr_lambda_beta,
+        vr_fei_sigma_low_div=args.vr_fei_sigma_low_div,
     )
 
     manifest = {
@@ -409,10 +483,17 @@ def main() -> None:
         "sigma_sampling": args.sigma_sampling,
         "sigmoid_scale": args.sigmoid_scale,
         "sigma_min": args.sigma_min,
+        "sigma_max": args.sigma_max,
         "lambda_zero": args.lambda_zero,
         "init_std": args.init_std,
+        "vr_enabled": args.vr_enabled,
+        "vr_pool_size": args.vr_pool_size,
+        "vr_lambda_beta": args.vr_lambda_beta,
+        "vr_fei_sigma_low_div": args.vr_fei_sigma_low_div,
         "dit": args.dit,
         "attn_mode": args.attn_mode,
+        "compile_blocks": args.compile_blocks,
+        "compile_inductor_mode": args.compile_inductor_mode,
         "results": [],
     }
 
@@ -460,6 +541,7 @@ def main() -> None:
                 "ss_lambda_zero": str(args.lambda_zero),
                 "ss_init_std": str(args.init_std),
                 "ss_sigma_min": str(args.sigma_min),
+                "ss_sigma_max": str(args.sigma_max),
                 "ss_seed": str(args.seed),
                 "ss_basis_kind": args.basis,
             },
@@ -473,6 +555,7 @@ def main() -> None:
                 "best_fm_loss": result.best_fm_loss,
                 "best_step": result.best_step,
                 "final_s_l2": result.final_s_l2,
+                "final_lambda_ema": result.final_lambda_ema,
                 "s_path": str(s_path.relative_to(out_root)),
                 "loss_path": str(loss_path.relative_to(out_root)),
             }

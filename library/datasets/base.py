@@ -29,6 +29,7 @@ from library.datasets.image_utils import (
     validate_interpolation_fn,
     IMAGE_TRANSFORMS,
     glob_images,
+    _assert_unique_stems,
     is_disk_cached_latents_is_expected,
     load_image,
     trim_and_resize_if_required,
@@ -1677,6 +1678,7 @@ class DreamBoothDataset(BaseDataset):
         validation_split: float,
         validation_seed: Optional[int],
         resize_interpolation: Optional[str],
+        validation_split_num: int = 0,
     ) -> None:
         super().__init__(
             resolution, network_multiplier, debug_dataset, resize_interpolation
@@ -1691,6 +1693,7 @@ class DreamBoothDataset(BaseDataset):
         self.is_training_dataset = is_training_dataset
         self.validation_seed = validation_seed
         self.validation_split = validation_split
+        self.validation_split_num = int(validation_split_num or 0)
 
         self.enable_bucket = enable_bucket
         if self.enable_bucket:
@@ -1761,16 +1764,27 @@ class DreamBoothDataset(BaseDataset):
                     meta["resolution"] for meta in metas.values()
                 ]
             else:
-                img_paths = glob_images(subset.image_dir, "*")
+                recursive = getattr(subset, "recursive", False)
+                img_paths = glob_images(subset.image_dir, "*", recursive=recursive)
+                if recursive:
+                    _assert_unique_stems(img_paths, source_label=subset.image_dir)
                 sizes: List[Optional[Tuple[int, int]]] = [None] * len(img_paths)
 
                 strategy = LatentsCachingStrategy.get_strategy()
                 if strategy is not None:
                     logger.info("get image size from name of cache files")
 
-                    npz_paths = glob.glob(
-                        os.path.join(subset.image_dir, "*" + strategy.cache_suffix)
-                    )
+                    if recursive:
+                        npz_paths = glob.glob(
+                            os.path.join(
+                                subset.image_dir, "**", "*" + strategy.cache_suffix
+                            ),
+                            recursive=True,
+                        )
+                    else:
+                        npz_paths = glob.glob(
+                            os.path.join(subset.image_dir, "*" + strategy.cache_suffix)
+                        )
                     npz_paths.sort(key=lambda item: item.rsplit("_", maxsplit=2)[0])
                     npz_path_index = 0
 
@@ -1806,7 +1820,7 @@ class DreamBoothDataset(BaseDataset):
                         f"set image size from cache files: {size_set_count}/{len(img_paths)}"
                     )
 
-            if self.validation_split > 0.0:
+            if self.validation_split > 0.0 or self.validation_split_num > 0:
                 if subset.is_reg is True:
                     if self.is_training_dataset is False:
                         img_paths = []
@@ -1818,9 +1832,20 @@ class DreamBoothDataset(BaseDataset):
                         self.is_training_dataset,
                         self.validation_split,
                         self.validation_seed,
+                        validation_split_num=self.validation_split_num,
                     )
 
-            if subset.sample_ratio < 1.0 and len(img_paths) > 0:
+            # sample_ratio shrinks only the training pool. The validation pool
+            # is pinned by validation_split_num / validation_split — applying
+            # sample_ratio there would silently reduce the user-requested val
+            # count (e.g. PRESET=half + validation_split_num=16 → 8 items),
+            # which is surprising for CMMD where val size controls estimator
+            # variance.
+            if (
+                subset.sample_ratio < 1.0
+                and len(img_paths) > 0
+                and self.is_training_dataset
+            ):
                 sample_count = max(1, int(len(img_paths) * subset.sample_ratio))
                 dataset = list(zip(img_paths, sizes))
                 prevstate = random.getstate()

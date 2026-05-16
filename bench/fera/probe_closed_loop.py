@@ -197,7 +197,7 @@ def main() -> None:
     p = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
-    p.add_argument("--dit", default="models/diffusion_models/anima-preview3-base.safetensors")
+    p.add_argument("--dit", default="models/diffusion_models/anima-base-v1.0.safetensors")
     p.add_argument("--text_encoder", default="models/text_encoders/qwen_3_06b_base.safetensors")
     p.add_argument(
         "--adapter",

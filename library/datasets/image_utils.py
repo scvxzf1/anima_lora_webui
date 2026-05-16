@@ -483,20 +483,58 @@ def is_disk_cached_latents_is_expected(
     return True
 
 
-def glob_images(directory, base="*"):
+def glob_images(directory, base="*", recursive: bool = False):
     img_paths = []
-    for ext in IMAGE_EXTENSIONS:
-        if base == "*":
+    if recursive and base == "*":
+        # Walk subfolders. Stems must remain unique across the whole tree
+        # because cache filenames are stem-keyed and live flat in cache_dir.
+        # _assert_unique_stems below enforces this once at the call site.
+        for ext in IMAGE_EXTENSIONS:
             img_paths.extend(
-                glob.glob(os.path.join(glob.escape(directory), base + ext))
+                glob.glob(
+                    os.path.join(glob.escape(directory), "**", "*" + ext),
+                    recursive=True,
+                )
             )
-        else:
-            img_paths.extend(
-                glob.glob(glob.escape(os.path.join(directory, base + ext)))
-            )
+    else:
+        for ext in IMAGE_EXTENSIONS:
+            if base == "*":
+                img_paths.extend(
+                    glob.glob(os.path.join(glob.escape(directory), base + ext))
+                )
+            else:
+                img_paths.extend(
+                    glob.glob(glob.escape(os.path.join(directory, base + ext)))
+                )
     img_paths = list(set(img_paths))
     img_paths.sort()
     return img_paths
+
+
+def _assert_unique_stems(img_paths, source_label: str = "directory") -> None:
+    """Raise if two image paths share a stem (case-insensitive on Windows).
+
+    Cache filenames are stem-keyed and live flat in cache_dir, so duplicate
+    stems across subfolders would silently overwrite each other.
+    """
+    seen: dict = {}
+    collisions: dict = {}
+    for p in img_paths:
+        stem = os.path.splitext(os.path.basename(p))[0]
+        if stem in seen:
+            collisions.setdefault(stem, [seen[stem]]).append(p)
+        else:
+            seen[stem] = p
+    if collisions:
+        lines = [
+            f"  stem '{stem}': " + ", ".join(paths)
+            for stem, paths in sorted(collisions.items())
+        ]
+        raise ValueError(
+            f"Duplicate image stems found while recursing {source_label}. "
+            f"Cache filenames are stem-keyed; please rename so every image has "
+            f"a unique stem across all subfolders.\n" + "\n".join(lines)
+        )
 
 
 def glob_images_pathlib(dir_path, recursive):

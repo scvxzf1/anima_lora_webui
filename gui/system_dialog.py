@@ -38,7 +38,7 @@ _MODEL_GROUPS: list[tuple[str, str, list[str]]] = [
         "anima",
         "model_anima",
         [
-            "models/diffusion_models/anima-preview3-base.safetensors",
+            "models/diffusion_models/anima-base-v1.0.safetensors",
             "models/text_encoders/qwen_3_06b_base.safetensors",
             "models/vae/qwen_image_vae.safetensors",
         ],
@@ -297,6 +297,10 @@ class UpdateDialog(_StreamingDialog):
     def __init__(self, parent=None):
         self._check_thread: _UpdateCheckThread | None = None
         self._latest_url: str = ""
+        # Track which kind of run is in flight so _after_finished can show
+        # the right post-run feedback (success toast vs dry-run summary vs
+        # failure warning) instead of a buried "Finished (exit code 0)".
+        self._last_run_kind: str | None = None  # "real" | "dry" | None
         super().__init__(t("update_title"), parent)
         self._kick_check()
 
@@ -361,9 +365,7 @@ class UpdateDialog(_StreamingDialog):
         # Dry-run uses --keep-conflicts: stdin isn't a TTY under QProcess, so
         # without a non-interactive flag the script would block on input().
         self.dry_btn = QPushButton(t("update_dry_run"))
-        self.dry_btn.clicked.connect(
-            lambda: self._run(["update", "--dry-run", "--keep-conflicts"])
-        )
+        self.dry_btn.clicked.connect(self._start_dry_run)
         row.addWidget(self.dry_btn)
 
         # Two run buttons make the conflict policy explicit instead of an
@@ -441,6 +443,10 @@ class UpdateDialog(_StreamingDialog):
         if self._latest_url:
             QDesktopServices.openUrl(QUrl(self._latest_url))
 
+    def _start_dry_run(self) -> None:
+        self._last_run_kind = "dry"
+        self._run(["update", "--dry-run", "--keep-conflicts"])
+
     def _confirm_and_run(self, conflict_flag: str):
         ok = QMessageBox.question(
             self,
@@ -450,7 +456,45 @@ class UpdateDialog(_StreamingDialog):
             QMessageBox.No,
         )
         if ok == QMessageBox.Yes:
+            self._last_run_kind = "real"
             self._run(["update", conflict_flag])
+
+    def _after_finished(self, exit_code: int) -> None:
+        # Promote the post-run state into the persistent UI instead of leaving
+        # it buried in the streaming log. Three cases:
+        #   - real run, exit 0  → refresh version label from the new manifest
+        #                          + flip status badge to a bright "Updated →
+        #                          vX.Y (relaunch)" + show a success modal so
+        #                          the user can't miss it.
+        #   - dry run, exit 0   → show a "dry run completed" modal pointing
+        #                          back at the log.
+        #   - any non-zero      → show a warning modal with the exit code.
+        kind = self._last_run_kind
+        self._last_run_kind = None
+        if exit_code != 0:
+            QMessageBox.warning(
+                self,
+                t("update_failed_title"),
+                t("update_failed_message", code=exit_code),
+            )
+            return
+        if kind == "dry":
+            QMessageBox.information(
+                self,
+                t("update_dryrun_done_title"),
+                t("update_dryrun_done_message"),
+            )
+            return
+        if kind == "real":
+            new_version = _load_local_version() or "?"
+            self.current_lbl.setText(t("update_current_version", v=new_version))
+            self.status_lbl.setText(t("update_success_badge", v=new_version))
+            self.status_lbl.setStyleSheet("color:#4ade80;font-weight:bold;")
+            QMessageBox.information(
+                self,
+                t("update_success_title"),
+                t("update_success_message", v=new_version),
+            )
 
     def _set_busy(self, busy: bool) -> None:
         super()._set_busy(busy)

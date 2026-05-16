@@ -41,7 +41,6 @@ from library.training.method_adapter import (
     MethodAdapter,
     SetupCtx,
     StepCtx,
-    ValidationBaseline,
     resolve_adapters,
 )
 from library.config.io import (
@@ -92,6 +91,17 @@ from library.training import (
     verify_training_args,
 )
 from library.training.loop import build_loop_state, run_training_loop
+from library.training.cmmd import (
+    cmmd_from_pools,
+    load_reference_features,
+    pool_and_normalize,
+    resolve_pe_sidecar,
+)
+from library.training.router_conditioning import apply_router_conditioning
+from library.training.text_conds import prepare_text_conds
+from library.training.forward_kwargs import build_forward_kwargs
+from library.training.inversion_forward import compute_inversion_func_loss
+from library.training.vr_forward import run_vr_reference_forward
 from library.log import setup_logging, add_logging_arguments
 
 setup_logging()
@@ -111,6 +121,11 @@ class AnimaTrainer:
         # here in ``get_noise_pred_and_target`` and consumed by the loss
         # composer in ``_process_batch_inner``.
         self._extras_for_step: dict = {}
+        # EMA λ state, mutated by the flow_matching_vr loss handler each step.
+        # The "frozen reference" for the AsymFlow §5.2 control variate is just
+        # the trainable DiT with ``network.set_multiplier(0)`` — see the VR
+        # block in ``get_noise_pred_and_target``.
+        self._vr_state: dict = {"lambda_ema": None}
 
     # region logging helpers
 
@@ -139,6 +154,14 @@ class AnimaTrainer:
             logs["norm/avg_grad_norm"] = mean_grad_norm
         if mean_combined_norm is not None:
             logs["norm/avg_combined_norm"] = mean_combined_norm
+
+        if float(getattr(args, "vr_loss_weight", 0.0) or 0.0) > 0.0:
+            lambda_ema = self._vr_state.get("lambda_ema")
+            lambda_batch = self._vr_state.get("lambda_batch")
+            if isinstance(lambda_ema, float):
+                logs["vr/lambda_ema"] = lambda_ema
+            if isinstance(lambda_batch, float):
+                logs["vr/lambda_batch"] = lambda_batch
 
         lrs = lr_scheduler.get_last_lr()
         for i, lr in enumerate(lrs):
@@ -509,6 +532,17 @@ class AnimaTrainer:
             logger.info(f"enable block swap: blocks_to_swap={args.blocks_to_swap}")
             model.enable_block_swap(args.blocks_to_swap, accelerator.device)
 
+        # Variance-reduced FM loss: the "frozen reference" is the trainable
+        # DiT itself with ``network.set_multiplier(0)`` during the no-grad
+        # forward — works because base weights are frozen and LoRA-family
+        # adapters are additive. See ``get_noise_pred_and_target`` for the
+        # bypass. Saves ~5 GB VRAM vs holding a second DiT copy.
+        if float(getattr(args, "vr_loss_weight", 0.0) or 0.0) > 0.0:
+            logger.info(
+                f"VR loss enabled (vr_loss_weight={args.vr_loss_weight}); "
+                f"using trainable DiT with multiplier=0 as the control variate"
+            )
+
         return model, text_encoders
 
     def get_tokenize_strategy(self, args):
@@ -625,52 +659,15 @@ class AnimaTrainer:
         timesteps = sampler_out.timesteps  # [0,1]-scaled, float32
         sigmas = sampler_out.sigmas
 
-        # Set timestep-dependent rank mask on LoRA and ReFT modules
-        if hasattr(network, "set_timestep_mask"):
-            network.set_timestep_mask(timesteps, max_timestep=1.0)
-        if hasattr(network, "set_reft_timestep_mask"):
-            network.set_reft_timestep_mask(timesteps, max_timestep=1.0)
-        # σ-conditional HydraLoRA router (Track B, timestep-hydra.md). No-op
-        # unless use_sigma_router is on and the variant is hydra/ortho_hydra.
-        if hasattr(network, "set_sigma"):
-            network.set_sigma(timesteps)
-        # FEI-conditional HydraLoRA router (FeRA-style content-aware). FEI is
-        # a function of the actual input the model sees this step
-        # (``noisy_model_input``), not a leak from the target — see plan.md
-        # Phase 1. No-op unless use_fei_router is on and the variant is
-        # hydra/ortho_hydra. Same hookpoint as set_sigma so cudagraph capture
-        # sees a stable order.
-        # FEI router input — set_fei() drives both the per-Linear FEI router
-        # (FEI-on-Hydra Phase 1) and the network-level GlobalRouter (FeRA /
-        # stacked_experts). FEI is a function of the actual input the model
-        # sees this step (``noisy_model_input``), not a leak from the target.
-        # No-op when the active network has no FEI router. Same hookpoint as
-        # set_sigma so cudagraph capture sees a stable order.
-        if getattr(network, "use_fei_router", False):
-            from library.runtime.fei import compute_fei_2band, fei_sigma_low
-
-            _fei_z = noisy_model_input
-            if _fei_z.dim() == 5:
-                _fei_z = _fei_z.squeeze(2)
-            _h_lat, _w_lat = int(_fei_z.shape[-2]), int(_fei_z.shape[-1])
-            _div = float(getattr(network.cfg, "fei_sigma_low_div", 8.0))
-            _fei = compute_fei_2band(_fei_z, fei_sigma_low(_h_lat, _w_lat, _div))
-            network.set_fei(_fei)
-        # HydraLoRA expert-warmup: during the first ``expert_warmup_ratio`` of
-        # training, only one randomly-chosen expert per module receives
-        # gradient (forward still uses all experts via the learned gate).
-        # No-op unless expert_warmup_ratio > 0.
-        if is_train and hasattr(network, "step_expert_warmup"):
-            network.step_expert_warmup(
-                int(getattr(self, "_hydra_warmup_step", 0)),
-                int(getattr(args, "max_train_steps", 0) or 0),
-            )
-            if hasattr(network, "step_balance_loss_warmup"):
-                network.step_balance_loss_warmup(
-                    int(getattr(self, "_hydra_warmup_step", 0)),
-                    int(getattr(args, "max_train_steps", 0) or 0),
-                )
-            self._hydra_warmup_step = int(getattr(self, "_hydra_warmup_step", 0)) + 1
+        # Per-step network conditioning: timestep masks, σ/FEI routers, balance-loss warmup.
+        self._hydra_warmup_step = apply_router_conditioning(
+            network=network,
+            noisy_model_input=noisy_model_input,
+            timesteps=timesteps,
+            is_train=is_train,
+            warmup_step=int(getattr(self, "_hydra_warmup_step", 0)),
+            max_train_steps=int(getattr(args, "max_train_steps", 0) or 0),
+        )
 
         # Gradient checkpointing support
         if args.gradient_checkpointing:
@@ -682,60 +679,22 @@ class AnimaTrainer:
                     if t is not None and t.dtype.is_floating_point:
                         t.requires_grad_(True)
 
-        # Unpack text encoder conditions
-        crossattn_emb = None
-        if len(text_encoder_conds) == 5:
-            prompt_embeds, attn_mask, t5_input_ids, t5_attn_mask, crossattn_emb = (
-                text_encoder_conds
-            )
-        else:
-            prompt_embeds, attn_mask, t5_input_ids, t5_attn_mask = text_encoder_conds
-
-        # Pre-compute max sequence length on CPU to avoid GPU sync in KV trimming
-        _max_crossattn_seqlen = None
-        if args.trim_crossattn_kv and t5_attn_mask is not None:
-            _max_crossattn_seqlen = int(t5_attn_mask.sum(dim=-1).max())
-
-        if crossattn_emb is None:
-            # Move to device
-            prompt_embeds = prompt_embeds.to(accelerator.device, dtype=weight_dtype)
-            attn_mask = attn_mask.to(accelerator.device)
-            t5_input_ids = t5_input_ids.to(accelerator.device, dtype=torch.long)
-            t5_attn_mask = t5_attn_mask.to(accelerator.device)
-        else:
-            crossattn_emb = crossattn_emb.to(accelerator.device, dtype=weight_dtype)
-            if args.trim_crossattn_kv or hasattr(network, "append_postfix"):
-                t5_attn_mask = t5_attn_mask.to(accelerator.device)
-
-        # On-device caption dropout. The freshly-transferred GPU tensors are
-        # not aliased to the dataloader's CPU copies, so we can write in-place
-        # -- no clones, no main-thread CPU memcpy on the critical path.
-        caption_dropout_rates = (
-            batch.get("caption_dropout_rates") if isinstance(batch, dict) else None
+        # Unpack text encoder conditions, H2D move, and on-device caption dropout.
+        tc = prepare_text_conds(
+            text_encoder_conds=text_encoder_conds,
+            batch=batch,
+            text_encoding_strategy=ctx.text_encoding_strategy,
+            network=network,
+            device=accelerator.device,
+            weight_dtype=weight_dtype,
+            trim_crossattn_kv=bool(args.trim_crossattn_kv),
         )
-        if caption_dropout_rates is not None:
-            if crossattn_emb is None:
-                ctx.text_encoding_strategy.apply_caption_dropout_inplace(
-                    caption_dropout_rates,
-                    prompt_embeds=prompt_embeds,
-                    attn_mask=attn_mask,
-                    t5_input_ids=t5_input_ids,
-                    t5_attn_mask=t5_attn_mask,
-                )
-            else:
-                # In this branch prompt_embeds / attn_mask / t5_input_ids stay
-                # on CPU because they're unused downstream -- only zero what the
-                # model actually consumes (and only touch t5_attn_mask if it
-                # was moved to device above).
-                ctx.text_encoding_strategy.apply_caption_dropout_inplace(
-                    caption_dropout_rates,
-                    crossattn_emb=crossattn_emb,
-                    t5_attn_mask=(
-                        t5_attn_mask
-                        if t5_attn_mask is not None and t5_attn_mask.is_cuda
-                        else None
-                    ),
-                )
+        crossattn_emb = tc.crossattn_emb
+        prompt_embeds = tc.prompt_embeds
+        attn_mask = tc.attn_mask
+        t5_input_ids = tc.t5_input_ids
+        t5_attn_mask = tc.t5_attn_mask
+        _max_crossattn_seqlen = tc.max_crossattn_seqlen
 
         # Create padding mask
         bs = latents.shape[0]
@@ -767,26 +726,18 @@ class AnimaTrainer:
                 )
             else:
                 # crossattn_emb is already in target (T5-compatible) space.
-                # Postfix mode: inject learned vectors before DiT forward.
-                # Pool text BEFORE injection so modulation guidance sees only real text.
-                has_postfix = hasattr(network, "append_postfix")
-                kw = {}
-                if has_postfix:
-                    kw["pooled_text_override"] = crossattn_emb.max(dim=1).values
-                    seqlens = t5_attn_mask.sum(dim=-1).to(torch.int32)
-                    crossattn_emb = network.append_postfix(
-                        crossattn_emb, seqlens, timesteps=timesteps
-                    )
-                if args.trim_crossattn_kv:
-                    kw["crossattn_seqlens"] = t5_attn_mask.sum(dim=-1).to(torch.int32)
-                    max_cs = _max_crossattn_seqlen
-                    if has_postfix:
-                        kw["crossattn_seqlens"] = (
-                            kw["crossattn_seqlens"] + network.num_postfix_tokens
-                        )
-                        if max_cs is not None:
-                            max_cs += network.num_postfix_tokens
-                    kw["max_crossattn_seqlen"] = max_cs
+                # Postfix splice + KV-trim kwargs.
+                fk = build_forward_kwargs(
+                    network=network,
+                    crossattn_emb=crossattn_emb,
+                    t5_attn_mask=t5_attn_mask,
+                    timesteps=timesteps,
+                    max_crossattn_seqlen=_max_crossattn_seqlen,
+                    trim_crossattn_kv=bool(args.trim_crossattn_kv),
+                )
+                crossattn_emb = fk.crossattn_emb
+                kw = fk.kw
+                has_postfix = fk.has_postfix
                 model_pred = anima(
                     noisy_model_input,
                     timesteps,
@@ -824,73 +775,48 @@ class AnimaTrainer:
                         if out:
                             self._extras_for_step.update(out)
 
-                # --- Functional MSE loss against stochastic inversion run ---
-                # If functional loss is enabled and the batch has inversions loaded,
-                # run a second no-grad forward with a sampled inversion run as
-                # crossattn_emb and compute MSE between the two sets of cross_attn
-                # output_proj captures at the configured blocks.
+                # Functional MSE loss against a sampled stochastic inversion run.
+                # The captures dict is populated by trainer-owned forward hooks
+                # on cross_attn.output_proj at ``self._func_blocks``.
                 self._func_loss = None
-                inv_runs = (
-                    batch.get("inversion_runs") if isinstance(batch, dict) else None
-                )
-                inv_mask = (
-                    batch.get("inversion_mask") if isinstance(batch, dict) else None
-                )
+                if is_train and getattr(self, "_func_blocks", None):
+                    self._func_loss = compute_inversion_func_loss(
+                        anima_call=anima,
+                        captures=self._func_captures,
+                        block_indices=self._func_blocks,
+                        batch=batch,
+                        noisy_model_input=noisy_model_input,
+                        timesteps=timesteps,
+                        padding_mask=padding_mask,
+                        has_postfix=has_postfix,
+                        kw=kw,
+                        device=accelerator.device,
+                        dtype=weight_dtype,
+                    )
+
+                # Variance-reduced FM control variate (AsymFlow §5.2). Stash the
+                # residual `z` so the loss composer can blend `(y + λ·z)²`.
                 if (
                     is_train
-                    and getattr(self, "_func_blocks", None)
-                    and inv_runs is not None
-                    and inv_mask is not None
-                    and bool(inv_mask.any().item())
+                    and float(getattr(args, "vr_loss_weight", 0.0) or 0.0) > 0.0
                 ):
-                    # Snapshot main-forward captures (still attached to postfix MLP graph)
-                    cap_main = dict(self._func_captures)
-                    missing = [bi for bi in self._func_blocks if bi not in cap_main]
-                    if missing:
-                        raise RuntimeError(
-                            f"Functional loss: main forward did not populate captures for blocks {missing}"
-                        )
-
-                    # Sample one run per batch element
-                    inv_runs_dev = inv_runs.to(accelerator.device, dtype=weight_dtype)
-                    inv_mask_dev = inv_mask.to(accelerator.device)
-                    B_inv, N_runs, _, _ = inv_runs_dev.shape
-                    run_idx = torch.randint(
-                        0, N_runs, (B_inv,), device=inv_runs_dev.device
+                    z_residual = run_vr_reference_forward(
+                        anima_call=anima,
+                        network=network,
+                        latents=latents,
+                        noise=noise,
+                        sigmas=sigmas,
+                        timesteps=timesteps,
+                        crossattn_emb=crossattn_emb,
+                        padding_mask=padding_mask,
+                        forward_kwargs=kw,
+                        weight_dtype=weight_dtype,
+                        fei_sigma_low_div=float(args.vr_fei_sigma_low_div),
                     )
-                    sampled_inv = inv_runs_dev[
-                        torch.arange(B_inv, device=inv_runs_dev.device), run_idx
-                    ]  # [B, S, D]
-
-                    # Same pooled_text_override so AdaLN modulation is identical;
-                    # only cross-attn K/V differs between the two forwards.
-                    inv_kw = {}
-                    if has_postfix and "pooled_text_override" in kw:
-                        inv_kw["pooled_text_override"] = kw["pooled_text_override"]
-
-                    with torch.no_grad():
-                        _ = anima(
-                            noisy_model_input,
-                            timesteps,
-                            sampled_inv,
-                            padding_mask=padding_mask,
-                            **inv_kw,
-                        )
-
-                    cap_inv = {
-                        bi: self._func_captures[bi].detach() for bi in self._func_blocks
+                    self._extras_for_step["vr"] = {
+                        "z": z_residual.detach(),
+                        "state": self._vr_state,
                     }
-
-                    mask_f = inv_mask_dev.float()
-                    denom = mask_f.sum().clamp(min=1.0)
-                    block_losses = []
-                    for bi in self._func_blocks:
-                        diff = cap_main[bi].float() - cap_inv[bi].float()
-                        per_sample = diff.pow(2).mean(
-                            dim=tuple(range(1, diff.ndim))
-                        )  # [B]
-                        block_losses.append((per_sample * mask_f).sum() / denom)
-                    self._func_loss = sum(block_losses) / len(block_losses)
         model_pred = model_pred.squeeze(2)  # 5D to 4D, [B, C, 1, H, W] -> [B, C, H, W]
 
         # Note: do NOT clear timestep mask here -- gradient checkpointing recomputes the forward
@@ -1920,9 +1846,19 @@ class AnimaTrainer:
         log_div_key,
         logging_fn,
     ):
-        """Run a validation pass over val.dataloader x val.sigmas."""
+        """Validation = CMMD between the live model's samples and the held-out
+        reference's cached PE features, falling back to per-sigma FM-MSE on
+        ``val.dataloader`` if CMMD can't run (no PE/TE cache, sampling error).
+
+        CMMD is the primary signal (the legacy FM-MSE pass did not track
+        sample quality on Anima — see ``project_fm_val_loss_uninformative``),
+        but FM-MSE still produces *some* divergence number to log when the
+        sampling path is broken or the references aren't there, which keeps
+        validation visibility alive instead of going silent for the whole run.
+        """
         args = ctx.args
         accelerator = ctx.accelerator
+
         ctx.optimizer_eval_fn()
         accelerator.unwrap_model(ctx.network).eval()
         unwrapped_unet = accelerator.unwrap_model(ctx.unet)
@@ -1932,166 +1868,325 @@ class AnimaTrainer:
             args.validation_seed if args.validation_seed is not None else args.seed
         )
 
-        # Adapter-supplied "without-this-method" baselines (e.g. IP-Adapter's
-        # "no_ip"). For each (val_step, sigma) we'll re-run process_batch with
-        # the adapter perturbed and log the delta -- this is what isolates the
-        # method's actual contribution when the primary FM loss is dominated
-        # by paths the method shortcircuits.
-        baselines: list[ValidationBaseline] = []
-        for adapter in self._adapters:
-            baselines.extend(adapter.validation_baselines())
+        try:
+            cmmd_ok = False
+            if getattr(args, "use_cmmd", True):
+                cmmd_ok = self._try_cmmd_validation(
+                    ctx=ctx,
+                    val=val,
+                    unwrapped_unet=unwrapped_unet,
+                    val_loss_recorder=val_loss_recorder,
+                    epoch=epoch,
+                    global_step=global_step,
+                    progress_desc=progress_desc,
+                    log_avg_key=log_avg_key,
+                    log_div_key=log_div_key,
+                    logging_fn=logging_fn,
+                )
+            if not cmmd_ok:
+                self._run_fm_validation(
+                    ctx=ctx,
+                    val=val,
+                    val_loss_recorder=val_loss_recorder,
+                    epoch=epoch,
+                    global_step=global_step,
+                    progress_desc=progress_desc,
+                    postfix_label=postfix_label,
+                    log_avg_key=log_avg_key,
+                    log_div_key=log_div_key,
+                    logging_fn=logging_fn,
+                )
+        finally:
+            self._restore_rng_state(rng_states)
+            args.t_min = val.original_t_min
+            args.t_max = val.original_t_max
+            ctx.optimizer_train_fn()
+            accelerator.unwrap_model(ctx.network).train()
+            if hasattr(unwrapped_unet, "switch_block_swap_for_training"):
+                unwrapped_unet.switch_block_swap_for_training()
+            clean_memory_on_device(accelerator.device)
+
+    def _try_cmmd_validation(
+        self,
+        *,
+        ctx,
+        val,
+        unwrapped_unet,
+        val_loss_recorder,
+        epoch,
+        global_step,
+        progress_desc,
+        log_avg_key,
+        log_div_key,
+        logging_fn,
+    ) -> bool:
+        """Run CMMD-based validation. Returns True if it logged a value, False
+        if the caller should fall back to FM-MSE (no dataset group, no PE/TE
+        cache, ``load_reference_features`` failure, or any sampling exception).
+        """
+        args = ctx.args
+        accelerator = ctx.accelerator
+
+        if val.dataset_group is None:
+            return False
+
+        val_items: list = []
+        for ds in val.dataset_group.datasets:
+            val_items.extend(ds.image_data.values())
+        if not val_items:
+            return False
+
+        # Reference PE features sit next to each val item's cached TE
+        # output (both produced by `make preprocess-pe` / `-te`).
+        ref_sidecars = []
+        ref_items = []
+        for item in val_items:
+            te_path = item.text_encoder_outputs_npz
+            if te_path is None:
+                continue
+            cache_dir = os.path.dirname(te_path)
+            ref_sidecars.append(
+                resolve_pe_sidecar(
+                    item.absolute_path, encoder="pe", cache_dir=cache_dir
+                )
+            )
+            ref_items.append(item)
+        if not ref_sidecars:
+            logger.warning(
+                "CMMD val: no items had cached TE outputs; falling back to FM-MSE."
+            )
+            return False
+        try:
+            ref_pool = load_reference_features(ref_sidecars).to(
+                accelerator.device
+            )
+        except RuntimeError as exc:
+            logger.warning(f"CMMD val ref load failed ({exc}); falling back to FM-MSE.")
+            return False
+
+        from library.vision.encoder import (
+            encode_pe_from_imageminus1to1,
+            load_pe_encoder,
+        )
+
+        if getattr(self, "_cmmd_pe_bundle", None) is None:
+            self._cmmd_pe_bundle = load_pe_encoder(accelerator.device)
+            # Park PE-Core (~600 MB bf16) on CPU between encodes so the DiT
+            # sample step has the full GPU budget. Bundle keeps device=cuda
+            # so encode_pe_from_imageminus1to1 still routes inputs correctly;
+            # we shuttle the underlying model to GPU only for the encode call.
+            self._cmmd_pe_bundle.encoder.inner.to("cpu")
+        bundle = self._cmmd_pe_bundle
+
+        sample_steps = int(getattr(args, "validation_sample_steps", 20))
+        cfg_scale = float(getattr(args, "validation_cfg_scale", 1.0))
+        flow_shift = float(getattr(args, "discrete_flow_shift", 1.0))
 
         val_progress_bar = tqdm(
-            range(val.total_steps * (1 + len(baselines))),
+            range(len(ref_items)),
             smoothing=0,
             disable=not accelerator.is_local_main_process,
             desc=progress_desc,
         )
-        val_timesteps_step = 0
-        per_sigma_losses = {s: [] for s in val.sigmas}
-        per_baseline_per_sigma: dict[str, dict[float, list[float]]] = {
-            b.name: {s: [] for s in val.sigmas} for b in baselines
-        }
 
-        def _cudagraph_step_begin() -> None:
-            if not self._cudagraph_mark_step:
-                return
-            net_unwrapped = accelerator.unwrap_model(ctx.network)
-            if hasattr(net_unwrapped, "clear_step_caches"):
-                net_unwrapped.clear_step_caches()
-            torch.compiler.cudagraph_mark_step_begin()
+        from safetensors.torch import load_file as _load_safetensors
 
-        for val_step, batch in enumerate(val.dataloader):
-            if val_step >= val.steps:
-                break
+        gen_pooled: list[torch.Tensor] = []
+        seed_base = (
+            args.validation_seed
+            if args.validation_seed is not None
+            else args.seed
+        )
 
-            for sigma in val.sigmas:
-                self.on_step_start(ctx, batch, is_train=False)
-
-                # Pin sigma via t_min/t_max (what the noise function reads)
-                args.t_min = args.t_max = sigma
-
-                # Snapshot RNG so each baseline forward sees the same noise
-                # the primary did -- only the adapter state differs, so the
-                # delta is the adapter's contribution rather than noise.
-                rng_pre_primary = (
-                    (
-                        torch.get_rng_state(),
-                        torch.cuda.get_rng_state(),
-                        random.getstate(),
+        # Two-phase val to keep DiT and PE-Core off the GPU at the same time:
+        # phase 1 generates every sample with DiT resident and parks the
+        # decoded pixels on CPU; phase 2 swaps DiT → CPU + PE → GPU and
+        # encodes them all. One DiT round-trip per val pass instead of N.
+        pixel_images: list[torch.Tensor] = []
+        try:
+            with torch.no_grad(), accelerator.autocast():
+                unwrapped_unet.prepare_block_swap_before_forward()
+                for i, item in enumerate(ref_items):
+                    sd = _load_safetensors(item.text_encoder_outputs_npz)
+                    crossattn_emb = self._build_val_crossattn_emb(
+                        unwrapped_unet, sd, accelerator
                     )
-                    if baselines
-                    else None
-                )
 
-                # Mirror the training loop's cudagraph step-begin marker so
-                # cudagraph_trees doesn't re-record / leak a memory pool on
-                # each val forward (see the train-loop call site for context).
-                _cudagraph_step_begin()
+                    bucket_w, bucket_h = item.bucket_reso
 
-                loss = self.process_batch(ctx, batch, is_train=False)
-
-                current_loss = loss.detach().item()
-                val_loss_recorder.add(
-                    epoch=epoch, step=val_timesteps_step, loss=current_loss
-                )
-                per_sigma_losses[sigma].append(current_loss)
-                val_progress_bar.update(1)
-                val_progress_bar.set_postfix(
-                    {
-                        postfix_label: val_loss_recorder.moving_average,
-                        "sigma": f"{sigma:.2f}",
-                    }
-                )
-
-                self.on_validation_step_end(ctx, batch)
-                val_timesteps_step += 1
-
-                # --- Baseline sweep: same (batch, sigma, noise), perturbed
-                # adapter state. Logged separately as `<prefix>_baseline_<n>`.
-                if baselines:
-                    rng_post_primary = (
-                        torch.get_rng_state(),
-                        torch.cuda.get_rng_state(),
-                        random.getstate(),
+                    image = anima_train_utils.sample_image_to_tensor(
+                        accelerator=accelerator,
+                        dit=unwrapped_unet,
+                        vae=ctx.vae,
+                        height=int(bucket_h),
+                        width=int(bucket_w),
+                        crossattn_emb=crossattn_emb,
+                        sample_steps=sample_steps,
+                        guidance_scale=cfg_scale,
+                        flow_shift=flow_shift,
+                        seed=seed_base + i,
+                        show_progress=False,
                     )
-                    for baseline in baselines:
-                        # Rewind RNG to pre-primary so the baseline draws the
-                        # same noise (and any other randomness) the primary
-                        # saw -- without this, the delta is dominated by
-                        # noise variance not the adapter's contribution.
-                        torch.set_rng_state(rng_pre_primary[0])
-                        torch.cuda.set_rng_state(rng_pre_primary[1])
-                        random.setstate(rng_pre_primary[2])
+                    pixel_images.append(image.detach().cpu())
+                    del image, crossattn_emb
+                    clean_memory_on_device(accelerator.device)
+                    val_progress_bar.update(1)
+                    val_progress_bar.set_postfix({"items": f"{i + 1}/{len(ref_items)}"})
 
-                        baseline.enter()
-                        try:
-                            _cudagraph_step_begin()
-                            bl_loss = (
-                                self.process_batch(ctx, batch, is_train=False)
-                                .detach()
-                                .item()
-                            )
-                        finally:
-                            baseline.exit()
-                        per_baseline_per_sigma[baseline.name][sigma].append(bl_loss)
-                        val_progress_bar.update(1)
-                        val_progress_bar.set_postfix(
-                            {
-                                postfix_label: val_loss_recorder.moving_average,
-                                "sigma": f"{sigma:.2f}",
-                                f"Δ_{baseline.name}": f"{bl_loss - current_loss:+.4f}",
-                            }
+                    self.on_validation_step_end(ctx, {})
+
+                # Hand the GPU to PE: park DiT on CPU, bring PE on.
+                unwrapped_unet.to("cpu")
+                clean_memory_on_device(accelerator.device)
+                bundle.encoder.inner.to(accelerator.device)
+                try:
+                    for image_cpu in pixel_images:
+                        image_gpu = image_cpu.to(accelerator.device)
+                        feats_list = encode_pe_from_imageminus1to1(
+                            bundle, image_gpu.unsqueeze(0), same_bucket=True
                         )
-                        self.on_validation_step_end(ctx, batch)
-                    # Resume the RNG stream where the primary left it so the
-                    # next (val_step, sigma) draws fresh noise as before.
-                    torch.set_rng_state(rng_post_primary[0])
-                    torch.cuda.set_rng_state(rng_post_primary[1])
-                    random.setstate(rng_post_primary[2])
+                        gen_pooled.append(pool_and_normalize(feats_list[0]).cpu())
+                        del image_gpu, feats_list
+                finally:
+                    bundle.encoder.inner.to("cpu")
+                    clean_memory_on_device(accelerator.device)
+                    unwrapped_unet.to(accelerator.device)
+        except (KeyError, RuntimeError, FileNotFoundError) as exc:
+            val_progress_bar.close()
+            logger.warning(
+                f"CMMD val sampling failed ({type(exc).__name__}: {exc}); "
+                "falling back to FM-MSE."
+            )
+            return False
+
+        val_progress_bar.close()
+
+        gen_pool = torch.stack(gen_pooled, dim=0).to(accelerator.device)
+        cmmd_value = cmmd_from_pools(ref_pool, gen_pool)
+        val_loss_recorder.add(epoch=epoch, step=global_step, loss=cmmd_value)
 
         if ctx.is_tracking:
-            loss_validation_divergence = (
-                val_loss_recorder.moving_average
-                - val.train_loss_recorder.moving_average
-            )
+            logs = {
+                log_avg_key: cmmd_value,
+                log_div_key: cmmd_value
+                - val.train_loss_recorder.moving_average,
+                log_avg_key.removesuffix("_average") + "_cmmd": cmmd_value,
+                log_avg_key.removesuffix("_average") + "_n": len(ref_items),
+            }
+            logging_fn(accelerator, logs, global_step, epoch + 1)
+        return True
+
+    def _run_fm_validation(
+        self,
+        *,
+        ctx,
+        val,
+        val_loss_recorder,
+        epoch,
+        global_step,
+        progress_desc,
+        postfix_label,
+        log_avg_key,
+        log_div_key,
+        logging_fn,
+    ) -> None:
+        """Legacy per-sigma FM-MSE validation, used as a fallback when CMMD
+        can't run. Pins ``args.t_{min,max}`` to each sigma in ``val.sigmas``
+        and runs ``process_batch`` over up to ``val.steps`` batches of
+        ``val.dataloader``. The caller owns RNG save/restore and eval-mode
+        switching; this helper only restores ``t_{min,max}`` since it mutates
+        them per sigma."""
+        args = ctx.args
+        accelerator = ctx.accelerator
+
+        if val.dataloader is None or len(val.dataloader) == 0 or not val.sigmas:
+            return
+
+        val_progress_bar = tqdm(
+            range(val.total_steps),
+            smoothing=0,
+            disable=not accelerator.is_local_main_process,
+            desc=f"{progress_desc} (fm-mse)",
+        )
+        val_timesteps_step = 0
+        per_sigma_losses = {s: [] for s in val.sigmas}
+
+        try:
+            for val_step, batch in enumerate(val.dataloader):
+                if val_step >= val.steps:
+                    break
+
+                for sigma in val.sigmas:
+                    self.on_step_start(ctx, batch, is_train=False)
+                    args.t_min = args.t_max = sigma
+
+                    loss = self.process_batch(ctx, batch, is_train=False)
+                    current_loss = loss.detach().item()
+                    val_loss_recorder.add(
+                        epoch=epoch, step=val_timesteps_step, loss=current_loss
+                    )
+                    per_sigma_losses[sigma].append(current_loss)
+                    val_progress_bar.update(1)
+                    val_progress_bar.set_postfix(
+                        {
+                            postfix_label: val_loss_recorder.moving_average,
+                            "sigma": f"{sigma:.2f}",
+                        }
+                    )
+                    self.on_validation_step_end(ctx, batch)
+                    val_timesteps_step += 1
+        finally:
+            val_progress_bar.close()
+
+        if ctx.is_tracking:
             logs = {
                 log_avg_key: val_loss_recorder.moving_average,
-                log_div_key: loss_validation_divergence,
+                log_div_key: val_loss_recorder.moving_average
+                - val.train_loss_recorder.moving_average,
+                log_avg_key.removesuffix("_average") + "_fm_fallback": 1.0,
             }
             for s, losses in per_sigma_losses.items():
                 if losses:
-                    logs[f"loss/validation/sigma_{s:.2f}"] = sum(losses) / len(losses)
-
-            # Baseline aggregates. Prefix mirrors the primary key
-            # ("loss/validation/step_average" → "loss/validation/step") so
-            # step- and epoch-validation get distinct baseline series.
-            primary_avg = val_loss_recorder.moving_average
-            base_prefix = log_avg_key.removesuffix("_average")
-            for b in baselines:
-                per_sigma = per_baseline_per_sigma[b.name]
-                all_losses = [v for losses in per_sigma.values() for v in losses]
-                if not all_losses:
-                    continue
-                bl_avg = sum(all_losses) / len(all_losses)
-                logs[f"{base_prefix}_baseline_{b.name}"] = bl_avg
-                logs[f"{base_prefix}_baseline_{b.name}_delta"] = bl_avg - primary_avg
-                for s, losses in per_sigma.items():
-                    if losses:
-                        logs[f"{base_prefix}_baseline_{b.name}/sigma_{s:.2f}"] = sum(
-                            losses
-                        ) / len(losses)
-
+                    logs[f"loss/validation/sigma_{s:.2f}"] = sum(losses) / len(
+                        losses
+                    )
             logging_fn(accelerator, logs, global_step, epoch + 1)
 
-        self._restore_rng_state(rng_states)
-        args.t_min = val.original_t_min
-        args.t_max = val.original_t_max
-        ctx.optimizer_train_fn()
-        accelerator.unwrap_model(ctx.network).train()
-        if hasattr(unwrapped_unet, "switch_block_swap_for_training"):
-            unwrapped_unet.switch_block_swap_for_training()
-        clean_memory_on_device(accelerator.device)
+    def _build_val_crossattn_emb(self, dit, sd, accelerator):
+        """Construct the cross-attention embedding the DiT expects from a
+        cached TE sidecar — using the saved post-LLM-adapter ``crossattn_emb``
+        when present, otherwise running ``llm_adapter`` exactly like
+        ``_sample_image_inference`` does. Pads to 512 tokens (the model's
+        fixed context length). Multi-variant caches expose `<key>_v0` (pristine
+        caption) instead of `<key>`; pin to v0 for deterministic validation."""
+        device = accelerator.device
+        dtype = dit.dtype
+        suffix = "" if "prompt_embeds" in sd or "crossattn_emb" in sd else "_v0"
+        ce_key = f"crossattn_emb{suffix}"
+        if ce_key in sd:
+            ce = sd[ce_key].unsqueeze(0).to(device, dtype=dtype)
+            if ce.shape[1] < 512:
+                ce = torch.nn.functional.pad(ce, (0, 0, 0, 512 - ce.shape[1]))
+            return ce
+
+        prompt_embeds = sd[f"prompt_embeds{suffix}"].unsqueeze(0).to(device, dtype=dtype)
+        attn_mask = sd[f"attn_mask{suffix}"].unsqueeze(0).to(device)
+        t5_ids = sd[f"t5_input_ids{suffix}"].unsqueeze(0).to(device, dtype=torch.long)
+        t5_attn_mask = sd[f"t5_attn_mask{suffix}"].unsqueeze(0).to(device)
+
+        if getattr(dit, "use_llm_adapter", False):
+            ce = dit.llm_adapter(
+                source_hidden_states=prompt_embeds,
+                target_input_ids=t5_ids,
+                target_attention_mask=t5_attn_mask,
+                source_attention_mask=attn_mask,
+            )
+            ce[~t5_attn_mask.bool()] = 0
+        else:
+            ce = prompt_embeds
+        if ce.shape[1] < 512:
+            ce = torch.nn.functional.pad(ce, (0, 0, 0, 512 - ce.shape[1]))
+        return ce
 
     def train(self, args):
         session_id = random.randint(0, 2**32)
@@ -2437,11 +2532,11 @@ class AnimaTrainer:
                 )
                 initial_step = 0  # do not skip
 
-        # Drop dataset-group locals before loop entry so the cached references
-        # release memory; the dataloaders already hold the data they need.
+        # Drop the train dataset-group local before loop entry — the
+        # dataloader already holds the data it needs. Keep val_dataset_group
+        # alive: CMMD validation enumerates its image_data to pair held-out
+        # references with generated samples.
         del train_dataset_group
-        if val_dataset_group is not None:
-            del val_dataset_group
 
         loop_state = build_loop_state(
             self,
@@ -2457,6 +2552,7 @@ class AnimaTrainer:
             training_model=training_model,
             train_dataloader=train_dataloader,
             val_dataloader=val_dataloader,
+            val_dataset_group=val_dataset_group,
             optimizer=optimizer,
             lr_scheduler=lr_scheduler,
             lr_descriptions=lr_descriptions,
@@ -2583,6 +2679,16 @@ def setup_parser() -> argparse.ArgumentParser:
         help="Split for validation images out of the training dataset",
     )
     parser.add_argument(
+        "--validation_split_num",
+        type=int,
+        default=0,
+        help=(
+            "Count-based validation split (number of held-out images). When "
+            "set (>0), wins over the fractional `--validation_split`. Also "
+            "determines how many samples CMMD evaluation generates per pass."
+        ),
+    )
+    parser.add_argument(
         "--validate_every_n_steps",
         type=int,
         default=None,
@@ -2605,7 +2711,28 @@ def setup_parser() -> argparse.ArgumentParser:
         type=float,
         nargs="+",
         default=None,
-        help="Sigma values for validation loss (0.0~1.0). Low values = fine detail. Default: 0.1 0.4 0.7",
+        help="Sigma values for validation loss (0.0~1.0). Low values = fine detail. Default: 0.1 0.4 0.7. (Legacy FM-val path — unused under the CMMD val replacement.)",
+    )
+    parser.add_argument(
+        "--validation_sample_steps",
+        type=int,
+        default=20,
+        help="Denoising steps used by CMMD validation when sampling each held-out item. Default 20.",
+    )
+    parser.add_argument(
+        "--validation_cfg_scale",
+        type=float,
+        default=1.0,
+        help="CFG scale used by CMMD validation. Default 1.0 (no CFG, fastest). Bump to 4.0 to match production sampling but generation cost ~2×.",
+    )
+    parser.add_argument(
+        "--use_cmmd",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Use CMMD (PE-Core MMD²) as the validation signal. Set "
+        "`use_cmmd = false` in the method TOML (or pass `--no-use_cmmd`) to "
+        "skip CMMD and run only the legacy per-σ FM-MSE val pass — useful "
+        "on tight VRAM where the PE encoder + sampling path doesn't fit.",
     )
     parser.add_argument(
         "--unsloth_offload_checkpointing",

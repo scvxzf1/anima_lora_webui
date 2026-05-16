@@ -52,63 +52,20 @@ from typing import Dict, List
 import torch
 import torch.nn.functional as F
 
-# Reuse the kernel cache + separable 2D blur from the Hydra loader so
-# both paths share one cache. Adapter's ``_compute_fei_2band`` is hard-
-# coded to 2 bands with ``[e_low, e_high]`` ordering — FeRA defaults to 3
-# bands with ``[high, ..., low]`` ordering, so the band code is local.
-from .adapter import _gaussian_blur_2d
+# Both FEI paths live in library/inference/router_compute.py — the single
+# source-of-truth re-exported by adapter.py after live-or-vendor resolution.
+# Author-faithful FeRA uses ``compute_fei_nband_high_to_low`` (high-first
+# ordering matching the retired ``networks/methods/fera.py::Frequency
+# EnergyIndicator``); the plan2 ``stacked_experts_global_fei`` format uses
+# ``compute_fei_2band`` (low-first, matching ``library/runtime/fei.py``).
+# Trained router weights are bit-sensitive to band ordering — do not unify
+# the two.
+from .adapter import compute_fei_2band, compute_fei_nband_high_to_low
 
 logger = logging.getLogger(__name__)
 
 # Cache: path -> parsed bundle. Reuses adapter.py's pattern.
 _fera_cache: Dict[str, dict] = {}
-
-
-def _compute_fei_nband(
-    z: torch.Tensor, sigma_low: float, num_bands: int
-) -> torch.Tensor:
-    """Return ``(B, num_bands)`` simplex energies, ordered ``[high, ..., low]``.
-
-    Bit-identical to ``networks/methods/fera.py::FrequencyEnergyIndicator``:
-    bands are differences of adjacent pyramid levels (high-freq first),
-    followed by the coarsest LP as the residual low-band; σ-scales double
-    outward from ``σ_low``. Promoted to fp32 internally — squared norms
-    underflow at small energies in bf16.
-
-    The router weights were trained against this exact ordering, so any
-    permutation here would corrupt the gate at inference. Used by the
-    author-faithful FeRA format (``networks.methods.fera``).
-    """
-    z = z.float()
-    sigmas: List[float] = [sigma_low * (2.0**k) for k in range(num_bands - 1)]
-    pyramid = [z]
-    for s in sigmas:
-        pyramid.append(_gaussian_blur_2d(pyramid[-1], s))
-    bands = [pyramid[k] - pyramid[k + 1] for k in range(num_bands - 1)]
-    bands.append(pyramid[-1])
-    energies = torch.stack(
-        [b.pow(2).flatten(1).sum(-1) for b in bands], dim=-1
-    )
-    return energies / energies.sum(dim=-1, keepdim=True).clamp_min(1e-12)
-
-
-def _compute_fei_2band_low_high(
-    z: torch.Tensor, sigma_low: float
-) -> torch.Tensor:
-    """Return ``(B, 2)`` simplex ``[e_low, e_high]`` on a 4D latent.
-
-    Used by the plan2 ``stacked_experts_global_fei`` format — its
-    ``GlobalRouter`` was trained against ``library/runtime/fei.py::
-    compute_fei_2band``, which puts low-band first. Different ordering
-    from ``_compute_fei_nband`` above (which is high-first to match the
-    author-faithful FrequencyEnergyIndicator) — do not unify the two.
-    """
-    z = z.float()
-    lp = _gaussian_blur_2d(z, sigma_low)
-    e_low = lp.pow(2).flatten(1).sum(-1)
-    e_high = (z - lp).pow(2).flatten(1).sum(-1)
-    energies = torch.stack([e_low, e_high], dim=-1)
-    return energies / energies.sum(dim=-1, keepdim=True).clamp_min(1e-12)
 
 
 def _looks_like_fera_author(weights_sd: Dict[str, torch.Tensor]) -> bool:
@@ -140,9 +97,7 @@ def _looks_like_stacked_experts_global_fei(
     """
     has_router = any(k.startswith("global_router.net.") for k in weights_sd)
     has_split_downs = any(
-        k.startswith("lora_unet_")
-        and ".lora_downs." in k
-        and k.endswith(".weight")
+        k.startswith("lora_unet_") and ".lora_downs." in k and k.endswith(".weight")
         for k in weights_sd
     )
     return has_router and has_split_downs
@@ -150,7 +105,9 @@ def _looks_like_stacked_experts_global_fei(
 
 def _looks_like_fera(weights_sd: Dict[str, torch.Tensor]) -> bool:
     """Either FeRA variant — author-faithful or plan2 stacked_experts."""
-    return _looks_like_fera_author(weights_sd) or _looks_like_stacked_experts_global_fei(weights_sd)
+    return _looks_like_fera_author(
+        weights_sd
+    ) or _looks_like_stacked_experts_global_fei(weights_sd)
 
 
 def _parse_fera_author(
@@ -164,7 +121,7 @@ def _parse_fera_author(
         (no ``.weight`` suffix), shape ``(E, r, in)`` / ``(E, out, r)``.
 
     Router input is N-band FEI with ``[high, ..., low]`` ordering
-    (``_compute_fei_nband``).
+    (``compute_fei_nband_high_to_low``).
     """
     required = (
         "router.net.0.weight",
@@ -263,7 +220,7 @@ def _parse_stacked_experts_global_fei(
         finds each prefix unchanged — same as the author-faithful path.
 
     Router input is **2-band FEI** with ``[e_low, e_high]`` ordering
-    (``_compute_fei_2band_low_high``, matching
+    (``compute_fei_2band``, the single canonical 2-band impl shared with
     ``library/runtime/fei.py``). Plan2 default ``fei_sigma_low_div=4.0``.
     """
     required = (
@@ -343,7 +300,10 @@ def _parse_stacked_experts_global_fei(
         )
 
     sample = next(iter(layers.values()))
-    E_shape, r_shape = int(sample["lora_down"].shape[0]), int(sample["lora_down"].shape[1])
+    E_shape, r_shape = (
+        int(sample["lora_down"].shape[0]),
+        int(sample["lora_down"].shape[1]),
+    )
     router_hidden = int(router["w1"].shape[0])
     router_in = int(router["w1"].shape[1])  # = fei_feature_dim
 
@@ -417,12 +377,8 @@ def load_fera(file_path: str) -> dict:
         network_spec == "stacked_experts_global_fei"
         or _looks_like_stacked_experts_global_fei(weights_sd)
     )
-    is_author = (
-        not is_stacked
-        and (
-            network_module == "networks.methods.fera"
-            or _looks_like_fera_author(weights_sd)
-        )
+    is_author = not is_stacked and (
+        network_module == "networks.methods.fera" or _looks_like_fera_author(weights_sd)
     )
 
     if is_stacked:
@@ -509,7 +465,7 @@ def _make_fera_pre_hook(router: dict, cfg: dict, fera_state: dict):
         h_lat, w_lat = int(x.shape[-2]), int(x.shape[-1])
         sigma_low = float(min(h_lat, w_lat)) / fei_sigma_low_div
         if fei_kind == "2band_low_high":
-            fei = _compute_fei_2band_low_high(x, sigma_low)
+            fei = compute_fei_2band(x, sigma_low)
             # Trim/pad to the router's input width — defensive against
             # off-spec checkpoints with router_in != 2.
             if fei.shape[-1] > router_in:
@@ -517,7 +473,7 @@ def _make_fera_pre_hook(router: dict, cfg: dict, fera_state: dict):
             elif fei.shape[-1] < router_in:
                 fei = F.pad(fei, (0, router_in - fei.shape[-1]))
         else:
-            fei = _compute_fei_nband(x, sigma_low, num_bands)
+            fei = compute_fei_nband_high_to_low(x, sigma_low, num_bands)
         hidden = F.relu(F.linear(fei, state["w1"], state["b1"]))
         logits = F.linear(hidden, state["w2"], state["b2"])
         fera_state["gates"] = F.softmax(logits / tau, dim=-1)
@@ -571,19 +527,15 @@ def _make_fera_hook(
     """
     state = {
         "lora_down": lora_down,  # (E, r, in)
-        "lora_up": lora_up,      # (E, out, r)
+        "lora_up": lora_up,  # (E, out, r)
         "device": None,
     }
 
     def _ensure_on_device(x: torch.Tensor) -> None:
         if state["device"] == x.device:
             return
-        state["lora_down"] = state["lora_down"].to(
-            device=x.device, dtype=torch.float32
-        )
-        state["lora_up"] = state["lora_up"].to(
-            device=x.device, dtype=torch.float32
-        )
+        state["lora_down"] = state["lora_down"].to(device=x.device, dtype=torch.float32)
+        state["lora_up"] = state["lora_up"].to(device=x.device, dtype=torch.float32)
         state["device"] = x.device
 
     def fera_hook(module, inputs, output):
@@ -710,9 +662,7 @@ def apply_fera(model, file_path: str, strength: float) -> bool:
     pre_hook = _make_fera_pre_hook(bundle["router"], cfg, fera_state)
     new_pre_hooks = OrderedDict(diffusion_model._forward_pre_hooks)
     new_pre_hooks[id(pre_hook)] = pre_hook
-    model.add_object_patch(
-        "diffusion_model._forward_pre_hooks", new_pre_hooks
-    )
+    model.add_object_patch("diffusion_model._forward_pre_hooks", new_pre_hooks)
 
     # Post-hook clears gates at the end of every diffusion forward so
     # subsequent samples don't read stale CFG-batched gates from the
@@ -720,9 +670,7 @@ def apply_fera(model, file_path: str, strength: float) -> bool:
     clear_hook = _make_fera_clear_hook(fera_state)
     new_dm_post_hooks = OrderedDict(diffusion_model._forward_hooks)
     new_dm_post_hooks[id(clear_hook)] = clear_hook
-    model.add_object_patch(
-        "diffusion_model._forward_hooks", new_dm_post_hooks
-    )
+    model.add_object_patch("diffusion_model._forward_hooks", new_dm_post_hooks)
 
     # Direct walk of diffusion_model — covers fused qkv/kv projections
     # that ComfyUI's model_lora_keys_unet doesn't enumerate. See
@@ -763,8 +711,7 @@ def apply_fera(model, file_path: str, strength: float) -> bool:
 
     if skipped:
         logger.warning(
-            f"FeRA: skipped {len(skipped)} prefix(es); "
-            f"first few: {skipped[:5]}"
+            f"FeRA: skipped {len(skipped)} prefix(es); first few: {skipped[:5]}"
         )
     logger.info(
         f"FeRA[{cfg['variant']}]: installed router pre-hook + {patched} "

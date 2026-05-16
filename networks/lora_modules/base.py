@@ -1,8 +1,6 @@
-# Shared scaffolding for LoRA-family modules.
-#
-# Reference:
-# https://github.com/microsoft/LoRA/blob/main/loralib/layers.py
-# https://github.com/cloneofsimo/lora/blob/master/lora_diffusion/lora.py
+# Refs:
+#   https://github.com/microsoft/LoRA/blob/main/loralib/layers.py
+#   https://github.com/cloneofsimo/lora/blob/master/lora_diffusion/lora.py
 
 import random
 
@@ -18,19 +16,13 @@ logger = logging.getLogger(__name__)
 def _absorb_channel_scale(
     weight: torch.Tensor, channel_scale: torch.Tensor, eps: float = 1e-12
 ) -> torch.Tensor:
-    """Absorb per-channel input scale into a Linear weight's input columns.
+    """SmoothQuant-style channel-scale absorption into a Linear's input columns.
 
-    Given `weight` of shape ``[out, in]`` and `channel_scale` of shape ``[in]``
-    (already post-alpha — the caller is responsible for the ``.pow(alpha)``),
-    mutate `weight` so ``W[:, c] *= s_norm[c]`` where ``s_norm = s / s.mean()``,
-    and return ``inv_scale = 1 / s_norm``. At forward time callers must apply
-    ``x * inv_scale`` before multiplying by the absorbed weight, which preserves
-    the original output exactly but rebalances the per-column gradient magnitudes.
-
-    Rationale: with SmoothQuant-style absorption, the gradient of the down
-    projection's column ``c`` goes from being proportional to ``|x[c]|^2`` to
-    proportional to ``|x[c] / s[c]|^2`` — uniform across channels when
-    ``s[c] ~ (mean|x[c]|)^alpha``. See ``archive/bench/channel_dominance_analysis.md``.
+    Mutates ``weight`` ([out, in]) so ``W[:, c] *= s_norm[c]`` and returns
+    ``inv_scale = 1 / s_norm`` (caller applies ``x * inv_scale`` at forward).
+    Output is unchanged; the point is to rebalance per-column gradient magnitudes
+    so each column's ``∂L/∂W[:,c]`` no longer scales with ``|x[c]|^2``.
+    See ``archive/bench/channel_dominance_analysis.md``.
     """
     assert channel_scale.ndim == 1, (
         f"channel_scale must be 1D, got shape {tuple(channel_scale.shape)}"
@@ -47,14 +39,8 @@ def _absorb_channel_scale(
 
 
 class BaseLoRAModule(torch.nn.Module):
-    """Shared scaffolding for LoRA-family modules.
-
-    Centralizes the parts every variant implements identically: alpha→scale
-    normalization, multiplier, dropout/module_dropout/rank_dropout bookkeeping,
-    channel_scale absorption, timestep masking, and ``apply_to`` monkey-patching.
-    Subclasses still own their own ``forward`` but call the helpers here to
-    avoid re-implementing the dropout/rebalance/rank-dropout boilerplate.
-    """
+    """Shared scaffolding: alpha→scale, multiplier, dropouts, channel_scale,
+    timestep masking, ``apply_to`` monkey-patching. Subclasses own ``forward``."""
 
     supports_conv2d: bool = False
 
@@ -89,13 +75,9 @@ class BaseLoRAModule(torch.nn.Module):
         self.register_buffer("alpha", torch.tensor(alpha))
 
         self._has_channel_scale = False
-        # Default timestep-rank mask: a shape-(1, lora_dim) all-ones buffer.
-        # Multiplying by ones is a no-op, so every LoRA-family forward can
-        # apply ``lx * self._timestep_mask`` unconditionally — no None-vs-
-        # Tensor guard fires under ``compile_mode=full``. When T-LoRA is
-        # active, ``LoRANetwork.set_timestep_mask`` reassigns this buffer to
-        # a shared live-updated mask (see network.py); ``clear_timestep_mask``
-        # fills the shared mask with ones to restore the neutral state.
+        # Default all-ones mask → identity multiply; every forward can apply
+        # `lx * self._timestep_mask` unconditionally (no None-vs-Tensor guard
+        # under compile_mode=full). T-LoRA rebinds via LoRANetwork.set_timestep_mask.
         self.register_buffer(
             "_timestep_mask",
             torch.ones(1, lora_dim, dtype=torch.float32),
@@ -110,8 +92,6 @@ class BaseLoRAModule(torch.nn.Module):
         *,
         linear_only: bool = True,
     ) -> None:
-        """Absorb ``channel_scale`` into ``target_weight`` in-place and register
-        ``inv_scale`` as a persistent buffer for use at forward time."""
         if channel_scale is None:
             return
         if linear_only and target_weight.dim() != 2:
@@ -129,8 +109,6 @@ class BaseLoRAModule(torch.nn.Module):
         del self.org_module
 
     def _skip_module(self) -> bool:
-        """True if ``module_dropout`` fires for this step — caller should return
-        the untouched org output."""
         return (
             self.module_dropout is not None
             and self.training
@@ -138,23 +116,24 @@ class BaseLoRAModule(torch.nn.Module):
         )
 
     def _rebalance(self, x: torch.Tensor) -> torch.Tensor:
-        """SmoothQuant-style input rebalancing — no-op when not calibrated."""
-        return x * self.inv_scale if self._has_channel_scale else x
+        # inv_scale stays fp32 in storage (calibration precision), but cast
+        # at the multiply site so `bf16 × fp32 → bf16` instead of being
+        # promoted back to fp32 and collapsing the bf16 activation chain.
+        if not self._has_channel_scale:
+            return x
+        return x * self.inv_scale.to(x.dtype)
 
     def _apply_rank_dropout(self, lx: torch.Tensor):
-        """Apply rank dropout to the rank-r intermediate and return (lx, scale).
-        Returns ``self.scale`` unchanged when rank_dropout is disabled."""
         if self.rank_dropout is not None and self.training:
             mask = (
                 torch.rand((lx.size(0), self.lora_dim), device=lx.device)
                 > self.rank_dropout
             )
             if len(lx.size()) == 3:
-                mask = mask.unsqueeze(1)  # for Text Encoder
+                mask = mask.unsqueeze(1)
             elif len(lx.size()) == 4:
-                mask = mask.unsqueeze(-1).unsqueeze(-1)  # for Conv2d
+                mask = mask.unsqueeze(-1).unsqueeze(-1)
             lx = lx * mask
-            # scaling for rank dropout: treat as if the rank is changed
             return lx, self.scale * (1.0 / (1.0 - self.rank_dropout))
         return lx, self.scale
 

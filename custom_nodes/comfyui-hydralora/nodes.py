@@ -58,8 +58,10 @@ class AnimaAdapterLoader:
                     {
                         "tooltip": (
                             "Anima adapter file. May contain any combination "
-                            "of LoRA, HydraLoRA (*_moe.safetensors), and "
-                            "ReFT (residual-stream) weights."
+                            "of LoRA, HydraLoRA (*_moe.safetensors), "
+                            "ChimeraHydra (*_chimera.safetensors — dual-pool "
+                            "content + frequency routing), and ReFT "
+                            "(residual-stream) weights."
                         )
                     },
                 ),
@@ -90,14 +92,19 @@ class AnimaAdapterLoader:
     FUNCTION = "apply"
     CATEGORY = "loaders"
     DESCRIPTION = (
-        "Anima adapter loader. Auto-detects LoRA / HydraLoRA / ReFT in "
-        "the safetensors file. HydraLoRA installs per-Linear forward "
-        "hooks that compute the trained per-sample router gate from each "
-        "Linear's input and blend per-expert lora_up heads — full live "
-        "routing including σ-conditional bias and FeRA-style FEI-conditional "
-        "content routing when the checkpoint declares it. ReFT installs "
-        "per-block forward hooks. For prefix / postfix / cond context "
-        "splicing, chain an AnimaPostfixLoader after this node."
+        "Anima adapter loader. Auto-detects LoRA / HydraLoRA / ChimeraHydra "
+        "/ ReFT in the safetensors file. HydraLoRA installs per-Linear "
+        "forward hooks that compute the trained per-sample router gate "
+        "from each Linear's input and blend per-expert lora_up heads — "
+        "full live routing including σ-conditional bias and FeRA-style "
+        "FEI-conditional content routing when the checkpoint declares "
+        "it. ChimeraHydra (*_chimera.safetensors, ss_use_chimera_hydra=true) "
+        "additionally runs a network-level FreqRouter on FEI+σ each step, "
+        "splits experts into content (K_c, per-Linear) + frequency (K_f, "
+        "global) pools, and dispatches the concat gate through the same "
+        "Hydra einsum. ReFT installs per-block forward hooks. For prefix "
+        "/ postfix / cond context splicing, chain an AnimaPostfixLoader "
+        "after this node."
     )
 
     def apply(self, model, adapter, strength_lora, strength_reft):

@@ -69,6 +69,15 @@ def main() -> None:
         default=True,
         help="Disable VAE internal cache (default: True)",
     )
+    parser.add_argument(
+        "--recursive",
+        action="store_true",
+        help=(
+            "Walk subfolders under --dir. Caches are still written flat "
+            "(stem-based filenames); image stems must therefore be unique "
+            "across the entire source tree."
+        ),
+    )
     args = parser.parse_args()
 
     from library.models import qwen_vae as qwen_image_autoencoder_kl
@@ -91,9 +100,28 @@ def main() -> None:
     vae.eval()
 
     # Collect images grouped by resolution for efficient batching
-    image_files = sorted(
-        p for p in data_dir.iterdir() if p.suffix.lower() in IMAGE_EXTENSIONS
-    )
+    if args.recursive:
+        image_files = sorted(
+            p
+            for p in data_dir.rglob("*")
+            if p.is_file() and p.suffix.lower() in IMAGE_EXTENSIONS
+        )
+        stems: dict[str, Path] = {}
+        collisions: list[tuple[str, Path, Path]] = []
+        for p in image_files:
+            if p.stem in stems:
+                collisions.append((p.stem, stems[p.stem], p))
+            else:
+                stems[p.stem] = p
+        if collisions:
+            print("Duplicate image stems found under --dir (caches are stem-keyed):")
+            for stem, a, b in collisions:
+                print(f"  '{stem}': {a} <-> {b}")
+            sys.exit(1)
+    else:
+        image_files = sorted(
+            p for p in data_dir.iterdir() if p.suffix.lower() in IMAGE_EXTENSIONS
+        )
 
     reso_groups: dict[tuple[int, int], list[Path]] = {}
     for p in image_files:

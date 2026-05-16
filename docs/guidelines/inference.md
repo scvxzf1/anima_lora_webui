@@ -4,7 +4,7 @@
 
 ```bash
 python inference.py \
-    --dit models/diffusion_models/anima-preview3-base.safetensors \
+    --dit models/diffusion_models/anima-base-v1.0.safetensors \
     --text_encoder models/text_encoders/qwen_3_06b_base.safetensors \
     --vae models/vae/qwen_image_vae.safetensors \
     --lora_weight output/anima_lora.safetensors \
@@ -54,16 +54,6 @@ a girl standing in a field --w 1024 --h 1024 --s 50 --g 5.0
 another prompt --seed 42 --flow_shift 4.0
 ```
 
-## LoRA Format Conversion
+## LoRA in ComfyUI
 
-Convert between anima and ComfyUI key formats:
-
-```bash
-# anima → ComfyUI
-python scripts/convert_lora_to_comfy.py input.safetensors output.safetensors
-
-# ComfyUI → anima
-python scripts/convert_lora_to_comfy.py --reverse input.safetensors output.safetensors
-```
-
-The custom `custom_nodes/comfyui-hydralora` node loads anima-format LoRA/Hydra/ReFT directly — conversion is only needed for ComfyUI's built-in LoRA loader.
+Plain anima LoRA `.safetensors` files use kohya-ss `lora_unet_` key naming and load directly into ComfyUI's stock `LoraLoader` — no conversion step. For HydraLoRA / FeRA / ReFT and prefix/postfix checkpoints (extra `router.*`, `reft_*`, stacked `lora_ups.N.*` keys that stock loader drops), use the `custom_nodes/comfyui-hydralora/` Anima Adapter Loader node.

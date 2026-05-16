@@ -28,6 +28,11 @@ logger = logging.getLogger(__name__)
 load_dotenv()
 
 _DATASET_CONFIG_SECTIONS = {"general", "datasets"}
+# Top-level TOML tables that exist to carry metadata for tooling (variant
+# registry for the GUI), not values for the argparse namespace. They're
+# stripped before flattening so their keys never reach the trainer / schema.
+_METADATA_CONFIG_SECTIONS = {"variant"}
+_NON_FLAT_SECTIONS = _DATASET_CONFIG_SECTIONS | _METADATA_CONFIG_SECTIONS
 _SNAPSHOT_SUFFIX = ".snapshot.toml"
 _DEFAULT_RESIZED_IMAGE_DIR = "post_image_dataset/resized"
 _DEFAULT_LORA_CACHE_DIR = "post_image_dataset/lora"
@@ -65,8 +70,9 @@ def _flatten_toml(
     warn (or raise in strict mode), off-choice values warn, and soft type
     mismatches (TOML ``1`` where a ``float`` is wanted) are coerced.
 
-    ``[general]`` and ``[[datasets]]`` sections are skipped — they're consumed
-    by the dataset blueprint generator, not the argparse namespace.
+    ``[general]`` / ``[[datasets]]`` are consumed by the dataset blueprint
+    generator; ``[variant]`` carries GUI registry metadata. Both kinds of
+    section are stripped before the argparse-flat merge.
     """
     out: dict = {}
     src_text = _read_text_silent(source)
@@ -85,7 +91,7 @@ def _flatten_toml(
         out[resolved] = coerced
 
     for k, v in d.items():
-        if k in _DATASET_CONFIG_SECTIONS:
+        if k in _NON_FLAT_SECTIONS:
             continue
         if isinstance(v, dict):
             for kk, vv in v.items():
@@ -264,12 +270,12 @@ def load_path_overrides(
     out: dict = {}
 
     def _flat_scalars(d: dict) -> dict:
-        """Pluck top-level non-container values, skipping dataset blueprint
-        sections (``[general]`` / ``[[datasets]]``)."""
+        """Pluck top-level non-container values, skipping non-flat sections
+        (``[general]`` / ``[[datasets]]`` / ``[variant]``)."""
         return {
             k: v
             for k, v in d.items()
-            if k not in _DATASET_CONFIG_SECTIONS
+            if k not in _NON_FLAT_SECTIONS
             and not isinstance(v, (dict, list))
         }
 
