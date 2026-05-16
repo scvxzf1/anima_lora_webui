@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+import re
 from pathlib import Path
 from typing import Any
 from urllib.parse import quote
@@ -15,9 +16,14 @@ CONFIGS_DIR = ROOT / "configs"
 SETTINGS_FILE = CONFIGS_DIR / "web-ui-settings.toml"
 
 IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".webp", ".bmp"}
+WEIGHT_EXTS = {".safetensors"}
 DEFAULT_TRAINING_DIR = "output/ckpt/sample"
 DEFAULT_INFERENCE_DIR = "output/tests"
 MAX_IMAGE_LIMIT = 500
+MAX_WEIGHT_LIMIT = 500
+SAMPLE_NAME_RE = re.compile(
+    r"^(?P<prefix>.+)_(?P<tag>e\d{6}|\d{6})_(?P<prompt_index>\d+)_(?P<timestamp>\d{14})(?:_(?P<seed>-?\d+))?$"
+)
 
 
 def get_preview_settings(current_task_sample_dir: str | None = None) -> dict[str, Any]:
@@ -62,6 +68,9 @@ def list_preview_images(
     *,
     current_task_sample_dir: str | None = None,
     sample_config: dict[str, Any] | None = None,
+    task: dict[str, Any] | None = None,
+    task_id: str | None = None,
+    task_label: str | None = None,
     limit: int = 200,
 ) -> dict[str, Any]:
     source = (source or "training").strip().lower()
@@ -71,7 +80,7 @@ def list_preview_images(
     settings = get_preview_settings(current_task_sample_dir)
     if source == "training":
         rel_dir = settings["effective_training_dir"]
-        label = "当前任务样张"
+        label = f"训练过程中采样结果 · {task_label}" if task_id and task_label else "训练过程中采样结果"
     elif source == "inference":
         rel_dir = settings["inference_dir"]
         label = "推理预览"
@@ -96,6 +105,8 @@ def list_preview_images(
             message=_preview_empty_message(source, "目录不存在", sample_config),
         )
         listing["sample_config"] = sample_config or {}
+        listing["task_id"] = task_id or ""
+        listing["task_label"] = task_label or ""
         return listing
     if not resolved.is_dir():
         return _empty_listing(source, label, display_dir, exists=False, message="路径不是目录")
@@ -107,6 +118,8 @@ def list_preview_images(
         if p.is_file() and p.suffix.lower() in IMAGE_EXTS
     ]
     candidates.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+    prompt_entries = _load_sample_prompt_entries(sample_config) if source == "training" else []
+    step_index = _training_step_index(task) if source == "training" else {}
 
     return {
         "ok": True,
@@ -116,9 +129,20 @@ def list_preview_images(
         "directory_exists": True,
         "count": len(candidates[:limit]),
         "total": len(candidates),
-        "images": [_image_meta(path) for path in candidates[:limit]],
+        "images": [
+            _image_meta(
+                path,
+                task_id=task_id,
+                sample_config=sample_config,
+                prompt_entries=prompt_entries,
+                step_index=step_index,
+            )
+            for path in candidates[:limit]
+        ],
         "message": "" if candidates else _preview_empty_message(source, "暂无预览图", sample_config),
         "sample_config": sample_config or {},
+        "task_id": task_id or "",
+        "task_label": task_label or "",
     }
 
 
@@ -129,6 +153,49 @@ def resolve_preview_image(rel_path: str, allowed_sample_dir: str | None = None) 
     if not resolved.exists() or not resolved.is_file():
         raise FileNotFoundError("图片不存在")
     return resolved
+
+
+def list_training_weights(task: dict[str, Any] | None = None) -> dict[str, Any]:
+    task = task or {}
+    output_dir = str(task.get("output_dir") or "")
+    if not output_dir:
+        return _empty_weights_listing("", "训练任务没有记录输出目录")
+
+    resolved = _resolve_training_output_dir(output_dir)
+    if resolved is None:
+        raise ValueError("训练输出目录不合法")
+    display_dir = _display_path(resolved)
+    if not resolved.exists():
+        return _empty_weights_listing(display_dir, "输出目录不存在")
+    if not resolved.is_dir():
+        return _empty_weights_listing(display_dir, "输出路径不是目录")
+
+    output_name = str(task.get("variant") or "")
+    candidates = [
+        p
+        for p in resolved.iterdir()
+        if p.is_file()
+        and p.suffix.lower() in WEIGHT_EXTS
+        and not p.name.endswith("_moe.safetensors")
+    ]
+    if output_name:
+        named = [p for p in candidates if p.name.startswith(output_name)]
+        if named:
+            candidates = named
+
+    items = [_weight_meta(path, task=task) for path in candidates[:MAX_WEIGHT_LIMIT]]
+    items.sort(key=_weight_sort_key)
+    task_count = sum(1 for item in items if item.get("scope") == "task")
+    return {
+        "ok": True,
+        "directory": display_dir,
+        "directory_exists": True,
+        "count": len(items),
+        "total": len(candidates),
+        "task_count": task_count,
+        "weights": items,
+        "message": "" if items else "未找到权重文件",
+    }
 
 
 def _load_settings() -> dict[str, str]:
@@ -170,7 +237,14 @@ def _empty_listing(source: str, label: str, directory: str, *, exists: bool, mes
     }
 
 
-def _image_meta(path: Path) -> dict[str, Any]:
+def _image_meta(
+    path: Path,
+    *,
+    task_id: str | None = None,
+    sample_config: dict[str, Any] | None = None,
+    prompt_entries: list[dict[str, Any]] | None = None,
+    step_index: dict[int, int] | None = None,
+) -> dict[str, Any]:
     stat = path.stat()
     width = None
     height = None
@@ -180,15 +254,341 @@ def _image_meta(path: Path) -> dict[str, Any]:
     except Exception:
         pass
     rel_path = _display_path(path)
+    url = f"/api/preview/image?file={quote(rel_path)}"
+    if task_id:
+        url += f"&task_id={quote(str(task_id))}"
+    sample_meta = _sample_image_meta(
+        path,
+        sample_config=sample_config,
+        prompt_entries=prompt_entries or [],
+        step_index=step_index or {},
+    )
     return {
         "file": rel_path,
         "name": path.name,
-        "url": f"/api/preview/image?file={quote(rel_path)}",
+        "url": url,
         "mtime": stat.st_mtime,
         "mtime_text": datetime.fromtimestamp(stat.st_mtime).strftime("%Y-%m-%d %H:%M:%S"),
         "size_bytes": stat.st_size,
         "width": width,
         "height": height,
+        "sample": sample_meta,
+    }
+
+
+def _sample_image_meta(
+    path: Path,
+    *,
+    sample_config: dict[str, Any] | None,
+    prompt_entries: list[dict[str, Any]],
+    step_index: dict[int, int],
+) -> dict[str, Any]:
+    parsed = _parse_sample_image_name(path)
+    if not parsed:
+        return {}
+
+    cfg = sample_config or {}
+    prompt_index = parsed.get("prompt_index")
+    prompt_entry = (
+        prompt_entries[prompt_index]
+        if isinstance(prompt_index, int) and 0 <= prompt_index < len(prompt_entries)
+        else {}
+    )
+    parameters = dict(prompt_entry.get("parameters") or {})
+    if parsed.get("seed") is not None and "seed" not in parameters:
+        parameters["seed"] = parsed["seed"]
+    sampler = str(parameters.get("sample_sampler") or cfg.get("sample_sampler") or "")
+    if sampler:
+        parameters.setdefault("sample_sampler", sampler)
+
+    epoch = parsed.get("epoch")
+    step = parsed.get("step")
+    if step is None and isinstance(epoch, int):
+        step = step_index.get(epoch)
+
+    return {
+        "epoch": epoch,
+        "step": step,
+        "prompt_index": prompt_index,
+        "generated_at": parsed.get("generated_at"),
+        "generated_at_text": parsed.get("generated_at_text"),
+        "seed": parsed.get("seed"),
+        "sampler": sampler,
+        "prompt": prompt_entry.get("prompt", ""),
+        "negative_prompt": prompt_entry.get("negative_prompt", ""),
+        "raw_prompt": prompt_entry.get("raw", ""),
+        "parameters": parameters,
+        "source": {
+            "from_filename": True,
+            "prompt_file": str(cfg.get("sample_prompts") or ""),
+            "step_from_weight": bool(step is not None and parsed.get("step") is None),
+        },
+    }
+
+
+def _weight_meta(path: Path, *, task: dict[str, Any] | None = None) -> dict[str, Any]:
+    stat = path.stat()
+    metadata = _read_safetensors_metadata(path)
+    epoch = _int_or_none(metadata.get("ss_epoch"))
+    steps = _int_or_none(metadata.get("ss_steps"))
+    num_epochs = _int_or_none(metadata.get("ss_num_epochs"))
+    max_steps = _int_or_none(metadata.get("ss_max_train_steps"))
+    output_name = str(metadata.get("ss_output_name") or "")
+    kind = _weight_kind(path.name, output_name)
+    scope = _weight_scope(stat.st_mtime, metadata, task)
+    return {
+        "file": _display_path(path),
+        "name": path.name,
+        "kind": kind,
+        "scope": scope,
+        "scope_label": "本任务" if scope == "task" else "同目录其他运行",
+        "epoch": epoch,
+        "steps": steps,
+        "num_epochs": num_epochs,
+        "max_steps": max_steps,
+        "mtime": stat.st_mtime,
+        "mtime_text": datetime.fromtimestamp(stat.st_mtime).strftime("%Y-%m-%d %H:%M:%S"),
+        "size_bytes": stat.st_size,
+        "output_name": output_name,
+    }
+
+
+def _read_safetensors_metadata(path: Path) -> dict[str, str]:
+    try:
+        from safetensors import safe_open
+
+        with safe_open(path, framework="pt", device="cpu") as f:
+            metadata = f.metadata() or {}
+        return {str(k): str(v) for k, v in metadata.items()}
+    except Exception:
+        return {}
+
+
+def _load_sample_prompt_entries(sample_config: dict[str, Any] | None) -> list[dict[str, Any]]:
+    cfg = sample_config or {}
+    prompt_file = str(cfg.get("sample_prompts") or "").strip()
+    if not prompt_file:
+        return []
+    path = _resolve_display_path(prompt_file)
+    if path is None or not path.exists() or not path.is_file():
+        return []
+    try:
+        raw_text = path.read_text(encoding="utf-8")
+    except Exception:
+        return []
+    if path.suffix.lower() == ".toml":
+        return _parse_prompt_toml(raw_text)
+    entries: list[dict[str, Any]] = []
+    for line in raw_text.splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#"):
+            continue
+        entries.append(_parse_prompt_line(stripped))
+    return entries
+
+
+def _parse_prompt_line(line: str) -> dict[str, Any]:
+    prompt_args = line.split(" --")
+    prompt = prompt_args[0].strip()
+    out: dict[str, Any] = {
+        "raw": line,
+        "prompt": prompt,
+        "parameters": {},
+    }
+    params = out["parameters"]
+    for arg in prompt_args[1:]:
+        try:
+            if m := re.match(r"w (\d+)", arg, re.IGNORECASE):
+                params["width"] = int(m.group(1))
+                continue
+            if m := re.match(r"h (\d+)", arg, re.IGNORECASE):
+                params["height"] = int(m.group(1))
+                continue
+            if m := re.match(r"d (\-?\d+)", arg, re.IGNORECASE):
+                params["seed"] = int(m.group(1))
+                continue
+            if m := re.match(r"s (\d+)", arg, re.IGNORECASE):
+                params["sample_steps"] = max(1, min(1000, int(m.group(1))))
+                continue
+            if m := re.match(r"l ([\d\.]+)", arg, re.IGNORECASE):
+                params["scale"] = float(m.group(1))
+                continue
+            if m := re.match(r"g ([\d\.]+)", arg, re.IGNORECASE):
+                params["guidance_scale"] = float(m.group(1))
+                continue
+            if m := re.match(r"n (.+)", arg, re.IGNORECASE):
+                out["negative_prompt"] = m.group(1)
+                continue
+            if m := re.match(r"ss (.+)", arg, re.IGNORECASE):
+                params["sample_sampler"] = m.group(1)
+                continue
+            if m := re.match(r"fs (.+)", arg, re.IGNORECASE):
+                params["flow_shift"] = m.group(1)
+                continue
+        except ValueError:
+            continue
+    return out
+
+
+def _parse_prompt_toml(text: str) -> list[dict[str, Any]]:
+    try:
+        data = toml.loads(text)
+    except toml.TomlDecodeError:
+        return []
+    base = data.get("prompt", {}) if isinstance(data, dict) else {}
+    subsets = base.get("subset") if isinstance(base, dict) else []
+    if not isinstance(subsets, list):
+        return []
+
+    entries: list[dict[str, Any]] = []
+    for subset in subsets:
+        if not isinstance(subset, dict):
+            continue
+        merged = {**base, **subset}
+        merged.pop("subset", None)
+        prompt = str(merged.get("prompt") or "")
+        params = {
+            "width": _int_or_none(merged.get("width")),
+            "height": _int_or_none(merged.get("height")),
+            "seed": _int_or_none(merged.get("seed")),
+            "sample_steps": _int_or_none(merged.get("sample_steps")),
+            "scale": _float_or_none(merged.get("scale")),
+            "guidance_scale": _float_or_none(merged.get("guidance_scale")),
+            "sample_sampler": str(merged.get("sample_sampler") or ""),
+            "flow_shift": merged.get("flow_shift"),
+        }
+        entries.append(
+            {
+                "raw": prompt,
+                "prompt": prompt,
+                "negative_prompt": str(merged.get("negative_prompt") or ""),
+                "parameters": {k: v for k, v in params.items() if v not in (None, "")},
+            }
+        )
+    return entries
+
+
+def _parse_sample_image_name(path: Path) -> dict[str, Any] | None:
+    stem = path.stem
+    match = SAMPLE_NAME_RE.match(stem)
+    if not match:
+        return None
+
+    tag = match.group("tag")
+    epoch = _int_or_none(tag[1:]) if tag.startswith("e") else None
+    step = None if tag.startswith("e") else _int_or_none(tag)
+    prompt_index = _int_or_none(match.group("prompt_index"))
+    timestamp = match.group("timestamp")
+    generated_at = None
+    generated_at_text = ""
+    try:
+        generated_at = datetime.strptime(timestamp, "%Y%m%d%H%M%S").timestamp()
+        generated_at_text = datetime.strptime(timestamp, "%Y%m%d%H%M%S").strftime("%Y-%m-%d %H:%M:%S")
+    except ValueError:
+        generated_at = None
+    seed = _int_or_none(match.group("seed"))
+    return {
+        "epoch": epoch,
+        "step": step,
+        "prompt_index": prompt_index,
+        "generated_at": generated_at,
+        "generated_at_text": generated_at_text,
+        "seed": seed,
+    }
+
+
+def _training_step_index(task: dict[str, Any] | None) -> dict[int, int]:
+    if not task:
+        return {}
+    output_dir = str(task.get("output_dir") or "")
+    variant = str(task.get("variant") or "")
+    if not output_dir:
+        return {}
+    resolved = _resolve_training_output_dir(output_dir)
+    if resolved is None or not resolved.exists() or not resolved.is_dir():
+        return {}
+
+    primary = resolved / f"{variant}.safetensors"
+    candidates: list[Path] = []
+    if primary.exists():
+        candidates.append(primary)
+    candidates.extend(
+        sorted(
+            [
+                p
+                for p in resolved.iterdir()
+                if p.is_file()
+                and p.suffix.lower() in WEIGHT_EXTS
+                and not p.name.endswith("_moe.safetensors")
+            ],
+            key=lambda p: p.stat().st_mtime,
+            reverse=True,
+        )
+    )
+
+    index: dict[int, int] = {}
+    for path in candidates:
+        metadata = _read_safetensors_metadata(path)
+        epoch = _int_or_none(metadata.get("ss_epoch"))
+        steps = _int_or_none(metadata.get("ss_steps"))
+        if epoch is None or steps is None:
+            continue
+        index.setdefault(epoch, steps)
+    return index
+
+
+def _weight_kind(name: str, output_name: str) -> str:
+    if output_name and name == f"{output_name}.safetensors":
+        return "final"
+    if output_name and name == f"{output_name}-checkpoint.safetensors":
+        return "resume"
+    if re.search(r"-step\d+\.safetensors$", name):
+        return "step"
+    if re.search(r"-\d{6}\.safetensors$", name):
+        return "epoch"
+    return "weight"
+
+
+def _weight_sort_key(item: dict[str, Any]) -> tuple[int, int, float, str]:
+    scope_rank = {"task": 0, "other": 1}
+    kind_rank = {"epoch": 0, "step": 1, "resume": 2, "final": 3, "weight": 4}
+    primary = item.get("steps") if item.get("steps") is not None else -1
+    epoch = item.get("epoch") if item.get("epoch") is not None else -1
+    return (
+        int(scope_rank.get(str(item.get("scope")), 9)),
+        int(kind_rank.get(str(item.get("kind")), 9)),
+        int(primary),
+        float(item.get("mtime") or 0),
+        str(item.get("name") or ""),
+    )
+
+
+def _weight_scope(mtime: float, metadata: dict[str, str], task: dict[str, Any] | None) -> str:
+    if not task:
+        return "other"
+    started = _float_or_none(task.get("started_at"))
+    finished = _float_or_none(task.get("finished_at"))
+    if started is None:
+        return "other"
+    lower = started - 180
+    upper = (finished + 180) if finished is not None else (datetime.now().timestamp() + 180)
+    meta_started = _float_or_none(metadata.get("ss_training_started_at"))
+    if meta_started is not None and lower <= meta_started <= upper:
+        return "task"
+    if lower <= float(mtime) <= upper:
+        return "task"
+    return "other"
+
+
+def _empty_weights_listing(directory: str, message: str) -> dict[str, Any]:
+    return {
+        "ok": True,
+        "directory": directory,
+        "directory_exists": False,
+        "count": 0,
+        "total": 0,
+        "weights": [],
+        "message": message,
     }
 
 
@@ -299,6 +699,40 @@ def _resolve_allowed_sample_dir(value: str | None) -> Path | None:
     if not path.is_absolute():
         path = ROOT / path
     return path.resolve()
+
+
+def _resolve_training_output_dir(value: str) -> Path | None:
+    raw = str(value or "").replace("\\", "/").strip()
+    if not raw:
+        return None
+    path = Path(raw)
+    if not path.is_absolute():
+        path = ROOT / raw
+    return path.resolve()
+
+
+def _resolve_display_path(value: str) -> Path | None:
+    raw = str(value or "").replace("\\", "/").strip()
+    if not raw:
+        return None
+    path = Path(raw)
+    if path.is_absolute():
+        return path.resolve()
+    return (ROOT / path).resolve()
+
+
+def _int_or_none(value: Any) -> int | None:
+    try:
+        return int(str(value))
+    except (TypeError, ValueError):
+        return None
+
+
+def _float_or_none(value: Any) -> float | None:
+    try:
+        return float(str(value))
+    except (TypeError, ValueError):
+        return None
 
 
 def _preview_empty_message(source: str, fallback: str, sample_config: dict[str, Any] | None) -> str:

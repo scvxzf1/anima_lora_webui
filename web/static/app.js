@@ -18,7 +18,17 @@
     let tomlSavedContent = '';
     let previewSettings = null;
     let currentPreviewSource = 'training';
+    let selectedPreviewTaskId = '';
+    let previewRequestSeq = 0;
     let currentStepEstimate = null;
+    let datasetEditorState = {
+        loading: false,
+        loaded: false,
+        dirty: false,
+        dataset_config: '',
+        datasets: [],
+        error: '',
+    };
     let trainingSampleState = null;
     let samplePromptsPath = 'configs/sample_prompts.txt';
     let samplePromptsContent = '';
@@ -44,6 +54,12 @@
         'sample_every_n_epochs',
         'sample_every_n_steps',
     ]);
+    const DATASET_EDITOR_COMPAT_FIELDS = new Set([
+        'source_image_dir',
+        'resized_image_dir',
+        'lora_cache_dir',
+        'dataset_config',
+    ]);
     const trainingRuntime = {
         state: 'idle',
         lastOutputAt: 0,
@@ -58,6 +74,17 @@
     };
     const MAX_LOG_LINES = 2000;
     const FORM_SECTION_DEFS = [
+        {
+            title: '基础模型路径',
+            description: '训练必须用到的底模、文本编码器和 VAE；路径错误会直接影响预处理和训练启动。',
+            open: true,
+            className: 'config-group-model',
+            keys: [
+                'pretrained_model_name_or_path',
+                'qwen3',
+                'vae',
+            ],
+        },
         {
             title: '常用训练设置',
             description: '最常改：输出命名、训练时长、学习率和保存频率。',
@@ -84,6 +111,21 @@
             ],
         },
         {
+            title: '数据集设置',
+            description: '训练图、缓存目录、数据集蓝图和 caption 行为。',
+            open: true,
+            className: 'config-group-data',
+            keys: [
+                'source_image_dir',
+                'resized_image_dir',
+                'lora_cache_dir',
+                'dataset_config',
+                'use_shuffled_caption_variants',
+                'caption_dropout_rate',
+                'masked_loss',
+            ],
+        },
+        {
             title: '训练中预览图',
             description: '控制训练过程中是否生成样张；默认关闭，填写提示词文件并设置采样频率后才会出图。',
             open: true,
@@ -94,17 +136,6 @@
                 'sample_every_n_steps',
                 'sample_at_first',
                 'sample_sampler',
-            ],
-        },
-        {
-            title: '基础模型路径',
-            description: '训练必须用到的底模、文本编码器和 VAE；路径错误会直接影响预处理和训练启动。',
-            open: true,
-            className: 'config-group-model',
-            keys: [
-                'pretrained_model_name_or_path',
-                'qwen3',
-                'vae',
             ],
         },
         {
@@ -119,21 +150,6 @@
                 'lokr_factor',
                 'network_weights',
                 'dim_from_weights',
-            ],
-        },
-        {
-            title: '数据与标注',
-            description: '训练图、缓存目录、数据集蓝图和 caption 行为。',
-            open: true,
-            className: 'config-group-data',
-            keys: [
-                'source_image_dir',
-                'resized_image_dir',
-                'lora_cache_dir',
-                'dataset_config',
-                'use_shuffled_caption_variants',
-                'caption_dropout_rate',
-                'masked_loss',
             ],
         },
         {
@@ -1544,9 +1560,9 @@
             await loadVariants();
             await loadConfig();
             await loadTomlFileList();
+            await loadTrainingHistoryList();
             await loadPreviewSettings();
             await loadSamplePrompts();
-            await loadTrainingHistoryList();
         } catch (e) {
             console.error('初始化失败:', e);
         }
@@ -1581,7 +1597,16 @@
         if (!variant) return;
         const methodsSubdir = currentTrainingSource.methods_subdir || 'gui-methods';
         currentConfig = await api(`/api/config/merged?variant=${encodeURIComponent(variant)}&preset=${encodeURIComponent(preset)}&methods_subdir=${encodeURIComponent(methodsSubdir)}`);
+        datasetEditorState = {
+            loading: false,
+            loaded: false,
+            dirty: false,
+            dataset_config: currentConfig.dataset_config || '',
+            datasets: [],
+            error: '',
+        };
         renderConfigForm(currentConfig);
+        loadDatasetEditor();
         loadSamplePrompts();
         loadStepEstimate();
         updateChoiceGuide();
@@ -1658,6 +1683,38 @@
         updateStepEstimatePanel();
     }
 
+    async function loadDatasetEditor() {
+        const variant = currentTrainingSource.method || val('variant-select');
+        const preset = val('preset-select');
+        const methodsSubdir = currentTrainingSource.methods_subdir || 'gui-methods';
+        if (!variant || location.protocol === 'file:') return;
+        datasetEditorState.loading = true;
+        datasetEditorState.error = '';
+        renderDatasetEditor();
+        try {
+            const data = await api(`/api/config/datasets?variant=${encodeURIComponent(variant)}&preset=${encodeURIComponent(preset)}&methods_subdir=${encodeURIComponent(methodsSubdir)}`);
+            if (!data.ok) {
+                throw new Error(data.error || '读取数据集配置失败');
+            }
+            datasetEditorState = {
+                loading: false,
+                loaded: true,
+                dirty: false,
+                dataset_config: data.dataset_config || '',
+                datasets: normalizeDatasetEditorRows(data.datasets || []),
+                error: '',
+            };
+        } catch (e) {
+            datasetEditorState = {
+                ...datasetEditorState,
+                loading: false,
+                loaded: false,
+                error: e.message || '读取数据集配置失败',
+            };
+        }
+        renderDatasetEditor();
+    }
+
     function createStepEstimatePanel() {
         const panel = document.createElement('div');
         panel.id = 'step-estimate-panel';
@@ -1665,12 +1722,14 @@
         panel.innerHTML = [
             '<div class="step-estimate-title">预计训练步数</div>',
             '<div class="step-estimate-grid">',
+            '<div><span>数据集</span><strong id="step-dataset-count">-</strong></div>',
             '<div><span>训练图片</span><strong id="step-train-images">-</strong></div>',
             '<div><span>重复后样本</span><strong id="step-repeated-images">-</strong></div>',
             '<div><span>有效批大小</span><strong id="step-effective-batch">-</strong></div>',
             '<div><span>每轮步数</span><strong id="step-per-epoch">-</strong></div>',
             '<div><span>总步数</span><strong id="step-total">-</strong></div>',
             '</div>',
+            '<div id="step-dataset-breakdown" class="step-dataset-breakdown"></div>',
             '<p id="step-estimate-note" class="step-estimate-note"></p>',
         ].join('');
         return panel;
@@ -1684,23 +1743,87 @@
         const batchSize = readLiveNumber('train_batch_size', currentStepEstimate.train_batch_size || 1);
         const gradAccum = readLiveNumber('gradient_accumulation_steps', currentStepEstimate.gradient_accumulation_steps || 1);
         const sampleRatio = readLiveNumber('sample_ratio', currentStepEstimate.sample_ratio || 1);
-        const repeats = Number(currentStepEstimate.dataset_num_repeats || 1);
-        const trainImages = Number(currentStepEstimate.train_image_count || 0);
+        const datasets = liveDatasetRowsForEstimate();
+        const trainImages = datasets.reduce((sum, row) => sum + Number(row.train_image_count || 0), 0);
+        const weightedImages = datasets.reduce((sum, row) => sum + (Number(row.train_image_count || 0) * Number(row.num_repeats || 1)), 0);
         const effectiveBatch = Math.max(1, batchSize * gradAccum);
-        const repeatedImages = Math.max(0, Math.floor(trainImages * repeats * sampleRatio));
+        const repeatedImages = Math.max(0, Math.floor(weightedImages * sampleRatio));
         const stepsPerEpoch = repeatedImages ? Math.ceil(repeatedImages / effectiveBatch) : 0;
         const totalSteps = stepsPerEpoch * epochs;
 
+        setText('step-dataset-count', String(datasets.length || 0));
         setText('step-train-images', String(trainImages));
-        setText('step-repeated-images', `${repeatedImages} (${repeats}x, ${sampleRatio} ratio)`);
+        setText('step-repeated-images', `${repeatedImages} = ${weightedImages} x ${sampleRatio}`);
         setText('step-effective-batch', `${effectiveBatch} = ${batchSize} x ${gradAccum}`);
         setText('step-per-epoch', String(stepsPerEpoch));
         setText('step-total', String(totalSteps));
+        renderStepDatasetBreakdown(datasets);
+        setText('step-estimate-note', `公式: Σ(每组训练图片 x 重复次数) x sample_ratio / (train_batch_size x gradient_accumulation_steps) x max_train_epochs。缩放图目录为空时会暂按原始数据集图片数估算。`);
+    }
 
-        const sourceLabel = currentStepEstimate.uses_preprocessed_images
-            ? `使用缩放图目录: ${currentStepEstimate.resized_dir}`
-            : `缩放图为空，暂按源图目录估算: ${currentStepEstimate.source_dir}`;
-        setText('step-estimate-note', `${sourceLabel}。预处理完成后图片数会按缩放图目录重新计算。`);
+    function liveDatasetRowsForEstimate() {
+        const baseRows = Array.isArray(currentStepEstimate?.datasets) ? currentStepEstimate.datasets : [];
+        if (!datasetEditorState.dirty || !datasetEditorState.datasets.length) {
+            return baseRows.length ? baseRows : [{
+                index: 1,
+                source_dir: currentStepEstimate?.source_dir || '',
+                image_dir: currentStepEstimate?.resized_dir || '',
+                cache_dir: currentStepEstimate?.lora_cache_dir || '',
+                source_image_count: currentStepEstimate?.source_image_count || 0,
+                resized_image_count: currentStepEstimate?.resized_image_count || 0,
+                train_image_count: currentStepEstimate?.train_image_count || 0,
+                num_repeats: currentStepEstimate?.dataset_num_repeats || 1,
+                weighted_image_count: currentStepEstimate?.weighted_image_count || 0,
+                uses_preprocessed_images: currentStepEstimate?.uses_preprocessed_images || false,
+            }];
+        }
+        return datasetEditorState.datasets.map((row, idx) => {
+            const old = baseRows.find((item) => item.source_dir === row.source_dir && item.image_dir === row.image_dir) || baseRows[idx] || {};
+            const sourceCount = Number(old.source_image_count || 0);
+            const resizedCount = Number(old.resized_image_count || 0);
+            const trainCount = resizedCount || sourceCount;
+            const repeats = Math.max(1, Number(row.num_repeats || old.num_repeats || 1));
+            return {
+                ...old,
+                index: idx + 1,
+                source_dir: row.source_dir,
+                image_dir: row.image_dir,
+                cache_dir: row.cache_dir,
+                source_image_count: sourceCount,
+                resized_image_count: resizedCount,
+                train_image_count: trainCount,
+                num_repeats: repeats,
+                weighted_image_count: trainCount * repeats,
+                uses_preprocessed_images: resizedCount > 0,
+            };
+        });
+    }
+
+    function renderStepDatasetBreakdown(datasets) {
+        const container = document.getElementById('step-dataset-breakdown');
+        if (!container) return;
+        container.innerHTML = '';
+        if (!datasets.length) {
+            const empty = document.createElement('div');
+            empty.className = 'step-dataset-row muted';
+            empty.textContent = '还没有可估算的数据集。';
+            container.appendChild(empty);
+            return;
+        }
+        for (const row of datasets) {
+            const item = document.createElement('div');
+            item.className = 'step-dataset-row';
+            const trainCount = Number(row.train_image_count || 0);
+            const repeats = Number(row.num_repeats || 1);
+            const weighted = trainCount * repeats;
+            const source = row.uses_preprocessed_images ? '缩放图' : '原始图';
+            item.innerHTML = [
+                `<strong>第 ${row.index || 1} 组</strong>`,
+                `<span>${source} ${trainCount} 张 x 重复 ${repeats} = ${weighted} 样本</span>`,
+                `<code>${escapeHtml(row.source_dir || row.image_dir || '-')}</code>`,
+            ].join('');
+            container.appendChild(item);
+        }
     }
 
     function readLiveNumber(key, fallback) {
@@ -1736,6 +1859,7 @@
         }
         if (extraClass === 'config-group-data') {
             content.appendChild(createDataDirTools());
+            content.appendChild(createDatasetEditor());
         }
         for (const [key, value] of fields) {
             content.appendChild(createFieldRow(key, value));
@@ -1752,17 +1876,269 @@
         const panel = document.createElement('div');
         panel.className = 'data-dir-tools';
         const text = document.createElement('span');
-        text.textContent = '源图目录确定后，可自动生成缩放图像目录和 LoRA 缓存目录。';
+        text.textContent = '设置数据集路径后一键生成对应的两个目录，懒人使用';
         const btn = document.createElement('button');
         btn.type = 'button';
         btn.className = 'btn btn-small';
-        btn.textContent = '根据源图目录生成缓存路径';
+        btn.textContent = '根据原始数据集生成缓存路径';
         btn.addEventListener('click', applySuggestedDataDirs);
         panel.append(text, btn);
         return panel;
     }
 
+    function createDatasetEditor() {
+        const panel = document.createElement('div');
+        panel.id = 'dataset-editor';
+        panel.className = 'dataset-editor';
+        renderDatasetEditor(panel);
+        return panel;
+    }
+
+    function renderDatasetEditor(existingPanel = null) {
+        const panel = existingPanel || document.getElementById('dataset-editor');
+        if (!panel) return;
+        panel.innerHTML = '';
+
+        const header = document.createElement('div');
+        header.className = 'dataset-editor-header';
+        const title = document.createElement('div');
+        title.innerHTML = '<strong>多数据集路径</strong><span>每一行可单独设置重复次数，保存后会写入 dataset_config。</span>';
+        const actions = document.createElement('div');
+        actions.className = 'dataset-editor-actions';
+        const addBtn = document.createElement('button');
+        addBtn.type = 'button';
+        addBtn.className = 'btn btn-small';
+        addBtn.textContent = '添加数据集';
+        addBtn.addEventListener('click', addDatasetEditorRow);
+        const suggestBtn = document.createElement('button');
+        suggestBtn.type = 'button';
+        suggestBtn.className = 'btn btn-small secondary';
+        suggestBtn.textContent = '批量生成缓存路径';
+        suggestBtn.addEventListener('click', applySuggestedDataDirs);
+        actions.append(addBtn, suggestBtn);
+        header.append(title, actions);
+        panel.appendChild(header);
+
+        if (datasetEditorState.loading) {
+            const loading = document.createElement('p');
+            loading.className = 'dataset-editor-message';
+            loading.textContent = '正在读取数据集配置...';
+            panel.appendChild(loading);
+            return;
+        }
+        if (datasetEditorState.error) {
+            const error = document.createElement('p');
+            error.className = 'dataset-editor-message error';
+            error.textContent = datasetEditorState.error;
+            panel.appendChild(error);
+        }
+
+        const list = document.createElement('div');
+        list.className = 'dataset-editor-list';
+        const rows = datasetEditorState.datasets.length
+            ? datasetEditorState.datasets
+            : normalizeDatasetEditorRows([{
+                source_dir: currentConfig.source_image_dir || '',
+                image_dir: currentConfig.resized_image_dir || '',
+                cache_dir: currentConfig.lora_cache_dir || '',
+                num_repeats: 1,
+            }]);
+        if (!datasetEditorState.datasets.length) {
+            datasetEditorState.datasets = rows;
+        }
+        rows.forEach((row, index) => {
+            list.appendChild(createDatasetEditorRow(row, index));
+        });
+        panel.appendChild(list);
+
+        const footer = document.createElement('div');
+        footer.className = 'dataset-editor-footer';
+        const configPath = document.createElement('code');
+        configPath.textContent = datasetEditorState.dataset_config || currentConfig.dataset_config || '保存后自动生成 configs/datasets/<当前配置>.toml';
+        const dirty = document.createElement('span');
+        dirty.className = datasetEditorState.dirty ? 'dataset-editor-dirty active' : 'dataset-editor-dirty';
+        dirty.textContent = datasetEditorState.dirty ? '有未保存的数据集修改' : '数据集路径已同步';
+        footer.append(configPath, dirty);
+        panel.appendChild(footer);
+    }
+
+    function createDatasetEditorRow(row, index) {
+        const wrap = document.createElement('div');
+        wrap.className = 'dataset-editor-row';
+        wrap.dataset.index = String(index);
+        wrap.appendChild(createDatasetPathField(index, 'source_dir', '原始数据集路径', row.source_dir, 'image_dataset'));
+        wrap.appendChild(createDatasetPathField(index, 'image_dir', '缩放图目录', row.image_dir, 'post_image_dataset/resized'));
+        wrap.appendChild(createDatasetPathField(index, 'cache_dir', 'LoRA 缓存目录', row.cache_dir, 'post_image_dataset/lora'));
+
+        const repeat = document.createElement('label');
+        repeat.className = 'dataset-repeat-field';
+        const repeatText = document.createElement('span');
+        repeatText.textContent = '重复次数';
+        const repeatInput = document.createElement('input');
+        repeatInput.type = 'number';
+        repeatInput.min = '1';
+        repeatInput.step = '1';
+        repeatInput.value = String(row.num_repeats || 1);
+        repeatInput.addEventListener('input', () => updateDatasetEditorRow(index, 'num_repeats', repeatInput.value));
+        repeat.append(repeatText, repeatInput);
+        wrap.appendChild(repeat);
+
+        const remove = document.createElement('button');
+        remove.type = 'button';
+        remove.className = 'btn btn-small danger dataset-remove-btn';
+        remove.textContent = '删除';
+        remove.disabled = datasetEditorState.datasets.length <= 1;
+        remove.addEventListener('click', () => removeDatasetEditorRow(index));
+        wrap.appendChild(remove);
+        return wrap;
+    }
+
+    function createDatasetPathField(index, key, label, value, placeholder) {
+        const field = document.createElement('label');
+        field.className = 'dataset-path-field';
+        const text = document.createElement('span');
+        text.textContent = label;
+        const input = document.createElement('input');
+        input.type = 'text';
+        input.value = value || '';
+        input.placeholder = placeholder;
+        input.addEventListener('input', () => updateDatasetEditorRow(index, key, input.value));
+        field.append(text, input);
+        return field;
+    }
+
+    function normalizeDatasetEditorRows(rows) {
+        return (rows || [])
+            .filter((row) => row && typeof row === 'object')
+            .map((row) => ({
+                source_dir: String(row.source_dir || row.source_image_dir || ''),
+                image_dir: String(row.image_dir || row.resized_image_dir || ''),
+                cache_dir: String(row.cache_dir || row.lora_cache_dir || ''),
+                num_repeats: Math.max(1, Number.parseInt(row.num_repeats || 1, 10) || 1),
+            }));
+    }
+
+    function updateDatasetEditorRow(index, key, value) {
+        const rows = normalizeDatasetEditorRows(datasetEditorState.datasets);
+        if (!rows[index]) return;
+        rows[index][key] = key === 'num_repeats'
+            ? Math.max(1, Number.parseInt(value || '1', 10) || 1)
+            : value;
+        datasetEditorState.datasets = rows;
+        markDatasetEditorDirty();
+        if (key === 'num_repeats') {
+            updateStepEstimatePanel();
+        }
+    }
+
+    function markDatasetEditorDirty() {
+        datasetEditorState.dirty = true;
+        updateTomlDirtyState();
+        updateStepEstimatePanel();
+        const dirty = document.querySelector('#dataset-editor .dataset-editor-dirty');
+        if (dirty) {
+            dirty.classList.add('active');
+            dirty.textContent = '有未保存的数据集修改';
+        }
+    }
+
+    function addDatasetEditorRow() {
+        datasetEditorState.datasets = normalizeDatasetEditorRows(datasetEditorState.datasets);
+        datasetEditorState.datasets.push({
+            source_dir: '',
+            image_dir: '',
+            cache_dir: '',
+            num_repeats: 1,
+        });
+        datasetEditorState.dirty = true;
+        renderDatasetEditor();
+        updateTomlDirtyState();
+    }
+
+    function removeDatasetEditorRow(index) {
+        const rows = normalizeDatasetEditorRows(datasetEditorState.datasets);
+        if (rows.length <= 1) return;
+        rows.splice(index, 1);
+        datasetEditorState.datasets = rows;
+        datasetEditorState.dirty = true;
+        renderDatasetEditor();
+        updateTomlDirtyState();
+        updateStepEstimatePanel();
+    }
+
+    function syncDatasetEditorToCompatFields() {
+        const rows = normalizeDatasetEditorRows(datasetEditorState.datasets);
+        const first = rows[0];
+        if (!first) return;
+        setFieldInputValue('source_image_dir', first.source_dir);
+        setFieldInputValue('resized_image_dir', first.image_dir);
+        setFieldInputValue('lora_cache_dir', first.cache_dir);
+        if (datasetEditorState.dataset_config) {
+            setFieldInputValue('dataset_config', datasetEditorState.dataset_config);
+        }
+    }
+
+    function setFieldInputValue(key, value) {
+        const input = document.querySelector(`#config-form .field-input[data-key="${CSS.escape(key)}"]`);
+        if (!input) return;
+        if (input.type === 'checkbox') {
+            input.checked = Boolean(value);
+        } else {
+            input.value = value || '';
+        }
+    }
+
+    function escapeHtml(value) {
+        return String(value ?? '')
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    }
+
     async function applySuggestedDataDirs() {
+        if (datasetEditorState.datasets.length) {
+            const rows = normalizeDatasetEditorRows(datasetEditorState.datasets);
+            const sourceDirs = rows.map((row) => row.source_dir.trim());
+            if (!sourceDirs.some(Boolean)) {
+                alert('请先填写至少一个原始数据集路径');
+                return;
+            }
+            try {
+                const result = await api('/api/config/datasets/suggest', {
+                    method: 'POST',
+                    body: JSON.stringify({ source_dirs: sourceDirs }),
+                });
+                if (!result.ok) {
+                    alert(result.error || '生成路径失败');
+                    return;
+                }
+                const suggestions = result.datasets || [];
+                let cursor = 0;
+                datasetEditorState.datasets = rows.map((row) => {
+                    if (!row.source_dir.trim()) return row;
+                    const next = suggestions[cursor++] || {};
+                    return {
+                        ...row,
+                        source_dir: next.source_dir || row.source_dir,
+                        image_dir: next.image_dir || row.image_dir,
+                        cache_dir: next.cache_dir || row.cache_dir,
+                    };
+                });
+                datasetEditorState.dirty = true;
+                syncDatasetEditorToCompatFields();
+                renderDatasetEditor();
+                handleFormFieldChange();
+                updateTomlDirtyState();
+                setTomlStatus('ok', '已根据原始数据集填入每组缩放图目录和 LoRA 缓存目录，请保存后再训练', { persist: true });
+                return;
+            } catch (e) {
+                alert('生成路径失败: ' + e.message);
+                return;
+            }
+        }
+
         const sourceInput = document.querySelector('#config-form .field-input[data-key="source_image_dir"]');
         const resizedInput = document.querySelector('#config-form .field-input[data-key="resized_image_dir"]');
         const cacheInput = document.querySelector('#config-form .field-input[data-key="lora_cache_dir"]');
@@ -1780,7 +2156,7 @@
             if (resizedInput) resizedInput.value = result.resized_image_dir || '';
             if (cacheInput) cacheInput.value = result.lora_cache_dir || '';
             handleFormFieldChange();
-            setTomlStatus('ok', '已根据源图目录填入缩放图像目录和 LoRA 缓存目录，请保存更新当前选中配置后再训练', { persist: true });
+            setTomlStatus('ok', '已根据原始数据集填入缩放图像目录和 LoRA 缓存目录，请保存更新当前选中配置后再训练', { persist: true });
         } catch (e) {
             alert('生成路径失败: ' + e.message);
         }
@@ -2211,6 +2587,10 @@
             return;
         }
         if (currentTrainingSource.file === file) {
+            if (datasetEditorState.dirty) {
+                const saved = await saveDatasetEditor();
+                if (!saved) return;
+            }
             const changedValues = collectChangedFormValues();
             if (Object.keys(changedValues).length > 0) {
                 await saveFormPatchToToml(file, changedValues);
@@ -2240,8 +2620,12 @@
     }
 
     async function saveFormPatchToToml(file, values) {
-        const content = document.getElementById('toml-editor').value;
         try {
+            if (datasetEditorState.dirty) {
+                const saved = await saveDatasetEditor();
+                if (!saved) return;
+            }
+            const content = document.getElementById('toml-editor').value;
             const preparedValues = await prepareFormPatchValues(values);
             const res = await api('/api/config/raw', {
                 method: 'PATCH',
@@ -2265,11 +2649,65 @@
         }
     }
 
+    async function saveDatasetEditor(options = {}) {
+        const variant = currentTrainingSource.method || val('variant-select');
+        const preset = val('preset-select');
+        const methodsSubdir = currentTrainingSource.methods_subdir || 'gui-methods';
+        const targetFile = options.trainFile || currentTrainingSource.file || currentTomlFile || '';
+        const targetContent = options.trainContent ?? (document.getElementById('toml-editor')?.value || '');
+        const rows = normalizeDatasetEditorRows(datasetEditorState.datasets);
+        if (!rows.length || rows.some((row) => !row.source_dir.trim())) {
+            setTomlStatus('error', '请至少填写一个原始数据集路径');
+            return null;
+        }
+        try {
+            const res = await api('/api/config/datasets', {
+                method: 'PUT',
+                body: JSON.stringify({
+                    variant,
+                    preset,
+                    methods_subdir: methodsSubdir,
+                    train_file: targetFile,
+                    train_content: targetContent,
+                    datasets: rows,
+                }),
+            });
+            if (!res.ok) {
+                setTomlStatus('error', res.error || '保存数据集配置失败');
+                return null;
+            }
+        datasetEditorState = {
+            loading: false,
+            loaded: true,
+            dirty: false,
+            dataset_config: res.dataset_config || datasetEditorState.dataset_config,
+            datasets: normalizeDatasetEditorRows(res.datasets || rows),
+            error: '',
+        };
+        currentConfig.dataset_config = datasetEditorState.dataset_config;
+        if (datasetEditorState.datasets[0]) {
+            currentConfig.source_image_dir = datasetEditorState.datasets[0].source_dir;
+            currentConfig.resized_image_dir = datasetEditorState.datasets[0].image_dir;
+            currentConfig.lora_cache_dir = datasetEditorState.datasets[0].cache_dir;
+            }
+            syncDatasetEditorToCompatFields();
+            renderDatasetEditor();
+            updateTomlDirtyState();
+            await loadStepEstimate();
+            await loadTomlFileList(targetFile);
+            return res;
+        } catch (e) {
+            setTomlStatus('error', '保存数据集配置失败: ' + e.message);
+            return null;
+        }
+    }
+
     function collectChangedFormValues() {
         const values = {};
         document.querySelectorAll('#config-form .field-input[data-key]').forEach((input) => {
             const key = input.dataset.key;
             if (!key) return;
+            if (datasetEditorState.dirty && DATASET_EDITOR_COMPAT_FIELDS.has(key)) return;
             if (key === 'sample_prompts') {
                 const nextPrompts = readFieldInputValue(input, samplePromptsContent);
                 if (nextPrompts !== samplePromptsContent) {
@@ -2463,17 +2901,30 @@
         }
 
         try {
+            const content = editor.value;
             const res = await api('/api/config/raw/save-as', {
                 method: 'POST',
-                body: JSON.stringify({ file, content: editor.value }),
+                body: JSON.stringify({ file, content }),
             });
             if (!res.ok) {
                 setTomlStatus('error', res.error || '另存为失败');
                 return;
             }
 
-            tomlSavedContent = editor.value;
+            currentTomlFile = file;
+            currentTrainingSource = {
+                method: file.split('/').pop().replace(/\.toml$/i, ''),
+                methods_subdir: 'imported',
+                file,
+            };
+            if (datasetEditorState.dirty) {
+                const savedDataset = await saveDatasetEditor({ trainFile: file, trainContent: content });
+                if (!savedDataset) return;
+            }
+            tomlSavedContent = content;
+            editor.value = content;
             await loadTomlFileList(file);
+            await applyTomlToConfig({ silent: true });
             updateTomlDirtyState();
             setTomlStatus('ok', `已保存新配置: ${file}`);
         } catch (e) {
@@ -2767,7 +3218,7 @@
     function hasUnsavedFormChanges(filePath = currentTomlFile) {
         if (!filePath || currentTrainingSource.file !== filePath) return false;
         if (!currentConfig || Object.keys(currentConfig).length === 0) return false;
-        return Object.keys(collectChangedFormValues()).length > 0;
+        return datasetEditorState.dirty || Object.keys(collectChangedFormValues()).length > 0;
     }
 
     function hasPendingConfigChanges(filePath = currentTomlFile) {
@@ -2818,7 +3269,7 @@
             applyBtn.disabled = !meta?.trainable || dirty;
             applyBtn.title = dirty
                 ? '当前配置尚未保存，请先保存更新当前选中配置或保存新配置'
-                : (meta?.trainable ? '加载渲染配置文件中的配置，并作为当前训练入口' : '该文件不是完整训练配置');
+                : (meta?.trainable ? '加载选中配置，并作为当前训练入口' : '该文件不是完整训练配置');
         }
         const moveBtn = document.getElementById('btn-move-toml-group');
         if (moveBtn) {
@@ -2831,7 +3282,10 @@
                     : (canMove ? '选择目标分组并移动当前配置' : '当前没有其他可移入的分组'));
         }
         const reloadBtn = document.getElementById('btn-reload-toml');
-        if (reloadBtn) reloadBtn.disabled = !filePath;
+        if (reloadBtn) {
+            reloadBtn.disabled = !filePath;
+            reloadBtn.title = '从磁盘重新读取当前配置文件，不会切换训练入口';
+        }
         const lockBtn = document.getElementById('btn-lock-toml');
         if (lockBtn) {
             const hasFile = Boolean(filePath && meta);
@@ -2930,12 +3384,12 @@
         const file = currentTomlFile || val('toml-file-select');
         const meta = tomlFileMeta[file];
         if (hasPendingConfigChanges(file)) {
-            setTomlStatus('error', '当前配置尚未保存，请先保存更新当前选中配置或保存新配置，再加载渲染配置文件中的配置');
+            setTomlStatus('error', '当前配置尚未保存，请先保存更新当前选中配置或保存新配置，再加载选中配置');
             updateTomlActionState(file);
             return;
         }
         if (!meta?.trainable) {
-            setTomlStatus('error', '该文件不是完整训练配置，不能加载渲染配置文件中的配置');
+            setTomlStatus('error', '该文件不是完整训练配置，不能加载选中配置');
             return;
         }
 
@@ -3839,11 +4293,15 @@
     async function loadPreviewSettings() {
         if (location.protocol === 'file:') return;
         try {
-            previewSettings = await api('/api/preview/settings');
+            const taskQuery = selectedPreviewTaskId
+                ? `?task_id=${encodeURIComponent(selectedPreviewTaskId)}`
+                : '';
+            previewSettings = await api('/api/preview/settings' + taskQuery);
             document.getElementById('preview-training-dir').value = previewSettings.training_dir || '';
             document.getElementById('preview-inference-dir').value = previewSettings.inference_dir || '';
             document.getElementById('preview-custom-dir').value = previewSettings.custom_dir || '';
             updatePreviewDirectorySummary();
+            renderPreviewTaskSelect();
         } catch (e) {
             setPreviewStatus('读取路径设置失败: ' + e.message, 'error');
         }
@@ -3884,20 +4342,54 @@
             setPreviewEmpty('静态打开没有后端 API，无法读取项目预览图。');
             return;
         }
+        const requestSeq = ++previewRequestSeq;
         setPreviewLoading();
         try {
+            if (!historyTasks.length) {
+                await loadTrainingHistoryList();
+            }
             if (!previewSettings) {
                 await loadPreviewSettings();
             }
-            const payload = await api(`/api/preview/images?source=${encodeURIComponent(currentPreviewSource)}`);
+            const params = new URLSearchParams({ source: currentPreviewSource });
+            if (currentPreviewSource === 'training' && selectedPreviewTaskId) {
+                params.set('task_id', selectedPreviewTaskId);
+            }
+            const payload = await api(`/api/preview/images?${params.toString()}`);
+            if (requestSeq !== previewRequestSeq) return;
             if (!payload.ok) {
                 setPreviewEmpty(payload.error || '读取预览图失败');
                 return;
             }
             renderPreviewImages(payload);
             trainingSampleState = payload.sample_config || trainingSampleState;
+            loadPreviewWeights();
         } catch (e) {
+            if (requestSeq !== previewRequestSeq) return;
             setPreviewEmpty('读取预览图失败: ' + e.message);
+        }
+    }
+
+    async function loadPreviewWeights() {
+        if (location.protocol === 'file:') {
+            renderPreviewWeights({ ok: true, weights: [], message: '静态打开没有后端 API。' });
+            return;
+        }
+        if (currentPreviewSource !== 'training' || !selectedPreviewTaskId) {
+        renderPreviewWeights({
+            ok: true,
+            weights: [],
+            message: currentPreviewSource === 'training'
+                    ? '选择一个训练任务后显示权重文件对应的 epoch 和 step。'
+                    : '权重文件只随训练任务显示。',
+        });
+            return;
+        }
+        try {
+            const payload = await api(`/api/preview/weights?task_id=${encodeURIComponent(selectedPreviewTaskId)}`);
+            renderPreviewWeights(payload);
+        } catch (e) {
+            renderPreviewWeights({ ok: false, weights: [], error: '读取权重文件失败: ' + e.message });
         }
     }
 
@@ -3906,8 +4398,55 @@
         document.querySelectorAll('.preview-source-btn').forEach((btn) => {
             btn.classList.toggle('active', btn.dataset.previewSource === currentPreviewSource);
         });
+        updatePreviewTaskVisibility();
         updatePreviewDirectorySummary();
+        loadPreviewWeights();
         loadPreviewImages();
+    }
+
+    function renderPreviewTaskSelect() {
+        const select = document.getElementById('preview-training-task');
+        if (!select) return;
+        const previous = selectedPreviewTaskId;
+        select.innerHTML = '';
+        const liveOption = document.createElement('option');
+        liveOption.value = '';
+        select.appendChild(liveOption);
+
+        const trainingTasks = historyTasks
+            .filter((task) => task.job === 'training')
+            .sort((a, b) => Number(b.started_at || 0) - Number(a.started_at || 0));
+        liveOption.textContent = trainingTasks.length
+            ? `当前任务或默认目录 · ${trainingTasks.length} 个历史训练`
+            : '当前任务或默认目录 · 暂无历史训练';
+        for (const task of trainingTasks) {
+            const option = document.createElement('option');
+            option.value = task.id;
+            option.textContent = [
+                task.name || `${task.methods_subdir || '-'} / ${task.variant || '-'}`,
+                task.started_at_text || task.id,
+                historyStateLabel(task.state),
+            ].filter(Boolean).join(' · ');
+            select.appendChild(option);
+        }
+
+        const hasPrevious = previous && trainingTasks.some((task) => task.id === previous);
+        selectedPreviewTaskId = hasPrevious ? previous : '';
+        select.value = selectedPreviewTaskId;
+        select.disabled = false;
+        updatePreviewTaskVisibility();
+    }
+
+    function updatePreviewTaskVisibility() {
+        const field = document.getElementById('preview-training-task-field');
+        if (field) field.hidden = currentPreviewSource !== 'training';
+    }
+
+    async function changePreviewTask(taskId) {
+        selectedPreviewTaskId = taskId || '';
+        previewSettings = null;
+        await loadPreviewSettings();
+        await Promise.all([loadPreviewImages(), loadPreviewWeights()]);
     }
 
     function renderPreviewImages(payload) {
@@ -3935,6 +4474,83 @@
         }
     }
 
+    function renderPreviewWeights(payload) {
+        const list = document.getElementById('preview-weights-list');
+        const empty = document.getElementById('preview-weights-empty');
+        const subtitle = document.getElementById('preview-weights-subtitle');
+        if (!list || !empty || !subtitle) return;
+
+        const weights = payload.weights || [];
+        subtitle.textContent = payload.directory
+            ? `目录: ${payload.directory}${payload.task_count ? ` · 本任务 ${payload.task_count} 个` : ''}`
+            : '选择训练任务后显示保存轮次、步数和对应权重。';
+        list.innerHTML = '';
+        if (!weights.length) {
+            empty.textContent = payload.error || payload.message || '未找到权重文件。';
+            empty.hidden = false;
+            return;
+        }
+        empty.hidden = true;
+        for (const item of weights) {
+            list.appendChild(createPreviewWeightItem(item));
+        }
+    }
+
+    function createPreviewWeightItem(item) {
+        const row = document.createElement('article');
+        row.className = `preview-weight-item preview-weight-${item.kind || 'weight'}`;
+
+        const main = document.createElement('div');
+        main.className = 'preview-weight-main';
+        const name = document.createElement('strong');
+        name.textContent = item.name;
+        const file = document.createElement('span');
+        file.textContent = item.file || '';
+        const badge = document.createElement('em');
+        badge.textContent = item.scope_label || '';
+        main.append(name, file, badge);
+
+        const stats = document.createElement('div');
+        stats.className = 'preview-weight-stats';
+        stats.append(
+            createWeightStat('Epoch', item.epoch ?? '-'),
+            createWeightStat('Step', item.steps ?? '-'),
+            createWeightStat('计划', weightPlanText(item)),
+            createWeightStat('保存', item.mtime_text || '-'),
+            createWeightStat('大小', formatBytes(item.size_bytes)),
+            createWeightStat('类型', weightKindLabel(item.kind)),
+        );
+
+        row.append(main, stats);
+        return row;
+    }
+
+    function createWeightStat(label, value) {
+        const box = document.createElement('div');
+        const key = document.createElement('span');
+        key.textContent = label;
+        const valEl = document.createElement('strong');
+        valEl.textContent = value;
+        box.append(key, valEl);
+        return box;
+    }
+
+    function weightKindLabel(kind) {
+        return {
+            epoch: '按轮保存',
+            step: '按步保存',
+            resume: '续训检查点',
+            final: '最终权重',
+            weight: '权重',
+        }[kind] || '权重';
+    }
+
+    function weightPlanText(item) {
+        const epochs = item.num_epochs ? `${item.num_epochs}ep` : '';
+        const steps = item.max_steps ? `${item.max_steps}步` : '';
+        return [epochs, steps].filter(Boolean).join(' / ') || '-';
+    }
+
     function createPreviewCard(image) {
         const button = document.createElement('button');
         button.type = 'button';
@@ -3956,8 +4572,10 @@
         title.textContent = image.name;
         const detail = document.createElement('span');
         const dims = image.width && image.height ? `${image.width}x${image.height}` : '尺寸未知';
-        detail.textContent = `${dims} · ${formatBytes(image.size_bytes)} · ${image.mtime_text || ''}`;
-        meta.append(title, detail);
+        detail.textContent = previewCardPrimaryMeta(image);
+        const sub = document.createElement('span');
+        sub.textContent = previewCardSecondaryMeta(image, dims);
+        meta.append(title, detail, sub);
 
         button.append(img, meta);
         return button;
@@ -3970,6 +4588,7 @@
         const dims = image.width && image.height ? `${image.width}x${image.height}` : '尺寸未知';
         document.getElementById('preview-dialog-meta').textContent =
             `${image.file} · ${dims} · ${formatBytes(image.size_bytes)} · ${image.mtime_text || ''}`;
+        renderPreviewDialogDetails(image, dims);
         img.src = image.url;
         img.alt = image.name;
         if (dialog?.showModal) {
@@ -4022,10 +4641,87 @@
 
     function previewSourceLabel(source) {
         return {
-            training: '当前任务样张',
+            training: '训练过程中采样结果',
             inference: '推理预览',
             custom: '自定义路径',
         }[source] || '预览图';
+    }
+
+    function previewCardPrimaryMeta(image) {
+        const sample = image.sample || {};
+        const parts = [];
+        if (sample.epoch != null) parts.push(`Epoch ${sample.epoch}`);
+        if (sample.step != null) parts.push(`Step ${sample.step}`);
+        if (sample.seed != null) parts.push(`seed ${sample.seed}`);
+        return parts.length ? parts.join(' · ') : (image.mtime_text || '无采样元信息');
+    }
+
+    function previewCardSecondaryMeta(image, dims) {
+        const sample = image.sample || {};
+        const params = sample.parameters || {};
+        const renderSize = params.width && params.height ? `${params.width}x${params.height}` : dims;
+        const steps = params.sample_steps ? `${params.sample_steps} steps` : '';
+        const sampler = sample.sampler || params.sample_sampler || '';
+        return [renderSize, steps, sampler, formatBytes(image.size_bytes)].filter(Boolean).join(' · ');
+    }
+
+    function renderPreviewDialogDetails(image, dims) {
+        const box = document.getElementById('preview-dialog-details');
+        if (!box) return;
+        box.innerHTML = '';
+        const sample = image.sample || {};
+        const params = sample.parameters || {};
+        const promptNo = sample.prompt_index != null ? Number(sample.prompt_index) + 1 : null;
+
+        const rows = [
+            ['轮次', sample.epoch != null ? `Epoch ${sample.epoch}` : '-'],
+            ['步数', sample.step != null ? `Step ${sample.step}` : '-'],
+            ['提示词序号', promptNo ? `第 ${promptNo} 条` : '-'],
+            ['生成时间', sample.generated_at_text || image.mtime_text || '-'],
+            ['种子', sample.seed ?? params.seed ?? '-'],
+            ['采样器', sample.sampler || params.sample_sampler || '-'],
+            ['生成步数', params.sample_steps ?? '-'],
+            ['CFG', params.guidance_scale ?? params.scale ?? '-'],
+            ['Flow Shift', params.flow_shift ?? '-'],
+            ['尺寸', params.width && params.height ? `${params.width}x${params.height}` : dims],
+            ['文件大小', formatBytes(image.size_bytes)],
+            ['提示词文件', sample.source?.prompt_file || '-'],
+        ];
+        for (const [label, value] of rows) {
+            box.appendChild(createPreviewDetailRow(label, value));
+        }
+        if (sample.prompt) {
+            box.appendChild(createPreviewDetailBlock('提示词', sample.prompt));
+        }
+        if (sample.negative_prompt) {
+            box.appendChild(createPreviewDetailBlock('负面提示词', sample.negative_prompt));
+        }
+        if (sample.raw_prompt) {
+            box.appendChild(createPreviewDetailBlock('原始参数行', sample.raw_prompt));
+        }
+        box.appendChild(createPreviewDetailBlock('文件路径', image.file || '-'));
+    }
+
+    function createPreviewDetailRow(label, value) {
+        const row = document.createElement('div');
+        row.className = 'preview-detail-row';
+        const key = document.createElement('span');
+        key.textContent = label;
+        const valEl = document.createElement('strong');
+        valEl.textContent = value;
+        row.append(key, valEl);
+        return row;
+    }
+
+    function createPreviewDetailBlock(label, value) {
+        const block = document.createElement('div');
+        block.className = 'preview-detail-block';
+        const key = document.createElement('span');
+        key.textContent = label;
+        const valEl = document.createElement('p');
+        valEl.textContent = value;
+        block.append(key, valEl);
+        return block;
     }
 
     function formatBytes(bytes) {
@@ -4062,9 +4758,13 @@
             const payload = await api('/api/training/history');
             historyTasks = payload.tasks || [];
             renderTrainingHistoryList();
+            renderPreviewTaskSelect();
+            setPreviewStatus('', '');
         } catch (e) {
             const list = document.getElementById('task-history-list');
             if (list) list.textContent = '读取任务列表失败';
+            renderPreviewTaskSelect();
+            setPreviewStatus('读取训练任务列表失败: ' + e.message, 'error');
         }
     }
 
@@ -4485,7 +5185,7 @@
         document.getElementById('toml-import-input').addEventListener('change', handleTomlImport);
         document.getElementById('btn-reload-toml').addEventListener('click', () => {
             const file = currentTomlFile || val('toml-file-select');
-            if (file && confirmDiscardTomlChanges('当前 TOML 有未保存修改，重载会丢失这些修改。是否继续？')) {
+            if (file && confirmDiscardTomlChanges('当前 TOML 有未保存修改，重新读取文件会丢失这些修改。是否继续？')) {
                 loadTomlFile(file, { force: true });
             }
         });
@@ -4510,8 +5210,10 @@
             btn.addEventListener('click', () => setPreviewSource(btn.dataset.previewSource));
         });
         document.getElementById('btn-refresh-preview').addEventListener('click', loadPreviewImages);
+        document.getElementById('btn-refresh-weights').addEventListener('click', loadPreviewWeights);
         document.getElementById('btn-save-preview-settings').addEventListener('click', savePreviewSettings);
         document.getElementById('btn-reset-preview-settings').addEventListener('click', resetPreviewSettings);
+        document.getElementById('preview-training-task').addEventListener('change', (e) => changePreviewTask(e.target.value));
     }
 
     // ── 工具函数 ──

@@ -12,6 +12,7 @@ from web.services.config_service import (
     get_config_file_meta,
     get_field_help,
     get_groups,
+    load_dataset_editor,
     load_sample_prompts_file,
     list_all_variants,
     list_config_file_groups,
@@ -24,6 +25,7 @@ from web.services.config_service import (
     patch_raw_file_values,
     restore_system_presets,
     save_raw_file,
+    save_dataset_editor,
     save_sample_prompts_file,
     set_user_file_lock,
     set_user_group_lock,
@@ -31,6 +33,7 @@ from web.services.config_service import (
     rename_config_file_group,
     reorder_config_file_in_group,
     suggest_data_dirs,
+    suggest_dataset_dirs,
 )
 
 
@@ -41,6 +44,9 @@ def setup_config_routes(app: web.Application) -> None:
     app.router.add_get("/api/config/merged", handle_merged)
     app.router.add_get("/api/config/steps", handle_steps)
     app.router.add_get("/api/config/data-dirs/suggest", handle_data_dirs_suggest)
+    app.router.add_get("/api/config/datasets", handle_datasets_get)
+    app.router.add_put("/api/config/datasets", handle_datasets_put)
+    app.router.add_post("/api/config/datasets/suggest", handle_datasets_suggest)
     app.router.add_get("/api/config/raw", handle_raw_get)
     app.router.add_put("/api/config/raw", handle_raw_put)
     app.router.add_patch("/api/config/raw", handle_raw_patch)
@@ -100,6 +106,52 @@ async def handle_data_dirs_suggest(request: web.Request) -> web.Response:
     source_image_dir = request.query.get("source_image_dir", "")
     try:
         result = suggest_data_dirs(source_image_dir)
+        status = 200 if result.get("ok") else 400
+        return web.json_response(result, status=status)
+    except Exception as e:
+        return web.json_response({"ok": False, "error": str(e)}, status=400)
+
+
+async def handle_datasets_get(request: web.Request) -> web.Response:
+    variant = request.query.get("variant", "lora")
+    preset = request.query.get("preset", "default")
+    methods_subdir = request.query.get("methods_subdir", "gui-methods")
+    try:
+        return web.json_response(load_dataset_editor(variant, preset, methods_subdir))
+    except Exception as e:
+        return web.json_response({"ok": False, "error": str(e)}, status=400)
+
+
+async def handle_datasets_put(request: web.Request) -> web.Response:
+    data = await request.json()
+    variant = data.get("variant", "lora")
+    preset = data.get("preset", "default")
+    methods_subdir = data.get("methods_subdir", "gui-methods")
+    datasets = data.get("datasets", [])
+    train_file = data.get("train_file")
+    train_content = data.get("train_content")
+    if not isinstance(datasets, list):
+        return web.json_response({"ok": False, "error": "datasets 必须是数组"}, status=400)
+    try:
+        return web.json_response(save_dataset_editor(
+            variant,
+            preset,
+            methods_subdir,
+            datasets,
+            train_file=train_file,
+            train_content=train_content,
+        ))
+    except Exception as e:
+        return web.json_response({"ok": False, "error": str(e)}, status=400)
+
+
+async def handle_datasets_suggest(request: web.Request) -> web.Response:
+    data = await request.json()
+    source_dirs = data.get("source_dirs", [])
+    if not isinstance(source_dirs, list):
+        return web.json_response({"ok": False, "error": "source_dirs 必须是数组"}, status=400)
+    try:
+        result = suggest_dataset_dirs([str(item or "") for item in source_dirs])
         status = 200 if result.get("ok") else 400
         return web.json_response(result, status=status)
     except Exception as e:

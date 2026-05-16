@@ -3,43 +3,87 @@
 from __future__ import annotations
 
 import os
+from pathlib import Path
 
-from ._common import PY, _path, run
+import toml
+
+from ._common import PY, ROOT, _path, _path_overrides, run
+
+
+def _dataset_rows():
+    overrides = _path_overrides()
+    dataset_config = str(overrides.get("dataset_config") or "").strip()
+    rows = []
+    if dataset_config:
+        path = Path(dataset_config)
+        if not path.is_absolute():
+            path = ROOT / path
+        if path.exists():
+            data = toml.loads(path.read_text(encoding="utf-8"))
+            for dataset in data.get("datasets") or []:
+                for subset in dataset.get("subsets") or []:
+                    attrs = subset.get("custom_attributes") or {}
+                    source = attrs.get("source_dir") or overrides.get("source_image_dir") or subset.get("image_dir")
+                    rows.append({
+                        "source": _project_path(str(source or "image_dataset")),
+                        "resized": _project_path(str(subset.get("image_dir") or "post_image_dataset/resized")),
+                        "cache": _project_path(str(subset.get("cache_dir") or "post_image_dataset/lora")),
+                    })
+    if rows:
+        return rows
+    return [{
+        "source": _path("source_image_dir", "image_dataset"),
+        "resized": _path("resized_image_dir", "post_image_dataset/resized"),
+        "cache": _path("lora_cache_dir", "post_image_dataset/lora"),
+    }]
+
+
+def _project_path(value: str) -> str:
+    text = os.path.expandvars(str(value or ""))
+    for key, raw in _path_overrides().items():
+        if isinstance(raw, str):
+            text = text.replace("{" + key + "}", raw)
+    path = Path(text)
+    if path.is_absolute():
+        return str(path)
+    return str(path)
 
 
 def cmd_preprocess_resize(extra):
-    run(
-        [
-            PY,
-            "preprocess/resize_images.py",
-            "--src",
-            _path("source_image_dir", "image_dataset"),
-            "--dst",
-            _path("resized_image_dir", "post_image_dataset/resized"),
-            "--no_copy_captions",
-            *extra,
-        ]
-    )
+    for row in _dataset_rows():
+        run(
+            [
+                PY,
+                "preprocess/resize_images.py",
+                "--src",
+                row["source"],
+                "--dst",
+                row["resized"],
+                "--no_copy_captions",
+                *extra,
+            ]
+        )
 
 
 def cmd_preprocess_vae(extra):
-    run(
-        [
-            PY,
-            "preprocess/cache_latents.py",
-            "--dir",
-            _path("resized_image_dir", "post_image_dataset/resized"),
-            "--cache_dir",
-            _path("lora_cache_dir", "post_image_dataset/lora"),
-            "--vae",
-            _path("vae", "models/vae/qwen_image_vae.safetensors"),
-            "--batch_size",
-            "4",
-            "--chunk_size",
-            "64",
-            *extra,
-        ]
-    )
+    for row in _dataset_rows():
+        run(
+            [
+                PY,
+                "preprocess/cache_latents.py",
+                "--dir",
+                row["resized"],
+                "--cache_dir",
+                row["cache"],
+                "--vae",
+                _path("vae", "models/vae/qwen_image_vae.safetensors"),
+                "--batch_size",
+                "4",
+                "--chunk_size",
+                "64",
+                *extra,
+            ]
+        )
 
 
 def cmd_preprocess_te(extra):
@@ -49,25 +93,26 @@ def cmd_preprocess_te(extra):
     # unchanged.
     shuffle_variants = os.environ.get("CAPTION_SHUFFLE_VARIANTS", "4")
     tag_dropout_rate = os.environ.get("CAPTION_TAG_DROPOUT_RATE", "0.1")
-    run(
-        [
-            PY,
-            "preprocess/cache_text_embeddings.py",
-            "--dir",
-            _path("source_image_dir", "image_dataset"),
-            "--cache_dir",
-            _path("lora_cache_dir", "post_image_dataset/lora"),
-            "--qwen3",
-            _path("qwen3", "models/text_encoders/qwen_3_06b_base.safetensors"),
-            "--dit",
-            _path("pretrained_model_name_or_path", "models/diffusion_models/anima-preview3-base.safetensors"),
-            "--caption_shuffle_variants",
-            shuffle_variants,
-            "--caption_tag_dropout_rate",
-            tag_dropout_rate,
-            *extra,
-        ]
-    )
+    for row in _dataset_rows():
+        run(
+            [
+                PY,
+                "preprocess/cache_text_embeddings.py",
+                "--dir",
+                row["source"],
+                "--cache_dir",
+                row["cache"],
+                "--qwen3",
+                _path("qwen3", "models/text_encoders/qwen_3_06b_base.safetensors"),
+                "--dit",
+                _path("pretrained_model_name_or_path", "models/diffusion_models/anima-preview3-base.safetensors"),
+                "--caption_shuffle_variants",
+                shuffle_variants,
+                "--caption_tag_dropout_rate",
+                tag_dropout_rate,
+                *extra,
+            ]
+        )
 
 
 def cmd_preprocess_pooled(extra):
@@ -78,15 +123,16 @@ def cmd_preprocess_pooled(extra):
     ``make distill-mod`` to skip a redundant ``.max(dim=1)`` per training
     microstep / val sigma. No GPU needed.
     """
-    run(
-        [
-            PY,
-            "preprocess/cache_pooled_text.py",
-            "--dir",
-            _path("lora_cache_dir", "post_image_dataset/lora"),
-            *extra,
-        ]
-    )
+    for row in _dataset_rows():
+        run(
+            [
+                PY,
+                "preprocess/cache_pooled_text.py",
+                "--dir",
+                row["cache"],
+                *extra,
+            ]
+        )
 
 
 def cmd_preprocess_pe(extra):
@@ -101,19 +147,20 @@ def cmd_preprocess_pe(extra):
     currently REPA (--use_repa) and IP-Adapter when reading PE features off
     disk.
     """
-    run(
-        [
-            PY,
-            "preprocess/cache_pe_encoder.py",
-            "--dir",
-            _path("resized_image_dir", "post_image_dataset/resized"),
-            "--cache_dir",
-            _path("lora_cache_dir", "post_image_dataset/lora"),
-            "--encoder",
-            "pe",
-            *extra,
-        ]
-    )
+    for row in _dataset_rows():
+        run(
+            [
+                PY,
+                "preprocess/cache_pe_encoder.py",
+                "--dir",
+                row["resized"],
+                "--cache_dir",
+                row["cache"],
+                "--encoder",
+                "pe",
+                *extra,
+            ]
+        )
 
 
 def cmd_preprocess(extra):

@@ -128,6 +128,96 @@ def suggest_data_dirs(source_image_dir: str) -> dict[str, Any]:
     }
 
 
+def suggest_dataset_dirs(source_dirs: list[str]) -> dict[str, Any]:
+    rows: list[dict[str, Any]] = []
+    for idx, raw in enumerate(source_dirs):
+        source = str(raw or "").strip()
+        if not source:
+            continue
+        source_path = _resolve_project_path(source)
+        rows.append({
+            "index": idx,
+            "source_dir": _display_path(source_path),
+            "image_dir": _display_path(_derived_data_dir(source_path, "resized")),
+            "cache_dir": _display_path(_derived_data_dir(source_path, "lora_cache")),
+        })
+    if not rows:
+        return {"ok": False, "error": "请至少填写一个原始数据集路径"}
+    return {"ok": True, "datasets": rows}
+
+
+def load_dataset_editor(variant: str, preset: str, methods_subdir: str = "gui-methods") -> dict[str, Any]:
+    cfg = apply_auto_data_dirs(load_merged_config(variant, preset, methods_subdir))
+    dataset_path = _dataset_config_path_from_cfg(cfg)
+    if dataset_path and dataset_path.exists():
+        data = toml.loads(dataset_path.read_text(encoding="utf-8"))
+    else:
+        data = _single_dataset_config_from_cfg(cfg)
+    rows = _dataset_rows_from_config(data, cfg)
+    return {
+        "ok": True,
+        "dataset_config": _display_path(dataset_path) if dataset_path else "",
+        "datasets": rows,
+        "defaults": {
+            "resolution": _positive_int(_first_dataset_value(data, "resolution"), 1024),
+            "batch_size": _positive_int(_first_dataset_value(data, "batch_size"), 1),
+            "enable_bucket": bool(_first_dataset_value(data, "enable_bucket", True)),
+            "validation_split": _positive_float(_first_dataset_value(data, "validation_split", 0.025), 0.025),
+            "validation_seed": _positive_int(_first_dataset_value(data, "validation_seed", 42), 42),
+            "caption_extension": str((data.get("general") or {}).get("caption_extension") or ".txt"),
+            "keep_tokens": _positive_int((data.get("general") or {}).get("keep_tokens"), 3),
+        },
+    }
+
+
+def save_dataset_editor(
+    variant: str,
+    preset: str,
+    methods_subdir: str,
+    rows: list[dict[str, Any]],
+    train_file: str | None = None,
+    train_content: str | None = None,
+) -> dict[str, Any]:
+    cfg = apply_auto_data_dirs(load_merged_config(variant, preset, methods_subdir))
+    clean_rows = _normalize_dataset_rows(rows)
+    if not clean_rows:
+        raise ValueError("请至少填写一个数据集路径")
+
+    dataset_variant = Path(_normalize_config_rel_path(train_file)).stem if train_file else variant
+    dataset_rel = _dataset_config_rel_path(cfg, dataset_variant, methods_subdir)
+    dataset_path = _safe_resolve(dataset_rel)
+    if dataset_path is None:
+        raise ValueError("数据集配置路径不合法")
+
+    train_rel = _normalize_config_rel_path(train_file) if train_file else _training_config_rel_path(variant, methods_subdir)
+    if train_rel and get_config_file_meta(train_rel).get("locked"):
+        raise ValueError(f"{_lock_reason_message(get_config_file_meta(train_rel))}，请使用新名称保存新配置后编辑")
+
+    dataset_doc = _build_dataset_config_doc(clean_rows, cfg)
+    ok, msg = save_raw_file(dataset_rel, dataset_doc, overwrite=True)
+    if not ok:
+        raise ValueError(msg)
+
+    if train_rel:
+        first = clean_rows[0]
+        values = {
+            "dataset_config": dataset_rel,
+            "source_image_dir": first["source_dir"],
+            "resized_image_dir": first["image_dir"],
+            "lora_cache_dir": first["cache_dir"],
+        }
+        ok, msg, _content, _changed = patch_raw_file_values(train_rel, values, content=train_content)
+        if not ok:
+            raise ValueError(msg)
+
+    return {
+        "ok": True,
+        "message": f"已保存 {len(clean_rows)} 个数据集路径",
+        "dataset_config": dataset_rel,
+        "datasets": clean_rows,
+    }
+
+
 def apply_auto_data_dirs(cfg: dict[str, Any], *, create: bool = False) -> dict[str, Any]:
     next_cfg = dict(cfg)
     source_raw = str(next_cfg.get("source_image_dir") or "").strip()
@@ -212,6 +302,7 @@ def preflight_training_config(variant: str, preset: str, methods_subdir: str = "
     check_dir("lora_cache_dir", "LoRA 缓存目录", must_exist=False, warn_empty=True)
     check_dir("output_dir", "输出目录", must_exist=False)
 
+    _check_dataset_paths(cfg, add)
     _check_training_images(cfg, add)
     _check_cache_sidecars(cfg, add)
 
@@ -234,21 +325,47 @@ def preflight_training_config(variant: str, preset: str, methods_subdir: str = "
 def estimate_training_steps(variant: str, preset: str, methods_subdir: str = "gui-methods") -> dict[str, Any]:
     cfg = apply_auto_data_dirs(load_merged_config(variant, preset, methods_subdir))
     image_exts = {".png", ".jpg", ".jpeg", ".webp", ".bmp"}
-    source_dir = _resolve_project_path(str(cfg.get("source_image_dir") or ""))
-    resized_dir = _resolve_project_path(str(cfg.get("resized_image_dir") or ""))
-    source_images = _count_images(source_dir, image_exts)
-    resized_images = _count_images(resized_dir, image_exts)
-    dataset_repeats = _dataset_num_repeats(cfg)
+    dataset_rows = _dataset_rows_for_estimate(cfg)
+    detail_rows: list[dict[str, Any]] = []
+    source_images = 0
+    resized_images = 0
+    train_images = 0
+    weighted_images = 0
+    dataset_repeats = 0
+    for idx, row in enumerate(dataset_rows):
+        source_dir = _resolve_project_path(str(row.get("source_dir") or ""))
+        resized_dir = _resolve_project_path(str(row.get("image_dir") or ""))
+        repeats = _positive_int(row.get("num_repeats"), 1)
+        src_count = _count_images(source_dir, image_exts)
+        resized_count = _count_images(resized_dir, image_exts)
+        used_count = resized_count or src_count
+        source_images += src_count
+        resized_images += resized_count
+        train_images += used_count
+        weighted_images += used_count * repeats
+        dataset_repeats += repeats
+        detail_rows.append({
+            "index": idx + 1,
+            "source_dir": _display_path(source_dir),
+            "image_dir": _display_path(resized_dir),
+            "cache_dir": _display_path(_resolve_project_path(str(row.get("cache_dir") or ""))),
+            "source_image_count": src_count,
+            "resized_image_count": resized_count,
+            "train_image_count": used_count,
+            "num_repeats": repeats,
+            "weighted_image_count": used_count * repeats,
+            "uses_preprocessed_images": resized_count > 0,
+        })
 
-    train_images = resized_images or source_images
     sample_ratio = _positive_float(cfg.get("sample_ratio"), 1.0)
     epochs = _positive_int(cfg.get("max_train_epochs"), 1)
     batch_size = _positive_int(cfg.get("train_batch_size"), 1)
     grad_accum = _positive_int(cfg.get("gradient_accumulation_steps"), 1)
     effective_batch = max(1, batch_size * grad_accum)
-    repeated_images = int(train_images * dataset_repeats * sample_ratio)
+    repeated_images = int(weighted_images * sample_ratio)
     steps_per_epoch = (repeated_images + effective_batch - 1) // effective_batch if repeated_images else 0
     total_steps = steps_per_epoch * epochs
+    first_row = detail_rows[0] if detail_rows else {}
 
     return {
         "ok": True,
@@ -258,7 +375,9 @@ def estimate_training_steps(variant: str, preset: str, methods_subdir: str = "gu
         "source_image_count": source_images,
         "resized_image_count": resized_images,
         "train_image_count": train_images,
-        "dataset_num_repeats": dataset_repeats,
+        "dataset_count": len(detail_rows),
+        "dataset_num_repeats": dataset_repeats or 1,
+        "weighted_image_count": weighted_images,
         "sample_ratio": sample_ratio,
         "max_train_epochs": epochs,
         "train_batch_size": batch_size,
@@ -267,11 +386,216 @@ def estimate_training_steps(variant: str, preset: str, methods_subdir: str = "gu
         "repeated_image_count": repeated_images,
         "steps_per_epoch": steps_per_epoch,
         "total_steps": total_steps,
-        "uses_preprocessed_images": resized_images > 0,
-        "source_dir": _display_path(source_dir),
-        "resized_dir": _display_path(resized_dir),
-        "lora_cache_dir": _display_path(_resolve_project_path(str(cfg.get("lora_cache_dir") or ""))),
+        "uses_preprocessed_images": bool(detail_rows) and all(row["uses_preprocessed_images"] for row in detail_rows),
+        "source_dir": first_row.get("source_dir", ""),
+        "resized_dir": first_row.get("image_dir", ""),
+        "lora_cache_dir": first_row.get("cache_dir", ""),
+        "datasets": detail_rows,
     }
+
+
+def _dataset_config_path_from_cfg(cfg: dict[str, Any]) -> Path | None:
+    rel_path = str(cfg.get("dataset_config") or "").strip()
+    if not rel_path:
+        return None
+    return _safe_resolve(_normalize_config_rel_path(rel_path))
+
+
+def _dataset_config_rel_path(cfg: dict[str, Any], variant: str, methods_subdir: str) -> str:
+    existing = str(cfg.get("dataset_config") or "").strip()
+    if existing:
+        normalized = _normalize_config_rel_path(existing)
+        path = _safe_resolve(normalized)
+        if path is not None and normalized.startswith("configs/datasets/"):
+            return normalized
+    stem = _safe_file_stem(variant or methods_subdir or "dataset")
+    return f"configs/datasets/{stem}.toml"
+
+
+def _training_config_rel_path(variant: str, methods_subdir: str) -> str:
+    methods_dir = _safe_config_subdir(methods_subdir)
+    if methods_dir is None:
+        return ""
+    stem = _safe_file_stem(variant)
+    path = methods_dir / f"{stem}.toml"
+    if not path.exists():
+        return ""
+    return _display_path(path)
+
+
+def _single_dataset_config_from_cfg(cfg: dict[str, Any]) -> dict[str, Any]:
+    source_dir = str(cfg.get("source_image_dir") or "image_dataset")
+    image_dir = str(cfg.get("resized_image_dir") or DEFAULT_RESIZED_IMAGE_DIR)
+    cache_dir = str(cfg.get("lora_cache_dir") or DEFAULT_LORA_CACHE_DIR)
+    return {
+        "general": {
+            "caption_extension": ".txt",
+            "keep_tokens": 3,
+        },
+        "datasets": [
+            {
+                "resolution": 1024,
+                "batch_size": 1,
+                "enable_bucket": True,
+                "validation_split": 0.025,
+                "validation_seed": 42,
+                "subsets": [
+                    {
+                        "image_dir": image_dir,
+                        "cache_dir": cache_dir,
+                        "num_repeats": 1,
+                        "custom_attributes": {"source_dir": source_dir},
+                    }
+                ],
+            }
+        ],
+    }
+
+
+def _dataset_rows_for_estimate(cfg: dict[str, Any]) -> list[dict[str, Any]]:
+    dataset_path = _dataset_config_path_from_cfg(cfg)
+    if dataset_path and dataset_path.exists():
+        try:
+            data = toml.loads(dataset_path.read_text(encoding="utf-8"))
+        except toml.TomlDecodeError:
+            data = _single_dataset_config_from_cfg(cfg)
+    else:
+        data = _single_dataset_config_from_cfg(cfg)
+    return _dataset_rows_from_config(data, cfg)
+
+
+def _dataset_rows_from_config(data: dict[str, Any], cfg: dict[str, Any]) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    datasets = data.get("datasets") if isinstance(data, dict) else []
+    if not isinstance(datasets, list):
+        datasets = []
+
+    fallback_source = str(cfg.get("source_image_dir") or "")
+    fallback_image = str(cfg.get("resized_image_dir") or fallback_source)
+    fallback_cache = str(cfg.get("lora_cache_dir") or "")
+
+    for dataset in datasets:
+        if not isinstance(dataset, dict):
+            continue
+        subsets = dataset.get("subsets") or []
+        if not isinstance(subsets, list):
+            continue
+        for subset in subsets:
+            if not isinstance(subset, dict):
+                continue
+            attrs = subset.get("custom_attributes")
+            if not isinstance(attrs, dict):
+                attrs = {}
+            image_dir = _dataset_path_value(subset.get("image_dir") or fallback_image, cfg)
+            cache_dir = _dataset_path_value(subset.get("cache_dir") or fallback_cache, cfg)
+            source_dir = _dataset_path_value(attrs.get("source_dir") or fallback_source or image_dir, cfg)
+            rows.append({
+                "source_dir": source_dir,
+                "image_dir": image_dir,
+                "cache_dir": cache_dir,
+                "num_repeats": _positive_int(subset.get("num_repeats"), 1),
+            })
+
+    if not rows:
+        rows = _normalize_dataset_rows([
+            {
+                "source_dir": fallback_source,
+                "image_dir": fallback_image,
+                "cache_dir": fallback_cache,
+                "num_repeats": 1,
+            }
+        ])
+    return rows
+
+
+def _normalize_dataset_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    clean_rows: list[dict[str, Any]] = []
+    for raw in rows or []:
+        if not isinstance(raw, dict):
+            continue
+        source = str(raw.get("source_dir") or raw.get("source_image_dir") or "").strip()
+        image = str(raw.get("image_dir") or raw.get("resized_image_dir") or "").strip()
+        cache = str(raw.get("cache_dir") or raw.get("lora_cache_dir") or "").strip()
+        if not source and not image and not cache:
+            continue
+        if not source:
+            source = image
+        source_path = _resolve_project_path(source)
+        image_path = _resolve_project_path(image) if image else _derived_data_dir(source_path, "resized")
+        cache_path = _resolve_project_path(cache) if cache else _derived_data_dir(source_path, "lora_cache")
+        clean_rows.append({
+            "source_dir": _display_path(source_path),
+            "image_dir": _display_path(image_path),
+            "cache_dir": _display_path(cache_path),
+            "num_repeats": _positive_int(raw.get("num_repeats"), 1),
+        })
+    return clean_rows
+
+
+def _build_dataset_config_doc(clean_rows: list[dict[str, Any]], cfg: dict[str, Any]) -> str:
+    doc = tomlkit.document()
+    doc.add(tomlkit.comment("Web UI 自动生成的数据集配置。"))
+    doc.add(tomlkit.comment("原始数据集路径保存在 custom_attributes.source_dir，训练读取 image_dir/cache_dir。"))
+
+    general = tomlkit.table()
+    general.add("caption_extension", str(cfg.get("caption_extension") or ".txt"))
+    general.add("keep_tokens", _positive_int(cfg.get("keep_tokens"), 3))
+    doc.add("general", general)
+
+    datasets = tomlkit.aot()
+    dataset = tomlkit.table()
+    dataset.add("resolution", _positive_int(cfg.get("resolution"), 1024))
+    dataset.add("batch_size", _positive_int(cfg.get("batch_size") or cfg.get("train_batch_size"), 1))
+    dataset.add("enable_bucket", bool(cfg.get("enable_bucket", True)))
+    dataset.add("validation_split", _positive_float(cfg.get("validation_split"), 0.025))
+    dataset.add("validation_seed", _positive_int(cfg.get("validation_seed"), 42))
+
+    subsets = tomlkit.aot()
+    for row in clean_rows:
+        subset = tomlkit.table()
+        subset.add("image_dir", row["image_dir"])
+        subset.add("cache_dir", row["cache_dir"])
+        subset.add("num_repeats", _positive_int(row.get("num_repeats"), 1))
+        attrs = tomlkit.inline_table()
+        attrs.add("source_dir", row["source_dir"])
+        subset.add("custom_attributes", attrs)
+        subsets.append(subset)
+    dataset.add("subsets", subsets)
+    datasets.append(dataset)
+    doc.add("datasets", datasets)
+    return tomlkit.dumps(doc)
+
+
+def _first_dataset_value(data: dict[str, Any], key: str, default: Any = None) -> Any:
+    datasets = data.get("datasets") if isinstance(data, dict) else []
+    if isinstance(datasets, list) and datasets and isinstance(datasets[0], dict):
+        if key in datasets[0]:
+            return datasets[0].get(key)
+    general = data.get("general") if isinstance(data, dict) else {}
+    if isinstance(general, dict) and key in general:
+        return general.get(key)
+    return default
+
+
+def _dataset_path_value(value: Any, cfg: dict[str, Any]) -> str:
+    text = str(value or "").strip()
+    if not text:
+        return ""
+    for key, raw in cfg.items():
+        if isinstance(raw, str):
+            text = text.replace("{" + key + "}", raw)
+    return _display_path(_resolve_project_path(expand_env_vars(text)))
+
+
+def _safe_file_stem(value: str) -> str:
+    stem = Path(str(value or "").replace("\\", "/")).stem
+    chars: list[str] = []
+    for ch in stem:
+        if ch.isascii() and (ch.isalnum() or ch in {"-", "_"}):
+            chars.append(ch)
+        elif ch.isspace():
+            chars.append("_")
+    return "".join(chars).strip("_-") or "dataset"
 
 
 def _count_images(path: Path, image_exts: set[str]) -> int:
@@ -1289,6 +1613,25 @@ def _check_training_images(cfg: dict[str, Any], add) -> None:
         add("warning", "captions", f"部分图片未找到同名 .txt 标注，例如 {sample}", image_dir)
     else:
         add("ok", "captions", "抽样图片均找到同名 .txt 标注", image_dir)
+
+
+def _check_dataset_paths(cfg: dict[str, Any], add) -> None:
+    rows = _dataset_rows_for_estimate(cfg)
+    if len(rows) <= 1:
+        return
+    for idx, row in enumerate(rows, start=1):
+        source = _resolve_project_path(str(row.get("source_dir") or ""))
+        image_dir = _resolve_project_path(str(row.get("image_dir") or ""))
+        cache_dir = _resolve_project_path(str(row.get("cache_dir") or ""))
+        prefix = f"dataset_{idx}"
+        if not source.exists():
+            add("warning", f"{prefix}_source_dir", f"第 {idx} 组原始数据集目录不存在", source)
+        elif not source.is_dir():
+            add("error", f"{prefix}_source_dir", f"第 {idx} 组原始数据集路径不是目录", source)
+        if image_dir.exists() and not image_dir.is_dir():
+            add("error", f"{prefix}_image_dir", f"第 {idx} 组缩放图路径不是目录", image_dir)
+        if cache_dir.exists() and not cache_dir.is_dir():
+            add("error", f"{prefix}_cache_dir", f"第 {idx} 组缓存路径不是目录", cache_dir)
 
 
 def _check_cache_sidecars(cfg: dict[str, Any], add) -> None:

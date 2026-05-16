@@ -63,13 +63,13 @@
                             <input id="toml-import-input" type="file" accept=".toml,.txt,text/plain" hidden>
                             <button id="btn-save-toml" class="btn btn-small btn-primary" type="button">保存更新当前选中配置</button>
                             <button id="btn-save-as-toml" class="btn btn-small" type="button">保存新配置</button>
-                            <button id="btn-apply-toml" class="btn btn-small" type="button">加载渲染配置文件中的配置</button>
+                            <button id="btn-apply-toml" class="btn btn-small" type="button">加载选中配置</button>
                             <button id="btn-move-toml-group" class="btn btn-small" type="button">移动分组位置</button>
                         </div>
                         <div class="toml-file-actions toml-secondary-actions" aria-label="次要 TOML 操作">
                             <button id="btn-import-toml" class="btn btn-small" type="button">导入 TOML</button>
                             <button id="btn-export-toml" class="btn btn-small" type="button">导出</button>
-                            <button id="btn-reload-toml" class="btn btn-small" type="button">重载</button>
+                            <button id="btn-reload-toml" class="btn btn-small" type="button">重新读取文件</button>
                             <button id="btn-lock-toml" class="btn btn-small" type="button">锁定</button>
                             <button id="btn-delete-toml" class="btn btn-small btn-subtle-danger" type="button">删除当前配置</button>
                             <button id="btn-restore-system-toml" class="btn btn-small btn-subtle-danger" type="button">还原系统预设</button>
@@ -182,7 +182,7 @@
                     <div class="panel preview-settings-panel">
                         <h3>预览来源</h3>
                         <div class="preview-source-tabs" role="group" aria-label="预览图来源">
-                            <button class="preview-source-btn active" type="button" data-preview-source="training">当前任务样张</button>
+                            <button class="preview-source-btn active" type="button" data-preview-source="training">训练中采样</button>
                             <button class="preview-source-btn" type="button" data-preview-source="inference">推理预览</button>
                             <button class="preview-source-btn" type="button" data-preview-source="custom">自定义路径</button>
                         </div>
@@ -190,6 +190,12 @@
                             <span>当前目录</span>
                             <strong id="preview-current-dir">-</strong>
                         </div>
+                        <label id="preview-training-task-field" class="preview-setting-field">
+                            <span>训练任务选择</span>
+                            <select id="preview-training-task" class="preview-training-task-select">
+                                <option value="">当前任务 / 默认目录</option>
+                            </select>
+                        </label>
                         <div class="preview-actions">
                             <button id="btn-refresh-preview" class="btn btn-primary" type="button">刷新预览图</button>
                         </div>
@@ -220,13 +226,24 @@
                 <section class="preview-main">
                     <div class="preview-header-row">
                         <div>
-                            <h2 id="preview-title">当前任务样张</h2>
-                            <p id="preview-subtitle">按修改时间显示最新预览图。</p>
+                            <h2 id="preview-title">训练过程中采样结果</h2>
+                            <p id="preview-subtitle">按修改时间显示最新采样结果。</p>
                         </div>
                         <div id="preview-count" class="preview-count">0 张</div>
                     </div>
                     <div id="preview-empty" class="preview-empty" hidden></div>
                     <div id="preview-grid" class="preview-grid" aria-live="polite"></div>
+                    <section id="preview-weights-panel" class="preview-weights-panel">
+                        <div class="preview-weights-head">
+                            <div>
+                                <h3>权重文件</h3>
+                                <p id="preview-weights-subtitle">选择训练任务后显示保存轮次、步数和对应权重。</p>
+                            </div>
+                            <button id="btn-refresh-weights" class="btn btn-small" type="button">刷新权重</button>
+                        </div>
+                        <div id="preview-weights-empty" class="preview-empty" hidden></div>
+                        <div id="preview-weights-list" class="preview-weights-list"></div>
+                    </section>
                 </section>
             </div>
         </section>
@@ -258,7 +275,13 @@
                 <button class="btn btn-small" value="close">关闭</button>
             </div>
             <div class="preview-dialog-body">
-                <img id="preview-dialog-image" alt="预览图">
+                <div class="preview-dialog-view">
+                    <img id="preview-dialog-image" alt="预览图">
+                </div>
+                <aside class="preview-dialog-info">
+                    <h3>详细信息</h3>
+                    <div id="preview-dialog-details" class="preview-dialog-details"></div>
+                </aside>
             </div>
         </form>
     </dialog>
