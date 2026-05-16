@@ -1,5 +1,8 @@
 # anima_lora WebUI 启动指南
 
+源项目“https://github.com/sorryhyun/anima_lora#”
+
+基于上述项目的webui窗口版本，仅支持简体中文
 本文只说明如何在 **Linux** 上把 WebUI 跑起来。
 
 <img width="2483" height="1448" alt="image" src="https://github.com/user-attachments/assets/a1e63f86-f6ac-4baf-a8dd-ceea65334b7d" />
