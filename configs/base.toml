@@ -1,0 +1,85 @@
+# Shared infrastructure settings — rarely change between experiments.
+
+pretrained_model_name_or_path = "models/diffusion_models/anima-preview3-base.safetensors"
+qwen3 = "models/text_encoders/qwen_3_06b_base.safetensors"
+vae = "models/vae/qwen_image_vae.safetensors"
+
+output_dir = "output/ckpt"
+output_name = "anima_lora"
+save_model_as = "safetensors"
+
+network_module = "networks.lora_anima"
+network_train_unet_only = true
+
+# ── Dataset paths ────────────────────────────────────────────────────────
+# Top-level scalars so any preset / method can override (the merge chain is
+# base.toml → presets.toml[<preset>] → methods/<method>.toml). The dataset
+# blueprint subset (below) interpolates `{resized_image_dir}` /
+# `{lora_cache_dir}` so editing these keys propagates to training too.
+# `tasks.py` preprocess commands also read them via `load_path_overrides`.
+source_image_dir = "image_dataset"
+resized_image_dir = "post_image_dataset/resized"
+lora_cache_dir = "post_image_dataset/lora"
+
+optimizer_type = "AdamW"
+optimizer_args = ["fused=True"]
+lr_scheduler = "constant"
+
+timestep_sampling = "sigmoid"
+discrete_flow_shift = 1.0
+mixed_precision = "bf16"
+# fp8_base_unet=true
+
+# gradient_checkpointing = true
+# unsloth_offload_checkpointing = true
+cache_latents = true
+cache_latents_to_disk = true
+cache_text_encoder_outputs = true
+cache_text_encoder_outputs_to_disk = true
+skip_cache_check = true
+vae_chunk_size = 64
+vae_disable_cache = true
+masked_loss = true
+torch_compile = true
+static_token_count = 4096
+trim_crossattn_kv = false
+attn_mode = "flash"
+save_precision= "bf16"
+use_custom_down_autograd = true
+log_every_n_steps=2
+dataloader_pin_memory = true
+persistent_data_loader_workers=true
+
+# ── Dataset config ───────────────────────────────────────────────────────
+# Formerly configs/dataset_config.toml. Consumed directly by the dataset
+# blueprint generator when no --dataset_config override is passed. The
+# `general`/`datasets` top-level sections are skipped by the flat method+preset
+# merge chain (see library.train_util._flatten_toml) so they don't pollute the
+# argparse namespace.
+
+[general]
+caption_extension = '.txt'
+keep_tokens = 3
+
+[[datasets]]
+resolution = 1024
+batch_size = 1
+enable_bucket = true
+validation_split = 0.025
+validation_seed = 42
+
+  [[datasets.subsets]]
+  # Templates resolve against top-level path keys (source_image_dir,
+  # resized_image_dir, lora_cache_dir) at load time — see
+  # library.config.io.load_dataset_config_from_base.
+  image_dir = '{resized_image_dir}'
+  cache_dir = '{lora_cache_dir}'
+  num_repeats = 1
+  # sample_ratio defaults to 1.0; use `--preset half` for 0.5.
+  # caption_dropout_rate is set per-method via args (see configs/methods/*.toml)
+  # Captions live in `image_dataset/` (master). The dataset loader reads
+  # captions as sidecars next to the image and will warn on missing .txt
+  # for resized/, but training reads cached prompt embeddings from
+  # post_image_dataset/lora/{stem}_anima_te.safetensors so the warning is
+  # cosmetic. Run `make preprocess-te` (which scans `image_dataset/`) to
+  # populate that cache before training.

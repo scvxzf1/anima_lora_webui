@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Anima LoRA Web UI</title>
+    <link rel="stylesheet" href="/static/style.css?v=center-dialogs-20260516-1">
+</head>
+<body>
+    <header>
+        <h1>Anima LoRA</h1>
+        <nav>
+            <button class="tab-btn active" data-tab="config">配置</button>
+            <button class="tab-btn" data-tab="training">训练</button>
+            <button class="tab-btn" data-tab="preview">预览图</button>
+        </nav>
+        <div id="status-indicator">
+            <span class="dot idle"></span>
+            <span id="status-text">空闲</span>
+        </div>
+    </header>
+
+    <main>
+        <!-- 配置 Tab：左 2/3 表单 + 右 1/3 TOML 编辑 -->
+        <section id="tab-config" class="tab-content active">
+            <div class="config-toolbar">
+                <label>方法:
+                    <select id="method-select"></select>
+                </label>
+                <label>变体:
+                    <select id="variant-select"></select>
+                </label>
+                <label>预设:
+                    <select id="preset-select"></select>
+                </label>
+                <button id="btn-load-config" class="btn">刷新</button>
+                <button id="btn-start-from-config" class="btn btn-primary">开始训练</button>
+            </div>
+            <div id="lora-family-switch" class="lora-family-switch" aria-label="LoRA 类型切换"></div>
+            <div id="choice-guide" class="choice-guide" aria-label="配置选择说明"></div>
+            <div class="config-split">
+                <!-- 左侧：表单式配置 -->
+                <div class="config-left">
+                    <div id="config-form"></div>
+                </div>
+                <!-- 右侧：TOML 直接编辑 -->
+                <div class="config-right">
+                    <div class="toml-header">
+                        <div class="toml-file-row">
+                            <div class="toml-current-file">
+                                <span>当前文件</span>
+                                <strong id="toml-current-file">-</strong>
+                                <select id="toml-file-select" hidden></select>
+                            </div>
+                            <div id="toml-badges" class="toml-badges" aria-label="TOML 文件状态">
+                                <span id="toml-current-badge" class="toml-badge" hidden>当前训练</span>
+                                <span id="toml-trainable-badge" class="toml-badge" hidden>可训练</span>
+                                <span id="toml-lock-badge" class="toml-badge toml-badge-warning" hidden>只读</span>
+                                <span id="toml-dirty-badge" class="toml-badge toml-badge-danger" hidden>未保存</span>
+                            </div>
+                        </div>
+                        <div class="toml-file-actions toml-primary-actions" aria-label="常用 TOML 操作">
+                            <input id="toml-import-input" type="file" accept=".toml,.txt,text/plain" hidden>
+                            <button id="btn-save-toml" class="btn btn-small btn-primary" type="button">保存更新当前选中配置</button>
+                            <button id="btn-save-as-toml" class="btn btn-small" type="button">保存新配置</button>
+                            <button id="btn-apply-toml" class="btn btn-small" type="button">加载渲染配置文件中的配置</button>
+                        </div>
+                        <div class="toml-file-actions toml-secondary-actions" aria-label="次要 TOML 操作">
+                            <button id="btn-import-toml" class="btn btn-small" type="button">导入 TOML</button>
+                            <button id="btn-export-toml" class="btn btn-small" type="button">导出</button>
+                            <button id="btn-reload-toml" class="btn btn-small" type="button">重载</button>
+                            <button id="btn-lock-toml" class="btn btn-small" type="button">锁定</button>
+                            <button id="btn-delete-toml" class="btn btn-small btn-subtle-danger" type="button">删除当前配置</button>
+                            <button id="btn-restore-system-toml" class="btn btn-small btn-subtle-danger" type="button">还原系统预设</button>
+                        </div>
+                        <span id="toml-status"></span>
+                    </div>
+                    <div class="toml-manager">
+                        <aside id="toml-file-groups" class="toml-file-groups" aria-label="配置文件分组"></aside>
+                        <textarea id="toml-editor" spellcheck="false"></textarea>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- 训练监控 Tab -->
+        <section id="tab-training" class="tab-content">
+            <div class="training-toolbar">
+                <div class="training-info">
+                    <span id="train-variant">-</span> /
+                    <span id="train-preset">-</span>
+                </div>
+                <button id="btn-live-training" class="btn btn-small" type="button">当前监控</button>
+                <button id="btn-refresh-history" class="btn btn-small" type="button">刷新任务列表</button>
+                <button id="btn-stop-training" class="btn btn-danger" disabled>停止训练</button>
+            </div>
+            <div class="training-workspace">
+                <aside class="panel task-history-panel">
+                    <div class="task-history-head">
+                        <h3>任务列表</h3>
+                        <label class="task-archive-toggle">
+                            <input id="history-show-archived" type="checkbox">
+                            显示归档
+                        </label>
+                    </div>
+                    <div id="task-history-list" class="task-history-list"></div>
+                </aside>
+                <div class="training-main">
+                    <div id="history-view-banner" class="history-view-banner" hidden>
+                        <span id="history-view-title">历史任务</span>
+                        <button id="btn-close-history" class="btn btn-small" type="button">回到当前</button>
+                    </div>
+                    <div class="training-panels">
+                        <div class="panel progress-panel">
+                            <h3>进度</h3>
+                            <div class="progress-bar-container">
+                                <div id="progress-bar" class="progress-bar"></div>
+                            </div>
+                            <div id="progress-text">-</div>
+                        </div>
+                        <div class="panel metrics-panel">
+                            <h3>实时指标</h3>
+                            <div class="metrics-grid">
+                                <div class="metric-item">
+                                    <span class="metric-label">Loss</span>
+                                    <span id="metric-loss" class="metric-value">-</span>
+                                </div>
+                                <div class="metric-item">
+                                    <span class="metric-label">学习率</span>
+                                    <span id="metric-lr" class="metric-value">-</span>
+                                </div>
+                                <div class="metric-item">
+                                    <span class="metric-label">步数</span>
+                                    <span id="metric-step" class="metric-value">-</span>
+                                </div>
+                                <div class="metric-item">
+                                    <span class="metric-label">速度</span>
+                                    <span id="metric-rate" class="metric-value">-</span>
+                                </div>
+                                <div class="metric-item">
+                                    <span class="metric-label">显存</span>
+                                    <span id="metric-vram" class="metric-value">-</span>
+                                </div>
+                                <div class="metric-item">
+                                    <span class="metric-label">GPU</span>
+                                    <span id="metric-gpu" class="metric-value">-</span>
+                                </div>
+                                <div class="metric-item">
+                                    <span class="metric-label">日志活动</span>
+                                    <span id="metric-log-age" class="metric-value">-</span>
+                                </div>
+                            </div>
+                            <div id="training-health" class="training-health">等待训练状态...</div>
+                        </div>
+                        <div class="panel chart-panel">
+                            <h3>Loss 曲线</h3>
+                            <canvas id="loss-chart" width="600" height="200"></canvas>
+                        </div>
+                        <div class="panel history-config-panel" id="history-config-panel" hidden>
+                            <h3>任务配置快照</h3>
+                            <div id="history-paths" class="history-paths"></div>
+                            <pre id="history-config-output"></pre>
+                        </div>
+                        <div class="panel log-panel">
+                            <h3>
+                                日志
+                                <span id="log-status" class="log-status">等待连接</span>
+                                <button id="btn-clear-log" class="btn btn-small">清空</button>
+                            </h3>
+                            <pre id="log-output"></pre>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- 预览图 Tab -->
+        <section id="tab-preview" class="tab-content">
+            <div class="preview-layout">
+                <aside class="preview-sidebar">
+                    <div class="panel preview-settings-panel">
+                        <h3>预览来源</h3>
+                        <div class="preview-source-tabs" role="group" aria-label="预览图来源">
+                            <button class="preview-source-btn active" type="button" data-preview-source="training">当前任务样张</button>
+                            <button class="preview-source-btn" type="button" data-preview-source="inference">推理预览</button>
+                            <button class="preview-source-btn" type="button" data-preview-source="custom">自定义路径</button>
+                        </div>
+                        <div class="preview-path-summary">
+                            <span>当前目录</span>
+                            <strong id="preview-current-dir">-</strong>
+                        </div>
+                        <div class="preview-actions">
+                            <button id="btn-refresh-preview" class="btn btn-primary" type="button">刷新预览图</button>
+                        </div>
+                    </div>
+
+                    <div class="panel preview-settings-panel">
+                        <h3>路径设置</h3>
+                        <label class="preview-setting-field">
+                            <span>训练样张默认目录</span>
+                            <input id="preview-training-dir" type="text" placeholder="output/ckpt/sample">
+                        </label>
+                        <label class="preview-setting-field">
+                            <span>推理预览目录</span>
+                            <input id="preview-inference-dir" type="text" placeholder="output/tests">
+                        </label>
+                        <label class="preview-setting-field">
+                            <span>自定义目录</span>
+                            <input id="preview-custom-dir" type="text" placeholder="例如 output/my-preview">
+                        </label>
+                        <div class="preview-actions">
+                            <button id="btn-save-preview-settings" class="btn btn-primary" type="button">保存路径设置</button>
+                            <button id="btn-reset-preview-settings" class="btn" type="button">恢复默认</button>
+                        </div>
+                        <div id="preview-settings-status" class="preview-status"></div>
+                    </div>
+                </aside>
+
+                <section class="preview-main">
+                    <div class="preview-header-row">
+                        <div>
+                            <h2 id="preview-title">当前任务样张</h2>
+                            <p id="preview-subtitle">按修改时间显示最新预览图。</p>
+                        </div>
+                        <div id="preview-count" class="preview-count">0 张</div>
+                    </div>
+                    <div id="preview-empty" class="preview-empty" hidden></div>
+                    <div id="preview-grid" class="preview-grid" aria-live="polite"></div>
+                </section>
+            </div>
+        </section>
+    </main>
+
+    <dialog id="preflight-dialog" class="preflight-dialog">
+        <form method="dialog">
+            <div class="preflight-header">
+                <h2>训练前预检测</h2>
+                <button class="btn btn-small" value="close">关闭</button>
+            </div>
+            <div id="preflight-summary" class="preflight-summary"></div>
+            <div id="preflight-results" class="preflight-results"></div>
+            <div class="preflight-actions">
+                <button id="btn-preflight-cancel" class="btn" value="cancel">取消</button>
+                <button id="btn-preflight-preprocess" class="btn btn-primary" value="preprocess" hidden>开始预处理</button>
+                <button id="btn-preflight-continue" class="btn btn-primary" value="continue">继续训练</button>
+            </div>
+        </form>
+    </dialog>
+
+    <dialog id="preview-dialog" class="preview-dialog">
+        <form method="dialog">
+            <div class="preview-dialog-header">
+                <div>
+                    <h2 id="preview-dialog-title">预览图</h2>
+                    <p id="preview-dialog-meta"></p>
+                </div>
+                <button class="btn btn-small" value="close">关闭</button>
+            </div>
+            <div class="preview-dialog-body">
+                <img id="preview-dialog-image" alt="预览图">
+            </div>
+        </form>
+    </dialog>
+
+    <dialog id="history-task-dialog" class="history-task-dialog">
+        <form method="dialog">
+            <div class="history-task-dialog-header">
+                <div>
+                    <h2 id="history-task-dialog-title">任务操作</h2>
+                    <p id="history-task-dialog-desc"></p>
+                </div>
+                <button class="btn btn-small" value="cancel" type="submit">关闭</button>
+            </div>
+            <div id="history-task-dialog-body" class="history-task-dialog-body"></div>
+            <div class="history-task-dialog-actions">
+                <button id="history-task-dialog-cancel" class="btn" value="cancel" type="submit">取消</button>
+                <button id="history-task-dialog-confirm" class="btn btn-primary" value="confirm" type="submit">确认</button>
+            </div>
+        </form>
+    </dialog>
+
+    <script src="/static/chart.js?v=center-dialogs-20260516-1"></script>
+    <script src="/static/app.js?v=center-dialogs-20260516-1"></script>
+</body>
+</html>

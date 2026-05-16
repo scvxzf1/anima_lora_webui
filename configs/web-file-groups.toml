@@ -1,0 +1,76 @@
+# Web UI 配置文件管理注册表。
+#
+# 可改项：
+# - label: 分组显示名
+# - open: 默认展开(true)或折叠(false)，浏览器里手动折叠后也会记住
+# - locked: 该组文件是否只读
+# - trainable: 是否可作为“应用到表单/开始训练”的训练配置入口
+# - methods_subdir: 训练时传给 train.py 的 --methods_subdir
+# - files: 固定文件列表
+# - patterns: 自动收集的 glob 列表
+# - exclude: 从 files/patterns 结果中排除
+
+[[groups]]
+id = "web_config"
+label = "Web 管理配置"
+open = true
+locked = false
+trainable = false
+files = ["configs/web-file-groups.toml"]
+
+[[groups]]
+id = "presets"
+label = "预设配置（锁定只读）"
+open = false
+locked = true
+trainable = false
+files = [
+  "configs/base.toml",
+  "configs/presets.toml",
+]
+
+[[groups]]
+id = "methods"
+label = "内置方法配置（锁定只读）"
+open = false
+locked = true
+trainable = true
+methods_subdir = "methods"
+patterns = ["configs/methods/*.toml"]
+
+[[groups]]
+id = "gui_methods"
+label = "GUI 训练变体"
+open = true
+locked = false
+trainable = true
+methods_subdir = "gui-methods"
+patterns = ["configs/gui-methods/*.toml"]
+
+[[groups]]
+id = "rokkotsu_goddess"
+label = "肋骨女神配置"
+open = true
+locked = false
+trainable = true
+methods_subdir = "imported"
+files = ["configs/imported/rokkotsu_goddess.toml"]
+
+[[groups]]
+id = "imported"
+label = "导入配置"
+open = true
+locked = false
+trainable = true
+methods_subdir = "imported"
+patterns = ["configs/imported/*.toml"]
+exclude = ["configs/imported/rokkotsu_goddess.toml"]
+
+[[groups]]
+id = "datasets"
+label = "数据集配置"
+open = false
+locked = false
+trainable = false
+patterns = ["configs/datasets/*.toml"]
+exclude = ["configs/datasets/rokkotsu_goddess.toml"]
