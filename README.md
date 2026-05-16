@@ -2,6 +2,9 @@
 
 本文只说明如何在 **Linux** 上把 WebUI 跑起来。
 
+<img width="2483" height="1448" alt="image" src="https://github.com/user-attachments/assets/a1e63f86-f6ac-4baf-a8dd-ceea65334b7d" />
+<img width="2483" height="1448" alt="image" src="https://github.com/user-attachments/assets/9d534da9-5df6-4915-b453-8bb40f428396" />
+
 如果你只是想先看到页面，按下面步骤执行即可。
 
 
