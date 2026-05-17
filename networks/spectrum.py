@@ -312,6 +312,12 @@ def spectrum_denoise(
 
                 t_exp = t.expand(latents.shape[0])
                 set_hydra_sigma(anima, t_exp)
+                if dcw_calibrator is not None:
+                    # Capture FEI on the pre-forward latent at warmup steps
+                    # for v6 fei_obs={replace,concat} artifacts. Spectrum forces
+                    # actual forwards while i < warmup_steps, so this lines up
+                    # with the v4 g_obs capture at line 409 below.
+                    dcw_calibrator.record_latent_pre_forward(i, latents)
 
                 if actual:
                     # --- Full forward pass ---

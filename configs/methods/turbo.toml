@@ -27,14 +27,14 @@ use_custom_down_autograd = true
 # are the stability knobs, not alpha.
 student_rank = 48
 student_alpha = 48
-fake_rank = 64
-fake_alpha = 64
+fake_rank = 96
+fake_alpha = 96
 attn_mode = "flash"
 
 # DMD2 schedule (proposal §Schedule, paper Table 1 row 4: Decoupled-Hybrid).
 [dmd]
 student_steps = 4               # production target — sampler runs 4 Euler steps at inference
-teacher_cfg = 2               # α — matches Anima's production CFG=4 (baked into student)
+teacher_cfg = 4               # α — matches Anima's production CFG=4 (baked into student)
 tau_ca_strategy = "above_t"     # τ_CA > t  (CA focuses on still-unresolved content)
 tau_dm_strategy = "uniform"     # τ_DM ∈ [0, 1]  (DM corrects global artifacts)
 tau_ca_min_gap = 0.05           # clamp τ_CA ≥ t + this gap (proposal R5: late-step stability)
@@ -42,8 +42,8 @@ tau_ca_skip_above_t = 0.95      # if generator t > this, skip CA branch (DM-only
 
 # Optimization.
 [optim]
-student_lr = 2e-5
-fake_lr = 1e-4
+student_lr = 5e-6
+fake_lr = 5e-5
 fake_steps_per_student_step = 2
 alpha_warmup_steps = 100       # linear ramp α_eff: 1.0 → teacher_cfg over these steps
 weight_decay = 0.0

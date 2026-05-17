@@ -1964,8 +1964,10 @@ class AdapterRotaryEmbedding(nn.Module):
 
     @torch.no_grad()
     def forward(self, x, position_ids):
-        inv_freq_expanded = self.inv_freq[None, :, None].expand(
-            position_ids.shape[0], -1, 1
+        # inv_freq is registered as fp32 but a parent .to(bf16) casts it too —
+        # force fp32 here so the matmul matches position_ids_expanded.
+        inv_freq_expanded = (
+            self.inv_freq[None, :, None].float().expand(position_ids.shape[0], -1, 1)
         )
         position_ids_expanded = position_ids[:, None, :].float()
 

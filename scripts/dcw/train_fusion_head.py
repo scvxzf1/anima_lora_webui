@@ -303,7 +303,7 @@ def main():
     p.add_argument("--lr", type=float, default=1e-3)
     p.add_argument("--weight_decay", type=float, default=1e-3)
     p.add_argument("--seed", type=int, default=0)
-    p.add_argument("--label", type=str, default="prototype")
+    p.add_argument("--label", type=str, default="concat")
     p.add_argument(
         "--c_proj_dim",
         type=int,
@@ -349,7 +349,7 @@ def main():
     p.add_argument(
         "--fei_obs",
         type=str,
-        default="off",
+        default="concat",
         choices=("off", "replace", "concat"),
         help="Use 2-band FEI low-band energy (FeRA paper, arXiv:2511.17979) "
         "on the per-step latent as a conditioning channel for the head. "

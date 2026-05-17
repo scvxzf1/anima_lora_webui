@@ -362,9 +362,17 @@ def main():
     )
     if args.single_prompt_idx is not None:
         # Phase 0 overfit — wrap as a 1-sample list so the dataloader cycles it.
-        only = dataset.samples[args.single_prompt_idx % len(dataset.samples)]
+        # The "N samples from ..." line above is CachedDataset.__init__'s own
+        # log, fired BEFORE this slice; we re-log post-slice so the live
+        # dataset state is unambiguous in the run log.
+        pinned_idx = args.single_prompt_idx % len(dataset.samples)
+        only = dataset.samples[pinned_idx]
         dataset.samples = [only]
-        logger.info(f"single-prompt overfit mode: pinned to idx={args.single_prompt_idx}")
+        latent_stem = os.path.basename(only[0])
+        logger.info(
+            f"single-prompt overfit mode: pinned to idx={args.single_prompt_idx} "
+            f"(post-slice len(dataset)={len(dataset)}, latent={latent_stem})"
+        )
 
     def _collate(batch):
         return (
@@ -471,6 +479,15 @@ def main():
     running_dm = 0.0
     running_cfg = 0.0
     running_xpred = 0.0
+    running_v_student = 0.0
+    running_v_real_dm = 0.0
+    running_v_fake_dm = 0.0
+    # Per-τ_DM-bucket δ_dm tracking (proposal R1 mitigation b): three bins
+    # over [0, 1/3), [1/3, 2/3), [2/3, 1]. Lets us see whether the fake is
+    # under-tracking globally or only at a specific noise band.
+    bucket_labels = ("lo", "mid", "hi")
+    running_dm_buckets = [0.0, 0.0, 0.0]
+    running_dm_bucket_counts = [0, 0, 0]
 
     for step in progress:
         try:
@@ -604,6 +621,24 @@ def main():
             dm_rms = delta_dm.float().pow(2).mean().sqrt().item()
             cfg_rms = delta_cfg.float().pow(2).mean().sqrt().item()
             xpred_rms = x_pred.detach().float().std().item()
+            # Direct student velocity magnitude — runaway student manifests
+            # here before x_pred_std catches up (x_pred = x_t − t·v_student).
+            v_student_rms = v_student.detach().float().pow(2).mean().sqrt().item()
+            # Teacher vs fake magnitudes at the DM-branch evaluation point.
+            # If v_real_dm stays bounded while v_fake_dm explodes (or stays
+            # tiny while real grows), the fake-tracking gap is asymmetric in
+            # a diagnostic way the aggregate δ_dm hides.
+            v_real_dm_rms = v_real_cond_dm.float().pow(2).mean().sqrt().item()
+            v_fake_dm_rms = v_fake_cond_dm.float().pow(2).mean().sqrt().item()
+            # Per-sample δ_dm, bucketed by τ_DM. Tells us whether the fake's
+            # tracking gap is uniform across noise levels or concentrated at
+            # one band (the proposal's R1 mitigation b).
+            per_sample_dm = delta_dm.float().pow(2).mean(dim=(1, 2, 3)).sqrt()  # (B,)
+            tau_dm_bucket = (tau_dm.float() * 3.0).clamp(max=2.999).floor().long()  # (B,)
+            for b in range(B):
+                bi = int(tau_dm_bucket[b].item())
+                running_dm_buckets[bi] += float(per_sample_dm[b].item())
+                running_dm_bucket_counts[bi] += 1
         running_student += s_now
         running_fake += f_now
         running_alpha += alpha_eff
@@ -611,6 +646,9 @@ def main():
         running_dm += dm_rms
         running_cfg += cfg_rms
         running_xpred += xpred_rms
+        running_v_student += v_student_rms
+        running_v_real_dm += v_real_dm_rms
+        running_v_fake_dm += v_fake_dm_rms
 
         # Update tqdm every step so the bar always shows live signal (gating
         # this behind ``log_interval`` left the first N steps with a blank
@@ -620,6 +658,7 @@ def main():
             dca=f"{cfg_rms:.3e}",
             ddm=f"{dm_rms:.3e}",
             xp=f"{xpred_rms:.3f}",
+            vs=f"{v_student_rms:.3f}",
             fake=f"{f_now:.3e}",
         )
 
@@ -631,6 +670,9 @@ def main():
             avg_dm = running_dm / log_interval
             avg_cfg = running_cfg / log_interval
             avg_xp = running_xpred / log_interval
+            avg_vs = running_v_student / log_interval
+            avg_vrdm = running_v_real_dm / log_interval
+            avg_vfdm = running_v_fake_dm / log_interval
             if writer is not None:
                 writer.add_scalar("train/student_loss", avg_s, step + 1)
                 writer.add_scalar("train/fake_loss", avg_f, step + 1)
@@ -639,6 +681,17 @@ def main():
                 writer.add_scalar("train/delta_dm_rms", avg_dm, step + 1)
                 writer.add_scalar("train/delta_cfg_rms", avg_cfg, step + 1)
                 writer.add_scalar("train/x_pred_std", avg_xp, step + 1)
+                writer.add_scalar("train/v_student_rms", avg_vs, step + 1)
+                writer.add_scalar("train/v_real_dm_rms", avg_vrdm, step + 1)
+                writer.add_scalar("train/v_fake_dm_rms", avg_vfdm, step + 1)
+                for bi, label in enumerate(bucket_labels):
+                    n = running_dm_bucket_counts[bi]
+                    if n > 0:
+                        writer.add_scalar(
+                            f"train/delta_dm_rms_tau_{label}",
+                            running_dm_buckets[bi] / n,
+                            step + 1,
+                        )
                 writer.add_scalar(
                     "train/student_lr", student_sched.get_last_lr()[0], step + 1
                 )
@@ -646,6 +699,9 @@ def main():
                 writer.add_scalar("train/t_mean", t.float().mean().item(), step + 1)
             running_student = running_fake = running_alpha = 0.0
             running_grad = running_dm = running_cfg = running_xpred = 0.0
+            running_v_student = running_v_real_dm = running_v_fake_dm = 0.0
+            running_dm_buckets = [0.0, 0.0, 0.0]
+            running_dm_bucket_counts = [0, 0, 0]
 
         # --- save ---
         if (step + 1) % save_every == 0 or (step + 1) == iterations:

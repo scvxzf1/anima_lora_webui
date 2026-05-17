@@ -175,7 +175,7 @@ def cmd_dcw(extra):
     Other extra args pass through to every measure_bias invocation
     (--dit, --lora_weight, --pooled_text_proj '', --guidance_scale, etc.).
     """
-    n_images, extra = _pop_kv(extra, "--n_images", "4")
+    n_images, extra = _pop_kv(extra, "--n_images", "8")
     n_seeds, extra = _pop_kv(extra, "--n_seeds", "2")
     shuffle_seed, extra = _pop_kv(extra, "--shuffle_seed", "0")
     label, extra = _pop_kv(extra, "--label", "make-dcw")

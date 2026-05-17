@@ -573,6 +573,10 @@ def generate_body(
                     t_expand = t.expand(latents.shape[0])
                     set_hydra_sigma(anima, t_expand)
                     compute_and_set_hydra_fei(anima, latents)
+                    if dcw_calibrator is not None:
+                        # Capture FEI on the pre-forward latent at warmup steps
+                        # for v6 fei_obs={replace,concat} artifacts. No-op for v5.
+                        dcw_calibrator.record_latent_pre_forward(i, latents)
 
                     with torch.no_grad():
                         _pos_kw = (

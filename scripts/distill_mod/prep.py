@@ -57,6 +57,17 @@ from scripts.distill_mod.uncond import (  # noqa: E402
     stage_uncond_sidecar,
 )
 
+# Phase 2 default synthesis allowlist: DCW's top-5 portrait buckets plus the
+# next 3 most-frequent buckets in post_image_dataset/lora/ (960x1088 near-square
+# portrait, 720x1440 tall portrait, 1024x1024 square). Not folded into
+# DCW_ASPECT_BUCKETS — that tuple's order is the canonical aspect_id index for
+# shipped fusion-head checkpoints (see library/datasets/buckets.py:36-42).
+_DEFAULT_SYNTH_BUCKETS: tuple[str, ...] = DCW_ASPECT_NAMES + (
+    "960x1088",
+    "720x1440",
+    "1024x1024",
+)
+
 logger = logging.getLogger(__name__)
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
@@ -144,13 +155,14 @@ def main() -> None:
     parser.add_argument(
         "--buckets",
         type=str,
-        default=",".join(DCW_ASPECT_NAMES),
+        default=",".join(_DEFAULT_SYNTH_BUCKETS),
         help=(
             "Comma-separated (H_pix x W_pix) resolution allowlist for synthesis. "
-            "Default = library.datasets.buckets.DCW_ASPECT_NAMES (top-5 by "
-            "frequency in post_image_dataset/lora/; same set `make dcw` covers). "
-            "Pass empty string to disable the filter and synthesize every "
-            "cached resolution."
+            "Default = DCW_ASPECT_NAMES (top-5 by frequency in "
+            "post_image_dataset/lora/) plus 960x1088, 720x1440, 1024x1024 — the "
+            "next three most-frequent buckets, each a distinct aspect not "
+            "covered by the DCW-5 set. Pass empty string to disable the filter "
+            "and synthesize every cached resolution."
         ),
     )
     parser.add_argument(

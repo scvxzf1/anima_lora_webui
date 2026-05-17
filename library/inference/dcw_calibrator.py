@@ -13,10 +13,22 @@ non-zero means the head was trained on data already corrected with that
 scalar, so α̂ is a residual on top of it (kills the warmup dead zone since
 the baseline applies on every step, including i < target_start).
 
-Schema compat: accepts both ``dcw_v5_lambda_scalar`` (post-cleanup) and the
-legacy ``dcw_v4_fusion_head`` schemas. Pre-``lambda_scalar`` v4 artifacts
-(``target_kind=alpha_residual``) are rejected at load time — they need either
-a retrain or a ``git checkout`` to the pre-cleanup controller.
+Schema compat:
+
+* ``dcw_v5_lambda_scalar`` (default post-cleanup) — head reads ``(c_pool,
+  g_obs[:k], aux)``; ``g_obs`` = ``haar_LL_norm(noise_pred)`` per warmup step.
+* ``dcw_v6_fei_replace`` — head's ``g_obs`` slot is fed 2-band FEI low-band
+  energy on the pre-forward latent instead of Haar norms; trainer redirected
+  ``g_obs_mean/std`` onto FEI stats so loading is bit-equivalent to v5 except
+  for the input source. Caller must invoke ``record_latent_pre_forward(i, z_t)``
+  before each warmup-step model forward.
+* ``dcw_v6_fei_concat`` — head adds a parallel ``fei[:k]`` column alongside
+  the original ``g_obs[:k]``; both are needed per warmup step.
+* ``dcw_v4_fusion_head`` — legacy.
+
+Pre-``lambda_scalar`` v4 artifacts (``target_kind=alpha_residual``) are rejected
+at load time — they need either a retrain or a ``git checkout`` to the
+pre-cleanup controller.
 
 The calibrator is **inactive** (``is_active == False``) when the artifact
 fails to load or ``setup`` hits an empty embed mask.
@@ -31,12 +43,22 @@ from typing import Optional
 import torch
 from safetensors import safe_open
 
+from library.runtime.fei import compute_fei_2band, fei_sigma_low
 from networks.dcw import FusionHead, haar_LL_norm
 
 logger = logging.getLogger(__name__)
 
-_VALID_SCHEMAS = ("dcw_v5_lambda_scalar", "dcw_v4_fusion_head")
+_VALID_SCHEMAS = (
+    "dcw_v5_lambda_scalar",
+    "dcw_v6_fei_replace",
+    "dcw_v6_fei_concat",
+    "dcw_v4_fusion_head",
+)
 _LAMBDA_CLAMP = 0.05
+# Matches scripts/dcw/trajectory.py default (data-collection-time divisor).
+# Hardcoded because the trainer does not stamp this into artifact metadata;
+# if the bench script's default ever changes, mirror the bump here.
+_FEI_SIGMA_LOW_DIV = 4.0
 
 
 class OnlineDCWCalibrator:
@@ -58,6 +80,10 @@ class OnlineDCWCalibrator:
         c_pool_mean: Optional[torch.Tensor] = None,
         c_pool_std: Optional[torch.Tensor] = None,
         baseline_lambda: float = 0.0,
+        fei_obs: str = "off",
+        fei_k: int = 0,
+        fei_mean: Optional[torch.Tensor] = None,
+        fei_std: Optional[torch.Tensor] = None,
     ):
         self.head = head.to(device=device, dtype=dtype).eval()
         self.centroid = centroid.to(device=device, dtype=dtype)
@@ -82,10 +108,26 @@ class OnlineDCWCalibrator:
             if c_pool_std is not None
             else None
         )
+        # FEI knobs. "off" = legacy v5 (Haar norms only). "replace" = feed
+        # FEI into the g_obs slot (head architecture unchanged; g_obs_mean/std
+        # already hold FEI stats). "concat" = feed both Haar norms and FEI
+        # (head has a separate fei_k slot).
+        self.fei_obs = fei_obs
+        self.fei_k = int(fei_k)
+        self.fei_mean = (
+            fei_mean.to(device=device, dtype=dtype) if fei_mean is not None else None
+        )
+        self.fei_std = (
+            fei_std.to(device=device, dtype=dtype) if fei_std is not None else None
+        )
         self.is_active: bool = False
         self.c_pool: Optional[torch.Tensor] = None
         self.aux: Optional[torch.Tensor] = None
         self.g_obs_buf: list[float] = []
+        self.fei_buf: list[float] = []
+        # σ_low depends only on latent (H, W) and is constant across steps —
+        # cached on first record_latent_pre_forward call so we don't recompute.
+        self._sigma_low: Optional[float] = None
         self.alpha_eff: float = 0.0
         self.gain: float = 1.0
         self.baseline_lambda: float = float(baseline_lambda)
@@ -121,6 +163,32 @@ class OnlineDCWCalibrator:
         # Legacy artifacts (pre-baseline) → 0.0 = no scalar baseline applied,
         # exactly the previous behavior.
         baseline_lambda = float(meta.get("baseline_lambda", 0.0))
+        fei_obs = meta.get("fei_obs", "off")
+        if fei_obs not in ("off", "replace", "concat"):
+            raise ValueError(
+                f"{path}: unknown fei_obs={fei_obs!r} in metadata. "
+                "Expected one of off/replace/concat."
+            )
+        # Schema vs fei_obs consistency check — catches hand-edited artifacts
+        # that would silently bypass the FEI capture path.
+        expected_schema = {
+            "off": "dcw_v5_lambda_scalar",
+            "replace": "dcw_v6_fei_replace",
+            "concat": "dcw_v6_fei_concat",
+        }[fei_obs]
+        if schema != expected_schema and schema != "dcw_v4_fusion_head":
+            raise ValueError(
+                f"{path}: schema={schema!r} disagrees with fei_obs={fei_obs!r} "
+                f"(expected {expected_schema!r}). Retrain."
+            )
+        fei_k = int(meta.get("fei_k", 0))
+        if fei_obs == "concat" and fei_k <= 0:
+            raise ValueError(
+                f"{path}: fei_obs=concat requires fei_k>0 in metadata; got {fei_k}."
+            )
+        if fei_obs != "concat" and fei_k != 0:
+            # Trainer sets fei_k=0 outside concat mode; defensive.
+            fei_k = 0
 
         head_sd = {
             k[len("head.") :]: v for k, v in tensors.items() if k.startswith("head.")
@@ -148,12 +216,12 @@ class OnlineDCWCalibrator:
             cat_dim = c_proj_dim
         else:
             c_proj_dim = 0
-            c_pool_dim = in_dim - (k_warmup + aux_dim)
+            c_pool_dim = in_dim - (k_warmup + fei_k + aux_dim)
             cat_dim = c_pool_dim
-        if cat_dim + k_warmup + aux_dim != in_dim:
+        if cat_dim + k_warmup + fei_k + aux_dim != in_dim:
             raise ValueError(
                 f"{path}: shape mismatch — cat({cat_dim}) + k({k_warmup}) "
-                f"+ aux({aux_dim}) != alpha_mlp.0 in_dim({in_dim}). "
+                f"+ fei_k({fei_k}) + aux({aux_dim}) != alpha_mlp.0 in_dim({in_dim}). "
                 "Likely a pre-cleanup artifact with aspect_emb slots; retrain."
             )
         head = FusionHead(
@@ -161,6 +229,7 @@ class OnlineDCWCalibrator:
             k=k_warmup,
             aux_dim=aux_dim,
             c_proj_dim=c_proj_dim,
+            fei_k=fei_k,
         )
         # sigma_mlp keys are stripped at save time (σ̂² path is gone), so
         # load with strict=False to tolerate their absence.
@@ -188,10 +257,14 @@ class OnlineDCWCalibrator:
             c_pool_mean=tensors.get("c_pool_mean"),
             c_pool_std=tensors.get("c_pool_std"),
             baseline_lambda=baseline_lambda,
+            fei_obs=fei_obs,
+            fei_k=fei_k,
+            fei_mean=tensors.get("fei_mean"),
+            fei_std=tensors.get("fei_std"),
         )
         logger.info(
             "DCW calibrator: loaded %s (schema=%s, k=%d, target=[%d:%d], "
-            "%d steps, c_pool_norm=%s, baseline_lambda=%+.4g)",
+            "%d steps, c_pool_norm=%s, baseline_lambda=%+.4g, fei_obs=%s, fei_k=%d)",
             path.name,
             schema,
             k_warmup,
@@ -200,6 +273,8 @@ class OnlineDCWCalibrator:
             n_steps,
             c_pool_norm,
             baseline_lambda,
+            fei_obs,
+            fei_k,
         )
         return ctrl
 
@@ -213,6 +288,8 @@ class OnlineDCWCalibrator:
         """Compute c_pool + aux for this generation. Idempotent."""
         self.is_active = False
         self.g_obs_buf = []
+        self.fei_buf = []
+        self._sigma_low = None
         self.alpha_eff = 0.0
         self.gain = float(gain)
 
@@ -270,40 +347,117 @@ class OnlineDCWCalibrator:
         )
 
     def record(self, step_i: int, noise_pred: torch.Tensor) -> None:
-        """Observe LL-band norm of the post-CFG velocity at warmup steps."""
+        """Observe LL-band norm of the post-CFG velocity at warmup steps.
+
+        In ``fei_obs="replace"`` mode the head's g_obs slot is fed FEI from
+        the pre-forward latent (see ``record_latent_pre_forward``), so this
+        no-ops to avoid populating an unused buffer.
+        """
         if not self.is_active or step_i >= self.k_warmup:
             return
+        if self.fei_obs == "replace":
+            return
         self.g_obs_buf.append(haar_LL_norm(noise_pred))
+
+    def record_latent_pre_forward(self, step_i: int, latents: torch.Tensor) -> None:
+        """Capture 2-band FEI low-band energy on the latent entering this step.
+
+        Must be called *before* the model forward at warmup steps when
+        ``fei_obs != "off"`` — timing must match
+        ``scripts/dcw/trajectory.py`` (pre-forward, pre-DCW correction).
+        No-ops when inactive, past warmup, or in legacy ``fei_obs="off"`` mode.
+
+        ``latents`` is the same tensor passed to ``anima(...)``: shape
+        ``(B, C, T, H, W)`` on Anima (the T axis is squeezed before the FEI
+        compute, matching the data-collection call site).
+        """
+        if not self.is_active or step_i >= self.k_warmup:
+            return
+        if self.fei_obs == "off":
+            return
+        z = latents[:, :, 0] if latents.ndim == 5 else latents
+        h_lat, w_lat = z.shape[-2], z.shape[-1]
+        if self._sigma_low is None:
+            self._sigma_low = fei_sigma_low(h_lat, w_lat, _FEI_SIGMA_LOW_DIV)
+        # Single-prompt assumption — pool's row 0 only, same as g_obs/c_pool.
+        fei = compute_fei_2band(z[:1], self._sigma_low)  # (1, 2) fp32
+        self.fei_buf.append(float(fei[0, 0].item()))
 
     def fire_head_if_due(self, step_i: int) -> None:
         """Run the MLP at i == k_warmup. Sets self.alpha_eff for the tail."""
         if not self.is_active or step_i != self.k_warmup:
             return
-        if len(self.g_obs_buf) < self.k_warmup:
-            logger.warning(
-                "DCW calibrator: only %d/%d warmup obs collected — disabling",
-                len(self.g_obs_buf),
-                self.k_warmup,
-            )
-            self.alpha_eff = 0.0
-            return
 
-        g_obs = torch.tensor(
-            self.g_obs_buf[: self.k_warmup], device=self.device, dtype=self.dtype
-        )
-        g_obs_n = (g_obs - self.g_obs_mean) / self.g_obs_std
+        # Source-buffer integrity checks vary by mode: replace feeds the g_obs
+        # slot from FEI; concat needs both; off needs only Haar norms.
+        if self.fei_obs == "replace":
+            if len(self.fei_buf) < self.k_warmup:
+                logger.warning(
+                    "DCW calibrator: fei_obs=replace expects %d FEI obs, got %d "
+                    "— did the caller forget record_latent_pre_forward? Disabling.",
+                    self.k_warmup,
+                    len(self.fei_buf),
+                )
+                self.alpha_eff = 0.0
+                return
+        else:
+            if len(self.g_obs_buf) < self.k_warmup:
+                logger.warning(
+                    "DCW calibrator: only %d/%d warmup obs collected — disabling",
+                    len(self.g_obs_buf),
+                    self.k_warmup,
+                )
+                self.alpha_eff = 0.0
+                return
+            if self.fei_obs == "concat" and len(self.fei_buf) < self.k_warmup:
+                logger.warning(
+                    "DCW calibrator: fei_obs=concat expects %d FEI obs, got %d "
+                    "— did the caller forget record_latent_pre_forward? Disabling.",
+                    self.k_warmup,
+                    len(self.fei_buf),
+                )
+                self.alpha_eff = 0.0
+                return
+
+        if self.fei_obs == "replace":
+            # The head's g_obs slot carries FEI. g_obs_mean/std were redirected
+            # to FEI stats at training time, so the same normalization formula
+            # works as a drop-in replacement.
+            fei = torch.tensor(
+                self.fei_buf[: self.k_warmup], device=self.device, dtype=self.dtype
+            )
+            head_g_obs = (fei - self.g_obs_mean) / self.g_obs_std
+            head_fei: Optional[torch.Tensor] = None
+        else:
+            g_obs = torch.tensor(
+                self.g_obs_buf[: self.k_warmup], device=self.device, dtype=self.dtype
+            )
+            head_g_obs = (g_obs - self.g_obs_mean) / self.g_obs_std
+            if self.fei_obs == "concat":
+                fei = torch.tensor(
+                    self.fei_buf[: self.k_warmup], device=self.device, dtype=self.dtype
+                )
+                if self.fei_mean is None or self.fei_std is None:
+                    raise RuntimeError(
+                        "fei_obs=concat requires fei_mean/fei_std in the artifact."
+                    )
+                head_fei = ((fei - self.fei_mean) / self.fei_std).unsqueeze(0)
+            else:
+                head_fei = None
 
         with torch.no_grad():
             alpha_hat, _ = self.head(
                 self.c_pool.unsqueeze(0),
-                g_obs_n.unsqueeze(0),
+                head_g_obs.unsqueeze(0),
                 self.aux.unsqueeze(0),
+                fei=head_fei,
             )
         self.alpha_eff = float(alpha_hat[0].item())
         logger.info(
-            "DCW calibrator: head fired at step %d — α̂=%+.4g",
+            "DCW calibrator: head fired at step %d — α̂=%+.4g (fei_obs=%s)",
             step_i,
             self.alpha_eff,
+            self.fei_obs,
         )
 
     def lambda_for_step(self, step_i: int, sigma_i: float) -> float:
