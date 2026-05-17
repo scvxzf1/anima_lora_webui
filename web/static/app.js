@@ -4243,13 +4243,9 @@
 
     function replayMetricsFromLogRecord(record) {
         const line = record?.line || '';
-        const lossMatch = line.match(/(?:avr_)?loss[=:/\s]+([\d.eE\-+]+)/i);
-        if (!lossMatch) return;
-        const stepMatch = line.match(/\|\s*(\d+)\/\d+\s*\[/) || line.match(/step[=:/\s]+(\d+)/i);
-        const step = stepMatch ? Number(stepMatch[1]) : ++stepCounter;
-        const loss = Number(lossMatch[1]);
-        if (!Number.isFinite(step) || !Number.isFinite(loss)) return;
-        updateMetrics({ step, loss, ts: record.ts });
+        const parsed = parseMetricsFromProgressLine(line);
+        if (!parsed || parsed.loss === undefined) return;
+        updateMetrics({ ...parsed, ts: record.ts });
     }
 
     function setLogStatus(text, state = '') {
@@ -4292,6 +4288,9 @@
         }
         if (msg.step !== undefined) {
             document.getElementById('metric-step').textContent = msg.step;
+        }
+        if (msg.rate) {
+            document.getElementById('metric-rate').textContent = msg.rate;
         }
     }
 
@@ -4419,6 +4418,45 @@
         el.textContent = gpu == null
             ? `${jobName}运行中，最近 ${formatDuration(ageSeconds)} 前收到输出。`
             : `${jobName}运行中，最近 ${formatDuration(ageSeconds)} 前收到输出，GPU ${gpu}%。`;
+    }
+
+    function parseMetricsFromProgressLine(line) {
+        const text = String(line || '');
+        const stepMatch = text.match(/\|\s*(\d+)\/\d+\s*\[/) || text.match(/step[=:/\s]+(\d+)/i);
+        const lossMatch = text.match(/(?:avr_)?loss[=:/\s]+([\d.eE\-+]+)/i);
+        const lrMatch = text.match(/(?:^|[\s,])(?:lr|learning_rate)[=:/\s]+([\d.eE\-+]+)/i);
+        const rateMatch = text.match(/([\d.]+\s*(?:s\/it|it\/s|s\/step))/i);
+        const out = {};
+        if (stepMatch) out.step = Number(stepMatch[1]);
+        if (lossMatch) out.loss = Number(lossMatch[1]);
+        if (lrMatch) out.lr = Number(lrMatch[1]);
+        if (rateMatch) out.rate = rateMatch[1].replace(/\s+/g, '');
+        if (Object.keys(out).length === 0) return null;
+        if (out.step !== undefined && !Number.isFinite(out.step)) delete out.step;
+        if (out.loss !== undefined && !Number.isFinite(out.loss)) delete out.loss;
+        if (out.lr !== undefined && !Number.isFinite(out.lr)) delete out.lr;
+        return Object.keys(out).length ? out : null;
+    }
+
+    function lastValue(records, key) {
+        for (let i = records.length - 1; i >= 0; i -= 1) {
+            const value = records[i]?.[key];
+            if (value !== undefined && value !== null && value !== '') return value;
+        }
+        return undefined;
+    }
+
+    function readConfigNumber(configText, key) {
+        const escapedKey = key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const match = String(configText || '').match(new RegExp(`^\\s*${escapedKey}\\s*=\\s*([^\\n#]+)`, 'm'));
+        if (!match) return undefined;
+        const value = Number(match[1].trim().replace(/^["']|["']$/g, ''));
+        return Number.isFinite(value) ? value : undefined;
+    }
+
+    function formatLr(value) {
+        const n = Number(value);
+        return Number.isFinite(n) ? n.toExponential(2) : '-';
     }
 
     function formatDuration(totalSeconds) {
@@ -5211,16 +5249,35 @@
         document.getElementById('metric-log-age').textContent = '-';
         document.getElementById('metric-rate').textContent = '-';
 
-        const metrics = payload.metrics || [];
+        const logs = payload.logs || [];
+        const metrics = [...(payload.metrics || [])];
+        for (const record of logs) {
+            if (record.kind !== 'progress') continue;
+            const parsed = parseMetricsFromProgressLine(record.line);
+            if (parsed) metrics.push({ ...parsed, ts: record.ts });
+        }
         const lossPoints = metrics.filter((item) => item.loss !== undefined);
         lossChart?.setData(lossPoints.map((item) => ({ step: item.step || 0, loss: item.loss })));
-        const lastMetric = lossPoints[lossPoints.length - 1] || {};
+        const lastMetric = metrics[metrics.length - 1] || {};
+        const lastLossMetric = lossPoints[lossPoints.length - 1] || {};
+        const configLr = readConfigNumber(payload.config_toml, 'learning_rate');
+        const system = payload.system || [];
+        const lastSystem = system[system.length - 1] || {};
         document.getElementById('metric-loss').textContent = lastMetric.loss !== undefined ? Number(lastMetric.loss).toFixed(5) : '-';
-        document.getElementById('metric-lr').textContent = lastMetric.lr !== undefined ? Number(lastMetric.lr).toExponential(2) : '-';
-        document.getElementById('metric-step').textContent = lastMetric.step !== undefined ? lastMetric.step : '-';
+        document.getElementById('metric-lr').textContent = formatLr(lastValue(metrics, 'lr') ?? configLr);
+        document.getElementById('metric-step').textContent = lastValue(metrics, 'step') ?? lastLossMetric.step ?? '-';
+        document.getElementById('metric-rate').textContent = lastValue(metrics, 'rate') || '-';
+        document.getElementById('metric-vram').textContent =
+            lastSystem.vram_used_gb !== undefined ? `${lastSystem.vram_used_gb}/${lastSystem.vram_total_gb} GB` : '-';
+        if (lastSystem.gpu_util !== undefined) {
+            document.getElementById('metric-gpu').textContent =
+                `${lastSystem.gpu_util}%${lastSystem.gpu_temp ? ` ${lastSystem.gpu_temp}°C` : ''}`;
+        } else {
+            document.getElementById('metric-gpu').textContent = '-';
+        }
 
         const logEl = document.getElementById('log-output');
-        logEl.textContent = (payload.logs || [])
+        logEl.textContent = logs
             .map((record) => `${record.kind === 'progress' ? '[进度] ' : ''}${record.line || ''}`)
             .join('\n');
         if (logEl.textContent) logEl.textContent += '\n';
@@ -5276,6 +5333,7 @@
             ['样张目录', task.sample_dir],
             ['日志文件', task.logs_path],
             ['指标文件', task.metrics_path],
+            ['系统指标文件', task.system_path],
             ['TOML 快照', task.config_snapshot],
         ].filter(([, value]) => value);
         for (const [label, value] of items) {
