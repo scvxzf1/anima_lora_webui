@@ -633,6 +633,8 @@ class TrainingService:
             stats = await _get_gpu_stats()
             if stats:
                 stats["last_output_at"] = self._last_output_at
+                stats["ts"] = time.time()
+                self._append_history_jsonl("system.jsonl", stats)
                 await self._broadcast({"type": "system", **stats})
             await asyncio.sleep(5)
 
@@ -758,6 +760,7 @@ def _load_history_task(task_id: str) -> dict[str, Any]:
         "task": _history_summary(meta, task_dir),
         "logs": _read_jsonl(task_dir / "logs.jsonl"),
         "metrics": _read_jsonl(task_dir / "metrics.jsonl"),
+        "system": _read_jsonl(task_dir / "system.jsonl"),
         "config_toml": (task_dir / "config.snapshot.toml").read_text(encoding="utf-8")
             if (task_dir / "config.snapshot.toml").exists()
             else "",
@@ -809,6 +812,7 @@ def _history_summary(meta: dict[str, Any], task_dir: Path) -> dict[str, Any]:
     out["config_snapshot"] = _display_project_path(str(task_dir / "config.snapshot.toml"))
     out["logs_path"] = _display_project_path(str(task_dir / "logs.jsonl"))
     out["metrics_path"] = _display_project_path(str(task_dir / "metrics.jsonl"))
+    out["system_path"] = _display_project_path(str(task_dir / "system.jsonl"))
     data_dirs = out.get("data_dirs") if isinstance(out.get("data_dirs"), dict) else {}
     for key in ("source_image_dir", "resized_image_dir", "lora_cache_dir"):
         out[key] = str(out.get(key) or data_dirs.get(key) or "")
