@@ -3355,6 +3355,9 @@
     }
 
     function updateTomlDirtyState() {
+        if (!hasPendingConfigChanges(currentTomlFile)) {
+            resetTomlSaveConfirm({ update: false });
+        }
         updateTomlBadges(currentTomlFile);
         updateTomlActionState(currentTomlFile);
     }
@@ -3381,13 +3384,17 @@
         const dirty = editorDirty || formDirty;
         const saveBtn = document.getElementById('btn-save-toml');
         if (saveBtn) {
+            const confirming = Boolean(filePath && tomlSaveConfirmFile === filePath);
             saveBtn.disabled = Boolean(meta?.locked) || !filePath || !dirty;
+            saveBtn.textContent = confirming ? '确认保存当前配置' : '保存更新当前选中配置';
+            saveBtn.classList.toggle('btn-confirm-danger', confirming);
             saveBtn.title = meta?.locked
                 ? '该配置文件已锁定，请使用新名称保存新配置后编辑'
                 : (dirty
-                    ? (formDirty ? '保存左侧表单修改到当前 TOML' : '保存当前 TOML 修改')
+                    ? (confirming ? '再次点击才会保存写入当前配置文件' : (formDirty ? '保存左侧表单修改到当前 TOML' : '保存当前 TOML 修改'))
                     : '当前配置没有未保存修改');
         }
+        updateTomlEditorPanelState(filePath);
         const applyBtn = document.getElementById('btn-apply-toml');
         if (applyBtn) {
             applyBtn.disabled = !meta?.trainable || dirty;
@@ -3469,6 +3476,69 @@
         editor.title = locked ? '该配置文件已锁定，只能导出或使用新名称保存新配置' : '';
     }
 
+    function updateTomlEditorPanelState(filePath = currentTomlFile) {
+        const panel = document.getElementById('toml-edit-panel');
+        const toggleBtn = document.getElementById('btn-toggle-toml-editor');
+        const saveDirectBtn = document.getElementById('btn-save-toml-direct');
+        const copyBtn = document.getElementById('btn-copy-toml');
+        const meta = tomlFileMeta[filePath];
+        const dirty = hasPendingConfigChanges(filePath);
+        const locked = Boolean(meta?.locked);
+        const confirming = Boolean(filePath && tomlSaveConfirmFile === filePath);
+        if (toggleBtn) {
+            const open = Boolean(panel && !panel.hidden);
+            toggleBtn.disabled = !filePath;
+            toggleBtn.textContent = open ? '收起配置文件编辑' : '直接编辑配置文件';
+            toggleBtn.classList.toggle('active', open);
+            toggleBtn.title = open ? '收起二级配置文件编辑界面' : '展开二级界面，直接复制或编辑当前配置文件';
+        }
+        if (saveDirectBtn) {
+            saveDirectBtn.disabled = locked || !filePath || !dirty;
+            saveDirectBtn.textContent = confirming ? '确认保存配置文件' : '保存配置文件';
+            saveDirectBtn.classList.toggle('btn-confirm-danger', confirming);
+            saveDirectBtn.title = locked
+                ? '该配置文件已锁定，请使用新名称保存新配置后编辑'
+                : (dirty
+                    ? (confirming ? '再次点击才会写入磁盘' : '第一次点击进入确认，第二次点击保存')
+                    : '当前配置没有未保存修改');
+        }
+        if (copyBtn) {
+            copyBtn.disabled = !filePath && !document.getElementById('toml-editor')?.value;
+            copyBtn.title = '复制当前编辑器里的 TOML 内容';
+        }
+    }
+
+    function toggleTomlEditorPanel() {
+        const panel = document.getElementById('toml-edit-panel');
+        if (!panel) return;
+        if (!currentTomlFile) {
+            setTomlStatus('error', '请先选择一个配置文件');
+            return;
+        }
+        panel.hidden = !panel.hidden;
+        updateTomlEditorPanelState(currentTomlFile);
+        if (!panel.hidden) {
+            document.getElementById('toml-editor')?.focus();
+        }
+    }
+
+    async function copyTomlEditorContent() {
+        const editor = document.getElementById('toml-editor');
+        if (!editor) return;
+        try {
+            if (navigator.clipboard?.writeText) {
+                await navigator.clipboard.writeText(editor.value);
+            } else {
+                editor.focus();
+                editor.select();
+                document.execCommand('copy');
+            }
+            setTomlStatus('ok', '已复制当前配置内容');
+        } catch (e) {
+            setTomlStatus('error', '复制失败: ' + e.message);
+        }
+    }
+
     function tomlLockLabel(meta) {
         if (!meta?.locked) return '';
         if (meta.system_locked) return '系统只读';
@@ -3514,6 +3584,29 @@
         }, 8000);
         updateTomlActionState(file);
         setTomlStatus('error', `再次点击“确认删除配置”才会删除: ${file}`);
+    }
+
+    function resetTomlSaveConfirm(options = {}) {
+        if (tomlSaveConfirmTimer) {
+            clearTimeout(tomlSaveConfirmTimer);
+            tomlSaveConfirmTimer = null;
+        }
+        if (!tomlSaveConfirmFile) return;
+        tomlSaveConfirmFile = '';
+        if (options.update !== false) {
+            updateTomlActionState(currentTomlFile);
+        }
+    }
+
+    function armTomlSaveConfirm(file) {
+        resetTomlSaveConfirm({ update: false });
+        tomlSaveConfirmFile = file;
+        tomlSaveConfirmTimer = setTimeout(() => {
+            resetTomlSaveConfirm();
+            setTomlStatus('', '');
+        }, 8000);
+        updateTomlActionState(file);
+        setTomlStatus('error', `再次点击“确认保存”才会写入当前配置: ${file}`);
     }
 
     function setTomlStatus(cls, text, options = {}) {
@@ -4319,6 +4412,10 @@
         if (msg.last_output_at) {
             markTrainingActivity(msg.last_output_at);
         }
+        if (msg.state !== 'running' && msg.state !== 'compiling') {
+            trainingRuntime.lastOutputAt = 0;
+            trainingRuntime.lastUiActivityAt = 0;
+        }
         if (msg.output_dir !== undefined) {
             trainingRuntime.outputDir = msg.output_dir || '';
         }
@@ -4385,18 +4482,25 @@
         const ageEl = document.getElementById('metric-log-age');
         if (!el || !ageEl) return;
 
+        if (viewingHistoryTaskId) {
+            el.className = 'training-health';
+            return;
+        }
+
+        const isRunning = trainingRuntime.state === 'running' || trainingRuntime.state === 'compiling';
+        if (!isRunning) {
+            ageEl.textContent = '-';
+            el.className = 'training-health';
+            el.textContent = '未运行任务。';
+            return;
+        }
+
         const ageSeconds = trainingRuntime.lastOutputAt
             ? Math.max(0, Math.floor((Date.now() - trainingRuntime.lastOutputAt) / 1000))
             : null;
         ageEl.textContent = ageSeconds == null ? '-' : formatDuration(ageSeconds);
 
         const jobName = trainingRuntime.job === 'preprocess' ? '预处理' : '训练';
-
-        if (trainingRuntime.state !== 'running') {
-            el.className = 'training-health';
-            el.textContent = '未运行任务。';
-            return;
-        }
 
         const gpu = trainingRuntime.lastGpuUtil;
         const gpuActive = gpu != null && gpu >= 15;
@@ -4931,6 +5035,7 @@
                 state: status.status,
                 variant: status.variant,
                 preset: status.preset,
+                job: status.job,
                 last_output_at: status.last_output_at,
                 last_log_id: status.last_log_id,
                 output_dir: status.output_dir,
@@ -5256,7 +5361,7 @@
         document.getElementById('progress-text').textContent = `${task.started_at_text || '-'} → ${task.finished_at_text || '未结束'}`;
         document.getElementById('metric-vram').textContent = '-';
         document.getElementById('metric-gpu').textContent = '-';
-        document.getElementById('metric-log-age').textContent = '-';
+        document.getElementById('metric-log-age').textContent = task.finished_at_text ? '已结束' : '历史';
         document.getElementById('metric-rate').textContent = '-';
 
         const logs = payload.logs || [];
@@ -5387,6 +5492,9 @@
         document.getElementById('btn-apply-toml').addEventListener('click', applyTomlToConfig);
         document.getElementById('btn-move-toml-group').addEventListener('click', moveCurrentTomlToGroup);
         document.getElementById('btn-save-toml').addEventListener('click', saveTomlFile);
+        document.getElementById('btn-toggle-toml-editor').addEventListener('click', toggleTomlEditorPanel);
+        document.getElementById('btn-copy-toml').addEventListener('click', copyTomlEditorContent);
+        document.getElementById('btn-save-toml-direct').addEventListener('click', saveTomlFile);
         document.getElementById('btn-import-toml').addEventListener('click', importTomlFile);
         document.getElementById('btn-export-toml').addEventListener('click', exportTomlFile);
         document.getElementById('btn-save-as-toml').addEventListener('click', saveTomlAs);
