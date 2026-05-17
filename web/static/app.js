@@ -2674,7 +2674,7 @@
         setTomlStatus('', '');
     }
 
-    async function saveTomlFile() {
+    async function saveTomlFile(options = {}) {
         const file = currentTomlFile || val('toml-file-select');
         if (!file) {
             setTomlStatus('error', '请先选择一个配置文件，或使用“保存新配置”保存导入内容');
@@ -2684,7 +2684,7 @@
             setTomlStatus('error', '该配置文件已锁定，请使用“保存新配置”创建可编辑配置');
             return;
         }
-        if (tomlSaveConfirmFile !== file) {
+        if (options.confirm === true && tomlSaveConfirmFile !== file) {
             armTomlSaveConfirm(file);
             return;
         }
@@ -3384,14 +3384,13 @@
         const dirty = editorDirty || formDirty;
         const saveBtn = document.getElementById('btn-save-toml');
         if (saveBtn) {
-            const confirming = Boolean(filePath && tomlSaveConfirmFile === filePath);
             saveBtn.disabled = Boolean(meta?.locked) || !filePath || !dirty;
-            saveBtn.textContent = confirming ? '确认保存当前配置' : '保存更新当前选中配置';
-            saveBtn.classList.toggle('btn-confirm-danger', confirming);
+            saveBtn.textContent = '保存更新当前选中配置';
+            saveBtn.classList.remove('btn-confirm-danger');
             saveBtn.title = meta?.locked
                 ? '该配置文件已锁定，请使用新名称保存新配置后编辑'
                 : (dirty
-                    ? (confirming ? '再次点击才会保存写入当前配置文件' : (formDirty ? '保存左侧表单修改到当前 TOML' : '保存当前 TOML 修改'))
+                    ? (formDirty ? '保存左侧表单修改到当前 TOML' : '保存当前 TOML 修改')
                     : '当前配置没有未保存修改');
         }
         updateTomlEditorPanelState(filePath);
@@ -5496,7 +5495,7 @@
         document.getElementById('btn-save-toml').addEventListener('click', saveTomlFile);
         document.getElementById('btn-toggle-toml-editor').addEventListener('click', toggleTomlEditorPanel);
         document.getElementById('btn-copy-toml').addEventListener('click', copyTomlEditorContent);
-        document.getElementById('btn-save-toml-direct').addEventListener('click', saveTomlFile);
+        document.getElementById('btn-save-toml-direct').addEventListener('click', () => saveTomlFile({ confirm: true }));
         document.getElementById('btn-import-toml').addEventListener('click', importTomlFile);
         document.getElementById('btn-export-toml').addEventListener('click', exportTomlFile);
         document.getElementById('btn-save-as-toml').addEventListener('click', saveTomlAs);
