@@ -4,7 +4,19 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Anima LoRA Web UI</title>
-    <link rel="stylesheet" href="/static/style.css?v=delete-confirm-20260517-1">
+    <script>
+        (() => {
+            try {
+                const theme = localStorage.getItem('anima_lora_theme');
+                if (theme === 'light' || theme === 'dark') {
+                    document.documentElement.dataset.theme = theme;
+                }
+            } catch (_) {
+                document.documentElement.dataset.theme = 'dark';
+            }
+        })();
+    </script>
+    <link rel="stylesheet" href="/static/style.css?v=theme-toggle-20260517-1">
 </head>
 <body>
     <header>
@@ -18,6 +30,10 @@
             <span class="dot idle"></span>
             <span id="status-text">空闲</span>
         </div>
+        <button id="theme-toggle" class="theme-toggle" type="button" aria-pressed="false">
+            <span class="theme-toggle-swatch" aria-hidden="true"></span>
+            <span id="theme-toggle-text">浅色主题</span>
+        </button>
     </header>
 
     <main>
@@ -315,7 +331,7 @@
         </form>
     </dialog>
 
-    <script src="/static/chart.js?v=lokr-ui-20260517-1"></script>
-    <script src="/static/app.js?v=delete-confirm-20260517-1"></script>
+    <script src="/static/chart.js?v=theme-toggle-20260517-1"></script>
+    <script src="/static/app.js?v=theme-toggle-20260517-1"></script>
 </body>
 </html>

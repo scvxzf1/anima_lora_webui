@@ -3,33 +3,52 @@
 # Same architecture as `tlora` (T-LoRA stacked on OrthoLoRA) with the
 # low-VRAM knobs flipped on — gradient checkpointing + Unsloth offload
 # checkpointing. Pick this if you OOM on the default tlora variant.
+#
+# 初学者导读：
+# 这是 GUI 里的低显存 T-LoRA + OrthoLoRA 变体。它不写 `network_module`，
+# 因为会使用项目默认的 LoRA 系列内置工厂；下面的 `use_ortho` 和
+# `use_timestep_mask` 才是把普通 LoRA 变成可训练变体的关键开关。
+# 内置工厂负责创建模块，训练时只更新 adapter 权重，基础 DiT 保持冻结。
 
+# LoRA 容量。network_dim 是 rank，network_alpha 是缩放基准；二者相等时
+# 初始缩放更直观，适合初学者先保持默认。
 network_dim = 32
 network_alpha = 32
 
+# 保存与续训：
+# - save_every_n_epochs 保存普通 adapter，适合中途测试图片。
+# - checkpointing_epochs 保存可续训状态，包含优化器/调度器等训练现场。
+# 普通 adapter 能推理但不能完整续训；checkpointing_epochs 才服务于断点恢复。
 learning_rate = 2e-5
 max_train_epochs = 4
 save_every_n_epochs = 2
 checkpointing_epochs = 2
 
+# caption 变体打散 + 文本编码缓存，是 LoRA 系列常用的稳定训练组合。
 use_shuffled_caption_variants = true
 cache_llm_adapter_outputs = true
 caption_dropout_rate = 0.1
 
+# OrthoLoRA：训练时用正交参数化约束低秩方向，保存时会折成普通 LoRA 权重。
 use_ortho = true
 
+# T-LoRA：按 timestep/sigma 动态启用不同 rank。它是训练期调度，
+# 保存出来仍然可以作为普通 LoRA 合并/烘焙。
 use_timestep_mask = true
 min_rank = 8
 alpha_rank_scale = 1.0
 
 output_name = "anima_tlora_ortho"
 
+# 8GB 友好设置：gradient checkpointing 用重算换显存；
+# Unsloth offload 会把部分激活卸到 CPU，速度可能慢一点但更不容易 OOM。
 blocks_to_swap = 0
 gradient_checkpointing = true
 unsloth_offload_checkpointing = true
 
 use_cmmd = false
 
+# [variant] 只影响 GUI 展示，不参与训练算法。
 [variant]
 family = "tlora"
 label = "T-LoRA + OrthoLoRA (8GB hardware)"

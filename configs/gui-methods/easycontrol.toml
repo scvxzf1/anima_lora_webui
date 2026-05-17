@@ -1,49 +1,78 @@
-# EasyControl — extended self-attention image conditioning (Phase 1).
-# GUI-friendly self-contained variant — no toggle blocks.
+# gui-methods/easycontrol.toml —— EasyControl：扩展自注意力图像条件。
 #
-# Adapter-only: DiT is frozen, training updates only per-block cond LoRA on
-# self-attn (q/k/v/o) + FFN (layer1/layer2) + per-block scalar logit bias
-# `b_cond` (init -10) that gates cond-position softmax mass at step 0.
+# 这是 GUI 友好的独立变体配置，没有需要手动切换的注释块。
+# EasyControl 把参考图像条件接入 DiT 的自注意力路径。训练时冻结 DiT 主模型，
+# 只更新每个 block 的 cond LoRA：
+#   - self-attn 的 q/k/v/o
+#   - FFN 的 layer1/layer2
+#   - 每个 block 的标量 logit bias `b_cond`
 #
-# Source data: easycontrol-dataset/  (user puts images + .txt captions here)
-# Caches:      post_image_dataset/easycontrol/  (latents + text-encoder outputs)
-# The cond pre-pass is run every step — Phase 1 has no KV cache yet.
+# 数据与缓存：
+# 源数据放在 easycontrol-dataset/，用户把图片和同名 .txt 字幕放到这里。
+# 缓存写到 post_image_dataset/easycontrol/，包含 latents 和文本编码输出。
+# 当前 Phase 1 每一步都会跑 cond pre-pass，还没有 KV cache，因此速度会慢一些。
 
+# 指向 EasyControl 专用数据集蓝图。它和普通 LoRA/IP-Adapter 的数据布局不同。
 dataset_config = "configs/datasets/easycontrol.toml"
 
+# 选择 EasyControl 网络实现。
 network_module = "networks.methods.easycontrol"
 
+# cond LoRA 的容量设置。EasyControl 训练模块较多，因此默认 rank 比普通 LoRA 小。
 network_dim = 16
 network_alpha = 16
 
+# network_args 是传给 EasyControl 网络模块的字符串参数。
 network_args = [
+    # b_cond 初始值很低，表示训练刚开始时条件位置几乎不抢注意力。
     "b_cond_init=-10.0",
+    # cond_scale 控制参考图像条件强度。
     "cond_scale=1.0",
+    # 同时给 FFN 层加 cond LoRA，而不只改注意力层。
     "apply_ffn_lora=1",
+    # 条件 token 数量，和 Anima 的 4096 token bucket 对齐。
     "cond_token_count=4096",
 ]
 
+# 输出名前缀。
 output_name = "anima_easycontrol"
 
+# 日志目录和 TensorBoard 后端。
 logging_dir = "output/logs"
 log_with = "tensorboard"
 
+# EasyControl 只训练条件适配模块，默认学习率高于普通 LoRA。
 learning_rate = 1e-4
 max_train_epochs = 12
+
+# 普通权重保存：用于推理预览，不包含优化器/调度器状态。
 save_every_n_epochs = 12
+
+# 可续训检查点保存：中断后同配置重启可恢复完整训练状态。
 checkpointing_epochs = 12
 
+# 方法总开关和条件正则化：
+# easycontrol_drop_p 随机丢弃图像条件，避免模型过度依赖参考图。
+# caption_dropout_rate 随机丢弃文字条件，帮助模型学习图像条件的独立作用。
 use_easycontrol = true
 easycontrol_drop_p = 0.1
 caption_dropout_rate = 0.2
+
+# 给条件图像加入噪声的最大幅度。默认 0 表示不降质；
+# 如果设成 0.5 之类的值，参考图会更像“粗略提示”，控制会变弱。
 easycontrol_cond_noise_max = 0.0  # >0 (e.g. 0.5) degrades cond to a lossy hint
 
+# 显存/编译设置：
+# blocks_to_swap=0 表示不做 block 级 CPU 换入换出。
+# compile_mode="full" 使用完整编译模式，首次编译更久但训练时通常更快。
 blocks_to_swap = 0
 compile_mode = "full"
 
+# 关闭额外 CMMD 开关，让训练目标集中在 EasyControl 本身。
 use_cmmd = false
 
 [variant]
+# GUI 展示元数据。
 family = "easycontrol"
 label = "EasyControl"
 description = "Extended self-attention image conditioning."

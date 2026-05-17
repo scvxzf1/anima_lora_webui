@@ -40,6 +40,7 @@
     let viewingHistoryTaskId = '';
     let historyTasks = [];
     let showArchivedHistory = false;
+    const THEME_STORAGE_KEY = 'anima_lora_theme';
     let currentTrainingSource = {
         method: 'lora',
         methods_subdir: 'gui-methods',
@@ -131,7 +132,7 @@
         },
         {
             title: '数据集设置',
-            description: '训练图、缓存目录、数据集蓝图和 caption 行为。',
+            description: '训练读取缩放图目录和 LoRA 缓存目录；原始数据集路径主要用于预处理和生成缓存路径。',
             open: true,
             className: 'config-group-data',
             keys: [
@@ -196,7 +197,7 @@
         },
         {
             title: '缓存与预处理',
-            description: '控制 latent、文本编码器和方法特征缓存。',
+            description: '控制 latent、文本编码器和方法特征缓存；换图片、caption、分桶参数后通常需要重建。',
             open: false,
             keys: [
                 'cache_latents',
@@ -1542,15 +1543,15 @@
         ),
         enable_bucket: help(
             "启用长宽比分桶。",
-            "开启后相近宽高比的图片会进入对应尺寸桶，减少拉伸和无效 padding。",
-            ["更好保留原图构图比例。"],
-            ["预处理和缓存需要按桶参数保持一致。"],
-            ["关闭后不同宽高比图片可能被统一缩放，构图损失更明显。"],
+            "开启后，预处理会给每张图选择最接近的桶尺寸，缩放并中心裁切后写入缩放图目录；训练读取这些缩放图和对应缓存。",
+            ["更好保留原图构图比例，避免所有图片被硬塞进同一个正方形尺寸。"],
+            ["换分桶参数后，缩放图目录和 LoRA 缓存目录都需要重新生成，旧缓存不能混用。"],
+            ["不会额外生成“桶文件夹”；如果以为训练还会读原图，可能会误判数据是否已经更新。"],
             "推荐开启。"
         ),
         min_bucket_reso: help(
             "允许生成的最小桶边长。",
-            "桶是训练时使用的一组宽高尺寸，例如 512x1024、768x768。这个值限制桶里较短边不能小于多少像素。",
+            "桶是预处理/训练使用的一组宽高尺寸，例如 512x1024、768x768。这个值限制桶里较短边不能小于多少像素。",
             ["避免生成太小的训练尺寸，减少细节损失。"],
             ["设得太高会减少可选桶，窄图或小图可能被裁切/缩放得更明显。"],
             ["必须不大于训练分辨率，并且通常应能被桶尺寸步长整除。"],
@@ -1558,7 +1559,7 @@
         ),
         max_bucket_reso: help(
             "允许生成的最大桶边长。",
-            "这个值限制桶里较长边最多到多少像素；1024 分辨率训练通常填 1024。",
+            "这个值限制桶里较长边最多到多少像素；1024 分辨率训练通常填 1024 或跟随项目默认。",
             ["控制显存上限，避免极端长图生成过大的桶。"],
             ["设得太低会压缩长边细节。"],
             ["不能小于训练分辨率，否则训练端会报错。"],
@@ -1566,15 +1567,15 @@
         ),
         bucket_reso_steps: help(
             "桶尺寸之间的间隔。",
-            "填 64 表示桶尺寸按 64 像素递增，例如 512、576、640。数值越小桶越多，越贴近原图比例。",
+            "填 64 表示桶尺寸按 64 像素递增，例如 512、576、640。数值越小，可选桶越多，越贴近原图比例。",
             ["桶更多时图片变形和 padding 更少。"],
-            ["桶更多会让预处理/缓存分组更碎，管理和加载稍复杂。"],
+            ["桶更多会让预处理/缓存分组更碎，首次预处理和训练加载更复杂。"],
             ["训练代码要求这个值能被 16 整除。"],
             "默认 64；想更精细可试 32，但不建议新手改。"
         ),
         bucket_no_upscale: help(
             "不要把小图放大到桶尺寸。",
-            "开启后，小图会尽量按自身尺寸建桶，不强行放大；关闭时会按桶规则缩放到目标尺寸。",
+            "开启后，小图尽量不被强行放大；关闭时会按桶规则缩放到目标尺寸。当前预处理脚本生成缩放图后，训练会直接使用这些结果。",
             ["避免小图被放大后变糊。"],
             ["不同尺寸会更分散，训练批次可能更碎。"],
             ["数据分辨率参差不齐时，效果和速度更难预估。"],
@@ -1640,8 +1641,10 @@
 
     // ── 初始化 ──
     document.addEventListener('DOMContentLoaded', async () => {
+        initThemeToggle();
         setupTabs();
         lossChart = new MetricsChart(document.getElementById('loss-chart'));
+        lossChart.setTheme(chartTheme());
         setupEventListeners();
         await loadInitialData();
         if (location.protocol !== 'file:') {
@@ -1651,6 +1654,60 @@
             setInterval(refreshTrainingHealth, 1000);
         }
     });
+
+    function currentTheme() {
+        return document.documentElement.dataset.theme === 'light' ? 'light' : 'dark';
+    }
+
+    function storedTheme() {
+        try {
+            return localStorage.getItem(THEME_STORAGE_KEY);
+        } catch (_) {
+            return null;
+        }
+    }
+
+    function saveTheme(theme) {
+        try {
+            localStorage.setItem(THEME_STORAGE_KEY, theme);
+        } catch (_) {
+            // 忽略浏览器禁用本地存储的情况，当前页面仍然可以完成切换。
+        }
+    }
+
+    function applyTheme(theme) {
+        const safeTheme = theme === 'light' ? 'light' : 'dark';
+        document.documentElement.dataset.theme = safeTheme;
+        const toggle = document.getElementById('theme-toggle');
+        const label = document.getElementById('theme-toggle-text');
+        if (toggle) {
+            const isLight = safeTheme === 'light';
+            toggle.setAttribute('aria-pressed', String(isLight));
+            toggle.title = isLight ? '切换到深色主题' : '切换到浅色主题';
+        }
+        if (label) label.textContent = safeTheme === 'light' ? '深色主题' : '浅色主题';
+        lossChart?.setTheme?.(chartTheme());
+    }
+
+    function initThemeToggle() {
+        applyTheme(storedTheme() || currentTheme());
+        const toggle = document.getElementById('theme-toggle');
+        if (!toggle) return;
+        toggle.addEventListener('click', () => {
+            const next = currentTheme() === 'light' ? 'dark' : 'light';
+            applyTheme(next);
+            saveTheme(next);
+        });
+    }
+
+    function chartTheme() {
+        const styles = getComputedStyle(document.documentElement);
+        return {
+            color: styles.getPropertyValue('--accent').trim() || '#4fc3f7',
+            grid: styles.getPropertyValue('--chart-grid').trim() || '#2a3a5e',
+            text: styles.getPropertyValue('--text-dim').trim() || '#8892a4',
+        };
+    }
 
     // ── Tab 切换 ──
     function setupTabs() {
@@ -1987,7 +2044,6 @@
             content.appendChild(hint);
         }
         if (extraClass === 'config-group-data') {
-            content.appendChild(createDataDirTools());
             content.appendChild(createDatasetEditor());
         }
         for (const [key, value] of fields) {
@@ -1999,20 +2055,6 @@
         }
         details.appendChild(content);
         return details;
-    }
-
-    function createDataDirTools() {
-        const panel = document.createElement('div');
-        panel.className = 'data-dir-tools';
-        const text = document.createElement('span');
-        text.textContent = '设置数据集路径后一键生成对应的两个目录，懒人使用';
-        const btn = document.createElement('button');
-        btn.type = 'button';
-        btn.className = 'btn btn-small';
-        btn.textContent = '根据原始数据集生成缓存路径';
-        btn.addEventListener('click', applySuggestedDataDirs);
-        panel.append(text, btn);
-        return panel;
     }
 
     function createDatasetEditor() {
@@ -2031,18 +2073,20 @@
         const header = document.createElement('div');
         header.className = 'dataset-editor-header';
         const title = document.createElement('div');
-        title.innerHTML = '<strong>多数据集路径</strong><span>每一行可单独设置重复次数，保存后会写入 dataset_config。</span>';
+        title.innerHTML = '<strong>多数据集路径</strong><span>每一行是一组数据：原始图用于预处理，缩放图和缓存用于训练；重复次数只影响这一组权重。</span>';
         const actions = document.createElement('div');
         actions.className = 'dataset-editor-actions';
         const addBtn = document.createElement('button');
         addBtn.type = 'button';
         addBtn.className = 'btn btn-small';
         addBtn.textContent = '添加数据集';
+        addBtn.title = '新增一组数据集路径。适合把多个角色、画风或批次一起训练，并给每组设置独立重复次数。';
         addBtn.addEventListener('click', addDatasetEditorRow);
         const suggestBtn = document.createElement('button');
         suggestBtn.type = 'button';
         suggestBtn.className = 'btn btn-small secondary';
-        suggestBtn.textContent = '批量生成缓存路径';
+        suggestBtn.textContent = '自动填入缩放图和缓存目录';
+        suggestBtn.title = '根据每一行的原始数据集路径，自动填入对应的缩放图目录和 LoRA 缓存目录；不会创建文件或启动预处理。';
         suggestBtn.addEventListener('click', applySuggestedDataDirs);
         actions.append(addBtn, suggestBtn);
         header.append(title, actions);
@@ -2102,7 +2146,7 @@
 
         const heading = document.createElement('div');
         heading.className = 'dataset-defaults-heading';
-        heading.innerHTML = '<strong>训练数据集配置</strong><span>配置训练数据集的来源、分辨率和长宽比分桶设置。</span>';
+        heading.innerHTML = '<strong>训练数据集配置</strong><span>这些是本 dataset_config 共用的规则：预处理会按分桶参数生成缩放图，训练读取缩放图和 LoRA 缓存。</span>';
         wrap.appendChild(heading);
 
         const fields = [
@@ -2112,7 +2156,6 @@
             ['min_bucket_reso', 'number'],
             ['max_bucket_reso', 'number'],
             ['bucket_reso_steps', 'number'],
-            ['num_repeats', 'number'],
             ['bucket_no_upscale', 'select'],
         ];
 
@@ -2175,7 +2218,7 @@
             input.dataset.valueType = type === 'number' ? 'number' : 'string';
             input.value = datasetConfigValue(key, defaults);
             if (type === 'number') {
-                input.min = key === 'num_repeats' ? '1' : '0';
+                input.min = '0';
                 input.step = key === 'resolution' || key.endsWith('_reso') || key === 'bucket_reso_steps' ? '16' : '1';
             }
         }
@@ -2194,7 +2237,6 @@
             min_bucket_reso: '最小桶边长',
             max_bucket_reso: '最大桶边长',
             bucket_reso_steps: '桶尺寸步长',
-            num_repeats: '重复次数',
             bucket_no_upscale: '小图放大',
         };
         return `${labels[key] || FIELD_LABEL_ZH[key] || key} / ${key}`;
@@ -2204,19 +2246,12 @@
         if (key === 'source_image_dir') {
             return datasetEditorState.datasets[0]?.source_dir || currentConfig.source_image_dir || '';
         }
-        if (key === 'num_repeats') {
-            return datasetEditorState.datasets[0]?.num_repeats || 1;
-        }
         return defaults[key] ?? '';
     }
 
     function updateDatasetConfigValue(key, input) {
         if (key === 'source_image_dir') {
             updateDatasetEditorRow(0, 'source_dir', input.value);
-            return;
-        }
-        if (key === 'num_repeats') {
-            updateDatasetEditorRow(0, 'num_repeats', input.value);
             return;
         }
         updateDatasetDefault(key, input);
@@ -2234,11 +2269,13 @@
         repeat.className = 'dataset-repeat-field';
         const repeatText = document.createElement('span');
         repeatText.textContent = '重复次数';
+        repeatText.title = '这一组图片在每轮里重复使用几次。小数据集或重点角色可以适当提高，但过高会更容易过拟合。';
         const repeatInput = document.createElement('input');
         repeatInput.type = 'number';
         repeatInput.min = '1';
         repeatInput.step = '1';
         repeatInput.value = String(row.num_repeats || 1);
+        repeatInput.title = '每轮训练中这组数据的重复倍率。1 表示正常使用一次，2 表示等效看两遍。';
         repeatInput.addEventListener('input', () => updateDatasetEditorRow(index, 'num_repeats', repeatInput.value));
         repeat.append(repeatText, repeatInput);
         wrap.appendChild(repeat);
@@ -2248,6 +2285,7 @@
         remove.className = 'btn btn-small danger dataset-remove-btn';
         remove.textContent = '删除';
         remove.disabled = datasetEditorState.datasets.length <= 1;
+        remove.title = remove.disabled ? '至少保留一组数据集路径' : '从当前 dataset_config 中移除这一组路径，不会删除磁盘文件。';
         remove.addEventListener('click', () => removeDatasetEditorRow(index));
         wrap.appendChild(remove);
         return wrap;
@@ -2258,10 +2296,17 @@
         field.className = 'dataset-path-field';
         const text = document.createElement('span');
         text.textContent = label;
+        const titles = {
+            source_dir: '原始图片和 caption 所在目录。预处理从这里读图；训练通常不直接读原始图。',
+            image_dir: '缩放图目录。预处理会把图片按分辨率/分桶规则写到这里；训练从这里枚举训练图片。',
+            cache_dir: 'LoRA 缓存目录。VAE latent、文本编码器缓存、PE 特征缓存会写到这里；训练用它加速。',
+        };
+        text.title = titles[key] || label;
         const input = document.createElement('input');
         input.type = 'text';
         input.value = value || '';
         input.placeholder = placeholder;
+        input.title = titles[key] || '';
         input.addEventListener('input', () => updateDatasetEditorRow(index, key, input.value));
         field.append(text, input);
         return field;
@@ -2842,14 +2887,27 @@
         const typeStr = Array.isArray(value) ? '数组' :
             typeof value === 'boolean' ? '布尔值 (true/false)' :
             typeof value === 'number' ? '数值' : '字符串';
+        const label = FIELD_LABEL_ZH[key] || key;
+        const section = sectionTitleForField(key);
+        const currentText = value === undefined ? '未设置' : JSON.stringify(value);
         return help(
-            '该字段暂无详细中文建议。',
-            `按 ${typeStr} 填写。当前值: ${JSON.stringify(value)}`,
-            ['可以通过右侧 TOML 编辑器和对应配置文件继续确认来源。'],
-            ['缺少专门说明时，需要你自行确认该字段与当前方法是否匹配。'],
-            ['修改前建议参考对应 TOML、方法文档或已有变体，避免训练启动后才暴露配置错误。'],
-            '不确定时保持当前值。'
+            `${label} 是当前配置里的${section}字段，WebUI 暂时没有为它写专门教程。`,
+            `按 ${typeStr} 填写。当前值: ${currentText}。如果你只是想正常训练，不需要为了“看懂它”而主动修改。`,
+            ['保留这个字段可以完整复现当前 TOML 的训练行为。'],
+            ['它通常属于低频或方法内部参数，改动后效果不一定能从字段名直观看出来。'],
+            ['不了解来源时修改，可能导致训练启动失败、缓存失效，或让训练结果和预期不一致。'],
+            '新手建议保持当前值；要改之前先看右侧 TOML 所属变体，或复制一份新配置做实验。'
         );
+    }
+
+    function sectionTitleForField(key) {
+        for (const section of FORM_SECTION_DEFS) {
+            if ((section.keys || []).includes(key)) return section.title;
+        }
+        if (String(key).includes('cache')) return '缓存/预处理';
+        if (String(key).includes('sample')) return '训练中预览图';
+        if (String(key).includes('router') || String(key).includes('repa') || String(key).includes('reft')) return '方法内部';
+        return '高级配置';
     }
 
     function createHelpContent(key, value) {
@@ -2902,13 +2960,14 @@
         if (remote) {
             const remoteText = remote.en || remote.ko || '';
             if (remoteText) {
+                const label = FIELD_LABEL_ZH[key] || key;
                 return help(
-                    remoteText,
-                    '该字段来自现有配置说明，Web 端暂无更细的中文填写建议。',
-                    ['保留上游说明，避免字段帮助为空。'],
-                    ['需要结合对应方法 TOML 判断是否适合当前训练。'],
-                    ['不要只凭字段名修改实验参数。'],
-                    '不确定时保持当前变体默认值。'
+                    `${label} 来自项目配置 schema 或方法配置，属于当前训练链路的一部分。`,
+                    `${remoteText} 新手只需要确认当前值来自可信变体；不要为了试错随手改。`,
+                    ['能保留上游配置说明，帮助你追踪字段来源。'],
+                    ['英文说明通常偏开发者视角，仍需要结合当前方法和 TOML 判断。'],
+                    ['如果字段和当前方法不匹配，可能训练启动后才暴露错误。'],
+                    '不确定时保持当前变体默认值；需要实验时先另存为新配置。'
                 );
             }
         }
@@ -3427,7 +3486,7 @@
             for (const item of group.files || []) {
                 const opt = document.createElement('option');
                 opt.value = item.path;
-                opt.textContent = `${tomlLockLabel(item) ? `${tomlLockLabel(item)} / ` : ''}${item.path}`;
+                opt.textContent = [tomlLockLabel(item), tomlFileDisplayName(item)].filter(Boolean).join(' / ');
                 opt.dataset.locked = item.locked ? '1' : '0';
                 optgroup.appendChild(opt);
             }
@@ -3559,7 +3618,7 @@
         btn.className = 'toml-file-item';
         if (item.locked) btn.classList.add('readonly');
         btn.dataset.file = item.path;
-        btn.title = item.path;
+        btn.title = tomlFileDisplayName(item);
         btn.addEventListener('click', () => loadTomlFile(item.path));
 
         const name = document.createElement('span');
@@ -3570,6 +3629,7 @@
         const meta = document.createElement('span');
         meta.className = 'toml-file-meta';
         const tags = [];
+        if (item.filename && item.filename !== item.label) tags.push(item.filename);
         if (currentTrainingSource.file === item.path) tags.push('当前训练');
         const lockLabel = tomlLockLabel(item);
         if (lockLabel) tags.push(lockLabel);
@@ -3594,7 +3654,7 @@
         btn.type = 'button';
         btn.className = 'toml-file-order-btn';
         btn.textContent = label;
-        btn.title = `${title}: ${item.label || item.path}`;
+        btn.title = `${title}: ${tomlFileDisplayName(item)}`;
         btn.disabled = Boolean(disabled);
         btn.addEventListener('click', (event) => {
             event.preventDefault();
@@ -3609,7 +3669,7 @@
             btn.classList.toggle('active', btn.dataset.file === filePath);
         });
         const label = document.getElementById('toml-current-file');
-        if (label) label.textContent = filePath || '未保存导入内容';
+        if (label) label.textContent = filePath ? tomlFileDisplayName(filePath) : '未保存导入内容';
         const applyBtn = document.getElementById('btn-apply-toml');
         if (applyBtn) {
             const meta = tomlFileMeta[filePath];
@@ -3679,8 +3739,10 @@
             saveBtn.title = meta?.locked
                 ? '该配置文件已锁定，请使用新名称保存新配置后编辑'
                 : (dirty
-                    ? (formDirty ? '保存左侧表单修改到当前 TOML' : '保存当前 TOML 修改')
-                    : '当前配置没有未保存修改');
+                    ? (formDirty
+                        ? '把左侧表单、数据集路径和采样提示词等修改写回当前选中的 TOML；保存后训练会使用这些新值。'
+                        : '把直接编辑器里的 TOML 文本写回当前文件。')
+                    : '当前配置没有未保存修改，不需要保存。');
         }
         updateTomlEditorPanelState(filePath);
         const applyBtn = document.getElementById('btn-apply-toml');
@@ -3688,7 +3750,9 @@
             applyBtn.disabled = !meta?.trainable || dirty;
             applyBtn.title = dirty
                 ? '当前配置尚未保存，请先保存更新当前选中配置或保存新配置'
-                : (meta?.trainable ? '加载选中配置，并作为当前训练入口' : '该文件不是完整训练配置');
+                : (meta?.trainable
+                    ? '把右侧选中的 TOML 加载到左侧表单，并把它设为“开始训练”使用的配置。'
+                    : '该文件不是完整训练配置，不能作为训练入口。');
         }
         const moveBtn = document.getElementById('btn-move-toml-group');
         if (moveBtn) {
@@ -3698,12 +3762,12 @@
                 ? '当前配置尚未保存，请先保存或放弃修改后再移动分组位置'
                 : (meta?.locked
                     ? `${tomlLockLabel(meta) || '只读'}配置不能移动分组位置`
-                    : (canMove ? '选择目标分组并移动当前配置' : '当前没有其他可移入的分组'));
+                    : (canMove ? '只调整右侧配置文件列表里的分组归属，不会改 TOML 内容或磁盘路径。' : '当前没有其他可移入的分组'));
         }
         const reloadBtn = document.getElementById('btn-reload-toml');
         if (reloadBtn) {
             reloadBtn.disabled = !filePath;
-            reloadBtn.title = '从磁盘重新读取当前配置文件，不会切换训练入口';
+            reloadBtn.title = '从磁盘重新读取当前配置文件；未保存的编辑会被丢弃，但不会切换训练入口。';
         }
         const lockBtn = document.getElementById('btn-lock-toml');
         if (lockBtn) {
@@ -3732,7 +3796,7 @@
             restoreBtn.disabled = dirty;
             restoreBtn.title = dirty
                 ? '当前配置尚未保存，请先保存更新当前选中配置或保存新配置'
-                : '从项目内置版本还原系统预设；还原前会自动备份当前文件';
+                : '从项目内置版本还原系统预设；会覆盖系统预设文件，还原前会自动备份。用户导入配置不会被还原。';
         }
     }
 
@@ -3780,7 +3844,9 @@
             toggleBtn.disabled = !filePath;
             toggleBtn.textContent = open ? '收起配置文件编辑' : '直接编辑配置文件';
             toggleBtn.classList.toggle('active', open);
-            toggleBtn.title = open ? '收起二级配置文件编辑界面' : '展开二级界面，直接复制或编辑当前配置文件';
+            toggleBtn.title = open
+                ? '收起二级配置文件编辑界面；不会自动保存修改。'
+                : '展开二级界面，查看、复制或直接编辑当前 TOML。适合批量改字段，保存时需要二次确认。';
         }
         if (saveDirectBtn) {
             saveDirectBtn.disabled = locked || !filePath || !dirty;
@@ -3789,12 +3855,12 @@
             saveDirectBtn.title = locked
                 ? '该配置文件已锁定，请使用新名称保存新配置后编辑'
                 : (dirty
-                    ? (confirming ? '再次点击才会写入磁盘' : '第一次点击进入确认，第二次点击保存')
+                    ? (confirming ? '再次点击才会真正写入磁盘；请确认 TOML 内容没有语法错误。' : '第一次点击进入确认，第二次点击保存，防止误覆盖配置文件。')
                     : '当前配置没有未保存修改');
         }
         if (copyBtn) {
             copyBtn.disabled = !filePath && !document.getElementById('toml-editor')?.value;
-            copyBtn.title = '复制当前编辑器里的 TOML 内容';
+            copyBtn.title = '复制当前编辑器里的 TOML 内容，方便备份、对比或发给别人排查。';
         }
     }
 
@@ -3836,6 +3902,25 @@
         if (meta.user_group_locked) return '分组锁定';
         if (meta.group_locked) return '分组只读';
         return meta.lock_reason_label || '只读';
+    }
+
+    function tomlFileDisplayParts(fileOrMeta) {
+        const meta = typeof fileOrMeta === 'string'
+            ? (tomlFileMeta[fileOrMeta] || { path: fileOrMeta })
+            : (fileOrMeta || {});
+        const path = meta.path || '';
+        const filename = meta.filename || (path ? path.split('/').pop() : '');
+        const label = meta.label || '';
+        const parts = [];
+        if (label && label !== filename && label !== path) parts.push(label);
+        if (filename) parts.push(filename);
+        if (path && path !== filename) parts.push(path);
+        return parts;
+    }
+
+    function tomlFileDisplayName(fileOrMeta) {
+        const parts = tomlFileDisplayParts(fileOrMeta);
+        return parts.length ? parts.join(' / ') : '未命名配置文件';
     }
 
     function lockTomlButtonTitle(meta) {
@@ -5762,6 +5847,7 @@
 
     // ── 事件绑定 ──
     function setupEventListeners() {
+        installBeginnerTooltips();
         document.getElementById('method-select').addEventListener('change', async () => {
             updateChoiceGuide();
             await loadVariants({ reset: true });
@@ -5823,6 +5909,64 @@
         document.getElementById('btn-save-preview-settings').addEventListener('click', savePreviewSettings);
         document.getElementById('btn-reset-preview-settings').addEventListener('click', resetPreviewSettings);
         document.getElementById('preview-training-task').addEventListener('change', (e) => changePreviewTask(e.target.value));
+    }
+
+    function installBeginnerTooltips() {
+        const tips = {
+            'method-select': '选择训练方法家族。新手通常选择 lora；LoKr、Hydra、ReFT 等属于进阶或实验方法。',
+            'variant-select': '选择具体训练配置文件。它决定默认学习率、rank、缓存、方法开关等实际训练参数。',
+            'preset-select': '选择预设覆盖项。default 最稳；低显存或快速试跑时再选择其他预设。',
+            'btn-load-config': '重新读取当前方法、变体和预设合并后的配置；不会启动训练，也不会保存当前未保存修改。',
+            'btn-start-from-config': '先做训练前预检测，再用当前左侧表单/当前训练配置启动训练。若数据缺缓存，会提示先预处理。',
+            'btn-stop-training': '停止当前正在运行的训练或预处理任务；已经写出的日志、样张和权重文件会保留。',
+            'btn-import-toml': '从本地选择 TOML 文件导入到 WebUI 管理区；导入后仍需要加载或保存为配置才能训练。',
+            'btn-export-toml': '下载/导出当前选中的 TOML 内容，适合训练前备份或分享配置。',
+            'btn-save-toml': '保存左侧表单或当前 TOML 的未保存修改。保存后，“开始训练”才会使用这些新值。',
+            'btn-toggle-toml-editor': '展开二级界面，查看、复制或直接编辑当前 TOML；适合批量改字段。',
+            'btn-save-as-toml': '把当前配置另存为新 TOML，适合从系统预设复制出自己的可编辑版本。',
+            'btn-apply-toml': '把右侧选中的 TOML 加载到左侧表单，并设为当前训练入口。',
+            'btn-move-toml-group': '移动右侧配置文件所在分组，只改变列表归类，不改变 TOML 内容。',
+            'btn-reload-toml': '从磁盘重新读取当前 TOML；会丢弃未保存编辑。',
+            'btn-copy-toml': '复制当前编辑器里的 TOML 内容，方便备份或排查。',
+            'btn-save-toml-direct': '保存直接编辑器里的 TOML 文本。需要连续点击两次确认写入。',
+            'btn-lock-toml': '锁定当前配置文件，防止误改；系统预设或分组锁定的文件可能无法手动解锁。',
+            'btn-delete-toml': '删除当前选中的可编辑 TOML。需要二次确认；不会删除训练输出目录。',
+            'btn-restore-system-toml': '把项目内置系统预设恢复到项目版本。会自动备份，但不影响用户导入配置。',
+            'btn-live-training': '从历史任务视图回到当前正在监控的训练/预处理状态。',
+            'btn-refresh-history': '重新读取训练任务历史列表，包括日志、loss、输出目录和样张目录记录。',
+            'btn-clear-log': '清空当前页面显示的日志文本；不会删除磁盘上的历史日志。',
+            'history-show-archived': '显示已归档任务。归档只是隐藏列表项，不会删除训练记录。',
+            'btn-refresh-preview': '重新扫描当前预览来源目录，读取最新生成的样张图片。',
+            'btn-refresh-weights': '重新扫描选中训练任务的权重文件，显示保存轮次和步数。',
+            'btn-save-preview-settings': '保存预览图路径设置，只影响预览图页面读取目录，不会改训练配置。',
+            'btn-reset-preview-settings': '恢复预览图目录默认值，例如训练样张默认 output/ckpt/sample。',
+            'preview-training-task': '选择一个历史训练任务后，预览图会读取该任务记录的 sample_dir，而不是只看默认目录。',
+            'preview-training-dir': '未选择历史任务时，训练中采样预览默认从这个目录读取。',
+            'preview-inference-dir': '推理预览来源目录，通常存放手动推理或测试生成的图片。',
+            'preview-custom-dir': '自定义预览目录。填任意项目内或绝对路径后，可在“自定义路径”来源中查看图片。',
+        };
+        for (const [id, title] of Object.entries(tips)) {
+            const el = document.getElementById(id);
+            if (el && !el.title) el.title = title;
+        }
+        document.querySelectorAll('.tab-btn').forEach((btn) => {
+            const labels = {
+                config: '配置页：选择方法/变体/预设，编辑训练参数、数据集路径和 TOML 文件。',
+                training: '训练页：查看当前任务、历史任务、loss 曲线、日志和显存状态。',
+                preview: '预览图页：查看训练中样张、推理输出或自定义目录图片。',
+            };
+            const key = btn.dataset.tab;
+            if (labels[key]) btn.title = labels[key];
+        });
+        document.querySelectorAll('.preview-source-btn').forEach((btn) => {
+            const labels = {
+                training: '读取训练任务的 sample_dir 或训练样张默认目录。',
+                inference: '读取推理预览目录，适合查看手动测试生成图。',
+                custom: '读取你填写的自定义目录，适合临时检查任意图片文件夹。',
+            };
+            const key = btn.dataset.previewSource;
+            if (labels[key]) btn.title = labels[key];
+        });
     }
 
     // ── 工具函数 ──

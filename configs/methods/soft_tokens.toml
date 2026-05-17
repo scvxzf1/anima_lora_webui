@@ -17,10 +17,16 @@
 # USAGE:
 #   make exp-soft-tokens                  # default preset
 #   python tasks.py exp-soft-tokens       # cross-platform
+#
+# 初学者导读：
+# Soft Tokens 是项目内置系统方法模块。`network_module` 负责把 per-layer、
+# per-timestep 的软 token 挂到 DiT block 上；它不是普通 LoRA 族开关。
+# 基础 DiT 冻结，真正训练的是软 token bank 和时间桶 offset。
 
 network_module = "networks.methods.soft_tokens"
 
 # network_dim → num_tokens (K) per layer per timestep bucket.
+# 这里的 network_dim 不是 LoRA rank，而是每层插入多少个可学习 token。
 network_dim = 4
 
 # n_layers           — number of leading DiT blocks to attach soft tokens to
@@ -62,10 +68,15 @@ output_name = "anima_soft_tokens"
 
 # Soft tokens are independent of the cached crossattn (they overwrite zero-
 # padding tail), so cache_llm_adapter_outputs is the right default.
+# 软 token 不改文本编码器输出，只覆盖 padding 槽位；因此缓存文本编码仍然安全。
 use_shuffled_caption_variants = true
 cache_llm_adapter_outputs = true
 
 # Soft tokens are tiny — higher LR is fine.
+# 保存与续训：
+# - save_every_n_epochs 保存普通 soft-token adapter，方便观察阶段结果。
+# - checkpointing_epochs 保存可续训状态，适合中断恢复。
+# 注意：当前 v1 推理 hook 尚未接好，保存权重主要用于实验和后续接线。
 learning_rate = 1e-3
 max_train_epochs = 4
 save_every_n_epochs = 4
@@ -75,4 +86,6 @@ checkpointing_epochs = 4
 # original forward is preserved (our hook is the outermost wrapper). Block
 # swapping is incompatible — the hook captures the block by reference at
 # apply_to() time and a swapped block is a different object instance.
+# 因为依赖 block 对象本身，blocks_to_swap 必须为 0；否则 hook 可能挂到
+# 被替换前的对象上。
 blocks_to_swap = 0

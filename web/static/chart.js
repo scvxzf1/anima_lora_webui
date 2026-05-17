@@ -9,6 +9,8 @@ class MetricsChart {
         this.maxPoints = options.maxPoints || 300;
         this.label = options.label || 'Loss';
         this.color = options.color || '#4fc3f7';
+        this.gridColor = options.gridColor || options.grid || '#2a3a5e';
+        this.textColor = options.textColor || options.text || '#8892a4';
         this.emptyText = options.emptyText || '等待 loss 数据...';
         this.pixelRatio = 1;
         this.resize();
@@ -17,6 +19,13 @@ class MetricsChart {
             this.resizeObserver = new ResizeObserver(() => this._resize());
             this.resizeObserver.observe(this.canvas.parentElement);
         }
+    }
+
+    setTheme(theme = {}) {
+        this.color = theme.color || this.color;
+        this.gridColor = theme.grid || theme.gridColor || this.gridColor;
+        this.textColor = theme.text || theme.textColor || this.textColor;
+        this.render();
     }
 
     resize() {
@@ -82,7 +91,7 @@ class MetricsChart {
         ctx.textBaseline = 'middle';
 
         if (this.data.length < 2) {
-            ctx.fillStyle = '#8892a4';
+            ctx.fillStyle = this.textColor;
             ctx.font = '12px monospace';
             ctx.textAlign = 'center';
             ctx.fillText(this.data.length === 1 ? '已收到 1 个 loss 点，等待更多数据...' : this.emptyText, w / 2, h / 2);
@@ -100,7 +109,7 @@ class MetricsChart {
         const plotH = h - pad.top - pad.bottom;
 
         // Grid lines
-        ctx.strokeStyle = '#2a3a5e';
+        ctx.strokeStyle = this.gridColor;
         ctx.lineWidth = 0.5;
         for (let i = 0; i <= 4; i++) {
             const y = pad.top + (plotH * i / 4);
@@ -111,7 +120,7 @@ class MetricsChart {
         }
 
         // Y-axis labels
-        ctx.fillStyle = '#8892a4';
+        ctx.fillStyle = this.textColor;
         ctx.font = '10px monospace';
         ctx.textAlign = 'right';
         for (let i = 0; i <= 4; i++) {
@@ -142,7 +151,7 @@ class MetricsChart {
         ctx.fillText(`${this.label}: ${last.value.toFixed(5)}`, pad.left + 5, 14);
 
         // Step range
-        ctx.fillStyle = '#8892a4';
+        ctx.fillStyle = this.textColor;
         ctx.font = '10px monospace';
         ctx.textAlign = 'left';
         ctx.fillText(`step ${this.data[0].step}`, pad.left, h - 5);

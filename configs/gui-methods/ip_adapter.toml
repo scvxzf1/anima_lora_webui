@@ -1,57 +1,81 @@
-# IP-Adapter — decoupled image cross-attention.
-# GUI-friendly self-contained variant — no toggle blocks.
+# gui-methods/ip_adapter.toml —— IP-Adapter：解耦图像交叉注意力。
 #
-# Adapter-only: DiT is frozen, training updates only the Perceiver resampler
-# and the per-block to_k_ip / to_v_ip projections.
+# 这是 GUI 友好的独立变体配置，没有需要手动切换的注释块。
+# IP-Adapter 用参考图像作为条件，训练时冻结 DiT 主模型，只更新：
+#   - Perceiver resampler
+#   - 每个 block 里的 to_k_ip / to_v_ip 投影
 #
-# Source data: post_image_dataset/resized/   (shared with the LoRA pipeline)
-# Caches:      post_image_dataset/lora/        (shared with the LoRA pipeline —
-#              latents + text-emb + PE features; populate via `make preprocess`
-#              + `make preprocess-pe`)
+# 数据与缓存：
+# 源图像使用 post_image_dataset/resized/，与 LoRA 预处理后的图片共用。
+# 缓存使用 post_image_dataset/lora/，包括 VAE latents、文本编码和 PE 图像特征。
+# 训练前通常需要先跑 `make preprocess` 和 `make preprocess-pe`。
 
+# 指向专用数据集蓝图。这里不要改成普通 LoRA 数据集，否则会缺少 IP-Adapter
+# 需要的图像特征字段。
 dataset_config = "configs/datasets/ip_adapter.toml"
 
+# 选择 IP-Adapter 网络实现。这个模块会接管适配器创建和保存逻辑。
 network_module = "networks.methods.ip_adapter"
 
-# K = number of IP tokens (resampler output slots).
+# K = IP tokens 数量，也就是 resampler 输出的图像条件 token 槽位数。
+# 数值越大，图像条件容量越强，也越占显存。
 network_dim = 16
 
+# network_args 是传给 IP-Adapter 网络模块的字符串参数。
 network_args = [
+    # 使用 PE-Core-L14-336 图像编码器，并支持动态分辨率。
     "encoder=pe",                # PE-Core-L14-336 (dynamic resolution)
     "encoder_dim=1024",
+    # resampler 的深度和注意力头数。越大越强，也越慢。
     "resampler_layers=2",
     "resampler_heads=8",
-    # Step 0 = baseline DiT is enforced by the per-block ip_gate (init 0),
-    # not by shrinking K/V. Default Kaiming-uniform init so the IP path
-    # carries signal as soon as the gate opens.
+    # ip_scale 控制图像条件路径的基础强度。
+    # 训练开始时每个 block 的 ip_gate 初始化为 0，所以 step 0 仍接近原始 DiT；
+    # 随着 gate 打开，IP 路径开始传递参考图像信息。
     "ip_scale=1.0",
 ]
 
+# 输出名前缀。
 output_name = "anima_ip_adapter"
 
+# 日志目录和后端。TensorBoard 可用于观察 loss 曲线。
 logging_dir = "output/logs"
 log_with = "tensorboard"
 
+# IP-Adapter 只训练较小的适配器模块，因此默认学习率高于普通 LoRA。
 learning_rate = 1e-4
 max_train_epochs = 12
+
+# 普通权重保存：用于推理预览，不含优化器/调度器状态。
 save_every_n_epochs = 12
+
+# 可续训检查点保存：中断后同配置重启可恢复训练状态。
 checkpointing_epochs = 12
 
-# PE features must be pre-cached via `make exp-ip-adapter-preprocess` so training never
-# loads the vision encoder. Set ip_features_cache_to_disk=false to fall back
-# to live PE encoding (slower; only useful for ad-hoc experimentation).
+# 图像特征缓存开关：
+# true 表示训练时直接读取预先缓存的 PE features，不加载图像编码器，省显存也更稳。
+# false 会在训练时现场编码参考图像，速度慢且更吃显存，只适合临时实验。
 ip_features_cache_to_disk = true
 
+# 方法总开关和正则化：
+# use_ip_adapter 启用 IP-Adapter 训练路径。
+# ip_image_drop_p 会随机丢弃图像条件，避免模型完全依赖参考图。
+# caption_dropout_rate 会随机丢弃文本条件，帮助图像/文本条件更均衡。
 use_ip_adapter = true
 ip_image_drop_p = 0.1
 caption_dropout_rate = 0.2
 
+# 显存/编译设置：
+# blocks_to_swap=0 表示不做 block 级 CPU 换入换出。
+# compile_mode="full" 使用完整编译模式，通常更快但首次编译更久。
 blocks_to_swap = 0
 compile_mode = "full"
 
+# 关闭额外 CMMD 开关，让训练目标集中在 IP-Adapter。
 use_cmmd = false
 
 [variant]
+# GUI 展示元数据。
 family = "ip_adapter"
 label = "IP-Adapter"
 description = "Decoupled image cross-attention (Ye et al., 2023)."

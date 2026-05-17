@@ -18,15 +18,29 @@
 # clean VAE latent of the reference, which is identical to the existing
 # {stem}_anima_latent.safetensors when ref==target. No new sidecar needed for
 # Phase 1; reuses cache_latents output directly.
+#
+# 初学者导读：
+# EasyControl 是项目内置的系统方法模块，不属于普通 LoRA 族开关。
+# `network_module` 会加载 networks.methods.easycontrol；`use_easycontrol=true`
+# 让训练循环每步把参考图 latent 注入 DiT。真正训练的是条件 LoRA、
+# FFN 条件 LoRA 和每层 `b_cond` 门控，基础 DiT 主模型被冻结。
 
+# 数据集蓝图：这里不直接写 [[datasets]]，而是引用专门的 EasyControl
+# 数据集配置。这样源码目录和缓存目录可以分离，初学者不容易混淆。
 dataset_config = "configs/datasets/easycontrol.toml"
 
 network_module = "networks.methods.easycontrol"
 
 # r = condition LoRA rank (per-projection rank). 16 is a reasonable default.
+# network_dim/network_alpha 控制条件 LoRA 的 rank 和缩放。
 network_dim = 32
 network_alpha = 32
 
+# network_args 是 EasyControl 模块的结构参数：
+# - b_cond_init 让图像条件一开始几乎不影响基础 DiT，避免训练初期炸掉。
+# - cond_scale 是图像条件整体强度。
+# - apply_ffn_lora=1 表示 self-attn 和 FFN 都挂条件 LoRA。
+# - cond_token_count 固定参考 latent token 数，配合静态 shape 减少重编译。
 network_args = [
     "b_cond_init=-10.0",     # logit bias init: exp(-10) ≈ 4.5e-5 → α ≈ 1 → step 0 = baseline DiT
     "cond_scale=1.0",
@@ -39,6 +53,10 @@ output_name = "anima_easycontrol"
 logging_dir = "output/logs"
 log_with = "tensorboard"
 
+# 训练节奏：
+# - save_every_n_epochs 保存普通 EasyControl adapter，可用于之后推理。
+# - checkpointing_epochs 保存可续训状态，包含优化器/调度器等。
+# 普通 adapter 不是完整续训点；断点恢复依赖 checkpointing_epochs。
 learning_rate = 5e-5
 max_train_epochs = 6
 save_every_n_epochs = 3
@@ -52,6 +70,8 @@ checkpointing_epochs = 3
 
 # CFG dropout for image conditioning (independent of text dropout).
 # Read by train.py when use_easycontrol is on.
+# use_easycontrol 是训练循环识别这个内置方法的开关；network_module 负责
+# 创建网络对象，use_easycontrol 负责把参考图条件喂给它。
 use_easycontrol = true
 easycontrol_drop_p = 0.1
 caption_dropout_rate = 0.1
@@ -62,8 +82,12 @@ caption_dropout_rate = 0.1
 # value (e.g. 0.5) degrades cond from "perfect blueprint" to "lossy hint",
 # forcing text to carry the residual high-frequency detail. sigma=0 stays in
 # the training distribution, so clean-cond inference still works unchanged.
+# 初学者可以把它理解为“参考图模糊化训练”：数值越大，模型越不能偷看
+# 完整答案，越需要结合 caption。
 easycontrol_cond_noise_max = 0.3
 
+# 低显存设置：条件网络和 DiT 同时在训练图里，开启重算和 Unsloth offload
+# 用速度换显存稳定性。
 blocks_to_swap = 0
 gradient_checkpointing = true
 unsloth_offload_checkpointing = true

@@ -18,14 +18,29 @@
 # cache_latents / cache_text_encoder_outputs all stay true and skips loading
 # the vision encoder during training. Set `ip_features_cache_to_disk = false`
 # and `cache_latents = false` to fall back to the original live-encoding path.
+#
+# 初学者导读：
+# IP-Adapter 是项目内置的系统方法模块，不是普通 LoRA 变体。
+# `network_module` 创建 resampler、图像 cross-attention 的 K/V 投影和可选
+# PE-Core LoRA；`use_ip_adapter=true` 让训练循环把参考图特征送进网络。
+# 基础 DiT 冻结，真正训练的是图像条件侧的 adapter 参数。
 
+# 数据集蓝图：IP-Adapter 复用 LoRA 预处理后的图片和缓存，但通过单独
+# dataset_config 写清楚读取方式。
 dataset_config = "configs/datasets/ip_adapter.toml"
 
 network_module = "networks.methods.ip_adapter"
 
 # K = number of IP tokens (resampler output slots). 16 is a good default.
+# 在这个方法里，network_dim 表示 resampler 输出多少个图像 token，
+# 不是 LoRA rank。
 network_dim = 16
 
+# network_args 是图像编码和 resampler 的细节：
+# - encoder/encoder_dim 选择 PE-Core 特征维度。
+# - resampler_layers/heads 决定把图像 patch 聚合成 IP token 的小网络容量。
+# - ip_scale 是图像条件强度。
+# - gate_lr 单独加快每层 gate 打开速度。
 network_args = [
     "encoder=pe",                # PE-Core-L14-336 (dynamic resolution; ~257 patch tokens)
     "encoder_dim=1024",          # PE-Core-L14-336 hidden dim
@@ -78,11 +93,16 @@ output_name = "anima_ip_adapter"
 logging_dir = "output/logs"
 log_with = "tensorboard"
 
+# 训练节奏：
+# - save_every_n_epochs 保存普通 adapter 权重，用于推理和阶段对比。
+# - checkpointing_epochs 保存可续训状态，包含 optimizer/scheduler。
+# 普通保存文件能加载推理，但不是完整训练现场。
 learning_rate = 1e-4
 max_train_epochs = 8
 save_every_n_epochs = 8
 checkpointing_epochs = 8
 
+# 诊断输出间隔；设置得很大表示默认几乎不跑额外诊断，避免拖慢训练。
 ip_diagnostics_epochs = 999
 
 # PE-LoRA owns the encoder and trains it live — pre-cached PE features can't
@@ -91,6 +111,8 @@ ip_diagnostics_epochs = 999
 
 # CFG dropout for image conditioning (independent of text dropout).
 # Read by train.py when use_ip_adapter is on.
+# use_ip_adapter 是训练循环的数据注入开关；network_module 是网络创建入口。
+# 两者都在，IP-Adapter 才能既创建参数又收到参考图条件。
 use_ip_adapter = true
 ip_image_drop_p = 0.05
 caption_dropout_rate = 0.05
@@ -99,5 +121,6 @@ caption_dropout_rate = 0.05
 # DiT is frozen; resampler + KV proj + PE-LoRA + live PE encoder all sit on
 # the GPU alongside the DiT. blocks_to_swap=12 leaves headroom for the live
 # PE forward without disturbing the DiT-side memory budget.
+# blocks_to_swap 把部分 DiT block 换出显存，为实时 PE 编码和 adapter 留空间。
 blocks_to_swap = 12
 # compile_mode = "full"

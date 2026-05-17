@@ -1,34 +1,51 @@
-# gui-methods/lokr.toml — LoKr (Low-Rank Kronecker Product).
+# gui-methods/lokr.toml —— LoKr：低秩 Kronecker 适配器。
 #
-# LyCORIS-compatible LoKr via Kronecker product decomposition.
-# Output is ComfyUI-compatible (lokr_w1/lokr_w2 keys, lycoris.kohya metadata).
+# LoKr 属于 LyCORIS 风格方法，通过 Kronecker product decomposition 表达权重增量。
+# 相比普通 LoRA，它的保存键名和元数据面向 LyCORIS/ComfyUI 兼容：
+# 输出会包含 lokr_w1/lokr_w2 keys 和 lycoris.kohya metadata。
+#
+# 这是实验性 GUI 变体。建议先用普通 LoRA 确认数据流程，再尝试 LoKr。
 
+# LoKr 容量设置。network_dim/network_alpha 仍然控制整体适配容量。
 network_dim = 32
 network_alpha = 32
 
+# LoKr 默认学习率高于普通 LoRA；如果出现过拟合或画面崩坏，可优先降低学习率。
 learning_rate = 1e-4
 max_train_epochs = 10
-# Normal adapter weight saves for comparing epochs in inference.
-# These are useful outputs, but they do not carry optimizer/scheduler state.
+
+# 普通适配器权重保存：用于推理预览和比较不同 epoch。
+# 这些文件有用，但不携带优化器/学习率调度器状态。
 save_every_n_epochs = 5
-# Resumable training state save. This writes and overwrites the paired
-# <output_name>-checkpoint.safetensors + <output_name>-checkpoint-state/.
-# If training is interrupted, starting the same config again resumes from it.
+
+# 可续训训练状态保存：
+# 会写入并覆盖一组 <output_name>-checkpoint.safetensors 和
+# <output_name>-checkpoint-state/。训练中断后，使用同一配置重启会从这里恢复。
 checkpointing_epochs = 5
 
+# 字幕增强与缓存。caption_dropout_rate=0.1 是较温和的泛化设置。
 use_shuffled_caption_variants = true
 cache_llm_adapter_outputs = true
 caption_dropout_rate = 0.1
 
+# 方法开关：启用 LoKr，而不是普通 LoRA。
 use_lokr = true
+
+# Kronecker 分解因子。数值影响分解形状、参数量和表达能力；初学者先保持默认。
 lokr_factor = 8
 
+# 输出名前缀。
 output_name = "anima_lokr"
 
+# 常规显存设置。没有启用 gradient checkpointing/offload；
+# 如果 OOM，可先尝试降低 batch、rank，或参考 8GB LoRA 变体的显存开关。
 blocks_to_swap = 0
+
+# 关闭额外 CMMD 开关，保持 LoKr 本身作为主要变量。
 use_cmmd = false
 
 [variant]
+# GUI 展示元数据；experimental=true 表示该变体仍偏实验。
 family = "lokr"
 label = "LoKr"
 description = "LyCORIS-compatible Kronecker adapter saved as lokr_w1/lokr_w2."

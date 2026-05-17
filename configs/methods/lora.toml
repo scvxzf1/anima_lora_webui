@@ -1,4 +1,11 @@
-# LoRA family — method selection via toggle blocks.
+# LoRA 内置方法配置：这是偏开发/系统用途的完整方法开关集合。
+#
+# 新手日常训练更建议使用 configs/gui-methods/ 下的“可训练方法变体”，
+# 例如 LoRA 标准训练变体、LoKr 训练变体等；这个文件主要给高级用户
+# 直接组合不同研究方法。
+#
+# 下面的开关会组合出 LoRA / OrthoLoRA / T-LoRA / Hydra / ReFT 等行为。
+# 如果不确定每个开关含义，不要直接改这个系统只读配置，先复制为导入配置。
 #
 # Default (uncommented) = LoRA + OrthoLoRA + T-LoRA + Hydra (σ-routed) + ReFT.
 # Routing config is on the three-axis surface (plan2.md §three-axis-config):
@@ -23,11 +30,13 @@
 network_alpha = 32
 network_dim = 32
 
+# 基础训练强度：学习率、总轮数、普通权重保存间隔、续训状态保存间隔。
 learning_rate = 2e-5
 max_train_epochs = 4
 save_every_n_epochs = 4
 checkpointing_epochs = 4
 
+# Caption 与缓存相关：通常保持默认。
 use_shuffled_caption_variants = true
 cache_llm_adapter_outputs = true
 caption_dropout_rate = 0.1
@@ -50,18 +59,19 @@ log_with = "tensorboard"
 # compile_inductor_mode = "reduce-overhead"
 
 # -------------
-# Ortho-lora
+# OrthoLoRA：给 LoRA 更新加正交约束，减少概念污染。
 
 use_ortho = true
 
 # -------------
-# Timestep mask
+# T-LoRA：按去噪时间步调整有效 rank，让容量偏向更关键阶段。
 
 use_timestep_mask = true
 min_rank = 8
 alpha_rank_scale = 1.0
 
 # -------------
+# Hydra / MoE 路由配置：专家路由类方法，表达力更强但更难调。
 # "independent_A" and route_per_layer=true -> hydralora
 
 # use_moe_style = "shared_A"
@@ -97,7 +107,7 @@ alpha_rank_scale = 1.0
 # router_targets = ".*\\.(qkv_proj|q_proj|kv_proj|output_proj|layer[12])$"
 
 # -------------
-# reft
+# ReFT：在 DiT 残差流上做可训练干预，属于更进阶的语义干预方法。
 
 # add_reft = true
 # reft_dim = 64

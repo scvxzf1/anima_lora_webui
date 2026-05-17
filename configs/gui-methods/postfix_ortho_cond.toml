@@ -10,9 +10,25 @@
 # row-shuffled deterministically by `ortho_basis_seed`.
 #
 # Rationale: docs/proposal/orthogonal_postfix.md §C.
+#
+# 初学者导读：
+# 这个文件是 GUI 里可直接选择的 postfix 条件正交版本。GUI 变体文件
+# 不需要手动开关注释块；这里写出来的字段就是实际训练会使用的字段。
+# `network_module` 指向项目内置的 postfix 系统方法，它负责把条件 postfix
+# 插进文本条件序列；真正会训练的是 cond_mlp 预测出的旋转/缩放参数，
+# 不是整个 DiT 主模型。
 
 network_module = "networks.methods.postfix"
+
+# 基础容量：K=network_dim，表示每条 caption 额外生成多少个 postfix token。
+# rank 越大，可学习的条件尾巴越宽，但显存和训练难度也会上升。
 network_dim = 32
+
+# network_args 是传给 postfix 方法模块的细节参数：
+# - mode=cond 表示“按 caption 生成 postfix”，不是全数据共享一个自由参数。
+# - splice_position=end_of_sequence 表示把 token 接到序列末尾。
+# - ortho_basis=svd_te 会从缓存的文本编码中抽取正交基，减少随意漂移。
+# - te_cache_dir / svd_num_files 决定从哪里、用多少缓存样本构造这个基。
 network_args = [
     "mode=cond",
     "splice_position=end_of_sequence",
@@ -27,19 +43,32 @@ output_name = "anima_postfix_ortho_cond_v2"
 # Trainable surface ~390k params at K=32, hidden=256, D=1024 (vs ~8.65M for
 # legacy cond at K=64). Use moderate LR — most params are in cond_mlp.0
 # (262k of the 390k); the rotation/scale head is small but matters most.
+# 训练节奏：
+# - learning_rate / max_train_epochs 控制学习率和总轮数。
+# - save_every_n_epochs 保存普通 adapter 权重，适合预览、推理和对比。
+# - checkpointing_epochs 保存可续训状态：adapter 权重 + optimizer/scheduler
+#   等训练状态。中断后再次启动同配置会优先从这个续训点恢复。
+# 普通保存文件不能完整续训；续训检查点训练完成后会被清理。
 learning_rate = 1e-3
 max_train_epochs = 2
 save_every_n_epochs = 1
 checkpointing_epochs = 1
 
+# 文本相关缓存：
+# - use_shuffled_caption_variants 会在 caption 变体之间打散，减少过拟合。
+# - cache_llm_adapter_outputs 复用文本编码缓存，训练更快也更省显存。
 use_shuffled_caption_variants = true
 cache_llm_adapter_outputs = true
 
+# blocks_to_swap=0 表示不把 DiT block 换到 CPU；postfix 参数很小，
+# 这里优先保持结构简单和速度稳定。
 blocks_to_swap = 0
 gradient_accumulation_steps = 4
 
+# CMMD 是验证指标开关；这里只保留训练 postfix 本体，不启用额外验证负担。
 use_cmmd = false
 
+# [variant] 只给 GUI 展示和排序使用，不参与算法计算。
 [variant]
 family = "postfix"
 label = "Postfix (cond + ortho)"

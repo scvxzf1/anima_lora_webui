@@ -1,26 +1,59 @@
+# gui-methods/lora.toml —— GUI 使用的标准 LoRA 配置。
+#
+# 这个文件是“最朴素”的 LoRA 基线：只训练低秩适配器，不启用 Hydra、
+# T-LoRA、LoKr、IP-Adapter 等额外结构。GUI 或 `make lora-gui GUI_PRESETS=lora`
+# 会直接读取这里的字段；它不像 configs/methods/lora.toml 那样需要手动
+# 注释/取消注释功能块。
+#
+# 初学者可以把它当成默认安全起点：显存占用较低，行为容易理解，适合先确认
+# 数据集、字幕、缓存和训练流程都能正常跑通。
+
+# LoRA 容量设置：
+# network_dim 是 LoRA 的秩，越大可学习容量越强，也越占显存/更容易过拟合。
+# network_alpha 通常设成和 network_dim 一样，表示不额外缩放 LoRA 强度。
 network_dim = 32
 network_alpha = 32
+
+# 基础训练节奏：
+# learning_rate 是适配器学习率；LoRA 通常不需要太大。
+# max_train_epochs 是完整遍历数据集的轮数。
 learning_rate = 2e-5
 max_train_epochs = 4
-# save_every_n_epochs saves normal adapter weights for preview/inference
-# comparison. Those .safetensors files alone do not contain optimizer or
-# scheduler state, so they are not full "resume training" checkpoints.
+
+# 保存与续训的区别：
+# save_every_n_epochs 保存“普通适配器权重”，主要用于预览、推理和对比不同轮次。
+# 这些 .safetensors 只包含模型权重，不包含优化器、学习率调度器等训练状态，
+# 因此不能当作完整续训点。
 save_every_n_epochs = 2
-# checkpointing_epochs saves the resumable pair:
+
+# checkpointing_epochs 保存“可续训检查点”：
 #   <output_name>-checkpoint.safetensors
 #   <output_name>-checkpoint-state/
-# Restarting the same config auto-resumes from that pair when it exists.
-# For beginners, keep this <= save_every_n_epochs; use 1 when you want the
-# least progress loss after an interruption.
+# 中断后用同一份配置重新训练，会优先从这组检查点恢复训练状态。
+# 初学者建议让它小于或等于 save_every_n_epochs；如果经常断电/中断，可设得更频繁。
 checkpointing_epochs = 2
+
+# 字幕与文本缓存：
+# use_shuffled_caption_variants 会打乱/轮换字幕变体，减少模型只记住固定句式。
+# cache_llm_adapter_outputs 会缓存文本编码相关输出，减少重复计算。
+# caption_dropout_rate 会随机丢弃部分字幕条件，用来提升泛化，但过高会让训练变弱。
 use_shuffled_caption_variants = true
 cache_llm_adapter_outputs = true
 caption_dropout_rate = 0.1
+
+# 输出文件名前缀。训练产物会写到 output/ckpt/ 下，并以这个名字开头。
 output_name = "anima"
+
+# 显存/速度相关：
+# blocks_to_swap=0 表示不把 DiT block 换到 CPU；这是常规显存配置。
+# 如果显存不足，优先使用 lora-8gb.toml，它额外开启梯度检查点和 offload。
 blocks_to_swap = 0
+
+# CMMD 是额外质量度量/损失开关；这里关闭，保持标准 LoRA 训练路径简单稳定。
 use_cmmd = false
 
 [variant]
+# GUI 展示用元数据，只影响界面里的分类、名称、说明和排序，不改变训练算法。
 family = "lora"
 label = "LoRA"
 description = "Plain classic LoRA — simplest baseline."

@@ -5,31 +5,48 @@
 # (OrthoLoRA via thin SVD, T-LoRA mask is training-only), so the result is
 # fully bakeable into the base DiT via the Merge tab. Good general-purpose
 # choice when you want rank-by-σ scheduling with orthogonal regularization.
+#
+# 初学者导读：
+# 这是 GUI 推荐的可合并 T-LoRA + OrthoLoRA 组合。没有 `network_module`
+# 表示走默认 LoRA 系列内置工厂；`use_ortho=true` 和
+# `use_timestep_mask=true` 把普通 LoRA 变成两个训练期变体。它们训练时
+# 有特殊参数化/调度，保存时会落成可推理、可烘焙的 LoRA 权重。
 
+# LoRA 容量：rank=32，alpha=32。初学者通常先改训练轮数或学习率，
+# 不建议一开始就大幅改 rank。
 network_dim = 32
 network_alpha = 32
 
+# 保存与续训：
+# - save_every_n_epochs 保存普通 adapter，用于中途出图和最终推理。
+# - checkpointing_epochs 保存断点续训状态，包含优化器/调度器等。
+# 普通 adapter 文件不等于续训点；中断后自动恢复依赖 checkpointing_epochs。
 learning_rate = 2e-5
 max_train_epochs = 4
 save_every_n_epochs = 2
 checkpointing_epochs = 2
 
+# caption 训练辅助项：变体打散、文本缓存、文本 dropout。
 use_shuffled_caption_variants = true
 cache_llm_adapter_outputs = true
 caption_dropout_rate = 0.1
 
+# OrthoLoRA：用正交约束稳定低秩方向，最终保存为普通 LoRA 形态。
 use_ortho = true
 
+# T-LoRA：训练时随 timestep 调整有效 rank；min_rank 是最小可用 rank。
 use_timestep_mask = true
 min_rank = 8
 alpha_rank_scale = 1.0
 
 output_name = "anima_tlora_ortho"
 
+# 默认不做 block swap，优先让训练路径和合并路径保持简单。
 blocks_to_swap = 0
 
 use_cmmd = false
 
+# [variant] 只给 GUI 展示、分类、排序使用。
 [variant]
 family = "tlora"
 label = "T-LoRA + OrthoLoRA"

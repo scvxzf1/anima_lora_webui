@@ -7,18 +7,33 @@
 # Decoupled-Hybrid DMD2. Output `output/ckpt/anima_turbo.safetensors` is a normal
 # LoRA — load it through the standard inference path with --infer_steps 4 --cfg 1.0
 # (CFG is baked into the student during distillation).
+#
+# 初学者导读：
+# 这个文件不是给 train.py 的普通 method 配置，而是给 scripts/distill_turbo.py
+# 的蒸馏配置。它训练“学生 LoRA”和“fake/critic LoRA”两套可训练变体，
+# 目标是把多步采样压到少步推理。内置系统方法是 turbo_dmd 蒸馏流程；
+# 输出成品仍是普通 LoRA 权重，可走标准推理加载。
+#
+# 保存/续训差异：
+# 本文件使用 [io].save_every，而不是 save_every_n_epochs/checkpointing_epochs。
+# save_every 控制蒸馏脚本按 iteration 保存阶段性权重；是否能续训取决于
+# distill_turbo.py 的状态保存逻辑，不能按 train.py 的自动续训规则理解。
 
 output_name = "anima_turbo"
 dit_path = "models/diffusion_models/anima-base-v1.0.safetensors"
 data_dir = "post_image_dataset/lora"
 output_dir = "output/ckpt"
 
+# 蒸馏主循环参数：iterations 是训练步数，batch_size 是每步样本数。
+# use_custom_down_autograd 是显存/速度相关实现细节，不改变目标算法。
 iterations = 500
 batch_size = 1
 seed = 42
 use_custom_down_autograd = true
 # Plain LoRA on both stacks. The LoRA factory targets attention projections
 # (q/k/v/out, fused) + FFN (layer1/layer2) by default — see factory.py.
+# [network] 描述两套 LoRA 的容量：student 是最终要导出的少步生成器，
+# fake 是 DMD 训练中用于分布匹配的辅助网络。
 [network]
 # Student capacity. rank=48 deliberately smaller than the proposal's 128 to
 # match deployable-LoRA scale; expect to revisit if Phase 1 hits R3/R4.
@@ -33,6 +48,8 @@ fake_alpha = 48
 attn_mode = "flash"
 
 # DMD2 schedule (proposal §Schedule, paper Table 1 row 4: Decoupled-Hybrid).
+# [dmd] 是蒸馏采样日程：student_steps 是最终推理步数，teacher_cfg 是教师
+# CFG 强度，tau_* 决定两类蒸馏分支从哪些噪声时间采样。
 [dmd]
 student_steps = 4               # production target — sampler runs 4 Euler steps at inference
 teacher_cfg = 4.0               # α — matches Anima's production CFG=4 (baked into student)
@@ -42,6 +59,8 @@ tau_ca_min_gap = 0.05           # clamp τ_CA ≥ t + this gap (proposal R5: lat
 tau_ca_skip_above_t = 0.95      # if generator t > this, skip CA branch (DM-only that step)
 
 # Optimization.
+# [optim] 是优化器超参。student_lr 和 fake_lr 分别控制两套 LoRA；
+# alpha_warmup_steps 会逐步升到 teacher_cfg，避免早期蒸馏信号过猛。
 [optim]
 student_lr = 2e-5
 fake_lr = 2e-5
@@ -51,11 +70,14 @@ weight_decay = 0.0
 grad_clip = 1.0                 # student grad-norm cap
 
 # Generator-t sampling distribution.
+# [sampling] 控制训练时从哪些 t/sigma 区间抽样，不是图片数据采样。
 [sampling]
 t_distribution = "uniform"      # "uniform" or "sigmoid"
 sigmoid_scale = 1.0
 
 # Logging / checkpoints.
+# [io] 是日志和阶段性权重保存。这里的 save_every 单位是 iteration，
+# 与普通训练配置里的 save_every_n_epochs 不是同一个概念。
 [io]
 save_every = 250
 log_interval = 10

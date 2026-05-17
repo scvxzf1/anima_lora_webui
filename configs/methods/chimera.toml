@@ -15,16 +15,30 @@
 # Single phase: both pools, both routers, and shared A train jointly under
 # the denoise loss + per-pool balance loss. T-LoRA's mask is applied to
 # the content branch only (the freq branch keeps full rank at every t).
+#
+# 初学者导读：
+# 这是 methods 目录里的“算法族配置”，用于 `make exp-chimera` 等命令。
+# 它依然通过默认 LoRA 系列内置工厂启动，但 `use_chimera_hydra=true`
+# 会把普通 LoRA 叶子替换成 ChimeraHydra 可训练变体。内置系统负责识别
+# 路由和保存 metadata；真正训练的是共享 A、两个专家池、两个 router
+# 以及必要的 Ortho/T-LoRA 参数，基础 DiT 主干保持冻结。
 
+# 基础容量：ChimeraHydra 仍建立在 LoRA rank 上。network_dim 是共享低秩
+# 维度，network_alpha 是输出缩放基准。
 network_alpha = 32
 network_dim = 32
 
 
+# 训练节奏与保存：
+# - save_every_n_epochs 保存普通 adapter 权重，适合阶段性推理评估。
+# - checkpointing_epochs 保存可自动续训的 checkpoint-state。
+# 普通 adapter 不包含优化器/调度器状态；断点续训依赖 checkpointing_epochs。
 learning_rate = 2e-5
 max_train_epochs = 4
 save_every_n_epochs = 4
 checkpointing_epochs = 4
 
+# caption 相关正则化和缓存，减少重复 caption 顺序带来的记忆化。
 use_shuffled_caption_variants = true
 cache_llm_adapter_outputs = true
 caption_dropout_rate = 0.1
@@ -40,12 +54,15 @@ log_with = "tensorboard"
 # inherits the OrthoHydra parameterization; ``use_ortho=true`` is implicit
 # in the chimera module but kept here for the unrouted-fallback Linears
 # (router_targets-excluded modules become OrthoLoRA).
+# 对初学者来说：use_ortho 是“训练期约束”，不是另一个独立模型。
+# 被排除在 Chimera 路由外的 Linear 会退回成 OrthoLoRA。
 
 use_ortho = true
 
 # -------------
 # Timestep mask (T-LoRA) — applied to the content branch only inside the
 # chimera forward. Freq branch sees full rank at every t.
+# T-LoRA mask 只影响 content 分支的训练期有效 rank；freq 分支一直满 rank。
 
 use_timestep_mask = true
 min_rank = 8
@@ -58,6 +75,9 @@ alpha_rank_scale = 1.0
 # use_chimera_hydra=true — they get stamped into save metadata so the
 # loader can re-instantiate the chimera without a parallel discrimination
 # path.
+# 这些字段体现“内置系统方法 vs 可训练变体”的区别：
+# `use_chimera_hydra=true` 只是告诉内置 LoRA 工厂选择 ChimeraHydra 实现；
+# `num_experts_*`、balance、router LR 等才决定本次可训练变体的具体形状。
 
 use_chimera_hydra = true
 num_experts_content = 4
@@ -67,6 +87,8 @@ num_experts_freq = 2
 # only scalars on the balance loss. Default per-pool weights match the
 # OrthoHydra production value (~2e-5, see
 # [[project_hydra_balance_weight_ceiling]]).
+# balance loss 防止 router 永远偏向少数专家。content/freq 分开设权重，
+# 是因为两个路由输入来源不同，学习速度也不同。
 balance_loss_warmup_ratio = 0.2
 balance_loss_weight = 1.0
 balance_w_content = 2e-7
@@ -78,6 +100,8 @@ network_freq_router_lr_scale = 2.0
 # disabled by default (sigma_feature_dim = 0), so the FreqRouter input
 # dim = 2. Flip sigma_feature_dim > 0 to add sinusoidal σ features (same
 # functional form as the DiT t_embedder); the proposal targets "F ≈ 32".
+# FEI 和 sigma 特征是 freq router 的输入，不是训练图片路径。
+# 它们帮助频率专家根据噪声阶段选择不同专家头。
 
 fei_feature_dim = 2
 fei_sigma_low_div = 4.0
@@ -101,6 +125,8 @@ freq_router_init_std = 0.02
 # Routing scope. Every Linear matched by this regex becomes a chimera
 # leaf; non-matching layers fall back to OrthoLoRA (single-pool Cayley,
 # no router). Same default as the other hydra variants.
+# router_targets 是很重要的安全边界：只匹配 MLP 的 layer1/layer2，
+# 其它 Linear 不会被 ChimeraHydra 接管。
 router_targets = ".*(mlp\\.layer[12])$"
 output_name = "anima_chimera"
 

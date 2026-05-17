@@ -32,6 +32,34 @@ SYSTEM_MANAGED_FILES = frozenset({
     "configs/web-file-groups.toml",
     "configs/web-user-locks.toml",
 })
+CONFIG_FILE_LABELS_ZH = {
+    "configs/base.toml": "基础公共配置",
+    "configs/presets.toml": "训练预设集合",
+    "configs/web-file-groups.toml": "Web 配置分组表",
+    "configs/datasets/easycontrol.toml": "EasyControl 数据集蓝图",
+    "configs/datasets/ip_adapter.toml": "IP-Adapter 数据集蓝图",
+    "configs/gui-methods/chimera_hydra.toml": "Chimera Hydra 训练变体",
+    "configs/gui-methods/easycontrol.toml": "EasyControl 训练变体",
+    "configs/gui-methods/hydralora-8gb.toml": "HydraLoRA 低显存变体",
+    "configs/gui-methods/hydralora.toml": "HydraLoRA 训练变体",
+    "configs/gui-methods/ip_adapter.toml": "IP-Adapter 训练变体",
+    "configs/gui-methods/lokr.toml": "LoKr 训练变体",
+    "configs/gui-methods/lora-8gb.toml": "LoRA 低显存变体",
+    "configs/gui-methods/lora.toml": "LoRA 标准训练变体",
+    "configs/gui-methods/postfix_ortho_cond.toml": "Postfix 条件正交变体",
+    "configs/gui-methods/reft.toml": "ReFT 训练变体",
+    "configs/gui-methods/soft_tokens.toml": "Soft Tokens 训练变体",
+    "configs/gui-methods/tlora-8gb.toml": "T-LoRA 低显存变体",
+    "configs/gui-methods/tlora.toml": "T-LoRA 训练变体",
+    "configs/gui-methods/tlora_ortho_reft.toml": "T-LoRA + Ortho + ReFT 组合变体",
+    "configs/methods/chimera.toml": "Chimera 内置方法配置",
+    "configs/methods/easycontrol.toml": "EasyControl 内置方法配置",
+    "configs/methods/ip_adapter.toml": "IP-Adapter 内置方法配置",
+    "configs/methods/lora.toml": "LoRA 内置方法配置",
+    "configs/methods/postfix.toml": "Postfix 内置方法配置",
+    "configs/methods/soft_tokens.toml": "Soft Tokens 内置方法配置",
+    "configs/methods/turbo.toml": "Turbo 内置方法配置",
+}
 SYSTEM_CONFIG_GROUP_IDS = frozenset({
     "web_config",
     "presets",
@@ -1095,7 +1123,8 @@ def get_config_file_meta(
         lock_reason = "group"
     return {
         "path": normalized,
-        "label": Path(normalized).name,
+        "label": CONFIG_FILE_LABELS_ZH.get(normalized, Path(normalized).name),
+        "filename": Path(normalized).name,
         "group": group_id or inferred["id"],
         "group_label": group_label or inferred["label"],
         "locked": effective_locked,
@@ -1126,15 +1155,15 @@ def _infer_config_file_group(rel_path: str) -> dict[str, Any]:
                     "methods_subdir": group["methods_subdir"],
                 }
     if rel_path.startswith("configs/gui-methods/"):
-        return _group_defaults("gui_methods", "GUI 训练变体", False, True, "gui-methods", True)
+        return _group_defaults("gui_methods", "可训练方法变体", False, True, "gui-methods", True)
     if rel_path.startswith("configs/methods/"):
-        return _group_defaults("methods", "内置方法配置（锁定只读）", True, True, "methods", False)
+        return _group_defaults("methods", "系统内置方法配置（锁定只读）", True, True, "methods", False)
     if rel_path.startswith("configs/imported/"):
         return _group_defaults("imported", "导入配置", False, True, "imported", True)
     if rel_path.startswith("configs/datasets/"):
         return _group_defaults("datasets", "数据集配置", False, False, "", False)
     if rel_path in {"configs/base.toml", "configs/presets.toml"}:
-        return _group_defaults("presets", "预设配置（锁定只读）", True, False, "", False)
+        return _group_defaults("presets", "系统预设配置（锁定只读）", True, False, "", False)
     return _group_defaults("custom", "自定义配置", False, False, "", True)
 
 
@@ -1263,8 +1292,8 @@ def _glob_config_files(pattern: str) -> list[str]:
 
 def _default_config_file_group_specs() -> list[dict[str, Any]]:
     return [
-        {"id": "presets", "label": "预设配置（锁定只读）", "open": False, "locked": True, "trainable": False, "files": ["configs/base.toml", "configs/presets.toml"]},
-        {"id": "gui_methods", "label": "GUI 训练变体", "open": True, "locked": False, "trainable": True, "methods_subdir": "gui-methods", "patterns": ["configs/gui-methods/*.toml"]},
+        {"id": "presets", "label": "系统预设配置（锁定只读）", "open": False, "locked": True, "trainable": False, "files": ["configs/base.toml", "configs/presets.toml"]},
+        {"id": "gui_methods", "label": "可训练方法变体", "open": True, "locked": False, "trainable": True, "methods_subdir": "gui-methods", "patterns": ["configs/gui-methods/*.toml"]},
         {"id": "imported", "label": "导入配置", "open": True, "locked": False, "trainable": True, "methods_subdir": "imported", "patterns": ["configs/imported/*.toml"]},
         {"id": "datasets", "label": "数据集配置", "open": False, "locked": False, "trainable": False, "patterns": ["configs/datasets/*.toml"]},
     ]

@@ -1,52 +1,76 @@
-# gui-methods/hydralora-8gb.toml — HydraLoRA tuned for 8GB cards.
+# gui-methods/hydralora-8gb.toml —— 面向 8GB/低显存的 HydraLoRA。
 #
-# Same architecture as `hydralora` (shared-A MoE + σ-bucket expert partition)
-# with the low-VRAM knobs flipped on — gradient checkpointing + Unsloth
-# offload checkpointing. Pick this if you OOM on the default hydralora variant.
+# 算法结构与 hydralora.toml 相同：shared-A MoE、按层路由、按 σ 桶划分专家。
+# 区别是这里额外开启低显存开关，用训练速度换显存峰值，适合默认 HydraLoRA
+# 出现 OOM 时使用。
 
+# 基础 LoRA 容量。Hydra 会在此基础上创建多个专家头。
 network_dim = 32
 network_alpha = 32
 
+# 训练节奏。低显存开关不改变学习率和 epoch，只改变反向传播的内存策略。
 learning_rate = 2e-5
 max_train_epochs = 4
+
+# 普通适配器保存：用于推理预览/版本比较，不包含完整训练状态。
 save_every_n_epochs = 2
+
+# 可续训检查点保存：包含 checkpoint 权重和 checkpoint-state 训练状态目录。
 checkpointing_epochs = 2
 
+# 字幕增强与缓存。随机丢字幕可提升泛化，但过高会削弱条件学习。
 use_shuffled_caption_variants = true
 cache_llm_adapter_outputs = true
 caption_dropout_rate = 0.1
 
+# 开启正交 LoRA 约束，减少低秩方向相互挤占。
 use_ortho = true
 
+# T-LoRA 时间步秩掩码，让不同噪声阶段使用不同有效秩。
 use_timestep_mask = true
 min_rank = 1
 alpha_rank_scale = 1.0
 
+# Hydra/MoE 三轴开关：
+# shared_A = 共享下投影 A；route_per_layer = 每层单独路由；
+# router_source="sigma" = 路由依据噪声强度 σ。
 use_moe_style = "shared_A"
 route_per_layer = true
 router_source = "sigma"
+
+# 专家数与均衡损失。专家越多越占显存；均衡损失避免所有样本只走少数专家。
 num_experts = 6
 balance_loss_weight = 3e-7
 
 
+# 只在 MLP layer1/layer2 上启用 Hydra 专家路由，控制显存和复杂度。
 router_targets = ".*(mlp\\.layer[12])$"
 
+# σ 特征和按桶均衡设置，用于让路由器区分粗略构图阶段与后期精修阶段。
 sigma_feature_dim = 16
 per_bucket_balance_weight = 0.3
 num_sigma_buckets = 3
 
+# 按 σ 桶硬分区专家池，每个噪声区间只访问自己的专家子集。
 specialize_experts_by_sigma_buckets = true
 sigma_bucket_boundaries = [0.0, 0.5, 0.8, 1.0]
 
+# 输出名前缀。
 output_name = "anima_hydra"
 
+# 低显存相关：
+# blocks_to_swap=0 表示不使用 block 级 CPU 换入换出。
+# gradient_checkpointing 用重算节省激活显存。
+# unsloth_offload_checkpointing 进一步降低显存峰值，代价是速度更慢。
 blocks_to_swap = 0
 gradient_checkpointing = true
 unsloth_offload_checkpointing = true
 
+# 关闭额外 CMMD 开关，避免低显存训练再增加额外负担。
 use_cmmd = false
 
 [variant]
+# GUI 展示用元数据，不改变上面的算法和训练参数。
 family = "hydralora"
 label = "HydraLoRA (8GB hardware)"
 description = "HydraLoRA tuned for low-VRAM cards (gradient checkpointing + offload)."
