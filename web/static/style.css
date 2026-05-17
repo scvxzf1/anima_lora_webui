@@ -320,10 +320,13 @@ main { padding: 1rem 1.5rem; }
 
 .toml-manager {
     display: grid;
-    grid-template-columns: minmax(170px, 0.42fr) minmax(0, 1fr);
+    grid-template-columns: 1fr;
     gap: 0.55rem;
     min-height: 0;
     flex: 1;
+}
+.toml-manager.toml-edit-open {
+    grid-template-columns: minmax(170px, 0.42fr) minmax(0, 1fr);
 }
 .toml-file-groups {
     overflow-y: auto;
@@ -496,13 +499,55 @@ main { padding: 1rem 1.5rem; }
     cursor: not-allowed;
 }
 
+.toml-edit-panel {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    min-height: 0;
+    border: 1px solid rgba(79, 195, 247, 0.22);
+    border-radius: var(--radius);
+    background: rgba(79, 195, 247, 0.04);
+    overflow: hidden;
+}
+.toml-edit-panel[hidden] {
+    display: none;
+}
+.toml-edit-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.6rem;
+    padding: 0.45rem 0.5rem;
+    border-bottom: 1px solid rgba(42, 58, 94, 0.72);
+    color: var(--text-dim);
+    font-size: 0.68rem;
+    line-height: 1.35;
+}
+.toml-edit-toolbar strong {
+    display: block;
+    color: var(--text);
+    font-size: 0.74rem;
+}
+.toml-edit-toolbar span {
+    display: block;
+    margin-top: 0.12rem;
+}
+.toml-edit-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    flex: 0 0 auto;
+}
+
 #toml-editor {
     flex: 1;
     width: 100%;
     min-height: 0;
     background: var(--bg-card);
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
+    border: 0;
+    border-radius: 0;
     color: var(--text);
     font-family: 'JetBrains Mono', 'Fira Code', monospace;
     font-size: 0.75rem;
@@ -511,7 +556,7 @@ main { padding: 1rem 1.5rem; }
     line-height: 1.5;
     tab-size: 4;
 }
-#toml-editor:focus { outline: none; border-color: var(--accent); }
+#toml-editor:focus { outline: 1px solid var(--accent); outline-offset: -1px; }
 #toml-editor[readonly] {
     opacity: 0.82;
     cursor: not-allowed;
@@ -1946,7 +1991,8 @@ input[type="checkbox"].field-input {
 @media (max-width: 1000px) {
     .config-split { grid-template-columns: 1fr; height: auto; }
     .config-right { border-left: none; padding-left: 0; border-top: 1px solid var(--border); padding-top: 0.75rem; }
-    .toml-manager { grid-template-columns: 1fr; }
+    .toml-manager,
+    .toml-manager.toml-edit-open { grid-template-columns: 1fr; }
     .step-estimate-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     .dataset-editor-row { grid-template-columns: 1fr 1fr; }
     .step-dataset-row { grid-template-columns: 1fr; }
