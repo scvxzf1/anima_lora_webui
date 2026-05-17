@@ -147,7 +147,7 @@ make download-models
 下载完成后，默认模型路径应类似：
 
 ```text
-models/diffusion_models/anima-preview3-base.safetensors
+models/diffusion_models/anima-base-v1.0.safetensors
 models/text_encoders/qwen_3_06b_base.safetensors
 models/vae/qwen_image_vae.safetensors
 models/sam3/
@@ -158,7 +158,7 @@ models/pe/
 基础模型路径由 `configs/base.toml` 管理：
 
 ```toml
-pretrained_model_name_or_path = "models/diffusion_models/anima-preview3-base.safetensors"
+pretrained_model_name_or_path = "models/diffusion_models/anima-base-v1.0.safetensors"
 qwen3 = "models/text_encoders/qwen_3_06b_base.safetensors"
 vae = "models/vae/qwen_image_vae.safetensors"
 ```
@@ -194,8 +194,8 @@ image_dataset/
 项目会基于 `source_image_dir` 自动派生并创建：
 
 ```text
-image_dataset_resized/
-image_dataset_lora_cache/
+post_image_dataset/resized/
+post_image_dataset/lora/
 ```
 
 它们分别对应：
@@ -254,7 +254,7 @@ http://服务器IP:20103/
 2. 进入「配置」页。
 3. 检查模型路径是否存在。
 4. 设置 `source_image_dir`。
-5. 点击「根据源图目录生成缓存路径」。
+5. 点击「自动填入缩放图和缓存目录」。
 6. 保存当前配置。
 7. 进入「训练」页。
 8. 如果提示需要预处理，先执行预处理。
@@ -437,8 +437,8 @@ configs/imported/           导入或另存的用户配置
 configs/web-training-history/ WebUI 训练任务历史
 
 image_dataset/              默认源图像目录
-image_dataset_resized/      自动派生的缩放图像目录
-image_dataset_lora_cache/   自动派生的 LoRA 缓存目录
+post_image_dataset/resized/ 自动派生的缩放图像目录
+post_image_dataset/lora/    自动派生的 LoRA 缓存目录
 
 models/                     模型权重目录
 output/ckpt/                默认训练输出目录
@@ -526,13 +526,14 @@ ss -ltnp | grep 20103
 
 ```bash
 ls image_dataset
-ls image_dataset_resized
+ls post_image_dataset/resized
+ls post_image_dataset/lora
 ```
 
 处理方式：
 
 1. 确认 `source_image_dir` 指向真实源图目录。
-2. 在 WebUI 点击「根据源图目录生成缓存路径」。
+2. 在 WebUI 点击「自动填入缩放图和缓存目录」。
 3. 保存配置。
 4. 先运行预处理。
 5. 再启动训练。
