@@ -3478,6 +3478,7 @@
 
     function updateTomlEditorPanelState(filePath = currentTomlFile) {
         const panel = document.getElementById('toml-edit-panel');
+        const manager = document.querySelector('.toml-manager');
         const toggleBtn = document.getElementById('btn-toggle-toml-editor');
         const saveDirectBtn = document.getElementById('btn-save-toml-direct');
         const copyBtn = document.getElementById('btn-copy-toml');
@@ -3487,6 +3488,7 @@
         const confirming = Boolean(filePath && tomlSaveConfirmFile === filePath);
         if (toggleBtn) {
             const open = Boolean(panel && !panel.hidden);
+            if (manager) manager.classList.toggle('toml-edit-open', open);
             toggleBtn.disabled = !filePath;
             toggleBtn.textContent = open ? '收起配置文件编辑' : '直接编辑配置文件';
             toggleBtn.classList.toggle('active', open);
