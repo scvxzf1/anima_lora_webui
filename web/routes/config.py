@@ -133,6 +133,7 @@ async def handle_datasets_put(request: web.Request) -> web.Response:
     defaults = data.get("defaults", {})
     train_file = data.get("train_file")
     train_content = data.get("train_content")
+    prefer_existing_dataset_config = data.get("prefer_existing_dataset_config", True)
     if not isinstance(datasets, list):
         return web.json_response({"ok": False, "error": "datasets 必须是数组"}, status=400)
     try:
@@ -144,6 +145,7 @@ async def handle_datasets_put(request: web.Request) -> web.Response:
             defaults=defaults if isinstance(defaults, dict) else {},
             train_file=train_file,
             train_content=train_content,
+            prefer_existing_dataset_config=bool(prefer_existing_dataset_config),
         ))
     except Exception as e:
         return web.json_response({"ok": False, "error": str(e)}, status=400)

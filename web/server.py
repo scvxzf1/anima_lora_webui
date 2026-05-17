@@ -13,7 +13,22 @@ STATIC_DIR = Path(__file__).resolve().parent / "static"
 
 
 async def index_handler(request: web.Request) -> web.FileResponse:
-    return web.FileResponse(STATIC_DIR / "index.html")
+    response = web.FileResponse(STATIC_DIR / "index.html")
+    response.headers["Cache-Control"] = "no-cache"
+    return response
+
+
+async def static_handler(request: web.Request) -> web.FileResponse:
+    rel_path = request.match_info["path"]
+    path = (STATIC_DIR / rel_path).resolve()
+    if STATIC_DIR not in path.parents and path != STATIC_DIR:
+        raise web.HTTPForbidden()
+    if not path.is_file():
+        raise web.HTTPNotFound()
+    response = web.FileResponse(path)
+    if path.suffix in {".js", ".css", ".html"}:
+        response.headers["Cache-Control"] = "no-cache"
+    return response
 
 
 def create_app() -> web.Application:
@@ -26,7 +41,7 @@ def create_app() -> web.Application:
     setup_routes(app)
 
     app.router.add_get("/", index_handler)
-    app.router.add_static("/static", STATIC_DIR, show_index=False)
+    app.router.add_get("/static/{path:.*}", static_handler)
 
     app.on_startup.append(_on_startup)
     app.on_shutdown.append(_on_shutdown)

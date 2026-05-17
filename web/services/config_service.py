@@ -211,6 +211,7 @@ def save_dataset_editor(
     defaults: dict[str, Any] | None = None,
     train_file: str | None = None,
     train_content: str | None = None,
+    prefer_existing_dataset_config: bool = True,
 ) -> dict[str, Any]:
     cfg = apply_auto_data_dirs(load_merged_config(variant, preset, methods_subdir))
     if defaults:
@@ -219,13 +220,18 @@ def save_dataset_editor(
     if not clean_rows:
         raise ValueError("请至少填写一个数据集路径")
 
-    dataset_variant = Path(_normalize_config_rel_path(train_file)).stem if train_file else variant
-    dataset_rel = _dataset_config_rel_path(cfg, dataset_variant, methods_subdir)
+    train_rel = _normalize_config_rel_path(train_file) if train_file else _training_config_rel_path(variant, methods_subdir)
+    dataset_variant = Path(train_rel).stem if train_rel else variant
+    dataset_rel = _dataset_config_rel_path(
+        cfg,
+        dataset_variant,
+        methods_subdir,
+        prefer_existing=prefer_existing_dataset_config,
+    )
     dataset_path = _safe_resolve(dataset_rel)
     if dataset_path is None:
         raise ValueError("数据集配置路径不合法")
 
-    train_rel = _normalize_config_rel_path(train_file) if train_file else _training_config_rel_path(variant, methods_subdir)
     if train_rel and get_config_file_meta(train_rel).get("locked"):
         raise ValueError(f"{_lock_reason_message(get_config_file_meta(train_rel))}，请使用新名称保存新配置后编辑")
 
@@ -242,9 +248,11 @@ def save_dataset_editor(
             "resized_image_dir": first["image_dir"],
             "lora_cache_dir": first["cache_dir"],
         }
-        ok, msg, _content, _changed = patch_raw_file_values(train_rel, values, content=train_content)
+        ok, msg, next_content, _changed = patch_raw_file_values(train_rel, values, content=train_content)
         if not ok:
             raise ValueError(msg)
+    else:
+        next_content = ""
 
     return {
         "ok": True,
@@ -252,6 +260,7 @@ def save_dataset_editor(
         "dataset_config": dataset_rel,
         "datasets": clean_rows,
         "defaults": _normalize_dataset_defaults(cfg),
+        "train_content": next_content,
     }
 
 
@@ -438,9 +447,15 @@ def _dataset_config_path_from_cfg(cfg: dict[str, Any]) -> Path | None:
     return _safe_resolve(_normalize_config_rel_path(rel_path))
 
 
-def _dataset_config_rel_path(cfg: dict[str, Any], variant: str, methods_subdir: str) -> str:
+def _dataset_config_rel_path(
+    cfg: dict[str, Any],
+    variant: str,
+    methods_subdir: str,
+    *,
+    prefer_existing: bool = True,
+) -> str:
     existing = str(cfg.get("dataset_config") or "").strip()
-    if existing:
+    if prefer_existing and existing:
         normalized = _normalize_config_rel_path(existing)
         path = _safe_resolve(normalized)
         if path is not None and normalized.startswith("configs/datasets/"):
@@ -1112,7 +1127,8 @@ def list_config_files() -> list[str]:
 
 
 def list_config_file_groups() -> list[dict[str, Any]]:
-    return [_build_config_file_group(spec) for spec in _load_config_file_group_specs()]
+    specs = _sort_config_file_group_specs_for_display(_load_config_file_group_specs())
+    return [_build_config_file_group(spec) for spec in specs]
 
 
 def _get_config_file_group(group_id: str) -> dict[str, Any] | None:
@@ -1235,6 +1251,16 @@ def _load_config_file_group_specs() -> list[dict[str, Any]]:
     return specs
 
 
+def _sort_config_file_group_specs_for_display(specs: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return [
+        item
+        for _idx, item in sorted(
+            enumerate(specs),
+            key=lambda pair: (1 if _is_fixed_config_group(pair[1]) else 0, pair[0]),
+        )
+    ]
+
+
 def _save_config_file_group_specs(specs: list[dict[str, Any]]) -> None:
     doc = tomlkit.document()
     doc.add(tomlkit.comment("Web UI 配置文件管理注册表，由 WebUI 自动维护。"))
@@ -1330,10 +1356,10 @@ def _glob_config_files(pattern: str) -> list[str]:
 
 def _default_config_file_group_specs() -> list[dict[str, Any]]:
     return [
-        {"id": "presets", "label": "系统预设配置（锁定只读）", "open": False, "locked": True, "trainable": False, "files": ["configs/base.toml", "configs/presets.toml"]},
         {"id": "gui_methods", "label": "可训练方法变体", "open": True, "locked": False, "trainable": True, "methods_subdir": "gui-methods", "patterns": ["configs/gui-methods/*.toml"]},
         {"id": "imported", "label": "导入配置", "open": True, "locked": False, "trainable": True, "methods_subdir": "imported", "patterns": ["configs/imported/*.toml"]},
         {"id": "datasets", "label": "数据集配置", "open": False, "locked": False, "trainable": False, "patterns": ["configs/datasets/*.toml"]},
+        {"id": "presets", "label": "系统预设配置（锁定只读）", "open": False, "locked": True, "trainable": False, "files": ["configs/base.toml", "configs/presets.toml"]},
     ]
 
 

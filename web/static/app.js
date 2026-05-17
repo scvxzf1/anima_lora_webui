@@ -20,6 +20,15 @@
     let tomlDeleteConfirmTimer = null;
     let tomlSaveConfirmFile = '';
     let tomlSaveConfirmTimer = null;
+    let configLoadSeq = 0;
+    let datasetLoadSeq = 0;
+    let stepEstimateSeq = 0;
+    let samplePromptsLoadSeq = 0;
+    const selectionSnapshot = {
+        method: '',
+        variant: '',
+        preset: '',
+    };
     let previewSettings = null;
     let currentPreviewSource = 'training';
     let selectedPreviewTaskId = '';
@@ -1745,6 +1754,7 @@
             await loadVariants();
             await loadConfig();
             await loadTomlFileList();
+            rememberSelectionSnapshot();
             await loadTrainingHistoryList();
             await loadPreviewSettings();
             await loadSamplePrompts();
@@ -1777,11 +1787,18 @@
     }
 
     async function loadConfig() {
+        const requestSeq = ++configLoadSeq;
         const variant = currentTrainingSource.method || val('variant-select');
         const preset = val('preset-select');
         if (!variant) return;
         const methodsSubdir = currentTrainingSource.methods_subdir || 'gui-methods';
-        currentConfig = await api(`/api/config/merged?variant=${encodeURIComponent(variant)}&preset=${encodeURIComponent(preset)}&methods_subdir=${encodeURIComponent(methodsSubdir)}`);
+        const data = await api(`/api/config/merged?variant=${encodeURIComponent(variant)}&preset=${encodeURIComponent(preset)}&methods_subdir=${encodeURIComponent(methodsSubdir)}`);
+        if (requestSeq !== configLoadSeq) return;
+        if (data?.ok === false) {
+            setTomlStatus('error', data.error || '读取配置失败');
+            return;
+        }
+        currentConfig = data;
         datasetEditorState = {
             loading: false,
             loaded: false,
@@ -1791,15 +1808,23 @@
             error: '',
         };
         renderConfigForm(currentConfig);
-        loadDatasetEditor();
-        loadSamplePrompts();
-        loadStepEstimate();
+        loadDatasetEditor(requestSeq);
+        loadSamplePrompts(samplePromptsPath, requestSeq);
+        loadStepEstimate(requestSeq);
         updateChoiceGuide();
         // 同步加载对应的 TOML 文件到右侧编辑器
         const tomlFile = currentTrainingSource.file || `configs/${methodsSubdir}/${variant}.toml`;
         if (tomlFiles.includes(tomlFile) && currentTomlFile !== tomlFile) {
-            loadTomlFile(tomlFile);
+            loadTomlFile(tomlFile, { force: true });
         }
+    }
+
+    async function reloadCurrentConfig() {
+        if (!confirmDiscardTomlChanges('当前配置有未保存修改，刷新会重新读取表单和数据集设置并丢弃这些修改。是否继续？')) {
+            return;
+        }
+        await loadConfig();
+        rememberSelectionSnapshot();
     }
 
     // ── 配置表单渲染 ──
@@ -1854,20 +1879,25 @@
         return fields;
     }
 
-    async function loadStepEstimate() {
+    async function loadStepEstimate(parentSeq = configLoadSeq) {
+        const requestSeq = ++stepEstimateSeq;
         const variant = currentTrainingSource.method || val('variant-select');
         const preset = val('preset-select');
         const methodsSubdir = currentTrainingSource.methods_subdir || 'gui-methods';
         if (!variant || location.protocol === 'file:') return;
         try {
-            currentStepEstimate = await api(`/api/config/steps?variant=${encodeURIComponent(variant)}&preset=${encodeURIComponent(preset)}&methods_subdir=${encodeURIComponent(methodsSubdir)}`);
+            const data = await api(`/api/config/steps?variant=${encodeURIComponent(variant)}&preset=${encodeURIComponent(preset)}&methods_subdir=${encodeURIComponent(methodsSubdir)}`);
+            if (parentSeq !== configLoadSeq || requestSeq !== stepEstimateSeq) return;
+            currentStepEstimate = data?.ok === false ? null : data;
         } catch {
+            if (parentSeq !== configLoadSeq || requestSeq !== stepEstimateSeq) return;
             currentStepEstimate = null;
         }
         updateStepEstimatePanel();
     }
 
-    async function loadDatasetEditor() {
+    async function loadDatasetEditor(parentSeq = configLoadSeq) {
+        const requestSeq = ++datasetLoadSeq;
         const variant = currentTrainingSource.method || val('variant-select');
         const preset = val('preset-select');
         const methodsSubdir = currentTrainingSource.methods_subdir || 'gui-methods';
@@ -1877,6 +1907,7 @@
         renderDatasetEditor();
         try {
             const data = await api(`/api/config/datasets?variant=${encodeURIComponent(variant)}&preset=${encodeURIComponent(preset)}&methods_subdir=${encodeURIComponent(methodsSubdir)}`);
+            if (parentSeq !== configLoadSeq || requestSeq !== datasetLoadSeq) return;
             if (!data.ok) {
                 throw new Error(data.error || '读取数据集配置失败');
             }
@@ -1890,6 +1921,7 @@
                 error: '',
             };
         } catch (e) {
+            if (parentSeq !== configLoadSeq || requestSeq !== datasetLoadSeq) return;
             datasetEditorState = {
                 ...datasetEditorState,
                 loading: false,
@@ -2509,6 +2541,36 @@
         };
     }
 
+    function rememberSelectionSnapshot() {
+        selectionSnapshot.method = val('method-select');
+        selectionSnapshot.variant = val('variant-select');
+        selectionSnapshot.preset = val('preset-select');
+    }
+
+    function restoreSelectionSnapshot() {
+        const methodSelect = document.getElementById('method-select');
+        const variantSelect = document.getElementById('variant-select');
+        const presetSelect = document.getElementById('preset-select');
+        if (methodSelect && selectionSnapshot.method && [...methodSelect.options].some((opt) => opt.value === selectionSnapshot.method)) {
+            methodSelect.value = selectionSnapshot.method;
+        }
+        if (variantSelect && selectionSnapshot.variant && [...variantSelect.options].some((opt) => opt.value === selectionSnapshot.variant)) {
+            variantSelect.value = selectionSnapshot.variant;
+        }
+        if (presetSelect && selectionSnapshot.preset && [...presetSelect.options].some((opt) => opt.value === selectionSnapshot.preset)) {
+            presetSelect.value = selectionSnapshot.preset;
+        }
+        setCurrentTrainingSourceFromVariant(val('variant-select'));
+        updateChoiceGuide();
+    }
+
+    function confirmBeforeConfigSelectionChange(message) {
+        if (!hasPendingConfigChanges(currentTomlFile)) return true;
+        const ok = confirm(message);
+        if (!ok) restoreSelectionSnapshot();
+        return ok;
+    }
+
     function updateChoiceGuide(config = currentConfig) {
         const container = document.getElementById('choice-guide');
         if (!container) return;
@@ -2981,7 +3043,7 @@
     }
 
     // ── TOML 编辑器 ──
-    async function loadTomlFileList(preferredFile = '') {
+    async function loadTomlFileList(preferredFile = '', options = {}) {
         const groups = await api('/api/config/file-groups');
         tomlFileGroups = Array.isArray(groups) ? groups : [];
         tomlFileMeta = {};
@@ -2994,7 +3056,7 @@
         }
         populateTomlFileSelect(reorderTomlFileGroups(tomlFileGroups));
         if (preferredFile && tomlFiles.includes(preferredFile)) {
-            await loadTomlFile(preferredFile);
+            await loadTomlFile(preferredFile, { force: options.force === true });
             return;
         }
         // 默认加载当前变体对应的文件
@@ -3015,6 +3077,10 @@
         resetTomlDeleteConfirm();
         resetTomlSaveConfirm();
         const data = await api(`/api/config/raw?file=${encodeURIComponent(filePath)}`);
+        if (data?.ok === false) {
+            setTomlStatus('error', data.error || '读取配置文件失败');
+            return;
+        }
         currentTomlFile = filePath;
         document.getElementById('toml-file-select').value = filePath;
         tomlSavedContent = data.content || '';
@@ -3036,7 +3102,9 @@
             setTomlStatus('error', '该配置文件已锁定，请使用“保存新配置”创建可编辑配置');
             return;
         }
-        if (options.confirm === true && tomlSaveConfirmFile !== file) {
+        const editorDirty = isTomlDirty();
+        const formDirty = hasUnsavedFormChanges(file);
+        if (editorDirty && !formDirty && tomlSaveConfirmFile !== file) {
             armTomlSaveConfirm(file);
             return;
         }
@@ -3126,6 +3194,7 @@
                     methods_subdir: methodsSubdir,
                     train_file: targetFile,
                     train_content: targetContent,
+                    prefer_existing_dataset_config: options.preferExistingDatasetConfig !== false,
                     datasets: rows,
                     defaults: normalizeDatasetDefaults(datasetEditorState.defaults || {}),
                 }),
@@ -3133,6 +3202,13 @@
             if (!res.ok) {
                 setTomlStatus('error', res.error || '保存数据集配置失败');
                 return null;
+            }
+            if (typeof res.train_content === 'string' && res.train_content) {
+                const editor = document.getElementById('toml-editor');
+                if (editor && targetFile === (currentTomlFile || val('toml-file-select'))) {
+                    editor.value = res.train_content;
+                    tomlSavedContent = res.train_content;
+                }
             }
         datasetEditorState = {
             loading: false,
@@ -3153,7 +3229,9 @@
             renderDatasetEditor();
             updateTomlDirtyState();
             await loadStepEstimate();
-            await loadTomlFileList(targetFile);
+            if (options.reloadList !== false) {
+                await loadTomlFileList(targetFile);
+            }
             return res;
         } catch (e) {
             setTomlStatus('error', '保存数据集配置失败: ' + e.message);
@@ -3281,10 +3359,15 @@
         return typeof raw === 'string' ? raw : FORM_UI_DEFAULTS.sample_prompts;
     }
 
-    async function loadSamplePrompts(filePath = samplePromptsPath) {
+    async function loadSamplePrompts(filePath = samplePromptsPath, parentSeq = configLoadSeq) {
         if (location.protocol === 'file:') return;
+        const requestSeq = ++samplePromptsLoadSeq;
         try {
             const data = await api(`/api/config/sample-prompts?file=${encodeURIComponent(filePath || samplePromptsPath)}`);
+            if (parentSeq !== configLoadSeq || requestSeq !== samplePromptsLoadSeq) return;
+            if (data?.ok === false) {
+                throw new Error(data.error || '读取预览提示词失败');
+            }
             samplePromptsPath = data.file || samplePromptsPath;
             samplePromptsContent = data.content || '';
             const input = document.querySelector('#config-form .field-input[data-key="sample_prompts"]');
@@ -3389,18 +3472,29 @@
                 return;
             }
 
-            currentTomlFile = file;
             currentTrainingSource = {
                 method: file.split('/').pop().replace(/\.toml$/i, ''),
                 methods_subdir: 'imported',
                 file,
             };
-            if (datasetEditorState.dirty) {
-                const savedDataset = await saveDatasetEditor({ trainFile: file, trainContent: content });
-                if (!savedDataset) return;
-            }
+            currentTomlFile = file;
             tomlSavedContent = content;
             editor.value = content;
+            if (datasetEditorState.dirty) {
+                const savedDataset = await saveDatasetEditor({
+                    trainFile: file,
+                    trainContent: content,
+                    reloadList: false,
+                    preferExistingDatasetConfig: false,
+                });
+                if (!savedDataset) {
+                    setTomlStatus('error', `新配置已创建: ${file}，但数据集配置保存失败，请修正后再次保存更新当前选中配置`, { persist: true });
+                    await loadTomlFileList(file, { force: true });
+                    updateTomlDirtyState();
+                    return;
+                }
+                tomlSavedContent = document.getElementById('toml-editor').value;
+            }
             await loadTomlFileList(file);
             await applyTomlToConfig({ silent: true });
             updateTomlDirtyState();
@@ -3598,13 +3692,15 @@
 
         const wrap = document.createElement('span');
         wrap.className = 'toml-group-order-actions';
-        wrap.appendChild(createTomlGroupActionButton('↑', () => reorderTomlGroup(group, 'up'), {
+        wrap.appendChild(createTomlGroupActionButton('上移', () => reorderTomlGroup(group, 'up'), {
             disabled: groupIndex <= 0,
             title: groupIndex <= 0 ? '已经是最上面的可移动分组' : '把这个分组上移一位',
+            variant: 'order',
         }));
-        wrap.appendChild(createTomlGroupActionButton('↓', () => reorderTomlGroup(group, 'down'), {
+        wrap.appendChild(createTomlGroupActionButton('下移', () => reorderTomlGroup(group, 'down'), {
             disabled: groupIndex >= sortableGroups.length - 1,
             title: groupIndex >= sortableGroups.length - 1 ? '已经是最下面的可移动分组' : '把这个分组下移一位',
+            variant: 'order',
         }));
         return wrap;
     }
@@ -3633,7 +3729,11 @@
     function createTomlGroupActionButton(label, handler, options = {}) {
         const btn = document.createElement('button');
         btn.type = 'button';
-        btn.className = ['toml-group-action-btn', options.danger ? 'danger' : ''].filter(Boolean).join(' ');
+        btn.className = [
+            'toml-group-action-btn',
+            options.variant ? `toml-group-action-btn-${options.variant}` : '',
+            options.danger ? 'danger' : '',
+        ].filter(Boolean).join(' ');
         btn.textContent = label;
         btn.disabled = Boolean(options.disabled);
         btn.title = options.title || label;
@@ -4076,6 +4176,7 @@
         await loadConfig();
         renderTomlFileGroups(reorderTomlFileGroups(tomlFileGroups));
         updateTomlDirtyState();
+        rememberSelectionSnapshot();
         if (!options.silent) {
             setTomlStatus('ok', `已应用 ${meta.path} 到表单`);
         }
@@ -4501,6 +4602,12 @@
 
     // ── 训练控制 ──
     async function startTraining() {
+        if (hasPendingConfigChanges(currentTomlFile)) {
+            setTomlStatus('error', '当前配置有未保存修改，请先保存更新当前选中配置或保存新配置，再开始训练');
+            updateTomlActionState(currentTomlFile);
+            document.querySelector('[data-tab="config"]')?.click();
+            return;
+        }
         const variant = currentTrainingSource.method || val('variant-select');
         const preset = val('preset-select');
         const methodsSubdir = currentTrainingSource.methods_subdir || 'gui-methods';
@@ -5913,20 +6020,32 @@
     function setupEventListeners() {
         installBeginnerTooltips();
         document.getElementById('method-select').addEventListener('change', async () => {
+            if (!confirmBeforeConfigSelectionChange('当前配置有未保存修改，切换方法会重新加载表单并丢弃这些修改。是否继续？')) {
+                return;
+            }
             updateChoiceGuide();
             await loadVariants({ reset: true });
             await loadConfig();
+            rememberSelectionSnapshot();
         });
         document.getElementById('variant-select').addEventListener('change', async () => {
+            if (!confirmBeforeConfigSelectionChange('当前配置有未保存修改，切换变体会重新加载表单并丢弃这些修改。是否继续？')) {
+                return;
+            }
             setCurrentTrainingSourceFromVariant(val('variant-select'));
             updateChoiceGuide();
             await loadConfig();
+            rememberSelectionSnapshot();
         });
         document.getElementById('preset-select').addEventListener('change', async () => {
+            if (!confirmBeforeConfigSelectionChange('当前配置有未保存修改，切换预设会重新加载表单并丢弃这些修改。是否继续？')) {
+                return;
+            }
             updateChoiceGuide();
             await loadConfig();
+            rememberSelectionSnapshot();
         });
-        document.getElementById('btn-load-config').addEventListener('click', loadConfig);
+        document.getElementById('btn-load-config').addEventListener('click', reloadCurrentConfig);
         document.getElementById('btn-start-from-config').addEventListener('click', startTraining);
         document.getElementById('btn-stop-training').addEventListener('click', stopTraining);
         document.getElementById('btn-apply-toml').addEventListener('click', applyTomlToConfig);
