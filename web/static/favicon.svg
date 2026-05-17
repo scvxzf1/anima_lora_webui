@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Anima LoRA">
+  <defs>
+    <linearGradient id="bg" x1="10" y1="8" x2="56" y2="58" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#0b6fb3"/>
+      <stop offset="0.52" stop-color="#4fc3f7"/>
+      <stop offset="1" stop-color="#66bb6a"/>
+    </linearGradient>
+    <linearGradient id="shine" x1="16" y1="10" x2="46" y2="50" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.8"/>
+      <stop offset="1" stop-color="#ffffff" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+  <rect width="64" height="64" rx="14" fill="#16213e"/>
+  <rect x="5" y="5" width="54" height="54" rx="12" fill="url(#bg)"/>
+  <path d="M15 49 29 15h6l14 34h-7l-3-8H25l-3 8h-7Zm12-14h10l-5-13-5 13Z" fill="#ffffff"/>
+  <path d="M18 12c12 5 24 5 38 2-4 6-10 10-18 12-9 2-17-1-24-8l4-6Z" fill="url(#shine)" opacity="0.6"/>
+  <circle cx="15" cy="49" r="4" fill="#16213e"/>
+  <circle cx="49" cy="49" r="4" fill="#16213e"/>
+  <circle cx="32" cy="15" r="4" fill="#16213e"/>
+  <path d="M18 47 29 22M35 22l11 25M20 49h24" fill="none" stroke="#16213e" stroke-width="3" stroke-linecap="round" opacity="0.78"/>
+</svg>
