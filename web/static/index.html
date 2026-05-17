@@ -61,6 +61,7 @@
                         <div class="toml-file-actions toml-primary-actions" aria-label="常用 TOML 操作">
                             <input id="toml-import-input" type="file" accept=".toml,.txt,text/plain" hidden>
                             <button id="btn-save-toml" class="btn btn-small btn-primary" type="button">保存更新当前选中配置</button>
+                            <button id="btn-toggle-toml-editor" class="btn btn-small" type="button">直接编辑配置文件</button>
                             <button id="btn-save-as-toml" class="btn btn-small" type="button">保存新配置</button>
                             <button id="btn-apply-toml" class="btn btn-small" type="button">加载选中配置</button>
                             <button id="btn-move-toml-group" class="btn btn-small" type="button">移动分组位置</button>
@@ -77,7 +78,19 @@
                     </div>
                     <div class="toml-manager">
                         <aside id="toml-file-groups" class="toml-file-groups" aria-label="配置文件分组"></aside>
-                        <textarea id="toml-editor" spellcheck="false"></textarea>
+                        <section id="toml-edit-panel" class="toml-edit-panel" hidden aria-label="直接编辑配置文件">
+                            <div class="toml-edit-toolbar">
+                                <div>
+                                    <strong>直接编辑配置文件</strong>
+                                    <span>修改右侧文本后，保存按钮需要连续点击两次才会写入磁盘。</span>
+                                </div>
+                                <div class="toml-edit-actions">
+                                    <button id="btn-copy-toml" class="btn btn-small" type="button">复制内容</button>
+                                    <button id="btn-save-toml-direct" class="btn btn-small btn-primary" type="button">保存配置文件</button>
+                                </div>
+                            </div>
+                            <textarea id="toml-editor" spellcheck="false"></textarea>
+                        </section>
                     </div>
                 </div>
             </div>

@@ -18,6 +18,8 @@
     let tomlSavedContent = '';
     let tomlDeleteConfirmFile = '';
     let tomlDeleteConfirmTimer = null;
+    let tomlSaveConfirmFile = '';
+    let tomlSaveConfirmTimer = null;
     let previewSettings = null;
     let currentPreviewSource = 'training';
     let selectedPreviewTaskId = '';
@@ -2659,6 +2661,7 @@
             return;
         }
         resetTomlDeleteConfirm();
+        resetTomlSaveConfirm();
         const data = await api(`/api/config/raw?file=${encodeURIComponent(filePath)}`);
         currentTomlFile = filePath;
         document.getElementById('toml-file-select').value = filePath;
@@ -2681,6 +2684,11 @@
             setTomlStatus('error', '该配置文件已锁定，请使用“保存新配置”创建可编辑配置');
             return;
         }
+        if (tomlSaveConfirmFile !== file) {
+            armTomlSaveConfirm(file);
+            return;
+        }
+        resetTomlSaveConfirm({ update: false });
         if (currentTrainingSource.file === file) {
             if (datasetEditorState.dirty) {
                 const saved = await saveDatasetEditor();
@@ -2700,6 +2708,7 @@
             });
             if (res.ok) {
                 tomlSavedContent = content;
+                resetTomlSaveConfirm({ update: false });
                 updateTomlDirtyState();
                 setTomlStatus('ok', '✓ 已保存');
                 await loadTomlFileList(file);
@@ -2735,6 +2744,7 @@
                 document.getElementById('toml-editor').value = res.content;
                 tomlSavedContent = res.content;
             }
+            resetTomlSaveConfirm({ update: false });
             updateTomlDirtyState();
             setTomlStatus('ok', `✓ 已保存 ${res.changed?.length || Object.keys(preparedValues).length} 个表单修改`);
             await loadTomlFileList(file);
