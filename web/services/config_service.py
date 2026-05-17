@@ -162,7 +162,12 @@ def load_dataset_editor(variant: str, preset: str, methods_subdir: str = "gui-me
             "resolution": _positive_int(_first_dataset_value(data, "resolution"), 1024),
             "batch_size": _positive_int(_first_dataset_value(data, "batch_size"), 1),
             "enable_bucket": bool(_first_dataset_value(data, "enable_bucket", True)),
+            "min_bucket_reso": _positive_int(_first_dataset_value(data, "min_bucket_reso"), 256),
+            "max_bucket_reso": _positive_int(_first_dataset_value(data, "max_bucket_reso"), 1024),
+            "bucket_reso_steps": _positive_int(_first_dataset_value(data, "bucket_reso_steps"), 64),
+            "bucket_no_upscale": bool(_first_dataset_value(data, "bucket_no_upscale", False)),
             "validation_split": _positive_float(_first_dataset_value(data, "validation_split", 0.025), 0.025),
+            "validation_split_num": _positive_int(_first_dataset_value(data, "validation_split_num", 0), 0),
             "validation_seed": _positive_int(_first_dataset_value(data, "validation_seed", 42), 42),
             "caption_extension": str((data.get("general") or {}).get("caption_extension") or ".txt"),
             "keep_tokens": _positive_int((data.get("general") or {}).get("keep_tokens"), 3),
@@ -175,10 +180,13 @@ def save_dataset_editor(
     preset: str,
     methods_subdir: str,
     rows: list[dict[str, Any]],
+    defaults: dict[str, Any] | None = None,
     train_file: str | None = None,
     train_content: str | None = None,
 ) -> dict[str, Any]:
     cfg = apply_auto_data_dirs(load_merged_config(variant, preset, methods_subdir))
+    if defaults:
+        cfg.update(_normalize_dataset_defaults(defaults))
     clean_rows = _normalize_dataset_rows(rows)
     if not clean_rows:
         raise ValueError("请至少填写一个数据集路径")
@@ -215,6 +223,7 @@ def save_dataset_editor(
         "message": f"已保存 {len(clean_rows)} 个数据集路径",
         "dataset_config": dataset_rel,
         "datasets": clean_rows,
+        "defaults": _normalize_dataset_defaults(cfg),
     }
 
 
@@ -437,6 +446,10 @@ def _single_dataset_config_from_cfg(cfg: dict[str, Any]) -> dict[str, Any]:
                 "resolution": 1024,
                 "batch_size": 1,
                 "enable_bucket": True,
+                "min_bucket_reso": 256,
+                "max_bucket_reso": 1024,
+                "bucket_reso_steps": 64,
+                "bucket_no_upscale": False,
                 "validation_split": 0.025,
                 "validation_seed": 42,
                 "subsets": [
@@ -532,6 +545,26 @@ def _normalize_dataset_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return clean_rows
 
 
+def _normalize_dataset_defaults(raw: dict[str, Any]) -> dict[str, Any]:
+    if not isinstance(raw, dict):
+        return {}
+    out: dict[str, Any] = {}
+    out["resolution"] = _positive_int(raw.get("resolution"), 1024)
+    out["batch_size"] = _positive_int(raw.get("batch_size"), 1)
+    out["enable_bucket"] = str(raw.get("enable_bucket", True)).lower() not in {"0", "false", "no", "off"}
+    out["min_bucket_reso"] = _positive_int(raw.get("min_bucket_reso"), 256)
+    out["max_bucket_reso"] = _positive_int(raw.get("max_bucket_reso"), 1024)
+    out["bucket_reso_steps"] = _positive_int(raw.get("bucket_reso_steps"), 64)
+    out["bucket_no_upscale"] = str(raw.get("bucket_no_upscale", False)).lower() in {"1", "true", "yes", "on"}
+    if raw.get("validation_split_num") not in (None, ""):
+        out["validation_split_num"] = _positive_int(raw.get("validation_split_num"), 0)
+    out["validation_split"] = _positive_float(raw.get("validation_split"), 0.025)
+    out["validation_seed"] = _positive_int(raw.get("validation_seed"), 42)
+    out["caption_extension"] = str(raw.get("caption_extension") or ".txt").strip() or ".txt"
+    out["keep_tokens"] = _positive_int(raw.get("keep_tokens"), 3)
+    return out
+
+
 def _build_dataset_config_doc(clean_rows: list[dict[str, Any]], cfg: dict[str, Any]) -> str:
     doc = tomlkit.document()
     doc.add(tomlkit.comment("Web UI 自动生成的数据集配置。"))
@@ -547,6 +580,13 @@ def _build_dataset_config_doc(clean_rows: list[dict[str, Any]], cfg: dict[str, A
     dataset.add("resolution", _positive_int(cfg.get("resolution"), 1024))
     dataset.add("batch_size", _positive_int(cfg.get("batch_size") or cfg.get("train_batch_size"), 1))
     dataset.add("enable_bucket", bool(cfg.get("enable_bucket", True)))
+    dataset.add("min_bucket_reso", _positive_int(cfg.get("min_bucket_reso"), 256))
+    dataset.add("max_bucket_reso", _positive_int(cfg.get("max_bucket_reso"), 1024))
+    dataset.add("bucket_reso_steps", _positive_int(cfg.get("bucket_reso_steps"), 64))
+    dataset.add("bucket_no_upscale", bool(cfg.get("bucket_no_upscale", False)))
+    validation_split_num = _positive_int(cfg.get("validation_split_num"), 0)
+    if validation_split_num > 0:
+        dataset.add("validation_split_num", validation_split_num)
     dataset.add("validation_split", _positive_float(cfg.get("validation_split"), 0.025))
     dataset.add("validation_seed", _positive_int(cfg.get("validation_seed"), 42))
 

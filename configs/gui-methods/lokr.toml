@@ -8,7 +8,12 @@ network_alpha = 32
 
 learning_rate = 1e-4
 max_train_epochs = 10
+# Normal adapter weight saves for comparing epochs in inference.
+# These are useful outputs, but they do not carry optimizer/scheduler state.
 save_every_n_epochs = 5
+# Resumable training state save. This writes and overwrites the paired
+# <output_name>-checkpoint.safetensors + <output_name>-checkpoint-state/.
+# If training is interrupted, starting the same config again resumes from it.
 checkpointing_epochs = 5
 
 use_shuffled_caption_variants = true

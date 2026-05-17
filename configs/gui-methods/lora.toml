@@ -2,7 +2,16 @@ network_dim = 32
 network_alpha = 32
 learning_rate = 2e-5
 max_train_epochs = 4
+# save_every_n_epochs saves normal adapter weights for preview/inference
+# comparison. Those .safetensors files alone do not contain optimizer or
+# scheduler state, so they are not full "resume training" checkpoints.
 save_every_n_epochs = 2
+# checkpointing_epochs saves the resumable pair:
+#   <output_name>-checkpoint.safetensors
+#   <output_name>-checkpoint-state/
+# Restarting the same config auto-resumes from that pair when it exists.
+# For beginners, keep this <= save_every_n_epochs; use 1 when you want the
+# least progress loss after an interruption.
 checkpointing_epochs = 2
 use_shuffled_caption_variants = true
 cache_llm_adapter_outputs = true

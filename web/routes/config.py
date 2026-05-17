@@ -128,6 +128,7 @@ async def handle_datasets_put(request: web.Request) -> web.Response:
     preset = data.get("preset", "default")
     methods_subdir = data.get("methods_subdir", "gui-methods")
     datasets = data.get("datasets", [])
+    defaults = data.get("defaults", {})
     train_file = data.get("train_file")
     train_content = data.get("train_content")
     if not isinstance(datasets, list):
@@ -138,6 +139,7 @@ async def handle_datasets_put(request: web.Request) -> web.Response:
             preset,
             methods_subdir,
             datasets,
+            defaults=defaults if isinstance(defaults, dict) else {},
             train_file=train_file,
             train_content=train_content,
         ))

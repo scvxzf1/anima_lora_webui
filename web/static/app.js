@@ -31,6 +31,7 @@
         dirty: false,
         dataset_config: '',
         datasets: [],
+        defaults: {},
         error: '',
     };
     let trainingSampleState = null;
@@ -54,6 +55,18 @@
         sample_sampler: 'ddim',
         use_lokr: false,
         lokr_factor: 8,
+        resolution: 1024,
+        batch_size: 1,
+        enable_bucket: true,
+        min_bucket_reso: 256,
+        max_bucket_reso: 1024,
+        bucket_reso_steps: 64,
+        bucket_no_upscale: false,
+        validation_split: 0.025,
+        validation_split_num: 0,
+        validation_seed: 42,
+        caption_extension: '.txt',
+        keep_tokens: 3,
     };
     const OPTIONAL_EMPTY_FIELDS = new Set([
         'sample_prompts',
@@ -309,6 +322,10 @@
         cache_llm_adapter_outputs: '缓存 LLM 适配器输出',
         cache_text_encoder_outputs: '缓存文本编码器输出',
         cache_text_encoder_outputs_to_disk: '文本编码器缓存写入磁盘',
+        batch_size: '数据集批大小',
+        bucket_no_upscale: '禁止放大图片',
+        bucket_reso_steps: '桶尺寸步长',
+        caption_extension: 'Caption 扩展名',
         caption_dropout_rate: '标题丢弃率',
         checkpointing_epochs: '训练状态保存间隔',
         compile_inductor_mode: 'Inductor 编译模式',
@@ -318,6 +335,7 @@
         discrete_flow_shift: 'Flow 偏移',
         easycontrol_cond_noise_max: 'EasyControl 条件噪声上限',
         easycontrol_drop_p: 'EasyControl 条件丢弃率',
+        enable_bucket: '启用长宽比分桶',
         fei_feature_dim: 'FEI 特征维度',
         fei_sigma_low_div: 'FEI 低 Sigma 除数',
         fera_fecl_weight: 'FeRA FECL 权重',
@@ -327,6 +345,7 @@
         gradient_checkpointing: '梯度检查点',
         ip_features_cache_to_disk: 'IP 特征写入磁盘',
         ip_image_drop_p: 'IP 图像条件丢弃率',
+        keep_tokens: '保留 Token 数',
         learning_rate: '学习率',
         log_every_n_steps: '日志记录间隔',
         log_with: '日志后端',
@@ -335,7 +354,9 @@
         lr_scheduler: '学习率调度',
         masked_loss: '遮罩损失',
         max_train_epochs: '最大训练轮数',
+        max_bucket_reso: '最大桶边长',
         min_rank: '最小秩',
+        min_bucket_reso: '最小桶边长',
         mixed_precision: '混合精度',
         network_alpha: 'LoRA Alpha',
         network_args: '网络额外参数',
@@ -362,6 +383,7 @@
         repa_lr_scale: 'REPA 学习率倍率',
         repa_weight: 'REPA 权重',
         resized_image_dir: '缩放图像目录',
+        resolution: '数据集分辨率',
         route_per_layer: '逐层路由',
         router_hidden_dim: '路由器隐藏维度',
         router_source: '路由信号来源',
@@ -394,6 +416,9 @@
         use_repa: '启用 REPA',
         use_shuffled_caption_variants: '使用打乱标题变体',
         use_timestep_mask: '启用 T-LoRA',
+        validation_seed: '验证随机种子',
+        validation_split: '验证集比例',
+        validation_split_num: '固定验证数量',
         vae: 'VAE 路径',
         vae_chunk_size: 'VAE 分块大小',
         vae_disable_cache: '禁用 VAE 缓存',
@@ -1100,20 +1125,20 @@
             "默认 1 最稳；想要更大有效批大小时优先配合梯度累积。"
         ),
         save_every_n_epochs: help(
-            "每隔多少轮保存一次模型检查点。",
-            "填 1/2/4；设成 max_train_epochs 表示只保存最终模型。",
-            ["方便回看不同轮数效果，避免错过最佳点。"],
+            "每隔多少轮保存一次普通模型权重。",
+            "它会保存可用于推理/挑版本的 .safetensors，例如第 1、2、4 轮的效果对比。它不是完整续训状态。",
+            ["方便回看不同轮数效果，训练过头时还能拿较早的权重。"],
             ["保存越频繁，磁盘占用越多。"],
-            ["间隔太大可能错过最优 epoch。"],
-            "短实验用 1-2；稳定训练用 2-4。"
+            ["只有普通权重时，不能完整恢复 optimizer、scheduler、随机状态等训练现场。"],
+            "新手建议先设 1；训练稳定后可调到 2-5 省磁盘。"
         ),
         checkpointing_epochs: help(
-            "每隔多少轮保存可恢复训练状态。",
-            "通常不小于 save_every_n_epochs。",
-            ["训练中断后可以恢复优化器等状态。"],
-            ["状态文件比普通模型大得多。"],
-            ["保存太频繁会占磁盘并拖慢训练。"],
-            "本地短训可设大一点；长训建议保留。"
+            "每隔多少轮保存一次可恢复训练状态。",
+            "它会成对写入 <output_name>-checkpoint.safetensors 和 <output_name>-checkpoint-state/；重新开始同一配置时会自动从这里续训。",
+            ["中断后可恢复 adapter 权重、当前 step/epoch、optimizer、scheduler、随机状态等。"],
+            ["只保留最近一份续训点并覆盖更新，但 checkpoint-state/ 体积可能比普通权重大。"],
+            ["如果设得太大，中断时只能回到上一次续训点；如果只剩普通 .safetensors 而没有 checkpoint-state/，不能完整续训。"],
+            "新手建议设 1。想减少中断损失时，让它小于或等于 save_every_n_epochs。"
         ),
         gradient_accumulation_steps: help(
             "累积多少步梯度后再更新一次参数。",
@@ -1499,6 +1524,102 @@
             ["路径错误或字段不匹配会导致数据加载失败。"],
             "普通 LoRA 不需要手动设置；实验方法保持变体默认。"
         ),
+        resolution: help(
+            "数据集蓝图的目标分辨率。",
+            "常用 1024；显存紧张时降低，想训练更高细节时谨慎升高。",
+            ["决定预处理/训练桶的基础像素规模。"],
+            ["越高显存和训练时间越大。"],
+            ["和已有缩放图、缓存不一致时需要重新预处理。"],
+            "默认 1024。"
+        ),
+        batch_size: help(
+            "dataset_config 内的 batch_size。",
+            "通常保持 1；整体有效批大小主要看训练设置里的批大小和梯度累积。",
+            ["数据蓝图里保留完整批大小信息。"],
+            ["调大可能增加显存占用。"],
+            ["与训练批大小混用时容易误判总步数。"],
+            "不确定就保持 1。"
+        ),
+        enable_bucket: help(
+            "启用长宽比分桶。",
+            "开启后相近宽高比的图片会进入对应尺寸桶，减少拉伸和无效 padding。",
+            ["更好保留原图构图比例。"],
+            ["预处理和缓存需要按桶参数保持一致。"],
+            ["关闭后不同宽高比图片可能被统一缩放，构图损失更明显。"],
+            "推荐开启。"
+        ),
+        min_bucket_reso: help(
+            "允许生成的最小桶边长。",
+            "桶是训练时使用的一组宽高尺寸，例如 512x1024、768x768。这个值限制桶里较短边不能小于多少像素。",
+            ["避免生成太小的训练尺寸，减少细节损失。"],
+            ["设得太高会减少可选桶，窄图或小图可能被裁切/缩放得更明显。"],
+            ["必须不大于训练分辨率，并且通常应能被桶尺寸步长整除。"],
+            "默认 256；大多数训练不需要改。"
+        ),
+        max_bucket_reso: help(
+            "允许生成的最大桶边长。",
+            "这个值限制桶里较长边最多到多少像素；1024 分辨率训练通常填 1024。",
+            ["控制显存上限，避免极端长图生成过大的桶。"],
+            ["设得太低会压缩长边细节。"],
+            ["不能小于训练分辨率，否则训练端会报错。"],
+            "1024 训练保持 1024；更高分辨率训练再同步调高。"
+        ),
+        bucket_reso_steps: help(
+            "桶尺寸之间的间隔。",
+            "填 64 表示桶尺寸按 64 像素递增，例如 512、576、640。数值越小桶越多，越贴近原图比例。",
+            ["桶更多时图片变形和 padding 更少。"],
+            ["桶更多会让预处理/缓存分组更碎，管理和加载稍复杂。"],
+            ["训练代码要求这个值能被 16 整除。"],
+            "默认 64；想更精细可试 32，但不建议新手改。"
+        ),
+        bucket_no_upscale: help(
+            "不要把小图放大到桶尺寸。",
+            "开启后，小图会尽量按自身尺寸建桶，不强行放大；关闭时会按桶规则缩放到目标尺寸。",
+            ["避免小图被放大后变糊。"],
+            ["不同尺寸会更分散，训练批次可能更碎。"],
+            ["数据分辨率参差不齐时，效果和速度更难预估。"],
+            "默认关闭；小图很多且不想放大时再开启。"
+        ),
+        validation_split: help(
+            "从数据集中拿出一小部分图片不参与训练，用来做训练效果检查。",
+            "填 0-1 的小数。例: 0.025 表示 1000 张里约留 25 张做验证；0 表示不按比例预留。",
+            ["可以用同一批没训练过的图观察是否过拟合，而不是只看训练图。"],
+            ["被留作验证的图片不会参与训练，比例越大训练可用图片越少。"],
+            ["小数据集用比例可能忽多忽少，比如 30 张 x 0.025 约等于 1 张。"],
+            "新手保持 0.025；小数据集更建议用下面的固定验证数量。"
+        ),
+        validation_split_num: help(
+            "直接指定要留出多少张图片做验证。",
+            "填 0 表示不用固定数量，改用上面的验证集比例；填 4 就固定留 4 张，填 16 就固定留 16 张。",
+            ["小数据集时比比例更直观，不会出现比例算出来只有 0-1 张的情况。"],
+            ["这些图片会从训练集中扣掉，不参与训练。"],
+            ["数量填太大时，真正用于训练的图片会变少，模型可能学不充分。"],
+            "少量角色图可填 2-6；几十到几百张可填 8-16；不确定就保持 0。"
+        ),
+        validation_seed: help(
+            "决定哪几张图片会被选进验证集的随机编号。",
+            "同样的数据集、验证比例/数量和 seed，会每次选中同一批验证图片；换 seed 就会换一批。",
+            ["方便公平比较不同参数，因为验证用的是同一批图片。"],
+            ["想重新抽一批验证图时才需要改它。"],
+            ["对比实验时如果 seed 变了，效果差异可能只是验证图片换了。"],
+            "默认 42；做参数对比时保持不变。"
+        ),
+        caption_extension: help(
+            "caption 标注文件扩展名。",
+            "常用 .txt；如果标注文件是 .caption 等格式就改成对应后缀。",
+            ["让数据加载器找到图片同名标注。"],
+            ["支持不同标注文件命名习惯。"],
+            ["扩展名填错会导致读不到 caption。"],
+            "默认 .txt。"
+        ),
+        keep_tokens: help(
+            "Caption 前部固定保留的 token 数。",
+            "用于 caption shuffle/dropout 时保留触发词或关键主体词。",
+            ["减少关键触发词被打乱或丢弃。"],
+            ["保留太多会降低 shuffle 的随机化效果。"],
+            ["caption 开头不是关键 tag 时，保留意义会变弱。"],
+            "默认 3。"
+        ),
         logging_dir: help(
             "TensorBoard 等日志输出目录。",
             "默认 output/logs。",
@@ -1708,6 +1829,7 @@
                 dirty: false,
                 dataset_config: data.dataset_config || '',
                 datasets: normalizeDatasetEditorRows(data.datasets || []),
+                defaults: normalizeDatasetDefaults(data.defaults || {}),
                 error: '',
             };
         } catch (e) {
@@ -1715,6 +1837,7 @@
                 ...datasetEditorState,
                 loading: false,
                 loaded: false,
+                defaults: normalizeDatasetDefaults(datasetEditorState.defaults || {}),
                 error: e.message || '读取数据集配置失败',
             };
         }
@@ -1939,8 +2062,6 @@
             panel.appendChild(error);
         }
 
-        const list = document.createElement('div');
-        list.className = 'dataset-editor-list';
         const rows = datasetEditorState.datasets.length
             ? datasetEditorState.datasets
             : normalizeDatasetEditorRows([{
@@ -1952,6 +2073,11 @@
         if (!datasetEditorState.datasets.length) {
             datasetEditorState.datasets = rows;
         }
+
+        panel.appendChild(createDatasetDefaultsEditor());
+
+        const list = document.createElement('div');
+        list.className = 'dataset-editor-list';
         rows.forEach((row, index) => {
             list.appendChild(createDatasetEditorRow(row, index));
         });
@@ -1966,6 +2092,134 @@
         dirty.textContent = datasetEditorState.dirty ? '有未保存的数据集修改' : '数据集路径已同步';
         footer.append(configPath, dirty);
         panel.appendChild(footer);
+    }
+
+    function createDatasetDefaultsEditor() {
+        const defaults = normalizeDatasetDefaults(datasetEditorState.defaults || {});
+        datasetEditorState.defaults = defaults;
+        const wrap = document.createElement('div');
+        wrap.className = 'dataset-defaults-list';
+
+        const heading = document.createElement('div');
+        heading.className = 'dataset-defaults-heading';
+        heading.innerHTML = '<strong>训练数据集配置</strong><span>配置训练数据集的来源、分辨率和长宽比分桶设置。</span>';
+        wrap.appendChild(heading);
+
+        const fields = [
+            ['source_image_dir', 'text', 'wide'],
+            ['resolution', 'number'],
+            ['enable_bucket', 'select'],
+            ['min_bucket_reso', 'number'],
+            ['max_bucket_reso', 'number'],
+            ['bucket_reso_steps', 'number'],
+            ['num_repeats', 'number'],
+            ['bucket_no_upscale', 'select'],
+        ];
+
+        for (const [key, type, layout] of fields) {
+            const row = document.createElement('div');
+            row.className = ['dataset-config-field', layout === 'wide' ? 'wide' : ''].filter(Boolean).join(' ');
+            row.dataset.key = key;
+
+            const label = document.createElement('label');
+            label.className = 'dataset-config-label';
+            const nameSpan = document.createElement('span');
+            nameSpan.className = 'field-name';
+            nameSpan.textContent = datasetConfigLabel(key);
+            nameSpan.title = key;
+            label.appendChild(nameSpan);
+
+            const btn = document.createElement('button');
+            btn.className = 'info-toggle';
+            btn.textContent = '?';
+            btn.type = 'button';
+            btn.title = '查看填写建议、好处、代价、风险和推荐';
+            btn.addEventListener('click', () => {
+                btn.classList.toggle('active');
+                row.querySelector('.field-help')?.classList.toggle('visible');
+            });
+            label.appendChild(btn);
+            row.appendChild(label);
+
+            const input = createDatasetConfigInput(key, type, defaults);
+            row.appendChild(input);
+
+            const helpDiv = document.createElement('div');
+            helpDiv.className = 'field-help';
+            helpDiv.appendChild(createHelpContent(key, datasetConfigValue(key, defaults)));
+            row.appendChild(helpDiv);
+            wrap.appendChild(row);
+        }
+        return wrap;
+    }
+
+    function createDatasetConfigInput(key, type, defaults) {
+        let input;
+        if (type === 'select') {
+            input = document.createElement('select');
+            const options = key === 'enable_bucket'
+                ? [[true, '启用'], [false, '关闭']]
+                : [[false, '允许放大'], [true, '不放大小图']];
+            const current = Boolean(defaults[key]);
+            for (const [value, label] of options) {
+                const opt = document.createElement('option');
+                opt.value = value ? 'true' : 'false';
+                opt.textContent = label;
+                opt.selected = value === current;
+                input.appendChild(opt);
+            }
+            input.dataset.valueType = 'boolean';
+        } else {
+            input = document.createElement('input');
+            input.type = type;
+            input.dataset.valueType = type === 'number' ? 'number' : 'string';
+            input.value = datasetConfigValue(key, defaults);
+            if (type === 'number') {
+                input.min = key === 'num_repeats' ? '1' : '0';
+                input.step = key === 'resolution' || key.endsWith('_reso') || key === 'bucket_reso_steps' ? '16' : '1';
+            }
+        }
+        input.className = 'field-input dataset-config-input';
+        input.dataset.key = key;
+        input.addEventListener('input', () => updateDatasetConfigValue(key, input));
+        input.addEventListener('change', () => updateDatasetConfigValue(key, input));
+        return input;
+    }
+
+    function datasetConfigLabel(key) {
+        const labels = {
+            source_image_dir: '输入路径',
+            resolution: '分辨率',
+            enable_bucket: '启用长宽比分桶',
+            min_bucket_reso: '最小桶边长',
+            max_bucket_reso: '最大桶边长',
+            bucket_reso_steps: '桶尺寸步长',
+            num_repeats: '重复次数',
+            bucket_no_upscale: '小图放大',
+        };
+        return `${labels[key] || FIELD_LABEL_ZH[key] || key} / ${key}`;
+    }
+
+    function datasetConfigValue(key, defaults) {
+        if (key === 'source_image_dir') {
+            return datasetEditorState.datasets[0]?.source_dir || currentConfig.source_image_dir || '';
+        }
+        if (key === 'num_repeats') {
+            return datasetEditorState.datasets[0]?.num_repeats || 1;
+        }
+        return defaults[key] ?? '';
+    }
+
+    function updateDatasetConfigValue(key, input) {
+        if (key === 'source_image_dir') {
+            updateDatasetEditorRow(0, 'source_dir', input.value);
+            return;
+        }
+        if (key === 'num_repeats') {
+            updateDatasetEditorRow(0, 'num_repeats', input.value);
+            return;
+        }
+        updateDatasetDefault(key, input);
     }
 
     function createDatasetEditorRow(row, index) {
@@ -2022,6 +2276,39 @@
                 cache_dir: String(row.cache_dir || row.lora_cache_dir || ''),
                 num_repeats: Math.max(1, Number.parseInt(row.num_repeats || 1, 10) || 1),
             }));
+    }
+
+    function normalizeDatasetDefaults(defaults) {
+        const raw = defaults && typeof defaults === 'object' ? defaults : {};
+        return {
+            resolution: Math.max(1, Number.parseInt(raw.resolution || 1024, 10) || 1024),
+            batch_size: Math.max(1, Number.parseInt(raw.batch_size || 1, 10) || 1),
+            enable_bucket: raw.enable_bucket !== false && raw.enable_bucket !== 'false',
+            min_bucket_reso: Math.max(1, Number.parseInt(raw.min_bucket_reso || 256, 10) || 256),
+            max_bucket_reso: Math.max(1, Number.parseInt(raw.max_bucket_reso || 1024, 10) || 1024),
+            bucket_reso_steps: Math.max(1, Number.parseInt(raw.bucket_reso_steps || 64, 10) || 64),
+            bucket_no_upscale: raw.bucket_no_upscale === true || raw.bucket_no_upscale === 'true',
+            validation_split: Math.max(0, Number(raw.validation_split ?? 0.025) || 0),
+            validation_split_num: Math.max(0, Number.parseInt(raw.validation_split_num || 0, 10) || 0),
+            validation_seed: Math.max(0, Number.parseInt(raw.validation_seed || 42, 10) || 42),
+            caption_extension: String(raw.caption_extension || '.txt'),
+            keep_tokens: Math.max(0, Number.parseInt(raw.keep_tokens || 3, 10) || 0),
+        };
+    }
+
+    function updateDatasetDefault(key, input) {
+        const defaults = normalizeDatasetDefaults(datasetEditorState.defaults || {});
+        if (input.type === 'checkbox') {
+            defaults[key] = input.checked;
+        } else if (input.tagName === 'SELECT') {
+            defaults[key] = input.value === 'true';
+        } else if (input.type === 'number') {
+            defaults[key] = key === 'validation_split' ? Math.max(0, Number(input.value) || 0) : Math.max(0, Number.parseInt(input.value || '0', 10) || 0);
+        } else {
+            defaults[key] = input.value;
+        }
+        datasetEditorState.defaults = defaults;
+        markDatasetEditorDirty();
     }
 
     function updateDatasetEditorRow(index, key, value) {
@@ -2775,6 +3062,7 @@
                     train_file: targetFile,
                     train_content: targetContent,
                     datasets: rows,
+                    defaults: normalizeDatasetDefaults(datasetEditorState.defaults || {}),
                 }),
             });
             if (!res.ok) {
@@ -2787,6 +3075,7 @@
             dirty: false,
             dataset_config: res.dataset_config || datasetEditorState.dataset_config,
             datasets: normalizeDatasetEditorRows(res.datasets || rows),
+            defaults: normalizeDatasetDefaults(res.defaults || datasetEditorState.defaults || {}),
             error: '',
         };
         currentConfig.dataset_config = datasetEditorState.dataset_config;
