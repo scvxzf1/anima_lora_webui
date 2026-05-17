@@ -2509,16 +2509,16 @@
         };
     }
 
-    function updateChoiceGuide() {
+    function updateChoiceGuide(config = currentConfig) {
         const container = document.getElementById('choice-guide');
         if (!container) return;
         container.innerHTML = '';
-        const methodKey = activeMethodKey();
-        container.appendChild(createChoiceCard('方法', methodKey, METHOD_GUIDE_ZH, defaultMethodGuide(), methodGuideFromConfig(methodKey)));
+        const methodKey = activeMethodKey(config);
+        container.appendChild(createChoiceCard('方法', methodKey, METHOD_GUIDE_ZH, defaultMethodGuide(), methodGuideFromConfig(methodKey, config)));
         const sourceKey = currentTrainingSource.method || val('variant-select');
-        container.appendChild(createChoiceCard('配置', sourceKey, VARIANT_GUIDE_ZH, defaultVariantGuide(), configGuideFromCurrentSource(sourceKey)));
+        container.appendChild(createChoiceCard('配置', sourceKey, VARIANT_GUIDE_ZH, defaultVariantGuide(), configGuideFromCurrentSource(sourceKey, config)));
         const presetKey = val('preset-select');
-        container.appendChild(createChoiceCard('预设', presetKey, PRESET_GUIDE_ZH, defaultPresetGuide(), presetGuideFromConfig(presetKey)));
+        container.appendChild(createChoiceCard('预设', presetKey, PRESET_GUIDE_ZH, defaultPresetGuide(), presetGuideFromConfig(presetKey, config)));
     }
 
     function createChoiceCard(kind, key, guideMap, fallback, overrideGuide = null) {
@@ -2589,8 +2589,8 @@
         );
     }
 
-    function activeMethodKey() {
-        const inferred = inferMethodFromConfig(currentConfig);
+    function activeMethodKey(config = currentConfig) {
+        const inferred = inferMethodFromConfig(config);
         if (inferred) return inferred;
         if (currentTrainingSource.methods_subdir === 'gui-methods') {
             return VARIANT_METHOD_FAMILY[currentTrainingSource.method] || val('method-select') || 'lora';
@@ -2620,15 +2620,15 @@
         return '';
     }
 
-    function methodGuideFromConfig(methodKey) {
+    function methodGuideFromConfig(methodKey, config = currentConfig) {
         const base = METHOD_GUIDE_ZH[methodKey] || defaultMethodGuide();
         const details = compactList([
-            flagDetail('use_lokr', 'LoKr', currentConfig.use_lokr),
-            isTruthy(currentConfig.use_lokr) ? valueDetail('lokr_factor', currentConfig.lokr_factor) : '',
-            valueDetail('network_dim', currentConfig.network_dim),
-            valueDetail('network_alpha', currentConfig.network_alpha),
-            valueDetail('learning_rate', currentConfig.learning_rate),
-            valueDetail('max_train_epochs', currentConfig.max_train_epochs),
+            flagDetail('use_lokr', 'LoKr', config.use_lokr),
+            isTruthy(config.use_lokr) ? valueDetail('lokr_factor', config.lokr_factor) : '',
+            valueDetail('network_dim', config.network_dim),
+            valueDetail('network_alpha', config.network_alpha),
+            valueDetail('learning_rate', config.learning_rate),
+            valueDetail('max_train_epochs', config.max_train_epochs),
         ]);
         if (!details.length) return base;
         return {
@@ -2638,7 +2638,7 @@
         };
     }
 
-    function configGuideFromCurrentSource(sourceKey) {
+    function configGuideFromCurrentSource(sourceKey, config = currentConfig) {
         const isImported = currentTrainingSource.methods_subdir === 'imported';
         const base = isImported
             ? choiceHelp(
@@ -2650,10 +2650,10 @@
             : (VARIANT_GUIDE_ZH[sourceKey] || defaultVariantGuide());
         const details = compactList([
             currentTrainingSource.file ? `文件: ${currentTrainingSource.file}` : '',
-            currentConfig.dataset_config ? `数据集配置: ${currentConfig.dataset_config}` : '',
-            currentConfig.output_name ? `输出名称: ${currentConfig.output_name}` : '',
-            currentConfig.output_dir ? `输出目录: ${currentConfig.output_dir}` : '',
-            currentConfig.source_image_dir ? `原始数据集: ${currentConfig.source_image_dir}` : '',
+            config.dataset_config ? `数据集配置: ${config.dataset_config}` : '',
+            config.output_name ? `输出名称: ${config.output_name}` : '',
+            config.output_dir ? `输出目录: ${config.output_dir}` : '',
+            config.source_image_dir ? `原始数据集: ${config.source_image_dir}` : '',
         ]);
         if (!details.length) return base;
         return {
@@ -2663,15 +2663,15 @@
         };
     }
 
-    function presetGuideFromConfig(presetKey) {
+    function presetGuideFromConfig(presetKey, config = currentConfig) {
         const base = PRESET_GUIDE_ZH[presetKey] || defaultPresetGuide();
         const details = compactList([
-            valueDetail('mixed_precision', currentConfig.mixed_precision),
-            valueDetail('optimizer_type', currentConfig.optimizer_type),
-            valueDetail('lr_scheduler', currentConfig.lr_scheduler),
-            valueDetail('train_batch_size', currentConfig.train_batch_size),
-            valueDetail('gradient_accumulation_steps', currentConfig.gradient_accumulation_steps),
-            valueDetail('sample_ratio', currentConfig.sample_ratio),
+            valueDetail('mixed_precision', config.mixed_precision),
+            valueDetail('optimizer_type', config.optimizer_type),
+            valueDetail('lr_scheduler', config.lr_scheduler),
+            valueDetail('train_batch_size', config.train_batch_size),
+            valueDetail('gradient_accumulation_steps', config.gradient_accumulation_steps),
+            valueDetail('sample_ratio', config.sample_ratio),
         ]);
         if (!details.length) return base;
         return {
@@ -2756,12 +2756,18 @@
 
     function updateChoiceGuideFromLiveForm() {
         if (!currentConfig || Object.keys(currentConfig).length === 0) return;
+        updateChoiceGuide(liveConfigFromForm());
+    }
+
+    function liveConfigFromForm() {
+        const liveConfig = { ...(currentConfig || {}) };
         for (const input of document.querySelectorAll('#config-form .field-input[data-key]')) {
             const key = input.dataset.key;
             if (!key) continue;
-            currentConfig[key] = readFieldInputValue(input, currentConfig[key]);
+            const original = key in liveConfig ? liveConfig[key] : FORM_UI_DEFAULTS[key];
+            liveConfig[key] = readFieldInputValue(input, original);
         }
-        updateChoiceGuide();
+        return liveConfig;
     }
 
     function formatFieldName(key) {
@@ -3091,10 +3097,10 @@
                 tomlSavedContent = res.content;
             }
             resetTomlSaveConfirm({ update: false });
+            await loadConfig();
+            await loadTomlFileList(file);
             updateTomlDirtyState();
             setTomlStatus('ok', `✓ 已保存 ${res.changed?.length || Object.keys(preparedValues).length} 个表单修改`);
-            await loadTomlFileList(file);
-            await loadConfig();
         } catch (e) {
             setTomlStatus('error', '请求失败: ' + e.message);
         }
