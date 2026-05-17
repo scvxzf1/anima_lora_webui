@@ -17,6 +17,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+from library.runtime.launch import accelerate_training_command_prefix
+
 ROOT = Path(__file__).resolve().parents[2]
 
 
@@ -454,18 +456,7 @@ def accelerate_launch(*args: str):
     run, generates per-report textual summaries via ``nsys stats`` next to
     the .nsys-rep.
     """
-    cmd = [
-        PY,
-        "-m",
-        "accelerate.commands.accelerate_cli",
-        "launch",
-        "--num_cpu_threads_per_process",
-        "3",
-        "--mixed_precision",
-        "bf16",
-        "train.py",
-        *args,
-    ]
+    cmd = [*accelerate_training_command_prefix(PY, "train.py"), *args]
     nsys_prefix, nsys_out = _nsys_wrapper()
     if nsys_prefix is not None:
         cmd = nsys_prefix + ["--"] + cmd

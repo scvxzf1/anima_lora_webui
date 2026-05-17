@@ -16,6 +16,8 @@
     let tomlFileMeta = {};
     let currentTomlFile = '';
     let tomlSavedContent = '';
+    let tomlDeleteConfirmFile = '';
+    let tomlDeleteConfirmTimer = null;
     let previewSettings = null;
     let currentPreviewSource = 'training';
     let selectedPreviewTaskId = '';
@@ -48,6 +50,8 @@
         sample_every_n_steps: '',
         sample_at_first: false,
         sample_sampler: 'ddim',
+        use_lokr: false,
+        lokr_factor: 8,
     };
     const OPTIONAL_EMPTY_FIELDS = new Set([
         'sample_prompts',
@@ -405,6 +409,7 @@
         train_batch_size: [1, 2, 4, 8],
         gradient_accumulation_steps: [1, 2, 4, 8],
         log_with: ['tensorboard'],
+        use_lokr: [false, true],
         lokr_factor: [2, 4, 8, 16],
         lr_scheduler: ['constant', 'cosine', 'cosine_with_restarts', 'polynomial'],
         max_train_epochs: [1, 2, 4, 8, 12, 16, 24],
@@ -1610,7 +1615,6 @@
         loadSamplePrompts();
         loadStepEstimate();
         updateChoiceGuide();
-        updateLoraFamilySwitch();
         // 同步加载对应的 TOML 文件到右侧编辑器
         const tomlFile = currentTrainingSource.file || `configs/${methodsSubdir}/${variant}.toml`;
         if (tomlFiles.includes(tomlFile) && currentTomlFile !== tomlFile) {
@@ -2171,79 +2175,20 @@
         };
     }
 
-    function currentMethodFamily() {
-        const variant = currentTrainingSource.method || val('variant-select');
-        if (currentConfig.use_lokr === true) return 'lokr';
-        return VARIANT_METHOD_FAMILY[variant] || val('method-select') || 'lora';
-    }
-
-    function updateLoraFamilySwitch() {
-        const container = document.getElementById('lora-family-switch');
-        if (!container) return;
-        const activeFamily = currentMethodFamily();
-        const choices = [
-            {
-                family: 'lora',
-                title: 'LoRA',
-                summary: '标准低秩训练，兼容性最好。',
-                variant: 'lora',
-            },
-            {
-                family: 'lokr',
-                title: 'LoKr',
-                summary: 'Kronecker 积训练，输出 LyCORIS 兼容权重。',
-                variant: 'lokr',
-            },
-        ];
-
-        container.innerHTML = '';
-        for (const choice of choices) {
-            const btn = document.createElement('button');
-            btn.type = 'button';
-            btn.className = 'lora-family-option';
-            if (activeFamily === choice.family) btn.classList.add('active');
-            btn.innerHTML = `<strong>${choice.title}</strong><span>${choice.summary}</span>`;
-            btn.addEventListener('click', () => switchLoraFamily(choice.family, choice.variant));
-            container.appendChild(btn);
-        }
-    }
-
-    async function switchLoraFamily(method, variant) {
-        const methodSelect = document.getElementById('method-select');
-        const variantSelect = document.getElementById('variant-select');
-        if ([...methodSelect.options].some((opt) => opt.value === method)) {
-            methodSelect.value = method;
-        }
-        const variants = await api(`/api/methods/${encodeURIComponent(method)}/variants`);
-        populateSelect('variant-select', variants, variant);
-        if (![...variantSelect.options].some((opt) => opt.value === variant)) {
-            return;
-        }
-        variantSelect.value = variant;
-        setCurrentTrainingSourceFromVariant(variant);
-        await loadConfig();
-    }
-
     function updateChoiceGuide() {
         const container = document.getElementById('choice-guide');
         if (!container) return;
         container.innerHTML = '';
-        container.appendChild(createChoiceCard('方法', val('method-select'), METHOD_GUIDE_ZH, defaultMethodGuide()));
+        const methodKey = activeMethodKey();
+        container.appendChild(createChoiceCard('方法', methodKey, METHOD_GUIDE_ZH, defaultMethodGuide(), methodGuideFromConfig(methodKey)));
         const sourceKey = currentTrainingSource.method || val('variant-select');
-        const sourceGuide = currentTrainingSource.methods_subdir === 'imported'
-            ? choiceHelp(
-                '导入训练配置',
-                `当前表单来自 ${currentTrainingSource.file || '导入配置'}。`,
-                '它会按 base.toml → 当前预设 → 该 TOML 的顺序合并；不会强行加入变体下拉。',
-                '适合把历史训练配置作为独立入口继续查看、预检测或训练。'
-            )
-            : null;
-        container.appendChild(createChoiceCard('配置', sourceKey, VARIANT_GUIDE_ZH, sourceGuide || defaultVariantGuide()));
-        container.appendChild(createChoiceCard('预设', val('preset-select'), PRESET_GUIDE_ZH, defaultPresetGuide()));
+        container.appendChild(createChoiceCard('配置', sourceKey, VARIANT_GUIDE_ZH, defaultVariantGuide(), configGuideFromCurrentSource(sourceKey)));
+        const presetKey = val('preset-select');
+        container.appendChild(createChoiceCard('预设', presetKey, PRESET_GUIDE_ZH, defaultPresetGuide(), presetGuideFromConfig(presetKey)));
     }
 
-    function createChoiceCard(kind, key, guideMap, fallback) {
-        const guide = guideMap[key] || fallback;
+    function createChoiceCard(kind, key, guideMap, fallback, overrideGuide = null) {
+        const guide = overrideGuide || guideMap[key] || fallback;
         const card = document.createElement('article');
         card.className = 'choice-card';
 
@@ -2260,6 +2205,16 @@
         card.appendChild(choiceLine('说明', guide.summary));
         card.appendChild(choiceLine('取舍', guide.tradeoff));
         card.appendChild(choiceLine('推荐', guide.recommend, 'choice-recommend'));
+        if (Array.isArray(guide.details) && guide.details.length) {
+            const details = document.createElement('ul');
+            details.className = 'choice-details';
+            for (const detail of guide.details) {
+                const item = document.createElement('li');
+                item.textContent = detail;
+                details.appendChild(item);
+            }
+            card.appendChild(details);
+        }
         return card;
     }
 
@@ -2298,6 +2253,122 @@
             '它会覆盖部分硬件、采样或性能参数。',
             '不确定时使用 default。'
         );
+    }
+
+    function activeMethodKey() {
+        const inferred = inferMethodFromConfig(currentConfig);
+        if (inferred) return inferred;
+        if (currentTrainingSource.methods_subdir === 'gui-methods') {
+            return VARIANT_METHOD_FAMILY[currentTrainingSource.method] || val('method-select') || 'lora';
+        }
+        return val('method-select') || 'lora';
+    }
+
+    function inferMethodFromConfig(config) {
+        if (!config || typeof config !== 'object') return '';
+        const moduleName = String(config.network_module || '');
+        if (isTruthy(config.use_lokr)) return 'lokr';
+        if (isTruthy(config.use_easycontrol) || moduleName.includes('easycontrol')) return 'easycontrol';
+        if (isTruthy(config.use_ip_adapter) || moduleName.includes('ip_adapter')) return 'ip_adapter';
+        if (moduleName.includes('postfix')) return 'postfix';
+        if (isTruthy(config.add_reft) || ('reft_dim' in config && Number(config.reft_dim) > 0)) return 'reft';
+        if (
+            isTruthy(config.use_hydra) ||
+            isTruthy(config.use_sigma_router) ||
+            String(config.use_moe_style || 'false') !== 'false' ||
+            moduleName.includes('chimera') ||
+            moduleName.includes('hydra')
+        ) {
+            return 'hydralora';
+        }
+        if (isTruthy(config.use_timestep_mask)) return 'tlora';
+        if (isTruthy(config.use_ortho)) return 'ortholora';
+        return '';
+    }
+
+    function methodGuideFromConfig(methodKey) {
+        const base = METHOD_GUIDE_ZH[methodKey] || defaultMethodGuide();
+        const details = compactList([
+            flagDetail('use_lokr', 'LoKr', currentConfig.use_lokr),
+            isTruthy(currentConfig.use_lokr) ? valueDetail('lokr_factor', currentConfig.lokr_factor) : '',
+            valueDetail('network_dim', currentConfig.network_dim),
+            valueDetail('network_alpha', currentConfig.network_alpha),
+            valueDetail('learning_rate', currentConfig.learning_rate),
+            valueDetail('max_train_epochs', currentConfig.max_train_epochs),
+        ]);
+        if (!details.length) return base;
+        return {
+            ...base,
+            summary: `${base.summary} 当前表单已读取关键训练字段。`,
+            details,
+        };
+    }
+
+    function configGuideFromCurrentSource(sourceKey) {
+        const isImported = currentTrainingSource.methods_subdir === 'imported';
+        const base = isImported
+            ? choiceHelp(
+                '导入训练配置',
+                `当前表单来自 ${currentTrainingSource.file || '导入配置'}。`,
+                '它会按 base.toml → 当前预设 → 该 TOML 的顺序合并；不会强行加入变体下拉。',
+                '适合把历史训练配置作为独立入口继续查看、预检测或训练。'
+            )
+            : (VARIANT_GUIDE_ZH[sourceKey] || defaultVariantGuide());
+        const details = compactList([
+            currentTrainingSource.file ? `文件: ${currentTrainingSource.file}` : '',
+            currentConfig.dataset_config ? `数据集配置: ${currentConfig.dataset_config}` : '',
+            currentConfig.output_name ? `输出名称: ${currentConfig.output_name}` : '',
+            currentConfig.output_dir ? `输出目录: ${currentConfig.output_dir}` : '',
+            currentConfig.source_image_dir ? `原始数据集: ${currentConfig.source_image_dir}` : '',
+        ]);
+        if (!details.length) return base;
+        return {
+            ...base,
+            summary: `${base.summary} 已读取当前 TOML 的路径和输出信息。`,
+            details,
+        };
+    }
+
+    function presetGuideFromConfig(presetKey) {
+        const base = PRESET_GUIDE_ZH[presetKey] || defaultPresetGuide();
+        const details = compactList([
+            valueDetail('mixed_precision', currentConfig.mixed_precision),
+            valueDetail('optimizer_type', currentConfig.optimizer_type),
+            valueDetail('lr_scheduler', currentConfig.lr_scheduler),
+            valueDetail('train_batch_size', currentConfig.train_batch_size),
+            valueDetail('gradient_accumulation_steps', currentConfig.gradient_accumulation_steps),
+            valueDetail('sample_ratio', currentConfig.sample_ratio),
+        ]);
+        if (!details.length) return base;
+        return {
+            ...base,
+            summary: `${base.summary} 当前已合并后的预设/配置值如下。`,
+            details,
+        };
+    }
+
+    function isTruthy(value) {
+        return value === true || value === 1 || value === '1' || String(value).toLowerCase() === 'true';
+    }
+
+    function compactList(items) {
+        return items.filter((item) => item !== undefined && item !== null && String(item).trim() !== '');
+    }
+
+    function valueDetail(key, value) {
+        if (value === undefined || value === null || value === '') return '';
+        return `${FIELD_LABEL_ZH[key] || key}: ${formatChoiceValue(value)}`;
+    }
+
+    function flagDetail(key, label, value) {
+        if (value === undefined || value === null || value === '') return '';
+        return `${label}: ${isTruthy(value) ? '开启' : '关闭'}`;
+    }
+
+    function formatChoiceValue(value) {
+        if (Array.isArray(value)) return value.join(', ');
+        if (typeof value === 'boolean') return value ? 'true' : 'false';
+        return String(value);
     }
 
     function createFieldRow(key, value) {
@@ -2345,6 +2416,18 @@
     function handleFormFieldChange() {
         updateTomlDirtyState();
         updateStepEstimatePanel();
+        updateLoKrFieldState();
+        updateChoiceGuideFromLiveForm();
+    }
+
+    function updateChoiceGuideFromLiveForm() {
+        if (!currentConfig || Object.keys(currentConfig).length === 0) return;
+        for (const input of document.querySelectorAll('#config-form .field-input[data-key]')) {
+            const key = input.dataset.key;
+            if (!key) continue;
+            currentConfig[key] = readFieldInputValue(input, currentConfig[key]);
+        }
+        updateChoiceGuide();
     }
 
     function formatFieldName(key) {
@@ -2381,6 +2464,10 @@
             input.value = Array.isArray(value) ? JSON.stringify(value) : (value ?? '');
         }
         input.className = 'field-input';
+        if (key === 'lokr_factor') {
+            input.disabled = !readLoKrEnabled();
+            input.title = input.disabled ? '启用 LoKr 后生效' : '';
+        }
         return input;
     }
 
@@ -2412,6 +2499,7 @@
     function createSelectInput(key, value, options) {
         const select = document.createElement('select');
         select.className = 'field-input field-select';
+        select.dataset.valueType = fieldValueTypeForKey(key, value);
         const normalizedValue = optionValue(value);
         const normalizedOptions = options.map(optionValue);
         const displayOptions = [...options];
@@ -2437,16 +2525,22 @@
     }
 
     function fieldValueTypeForKey(key, value) {
+        if (key === 'use_lokr') return 'boolean';
+        if (key === 'lokr_factor') return 'number';
         if (isNumericField(key, value)) return 'number';
         return fieldValueType(value);
     }
 
     function optionValue(value) {
         if (value === null || value === undefined) return '';
+        if (typeof value === 'boolean') return value ? 'true' : 'false';
         return String(value);
     }
 
     function optionLabel(key, value) {
+        if (key === 'use_lokr') {
+            return value === true || value === 'true' ? '启用 LoKr' : '普通 LoRA';
+        }
         if (key === 'use_moe_style' && (value === false || value === 'false')) {
             return '关闭专家路由 / false';
         }
@@ -2564,6 +2658,7 @@
         if (!options.force && !confirmDiscardTomlChanges('当前 TOML 有未保存修改，切换文件会丢失这些修改。是否继续？')) {
             return;
         }
+        resetTomlDeleteConfirm();
         const data = await api(`/api/config/raw?file=${encodeURIComponent(filePath)}`);
         currentTomlFile = filePath;
         document.getElementById('toml-file-select').value = filePath;
@@ -2723,6 +2818,9 @@
                 values[key] = next;
             }
         });
+        if (values.use_lokr === true && !('lokr_factor' in values) && !('lokr_factor' in currentConfig)) {
+            values.lokr_factor = FORM_UI_DEFAULTS.lokr_factor;
+        }
         return values;
     }
 
@@ -2761,6 +2859,22 @@
             default:
                 return raw;
         }
+    }
+
+    function readLoKrEnabled() {
+        const input = document.querySelector('#config-form .field-input[data-key="use_lokr"]');
+        if (!input) return currentConfig.use_lokr === true;
+        return readFieldInputValue(input, currentConfig.use_lokr ?? FORM_UI_DEFAULTS.use_lokr) === true;
+    }
+
+    function updateLoKrFieldState() {
+        const factorInput = document.querySelector('#config-form .field-input[data-key="lokr_factor"]');
+        if (!factorInput) return;
+        const enabled = readLoKrEnabled();
+        factorInput.disabled = !enabled;
+        factorInput.title = enabled ? '' : '启用 LoKr 后生效';
+        const row = factorInput.closest('.field-row');
+        if (row) row.classList.toggle('field-row-disabled', !enabled);
     }
 
     function parseNumberValue(raw, fallback) {
@@ -3298,10 +3412,15 @@
         }
         const deleteBtn = document.getElementById('btn-delete-toml');
         if (deleteBtn) {
-            deleteBtn.disabled = !filePath || !meta || Boolean(meta.locked) || dirty;
+            const canDelete = Boolean(filePath && meta && !meta.locked && !dirty);
+            if (!canDelete) resetTomlDeleteConfirm({ update: false });
+            const confirming = canDelete && tomlDeleteConfirmFile === filePath;
+            deleteBtn.disabled = !canDelete;
+            deleteBtn.textContent = confirming ? '确认删除配置' : '删除当前配置';
+            deleteBtn.classList.toggle('btn-confirm-danger', confirming);
             deleteBtn.title = dirty
                 ? '当前配置尚未保存，请先保存或放弃修改后再删除'
-                : deleteTomlButtonTitle(meta);
+                : (confirming ? '再次点击才会真正删除当前配置文件' : deleteTomlButtonTitle(meta));
         }
         const restoreBtn = document.getElementById('btn-restore-system-toml');
         if (restoreBtn) {
@@ -3362,6 +3481,29 @@
         if (!meta) return '请先选择一个配置文件';
         if (meta.locked) return `${tomlLockLabel(meta) || '只读'}配置不能删除`;
         return '删除当前选中的配置文件';
+    }
+
+    function resetTomlDeleteConfirm(options = {}) {
+        if (tomlDeleteConfirmTimer) {
+            clearTimeout(tomlDeleteConfirmTimer);
+            tomlDeleteConfirmTimer = null;
+        }
+        if (!tomlDeleteConfirmFile) return;
+        tomlDeleteConfirmFile = '';
+        if (options.update !== false) {
+            updateTomlActionState(currentTomlFile);
+        }
+    }
+
+    function armTomlDeleteConfirm(file) {
+        resetTomlDeleteConfirm({ update: false });
+        tomlDeleteConfirmFile = file;
+        tomlDeleteConfirmTimer = setTimeout(() => {
+            resetTomlDeleteConfirm();
+            setTomlStatus('', '');
+        }, 8000);
+        updateTomlActionState(file);
+        setTomlStatus('error', `再次点击“确认删除配置”才会删除: ${file}`);
     }
 
     function setTomlStatus(cls, text, options = {}) {
@@ -3745,10 +3887,11 @@
             return;
         }
 
-        const ok = confirm(
-            `删除当前配置文件？\n\n${file}\n\n此操作会从项目 configs 目录中删除该 TOML 文件，不能从 WebUI 直接撤销。`
-        );
-        if (!ok) return;
+        if (tomlDeleteConfirmFile !== file) {
+            armTomlDeleteConfirm(file);
+            return;
+        }
+        resetTomlDeleteConfirm({ update: false });
 
         try {
             const res = await api(`/api/config/raw?file=${encodeURIComponent(file)}`, {

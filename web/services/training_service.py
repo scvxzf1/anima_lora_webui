@@ -17,6 +17,7 @@ import psutil
 from aiohttp import web
 
 from library.env import load_dotenv
+from library.runtime.launch import accelerate_training_command_prefix
 from web.services.config_service import apply_auto_data_dirs, load_merged_config, preflight_training_config
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -80,11 +81,9 @@ class TrainingService:
         if not Path(venv_python).exists():
             venv_python = sys.executable
 
+        env = os.environ.copy()
         cmd = [
-            venv_python, "-m", "accelerate.commands.accelerate_cli",
-            "launch", "--num_cpu_threads_per_process", "3",
-            "--mixed_precision", "bf16",
-            str(ROOT / "train.py"),
+            *accelerate_training_command_prefix(venv_python, ROOT / "train.py", env),
             "--method", variant,
             "--preset", preset,
             "--methods_subdir", methods_subdir,
@@ -92,7 +91,6 @@ class TrainingService:
         if extra_args:
             cmd.extend(extra_args)
 
-        env = os.environ.copy()
         env["PYTHONUNBUFFERED"] = "1"
         env["PATH"] = str(ROOT / ".venv" / "bin") + ":" + env.get("PATH", "")
 
