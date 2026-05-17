@@ -1,8 +1,15 @@
 # anima_lora WebUI
 
 [한국어](README.ko.md) · 📖 [Windows 초보자용 한국어 가이드북](docs/guidelines/가이드북.md)
+这是面向 [Anima](https://huggingface.co/circlestone-labs/Anima) 的 LoRA / T-LoRA 训练项目。
+当前分支基于(https://github.com/sorryhyun/anima_lora#)构建的提供 WebUI前端
+：配置编辑、数据集路径管理、多数据集重复次数、预处理、训练任务监控、历史任务和预览图查看。
+后端内容基本没动“实验性支持lokr”
 
-这是面向 [Anima](https://huggingface.co/circlestone-labs/Anima) 的 LoRA / T-LoRA 训练项目，当前分支优先提供 WebUI：配置编辑、数据集路径管理、多数据集重复次数、预处理、训练任务监控、历史任务和预览图查看。
+<img width="2493" height="1443" alt="image" src="https://github.com/user-attachments/assets/177e6c6d-c35d-43a6-ae86-7f1d5c33e494" />
+<img width="2493" height="1443" alt="image" src="https://github.com/user-attachments/assets/616aeeb0-5cfb-4d17-b734-fa8b84376ded" />
+<img width="2493" height="1443" alt="image" src="https://github.com/user-attachments/assets/4b9e418c-8824-4849-94e6-275c211e04b0" />
+
 
 ## 先部署并启动 WebUI
 
