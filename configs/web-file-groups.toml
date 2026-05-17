@@ -9,7 +9,6 @@ locked = false
 trainable = false
 files = ["configs/web-file-groups.toml"]
 
-# 系统预设配置：项目默认值和预设集合。这里锁定为只读，避免误改后影响所有训练。
 [[groups]]
 id = "presets"
 label = "系统预设配置（锁定只读）"
@@ -18,7 +17,6 @@ locked = true
 trainable = false
 files = ["configs/base.toml", "configs/presets.toml"]
 
-# 系统内置方法配置：偏开发/实验入口，通常由命令行或高级用户使用。
 [[groups]]
 id = "methods"
 label = "系统内置方法配置（锁定只读）"
@@ -28,7 +26,14 @@ trainable = true
 methods_subdir = "methods"
 patterns = ["configs/methods/*.toml"]
 
-# 可训练方法变体：WebUI 日常选择的训练入口，字段更聚焦，适合复制后微调。
+[[groups]]
+id = "rokkotsu_goddess"
+label = "肋骨女神配置"
+open = true
+locked = false
+trainable = true
+methods_subdir = "imported"
+
 [[groups]]
 id = "gui_methods"
 label = "可训练方法变体"
@@ -38,16 +43,6 @@ trainable = true
 methods_subdir = "gui-methods"
 patterns = ["configs/gui-methods/*.toml"]
 
-# 示例/历史保留分组：放置项目自带或导入后的示例训练配置。
-[[groups]]
-id = "rokkotsu_goddess"
-label = "肋骨女神配置"
-open = true
-locked = false
-trainable = true
-methods_subdir = "imported"
-
-# 导入配置：用户从 WebUI 导入或另存的新配置，通常可以编辑和训练。
 [[groups]]
 id = "imported"
 label = "导入配置"
@@ -60,7 +55,6 @@ order = ["configs/imported/rokkotsu_goddess_5_14_copy.toml", "configs/imported/1
 patterns = ["configs/imported/*.toml"]
 exclude = ["configs/imported/rokkotsu_goddess_5_14.toml"]
 
-# 数据集配置：只描述数据读取方式，不是完整训练配置，因此不可直接作为训练入口。
 [[groups]]
 id = "datasets"
 label = "数据集配置"
@@ -70,7 +64,6 @@ trainable = false
 patterns = ["configs/datasets/*.toml"]
 exclude = ["configs/datasets/rokkotsu_goddess.toml"]
 
-# 用户自定义分组：由 WebUI 创建/维护，可用于整理自己的导入配置。
 [[groups]]
 id = "114"
 label = "114"

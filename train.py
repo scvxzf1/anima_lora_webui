@@ -9,6 +9,7 @@ from typing import Any, Union, Optional
 import sys
 import random
 import time
+from contextlib import contextmanager
 from multiprocessing import Value
 from tqdm import tqdm
 
@@ -108,6 +109,25 @@ setup_logging()
 import logging  # noqa: E402
 
 logger = logging.getLogger(__name__)
+
+
+@contextmanager
+def _network_sampling_mode(network: Optional[torch.nn.Module]):
+    """Temporarily use the train-time network in inference mode for samples."""
+    if network is None:
+        yield
+        return
+
+    was_training = bool(getattr(network, "training", False))
+    try:
+        network.eval()
+        clear_timestep_mask = getattr(network, "clear_timestep_mask", None)
+        if callable(clear_timestep_mask):
+            clear_timestep_mask()
+        yield
+    finally:
+        if was_training:
+            network.train()
 
 
 class AnimaTrainer:
@@ -852,18 +872,23 @@ class AnimaTrainer:
 
         text_encoding_strategy = text_strategies.TextEncodingStrategy.get_strategy()
         tokenize_strategy = text_strategies.TokenizeStrategy.get_strategy()
-        anima_train_utils.sample_images(
-            accelerator,
-            args,
-            epoch,
-            global_step,
-            unet,
-            vae,
-            qwen3_te,
-            tokenize_strategy,
-            text_encoding_strategy,
-            self.sample_prompts_te_outputs,
-        )
+        network = getattr(self, "_network", None)
+        if network is not None:
+            network = accelerator.unwrap_model(network)
+
+        with _network_sampling_mode(network):
+            anima_train_utils.sample_images(
+                accelerator,
+                args,
+                epoch,
+                global_step,
+                unet,
+                vae,
+                qwen3_te,
+                tokenize_strategy,
+                text_encoding_strategy,
+                self.sample_prompts_te_outputs,
+            )
 
     def prepare_unet_with_accelerator(
         self, args: argparse.Namespace, accelerator: Accelerator, unet: torch.nn.Module

@@ -31,6 +31,7 @@ from web.services.config_service import (
     set_user_group_lock,
     move_config_file_to_group,
     rename_config_file_group,
+    reorder_config_file_group,
     reorder_config_file_in_group,
     suggest_data_dirs,
     suggest_dataset_dirs,
@@ -61,6 +62,7 @@ def setup_config_routes(app: web.Application) -> None:
     app.router.add_delete("/api/config/file-groups/{group_id}", handle_file_group_delete)
     app.router.add_post("/api/config/file-groups/move-file", handle_file_group_move_file)
     app.router.add_post("/api/config/file-groups/reorder-file", handle_file_group_reorder_file)
+    app.router.add_post("/api/config/file-groups/reorder-group", handle_file_group_reorder_group)
     app.router.add_post("/api/config/restore-system", handle_restore_system)
     app.router.add_get("/api/config/files", handle_files)
     app.router.add_get("/api/config/file-groups", handle_file_groups)
@@ -307,6 +309,17 @@ async def handle_file_group_reorder_file(request: web.Request) -> web.Response:
     data = await request.json()
     ok, msg, group = reorder_config_file_in_group(
         data.get("file", ""),
+        data.get("group", ""),
+        data.get("direction", ""),
+    )
+    if ok:
+        return web.json_response({"ok": True, "message": msg, "group": group})
+    return web.json_response({"ok": False, "error": msg, "group": group}, status=400)
+
+
+async def handle_file_group_reorder_group(request: web.Request) -> web.Response:
+    data = await request.json()
+    ok, msg, group = reorder_config_file_group(
         data.get("group", ""),
         data.get("direction", ""),
     )

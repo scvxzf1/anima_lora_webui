@@ -487,7 +487,7 @@ class LoRANetwork(torch.nn.Module):
                             if modules_dim is not None:
                                 if lora_name in modules_dim:
                                     dim = modules_dim[lora_name]
-                                    alpha_val = modules_alpha[lora_name]
+                                    alpha_val = modules_alpha.get(lora_name, dim)
                             else:
                                 if cfg.reg_dims is not None:
                                     for reg, d in cfg.reg_dims.items():

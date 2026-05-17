@@ -3464,22 +3464,31 @@
         return base.toLowerCase().endsWith('.toml') ? base : `${base}.toml`;
     }
 
+    function isFixedSystemTomlGroup(group) {
+        return Boolean(
+            group.id === 'web_config' ||
+            group.id === 'presets' ||
+            group.id === 'methods' ||
+            group.system_locked
+        );
+    }
+
     function reorderTomlFileGroups(groups) {
-        const scoreGroup = (group) => {
-            if (group.user_managed) return 30;
-            if (group.id === 'gui_methods') return 10;
-            if (group.id === 'imported' || group.methods_subdir === 'imported') return 20;
-            if (group.id === 'datasets') return 40;
-            if (group.locked || group.group_locked || group.system_locked) return 90;
-            return 50;
-        };
         return [...(groups || [])]
-            .filter((group) => group.user_managed || (group.files || []).length > 0)
+            .map((group, index) => ({ group, index }))
+            .filter(({ group }) => group.user_managed || group.lockable || (group.files || []).length > 0)
             .sort((a, b) => {
-                const delta = scoreGroup(a) - scoreGroup(b);
-                if (delta !== 0) return delta;
-                return String(a.label || a.id).localeCompare(String(b.label || b.id), 'zh-CN');
-            });
+                const aFixed = isFixedSystemTomlGroup(a.group);
+                const bFixed = isFixedSystemTomlGroup(b.group);
+                if (aFixed !== bFixed) return aFixed ? 1 : -1;
+                return a.index - b.index;
+            })
+            .map((item) => item.group);
+    }
+
+    function getSortableTomlGroups() {
+        return [...(tomlFileGroups || [])]
+            .filter((group) => !isFixedSystemTomlGroup(group) && (group.user_managed || group.lockable || (group.files || []).length > 0));
     }
 
     function populateTomlFileSelect(groups) {
@@ -3533,7 +3542,10 @@
             });
 
             const summary = document.createElement('summary');
+            const orderActions = createTomlGroupOrderActions(group);
+            if (orderActions) summary.appendChild(orderActions);
             const title = document.createElement('span');
+            title.className = 'toml-group-title';
             title.textContent = `${group.label || group.id} (${(group.files || []).length})`;
             summary.appendChild(title);
             const actions = createTomlGroupActions(group);
@@ -3578,20 +3590,40 @@
         updateTomlSelectionUI(currentTomlFile);
     }
 
+    function createTomlGroupOrderActions(group) {
+        if (isFixedSystemTomlGroup(group)) return null;
+        const sortableGroups = getSortableTomlGroups();
+        const groupIndex = sortableGroups.findIndex((item) => item.id === group.id);
+        if (groupIndex < 0) return null;
+
+        const wrap = document.createElement('span');
+        wrap.className = 'toml-group-order-actions';
+        wrap.appendChild(createTomlGroupActionButton('↑', () => reorderTomlGroup(group, 'up'), {
+            disabled: groupIndex <= 0,
+            title: groupIndex <= 0 ? '已经是最上面的可移动分组' : '把这个分组上移一位',
+        }));
+        wrap.appendChild(createTomlGroupActionButton('↓', () => reorderTomlGroup(group, 'down'), {
+            disabled: groupIndex >= sortableGroups.length - 1,
+            title: groupIndex >= sortableGroups.length - 1 ? '已经是最下面的可移动分组' : '把这个分组下移一位',
+        }));
+        return wrap;
+    }
+
     function createTomlGroupActions(group) {
-        if (!group.user_managed && !group.renamable && !group.deletable) return null;
+        if (!group.renamable && !group.deletable) return null;
         const wrap = document.createElement('span');
         wrap.className = 'toml-group-actions';
 
         if (group.renamable) {
             wrap.appendChild(createTomlGroupActionButton('重命名', () => renameTomlGroup(group), {
-                title: '重命名这个自定义分组',
+                title: '重命名这个配置分组',
             }));
         }
         if (group.deletable) {
-            wrap.appendChild(createTomlGroupActionButton('删除空组', () => deleteTomlGroup(group), {
-                disabled: (group.files || []).length > 0,
-                title: (group.files || []).length > 0 ? '分组内还有配置文件，不能删除' : '删除这个空分组',
+            wrap.appendChild(createTomlGroupActionButton('删除分组', () => deleteTomlGroup(group), {
+                title: (group.files || []).length > 0
+                    ? '只删除分组，不删除里面的 TOML 文件；文件会回到默认分组'
+                    : '删除这个自定义分组',
                 danger: true,
             }));
         }
@@ -4176,6 +4208,9 @@
     }
 
     async function renameTomlGroup(group) {
+        if (!confirmDiscardTomlChanges('当前 TOML 有未保存修改，重命名分组前会重新读取文件列表。是否继续？')) {
+            return;
+        }
         const label = await showHistoryTaskInputDialog({
             title: '重命名配置分组',
             description: '只修改分组显示名称，不会改动配置文件路径。',
@@ -4200,6 +4235,27 @@
             }
             await loadTomlFileList(currentTomlFile || '');
             setTomlStatus('ok', res.message || '分组已重命名');
+        } catch (e) {
+            setTomlStatus('error', '请求失败: ' + e.message);
+        }
+    }
+
+    async function reorderTomlGroup(group, direction) {
+        if (!group?.id) return;
+        if (!confirmDiscardTomlChanges('当前 TOML 有未保存修改，调整分组顺序前会重新读取文件列表。是否继续？')) {
+            return;
+        }
+        try {
+            const res = await api('/api/config/file-groups/reorder-group', {
+                method: 'POST',
+                body: JSON.stringify({ group: group.id, direction }),
+            });
+            if (!res.ok) {
+                setTomlStatus('error', res.error || '调整分组顺序失败');
+                return;
+            }
+            await loadTomlFileList(currentTomlFile || '');
+            setTomlStatus('ok', res.message || '分组顺序已更新');
         } catch (e) {
             setTomlStatus('error', '请求失败: ' + e.message);
         }
@@ -4326,15 +4382,17 @@
     }
 
     async function deleteTomlGroup(group) {
-        if ((group.files || []).length > 0) {
-            setTomlStatus('error', '分组内还有配置文件，请先移动或删除文件');
+        if (!confirmDiscardTomlChanges('当前 TOML 有未保存修改，删除分组前会重新读取文件列表。是否继续？')) {
             return;
         }
+        const count = (group.files || []).length;
         const ok = await showHistoryTaskConfirmDialog({
             title: '删除配置分组',
             description: group.label || group.id,
-            message: '只删除这个空分组，不会删除任何 TOML 文件。',
-            confirmText: '删除空分组',
+            message: count > 0
+                ? `只删除这个分组，不删除其中 ${count} 个 TOML 文件；这些文件会回到导入配置或数据集配置等默认分组。`
+                : '只删除这个分组，不会删除任何 TOML 文件。',
+            confirmText: '删除分组',
             danger: true,
         });
         if (!ok) return;

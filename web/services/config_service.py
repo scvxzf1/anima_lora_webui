@@ -918,16 +918,54 @@ def delete_config_file_group(group_id: str) -> tuple[bool, str]:
         return False, "分组不存在"
     if not _is_user_managed_group(spec):
         return False, "系统分组不能删除"
-    if _build_config_file_group(spec)["files"]:
-        return False, "分组内还有配置文件，请先移动或删除文件"
 
+    released_files = set(spec.get("files", []))
+    released_files.update(spec.get("order", []))
     specs = [item for item in specs if item["id"] != normalized]
+    if released_files:
+        for item in specs:
+            item["exclude"] = set(item.get("exclude", set())) - released_files
     user_locks, user_group_locks = _load_user_locks()
     if normalized in user_group_locks:
         user_group_locks.discard(normalized)
         _save_user_locks(user_locks, user_group_locks)
     _save_config_file_group_specs(specs)
-    return True, "分组已删除"
+    return True, "分组已删除，TOML 文件已回到默认分组"
+
+
+def reorder_config_file_group(group_id: str, direction: str) -> tuple[bool, str, dict[str, Any] | None]:
+    normalized = _normalize_group_id(group_id)
+    clean_direction = str(direction or "").strip().lower()
+    if not normalized:
+        return False, "缺少 group 参数", None
+    if clean_direction not in {"up", "down"}:
+        return False, "排序方向必须是 up 或 down", None
+
+    specs = _load_config_file_group_specs()
+    spec = _find_config_group_spec(specs, normalized)
+    if spec is None:
+        return False, "分组不存在", None
+    if _is_fixed_config_group(spec):
+        return False, "系统分组不能调整顺序", _build_config_file_group(spec)
+
+    movable_indices = [
+        idx for idx, item in enumerate(specs)
+        if not _is_fixed_config_group(item)
+    ]
+    current_pos = next((idx for idx, item_idx in enumerate(movable_indices) if specs[item_idx]["id"] == normalized), -1)
+    if current_pos < 0:
+        return False, "分组不在可排序列表中", _build_config_file_group(spec)
+
+    next_pos = current_pos - 1 if clean_direction == "up" else current_pos + 1
+    if next_pos < 0 or next_pos >= len(movable_indices):
+        return True, "分组顺序未变化", _build_config_file_group(spec)
+
+    current_index = movable_indices[current_pos]
+    next_index = movable_indices[next_pos]
+    specs[current_index], specs[next_index] = specs[next_index], specs[current_index]
+    _save_config_file_group_specs(specs)
+    moved = _find_config_group_spec(specs, normalized)
+    return True, "分组顺序已更新", _build_config_file_group(moved) if moved else None
 
 
 def move_config_file_to_group(rel_path: str, group_id: str) -> tuple[bool, str, dict[str, Any] | None]:
@@ -1343,6 +1381,17 @@ def _new_user_config_group_spec(group_id: str, label: str) -> dict[str, Any]:
 
 def _is_user_managed_group(spec: dict[str, Any]) -> bool:
     return bool(spec.get("user_managed")) and str(spec.get("id") or "") not in SYSTEM_CONFIG_GROUP_IDS
+
+
+def _is_fixed_config_group(spec: dict[str, Any]) -> bool:
+    group_id = str(spec.get("id") or "")
+    if group_id == "web_config":
+        return True
+    if group_id in {"presets", "methods"}:
+        return True
+    if bool(spec.get("locked")) and not _is_user_managed_group(spec) and not _is_user_group_locked(group_id):
+        return True
+    return False
 
 
 def _is_move_target_group(spec: dict[str, Any]) -> bool:

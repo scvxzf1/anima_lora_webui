@@ -419,6 +419,42 @@ def test_refuse_split_lokr_attn_keys():
     assert f"{base}_q_proj.lokr_w2" not in refused
 
 
+def test_lokr_defaults_alpha_when_missing_in_weights():
+    from networks.lora_anima.config import LoRANetworkCfg
+    from networks.lora_anima.network import LoRANetwork
+    from networks.lora_modules.lokr import LoKrModule
+
+    class Child(torch.nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.qkv_proj = torch.nn.Linear(8, 12, bias=False)
+
+    class Block(torch.nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.self_attn = Child()
+
+    class DiT(torch.nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.blocks = torch.nn.ModuleList([Block()])
+
+    unet = DiT()
+    cfg = LoRANetworkCfg(
+        lora_dim=4,
+        alpha=1.0,
+        module_class=LoKrModule,
+        modules_dim={"lora_unet_blocks_0_self_attn_qkv_proj": 4},
+        modules_alpha={},
+    )
+    network = LoRANetwork([], unet, cfg, multiplier=1.0)
+
+    assert network.unet_loras, "expected a LoKr module to be created"
+    lokr = network.unet_loras[0]
+    assert lokr.alpha.item() == 4
+    assert lokr.scale == 1.0
+
+
 # ---------------------------------------------------------------------------
 # Metadata stamp
 # ---------------------------------------------------------------------------
