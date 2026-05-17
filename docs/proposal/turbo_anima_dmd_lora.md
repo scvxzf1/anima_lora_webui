@@ -443,7 +443,7 @@ New files:
   blocks. Implements `forward_student` / `forward_fake` plus the
   attachment toggle hooks.
 - `scripts/distill_turbo.py` — main training loop. Modeled on
-  `scripts/distill_modulation.py:1` for the frozen-DiT + adapter-only
+  `scripts/distill_mod/distill.py:1` for the frozen-DiT + adapter-only
   pattern. Differences: two adapters, two optimizers, the renoise step,
   CA+DM gradient assembly.
 - `configs/methods/turbo.toml`, `configs/gui-methods/turbo_8step.toml`,

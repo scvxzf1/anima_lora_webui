@@ -3,7 +3,7 @@
 Loads pre-cached VAE latents + text encoder outputs from disk, grouped by
 latent resolution so that each batch has uniform spatial dimensions (matching
 the bucket-based batching used in LoRA training). Shared by
-``scripts/distill_modulation.py`` and ``scripts/distill_turbo.py``.
+``scripts/distill_mod/distill.py`` and ``scripts/distill_turbo.py``.
 """
 
 from __future__ import annotations

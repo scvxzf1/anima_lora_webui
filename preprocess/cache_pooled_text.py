@@ -5,7 +5,7 @@ Reads each ``{stem}_anima_te.safetensors`` in a cache directory and writes a
 matching ``{stem}_anima_pooled.safetensors`` sidecar holding
 ``pooled_v{i} = crossattn_emb_v{i}.amax(dim=0)`` for every variant present.
 
-Consumed by ``scripts/distill_modulation.py`` (modulation guidance distillation):
+Consumed by ``scripts/distill_mod/distill.py`` (modulation guidance distillation):
 ``pooled_text_proj`` ingests this tensor at every training microstep and val
 sigma; pre-caching it eliminates a redundant ``.max(dim=1)`` per step.
 

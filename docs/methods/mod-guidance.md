@@ -149,7 +149,7 @@ make distill-mod
 Or invoke directly:
 
 ```bash
-python scripts/distill_modulation.py \
+python -m scripts.distill_mod.distill \
     --data_dir post_image_dataset \
     --dit_path models/diffusion_models/anima-base-v1.0.safetensors \
     --output_path output/pooled_text_proj.safetensors \

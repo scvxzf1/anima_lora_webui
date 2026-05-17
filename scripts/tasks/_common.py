@@ -85,7 +85,7 @@ def _path(key: str, default: str) -> str:
 
 def bespoke_preset_flags(preset: str) -> list[str]:
     """Translate ``configs/presets.toml[<preset>]`` into CLI flags for the
-    bespoke distillation loops (``distill_modulation.py`` / ``distill_turbo.py``)
+    bespoke distillation loops (``scripts/distill_mod/distill.py`` / ``distill_turbo.py``)
     that bypass ``train.py``'s config merge chain.
 
     Honored keys:

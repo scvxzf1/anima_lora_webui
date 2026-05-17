@@ -42,7 +42,8 @@ Stays:
 Removed (moved to `anima_inference`):
 
 - `inference.py` (top-level).
-- `scripts/distill_modulation.py`.
+- `scripts/distill_mod/` (the whole package — `prep.py` / `distill.py` /
+  shared `uncond.py` / `synth.py` / `teacher_cache.py` / `validation.py`).
 - All `cmd_test*` task commands in `scripts/tasks/inference.py` —
   `test`, `test-mod`, `test-spectrum`, `test-spectrum-dcw`,
   `test-hydra`, `test-prefix`, `test-postfix*`, `test-ip`,
@@ -131,7 +132,9 @@ project is set up as an app, not a library. Nothing is exposed for
           spectrum_register.py        # imports networks.spectrum, registers runner
           mod_guidance/
             __init__.py
-            distill.py                # was scripts/distill_modulation.py
+            distill.py                # was scripts/distill_mod/distill.py
+            prep.py                   # was scripts/distill_mod/prep.py
+            # plus uncond.py / synth.py / teacher_cache.py / validation.py
         scripts/
           tasks/
             inference.py              # cmd_test, cmd_test_spectrum, ...
@@ -150,10 +153,12 @@ In dependency order:
 - [ ] Move `inference.py` → `anima_inference/anima_inference/inference.py`
       via `git mv`. Imports keep working unchanged because anima_lora is
       pip-installed.
-- [ ] Move `scripts/distill_modulation.py` →
-      `anima_inference/anima_inference/mod_guidance/distill.py`. Imports
-      stay the same (`library.anima.{models, weights}`,
-      `library.io.cache`).
+- [ ] Move `scripts/distill_mod/` → `anima_inference/anima_inference/mod_guidance/`
+      as `distill.py` / `prep.py` / `uncond.py` / `synth.py` /
+      `teacher_cache.py` / `validation.py`. Imports stay the same
+      (`library.anima.{models, weights}`, `library.io.cache`); fix the
+      package-relative `scripts.distill_mod.*` imports inside `distill.py` /
+      `prep.py` to point at the new location.
 - [ ] Move all `cmd_test*` from `scripts/tasks/inference.py` to
       `anima_inference/scripts/tasks/inference.py`. Drop the originals
       from `anima_lora`.

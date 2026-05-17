@@ -48,7 +48,7 @@ def cmd_distill_prep(extra):
     Skip flags forwarded via ``extra``: ``--skip_uncond``, ``--skip_synth``,
     ``--max_samples N``, etc.
     """
-    run([PY, "scripts/distill_mod_prep.py", *extra])
+    run([PY, "-m", "scripts.distill_mod.prep", *extra])
 
 
 def cmd_distill_mod(extra):
@@ -66,7 +66,8 @@ def cmd_distill_mod(extra):
     run(
         [
             PY,
-            "scripts/distill_modulation.py",
+            "-m",
+            "scripts.distill_mod.distill",
             "--data_dir",
             "post_image_dataset/lora",
             "--dit_path",

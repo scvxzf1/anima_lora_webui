@@ -276,7 +276,7 @@ Data preparation scripts in `preprocess/`:
 ## Scripts
 
 Utility scripts in `scripts/`:
-- `distill_modulation.py` — Train pooled_text_proj MLP for modulation guidance (used by `make distill-mod`)
+- `distill_mod/` — Modulation guidance distillation package: `prep.py` (Phase 1 + 2 staging, `make distill-prep`), `distill.py` (pooled_text_proj trainer, `make distill-mod`), shared `uncond.py` / `synth.py` / `teacher_cache.py` / `validation.py`
 - `comfy_batch.py` — Run ComfyUI batch workflow from `workflows/` directory
 - `merge_to_dit.py` — Bake a LoRA adapter into the base DiT (used by `make merge`)
 - `compute_pe_centroid.py` — Compute PE-feature centroid for DCW v4's `cos(c_pool, μ_centroid)` channel.
