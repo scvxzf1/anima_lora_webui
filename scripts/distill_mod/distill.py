@@ -103,8 +103,8 @@ def main():
         default="output/ckpt/pooled_text_proj.safetensors",
         help="Where to save the trained projection weights",
     )
-    parser.add_argument("--iterations", type=int, default=5000)
-    parser.add_argument("--lr", type=float, default=2e-5)
+    parser.add_argument("--iterations", type=int, default=7500)
+    parser.add_argument("--lr", type=float, default=1e-5)
     parser.add_argument("--batch_size", type=int, default=1, help="Batch size")
     parser.add_argument(
         "--blocks_to_swap",
@@ -113,7 +113,7 @@ def main():
         help="Number of transformer blocks to offload to CPU",
     )
     parser.add_argument(
-        "--save_every", type=int, default=1000, help="Save checkpoint every N iterations"
+        "--save_every", type=int, default=750, help="Save checkpoint every N iterations"
     )
     parser.add_argument(
         "--attn_mode",
@@ -215,7 +215,7 @@ def main():
     parser.add_argument(
         "--validation_split",
         type=float,
-        default=0.05,
+        default=0.01,
         help="Fraction of dataset held out for validation (e.g. 0.05 for 5 percent)",
     )
     parser.add_argument(
@@ -227,7 +227,7 @@ def main():
     parser.add_argument(
         "--validate_every_n_steps",
         type=int,
-        default=1000,
+        default=750,
         help="Run validation every N optimizer steps (only if validation_split>0)",
     )
     parser.add_argument(
