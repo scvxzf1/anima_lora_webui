@@ -1517,12 +1517,12 @@
             "推荐 bf16。"
         ),
         source_image_dir: help(
-            "原始训练图像和 .txt 标注所在目录。",
-            "默认 image_dataset；图片和同名 caption 放在这里。",
-            ["把原始数据和缓存/输出分开，便于重建。"],
-            ["路径切换后需要重新预处理。"],
-            ["caption 缺失或文件名不匹配会影响训练条件。"],
-            "新数据集先放 image_dataset，确认流程后再拆分多目录。"
+            "兼容旧配置的原始数据集路径；在多数据集模式中，它只是下方第 1 组原始路径的镜像。",
+            "不要在这里编辑多组路径；请在“多数据集路径”里逐行填写原始数据集、缩放图和缓存目录。",
+            ["旧脚本仍能读到 source_image_dir，同时 WebUI 可以使用 dataset_config 管理多组数据。"],
+            ["只代表第 1 组，不能表达第 2 组及之后的数据集。"],
+            ["误以为它是全局路径，可能会忽略下方真正参与训练的多组路径。"],
+            "多数据集训练时以下方每一行为准；这里保持自动同步即可。"
         ),
         resized_image_dir: help(
             "预处理后 resize 图像的目录。",
@@ -2280,6 +2280,10 @@
         }
         input.className = 'field-input dataset-config-input';
         input.dataset.key = key;
+        if (key === 'source_image_dir') {
+            input.readOnly = true;
+            input.title = '只显示下方第 1 组“原始数据集路径”的镜像；多数据集请在下面逐行编辑。';
+        }
         input.addEventListener('input', () => updateDatasetConfigValue(key, input));
         input.addEventListener('change', () => updateDatasetConfigValue(key, input));
         return input;
@@ -2287,7 +2291,7 @@
 
     function datasetConfigLabel(key) {
         const labels = {
-            source_image_dir: '输入路径',
+            source_image_dir: '第 1 组原始路径镜像',
             resolution: '分辨率',
             enable_bucket: '启用长宽比分桶',
             min_bucket_reso: '最小桶边长',
@@ -2307,7 +2311,6 @@
 
     function updateDatasetConfigValue(key, input) {
         if (key === 'source_image_dir') {
-            updateDatasetEditorRow(0, 'source_dir', input.value);
             return;
         }
         updateDatasetDefault(key, input);
@@ -2419,6 +2422,9 @@
             ? Math.max(1, Number.parseInt(value || '1', 10) || 1)
             : value;
         datasetEditorState.datasets = rows;
+        if (index === 0 && key === 'source_dir') {
+            setFieldInputValue('source_image_dir', value);
+        }
         markDatasetEditorDirty();
         if (key === 'num_repeats') {
             updateStepEstimatePanel();
@@ -3128,6 +3134,25 @@
         }
         const editorDirty = isTomlDirty();
         const formDirty = hasUnsavedFormChanges(file);
+        const directEditorSave = options.mode === 'editor';
+        if (directEditorSave) {
+            if (formDirty) {
+                setTomlStatus('error', '左侧表单或数据集有未保存修改，请先使用“保存更新当前选中配置”处理后再直接保存 TOML');
+                updateTomlActionState(file);
+                return;
+            }
+            if (!editorDirty) {
+                setTomlStatus('error', '直接编辑器没有未保存的 TOML 文本修改');
+                return;
+            }
+            if (tomlSaveConfirmFile !== file) {
+                armTomlSaveConfirm(file);
+                return;
+            }
+            resetTomlSaveConfirm({ update: false });
+            await saveRawTomlContent(file, document.getElementById('toml-editor').value, { reloadConfig: currentTrainingSource.file === file });
+            return;
+        }
         if (editorDirty && !formDirty && tomlSaveConfirmFile !== file) {
             armTomlSaveConfirm(file);
             return;
@@ -3145,6 +3170,10 @@
             }
         }
         const content = document.getElementById('toml-editor').value;
+        await saveRawTomlContent(file, content, { reloadConfig: currentTrainingSource.file === file });
+    }
+
+    async function saveRawTomlContent(file, content, options = {}) {
         try {
             const res = await api('/api/config/raw', {
                 method: 'PUT',
@@ -3156,7 +3185,7 @@
                 updateTomlDirtyState();
                 setTomlStatus('ok', '✓ 已保存');
                 await loadTomlFileList(file);
-                if (currentTrainingSource.file === file) {
+                if (options.reloadConfig) {
                     await loadConfig(); // 仅当前训练源被保存时刷新左侧表单
                 }
             } else {
@@ -3997,7 +4026,9 @@
         const saveDirectBtn = document.getElementById('btn-save-toml-direct');
         const copyBtn = document.getElementById('btn-copy-toml');
         const meta = tomlFileMeta[filePath];
-        const dirty = hasPendingConfigChanges(filePath);
+        const editorDirty = isTomlDirty();
+        const formDirty = hasUnsavedFormChanges(filePath);
+        const dirty = editorDirty || formDirty;
         const locked = Boolean(meta?.locked);
         const confirming = Boolean(filePath && tomlSaveConfirmFile === filePath);
         if (toggleBtn) {
@@ -4011,14 +4042,16 @@
                 : '展开二级界面，查看、复制或直接编辑当前 TOML。适合批量改字段，保存时需要二次确认。';
         }
         if (saveDirectBtn) {
-            saveDirectBtn.disabled = locked || !filePath || !dirty;
+            saveDirectBtn.disabled = locked || !filePath || !editorDirty || formDirty;
             saveDirectBtn.textContent = confirming ? '确认保存配置文件' : '保存配置文件';
             saveDirectBtn.classList.toggle('btn-confirm-danger', confirming);
             saveDirectBtn.title = locked
                 ? '该配置文件已锁定，请使用新名称保存新配置后编辑'
-                : (dirty
+                : (formDirty
+                    ? '左侧表单或数据集还有未保存修改，请先用“保存更新当前选中配置”保存。'
+                    : (editorDirty
                     ? (confirming ? '再次点击才会真正写入磁盘；请确认 TOML 内容没有语法错误。' : '第一次点击进入确认，第二次点击保存，防止误覆盖配置文件。')
-                    : '当前配置没有未保存修改');
+                    : '直接编辑器没有未保存的 TOML 文本修改'));
         }
         if (copyBtn) {
             copyBtn.disabled = !filePath && !document.getElementById('toml-editor')?.value;
@@ -6796,7 +6829,7 @@
         document.getElementById('btn-save-toml').addEventListener('click', saveTomlFile);
         document.getElementById('btn-toggle-toml-editor').addEventListener('click', toggleTomlEditorPanel);
         document.getElementById('btn-copy-toml').addEventListener('click', copyTomlEditorContent);
-        document.getElementById('btn-save-toml-direct').addEventListener('click', () => saveTomlFile({ confirm: true }));
+        document.getElementById('btn-save-toml-direct').addEventListener('click', () => saveTomlFile({ mode: 'editor' }));
         document.getElementById('btn-import-toml').addEventListener('click', importTomlFile);
         document.getElementById('btn-export-toml').addEventListener('click', exportTomlFile);
         document.getElementById('btn-save-as-toml').addEventListener('click', saveTomlAs);

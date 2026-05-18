@@ -235,11 +235,7 @@ def save_dataset_editor(
     if train_rel and get_config_file_meta(train_rel).get("locked"):
         raise ValueError(f"{_lock_reason_message(get_config_file_meta(train_rel))}，请使用新名称保存新配置后编辑")
 
-    dataset_doc = _build_dataset_config_doc(clean_rows, cfg)
-    ok, msg = save_raw_file(dataset_rel, dataset_doc, overwrite=True)
-    if not ok:
-        raise ValueError(msg)
-
+    next_content = ""
     if train_rel:
         first = clean_rows[0]
         values = {
@@ -248,11 +244,21 @@ def save_dataset_editor(
             "resized_image_dir": first["image_dir"],
             "lora_cache_dir": first["cache_dir"],
         }
-        ok, msg, next_content, _changed = patch_raw_file_values(train_rel, values, content=train_content)
+        ok, msg, _train_path, next_content, _changed = _prepare_raw_file_patch(train_rel, values, content=train_content)
         if not ok:
             raise ValueError(msg)
-    else:
-        next_content = ""
+
+    dataset_doc = _build_dataset_config_doc(clean_rows, cfg)
+    dataset_existed = dataset_path.exists()
+    previous_dataset_doc = dataset_path.read_text(encoding="utf-8") if dataset_existed else ""
+    ok, msg = save_raw_file(dataset_rel, dataset_doc, overwrite=True)
+    if not ok:
+        raise ValueError(msg)
+    if train_rel:
+        ok, msg = save_raw_file(train_rel, next_content, overwrite=True)
+        if not ok:
+            _restore_dataset_config_after_failed_train_patch(dataset_path, dataset_existed, previous_dataset_doc)
+            raise ValueError(msg)
 
     return {
         "ok": True,
@@ -732,27 +738,29 @@ def load_sample_prompts_file(rel_path: str | None = None) -> dict[str, Any]:
     path = (ROOT / normalized).resolve()
     if not path.exists():
         return {"ok": True, "file": normalized, "content": "", "prompts": []}
-    lines = path.read_text(encoding="utf-8").splitlines()
+    content = path.read_text(encoding="utf-8")
+    lines = content.splitlines()
     prompts = [line.strip() for line in lines if line.strip() and not line.lstrip().startswith("#")]
     return {
         "ok": True,
         "file": normalized,
-        "content": "\n".join(prompts),
+        "content": content,
         "prompts": prompts,
     }
 
 
 def save_sample_prompts_file(content: str, rel_path: str | None = None) -> dict[str, Any]:
     normalized = _normalize_prompt_file_path(rel_path or DEFAULT_SAMPLE_PROMPTS_FILE)
-    lines = [line.strip() for line in str(content or "").splitlines()]
-    prompts = [line for line in lines if line and not line.startswith("#")]
+    text = str(content or "")
+    lines = text.splitlines()
+    prompts = [line.strip() for line in lines if line.strip() and not line.lstrip().startswith("#")]
     path = (ROOT / normalized).resolve()
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text("\n".join(prompts) + ("\n" if prompts else ""), encoding="utf-8")
+    path.write_text(text, encoding="utf-8")
     return {
         "ok": True,
         "file": normalized,
-        "content": "\n".join(prompts),
+        "content": text,
         "prompts": prompts,
         "message": f"已保存 {len(prompts)} 条预览提示词",
     }
@@ -816,26 +824,48 @@ def patch_raw_file_values(
     *,
     content: str | None = None,
 ) -> tuple[bool, str, str, list[str]]:
+    ok, msg, path, next_content, changed = _prepare_raw_file_patch(rel_path, values, content=content)
+    if not ok or path is None:
+        return False, msg, "", []
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(next_content, encoding="utf-8")
+    return True, "保存成功", next_content, changed
+
+
+def _prepare_raw_file_patch(
+    rel_path: str,
+    values: dict[str, Any],
+    *,
+    content: str | None = None,
+) -> tuple[bool, str, Path | None, str, list[str]]:
     normalized = _normalize_config_rel_path(rel_path)
     path = _safe_resolve(normalized)
     if path is None:
-        return False, "路径不合法", "", []
+        return False, "路径不合法", None, "", []
     meta = get_config_file_meta(normalized)
     if meta.get("locked"):
-        return False, f"{_lock_reason_message(meta)}，请使用新名称保存新配置后编辑", "", []
+        return False, f"{_lock_reason_message(meta)}，请使用新名称保存新配置后编辑", None, "", []
     if not isinstance(values, dict):
-        return False, "字段补丁格式不合法", "", []
+        return False, "字段补丁格式不合法", None, "", []
 
     source = content if content is not None else load_raw_file(rel_path)
     try:
         next_content = _patch_toml_top_level(source, values)
         toml.loads(next_content)
     except Exception as e:
-        return False, f"TOML 更新失败: {e}", "", []
+        return False, f"TOML 更新失败: {e}", None, "", []
 
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(next_content, encoding="utf-8")
-    return True, "保存成功", next_content, sorted(values.keys())
+    return True, "保存成功", path, next_content, sorted(values.keys())
+
+
+def _restore_dataset_config_after_failed_train_patch(path: Path, existed: bool, previous_content: str) -> None:
+    if existed:
+        path.write_text(previous_content, encoding="utf-8")
+        return
+    try:
+        path.unlink()
+    except FileNotFoundError:
+        return
 
 
 def set_user_file_lock(rel_path: str, locked: bool) -> tuple[bool, str, dict[str, Any]]:
