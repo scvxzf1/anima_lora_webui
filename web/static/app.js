@@ -34,6 +34,7 @@
     let selectedPreviewTaskId = '';
     let selectedPreviewGroup = null;
     let previewRequestSeq = 0;
+    let previewWeightRequestSeq = 0;
     let previewWeightSortDirection = 'asc';
     let currentStepEstimate = null;
     let datasetEditorState = {
@@ -1736,6 +1737,10 @@
         };
     }
 
+    function isHistoryReviewMode() {
+        return historyViewMode !== 'live' || Boolean(viewingHistoryTaskId);
+    }
+
     // ── Tab 切换 ──
     function setupTabs() {
         document.querySelectorAll('.tab-btn').forEach(btn => {
@@ -1776,6 +1781,7 @@
             await loadTrainingHistoryList();
             await loadPreviewSettings();
             await loadSamplePrompts();
+            returnToLiveTraining({ refresh: false });
         } catch (e) {
             console.error('初始化失败:', e);
         }
@@ -4830,20 +4836,20 @@
     function handleWsMessage(msg) {
         switch (msg.type) {
             case 'log':
-                if (viewingHistoryTaskId) break;
+                if (isHistoryReviewMode()) break;
                 markTrainingActivity(msg.ts);
                 appendLogRecord(msg);
                 break;
             case 'progress':
-                if (viewingHistoryTaskId) break;
+                if (isHistoryReviewMode()) break;
                 updateProgress(msg);
                 break;
             case 'metrics':
-                if (viewingHistoryTaskId) break;
+                if (isHistoryReviewMode()) break;
                 updateMetrics(msg);
                 break;
             case 'status':
-                if (viewingHistoryTaskId) {
+                if (isHistoryReviewMode()) {
                     loadTrainingHistoryList();
                     renderResumePanelState();
                     break;
@@ -4852,7 +4858,7 @@
                 loadTrainingHistoryList();
                 break;
             case 'system':
-                if (viewingHistoryTaskId) break;
+                if (isHistoryReviewMode()) break;
                 updateSystem(msg);
                 break;
         }
@@ -4882,7 +4888,7 @@
     }
 
     async function replayTrainingLogs() {
-        if (viewingHistoryTaskId) return;
+        if (isHistoryReviewMode()) return;
         try {
             const payload = await api(`/api/training/logs?after=${trainingRuntime.lastLogId}&limit=1000`);
             for (const record of payload.records || []) {
@@ -4898,7 +4904,7 @@
     }
 
     async function replayMetricsHistory() {
-        if (viewingHistoryTaskId) return;
+        if (isHistoryReviewMode()) return;
         try {
             const records = await api('/api/training/metrics');
             for (const record of records || []) {
@@ -4932,7 +4938,7 @@
     }
 
     function updateProgress(msg) {
-        if (viewingHistoryTaskId) return;
+        if (isHistoryReviewMode()) return;
         markTrainingActivity(msg.ts);
         const pct = msg.total > 0 ? (msg.current / msg.total * 100) : 0;
         document.getElementById('progress-bar').style.width = pct.toFixed(1) + '%';
@@ -4944,7 +4950,7 @@
     }
 
     function updateMetrics(msg) {
-        if (viewingHistoryTaskId) return;
+        if (isHistoryReviewMode()) return;
         markTrainingActivity(msg.ts);
         if (msg.loss !== undefined) {
             document.getElementById('metric-loss').textContent = msg.loss.toFixed(5);
@@ -4963,7 +4969,7 @@
     }
 
     function updateStatus(msg) {
-        if (viewingHistoryTaskId) return;
+        if (isHistoryReviewMode()) return;
         const dot = document.querySelector('.dot');
         const text = document.getElementById('status-text');
         const stopBtn = document.getElementById('btn-stop-training');
@@ -5013,7 +5019,7 @@
     }
 
     function updateSystem(msg) {
-        if (viewingHistoryTaskId) return;
+        if (isHistoryReviewMode()) return;
         if (msg.last_output_at) {
             markTrainingActivity(msg.last_output_at);
         }
@@ -5047,7 +5053,7 @@
         const ageEl = document.getElementById('metric-log-age');
         if (!el || !ageEl) return;
 
-        if (viewingHistoryTaskId) {
+        if (isHistoryReviewMode()) {
             el.className = 'training-health';
             return;
         }
@@ -5237,18 +5243,23 @@
     }
 
     async function loadPreviewWeights() {
+        const requestSeq = ++previewWeightRequestSeq;
         if (location.protocol === 'file:') {
-            renderPreviewWeights({ ok: true, weights: [], message: '静态打开没有后端 API。' });
+            if (requestSeq === previewWeightRequestSeq) {
+                renderPreviewWeights({ ok: true, weights: [], message: '静态打开没有后端 API。' });
+            }
             return;
         }
         if (currentPreviewSource !== 'training' || (!selectedPreviewTaskId && !selectedPreviewGroup)) {
-            renderPreviewWeights({
-                ok: true,
-                weights: [],
-                message: currentPreviewSource === 'training'
-                    ? '选择一个训练任务或训练分组后显示权重文件。'
-                    : '权重文件只随训练任务显示。',
-            });
+            if (requestSeq === previewWeightRequestSeq) {
+                renderPreviewWeights({
+                    ok: true,
+                    weights: [],
+                    message: currentPreviewSource === 'training'
+                        ? '选择一个训练任务或训练分组后显示权重文件。'
+                        : '权重文件只随训练任务显示。',
+                });
+            }
             return;
         }
         try {
@@ -5263,8 +5274,10 @@
                 params.set('task_id', selectedPreviewTaskId);
             }
             const payload = await api(`/api/preview/weights?${params.toString()}`);
+            if (requestSeq !== previewWeightRequestSeq) return;
             renderPreviewWeights(payload);
         } catch (e) {
+            if (requestSeq !== previewWeightRequestSeq) return;
             renderPreviewWeights({ ok: false, weights: [], error: '读取权重文件失败: ' + e.message });
         }
     }
@@ -5276,7 +5289,7 @@
         });
         updatePreviewTaskVisibility();
         updatePreviewDirectorySummary();
-        loadPreviewWeights();
+        previewWeightRequestSeq += 1;
         loadPreviewImages();
     }
 
@@ -5401,8 +5414,9 @@
     async function changePreviewTask(taskId) {
         applyPreviewSelectionValue(taskId || '');
         previewSettings = null;
+        previewWeightRequestSeq += 1;
         await loadPreviewSettings();
-        await Promise.all([loadPreviewImages(), loadPreviewWeights()]);
+        await loadPreviewImages();
     }
 
     function renderPreviewImages(payload) {
@@ -5502,6 +5516,9 @@
     function createPreviewWeightItem(item) {
         const row = document.createElement('article');
         row.className = `preview-weight-item preview-weight-${item.kind || 'weight'}`;
+        if (item.scope === 'task') {
+            row.classList.add('preview-weight-task');
+        }
         if (item.source_task?.id) {
             row.dataset.sourceTaskId = item.source_task.id;
         }
@@ -5841,7 +5858,7 @@
 
     // ── 状态轮询 ──
     async function pollStatus() {
-        if (viewingHistoryTaskId) return;
+        if (isHistoryReviewMode()) return;
         try {
             const status = await api('/api/training/status');
             updateStatus({
@@ -6465,7 +6482,8 @@
         ].join('|');
     }
 
-    function returnToLiveTraining() {
+    function returnToLiveTraining(options = {}) {
+        const refresh = options.refresh !== false;
         viewingHistoryTaskId = '';
         historyViewMode = 'live';
         currentHistoryConfigGroup = null;
@@ -6488,8 +6506,10 @@
         lossChart?.clear();
         lossChart?.setXLabel?.('step');
         renderTrainingHistoryList();
-        pollStatus();
-        replayTrainingLogs();
+        if (refresh) {
+            pollStatus();
+            replayTrainingLogs();
+        }
     }
 
     async function loadResumeOptionsForTask(taskId = viewingHistoryTaskId) {
@@ -6735,6 +6755,7 @@
             running: '运行中',
             idle: '完成',
             error: '异常',
+            interrupted: '已中断',
         }[state] || state || '未知';
     }
 
@@ -6794,7 +6815,7 @@
         });
         document.getElementById('toml-editor').addEventListener('input', updateTomlDirtyState);
         document.getElementById('btn-clear-log').addEventListener('click', () => {
-            if (viewingHistoryTaskId) return;
+            if (isHistoryReviewMode()) return;
             document.getElementById('log-output').textContent = '';
             trainingRuntime.logLineCount = 0;
             updateLogStatusText();

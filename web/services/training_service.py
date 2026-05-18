@@ -68,6 +68,7 @@ class TrainingService:
         self._last_log_line: str = ""
         self._log_records: deque[dict[str, Any]] = deque(maxlen=MAX_LOG_RECORDS)
         self._next_log_id = 1
+        _mark_orphaned_running_history_tasks()
 
     async def start(
         self,
@@ -893,6 +894,49 @@ def _list_history_tasks() -> list[dict[str, Any]]:
             tasks.append(_history_summary(meta, meta_path.parent))
     tasks.sort(key=lambda item: item.get("started_at") or 0, reverse=True)
     return tasks[:MAX_HISTORY_ITEMS]
+
+
+def _mark_orphaned_running_history_tasks() -> int:
+    if not HISTORY_DIR.exists():
+        return 0
+    count = 0
+    for meta_path in HISTORY_DIR.glob("*/meta.json"):
+        meta = _read_json(meta_path)
+        if not meta or meta.get("state") != "running":
+            continue
+        task_dir = meta_path.parent
+        finished_at = _last_history_event_ts(task_dir, meta)
+        meta.update({
+            "state": "interrupted",
+            "finished_at": finished_at,
+            "finished_at_text": _format_ts(finished_at),
+            "message": "WebUI 上次退出时任务仍标记为运行中，已自动标记为中断。",
+            "returncode": meta.get("returncode"),
+            "log_count": _count_jsonl(task_dir / "logs.jsonl"),
+            "metric_count": _count_jsonl(task_dir / "metrics.jsonl"),
+            "interrupted_at": time.time(),
+            "interrupted_at_text": _format_ts(time.time()),
+        })
+        _write_json(meta_path, meta)
+        count += 1
+    return count
+
+
+def _last_history_event_ts(task_dir: Path, meta: dict[str, Any]) -> float:
+    candidates = [
+        _float_or_none(meta.get("finished_at")),
+        _float_or_none(meta.get("updated_at")),
+    ]
+    for filename in ("logs.jsonl", "metrics.jsonl", "system.jsonl"):
+        records = _read_jsonl(task_dir / filename)
+        for record in reversed(records):
+            ts = _float_or_none(record.get("ts"))
+            if ts is not None:
+                candidates.append(ts)
+                break
+    candidates.append(_float_or_none(meta.get("started_at")))
+    candidates = [value for value in candidates if value is not None]
+    return max(candidates) if candidates else time.time()
 
 
 def _history_task_dir(task_id: str) -> Path:

@@ -5,6 +5,56 @@ from PIL import Image
 from web.services import preview_service
 
 
+def test_preview_settings_allow_absolute_inference_and_custom_dirs(tmp_path, monkeypatch):
+    settings_file = tmp_path / "web-ui-settings.toml"
+    inference_dir = tmp_path / "inference"
+    custom_dir = tmp_path / "custom"
+
+    monkeypatch.setattr(preview_service, "SETTINGS_FILE", settings_file)
+
+    payload = preview_service.save_preview_settings(
+        {
+            "training_dir": "output/ckpt/sample",
+            "inference_dir": str(inference_dir),
+            "custom_dir": str(custom_dir),
+        }
+    )
+
+    assert payload["inference_dir"] == inference_dir.resolve().as_posix()
+    assert payload["custom_dir"] == custom_dir.resolve().as_posix()
+    assert preview_service.get_preview_settings()["inference_dir"] == inference_dir.resolve().as_posix()
+    assert preview_service.get_preview_settings()["custom_dir"] == custom_dir.resolve().as_posix()
+
+
+def test_preview_image_absolute_file_must_be_under_saved_preview_dir(tmp_path, monkeypatch):
+    settings_file = tmp_path / "web-ui-settings.toml"
+    custom_dir = tmp_path / "custom"
+    other_dir = tmp_path / "other"
+    custom_dir.mkdir()
+    other_dir.mkdir()
+    allowed_image = custom_dir / "allowed.png"
+    blocked_image = other_dir / "blocked.png"
+    Image.new("RGB", (8, 8), color=(12, 34, 56)).save(allowed_image)
+    Image.new("RGB", (8, 8), color=(56, 34, 12)).save(blocked_image)
+
+    monkeypatch.setattr(preview_service, "SETTINGS_FILE", settings_file)
+    preview_service.save_preview_settings(
+        {
+            "training_dir": "output/ckpt/sample",
+            "inference_dir": "output/tests",
+            "custom_dir": str(custom_dir),
+        }
+    )
+
+    assert preview_service.resolve_preview_image(str(allowed_image)) == allowed_image.resolve()
+    try:
+        preview_service.resolve_preview_image(str(blocked_image))
+    except ValueError as exc:
+        assert "已保存的预览目录" in str(exc)
+    else:
+        raise AssertionError("项目外且不在已保存预览目录内的图片不应允许读取")
+
+
 def test_training_preview_images_include_sample_details(tmp_path, monkeypatch):
     sample_dir = tmp_path / "sample"
     sample_dir.mkdir()

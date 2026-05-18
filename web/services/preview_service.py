@@ -52,11 +52,11 @@ def save_preview_settings(data: dict[str, Any]) -> dict[str, Any]:
             data.get("training_dir", current["training_dir"]) or DEFAULT_TRAINING_DIR,
             allow_empty=False,
         ),
-        "inference_dir": _normalize_project_dir(
+        "inference_dir": _normalize_preview_dir(
             data.get("inference_dir", current["inference_dir"]) or DEFAULT_INFERENCE_DIR,
             allow_empty=False,
         ),
-        "custom_dir": _normalize_project_dir(data.get("custom_dir", current["custom_dir"]) or "", allow_empty=True),
+        "custom_dir": _normalize_preview_dir(data.get("custom_dir", current["custom_dir"]) or "", allow_empty=True),
     }
     SETTINGS_FILE.parent.mkdir(parents=True, exist_ok=True)
     SETTINGS_FILE.write_text(toml.dumps({"preview": next_settings}), encoding="utf-8")
@@ -408,7 +408,8 @@ def _load_settings() -> dict[str, str]:
     out = dict(defaults)
     for key in out:
         try:
-            out[key] = _normalize_project_dir(str(preview.get(key, out[key]) or ""), allow_empty=(key == "custom_dir"))
+            normalizer = _normalize_project_dir if key == "training_dir" else _normalize_preview_dir
+            out[key] = normalizer(str(preview.get(key, out[key]) or ""), allow_empty=(key == "custom_dir"))
         except ValueError:
             out[key] = defaults[key]
     return out
@@ -849,12 +850,11 @@ def _resolve_preview_dir(value: str, *, current_task_sample_dir: str | None = No
     if path.is_absolute():
         resolved = path.resolve()
         allowed = _resolve_allowed_sample_dir(current_task_sample_dir)
-        if allowed is None:
-            return None
-        try:
-            resolved.relative_to(allowed)
-        except ValueError:
-            return None
+        if allowed is not None:
+            try:
+                resolved.relative_to(allowed)
+            except ValueError:
+                return None
         return resolved
     return _resolve_project_path(value)
 
@@ -866,14 +866,13 @@ def _resolve_preview_file(value: str, *, allowed_sample_dir: str | None = None) 
     path = Path(clean)
     if path.is_absolute():
         resolved = path.resolve()
-        allowed = _resolve_allowed_sample_dir(allowed_sample_dir)
-        if allowed is None:
-            raise ValueError("项目外图片只允许读取当前任务样张目录")
-        try:
-            resolved.relative_to(allowed)
-        except ValueError as exc:
-            raise ValueError("项目外图片只允许读取当前任务样张目录") from exc
-        return resolved
+        for allowed in _allowed_external_preview_dirs(allowed_sample_dir):
+            try:
+                resolved.relative_to(allowed)
+                return resolved
+            except ValueError:
+                continue
+        raise ValueError("项目外图片只允许读取当前任务样张目录或已保存的预览目录")
 
     normalized = _normalize_project_file(clean)
     resolved = (ROOT / normalized).resolve()
@@ -891,6 +890,19 @@ def _resolve_allowed_sample_dir(value: str | None) -> Path | None:
     if not path.is_absolute():
         path = ROOT / path
     return path.resolve()
+
+
+def _allowed_external_preview_dirs(allowed_sample_dir: str | None) -> list[Path]:
+    dirs: list[Path] = []
+    sample_dir = _resolve_allowed_sample_dir(allowed_sample_dir)
+    if sample_dir is not None:
+        dirs.append(sample_dir)
+    settings = _load_settings()
+    for key in ("inference_dir", "custom_dir"):
+        resolved = _resolve_display_path(settings.get(key, ""))
+        if resolved is not None:
+            dirs.append(resolved)
+    return dirs
 
 
 def _resolve_training_output_dir(value: str) -> Path | None:

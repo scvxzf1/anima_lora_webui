@@ -60,6 +60,8 @@ def _write_group_task(
     started_at=1000.0,
     steps=None,
     archived=False,
+    state="idle",
+    finished_at=None,
     config_text=None,
 ):
     task_dir = history_dir / task_id
@@ -69,7 +71,7 @@ def _write_group_task(
     meta = {
         "id": task_id,
         "job": job,
-        "state": "idle",
+        "state": state,
         "variant": variant,
         "preset": preset,
         "methods_subdir": methods_subdir,
@@ -77,8 +79,8 @@ def _write_group_task(
         "sample_dir": str(output_dir / "sample"),
         "started_at": started_at,
         "started_at_text": f"ts-{int(started_at)}",
-        "finished_at": started_at + 10,
-        "finished_at_text": f"ts-{int(started_at + 10)}",
+        "finished_at": finished_at if finished_at is not None else (started_at + 10 if state != "running" else None),
+        "finished_at_text": "" if state == "running" and finished_at is None else f"ts-{int((finished_at if finished_at is not None else started_at + 10))}",
         "archived": archived,
     }
     (task_dir / "meta.json").write_text(json.dumps(meta), encoding="utf-8")
@@ -244,3 +246,28 @@ def test_config_group_timeline_respects_archived_filter(tmp_path, monkeypatch):
 
     assert payload["summary"]["task_count"] == 1
     assert with_archived["summary"]["task_count"] == 2
+
+
+def test_service_startup_marks_orphaned_running_tasks_interrupted(tmp_path, monkeypatch):
+    history_dir = tmp_path / "history"
+    task_dir = _write_group_task(
+        history_dir,
+        "20260517-000001-training-imported-demo",
+        started_at=1000.0,
+        steps=[(1, 0.3), (2, 0.2)],
+        state="running",
+    )
+    monkeypatch.setattr(training_service, "HISTORY_DIR", history_dir)
+
+    TrainingService(web.Application())
+
+    meta = json.loads((task_dir / "meta.json").read_text(encoding="utf-8"))
+    assert meta["state"] == "interrupted"
+    assert "中断" in meta["message"]
+    assert meta["finished_at"] == 1002.0
+    assert meta["log_count"] == 2
+    assert meta["metric_count"] == 2
+
+    svc = TrainingService(web.Application())
+    payload = svc.get_config_group_timeline("imported", "demo", "default")
+    assert payload["tasks"][0]["state"] == "interrupted"
