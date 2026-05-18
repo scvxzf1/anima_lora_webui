@@ -1702,6 +1702,15 @@ class LoRANetwork(torch.nn.Module):
         from the proposal §Balance loss — independent terms force each
         pool to spread on its own pressure, unlike a single combined term
         which can collapse one pool to uniform while the other concentrates.
+
+        Warmup contract is *asymmetric*: the per-Linear content router
+        gates through ``_balance_loss_weight`` (held at 0 during the
+        warmup window, then flipped to target). The freq pool bypasses
+        warmup entirely — the network-level FreqRouter has its own
+        symmetry-breaker (FEI input + ``freq_router_init_std``), so its
+        load-balance pressure can safely fire from step 0. Trainer-side
+        ``_hydra_balance_loss`` therefore consumes this scalar directly
+        without re-multiplying by the outer warmup gate.
         """
         K_c_default = int(getattr(self.cfg, "num_experts_content", 0))
         total_c = None
@@ -1730,15 +1739,15 @@ class LoRANetwork(torch.nn.Module):
             return torch.tensor(0.0)
         w_c = float(getattr(self, "_balance_w_content", 0.0) or 0.0)
         w_f = float(getattr(self, "_balance_w_freq", 0.0) or 0.0)
-        # ``_balance_loss_weight`` is the warmup-gated outer multiplier
-        # (held at 0 during warmup, flipped to the target after). It's
-        # already applied by the trainer when consuming this scalar, so
-        # we just produce the unweighted-by-outer sum here. Per-pool
-        # weights are baked in directly — they are independent scalars,
-        # not warmup-gated.
+        # Apply the warmup gate to the CONTENT pool only; freq fires from
+        # step 0 (see docstring). ``_balance_loss_weight`` is the warmup-
+        # gated outer multiplier — content rides it, freq ignores it.
+        # Trainer consumes the result of this method directly (no further
+        # multiplication on the chimera path).
+        outer = float(getattr(self, "_balance_loss_weight", 0.0) or 0.0)
         out = torch.tensor(0.0)
         if total_c is not None and count_c > 0:
-            out = out + w_c * (total_c / count_c)
+            out = out + outer * w_c * (total_c / count_c)
         if total_f is not None and count_f > 0:
             out = out + w_f * (total_f / count_f)
         return out

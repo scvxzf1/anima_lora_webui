@@ -269,6 +269,10 @@ FIELD_HELP: dict[str, dict[str, str]] = {
         "en": "Hold out a small validation slice from the training set (16 images by default — pinned via base.toml's validation_split_num). When off, the whole pool is used for training and no validation pass runs — skips the FM-MSE / CMMD eval and lets very small datasets train without losing samples. Writes/strips a {validation_split_num = 0, validation_split = 0.0} override on the variant's [[datasets]] block; base.toml is not touched.",
         "ko": "학습 셋에서 검증용 일부(기본 16장 — base.toml의 validation_split_num에서 지정)를 분리. 끄면 전체 풀이 학습에 쓰이고 검증 패스(FM-MSE / CMMD)는 실행되지 않음 — 데이터셋이 매우 작아 한 장도 빼기 싫을 때 유용. 변환 파일의 [[datasets]] 블록에 validation_split_num = 0, validation_split = 0.0 오버라이드를 쓰거나 제거함; base.toml은 건드리지 않음.",
     },
+    "validation_split_num": {
+        "en": "How many images to hold out for validation when 'use_valid' is on. Base.toml ships 16 — large enough for stable paired CMMD, small enough to barely dent the train pool. Bigger values give a quieter CMMD curve at the cost of fewer training samples and a slower val pass. Ignored when 'use_valid' is off (the zero-override wins). Writes/strips a {validation_split_num = N} override on the variant's [[datasets]] block; matching base.toml's value strips the override so base wins.",
+        "ko": "'use_valid'가 켜져 있을 때 검증용으로 분리할 이미지 수. base.toml 기본값은 16 — paired CMMD가 안정적으로 측정될 만큼 크면서 학습 풀에 거의 영향을 주지 않는 크기. 값을 늘리면 CMMD 곡선이 더 매끄러워지지만 학습 샘플이 줄고 검증 패스도 느려짐. 'use_valid'가 꺼져 있으면 무시됨(0 오버라이드가 우선). 변환 파일의 [[datasets]] 블록에 {validation_split_num = N} 오버라이드를 쓰거나 제거함; base.toml과 같은 값이면 오버라이드가 제거되어 base가 우선됨.",
+    },
     # Paths
     "pretrained_model_name_or_path": {
         "en": "Path to the base DiT model weights (.safetensors).",

@@ -557,7 +557,30 @@ class ConfigTab(QWidget):
 
         use_valid_w = self._w.get("use_valid")
         if use_valid_w is not None:
-            apply_validation_choice(out, bool(_read(use_valid_w)))
+            vsn_w = self._w.get("validation_split_num")
+            vsn_val: int | None = None
+            if vsn_w is not None:
+                try:
+                    vsn_val = int(_read(vsn_w))
+                except (TypeError, ValueError):
+                    vsn_val = None
+            base_vsn = None
+            base_datasets = base.get("datasets")
+            if isinstance(base_datasets, list) and base_datasets:
+                first = base_datasets[0]
+                if isinstance(first, dict):
+                    raw = first.get("validation_split_num")
+                    if raw is not None:
+                        try:
+                            base_vsn = int(raw)
+                        except (TypeError, ValueError):
+                            base_vsn = None
+            apply_validation_choice(
+                out,
+                bool(_read(use_valid_w)),
+                split_num=vsn_val,
+                base_split_num=base_vsn,
+            )
 
         # Extra-args textarea: parse as TOML and merge in. Textarea overrides
         # the form for any duplicate key (it's the more explicit signal).

@@ -291,6 +291,13 @@ def _ortho_reg_loss(ctx: LossContext) -> torch.Tensor:
 
 
 def _hydra_balance_loss(ctx: LossContext) -> torch.Tensor:
+    # Chimera bakes the warmup gate into its own per-pool sum (content
+    # rides the outer warmup, freq fires from step 0). Consume the
+    # scalar directly without re-multiplying; the early-exit on
+    # ``_balance_loss_weight <= 0`` would otherwise zero out the freq
+    # term during the warmup window.
+    if getattr(ctx.network, "_use_chimera_hydra", False):
+        return ctx.network.get_balance_loss()
     weight = float(getattr(ctx.network, "_balance_loss_weight", 0.0) or 0.0)
     if weight <= 0.0:
         return ctx.model_pred.new_zeros(())
@@ -588,7 +595,13 @@ def build_loss_composer(args: argparse.Namespace, network: object) -> LossCompos
 
     if float(getattr(network, "_ortho_reg_weight", 0.0) or 0.0) > 0.0:
         active.append("ortho_reg")
-    if float(getattr(network, "_balance_loss_weight", 0.0) or 0.0) > 0.0:
+    # Chimera always activates hydra_balance — the freq pool's term fires
+    # from step 0 (bypasses warmup), so we can't gate composer activation
+    # on the warmup-held ``_balance_loss_weight``.
+    if (
+        float(getattr(network, "_balance_loss_weight", 0.0) or 0.0) > 0.0
+        or bool(getattr(network, "_use_chimera_hydra", False))
+    ):
         active.append("hydra_balance")
     if float(getattr(args, "functional_loss_weight", 0.0) or 0.0) > 0.0:
         active.append("functional")

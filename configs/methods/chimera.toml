@@ -21,9 +21,9 @@ network_dim = 32
 
 
 learning_rate = 2e-5
-max_train_epochs = 2
-save_every_n_epochs = 2
-checkpointing_epochs = 2
+max_train_epochs = 5
+save_every_n_epochs = 5
+checkpointing_epochs = 5
 
 use_shuffled_caption_variants = true
 cache_llm_adapter_outputs = true
@@ -56,10 +56,16 @@ num_experts_freq = 2
 # only scalars on the balance loss. Default per-pool weights match the
 # OrthoHydra production value (~2e-5, see
 # [[project_hydra_balance_weight_ceiling]]).
-balance_loss_warmup_ratio = 0.1
+#
+# Warmup is asymmetric on the chimera path: only the per-Linear CONTENT
+# router gates through ``balance_loss_warmup_ratio``. The FREQ router
+# bypasses warmup entirely — its FEI input + ``freq_router_init_std``
+# break symmetry from step 0, so its load-balance pressure can fire
+# immediately without pinning the router to uniform.
+balance_loss_warmup_ratio = 0.4
 balance_loss_weight = 1.0
 balance_w_content = 2e-7
-balance_w_freq = 1e-6
+balance_w_freq = 5e-7
 network_content_router_lr_scale = 10
 network_freq_router_lr_scale = 2.0
 
@@ -72,7 +78,7 @@ fei_feature_dim = 2
 fei_sigma_low_div = 4.0
 sigma_feature_dim = 16
 freq_router_layer_norm = true
-freq_router_init_std = 0.04
+freq_router_init_std = 0.1
 
 # Routing scope. Every Linear matched by this regex becomes a chimera
 # leaf; non-matching layers fall back to OrthoLoRA (single-pool Cayley,

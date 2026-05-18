@@ -217,6 +217,7 @@ _GROUPS = {
         "timestep_sampling",
         "discrete_flow_shift",
         "use_valid",
+        "validation_split_num",
     },
     "Performance": {
         "attn_mode",
@@ -260,7 +261,7 @@ _SKIP = {"base_config", "dataset_config", "general", "datasets", "variant"}
 # (e.g. ``use_valid`` toggles a `[[datasets]]` validation_split_num override).
 # The save loop in ConfigTab skips these, and per-key apply helpers handle the
 # structured write.
-_VIRTUAL_KEYS = {"use_valid"}
+_VIRTUAL_KEYS = {"use_valid", "validation_split_num"}
 
 # Fields shown under the "Basic" section. Everything else falls under the
 # collapsible "Advanced" section. Picked to cover the knobs a first-time user
@@ -285,6 +286,7 @@ _BASIC = {
     "lora_cache_dir",
     "output_dir",
     "use_valid",
+    "validation_split_num",
 }
 
 
@@ -356,6 +358,18 @@ def merged_gui_variant_preset(variant: str, preset: str) -> tuple[dict, dict[str
     else:
         merged["use_valid"] = _base_validation_enabled(base)
         origin["use_valid"] = "base"
+
+    # Inject `validation_split_num` (integer) from the same [[datasets]] block.
+    # Shown as a basic field so users can resize the held-out slice directly
+    # without dropping to base.toml. When the variant doesn't override it, the
+    # value comes from base.toml.
+    variant_vsn = _variant_validation_split_num(meth)
+    if variant_vsn is not None:
+        merged["validation_split_num"] = variant_vsn
+        origin["validation_split_num"] = "method"
+    else:
+        merged["validation_split_num"] = _base_validation_split_num(base)
+        origin["validation_split_num"] = "base"
     return merged, origin
 
 
@@ -390,20 +404,78 @@ def _base_validation_enabled(base_data: dict) -> bool:
     return bool(_validation_enabled_from_datasets(base_data.get("datasets")))
 
 
-def apply_validation_choice(out: dict, enabled: bool) -> None:
-    """Encode the use_valid checkbox into the variant TOML dict ``out``.
+def _validation_split_num_from_datasets(datasets: Any) -> Optional[int]:
+    """Pull ``validation_split_num`` off the first [[datasets]] entry as an
+    int. Returns None when the block is missing or the key isn't set."""
+    if not isinstance(datasets, list) or not datasets:
+        return None
+    first = datasets[0]
+    if not isinstance(first, dict):
+        return None
+    vsn = first.get("validation_split_num")
+    if vsn is None:
+        return None
+    try:
+        return int(vsn)
+    except (TypeError, ValueError):
+        return None
 
-    Enabled  → strip any zero-override on the first [[datasets]] entry so the
-               base.toml validation_split_num wins through the merge chain.
+
+def _variant_validation_split_num(variant_data: dict) -> Optional[int]:
+    """Return the variant TOML's explicit validation_split_num override, or
+    None when the variant doesn't touch it."""
+    return _validation_split_num_from_datasets(variant_data.get("datasets"))
+
+
+def _base_validation_split_num(base_data: dict) -> int:
+    """Default validation_split_num pulled from configs/base.toml. Falls back
+    to 0 when the block / key is missing."""
+    return _validation_split_num_from_datasets(base_data.get("datasets")) or 0
+
+
+def apply_validation_choice(
+    out: dict,
+    enabled: bool,
+    split_num: Optional[int] = None,
+    base_split_num: Optional[int] = None,
+) -> None:
+    """Encode the use_valid checkbox (+ optional validation_split_num int)
+    into the variant TOML dict ``out``.
+
+    Enabled  → if ``split_num`` is provided and differs from ``base_split_num``,
+               write {validation_split_num = split_num} on the first
+               [[datasets]] entry (strips any fractional validation_split).
+               Otherwise strip both keys so the base.toml value wins through
+               the merge chain.
     Disabled → write {validation_split_num = 0, validation_split = 0.0} on the
                first [[datasets]] entry, creating the block if absent. This is
                applied by _apply_dataset_overrides in library/config/io.py and
                causes generate_dataset_group_by_blueprint to skip the val set.
+               (The ``split_num`` int is ignored when disabled.)
 
     Other keys in the variant's [[datasets]] block (e.g. a custom batch_size)
     are preserved; we only touch the two validation keys."""
     existing = out.get("datasets")
     if enabled:
+        keep_override = (
+            split_num is not None
+            and split_num > 0
+            and split_num != (base_split_num or 0)
+        )
+        if keep_override:
+            if not isinstance(existing, list):
+                existing = []
+                out["datasets"] = existing
+            if not existing:
+                existing.append({})
+            first = existing[0]
+            if not isinstance(first, dict):
+                first = {}
+                existing[0] = first
+            first["validation_split_num"] = int(split_num)
+            first.pop("validation_split", None)
+            return
+        # No override needed — strip any zero/value override so base wins.
         if not isinstance(existing, list) or not existing:
             return
         first = existing[0]

@@ -489,15 +489,15 @@ def cmd_invert_directedit(extra):
     # 2. Inversion knobs — env overrides for the common dials, defaults match
     #    the proposal (and the invert_postfix_tail.py CLI defaults).
     K = int(os.environ.get("K", "32"))
-    invert_steps = int(os.environ.get("INVERT_STEPS", "15"))
-    invert_lr = float(os.environ.get("INVERT_LR", "2e-2"))
+    invert_steps = int(os.environ.get("INVERT_STEPS", "30"))
+    invert_lr = float(os.environ.get("INVERT_LR", "1e-2"))
     lambda_zero = float(os.environ.get("LAMBDA_ZERO", "0.0"))
     sigma_min = float(os.environ.get("SIGMA_MIN", "0"))
-    sigma_max = float(os.environ.get("SIGMA_MAX", "0.25"))
+    sigma_max = float(os.environ.get("SIGMA_MAX", "0.5"))
     basis_kind = os.environ.get("BASIS", "svd_te").strip()
     seed = int(os.environ.get("SEED", "0"))
     timesteps_per_step = int(os.environ.get("TIMESTEPS_PER_STEP", "2"))
-    grad_accum = int(os.environ.get("GRAD_ACCUM", "8"))
+    grad_accum = int(os.environ.get("GRAD_ACCUM", "6"))
 
     run_root = ROOT / "output" / "tests" / "invert_directedit"
     run_root.mkdir(parents=True, exist_ok=True)

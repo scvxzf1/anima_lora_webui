@@ -51,6 +51,7 @@ from library.anima import strategy as strategy_anima, text_strategies  # noqa: E
 from library.datasets.buckets import CONSTANT_TOKEN_BUCKETS  # noqa: E402
 from library.inference import directedit, sampling as inference_utils  # noqa: E402
 from library.inference.directedit_splice import splice_crossattn_emb  # noqa: E402
+from library.inference.smc_cfg import SMCCFGState  # noqa: E402
 from library.inference.edit_dispatcher import (  # noqa: E402
     derive_target_caption,
     encode_last_pooled_via_anima_strategy,
@@ -178,6 +179,27 @@ def parse_args() -> argparse.Namespace:
         default=1.0,
         help="CFG scale during inversion. Default 1.0 (no CFG); raise only if "
         "you need the inverted noise to match a high-CFG generation seed.",
+    )
+    p.add_argument(
+        "--smc_cfg",
+        action="store_true",
+        help="α-adaptive Sliding-Mode Control on the edit pass's CFG combine "
+        "(library/inference/smc_cfg.py). Clamps small/noisy CFG-residual "
+        "voxels while preserving large semantic moves; composes with t_inj "
+        "V-injection (SMC operates on the post-injection v_cond_tar / v_neg "
+        "residual). No-op on the inversion pass.",
+    )
+    p.add_argument(
+        "--smc_cfg_lambda",
+        type=float,
+        default=5.0,
+        help="SMC sliding-manifold slope λ. Defaults match inference.py.",
+    )
+    p.add_argument(
+        "--smc_cfg_alpha",
+        type=float,
+        default=0.1,
+        help="SMC adaptive gain α ∈ (0, 1]. Defaults match inference.py.",
     )
     p.add_argument(
         "--t_inj",
@@ -664,14 +686,26 @@ def main() -> None:
     z_edits: list[tuple[Optional[str], torch.Tensor]] = []
     for variant, e_src, e_tar in variant_passes:
         tag = f"variant={variant}, " if variant else ""
+        # Fresh SMC state per variant so e_prev resets cleanly between passes.
+        # SMC is no-op on the inversion path (single-forward, no residual).
+        smc_state = (
+            SMCCFGState(lam=args.smc_cfg_lambda, alpha=args.smc_cfg_alpha)
+            if args.smc_cfg
+            else None
+        )
         logger.info(
             "DirectEdit: %sinversion (T=%d, src_guidance=%.2f) -> edit "
-            "(tar_guidance=%.2f, t_inj=%d)",
+            "(tar_guidance=%.2f, t_inj=%d, smc_cfg=%s)",
             tag,
             args.infer_steps,
             args.invert_guidance,
             args.guidance_scale,
             args.t_inj,
+            (
+                f"λ={args.smc_cfg_lambda},α={args.smc_cfg_alpha}"
+                if args.smc_cfg
+                else "off"
+            ),
         )
         z_inv, delta_z = directedit.invert(
             anima=anima,
@@ -698,6 +732,7 @@ def main() -> None:
             t_inj=args.t_inj,
             t_inj_blocks=t_inj_blocks,
             z_inv=z_inv if args.t_inj > 0 else None,
+            smc_cfg_state=smc_state,
         )
         z_edits.append((variant, z_edit))
 
