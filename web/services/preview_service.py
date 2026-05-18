@@ -146,6 +146,128 @@ def list_preview_images(
     }
 
 
+def list_config_group_preview_images(
+    tasks: list[dict[str, Any]],
+    *,
+    methods_subdir: str,
+    variant: str,
+    preset: str,
+    limit: int = 200,
+) -> dict[str, Any]:
+    group_label = f"{methods_subdir} / {variant} / {preset or 'default'}"
+    label = f"训练分组合并采样结果 · {group_label} · {len(tasks)} 次训练"
+    limit = max(1, min(int(limit or 200), MAX_IMAGE_LIMIT))
+    images_by_path: dict[str, dict[str, Any]] = {}
+    directories: list[str] = []
+
+    for task in tasks:
+        sample_dir = str(task.get("sample_dir") or "")
+        if not sample_dir:
+            continue
+        resolved = _resolve_preview_dir(sample_dir, current_task_sample_dir=sample_dir)
+        if resolved is None or not resolved.exists() or not resolved.is_dir():
+            continue
+        display_dir = _display_path(resolved)
+        if display_dir not in directories:
+            directories.append(display_dir)
+        sample_config = task.get("sample_config") if isinstance(task.get("sample_config"), dict) else {}
+        prompt_entries = _load_sample_prompt_entries(sample_config)
+        step_index = _training_step_index(task)
+        task_id = str(task.get("id") or "")
+        task_label = _preview_task_label(task)
+        for path in resolved.iterdir():
+            if not path.is_file() or path.suffix.lower() not in IMAGE_EXTS:
+                continue
+            meta = _image_meta(
+                path,
+                task_id=task_id,
+                sample_config=sample_config,
+                prompt_entries=prompt_entries,
+                step_index=step_index,
+            )
+            meta["source_task"] = {
+                "id": task_id,
+                "label": task_label,
+                "state": task.get("state", ""),
+                "started_at": task.get("started_at"),
+                "started_at_text": task.get("started_at_text", ""),
+                "finished_at": task.get("finished_at"),
+                "finished_at_text": task.get("finished_at_text", ""),
+                "sample_dir": sample_dir,
+            }
+            key = str(path.resolve())
+            previous = images_by_path.get(key)
+            if previous is None or _task_image_match_score(task, meta) > _task_image_match_score(previous.get("source_task") or {}, previous):
+                images_by_path[key] = meta
+
+    images = list(images_by_path.values())
+    images.sort(key=lambda item: (float(item.get("mtime") or 0), str(item.get("name") or "")), reverse=True)
+    limited = images[:limit]
+    return {
+        "ok": True,
+        "source": "training",
+        "mode": "config_group",
+        "label": label,
+        "directory": " · ".join(directories[:2]) + (" · ..." if len(directories) > 2 else ""),
+        "directories": directories,
+        "directory_exists": bool(directories),
+        "count": len(limited),
+        "total": len(images),
+        "images": limited,
+        "message": "" if images else "这个训练分组还没有可显示的样张",
+        "sample_config": {},
+        "task_id": "",
+        "task_label": group_label,
+        "group": {
+            "methods_subdir": methods_subdir,
+            "variant": variant,
+            "preset": preset or "default",
+        },
+        "task_count": len(tasks),
+    }
+
+
+def _task_image_match_score(task: dict[str, Any], image: dict[str, Any]) -> int:
+    generated_at = _float_or_none((image.get("sample") or {}).get("generated_at")) or _float_or_none(image.get("mtime"))
+    started_at = _float_or_none(task.get("started_at"))
+    finished_at = _float_or_none(task.get("finished_at"))
+    if generated_at is None or started_at is None:
+        return 0
+    if generated_at < started_at - 180:
+        return 0
+    if finished_at is not None:
+        return 3 if generated_at <= finished_at + 180 else 1
+    return 2
+
+
+def _group_weight_match_score(weight: dict[str, Any]) -> tuple[int, float]:
+    source_task = weight.get("source_task") or {}
+    scope = str(weight.get("scope") or "")
+    score = 0
+    mtime = _float_or_none(weight.get("mtime"))
+    started_at = _float_or_none(source_task.get("started_at"))
+    finished_at = _float_or_none(source_task.get("finished_at"))
+    if mtime is not None and started_at is not None:
+        if mtime < started_at - 180:
+            return (score, started_at)
+        if finished_at is not None:
+            score += 6 if mtime <= finished_at + 180 else 2
+        else:
+            score += 3
+    if scope == "task":
+        score += 2
+    if source_task.get("id"):
+        score += 1
+    return (score, started_at or 0)
+
+
+def _group_weight_scope_label(weight: dict[str, Any], source_task: dict[str, Any]) -> str:
+    base = str(weight.get("scope_label") or "")
+    if source_task.get("id"):
+        return f"{base} · {source_task.get('label') or source_task.get('id')}"
+    return base
+
+
 def resolve_preview_image(rel_path: str, allowed_sample_dir: str | None = None) -> Path:
     resolved = _resolve_preview_file(rel_path, allowed_sample_dir=allowed_sample_dir)
     if resolved.suffix.lower() not in IMAGE_EXTS:
@@ -196,6 +318,76 @@ def list_training_weights(task: dict[str, Any] | None = None) -> dict[str, Any]:
         "weights": items,
         "message": "" if items else "未找到权重文件",
     }
+
+
+def list_config_group_training_weights(
+    tasks: list[dict[str, Any]],
+    *,
+    methods_subdir: str,
+    variant: str,
+    preset: str,
+) -> dict[str, Any]:
+    group_label = f"{methods_subdir} / {variant} / {preset or 'default'}"
+    weights_by_path: dict[str, dict[str, Any]] = {}
+    directories: list[str] = []
+
+    for task in tasks:
+        listing = list_training_weights(task)
+        directory = str(listing.get("directory") or "")
+        if directory and directory not in directories:
+            directories.append(directory)
+        task_source = {
+            "id": str(task.get("id") or ""),
+            "label": _preview_task_label(task),
+            "state": task.get("state", ""),
+            "started_at": task.get("started_at"),
+            "started_at_text": task.get("started_at_text", ""),
+            "finished_at": task.get("finished_at"),
+            "finished_at_text": task.get("finished_at_text", ""),
+            "output_dir": str(task.get("output_dir") or ""),
+        }
+        for item in listing.get("weights") or []:
+            if not isinstance(item, dict):
+                continue
+            key = str(item.get("file") or "")
+            if not key:
+                continue
+            merged = dict(item)
+            merged["source_task"] = task_source
+            merged["scope_label"] = _group_weight_scope_label(merged, task_source)
+            previous = weights_by_path.get(key)
+            if previous is None or _group_weight_match_score(merged) > _group_weight_match_score(previous):
+                weights_by_path[key] = merged
+
+    weights = list(weights_by_path.values())
+    weights.sort(key=_weight_sort_key)
+    task_weight_count = sum(1 for item in weights if item.get("scope") == "task")
+    return {
+        "ok": True,
+        "mode": "config_group",
+        "label": f"训练分组合并权重 · {group_label} · {len(tasks)} 次训练",
+        "directory": " · ".join(directories[:2]) + (" · ..." if len(directories) > 2 else ""),
+        "directories": directories,
+        "directory_exists": bool(directories),
+        "count": len(weights),
+        "total": len(weights),
+        "task_count": task_weight_count,
+        "weights": weights,
+        "message": "" if weights else "这个训练分组还没有可显示的权重文件",
+        "group": {
+            "methods_subdir": methods_subdir,
+            "variant": variant,
+            "preset": preset or "default",
+        },
+        "group_task_count": len(tasks),
+    }
+
+
+def _preview_task_label(task: dict[str, Any]) -> str:
+    return str(
+        task.get("name")
+        or f"{task.get('methods_subdir') or '-'} / {task.get('variant') or task.get('id') or '-'}"
+    )
 
 
 def _load_settings() -> dict[str, str]:

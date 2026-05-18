@@ -32,7 +32,9 @@
     let previewSettings = null;
     let currentPreviewSource = 'training';
     let selectedPreviewTaskId = '';
+    let selectedPreviewGroup = null;
     let previewRequestSeq = 0;
+    let previewWeightSortDirection = 'asc';
     let currentStepEstimate = null;
     let datasetEditorState = {
         loading: false,
@@ -47,6 +49,17 @@
     let samplePromptsPath = 'configs/sample_prompts.txt';
     let samplePromptsContent = '';
     let viewingHistoryTaskId = '';
+    let historyViewMode = 'live';
+    let currentHistoryTaskForResume = null;
+    let currentHistoryConfigGroup = null;
+    let resumeOptionsState = {
+        loading: false,
+        taskId: '',
+        checkpoints: [],
+        defaultCheckpoint: '',
+        error: '',
+        message: '',
+    };
     let historyTasks = [];
     let showArchivedHistory = false;
     const THEME_STORAGE_KEY = 'anima_lora_theme';
@@ -1715,6 +1728,11 @@
             color: styles.getPropertyValue('--accent').trim() || '#4fc3f7',
             grid: styles.getPropertyValue('--chart-grid').trim() || '#2a3a5e',
             text: styles.getPropertyValue('--text-dim').trim() || '#8892a4',
+            tooltipBg: styles.getPropertyValue('--bg-card').trim() || '#16213e',
+            tooltipBorder: styles.getPropertyValue('--border').trim() || '#2a3a5e',
+            tooltipText: styles.getPropertyValue('--text').trim() || '#e0e0e0',
+            highlight: styles.getPropertyValue('--warning').trim() || '#f0c36a',
+            crosshair: styles.getPropertyValue('--accent').trim() || '#4fc3f7',
         };
     }
 
@@ -4827,6 +4845,7 @@
             case 'status':
                 if (viewingHistoryTaskId) {
                     loadTrainingHistoryList();
+                    renderResumePanelState();
                     break;
                 }
                 updateStatus(msg);
@@ -4930,7 +4949,7 @@
         if (msg.loss !== undefined) {
             document.getElementById('metric-loss').textContent = msg.loss.toFixed(5);
             const step = msg.step || ++stepCounter;
-            lossChart?.push(step, msg.loss);
+            lossChart?.push(step, msg.loss, { rawStep: msg.step ?? step });
         }
         if (msg.lr !== undefined) {
             document.getElementById('metric-lr').textContent = msg.lr.toExponential(2);
@@ -5134,7 +5153,7 @@
     async function loadPreviewSettings() {
         if (location.protocol === 'file:') return;
         try {
-            const taskQuery = selectedPreviewTaskId
+            const taskQuery = selectedPreviewTaskId && !selectedPreviewGroup
                 ? `?task_id=${encodeURIComponent(selectedPreviewTaskId)}`
                 : '';
             previewSettings = await api('/api/preview/settings' + taskQuery);
@@ -5193,7 +5212,13 @@
                 await loadPreviewSettings();
             }
             const params = new URLSearchParams({ source: currentPreviewSource });
-            if (currentPreviewSource === 'training' && selectedPreviewTaskId) {
+            if (currentPreviewSource === 'training' && selectedPreviewGroup) {
+                params.set('mode', 'config_group');
+                params.set('methods_subdir', selectedPreviewGroup.methods_subdir);
+                params.set('variant', selectedPreviewGroup.variant);
+                params.set('preset', selectedPreviewGroup.preset || 'default');
+                params.set('include_archived', showArchivedHistory ? '1' : '0');
+            } else if (currentPreviewSource === 'training' && selectedPreviewTaskId) {
                 params.set('task_id', selectedPreviewTaskId);
             }
             const payload = await api(`/api/preview/images?${params.toString()}`);
@@ -5216,18 +5241,28 @@
             renderPreviewWeights({ ok: true, weights: [], message: '静态打开没有后端 API。' });
             return;
         }
-        if (currentPreviewSource !== 'training' || !selectedPreviewTaskId) {
-        renderPreviewWeights({
-            ok: true,
-            weights: [],
-            message: currentPreviewSource === 'training'
-                    ? '选择一个训练任务后显示权重文件对应的 epoch 和 step。'
+        if (currentPreviewSource !== 'training' || (!selectedPreviewTaskId && !selectedPreviewGroup)) {
+            renderPreviewWeights({
+                ok: true,
+                weights: [],
+                message: currentPreviewSource === 'training'
+                    ? '选择一个训练任务或训练分组后显示权重文件。'
                     : '权重文件只随训练任务显示。',
-        });
+            });
             return;
         }
         try {
-            const payload = await api(`/api/preview/weights?task_id=${encodeURIComponent(selectedPreviewTaskId)}`);
+            const params = new URLSearchParams({ source: 'training' });
+            if (selectedPreviewGroup) {
+                params.set('mode', 'config_group');
+                params.set('methods_subdir', selectedPreviewGroup.methods_subdir);
+                params.set('variant', selectedPreviewGroup.variant);
+                params.set('preset', selectedPreviewGroup.preset || 'default');
+                params.set('include_archived', showArchivedHistory ? '1' : '0');
+            } else {
+                params.set('task_id', selectedPreviewTaskId);
+            }
+            const payload = await api(`/api/preview/weights?${params.toString()}`);
             renderPreviewWeights(payload);
         } catch (e) {
             renderPreviewWeights({ ok: false, weights: [], error: '读取权重文件失败: ' + e.message });
@@ -5248,34 +5283,114 @@
     function renderPreviewTaskSelect() {
         const select = document.getElementById('preview-training-task');
         if (!select) return;
-        const previous = selectedPreviewTaskId;
+        const previousValue = selectedPreviewSelectValue();
         select.innerHTML = '';
         const liveOption = document.createElement('option');
         liveOption.value = '';
         select.appendChild(liveOption);
 
         const trainingTasks = historyTasks
-            .filter((task) => task.job === 'training')
+            .filter((task) => task.job === 'training' && (showArchivedHistory || !task.archived))
             .sort((a, b) => Number(b.started_at || 0) - Number(a.started_at || 0));
         liveOption.textContent = trainingTasks.length
             ? `当前任务或默认目录 · ${trainingTasks.length} 个历史训练`
             : '当前任务或默认目录 · 暂无历史训练';
-        for (const task of trainingTasks) {
-            const option = document.createElement('option');
-            option.value = task.id;
-            option.textContent = [
-                task.name || `${task.methods_subdir || '-'} / ${task.variant || '-'}`,
-                task.started_at_text || task.id,
-                historyStateLabel(task.state),
-            ].filter(Boolean).join(' · ');
-            select.appendChild(option);
+
+        const groups = previewTrainingGroups(trainingTasks);
+        if (groups.length) {
+            const groupOptions = document.createElement('optgroup');
+            groupOptions.label = '训练分组合并';
+            for (const group of groups) {
+                const option = document.createElement('option');
+                option.value = encodePreviewGroupValue(group);
+                option.textContent = `${group.label} · ${group.tasks.length} 次训练`;
+                groupOptions.appendChild(option);
+            }
+            select.appendChild(groupOptions);
         }
 
-        const hasPrevious = previous && trainingTasks.some((task) => task.id === previous);
-        selectedPreviewTaskId = hasPrevious ? previous : '';
-        select.value = selectedPreviewTaskId;
+        if (trainingTasks.length) {
+            const taskOptions = document.createElement('optgroup');
+            taskOptions.label = '单个训练任务';
+            for (const task of trainingTasks) {
+                const option = document.createElement('option');
+                option.value = encodePreviewTaskValue(task.id);
+                option.textContent = [
+                    task.name || `${task.methods_subdir || '-'} / ${task.variant || '-'}`,
+                    task.started_at_text || task.id,
+                    historyStateLabel(task.state),
+                ].filter(Boolean).join(' · ');
+                taskOptions.appendChild(option);
+            }
+            select.appendChild(taskOptions);
+        }
+
+        const values = Array.from(select.options).map((option) => option.value);
+        const nextValue = values.includes(previousValue) ? previousValue : '';
+        applyPreviewSelectionValue(nextValue);
+        select.value = nextValue;
         select.disabled = false;
         updatePreviewTaskVisibility();
+    }
+
+    function previewTrainingGroups(tasks) {
+        const map = new Map();
+        for (const task of tasks) {
+            const group = historyConfigGroupFromTask(task);
+            if (!map.has(group.key)) {
+                map.set(group.key, { ...group, tasks: [] });
+            }
+            map.get(group.key).tasks.push(task);
+        }
+        return Array.from(map.values())
+            .filter((group) => group.tasks.length > 0)
+            .sort((a, b) => {
+                const aTime = Math.max(...a.tasks.map((task) => Number(task.started_at || 0)));
+                const bTime = Math.max(...b.tasks.map((task) => Number(task.started_at || 0)));
+                return (bTime - aTime) || a.label.localeCompare(b.label, 'zh-CN');
+            });
+    }
+
+    function selectedPreviewSelectValue() {
+        if (selectedPreviewGroup) return encodePreviewGroupValue(selectedPreviewGroup);
+        if (selectedPreviewTaskId) return encodePreviewTaskValue(selectedPreviewTaskId);
+        return '';
+    }
+
+    function encodePreviewTaskValue(taskId) {
+        return `task:${taskId || ''}`;
+    }
+
+    function encodePreviewGroupValue(group) {
+        const payload = [
+            group.methods_subdir || '',
+            group.variant || '',
+            group.preset || 'default',
+        ].map((value) => encodeURIComponent(value)).join('|');
+        return `group:${payload}`;
+    }
+
+    function decodePreviewGroupValue(value) {
+        if (!String(value || '').startsWith('group:')) return null;
+        const parts = String(value).slice(6).split('|').map((item) => decodeURIComponent(item));
+        if (!parts[0] || !parts[1]) return null;
+        return {
+            methods_subdir: parts[0],
+            variant: parts[1],
+            preset: parts[2] || 'default',
+            label: `${parts[0]} / ${parts[1]} / ${parts[2] || 'default'}`,
+        };
+    }
+
+    function applyPreviewSelectionValue(value) {
+        const group = decodePreviewGroupValue(value);
+        if (group) {
+            selectedPreviewGroup = group;
+            selectedPreviewTaskId = '';
+            return;
+        }
+        selectedPreviewGroup = null;
+        selectedPreviewTaskId = String(value || '').startsWith('task:') ? String(value).slice(5) : '';
     }
 
     function updatePreviewTaskVisibility() {
@@ -5284,7 +5399,7 @@
     }
 
     async function changePreviewTask(taskId) {
-        selectedPreviewTaskId = taskId || '';
+        applyPreviewSelectionValue(taskId || '');
         previewSettings = null;
         await loadPreviewSettings();
         await Promise.all([loadPreviewImages(), loadPreviewWeights()]);
@@ -5322,24 +5437,74 @@
         if (!list || !empty || !subtitle) return;
 
         const weights = payload.weights || [];
+        const sortedWeights = sortPreviewWeights(weights);
         subtitle.textContent = payload.directory
-            ? `目录: ${payload.directory}${payload.task_count ? ` · 本任务 ${payload.task_count} 个` : ''}`
+            ? `目录: ${payload.directory}${payload.mode === 'config_group' && payload.group_task_count != null
+                ? ` · ${payload.group_task_count} 次训练`
+                : payload.task_count
+                    ? ` · 本任务 ${payload.task_count} 个`
+                    : ''}`
             : '选择训练任务后显示保存轮次、步数和对应权重。';
+        updatePreviewWeightSortButton();
         list.innerHTML = '';
-        if (!weights.length) {
+        if (!sortedWeights.length) {
             empty.textContent = payload.error || payload.message || '未找到权重文件。';
             empty.hidden = false;
             return;
         }
         empty.hidden = true;
-        for (const item of weights) {
+        for (const item of sortedWeights) {
             list.appendChild(createPreviewWeightItem(item));
         }
+    }
+
+    function sortPreviewWeights(weights) {
+        const direction = previewWeightSortDirection === 'desc' ? -1 : 1;
+        return [...(weights || [])].sort((a, b) => comparePreviewWeight(a, b, direction));
+    }
+
+    function comparePreviewWeight(a, b, direction) {
+        const epochDiff = compareOptionalNumber(a.epoch, b.epoch, direction);
+        if (epochDiff !== 0) return epochDiff;
+        const stepDiff = compareOptionalNumber(a.steps, b.steps, direction);
+        if (stepDiff !== 0) return stepDiff;
+        return String(a.name || '').localeCompare(String(b.name || ''), 'zh-CN');
+    }
+
+    function compareOptionalNumber(a, b, direction) {
+        const aNumber = sortableNumber(a);
+        const bNumber = sortableNumber(b);
+        if (aNumber === null && bNumber === null) return 0;
+        if (aNumber === null) return 1;
+        if (bNumber === null) return -1;
+        return direction * (aNumber - bNumber);
+    }
+
+    function sortableNumber(value) {
+        const number = Number(value);
+        return Number.isFinite(number) ? number : null;
+    }
+
+    function updatePreviewWeightSortButton() {
+        const btn = document.getElementById('btn-sort-weights');
+        if (!btn) return;
+        const isDesc = previewWeightSortDirection === 'desc';
+        btn.textContent = isDesc ? '反序' : '正序';
+        btn.title = isDesc ? '当前按 Epoch/Step 从大到小排列，点击切换为正序。' : '当前按 Epoch/Step 从小到大排列，点击切换为反序。';
+    }
+
+    function togglePreviewWeightSort() {
+        previewWeightSortDirection = previewWeightSortDirection === 'asc' ? 'desc' : 'asc';
+        updatePreviewWeightSortButton();
+        loadPreviewWeights();
     }
 
     function createPreviewWeightItem(item) {
         const row = document.createElement('article');
         row.className = `preview-weight-item preview-weight-${item.kind || 'weight'}`;
+        if (item.source_task?.id) {
+            row.dataset.sourceTaskId = item.source_task.id;
+        }
 
         const main = document.createElement('div');
         main.className = 'preview-weight-main';
@@ -5351,6 +5516,13 @@
         badge.textContent = item.scope_label || '';
         main.append(name, file, badge);
 
+        const copy = document.createElement('button');
+        copy.type = 'button';
+        copy.className = 'btn btn-small preview-weight-copy';
+        copy.textContent = '复制路径';
+        copy.title = '复制这个权重文件的完整路径。';
+        copy.addEventListener('click', () => copyPreviewWeightPath(item, copy));
+
         const stats = document.createElement('div');
         stats.className = 'preview-weight-stats';
         stats.append(
@@ -5361,9 +5533,71 @@
             createWeightStat('大小', formatBytes(item.size_bytes)),
             createWeightStat('类型', weightKindLabel(item.kind)),
         );
+        const source = createPreviewWeightSource(item);
+        if (source) stats.append(source);
 
-        row.append(main, stats);
+        row.append(main, stats, copy);
         return row;
+    }
+
+    function createPreviewWeightSource(item) {
+        if (!item.source_task?.label) return null;
+        const box = document.createElement('div');
+        box.className = 'preview-weight-source';
+        const sourceText = `来源 ${item.source_task.label}`;
+        const text = document.createElement('span');
+        text.className = 'preview-weight-source-text';
+        text.textContent = sourceText;
+        text.title = '双击复制来源文本；也可以像普通文本一样拖选。';
+        text.addEventListener('dblclick', async () => {
+            await copyPreviewWeightSource(sourceText, text);
+        });
+        box.appendChild(text);
+        return box;
+    }
+
+    async function copyPreviewWeightSource(text, el) {
+        selectElementText(el);
+        try {
+            await copyText(text);
+            selectElementText(el);
+            el.classList.add('copied');
+            const originalTitle = el.title;
+            el.title = '已复制来源文本。';
+            setTimeout(() => {
+                el.classList.remove('copied');
+                el.title = originalTitle;
+            }, 1000);
+        } catch (e) {
+            selectElementText(el);
+            alert('复制来源失败: ' + e.message);
+        }
+    }
+
+    function selectElementText(el) {
+        if (!el || !window.getSelection || !document.createRange) return;
+        const range = document.createRange();
+        range.selectNodeContents(el);
+        const selection = window.getSelection();
+        selection.removeAllRanges();
+        selection.addRange(range);
+    }
+
+    async function copyPreviewWeightPath(item, button) {
+        const path = item.file || '';
+        if (!path) return;
+        try {
+            await copyText(path);
+            const original = button.textContent;
+            button.textContent = '已复制';
+            button.classList.add('btn-primary');
+            setTimeout(() => {
+                button.textContent = original;
+                button.classList.remove('btn-primary');
+            }, 1200);
+        } catch (e) {
+            alert('复制权重路径失败: ' + e.message);
+        }
     }
 
     function createWeightStat(label, value) {
@@ -5417,6 +5651,11 @@
         const sub = document.createElement('span');
         sub.textContent = previewCardSecondaryMeta(image, dims);
         meta.append(title, detail, sub);
+        if (image.source_task?.label) {
+            const source = document.createElement('span');
+            source.textContent = `来源: ${image.source_task.label}`;
+            meta.appendChild(source);
+        }
 
         button.append(img, meta);
         return button;
@@ -5517,6 +5756,8 @@
         const rows = [
             ['轮次', sample.epoch != null ? `Epoch ${sample.epoch}` : '-'],
             ['步数', sample.step != null ? `Step ${sample.step}` : '-'],
+            ['来源任务', image.source_task?.label || '-'],
+            ['任务时间', image.source_task?.started_at_text || '-'],
             ['提示词序号', promptNo ? `第 ${promptNo} 条` : '-'],
             ['生成时间', sample.generated_at_text || image.mtime_text || '-'],
             ['种子', sample.seed ?? params.seed ?? '-'],
@@ -5563,6 +5804,32 @@
         valEl.textContent = value;
         block.append(key, valEl);
         return block;
+    }
+
+    async function copyText(text) {
+        if (navigator.clipboard?.writeText) {
+            try {
+                await navigator.clipboard.writeText(text);
+                return;
+            } catch (_) {
+                // 浏览器可能因权限或焦点拒绝 Clipboard API，继续使用 textarea 兜底。
+            }
+        }
+        const area = document.createElement('textarea');
+        area.value = text;
+        area.setAttribute('readonly', '');
+        area.style.position = 'fixed';
+        area.style.left = '-9999px';
+        document.body.appendChild(area);
+        area.focus();
+        area.select();
+        try {
+            if (!document.execCommand('copy')) {
+                throw new Error('浏览器拒绝复制操作');
+            }
+        } finally {
+            area.remove();
+        }
     }
 
     function formatBytes(bytes) {
@@ -5628,10 +5895,10 @@
         for (const group of groups) {
             const section = document.createElement('section');
             section.className = 'task-history-group';
-            const heading = document.createElement('div');
-            heading.className = 'task-history-group-title';
-            heading.textContent = `${group.name} · ${group.tasks.length}`;
-            section.appendChild(heading);
+            if (historyViewMode === 'config_group' && currentHistoryConfigGroup && configGroupKey(group) === configGroupKey(currentHistoryConfigGroup)) {
+                section.classList.add('active');
+            }
+            section.appendChild(createHistoryGroupHeading(group));
             for (const task of group.tasks) {
                 section.appendChild(createHistoryTaskItem(task));
             }
@@ -5642,23 +5909,67 @@
     function groupHistoryTasks(tasks) {
         const map = new Map();
         for (const task of tasks) {
-            const group = (task.group || '').trim() || '未分组';
-            if (!map.has(group)) map.set(group, []);
-            map.get(group).push(task);
+            const group = historyConfigGroupFromTask(task);
+            if (!map.has(group.key)) {
+                map.set(group.key, { ...group, tasks: [] });
+            }
+            map.get(group.key).tasks.push(task);
         }
-        return Array.from(map.entries())
-            .map(([name, groupTasks]) => ({ name, tasks: groupTasks }))
+        return Array.from(map.values())
             .sort((a, b) => {
-                if (a.name === '未分组') return -1;
-                if (b.name === '未分组') return 1;
-                return a.name.localeCompare(b.name, 'zh-CN');
+                const aTime = Math.max(...a.tasks.map((task) => Number(task.started_at || 0)));
+                const bTime = Math.max(...b.tasks.map((task) => Number(task.started_at || 0)));
+                return (bTime - aTime) || a.label.localeCompare(b.label, 'zh-CN');
             });
+    }
+
+    function historyConfigGroupFromTask(task) {
+        const methodsSubdir = String(task.methods_subdir || '-');
+        const variant = String(task.variant || '-');
+        const preset = String(task.preset || 'default');
+        return {
+            key: [methodsSubdir, variant, preset].join('\u0001'),
+            methods_subdir: methodsSubdir,
+            variant,
+            preset,
+            label: `${methodsSubdir} / ${variant} / ${preset}`,
+        };
+    }
+
+    function configGroupKey(group) {
+        return [group.methods_subdir || '-', group.variant || '-', group.preset || 'default'].join('\u0001');
+    }
+
+    function createHistoryGroupHeading(group) {
+        const heading = document.createElement('div');
+        heading.className = 'task-history-group-title';
+        const trainingCount = group.tasks.filter((task) => task.job === 'training').length;
+        const preprocessCount = group.tasks.filter((task) => task.job === 'preprocess').length;
+
+        const title = document.createElement('span');
+        title.textContent = [
+            group.label,
+            `${trainingCount} 次训练`,
+            preprocessCount ? `${preprocessCount} 个预处理` : '',
+        ].filter(Boolean).join(' · ');
+        heading.appendChild(title);
+
+        if (trainingCount) {
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'task-history-group-action';
+            btn.textContent = '合并查看 Loss/日志';
+            btn.title = '按这个配置文件分组，合并查看组内所有训练任务的日志和 Loss 曲线。';
+            btn.addEventListener('click', () => loadConfigGroupTimeline(group));
+            heading.appendChild(btn);
+        }
+        return heading;
     }
 
     function createHistoryTaskItem(task) {
         const card = document.createElement('article');
         card.className = 'task-history-item';
-        if (task.id === viewingHistoryTaskId) card.classList.add('active');
+        if (historyViewMode === 'single' && task.id === viewingHistoryTaskId) card.classList.add('active');
         if (task.archived) card.classList.add('archived');
 
         const main = document.createElement('button');
@@ -5762,6 +6073,7 @@
                 return;
             }
             if (viewingHistoryTaskId === task.id) {
+                clearResumeOptions();
                 returnToLiveTraining();
             }
             await loadTrainingHistoryList();
@@ -5886,15 +6198,62 @@
                 return;
             }
             viewingHistoryTaskId = taskId;
+            historyViewMode = 'single';
+            currentHistoryConfigGroup = null;
+            resumeOptionsState = {
+                loading: true,
+                taskId,
+                checkpoints: [],
+                defaultCheckpoint: '',
+                error: '',
+                message: '正在读取可续训检查点...',
+            };
             renderTrainingHistoryList();
             renderHistoryTask(payload);
+            await loadResumeOptionsForTask(taskId);
         } catch (e) {
             alert('读取历史任务失败: ' + e.message);
         }
     }
 
+    async function refreshHistoryView() {
+        if (historyViewMode === 'config_group' && currentHistoryConfigGroup) {
+            await loadConfigGroupTimeline(currentHistoryConfigGroup);
+            return;
+        }
+        if (!viewingHistoryTaskId) return;
+        await loadHistoryTask(viewingHistoryTaskId);
+    }
+
+    async function loadConfigGroupTimeline(group) {
+        if (!group?.methods_subdir || !group?.variant) return;
+        const query = new URLSearchParams({
+            methods_subdir: group.methods_subdir,
+            variant: group.variant,
+            preset: group.preset || 'default',
+            include_archived: showArchivedHistory ? '1' : '0',
+        });
+        try {
+            const payload = await api(`/api/training/history/config-group/timeline?${query.toString()}`);
+            if (!payload.ok) {
+                alert(payload.error || '读取配置分组合并日志失败');
+                return;
+            }
+            historyViewMode = 'config_group';
+            viewingHistoryTaskId = '';
+            currentHistoryConfigGroup = payload.group || group;
+            currentHistoryTaskForResume = null;
+            clearResumeOptions();
+            renderTrainingHistoryList();
+            renderConfigGroupTimeline(payload);
+        } catch (e) {
+            alert('读取配置分组合并日志失败: ' + e.message);
+        }
+    }
+
     function renderHistoryTask(payload) {
         const task = payload.task || {};
+        currentHistoryTaskForResume = task;
         const banner = document.getElementById('history-view-banner');
         const bannerTitle = document.getElementById('history-view-title');
         if (banner) banner.hidden = false;
@@ -5911,14 +6270,14 @@
         document.getElementById('metric-rate').textContent = '-';
 
         const logs = payload.logs || [];
-        const metrics = [...(payload.metrics || [])];
-        for (const record of logs) {
-            if (record.kind !== 'progress') continue;
-            const parsed = parseMetricsFromProgressLine(record.line);
-            if (parsed) metrics.push({ ...parsed, ts: record.ts });
-        }
+        const metrics = metricsWithProgressFallback(payload.metrics || [], logs);
         const lossPoints = metrics.filter((item) => item.loss !== undefined);
-        lossChart?.setData(lossPoints.map((item) => ({ step: item.step || 0, loss: item.loss })));
+        lossChart?.setXLabel?.('step');
+        lossChart?.setData(lossPoints.map((item) => ({
+            step: item.step || 0,
+            loss: item.loss,
+            rawStep: item.step,
+        })), { keepAll: true });
         const lastMetric = metrics[metrics.length - 1] || {};
         const lastLossMetric = lossPoints[lossPoints.length - 1] || {};
         const configLr = readConfigNumber(payload.config_toml, 'learning_rate');
@@ -5955,16 +6314,167 @@
         ].filter(Boolean).join(' · ');
 
         const configPanel = document.getElementById('history-config-panel');
+        const configTitle = document.getElementById('history-config-title');
         const configOutput = document.getElementById('history-config-output');
         if (configPanel) configPanel.hidden = false;
+        if (configTitle) configTitle.textContent = '任务配置快照';
         if (configOutput) configOutput.textContent = payload.config_toml || '# 无配置快照';
         renderHistoryPaths(task);
+        renderResumePanelState();
+    }
+
+    function renderConfigGroupTimeline(payload) {
+        const group = payload.group || {};
+        const summary = payload.summary || {};
+        const banner = document.getElementById('history-view-banner');
+        const bannerTitle = document.getElementById('history-view-title');
+        if (banner) banner.hidden = false;
+        if (bannerTitle) {
+            bannerTitle.textContent = `配置分组合并: ${configGroupLabel(group)} · ${summary.task_count || 0} 次训练`;
+        }
+
+        document.getElementById('train-variant').textContent = group.variant || '-';
+        document.getElementById('train-preset').textContent = group.preset || '-';
+        document.getElementById('progress-bar').style.width = '100%';
+        document.getElementById('progress-text').textContent =
+            `${summary.started_at_text || '-'} → ${summary.finished_at_text || '持续/未结束'}`;
+        document.getElementById('metric-vram').textContent = '-';
+        document.getElementById('metric-gpu').textContent = '-';
+        document.getElementById('metric-log-age').textContent = '分组合并';
+        document.getElementById('metric-rate').textContent = '-';
+
+        const metrics = payload.metrics || [];
+        const lossPoints = metrics.filter((item) => item.loss !== undefined);
+        lossChart?.setXLabel?.('loss点');
+        lossChart?.setData(lossPoints.map((item) => ({
+            step: item.visual_step || item.step || 0,
+            loss: item.loss,
+            rawStep: item.step,
+            sourceTaskLabel: item.source_task_label || '',
+        })), { keepAll: true });
+        const lastMetric = metrics[metrics.length - 1] || {};
+        const lastLossMetric = lossPoints[lossPoints.length - 1] || {};
+        document.getElementById('metric-loss').textContent =
+            lastMetric.loss !== undefined ? Number(lastMetric.loss).toFixed(5) : '-';
+        document.getElementById('metric-lr').textContent = formatLr(lastValue(metrics, 'lr'));
+        document.getElementById('metric-step').textContent =
+            lastMetric.visual_step ?? lastMetric.step ?? lastLossMetric.visual_step ?? lastLossMetric.step ?? '-';
+
+        const logs = payload.logs || [];
+        const logEl = document.getElementById('log-output');
+        logEl.textContent = logs.map(formatGroupTimelineLogRecord).join('\n');
+        if (logEl.textContent) logEl.textContent += '\n';
+        logEl.scrollTop = logEl.scrollHeight;
+        setLogStatus(`配置分组合并 · ${logs.length} 行日志 · ${summary.loss_count || 0} Loss 点 · 已隐藏 ${summary.progress_count || 0} 条进度记录`, 'warning');
+
+        const health = document.getElementById('training-health');
+        health.className = 'training-health ok';
+        health.textContent = [
+            `已合并 ${summary.task_count || 0} 次训练`,
+            `${summary.loss_count || 0} 个 Loss 点`,
+            `${summary.log_count || 0} 行日志`,
+            `${summary.progress_count || 0} 条进度记录未显示`,
+            summary.include_archived ? '包含归档任务' : '',
+        ].filter(Boolean).join(' · ');
+
+        const configPanel = document.getElementById('history-config-panel');
+        const configTitle = document.getElementById('history-config-title');
+        const configOutput = document.getElementById('history-config-output');
+        if (configPanel) configPanel.hidden = false;
+        if (configTitle) configTitle.textContent = '分组训练明细';
+        if (configOutput) configOutput.textContent = configGroupTimelineSummary(payload);
+        renderConfigGroupPaths(payload);
+        renderResumePanelState();
+    }
+
+    function formatGroupTimelineLogRecord(record) {
+        const taskPrefix = record.source_task_index ? `[任务${record.source_task_index}] ` : '';
+        const kindPrefix = record.kind === 'progress' ? '[进度] ' : '';
+        return `${taskPrefix}${kindPrefix}${record.line || ''}`;
+    }
+
+    function configGroupTimelineSummary(payload) {
+        const group = payload.group || {};
+        const lines = [`# 配置分组合并: ${configGroupLabel(group)}`, ''];
+        for (const segment of payload.segments || []) {
+            const task = segment.task || {};
+            lines.push(
+                `任务 ${segment.index}: ${task.label || task.id || '-'}`,
+                `  ID: ${task.id || '-'}`,
+                `  状态: ${historyStateLabel(task.state)}`,
+                `  时间: ${task.started_at_text || '-'} -> ${task.finished_at_text || '未结束'}`,
+                `  输出目录: ${task.output_dir || '-'}`,
+                `  日志: ${segment.log_count || 0} 行`,
+                `  进度记录: ${segment.progress_count || 0} 条`,
+                `  Loss/指标: ${segment.metric_count || 0} 条`,
+                '',
+            );
+        }
+        return lines.join('\n');
+    }
+
+    function renderConfigGroupPaths(payload) {
+        const group = payload.group || {};
+        const summary = payload.summary || {};
+        const el = document.getElementById('history-paths');
+        if (!el) return;
+        el.innerHTML = '';
+        const items = [
+            ['配置文件', configGroupLabel(group)],
+            ['合并训练数', `${summary.task_count || 0}`],
+            ['时间范围', `${summary.started_at_text || '-'} -> ${summary.finished_at_text || '未结束'}`],
+            ['归档任务', summary.include_archived ? '已包含' : '未包含'],
+        ];
+        for (const [label, value] of items) {
+            const row = document.createElement('div');
+            const key = document.createElement('span');
+            key.textContent = label;
+            const valEl = document.createElement('code');
+            valEl.textContent = value;
+            row.append(key, valEl);
+            el.appendChild(row);
+        }
+    }
+
+    function configGroupLabel(group) {
+        return `${group.methods_subdir || '-'} / ${group.variant || '-'} / ${group.preset || 'default'}`;
+    }
+
+    function metricsWithProgressFallback(metrics, logs) {
+        const out = [...metrics];
+        const seen = new Set(out.map(metricIdentity));
+        for (const record of logs || []) {
+            if (record.kind !== 'progress') continue;
+            const parsed = parseMetricsFromProgressLine(record.line);
+            if (!parsed) continue;
+            const item = { ...parsed, ts: record.ts };
+            const key = metricIdentity(item);
+            if (seen.has(key)) continue;
+            seen.add(key);
+            out.push(item);
+        }
+        out.sort((a, b) => (Number(a.ts || 0) - Number(b.ts || 0)) || (Number(a.step || 0) - Number(b.step || 0)));
+        return out;
+    }
+
+    function metricIdentity(item) {
+        return [
+            item.step ?? '',
+            item.loss != null ? Number(item.loss).toFixed(8) : '',
+            item.lr != null ? Number(item.lr).toFixed(12) : '',
+        ].join('|');
     }
 
     function returnToLiveTraining() {
         viewingHistoryTaskId = '';
+        historyViewMode = 'live';
+        currentHistoryConfigGroup = null;
+        currentHistoryTaskForResume = null;
+        clearResumeOptions();
         const banner = document.getElementById('history-view-banner');
         if (banner) banner.hidden = true;
+        const resumePanel = document.getElementById('history-resume-panel');
+        if (resumePanel) resumePanel.hidden = true;
         const configPanel = document.getElementById('history-config-panel');
         if (configPanel) configPanel.hidden = true;
         const configOutput = document.getElementById('history-config-output');
@@ -5976,9 +6486,221 @@
         trainingRuntime.logLineCount = 0;
         stepCounter = 0;
         lossChart?.clear();
+        lossChart?.setXLabel?.('step');
         renderTrainingHistoryList();
         pollStatus();
         replayTrainingLogs();
+    }
+
+    async function loadResumeOptionsForTask(taskId = viewingHistoryTaskId) {
+        if (!taskId) {
+            clearResumeOptions();
+            return;
+        }
+        resumeOptionsState = {
+            loading: true,
+            taskId,
+            checkpoints: [],
+            defaultCheckpoint: '',
+            error: '',
+            message: '正在读取可续训检查点...',
+        };
+        renderResumePanelState();
+        try {
+            const payload = await api(`/api/training/history/${encodeURIComponent(taskId)}/resume-options`);
+            if (taskId !== viewingHistoryTaskId) return;
+            if (!payload.ok) {
+                resumeOptionsState = {
+                    loading: false,
+                    taskId,
+                    checkpoints: [],
+                    defaultCheckpoint: '',
+                    error: payload.error || '读取续训检查点失败',
+                    message: '',
+                };
+                renderResumePanelState();
+                return;
+            }
+            resumeOptionsState = {
+                loading: false,
+                taskId,
+                checkpoints: payload.checkpoints || [],
+                defaultCheckpoint: payload.default_checkpoint || '',
+                error: '',
+                message: payload.message || '',
+            };
+            renderResumePanelState();
+        } catch (e) {
+            if (taskId !== viewingHistoryTaskId) return;
+            resumeOptionsState = {
+                loading: false,
+                taskId,
+                checkpoints: [],
+                defaultCheckpoint: '',
+                error: '读取续训检查点失败: ' + e.message,
+                message: '',
+            };
+            renderResumePanelState();
+        }
+    }
+
+    function clearResumeOptions() {
+        resumeOptionsState = {
+            loading: false,
+            taskId: '',
+            checkpoints: [],
+            defaultCheckpoint: '',
+            error: '',
+            message: '',
+        };
+        currentHistoryTaskForResume = null;
+        renderResumePanelState();
+    }
+
+    function renderResumePanelState() {
+        const panel = document.getElementById('history-resume-panel');
+        const select = document.getElementById('resume-checkpoint-select');
+        const btn = document.getElementById('btn-resume-training');
+        const summary = document.getElementById('resume-checkpoint-summary');
+        const status = document.getElementById('resume-training-status');
+        if (!panel || !select || !btn || !summary || !status) return;
+
+        const isTrainingTask = historyViewMode === 'single' && viewingHistoryTaskId && currentHistoryTaskForResume?.job === 'training';
+        panel.hidden = !isTrainingTask;
+        if (!isTrainingTask) {
+            select.innerHTML = '<option value="">选择历史训练任务后读取</option>';
+            select.disabled = true;
+            btn.disabled = true;
+            summary.textContent = '';
+            status.textContent = '';
+            status.className = 'resume-status';
+            return;
+        }
+
+        const isRunning = trainingRuntime.state === 'running' || trainingRuntime.state === 'compiling';
+        select.innerHTML = '';
+        if (resumeOptionsState.loading) {
+            select.appendChild(optionNode('', '正在读取检查点...'));
+        } else if (resumeOptionsState.checkpoints.length) {
+            for (const item of resumeOptionsState.checkpoints) {
+                select.appendChild(optionNode(item.path, resumeCheckpointOptionLabel(item)));
+            }
+            select.value = resumeOptionsState.defaultCheckpoint || resumeOptionsState.checkpoints[0]?.path || '';
+        } else {
+            select.appendChild(optionNode('', '未找到可续训状态目录'));
+        }
+
+        const hasCheckpoint = Boolean(select.value);
+        select.disabled = resumeOptionsState.loading || !hasCheckpoint || isRunning;
+        btn.disabled = resumeOptionsState.loading || !hasCheckpoint || isRunning;
+        summary.innerHTML = '';
+        const selected = selectedResumeCheckpoint();
+        if (selected) {
+            summary.append(
+                resumeSummaryLine('状态目录', selected.path),
+                resumeSummaryLine('已训练到', resumeCheckpointProgressText(selected)),
+                resumeSummaryLine('保存时间', selected.mtime_text || '-'),
+                resumeSummaryLine('关联权重', selected.paired_weight || '无或未找到'),
+            );
+        } else {
+            const note = document.createElement('p');
+            note.textContent = resumeOptionsState.message || resumeOptionsState.error || '该任务还没有可续训状态。需要训练配置启用 checkpointing_epochs，训练中才会写出状态目录。';
+            summary.appendChild(note);
+        }
+
+        status.textContent = isRunning
+            ? '当前已有训练或预处理在运行，续训按钮暂不可用。'
+            : (resumeOptionsState.error || resumeOptionsState.message || '');
+        status.className = [
+            'resume-status',
+            isRunning ? 'warning' : (resumeOptionsState.error ? 'error' : ''),
+        ].filter(Boolean).join(' ');
+    }
+
+    function optionNode(value, text) {
+        const option = document.createElement('option');
+        option.value = value;
+        option.textContent = text;
+        return option;
+    }
+
+    function selectedResumeCheckpoint() {
+        const select = document.getElementById('resume-checkpoint-select');
+        const value = select?.value || '';
+        if (!value) return null;
+        return resumeOptionsState.checkpoints.find((item) => item.path === value) || null;
+    }
+
+    function resumeCheckpointOptionLabel(item) {
+        return [
+            item.kind_label || '训练状态',
+            resumeCheckpointProgressText(item),
+            item.scope_label || '',
+            item.name || '',
+        ].filter(Boolean).join(' · ');
+    }
+
+    function resumeCheckpointProgressText(item) {
+        const parts = [];
+        if (item.epoch != null) parts.push(`Epoch ${item.epoch}`);
+        if (item.step != null) parts.push(`Step ${item.step}`);
+        return parts.join(' / ') || '步数未知';
+    }
+
+    function resumeSummaryLine(label, value) {
+        const row = document.createElement('div');
+        const key = document.createElement('span');
+        key.textContent = label;
+        const valEl = document.createElement('code');
+        valEl.textContent = value || '-';
+        row.append(key, valEl);
+        return row;
+    }
+
+    async function resumeTrainingFromCheckpoint() {
+        if (!viewingHistoryTaskId) return;
+        const selected = selectedResumeCheckpoint();
+        if (!selected) {
+            setResumeStatus('请先选择一个可续训状态目录。', 'error');
+            return;
+        }
+        const taskName = historyTaskLabel(currentHistoryTaskForResume || {});
+        const ok = await showHistoryTaskConfirmDialog({
+            title: '从检查点继续训练',
+            description: taskName,
+            message: `将使用这个历史任务的配置快照，并从 ${selected.name} 继续训练。训练会恢复优化器、学习率调度器和已完成步数；启动后会生成一个新的训练任务记录。`,
+            confirmText: '确认开始续训',
+        });
+        if (!ok) return;
+
+        setResumeStatus('正在启动续训...', '');
+        try {
+            const res = await api('/api/training/resume', {
+                method: 'POST',
+                body: JSON.stringify({
+                    task_id: viewingHistoryTaskId,
+                    checkpoint: selected.path,
+                }),
+            });
+            if (!res.ok) {
+                setResumeStatus(res.error || '续训启动失败', 'error');
+                return;
+            }
+            const message = res.message || '续训已启动';
+            setResumeStatus(message, 'ok');
+            await loadTrainingHistoryList();
+            returnToLiveTraining();
+            appendLog(`[状态] ${message}: ${selected.name}`);
+        } catch (e) {
+            setResumeStatus('续训启动失败: ' + e.message, 'error');
+        }
+    }
+
+    function setResumeStatus(text, state = '') {
+        const el = document.getElementById('resume-training-status');
+        if (!el) return;
+        el.textContent = text || '';
+        el.className = ['resume-status', state].filter(Boolean).join(' ');
     }
 
     function renderHistoryPaths(task) {
@@ -6079,7 +6801,11 @@
         });
         document.getElementById('btn-refresh-history').addEventListener('click', loadTrainingHistoryList);
         document.getElementById('btn-live-training').addEventListener('click', returnToLiveTraining);
+        document.getElementById('btn-refresh-history-view').addEventListener('click', refreshHistoryView);
         document.getElementById('btn-close-history').addEventListener('click', returnToLiveTraining);
+        document.getElementById('btn-refresh-resume-options').addEventListener('click', () => loadResumeOptionsForTask());
+        document.getElementById('btn-resume-training').addEventListener('click', resumeTrainingFromCheckpoint);
+        document.getElementById('resume-checkpoint-select').addEventListener('change', renderResumePanelState);
         document.getElementById('history-show-archived').addEventListener('change', (e) => {
             showArchivedHistory = e.target.checked;
             renderTrainingHistoryList();
@@ -6089,6 +6815,7 @@
         });
         document.getElementById('btn-refresh-preview').addEventListener('click', loadPreviewImages);
         document.getElementById('btn-refresh-weights').addEventListener('click', loadPreviewWeights);
+        document.getElementById('btn-sort-weights').addEventListener('click', togglePreviewWeightSort);
         document.getElementById('btn-save-preview-settings').addEventListener('click', savePreviewSettings);
         document.getElementById('btn-reset-preview-settings').addEventListener('click', resetPreviewSettings);
         document.getElementById('preview-training-task').addEventListener('change', (e) => changePreviewTask(e.target.value));
@@ -6102,6 +6829,9 @@
             'btn-load-config': '重新读取当前方法、变体和预设合并后的配置；不会启动训练，也不会保存当前未保存修改。',
             'btn-start-from-config': '先做训练前预检测，再用当前左侧表单/当前训练配置启动训练。若数据缺缓存，会提示先预处理。',
             'btn-stop-training': '停止当前正在运行的训练或预处理任务；已经写出的日志、样张和权重文件会保留。',
+            'btn-refresh-resume-options': '重新扫描这个历史任务输出目录里的训练状态目录，例如 output_name-checkpoint-state。',
+            'btn-resume-training': '从选中的训练状态目录恢复训练。它不是加载普通权重热启动，而是恢复 optimizer、scheduler、随机状态和步数。',
+            'resume-checkpoint-select': '只有包含 train_state.json 的状态目录才会出现在这里；普通 safetensors 权重不能完整恢复训练进度。',
             'btn-import-toml': '从本地选择 TOML 文件导入到 WebUI 管理区；导入后仍需要加载或保存为配置才能训练。',
             'btn-export-toml': '下载/导出当前选中的 TOML 内容，适合训练前备份或分享配置。',
             'btn-save-toml': '保存左侧表单或当前 TOML 的未保存修改。保存后，“开始训练”才会使用这些新值。',
@@ -6117,10 +6847,13 @@
             'btn-restore-system-toml': '把项目内置系统预设恢复到项目版本。会自动备份，但不影响用户导入配置。',
             'btn-live-training': '从历史任务视图回到当前正在监控的训练/预处理状态。',
             'btn-refresh-history': '重新读取训练任务历史列表，包括日志、loss、输出目录和样张目录记录。',
+            'btn-refresh-history-view': '重新读取当前正在查看的历史日志和 Loss；适合训练仍在写日志时手动更新。',
+            'btn-merge-config-group-history': '按同一个配置文件分组合并查看训练日志和 Loss 曲线；预处理任务不会参与合并。',
             'btn-clear-log': '清空当前页面显示的日志文本；不会删除磁盘上的历史日志。',
             'history-show-archived': '显示已归档任务。归档只是隐藏列表项，不会删除训练记录。',
             'btn-refresh-preview': '重新扫描当前预览来源目录，读取最新生成的样张图片。',
             'btn-refresh-weights': '重新扫描选中训练任务的权重文件，显示保存轮次和步数。',
+            'btn-sort-weights': '按 Epoch/Step 切换权重文件正序或反序排列。',
             'btn-save-preview-settings': '保存预览图路径设置，只影响预览图页面读取目录，不会改训练配置。',
             'btn-reset-preview-settings': '恢复预览图目录默认值，例如训练样张默认 output/ckpt/sample。',
             'preview-training-task': '选择一个历史训练任务后，预览图会读取该任务记录的 sample_dir，而不是只看默认目录。',

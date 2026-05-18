@@ -10,13 +10,16 @@ from web.services.config_service import preflight_training_config
 def setup_training_routes(app: web.Application) -> None:
     app.router.add_post("/api/training/preflight", handle_preflight)
     app.router.add_post("/api/training/start", handle_start)
+    app.router.add_post("/api/training/resume", handle_resume)
     app.router.add_post("/api/training/preprocess", handle_preprocess)
     app.router.add_post("/api/training/stop", handle_stop)
     app.router.add_get("/api/training/status", handle_status)
     app.router.add_get("/api/training/metrics", handle_metrics)
     app.router.add_get("/api/training/logs", handle_logs)
     app.router.add_get("/api/training/history", handle_history_list)
+    app.router.add_get("/api/training/history/config-group/timeline", handle_config_group_timeline)
     app.router.add_get("/api/training/history/{task_id}", handle_history_detail)
+    app.router.add_get("/api/training/history/{task_id}/resume-options", handle_history_resume_options)
     app.router.add_patch("/api/training/history/{task_id}", handle_history_update)
     app.router.add_delete("/api/training/history/{task_id}", handle_history_delete)
     app.router.add_get("/ws/training", handle_ws)
@@ -68,6 +71,24 @@ async def handle_start(request: web.Request) -> web.Response:
     try:
         await svc.start(variant, preset, extra_args, methods_subdir)
         return web.json_response({"ok": True, "message": "训练已启动"})
+    except RuntimeError as e:
+        return web.json_response({"ok": False, "error": str(e)}, status=409)
+
+
+async def handle_resume(request: web.Request) -> web.Response:
+    svc = request.app["training_service"]
+    data = await request.json()
+    task_id = str(data.get("task_id") or "").strip()
+    checkpoint = str(data.get("checkpoint") or "").strip()
+    if not task_id:
+        return web.json_response({"ok": False, "error": "缺少 task_id"}, status=400)
+    try:
+        payload = await svc.resume_from_history_task(task_id, checkpoint or None)
+        return web.json_response(payload)
+    except FileNotFoundError as e:
+        return web.json_response({"ok": False, "error": str(e)}, status=404)
+    except ValueError as e:
+        return web.json_response({"ok": False, "error": str(e)}, status=400)
     except RuntimeError as e:
         return web.json_response({"ok": False, "error": str(e)}, status=409)
 
@@ -145,6 +166,38 @@ async def handle_history_detail(request: web.Request) -> web.Response:
     task_id = request.match_info["task_id"]
     try:
         return web.json_response(svc.get_history_task(task_id))
+    except FileNotFoundError as e:
+        return web.json_response({"ok": False, "error": str(e)}, status=404)
+    except ValueError as e:
+        return web.json_response({"ok": False, "error": str(e)}, status=400)
+
+
+async def handle_config_group_timeline(request: web.Request) -> web.Response:
+    svc = request.app["training_service"]
+    methods_subdir = str(request.query.get("methods_subdir") or "").strip()
+    variant = str(request.query.get("variant") or "").strip()
+    preset = str(request.query.get("preset") or "default").strip() or "default"
+    include_archived = str(request.query.get("include_archived") or "0").lower() in {"1", "true", "yes"}
+    if not methods_subdir or not variant:
+        return web.json_response({"ok": False, "error": "缺少 methods_subdir 或 variant"}, status=400)
+    try:
+        return web.json_response(svc.get_config_group_timeline(
+            methods_subdir,
+            variant,
+            preset,
+            include_archived=include_archived,
+        ))
+    except FileNotFoundError as e:
+        return web.json_response({"ok": False, "error": str(e)}, status=404)
+    except ValueError as e:
+        return web.json_response({"ok": False, "error": str(e)}, status=400)
+
+
+async def handle_history_resume_options(request: web.Request) -> web.Response:
+    svc = request.app["training_service"]
+    task_id = request.match_info["task_id"]
+    try:
+        return web.json_response(svc.get_resume_options(task_id))
     except FileNotFoundError as e:
         return web.json_response({"ok": False, "error": str(e)}, status=404)
     except ValueError as e:

@@ -15,6 +15,7 @@ from typing import Any
 
 import psutil
 from aiohttp import web
+import toml
 
 from library.env import load_dotenv
 from library.runtime.launch import accelerate_training_command_prefix
@@ -25,6 +26,9 @@ HISTORY_DIR = ROOT / "configs" / "web-training-history"
 OUTPUT_READ_SIZE = 4096
 MAX_LOG_RECORDS = 3000
 MAX_HISTORY_ITEMS = 100
+MAX_RESUME_CHECKPOINTS = 100
+MAX_TIMELINE_LOG_RECORDS = 20000
+MAX_TIMELINE_METRIC_RECORDS = 20000
 
 TQDM_RE = re.compile(
     r"^(?P<label>.*?):?\s*(?P<pct>\d+)%\|[^|]*\|\s*(?P<cur>\d+)/(?P<tot>\d+)"
@@ -73,6 +77,10 @@ class TrainingService:
         methods_subdir: str = "gui-methods",
         *,
         reset_logs: bool = True,
+        config_file: str | None = None,
+        start_message: str | None = None,
+        command_label: str | None = None,
+        resume_info: dict[str, Any] | None = None,
     ):
         if self.status == "running":
             raise RuntimeError("已有任务在运行中")
@@ -88,6 +96,8 @@ class TrainingService:
             "--preset", preset,
             "--methods_subdir", methods_subdir,
         ]
+        if config_file:
+            cmd.extend(["--config_file", config_file])
         if extra_args:
             cmd.extend(extra_args)
 
@@ -99,8 +109,14 @@ class TrainingService:
             preset,
             methods_subdir,
             extra_args or [],
+            config_file=config_file,
         )
-        data_dirs = _ensure_training_data_dirs(variant, preset, methods_subdir)
+        data_dirs = _ensure_training_data_dirs(
+            variant,
+            preset,
+            methods_subdir,
+            config_file=config_file,
+        )
         await self._launch_job(
             cmd,
             env,
@@ -112,10 +128,60 @@ class TrainingService:
             data_dirs=data_dirs,
             sample_config=sample_config,
             job="training",
-            start_message=f"训练启动: {methods_subdir}/{variant} / {preset}",
-            command_label="训练命令",
+            start_message=start_message or f"训练启动: {methods_subdir}/{variant} / {preset}",
+            command_label=command_label or "训练命令",
             reset_logs=reset_logs,
+            config_file=config_file,
+            resume_info=resume_info,
         )
+
+    async def resume_from_history_task(self, task_id: str, checkpoint: str | None = None) -> dict[str, Any]:
+        payload = _load_history_task(task_id)
+        task = payload.get("task") if isinstance(payload, dict) else {}
+        if not isinstance(task, dict):
+            raise ValueError("任务不存在")
+        if task.get("job") != "training":
+            raise ValueError("只能从训练任务继续训练")
+
+        checkpoints = _list_resume_checkpoints(task)
+        if not checkpoints:
+            raise ValueError("这个训练任务没有可续训的检查点")
+
+        selected = _select_resume_checkpoint(checkpoints, checkpoint)
+        if selected is None:
+            raise ValueError("未找到指定的检查点")
+
+        snapshot_path = _history_snapshot_path(task_id)
+        if snapshot_path is None:
+            raise ValueError("历史任务缺少配置快照，无法安全续训")
+        config_file = _display_project_path(str(snapshot_path))
+        resume_info = {
+            "source_task_id": task_id,
+            "source_task_name": str(task.get("name") or ""),
+            "checkpoint": selected["path"],
+            "checkpoint_name": selected["name"],
+            "checkpoint_kind": selected["kind"],
+            "checkpoint_epoch": selected.get("epoch"),
+            "checkpoint_step": selected.get("step"),
+        }
+
+        await self.start(
+            str(task.get("variant") or ""),
+            str(task.get("preset") or "default"),
+            ["--resume", selected["path"], "--skip_until_initial_step"],
+            str(task.get("methods_subdir") or "gui-methods"),
+            config_file=config_file,
+            start_message=f"从检查点继续训练: {selected['name']}",
+            command_label="续训命令",
+            resume_info=resume_info,
+        )
+
+        return {
+            "ok": True,
+            "message": "已从检查点继续训练",
+            "task_id": self.current_task_id,
+            "checkpoint": selected,
+        }
 
     async def start_preprocess(
         self,
@@ -187,6 +253,8 @@ class TrainingService:
         start_message: str,
         command_label: str,
         reset_logs: bool = True,
+        config_file: str | None = None,
+        resume_info: dict[str, Any] | None = None,
     ):
         self.process = await asyncio.create_subprocess_exec(
             *cmd,
@@ -226,6 +294,8 @@ class TrainingService:
             data_dirs=data_dirs,
             sample_config=sample_config,
             command=cmd,
+            config_file=config_file,
+            resume_info=resume_info,
         )
         self._remember_log("status", f"{command_label}: {' '.join(cmd)}")
 
@@ -301,6 +371,50 @@ class TrainingService:
 
     def get_history_task(self, task_id: str) -> dict[str, Any]:
         return _load_history_task(task_id)
+
+    def get_config_group_timeline(
+        self,
+        methods_subdir: str,
+        variant: str,
+        preset: str,
+        *,
+        include_archived: bool = False,
+    ) -> dict[str, Any]:
+        return _build_config_group_timeline(
+            methods_subdir,
+            variant,
+            preset,
+            include_archived=include_archived,
+        )
+
+    def get_resume_options(self, task_id: str) -> dict[str, Any]:
+        payload = _load_history_task(task_id)
+        task = payload.get("task") if isinstance(payload, dict) else {}
+        if not isinstance(task, dict):
+            raise FileNotFoundError("任务不存在")
+        if task.get("job") != "training":
+            raise ValueError("只能从训练任务读取续训检查点")
+        checkpoints = _list_resume_checkpoints(task)
+        default_checkpoint = checkpoints[0]["path"] if checkpoints else ""
+        message = "选择一个保存了训练状态的目录继续训练。普通权重文件不能恢复优化器和步数。"
+        if not checkpoints:
+            message = "这个任务没有找到可续训的状态目录。只有保存了 train_state.json 的目录才能继续训练。"
+        return {
+            "ok": True,
+            "task": {
+                "id": task.get("id", task_id),
+                "name": task.get("name", ""),
+                "group": task.get("group", ""),
+                "variant": task.get("variant", ""),
+                "preset": task.get("preset", ""),
+                "methods_subdir": task.get("methods_subdir", ""),
+                "output_dir": task.get("output_dir", ""),
+                "sample_dir": task.get("sample_dir", ""),
+            },
+            "checkpoints": checkpoints,
+            "default_checkpoint": default_checkpoint,
+            "message": message,
+        }
 
     def update_history_task(self, task_id: str, patch: dict[str, Any]) -> dict[str, Any]:
         return _update_history_task(task_id, patch)
@@ -492,6 +606,8 @@ class TrainingService:
         data_dirs: dict[str, str],
         sample_config: dict[str, Any],
         command: list[str],
+        config_file: str | None = None,
+        resume_info: dict[str, Any] | None = None,
     ) -> None:
         HISTORY_DIR.mkdir(parents=True, exist_ok=True)
         task_id = datetime.now().strftime("%Y%m%d-%H%M%S") + f"-{job}-{methods_subdir}-{variant}"
@@ -523,6 +639,7 @@ class TrainingService:
             "data_dirs": data_dirs,
             "sample_config": sample_config,
             "command": command,
+            "resume_from": resume_info or {},
             "started_at": now,
             "started_at_text": _format_ts(now),
             "finished_at": None,
@@ -533,7 +650,13 @@ class TrainingService:
             "metric_count": 0,
         }
         _write_json(task_dir / "meta.json", meta)
-        _write_config_snapshot(task_dir / "config.snapshot.toml", variant, preset, methods_subdir)
+        _write_config_snapshot(
+            task_dir / "config.snapshot.toml",
+            variant,
+            preset,
+            methods_subdir,
+            config_file=config_file,
+        )
 
     def _finish_history_task(self, *, state: str, message: str, returncode: int) -> None:
         if not self.current_task_dir:
@@ -678,11 +801,15 @@ def _resolve_training_runtime_info(
     preset: str,
     methods_subdir: str,
     extra_args: list[str],
+    config_file: str | None = None,
 ) -> tuple[str, str, dict[str, Any]]:
     output_dir = "output/ckpt"
     cfg: dict[str, Any] = {}
     try:
-        cfg = load_merged_config(variant, preset, methods_subdir)
+        if config_file:
+            cfg = _load_config_file_config(config_file)
+        else:
+            cfg = load_merged_config(variant, preset, methods_subdir)
         output_dir = str(cfg.get("output_dir") or output_dir)
     except Exception:
         pass
@@ -699,8 +826,17 @@ def _resolve_training_runtime_info(
     return rel_output, f"{rel_output.rstrip('/')}/sample", _sample_config_from_cfg(cfg, extra_args)
 
 
-def _ensure_training_data_dirs(variant: str, preset: str, methods_subdir: str) -> dict[str, str]:
-    cfg = apply_auto_data_dirs(load_merged_config(variant, preset, methods_subdir), create=True)
+def _ensure_training_data_dirs(
+    variant: str,
+    preset: str,
+    methods_subdir: str,
+    *,
+    config_file: str | None = None,
+) -> dict[str, str]:
+    if config_file:
+        cfg = apply_auto_data_dirs(_load_config_file_config(config_file), create=True)
+    else:
+        cfg = apply_auto_data_dirs(load_merged_config(variant, preset, methods_subdir), create=True)
     return {
         "source_image_dir": str(cfg.get("source_image_dir") or ""),
         "resized_image_dir": str(cfg.get("resized_image_dir") or ""),
@@ -708,12 +844,35 @@ def _ensure_training_data_dirs(variant: str, preset: str, methods_subdir: str) -
     }
 
 
-def _write_config_snapshot(path: Path, variant: str, preset: str, methods_subdir: str) -> None:
+def _write_config_snapshot(
+    path: Path,
+    variant: str,
+    preset: str,
+    methods_subdir: str,
+    *,
+    config_file: str | None = None,
+) -> None:
     try:
+        if config_file:
+            source = _resolve_display_path(config_file)
+            if source is None or not _path_exists(source):
+                raise FileNotFoundError("续训配置快照不存在")
+            path.write_text(source.read_text(encoding="utf-8", errors="replace"), encoding="utf-8")
+            return
         cfg = apply_auto_data_dirs(load_merged_config(variant, preset, methods_subdir))
         path.write_text(toml_dumps_sorted(cfg), encoding="utf-8")
     except Exception as e:
         path.write_text(f"# 无法生成配置快照: {e}\n", encoding="utf-8")
+
+
+def _load_config_file_config(config_file: str) -> dict[str, Any]:
+    path = _resolve_display_path(config_file)
+    if path is None or not _path_exists(path):
+        return {}
+    try:
+        return toml.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
 
 
 def toml_dumps_sorted(data: dict[str, Any]) -> str:
@@ -750,21 +909,251 @@ def _history_task_dir(task_id: str) -> Path:
 
 def _load_history_task(task_id: str) -> dict[str, Any]:
     task_dir = _history_task_dir(task_id)
-    if not task_dir.exists():
+    if not _path_exists(task_dir):
         raise FileNotFoundError("任务不存在")
     meta = _read_json(task_dir / "meta.json")
     if not meta:
         raise FileNotFoundError("任务元信息不存在")
+    snapshot_path = task_dir / "config.snapshot.toml"
     return {
         "ok": True,
         "task": _history_summary(meta, task_dir),
         "logs": _read_jsonl(task_dir / "logs.jsonl"),
         "metrics": _read_jsonl(task_dir / "metrics.jsonl"),
         "system": _read_jsonl(task_dir / "system.jsonl"),
-        "config_toml": (task_dir / "config.snapshot.toml").read_text(encoding="utf-8")
-            if (task_dir / "config.snapshot.toml").exists()
-            else "",
+        "config_toml": _read_text_file(snapshot_path),
     }
+
+
+def _build_config_group_timeline(
+    methods_subdir: str,
+    variant: str,
+    preset: str,
+    *,
+    include_archived: bool = False,
+) -> dict[str, Any]:
+    group = _history_config_group(methods_subdir, variant, preset)
+    tasks = [
+        task for task in _list_history_tasks()
+        if task.get("job") == "training"
+        and _task_config_group_matches(task, group)
+        and (include_archived or not task.get("archived"))
+    ]
+    tasks.sort(key=lambda item: (float(item.get("started_at") or 0), str(item.get("id") or "")))
+    if not tasks:
+        raise FileNotFoundError("这个配置文件分组没有可合并的训练任务")
+
+    logs: list[dict[str, Any]] = []
+    metrics: list[dict[str, Any]] = []
+    segments: list[dict[str, Any]] = []
+    next_visual_step = 1
+
+    for index, task in enumerate(tasks, start=1):
+        task_id = str(task.get("id") or "")
+        task_dir = _history_task_dir(task_id)
+        task_logs = _read_jsonl(task_dir / "logs.jsonl")
+        visible_logs = [record for record in task_logs if record.get("kind") != "progress"]
+        task_metrics = _metrics_from_history(task_logs, _read_jsonl(task_dir / "metrics.jsonl"))
+        if task_metrics:
+            start_visual_step = next_visual_step
+            next_visual_step = _assign_visual_steps(task_metrics, next_visual_step)
+            end_visual_step = next_visual_step - 1
+        else:
+            start_visual_step = None
+            end_visual_step = None
+
+        source_label = _timeline_task_label(task)
+        for record in visible_logs:
+            item = dict(record)
+            item["source_task_id"] = task_id
+            item["source_task_index"] = index
+            item["source_task_label"] = source_label
+            logs.append(item)
+
+        for metric in task_metrics:
+            item = dict(metric)
+            item["source_task_id"] = task_id
+            item["source_task_index"] = index
+            item["source_task_label"] = source_label
+            metrics.append(item)
+
+        segments.append({
+            "task": _timeline_task_brief(task),
+            "index": index,
+            "log_count": len(visible_logs),
+            "raw_log_count": len(task_logs),
+            "progress_count": max(0, len(task_logs) - len(visible_logs)),
+            "metric_count": len(task_metrics),
+            "loss_count": sum(1 for item in task_metrics if item.get("loss") is not None),
+            "start_visual_step": start_visual_step,
+            "end_visual_step": end_visual_step,
+        })
+
+    logs.sort(key=lambda item: (
+        float(item.get("ts") or 0),
+        int(item.get("source_task_index") or 0),
+        int(item.get("id") or 0),
+    ))
+    metrics.sort(key=lambda item: (
+        float(item.get("ts") or 0),
+        int(item.get("source_task_index") or 0),
+        int(item.get("visual_step") or 0),
+    ))
+
+    if len(logs) > MAX_TIMELINE_LOG_RECORDS:
+        logs = logs[-MAX_TIMELINE_LOG_RECORDS:]
+    if len(metrics) > MAX_TIMELINE_METRIC_RECORDS:
+        metrics = metrics[-MAX_TIMELINE_METRIC_RECORDS:]
+
+    return {
+        "ok": True,
+        "mode": "config_group",
+        "group": group,
+        "tasks": [_timeline_task_brief(task) for task in tasks],
+        "segments": segments,
+        "logs": logs,
+        "metrics": metrics,
+        "summary": {
+            "task_count": len(tasks),
+            "log_count": len(logs),
+            "raw_log_count": sum(segment["raw_log_count"] for segment in segments),
+            "progress_count": sum(segment["progress_count"] for segment in segments),
+            "metric_count": len(metrics),
+            "loss_count": sum(1 for item in metrics if item.get("loss") is not None),
+            "started_at": tasks[0].get("started_at") if tasks else None,
+            "started_at_text": tasks[0].get("started_at_text") if tasks else "",
+            "finished_at": tasks[-1].get("finished_at") if tasks and tasks[-1].get("finished_at") else None,
+            "finished_at_text": tasks[-1].get("finished_at_text") if tasks and tasks[-1].get("finished_at") else "",
+            "include_archived": include_archived,
+        },
+    }
+
+
+def _history_config_group(methods_subdir: str, variant: str, preset: str) -> dict[str, str]:
+    return {
+        "methods_subdir": str(methods_subdir or "").strip(),
+        "variant": str(variant or "").strip(),
+        "preset": str(preset or "default").strip() or "default",
+    }
+
+
+def _task_config_group_matches(task: dict[str, Any], group: dict[str, str]) -> bool:
+    task_group = _history_config_group(
+        str(task.get("methods_subdir") or ""),
+        str(task.get("variant") or ""),
+        str(task.get("preset") or "default"),
+    )
+    return task_group == group
+
+
+def _metrics_from_history(logs: list[dict[str, Any]], metrics: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    out: list[dict[str, Any]] = []
+    seen: set[tuple[int | None, float | None, float | None]] = set()
+    for item in metrics:
+        normalized = _normalize_metric_record(item)
+        if normalized is None:
+            continue
+        key = _metric_seen_key(normalized)
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(normalized)
+
+    for record in logs:
+        if record.get("kind") != "progress":
+            continue
+        parsed = _metric_from_progress_line(str(record.get("line") or ""))
+        if parsed is None:
+            continue
+        if record.get("ts") is not None:
+            parsed["ts"] = record.get("ts")
+        key = _metric_seen_key(parsed)
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(parsed)
+
+    out.sort(key=lambda item: (float(item.get("ts") or 0), int(item.get("step") or 0)))
+    return out
+
+
+def _normalize_metric_record(item: dict[str, Any]) -> dict[str, Any] | None:
+    out: dict[str, Any] = {}
+    step = _int_or_none(item.get("step"))
+    if step is not None:
+        out["step"] = step
+    for key in ("loss", "lr"):
+        value = _float_or_none(item.get(key))
+        if value is not None:
+            out[key] = value
+    if item.get("rate"):
+        out["rate"] = str(item.get("rate"))
+    ts = _float_or_none(item.get("ts"))
+    if ts is not None:
+        out["ts"] = ts
+    if not any(key in out for key in ("loss", "lr")):
+        return None
+    return out
+
+
+def _metric_from_progress_line(line: str) -> dict[str, Any] | None:
+    out: dict[str, Any] = {}
+    step_match = re.search(r"\|\s*(\d+)\/\d+\s*\[", line) or re.search(r"step[=:/\s]+(\d+)", line, re.IGNORECASE)
+    if step_match:
+        out["step"] = int(step_match.group(1))
+    loss = _extract_float_metric(line, ("avr_loss", "loss"))
+    if loss is not None:
+        out["loss"] = loss
+    lr = _extract_float_metric(line, ("lr", "learning_rate"))
+    if lr is not None:
+        out["lr"] = lr
+    rate_match = re.search(r"([\d.]+\s*(?:s/it|it/s|s/step))", line, re.IGNORECASE)
+    if rate_match:
+        out["rate"] = rate_match.group(1).replace(" ", "")
+    return out if any(key in out for key in ("loss", "lr")) else None
+
+
+def _metric_seen_key(item: dict[str, Any]) -> tuple[int | None, float | None, float | None]:
+    step = _int_or_none(item.get("step"))
+    loss = _float_or_none(item.get("loss"))
+    lr = _float_or_none(item.get("lr"))
+    return (
+        step,
+        round(loss, 8) if loss is not None else None,
+        round(lr, 12) if lr is not None else None,
+    )
+
+
+def _assign_visual_steps(metrics: list[dict[str, Any]], next_step: int) -> int:
+    for item in metrics:
+        item["visual_step"] = next_step
+        next_step += 1
+    return next_step
+
+
+def _timeline_task_brief(task: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "id": task.get("id", ""),
+        "name": task.get("name", ""),
+        "label": _timeline_task_label(task),
+        "state": task.get("state", ""),
+        "variant": task.get("variant", ""),
+        "preset": task.get("preset", ""),
+        "methods_subdir": task.get("methods_subdir", ""),
+        "output_dir": task.get("output_dir", ""),
+        "history_dir": task.get("history_dir", ""),
+        "started_at": task.get("started_at"),
+        "started_at_text": task.get("started_at_text", ""),
+        "finished_at": task.get("finished_at"),
+        "finished_at_text": task.get("finished_at_text", ""),
+        "log_count": int(task.get("log_count") or 0),
+        "metric_count": int(task.get("metric_count") or 0),
+        "archived": bool(task.get("archived", False)),
+    }
+
+
+def _timeline_task_label(task: dict[str, Any]) -> str:
+    return str(task.get("name") or f"{task.get('methods_subdir') or '-'} / {task.get('variant') or task.get('id') or '-'}")
 
 
 def _update_history_task(task_id: str, patch: dict[str, Any]) -> dict[str, Any]:
@@ -821,8 +1210,138 @@ def _history_summary(meta: dict[str, Any], task_dir: Path) -> dict[str, Any]:
     return out
 
 
+def _history_snapshot_path(task_id: str) -> Path | None:
+    task_dir = _history_task_dir(task_id)
+    snapshot = task_dir / "config.snapshot.toml"
+    if _path_exists(snapshot):
+        return snapshot
+    return None
+
+
+def _list_resume_checkpoints(task: dict[str, Any]) -> list[dict[str, Any]]:
+    output_dir = _resolve_display_path(str(task.get("output_dir") or ""))
+    if output_dir is None or not _path_exists(output_dir) or not output_dir.is_dir():
+        return []
+
+    started_at = _float_or_none(task.get("started_at"))
+    finished_at = _float_or_none(task.get("finished_at"))
+    lower = started_at - 180 if started_at is not None else None
+    upper = (finished_at + 180) if finished_at is not None else (datetime.now().timestamp() + 180)
+
+    items: list[dict[str, Any]] = []
+    for child in sorted(output_dir.iterdir(), key=lambda p: p.name):
+        if not child.is_dir():
+            continue
+        state_file = child / "train_state.json"
+        if not _path_exists(state_file):
+            continue
+        state = _read_json(state_file)
+        step = _int_or_none(state.get("current_step"))
+        if step is None:
+            continue
+        epoch = _int_or_none(state.get("current_epoch"))
+        mtime = _state_mtime(child, state_file)
+        scope = "task" if lower is not None and lower <= mtime <= upper else "other"
+        kind = _resume_state_kind(child.name)
+        paired_weight = _paired_resume_weight(child, output_dir)
+        items.append({
+            "id": _display_project_path(str(child)),
+            "path": _display_project_path(str(child)),
+            "name": child.name,
+            "kind": kind,
+            "kind_label": _resume_state_kind_label(kind),
+            "scope": scope,
+            "scope_label": "本任务" if scope == "task" else "同目录其他训练",
+            "epoch": epoch,
+            "step": step,
+            "current_epoch": epoch,
+            "current_step": step,
+            "mtime": mtime,
+            "mtime_text": _format_ts(mtime),
+            "train_state_file": _display_project_path(str(state_file)),
+            "paired_weight": paired_weight,
+        })
+
+    items.sort(key=_resume_state_sort_key)
+    return items[:MAX_RESUME_CHECKPOINTS]
+
+
+def _select_resume_checkpoint(
+    checkpoints: list[dict[str, Any]],
+    checkpoint: str | None,
+) -> dict[str, Any] | None:
+    if not checkpoints:
+        return None
+    if not checkpoint:
+        return checkpoints[0]
+
+    target = _resolve_display_path(checkpoint)
+    if target is None:
+        return None
+    target_text = _display_project_path(str(target))
+    for item in checkpoints:
+        if _display_project_path(str(item.get("path") or "")) == target_text:
+            return item
+    return None
+
+
+def _resume_state_kind(name: str) -> str:
+    if name.endswith("-checkpoint-state"):
+        return "checkpoint"
+    if re.search(r"-step\d+-state$", name):
+        return "step"
+    if re.search(r"-\d{6}-state$", name):
+        return "epoch"
+    if name.endswith("-state"):
+        return "last"
+    return "state"
+
+
+def _resume_state_kind_label(kind: str) -> str:
+    return {
+        "checkpoint": "自动续训检查点",
+        "step": "按步保存状态",
+        "epoch": "按轮保存状态",
+        "last": "训练结束状态",
+        "state": "训练状态",
+    }.get(kind, "训练状态")
+
+
+def _resume_state_sort_key(item: dict[str, Any]) -> tuple[int, int, int, float, str]:
+    scope_rank = {"task": 0, "other": 1}
+    kind_rank = {"checkpoint": 0, "last": 1, "epoch": 2, "step": 3, "state": 4}
+    step = int(item.get("step") or -1)
+    return (
+        int(scope_rank.get(str(item.get("scope")), 9)),
+        int(kind_rank.get(str(item.get("kind")), 9)),
+        -step,
+        -float(item.get("mtime") or 0),
+        str(item.get("name") or ""),
+    )
+
+
+def _state_mtime(state_dir: Path, state_file: Path) -> float:
+    for path in (state_file, state_dir):
+        try:
+            return float(path.stat().st_mtime)
+        except OSError:
+            continue
+    return datetime.now().timestamp()
+
+
+def _paired_resume_weight(state_dir: Path, output_dir: Path) -> str:
+    name = state_dir.name
+    if not name.endswith("-state"):
+        return ""
+    base_name = name[:-6]
+    weight = output_dir / f"{base_name}.safetensors"
+    if _path_exists(weight):
+        return _display_project_path(str(weight))
+    return ""
+
+
 def _read_json(path: Path) -> dict[str, Any]:
-    if not path.exists():
+    if not _path_exists(path):
         return {}
     try:
         return json.loads(path.read_text(encoding="utf-8"))
@@ -835,10 +1354,14 @@ def _write_json(path: Path, payload: dict[str, Any]) -> None:
 
 
 def _read_jsonl(path: Path) -> list[dict[str, Any]]:
-    if not path.exists():
+    if not _path_exists(path):
         return []
     out: list[dict[str, Any]] = []
-    for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+    try:
+        lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
+    except OSError:
+        return []
+    for line in lines:
         if not line.strip():
             continue
         try:
@@ -851,12 +1374,28 @@ def _read_jsonl(path: Path) -> list[dict[str, Any]]:
 
 
 def _count_jsonl(path: Path) -> int:
-    if not path.exists():
+    if not _path_exists(path):
         return 0
     try:
         return sum(1 for line in path.read_text(encoding="utf-8", errors="replace").splitlines() if line.strip())
     except Exception:
         return 0
+
+
+def _read_text_file(path: Path) -> str:
+    if not _path_exists(path):
+        return ""
+    try:
+        return path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return ""
+
+
+def _path_exists(path: Path) -> bool:
+    try:
+        return path.exists()
+    except OSError:
+        return False
 
 
 def _safe_task_id(value: str) -> str:
@@ -956,6 +1495,20 @@ def _cli_arg_overrides(extra_args: list[str]) -> dict[str, Any]:
                 out[config_key] = arg.split("=", 1)[1]
                 break
     return out
+
+
+def _int_or_none(value: Any) -> int | None:
+    try:
+        return int(str(value))
+    except (TypeError, ValueError):
+        return None
+
+
+def _float_or_none(value: Any) -> float | None:
+    try:
+        return float(str(value))
+    except (TypeError, ValueError):
+        return None
 
 
 def _positive_int_or_none(value: Any) -> int | None:

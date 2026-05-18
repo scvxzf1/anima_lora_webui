@@ -6,6 +6,8 @@ from aiohttp import web
 
 from web.services.preview_service import (
     get_preview_settings,
+    list_config_group_preview_images,
+    list_config_group_training_weights,
     list_preview_images,
     list_training_weights,
     resolve_preview_image,
@@ -42,8 +44,19 @@ async def handle_preview_settings_put(request: web.Request) -> web.Response:
 async def handle_preview_images(request: web.Request) -> web.Response:
     source = request.query.get("source", "training")
     try:
-        task = _selected_history_task(request)
         limit = int(request.query.get("limit", "200") or 200)
+        if source == "training" and request.query.get("mode") == "config_group":
+            tasks = _selected_config_group_tasks(request)
+            payload = list_config_group_preview_images(
+                tasks,
+                methods_subdir=str(request.query.get("methods_subdir") or ""),
+                variant=str(request.query.get("variant") or ""),
+                preset=str(request.query.get("preset") or "default"),
+                limit=limit,
+            )
+            return web.json_response(payload)
+
+        task = _selected_history_task(request)
         payload = list_preview_images(
             source,
             current_task_sample_dir=_selected_sample_dir(request, task=task),
@@ -58,6 +71,8 @@ async def handle_preview_images(request: web.Request) -> web.Response:
         return web.json_response({"ok": False, "error": str(e)}, status=400)
     except FileNotFoundError as e:
         return web.json_response({"ok": False, "error": str(e)}, status=404)
+    except OSError as e:
+        return web.json_response({"ok": False, "error": f"读取预览资源失败: {e}"}, status=400)
 
 
 async def handle_preview_image(request: web.Request) -> web.StreamResponse:
@@ -79,12 +94,22 @@ async def handle_preview_image(request: web.Request) -> web.StreamResponse:
 
 async def handle_preview_weights(request: web.Request) -> web.Response:
     try:
+        if request.query.get("mode") == "config_group":
+            tasks = _selected_config_group_tasks(request)
+            return web.json_response(list_config_group_training_weights(
+                tasks,
+                methods_subdir=str(request.query.get("methods_subdir") or ""),
+                variant=str(request.query.get("variant") or ""),
+                preset=str(request.query.get("preset") or "default"),
+            ))
         task = _selected_history_task(request)
         return web.json_response(list_training_weights(task))
     except ValueError as e:
         return web.json_response({"ok": False, "error": str(e)}, status=400)
     except FileNotFoundError as e:
         return web.json_response({"ok": False, "error": str(e)}, status=404)
+    except OSError as e:
+        return web.json_response({"ok": False, "error": f"读取权重资源失败: {e}"}, status=400)
 
 
 def _current_sample_dir(request: web.Request) -> str:
@@ -121,6 +146,55 @@ def _selected_history_task(request: web.Request) -> dict:
     if task.get("job") != "training":
         raise ValueError("只能选择训练任务读取样张")
     return task
+
+
+def _selected_config_group_tasks(request: web.Request) -> list[dict]:
+    methods_subdir = str(request.query.get("methods_subdir") or "").strip()
+    variant = str(request.query.get("variant") or "").strip()
+    preset = str(request.query.get("preset") or "default").strip() or "default"
+    include_archived = str(request.query.get("include_archived") or "0").lower() in {"1", "true", "yes"}
+    if not methods_subdir or not variant:
+        raise ValueError("缺少 methods_subdir 或 variant")
+
+    svc = request.app.get("training_service")
+    if not svc:
+        raise ValueError("训练服务未初始化")
+
+    group = {
+        "methods_subdir": methods_subdir,
+        "variant": variant,
+        "preset": preset,
+    }
+    summaries = [
+        task for task in svc.list_history_tasks()
+        if task.get("job") == "training"
+        and _task_config_group_matches(task, group)
+        and (include_archived or not task.get("archived"))
+    ]
+    summaries.sort(key=lambda item: (float(item.get("started_at") or 0), str(item.get("id") or "")))
+    tasks = []
+    for summary in summaries:
+        task_id = str(summary.get("id") or "")
+        if not task_id:
+            continue
+        try:
+            payload = svc.get_history_task(task_id)
+        except (FileNotFoundError, ValueError):
+            continue
+        task = payload.get("task") if isinstance(payload, dict) else {}
+        if isinstance(task, dict) and task.get("job") == "training":
+            tasks.append(task)
+    if not tasks:
+        raise FileNotFoundError("这个训练分组没有可读取的训练任务")
+    return tasks
+
+
+def _task_config_group_matches(task: dict, group: dict[str, str]) -> bool:
+    return (
+        str(task.get("methods_subdir") or "").strip() == group["methods_subdir"]
+        and str(task.get("variant") or "").strip() == group["variant"]
+        and (str(task.get("preset") or "default").strip() or "default") == group["preset"]
+    )
 
 
 def _selected_sample_dir(request: web.Request, *, task: dict | None = None) -> str:
