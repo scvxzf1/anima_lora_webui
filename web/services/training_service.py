@@ -82,6 +82,7 @@ class TrainingService:
         start_message: str | None = None,
         command_label: str | None = None,
         resume_info: dict[str, Any] | None = None,
+        gpu_whitelist: list[Any] | None = None,
     ):
         if self.status == "running":
             raise RuntimeError("已有任务在运行中")
@@ -91,6 +92,8 @@ class TrainingService:
             venv_python = sys.executable
 
         env = os.environ.copy()
+        gpu_selection = _normalize_gpu_whitelist(gpu_whitelist)
+        _apply_gpu_whitelist(env, gpu_selection)
         cmd = [
             *accelerate_training_command_prefix(venv_python, ROOT / "train.py", env),
             "--method", variant,
@@ -134,9 +137,16 @@ class TrainingService:
             reset_logs=reset_logs,
             config_file=config_file,
             resume_info=resume_info,
+            gpu_whitelist=gpu_selection,
         )
 
-    async def resume_from_history_task(self, task_id: str, checkpoint: str | None = None) -> dict[str, Any]:
+    async def resume_from_history_task(
+        self,
+        task_id: str,
+        checkpoint: str | None = None,
+        *,
+        gpu_whitelist: list[Any] | None = None,
+    ) -> dict[str, Any]:
         payload = _load_history_task(task_id)
         task = payload.get("task") if isinstance(payload, dict) else {}
         if not isinstance(task, dict):
@@ -175,6 +185,7 @@ class TrainingService:
             start_message=f"从检查点继续训练: {selected['name']}",
             command_label="续训命令",
             resume_info=resume_info,
+            gpu_whitelist=gpu_whitelist,
         )
 
         return {
@@ -191,6 +202,7 @@ class TrainingService:
         methods_subdir: str = "gui-methods",
         extra_args: list[str] | None = None,
         train_after: bool = False,
+        gpu_whitelist: list[Any] | None = None,
     ):
         if self.status == "running":
             raise RuntimeError("已有任务在运行中")
@@ -204,6 +216,8 @@ class TrainingService:
             cmd.extend(extra_args)
 
         env = os.environ.copy()
+        gpu_selection = _normalize_gpu_whitelist(gpu_whitelist)
+        _apply_gpu_whitelist(env, gpu_selection)
         env["PYTHONUNBUFFERED"] = "1"
         env["PATH"] = str(ROOT / ".venv" / "bin") + ":" + env.get("PATH", "")
         env["METHOD"] = variant
@@ -222,6 +236,7 @@ class TrainingService:
             "preset": preset,
             "methods_subdir": methods_subdir,
             "extra_args": [],
+            "gpu_whitelist": gpu_selection,
         } if train_after else None
         await self._launch_job(
             cmd,
@@ -236,6 +251,7 @@ class TrainingService:
             job="preprocess",
             start_message=f"预处理启动: {methods_subdir}/{variant} / {preset}",
             command_label="预处理命令",
+            gpu_whitelist=gpu_selection,
         )
 
     async def _launch_job(
@@ -256,6 +272,7 @@ class TrainingService:
         reset_logs: bool = True,
         config_file: str | None = None,
         resume_info: dict[str, Any] | None = None,
+        gpu_whitelist: list[int] | None = None,
     ):
         self.process = await asyncio.create_subprocess_exec(
             *cmd,
@@ -297,8 +314,11 @@ class TrainingService:
             command=cmd,
             config_file=config_file,
             resume_info=resume_info,
+            gpu_whitelist=gpu_whitelist,
         )
         self._remember_log("status", f"{command_label}: {' '.join(cmd)}")
+        if gpu_whitelist:
+            self._remember_log("status", f"GPU 白名单: {','.join(str(item) for item in gpu_whitelist)}")
 
         await self._broadcast({
             "type": "status",
@@ -366,6 +386,9 @@ class TrainingService:
         limit = max(1, min(limit, MAX_LOG_RECORDS))
         records = [record for record in self._log_records if record["id"] > after]
         return records[-limit:]
+
+    async def list_gpus(self) -> list[dict[str, Any]]:
+        return await _list_available_gpus()
 
     def list_history_tasks(self) -> list[dict[str, Any]]:
         return _list_history_tasks()
@@ -516,6 +539,7 @@ class TrainingService:
                 pending.get("extra_args") or [],
                 pending["methods_subdir"],
                 reset_logs=False,
+                gpu_whitelist=pending.get("gpu_whitelist"),
             )
         except Exception as e:
             msg = f"自动开始训练失败: {e}"
@@ -609,6 +633,7 @@ class TrainingService:
         command: list[str],
         config_file: str | None = None,
         resume_info: dict[str, Any] | None = None,
+        gpu_whitelist: list[int] | None = None,
     ) -> None:
         HISTORY_DIR.mkdir(parents=True, exist_ok=True)
         task_id = datetime.now().strftime("%Y%m%d-%H%M%S") + f"-{job}-{methods_subdir}-{variant}"
@@ -641,6 +666,7 @@ class TrainingService:
             "sample_config": sample_config,
             "command": command,
             "resume_from": resume_info or {},
+            "gpu_whitelist": gpu_whitelist or [],
             "started_at": now,
             "started_at_text": _format_ts(now),
             "finished_at": None,
@@ -795,6 +821,62 @@ async def _get_gpu_stats() -> dict:
     except Exception:
         pass
     return {}
+
+
+async def _list_available_gpus() -> list[dict[str, Any]]:
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            "nvidia-smi",
+            "--query-gpu=index,name,memory.total",
+            "--format=csv,noheader,nounits",
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.DEVNULL,
+        )
+        stdout, _ = await proc.communicate()
+    except Exception:
+        return []
+
+    gpus: list[dict[str, Any]] = []
+    for line in stdout.decode(errors="replace").splitlines():
+        parts = [part.strip() for part in line.split(",", 2)]
+        if len(parts) < 2:
+            continue
+        try:
+            index = int(parts[0])
+        except ValueError:
+            continue
+        memory_total_mb = _int_or_none(parts[2]) if len(parts) >= 3 else None
+        item: dict[str, Any] = {
+            "index": index,
+            "name": parts[1],
+            "label": f"GPU {index} · {parts[1]}",
+        }
+        if memory_total_mb is not None:
+            item["memory_total_mb"] = memory_total_mb
+            item["memory_total_gb"] = round(memory_total_mb / 1024, 1)
+        gpus.append(item)
+    return gpus
+
+
+def _normalize_gpu_whitelist(value: Any) -> list[int]:
+    if value is None or value == "":
+        return []
+    raw_items = value if isinstance(value, list) else [value]
+    out: list[int] = []
+    for item in raw_items:
+        try:
+            index = int(str(item).strip())
+        except (TypeError, ValueError):
+            continue
+        if index < 0 or index in out:
+            continue
+        out.append(index)
+    return out
+
+
+def _apply_gpu_whitelist(env: dict[str, str], whitelist: list[int]) -> None:
+    if whitelist:
+        env["CUDA_VISIBLE_DEVICES"] = ",".join(str(index) for index in whitelist)
 
 
 def _resolve_training_runtime_info(

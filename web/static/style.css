@@ -229,6 +229,103 @@ main { padding: 1rem 1.5rem; }
     font-size: 0.8rem;
 }
 
+.gpu-picker {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    min-width: 0;
+}
+.gpu-picker-caption {
+    color: var(--text-dim);
+    font-size: 0.8rem;
+    white-space: nowrap;
+}
+.gpu-picker-toggle {
+    min-height: 31px;
+    max-width: min(36vw, 420px);
+    padding: 0.35rem 0.62rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--bg-input);
+    color: var(--text);
+    cursor: pointer;
+    font-size: 0.8rem;
+    text-align: left;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    transition: border-color 0.15s, color 0.15s, background 0.15s;
+}
+.gpu-picker-toggle:hover,
+.gpu-picker-toggle[aria-expanded="true"] {
+    border-color: var(--accent);
+    color: var(--accent);
+}
+.gpu-picker-panel {
+    position: absolute;
+    top: calc(100% + 0.35rem);
+    left: 4.8rem;
+    z-index: 120;
+    width: min(420px, 92vw);
+    padding: 0.55rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--bg-card);
+    box-shadow: 0 14px 34px rgba(0, 0, 0, 0.28);
+}
+:root[data-theme="light"] .gpu-picker-panel {
+    box-shadow: 0 14px 34px rgba(17, 24, 39, 0.16);
+}
+.gpu-option-list {
+    display: grid;
+    gap: 0.35rem;
+    max-height: 260px;
+    overflow-y: auto;
+    padding-top: 0.35rem;
+}
+.config-toolbar .gpu-option {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: start;
+    gap: 0.48rem;
+    width: 100%;
+    padding: 0.42rem 0.48rem;
+    border: 1px solid var(--border-soft);
+    border-radius: var(--radius);
+    background: var(--surface-tint);
+    color: var(--text);
+    cursor: pointer;
+    line-height: 1.35;
+}
+.config-toolbar .gpu-option:hover {
+    border-color: var(--accent);
+    background: var(--surface-tint-hover);
+}
+.gpu-option input {
+    margin-top: 0.1rem;
+    accent-color: var(--accent);
+}
+.gpu-option-name {
+    display: block;
+    overflow-wrap: anywhere;
+}
+.gpu-option-meta {
+    display: block;
+    margin-top: 0.15rem;
+    color: var(--text-dim);
+    font-size: 0.72rem;
+}
+.gpu-option-all {
+    font-weight: 600;
+}
+.gpu-picker-note {
+    margin-top: 0.45rem;
+    color: var(--text-dim);
+    font-size: 0.72rem;
+    line-height: 1.45;
+}
+
 
 .choice-guide {
     display: grid;

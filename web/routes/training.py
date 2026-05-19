@@ -16,6 +16,7 @@ def setup_training_routes(app: web.Application) -> None:
     app.router.add_get("/api/training/status", handle_status)
     app.router.add_get("/api/training/metrics", handle_metrics)
     app.router.add_get("/api/training/logs", handle_logs)
+    app.router.add_get("/api/training/gpus", handle_gpus)
     app.router.add_get("/api/training/history", handle_history_list)
     app.router.add_get("/api/training/history/config-group/timeline", handle_config_group_timeline)
     app.router.add_get("/api/training/history/{task_id}", handle_history_detail)
@@ -61,6 +62,7 @@ async def handle_start(request: web.Request) -> web.Response:
     preset = data.get("preset", "default")
     methods_subdir = data.get("methods_subdir", "gui-methods")
     extra_args = data.get("extra_args", [])
+    gpu_whitelist = data.get("gpu_whitelist")
     preflight = preflight_training_config(variant, preset, methods_subdir)
     if not preflight.get("ok", False):
         return web.json_response({
@@ -69,7 +71,7 @@ async def handle_start(request: web.Request) -> web.Response:
             "preflight": preflight,
         }, status=400)
     try:
-        await svc.start(variant, preset, extra_args, methods_subdir)
+        await svc.start(variant, preset, extra_args, methods_subdir, gpu_whitelist=gpu_whitelist)
         return web.json_response({"ok": True, "message": "训练已启动"})
     except RuntimeError as e:
         return web.json_response({"ok": False, "error": str(e)}, status=409)
@@ -80,10 +82,11 @@ async def handle_resume(request: web.Request) -> web.Response:
     data = await request.json()
     task_id = str(data.get("task_id") or "").strip()
     checkpoint = str(data.get("checkpoint") or "").strip()
+    gpu_whitelist = data.get("gpu_whitelist")
     if not task_id:
         return web.json_response({"ok": False, "error": "缺少 task_id"}, status=400)
     try:
-        payload = await svc.resume_from_history_task(task_id, checkpoint or None)
+        payload = await svc.resume_from_history_task(task_id, checkpoint or None, gpu_whitelist=gpu_whitelist)
         return web.json_response(payload)
     except FileNotFoundError as e:
         return web.json_response({"ok": False, "error": str(e)}, status=404)
@@ -101,6 +104,7 @@ async def handle_preprocess(request: web.Request) -> web.Response:
     methods_subdir = data.get("methods_subdir", "gui-methods")
     extra_args = data.get("extra_args", [])
     train_after = bool(data.get("train_after", False))
+    gpu_whitelist = data.get("gpu_whitelist")
     try:
         preflight = preflight_training_config(variant, preset, methods_subdir)
     except Exception as e:
@@ -112,7 +116,7 @@ async def handle_preprocess(request: web.Request) -> web.Response:
             "preflight": preflight,
         }, status=400)
     try:
-        await svc.start_preprocess(variant, preset, methods_subdir, extra_args, train_after)
+        await svc.start_preprocess(variant, preset, methods_subdir, extra_args, train_after, gpu_whitelist=gpu_whitelist)
         message = "预处理已启动，完成后会自动开始训练" if train_after else "预处理已启动"
         return web.json_response({"ok": True, "message": message})
     except RuntimeError as e:
@@ -154,6 +158,11 @@ async def handle_logs(request: web.Request) -> web.Response:
     return web.json_response({
         "records": svc.get_log_records(after=after, limit=limit),
     })
+
+
+async def handle_gpus(request: web.Request) -> web.Response:
+    svc = request.app["training_service"]
+    return web.json_response({"ok": True, "gpus": await svc.list_gpus()})
 
 
 async def handle_history_list(request: web.Request) -> web.Response:

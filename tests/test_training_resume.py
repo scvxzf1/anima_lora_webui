@@ -158,6 +158,26 @@ def test_resume_from_history_uses_snapshot_and_resume_args(tmp_path, monkeypatch
     assert captured["resume_info"]["checkpoint"] == str(state_dir)
 
 
+def test_resume_from_history_forwards_gpu_whitelist(tmp_path, monkeypatch):
+    history_dir, task_id, state_dir = _write_resume_history(tmp_path)
+    monkeypatch.setattr(training_service, "HISTORY_DIR", history_dir)
+
+    svc = TrainingService(web.Application())
+    captured = {}
+
+    async def fake_start(variant, preset, extra_args, methods_subdir, **kwargs):
+        captured.update(kwargs)
+
+    svc.start = fake_start
+
+    result = asyncio.run(
+        svc.resume_from_history_task(task_id, str(state_dir), gpu_whitelist=["1", "bad", 2, 2])
+    )
+
+    assert result["ok"] is True
+    assert captured["gpu_whitelist"] == ["1", "bad", 2, 2]
+
+
 def test_resume_from_history_requires_config_snapshot(tmp_path, monkeypatch):
     history_dir, task_id, state_dir = _write_resume_history(tmp_path)
     monkeypatch.setattr(training_service, "HISTORY_DIR", history_dir)

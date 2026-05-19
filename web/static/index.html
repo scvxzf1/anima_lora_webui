@@ -50,6 +50,18 @@
                 <label>预设:
                     <select id="preset-select"></select>
                 </label>
+                <div id="gpu-picker" class="gpu-picker">
+                    <span class="gpu-picker-caption">GPU选择:</span>
+                    <button id="gpu-picker-toggle" class="gpu-picker-toggle" type="button" aria-expanded="false">读取 GPU...</button>
+                    <div id="gpu-picker-panel" class="gpu-picker-panel" hidden>
+                        <label class="gpu-option gpu-option-all">
+                            <input id="gpu-all-checkbox" type="checkbox">
+                            <span>全部 GPU</span>
+                        </label>
+                        <div id="gpu-option-list" class="gpu-option-list"></div>
+                        <p id="gpu-picker-note" class="gpu-picker-note">选择会保存在本机浏览器，训练启动时作为 GPU 白名单使用。</p>
+                    </div>
+                </div>
                 <button id="btn-load-config" class="btn">刷新</button>
                 <button id="btn-start-from-config" class="btn btn-primary">开始训练</button>
             </div>
@@ -359,6 +371,6 @@
     </dialog>
 
     <script src="/static/chart.js?v=history-20260517-2"></script>
-    <script src="/static/app.js?v=config-fixes-20260518-1"></script>
+    <script src="/static/app.js?v=gpu-picker-20260519-1"></script>
 </body>
 </html>
