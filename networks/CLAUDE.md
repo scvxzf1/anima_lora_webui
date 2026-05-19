@@ -13,7 +13,6 @@ Pluggable adapter implementations selected at runtime via the `network_module` c
 | `methods/postfix.py` | Continuous postfix tuning: learns N vectors appended to adapter cross-attention (modes: hidden, embedding, cfg, dual). |
 | `methods/ip_adapter.py` | IP-Adapter: PE-Core-L14-336 vision encoder + Perceiver resampler + per-block `to_k_ip`/`to_v_ip`. |
 | `methods/easycontrol.py` | EasyControl: per-block cond LoRA on self-attn (q/k/v/o) + FFN + scalar `b_cond` logit-bias gate; two-stream block forward at training, KV-cache prefill at inference. |
-| `methods/repa.py` | REPA auxiliary alignment loss (Yu et al., arXiv:2410.06940). Adds a single hook on `unet.blocks[args.repa_layer]` + small MLP head; cosine-aligns the pooled DiT mid-block feature against the spatial-mean cached PE-Core feature. Toggled by `use_repa = true` in `configs/methods/lora.toml`. |
 | `methods/soft_tokens.py`, `methods/ip_adapter_pe_lora.py` | Soft tokens (SoftREPA parameterization) + the PE-LoRA delta path used by IP-Adapter / Anima Tagger. |
 | `attention_dispatch.py` | Unified `dispatch_attention()` — backend router (SDPA / xformers / FA2 / FA3 / sageattn / flex). |
 | `spectrum.py` | Spectrum inference acceleration (Chebyshev feature forecasting). See root CLAUDE.md §Spectrum and `docs/methods/spectrum.md`. |

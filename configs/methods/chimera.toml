@@ -111,6 +111,6 @@ content_router_init_std = 0.1      # non-zero (uniform would be a fixed point)
 content_router_layer_norm = true   # parameterless LN on the pooled input
 
 # -------------
-# REPA / VR-loss compositions are not gated. Both modify what shared A
-# learns, so co-train compat is unknown — sanity-check at bench before
-# stacking on top of chimera.
+# VR-loss composition is not gated. It modifies what shared A learns, so
+# co-train compat is unknown — sanity-check at bench before stacking on
+# top of chimera.

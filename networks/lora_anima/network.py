@@ -2867,22 +2867,6 @@ class LoRANetwork(torch.nn.Module):
         # HydraLoRA per-module routers are submodules of HydraLoRAModule instances,
         # so they are already captured by the unet_loras param group above.
 
-        if getattr(self, "repa_head", None) is not None:
-            repa_params = list(self.repa_head.parameters())
-            if len(repa_params) > 0:
-                repa_lr_scale = float(getattr(self, "_repa_lr_scale", 1.0))
-                base_lr = unet_lr if unet_lr is not None else default_lr
-                if base_lr is None or base_lr == 0:
-                    logger.info("REPA head: no base LR, skipping param group")
-                else:
-                    repa_lr = float(base_lr) * repa_lr_scale
-                    all_params.append({"params": repa_params, "lr": repa_lr})
-                    lr_descriptions.append("repa head")
-                    logger.info(
-                        f"REPA head param group: lr={repa_lr:.2e} "
-                        f"({repa_lr_scale}x of unet_lr={base_lr})"
-                    )
-
         # GlobalRouter (route_per_layer=False) lives on the network, not on
         # per-Linear LoRA modules, so the assemble_params loop above misses it.
         # Add it explicitly with the same router_lr_scale convention used for
@@ -3042,13 +3026,6 @@ class LoRANetwork(torch.nn.Module):
                 )
 
         state_dict = self.state_dict()
-        # Drop training-only auxiliary heads from the on-disk artifact. ``repa_head``
-        # is a 3-layer MLP used only for the REPA alignment loss during training; it
-        # carries no ``lora_unet_*`` prefix, isn't consumed at inference or merge,
-        # and adds ~21MB of dead weight to the file. Resume-from-checkpoint will
-        # re-init the head from random — re-converges in a few hundred steps.
-        for key in [k for k in state_dict if k.startswith("repa_head.")]:
-            del state_dict[key]
         lora_save.save_network_weights(
             state_dict,
             file=file,

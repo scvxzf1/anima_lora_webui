@@ -122,8 +122,6 @@ def test_build_loss_composer_activates_fera_fecl_on_stacked_experts():
         method="lora",
         functional_loss_weight=0.0,
         multiscale_loss_weight=0.0,
-        repa_weight=0.0,
-        use_repa=False,
     )
     composer = build_loss_composer(args, network)
     assert "fera_fecl" in composer.active_losses
@@ -144,8 +142,6 @@ def test_build_loss_composer_skips_fera_fecl_on_plain_lora():
         method="lora",
         functional_loss_weight=0.0,
         multiscale_loss_weight=0.0,
-        repa_weight=0.0,
-        use_repa=False,
     )
     composer = build_loss_composer(args, network)
     assert "fera_fecl" not in composer.active_losses

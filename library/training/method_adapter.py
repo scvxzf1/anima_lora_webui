@@ -169,10 +169,6 @@ def resolve_adapters(args, network) -> list[MethodAdapter]:
         from networks.methods.easycontrol import EasyControlMethodAdapter
 
         adapters.append(EasyControlMethodAdapter())
-    if getattr(args, "use_repa", False):
-        from networks.methods.repa import REPAMethodAdapter
-
-        adapters.append(REPAMethodAdapter())
     method = getattr(args, "method", None) or ""
     if method == "soft_tokens" and float(
         getattr(network, "contrastive_weight", 0.0) or 0.0

@@ -109,15 +109,3 @@ alpha_rank_scale = 1.0
 # See bench/fm_vr_headroom/proposal.md.
 # vr_loss_weight = 1.0
 # vr_fei_sigma_low_div = 4.0
-
-# -------------
-# REPA (Yu et al., arxiv:2410.06940) — auxiliary alignment loss between a
-# mid-block DiT hidden state and a cached PE-Core feature. Composes on top
-# of any LoRA variant. Requires {stem}_anima_pe.safetensors sidecars from
-# `make preprocess-pe` for every image (auto-enables ip_features_cache_to_disk).
-# Hooks one DiT block; default 8 of 28 mirrors the paper's SiT-XL choice.
-
-# use_repa = true
-# repa_weight = 0.5
-# repa_layer = 8
-# repa_lr_scale = 1.0       # head LR = repa_lr_scale * unet_lr

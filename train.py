@@ -354,18 +354,8 @@ class AnimaTrainer:
                     dataset.inversion_dir = inversion_dir
                     dataset.inversion_num_runs = num_runs
 
-        # Propagate IP-Adapter / REPA feature-cache flag so datasets load
+        # Propagate IP-Adapter feature-cache flag so datasets load
         # {stem}_anima_{encoder}.safetensors sidecars into batch["ip_features"].
-        # REPA forces this on automatically -- the alignment loss is meaningless
-        # without the cached PE features as alignment targets.
-        if getattr(args, "use_repa", False) and not getattr(
-            args, "ip_features_cache_to_disk", False
-        ):
-            args.ip_features_cache_to_disk = True
-            logger.info(
-                "REPA: --use_repa set; forcing --ip_features_cache_to_disk=true. "
-                "Run `make preprocess-pe` if you haven't cached PE features yet."
-            )
         if getattr(args, "ip_features_cache_to_disk", False):
             ip_encoder = getattr(args, "ip_encoder", "pe")
             for dataset in train_dataset_group.datasets:
@@ -788,7 +778,7 @@ class AnimaTrainer:
                     **kw,
                 )
 
-                # Method-adapter extra forwards (REPA, soft-tokens, …).
+                # Method-adapter extra forwards (soft-tokens, …).
                 # Each adapter sees the primary forward's inputs + 5D output
                 # and may run additional anima(...) calls inside this same
                 # autocast / grad scope, returning aux loss tensors keyed for

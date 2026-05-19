@@ -427,22 +427,6 @@ def _soft_tokens_contrastive_loss(ctx: LossContext) -> torch.Tensor:
     return weight * loss.float()
 
 
-def _repa_loss(ctx: LossContext) -> torch.Tensor:
-    """REPA-style alignment loss (cosine, scalar-broadcast).
-
-    The adapter (networks/methods/repa.py) does the projection + cosine in
-    ``extra_forwards`` and stashes the precomputed scalar in
-    ``ctx.aux['repa']['loss']``. This handler just multiplies by the
-    user-set weight so the loss-side blend logic stays in one place.
-    """
-    weight = float(getattr(ctx.args, "repa_weight", 0.0) or 0.0)
-    repa_aux = ctx.aux.get("repa") or {}
-    loss = repa_aux.get("loss")
-    if weight <= 0.0 or loss is None:
-        return ctx.model_pred.new_zeros(())
-    return weight * loss.float()
-
-
 # ---------------------------------------------------------------------------
 # Scalar post-reduction losses (operate on the scalar mean of the per-sample)
 # ---------------------------------------------------------------------------
@@ -478,7 +462,6 @@ LOSS_REGISTRY: dict[str, LossFn] = {
     "functional": _functional_loss,
     "multiscale": _multiscale_loss,
     "soft_tokens_contrastive": _soft_tokens_contrastive_loss,
-    "repa": _repa_loss,
     "fera_fecl": _fera_fecl_loss,
 }
 
@@ -492,7 +475,6 @@ _STAGE_SCALAR_BROADCAST = (
     "hydra_balance",
     "functional",
     "soft_tokens_contrastive",
-    "repa",
     "fera_fecl",
 )
 _STAGE_SCALAR_POST = ("multiscale",)
@@ -611,11 +593,6 @@ def build_loss_composer(args: argparse.Namespace, network: object) -> LossCompos
         getattr(network, "contrastive_weight", 0.0) or 0.0
     ) > 0.0:
         active.append("soft_tokens_contrastive")
-    if (
-        bool(getattr(args, "use_repa", False))
-        and float(getattr(args, "repa_weight", 0.0) or 0.0) > 0.0
-    ):
-        active.append("repa")
     # FeRA FECL: active iff a ``LoRANetwork`` carrying the
     # stacked_experts_global_fei spec has a positive ``fecl_weight``. The
     # trainer's base-pass forward gate (in

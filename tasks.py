@@ -112,7 +112,7 @@ COMMANDS = {
     "preprocess-pe": (
         preprocess.cmd_preprocess_pe,
         "Cache PE-Core vision-encoder features into the LoRA cache dir. "
-        "Consumed by REPA (--use_repa) and IP-Adapter live-disk mode.",
+        "Consumed by IP-Adapter live-disk mode and the DCW v4 fusion head.",
     ),
     # ── Anima Tagger ──────────────────────────────────────────────────
     "preprocess-tagger": (
