@@ -17,6 +17,7 @@ from library.inference.adapters import (
     clear_hydra_fei,
     clear_hydra_sigma,
     compute_and_set_hydra_fei,
+    set_hydra_content,
     set_hydra_sigma,
 )
 from library.inference import sampling as inference_utils
@@ -283,6 +284,9 @@ def generate_body_tiled(
                     # Conditional pass
                     if anima.blocks_to_swap:
                         anima.prepare_block_swap_before_forward()
+                    # ChimeraHydra ContentRouter — π_c depends on the caption,
+                    # so fire separately for cond vs uncond. No-op otherwise.
+                    set_hydra_content(anima, embed)
                     with torch.no_grad():
                         tile_pred = anima(
                             tile_latent,
@@ -301,6 +305,7 @@ def generate_body_tiled(
                     if do_cfg:
                         if anima.blocks_to_swap:
                             anima.prepare_block_swap_before_forward()
+                        set_hydra_content(anima, negative_embed)
                         with torch.no_grad():
                             uncond_tile_pred = anima(
                                 tile_latent,
@@ -601,6 +606,7 @@ def generate_body(
                         # for v6 fei_obs={replace,concat} artifacts. No-op for v5.
                         dcw_calibrator.record_latent_pre_forward(i, latents)
 
+                    set_hydra_content(anima, embed)
                     with torch.no_grad():
                         _pos_kw = (
                             {"pooled_text_override": _pooled_text_pos}
@@ -616,6 +622,7 @@ def generate_body(
                         )
 
                     if do_cfg:
+                        set_hydra_content(anima, negative_embed)
                         with torch.no_grad():
                             _neg_kw = (
                                 {"pooled_text_override": _pooled_text_neg}

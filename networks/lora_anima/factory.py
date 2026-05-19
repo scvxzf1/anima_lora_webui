@@ -741,6 +741,21 @@ def create_network_from_weights(
         and str(file_metadata.get("ss_chimera_freq_router_layer_norm", "")).strip().lower()
         == "true"
     )
+    # ContentRouter stamps. Absent / "input" preserves the per-Linear router
+    # (today's chimera). "crossattn" rebuilds a network-level ContentRouter
+    # fed by pooled crossattn_emb; per-Linear ``self.router`` is then absent
+    # from state_dict. Input dim is fixed by the DiT (CROSSATTN_EMB_DIM),
+    # not configurable — no stamp needed.
+    chimera_content_router_source: str = str(
+        file_metadata.get("ss_chimera_content_router_source", "input")
+        if is_chimera_hydra
+        else "input"
+    ).strip() or "input"
+    chimera_content_router_layer_norm: bool = (
+        is_chimera_hydra
+        and str(file_metadata.get("ss_chimera_content_router_layer_norm", "")).strip().lower()
+        == "true"
+    )
     if is_chimera_hydra:
         # On-disk format: per-pool distilled chimera (lora_down_{c,f} +
         # stacked lora_up_{c,f}_weight + content router) with q/k/v defused
@@ -812,6 +827,8 @@ def create_network_from_weights(
         num_experts_content=chimera_num_experts_content,
         num_experts_freq=chimera_num_experts_freq,
         freq_router_layer_norm=chimera_freq_router_layer_norm,
+        content_router_source=chimera_content_router_source,
+        content_router_layer_norm=chimera_content_router_layer_norm,
     )
 
     network = LoRANetwork(text_encoders, unet, cfg, multiplier=multiplier)

@@ -328,6 +328,20 @@ class LoRANetworkCfg:
     # is a faster lever than raising ``balance_w_content``.
     content_router_lr_scale: float = 1.0
     freq_router_lr_scale: float = 1.0
+    # ChimeraHydra content-router source. ``"input"`` (default) keeps the
+    # paper-faithful per-Linear softmax over pooled rank-R ``lx_c`` —
+    # ``self.router`` lives on every chimera module. ``"crossattn"`` builds a
+    # single network-level ``ContentRouter`` fed by the pooled
+    # ``crossattn_emb`` (post-LLM-adapter T5-space text features, fixed
+    # 1024-D for Anima — see ``crossattn_emb_channels`` in
+    # ``library/anima/models.py``); the per-Linear router is skipped at
+    # construction and ``π_c`` is broadcast via ``_content_routing_weights``
+    # the same way ``π_f`` flows from FreqRouter. Lifts the K_c content axis
+    # from a per-site decision to a single shared partition (analogous to
+    # FeRA → Hydra → FeRA on the freq side); see chimera proposal §"Router".
+    content_router_source: Literal["input", "crossattn"] = "input"
+    content_router_init_std: float = 0.1
+    content_router_layer_norm: bool = True
 
     # SmoothQuant-style per-channel input pre-scaling
     channel_scales_dict: Optional[Dict[str, torch.Tensor]] = None
@@ -478,6 +492,21 @@ class LoRANetworkCfg:
         freq_router_lr_scale = float(
             kwargs.get("network_freq_router_lr_scale", 1.0)
         )
+        raw_content_router_source = kwargs.get("content_router_source")
+        if raw_content_router_source is None:
+            content_router_source: Literal["input", "crossattn"] = "input"
+        else:
+            v = str(raw_content_router_source).strip()
+            if v not in ("input", "crossattn"):
+                raise ValueError(
+                    f"content_router_source={raw_content_router_source!r}: "
+                    "expected 'input' or 'crossattn'."
+                )
+            content_router_source = v  # type: ignore[assignment]
+        content_router_init_std = float(kwargs.get("content_router_init_std", 0.1))
+        content_router_layer_norm = _as_bool(
+            kwargs.get("content_router_layer_norm", True), default=True
+        )
         if use_chimera_hydra:
             if num_experts_content <= 0 or num_experts_freq <= 0:
                 raise ValueError(
@@ -485,6 +514,11 @@ class LoRANetworkCfg:
                     f"and num_experts_freq > 0 (got K_c={num_experts_content}, "
                     f"K_f={num_experts_freq})."
                 )
+        if content_router_source == "crossattn" and not use_chimera_hydra:
+            raise ValueError(
+                "content_router_source='crossattn' requires use_chimera_hydra=True "
+                "(the global content router only routes the chimera content pool)."
+            )
             # Derive total E from the pool split so the rest of the
             # cfg machinery (warmup masks, balance loss accumulators, etc.)
             # sees a consistent num_experts.
@@ -629,6 +663,9 @@ class LoRANetworkCfg:
             freq_router_layer_norm=freq_router_layer_norm,
             content_router_lr_scale=content_router_lr_scale,
             freq_router_lr_scale=freq_router_lr_scale,
+            content_router_source=content_router_source,
+            content_router_init_std=content_router_init_std,
+            content_router_layer_norm=content_router_layer_norm,
             channel_scales_dict=channel_scales_dict,
             verbose=verbose,
         )
@@ -669,6 +706,8 @@ class LoRANetworkCfg:
         num_experts_content: Optional[int] = None,
         num_experts_freq: Optional[int] = None,
         freq_router_layer_norm: bool = False,
+        content_router_source: str = "input",
+        content_router_layer_norm: bool = True,
     ) -> "LoRANetworkCfg":
         """Build cfg from a checkpoint key-sniff (warm-start / inference path).
 
@@ -768,4 +807,10 @@ class LoRANetworkCfg:
                 int(num_experts_freq) if num_experts_freq is not None else 3
             ),
             freq_router_layer_norm=bool(freq_router_layer_norm),
+            content_router_source=(
+                content_router_source
+                if content_router_source in ("input", "crossattn")
+                else "input"
+            ),
+            content_router_layer_norm=bool(content_router_layer_norm),
         )

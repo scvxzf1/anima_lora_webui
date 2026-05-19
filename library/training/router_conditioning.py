@@ -10,7 +10,7 @@ sequence: timestep_mask → reft_timestep_mask → sigma → fei → balance.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Optional
 
 import torch
 
@@ -23,8 +23,18 @@ def apply_router_conditioning(
     is_train: bool,
     warmup_step: int,
     max_train_steps: int,
+    crossattn_emb: Optional[torch.Tensor] = None,
 ) -> int:
-    """Run all per-step router conditioning. Returns the next warmup_step value."""
+    """Run all per-step router conditioning. Returns the next warmup_step value.
+
+    ``crossattn_emb`` is optional — required only when the active network
+    exposes ``use_content_router=True`` (chimera with
+    ``content_router_source="crossattn"``). Pass the post-LLM-adapter text
+    feature tensor (B, L, D) or a pre-pooled (B, D) vector; the router pools
+    internally. Callers without text conds yet (e.g. cfg uncond branches
+    that re-fire conditioning) can pass None and the content router will
+    silently no-op for that step.
+    """
     if hasattr(network, "set_timestep_mask"):
         network.set_timestep_mask(timesteps, max_timestep=1.0)
     if hasattr(network, "set_reft_timestep_mask"):
@@ -48,6 +58,18 @@ def apply_router_conditioning(
         div = float(getattr(network.cfg, "fei_sigma_low_div", 8.0))
         fei = compute_fei_2band(z, fei_sigma_low(h_lat, w_lat, div))
         network.set_fei(fei)
+
+    # ChimeraHydra ContentRouter: fires once per step on pooled crossattn_emb.
+    # Caller is responsible for passing the post-LLM-adapter tensor; missing
+    # input is silently tolerated so the conditioning loop stays uniform
+    # across non-chimera networks and across timing situations where text
+    # conds aren't materialized yet.
+    if (
+        getattr(network, "use_content_router", False)
+        and crossattn_emb is not None
+        and hasattr(network, "set_content")
+    ):
+        network.set_content(crossattn_emb)
 
     if is_train and hasattr(network, "step_balance_loss_warmup"):
         network.step_balance_loss_warmup(warmup_step, max_train_steps)

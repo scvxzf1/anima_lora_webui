@@ -681,6 +681,18 @@ class AnimaTrainer:
         t5_attn_mask = tc.t5_attn_mask
         _max_crossattn_seqlen = tc.max_crossattn_seqlen
 
+        # ChimeraHydra global content router (chimera with
+        # ``content_router_source="crossattn"``): fire ONCE per step on the
+        # pooled crossattn_emb. apply_router_conditioning above ran before
+        # text conds were materialized, so the content router lives outside
+        # that helper. No-op on non-chimera networks or per-Linear chimera.
+        if (
+            getattr(network, "use_content_router", False)
+            and crossattn_emb is not None
+            and hasattr(network, "set_content")
+        ):
+            network.set_content(crossattn_emb)
+
         # Create padding mask
         bs = latents.shape[0]
         h_latent = latents.shape[-2]
