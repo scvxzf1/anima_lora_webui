@@ -62,8 +62,13 @@ from tqdm import tqdm
 
 from library.anima import weights as anima_utils
 from library.anima.models import Anima
-from networks.methods.turbo_dmd import TurboDMDNetwork
 from library.datasets.distill import CachedDataset
+from library.inference.uncond import (
+    default_uncond_path,
+    load_uncond_crossattn,
+    uncond_for_batch,
+)
+from networks.methods.turbo_dmd import TurboDMDNetwork
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(
@@ -314,7 +319,9 @@ def main():
     turbo.freeze_dit()
     turbo.student.to(device=device, dtype=dtype)
     turbo.fake.to(device=device, dtype=dtype)
-    model.train()  # block.forward gates ckpt on self.training
+    # `model.training` gates grad-ckpt inside block.forward; toggled per
+    # forward in `_forward` below so no_grad teacher/fake forwards don't
+    # incur grad-ckpt setup cost. Initial state set by the first call.
 
     n_student = sum(p.numel() for p in turbo.student_params())
     n_fake = sum(p.numel() for p in turbo.fake_params())
@@ -425,13 +432,24 @@ def main():
         logger.info(f"TB logs -> {run_log}")
 
     # ---------------- Training loop ----------------
-    # Per-step caches keyed by tensor shape. ``pad`` is a zero tensor in the
-    # spatial shape of ``latents``; with constant-token bucketing the shape is
-    # stable within a step (and constant in single-prompt mode), so we recycle
-    # it instead of re-allocating per forward. Same idea for ``c_null`` — the
-    # CFG uncond branch reads ``zeros_like(crossattn_emb)`` 1×/step at most.
+    # Per-step pad cache, keyed by tensor shape. ``pad`` is a zero tensor in
+    # the spatial shape of ``latents``; with constant-token bucketing the shape
+    # is stable within a step (and constant in single-prompt mode), so we
+    # recycle it instead of re-allocating per forward.
     _pad_cache: dict[tuple[int, int, int], torch.Tensor] = {}
-    _c_null_cache: dict[tuple, torch.Tensor] = {}
+
+    # CFG-uncond cross-attention input. Anima's inference path uses the T5("")
+    # embedding (real BOS/EOS/sentinel tokens nonzero; only padding zeroed) —
+    # passing a fully-zero tensor here is fed-out-of-distribution and the
+    # resulting `v_real_uncond_ca` is a meaningless direction that, amplified
+    # at (α-1)=3×, drives the student off-manifold (saturated white output).
+    # Staged by `make preprocess-te` (or `make distill-prep`); shared with
+    # the mod-guidance distill (`library/inference/uncond.py`).
+    uncond_path = str(default_uncond_path())
+    uncond_base = load_uncond_crossattn(uncond_path, device=device, dtype=dtype)
+    logger.info(
+        f"loaded T5('') uncond sidecar: {uncond_path}  shape={tuple(uncond_base.shape)}"
+    )
 
     def _get_pad(x: torch.Tensor) -> torch.Tensor:
         key = (x.shape[0], x.shape[-2], x.shape[-1])
@@ -452,8 +470,17 @@ def main():
         ``set_view`` short-circuits when already in ``view`` (see
         ``TurboDMDNetwork.set_view``), and the cudagraph step-begin marker
         is hoisted to once per outer step in the loop below.
+
+        Also toggles ``model.training`` to match ``no_grad`` — grad-ckpt
+        inside ``block.forward`` keys on ``self.training``, so leaving the
+        DiT in train mode for teacher/fake no-grad forwards triggers ckpt
+        setup that has nothing to save. The change-detect skips the
+        recursive submodule walk when state is already correct.
         """
         turbo.set_view(view)
+        desired_training = not no_grad
+        if model.training != desired_training:
+            model.train(desired_training)
         if model.blocks_to_swap:
             # free_cache=False: base DiT is frozen, LoRA shapes are constant,
             # block swap moves params at identical shape, and static 4096
@@ -533,13 +560,7 @@ def main():
             v_real_cond_ca = _forward(
                 "teacher", x_renoised_ca, tau_ca, crossattn_emb, no_grad=True
             ).squeeze(2)
-            # zeros_like is cheap, but reusing one buffer also lets dynamo
-            # avoid retracing on a fresh tensor id every step.
-            key = tuple(crossattn_emb.shape)
-            c_null = _c_null_cache.get(key)
-            if c_null is None or c_null.dtype != crossattn_emb.dtype or c_null.device != crossattn_emb.device:
-                c_null = torch.zeros_like(crossattn_emb)
-                _c_null_cache[key] = c_null
+            c_null = uncond_for_batch(uncond_base, crossattn_emb)
             v_real_uncond_ca = _forward(
                 "teacher", x_renoised_ca, tau_ca, c_null, no_grad=True
             ).squeeze(2)

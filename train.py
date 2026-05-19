@@ -125,6 +125,14 @@ class AnimaTrainer:
         # the trainable DiT with ``network.set_multiplier(0)`` — see the VR
         # block in ``get_noise_pred_and_target``.
         self._vr_state: dict = {"lambda_ema": None}
+        # T5("") crossattn sidecar (shape ``(1, S, 1024)`` bf16 on device).
+        # Populated by ``_ensure_uncond_crossattn`` when caption dropout is
+        # enabled; consumed by ``prepare_text_conds`` so dropped rows match
+        # Anima's CFG-uncond inference path instead of falling back to zeros.
+        self._uncond_crossattn_1: Optional[torch.Tensor] = None
+        # Set during dataset prep from subset.caption_dropout_rate; gates
+        # whether ``_ensure_uncond_crossattn`` actually stages the sidecar.
+        self._caption_dropout_enabled: bool = False
 
     # region logging helpers
 
@@ -571,6 +579,50 @@ class AnimaTrainer:
             return None  # no text encoders needed for encoding
         return text_encoders
 
+    def _ensure_uncond_crossattn(
+        self,
+        args: argparse.Namespace,
+        accelerator,
+        weight_dtype: torch.dtype,
+    ) -> None:
+        """Lazily load the T5("") crossattn sidecar onto ``self._uncond_crossattn_1``.
+
+        Primary producer is ``make preprocess-te`` (drops the file at
+        ``post_image_dataset/_anima_uncond_te.safetensors``); this method is
+        the fallback that stages on demand if a training run was kicked off
+        without the preprocess step.
+        """
+        if self._uncond_crossattn_1 is not None:
+            return
+        from library.inference.uncond import (
+            DEFAULT_UNCOND_DIR,
+            default_uncond_path,
+            load_uncond_crossattn,
+            stage_uncond_sidecar,
+        )
+
+        sidecar = default_uncond_path()
+        if not sidecar.exists():
+            logger.info(
+                f"T5('') uncond sidecar missing at {sidecar} — staging "
+                f"on demand (would normally be produced by `make preprocess-te`)."
+            )
+            stage_uncond_sidecar(
+                DEFAULT_UNCOND_DIR,
+                qwen3_path=args.qwen3,
+                dit_path=args.pretrained_model_name_or_path,
+                t5_tokenizer_path=getattr(args, "t5_tokenizer_path", None),
+                seq_len=512,
+                overwrite=False,
+            )
+        self._uncond_crossattn_1 = load_uncond_crossattn(
+            str(sidecar), device=accelerator.device, dtype=weight_dtype
+        )
+        logger.info(
+            f"caption dropout uncond loaded: {sidecar} "
+            f"shape={tuple(self._uncond_crossattn_1.shape)}"
+        )
+
     def get_noise_scheduler(
         self, args: argparse.Namespace, device: torch.device
     ) -> Any:
@@ -673,6 +725,7 @@ class AnimaTrainer:
             device=accelerator.device,
             weight_dtype=weight_dtype,
             trim_crossattn_kv=bool(args.trim_crossattn_kv),
+            uncond_crossattn_emb=self._uncond_crossattn_1,
         )
         crossattn_emb = tc.crossattn_emb
         prompt_embeds = tc.prompt_embeds
@@ -1392,7 +1445,8 @@ class AnimaTrainer:
                 for ds in train_dataset_group.datasets
                 for subset in ds.subsets
             ]
-            if rates and any(r > 0 for r in rates):
+            self._caption_dropout_enabled = bool(rates) and any(r > 0 for r in rates)
+            if self._caption_dropout_enabled:
                 logger.info(f"caption dropout ENABLED -- per-subset rates: {rates}")
             else:
                 logger.info("caption dropout DISABLED (rate=0.0 on all subsets)")
@@ -2330,6 +2384,12 @@ class AnimaTrainer:
             unet, text_encoders = self.load_unet_lazily(
                 args, weight_dtype, accelerator, text_encoders
             )
+
+        # Stage the T5("") sidecar once if caption dropout is on — dropped
+        # rows then get the same crossattn embedding Anima feeds at
+        # CFG-uncond inference instead of all-zeros (which is out-of-dist).
+        if self._caption_dropout_enabled:
+            self._ensure_uncond_crossattn(args, accelerator, weight_dtype)
 
         network_result = self._create_and_apply_network(
             args, accelerator, vae, text_encoder, unet, text_encoders, weight_dtype

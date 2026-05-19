@@ -41,6 +41,7 @@ def prepare_text_conds(
     device: torch.device,
     weight_dtype: torch.dtype,
     trim_crossattn_kv: bool,
+    uncond_crossattn_emb: Optional[torch.Tensor] = None,
 ) -> PreparedTextConds:
     """Unpack the conds tuple, move to device, and apply caption dropout in-place."""
     # Unpack
@@ -95,6 +96,7 @@ def prepare_text_conds(
                     if t5_attn_mask is not None and t5_attn_mask.is_cuda
                     else None
                 ),
+                uncond_crossattn_emb=uncond_crossattn_emb,
             )
 
     return PreparedTextConds(
