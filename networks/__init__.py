@@ -11,7 +11,6 @@ Flag precedence (evaluated top to bottom, first match wins):
     use_moe_style="independent_A"        → stacked_experts_global_fei
     use_moe_style="shared_A" + use_ortho → ortho_hydra
     use_moe_style="shared_A"             → hydra
-    use_lokr                             → lokr
     use_ortho                            → ortho
     (none)                               → lora
 
@@ -19,8 +18,7 @@ The legacy ``use_hydra`` / ``use_sigma_router`` / ``use_fei_router``
 kwargs were retired in plan2 task #6 — see ``LoRANetworkCfg.from_kwargs``
 for the rejection message. ``use_dora`` was retired alongside the
 ``lora_deprecated`` module; ``.dora_scale`` keys in external LoRAs still
-load through the plain ``lora`` spec. ``use_lokr`` is the WebUI/LyCORIS
-LoKr path and remains mutually exclusive with MoE and OrthoLoRA variants.
+load through the plain ``lora`` spec.
 """
 
 from __future__ import annotations
@@ -31,7 +29,6 @@ from typing import Any, Callable, Dict, Mapping, Optional, Tuple, Type
 from networks.lora_modules import (
     ChimeraHydraLoRAModule,
     HydraLoRAModule,
-    LoKrModule,
     LoRAModule,
     OrthoHydraLoRAModule,
     OrthoLoRAModule,
@@ -95,18 +92,14 @@ SHARED_KWARG_FLAGS: Tuple[str, ...] = (
     "use_timestep_mask",
     "min_rank",
     "alpha_rank_scale",
-    # Per-channel input pre-scaling (SmoothQuant-style)
-    "per_channel_scaling",
-    "channel_stats_path",
+    # Per-channel input pre-scaling (SmoothQuant-style). Gated by alpha:
+    # 0.0 disables; 0.5 = sqrt balance; 1.0 fully flattens. Calibration is
+    # vendored at `networks/calibration/channel_stats.safetensors`.
     "channel_scaling_alpha",
     # Memory-saving down-projection autograd (classic LoRA only; bitwise-equal grads)
     "use_custom_down_autograd",
     # Variant selectors (read by resolve_network_spec)
-    "use_lokr",
     "use_ortho",
-    # Retired selector kept in the allowlist so configs fail with a targeted
-    # message instead of being silently forwarded nowhere.
-    "use_dora",
     # PSOFT-style Cayley-init magnitude (consumed by OrthoHydra +
     # StackedExperts in ortho mode).
     "ortho_init_std",
@@ -127,17 +120,6 @@ SHARED_KWARG_FLAGS: Tuple[str, ...] = (
     "reft_dim",
     "reft_alpha",
     "reft_layers",
-    # REPA-style auxiliary alignment (composes with any variant). The factory
-    # ``_maybe_attach_repa_head`` reads ``use_repa`` to decide whether to attach
-    # the head, then sizes/weights it from the rest. Selection of the hooked
-    # block index and the loss weight live as top-level argparse flags
-    # (``--repa_layer``, ``--repa_weight``) — the network module doesn't need
-    # them, only the adapter / loss handler does.
-    "use_repa",
-    "repa_dit_dim",
-    "repa_hidden_dim",
-    "repa_encoder_dim",
-    "repa_lr_scale",
 )
 
 
@@ -218,6 +200,13 @@ _CHIMERA_KWARG_FLAGS: Tuple[str, ...] = (
     # near-uniform too long (std=0.01 init is slow to break symmetry).
     "network_content_router_lr_scale",
     "network_freq_router_lr_scale",
+    # Optional global content router (replaces the per-Linear lx-router with
+    # a single network-level ContentRouter fed by pooled crossattn_emb).
+    # Consumed by ``LoRANetworkCfg.from_kwargs`` — see chimera.toml's "Optional:
+    # global content router" block.
+    "content_router_source",
+    "content_router_init_std",
+    "content_router_layer_norm",
 )
 
 
@@ -262,12 +251,6 @@ NETWORK_REGISTRY: Dict[str, NetworkSpec] = {
         save_variant="chimera_hydra_moe",
         kwarg_flags=_HYDRA_KWARG_FLAGS + _CHIMERA_KWARG_FLAGS,
         post_init=_post_init_hydra,
-    ),
-    "lokr": NetworkSpec(
-        name="lokr",
-        module_class=LoKrModule,
-        save_variant="lokr",
-        kwarg_flags=("lokr_factor",),
     ),
     # FeRA paper-faithful: independent-A stacked experts, single network-level
     # router fed by FEI(z_t). See plan2.md §three-axis-config — selected via
@@ -325,18 +308,8 @@ def resolve_network_spec(kwargs: Mapping[str, Any]) -> NetworkSpec:
     the hood (OrthoHydra parameterization), but uses K_c + K_f instead of
     a single ``num_experts`` — the user only sets the chimera flag.
     """
-    use_dora = _parse_bool_flag(kwargs, "use_dora")
-    if use_dora:
-        raise ValueError(
-            "use_dora was retired with networks/lora_deprecated.py; external "
-            ".dora_scale LoRAs still load through the plain lora spec."
-        )
-
-    use_lokr = _parse_bool_flag(kwargs, "use_lokr")
     use_ortho = _parse_bool_flag(kwargs, "use_ortho")
     use_chimera = _parse_bool_flag(kwargs, "use_chimera_hydra")
-    if use_chimera and use_lokr:
-        raise ValueError("use_lokr is mutually exclusive with use_chimera_hydra")
     if use_chimera:
         return NETWORK_REGISTRY["chimera_hydra"]
 
@@ -356,19 +329,12 @@ def resolve_network_spec(kwargs: Mapping[str, Any]) -> NetworkSpec:
             f"use_moe_style={raw_moe!r}: expected False, 'shared_A', or 'independent_A'."
         )
 
-    if use_lokr and (use_ortho or moe_style):
-        raise ValueError(
-            "use_lokr is mutually exclusive with use_ortho / use_moe_style"
-        )
-
     if moe_style == "independent_A":
         return NETWORK_REGISTRY["stacked_experts_global_fei"]
     if moe_style == "shared_A":
         return (
             NETWORK_REGISTRY["ortho_hydra"] if use_ortho else NETWORK_REGISTRY["hydra"]
         )
-    if use_lokr:
-        return NETWORK_REGISTRY["lokr"]
     if use_ortho:
         return NETWORK_REGISTRY["ortho"]
     return NETWORK_REGISTRY["lora"]

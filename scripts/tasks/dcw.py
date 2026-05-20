@@ -43,19 +43,9 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
-from ._common import run
+from library.datasets.buckets import DCW_ASPECT_BUCKETS
 
-# (H, W) — buckets the trainer's data loader stratifies over.
-# Top 5 buckets by post_image_dataset/lora/ count (aspect_id = list index).
-# Note: the inference calibrator no longer keys off aspect (post-cleanup), so
-# this list is only relevant for `make dcw` data collection.
-DCW_BUCKETS = [
-    (832, 1248),  # HD portrait — most common
-    (896, 1152),  # 3:4 portrait
-    (768, 1344),  # tall portrait
-    (1152, 896),  # 3:4 landscape
-    (1248, 832),  # HD landscape
-]
+from ._common import run
 
 
 def _pop_kv(extra: list[str], key: str, default: str) -> tuple[str, list[str]]:
@@ -185,7 +175,7 @@ def cmd_dcw(extra):
     Other extra args pass through to every measure_bias invocation
     (--dit, --lora_weight, --pooled_text_proj '', --guidance_scale, etc.).
     """
-    n_images, extra = _pop_kv(extra, "--n_images", "4")
+    n_images, extra = _pop_kv(extra, "--n_images", "8")
     n_seeds, extra = _pop_kv(extra, "--n_seeds", "2")
     shuffle_seed, extra = _pop_kv(extra, "--shuffle_seed", "0")
     label, extra = _pop_kv(extra, "--label", "make-dcw")
@@ -204,7 +194,7 @@ def cmd_dcw(extra):
         exclude_dir.mkdir(parents=True, exist_ok=True)
 
     bucket_run_dirs: list[Path] = []
-    for H, W in DCW_BUCKETS:
+    for H, W in DCW_ASPECT_BUCKETS:
         bucket_label = f"{label}-{H}x{W}"
         exclude_args: list[str] = []
         if not allow_repeats:

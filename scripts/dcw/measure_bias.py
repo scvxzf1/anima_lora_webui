@@ -119,6 +119,7 @@ from bench._common import make_run_dir, write_result  # noqa: E402
 from library.anima import weights as anima_utils  # noqa: E402
 from library.inference import sampling as inference_utils  # noqa: E402
 from library.inference.adapters import clear_hydra_sigma  # noqa: E402
+from library.inference.text import MAX_CROSSATTN_TOKENS  # noqa: E402
 from scripts.dcw.adapters import attach_loras  # noqa: E402
 from scripts.dcw.cache import load_cached, pick_cached_samples  # noqa: E402
 from scripts.dcw.haar import BANDS  # noqa: E402
@@ -186,8 +187,8 @@ def main() -> None:
             strategy_anima.AnimaTokenizeStrategy(
                 qwen3_path=args.text_encoder,
                 t5_tokenizer_path=None,
-                qwen3_max_length=512,
-                t5_max_length=512,
+                qwen3_max_length=MAX_CROSSATTN_TOKENS,
+                t5_max_length=MAX_CROSSATTN_TOKENS,
             )
         )
         text_strategies.TextEncodingStrategy.set_strategy(

@@ -9,9 +9,7 @@ from typing import Any, Union, Optional
 import sys
 import random
 import time
-from contextlib import contextmanager
 from multiprocessing import Value
-from tqdm import tqdm
 
 import torch
 import torch.nn as nn
@@ -47,7 +45,6 @@ from library.training.method_adapter import (
 from library.config.io import (
     load_dataset_config_from_base,
     read_config_from_file,
-    substitute_dataset_config_templates,
 )
 from library.datasets import (
     DatasetGroup,
@@ -69,7 +66,6 @@ from library.training import (
     SAMPLER_REGISTRY,
     SamplerContext,
     TrainCtx,
-    ValCtx,
     add_custom_train_arguments,
     add_dataset_arguments,
     add_dataset_metadata,
@@ -92,12 +88,6 @@ from library.training import (
     verify_training_args,
 )
 from library.training.loop import build_loop_state, run_training_loop
-from library.training.cmmd import (
-    cmmd_from_pools,
-    load_reference_features,
-    pool_and_normalize,
-    resolve_pe_sidecar,
-)
 from library.training.router_conditioning import apply_router_conditioning
 from library.training.text_conds import prepare_text_conds
 from library.training.forward_kwargs import build_forward_kwargs
@@ -109,25 +99,6 @@ setup_logging()
 import logging  # noqa: E402
 
 logger = logging.getLogger(__name__)
-
-
-@contextmanager
-def _network_sampling_mode(network: Optional[torch.nn.Module]):
-    """Temporarily use the train-time network in inference mode for samples."""
-    if network is None:
-        yield
-        return
-
-    was_training = bool(getattr(network, "training", False))
-    try:
-        network.eval()
-        clear_timestep_mask = getattr(network, "clear_timestep_mask", None)
-        if callable(clear_timestep_mask):
-            clear_timestep_mask()
-        yield
-    finally:
-        if was_training:
-            network.train()
 
 
 class AnimaTrainer:
@@ -146,6 +117,14 @@ class AnimaTrainer:
         # the trainable DiT with ``network.set_multiplier(0)`` — see the VR
         # block in ``get_noise_pred_and_target``.
         self._vr_state: dict = {"lambda_ema": None}
+        # T5("") crossattn sidecar (shape ``(1, S, 1024)`` bf16 on device).
+        # Populated by ``_ensure_uncond_crossattn`` when caption dropout is
+        # enabled; consumed by ``prepare_text_conds`` so dropped rows match
+        # Anima's CFG-uncond inference path instead of falling back to zeros.
+        self._uncond_crossattn_1: Optional[torch.Tensor] = None
+        # Set during dataset prep from subset.caption_dropout_rate; gates
+        # whether ``_ensure_uncond_crossattn`` actually stages the sidecar.
+        self._caption_dropout_enabled: bool = False
 
     # region logging helpers
 
@@ -311,14 +290,6 @@ class AnimaTrainer:
         train_dataset_group: Union[DatasetGroup, MinimalDataset],
         val_dataset_group: Optional[DatasetGroup],
     ):
-        # FP8 is not supported yet -- force-disable all fp8 flags.
-        if getattr(args, "fp8_base", False):
-            logger.warning("fp8_base is not supported yet -- disabling.")
-            args.fp8_base = False
-        if getattr(args, "fp8_base_unet", False):
-            logger.warning("fp8_base_unet is not supported yet -- disabling.")
-            args.fp8_base_unet = False
-
         if (
             args.cache_text_encoder_outputs_to_disk
             and not args.cache_text_encoder_outputs
@@ -383,18 +354,8 @@ class AnimaTrainer:
                     dataset.inversion_dir = inversion_dir
                     dataset.inversion_num_runs = num_runs
 
-        # Propagate IP-Adapter / REPA feature-cache flag so datasets load
+        # Propagate IP-Adapter feature-cache flag so datasets load
         # {stem}_anima_{encoder}.safetensors sidecars into batch["ip_features"].
-        # REPA forces this on automatically -- the alignment loss is meaningless
-        # without the cached PE features as alignment targets.
-        if getattr(args, "use_repa", False) and not getattr(
-            args, "ip_features_cache_to_disk", False
-        ):
-            args.ip_features_cache_to_disk = True
-            logger.info(
-                "REPA: --use_repa set; forcing --ip_features_cache_to_disk=true. "
-                "Run `make preprocess-pe` if you haven't cached PE features yet."
-            )
         if getattr(args, "ip_features_cache_to_disk", False):
             ip_encoder = getattr(args, "ip_encoder", "pe")
             for dataset in train_dataset_group.datasets:
@@ -518,12 +479,6 @@ class AnimaTrainer:
             attn_softmax_scale=attn_softmax_scale,
         )
 
-        # FP8 base weights (fp8_base_unet) are not supported yet -- the fp8 path is disabled.
-        # if args.fp8_base_unet:
-        #     from library.anima.models import quantize_to_fp8
-        #     n = quantize_to_fp8(model)
-        #     logger.info(f"fp8_base_unet: quantized {n} linear layers to float8_e4m3fn")
-
         # Bucketed KV trimming for cross-attention
         model.trim_crossattn_kv = getattr(args, "trim_crossattn_kv", False)
 
@@ -605,6 +560,50 @@ class AnimaTrainer:
         if args.cache_text_encoder_outputs:
             return None  # no text encoders needed for encoding
         return text_encoders
+
+    def _ensure_uncond_crossattn(
+        self,
+        args: argparse.Namespace,
+        accelerator,
+        weight_dtype: torch.dtype,
+    ) -> None:
+        """Lazily load the T5("") crossattn sidecar onto ``self._uncond_crossattn_1``.
+
+        Primary producer is ``make preprocess-te`` (drops the file at
+        ``post_image_dataset/_anima_uncond_te.safetensors``); this method is
+        the fallback that stages on demand if a training run was kicked off
+        without the preprocess step.
+        """
+        if self._uncond_crossattn_1 is not None:
+            return
+        from library.inference.uncond import (
+            DEFAULT_UNCOND_DIR,
+            default_uncond_path,
+            load_uncond_crossattn,
+            stage_uncond_sidecar,
+        )
+
+        sidecar = default_uncond_path()
+        if not sidecar.exists():
+            logger.info(
+                f"T5('') uncond sidecar missing at {sidecar} — staging "
+                f"on demand (would normally be produced by `make preprocess-te`)."
+            )
+            stage_uncond_sidecar(
+                DEFAULT_UNCOND_DIR,
+                qwen3_path=args.qwen3,
+                dit_path=args.pretrained_model_name_or_path,
+                t5_tokenizer_path=getattr(args, "t5_tokenizer_path", None),
+                seq_len=512,
+                overwrite=False,
+            )
+        self._uncond_crossattn_1 = load_uncond_crossattn(
+            str(sidecar), device=accelerator.device, dtype=weight_dtype
+        )
+        logger.info(
+            f"caption dropout uncond loaded: {sidecar} "
+            f"shape={tuple(self._uncond_crossattn_1.shape)}"
+        )
 
     def get_noise_scheduler(
         self, args: argparse.Namespace, device: torch.device
@@ -708,6 +707,7 @@ class AnimaTrainer:
             device=accelerator.device,
             weight_dtype=weight_dtype,
             trim_crossattn_kv=bool(args.trim_crossattn_kv),
+            uncond_crossattn_emb=self._uncond_crossattn_1,
         )
         crossattn_emb = tc.crossattn_emb
         prompt_embeds = tc.prompt_embeds
@@ -715,6 +715,18 @@ class AnimaTrainer:
         t5_input_ids = tc.t5_input_ids
         t5_attn_mask = tc.t5_attn_mask
         _max_crossattn_seqlen = tc.max_crossattn_seqlen
+
+        # ChimeraHydra global content router (chimera with
+        # ``content_router_source="crossattn"``): fire ONCE per step on the
+        # pooled crossattn_emb. apply_router_conditioning above ran before
+        # text conds were materialized, so the content router lives outside
+        # that helper. No-op on non-chimera networks or per-Linear chimera.
+        if (
+            getattr(network, "use_content_router", False)
+            and crossattn_emb is not None
+            and hasattr(network, "set_content")
+        ):
+            network.set_content(crossattn_emb)
 
         # Create padding mask
         bs = latents.shape[0]
@@ -766,7 +778,7 @@ class AnimaTrainer:
                     **kw,
                 )
 
-                # Method-adapter extra forwards (REPA, soft-tokens, …).
+                # Method-adapter extra forwards (soft-tokens, …).
                 # Each adapter sees the primary forward's inputs + 5D output
                 # and may run additional anima(...) calls inside this same
                 # autocast / grad scope, returning aux loss tensors keyed for
@@ -872,23 +884,18 @@ class AnimaTrainer:
 
         text_encoding_strategy = text_strategies.TextEncodingStrategy.get_strategy()
         tokenize_strategy = text_strategies.TokenizeStrategy.get_strategy()
-        network = getattr(self, "_network", None)
-        if network is not None:
-            network = accelerator.unwrap_model(network)
-
-        with _network_sampling_mode(network):
-            anima_train_utils.sample_images(
-                accelerator,
-                args,
-                epoch,
-                global_step,
-                unet,
-                vae,
-                qwen3_te,
-                tokenize_strategy,
-                text_encoding_strategy,
-                self.sample_prompts_te_outputs,
-            )
+        anima_train_utils.sample_images(
+            accelerator,
+            args,
+            epoch,
+            global_step,
+            unet,
+            vae,
+            qwen3_te,
+            tokenize_strategy,
+            text_encoding_strategy,
+            self.sample_prompts_te_outputs,
+        )
 
     def prepare_unet_with_accelerator(
         self, args: argparse.Namespace, accelerator: Accelerator, unet: torch.nn.Module
@@ -1091,6 +1098,7 @@ class AnimaTrainer:
                 loss_weights=batch["loss_weights"],
                 network=getattr(self, "_network", network),
                 aux=aux,
+                is_train=is_train,
             )
 
         return composer.compose(_build_loss_ctx(loss_aux))
@@ -1166,11 +1174,6 @@ class AnimaTrainer:
         first_param = next(text_encoder.parameters())
         first_param.requires_grad_(True)
 
-    def prepare_text_encoder_fp8(
-        self, index, text_encoder, te_weight_dtype, weight_dtype
-    ):
-        text_encoder.text_model.embeddings.to(dtype=weight_dtype)
-
     def get_text_encoders_train_flags(self, args, text_encoders):
         return (
             [True] * len(text_encoders)
@@ -1200,7 +1203,7 @@ class AnimaTrainer:
         return True
 
     def cast_unet(self, args):
-        return not getattr(args, "fp8_base_unet", False)
+        return True
 
     def call_unet(
         self,
@@ -1360,10 +1363,6 @@ class AnimaTrainer:
             if use_user_config:
                 logger.info(f"Loading dataset config from {args.dataset_config}")
                 user_config = config_util.load_user_config(args.dataset_config)
-                user_config = substitute_dataset_config_templates(
-                    user_config,
-                    vars(args),
-                )
                 ignored = ["train_data_dir", "reg_data_dir", "in_json"]
                 if any(getattr(args, attr) is not None for attr in ignored):
                     logger.warning(
@@ -1429,7 +1428,8 @@ class AnimaTrainer:
                 for ds in train_dataset_group.datasets
                 for subset in ds.subsets
             ]
-            if rates and any(r > 0 for r in rates):
+            self._caption_dropout_enabled = bool(rates) and any(r > 0 for r in rates)
+            if self._caption_dropout_enabled:
                 logger.info(f"caption dropout ENABLED -- per-subset rates: {rates}")
             else:
                 logger.info("caption dropout DISABLED (rate=0.0 on all subsets)")
@@ -1738,15 +1738,9 @@ class AnimaTrainer:
         for i, t_enc in enumerate(text_encoders):
             t_enc.requires_grad_(False)
 
-            # in case of cpu, dtype is already set to fp32 because cpu does not support fp8/fp16/bf16
+            # in case of cpu, dtype is already set to fp32 because cpu does not support fp16/bf16
             if t_enc.device.type != "cpu" and self.cast_text_encoder(args):
                 t_enc.to(dtype=te_weight_dtype)
-
-                # nn.Embedding not support FP8
-                if te_weight_dtype != weight_dtype:
-                    self.prepare_text_encoder_fp8(
-                        i, t_enc, te_weight_dtype, weight_dtype
-                    )
 
         # accelerator preparation (no deepspeed)
         if train_unet:
@@ -1855,363 +1849,6 @@ class AnimaTrainer:
             text_encoder,
             unet_weight_dtype,
         )
-
-    def _run_validation(
-        self,
-        ctx: TrainCtx,
-        val: ValCtx,
-        *,
-        val_loss_recorder,
-        epoch,
-        global_step,
-        progress_bar,
-        progress_desc,
-        postfix_label,
-        log_avg_key,
-        log_div_key,
-        logging_fn,
-    ):
-        """Validation = CMMD between the live model's samples and the held-out
-        reference's cached PE features, falling back to per-sigma FM-MSE on
-        ``val.dataloader`` if CMMD can't run (no PE/TE cache, sampling error).
-
-        CMMD is the primary signal (the legacy FM-MSE pass did not track
-        sample quality on Anima — see ``project_fm_val_loss_uninformative``),
-        but FM-MSE still produces *some* divergence number to log when the
-        sampling path is broken or the references aren't there, which keeps
-        validation visibility alive instead of going silent for the whole run.
-        """
-        args = ctx.args
-        accelerator = ctx.accelerator
-
-        ctx.optimizer_eval_fn()
-        accelerator.unwrap_model(ctx.network).eval()
-        unwrapped_unet = accelerator.unwrap_model(ctx.unet)
-        if hasattr(unwrapped_unet, "switch_block_swap_for_inference"):
-            unwrapped_unet.switch_block_swap_for_inference()
-        rng_states = self._switch_rng_state(
-            args.validation_seed if args.validation_seed is not None else args.seed
-        )
-
-        try:
-            cmmd_ok = False
-            if getattr(args, "use_cmmd", True):
-                cmmd_ok = self._try_cmmd_validation(
-                    ctx=ctx,
-                    val=val,
-                    unwrapped_unet=unwrapped_unet,
-                    val_loss_recorder=val_loss_recorder,
-                    epoch=epoch,
-                    global_step=global_step,
-                    progress_desc=progress_desc,
-                    log_avg_key=log_avg_key,
-                    log_div_key=log_div_key,
-                    logging_fn=logging_fn,
-                )
-            if not cmmd_ok:
-                self._run_fm_validation(
-                    ctx=ctx,
-                    val=val,
-                    val_loss_recorder=val_loss_recorder,
-                    epoch=epoch,
-                    global_step=global_step,
-                    progress_desc=progress_desc,
-                    postfix_label=postfix_label,
-                    log_avg_key=log_avg_key,
-                    log_div_key=log_div_key,
-                    logging_fn=logging_fn,
-                )
-        finally:
-            self._restore_rng_state(rng_states)
-            args.t_min = val.original_t_min
-            args.t_max = val.original_t_max
-            ctx.optimizer_train_fn()
-            accelerator.unwrap_model(ctx.network).train()
-            if hasattr(unwrapped_unet, "switch_block_swap_for_training"):
-                unwrapped_unet.switch_block_swap_for_training()
-            clean_memory_on_device(accelerator.device)
-
-    def _try_cmmd_validation(
-        self,
-        *,
-        ctx,
-        val,
-        unwrapped_unet,
-        val_loss_recorder,
-        epoch,
-        global_step,
-        progress_desc,
-        log_avg_key,
-        log_div_key,
-        logging_fn,
-    ) -> bool:
-        """Run CMMD-based validation. Returns True if it logged a value, False
-        if the caller should fall back to FM-MSE (no dataset group, no PE/TE
-        cache, ``load_reference_features`` failure, or any sampling exception).
-        """
-        args = ctx.args
-        accelerator = ctx.accelerator
-
-        if val.dataset_group is None:
-            return False
-
-        val_items: list = []
-        for ds in val.dataset_group.datasets:
-            val_items.extend(ds.image_data.values())
-        if not val_items:
-            return False
-
-        # Reference PE features sit next to each val item's cached TE
-        # output (both produced by `make preprocess-pe` / `-te`).
-        ref_sidecars = []
-        ref_items = []
-        for item in val_items:
-            te_path = item.text_encoder_outputs_npz
-            if te_path is None:
-                continue
-            cache_dir = os.path.dirname(te_path)
-            ref_sidecars.append(
-                resolve_pe_sidecar(
-                    item.absolute_path, encoder="pe", cache_dir=cache_dir
-                )
-            )
-            ref_items.append(item)
-        if not ref_sidecars:
-            logger.warning(
-                "CMMD val: no items had cached TE outputs; falling back to FM-MSE."
-            )
-            return False
-        try:
-            ref_pool = load_reference_features(ref_sidecars).to(
-                accelerator.device
-            )
-        except RuntimeError as exc:
-            logger.warning(f"CMMD val ref load failed ({exc}); falling back to FM-MSE.")
-            return False
-
-        from library.vision.encoder import (
-            encode_pe_from_imageminus1to1,
-            load_pe_encoder,
-        )
-
-        if getattr(self, "_cmmd_pe_bundle", None) is None:
-            self._cmmd_pe_bundle = load_pe_encoder(accelerator.device)
-            # Park PE-Core (~600 MB bf16) on CPU between encodes so the DiT
-            # sample step has the full GPU budget. Bundle keeps device=cuda
-            # so encode_pe_from_imageminus1to1 still routes inputs correctly;
-            # we shuttle the underlying model to GPU only for the encode call.
-            self._cmmd_pe_bundle.encoder.inner.to("cpu")
-        bundle = self._cmmd_pe_bundle
-
-        sample_steps = int(getattr(args, "validation_sample_steps", 20))
-        cfg_scale = float(getattr(args, "validation_cfg_scale", 1.0))
-        flow_shift = float(getattr(args, "discrete_flow_shift", 1.0))
-
-        val_progress_bar = tqdm(
-            range(len(ref_items)),
-            smoothing=0,
-            disable=not accelerator.is_local_main_process,
-            desc=progress_desc,
-        )
-
-        from safetensors.torch import load_file as _load_safetensors
-
-        gen_pooled: list[torch.Tensor] = []
-        seed_base = (
-            args.validation_seed
-            if args.validation_seed is not None
-            else args.seed
-        )
-
-        # Two-phase val to keep DiT and PE-Core off the GPU at the same time:
-        # phase 1 generates every sample with DiT resident and parks the
-        # decoded pixels on CPU; phase 2 swaps DiT → CPU + PE → GPU and
-        # encodes them all. One DiT round-trip per val pass instead of N.
-        pixel_images: list[torch.Tensor] = []
-        try:
-            with torch.no_grad(), accelerator.autocast():
-                unwrapped_unet.prepare_block_swap_before_forward()
-                for i, item in enumerate(ref_items):
-                    sd = _load_safetensors(item.text_encoder_outputs_npz)
-                    crossattn_emb = self._build_val_crossattn_emb(
-                        unwrapped_unet, sd, accelerator
-                    )
-
-                    bucket_w, bucket_h = item.bucket_reso
-
-                    image = anima_train_utils.sample_image_to_tensor(
-                        accelerator=accelerator,
-                        dit=unwrapped_unet,
-                        vae=ctx.vae,
-                        height=int(bucket_h),
-                        width=int(bucket_w),
-                        crossattn_emb=crossattn_emb,
-                        sample_steps=sample_steps,
-                        guidance_scale=cfg_scale,
-                        flow_shift=flow_shift,
-                        seed=seed_base + i,
-                        show_progress=False,
-                    )
-                    pixel_images.append(image.detach().cpu())
-                    del image, crossattn_emb
-                    clean_memory_on_device(accelerator.device)
-                    val_progress_bar.update(1)
-                    val_progress_bar.set_postfix({"items": f"{i + 1}/{len(ref_items)}"})
-
-                    self.on_validation_step_end(ctx, {})
-
-                # Hand the GPU to PE: park DiT on CPU, bring PE on.
-                unwrapped_unet.to("cpu")
-                clean_memory_on_device(accelerator.device)
-                bundle.encoder.inner.to(accelerator.device)
-                try:
-                    for image_cpu in pixel_images:
-                        image_gpu = image_cpu.to(accelerator.device)
-                        feats_list = encode_pe_from_imageminus1to1(
-                            bundle, image_gpu.unsqueeze(0), same_bucket=True
-                        )
-                        gen_pooled.append(pool_and_normalize(feats_list[0]).cpu())
-                        del image_gpu, feats_list
-                finally:
-                    bundle.encoder.inner.to("cpu")
-                    clean_memory_on_device(accelerator.device)
-                    unwrapped_unet.to(accelerator.device)
-        except (KeyError, RuntimeError, FileNotFoundError) as exc:
-            val_progress_bar.close()
-            logger.warning(
-                f"CMMD val sampling failed ({type(exc).__name__}: {exc}); "
-                "falling back to FM-MSE."
-            )
-            return False
-
-        val_progress_bar.close()
-
-        gen_pool = torch.stack(gen_pooled, dim=0).to(accelerator.device)
-        cmmd_value = cmmd_from_pools(ref_pool, gen_pool)
-        val_loss_recorder.add(epoch=epoch, step=global_step, loss=cmmd_value)
-
-        if ctx.is_tracking:
-            logs = {
-                log_avg_key: cmmd_value,
-                log_div_key: cmmd_value
-                - val.train_loss_recorder.moving_average,
-                log_avg_key.removesuffix("_average") + "_cmmd": cmmd_value,
-                log_avg_key.removesuffix("_average") + "_n": len(ref_items),
-            }
-            logging_fn(accelerator, logs, global_step, epoch + 1)
-        return True
-
-    def _run_fm_validation(
-        self,
-        *,
-        ctx,
-        val,
-        val_loss_recorder,
-        epoch,
-        global_step,
-        progress_desc,
-        postfix_label,
-        log_avg_key,
-        log_div_key,
-        logging_fn,
-    ) -> None:
-        """Legacy per-sigma FM-MSE validation, used as a fallback when CMMD
-        can't run. Pins ``args.t_{min,max}`` to each sigma in ``val.sigmas``
-        and runs ``process_batch`` over up to ``val.steps`` batches of
-        ``val.dataloader``. The caller owns RNG save/restore and eval-mode
-        switching; this helper only restores ``t_{min,max}`` since it mutates
-        them per sigma."""
-        args = ctx.args
-        accelerator = ctx.accelerator
-
-        if val.dataloader is None or len(val.dataloader) == 0 or not val.sigmas:
-            return
-
-        val_progress_bar = tqdm(
-            range(val.total_steps),
-            smoothing=0,
-            disable=not accelerator.is_local_main_process,
-            desc=f"{progress_desc} (fm-mse)",
-        )
-        val_timesteps_step = 0
-        per_sigma_losses = {s: [] for s in val.sigmas}
-
-        try:
-            for val_step, batch in enumerate(val.dataloader):
-                if val_step >= val.steps:
-                    break
-
-                for sigma in val.sigmas:
-                    self.on_step_start(ctx, batch, is_train=False)
-                    args.t_min = args.t_max = sigma
-
-                    loss = self.process_batch(ctx, batch, is_train=False)
-                    current_loss = loss.detach().item()
-                    val_loss_recorder.add(
-                        epoch=epoch, step=val_timesteps_step, loss=current_loss
-                    )
-                    per_sigma_losses[sigma].append(current_loss)
-                    val_progress_bar.update(1)
-                    val_progress_bar.set_postfix(
-                        {
-                            postfix_label: val_loss_recorder.moving_average,
-                            "sigma": f"{sigma:.2f}",
-                        }
-                    )
-                    self.on_validation_step_end(ctx, batch)
-                    val_timesteps_step += 1
-        finally:
-            val_progress_bar.close()
-
-        if ctx.is_tracking:
-            logs = {
-                log_avg_key: val_loss_recorder.moving_average,
-                log_div_key: val_loss_recorder.moving_average
-                - val.train_loss_recorder.moving_average,
-                log_avg_key.removesuffix("_average") + "_fm_fallback": 1.0,
-            }
-            for s, losses in per_sigma_losses.items():
-                if losses:
-                    logs[f"loss/validation/sigma_{s:.2f}"] = sum(losses) / len(
-                        losses
-                    )
-            logging_fn(accelerator, logs, global_step, epoch + 1)
-
-    def _build_val_crossattn_emb(self, dit, sd, accelerator):
-        """Construct the cross-attention embedding the DiT expects from a
-        cached TE sidecar — using the saved post-LLM-adapter ``crossattn_emb``
-        when present, otherwise running ``llm_adapter`` exactly like
-        ``_sample_image_inference`` does. Pads to 512 tokens (the model's
-        fixed context length). Multi-variant caches expose `<key>_v0` (pristine
-        caption) instead of `<key>`; pin to v0 for deterministic validation."""
-        device = accelerator.device
-        dtype = dit.dtype
-        suffix = "" if "prompt_embeds" in sd or "crossattn_emb" in sd else "_v0"
-        ce_key = f"crossattn_emb{suffix}"
-        if ce_key in sd:
-            ce = sd[ce_key].unsqueeze(0).to(device, dtype=dtype)
-            if ce.shape[1] < 512:
-                ce = torch.nn.functional.pad(ce, (0, 0, 0, 512 - ce.shape[1]))
-            return ce
-
-        prompt_embeds = sd[f"prompt_embeds{suffix}"].unsqueeze(0).to(device, dtype=dtype)
-        attn_mask = sd[f"attn_mask{suffix}"].unsqueeze(0).to(device)
-        t5_ids = sd[f"t5_input_ids{suffix}"].unsqueeze(0).to(device, dtype=torch.long)
-        t5_attn_mask = sd[f"t5_attn_mask{suffix}"].unsqueeze(0).to(device)
-
-        if getattr(dit, "use_llm_adapter", False):
-            ce = dit.llm_adapter(
-                source_hidden_states=prompt_embeds,
-                target_input_ids=t5_ids,
-                target_attention_mask=t5_attn_mask,
-                source_attention_mask=attn_mask,
-            )
-            ce[~t5_attn_mask.bool()] = 0
-        else:
-            ce = prompt_embeds
-        if ce.shape[1] < 512:
-            ce = torch.nn.functional.pad(ce, (0, 0, 0, 512 - ce.shape[1]))
-        return ce
 
     def train(self, args):
         session_id = random.randint(0, 2**32)
@@ -2361,6 +1998,12 @@ class AnimaTrainer:
             unet, text_encoders = self.load_unet_lazily(
                 args, weight_dtype, accelerator, text_encoders
             )
+
+        # Stage the T5("") sidecar once if caption dropout is on — dropped
+        # rows then get the same crossattn embedding Anima feeds at
+        # CFG-uncond inference instead of all-zeros (which is out-of-dist).
+        if self._caption_dropout_enabled:
+            self._ensure_uncond_crossattn(args, accelerator, weight_dtype)
 
         network_result = self._create_and_apply_network(
             args, accelerator, vae, text_encoder, unet, text_encoders, weight_dtype
@@ -2658,12 +2301,6 @@ def setup_parser() -> argparse.ArgumentParser:
         default=None,
         nargs="*",
         help="learning rate for Text Encoder, can be multiple",
-    )
-    # FP8 is not supported yet -- flag is kept for CLI compatibility but force-disabled in assert_extra_args.
-    parser.add_argument(
-        "--fp8_base_unet",
-        action="store_true",
-        help="(not supported yet) use fp8 for U-Net (or DiT). This flag is force-disabled.",
     )
 
     add_network_arguments(parser)

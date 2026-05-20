@@ -1,5 +1,11 @@
 #!/usr/bin/env python3
-"""Merge masks from multiple sources by taking the pixel-wise minimum (union of masked regions)."""
+"""Merge masks from multiple sources by taking the pixel-wise minimum (union of masked regions).
+
+Walks each input mask directory recursively and keys merges by
+``(rel_dir, name)`` so masks at the same relative path across inputs collide.
+The output preserves the same nested layout under ``--output-dir``. Flat
+layouts (no subdirs) collapse to flat output as before.
+"""
 
 import argparse
 from pathlib import Path
@@ -24,21 +30,23 @@ def main() -> None:
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    # Collect all mask filenames across all sources
-    all_names: set[str] = set()
+    # Collect (rel_dir, name) → list[abs_path] across all sources
+    by_rel: dict[tuple[str, str], list[Path]] = {}
     for d in mask_dirs:
-        if d.exists():
-            all_names.update(p.name for p in d.glob("*_mask.png"))
+        if not d.exists():
+            continue
+        for p in d.rglob("*_mask.png"):
+            rel = p.parent.relative_to(d)
+            rel_str = "" if str(rel) in ("", ".") else str(rel)
+            by_rel.setdefault((rel_str, p.name), []).append(p)
 
-    if not all_names:
+    if not by_rel:
         print("No masks found.")
         return
 
     merged = 0
-    for name in tqdm(sorted(all_names), desc="Merging masks"):
-        sources = [d / name for d in mask_dirs if (d / name).exists()]
+    for (rel_str, name), sources in tqdm(sorted(by_rel.items()), desc="Merging masks"):
         if len(sources) == 1:
-            # Single source -- just copy
             arr = np.array(Image.open(sources[0]))
         else:
             # Pixel-wise minimum: lower alpha = more masking
@@ -49,7 +57,9 @@ def main() -> None:
                 )
                 arr = np.minimum(arr, other)
 
-        Image.fromarray(arr, mode="L").save(output_dir / name)
+        target_dir = output_dir / rel_str if rel_str else output_dir
+        target_dir.mkdir(parents=True, exist_ok=True)
+        Image.fromarray(arr, mode="L").save(target_dir / name)
         merged += 1
 
     print(f"Merged {merged} masks into {output_dir}/")

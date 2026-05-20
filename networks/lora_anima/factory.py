@@ -7,19 +7,18 @@ import json
 import logging
 import os
 import re
+from pathlib import Path
 from typing import Dict, List, Optional
 
 import torch
 
 from library.log import setup_logging
 from networks import NETWORK_REGISTRY, resolve_network_spec
-from networks.methods.repa import REPAHead
 from networks.lora_anima.config import LoRANetworkCfg
 from networks.lora_anima.loading import (
     _refuse_split_chimera_keys,
     _refuse_split_hydra_keys,
     _refuse_split_stacked_experts_keys,
-    _refuse_unfused_attn_lokr_keys,
     _refuse_unfused_attn_lora_keys,
     _stack_chimera_lora_ups,
     _stack_lora_ups,
@@ -30,75 +29,48 @@ setup_logging()
 logger = logging.getLogger(__name__)
 
 
-def _maybe_attach_repa_head(network: "LoRANetwork", kwargs: Dict[str, object]) -> None:
-    """Attach REPAHead (Yu et al., arXiv:2410.06940) when use_repa=true.
-
-    Called from create_network only — warm-start does not currently restore
-    head weights (the LoRA save pipeline doesn't include them yet), so a
-    fresh head is built whenever REPA is enabled. Acceptable for v0; the
-    head is small and re-converges quickly.
-    """
-    use_repa = kwargs.get("use_repa", "false")
-    if isinstance(use_repa, str):
-        use_repa = use_repa.lower() == "true"
-    if not use_repa:
-        return
-    dit_dim = int(kwargs.get("repa_dit_dim", 2048))
-    hidden_dim = int(kwargs.get("repa_hidden_dim", 2048))
-    encoder_dim = int(kwargs.get("repa_encoder_dim", 1024))
-    lr_scale = float(kwargs.get("repa_lr_scale", 1.0))
-    head = REPAHead(
-        dit_dim=dit_dim, hidden_dim=hidden_dim, encoder_dim=encoder_dim
-    )
-    network.repa_head = head
-    network._repa_lr_scale = lr_scale
-    logger.info(
-        f"REPA head attached: {dit_dim} -> {hidden_dim} -> {encoder_dim} "
-        f"(lr_scale={lr_scale}x of unet_lr)"
-    )
+# Vendored SmoothQuant-style calibration — ships in-tree (~3.5 MB) so deploys
+# (including custom_nodes/*/_vendor/ trees) work without a separate download.
+# Regenerate via `bench/channel_stats/analyze_lora_input_channels.py`.
+_CHANNEL_STATS_PATH = (
+    Path(__file__).resolve().parent.parent / "calibration" / "channel_stats.safetensors"
+)
 
 
 def _load_channel_scales(
     kwargs: Dict[str, object],
 ) -> Optional[Dict[str, torch.Tensor]]:
-    """Load per-channel input pre-scaling stats from disk, if requested.
+    """Load per-channel input pre-scaling stats, gated on ``channel_scaling_alpha``.
 
-    SmoothQuant-style. Requires a calibration file produced by
-    ``archive/bench/analyze_lora_input_channels.py --dump_channel_stats <path>``.
-    See ``archive/bench/channel_dominance_analysis.md`` for motivation.
+    SmoothQuant-style. ``channel_scaling_alpha`` is the sole user knob:
+    0.0 (default) disables; 0.5 = sqrt balance; 1.0 fully flattens. The
+    calibration file is vendored at ``networks/calibration/channel_stats.safetensors``;
+    regenerate it with ``bench/channel_stats/analyze_lora_input_channels.py``.
+    See ``bench/channel_stats/channel_dominance_analysis.md`` for motivation.
     """
-    per_channel_scaling = kwargs.get("per_channel_scaling", "false")
-    if per_channel_scaling is not None:
-        per_channel_scaling = str(per_channel_scaling).lower() == "true"
-    if not per_channel_scaling:
+    raw_alpha = kwargs.get("channel_scaling_alpha", 0.0)
+    channel_scaling_alpha = float(raw_alpha) if raw_alpha is not None else 0.0
+    if channel_scaling_alpha == 0.0:
         return None
 
-    channel_stats_path = kwargs.get("channel_stats_path", None)
-    channel_scaling_alpha = kwargs.get("channel_scaling_alpha", None)
-    channel_scaling_alpha = (
-        float(channel_scaling_alpha) if channel_scaling_alpha is not None else 0.5
-    )
-
-    if not channel_stats_path:
-        raise ValueError(
-            "per_channel_scaling=true requires channel_stats_path. Generate one with:\n"
-            "  python archive/bench/analyze_lora_input_channels.py --dump_channel_stats <path.safetensors>"
-        )
-    if not os.path.isfile(channel_stats_path):
+    if not _CHANNEL_STATS_PATH.is_file():
         raise FileNotFoundError(
-            f"channel_stats_path does not exist: {channel_stats_path}"
+            f"vendored channel stats missing at {_CHANNEL_STATS_PATH}. "
+            f"Regenerate with:\n"
+            f"  python bench/channel_stats/analyze_lora_input_channels.py "
+            f"--per_artist --dump_channel_stats {_CHANNEL_STATS_PATH}"
         )
     from safetensors.torch import load_file as _load_channel_stats_file
 
-    raw_stats = _load_channel_stats_file(channel_stats_path)
+    raw_stats = _load_channel_stats_file(str(_CHANNEL_STATS_PATH))
     out: Dict[str, torch.Tensor] = {}
     for _lora_name, _mean_abs in raw_stats.items():
         _s = _mean_abs.float().clamp_min(1e-6).pow(channel_scaling_alpha)
         _s = _s / _s.mean().clamp_min(1e-12)
         out[_lora_name] = _s
     logger.info(
-        f"Per-channel input pre-scaling: alpha={channel_scaling_alpha}, "
-        f"stats={channel_stats_path} ({len(out)} calibrated modules)"
+        f"channel_scaling: alpha={channel_scaling_alpha}, "
+        f"stats={_CHANNEL_STATS_PATH.name} ({len(out)} calibrated modules)"
     )
     return out
 
@@ -150,8 +122,6 @@ def create_network(
     network._network_spec = spec
     if spec.post_init is not None:
         spec.post_init(network, kwargs)
-
-    _maybe_attach_repa_head(network, kwargs)
 
     if use_custom_down_autograd:
         _hits = 0
@@ -342,16 +312,12 @@ def create_network_from_weights(
     weights_sd = _refuse_split_stacked_experts_keys(weights_sd)
     weights_sd = _refuse_split_hydra_keys(weights_sd)
     weights_sd = _refuse_split_chimera_keys(weights_sd)
-    weights_sd = _refuse_unfused_attn_lokr_keys(weights_sd)
     # Refuse unfused attn projections so modules_dim reflects the runtime (qkv/kv fused).
     weights_sd = _refuse_unfused_attn_lora_keys(weights_sd)
 
     modules_dim = {}
     modules_alpha = {}
     train_llm_adapter = False
-    has_lokr = False
-    lokr_module_names: set[str] = set()
-    lokr_factor_detected: Optional[int] = None
     has_ortho = False
     has_ortho_hydra = False
     has_hydra = False
@@ -411,21 +377,6 @@ def create_network_from_weights(
 
         if "alpha" in key:
             modules_alpha[lora_name] = value
-        elif key.endswith(".lokr_w1"):
-            has_lokr = True
-            lokr_module_names.add(lora_name)
-            if value.dim() >= 1:
-                factor = int(value.size(0))
-                if lokr_factor_detected is None:
-                    lokr_factor_detected = factor
-                elif lokr_factor_detected != factor:
-                    raise RuntimeError(
-                        "Inconsistent LoKr factors across checkpoint: "
-                        f"expected {lokr_factor_detected}, found {factor} at {key!r}."
-                    )
-        elif key.endswith(".lokr_w2"):
-            has_lokr = True
-            lokr_module_names.add(lora_name)
         elif key.endswith(".lora_up_c_weight") or key.endswith(".lora_up_f_weight"):
             # Chimera dual-A per-pool stacked ups (post-stack form). r is
             # the last dim; out_dim of this side is dim 1; pool size is
@@ -479,29 +430,6 @@ def create_network_from_weights(
         if "llm_adapter" in lora_name:
             train_llm_adapter = True
 
-    lokr_factor = 8
-    if has_lokr:
-        raw_lokr_args = file_metadata.get("ss_network_args")
-        lokr_factor_meta: Optional[int] = None
-        if raw_lokr_args:
-            try:
-                parsed_args = json.loads(raw_lokr_args)
-            except json.JSONDecodeError:
-                parsed_args = None
-            if isinstance(parsed_args, dict) and str(parsed_args.get("algo", "")).lower() == "lokr":
-                raw_factor = parsed_args.get("factor")
-                if raw_factor is not None:
-                    lokr_factor_meta = int(raw_factor)
-        lokr_factor = int(lokr_factor_meta or lokr_factor_detected or 8)
-
-        for lora_name in lokr_module_names:
-            w2 = weights_sd.get(f"{lora_name}.lokr_w2")
-            if w2 is None:
-                continue
-            if w2.dim() != 2:
-                raise RuntimeError(f"LoKr weight {lora_name}.lokr_w2 must be 2-D.")
-            modules_dim[lora_name] = lokr_factor
-
     # Finalize the MoE shape now that the full scan is done. A module that
     # has only ``lora_up_weight`` (3-D) but no matching ``lora_down_weight``
     # (3-D) is Hydra (shared lora_down.weight); both 3-D means StackedExperts.
@@ -511,10 +439,7 @@ def create_network_from_weights(
     # has_hydra / has_ortho_hydra / has_stacked_experts win over for_inference:
     # the router is sample-dependent and can't be folded into a static-merge
     # path. The dynamic forward-hook path works in eval mode too.
-    if has_lokr:
-        spec = NETWORK_REGISTRY["lokr"]
-        module_class = spec.module_class
-    elif has_stacked_experts:
+    if has_stacked_experts:
         spec = NETWORK_REGISTRY["stacked_experts_global_fei"]
         module_class = spec.module_class
     elif has_ortho_hydra:
@@ -787,6 +712,21 @@ def create_network_from_weights(
         and str(file_metadata.get("ss_chimera_freq_router_layer_norm", "")).strip().lower()
         == "true"
     )
+    # ContentRouter stamps. Absent / "input" preserves the per-Linear router
+    # (today's chimera). "crossattn" rebuilds a network-level ContentRouter
+    # fed by pooled crossattn_emb; per-Linear ``self.router`` is then absent
+    # from state_dict. Input dim is fixed by the DiT (CROSSATTN_EMB_DIM),
+    # not configurable — no stamp needed.
+    chimera_content_router_source: str = str(
+        file_metadata.get("ss_chimera_content_router_source", "input")
+        if is_chimera_hydra
+        else "input"
+    ).strip() or "input"
+    chimera_content_router_layer_norm: bool = (
+        is_chimera_hydra
+        and str(file_metadata.get("ss_chimera_content_router_layer_norm", "")).strip().lower()
+        == "true"
+    )
     if is_chimera_hydra:
         # On-disk format: per-pool distilled chimera (lora_down_{c,f} +
         # stacked lora_up_{c,f}_weight + content router) with q/k/v defused
@@ -854,11 +794,12 @@ def create_network_from_weights(
         new_use_moe_style=new_use_moe_style,
         new_route_per_layer=new_route_per_layer,
         new_router_source=new_router_source_stamp,
-        lokr_factor=int(lokr_factor if has_lokr else 8),
         is_chimera_hydra=is_chimera_hydra,
         num_experts_content=chimera_num_experts_content,
         num_experts_freq=chimera_num_experts_freq,
         freq_router_layer_norm=chimera_freq_router_layer_norm,
+        content_router_source=chimera_content_router_source,
+        content_router_layer_norm=chimera_content_router_layer_norm,
     )
 
     network = LoRANetwork(text_encoders, unet, cfg, multiplier=multiplier)
@@ -869,8 +810,6 @@ def create_network_from_weights(
     network._network_spec = spec
     if spec.post_init is not None:
         spec.post_init(network, kwargs)
-
-    _maybe_attach_repa_head(network, kwargs)
 
     if band_partition_on:
         experts_per_band = hydra_num_experts // band_num_buckets

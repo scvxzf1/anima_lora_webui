@@ -33,10 +33,9 @@ from safetensors.torch import save_file
 REPO_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO_ROOT))
 from bench._common import make_run_dir, write_result  # noqa: E402
+from library.datasets.buckets import DCW_ASPECT_NAMES, N_DCW_ASPECTS  # noqa: E402
 from networks.dcw import FusionHead  # noqa: E402
 from scripts.dcw.fusion_data import (  # noqa: E402
-    ASPECT_NAMES,
-    N_ASPECTS,
     build_population_mu_g,
     load_bench_runs,
     load_text_features,
@@ -304,7 +303,7 @@ def main():
     p.add_argument("--lr", type=float, default=1e-3)
     p.add_argument("--weight_decay", type=float, default=1e-3)
     p.add_argument("--seed", type=int, default=0)
-    p.add_argument("--label", type=str, default="prototype")
+    p.add_argument("--label", type=str, default="concat")
     p.add_argument(
         "--c_proj_dim",
         type=int,
@@ -350,7 +349,7 @@ def main():
     p.add_argument(
         "--fei_obs",
         type=str,
-        default="off",
+        default="concat",
         choices=("off", "replace", "concat"),
         help="Use 2-band FEI low-band energy (FeRA paper, arXiv:2511.17979) "
         "on the per-step latent as a conditioning channel for the head. "
@@ -433,10 +432,10 @@ def main():
     baseline_lambda = float(baselines[0])
     print(f"  baseline_lambda = {baseline_lambda:.4g}")
 
-    counts = {a: sum(1 for r in rows if r.aspect_id == a) for a in range(N_ASPECTS)}
+    counts = {a: sum(1 for r in rows if r.aspect_id == a) for a in range(N_DCW_ASPECTS)}
     print(
         "  per-aspect counts: "
-        + ", ".join(f"{ASPECT_NAMES[a]}={c}" for a, c in counts.items())
+        + ", ".join(f"{DCW_ASPECT_NAMES[a]}={c}" for a, c in counts.items())
     )
 
     print("[2/6] loading text features ...")
@@ -467,9 +466,9 @@ def main():
 
     print("[3/6] computing population μ_g ...")
     mu_g_pop = build_population_mu_g(rows, n_steps)  # (n_steps,)
-    mu_g = np.broadcast_to(mu_g_pop, (N_ASPECTS, n_steps)).copy()
+    mu_g = np.broadcast_to(mu_g_pop, (N_DCW_ASPECTS, n_steps)).copy()
     s_pop = np.zeros_like(mu_g)
-    lam_scalar = np.zeros(N_ASPECTS, dtype=np.float32)
+    lam_scalar = np.zeros(N_DCW_ASPECTS, dtype=np.float32)
     print(
         f"  integrated μ_g = {mu_g_pop.sum():+.2f} "
         "(single profile, broadcast to all aspects in artifact)"
@@ -757,11 +756,11 @@ def main():
 
     # Per-aspect r
     per_aspect_metrics = {}
-    for a in range(N_ASPECTS):
+    for a in range(N_DCW_ASPECTS):
         m = cv_aspect == a
         if m.sum() < 4:
             continue
-        per_aspect_metrics[ASPECT_NAMES[a]] = {
+        per_aspect_metrics[DCW_ASPECT_NAMES[a]] = {
             "n": int(m.sum()),
             "r_alpha_seed": pearson(cv_a[m], cv_t[m]),
             "rmse": float(np.sqrt(((cv_a[m] - cv_t[m]) ** 2).mean())),
@@ -796,7 +795,7 @@ def main():
     )
 
     sigma2_prior_pop = float(np.exp(cv_ls).mean()) if cv_ls.size else float(sigma2_pop)
-    sigma2_prior = np.full(N_ASPECTS, sigma2_prior_pop, dtype=np.float32)
+    sigma2_prior = np.full(N_DCW_ASPECTS, sigma2_prior_pop, dtype=np.float32)
 
     run_dir = make_run_dir(
         "dcw", label=f"v4-fusion-head-{args.label}", root=args.out_root
@@ -887,7 +886,7 @@ def main():
                 w.writerow(
                     [
                         r.stem,
-                        ASPECT_NAMES[r.aspect_id],
+                        DCW_ASPECT_NAMES[r.aspect_id],
                         r.seed_idx,
                         f"{targets[i]:.6e}",
                         f"{cv_alpha[i]:.6e}",
@@ -910,7 +909,7 @@ def main():
     metrics = {
         "n_rows": len(rows),
         "n_unique_stems": len(unique_stems),
-        "per_aspect_counts": {ASPECT_NAMES[a]: counts[a] for a in range(N_ASPECTS)},
+        "per_aspect_counts": {DCW_ASPECT_NAMES[a]: counts[a] for a in range(N_DCW_ASPECTS)},
         "fei_obs": args.fei_obs,
         "fei_k": fei_k_meta,
         "k_warmup": args.k_warmup,
@@ -923,9 +922,9 @@ def main():
         "n_folds": args.n_folds,
         "sigma2_pop": sigma2_pop,
         "sigma2_prior": {
-            ASPECT_NAMES[a]: float(sigma2_prior[a]) for a in range(N_ASPECTS)
+            DCW_ASPECT_NAMES[a]: float(sigma2_prior[a]) for a in range(N_DCW_ASPECTS)
         },
-        "lam_scalar": {ASPECT_NAMES[a]: float(lam_scalar[a]) for a in range(N_ASPECTS)},
+        "lam_scalar": {DCW_ASPECT_NAMES[a]: float(lam_scalar[a]) for a in range(N_DCW_ASPECTS)},
         "cv_fold_val_scores": fold_scores_safe,
         "r_alpha_mean_per_prompt": _safe(r_alpha_mean),
         "r_alpha_seed_conditional": _safe(r_alpha_seed),

@@ -37,6 +37,23 @@ def _is_hydra_moe(path: str) -> bool:
         return False
 
 
+def _has_te_keys(path: str) -> bool:
+    """Cheap header peek: does this safetensors LoRA carry any ``lora_te_*`` keys?
+
+    Lets ``load_text_encoder`` skip a redundant ``load_file`` + empty-dict merge
+    when the LoRA is DiT-only (the common case — turbo, plain LoRA, postfix, …).
+    Returns False on any read error so the caller falls back to the no-LoRA TE
+    load path (a truly broken file would have already tripped the DiT loader).
+    """
+    from safetensors import safe_open
+
+    try:
+        with safe_open(path, framework="pt") as f:
+            return any(k.startswith("lora_te_") for k in f.keys())
+    except Exception:
+        return False
+
+
 def _is_chimera_moe(path: str) -> bool:
     """Peek at safetensors metadata for ``ss_use_chimera_hydra="true"``.
 
@@ -242,6 +259,8 @@ def load_dit_model(
     if getattr(args, "compile", False):
         logger.info("Compiling DiT model with torch.compile...")
         model = torch.compile(model)
+    elif getattr(args, "compile_blocks", False):
+        model.compile_blocks(mode=getattr(args, "compile_inductor_mode", None))
 
     clean_memory_on_device(device)
 
@@ -254,7 +273,11 @@ def load_text_encoder(
     device: torch.device = torch.device("cpu"),
 ) -> torch.nn.Module:
     lora_weights_list = None
-    if args.lora_weight is not None and len(args.lora_weight) > 0:
+    if (
+        args.lora_weight is not None
+        and len(args.lora_weight) > 0
+        and any(_has_te_keys(p) for p in args.lora_weight)
+    ):
         lora_weights_list = []
         for lora_weight in args.lora_weight:
             logger.info(f"Loading LoRA weight from: {lora_weight}")

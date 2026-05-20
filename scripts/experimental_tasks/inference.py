@@ -84,6 +84,27 @@ def cmd_test_postfix_func(extra):
     )
 
 
+def cmd_test_soft(extra):
+    """Inference with latest soft_tokens weight (SoftREPA-style per-layer × per-t bank).
+
+    Resolves the newest ``anima_soft_tokens*.safetensors`` under ``output/ckpt/``
+    and passes it via ``--soft_tokens_weight``. The network is built in
+    ``library/inference/generation.py``, ``apply_to`` monkey-patches the first
+    ``n_layers`` ``Block.forward``s, and ``append_postfix(..., timesteps=t)``
+    fires per CFG branch inside the denoising loop (mirrored in the Spectrum
+    runner). Composes freely with ``--spectrum``; cached spectrum steps skip
+    blocks so soft_tokens silently no-ops on those steps.
+    """
+    run(
+        [
+            *INFERENCE_BASE,
+            "--soft_tokens_weight",
+            str(latest_output("anima_soft_tokens")),
+            *extra,
+        ]
+    )
+
+
 def cmd_test_turbo(extra):
     """Inference with the latest turbo student LoRA at 4 steps, cfg=1.0.
 
@@ -489,15 +510,15 @@ def cmd_invert_directedit(extra):
     # 2. Inversion knobs — env overrides for the common dials, defaults match
     #    the proposal (and the invert_postfix_tail.py CLI defaults).
     K = int(os.environ.get("K", "32"))
-    invert_steps = int(os.environ.get("INVERT_STEPS", "15"))
-    invert_lr = float(os.environ.get("INVERT_LR", "2e-2"))
+    invert_steps = int(os.environ.get("INVERT_STEPS", "30"))
+    invert_lr = float(os.environ.get("INVERT_LR", "1e-2"))
     lambda_zero = float(os.environ.get("LAMBDA_ZERO", "0.0"))
     sigma_min = float(os.environ.get("SIGMA_MIN", "0"))
-    sigma_max = float(os.environ.get("SIGMA_MAX", "0.25"))
+    sigma_max = float(os.environ.get("SIGMA_MAX", "0.5"))
     basis_kind = os.environ.get("BASIS", "svd_te").strip()
     seed = int(os.environ.get("SEED", "0"))
     timesteps_per_step = int(os.environ.get("TIMESTEPS_PER_STEP", "2"))
-    grad_accum = int(os.environ.get("GRAD_ACCUM", "8"))
+    grad_accum = int(os.environ.get("GRAD_ACCUM", "6"))
 
     run_root = ROOT / "output" / "tests" / "invert_directedit"
     run_root.mkdir(parents=True, exist_ok=True)

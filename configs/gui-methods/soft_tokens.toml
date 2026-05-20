@@ -4,55 +4,35 @@
 # v1 is TRAINING-ONLY — inference plumbing is not yet wired up.
 #
 # USAGE: make lora-gui GUI_PRESETS=soft_tokens
-#
-# 初学者导读：
-# Soft Tokens 是项目内置的系统方法模块，而不是 LoRA 系列里的一个开关。
-# `network_module` 会让训练器加载 networks.methods.soft_tokens；它会在
-# DiT 的若干层 cross-attention 文本条件里插入可学习 token。基础 DiT
-# 冻结，真正训练的是这些按层、按时间桶组织的软 token。
 
 network_module = "networks.methods.soft_tokens"
 
-# network_dim 在这个方法里表示每层每个时间桶插入的 token 数 K，
-# 不是传统 LoRA rank。K 越大表达力越强，也越容易过拟合。
 network_dim = 4
-
-# network_args 是 Soft Tokens 的结构细节：
-# - n_layers 控制前多少个 DiT block 注入软 token。
-# - n_t_buckets 把扩散时间 t 分桶，每个桶有不同偏移。
-# - splice_position=end_of_sequence 会覆盖序列尾部 padding。
-# - contrastive_* 是额外对比损失的权重、负样本数和温度。
 network_args = [
     "n_layers=10",
     "n_t_buckets=100",
     "init_std=0.02",
-    "splice_position=end_of_sequence",  # contrastive requires EOS
-    "contrastive_weight=0.05",          # paper InfoNCE on top of plain FM
-    "contrastive_k=1",                  # in-batch negatives per anchor
-    "contrastive_tau=1.0",
+    "splice_position=end_of_sequence",
+    "bank_dispersive_weight=0.01",    # cosine_sq is bounded; small λ
+    "bank_dispersive_warmup_ratio=0.1",
+    "bank_dispersive_tau=0.5",        # only used by current / normalized_pdist
+    "dispersive_form=cosine_sq",      # bench/soft_tokens_dispersive: ``current`` is unbounded
+    "dispersive_hinge_eps=1.0",
 ]
 output_name = "anima_soft_tokens"
 
-# 文本缓存仍然有用：软 token 只是覆盖 padding 位置，不需要重新训练文本编码器。
 use_shuffled_caption_variants = true
 cache_llm_adapter_outputs = true
 
-# 保存与续训：
-# - save_every_n_epochs 写普通 adapter 权重，用于观察训练阶段结果。
-# - checkpointing_epochs 写可恢复训练状态，中断后可自动续训。
-# 注意：本方法当前是 training-only v1，即使保存了权重，推理链路也还没接好。
 learning_rate = 1e-3
 max_train_epochs = 4
 save_every_n_epochs = 4
 checkpointing_epochs = 4
 
-# Soft Tokens 通过 per-block forward hook 工作，block swap 会替换 block 对象，
-# 所以这里固定为 0，避免 hook 挂到旧对象上。
 blocks_to_swap = 0
 
 use_cmmd = false
 
-# [variant] 是 GUI 元数据；experimental=true 只提示“实验性”，不改变 TOML 解析。
 [variant]
 family = "soft_tokens"
 label = "Soft Tokens"

@@ -118,6 +118,14 @@ class TurboDMDNetwork:
 
     # ----------------- view toggle -----------------
 
+    # Per-view (student_on, fake_on) target states. Lookup avoids the
+    # if/elif ladder and makes the "flip only what changed" diff explicit.
+    _VIEW_FLAGS: dict[str, tuple[bool, bool]] = {
+        "teacher": (False, False),
+        "student": (True, False),
+        "fake": (False, True),
+    }
+
     def set_view(self, view: View) -> None:
         """Flip per-network enabled flags so the next DiT forward acts as
         the named view.
@@ -125,18 +133,25 @@ class TurboDMDNetwork:
         - ``teacher``: both LoRA stacks off, DiT delivers base velocity.
         - ``student``: student on, fake off — produces v_student for x_pred.
         - ``fake``: fake on, student off — fake's score estimate at τ_DM.
+
+        Short-circuits when already in the target view (consecutive teacher
+        forwards in the CA + DM branches don't repay the ~O(num_modules)
+        attribute-write loop, and dynamo doesn't get a chance to invalidate
+        guards it would have re-validated anyway).
         """
-        if view == "teacher":
-            self.student.set_enabled(False)
-            self.fake.set_enabled(False)
-        elif view == "student":
-            self.student.set_enabled(True)
-            self.fake.set_enabled(False)
-        elif view == "fake":
-            self.student.set_enabled(False)
-            self.fake.set_enabled(True)
-        else:
-            raise ValueError(f"Unknown view {view!r}; expected teacher/student/fake")
+        if view == self._view:
+            return
+        try:
+            want_student, want_fake = self._VIEW_FLAGS[view]
+        except KeyError as e:
+            raise ValueError(
+                f"Unknown view {view!r}; expected teacher/student/fake"
+            ) from e
+        cur_student, cur_fake = self._VIEW_FLAGS[self._view]
+        if want_student != cur_student:
+            self.student.set_enabled(want_student)
+        if want_fake != cur_fake:
+            self.fake.set_enabled(want_fake)
         self._view = view
 
     @property

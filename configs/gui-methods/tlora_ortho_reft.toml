@@ -3,40 +3,25 @@
 # OrthoLoRA + T-LoRA timestep masking + per-block ReFT intervention. This is
 # what the old toggle-block `configs/methods/lora.toml` shipped as its default.
 # Good general-purpose choice when in doubt.
-#
-# 初学者导读：
-# 这是一个“可训练变体叠加包”：默认 LoRA 工厂 + OrthoLoRA + T-LoRA + ReFT。
-# 文件里没有 `network_module`，表示使用 LoRA 系列内置系统工厂；具体变体
-# 由 `use_ortho`、`use_timestep_mask`、`add_reft` 这些开关决定。
-# 内置系统负责挂载结构，训练只更新 adapter/ReFT 参数，不直接微调 DiT。
 
-# 基础 LoRA 容量。rank=32 是通用起点；alpha=32 表示不额外压低 LoRA 输出。
 network_dim = 32
 network_alpha = 32
 
-# 训练节奏和保存：
-# - save_every_n_epochs 写普通 .safetensors，适合推理检查。
-# - checkpointing_epochs 写可续训 checkpoint-state，适合中断恢复。
-# ReFT 和 LoRA 权重都会进入普通保存；优化器状态只在续训检查点中。
 learning_rate = 2e-5
 max_train_epochs = 4
 save_every_n_epochs = 2
 checkpointing_epochs = 2
 
-# caption 正则化：打散 caption 变体、缓存文本编码、随机丢一部分文本条件。
 use_shuffled_caption_variants = true
 cache_llm_adapter_outputs = true
 caption_dropout_rate = 0.1
 
-# OrthoLoRA：约束低秩方向更规整，保存时会折成标准 LoRA 形式。
 use_ortho = true
 
-# T-LoRA：训练时根据 timestep 调整有效 rank；min_rank 是最低保留容量。
 use_timestep_mask = true
 min_rank = 8
 alpha_rank_scale = 1.0
 
-# ReFT：在最后 8 个 block 的残差流上加可训练干预，和 LoRA 并行生效。
 add_reft = true
 reft_dim = 32
 reft_alpha = 32
@@ -44,12 +29,10 @@ reft_layers = "last_8"
 
 output_name = "anima_tlora_reft"
 
-# ReFT 会包装 block，保持 blocks_to_swap=0 可以减少对象替换带来的复杂度。
 blocks_to_swap = 0
 
 use_cmmd = false
 
-# [variant] 是 GUI 分类和文案，不改变训练参数。
 [variant]
 family = "reft"
 label = "T-LoRA + OrthoLoRA + ReFT"

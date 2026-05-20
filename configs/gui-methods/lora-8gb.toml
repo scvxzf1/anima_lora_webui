@@ -1,52 +1,30 @@
-# gui-methods/lora-8gb.toml —— 面向 8GB/低显存显卡的标准 LoRA。
+# gui-methods/lora.toml — Plain classic LoRA.
 #
-# 这是 GUI 使用的独立变体配置：不需要编辑开关块，文件里出现的字段就是实际
-# 生效的训练设置。它和 lora.toml 的算法相同，区别在于额外开启了低显存选项，
-# 适合 Windows/消费级 8GB 显卡先跑通训练。
-#
-# 低显存的代价通常是速度变慢：梯度检查点会少存中间激活、训练时再重算；
-# offload checkpointing 会把部分检查点压力转移出去，减少 OOM 概率。
+# Self-contained variant config for the GUI / `make lora-gui GUI_PRESETS=lora`
+# path. No toggle blocks, no conditional comments — what you see is what runs.
+# For stacked variants (OrthoLoRA + T-LoRA + ReFT, HydraLoRA, …) pick the
+# matching file in this directory instead.
 
-# LoRA 容量设置。dim/alpha 越大，表达能力越强，也越吃显存。
 network_dim = 32
 network_alpha = 32
 
-# 基础训练节奏。低显存配置只改变内存策略，不改变这里的学习率和训练轮数。
 learning_rate = 2e-5
 max_train_epochs = 4
-
-# 保存的是普通适配器权重，方便推理预览和比较不同 epoch。
-# 它不包含优化器/调度器状态，所以不是完整续训点。
 save_every_n_epochs = 2
-
-# 保存可续训检查点。中断后用同一配置重启训练，会从 checkpoint 权重和
-# checkpoint-state 目录恢复训练进度。
 checkpointing_epochs = 2
 
-# 字幕与文本缓存设置：打乱字幕变体、缓存文本侧输出，并随机丢弃少量字幕条件，
-# 用来降低过拟合和重复计算。
 use_shuffled_caption_variants = true
 cache_llm_adapter_outputs = true
 caption_dropout_rate = 0.1
 
-# 输出文件名前缀。
 output_name = "anima"
 
-# blocks_to_swap=0 表示不走 block 级 CPU 换入换出。
-# 本文件的低显存核心是下面两个布尔开关。
 blocks_to_swap = 0
-
-# 低显存开关：
-# gradient_checkpointing 用“重算”换显存。
-# unsloth_offload_checkpointing 进一步降低显存峰值，适合 8GB 卡。
 gradient_checkpointing = true
 unsloth_offload_checkpointing = true
-
-# 保持关闭额外质量度量/损失，避免给低显存训练增加不必要负担。
 use_cmmd = false
 
 [variant]
-# GUI 展示用元数据，不参与 TOML 合并之外的训练参数计算。
 family = "lora"
 label = "LoRA (8GB hardware)"
 description = "Plain LoRA tuned for low-VRAM cards (gradient checkpointing + offload)."

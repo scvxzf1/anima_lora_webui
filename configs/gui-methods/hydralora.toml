@@ -1,83 +1,54 @@
-# gui-methods/hydralora.toml —— HydraLoRA：带 σ 条件路由的专家 LoRA。
+# gui-methods/hydralora.toml — HydraLoRA + σ-conditional router with hard
+# σ-bucket expert partition (default).
 #
-# 这个配置比普通 LoRA 更复杂：它使用 shared-A MoE 结构，也就是多个专家共享
-# lora_down(A)，每个专家有自己的 lora_up(B)。路由器根据当前层和噪声强度 σ
-# 选择专家，让不同生成阶段学习不同能力。
-#
-# 适合已经确认普通 LoRA 能跑通、并希望模型在不同噪声阶段有更细分表达能力的
-# 用户。显存不足时请使用 hydralora-8gb.toml。
+# Shared-A MoE shape: shared lora_down + per-expert lora_up heads, routed
+# layer-locally. Adds a sinusoidal(σ)→E router bias plus
+# ``specialize_experts_by_sigma_buckets = true`` so the expert pool is
+# partitioned by timestep bucket (each σ-band routes only to its assigned
+# experts). ``sigma_bucket_boundaries = [0.0, 0.5, 0.8, 1.0]`` places splits
+# unevenly — more capacity in the late, low-noise refinement regime.
 
-# 基础 LoRA 容量。Hydra 会在这个基础上分出多个专家，因此专家数也会影响显存。
 network_dim = 32
 network_alpha = 32
 
-# 训练节奏。Hydra 参数更多，过长训练更容易过拟合，初学者建议先保留默认轮数。
 learning_rate = 2e-5
 max_train_epochs = 4
-
-# 普通权重保存：用于每隔若干 epoch 产出可推理的 .safetensors。
-# 这些文件不含优化器/调度器状态，不能单独恢复完整训练。
 save_every_n_epochs = 2
-
-# 可续训检查点保存：会写出 checkpoint 权重和 checkpoint-state 目录。
-# 中断后同配置重启可自动恢复训练状态。
 checkpointing_epochs = 2
 
-# 字幕增强与缓存。caption_dropout_rate 不宜过高，否则专家路由学到的条件会变弱。
 use_shuffled_caption_variants = true
 cache_llm_adapter_outputs = true
 caption_dropout_rate = 0.1
 
-# 开启 OrthoLoRA 风格的正交约束，帮助低秩方向更稳定、减少冗余。
 use_ortho = true
 
-# T-LoRA 时间步秩掩码：
-# use_timestep_mask 会让不同时间步使用不同有效秩。
-# min_rank 是最低保留秩，alpha_rank_scale 控制缩放方式。
 use_timestep_mask = true
 min_rank = 1
 alpha_rank_scale = 1.0
 
-# Hydra/MoE 三轴开关：
-# use_moe_style="shared_A" 表示共享 A、每个专家独立 B。
-# route_per_layer=true 表示每个匹配层都有本层路由。
-# router_source="sigma" 表示路由主要看噪声强度 σ，而不是文本/FEI 特征。
 use_moe_style = "shared_A"
 route_per_layer = true
 router_source = "sigma"
-
-# 专家数量和负载均衡损失。num_experts 越大容量越强，但显存和训练难度也更高。
-# balance_loss_weight 鼓励专家不要全部挤到同一个分支。
 num_experts = 6
 balance_loss_weight = 3e-7
 
 
-# 只让 MLP 的 layer1/layer2 进入 Hydra 路由；其他层保持普通适配方式。
 router_targets = ".*(mlp\\.layer[12])$"
 
-# σ 路由特征与按桶均衡。
-# sigma_feature_dim 是 σ 的正弦特征维度。
-# num_sigma_buckets 是把噪声阶段分成几个桶，用于专家分工和统计均衡。
 sigma_feature_dim = 16
 per_bucket_balance_weight = 0.3
 num_sigma_buckets = 3
 
-# 硬性 σ 桶专家分区：每个噪声区间只使用分配给它的专家。
-# 边界 [0.0, 0.5, 0.8, 1.0] 表示低噪声精修阶段获得更细的划分。
 specialize_experts_by_sigma_buckets = true
 sigma_bucket_boundaries = [0.0, 0.5, 0.8, 1.0]
 
-# 输出名前缀。Hydra 产物通常会带有 hydra/moe 相关权重，推理时需按对应方法加载。
 output_name = "anima_hydra"
 
-# 常规显存设置：不做 block swap。低显存用户用 hydralora-8gb.toml。
 blocks_to_swap = 0
 
-# 关闭额外 CMMD 开关，保持方法变量集中在 Hydra 本身。
 use_cmmd = false
 
 [variant]
-# GUI 展示用元数据；experimental 等字段只影响界面呈现，不改变上面的训练参数。
 family = "hydralora"
 label = "HydraLoRA"
 description = "Shared-A Hydra MoE with σ-bucket expert partition."

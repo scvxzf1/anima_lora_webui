@@ -4,37 +4,19 @@
 # block's output. Composes with any LoRA variant; this file keeps ReFT on and
 # LoRA at rank 16 so the file produces a standard `.safetensors` with both
 # LoRA and ReFT tensors. See docs/methods/reft.md.
-#
-# 初学者导读：
-# 这个 GUI 文件把 ReFT 作为主角使用。没有显式写 `network_module` 时，
-# 训练会走项目默认的 LoRA 系列内置工厂；`add_reft=true` 是打开 ReFT
-# 可训练变体的关键开关。内置工厂负责挂载模块，真正训练的是 LoRA
-# 低秩矩阵和 ReFT 干预参数，基础 DiT 不会被整体微调。
 
-# LoRA 基础容量。这里保留一个小 LoRA，是为了让输出文件仍包含标准
-# LoRA 权重；ReFT 本身由下面的 add_reft/reft_* 字段控制。
 network_dim = 16
 network_alpha = 16
 
-# 训练节奏：
-# - save_every_n_epochs 保存普通 .safetensors，可直接拿去推理/预览。
-# - checkpointing_epochs 保存可自动续训的 checkpoint-state。
-# 二者名字相近但用途不同：普通保存不含优化器状态，不能精确接着训练。
 learning_rate = 1e-4
 max_train_epochs = 2
 save_every_n_epochs = 2
 checkpointing_epochs = 2
 
-# caption 相关正则化和缓存。dropout 会随机丢文本条件的一部分，
-# 帮助 ReFT/LoRA 不要只记住固定 caption 表达。
 use_shuffled_caption_variants = true
 cache_llm_adapter_outputs = true
 caption_dropout_rate = 0.1
 
-# ReFT 变体开关：
-# - add_reft=true 才会创建 ReFTModule。
-# - reft_dim/reft_alpha 控制残差流干预的容量和缩放。
-# - reft_layers="last_8" 只干预最后 8 个 DiT block，适合先从低风险配置开始。
 add_reft = true
 reft_dim = 64
 reft_alpha = 64
@@ -42,14 +24,10 @@ reft_layers = "last_8"
 
 output_name = "anima_reft"
 
-# ReFT 会包住 block 输出；这里禁用 block swap，避免续训/挂载时对象替换
-# 带来额外复杂度。
 blocks_to_swap = 0
 
-# 不启用 CMMD 验证，保持 GUI 训练流程轻量。
 use_cmmd = false
 
-# [variant] 仅用于 GUI 分类、文案和排序，不改变训练字段含义。
 [variant]
 family = "reft"
 label = "ReFT"

@@ -17,7 +17,7 @@ need more than one).
 
 LoRA-family networks under ``networks/lora_anima/`` are *not* subclasses
 here: they carry their own concerns (``merge_to``, ``backup_weights``,
-``pre_calculation``, ``apply_max_norm_regularization``, REPA head, three-axis
+``pre_calculation``, ``apply_max_norm_regularization``, three-axis
 routing metadata) and the proposal scopes the base to ``networks/methods/``.
 They're still duck-typed to the same protocol — the trainer doesn't care
 about inheritance.

@@ -1,9 +1,15 @@
 """Forward + gradient equality tests for the custom LoRA down-projection autograd.
 
-The custom Functions in ``networks.lora_modules.custom_autograd`` are intended
-to be a memory optimization that does not change any math. Forward must match
-``F.linear(rebalance(x).float(), weight.float())`` exactly, and gradients on
-``x`` and ``weight`` must match what the existing path produces.
+The unscaled Function is bitwise-identical to
+``F.linear(x.float(), weight.float())``.
+
+The scaled Function folds ``inv_scale`` into the weight at the matmul
+(``F.linear(x * c, W) == F.linear(x, W * c)``) instead of materializing a
+``(B, L, in_dim)`` bf16 intermediate ``x * inv``. That avoids a per-Linear
+activation that CUDA-Graph-style compile pools were pinning. The fold is
+mathematically equivalent up to fp32-vs-bf16 rounding order: we now keep the
+chain in fp32 throughout instead of rounding ``x * inv`` to bf16 before the
+matmul. Tests compare against an fp32-throughout reference accordingly.
 """
 
 from __future__ import annotations
@@ -22,11 +28,11 @@ def _reference_unscaled(x, weight):
 
 
 def _reference_scaled(x, weight, inv_scale):
-    # Match the legacy `_rebalance` path: cast inv_scale to x.dtype before the
-    # multiply so the rebalance stays in bf16 (the custom autograd is meant to
-    # be equivalent to that, NOT to a fp32-promoted multiply).
-    x_lora = x * inv_scale.to(x.dtype)
-    return torch.nn.functional.linear(x_lora.float(), weight.float())
+    # Fp32-fold reference: equivalent to F.linear(x * inv, W) but without a
+    # bf16 intermediate. Fold inv into the weight, keep the chain in fp32.
+    # Mirrors ScaledLoRADownProjectFn.forward exactly.
+    w_scaled = weight.float() * inv_scale.float().unsqueeze(0)
+    return torch.nn.functional.linear(x.float(), w_scaled)
 
 
 def _make_inputs(in_dim=64, out_dim=16, tokens=32, dtype=torch.bfloat16, seed=0):
@@ -197,6 +203,18 @@ def _assert_grads_equal(a: dict, b: dict, label: str):
         assert torch.equal(a[k], b[k]), f"{label}: grad on {k!r} differs"
 
 
+def _assert_grads_close(a: dict, b: dict, label: str, atol: float, rtol: float):
+    """allclose variant for paths where the scaled custom Function differs
+    from the legacy bf16 ``_rebalance`` only in fp32-vs-bf16 rounding order
+    (the fold rewrite — see ``ScaledLoRADownProjectFn``)."""
+    assert a.keys() == b.keys(), f"{label}: param sets differ: {a.keys() ^ b.keys()}"
+    for k in a:
+        assert torch.allclose(a[k], b[k], atol=atol, rtol=rtol), (
+            f"{label}: grad on {k!r} differs beyond bf16 rounding tolerance: "
+            f"max={ (a[k] - b[k]).abs().max().item():.4e}"
+        )
+
+
 def test_hydra_flag_on_matches_legacy_gradients():
     """HydraLoRAModule: flipping the flag must not change any trainable grad
     (lora_down, lora_up_weight, router.weight, router.bias), the forward
@@ -338,11 +356,19 @@ def test_ortho_hydra_flag_on_matches_legacy_gradients():
 
 
 # ---------------------------------------------------------------------------
-# channel_scale: flag-on vs flag-off equality must also hold under the
-# SmoothQuant-style rebalance. Pre-fix, the scaled Function silently promoted
-# the rebalanced activation to fp32 (inv_scale stored as fp32 → bf16 × fp32
-# → fp32) and diverged from the legacy `_rebalance` bf16 path.
+# channel_scale: flag-on vs flag-off equivalence under the SmoothQuant-style
+# rebalance. The fold rewrite (``ScaledLoRADownProjectFn`` folds ``inv`` into
+# the weight at the matmul to avoid a ``(B, L, in_dim)`` bf16 intermediate)
+# keeps the chain in fp32 throughout, whereas the legacy ``_rebalance`` path
+# rounds ``x * inv`` to bf16 before the matmul. The two are mathematically
+# equivalent but differ in rounding order, so we compare with allclose at a
+# bf16-appropriate tolerance instead of bitwise equality.
 # ---------------------------------------------------------------------------
+
+# bf16 has ~8 bits of mantissa; per-op relative noise is ~4e-3. Multi-step
+# accumulation in matmul + grad makes the achievable rtol ~1e-2 for grads.
+_CS_ATOL = 5e-2
+_CS_RTOL = 1e-2
 
 
 def _make_channel_scale(in_features: int, seed: int = 7) -> torch.Tensor:
@@ -353,10 +379,9 @@ def _make_channel_scale(in_features: int, seed: int = 7) -> torch.Tensor:
 
 
 def test_lora_channel_scale_flag_on_matches_legacy_gradients():
-    """LoRAModule + channel_scale: pre-fix, the scaled custom path drifted
-    away from the legacy bf16 ``_rebalance`` because ``inv_scale`` was applied
-    in fp32. Toggling the flag must leave forward / grads bitwise identical.
-    """
+    """LoRAModule + channel_scale: forward / grads must agree with the legacy
+    ``_rebalance`` path up to bf16 rounding (the fold removes the bf16
+    intermediate, so exact-equality no longer holds — see module header)."""
     from networks.lora_modules.lora import LoRAModule
 
     cs = _make_channel_scale(32)
@@ -389,9 +414,13 @@ def test_lora_channel_scale_flag_on_matches_legacy_gradients():
     o_legacy, g_legacy, gx_legacy = run(False)
     o_custom, g_custom, gx_custom = run(True)
 
-    assert torch.equal(o_legacy, o_custom), "LoRA+channel_scale forward differs"
-    _assert_grads_equal(g_legacy, g_custom, "LoRA+channel_scale")
-    assert torch.equal(gx_legacy, gx_custom), "LoRA+channel_scale grad_x differs"
+    assert torch.allclose(o_legacy, o_custom, atol=_CS_ATOL, rtol=_CS_RTOL), (
+        "LoRA+channel_scale forward differs beyond bf16 rounding tolerance"
+    )
+    _assert_grads_close(g_legacy, g_custom, "LoRA+channel_scale", _CS_ATOL, _CS_RTOL)
+    assert torch.allclose(gx_legacy, gx_custom, atol=_CS_ATOL, rtol=_CS_RTOL), (
+        "LoRA+channel_scale grad_x differs beyond bf16 rounding tolerance"
+    )
     assert g_legacy["lora_down.weight"].abs().sum() > 0, (
         "lora_down grad is zero — test would pass vacuously"
     )
@@ -430,9 +459,13 @@ def test_hydra_channel_scale_flag_on_matches_legacy_gradients():
     o_legacy, g_legacy, gx_legacy = run(False)
     o_custom, g_custom, gx_custom = run(True)
 
-    assert torch.equal(o_legacy, o_custom), "Hydra+channel_scale forward differs"
-    _assert_grads_equal(g_legacy, g_custom, "Hydra+channel_scale")
-    assert torch.equal(gx_legacy, gx_custom), "Hydra+channel_scale grad_x differs"
+    assert torch.allclose(o_legacy, o_custom, atol=_CS_ATOL, rtol=_CS_RTOL), (
+        "Hydra+channel_scale forward differs beyond bf16 rounding tolerance"
+    )
+    _assert_grads_close(g_legacy, g_custom, "Hydra+channel_scale", _CS_ATOL, _CS_RTOL)
+    assert torch.allclose(gx_legacy, gx_custom, atol=_CS_ATOL, rtol=_CS_RTOL), (
+        "Hydra+channel_scale grad_x differs beyond bf16 rounding tolerance"
+    )
     assert g_legacy["lora_down.weight"].abs().sum() > 0
 
 
@@ -468,9 +501,13 @@ def test_ortho_channel_scale_flag_on_matches_legacy_gradients():
     o_legacy, g_legacy, gx_legacy = run(False)
     o_custom, g_custom, gx_custom = run(True)
 
-    assert torch.equal(o_legacy, o_custom), "Ortho+channel_scale forward differs"
-    _assert_grads_equal(g_legacy, g_custom, "Ortho+channel_scale")
-    assert torch.equal(gx_legacy, gx_custom), "Ortho+channel_scale grad_x differs"
+    assert torch.allclose(o_legacy, o_custom, atol=_CS_ATOL, rtol=_CS_RTOL), (
+        "Ortho+channel_scale forward differs beyond bf16 rounding tolerance"
+    )
+    _assert_grads_close(g_legacy, g_custom, "Ortho+channel_scale", _CS_ATOL, _CS_RTOL)
+    assert torch.allclose(gx_legacy, gx_custom, atol=_CS_ATOL, rtol=_CS_RTOL), (
+        "Ortho+channel_scale grad_x differs beyond bf16 rounding tolerance"
+    )
     assert "S_q" in g_legacy and g_legacy["S_q"].abs().sum() > 0
 
 
@@ -507,9 +544,13 @@ def test_ortho_hydra_channel_scale_flag_on_matches_legacy_gradients():
     o_legacy, g_legacy, gx_legacy = run(False)
     o_custom, g_custom, gx_custom = run(True)
 
-    assert torch.equal(o_legacy, o_custom), "OrthoHydra+channel_scale forward differs"
-    _assert_grads_equal(g_legacy, g_custom, "OrthoHydra+channel_scale")
-    assert torch.equal(gx_legacy, gx_custom), "OrthoHydra+channel_scale grad_x differs"
+    assert torch.allclose(o_legacy, o_custom, atol=_CS_ATOL, rtol=_CS_RTOL), (
+        "OrthoHydra+channel_scale forward differs beyond bf16 rounding tolerance"
+    )
+    _assert_grads_close(g_legacy, g_custom, "OrthoHydra+channel_scale", _CS_ATOL, _CS_RTOL)
+    assert torch.allclose(gx_legacy, gx_custom, atol=_CS_ATOL, rtol=_CS_RTOL), (
+        "OrthoHydra+channel_scale grad_x differs beyond bf16 rounding tolerance"
+    )
     assert "S_q" in g_legacy and g_legacy["S_q"].abs().sum() > 0
 
 
@@ -560,8 +601,10 @@ def test_chimera_flag_on_matches_legacy_gradients():
 
 def test_chimera_channel_scale_flag_on_matches_legacy_gradients():
     """ChimeraHydraLoRAModule + channel_scale: both pools share the same
-    inv_scale, applied per-pool in the custom path. Pre-fix this would have
-    silently broken — there were no Chimera channel_scale tests.
+    inv_scale, folded per-pool into each ``ScaledLoRADownProjectFn`` matmul
+    in the custom path. Allclose (not torch.equal) because the custom path
+    keeps ``inv_scale`` fp32 while the legacy ``_rebalance(x.to(bf16))`` path
+    bf16-rounds it — matches the LoRA / Ortho / Hydra channel_scale tests.
     """
     from networks.lora_modules.chimera import ChimeraHydraLoRAModule
 
@@ -597,7 +640,11 @@ def test_chimera_channel_scale_flag_on_matches_legacy_gradients():
     o_legacy, g_legacy, gx_legacy = run(False)
     o_custom, g_custom, gx_custom = run(True)
 
-    assert torch.equal(o_legacy, o_custom), "Chimera+channel_scale forward differs"
-    _assert_grads_equal(g_legacy, g_custom, "Chimera+channel_scale")
-    assert torch.equal(gx_legacy, gx_custom), "Chimera+channel_scale grad_x differs"
+    assert torch.allclose(o_legacy, o_custom, atol=_CS_ATOL, rtol=_CS_RTOL), (
+        "Chimera+channel_scale forward differs beyond bf16 rounding tolerance"
+    )
+    _assert_grads_close(g_legacy, g_custom, "Chimera+channel_scale", _CS_ATOL, _CS_RTOL)
+    assert torch.allclose(gx_legacy, gx_custom, atol=_CS_ATOL, rtol=_CS_RTOL), (
+        "Chimera+channel_scale grad_x differs beyond bf16 rounding tolerance"
+    )
     assert g_legacy["S_q_c"].abs().sum() > 0 and g_legacy["S_q_f"].abs().sum() > 0

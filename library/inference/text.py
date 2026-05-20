@@ -12,6 +12,13 @@ from library.inference.models import load_text_encoder
 
 logger = logging.getLogger(__name__)
 
+# Anima's DiT expects a fixed-length cross-attention context. The pretrained
+# model treats zero-padded positions as attention sinks in the cross-attention
+# softmax — trimming to actual text length produces black images. All sites
+# that prepare crossattn embeds (training, inference, CFG-uncond, DCW
+# trajectory replay, DirectEdit, distillation) must pad to this exact length.
+MAX_CROSSATTN_TOKENS = 512
+
 
 def process_escape(text: str) -> str:
     """Process escape sequences in text."""
@@ -86,10 +93,10 @@ def prepare_text_inputs(
                 source_attention_mask=embed[1].to(anima.device),
             )
             crossattn_emb[~embed[3].bool()] = 0
-            # Pad to 512 tokens (model expects fixed-length context)
-            if crossattn_emb.shape[1] < 512:
+            if crossattn_emb.shape[1] < MAX_CROSSATTN_TOKENS:
                 crossattn_emb = torch.nn.functional.pad(
-                    crossattn_emb, (0, 0, 0, 512 - crossattn_emb.shape[1])
+                    crossattn_emb,
+                    (0, 0, 0, MAX_CROSSATTN_TOKENS - crossattn_emb.shape[1]),
                 )
             embed[0] = crossattn_emb
         embed[0] = embed[0].cpu()
@@ -118,10 +125,10 @@ def prepare_text_inputs(
                 source_attention_mask=negative_embed[1].to(anima.device),
             )
             crossattn_emb[~negative_embed[3].bool()] = 0
-            # Pad to 512 tokens (model expects fixed-length context)
-            if crossattn_emb.shape[1] < 512:
+            if crossattn_emb.shape[1] < MAX_CROSSATTN_TOKENS:
                 crossattn_emb = torch.nn.functional.pad(
-                    crossattn_emb, (0, 0, 0, 512 - crossattn_emb.shape[1])
+                    crossattn_emb,
+                    (0, 0, 0, MAX_CROSSATTN_TOKENS - crossattn_emb.shape[1]),
                 )
             negative_embed[0] = crossattn_emb
         negative_embed[0] = negative_embed[0].cpu()
@@ -129,7 +136,6 @@ def prepare_text_inputs(
         conds_cache[cache_key] = negative_embed
 
     if not (shared_models and "text_encoder" in shared_models):  # if loaded locally
-        # There is a bug text_encoder is not freed from GPU memory when text encoder is fp8
         del text_encoder
         gc.collect()
     else:  # if shared, move back to original device (likely CPU)

@@ -24,7 +24,6 @@ from networks import (
     resolve_network_spec,
 )
 from networks import lora_save
-from networks.lora_anima.loading import _refuse_unfused_attn_lokr_keys
 
 
 # ---------------------------------------------------------------------------
@@ -34,11 +33,9 @@ from networks.lora_anima.loading import _refuse_unfused_attn_lokr_keys
 
 EXPECTED_VARIANTS = {
     "lora",
-    "lokr",
     "ortho",
     "hydra",
     "ortho_hydra",
-    "chimera_hydra",
 }
 
 
@@ -105,8 +102,6 @@ def test_hydra_router_kwargs_registered():
         ({"use_moe_style": "shared_A"}, "hydra"),
         ({"use_moe_style": "shared_A", "use_ortho": "true"}, "ortho_hydra"),
         ({"use_moe_style": "independent_A"}, "stacked_experts_global_fei"),
-        ({"use_lokr": "true"}, "lokr"),
-        ({"use_chimera_hydra": "true"}, "chimera_hydra"),
         # Falsey forms of use_moe_style resolve to plain LoRA.
         ({"use_moe_style": False}, "lora"),
         ({"use_moe_style": "false"}, "lora"),
@@ -116,20 +111,6 @@ def test_hydra_router_kwargs_registered():
 def test_resolve_precedence(kwargs, expected):
     spec = resolve_network_spec(kwargs)
     assert spec.name == expected
-
-
-@pytest.mark.parametrize(
-    "kwargs",
-    [
-        {"use_lokr": "true", "use_ortho": "true"},
-        {"use_lokr": "true", "use_moe_style": "shared_A"},
-        {"use_lokr": "true", "use_chimera_hydra": "true"},
-        {"use_dora": "true"},
-    ],
-)
-def test_resolve_ambiguous_raises(kwargs):
-    with pytest.raises(ValueError):
-        resolve_network_spec(kwargs)
 
 
 # ---------------------------------------------------------------------------
@@ -373,86 +354,6 @@ def test_save_dora_roundtrip(tmp_path: Path):
     for k in loaded:
         assert not k.endswith(".magnitude")
         assert not k.endswith("._org_weight_norm")
-
-
-def test_save_lokr_roundtrip(tmp_path: Path):
-    """LoKr save pipeline: fused qkv defuses lokr_w2 by output dim."""
-    factor, in_dim, out_dim = 4, 8, 12
-    prefix = "lora_unet_blocks_0_self_attn_qkv_proj"
-    sd = {
-        f"{prefix}.lokr_w1": torch.randn(factor, factor),
-        f"{prefix}.lokr_w2": torch.randn((3 * out_dim) // factor, in_dim // factor),
-        f"{prefix}.alpha": _alpha(factor),
-    }
-
-    loaded = _save_and_reload(sd, tmp_path, save_variant="lokr")
-
-    base = "lora_unet_blocks_0_self_attn"
-    for suffix in ("q_proj", "k_proj", "v_proj"):
-        assert loaded[f"{base}_{suffix}.lokr_w1"].shape == (factor, factor)
-        assert loaded[f"{base}_{suffix}.lokr_w2"].shape == (
-            out_dim // factor,
-            in_dim // factor,
-        )
-    assert f"{prefix}.lokr_w1" not in loaded
-    assert f"{prefix}.lokr_w2" not in loaded
-
-
-def test_refuse_split_lokr_attn_keys():
-    factor, in_dim, out_dim = 4, 8, 12
-    base = "lora_unet_blocks_0_self_attn"
-    sd = {}
-    w1 = torch.randn(factor, factor)
-    for suffix in ("q_proj", "k_proj", "v_proj"):
-        sd[f"{base}_{suffix}.lokr_w1"] = w1.clone()
-        sd[f"{base}_{suffix}.lokr_w2"] = torch.randn(out_dim // factor, in_dim // factor)
-
-    refused = _refuse_unfused_attn_lokr_keys(sd)
-
-    fused = f"{base}_qkv_proj"
-    assert refused[f"{fused}.lokr_w1"].shape == (factor, factor)
-    assert refused[f"{fused}.lokr_w2"].shape == (
-        (3 * out_dim) // factor,
-        in_dim // factor,
-    )
-    assert f"{base}_q_proj.lokr_w1" not in refused
-    assert f"{base}_q_proj.lokr_w2" not in refused
-
-
-def test_lokr_defaults_alpha_when_missing_in_weights():
-    from networks.lora_anima.config import LoRANetworkCfg
-    from networks.lora_anima.network import LoRANetwork
-    from networks.lora_modules.lokr import LoKrModule
-
-    class Child(torch.nn.Module):
-        def __init__(self):
-            super().__init__()
-            self.qkv_proj = torch.nn.Linear(8, 12, bias=False)
-
-    class Block(torch.nn.Module):
-        def __init__(self):
-            super().__init__()
-            self.self_attn = Child()
-
-    class DiT(torch.nn.Module):
-        def __init__(self):
-            super().__init__()
-            self.blocks = torch.nn.ModuleList([Block()])
-
-    unet = DiT()
-    cfg = LoRANetworkCfg(
-        lora_dim=4,
-        alpha=1.0,
-        module_class=LoKrModule,
-        modules_dim={"lora_unet_blocks_0_self_attn_qkv_proj": 4},
-        modules_alpha={},
-    )
-    network = LoRANetwork([], unet, cfg, multiplier=1.0)
-
-    assert network.unet_loras, "expected a LoKr module to be created"
-    lokr = network.unet_loras[0]
-    assert lokr.alpha.item() == 4
-    assert lokr.scale == 1.0
 
 
 # ---------------------------------------------------------------------------

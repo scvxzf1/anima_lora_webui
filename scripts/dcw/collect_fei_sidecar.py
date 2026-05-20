@@ -49,6 +49,7 @@ sys.path.insert(0, str(ROOT))
 from library.anima import weights as anima_utils  # noqa: E402
 from library.inference import sampling as inference_utils  # noqa: E402
 from library.inference.adapters import clear_hydra_sigma  # noqa: E402
+from library.inference.text import MAX_CROSSATTN_TOKENS  # noqa: E402
 from scripts.dcw.cache import load_cached, pick_cached_samples  # noqa: E402
 from scripts.dcw.trajectory import (  # noqa: E402
     encode_uncond_embed,
@@ -151,8 +152,8 @@ def _setup_text_state(
         strategy_anima.AnimaTokenizeStrategy(
             qwen3_path=text_encoder_path,
             t5_tokenizer_path=None,
-            qwen3_max_length=512,
-            t5_max_length=512,
+            qwen3_max_length=MAX_CROSSATTN_TOKENS,
+            t5_max_length=MAX_CROSSATTN_TOKENS,
         )
     )
     text_strategies.TextEncodingStrategy.set_strategy(

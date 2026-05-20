@@ -70,6 +70,7 @@ from library.training.contexts import (
     TrainCtx,
     ValCtx,
 )
+from library.training.loss_recorder import LossRecorder
 from library.training.checkpoints import (
     EPOCH_STATE_NAME,
     EPOCH_FILE_NAME,
@@ -159,6 +160,8 @@ __all__ = [
     # schedulers
     "get_scheduler_fix",
     "get_dummy_scheduler",
+    # loss recorder
+    "LossRecorder",
     # checkpoints
     "EPOCH_STATE_NAME",
     "EPOCH_FILE_NAME",

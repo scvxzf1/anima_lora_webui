@@ -15,15 +15,7 @@ from pathlib import Path
 import numpy as np
 from safetensors import safe_open
 
-ASPECT_TABLE = {
-    (832, 1248): 0,  # HD portrait — most common in cache
-    (896, 1152): 1,  # 3:4 portrait
-    (768, 1344): 2,  # tall portrait
-    (1152, 896): 3,  # 3:4 landscape
-    (1248, 832): 4,  # HD landscape
-}
-ASPECT_NAMES = ["832x1248", "896x1152", "768x1344", "1152x896", "1248x832"]
-N_ASPECTS = 5
+from library.datasets.buckets import DCW_ASPECT_TABLE
 
 
 @dataclass
@@ -115,7 +107,7 @@ def load_bench_runs(
         rj = json.loads(rj_path.read_text())
         a = rj.get("args", {})
         H, W = a.get("image_h"), a.get("image_w")
-        if (H, W) not in ASPECT_TABLE:
+        if (H, W) not in DCW_ASPECT_TABLE:
             print(f"skip {run_dir.name}: aspect {H}x{W} not in table")
             continue
         if a.get("guidance_scale") != require_cfg:
@@ -147,7 +139,7 @@ def load_bench_runs(
                 v_rev_LL = gap_LL
                 source = "fallback"
         sigma_i = _load_sigma_schedule(run_dir, n_steps=gap_LL.shape[1])
-        aspect_id = ASPECT_TABLE[(H, W)]
+        aspect_id = DCW_ASPECT_TABLE[(H, W)]
         # Old runs predate --baseline_lambda; absent ⇒ 0.0 (legacy no-DCW).
         baseline_lambda = float(a.get("baseline_lambda", 0.0))
         # Per-row fei_low resolution order:

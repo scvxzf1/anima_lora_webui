@@ -9,25 +9,10 @@
 #
 # Default (below) = cond + svd_te basis. The plain `mode=postfix` path is
 # wired through `make exp-test-postfix` against checkpoints that set it.
-#
-# 初学者导读：
-# Postfix 是项目内置的系统方法模块，会在文本条件序列里额外拼接 token。
-# `network_module` 选择 postfix 方法；`network_args` 决定它是自由参数
-# postfix，还是按 caption 生成的条件正交 postfix。基础 DiT 冻结，
-# 真正训练的是 postfix 参数或 cond_mlp，不是整模型。
 
 network_module = "networks.methods.postfix"
 
-# network_dim 是 postfix token 数 K。K 越大可表达内容越多，但也更容易
-# 覆盖原始 caption 条件。
 network_dim = 48
-
-# network_args 说明：
-# - mode=cond 使用 caption 条件生成 postfix。
-# - cond_hidden_dim 是 cond_mlp 隐层宽度。
-# - splice_position 决定把 postfix 插到 padding 前还是序列尾。
-# - ortho_basis=svd_te 从文本编码缓存里抽正交基，稳定 postfix 方向。
-# - lambda_init 给缩放头一个非零起点，避免从几乎无效的 postfix 开始。
 network_args = [
     "mode=cond",
     "cond_hidden_dim=1024",  # v3: match D so cond_mlp isn't bottlenecked at 256 hidden → 1129 outputs
@@ -46,21 +31,13 @@ network_args = [
 output_name = "anima_postfix_ortho_v4"
 learning_rate = 5e-4
 
-# 保存与续训：
-# - save_every_n_epochs 保存普通 postfix adapter，用于推理/对比。
-# - checkpointing_epochs 保存可续训状态，中断后可恢复优化器和步数。
-# 普通 adapter 只包含可加载权重，不包含完整训练现场。
 max_train_epochs = 2
 save_every_n_epochs = 2
 checkpointing_epochs = 2
 
-# 复用 caption 变体和文本编码缓存，避免每步重复跑文本编码器。
 use_shuffled_caption_variants = true
 cache_llm_adapter_outputs = true
-
-# postfix 参数很小，禁用 block swap 保持训练路径直接。
 blocks_to_swap = 0
 
-# compile 只影响运行加速方式，不改变 postfix 参数含义。
 compile_mode="full"
 compile_inductor_mode = "reduce-overhead"

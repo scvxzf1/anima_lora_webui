@@ -66,7 +66,6 @@ def _args(**overrides):
         sampler="euler",
         seed=0,
         guidance_scale=1.0,
-        fp8=False,
         tiled_diffusion=False,
         tile_size=4,
         tile_overlap=0,

@@ -131,8 +131,6 @@ def build_training_metadata(
         "ss_huber_c": args.huber_c,
         "ss_pseudo_huber_c": args.pseudo_huber_c,
         "ss_multiscale_loss_weight": args.multiscale_loss_weight,
-        "ss_fp8_base": bool(args.fp8_base),
-        "ss_fp8_base_unet": bool(args.fp8_base_unet),
         "ss_validation_seed": args.validation_seed,
         "ss_validation_split": args.validation_split,
         "ss_validation_split_num": getattr(args, "validation_split_num", 0),

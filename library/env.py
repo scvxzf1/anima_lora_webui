@@ -56,17 +56,13 @@ def load_dotenv(path: Optional[Path] = None) -> dict[str, str]:
 
 
 def expand_env_vars(value: str) -> str:
-    """Expand ``$VAR`` / ``${VAR}`` in user-facing config strings.
-
-    ``.env`` is loaded first so TOML configs can use placeholders without
-    requiring callers to export every path in their shell profile.
-    """
+    """Expand env placeholders in user-facing config strings."""
     load_dotenv()
     return os.path.expanduser(os.path.expandvars(value))
 
 
 def expand_env_vars_in_obj(value: Any) -> Any:
-    """Recursively expand environment placeholders in TOML/JSON-like trees."""
+    """Recursively expand env placeholders in TOML/JSON-like trees."""
     if isinstance(value, str):
         if "$" not in value and not value.startswith("~"):
             return value

@@ -142,25 +142,43 @@ IMAGE_EXTENSIONS = [
 
 
 def load_mask_from_dir(
-    mask_dir: str, image_path: str, size: Tuple[int, int]
+    mask_dir: str,
+    image_path: str,
+    size: Tuple[int, int],
+    image_dir: Optional[str] = None,
 ) -> Optional[torch.Tensor]:
     """Load a mask from a separate file in mask_dir matching the image stem.
 
     Args:
-        mask_dir: Directory containing {stem}_mask.png files.
+        mask_dir: Directory containing ``{stem}_mask.png`` files.
         image_path: Path to the source image (used for stem matching).
         size: (width, height) to resize the mask to if needed.
+        image_dir: Optional source root. When set, the relative subpath from
+            ``image_dir`` to ``image_path`` is mirrored under ``mask_dir``,
+            matching the nested-output layout produced by the mask writers.
+            Falls back to the legacy flat lookup if no nested file exists so
+            old caches keep working mid-migration.
 
     Returns:
         Float tensor [H, W] in [0, 1] range, or None if no mask file found.
     """
     stem = os.path.splitext(os.path.basename(image_path))[0]
-    mask_path = os.path.join(mask_dir, f"{stem}_mask.png")
-    if not os.path.exists(mask_path):
+    candidates: list[str] = []
+    if image_dir is not None:
+        try:
+            rel = os.path.relpath(os.path.dirname(image_path), image_dir)
+        except ValueError:
+            rel = ""
+        if rel and rel != "." and not rel.startswith(".."):
+            candidates.append(os.path.join(mask_dir, rel, f"{stem}_mask.png"))
+    candidates.append(os.path.join(mask_dir, f"{stem}_mask.png"))
+
+    mask_path = next((p for p in candidates if os.path.exists(p)), None)
+    if mask_path is None:
         return None
     mask = Image.open(mask_path).convert("L")
     if (mask.width, mask.height) != size:
-        mask = mask.resize(size, Image.LANCZOS)
+        mask = mask.resize(size, Image.NEAREST)
     mask_np = np.array(mask, dtype=np.float32) / 255.0
     return torch.FloatTensor(mask_np)
 
@@ -512,28 +530,33 @@ def glob_images(directory, base="*", recursive: bool = False):
 
 
 def _assert_unique_stems(img_paths, source_label: str = "directory") -> None:
-    """Raise if two image paths share a stem (case-insensitive on Windows).
+    """Raise if two image paths share a stem *within the same subfolder*.
 
-    Cache filenames are stem-keyed and live flat in cache_dir, so duplicate
-    stems across subfolders would silently overwrite each other.
+    Cache filenames are stem-keyed and the cache layout now mirrors the
+    source-tree subfolder structure, so the collision constraint is local:
+    two ``cover.png`` files in different character folders are fine, but
+    two files with the same stem in the same folder (e.g. ``cover.png`` +
+    ``cover.jpg``) would still overwrite each other's cache.
     """
-    seen: dict = {}
-    collisions: dict = {}
+    seen: dict[tuple[str, str], str] = {}
+    collisions: dict[tuple[str, str], list[str]] = {}
     for p in img_paths:
+        parent = os.path.dirname(p)
         stem = os.path.splitext(os.path.basename(p))[0]
-        if stem in seen:
-            collisions.setdefault(stem, [seen[stem]]).append(p)
+        key = (parent, stem)
+        if key in seen:
+            collisions.setdefault(key, [seen[key]]).append(p)
         else:
-            seen[stem] = p
+            seen[key] = p
     if collisions:
         lines = [
-            f"  stem '{stem}': " + ", ".join(paths)
-            for stem, paths in sorted(collisions.items())
+            f"  stem '{stem}' in {parent}: " + ", ".join(paths)
+            for (parent, stem), paths in sorted(collisions.items())
         ]
         raise ValueError(
-            f"Duplicate image stems found while recursing {source_label}. "
-            f"Cache filenames are stem-keyed; please rename so every image has "
-            f"a unique stem across all subfolders.\n" + "\n".join(lines)
+            f"Duplicate image stems within a single folder of {source_label}. "
+            f"Cache filenames are stem-keyed; rename one of the colliding "
+            f"files (or move it to a different subfolder).\n" + "\n".join(lines)
         )
 
 

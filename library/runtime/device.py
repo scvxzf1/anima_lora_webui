@@ -51,16 +51,6 @@ def str_to_dtype(
         return torch.float16
     elif s in ["fp32", "float32", "float"]:
         return torch.float32
-    elif s in ["fp8_e4m3fn", "e4m3fn", "float8_e4m3fn"]:
-        return torch.float8_e4m3fn
-    elif s in ["fp8_e4m3fnuz", "e4m3fnuz", "float8_e4m3fnuz"]:
-        return torch.float8_e4m3fnuz
-    elif s in ["fp8_e5m2", "e5m2", "float8_e5m2"]:
-        return torch.float8_e5m2
-    elif s in ["fp8_e5m2fnuz", "e5m2fnuz", "float8_e5m2fnuz"]:
-        return torch.float8_e5m2fnuz
-    elif s in ["fp8", "float8"]:
-        return torch.float8_e4m3fn  # default fp8
     else:
         raise ValueError(f"Unsupported dtype: {s}")
 

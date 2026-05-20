@@ -30,8 +30,6 @@ def mem_eff_save_file(
         torch.int8: "I8",
         torch.uint8: "U8",
         torch.bool: "BOOL",
-        getattr(torch, "float8_e5m2", None): "F8_E5M2",
-        getattr(torch, "float8_e4m3fn", None): "F8_E4M3",
     }
     _ALIGN = 256
 
@@ -264,25 +262,11 @@ class MemoryEfficientSafeOpen:
         """
         dtype = self._get_torch_dtype(metadata["dtype"])
         shape = metadata["shape"]
-
-        # Handle special float8 types
-        if metadata["dtype"] in ["F8_E5M2", "F8_E4M3"]:
-            return self._convert_float8(byte_tensor, metadata["dtype"], shape)
-
-        # Standard conversion: view as target dtype and reshape
         return byte_tensor.view(dtype).reshape(shape)
 
     @staticmethod
     def _get_torch_dtype(dtype_str):
-        """Convert string dtype to PyTorch dtype.
-
-        Args:
-            dtype_str (str): String representation of the dtype.
-
-        Returns:
-            torch.dtype: Corresponding PyTorch dtype.
-        """
-        # Standard dtype mappings
+        """Convert string dtype to PyTorch dtype."""
         dtype_map = {
             "F64": torch.float64,
             "F32": torch.float32,
@@ -295,38 +279,7 @@ class MemoryEfficientSafeOpen:
             "U8": torch.uint8,
             "BOOL": torch.bool,
         }
-        # Add float8 types if available in PyTorch version
-        if hasattr(torch, "float8_e5m2"):
-            dtype_map["F8_E5M2"] = torch.float8_e5m2
-        if hasattr(torch, "float8_e4m3fn"):
-            dtype_map["F8_E4M3"] = torch.float8_e4m3fn
         return dtype_map.get(dtype_str)
-
-    @staticmethod
-    def _convert_float8(byte_tensor, dtype_str, shape):
-        """Convert byte tensor to float8 format if supported.
-
-        Args:
-            byte_tensor (torch.Tensor): Raw byte tensor.
-            dtype_str (str): Float8 dtype string ("F8_E5M2" or "F8_E4M3").
-            shape (tuple): Target tensor shape.
-
-        Returns:
-            torch.Tensor: Tensor with float8 dtype.
-
-        Raises:
-            ValueError: If float8 type is not supported in current PyTorch version.
-        """
-        # Convert to specific float8 types if available
-        if dtype_str == "F8_E5M2" and hasattr(torch, "float8_e5m2"):
-            return byte_tensor.view(torch.float8_e5m2).reshape(shape)
-        elif dtype_str == "F8_E4M3" and hasattr(torch, "float8_e4m3fn"):
-            return byte_tensor.view(torch.float8_e4m3fn).reshape(shape)
-        else:
-            # Float8 not supported in this PyTorch version
-            raise ValueError(
-                f"Unsupported float8 type: {dtype_str} (upgrade PyTorch to support float8 types)"
-            )
 
 
 def load_safetensors(

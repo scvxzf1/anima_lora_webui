@@ -17,6 +17,7 @@ from library.inference.adapters import (
     clear_hydra_fei,
     clear_hydra_sigma,
     compute_and_set_hydra_fei,
+    set_hydra_content,
     set_hydra_sigma,
 )
 from library.inference import sampling as inference_utils
@@ -24,6 +25,7 @@ from library.inference.output import check_inputs
 from library.inference.text import prepare_text_inputs
 from library.inference.models import load_dit_model
 from library.inference.mod_guidance import setup_mod_guidance
+from library.inference.smc_cfg import SMCCFGState
 
 logger = logging.getLogger(__name__)
 
@@ -32,6 +34,50 @@ logger = logging.getLogger(__name__)
 # generation.py never imports it directly so the dep edge can point inward
 # from a downstream inference package without inverting.
 _SPECTRUM_RUNNER = None
+
+
+def _setup_soft_tokens(args, anima, device):
+    """Build + apply the soft_tokens network from ``--soft_tokens_weight``.
+
+    Returns ``None`` when the flag isn't set. Otherwise returns the network with
+    ``apply_to(unet=anima)`` already called — the per-block ``Block.forward``
+    monkey-patches are live, but ``_step_layer_tokens`` is empty until the
+    caller fires ``network.append_postfix(..., timesteps=t)`` each step. Match
+    the postfix block's pattern (line 447 below).
+    """
+    soft_weight = getattr(args, "soft_tokens_weight", None)
+    if soft_weight is None:
+        return None
+    from networks.methods.soft_tokens import create_network_from_weights
+
+    net, _ = create_network_from_weights(
+        multiplier=1.0,
+        file=soft_weight,
+        ae=None,
+        text_encoders=None,
+        unet=anima,
+        for_inference=True,
+    )
+    net.load_weights(soft_weight)
+    net.to(device, dtype=torch.bfloat16)
+    net.apply_to(text_encoders=None, unet=anima, apply_text_encoder=False, apply_unet=True)
+    logger.info(
+        f"soft_tokens: loaded {soft_weight} "
+        f"(n_layers={net.n_layers}, K={net.num_tokens}, "
+        f"n_t_buckets={net.n_t_buckets}, splice={net.splice_position})"
+    )
+    return net
+
+
+def _seqlens_from_context(context_dict, device):
+    """Extract per-sample text seqlens from the context's attention mask.
+
+    Mirrors the postfix block. ``context['embed'][3]`` is the cached attention
+    mask (1 inside text, 0 in padding) — sum along the sequence axis gives the
+    real token count per sample, which the ``front_of_padding`` splice needs.
+    """
+    embed_mask = context_dict["embed"][3].to(device)
+    return embed_mask.sum(dim=-1).to(torch.int32)
 
 
 def register_spectrum_runner(fn):
@@ -183,6 +229,17 @@ def generate_body_tiled(
             f"Postfix: appended {postfix_net.num_postfix_tokens} tokens after text"
         )
 
+    # Soft tokens — see generate_body() for the long-form comment.
+    soft_tokens_net = _setup_soft_tokens(args, anima, device)
+    soft_tokens_embed_seqlens = (
+        _seqlens_from_context(context, device) if soft_tokens_net is not None else None
+    )
+    soft_tokens_neg_seqlens = (
+        _seqlens_from_context(context_null, device)
+        if soft_tokens_net is not None
+        else None
+    )
+
     num_channels_latents = anima_models.Anima.LATENT_CHANNELS
     h_latent = height // 8
     w_latent = width // 8
@@ -221,7 +278,14 @@ def generate_body_tiled(
         er_sde = inference_utils.LCMSampler(sigmas, seed=args.seed, device=device)
 
     do_cfg = args.guidance_scale != 1.0
-    autocast_enabled = args.fp8
+    smc_cfg = (
+        SMCCFGState(
+            lam=args.smc_cfg_lambda,
+            alpha=args.smc_cfg_alpha,
+        )
+        if do_cfg and getattr(args, "smc_cfg", False)
+        else None
+    )
 
     # P-GRAFT: get network reference for mid-denoising cutoff
     pgraft_network = getattr(anima, "_pgraft_network", None)
@@ -275,14 +339,14 @@ def generate_body_tiled(
                     # Conditional pass
                     if anima.blocks_to_swap:
                         anima.prepare_block_swap_before_forward()
-                    with (
-                        torch.no_grad(),
-                        torch.autocast(
-                            device_type=device.type,
-                            dtype=torch.bfloat16,
-                            enabled=autocast_enabled,
-                        ),
-                    ):
+                    # ChimeraHydra ContentRouter — π_c depends on the caption,
+                    # so fire separately for cond vs uncond. No-op otherwise.
+                    set_hydra_content(anima, embed)
+                    if soft_tokens_net is not None:
+                        soft_tokens_net.append_postfix(
+                            embed, soft_tokens_embed_seqlens, timesteps=t_expand
+                        )
+                    with torch.no_grad():
                         tile_pred = anima(
                             tile_latent,
                             t_expand,
@@ -300,14 +364,14 @@ def generate_body_tiled(
                     if do_cfg:
                         if anima.blocks_to_swap:
                             anima.prepare_block_swap_before_forward()
-                        with (
-                            torch.no_grad(),
-                            torch.autocast(
-                                device_type=device.type,
-                                dtype=torch.bfloat16,
-                                enabled=autocast_enabled,
-                            ),
-                        ):
+                        set_hydra_content(anima, negative_embed)
+                        if soft_tokens_net is not None:
+                            soft_tokens_net.append_postfix(
+                                negative_embed,
+                                soft_tokens_neg_seqlens,
+                                timesteps=t_expand,
+                            )
+                        with torch.no_grad():
                             uncond_tile_pred = anima(
                                 tile_latent,
                                 t_expand,
@@ -324,9 +388,14 @@ def generate_body_tiled(
                 noise_pred = noise_acc / weight_acc
                 if do_cfg:
                     uncond_noise_pred = uncond_noise_acc / uncond_weight_acc
-                    noise_pred = uncond_noise_pred + args.guidance_scale * (
-                        noise_pred - uncond_noise_pred
-                    )
+                    if smc_cfg is not None:
+                        noise_pred = smc_cfg.combine(
+                            noise_pred, uncond_noise_pred, args.guidance_scale
+                        )
+                    else:
+                        noise_pred = uncond_noise_pred + args.guidance_scale * (
+                            noise_pred - uncond_noise_pred
+                        )
 
                 denoised = latents.float() - sigmas[i] * noise_pred.float()
                 if er_sde is not None:
@@ -463,6 +532,19 @@ def generate_body(
             f"Postfix: appended {postfix_net.num_postfix_tokens} tokens after text"
         )
 
+    # Soft tokens: build + apply the monkey-patches once. The per-step
+    # append_postfix(..., timesteps=t) call fires inside the loop below — and
+    # is mirrored in the Spectrum runner for the --spectrum path.
+    soft_tokens_net = _setup_soft_tokens(args, anima, device)
+    soft_tokens_embed_seqlens = (
+        _seqlens_from_context(context, device) if soft_tokens_net is not None else None
+    )
+    soft_tokens_neg_seqlens = (
+        _seqlens_from_context(context_null, device)
+        if soft_tokens_net is not None
+        else None
+    )
+
     # Create padding mask
     padding_mask = torch.zeros(
         bs, 1, h_latent, w_latent, dtype=torch.bfloat16, device=device
@@ -528,7 +610,14 @@ def generate_body(
 
     # Denoising loop
     do_cfg = args.guidance_scale != 1.0
-    autocast_enabled = args.fp8
+    smc_cfg = (
+        SMCCFGState(
+            lam=args.smc_cfg_lambda,
+            alpha=args.smc_cfg_alpha,
+        )
+        if do_cfg and getattr(args, "smc_cfg", False)
+        else None
+    )
 
     # P-GRAFT: get network reference for mid-denoising cutoff
     pgraft_network = getattr(anima, "_pgraft_network", None)
@@ -561,7 +650,6 @@ def generate_body(
             lam=getattr(args, "spectrum_lam", 0.1),
             stop_caching_step=getattr(args, "spectrum_stop_caching_step", -1),
             calibration_strength=getattr(args, "spectrum_calibration", 0.0),
-            autocast_enabled=autocast_enabled,
             pgraft_network=pgraft_network,
             pooled_text_pos=_pooled_text_pos,
             pooled_text_neg=_pooled_text_neg,
@@ -571,6 +659,10 @@ def generate_body(
             dcw_schedule=getattr(args, "dcw_schedule", "one_minus_sigma"),
             dcw_band_mask=getattr(args, "dcw_band_mask", "LL"),
             dcw_calibrator=dcw_calibrator,
+            smc_cfg=smc_cfg,
+            soft_tokens_net=soft_tokens_net,
+            soft_tokens_embed_seqlens=soft_tokens_embed_seqlens,
+            soft_tokens_neg_seqlens=soft_tokens_neg_seqlens,
         )
     else:
         try:
@@ -590,15 +682,17 @@ def generate_body(
                     t_expand = t.expand(latents.shape[0])
                     set_hydra_sigma(anima, t_expand)
                     compute_and_set_hydra_fei(anima, latents)
+                    if dcw_calibrator is not None:
+                        # Capture FEI on the pre-forward latent at warmup steps
+                        # for v6 fei_obs={replace,concat} artifacts. No-op for v5.
+                        dcw_calibrator.record_latent_pre_forward(i, latents)
 
-                    with (
-                        torch.no_grad(),
-                        torch.autocast(
-                            device_type=device.type,
-                            dtype=torch.bfloat16,
-                            enabled=autocast_enabled,
-                        ),
-                    ):
+                    set_hydra_content(anima, embed)
+                    if soft_tokens_net is not None:
+                        soft_tokens_net.append_postfix(
+                            embed, soft_tokens_embed_seqlens, timesteps=t_expand
+                        )
+                    with torch.no_grad():
                         _pos_kw = (
                             {"pooled_text_override": _pooled_text_pos}
                             if _pooled_text_pos is not None
@@ -613,14 +707,14 @@ def generate_body(
                         )
 
                     if do_cfg:
-                        with (
-                            torch.no_grad(),
-                            torch.autocast(
-                                device_type=device.type,
-                                dtype=torch.bfloat16,
-                                enabled=autocast_enabled,
-                            ),
-                        ):
+                        set_hydra_content(anima, negative_embed)
+                        if soft_tokens_net is not None:
+                            soft_tokens_net.append_postfix(
+                                negative_embed,
+                                soft_tokens_neg_seqlens,
+                                timesteps=t_expand,
+                            )
+                        with torch.no_grad():
                             _neg_kw = (
                                 {"pooled_text_override": _pooled_text_neg}
                                 if _pooled_text_neg is not None
@@ -633,9 +727,14 @@ def generate_body(
                                 padding_mask=padding_mask,
                                 **_neg_kw,
                             )
-                        noise_pred = uncond_noise_pred + args.guidance_scale * (
-                            noise_pred - uncond_noise_pred
-                        )
+                        if smc_cfg is not None:
+                            noise_pred = smc_cfg.combine(
+                                noise_pred, uncond_noise_pred, args.guidance_scale
+                            )
+                        else:
+                            noise_pred = uncond_noise_pred + args.guidance_scale * (
+                                noise_pred - uncond_noise_pred
+                            )
 
                     # ensure latents dtype is consistent
                     denoised = latents.float() - sigmas[i] * noise_pred.float()

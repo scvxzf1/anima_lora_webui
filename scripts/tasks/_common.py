@@ -87,7 +87,7 @@ def _path(key: str, default: str) -> str:
 
 def bespoke_preset_flags(preset: str) -> list[str]:
     """Translate ``configs/presets.toml[<preset>]`` into CLI flags for the
-    bespoke distillation loops (``distill_modulation.py`` / ``distill_turbo.py``)
+    bespoke distillation loops (``scripts/distill_mod/distill.py`` / ``distill_turbo.py``)
     that bypass ``train.py``'s config merge chain.
 
     Honored keys:
@@ -156,7 +156,10 @@ def latest_output(prefix: str = "", exclude: str | None = None) -> Path:
 
 
 def latest_lora() -> Path:
-    return latest_output()
+    # Exclude pooled_text_proj heads: they live in output/ckpt/ too but are
+    # not LoRAs — picking the newest `.safetensors` blindly grabs them right
+    # after `make distill-mod`. They're resolved separately by MOD=1.
+    return latest_output(exclude="pooled_text_proj")
 
 
 def latest_hydra() -> Path:
@@ -507,7 +510,7 @@ INFERENCE_BASE = [
     "--lora_multiplier",
     "1.0",
     "--prompt",
-    "masterpiece, best quality, score_7, safe, @channel (caststation), An anime girl wearing a black tank-top"
+    "masterpiece, best quality, score_7, safe. An anime girl wearing a black tank-top"
     " and denim shorts is standing outdoors. She's holding a rectangular sign out in"
     ' front of her that reads "ANIMA". She\'s looking at the viewer with a smile. The'
     " background features some trees and blue sky with clouds.",
@@ -525,7 +528,7 @@ INFERENCE_BASE = [
     "--guidance_scale",
     "4.0",
     "--seed",
-    "42",
+    "40",
     "--save_path",
     "output/tests",
 ]

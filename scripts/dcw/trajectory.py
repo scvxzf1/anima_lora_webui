@@ -6,6 +6,7 @@ import numpy as np
 import torch
 
 from library.inference.adapters import set_hydra_sigma
+from library.inference.text import MAX_CROSSATTN_TOKENS
 from library.runtime.fei import compute_fei_2band, fei_sigma_low
 from scripts.dcw.haar import BANDS, apply_dcw_LL_only_batched, haar_band_norms_batched
 
@@ -26,8 +27,9 @@ def encode_uncond_embed(
     """Encode the unconditional crossattn embed for CFG.
 
     Mirrors ``library/inference/text.py:80-94`` — tokenize → encode →
-    ``anima._preprocess_text_embeds(...)`` → zero-pad to 512. Returns
-    a single (1, 512, 1024) bf16 tensor on ``device``.
+    ``anima._preprocess_text_embeds(...)`` → zero-pad to
+    ``MAX_CROSSATTN_TOKENS``. Returns a single (1, MAX_CROSSATTN_TOKENS, 1024)
+    bf16 tensor on ``device``.
 
     Strategies are assumed primed by the caller (the existing
     transient text-encoder block in ``main`` does this).
@@ -45,9 +47,9 @@ def encode_uncond_embed(
         source_attention_mask=embed[1].to(anima.device),
     )
     crossattn[~embed[3].bool()] = 0
-    if crossattn.shape[1] < 512:
+    if crossattn.shape[1] < MAX_CROSSATTN_TOKENS:
         crossattn = torch.nn.functional.pad(
-            crossattn, (0, 0, 0, 512 - crossattn.shape[1])
+            crossattn, (0, 0, 0, MAX_CROSSATTN_TOKENS - crossattn.shape[1])
         )
     return crossattn.to(device, dtype=torch.bfloat16)
 

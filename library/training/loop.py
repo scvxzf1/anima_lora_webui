@@ -3,9 +3,9 @@
 Owns the per-epoch / per-step body that used to live inline in
 ``AnimaTrainer.train()``. The entrypoint is :func:`run_training_loop`, which
 takes a built :class:`LoopState` plus the trainer instance so override hooks
-(``process_batch``, ``on_step_start``, ``sample_images``, ``_run_validation``,
+(``process_batch``, ``on_step_start``, ``sample_images``,
 ``generate_step_logs``, ``step_logging``, ``epoch_logging``) keep working
-unchanged.
+unchanged. The validation pass lives in :mod:`library.training.validation`.
 
 State that used to be on ``self`` for cross-call signaling —
 ``_last_router_H_postfix``, ``_cudagraph_mark_step``, ``_hydra_warmup_step``,
@@ -34,6 +34,7 @@ from library.training.checkpoints import CheckpointSaver
 from library.training.contexts import TrainCtx, ValCtx
 from library.training.method_adapter import StepCtx
 from library.training.metrics import MetricContext, collect_metrics
+from library.training.validation import run_validation
 
 logger = logging.getLogger(__name__)
 
@@ -626,7 +627,8 @@ def _maybe_run_step_validation(trainer, state: LoopState, epoch: int) -> None:
         and state.validation_steps > 0
         and should_validate_step
     ):
-        trainer._run_validation(
+        run_validation(
+            trainer,
             state.train_ctx,
             state.val_ctx,
             val_loss_recorder=state.val_step_loss_recorder,
@@ -649,7 +651,8 @@ def _run_epoch_validation(trainer, state: LoopState, epoch: int) -> None:
         else True
     )
     if should_validate_epoch and len(state.val_ctx.dataloader) > 0:
-        trainer._run_validation(
+        run_validation(
+            trainer,
             state.train_ctx,
             state.val_ctx,
             val_loss_recorder=state.val_epoch_loss_recorder,

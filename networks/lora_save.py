@@ -45,7 +45,6 @@ from networks.lora_modules import (
     StackedExpertsLoRAModule,
 )
 from networks.lora_modules.lora import rename_dora_and_defuse_standard
-from networks.attn_fuse import match_fused_spec
 
 setup_logging()
 logger = logging.getLogger(__name__)
@@ -143,57 +142,6 @@ def _build_stacked_experts_state_dict(
 
 
 # ---------------------------------------------------------------------------
-# LoKr → LyCORIS q/k/v defuse.
-# ---------------------------------------------------------------------------
-
-
-def _defuse_lokr(state_dict: Dict[str, torch.Tensor]) -> None:
-    """Split runtime-fused LoKr attention keys into LyCORIS q/k/v keys.
-
-    Runtime owns fused ``qkv_proj`` / ``kv_proj`` modules. LyCORIS-style LoKr
-    files expose one ``lokr_w1`` per component and split ``lokr_w2`` along
-    output rows, mirroring the plain LoRA defuse rule.
-    """
-    for key in list(state_dict.keys()):
-        if not key.endswith(".lokr_w2"):
-            continue
-        prefix = key.removesuffix(".lokr_w2")
-        spec = match_fused_spec(prefix)
-        if spec is None:
-            continue
-
-        w1_key = f"{prefix}.lokr_w1"
-        w2_key = f"{prefix}.lokr_w2"
-        w1 = state_dict.get(w1_key)
-        w2 = state_dict.get(w2_key)
-        if w1 is None or w2 is None or w2.ndim != 2:
-            continue
-
-        suffixes = spec.component_letters
-        n = len(suffixes)
-        if w2.shape[0] % n != 0:
-            logger.warning(
-                "LoKr defuse: lokr_w2 rows at %s are not divisible by %d, skipping",
-                prefix,
-                n,
-            )
-            continue
-
-        w2_chunks = w2.chunk(n, dim=0)
-        alpha = state_dict.pop(f"{prefix}.alpha", None)
-        state_dict.pop(w1_key, None)
-        state_dict.pop(w2_key, None)
-
-        base_prefix = prefix.removesuffix(spec.fused_frag)
-        for letter, w2_chunk in zip(suffixes, w2_chunks):
-            new_prefix = base_prefix + spec.component_frag(letter)
-            state_dict[f"{new_prefix}.lokr_w1"] = w1.clone()
-            state_dict[f"{new_prefix}.lokr_w2"] = w2_chunk.contiguous()
-            if alpha is not None:
-                state_dict[f"{new_prefix}.alpha"] = alpha.clone()
-
-
-# ---------------------------------------------------------------------------
 # Public entry point.
 # ---------------------------------------------------------------------------
 
@@ -273,11 +221,8 @@ def save_network_weights(
         # a uniform expert average defeats layer-local routing.
         return
 
-    if save_variant == "lokr":
-        _defuse_lokr(state_dict)
-    else:
-        # Standard (lora / ortho / dora) write path.
-        rename_dora_and_defuse_standard(state_dict)
+    # Standard (lora / ortho / dora) write path.
+    rename_dora_and_defuse_standard(state_dict)
 
     if dtype is not None:
         for key in list(state_dict.keys()):

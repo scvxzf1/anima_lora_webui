@@ -238,8 +238,10 @@ def defuse_standard_qkv(state_dict: Dict[str, torch.Tensor]) -> None:
     Operates on the plain LoRA layout (single ``.lora_down.weight`` +
     single ``.lora_up.weight`` per fused Linear). The down projection is
     cloned per component; the up projection (rows = concatenated output
-    channels) is chunked along dim 0. ``.alpha`` / ``.dora_scale`` get
-    cloned/chunked alongside.
+    channels) is chunked along dim 0. ``.alpha`` / ``.dora_scale`` /
+    ``.inv_scale`` (per_channel_scaling) get cloned/chunked alongside —
+    ``inv_scale`` is shape ``[in_dim]`` and identical for q/k/v which all
+    see the same Linear input, so it clones rather than chunks.
 
     Used by:
       * the standard write path,
@@ -265,6 +267,7 @@ def defuse_standard_qkv(state_dict: Dict[str, torch.Tensor]) -> None:
         up = state_dict.pop(f"{prefix}.lora_up.weight")
         alpha = state_dict.pop(f"{prefix}.alpha", None)
         dora_scale = state_dict.pop(f"{prefix}.dora_scale", None)
+        inv_scale = state_dict.pop(f"{prefix}.inv_scale", None)
 
         up_chunks = up.chunk(n, dim=0)
         dora_chunks = (
@@ -280,6 +283,8 @@ def defuse_standard_qkv(state_dict: Dict[str, torch.Tensor]) -> None:
                 state_dict[f"{new_prefix}.alpha"] = alpha.clone()
             if dora_chunk is not None:
                 state_dict[f"{new_prefix}.dora_scale"] = dora_chunk
+            if inv_scale is not None:
+                state_dict[f"{new_prefix}.inv_scale"] = inv_scale.clone()
 
 
 def rename_dora_and_defuse_standard(

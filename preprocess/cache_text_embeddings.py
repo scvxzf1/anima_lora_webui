@@ -37,23 +37,30 @@ def _generate_caption_variants(
     v0 = pristine original caption. v1..v{N-1} are smart-shuffled (preserving
     the @artist prefix and "On the …" / "In the …" section anchors), then
     every tag *after* the @artist prefix is independently dropped with
-    probability ``tag_dropout_rate``. The prefix up to and including the first
-    @-tag is never shuffled or dropped.
+    probability ``tag_dropout_rate``. The prefix up to and including the
+    trailing tag of the leading artist run is never shuffled or dropped (see
+    ``library.anima.training.find_anima_prefix_end``).
+
+    The ``@no-artist`` sentinel (``library.anima.training.NO_ARTIST_SENTINEL``)
+    participates in the boundary but is stripped from every variant before it
+    is written to the cache — including v0, so the pristine caption is also
+    sentinel-free.
     """
     from library.anima import training as anima_train_utils
 
+    sentinel = anima_train_utils.NO_ARTIST_SENTINEL
+
     tags = [t.strip() for t in caption.split(",")]
+    split_idx = anima_train_utils.find_anima_prefix_end(tags)
 
-    # Match anima_smart_shuffle_caption's prefix boundary: tags up to and
-    # including the first @artist tag are protected from both shuffle and
-    # dropout.
-    split_idx = 0
-    for idx, tag in enumerate(tags):
-        if tag.startswith("@"):
-            split_idx = idx + 1
-            break
+    # v0 stays byte-identical to the source caption unless the sentinel is
+    # actually present — re-joining would normalize whitespace around commas
+    # for every existing dataset otherwise.
+    if sentinel in tags:
+        variants = [", ".join(anima_train_utils.strip_no_artist_sentinel(tags))]
+    else:
+        variants = [caption]
 
-    variants = [caption]
     for _ in range(max(0, num_variants - 1)):
         shuffled = anima_train_utils.anima_smart_shuffle_caption(tags.copy())
         if tag_dropout_rate > 0.0 and len(shuffled) > split_idx:
@@ -64,6 +71,7 @@ def _generate_caption_variants(
             if not kept:
                 kept = shuffled[:1]
             shuffled = kept
+        shuffled = anima_train_utils.strip_no_artist_sentinel(shuffled)
         variants.append(", ".join(shuffled))
     return variants
 
@@ -173,9 +181,9 @@ def main() -> None:
         "--recursive",
         action="store_true",
         help=(
-            "Walk subfolders under --dir. Caches are still written flat "
-            "(stem-based filenames); image stems must therefore be unique "
-            "across the entire source tree."
+            "Walk subfolders under --dir. Caches mirror the source subdir "
+            "structure under --cache_dir; stems must be unique within each "
+            "subfolder but the same stem can repeat across folders."
         ),
     )
     args = parser.parse_args()
@@ -212,6 +220,27 @@ def main() -> None:
     )
     encoding_strategy = AnimaTextEncodingStrategy()
 
+    # Stage the T5("") sidecar while Qwen3 + LLM adapter are already on
+    # device. Every training/distill run reuses this one tiny file as the
+    # CFG-uncond crossattn input — matches `library/inference/text.py`.
+    # Skipped when ``--dit`` is omitted (only TE outputs cached; no
+    # llm_adapter, so we can't produce crossattn embeddings here).
+    if llm_adapter is not None:
+        from library.inference.uncond import (
+            DEFAULT_UNCOND_DIR,
+            stage_uncond_sidecar_with_models,
+        )
+
+        stage_uncond_sidecar_with_models(
+            DEFAULT_UNCOND_DIR,
+            text_encoder,
+            tokenize_strategy,
+            encoding_strategy,
+            llm_adapter,
+            device=device,
+            overwrite=bool(getattr(args, "force_recache_uncond", False)),
+        )
+
     # Collect images that have caption sidecars. Mirror the resize filter so
     # we don't cache TE for images that would be dropped at resize time.
     if args.recursive:
@@ -220,15 +249,20 @@ def main() -> None:
             for p in data_dir.rglob("*")
             if p.is_file() and p.suffix.lower() in IMAGE_EXTENSIONS
         )
-        seen_stems: dict[str, Path] = {}
+        # Per-subdir uniqueness — see cache_latents.py for the rationale.
+        seen_stems: dict[tuple[Path, str], Path] = {}
         collisions: list[tuple[str, Path, Path]] = []
         for p in candidates:
-            if p.stem in seen_stems:
-                collisions.append((p.stem, seen_stems[p.stem], p))
+            key = (p.parent, p.stem)
+            if key in seen_stems:
+                collisions.append((p.stem, seen_stems[key], p))
             else:
-                seen_stems[p.stem] = p
+                seen_stems[key] = p
         if collisions:
-            print("Duplicate image stems found under --dir (caches are stem-keyed):")
+            print(
+                "Duplicate image stems within a single folder of --dir "
+                "(caches collide on identical stems in the same subdir):"
+            )
             for stem, a, b in collisions:
                 print(f"  '{stem}': {a} <-> {b}")
             sys.exit(1)
@@ -293,12 +327,19 @@ def main() -> None:
         # Skip already-cached entries
         to_encode: list[tuple[Path, str, Path]] = []
         for img_path, caption in batch:
-            cache_name = img_path.stem + TE_CACHE_SUFFIX
-            cache_path = (
-                cache_dir / cache_name
-                if cache_dir is not None
-                else img_path.with_name(cache_name)
-            )
+            if cache_dir is not None:
+                from library.io.cache import resolve_cache_path
+
+                cache_path = Path(
+                    resolve_cache_path(
+                        str(img_path),
+                        TE_CACHE_SUFFIX,
+                        cache_dir=str(cache_dir),
+                        image_dir=str(data_dir),
+                    )
+                )
+            else:
+                cache_path = img_path.with_name(img_path.stem + TE_CACHE_SUFFIX)
             if cache_path.exists():
                 skipped += 1
                 pbar.update(1)

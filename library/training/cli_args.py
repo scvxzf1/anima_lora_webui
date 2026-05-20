@@ -439,12 +439,6 @@ def add_training_arguments(parser: argparse.ArgumentParser, support_dreambooth: 
     parser.add_argument(
         "--full_bf16", action="store_true", help="bf16 training including gradients"
     )
-    # FP8 is not supported yet — flag kept for CLI compatibility but force-disabled in assert_extra_args.
-    parser.add_argument(
-        "--fp8_base",
-        action="store_true",
-        help="(not supported yet) use fp8 for base model. This flag is force-disabled.",
-    )
 
     parser.add_argument(
         "--clip_skip",
@@ -980,15 +974,6 @@ def verify_training_args(args: argparse.Namespace):
             "zero_terminal_snr is enabled, but v_parameterization is not enabled. training will be unexpected"
         )
 
-    args.sample_every_n_epochs = _coerce_optional_positive_int(
-        args.sample_every_n_epochs,
-        "sample_every_n_epochs",
-    )
-    args.sample_every_n_steps = _coerce_optional_positive_int(
-        args.sample_every_n_steps,
-        "sample_every_n_steps",
-    )
-
     if args.sample_every_n_epochs is not None and args.sample_every_n_epochs <= 0:
         logger.warning(
             "sample_every_n_epochs is less than or equal to 0, so it will be disabled"
@@ -1000,17 +985,6 @@ def verify_training_args(args: argparse.Namespace):
             "sample_every_n_steps is less than or equal to 0, so it will be disabled"
         )
         args.sample_every_n_steps = None
-
-
-def _coerce_optional_positive_int(value, name: str):
-    if value in (None, ""):
-        return None
-    if isinstance(value, int):
-        return value
-    try:
-        return int(value)
-    except (TypeError, ValueError) as exc:
-        raise ValueError(f"{name} must be an integer, got {value!r}") from exc
 
 
 def add_dataset_arguments(
@@ -1182,6 +1156,18 @@ def add_dataset_arguments(
             "Global override applied to every subset's sample_ratio (0<r≤1). "
             "Unset = use each subset's own value. Exposed here so presets like "
             "`[half]` can propagate a single value across the dataset blueprint."
+        ),
+    )
+    parser.add_argument(
+        "--path_pattern",
+        type=str,
+        default=None,
+        help=(
+            "fnmatch glob applied to each image's path relative to its "
+            "subset's image_dir. `|` separates alternatives — e.g. "
+            "`char_a/*` keeps only the char_a/ subfolder, "
+            "`char_a/*|char_b/*` keeps either. Unset / `*` = use everything. "
+            "Validation and image-count thresholds honour the filtered pool."
         ),
     )
 

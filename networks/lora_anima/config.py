@@ -294,9 +294,6 @@ class LoRANetworkCfg:
     fera_fecl_weight: float = 0.0
     fera_num_bands: int = 3
 
-    # LoKr (Low-Rank Kronecker Product) factor.
-    lokr_factor: int = 8
-
     # ChimeraHydra (dual-pool additive routing — see
     # ``docs/proposal/chimera_hydra.md``). ``use_chimera_hydra=True`` swaps
     # the OrthoHydra path for the chimera module, which splits ``num_experts``
@@ -331,6 +328,20 @@ class LoRANetworkCfg:
     # is a faster lever than raising ``balance_w_content``.
     content_router_lr_scale: float = 1.0
     freq_router_lr_scale: float = 1.0
+    # ChimeraHydra content-router source. ``"input"`` (default) keeps the
+    # paper-faithful per-Linear softmax over pooled rank-R ``lx_c`` —
+    # ``self.router`` lives on every chimera module. ``"crossattn"`` builds a
+    # single network-level ``ContentRouter`` fed by the pooled
+    # ``crossattn_emb`` (post-LLM-adapter T5-space text features, fixed
+    # 1024-D for Anima — see ``crossattn_emb_channels`` in
+    # ``library/anima/models.py``); the per-Linear router is skipped at
+    # construction and ``π_c`` is broadcast via ``_content_routing_weights``
+    # the same way ``π_f`` flows from FreqRouter. Lifts the K_c content axis
+    # from a per-site decision to a single shared partition (analogous to
+    # FeRA → Hydra → FeRA on the freq side); see chimera proposal §"Router".
+    content_router_source: Literal["input", "crossattn"] = "input"
+    content_router_init_std: float = 0.1
+    content_router_layer_norm: bool = True
 
     # SmoothQuant-style per-channel input pre-scaling
     channel_scales_dict: Optional[Dict[str, torch.Tensor]] = None
@@ -458,7 +469,6 @@ class LoRANetworkCfg:
         # to be a meaningful objective (see compute_fecl docstring).
         fera_fecl_weight = float(kwargs.get("fera_fecl_weight", 0.0))
         fera_num_bands = int(kwargs.get("fera_num_bands", kwargs.get("num_bands", 3)))
-        lokr_factor = int(kwargs.get("lokr_factor", 8))
 
         # ChimeraHydra knobs. ``num_experts`` (parent Hydra cfg) is treated
         # as a derived value when ``use_chimera_hydra=True`` — recomputed
@@ -482,6 +492,21 @@ class LoRANetworkCfg:
         freq_router_lr_scale = float(
             kwargs.get("network_freq_router_lr_scale", 1.0)
         )
+        raw_content_router_source = kwargs.get("content_router_source")
+        if raw_content_router_source is None:
+            content_router_source: Literal["input", "crossattn"] = "input"
+        else:
+            v = str(raw_content_router_source).strip()
+            if v not in ("input", "crossattn"):
+                raise ValueError(
+                    f"content_router_source={raw_content_router_source!r}: "
+                    "expected 'input' or 'crossattn'."
+                )
+            content_router_source = v  # type: ignore[assignment]
+        content_router_init_std = float(kwargs.get("content_router_init_std", 0.1))
+        content_router_layer_norm = _as_bool(
+            kwargs.get("content_router_layer_norm", True), default=True
+        )
         if use_chimera_hydra:
             if num_experts_content <= 0 or num_experts_freq <= 0:
                 raise ValueError(
@@ -489,6 +514,11 @@ class LoRANetworkCfg:
                     f"and num_experts_freq > 0 (got K_c={num_experts_content}, "
                     f"K_f={num_experts_freq})."
                 )
+        if content_router_source == "crossattn" and not use_chimera_hydra:
+            raise ValueError(
+                "content_router_source='crossattn' requires use_chimera_hydra=True "
+                "(the global content router only routes the chimera content pool)."
+            )
             # Derive total E from the pool split so the rest of the
             # cfg machinery (warmup masks, balance loss accumulators, etc.)
             # sees a consistent num_experts.
@@ -624,7 +654,6 @@ class LoRANetworkCfg:
             ortho_init_std=ortho_init_std,
             fera_fecl_weight=fera_fecl_weight,
             fera_num_bands=fera_num_bands,
-            lokr_factor=lokr_factor,
             use_chimera_hydra=use_chimera_hydra,
             num_experts_content=num_experts_content,
             num_experts_freq=num_experts_freq,
@@ -634,6 +663,9 @@ class LoRANetworkCfg:
             freq_router_layer_norm=freq_router_layer_norm,
             content_router_lr_scale=content_router_lr_scale,
             freq_router_lr_scale=freq_router_lr_scale,
+            content_router_source=content_router_source,
+            content_router_init_std=content_router_init_std,
+            content_router_layer_norm=content_router_layer_norm,
             channel_scales_dict=channel_scales_dict,
             verbose=verbose,
         )
@@ -667,7 +699,6 @@ class LoRANetworkCfg:
         new_use_moe_style: Optional[str] = None,
         new_route_per_layer: Optional[bool] = None,
         new_router_source: Optional[str] = None,
-        lokr_factor: int = 8,
         # ChimeraHydra stamps. Present only on chimera checkpoints — when
         # set the loader builds ``ChimeraHydraLoRAModule`` instead of
         # ``OrthoHydraLoRAModule`` and the network attaches a FreqRouter.
@@ -675,6 +706,8 @@ class LoRANetworkCfg:
         num_experts_content: Optional[int] = None,
         num_experts_freq: Optional[int] = None,
         freq_router_layer_norm: bool = False,
+        content_router_source: str = "input",
+        content_router_layer_norm: bool = True,
     ) -> "LoRANetworkCfg":
         """Build cfg from a checkpoint key-sniff (warm-start / inference path).
 
@@ -766,7 +799,6 @@ class LoRANetworkCfg:
                 float(fei_sigma_low_div) if fei_sigma_low_div is not None else 4.0
             ),
             fei_router_names=fei_router_names,
-            lokr_factor=int(lokr_factor),
             use_chimera_hydra=is_chimera_hydra,
             num_experts_content=(
                 int(num_experts_content) if num_experts_content is not None else 3
@@ -775,4 +807,10 @@ class LoRANetworkCfg:
                 int(num_experts_freq) if num_experts_freq is not None else 3
             ),
             freq_router_layer_norm=bool(freq_router_layer_norm),
+            content_router_source=(
+                content_router_source
+                if content_router_source in ("input", "crossattn")
+                else "input"
+            ),
+            content_router_layer_norm=bool(content_router_layer_norm),
         )

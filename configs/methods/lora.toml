@@ -1,11 +1,4 @@
-# LoRA 内置方法配置：这是偏开发/系统用途的完整方法开关集合。
-#
-# 新手日常训练更建议使用 configs/gui-methods/ 下的“可训练方法变体”，
-# 例如 LoRA 标准训练变体、LoKr 训练变体等；这个文件主要给高级用户
-# 直接组合不同研究方法。
-#
-# 下面的开关会组合出 LoRA / OrthoLoRA / T-LoRA / Hydra / ReFT 等行为。
-# 如果不确定每个开关含义，不要直接改这个系统只读配置，先复制为导入配置。
+# LoRA family — method selection via toggle blocks.
 #
 # Default (uncommented) = LoRA + OrthoLoRA + T-LoRA + Hydra (σ-routed) + ReFT.
 # Routing config is on the three-axis surface (plan2.md §three-axis-config):
@@ -27,51 +20,44 @@
 # Per-variant dim/alpha/lr/epochs are experiment drift, not calibrated
 # defaults — tune freely.
 
-network_alpha = 32
-network_dim = 32
+network_alpha = 64
+network_dim = 64
 
-# 基础训练强度：学习率、总轮数、普通权重保存间隔、续训状态保存间隔。
-learning_rate = 2e-5
-max_train_epochs = 4
-save_every_n_epochs = 4
-checkpointing_epochs = 4
+learning_rate = 5e-5
+max_train_epochs = 1
+save_every_n_epochs = 1
+checkpointing_epochs = 1
 
-# Caption 与缓存相关：通常保持默认。
 use_shuffled_caption_variants = true
 cache_llm_adapter_outputs = true
 caption_dropout_rate = 0.1
 
-# CMMD val (PE-Core MMD²) is the primary val signal. Set to false on
-# tight VRAM if the PE encoder + sampling path OOMs even after the
-# CPU-park / two-phase mitigations in `_try_cmmd_validation`. With
-# CMMD off, val falls back to the legacy per-σ FM-MSE pass (cheaper
-# but uninformative — see project_fm_val_loss_uninformative).
-use_cmmd = false
-
 logging_dir = "output/logs"
 log_with = "tensorboard"
 
-# output_name = "anima_vr"
+output_name = "anima_inv_half"
 # vr_loss_weight = 1.0
 # vr_fei_sigma_low_div = 4.0
 
 # compile_mode = "full"
-# compile_inductor_mode = "reduce-overhead"
+compile_inductor_mode = "reduce-overhead"
+
+channel_scaling_alpha = 0.5
 
 # -------------
-# OrthoLoRA：给 LoRA 更新加正交约束，减少概念污染。
+# Ortho-lora
 
 use_ortho = true
 
 # -------------
-# T-LoRA：按去噪时间步调整有效 rank，让容量偏向更关键阶段。
+# Timestep mask
 
 use_timestep_mask = true
-min_rank = 8
+min_rank = 32
 alpha_rank_scale = 1.0
 
+
 # -------------
-# Hydra / MoE 路由配置：专家路由类方法，表达力更强但更难调。
 # "independent_A" and route_per_layer=true -> hydralora
 
 # use_moe_style = "shared_A"
@@ -107,25 +93,12 @@ alpha_rank_scale = 1.0
 # router_targets = ".*\\.(qkv_proj|q_proj|kv_proj|output_proj|layer[12])$"
 
 # -------------
-# ReFT：在 DiT 残差流上做可训练干预，属于更进阶的语义干预方法。
+# reft
 
 # add_reft = true
 # reft_dim = 64
 # reft_alpha = 64
 # reft_layers = "last_8"
-
-
-# ── Per-channel input pre-scaling (SmoothQuant-style, optional) ─────────
-# Balances ∂L/∂lora_down column gradients when activations have DC-bias
-# outlier channels (see archive/bench/channel_dominance_analysis.md). Calibration-
-# only — no runtime overhead. Generate the stats file once:
-#   python archive/bench/analyze_lora_input_channels.py \
-#       --dump_channel_stats archive/bench/results/channel_stats.safetensors
-# Then flip `per_channel_scaling` on. α=0.5 = SmoothQuant default (sqrt
-# balance); α=1.0 fully flattens per-channel scale; α=0 disables.
-# per_channel_scaling = true
-# channel_stats_path = "archive/bench/results/channel_stats.safetensors"
-# channel_scaling_alpha = 0.5
 
 # -------------
 # Variance-reduced FM loss (AsymFlow §5.2, arXiv:2605.12964). One extra
@@ -136,15 +109,3 @@ alpha_rank_scale = 1.0
 # See bench/fm_vr_headroom/proposal.md.
 # vr_loss_weight = 1.0
 # vr_fei_sigma_low_div = 4.0
-
-# -------------
-# REPA (Yu et al., arxiv:2410.06940) — auxiliary alignment loss between a
-# mid-block DiT hidden state and a cached PE-Core feature. Composes on top
-# of any LoRA variant. Requires {stem}_anima_pe.safetensors sidecars from
-# `make preprocess-pe` for every image (auto-enables ip_features_cache_to_disk).
-# Hooks one DiT block; default 8 of 28 mirrors the paper's SiT-XL choice.
-
-# use_repa = true
-# repa_weight = 0.5
-# repa_layer = 8
-# repa_lr_scale = 1.0       # head LR = repa_lr_scale * unet_lr

@@ -3,99 +3,75 @@
 from __future__ import annotations
 
 import os
-from pathlib import Path
 
-import toml
-
-from ._common import PY, ROOT, _path, _path_overrides, run
+from ._common import PY, _path, run
 
 
-def _project_path(value: str) -> str:
-    text = os.path.expandvars(str(value or ""))
-    for key, raw in _path_overrides().items():
-        if isinstance(raw, str):
-            text = text.replace("{" + key + "}", raw)
-    path = Path(text)
-    if path.is_absolute():
-        return str(path)
-    return str(path)
+# Subfolders under the source dir are walked by default — matches the
+# `recursive = true` subset default in configs/base.toml. Stems must stay
+# unique across the tree (cache filenames are stem-keyed and flat). Pass
+# `--no_recursive` (or edit configs) to opt out.
+def _min_pixels_args() -> list[str]:
+    """``--min_pixels <N>`` derived from the variant TOML's
+    ``drop_lowres_images`` + ``min_pixels`` keys (resolved through the same
+    base → preset → method merge chain training uses, via ``_path_overrides``
+    in scripts/tasks/_common.py).
 
+    Returns ``[]`` when both keys are absent so plain CLI use keeps each
+    script's own argparse default (500_000 = 0.5MP). ``drop_lowres_images
+    = false`` forces ``--min_pixels 0`` even when ``min_pixels`` is set, so
+    the user can flip a single boolean to disable the filter."""
+    from ._common import _path_overrides  # local import: avoids unused circular
 
-def _dataset_rows():
     overrides = _path_overrides()
-    dataset_config = str(overrides.get("dataset_config") or "").strip()
-    rows = []
-    if dataset_config:
-        path = Path(dataset_config)
-        if not path.is_absolute():
-            path = ROOT / path
-        if path.exists():
-            data = toml.loads(path.read_text(encoding="utf-8"))
-            for dataset in data.get("datasets") or []:
-                for subset in dataset.get("subsets") or []:
-                    attrs = subset.get("custom_attributes") or {}
-                    source = (
-                        attrs.get("source_dir")
-                        or overrides.get("source_image_dir")
-                        or subset.get("image_dir")
-                    )
-                    rows.append(
-                        {
-                            "source": _project_path(str(source or "image_dataset")),
-                            "resized": _project_path(
-                                str(subset.get("image_dir") or "post_image_dataset/resized")
-                            ),
-                            "cache": _project_path(
-                                str(subset.get("cache_dir") or "post_image_dataset/lora")
-                            ),
-                        }
-                    )
-    if rows:
-        return rows
-    return [
-        {
-            "source": _path("source_image_dir", "image_dataset"),
-            "resized": _path("resized_image_dir", "post_image_dataset/resized"),
-            "cache": _path("lora_cache_dir", "post_image_dataset/lora"),
-        }
-    ]
+    if "drop_lowres_images" not in overrides and "min_pixels" not in overrides:
+        return []
+    if overrides.get("drop_lowres_images") is False:
+        return ["--min_pixels", "0"]
+    raw = overrides.get("min_pixels", 500_000)
+    try:
+        n = max(0, int(raw))
+    except (TypeError, ValueError):
+        return []
+    return ["--min_pixels", str(n)]
 
 
 def cmd_preprocess_resize(extra):
-    for row in _dataset_rows():
-        run(
-            [
-                PY,
-                "preprocess/resize_images.py",
-                "--src",
-                row["source"],
-                "--dst",
-                row["resized"],
-                "--no_copy_captions",
-                *extra,
-            ]
-        )
+    run(
+        [
+            PY,
+            "preprocess/resize_images.py",
+            "--src",
+            _path("source_image_dir", "image_dataset"),
+            "--dst",
+            _path("resized_image_dir", "post_image_dataset/resized"),
+            "--no_copy_captions",
+            "--recursive",
+            *_min_pixels_args(),
+            *extra,
+        ]
+    )
 
 
 def cmd_preprocess_vae(extra):
-    for row in _dataset_rows():
-        run(
-            [
-                PY,
-                "preprocess/cache_latents.py",
-                "--dir",
-                row["resized"],
-                "--cache_dir",
-                row["cache"],
-                "--vae",
-                "models/vae/qwen_image_vae.safetensors",
-                "--batch_size",
-                "4",
-                "--chunk_size",
-                "64",
-                *extra,
-            ]
-        )
+    run(
+        [
+            PY,
+            "preprocess/cache_latents.py",
+            "--dir",
+            _path("resized_image_dir", "post_image_dataset/resized"),
+            "--cache_dir",
+            _path("lora_cache_dir", "post_image_dataset/lora"),
+            "--vae",
+            "models/vae/qwen_image_vae.safetensors",
+            "--batch_size",
+            "4",
+            "--chunk_size",
+            "64",
+            "--recursive",
+            *extra,
+        ]
+    )
 
 
 def cmd_preprocess_te(extra):
@@ -105,26 +81,27 @@ def cmd_preprocess_te(extra):
     # unchanged.
     shuffle_variants = os.environ.get("CAPTION_SHUFFLE_VARIANTS", "4")
     tag_dropout_rate = os.environ.get("CAPTION_TAG_DROPOUT_RATE", "0.1")
-    for row in _dataset_rows():
-        run(
-            [
-                PY,
-                "preprocess/cache_text_embeddings.py",
-                "--dir",
-                row["source"],
-                "--cache_dir",
-                row["cache"],
-                "--qwen3",
-                "models/text_encoders/qwen_3_06b_base.safetensors",
-                "--dit",
-                "models/diffusion_models/anima-base-v1.0.safetensors",
-                "--caption_shuffle_variants",
-                shuffle_variants,
-                "--caption_tag_dropout_rate",
-                tag_dropout_rate,
-                *extra,
-            ]
-        )
+    run(
+        [
+            PY,
+            "preprocess/cache_text_embeddings.py",
+            "--dir",
+            _path("source_image_dir", "image_dataset"),
+            "--cache_dir",
+            _path("lora_cache_dir", "post_image_dataset/lora"),
+            "--qwen3",
+            "models/text_encoders/qwen_3_06b_base.safetensors",
+            "--dit",
+            "models/diffusion_models/anima-base-v1.0.safetensors",
+            "--caption_shuffle_variants",
+            shuffle_variants,
+            "--caption_tag_dropout_rate",
+            tag_dropout_rate,
+            "--recursive",
+            *_min_pixels_args(),
+            *extra,
+        ]
+    )
 
 
 def cmd_preprocess_pooled(extra):
@@ -135,16 +112,15 @@ def cmd_preprocess_pooled(extra):
     ``make distill-mod`` to skip a redundant ``.max(dim=1)`` per training
     microstep / val sigma. No GPU needed.
     """
-    for row in _dataset_rows():
-        run(
-            [
-                PY,
-                "preprocess/cache_pooled_text.py",
-                "--dir",
-                row["cache"],
-                *extra,
-            ]
-        )
+    run(
+        [
+            PY,
+            "preprocess/cache_pooled_text.py",
+            "--dir",
+            _path("lora_cache_dir", "post_image_dataset/lora"),
+            *extra,
+        ]
+    )
 
 
 def cmd_preprocess_pe(extra):
@@ -155,28 +131,30 @@ def cmd_preprocess_pe(extra):
     ``{stem}_anima_pe.safetensors`` sidecars into the LoRA cache dir so the
     dataset's existing ``cache_dir`` lookup finds them.
 
-    Consumed by methods that align against frozen vision features —
-    currently REPA (--use_repa) and IP-Adapter when reading PE features off
-    disk.
+    Consumed by IP-Adapter when reading PE features off disk and by the
+    DCW v4 fusion head's pooled-image-feature input channel.
     """
-    for row in _dataset_rows():
-        run(
-            [
-                PY,
-                "preprocess/cache_pe_encoder.py",
-                "--dir",
-                row["resized"],
-                "--cache_dir",
-                row["cache"],
-                "--encoder",
-                "pe",
-                *extra,
-            ]
-        )
+    run(
+        [
+            PY,
+            "preprocess/cache_pe_encoder.py",
+            "--dir",
+            _path("resized_image_dir", "post_image_dataset/resized"),
+            "--cache_dir",
+            _path("lora_cache_dir", "post_image_dataset/lora"),
+            "--encoder",
+            "pe",
+            "--recursive",
+            *extra,
+        ]
+    )
 
 
 def cmd_preprocess(extra):
+    # PE features are intentionally NOT cached here — only IP-Adapter / CMMD /
+    # DCW v4 need them, and those paths chain `preprocess-pe` explicitly (see
+    # `exp-ip-adapter-preprocess`). Leaving PE out keeps the default LoRA
+    # preprocess fast on machines that won't ever use the vision tower.
     cmd_preprocess_resize(extra)
     cmd_preprocess_vae(extra)
     cmd_preprocess_te(extra)
-    cmd_preprocess_pe(extra)

@@ -1,53 +1,56 @@
-# 基础公共配置：所有训练都会先读取这里，再叠加“预设”和“方法/变体”配置。
-#
-# 新手可以把它理解为项目默认值。一般不要直接改系统只读版本；
-# 如果要改某次训练，请在 WebUI 中保存为导入配置或复制一份再改。
+# Shared infrastructure settings — rarely change between experiments.
 
-# 基础模型路径：训练必须能找到 DiT 底模、文本编码器和 VAE。
 pretrained_model_name_or_path = "models/diffusion_models/anima-base-v1.0.safetensors"
 qwen3 = "models/text_encoders/qwen_3_06b_base.safetensors"
 vae = "models/vae/qwen_image_vae.safetensors"
 
-# 默认输出位置和权重文件名前缀。
 output_dir = "output/ckpt"
 output_name = "anima_lora"
 save_model_as = "safetensors"
 
-# 默认网络模块：普通 LoRA/LoKr/Ortho/T-LoRA 等大多走这个模块。
 network_module = "networks.lora_anima"
 network_train_unet_only = true
 
-# ── 数据集路径 ───────────────────────────────────────────────────────────
-# 这三个路径会传给下面的数据集蓝图：
-# - source_image_dir：原始图片目录。
-# - resized_image_dir：预处理后的缩放图目录。
-# - lora_cache_dir：latent / 文本编码等缓存目录。
+# ── Dataset paths ────────────────────────────────────────────────────────
+# Top-level scalars so any preset / method can override (the merge chain is
+# base.toml → presets.toml[<preset>] → methods/<method>.toml). The dataset
+# blueprint subset (below) interpolates `{resized_image_dir}` /
+# `{lora_cache_dir}` so editing these keys propagates to training too.
+# `tasks.py` preprocess commands also read them via `load_path_overrides`.
 source_image_dir = "image_dataset"
 resized_image_dir = "post_image_dataset/resized"
 lora_cache_dir = "post_image_dataset/lora"
+# fnmatch glob applied to each image's path relative to its subset's image_dir.
+# `*` (or unset) trains on everything. Use `|` to OR-combine patterns:
+#   `char_a/*`           → one subfolder
+#   `char_a/*|char_b/*`  → two subfolders
+#   `*portrait*`         → any path containing "portrait"
+# Same blueprint applies to validation enumeration.
+path_pattern = "*"
 
-# 优化器和学习率调度默认值。具体训练变体可以覆盖它们。
+# Preprocess input filter. When true, scripts/tasks/preprocess.py forwards
+# `--min_pixels = min_pixels` to both preprocess/resize_images.py and
+# preprocess/cache_text_embeddings.py so under-sized source images never
+# enter the resize / VAE / TE caches. Default 500_000 = 0.5MP — matches the
+# scripts' own argparse defaults. Set drop_lowres_images = false to keep
+# every image regardless of size.
+drop_lowres_images = true
+min_pixels = 500000
+
 optimizer_type = "AdamW"
 lr_scheduler = "constant"
 
-# Anima 训练常用基础参数。
 timestep_sampling = "sigmoid"
 discrete_flow_shift = 1.0
 mixed_precision = "bf16"
-# fp8_base_unet=true
 
-# 显存相关开关：低显存时通常通过预设启用，不建议在这里随手打开。
 # gradient_checkpointing = true
 # unsloth_offload_checkpointing = true
-
-# 缓存相关：减少重复编码，提升训练速度。改图片或 caption 后需要重建缓存。
 cache_latents = true
 cache_latents_to_disk = true
 cache_text_encoder_outputs = true
 cache_text_encoder_outputs_to_disk = true
 skip_cache_check = true
-
-# VAE、遮罩、编译和数据加载相关默认值。
 vae_chunk_size = 64
 vae_disable_cache = true
 masked_loss = true
@@ -62,31 +65,38 @@ dataloader_pin_memory = true
 persistent_data_loader_workers= false
 use_cmmd = false
 
-# ── 数据集蓝图 ───────────────────────────────────────────────────────────
-# 当没有指定单独的 dataset_config 时，会使用这里的 [general] / [[datasets]]。
-# WebUI 的“数据集设置”会把多数据集路径写成独立 dataset_config，更适合日常使用。
+# ── Dataset config ───────────────────────────────────────────────────────
+# Formerly configs/dataset_config.toml. Consumed directly by the dataset
+# blueprint generator when no --dataset_config override is passed. The
+# `general`/`datasets` top-level sections are skipped by the flat method+preset
+# merge chain (see library.train_util._flatten_toml) so they don't pollute the
+# argparse namespace.
 
 [general]
-# caption 文件扩展名和保留 token 数。默认读取同名 .txt 标注。
 caption_extension = '.txt'
 keep_tokens = 3
 
 [[datasets]]
-# 分辨率和分桶设置。enable_bucket=true 可尽量保留不同宽高比。
 resolution = 1024
 batch_size = 1
 enable_bucket = true
-
-# 验证集设置：留出一部分图片不参与训练，用来检查过拟合。
-# validation_split_num 非 0 时优先级高于 validation_split。
+# Validation set size — used both for held-out paired CMMD eval (the live
+# val signal that replaced the legacy FM-MSE pass) and for any downstream
+# val machinery. Set `validation_split_num` (integer) to pin an exact
+# count; when non-zero it wins over the fractional `validation_split`.
 # validation_split = 0.025
 validation_split_num = 16
 validation_seed = 42
 
   [[datasets.subsets]]
-  # 这里使用上方路径变量。预处理后通常训练 resized_image_dir，缓存读写 lora_cache_dir。
+  # Templates resolve against top-level path keys (source_image_dir,
+  # resized_image_dir, lora_cache_dir) at load time — see
+  # library.config.io.load_dataset_config_from_base.
   image_dir = '{resized_image_dir}'
   cache_dir = '{lora_cache_dir}'
   num_repeats = 1
-  # 如需递归读取子目录可打开 recursive。注意不同子目录里图片文件名最好不要重复。
-  # recursive = true
+  # Walk subfolders under image_dir. Caches and resized output stay flat in
+  # cache_dir / resized_image_dir (stem-keyed filenames), so image stems must
+  # be unique across the entire tree — the trainer enforces this and the
+  # matching preprocess scripts pass --recursive automatically.
+  recursive = true

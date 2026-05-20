@@ -1,3 +1,4 @@
+import fnmatch
 import logging
 import math
 import os
@@ -11,13 +12,59 @@ import torch
 logger = logging.getLogger(__name__)
 
 
+def filter_paths_by_glob(
+    img_paths: List[str],
+    image_dir: Optional[str],
+    pattern: Optional[str],
+) -> List[bool]:
+    """Return a per-path boolean mask: True keeps the file, False drops it.
+
+    The pattern is matched against each file's path relative to ``image_dir``
+    (with forward slashes, no leading "./") via ``fnmatch``. ``|`` separates
+    alternatives — ``char_a/*|char_b/*`` keeps anything under either folder.
+    Default ``*``, empty, or None all keep everything. Returns a mask rather
+    than a filtered list so callers can keep parallel arrays (sizes,
+    captions) aligned.
+    """
+    if not pattern:
+        return [True] * len(img_paths)
+    alternatives = [alt.strip() for alt in pattern.split("|")]
+    alternatives = [alt for alt in alternatives if alt]
+    if not alternatives or any(alt == "*" for alt in alternatives):
+        return [True] * len(img_paths)
+    base = os.path.abspath(image_dir) if image_dir else None
+    keep: List[bool] = []
+    for p in img_paths:
+        if base is not None:
+            try:
+                rel = os.path.relpath(p, base)
+            except ValueError:
+                rel = os.path.basename(p)
+        else:
+            rel = os.path.basename(p)
+        rel = rel.replace(os.sep, "/")
+        keep.append(any(fnmatch.fnmatchcase(rel, alt) for alt in alternatives))
+    return keep
+
+
 def _resolve_default_mask_dir() -> Optional[str]:
-    """Prefer masks/merged/ when it exists; fall back to masks/sam/ or masks/mit/.
+    """Resolve the default mask directory.
+
+    Prefers the new ``post_image_dataset/masks/`` layout produced by
+    ``make mask``; falls back to the legacy ``masks/{merged,sam,mit}/``
+    triple so users who haven't re-run masking after the consolidation
+    keep training without manual intervention.
 
     Returned path is relative, matching how other paths are resolved from the
     training CWD (anima_lora/).
     """
-    for candidate in ("masks/merged", "masks/sam", "masks/mit"):
+    candidates = (
+        "post_image_dataset/masks",
+        "masks/merged",
+        "masks/sam",
+        "masks/mit",
+    )
+    for candidate in candidates:
         if os.path.isdir(candidate):
             return candidate
     return None
@@ -36,10 +83,17 @@ def split_train_val(
 
     Shuffle the dataset based on ``validation_seed`` (or current RNG when
     None), then carve off a validation slice. When ``validation_split_num > 0``
-    the count-based split wins over the fractional ``validation_split``
-    (clamped to ``len(paths)``); otherwise the original fraction-based split
-    is used. For example, with ``validation_split=0.2`` on 100 paths:
-    [0:80] = 80 training, [80:] = 20 validation.
+    the count-based split wins over the fractional ``validation_split``;
+    otherwise the original fraction-based split is used. For example, with
+    ``validation_split=0.2`` on 100 paths: [0:80] = 80 training, [80:] = 20
+    validation.
+
+    Guardrail: when ``validation_split_num >= len(paths)`` (or
+    ``validation_split >= 1.0``) the requested val slice would consume the
+    entire training pool — surface that as a warning and disable validation
+    for this subset (training gets all paths, val gets none). The val-side
+    caller's empty return is dropped by ``load_dreambooth_dir``'s "no images
+    found" branch, so the trainer simply runs without a val pass.
     """
     dataset = list(zip(paths, sizes))
     if validation_seed is not None:
@@ -55,8 +109,27 @@ def split_train_val(
     paths = list(paths)
     sizes = list(sizes)
 
+    val_would_exhaust = (
+        validation_split_num
+        and validation_split_num > 0
+        and validation_split_num >= len(paths)
+    ) or (validation_split and validation_split >= 1.0)
+    if val_would_exhaust:
+        if is_training_dataset:
+            # Log only on the training pass so the warning surfaces once per
+            # subset (split_train_val is called twice — once per is_training).
+            logger.warning(
+                "validation_split_num=%s / validation_split=%s would consume the "
+                "entire subset (size=%d); disabling validation for this subset.",
+                validation_split_num,
+                validation_split,
+                len(paths),
+            )
+            return paths, sizes
+        return [], []
+
     if validation_split_num and validation_split_num > 0:
-        n_val = min(int(validation_split_num), len(paths))
+        n_val = int(validation_split_num)
         split = len(paths) - n_val
     elif is_training_dataset:
         split = math.ceil(len(paths) * (1 - validation_split))
@@ -178,11 +251,15 @@ class BaseSubset:
         validation_split_num: int = 0,
         resize_interpolation: Optional[str] = None,
         recursive: bool = False,
+        path_pattern: Optional[str] = None,
     ) -> None:
         self.image_dir = image_dir
         self.alpha_mask = alpha_mask if alpha_mask is not None else False
         self.num_repeats = num_repeats
         self.recursive = recursive
+        # fnmatch glob applied to each image's path-relative-to-image_dir at
+        # enumeration time; `*` / None / empty = no filtering.
+        self.path_pattern = path_pattern or "*"
         self.sample_ratio = sample_ratio
         self.caption_separator = caption_separator
         self.keep_tokens = keep_tokens
@@ -250,6 +327,7 @@ class DreamBoothSubset(BaseSubset):
         mask_dir: Optional[str] = None,
         cache_dir: Optional[str] = None,
         recursive: bool = False,
+        path_pattern: Optional[str] = None,
     ) -> None:
         assert image_dir is not None, "image_dir must be specified"
 
@@ -280,6 +358,7 @@ class DreamBoothSubset(BaseSubset):
             validation_split_num=validation_split_num,
             resize_interpolation=resize_interpolation,
             recursive=recursive,
+            path_pattern=path_pattern,
         )
 
         self.is_reg = is_reg

@@ -31,7 +31,6 @@ from pathlib import Path
 from typing import Iterable, Sequence
 
 import torch
-import torch.nn.functional as F
 from safetensors.torch import load_file
 
 logger = logging.getLogger(__name__)
@@ -44,7 +43,7 @@ _SCALE = 1000.0
 def _pool_pe(feats: torch.Tensor, *, drop_cls: bool = True) -> torch.Tensor:
     """Mean over patch tokens. ``feats`` is ``[T, D]``; returns ``[D]``.
 
-    Matches ``scripts/compute_pe_centroid.py:_pool_pe`` so the CMMD reference
+    Matches ``preprocess/cache_pe_encoder.py:_pool_pe`` so the CMMD reference
     pool is comparable to the IP-Adapter centroid.
     """
     if drop_cls and feats.shape[0] > 1:

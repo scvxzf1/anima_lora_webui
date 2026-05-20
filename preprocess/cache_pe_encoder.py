@@ -9,12 +9,23 @@ encoder's nearest-aspect bucket, runs a single forward, and saves
 the image when omitted). Skips already-cached entries (idempotent).
 
 Wrapped by ``make preprocess-pe`` (reads ``post_image_dataset/resized/``,
-writes ``post_image_dataset/lora/``). The same sidecars are consumed by the
-LoRA / REPA pipeline and by IP-Adapter -- they share the cache directory.
+writes ``post_image_dataset/lora/``). The same sidecars are consumed by
+IP-Adapter and the DCW v4 fusion head -- they share the cache directory.
 
 The cache key matches what the encoder produces at training time:
 ``encode_pe_from_imageminus1to1(bundle, x, same_bucket=True)`` -> ``[T_pe, d_enc]``.
 Variable T per encoder bucket; per-image stored as a single tensor (no padding).
+
+Centroid sidecar
+----------------
+
+Pass ``--centroid`` to also emit ``anima_pe_centroid_{encoder}.safetensors``
+(dataset-mean of mean-over-patch-tokens pooled features, ``[D]`` fp32) after
+the cache pass. Pass ``--centroid_only`` to skip encoding entirely and just
+pool existing caches under ``--cache_dir``. Consumed by IP-Adapter
+(``ip_centroid_path``) and DCW v4 (``cos(c_pool, μ_centroid)`` channel) --
+targets the participation-ratio-6 manifold collapse on this dataset (see
+``bench/ip_adapter/analysis.md``).
 """
 
 import argparse
@@ -33,15 +44,97 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from library.datasets.image_utils import IMAGE_EXTENSIONS, IMAGE_TRANSFORMS
 from library.vision.encoder import encode_pe_from_imageminus1to1, load_pe_encoder
 
+ROOT = Path(__file__).resolve().parents[1]
+
+
+def _pool_pe(feats: torch.Tensor, *, drop_cls: bool = True) -> torch.Tensor:
+    """Mean over patch tokens. ``feats`` is ``[T, D]``; returns ``[D]``."""
+    if drop_cls and feats.shape[0] > 1:
+        feats = feats[1:]
+    return feats.mean(dim=0)
+
+
+def _write_centroid_sidecar(
+    cache_dir: Path,
+    out_path: Path,
+    *,
+    encoder: str,
+    limit: int = 0,
+) -> None:
+    """Stream-pool cached PE features in ``cache_dir`` -> centroid sidecar.
+
+    Walks ``cache_dir`` recursively so nested caches (mirroring the source
+    subfolder structure) are included in the pool.
+    """
+    from safetensors.torch import load_file, save_file
+
+    suffix = f"_anima_{encoder}.safetensors"
+    files = sorted(p for p in cache_dir.rglob(f"*{suffix}") if p.is_file())
+    files = [p for p in files if not p.name.startswith("anima_pe_centroid")]
+    if not files:
+        print(f"No '{suffix}' caches under {cache_dir}", file=sys.stderr)
+        sys.exit(1)
+    if limit > 0:
+        files = files[:limit]
+
+    print(f"\nCentroid pass: {len(files)} files under {cache_dir}")
+    centroid: torch.Tensor | None = None
+    n = 0
+    for p in tqdm(files, desc="pooling"):
+        sd = load_file(str(p))
+        feats = sd.get("image_features")
+        if feats is None:
+            print(f"  skip {p.name}: no 'image_features' key", file=sys.stderr)
+            continue
+        pool = _pool_pe(feats.to(torch.float32))
+        if centroid is None:
+            centroid = torch.zeros_like(pool)
+        centroid += pool
+        n += 1
+
+    if n == 0 or centroid is None:
+        print("No usable PE features found.", file=sys.stderr)
+        sys.exit(1)
+    centroid = centroid / n
+
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    save_file(
+        {"centroid": centroid.contiguous()},
+        str(out_path),
+        metadata={
+            "encoder": encoder,
+            "n_images": str(n),
+            "d_enc": str(centroid.shape[0]),
+            "pool": "mean_over_patch_tokens",
+        },
+    )
+    print(
+        f"centroid shape: {tuple(centroid.shape)}  "
+        f"‖centroid‖={float(centroid.norm()):.3f}  "
+        f"mean={float(centroid.mean()):.4f}  std={float(centroid.std()):.4f}"
+    )
+    print(f"wrote {out_path}")
+
 
 def cache_path_for(
-    image_path: Path, encoder: str, cache_dir: Path | None = None
+    image_path: Path,
+    encoder: str,
+    cache_dir: Path | None = None,
+    image_dir: Path | None = None,
 ) -> Path:
-    name = f"{image_path.stem}_anima_{encoder}.safetensors"
-    if cache_dir is not None:
-        cache_dir.mkdir(parents=True, exist_ok=True)
-        return cache_dir / name
-    return image_path.with_name(name)
+    suffix = f"_anima_{encoder}.safetensors"
+    if cache_dir is None:
+        return image_path.with_name(image_path.stem + suffix)
+    from library.io.cache import resolve_cache_path
+
+    return Path(
+        resolve_cache_path(
+            str(image_path),
+            suffix,
+            cache_dir=str(cache_dir),
+            image_dir=str(image_dir) if image_dir is not None else None,
+        )
+    )
 
 
 class _PEImageGroup(Dataset):
@@ -75,8 +168,15 @@ def _collate(batch):
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--dir", type=str, required=True, help="Dataset directory")
+    parser = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
+    parser.add_argument(
+        "--dir",
+        type=str,
+        default=None,
+        help="Dataset directory. Required unless --centroid_only is set.",
+    )
     parser.add_argument(
         "--cache_dir",
         type=str,
@@ -125,23 +225,93 @@ def main() -> None:
         "--recursive",
         action="store_true",
         help=(
-            "Walk subfolders under --dir. Caches are still written flat "
-            "(stem-based filenames); image stems must therefore be unique "
-            "across the entire source tree."
+            "Walk subfolders under --dir. Caches mirror the source subdir "
+            "structure under --cache_dir; stems must be unique within each "
+            "subfolder but the same stem can repeat across folders."
         ),
+    )
+    parser.add_argument(
+        "--centroid",
+        action="store_true",
+        help=(
+            "After the cache pass, stream-pool all '_anima_{encoder}.safetensors' "
+            "files under --cache_dir and emit a dataset-mean centroid sidecar "
+            "consumed by IP-Adapter and DCW v4. Requires --cache_dir."
+        ),
+    )
+    parser.add_argument(
+        "--centroid_only",
+        action="store_true",
+        help=(
+            "Skip encoding; just pool existing PE caches under --cache_dir and "
+            "write the centroid sidecar. --cache_dir defaults to "
+            "'post_image_dataset/lora' in this mode."
+        ),
+    )
+    parser.add_argument(
+        "--centroid_out",
+        type=str,
+        default=None,
+        help=(
+            "Output path for the centroid sidecar. Defaults to "
+            "post_image_dataset/ip_adapter/anima_pe_centroid_{encoder}.safetensors "
+            "(separate from the shared PE cache dir so LoRA stays untouched)."
+        ),
+    )
+    parser.add_argument(
+        "--centroid_limit",
+        type=int,
+        default=0,
+        help="Cap the number of cache files pooled into the centroid (0 = all).",
     )
     args = parser.parse_args()
 
+    if not args.centroid_only and args.dir is None:
+        parser.error("--dir is required unless --centroid_only is set")
+    if args.centroid and not args.cache_dir:
+        parser.error(
+            "--centroid needs --cache_dir (centroid pools files in a directory; "
+            "alongside-image layout has no single dir to walk)"
+        )
+
     from safetensors.torch import save_file as _save_safetensors
+
+    cache_dir = Path(args.cache_dir) if args.cache_dir else None
+
+    if args.centroid_only:
+        centroid_cache_dir = cache_dir or (ROOT / "post_image_dataset" / "lora")
+        if not centroid_cache_dir.is_absolute():
+            centroid_cache_dir = (ROOT / centroid_cache_dir).resolve()
+        if not centroid_cache_dir.is_dir():
+            print(f"--cache_dir not found: {centroid_cache_dir}", file=sys.stderr)
+            sys.exit(1)
+        out_path = (
+            Path(args.centroid_out)
+            if args.centroid_out
+            else ROOT
+            / "post_image_dataset"
+            / "ip_adapter"
+            / f"anima_pe_centroid_{args.encoder}.safetensors"
+        )
+        _write_centroid_sidecar(
+            centroid_cache_dir,
+            out_path,
+            encoder=args.encoder,
+            limit=args.centroid_limit,
+        )
+        return
 
     data_dir = Path(args.dir)
     if not data_dir.is_dir():
         print(f"--dir not found: {data_dir}", file=sys.stderr)
         sys.exit(1)
-    cache_dir = Path(args.cache_dir) if args.cache_dir else None
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    save_dtype = {"bfloat16": torch.bfloat16, "float16": torch.float16, "float32": torch.float32}[args.dtype]
+    save_dtype = {
+        "bfloat16": torch.bfloat16,
+        "float16": torch.float16,
+        "float32": torch.float32,
+    }[args.dtype]
 
     print(f"Loading vision encoder '{args.encoder}' on {device} ...")
     bundle = load_pe_encoder(device, name=args.encoder, model_id=args.model_id)
@@ -158,15 +328,20 @@ def main() -> None:
             for p in data_dir.rglob("*")
             if p.is_file() and p.suffix.lower() in IMAGE_EXTENSIONS
         )
-        stems: dict[str, Path] = {}
+        # Per-subdir uniqueness — see cache_latents.py for the rationale.
+        stems: dict[tuple[Path, str], Path] = {}
         collisions: list[tuple[str, Path, Path]] = []
         for p in image_files:
-            if p.stem in stems:
-                collisions.append((p.stem, stems[p.stem], p))
+            key = (p.parent, p.stem)
+            if key in stems:
+                collisions.append((p.stem, stems[key], p))
             else:
-                stems[p.stem] = p
+                stems[key] = p
         if collisions:
-            print("Duplicate image stems found under --dir (caches are stem-keyed):")
+            print(
+                "Duplicate image stems within a single folder of --dir "
+                "(caches collide on identical stems in the same subdir):"
+            )
             for stem, a, b in collisions:
                 print(f"  '{stem}': {a} <-> {b}")
             sys.exit(1)
@@ -184,7 +359,9 @@ def main() -> None:
     pending: list[Path] = []
     skipped = 0
     for p in image_files:
-        if cache_path_for(p, bundle.name, cache_dir=cache_dir).exists():
+        if cache_path_for(
+            p, bundle.name, cache_dir=cache_dir, image_dir=data_dir
+        ).exists():
             skipped += 1
         else:
             pending.append(p)
@@ -209,7 +386,8 @@ def main() -> None:
     )
     for (w, h), paths in reso_groups.items():
         out_paths = [
-            cache_path_for(p, bundle.name, cache_dir=cache_dir) for p in paths
+            cache_path_for(p, bundle.name, cache_dir=cache_dir, image_dir=data_dir)
+            for p in paths
         ]
         ds = _PEImageGroup(paths, out_paths)
         loader = DataLoader(
@@ -228,10 +406,7 @@ def main() -> None:
                 )
             for src, dst, feats in zip(batch_paths, batch_out_paths, feats_list):
                 save_dict = {
-                    "image_features": feats.detach()
-                    .to(save_dtype)
-                    .cpu()
-                    .contiguous()
+                    "image_features": feats.detach().to(save_dtype).cpu().contiguous()
                 }
                 _save_safetensors(save_dict, dst, metadata=metadata)
                 cached += 1
@@ -245,6 +420,22 @@ def main() -> None:
 
     if torch.cuda.is_available():
         torch.cuda.empty_cache()
+
+    if args.centroid:
+        out_path = (
+            Path(args.centroid_out)
+            if args.centroid_out
+            else ROOT
+            / "post_image_dataset"
+            / "ip_adapter"
+            / f"anima_pe_centroid_{bundle.name}.safetensors"
+        )
+        _write_centroid_sidecar(
+            cache_dir,
+            out_path,
+            encoder=bundle.name,
+            limit=args.centroid_limit,
+        )
 
 
 if __name__ == "__main__":

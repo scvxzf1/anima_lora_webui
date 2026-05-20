@@ -167,6 +167,40 @@ def populate_schema(
             ),
         )
 
+    # Preprocess input filter — consumed by scripts/tasks/preprocess.py (forwarded
+    # to preprocess/resize_images.py and preprocess/cache_text_embeddings.py as
+    # ``--min_pixels``). Not an argparse arg on train.py — preprocess reads it
+    # straight from the merged config chain via load_path_overrides().
+    CONFIG_SCHEMA.setdefault(
+        "drop_lowres_images",
+        ConfigKey(
+            name="drop_lowres_images",
+            type="bool",
+            default=True,
+            help=(
+                "When true, the preprocess auto-chain skips source images "
+                "smaller than ``min_pixels`` (see below) so they never enter "
+                "the resize/VAE/TE caches. Set false to keep every image."
+            ),
+            source="manual",
+        ),
+    )
+    CONFIG_SCHEMA.setdefault(
+        "min_pixels",
+        ConfigKey(
+            name="min_pixels",
+            type="int",
+            default=500_000,
+            help=(
+                "Pixel-count threshold for ``drop_lowres_images`` "
+                "(default 500_000 = 0.5MP). Forwarded to "
+                "preprocess/resize_images.py + cache_text_embeddings.py as "
+                "``--min_pixels``. Ignored when ``drop_lowres_images=false``."
+            ),
+            source="manual",
+        ),
+    )
+
     if extras:
         for k, v in extras.items():
             CONFIG_SCHEMA[k] = v

@@ -21,6 +21,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from library.datasets.buckets import BucketManager
 from library.datasets.image_utils import IMAGE_EXTENSIONS
+
 CAPTION_EXTENSIONS = {".txt", ".caption"}
 
 
@@ -29,8 +30,15 @@ def process_image(
     out_dir: Path,
     bucket_args: tuple,
     copy_captions: bool = True,
+    rel_dir: str = "",
 ) -> tuple[str, tuple[int, int]]:
-    """Worker function -- receives bucket params instead of BucketManager to be picklable."""
+    """Worker function -- receives bucket params instead of BucketManager to be picklable.
+
+    ``rel_dir`` is the (possibly empty) relative subdir under the source root.
+    The output mirrors the source layout: ``out_dir / rel_dir / stem.png``.
+    Empty ``rel_dir`` collapses back to the flat layout for users without
+    nested image_dataset/ trees.
+    """
     max_reso, min_size, max_size, reso_steps, use_constant = bucket_args
     bucket_mgr = BucketManager(
         no_upscale=False,
@@ -64,14 +72,17 @@ def process_image(
     top = (new_h - bh) // 2
     img = img.crop((left, top, left + bw, top + bh))
 
-    out_path = out_dir / f"{image_path.stem}.png"
+    target_dir = out_dir / rel_dir if rel_dir else out_dir
+    target_dir.mkdir(parents=True, exist_ok=True)
+
+    out_path = target_dir / f"{image_path.stem}.png"
     img.save(out_path, format="PNG")
 
     if copy_captions:
         for ext in CAPTION_EXTENSIONS:
             cap = image_path.with_suffix(ext)
             if cap.exists():
-                shutil.copy2(cap, out_dir / f"{image_path.stem}{ext}")
+                shutil.copy2(cap, target_dir / f"{image_path.stem}{ext}")
 
     return image_path.name, bucket_reso
 
@@ -135,9 +146,10 @@ def main() -> None:
         "--recursive",
         action="store_true",
         help=(
-            "Walk subfolders under --src. Output is still flat under --dst "
-            "(stem-based filenames); image stems must therefore be unique "
-            "across the entire source tree."
+            "Walk subfolders under --src. Output mirrors the source subdir "
+            "structure under --dst (image_dataset/charA/img.png → "
+            "post_image_dataset/resized/charA/img.png). Stems must be unique "
+            "within each subfolder; the same stem can repeat across folders."
         ),
     )
     args = parser.parse_args()
@@ -164,18 +176,22 @@ def main() -> None:
             for p in src.rglob("*")
             if p.is_file() and p.suffix.lower() in IMAGE_EXTENSIONS
         )
-        stems: dict[str, Path] = {}
+        # Per-subdir uniqueness: two files in the same folder with the same
+        # stem (e.g. cover.png + cover.jpg) would collide on the resized
+        # output. Same stem in different subfolders is fine — the nested
+        # output layout disambiguates by folder.
+        seen: dict[tuple[Path, str], Path] = {}
         collisions: list[tuple[str, Path, Path]] = []
         for p in image_files:
-            if p.stem in stems:
-                collisions.append((p.stem, stems[p.stem], p))
+            key = (p.parent, p.stem)
+            if key in seen:
+                collisions.append((p.stem, seen[key], p))
             else:
-                stems[p.stem] = p
+                seen[key] = p
         if collisions:
-            print("Duplicate image stems found under --src (output is flat):")
+            print("Duplicate image stems within a single folder of --src:")
             for stem, a, b in collisions:
                 print(f"  '{stem}': {a} <-> {b}")
-            print("Rename so every image has a unique stem across all subfolders.")
             sys.exit(1)
     else:
         image_files = sorted(
@@ -211,10 +227,24 @@ def main() -> None:
     )
     bucket_counts: dict[tuple[int, int], int] = {}
     copy_captions = not args.no_copy_captions
+
+    def _rel_for(p: Path) -> str:
+        try:
+            rel = p.parent.relative_to(src)
+        except ValueError:
+            return ""
+        rel_str = str(rel)
+        return "" if rel_str == "." else rel_str
+
     with ProcessPoolExecutor(max_workers=args.workers) as pool:
         futures = {
             pool.submit(
-                process_image, img_path, dst, bucket_args, copy_captions
+                process_image,
+                img_path,
+                dst,
+                bucket_args,
+                copy_captions,
+                _rel_for(img_path),
             ): img_path
             for img_path in image_files
         }

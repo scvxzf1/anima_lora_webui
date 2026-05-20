@@ -26,12 +26,14 @@ from typing import Dict, Iterable, List, Optional, Sequence, Tuple
 
 from library.captioning import tag_groups as tg
 from library.captioning import tag_rules as tr
-
-from .constants import (
+from library.captioning.anima_tagger import (
     PEOPLE_COUNT_LABELS,
     RATINGS,
     SLOT_ORDER,
     TAG_TYPE_NAMES,
+)
+
+from .constants import (
     classify_people,
     find_image_for_caption,
     is_count_tag,

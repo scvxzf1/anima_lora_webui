@@ -31,6 +31,7 @@ from library.inference import (
     save_latent,
     save_output,
 )
+from library.inference.text import MAX_CROSSATTN_TOKENS
 
 # Side-effect import: registers spectrum_denoise with library.inference.generation
 # so --spectrum dispatches without library.inference holding a hard edge into networks/.
@@ -91,6 +92,14 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help="Postfix tuning weight path (networks.methods.postfix .safetensors). "
         "Supports postfix (free param) and cond+ortho modes.",
+    )
+    parser.add_argument(
+        "--soft_tokens_weight",
+        type=str,
+        default=None,
+        help="Soft tokens weight path (networks.methods.soft_tokens .safetensors). "
+        "SoftREPA-style per-layer × per-t bank; spliced into the cross-attn input "
+        "of the first n_layers DiT blocks via monkey-patched Block.forward.",
     )
     parser.add_argument(
         "--ip_adapter_weight",
@@ -269,7 +278,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--mod_pos_prompt",
         type=str,
-        default="absurdres, masterpiece, score_9",
+        default="absurdres, score_9, score_8",
         help="Positive quality prompt for modulation guidance direction",
     )
     parser.add_argument(
@@ -463,6 +472,34 @@ def parse_args() -> argparse.Namespace:
         "value to flip sign. The per-step λ is clamped to ±0.05.",
     )
 
+    # SMC-CFG: Sliding-Mode Control CFG (α-adaptive variant; arXiv:2603.03281).
+    # Drop-in CFG modification: replaces w·e with w·(e + Δe) where
+    # Δe = -k_t·sign(s), s = (e - e_prev) + λ·e_prev, k_t = α·mean(|e_t|).
+    # No extra DiT forwards; one prev-step velocity-residual buffer. Composes
+    # with --dcw / --spectrum / --mod_guidance (operates strictly on the
+    # velocity-space CFG combine). See docs/methods/smc_cfg.md.
+    parser.add_argument(
+        "--smc_cfg",
+        action="store_true",
+        help="Enable Sliding-Mode Control CFG (defaults λ=5, α=0.2). "
+        "Modifies the cond/uncond combine; no extra forwards.",
+    )
+    parser.add_argument(
+        "--smc_cfg_lambda",
+        type=float,
+        default=5.0,
+        help="SMC-CFG sliding-manifold slope λ. Paper sweeps {3,4,5,6}; 5 was best.",
+    )
+    parser.add_argument(
+        "--smc_cfg_alpha",
+        type=float,
+        default=0.2,
+        help="SMC-CFG adaptive gain α ∈ (0, 1]. k_t := α·|e_t|.mean() per "
+        "step — self-scales across model / CFG / σ / sample. Paper's fixed "
+        "k=0.1 was off by ~14× on Anima (bench/smc_cfg/analysis_and_proposal.md), "
+        "so the α path is the only mode now. α=0.2 is the production default.",
+    )
+
     # arguments for batch and interactive modes
     parser.add_argument(
         "--from_file", type=str, default=None, help="Read prompts from a file"
@@ -483,12 +520,22 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Compile the DiT model with torch.compile for faster inference. First run incurs compilation overhead.",
     )
+    parser.add_argument(
+        "--compile_blocks",
+        action="store_true",
+        help="Compile each DiT block's _forward individually (battle-tested in "
+        "training). Sidesteps the checkpointing-wrapper trap that bites "
+        "whole-model --compile. Inductor cache persists across runs.",
+    )
+    parser.add_argument(
+        "--compile_inductor_mode",
+        type=str,
+        default=None,
+        help="Inductor preset for --compile_blocks (e.g. 'default', "
+        "'reduce-overhead'). None = inductor default.",
+    )
 
     args = parser.parse_args()
-
-    # FP8 autocast is not supported yet -- force-disable so downstream code paths
-    # see a consistent False on this flag.
-    args.fp8 = False
 
     # Validate arguments
     if args.from_file and args.interactive:
@@ -918,8 +965,8 @@ def main():
         tokenize_strategy = strategy_anima.AnimaTokenizeStrategy(
             qwen3_path=args.text_encoder,
             t5_tokenizer_path=None,
-            qwen3_max_length=512,
-            t5_max_length=512,
+            qwen3_max_length=MAX_CROSSATTN_TOKENS,
+            t5_max_length=MAX_CROSSATTN_TOKENS,
         )
         text_strategies.TokenizeStrategy.set_strategy(tokenize_strategy)
 

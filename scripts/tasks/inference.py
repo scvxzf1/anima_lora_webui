@@ -26,7 +26,39 @@ def _env_truthy(name: str) -> bool:
     return os.environ.get(name, "").strip().lower() in ("1", "true", "yes", "on")
 
 
-def _spectrum_flags(stop_caching_step: int = 29) -> list[str]:
+def _mod_flags() -> list[str]:
+    """Resolve latest distilled pooled_text_proj for ``MOD=1``."""
+    return ["--pooled_text_proj", str(latest_output("pooled_text_proj"))]
+
+
+def _base_test_args(*, lora_default: bool = True) -> list[str]:
+    """Build the shared ``inference.py`` argv prefix used by every ``test*`` command.
+
+    Honors three env levers so they compose uniformly across ``test``,
+    ``test-smc-cfg``, ``test-dcw``, ``test-dcw-v4``:
+
+    - ``NOLORA=1`` skips ``--lora_weight`` (bare DiT). When unset, ``lora_default``
+      decides whether the caller wants a LoRA by default — ``test-dcw-v4`` opts
+      out (DCW v4 is meant to ride on the bare DiT unless the user adds one).
+    - ``SPECTRUM=1`` appends Spectrum flags.
+    - ``MOD=1`` appends ``--pooled_text_proj <latest>``.
+    """
+    args = list(INFERENCE_BASE)
+    nolora_env = os.environ.get("NOLORA")
+    if nolora_env is None:
+        include_lora = lora_default
+    else:
+        include_lora = not _env_truthy("NOLORA")
+    if include_lora:
+        args += ["--lora_weight", str(latest_lora())]
+    if _env_truthy("SPECTRUM"):
+        args += _spectrum_flags()
+    if _env_truthy("MOD"):
+        args += _mod_flags()
+    return args
+
+
+def _spectrum_flags(stop_caching_step: int = 27) -> list[str]:
     return [
         "--spectrum",
         "--spectrum_window_size",
@@ -49,24 +81,21 @@ def _spectrum_flags(stop_caching_step: int = 29) -> list[str]:
 
 
 def cmd_test(extra):
-    """Inference with the latest LoRA. ``SPECTRUM=1`` enables Spectrum acceleration."""
-    args = [*INFERENCE_BASE, "--lora_weight", str(latest_lora())]
-    if _env_truthy("SPECTRUM"):
-        args += _spectrum_flags()
-    args.extend(extra)
-    run(args)
+    """Inference with the latest LoRA. See ``_base_test_args`` for env levers."""
+    run([*_base_test_args(), *extra])
 
 
 def cmd_test_mod(extra):
-    """Inference with the latest distilled pooled_text_proj MLP for modulation guidance."""
-    run(
-        [
-            *INFERENCE_BASE,
-            "--pooled_text_proj",
-            str(latest_output("pooled_text_proj")),
-            *extra,
-        ]
-    )
+    """Compatibility wrapper for the legacy ``test-mod`` task."""
+    previous = os.environ.get("MOD")
+    os.environ["MOD"] = "1"
+    try:
+        cmd_test(extra)
+    finally:
+        if previous is None:
+            os.environ.pop("MOD", None)
+        else:
+            os.environ["MOD"] = previous
 
 
 def cmd_test_hydra(extra):
@@ -110,8 +139,19 @@ def cmd_test_dcw(extra):
 
     Defaults bake in λ=0.01 + one_minus_sigma schedule (see
     bench/dcw/findings.md). Override via --dcw_lambda / --dcw_schedule in extra.
+    Honors SPECTRUM / MOD / NOLORA env levers (see ``_base_test_args``).
     """
-    run([*INFERENCE_BASE, "--dcw", "--dcw_lambda", "0.01", *extra])
+    run([*_base_test_args(), "--dcw", "--dcw_lambda", "0.01", *extra])
+
+
+def cmd_test_smc_cfg(extra):
+    """Inference with latest LoRA + SMC-CFG (arXiv:2603.03281).
+
+    Production defaults (λ=5, α=0.2). Override via --smc_cfg_lambda /
+    --smc_cfg_alpha in extra. Honors SPECTRUM / MOD / NOLORA env levers
+    (see ``_base_test_args``); composes with --dcw via extra.
+    """
+    run([*_base_test_args(), "--smc_cfg", *extra])
 
 
 def _latest_fusion_head() -> str:
@@ -145,17 +185,15 @@ def cmd_test_dcw_v4(extra):
 
     Auto-resolves the most recent fusion_head.safetensors. Pass
     --dcw_calibrator <path> (or legacy --dcw_v4 <path>) in extra to override.
-    Pass --lora_weight <path> in extra to add a LoRA on top.
+    Honors SPECTRUM / MOD / NOLORA env levers (see ``_base_test_args``).
+    Defaults to NOLORA semantics; set ``NOLORA=0`` to attach the latest LoRA,
+    or pass ``--lora_weight <path>`` in extra to attach a specific one.
     """
     extra_has_calib = any(
         a == "--dcw_calibrator" or a == "--dcw_v4" for a in extra
     )
     calib_args = [] if extra_has_calib else ["--dcw_calibrator", _latest_fusion_head()]
-    run([
-        *INFERENCE_BASE,
-        *calib_args,
-        *extra,
-    ])
+    run([*_base_test_args(lora_default=False), *calib_args, *extra])
 
 
 def cmd_test_spectrum_dcw(extra):

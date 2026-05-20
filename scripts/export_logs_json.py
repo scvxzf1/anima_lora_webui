@@ -9,6 +9,25 @@ Reads every ``events.out.tfevents.*`` file under the given run directory and
 dumps all scalar tags. Default output is one ``metrics.json`` per run written
 next to the event files. Pass ``--jsonl`` for one-object-per-line streaming
 format, or ``--stdout`` to print a single JSON blob.
+
+Output schema (default JSON form):
+
+    {
+      "run":  "<run directory path>",
+      "tags": {
+        "<tag>": [[step, wall_time, value], ...],
+        ...
+      }
+    }
+
+Note the two gotchas:
+  - Top level is wrapped (``run`` + ``tags``), not a flat tag → series map.
+    Iterate ``payload["tags"].items()``, not ``payload.items()``.
+  - Each row is ``[step, wall_time, value]`` — wall_time is in the middle.
+    Read ``row[2]`` for the metric value, not ``row[1]``.
+
+``--jsonl`` flattens to one ``{tag, step, wall_time, value}`` object per
+line, which sidesteps both gotchas if you're piping to ``jq`` / pandas.
 """
 
 from __future__ import annotations
@@ -136,7 +155,13 @@ def main(argv: list[str] | None = None) -> int:
         _dump(payload, out, args.jsonl)
         n_series = len(payload["tags"])
         n_points = sum(len(v) for v in payload["tags"].values())
+        shape = (
+            "{tag: [[step, value], ...]}"
+            if args.jsonl
+            else "{'run': str, 'tags': {tag: [[step, wall_time, value], ...]}}"
+        )
         print(f"{run} -> {out}  ({n_series} tags, {n_points} points)")
+        print(f"  shape: {shape}")
     return 0
 
 

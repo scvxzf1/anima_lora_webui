@@ -1,104 +1,86 @@
-# gui-methods/chimera_hydra.toml —— ChimeraHydra：双专家池相加路由。
+# gui-methods/chimera_hydra.toml — ChimeraHydra (dual-pool additive routing).
 #
-# 这是实验性 Hydra 变体，设计文档见 docs/proposal/chimera_hydra.md。
-# 它把专家分成 content pool 和 freq pool 两组，再把两组输出相加：
-# content pool 更偏向内容/身份/布局记忆，freq pool 更偏向频率和噪声阶段信息。
+# Proposal: docs/proposal/chimera_hydra.md
 #
-# 每个被适配的 Linear 共享一个 A，下游有两组 B-head：
-#   - content pool：由每层自己的路由器根据 pooled lx 路由
-#   - freq pool：由全局 FreqRouter 根据 FEI(z_t) 和 σ 特征路由
+# Two pools of B-heads share one A per adapted Linear:
+#   • content pool (K_c=3) routed by the per-layer rank-R router on pooled lx
+#   • freq    pool (K_f=3) routed by the network-level FreqRouter on
+#                          concat(FEI(z_t), sinusoidal-σ-features)
 #
-# 两个池子的输出直接相加；这里没有乘法 gate，也没有 σ-band overlap mask。
-# 专家分工来自“输入隔离”：content 路由看不到 σ，freq 路由看不到 pooled 文本特征。
+# Pool outputs are added (no multiplicative gate, no σ-band overlap mask).
+# Specialization is enforced by router-input separation — the content router
+# can't see σ; the freq router can't see pooled text features.
 #
-# T-LoRA 的时间步秩掩码只作用在 content 分支；freq 分支每个时间步保持完整秩，
-# 因为 freq 分支需要保留粗阶段容量，而 content 分支更需要抑制身份/布局过拟合。
+# T-LoRA mask is applied to the content branch only (the freq branch keeps
+# full rank at every t — that's exactly the regime where the freq pool
+# wants coarse-stage capacity, while content is the layout/identity
+# memorization risk surface).
 #
-# 每个专家池都有独立的负载均衡权重。这样可以分别控制 content/freq 的专家使用
-# 分布，避免一个池子平均、另一个池子塌缩到少数专家。
+# Per-pool balance loss: w_c and w_f are independent. A single combined
+# term would let one pool flatten while the other concentrates — see
+# proposal §"Balance loss". Both default to balance_loss_weight; set
+# balance_w_content / balance_w_freq to tune independently.
 
-# 基础 LoRA 容量。Chimera 会在这个低秩适配器上叠加双专家池。
 network_dim = 32
 network_alpha = 32
 
-# 训练节奏。实验方法建议先用默认 epoch 验证效果，再逐步延长。
 learning_rate = 2e-5
 max_train_epochs = 4
-
-# 普通适配器权重保存，用于推理预览和不同 epoch 对比；不包含优化器状态。
 save_every_n_epochs = 2
-
-# 可续训检查点保存，包含 checkpoint 权重和 checkpoint-state 目录。
 checkpointing_epochs = 2
 
-# 字幕增强与文本缓存。Chimera 路由依赖条件信息，caption_dropout_rate 不宜过高。
 use_shuffled_caption_variants = true
 cache_llm_adapter_outputs = true
 caption_dropout_rate = 0.1
 
-# 开启正交约束，帮助低秩方向更稳定。
 use_ortho = true
 
-# 时间步秩掩码，仅作用于 content 分支。
-# min_rank=8 表示即使在被压缩的时间步，也至少保留 8 个有效秩。
 use_timestep_mask = true
 min_rank = 8
 alpha_rank_scale = 1.0
 
-# 方法总开关：开启 ChimeraHydra。底层会把三轴路由元数据固定为
-# shared_A / route_per_layer=true / router_source=input，保证保存的元数据
-# 能真实描述这个结构。
+# ChimeraHydra activates here. The three-axis fields (use_moe_style /
+# route_per_layer / router_source) are auto-set by from_kwargs to
+# ('shared_A', true, 'input') — pinned so the save metadata is honest.
 use_chimera_hydra = true
-
-# 两个专家池的专家数。content 专家更多，freq 专家更少，是当前默认分配。
 num_experts_content = 4
 num_experts_freq = 2
 
-# 负载均衡设置：
-# 外层 balance_loss_weight 保持 1.0，让下面两个 per-pool 权重成为主要调节项。
-# balance_w_content / balance_w_freq 分别控制两个专家池的均衡强度。
+# Outer balance multiplier is 1.0 so the per-pool weights below are the
+# only knobs. Default per-pool weights match the OrthoHydra production
+# value (~2e-5 from project_hydra_balance_weight_ceiling).
 balance_loss_weight = 1.0
 balance_w_content = 2e-7
 balance_w_freq = 5e-7
-
-# 路由器学习率缩放。content 路由更依赖每层局部判断，因此默认缩放更高。
 network_content_router_lr_scale = 10
 network_freq_router_lr_scale = 2.0
-
-# 均衡损失 warmup：训练前 20% 逐步加上均衡压力，避免刚开始就强行平均路由。
 balance_loss_warmup_ratio = 0.2
 
-# FreqRouter 输入特征：
-# FEI 是 2 维频段 simplex；sigma_feature_dim 是 σ 的正弦特征维度。
-# 二者拼接后输入 freq 路由器，用于区分不同噪声阶段/频率需求。
+# FreqRouter input. FEI = 2-band simplex; σ-features disabled by default
+# (sigma_feature_dim = 0). Total input dim = 2 — flip sigma_feature_dim > 0
+# to add sinusoidal σ features (the proposal targets "F ≈ 32" total).
 fei_feature_dim = 2
 fei_sigma_low_div = 4.0
 sigma_feature_dim = 16
-
-# FreqRouter 初始化标准差。数值太大可能让早期路由过于激进。
 freq_router_init_std = 0.02
-
-# 对 FreqRouter 的不同输入模态分别做 LayerNorm。
-# 当 FEI 和 σ 特征同时启用时，这能避免高维 σ 特征压过 2 维 FEI。
+# Per-modality LayerNorm on the FreqRouter input. Only active when both
+# FEI and σ feature blocks are enabled — fires automatically once
+# sigma_feature_dim > 0 to prevent the higher-dim σ block from
+# fan-in-overpowering the 2-D FEI simplex. No-op while σ is off.
 freq_router_layer_norm = true
 
-# 路由作用范围：
-# 正则匹配到的 Linear 会变成 Chimera leaf；没匹配到的层退回 OrthoLoRA。
-# 这里限制到 MLP layer1/layer2，能控制显存和方法复杂度。
+# Routing scope: same default as the other hydra variants — every Linear
+# matched by the regex becomes a chimera leaf; non-matching layers fall
+# back to OrthoLoRA (single-pool Cayley, no router).
 router_targets = ".*(mlp\\.layer[12])$"
 
-# 输出名前缀。
 output_name = "anima_chimera"
 
-# 常规显存设置。Chimera 当前没有单独 8GB 版本，OOM 时应优先降低 batch 或改用
-# 普通/8GB Hydra、LoRA 变体。
 blocks_to_swap = 0
 
-# 关闭额外 CMMD 开关，避免和实验性路由效果混在一起。
 use_cmmd = false
 
 [variant]
-# GUI 展示元数据；experimental=true 会提醒这是实验变体。
 family = "chimera"
 label = "ChimeraHydra (dual-pool)"
 description = "OrthoHydra with content + freq pools, additive composition."

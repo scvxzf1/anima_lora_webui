@@ -28,6 +28,31 @@ CONSTANT_TOKEN_BUCKETS = [
     (2048, 512),
 ]
 
+# DCW v4 calibration aspect-bucket set.
+#
+# Top 5 (H, W) resolutions by frequency in post_image_dataset/lora/. List
+# order *is* the canonical aspect_id index — DCW v4's per-aspect statistics
+# (fusion_head.safetensors per-bucket μ_g, σ²_prior, λ_scalar) key off this
+# order, so a reorder invalidates every shipped fusion-head checkpoint.
+#
+# Read by both the calibration data-gen path (scripts/tasks/dcw.py drives
+# `make dcw` over these buckets) and the fusion-head trainer
+# (scripts/dcw/fusion_data.py uses the dict for the (H, W) → aspect_id
+# lookup that decides which run rows feed the trainer). Inference itself
+# is bucket-agnostic post-cleanup — see project_dcw_bucket_prior_cosmetic.
+DCW_ASPECT_BUCKETS: Tuple[Tuple[int, int], ...] = (
+    (832, 1248),  # 0 — HD portrait (most common)
+    (896, 1152),  # 1 — 3:4 portrait
+    (768, 1344),  # 2 — tall portrait
+    (1152, 896),  # 3 — 3:4 landscape
+    (1248, 832),  # 4 — HD landscape
+)
+DCW_ASPECT_NAMES: Tuple[str, ...] = tuple(
+    f"{h}x{w}" for h, w in DCW_ASPECT_BUCKETS
+)
+DCW_ASPECT_TABLE: dict = {hw: i for i, hw in enumerate(DCW_ASPECT_BUCKETS)}
+N_DCW_ASPECTS: int = len(DCW_ASPECT_BUCKETS)
+
 
 def make_bucket_resolutions(max_reso, min_size=256, max_size=1024, divisible=64):
     """Generate bucket resolutions for multi-aspect-ratio training.

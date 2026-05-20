@@ -116,7 +116,14 @@ def _detect_mask(
     mask = (prob_map * 255).astype(np.uint8)
     return mask
 
-def get_image_files(image_dir: Path) -> list[Path]:
+
+def get_image_files(image_dir: Path, recursive: bool = False) -> list[Path]:
+    if recursive:
+        return sorted(
+            p
+            for p in image_dir.rglob("*")
+            if p.is_file() and p.suffix.lower() in IMAGE_EXTENSIONS
+        )
     return sorted(
         p for p in image_dir.iterdir() if p.suffix.lower() in IMAGE_EXTENSIONS
     )
@@ -156,6 +163,14 @@ def main() -> None:
     parser.add_argument(
         "--workers", type=int, default=4, help="I/O workers (default: 4)"
     )
+    parser.add_argument(
+        "--recursive",
+        action="store_true",
+        help=(
+            "Walk subfolders under --image-dir. Mask output mirrors the source "
+            "subdir structure under --mask-dir."
+        ),
+    )
     args = parser.parse_args()
 
     dilate_kernel = (
@@ -169,12 +184,35 @@ def main() -> None:
     masks_dir = Path(args.mask_dir)
     masks_dir.mkdir(parents=True, exist_ok=True)
 
+    image_files = get_image_files(image_dir, recursive=args.recursive)
+    if args.recursive:
+        seen: dict[tuple[Path, str], Path] = {}
+        collisions: list[tuple[str, Path, Path]] = []
+        for p in image_files:
+            key = (p.parent, p.stem)
+            if key in seen:
+                collisions.append((p.stem, seen[key], p))
+            else:
+                seen[key] = p
+        if collisions:
+            print("Duplicate image stems within a single folder of --image-dir:")
+            for stem, a, b in collisions:
+                print(f"  '{stem}': {a} <-> {b}")
+            sys.exit(1)
+
     # Filter to work items
     work_items = []
-    for image_path in get_image_files(image_dir):
-        mask_path = masks_dir / f"{image_path.stem}_mask.png"
+    for image_path in image_files:
+        try:
+            rel = image_path.parent.relative_to(image_dir)
+        except ValueError:
+            rel = Path("")
+        rel_str = str(rel)
+        target_dir = masks_dir / rel if rel_str not in ("", ".") else masks_dir
+        mask_path = target_dir / f"{image_path.stem}_mask.png"
         if mask_path.exists() and not args.force:
             continue
+        target_dir.mkdir(parents=True, exist_ok=True)
         work_items.append((image_path, mask_path))
 
     total = len(work_items)

@@ -4,6 +4,7 @@ from dataclasses import (
     dataclass,
 )
 import functools
+import os
 import random
 from textwrap import dedent, indent
 import json
@@ -27,20 +28,19 @@ from library.datasets import (
     DreamBoothSubset,
     DreamBoothDataset,
     DatasetGroup,
+    glob_images,
 )
+from library.datasets.subsets import filter_paths_by_glob
 from library.training import (
     add_dataset_arguments,
     add_training_arguments,
 )
 from library.log import setup_logging
-from library.env import expand_env_vars_in_obj, load_dotenv
 
 setup_logging()
 import logging  # noqa: E402
 
 logger = logging.getLogger(__name__)
-
-load_dotenv()
 
 
 def add_config_arguments(parser: argparse.ArgumentParser):
@@ -79,6 +79,10 @@ class BaseSubsetParams:
     validation_split_num: int = 0
     resize_interpolation: Optional[str] = None
     recursive: bool = False
+    # fnmatch glob on each image's path relative to image_dir; `*` (or empty)
+    # is no-op. Propagated from a top-level `path_pattern` argparse arg
+    # through the BlueprintGenerator fallback chain.
+    path_pattern: str = "*"
 
 
 @dataclass
@@ -175,6 +179,7 @@ class ConfigSanitizer:
         "caption_suffix": str,
         "custom_attributes": dict,
         "resize_interpolation": str,
+        "path_pattern": str,
     }
     # DO means DropOut
     DO_SUBSET_ASCENDABLE_SCHEMA = {
@@ -389,6 +394,36 @@ class BlueprintGenerator:
         return default_value
 
 
+# Below this raw image count we auto-disable validation_split_num /
+# validation_split: carving off any held-out slice from a small pool
+# materially shrinks the training set (e.g. base.toml's default
+# validation_split_num=16 against 30 images leaves only 14 for training)
+# and the resulting CMMD estimator is too noisy to be useful.
+_MIN_TRAIN_IMAGES_FOR_VALIDATION = 100
+
+
+def _count_training_image_paths(dataset_blueprint: "DatasetBlueprint") -> int:
+    """Sum raw (non-reg, pre-split, pre-sample_ratio) image counts across a
+    blueprint's subsets — uses the same `glob_images` discovery as
+    `load_dreambooth_dir` so the count matches what training would see.
+    """
+    total = 0
+    for subset_blueprint in dataset_blueprint.subsets:
+        params = subset_blueprint.params
+        if getattr(params, "is_reg", False):
+            continue
+        image_dir = getattr(params, "image_dir", None)
+        if not image_dir or not os.path.isdir(image_dir):
+            continue
+        paths = glob_images(
+            image_dir, "*", recursive=bool(getattr(params, "recursive", False))
+        )
+        pattern = getattr(params, "path_pattern", "*") or "*"
+        keep = filter_paths_by_glob(paths, image_dir, pattern)
+        total += sum(keep)
+    return total
+
+
 def generate_dataset_group_by_blueprint(
     dataset_group_blueprint: DatasetGroupBlueprint,
     constant_token_buckets: bool = False,
@@ -396,6 +431,25 @@ def generate_dataset_group_by_blueprint(
     datasets: List[DreamBoothDataset] = []
 
     for dataset_blueprint in dataset_group_blueprint.datasets:
+        params = dataset_blueprint.params
+        if (params.validation_split_num and params.validation_split_num > 0) or (
+            params.validation_split and params.validation_split > 0.0
+        ):
+            n_train_images = _count_training_image_paths(dataset_blueprint)
+            if 0 < n_train_images < _MIN_TRAIN_IMAGES_FOR_VALIDATION:
+                logger.warning(
+                    "Training pool has %d image(s) (< %d) — auto-disabling "
+                    "validation_split_num=%s / validation_split=%s. The whole "
+                    "pool will be used for training and no validation pass "
+                    "will run.",
+                    n_train_images,
+                    _MIN_TRAIN_IMAGES_FOR_VALIDATION,
+                    params.validation_split_num,
+                    params.validation_split,
+                )
+                params.validation_split_num = 0
+                params.validation_split = 0.0
+
         subsets = [
             DreamBoothSubset(**asdict(subset_blueprint.params))
             for subset_blueprint in dataset_blueprint.subsets
@@ -433,6 +487,19 @@ def generate_dataset_group_by_blueprint(
             **asdict(dataset_blueprint.params),
             is_training_dataset=False,
         )
+        # When validation_split_num >= subset image count, split_train_val
+        # disables the val slice for that subset (see library/datasets/subsets.py).
+        # If every subset ended up empty, the val dataset has no images — drop
+        # it so make_buckets / CMMD don't run against a zero-image group.
+        if getattr(dataset, "num_train_images", 0) == 0:
+            logging.warning(
+                "Validation dataset is empty after applying validation_split_num "
+                "/ validation_split — skipping validation. (validation_split_num=%s, "
+                "validation_split=%s)",
+                dataset_blueprint.params.validation_split_num,
+                dataset_blueprint.params.validation_split,
+            )
+            continue
         val_datasets.append(dataset)
 
     def print_info(_datasets, dataset_type: str):
@@ -571,13 +638,13 @@ def load_user_config(file: str) -> dict:
     if file.name.lower().endswith(".json"):
         try:
             with open(file, "r") as f:
-                config = expand_env_vars_in_obj(json.load(f))
+                config = json.load(f)
         except Exception:
             logger.error("Error on parsing JSON config file. Please check the format.")
             raise
     elif file.name.lower().endswith(".toml"):
         try:
-            config = expand_env_vars_in_obj(toml.load(file))
+            config = toml.load(file)
         except Exception:
             logger.error("Error on parsing TOML config file. Please check the format.")
             raise

@@ -21,92 +21,6 @@ from networks import attention_dispatch
 _KV_BUCKETS = (128, 192, 256, 512)
 
 
-class _FP8LinearFunc(torch.autograd.Function):
-    """Custom autograd for fp8 linear: saves compact fp8 weight instead of transient bf16 copy."""
-
-    @staticmethod
-    def forward(
-        input: torch.Tensor, weight_fp8: torch.Tensor, bias: Optional[torch.Tensor]
-    ):
-        return F.linear(input, weight_fp8.to(input.dtype), bias)
-
-    @staticmethod
-    def setup_context(ctx, inputs, output):
-        _, weight_fp8, _ = inputs
-        ctx.save_for_backward(weight_fp8)
-
-    @staticmethod
-    def backward(ctx, grad_output):
-        (weight_fp8,) = ctx.saved_tensors
-        grad_input = grad_output @ weight_fp8.to(grad_output.dtype)
-        return grad_input, None, None
-
-
-class FP8Linear(nn.Linear):
-    """Drop-in nn.Linear replacement that stores weights in float8_e4m3fn.
-
-    Subclasses nn.Linear so that LoRA's isinstance checks still match.
-    Uses a custom autograd function so that only the compact fp8 weight
-    (not a transient bf16 copy) is saved for backward.
-    """
-
-    def __init__(self, original: nn.Linear):
-        nn.Module.__init__(self)
-        self.in_features = original.in_features
-        self.out_features = original.out_features
-        self.weight = nn.Parameter(
-            original.weight.data.to(torch.float8_e4m3fn),
-            requires_grad=False,
-        )
-        self.bias = original.bias
-
-    def _apply(self, fn, recurse=True):
-        result = super()._apply(fn, recurse)
-        if self.weight.dtype != torch.float8_e4m3fn:
-            self.weight = nn.Parameter(
-                self.weight.data.to(torch.float8_e4m3fn),
-                requires_grad=False,
-            )
-        return result
-
-    def forward(self, input):
-        return _FP8LinearFunc.apply(input, self.weight, self.bias)
-
-
-# Class names whose children should NOT be quantized to fp8.
-_FP8_SKIP_CLASS_NAMES = {"RMSNorm", "TimestepEmbedding", "FinalLayer", "LLMAdapter"}
-
-
-def quantize_to_fp8(model: nn.Module) -> int:
-    """Replace frozen nn.Linear modules with FP8Linear, skipping sensitive layers.
-
-    Skips: RMSNorm, TimestepEmbedding, FinalLayer, LLMAdapter,
-    and any module with requires_grad=True parameters.
-
-    Returns the number of modules replaced.
-    """
-    skip_modules: set[int] = set()
-    for mod in model.modules():
-        if type(mod).__name__ in _FP8_SKIP_CLASS_NAMES:
-            skip_modules.add(id(mod))
-            for child in mod.modules():
-                skip_modules.add(id(child))
-
-    count = 0
-    for parent in model.modules():
-        if id(parent) in skip_modules:
-            continue
-        for name, child in parent.named_children():
-            if not isinstance(child, nn.Linear):
-                continue
-            if id(child) in skip_modules:
-                continue
-            setattr(parent, name, FP8Linear(child))
-            count += 1
-
-    return count
-
-
 def to_device(x, device):
     if isinstance(x, torch.Tensor):
         return x.to(device)
@@ -763,7 +677,7 @@ class Timesteps(nn.Module):
         exponent = exponent / (half_dim - 0.0)
 
         emb = torch.exp(exponent)
-        emb = timesteps[:, None].float() * emb[None, :]
+        emb = timesteps[:, None] * emb[None, :]
 
         sin_emb = torch.sin(emb)
         cos_emb = torch.cos(emb)
@@ -1779,6 +1693,15 @@ class Anima(nn.Module):
                     torch.nn.functional.pad(rope_cos_sin[1], pad),
                 )
 
+        # Cast RoPE cos/sin to the block compute dtype once. Without this, every
+        # block's apply_rotary_pos_emb_qk re-materializes the fp32 cache in bf16.
+        if rope_cos_sin is not None:
+            compute_dtype = x_B_T_H_W_D.dtype
+            rope_cos_sin = (
+                rope_cos_sin[0].to(compute_dtype),
+                rope_cos_sin[1].to(compute_dtype),
+            )
+
         if timesteps_B_T.ndim == 1:
             timesteps_B_T = timesteps_B_T.unsqueeze(1)
         t_embedding_B_T_D, adaln_lora_B_T_3D = self.t_embedder(timesteps_B_T)
@@ -2007,10 +1930,7 @@ class LLMAdapterRMSNorm(nn.Module):
     def forward(self, hidden_states):
         variance = hidden_states.to(torch.float32).pow(2).mean(-1, keepdim=True)
         hidden_states = hidden_states * torch.rsqrt(variance + self.variance_epsilon)
-
-        if self.weight.dtype in [torch.float16, torch.bfloat16]:
-            hidden_states = hidden_states.to(self.weight.dtype)
-
+        hidden_states = hidden_states.to(self.weight.dtype)
         return self.weight * hidden_states
 
 
@@ -2044,19 +1964,16 @@ class AdapterRotaryEmbedding(nn.Module):
 
     @torch.no_grad()
     def forward(self, x, position_ids):
+        # inv_freq is registered as fp32 but a parent .to(bf16) casts it too —
+        # force fp32 here so the matmul matches position_ids_expanded.
         inv_freq_expanded = (
-            self.inv_freq[None, :, None]
-            .float()
-            .expand(position_ids.shape[0], -1, 1)
-            .to(x.device)
+            self.inv_freq[None, :, None].float().expand(position_ids.shape[0], -1, 1)
         )
         position_ids_expanded = position_ids[:, None, :].float()
 
         device_type = x.device.type
         with torch.autocast(device_type=device_type, enabled=False):
-            freqs = (
-                inv_freq_expanded.float() @ position_ids_expanded.float()
-            ).transpose(1, 2)
+            freqs = (inv_freq_expanded @ position_ids_expanded).transpose(1, 2)
             emb = torch.cat((freqs, freqs), dim=-1)
             cos = emb.cos()
             sin = emb.sin()
@@ -2163,14 +2080,17 @@ class LLMAdapterAttention(nn.Module):
             k_packed = key_states[eff_kv_mask]
             v_packed = value_states[eff_kv_mask]
 
+            # Pass the padded lengths as max_seqlen_q/k. Slightly over-sizes the
+            # flash kernel's metadata vs the true batch maxima but avoids a
+            # host-device sync from .item() on every adapter layer.
             out_packed = attention_dispatch.flash_attn_varlen_func(
                 q_packed,
                 k_packed,
                 v_packed,
                 cu_seqlens_q,
                 cu_seqlens_kv,
-                q_seqlens.max().item(),
-                kv_seqlens.max().item(),
+                L_q,
+                L_kv,
             )
 
             # Unpack: [total_valid_q, H, D] → [B, L_q, H, D]
