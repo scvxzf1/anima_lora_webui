@@ -376,30 +376,34 @@ class ChimeraHydraLoRAModule(BaseLoRAModule):
         Q_eff_c = R_q_c @ self.Q_basis_c  # (r, in)
         Q_eff_f = R_q_f @ self.Q_basis_f  # (r, in)
 
+        # Single rank-cat down-projection for both pools. The two pools share
+        # the same input ``x`` but have distinct ``Q_eff``; running them as
+        # two separate matmuls makes backward materialize TWO ``(B, L, in)``
+        # ``grad_x`` tensors that autograd then sums. On wide-input Linears
+        # (``mlp.layer2``, in=8192) that doubled fp32 transient cost ~62 MiB
+        # /module → ~1.7 GiB across 28 blocks. Concatenating ``Q_eff`` along
+        # the rank axis computes ``grad_x`` ONCE; the split is a free view.
+        # Mirrors the up-side rank-cat bmm below (``lx_cat`` / ``P_combined_cat``).
+        # Bit-identical to the per-pool calls — see
+        # ``test_chimera_down_proj_rank_cat_matches_separate``.
+        r = self.lora_dim
+        Q_eff_cat = torch.cat([Q_eff_c, Q_eff_f], dim=0)  # (2r, in)
         if self.use_custom_down_autograd and self.training:
-            # Per-pool scaled-down-project: pass raw ``x`` + fp32 ``inv_scale``
-            # into each call. ``ScaledLoRADownProjectFn`` folds ``inv_scale``
-            # into ``Q_eff`` at the fp32 matmul instead of materializing a
-            # ``(B, L, in_dim)`` bf16 rebalanced tensor. The prior upstream
-            # ``x_in = _rebalance(x)`` allocated that tensor per Linear under
-            # channel_scaling, pinning low-GiB extra activation on Anima
-            # (worse under torch.compile + reduce-overhead CUDA graphs that
-            # also pin the buffer in the graph pool). Saved-for-backward now
-            # aliases the same ``x`` tensor ``org_forward`` already pinned,
-            # so the channel_scaling toggle no longer adds per-Linear
-            # activation memory. PyTorch sums ``grad_x`` across the two
-            # Functions automatically (same input, two consumers). With
-            # ``inv_scale`` kept fp32 throughout, the custom path differs
-            # from the bf16 legacy path by bf16 rounding on the rebalance
-            # — see the matching allclose contract in
+            # ``ScaledLoRADownProjectFn`` folds ``inv_scale`` into ``Q_eff_cat``
+            # at the fp32 matmul (both pools share the same per-input-channel
+            # ``inv_scale``), so no rebalanced ``(B, L, in)`` bf16 activation is
+            # materialized; saved-for-backward aliases the same ``x`` the
+            # original Linear already pinned. With ``inv_scale`` kept fp32 the
+            # custom path differs from the bf16 legacy ``_rebalance`` path only
+            # by bf16 rounding — see the allclose contract in
             # ``test_chimera_channel_scale_flag_on_matches_legacy_gradients``.
             inv = self.inv_scale if self._has_channel_scale else None
-            lx_c = lora_down_project(x, Q_eff_c, inv).to(work)
-            lx_f = lora_down_project(x, Q_eff_f, inv).to(work)
+            lx_down_cat = lora_down_project(x, Q_eff_cat, inv).to(work)
         else:
             x_lora = self._rebalance(x.to(work))
-            lx_c = torch.nn.functional.linear(x_lora, Q_eff_c)
-            lx_f = torch.nn.functional.linear(x_lora, Q_eff_f)
+            lx_down_cat = torch.nn.functional.linear(x_lora, Q_eff_cat)
+        lx_c = lx_down_cat[..., :r]
+        lx_f = lx_down_cat[..., r:]
 
         # Content router. Global-router path reads the broadcast buffer
         # written by the network-level ContentRouter (slot-assigned with

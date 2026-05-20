@@ -20,8 +20,8 @@
 # Per-variant dim/alpha/lr/epochs are experiment drift, not calibrated
 # defaults — tune freely.
 
-network_alpha = 16
-network_dim = 16
+network_alpha = 96
+network_dim = 96
 
 learning_rate = 1e-4
 max_train_epochs = 3
@@ -60,27 +60,27 @@ alpha_rank_scale = 1.0
 # -------------
 # "shared_A" and route_per_layer=false -> hydralora
 
-use_moe_style = "shared_A"
-route_per_layer = true
-router_source = "crossattn_emb"
-network_router_lr_scale = 10
+# use_moe_style = "shared_A"
+# route_per_layer = true
 # router_source = "crossattn_emb"
+# network_router_lr_scale = 10
+# # router_source = "crossattn_emb"
 
-fei_feature_dim = 2          # raw simplex (e_low, e_high)
-fei_sigma_low_div = 4.0      # σ_low = min(H_lat, W_lat) / 4 — 2026-05-13 dataset sweep
-fera_num_bands = 2
-fera_fecl_weight = 0.0
+# fei_feature_dim = 2          # raw simplex (e_low, e_high)
+# fei_sigma_low_div = 4.0      # σ_low = min(H_lat, W_lat) / 4 — 2026-05-13 dataset sweep
+# fera_num_bands = 2
+# fera_fecl_weight = 0.0
 
-sigma_feature_dim = 16
-# per_bucket_balance_weight = 0.3   # × balance_loss_weight, per-bucket term
-# num_sigma_buckets = 3
-# specialize_experts_by_sigma_buckets = true
-# sigma_bucket_boundaries = [0.0, 0.5, 0.8, 1.0]
-router_targets = ".*(cross_attn\\.output_proj|mlp\\.layer[12])$"
+# sigma_feature_dim = 16
+# # per_bucket_balance_weight = 0.3   # × balance_loss_weight, per-bucket term
+# # num_sigma_buckets = 3
+# # specialize_experts_by_sigma_buckets = true
+# # sigma_bucket_boundaries = [0.0, 0.5, 0.8, 1.0]
+# router_targets = ".*(cross_attn\\.output_proj|mlp\\.layer[12])$"
 
-num_experts = 4
-balance_loss_weight = 1e-7 # seems lr * 1/100 is proper
-balance_loss_warmup_ratio = 0.4
+# num_experts = 4
+# balance_loss_weight = 1e-7 # seems lr * 1/100 is proper
+# balance_loss_warmup_ratio = 0.4
 
 # -------------
 # "independent_A" and route_per_layer=true -> fera

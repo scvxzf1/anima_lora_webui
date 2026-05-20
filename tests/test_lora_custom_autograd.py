@@ -648,3 +648,70 @@ def test_chimera_channel_scale_flag_on_matches_legacy_gradients():
         "Chimera+channel_scale grad_x differs beyond bf16 rounding tolerance"
     )
     assert g_legacy["S_q_c"].abs().sum() > 0 and g_legacy["S_q_f"].abs().sum() > 0
+
+
+def _check_down_proj_rank_cat_matches_separate(scaled: bool):
+    """Chimera collapses both pools' down-projections into ONE rank-cat matmul
+    (``cat([Q_eff_c, Q_eff_f]) @ x`` then split) so backward computes ``grad_x``
+    once instead of summing two ``(B, L, in)`` transients — the wide-input
+    (``mlp.layer2``) memory win that motivated the change.
+
+    Invariant the optimization relies on, for both the unscaled and scaled
+    (channel_scale) paths: forward, per-pool ``grad_weight``, and ``grad_x``
+    all agree within bf16 rounding tolerance. They are *not* bitwise equal —
+    a single ``(2r, in)`` GEMM accumulates differently than two ``(r, in)``
+    GEMMs (shape-dependent blocking), and the rank-cat sums ``grad_x`` once in
+    fp32 over ``2r`` rows whereas the separate path sums two bf16-rounded
+    ``grad_x`` tensors (the cat path is in fact *more* accurate). The
+    tolerance is the same bf16 band used by the channel_scale tests.
+    """
+    in_dim, r, tokens = 32, 4, 8
+    inv = _make_channel_scale(in_dim) if scaled else None
+
+    def run(catted: bool):
+        torch.manual_seed(0)
+        x = torch.randn(2, tokens, in_dim, dtype=torch.bfloat16, requires_grad=True)
+        Qc = torch.randn(r, in_dim, dtype=torch.bfloat16, requires_grad=True)
+        Qf = torch.randn(r, in_dim, dtype=torch.bfloat16, requires_grad=True)
+        if catted:
+            lx = lora_down_project(x, torch.cat([Qc, Qf], dim=0), inv)
+            lx_c, lx_f = lx[..., :r], lx[..., r:]
+        else:
+            lx_c = lora_down_project(x, Qc, inv)
+            lx_f = lora_down_project(x, Qf, inv)
+        # Linear, asymmetric loss: grad_out is a constant (1 for c, 3 for f),
+        # exactly identical across both paths, so the comparison isolates the
+        # GEMM-shape / grad_x-accumulation rounding the change introduces.
+        (lx_c.float().sum() + lx_f.float().sum() * 3.0).backward()
+        return (
+            lx_c.detach().clone(),
+            lx_f.detach().clone(),
+            x.grad.detach().clone(),
+            Qc.grad.detach().clone(),
+            Qf.grad.detach().clone(),
+        )
+
+    cat_c, cat_f, cat_gx, cat_gQc, cat_gQf = run(catted=True)
+    sep_c, sep_f, sep_gx, sep_gQc, sep_gQf = run(catted=False)
+
+    tag = "scaled" if scaled else "unscaled"
+    ac = dict(atol=_CS_ATOL, rtol=_CS_RTOL)
+    assert torch.allclose(cat_c, sep_c, **ac) and torch.allclose(cat_f, sep_f, **ac), (
+        f"rank-cat down-proj forward differs beyond bf16 tolerance ({tag})"
+    )
+    assert torch.allclose(cat_gQc, sep_gQc, **ac) and torch.allclose(cat_gQf, sep_gQf, **ac), (
+        f"rank-cat down-proj grad_weight differs beyond bf16 tolerance ({tag})"
+    )
+    assert torch.allclose(cat_gx, sep_gx, **ac), (
+        f"rank-cat down-proj grad_x differs beyond bf16 tolerance ({tag})"
+    )
+    # Sanity: the adapter actually contributed gradient to both pools.
+    assert cat_gQc.abs().sum() > 0 and cat_gQf.abs().sum() > 0
+
+
+def test_chimera_down_proj_rank_cat_matches_separate_unscaled():
+    _check_down_proj_rank_cat_matches_separate(scaled=False)
+
+
+def test_chimera_down_proj_rank_cat_matches_separate_scaled():
+    _check_down_proj_rank_cat_matches_separate(scaled=True)
