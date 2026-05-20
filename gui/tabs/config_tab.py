@@ -55,7 +55,12 @@ from gui import (
 from gui.explanations import field_help, method_guide
 from gui.i18n import t
 from gui.process import kill_process_tree, make_subprocess_env, setup_kill_safe
-from gui.progress import TQDM_RE, TqdmProgressTracker, make_progress_bar
+from gui.progress import (
+    TQDM_RE,
+    JsonlProgressReader,
+    TqdmProgressTracker,
+    make_progress_bar,
+)
 
 
 class ClickableLabel(QLabel):
@@ -193,6 +198,12 @@ class ConfigTab(QWidget):
 
         self.progress = make_progress_bar()
         self._progress_tracker = TqdmProgressTracker(self.progress)
+        # Phase-0 structured progress: tails the run's progress.jsonl and takes
+        # over the bar once events appear; tqdm parsing above is the fallback.
+        self._jsonl_reader = JsonlProgressReader(self.progress)
+        self._jsonl_timer = QTimer(self)
+        self._jsonl_timer.setInterval(400)
+        self._jsonl_timer.timeout.connect(self._jsonl_reader.poll)
         lay.addWidget(self.progress)
 
         # Vertical splitter: config form on top, log on bottom
@@ -812,6 +823,21 @@ class ConfigTab(QWidget):
         # their stdio would silently drop.
         args = ["tasks.py", "lora-gui", variant]
 
+        # Point the JSONL tailer at this run's progress stream (mirrors
+        # ProgressSink.resolve_path on the trainer side). Best-effort: if the
+        # merged config can't be resolved, tqdm-stdout parsing still drives the bar.
+        try:
+            merged, _ = merged_gui_variant_preset(variant, self._IMPLICIT_PRESET)
+            output_dir = merged.get("output_dir")
+            output_name = merged.get("output_name") or "run"
+            if output_dir:
+                self._jsonl_reader.watch(
+                    str(Path(output_dir) / f"{output_name}.progress.jsonl")
+                )
+                self._jsonl_timer.start()
+        except Exception:
+            pass
+
         self._log(f"> python {' '.join(args)}\n")
         self._running_mode = "train"
         self._proc.start(sys.executable, args)
@@ -846,7 +872,12 @@ class ConfigTab(QWidget):
         parts = re.split(r"[\r\n]", buf)
         tail = parts[-1]  # incomplete trailing fragment — keep buffered
         for line in parts[:-1]:
-            if self._progress_tracker.feed(line):
+            if self._jsonl_reader.active:
+                # JSONL drives the bar now; just swallow tqdm lines so they
+                # don't spam the log, but don't let tqdm move the bar.
+                if TQDM_RE.search(line):
+                    continue
+            elif self._progress_tracker.feed(line):
                 continue
             if line:
                 self._log(line + "\n")
@@ -856,6 +887,8 @@ class ConfigTab(QWidget):
         self._stdout_buf = ""
         self._stderr_buf = ""
         self._progress_tracker.reset()
+        self._jsonl_timer.stop()
+        self._jsonl_reader.reset()
 
     def _on_finished(self, exit_code: int, _status: QProcess.ExitStatus):
         # Flush any buffered partial lines before the finish banner.
@@ -864,6 +897,10 @@ class ConfigTab(QWidget):
             if leftover and not TQDM_RE.search(leftover):
                 self._log(leftover + "\n")
             setattr(self, buf_name, "")
+        # Drain any trailing progress events (run_end) before tearing down.
+        self._jsonl_timer.stop()
+        self._jsonl_reader.poll()
+        self._jsonl_reader.reset()
         self.progress.setVisible(False)
         self._log(f"\n{t('finished', code=exit_code)}\n")
         mode = getattr(self, "_running_mode", "train")

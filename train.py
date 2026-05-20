@@ -88,6 +88,7 @@ from library.training import (
     verify_training_args,
 )
 from library.training.loop import build_loop_state, run_training_loop
+from library.training.progress import ProgressSink
 from library.training.router_conditioning import apply_router_conditioning
 from library.training.text_conds import prepare_text_conds
 from library.training.forward_kwargs import build_forward_kwargs
@@ -279,6 +280,12 @@ class AnimaTrainer:
 
         for tracker in other_trackers:
             tracker.log(logs, step=step_value)
+
+        progress_sink = getattr(self, "progress_sink", None)
+        if progress_sink is not None and accelerator.is_main_process:
+            progress_sink.log(
+                logs, global_step=global_step, epoch=epoch, val_step=val_step
+            )
 
     # endregion
 
@@ -2086,6 +2093,27 @@ class AnimaTrainer:
             len(train_dataloader) / args.gradient_accumulation_steps
         )
         num_train_epochs = math.ceil(args.max_train_steps / num_update_steps_per_epoch)
+
+        # Structured progress sink (Phase 0): a JSONL event stream next to the
+        # checkpoint that the GUI / daemon can tail instead of regex-parsing
+        # tqdm. Main-process only; default on, gated by --progress_jsonl.
+        self.progress_sink = None
+        if is_main_process:
+            progress_path = ProgressSink.resolve_path(args)
+            if progress_path is not None:
+                self.progress_sink = ProgressSink(
+                    progress_path,
+                    run=args.output_name or "run",
+                    method=getattr(args, "method", None),
+                    preset=getattr(args, "preset", None),
+                    t0=training_started_at,
+                )
+                self.progress_sink.run_start(
+                    total_steps=args.max_train_steps,
+                    total_epochs=num_train_epochs,
+                    pid=os.getpid(),
+                )
+
         if (args.save_n_epoch_ratio is not None) and (args.save_n_epoch_ratio > 0):
             args.save_every_n_epochs = (
                 math.floor(num_train_epochs / args.save_n_epoch_ratio) or 1
@@ -2150,6 +2178,7 @@ class AnimaTrainer:
             get_sai_model_spec_fn=self.get_sai_model_spec,
             current_epoch=current_epoch,
             current_step=current_step,
+            progress_sink=self.progress_sink,
         )
         saver.register_hooks(network)
 
@@ -2245,16 +2274,36 @@ class AnimaTrainer:
             metadata=metadata,
         )
 
-        run_training_loop(self, loop_state)
+        try:
+            run_training_loop(self, loop_state)
 
-        accelerator.end_training()
-        optimizer_eval_fn()
+            accelerator.end_training()
+            optimizer_eval_fn()
 
-        if is_main_process and (args.save_state or args.save_state_on_train_end):
-            save_state_on_train_end(args, accelerator)
+            if is_main_process and (args.save_state or args.save_state_on_train_end):
+                save_state_on_train_end(args, accelerator)
 
-        saver.cleanup_resumable()
-        saver.save_final(network, loop_state.global_step, num_train_epochs)
+            saver.cleanup_resumable()
+            saver.save_final(network, loop_state.global_step, num_train_epochs)
+        except KeyboardInterrupt:
+            if self.progress_sink is not None:
+                self.progress_sink.run_end(
+                    status="stopped", final_step=loop_state.global_step
+                )
+            raise
+        except BaseException as exc:
+            if self.progress_sink is not None:
+                self.progress_sink.run_end(
+                    status="error",
+                    final_step=loop_state.global_step,
+                    error=f"{type(exc).__name__}: {exc}",
+                )
+            raise
+        else:
+            if self.progress_sink is not None:
+                self.progress_sink.run_end(
+                    status="ok", final_step=loop_state.global_step
+                )
 
     # endregion
 
