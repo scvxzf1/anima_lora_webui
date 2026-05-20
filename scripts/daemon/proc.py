@@ -70,6 +70,12 @@ def spawn_detached(
     detached process). A detached Windows process also has no inherited stdio,
     so redirecting to a file is mandatory there — we do it on both platforms
     for uniformity.
+
+    Window suppression on Windows is the *interpreter's* job, not a creation
+    flag's: the uv venv ``python.exe`` is a trampoline that re-launches the real
+    interpreter, so ``CREATE_NO_WINDOW`` set here doesn't reliably reach the
+    child's console. Callers that must stay windowless (the long-lived daemon)
+    launch under ``pythonw.exe`` instead (see ``client.venv_python``).
     """
     stdout_path.parent.mkdir(parents=True, exist_ok=True)
     log = open(stdout_path, "ab", buffering=0)

@@ -18,19 +18,33 @@ from typing import Iterator, Optional
 from . import config, proc
 
 
-def venv_python() -> str:
+def venv_python(*, windowless: bool = False) -> str:
     """Resolve the anima_lora venv interpreter.
 
     The daemon must run under anima's venv (it builds ``accelerate launch``
     commands with ``sys.executable``), *not* whatever interpreter the caller
     happens to be — notably ComfyUI's. Probe the usual venv layouts under the
     repo root and its parent, then fall back to ``sys.executable``.
+
+    ``windowless=True`` (Windows only) prefers ``pythonw.exe``: it never
+    allocates a console, so the long-lived daemon has *no* window to pop up or,
+    crucially, to be closed — closing a console window sends CTRL_CLOSE_EVENT
+    and kills the process, which is how the daemon was dying and stranding its
+    pidfile. (The uv venv ``python.exe`` is a trampoline that re-launches the
+    real interpreter, so ``CREATE_NO_WINDOW`` on it doesn't reliably suppress
+    the child's console — ``pythonw`` sidesteps that entirely.)
     """
-    names = ("Scripts", "python.exe") if sys.platform == "win32" else ("bin", "python")
-    for base in (config.ROOT, config.ROOT.parent):
-        cand = base / ".venv" / names[0] / names[1]
-        if cand.exists():
-            return str(cand)
+    if sys.platform == "win32":
+        exe = "pythonw.exe" if windowless else "python.exe"
+        for base in (config.ROOT, config.ROOT.parent):
+            cand = base / ".venv" / "Scripts" / exe
+            if cand.exists():
+                return str(cand)
+    else:
+        for base in (config.ROOT, config.ROOT.parent):
+            cand = base / ".venv" / "bin" / "python"
+            if cand.exists():
+                return str(cand)
     return sys.executable
 
 
@@ -176,7 +190,11 @@ def ensure_daemon(*, timeout: float = 60.0, port: Optional[int] = None) -> Daemo
 
     config.ensure_state_dirs()
     proc.spawn_detached(
-        [venv_python(), "-m", "scripts.daemon", str(requested)],
+        # pythonw.exe → no console at all: nothing to clutter the screen, and
+        # (the real fix) no window whose close button kills the daemon and
+        # strands the pidfile, which made every later `make gui` spawn a fresh
+        # one. Logs still go to daemon.log via the stdout redirect below.
+        [venv_python(windowless=True), "-m", "scripts.daemon", str(requested)],
         cwd=config.ROOT,
         stdout_path=config.DAEMON_LOG,
     )

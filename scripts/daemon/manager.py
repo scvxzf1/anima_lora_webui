@@ -291,43 +291,64 @@ class JobManager:
 
     # ----- gpu guard -----
 
-    def _gpu_guard(self, job: Job, *, retries: int = 6, delay: float = 5.0) -> None:
-        """Before launching, ensure the GPU is free. Reap VRAM leaked by our own
-        dead jobs; wait (bounded) on an unknown holder rather than blind-killing
-        it, then proceed with a warning so the queue never deadlocks."""
+    def _gpu_guard(
+        self, job: Job, *, retries: int = 6, delay: float = 5.0, busy_frac: float = 0.50
+    ) -> None:
+        """Before launching, make sure the GPU is actually free.
+
+        Busy/free is decided from **total VRAM in use**, not the process list:
+        on Windows WDDM every desktop app (dwm, explorer, browser, …) shows up
+        as a "compute" process, so gating on process presence stalled the queue
+        on a dozen innocent renderers every launch. A real training run holds
+        GBs; an idle desktop holds <1 GB — so `used/total < busy_frac` reliably
+        means "go". Process enumeration is kept only to reap VRAM leaked by our
+        *own* dead jobs, matched by pid (a stranger's pid never matches a job,
+        so the polluted holder list is harmless on that path). If we can't probe
+        memory at all we assume free rather than deadlock the queue.
+        """
         for attempt in range(retries):
-            holders = gpu.gpu_pids()
-            if not holders:  # None (can't tell) or empty (free) → go
-                return
+            # Reap leftovers from our own (now-terminal/dead) jobs. Safe even
+            # when gpu_pids() is polluted: only pids that match a known job act.
+            holders = gpu.gpu_pids() or set()
             with self._lock:
                 known = {j.pid: j for j in self._jobs.values() if j.pid in holders}
-            unknown = holders - set(known)
-            # Kill leftovers from our own (now-terminal/dead) jobs.
+            reaped = False
             for pid, owner in known.items():
                 if owner.id == job.id:
                     continue
                 logger.warning(
-                    "gpu_guard: reaping leaked VRAM from job %s (pid %s)",
-                    owner.id,
-                    pid,
+                    "gpu_guard: reaping leaked VRAM from job %s (pid %s)", owner.id, pid
                 )
                 proc.kill_tree(pid)
-            if not unknown:
+                reaped = True
+            if reaped:
                 time.sleep(0.5)  # let the killed procs release VRAM
-                continue
+
+            mem = gpu.gpu_mem()
+            if mem is None:  # can't tell → don't deadlock the queue
+                return
+            used, total = mem
+            if total <= 0 or used / total < busy_frac:
+                return  # GPU effectively free → go
             logger.warning(
-                "gpu_guard: GPU held by unknown pid(s) %s (attempt %d/%d)",
-                sorted(unknown),
+                "gpu_guard: GPU busy — %d/%d MiB used (attempt %d/%d)",
+                used,
+                total,
                 attempt + 1,
                 retries,
             )
             self._broadcast(
-                {"ev": "gpu_wait", "job_id": job.id, "unknown_pids": sorted(unknown)}
+                {
+                    "ev": "gpu_wait",
+                    "job_id": job.id,
+                    "used_mib": used,
+                    "total_mib": total,
+                }
             )
             time.sleep(delay)
-        # Give up waiting on the stranger — proceed (the OS will OOM us if there
-        # genuinely isn't room; we won't kill what we didn't start).
-        job.status_detail = "launched despite unknown GPU holder"
+        # Give up waiting — proceed (the OS will OOM us if there genuinely
+        # isn't room; we won't kill what we didn't start).
+        job.status_detail = "launched despite busy GPU"
 
     def _kill_job_tree(self, job: Job) -> None:
         if job.pid is not None:
@@ -336,18 +357,21 @@ class JobManager:
     # ----- command building -----
 
     def _build_cmd(self, job: Job) -> tuple[list[str], dict]:
-        import sys
+        from .client import venv_python
 
         env = os.environ.copy()
         env.setdefault("PYTHONUNBUFFERED", "1")
 
-        # Command jobs (preprocess / mask) are a plain task invocation. The
-        # daemon runs under anima's venv, so sys.executable is the right
-        # interpreter. No --progress_jsonl injection — these emit tqdm to stdout
-        # and the monitor finalizes them on exit code (no run_end event).
+        # Command jobs (preprocess / mask) are a plain task invocation. Use the
+        # venv's python.exe (NOT sys.executable — the daemon itself runs under
+        # pythonw.exe so it has no closable console window): pythonw children
+        # don't surface working stdout/stderr, which would silently drop the
+        # tqdm progress the GUI tails from stdout.log. No --progress_jsonl
+        # injection — these emit tqdm to stdout and the monitor finalizes them
+        # on exit code (no run_end event).
         if job.kind == "command":
             env.update(job.extra_env or {})
-            return [sys.executable, *job.argv], env
+            return [venv_python(), *job.argv], env
 
         # Imported lazily so loading the daemon package never drags in the task
         # runner's transitive imports until a job actually launches.
