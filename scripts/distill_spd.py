@@ -62,7 +62,13 @@ from library.datasets.distill import CachedDataset  # noqa: E402
 from networks.lora_anima.factory import create_network  # noqa: E402
 from networks.lora_save import save_network_weights  # noqa: E402
 from networks import attention_dispatch  # noqa: E402
-from networks.spd import _snap, spd_schedule_bands, spd_stage_target  # noqa: E402
+from networks.spd import (  # noqa: E402
+    _snap,
+    spd_rollout_to_stage,
+    spd_schedule_bands,
+    spd_stage_target,
+    spectral_expand,
+)
 from library.io.cache import get_latent_resolution  # noqa: E402
 
 try:
@@ -166,6 +172,50 @@ def main():
         default=-1.0,
         help="±absolute uniform jitter on transition σ each step (R2 robustness). 0 = off.",
     )
+    # --- On-policy handoff tail (proposal.md Idea 2; Phase-0 PASSED 2026-05-21) ---
+    parser.add_argument(
+        "--on_policy_ratio",
+        type=float,
+        default=-1.0,
+        help="Fraction of steps that train the full-res tail on the *on-policy* handoff "
+        "state (anchored prefix rollout → spectral_expand → tail), vs the analytic "
+        "backbone. 0 = today's analytic-only behavior. The analytic steps anchor the "
+        "prefix (one LoRA can't be frozen by module), so MIX, don't set to 1.0. "
+        "v0: 2-stage schedules only. Works with --torch_compile (plain inductor — "
+        "two static shapes, rollout + tail); not with --compile_inductor_mode "
+        "reduce-overhead (CUDAGraphs can't span the eval/grad toggle).",
+    )
+    parser.add_argument(
+        "--rollout_steps",
+        type=int,
+        default=-1,
+        help="Euler steps for the on-policy prefix rollout (coarser than inference is "
+        "fine; the rollout only needs a representative handoff state). Default 16.",
+    )
+    parser.add_argument(
+        "--tail_band",
+        type=str,
+        default=None,
+        choices=["entry", "full"],
+        help="On-policy supervision site: 'entry' = the handoff σ̃ only (attacks the "
+        "seam, cheapest); 'full' = DAgger across the tail band (roll the tail no_grad "
+        "to a random σ in [sigma_floor, σ̃], supervise there — needed to claim the "
+        "high-res stage can be shortened). Default 'entry'.",
+    )
+    parser.add_argument(
+        "--sigma_floor",
+        type=float,
+        default=-1.0,
+        help="Lower σ clamp for the 'full' tail-band sampling (avoids the high-variance "
+        "(x−x0)/σ target as σ→0). Default 0.1.",
+    )
+    parser.add_argument(
+        "--flow_shift",
+        type=float,
+        default=-1.0,
+        help="Flow-matching σ-schedule shift for the rollout (matches inference). "
+        "Default 1.0 (base.toml discrete_flow_shift).",
+    )
     parser.add_argument("--lr", type=float, default=-1.0)
     parser.add_argument("--grad_clip", type=float, default=-1.0)
     parser.add_argument("--warmup", type=float, default=-1.0)
@@ -174,6 +224,7 @@ def main():
     parser.add_argument("--no_grad_ckpt", dest="grad_ckpt", action="store_false")
     parser.add_argument(
         "--torch_compile",
+        default="True",
         action="store_true",
         help="Per-stage static-shape block compile. Pads each stage's tokens to a "
         "stage-specific constant (collapsing the aspect-bucket axis) so "
@@ -239,8 +290,10 @@ def main():
             attn_mode,
         )
         attn_mode = "flex"
-    if args.torch_compile and args.compile_inductor_mode == "reduce-overhead" and (
-        args.blocks_to_swap > 0
+    if (
+        args.torch_compile
+        and args.compile_inductor_mode == "reduce-overhead"
+        and (args.blocks_to_swap > 0)
     ):
         logger.warning(
             "compile_inductor_mode='reduce-overhead' (CUDAGraphs) is incompatible "
@@ -260,6 +313,13 @@ def main():
     schedule_label = _flatten(cfg, "schedule.label", "custom")
     sigma_jitter = float(pick(args.sigma_jitter, "schedule.sigma_jitter", 0.0))
 
+    # On-policy handoff tail (Idea 2).
+    on_policy_ratio = float(pick(args.on_policy_ratio, "onpolicy.ratio", 0.0))
+    rollout_steps = int(pick(args.rollout_steps, "onpolicy.rollout_steps", 16))
+    tail_band = pick(args.tail_band, "onpolicy.tail_band", "entry")
+    sigma_floor = float(pick(args.sigma_floor, "onpolicy.sigma_floor", 0.1))
+    flow_shift = float(pick(args.flow_shift, "onpolicy.flow_shift", 1.0))
+
     # Schedule sanity — same invariants spd_denoise / spd_schedule_bands assume.
     if not stages or abs(stages[-1] - 1.0) > 1e-9:
         raise ValueError(f"schedule.stages must end at 1.0, got {stages}")
@@ -270,6 +330,35 @@ def main():
             f"transition_sigmas (len {len(transition_sigmas)}) must be len(stages)-1 "
             f"({len(stages) - 1}); stages={stages}, transition_sigmas={transition_sigmas}"
         )
+
+    # On-policy v0 limitations (proposal.md Idea 2 file-level plan).
+    if on_policy_ratio > 0.0:
+        if not (0.0 < on_policy_ratio <= 1.0):
+            raise ValueError(
+                f"--on_policy_ratio must be in (0,1], got {on_policy_ratio}"
+            )
+        if on_policy_ratio >= 1.0:
+            logger.warning(
+                "--on_policy_ratio=1.0 trains *only* on-policy; nothing anchors the prefix "
+                "(one LoRA, no module-level prefix/tail split) so it can drift. Prefer ≤0.5."
+            )
+        if len(stages) != 2:
+            raise ValueError(
+                f"--on_policy_ratio v0 supports 2-stage schedules only, got stages={stages}."
+            )
+        if args.torch_compile and args.compile_inductor_mode == "reduce-overhead":
+            # Plain inductor is fine (and the memory lever the full-res tail needs):
+            # the rollout returns the *pre-expansion* low-res state for a 2-stage
+            # schedule, so every leg is one of two static shapes (stage-0 count for
+            # the rollout, full-res count for the tail) — exactly the per-stage
+            # contract compile_blocks already handles. reduce-overhead (CUDAGraphs)
+            # is the exception: it can't capture across the eval↔train + no_grad↔grad
+            # toggle the two-pass step makes, and pins freshly-allocated inputs.
+            raise ValueError(
+                "--on_policy_ratio with --torch_compile requires plain inductor: drop "
+                "--compile_inductor_mode reduce-overhead (CUDAGraphs can't span the "
+                "rollout's eval/no_grad ↔ tail train/grad toggle)."
+            )
 
     lr = float(pick(args.lr, "optim.lr", 1e-4))
     weight_decay = float(_flatten(cfg, "optim.weight_decay", 0.0))
@@ -300,6 +389,16 @@ def main():
             lo,
             hi,
             p,
+        )
+    if on_policy_ratio > 0.0:
+        logger.info(
+            "on-policy handoff tail: ratio=%.2f  band=%s  rollout_steps=%d  "
+            "sigma_floor=%.3f  flow_shift=%.2f  (anchored rollout, target (x̃−x0)/σ̃)",
+            on_policy_ratio,
+            tail_band,
+            rollout_steps,
+            sigma_floor,
+            flow_shift,
         )
 
     device = torch.device("cuda")
@@ -526,11 +625,117 @@ def main():
         )
         logger.info("saved SPD LoRA → %s  (step %d, %d keys)", save_path, step, len(sd))
 
+    stage_rng = torch.Generator().manual_seed(seed + 1)  # CPU: stage / mode selection
+
+    def _forward_dit(x5, sig_vec, cattn):
+        """Single conditional forward at x5's own resolution (adapter on)."""
+        pad = torch.zeros(
+            x5.shape[0], 1, x5.shape[-2], x5.shape[-1], dtype=dtype, device=device
+        )
+        if model.blocks_to_swap:
+            model.prepare_block_swap_before_forward()
+        with torch.autocast("cuda", dtype=dtype):
+            return model.forward_mini_train_dit(
+                x5, sig_vec, cattn, padding_mask=pad, skip_pooled_text_proj=True
+            )
+
+    def _onpolicy_loss(x0f, cattn, trans):
+        """Idea 2 two-pass step (2-stage only): roll the *anchored* adapter-on prefix
+        from pure noise to the handoff, spectral-expand to full res, and regress the
+        tail toward the true clean latent. The target is ``(x̃ − x0)/σ̃`` — the
+        straight line from the *actual* on-policy state to x0 — not a fresh ``ε − x0``
+        (which would train the tail to ignore the very bias we want it to correct).
+
+        Anchoring (Phase-0 note in proposal.md): the rollout starts from the noise
+        whose DCT-lowpass *is* the analytic entry's ε, and the prefix is adapter-on
+        (its analytic objective already points it at ``x0_lo``). A free rollout would
+        head to a model sample for which x0 is the wrong target.
+        """
+        B = x0f.shape[0]
+        H, W = int(x0f.shape[-2]), int(x0f.shape[-1])
+        # Anchoring init: full-res white noise; its lowpass is the prefix's σ=1 entry.
+        eps_full = torch.randn(
+            x0f.shape, generator=gen, device=device, dtype=torch.float32
+        ).to(dtype)
+
+        def _roll_v(x5, sig):
+            return _forward_dit(
+                x5, x5.new_full((x5.shape[0],), float(sig), dtype=dtype), cattn
+            )
+
+        # Roll in EVAL mode: the LoRA then takes its inference branch — matching
+        # (a) deployment (SPD inference runs eval) and (b) the Phase-0 probe that
+        # validated this approach — so the on-policy states are the ones the adapter
+        # will actually face, not train-mode (fp32-bottleneck) variants. Also skips
+        # the wasted custom-autograd fp32 path under no_grad. Restored to train()
+        # before the grad tail forward (where custom autograd + grad-ckpt must be live).
+        was_training = model.training
+        model.eval()
+        try:
+            with torch.no_grad():
+                # Under --torch_compile the two legs are two static shapes: the
+                # rollout stays at the stage-0 (pre-expansion) count, the tail at the
+                # full-res count. Set them so the compiled blocks see one shape per
+                # leg, not one per aspect bucket. No-op (None) when compile is off.
+                if stage_token_counts is not None:
+                    model.set_static_token_count(stage_token_counts[0])
+                x_entry, sig_cross, scale_lo = spd_rollout_to_stage(
+                    _roll_v,
+                    eps_full,
+                    stages,
+                    trans,
+                    infer_steps=rollout_steps,
+                    flow_shift=flow_shift,
+                    patch=patch,
+                    gen=gen,
+                    stop_stage=1,
+                )
+                if stage_token_counts is not None:
+                    model.set_static_token_count(stage_token_counts[-1])
+                x_tilde, sig_tilde = spectral_expand(
+                    x_entry, sig_cross, scale_lo, 1.0, H, W, patch, gen
+                )
+                # Tail band: 'entry' supervises at the handoff σ̃ (attacks the seam);
+                # 'full' rolls the tail no_grad to a random σ in [sigma_floor, σ̃] and
+                # supervises there (DAgger across the band — lets the high-res stage
+                # be shortened). Both states are on-policy (adapter-on rollout).
+                if tail_band == "full" and sig_tilde > sigma_floor + 1e-4:
+                    n_tail = max(2, int(round(rollout_steps * sig_tilde)))
+                    tsig = torch.linspace(sig_tilde, 0.0, n_tail + 1, device=device)
+                    tsig = (flow_shift * tsig) / (1.0 + (flow_shift - 1.0) * tsig)
+                    valid = [
+                        k for k in range(1, n_tail) if float(tsig[k]) >= sigma_floor
+                    ]
+                    stop_k = (
+                        valid[int(torch.randint(len(valid), (1,), generator=stage_rng))]
+                        if valid
+                        else 1
+                    )
+                    xs = x_tilde
+                    for k in range(stop_k):
+                        v = _roll_v(xs, float(tsig[k])).float()
+                        xs = (
+                            xs.float() + v * (float(tsig[k + 1]) - float(tsig[k]))
+                        ).to(dtype)
+                    x_state, sig_state = xs, float(tsig[stop_k])
+                else:
+                    x_state, sig_state = x_tilde, sig_tilde
+        finally:
+            if was_training:
+                model.train()
+
+        # Grad tail forward at the (full-res) on-policy state.
+        x_state = x_state.detach().requires_grad_()
+        pred = _forward_dit(
+            x_state, x_state.new_full((B,), float(sig_state), dtype=dtype), cattn
+        )
+        v_target = (x_state.detach().float() - x0f.float()) / float(sig_state)
+        return nn.functional.mse_loss(pred.float(), v_target)
+
     # --- Training loop ---
     logger.info("Starting SPD distillation: %d iterations", iterations)
     data_iter = iter(dataloader)
     running = 0.0
-    stage_rng = torch.Generator().manual_seed(seed + 1)  # CPU: stage selection
     progress = tqdm(range(iterations), desc="spd")
     for step in progress:
         try:
@@ -544,13 +749,8 @@ def main():
         B = latents.shape[0]
         x0_full = latents.unsqueeze(2)  # (B, 16, 1, H, W)
 
-        # Sample one stage for the whole batch (keeps the batch single-resolution
-        # — the static-shape concession), weighted by band width.
-        stage_idx = int(
-            torch.multinomial(band_widths.float(), 1, generator=stage_rng).item()
-        )
-        # Optional R2 jitter: perturb the transition σ that bounds this stage so
-        # the segment geometry is learned as a band, not a point.
+        # Optional R2 jitter: perturb the transition σ so the segment geometry is
+        # learned as a band, not a point (shared by both training modes).
         trans = transition_sigmas
         if sigma_jitter > 0.0 and len(transition_sigmas) > 0:
             trans = [
@@ -562,32 +762,38 @@ def main():
                 )
                 for s in transition_sigmas
             ]
-        t_lo, t_hi = spd_schedule_bands(stages, trans)[stage_idx]
 
-        x0_si, eps_si = spd_stage_target(
-            x0_full, stage_idx, stages, trans, patch=patch, gen=gen
+        # Mode select: on-policy handoff tail (Idea 2) vs analytic backbone. The
+        # analytic steps anchor the prefix, so we mix rather than replace.
+        on_policy = (
+            on_policy_ratio > 0.0
+            and float(torch.rand(1, generator=stage_rng).item()) < on_policy_ratio
         )
-        # FM training sample + analytic velocity target at scale s_i (Eq. 13–14).
-        t = (t_lo + (t_hi - t_lo) * torch.rand(B, device=device)).to(dtype)
-        t_e = t.view(B, 1, 1, 1, 1)
-        x_t = ((1.0 - t_e) * x0_si + t_e * eps_si).requires_grad_()
-        v_target = (eps_si - x0_si).float()
-
-        pad = torch.zeros(
-            B, 1, x_t.shape[-2], x_t.shape[-1], dtype=dtype, device=device
-        )
-        # Pad this stage's tokens to its constant count so the compiled blocks see
-        # a single shape per stage. No-op (None) when --torch_compile is off.
-        if stage_token_counts is not None:
-            model.set_static_token_count(stage_token_counts[stage_idx])
-        if model.blocks_to_swap:
-            model.prepare_block_swap_before_forward()
-        with torch.autocast("cuda", dtype=dtype):
-            pred = model.forward_mini_train_dit(
-                x_t, t, crossattn_emb, padding_mask=pad, skip_pooled_text_proj=True
+        if on_policy:
+            stage_idx = len(stages) - 1  # logs against the full-res tail
+            loss = _onpolicy_loss(x0_full, crossattn_emb, trans)
+        else:
+            # Sample one stage for the whole batch (single-resolution — the
+            # static-shape concession), weighted by band width.
+            stage_idx = int(
+                torch.multinomial(band_widths.float(), 1, generator=stage_rng).item()
             )
+            t_lo, t_hi = spd_schedule_bands(stages, trans)[stage_idx]
+            x0_si, eps_si = spd_stage_target(
+                x0_full, stage_idx, stages, trans, patch=patch, gen=gen
+            )
+            # FM training sample + analytic velocity target at scale s_i (Eq. 13–14).
+            t = (t_lo + (t_hi - t_lo) * torch.rand(B, device=device)).to(dtype)
+            t_e = t.view(B, 1, 1, 1, 1)
+            x_t = ((1.0 - t_e) * x0_si + t_e * eps_si).requires_grad_()
+            v_target = (eps_si - x0_si).float()
+            # Pad this stage's tokens to its constant count so the compiled blocks
+            # see a single shape per stage. No-op when --torch_compile is off.
+            if stage_token_counts is not None:
+                model.set_static_token_count(stage_token_counts[stage_idx])
+            pred = _forward_dit(x_t, t, crossattn_emb)
+            loss = nn.functional.mse_loss(pred.float(), v_target)
 
-        loss = nn.functional.mse_loss(pred.float(), v_target)
         loss.backward()
         if grad_clip > 0:
             torch.nn.utils.clip_grad_norm_(trainable, grad_clip)

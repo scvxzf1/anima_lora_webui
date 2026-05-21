@@ -44,6 +44,27 @@ label = "single_late_0.5_sigma0.5"
 # each step so the segment geometry is learned as a band, not a point. 0 = off.
 sigma_jitter = 0.0
 
+# On-policy handoff tail (proposal.md Idea 2; Phase-0 PASSED 2026-05-21 —
+# bench/spd/probe_onpolicy_handoff.py). Trains the full-res tail on the state the
+# *anchored* adapter-on prefix actually rolls to (then spectral-expanded), toward
+# the true clean latent `(x̃ − x0)/σ̃`, instead of the idealized analytic entry.
+# Fixes the exposure bias that grows as the transition σ drops. v0: 2-stage only.
+# Works with --torch_compile (plain inductor: rollout + tail are two static shapes);
+# not with --compile_inductor_mode reduce-overhead (CUDAGraphs span the eval/grad toggle).
+[onpolicy]
+# Fraction of steps that use the on-policy tail; the rest stay the analytic
+# backbone that anchors the prefix. 0 = analytic-only (today's behavior). MIX —
+# one LoRA can't be frozen by module, so 1.0 lets the prefix drift.
+ratio = 0.0
+# Site of supervision: 'entry' = the handoff σ̃ only (attacks the seam, cheapest);
+# 'full' = DAgger across the tail band (roll the tail no_grad to a random σ in
+# [sigma_floor, σ̃] and supervise there — needed to claim the high-res stage can
+# be shortened).
+tail_band = "entry"
+rollout_steps = 16      # Euler steps for the prefix rollout (coarser than infer is fine)
+sigma_floor = 0.1       # lower σ clamp for 'full' band (caps the (x−x0)/σ variance)
+flow_shift = 1.0        # σ-schedule shift for the rollout (matches inference)
+
 [optim]
 lr = 5e-5
 weight_decay = 0.0

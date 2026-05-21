@@ -255,6 +255,89 @@ def spd_stage_target(
     return x0_si, eps_si.to(x0_si.dtype)
 
 
+@torch.no_grad()
+def spd_rollout_to_stage(
+    velocity_fn,
+    init_noise_full: torch.Tensor,  # (B, C, 1, H, W) σ=1 full-res white noise
+    stages: List[float],
+    transition_sigmas: List[float],
+    *,
+    infer_steps: int,
+    flow_shift: float,
+    patch: int,
+    gen: torch.Generator,
+    stop_stage: int,
+) -> tuple[torch.Tensor, float, float]:
+    """SPD Euler prefix rollout from σ=1 down to the entry of ``stop_stage``.
+
+    Mirrors ``spd_denoise``'s prefix *exactly* — DCT-lowpass init, Euler
+    velocity steps, mid-loop ``spectral_expand`` + schedule re-spacing — but
+    conditional-only (no CFG, no side-channels) and **stops just before
+    expanding into ``stop_stage``**, returning the prefix's own low-res state at
+    that transition. This is the on-policy counterpart of the *analytic*
+    stage-entry ``spd_stage_target`` builds: instead of
+    ``(1−t_trans)·x0_lo + t_trans·ε`` from the true clean LL, it returns the
+    state the trained (or bare) prefix actually rolls to from pure noise.
+
+    ``velocity_fn(x5, sigma_scalar) -> v`` is the per-step denoiser at the
+    current resolution (e.g. ``forward_mini_train_dit`` with the adapter
+    enabled). The σ schedule is built identically to inference
+    (``sampling.get_timesteps_sigmas``) so the rollout sees the same grid the
+    deployed sampler does.
+
+    Returns ``(x_entry_lo, sigma_cross, scale_lo)``: the (B,C,1,h,w) pre-expansion
+    low-res state, the live σ at the crossing into ``stop_stage``, and the
+    current resolution scale. The caller applies
+    ``spectral_expand(x_entry_lo, sigma_cross, scale_lo, stages[stop_stage], …)``
+    to get the on-policy stage entry x̃ — the same primitive both the sampler
+    and ``spd_stage_target`` use, keeping train/infer geometry bit-for-bit.
+    """
+    assert 1 <= stop_stage < len(stages), "stop_stage must index a non-first stage"
+    H_full, W_full = int(init_noise_full.shape[-2]), int(init_noise_full.shape[-1])
+
+    # σ schedule identical to inference (sampling.get_timesteps_sigmas).
+    sigmas = torch.linspace(
+        1.0, 0.0, infer_steps + 1, device=init_noise_full.device, dtype=torch.float32
+    )
+    sigmas = (flow_shift * sigmas) / (1.0 + (flow_shift - 1.0) * sigmas)
+
+    cur_scale = stages[0]
+    x5 = (
+        dct_lowpass_init(init_noise_full, cur_scale, patch)
+        if cur_scale < 1.0
+        else init_noise_full
+    )
+    stage_idx = 0
+    n = len(sigmas) - 1
+    for i in range(n):
+        sigma = float(sigmas[i])
+        # Expand through any intermediate stage *strictly before* stop_stage.
+        while (
+            stage_idx < len(transition_sigmas) and sigma <= transition_sigmas[stage_idx]
+        ):
+            if stage_idx + 1 >= stop_stage:
+                # Reached the transition into stop_stage — return pre-expansion.
+                return x5, sigma, cur_scale
+            nxt = stages[stage_idx + 1]
+            if nxt > cur_scale:
+                orig = float(sigmas[i])
+                x5, sigma_new = spectral_expand(
+                    x5, sigma, cur_scale, nxt, H_full, W_full, patch, gen
+                )
+                cur_scale = nxt
+                if orig > 0 and sigma_new != orig:  # re-space remaining σ (Sec 4.3)
+                    sigmas[i + 1 :] = sigma_new * (sigmas[i + 1 :] / orig)
+                sigma = sigma_new
+            stage_idx += 1
+        v = velocity_fn(x5, sigma).float()
+        dt = float(sigmas[i + 1]) - sigma
+        x5 = (x5.float() + v * dt).to(x5.dtype)
+
+    # Schedule ended before crossing into stop_stage (transition σ below σ_min):
+    # return the final low-res state at the last σ.
+    return x5, float(sigmas[-1]), cur_scale
+
+
 # ── SPD denoise loop (Euler, velocity form, CFG, multi-resolution) ─────────────
 
 
