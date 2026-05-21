@@ -223,6 +223,13 @@ COMMANDS = {
         "into a 4-step LoRA student (configs/methods/turbo.toml). "
         "Single-GPU bespoke loop (bypasses train.py/accelerate, like distill-mod).",
     ),
+    "exp-spd": (
+        exp_training.cmd_spd,
+        "[experimental] SPD fine-tuning LoRA — §4.3 trajectory adapter that teaches a "
+        "plain LoRA to follow the SPD multi-resolution trajectory (configs/methods/spd.toml). "
+        "Single-GPU bespoke loop (bypasses train.py/accelerate, like distill-mod). "
+        "Output is a normal LoRA — infer with the SPD sampler at the trained schedule.",
+    ),
     "exp-soft-tokens": (
         exp_training.cmd_soft_tokens,
         "[experimental] SoftREPA-style per-layer × per-t soft tokens (training-only v1)",
@@ -260,6 +267,11 @@ COMMANDS = {
         exp_inference.cmd_test_turbo,
         "[experimental] Inference with latest turbo student LoRA at 4 steps, cfg=1.0 "
         "(CFG is baked into the student).",
+    ),
+    "exp-test-spd": (
+        exp_inference.cmd_test_spd,
+        "[experimental] Inference with latest SPD fine-tune LoRA on the SPD sampler "
+        "at its trained schedule (read from safetensors metadata). cfg=4.0, Euler.",
     ),
     "exp-test-ip": (
         exp_inference.cmd_test_ip,

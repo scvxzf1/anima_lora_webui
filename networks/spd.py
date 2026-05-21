@@ -60,6 +60,7 @@ log = logging.getLogger(__name__)
 # ── DCT helpers (2D separable, type-II, pure PyTorch — matches comfyui-speed) ──
 # Promoted verbatim from bench/spd/probe_lowres_denoise.py.
 
+
 def _dct_matrix(n: int, device, dtype) -> torch.Tensor:
     nr = torch.arange(n, device=device, dtype=dtype)
     k = nr.unsqueeze(1)
@@ -97,6 +98,7 @@ def _snap(v: float, mult: int) -> int:
 
 # ── SPD spectral primitives (paper T_Φ + Eq. i–iii + Eq. 5–6) ──────────────────
 
+
 def dct_lowpass_init(x5: torch.Tensor, scale: float, patch: int) -> torch.Tensor:
     """DCT low-pass of a (B,C,1,H,W) latent down to a (B,C,1,h,w) grid (paper T_Φ)."""
     B, C, T, H, W = x5.shape
@@ -109,8 +111,14 @@ def dct_lowpass_init(x5: torch.Tensor, scale: float, patch: int) -> torch.Tensor
 
 
 def spectral_expand(
-    x5: torch.Tensor, sigma_val: float, scale_lo: float, scale_hi: float,
-    H_full: int, W_full: int, patch: int, gen: torch.Generator,
+    x5: torch.Tensor,
+    sigma_val: float,
+    scale_lo: float,
+    scale_hi: float,
+    H_full: int,
+    W_full: int,
+    patch: int,
+    gen: torch.Generator,
 ) -> tuple[torch.Tensor, float]:
     """Embed the current low-res DCT block into a larger grid, fill HF slots with
     σ-scaled noise, iDCT, scale by κ (Eq. iii) and align the timestep (Eq. 5–6).
@@ -130,7 +138,9 @@ def spectral_expand(
 
     xi_new = torch.zeros(B, C, h_hi, w_hi, device=x5.device, dtype=torch.float32)
     xi_new[:, :, :h_lo, :w_lo] = xi
-    noise = torch.randn(xi_new.shape, generator=gen, device=x5.device, dtype=torch.float32)
+    noise = torch.randn(
+        xi_new.shape, generator=gen, device=x5.device, dtype=torch.float32
+    )
     mask = torch.zeros_like(xi_new)
     mask[:, :, h_lo:, :] = 1.0
     mask[:, :, :h_lo, w_lo:] = 1.0
@@ -140,7 +150,106 @@ def spectral_expand(
     return x4_new.unsqueeze(2).to(x5.dtype), float(sigma_aligned)
 
 
+# ── SPD fine-tune target construction (paper §4.3, Eq. 11–14) ──────────────────
+# Shared with the training loop (``scripts/distill_spd.py``) so the train-time
+# stage-entry state is built by the *same* primitives the sampler runs — the
+# Phase-0 contract in ``docs/proposal/spd_finetune_lora.md`` ("diff the
+# train-time x̃ against the sampler's expanded state … bit-for-bit at t_{i-1}").
+
+
+def _aligned_sigma(scale_lo: float, scale_hi: float, sigma_val: float) -> float:
+    """Timestep after spectral expansion (Eq. 5–6 / spectral_expand's t̃)."""
+    r = scale_hi / scale_lo
+    return (r * sigma_val) / (1.0 + (r - 1.0) * sigma_val)
+
+
+def spd_schedule_bands(
+    stages: List[float], transition_sigmas: List[float]
+) -> List[tuple[float, float]]:
+    """Per-stage query-σ band ``(t_lo, t_hi)`` for an SPD schedule.
+
+    Stage ``i`` (ascending resolution) is queried over ``t ∈ (t_lo, t_hi)``:
+
+      * ``t_lo`` = the transition to the *next* stage (0 for the final
+        full-res stage).
+      * ``t_hi`` = 1.0 for stage 0 (pure-noise entry); for later stages the
+        **aligned** σ̃ the expansion lands at (``> t_{i-1}`` for r>1), because
+        that is the σ the model is actually queried at post-expansion at
+        inference (``spd_denoise`` re-spaces the schedule to σ̃).
+
+    Bands are data-independent (functions of the schedule only), so the loop
+    precomputes them once and weights stage sampling by band width to keep the
+    marginal over ``t`` uniform (matches the paper's ``U(0,1)``).
+    """
+    S = len(stages)
+    assert len(transition_sigmas) == S - 1, "transition_sigmas must be len(stages)-1"
+    bands: list[tuple[float, float]] = []
+    for i in range(S):
+        t_lo = transition_sigmas[i] if i < S - 1 else 0.0
+        if i == 0:
+            t_hi = 1.0
+        else:
+            t_hi = _aligned_sigma(stages[i - 1], stages[i], transition_sigmas[i - 1])
+        bands.append((float(t_lo), float(t_hi)))
+    return bands
+
+
+@torch.no_grad()
+def spd_stage_target(
+    x0_full: torch.Tensor,  # (B, C, 1, H, W) clean full-res VAE latent
+    stage_idx: int,
+    stages: List[float],
+    transition_sigmas: List[float],
+    patch: int,
+    gen: torch.Generator,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """Construct ``(x0^{s_i}, ε^{s_i})`` for an SPD stage (paper Eq. 11–12).
+
+    Returns the clean latent low-passed to the stage scale and the *effective*
+    noise field for that stage. Ordinary flow-matching at scale ``s_i`` with
+    this noise field reproduces the §4.3 trajectory segment exactly: the
+    straight-line velocity target is ``ε^{s_i} − x0^{s_i}`` and the training
+    sample at any σ is ``(1−σ)·x0^{s_i} + σ·ε^{s_i}`` (Eq. 13 collapses to this
+    because the segment velocity is constant — see the proposal derivation).
+
+    For stage 0 the noise is plain ``N(0,I)`` at the low-res grid (the entry is
+    pure noise at σ=1). For stage ``i>0`` the entry state ``x̃`` is built by
+    spectrally expanding the previous stage's FM state at the transition σ —
+    *via the sampler's own ``spectral_expand``* — and the effective noise is
+    recovered from it: ``ε^{s_i} = (x̃ − (1−σ̃)·x0^{s_i}) / σ̃``. Its low-freq
+    block carries the coherent (carried) noise; its high-freq block holds the
+    κ-scaled fresh fill minus the true HF detail, so the velocity target there
+    points the model toward revealing the deferred high frequencies — which is
+    the train–inference gap the LoRA exists to close.
+    """
+    s_hi = stages[stage_idx]
+    H_full, W_full = int(x0_full.shape[-2]), int(x0_full.shape[-1])
+    x0_si = dct_lowpass_init(x0_full, s_hi, patch) if s_hi < 1.0 else x0_full
+
+    if stage_idx == 0:
+        eps_si = torch.randn(
+            x0_si.shape, generator=gen, device=x0_si.device, dtype=torch.float32
+        ).to(x0_si.dtype)
+        return x0_si, eps_si
+
+    s_lo = stages[stage_idx - 1]
+    t_trans = float(transition_sigmas[stage_idx - 1])
+    x0_lo = dct_lowpass_init(x0_full, s_lo, patch)
+    eps_lo = torch.randn(
+        x0_lo.shape, generator=gen, device=x0_lo.device, dtype=torch.float32
+    ).to(x0_lo.dtype)
+    x_entry_lo = (1.0 - t_trans) * x0_lo + t_trans * eps_lo
+    x_tilde, t_tilde = spectral_expand(
+        x_entry_lo, t_trans, s_lo, s_hi, H_full, W_full, patch, gen
+    )
+    # Recover the FM-consistent effective noise at scale s_i. The §4.3 κ +
+    # alignment make x̃ a valid FM state at σ̃, so this inversion is exact.
+    eps_si = (x_tilde.float() - (1.0 - t_tilde) * x0_si.float()) / t_tilde
+    return x0_si, eps_si.to(x0_si.dtype)
+
+
 # ── SPD denoise loop (Euler, velocity form, CFG, multi-resolution) ─────────────
+
 
 @torch.no_grad()
 def spd_denoise(
@@ -218,7 +327,9 @@ def spd_denoise(
 
     pad = _padding_mask_for(x5)
 
-    def velocity(x: torch.Tensor, sigma_scalar: float, pad_mask: torch.Tensor) -> torch.Tensor:
+    def velocity(
+        x: torch.Tensor, sigma_scalar: float, pad_mask: torch.Tensor
+    ) -> torch.Tensor:
         # timestep == σ in [0,1] for Anima flow-matching (matches generation.py
         # after its `timesteps /= 1000`).
         t = x.new_full((x.shape[0],), float(sigma_scalar))
@@ -227,16 +338,28 @@ def spd_denoise(
         set_hydra_content(anima, embed)
         set_hydra_crossattn(anima, embed)
         if soft_tokens_net is not None:
-            soft_tokens_net.append_postfix(embed, soft_tokens_embed_seqlens, timesteps=t)
-        _pos_kw = {"pooled_text_override": pooled_text_pos} if pooled_text_pos is not None else {}
+            soft_tokens_net.append_postfix(
+                embed, soft_tokens_embed_seqlens, timesteps=t
+            )
+        _pos_kw = (
+            {"pooled_text_override": pooled_text_pos}
+            if pooled_text_pos is not None
+            else {}
+        )
         v_c = anima(x, t, embed, padding_mask=pad_mask, **_pos_kw)
         if not do_cfg:
             return v_c
         set_hydra_content(anima, negative_embed)
         set_hydra_crossattn(anima, negative_embed)
         if soft_tokens_net is not None:
-            soft_tokens_net.append_postfix(negative_embed, soft_tokens_neg_seqlens, timesteps=t)
-        _neg_kw = {"pooled_text_override": pooled_text_neg} if pooled_text_neg is not None else {}
+            soft_tokens_net.append_postfix(
+                negative_embed, soft_tokens_neg_seqlens, timesteps=t
+            )
+        _neg_kw = (
+            {"pooled_text_override": pooled_text_neg}
+            if pooled_text_neg is not None
+            else {}
+        )
         v_u = anima(x, t, negative_embed, padding_mask=pad_mask, **_neg_kw)
         return v_u + guidance_scale * (v_c - v_u)
 
@@ -254,7 +377,10 @@ def spd_denoise(
 
             sigma = float(sigmas[i])
             # Expand through any stage whose transition σ we've crossed.
-            while stage_idx < len(transition_sigmas) and sigma <= transition_sigmas[stage_idx]:
+            while (
+                stage_idx < len(transition_sigmas)
+                and sigma <= transition_sigmas[stage_idx]
+            ):
                 nxt = stages[stage_idx + 1]
                 if nxt > cur_scale:
                     orig = float(sigmas[i])
@@ -264,7 +390,7 @@ def spd_denoise(
                     pad = _padding_mask_for(x5)
                     cur_scale = nxt
                     if orig > 0 and sigma_new != orig:  # re-space remaining σ (Sec 4.3)
-                        sigmas[i + 1:] = sigma_new * (sigmas[i + 1:] / orig)
+                        sigmas[i + 1 :] = sigma_new * (sigmas[i + 1 :] / orig)
                     sigma = sigma_new
                 stage_idx += 1
 
@@ -276,10 +402,16 @@ def spd_denoise(
     if cur_scale < 1.0:  # never handed off to full res — bicubic rescue so decode works
         import torch.nn.functional as F
 
-        x5 = F.interpolate(
-            x5.squeeze(2).float(), size=(H_full, W_full), mode="bicubic",
-            align_corners=False,
-        ).unsqueeze(2).to(torch.bfloat16)
+        x5 = (
+            F.interpolate(
+                x5.squeeze(2).float(),
+                size=(H_full, W_full),
+                mode="bicubic",
+                align_corners=False,
+            )
+            .unsqueeze(2)
+            .to(torch.bfloat16)
+        )
     return x5
 
 

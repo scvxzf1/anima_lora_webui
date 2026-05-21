@@ -1,0 +1,56 @@
+# SPD fine-tuning LoRA — trajectory adapter for progressive-resolution inference
+# (proposal: docs/proposal/spd_finetune_lora.md, "Case B").
+#
+# Read by scripts/distill_spd.py — NOT by train.py. Schema is bespoke
+# (sections, like turbo.toml). Don't `python tasks.py print-config METHOD=spd`.
+#
+# Trains a *plain* rank-32 LoRA on one frozen Anima DiT to follow the
+# stage-specific straight-line velocity targets of the SPD multi-resolution
+# trajectory (§4.3, Eq. 11–14). Output `output/ckpt/anima_spd.safetensors` is a
+# normal LoRA — load it through the standard inference path and run with the
+# SPD sampler at the *same* schedule (`make exp-test-spd`). The weights are
+# shape-agnostic; only the learned behavior is coupled to the schedule below,
+# so it is snapshotted into the safetensors metadata (R2).
+
+output_name = "anima_spd"
+dit_path = "models/diffusion_models/anima-base-v1.0.safetensors"
+data_dir = "post_image_dataset/lora"
+output_dir = "output/ckpt"
+
+iterations = 1000
+batch_size = 1
+seed = 42
+
+[network]
+# Paper-faithful plain LoRA (Table 2 used rank-32). NOT the Anima default
+# T-LoRA+Ortho+Hydra stack — fewer moving parts for the first falsification,
+# and T-LoRA's timestep mask interacts with the per-stage t-routing in ways to
+# study separately (proposal "Plain LoRA for v0"). alpha = rank (scale 1.0),
+# matching the LoRA-family convention.
+rank = 48
+alpha = 48
+attn_mode = "flash"
+
+# SPD schedule — the segment geometry this LoRA learns and MUST infer with.
+# Ascending resolution scales (last must be 1.0) and the σ thresholds at which
+# the sampler spectral-expands to the next stage (len = len(stages)-1).
+# v0 = the bench's single-late knee (SamplerSPEED `[0.5, 0.5, 0.99, 0.5]`):
+# run t∈(0.5,1] at half resolution, expand at σ≈0.5, finish full-res.
+[schedule]
+stages = [0.5, 1.0]
+transition_sigmas = [0.5]
+label = "single_late_0.5_sigma0.5"
+# Optional R2 robustness: jitter the transition σ by ±this (absolute, uniform)
+# each step so the segment geometry is learned as a band, not a point. 0 = off.
+sigma_jitter = 0.0
+
+[optim]
+lr = 1e-4
+weight_decay = 0.0
+grad_clip = 1.0
+warmup = 0.02            # ratio of iterations (int >=1 → absolute steps)
+
+[io]
+save_every = 500
+log_interval = 10
+log_dir = "output/logs/spd"

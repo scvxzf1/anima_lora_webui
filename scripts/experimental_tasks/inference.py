@@ -93,6 +93,48 @@ def _override_arg(argv: list[str], flag: str, value: str) -> list[str]:
     return argv[:i] + [flag, value] + argv[i + 2 :]
 
 
+def cmd_test_spd(extra):
+    """Inference with the latest SPD fine-tune LoRA on the SPD sampler.
+
+    Runs at the *schedule the LoRA was trained on* — read from the safetensors
+    metadata (``ss_spd_stages`` / ``ss_spd_transition_sigmas``, stamped by
+    ``scripts/distill_spd.py``) so the trajectory geometry can't silently
+    mismatch what was trained (proposal R2). CFG stays at the production
+    default (4.0); ``--spd`` forces Euler internally.
+
+        make exp-test-spd
+        make exp-test-spd ARGS="--spd_stages 0.5 0.75 1.0 --spd_transition_sigmas 0.6 0.4"
+        make exp-test-spd ARGS="--seed 1234 --image_size 832 1248"
+
+    User ``ARGS`` win: passing ``--spd_stages`` / ``--spd_transition_sigmas``
+    in ARGS overrides the metadata schedule.
+    """
+    import json
+
+    from safetensors import safe_open
+
+    weight = latest_output("anima_spd")
+    md: dict[str, str] = {}
+    try:
+        with safe_open(str(weight), "pt") as f:
+            md = f.metadata() or {}
+    except Exception as e:  # noqa: BLE001
+        print(f"  warn: could not read SPD schedule from {weight}: {e}")
+
+    base = _override_arg(list(INFERENCE_BASE), "--sampler", "euler")  # SPD forces Euler
+    cmd = [*base, "--lora_weight", str(weight), "--spd"]
+
+    stages = md.get("ss_spd_stages")
+    trans = md.get("ss_spd_transition_sigmas")
+    label = md.get("ss_spd_schedule_label", "?")
+    if stages and "--spd_stages" not in extra:
+        cmd += ["--spd_stages", *(str(s) for s in json.loads(stages))]
+    if trans and "--spd_transition_sigmas" not in extra:
+        cmd += ["--spd_transition_sigmas", *(str(s) for s in json.loads(trans))]
+    print(f"  > SPD LoRA: {weight}  schedule='{label}' stages={stages} σ={trans}")
+    run([*cmd, *extra])
+
+
 def cmd_test_ip(extra):
     """Inference with latest IP-Adapter weight.
 
