@@ -40,7 +40,7 @@ import torch
 from tqdm import tqdm
 
 from library.anima import models as anima_models
-from library.inference.smc_cfg import SMCCFGState
+from library.inference.corrections.smc_cfg import SMCCFGState
 
 logger = logging.getLogger(__name__)
 

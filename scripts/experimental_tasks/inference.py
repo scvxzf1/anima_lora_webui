@@ -484,7 +484,7 @@ def cmd_invert_directedit(extra):
     attn_mode = _resolve_inference_base_flag("--attn_mode") or "flash"
 
     # Lazy import — keep the task module light when this command isn't run.
-    from library.inference.postfix_inversion import (  # noqa: PLC0415
+    from library.inference.editing.postfix_inversion import (  # noqa: PLC0415
         load_or_build_basis,
         load_tail_s,
         splice_tail_into_te_cache,

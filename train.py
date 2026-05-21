@@ -64,6 +64,7 @@ from library.training import (
     CheckpointSaver,
     LossContext,
     SAMPLER_REGISTRY,
+    RuntimeState,
     SamplerContext,
     TrainCtx,
     add_custom_train_arguments,
@@ -110,23 +111,8 @@ class AnimaTrainer:
         # Per-method extensions (EasyControl, IP-Adapter, …). Resolved
         # from args+network in train() right after _create_and_apply_network.
         self._adapters: list[MethodAdapter] = []
-        # Per-step aux dict -- adapters' ``extra_forwards`` returns are merged
-        # here in ``get_noise_pred_and_target`` and consumed by the loss
-        # composer in ``_process_batch_inner``.
-        self._extras_for_step: dict = {}
-        # EMA λ state, mutated by the flow_matching_vr loss handler each step.
-        # The "frozen reference" for the AsymFlow §5.2 control variate is just
-        # the trainable DiT with ``network.set_multiplier(0)`` — see the VR
-        # block in ``get_noise_pred_and_target``.
-        self._vr_state: dict = {"lambda_ema": None}
-        # T5("") crossattn sidecar (shape ``(1, S, 1024)`` bf16 on device).
-        # Populated by ``_ensure_uncond_crossattn`` when caption dropout is
-        # enabled; consumed by ``prepare_text_conds`` so dropped rows match
-        # Anima's CFG-uncond inference path instead of falling back to zeros.
-        self._uncond_crossattn_1: Optional[torch.Tensor] = None
-        # Set during dataset prep from subset.caption_dropout_rate; gates
-        # whether ``_ensure_uncond_crossattn`` actually stages the sidecar.
-        self._caption_dropout_enabled: bool = False
+        # Feature-specific per-run state — see ``RuntimeState``.
+        self._state = RuntimeState()
 
     # region logging helpers
 
@@ -157,8 +143,8 @@ class AnimaTrainer:
             logs["norm/avg_combined_norm"] = mean_combined_norm
 
         if float(getattr(args, "vr_loss_weight", 0.0) or 0.0) > 0.0:
-            lambda_ema = self._vr_state.get("lambda_ema")
-            lambda_batch = self._vr_state.get("lambda_batch")
+            lambda_ema = self._state.vr.get("lambda_ema")
+            lambda_batch = self._state.vr.get("lambda_batch")
             if isinstance(lambda_ema, float):
                 logs["vr/lambda_ema"] = lambda_ema
             if isinstance(lambda_batch, float):
@@ -550,14 +536,14 @@ class AnimaTrainer:
         accelerator,
         weight_dtype: torch.dtype,
     ) -> None:
-        """Lazily load the T5("") crossattn sidecar onto ``self._uncond_crossattn_1``.
+        """Lazily load the T5("") crossattn sidecar onto ``self._state.uncond_crossattn_1``.
 
         Primary producer is ``make preprocess-te`` (drops the file at
         ``post_image_dataset/_anima_uncond_te.safetensors``); this method is
         the fallback that stages on demand if a training run was kicked off
         without the preprocess step.
         """
-        if self._uncond_crossattn_1 is not None:
+        if self._state.uncond_crossattn_1 is not None:
             return
         from library.inference.uncond import (
             DEFAULT_UNCOND_DIR,
@@ -580,12 +566,12 @@ class AnimaTrainer:
                 seq_len=512,
                 overwrite=False,
             )
-        self._uncond_crossattn_1 = load_uncond_crossattn(
+        self._state.uncond_crossattn_1 = load_uncond_crossattn(
             str(sidecar), device=accelerator.device, dtype=weight_dtype
         )
         logger.info(
             f"caption dropout uncond loaded: {sidecar} "
-            f"shape={tuple(self._uncond_crossattn_1.shape)}"
+            f"shape={tuple(self._state.uncond_crossattn_1.shape)}"
         )
 
     def get_noise_scheduler(
@@ -623,7 +609,7 @@ class AnimaTrainer:
 
         # Reset per-step adapter aux so stale tensors from a prior step can't
         # leak into the loss composer.
-        self._extras_for_step = {}
+        self._state.extras_for_step = {}
 
         # Sample noise
         if latents.ndim == 5:  # Fallback for 5D latents (old cache)
@@ -689,7 +675,7 @@ class AnimaTrainer:
             network=network,
             device=accelerator.device,
             weight_dtype=weight_dtype,
-            uncond_crossattn_emb=self._uncond_crossattn_1,
+            uncond_crossattn_emb=self._state.uncond_crossattn_1,
         )
         crossattn_emb = tc.crossattn_emb
         prompt_embeds = tc.prompt_embeds
@@ -795,7 +781,7 @@ class AnimaTrainer:
                     for adapter in self._adapters:
                         out = adapter.extra_forwards(step_ctx, primary)
                         if out:
-                            self._extras_for_step.update(out)
+                            self._state.extras_for_step.update(out)
 
                 # Functional MSE loss against a sampled stochastic inversion run.
                 # The captures dict is populated by trainer-owned forward hooks
@@ -835,9 +821,9 @@ class AnimaTrainer:
                         weight_dtype=weight_dtype,
                         fei_sigma_low_div=float(args.vr_fei_sigma_low_div),
                     )
-                    self._extras_for_step["vr"] = {
+                    self._state.extras_for_step["vr"] = {
                         "z": z_residual.detach(),
-                        "state": self._vr_state,
+                        "state": self._state.vr,
                     }
         model_pred = model_pred.squeeze(2)  # 5D to 4D, [B, C, 1, H, W] -> [B, C, H, W]
 
@@ -1068,7 +1054,7 @@ class AnimaTrainer:
 
         # Assemble aux dict for the composer: extra_forwards returns from each
         # method adapter plus the trainer-owned functional-loss capture.
-        loss_aux: dict = dict(self._extras_for_step)
+        loss_aux: dict = dict(self._state.extras_for_step)
 
         func_loss = getattr(self, "_func_loss", None)
         if func_loss is not None:
@@ -1418,8 +1404,8 @@ class AnimaTrainer:
                 for ds in train_dataset_group.datasets
                 for subset in ds.subsets
             ]
-            self._caption_dropout_enabled = bool(rates) and any(r > 0 for r in rates)
-            if self._caption_dropout_enabled:
+            self._state.caption_dropout_enabled = bool(rates) and any(r > 0 for r in rates)
+            if self._state.caption_dropout_enabled:
                 logger.info(f"caption dropout ENABLED -- per-subset rates: {rates}")
             else:
                 logger.info("caption dropout DISABLED (rate=0.0 on all subsets)")
@@ -1992,7 +1978,7 @@ class AnimaTrainer:
         # Stage the T5("") sidecar once if caption dropout is on — dropped
         # rows then get the same crossattn embedding Anima feeds at
         # CFG-uncond inference instead of all-zeros (which is out-of-dist).
-        if self._caption_dropout_enabled:
+        if self._state.caption_dropout_enabled:
             self._ensure_uncond_crossattn(args, accelerator, weight_dtype)
 
         network_result = self._create_and_apply_network(

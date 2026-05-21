@@ -226,7 +226,6 @@ def test_chimera_hook_dispatches_dual_pool(tmp_path):
     )
     bundle = adapter.load_adapter(str(path))
     hydra = bundle["hydra"]
-    chimera = hydra["chimera"]
     prefix = "lora_unet_blocks_0_mlp_layer1"
     mod = hydra["modules"][prefix]
     ups_stacked = torch.stack(

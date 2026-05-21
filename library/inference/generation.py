@@ -25,8 +25,9 @@ from library.inference import sampling as inference_utils
 from library.inference.output import check_inputs
 from library.inference.text import prepare_text_inputs
 from library.inference.models import load_dit_model
-from library.inference.mod_guidance import setup_mod_guidance
-from library.inference.smc_cfg import SMCCFGState
+from library.inference.corrections.mod_guidance import setup_mod_guidance
+from library.inference.corrections.smc_cfg import SMCCFGState
+from library.inference.sampler_context import SamplerSideChannels
 
 logger = logging.getLogger(__name__)
 
@@ -87,9 +88,12 @@ def _seqlens_from_context(context_dict, device):
 def register_spectrum_runner(fn):
     """Plug in a spectrum_denoise implementation.
 
-    The runner must accept the same kwargs as networks.spectrum.spectrum_denoise.
-    Called by networks/spectrum.py at import time, or by a downstream inference
-    package that ships its own spectrum module.
+    The runner must match networks.spectrum.spectrum_denoise's signature: the
+    core positional args, a ``SamplerSideChannels`` (see
+    ``library.inference.sampler_context``) carrying the shared DCW / SMC-CFG /
+    soft-tokens / P-GRAFT / pooled-text channels, then the spectrum-specific
+    keyword knobs. Called by networks/spectrum.py at import time, or by a
+    downstream inference package that ships its own spectrum module.
     """
     global _SPECTRUM_RUNNER
     _SPECTRUM_RUNNER = fn
@@ -98,8 +102,10 @@ def register_spectrum_runner(fn):
 def register_spd_runner(fn):
     """Plug in an spd_denoise implementation (Spectral Progressive Diffusion).
 
-    The runner must accept the same kwargs as networks.spd.spd_denoise. Called
-    by networks/spd.py at import time, mirroring register_spectrum_runner.
+    The runner must match networks.spd.spd_denoise's signature: the core
+    positional args, a ``SamplerSideChannels`` (shared side-channels), then the
+    SPD-specific keyword knobs. Called by networks/spd.py at import time,
+    mirroring register_spectrum_runner.
     """
     global _SPD_RUNNER
     _SPD_RUNNER = fn
@@ -571,7 +577,7 @@ def generate_body(
     dcw_calibrator = None
     calibrator_path = getattr(args, "dcw_calibrator", None) or getattr(args, "dcw_v4", None)
     if calibrator_path:
-        from library.inference.dcw_calibrator import OnlineDCWCalibrator
+        from library.inference.corrections.dcw_calibrator import OnlineDCWCalibrator
 
         artifact_path = Path(calibrator_path)
         if artifact_path.is_dir():
@@ -620,6 +626,21 @@ def generate_body(
     pgraft_network = getattr(anima, "_pgraft_network", None)
     lora_cutoff_step = getattr(args, "lora_cutoff_step", None)
 
+    # Shared conditioning side-channels handed to whichever loop runner is active
+    # (spectrum / spd). The standard inline loop below reads the locals directly.
+    _side_channels = SamplerSideChannels.from_args(
+        args,
+        pgraft_network=pgraft_network,
+        lora_cutoff_step=lora_cutoff_step,
+        pooled_text_pos=_pooled_text_pos,
+        pooled_text_neg=_pooled_text_neg,
+        dcw_calibrator=dcw_calibrator,
+        smc_cfg=smc_cfg,
+        soft_tokens_net=soft_tokens_net,
+        soft_tokens_embed_seqlens=soft_tokens_embed_seqlens,
+        soft_tokens_neg_seqlens=soft_tokens_neg_seqlens,
+    )
+
     if getattr(args, "spd", False):
         if getattr(args, "spectrum", False):
             raise ValueError(
@@ -645,22 +666,10 @@ def generate_body(
             args.guidance_scale,
             er_sde,
             device,
+            _side_channels,
             stages=stages,
             transition_sigmas=transition_sigmas,
             seed=seed if isinstance(seed, int) else seed[0],
-            pgraft_network=pgraft_network,
-            lora_cutoff_step=lora_cutoff_step,
-            pooled_text_pos=_pooled_text_pos,
-            pooled_text_neg=_pooled_text_neg,
-            dcw=getattr(args, "dcw", False),
-            dcw_lambda=getattr(args, "dcw_lambda", -0.015),
-            dcw_schedule=getattr(args, "dcw_schedule", "one_minus_sigma"),
-            dcw_band_mask=getattr(args, "dcw_band_mask", "LL"),
-            dcw_calibrator=dcw_calibrator,
-            smc_cfg=smc_cfg,
-            soft_tokens_net=soft_tokens_net,
-            soft_tokens_embed_seqlens=soft_tokens_embed_seqlens,
-            soft_tokens_neg_seqlens=soft_tokens_neg_seqlens,
         )
     elif getattr(args, "spectrum", False):
         if _SPECTRUM_RUNNER is None:
@@ -681,6 +690,7 @@ def generate_body(
             args.guidance_scale,
             er_sde,
             device,
+            _side_channels,
             window_size=getattr(args, "spectrum_window_size", 2.0),
             flex_window=getattr(args, "spectrum_flex_window", 0.25),
             warmup_steps=getattr(args, "spectrum_warmup", 6),
@@ -689,19 +699,6 @@ def generate_body(
             lam=getattr(args, "spectrum_lam", 0.1),
             stop_caching_step=getattr(args, "spectrum_stop_caching_step", -1),
             calibration_strength=getattr(args, "spectrum_calibration", 0.0),
-            pgraft_network=pgraft_network,
-            pooled_text_pos=_pooled_text_pos,
-            pooled_text_neg=_pooled_text_neg,
-            lora_cutoff_step=lora_cutoff_step,
-            dcw=getattr(args, "dcw", False),
-            dcw_lambda=getattr(args, "dcw_lambda", -0.015),
-            dcw_schedule=getattr(args, "dcw_schedule", "one_minus_sigma"),
-            dcw_band_mask=getattr(args, "dcw_band_mask", "LL"),
-            dcw_calibrator=dcw_calibrator,
-            smc_cfg=smc_cfg,
-            soft_tokens_net=soft_tokens_net,
-            soft_tokens_embed_seqlens=soft_tokens_embed_seqlens,
-            soft_tokens_neg_seqlens=soft_tokens_neg_seqlens,
         )
     else:
         try:

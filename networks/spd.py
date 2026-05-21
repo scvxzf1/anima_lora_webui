@@ -41,7 +41,7 @@ from __future__ import annotations
 
 import logging
 import math
-from typing import TYPE_CHECKING, List, Optional
+from typing import List
 
 import torch
 from tqdm import tqdm
@@ -52,9 +52,7 @@ from library.inference.adapters import (
     set_hydra_crossattn,
     set_hydra_sigma,
 )
-
-if TYPE_CHECKING:  # pragma: no cover
-    from library.inference.smc_cfg import SMCCFGState
+from library.inference.sampler_context import SamplerSideChannels
 
 log = logging.getLogger(__name__)
 
@@ -156,24 +154,11 @@ def spd_denoise(
     guidance_scale: float,
     sampler,  # ERSDESampler / LCMSampler / None — SPD forces Euler (see module docstring)
     device: torch.device,
+    ctx: SamplerSideChannels,
     *,
     stages: List[float],
     transition_sigmas: List[float],
     seed: int = 0,
-    pgraft_network=None,
-    lora_cutoff_step: Optional[int] = None,
-    pooled_text_pos: Optional[torch.Tensor] = None,
-    pooled_text_neg: Optional[torch.Tensor] = None,
-    # --- accepted for runner-signature parity with spectrum_denoise; unused in v0 ---
-    dcw: bool = False,
-    dcw_lambda: float = -0.015,
-    dcw_schedule: str = "one_minus_sigma",
-    dcw_band_mask: str = "LL",
-    dcw_calibrator=None,
-    smc_cfg: "Optional[SMCCFGState]" = None,
-    soft_tokens_net=None,
-    soft_tokens_embed_seqlens: Optional[torch.Tensor] = None,
-    soft_tokens_neg_seqlens: Optional[torch.Tensor] = None,
 ) -> torch.Tensor:
     """Multi-resolution SPD denoising loop.
 
@@ -186,14 +171,28 @@ def spd_denoise(
     transition fills the newly representable HF slots with σ-scaled noise and
     re-spaces the remaining σ schedule (Sec 4.3). ``padding_mask`` is rebuilt at
     each stage to match the new token grid.
+
+    ``ctx`` carries the shared conditioning side-channels (see
+    ``library.inference.sampler_context``). SPD v0 honors soft-tokens / P-GRAFT /
+    pooled-text but ignores DCW / SMC-CFG (they act on the re-spaced σ boundary,
+    unvalidated against the mid-loop reshape).
     """
+    # Side-channels SPD v0 honors.
+    pgraft_network = ctx.pgraft_network
+    lora_cutoff_step = ctx.lora_cutoff_step
+    pooled_text_pos = ctx.pooled_text_pos
+    pooled_text_neg = ctx.pooled_text_neg
+    soft_tokens_net = ctx.soft_tokens_net
+    soft_tokens_embed_seqlens = ctx.soft_tokens_embed_seqlens
+    soft_tokens_neg_seqlens = ctx.soft_tokens_neg_seqlens
+
     if sampler is not None:
         log.warning(
             "--spd forces Euler; the requested stochastic sampler is ignored "
             "(spectral expansion re-spaces σ mid-loop, which precomputed "
             "ER-SDE/LCM coefficients cannot follow)."
         )
-    if dcw or dcw_calibrator is not None or smc_cfg is not None:
+    if ctx.dcw or ctx.dcw_calibrator is not None or ctx.smc_cfg is not None:
         log.warning(
             "--spd v0 does not compose with DCW / SMC-CFG (they act on the "
             "re-spaced σ boundary and are unvalidated against the mid-loop "

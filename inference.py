@@ -742,7 +742,7 @@ def process_batch_prompts(prompts_data: List[Dict], args: argparse.Namespace) ->
         getattr(args, "pooled_text_proj", None) is not None
         and getattr(args, "mod_w", 0.0) != 0.0
     ):
-        from library.inference.mod_guidance import setup_mod_guidance
+        from library.inference.corrections.mod_guidance import setup_mod_guidance
 
         setup_mod_guidance(args, anima, device)
     else:

@@ -138,16 +138,27 @@ TAGGER_TRIMMED: list[tuple[str, str]] = [
 # ---------------------------------------------------------------------------
 
 DIRECTEDIT_VERBATIM: list[tuple[str, str]] = [
-    ("library/inference/directedit.py", "library/inference/directedit.py"),
     (
-        "library/inference/directedit_splice.py",
-        "library/inference/directedit_splice.py",
+        "library/inference/editing/directedit.py",
+        "library/inference/editing/directedit.py",
+    ),
+    (
+        "library/inference/editing/directedit_splice.py",
+        "library/inference/editing/directedit_splice.py",
+    ),
+    # directedit.py hard-imports SMCCFGState; vendor the leaf so the standalone
+    # tree is self-contained (torch-only, no further library deps).
+    (
+        "library/inference/corrections/smc_cfg.py",
+        "library/inference/corrections/smc_cfg.py",
     ),
 ]
 
 DIRECTEDIT_PACKAGE_DIRS: list[str] = [
     "library",
     "library/inference",
+    "library/inference/editing",
+    "library/inference/corrections",
     "library/anima",
     "library/datasets",
 ]
