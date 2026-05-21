@@ -82,6 +82,111 @@ def test_sample_prompts_roundtrip_preserves_comments_blank_lines_and_spacing(tmp
     assert loaded["prompts"] == ["masterpiece, best quality", "solo, 1girl"]
 
 
+def test_locked_user_group_cannot_be_deleted(tmp_path: Path, monkeypatch):
+    configs = tmp_path / "configs"
+    configs.mkdir()
+    (configs / "web-file-groups.toml").write_text(
+        "\n".join(
+            [
+                "[[groups]]",
+                'id = "custom_group"',
+                'label = "自定义分组"',
+                "open = true",
+                "locked = false",
+                "trainable = true",
+                "user_managed = true",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    (configs / "web-user-locks.toml").write_text(
+        'locked_groups = ["custom_group"]\n',
+        encoding="utf-8",
+    )
+    _patch_config_service_paths(monkeypatch, tmp_path)
+
+    group = config_service.list_config_file_groups()[0]
+    assert group["user_group_locked"] is True
+    assert group["renamable"] is True
+    assert group["deletable"] is False
+
+    ok, message, renamed = config_service.rename_config_file_group("custom_group", "锁定但可重命名")
+    assert ok is True
+    assert message == "分组已重命名"
+    assert renamed["label"] == "锁定但可重命名"
+
+    ok, message = config_service.delete_config_file_group("custom_group")
+    assert ok is False
+    assert "已锁定" in message
+
+
+def test_unlocked_default_group_can_be_deleted_without_hiding_files(tmp_path: Path, monkeypatch):
+    configs = tmp_path / "configs"
+    imported = configs / "imported"
+    imported.mkdir(parents=True)
+    (imported / "demo.toml").write_text('output_name = "demo"\n', encoding="utf-8")
+    (configs / "web-file-groups.toml").write_text(
+        "\n".join(
+            [
+                "[[groups]]",
+                'id = "imported"',
+                'label = "导入配置"',
+                "open = true",
+                "locked = false",
+                "trainable = true",
+                'methods_subdir = "imported"',
+                'patterns = ["configs/imported/*.toml"]',
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    _patch_config_service_paths(monkeypatch, tmp_path)
+
+    group = config_service.list_config_file_groups()[0]
+    assert group["id"] == "imported"
+    assert group["deletable"] is True
+
+    ok, message = config_service.delete_config_file_group("imported")
+    assert ok is True
+    assert "已保留" in message
+
+    groups = config_service.list_config_file_groups()
+    assert [group["id"] for group in groups] == ["unfiled_imported"]
+    assert groups[0]["deletable"] is True
+    assert [item["path"] for item in groups[0]["files"]] == ["configs/imported/demo.toml"]
+
+
+def test_unlocked_default_group_can_be_renamed(tmp_path: Path, monkeypatch):
+    configs = tmp_path / "configs"
+    configs.mkdir()
+    (configs / "web-file-groups.toml").write_text(
+        "\n".join(
+            [
+                "[[groups]]",
+                'id = "imported"',
+                'label = "导入配置"',
+                "open = true",
+                "locked = false",
+                "trainable = true",
+                'methods_subdir = "imported"',
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    _patch_config_service_paths(monkeypatch, tmp_path)
+
+    group = config_service.list_config_file_groups()[0]
+    assert group["renamable"] is True
+
+    ok, message, renamed = config_service.rename_config_file_group("imported", "常用导入配置")
+    assert ok is True
+    assert message == "分组已重命名"
+    assert renamed["label"] == "常用导入配置"
+
+
 def _write_minimal_config_tree(root: Path) -> tuple[Path, Path]:
     configs = root / "configs"
     (configs / "imported").mkdir(parents=True)

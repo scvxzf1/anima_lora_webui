@@ -69,6 +69,12 @@ SYSTEM_CONFIG_GROUP_IDS = frozenset({
     "imported",
     "datasets",
 })
+FIXED_SYSTEM_CONFIG_GROUP_IDS = frozenset({
+    "web_config",
+    "presets",
+    "methods",
+    "gui_methods",
+})
 FILE_MOVE_TARGET_GROUPS = frozenset({
     "imported",
     "datasets",
@@ -944,8 +950,8 @@ def rename_config_file_group(group_id: str, label: str) -> tuple[bool, str, dict
     spec = _find_config_group_spec(specs, normalized)
     if spec is None:
         return False, "分组不存在", None
-    if not _is_user_managed_group(spec):
-        return False, "系统分组不能重命名", _build_config_file_group(spec)
+    if not _is_renamable_config_group(spec):
+        return False, "系统固定或只读分组不能重命名", _build_config_file_group(spec)
 
     spec["label"] = clean_label
     _save_config_file_group_specs(specs)
@@ -961,21 +967,25 @@ def delete_config_file_group(group_id: str) -> tuple[bool, str]:
     spec = _find_config_group_spec(specs, normalized)
     if spec is None:
         return False, "分组不存在"
-    if not _is_user_managed_group(spec):
-        return False, "系统分组不能删除"
+    if _is_user_group_locked(normalized):
+        return False, "该分组已锁定，请先解除分组锁定后再删除"
+    if not _is_deletable_config_group(spec):
+        return False, "系统或只读分组不能删除"
 
-    released_files = set(spec.get("files", []))
+    released_files = {item["path"] for item in _build_config_file_group(spec).get("files", [])}
+    released_files.update(spec.get("files", []))
     released_files.update(spec.get("order", []))
     specs = [item for item in specs if item["id"] != normalized]
     if released_files:
         for item in specs:
             item["exclude"] = set(item.get("exclude", set())) - released_files
+        _move_orphaned_config_files_to_fallback_groups(specs, sorted(released_files))
     user_locks, user_group_locks = _load_user_locks()
     if normalized in user_group_locks:
         user_group_locks.discard(normalized)
         _save_user_locks(user_locks, user_group_locks)
     _save_config_file_group_specs(specs)
-    return True, "分组已删除，TOML 文件已回到默认分组"
+    return True, "分组已删除，TOML 文件已保留在其他可见分组中"
 
 
 def reorder_config_file_group(group_id: str, direction: str) -> tuple[bool, str, dict[str, Any] | None]:
@@ -1355,8 +1365,8 @@ def _build_config_file_group(spec: dict[str, Any]) -> dict[str, Any]:
         "system_locked": spec["id"] not in USER_LOCKABLE_GROUPS and spec["locked"],
         "lockable": spec["id"] in USER_LOCKABLE_GROUPS or _is_user_managed_group(spec),
         "user_managed": _is_user_managed_group(spec),
-        "renamable": _is_user_managed_group(spec),
-        "deletable": _is_user_managed_group(spec),
+        "renamable": _is_renamable_config_group(spec),
+        "deletable": _is_deletable_config_group(spec),
         "movable": _is_move_target_group(spec),
         "trainable": spec["trainable"],
         "methods_subdir": spec["methods_subdir"],
@@ -1435,19 +1445,89 @@ def _new_user_config_group_spec(group_id: str, label: str) -> dict[str, Any]:
     }
 
 
+def _move_orphaned_config_files_to_fallback_groups(specs: list[dict[str, Any]], files: list[str]) -> None:
+    for file_path in files:
+        normalized = _normalize_config_rel_path(file_path)
+        path = _safe_resolve(normalized)
+        if path is None or path.suffix.lower() != ".toml" or not path.exists():
+            continue
+        if _config_file_is_covered_by_specs(specs, normalized):
+            continue
+
+        fallback = _fallback_config_group_spec(normalized)
+        target = _find_config_group_spec(specs, fallback["id"])
+        if target is None:
+            target = fallback
+            specs.append(target)
+
+        target.setdefault("files", [])
+        if normalized not in target["files"]:
+            target["files"].append(normalized)
+        target.setdefault("order", [])
+        target["order"] = [item for item in target["order"] if item != normalized]
+        target["order"].append(normalized)
+        target["exclude"] = set(item for item in target.get("exclude", set()) if item != normalized)
+
+
+def _config_file_is_covered_by_specs(specs: list[dict[str, Any]], rel_path: str) -> bool:
+    normalized = _normalize_config_rel_path(rel_path)
+    for spec in specs:
+        if any(item.get("path") == normalized for item in _build_config_file_group(spec).get("files", [])):
+            return True
+    return False
+
+
+def _fallback_config_group_spec(rel_path: str) -> dict[str, Any]:
+    if rel_path.startswith("configs/datasets/"):
+        group_id = "unfiled_datasets"
+        label = "未分组数据集配置"
+        trainable = False
+        methods_subdir = ""
+    else:
+        group_id = "unfiled_imported"
+        label = "未分组导入配置"
+        trainable = True
+        methods_subdir = "imported"
+    return {
+        "id": group_id,
+        "label": label,
+        "open": True,
+        "locked": False,
+        "trainable": trainable,
+        "methods_subdir": methods_subdir,
+        "user_managed": True,
+        "files": [],
+        "order": [],
+        "patterns": [],
+        "exclude": set(),
+    }
+
+
 def _is_user_managed_group(spec: dict[str, Any]) -> bool:
     return bool(spec.get("user_managed")) and str(spec.get("id") or "") not in SYSTEM_CONFIG_GROUP_IDS
 
 
 def _is_fixed_config_group(spec: dict[str, Any]) -> bool:
     group_id = str(spec.get("id") or "")
-    if group_id == "web_config":
-        return True
-    if group_id in {"presets", "methods"}:
+    if group_id in FIXED_SYSTEM_CONFIG_GROUP_IDS:
         return True
     if bool(spec.get("locked")) and not _is_user_managed_group(spec) and not _is_user_group_locked(group_id):
         return True
     return False
+
+
+def _is_deletable_config_group(spec: dict[str, Any]) -> bool:
+    group_id = str(spec.get("id") or "")
+    return (
+        group_id not in FIXED_SYSTEM_CONFIG_GROUP_IDS
+        and not bool(spec.get("locked"))
+        and not _is_user_group_locked(group_id)
+    )
+
+
+def _is_renamable_config_group(spec: dict[str, Any]) -> bool:
+    group_id = str(spec.get("id") or "")
+    return group_id not in FIXED_SYSTEM_CONFIG_GROUP_IDS and not bool(spec.get("locked"))
 
 
 def _is_move_target_group(spec: dict[str, Any]) -> bool:

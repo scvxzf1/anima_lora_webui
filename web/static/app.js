@@ -3955,7 +3955,7 @@
         wrap.appendChild(createTomlGroupActionButton('删除分组', () => deleteTomlGroup(group), {
             title: deleteTomlGroupButtonTitle(group),
             danger: true,
-            disabled: !group.deletable,
+            disabled: !canDeleteTomlGroup(group),
         }));
         return wrap;
     }
@@ -4647,11 +4647,16 @@
 
     function deleteTomlGroupButtonTitle(group) {
         if (!group) return '配置分组不可用';
-        if (!group.deletable) return '系统分组不能删除；只有新建的自定义分组可删除';
+        if (group.user_group_locked) return '该分组已锁定，请先解除分组锁定后再删除';
+        if (!group.deletable) return '系统固定分组或只读分组不能删除';
         const count = (group.files || []).length;
         return count > 0
             ? `删除当前分组“${group.label || group.id}”；不会删除其中 ${count} 个 TOML 文件`
             : `删除当前空分组“${group.label || group.id}”`;
+    }
+
+    function canDeleteTomlGroup(group) {
+        return Boolean(group?.deletable && !group.user_group_locked);
     }
 
     function showMoveTomlDialog(file, meta, groups) {
@@ -4730,6 +4735,10 @@
     }
 
     async function deleteTomlGroup(group) {
+        if (!canDeleteTomlGroup(group)) {
+            setTomlStatus('error', deleteTomlGroupButtonTitle(group));
+            return;
+        }
         if (!confirmDiscardTomlChanges('当前 TOML 有未保存修改，删除分组前会重新读取文件列表。是否继续？')) {
             return;
         }
