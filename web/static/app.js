@@ -3788,8 +3788,13 @@
             group.id === 'web_config' ||
             group.id === 'presets' ||
             group.id === 'methods' ||
+            group.id === 'gui_methods' ||
             group.system_locked
         );
+    }
+
+    function shouldShowTomlGroup(group) {
+        return !isFixedSystemTomlGroup(group);
     }
 
     function reorderTomlFileGroups(groups) {
@@ -3848,7 +3853,15 @@
         toolbar.appendChild(createBtn);
         container.appendChild(toolbar);
 
-        for (const group of groups) {
+        const visibleGroups = (groups || []).filter(shouldShowTomlGroup);
+        if (visibleGroups.length === 0) {
+            const empty = document.createElement('div');
+            empty.className = 'toml-file-group-empty';
+            empty.textContent = '系统分组已隐藏。可点击“新建分组”创建自己的配置分组。';
+            container.appendChild(empty);
+        }
+
+        for (const group of visibleGroups) {
             const details = document.createElement('details');
             details.className = 'toml-file-group';
             if (group.locked) details.classList.add('readonly');
@@ -3931,7 +3944,6 @@
     }
 
     function createTomlGroupActions(group) {
-        if (!group.renamable && !group.deletable) return null;
         const wrap = document.createElement('span');
         wrap.className = 'toml-group-actions';
 
@@ -3940,14 +3952,11 @@
                 title: '重命名这个配置分组',
             }));
         }
-        if (group.deletable) {
-            wrap.appendChild(createTomlGroupActionButton('删除分组', () => deleteTomlGroup(group), {
-                title: (group.files || []).length > 0
-                    ? '只删除分组，不删除里面的 TOML 文件；文件会回到默认分组'
-                    : '删除这个自定义分组',
-                danger: true,
-            }));
-        }
+        wrap.appendChild(createTomlGroupActionButton('删除分组', () => deleteTomlGroup(group), {
+            title: deleteTomlGroupButtonTitle(group),
+            danger: true,
+            disabled: !group.deletable,
+        }));
         return wrap;
     }
 
@@ -4634,6 +4643,15 @@
     function getMovableTomlGroups(currentGroupId = '') {
         return reorderTomlFileGroups(tomlFileGroups)
             .filter((group) => group.movable && !group.locked && !group.user_group_locked && group.id !== currentGroupId);
+    }
+
+    function deleteTomlGroupButtonTitle(group) {
+        if (!group) return '配置分组不可用';
+        if (!group.deletable) return '系统分组不能删除；只有新建的自定义分组可删除';
+        const count = (group.files || []).length;
+        return count > 0
+            ? `删除当前分组“${group.label || group.id}”；不会删除其中 ${count} 个 TOML 文件`
+            : `删除当前空分组“${group.label || group.id}”`;
     }
 
     function showMoveTomlDialog(file, meta, groups) {

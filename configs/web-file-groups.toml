@@ -35,15 +35,6 @@ trainable = true
 methods_subdir = "imported"
 
 [[groups]]
-id = "gui_methods"
-label = "可训练方法变体"
-open = true
-locked = false
-trainable = true
-methods_subdir = "gui-methods"
-patterns = ["configs/gui-methods/*.toml"]
-
-[[groups]]
 id = "imported"
 label = "导入配置"
 open = true
@@ -74,3 +65,12 @@ methods_subdir = "imported"
 user_managed = true
 files = ["configs/imported/rokkotsu_goddess_5_14.toml"]
 order = ["configs/imported/rokkotsu_goddess_5_14.toml"]
+
+[[groups]]
+id = "gui_methods"
+label = "可训练方法变体"
+open = true
+locked = false
+trainable = true
+methods_subdir = "gui-methods"
+patterns = ["configs/gui-methods/*.toml"]
