@@ -68,8 +68,20 @@
         source: 'source',
         payload: null,
     };
+    const HIDDEN_DATASET_PRESET_FILES = new Set([
+        'configs/datasets/easycontrol.toml',
+        'configs/datasets/ip_adapter.toml',
+    ]);
     let selectedConfigDatasetFile = '';
     let selectedConfigDatasetSummary = null;
+    let configDatasetPickerSearch = '';
+    let configDatasetPreviewRequestSeq = 0;
+    let configDatasetPreviewState = {
+        file: '',
+        loading: false,
+        payload: null,
+        error: '',
+    };
     let trainingSampleState = null;
     const DEFAULT_SAMPLE_PROMPTS_PATH = 'configs/sample_prompts.txt';
     let samplePromptsPath = DEFAULT_SAMPLE_PROMPTS_PATH;
@@ -79,6 +91,7 @@
     let historyViewMode = 'live';
     let currentHistoryTaskForResume = null;
     let currentHistoryConfigGroup = null;
+    let currentHistoryTimelineSelection = [];
     let resumeOptionsState = {
         loading: false,
         taskId: '',
@@ -2207,11 +2220,16 @@
             const data = await api('/api/config/dataset-presets');
             if (requestSeq !== datasetPresetLoadSeq) return;
             if (!data.ok) throw new Error(data.error || '读取数据集预设失败');
-            const presets = Array.isArray(data.presets) ? data.presets : [];
+            const presets = (Array.isArray(data.presets) ? data.presets : [])
+                .filter((preset) => !HIDDEN_DATASET_PRESET_FILES.has(preset.path));
             datasetPresetState.presets = presets;
             datasetPresetState.loading = false;
             datasetPresetState.error = '';
-            if (options.selectCurrent !== false && selectedConfigDatasetFile && !datasetPresetState.selectedFile) {
+            const selectedDatasetVisible = presets.some((preset) => preset.path === datasetPresetState.selectedFile);
+            if (!selectedDatasetVisible) {
+                datasetPresetState.selectedFile = '';
+            }
+            if (options.selectCurrent !== false && selectedConfigDatasetFile && !datasetPresetState.selectedFile && presets.some((preset) => preset.path === selectedConfigDatasetFile)) {
                 datasetPresetState.selectedFile = selectedConfigDatasetFile;
             }
             if (!datasetPresetState.selectedFile && presets.length) {
@@ -2478,9 +2496,15 @@
         const header = document.createElement('div');
         header.className = 'config-dataset-picker-header';
         const title = document.createElement('div');
-        title.innerHTML = '<strong>数据集预设</strong><span>选择后会标记当前配置未保存，点击保存更新后才写入训练 TOML。</span>';
+        title.innerHTML = '<strong>数据集预设</strong><span>当前配置只保留选择摘要；搜索、选择和预览在弹窗中完成。</span>';
         const actions = document.createElement('div');
         actions.className = 'config-dataset-picker-actions';
+        const openBtn = document.createElement('button');
+        openBtn.type = 'button';
+        openBtn.className = 'btn btn-small';
+        openBtn.textContent = selectedConfigDatasetFile ? '更换预设' : '选择预设';
+        openBtn.title = '打开数据集预设弹窗，可以搜索并查看第一张原始图预览。';
+        openBtn.addEventListener('click', openConfigDatasetPickerDialog);
         const manageBtn = document.createElement('button');
         manageBtn.type = 'button';
         manageBtn.className = 'btn btn-small';
@@ -2491,35 +2515,121 @@
         refreshBtn.className = 'btn btn-small';
         refreshBtn.textContent = '刷新预设';
         refreshBtn.addEventListener('click', () => loadDatasetPresets({ selectCurrent: false }));
-        actions.append(manageBtn, refreshBtn);
+        actions.append(openBtn, manageBtn, refreshBtn);
         header.append(title, actions);
         panel.appendChild(header);
 
         const body = document.createElement('div');
         body.className = 'config-dataset-picker-body';
-        const select = document.createElement('select');
-        select.className = 'field-input field-select';
-        select.dataset.key = 'dataset_config_picker';
-        const empty = document.createElement('option');
-        empty.value = '';
-        empty.textContent = '不使用独立数据集预设';
-        select.appendChild(empty);
-        for (const preset of datasetPresetState.presets || []) {
-            const opt = document.createElement('option');
-            opt.value = preset.path;
-            opt.textContent = datasetPresetOptionLabel(preset);
-            opt.selected = preset.path === selectedConfigDatasetFile;
-            select.appendChild(opt);
-        }
-        select.value = selectedConfigDatasetFile || '';
-        select.addEventListener('change', () => selectConfigDatasetPreset(select.value));
-        body.appendChild(select);
-
-        const summary = document.createElement('div');
-        summary.className = 'config-dataset-summary';
-        summary.appendChild(createConfigDatasetSummary());
-        body.appendChild(summary);
+        body.appendChild(createConfigDatasetCurrentSummary());
         panel.appendChild(body);
+        if (isConfigDatasetPickerDialogOpen()) {
+            renderConfigDatasetPickerDialog();
+        }
+        ensureConfigDatasetPreview();
+    }
+
+    function createConfigDatasetCurrentSummary() {
+        const preset = datasetPresetByFile(selectedConfigDatasetFile);
+        const summary = selectedConfigDatasetSummary || preset?.summary || {};
+        const wrap = document.createElement('div');
+        wrap.className = 'config-dataset-current';
+
+        const info = document.createElement('div');
+        info.className = 'config-dataset-current-info';
+        const label = document.createElement('span');
+        label.className = 'config-dataset-current-label';
+        label.textContent = selectedConfigDatasetFile ? '当前选中' : '当前状态';
+        const title = document.createElement('strong');
+        title.textContent = selectedConfigDatasetFile
+            ? (preset?.label || preset?.filename || selectedConfigDatasetFile)
+            : '不使用独立数据集预设';
+        const path = document.createElement('code');
+        path.textContent = selectedConfigDatasetFile || '沿用当前训练配置文件中的数据集字段';
+        info.append(label, title, path);
+
+        const meta = document.createElement('div');
+        meta.className = 'config-dataset-current-meta';
+        const state = document.createElement('span');
+        const isDirtySelection = selectedConfigDatasetFile !== (currentConfig.dataset_config || '');
+        state.className = [
+            'config-dataset-current-state',
+            isDirtySelection ? 'dirty' : 'synced',
+        ].join(' ');
+        state.textContent = isDirtySelection
+            ? '未保存'
+            : '已同步';
+        const count = document.createElement('span');
+        count.textContent = selectedConfigDatasetFile
+            ? `${Number(summary.dataset_count || 0)} 组 · 重复 ${Number(summary.repeat_total || 0)}`
+            : '当前配置';
+        const source = document.createElement('span');
+        source.textContent = selectedConfigDatasetFile && summary.source_dir
+            ? `原始路径: ${summary.source_dir}`
+            : '保存当前配置后才会写入训练 TOML';
+        meta.append(state, count, source);
+
+        wrap.append(info, meta);
+        return wrap;
+    }
+
+    function isConfigDatasetPickerDialogOpen() {
+        return Boolean(document.getElementById('config-dataset-picker-dialog')?.open);
+    }
+
+    function openConfigDatasetPickerDialog() {
+        const dialog = document.getElementById('config-dataset-picker-dialog');
+        if (!dialog) return;
+        renderConfigDatasetPickerDialog();
+        ensureConfigDatasetPreview();
+        if (dialog.showModal && !dialog.open) {
+            dialog.showModal();
+        } else if (!dialog.open) {
+            dialog.setAttribute('open', 'open');
+        }
+        const search = dialog.querySelector('.config-dataset-search');
+        if (search) {
+            search.focus({ preventScroll: true });
+            search.setSelectionRange(search.value.length, search.value.length);
+        }
+    }
+
+    function closeConfigDatasetPickerDialog() {
+        const dialog = document.getElementById('config-dataset-picker-dialog');
+        if (dialog?.open) dialog.close();
+    }
+
+    function renderConfigDatasetPickerDialog() {
+        const dialog = document.getElementById('config-dataset-picker-dialog');
+        const body = document.getElementById('config-dataset-picker-dialog-body');
+        if (!dialog || !body) return;
+        body.innerHTML = '';
+
+        const toolbar = document.createElement('div');
+        toolbar.className = 'config-dataset-dialog-toolbar';
+        const search = document.createElement('input');
+        search.type = 'search';
+        search.className = 'field-input config-dataset-search';
+        search.placeholder = '搜索数据集预设、路径或原始目录';
+        search.value = configDatasetPickerSearch;
+        search.addEventListener('input', () => {
+            const cursor = search.selectionStart ?? search.value.length;
+            configDatasetPickerSearch = search.value;
+            renderConfigDatasetPickerDialog();
+            const nextSearch = document.querySelector('#config-dataset-picker-dialog .config-dataset-search');
+            if (nextSearch) {
+                nextSearch.focus();
+                nextSearch.setSelectionRange(cursor, cursor);
+            }
+        });
+        toolbar.appendChild(search);
+        body.appendChild(toolbar);
+
+        const workspace = document.createElement('div');
+        workspace.className = 'config-dataset-workspace config-dataset-dialog-workspace';
+        workspace.appendChild(createConfigDatasetPresetList());
+        workspace.appendChild(createConfigDatasetPresetPreview());
+        body.appendChild(workspace);
     }
 
     function datasetPresetOptionLabel(preset) {
@@ -2529,6 +2639,127 @@
         const repeats = Number(summary.repeat_total || 0);
         const lock = preset?.readonly ? '只读 · ' : '';
         return `${lock}${name} · ${count || 0} 组 · 重复 ${repeats || 0}`;
+    }
+
+    function createConfigDatasetPresetList() {
+        const list = document.createElement('div');
+        list.className = 'config-dataset-preset-list';
+        const noneBtn = createConfigDatasetPresetButton(null);
+        list.appendChild(noneBtn);
+
+        const presets = filteredConfigDatasetPresets();
+        if (!presets.length && configDatasetPickerSearch.trim()) {
+            const empty = document.createElement('p');
+            empty.className = 'config-dataset-picker-empty';
+            empty.textContent = '没有匹配的数据集预设。';
+            list.appendChild(empty);
+            return list;
+        }
+
+        for (const preset of presets) {
+            list.appendChild(createConfigDatasetPresetButton(preset));
+        }
+        return list;
+    }
+
+    function createConfigDatasetPresetButton(preset) {
+        const isNone = !preset;
+        const file = isNone ? '' : preset.path;
+        const summary = preset?.summary || {};
+        const active = file === selectedConfigDatasetFile;
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = [
+            'config-dataset-preset-option',
+            active ? 'active' : '',
+            preset?.readonly ? 'readonly' : '',
+        ].filter(Boolean).join(' ');
+        btn.dataset.file = file;
+        const title = document.createElement('strong');
+        title.textContent = isNone
+            ? '不使用独立数据集预设'
+            : (preset.label || preset.filename || preset.path || '未命名预设');
+        const path = document.createElement('span');
+        path.textContent = isNone ? '沿用当前训练配置文件中的数据集字段' : preset.path;
+        const meta = document.createElement('small');
+        meta.textContent = isNone
+            ? '当前配置'
+            : `${Number(summary.dataset_count || 0)} 组 · 重复 ${Number(summary.repeat_total || 0)}${preset.readonly ? ' · 只读' : ''}`;
+        btn.append(title, path, meta);
+        btn.addEventListener('click', () => selectConfigDatasetPreset(file));
+        return btn;
+    }
+
+    function filteredConfigDatasetPresets() {
+        const keyword = configDatasetPickerSearch.trim().toLowerCase();
+        const presets = datasetPresetState.presets || [];
+        if (!keyword) return presets;
+        return presets.filter((preset) => {
+            const summary = preset.summary || {};
+            return [
+                preset.label,
+                preset.filename,
+                preset.path,
+                summary.source_dir,
+                summary.image_dir,
+                summary.cache_dir,
+            ].some((value) => String(value || '').toLowerCase().includes(keyword));
+        });
+    }
+
+    function createConfigDatasetPresetPreview() {
+        const preview = document.createElement('div');
+        preview.className = 'config-dataset-preview';
+        const summary = document.createElement('div');
+        summary.className = 'config-dataset-summary';
+        summary.appendChild(createConfigDatasetSummary());
+        preview.appendChild(summary);
+        preview.appendChild(createConfigDatasetPreviewImage());
+        return preview;
+    }
+
+    function createConfigDatasetPreviewImage() {
+        const box = document.createElement('div');
+        box.className = 'config-dataset-preview-image';
+        const state = configDatasetPreviewState;
+        if (!selectedConfigDatasetFile) {
+            box.classList.add('empty');
+            box.textContent = '选择一个数据集预设后，这里会显示第一张原始图。';
+            return box;
+        }
+        if (state.file !== selectedConfigDatasetFile || state.loading) {
+            box.classList.add('empty');
+            box.textContent = '正在读取第一张原始图...';
+            return box;
+        }
+        if (state.error) {
+            box.classList.add('empty');
+            box.textContent = state.error;
+            return box;
+        }
+        const image = Array.isArray(state.payload?.images) ? state.payload.images[0] : null;
+        if (!image) {
+            box.classList.add('empty');
+            box.textContent = state.payload?.message || '没有找到可预览的原始图。';
+            return box;
+        }
+        const img = document.createElement('img');
+        img.src = image.url;
+        img.alt = image.name || '数据集预览图';
+        img.loading = 'lazy';
+        img.addEventListener('error', () => {
+            box.classList.add('empty');
+            box.textContent = '预览图加载失败。';
+        });
+        const caption = document.createElement('div');
+        caption.className = 'config-dataset-preview-caption';
+        const name = document.createElement('strong');
+        name.textContent = image.name || '-';
+        const path = document.createElement('span');
+        path.textContent = state.payload?.directory || image.file || '';
+        caption.append(name, path);
+        box.append(img, caption);
+        return box;
     }
 
     function createConfigDatasetSummary() {
@@ -2566,7 +2797,14 @@
     async function selectConfigDatasetPreset(file) {
         selectedConfigDatasetFile = file || '';
         selectedConfigDatasetSummary = datasetPresetSummaryByFile(selectedConfigDatasetFile);
+        configDatasetPreviewState = {
+            file: '',
+            loading: false,
+            payload: null,
+            error: '',
+        };
         renderConfigDatasetPicker();
+        renderConfigDatasetPickerDialog();
         updateTomlDirtyState();
         await loadStepEstimate();
     }
@@ -2577,6 +2815,65 @@
 
     function datasetPresetSummaryByFile(file) {
         return datasetPresetByFile(file)?.summary || null;
+    }
+
+    function ensureConfigDatasetPreview() {
+        if (!selectedConfigDatasetFile) return;
+        if (configDatasetPreviewState.file === selectedConfigDatasetFile && (configDatasetPreviewState.loading || configDatasetPreviewState.payload || configDatasetPreviewState.error)) {
+            return;
+        }
+        loadConfigDatasetPresetPreview(selectedConfigDatasetFile);
+    }
+
+    async function loadConfigDatasetPresetPreview(file) {
+        if (!file || location.protocol === 'file:') return;
+        const requestSeq = ++configDatasetPreviewRequestSeq;
+        configDatasetPreviewState = {
+            file,
+            loading: true,
+            payload: null,
+            error: '',
+        };
+        renderConfigDatasetPreviewArea();
+        try {
+            const params = new URLSearchParams({
+                file,
+                dataset_index: '0',
+                source: 'source',
+                limit: '1',
+            });
+            const payload = await api(`/api/config/dataset-presets/images?${params.toString()}`);
+            if (requestSeq !== configDatasetPreviewRequestSeq || file !== selectedConfigDatasetFile) return;
+            if (!payload.ok) throw new Error(payload.error || '读取数据集预览失败');
+            configDatasetPreviewState = {
+                file,
+                loading: false,
+                payload,
+                error: '',
+            };
+        } catch (e) {
+            if (requestSeq !== configDatasetPreviewRequestSeq || file !== selectedConfigDatasetFile) return;
+            configDatasetPreviewState = {
+                file,
+                loading: false,
+                payload: null,
+                error: e.message || '读取数据集预览失败',
+            };
+        }
+        renderConfigDatasetPreviewArea();
+    }
+
+    function renderConfigDatasetPreviewArea() {
+        const previews = document.querySelectorAll('.config-dataset-preview');
+        if (!previews.length) return;
+        previews.forEach((preview) => {
+            preview.innerHTML = '';
+            const summary = document.createElement('div');
+            summary.className = 'config-dataset-summary';
+            summary.appendChild(createConfigDatasetSummary());
+            preview.appendChild(summary);
+            preview.appendChild(createConfigDatasetPreviewImage());
+        });
     }
 
     function createDatasetEditor() {
@@ -4375,11 +4672,11 @@
     async function saveTomlFile(options = {}) {
         const file = currentTomlFile || val('toml-file-select');
         if (!file) {
-            setTomlStatus('error', '请先选择一个配置文件，或使用“保存新配置”保存导入内容');
+            setTomlStatus('error', '请先选择一个配置文件，或使用“另存新配置”保存导入内容');
             return;
         }
         if (isTomlLocked(file)) {
-            setTomlStatus('error', '该配置文件已锁定，请使用“保存新配置”创建可编辑配置');
+            setTomlStatus('error', '该配置文件已锁定，请使用“另存新配置”创建可编辑配置');
             return;
         }
         const editorDirty = isTomlDirty();
@@ -5122,11 +5419,11 @@
 
         const file = normalizeTomlSaveAsPath(target);
         if (!file) {
-            setTomlStatus('error', '保存新配置失败: 请先输入新的配置名称');
+            setTomlStatus('error', '另存新配置失败: 请先输入新的配置名称');
             return;
         }
         if (file === currentFile) {
-            setTomlStatus('error', '保存新配置失败: 新配置不能和当前选中文件同名');
+            setTomlStatus('error', '另存新配置失败: 新配置不能和当前选中文件同名');
             return;
         }
         if (tomlFiles.includes(file)) {
@@ -5167,7 +5464,7 @@
             await loadTomlFileList(file);
             await applyTomlToConfig({ silent: true });
             updateTomlDirtyState();
-            setTomlStatus('ok', `已保存新配置: ${file}`);
+            setTomlStatus('ok', `已另存新配置: ${file}`);
         } catch (e) {
             setTomlStatus('error', '请求失败: ' + e.message);
         }
@@ -5199,7 +5496,7 @@
         wrap.append(label, hint, current);
 
         return showHistoryTaskDialog({
-            title: '保存新配置',
+            title: '另存新配置',
             description: '输入一个新名称，确认后创建新的 TOML 配置文件。',
             body: wrap,
             confirmText: '创建配置文件',
@@ -5597,7 +5894,7 @@
             saveBtn.textContent = '保存更新当前选中配置';
             saveBtn.classList.remove('btn-confirm-danger');
             saveBtn.title = meta?.locked
-                ? '该配置文件已锁定，请使用新名称保存新配置后编辑'
+                ? '该配置文件已锁定，请使用新名称另存新配置后编辑'
                 : (dirty
                     ? (formDirty
                         ? '把左侧表单、数据集预设选择和采样提示词等修改写回当前选中的 TOML；保存后训练会使用这些新值。'
@@ -5609,7 +5906,7 @@
         if (applyBtn) {
             applyBtn.disabled = !meta?.trainable || dirty;
             applyBtn.title = dirty
-                ? '当前配置尚未保存，请先保存更新当前选中配置或保存新配置'
+                ? '当前配置尚未保存，请先保存更新当前选中配置或另存新配置'
                 : (meta?.trainable
                     ? '把右侧选中的 TOML 加载到左侧表单，并把它设为“开始训练”使用的配置。'
                     : '该文件不是完整训练配置，不能作为训练入口。');
@@ -5636,7 +5933,7 @@
             lockBtn.disabled = !hasFile || isSystemOrGroupLocked || dirty;
             lockBtn.textContent = meta?.user_locked ? '解除锁定' : '锁定当前文件';
             lockBtn.title = dirty
-                ? '当前配置尚未保存，请先保存更新当前选中配置或保存新配置'
+                ? '当前配置尚未保存，请先保存更新当前选中配置或另存新配置'
                 : lockTomlButtonTitle(meta);
         }
         const deleteBtn = document.getElementById('btn-delete-toml');
@@ -5655,7 +5952,7 @@
         if (restoreBtn) {
             restoreBtn.disabled = dirty;
             restoreBtn.title = dirty
-                ? '当前配置尚未保存，请先保存更新当前选中配置或保存新配置'
+                ? '当前配置尚未保存，请先保存更新当前选中配置或另存新配置'
                 : '从项目内置版本还原系统预设；会覆盖系统预设文件，还原前会自动备份。用户导入配置不会被还原。';
         }
     }
@@ -5685,7 +5982,7 @@
     function setTomlEditorLocked(locked) {
         const editor = document.getElementById('toml-editor');
         editor.readOnly = locked;
-        editor.title = locked ? '该配置文件已锁定，只能导出或使用新名称保存新配置' : '';
+        editor.title = locked ? '该配置文件已锁定，只能导出或使用新名称另存新配置' : '';
     }
 
     function updateTomlEditorPanelState(filePath = currentTomlFile) {
@@ -5715,7 +6012,7 @@
             saveDirectBtn.textContent = confirming ? '确认保存配置文件' : '保存配置文件';
             saveDirectBtn.classList.toggle('btn-confirm-danger', confirming);
             saveDirectBtn.title = locked
-                ? '该配置文件已锁定，请使用新名称保存新配置后编辑'
+                ? '该配置文件已锁定，请使用新名称另存新配置后编辑'
                 : (formDirty
                     ? '左侧表单或数据集还有未保存修改，请先用“保存更新当前选中配置”保存。'
                     : (editorDirty
@@ -5868,7 +6165,7 @@
         const file = currentTomlFile || val('toml-file-select');
         const meta = tomlFileMeta[file];
         if (hasPendingConfigChanges(file)) {
-            setTomlStatus('error', '当前配置尚未保存，请先保存更新当前选中配置或保存新配置，再加载选中配置');
+            setTomlStatus('error', '当前配置尚未保存，请先保存更新当前选中配置或另存新配置，再加载选中配置');
             updateTomlActionState(file);
             return;
         }
@@ -5916,7 +6213,7 @@
             return;
         }
         if (hasPendingConfigChanges(file)) {
-            setTomlStatus('error', '当前配置尚未保存，请先保存更新当前选中配置或保存新配置，再调整锁定');
+            setTomlStatus('error', '当前配置尚未保存，请先保存更新当前选中配置或另存新配置，再调整锁定');
             updateTomlActionState(file);
             return;
         }
@@ -5935,7 +6232,7 @@
 
         const nextLocked = !meta.user_locked;
         const message = nextLocked
-            ? `锁定 ${file}？锁定后不能直接保存，仍可使用新名称保存新配置。`
+            ? `锁定 ${file}？锁定后不能直接保存，仍可使用新名称另存新配置。`
             : `解除 ${file} 的用户锁定？解除后可以直接编辑保存。`;
         if (!(await showAppConfirmDialog({
             title: nextLocked ? '锁定配置文件' : '解除配置锁定',
@@ -5982,7 +6279,7 @@
         const nextLocked = !group.user_group_locked;
         const sourceGroupIds = group.sourceGroupIds?.length ? group.sourceGroupIds : [group.id];
         const message = nextLocked
-            ? `锁定分组“${group.label || group.id}”？该分组内文件将不能直接保存，仍可使用新名称保存新配置。`
+            ? `锁定分组“${group.label || group.id}”？该分组内文件将不能直接保存，仍可使用新名称另存新配置。`
             : `解除分组“${group.label || group.id}”的锁定？解除后该分组内文件可恢复编辑保存。`;
         if (!(await showAppConfirmDialog({
             title: nextLocked ? '锁定配置分组' : '解除分组锁定',
@@ -6312,7 +6609,7 @@
         const file = currentTomlFile || val('toml-file-select');
         const meta = tomlFileMeta[file];
         if (hasPendingConfigChanges(file)) {
-            setTomlStatus('error', '当前配置尚未保存，请先保存更新当前选中配置或保存新配置，再还原系统预设');
+            setTomlStatus('error', '当前配置尚未保存，请先保存更新当前选中配置或另存新配置，再还原系统预设');
             updateTomlActionState(file);
             return;
         }
@@ -6351,7 +6648,7 @@
     // ── 训练控制 ──
     async function startTraining() {
         if (hasPendingConfigChanges(currentTomlFile)) {
-            setTomlStatus('error', '当前配置有未保存修改，请先保存更新当前选中配置或保存新配置，再开始训练');
+            setTomlStatus('error', '当前配置有未保存修改，请先保存更新当前选中配置或另存新配置，再开始训练');
             updateTomlActionState(currentTomlFile);
             document.querySelector('[data-tab="config"]')?.click();
             return;
@@ -7653,10 +7950,12 @@
             return;
         }
         const groups = groupHistoryTasks(visibleTasks);
+        const selectedTimelineTasks = new Set(currentHistoryTimelineSelection || []);
         for (const group of groups) {
             const section = document.createElement('section');
             section.className = 'task-history-group';
-            if (historyViewMode === 'config_group' && currentHistoryConfigGroup && configGroupKey(group) === configGroupKey(currentHistoryConfigGroup)) {
+            const groupSelected = group.tasks.some((task) => selectedTimelineTasks.has(task.id));
+            if (historyViewMode === 'config_group' && currentHistoryConfigGroup && (configGroupKey(group) === configGroupKey(currentHistoryConfigGroup) || groupSelected)) {
                 section.classList.add('active');
             }
             section.appendChild(createHistoryGroupHeading(group));
@@ -7719,9 +8018,9 @@
             const btn = document.createElement('button');
             btn.type = 'button';
             btn.className = 'task-history-group-action';
-            btn.textContent = '合并查看 Loss/日志';
-            btn.title = '按这个配置文件分组，合并查看组内所有训练任务的日志和 Loss 曲线。';
-            btn.addEventListener('click', () => loadConfigGroupTimeline(group));
+            btn.textContent = '选择合并查看';
+            btn.title = '手动选择要合并查阅的训练任务，再合并查看日志和 Loss 曲线。';
+            btn.addEventListener('click', () => chooseTimelineTasksForMerge(group));
             heading.appendChild(btn);
         }
         return heading;
@@ -7933,6 +8232,7 @@
         if (options.body) body.appendChild(options.body);
         cancelBtn.textContent = options.cancelText || '取消';
         confirmBtn.textContent = options.confirmText || '确认';
+        confirmBtn.disabled = false;
         confirmBtn.classList.toggle('btn-danger', Boolean(options.danger));
         confirmBtn.classList.toggle('btn-primary', !options.danger);
         dialog.returnValue = '';
@@ -7982,6 +8282,7 @@
             viewingHistoryTaskId = taskId;
             historyViewMode = 'single';
             currentHistoryConfigGroup = null;
+            currentHistoryTimelineSelection = [];
             resumeOptionsState = {
                 loading: true,
                 taskId,
@@ -8000,21 +8301,41 @@
 
     async function refreshHistoryView() {
         if (historyViewMode === 'config_group' && currentHistoryConfigGroup) {
-            await loadConfigGroupTimeline(currentHistoryConfigGroup);
+            await loadConfigGroupTimeline(currentHistoryConfigGroup, {
+                taskIds: currentHistoryTimelineSelection,
+                skipSelectionDialog: true,
+            });
             return;
         }
         if (!viewingHistoryTaskId) return;
         await loadHistoryTask(viewingHistoryTaskId);
     }
 
-    async function loadConfigGroupTimeline(group) {
+    async function chooseTimelineTasksForMerge(group) {
+        const selectedTaskIds = await showTimelineTaskSelectionDialog(group);
+        if (!selectedTaskIds) return;
+        await loadConfigGroupTimeline(group, {
+            taskIds: selectedTaskIds,
+            skipSelectionDialog: true,
+        });
+    }
+
+    async function loadConfigGroupTimeline(group, options = {}) {
         if (!group?.methods_subdir || !group?.variant) return;
+        let taskIds = Array.isArray(options.taskIds) ? options.taskIds.filter(Boolean) : [];
+        if (!taskIds.length && !options.skipSelectionDialog) {
+            taskIds = await showTimelineTaskSelectionDialog(group);
+            if (!taskIds) return;
+        }
         const query = new URLSearchParams({
             methods_subdir: group.methods_subdir,
             variant: group.variant,
             preset: group.preset || 'default',
             include_archived: showArchivedHistory ? '1' : '0',
         });
+        for (const taskId of taskIds) {
+            query.append('task_id', taskId);
+        }
         try {
             const payload = await api(`/api/training/history/config-group/timeline?${query.toString()}`);
             if (!payload.ok) {
@@ -8024,6 +8345,7 @@
             historyViewMode = 'config_group';
             viewingHistoryTaskId = '';
             currentHistoryConfigGroup = payload.group || group;
+            currentHistoryTimelineSelection = (payload.summary?.selected_task_ids || taskIds || []).filter(Boolean);
             currentHistoryTaskForResume = null;
             clearResumeOptions();
             renderTrainingHistoryList();
@@ -8031,6 +8353,132 @@
         } catch (e) {
             alert('读取配置分组合并日志失败: ' + e.message);
         }
+    }
+
+    function showTimelineTaskSelectionDialog(group) {
+        const visibleTasks = historyTasks.filter((task) => showArchivedHistory || !task.archived);
+        const candidates = groupHistoryTasks(visibleTasks)
+            .map((item) => ({
+                ...item,
+                trainingTasks: item.tasks.filter((task) => task.job === 'training'),
+            }))
+            .filter((item) => item.trainingTasks.length);
+
+        if (!candidates.length) {
+            alert('没有可合并的训练分组');
+            return Promise.resolve(null);
+        }
+
+        const body = document.createElement('div');
+        body.className = 'history-merge-dialog-body';
+
+        const toolbar = document.createElement('div');
+        toolbar.className = 'history-merge-dialog-toolbar';
+        const hint = document.createElement('span');
+        hint.textContent = `已列出 ${candidates.length} 个训练分组`;
+        const selectAll = document.createElement('button');
+        selectAll.type = 'button';
+        selectAll.className = 'btn btn-small';
+        selectAll.textContent = '全选';
+        const clearAll = document.createElement('button');
+        clearAll.type = 'button';
+        clearAll.className = 'btn btn-small';
+        clearAll.textContent = '清空';
+        toolbar.append(hint, selectAll, clearAll);
+        body.appendChild(toolbar);
+
+        const list = document.createElement('div');
+        list.className = 'history-merge-task-list';
+        const selectedTaskSet = new Set(currentHistoryTimelineSelection || []);
+        const selectedGroupSet = new Set(
+            currentHistoryTimelineSelection.length
+                ? candidates
+                    .filter((item) => item.trainingTasks.some((task) => selectedTaskSet.has(task.id)))
+                    .map((item) => item.key)
+                : [configGroupKey(group)]
+        );
+        for (const item of candidates) {
+            const label = document.createElement('label');
+            label.className = 'history-merge-task-option';
+            const checkbox = document.createElement('input');
+            checkbox.type = 'checkbox';
+            checkbox.value = item.key || '';
+            checkbox.checked = selectedGroupSet.has(item.key);
+            const content = document.createElement('span');
+            const title = document.createElement('strong');
+            title.textContent = item.label;
+            const meta = document.createElement('em');
+            const lossCount = item.trainingTasks.reduce((sum, task) => sum + Number(task.metric_count || 0), 0);
+            const logCount = item.trainingTasks.reduce((sum, task) => sum + Number(task.log_count || 0), 0);
+            meta.textContent = [
+                `${item.trainingTasks.length} 次训练`,
+                `${lossCount} loss点`,
+                `${logCount} 日志`,
+                item.trainingTasks.some((task) => task.archived) ? '含归档' : '',
+            ].filter(Boolean).join(' · ');
+            content.append(title, meta);
+            label.append(checkbox, content);
+            list.appendChild(label);
+        }
+        body.appendChild(list);
+
+        const checkedValues = () => Array.from(list.querySelectorAll('input[type="checkbox"]:checked'))
+            .map((input) => input.value)
+            .filter(Boolean);
+        const syncConfirm = () => {
+            const confirmBtn = document.getElementById('history-task-dialog-confirm');
+            if (confirmBtn) confirmBtn.disabled = checkedValues().length === 0;
+        };
+        list.addEventListener('change', syncConfirm);
+        selectAll.addEventListener('click', () => {
+            list.querySelectorAll('input[type="checkbox"]').forEach((input) => { input.checked = true; });
+            syncConfirm();
+        });
+        clearAll.addEventListener('click', () => {
+            list.querySelectorAll('input[type="checkbox"]').forEach((input) => { input.checked = false; });
+            syncConfirm();
+        });
+
+        return showHistoryTaskDialog({
+            title: '选择要合并查看的训练分组',
+            description: '勾选一个或多个分组后合并查看 Loss 和日志',
+            body,
+            confirmText: '合并查看',
+            onOpen: syncConfirm,
+            getValue: () => {
+                const selectedGroupKeys = new Set(checkedValues());
+                const taskIds = candidates
+                    .filter((item) => selectedGroupKeys.has(item.key))
+                    .flatMap((item) => item.trainingTasks.map((task) => task.id).filter(Boolean));
+                return taskIds.length ? taskIds : null;
+            },
+        });
+    }
+
+    function historyTaskStepOffset(task) {
+        const resume = task?.resume_from || {};
+        const step = Number(resume.checkpoint_step || 0);
+        return Number.isFinite(step) && step > 0 ? step : 0;
+    }
+
+    function historyLossChartPoints(lossPoints, task) {
+        const offset = historyTaskStepOffset(task);
+        const out = [];
+        let maxStep = null;
+        for (const item of lossPoints || []) {
+            const rawStep = Number(item.step);
+            if (!Number.isFinite(rawStep)) continue;
+            const step = rawStep + offset;
+            if (maxStep !== null && step < maxStep) continue;
+            if (maxStep === null || step > maxStep) maxStep = step;
+            out.push({
+                step,
+                loss: item.loss,
+                rawStep,
+                displayStepOffset: offset,
+            });
+        }
+        return out;
     }
 
     function renderHistoryTask(payload) {
@@ -8054,20 +8502,24 @@
         const logs = payload.logs || [];
         const metrics = metricsWithProgressFallback(payload.metrics || [], logs);
         const lossPoints = metrics.filter((item) => item.loss !== undefined);
+        const chartPoints = historyLossChartPoints(lossPoints, task);
         lossChart?.setXLabel?.('step');
-        lossChart?.setData(lossPoints.map((item) => ({
-            step: item.step || 0,
-            loss: item.loss,
-            rawStep: item.step,
-        })), { keepAll: true });
+        lossChart?.setScaleMode?.('step', {
+            xRange: {
+                min: chartPoints[0]?.step,
+                max: chartPoints[chartPoints.length - 1]?.step,
+            },
+        });
+        lossChart?.setData(chartPoints, { keepAll: true });
         const lastMetric = metrics[metrics.length - 1] || {};
         const lastLossMetric = lossPoints[lossPoints.length - 1] || {};
+        const lastChartPoint = chartPoints[chartPoints.length - 1] || {};
         const configLr = readConfigNumber(payload.config_toml, 'learning_rate');
         const system = payload.system || [];
         const lastSystem = system[system.length - 1] || {};
         document.getElementById('metric-loss').textContent = lastMetric.loss !== undefined ? Number(lastMetric.loss).toFixed(5) : '-';
         document.getElementById('metric-lr').textContent = formatLr(lastValue(metrics, 'lr') ?? configLr);
-        document.getElementById('metric-step').textContent = lastValue(metrics, 'step') ?? lastLossMetric.step ?? '-';
+        document.getElementById('metric-step').textContent = lastChartPoint.step ?? lastValue(metrics, 'step') ?? lastLossMetric.step ?? '-';
         document.getElementById('metric-rate').textContent = lastValue(metrics, 'rate') || '-';
         document.getElementById('metric-vram').textContent =
             lastSystem.vram_used_gb !== undefined ? `${lastSystem.vram_used_gb}/${lastSystem.vram_total_gb} GB` : '-';
@@ -8112,7 +8564,7 @@
         const bannerTitle = document.getElementById('history-view-title');
         if (banner) banner.hidden = false;
         if (bannerTitle) {
-            bannerTitle.textContent = `配置分组合并: ${configGroupLabel(group)} · ${summary.task_count || 0} 次训练`;
+            bannerTitle.textContent = `合并查看: ${configGroupLabel(group)} · ${summary.task_count || 0} 次训练`;
         }
 
         document.getElementById('train-variant').textContent = group.variant || '-';
@@ -8127,12 +8579,22 @@
 
         const metrics = payload.metrics || [];
         const lossPoints = metrics.filter((item) => item.loss !== undefined);
-        lossChart?.setXLabel?.('loss点');
+        lossChart?.setXLabel?.('step');
+        lossChart?.setScaleMode?.('step', {
+            xRange: {
+                min: summary.start_display_step ?? lossPoints[0]?.display_step ?? lossPoints[0]?.step,
+                max: summary.end_display_step ?? lossPoints[lossPoints.length - 1]?.display_step ?? lossPoints[lossPoints.length - 1]?.step,
+            },
+        });
         lossChart?.setData(lossPoints.map((item) => ({
-            step: item.visual_step || item.step || 0,
+            step: item.display_step || item.step || 0,
             loss: item.loss,
             rawStep: item.step,
+            displayStepOffset: item.display_step_offset || 0,
             sourceTaskLabel: item.source_task_label || '',
+            sourceTaskIndex: item.source_task_index || 0,
+            stageBreakBefore: Boolean(item.stage_break_before),
+            stageLabel: item.stage_break_before ? `任务${item.source_task_index || ''}` : '',
         })), { keepAll: true });
         const lastMetric = metrics[metrics.length - 1] || {};
         const lastLossMetric = lossPoints[lossPoints.length - 1] || {};
@@ -8140,19 +8602,19 @@
             lastMetric.loss !== undefined ? Number(lastMetric.loss).toFixed(5) : '-';
         document.getElementById('metric-lr').textContent = formatLr(lastValue(metrics, 'lr'));
         document.getElementById('metric-step').textContent =
-            lastMetric.visual_step ?? lastMetric.step ?? lastLossMetric.visual_step ?? lastLossMetric.step ?? '-';
+            lastMetric.display_step ?? lastMetric.step ?? lastLossMetric.display_step ?? lastLossMetric.step ?? '-';
 
         const logs = payload.logs || [];
         const logEl = document.getElementById('log-output');
         logEl.textContent = logs.map(formatGroupTimelineLogRecord).join('\n');
         if (logEl.textContent) logEl.textContent += '\n';
         logEl.scrollTop = logEl.scrollHeight;
-        setLogStatus(`配置分组合并 · ${logs.length} 行日志 · ${summary.loss_count || 0} Loss 点 · 已隐藏 ${summary.progress_count || 0} 条进度记录`, 'warning');
+        setLogStatus(`手动合并 · ${logs.length} 行日志 · ${summary.loss_count || 0} Loss 点 · 已隐藏 ${summary.progress_count || 0} 条进度记录`, 'warning');
 
         const health = document.getElementById('training-health');
         health.className = 'training-health ok';
         health.textContent = [
-            `已合并 ${summary.task_count || 0} 次训练`,
+            `已手动合并 ${summary.task_count || 0} 次训练`,
             `${summary.loss_count || 0} 个 Loss 点`,
             `${summary.log_count || 0} 行日志`,
             `${summary.progress_count || 0} 条进度记录未显示`,
@@ -8177,22 +8639,30 @@
 
     function configGroupTimelineSummary(payload) {
         const group = payload.group || {};
-        const lines = [`# 配置分组合并: ${configGroupLabel(group)}`, ''];
+        const lines = [`# 手动合并查看: ${configGroupLabel(group)}`, ''];
         for (const segment of payload.segments || []) {
             const task = segment.task || {};
-            lines.push(
+            const segmentLines = [
                 `任务 ${segment.index}: ${task.label || task.id || '-'}`,
                 `  ID: ${task.id || '-'}`,
                 `  状态: ${historyStateLabel(task.state)}`,
                 `  时间: ${task.started_at_text || '-'} -> ${task.finished_at_text || '未结束'}`,
                 `  输出目录: ${task.output_dir || '-'}`,
+                `  真实 Step: ${formatStepRange(segment.start_display_step, segment.end_display_step)}`,
+                segment.display_step_offset ? `  续训偏移: +${segment.display_step_offset}` : '',
                 `  日志: ${segment.log_count || 0} 行`,
                 `  进度记录: ${segment.progress_count || 0} 条`,
                 `  Loss/指标: ${segment.metric_count || 0} 条`,
                 '',
-            );
+            ].filter(Boolean);
+            lines.push(...segmentLines);
         }
         return lines.join('\n');
+    }
+
+    function formatStepRange(start, end) {
+        if (start === undefined || start === null || end === undefined || end === null) return '-';
+        return `${start} -> ${end}`;
     }
 
     function renderConfigGroupPaths(payload) {
@@ -8205,6 +8675,7 @@
             ['配置文件', configGroupLabel(group)],
             ['合并训练数', `${summary.task_count || 0}`],
             ['时间范围', `${summary.started_at_text || '-'} -> ${summary.finished_at_text || '未结束'}`],
+            ['真实步数', formatStepRange(summary.start_display_step, summary.end_display_step)],
             ['归档任务', summary.include_archived ? '已包含' : '未包含'],
         ];
         for (const [label, value] of items) {
@@ -8219,6 +8690,9 @@
     }
 
     function configGroupLabel(group) {
+        if (group.methods_subdir === '手动选择') {
+            return group.variant || '手动选择';
+        }
         return `${group.methods_subdir || '-'} / ${group.variant || '-'} / ${group.preset || 'default'}`;
     }
 
@@ -8252,6 +8726,7 @@
         viewingHistoryTaskId = '';
         historyViewMode = 'live';
         currentHistoryConfigGroup = null;
+        currentHistoryTimelineSelection = [];
         currentHistoryTaskForResume = null;
         clearResumeOptions();
         const banner = document.getElementById('history-view-banner');
@@ -8270,6 +8745,7 @@
         stepCounter = 0;
         lossChart?.clear();
         lossChart?.setXLabel?.('step');
+        lossChart?.setScaleMode?.('index');
         renderTrainingHistoryList();
         if (refresh) {
             pollStatus();
@@ -8579,6 +9055,11 @@
         document.getElementById('btn-delete-dataset-preset').addEventListener('click', deleteDatasetPreset);
         document.getElementById('btn-save-dataset-preset').addEventListener('click', saveDatasetPresetEditor);
         document.getElementById('btn-refresh-dataset-preview').addEventListener('click', loadDatasetPreviewImages);
+        document.getElementById('btn-config-dataset-dialog-refresh').addEventListener('click', () => loadDatasetPresets({ selectCurrent: false }));
+        document.getElementById('btn-config-dataset-dialog-manage').addEventListener('click', () => {
+            closeConfigDatasetPickerDialog();
+            document.querySelector('[data-tab="datasets"]')?.click();
+        });
         document.getElementById('btn-reload-toml').addEventListener('click', async () => {
             const file = currentTomlFile || val('toml-file-select');
             if (file && (await confirmDiscardTomlChanges('当前 TOML 有未保存修改，重新读取文件会丢失这些修改。是否继续？'))) {
@@ -8665,6 +9146,8 @@
             'btn-delete-dataset-preset': '只删除当前数据集预设 TOML，不删除图片或缓存目录。',
             'btn-save-dataset-preset': '保存当前数据集预设编辑器中的路径和蓝图参数。',
             'btn-refresh-dataset-preview': '重新扫描当前数据集路径，读取最新图片和同名 caption 标注。',
+            'btn-config-dataset-dialog-refresh': '重新读取可选的数据集预设列表，并保留当前配置页的选择状态。',
+            'btn-config-dataset-dialog-manage': '切换到数据集页，编辑或新增可复用的数据集预设。',
         };
         for (const [id, title] of Object.entries(tips)) {
             const el = document.getElementById(id);

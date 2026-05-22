@@ -2250,8 +2250,8 @@ class AnimaTrainer:
         if is_main_process and (args.save_state or args.save_state_on_train_end):
             save_state_on_train_end(args, accelerator)
 
-        saver.cleanup_resumable()
         saver.save_final(network, loop_state.global_step, num_train_epochs)
+        saver.cleanup_resumable()
 
     # endregion
 

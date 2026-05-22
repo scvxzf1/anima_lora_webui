@@ -403,12 +403,14 @@ class TrainingService:
         preset: str,
         *,
         include_archived: bool = False,
+        task_ids: list[str] | None = None,
     ) -> dict[str, Any]:
         return _build_config_group_timeline(
             methods_subdir,
             variant,
             preset,
             include_archived=include_archived,
+            task_ids=task_ids,
         )
 
     def get_resume_options(self, task_id: str) -> dict[str, Any]:
@@ -1057,16 +1059,37 @@ def _build_config_group_timeline(
     preset: str,
     *,
     include_archived: bool = False,
+    task_ids: list[str] | None = None,
 ) -> dict[str, Any]:
     group = _history_config_group(methods_subdir, variant, preset)
-    tasks = [
-        task for task in _list_history_tasks()
-        if task.get("job") == "training"
-        and _task_config_group_matches(task, group)
-        and (include_archived or not task.get("archived"))
-    ]
+    selected_ids = _normalize_timeline_task_ids(task_ids)
+    all_tasks = _list_history_tasks()
+    if selected_ids:
+        tasks = _select_timeline_tasks_by_id(
+            all_tasks,
+            selected_ids,
+            include_archived=include_archived,
+        )
+        groups = _timeline_groups_for_tasks(tasks)
+        if len(groups) == 1:
+            group = groups[0]
+        else:
+            group = {
+                "methods_subdir": "手动选择",
+                "variant": f"{len(groups)} 个配置分组",
+                "preset": "selected",
+            }
+    else:
+        tasks = [
+            task for task in all_tasks
+            if task.get("job") == "training"
+            and _task_config_group_matches(task, group)
+            and (include_archived or not task.get("archived"))
+        ]
     tasks.sort(key=lambda item: (float(item.get("started_at") or 0), str(item.get("id") or "")))
     if not tasks:
+        if selected_ids:
+            raise FileNotFoundError("没有找到可合并的已选训练任务")
         raise FileNotFoundError("这个配置文件分组没有可合并的训练任务")
 
     logs: list[dict[str, Any]] = []
@@ -1079,14 +1102,25 @@ def _build_config_group_timeline(
         task_dir = _history_task_dir(task_id)
         task_logs = _read_jsonl(task_dir / "logs.jsonl")
         visible_logs = [record for record in task_logs if record.get("kind") != "progress"]
-        task_metrics = _metrics_from_history(task_logs, _read_jsonl(task_dir / "metrics.jsonl"))
+        task_metrics = _timeline_training_metrics(_metrics_from_history(task_logs, _read_jsonl(task_dir / "metrics.jsonl")))
         if task_metrics:
             start_visual_step = next_visual_step
             next_visual_step = _assign_visual_steps(task_metrics, next_visual_step)
             end_visual_step = next_visual_step - 1
+            display_step_offset = _timeline_resume_step_offset(task)
+            start_display_step, end_display_step = _assign_display_steps(task_metrics, display_step_offset)
+            raw_steps = [_int_or_none(item.get("step")) for item in task_metrics]
+            raw_steps = [step for step in raw_steps if step is not None]
+            start_raw_step = raw_steps[0] if raw_steps else None
+            end_raw_step = raw_steps[-1] if raw_steps else None
         else:
             start_visual_step = None
             end_visual_step = None
+            display_step_offset = _timeline_resume_step_offset(task)
+            start_display_step = None
+            end_display_step = None
+            start_raw_step = None
+            end_raw_step = None
 
         source_label = _timeline_task_label(task)
         for record in visible_logs:
@@ -1096,11 +1130,12 @@ def _build_config_group_timeline(
             item["source_task_label"] = source_label
             logs.append(item)
 
-        for metric in task_metrics:
+        for metric_offset, metric in enumerate(task_metrics):
             item = dict(metric)
             item["source_task_id"] = task_id
             item["source_task_index"] = index
             item["source_task_label"] = source_label
+            item["stage_break_before"] = index > 1 and metric_offset == 0
             metrics.append(item)
 
         segments.append({
@@ -1113,6 +1148,11 @@ def _build_config_group_timeline(
             "loss_count": sum(1 for item in task_metrics if item.get("loss") is not None),
             "start_visual_step": start_visual_step,
             "end_visual_step": end_visual_step,
+            "start_display_step": start_display_step,
+            "end_display_step": end_display_step,
+            "display_step_offset": display_step_offset,
+            "start_raw_step": start_raw_step,
+            "end_raw_step": end_raw_step,
         })
 
     logs.sort(key=lambda item: (
@@ -1150,9 +1190,67 @@ def _build_config_group_timeline(
             "started_at_text": tasks[0].get("started_at_text") if tasks else "",
             "finished_at": tasks[-1].get("finished_at") if tasks and tasks[-1].get("finished_at") else None,
             "finished_at_text": tasks[-1].get("finished_at_text") if tasks and tasks[-1].get("finished_at") else "",
+            "start_display_step": next((segment["start_display_step"] for segment in segments if segment["start_display_step"] is not None), None),
+            "end_display_step": next((segment["end_display_step"] for segment in reversed(segments) if segment["end_display_step"] is not None), None),
             "include_archived": include_archived,
+            "selection_mode": "manual" if selected_ids else "config_group",
+            "selected_task_ids": [str(task.get("id") or "") for task in tasks],
+            "group_count": len(_timeline_groups_for_tasks(tasks)),
         },
     }
+
+
+def _normalize_timeline_task_ids(task_ids: list[str] | None) -> list[str]:
+    out: list[str] = []
+    seen: set[str] = set()
+    for raw in task_ids or []:
+        task_id = str(raw or "").strip()
+        if not task_id or task_id in seen:
+            continue
+        out.append(task_id)
+        seen.add(task_id)
+    return out
+
+
+def _select_timeline_tasks_by_id(
+    tasks: list[dict[str, Any]],
+    task_ids: list[str],
+    *,
+    include_archived: bool,
+) -> list[dict[str, Any]]:
+    by_id = {str(task.get("id") or ""): task for task in tasks}
+    selected: list[dict[str, Any]] = []
+    invalid: list[str] = []
+    for task_id in task_ids:
+        task = by_id.get(task_id)
+        if (
+            not task
+            or task.get("job") != "training"
+            or (task.get("archived") and not include_archived)
+        ):
+            invalid.append(task_id)
+            continue
+        selected.append(task)
+    if invalid:
+        raise ValueError("所选训练任务不存在、已隐藏或不能参与合并: " + ", ".join(invalid))
+    return selected
+
+
+def _timeline_groups_for_tasks(tasks: list[dict[str, Any]]) -> list[dict[str, str]]:
+    groups: list[dict[str, str]] = []
+    seen: set[tuple[str, str, str]] = set()
+    for task in tasks:
+        group = _history_config_group(
+            str(task.get("methods_subdir") or ""),
+            str(task.get("variant") or ""),
+            str(task.get("preset") or "default"),
+        )
+        key = (group["methods_subdir"], group["variant"], group["preset"])
+        if key in seen:
+            continue
+        seen.add(key)
+        groups.append(group)
+    return groups
 
 
 def _history_config_group(methods_subdir: str, variant: str, preset: str) -> dict[str, str]:
@@ -1200,6 +1298,19 @@ def _metrics_from_history(logs: list[dict[str, Any]], metrics: list[dict[str, An
         out.append(parsed)
 
     out.sort(key=lambda item: (float(item.get("ts") or 0), int(item.get("step") or 0)))
+    return out
+
+
+def _timeline_training_metrics(metrics: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    out: list[dict[str, Any]] = []
+    max_step: int | None = None
+    for item in metrics:
+        step = _int_or_none(item.get("step"))
+        if step is not None:
+            if max_step is not None and step < max_step:
+                continue
+            max_step = step if max_step is None else max(max_step, step)
+        out.append(item)
     return out
 
 
@@ -1255,6 +1366,30 @@ def _assign_visual_steps(metrics: list[dict[str, Any]], next_step: int) -> int:
         item["visual_step"] = next_step
         next_step += 1
     return next_step
+
+
+def _timeline_resume_step_offset(task: dict[str, Any]) -> int:
+    resume_from = task.get("resume_from")
+    if not isinstance(resume_from, dict):
+        return 0
+    checkpoint_step = _int_or_none(resume_from.get("checkpoint_step"))
+    return checkpoint_step if checkpoint_step is not None and checkpoint_step > 0 else 0
+
+
+def _assign_display_steps(metrics: list[dict[str, Any]], offset: int) -> tuple[int | None, int | None]:
+    start_step: int | None = None
+    last_step: int | None = None
+    for item in metrics:
+        raw_step = _int_or_none(item.get("step"))
+        display_step = (offset + raw_step) if raw_step is not None else ((last_step or offset) + 1)
+        if last_step is not None and display_step <= last_step:
+            display_step = last_step + 1
+        item["display_step"] = display_step
+        item["display_step_offset"] = offset
+        if start_step is None:
+            start_step = display_step
+        last_step = display_step
+    return start_step, last_step
 
 
 def _timeline_task_brief(task: dict[str, Any]) -> dict[str, Any]:
@@ -1358,6 +1493,8 @@ def _list_resume_checkpoints(task: dict[str, Any]) -> list[dict[str, Any]]:
     for child in sorted(output_dir.iterdir(), key=lambda p: p.name):
         if not child.is_dir():
             continue
+        if _is_transient_resume_state_dir(child.name):
+            continue
         state_file = child / "train_state.json"
         if not _path_exists(state_file):
             continue
@@ -1368,6 +1505,8 @@ def _list_resume_checkpoints(task: dict[str, Any]) -> list[dict[str, Any]]:
         epoch = _int_or_none(state.get("current_epoch"))
         mtime = _state_mtime(child, state_file)
         scope = "task" if lower is not None and lower <= mtime <= upper else "other"
+        if scope != "task":
+            continue
         kind = _resume_state_kind(child.name)
         paired_weight = _paired_resume_weight(child, output_dir)
         items.append({
@@ -1390,6 +1529,10 @@ def _list_resume_checkpoints(task: dict[str, Any]) -> list[dict[str, Any]]:
 
     items.sort(key=_resume_state_sort_key)
     return items[:MAX_RESUME_CHECKPOINTS]
+
+
+def _is_transient_resume_state_dir(name: str) -> bool:
+    return name.endswith((".tmp", ".backup"))
 
 
 def _select_resume_checkpoint(

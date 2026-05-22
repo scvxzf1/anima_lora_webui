@@ -51,6 +51,10 @@ SYSTEM_DATASET_PRESET_FILES = frozenset({
     "configs/datasets/easycontrol.toml",
     "configs/datasets/ip_adapter.toml",
 })
+HIDDEN_DATASET_PRESET_FILES = frozenset({
+    "configs/datasets/easycontrol.toml",
+    "configs/datasets/ip_adapter.toml",
+})
 SYSTEM_PRESET_PREFIXES = ("configs/methods/", "configs/gui-methods/")
 SYSTEM_MANAGED_FILES = frozenset({
     "configs/web-file-groups.toml",
@@ -209,6 +213,8 @@ def list_dataset_presets() -> dict[str, Any]:
     presets: list[dict[str, Any]] = []
     for path in sorted(DATASET_PRESETS_DIR.glob("*.toml")):
         rel_path = _display_path(path)
+        if rel_path in HIDDEN_DATASET_PRESET_FILES:
+            continue
         meta = get_config_file_meta(rel_path)
         summary = _dataset_preset_summary(rel_path)
         presets.append({

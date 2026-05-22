@@ -187,7 +187,8 @@ async def handle_config_group_timeline(request: web.Request) -> web.Response:
     variant = str(request.query.get("variant") or "").strip()
     preset = str(request.query.get("preset") or "default").strip() or "default"
     include_archived = str(request.query.get("include_archived") or "0").lower() in {"1", "true", "yes"}
-    if not methods_subdir or not variant:
+    task_ids = _timeline_task_ids_from_query(request)
+    if not task_ids and (not methods_subdir or not variant):
         return web.json_response({"ok": False, "error": "缺少 methods_subdir 或 variant"}, status=400)
     try:
         return web.json_response(svc.get_config_group_timeline(
@@ -195,11 +196,28 @@ async def handle_config_group_timeline(request: web.Request) -> web.Response:
             variant,
             preset,
             include_archived=include_archived,
+            task_ids=task_ids,
         ))
     except FileNotFoundError as e:
         return web.json_response({"ok": False, "error": str(e)}, status=404)
     except ValueError as e:
         return web.json_response({"ok": False, "error": str(e)}, status=400)
+
+
+def _timeline_task_ids_from_query(request: web.Request) -> list[str]:
+    values: list[str] = []
+    for key in ("task_id", "task_ids"):
+        values.extend(request.query.getall(key, []))
+    out: list[str] = []
+    seen: set[str] = set()
+    for value in values:
+        for part in str(value or "").split(","):
+            task_id = part.strip()
+            if not task_id or task_id in seen:
+                continue
+            out.append(task_id)
+            seen.add(task_id)
+    return out
 
 
 async def handle_history_resume_options(request: web.Request) -> web.Response:

@@ -225,15 +225,43 @@ def get_checkpoint_ckpt_name(args: argparse.Namespace, ext: str):
 
 def save_checkpoint_state(args: argparse.Namespace, accelerator):
     state_dir = get_checkpoint_state_dir(args)
+    tmp_state_dir = state_dir + ".tmp"
+    backup_state_dir = state_dir + ".backup"
 
     logger.info("")
     logger.info(f"saving checkpoint state to {state_dir} (overwriting)")
     os.makedirs(args.output_dir, exist_ok=True)
 
-    if os.path.exists(state_dir):
-        shutil.rmtree(state_dir)
+    _prepare_checkpoint_state_dirs(state_dir, tmp_state_dir, backup_state_dir)
 
-    accelerator.save_state(state_dir)
+    try:
+        accelerator.save_state(tmp_state_dir)
+
+        if os.path.exists(backup_state_dir):
+            shutil.rmtree(backup_state_dir)
+        if os.path.exists(state_dir):
+            os.replace(state_dir, backup_state_dir)
+        os.replace(tmp_state_dir, state_dir)
+    except Exception:
+        if os.path.exists(tmp_state_dir):
+            shutil.rmtree(tmp_state_dir)
+        if not os.path.exists(state_dir) and os.path.exists(backup_state_dir):
+            os.replace(backup_state_dir, state_dir)
+        raise
+    else:
+        if os.path.exists(backup_state_dir):
+            shutil.rmtree(backup_state_dir)
+
+
+def _prepare_checkpoint_state_dirs(
+    state_dir: str,
+    tmp_state_dir: str,
+    backup_state_dir: str,
+) -> None:
+    if os.path.exists(tmp_state_dir):
+        shutil.rmtree(tmp_state_dir)
+    if not os.path.exists(state_dir) and os.path.exists(backup_state_dir):
+        os.replace(backup_state_dir, state_dir)
 
 
 def save_state_on_train_end(args: argparse.Namespace, accelerator):

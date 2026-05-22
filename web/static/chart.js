@@ -19,6 +19,8 @@ class MetricsChart {
         this.emptyText = options.emptyText || '等待 loss 数据...';
         this.xLabel = options.xLabel || 'step';
         this.hoverIndex = null;
+        this.useStepScale = false;
+        this.xRange = null;
         this.boundDocumentMouseMove = (event) => this._handleDocumentMouseMove(event);
         this.pixelRatio = 1;
         this.canvas.addEventListener('mousemove', (event) => this._handleMouseMove(event));
@@ -46,6 +48,12 @@ class MetricsChart {
 
     setXLabel(label) {
         this.xLabel = label || 'step';
+        this.render();
+    }
+
+    setScaleMode(mode, options = {}) {
+        this.useStepScale = mode === 'step';
+        this.xRange = this.useStepScale ? this._normalizeRange(options.xRange) : null;
         this.render();
     }
 
@@ -148,7 +156,9 @@ class MetricsChart {
         }
 
         const ratio = (x - pad.left) / plotW;
-        const nextIndex = Math.max(0, Math.min(this.data.length - 1, Math.round(ratio * (this.data.length - 1))));
+        const nextIndex = this.useStepScale
+            ? this._nearestIndexByX(x, { pad, plotW })
+            : Math.max(0, Math.min(this.data.length - 1, Math.round(ratio * (this.data.length - 1))));
         if (nextIndex === this.hoverIndex) return;
         this.hoverIndex = nextIndex;
         this.render();
@@ -187,6 +197,7 @@ class MetricsChart {
 
         const plotW = w - pad.left - pad.right;
         const plotH = h - pad.top - pad.bottom;
+        const xRange = this._xRange();
 
         // Grid lines
         ctx.strokeStyle = this.gridColor;
@@ -209,18 +220,22 @@ class MetricsChart {
             ctx.fillText(val.toFixed(4), w - 5, y + 3);
         }
 
+        this._drawStageMarkers(ctx, { w, h, pad, plotW, xRange });
+
         // Line
         ctx.strokeStyle = this.color;
         ctx.lineWidth = 1.5;
         ctx.lineJoin = 'round';
         ctx.beginPath();
+        let hasLine = false;
         for (let i = 0; i < this.data.length; i++) {
-            const x = pad.left + (i / (this.data.length - 1)) * plotW;
+            const x = this._xForPoint(this.data[i], i, { pad, plotW, xRange });
             const y = pad.top + ((maxV - this.data[i].value) / rangeV) * plotH;
-            if (i === 0) ctx.moveTo(x, y);
+            if (i === 0 || this.data[i].stageBreakBefore) ctx.moveTo(x, y);
             else ctx.lineTo(x, y);
+            hasLine = true;
         }
-        ctx.stroke();
+        if (hasLine) ctx.stroke();
 
         // Current value
         const last = this.data[this.data.length - 1];
@@ -234,23 +249,91 @@ class MetricsChart {
         ctx.fillStyle = this.textColor;
         ctx.font = '10px monospace';
         ctx.textAlign = 'left';
-        ctx.fillText(`${this.xLabel} ${this.data[0].step}`, pad.left, h - 5);
+        ctx.fillText(`${this.xLabel} ${this._formatStep(xRange.min)}`, pad.left, h - 5);
         ctx.textAlign = 'right';
-        ctx.fillText(`${this.xLabel} ${last.step}`, w - pad.right, h - 5);
+        ctx.fillText(`${this.xLabel} ${this._formatStep(xRange.max)}`, w - pad.right, h - 5);
 
-        this._drawHover(ctx, { w, h, pad, plotW, plotH, maxV, rangeV });
+        this._drawHover(ctx, { w, h, pad, plotW, plotH, maxV, rangeV, xRange });
         ctx.restore();
     }
 
     _pointPosition(index, layout) {
         const point = this.data[index];
         if (!point || this.data.length < 2) return null;
-        const { pad, plotW, plotH, maxV, rangeV } = layout;
+        const { pad, plotW, plotH, maxV, rangeV, xRange } = layout;
         return {
             point,
-            x: pad.left + (index / (this.data.length - 1)) * plotW,
+            x: this._xForPoint(point, index, { pad, plotW, xRange }),
             y: pad.top + ((maxV - point.value) / rangeV) * plotH,
         };
+    }
+
+    _xForPoint(point, index, layout) {
+        const { pad, plotW, xRange } = layout;
+        if (!this.useStepScale || !xRange || xRange.max <= xRange.min) {
+            return pad.left + (index / (this.data.length - 1)) * plotW;
+        }
+        const ratio = (point.step - xRange.min) / (xRange.max - xRange.min);
+        return pad.left + Math.max(0, Math.min(1, ratio)) * plotW;
+    }
+
+    _nearestIndexByX(x, layout) {
+        let bestIndex = 0;
+        let bestDistance = Infinity;
+        for (let i = 0; i < this.data.length; i++) {
+            const pointX = this._xForPoint(this.data[i], i, { ...layout, xRange: this._xRange() });
+            const distance = Math.abs(pointX - x);
+            if (distance < bestDistance) {
+                bestDistance = distance;
+                bestIndex = i;
+            }
+        }
+        return bestIndex;
+    }
+
+    _xRange() {
+        if (this.xRange) return this.xRange;
+        const steps = this.data.map((point) => point.step).filter(Number.isFinite);
+        const min = Math.min(...steps);
+        const max = Math.max(...steps);
+        return { min, max };
+    }
+
+    _normalizeRange(range) {
+        if (!range) return null;
+        const min = Number(range.min ?? range.start);
+        const max = Number(range.max ?? range.end);
+        if (!Number.isFinite(min) || !Number.isFinite(max) || max < min) return null;
+        return { min, max };
+    }
+
+    _drawStageMarkers(ctx, layout) {
+        const { w, h, pad, plotW, xRange } = layout;
+        const markers = this.data.filter((point) => point.stageBreakBefore);
+        if (!markers.length) return;
+        ctx.save();
+        ctx.strokeStyle = this.highlightColor;
+        ctx.fillStyle = this.highlightColor;
+        ctx.globalAlpha = 0.68;
+        ctx.lineWidth = 1;
+        ctx.setLineDash([3, 4]);
+        ctx.font = '10px monospace';
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'alphabetic';
+        for (const point of markers) {
+            const x = this._xForPoint(point, this.data.indexOf(point), { pad, plotW, xRange });
+            ctx.beginPath();
+            ctx.moveTo(x, pad.top);
+            ctx.lineTo(x, h - pad.bottom);
+            ctx.stroke();
+            const label = String(point.stageLabel || `任务${point.sourceTaskIndex || point.source_task_index || ''}`);
+            if (label.trim()) {
+                ctx.setLineDash([]);
+                ctx.fillText(this._shorten(label, 22), Math.min(x + 5, w - pad.right - 60), pad.top + 12);
+                ctx.setLineDash([3, 4]);
+            }
+        }
+        ctx.restore();
     }
 
     _drawHover(ctx, layout) {
@@ -321,7 +404,12 @@ class MetricsChart {
         }
         lines.push(`Loss: ${point.value.toFixed(5)}`);
         const rawStep = this._firstFinite(point.rawStep, point.raw_step, point.originalStep, point.trainStep);
-        lines.push(`训练步数: ${this._formatStep(rawStep ?? point.step)}`);
+        lines.push(`真实步数: ${this._formatStep(point.step)}`);
+        if (rawStep !== null && rawStep !== point.step) {
+            lines.push(`阶段内步数: ${this._formatStep(rawStep)}`);
+        }
+        const offset = this._firstFinite(point.displayStepOffset, point.display_step_offset);
+        if (offset) lines.push(`续训偏移: +${this._formatStep(offset)}`);
         const sourceLabel = point.sourceTaskLabel || point.source_task_label;
         if (sourceLabel) lines.push(`来源: ${this._shorten(sourceLabel, 34)}`);
         return lines;

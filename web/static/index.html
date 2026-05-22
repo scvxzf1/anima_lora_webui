@@ -17,7 +17,7 @@
             }
         })();
     </script>
-    <link rel="stylesheet" href="/static/style.css?v=train-settings-lora-merge-20260522-1">
+    <link rel="stylesheet" href="/static/style.css?v=toml-toolbar-priority-20260522-2">
 </head>
 <body>
     <header>
@@ -91,9 +91,9 @@
                         <div class="toml-file-actions toml-primary-actions" aria-label="常用 TOML 操作">
                             <input id="toml-import-input" type="file" accept=".toml,.txt,text/plain" hidden>
                             <button id="btn-save-toml" class="btn btn-small btn-primary" type="button">保存更新当前选中配置</button>
-                            <button id="btn-toggle-toml-editor" class="btn btn-small" type="button">直接编辑配置文件</button>
-                            <button id="btn-save-as-toml" class="btn btn-small" type="button">保存新配置</button>
-                            <button id="btn-apply-toml" class="btn btn-small" type="button">加载选中配置</button>
+                            <button id="btn-save-as-toml" class="btn btn-small btn-primary" type="button">另存新配置</button>
+                            <button id="btn-apply-toml" class="btn btn-small btn-primary" type="button">加载选中配置</button>
+                            <button id="btn-toggle-toml-editor" class="btn btn-small btn-highlight" type="button">直接编辑配置文件</button>
                             <button id="btn-move-toml-group" class="btn btn-small" type="button">移动分组位置</button>
                         </div>
                         <div class="toml-file-actions toml-secondary-actions" aria-label="次要 TOML 操作">
@@ -406,6 +406,23 @@
         </form>
     </dialog>
 
+    <dialog id="config-dataset-picker-dialog" class="preview-dialog config-dataset-picker-dialog">
+        <form method="dialog">
+            <div class="preview-dialog-header">
+                <div>
+                    <h2>选择数据集预设</h2>
+                    <p id="config-dataset-picker-dialog-meta">搜索、选择并预览对应原始路径的第一张图片。</p>
+                </div>
+                <div class="config-dataset-dialog-actions">
+                    <button id="btn-config-dataset-dialog-refresh" class="btn btn-small" type="button">刷新预设</button>
+                    <button id="btn-config-dataset-dialog-manage" class="btn btn-small" type="button">管理数据集</button>
+                    <button class="btn btn-small" value="close" type="submit">关闭</button>
+                </div>
+            </div>
+            <div id="config-dataset-picker-dialog-body" class="config-dataset-picker-dialog-body"></div>
+        </form>
+    </dialog>
+
     <dialog id="history-task-dialog" class="history-task-dialog">
         <form method="dialog">
             <div class="history-task-dialog-header">
@@ -424,6 +441,6 @@
     </dialog>
 
     <script src="/static/chart.js?v=history-20260517-2"></script>
-    <script src="/static/app.js?v=train-settings-lora-merge-20260522-1"></script>
+    <script src="/static/app.js?v=dataset-presets-hide-system-20260522-1"></script>
 </body>
 </html>
