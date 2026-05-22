@@ -1699,6 +1699,10 @@ class AnimaTrainer:
         if self.cast_unet(args):
             unet.to(dtype=unet_weight_dtype)
         for i, t_enc in enumerate(text_encoders):
+            # None when the TE was never loaded (cache_text_encoder_outputs with
+            # no sample prompts / val / TE-training -- qwen3_needed=False).
+            if t_enc is None:
+                continue
             t_enc.requires_grad_(False)
 
             # in case of cpu, dtype is already set to fp32 because cpu does not support fp16/bf16
@@ -1743,6 +1747,8 @@ class AnimaTrainer:
                     self.get_text_encoders_train_flags(args, text_encoders),
                 )
             ):
+                if t_enc is None:
+                    continue
                 t_enc.train()
 
                 # set top parameter requires_grad = True for gradient checkpointing works
@@ -1752,6 +1758,8 @@ class AnimaTrainer:
         else:
             unet.eval()
             for t_enc in text_encoders:
+                if t_enc is None:
+                    continue
                 t_enc.eval()
 
         # compile_mode='full': narrow torch.compile to _run_blocks (the constant-
