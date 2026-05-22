@@ -358,29 +358,44 @@ class AnimaTrainer:
         if val_dataset_group is not None:
             val_dataset_group.verify_bucket_reso_steps(16)
 
-    def load_target_model(self, args, weight_dtype, accelerator):
+    def load_target_model(
+        self, args, weight_dtype, accelerator, load_qwen3=True, load_vae=True
+    ):
         self.is_swapping_blocks = (
             args.blocks_to_swap is not None and args.blocks_to_swap > 0
         )
 
-        # Load Qwen3 text encoder (tokenizers already loaded in get_tokenize_strategy)
-        logger.info("Loading Qwen3 text encoder...")
-        qwen3_text_encoder, _ = anima_utils.load_qwen3_text_encoder(
-            args.qwen3, dtype=weight_dtype, device="cpu"
-        )
-        qwen3_text_encoder.eval()
+        # Load Qwen3 text encoder (tokenizers already loaded in get_tokenize_strategy).
+        # Skipped when every text-encoder output is already cached and no live
+        # encoding (sampling / TE training / cache disabled) needs it.
+        if load_qwen3:
+            logger.info("Loading Qwen3 text encoder...")
+            qwen3_text_encoder, _ = anima_utils.load_qwen3_text_encoder(
+                args.qwen3, dtype=weight_dtype, device="cpu"
+            )
+            qwen3_text_encoder.eval()
+        else:
+            logger.info(
+                "Skipping Qwen3 text encoder load: all text-encoder outputs cached."
+            )
+            qwen3_text_encoder = None
 
-        # Load VAE
-        logger.info("Loading Anima VAE...")
-        vae = qwen_image_autoencoder_kl.load_vae(
-            args.vae,
-            device="cpu",
-            disable_mmap=True,
-            spatial_chunk_size=args.vae_chunk_size,
-            disable_cache=args.vae_disable_cache,
-        )
-        vae.to(weight_dtype)
-        vae.eval()
+        # Load VAE. Skipped when every latent is already cached and no sampling
+        # (which decodes latents) is configured.
+        if load_vae:
+            logger.info("Loading Anima VAE...")
+            vae = qwen_image_autoencoder_kl.load_vae(
+                args.vae,
+                device="cpu",
+                disable_mmap=True,
+                spatial_chunk_size=args.vae_chunk_size,
+                disable_cache=args.vae_disable_cache,
+            )
+            vae.to(weight_dtype)
+            vae.eval()
+        else:
+            logger.info("Skipping VAE load: all latents cached and no sampling.")
+            vae = None
 
         # Return format: (model_type, text_encoders, vae, unet)
         return "anima", [qwen3_text_encoder], vae, None  # unet loaded lazily
@@ -1206,7 +1221,17 @@ class AnimaTrainer:
         weight_dtype,
     ):
         if args.cache_text_encoder_outputs:
-            if not args.lowram:
+            if text_encoders[0] is None:
+                # TE skipped at load time: every output is already cached and
+                # nothing needs live encoding. Run the cache pass with no model
+                # to populate ImageInfo.text_encoder_outputs_npz (forms no
+                # batches), then return without touching the GPU / LLM adapter.
+                dataset.new_cache_text_encoder_outputs([None], accelerator)
+                accelerator.wait_for_everyone()
+                return
+
+            org_vae_device = None
+            if not args.lowram and vae is not None:
                 # We cannot move DiT to CPU because of block swap, so only move VAE
                 logger.info("move vae to cpu to save memory")
                 org_vae_device = vae.device
@@ -1272,7 +1297,7 @@ class AnimaTrainer:
             logger.info("move text encoder back to cpu")
             text_encoders[0].to("cpu")
 
-            if not args.lowram:
+            if not args.lowram and vae is not None and org_vae_device is not None:
                 logger.info("move vae back to original device")
                 vae.to(org_vae_device)
 
@@ -1894,6 +1919,71 @@ class AnimaTrainer:
             args, train_dataset_group, val_dataset_group
         )  # may change some args
 
+        # Set the text-encoder-outputs caching strategy now (before the model
+        # load) so the cache-completeness probe below can use it to decide
+        # whether the Qwen3 text encoder needs loading at all.
+        text_encoder_outputs_caching_strategy = (
+            self.get_text_encoder_outputs_caching_strategy(args)
+        )
+        if text_encoder_outputs_caching_strategy is not None:
+            text_strategies.TextEncoderOutputsCachingStrategy.set_strategy(
+                text_encoder_outputs_caching_strategy
+            )
+
+        # Decide whether the heavy encoders are actually needed. When latents
+        # / TE outputs are fully cached on disk and nothing else needs them, we
+        # skip loading them entirely (saves the disk read, RAM, and the
+        # GPU round-trip during the caching pass).
+        sampling_enabled = bool(
+            args.sample_prompts
+            and (
+                args.sample_at_first
+                or args.sample_every_n_steps
+                or args.sample_every_n_epochs
+            )
+        )
+
+        def _latents_complete(group):
+            return group is None or group.is_latents_cache_complete()
+
+        def _te_complete(group):
+            return group is None or group.is_text_encoder_outputs_cache_complete()
+
+        latents_complete = (
+            cache_latents
+            and _latents_complete(train_dataset_group)
+            and _latents_complete(val_dataset_group)
+        )
+        # CMMD validation generates samples and decodes them through the VAE
+        # (see library/training/validation.py). It reads cached TE outputs, so
+        # it needs the VAE but not the text encoder.
+        cmmd_validation = val_dataset_group is not None and getattr(
+            args, "use_cmmd", True
+        )
+        # VAE: needed to encode missing latents, to decode training samples, or
+        # to decode CMMD validation samples.
+        vae_needed = (
+            (not cache_latents)
+            or (not latents_complete)
+            or sampling_enabled
+            or cmmd_validation
+        )
+
+        te_complete = (
+            args.cache_text_encoder_outputs
+            and _te_complete(train_dataset_group)
+            and _te_complete(val_dataset_group)
+        )
+        # Qwen3 TE: needed to encode missing TE outputs, to encode sample
+        # prompts, when caching is off (live encode each step), or when the
+        # text encoder itself is being trained.
+        qwen3_needed = (
+            (not args.cache_text_encoder_outputs)
+            or (not te_complete)
+            or bool(args.sample_prompts)
+            or self.is_train_text_encoder(args)
+        )
+
         # Prepare accelerator
         logger.info("preparing accelerator")
         accelerator = prepare_accelerator(args)
@@ -1909,10 +1999,14 @@ class AnimaTrainer:
 
         # load target models: unet may be None for lazy loading
         model_version, text_encoder, vae, unet = self.load_target_model(
-            args, weight_dtype, accelerator
+            args,
+            weight_dtype,
+            accelerator,
+            load_qwen3=qwen3_needed,
+            load_vae=vae_needed,
         )
         if vae_dtype is None:
-            vae_dtype = vae.dtype
+            vae_dtype = vae.dtype if vae is not None else weight_dtype
             logger.info(
                 f"vae_dtype is set to {vae_dtype} by the model since cast_vae() is false"
             )
@@ -1922,18 +2016,23 @@ class AnimaTrainer:
             text_encoder if isinstance(text_encoder, list) else [text_encoder]
         )
 
-        # prepare dataset for latents caching if needed
+        # prepare dataset for latents caching if needed. When vae is None the
+        # latents are already fully cached -- new_cache_latents still runs to
+        # populate each ImageInfo.latents_npz path the dataloader reads, but
+        # forms no encode batches so the (absent) VAE is never touched.
         if cache_latents:
-            vae.to(accelerator.device, dtype=vae_dtype)
-            vae.requires_grad_(False)
-            vae.eval()
+            if vae is not None:
+                vae.to(accelerator.device, dtype=vae_dtype)
+                vae.requires_grad_(False)
+                vae.eval()
 
             train_dataset_group.new_cache_latents(vae, accelerator)
             if val_dataset_group is not None:
                 val_dataset_group.new_cache_latents(vae, accelerator)
 
-            vae.to("cpu")
-            clean_memory_on_device(accelerator.device)
+            if vae is not None:
+                vae.to("cpu")
+                clean_memory_on_device(accelerator.device)
 
             accelerator.wait_for_everyone()
 
@@ -1941,13 +2040,6 @@ class AnimaTrainer:
         text_encoding_strategy = self.get_text_encoding_strategy(args)
         text_strategies.TextEncodingStrategy.set_strategy(text_encoding_strategy)
 
-        text_encoder_outputs_caching_strategy = (
-            self.get_text_encoder_outputs_caching_strategy(args)
-        )
-        if text_encoder_outputs_caching_strategy is not None:
-            text_strategies.TextEncoderOutputsCachingStrategy.set_strategy(
-                text_encoder_outputs_caching_strategy
-            )
         self.cache_text_encoder_outputs_if_needed(
             args,
             accelerator,

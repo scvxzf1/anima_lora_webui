@@ -71,6 +71,7 @@ from library.datasets.distill import CachedDataset  # noqa: E402
 from networks.lora_anima.factory import create_network  # noqa: E402
 from networks.lora_save import save_network_weights  # noqa: E402
 from networks.spd import (  # noqa: E402
+    _snap,
     spd_rollout_to_stage,
     spd_schedule_bands,
     spd_stage_target,
@@ -239,12 +240,13 @@ def main():
     parser.add_argument("--no_grad_ckpt", dest="grad_ckpt", action="store_false")
     parser.add_argument(
         "--torch_compile",
-        default="True",
-        action="store_true",
+        default=True,
+        action=argparse.BooleanOptionalAction,
         help="torch.compile each block's _forward (dynamic=False). Recompiles "
         "once per distinct (stage x bucket) shape on the flash backend, each at "
         "its real token count (no padding); the dynamo cache limit is raised to "
-        "keep every specialization cached.",
+        "keep every specialization cached. On by default; pass --no-torch_compile "
+        "to run eager.",
     )
     parser.add_argument("--dynamo_backend", type=str, default="inductor")
     parser.add_argument(
@@ -378,6 +380,7 @@ def main():
     # --- Schedule bands (data-independent; weights keep marginal-over-t uniform) ---
     bands = spd_schedule_bands(stages, transition_sigmas)
     band_widths = torch.tensor([hi - lo for (lo, hi) in bands], dtype=torch.float64)
+    band_widths_f = band_widths.float()  # hoisted for the per-step multinomial
     stage_probs = (band_widths / band_widths.sum()).tolist()
     logger.info(
         "SPD schedule '%s': stages=%s transition_sigmas=%s",
@@ -696,6 +699,14 @@ def main():
         try:
             with torch.no_grad():
                 # --- Teacher: frozen-base gold (LoRA OFF), full-res from the same ε.
+                # The teacher rolls at full res, so pin the full-res static count
+                # FIRST. Otherwise a stale low-res count left by the previous step
+                # (e.g. an analytic step at stage 0) makes forward_mini_train_dit
+                # pad to a target < the real seq_len → negative pad truncates the
+                # sequence → the unpad reshape blows up. Same count as the grad
+                # tail below, so no extra compile graph.
+                if stage_token_counts is not None:
+                    model.set_static_token_count(stage_token_counts[-1])
                 network.set_enabled(False)
                 x0_teacher = _teacher_denoise(eps_full, cattn, teacher_steps, flow_shift)
                 network.set_enabled(True)
@@ -753,7 +764,9 @@ def main():
         # Grad tail forward at the (full-res) on-policy state, distilling toward the
         # frozen-base gold: (x̃ − x0_teacher)/σ̃ — the straight line from the visited
         # state to the sample the expensive path produces for this seed.
-        x_state = x_state.detach().requires_grad_()
+        x_state = x_state.detach()
+        if args.grad_ckpt:  # reentrant checkpoint needs a grad-requiring input
+            x_state.requires_grad_()
         pred = _forward_dit(
             x_state, x_state.new_full((B,), float(sig_state), dtype=dtype), cattn
         )
@@ -804,16 +817,24 @@ def main():
             # Sample one stage for the whole batch (single-resolution per step),
             # weighted by band width.
             stage_idx = int(
-                torch.multinomial(band_widths.float(), 1, generator=stage_rng).item()
+                torch.multinomial(band_widths_f, 1, generator=stage_rng).item()
             )
-            t_lo, t_hi = spd_schedule_bands(stages, trans)[stage_idx]
+            # Bands depend only on the schedule, so reuse the precomputed ones;
+            # only jitter (which builds a fresh `trans`) needs a recompute.
+            t_lo, t_hi = (
+                bands[stage_idx]
+                if trans is transition_sigmas
+                else spd_schedule_bands(stages, trans)[stage_idx]
+            )
             x0_si, eps_si = spd_stage_target(
                 x0_full, stage_idx, stages, trans, patch=patch, gen=gen
             )
             # FM training sample + analytic velocity target at scale s_i (Eq. 13–14).
             t = (t_lo + (t_hi - t_lo) * torch.rand(B, device=device)).to(dtype)
             t_e = t.view(B, 1, 1, 1, 1)
-            x_t = ((1.0 - t_e) * x0_si + t_e * eps_si).requires_grad_()
+            x_t = (1.0 - t_e) * x0_si + t_e * eps_si
+            if args.grad_ckpt:  # reentrant checkpoint needs a grad-requiring input
+                x_t.requires_grad_()
             v_target = (eps_si - x0_si).float()
             # Pad this stage's tokens to its constant count so the compiled blocks
             # see a single shape per stage. No-op when --torch_compile is off.
