@@ -167,4 +167,11 @@ def resolve_adapters(args, network) -> list[MethodAdapter]:
         from networks.methods.easycontrol import EasyControlMethodAdapter
 
         adapters.append(EasyControlMethodAdapter())
+    # Soft-tokens contrastive: opt-in via a positive contrastive weight on the
+    # built network (the objective leaves no learned params, so it's detected
+    # off the network's target weight rather than an args flag).
+    if float(getattr(network, "_contrastive_target_weight", 0.0) or 0.0) > 0.0:
+        from networks.methods.soft_tokens import SoftTokensMethodAdapter
+
+        adapters.append(SoftTokensMethodAdapter())
     return adapters

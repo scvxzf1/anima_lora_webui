@@ -142,6 +142,31 @@ class BaseDataset(torch.utils.data.Dataset):
         # the deterministic crop baked into the cached latent.
         self.force_load_images_for_ip: bool = False
 
+        # IP-Adapter distinct-pair (identity) training. When an
+        # IdentityPairSampler is attached via ``setup_identity_pairs`` the
+        # reference fed to the IP path (``example["ip_features"]``) is decoupled
+        # from the VAE target: with probability ``ip_pair_prob`` a *different*
+        # image of the target's identity supplies the PE features, removing the
+        # self-pair copy shortcut. ``self`` (no sampler) = bit-identical legacy
+        # behavior. See docs/proposal/ip-adapter-identity-pairs.md.
+        self.identity_pair_sampler = None  # IdentityPairSampler | None
+        self.ip_pair_prob: float = 0.8
+        self.ip_pair_caption_strip_p: float = 0.0
+        self.ip_pair_is_validation: bool = False
+        self._ip_pair_strip_warned: bool = False
+
+        # Soft-tokens contrastive negatives. When a sampler is attached via
+        # ``setup_contrastive_negatives`` each example carries
+        # ``neg_crossattn_emb`` of shape (B, k, S, D): k cached text embeddings
+        # of *unrelated* images, used as InfoNCE negatives. Reuses the
+        # IdentityPairSampler's ``shuffled`` policy (Phase 1). Decoupled from the
+        # VAE target — same cached-feature-swap trick as IP-Adapter pairs, but
+        # the swapped feature is the text embedding, not the PE feature. See
+        # docs/proposal/soft_tokens_contrastive.md.
+        self.contrastive_neg_sampler = None  # IdentityPairSampler | None
+        self.contrastive_neg_k: int = 1
+        self.contrastive_neg_mode: str = "shuffled"
+
         # caching
         self.caching_mode = None  # None, 'latents', 'text'
 
@@ -1215,6 +1240,180 @@ class BaseDataset(torch.utils.data.Dataset):
         # H2D bandwidth before being cast right back down.
         return feats
 
+    def setup_identity_pairs(
+        self,
+        index_path: str,
+        *,
+        mode: str,
+        prob: float,
+        min_level: str,
+        caption_strip_p: float,
+        is_validation: bool,
+    ) -> None:
+        """Attach an IdentityPairSampler so ``__getitem__`` draws a distinct
+        same-identity reference for the IP path. ``mode`` is one of
+        ``identity`` / ``identity_cross_artist`` (``self`` should not call
+        this). For training the candidate pool is restricted to this dataset's
+        registered stems (no validation-image leakage); for validation it spans
+        the whole index so each held-out target can reach its identity siblings
+        in the training pool (the deployment condition)."""
+        from library.datasets.identity_pairs import IdentityPairSampler
+
+        registered = {
+            os.path.splitext(os.path.basename(info.absolute_path))[0]
+            for info in self.image_data.values()
+        }
+        restrict = None if is_validation else registered
+        self.identity_pair_sampler = IdentityPairSampler(
+            index_path,
+            min_level=min_level,
+            cross_artist=(mode == "identity_cross_artist"),
+            restrict_stems=restrict,
+        )
+        self.ip_pair_prob = float(prob)
+        self.ip_pair_caption_strip_p = float(caption_strip_p)
+        self.ip_pair_is_validation = bool(is_validation)
+        n_missing = sum(1 for s in registered if not self.identity_pair_sampler.has(s))
+        if n_missing:
+            logger.warning(
+                f"[ip-pair] {n_missing}/{len(registered)} registered stems are "
+                f"absent from {index_path} (will self-pair). Re-run "
+                f"`make caption-index` if the dataset changed."
+            )
+
+    def _load_ip_features_for_stem(
+        self, stem: str, subset, rel_dir: str
+    ) -> Optional[torch.Tensor]:
+        """Load a *reference* stem's cached PE features by reconstructing its
+        nested cache path (``cache_dir/<rel_dir>/<stem>_anima_<enc>.safetensors``,
+        with a flat fallback). Unlike ``_try_load_ip_features`` this resolves a
+        stem that may not be a registered image of this dataset (the pair
+        partner often lives in a different subset/split)."""
+        if not self.ip_features_cache_to_disk:
+            return None
+        from safetensors.torch import load_file
+
+        suffix = f"_anima_{self.ip_features_encoder}.safetensors"
+        cache_dir = getattr(subset, "cache_dir", None) if subset is not None else None
+        candidates: list[str] = []
+        if cache_dir:
+            if rel_dir:
+                candidates.append(os.path.join(str(cache_dir), rel_dir, stem + suffix))
+            candidates.append(os.path.join(str(cache_dir), stem + suffix))
+        cache_path = next((c for c in candidates if os.path.exists(c)), None)
+        if cache_path is None:
+            raise FileNotFoundError(
+                f"PE feature cache missing for reference stem {stem!r}. "
+                f"Looked in: {candidates}. Run `make preprocess-pe`."
+            )
+        feats = load_file(cache_path).get("image_features")
+        if feats is None:
+            raise KeyError(
+                f"Cache {cache_path} has no 'image_features' key. "
+                f"Re-run `make preprocess-pe`."
+            )
+        return feats
+
+    def setup_contrastive_negatives(
+        self,
+        index_path: str,
+        *,
+        k: int,
+        mode: str,
+        is_validation: bool,
+    ) -> None:
+        """Attach an IdentityPairSampler so ``__getitem__`` surfaces ``k``
+        cached negative text embeddings (``neg_crossattn_emb``) per example for
+        the soft-tokens contrastive objective.
+
+        ``mode`` (docs/proposal/soft_tokens_contrastive.md):
+          - ``shuffled`` — an unrelated image (no character/copyright overlap).
+          - ``jaccard``  — shuffled sourcing + a per-negative tag-overlap weight
+            (``neg_jaccard``) the loss uses to down-weight near-misses.
+          - ``hard``     — a same-artist / different-character sibling (falls
+            back to shuffled for orphan artists).
+
+        The candidate pool is restricted to this dataset's registered stems so
+        negatives never leak in from another split."""
+        if mode not in ("shuffled", "jaccard", "hard"):
+            raise ValueError(
+                f"contrastive_negative_mode must be shuffled/jaccard/hard, got {mode!r}"
+            )
+        from library.datasets.identity_pairs import IdentityPairSampler
+
+        registered = {
+            os.path.splitext(os.path.basename(info.absolute_path))[0]
+            for info in self.image_data.values()
+        }
+        self.contrastive_neg_sampler = IdentityPairSampler(
+            index_path,
+            min_level="artist",
+            cross_artist=False,
+            restrict_stems=registered,
+        )
+        self.contrastive_neg_k = int(k)
+        self.contrastive_neg_mode = str(mode)
+        n_missing = sum(
+            1 for s in registered if not self.contrastive_neg_sampler.has(s)
+        )
+        if n_missing:
+            logger.warning(
+                f"[contrastive] {n_missing}/{len(registered)} registered stems "
+                f"are absent from {index_path} (will skip negatives for those). "
+                f"Re-run `make caption-index` if the dataset changed."
+            )
+
+    def _load_te_for_stem(
+        self, stem: str, subset, rel_dir: str
+    ) -> Optional[torch.Tensor]:
+        """Load a *negative* stem's cached text embedding (post-LLM-adapter
+        ``crossattn_emb``) by reconstructing its nested cache path. Mirrors
+        ``_load_ip_features_for_stem`` but swaps the PE feature for the TE
+        feature (``{stem}_anima_te.safetensors``). Returns ``(S, D)`` or None."""
+        from safetensors import safe_open
+
+        suffix = "_anima_te.safetensors"
+        cache_dir = getattr(subset, "cache_dir", None) if subset is not None else None
+        candidates: list[str] = []
+        if cache_dir:
+            if rel_dir:
+                candidates.append(os.path.join(str(cache_dir), rel_dir, stem + suffix))
+            candidates.append(os.path.join(str(cache_dir), stem + suffix))
+        cache_path = next((c for c in candidates if os.path.exists(c)), None)
+        if cache_path is None:
+            raise FileNotFoundError(
+                f"TE cache missing for contrastive negative stem {stem!r}. "
+                f"Looked in: {candidates}. Run `make preprocess-te` with "
+                f"cache_llm_adapter_outputs=true."
+            )
+        with safe_open(cache_path, framework="pt") as f:
+            keys = set(f.keys())
+            # Prefer the pristine v0 variant; fall back to single-variant cache.
+            for key in ("crossattn_emb_v0", "crossattn_emb"):
+                if key in keys:
+                    return f.get_tensor(key)
+        raise KeyError(
+            f"TE cache {cache_path} has no 'crossattn_emb' key — the negative "
+            f"requires cache_llm_adapter_outputs=true. Re-run `make preprocess-te`."
+        )
+
+    @staticmethod
+    def _strip_identity_tags(caption: str, meta: dict) -> str:
+        """Drop the target's character/copyright tags from a comma-separated
+        caption (case-insensitive), so identity must flow through the IP image
+        path rather than the text. Leaves all other tags (incl. artist) intact.
+        No-op when ``caption`` carries no comma structure or no identity tag
+        matches."""
+        drop = {
+            t.strip().lower()
+            for t in (meta.get("character", []) + meta.get("copyright", []))
+            if t.strip()
+        }
+        if not drop or "," not in caption:
+            return caption
+        kept = [tok for tok in caption.split(",") if tok.strip().lower() not in drop]
+        return ",".join(kept)
+
     def _try_load_inversion_runs(self, image_abs_path: str) -> Optional[torch.Tensor]:
         """Load <stem>_inverted_run{0..N-1}.safetensors from self.inversion_dir.
 
@@ -1290,6 +1489,12 @@ class BaseDataset(torch.utils.data.Dataset):
         custom_attributes = []
         inversion_runs_list: List[Optional[torch.Tensor]] = []
         ip_features_list: List[Optional[torch.Tensor]] = []
+        ip_features_shuffled_list: List[Optional[torch.Tensor]] = []
+        # Soft-tokens contrastive negatives: per-image (k, S, D) stack of cached
+        # negative text embeddings, or None when no sampler is attached.
+        neg_crossattn_list: List[Optional[torch.Tensor]] = []
+        # Per-image (k,) tag-overlap weights for jaccard mode; None otherwise.
+        neg_jaccard_list: List[Optional[torch.Tensor]] = []
 
         for image_key in bucket[image_index : image_index + bucket_batch_size]:
             image_info = self.image_data[image_key]
@@ -1449,12 +1654,73 @@ class BaseDataset(torch.utils.data.Dataset):
             target_sizes_hw.append((int(target_size[1]), int(target_size[0])))
             flippeds.append(flipped)
 
+            # IP-Adapter distinct-pair resolution. Decide which stem's PE
+            # features feed the IP path (decoupled from this VAE target), and
+            # whether to strip the target's identity tokens from the caption so
+            # the identity has to flow through the image path, not the text.
+            ip_ref_stem, ip_ref_subset, ip_ref_reldir = (
+                None,
+                subset,
+                "",
+            )
+            ip_shuffled_stem = None
+            strip_identity = False
+            sampler = self.identity_pair_sampler
+            target_stem = os.path.splitext(os.path.basename(image_info.absolute_path))[
+                0
+            ]
+            if (
+                sampler is not None
+                and self.ip_features_cache_to_disk
+                and sampler.has(target_stem)
+            ):
+                if self.ip_pair_is_validation:
+                    # Deterministic per target so the matched/shuffled deltas
+                    # are stable across epochs (the held-out gate).
+                    drng = random.Random(self.seed ^ (hash(target_stem) & 0xFFFFFFFF))
+                    ip_ref_stem, _ = sampler.resolve(target_stem, drng)
+                    ip_shuffled_stem, _ = sampler.shuffled(target_stem, drng)
+                else:
+                    if random.random() < self.ip_pair_prob:
+                        ip_ref_stem, _ = sampler.resolve(target_stem, random)
+                    else:
+                        ip_ref_stem = target_stem  # self-pair in the mix
+                    strip_identity = (
+                        ip_ref_stem != target_stem
+                        and self.ip_pair_caption_strip_p > 0.0
+                        and random.random() < self.ip_pair_caption_strip_p
+                    )
+                if ip_ref_stem and ip_ref_stem != target_stem:
+                    ip_ref_reldir = sampler.rel_dir(ip_ref_stem)
+
             caption = image_info.caption
+            if strip_identity:
+                caption = self._strip_identity_tags(
+                    caption, sampler.image_meta.get(target_stem, {})
+                )
 
             tokenization_required = (
                 self.text_encoder_output_caching_strategy is None
                 or self.text_encoder_output_caching_strategy.is_partial
             )
+            # The caption-leakage strip only reaches the model when captions
+            # are tokenized live. With cached TE outputs the model reads the
+            # full (identity-bearing) embedding regardless, so the strip is
+            # inert — warn once instead of silently doing nothing.
+            if (
+                sampler is not None
+                and not self.ip_pair_is_validation
+                and self.ip_pair_caption_strip_p > 0.0
+                and not tokenization_required
+                and image_info.text_encoder_outputs_npz is not None
+                and not self._ip_pair_strip_warned
+            ):
+                self._ip_pair_strip_warned = True
+                logger.warning(
+                    "[ip-pair] ip_pair_caption_strip_p>0 but text-encoder "
+                    "outputs are cached — the strip is inert. Set "
+                    "cache_text_encoder_outputs=false for the guard to take effect."
+                )
             text_encoder_outputs = None
             input_ids = None
 
@@ -1484,9 +1750,68 @@ class BaseDataset(torch.utils.data.Dataset):
             else:
                 inversion_runs_list.append(None)
 
-            ip_features_list.append(
-                self._try_load_ip_features(image_info.absolute_path)
-            )
+            if ip_ref_stem is None or ip_ref_stem == target_stem:
+                ip_features_list.append(
+                    self._try_load_ip_features(image_info.absolute_path)
+                )
+            else:
+                ip_features_list.append(
+                    self._load_ip_features_for_stem(
+                        ip_ref_stem, ip_ref_subset, ip_ref_reldir
+                    )
+                )
+            if ip_shuffled_stem is not None and ip_shuffled_stem != target_stem:
+                ip_features_shuffled_list.append(
+                    self._load_ip_features_for_stem(
+                        ip_shuffled_stem, subset, sampler.rel_dir(ip_shuffled_stem)
+                    )
+                )
+            else:
+                ip_features_shuffled_list.append(
+                    self._try_load_ip_features(image_info.absolute_path)
+                    if ip_shuffled_stem is not None
+                    else None
+                )
+
+            # Soft-tokens contrastive negatives: draw k unrelated stems and load
+            # their cached text embeddings. Deterministic per target on the
+            # rare chance this dataset is used for validation; random in
+            # training. None when no sampler is attached or the target is absent
+            # from the index (the adapter then skips the contrastive forward).
+            neg_sampler = self.contrastive_neg_sampler
+            if neg_sampler is not None and neg_sampler.has(target_stem):
+                k = self.contrastive_neg_k
+                mode = self.contrastive_neg_mode
+                nrng = random.Random(self.seed ^ (hash(target_stem) & 0xFFFFFFFF))
+                neg_feats: List[torch.Tensor] = []
+                neg_jacc: List[float] = []
+                for _ in range(k):
+                    if mode == "hard":
+                        neg_stem, _lvl = neg_sampler.hard_negative(target_stem, nrng)
+                    else:  # shuffled / jaccard both source shuffled negatives
+                        neg_stem, _lvl = neg_sampler.shuffled(target_stem, nrng)
+                    if neg_stem == target_stem:
+                        continue  # no distinct negative reachable
+                    feat = self._load_te_for_stem(
+                        neg_stem, subset, neg_sampler.rel_dir(neg_stem)
+                    )
+                    if feat is not None:
+                        neg_feats.append(feat)
+                        neg_jacc.append(
+                            neg_sampler.tag_jaccard(target_stem, neg_stem)
+                            if mode == "jaccard"
+                            else 0.0
+                        )
+                ok = len(neg_feats) == k
+                neg_crossattn_list.append(torch.stack(neg_feats, dim=0) if ok else None)
+                neg_jaccard_list.append(
+                    torch.tensor(neg_jacc, dtype=torch.float32)
+                    if (ok and mode == "jaccard")
+                    else None
+                )
+            else:
+                neg_crossattn_list.append(None)
+                neg_jaccard_list.append(None)
 
         def none_or_stack_elements(tensors_list, converter):
             if (
@@ -1634,6 +1959,29 @@ class BaseDataset(torch.utils.data.Dataset):
             example["ip_features"] = torch.stack(ip_features_list, dim=0)
         else:
             example["ip_features"] = None
+        # Validation-only shuffled (unrelated) reference for the
+        # IPAdapterMethodAdapter shuffled_ref baseline. None outside validation.
+        if ip_features_shuffled_list and ip_features_shuffled_list[0] is not None:
+            example["ip_features_shuffled"] = torch.stack(
+                ip_features_shuffled_list, dim=0
+            )
+        else:
+            example["ip_features_shuffled"] = None
+
+        # Soft-tokens contrastive negatives: (B, k, S, D) cached text embeddings.
+        # All cached crossattn_emb share the padded sequence length, so a plain
+        # stack works. None when no sampler is attached (or any target in the
+        # bucket couldn't reach k distinct negatives).
+        if neg_crossattn_list and all(t is not None for t in neg_crossattn_list):
+            example["neg_crossattn_emb"] = torch.stack(neg_crossattn_list, dim=0)
+        else:
+            example["neg_crossattn_emb"] = None
+        # Per-negative tag-overlap weights (B, k) for jaccard mode; None for
+        # shuffled / hard (the loss then runs plain InfoNCE).
+        if neg_jaccard_list and all(t is not None for t in neg_jaccard_list):
+            example["neg_jaccard"] = torch.stack(neg_jaccard_list, dim=0)
+        else:
+            example["neg_jaccard"] = None
 
         if self.debug_dataset:
             example["image_keys"] = bucket[image_index : image_index + self.batch_size]

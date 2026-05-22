@@ -27,7 +27,9 @@ _REF_IMAGE_EXTS = (".png", ".jpg", ".jpeg", ".webp")
 def _random_ref_image(directory: Path) -> str | None:
     if not directory.is_dir():
         return None
-    pool = [p for p in directory.iterdir() if p.suffix.lower() in _REF_IMAGE_EXTS]
+    # resized/ (and other source layouts) nest images under per-artist subdirs,
+    # so recurse rather than only scanning top-level files.
+    pool = [p for p in directory.rglob("*") if p.suffix.lower() in _REF_IMAGE_EXTS]
     if not pool:
         return None
     pick = random.choice(pool)
@@ -179,7 +181,16 @@ def cmd_test_ip(extra):
     ]
     if scale := os.environ.get("IP_SCALE"):
         args += ["--ip_scale", scale]
-    args += ["--prompt", os.environ.get("PROMPT") or "double peace, v v,"]
+    # Default is a coherent *target*-scene prompt with NO character/copyright
+    # tag, so any identity match must come through the IP image rather than the
+    # text path. (Distinct-pair training pairs the target's own caption with the
+    # denoised latent; identity flows from a *different* ref image's PE features.
+    # A thin prompt like "double peace" under-constrains the scene -> garbage.)
+    default_prompt = (
+        "masterpiece, best quality, score_7, safe. 1girl, solo, standing in a "
+        "cafe, holding a coffee cup, looking at viewer, smile, soft lighting."
+    )
+    args += ["--prompt", os.environ.get("PROMPT") or default_prompt]
     if neg := os.environ.get("NEG"):
         args += ["--negative_prompt", neg]
     args += list(extra)
@@ -421,7 +432,7 @@ def _resolve_ref_image_pool(directory: Path, n: int) -> list[str]:
     """
     if not directory.is_dir():
         return []
-    pool = [p for p in directory.iterdir() if p.suffix.lower() in _REF_IMAGE_EXTS]
+    pool = [p for p in directory.rglob("*") if p.suffix.lower() in _REF_IMAGE_EXTS]
     if not pool:
         return []
     if n >= len(pool):

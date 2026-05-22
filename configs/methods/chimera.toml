@@ -16,13 +16,13 @@
 # the denoise loss + per-pool balance loss. T-LoRA's mask is applied to
 # the content branch only (the freq branch keeps full rank at every t).
 
-network_alpha = 48
-network_dim = 48
+network_alpha = 32
+network_dim = 32
 
-learning_rate = 2e-5
-max_train_epochs = 10
-save_every_n_epochs = 2
-checkpointing_epochs = 2
+learning_rate = 5e-5
+max_train_epochs = 6
+save_every_n_epochs = 6
+checkpointing_epochs = 6
 
 use_shuffled_caption_variants = true
 cache_llm_adapter_outputs = true
@@ -34,9 +34,12 @@ caption_dropout_rate = 0.1
 logging_dir = "output/logs"
 log_with = "tensorboard"
 
+output_name = "anima_hydra"
+path_pattern = "ama_mitsuki/*|channel_(caststation)/*|sweetonedollar/*"
+
 use_ortho = true
 use_timestep_mask = true
-min_rank = 16
+min_rank = 32
 alpha_rank_scale = 1.0
 channel_scaling_alpha = 0.5
 
@@ -49,7 +52,7 @@ channel_scaling_alpha = 0.5
 # path.
 
 use_chimera_hydra = true
-num_experts_content = 6
+num_experts_content = 3
 num_experts_freq = 2
 
 # Outer balance multiplier is 1.0 so the per-pool weights below are the
@@ -65,10 +68,10 @@ num_experts_freq = 2
 
 balance_loss_warmup_ratio = 0.1
 balance_loss_weight = 1.0
-balance_w_content = 2e-6
-balance_w_freq = 5e-6
+balance_w_content = 1e-6
+balance_w_freq = 5e-7
 network_content_router_lr_scale = 10.0
-network_freq_router_lr_scale = 2.0
+network_freq_router_lr_scale = 5.0
 
 content_router_source = "crossattn_emb"
 content_router_init_std = 0.001      # non-zero (uniform would be a fixed point)
@@ -90,8 +93,9 @@ freq_router_init_std = 0.1
 # no router). Same default as the other hydra variants.
 # router_targets = ".*(output_proj|mlp\\.layer[12])$"
 router_targets = ".*(cross_attn\\.output_proj|mlp\\.layer[12])$"
-output_name = "anima_chimera-0521"
-
+# output_name = "anima_chimera-0521"
+[[datasets]]
+validation_split_num = 0
 # -------------
 # Optional: global content router. Default is the paper-faithful per-Linear
 # softmax over pooled rank-R lx_c (`self.router` on every chimera module).

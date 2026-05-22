@@ -17,7 +17,7 @@ dit_path = "models/diffusion_models/anima-base-v1.0.safetensors"
 data_dir = "post_image_dataset/lora"
 output_dir = "output/ckpt"
 
-iterations = 1000
+iterations = 2000
 batch_size = 1
 seed = 42
 
@@ -39,7 +39,7 @@ attn_mode = "flash"
 [schedule]
 stages = [0.5, 1.0]
 transition_sigmas = [0.5]
-label = "single_late_0.5_sigma0.5"
+label = "single_0.5_sigma0.5"
 # Optional R2 robustness: jitter the transition σ by ±this (absolute, uniform)
 # each step so the segment geometry is learned as a band, not a point. 0 = off.
 sigma_jitter = 0.0
@@ -65,7 +65,7 @@ sigma_jitter = 0.0
 # analytic-only. MIX — one LoRA can't be frozen by module, so 1.0 lets the prefix
 # drift untrained. NOTE: prefer warming up analytic-only before enabling this, so
 # the prefix rollout is sane when the teacher tail starts trusting its handoff state.
-ratio = 0.5
+ratio = 0.0
 # Site of supervision: 'entry' = the handoff σ̃ only (attacks the seam, cheapest);
 # 'full' = DAgger across the tail band (roll the tail no_grad to a random σ in
 # [sigma_floor, σ̃] and supervise there — needed to claim the high-res stage can
@@ -83,6 +83,6 @@ grad_clip = 1.0
 warmup = 0.02            # ratio of iterations (int >=1 → absolute steps)
 
 [io]
-save_every = 500
+save_every = 1000
 log_interval = 10
 log_dir = "output/logs/spd"
