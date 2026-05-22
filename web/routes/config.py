@@ -5,7 +5,9 @@ from __future__ import annotations
 from aiohttp import web
 
 from web.services.config_service import (
+    apply_dataset_preset_to_training_config,
     create_config_file_group,
+    delete_dataset_preset,
     delete_raw_file,
     delete_config_file_group,
     estimate_training_steps,
@@ -17,15 +19,21 @@ from web.services.config_service import (
     list_all_variants,
     list_config_file_groups,
     list_config_files,
+    list_dataset_presets,
+    list_dataset_preset_images,
     list_methods,
     list_presets,
     list_variants,
     load_merged_config,
+    load_dataset_preset,
     load_raw_file,
     patch_raw_file_values,
     restore_system_presets,
+    resolve_dataset_preview_image,
     save_raw_file,
     save_dataset_editor,
+    save_dataset_preset,
+    save_dataset_preset_as,
     save_sample_prompts_file,
     set_user_file_lock,
     set_user_group_lock,
@@ -48,6 +56,14 @@ def setup_config_routes(app: web.Application) -> None:
     app.router.add_get("/api/config/datasets", handle_datasets_get)
     app.router.add_put("/api/config/datasets", handle_datasets_put)
     app.router.add_post("/api/config/datasets/suggest", handle_datasets_suggest)
+    app.router.add_get("/api/config/dataset-presets", handle_dataset_presets_list)
+    app.router.add_get("/api/config/dataset-presets/read", handle_dataset_preset_read)
+    app.router.add_put("/api/config/dataset-presets", handle_dataset_preset_put)
+    app.router.add_post("/api/config/dataset-presets/save-as", handle_dataset_preset_save_as)
+    app.router.add_delete("/api/config/dataset-presets", handle_dataset_preset_delete)
+    app.router.add_post("/api/config/dataset-presets/apply", handle_dataset_preset_apply)
+    app.router.add_get("/api/config/dataset-presets/images", handle_dataset_preset_images)
+    app.router.add_get("/api/config/dataset-presets/image", handle_dataset_preset_image)
     app.router.add_get("/api/config/raw", handle_raw_get)
     app.router.add_put("/api/config/raw", handle_raw_put)
     app.router.add_patch("/api/config/raw", handle_raw_patch)
@@ -98,8 +114,9 @@ async def handle_steps(request: web.Request) -> web.Response:
     variant = request.query.get("variant", "lora")
     preset = request.query.get("preset", "default")
     methods_subdir = request.query.get("methods_subdir", "gui-methods")
+    dataset_config = request.query.get("dataset_config")
     try:
-        return web.json_response(estimate_training_steps(variant, preset, methods_subdir))
+        return web.json_response(estimate_training_steps(variant, preset, methods_subdir, dataset_config=dataset_config))
     except Exception as e:
         return web.json_response({"ok": False, "error": str(e)}, status=400)
 
@@ -162,6 +179,105 @@ async def handle_datasets_suggest(request: web.Request) -> web.Response:
         return web.json_response(result, status=status)
     except Exception as e:
         return web.json_response({"ok": False, "error": str(e)}, status=400)
+
+
+async def handle_dataset_presets_list(request: web.Request) -> web.Response:
+    try:
+        return web.json_response(list_dataset_presets())
+    except Exception as e:
+        return web.json_response({"ok": False, "error": str(e)}, status=400)
+
+
+async def handle_dataset_preset_read(request: web.Request) -> web.Response:
+    file = request.query.get("file", "")
+    try:
+        return web.json_response(load_dataset_preset(file))
+    except Exception as e:
+        return web.json_response({"ok": False, "error": str(e)}, status=400)
+
+
+async def handle_dataset_preset_put(request: web.Request) -> web.Response:
+    data = await request.json()
+    datasets = data.get("datasets", [])
+    defaults = data.get("defaults", {})
+    if not isinstance(datasets, list):
+        return web.json_response({"ok": False, "error": "datasets 必须是数组"}, status=400)
+    try:
+        return web.json_response(save_dataset_preset(
+            str(data.get("file") or ""),
+            datasets,
+            defaults if isinstance(defaults, dict) else {},
+        ))
+    except Exception as e:
+        return web.json_response({"ok": False, "error": str(e)}, status=400)
+
+
+async def handle_dataset_preset_save_as(request: web.Request) -> web.Response:
+    data = await request.json()
+    datasets = data.get("datasets", [])
+    defaults = data.get("defaults", {})
+    if not isinstance(datasets, list):
+        return web.json_response({"ok": False, "error": "datasets 必须是数组"}, status=400)
+    try:
+        return web.json_response(save_dataset_preset_as(
+            str(data.get("name") or data.get("file") or ""),
+            datasets,
+            defaults if isinstance(defaults, dict) else {},
+        ))
+    except Exception as e:
+        return web.json_response({"ok": False, "error": str(e)}, status=400)
+
+
+async def handle_dataset_preset_delete(request: web.Request) -> web.Response:
+    file = request.query.get("file", "")
+    try:
+        return web.json_response(delete_dataset_preset(file))
+    except Exception as e:
+        return web.json_response({"ok": False, "error": str(e)}, status=400)
+
+
+async def handle_dataset_preset_apply(request: web.Request) -> web.Response:
+    data = await request.json()
+    try:
+        return web.json_response(apply_dataset_preset_to_training_config(
+            str(data.get("dataset_file") or data.get("file") or ""),
+            str(data.get("train_file") or ""),
+            data.get("train_content"),
+        ))
+    except Exception as e:
+        return web.json_response({"ok": False, "error": str(e)}, status=400)
+
+
+async def handle_dataset_preset_images(request: web.Request) -> web.Response:
+    file = request.query.get("file", "")
+    source = request.query.get("source", "training")
+    try:
+        dataset_index = int(request.query.get("dataset_index", "0") or 0)
+        limit = int(request.query.get("limit", "120") or 120)
+        return web.json_response(list_dataset_preset_images(
+            file,
+            dataset_index,
+            source=source,
+            limit=limit,
+        ))
+    except FileNotFoundError as e:
+        return web.json_response({"ok": False, "error": str(e)}, status=404)
+    except Exception as e:
+        return web.json_response({"ok": False, "error": str(e)}, status=400)
+
+
+async def handle_dataset_preset_image(request: web.Request) -> web.StreamResponse:
+    file = request.query.get("file", "")
+    image = request.query.get("image", "")
+    source = request.query.get("source", "training")
+    try:
+        dataset_index = int(request.query.get("dataset_index", "0") or 0)
+        path = resolve_dataset_preview_image(file, dataset_index, image, source=source)
+    except FileNotFoundError as e:
+        return web.json_response({"ok": False, "error": str(e)}, status=404)
+    except Exception as e:
+        return web.json_response({"ok": False, "error": str(e)}, status=403)
+    return web.FileResponse(path)
 
 
 async def handle_raw_get(request: web.Request) -> web.Response:

@@ -10,7 +10,7 @@ vars + extra argv into the right ``train.py`` (via ``accelerate launch``) or
 from __future__ import annotations
 
 from scripts.tasks import preprocess as _preprocess
-from scripts.tasks._common import PY, _preset, bespoke_preset_flags, run, train
+from scripts.tasks._common import PY, _path, _preset, bespoke_preset_flags, run, train
 
 
 def cmd_postfix(extra):
@@ -102,7 +102,7 @@ def cmd_easycontrol_preprocess(extra):
             "--cache_dir",
             dst,
             "--vae",
-            "models/vae/qwen_image_vae.safetensors",
+            _path("vae", "models/vae/qwen_image_vae.safetensors"),
             "--batch_size",
             "4",
             "--chunk_size",
@@ -118,9 +118,12 @@ def cmd_easycontrol_preprocess(extra):
             "--cache_dir",
             dst,
             "--qwen3",
-            "models/text_encoders/qwen_3_06b_base.safetensors",
+            _path("qwen3", "models/text_encoders/qwen_3_06b_base.safetensors"),
             "--dit",
-            "models/diffusion_models/anima-base-v1.0.safetensors",
+            _path(
+                "pretrained_model_name_or_path",
+                "models/diffusion_models/anima-base-v1.0.safetensors",
+            ),
             "--caption_shuffle_variants",
             "4",
             "--caption_tag_dropout_rate",

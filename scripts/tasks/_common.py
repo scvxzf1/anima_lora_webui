@@ -493,42 +493,49 @@ def train(
     accelerate_launch(*args, *extra)
 
 
-INFERENCE_BASE = [
-    PY,
-    "inference.py",
-    "--dit",
-    "models/diffusion_models/anima-base-v1.0.safetensors",
-    "--text_encoder",
-    "models/text_encoders/qwen_3_06b_base.safetensors",
-    "--vae",
-    "models/vae/qwen_image_vae.safetensors",
-    "--vae_chunk_size",
-    "64",
-    "--vae_disable_cache",
-    "--attn_mode",
-    "flash",  # flash4 not supported yet (flash-attention-sm120 disabled)
-    "--lora_multiplier",
-    "1.0",
-    "--prompt",
-    "masterpiece, best quality, score_7, safe. An anime girl wearing a black tank-top"
-    " and denim shorts is standing outdoors. She's holding a rectangular sign out in"
-    ' front of her that reads "ANIMA". She\'s looking at the viewer with a smile. The'
-    " background features some trees and blue sky with clouds.",
-    "--negative_prompt",
-    "worst quality, low quality, score_1, score_2, score_3, blurry, jpeg artifacts, sepia",
-    "--image_size",
-    "1024",
-    "1024",
-    "--infer_steps",
-    "28",
-    "--flow_shift",
-    "1.0",
-    "--sampler",
-    "er_sde",
-    "--guidance_scale",
-    "4.0",
-    "--seed",
-    "40",
-    "--save_path",
-    "output/tests",
-]
+def build_inference_base() -> list[str]:
+    return [
+        PY,
+        "inference.py",
+        "--dit",
+        _path(
+            "pretrained_model_name_or_path",
+            "models/diffusion_models/anima-base-v1.0.safetensors",
+        ),
+        "--text_encoder",
+        _path("qwen3", "models/text_encoders/qwen_3_06b_base.safetensors"),
+        "--vae",
+        _path("vae", "models/vae/qwen_image_vae.safetensors"),
+        "--vae_chunk_size",
+        "64",
+        "--vae_disable_cache",
+        "--attn_mode",
+        "flash",  # flash4 not supported yet (flash-attention-sm120 disabled)
+        "--lora_multiplier",
+        "1.0",
+        "--prompt",
+        "masterpiece, best quality, score_7, safe. An anime girl wearing a black tank-top"
+        " and denim shorts is standing outdoors. She's holding a rectangular sign out in"
+        ' front of her that reads "ANIMA". She\'s looking at the viewer with a smile. The'
+        " background features some trees and blue sky with clouds.",
+        "--negative_prompt",
+        "worst quality, low quality, score_1, score_2, score_3, blurry, jpeg artifacts, sepia",
+        "--image_size",
+        "1024",
+        "1024",
+        "--infer_steps",
+        "28",
+        "--flow_shift",
+        "1.0",
+        "--sampler",
+        "er_sde",
+        "--guidance_scale",
+        "4.0",
+        "--seed",
+        "40",
+        "--save_path",
+        "output/tests",
+    ]
+
+
+INFERENCE_BASE = build_inference_base()

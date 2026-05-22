@@ -3,6 +3,8 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+import toml
+from PIL import Image
 
 from web.services import config_service
 
@@ -80,6 +82,26 @@ def test_sample_prompts_roundtrip_preserves_comments_blank_lines_and_spacing(tmp
     assert saved["content"] == original
     assert loaded["content"] == original
     assert loaded["prompts"] == ["masterpiece, best quality", "solo, 1girl"]
+
+
+def test_raw_patch_ignores_dataset_picker_ui_field(tmp_path: Path, monkeypatch):
+    configs, _dataset_path = _write_minimal_config_tree(tmp_path)
+    _patch_config_service_paths(monkeypatch, tmp_path)
+    train_rel = "configs/imported/lora.toml"
+
+    ok, msg, content, changed = config_service.patch_raw_file_values(
+        train_rel,
+        {
+            "dataset_config_picker": "configs/datasets/character_a.toml",
+            "output_name": "clean",
+        },
+    )
+
+    assert ok is True, msg
+    assert changed == ["output_name"]
+    assert 'output_name = "clean"' in content
+    assert "dataset_config_picker" not in content
+    assert "dataset_config_picker" not in (configs / "imported" / "lora.toml").read_text(encoding="utf-8")
 
 
 def test_locked_user_group_cannot_be_deleted(tmp_path: Path, monkeypatch):
@@ -187,6 +209,215 @@ def test_unlocked_default_group_can_be_renamed(tmp_path: Path, monkeypatch):
     assert renamed["label"] == "常用导入配置"
 
 
+def test_dataset_preset_save_read_list_and_apply(tmp_path: Path, monkeypatch):
+    configs, _dataset_path = _write_minimal_config_tree(tmp_path)
+    _patch_config_service_paths(monkeypatch, tmp_path)
+
+    saved = config_service.save_dataset_preset(
+        "configs/datasets/character_a.toml",
+        [
+            {
+                "source_dir": "image_dataset/a",
+                "image_dir": "post_image_dataset/a_resized",
+                "cache_dir": "post_image_dataset/a_cache",
+                "num_repeats": 3,
+            },
+            {
+                "source_dir": "image_dataset/b",
+                "image_dir": "post_image_dataset/b_resized",
+                "cache_dir": "post_image_dataset/b_cache",
+                "num_repeats": 2,
+            },
+        ],
+        {"resolution": 768, "batch_size": 1, "enable_bucket": True},
+    )
+
+    assert saved["ok"] is True
+    assert saved["file"] == "configs/datasets/character_a.toml"
+
+    loaded = config_service.load_dataset_preset("configs/datasets/character_a.toml")
+    assert loaded["summary"]["dataset_count"] == 2
+    assert loaded["summary"]["repeat_total"] == 5
+    assert loaded["defaults"]["resolution"] == 768
+
+    listed = config_service.list_dataset_presets()
+    assert "configs/datasets/character_a.toml" in [item["path"] for item in listed["presets"]]
+
+    applied = config_service.apply_dataset_preset_to_training_config(
+        "configs/datasets/character_a.toml",
+        "configs/imported/lora.toml",
+    )
+    assert applied["ok"] is True
+    train_text = (configs / "imported" / "lora.toml").read_text(encoding="utf-8")
+    assert 'dataset_config = "configs/datasets/character_a.toml"' in train_text
+    assert 'source_image_dir = "image_dataset/a"' in train_text
+    assert 'resized_image_dir = "post_image_dataset/a_resized"' in train_text
+    assert 'lora_cache_dir = "post_image_dataset/a_cache"' in train_text
+
+
+def test_system_dataset_preset_is_readonly_but_can_be_saved_as(tmp_path: Path, monkeypatch):
+    _write_minimal_config_tree(tmp_path)
+    _patch_config_service_paths(monkeypatch, tmp_path)
+    system_preset = tmp_path / "configs" / "datasets" / "ip_adapter.toml"
+    system_preset.write_text(
+        "\n".join(
+            [
+                "[[datasets]]",
+                "resolution = 1024",
+                "batch_size = 1",
+                "",
+                "[[datasets.subsets]]",
+                'image_dir = "ip-adapter-dataset"',
+                'cache_dir = "post_image_dataset/ip_adapter"',
+                "num_repeats = 1",
+                'custom_attributes = {source_dir = "ip-adapter-dataset"}',
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="只读"):
+        config_service.save_dataset_preset(
+            "configs/datasets/ip_adapter.toml",
+            [{"source_dir": "x", "image_dir": "y", "cache_dir": "z", "num_repeats": 1}],
+            {},
+        )
+
+    with pytest.raises(ValueError, match="不能删除"):
+        config_service.delete_dataset_preset("configs/datasets/ip_adapter.toml")
+
+    copied = config_service.save_dataset_preset_as(
+        "ip_adapter_copy",
+        [{"source_dir": "x", "image_dir": "y", "cache_dir": "z", "num_repeats": 1}],
+        {},
+    )
+    assert copied["file"] == "configs/datasets/ip_adapter_copy.toml"
+
+
+def test_dataset_preset_writes_independent_dataset_settings_per_path(tmp_path: Path, monkeypatch):
+    _write_minimal_config_tree(tmp_path)
+    _patch_config_service_paths(monkeypatch, tmp_path)
+
+    saved = config_service.save_dataset_preset(
+        "configs/datasets/multi_bucket.toml",
+        [
+            {
+                "source_dir": "image_dataset/a",
+                "image_dir": "post_image_dataset/a_resized",
+                "cache_dir": "post_image_dataset/a_cache",
+                "num_repeats": 2,
+                "settings": {
+                    "resolution": 768,
+                    "min_bucket_reso": 256,
+                    "max_bucket_reso": 768,
+                    "bucket_reso_steps": 32,
+                    "bucket_no_upscale": True,
+                    "validation_split_num": 4,
+                    "validation_seed": 7,
+                },
+            },
+            {
+                "source_dir": "image_dataset/b",
+                "image_dir": "post_image_dataset/b_resized",
+                "cache_dir": "post_image_dataset/b_cache",
+                "num_repeats": 5,
+                "settings": {
+                    "resolution": 1024,
+                    "min_bucket_reso": 384,
+                    "max_bucket_reso": 1344,
+                    "bucket_reso_steps": 64,
+                    "bucket_no_upscale": False,
+                    "validation_split": 0.1,
+                    "validation_seed": 99,
+                },
+            },
+        ],
+        {"caption_extension": ".txt", "keep_tokens": 2},
+    )
+
+    data = toml.loads(saved["content"])
+    assert len(data["datasets"]) == 2
+    assert data["datasets"][0]["resolution"] == 768
+    assert data["datasets"][0]["max_bucket_reso"] == 768
+    assert data["datasets"][0]["bucket_reso_steps"] == 32
+    assert data["datasets"][0]["bucket_no_upscale"] is True
+    assert data["datasets"][0]["validation_split_num"] == 4
+    assert data["datasets"][1]["resolution"] == 1024
+    assert data["datasets"][1]["min_bucket_reso"] == 384
+    assert data["datasets"][1]["max_bucket_reso"] == 1344
+    assert data["datasets"][1]["validation_split"] == 0.1
+
+    loaded = config_service.load_dataset_preset("configs/datasets/multi_bucket.toml")
+    assert loaded["datasets"][0]["settings"]["resolution"] == 768
+    assert loaded["datasets"][1]["settings"]["max_bucket_reso"] == 1344
+
+
+def test_dataset_preset_image_preview_reads_training_images_and_captions(tmp_path: Path, monkeypatch):
+    _write_minimal_config_tree(tmp_path)
+    _patch_config_service_paths(monkeypatch, tmp_path)
+    source_dir = tmp_path / "image_dataset" / "a"
+    image_dir = tmp_path / "post_image_dataset" / "a_resized"
+    source_dir.mkdir(parents=True)
+    image_dir.mkdir(parents=True)
+    Image.new("RGB", (8, 6), color=(120, 20, 40)).save(image_dir / "hero.png")
+    (source_dir / "hero.txt").write_text("1girl, blue eyes", encoding="utf-8")
+
+    config_service.save_dataset_preset(
+        "configs/datasets/preview.toml",
+        [{
+            "source_dir": "image_dataset/a",
+            "image_dir": "post_image_dataset/a_resized",
+            "cache_dir": "post_image_dataset/a_cache",
+            "num_repeats": 2,
+        }],
+        {"caption_extension": ".txt", "keep_tokens": 1},
+    )
+
+    listing = config_service.list_dataset_preset_images("configs/datasets/preview.toml", 0)
+
+    assert listing["ok"] is True
+    assert listing["total"] == 1
+    assert listing["images"][0]["name"] == "hero.png"
+    assert listing["images"][0]["caption"]["ok"] is True
+    assert listing["images"][0]["caption"]["text"] == "1girl, blue eyes"
+    assert "dataset_index=0" in listing["images"][0]["url"]
+
+
+def test_dataset_preview_image_resolver_rejects_files_outside_selected_row(tmp_path: Path, monkeypatch):
+    _write_minimal_config_tree(tmp_path)
+    _patch_config_service_paths(monkeypatch, tmp_path)
+    image_dir = tmp_path / "post_image_dataset" / "a_resized"
+    other_dir = tmp_path / "post_image_dataset" / "other"
+    image_dir.mkdir(parents=True)
+    other_dir.mkdir(parents=True)
+    Image.new("RGB", (4, 4), color=(10, 20, 30)).save(image_dir / "ok.png")
+    Image.new("RGB", (4, 4), color=(10, 20, 30)).save(other_dir / "bad.png")
+    config_service.save_dataset_preset(
+        "configs/datasets/preview_guard.toml",
+        [{
+            "source_dir": "image_dataset/a",
+            "image_dir": "post_image_dataset/a_resized",
+            "cache_dir": "post_image_dataset/a_cache",
+            "num_repeats": 1,
+        }],
+        {},
+    )
+
+    resolved = config_service.resolve_dataset_preview_image(
+        "configs/datasets/preview_guard.toml",
+        0,
+        "post_image_dataset/a_resized/ok.png",
+    )
+    assert resolved.name == "ok.png"
+
+    with pytest.raises(ValueError, match="不属于当前数据集路径"):
+        config_service.resolve_dataset_preview_image(
+            "configs/datasets/preview_guard.toml",
+            0,
+            "post_image_dataset/other/bad.png",
+        )
+
+
 def _write_minimal_config_tree(root: Path) -> tuple[Path, Path]:
     configs = root / "configs"
     (configs / "imported").mkdir(parents=True)
@@ -214,6 +445,7 @@ def _patch_config_service_paths(monkeypatch, root: Path) -> None:
     configs = root / "configs"
     monkeypatch.setattr(config_service, "ROOT", root)
     monkeypatch.setattr(config_service, "CONFIGS_DIR", configs)
+    monkeypatch.setattr(config_service, "DATASET_PRESETS_DIR", configs / "datasets")
     monkeypatch.setattr(config_service, "GUI_METHODS_DIR", configs / "gui-methods")
     monkeypatch.setattr(config_service, "IMPORTED_CONFIGS_DIR", configs / "imported")
     monkeypatch.setattr(config_service, "PRESETS_FILE", configs / "presets.toml")

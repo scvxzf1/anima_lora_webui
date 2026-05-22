@@ -1,0 +1,260 @@
+from __future__ import annotations
+
+from PIL import Image
+
+from preprocess import resize_images
+from scripts.tasks import preprocess
+from scripts.tasks import _common, utilities
+from scripts.experimental_tasks import training as experimental_training
+
+
+def test_preprocess_vae_uses_configured_vae_path(monkeypatch):
+    commands: list[list[str]] = []
+
+    def fake_path(key: str, default: str) -> str:
+        return {
+            "resized_image_dir": "D:/data/resized",
+            "lora_cache_dir": "D:/data/lora_cache",
+            "vae": "D:/models/VAE/qwen_image_vae.safetensors",
+        }.get(key, default)
+
+    monkeypatch.setattr(preprocess, "_path", fake_path)
+    monkeypatch.setattr(preprocess, "run", commands.append)
+
+    preprocess.cmd_preprocess_vae([])
+
+    cmd = commands[0]
+    assert (
+        cmd[cmd.index("--vae") + 1]
+        == "D:/models/VAE/qwen_image_vae.safetensors"
+    )
+
+
+def test_preprocess_te_uses_configured_model_paths(monkeypatch):
+    commands: list[list[str]] = []
+
+    def fake_path(key: str, default: str) -> str:
+        return {
+            "source_image_dir": "D:/data/source",
+            "lora_cache_dir": "D:/data/lora_cache",
+            "qwen3": "D:/models/text_encoder/qwen_3_06b_base.safetensors",
+            "pretrained_model_name_or_path": "D:/models/anima/anima_base.safetensors",
+        }.get(key, default)
+
+    monkeypatch.setattr(preprocess, "_path", fake_path)
+    monkeypatch.setattr(preprocess, "run", commands.append)
+    monkeypatch.setattr(preprocess, "_min_pixels_args", lambda: [])
+
+    preprocess.cmd_preprocess_te([])
+
+    cmd = commands[0]
+    assert (
+        cmd[cmd.index("--qwen3") + 1]
+        == "D:/models/text_encoder/qwen_3_06b_base.safetensors"
+    )
+    assert cmd[cmd.index("--dit") + 1] == "D:/models/anima/anima_base.safetensors"
+
+
+def test_easycontrol_preprocess_uses_configured_model_paths(monkeypatch):
+    commands: list[list[str]] = []
+
+    def fake_path(key: str, default: str) -> str:
+        return {
+            "vae": "D:/models/VAE/qwen_image_vae.safetensors",
+            "qwen3": "D:/models/text_encoder/qwen_3_06b_base.safetensors",
+            "pretrained_model_name_or_path": "D:/models/anima/anima_base.safetensors",
+        }.get(key, default)
+
+    monkeypatch.setattr(experimental_training, "_path", fake_path)
+    monkeypatch.setattr(experimental_training, "run", commands.append)
+
+    experimental_training.cmd_easycontrol_preprocess([])
+
+    vae_cmd, te_cmd = commands
+    assert (
+        vae_cmd[vae_cmd.index("--vae") + 1]
+        == "D:/models/VAE/qwen_image_vae.safetensors"
+    )
+    assert (
+        te_cmd[te_cmd.index("--qwen3") + 1]
+        == "D:/models/text_encoder/qwen_3_06b_base.safetensors"
+    )
+    assert (
+        te_cmd[te_cmd.index("--dit") + 1]
+        == "D:/models/anima/anima_base.safetensors"
+    )
+
+
+def test_inference_base_uses_configured_model_paths(monkeypatch):
+    monkeypatch.setattr(
+        _common,
+        "_PATH_OVERRIDES_CACHE",
+        {
+            "pretrained_model_name_or_path": "D:/models/anima/anima_base.safetensors",
+            "qwen3": "D:/models/text_encoder/qwen_3_06b_base.safetensors",
+            "vae": "D:/models/VAE/qwen_image_vae.safetensors",
+        },
+    )
+
+    cmd = _common.build_inference_base()
+
+    assert cmd[cmd.index("--dit") + 1] == "D:/models/anima/anima_base.safetensors"
+    assert (
+        cmd[cmd.index("--text_encoder") + 1]
+        == "D:/models/text_encoder/qwen_3_06b_base.safetensors"
+    )
+    assert (
+        cmd[cmd.index("--vae") + 1]
+        == "D:/models/VAE/qwen_image_vae.safetensors"
+    )
+
+
+def test_distill_mod_uses_configured_paths(monkeypatch):
+    commands: list[list[str]] = []
+
+    def fake_path(key: str, default: str) -> str:
+        return {
+            "lora_cache_dir": "D:/data/lora_cache",
+            "pretrained_model_name_or_path": "D:/models/anima/anima_base.safetensors",
+        }.get(key, default)
+
+    monkeypatch.setattr(utilities, "_path", fake_path)
+    monkeypatch.setattr(utilities, "run", commands.append)
+    monkeypatch.setattr(utilities, "bespoke_preset_flags", lambda preset: [])
+
+    utilities.cmd_distill_mod([])
+
+    cmd = commands[0]
+    assert cmd[cmd.index("--data_dir") + 1] == "D:/data/lora_cache"
+    assert cmd[cmd.index("--dit_path") + 1] == "D:/models/anima/anima_base.safetensors"
+
+
+def test_resize_bucket_args_use_dataset_no_upscale(tmp_path, monkeypatch):
+    dataset_path = tmp_path / "configs" / "datasets" / "no_upscale.toml"
+    dataset_path.parent.mkdir(parents=True)
+    dataset_path.write_text(
+        "\n".join(
+            [
+                "[[datasets]]",
+                "resolution = 768",
+                "min_bucket_reso = 256",
+                "max_bucket_reso = 768",
+                "bucket_reso_steps = 32",
+                "bucket_no_upscale = true",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(preprocess, "ROOT", tmp_path)
+    monkeypatch.setattr(
+        _common,
+        "_PATH_OVERRIDES_CACHE",
+        {"dataset_config": "configs/datasets/no_upscale.toml"},
+    )
+
+    args = preprocess._resize_bucket_args()
+
+    assert args == [
+        "--resolution",
+        "768",
+        "--min_bucket_reso",
+        "256",
+        "--max_bucket_reso",
+        "768",
+        "--bucket_reso_steps",
+        "32",
+        "--bucket_no_upscale",
+    ]
+
+
+def test_preprocess_runs_all_dataset_config_rows(tmp_path, monkeypatch):
+    dataset_path = tmp_path / "configs" / "datasets" / "multi.toml"
+    dataset_path.parent.mkdir(parents=True)
+    dataset_path.write_text(
+        "\n".join(
+            [
+                "[[datasets]]",
+                "resolution = 768",
+                "min_bucket_reso = 256",
+                "max_bucket_reso = 768",
+                "bucket_reso_steps = 32",
+                "bucket_no_upscale = true",
+                "",
+                "[[datasets.subsets]]",
+                'image_dir = "post_image_dataset/a_resized"',
+                'cache_dir = "post_image_dataset/a_cache"',
+                'custom_attributes = {source_dir = "image_dataset/a"}',
+                "",
+                "[[datasets]]",
+                "resolution = 1024",
+                "min_bucket_reso = 384",
+                "max_bucket_reso = 1344",
+                "bucket_reso_steps = 64",
+                "bucket_no_upscale = false",
+                "",
+                "[[datasets.subsets]]",
+                'image_dir = "post_image_dataset/b_resized"',
+                'cache_dir = "post_image_dataset/b_cache"',
+                'custom_attributes = {source_dir = "image_dataset/b"}',
+            ]
+        ),
+        encoding="utf-8",
+    )
+    commands: list[list[str]] = []
+    monkeypatch.setattr(preprocess, "ROOT", tmp_path)
+    monkeypatch.setattr(
+        _common,
+        "_PATH_OVERRIDES_CACHE",
+        {
+            "dataset_config": "configs/datasets/multi.toml",
+            "vae": "D:/models/vae.safetensors",
+            "qwen3": "D:/models/qwen3.safetensors",
+            "pretrained_model_name_or_path": "D:/models/anima.safetensors",
+        },
+    )
+    monkeypatch.setattr(preprocess, "run", commands.append)
+
+    preprocess.cmd_preprocess([])
+
+    assert len(commands) == 6
+    resize_a, vae_a, te_a, resize_b, vae_b, te_b = commands
+    assert resize_a[1] == "preprocess/resize_images.py"
+    assert resize_a[resize_a.index("--src") + 1] == "image_dataset/a"
+    assert resize_a[resize_a.index("--dst") + 1] == "post_image_dataset/a_resized"
+    assert resize_a[resize_a.index("--resolution") + 1] == "768"
+    assert "--bucket_no_upscale" in resize_a
+    assert vae_a[1] == "preprocess/cache_latents.py"
+    assert vae_a[vae_a.index("--dir") + 1] == "post_image_dataset/a_resized"
+    assert vae_a[vae_a.index("--cache_dir") + 1] == "post_image_dataset/a_cache"
+    assert vae_a[vae_a.index("--vae") + 1] == "D:/models/vae.safetensors"
+    assert te_a[1] == "preprocess/cache_text_embeddings.py"
+    assert te_a[te_a.index("--dir") + 1] == "image_dataset/a"
+    assert te_a[te_a.index("--cache_dir") + 1] == "post_image_dataset/a_cache"
+    assert te_a[te_a.index("--qwen3") + 1] == "D:/models/qwen3.safetensors"
+    assert te_a[te_a.index("--dit") + 1] == "D:/models/anima.safetensors"
+
+    assert resize_b[resize_b.index("--src") + 1] == "image_dataset/b"
+    assert resize_b[resize_b.index("--dst") + 1] == "post_image_dataset/b_resized"
+    assert resize_b[resize_b.index("--resolution") + 1] == "1024"
+    assert "--bucket_no_upscale" not in resize_b
+    assert vae_b[vae_b.index("--cache_dir") + 1] == "post_image_dataset/b_cache"
+    assert te_b[te_b.index("--dir") + 1] == "image_dataset/b"
+
+
+def test_resize_process_image_does_not_upscale_when_disabled(tmp_path):
+    src = tmp_path / "source"
+    dst = tmp_path / "resized"
+    src.mkdir()
+    image_path = src / "small.png"
+    Image.new("RGB", (700, 900), color=(255, 0, 0)).save(image_path)
+
+    resize_images.process_image(
+        image_path,
+        dst,
+        ((1024, 1024), 256, 1024, 64, True, True),
+        copy_captions=False,
+    )
+
+    with Image.open(dst / "small.png") as image:
+        assert image.size == (640, 896)

@@ -20,10 +20,16 @@
     let tomlDeleteConfirmTimer = null;
     let tomlSaveConfirmFile = '';
     let tomlSaveConfirmTimer = null;
+    let sharedDialogBusy = false;
+    let tomlGroupActionBusy = false;
     let configLoadSeq = 0;
     let datasetLoadSeq = 0;
     let stepEstimateSeq = 0;
     let samplePromptsLoadSeq = 0;
+    let datasetPresetLoadSeq = 0;
+    let datasetPreviewLoadSeq = 0;
+    let configGroupHintSeq = 0;
+    let choiceGuideHintSeq = 0;
     const selectionSnapshot = {
         method: '',
         variant: '',
@@ -46,9 +52,29 @@
         defaults: {},
         error: '',
     };
+    let datasetPresetState = {
+        loading: false,
+        dirty: false,
+        selectedFile: '',
+        presets: [],
+        datasets: [],
+        defaults: {},
+        readonly: false,
+        error: '',
+        status: '',
+    };
+    const datasetPreviewState = {
+        datasetIndex: 0,
+        source: 'source',
+        payload: null,
+    };
+    let selectedConfigDatasetFile = '';
+    let selectedConfigDatasetSummary = null;
     let trainingSampleState = null;
-    let samplePromptsPath = 'configs/sample_prompts.txt';
+    const DEFAULT_SAMPLE_PROMPTS_PATH = 'configs/sample_prompts.txt';
+    let samplePromptsPath = DEFAULT_SAMPLE_PROMPTS_PATH;
     let samplePromptsContent = '';
+    let samplePromptsMode = 'editor-inline';
     let viewingHistoryTaskId = '';
     let historyViewMode = 'live';
     let currentHistoryTaskForResume = null;
@@ -100,11 +126,44 @@
         'sample_every_n_epochs',
         'sample_every_n_steps',
     ]);
+    const CONFIG_FORM_INTERNAL_KEYS = new Set([
+        'dataset_config_picker',
+    ]);
     const DATASET_EDITOR_COMPAT_FIELDS = new Set([
         'source_image_dir',
         'resized_image_dir',
         'lora_cache_dir',
         'dataset_config',
+    ]);
+    const DATASET_BLUEPRINT_FIELDS = new Set([
+        'dataset_config',
+        'source_image_dir',
+        'resized_image_dir',
+        'lora_cache_dir',
+        'resolution',
+        'batch_size',
+        'enable_bucket',
+        'min_bucket_reso',
+        'max_bucket_reso',
+        'bucket_reso_steps',
+        'bucket_no_upscale',
+        'validation_split',
+        'validation_split_num',
+        'validation_seed',
+        'caption_extension',
+        'keep_tokens',
+    ]);
+    const DATASET_SETTING_KEYS = new Set([
+        'resolution',
+        'batch_size',
+        'enable_bucket',
+        'min_bucket_reso',
+        'max_bucket_reso',
+        'bucket_reso_steps',
+        'bucket_no_upscale',
+        'validation_split',
+        'validation_split_num',
+        'validation_seed',
     ]);
     const trainingRuntime = {
         state: 'idle',
@@ -158,14 +217,10 @@
         },
         {
             title: '数据集设置',
-            description: '训练读取缩放图目录和 LoRA 缓存目录；原始数据集路径主要用于预处理和生成缓存路径。',
+            description: '选择已保存的数据集预设；路径和分桶蓝图在“数据集”页维护。',
             open: true,
             className: 'config-group-data',
             keys: [
-                'source_image_dir',
-                'resized_image_dir',
-                'lora_cache_dir',
-                'dataset_config',
                 'use_shuffled_caption_variants',
                 'caption_dropout_rate',
                 'masked_loss',
@@ -311,6 +366,32 @@
             ],
         },
     ];
+    const CONFIG_COMPACT_FIELD_GROUPS = {
+        'config-group-primary': [
+            {
+                className: 'config-field-grid-2col',
+                keys: ['max_train_epochs', 'learning_rate', 'save_every_n_epochs', 'checkpointing_epochs'],
+            },
+        ],
+        'config-group-steps': [
+            {
+                className: 'config-field-grid-2col',
+                keys: ['train_batch_size', 'gradient_accumulation_steps'],
+            },
+        ],
+        'config-group-sampling': [
+            {
+                className: 'config-field-grid-2col',
+                keys: ['sample_every_n_epochs', 'sample_every_n_steps'],
+            },
+        ],
+        'lora-tuning-group': [
+            {
+                className: 'config-field-grid-2col',
+                keys: ['network_dim', 'network_alpha', 'use_lokr', 'lokr_factor'],
+            },
+        ],
+    };
 
     const VARIANT_METHOD_FAMILY = {
         lora: 'lora',
@@ -1237,7 +1318,7 @@
         ),
         sample_prompts: help(
             "训练中生成预览图时使用的提示词，一行一个。",
-            "直接在输入框里每行填写一条提示词；保存时 WebUI 会自动写入 configs/sample_prompts.txt。",
+            "直接在输入框里每行填写一条提示词；当前配置指向 .txt 文件时会编辑该文件，没有路径时保存到 configs/sample_prompts.txt。",
             ["能在训练过程中直接看到当前模型效果。"],
             ["采样会额外占用训练时间和显存。"],
             ["提示词越多，每次采样生成的图片越多，训练被打断的时间越长。"],
@@ -1919,6 +2000,9 @@
                 document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
                 btn.classList.add('active');
                 document.getElementById('tab-' + btn.dataset.tab).classList.add('active');
+                if (btn.dataset.tab === 'datasets') {
+                    loadDatasetPresets();
+                }
                 if (btn.dataset.tab === 'training' && lossChart?.resize) {
                     lossChart.resize();
                 }
@@ -1947,12 +2031,12 @@
             populateSelect('preset-select', presets, 'default');
             await loadGpuOptions();
             await loadVariants();
+            await loadDatasetPresets({ selectCurrent: false });
             await loadConfig();
             await loadTomlFileList();
             rememberSelectionSnapshot();
             await loadTrainingHistoryList();
             await loadPreviewSettings();
-            await loadSamplePrompts();
             returnToLiveTraining({ refresh: false });
         } catch (e) {
             console.error('初始化失败:', e);
@@ -1995,17 +2079,14 @@
             return;
         }
         currentConfig = data;
-        datasetEditorState = {
-            loading: false,
-            loaded: false,
-            dirty: false,
-            dataset_config: currentConfig.dataset_config || '',
-            datasets: [],
-            error: '',
-        };
+        selectedConfigDatasetFile = currentConfig.dataset_config || '';
+        selectedConfigDatasetSummary = datasetPresetSummaryByFile(selectedConfigDatasetFile);
         renderConfigForm(currentConfig);
-        loadDatasetEditor(requestSeq);
-        loadSamplePrompts(samplePromptsPath, requestSeq);
+        if (samplePromptsMode === 'editor-file') {
+            loadSamplePrompts(samplePromptsPath, requestSeq);
+        } else {
+            samplePromptsLoadSeq += 1;
+        }
         loadStepEstimate(requestSeq);
         updateChoiceGuide();
         // 同步加载对应的 TOML 文件到右侧编辑器
@@ -2016,7 +2097,7 @@
     }
 
     async function reloadCurrentConfig() {
-        if (!confirmDiscardTomlChanges('当前配置有未保存修改，刷新会重新读取表单和数据集设置并丢弃这些修改。是否继续？')) {
+        if (!(await confirmDiscardTomlChanges('当前配置有未保存修改，刷新会重新读取表单和数据集设置并丢弃这些修改。是否继续？'))) {
             return;
         }
         await loadConfig();
@@ -2031,10 +2112,14 @@
         const fieldsByKey = {};
         for (const [key, value] of Object.entries(config)) {
             if (key === 'general' || key === 'datasets') continue;
+            if (CONFIG_FORM_INTERNAL_KEYS.has(key)) continue;
+            if (DATASET_BLUEPRINT_FIELDS.has(key)) continue;
             if (typeof value === 'object' && value !== null && !Array.isArray(value)) continue;
             fieldsByKey[key] = value;
         }
         for (const [key, value] of Object.entries(FORM_UI_DEFAULTS)) {
+            if (CONFIG_FORM_INTERNAL_KEYS.has(key)) continue;
+            if (DATASET_BLUEPRINT_FIELDS.has(key)) continue;
             if (!(key in fieldsByKey)) fieldsByKey[key] = value;
         }
         fieldsByKey.sample_prompts = currentSamplePromptText(config);
@@ -2082,7 +2167,8 @@
         const methodsSubdir = currentTrainingSource.methods_subdir || 'gui-methods';
         if (!variant || location.protocol === 'file:') return;
         try {
-            const data = await api(`/api/config/steps?variant=${encodeURIComponent(variant)}&preset=${encodeURIComponent(preset)}&methods_subdir=${encodeURIComponent(methodsSubdir)}`);
+            const datasetParam = selectedConfigDatasetFile ? `&dataset_config=${encodeURIComponent(selectedConfigDatasetFile)}` : '';
+            const data = await api(`/api/config/steps?variant=${encodeURIComponent(variant)}&preset=${encodeURIComponent(preset)}&methods_subdir=${encodeURIComponent(methodsSubdir)}${datasetParam}`);
             if (parentSeq !== configLoadSeq || requestSeq !== stepEstimateSeq) return;
             currentStepEstimate = data?.ok === false ? null : data;
         } catch {
@@ -2126,6 +2212,81 @@
                 error: e.message || '读取数据集配置失败',
             };
         }
+        renderDatasetEditor();
+    }
+
+    async function loadDatasetPresets(options = {}) {
+        if (location.protocol === 'file:') return;
+        const requestSeq = ++datasetPresetLoadSeq;
+        datasetPresetState.loading = true;
+        renderDatasetPresetList();
+        try {
+            const data = await api('/api/config/dataset-presets');
+            if (requestSeq !== datasetPresetLoadSeq) return;
+            if (!data.ok) throw new Error(data.error || '读取数据集预设失败');
+            const presets = Array.isArray(data.presets) ? data.presets : [];
+            datasetPresetState.presets = presets;
+            datasetPresetState.loading = false;
+            datasetPresetState.error = '';
+            if (options.selectCurrent !== false && selectedConfigDatasetFile && !datasetPresetState.selectedFile) {
+                datasetPresetState.selectedFile = selectedConfigDatasetFile;
+            }
+            if (!datasetPresetState.selectedFile && presets.length) {
+                datasetPresetState.selectedFile = presets[0].path;
+            }
+            selectedConfigDatasetSummary = datasetPresetSummaryByFile(selectedConfigDatasetFile);
+            renderConfigDatasetPicker();
+            renderDatasetPresetList();
+            renderDatasetPresetHeader();
+            if (datasetPresetState.selectedFile && !datasetPresetState.dirty) {
+                await loadDatasetPreset(datasetPresetState.selectedFile);
+            } else {
+                renderDatasetEditor();
+            }
+        } catch (e) {
+            if (requestSeq !== datasetPresetLoadSeq) return;
+            datasetPresetState.loading = false;
+            datasetPresetState.error = e.message || '读取数据集预设失败';
+            renderDatasetPresetList();
+            renderDatasetPresetHeader();
+        }
+    }
+
+    async function loadDatasetPreset(file) {
+        if (!file) return;
+        if (datasetPresetState.dirty && !(await confirmUnsavedDiscard('当前数据集预设有未保存修改，切换会丢弃这些修改。是否继续？'))) {
+            renderDatasetPresetList();
+            return;
+        }
+        datasetPresetState.selectedFile = file;
+        datasetPresetState.loading = true;
+        datasetPresetState.error = '';
+        renderDatasetPresetList();
+        renderDatasetPresetHeader();
+        renderDatasetEditor();
+        try {
+            const data = await api(`/api/config/dataset-presets/read?file=${encodeURIComponent(file)}`);
+            if (!data.ok) throw new Error(data.error || '读取数据集预设失败');
+            datasetPresetState = {
+                ...datasetPresetState,
+                loading: false,
+                dirty: false,
+                selectedFile: data.file || file,
+                datasets: normalizeDatasetEditorRows(data.datasets || []),
+                defaults: normalizeDatasetDefaults(data.defaults || {}),
+                readonly: Boolean(data.readonly || data.meta?.locked),
+                error: '',
+                status: '',
+            };
+        } catch (e) {
+            datasetPresetState = {
+                ...datasetPresetState,
+                loading: false,
+                error: e.message || '读取数据集预设失败',
+            };
+        }
+        renderDatasetPresetList();
+        renderDatasetPresetHeader();
         renderDatasetEditor();
     }
 
@@ -2177,40 +2338,18 @@
 
     function liveDatasetRowsForEstimate() {
         const baseRows = Array.isArray(currentStepEstimate?.datasets) ? currentStepEstimate.datasets : [];
-        if (!datasetEditorState.dirty || !datasetEditorState.datasets.length) {
-            return baseRows.length ? baseRows : [{
-                index: 1,
-                source_dir: currentStepEstimate?.source_dir || '',
-                image_dir: currentStepEstimate?.resized_dir || '',
-                cache_dir: currentStepEstimate?.lora_cache_dir || '',
-                source_image_count: currentStepEstimate?.source_image_count || 0,
-                resized_image_count: currentStepEstimate?.resized_image_count || 0,
-                train_image_count: currentStepEstimate?.train_image_count || 0,
-                num_repeats: currentStepEstimate?.dataset_num_repeats || 1,
-                weighted_image_count: currentStepEstimate?.weighted_image_count || 0,
-                uses_preprocessed_images: currentStepEstimate?.uses_preprocessed_images || false,
-            }];
-        }
-        return datasetEditorState.datasets.map((row, idx) => {
-            const old = baseRows.find((item) => item.source_dir === row.source_dir && item.image_dir === row.image_dir) || baseRows[idx] || {};
-            const sourceCount = Number(old.source_image_count || 0);
-            const resizedCount = Number(old.resized_image_count || 0);
-            const trainCount = resizedCount || sourceCount;
-            const repeats = Math.max(1, Number(row.num_repeats || old.num_repeats || 1));
-            return {
-                ...old,
-                index: idx + 1,
-                source_dir: row.source_dir,
-                image_dir: row.image_dir,
-                cache_dir: row.cache_dir,
-                source_image_count: sourceCount,
-                resized_image_count: resizedCount,
-                train_image_count: trainCount,
-                num_repeats: repeats,
-                weighted_image_count: trainCount * repeats,
-                uses_preprocessed_images: resizedCount > 0,
-            };
-        });
+        return baseRows.length ? baseRows : [{
+            index: 1,
+            source_dir: currentStepEstimate?.source_dir || '',
+            image_dir: currentStepEstimate?.resized_dir || '',
+            cache_dir: currentStepEstimate?.lora_cache_dir || '',
+            source_image_count: currentStepEstimate?.source_image_count || 0,
+            resized_image_count: currentStepEstimate?.resized_image_count || 0,
+            train_image_count: currentStepEstimate?.train_image_count || 0,
+            num_repeats: currentStepEstimate?.dataset_num_repeats || 1,
+            weighted_image_count: currentStepEstimate?.weighted_image_count || 0,
+            uses_preprocessed_images: currentStepEstimate?.uses_preprocessed_images || false,
+        }];
     }
 
     function renderStepDatasetBreakdown(datasets) {
@@ -2254,35 +2393,207 @@
     }
 
     function createGroup(name, fields, open, extraClass = '', description = '') {
-        const details = document.createElement('details');
-        details.className = ['config-group', extraClass].filter(Boolean).join(' ');
-        if (open) details.open = true;
+        const section = document.createElement('section');
+        section.className = ['config-group', extraClass].filter(Boolean).join(' ');
 
-        const summary = document.createElement('summary');
+        const header = document.createElement('div');
+        header.className = 'config-group-title';
         const title = document.createElement('span');
         title.textContent = `${name} (${fields.length} 项)`;
-        summary.appendChild(title);
-        details.appendChild(summary);
+        header.appendChild(title);
 
         const content = document.createElement('div');
+        content.className = 'config-group-body';
+        let hint = null;
         if (description) {
-            const hint = document.createElement('p');
+            const hintId = `config-group-hint-${++configGroupHintSeq}`;
+            const btn = document.createElement('button');
+            btn.className = 'info-toggle config-group-info-toggle';
+            btn.textContent = '?';
+            btn.type = 'button';
+            btn.title = '展开分组说明';
+            btn.setAttribute('aria-label', `${name} 说明`);
+            btn.setAttribute('aria-controls', hintId);
+            btn.setAttribute('aria-expanded', 'false');
+            header.appendChild(btn);
+
+            hint = document.createElement('p');
             hint.className = 'config-group-hint';
+            hint.id = hintId;
+            hint.hidden = true;
             hint.textContent = description;
+            btn.addEventListener('click', () => {
+                const nextVisible = hint.hidden;
+                hint.hidden = !nextVisible;
+                btn.classList.toggle('active', nextVisible);
+                btn.setAttribute('aria-expanded', String(nextVisible));
+                btn.title = nextVisible ? '收起分组说明' : '展开分组说明';
+            });
             content.appendChild(hint);
         }
+        section.appendChild(header);
         if (extraClass === 'config-group-data') {
-            content.appendChild(createDatasetEditor());
+            content.appendChild(createConfigDatasetPicker());
         }
-        for (const [key, value] of fields) {
-            content.appendChild(createFieldRow(key, value));
-        }
+        appendFieldRows(content, fields, extraClass);
         if (extraClass === 'config-group-steps') {
             content.appendChild(createStepEstimatePanel());
             updateStepEstimatePanel();
         }
-        details.appendChild(content);
-        return details;
+        section.appendChild(content);
+        return section;
+    }
+
+    function appendFieldRows(content, fields, groupClass) {
+        const compactGroups = CONFIG_COMPACT_FIELD_GROUPS[groupClass] || [];
+        const usedLayouts = new Set();
+        let index = 0;
+
+        while (index < fields.length) {
+            const [key] = fields[index];
+            const compactLayout = compactGroups.find((layout) => {
+                if (usedLayouts.has(layout)) return false;
+                return layout.keys.includes(key);
+            });
+
+            if (!compactLayout) {
+                content.appendChild(createFieldRow(fields[index][0], fields[index][1]));
+                index += 1;
+                continue;
+            }
+
+            usedLayouts.add(compactLayout);
+            const compactKeys = new Set(compactLayout.keys);
+            const grid = document.createElement('div');
+            grid.className = ['config-field-grid', compactLayout.className].filter(Boolean).join(' ');
+
+            while (index < fields.length && compactKeys.has(fields[index][0])) {
+                const [compactKey, compactValue] = fields[index];
+                const row = createFieldRow(compactKey, compactValue);
+                row.classList.add('field-row-compact');
+                grid.appendChild(row);
+                index += 1;
+            }
+
+            content.appendChild(grid);
+        }
+    }
+
+    function createConfigDatasetPicker() {
+        const panel = document.createElement('div');
+        panel.id = 'config-dataset-picker';
+        panel.className = 'config-dataset-picker';
+        renderConfigDatasetPicker(panel);
+        return panel;
+    }
+
+    function renderConfigDatasetPicker(existingPanel = null) {
+        const panel = existingPanel || document.getElementById('config-dataset-picker');
+        if (!panel) return;
+        panel.innerHTML = '';
+
+        const header = document.createElement('div');
+        header.className = 'config-dataset-picker-header';
+        const title = document.createElement('div');
+        title.innerHTML = '<strong>数据集预设</strong><span>选择后会标记当前配置未保存，点击保存更新后才写入训练 TOML。</span>';
+        const actions = document.createElement('div');
+        actions.className = 'config-dataset-picker-actions';
+        const manageBtn = document.createElement('button');
+        manageBtn.type = 'button';
+        manageBtn.className = 'btn btn-small';
+        manageBtn.textContent = '管理数据集';
+        manageBtn.addEventListener('click', () => document.querySelector('[data-tab="datasets"]')?.click());
+        const refreshBtn = document.createElement('button');
+        refreshBtn.type = 'button';
+        refreshBtn.className = 'btn btn-small';
+        refreshBtn.textContent = '刷新预设';
+        refreshBtn.addEventListener('click', () => loadDatasetPresets({ selectCurrent: false }));
+        actions.append(manageBtn, refreshBtn);
+        header.append(title, actions);
+        panel.appendChild(header);
+
+        const body = document.createElement('div');
+        body.className = 'config-dataset-picker-body';
+        const select = document.createElement('select');
+        select.className = 'field-input field-select';
+        select.dataset.key = 'dataset_config_picker';
+        const empty = document.createElement('option');
+        empty.value = '';
+        empty.textContent = '不使用独立数据集预设';
+        select.appendChild(empty);
+        for (const preset of datasetPresetState.presets || []) {
+            const opt = document.createElement('option');
+            opt.value = preset.path;
+            opt.textContent = datasetPresetOptionLabel(preset);
+            opt.selected = preset.path === selectedConfigDatasetFile;
+            select.appendChild(opt);
+        }
+        select.value = selectedConfigDatasetFile || '';
+        select.addEventListener('change', () => selectConfigDatasetPreset(select.value));
+        body.appendChild(select);
+
+        const summary = document.createElement('div');
+        summary.className = 'config-dataset-summary';
+        summary.appendChild(createConfigDatasetSummary());
+        body.appendChild(summary);
+        panel.appendChild(body);
+    }
+
+    function datasetPresetOptionLabel(preset) {
+        const summary = preset?.summary || {};
+        const name = preset?.label || preset?.filename || preset?.path || '未命名预设';
+        const count = Number(summary.dataset_count || 0);
+        const repeats = Number(summary.repeat_total || 0);
+        const lock = preset?.readonly ? '只读 · ' : '';
+        return `${lock}${name} · ${count || 0} 组 · 重复 ${repeats || 0}`;
+    }
+
+    function createConfigDatasetSummary() {
+        const wrap = document.createElement('div');
+        const preset = datasetPresetByFile(selectedConfigDatasetFile);
+        const summary = selectedConfigDatasetSummary || preset?.summary || {};
+        if (!selectedConfigDatasetFile) {
+            wrap.className = 'config-dataset-summary-empty';
+            wrap.textContent = '未选择独立数据集预设；训练会沿用当前配置文件里的数据集字段。';
+            return wrap;
+        }
+        const items = [
+            ['预设文件', selectedConfigDatasetFile],
+            ['数据组数', String(summary.dataset_count || 0)],
+            ['重复合计', String(summary.repeat_total || 0)],
+            ['第 1 组原始路径', summary.source_dir || '-'],
+            ['第 1 组缩放图', summary.image_dir || '-'],
+            ['第 1 组缓存', summary.cache_dir || '-'],
+        ];
+        if (selectedConfigDatasetFile !== (currentConfig.dataset_config || '')) {
+            items.unshift(['状态', '未保存，保存当前配置后生效']);
+        }
+        for (const [label, value] of items) {
+            const row = document.createElement('div');
+            const key = document.createElement('span');
+            key.textContent = label;
+            const valEl = document.createElement('code');
+            valEl.textContent = value;
+            row.append(key, valEl);
+            wrap.appendChild(row);
+        }
+        return wrap;
+    }
+
+    async function selectConfigDatasetPreset(file) {
+        selectedConfigDatasetFile = file || '';
+        selectedConfigDatasetSummary = datasetPresetSummaryByFile(selectedConfigDatasetFile);
+        renderConfigDatasetPicker();
+        updateTomlDirtyState();
+        await loadStepEstimate();
+    }
+
+    function datasetPresetByFile(file) {
+        return (datasetPresetState.presets || []).find((item) => item.path === file) || null;
+    }
+
+    function datasetPresetSummaryByFile(file) {
+        return datasetPresetByFile(file)?.summary || null;
     }
 
     function createDatasetEditor() {
@@ -2293,10 +2604,109 @@
         return panel;
     }
 
+    function renderDatasetPresetList() {
+        const list = document.getElementById('dataset-preset-list');
+        if (!list) return;
+        list.innerHTML = '';
+        if (datasetPresetState.loading && !(datasetPresetState.presets || []).length) {
+            const loading = document.createElement('p');
+            loading.className = 'dataset-preset-empty';
+            loading.textContent = '正在读取数据集预设...';
+            list.appendChild(loading);
+            return;
+        }
+        if (datasetPresetState.error) {
+            const error = document.createElement('p');
+            error.className = 'dataset-preset-empty error';
+            error.textContent = datasetPresetState.error;
+            list.appendChild(error);
+        }
+        const presets = datasetPresetState.presets || [];
+        if (!presets.length) {
+            const empty = document.createElement('p');
+            empty.className = 'dataset-preset-empty';
+            empty.textContent = '还没有数据集预设。';
+            list.appendChild(empty);
+            return;
+        }
+        for (const preset of presets) {
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = [
+                'dataset-preset-item',
+                preset.path === datasetPresetState.selectedFile ? 'active' : '',
+                preset.readonly ? 'readonly' : '',
+            ].filter(Boolean).join(' ');
+            btn.dataset.file = preset.path;
+            const summary = preset.summary || {};
+            btn.innerHTML = [
+                `<strong>${escapeHtml(preset.label || preset.filename || preset.path)}</strong>`,
+                `<span>${escapeHtml(preset.path)}</span>`,
+                `<small>${Number(summary.dataset_count || 0)} 组 · 重复 ${Number(summary.repeat_total || 0)}${preset.readonly ? ' · 只读' : ''}</small>`,
+            ].join('');
+            btn.addEventListener('click', () => loadDatasetPreset(preset.path));
+            list.appendChild(btn);
+        }
+    }
+
+    function renderDatasetPresetHeader() {
+        const header = document.getElementById('dataset-preset-header');
+        if (!header) return;
+        const file = datasetPresetState.selectedFile;
+        const preset = datasetPresetByFile(file);
+        const summary = preset?.summary || {};
+        header.innerHTML = '';
+        const title = document.createElement('div');
+        title.innerHTML = [
+            `<strong>${escapeHtml(preset?.label || preset?.filename || file || '新数据集预设')}</strong>`,
+            `<span>${escapeHtml(file || '尚未保存')}</span>`,
+        ].join('');
+        const meta = document.createElement('div');
+        meta.className = 'dataset-preset-meta';
+        const status = datasetPresetState.dirty ? '未保存' : (datasetPresetState.readonly ? '只读' : '已同步');
+        meta.innerHTML = [
+            `<span>${status}</span>`,
+            `<span>${Number(summary.dataset_count || datasetPresetState.datasets.length || 0)} 组</span>`,
+            `<span>重复 ${Number(summary.repeat_total || datasetPresetState.datasets.reduce((sum, row) => sum + Number(row.num_repeats || 1), 0) || 0)}</span>`,
+        ].join('');
+        header.append(title, meta);
+        if (datasetPresetState.status) {
+            const statusEl = document.createElement('div');
+            statusEl.className = 'dataset-preset-status';
+            statusEl.textContent = datasetPresetState.status;
+            header.appendChild(statusEl);
+        }
+        updateDatasetPresetActionState();
+    }
+
+    function updateDatasetPresetActionState() {
+        const saveBtn = document.getElementById('btn-save-dataset-preset');
+        if (saveBtn) {
+            saveBtn.disabled = datasetPresetState.readonly || !datasetPresetState.selectedFile || !datasetPresetState.dirty;
+            saveBtn.title = datasetPresetState.readonly
+                ? '系统数据集预设只读，请复制后编辑'
+                : (datasetPresetState.dirty ? '保存当前数据集预设' : '当前数据集预设没有未保存修改');
+        }
+        const deleteBtn = document.getElementById('btn-delete-dataset-preset');
+        if (deleteBtn) {
+            deleteBtn.disabled = datasetPresetState.readonly || !datasetPresetState.selectedFile;
+            deleteBtn.title = datasetPresetState.readonly ? '系统数据集预设不能删除' : '只删除 TOML 预设，不删除图片或缓存目录';
+        }
+        const renameBtn = document.getElementById('btn-rename-dataset-preset');
+        if (renameBtn) {
+            renameBtn.disabled = datasetPresetState.readonly || !datasetPresetState.selectedFile;
+        }
+        const copyBtn = document.getElementById('btn-copy-dataset-preset');
+        if (copyBtn) copyBtn.disabled = !datasetPresetState.selectedFile;
+        const exportBtn = document.getElementById('btn-export-dataset-preset');
+        if (exportBtn) exportBtn.disabled = !datasetPresetState.selectedFile;
+    }
+
     function renderDatasetEditor(existingPanel = null) {
         const panel = existingPanel || document.getElementById('dataset-editor');
         if (!panel) return;
         panel.innerHTML = '';
+        const state = datasetEditorStateForActivePanel();
 
         const header = document.createElement('div');
         header.className = 'dataset-editor-header';
@@ -2320,30 +2730,31 @@
         header.append(title, actions);
         panel.appendChild(header);
 
-        if (datasetEditorState.loading) {
+        if (state.loading) {
             const loading = document.createElement('p');
             loading.className = 'dataset-editor-message';
             loading.textContent = '正在读取数据集配置...';
             panel.appendChild(loading);
             return;
         }
-        if (datasetEditorState.error) {
+        if (state.error) {
             const error = document.createElement('p');
             error.className = 'dataset-editor-message error';
-            error.textContent = datasetEditorState.error;
+            error.textContent = state.error;
             panel.appendChild(error);
         }
 
-        const rows = datasetEditorState.datasets.length
-            ? datasetEditorState.datasets
+        const rows = state.datasets.length
+            ? state.datasets
             : normalizeDatasetEditorRows([{
                 source_dir: currentConfig.source_image_dir || '',
                 image_dir: currentConfig.resized_image_dir || '',
                 cache_dir: currentConfig.lora_cache_dir || '',
                 num_repeats: 1,
+                settings: normalizeDatasetDefaults(state.defaults || {}),
             }]);
-        if (!datasetEditorState.datasets.length) {
-            datasetEditorState.datasets = rows;
+        if (!state.datasets.length) {
+            setActiveDatasetRows(rows);
         }
 
         panel.appendChild(createDatasetDefaultsEditor());
@@ -2358,33 +2769,61 @@
         const footer = document.createElement('div');
         footer.className = 'dataset-editor-footer';
         const configPath = document.createElement('code');
-        configPath.textContent = datasetEditorState.dataset_config || currentConfig.dataset_config || '保存后自动生成 configs/datasets/<当前配置>.toml';
+        configPath.textContent = activeDatasetFileLabel();
         const dirty = document.createElement('span');
-        dirty.className = datasetEditorState.dirty ? 'dataset-editor-dirty active' : 'dataset-editor-dirty';
-        dirty.textContent = datasetEditorState.dirty ? '有未保存的数据集修改' : '数据集路径已同步';
+        dirty.className = activeDatasetDirty() ? 'dataset-editor-dirty active' : 'dataset-editor-dirty';
+        dirty.textContent = activeDatasetDirty() ? '有未保存的数据集修改' : '数据集路径已同步';
         footer.append(configPath, dirty);
         panel.appendChild(footer);
+        renderDatasetPresetHeader();
+    }
+
+    function datasetEditorStateForActivePanel() {
+        return isDatasetTabActive() ? datasetPresetState : datasetEditorState;
+    }
+
+    function isDatasetTabActive() {
+        return Boolean(document.getElementById('dataset-editor')?.closest('#tab-datasets'));
+    }
+
+    function setActiveDatasetRows(rows) {
+        if (isDatasetTabActive()) {
+            datasetPresetState.datasets = rows;
+        } else {
+            datasetEditorState.datasets = rows;
+        }
+    }
+
+    function activeDatasetFileLabel() {
+        if (isDatasetTabActive()) {
+            return datasetPresetState.selectedFile || '保存后生成 configs/datasets/<名称>.toml';
+        }
+        return datasetEditorState.dataset_config || currentConfig.dataset_config || '保存后自动生成 configs/datasets/<当前配置>.toml';
+    }
+
+    function activeDatasetDirty() {
+        return isDatasetTabActive() ? datasetPresetState.dirty : datasetEditorState.dirty;
     }
 
     function createDatasetDefaultsEditor() {
-        const defaults = normalizeDatasetDefaults(datasetEditorState.defaults || {});
-        datasetEditorState.defaults = defaults;
+        const state = datasetEditorStateForActivePanel();
+        const defaults = normalizeDatasetDefaults(state.defaults || {});
+        if (isDatasetTabActive()) {
+            datasetPresetState.defaults = defaults;
+        } else {
+            datasetEditorState.defaults = defaults;
+        }
         const wrap = document.createElement('div');
         wrap.className = 'dataset-defaults-list';
 
         const heading = document.createElement('div');
         heading.className = 'dataset-defaults-heading';
-        heading.innerHTML = '<strong>训练数据集配置</strong><span>这些是本 dataset_config 共用的规则：预处理会按分桶参数生成缩放图，训练读取缩放图和 LoRA 缓存。</span>';
+        heading.innerHTML = '<strong>通用标注设置</strong><span>分辨率、分桶和验证集参数已移到每个数据集路径卡片中，可按路径独立配置。</span>';
         wrap.appendChild(heading);
 
         const fields = [
-            ['source_image_dir', 'text', 'wide'],
-            ['resolution', 'number'],
-            ['enable_bucket', 'select'],
-            ['min_bucket_reso', 'number'],
-            ['max_bucket_reso', 'number'],
-            ['bucket_reso_steps', 'number'],
-            ['bucket_no_upscale', 'select'],
+            ['caption_extension', 'text'],
+            ['keep_tokens', 'number'],
         ];
 
         for (const [key, type, layout] of fields) {
@@ -2447,15 +2886,11 @@
             input.value = datasetConfigValue(key, defaults);
             if (type === 'number') {
                 input.min = '0';
-                input.step = key === 'resolution' || key.endsWith('_reso') || key === 'bucket_reso_steps' ? '16' : '1';
+                input.step = key === 'validation_split' ? '0.001' : (key === 'resolution' || key.endsWith('_reso') || key === 'bucket_reso_steps' ? '16' : '1');
             }
         }
         input.className = 'field-input dataset-config-input';
         input.dataset.key = key;
-        if (key === 'source_image_dir') {
-            input.readOnly = true;
-            input.title = '只显示下方第 1 组“原始数据集路径”的镜像；多数据集请在下面逐行编辑。';
-        }
         input.addEventListener('input', () => updateDatasetConfigValue(key, input));
         input.addEventListener('change', () => updateDatasetConfigValue(key, input));
         return input;
@@ -2463,28 +2898,27 @@
 
     function datasetConfigLabel(key) {
         const labels = {
-            source_image_dir: '第 1 组原始路径镜像',
             resolution: '分辨率',
+            batch_size: '数据集批大小',
             enable_bucket: '启用长宽比分桶',
             min_bucket_reso: '最小桶边长',
             max_bucket_reso: '最大桶边长',
             bucket_reso_steps: '桶尺寸步长',
             bucket_no_upscale: '小图放大',
+            validation_split: '验证集比例',
+            validation_split_num: '固定验证数量',
+            validation_seed: '验证随机种子',
+            caption_extension: '标注扩展名',
+            keep_tokens: '保留前置 token',
         };
         return `${labels[key] || FIELD_LABEL_ZH[key] || key} / ${key}`;
     }
 
     function datasetConfigValue(key, defaults) {
-        if (key === 'source_image_dir') {
-            return datasetEditorState.datasets[0]?.source_dir || currentConfig.source_image_dir || '';
-        }
         return defaults[key] ?? '';
     }
 
     function updateDatasetConfigValue(key, input) {
-        if (key === 'source_image_dir') {
-            return;
-        }
         updateDatasetDefault(key, input);
     }
 
@@ -2492,9 +2926,41 @@
         const wrap = document.createElement('div');
         wrap.className = 'dataset-editor-row';
         wrap.dataset.index = String(index);
-        wrap.appendChild(createDatasetPathField(index, 'source_dir', '原始数据集路径', row.source_dir, 'image_dataset'));
-        wrap.appendChild(createDatasetPathField(index, 'image_dir', '缩放图目录', row.image_dir, 'post_image_dataset/resized'));
-        wrap.appendChild(createDatasetPathField(index, 'cache_dir', 'LoRA 缓存目录', row.cache_dir, 'post_image_dataset/lora'));
+        const head = document.createElement('div');
+        head.className = 'dataset-row-head';
+        const titleBox = document.createElement('div');
+        titleBox.className = 'dataset-row-title';
+        const title = document.createElement('strong');
+        title.textContent = `第 ${index + 1} 组数据集`;
+        const subtitle = document.createElement('span');
+        const settings = normalizeDatasetDefaults(row.settings || datasetEditorStateForActivePanel().defaults || {});
+        subtitle.textContent = `${settings.resolution}px · 桶 ${settings.min_bucket_reso}-${settings.max_bucket_reso}/${settings.bucket_reso_steps} · 重复 ${row.num_repeats || 1}`;
+        titleBox.append(title, subtitle);
+        const headActions = document.createElement('div');
+        headActions.className = 'dataset-row-head-actions';
+        if (isDatasetTabActive()) {
+            const previewBtn = document.createElement('button');
+            previewBtn.type = 'button';
+            previewBtn.className = 'btn btn-small';
+            previewBtn.textContent = '预览图片和标注';
+            previewBtn.disabled = !datasetPresetState.selectedFile || datasetPresetState.dirty;
+            previewBtn.title = previewBtn.disabled
+                ? '请先保存当前数据集预设，再预览磁盘中的图片和同名标注。'
+                : '打开这一组数据集的原始图预览，并读取同名 caption 标注。';
+            previewBtn.addEventListener('click', () => openDatasetPreview(index));
+            headActions.appendChild(previewBtn);
+        }
+        head.append(titleBox, headActions);
+        wrap.appendChild(head);
+
+        const paths = document.createElement('div');
+        paths.className = 'dataset-row-paths';
+        paths.appendChild(createDatasetPathField(index, 'source_dir', '原始数据集路径', row.source_dir, 'image_dataset'));
+        paths.appendChild(createDatasetPathField(index, 'image_dir', '缩放图目录', row.image_dir, 'post_image_dataset/resized'));
+        paths.appendChild(createDatasetPathField(index, 'cache_dir', 'LoRA 缓存目录', row.cache_dir, 'post_image_dataset/lora'));
+        wrap.appendChild(paths);
+
+        wrap.appendChild(createDatasetRowSettingsEditor(row, index));
 
         const repeat = document.createElement('label');
         repeat.className = 'dataset-repeat-field';
@@ -2515,11 +2981,70 @@
         remove.type = 'button';
         remove.className = 'btn btn-small danger dataset-remove-btn';
         remove.textContent = '删除';
-        remove.disabled = datasetEditorState.datasets.length <= 1;
+        remove.disabled = datasetEditorStateForActivePanel().datasets.length <= 1;
         remove.title = remove.disabled ? '至少保留一组数据集路径' : '从当前 dataset_config 中移除这一组路径，不会删除磁盘文件。';
         remove.addEventListener('click', () => removeDatasetEditorRow(index));
         wrap.appendChild(remove);
         return wrap;
+    }
+
+    function createDatasetRowSettingsEditor(row, index) {
+        const settings = normalizeDatasetDefaults(row.settings || datasetEditorStateForActivePanel().defaults || {});
+        const panel = document.createElement('div');
+        panel.className = 'dataset-row-settings';
+        const fields = [
+            ['resolution', 'number'],
+            ['batch_size', 'number'],
+            ['enable_bucket', 'select'],
+            ['min_bucket_reso', 'number'],
+            ['max_bucket_reso', 'number'],
+            ['bucket_reso_steps', 'number'],
+            ['bucket_no_upscale', 'select'],
+            ['validation_split', 'number'],
+            ['validation_split_num', 'number'],
+            ['validation_seed', 'number'],
+        ];
+        for (const [key, type] of fields) {
+            const field = document.createElement('label');
+            field.className = 'dataset-row-setting-field';
+            const label = document.createElement('span');
+            label.textContent = datasetConfigLabel(key);
+            label.title = key;
+            field.appendChild(label);
+            field.appendChild(createDatasetRowSettingInput(index, key, type, settings));
+            panel.appendChild(field);
+        }
+        return panel;
+    }
+
+    function createDatasetRowSettingInput(index, key, type, settings) {
+        let input;
+        if (type === 'select') {
+            input = document.createElement('select');
+            const options = key === 'enable_bucket'
+                ? [[true, '启用'], [false, '关闭']]
+                : [[false, '允许放大'], [true, '不放大小图']];
+            const current = Boolean(settings[key]);
+            for (const [value, label] of options) {
+                const opt = document.createElement('option');
+                opt.value = value ? 'true' : 'false';
+                opt.textContent = label;
+                opt.selected = value === current;
+                input.appendChild(opt);
+            }
+        } else {
+            input = document.createElement('input');
+            input.type = type;
+            input.value = datasetConfigValue(key, settings);
+            if (type === 'number') {
+                input.min = '0';
+                input.step = key === 'validation_split' ? '0.001' : (key === 'resolution' || key.endsWith('_reso') || key === 'bucket_reso_steps' ? '16' : '1');
+            }
+        }
+        input.className = 'field-input dataset-row-setting-input';
+        input.addEventListener('input', () => updateDatasetEditorRowSetting(index, key, input));
+        input.addEventListener('change', () => updateDatasetEditorRowSetting(index, key, input));
+        return input;
     }
 
     function createDatasetPathField(index, key, label, value, placeholder) {
@@ -2543,6 +3068,200 @@
         return field;
     }
 
+    async function openDatasetPreview(index) {
+        if (!datasetPresetState.selectedFile) {
+            setDatasetPresetStatus('请先选择一个数据集预设', 'error');
+            return;
+        }
+        if (datasetPresetState.dirty) {
+            setDatasetPresetStatus('请先保存当前数据集预设，再打开预览', 'error');
+            return;
+        }
+        datasetPreviewState.datasetIndex = index;
+        datasetPreviewState.source = 'source';
+        datasetPreviewState.payload = null;
+        const dialog = document.getElementById('dataset-preview-dialog');
+        renderDatasetPreviewDialog({ loading: true });
+        if (dialog?.showModal && !dialog.open) {
+            dialog.showModal();
+        }
+        await loadDatasetPreviewImages();
+    }
+
+    async function loadDatasetPreviewImages() {
+        const file = datasetPresetState.selectedFile;
+        if (!file) return;
+        const requestSeq = ++datasetPreviewLoadSeq;
+        renderDatasetPreviewDialog({ loading: true });
+        try {
+            const params = new URLSearchParams({
+                file,
+                dataset_index: String(datasetPreviewState.datasetIndex || 0),
+                source: 'source',
+                limit: '120',
+            });
+            const payload = await api(`/api/config/dataset-presets/images?${params.toString()}`);
+            if (requestSeq !== datasetPreviewLoadSeq) return;
+            if (!payload.ok) throw new Error(payload.error || '读取数据集预览失败');
+            datasetPreviewState.payload = payload;
+            renderDatasetPreviewDialog();
+        } catch (e) {
+            if (requestSeq !== datasetPreviewLoadSeq) return;
+            datasetPreviewState.payload = {
+                ok: false,
+                error: e.message || '读取数据集预览失败',
+                images: [],
+            };
+            renderDatasetPreviewDialog();
+        }
+    }
+
+    function renderDatasetPreviewDialog(options = {}) {
+        const title = document.getElementById('dataset-preview-dialog-title');
+        const meta = document.getElementById('dataset-preview-dialog-meta');
+        const grid = document.getElementById('dataset-preview-grid');
+        const details = document.getElementById('dataset-preview-details');
+        const empty = document.getElementById('dataset-preview-empty');
+        if (!title || !meta || !grid || !details || !empty) return;
+
+        const datasetNo = Number(datasetPreviewState.datasetIndex || 0) + 1;
+        title.textContent = `第 ${datasetNo} 组数据集预览`;
+        if (options.loading) {
+            meta.textContent = '正在读取图片和同名标注...';
+            grid.innerHTML = '';
+            details.innerHTML = '';
+            empty.textContent = '正在读取数据集图片...';
+            empty.hidden = false;
+            return;
+        }
+
+        const payload = datasetPreviewState.payload || {};
+        if (payload.error) {
+            meta.textContent = payload.error;
+            grid.innerHTML = '';
+            details.innerHTML = '';
+            empty.textContent = payload.error;
+            empty.hidden = false;
+            return;
+        }
+
+        const countText = `${payload.count || 0}/${payload.total || 0} 张`;
+        meta.textContent = `${payload.source_label || '原始图目录'} · ${payload.directory || '-'} · ${countText} · 标注 ${payload.caption_extension || '.txt'}`;
+        renderDatasetPreviewDetails(payload);
+        grid.innerHTML = '';
+        const images = Array.isArray(payload.images) ? payload.images : [];
+        if (!images.length) {
+            empty.textContent = payload.message || '当前目录没有可预览图片。';
+            empty.hidden = false;
+            return;
+        }
+        empty.hidden = true;
+        for (const image of images) {
+            grid.appendChild(createDatasetPreviewCard(image));
+        }
+    }
+
+    function renderDatasetPreviewDetails(payload) {
+        const details = document.getElementById('dataset-preview-details');
+        if (!details) return;
+        details.innerHTML = '';
+        const row = payload.row || {};
+        const settings = normalizeDatasetDefaults(payload.settings || row.settings || {});
+        const items = [
+            ['数据集文件', payload.file || datasetPresetState.selectedFile || '-'],
+            ['当前目录', payload.directory || '-'],
+            ['原始路径', row.source_dir || '-'],
+            ['缩放图目录', row.image_dir || '-'],
+            ['缓存目录', row.cache_dir || '-'],
+            ['重复次数', row.num_repeats ?? '-'],
+            ['分辨率', settings.resolution || '-'],
+            ['分桶', settings.enable_bucket ? `${settings.min_bucket_reso}-${settings.max_bucket_reso}/${settings.bucket_reso_steps}` : '关闭'],
+            ['验证集', datasetPreviewValidationText(settings)],
+        ];
+        for (const [label, value] of items) {
+            details.appendChild(createPreviewDetailRow(label, String(value)));
+        }
+    }
+
+    function datasetPreviewValidationText(settings) {
+        if (Number(settings.validation_split_num || 0) > 0) return `固定 ${settings.validation_split_num} 张`;
+        return `${settings.validation_split ?? 0}`;
+    }
+
+    function createDatasetPreviewCard(image) {
+        const card = document.createElement('article');
+        card.className = 'dataset-preview-card';
+        const imageWrap = document.createElement('button');
+        imageWrap.type = 'button';
+        imageWrap.className = 'dataset-preview-image-btn';
+        imageWrap.title = '点击在大图预览中查看。';
+        imageWrap.addEventListener('click', () => openPreviewDialog(datasetPreviewImageToPreviewImage(image)));
+
+        const img = document.createElement('img');
+        img.src = image.url;
+        img.alt = image.name;
+        img.loading = 'lazy';
+        img.addEventListener('error', () => {
+            card.classList.add('dataset-preview-card-error');
+            img.alt = '图片加载失败';
+        });
+        imageWrap.appendChild(img);
+
+        const body = document.createElement('div');
+        body.className = 'dataset-preview-card-body';
+        const name = document.createElement('strong');
+        name.textContent = image.name || '-';
+        const file = document.createElement('span');
+        file.textContent = image.file || '';
+        body.append(name, file);
+
+        const caption = image.caption || {};
+        const captionBox = document.createElement('div');
+        captionBox.className = ['dataset-preview-caption', caption.ok ? '' : 'missing'].filter(Boolean).join(' ');
+        const captionHead = document.createElement('div');
+        const captionTitle = document.createElement('span');
+        captionTitle.textContent = caption.ok ? `标注 ${caption.extension || ''}` : `缺少标注 ${caption.extension || ''}`;
+        captionHead.appendChild(captionTitle);
+        if (caption.file) {
+            const copyBtn = document.createElement('button');
+            copyBtn.type = 'button';
+            copyBtn.className = 'btn btn-small';
+            copyBtn.textContent = '复制标注';
+            copyBtn.addEventListener('click', () => copyDatasetCaptionText(caption.text || '', copyBtn));
+            captionHead.appendChild(copyBtn);
+        }
+        const pre = document.createElement('pre');
+        pre.textContent = caption.ok ? (caption.text || '(空标注)') : '未找到同名 caption 文件';
+        captionBox.append(captionHead, pre);
+        body.appendChild(captionBox);
+
+        card.append(imageWrap, body);
+        return card;
+    }
+
+    function datasetPreviewImageToPreviewImage(image) {
+        return {
+            ...image,
+            sample: {},
+            source_task: null,
+        };
+    }
+
+    async function copyDatasetCaptionText(text, button) {
+        try {
+            await copyText(text || '');
+            const original = button.textContent;
+            button.textContent = '已复制';
+            button.classList.add('btn-primary');
+            setTimeout(() => {
+                button.textContent = original;
+                button.classList.remove('btn-primary');
+            }, 1000);
+        } catch (e) {
+            alert('复制标注失败: ' + e.message);
+        }
+    }
+
     function normalizeDatasetEditorRows(rows) {
         return (rows || [])
             .filter((row) => row && typeof row === 'object')
@@ -2551,7 +3270,18 @@
                 image_dir: String(row.image_dir || row.resized_image_dir || ''),
                 cache_dir: String(row.cache_dir || row.lora_cache_dir || ''),
                 num_repeats: Math.max(1, Number.parseInt(row.num_repeats || 1, 10) || 1),
+                settings: normalizeDatasetRowSettings(row),
             }));
+    }
+
+    function normalizeDatasetRowSettings(row) {
+        if (row.settings && typeof row.settings === 'object') {
+            return normalizeDatasetDefaults(row.settings);
+        }
+        if ([...DATASET_SETTING_KEYS].some((key) => key in row)) {
+            return normalizeDatasetDefaults(row);
+        }
+        return {};
     }
 
     function normalizeDatasetDefaults(defaults) {
@@ -2573,7 +3303,8 @@
     }
 
     function updateDatasetDefault(key, input) {
-        const defaults = normalizeDatasetDefaults(datasetEditorState.defaults || {});
+        const state = datasetEditorStateForActivePanel();
+        const defaults = normalizeDatasetDefaults(state.defaults || {});
         if (input.type === 'checkbox') {
             defaults[key] = input.checked;
         } else if (input.tagName === 'SELECT') {
@@ -2583,18 +3314,27 @@
         } else {
             defaults[key] = input.value;
         }
-        datasetEditorState.defaults = defaults;
+        if (isDatasetTabActive()) {
+            datasetPresetState.defaults = defaults;
+        } else {
+            datasetEditorState.defaults = defaults;
+        }
         markDatasetEditorDirty();
     }
 
     function updateDatasetEditorRow(index, key, value) {
-        const rows = normalizeDatasetEditorRows(datasetEditorState.datasets);
+        const state = datasetEditorStateForActivePanel();
+        const rows = normalizeDatasetEditorRows(state.datasets);
         if (!rows[index]) return;
         rows[index][key] = key === 'num_repeats'
             ? Math.max(1, Number.parseInt(value || '1', 10) || 1)
             : value;
-        datasetEditorState.datasets = rows;
-        if (index === 0 && key === 'source_dir') {
+        if (isDatasetTabActive()) {
+            datasetPresetState.datasets = rows;
+        } else {
+            datasetEditorState.datasets = rows;
+        }
+        if (!isDatasetTabActive() && index === 0 && key === 'source_dir') {
             setFieldInputValue('source_image_dir', value);
         }
         markDatasetEditorDirty();
@@ -2603,10 +3343,37 @@
         }
     }
 
+    function updateDatasetEditorRowSetting(index, key, input) {
+        const state = datasetEditorStateForActivePanel();
+        const rows = normalizeDatasetEditorRows(state.datasets);
+        if (!rows[index]) return;
+        const settings = normalizeDatasetDefaults(rows[index].settings || state.defaults || {});
+        if (input.tagName === 'SELECT') {
+            settings[key] = input.value === 'true';
+        } else if (input.type === 'number') {
+            settings[key] = key === 'validation_split' ? Math.max(0, Number(input.value) || 0) : Math.max(0, Number.parseInt(input.value || '0', 10) || 0);
+        } else {
+            settings[key] = input.value;
+        }
+        rows[index].settings = settings;
+        if (isDatasetTabActive()) {
+            datasetPresetState.datasets = rows;
+        } else {
+            datasetEditorState.datasets = rows;
+        }
+        markDatasetEditorDirty();
+    }
+
     function markDatasetEditorDirty() {
-        datasetEditorState.dirty = true;
-        updateTomlDirtyState();
-        updateStepEstimatePanel();
+        if (isDatasetTabActive()) {
+            datasetPresetState.dirty = true;
+            datasetPresetState.status = '有未保存的数据集修改';
+            renderDatasetPresetHeader();
+        } else {
+            datasetEditorState.dirty = true;
+            updateTomlDirtyState();
+            updateStepEstimatePanel();
+        }
         const dirty = document.querySelector('#dataset-editor .dataset-editor-dirty');
         if (dirty) {
             dirty.classList.add('active');
@@ -2615,27 +3382,43 @@
     }
 
     function addDatasetEditorRow() {
-        datasetEditorState.datasets = normalizeDatasetEditorRows(datasetEditorState.datasets);
-        datasetEditorState.datasets.push({
+        const state = datasetEditorStateForActivePanel();
+        const rows = normalizeDatasetEditorRows(state.datasets);
+        rows.push({
             source_dir: '',
             image_dir: '',
             cache_dir: '',
             num_repeats: 1,
+            settings: normalizeDatasetDefaults(state.defaults || {}),
         });
-        datasetEditorState.dirty = true;
+        if (isDatasetTabActive()) {
+            datasetPresetState.datasets = rows;
+            datasetPresetState.dirty = true;
+        } else {
+            datasetEditorState.datasets = rows;
+            datasetEditorState.dirty = true;
+        }
         renderDatasetEditor();
-        updateTomlDirtyState();
+        if (!isDatasetTabActive()) updateTomlDirtyState();
     }
 
     function removeDatasetEditorRow(index) {
-        const rows = normalizeDatasetEditorRows(datasetEditorState.datasets);
+        const state = datasetEditorStateForActivePanel();
+        const rows = normalizeDatasetEditorRows(state.datasets);
         if (rows.length <= 1) return;
         rows.splice(index, 1);
-        datasetEditorState.datasets = rows;
-        datasetEditorState.dirty = true;
+        if (isDatasetTabActive()) {
+            datasetPresetState.datasets = rows;
+            datasetPresetState.dirty = true;
+        } else {
+            datasetEditorState.datasets = rows;
+            datasetEditorState.dirty = true;
+        }
         renderDatasetEditor();
-        updateTomlDirtyState();
-        updateStepEstimatePanel();
+        if (!isDatasetTabActive()) {
+            updateTomlDirtyState();
+            updateStepEstimatePanel();
+        }
     }
 
     function syncDatasetEditorToCompatFields() {
@@ -2670,8 +3453,9 @@
     }
 
     async function applySuggestedDataDirs() {
-        if (datasetEditorState.datasets.length) {
-            const rows = normalizeDatasetEditorRows(datasetEditorState.datasets);
+        const state = datasetEditorStateForActivePanel();
+        if (state.datasets.length) {
+            const rows = normalizeDatasetEditorRows(state.datasets);
             const sourceDirs = rows.map((row) => row.source_dir.trim());
             if (!sourceDirs.some(Boolean)) {
                 alert('请先填写至少一个原始数据集路径');
@@ -2688,7 +3472,7 @@
                 }
                 const suggestions = result.datasets || [];
                 let cursor = 0;
-                datasetEditorState.datasets = rows.map((row) => {
+                const nextRows = rows.map((row) => {
                     if (!row.source_dir.trim()) return row;
                     const next = suggestions[cursor++] || {};
                     return {
@@ -2698,17 +3482,33 @@
                         cache_dir: next.cache_dir || row.cache_dir,
                     };
                 });
-                datasetEditorState.dirty = true;
-                syncDatasetEditorToCompatFields();
+                if (isDatasetTabActive()) {
+                    datasetPresetState.datasets = nextRows;
+                    datasetPresetState.dirty = true;
+                } else {
+                    datasetEditorState.datasets = nextRows;
+                    datasetEditorState.dirty = true;
+                    syncDatasetEditorToCompatFields();
+                }
                 renderDatasetEditor();
-                handleFormFieldChange();
-                updateTomlDirtyState();
-                setTomlStatus('ok', '已根据原始数据集填入每组缩放图目录和 LoRA 缓存目录，请保存后再训练', { persist: true });
+                if (isDatasetTabActive()) {
+                    datasetPresetState.status = '已根据原始数据集填入每组缩放图目录和 LoRA 缓存目录';
+                    renderDatasetPresetHeader();
+                } else {
+                    handleFormFieldChange();
+                    updateTomlDirtyState();
+                    setTomlStatus('ok', '已根据原始数据集填入每组缩放图目录和 LoRA 缓存目录，请保存后再训练', { persist: true });
+                }
                 return;
             } catch (e) {
                 alert('生成路径失败: ' + e.message);
                 return;
             }
+        }
+
+        if (isDatasetTabActive()) {
+            alert('请先添加至少一组数据集路径');
+            return;
         }
 
         const sourceInput = document.querySelector('#config-form .field-input[data-key="source_image_dir"]');
@@ -2766,9 +3566,9 @@
         updateChoiceGuide();
     }
 
-    function confirmBeforeConfigSelectionChange(message) {
+    async function confirmBeforeConfigSelectionChange(message) {
         if (!hasPendingConfigChanges(currentTomlFile)) return true;
-        const ok = confirm(message);
+        const ok = await confirmUnsavedDiscard(message);
         if (!ok) restoreSelectionSnapshot();
         return ok;
     }
@@ -2787,6 +3587,7 @@
 
     function createChoiceCard(kind, key, guideMap, fallback, overrideGuide = null) {
         const guide = overrideGuide || guideMap[key] || fallback;
+        const helpId = `choice-guide-hint-${++choiceGuideHintSeq}`;
         const card = document.createElement('article');
         card.className = 'choice-card';
 
@@ -2798,11 +3599,24 @@
         name.textContent = guide.title;
         heading.appendChild(title);
         heading.appendChild(name);
+        const toggle = document.createElement('button');
+        toggle.type = 'button';
+        toggle.className = 'info-toggle choice-info-toggle';
+        toggle.textContent = '?';
+        toggle.title = `展开${kind}说明`;
+        toggle.setAttribute('aria-label', `${kind}说明`);
+        toggle.setAttribute('aria-expanded', 'false');
+        toggle.setAttribute('aria-controls', helpId);
+        heading.appendChild(toggle);
         card.appendChild(heading);
 
-        card.appendChild(choiceLine('说明', guide.summary));
-        card.appendChild(choiceLine('取舍', guide.tradeoff));
-        card.appendChild(choiceLine('推荐', guide.recommend, 'choice-recommend'));
+        const body = document.createElement('div');
+        body.id = helpId;
+        body.className = 'choice-card-body';
+        body.hidden = true;
+        body.appendChild(choiceLine('说明', guide.summary));
+        body.appendChild(choiceLine('取舍', guide.tradeoff));
+        body.appendChild(choiceLine('推荐', guide.recommend, 'choice-recommend'));
         if (Array.isArray(guide.details) && guide.details.length) {
             const details = document.createElement('ul');
             details.className = 'choice-details';
@@ -2811,8 +3625,16 @@
                 item.textContent = detail;
                 details.appendChild(item);
             }
-            card.appendChild(details);
+            body.appendChild(details);
         }
+        toggle.addEventListener('click', () => {
+            const nextOpen = body.hidden;
+            body.hidden = !nextOpen;
+            toggle.classList.toggle('active', nextOpen);
+            toggle.setAttribute('aria-expanded', String(nextOpen));
+            toggle.title = nextOpen ? `收起${kind}说明` : `展开${kind}说明`;
+        });
+        card.appendChild(body);
         return card;
     }
 
@@ -2973,6 +3795,7 @@
         const row = document.createElement('div');
         row.className = 'field-row';
         row.dataset.key = key;
+        if (key === 'sample_prompts') row.classList.add('field-row-sample-prompts');
 
         const main = document.createElement('div');
         main.className = 'field-main';
@@ -2981,13 +3804,29 @@
         nameSpan.className = 'field-name';
         nameSpan.textContent = formatFieldName(key);
         nameSpan.title = key;
-        main.appendChild(nameSpan);
 
         const input = createFieldInput(key, value);
         input.dataset.key = key;
         input.dataset.valueType = fieldValueTypeForKey(key, value);
         input.addEventListener('input', handleFormFieldChange);
         input.addEventListener('change', handleFormFieldChange);
+
+        if (key === 'sample_prompts' && samplePromptsMode !== 'path') {
+            const labelStack = document.createElement('div');
+            labelStack.className = 'field-label-stack';
+            labelStack.appendChild(nameSpan);
+
+            const rowsWrap = input.querySelector('.sample-prompts-rows');
+            if (rowsWrap) {
+                const labelActions = document.createElement('div');
+                labelActions.className = 'field-label-actions';
+                labelActions.appendChild(createSamplePromptAddButton(rowsWrap));
+                labelStack.appendChild(labelActions);
+            }
+            main.appendChild(labelStack);
+        } else {
+            main.appendChild(nameSpan);
+        }
         main.appendChild(input);
 
         const btn = document.createElement('button');
@@ -3028,6 +3867,7 @@
         for (const input of document.querySelectorAll('#config-form .field-input[data-key]')) {
             const key = input.dataset.key;
             if (!key) continue;
+            if (CONFIG_FORM_INTERNAL_KEYS.has(key)) continue;
             const original = key in liveConfig ? liveConfig[key] : FORM_UI_DEFAULTS[key];
             liveConfig[key] = readFieldInputValue(input, original);
         }
@@ -3041,12 +3881,10 @@
 
     function createFieldInput(key, value) {
         if (key === 'sample_prompts') {
-            const textarea = document.createElement('textarea');
-            textarea.rows = 5;
-            textarea.placeholder = '一行一个提示词，例如:\nmasterpiece, best quality, 1girl --w 1024 --h 1024 --d 42';
-            textarea.value = value ?? '';
-            textarea.className = 'field-input field-textarea sample-prompts-input';
-            return textarea;
+            if (samplePromptsMode === 'path') {
+                return createSamplePromptsPathInput(value);
+            }
+            return createSamplePromptsEditor(value);
         }
         const options = FIELD_OPTIONS[key];
         if (options && !Array.isArray(value)) {
@@ -3073,6 +3911,261 @@
             input.title = input.disabled ? '启用 LoKr 后生效' : '';
         }
         return input;
+    }
+
+    function createSamplePromptsPathInput(value) {
+        const input = document.createElement('input');
+        input.type = 'text';
+        input.className = 'field-input';
+        input.value = value ?? '';
+        input.title = '当前 sample_prompts 指向非 .txt 文件，保留为文件路径。';
+        return input;
+    }
+
+    function createSamplePromptsEditor(value) {
+        const editor = document.createElement('div');
+        editor.className = 'field-input sample-prompts-editor';
+        editor.dataset.originalContent = value ?? '';
+        editor.dataset.touched = '0';
+
+        const rows = document.createElement('div');
+        rows.className = 'sample-prompts-rows';
+
+        editor.appendChild(rows);
+
+        editor.addEventListener('input', (event) => {
+            if (event.target?.closest?.('.sample-prompt-row')) {
+                markSamplePromptsEditorTouched(editor);
+            }
+        });
+        editor.addEventListener('change', (event) => {
+            if (event.target?.closest?.('.sample-prompt-row')) {
+                markSamplePromptsEditorTouched(editor);
+            }
+        });
+
+        renderSamplePromptRows(editor, value ?? '');
+        return editor;
+    }
+
+    function createSamplePromptAddButton(rowsWrap) {
+        const addBtn = document.createElement('button');
+        addBtn.type = 'button';
+        addBtn.className = 'btn btn-small sample-prompts-add-btn';
+        addBtn.textContent = '添加行';
+        addBtn.addEventListener('click', () => {
+            const editor = rowsWrap.closest('.sample-prompts-editor');
+            appendSamplePromptRow(rowsWrap, blankSamplePromptRow());
+            markSamplePromptsEditorTouched(editor);
+            handleFormFieldChange();
+        });
+        return addBtn;
+    }
+
+    function setSamplePromptsEditorContent(editor, content) {
+        if (!editor) return;
+        editor.dataset.originalContent = content || '';
+        editor.dataset.touched = '0';
+        renderSamplePromptRows(editor, content || '');
+    }
+
+    function markSamplePromptsEditorTouched(editor) {
+        if (editor) editor.dataset.touched = '1';
+    }
+
+    function renderSamplePromptRows(editor, content) {
+        const rowsWrap = editor.querySelector('.sample-prompts-rows');
+        if (!rowsWrap) return;
+        rowsWrap.innerHTML = '';
+        const rows = parseSamplePromptRows(content);
+        for (const row of rows) {
+            appendSamplePromptRow(rowsWrap, row);
+        }
+        updateSamplePromptRemoveButtons(rowsWrap);
+    }
+
+    function appendSamplePromptRow(rowsWrap, row) {
+        const item = document.createElement('div');
+        item.className = 'sample-prompt-row';
+
+        const promptField = createSamplePromptTextField('提示词', 'prompt', row.prompt || '');
+        const heightField = createSamplePromptInputField('长 / h', 'height', row.height || '', 'number', '1');
+        const widthField = createSamplePromptInputField('宽 / w', 'width', row.width || '', 'number', '1');
+        const cfgField = createSamplePromptInputField('CFG / g', 'cfg', row.cfg || '', 'number', '0.1');
+        const stepsField = createSamplePromptInputField('步数 / s', 'steps', row.steps || '', 'number', '1');
+        const seedField = createSamplePromptInputField('种子 / d', 'seed', row.seed || '', 'number', '1');
+        const extra = document.createElement('input');
+        extra.type = 'hidden';
+        extra.dataset.samplePromptField = 'extra';
+        extra.value = row.extra || '';
+
+        const removeBtn = document.createElement('button');
+        removeBtn.type = 'button';
+        removeBtn.className = 'btn btn-small btn-subtle-danger sample-prompt-remove';
+        removeBtn.textContent = '删除';
+        removeBtn.addEventListener('click', () => {
+            const editor = rowsWrap.closest('.sample-prompts-editor');
+            const rowCount = rowsWrap.querySelectorAll('.sample-prompt-row').length;
+            if (rowCount <= 1) {
+                clearSamplePromptRow(item);
+            } else {
+                item.remove();
+            }
+            markSamplePromptsEditorTouched(editor);
+            updateSamplePromptRemoveButtons(rowsWrap);
+            handleFormFieldChange();
+        });
+
+        const rowActions = document.createElement('div');
+        rowActions.className = 'sample-prompt-row-actions';
+        rowActions.append(removeBtn);
+
+        item.append(promptField, heightField, widthField, cfgField, stepsField, seedField, extra, rowActions);
+        rowsWrap.appendChild(item);
+        updateSamplePromptRemoveButtons(rowsWrap);
+    }
+
+    function createSamplePromptTextField(labelText, field, value) {
+        const label = document.createElement('label');
+        label.className = 'sample-prompt-field sample-prompt-field-text';
+        const span = document.createElement('span');
+        span.textContent = labelText;
+        const input = document.createElement('input');
+        input.type = 'text';
+        input.dataset.samplePromptField = field;
+        input.value = value || '';
+        label.append(span, input);
+        return label;
+    }
+
+    function createSamplePromptInputField(labelText, field, value, type = 'text', step = '') {
+        const label = document.createElement('label');
+        label.className = 'sample-prompt-field';
+        const span = document.createElement('span');
+        span.textContent = labelText;
+        const input = document.createElement('input');
+        input.type = type;
+        input.dataset.samplePromptField = field;
+        input.value = value || '';
+        if (type === 'number') {
+            input.min = '0';
+            input.step = step || '1';
+        }
+        label.append(span, input);
+        return label;
+    }
+
+    function clearSamplePromptRow(row) {
+        row.querySelectorAll('[data-sample-prompt-field]').forEach((input) => {
+            input.value = '';
+        });
+    }
+
+    function updateSamplePromptRemoveButtons(rowsWrap) {
+        const rows = rowsWrap.querySelectorAll('.sample-prompt-row');
+        rows.forEach((row) => {
+            const button = row.querySelector('.sample-prompt-remove');
+            if (!button) return;
+            button.textContent = rows.length <= 1 ? '清空' : '删除';
+        });
+    }
+
+    function blankSamplePromptRow() {
+        return { prompt: '', height: '', width: '', cfg: '', steps: '', seed: '', extra: '' };
+    }
+
+    function parseSamplePromptRows(content) {
+        const rows = String(content || '')
+            .split(/\r?\n/)
+            .map((line) => line.trim())
+            .filter((line) => line && !line.startsWith('#'))
+            .map(parseSamplePromptLine);
+        return rows.length ? rows : [blankSamplePromptRow()];
+    }
+
+    function parseSamplePromptLine(line) {
+        const parts = String(line || '').trim().split(/\s+--/);
+        const row = blankSamplePromptRow();
+        row.prompt = (parts.shift() || '').trim();
+        const extras = [];
+
+        for (const rawPart of parts) {
+            const part = rawPart.trim();
+            let match = part.match(/^h\s+(\d+)$/i);
+            if (match) {
+                row.height = match[1];
+                continue;
+            }
+            match = part.match(/^w\s+(\d+)$/i);
+            if (match) {
+                row.width = match[1];
+                continue;
+            }
+            match = part.match(/^g\s+([\d.]+)$/i);
+            if (match) {
+                row.cfg = match[1];
+                continue;
+            }
+            match = part.match(/^s\s+(\d+)$/i);
+            if (match) {
+                row.steps = match[1];
+                continue;
+            }
+            match = part.match(/^d\s+(\d+)$/i);
+            if (match) {
+                row.seed = match[1];
+                continue;
+            }
+            if (part) extras.push(`--${part}`);
+        }
+        row.extra = extras.join(' ');
+        return row;
+    }
+
+    function serializeSamplePromptsEditor(editor) {
+        const rows = [];
+        for (const rowEl of editor.querySelectorAll('.sample-prompt-row')) {
+            const row = samplePromptRowFromElement(rowEl);
+            const line = serializeSamplePromptRow(row);
+            if (line) rows.push(line);
+        }
+        return rows.join('\n');
+    }
+
+    function samplePromptRowFromElement(rowEl) {
+        const value = (field) => rowEl.querySelector(`[data-sample-prompt-field="${field}"]`)?.value?.trim() || '';
+        return {
+            prompt: value('prompt'),
+            height: value('height'),
+            width: value('width'),
+            cfg: value('cfg'),
+            steps: value('steps'),
+            seed: value('seed'),
+            extra: value('extra'),
+        };
+    }
+
+    function serializeSamplePromptRow(row) {
+        if (!row.prompt) return '';
+        const args = [];
+        if (row.width) args.push(`--w ${positiveIntegerText(row.width)}`);
+        if (row.height) args.push(`--h ${positiveIntegerText(row.height)}`);
+        if (row.steps) args.push(`--s ${positiveIntegerText(row.steps)}`);
+        if (row.cfg) args.push(`--g ${positiveNumberText(row.cfg)}`);
+        if (row.seed) args.push(`--d ${positiveIntegerText(row.seed)}`);
+        if (row.extra) args.push(row.extra.trim());
+        return [row.prompt.trim(), ...args.filter(Boolean)].join(' ');
+    }
+
+    function positiveIntegerText(value) {
+        const n = Math.max(0, Math.floor(Number(value)));
+        return Number.isFinite(n) ? String(n) : '';
+    }
+
+    function positiveNumberText(value) {
+        const n = Number(value);
+        if (!Number.isFinite(n) || n < 0) return '';
+        return String(n);
     }
 
     function isNumericField(key, value) {
@@ -3273,7 +4366,9 @@
     }
 
     async function loadTomlFile(filePath, options = {}) {
-        if (!options.force && !confirmDiscardTomlChanges('当前 TOML 有未保存修改，切换文件会丢失这些修改。是否继续？')) {
+        if (!options.force && !(await confirmDiscardTomlChanges('当前 TOML 有未保存修改，切换文件会丢失这些修改。是否继续？'))) {
+            const select = document.getElementById('toml-file-select');
+            if (select) select.value = currentTomlFile || '';
             return;
         }
         resetTomlDeleteConfirm();
@@ -3309,7 +4404,7 @@
         const directEditorSave = options.mode === 'editor';
         if (directEditorSave) {
             if (formDirty) {
-                setTomlStatus('error', '左侧表单或数据集有未保存修改，请先使用“保存更新当前选中配置”处理后再直接保存 TOML');
+                setTomlStatus('error', '左侧表单或数据集预设选择有未保存修改，请先使用“保存更新当前选中配置”处理后再直接保存 TOML');
                 updateTomlActionState(file);
                 return;
             }
@@ -3331,13 +4426,18 @@
         }
         resetTomlSaveConfirm({ update: false });
         if (currentTrainingSource.file === file) {
-            if (datasetEditorState.dirty) {
-                const saved = await saveDatasetEditor();
-                if (!saved) return;
-            }
+            const datasetApplied = await applySelectedDatasetPresetToCurrentConfig(file);
+            if (!datasetApplied) return;
             const changedValues = collectChangedFormValues();
             if (Object.keys(changedValues).length > 0) {
                 await saveFormPatchToToml(file, changedValues);
+                return;
+            }
+            if (datasetApplied.applied) {
+                await loadConfig();
+                await loadTomlFileList(file);
+                updateTomlDirtyState();
+                setTomlStatus('ok', '✓ 已应用数据集预设');
                 return;
             }
         }
@@ -3370,10 +4470,6 @@
 
     async function saveFormPatchToToml(file, values) {
         try {
-            if (datasetEditorState.dirty) {
-                const saved = await saveDatasetEditor();
-                if (!saved) return;
-            }
             const content = document.getElementById('toml-editor').value;
             const preparedValues = await prepareFormPatchValues(values);
             const res = await api('/api/config/raw', {
@@ -3397,6 +4493,328 @@
         } catch (e) {
             setTomlStatus('error', '请求失败: ' + e.message);
         }
+    }
+
+    async function applySelectedDatasetPresetToCurrentConfig(file) {
+        const nextDataset = selectedConfigDatasetFile || '';
+        const currentDataset = currentConfig.dataset_config || '';
+        if (!nextDataset || nextDataset === currentDataset) {
+            if (!nextDataset && currentDataset) {
+                const res = await api('/api/config/raw', {
+                    method: 'PATCH',
+                    body: JSON.stringify({
+                        file,
+                        values: { dataset_config: '' },
+                        content: document.getElementById('toml-editor')?.value || '',
+                    }),
+                });
+                if (!res.ok) {
+                    setTomlStatus('error', res.error || '清除数据集预设失败');
+                    return null;
+                }
+                if (typeof res.content === 'string') {
+                    const editor = document.getElementById('toml-editor');
+                    if (editor) {
+                        editor.value = res.content;
+                        tomlSavedContent = res.content;
+                    }
+                }
+                currentConfig.dataset_config = '';
+                return { applied: true, response: res };
+            }
+            return { applied: false };
+        }
+        try {
+            const res = await api('/api/config/dataset-presets/apply', {
+                method: 'POST',
+                body: JSON.stringify({
+                    dataset_file: nextDataset,
+                    train_file: file,
+                    train_content: document.getElementById('toml-editor')?.value || '',
+                }),
+            });
+            if (!res.ok) {
+                setTomlStatus('error', res.error || '应用数据集预设失败');
+                return null;
+            }
+            if (typeof res.train_content === 'string') {
+                const editor = document.getElementById('toml-editor');
+                if (editor) {
+                    editor.value = res.train_content;
+                    tomlSavedContent = res.train_content;
+                }
+            }
+            currentConfig.dataset_config = res.dataset_config || nextDataset;
+            const values = res.values || {};
+            for (const [key, value] of Object.entries(values)) {
+                currentConfig[key] = value;
+            }
+            return { applied: true, response: res };
+        } catch (e) {
+            setTomlStatus('error', '应用数据集预设失败: ' + e.message);
+            return null;
+        }
+    }
+
+    async function saveDatasetPresetEditor() {
+        if (datasetPresetState.readonly) {
+            setDatasetPresetStatus('系统数据集预设只读，请复制后编辑', 'error');
+            return null;
+        }
+        let file = datasetPresetState.selectedFile || '';
+        if (!file) {
+            const name = prompt('请输入数据集预设名称');
+            if (!name) return null;
+            file = datasetPresetPathFromName(name);
+            datasetPresetState.selectedFile = file;
+        }
+        const rows = normalizeDatasetEditorRows(datasetPresetState.datasets);
+        if (!rows.length || rows.some((row) => !row.source_dir.trim())) {
+            setDatasetPresetStatus('请至少填写一个原始数据集路径', 'error');
+            return null;
+        }
+        try {
+            const res = await api('/api/config/dataset-presets', {
+                method: 'PUT',
+                body: JSON.stringify({
+                    file,
+                    datasets: rows,
+                    defaults: normalizeDatasetDefaults(datasetPresetState.defaults || {}),
+                }),
+            });
+            if (!res.ok) {
+                setDatasetPresetStatus(res.error || '保存数据集预设失败', 'error');
+                return null;
+            }
+            datasetPresetState = {
+                ...datasetPresetState,
+                selectedFile: res.file || file,
+                datasets: normalizeDatasetEditorRows(res.datasets || rows),
+                defaults: normalizeDatasetDefaults(res.defaults || datasetPresetState.defaults || {}),
+                dirty: false,
+                readonly: false,
+                status: res.message || '已保存数据集预设',
+            };
+            await loadDatasetPresets({ selectCurrent: false });
+            await loadDatasetPreset(datasetPresetState.selectedFile);
+            setDatasetPresetStatus(res.message || '已保存数据集预设', 'ok');
+            if (selectedConfigDatasetFile === datasetPresetState.selectedFile) {
+                selectedConfigDatasetSummary = datasetPresetSummaryByFile(selectedConfigDatasetFile);
+                await loadStepEstimate();
+            }
+            return res;
+        } catch (e) {
+            setDatasetPresetStatus('保存数据集预设失败: ' + e.message, 'error');
+            return null;
+        }
+    }
+
+    async function createNewDatasetPreset() {
+        if (datasetPresetState.dirty && !(await confirmUnsavedDiscard('当前数据集预设有未保存修改，新建会丢弃这些修改。是否继续？'))) return;
+        const name = prompt('请输入新数据集预设名称');
+        if (!name) return;
+        datasetPresetState = {
+            ...datasetPresetState,
+            selectedFile: datasetPresetPathFromName(name),
+            datasets: normalizeDatasetEditorRows([{
+                source_dir: '',
+                image_dir: '',
+                cache_dir: '',
+                num_repeats: 1,
+                settings: normalizeDatasetDefaults({}),
+            }]),
+            defaults: normalizeDatasetDefaults({}),
+            dirty: true,
+            readonly: false,
+            error: '',
+            status: '新预设尚未保存',
+        };
+        renderDatasetPresetList();
+        renderDatasetPresetHeader();
+        renderDatasetEditor();
+    }
+
+    async function copyDatasetPreset() {
+        if (!datasetPresetState.selectedFile) return;
+        const name = prompt('请输入复制后的数据集预设名称', `${datasetPresetState.selectedFile.split('/').pop().replace(/\.toml$/i, '')}_copy`);
+        if (!name) return;
+        const rows = normalizeDatasetEditorRows(datasetPresetState.datasets);
+        try {
+            const res = await api('/api/config/dataset-presets/save-as', {
+                method: 'POST',
+                body: JSON.stringify({
+                    name,
+                    datasets: rows,
+                    defaults: normalizeDatasetDefaults(datasetPresetState.defaults || {}),
+                }),
+            });
+            if (!res.ok) {
+                setDatasetPresetStatus(res.error || '复制数据集预设失败', 'error');
+                return;
+            }
+            await loadDatasetPresets({ selectCurrent: false });
+            await loadDatasetPreset(res.file);
+            setDatasetPresetStatus('已复制数据集预设', 'ok');
+        } catch (e) {
+            setDatasetPresetStatus('复制数据集预设失败: ' + e.message, 'error');
+        }
+    }
+
+    async function renameDatasetPreset() {
+        const oldFile = datasetPresetState.selectedFile;
+        if (!oldFile || datasetPresetState.readonly) return;
+        const name = prompt('请输入新的数据集预设名称', oldFile.split('/').pop().replace(/\.toml$/i, ''));
+        if (!name) return;
+        const nextFile = datasetPresetPathFromName(name);
+        if (nextFile === oldFile) return;
+        const saved = await copyDatasetPresetToName(name);
+        if (!saved) return;
+        try {
+            const del = await api(`/api/config/dataset-presets?file=${encodeURIComponent(oldFile)}`, { method: 'DELETE' });
+            if (!del.ok) {
+                setDatasetPresetStatus(del.error || '新预设已保存，但旧预设删除失败', 'error');
+                return;
+            }
+            if (selectedConfigDatasetFile === oldFile) selectedConfigDatasetFile = nextFile;
+            await loadDatasetPresets({ selectCurrent: false });
+            await loadDatasetPreset(nextFile);
+            renderConfigDatasetPicker();
+            setDatasetPresetStatus('已重命名数据集预设', 'ok');
+        } catch (e) {
+            setDatasetPresetStatus('重命名数据集预设失败: ' + e.message, 'error');
+        }
+    }
+
+    async function copyDatasetPresetToName(name) {
+        try {
+            const res = await api('/api/config/dataset-presets/save-as', {
+                method: 'POST',
+                body: JSON.stringify({
+                    name,
+                    datasets: normalizeDatasetEditorRows(datasetPresetState.datasets),
+                    defaults: normalizeDatasetDefaults(datasetPresetState.defaults || {}),
+                }),
+            });
+            if (!res.ok) {
+                setDatasetPresetStatus(res.error || '保存新数据集预设失败', 'error');
+                return null;
+            }
+            return res;
+        } catch (e) {
+            setDatasetPresetStatus('保存新数据集预设失败: ' + e.message, 'error');
+            return null;
+        }
+    }
+
+    async function deleteDatasetPreset() {
+        const file = datasetPresetState.selectedFile;
+        if (!file || datasetPresetState.readonly) return;
+        const ok = await showAppConfirmDialog({
+            title: '删除数据集预设',
+            description: file,
+            message: '只删除数据集预设 TOML，不删除图片、缩放图或缓存目录。',
+            confirmText: '删除预设',
+            danger: true,
+        });
+        if (!ok) return;
+        try {
+            const res = await api(`/api/config/dataset-presets?file=${encodeURIComponent(file)}`, { method: 'DELETE' });
+            if (!res.ok) {
+                setDatasetPresetStatus(res.error || '删除数据集预设失败', 'error');
+                return;
+            }
+            if (selectedConfigDatasetFile === file) {
+                selectedConfigDatasetFile = '';
+                selectedConfigDatasetSummary = null;
+            }
+            datasetPresetState.selectedFile = '';
+            datasetPresetState.dirty = false;
+            await loadDatasetPresets({ selectCurrent: false });
+            renderConfigDatasetPicker();
+            setDatasetPresetStatus('已删除数据集预设', 'ok');
+        } catch (e) {
+            setDatasetPresetStatus('删除数据集预设失败: ' + e.message, 'error');
+        }
+    }
+
+    function importDatasetPreset() {
+        document.getElementById('dataset-import-input')?.click();
+    }
+
+    async function handleDatasetPresetImport(event) {
+        const fileInput = event.target;
+        const file = fileInput.files?.[0];
+        if (!file) return;
+        try {
+            const content = await file.text();
+            const name = prompt('请输入导入后的数据集预设名称', file.name.replace(/\.toml$/i, ''));
+            if (!name) return;
+            const target = datasetPresetPathFromName(name);
+            const res = await api('/api/config/raw/save-as', {
+                method: 'POST',
+                body: JSON.stringify({ file: target, content }),
+            });
+            if (!res.ok) {
+                setDatasetPresetStatus(res.error || '导入数据集预设失败', 'error');
+                return;
+            }
+            await loadDatasetPresets({ selectCurrent: false });
+            await loadDatasetPreset(target);
+            setDatasetPresetStatus('已导入数据集预设', 'ok');
+        } catch (e) {
+            setDatasetPresetStatus('导入数据集预设失败: ' + e.message, 'error');
+        } finally {
+            fileInput.value = '';
+        }
+    }
+
+    async function exportDatasetPreset() {
+        const file = datasetPresetState.selectedFile;
+        if (!file) return;
+        try {
+            const data = await api(`/api/config/dataset-presets/read?file=${encodeURIComponent(file)}`);
+            if (!data.ok) {
+                setDatasetPresetStatus(data.error || '导出数据集预设失败', 'error');
+                return;
+            }
+            const blob = new Blob([data.content || ''], { type: 'text/plain;charset=utf-8' });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = file.split('/').pop() || 'dataset.toml';
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+            URL.revokeObjectURL(url);
+            setDatasetPresetStatus('已导出数据集预设', 'ok');
+        } catch (e) {
+            setDatasetPresetStatus('导出数据集预设失败: ' + e.message, 'error');
+        }
+    }
+
+    function datasetPresetPathFromName(name) {
+        const stem = String(name || '')
+            .replace(/\.toml$/i, '')
+            .replace(/\\/g, '/')
+            .split('/')
+            .pop()
+            .replace(/[^A-Za-z0-9_-]+/g, '_')
+            .replace(/^_+|_+$/g, '') || 'dataset';
+        return `configs/datasets/${stem}.toml`;
+    }
+
+    function setDatasetPresetStatus(message, level = '') {
+        datasetPresetState.status = message || '';
+        const header = document.getElementById('dataset-preset-header');
+        if (!header) return;
+        let status = header.querySelector('.dataset-preset-status');
+        if (!status) {
+            status = document.createElement('div');
+            status.className = 'dataset-preset-status';
+            header.appendChild(status);
+        }
+        status.textContent = message || '';
+        status.className = ['dataset-preset-status', level].filter(Boolean).join(' ');
     }
 
     async function saveDatasetEditor(options = {}) {
@@ -3469,8 +4887,16 @@
         document.querySelectorAll('#config-form .field-input[data-key]').forEach((input) => {
             const key = input.dataset.key;
             if (!key) return;
-            if (datasetEditorState.dirty && DATASET_EDITOR_COMPAT_FIELDS.has(key)) return;
+            if (CONFIG_FORM_INTERNAL_KEYS.has(key)) return;
             if (key === 'sample_prompts') {
+                if (samplePromptsMode === 'path') {
+                    const original = typeof currentConfig.sample_prompts === 'string' ? currentConfig.sample_prompts : '';
+                    const next = readFieldInputValue(input, original);
+                    if (!valuesEqual(next, original)) {
+                        values[key] = next;
+                    }
+                    return;
+                }
                 const nextPrompts = readFieldInputValue(input, samplePromptsContent);
                 if (nextPrompts !== samplePromptsContent) {
                     values[key] = nextPrompts;
@@ -3493,7 +4919,7 @@
 
     async function prepareFormPatchValues(values) {
         const nextValues = { ...values };
-        if ('sample_prompts' in nextValues) {
+        if ('sample_prompts' in nextValues && samplePromptsMode !== 'path') {
             const promptText = String(nextValues.sample_prompts || '');
             if (promptText.trim()) {
                 const saved = await saveSamplePrompts(promptText);
@@ -3513,6 +4939,10 @@
     }
 
     function readFieldInputValue(input, originalValue) {
+        if (input.classList?.contains('sample-prompts-editor')) {
+            if (input.dataset.touched !== '1') return input.dataset.originalContent || '';
+            return serializeSamplePromptsEditor(input);
+        }
         if (input.tagName === 'TEXTAREA') return normalizeMultilineText(input.value);
         if (input.type === 'checkbox') return input.checked;
         const raw = input.value;
@@ -3576,12 +5006,43 @@
     }
 
     function currentSamplePromptText(config) {
-        const raw = config.sample_prompts;
-        if (typeof raw === 'string' && raw.endsWith('.txt')) {
-            samplePromptsPath = raw;
+        const raw = typeof config.sample_prompts === 'string' ? config.sample_prompts.trim() : '';
+        samplePromptsPath = DEFAULT_SAMPLE_PROMPTS_PATH;
+        samplePromptsContent = '';
+
+        if (!raw) {
+            samplePromptsMode = 'editor-inline';
             return FORM_UI_DEFAULTS.sample_prompts;
         }
-        return typeof raw === 'string' ? raw : FORM_UI_DEFAULTS.sample_prompts;
+        if (isEditableSamplePromptsTextFilePath(raw)) {
+            samplePromptsMode = 'editor-file';
+            samplePromptsPath = normalizeSamplePromptsPath(raw);
+            return FORM_UI_DEFAULTS.sample_prompts;
+        }
+        if (isSamplePromptsFilePath(raw)) {
+            samplePromptsMode = 'path';
+            return raw;
+        }
+
+        samplePromptsMode = 'editor-inline';
+        samplePromptsContent = raw;
+        return raw;
+    }
+
+    function normalizeSamplePromptsPath(value) {
+        return String(value || '').replace(/\\/g, '/').trim();
+    }
+
+    function isEditableSamplePromptsTextFilePath(value) {
+        const text = normalizeSamplePromptsPath(value);
+        if (!text.toLowerCase().endsWith('.txt')) return false;
+        if (!text.startsWith('configs/')) return false;
+        return !text.split('/').includes('..');
+    }
+
+    function isSamplePromptsFilePath(value) {
+        const text = normalizeSamplePromptsPath(value).toLowerCase();
+        return text.endsWith('.txt') || text.endsWith('.toml') || text.endsWith('.json');
     }
 
     async function loadSamplePrompts(filePath = samplePromptsPath, parentSeq = configLoadSeq) {
@@ -3597,7 +5058,11 @@
             samplePromptsContent = data.content || '';
             const input = document.querySelector('#config-form .field-input[data-key="sample_prompts"]');
             if (input) {
-                input.value = samplePromptsContent;
+                if (input.classList?.contains('sample-prompts-editor')) {
+                    setSamplePromptsEditorContent(input, samplePromptsContent);
+                } else {
+                    input.value = samplePromptsContent;
+                }
             }
         } catch (e) {
             console.warn('读取预览提示词失败:', e);
@@ -3617,8 +5082,8 @@
         return res;
     }
 
-    function importTomlFile() {
-        if (!confirmDiscardTomlChanges('当前 TOML 有未保存修改，导入会覆盖编辑器内容。是否继续？')) {
+    async function importTomlFile() {
+        if (!(await confirmDiscardTomlChanges('当前 TOML 有未保存修改，导入会覆盖编辑器内容。是否继续？'))) {
             return;
         }
         const input = document.getElementById('toml-import-input');
@@ -3705,20 +5170,16 @@
             currentTomlFile = file;
             tomlSavedContent = content;
             editor.value = content;
-            if (datasetEditorState.dirty) {
-                const savedDataset = await saveDatasetEditor({
-                    trainFile: file,
-                    trainContent: content,
-                    reloadList: false,
-                    preferExistingDatasetConfig: false,
-                });
-                if (!savedDataset) {
-                    setTomlStatus('error', `新配置已创建: ${file}，但数据集配置保存失败，请修正后再次保存更新当前选中配置`, { persist: true });
-                    await loadTomlFileList(file, { force: true });
-                    updateTomlDirtyState();
-                    return;
-                }
-                tomlSavedContent = document.getElementById('toml-editor').value;
+            const datasetApplied = await applySelectedDatasetPresetToCurrentConfig(file);
+            if (!datasetApplied) {
+                setTomlStatus('error', `新配置已创建: ${file}，但数据集预设应用失败，请修正后再次保存更新当前选中配置`, { persist: true });
+                await loadTomlFileList(file, { force: true });
+                updateTomlDirtyState();
+                return;
+            }
+            if (datasetApplied.applied) {
+                const editorAfterDataset = document.getElementById('toml-editor');
+                tomlSavedContent = editorAfterDataset?.value || tomlSavedContent;
             }
             await loadTomlFileList(file);
             await applyTomlToConfig({ silent: true });
@@ -3849,7 +5310,12 @@
         createBtn.type = 'button';
         createBtn.className = 'toml-group-action-btn';
         createBtn.textContent = '新建分组';
-        createBtn.addEventListener('click', createTomlGroup);
+        createBtn.addEventListener('click', (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            event.stopImmediatePropagation();
+            runTomlGroupAction(createTomlGroup, createBtn);
+        });
         toolbar.appendChild(createBtn);
         container.appendChild(toolbar);
 
@@ -3893,7 +5359,8 @@
                 groupLockBtn.addEventListener('click', (event) => {
                     event.preventDefault();
                     event.stopPropagation();
-                    toggleTomlGroupLock(group);
+                    event.stopImmediatePropagation();
+                    runTomlGroupAction(() => toggleTomlGroupLock(group), groupLockBtn);
                 });
                 summary.appendChild(groupLockBtn);
             }
@@ -3974,9 +5441,25 @@
         btn.addEventListener('click', (event) => {
             event.preventDefault();
             event.stopPropagation();
-            if (!btn.disabled) handler();
+            event.stopImmediatePropagation();
+            if (!btn.disabled) runTomlGroupAction(handler, btn);
         });
         return btn;
+    }
+
+    function runTomlGroupAction(handler, button = null) {
+        if (tomlGroupActionBusy) return;
+        tomlGroupActionBusy = true;
+        if (button) button.disabled = true;
+        Promise.resolve()
+            .then(handler)
+            .catch((e) => {
+                setTomlStatus('error', '分组操作失败: ' + e.message);
+            })
+            .finally(() => {
+                tomlGroupActionBusy = false;
+                if (button?.isConnected) button.disabled = false;
+            });
     }
 
     function createTomlFileButton(item, group = null, index = 0, total = 1) {
@@ -4063,16 +5546,38 @@
     function hasUnsavedFormChanges(filePath = currentTomlFile) {
         if (!filePath || currentTrainingSource.file !== filePath) return false;
         if (!currentConfig || Object.keys(currentConfig).length === 0) return false;
-        return datasetEditorState.dirty || Object.keys(collectChangedFormValues()).length > 0;
+        return selectedConfigDatasetFile !== (currentConfig.dataset_config || '') || Object.keys(collectChangedFormValues()).length > 0;
     }
 
     function hasPendingConfigChanges(filePath = currentTomlFile) {
         return isTomlDirty() || hasUnsavedFormChanges(filePath);
     }
 
-    function confirmDiscardTomlChanges(message) {
+    async function confirmDiscardTomlChanges(message) {
         if (!hasPendingConfigChanges(currentTomlFile)) return true;
-        return confirm(message);
+        return confirmUnsavedDiscard(message);
+    }
+
+    function confirmUnsavedDiscard(message) {
+        return showAppConfirmDialog({
+            title: '未保存更改',
+            description: '当前页面有尚未保存的修改',
+            message,
+            confirmText: '继续并丢弃',
+            cancelText: '留在当前页面',
+            danger: true,
+        });
+    }
+
+    function showAppConfirmDialog(options) {
+        return showHistoryTaskConfirmDialog({
+            title: options.title || '确认操作',
+            description: options.description || '',
+            message: options.message || '',
+            confirmText: options.confirmText || '确认',
+            cancelText: options.cancelText || '取消',
+            danger: options.danger,
+        }).then(Boolean);
     }
 
     function updateTomlDirtyState() {
@@ -4112,7 +5617,7 @@
                 ? '该配置文件已锁定，请使用新名称保存新配置后编辑'
                 : (dirty
                     ? (formDirty
-                        ? '把左侧表单、数据集路径和采样提示词等修改写回当前选中的 TOML；保存后训练会使用这些新值。'
+                        ? '把左侧表单、数据集预设选择和采样提示词等修改写回当前选中的 TOML；保存后训练会使用这些新值。'
                         : '把直接编辑器里的 TOML 文本写回当前文件。')
                     : '当前配置没有未保存修改，不需要保存。');
         }
@@ -4449,7 +5954,13 @@
         const message = nextLocked
             ? `锁定 ${file}？锁定后不能直接保存，仍可使用新名称保存新配置。`
             : `解除 ${file} 的用户锁定？解除后可以直接编辑保存。`;
-        if (!confirm(message)) return;
+        if (!(await showAppConfirmDialog({
+            title: nextLocked ? '锁定配置文件' : '解除配置锁定',
+            description: file,
+            message,
+            confirmText: nextLocked ? '锁定' : '解除锁定',
+            danger: nextLocked,
+        }))) return;
 
         try {
             const res = await api('/api/config/lock', {
@@ -4473,9 +5984,6 @@
     }
 
     async function toggleTomlGroupLock(groupOrId) {
-        if (!confirmDiscardTomlChanges('当前 TOML 有未保存修改，调整分组锁定前会丢失这些修改。是否继续？')) {
-            return;
-        }
         const group = typeof groupOrId === 'string'
             ? tomlFileGroups.find((item) => item.id === groupOrId)
             : groupOrId;
@@ -4493,7 +6001,13 @@
         const message = nextLocked
             ? `锁定分组“${group.label || group.id}”？该分组内文件将不能直接保存，仍可使用新名称保存新配置。`
             : `解除分组“${group.label || group.id}”的锁定？解除后该分组内文件可恢复编辑保存。`;
-        if (!confirm(message)) return;
+        if (!(await showAppConfirmDialog({
+            title: nextLocked ? '锁定配置分组' : '解除分组锁定',
+            description: group.label || group.id,
+            message,
+            confirmText: nextLocked ? '锁定分组' : '解除锁定',
+            danger: nextLocked,
+        }))) return;
 
         try {
             let lastResponse = null;
@@ -4547,9 +6061,6 @@
     }
 
     async function renameTomlGroup(group) {
-        if (!confirmDiscardTomlChanges('当前 TOML 有未保存修改，重命名分组前会重新读取文件列表。是否继续？')) {
-            return;
-        }
         const label = await showHistoryTaskInputDialog({
             title: '重命名配置分组',
             description: '只修改分组显示名称，不会改动配置文件路径。',
@@ -4581,9 +6092,6 @@
 
     async function reorderTomlGroup(group, direction) {
         if (!group?.id) return;
-        if (!confirmDiscardTomlChanges('当前 TOML 有未保存修改，调整分组顺序前会重新读取文件列表。是否继续？')) {
-            return;
-        }
         try {
             const res = await api('/api/config/file-groups/reorder-group', {
                 method: 'POST',
@@ -4739,9 +6247,6 @@
             setTomlStatus('error', deleteTomlGroupButtonTitle(group));
             return;
         }
-        if (!confirmDiscardTomlChanges('当前 TOML 有未保存修改，删除分组前会重新读取文件列表。是否继续？')) {
-            return;
-        }
         const count = (group.files || []).length;
         const ok = await showHistoryTaskConfirmDialog({
             title: '删除配置分组',
@@ -4830,9 +6335,13 @@
         }
 
         const currentHint = meta?.restorable ? `\n当前文件 ${file} 也会一起还原。` : '';
-        const ok = confirm(
-            `即将还原全部系统预设：base、presets、methods、gui-methods。${currentHint}\n\n还原会覆盖系统预设文件，但会先自动备份当前内容。\n用户导入/副本和数据集配置不会被还原。\n\n是否继续？`
-        );
+        const ok = await showAppConfirmDialog({
+            title: '还原系统预设',
+            description: 'base、presets、methods、gui-methods',
+            message: `还原会覆盖系统预设文件，但会先自动备份当前内容。用户导入/副本和数据集配置不会被还原。${currentHint}`,
+            confirmText: '还原系统预设',
+            danger: true,
+        });
         if (!ok) return;
 
         try {
@@ -4932,7 +6441,13 @@
     function showPreflightDialog(result, allowContinue) {
         const dialog = document.getElementById('preflight-dialog');
         if (!dialog) {
-            return Promise.resolve(allowContinue && confirm(preflightPlainText(result) + '\n\n是否继续训练?') ? 'continue' : 'cancel');
+            if (!allowContinue) return Promise.resolve('cancel');
+            return showAppConfirmDialog({
+                title: '训练前预检测',
+                description: '检测到训练前提示',
+                message: `${preflightPlainText(result)}\n\n是否继续训练？`,
+                confirmText: '继续训练',
+            }).then((ok) => ok ? 'continue' : 'cancel');
         }
         renderPreflightResult(result, allowContinue);
         dialog.showModal();
@@ -5045,7 +6560,14 @@
     }
 
     async function stopTraining() {
-        if (!confirm('确定停止训练?')) return;
+        const ok = await showAppConfirmDialog({
+            title: '停止训练',
+            description: '当前运行中的训练任务',
+            message: '确定要停止训练吗？停止后当前训练过程会立即中断。',
+            confirmText: '停止训练',
+            danger: true,
+        });
+        if (!ok) return;
         await api('/api/training/stop', { method: 'POST' });
     }
 
@@ -6401,6 +7923,7 @@
             description: '',
             body: wrap,
             confirmText: options.confirmText || '确认',
+            cancelText: options.cancelText || '取消',
             danger: options.danger,
             getValue: () => true,
         });
@@ -6411,22 +7934,30 @@
         const title = document.getElementById('history-task-dialog-title');
         const desc = document.getElementById('history-task-dialog-desc');
         const body = document.getElementById('history-task-dialog-body');
+        const cancelBtn = document.getElementById('history-task-dialog-cancel');
         const confirmBtn = document.getElementById('history-task-dialog-confirm');
-        if (!dialog || !title || !desc || !body || !confirmBtn) {
+        if (!dialog || !title || !desc || !body || !cancelBtn || !confirmBtn) {
             return Promise.resolve(null);
         }
+        if (sharedDialogBusy || dialog.open) {
+            return Promise.resolve(null);
+        }
+        sharedDialogBusy = true;
 
         title.textContent = options.title || '任务操作';
         desc.textContent = options.description || '';
         body.innerHTML = '';
         if (options.body) body.appendChild(options.body);
+        cancelBtn.textContent = options.cancelText || '取消';
         confirmBtn.textContent = options.confirmText || '确认';
         confirmBtn.classList.toggle('btn-danger', Boolean(options.danger));
         confirmBtn.classList.toggle('btn-primary', !options.danger);
+        dialog.returnValue = '';
 
         return new Promise((resolve) => {
             const cleanup = () => {
                 dialog.removeEventListener('close', handleClose);
+                sharedDialogBusy = false;
             };
             const handleClose = () => {
                 cleanup();
@@ -6437,12 +7968,24 @@
                 }
             };
             dialog.addEventListener('close', handleClose);
-            if (dialog.showModal) {
-                dialog.showModal();
-            } else {
-                dialog.setAttribute('open', 'open');
+            try {
+                if (dialog.showModal) {
+                    dialog.showModal();
+                } else {
+                    dialog.setAttribute('open', 'open');
+                }
+            } catch (e) {
+                cleanup();
+                resolve(null);
+                return;
             }
-            requestAnimationFrame(() => options.onOpen?.());
+            requestAnimationFrame(() => {
+                if (options.onOpen) {
+                    options.onOpen();
+                } else {
+                    confirmBtn.focus();
+                }
+            });
         });
     }
 
@@ -7003,7 +8546,7 @@
     function setupEventListeners() {
         installBeginnerTooltips();
         document.getElementById('method-select').addEventListener('change', async () => {
-            if (!confirmBeforeConfigSelectionChange('当前配置有未保存修改，切换方法会重新加载表单并丢弃这些修改。是否继续？')) {
+            if (!(await confirmBeforeConfigSelectionChange('当前配置有未保存修改，切换方法会重新加载表单并丢弃这些修改。是否继续？'))) {
                 return;
             }
             updateChoiceGuide();
@@ -7012,7 +8555,7 @@
             rememberSelectionSnapshot();
         });
         document.getElementById('variant-select').addEventListener('change', async () => {
-            if (!confirmBeforeConfigSelectionChange('当前配置有未保存修改，切换变体会重新加载表单并丢弃这些修改。是否继续？')) {
+            if (!(await confirmBeforeConfigSelectionChange('当前配置有未保存修改，切换变体会重新加载表单并丢弃这些修改。是否继续？'))) {
                 return;
             }
             setCurrentTrainingSourceFromVariant(val('variant-select'));
@@ -7021,7 +8564,7 @@
             rememberSelectionSnapshot();
         });
         document.getElementById('preset-select').addEventListener('change', async () => {
-            if (!confirmBeforeConfigSelectionChange('当前配置有未保存修改，切换预设会重新加载表单并丢弃这些修改。是否继续？')) {
+            if (!(await confirmBeforeConfigSelectionChange('当前配置有未保存修改，切换预设会重新加载表单并丢弃这些修改。是否继续？'))) {
                 return;
             }
             updateChoiceGuide();
@@ -7044,9 +8587,18 @@
         document.getElementById('btn-delete-toml').addEventListener('click', deleteTomlFile);
         document.getElementById('btn-restore-system-toml').addEventListener('click', restoreSystemTomlPresets);
         document.getElementById('toml-import-input').addEventListener('change', handleTomlImport);
-        document.getElementById('btn-reload-toml').addEventListener('click', () => {
+        document.getElementById('btn-new-dataset-preset').addEventListener('click', createNewDatasetPreset);
+        document.getElementById('btn-copy-dataset-preset').addEventListener('click', copyDatasetPreset);
+        document.getElementById('btn-rename-dataset-preset').addEventListener('click', renameDatasetPreset);
+        document.getElementById('btn-import-dataset-preset').addEventListener('click', importDatasetPreset);
+        document.getElementById('dataset-import-input').addEventListener('change', handleDatasetPresetImport);
+        document.getElementById('btn-export-dataset-preset').addEventListener('click', exportDatasetPreset);
+        document.getElementById('btn-delete-dataset-preset').addEventListener('click', deleteDatasetPreset);
+        document.getElementById('btn-save-dataset-preset').addEventListener('click', saveDatasetPresetEditor);
+        document.getElementById('btn-refresh-dataset-preview').addEventListener('click', loadDatasetPreviewImages);
+        document.getElementById('btn-reload-toml').addEventListener('click', async () => {
             const file = currentTomlFile || val('toml-file-select');
-            if (file && confirmDiscardTomlChanges('当前 TOML 有未保存修改，重新读取文件会丢失这些修改。是否继续？')) {
+            if (file && (await confirmDiscardTomlChanges('当前 TOML 有未保存修改，重新读取文件会丢失这些修改。是否继续？'))) {
                 loadTomlFile(file, { force: true });
             }
         });
@@ -7122,6 +8674,14 @@
             'preview-training-dir': '未选择历史任务时，训练中采样预览默认从这个目录读取。',
             'preview-inference-dir': '推理预览来源目录，通常存放手动推理或测试生成的图片。',
             'preview-custom-dir': '自定义预览目录。填任意项目内或绝对路径后，可在“自定义路径”来源中查看图片。',
+            'btn-new-dataset-preset': '新建一个 configs/datasets 下的数据集预设。',
+            'btn-copy-dataset-preset': '把当前数据集预设复制成可编辑的新文件。',
+            'btn-rename-dataset-preset': '重命名当前数据集预设，会保留图片和缓存目录不变。',
+            'btn-import-dataset-preset': '导入外部 TOML 为新的数据集预设。',
+            'btn-export-dataset-preset': '导出当前数据集预设 TOML。',
+            'btn-delete-dataset-preset': '只删除当前数据集预设 TOML，不删除图片或缓存目录。',
+            'btn-save-dataset-preset': '保存当前数据集预设编辑器中的路径和蓝图参数。',
+            'btn-refresh-dataset-preview': '重新扫描当前数据集路径，读取最新图片和同名 caption 标注。',
         };
         for (const [id, title] of Object.entries(tips)) {
             const el = document.getElementById(id);
@@ -7129,7 +8689,8 @@
         }
         document.querySelectorAll('.tab-btn').forEach((btn) => {
             const labels = {
-                config: '配置页：选择方法/变体/预设，编辑训练参数、数据集路径和 TOML 文件。',
+                config: '配置页：选择方法/变体/预设，编辑训练参数并引用数据集预设。',
+                datasets: '数据集页：管理可复用的多数据集预设。',
                 training: '训练页：查看当前任务、历史任务、loss 曲线、日志和显存状态。',
                 preview: '预览图页：查看训练中样张、推理输出或自定义目录图片。',
             };

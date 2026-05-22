@@ -17,13 +17,14 @@
             }
         })();
     </script>
-    <link rel="stylesheet" href="/static/style.css?v=history-20260517-2">
+    <link rel="stylesheet" href="/static/style.css?v=choice-guide-toggle-20260522-1">
 </head>
 <body>
     <header>
         <h1>Anima LoRA</h1>
         <nav>
             <button class="tab-btn active" data-tab="config">配置</button>
+            <button class="tab-btn" data-tab="datasets">数据集</button>
             <button class="tab-btn" data-tab="training">训练</button>
             <button class="tab-btn" data-tab="preview">预览图</button>
         </nav>
@@ -122,6 +123,33 @@
                         </section>
                     </div>
                 </div>
+            </div>
+        </section>
+
+        <!-- 数据集 Tab：独立管理可复用 dataset_config 预设 -->
+        <section id="tab-datasets" class="tab-content">
+            <div class="dataset-page-toolbar">
+                <div>
+                    <strong>数据集预设</strong>
+                    <span>管理 configs/datasets 下的多数据集蓝图；配置页只负责选择并保存引用。</span>
+                </div>
+                <div class="dataset-page-actions">
+                    <input id="dataset-import-input" type="file" accept=".toml,.txt,text/plain" hidden>
+                    <button id="btn-new-dataset-preset" class="btn btn-small" type="button">新建预设</button>
+                    <button id="btn-copy-dataset-preset" class="btn btn-small" type="button">复制预设</button>
+                    <button id="btn-rename-dataset-preset" class="btn btn-small" type="button">重命名</button>
+                    <button id="btn-import-dataset-preset" class="btn btn-small" type="button">导入</button>
+                    <button id="btn-export-dataset-preset" class="btn btn-small" type="button">导出</button>
+                    <button id="btn-delete-dataset-preset" class="btn btn-small btn-subtle-danger" type="button">删除预设</button>
+                    <button id="btn-save-dataset-preset" class="btn btn-small btn-primary" type="button">保存数据集预设</button>
+                </div>
+            </div>
+            <div class="dataset-page-layout">
+                <aside id="dataset-preset-list" class="dataset-preset-list" aria-label="数据集预设列表"></aside>
+                <section class="dataset-preset-editor">
+                    <div id="dataset-preset-header" class="dataset-preset-header"></div>
+                    <div id="dataset-editor" class="dataset-editor dataset-editor-standalone"></div>
+                </section>
             </div>
         </section>
 
@@ -353,6 +381,31 @@
         </form>
     </dialog>
 
+    <dialog id="dataset-preview-dialog" class="preview-dialog dataset-preview-dialog">
+        <form method="dialog">
+            <div class="preview-dialog-header">
+                <div>
+                    <h2 id="dataset-preview-dialog-title">数据集预览</h2>
+                    <p id="dataset-preview-dialog-meta"></p>
+                </div>
+                <div class="dataset-preview-dialog-actions">
+                    <button id="btn-refresh-dataset-preview" class="btn btn-small" type="button">刷新</button>
+                    <button class="btn btn-small" value="close" type="submit">关闭</button>
+                </div>
+            </div>
+            <div class="dataset-preview-dialog-body">
+                <aside class="preview-dialog-info dataset-preview-info">
+                    <h3>路径与参数</h3>
+                    <div id="dataset-preview-details" class="preview-dialog-details"></div>
+                </aside>
+                <section class="dataset-preview-results">
+                    <div id="dataset-preview-empty" class="dataset-preview-empty">尚未读取数据集图片。</div>
+                    <div id="dataset-preview-grid" class="dataset-preview-grid"></div>
+                </section>
+            </div>
+        </form>
+    </dialog>
+
     <dialog id="history-task-dialog" class="history-task-dialog">
         <form method="dialog">
             <div class="history-task-dialog-header">
@@ -371,6 +424,6 @@
     </dialog>
 
     <script src="/static/chart.js?v=history-20260517-2"></script>
-    <script src="/static/app.js?v=toml-groups-20260521-1"></script>
+    <script src="/static/app.js?v=choice-guide-toggle-20260522-1"></script>
 </body>
 </html>

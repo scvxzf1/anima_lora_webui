@@ -7,6 +7,7 @@ import subprocess
 from datetime import datetime
 from pathlib import Path
 from typing import Any
+from urllib.parse import quote
 
 import toml
 import tomlkit
@@ -23,9 +24,32 @@ WEB_USER_LOCKS_FILE = CONFIGS_DIR / "web-user-locks.toml"
 DEFAULT_SAMPLE_PROMPTS_FILE = "configs/sample_prompts.txt"
 DEFAULT_RESIZED_IMAGE_DIR = "post_image_dataset/resized"
 DEFAULT_LORA_CACHE_DIR = "post_image_dataset/lora"
+UI_ONLY_CONFIG_FIELDS = {
+    "dataset_config_picker",
+}
+DATASET_PRESETS_DIR = CONFIGS_DIR / "datasets"
+DATASET_IMAGE_EXTS = frozenset({".png", ".jpg", ".jpeg", ".webp", ".bmp"})
+DATASET_PREVIEW_LIMIT = 120
+DATASET_CAPTION_MAX_CHARS = 20000
+DATASET_SETTING_KEYS = frozenset({
+    "resolution",
+    "batch_size",
+    "enable_bucket",
+    "min_bucket_reso",
+    "max_bucket_reso",
+    "bucket_reso_steps",
+    "bucket_no_upscale",
+    "validation_split",
+    "validation_split_num",
+    "validation_seed",
+})
 SYSTEM_PRESET_FILES = frozenset({
     "configs/base.toml",
     "configs/presets.toml",
+})
+SYSTEM_DATASET_PRESET_FILES = frozenset({
+    "configs/datasets/easycontrol.toml",
+    "configs/datasets/ip_adapter.toml",
 })
 SYSTEM_PRESET_PREFIXES = ("configs/methods/", "configs/gui-methods/")
 SYSTEM_MANAGED_FILES = frozenset({
@@ -180,6 +204,229 @@ def suggest_dataset_dirs(source_dirs: list[str]) -> dict[str, Any]:
     return {"ok": True, "datasets": rows}
 
 
+def list_dataset_presets() -> dict[str, Any]:
+    DATASET_PRESETS_DIR.mkdir(parents=True, exist_ok=True)
+    presets: list[dict[str, Any]] = []
+    for path in sorted(DATASET_PRESETS_DIR.glob("*.toml")):
+        rel_path = _display_path(path)
+        meta = get_config_file_meta(rel_path)
+        summary = _dataset_preset_summary(rel_path)
+        presets.append({
+            **meta,
+            "readonly": _is_dataset_preset_readonly(rel_path),
+            "system_preset": rel_path in SYSTEM_DATASET_PRESET_FILES,
+            "summary": summary,
+        })
+    return {"ok": True, "presets": presets}
+
+
+def load_dataset_preset(rel_path: str) -> dict[str, Any]:
+    normalized = _normalize_dataset_preset_path(rel_path, must_exist=True)
+    path = _safe_resolve(normalized)
+    if path is None or not path.exists():
+        raise ValueError("数据集预设不存在")
+    content = path.read_text(encoding="utf-8")
+    data = toml.loads(content)
+    rows = _dataset_rows_from_config(data, {})
+    defaults = _dataset_defaults_from_config(data)
+    return {
+        "ok": True,
+        "file": normalized,
+        "name": Path(normalized).stem,
+        "content": content,
+        "datasets": rows,
+        "defaults": defaults,
+        "readonly": _is_dataset_preset_readonly(normalized),
+        "meta": get_config_file_meta(normalized),
+        "summary": _dataset_summary_from_rows(rows, defaults),
+    }
+
+
+def save_dataset_preset(
+    rel_path: str,
+    rows: list[dict[str, Any]],
+    defaults: dict[str, Any] | None = None,
+    *,
+    overwrite: bool = True,
+) -> dict[str, Any]:
+    normalized = _normalize_dataset_preset_path(rel_path, must_exist=False)
+    if _is_dataset_preset_readonly(normalized):
+        raise ValueError("系统数据集预设为只读，请复制后编辑")
+    path = _safe_resolve(normalized)
+    if path is None:
+        raise ValueError("数据集预设路径不合法")
+    if path.exists() and not overwrite:
+        raise ValueError("数据集预设已存在，请换一个名称")
+
+    clean_rows = _fill_missing_dataset_row_settings(_normalize_dataset_rows(rows), _normalize_dataset_defaults(defaults or {}))
+    if not clean_rows:
+        raise ValueError("请至少填写一个数据集路径")
+    cfg = _normalize_dataset_defaults(defaults or {})
+    content = _build_dataset_config_doc(clean_rows, cfg)
+    ok, msg = save_raw_file(normalized, content, overwrite=overwrite)
+    if not ok:
+        raise ValueError(msg)
+    return {
+        "ok": True,
+        "message": f"已保存数据集预设 {Path(normalized).name}",
+        "file": normalized,
+        "datasets": clean_rows,
+        "defaults": _normalize_dataset_defaults(cfg),
+        "content": content,
+        "summary": _dataset_summary_from_rows(clean_rows, _normalize_dataset_defaults(cfg)),
+    }
+
+
+def save_dataset_preset_as(
+    name: str,
+    rows: list[dict[str, Any]],
+    defaults: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    stem = _safe_file_stem(name)
+    return save_dataset_preset(f"configs/datasets/{stem}.toml", rows, defaults, overwrite=False)
+
+
+def delete_dataset_preset(rel_path: str) -> dict[str, Any]:
+    normalized = _normalize_dataset_preset_path(rel_path, must_exist=True)
+    if _is_dataset_preset_readonly(normalized):
+        raise ValueError("系统数据集预设为只读，不能删除")
+    ok, msg = delete_raw_file(normalized)
+    if not ok:
+        raise ValueError(msg)
+    return {"ok": True, "message": "数据集预设已删除", "file": normalized}
+
+
+def apply_dataset_preset_to_training_config(
+    dataset_file: str,
+    train_file: str,
+    train_content: str | None = None,
+) -> dict[str, Any]:
+    dataset_rel = _normalize_dataset_preset_path(dataset_file, must_exist=True)
+    train_rel = _normalize_config_rel_path(train_file)
+    train_path = _safe_resolve(train_rel)
+    if train_path is None or train_path.suffix.lower() != ".toml":
+        raise ValueError("训练配置路径不合法")
+    if not train_path.exists():
+        raise ValueError("训练配置不存在")
+
+    preset = load_dataset_preset(dataset_rel)
+    rows = _normalize_dataset_rows(preset.get("datasets", []))
+    if not rows:
+        raise ValueError("数据集预设里没有可用路径")
+    first = rows[0]
+    values = {
+        "dataset_config": dataset_rel,
+        "source_image_dir": first["source_dir"],
+        "resized_image_dir": first["image_dir"],
+        "lora_cache_dir": first["cache_dir"],
+    }
+    ok, msg, _path, next_content, changed = _prepare_raw_file_patch(train_rel, values, content=train_content)
+    if not ok:
+        raise ValueError(msg)
+    ok, msg = save_raw_file(train_rel, next_content, overwrite=True)
+    if not ok:
+        raise ValueError(msg)
+    return {
+        "ok": True,
+        "message": "已应用数据集预设",
+        "dataset_config": dataset_rel,
+        "datasets": rows,
+        "defaults": preset.get("defaults") or {},
+        "train_content": next_content,
+        "changed": changed,
+        "values": values,
+        "summary": preset.get("summary") or _dataset_summary_from_rows(rows, preset.get("defaults") or {}),
+    }
+
+
+def list_dataset_preset_images(
+    dataset_file: str,
+    dataset_index: int = 0,
+    *,
+    source: str = "training",
+    limit: int = DATASET_PREVIEW_LIMIT,
+) -> dict[str, Any]:
+    preset = load_dataset_preset(dataset_file)
+    rows = _normalize_dataset_rows(preset.get("datasets", []))
+    if not rows:
+        raise ValueError("数据集预设里没有可预览路径")
+    if dataset_index < 0 or dataset_index >= len(rows):
+        raise ValueError("数据集序号不在范围内")
+
+    row = rows[dataset_index]
+    defaults = _normalize_dataset_defaults(preset.get("defaults") or {})
+    settings = _normalize_dataset_defaults(row.get("settings") or defaults)
+    caption_extension = str(defaults.get("caption_extension") or ".txt").strip() or ".txt"
+    if not caption_extension.startswith("."):
+        caption_extension = f".{caption_extension}"
+    source_kind = "source" if str(source or "").strip().lower() == "source" else "training"
+    image_dir_raw = row.get("source_dir") if source_kind == "source" else row.get("image_dir")
+    image_dir = _resolve_project_path(str(image_dir_raw or ""))
+    source_dir = _resolve_project_path(str(row.get("source_dir") or ""))
+    train_dir = _resolve_project_path(str(row.get("image_dir") or ""))
+
+    listing = _list_dataset_image_files(image_dir, limit)
+    images = [
+        _dataset_image_preview_meta(
+            path,
+            preset_file=preset["file"],
+            dataset_index=dataset_index,
+            source=source_kind,
+            caption_extension=caption_extension,
+            source_dir=source_dir,
+            train_dir=train_dir,
+        )
+        for path in listing["items"]
+    ]
+    directory_exists = image_dir.is_dir()
+    return {
+        "ok": True,
+        "file": preset["file"],
+        "dataset_index": dataset_index,
+        "dataset_label": f"第 {dataset_index + 1} 组数据集",
+        "source": source_kind,
+        "source_label": "原始图目录" if source_kind == "source" else "训练图目录",
+        "directory": _display_path(image_dir),
+        "directory_exists": directory_exists,
+        "caption_extension": caption_extension,
+        "count": len(images),
+        "total": listing["total"],
+        "limit": listing["limit"],
+        "images": images,
+        "row": row,
+        "settings": settings,
+        "message": "" if images else _dataset_preview_empty_message(image_dir, source_kind),
+    }
+
+
+def resolve_dataset_preview_image(
+    dataset_file: str,
+    dataset_index: int,
+    image_file: str,
+    *,
+    source: str = "training",
+) -> Path:
+    preset = load_dataset_preset(dataset_file)
+    rows = _normalize_dataset_rows(preset.get("datasets", []))
+    if dataset_index < 0 or dataset_index >= len(rows):
+        raise ValueError("数据集序号不在范围内")
+    row = rows[dataset_index]
+    source_kind = "source" if str(source or "").strip().lower() == "source" else "training"
+    root = _resolve_project_path(str(row.get("source_dir") if source_kind == "source" else row.get("image_dir") or ""))
+    if not root.is_dir():
+        raise FileNotFoundError("数据集图片目录不存在")
+    path = _resolve_project_path(str(image_file or ""))
+    try:
+        path.relative_to(root)
+    except ValueError as exc:
+        raise ValueError("图片不属于当前数据集路径") from exc
+    if path.suffix.lower() not in DATASET_IMAGE_EXTS:
+        raise ValueError("只允许读取数据集图片")
+    if not path.exists() or not path.is_file():
+        raise FileNotFoundError("图片不存在")
+    return path
+
+
 def load_dataset_editor(variant: str, preset: str, methods_subdir: str = "gui-methods") -> dict[str, Any]:
     cfg = apply_auto_data_dirs(load_merged_config(variant, preset, methods_subdir))
     dataset_path = _dataset_config_path_from_cfg(cfg)
@@ -192,20 +439,7 @@ def load_dataset_editor(variant: str, preset: str, methods_subdir: str = "gui-me
         "ok": True,
         "dataset_config": _display_path(dataset_path) if dataset_path else "",
         "datasets": rows,
-        "defaults": {
-            "resolution": _positive_int(_first_dataset_value(data, "resolution"), 1024),
-            "batch_size": _positive_int(_first_dataset_value(data, "batch_size"), 1),
-            "enable_bucket": bool(_first_dataset_value(data, "enable_bucket", True)),
-            "min_bucket_reso": _positive_int(_first_dataset_value(data, "min_bucket_reso"), 256),
-            "max_bucket_reso": _positive_int(_first_dataset_value(data, "max_bucket_reso"), 1024),
-            "bucket_reso_steps": _positive_int(_first_dataset_value(data, "bucket_reso_steps"), 64),
-            "bucket_no_upscale": bool(_first_dataset_value(data, "bucket_no_upscale", False)),
-            "validation_split": _positive_float(_first_dataset_value(data, "validation_split", 0.025), 0.025),
-            "validation_split_num": _positive_int(_first_dataset_value(data, "validation_split_num", 0), 0),
-            "validation_seed": _positive_int(_first_dataset_value(data, "validation_seed", 42), 42),
-            "caption_extension": str((data.get("general") or {}).get("caption_extension") or ".txt"),
-            "keep_tokens": _positive_int((data.get("general") or {}).get("keep_tokens"), 3),
-        },
+        "defaults": _dataset_defaults_from_config(data),
     }
 
 
@@ -222,7 +456,7 @@ def save_dataset_editor(
     cfg = apply_auto_data_dirs(load_merged_config(variant, preset, methods_subdir))
     if defaults:
         cfg.update(_normalize_dataset_defaults(defaults))
-    clean_rows = _normalize_dataset_rows(rows)
+    clean_rows = _fill_missing_dataset_row_settings(_normalize_dataset_rows(rows), _normalize_dataset_defaults(cfg))
     if not clean_rows:
         raise ValueError("请至少填写一个数据集路径")
 
@@ -380,8 +614,17 @@ def preflight_training_config(variant: str, preset: str, methods_subdir: str = "
     }
 
 
-def estimate_training_steps(variant: str, preset: str, methods_subdir: str = "gui-methods") -> dict[str, Any]:
+def estimate_training_steps(
+    variant: str,
+    preset: str,
+    methods_subdir: str = "gui-methods",
+    dataset_config: str | None = None,
+) -> dict[str, Any]:
     cfg = apply_auto_data_dirs(load_merged_config(variant, preset, methods_subdir))
+    if dataset_config is not None:
+        dataset_rel = _normalize_config_rel_path(str(dataset_config or ""))
+        if dataset_rel:
+            cfg["dataset_config"] = dataset_rel
     image_exts = {".png", ".jpg", ".jpeg", ".webp", ".bmp"}
     dataset_rows = _dataset_rows_for_estimate(cfg)
     detail_rows: list[dict[str, Any]] = []
@@ -520,6 +763,56 @@ def _single_dataset_config_from_cfg(cfg: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _dataset_defaults_from_config(data: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "resolution": _positive_int(_first_dataset_value(data, "resolution"), 1024),
+        "batch_size": _positive_int(_first_dataset_value(data, "batch_size"), 1),
+        "enable_bucket": bool(_first_dataset_value(data, "enable_bucket", True)),
+        "min_bucket_reso": _positive_int(_first_dataset_value(data, "min_bucket_reso"), 256),
+        "max_bucket_reso": _positive_int(_first_dataset_value(data, "max_bucket_reso"), 1024),
+        "bucket_reso_steps": _positive_int(_first_dataset_value(data, "bucket_reso_steps"), 64),
+        "bucket_no_upscale": bool(_first_dataset_value(data, "bucket_no_upscale", False)),
+        "validation_split": _positive_float(_first_dataset_value(data, "validation_split", 0.025), 0.025),
+        "validation_split_num": _positive_int(_first_dataset_value(data, "validation_split_num", 0), 0),
+        "validation_seed": _positive_int(_first_dataset_value(data, "validation_seed", 42), 42),
+        "caption_extension": str((data.get("general") or {}).get("caption_extension") or ".txt"),
+        "keep_tokens": _positive_int((data.get("general") or {}).get("keep_tokens"), 3),
+    }
+
+
+def _dataset_defaults_from_dataset(dataset: dict[str, Any], data: dict[str, Any] | None = None) -> dict[str, Any]:
+    source: dict[str, Any] = {"datasets": [dataset]}
+    if isinstance(data, dict) and isinstance(data.get("general"), dict):
+        source["general"] = data["general"]
+    return _dataset_defaults_from_config(source)
+
+
+def _dataset_preset_summary(rel_path: str) -> dict[str, Any]:
+    try:
+        preset = load_dataset_preset(rel_path)
+    except Exception as e:
+        return {"ok": False, "error": str(e), "dataset_count": 0}
+    return preset.get("summary") or {}
+
+
+def _dataset_summary_from_rows(rows: list[dict[str, Any]], defaults: dict[str, Any] | None = None) -> dict[str, Any]:
+    clean_rows = _normalize_dataset_rows(rows)
+    clean_defaults = _normalize_dataset_defaults(defaults or _first_dataset_settings(clean_rows))
+    first = clean_rows[0] if clean_rows else {}
+    repeats = sum(_positive_int(row.get("num_repeats"), 1) for row in clean_rows) if clean_rows else 0
+    return {
+        "ok": True,
+        "dataset_count": len(clean_rows),
+        "repeat_total": repeats,
+        "source_dir": first.get("source_dir", ""),
+        "image_dir": first.get("image_dir", ""),
+        "cache_dir": first.get("cache_dir", ""),
+        "resolution": clean_defaults.get("resolution", 1024),
+        "batch_size": clean_defaults.get("batch_size", 1),
+        "enable_bucket": clean_defaults.get("enable_bucket", True),
+    }
+
+
 def _dataset_rows_for_estimate(cfg: dict[str, Any]) -> list[dict[str, Any]]:
     dataset_path = _dataset_config_path_from_cfg(cfg)
     if dataset_path and dataset_path.exists():
@@ -562,6 +855,7 @@ def _dataset_rows_from_config(data: dict[str, Any], cfg: dict[str, Any]) -> list
                 "image_dir": image_dir,
                 "cache_dir": cache_dir,
                 "num_repeats": _positive_int(subset.get("num_repeats"), 1),
+                "settings": _dataset_defaults_from_dataset(dataset, data),
             })
 
     if not rows:
@@ -596,8 +890,28 @@ def _normalize_dataset_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
             "image_dir": _display_path(image_path),
             "cache_dir": _display_path(cache_path),
             "num_repeats": _positive_int(raw.get("num_repeats"), 1),
+            "settings": _normalize_dataset_row_settings(raw),
         })
     return clean_rows
+
+
+def _normalize_dataset_row_settings(raw: dict[str, Any]) -> dict[str, Any]:
+    if isinstance(raw.get("settings"), dict):
+        return _normalize_dataset_defaults(raw["settings"])
+    if any(key in raw for key in DATASET_SETTING_KEYS):
+        return _normalize_dataset_defaults(raw)
+    return {}
+
+
+def _fill_missing_dataset_row_settings(rows: list[dict[str, Any]], defaults: dict[str, Any]) -> list[dict[str, Any]]:
+    fallback = _normalize_dataset_defaults(defaults)
+    next_rows: list[dict[str, Any]] = []
+    for row in rows:
+        next_row = dict(row)
+        settings = next_row.get("settings")
+        next_row["settings"] = _normalize_dataset_defaults(settings) if isinstance(settings, dict) and settings else fallback
+        next_rows.append(next_row)
+    return next_rows
 
 
 def _normalize_dataset_defaults(raw: dict[str, Any]) -> dict[str, Any]:
@@ -631,22 +945,23 @@ def _build_dataset_config_doc(clean_rows: list[dict[str, Any]], cfg: dict[str, A
     doc.add("general", general)
 
     datasets = tomlkit.aot()
-    dataset = tomlkit.table()
-    dataset.add("resolution", _positive_int(cfg.get("resolution"), 1024))
-    dataset.add("batch_size", _positive_int(cfg.get("batch_size") or cfg.get("train_batch_size"), 1))
-    dataset.add("enable_bucket", bool(cfg.get("enable_bucket", True)))
-    dataset.add("min_bucket_reso", _positive_int(cfg.get("min_bucket_reso"), 256))
-    dataset.add("max_bucket_reso", _positive_int(cfg.get("max_bucket_reso"), 1024))
-    dataset.add("bucket_reso_steps", _positive_int(cfg.get("bucket_reso_steps"), 64))
-    dataset.add("bucket_no_upscale", bool(cfg.get("bucket_no_upscale", False)))
-    validation_split_num = _positive_int(cfg.get("validation_split_num"), 0)
-    if validation_split_num > 0:
-        dataset.add("validation_split_num", validation_split_num)
-    dataset.add("validation_split", _positive_float(cfg.get("validation_split"), 0.025))
-    dataset.add("validation_seed", _positive_int(cfg.get("validation_seed"), 42))
-
-    subsets = tomlkit.aot()
     for row in clean_rows:
+        row_cfg = _dataset_row_settings(row, cfg)
+        dataset = tomlkit.table()
+        dataset.add("resolution", _positive_int(row_cfg.get("resolution"), 1024))
+        dataset.add("batch_size", _positive_int(row_cfg.get("batch_size") or row_cfg.get("train_batch_size"), 1))
+        dataset.add("enable_bucket", bool(row_cfg.get("enable_bucket", True)))
+        dataset.add("min_bucket_reso", _positive_int(row_cfg.get("min_bucket_reso"), 256))
+        dataset.add("max_bucket_reso", _positive_int(row_cfg.get("max_bucket_reso"), 1024))
+        dataset.add("bucket_reso_steps", _positive_int(row_cfg.get("bucket_reso_steps"), 64))
+        dataset.add("bucket_no_upscale", bool(row_cfg.get("bucket_no_upscale", False)))
+        validation_split_num = _positive_int(row_cfg.get("validation_split_num"), 0)
+        if validation_split_num > 0:
+            dataset.add("validation_split_num", validation_split_num)
+        dataset.add("validation_split", _positive_float(row_cfg.get("validation_split"), 0.025))
+        dataset.add("validation_seed", _positive_int(row_cfg.get("validation_seed"), 42))
+
+        subsets = tomlkit.aot()
         subset = tomlkit.table()
         subset.add("image_dir", row["image_dir"])
         subset.add("cache_dir", row["cache_dir"])
@@ -655,10 +970,23 @@ def _build_dataset_config_doc(clean_rows: list[dict[str, Any]], cfg: dict[str, A
         attrs.add("source_dir", row["source_dir"])
         subset.add("custom_attributes", attrs)
         subsets.append(subset)
-    dataset.add("subsets", subsets)
-    datasets.append(dataset)
+        dataset.add("subsets", subsets)
+        datasets.append(dataset)
     doc.add("datasets", datasets)
     return tomlkit.dumps(doc)
+
+
+def _dataset_row_settings(row: dict[str, Any], fallback: dict[str, Any]) -> dict[str, Any]:
+    raw = row.get("settings")
+    if isinstance(raw, dict):
+        return _normalize_dataset_defaults(raw)
+    return _normalize_dataset_defaults(fallback)
+
+
+def _first_dataset_settings(rows: list[dict[str, Any]]) -> dict[str, Any]:
+    if rows and isinstance(rows[0].get("settings"), dict):
+        return rows[0]["settings"]
+    return {}
 
 
 def _first_dataset_value(data: dict[str, Any], key: str, default: Any = None) -> Any:
@@ -680,6 +1008,97 @@ def _dataset_path_value(value: Any, cfg: dict[str, Any]) -> str:
         if isinstance(raw, str):
             text = text.replace("{" + key + "}", raw)
     return _display_path(_resolve_project_path(expand_env_vars(text)))
+
+
+def _list_dataset_image_files(directory: Path, limit: int) -> dict[str, Any]:
+    clean_limit = max(1, min(_positive_int(limit, DATASET_PREVIEW_LIMIT), DATASET_PREVIEW_LIMIT))
+    if not directory.is_dir():
+        return {"items": [], "total": 0, "limit": clean_limit}
+    items = [
+        path
+        for path in directory.iterdir()
+        if path.is_file() and path.suffix.lower() in DATASET_IMAGE_EXTS
+    ]
+    items.sort(key=lambda path: (path.name.lower(), path.name))
+    return {"items": items[:clean_limit], "total": len(items), "limit": clean_limit}
+
+
+def _dataset_image_preview_meta(
+    path: Path,
+    *,
+    preset_file: str,
+    dataset_index: int,
+    source: str,
+    caption_extension: str,
+    source_dir: Path,
+    train_dir: Path,
+) -> dict[str, Any]:
+    stat = path.stat()
+    caption = _dataset_caption_meta(path, caption_extension, source_dir, train_dir)
+    rel_path = _display_path(path)
+    url = (
+        "/api/config/dataset-presets/image"
+        f"?file={quote(preset_file)}"
+        f"&dataset_index={dataset_index}"
+        f"&source={quote(source)}"
+        f"&image={quote(rel_path)}"
+    )
+    return {
+        "file": rel_path,
+        "name": path.name,
+        "url": url,
+        "mtime": stat.st_mtime,
+        "mtime_text": datetime.fromtimestamp(stat.st_mtime).strftime("%Y-%m-%d %H:%M:%S"),
+        "size_bytes": stat.st_size,
+        "caption": caption,
+    }
+
+
+def _dataset_caption_meta(path: Path, caption_extension: str, source_dir: Path, train_dir: Path) -> dict[str, Any]:
+    extension = caption_extension if caption_extension.startswith(".") else f".{caption_extension}"
+    candidates = []
+    for directory in (path.parent, source_dir, train_dir):
+        if not directory:
+            continue
+        candidate = (directory / f"{path.stem}{extension}").resolve()
+        if candidate not in candidates:
+            candidates.append(candidate)
+
+    for candidate in candidates:
+        if not candidate.exists() or not candidate.is_file():
+            continue
+        try:
+            text = candidate.read_text(encoding="utf-8")
+        except UnicodeDecodeError:
+            text = candidate.read_text(encoding="utf-8", errors="replace")
+        truncated = len(text) > DATASET_CAPTION_MAX_CHARS
+        if truncated:
+            text = text[:DATASET_CAPTION_MAX_CHARS]
+        return {
+            "ok": True,
+            "file": _display_path(candidate),
+            "extension": extension,
+            "text": text,
+            "truncated": truncated,
+            "length": len(text),
+        }
+    return {
+        "ok": False,
+        "file": "",
+        "extension": extension,
+        "text": "",
+        "truncated": False,
+        "length": 0,
+    }
+
+
+def _dataset_preview_empty_message(directory: Path, source: str) -> str:
+    label = "原始图目录" if source == "source" else "训练图目录"
+    if not directory.exists():
+        return f"{label}不存在"
+    if not directory.is_dir():
+        return f"{label}不是目录"
+    return f"{label}里没有可预览图片"
 
 
 def _safe_file_stem(value: str) -> str:
@@ -853,6 +1272,11 @@ def _prepare_raw_file_patch(
         return False, f"{_lock_reason_message(meta)}，请使用新名称保存新配置后编辑", None, "", []
     if not isinstance(values, dict):
         return False, "字段补丁格式不合法", None, "", []
+    values = {
+        key: value
+        for key, value in values.items()
+        if key not in UI_ONLY_CONFIG_FIELDS
+    }
 
     source = content if content is not None else load_raw_file(rel_path)
     try:
@@ -1590,6 +2014,34 @@ def _normalize_config_rel_path(rel_path: str) -> str:
     return str(rel_path or "").strip().replace("\\", "/").lstrip("/")
 
 
+def _normalize_dataset_preset_path(rel_path: str, *, must_exist: bool) -> str:
+    raw = str(rel_path or "").replace("\\", "/").strip()
+    if not raw:
+        raise ValueError("缺少数据集预设路径")
+    path = Path(raw)
+    if path.is_absolute():
+        try:
+            raw = path.resolve().relative_to(ROOT.resolve()).as_posix()
+        except ValueError as exc:
+            raise ValueError("数据集预设必须在项目目录内") from exc
+        path = Path(raw)
+    if ".." in path.parts:
+        raise ValueError("数据集预设路径不能包含 ..")
+    if path.suffix.lower() != ".toml":
+        path = path.with_suffix(".toml")
+    if len(path.parts) == 1:
+        path = Path("configs") / "datasets" / path
+    normalized = path.as_posix().lstrip("/")
+    if not normalized.startswith("configs/datasets/"):
+        raise ValueError("数据集预设必须保存在 configs/datasets/ 下")
+    safe_path = _safe_resolve(normalized)
+    if safe_path is None:
+        raise ValueError("数据集预设路径不合法")
+    if must_exist and not safe_path.exists():
+        raise ValueError("数据集预设不存在")
+    return normalized
+
+
 def _normalize_group_id(group_id: str) -> str:
     return str(group_id or "").strip()
 
@@ -1602,6 +2054,11 @@ def _is_system_preset_path(rel_path: str) -> bool:
 def _is_system_locked_path(rel_path: str) -> bool:
     normalized = _normalize_config_rel_path(rel_path)
     return _is_system_preset_path(normalized) or normalized in SYSTEM_MANAGED_FILES
+
+
+def _is_dataset_preset_readonly(rel_path: str) -> bool:
+    normalized = _normalize_config_rel_path(rel_path)
+    return normalized in SYSTEM_DATASET_PRESET_FILES or get_config_file_meta(normalized).get("locked", False)
 
 
 def _is_user_locked(rel_path: str) -> bool:

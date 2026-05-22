@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import os
 
-from ._common import PY, _preset, bespoke_preset_flags, run
+from ._common import PY, _path, _preset, bespoke_preset_flags, run
 
 
 def cmd_merge(extra):
@@ -71,9 +71,12 @@ def cmd_distill_mod(extra):
             "-m",
             "scripts.distill_mod.distill",
             "--data_dir",
-            "post_image_dataset/lora",
+            _path("lora_cache_dir", "post_image_dataset/lora"),
             "--dit_path",
-            "models/diffusion_models/anima-base-v1.0.safetensors",
+            _path(
+                "pretrained_model_name_or_path",
+                "models/diffusion_models/anima-base-v1.0.safetensors",
+            ),
             "--output_path",
             "output/ckpt/pooled_text_proj.safetensors",
             "--attn_mode",

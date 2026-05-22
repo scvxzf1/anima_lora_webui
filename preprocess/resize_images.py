@@ -7,6 +7,7 @@ output directory.
 """
 
 import argparse
+import importlib.util
 import shutil
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
@@ -19,10 +20,43 @@ import os
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from library.datasets.buckets import BucketManager
-from library.datasets.image_utils import IMAGE_EXTENSIONS
-
 CAPTION_EXTENSIONS = {".txt", ".caption"}
+IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp", ".bmp"}
+
+
+try:
+    import pillow_avif  # noqa: F401
+
+    IMAGE_EXTENSIONS.add(".avif")
+except Exception:
+    pass
+
+try:
+    from jxlpy import JXLImagePlugin  # noqa: F401
+
+    IMAGE_EXTENSIONS.add(".jxl")
+except Exception:
+    try:
+        import pillow_jxl  # noqa: F401
+
+        IMAGE_EXTENSIONS.add(".jxl")
+    except Exception:
+        pass
+
+
+def _load_bucket_manager():
+    buckets_path = (
+        Path(__file__).resolve().parents[1] / "library" / "datasets" / "buckets.py"
+    )
+    spec = importlib.util.spec_from_file_location("_anima_buckets", buckets_path)
+    if spec is None or spec.loader is None:
+        raise ImportError(f"Could not load bucket manager from {buckets_path}")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module.BucketManager
+
+
+BucketManager = _load_bucket_manager()
 
 
 def process_image(
@@ -39,33 +73,26 @@ def process_image(
     Empty ``rel_dir`` collapses back to the flat layout for users without
     nested image_dataset/ trees.
     """
-    max_reso, min_size, max_size, reso_steps, use_constant = bucket_args
+    max_reso, min_size, max_size, reso_steps, use_constant, no_upscale = bucket_args
     bucket_mgr = BucketManager(
-        no_upscale=False,
+        no_upscale=no_upscale,
         max_reso=max_reso,
         min_size=min_size,
         max_size=max_size,
         reso_steps=reso_steps,
     )
-    bucket_mgr.make_buckets(constant_token_buckets=use_constant)
+    if not no_upscale:
+        bucket_mgr.make_buckets(constant_token_buckets=use_constant)
 
     img = Image.open(image_path).convert("RGB")
     w, h = img.size
 
-    bucket_reso, _, _ = bucket_mgr.select_bucket(w, h)
+    bucket_reso, resized_size, _ = bucket_mgr.select_bucket(w, h)
     bw, bh = bucket_reso
 
-    # Resize preserving aspect ratio so the image covers the bucket
-    ar_img = w / h
-    ar_bucket = bw / bh
-    if ar_img > ar_bucket:
-        new_h = bh
-        new_w = round(bh * ar_img)
-    else:
-        new_w = bw
-        new_h = round(bw / ar_img)
-
-    img = img.resize((new_w, new_h), Image.Resampling.LANCZOS)
+    new_w, new_h = resized_size
+    if (new_w, new_h) != (w, h):
+        img = img.resize((new_w, new_h), Image.Resampling.LANCZOS)
 
     # Center crop to bucket resolution
     left = (new_w - bw) // 2
@@ -124,6 +151,15 @@ def main() -> None:
         help="Disable constant-token buckets",
     )
     parser.add_argument(
+        "--bucket_no_upscale",
+        "--no_upscale",
+        action="store_true",
+        help=(
+            "Do not enlarge images to the selected bucket. Images larger than "
+            "the max area may still be downscaled, matching training bucketing."
+        ),
+    )
+    parser.add_argument(
         "--workers", type=int, default=4, help="Number of parallel workers (default: 4)"
     )
     parser.add_argument(
@@ -168,6 +204,7 @@ def main() -> None:
         args.max_bucket_reso,
         args.bucket_reso_steps,
         use_constant,
+        args.bucket_no_upscale,
     )
 
     if args.recursive:
