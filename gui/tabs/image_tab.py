@@ -8,9 +8,10 @@ from datetime import datetime
 from html import escape
 from pathlib import Path
 
-from PySide6.QtCore import QEvent, QRect, Qt
+from PySide6.QtCore import QEvent, QRect, Qt, QUrl
 from PySide6.QtGui import (
     QColor,
+    QDesktopServices,
     QFont,
     QImage,
     QKeySequence,
@@ -541,6 +542,10 @@ class ImageViewerTab(LazyTabMixin, QWidget):
         self.reload_btn.setToolTip(t("dataset_reload_tooltip"))
         self.reload_btn.clicked.connect(self._reload_current_dir)
         top.addWidget(self.reload_btn)
+        self.open_dir_btn = QPushButton(t("dataset_open_dir"))
+        self.open_dir_btn.setToolTip(t("dataset_open_dir_tooltip"))
+        self.open_dir_btn.clicked.connect(self._open_current_dir)
+        top.addWidget(self.open_dir_btn)
         self.add_dir_btn = QPushButton(t("dataset_add_dir"))
         self.add_dir_btn.setToolTip(t("dataset_add_dir_tooltip"))
         self.add_dir_btn.clicked.connect(self._add_dir)
@@ -670,6 +675,12 @@ class ImageViewerTab(LazyTabMixin, QWidget):
             self._load_dir(self.dc.currentText())
 
     # ── data loading ──────────────────────────────────────────
+
+    def _open_current_dir(self):
+        """Open the currently loaded dataset directory in the OS file manager."""
+        if self._current_dir is None or not self._current_dir.exists():
+            return
+        QDesktopServices.openUrl(QUrl.fromLocalFile(str(self._current_dir)))
 
     def _load_dir(self, name: str, *, preserve_selection: bool = False):
         if not self._confirm_discard_if_dirty():

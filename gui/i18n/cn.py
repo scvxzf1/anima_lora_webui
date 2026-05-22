@@ -190,6 +190,8 @@ STRINGS: dict[str, str] = {
     "directory": "目录:",
     "dataset_reload": "重新加载",
     "dataset_reload_tooltip": "重新扫描当前目录并刷新图像列表和选择。",
+    "dataset_open_dir": "打开",
+    "dataset_open_dir_tooltip": "在系统文件管理器中打开当前目录。",
     "dataset_add_dir": "添加目录……",
     "dataset_add_dir_tooltip": "选择另一个目录并在本次会话中加入下拉框。",
     "dataset_add_dir_picker": "选择要添加的目录",

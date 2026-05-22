@@ -188,6 +188,8 @@ STRINGS: dict[str, str] = {
     "directory": "디렉토리:",
     "dataset_reload": "새로고침",
     "dataset_reload_tooltip": "현재 디렉토리를 다시 스캔해서 이미지 목록과 선택을 갱신합니다.",
+    "dataset_open_dir": "열기",
+    "dataset_open_dir_tooltip": "현재 디렉토리를 시스템 파일 관리자에서 엽니다.",
     "dataset_add_dir": "디렉토리 추가…",
     "dataset_add_dir_tooltip": "다른 디렉토리를 골라 이번 세션 동안 드롭다운에 추가합니다.",
     "dataset_add_dir_picker": "추가할 디렉토리 선택",

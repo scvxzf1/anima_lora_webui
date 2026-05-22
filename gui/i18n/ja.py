@@ -191,6 +191,8 @@ STRINGS: dict[str, str] = {
     "directory": "ディレクトリ:",
     "dataset_reload": "再読み込み",
     "dataset_reload_tooltip": "現在のディレクトリを再スキャンして画像リストと選択を更新します。",
+    "dataset_open_dir": "開く",
+    "dataset_open_dir_tooltip": "現在のディレクトリをシステムのファイルマネージャーで開きます。",
     "dataset_add_dir": "ディレクトリを追加…",
     "dataset_add_dir_tooltip": "別のディレクトリを選択してこのセッションのドロップダウンに追加します。",
     "dataset_add_dir_picker": "追加するディレクトリを選択",

@@ -200,6 +200,8 @@ STRINGS: dict[str, str] = {
     "directory": "Directory:",
     "dataset_reload": "Reload",
     "dataset_reload_tooltip": "Re-scan the current directory and refresh the image list and selection.",
+    "dataset_open_dir": "Open",
+    "dataset_open_dir_tooltip": "Open the current directory in the system file manager.",
     "dataset_add_dir": "Add directory…",
     "dataset_add_dir_tooltip": "Pick another directory and add it to the dropdown for this session.",
     "dataset_add_dir_picker": "Pick a directory to add",
