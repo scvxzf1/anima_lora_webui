@@ -192,7 +192,7 @@
         },
         {
             title: '常用训练设置',
-            description: '最常改：输出命名、训练时长、学习率和保存频率。',
+            description: '最常改：输出命名、训练时长、适配器容量、学习率、保存频率、优化器和时间步采样。',
             open: true,
             className: 'config-group-primary',
             keys: [
@@ -202,6 +202,21 @@
                 'learning_rate',
                 'save_every_n_epochs',
                 'checkpointing_epochs',
+                'network_train_unet_only',
+                'network_dim',
+                'network_alpha',
+                'use_lokr',
+                'lokr_factor',
+                'network_weights',
+                'dim_from_weights',
+                'optimizer_type',
+                'optimizer_args',
+                'lr_scheduler',
+                'timestep_sampling',
+                'discrete_flow_shift',
+                'log_every_n_steps',
+                'logging_dir',
+                'log_with',
             ],
         },
         {
@@ -237,20 +252,6 @@
                 'sample_every_n_steps',
                 'sample_at_first',
                 'sample_sampler',
-            ],
-        },
-        {
-            title: 'LoRA / LoKr 核心参数',
-            description: '控制适配器类型、容量和热启动；不确定时保持默认。',
-            open: true,
-            className: 'lora-tuning-group',
-            keys: [
-                'network_dim',
-                'network_alpha',
-                'use_lokr',
-                'lokr_factor',
-                'network_weights',
-                'dim_from_weights',
             ],
         },
         {
@@ -291,28 +292,12 @@
             ],
         },
         {
-            title: '优化器与采样',
-            description: '进阶训练动态；默认值通常已经足够。',
-            open: false,
-            keys: [
-                'optimizer_type',
-                'optimizer_args',
-                'lr_scheduler',
-                'timestep_sampling',
-                'discrete_flow_shift',
-                'log_every_n_steps',
-                'logging_dir',
-                'log_with',
-            ],
-        },
-        {
             title: '输出格式与训练范围',
             description: '模型保存格式、保存精度和训练目标范围。',
             open: false,
             keys: [
                 'save_model_as',
                 'save_precision',
-                'network_train_unet_only',
             ],
         },
         {
@@ -372,6 +357,10 @@
                 className: 'config-field-grid-2col',
                 keys: ['max_train_epochs', 'learning_rate', 'save_every_n_epochs', 'checkpointing_epochs'],
             },
+            {
+                className: 'config-field-grid-2col',
+                keys: ['network_dim', 'network_alpha', 'use_lokr', 'lokr_factor'],
+            },
         ],
         'config-group-steps': [
             {
@@ -383,12 +372,6 @@
             {
                 className: 'config-field-grid-2col',
                 keys: ['sample_every_n_epochs', 'sample_every_n_steps'],
-            },
-        ],
-        'lora-tuning-group': [
-            {
-                className: 'config-field-grid-2col',
-                keys: ['network_dim', 'network_alpha', 'use_lokr', 'lokr_factor'],
             },
         ],
     };
