@@ -5,9 +5,11 @@ import json
 import os
 from types import SimpleNamespace
 
+import torch
 from aiohttp import web
+from safetensors.torch import save_file
 
-from library.training.checkpoints import save_checkpoint_state
+from library.training.checkpoints import CheckpointSaver, save_checkpoint_state
 from web.services import training_service
 from web.services.training_service import TrainingService
 
@@ -252,6 +254,28 @@ class _FakeAccelerator:
         if self.fail:
             raise RuntimeError("boom")
 
+    def unwrap_model(self, model):
+        return model
+
+
+class _TinyResumeNetwork(torch.nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.weight = torch.nn.Parameter(torch.zeros(1))
+
+
+def _resume_saver(args):
+    return CheckpointSaver(
+        args=args,
+        accelerator=_FakeAccelerator(),
+        save_dtype=None,
+        metadata={},
+        minimum_metadata={},
+        get_sai_model_spec_fn=lambda _args: {},
+        current_epoch=SimpleNamespace(value=0),
+        current_step=SimpleNamespace(value=0),
+    )
+
 
 def _checkpoint_args(tmp_path):
     return SimpleNamespace(output_dir=str(tmp_path), output_name="demo")
@@ -312,6 +336,52 @@ def test_save_checkpoint_state_recovers_leftover_backup(tmp_path):
     assert json.loads((state_dir / "train_state.json").read_text(encoding="utf-8"))["current_step"] == 4
     assert not backup_dir.exists()
     assert not tmp_dir.exists()
+
+
+def test_auto_resume_skips_incompatible_network_state(tmp_path):
+    state_dir = tmp_path / "demo-checkpoint-state"
+    state_dir.mkdir()
+    (state_dir / "train_state.json").write_text(
+        json.dumps({"current_epoch": 1, "current_step": 3}),
+        encoding="utf-8",
+    )
+    save_file({"lora_down.weight": torch.zeros(1)}, str(state_dir / "model.safetensors"))
+    args = SimpleNamespace(
+        output_dir=str(tmp_path),
+        output_name="demo",
+        checkpointing_epochs=1,
+        resume=None,
+        max_train_steps=10,
+        skip_until_initial_step=False,
+    )
+
+    _resume_saver(args).auto_resume(_TinyResumeNetwork())
+
+    assert args.resume is None
+    assert args.skip_until_initial_step is False
+
+
+def test_auto_resume_uses_compatible_network_state(tmp_path):
+    state_dir = tmp_path / "demo-checkpoint-state"
+    state_dir.mkdir()
+    (state_dir / "train_state.json").write_text(
+        json.dumps({"current_epoch": 1, "current_step": 3}),
+        encoding="utf-8",
+    )
+    save_file({"weight": torch.zeros(1)}, str(state_dir / "model.safetensors"))
+    args = SimpleNamespace(
+        output_dir=str(tmp_path),
+        output_name="demo",
+        checkpointing_epochs=1,
+        resume=None,
+        max_train_steps=10,
+        skip_until_initial_step=False,
+    )
+
+    _resume_saver(args).auto_resume(_TinyResumeNetwork())
+
+    assert args.resume == str(state_dir)
+    assert args.skip_until_initial_step is True
 
 
 def test_config_group_timeline_merges_by_file_identity(tmp_path, monkeypatch):

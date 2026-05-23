@@ -414,6 +414,73 @@ def _refuse_split_stacked_experts_keys(
     return state_dict
 
 
+def _refuse_unfused_attn_lokr_keys(
+    state_dict: Dict[str, torch.Tensor],
+) -> Dict[str, torch.Tensor]:
+    """Rewrite split q/k/v LoKr keys back to fused runtime projection names.
+
+    Save-side LoKr defuse clones ``lokr_w1`` per component and chunks
+    ``lokr_w2`` along its output axis. The runtime owns one fused
+    ``qkv_proj`` / ``kv_proj`` LoKr module, so load-time reconstruction
+    concatenates those ``w2`` chunks and keeps the shared ``w1``.
+    """
+    for shared_prefix, spec in iter_split_groups(state_dict, ".lokr_w2"):
+        suffixes = spec.component_letters
+        w1s: List[torch.Tensor] = []
+        w2s: List[torch.Tensor] = []
+        alphas: List[Optional[torch.Tensor]] = []
+        complete = True
+        for suf in suffixes:
+            prefix = f"{shared_prefix}{suf}_proj"
+            w1_key = f"{prefix}.lokr_w1"
+            w2_key = f"{prefix}.lokr_w2"
+            if w1_key not in state_dict or w2_key not in state_dict:
+                complete = False
+                break
+            w1s.append(state_dict[w1_key])
+            w2s.append(state_dict[w2_key])
+            alphas.append(state_dict.get(f"{prefix}.alpha"))
+        if not complete:
+            continue
+
+        w1_shape = tuple(w1s[0].shape)
+        if (
+            len(w1_shape) != 2
+            or w1_shape[0] != w1_shape[1]
+            or not all(tuple(w.shape) == w1_shape for w in w1s)
+        ):
+            logger.warning(
+                f"attn LoKr fuse: inconsistent lokr_w1 shapes at {shared_prefix}*, skipping"
+            )
+            continue
+        if not all(torch.equal(w1s[0], w) for w in w1s[1:]):
+            logger.warning(
+                f"attn LoKr fuse: lokr_w1 differs across {shared_prefix}*, skipping"
+            )
+            continue
+
+        w2_shape = tuple(w2s[0].shape)
+        if len(w2_shape) != 2 or not all(
+            w.ndim == 2 and w.shape[1] == w2_shape[1] for w in w2s
+        ):
+            logger.warning(
+                f"attn LoKr fuse: inconsistent lokr_w2 shapes at {shared_prefix}*, skipping"
+            )
+            continue
+
+        fused_prefix = f"{shared_prefix}{spec.fused_letters}_proj"
+        state_dict[f"{fused_prefix}.lokr_w1"] = w1s[0].contiguous()
+        state_dict[f"{fused_prefix}.lokr_w2"] = torch.cat(w2s, dim=0).contiguous()
+        if alphas[0] is not None:
+            state_dict[f"{fused_prefix}.alpha"] = alphas[0]
+
+        for suf in suffixes:
+            prefix = f"{shared_prefix}{suf}_proj"
+            for subk in ("lokr_w1", "lokr_w2", "alpha"):
+                state_dict.pop(f"{prefix}.{subk}", None)
+    return state_dict
+
+
 def _refuse_unfused_attn_lora_keys(
     state_dict: Dict[str, torch.Tensor],
 ) -> Dict[str, torch.Tensor]:

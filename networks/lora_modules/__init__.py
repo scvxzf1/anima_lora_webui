@@ -7,6 +7,7 @@ from networks.lora_modules.chimera import (
     ChimeraHydraLoRAModule,
 )
 from networks.lora_modules.hydra import HydraLoRAModule, _sigma_sinusoidal_features
+from networks.lora_modules.lokr import LoKrModule
 from networks.lora_modules.lora import LoRAModule
 from networks.lora_modules.ortho import (
     OrthoHydraLoRAModule,
@@ -20,6 +21,7 @@ __all__ = [
     "ChimeraHydraInferenceModule",
     "ChimeraHydraLoRAModule",
     "HydraLoRAModule",
+    "LoKrModule",
     "LoRAModule",
     "OrthoHydraLoRAModule",
     "OrthoLoRAModule",

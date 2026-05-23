@@ -33,6 +33,7 @@ from networks import lora_save
 
 EXPECTED_VARIANTS = {
     "lora",
+    "lokr",
     "ortho",
     "hydra",
     "ortho_hydra",
@@ -89,6 +90,12 @@ def test_hydra_router_kwargs_registered():
     assert must_have.issubset(set(all_network_kwargs()))
 
 
+def test_lokr_kwargs_registered():
+    must_have = {"use_lokr", "lokr_factor"}
+    assert must_have.issubset(set(all_network_kwargs()))
+    assert "lokr_factor" in set(NETWORK_REGISTRY["lokr"].kwarg_flags)
+
+
 # ---------------------------------------------------------------------------
 # resolve_network_spec precedence
 # ---------------------------------------------------------------------------
@@ -98,6 +105,7 @@ def test_hydra_router_kwargs_registered():
     "kwargs, expected",
     [
         ({}, "lora"),
+        ({"use_lokr": "true"}, "lokr"),
         ({"use_ortho": "true"}, "ortho"),
         ({"use_moe_style": "shared_A"}, "hydra"),
         ({"use_moe_style": "shared_A", "use_ortho": "true"}, "ortho_hydra"),
@@ -111,6 +119,19 @@ def test_hydra_router_kwargs_registered():
 def test_resolve_precedence(kwargs, expected):
     spec = resolve_network_spec(kwargs)
     assert spec.name == expected
+
+
+@pytest.mark.parametrize(
+    "kwargs",
+    [
+        {"use_lokr": "true", "use_ortho": "true"},
+        {"use_lokr": "true", "use_moe_style": "shared_A"},
+        {"use_lokr": "true", "use_chimera_hydra": "true"},
+    ],
+)
+def test_lokr_mutual_exclusion(kwargs):
+    with pytest.raises(ValueError, match="use_lokr is mutually exclusive"):
+        resolve_network_spec(kwargs)
 
 
 # ---------------------------------------------------------------------------
@@ -174,6 +195,29 @@ def test_save_standard_lora_roundtrip(tmp_path: Path):
         assert loaded[f"{base}_{suffix}.lora_up.weight"].shape == (out_dim, r)
     # fused key must be gone
     assert f"{prefix}.lora_down.weight" not in loaded
+
+
+def test_save_lokr_roundtrip(tmp_path: Path):
+    factor, in_dim, out_dim = 2, 8, 12
+    prefix = "lora_unet_blocks_0_self_attn_qkv_proj"
+    sd = {
+        f"{prefix}.lokr_w1": torch.randn(factor, factor),
+        f"{prefix}.lokr_w2": torch.randn((3 * out_dim) // factor, in_dim // factor),
+        f"{prefix}.alpha": _alpha(32),
+    }
+
+    loaded = _save_and_reload(sd, tmp_path, save_variant="lokr")
+
+    base = "lora_unet_blocks_0_self_attn"
+    for suffix in ("q_proj", "k_proj", "v_proj"):
+        assert loaded[f"{base}_{suffix}.lokr_w1"].shape == (factor, factor)
+        assert loaded[f"{base}_{suffix}.lokr_w2"].shape == (
+            out_dim // factor,
+            in_dim // factor,
+        )
+        assert f"{base}_{suffix}.alpha" in loaded
+    assert f"{prefix}.lokr_w1" not in loaded
+    assert f"{prefix}.lokr_w2" not in loaded
 
 
 def test_save_ortho_roundtrip(tmp_path: Path):

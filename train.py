@@ -2159,7 +2159,7 @@ class AnimaTrainer:
         saver.register_hooks(network)
 
         # auto-resume from the resumable checkpoint if one exists
-        saver.auto_resume()
+        saver.auto_resume(network)
 
         # resume
         resume_from_local_or_hf_if_specified(accelerator, args)

@@ -23,6 +23,7 @@ STEP_DIFFUSERS_DIR_NAME = "{}-step{:08d}"
 
 CHECKPOINT_STATE_NAME = "{}-checkpoint-state"
 CHECKPOINT_FILE_NAME = "{}-checkpoint"
+ACCELERATE_MODEL_STATE_NAME = "model.safetensors"
 
 
 def default_if_none(value, default):
@@ -339,6 +340,59 @@ class CheckpointSaver:
         # decide initial_step.
         self.steps_from_state: Optional[int] = None
 
+    def _checkpoint_model_keys(self, checkpoint_state_dir: str) -> Optional[set[str]]:
+        model_state_file = os.path.join(
+            checkpoint_state_dir, ACCELERATE_MODEL_STATE_NAME
+        )
+        if not os.path.exists(model_state_file):
+            return None
+        try:
+            from safetensors import safe_open
+
+            with safe_open(model_state_file, framework="pt", device="cpu") as f:
+                return set(f.keys())
+        except Exception as e:
+            logger.warning(
+                f"could not inspect checkpoint model state {model_state_file}: {e}"
+            )
+            return None
+
+    def _network_state_keys(self, network: Any) -> Optional[set[str]]:
+        if network is None:
+            return None
+        unwrap_model = getattr(self.accelerator, "unwrap_model", None)
+        if unwrap_model is not None:
+            network = unwrap_model(network)
+        state_dict = network.state_dict() if hasattr(network, "state_dict") else None
+        if state_dict is None:
+            return None
+        return set(state_dict.keys())
+
+    def _checkpoint_matches_network(
+        self, checkpoint_state_dir: str, network: Any
+    ) -> bool:
+        checkpoint_keys = self._checkpoint_model_keys(checkpoint_state_dir)
+        network_keys = self._network_state_keys(network)
+        if checkpoint_keys is None or network_keys is None:
+            return True
+
+        missing_keys = network_keys - checkpoint_keys
+        unexpected_keys = checkpoint_keys - network_keys
+        if not missing_keys and not unexpected_keys:
+            return True
+
+        missing_sample = ", ".join(sorted(missing_keys)[:3]) or "-"
+        unexpected_sample = ", ".join(sorted(unexpected_keys)[:3]) or "-"
+        logger.warning(
+            "auto-resume skipped because checkpoint network state does not "
+            "match the current network. This usually happens after changing "
+            "LoRA variants or network structure. "
+            f"missing={len(missing_keys)} [{missing_sample}], "
+            f"unexpected={len(unexpected_keys)} [{unexpected_sample}], "
+            f"checkpoint={checkpoint_state_dir}"
+        )
+        return False
+
     def register_hooks(self, network: Any) -> None:
         """Install accelerator save/load pre-hooks that persist epoch/step
         state to ``train_state.json`` and strip non-network models from the
@@ -388,7 +442,7 @@ class CheckpointSaver:
         accelerator.register_save_state_pre_hook(save_model_hook)
         accelerator.register_load_state_pre_hook(load_model_hook)
 
-    def auto_resume(self) -> None:
+    def auto_resume(self, network: Any = None) -> None:
         """If ``checkpointing_epochs`` is enabled and a resumable checkpoint
         exists below ``max_train_steps``, point ``args.resume`` at it and
         force ``skip_until_initial_step``. No-op when ``args.resume`` is
@@ -406,6 +460,8 @@ class CheckpointSaver:
             ckpt_data = json.load(f)
         ckpt_step = ckpt_data.get("current_step", 0)
         if ckpt_step < args.max_train_steps:
+            if not self._checkpoint_matches_network(checkpoint_state_dir, network):
+                return
             args.resume = checkpoint_state_dir
             args.skip_until_initial_step = True
             logger.info(

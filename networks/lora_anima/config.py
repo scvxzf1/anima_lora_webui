@@ -294,6 +294,9 @@ class LoRANetworkCfg:
     fera_fecl_weight: float = 0.0
     fera_num_bands: int = 3
 
+    # LoKr (Low-Rank Kronecker Product) factor.
+    lokr_factor: int = 8
+
     # ChimeraHydra (dual-pool additive routing — see
     # ``docs/proposal/chimera_hydra.md``). ``use_chimera_hydra=True`` swaps
     # the OrthoHydra path for the chimera module, which splits ``num_experts``
@@ -469,6 +472,7 @@ class LoRANetworkCfg:
         # to be a meaningful objective (see compute_fecl docstring).
         fera_fecl_weight = float(kwargs.get("fera_fecl_weight", 0.0))
         fera_num_bands = int(kwargs.get("fera_num_bands", kwargs.get("num_bands", 3)))
+        lokr_factor = int(kwargs.get("lokr_factor", 8))
 
         # ChimeraHydra knobs. ``num_experts`` (parent Hydra cfg) is treated
         # as a derived value when ``use_chimera_hydra=True`` — recomputed
@@ -654,6 +658,7 @@ class LoRANetworkCfg:
             ortho_init_std=ortho_init_std,
             fera_fecl_weight=fera_fecl_weight,
             fera_num_bands=fera_num_bands,
+            lokr_factor=lokr_factor,
             use_chimera_hydra=use_chimera_hydra,
             num_experts_content=num_experts_content,
             num_experts_freq=num_experts_freq,
@@ -708,6 +713,7 @@ class LoRANetworkCfg:
         freq_router_layer_norm: bool = False,
         content_router_source: str = "input",
         content_router_layer_norm: bool = True,
+        lokr_factor: int = 8,
     ) -> "LoRANetworkCfg":
         """Build cfg from a checkpoint key-sniff (warm-start / inference path).
 
@@ -813,4 +819,5 @@ class LoRANetworkCfg:
                 else "input"
             ),
             content_router_layer_norm=bool(content_router_layer_norm),
+            lokr_factor=int(lokr_factor),
         )

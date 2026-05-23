@@ -11,6 +11,7 @@ Flag precedence (evaluated top to bottom, first match wins):
     use_moe_style="independent_A"        → stacked_experts_global_fei
     use_moe_style="shared_A" + use_ortho → ortho_hydra
     use_moe_style="shared_A"             → hydra
+    use_lokr                             → lokr
     use_ortho                            → ortho
     (none)                               → lora
 
@@ -29,6 +30,7 @@ from typing import Any, Callable, Dict, Mapping, Optional, Tuple, Type
 from networks.lora_modules import (
     ChimeraHydraLoRAModule,
     HydraLoRAModule,
+    LoKrModule,
     LoRAModule,
     OrthoHydraLoRAModule,
     OrthoLoRAModule,
@@ -99,6 +101,7 @@ SHARED_KWARG_FLAGS: Tuple[str, ...] = (
     # Memory-saving down-projection autograd (classic LoRA only; bitwise-equal grads)
     "use_custom_down_autograd",
     # Variant selectors (read by resolve_network_spec)
+    "use_lokr",
     "use_ortho",
     # PSOFT-style Cayley-init magnitude (consumed by OrthoHydra +
     # StackedExperts in ortho mode).
@@ -264,6 +267,12 @@ NETWORK_REGISTRY: Dict[str, NetworkSpec] = {
         kwarg_flags=_HYDRA_KWARG_FLAGS,
         post_init=_post_init_hydra,
     ),
+    "lokr": NetworkSpec(
+        name="lokr",
+        module_class=LoKrModule,
+        save_variant="lokr",
+        kwarg_flags=("lokr_factor",),
+    ),
 }
 
 
@@ -308,10 +317,9 @@ def resolve_network_spec(kwargs: Mapping[str, Any]) -> NetworkSpec:
     the hood (OrthoHydra parameterization), but uses K_c + K_f instead of
     a single ``num_experts`` — the user only sets the chimera flag.
     """
+    use_lokr = _parse_bool_flag(kwargs, "use_lokr")
     use_ortho = _parse_bool_flag(kwargs, "use_ortho")
     use_chimera = _parse_bool_flag(kwargs, "use_chimera_hydra")
-    if use_chimera:
-        return NETWORK_REGISTRY["chimera_hydra"]
 
     raw_moe = kwargs.get("use_moe_style")
     if isinstance(raw_moe, str):
@@ -329,12 +337,22 @@ def resolve_network_spec(kwargs: Mapping[str, Any]) -> NetworkSpec:
             f"use_moe_style={raw_moe!r}: expected False, 'shared_A', or 'independent_A'."
         )
 
+    if use_lokr and (use_chimera or use_ortho or moe_style):
+        raise ValueError(
+            "use_lokr is mutually exclusive with use_chimera_hydra / "
+            "use_ortho / use_moe_style"
+        )
+
+    if use_chimera:
+        return NETWORK_REGISTRY["chimera_hydra"]
     if moe_style == "independent_A":
         return NETWORK_REGISTRY["stacked_experts_global_fei"]
     if moe_style == "shared_A":
         return (
             NETWORK_REGISTRY["ortho_hydra"] if use_ortho else NETWORK_REGISTRY["hydra"]
         )
+    if use_lokr:
+        return NETWORK_REGISTRY["lokr"]
     if use_ortho:
         return NETWORK_REGISTRY["ortho"]
     return NETWORK_REGISTRY["lora"]
