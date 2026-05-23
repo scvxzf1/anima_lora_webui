@@ -1354,7 +1354,8 @@ class Anima(nn.Module):
         * ``pad=False`` — run each bucket at its native token count. No padding
           → no leak (native flash matches the no-pad ground truth bit-for-bit).
           Block-compile then traces one graph per distinct bucket token-count
-          (CONSTANT_TOKEN_BUCKETS collapses to 5), a bounded one-time warmup.
+          (CONSTANT_TOKEN_BUCKETS collapses to 2: the 4032 and 4200 families),
+          a bounded one-time warmup.
           Incompatible with ``compile_core`` / ``compile_mode='full'`` (that
           path assumes a single shape-invariant block stack).
         """
@@ -1698,9 +1699,20 @@ class Anima(nn.Module):
             #   This is the key to the recompile budget: the block stack must see
             #   a flat (B,1,L,1,D) sequence keyed solely by token count, otherwise
             #   dynamo guards on H and W separately and recompiles per *resolution*
-            #   (17 buckets) instead of per token-count (5 distinct). Bit-exact to
+            #   (24 buckets) instead of per token-count (2 distinct). Bit-exact to
             #   native — it's the gap=0 control the leak probe verifies.
             target = self.static_token_count if self.pad_to_static else seq_len
+            # In pad mode a bucket larger than the target would make
+            # (target - seq_len) negative, and F.pad would *truncate* real
+            # tokens silently. The shipped CONSTANT_TOKEN_BUCKETS 4200 family
+            # exceeds the legacy 4096 target — guard so a stale static_token_count
+            # fails loudly instead of corrupting the latent. (No-op in native mode.)
+            if self.pad_to_static and seq_len > target:
+                raise ValueError(
+                    f"bucket has {seq_len} tokens > static_token_count={target}; "
+                    "padding would truncate. Raise static_token_count or use "
+                    "no_static_pad (native shapes)."
+                )
             _static_pad_info = (T_s, H_s, W_s, seq_len)
 
             # Flatten 5D → 2D and pad sequence to target length.

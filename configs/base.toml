@@ -55,7 +55,9 @@ vae_chunk_size = 64
 vae_disable_cache = true
 masked_loss = true
 torch_compile = true
-static_token_count = 4096
+static_token_count = 4200          # = max CONSTANT_TOKEN_BUCKETS token count (4200 family)
+static_pad = false                 # native shapes (--no_static_pad): 2 block graphs, zero pad,
+                                   # no flash static-pad leak. Required by the 4200-token family.
 attn_mode = "flash"
 save_precision= "bf16"
 use_custom_down_autograd = true
