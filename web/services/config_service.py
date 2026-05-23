@@ -24,6 +24,7 @@ WEB_USER_LOCKS_FILE = CONFIGS_DIR / "web-user-locks.toml"
 DEFAULT_SAMPLE_PROMPTS_FILE = "configs/sample_prompts.txt"
 DEFAULT_RESIZED_IMAGE_DIR = "post_image_dataset/resized"
 DEFAULT_LORA_CACHE_DIR = "post_image_dataset/lora"
+DEFAULT_MAX_TRAIN_STEPS = 0
 UI_ONLY_CONFIG_FIELDS = {
     "dataset_config_picker",
 }
@@ -105,6 +106,7 @@ FIXED_SYSTEM_CONFIG_GROUP_IDS = frozenset({
 })
 FILE_MOVE_TARGET_GROUPS = frozenset({
     "imported",
+    "rokkotsu_goddess",
     "datasets",
 })
 USER_LOCKABLE_GROUPS = frozenset({
@@ -174,6 +176,7 @@ def load_merged_config(variant: str, preset: str, methods_subdir: str = "gui-met
         merged[k] = v
     for k, v in meth.items():
         merged[k] = v
+    merged.setdefault("max_train_steps", DEFAULT_MAX_TRAIN_STEPS)
     merged = expand_env_vars_in_obj(merged)
     return apply_auto_data_dirs(merged)
 
@@ -665,13 +668,23 @@ def estimate_training_steps(
         })
 
     sample_ratio = _positive_float(cfg.get("sample_ratio"), 1.0)
-    epochs = _positive_int(cfg.get("max_train_epochs"), 1)
+    explicit_epochs = cfg.get("max_train_epochs") not in (None, "")
+    epochs = _positive_int(cfg.get("max_train_epochs"), 0) if explicit_epochs else None
+    max_train_steps = _nonnegative_int(cfg.get("max_train_steps"), DEFAULT_MAX_TRAIN_STEPS)
     batch_size = _positive_int(cfg.get("train_batch_size"), 1)
     grad_accum = _positive_int(cfg.get("gradient_accumulation_steps"), 1)
     effective_batch = max(1, batch_size * grad_accum)
     repeated_images = int(weighted_images * sample_ratio)
     steps_per_epoch = (repeated_images + effective_batch - 1) // effective_batch if repeated_images else 0
-    total_steps = steps_per_epoch * epochs
+    if epochs is not None:
+        total_steps = steps_per_epoch * epochs
+        duration_mode = "epochs"
+    elif max_train_steps > 0:
+        total_steps = max_train_steps
+        duration_mode = "steps"
+    else:
+        total_steps = 0
+        duration_mode = "unset"
     first_row = detail_rows[0] if detail_rows else {}
 
     return {
@@ -687,6 +700,10 @@ def estimate_training_steps(
         "weighted_image_count": weighted_images,
         "sample_ratio": sample_ratio,
         "max_train_epochs": epochs,
+        "max_train_steps": max_train_steps,
+        "uses_max_train_epochs": epochs is not None,
+        "duration_configured": duration_mode != "unset",
+        "duration_mode": duration_mode,
         "train_batch_size": batch_size,
         "gradient_accumulation_steps": grad_accum,
         "effective_batch_size": effective_batch,
@@ -1149,6 +1166,14 @@ def _positive_int(value: Any, fallback: int) -> int:
     return n if n > 0 else fallback
 
 
+def _nonnegative_int(value: Any, fallback: int) -> int:
+    try:
+        n = int(value)
+    except (TypeError, ValueError):
+        return fallback
+    return n if n >= 0 else fallback
+
+
 def _positive_float(value: Any, fallback: float) -> float:
     try:
         n = float(value)
@@ -1261,6 +1286,18 @@ def patch_raw_file_values(
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(next_content, encoding="utf-8")
     return True, "保存成功", next_content, changed
+
+
+def preview_raw_file_patch(
+    rel_path: str,
+    values: dict[str, Any],
+    *,
+    content: str | None = None,
+) -> tuple[bool, str, str, list[str]]:
+    ok, msg, _path, next_content, changed = _prepare_raw_file_patch(rel_path, values, content=content)
+    if not ok:
+        return False, msg, "", []
+    return True, "预览成功", next_content, changed
 
 
 def _prepare_raw_file_patch(

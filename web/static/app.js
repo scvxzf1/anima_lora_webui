@@ -117,6 +117,9 @@
         sample_prompts: '',
         sample_every_n_epochs: '',
         sample_every_n_steps: '',
+        gradient_checkpointing: true,
+        max_train_epochs: '',
+        max_train_steps: 0,
         sample_at_first: false,
         sample_sampler: 'ddim',
         use_lokr: false,
@@ -138,6 +141,10 @@
         'sample_prompts',
         'sample_every_n_epochs',
         'sample_every_n_steps',
+        'max_train_epochs',
+    ]);
+    const FORM_UI_PERSIST_DEFAULT_FIELDS = new Set([
+        'gradient_checkpointing',
     ]);
     const CONFIG_FORM_INTERNAL_KEYS = new Set([
         'dataset_config_picker',
@@ -238,6 +245,7 @@
             open: true,
             className: 'config-group-steps',
             keys: [
+                'max_train_steps',
                 'train_batch_size',
                 'gradient_accumulation_steps',
                 'sample_ratio',
@@ -458,6 +466,7 @@
         lr_scheduler: '学习率调度',
         masked_loss: '遮罩损失',
         max_train_epochs: '最大训练轮数',
+        max_train_steps: '最大训练步数',
         max_bucket_reso: '最大桶边长',
         min_rank: '最小秩',
         min_bucket_reso: '最小桶边长',
@@ -1215,6 +1224,14 @@
             ["训练更久，过拟合风险更高。"],
             ["轮数太高会记住训练图构图，泛化下降。"],
             "先用默认，样张仍欠拟合再增加。"
+        ),
+        max_train_steps: help(
+            "固定总训练步数；默认 0 表示不生效。",
+            "只有 max_train_epochs 为空时，正数 max_train_steps 才会作为训练总步数；如果填写了 max_train_epochs，会优先按轮数推导总步数。",
+            ["适合需要精确按总 step 截断训练的实验。"],
+            ["跳过按数据集轮数理解训练量，读数不如 epoch 直观。"],
+            ["max_train_epochs 为空且这里保持 0 时，训练时长未配置，启动训练会要求设置其中一个。"],
+            "日常建议保持 0，并用最大训练轮数控制训练量。"
         ),
         train_batch_size: help(
             "每个训练 step 一次送入 GPU 的样本数量。",
@@ -2315,26 +2332,33 @@
         const panel = document.getElementById('step-estimate-panel');
         if (!panel || !currentStepEstimate) return;
 
-        const epochs = readLiveNumber('max_train_epochs', currentStepEstimate.max_train_epochs || 1);
+        const epochs = readOptionalLiveNumber('max_train_epochs');
         const batchSize = readLiveNumber('train_batch_size', currentStepEstimate.train_batch_size || 1);
         const gradAccum = readLiveNumber('gradient_accumulation_steps', currentStepEstimate.gradient_accumulation_steps || 1);
         const sampleRatio = readLiveNumber('sample_ratio', currentStepEstimate.sample_ratio || 1);
+        const maxTrainSteps = readNonnegativeLiveNumber('max_train_steps', currentStepEstimate.max_train_steps ?? 0);
         const datasets = liveDatasetRowsForEstimate();
         const trainImages = datasets.reduce((sum, row) => sum + Number(row.train_image_count || 0), 0);
         const weightedImages = datasets.reduce((sum, row) => sum + (Number(row.train_image_count || 0) * Number(row.num_repeats || 1)), 0);
         const effectiveBatch = Math.max(1, batchSize * gradAccum);
         const repeatedImages = Math.max(0, Math.floor(weightedImages * sampleRatio));
         const stepsPerEpoch = repeatedImages ? Math.ceil(repeatedImages / effectiveBatch) : 0;
-        const totalSteps = stepsPerEpoch * epochs;
+        const durationMode = epochs ? 'epochs' : (maxTrainSteps > 0 ? 'steps' : 'unset');
+        const totalSteps = durationMode === 'epochs' ? stepsPerEpoch * epochs : maxTrainSteps;
 
         setText('step-dataset-count', String(datasets.length || 0));
         setText('step-train-images', String(trainImages));
         setText('step-repeated-images', `${repeatedImages} = ${weightedImages} x ${sampleRatio}`);
         setText('step-effective-batch', `${effectiveBatch} = ${batchSize} x ${gradAccum}`);
         setText('step-per-epoch', String(stepsPerEpoch));
-        setText('step-total', String(totalSteps));
+        setText('step-total', durationMode === 'unset' ? '未配置' : String(totalSteps));
         renderStepDatasetBreakdown(datasets);
-        setText('step-estimate-note', `公式: Σ(每组训练图片 x 重复次数) x sample_ratio / (train_batch_size x gradient_accumulation_steps) x max_train_epochs。缩放图目录为空时会暂按原始数据集图片数估算。`);
+        const note = durationMode === 'epochs'
+            ? `公式: Σ(每组训练图片 x 重复次数) x sample_ratio / (train_batch_size x gradient_accumulation_steps) x max_train_epochs。max_train_epochs 已设置，max_train_steps 此时不生效。`
+            : (durationMode === 'steps'
+                ? `当前未设置 max_train_epochs，训练将直接按 max_train_steps=${maxTrainSteps} 作为固定总步数运行。若填写 epoch，则会按每轮步数重新推导总步数。`
+                : `当前未设置 max_train_epochs，且 max_train_steps=0 表示不启用固定步数。启动训练前需要设置最大训练轮数，或把最大训练步数填成正数。`);
+        setText('step-estimate-note', note);
     }
 
     function liveDatasetRowsForEstimate() {
@@ -2386,6 +2410,27 @@
         const raw = input.type === 'checkbox' ? input.checked : input.value;
         const n = Number(raw);
         return Number.isFinite(n) && n > 0 ? n : (Number(fallback) || 0);
+    }
+
+    function readNonnegativeLiveNumber(key, fallback = 0) {
+        const fallbackNumber = Math.max(0, Number(fallback) || 0);
+        const input = document.querySelector(`#config-form .field-input[data-key="${CSS.escape(key)}"]`);
+        if (!input) return fallbackNumber;
+        const raw = input.type === 'checkbox' ? input.checked : input.value;
+        const trimmed = String(raw).trim();
+        if (!trimmed) return fallbackNumber;
+        const n = Number(trimmed);
+        return Number.isFinite(n) && n >= 0 ? n : fallbackNumber;
+    }
+
+    function readOptionalLiveNumber(key) {
+        const input = document.querySelector(`#config-form .field-input[data-key="${CSS.escape(key)}"]`);
+        if (!input) return null;
+        const raw = input.type === 'checkbox' ? input.checked : input.value;
+        const trimmed = String(raw).trim();
+        if (!trimmed) return null;
+        const n = Number(trimmed);
+        return Number.isFinite(n) && n > 0 ? n : null;
     }
 
     function setText(id, text) {
@@ -4451,6 +4496,7 @@
     function isNumericField(key, value) {
         return typeof value === 'number' || [
             'max_train_epochs',
+            'max_train_steps',
             'train_batch_size',
             'gradient_accumulation_steps',
             'sample_ratio',
@@ -4464,6 +4510,7 @@
     function isIntegerNumericField(key, value) {
         return [
             'max_train_epochs',
+            'max_train_steps',
             'train_batch_size',
             'gradient_accumulation_steps',
             'sample_every_n_epochs',
@@ -4630,8 +4677,18 @@
             }
         }
         populateTomlFileSelect(reorderTomlFileGroups(tomlFileGroups));
+        if (preferredFile && !tomlFiles.includes(preferredFile) && currentTomlFile === preferredFile) {
+            await handleDeletedTomlSelection(preferredFile, '当前配置文件已不存在或已被删除');
+            return;
+        }
         if (preferredFile && tomlFiles.includes(preferredFile)) {
             await loadTomlFile(preferredFile, { force: options.force === true });
+            return;
+        }
+        if (options.skipDefaultLoad) {
+            updateTomlSelectionUI('');
+            applyTomlLockState('');
+            updateTomlDirtyState();
             return;
         }
         // 默认加载当前变体对应的文件
@@ -4655,6 +4712,10 @@
         resetTomlSaveConfirm();
         const data = await api(`/api/config/raw?file=${encodeURIComponent(filePath)}`);
         if (data?.ok === false) {
+            if (isMissingTomlFileResponse(data)) {
+                await handleDeletedTomlSelection(filePath, data.error || '配置文件不存在或已被删除');
+                return;
+            }
             setTomlStatus('error', data.error || '读取配置文件失败');
             return;
         }
@@ -5186,7 +5247,11 @@
             const hasOriginal = key in currentConfig;
             const original = hasOriginal ? currentConfig[key] : FORM_UI_DEFAULTS[key];
             const next = readFieldInputValue(input, original);
-            if (!hasOriginal && shouldSkipUiDefaultField(key, next)) return;
+            if (!hasOriginal) {
+                if (shouldSkipUiDefaultField(key, next)) return;
+                values[key] = next;
+                return;
+            }
             if (!valuesEqual(next, original)) {
                 values[key] = next;
             }
@@ -5214,6 +5279,7 @@
 
     function shouldSkipUiDefaultField(key, value) {
         if (!(key in FORM_UI_DEFAULTS)) return false;
+        if (FORM_UI_PERSIST_DEFAULT_FIELDS.has(key)) return false;
         if (OPTIONAL_EMPTY_FIELDS.has(key) && value === '') return true;
         return valuesEqual(value, FORM_UI_DEFAULTS[key]);
     }
@@ -5417,7 +5483,8 @@
         const target = await showTomlSaveAsDialog(currentFile);
         if (target === null) return;
 
-        const file = normalizeTomlSaveAsPath(target);
+        const file = normalizeTomlSaveAsPath(target?.name ?? target);
+        const targetGroupId = target?.group || 'imported';
         if (!file) {
             setTomlStatus('error', '另存新配置失败: 请先输入新的配置名称');
             return;
@@ -5432,7 +5499,11 @@
         }
 
         try {
-            const content = editor.value;
+            const baseContent = editor.value;
+            const preparedValues = await prepareFormPatchValues(collectChangedFormValues());
+            const content = Object.keys(preparedValues).length
+                ? await previewPatchedTomlContent(file, baseContent, preparedValues)
+                : baseContent;
             const res = await api('/api/config/raw/save-as', {
                 method: 'POST',
                 body: JSON.stringify({ file, content }),
@@ -5461,13 +5532,31 @@
                 const editorAfterDataset = document.getElementById('toml-editor');
                 tomlSavedContent = editorAfterDataset?.value || tomlSavedContent;
             }
+            const moved = await moveTomlFileToGroup(file, targetGroupId);
+            if (!moved) {
+                await loadTomlFileList(file, { force: true });
+                updateTomlDirtyState();
+                return;
+            }
             await loadTomlFileList(file);
             await applyTomlToConfig({ silent: true });
             updateTomlDirtyState();
-            setTomlStatus('ok', `已另存新配置: ${file}`);
+            const groupLabel = saveAsTargetGroups().find((group) => group.id === targetGroupId)?.label || targetGroupId;
+            setTomlStatus('ok', `已另存新配置: ${file} → ${groupLabel}`);
         } catch (e) {
             setTomlStatus('error', '请求失败: ' + e.message);
         }
+    }
+
+    async function previewPatchedTomlContent(file, content, values) {
+        const res = await api('/api/config/raw/patch-preview', {
+            method: 'POST',
+            body: JSON.stringify({ file, content, values }),
+        });
+        if (!res.ok) {
+            throw new Error(res.error || '应用表单修改失败');
+        }
+        return typeof res.content === 'string' ? res.content : content;
     }
 
     async function showTomlSaveAsDialog(currentFile) {
@@ -5485,24 +5574,94 @@
         input.className = 'history-task-dialog-input';
         label.append(labelText, input);
 
+        const groups = saveAsTargetGroups();
+        const groupWrap = document.createElement('div');
+        groupWrap.className = 'toml-save-as-group-list';
+        const groupTitle = document.createElement('span');
+        groupTitle.className = 'toml-save-as-group-title';
+        groupTitle.textContent = '保存到分组';
+        groupWrap.appendChild(groupTitle);
+
+        const radios = [];
+        for (const group of groups) {
+            const option = document.createElement('label');
+            option.className = 'toml-move-option';
+
+            const radio = document.createElement('input');
+            radio.type = 'radio';
+            radio.name = 'toml-save-as-target-group';
+            radio.value = group.id;
+            radio.checked = group.id === 'imported' || (!radios.length && !groups.some((item) => item.id === 'imported'));
+            radios.push(radio);
+
+            const text = document.createElement('span');
+            const title = document.createElement('strong');
+            title.textContent = group.label || group.id;
+            const detail = document.createElement('small');
+            detail.textContent = `${(group.files || []).length} 个配置`;
+            text.append(title, detail);
+
+            option.append(radio, text);
+            groupWrap.appendChild(option);
+        }
+
         const hint = document.createElement('p');
         hint.className = 'toml-save-as-hint';
-        hint.textContent = '只填写文件名时会保存到 configs/imported/；必须使用新名称，不会覆盖当前选中配置。';
+        hint.textContent = '只填写文件名时会创建到 configs/imported/，分组只影响右侧列表归类；必须使用新名称，不会覆盖当前选中配置。';
 
         const current = document.createElement('p');
         current.className = 'toml-save-as-current';
         current.textContent = currentFile ? `当前选中配置: ${currentFile}` : '当前没有选中的配置文件，将使用编辑器内容创建新配置。';
 
-        wrap.append(label, hint, current);
+        wrap.append(label, groupWrap, hint, current);
 
         return showHistoryTaskDialog({
             title: '另存新配置',
-            description: '输入一个新名称，确认后创建新的 TOML 配置文件。',
+            description: '输入一个新名称，并选择它在右侧配置列表中的目标分组。',
             body: wrap,
             confirmText: '创建配置文件',
             onOpen: () => input.focus(),
-            getValue: () => input.value,
+            getValue: () => {
+                const checked = wrap.querySelector('input[name="toml-save-as-target-group"]:checked');
+                return {
+                    name: input.value,
+                    group: checked?.value || 'imported',
+                };
+            },
         });
+    }
+
+    function saveAsTargetGroups() {
+        const groups = reorderTomlFileGroups(tomlFileGroups)
+            .filter((group) => group.trainable && group.movable && !group.locked && !group.user_group_locked);
+        if (groups.some((group) => group.id === 'imported')) return groups;
+        const imported = tomlFileGroups.find((group) => group.id === 'imported');
+        if (imported && imported.trainable && !imported.locked && !imported.user_group_locked) {
+            return [imported, ...groups];
+        }
+        return groups.length ? groups : [{
+            id: 'imported',
+            label: '导入配置',
+            files: [],
+        }];
+    }
+
+    async function moveTomlFileToGroup(file, groupId) {
+        if (!groupId || groupId === 'imported') return true;
+        try {
+            const res = await api('/api/config/file-groups/move-file', {
+                method: 'POST',
+                body: JSON.stringify({ file, group: groupId }),
+            });
+            if (!res.ok) {
+                setTomlStatus('error', res.error || '另存成功，但移动到指定分组失败');
+                return false;
+            }
+            return true;
+        } catch (e) {
+            setTomlStatus('error', '另存成功，但移动分组请求失败: ' + e.message);
+            return false;
+        }
     }
 
     function normalizeTomlSaveAsPath(rawPath) {
@@ -6556,13 +6715,17 @@
     async function deleteTomlFile() {
         const file = currentTomlFile || val('toml-file-select');
         const meta = tomlFileMeta[file];
-        if (!file || !meta) {
+        if (!file) {
             setTomlStatus('error', '请先选择一个配置文件');
             return;
         }
         if (hasPendingConfigChanges(file)) {
             setTomlStatus('error', '当前配置尚未保存，请先保存或放弃修改后再删除');
             updateTomlActionState(file);
+            return;
+        }
+        if (!meta) {
+            await handleDeletedTomlSelection(file, '当前配置已不在列表中，已刷新配置列表');
             return;
         }
         if (meta.locked) {
@@ -6582,27 +6745,52 @@
                 method: 'DELETE',
             });
             if (!res.ok) {
+                if (isMissingTomlFileResponse(res)) {
+                    await handleDeletedTomlSelection(file, res.error || '配置文件不存在或已被删除');
+                    return;
+                }
                 setTomlStatus('error', res.error || '删除失败');
                 return;
             }
 
-            if (currentTrainingSource.file === file) {
-                currentTrainingSource = {
-                    method: val('variant-select') || 'lora',
-                    methods_subdir: 'gui-methods',
-                    file: `configs/gui-methods/${val('variant-select') || 'lora'}.toml`,
-                };
-            }
-            currentTomlFile = '';
-            tomlSavedContent = '';
-            document.getElementById('toml-editor').value = '';
-            document.getElementById('toml-current-file').textContent = '未选择配置';
-            await loadTomlFileList('');
-            updateTomlDirtyState();
-            setTomlStatus('ok', `已删除配置: ${file}`, { persist: true });
+            await handleDeletedTomlSelection(file, `已删除配置: ${file}`, { ok: true });
         } catch (e) {
             setTomlStatus('error', '请求失败: ' + e.message);
         }
+    }
+
+    function isMissingTomlFileResponse(res) {
+        return String(res?.error || '').includes('不存在') || String(res?.error || '').includes('已被删除');
+    }
+
+    async function handleDeletedTomlSelection(file, message, options = {}) {
+        if (currentTrainingSource.file === file) {
+            setCurrentTrainingSourceFromVariant(val('variant-select') || 'lora');
+        }
+        delete tomlFileMeta[file];
+        tomlFiles = tomlFiles.filter((item) => item !== file);
+        clearCurrentTomlSelection();
+        await loadTomlFileList('', { skipDefaultLoad: true });
+        clearCurrentTomlSelection();
+        updateTomlDirtyState();
+        setTomlStatus(options.ok ? 'ok' : 'error', message, { persist: true });
+    }
+
+    function clearCurrentTomlSelection() {
+        resetTomlDeleteConfirm({ update: false });
+        resetTomlSaveConfirm({ update: false });
+        currentTomlFile = '';
+        tomlSavedContent = '';
+        const editor = document.getElementById('toml-editor');
+        if (editor) {
+            editor.value = '';
+            editor.readOnly = false;
+            editor.title = '';
+        }
+        const select = document.getElementById('toml-file-select');
+        if (select) select.value = '';
+        updateTomlSelectionUI('');
+        applyTomlLockState('');
     }
 
     async function restoreSystemTomlPresets() {

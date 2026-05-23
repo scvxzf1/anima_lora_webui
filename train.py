@@ -1668,7 +1668,15 @@ class AnimaTrainer:
             **dataloader_kwargs,
         )
 
-        # Calculate training steps
+        # Calculate training steps.
+        # max_train_epochs is the preferred duration knob. max_train_steps is
+        # a hard cap for step-based runs; 0 means "disabled" so epoch-based
+        # configs do not inherit an accidental step ceiling.
+        if args.max_train_epochs is None and int(getattr(args, "max_train_steps", 0) or 0) <= 0:
+            raise ValueError(
+                "max_train_steps=0 and max_train_epochs is not set. "
+                "Set max_train_epochs for epoch-based training, or set a positive max_train_steps."
+            )
         if args.max_train_epochs is not None:
             args.max_train_steps = args.max_train_epochs * math.ceil(
                 len(train_dataloader)

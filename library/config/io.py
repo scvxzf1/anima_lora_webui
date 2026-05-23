@@ -20,6 +20,7 @@ from typing import Any, Optional
 
 import toml
 
+from library.config.normalize import to_plain_config
 from library.config import schema as _config_schema
 
 logger = logging.getLogger(__name__)
@@ -136,7 +137,7 @@ def _read_dataset_sections(toml_path: str) -> dict:
     if not os.path.exists(toml_path):
         return {}
     with open(toml_path, "r", encoding="utf-8") as f:
-        raw = toml.load(f)
+        raw = to_plain_config(toml.load(f))
     return {k: v for k, v in raw.items() if k in _DATASET_CONFIG_SECTIONS}
 
 
@@ -204,7 +205,7 @@ def load_dataset_config_from_base(
     if not os.path.exists(base_path):
         return None
     with open(base_path, "r", encoding="utf-8") as f:
-        raw = toml.load(f)
+        raw = to_plain_config(toml.load(f))
     sections = {k: v for k, v in raw.items() if k in _DATASET_CONFIG_SECTIONS}
     if not sections.get("datasets"):
         return None

@@ -28,6 +28,7 @@ from web.services.config_service import (
     load_dataset_preset,
     load_raw_file,
     patch_raw_file_values,
+    preview_raw_file_patch,
     restore_system_presets,
     resolve_dataset_preview_image,
     save_raw_file,
@@ -67,6 +68,7 @@ def setup_config_routes(app: web.Application) -> None:
     app.router.add_get("/api/config/raw", handle_raw_get)
     app.router.add_put("/api/config/raw", handle_raw_put)
     app.router.add_patch("/api/config/raw", handle_raw_patch)
+    app.router.add_post("/api/config/raw/patch-preview", handle_raw_patch_preview)
     app.router.add_delete("/api/config/raw", handle_raw_delete)
     app.router.add_post("/api/config/raw/save-as", handle_raw_save_as)
     app.router.add_get("/api/config/sample-prompts", handle_sample_prompts_get)
@@ -308,6 +310,25 @@ async def handle_raw_patch(request: web.Request) -> web.Response:
     if not file_path:
         return web.json_response({"error": "缺少 file 参数"}, status=400)
     ok, msg, next_content, changed = patch_raw_file_values(file_path, values, content=content)
+    if ok:
+        return web.json_response({
+            "ok": True,
+            "file": file_path,
+            "message": msg,
+            "content": next_content,
+            "changed": changed,
+        })
+    return web.json_response({"ok": False, "error": msg}, status=400)
+
+
+async def handle_raw_patch_preview(request: web.Request) -> web.Response:
+    data = await request.json()
+    file_path = data.get("file", "")
+    values = data.get("values", {})
+    content = data.get("content")
+    if not file_path:
+        return web.json_response({"error": "缺少 file 参数"}, status=400)
+    ok, msg, next_content, changed = preview_raw_file_patch(file_path, values, content=content)
     if ok:
         return web.json_response({
             "ok": True,

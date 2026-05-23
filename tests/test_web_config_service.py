@@ -294,6 +294,113 @@ def test_system_dataset_preset_is_readonly_but_can_be_saved_as(tmp_path: Path, m
     assert copied["file"] == "configs/datasets/ip_adapter_copy.toml"
 
 
+def test_step_estimate_defaults_max_train_steps_to_disabled_when_epoch_missing(tmp_path: Path, monkeypatch):
+    configs, dataset_path = _write_minimal_config_tree(tmp_path)
+    _patch_config_service_paths(monkeypatch, tmp_path)
+    _write_step_estimate_dataset(tmp_path, dataset_path)
+
+    estimate = config_service.estimate_training_steps("lora", "default", "imported")
+
+    assert estimate["steps_per_epoch"] == 15
+    assert estimate["max_train_epochs"] is None
+    assert estimate["max_train_steps"] == 0
+    assert estimate["uses_max_train_epochs"] is False
+    assert estimate["duration_configured"] is False
+    assert estimate["duration_mode"] == "unset"
+    assert estimate["total_steps"] == 0
+
+
+def test_step_estimate_uses_explicit_max_train_steps_when_epoch_missing(tmp_path: Path, monkeypatch):
+    configs, dataset_path = _write_minimal_config_tree(tmp_path)
+    _patch_config_service_paths(monkeypatch, tmp_path)
+    _write_step_estimate_dataset(tmp_path, dataset_path)
+    (configs / "imported" / "lora.toml").write_text(
+        "\n".join(
+            [
+                'dataset_config = "configs/datasets/lora.toml"',
+                "max_train_steps = 1600",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    estimate = config_service.estimate_training_steps("lora", "default", "imported")
+
+    assert estimate["steps_per_epoch"] == 15
+    assert estimate["max_train_epochs"] is None
+    assert estimate["max_train_steps"] == 1600
+    assert estimate["uses_max_train_epochs"] is False
+    assert estimate["duration_configured"] is True
+    assert estimate["duration_mode"] == "steps"
+    assert estimate["total_steps"] == 1600
+
+
+def test_step_estimate_prefers_epochs_over_max_train_steps(tmp_path: Path, monkeypatch):
+    configs, dataset_path = _write_minimal_config_tree(tmp_path)
+    _patch_config_service_paths(monkeypatch, tmp_path)
+    _write_step_estimate_dataset(tmp_path, dataset_path)
+    (configs / "imported" / "lora.toml").write_text(
+        "\n".join(
+            [
+                'dataset_config = "configs/datasets/lora.toml"',
+                "max_train_epochs = 2",
+                "max_train_steps = 1600",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    estimate = config_service.estimate_training_steps("lora", "default", "imported")
+
+    assert estimate["steps_per_epoch"] == 15
+    assert estimate["max_train_epochs"] == 2
+    assert estimate["max_train_steps"] == 1600
+    assert estimate["uses_max_train_epochs"] is True
+    assert estimate["duration_configured"] is True
+    assert estimate["duration_mode"] == "epochs"
+    assert estimate["total_steps"] == 30
+
+
+def test_imported_config_can_move_to_rokkotsu_group(tmp_path: Path, monkeypatch):
+    configs, _dataset_path = _write_minimal_config_tree(tmp_path)
+    _patch_config_service_paths(monkeypatch, tmp_path)
+    train_file = configs / "imported" / "copy.toml"
+    train_file.write_text('output_name = "copy"\n', encoding="utf-8")
+    (configs / "web-file-groups.toml").write_text(
+        "\n".join(
+            [
+                "[[groups]]",
+                'id = "rokkotsu_goddess"',
+                'label = "肋骨女神配置"',
+                "open = true",
+                "locked = false",
+                "trainable = true",
+                'methods_subdir = "imported"',
+                "",
+                "[[groups]]",
+                'id = "imported"',
+                'label = "导入配置"',
+                "open = true",
+                "locked = false",
+                "trainable = true",
+                'methods_subdir = "imported"',
+                'patterns = ["configs/imported/*.toml"]',
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    ok, msg, group = config_service.move_config_file_to_group(
+        "configs/imported/copy.toml",
+        "rokkotsu_goddess",
+    )
+
+    assert ok is True, msg
+    assert group is not None
+    assert group["id"] == "rokkotsu_goddess"
+    assert [item["path"] for item in group["files"]] == ["configs/imported/copy.toml"]
+
+
 def test_dataset_preset_writes_independent_dataset_settings_per_path(tmp_path: Path, monkeypatch):
     _write_minimal_config_tree(tmp_path)
     _patch_config_service_paths(monkeypatch, tmp_path)
@@ -439,6 +546,25 @@ def _write_minimal_config_tree(root: Path) -> tuple[Path, Path]:
     )
     dataset_path = configs / "datasets" / "lora.toml"
     return configs, dataset_path
+
+
+def _write_step_estimate_dataset(root: Path, dataset_path: Path) -> None:
+    image_dir = root / "post_image_dataset" / "a_resized"
+    image_dir.mkdir(parents=True)
+    for idx in range(3):
+        Image.new("RGB", (8, 8), color=(idx, 20, 40)).save(image_dir / f"{idx}.png")
+    dataset_path.write_text(
+        "\n".join(
+            [
+                "[[datasets]]",
+                "",
+                "[[datasets.subsets]]",
+                'image_dir = "post_image_dataset/a_resized"',
+                "num_repeats = 5",
+            ]
+        ),
+        encoding="utf-8",
+    )
 
 
 def _patch_config_service_paths(monkeypatch, root: Path) -> None:

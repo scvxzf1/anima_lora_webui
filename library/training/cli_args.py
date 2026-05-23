@@ -380,8 +380,8 @@ def add_training_arguments(parser: argparse.ArgumentParser, support_dreambooth: 
     parser.add_argument(
         "--max_train_steps",
         type=int,
-        default=1600,
-        help="training steps",
+        default=0,
+        help="training steps (0 disables step-based capping; max_train_epochs wins when set)",
     )
     parser.add_argument(
         "--max_train_epochs",
