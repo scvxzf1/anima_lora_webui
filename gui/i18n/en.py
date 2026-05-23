@@ -121,6 +121,16 @@ STRINGS: dict[str, str] = {
         "Preprocess first.\n\n"
         "Proceed with the existing cache?"
     ),
+    "stale_cache_title": "Stale dataset cache",
+    "stale_cache_body": (
+        "{n} VAE latent cache(s) under:\n  {cache_dir}\n\n"
+        "are at resolutions no longer in the current bucket table "
+        "(the 4032 / 4200 token-count families):\n\n{examples}\n\n"
+        "These were cached under an older bucket layout — training will skip "
+        "or mis-bucket them. Cancel and re-run Preprocess (with Overwrite) to "
+        "regenerate the cache.\n\n"
+        "Train anyway with the stale caches?"
+    ),
     "train_autopreprocess_log": (
         "No preprocessed cache found — running preprocess first, "
         "then training automatically.\n"
