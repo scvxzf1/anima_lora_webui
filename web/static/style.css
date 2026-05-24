@@ -3396,6 +3396,14 @@ input[type="checkbox"].field-input {
     overflow: auto;
     overflow-wrap: anywhere;
 }
+.preview-detail-block p.preview-detail-preformatted {
+    padding: 0.45rem;
+    border: 1px solid var(--border-soft);
+    border-radius: 4px;
+    background: var(--bg-input);
+    font-family: monospace;
+    white-space: pre-wrap;
+}
 
 .history-task-dialog {
     position: fixed;

@@ -890,6 +890,9 @@ def test_dataset_preset_image_preview_reads_training_images_and_captions(tmp_pat
     assert listing["ok"] is True
     assert listing["total"] == 1
     assert listing["images"][0]["name"] == "hero.png"
+    assert listing["images"][0]["width"] == 8
+    assert listing["images"][0]["height"] == 6
+    assert listing["images"][0]["total_pixels"] == 48
     assert listing["images"][0]["caption"]["ok"] is True
     assert listing["images"][0]["caption"]["text"] == "1girl, blue eyes"
     assert "dataset_index=0" in listing["images"][0]["url"]

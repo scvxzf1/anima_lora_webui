@@ -12,6 +12,7 @@ from urllib.parse import quote
 
 import toml
 import tomlkit
+from PIL import Image, UnidentifiedImageError
 
 from library.env import expand_env_vars, expand_env_vars_in_obj, load_dotenv
 from web.services.settings_service import display_path as _display_settings_path
@@ -1203,6 +1204,7 @@ def _dataset_image_preview_meta(
 ) -> dict[str, Any]:
     stat = path.stat()
     caption = _dataset_caption_meta(path, caption_extension, source_dir, train_dir)
+    dimensions = _dataset_image_dimensions(path)
     rel_path = _display_path(path)
     url = (
         "/api/config/dataset-presets/image"
@@ -1218,7 +1220,23 @@ def _dataset_image_preview_meta(
         "mtime": stat.st_mtime,
         "mtime_text": datetime.fromtimestamp(stat.st_mtime).strftime("%Y-%m-%d %H:%M:%S"),
         "size_bytes": stat.st_size,
+        "width": dimensions.get("width"),
+        "height": dimensions.get("height"),
+        "total_pixels": dimensions.get("total_pixels"),
         "caption": caption,
+    }
+
+
+def _dataset_image_dimensions(path: Path) -> dict[str, int]:
+    try:
+        with Image.open(path) as image:
+            width, height = image.size
+    except (OSError, UnidentifiedImageError):
+        return {}
+    return {
+        "width": int(width),
+        "height": int(height),
+        "total_pixels": int(width) * int(height),
     }
 
 

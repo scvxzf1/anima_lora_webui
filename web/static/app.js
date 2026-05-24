@@ -4526,6 +4526,7 @@
     function datasetPreviewImageToPreviewImage(image) {
         return {
             ...image,
+            detailContext: 'dataset',
             sample: {},
             source_task: null,
         };
@@ -10093,6 +10094,10 @@
         const box = document.getElementById('preview-dialog-details');
         if (!box) return;
         box.innerHTML = '';
+        if (image.detailContext === 'dataset') {
+            renderDatasetImageDialogDetails(box, image, dims);
+            return;
+        }
         const sample = image.sample || {};
         const params = sample.parameters || {};
         const promptNo = sample.prompt_index != null ? Number(sample.prompt_index) + 1 : null;
@@ -10128,6 +10133,31 @@
         box.appendChild(createPreviewDetailBlock('文件路径', image.file || '-'));
     }
 
+    function renderDatasetImageDialogDetails(box, image, dims) {
+        const caption = image.caption || {};
+        const rows = [
+            ['文件时间', image.mtime_text || '-'],
+            ['尺寸', dims],
+            ['长', image.height ? `${image.height} px` : '-'],
+            ['宽', image.width ? `${image.width} px` : '-'],
+            ['总像素', formatTotalPixels(image.total_pixels)],
+            ['文件大小', formatBytes(image.size_bytes)],
+        ];
+        for (const [label, value] of rows) {
+            box.appendChild(createPreviewDetailRow(label, value));
+        }
+        box.appendChild(createPreviewDetailBlock('文件路径', image.file || '-'));
+        box.appendChild(createPreviewDetailBlock('标注文件', caption.file || '未找到同名标注文件'));
+        const captionText = caption.ok ? (caption.text || '(空标注)') : '未找到同名 caption 文件';
+        box.appendChild(createPreviewDetailBlock('标注内容', captionText, true));
+    }
+
+    function formatTotalPixels(totalPixels) {
+        const count = Number(totalPixels);
+        if (!Number.isFinite(count) || count <= 0) return '-';
+        return `${count.toLocaleString('zh-CN')} px (${(count / 1000000).toFixed(2)} MP)`;
+    }
+
     function createPreviewDetailRow(label, value) {
         const row = document.createElement('div');
         row.className = 'preview-detail-row';
@@ -10139,12 +10169,13 @@
         return row;
     }
 
-    function createPreviewDetailBlock(label, value) {
+    function createPreviewDetailBlock(label, value, preformatted = false) {
         const block = document.createElement('div');
         block.className = 'preview-detail-block';
         const key = document.createElement('span');
         key.textContent = label;
         const valEl = document.createElement('p');
+        if (preformatted) valEl.className = 'preview-detail-preformatted';
         valEl.textContent = value;
         block.append(key, valEl);
         return block;
