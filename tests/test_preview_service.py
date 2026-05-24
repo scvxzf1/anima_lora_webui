@@ -6,6 +6,7 @@ import os
 from PIL import Image
 import toml
 
+from web.routes import preview as preview_routes
 from web.services import preview_service, settings_service
 
 
@@ -514,3 +515,58 @@ def test_config_group_training_weights_merge_and_dedupe(tmp_path, monkeypatch):
     assert payload["task_count"] == 2
     assert {item["source_task"]["id"] for item in payload["weights"]} == {"task-a", "task-b"}
     assert all("source_task" in item for item in payload["weights"])
+
+
+def test_preview_route_config_group_prefers_history_group_key():
+    tasks = [
+        {
+            "id": "task-a",
+            "job": "training",
+            "methods_subdir": "imported",
+            "variant": "demo",
+            "preset": "default",
+            "history_group_key": "source:configs/imported/a.toml",
+        },
+        {
+            "id": "task-b",
+            "job": "training",
+            "methods_subdir": "imported",
+            "variant": "demo",
+            "preset": "default",
+            "history_group_key": "source:configs/imported/b.toml",
+        },
+    ]
+    request = _PreviewRequest(
+        {
+            "mode": "config_group",
+            "methods_subdir": "imported",
+            "variant": "demo",
+            "preset": "default",
+            "group_key": "source:configs/imported/a.toml",
+        },
+        _PreviewHistoryService(tasks),
+    )
+
+    selected = preview_routes._selected_config_group_tasks(request)
+
+    assert [task["id"] for task in selected] == ["task-a"]
+
+
+class _PreviewRequest:
+    def __init__(self, query: dict[str, str], service: object) -> None:
+        self.query = query
+        self.app = {"training_service": service}
+
+
+class _PreviewHistoryService:
+    def __init__(self, tasks: list[dict]) -> None:
+        self._tasks = tasks
+
+    def list_history_tasks(self) -> list[dict]:
+        return list(self._tasks)
+
+    def get_history_task(self, task_id: str) -> dict:
+        for task in self._tasks:
+            if task.get("id") == task_id:
+                return {"ok": True, "task": task}
+        raise FileNotFoundError(task_id)

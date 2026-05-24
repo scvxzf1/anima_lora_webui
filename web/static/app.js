@@ -8891,7 +8891,7 @@
             if (res.ok) {
                 const dialog = document.getElementById('preflight-dialog');
                 if (dialog?.open) dialog.close('training-started');
-                document.querySelector('[data-tab="training"]').click();
+                enterLiveTrainingForNewRun();
                 appendLog(`[状态] ${res.message || '任务已启动'}`);
             } else {
                 if (res.preflight) {
@@ -8906,6 +8906,13 @@
         } catch (e) {
             showPreflightRequestError('请求失败: ' + e.message);
         }
+    }
+
+    function enterLiveTrainingForNewRun() {
+        returnToLiveTraining({ refresh: false });
+        document.querySelector('[data-tab="training"]')?.click();
+        pollStatus();
+        replayTrainingLogs();
     }
 
     function showPreflightDialog(result, allowContinue, options = {}) {
@@ -9169,7 +9176,7 @@
             }
             const dialog = document.getElementById('preflight-dialog');
             if (dialog?.open) dialog.close('preprocess-started');
-            document.querySelector('[data-tab="training"]').click();
+            enterLiveTrainingForNewRun();
             appendLog(`[状态] ${res.message || '预处理已启动'}`);
         } catch (e) {
             showPreflightRequestError('预处理请求失败: ' + e.message);
@@ -9789,6 +9796,9 @@
                 params.set('methods_subdir', selectedPreviewGroup.methods_subdir);
                 params.set('variant', selectedPreviewGroup.variant);
                 params.set('preset', selectedPreviewGroup.preset || 'default');
+                if (selectedPreviewGroup.history_group_key) {
+                    params.set('group_key', selectedPreviewGroup.history_group_key);
+                }
                 params.set('include_archived', showArchivedHistory ? '1' : '0');
             } else if (currentPreviewSource === 'training' && selectedPreviewTaskId) {
                 params.set('task_id', selectedPreviewTaskId);
@@ -9833,6 +9843,9 @@
                 params.set('methods_subdir', selectedPreviewGroup.methods_subdir);
                 params.set('variant', selectedPreviewGroup.variant);
                 params.set('preset', selectedPreviewGroup.preset || 'default');
+                if (selectedPreviewGroup.history_group_key) {
+                    params.set('group_key', selectedPreviewGroup.history_group_key);
+                }
                 params.set('include_archived', showArchivedHistory ? '1' : '0');
             } else if (selectedPreviewTaskId) {
                 params.set('task_id', selectedPreviewTaskId);
@@ -9943,6 +9956,9 @@
             group.methods_subdir || '',
             group.variant || '',
             group.preset || 'default',
+            group.history_group_key || '',
+            group.history_group_label || '',
+            group.history_source_config_file || '',
         ].map((value) => encodeURIComponent(value)).join('|');
         return `group:${payload}`;
     }
@@ -9955,7 +9971,10 @@
             methods_subdir: parts[0],
             variant: parts[1],
             preset: parts[2] || 'default',
-            label: `${parts[0]} / ${parts[1]} / ${parts[2] || 'default'}`,
+            history_group_key: parts[3] || '',
+            history_group_label: parts[4] || '',
+            history_source_config_file: parts[5] || '',
+            label: parts[4] || parts[5] || `${parts[0]} / ${parts[1]} / ${parts[2] || 'default'}`,
         };
     }
 
@@ -10294,9 +10313,13 @@
         const cfg = payload.sample_config || trainingSampleState || trainingRuntime.sampleConfig || {};
         const msg = cfg.message || '';
         if (!msg || base.includes(msg)) return base;
-        if (cfg.enabled) return `${base} 如果训练刚开始，可能还没到达采样频率。`;
+        if (cfg.enabled) {
+            const samplingDelayHint = '如果训练刚开始，可能还没到达采样频率。';
+            return base.includes(samplingDelayHint) ? base : `${base} ${samplingDelayHint}`;
+        }
         if (payload.preview_settings?.effective_training_source === 'latest_run') {
-            return `${base} 最新运行目录里还没有可显示的样张。`;
+            const latestRunHint = '最新运行目录里还没有可显示的样张。';
+            return base.includes(latestRunHint) ? base : `${base} ${latestRunHint}`;
         }
         return `${base} ${msg}。`;
     }

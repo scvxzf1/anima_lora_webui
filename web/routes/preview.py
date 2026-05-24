@@ -183,18 +183,20 @@ def _selected_history_task(request: web.Request) -> dict:
 
 
 def _selected_config_group_tasks(request: web.Request) -> list[dict]:
+    group_key = str(request.query.get("group_key") or "").strip()
     methods_subdir = str(request.query.get("methods_subdir") or "").strip()
     variant = str(request.query.get("variant") or "").strip()
     preset = str(request.query.get("preset") or "default").strip() or "default"
     include_archived = str(request.query.get("include_archived") or "0").lower() in {"1", "true", "yes"}
-    if not methods_subdir or not variant:
-        raise ValueError("缺少 methods_subdir 或 variant")
+    if not group_key and (not methods_subdir or not variant):
+        raise ValueError("缺少 group_key 或 methods_subdir/variant")
 
     svc = request.app.get("training_service")
     if not svc:
         raise ValueError("训练服务未初始化")
 
     group = {
+        "history_group_key": group_key,
         "methods_subdir": methods_subdir,
         "variant": variant,
         "preset": preset,
@@ -224,6 +226,9 @@ def _selected_config_group_tasks(request: web.Request) -> list[dict]:
 
 
 def _task_config_group_matches(task: dict, group: dict[str, str]) -> bool:
+    group_key = str(group.get("history_group_key") or "").strip()
+    if group_key:
+        return str(task.get("history_group_key") or "").strip() == group_key
     return (
         str(task.get("methods_subdir") or "").strip() == group["methods_subdir"]
         and str(task.get("variant") or "").strip() == group["variant"]
