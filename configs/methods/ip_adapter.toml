@@ -53,7 +53,7 @@ network_args = [
     # in bench/ip_adapter/analysis.md — gives the resampler the per-image
     # delta directly instead of forcing it to learn discrimination on top of
     # a strong shared-aesthetic background. Build the sidecar once via
-    # `python preprocess/cache_pe_encoder.py --centroid_only`. Comment out to disable (buffer
+    # `python scripts/preprocess/cache_pe_encoder.py --centroid_only`. Comment out to disable (buffer
     # stays zero ⇒ no-op; equivalent to the pre-centroid behavior).
     
     # "ip_centroid_path=post_image_dataset/ip_adapter/anima_pe_centroid_pe.safetensors",
@@ -129,4 +129,3 @@ gradient_accumulation_steps = 2
 # the GPU alongside the DiT. blocks_to_swap=12 leaves headroom for the live
 # PE forward without disturbing the DiT-side memory budget.
 blocks_to_swap = 0
-# compile_mode = "full"

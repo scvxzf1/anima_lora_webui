@@ -143,17 +143,17 @@ def populate_schema(
         (
             "source_image_dir",
             "image_dataset",
-            "Where raw images and .txt captions live. Read by preprocess/resize_images.py and preprocess/cache_text_embeddings.py.",
+            "Where raw images and .txt captions live. Read by scripts/preprocess/resize_images.py and scripts/preprocess/cache_text_embeddings.py.",
         ),
         (
             "resized_image_dir",
             "post_image_dataset/resized",
-            "Where preprocess/resize_images.py writes VAE-aligned PNGs. Also resolved into the dataset subset's image_dir at training time.",
+            "Where scripts/preprocess/resize_images.py writes VAE-aligned PNGs. Also resolved into the dataset subset's image_dir at training time.",
         ),
         (
             "lora_cache_dir",
             "post_image_dataset/lora",
-            "Where preprocess/cache_latents.py and cache_text_embeddings.py write VAE/TE caches. Also resolved into the dataset subset's cache_dir.",
+            "Where scripts/preprocess/cache_latents.py and cache_text_embeddings.py write VAE/TE caches. Also resolved into the dataset subset's cache_dir.",
         ),
     ):
         CONFIG_SCHEMA.setdefault(
@@ -168,7 +168,7 @@ def populate_schema(
         )
 
     # Preprocess input filter — consumed by scripts/tasks/preprocess.py (forwarded
-    # to preprocess/resize_images.py and preprocess/cache_text_embeddings.py as
+    # to scripts/preprocess/resize_images.py and scripts/preprocess/cache_text_embeddings.py as
     # ``--min_pixels``). Not an argparse arg on train.py — preprocess reads it
     # straight from the merged config chain via load_path_overrides().
     CONFIG_SCHEMA.setdefault(
@@ -194,28 +194,8 @@ def populate_schema(
             help=(
                 "Pixel-count threshold for ``drop_lowres_images`` "
                 "(default 500_000 = 0.5MP). Forwarded to "
-                "preprocess/resize_images.py + cache_text_embeddings.py as "
+                "scripts/preprocess/resize_images.py + cache_text_embeddings.py as "
                 "``--min_pixels``. Ignored when ``drop_lowres_images=false``."
-            ),
-            source="manual",
-        ),
-    )
-
-    # `--no_static_pad` is a store_false flag whose value lives on dest
-    # `static_pad`, so the auto-walk only registers the option-string key
-    # `no_static_pad`. base.toml sets the value via the dest (`static_pad =
-    # false`, the native-shape default), so register that name too.
-    CONFIG_SCHEMA.setdefault(
-        "static_pad",
-        ConfigKey(
-            name="static_pad",
-            type="bool",
-            default=True,
-            help=(
-                "Zero-pad every bucket to static_token_count (one compiled graph "
-                "but leaks padding into flash self-attention). False = native "
-                "shapes (--no_static_pad): one graph per distinct bucket token-"
-                "count, no leak. Required by the 4200-token bucket family."
             ),
             source="manual",
         ),

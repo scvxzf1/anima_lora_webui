@@ -439,8 +439,7 @@ class CheckpointSaver:
         already set or no checkpoint exists.
 
         When ``network`` is provided, require the resumable checkpoint's
-        ``model.safetensors`` keys to be compatible with the network before
-        resuming.
+        ``model.safetensors`` keys to be compatible before resuming.
         """
         args = self.args
         if not getattr(args, "checkpointing_epochs", None) or args.resume:

@@ -38,6 +38,7 @@ from library.datasets.minimal import (
     debug_dataset,
 )
 from library.datasets.collator import collator_class
+from library.datasets.cache import BucketBatchSampler, CachedDataset
 from library.training.loss_recorder import LossRecorder
 
 __all__ = [
@@ -74,5 +75,8 @@ __all__ = [
     "load_arbitrary_dataset",
     "debug_dataset",
     "collator_class",
+    # cache (general train-cache reader)
+    "BucketBatchSampler",
+    "CachedDataset",
     "LossRecorder",
 ]

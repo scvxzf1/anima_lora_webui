@@ -123,6 +123,11 @@ def load_anima_model(
     """
     Load Anima model from the specified checkpoint.
 
+    This is the explicit-argument primitive. For the inference CLI path, see
+    ``library.inference.models.load_dit_model`` — a thin Namespace adapter that
+    reads these arguments off an argparse ``args`` and additionally handles
+    LoRA attach / merge, P-GRAFT hooks, and torch.compile.
+
     Args:
         device (Union[str, torch.device]): Device for optimization or merging
         dit_path (str): Path to the DiT model checkpoint.

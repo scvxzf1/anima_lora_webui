@@ -38,7 +38,7 @@ logger = logging.getLogger(__name__)
 # Sentinel users can drop into captions that lack a real artist tag, so the
 # shuffle/drop boundary keeps working. Stripped from caption variants before
 # they reach the tokenizer (see _generate_caption_variants in
-# preprocess/cache_text_embeddings.py). Callers of anima_smart_shuffle_caption
+# scripts/preprocess/cache_text_embeddings.py). Callers of anima_smart_shuffle_caption
 # that feed the result to a tokenizer must strip it themselves — kept inside
 # the shuffle so the boundary index stays consistent with the input.
 NO_ARTIST_SENTINEL = "@no-artist"
@@ -359,24 +359,6 @@ def add_anima_training_arguments(parser: argparse.ArgumentParser):
         help="Attention implementation to use. Default is None (torch). sageattn does not support training (inference only). This option overrides --xformers or --sdpa."
         "",
     )
-    parser.add_argument(
-        "--static_token_count",
-        type=int,
-        default=None,
-        help="Pad all forward passes to this many visual tokens (e.g. 4096). "
-        "Enables constant-shape buckets and eliminates torch.compile recompilation.",
-    )
-    parser.add_argument(
-        "--no_static_pad",
-        action="store_false",
-        dest="static_pad",
-        help="With --static_token_count set, run each bucket at its native token "
-        "count instead of zero-padding to the target. Removes the flash static-pad "
-        "leak (bench/static_padding) at the cost of one block recompile per distinct "
-        "bucket token-count (2 with the shipped 4032/4200 buckets). This is the "
-        "base.toml default. Incompatible with --compile_mode full.",
-    )
-    parser.set_defaults(static_pad=True)
     parser.add_argument(
         "--attn_softmax_scale",
         type=float,

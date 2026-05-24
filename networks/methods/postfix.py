@@ -525,9 +525,9 @@ class PostfixNetwork(AdapterNetworkBase):
         """torch.compile the cond+ortho hot path inside `append_postfix`.
 
         Targets `_compute_ortho_cond_postfix`, which is shape-static once K,
-        embed_dim, and B are fixed by bucketing (`dynamic=False` is safe — same
-        justification as `AnimaDiT.compile_core`). Fuses the cond_mlp + Cayley
-        + matmul + cast sequence (~15 small kernels → 1 graph at B=1), removing
+        embed_dim, and B are fixed by bucketing (`dynamic=False` is safe for
+        this isolated hot path). Fuses the cond_mlp + Cayley + matmul + cast
+        sequence (~15 small kernels → 1 graph at B=1), removing
         the per-step launch overhead from this eager-Python region.
 
         No-op outside cond mode — plain postfix is a single broadcast.

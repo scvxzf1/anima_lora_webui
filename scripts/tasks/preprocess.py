@@ -272,7 +272,7 @@ def _run_preprocess_resize(row: dict[str, Any], extra: list[str]) -> None:
     run(
         [
             PY,
-            "preprocess/resize_images.py",
+            "scripts/preprocess/resize_images.py",
             "--src",
             src,
             "--dst",
@@ -290,7 +290,7 @@ def _run_preprocess_vae(row: dict[str, Any], extra: list[str]) -> None:
     run(
         [
             PY,
-            "preprocess/cache_latents.py",
+            "scripts/preprocess/cache_latents.py",
             "--dir",
             str(row.get("resized_image_dir") or _path("resized_image_dir", "post_image_dataset/resized")),
             "--cache_dir",
@@ -330,7 +330,7 @@ def _run_preprocess_te(
     run(
         [
             PY,
-            "preprocess/cache_text_embeddings.py",
+            "scripts/preprocess/cache_text_embeddings.py",
             "--dir",
             str(row.get("source_image_dir") or _path("source_image_dir", "image_dataset")),
             "--cache_dir",
@@ -375,7 +375,7 @@ def cmd_preprocess_pooled(extra):
         run(
             [
                 PY,
-                "preprocess/cache_pooled_text.py",
+                "scripts/preprocess/cache_pooled_text.py",
                 "--dir",
                 str(row.get("lora_cache_dir") or _path("lora_cache_dir", "post_image_dataset/lora")),
                 *extra,
@@ -398,7 +398,7 @@ def cmd_preprocess_pe(extra):
         run(
             [
                 PY,
-                "preprocess/cache_pe_encoder.py",
+                "scripts/preprocess/cache_pe_encoder.py",
                 "--dir",
                 str(row.get("resized_image_dir") or _path("resized_image_dir", "post_image_dataset/resized")),
                 "--cache_dir",
@@ -416,7 +416,7 @@ def cmd_caption_index(extra):
     run(
         [
             PY,
-            "preprocess/build_caption_index.py",
+            "scripts/preprocess/build_caption_index.py",
             "--src",
             _path("source_image_dir", "image_dataset"),
             *extra,
@@ -439,8 +439,6 @@ def cmd_preprocess(extra):
 def cmd_preprocess_config(extra):
     """Preprocess the exact directories named in a ``--dataset_config`` TOML."""
     import time
-
-    import toml
 
     args = list(extra)
     cfg_path: str | None = None
@@ -478,7 +476,7 @@ def cmd_preprocess_config(extra):
     last_err: OSError | None = None
     for attempt in range(10):
         try:
-            cfg = toml.load(cfg_path)
+            cfg = _load_toml_file(Path(cfg_path))
             break
         except PermissionError as e:
             last_err = e
@@ -504,7 +502,7 @@ def cmd_preprocess_config(extra):
         run(
             [
                 PY,
-                "preprocess/resize_images.py",
+                "scripts/preprocess/resize_images.py",
                 "--src",
                 src_dir,
                 "--dst",
@@ -521,7 +519,7 @@ def cmd_preprocess_config(extra):
         run(
             [
                 PY,
-                "preprocess/cache_latents.py",
+                "scripts/preprocess/cache_latents.py",
                 "--dir",
                 image_dir,
                 "--cache_dir",
@@ -538,7 +536,7 @@ def cmd_preprocess_config(extra):
         run(
             [
                 PY,
-                "preprocess/cache_text_embeddings.py",
+                "scripts/preprocess/cache_text_embeddings.py",
                 "--dir",
                 src_dir,
                 "--cache_dir",

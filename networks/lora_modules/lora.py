@@ -278,13 +278,7 @@ def defuse_standard_qkv(state_dict: Dict[str, torch.Tensor]) -> None:
 
 
 def defuse_lokr_qkv(state_dict: Dict[str, torch.Tensor]) -> None:
-    """Split runtime-fused LoKr ``…_qkv_proj`` / ``…_kv_proj`` keys.
-
-    LoKr stores ``lokr_w1`` shared across the fused projection and ``lokr_w2``
-    with output rows concatenated per q/k/v component. Save-side splitting
-    clones ``w1`` and chunks ``w2`` along the output axis, matching the
-    LyCORIS/ComfyUI key layout.
-    """
+    """Split runtime-fused LoKr keys into LyCORIS-compatible q/k/v slices."""
     fused_groups: List[tuple] = []
     for key in list(state_dict.keys()):
         if not key.endswith(".lokr_w1"):
@@ -295,15 +289,12 @@ def defuse_lokr_qkv(state_dict: Dict[str, torch.Tensor]) -> None:
             fused_groups.append((prefix, spec))
 
     for prefix, spec in fused_groups:
-        suffixes = spec.component_letters
-        n = len(suffixes)
         w1 = state_dict.pop(f"{prefix}.lokr_w1")
         w2 = state_dict.pop(f"{prefix}.lokr_w2")
         alpha = state_dict.pop(f"{prefix}.alpha", None)
-        w2_chunks = w2.chunk(n, dim=0)
-
+        w2_chunks = w2.chunk(len(spec.component_letters), dim=0)
         base_prefix = prefix.removesuffix(spec.fused_frag)
-        for letter, w2_chunk in zip(suffixes, w2_chunks):
+        for letter, w2_chunk in zip(spec.component_letters, w2_chunks):
             new_prefix = base_prefix + spec.component_frag(letter)
             state_dict[f"{new_prefix}.lokr_w1"] = w1.clone()
             state_dict[f"{new_prefix}.lokr_w2"] = w2_chunk
@@ -312,7 +303,7 @@ def defuse_lokr_qkv(state_dict: Dict[str, torch.Tensor]) -> None:
 
 
 def rename_dora_scale(state_dict: Dict[str, torch.Tensor]) -> None:
-    """Convert runtime DoRA buffers to the common ``.dora_scale`` layout."""
+    """Convert legacy runtime DoRA buffers to the export ``.dora_scale`` layout."""
     for key in list(state_dict.keys()):
         if key.endswith("._org_weight_norm"):
             state_dict.pop(key, None)
@@ -363,7 +354,7 @@ def bake_inv_scale(state_dict: Dict[str, torch.Tensor]) -> None:
 def defuse_and_bake_standard(
     state_dict: Dict[str, torch.Tensor],
 ) -> None:
-    """Standard write pipeline: qkv defuse + inv_scale / DoRA / LoKr cleanup."""
+    """Standard write pipeline: fused-key conversion plus inv_scale bake."""
     defuse_standard_qkv(state_dict)
     defuse_lokr_qkv(state_dict)
     rename_dora_scale(state_dict)

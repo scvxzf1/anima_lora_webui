@@ -135,7 +135,7 @@ def create_network(
     raw_gate_lr = kwargs.get("gate_lr", None)
     gate_lr = float(raw_gate_lr) if raw_gate_lr is not None else None
     # Optional precomputed PE centroid sidecar (produced by
-    # `preprocess/cache_pe_encoder.py --centroid_only`). Subtracted from every
+    # `scripts/preprocess/cache_pe_encoder.py --centroid_only`). Subtracted from every
     # token before the resampler — see IPAdapterNetwork.__init__ comment on
     # ip_centroid.
     ip_centroid_path = kwargs.get("ip_centroid_path", None) or None
@@ -547,7 +547,7 @@ class IPAdapterNetwork(AdapterNetworkBase):
 
         Sidecar layout: a safetensors file with a single ``"centroid"`` tensor
         of shape ``[encoder_dim]`` (fp32 on disk; cast to the buffer's dtype
-        on load). Produced by ``preprocess/cache_pe_encoder.py --centroid_only``.
+        on load). Produced by ``scripts/preprocess/cache_pe_encoder.py --centroid_only``.
         """
         from safetensors.torch import load_file
 

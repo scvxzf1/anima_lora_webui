@@ -39,5 +39,4 @@ use_shuffled_caption_variants = true
 cache_llm_adapter_outputs = true
 blocks_to_swap = 0
 
-compile_mode="full"
 compile_inductor_mode = "reduce-overhead"

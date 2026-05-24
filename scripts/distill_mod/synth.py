@@ -5,7 +5,7 @@ sibling latent NPZ's resolution, runs the frozen teacher (base DiT,
 ``skip_pooled_text_proj=True``) from fresh noise through full CFG denoising
 (positive = cached crossattn_emb v0, negative = T5("") from the Phase 1
 sidecar), saves the resulting clean latent under ``--synth_dir`` using the
-same NPZ layout as ``preprocess/cache_latents.py``. The trainer can then point
+same NPZ layout as ``scripts/preprocess/cache_latents.py``. The trainer can then point
 at ``--synth_dir`` instead of (or alongside) the real-image cache to fit on
 the teacher's own manifold, removing the real-vs-teacher distribution gap
 that inflates the irreducible MSE floor.
@@ -228,18 +228,14 @@ def generate_synthetic_latents(
         model.move_to_device_except_swap_blocks(device)
     else:
         model.to(device)
-    # Native-shape buckets: each sample is denoised at its real latent token
-    # count (no static padding → no flash pad-leak baked into the teacher
-    # latents). The value here is just a non-None sentinel enabling the mode;
-    # every forward reshapes to its own seq_len.
-    model.set_static_token_count(4096, pad=False)
     model.eval()
 
-    # Native-shape per-block compile: traces one block graph per distinct latent
-    # token count in `pairs`. Raise the dynamo cache so every distinct shape
-    # traces instead of falling back to eager mid-warmup. (compile_core, the old
-    # single-CUDAGraph path, required static padding and is gone — see
-    # docs/static-pad migration.)
+    # compile_blocks turns on native-shape flattening (each sample denoised at
+    # its real latent token count, no padding → no flash pad-leak baked into the
+    # teacher latents) and traces one block graph per distinct token count in
+    # `pairs`. The pool spans more than the 2 CONSTANT_TOKEN_BUCKETS families, so
+    # pre-raise the dynamo cache (compile_blocks' max() won't lower it) to trace
+    # every distinct shape instead of falling back to eager mid-warmup.
     if do_compile and blocks_to_swap == 0:
         import torch._dynamo as _dynamo
 

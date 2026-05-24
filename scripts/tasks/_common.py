@@ -19,6 +19,17 @@ from pathlib import Path
 
 from library.runtime.launch import accelerate_training_command_prefix
 
+try:
+    import tomllib
+except ModuleNotFoundError:  # pragma: no cover - Python < 3.11 fallback
+    tomllib = None
+    try:
+        import toml as _toml  # type: ignore[no-redef]
+    except ModuleNotFoundError:  # pragma: no cover
+        _toml = None
+else:
+    _toml = None
+
 ROOT = Path(__file__).resolve().parents[2]
 
 
@@ -51,6 +62,56 @@ _PATH_OVERRIDES_CACHE: dict | None = None
 _PATH_OVERRIDES_CACHE_KEY: tuple[str, str, str, str] | None = None
 
 
+def _load_toml_file(path: Path) -> dict:
+    if tomllib is not None:
+        with path.open("rb") as f:
+            return tomllib.load(f)
+    if _toml is not None:
+        return _toml.loads(path.read_text(encoding="utf-8"))
+    raise ModuleNotFoundError("No TOML parser available; install toml or use Python >= 3.11")
+
+
+def _flat_config_scalars(data: dict) -> dict:
+    return {
+        key: value
+        for key, value in data.items()
+        if key not in {"general", "datasets", "variant"}
+        and not isinstance(value, (dict, list))
+    }
+
+
+def _fallback_preset_section(preset: str) -> dict:
+    presets_path = ROOT / "configs" / "presets.toml"
+    if presets_path.exists():
+        presets = _load_toml_file(presets_path)
+        section = presets.get(preset)
+        if isinstance(section, dict):
+            return dict(section)
+    custom_path = ROOT / "configs" / "custom" / f"{preset}.toml"
+    if custom_path.exists():
+        data = _load_toml_file(custom_path)
+        if isinstance(data, dict):
+            return data
+    raise KeyError(preset)
+
+
+def _fallback_path_overrides(cache_key: tuple[str, str, str, str]) -> dict:
+    _runtime_config, preset, method, methods_subdir = cache_key
+    overrides: dict = {}
+    base_path = ROOT / "configs" / "base.toml"
+    if base_path.exists():
+        overrides.update(_flat_config_scalars(_load_toml_file(base_path)))
+    try:
+        overrides.update(_flat_config_scalars(_fallback_preset_section(preset)))
+    except (FileNotFoundError, KeyError, ModuleNotFoundError):
+        pass
+    if method:
+        method_path = ROOT / "configs" / methods_subdir / f"{method}.toml"
+        if method_path.exists():
+            overrides.update(_flat_config_scalars(_load_toml_file(method_path)))
+    return overrides
+
+
 def _path_overrides() -> dict:
     """Top-level path scalars from runtime config or base.toml → preset → method file.
 
@@ -78,9 +139,7 @@ def _path_overrides() -> dict:
             runtime_path = (ROOT / runtime_path).resolve()
         try:
             if runtime_path.exists():
-                import toml
-
-                data = toml.loads(runtime_path.read_text(encoding="utf-8"))
+                data = _load_toml_file(runtime_path)
                 overrides = {
                     k: v
                     for k, v in data.items()
@@ -102,8 +161,11 @@ def _path_overrides() -> dict:
             methods_subdir=os.environ.get("METHODS_SUBDIR") or "methods",
         )
     except Exception as e:  # noqa: BLE001 — fall back silently to defaults
-        print(f"warn: could not read base.toml path overrides: {e}", file=sys.stderr)
-        overrides = {}
+        try:
+            overrides = _fallback_path_overrides(cache_key)
+        except Exception:  # noqa: BLE001
+            print(f"warn: could not read base.toml path overrides: {e}", file=sys.stderr)
+            overrides = {}
     _PATH_OVERRIDES_CACHE = overrides
     _PATH_OVERRIDES_CACHE_KEY = cache_key
     return overrides
@@ -134,17 +196,20 @@ def bespoke_preset_flags(preset: str) -> list[str]:
     try:
         from library.config.io import load_preset_section
     except Exception as e:  # noqa: BLE001
-        print(f"warn: could not import preset loader: {e}", file=sys.stderr)
-        return ["--no_grad_ckpt"]
-
-    try:
-        section = load_preset_section(preset)
-    except (FileNotFoundError, KeyError) as e:
-        print(
-            f"warn: preset '{preset}' not found ({e}); using bespoke-loop defaults",
-            file=sys.stderr,
-        )
-        return ["--no_grad_ckpt"]
+        try:
+            section = _fallback_preset_section(preset)
+        except Exception:  # noqa: BLE001
+            print(f"warn: could not import preset loader: {e}", file=sys.stderr)
+            return ["--no_grad_ckpt"]
+    else:
+        try:
+            section = load_preset_section(preset)
+        except (FileNotFoundError, KeyError) as e:
+            print(
+                f"warn: preset '{preset}' not found ({e}); using bespoke-loop defaults",
+                file=sys.stderr,
+            )
+            return ["--no_grad_ckpt"]
 
     flags: list[str] = []
     if "blocks_to_swap" in section:

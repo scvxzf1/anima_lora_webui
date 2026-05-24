@@ -29,11 +29,7 @@ import logging
 import math
 import os
 import random
-import sys
-from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(ROOT))
 
 import torch  # noqa: E402
 import torch.nn as nn  # noqa: E402
@@ -75,7 +71,7 @@ def main():
         type=str,
         default=None,
         help=(
-            "Path to the T5(\"\") sidecar used as the student's unconditional "
+            'Path to the T5("") sidecar used as the student\'s unconditional '
             "cross-attention input. Defaults to "
             "``post_image_dataset/_anima_uncond_te.safetensors`` (staged by "
             "``make distill-prep``)."
@@ -365,23 +361,18 @@ def main():
     else:
         model.to(device)
 
-    # Native-shape buckets: every aspect bucket runs at its real token count
-    # (no static padding → no flash pad-leak into the distillation target). The
-    # value here is just a non-None sentinel enabling the mode; each forward
-    # reshapes to its own seq_len.
-    model.set_static_token_count(4096, pad=False)
-
-    # Compile individual block._forward for speedup. unsloth_checkpoint wraps
-    # Block.forward with @torch._disable_dynamo, so we compile _forward (the
-    # inner computation) not forward. Native mode traces one block graph per
-    # distinct latent token count; raise the dynamo cache so every distinct
-    # shape traces instead of falling back to eager mid-warmup.
+    # Compile individual block._forward for speedup. compile_blocks turns on
+    # native-shape flattening (every aspect bucket runs at its real token count,
+    # no padding → no flash pad-leak into the distillation target) and compiles
+    # _forward (the inner computation) not forward — unsloth_checkpoint wraps
+    # Block.forward with @torch._disable_dynamo. This pool's latents span more
+    # than the 2 CONSTANT_TOKEN_BUCKETS families, so pre-raise the dynamo cache
+    # (compile_blocks' max() won't lower it) to trace every distinct token count
+    # instead of falling back to eager mid-warmup.
     if args.torch_compile:
         import torch._dynamo as _dynamo
 
-        _dynamo.config.cache_size_limit = max(
-            _dynamo.config.cache_size_limit, 64
-        )
+        _dynamo.config.cache_size_limit = max(_dynamo.config.cache_size_limit, 64)
         model.compile_blocks(mode=args.compile_inductor_mode)
 
     # Gradient checkpointing with CPU offload: recompute block activations
@@ -542,7 +533,9 @@ def main():
         run_log_dir = os.path.join(args.log_dir, run_name)
         os.makedirs(run_log_dir, exist_ok=True)
         writer = SummaryWriter(log_dir=run_log_dir)
-        writer.add_text("config", "  \n".join(f"{k}: {v}" for k, v in vars(args).items()))
+        writer.add_text(
+            "config", "  \n".join(f"{k}: {v}" for k, v in vars(args).items())
+        )
         logger.info(f"TensorBoard logs -> {run_log_dir}")
 
     # --- Training loop ---
@@ -631,8 +624,7 @@ def main():
             cached_list = None
             if teacher_cache is not None:
                 cached_list = [
-                    teacher_cache.get(idx_list[i], sigma_idx_list[i])
-                    for i in range(B)
+                    teacher_cache.get(idx_list[i], sigma_idx_list[i]) for i in range(B)
                 ]
                 all_hit = all(c is not None for c in cached_list)
             else:
@@ -750,18 +742,14 @@ def main():
             sigma_str = ", ".join(
                 f"σ={s:.2f}:{v:.4e}" for s, v in per_sigma_mean.items()
             )
-            logger.info(
-                f"[val @ step {step + 1}] mean={overall_mean:.6f}  {sigma_str}"
-            )
+            logger.info(f"[val @ step {step + 1}] mean={overall_mean:.6f}  {sigma_str}")
             if writer is not None:
                 writer.add_scalar("val/loss", overall_mean, step + 1)
                 for s, v in per_sigma_mean.items():
                     writer.add_scalar(f"val/loss_sigma_{s:.2f}", v, step + 1)
                 if val_teacher_cache is not None:
                     vc_total = val_teacher_cache.hits + val_teacher_cache.misses
-                    vc_hit_rate = (
-                        val_teacher_cache.hits / vc_total if vc_total else 0.0
-                    )
+                    vc_hit_rate = val_teacher_cache.hits / vc_total if vc_total else 0.0
                     writer.add_scalar(
                         "val_teacher_cache/hit_rate", vc_hit_rate, step + 1
                     )
@@ -777,9 +765,9 @@ def main():
         if val_enabled:
             should_save = improved
         else:
-            should_save = (
-                (step + 1) % args.save_every == 0 or (step + 1) == args.iterations
-            )
+            should_save = (step + 1) % args.save_every == 0 or (
+                step + 1
+            ) == args.iterations
         if should_save:
             save_path = args.output_path
             state = {

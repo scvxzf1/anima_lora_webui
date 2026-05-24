@@ -140,7 +140,6 @@
         sample_sampler: 'ddim',
         use_lokr: false,
         lokr_factor: 8,
-        static_pad: false,
         max_data_loader_n_workers: 0,
         path_pattern: '*',
         drop_lowres_images: true,
@@ -158,7 +157,7 @@
         weight_decay: 0.0,
         dit_path: 'models/diffusion_models/anima-base-v1.0.safetensors',
         data_dir: 'post_image_dataset/lora',
-        iterations: 4000,
+        iterations: 2000,
         seed: 42,
         use_chimera_hydra: false,
         channel_scaling_alpha: 0.5,
@@ -170,15 +169,15 @@
         network_freq_router_lr_scale: 2.0,
         freq_router_init_std: 0.02,
         freq_router_layer_norm: true,
-        n_layers: 10,
-        n_t_buckets: 100,
+        n_layers: 14,
+        n_t_buckets: 14,
         init_std: 0.02,
-        splice_position: 'end_of_sequence',
-        contrastive_weight: 0.0,
+        splice_position: 'front_of_padding',
+        contrastive_weight: 0.05,
         contrastive_k: 1,
-        contrastive_every_n: 1,
-        contrastive_negative_mode: 'shuffled',
-        contrastive_objective: 'infonce',
+        contrastive_every_n: 3,
+        contrastive_negative_mode: 'hard',
+        contrastive_objective: 'agsm',
         agsm_gamma: 0.5,
         agsm_ema_decay: 0.99,
         contrastive_jaccard_alpha: 1.0,
@@ -223,6 +222,11 @@
     const CONFIG_FORM_INTERNAL_KEYS = new Set([
         'dataset_config_picker',
     ]);
+    const DEPRECATED_CONFIG_FORM_FIELDS = new Set([
+        'compile_mode',
+        'static_pad',
+        'static_token_count',
+    ]);
     const DATASET_EDITOR_COMPAT_FIELDS = new Set([
         'source_image_dir',
         'resized_image_dir',
@@ -260,15 +264,15 @@
         'validation_seed',
     ]);
     const NETWORK_ARG_FIELD_SPECS = [
-        { family: 'soft_tokens', key: 'n_layers', arg: 'n_layers', default: 10, valueType: 'integer' },
-        { family: 'soft_tokens', key: 'n_t_buckets', arg: 'n_t_buckets', default: 100, valueType: 'integer' },
+        { family: 'soft_tokens', key: 'n_layers', arg: 'n_layers', default: 14, valueType: 'integer' },
+        { family: 'soft_tokens', key: 'n_t_buckets', arg: 'n_t_buckets', default: 14, valueType: 'integer' },
         { family: 'soft_tokens', key: 'init_std', arg: 'init_std', default: 0.02, valueType: 'number' },
-        { family: 'soft_tokens', key: 'splice_position', arg: 'splice_position', default: 'end_of_sequence', valueType: 'string' },
-        { family: 'soft_tokens', key: 'contrastive_weight', arg: 'contrastive_weight', default: 0.0, valueType: 'number' },
+        { family: 'soft_tokens', key: 'splice_position', arg: 'splice_position', default: 'front_of_padding', valueType: 'string' },
+        { family: 'soft_tokens', key: 'contrastive_weight', arg: 'contrastive_weight', default: 0.05, valueType: 'number' },
         { family: 'soft_tokens', key: 'contrastive_k', arg: 'contrastive_k', default: 1, valueType: 'integer' },
-        { family: 'soft_tokens', key: 'contrastive_every_n', arg: 'contrastive_every_n', default: 1, valueType: 'integer' },
-        { family: 'soft_tokens', key: 'contrastive_negative_mode', arg: 'contrastive_negative_mode', default: 'shuffled', valueType: 'string' },
-        { family: 'soft_tokens', key: 'contrastive_objective', arg: 'contrastive_objective', default: 'infonce', valueType: 'string' },
+        { family: 'soft_tokens', key: 'contrastive_every_n', arg: 'contrastive_every_n', default: 3, valueType: 'integer' },
+        { family: 'soft_tokens', key: 'contrastive_negative_mode', arg: 'contrastive_negative_mode', default: 'hard', valueType: 'string' },
+        { family: 'soft_tokens', key: 'contrastive_objective', arg: 'contrastive_objective', default: 'agsm', valueType: 'string' },
         { family: 'soft_tokens', key: 'agsm_gamma', arg: 'agsm_gamma', default: 0.5, valueType: 'number' },
         { family: 'soft_tokens', key: 'agsm_ema_decay', arg: 'agsm_ema_decay', default: 0.99, valueType: 'number' },
         { family: 'soft_tokens', key: 'contrastive_jaccard_alpha', arg: 'contrastive_jaccard_alpha', default: 1.0, valueType: 'number' },
@@ -291,7 +295,7 @@
     ];
     const NETWORK_ARG_FIELD_MAP = new Map(NETWORK_ARG_FIELD_SPECS.map((spec) => [spec.key, spec]));
     const NETWORK_ARG_SPEC_BY_ARG = new Map(NETWORK_ARG_FIELD_SPECS.map((spec) => [spec.arg, spec]));
-    const SPD_UI_DEFAULT_FIELDS = new Set(['dit_path', 'data_dir', 'iterations', 'seed']);
+    const SPD_UI_DEFAULT_FIELDS = new Set(['dit_path', 'data_dir', 'iterations', 'seed', 'channel_scaling_alpha']);
     const CHIMERA_UI_DEFAULT_FIELDS = new Set([
         'use_chimera_hydra',
         'channel_scaling_alpha',
@@ -425,10 +429,7 @@
                 'mixed_precision',
                 'attn_mode',
                 'torch_compile',
-                'compile_mode',
                 'compile_inductor_mode',
-                'static_pad',
-                'static_token_count',
                 'max_data_loader_n_workers',
                 'trim_crossattn_kv',
                 'vae_chunk_size',
@@ -467,11 +468,13 @@
             description: 'SPD 使用 scripts/distill_spd.py 的专用流程；这里用于查看和编辑实验配置，不走 Web 普通训练按钮。',
             open: false,
             className: 'config-group-spd',
+            method: 'spd',
             keys: [
                 'dit_path',
                 'data_dir',
                 'iterations',
                 'seed',
+                'channel_scaling_alpha',
             ],
         },
         {
@@ -659,14 +662,6 @@
     }
 
     const EXTRA_FIELD_HELP_ZH = {
-        static_pad: help(
-            '控制训练批次是否强行补到固定 token 形状。',
-            '新版本默认 false，让每个分辨率桶使用更自然的 token 形状。切换这个值后，旧的缩放图和缓存可能不再适合，建议重新预处理。',
-            ['减少无效 padding 对注意力计算的影响，训练行为更贴近真实图像尺寸。'],
-            ['形状更灵活时，torch.compile 可能需要准备更多编译缓存。'],
-            ['和 full compile 等高级性能模式混用时更容易遇到兼容问题。'],
-            '新手保持 false；只有在复现旧配置或排查编译形状问题时再改。'
-        ),
         max_data_loader_n_workers: help(
             '训练时后台帮忙读取数据的进程数量。',
             '默认 0 表示不用额外进程，最适合 WebUI 和新手排错。数据集非常大、GPU 等数据明显等待时，才考虑调到 1-4。',
@@ -829,7 +824,7 @@
         ),
         channel_scaling_alpha: help(
             '按通道缩放的强度系数。',
-            '用于 Ortho/T-LoRA/Chimera 相关实验路径，影响通道级更新尺度。',
+            '用于 Chimera 与 SPD 等实验路径，影响 LoRA down projection 的通道级输入缩放。',
             ['可缓和部分通道过强更新。'],
             ['调参反馈不直观。'],
             ['过大或过小都可能破坏变体默认平衡。'],
@@ -905,7 +900,7 @@
             ['层数越多，软 token 影响范围越大。'],
             ['参数、显存和过拟合风险上升。'],
             ['超过模型层数会在启动时报错。'],
-            '默认 10；上游实验中也会尝试 6。'
+            '默认 14；小显存或快速对照时再下调。'
         ),
         n_t_buckets: help(
             'Soft Tokens 的时间桶数量。',
@@ -913,7 +908,7 @@
             ['更多桶能表达更细的时间步差异。'],
             ['数据不足时许多桶训练很少。'],
             ['桶太多会增加参数并拖慢收敛。'],
-            '小规模训练可用 14-20；默认 GUI 为 100。'
+            '默认 14；数据量更大时再提高桶数量。'
         ),
         init_std: help(
             'Soft Tokens 基础 token 初始化标准差。',
@@ -929,7 +924,7 @@
             ['可控制软 token 与文本 token 的相对位置。'],
             ['不同模式需要配合缓存/推理链路理解。'],
             ['切换会改变训练语义，不能和旧权重简单对照。'],
-            '默认 end_of_sequence；上游实验可用 front_of_padding。'
+            '默认 front_of_padding；需要复现旧实验时再改成 end_of_sequence。'
         ),
         contrastive_weight: help(
             'Soft Tokens 对比目标权重。',
@@ -937,7 +932,7 @@
             ['可能增强提示词区分能力。'],
             ['每次触发会增加额外 DiT forward，训练变慢。'],
             ['权重过高会压过 FM 主损失。'],
-            '默认 0；实验从 0.05 起。'
+            '默认 0.05；想关闭额外目标时设为 0。'
         ),
         contrastive_k: help(
             '每步使用的对比负样本数。',
@@ -953,7 +948,7 @@
             ['可以控制额外前向频率。'],
             ['有效对比强度约随 1/N 下降。'],
             ['如果想维持平均强度，需要同步调整 weight。'],
-            '默认 1；上游实验可用 3。'
+            '默认 3；需要更强对比信号时再降低。'
         ),
         contrastive_negative_mode: help(
             'Soft Tokens 负样本来源。',
@@ -961,7 +956,7 @@
             ['hard/jaccard 能提供更有针对性的区分信号。'],
             ['依赖 caption-index 质量。'],
             ['索引缺失或标签差时会退化或引入噪声。'],
-            '普通实验先用 shuffled；有索引时尝试 hard。'
+            '默认 hard；没有高质量 caption-index 时可退回 shuffled。'
         ),
         contrastive_objective: help(
             'Soft Tokens 对比目标函数。',
@@ -969,7 +964,7 @@
             ['AGSM 可能降低负样本无界发散。'],
             ['仍是实验路径，成本更高。'],
             ['目标函数切换后历史经验不可直接套用。'],
-            '默认 infonce；复现实验时可选 agsm。'
+            '默认 agsm；需要复现传统对比分类时再选 infonce。'
         ),
         agsm_gamma: help(
             'AGSM 目标偏移强度。',
@@ -1151,7 +1146,6 @@
         channel_scaling_alpha: '通道缩放 Alpha',
         checkpointing_epochs: '训练状态保存间隔',
         compile_inductor_mode: 'Inductor 编译模式',
-        compile_mode: '编译模式',
         cond_scale: 'EasyControl 条件强度',
         cond_token_count: 'EasyControl 条件 Token 数',
         content_router_init_std: '内容路由初始化标准差',
@@ -1268,8 +1262,6 @@
         source_image_dir: '源图像目录',
         specialize_experts_by_sigma_buckets: '按 Sigma 桶专门化专家',
         splice_position: 'Soft Tokens 拼接位置',
-        static_token_count: '固定 Token 数',
-        static_pad: '静态 Padding',
         timestep_sampling: '时间步采样',
         torch_compile: '启用 torch.compile',
         trim_crossattn_kv: '裁剪交叉注意力 KV',
@@ -1301,7 +1293,6 @@
     const FIELD_OPTIONS = {
         attn_mode: ['flash', 'flex'],
         compile_inductor_mode: ['default', 'reduce-overhead', 'max-autotune'],
-        compile_mode: ['blocks', 'full'],
         apply_ffn_lora: [true, false],
         contrastive_negative_mode: ['shuffled', 'jaccard', 'hard'],
         contrastive_objective: ['infonce', 'agsm'],
@@ -1316,7 +1307,6 @@
         encoder: ['pe'],
         freq_router_layer_norm: [true, false],
         pe_lora_enabled: [false, true],
-        static_pad: [false, true],
         splice_position: ['end_of_sequence', 'front_of_padding'],
         validation_baselines: [false, true],
         log_with: ['tensorboard'],
@@ -2199,19 +2189,11 @@
         ),
         torch_compile: help(
             "是否让 PyTorch 先编译模型计算图再训练。",
-            "开启后，第一次启动会花时间编译；编译完成后通常更快。遇到奇怪编译报错时可以关闭。",
+            "开启后会使用上游新的 native flatten + compile_blocks 路径。第一次启动会花时间编译；编译完成后通常更快。遇到 torch.compile/inductor 报错时可以关闭。",
             ["长时间训练时可能提高速度。"],
             ["首次启动更慢，还会在缓存目录写入编译缓存。"],
-            ["和动态形状、block swap、梯度检查点等组合可能不兼容。"],
+            ["block swap、梯度检查点和不同显卡驱动组合仍可能触发编译问题。"],
             "新手保持默认；如果报 torch.compile/inductor/triton 相关错误，再关闭排查。"
-        ),
-        compile_mode: help(
-            "torch.compile 的编译范围。",
-            "blocks 表示逐块编译；full 表示整模型大图编译。",
-            ["full 可能带来更强跨块优化。"],
-            ["full 对兼容性要求更高。"],
-            ["full 与 gradient checkpointing、block swap 通常不兼容。"],
-            "高显存和稳定环境用 full；低显存/排错用 blocks。"
         ),
         compile_inductor_mode: help(
             "Inductor 编译器优化模式。",
@@ -2252,14 +2234,6 @@
             ["依赖显卡和 PyTorch 支持。"],
             ["fp16 更容易数值不稳定；bf16 在旧卡上可能不可用。"],
             "新手优先用 bf16；启动时报不支持再换 fp16。"
-        ),
-        static_token_count: help(
-            "把所有 batch 固定到 4096 token。",
-            "配合本项目 bucket 设计保持默认。",
-            ["减少 torch.compile 因宽高比变化反复编译。"],
-            ["会对较小图像做 padding，存在少量无效计算。"],
-            ["关闭后可能触发多形状编译和性能抖动。"],
-            "推荐保持 4096。"
         ),
         vae_chunk_size: help(
             "VAE 解码/编码时的分块大小。",
@@ -2937,6 +2911,7 @@
             if (key === 'output_dir') continue;
             if (key === 'general' || key === 'datasets') continue;
             if (CONFIG_FORM_INTERNAL_KEYS.has(key)) continue;
+            if (DEPRECATED_CONFIG_FORM_FIELDS.has(key)) continue;
             if (DATASET_BLUEPRINT_FIELDS.has(key)) continue;
             if (typeof value === 'object' && value !== null && !Array.isArray(value)) continue;
             fieldsByKey[key] = value;
@@ -2944,6 +2919,7 @@
         for (const [key, value] of Object.entries(FORM_UI_DEFAULTS)) {
             if (key === 'output_dir') continue;
             if (CONFIG_FORM_INTERNAL_KEYS.has(key)) continue;
+            if (DEPRECATED_CONFIG_FORM_FIELDS.has(key)) continue;
             if (DATASET_BLUEPRINT_FIELDS.has(key)) continue;
             if (!shouldExposeUiDefaultField(key, config, fieldsByKey)) continue;
             if (!(key in fieldsByKey)) fieldsByKey[key] = value;
@@ -2953,6 +2929,7 @@
 
         const consumed = new Set();
         for (const section of FORM_SECTION_DEFS) {
+            if (!shouldRenderConfigSection(section, config)) continue;
             const fields = collectSectionFields(fieldsByKey, section.keys, consumed);
             if (fields.length > 0) {
                 container.appendChild(createGroup(
@@ -2975,6 +2952,11 @@
                 '未归类的新字段或低频字段；保留给高级调试使用。'
             ));
         }
+    }
+
+    function shouldRenderConfigSection(section, config = currentConfig) {
+        if (!section?.method) return true;
+        return activeMethodKey(config) === section.method;
     }
 
     function shouldExposeUiDefaultField(key, config, fieldsByKey = {}) {

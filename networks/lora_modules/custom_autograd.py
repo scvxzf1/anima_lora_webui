@@ -93,12 +93,6 @@ def lora_down_project(x, weight, inv_scale):
 
 
 def lokr_project(x, w1, w2, factor, in_dim, out_dim):
-    """LoKr projection helper kept as the public custom-autograd entry point.
-
-    The current implementation delegates gradient math to PyTorch's autograd
-    over the LyCORIS-compatible Kronecker weight. Keeping this small wrapper
-    preserves the LoKr module/test API while the lower-level custom Function can
-    evolve independently.
-    """
+    """Project through the LyCORIS-compatible Kronecker LoKr weight."""
     weight = torch.kron(w1.float(), w2.float())
     return F.linear(x.float(), weight)

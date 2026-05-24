@@ -21,6 +21,7 @@ from library.models import qwen_vae as qwen_image_autoencoder_kl
 from library.runtime.device import clean_memory_on_device
 from library.inference import (
     get_generation_settings,
+    resolve_seed,
     check_inputs,
     load_dit_model,
     load_text_encoder,
@@ -37,6 +38,9 @@ from library.inference.text import MAX_CROSSATTN_TOKENS
 # so --spectrum dispatches without library.inference holding a hard edge into networks/.
 import networks.spectrum  # noqa: F401, E402
 
+# Same pattern for SPD (Spectral Progressive Diffusion) — registers spd_denoise.
+import networks.spd  # noqa: F401, E402
+
 from library.log import setup_logging  # noqa: E402
 
 setup_logging()
@@ -48,8 +52,12 @@ logger = logging.getLogger(__name__)
 # region Argument parsing
 
 
-def parse_args() -> argparse.Namespace:
-    """parse command line arguments"""
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    """parse command line arguments
+
+    ``argv=None`` reads ``sys.argv`` (the CLI path). Pass an explicit list to
+    build an args namespace programmatically — see ``examples/01_generate.py``.
+    """
     parser = argparse.ArgumentParser(description="HunyuanImage inference script")
 
     parser.add_argument("--dit", type=str, default=None, help="DiT directory or path")
@@ -85,13 +93,6 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--lora_multiplier", type=float, nargs="*", default=1.0, help="LoRA multiplier"
-    )
-    parser.add_argument(
-        "--postfix_weight",
-        type=str,
-        default=None,
-        help="Postfix tuning weight path (networks.methods.postfix .safetensors). "
-        "Supports postfix (free param) and cond+ortho modes.",
     )
     parser.add_argument(
         "--soft_tokens_weight",
@@ -207,8 +208,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--flow_shift",
         type=float,
-        default=5.0,
-        help="Shift factor for flow matching schedulers. Default is 5.0.",
+        default=3.0,
+        help="Shift factor for flow matching schedulers. Default is 3.0 (matches the official Anima scheduler config).",
     )
     parser.add_argument(
         "--sampler",
@@ -414,6 +415,33 @@ def parse_args() -> argparse.Namespace:
         "Adds residual bias correction from last actual forward to cached predictions.",
     )
 
+    # SPD: Spectral Progressive Diffusion (arXiv:2605.18736) — training-free
+    # multi-resolution inference. Early steps run at low resolution; HF detail is
+    # injected via spectral noise expansion at the σ handoff. Forces Euler;
+    # mutually exclusive with --spectrum. See networks/spd.py + bench/spd/.
+    parser.add_argument(
+        "--spd",
+        action="store_true",
+        help="Enable Spectral Progressive Diffusion: run early steps at low "
+        "resolution, spectral-expand to full res at the σ handoff. Training-free.",
+    )
+    parser.add_argument(
+        "--spd_stages",
+        type=float,
+        nargs="+",
+        default=None,
+        help="Ascending resolution scales, e.g. '0.5 1.0' or '0.5 0.75 1.0'. A "
+        "trailing 1.0 is appended if missing. Default: 0.5 1.0 (single handoff).",
+    )
+    parser.add_argument(
+        "--spd_transition_sigmas",
+        type=float,
+        nargs="+",
+        default=None,
+        help="σ thresholds (in [0,1]) at which to expand to each next stage; "
+        "len = len(stages)-1. Default: 0.7 per handoff (single-late knee).",
+    )
+
     # DCW: SNR-t bias correction (arXiv:2604.16044). Opposite-sign on Anima -- see
     # bench/dcw/findings.md.
     parser.add_argument(
@@ -535,7 +563,7 @@ def parse_args() -> argparse.Namespace:
         "'reduce-overhead'). None = inductor default.",
     )
 
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
     # Validate arguments
     if args.from_file and args.interactive:
@@ -655,7 +683,7 @@ def process_batch_prompts(prompts_data: List[Dict], args: argparse.Namespace) ->
         return
 
     gen_settings = get_generation_settings(args)
-    dit_weight_dtype = gen_settings.dit_weight_dtype
+    dit_weight_dtype = torch.bfloat16
     device = gen_settings.device
 
     # 1. Prepare VAE
@@ -719,7 +747,7 @@ def process_batch_prompts(prompts_data: List[Dict], args: argparse.Namespace) ->
         getattr(args, "pooled_text_proj", None) is not None
         and getattr(args, "mod_w", 0.0) != 0.0
     ):
-        from library.inference.mod_guidance import setup_mod_guidance
+        from library.inference.corrections.mod_guidance import setup_mod_guidance
 
         setup_mod_guidance(args, anima, device)
     else:
@@ -874,6 +902,9 @@ def process_interactive(args: argparse.Namespace) -> None:
                 prompt_data = parse_prompt_line(line)
                 prompt_args = apply_overrides(args, prompt_data)
 
+                # Pin the resolved seed for save_output (generate() no longer
+                # writes it back to the namespace).
+                prompt_args.seed = resolve_seed(prompt_args)
                 latent = generate(prompt_args, gen_settings, shared_models)
 
                 save_output(prompt_args, vae, latent, device)
@@ -987,6 +1018,9 @@ def main():
         else:
             # Single prompt mode
             gen_settings = get_generation_settings(args)
+            # generate() no longer writes the resolved seed back to args, so
+            # pin it here for save_output()'s filename + metadata.
+            args.seed = resolve_seed(args)
             latent = generate(args, gen_settings)
 
             clean_memory_on_device(device)

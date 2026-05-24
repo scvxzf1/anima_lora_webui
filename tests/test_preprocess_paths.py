@@ -280,16 +280,16 @@ def test_preprocess_runs_all_dataset_config_rows(tmp_path, monkeypatch):
 
     assert len(commands) == 6
     resize_a, vae_a, te_a, resize_b, vae_b, te_b = commands
-    assert resize_a[1] == "preprocess/resize_images.py"
+    assert resize_a[1] == "scripts/preprocess/resize_images.py"
     assert resize_a[resize_a.index("--src") + 1] == "image_dataset/a"
     assert resize_a[resize_a.index("--dst") + 1] == "post_image_dataset/a_resized"
     assert resize_a[resize_a.index("--resolution") + 1] == "768"
     assert "--bucket_no_upscale" in resize_a
-    assert vae_a[1] == "preprocess/cache_latents.py"
+    assert vae_a[1] == "scripts/preprocess/cache_latents.py"
     assert vae_a[vae_a.index("--dir") + 1] == "post_image_dataset/a_resized"
     assert vae_a[vae_a.index("--cache_dir") + 1] == "post_image_dataset/a_cache"
     assert vae_a[vae_a.index("--vae") + 1] == "D:/models/vae.safetensors"
-    assert te_a[1] == "preprocess/cache_text_embeddings.py"
+    assert te_a[1] == "scripts/preprocess/cache_text_embeddings.py"
     assert te_a[te_a.index("--dir") + 1] == "image_dataset/a"
     assert te_a[te_a.index("--cache_dir") + 1] == "post_image_dataset/a_cache"
     assert te_a[te_a.index("--qwen3") + 1] == "D:/models/qwen3.safetensors"

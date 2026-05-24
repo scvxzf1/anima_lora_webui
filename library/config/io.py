@@ -16,7 +16,7 @@ import logging
 import os
 import pathlib
 import subprocess
-from typing import Any, Optional
+from typing import Any, Optional, Sequence
 
 import toml
 
@@ -251,8 +251,7 @@ def load_path_overrides(
         return {
             k: v
             for k, v in d.items()
-            if k not in _NON_FLAT_SECTIONS
-            and not isinstance(v, (dict, list))
+            if k not in _NON_FLAT_SECTIONS and not isinstance(v, (dict, list))
         }
 
     base_path = os.path.join(configs_dir, "base.toml")
@@ -291,9 +290,7 @@ def _load_toml_with_base(path: str, *, strict: bool = False) -> dict:
     return merged
 
 
-def _resolve_preset(
-    preset: str, configs_dir: str = "configs"
-) -> tuple[dict, str, str]:
+def _resolve_preset(preset: str, configs_dir: str = "configs") -> tuple[dict, str, str]:
     """Resolve a preset name to ``(section, source_path, source_tag)``.
 
     Looks in ``configs/presets.toml`` first (built-in sections); falls back to
@@ -307,9 +304,7 @@ def _resolve_preset(
         if preset in presets:
             section = presets[preset]
             if not isinstance(section, dict):
-                raise ValueError(
-                    f"Preset '{preset}' in {presets_path} is not a table"
-                )
+                raise ValueError(f"Preset '{preset}' in {presets_path} is not a table")
             return dict(section), presets_path, f"{presets_path}[{preset}]"
     custom_path = os.path.join(configs_dir, "custom", f"{preset}.toml")
     if os.path.exists(custom_path):
@@ -474,9 +469,7 @@ def _render_merged_toml(
     def _rank(src: str) -> int:
         if src == "configs/base.toml":
             return 0
-        if src.startswith("configs/presets.toml") or src.startswith(
-            "configs/custom/"
-        ):
+        if src.startswith("configs/presets.toml") or src.startswith("configs/custom/"):
             return 1
         # Method file — lives under configs/methods/ by default, or under
         # configs/gui-methods/ when --methods_subdir=gui-methods is used.
@@ -534,9 +527,7 @@ def _write_config_snapshot(
             logger.warning(f"Could not resolve run log dir for snapshot mirror: {e}")
             run_log_dir = None
         if run_log_dir:
-            mirror_path = os.path.join(
-                run_log_dir, f"{output_name}{_SNAPSHOT_SUFFIX}"
-            )
+            mirror_path = os.path.join(run_log_dir, f"{output_name}{_SNAPSHOT_SUFFIX}")
             try:
                 os.makedirs(run_log_dir, exist_ok=True)
                 with open(mirror_path, "w", encoding="utf-8") as f:
@@ -550,7 +541,18 @@ def _write_config_snapshot(
     return path
 
 
-def read_config_from_file(args: argparse.Namespace, parser: argparse.ArgumentParser):
+def read_config_from_file(
+    args: argparse.Namespace,
+    parser: argparse.ArgumentParser,
+    argv: Optional[Sequence[str]] = None,
+):
+    """Apply the base→preset→method (or single-file) config merge to ``args``.
+
+    CLI overrides are layered on top by re-parsing through ``parser``. By
+    default that re-parse reads the process ``sys.argv`` (the CLI path). Pass an
+    explicit ``argv`` list to drive the override layer programmatically — e.g.
+    from an embedder that builds its argv in code rather than from the shell.
+    """
     strict = bool(getattr(args, "config_strict", False))
     print_config = bool(getattr(args, "print_config", False))
     write_snapshot = bool(getattr(args, "config_snapshot", False))
@@ -576,7 +578,7 @@ def read_config_from_file(args: argparse.Namespace, parser: argparse.ArgumentPar
             exit(1)
 
         config_args = argparse.Namespace(**merged)
-        args = parser.parse_args(namespace=config_args)
+        args = parser.parse_args(args=argv, namespace=config_args)
         args.config_file = os.path.join("configs", methods_subdir, f"{method}.toml")
 
         if print_config:
@@ -641,7 +643,7 @@ def read_config_from_file(args: argparse.Namespace, parser: argparse.ArgumentPar
     merged = _load_toml_with_base(config_path, strict=strict)
 
     config_args = argparse.Namespace(**merged)
-    args = parser.parse_args(namespace=config_args)
+    args = parser.parse_args(args=argv, namespace=config_args)
     args.config_file = os.path.splitext(args.config_file)[0]
 
     if print_config:

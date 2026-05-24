@@ -48,16 +48,13 @@ import argparse
 import json
 import logging
 import random
-import sys
 from pathlib import Path
 
-ANIMA_ROOT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(ANIMA_ROOT))
 
 import torch  # noqa: E402
 
 from library.anima import weights as anima_utils  # noqa: E402
-from library.inference.postfix_inversion import (  # noqa: E402
+from library.inference.editing.postfix_inversion import (  # noqa: E402
     TailInversionConfig,
     invert_tail,
     load_cached_prefix,
@@ -204,9 +201,7 @@ def parse_args() -> argparse.Namespace:
     )
 
     # Optimization
-    p.add_argument(
-        "--steps", type=int, default=50, help="Optimization steps per image"
-    )
+    p.add_argument("--steps", type=int, default=50, help="Optimization steps per image")
     p.add_argument("--lr", type=float, default=0.01, help="Learning rate (AdamW)")
     p.add_argument(
         "--lr_schedule",
@@ -373,15 +368,11 @@ def _load_anima(args, device: torch.device):
         device="cpu" if is_swapping else device,
         dit_path=args.dit,
         attn_mode=args.attn_mode,
-        split_attn=True,
         loading_device="cpu" if is_swapping else device,
         dit_weight_dtype=torch.bfloat16,
     )
     anima.to(torch.bfloat16)
     anima.requires_grad_(False)
-    # All steps share the same image, so no per-sample variance to exploit —
-    # turn off split_attn to avoid data-dependent graph breaks.
-    anima.split_attn = False
 
     if is_swapping:
         logger.info(f"Enabling block swap: {args.blocks_to_swap} blocks to CPU")
@@ -398,17 +389,18 @@ def _load_anima(args, device: torch.device):
             for block in anima.blocks:  # type: ignore[union-attr]
                 block.train()
         if args.compile_blocks:
-            # Per-block compile against the 4096-token bucket. Pinning the token
-            # count once means every aspect bucket in the run traces through the
-            # same shape — no Dynamo recompile when we move from a 720×1440 image
-            # to a 1024×1024 one. Compiles block._forward (not .forward) so the
-            # unsloth_checkpoint @torch._disable_dynamo decorator doesn't blow
-            # the trace under grad_ckpt — same contract as train.py's
-            # compile_mode='blocks' path.
-            anima.set_static_token_count(4096)
-            anima.compile_blocks(
-                backend="inductor", mode=args.compile_inductor_mode
-            )
+            # compile_blocks turns on native-shape flattening (each aspect bucket
+            # at its real token count, no padding → no flash pad-leak) and compiles
+            # block._forward (not .forward) so the unsloth_checkpoint
+            # @torch._disable_dynamo decorator doesn't blow the trace under
+            # grad_ckpt. Dynamo recompiles once per distinct token count (e.g.
+            # 720×1440 vs 1024×1024) — a one-time warmup, not per-step. These span
+            # more than the 2 CONSTANT_TOKEN_BUCKETS families, so pre-raise the
+            # dynamo cache (compile_blocks' max() won't lower it).
+            import torch._dynamo as _dynamo
+
+            _dynamo.config.cache_size_limit = max(_dynamo.config.cache_size_limit, 64)
+            anima.compile_blocks(backend="inductor", mode=args.compile_inductor_mode)
         else:
             logger.info("torch.compile disabled (--no_compile_blocks)")
     return anima

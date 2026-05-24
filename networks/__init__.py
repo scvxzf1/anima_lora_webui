@@ -18,7 +18,7 @@ Flag precedence (evaluated top to bottom, first match wins):
 The legacy ``use_hydra`` / ``use_sigma_router`` / ``use_fei_router``
 kwargs were retired in plan2 task #6 — see ``LoRANetworkCfg.from_kwargs``
 for the rejection message. ``use_dora`` was retired alongside the
-``lora_deprecated`` module; DoRA is no longer trained, saved, or loaded.
+``lora_deprecated`` module; legacy DoRA state remains export-convertible.
 """
 
 from __future__ import annotations
@@ -323,7 +323,11 @@ def resolve_network_spec(kwargs: Mapping[str, Any]) -> NetworkSpec:
     use_ortho = _parse_bool_flag(kwargs, "use_ortho")
     use_chimera = _parse_bool_flag(kwargs, "use_chimera_hydra")
     use_lokr = _parse_bool_flag(kwargs, "use_lokr")
-    if use_lokr and (use_ortho or use_chimera or kwargs.get("use_moe_style") not in (None, False, "", "false", "False")):
+    if use_lokr and (
+        use_ortho
+        or use_chimera
+        or kwargs.get("use_moe_style") not in (None, False, "", "false", "False")
+    ):
         raise ValueError(
             "use_lokr is mutually exclusive with use_ortho, "
             "use_moe_style, and use_chimera_hydra."
