@@ -17,7 +17,7 @@
             }
         })();
     </script>
-    <link rel="stylesheet" href="/static/style.css?v=preview-weight-download-20260524-1">
+    <link rel="stylesheet" href="/static/style.css?v=tutorial-dialog-20260524-1">
 </head>
 <body>
     <header>
@@ -33,6 +33,7 @@
             <span class="dot idle"></span>
             <span id="status-text">空闲</span>
         </div>
+        <button id="btn-open-tutorial" class="btn btn-small tutorial-open-btn" type="button">基础教程</button>
         <button id="theme-toggle" class="theme-toggle" type="button" aria-pressed="false">
             <span class="theme-toggle-swatch" aria-hidden="true"></span>
             <span id="theme-toggle-text">浅色主题</span>
@@ -516,6 +517,70 @@
         </form>
     </dialog>
 
+    <dialog id="tutorial-dialog" class="preview-dialog tutorial-dialog">
+        <form method="dialog">
+            <div class="preview-dialog-header">
+                <div>
+                    <h2>基础教程</h2>
+                    <p>按这个顺序配置，先让 WebUI 能完成预处理并启动训练。</p>
+                </div>
+                <button class="btn btn-small" value="close" type="submit">关闭</button>
+            </div>
+            <div class="tutorial-dialog-body">
+                <section class="tutorial-section">
+                    <h3>训练前必须完成</h3>
+                    <ol class="tutorial-steps">
+                        <li>
+                            <strong>全局设置</strong>
+                            <span>设置“输出文件夹”，再填写基础 DiT、Qwen3、VAE 路径。之后每次 Web 训练都会在这里创建独立运行目录。</span>
+                        </li>
+                        <li>
+                            <strong>数据集</strong>
+                            <span>新建或选择数据集预设，只填原始数据集路径、重复次数和数据集参数；保存后回到配置页引用它。</span>
+                        </li>
+                        <li>
+                            <strong>配置</strong>
+                            <span>选择方法、变体、预设。新手优先使用 LoRA/default；确认模型路径、数据集配置、训练步数、采样提示词等关键字段。</span>
+                        </li>
+                        <li>
+                            <strong>保存配置</strong>
+                            <span>修改左侧表单后先保存。TOML 直接编辑也要保存，否则“开始训练”不会使用未写入磁盘的内容。</span>
+                        </li>
+                        <li>
+                            <strong>开始训练</strong>
+                            <span>点击“开始训练”后先看预检测。缺少缓存时 WebUI 会自动先预处理，完成后再进入训练。</span>
+                        </li>
+                    </ol>
+                </section>
+                <section class="tutorial-section">
+                    <h3>跑起来后怎么看</h3>
+                    <div class="tutorial-grid">
+                        <div>
+                            <strong>训练页</strong>
+                            <span>看当前状态、日志、Loss 曲线和历史任务。从检查点恢复也在这里操作。</span>
+                        </div>
+                        <div>
+                            <strong>预览图页</strong>
+                            <span>看训练中采样图、权重文件；权重可以直接通过浏览器下载。</span>
+                        </div>
+                        <div>
+                            <strong>输出目录</strong>
+                            <span>每次运行目录包含 config.original.toml、config.runtime.toml、dataset_cache、model_cache 和 training_output。</span>
+                        </div>
+                    </div>
+                </section>
+                <section class="tutorial-section tutorial-checklist">
+                    <h3>常见卡点</h3>
+                    <ul>
+                        <li>模型路径为空或指错时，先去“全局设置”修正，再回配置页使用“填写全局路径配置”。</li>
+                        <li>数据集页只管理原始图片路径；缩放图和 LoRA 缓存会自动放进本次运行目录。</li>
+                        <li>直接点训练也会先保证预处理链路；不要手动把旧缓存目录写回配置里。</li>
+                    </ul>
+                </section>
+            </div>
+        </form>
+    </dialog>
+
     <dialog id="preview-dialog" class="preview-dialog">
         <form method="dialog">
             <div class="preview-dialog-header">
@@ -599,6 +664,6 @@
     <div id="config-switch-toast" class="config-switch-toast" role="status" aria-live="polite" hidden></div>
 
     <script src="/static/chart.js?v=history-20260517-2"></script>
-    <script src="/static/app.js?v=preview-weight-download-20260524-1"></script>
+    <script src="/static/app.js?v=tutorial-dialog-20260524-1"></script>
 </body>
 </html>

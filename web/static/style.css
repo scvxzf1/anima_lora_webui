@@ -123,6 +123,11 @@ nav { display: flex; gap: 0.25rem; }
     font-size: 0.8rem;
 }
 
+.tutorial-open-btn {
+    flex: 0 0 auto;
+    white-space: nowrap;
+}
+
 .theme-toggle {
     display: inline-flex;
     align-items: center;
@@ -3256,6 +3261,105 @@ input[type="checkbox"].field-input {
     font-size: 0.86rem;
     margin: 0 0 0.55rem;
 }
+
+.tutorial-dialog {
+    width: min(920px, calc(100vw - 2rem));
+}
+
+.tutorial-dialog-body {
+    display: grid;
+    gap: 0.75rem;
+    max-height: calc(100vh - 150px);
+    overflow: auto;
+    padding: 0.85rem;
+}
+
+.tutorial-section {
+    border: 1px solid var(--border-soft);
+    border-radius: var(--radius);
+    background: var(--surface-raised);
+    padding: 0.8rem;
+}
+
+.tutorial-section h3 {
+    color: var(--accent);
+    font-size: 0.86rem;
+    margin: 0 0 0.6rem;
+}
+
+.tutorial-steps {
+    counter-reset: tutorial-step;
+    display: grid;
+    gap: 0.48rem;
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+
+.tutorial-steps li {
+    align-items: start;
+    display: grid;
+    gap: 0.3rem 0.55rem;
+    grid-template-columns: 2rem minmax(0, 0.28fr) minmax(0, 1fr);
+    padding: 0.45rem 0;
+    border-bottom: 1px solid var(--border-soft);
+}
+
+.tutorial-steps li:last-child {
+    border-bottom: none;
+}
+
+.tutorial-steps li::before {
+    align-items: center;
+    background: var(--surface-tint-hover);
+    border: 1px solid var(--accent);
+    border-radius: 4px;
+    color: var(--accent);
+    content: counter(tutorial-step);
+    counter-increment: tutorial-step;
+    display: inline-flex;
+    font-size: 0.72rem;
+    font-weight: 700;
+    height: 1.55rem;
+    justify-content: center;
+    width: 1.55rem;
+}
+
+.tutorial-steps strong,
+.tutorial-grid strong {
+    color: var(--text);
+    font-size: 0.78rem;
+}
+
+.tutorial-steps span,
+.tutorial-grid span,
+.tutorial-checklist li {
+    color: var(--text-dim);
+    font-size: 0.74rem;
+    line-height: 1.55;
+}
+
+.tutorial-grid {
+    display: grid;
+    gap: 0.55rem;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.tutorial-grid div {
+    border: 1px solid var(--border-soft);
+    border-radius: 4px;
+    display: grid;
+    gap: 0.35rem;
+    min-width: 0;
+    padding: 0.55rem;
+}
+
+.tutorial-checklist ul {
+    display: grid;
+    gap: 0.42rem;
+    margin: 0;
+    padding-left: 1.05rem;
+}
 .preview-dialog-details {
     display: flex;
     flex-direction: column;
@@ -3738,6 +3842,13 @@ input[type="checkbox"].field-input {
     }
     .theme-toggle {
         padding-inline: 0.48rem;
+    }
+    .tutorial-open-btn {
+        order: 2;
+    }
+    .tutorial-steps li,
+    .tutorial-grid {
+        grid-template-columns: 1fr;
     }
     .dataset-editor-header,
     .dataset-editor-footer,
