@@ -3,7 +3,7 @@
 Centralizes:
 - ``ROOT`` (project root, regardless of where the calling module lives)
 - ``PY`` resolution (venv-aware, pythonw.exe-safe)
-- ``run`` / ``accelerate_launch`` / ``train`` subprocess helpers
+- ``run`` / ``build_launch_cmd`` / ``accelerate_launch`` / ``train`` subprocess helpers
 - ``latest_output`` / ``latest_lora`` / ``latest_hydra`` checkpoint pickers
 - ``INFERENCE_BASE`` — shared inference.py argv prefix
 - ``_path`` / ``_preset`` config-overlay helpers
@@ -48,35 +48,65 @@ def _preset(default: str = "default") -> str:
 
 
 _PATH_OVERRIDES_CACHE: dict | None = None
+_PATH_OVERRIDES_CACHE_KEY: tuple[str, str, str, str] | None = None
 
 
 def _path_overrides() -> dict:
-    """Top-level path scalars from base.toml → preset → method file (cached).
+    """Top-level path scalars from runtime config or base.toml → preset → method file.
 
-    Reads ``METHOD`` and ``METHODS_SUBDIR`` env vars so the GUI can point
-    preprocess at the same variant file training will use (e.g.
-    ``METHOD=lora METHODS_SUBDIR=gui-methods`` honors overrides written from
-    ``ConfigTab``). Missing env vars → just base + preset.
+    When ``ANIMA_RUNTIME_CONFIG`` is set, preprocess uses that runtime TOML
+    first so Web training/preprocess share the same generated run directory.
+    Missing env vars → just base + preset + method.
 
     Defers the import of ``library.config.io`` so commands that don't touch
     preprocess (e.g. ``test-merge``) keep the module-load surface small.
     """
-    global _PATH_OVERRIDES_CACHE
+    global _PATH_OVERRIDES_CACHE, _PATH_OVERRIDES_CACHE_KEY
+    runtime_config = os.environ.get("ANIMA_RUNTIME_CONFIG") or ""
+    cache_key = (
+        runtime_config,
+        _preset(),
+        os.environ.get("METHOD") or "",
+        os.environ.get("METHODS_SUBDIR") or "methods",
+    )
     if _PATH_OVERRIDES_CACHE is not None:
-        return _PATH_OVERRIDES_CACHE
+        if not runtime_config or _PATH_OVERRIDES_CACHE_KEY is None or _PATH_OVERRIDES_CACHE_KEY == cache_key:
+            return _PATH_OVERRIDES_CACHE
+    if runtime_config:
+        runtime_path = Path(runtime_config)
+        if not runtime_path.is_absolute():
+            runtime_path = (ROOT / runtime_path).resolve()
+        try:
+            if runtime_path.exists():
+                import toml
+
+                data = toml.loads(runtime_path.read_text(encoding="utf-8"))
+                overrides = {
+                    k: v
+                    for k, v in data.items()
+                    if k not in {"general", "datasets"}
+                    and not isinstance(v, (dict, list))
+                }
+                _PATH_OVERRIDES_CACHE = overrides
+                _PATH_OVERRIDES_CACHE_KEY = cache_key
+                return overrides
+        except Exception as e:  # noqa: BLE001 — fall back silently to defaults
+            print(f"warn: could not read runtime config overrides: {e}", file=sys.stderr)
     sys.path.insert(0, str(ROOT))
     try:
         from library.config.io import load_path_overrides
 
-        _PATH_OVERRIDES_CACHE = load_path_overrides(
+        overrides = load_path_overrides(
             preset=_preset(),
             method=os.environ.get("METHOD") or None,
             methods_subdir=os.environ.get("METHODS_SUBDIR") or "methods",
         )
     except Exception as e:  # noqa: BLE001 — fall back silently to defaults
         print(f"warn: could not read base.toml path overrides: {e}", file=sys.stderr)
-        _PATH_OVERRIDES_CACHE = {}
-    return _PATH_OVERRIDES_CACHE
+        overrides = {}
+    _PATH_OVERRIDES_CACHE = overrides
+    _PATH_OVERRIDES_CACHE_KEY = cache_key
+    return overrides
 
 
 def _path(key: str, default: str) -> str:
@@ -443,6 +473,19 @@ def _nsys_run_stats(rep_path: Path) -> None:
         print(f"warn: nsys stats failed: {e}", file=sys.stderr)
 
 
+def build_launch_cmd(*args: str, python_exe: str | None = None) -> list[str]:
+    """Build the ``accelerate launch ... train.py`` command list (no side effects).
+
+    The daemon needs this pure command builder so it can spawn and monitor a
+    detached training process itself, while the normal CLI path still runs the
+    same argv through ``run()``.
+    """
+    return [
+        *accelerate_training_command_prefix(python_exe or PY, "train.py"),
+        *args,
+    ]
+
+
 def accelerate_launch(*args: str):
     """Launch training via accelerate with extra CLI args forwarded.
 
@@ -459,13 +502,73 @@ def accelerate_launch(*args: str):
     run, generates per-report textual summaries via ``nsys stats`` next to
     the .nsys-rep.
     """
-    cmd = [*accelerate_training_command_prefix(PY, "train.py"), *args]
+    cmd = build_launch_cmd(*args)
     nsys_prefix, nsys_out = _nsys_wrapper()
     if nsys_prefix is not None:
         cmd = nsys_prefix + ["--"] + cmd
     run(cmd)
     if nsys_out is not None:
         _nsys_run_stats(nsys_out)
+
+
+def build_method_args(
+    method: str,
+    *,
+    preset: str,
+    methods_subdir: str | None = None,
+    extra=None,
+    artist: str | None = None,
+    profile_steps: str | None = None,
+) -> list[str]:
+    """Assemble the ``train.py`` method/preset argument list.
+
+    Kept pure so both CLI and daemon can use one source of truth.
+    """
+    extra = list(extra or [])
+    args = ["--method", method, "--preset", preset]
+    if methods_subdir:
+        args += ["--methods_subdir", methods_subdir]
+    if artist and not any(a == "--artist_filter" for a in extra):
+        args += ["--artist_filter", artist]
+    if profile_steps and not any(a == "--profile_steps" for a in extra):
+        args += ["--profile_steps", profile_steps]
+    return [*args, *extra]
+
+
+def _queue_submit(
+    method: str,
+    *,
+    preset: str,
+    methods_subdir: str | None,
+    extra: list[str],
+    artist: str | None,
+    profile_steps: str | None,
+) -> None:
+    """Enqueue a training job on the local daemon instead of running inline."""
+    extra = list(extra)
+    if artist and "--artist_filter" not in extra:
+        extra += ["--artist_filter", artist]
+    if profile_steps and "--profile_steps" not in extra:
+        extra += ["--profile_steps", profile_steps]
+
+    from scripts.daemon import client as _daemon_client
+
+    cl = _daemon_client.ensure_daemon()
+    resp = cl.submit(
+        method=method,
+        preset=preset,
+        methods_subdir=methods_subdir,
+        extra=extra,
+    )
+    job_id = resp.get("job_id")
+    print(
+        f"queued job {job_id} (method={method}, preset={preset}). "
+        f"daemon: {cl.base}\n"
+        f"  make daemon-attach JOB={job_id}   # follow this job's output\n"
+        f"  make daemon-attach                # follow queue/lifecycle events\n"
+        f"  make daemon-kill JOB={job_id}     # cancel it\n"
+        f"  make daemon-terminate             # stop the daemon + discard queue"
+    )
 
 
 def train(
@@ -480,17 +583,36 @@ def train(
     ARTIST env var trains an artist-only LoRA — equivalent to passing
     `--artist_filter <name>` (filters dataset to `@<name>`-tagged captions and
     redirects output to `output/ckpt-artist/`).
+
+    ``--queue`` anywhere in ``extra`` enqueues the job on the local training
+    daemon and returns immediately instead of running inline.
     """
-    args = ["--method", method, "--preset", preset or _preset()]
-    if methods_subdir:
-        args += ["--methods_subdir", methods_subdir]
+    preset = preset or _preset()
+    extra = list(extra or [])
     artist = os.environ.get("ARTIST")
-    if artist and not any(a == "--artist_filter" for a in extra):
-        args += ["--artist_filter", artist]
     profile_steps = os.environ.get("PROFILE_STEPS")
-    if profile_steps and not any(a == "--profile_steps" for a in extra):
-        args += ["--profile_steps", profile_steps]
-    accelerate_launch(*args, *extra)
+
+    if "--queue" in extra:
+        extra.remove("--queue")
+        _queue_submit(
+            method,
+            preset=preset,
+            methods_subdir=methods_subdir,
+            extra=extra,
+            artist=artist,
+            profile_steps=profile_steps,
+        )
+        return
+
+    args = build_method_args(
+        method,
+        preset=preset,
+        methods_subdir=methods_subdir,
+        extra=extra,
+        artist=artist,
+        profile_steps=profile_steps,
+    )
+    accelerate_launch(*args)
 
 
 def build_inference_base() -> list[str]:

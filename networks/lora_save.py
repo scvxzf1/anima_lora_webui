@@ -1,7 +1,7 @@
-"""Save-pipeline orchestrator for the LoRA / Ortho / Hydra / DoRA family.
+"""Save-pipeline orchestrator for the LoRA / Ortho / Hydra family.
 
 The per-variant save logic — Cayley distillation, MoE write layout,
-DoRA/qkv defuse — lives on the variant's module class in
+qkv defuse — lives on the variant's module class in
 ``networks/lora_modules/`` (``OrthoLoRAModule.distill_save_state_dict``,
 ``HydraLoRAModule.build_moe_state_dict``, etc). This file is the thin
 ordering layer that calls them and writes the resulting file(s).
@@ -32,12 +32,11 @@ from __future__ import annotations
 
 import logging
 import os
-from typing import Dict, List, Optional
+from typing import Dict, Optional
 
 import torch
 
 from library.log import setup_logging
-from networks.attn_fuse import match_fused_spec
 from networks.lora_modules import (
     ChimeraHydraLoRAModule,
     HydraLoRAModule,
@@ -45,7 +44,7 @@ from networks.lora_modules import (
     OrthoLoRAModule,
     StackedExpertsLoRAModule,
 )
-from networks.lora_modules.lora import rename_dora_and_defuse_standard
+from networks.lora_modules.lora import defuse_and_bake_standard
 
 setup_logging()
 logger = logging.getLogger(__name__)
@@ -142,56 +141,6 @@ def _build_stacked_experts_state_dict(
     return StackedExpertsLoRAModule.build_moe_state_dict(state_dict, dtype)
 
 
-def _defuse_lokr(state_dict: Dict[str, torch.Tensor]) -> None:
-    """Split fused qkv/kv LoKr runtime keys into per-component file keys.
-
-    The runtime trains fused ``qkv_proj`` / ``kv_proj`` modules. On disk we
-    mirror LyCORIS naming by cloning ``lokr_w1`` and chunking ``lokr_w2`` for
-    the component projections.
-    """
-    fused_groups: List[tuple] = []
-    for key in list(state_dict.keys()):
-        if not key.endswith(".lokr_w2"):
-            continue
-        prefix = key.removesuffix(".lokr_w2")
-        spec = match_fused_spec(prefix)
-        if spec is not None:
-            fused_groups.append((prefix, spec))
-
-    for prefix, spec in fused_groups:
-        w1_key = f"{prefix}.lokr_w1"
-        w2_key = f"{prefix}.lokr_w2"
-        if w1_key not in state_dict or w2_key not in state_dict:
-            logger.warning("LoKr defuse: missing w1/w2 pair at %s, skipping", prefix)
-            continue
-
-        suffixes = spec.component_letters
-        n = len(suffixes)
-        w1 = state_dict.pop(w1_key)
-        w2 = state_dict.pop(w2_key)
-        alpha = state_dict.pop(f"{prefix}.alpha", None)
-
-        if w2.size(0) % n != 0:
-            logger.warning(
-                "LoKr defuse: lokr_w2 rows at %s are not divisible by %d, skipping",
-                prefix,
-                n,
-            )
-            state_dict[w1_key] = w1
-            state_dict[w2_key] = w2
-            if alpha is not None:
-                state_dict[f"{prefix}.alpha"] = alpha
-            continue
-
-        base_prefix = prefix.removesuffix(spec.fused_frag)
-        for letter, w2_chunk in zip(suffixes, w2.chunk(n, dim=0)):
-            new_prefix = base_prefix + spec.component_frag(letter)
-            state_dict[f"{new_prefix}.lokr_w1"] = w1.clone()
-            state_dict[f"{new_prefix}.lokr_w2"] = w2_chunk.contiguous()
-            if alpha is not None:
-                state_dict[f"{new_prefix}.alpha"] = alpha.clone()
-
-
 # ---------------------------------------------------------------------------
 # Public entry point.
 # ---------------------------------------------------------------------------
@@ -226,7 +175,7 @@ def save_network_weights(
     #     ``freq_router.*`` → ``*_chimera.safetensors``.
     #   * ``hydra_moe`` / ``ortho_hydra_to_hydra``: shared-A Hydra
     #     ``(lora_down, lora_ups.{i})`` → ``*_moe.safetensors``.
-    #   * standard: rename DoRA + defuse qkv → ``*.safetensors``.
+    #   * standard: defuse qkv → ``*.safetensors``.
     #
     # Auto-fallback for hydra: any ``.lora_up_weight`` key surviving the
     # distill chain implies a Hydra payload. Kept for callers that don't
@@ -272,11 +221,8 @@ def save_network_weights(
         # a uniform expert average defeats layer-local routing.
         return
 
-    if save_variant == "lokr":
-        _defuse_lokr(state_dict)
-    else:
-        # Standard (lora / ortho / dora) write path.
-        rename_dora_and_defuse_standard(state_dict)
+    # Standard (lora / ortho) write path.
+    defuse_and_bake_standard(state_dict)
 
     if dtype is not None:
         for key in list(state_dict.keys()):

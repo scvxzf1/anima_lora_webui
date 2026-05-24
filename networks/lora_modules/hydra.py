@@ -461,7 +461,7 @@ class HydraLoRAModule(BaseLoRAModule):
              decision), so clone them into each split component. The
              plain-LoRA leg (modules excluded from ``router_targets``)
              gets its own per-component split — the fused qkv carries
-             standard ``.lora_up.weight`` + optional ``.dora_scale``.
+             standard ``.lora_up.weight``.
         """
         hydra_sd: Dict[str, torch.Tensor] = {}
         for k, v in state_dict.items():
@@ -518,10 +518,6 @@ class HydraLoRAModule(BaseLoRAModule):
             plain_up_chunks = (
                 plain_up.chunk(n, dim=0) if plain_up is not None else None
             )
-            dora_scale = hydra_sd.pop(f"{prefix}.dora_scale", None)
-            dora_chunks = (
-                dora_scale.chunk(n, dim=0) if dora_scale is not None else None
-            )
 
             base_prefix = prefix.removesuffix(spec.fused_frag)
             for ci, letter in enumerate(suffixes):
@@ -535,8 +531,6 @@ class HydraLoRAModule(BaseLoRAModule):
                     hydra_sd[f"{new_prefix}.lora_up.weight"] = (
                         plain_up_chunks[ci].contiguous().clone()
                     )
-                if dora_chunks is not None:
-                    hydra_sd[f"{new_prefix}.dora_scale"] = dora_chunks[ci].clone()
                 if alpha is not None:
                     hydra_sd[f"{new_prefix}.alpha"] = alpha.clone()
                 if router_w is not None:

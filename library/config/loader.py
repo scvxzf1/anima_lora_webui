@@ -24,7 +24,6 @@ from voluptuous import (
 )
 
 from library import train_util
-from library.config.normalize import to_plain_config
 from library.datasets import (
     DreamBoothSubset,
     DreamBoothDataset,
@@ -652,7 +651,7 @@ def load_user_config(file: str) -> dict:
     else:
         raise ValueError("not supported config file format")
 
-    return to_plain_config(config)
+    return config
 
 
 # for config test

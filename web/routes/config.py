@@ -22,10 +22,12 @@ from web.services.config_service import (
     list_dataset_presets,
     list_dataset_preset_images,
     list_methods,
+    list_output_runs,
     list_presets,
     list_variants,
     load_merged_config,
     load_dataset_preset,
+    load_output_run_config,
     load_raw_file,
     patch_raw_file_values,
     preview_raw_file_patch,
@@ -35,6 +37,7 @@ from web.services.config_service import (
     save_dataset_editor,
     save_dataset_preset,
     save_dataset_preset_as,
+    save_output_run_config_as,
     save_sample_prompts_file,
     set_user_file_lock,
     set_user_group_lock,
@@ -65,6 +68,9 @@ def setup_config_routes(app: web.Application) -> None:
     app.router.add_post("/api/config/dataset-presets/apply", handle_dataset_preset_apply)
     app.router.add_get("/api/config/dataset-presets/images", handle_dataset_preset_images)
     app.router.add_get("/api/config/dataset-presets/image", handle_dataset_preset_image)
+    app.router.add_get("/api/config/output-runs", handle_output_runs_list)
+    app.router.add_get("/api/config/output-runs/read", handle_output_run_read)
+    app.router.add_post("/api/config/output-runs/save-as", handle_output_run_save_as)
     app.router.add_get("/api/config/raw", handle_raw_get)
     app.router.add_put("/api/config/raw", handle_raw_put)
     app.router.add_patch("/api/config/raw", handle_raw_patch)
@@ -280,6 +286,39 @@ async def handle_dataset_preset_image(request: web.Request) -> web.StreamRespons
     except Exception as e:
         return web.json_response({"ok": False, "error": str(e)}, status=403)
     return web.FileResponse(path)
+
+
+async def handle_output_runs_list(request: web.Request) -> web.Response:
+    try:
+        limit = int(request.query.get("limit", "200") or 200)
+        return web.json_response(list_output_runs(limit=limit))
+    except Exception as e:
+        return web.json_response({"ok": False, "error": str(e)}, status=400)
+
+
+async def handle_output_run_read(request: web.Request) -> web.Response:
+    run = request.query.get("run", "")
+    kind = request.query.get("kind", "original")
+    try:
+        return web.json_response(load_output_run_config(run, kind))
+    except FileNotFoundError as e:
+        return web.json_response({"ok": False, "error": str(e)}, status=404)
+    except Exception as e:
+        return web.json_response({"ok": False, "error": str(e)}, status=400)
+
+
+async def handle_output_run_save_as(request: web.Request) -> web.Response:
+    data = await request.json()
+    try:
+        return web.json_response(save_output_run_config_as(
+            str(data.get("run") or ""),
+            str(data.get("name") or data.get("file") or ""),
+            str(data.get("target_group") or data.get("group") or ""),
+        ))
+    except FileNotFoundError as e:
+        return web.json_response({"ok": False, "error": str(e)}, status=404)
+    except Exception as e:
+        return web.json_response({"ok": False, "error": str(e)}, status=400)
 
 
 async def handle_raw_get(request: web.Request) -> web.Response:

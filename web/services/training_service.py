@@ -8,6 +8,7 @@ from datetime import datetime
 import json
 import os
 import re
+import shutil
 import sys
 import time
 from pathlib import Path
@@ -19,16 +20,36 @@ import toml
 
 from library.env import load_dotenv
 from library.runtime.launch import accelerate_training_command_prefix
-from web.services.config_service import apply_auto_data_dirs, load_merged_config, preflight_training_config
+from web.services.config_service import (
+    _build_dataset_config_doc,
+    _dataset_rows_for_estimate,
+    apply_auto_data_dirs,
+    load_merged_config,
+    preflight_training_config,
+)
+from web.services.settings_service import display_path as _display_settings_path
+from web.services.settings_service import resolve_output_root
 
 ROOT = Path(__file__).resolve().parents[2]
 HISTORY_DIR = ROOT / "configs" / "web-training-history"
+RUN_META_FILE = "run.meta.json"
 OUTPUT_READ_SIZE = 4096
 MAX_LOG_RECORDS = 3000
 MAX_HISTORY_ITEMS = 100
 MAX_RESUME_CHECKPOINTS = 100
 MAX_TIMELINE_LOG_RECORDS = 20000
 MAX_TIMELINE_METRIC_RECORDS = 20000
+RUNTIME_META_KEYS = (
+    "run_dir",
+    "runtime_config_file",
+    "original_config_file",
+    "dataset_config_file",
+    "model_cache_dir",
+    "dataset_cache_dir",
+    "training_output_dir",
+    "logs_dir",
+    "history_source_config_file",
+)
 
 TQDM_RE = re.compile(
     r"^(?P<label>.*?):?\s*(?P<pct>\d+)%\|[^|]*\|\s*(?P<cur>\d+)/(?P<tot>\d+)"
@@ -55,6 +76,7 @@ class TrainingService:
         self.current_output_dir: str = ""
         self.current_sample_dir: str = ""
         self.current_sample_config: dict[str, Any] = _default_sample_config()
+        self.current_runtime_info: dict[str, str] = {}
         self.current_job: str = ""
         self.current_task_id: str = ""
         self.current_task_dir: Path | None = None
@@ -68,6 +90,12 @@ class TrainingService:
         self._last_log_line: str = ""
         self._log_records: deque[dict[str, Any]] = deque(maxlen=MAX_LOG_RECORDS)
         self._next_log_id = 1
+        self._metric_seen_keys: set[tuple[Any, ...]] = set()
+        self._progress_jsonl_path: Path | None = None
+        self._progress_jsonl_offset = 0
+        self._progress_jsonl_seen: set[tuple[Any, ...]] = set()
+        self._progress_jsonl_lock: asyncio.Lock | None = None
+        self._progress_total_steps: int | None = None
         _mark_orphaned_running_history_tasks()
 
     async def start(
@@ -83,9 +111,23 @@ class TrainingService:
         command_label: str | None = None,
         resume_info: dict[str, Any] | None = None,
         gpu_whitelist: list[Any] | None = None,
+        source_config_file: str | None = None,
+        use_runtime_dir: bool = True,
     ):
         if self.status == "running":
             raise RuntimeError("已有任务在运行中")
+
+        runtime = None
+        if source_config_file and use_runtime_dir:
+            runtime = _prepare_web_runtime_config(
+                variant,
+                preset,
+                methods_subdir,
+                source_config_file=source_config_file,
+            )
+            config_file = runtime["runtime_config_file"]
+        elif source_config_file and not config_file:
+            config_file = source_config_file
 
         venv_python = str(ROOT / ".venv" / "bin" / "python")
         if not Path(venv_python).exists():
@@ -107,20 +149,35 @@ class TrainingService:
 
         env["PYTHONUNBUFFERED"] = "1"
         env["PATH"] = str(ROOT / ".venv" / "bin") + ":" + env.get("PATH", "")
+        active_runtime = runtime or _runtime_from_config_file(
+            config_file,
+            source_config_file=source_config_file,
+        )
+        _apply_runtime_env(env, active_runtime)
+        runtime_info = _runtime_meta(active_runtime)
 
-        output_dir, sample_dir, sample_config = _resolve_training_runtime_info(
-            variant,
-            preset,
-            methods_subdir,
-            extra_args or [],
-            config_file=config_file,
-        )
-        data_dirs = _ensure_training_data_dirs(
-            variant,
-            preset,
-            methods_subdir,
-            config_file=config_file,
-        )
+        if active_runtime:
+            output_dir = active_runtime["output_dir"]
+            sample_dir = active_runtime["sample_dir"]
+            sample_config = _sample_config_from_cfg(
+                _load_config_file_config(active_runtime["runtime_config_file"]),
+                extra_args or [],
+            )
+            data_dirs = active_runtime["data_dirs"]
+        else:
+            output_dir, sample_dir, sample_config = _resolve_training_runtime_info(
+                variant,
+                preset,
+                methods_subdir,
+                extra_args or [],
+                config_file=config_file,
+            )
+            data_dirs = _ensure_training_data_dirs(
+                variant,
+                preset,
+                methods_subdir,
+                config_file=config_file,
+            )
         await self._launch_job(
             cmd,
             env,
@@ -138,6 +195,7 @@ class TrainingService:
             config_file=config_file,
             resume_info=resume_info,
             gpu_whitelist=gpu_selection,
+            runtime_info=runtime_info,
         )
 
     async def resume_from_history_task(
@@ -169,6 +227,9 @@ class TrainingService:
         resume_info = {
             "source_task_id": task_id,
             "source_task_name": str(task.get("name") or ""),
+            "history_group_key": str(task.get("history_group_key") or ""),
+            "history_group_label": str(task.get("history_group_label") or ""),
+            "history_source_config_file": str(task.get("history_source_config_file") or ""),
             "checkpoint": selected["path"],
             "checkpoint_name": selected["name"],
             "checkpoint_kind": selected["kind"],
@@ -186,6 +247,7 @@ class TrainingService:
             command_label="续训命令",
             resume_info=resume_info,
             gpu_whitelist=gpu_whitelist,
+            use_runtime_dir=False,
         )
 
         return {
@@ -203,6 +265,7 @@ class TrainingService:
         extra_args: list[str] | None = None,
         train_after: bool = False,
         gpu_whitelist: list[Any] | None = None,
+        config_file: str | None = None,
     ):
         if self.status == "running":
             raise RuntimeError("已有任务在运行中")
@@ -210,6 +273,13 @@ class TrainingService:
         venv_python = str(ROOT / ".venv" / "bin" / "python")
         if not Path(venv_python).exists():
             venv_python = sys.executable
+
+        runtime = _prepare_web_runtime_config(
+            variant,
+            preset,
+            methods_subdir,
+            source_config_file=config_file,
+        )
 
         cmd = [venv_python, "tasks.py", "preprocess"]
         if extra_args:
@@ -222,20 +292,21 @@ class TrainingService:
         env["PATH"] = str(ROOT / ".venv" / "bin") + ":" + env.get("PATH", "")
         env["METHOD"] = variant
         env["METHODS_SUBDIR"] = methods_subdir
+        _apply_runtime_env(env, runtime)
         env["PRESET"] = preset
 
-        output_dir, sample_dir, sample_config = _resolve_training_runtime_info(
-            variant,
-            preset,
-            methods_subdir,
-            [],
-        )
-        data_dirs = _ensure_training_data_dirs(variant, preset, methods_subdir)
+        output_dir = runtime["output_dir"]
+        sample_dir = runtime["sample_dir"]
+        sample_config = runtime["sample_config"]
+        data_dirs = runtime["data_dirs"]
+        runtime_info = _runtime_meta(runtime)
         self._pending_train_after_preprocess = {
             "variant": variant,
             "preset": preset,
             "methods_subdir": methods_subdir,
-            "extra_args": [],
+            "extra_args": list(extra_args or []),
+            "config_file": runtime["runtime_config_file"],
+            "source_config_file": runtime.get("history_source_config_file") or config_file,
             "gpu_whitelist": gpu_selection,
         } if train_after else None
         await self._launch_job(
@@ -252,6 +323,8 @@ class TrainingService:
             start_message=f"预处理启动: {methods_subdir}/{variant} / {preset}",
             command_label="预处理命令",
             gpu_whitelist=gpu_selection,
+            config_file=runtime["runtime_config_file"],
+            runtime_info=runtime_info,
         )
 
     async def _launch_job(
@@ -273,15 +346,8 @@ class TrainingService:
         config_file: str | None = None,
         resume_info: dict[str, Any] | None = None,
         gpu_whitelist: list[int] | None = None,
+        runtime_info: dict[str, str] | None = None,
     ):
-        self.process = await asyncio.create_subprocess_exec(
-            *cmd,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.STDOUT,
-            env=env,
-            cwd=str(ROOT),
-            start_new_session=True,
-        )
         self.status = "running"
         self.current_job = job
         self.current_variant = variant
@@ -290,9 +356,18 @@ class TrainingService:
         self.current_output_dir = output_dir
         self.current_sample_dir = sample_dir
         self.current_sample_config = sample_config
+        self.current_runtime_info = _runtime_meta(runtime_info)
         self._anchor = None
         self._metrics_history = []
+        self._metric_seen_keys = set()
+        self._progress_jsonl_path = None
+        self._progress_jsonl_offset = 0
+        self._progress_jsonl_seen = set()
+        self._progress_jsonl_lock = asyncio.Lock()
+        self._progress_total_steps = None
         self._stop_requested = False
+        self.current_task_id = ""
+        self.current_task_dir = None
         if job != "preprocess":
             self._pending_train_after_preprocess = None
         self._last_output_at = time.time()
@@ -301,6 +376,12 @@ class TrainingService:
             self._log_records.clear()
             self._next_log_id = 1
 
+        task_dir = self._reserve_history_task_dir(job, methods_subdir, variant)
+        if job == "training" and not _command_has_option(cmd, "--progress_jsonl"):
+            cmd = [*cmd, "--progress_jsonl", str(task_dir / "progress.jsonl")]
+        if job == "training":
+            progress_jsonl = _command_option_value(cmd, "--progress_jsonl")
+            self._progress_jsonl_path = _resolve_display_path(progress_jsonl or str(task_dir / "progress.jsonl"))
         self.current_command = cmd
         self._start_history_task(
             job=job,
@@ -315,7 +396,21 @@ class TrainingService:
             config_file=config_file,
             resume_info=resume_info,
             gpu_whitelist=gpu_whitelist,
+            runtime_info=self.current_runtime_info,
         )
+        try:
+            self.process = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.STDOUT,
+                env=env,
+                cwd=str(ROOT),
+                start_new_session=True,
+            )
+        except Exception as e:
+            self.status = "idle"
+            self._finish_history_task(state="error", message=f"任务启动失败: {e}", returncode=-1)
+            raise
         self._remember_log("status", f"{command_label}: {' '.join(cmd)}")
         if gpu_whitelist:
             self._remember_log("status", f"GPU 白名单: {','.join(str(item) for item in gpu_whitelist)}")
@@ -331,10 +426,13 @@ class TrainingService:
             "output_dir": self.current_output_dir,
             "sample_dir": self.current_sample_dir,
             "sample_config": self.current_sample_config,
+            **self.current_runtime_info,
             "task_id": self.current_task_id,
         })
         asyncio.create_task(self._read_output())
         asyncio.create_task(self._monitor_system())
+        if self._progress_jsonl_path:
+            asyncio.create_task(self._tail_progress_jsonl())
 
     async def stop(self):
         if not self.process or self.process.returncode is not None:
@@ -370,6 +468,7 @@ class TrainingService:
             "output_dir": self.current_output_dir,
             "sample_dir": self.current_sample_dir,
             "sample_config": self.current_sample_config,
+            **self.current_runtime_info,
             "task_id": self.current_task_id,
         })
 
@@ -402,6 +501,7 @@ class TrainingService:
         variant: str,
         preset: str,
         *,
+        group_key: str = "",
         include_archived: bool = False,
         task_ids: list[str] | None = None,
     ) -> dict[str, Any]:
@@ -409,6 +509,7 @@ class TrainingService:
             methods_subdir,
             variant,
             preset,
+            group_key=group_key,
             include_archived=include_archived,
             task_ids=task_ids,
         )
@@ -460,6 +561,7 @@ class TrainingService:
             "output_dir": self.current_output_dir,
             "sample_dir": self.current_sample_dir,
             "sample_config": self.current_sample_config,
+            **self.current_runtime_info,
             "task_id": self.current_task_id,
             "last_output_at": self._last_output_at,
             "last_log_line": self._last_log_line,
@@ -487,6 +589,7 @@ class TrainingService:
         job = self.current_job
         stop_requested = self._stop_requested
         pending_train = self._pending_train_after_preprocess
+        await self._ingest_progress_jsonl(final=True)
         self.status = "idle"
         self.current_job = ""
         self._stop_requested = False
@@ -510,6 +613,7 @@ class TrainingService:
             "output_dir": self.current_output_dir,
             "sample_dir": self.current_sample_dir,
             "sample_config": self.current_sample_config,
+            **self.current_runtime_info,
             "task_id": self.current_task_id,
         })
         if (
@@ -531,6 +635,7 @@ class TrainingService:
                 pending["variant"],
                 pending["preset"],
                 pending["methods_subdir"],
+                config_file=pending.get("config_file"),
             )
             if not preflight.get("ok", False):
                 errors = preflight.get("summary", {}).get("errors", 0)
@@ -541,7 +646,10 @@ class TrainingService:
                 pending.get("extra_args") or [],
                 pending["methods_subdir"],
                 reset_logs=False,
+                config_file=pending.get("config_file"),
+                source_config_file=pending.get("source_config_file"),
                 gpu_whitelist=pending.get("gpu_whitelist"),
+                use_runtime_dir=False,
             )
         except Exception as e:
             msg = f"自动开始训练失败: {e}"
@@ -554,6 +662,7 @@ class TrainingService:
                 "output_dir": self.current_output_dir,
                 "sample_dir": self.current_sample_dir,
                 "sample_config": self.current_sample_config,
+                **self.current_runtime_info,
                 "task_id": self.current_task_id,
             })
 
@@ -593,9 +702,7 @@ class TrainingService:
             self._remember_log("progress", text, ts=now)
             metrics = self._extract_metrics_from_tqdm(text, cur)
             if metrics:
-                self._metrics_history.append(metrics)
-                self._append_history_jsonl("metrics.jsonl", metrics)
-                await self._broadcast({"type": "metrics", **metrics})
+                await self._record_metric(metrics)
             return
 
         self._last_log_line = text
@@ -603,9 +710,119 @@ class TrainingService:
         await self._broadcast({"type": "log", **record})
         metrics = self._extract_metrics_from_log(text)
         if metrics:
-            self._metrics_history.append(metrics)
-            self._append_history_jsonl("metrics.jsonl", metrics)
-            await self._broadcast({"type": "metrics", **metrics})
+            await self._record_metric(metrics)
+
+    async def _record_metric(self, metrics: dict[str, Any]) -> None:
+        item = dict(metrics)
+        item.setdefault("ts", time.time())
+        key = _live_metric_key(item)
+        if key in self._metric_seen_keys:
+            return
+        self._metric_seen_keys.add(key)
+        self._metrics_history.append(item)
+        self._append_history_jsonl("metrics.jsonl", item)
+        await self._broadcast({"type": "metrics", **item})
+
+    async def _tail_progress_jsonl(self) -> None:
+        while self.status == "running" and self._progress_jsonl_path:
+            await self._ingest_progress_jsonl()
+            await asyncio.sleep(1.0)
+        await self._ingest_progress_jsonl(final=True)
+
+    async def _ingest_progress_jsonl(self, *, final: bool = False) -> None:
+        path = self._progress_jsonl_path
+        if path is None or not path.exists():
+            return
+        lock = self._progress_jsonl_lock
+        if lock is None:
+            self._progress_jsonl_lock = asyncio.Lock()
+            lock = self._progress_jsonl_lock
+        async with lock:
+            try:
+                size = path.stat().st_size
+                if size < self._progress_jsonl_offset:
+                    self._progress_jsonl_offset = 0
+                with path.open("r", encoding="utf-8") as f:
+                    f.seek(self._progress_jsonl_offset)
+                    lines = f.readlines()
+                    self._progress_jsonl_offset = f.tell()
+            except OSError:
+                return
+
+        for raw in lines:
+            line = raw.strip()
+            if not line:
+                continue
+            try:
+                event = json.loads(line)
+            except json.JSONDecodeError:
+                if final:
+                    self._remember_log("log", f"[progress.jsonl] 无法解析: {line[:200]}")
+                continue
+            if not isinstance(event, dict):
+                continue
+            key = _progress_event_key(event)
+            if key in self._progress_jsonl_seen:
+                continue
+            self._progress_jsonl_seen.add(key)
+            await self._handle_progress_jsonl_event(event)
+
+    async def _handle_progress_jsonl_event(self, event: dict[str, Any]) -> None:
+        ev = str(event.get("ev") or "").strip()
+        ts = _progress_event_wall_ts(event, self.current_task_dir)
+
+        if ev == "run_start":
+            total = _int_or_none(event.get("total_steps"))
+            if total is not None and total > 0:
+                self._progress_total_steps = total
+                await self._broadcast({
+                    "type": "progress",
+                    "current": 0,
+                    "total": total,
+                    "label": "Training",
+                    "rate": "",
+                    "ts": ts,
+                })
+            record = self._remember_log("status", "结构化训练进度已开始", ts=ts)
+            await self._broadcast({"type": "log", **record})
+            return
+
+        if ev in {"step", "val"}:
+            metric = _metric_from_progress_jsonl_event(event, ts)
+            if metric:
+                await self._record_metric(metric)
+            step = _int_or_none(event.get("global_step"))
+            total = self._progress_total_steps
+            if ev == "step" and step is not None and total:
+                await self._broadcast({
+                    "type": "progress",
+                    "current": step,
+                    "total": total,
+                    "label": "Training",
+                    "rate": "",
+                    "ts": ts,
+                })
+            return
+
+        if ev == "ckpt":
+            ckpt_path = str(event.get("path") or "").strip()
+            step = _int_or_none(event.get("global_step"))
+            suffix = f" step={step}" if step is not None else ""
+            record = self._remember_log("status", f"已保存检查点{suffix}: {ckpt_path}", ts=ts)
+            await self._broadcast({"type": "log", **record})
+            return
+
+        if ev == "run_end":
+            status = str(event.get("status") or "").strip() or "unknown"
+            step = _int_or_none(event.get("final_step"))
+            error = str(event.get("error") or "").strip()
+            line = f"结构化训练进度结束: {status}"
+            if step is not None:
+                line += f" final_step={step}"
+            if error:
+                line += f" error={error}"
+            record = self._remember_log("status", line, ts=ts)
+            await self._broadcast({"type": "log", **record})
 
     def _remember_log(self, kind: str, line: str, ts: float | None = None) -> dict[str, Any]:
         record = {
@@ -620,6 +837,20 @@ class TrainingService:
         if kind != "progress":
             self._last_log_line = line
         return record
+
+    def _reserve_history_task_dir(self, job: str, methods_subdir: str, variant: str) -> Path:
+        HISTORY_DIR.mkdir(parents=True, exist_ok=True)
+        task_id = datetime.now().strftime("%Y%m%d-%H%M%S") + f"-{job}-{methods_subdir}-{variant}"
+        task_id = _safe_task_id(task_id)
+        task_dir = HISTORY_DIR / task_id
+        suffix = 1
+        while task_dir.exists():
+            suffix += 1
+            task_dir = HISTORY_DIR / f"{task_id}-{suffix}"
+        task_dir.mkdir(parents=True, exist_ok=True)
+        self.current_task_id = task_dir.name
+        self.current_task_dir = task_dir
+        return task_dir
 
     def _start_history_task(
         self,
@@ -636,19 +867,20 @@ class TrainingService:
         config_file: str | None = None,
         resume_info: dict[str, Any] | None = None,
         gpu_whitelist: list[int] | None = None,
+        runtime_info: dict[str, str] | None = None,
     ) -> None:
-        HISTORY_DIR.mkdir(parents=True, exist_ok=True)
-        task_id = datetime.now().strftime("%Y%m%d-%H%M%S") + f"-{job}-{methods_subdir}-{variant}"
-        task_id = _safe_task_id(task_id)
-        task_dir = HISTORY_DIR / task_id
-        suffix = 1
-        while task_dir.exists():
-            suffix += 1
-            task_dir = HISTORY_DIR / f"{task_id}-{suffix}"
-        task_dir.mkdir(parents=True, exist_ok=True)
-        self.current_task_id = task_dir.name
-        self.current_task_dir = task_dir
+        task_dir = self.current_task_dir or self._reserve_history_task_dir(job, methods_subdir, variant)
         now = time.time()
+        runtime_meta = _runtime_meta(runtime_info)
+        history_meta = _history_group_meta(
+            methods_subdir,
+            variant,
+            preset,
+            output_dir=output_dir,
+            runtime_info=runtime_meta,
+            resume_info=resume_info,
+            task_id=task_dir.name,
+        )
         meta = {
             "id": task_dir.name,
             "name": "",
@@ -669,6 +901,8 @@ class TrainingService:
             "command": command,
             "resume_from": resume_info or {},
             "gpu_whitelist": gpu_whitelist or [],
+            **runtime_meta,
+            **history_meta,
             "started_at": now,
             "started_at_text": _format_ts(now),
             "finished_at": None,
@@ -761,12 +995,22 @@ class TrainingService:
     def _extract_metrics_from_log(self, line: str) -> dict | None:
         metrics: dict[str, Any] = {"ts": time.time()}
         found = False
-        if "loss" in line.lower():
+        lower = line.lower()
+        if "loss" in lower:
             for m in re.finditer(r"(?:avr_)?loss[=:/\s]+([\d.eE\-+]+)", line, re.IGNORECASE):
                 metrics["loss"] = float(m.group(1))
                 found = True
                 break
-        if "lr" in line.lower():
+        if "cmmd" in lower or "val_" in lower:
+            for m in re.finditer(r"(?:cmmd|val_[\w/]+)[=:/\s]+([\d.eE\-+]+)", line, re.IGNORECASE):
+                try:
+                    metrics["cmmd"] = float(m.group(1))
+                    metrics["kind"] = "val"
+                    found = True
+                except ValueError:
+                    pass
+                break
+        if "lr" in lower:
             for m in re.finditer(r"lr[=:/\s]+([\d.eE\-+]+)", line, re.IGNORECASE):
                 try:
                     metrics["lr"] = float(m.group(1))
@@ -774,7 +1018,7 @@ class TrainingService:
                 except ValueError:
                     pass
                 break
-        if "step" in line.lower():
+        if "step" in lower:
             for m in re.finditer(r"step[=:/\s]+(\d+)", line, re.IGNORECASE):
                 metrics["step"] = int(m.group(1))
                 break
@@ -968,6 +1212,343 @@ def toml_dumps_sorted(data: dict[str, Any]) -> str:
         return json.dumps(data, ensure_ascii=False, indent=2)
 
 
+def _prepare_web_runtime_config(
+    variant: str,
+    preset: str,
+    methods_subdir: str,
+    *,
+    source_config_file: str | None,
+) -> dict[str, Any]:
+    source_path = _resolve_display_path(source_config_file or "") if source_config_file else None
+    if source_config_file and (source_path is None or not _path_exists(source_path) or not source_path.is_file()):
+        raise FileNotFoundError(f"训练配置不存在: {source_config_file}")
+
+    stem_source = source_path.stem if source_path is not None else variant
+    run_stem = _safe_run_stem(stem_source or variant or "run")
+    run_dir = _unique_runtime_dir(resolve_output_root(), run_stem)
+
+    model_cache_dir = run_dir / "model_cache"
+    dataset_cache_dir = run_dir / "dataset_cache"
+    training_output_dir = run_dir / "training_output"
+    sample_dir = training_output_dir / "sample"
+    logs_dir = model_cache_dir / "logs"
+    torchinductor_dir = model_cache_dir / "torchinductor"
+    triton_dir = model_cache_dir / "triton"
+
+    for path in (
+        model_cache_dir,
+        dataset_cache_dir,
+        training_output_dir,
+        sample_dir,
+        logs_dir,
+        torchinductor_dir,
+        triton_dir,
+    ):
+        path.mkdir(parents=True, exist_ok=True)
+
+    cfg = load_merged_config(variant, preset, methods_subdir)
+    if source_path is not None:
+        source_cfg = _load_config_file_config(_display_settings_path(source_path))
+        if source_cfg:
+            cfg.update(source_cfg)
+    source_rows = _dataset_rows_for_estimate(cfg)
+    if not source_rows:
+        raise ValueError("请先配置至少一个数据集路径")
+
+    runtime_rows: list[dict[str, Any]] = []
+    for index, row in enumerate(source_rows, start=1):
+        group_dir = dataset_cache_dir / f"dataset-{index:02d}"
+        resized_dir = group_dir / "resized"
+        lora_dir = group_dir / "lora"
+        resized_dir.mkdir(parents=True, exist_ok=True)
+        lora_dir.mkdir(parents=True, exist_ok=True)
+        source_dir = str(
+            row.get("source_dir")
+            or row.get("source_image_dir")
+            or row.get("image_dir")
+            or ""
+        ).strip()
+        runtime_rows.append({
+            "source_dir": source_dir,
+            "image_dir": _display_settings_path(resized_dir),
+            "cache_dir": _display_settings_path(lora_dir),
+            "num_repeats": row.get("num_repeats") or 1,
+            "settings": row.get("settings") if isinstance(row.get("settings"), dict) else {},
+        })
+
+    original_config_path = run_dir / "config.original.toml"
+    if source_path is not None:
+        shutil.copy2(source_path, original_config_path)
+    else:
+        original_config_path.write_text(toml_dumps_sorted(cfg), encoding="utf-8")
+
+    dataset_config_path = run_dir / "dataset.runtime.toml"
+    runtime_cfg = dict(cfg)
+    dataset_doc = _build_dataset_config_doc(runtime_rows, runtime_cfg)
+    dataset_config_path.write_text(dataset_doc, encoding="utf-8")
+
+    first_row = runtime_rows[0]
+    runtime_cfg.update({
+        "output_dir": _display_settings_path(training_output_dir),
+        "logging_dir": _display_settings_path(logs_dir),
+        "dataset_config": _display_settings_path(dataset_config_path),
+        "source_image_dir": first_row["source_dir"],
+        "resized_image_dir": first_row["image_dir"],
+        "lora_cache_dir": first_row["cache_dir"],
+    })
+    runtime_config_path = run_dir / "config.runtime.toml"
+    runtime_config_path.write_text(toml_dumps_sorted(runtime_cfg), encoding="utf-8")
+
+    data_dirs = {
+        "source_image_dir": first_row["source_dir"],
+        "resized_image_dir": first_row["image_dir"],
+        "lora_cache_dir": first_row["cache_dir"],
+    }
+    history_source_config_file = _display_settings_path(source_path) if source_path is not None else ""
+    _write_runtime_run_meta(
+        run_dir,
+        {
+            "history_source_config_file": history_source_config_file,
+            "source_config_file": history_source_config_file,
+            "run_dir": _display_settings_path(run_dir),
+            "runtime_config_file": _display_settings_path(runtime_config_path),
+            "original_config_file": _display_settings_path(original_config_path),
+            "dataset_config_file": _display_settings_path(dataset_config_path),
+        },
+    )
+    return {
+        "run_dir": _display_settings_path(run_dir),
+        "runtime_config_file": _display_settings_path(runtime_config_path),
+        "original_config_file": _display_settings_path(original_config_path),
+        "dataset_config_file": _display_settings_path(dataset_config_path),
+        "output_dir": runtime_cfg["output_dir"],
+        "sample_dir": _display_settings_path(sample_dir),
+        "model_cache_dir": _display_settings_path(model_cache_dir),
+        "dataset_cache_dir": _display_settings_path(dataset_cache_dir),
+        "training_output_dir": runtime_cfg["output_dir"],
+        "logs_dir": runtime_cfg["logging_dir"],
+        "torchinductor_cache_dir": _display_settings_path(torchinductor_dir),
+        "triton_cache_dir": _display_settings_path(triton_dir),
+        "history_source_config_file": history_source_config_file,
+        "data_dirs": data_dirs,
+        "dataset_dirs": runtime_rows,
+        "sample_config": _sample_config_from_cfg(runtime_cfg, []),
+    }
+
+
+def _apply_runtime_env(env: dict[str, str], runtime: dict[str, Any] | None) -> None:
+    if not runtime:
+        return
+    env["ANIMA_RUNTIME_CONFIG"] = str(runtime.get("runtime_config_file") or "")
+    env["TORCHINDUCTOR_CACHE_DIR"] = str(runtime.get("torchinductor_cache_dir") or "")
+    env["TRITON_CACHE_DIR"] = str(runtime.get("triton_cache_dir") or "")
+
+
+def _runtime_meta(runtime: dict[str, Any] | None) -> dict[str, str]:
+    if not isinstance(runtime, dict):
+        return {}
+    return {
+        key: str(runtime.get(key) or "")
+        for key in RUNTIME_META_KEYS
+        if str(runtime.get(key) or "").strip()
+    }
+
+
+def _write_runtime_run_meta(run_dir: Path, payload: dict[str, Any]) -> None:
+    meta = {key: value for key, value in payload.items() if str(value or "").strip()}
+    _write_json(run_dir / RUN_META_FILE, meta)
+
+
+def _read_runtime_run_meta(run_dir: Path) -> dict[str, Any]:
+    meta = _read_json(run_dir / RUN_META_FILE)
+    return meta if isinstance(meta, dict) else {}
+
+
+def _runtime_from_config_file(
+    config_file: str | None,
+    *,
+    source_config_file: str | None = None,
+) -> dict[str, Any] | None:
+    if not config_file:
+        return None
+    config_path = _resolve_display_path(config_file)
+    if config_path is None or not _path_exists(config_path) or not config_path.is_file():
+        return None
+    run_dir = config_path.parent
+    model_cache_dir = run_dir / "model_cache"
+    training_output_dir = run_dir / "training_output"
+    dataset_cache_dir = run_dir / "dataset_cache"
+    if not model_cache_dir.is_dir() or not training_output_dir.is_dir():
+        return None
+
+    cfg = _load_config_file_config(_display_settings_path(config_path))
+    run_meta = _read_runtime_run_meta(run_dir)
+    source_config_path = _resolve_display_path(source_config_file or "") if source_config_file else None
+    history_source_config_file = (
+        _display_settings_path(source_config_path)
+        if source_config_path is not None
+        else str(
+            run_meta.get("history_source_config_file")
+            or run_meta.get("source_config_file")
+            or ""
+        )
+    )
+    history_source_config_file = _display_project_path(history_source_config_file)
+    source_dir = str(cfg.get("source_image_dir") or "")
+    resized_dir = str(cfg.get("resized_image_dir") or "")
+    lora_dir = str(cfg.get("lora_cache_dir") or "")
+    sample_dir = training_output_dir / "sample"
+    logs_dir = model_cache_dir / "logs"
+    torchinductor_dir = model_cache_dir / "torchinductor"
+    triton_dir = model_cache_dir / "triton"
+    for path in (sample_dir, logs_dir, torchinductor_dir, triton_dir):
+        path.mkdir(parents=True, exist_ok=True)
+    return {
+        "run_dir": _display_settings_path(run_dir),
+        "runtime_config_file": _display_settings_path(config_path),
+        "original_config_file": _display_settings_path(run_dir / "config.original.toml"),
+        "dataset_config_file": str(cfg.get("dataset_config") or ""),
+        "output_dir": str(cfg.get("output_dir") or _display_settings_path(training_output_dir)),
+        "sample_dir": _display_settings_path(sample_dir),
+        "model_cache_dir": _display_settings_path(model_cache_dir),
+        "dataset_cache_dir": _display_settings_path(dataset_cache_dir),
+        "training_output_dir": str(cfg.get("output_dir") or _display_settings_path(training_output_dir)),
+        "logs_dir": str(cfg.get("logging_dir") or _display_settings_path(logs_dir)),
+        "torchinductor_cache_dir": _display_settings_path(torchinductor_dir),
+        "triton_cache_dir": _display_settings_path(triton_dir),
+        "history_source_config_file": history_source_config_file,
+        "data_dirs": {
+            "source_image_dir": source_dir,
+            "resized_image_dir": resized_dir,
+            "lora_cache_dir": lora_dir,
+        },
+    }
+
+
+def _unique_runtime_dir(output_root: Path, stem: str) -> Path:
+    timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    base = output_root / f"{stem}-{timestamp}"
+    candidate = base
+    suffix = 1
+    while candidate.exists():
+        suffix += 1
+        candidate = output_root / f"{stem}-{timestamp}-{suffix}"
+    candidate.mkdir(parents=True, exist_ok=False)
+    return candidate
+
+
+def _history_group_meta(
+    methods_subdir: str,
+    variant: str,
+    preset: str,
+    *,
+    output_dir: str = "",
+    runtime_info: dict[str, Any] | None = None,
+    resume_info: dict[str, Any] | None = None,
+    task_id: str = "",
+) -> dict[str, str]:
+    runtime = runtime_info if isinstance(runtime_info, dict) else {}
+    resume = resume_info if isinstance(resume_info, dict) else {}
+
+    inherited_key = str(resume.get("history_group_key") or "").strip()
+    inherited_label = str(resume.get("history_group_label") or "").strip()
+    inherited_source = str(resume.get("history_source_config_file") or "").strip()
+    if inherited_key:
+        return {
+            "history_group_key": inherited_key,
+            "history_group_label": inherited_label or inherited_source or inherited_key,
+            "history_source_config_file": inherited_source,
+            "history_run_label": _history_run_label_from_runtime(output_dir, runtime, task_id),
+        }
+
+    source_config_file = str(runtime.get("history_source_config_file") or "").strip()
+    if source_config_file:
+        source_display = _display_project_path(source_config_file)
+        key = "source:" + source_display
+        return {
+            "history_group_key": key,
+            "history_group_label": source_display,
+            "history_source_config_file": source_display,
+            "history_run_label": _history_run_label_from_runtime(output_dir, runtime, task_id),
+        }
+
+    group = _history_config_group(methods_subdir, variant, preset)
+    return {
+        "history_group_key": _legacy_history_group_key(group),
+        "history_group_label": _legacy_history_group_label(group),
+        "history_source_config_file": "",
+        "history_run_label": _history_run_label_from_runtime(output_dir, runtime, task_id),
+    }
+
+
+def _fill_history_group_meta(task: dict[str, Any]) -> None:
+    existing_key = str(task.get("history_group_key") or "").strip()
+    if existing_key:
+        task["history_group_key"] = existing_key
+        task["history_group_label"] = str(
+            task.get("history_group_label")
+            or task.get("history_source_config_file")
+            or existing_key
+        )
+        task["history_source_config_file"] = str(task.get("history_source_config_file") or "")
+        if not str(task.get("history_run_label") or "").strip():
+            task["history_run_label"] = _history_run_label_from_runtime(
+                str(task.get("training_output_dir") or task.get("output_dir") or ""),
+                task,
+                str(task.get("id") or ""),
+            )
+        return
+    task.update(_history_group_meta(
+        str(task.get("methods_subdir") or ""),
+        str(task.get("variant") or ""),
+        str(task.get("preset") or "default"),
+        output_dir=str(task.get("training_output_dir") or task.get("output_dir") or ""),
+        runtime_info=task,
+        resume_info=task.get("resume_from") if isinstance(task.get("resume_from"), dict) else None,
+        task_id=str(task.get("id") or ""),
+    ))
+
+
+def _history_run_label_from_runtime(
+    output_dir: str,
+    runtime_info: dict[str, Any] | None,
+    task_id: str = "",
+) -> str:
+    runtime = runtime_info if isinstance(runtime_info, dict) else {}
+    for key in ("run_dir", "training_output_dir", "output_dir"):
+        raw = str(runtime.get(key) or "").strip()
+        label = _history_run_label_from_path(raw)
+        if label:
+            return label
+    return _history_run_label_from_path(output_dir) or str(task_id or "").strip()
+
+
+def _history_run_label_from_path(value: str) -> str:
+    path = _resolve_display_path(str(value or ""))
+    if path is None:
+        return ""
+    if path.name == "training_output":
+        return path.parent.name
+    return path.name
+
+
+def _legacy_history_group_key(group: dict[str, str]) -> str:
+    return "legacy:" + "\u0001".join([
+        group.get("methods_subdir") or "",
+        group.get("variant") or "",
+        group.get("preset") or "default",
+    ])
+
+
+def _legacy_history_group_label(group: dict[str, str]) -> str:
+    return f"{group.get('methods_subdir') or '-'} / {group.get('variant') or '-'} / {group.get('preset') or 'default'}"
+
+
+def _safe_run_stem(value: str) -> str:
+    clean = re.sub(r"[^A-Za-z0-9_.-]+", "-", str(value or "").strip()).strip(".-")
+    return clean[:80] or "run"
+
+
 def _list_history_tasks() -> list[dict[str, Any]]:
     if not HISTORY_DIR.exists():
         return []
@@ -1058,10 +1639,12 @@ def _build_config_group_timeline(
     variant: str,
     preset: str,
     *,
+    group_key: str = "",
     include_archived: bool = False,
     task_ids: list[str] | None = None,
 ) -> dict[str, Any]:
     group = _history_config_group(methods_subdir, variant, preset)
+    group_key = str(group_key or "").strip()
     selected_ids = _normalize_timeline_task_ids(task_ids)
     all_tasks = _list_history_tasks()
     if selected_ids:
@@ -1083,9 +1666,15 @@ def _build_config_group_timeline(
         tasks = [
             task for task in all_tasks
             if task.get("job") == "training"
-            and _task_config_group_matches(task, group)
+            and (
+                _task_history_group_matches(task, group_key)
+                if group_key
+                else _task_config_group_matches(task, group)
+            )
             and (include_archived or not task.get("archived"))
         ]
+        if group_key and tasks:
+            group = _history_group_from_task(tasks[0])
     tasks.sort(key=lambda item: (float(item.get("started_at") or 0), str(item.get("id") or "")))
     if not tasks:
         if selected_ids:
@@ -1238,14 +1827,10 @@ def _select_timeline_tasks_by_id(
 
 def _timeline_groups_for_tasks(tasks: list[dict[str, Any]]) -> list[dict[str, str]]:
     groups: list[dict[str, str]] = []
-    seen: set[tuple[str, str, str]] = set()
+    seen: set[str] = set()
     for task in tasks:
-        group = _history_config_group(
-            str(task.get("methods_subdir") or ""),
-            str(task.get("variant") or ""),
-            str(task.get("preset") or "default"),
-        )
-        key = (group["methods_subdir"], group["variant"], group["preset"])
+        group = _history_group_from_task(task)
+        key = str(group.get("history_group_key") or "")
         if key in seen:
             continue
         seen.add(key)
@@ -1268,6 +1853,31 @@ def _task_config_group_matches(task: dict[str, Any], group: dict[str, str]) -> b
         str(task.get("preset") or "default"),
     )
     return task_group == group
+
+
+def _task_history_group_matches(task: dict[str, Any], group_key: str) -> bool:
+    return str(task.get("history_group_key") or "").strip() == str(group_key or "").strip()
+
+
+def _history_group_from_task(task: dict[str, Any]) -> dict[str, str]:
+    group = _history_config_group(
+        str(task.get("methods_subdir") or ""),
+        str(task.get("variant") or ""),
+        str(task.get("preset") or "default"),
+    )
+    history_key = str(task.get("history_group_key") or "").strip() or _legacy_history_group_key(group)
+    history_label = str(task.get("history_group_label") or "").strip() or _legacy_history_group_label(group)
+    source_config = str(task.get("history_source_config_file") or "").strip()
+    run_label = str(task.get("history_run_label") or "").strip()
+    return {
+        **group,
+        "key": history_key,
+        "history_group_key": history_key,
+        "history_group_label": history_label,
+        "history_source_config_file": source_config,
+        "history_run_label": run_label,
+        "label": history_label,
+    }
 
 
 def _metrics_from_history(logs: list[dict[str, Any]], metrics: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -1319,16 +1929,18 @@ def _normalize_metric_record(item: dict[str, Any]) -> dict[str, Any] | None:
     step = _int_or_none(item.get("step"))
     if step is not None:
         out["step"] = step
-    for key in ("loss", "lr"):
+    for key in ("loss", "lr", "cmmd"):
         value = _float_or_none(item.get(key))
         if value is not None:
             out[key] = value
+    if item.get("kind"):
+        out["kind"] = str(item.get("kind"))
     if item.get("rate"):
         out["rate"] = str(item.get("rate"))
     ts = _float_or_none(item.get("ts"))
     if ts is not None:
         out["ts"] = ts
-    if not any(key in out for key in ("loss", "lr")):
+    if not any(key in out for key in ("loss", "lr", "cmmd")):
         return None
     return out
 
@@ -1350,14 +1962,17 @@ def _metric_from_progress_line(line: str) -> dict[str, Any] | None:
     return out if any(key in out for key in ("loss", "lr")) else None
 
 
-def _metric_seen_key(item: dict[str, Any]) -> tuple[int | None, float | None, float | None]:
+def _metric_seen_key(item: dict[str, Any]) -> tuple[int | None, float | None, float | None, float | None, str]:
     step = _int_or_none(item.get("step"))
     loss = _float_or_none(item.get("loss"))
     lr = _float_or_none(item.get("lr"))
+    cmmd = _float_or_none(item.get("cmmd"))
     return (
         step,
         round(loss, 8) if loss is not None else None,
         round(lr, 12) if lr is not None else None,
+        round(cmmd, 8) if cmmd is not None else None,
+        str(item.get("kind") or ""),
     )
 
 
@@ -1402,7 +2017,13 @@ def _timeline_task_brief(task: dict[str, Any]) -> dict[str, Any]:
         "preset": task.get("preset", ""),
         "methods_subdir": task.get("methods_subdir", ""),
         "output_dir": task.get("output_dir", ""),
+        "run_dir": task.get("run_dir", ""),
         "history_dir": task.get("history_dir", ""),
+        "history_group_key": task.get("history_group_key", ""),
+        "history_group_label": task.get("history_group_label", ""),
+        "history_source_config_file": task.get("history_source_config_file", ""),
+        "history_run_label": task.get("history_run_label", ""),
+        "resume_from": task.get("resume_from") if isinstance(task.get("resume_from"), dict) else {},
         "started_at": task.get("started_at"),
         "started_at_text": task.get("started_at_text", ""),
         "finished_at": task.get("finished_at"),
@@ -1414,7 +2035,11 @@ def _timeline_task_brief(task: dict[str, Any]) -> dict[str, Any]:
 
 
 def _timeline_task_label(task: dict[str, Any]) -> str:
-    return str(task.get("name") or f"{task.get('methods_subdir') or '-'} / {task.get('variant') or task.get('id') or '-'}")
+    return str(
+        task.get("name")
+        or task.get("history_run_label")
+        or f"{task.get('methods_subdir') or '-'} / {task.get('variant') or task.get('id') or '-'}"
+    )
 
 
 def _update_history_task(task_id: str, patch: dict[str, Any]) -> dict[str, Any]:
@@ -1466,9 +2091,36 @@ def _history_summary(meta: dict[str, Any], task_dir: Path) -> dict[str, Any]:
     data_dirs = out.get("data_dirs") if isinstance(out.get("data_dirs"), dict) else {}
     for key in ("source_image_dir", "resized_image_dir", "lora_cache_dir"):
         out[key] = str(out.get(key) or data_dirs.get(key) or "")
+    _fill_history_runtime_meta(out)
+    _fill_history_group_meta(out)
     out["log_count"] = int(out.get("log_count") or _count_jsonl(task_dir / "logs.jsonl"))
     out["metric_count"] = int(out.get("metric_count") or _count_jsonl(task_dir / "metrics.jsonl"))
     return out
+
+
+def _fill_history_runtime_meta(task: dict[str, Any]) -> None:
+    run_dir_raw = str(task.get("run_dir") or "").strip()
+    if not run_dir_raw:
+        output_dir = _resolve_display_path(str(task.get("training_output_dir") or task.get("output_dir") or ""))
+        if output_dir and output_dir.name == "training_output":
+            run_dir_raw = _display_project_path(str(output_dir.parent))
+            task["run_dir"] = run_dir_raw
+    run_dir = _resolve_display_path(run_dir_raw)
+    if not run_dir:
+        return
+
+    defaults = {
+        "runtime_config_file": run_dir / "config.runtime.toml",
+        "original_config_file": run_dir / "config.original.toml",
+        "dataset_config_file": run_dir / "dataset.runtime.toml",
+        "model_cache_dir": run_dir / "model_cache",
+        "dataset_cache_dir": run_dir / "dataset_cache",
+        "training_output_dir": run_dir / "training_output",
+        "logs_dir": run_dir / "model_cache" / "logs",
+    }
+    for key, path in defaults.items():
+        if not str(task.get(key) or "").strip():
+            task[key] = _display_project_path(str(path))
 
 
 def _history_snapshot_path(task_id: str) -> Path | None:
@@ -1809,6 +2461,88 @@ def _display_project_path(value: str) -> str:
         return path.resolve().relative_to(ROOT.resolve()).as_posix()
     except ValueError:
         return raw
+
+
+def _command_has_option(args: list[str], option: str) -> bool:
+    prefix = f"{option}="
+    return any(arg == option or str(arg).startswith(prefix) for arg in args)
+
+
+def _command_option_value(args: list[str], option: str) -> str | None:
+    prefix = f"{option}="
+    for idx, arg in enumerate(args):
+        if arg == option and idx + 1 < len(args):
+            return str(args[idx + 1])
+        if str(arg).startswith(prefix):
+            return str(arg).split("=", 1)[1]
+    return None
+
+
+def _live_metric_key(item: dict[str, Any]) -> tuple[Any, ...]:
+    return (
+        _int_or_none(item.get("step")),
+        _int_or_none(item.get("epoch")),
+        round(_float_or_none(item.get("loss")) or 0.0, 8) if _float_or_none(item.get("loss")) is not None else None,
+        round(_float_or_none(item.get("lr")) or 0.0, 12) if _float_or_none(item.get("lr")) is not None else None,
+        round(_float_or_none(item.get("cmmd")) or 0.0, 8) if _float_or_none(item.get("cmmd")) is not None else None,
+        str(item.get("kind") or ""),
+    )
+
+
+def _progress_event_key(event: dict[str, Any]) -> tuple[Any, ...]:
+    return (
+        str(event.get("ev") or ""),
+        event.get("ts"),
+        event.get("global_step"),
+        event.get("epoch"),
+        event.get("val_step"),
+        event.get("path"),
+        event.get("status"),
+        event.get("final_step"),
+    )
+
+
+def _progress_event_wall_ts(event: dict[str, Any], task_dir: Path | None) -> float:
+    rel_ts = _float_or_none(event.get("ts"))
+    started_at = None
+    if task_dir is not None:
+        meta = _read_json(task_dir / "meta.json")
+        if isinstance(meta, dict):
+            started_at = _float_or_none(meta.get("started_at"))
+    if rel_ts is not None and started_at is not None:
+        return started_at + rel_ts
+    if rel_ts is not None and rel_ts > 1_000_000_000:
+        return rel_ts
+    return time.time()
+
+
+def _metric_from_progress_jsonl_event(event: dict[str, Any], ts: float) -> dict[str, Any] | None:
+    metric: dict[str, Any] = {"ts": ts}
+    step = _int_or_none(event.get("global_step"))
+    if step is not None:
+        metric["step"] = step
+    epoch = _int_or_none(event.get("epoch"))
+    if epoch is not None:
+        metric["epoch"] = epoch
+
+    if str(event.get("ev") or "") == "val":
+        metric["kind"] = "val"
+        cmmd = _float_or_none(event.get("cmmd"))
+        if cmmd is not None:
+            metric["cmmd"] = cmmd
+            metric["loss"] = cmmd
+        val_step = _int_or_none(event.get("val_step"))
+        if val_step is not None:
+            metric["val_step"] = val_step
+    else:
+        loss = _float_or_none(event.get("loss"))
+        if loss is not None:
+            metric["loss"] = loss
+        lr = _float_or_none(event.get("lr"))
+        if lr is not None:
+            metric["lr"] = lr
+
+    return metric if any(key in metric for key in ("loss", "lr", "cmmd")) else None
 
 
 def _first_record_separator(text: str) -> int | None:

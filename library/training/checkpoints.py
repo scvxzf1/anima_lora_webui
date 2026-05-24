@@ -23,7 +23,6 @@ STEP_DIFFUSERS_DIR_NAME = "{}-step{:08d}"
 
 CHECKPOINT_STATE_NAME = "{}-checkpoint-state"
 CHECKPOINT_FILE_NAME = "{}-checkpoint"
-ACCELERATE_MODEL_STATE_NAME = "model.safetensors"
 
 
 def default_if_none(value, default):
@@ -224,45 +223,85 @@ def get_checkpoint_ckpt_name(args: argparse.Namespace, ext: str):
     return CHECKPOINT_FILE_NAME.format(model_name) + ext
 
 
+def _remove_path(path: str) -> None:
+    if os.path.isdir(path) and not os.path.islink(path):
+        shutil.rmtree(path)
+    elif os.path.exists(path):
+        os.remove(path)
+
+
+def _recover_checkpoint_state_dirs(state_dir: str, tmp_dir: str, backup_dir: str) -> None:
+    """Clean stale tmp/backup dirs before writing a new resumable state."""
+    if os.path.exists(tmp_dir):
+        _remove_path(tmp_dir)
+    if os.path.exists(backup_dir):
+        if not os.path.exists(state_dir):
+            os.replace(backup_dir, state_dir)
+        else:
+            _remove_path(backup_dir)
+
+
+def _checkpoint_network_state_compatible(state_dir: str, network: Any) -> bool:
+    model_state_file = os.path.join(state_dir, "model.safetensors")
+    if not os.path.exists(model_state_file):
+        logger.info(
+            f"skip auto-resume because checkpoint model state is missing: {model_state_file}"
+        )
+        return False
+    try:
+        from safetensors.torch import load_file
+
+        checkpoint_keys = set(load_file(model_state_file, device="cpu").keys())
+    except Exception as e:  # noqa: BLE001 - corrupted state should not block a fresh run
+        logger.info(f"skip auto-resume because checkpoint model state is unreadable: {e}")
+        return False
+
+    network_keys = set(network.state_dict().keys())
+    normalized_network_keys = {
+        key.removeprefix("module.") for key in network_keys
+    } | network_keys
+    normalized_checkpoint_keys = {
+        key.removeprefix("module.") for key in checkpoint_keys
+    } | checkpoint_keys
+    if not normalized_checkpoint_keys:
+        logger.info("skip auto-resume because checkpoint model state is empty")
+        return False
+    if normalized_checkpoint_keys.issubset(normalized_network_keys):
+        return True
+
+    missing = sorted(normalized_checkpoint_keys - normalized_network_keys)[:5]
+    logger.info(
+        "skip auto-resume because checkpoint model state is incompatible; "
+        f"unexpected keys: {missing}"
+    )
+    return False
+
+
 def save_checkpoint_state(args: argparse.Namespace, accelerator):
     state_dir = get_checkpoint_state_dir(args)
-    tmp_state_dir = state_dir + ".tmp"
-    backup_state_dir = state_dir + ".backup"
+    tmp_dir = state_dir + ".tmp"
+    backup_dir = state_dir + ".backup"
 
     logger.info("")
     logger.info(f"saving checkpoint state to {state_dir} (overwriting)")
     os.makedirs(args.output_dir, exist_ok=True)
 
-    _prepare_checkpoint_state_dirs(state_dir, tmp_state_dir, backup_state_dir)
-
+    _recover_checkpoint_state_dirs(state_dir, tmp_dir, backup_dir)
     try:
-        accelerator.save_state(tmp_state_dir)
-
-        if os.path.exists(backup_state_dir):
-            shutil.rmtree(backup_state_dir)
+        accelerator.save_state(tmp_dir)
         if os.path.exists(state_dir):
-            os.replace(state_dir, backup_state_dir)
-        os.replace(tmp_state_dir, state_dir)
+            os.replace(state_dir, backup_dir)
+        os.replace(tmp_dir, state_dir)
+        if os.path.exists(backup_dir):
+            _remove_path(backup_dir)
     except Exception:
-        if os.path.exists(tmp_state_dir):
-            shutil.rmtree(tmp_state_dir)
-        if not os.path.exists(state_dir) and os.path.exists(backup_state_dir):
-            os.replace(backup_state_dir, state_dir)
+        if os.path.exists(tmp_dir):
+            _remove_path(tmp_dir)
+        if os.path.exists(backup_dir):
+            if os.path.exists(state_dir):
+                _remove_path(state_dir)
+            os.replace(backup_dir, state_dir)
         raise
-    else:
-        if os.path.exists(backup_state_dir):
-            shutil.rmtree(backup_state_dir)
-
-
-def _prepare_checkpoint_state_dirs(
-    state_dir: str,
-    tmp_state_dir: str,
-    backup_state_dir: str,
-) -> None:
-    if os.path.exists(tmp_state_dir):
-        shutil.rmtree(tmp_state_dir)
-    if not os.path.exists(state_dir) and os.path.exists(backup_state_dir):
-        os.replace(backup_state_dir, state_dir)
 
 
 def save_state_on_train_end(args: argparse.Namespace, accelerator):
@@ -327,6 +366,7 @@ class CheckpointSaver:
         get_sai_model_spec_fn: Callable[[argparse.Namespace], dict],
         current_epoch,
         current_step,
+        progress_sink=None,
     ):
         self.args = args
         self.accelerator = accelerator
@@ -336,62 +376,12 @@ class CheckpointSaver:
         self.get_sai_model_spec_fn = get_sai_model_spec_fn
         self.current_epoch = current_epoch
         self.current_step = current_step
+        # Optional structured-progress sink (Phase 0). When set, every
+        # checkpoint write emits a ``ckpt`` event.
+        self.progress_sink = progress_sink
         # Set by the load_state pre-hook when resuming. Read by train() to
         # decide initial_step.
         self.steps_from_state: Optional[int] = None
-
-    def _checkpoint_model_keys(self, checkpoint_state_dir: str) -> Optional[set[str]]:
-        model_state_file = os.path.join(
-            checkpoint_state_dir, ACCELERATE_MODEL_STATE_NAME
-        )
-        if not os.path.exists(model_state_file):
-            return None
-        try:
-            from safetensors import safe_open
-
-            with safe_open(model_state_file, framework="pt", device="cpu") as f:
-                return set(f.keys())
-        except Exception as e:
-            logger.warning(
-                f"could not inspect checkpoint model state {model_state_file}: {e}"
-            )
-            return None
-
-    def _network_state_keys(self, network: Any) -> Optional[set[str]]:
-        if network is None:
-            return None
-        unwrap_model = getattr(self.accelerator, "unwrap_model", None)
-        if unwrap_model is not None:
-            network = unwrap_model(network)
-        state_dict = network.state_dict() if hasattr(network, "state_dict") else None
-        if state_dict is None:
-            return None
-        return set(state_dict.keys())
-
-    def _checkpoint_matches_network(
-        self, checkpoint_state_dir: str, network: Any
-    ) -> bool:
-        checkpoint_keys = self._checkpoint_model_keys(checkpoint_state_dir)
-        network_keys = self._network_state_keys(network)
-        if checkpoint_keys is None or network_keys is None:
-            return True
-
-        missing_keys = network_keys - checkpoint_keys
-        unexpected_keys = checkpoint_keys - network_keys
-        if not missing_keys and not unexpected_keys:
-            return True
-
-        missing_sample = ", ".join(sorted(missing_keys)[:3]) or "-"
-        unexpected_sample = ", ".join(sorted(unexpected_keys)[:3]) or "-"
-        logger.warning(
-            "auto-resume skipped because checkpoint network state does not "
-            "match the current network. This usually happens after changing "
-            "LoRA variants or network structure. "
-            f"missing={len(missing_keys)} [{missing_sample}], "
-            f"unexpected={len(unexpected_keys)} [{unexpected_sample}], "
-            f"checkpoint={checkpoint_state_dir}"
-        )
-        return False
 
     def register_hooks(self, network: Any) -> None:
         """Install accelerator save/load pre-hooks that persist epoch/step
@@ -442,11 +432,16 @@ class CheckpointSaver:
         accelerator.register_save_state_pre_hook(save_model_hook)
         accelerator.register_load_state_pre_hook(load_model_hook)
 
-    def auto_resume(self, network: Any = None) -> None:
+    def auto_resume(self, network: Any | None = None) -> None:
         """If ``checkpointing_epochs`` is enabled and a resumable checkpoint
         exists below ``max_train_steps``, point ``args.resume`` at it and
         force ``skip_until_initial_step``. No-op when ``args.resume`` is
-        already set or no checkpoint exists."""
+        already set or no checkpoint exists.
+
+        When ``network`` is provided, require the resumable checkpoint's
+        ``model.safetensors`` keys to be compatible with the network before
+        resuming.
+        """
         args = self.args
         if not getattr(args, "checkpointing_epochs", None) or args.resume:
             return
@@ -456,12 +451,14 @@ class CheckpointSaver:
         train_state_file = os.path.join(checkpoint_state_dir, "train_state.json")
         if not os.path.exists(train_state_file):
             return
+        if network is not None and not _checkpoint_network_state_compatible(
+            checkpoint_state_dir, network
+        ):
+            return
         with open(train_state_file, "r", encoding="utf-8") as f:
             ckpt_data = json.load(f)
         ckpt_step = ckpt_data.get("current_step", 0)
         if ckpt_step < args.max_train_steps:
-            if not self._checkpoint_matches_network(checkpoint_state_dir, network):
-                return
             args.resume = checkpoint_state_dir
             args.skip_until_initial_step = True
             logger.info(
@@ -492,6 +489,9 @@ class CheckpointSaver:
         metadata_to_save.update(sai_metadata)
 
         unwrapped_nw.save_weights(ckpt_file, self.save_dtype, metadata_to_save)
+
+        if self.progress_sink is not None:
+            self.progress_sink.ckpt(global_step=steps, path=ckpt_file)
 
     def remove(self, old_ckpt_name: str) -> None:
         """Delete an old checkpoint plus its HydraLoRA ``_moe`` sibling if present."""

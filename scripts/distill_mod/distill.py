@@ -151,15 +151,6 @@ def main():
         help="Disable torch.compile",
     )
     parser.add_argument(
-        "--compile_mode",
-        type=str,
-        choices=["blocks", "full"],
-        default="blocks",
-        help="'blocks': compile each block._forward (default). "
-        "'full': compile the constant-shape _run_blocks stack (one CUDAGraph "
-        "across buckets — requires --no_grad_ckpt and --blocks_to_swap 0).",
-    )
-    parser.add_argument(
         "--compile_inductor_mode",
         type=str,
         default="",
@@ -182,6 +173,15 @@ def main():
         type=float,
         default=0.02,
         help="Warmup steps: int >= 1 for absolute steps, float < 1 for ratio of iterations",
+    )
+    parser.add_argument(
+        "--no_shuffle",
+        dest="shuffle",
+        action="store_false",
+        default=True,
+        help="Disable per-epoch shuffling of the (bucket-grouped) batch order. "
+        "Default shuffles batch order each epoch while keeping every batch "
+        "single-resolution and pinning the largest-token bucket to step 0.",
     )
     parser.add_argument(
         "--dry_run",
@@ -336,7 +336,6 @@ def main():
         device,
         args.dit_path,
         attn_mode=args.attn_mode,
-        split_attn=False,
         loading_device="cpu" if args.blocks_to_swap > 0 else device,
         dit_weight_dtype=dtype,
     )
@@ -366,28 +365,24 @@ def main():
     else:
         model.to(device)
 
-    # Static token count: pad all spatial sequences to 4096 tokens so
-    # torch.compile sees a single shape across all bucket resolutions.
-    model.set_static_token_count(4096)
+    # Native-shape buckets: every aspect bucket runs at its real token count
+    # (no static padding → no flash pad-leak into the distillation target). The
+    # value here is just a non-None sentinel enabling the mode; each forward
+    # reshapes to its own seq_len.
+    model.set_static_token_count(4096, pad=False)
 
-    # Compile individual block._forward for speedup.
-    # unsloth_checkpoint wraps Block.forward with @torch._disable_dynamo,
-    # so we compile _forward (the inner computation) not forward.
-    # compile_mode='full' instead compiles the constant-shape _run_blocks stack
-    # — single trace across all buckets, but incompatible with grad ckpt / block swap.
+    # Compile individual block._forward for speedup. unsloth_checkpoint wraps
+    # Block.forward with @torch._disable_dynamo, so we compile _forward (the
+    # inner computation) not forward. Native mode traces one block graph per
+    # distinct latent token count; raise the dynamo cache so every distinct
+    # shape traces instead of falling back to eager mid-warmup.
     if args.torch_compile:
-        if args.compile_mode == "full":
-            assert not args.grad_ckpt, (
-                "compile_mode='full' is incompatible with gradient checkpointing — "
-                "pass --no_grad_ckpt"
-            )
-            assert args.blocks_to_swap == 0, (
-                "compile_mode='full' is incompatible with block swap — "
-                "pass --blocks_to_swap 0"
-            )
-            model.compile_core(mode=args.compile_inductor_mode)
-        else:
-            model.compile_blocks(mode=args.compile_inductor_mode)
+        import torch._dynamo as _dynamo
+
+        _dynamo.config.cache_size_limit = max(
+            _dynamo.config.cache_size_limit, 64
+        )
+        model.compile_blocks(mode=args.compile_inductor_mode)
 
     # Gradient checkpointing with CPU offload: recompute block activations
     # during backward, offloading saved tensors to CPU between forward/backward.
@@ -408,6 +403,11 @@ def main():
         param.requires_grad_(False)
     for param in model.pooled_text_proj.parameters():
         param.requires_grad_(True)
+
+    # Arm the student forward's pooled_text_proj path. The output layer starts
+    # zero-init, so without this the gate would skip the proj and starve its
+    # gradient — the teacher forward still passes skip_pooled_text_proj=True.
+    model.enable_pooled_text_modulation = True
 
     # Train pooled_text_proj in float32 for precision
     model.pooled_text_proj.to(dtype=torch.float32)
@@ -481,13 +481,14 @@ def main():
             torch.stack([b[3] for b in batch]),
         )
 
+    # Bucket-grouped batch sampler: every batch is one resolution (so the
+    # stacking _collate works at batch_size>1) and, when shuffling, batch order
+    # is reshuffled per epoch with the largest-token bucket pinned first.
     dataloader = torch.utils.data.DataLoader(
         dataset,
-        batch_size=args.batch_size,
-        shuffle=False,  # dataset is pre-bucketed; shuffling would mix resolutions
+        batch_sampler=dataset.make_batch_sampler(shuffle=args.shuffle, seed=args.seed),
         num_workers=2,
         pin_memory=True,
-        drop_last=True,
         collate_fn=_collate,
     )
 

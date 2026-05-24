@@ -17,7 +17,7 @@
             }
         })();
     </script>
-    <link rel="stylesheet" href="/static/style.css?v=toml-toolbar-priority-20260522-2">
+    <link rel="stylesheet" href="/static/style.css?v=preview-weight-download-20260524-1">
 </head>
 <body>
     <header>
@@ -27,6 +27,7 @@
             <button class="tab-btn" data-tab="datasets">数据集</button>
             <button class="tab-btn" data-tab="training">训练</button>
             <button class="tab-btn" data-tab="preview">预览图</button>
+            <button class="tab-btn" data-tab="settings">全局设置</button>
         </nav>
         <div id="status-indicator">
             <span class="dot idle"></span>
@@ -88,6 +89,10 @@
                                 <span id="toml-dirty-badge" class="toml-badge toml-badge-danger" hidden>未保存</span>
                             </div>
                         </div>
+                        <div class="toml-mode-tabs" aria-label="配置管理模式">
+                            <button id="btn-toml-mode-project" class="toml-mode-btn active" type="button" data-toml-mode="project">项目预设</button>
+                            <button id="btn-toml-mode-output" class="toml-mode-btn" type="button" data-toml-mode="output">训练输出配置</button>
+                        </div>
                         <div class="toml-file-actions toml-primary-actions" aria-label="常用 TOML 操作">
                             <input id="toml-import-input" type="file" accept=".toml,.txt,text/plain" hidden>
                             <button id="btn-save-toml" class="btn btn-small btn-primary" type="button">保存更新当前选中配置</button>
@@ -95,6 +100,7 @@
                             <button id="btn-apply-toml" class="btn btn-small btn-primary" type="button">加载选中配置</button>
                             <button id="btn-toggle-toml-editor" class="btn btn-small btn-highlight" type="button">直接编辑配置文件</button>
                             <button id="btn-move-toml-group" class="btn btn-small" type="button">移动分组位置</button>
+                            <button id="btn-create-blank-preset" class="btn btn-small" type="button">创建空白预设配置</button>
                         </div>
                         <div class="toml-file-actions toml-secondary-actions" aria-label="次要 TOML 操作">
                             <button id="btn-import-toml" class="btn btn-small" type="button">导入 TOML</button>
@@ -104,9 +110,15 @@
                             <button id="btn-delete-toml" class="btn btn-small btn-subtle-danger" type="button">删除当前配置</button>
                             <button id="btn-restore-system-toml" class="btn btn-small btn-subtle-danger" type="button">还原系统预设</button>
                         </div>
+                        <div id="output-run-actions" class="toml-file-actions output-run-actions" aria-label="训练输出配置操作" hidden>
+                            <button id="btn-refresh-output-runs" class="btn btn-small" type="button">刷新</button>
+                            <button id="btn-copy-output-config" class="btn btn-small" type="button">复制内容</button>
+                            <button id="btn-export-output-config" class="btn btn-small" type="button">导出当前 TOML</button>
+                            <button id="btn-save-output-config-as" class="btn btn-small btn-primary" type="button">复制为新项目预设</button>
+                        </div>
                         <span id="toml-status"></span>
                     </div>
-                    <div class="toml-manager">
+                    <div id="toml-project-manager" class="toml-manager">
                         <aside id="toml-file-groups" class="toml-file-groups" aria-label="配置文件分组"></aside>
                         <section id="toml-edit-panel" class="toml-edit-panel" hidden aria-label="直接编辑配置文件">
                             <div class="toml-edit-toolbar">
@@ -120,6 +132,31 @@
                                 </div>
                             </div>
                             <textarea id="toml-editor" spellcheck="false"></textarea>
+                        </section>
+                    </div>
+                    <div id="output-run-manager" class="output-run-manager" hidden>
+                        <aside class="output-run-sidebar" aria-label="训练输出运行列表">
+                            <label class="output-run-search">
+                                <span>搜索运行目录</span>
+                                <input id="output-run-search" type="search" placeholder="输入配置名或时间">
+                            </label>
+                            <div id="output-run-list" class="output-run-list"></div>
+                        </aside>
+                        <section class="output-run-detail" aria-label="训练输出配置详情">
+                            <div class="output-run-detail-header">
+                                <div>
+                                    <strong id="output-run-title">未选择运行目录</strong>
+                                    <span id="output-run-meta">从全局输出文件夹读取训练快照配置。</span>
+                                </div>
+                                <div id="output-run-kind-tabs" class="output-run-kind-tabs"></div>
+                            </div>
+                            <div id="output-run-save-as" class="output-run-save-as" hidden>
+                                <input id="output-run-save-name" type="text" placeholder="新项目预设名称">
+                                <select id="output-run-save-group" aria-label="保存到分组"></select>
+                                <button id="btn-confirm-output-config-save-as" class="btn btn-small btn-primary" type="button">创建预设</button>
+                                <button id="btn-cancel-output-config-save-as" class="btn btn-small" type="button">取消</button>
+                            </div>
+                            <textarea id="output-run-config-viewer" readonly spellcheck="false" placeholder="选择左侧运行目录后查看配置。"></textarea>
                         </section>
                     </div>
                 </div>
@@ -285,7 +322,7 @@
                         <label id="preview-training-task-field" class="preview-setting-field">
                             <span>训练任务选择</span>
                             <select id="preview-training-task" class="preview-training-task-select">
-                                <option value="">当前任务 / 默认目录</option>
+                                <option value="">当前任务 / 最新运行目录</option>
                             </select>
                         </label>
                         <div class="preview-actions">
@@ -296,7 +333,7 @@
                     <div class="panel preview-settings-panel">
                         <h3>路径设置</h3>
                         <label class="preview-setting-field">
-                            <span>训练样张默认目录</span>
+                            <span>兼容训练样张目录</span>
                             <input id="preview-training-dir" type="text" placeholder="output/ckpt/sample">
                         </label>
                         <label class="preview-setting-field">
@@ -339,6 +376,125 @@
                         <div id="preview-weights-empty" class="preview-empty" hidden></div>
                         <div id="preview-weights-list" class="preview-weights-list"></div>
                     </section>
+                </section>
+            </div>
+        </section>
+
+        <!-- 全局设置 Tab -->
+        <section id="tab-settings" class="tab-content">
+            <div class="global-settings-layout">
+                <section class="panel global-settings-panel" aria-label="全局设置">
+                    <h3>输出文件夹</h3>
+                    <div class="preview-setting-field global-setting-field">
+                        <div class="global-setting-label-row">
+                            <label for="global-output-root">输出文件夹</label>
+                            <button
+                                id="btn-global-output-root-help"
+                                class="info-toggle global-setting-help-toggle"
+                                type="button"
+                                title="查看作用和为什么"
+                                aria-expanded="false"
+                                aria-controls="global-output-root-help"
+                            >?</button>
+                        </div>
+                        <input id="global-output-root" type="text" placeholder="output/runs">
+                        <div id="global-output-root-help" class="field-help global-setting-help">
+                            <div class="help-content">
+                                <section class="help-section help-summary">
+                                    <div class="help-heading">作用</div>
+                                    <p>作为 Web 训练的统一输出根目录；每次启动训练或预处理时，系统会在这里创建独立运行目录，集中保存模型缓存、数据集缓存、训练结果和运行时配置快照。</p>
+                                </section>
+                                <section class="help-section">
+                                    <div class="help-heading">为什么</div>
+                                    <p>把输出和缓存集中到同一个根目录，能避免配置页和数据集页反复填写缓存路径，也更容易按训练时间找到结果、复盘配置和清理旧运行。</p>
+                                </section>
+                            </div>
+                        </div>
+                    </div>
+                    <h3>基础模型路径 (3 项)</h3>
+                    <div class="preview-setting-field global-setting-field">
+                        <div class="global-setting-label-row">
+                            <label for="global-pretrained-model-path">基础 DiT 模型</label>
+                            <button
+                                id="btn-global-pretrained-model-path-help"
+                                class="info-toggle global-setting-help-toggle"
+                                type="button"
+                                title="查看作用和为什么"
+                                aria-expanded="false"
+                                aria-controls="global-pretrained-model-path-help"
+                            >?</button>
+                        </div>
+                        <input id="global-pretrained-model-path" type="text" placeholder="models/diffusion_models/anima-base-v1.0.safetensors">
+                        <div id="global-pretrained-model-path-help" class="field-help global-setting-help">
+                            <div class="help-content">
+                                <section class="help-section help-summary">
+                                    <div class="help-heading">作用</div>
+                                    <p>作为新建空白预设配置时写入的默认基础 DiT 权重路径；配置页里的同名字段仍可单独覆盖。</p>
+                                </section>
+                                <section class="help-section">
+                                    <div class="help-heading">为什么</div>
+                                    <p>把最常复用的底模路径放到全局设置，可以减少每次新建配置后重复改路径的步骤。</p>
+                                </section>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="preview-setting-field global-setting-field">
+                        <div class="global-setting-label-row">
+                            <label for="global-qwen3-path">Qwen3 文本编码器</label>
+                            <button
+                                id="btn-global-qwen3-path-help"
+                                class="info-toggle global-setting-help-toggle"
+                                type="button"
+                                title="查看作用和为什么"
+                                aria-expanded="false"
+                                aria-controls="global-qwen3-path-help"
+                            >?</button>
+                        </div>
+                        <input id="global-qwen3-path" type="text" placeholder="models/text_encoders/qwen_3_06b_base.safetensors">
+                        <div id="global-qwen3-path-help" class="field-help global-setting-help">
+                            <div class="help-content">
+                                <section class="help-section help-summary">
+                                    <div class="help-heading">作用</div>
+                                    <p>作为新建空白预设配置时写入的默认文本编码器权重路径；单个训练配置仍可改成其它路径。</p>
+                                </section>
+                                <section class="help-section">
+                                    <div class="help-heading">为什么</div>
+                                    <p>文本编码器通常全项目共用，放到全局设置后，新预设能直接继承当前机器上的常用模型位置。</p>
+                                </section>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="preview-setting-field global-setting-field">
+                        <div class="global-setting-label-row">
+                            <label for="global-vae-path">VAE 模型</label>
+                            <button
+                                id="btn-global-vae-path-help"
+                                class="info-toggle global-setting-help-toggle"
+                                type="button"
+                                title="查看作用和为什么"
+                                aria-expanded="false"
+                                aria-controls="global-vae-path-help"
+                            >?</button>
+                        </div>
+                        <input id="global-vae-path" type="text" placeholder="models/vae/qwen_image_vae.safetensors">
+                        <div id="global-vae-path-help" class="field-help global-setting-help">
+                            <div class="help-content">
+                                <section class="help-section help-summary">
+                                    <div class="help-heading">作用</div>
+                                    <p>作为新建空白预设配置时写入的默认 VAE 权重路径；配置页里的 VAE 路径仍可按配置覆盖。</p>
+                                </section>
+                                <section class="help-section">
+                                    <div class="help-heading">为什么</div>
+                                    <p>VAE 会影响预处理缓存和采样结果，集中设置默认路径能降低新配置漏改模型组件的概率。</p>
+                                </section>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="preview-actions">
+                        <button id="btn-save-global-settings" class="btn btn-primary" type="button">保存全局设置</button>
+                        <button id="btn-reset-global-settings" class="btn" type="button">恢复默认</button>
+                    </div>
+                    <div id="global-settings-status" class="preview-status"></div>
                 </section>
             </div>
         </section>
@@ -440,7 +596,9 @@
         </form>
     </dialog>
 
+    <div id="config-switch-toast" class="config-switch-toast" role="status" aria-live="polite" hidden></div>
+
     <script src="/static/chart.js?v=history-20260517-2"></script>
-    <script src="/static/app.js?v=gradient-checkpoint-default-on-20260522-1"></script>
+    <script src="/static/app.js?v=preview-weight-download-20260524-1"></script>
 </body>
 </html>

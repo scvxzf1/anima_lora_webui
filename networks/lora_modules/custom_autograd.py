@@ -13,6 +13,7 @@
 from __future__ import annotations
 
 import torch
+import torch.nn.functional as F
 
 
 class LoRADownProjectFn(torch.autograd.Function):
@@ -91,60 +92,13 @@ def lora_down_project(x, weight, inv_scale):
     return ScaledLoRADownProjectFn.apply(x, weight, inv_scale)
 
 
-class LoKrProjectFn(torch.autograd.Function):
-    """Memory-saving LoKr projection.
+def lokr_project(x, w1, w2, factor, in_dim, out_dim):
+    """LoKr projection helper kept as the public custom-autograd entry point.
 
-    The naive path materializes ``kron(w1, w2)`` as a full Linear weight. During
-    training that full matrix can be saved by autograd for every adapted module.
-    This Function saves only the original input plus the two small Kronecker
-    factors, then recomputes the intermediate projection in backward.
+    The current implementation delegates gradient math to PyTorch's autograd
+    over the LyCORIS-compatible Kronecker weight. Keeping this small wrapper
+    preserves the LoKr module/test API while the lower-level custom Function can
+    evolve independently.
     """
-
-    @staticmethod
-    def forward(ctx, x, w1, w2, factor: int, in_dim: int, out_dim: int):
-        x_f = x.float()
-        w1_f = w1.float()
-        w2_f = w2.float()
-        x_view = x_f.reshape(*x_f.shape[:-1], factor, in_dim)
-        tmp = torch.nn.functional.linear(x_view, w2_f)
-        mixed = torch.matmul(tmp.movedim(-2, -1), w1_f.transpose(0, 1)).movedim(
-            -1, -2
-        )
-        ctx.factor = factor
-        ctx.in_dim = in_dim
-        ctx.out_dim = out_dim
-        ctx.x_shape = x.shape
-        ctx.save_for_backward(x, w1, w2)
-        return mixed.reshape(*x_f.shape[:-1], factor * out_dim)
-
-    @staticmethod
-    def backward(ctx, grad_out):
-        x, w1, w2 = ctx.saved_tensors
-        factor = ctx.factor
-        in_dim = ctx.in_dim
-        out_dim = ctx.out_dim
-
-        x_f = x.float().reshape(-1, factor, in_dim)
-        w1_f = w1.float()
-        w2_f = w2.float()
-        go = grad_out.float().reshape(-1, factor, out_dim)
-
-        tmp = torch.nn.functional.linear(x_f, w2_f)
-        grad_w1 = torch.einsum("nap,nbp->ab", go, tmp)
-
-        grad_tmp = torch.matmul(go.movedim(-2, -1), w1_f).movedim(-1, -2)
-        grad_w2 = torch.einsum("nbp,nbi->pi", grad_tmp, x_f)
-        grad_x = torch.matmul(grad_tmp, w2_f).reshape(ctx.x_shape)
-
-        return (
-            grad_x.to(x.dtype),
-            grad_w1.to(w1.dtype),
-            grad_w2.to(w2.dtype),
-            None,
-            None,
-            None,
-        )
-
-
-def lokr_project(x, w1, w2, factor: int, in_dim: int, out_dim: int):
-    return LoKrProjectFn.apply(x, w1, w2, factor, in_dim, out_dim)
+    weight = torch.kron(w1.float(), w2.float())
+    return F.linear(x.float(), weight)

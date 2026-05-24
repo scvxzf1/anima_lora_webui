@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 import pytest
@@ -7,6 +8,19 @@ import toml
 from PIL import Image
 
 from web.services import config_service
+
+
+def test_spd_cli_config_is_exposed_as_method_variant(tmp_path: Path, monkeypatch):
+    configs, _dataset_path = _write_minimal_config_tree(tmp_path)
+    (configs / "methods").mkdir()
+    (configs / "methods" / "spd.toml").write_text(
+        'output_name = "anima_spd"\niterations = 4000\n',
+        encoding="utf-8",
+    )
+    _patch_config_service_paths(monkeypatch, tmp_path)
+
+    assert "spd" in config_service.list_methods()
+    assert config_service.list_variants("spd") == ["spd"]
 
 
 def test_save_dataset_editor_does_not_overwrite_dataset_when_train_patch_fails(tmp_path: Path, monkeypatch):
@@ -102,6 +116,397 @@ def test_raw_patch_ignores_dataset_picker_ui_field(tmp_path: Path, monkeypatch):
     assert 'output_name = "clean"' in content
     assert "dataset_config_picker" not in content
     assert "dataset_config_picker" not in (configs / "imported" / "lora.toml").read_text(encoding="utf-8")
+
+
+def test_blank_preset_template_can_receive_global_model_paths(tmp_path: Path, monkeypatch):
+    _write_minimal_config_tree(tmp_path)
+    _patch_config_service_paths(monkeypatch, tmp_path)
+    template = "\n".join(
+        [
+            'output_name = "anima"',
+            'pretrained_model_name_or_path = "template-base.safetensors"',
+            'qwen3 = "template-qwen.safetensors"',
+            'vae = "template-vae.safetensors"',
+        ]
+    )
+
+    ok, msg, content, changed = config_service.preview_raw_file_patch(
+        "configs/imported/new_blank.toml",
+        {
+            "pretrained_model_name_or_path": "${ANIMA_DIT_MODEL}",
+            "qwen3": "/models/qwen.safetensors",
+            "vae": "models/custom_vae.safetensors",
+        },
+        content=template,
+    )
+
+    assert ok is True, msg
+    assert changed == ["pretrained_model_name_or_path", "qwen3", "vae"]
+    data = toml.loads(content)
+    assert data["pretrained_model_name_or_path"] == "${ANIMA_DIT_MODEL}"
+    assert data["qwen3"] == "/models/qwen.safetensors"
+    assert data["vae"] == "models/custom_vae.safetensors"
+
+
+def test_save_dataset_editor_accepts_source_only_rows(tmp_path: Path, monkeypatch):
+    configs, dataset_path = _write_minimal_config_tree(tmp_path)
+    _patch_config_service_paths(monkeypatch, tmp_path)
+
+    result = config_service.save_dataset_editor(
+        "lora",
+        "default",
+        "imported",
+        [
+            {
+                "source_dir": "image_dataset/source_only",
+                "num_repeats": 3,
+                "settings": {"resolution": 768},
+            }
+        ],
+        train_file="configs/imported/lora.toml",
+    )
+
+    assert result["ok"] is True
+    assert result["datasets"][0]["source_dir"] == "image_dataset/source_only"
+    assert result["datasets"][0]["image_dir"].endswith("source_only_resized")
+    assert result["datasets"][0]["cache_dir"].endswith("source_only_lora_cache")
+    data = toml.loads(dataset_path.read_text(encoding="utf-8"))
+    subset = data["datasets"][0]["subsets"][0]
+    assert subset["custom_attributes"]["source_dir"] == "image_dataset/source_only"
+    assert subset["image_dir"].endswith("source_only_resized")
+    assert subset["cache_dir"].endswith("source_only_lora_cache")
+
+
+def test_preflight_uses_selected_config_file_dataset_paths(tmp_path: Path, monkeypatch):
+    configs, _dataset_path = _write_minimal_config_tree(tmp_path)
+    _patch_config_service_paths(monkeypatch, tmp_path)
+    (configs / "base.toml").write_text(
+        "\n".join(
+            [
+                'source_image_dir = "missing_default_source"',
+                'resized_image_dir = "missing_default_resized"',
+                'lora_cache_dir = "missing_default_cache"',
+                'pretrained_model_name_or_path = "models/anima.safetensors"',
+                'qwen3 = "models/qwen.safetensors"',
+                'vae = "models/vae.safetensors"',
+            ]
+        ),
+        encoding="utf-8",
+    )
+    source_dir = tmp_path / "image_dataset" / "selected"
+    source_dir.mkdir(parents=True)
+    Image.new("RGB", (8, 8), color=(20, 40, 60)).save(source_dir / "sample.png")
+    selected_config = configs / "imported" / "selected.toml"
+    selected_config.write_text(
+        "\n".join(
+            [
+                'source_image_dir = "image_dataset/selected"',
+                'pretrained_model_name_or_path = "models/anima.safetensors"',
+                'qwen3 = "models/qwen.safetensors"',
+                'vae = "models/vae.safetensors"',
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    result = config_service.preflight_training_config(
+        "lora",
+        "default",
+        "imported",
+        config_file="configs/imported/selected.toml",
+    )
+
+    source_checks = [item for item in result["checks"] if item["key"] == "source_image_dir"]
+    assert source_checks[-1]["level"] == "ok"
+    assert source_checks[-1]["path"] == "image_dataset/selected"
+    assert "output_dir" not in {item["key"] for item in result["checks"]}
+
+
+def test_preflight_ignores_legacy_cache_fields_for_plain_web_config(tmp_path: Path, monkeypatch):
+    configs, dataset_path = _write_minimal_config_tree(tmp_path)
+    _patch_config_service_paths(monkeypatch, tmp_path)
+    source_dir = tmp_path / "image_dataset" / "selected"
+    source_dir.mkdir(parents=True)
+    Image.new("RGB", (8, 8), color=(20, 40, 60)).save(source_dir / "sample.png")
+    bad_resized = tmp_path / "bad-resized-file"
+    bad_cache = tmp_path / "bad-cache-file"
+    bad_resized.write_text("not a dir", encoding="utf-8")
+    bad_cache.write_text("not a dir", encoding="utf-8")
+    selected_config = configs / "imported" / "selected.toml"
+    selected_config.write_text(
+        "\n".join(
+            [
+                'source_image_dir = "image_dataset/selected"',
+                'resized_image_dir = "bad-resized-file"',
+                'lora_cache_dir = "bad-cache-file"',
+                'dataset_config = "configs/datasets/lora.toml"',
+                'pretrained_model_name_or_path = "models/anima.safetensors"',
+                'qwen3 = "models/qwen.safetensors"',
+                'vae = "models/vae.safetensors"',
+            ]
+        ),
+        encoding="utf-8",
+    )
+    (tmp_path / "models").mkdir()
+    (tmp_path / "models" / "anima.safetensors").write_bytes(b"model")
+    (tmp_path / "models" / "qwen.safetensors").write_bytes(b"qwen")
+    (tmp_path / "models" / "vae.safetensors").write_bytes(b"vae")
+    dataset_path.write_text(
+        "\n".join(
+            [
+                "[[datasets]]",
+                "[[datasets.subsets]]",
+                'image_dir = "bad-resized-file"',
+                'cache_dir = "bad-cache-file"',
+                "num_repeats = 1",
+                'custom_attributes = { source_dir = "image_dataset/selected" }',
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    result = config_service.preflight_training_config(
+        "lora",
+        "default",
+        "imported",
+        config_file="configs/imported/selected.toml",
+    )
+
+    keys = {item["key"] for item in result["checks"]}
+    assert "resized_image_dir" not in keys
+    assert "lora_cache_dir" not in keys
+    assert not any(key.startswith("dataset_") and (key.endswith("_image_dir") or key.endswith("_cache_dir")) for key in keys)
+    assert result["ok"] is True
+
+
+def test_preflight_allows_plain_web_config_with_missing_dataset_config_but_valid_source(tmp_path: Path, monkeypatch):
+    configs, _dataset_path = _write_minimal_config_tree(tmp_path)
+    _patch_config_service_paths(monkeypatch, tmp_path)
+    source_dir = tmp_path / "image_dataset" / "selected"
+    source_dir.mkdir(parents=True)
+    Image.new("RGB", (8, 8), color=(20, 40, 60)).save(source_dir / "sample.png")
+    selected_config = configs / "imported" / "selected.toml"
+    selected_config.write_text(
+        "\n".join(
+            [
+                'source_image_dir = "image_dataset/selected"',
+                'pretrained_model_name_or_path = "models/anima.safetensors"',
+                'qwen3 = "models/qwen.safetensors"',
+                'vae = "models/vae.safetensors"',
+            ]
+        ),
+        encoding="utf-8",
+    )
+    (tmp_path / "models").mkdir()
+    (tmp_path / "models" / "anima.safetensors").write_bytes(b"model")
+    (tmp_path / "models" / "qwen.safetensors").write_bytes(b"qwen")
+    (tmp_path / "models" / "vae.safetensors").write_bytes(b"vae")
+
+    result = config_service.preflight_training_config(
+        "lora",
+        "default",
+        "imported",
+        config_file="configs/imported/selected.toml",
+    )
+
+    assert result["ok"] is True
+    keys = {item["key"] for item in result["checks"]}
+    assert "dataset_config" not in keys
+
+
+def test_preflight_runtime_config_checks_all_dataset_groups(tmp_path: Path, monkeypatch):
+    configs, dataset_path = _write_minimal_config_tree(tmp_path)
+    _patch_config_service_paths(monkeypatch, tmp_path)
+    run_dir = tmp_path / "output" / "runs" / "522-20260523-114514"
+    source_a = tmp_path / "image_dataset" / "a"
+    source_b = tmp_path / "image_dataset" / "b"
+    resized_a = run_dir / "dataset_cache" / "dataset-01" / "resized"
+    cache_a = run_dir / "dataset_cache" / "dataset-01" / "lora"
+    resized_b = run_dir / "dataset_cache" / "dataset-02" / "resized"
+    cache_b = run_dir / "dataset_cache" / "dataset-02" / "lora"
+    source_a.mkdir(parents=True)
+    source_b.mkdir(parents=True)
+    (run_dir / "model_cache").mkdir(parents=True)
+    (run_dir / "training_output").mkdir(parents=True)
+    resized_a.mkdir(parents=True)
+    cache_a.mkdir(parents=True)
+    resized_b.mkdir(parents=True)
+    cache_b.mkdir(parents=True)
+    Image.new("RGB", (8, 8), color=(20, 40, 60)).save(resized_a / "a.png")
+    Image.new("RGB", (8, 8), color=(60, 40, 20)).save(resized_b / "b.png")
+    runtime_config = run_dir / "config.runtime.toml"
+    dataset_config = run_dir / "dataset.runtime.toml"
+    runtime_config.write_text(
+        "\n".join(
+            [
+                'source_image_dir = "image_dataset/a"',
+                'resized_image_dir = "output/runs/522-20260523-114514/dataset_cache/dataset-01/resized"',
+                'lora_cache_dir = "output/runs/522-20260523-114514/dataset_cache/dataset-01/lora"',
+                'dataset_config = "output/runs/522-20260523-114514/dataset.runtime.toml"',
+                "cache_latents_to_disk = true",
+                "cache_text_encoder_outputs_to_disk = true",
+                'pretrained_model_name_or_path = "models/anima.safetensors"',
+                'qwen3 = "models/qwen.safetensors"',
+                'vae = "models/vae.safetensors"',
+            ]
+        ),
+        encoding="utf-8",
+    )
+    (tmp_path / "models").mkdir()
+    (tmp_path / "models" / "anima.safetensors").write_bytes(b"model")
+    (tmp_path / "models" / "qwen.safetensors").write_bytes(b"qwen")
+    (tmp_path / "models" / "vae.safetensors").write_bytes(b"vae")
+    dataset_config.write_text(
+        "\n".join(
+            [
+                "[[datasets]]",
+                "",
+                "[[datasets.subsets]]",
+                'image_dir = "output/runs/522-20260523-114514/dataset_cache/dataset-01/resized"',
+                'cache_dir = "output/runs/522-20260523-114514/dataset_cache/dataset-01/lora"',
+                'custom_attributes = { source_dir = "image_dataset/a" }',
+                "",
+                "[[datasets]]",
+                "",
+                "[[datasets.subsets]]",
+                'image_dir = "output/runs/522-20260523-114514/dataset_cache/dataset-02/resized"',
+                'cache_dir = "bad-cache-file"',
+                'custom_attributes = { source_dir = "image_dataset/b" }',
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    result = config_service.preflight_training_config(
+        "lora",
+        "default",
+        "imported",
+        config_file="output/runs/522-20260523-114514/config.runtime.toml",
+    )
+
+    keys = {item["key"] for item in result["checks"]}
+    assert "dataset_2_cache_dir" in keys
+    assert result["ok"] is False
+
+
+def test_preflight_runtime_config_checks_cache_sidecars_per_dataset(tmp_path: Path, monkeypatch):
+    _write_minimal_config_tree(tmp_path)
+    _patch_config_service_paths(monkeypatch, tmp_path)
+    run_dir = tmp_path / "output" / "runs" / "522-20260523-114514"
+    source_a = tmp_path / "image_dataset" / "a"
+    source_b = tmp_path / "image_dataset" / "b"
+    resized_a = run_dir / "dataset_cache" / "dataset-01" / "resized"
+    cache_a = run_dir / "dataset_cache" / "dataset-01" / "lora"
+    resized_b = run_dir / "dataset_cache" / "dataset-02" / "resized"
+    cache_b = run_dir / "dataset_cache" / "dataset-02" / "lora"
+    for path in (source_a, source_b, resized_a, cache_a, resized_b, cache_b, run_dir / "model_cache", run_dir / "training_output"):
+        path.mkdir(parents=True)
+    Image.new("RGB", (8, 8), color=(20, 40, 60)).save(resized_a / "a.png")
+    Image.new("RGB", (8, 8), color=(60, 40, 20)).save(resized_b / "b.png")
+    (cache_a / "a.npz").write_bytes(b"latent")
+    (cache_a / "a_anima_te.safetensors").write_bytes(b"te")
+    (tmp_path / "models").mkdir()
+    (tmp_path / "models" / "anima.safetensors").write_bytes(b"model")
+    (tmp_path / "models" / "qwen.safetensors").write_bytes(b"qwen")
+    (tmp_path / "models" / "vae.safetensors").write_bytes(b"vae")
+    runtime_config = run_dir / "config.runtime.toml"
+    dataset_config = run_dir / "dataset.runtime.toml"
+    runtime_config.write_text(
+        "\n".join(
+            [
+                f'dataset_config = "{dataset_config.relative_to(tmp_path).as_posix()}"',
+                f'source_image_dir = "{source_a.relative_to(tmp_path).as_posix()}"',
+                f'resized_image_dir = "{resized_a.relative_to(tmp_path).as_posix()}"',
+                f'lora_cache_dir = "{cache_a.relative_to(tmp_path).as_posix()}"',
+                "cache_latents_to_disk = true",
+                "cache_text_encoder_outputs_to_disk = true",
+                'pretrained_model_name_or_path = "models/anima.safetensors"',
+                'qwen3 = "models/qwen.safetensors"',
+                'vae = "models/vae.safetensors"',
+            ]
+        ),
+        encoding="utf-8",
+    )
+    dataset_config.write_text(
+        "\n".join(
+            [
+                "[[datasets]]",
+                "[[datasets.subsets]]",
+                f'image_dir = "{resized_a.relative_to(tmp_path).as_posix()}"',
+                f'cache_dir = "{cache_a.relative_to(tmp_path).as_posix()}"',
+                f'custom_attributes = {{ source_dir = "{source_a.relative_to(tmp_path).as_posix()}" }}',
+                "",
+                "[[datasets]]",
+                "[[datasets.subsets]]",
+                f'image_dir = "{resized_b.relative_to(tmp_path).as_posix()}"',
+                f'cache_dir = "{cache_b.relative_to(tmp_path).as_posix()}"',
+                f'custom_attributes = {{ source_dir = "{source_b.relative_to(tmp_path).as_posix()}" }}',
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    result = config_service.preflight_training_config(
+        "lora",
+        "default",
+        "imported",
+        config_file=runtime_config.relative_to(tmp_path).as_posix(),
+    )
+
+    checks = {item["key"]: item for item in result["checks"]}
+    assert checks["latent_cache"]["level"] == "ok"
+    assert checks["text_cache"]["level"] == "ok"
+    assert checks["dataset_2_latent_cache"]["level"] == "warning"
+    assert checks["dataset_2_text_cache"]["level"] == "warning"
+
+
+def test_is_allowed_training_config_accepts_runtime_configs_under_output_root(tmp_path: Path, monkeypatch):
+    _patch_config_service_paths(monkeypatch, tmp_path)
+    output_root = tmp_path / "output" / "runs"
+    runtime_config = output_root / "522-20260523-114514" / "config.runtime.toml"
+    runtime_config.parent.mkdir(parents=True)
+    (runtime_config.parent / "model_cache").mkdir()
+    (runtime_config.parent / "dataset_cache").mkdir()
+    (runtime_config.parent / "training_output").mkdir()
+    runtime_config.write_text('output_dir = "output/runs/522-20260523-114514/training_output"\n', encoding="utf-8")
+    monkeypatch.setattr(config_service, "resolve_output_root", lambda: output_root.resolve())
+
+    path = config_service._config_file_path(str(runtime_config))
+
+    assert path == runtime_config.resolve()
+
+
+def test_runtime_config_tree_allowed_when_output_root_changed(tmp_path: Path, monkeypatch):
+    _patch_config_service_paths(monkeypatch, tmp_path)
+    old_output_root = tmp_path.parent / "old-output-root"
+    new_output_root = tmp_path.parent / "new-output-root"
+    runtime_config = old_output_root / "522-20260523-114514" / "config.runtime.toml"
+    runtime_config.parent.mkdir(parents=True)
+    (runtime_config.parent / "model_cache").mkdir()
+    (runtime_config.parent / "dataset_cache").mkdir()
+    (runtime_config.parent / "training_output").mkdir()
+    runtime_config.write_text(f'output_dir = "{(runtime_config.parent / "training_output").as_posix()}"\n', encoding="utf-8")
+    monkeypatch.setattr(config_service, "resolve_output_root", lambda: new_output_root.resolve())
+
+    path = config_service._config_file_path(str(runtime_config))
+
+    assert path == runtime_config.resolve()
+
+
+def test_external_runtime_config_requires_web_run_tree(tmp_path: Path, monkeypatch):
+    _patch_config_service_paths(monkeypatch, tmp_path)
+    output_root = tmp_path.parent / "output-root"
+    runtime_config = tmp_path.parent / "loose" / "config.runtime.toml"
+    runtime_config.parent.mkdir(parents=True)
+    runtime_config.write_text("output_dir = \"somewhere\"\n", encoding="utf-8")
+    monkeypatch.setattr(config_service, "resolve_output_root", lambda: output_root.resolve())
+
+    try:
+        config_service._config_file_path(str(runtime_config))
+    except ValueError as exc:
+        assert "全局输出文件夹" in str(exc)
+    else:
+        raise AssertionError("外部 runtime 配置缺少 Web 运行目录结构时必须拒绝")
 
 
 def test_locked_user_group_cannot_be_deleted(tmp_path: Path, monkeypatch):
@@ -525,6 +930,102 @@ def test_dataset_preview_image_resolver_rejects_files_outside_selected_row(tmp_p
         )
 
 
+def test_output_runs_list_reads_direct_run_dirs_sorted(tmp_path: Path, monkeypatch):
+    _write_minimal_config_tree(tmp_path)
+    _patch_config_service_paths(monkeypatch, tmp_path)
+    _patch_output_root(monkeypatch, tmp_path / "output" / "runs")
+    root = tmp_path / "output" / "runs"
+    older = root / "older-20260523-110000"
+    newer = root / "newer-20260523-120000"
+    nested = newer / "nested"
+    older.mkdir(parents=True)
+    newer.mkdir(parents=True)
+    nested.mkdir()
+    (older / "config.original.toml").write_text('output_name = "older"\n', encoding="utf-8")
+    (newer / "config.original.toml").write_text('output_name = "newer"\n', encoding="utf-8")
+    (newer / "config.runtime.toml").write_text('output_name = "runtime"\n', encoding="utf-8")
+    (nested / "config.original.toml").write_text('output_name = "nested"\n', encoding="utf-8")
+    old_ts = 1_800_000_000
+    new_ts = 1_800_000_100
+    for path in (older, older / "config.original.toml"):
+        os.utime(path, (old_ts, old_ts))
+    for path in (newer, newer / "config.original.toml", newer / "config.runtime.toml"):
+        os.utime(path, (new_ts, new_ts))
+
+    result = config_service.list_output_runs()
+
+    assert result["ok"] is True
+    assert result["output_root"] == "output/runs"
+    assert [item["name"] for item in result["runs"]] == [
+        "newer-20260523-120000",
+        "older-20260523-110000",
+    ]
+    assert [item["kind"] for item in result["runs"][0]["files"]] == ["original", "runtime"]
+
+
+def test_output_run_read_allows_only_fixed_files_under_run(tmp_path: Path, monkeypatch):
+    _write_minimal_config_tree(tmp_path)
+    _patch_config_service_paths(monkeypatch, tmp_path)
+    _patch_output_root(monkeypatch, tmp_path / "output" / "runs")
+    run = tmp_path / "output" / "runs" / "522-20260523-114514"
+    run.mkdir(parents=True)
+    (run / "config.original.toml").write_text('output_name = "original"\n', encoding="utf-8")
+    (run / "config.runtime.toml").write_text('output_name = "runtime"\n', encoding="utf-8")
+    (run / "dataset.runtime.toml").write_text("[[datasets]]\n", encoding="utf-8")
+
+    original = config_service.load_output_run_config("522-20260523-114514", "original")
+    runtime = config_service.load_output_run_config("522-20260523-114514", "runtime")
+    dataset = config_service.load_output_run_config("522-20260523-114514", "dataset")
+
+    assert original["readonly"] is True
+    assert original["content"] == 'output_name = "original"\n'
+    assert runtime["content"] == 'output_name = "runtime"\n'
+    assert dataset["content"] == "[[datasets]]\n"
+    with pytest.raises(ValueError, match="直接目录名"):
+        config_service.load_output_run_config("../522-20260523-114514", "original")
+    with pytest.raises(ValueError, match="kind"):
+        config_service.load_output_run_config("522-20260523-114514", "../config")
+
+
+def test_output_run_save_as_copies_original_only_and_never_overwrites(tmp_path: Path, monkeypatch):
+    _write_minimal_config_tree(tmp_path)
+    _patch_config_service_paths(monkeypatch, tmp_path)
+    _patch_output_root(monkeypatch, tmp_path / "output" / "runs")
+    run = tmp_path / "output" / "runs" / "522-20260523-114514"
+    run.mkdir(parents=True)
+    (run / "config.original.toml").write_text('output_name = "original"\n', encoding="utf-8")
+    (run / "config.runtime.toml").write_text('output_name = "runtime"\n', encoding="utf-8")
+
+    saved = config_service.save_output_run_config_as(
+        "522-20260523-114514",
+        "copied_from_run",
+        "imported",
+    )
+
+    assert saved["ok"] is True
+    assert saved["file"] == "configs/imported/copied_from_run.toml"
+    copied_path = tmp_path / "configs" / "imported" / "copied_from_run.toml"
+    assert copied_path.read_text(encoding="utf-8") == 'output_name = "original"\n'
+    with pytest.raises(ValueError, match="已存在"):
+        config_service.save_output_run_config_as("522-20260523-114514", "copied_from_run", "imported")
+
+
+def test_output_run_save_as_rejects_missing_or_invalid_original(tmp_path: Path, monkeypatch):
+    _write_minimal_config_tree(tmp_path)
+    _patch_config_service_paths(monkeypatch, tmp_path)
+    _patch_output_root(monkeypatch, tmp_path / "output" / "runs")
+    missing = tmp_path / "output" / "runs" / "legacy-20260523-114514"
+    invalid = tmp_path / "output" / "runs" / "bad-20260523-114514"
+    missing.mkdir(parents=True)
+    invalid.mkdir(parents=True)
+    (invalid / "config.original.toml").write_text("invalid = [\n", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="没有 config.original.toml"):
+        config_service.save_output_run_config_as("legacy-20260523-114514", "legacy_copy", "imported")
+    with pytest.raises(ValueError, match="TOML 语法错误"):
+        config_service.save_output_run_config_as("bad-20260523-114514", "bad_copy", "imported")
+
+
 def _write_minimal_config_tree(root: Path) -> tuple[Path, Path]:
     configs = root / "configs"
     (configs / "imported").mkdir(parents=True)
@@ -535,6 +1036,9 @@ def _write_minimal_config_tree(root: Path) -> tuple[Path, Path]:
                 'source_image_dir = "image_dataset"',
                 'resized_image_dir = "post_image_dataset/resized"',
                 'lora_cache_dir = "post_image_dataset/lora"',
+                'pretrained_model_name_or_path = "models/diffusion_models/anima-base-v1.0.safetensors"',
+                'qwen3 = "models/text_encoders/qwen_3_06b_base.safetensors"',
+                'vae = "models/vae/qwen_image_vae.safetensors"',
             ]
         ),
         encoding="utf-8",
@@ -577,3 +1081,19 @@ def _patch_config_service_paths(monkeypatch, root: Path) -> None:
     monkeypatch.setattr(config_service, "PRESETS_FILE", configs / "presets.toml")
     monkeypatch.setattr(config_service, "WEB_FILE_GROUPS_FILE", configs / "web-file-groups.toml")
     monkeypatch.setattr(config_service, "WEB_USER_LOCKS_FILE", configs / "web-user-locks.toml")
+
+
+def _patch_output_root(monkeypatch, output_root: Path) -> None:
+    monkeypatch.setattr(config_service, "resolve_output_root", lambda: output_root.resolve())
+    monkeypatch.setattr(
+        config_service,
+        "_display_settings_path",
+        lambda path: _display_test_path(Path(path), output_root.parents[1]),
+    )
+
+
+def _display_test_path(path: Path, root: Path) -> str:
+    try:
+        return path.resolve().relative_to(root.resolve()).as_posix()
+    except ValueError:
+        return str(path.resolve())

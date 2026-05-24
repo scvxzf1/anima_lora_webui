@@ -128,8 +128,8 @@ FIELD_HELP: dict[str, dict[str, str]] = {
         "ko": "사용자 지정 σ-버킷 경계, 길이 = num_sigma_buckets + 1, 0.0 → 1.0 단조 증가. 생략 시 uniform linspace(0, 1, N+1) 사용. 예: [0.0, 0.5, 0.8, 1.0].",
     },
     "network_args": {
-        "en": "Extra kwargs passed to the network module. For postfix: list of 'key=value' strings (e.g., 'mode=cond', 'splice_position=end_of_sequence', 'cond_hidden_dim=256'). Pick a Variant to auto-fill.",
-        "ko": "네트워크 모듈에 전달되는 추가 kwargs. postfix의 경우 'key=value' 문자열 리스트 (예: 'mode=cond', 'splice_position=end_of_sequence', 'cond_hidden_dim=256'). Variant 선택으로 자동 채우기 가능.",
+        "en": "Extra kwargs passed to the network module. Pick a Variant to auto-fill.",
+        "ko": "네트워크 모듈에 전달되는 추가 kwargs. Variant 선택으로 자동 채우기 가능.",
     },
     "min_rank": {
         "en": "Minimum active rank when T-LoRA timestep masking is enabled. At the lowest-noise timesteps, rank drops to this value.",
@@ -489,8 +489,8 @@ def preprocess_guide() -> str:
 # Methods that can't be baked into a plain DiT via scripts/merge_to_dit.py
 # (router is layer-local / hook-only / not a weight delta) — render the
 # "not mergeable" callout above their guide.
-_NOT_MERGEABLE = frozenset({"postfix", "hydralora", "reft", "fera"})
-_KNOWN_METHODS = frozenset({"lora", "tlora", "postfix", "hydralora", "reft", "fera"})
+_NOT_MERGEABLE = frozenset({"hydralora", "reft", "fera"})
+_KNOWN_METHODS = frozenset({"lora", "tlora", "hydralora", "reft", "fera", "chimera", "soft_tokens"})
 
 
 def method_guide(method: str) -> str | None:

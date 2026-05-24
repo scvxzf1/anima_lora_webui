@@ -12,7 +12,7 @@ Examples:
     python tasks.py test                     # add MOD=1 to enable modulation guidance
     python tasks.py test                     # add NOLORA=1 to run against the bare DiT
     python tasks.py download-models
-    python tasks.py exp-postfix              # experimental method
+    python tasks.py exp-chimera              # experimental method
     python tasks.py exp-test-ip ref.png      # experimental inference
 
 Command implementations live under ``scripts/tasks/`` (shipped methods) and
@@ -20,11 +20,13 @@ Command implementations live under ``scripts/tasks/`` (shipped methods) and
 This file is just a name → callable dispatch table.
 """
 
+import os
 import sys
 
 from scripts.experimental_tasks import inference as exp_inference
 from scripts.experimental_tasks import training as exp_training
 from scripts.tasks import (
+    daemon,
     dcw,
     downloads,
     gui,
@@ -46,7 +48,26 @@ COMMANDS = {
     "lora-gui": (
         training.cmd_lora_gui,
         "Train from a self-contained configs/gui-methods/<variant>.toml "
-        "(variant from GUI_PRESETS env or 1st positional; e.g. tlora, hydralora, reft, postfix_exp).",
+        "(variant from GUI_PRESETS env or 1st positional; e.g. tlora, hydralora, reft).",
+    ),
+    # ── Training daemon ───────────────────────────────────────────────
+    "daemon": (
+        daemon.cmd_daemon,
+        "Start the local training-job daemon (idempotent; detached, waits for /health).",
+    ),
+    "daemon-attach": (
+        daemon.cmd_daemon_attach,
+        "Follow the daemon (read-only). JOB=<id> tails that job's stdout; "
+        "ctrl-C detaches only — training keeps running.",
+    ),
+    "daemon-kill": (
+        daemon.cmd_daemon_kill,
+        "Abort the running job (or JOB=<id>) and free the GPU; daemon stays up "
+        "and starts the next queued job.",
+    ),
+    "daemon-terminate": (
+        daemon.cmd_daemon_terminate,
+        "Stop the daemon entirely (active job killed, GPU freed, queue discarded).",
     ),
     # ── Inference ─────────────────────────────────────────────────────
     "test": (
@@ -104,6 +125,11 @@ COMMANDS = {
         preprocess.cmd_preprocess,
         "Full preprocessing (resize + VAE + text embeddings)",
     ),
+    "preprocess-config": (
+        preprocess.cmd_preprocess_config,
+        "Preprocess the dirs named in a --dataset_config TOML (resize --src "
+        "→ image_dir, then VAE + TE caches → cache_dir). Used by the trainer node.",
+    ),
     "preprocess-resize": (
         preprocess.cmd_preprocess_resize,
         "Resize images to bucket resolutions",
@@ -118,6 +144,11 @@ COMMANDS = {
         preprocess.cmd_preprocess_pe,
         "Cache PE-Core vision-encoder features into the LoRA cache dir. "
         "Consumed by IP-Adapter live-disk mode and the DCW v4 fusion head.",
+    ),
+    "caption-index": (
+        preprocess.cmd_caption_index,
+        "Build the typed-tag caption index (character/copyright/artist groups) "
+        "at post_image_dataset/captions/caption_index.json. Pure data, no GPU.",
     ),
     # ── Anima Tagger ──────────────────────────────────────────────────
     "preprocess-tagger": (
@@ -155,11 +186,9 @@ COMMANDS = {
         masking.cmd_mask,
         "Run SAM + MIT (via tempdir) and write merged masks under post_image_dataset/masks/",
     ),
-    "mask-sam": (masking.cmd_mask_sam, "Generate SAM3 masks only"),
-    "mask-mit": (masking.cmd_mask_mit, "Generate MIT masks only"),
     "mask-clean": (
         masking.cmd_mask_clean,
-        "Remove generated masks",
+        "Remove post_image_dataset/masks/",
     ),
     # ── GUI ───────────────────────────────────────────────────────────
     "gui": (gui.cmd_gui, "Launch PySide6 GUI"),
@@ -205,20 +234,18 @@ COMMANDS = {
     # ── Experimental ──────────────────────────────────────────────────
     # Unstable methods kept under exp-* so they don't pollute the main command
     # surface. May produce broken output, change without notice, or be removed.
-    "exp-postfix": (
-        exp_training.cmd_postfix,
-        "[experimental] Postfix tuning (mode selected in configs/methods/postfix.toml)",
-    ),
     "exp-turbo": (
         exp_training.cmd_turbo,
         "[experimental] Decoupled DMD2 distillation — bakes CFG=4 / 28-step Anima "
         "into a 4-step LoRA student (configs/methods/turbo.toml). "
         "Single-GPU bespoke loop (bypasses train.py/accelerate, like distill-mod).",
     ),
-    "exp-fera": (
-        exp_training.cmd_fera,
-        "[experimental] Author-faithful FeRA (independent-A stacked experts + "
-        "global FEI router; configs/gui-methods/fera.toml)",
+    "exp-spd": (
+        exp_training.cmd_spd,
+        "[experimental] SPD fine-tuning LoRA — §4.3 trajectory adapter that teaches a "
+        "plain LoRA to follow the SPD multi-resolution trajectory (configs/methods/spd.toml). "
+        "Single-GPU bespoke loop (bypasses train.py/accelerate, like distill-mod). "
+        "Output is a normal LoRA — infer with the SPD sampler at the trained schedule.",
     ),
     "exp-soft-tokens": (
         exp_training.cmd_soft_tokens,
@@ -247,10 +274,6 @@ COMMANDS = {
         "[experimental] Full EasyControl preprocess: latents + text emb. "
         "Source: easycontrol-dataset/  Cache: post_image_dataset/easycontrol/.",
     ),
-    "exp-test-postfix": (
-        exp_inference.cmd_test_postfix,
-        "[experimental] Inference with latest postfix weight",
-    ),
     "exp-test-soft": (
         exp_inference.cmd_test_soft,
         "[experimental] Inference with latest soft_tokens weight "
@@ -262,13 +285,10 @@ COMMANDS = {
         "[experimental] Inference with latest turbo student LoRA at 4 steps, cfg=1.0 "
         "(CFG is baked into the student).",
     ),
-    "exp-test-postfix-exp": (
-        exp_inference.cmd_test_postfix_exp,
-        "[experimental] Inference with latest postfix-exp weight",
-    ),
-    "exp-test-postfix-func": (
-        exp_inference.cmd_test_postfix_func,
-        "[experimental] Inference with latest postfix-func weight",
+    "exp-test-spd": (
+        exp_inference.cmd_test_spd,
+        "[experimental] Inference with latest SPD fine-tune LoRA on the SPD sampler "
+        "at its trained schedule (read from safetensors metadata). cfg=4.0, Euler.",
     ),
     "exp-test-ip": (
         exp_inference.cmd_test_ip,
@@ -300,6 +320,30 @@ COMMANDS = {
 }
 
 
+def _is_inline_env_assignment(token: str) -> bool:
+    if token.startswith("-") or "=" not in token:
+        return False
+    key, _value = token.split("=", 1)
+    return (
+        bool(key)
+        and not key[0].isdigit()
+        and key.upper() == key
+        and all(ch.isalnum() or ch == "_" for ch in key)
+    )
+
+
+def _apply_inline_env(extra: list[str]) -> list[str]:
+    """Support Make-style trailing env vars: ``tasks.py cmd KEY=value``."""
+    forwarded: list[str] = []
+    for token in extra:
+        if _is_inline_env_assignment(token):
+            key, value = token.split("=", 1)
+            os.environ[key] = value
+        else:
+            forwarded.append(token)
+    return forwarded
+
+
 def main():
     if len(sys.argv) < 2 or sys.argv[1] in ("-h", "--help"):
         print("Usage: python tasks.py <command> [extra args...]\n")
@@ -308,6 +352,7 @@ def main():
             print(f"  {name:30s} {desc}")
         print("\nExtra arguments are forwarded to the underlying command.")
         print("Example: python tasks.py lora --network_dim 32 --max_train_epochs 64")
+        print("Example: python tasks.py print-config METHOD=lora PRESET=default")
         sys.exit(0)
 
     command = sys.argv[1]
@@ -316,7 +361,7 @@ def main():
         print("Run 'python tasks.py --help' for available commands", file=sys.stderr)
         sys.exit(1)
 
-    extra = sys.argv[2:]
+    extra = _apply_inline_env(sys.argv[2:])
     fn, desc = COMMANDS[command]
     if extra and extra[0] in ("-h", "--help"):
         print(f"python tasks.py {command} -- {desc}\n")

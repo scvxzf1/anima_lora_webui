@@ -24,7 +24,6 @@ from ._common import PY, ROOT, run
 
 MASK_OUTPUT_DIR = ROOT / "post_image_dataset" / "masks"
 RESIZED_IMAGE_DIR = ROOT / "post_image_dataset" / "resized"
-LEGACY_MASK_DIR = ROOT / "masks"
 
 
 def _run_sam(image_dir: Path, out_dir: Path, extra: list[str]) -> None:
@@ -114,20 +113,7 @@ def cmd_mask(extra):
         )
 
 
-def cmd_mask_sam(extra):
-    """Legacy entry point: generate SAM masks under masks/sam/."""
-    _run_sam(RESIZED_IMAGE_DIR, LEGACY_MASK_DIR / "sam", extra)
-
-
-def cmd_mask_mit(extra):
-    """Legacy entry point: generate MIT masks under masks/mit/."""
-    _run_mit(RESIZED_IMAGE_DIR, LEGACY_MASK_DIR / "mit", extra)
-
-
 def cmd_mask_clean(_extra):
     if MASK_OUTPUT_DIR.exists():
         shutil.rmtree(MASK_OUTPUT_DIR)
         print(f"  Removed {MASK_OUTPUT_DIR.relative_to(ROOT)}/")
-    if LEGACY_MASK_DIR.exists():
-        shutil.rmtree(LEGACY_MASK_DIR)
-        print(f"  Removed {LEGACY_MASK_DIR.relative_to(ROOT)}/")

@@ -20,6 +20,8 @@
     let tomlDeleteConfirmTimer = null;
     let tomlSaveConfirmFile = '';
     let tomlSaveConfirmTimer = null;
+    let tomlManagerMode = 'project';
+    let configSwitchToastTimer = null;
     let sharedDialogBusy = false;
     let tomlGroupActionBusy = false;
     let configLoadSeq = 0;
@@ -74,6 +76,18 @@
     ]);
     let selectedConfigDatasetFile = '';
     let selectedConfigDatasetSummary = null;
+    let outputRunState = {
+        loading: false,
+        runs: [],
+        selectedRun: '',
+        selectedKind: 'original',
+        search: '',
+        content: '',
+        file: '',
+        outputRoot: '',
+        error: '',
+        saveAsOpen: false,
+    };
     let configDatasetPickerSearch = '';
     let configDatasetPreviewRequestSeq = 0;
     let configDatasetPreviewState = {
@@ -111,6 +125,8 @@
         methods_subdir: 'gui-methods',
         file: 'configs/gui-methods/lora.toml',
     };
+    const BLANK_PRESET_TEMPLATE_FILE = 'configs/gui-methods/lora.toml';
+    const BLANK_PRESET_TEMPLATE_LABEL = 'LoRA 标准训练变体 / lora.toml';
     const FORM_UI_DEFAULTS = {
         train_batch_size: 1,
         gradient_accumulation_steps: 1,
@@ -124,6 +140,64 @@
         sample_sampler: 'ddim',
         use_lokr: false,
         lokr_factor: 8,
+        static_pad: false,
+        max_data_loader_n_workers: 0,
+        path_pattern: '*',
+        drop_lowres_images: true,
+        min_pixels: 500000,
+        validation_baselines: false,
+        ip_pair_mode: 'identity',
+        ip_pair_prob: 0.8,
+        ip_pair_min_level: 'artist',
+        ip_pair_caption_strip_p: 0.0,
+        content_router_source: 'crossattn_emb',
+        content_router_init_std: 0.001,
+        content_router_layer_norm: true,
+        use_cmmd: false,
+        ip_diagnostics_epochs: 999,
+        weight_decay: 0.0,
+        dit_path: 'models/diffusion_models/anima-base-v1.0.safetensors',
+        data_dir: 'post_image_dataset/lora',
+        iterations: 4000,
+        seed: 42,
+        use_chimera_hydra: false,
+        channel_scaling_alpha: 0.5,
+        num_experts_content: 4,
+        num_experts_freq: 2,
+        balance_w_content: 0.000002,
+        balance_w_freq: 0.000005,
+        network_content_router_lr_scale: 10.0,
+        network_freq_router_lr_scale: 2.0,
+        freq_router_init_std: 0.02,
+        freq_router_layer_norm: true,
+        n_layers: 10,
+        n_t_buckets: 100,
+        init_std: 0.02,
+        splice_position: 'end_of_sequence',
+        contrastive_weight: 0.0,
+        contrastive_k: 1,
+        contrastive_every_n: 1,
+        contrastive_negative_mode: 'shuffled',
+        contrastive_objective: 'infonce',
+        agsm_gamma: 0.5,
+        agsm_ema_decay: 0.99,
+        contrastive_jaccard_alpha: 1.0,
+        contrastive_tau: 0.5,
+        contrastive_warmup_ratio: 0.1,
+        encoder: 'pe',
+        encoder_dim: 1024,
+        resampler_layers: 2,
+        resampler_heads: 8,
+        ip_scale: 1.0,
+        gate_lr: 0.001,
+        pe_lora_enabled: false,
+        pe_lora_rank: 16,
+        pe_lora_alpha: 16,
+        pe_lora_layer_from: 8,
+        b_cond_init: -10.0,
+        cond_scale: 1.0,
+        apply_ffn_lora: true,
+        cond_token_count: 4096,
         resolution: 1024,
         batch_size: 1,
         enable_bucket: true,
@@ -185,6 +259,53 @@
         'validation_split_num',
         'validation_seed',
     ]);
+    const NETWORK_ARG_FIELD_SPECS = [
+        { family: 'soft_tokens', key: 'n_layers', arg: 'n_layers', default: 10, valueType: 'integer' },
+        { family: 'soft_tokens', key: 'n_t_buckets', arg: 'n_t_buckets', default: 100, valueType: 'integer' },
+        { family: 'soft_tokens', key: 'init_std', arg: 'init_std', default: 0.02, valueType: 'number' },
+        { family: 'soft_tokens', key: 'splice_position', arg: 'splice_position', default: 'end_of_sequence', valueType: 'string' },
+        { family: 'soft_tokens', key: 'contrastive_weight', arg: 'contrastive_weight', default: 0.0, valueType: 'number' },
+        { family: 'soft_tokens', key: 'contrastive_k', arg: 'contrastive_k', default: 1, valueType: 'integer' },
+        { family: 'soft_tokens', key: 'contrastive_every_n', arg: 'contrastive_every_n', default: 1, valueType: 'integer' },
+        { family: 'soft_tokens', key: 'contrastive_negative_mode', arg: 'contrastive_negative_mode', default: 'shuffled', valueType: 'string' },
+        { family: 'soft_tokens', key: 'contrastive_objective', arg: 'contrastive_objective', default: 'infonce', valueType: 'string' },
+        { family: 'soft_tokens', key: 'agsm_gamma', arg: 'agsm_gamma', default: 0.5, valueType: 'number' },
+        { family: 'soft_tokens', key: 'agsm_ema_decay', arg: 'agsm_ema_decay', default: 0.99, valueType: 'number' },
+        { family: 'soft_tokens', key: 'contrastive_jaccard_alpha', arg: 'contrastive_jaccard_alpha', default: 1.0, valueType: 'number' },
+        { family: 'soft_tokens', key: 'contrastive_tau', arg: 'contrastive_tau', default: 0.5, valueType: 'number' },
+        { family: 'soft_tokens', key: 'contrastive_warmup_ratio', arg: 'contrastive_warmup_ratio', default: 0.1, valueType: 'number' },
+        { family: 'ip_adapter', key: 'encoder', arg: 'encoder', default: 'pe', valueType: 'string' },
+        { family: 'ip_adapter', key: 'encoder_dim', arg: 'encoder_dim', default: 1024, valueType: 'integer' },
+        { family: 'ip_adapter', key: 'resampler_layers', arg: 'resampler_layers', default: 2, valueType: 'integer' },
+        { family: 'ip_adapter', key: 'resampler_heads', arg: 'resampler_heads', default: 8, valueType: 'integer' },
+        { family: 'ip_adapter', key: 'ip_scale', arg: 'ip_scale', default: 1.0, valueType: 'number' },
+        { family: 'ip_adapter', key: 'gate_lr', arg: 'gate_lr', default: 0.001, valueType: 'number' },
+        { family: 'ip_adapter', key: 'pe_lora_enabled', arg: 'pe_lora_enabled', default: false, valueType: 'boolean' },
+        { family: 'ip_adapter', key: 'pe_lora_rank', arg: 'pe_lora_rank', default: 16, valueType: 'integer' },
+        { family: 'ip_adapter', key: 'pe_lora_alpha', arg: 'pe_lora_alpha', default: 16, valueType: 'number' },
+        { family: 'ip_adapter', key: 'pe_lora_layer_from', arg: 'pe_lora_layer_from', default: 8, valueType: 'integer' },
+        { family: 'easycontrol', key: 'b_cond_init', arg: 'b_cond_init', default: -10.0, valueType: 'number' },
+        { family: 'easycontrol', key: 'cond_scale', arg: 'cond_scale', default: 1.0, valueType: 'number' },
+        { family: 'easycontrol', key: 'apply_ffn_lora', arg: 'apply_ffn_lora', default: true, valueType: 'booleanInt' },
+        { family: 'easycontrol', key: 'cond_token_count', arg: 'cond_token_count', default: 4096, valueType: 'integer' },
+    ];
+    const NETWORK_ARG_FIELD_MAP = new Map(NETWORK_ARG_FIELD_SPECS.map((spec) => [spec.key, spec]));
+    const NETWORK_ARG_SPEC_BY_ARG = new Map(NETWORK_ARG_FIELD_SPECS.map((spec) => [spec.arg, spec]));
+    const SPD_UI_DEFAULT_FIELDS = new Set(['dit_path', 'data_dir', 'iterations', 'seed']);
+    const CHIMERA_UI_DEFAULT_FIELDS = new Set([
+        'use_chimera_hydra',
+        'channel_scaling_alpha',
+        'num_experts_content',
+        'num_experts_freq',
+        'balance_w_content',
+        'balance_w_freq',
+        'network_content_router_lr_scale',
+        'network_freq_router_lr_scale',
+        'freq_router_init_std',
+        'freq_router_layer_norm',
+    ]);
+    const IP_ADAPTER_UI_DEFAULT_FIELDS = new Set(['ip_diagnostics_epochs']);
+    const SOFT_TOKENS_UI_DEFAULT_FIELDS = new Set(['weight_decay']);
     const trainingRuntime = {
         state: 'idle',
         lastOutputAt: 0,
@@ -196,8 +317,26 @@
         outputDir: '',
         sampleDir: '',
         sampleConfig: null,
+        runDir: '',
+        runtimeConfigFile: '',
+        originalConfigFile: '',
+        datasetConfigFile: '',
+        modelCacheDir: '',
+        datasetCacheDir: '',
+        trainingOutputDir: '',
+        logsDir: '',
     };
     const MAX_LOG_LINES = 2000;
+    let globalSettings = null;
+    const GLOBAL_MODEL_PATH_FIELDS = [
+        ['pretrained_model_name_or_path', 'global-pretrained-model-path'],
+        ['qwen3', 'global-qwen3-path'],
+        ['vae', 'global-vae-path'],
+    ];
+    const GLOBAL_SETTING_INPUTS = [
+        ['output_root', 'global-output-root'],
+        ...GLOBAL_MODEL_PATH_FIELDS,
+    ];
     const FORM_SECTION_DEFS = [
         {
             title: '基础模型路径',
@@ -217,7 +356,6 @@
             className: 'config-group-primary',
             keys: [
                 'output_name',
-                'output_dir',
                 'max_train_epochs',
                 'learning_rate',
                 'save_every_n_epochs',
@@ -289,7 +427,9 @@
                 'torch_compile',
                 'compile_mode',
                 'compile_inductor_mode',
+                'static_pad',
                 'static_token_count',
+                'max_data_loader_n_workers',
                 'trim_crossattn_kv',
                 'vae_chunk_size',
                 'vae_disable_cache',
@@ -313,12 +453,37 @@
             ],
         },
         {
+            title: '数据筛选',
+            description: '控制训练前预处理对源图的筛选规则；通常和预处理缓存一起重建。',
+            open: false,
+            keys: [
+                'path_pattern',
+                'drop_lowres_images',
+                'min_pixels',
+            ],
+        },
+        {
+            title: 'SPD CLI 实验',
+            description: 'SPD 使用 scripts/distill_spd.py 的专用流程；这里用于查看和编辑实验配置，不走 Web 普通训练按钮。',
+            open: false,
+            className: 'config-group-spd',
+            keys: [
+                'dit_path',
+                'data_dir',
+                'iterations',
+                'seed',
+            ],
+        },
+        {
             title: '输出格式与训练范围',
             description: '模型保存格式、保存精度和训练目标范围。',
             open: false,
             keys: [
                 'save_model_as',
                 'save_precision',
+                'weight_decay',
+                'use_cmmd',
+                'ip_diagnostics_epochs',
             ],
         },
         {
@@ -333,6 +498,7 @@
                 'use_timestep_mask',
                 'min_rank',
                 'alpha_rank_scale',
+                'channel_scaling_alpha',
                 'layer_start',
                 'per_channel_scaling',
                 'add_reft',
@@ -358,6 +524,11 @@
                 'sigma_bucket_boundaries',
                 'use_ip_adapter',
                 'ip_image_drop_p',
+                'validation_baselines',
+                'ip_pair_mode',
+                'ip_pair_prob',
+                'ip_pair_min_level',
+                'ip_pair_caption_strip_p',
                 'use_easycontrol',
                 'easycontrol_drop_p',
                 'easycontrol_cond_noise_max',
@@ -369,6 +540,70 @@
                 'router_hidden_dim',
                 'router_tau',
                 'fera_fecl_weight',
+                'use_chimera_hydra',
+                'num_experts_content',
+                'num_experts_freq',
+                'balance_w_content',
+                'balance_w_freq',
+                'network_content_router_lr_scale',
+                'network_freq_router_lr_scale',
+                'content_router_source',
+                'content_router_init_std',
+                'content_router_layer_norm',
+                'freq_router_init_std',
+                'freq_router_layer_norm',
+            ],
+        },
+        {
+            title: 'Soft Tokens 参数',
+            description: '这些控件会写回 network_args；普通训练无需手改，做 Soft Tokens 对照时再调整。',
+            open: false,
+            className: 'config-group-soft-tokens',
+            keys: [
+                'n_layers',
+                'n_t_buckets',
+                'init_std',
+                'splice_position',
+                'contrastive_weight',
+                'contrastive_k',
+                'contrastive_every_n',
+                'contrastive_negative_mode',
+                'contrastive_objective',
+                'agsm_gamma',
+                'agsm_ema_decay',
+                'contrastive_jaccard_alpha',
+                'contrastive_tau',
+                'contrastive_warmup_ratio',
+            ],
+        },
+        {
+            title: 'IP-Adapter 高级参数',
+            description: '这些控件会写回 network_args；identity pair 仍需要先准备 caption-index 与 PE 特征缓存。',
+            open: false,
+            className: 'config-group-ip-adapter',
+            keys: [
+                'encoder',
+                'encoder_dim',
+                'resampler_layers',
+                'resampler_heads',
+                'ip_scale',
+                'gate_lr',
+                'pe_lora_enabled',
+                'pe_lora_rank',
+                'pe_lora_alpha',
+                'pe_lora_layer_from',
+            ],
+        },
+        {
+            title: 'EasyControl 高级参数',
+            description: '这些控件会写回 network_args；用于控制条件流门控、缩放和 FFN LoRA 范围。',
+            open: false,
+            className: 'config-group-easycontrol',
+            keys: [
+                'b_cond_init',
+                'cond_scale',
+                'apply_ffn_lora',
+                'cond_token_count',
             ],
         },
     ];
@@ -412,22 +647,496 @@
         fera: 'hydralora',
         reft: 'reft',
         tlora_ortho_reft: 'reft',
-        postfix_ortho_cond: 'postfix',
+        chimera_hydra: 'chimera',
         ip_adapter: 'ip_adapter',
         easycontrol: 'easycontrol',
-        soft_tokens: 'lora',
+        soft_tokens: 'soft_tokens',
+        spd: 'spd',
     };
 
     function help(summary, fill, benefit, cost, risk, recommend) {
         return { summary, fill, benefit, cost, risk, recommend };
     }
 
+    const EXTRA_FIELD_HELP_ZH = {
+        static_pad: help(
+            '控制是否回到旧的静态 token padding。',
+            '默认 false，使用 native token shape；旧缓存和桶表强相关，切换后建议重新预处理。',
+            ['减少 flash attention 下 padding 泄漏风险。'],
+            ['动态图形状会带来更多编译图。'],
+            ['compile_mode=full 与 native shape 路径存在限制。'],
+            '推荐保持 false。'
+        ),
+        max_data_loader_n_workers: help(
+            'DataLoader 后台加载进程数量。',
+            '默认 0，避免 Windows/本地 WebUI 下多进程加载带来的卡顿和状态不一致。',
+            ['数据加载可控，调试更稳定。'],
+            ['极大数据集可能加载吞吐略低。'],
+            ['设置过高会占用更多内存和文件句柄。'],
+            '先用 0，确认瓶颈在数据加载时再调。'
+        ),
+        drop_lowres_images: help(
+            '预处理时是否丢弃低于 min_pixels 的源图。',
+            '开启后 resize、VAE、TE 缓存都会跳过过小图；关闭则保留所有图片。',
+            ['避免低质量小图污染缓存和训练。'],
+            ['小图素材会被排除。'],
+            ['阈值过高会让可训练图片数量骤减。'],
+            '推荐开启并用默认 500000。'
+        ),
+        min_pixels: help(
+            '低分辨率过滤的像素数阈值。',
+            '例如 500000 约等于 0.5MP；drop_lowres_images=false 时忽略。',
+            ['统一控制 resize 与文本缓存的过滤门槛。'],
+            ['需要重新预处理才会影响缓存。'],
+            ['设太高可能让数据集变小。'],
+            '默认 500000；想完全不过滤可设 0。'
+        ),
+        path_pattern: help(
+            '训练数据路径匹配模式。',
+            '用于按相对路径筛选数据，例如只训练某些子目录；默认 * 表示全部。',
+            ['不用移动文件就能做子集实验。'],
+            ['模式写错会导致样本数异常。'],
+            ['切换后需要重新确认步数估算和缓存。'],
+            '不做子集实验时保持 *。'
+        ),
+        use_cmmd: help(
+            '控制是否启用 CMMD 验证指标。',
+            'CMMD 会在验证阶段计算 PE-Core MMD² 类指标，主要服务 IP-Adapter、Chimera 等实验方法。',
+            ['比只看 loss 更容易观察条件/风格偏移。'],
+            ['验证更慢，并依赖对应特征路径。'],
+            ['数据量太少时指标波动较大，不宜单独作为好坏判断。'],
+            '日常训练保持 false；做方法对照时再开启。'
+        ),
+        ip_diagnostics_epochs: help(
+            'IP-Adapter 诊断信息输出间隔。',
+            '用于控制 gate、IP/text ratio 等诊断日志的频率；数值很大基本等于少输出。',
+            ['便于观察 IP 路径是否打开、是否压过文本路径。'],
+            ['日志更多，训练查看成本更高。'],
+            ['设太小会让历史日志较嘈杂。'],
+            '默认 999；调试 IP-Adapter 时可临时调小。'
+        ),
+        weight_decay: help(
+            '优化器权重衰减。',
+            'Soft Tokens 等小参数方法可能需要轻微正则；普通 LoRA 多数保持 0。',
+            ['能抑制部分小模块过拟合。'],
+            ['过高会限制收敛，尤其是低秩参数。'],
+            ['不同优化器对 weight_decay 的语义可能略有差异。'],
+            '普通 LoRA 保持 0；Soft Tokens 可从 1e-4 起。'
+        ),
+        dit_path: help(
+            'SPD CLI 实验使用的冻结 DiT 模型路径。',
+            '这是 scripts/distill_spd.py 的专用字段，不是普通 Web train.py 的 pretrained_model_name_or_path。',
+            ['让 SPD 配置能独立指定基底权重。'],
+            ['路径错误会导致 CLI 实验启动失败。'],
+            ['不要和普通训练入口混用。'],
+            '跟随 configs/methods/spd.toml 默认值。'
+        ),
+        data_dir: help(
+            'SPD CLI 实验读取的训练数据目录。',
+            '通常指向已经预处理好的 LoRA 缓存/数据路径。',
+            ['SPD 实验可独立选择数据来源。'],
+            ['不是 Web 数据集页的多数据集运行目录。'],
+            ['目录内容不匹配会让 distill_spd 失败或训练无效。'],
+            '使用 SPD CLI 前确认目录里有脚本需要的数据。'
+        ),
+        iterations: help(
+            'SPD CLI 实验的优化迭代次数。',
+            '它按 distill_spd 的 optimizer step 计数，不等同于 Web 普通训练的 epoch。',
+            ['能精确控制 SPD 实验时长。'],
+            ['数值越大训练越久。'],
+            ['过小只适合冒烟，过大可能浪费算力。'],
+            '默认 4000；先短跑确认流程再放大。'
+        ),
+        seed: help(
+            '随机种子。',
+            '用于 SPD 等 CLI 实验复现采样和初始化。',
+            ['同配置下更容易复现实验。'],
+            ['不同平台/后端仍可能有轻微非确定性。'],
+            ['固定种子不能替代多次实验确认稳定性。'],
+            '默认 42。'
+        ),
+        validation_baselines: help(
+            'IP-Adapter 验证时输出基线对照。',
+            '开启后可对比 self、identity、negative 等参考策略。',
+            ['更容易判断 identity pair 是否真的有效。'],
+            ['验证更慢，日志/指标更多。'],
+            ['小验证集下对照波动会比较明显。'],
+            '调试 IP-Adapter identity pair 时开启。'
+        ),
+        ip_pair_mode: help(
+            'IP-Adapter 参考图配对策略。',
+            'identity 会找同身份不同图；identity_cross_artist 还要求跨画师；self 使用旧的自配对。',
+            ['distinct pair 更能逼迫图像路径学习身份不变量。'],
+            ['需要 caption-index 提供 character/copyright/artist 分组。'],
+            ['索引缺失时会回退到 self。'],
+            '推荐 identity。'
+        ),
+        ip_pair_prob: help(
+            '每一步使用 distinct identity pair 的概率。',
+            '剩余比例会混入 self pair，稳定训练。',
+            ['平衡身份学习和重建稳定性。'],
+            ['概率过高时对索引质量更敏感。'],
+            ['概率过低则 identity pair 信号不足。'],
+            '推荐 0.8。'
+        ),
+        ip_pair_min_level: help(
+            'identity pair 回退允许的最松层级。',
+            'character 最严格，copyright 次之，artist 最宽松。',
+            ['控制同身份匹配的保守程度。'],
+            ['越严格越容易找不到配对并回退 self。'],
+            ['artist 级别可能混入较弱身份关系。'],
+            '默认 artist，数据标注好时可收紧。'
+        ),
+        ip_pair_caption_strip_p: help(
+            'distinct-pair 步骤中从 caption 删除身份词的概率。',
+            '用于防止身份从文本泄漏而不是从参考图学习；文本缓存开启时该保护基本不生效。',
+            ['能更纯粹测试图像条件承载身份。'],
+            ['需要关闭/重建对应文本缓存才有意义。'],
+            ['过高会让文本条件信息不足。'],
+            '默认 0。'
+        ),
+        content_router_source: help(
+            'Chimera 内容路由使用的输入信号。',
+            'crossattn_emb 使用文本条件嵌入；其它值用于方法实验。',
+            ['让专家按内容条件分工。'],
+            ['改变后路由统计和训练行为都会变。'],
+            ['错误组合可能导致专家分化不足。'],
+            'Chimera 默认 crossattn_emb。'
+        ),
+        content_router_init_std: help(
+            '内容路由器初始化标准差。',
+            '非零初始化用于打破均匀路由固定点。',
+            ['帮助路由从训练早期开始分化。'],
+            ['过大可能导致初期路由偏置太强。'],
+            ['和均衡损失权重共同影响稳定性。'],
+            '保持 0.001。'
+        ),
+        content_router_layer_norm: help(
+            '内容路由输入是否做无参数 LayerNorm。',
+            '用于稳定 pooled 条件特征的尺度。',
+            ['路由输入尺度更稳定。'],
+            ['关闭后可能更贴近原始特征但更敏感。'],
+            ['小数据下尺度噪声可能放大。'],
+            '推荐 true。'
+        ),
+        use_chimera_hydra: help(
+            '启用 ChimeraHydra 双路由结构。',
+            '打开后内容池与频率池分别路由，并由方法代码固定三轴路由字段。',
+            ['能分别观察内容/频率专家分工。'],
+            ['字段多、显存和解释成本更高。'],
+            ['普通 LoRA 配置里误开会得到实验方法行为。'],
+            '只在 chimera_hydra 变体中保持 true。'
+        ),
+        channel_scaling_alpha: help(
+            '按通道缩放的强度系数。',
+            '用于 Ortho/T-LoRA/Chimera 相关实验路径，影响通道级更新尺度。',
+            ['可缓和部分通道过强更新。'],
+            ['调参反馈不直观。'],
+            ['过大或过小都可能破坏变体默认平衡。'],
+            '保持变体默认值。'
+        ),
+        num_experts_content: help(
+            'Chimera 内容池专家数量。',
+            '控制由文本/内容信号路由的专家头数量。',
+            ['内容专家越多，分工空间越大。'],
+            ['显存、参数和负载均衡难度上升。'],
+            ['小数据下专家可能利用不均。'],
+            'GUI 默认 4；实验配置可能用 6。'
+        ),
+        num_experts_freq: help(
+            'Chimera 频率池专家数量。',
+            '控制由 FEI/sigma 信号路由的频率专家头数量。',
+            ['能把不同噪声/频率区域交给不同专家。'],
+            ['专家越多越需要观察路由统计。'],
+            ['和数据规模不匹配时容易空专家。'],
+            '默认 2。'
+        ),
+        balance_w_content: help(
+            'Chimera 内容池负载均衡权重。',
+            '只约束内容路由池，不影响频率池的均衡权重。',
+            ['能单独压制内容专家坍缩。'],
+            ['过高会强迫平均分配，削弱自然分工。'],
+            ['需要和 balance_loss_weight 一起理解。'],
+            '保持变体默认；观察到内容池坍缩再调。'
+        ),
+        balance_w_freq: help(
+            'Chimera 频率池负载均衡权重。',
+            '只约束频率路由池，不影响内容池。',
+            ['能单独压制频率专家坍缩。'],
+            ['过高会让频率分工变钝。'],
+            ['和 freq_router_init_std、sigma_feature_dim 共同影响路由。'],
+            '保持变体默认。'
+        ),
+        network_content_router_lr_scale: help(
+            '内容路由器学习率倍率。',
+            '相对主学习率放大或缩小内容路由器更新。',
+            ['路由器能更快开始分化。'],
+            ['过高会震荡或坍缩。'],
+            ['和内容池均衡权重耦合明显。'],
+            'Chimera 默认 10。'
+        ),
+        network_freq_router_lr_scale: help(
+            '频率路由器学习率倍率。',
+            '相对主学习率放大或缩小频率路由器更新。',
+            ['频率路由可更快捕捉 FEI/sigma 差异。'],
+            ['过高可能让频率池主导训练。'],
+            ['需要结合路由统计判断。'],
+            'GUI 默认 2，上游实验配置可用 5。'
+        ),
+        freq_router_init_std: help(
+            '频率路由器初始化标准差。',
+            '非零初始化帮助频率路由从 step 0 打破均匀固定点。',
+            ['更容易早期分化。'],
+            ['过大可能带来初始偏置。'],
+            ['和均衡损失共同影响稳定性。'],
+            '保持变体默认。'
+        ),
+        freq_router_layer_norm: help(
+            '频率路由输入是否做无参数 LayerNorm。',
+            '用于稳定 FEI/sigma 特征尺度。',
+            ['频率路由输入尺度更稳定。'],
+            ['关闭后更依赖原始特征幅度。'],
+            ['小数据下尺度噪声可能放大。'],
+            '推荐 true。'
+        ),
+        n_layers: help(
+            'Soft Tokens 附加到前多少个 DiT block。',
+            '这是 network_args 字段，保存时会写回 network_args 的 n_layers。',
+            ['层数越多，软 token 影响范围越大。'],
+            ['参数、显存和过拟合风险上升。'],
+            ['超过模型层数会在启动时报错。'],
+            '默认 10；上游实验中也会尝试 6。'
+        ),
+        n_t_buckets: help(
+            'Soft Tokens 的时间桶数量。',
+            '把 sigma/timestep 分桶，每桶学习一组时间偏移。',
+            ['更多桶能表达更细的时间步差异。'],
+            ['数据不足时许多桶训练很少。'],
+            ['桶太多会增加参数并拖慢收敛。'],
+            '小规模训练可用 14-20；默认 GUI 为 100。'
+        ),
+        init_std: help(
+            'Soft Tokens 基础 token 初始化标准差。',
+            '控制软 token 初始幅度。',
+            ['较小初始化更接近底模原始行为。'],
+            ['太小可能启动慢，太大可能扰动强。'],
+            ['和学习率一起影响稳定性。'],
+            '默认 0.02。'
+        ),
+        splice_position: help(
+            'Soft Tokens 写入文本条件的位置。',
+            'end_of_sequence 覆盖末尾 padding；front_of_padding 从每条 caption 的 padding 前沿插入。',
+            ['可控制软 token 与文本 token 的相对位置。'],
+            ['不同模式需要配合缓存/推理链路理解。'],
+            ['切换会改变训练语义，不能和旧权重简单对照。'],
+            '默认 end_of_sequence；上游实验可用 front_of_padding。'
+        ),
+        contrastive_weight: help(
+            'Soft Tokens 对比目标权重。',
+            '0 表示关闭额外对比前向；大于 0 会启用负样本目标。',
+            ['可能增强提示词区分能力。'],
+            ['每次触发会增加额外 DiT forward，训练变慢。'],
+            ['权重过高会压过 FM 主损失。'],
+            '默认 0；实验从 0.05 起。'
+        ),
+        contrastive_k: help(
+            '每步使用的对比负样本数。',
+            '每个负样本都会带来额外前向成本。',
+            ['更多负样本使对比信号更强。'],
+            ['训练时间近似随 k 增加。'],
+            ['过多会明显拖慢并增大调参难度。'],
+            '推荐 1-2。'
+        ),
+        contrastive_every_n: help(
+            '每隔多少个 optimizer step 触发一次对比目标。',
+            '1 表示每步触发；数值越大平均成本越低。',
+            ['可以控制额外前向频率。'],
+            ['有效对比强度约随 1/N 下降。'],
+            ['如果想维持平均强度，需要同步调整 weight。'],
+            '默认 1；上游实验可用 3。'
+        ),
+        contrastive_negative_mode: help(
+            'Soft Tokens 负样本来源。',
+            'shuffled 为随机负样本，jaccard 会按 tag 重叠降权，hard 尝试同画师不同角色等困难负样本。',
+            ['hard/jaccard 能提供更有针对性的区分信号。'],
+            ['依赖 caption-index 质量。'],
+            ['索引缺失或标签差时会退化或引入噪声。'],
+            '普通实验先用 shuffled；有索引时尝试 hard。'
+        ),
+        contrastive_objective: help(
+            'Soft Tokens 对比目标函数。',
+            'infonce 使用传统对比分类；agsm 使用有界目标偏移。',
+            ['AGSM 可能降低负样本无界发散。'],
+            ['仍是实验路径，成本更高。'],
+            ['目标函数切换后历史经验不可直接套用。'],
+            '默认 infonce；复现实验时可选 agsm。'
+        ),
+        agsm_gamma: help(
+            'AGSM 目标偏移强度。',
+            '只在 contrastive_objective=agsm 且 contrastive_weight>0 时生效。',
+            ['控制正负目标分离幅度。'],
+            ['太高可能让目标偏离主 FM 任务。'],
+            ['太低则 AGSM 信号弱。'],
+            '默认 0.5。'
+        ),
+        agsm_ema_decay: help(
+            'AGSM 读取自身预测 EMA 的衰减。',
+            '越接近 1 越平滑，越小越跟随当前预测。',
+            ['稳定目标偏移估计。'],
+            ['过高会反应慢。'],
+            ['必须在 0 和 1 之间。'],
+            '默认 0.99。'
+        ),
+        contrastive_jaccard_alpha: help(
+            'jaccard 负样本模式的 tag 重叠惩罚。',
+            '负样本和正样本 tag 越重叠，logit 惩罚越大。',
+            ['降低相似 caption 负样本误伤。'],
+            ['只对 jaccard 模式生效。'],
+            ['过高会让负样本信号过弱。'],
+            '默认 1.0。'
+        ),
+        contrastive_tau: help(
+            'InfoNCE 温度参数。',
+            '只对 infonce 目标生效，越小 logits 越尖锐。',
+            ['可调节对比分类强度。'],
+            ['过小容易梯度尖锐，过大信号变弱。'],
+            ['AGSM 目标不使用它。'],
+            '默认 0.5。'
+        ),
+        contrastive_warmup_ratio: help(
+            '对比目标预热比例。',
+            '训练前若干比例 step 内将对比权重保持为 0。',
+            ['先让普通 FM 建立基础，再加入对比约束。'],
+            ['预热太长会让对比目标影响不足。'],
+            ['太短可能早期不稳定。'],
+            '默认 0.1。'
+        ),
+        encoder: help(
+            'IP-Adapter 使用的视觉编码器。',
+            '当前上游路径主要使用 PE-Core，值为 pe。',
+            ['明确图像特征来源。'],
+            ['其它值需要对应编码器实现支持。'],
+            ['改错会导致启动失败。'],
+            '保持 pe。'
+        ),
+        encoder_dim: help(
+            '视觉编码器输出维度。',
+            'PE-Core L14-336 默认 1024。',
+            ['必须与缓存的 PE 特征维度一致。'],
+            ['不匹配会在训练时形状报错。'],
+            ['手动改动通常无意义。'],
+            '保持 1024。'
+        ),
+        resampler_layers: help(
+            'IP-Adapter Perceiver Resampler 层数。',
+            '用于把 PE patch 特征压缩成固定数量 IP token。',
+            ['层数越多，图像条件聚合能力越强。'],
+            ['显存和计算增加。'],
+            ['小数据过深可能过拟合。'],
+            '默认 2。'
+        ),
+        resampler_heads: help(
+            'IP-Adapter Resampler 注意力头数。',
+            '控制 resampler 内部多头注意力宽度。',
+            ['更多头可表达更丰富的图像 token 聚合。'],
+            ['计算略增，收益依数据而定。'],
+            ['和 encoder_dim 需整除匹配。'],
+            '默认 8。'
+        ),
+        ip_scale: help(
+            'IP 条件输出强度倍率。',
+            '乘到 IP attention 输出上，影响图像条件对文本 cross-attention 的贡献。',
+            ['能快速调强或调弱图像条件。'],
+            ['过高会压过文本提示。'],
+            ['过低会让参考图影响不足。'],
+            '默认 1.0。'
+        ),
+        gate_lr: help(
+            'IP per-block gate 的学习率覆盖。',
+            '留空时使用全局学习率；填写后 gate 可更快打开。',
+            ['解决 gate 打开太慢的问题。'],
+            ['过高可能导致 IP 路径快速压过文本。'],
+            ['需要观察诊断指标。'],
+            '常用 1e-3；不调试时保持变体默认。'
+        ),
+        pe_lora_enabled: help(
+            '是否训练 PE-Core 视觉编码器 LoRA。',
+            '开启后不能使用静态缓存 PE 特征，需要 live 编码。',
+            ['能让视觉编码器适配动漫/漫画分布。'],
+            ['训练明显更慢，显存更高。'],
+            ['和 ip_features_cache_to_disk=true 不兼容。'],
+            'identity pair 快速路径保持 false。'
+        ),
+        pe_lora_rank: help(
+            'PE-Core LoRA 秩。',
+            '只在 pe_lora_enabled=true 时生效。',
+            ['控制视觉编码器 LoRA 容量。'],
+            ['rank 越高显存和过拟合风险越高。'],
+            ['不开 PE-LoRA 时无效。'],
+            '默认 16。'
+        ),
+        pe_lora_alpha: help(
+            'PE-Core LoRA Alpha。',
+            '只在 pe_lora_enabled=true 时生效。',
+            ['控制 PE-LoRA 更新强度。'],
+            ['过高会让视觉特征漂移。'],
+            ['不开 PE-LoRA 时无效。'],
+            '默认 16。'
+        ),
+        pe_lora_layer_from: help(
+            'PE-LoRA 从哪一层开始训练。',
+            '-1 表示所有 PE resblock；正数 N 表示只训练最后 N 层。',
+            ['可把容量集中在高层语义。'],
+            ['层数越多越慢。'],
+            ['选择不当可能适配不足或过拟合。'],
+            '默认 8。'
+        ),
+        b_cond_init: help(
+            'EasyControl 条件注意力的初始 bias。',
+            '默认 -10 让 step 0 几乎等价底模，随后训练逐步打开条件质量。',
+            ['保护初始行为稳定。'],
+            ['过低会打开慢，过高会一开始扰动底模。'],
+            ['改动会影响 EasyControl 稳定性。'],
+            '保持 -10。'
+        ),
+        cond_scale: help(
+            'EasyControl 条件流强度倍率。',
+            '控制条件输出对目标流的影响。',
+            ['可快速调节条件强弱。'],
+            ['过高可能过度依赖条件图。'],
+            ['过低控制效果会弱。'],
+            '默认 1.0。'
+        ),
+        apply_ffn_lora: help(
+            'EasyControl 是否在 FFN 层也应用条件 LoRA。',
+            '关闭后只在注意力相关路径加条件 LoRA。',
+            ['开启表达力更强。'],
+            ['参数和计算更多。'],
+            ['小数据时可能过拟合。'],
+            '默认开启。'
+        ),
+        cond_token_count: help(
+            'EasyControl 条件 latent 静态 padding 的 token 数。',
+            '默认 4096，与常见 Anima 桶 token 数对齐。',
+            ['保证条件流形状稳定。'],
+            ['数值越大显存越高。'],
+            ['太小会拒绝较大条件 latent。'],
+            '默认 4096；低显存实验可谨慎降低。'
+        ),
+    };
+
     const FIELD_LABEL_ZH = {
         add_reft: '启用 ReFT',
+        agsm_ema_decay: 'AGSM EMA 衰减',
+        agsm_gamma: 'AGSM 目标偏移强度',
         alpha_rank_scale: '按秩缩放 Alpha',
+        apply_ffn_lora: 'EasyControl FFN LoRA',
         attn_mode: '注意力后端',
         balance_loss_warmup_ratio: '均衡损失预热比例',
         balance_loss_weight: '均衡损失权重',
+        balance_w_content: '内容池均衡权重',
+        balance_w_freq: '频率池均衡权重',
+        b_cond_init: '条件注意力初始门控',
         blocks_to_swap: 'CPU/GPU 交换块数',
         cache_latents: '缓存潜变量',
         cache_latents_to_disk: '潜变量写入磁盘',
@@ -439,24 +1148,54 @@
         bucket_reso_steps: '桶尺寸步长',
         caption_extension: 'Caption 扩展名',
         caption_dropout_rate: '标题丢弃率',
+        channel_scaling_alpha: '通道缩放 Alpha',
         checkpointing_epochs: '训练状态保存间隔',
         compile_inductor_mode: 'Inductor 编译模式',
         compile_mode: '编译模式',
+        cond_scale: 'EasyControl 条件强度',
+        cond_token_count: 'EasyControl 条件 Token 数',
+        content_router_init_std: '内容路由初始化标准差',
+        content_router_layer_norm: '内容路由 LayerNorm',
+        content_router_source: '内容路由信号来源',
+        contrastive_every_n: '对比损失触发间隔',
+        contrastive_jaccard_alpha: 'Jaccard 负样本惩罚',
+        contrastive_k: '对比负样本数',
+        contrastive_negative_mode: '对比负样本模式',
+        contrastive_objective: '对比目标函数',
+        contrastive_tau: 'InfoNCE 温度',
+        contrastive_warmup_ratio: '对比损失预热比例',
+        contrastive_weight: '对比损失权重',
         dataloader_pin_memory: '固定内存加载',
+        data_dir: 'SPD 数据目录',
         dataset_config: '数据集配置',
         discrete_flow_shift: 'Flow 偏移',
+        dit_path: 'SPD DiT 模型路径',
+        drop_lowres_images: '过滤低分辨率图',
         easycontrol_cond_noise_max: 'EasyControl 条件噪声上限',
         easycontrol_drop_p: 'EasyControl 条件丢弃率',
         enable_bucket: '启用长宽比分桶',
+        encoder: 'IP 视觉编码器',
+        encoder_dim: 'IP 编码器维度',
         fei_feature_dim: 'FEI 特征维度',
         fei_sigma_low_div: 'FEI 低 Sigma 除数',
         fera_fecl_weight: 'FeRA FECL 权重',
         fera_num_bands: 'FeRA 分带数',
+        freq_router_init_std: '频率路由初始化标准差',
+        freq_router_layer_norm: '频率路由 LayerNorm',
+        gate_lr: 'IP Gate 学习率',
         train_batch_size: '批大小',
         gradient_accumulation_steps: '梯度累积步数',
         gradient_checkpointing: '梯度检查点',
+        init_std: 'Soft Tokens 初始化标准差',
         ip_features_cache_to_disk: 'IP 特征写入磁盘',
+        ip_diagnostics_epochs: 'IP 诊断间隔',
         ip_image_drop_p: 'IP 图像条件丢弃率',
+        ip_pair_caption_strip_p: '身份对 Caption 去标概率',
+        ip_pair_min_level: '身份对最低层级',
+        ip_pair_mode: '身份对采样模式',
+        ip_pair_prob: '身份对采样概率',
+        ip_scale: 'IP 条件强度',
+        iterations: 'SPD 迭代步数',
         keep_tokens: '保留 Token 数',
         learning_rate: '学习率',
         log_every_n_steps: '日志记录间隔',
@@ -467,13 +1206,17 @@
         masked_loss: '遮罩损失',
         max_train_epochs: '最大训练轮数',
         max_train_steps: '最大训练步数',
+        max_data_loader_n_workers: 'DataLoader 进程数',
         max_bucket_reso: '最大桶边长',
         min_rank: '最小秩',
         min_bucket_reso: '最小桶边长',
+        min_pixels: '最低像素数',
         mixed_precision: '混合精度',
         network_alpha: 'LoRA Alpha',
         network_args: '网络额外参数',
+        network_content_router_lr_scale: '内容路由学习率倍率',
         network_dim: 'LoRA 秩',
+        network_freq_router_lr_scale: '频率路由学习率倍率',
         network_module: '网络模块',
         network_router_lr_scale: '路由器学习率倍率',
         network_train_unet_only: '仅训练 DiT',
@@ -485,6 +1228,11 @@
         optimizer_type: '优化器',
         output_dir: '输出目录',
         output_name: '输出名称',
+        path_pattern: '数据路径匹配',
+        pe_lora_alpha: 'PE-LoRA Alpha',
+        pe_lora_enabled: '启用 PE-LoRA',
+        pe_lora_layer_from: 'PE-LoRA 起始层',
+        pe_lora_rank: 'PE-LoRA 秩',
         per_bucket_balance_weight: '分桶均衡权重',
         persistent_data_loader_workers: '常驻数据加载进程',
         pretrained_model_name_or_path: '基础模型路径',
@@ -497,6 +1245,8 @@
         repa_weight: 'REPA 权重',
         resized_image_dir: '缩放图像目录',
         resolution: '数据集分辨率',
+        resampler_heads: 'IP Resampler 头数',
+        resampler_layers: 'IP Resampler 层数',
         route_per_layer: '逐层路由',
         router_hidden_dim: '路由器隐藏维度',
         router_source: '路由信号来源',
@@ -511,17 +1261,22 @@
         save_every_n_epochs: '模型保存间隔',
         save_model_as: '模型保存格式',
         save_precision: '保存精度',
+        seed: '随机种子',
         sigma_bucket_boundaries: 'Sigma 桶边界',
         sigma_feature_dim: 'Sigma 特征维度',
         skip_cache_check: '跳过缓存检查',
         source_image_dir: '源图像目录',
         specialize_experts_by_sigma_buckets: '按 Sigma 桶专门化专家',
+        splice_position: 'Soft Tokens 拼接位置',
         static_token_count: '固定 Token 数',
+        static_pad: '静态 Padding',
         timestep_sampling: '时间步采样',
         torch_compile: '启用 torch.compile',
         trim_crossattn_kv: '裁剪交叉注意力 KV',
         unsloth_offload_checkpointing: 'Unsloth 检查点卸载',
         use_custom_down_autograd: '自定义 Down 反向',
+        use_chimera_hydra: '启用 ChimeraHydra',
+        use_cmmd: '启用 CMMD 验证',
         use_easycontrol: '启用 EasyControl',
         use_ip_adapter: '启用 IP-Adapter',
         use_moe_style: 'MoE 结构',
@@ -530,33 +1285,56 @@
         use_shuffled_caption_variants: '使用打乱标题变体',
         use_timestep_mask: '启用 T-LoRA',
         validation_seed: '验证随机种子',
+        validation_baselines: '验证基线对照',
         validation_split: '验证集比例',
         validation_split_num: '固定验证数量',
         vae: 'VAE 路径',
         vae_chunk_size: 'VAE 分块大小',
         vae_disable_cache: '禁用 VAE 缓存',
+        weight_decay: '权重衰减',
+        n_layers: 'Soft Tokens 层数',
+        n_t_buckets: '时间桶数量',
+        num_experts_content: '内容专家数',
+        num_experts_freq: '频率专家数',
     };
 
     const FIELD_OPTIONS = {
         attn_mode: ['flash', 'flex'],
         compile_inductor_mode: ['default', 'reduce-overhead', 'max-autotune'],
         compile_mode: ['blocks', 'full'],
+        apply_ffn_lora: [true, false],
+        contrastive_negative_mode: ['shuffled', 'jaccard', 'hard'],
+        contrastive_objective: ['infonce', 'agsm'],
+        content_router_layer_norm: [true, false],
+        content_router_source: ['crossattn_emb', 'pooled_text', 'fei', 'sigma'],
         dataset_config: [
             'configs/datasets/ip_adapter.toml',
             'configs/datasets/easycontrol.toml',
             'configs/datasets/rokkotsu_goddess.toml',
         ],
+        drop_lowres_images: [true, false],
+        encoder: ['pe'],
+        freq_router_layer_norm: [true, false],
+        pe_lora_enabled: [false, true],
+        static_pad: [false, true],
+        splice_position: ['end_of_sequence', 'front_of_padding'],
+        validation_baselines: [false, true],
         log_with: ['tensorboard'],
+        use_chimera_hydra: [false, true],
+        use_cmmd: [false, true],
         use_lokr: [false, true],
         lokr_factor: [2, 4, 8, 16],
+        ip_pair_mode: ['identity', 'identity_cross_artist', 'self'],
+        ip_pair_min_level: ['artist', 'copyright', 'character'],
         lr_scheduler: ['constant', 'cosine', 'cosine_with_restarts', 'polynomial'],
+        max_data_loader_n_workers: [0, 2, 4, 8],
+        min_pixels: [0, 262144, 500000, 786432, 1048576],
         min_rank: [1, 2, 4, 8],
         mixed_precision: ['bf16', 'fp16', 'no'],
         network_alpha: [4, 8, 16, 32, 64],
         network_dim: [4, 8, 16, 32, 64, 128],
         network_module: [
             'networks.lora_anima',
-            'networks.methods.postfix',
             'networks.methods.ip_adapter',
             'networks.methods.easycontrol',
             'networks.methods.soft_tokens',
@@ -627,16 +1405,22 @@
             '表达力强；代价是合并/推理兼容性不如普通 LoRA。',
             '需要更强语义干预时选。'
         ),
-        postfix: choiceHelp(
-            'Postfix',
-            '训练附加文本条件 token 或条件后缀，属于实验性文本条件方法。',
-            '参数少、学习快；风险是适用场景更窄，和普通 LoRA 体验不同。',
-            '用于特定文本条件实验。'
+        chimera: choiceHelp(
+            'Chimera',
+            '双路由 Hydra 实验方法，把内容路由和频率路由拆开观察。',
+            '适合方法对照；代价是字段更多、显存和解释成本都高。',
+            '只在需要 ChimeraHydra 实验时选。'
+        ),
+        soft_tokens: choiceHelp(
+            'Soft Tokens',
+            '训练可学习软文本 token，让条件侧获得少量可训练容量。',
+            '参数量小、适合文本条件实验；代价是推理链路和普通 LoRA 不同。',
+            '只建议做方法实验或已有配套加载器时使用。'
         ),
         ip_adapter: choiceHelp(
             'IP-Adapter',
             '图像条件适配器，用参考图像特征参与训练。',
-            '能学习图像条件控制；代价是需要专用数据和图像特征缓存。',
+            '能学习图像条件控制；新版支持 identity pair，通常先跑 caption-index 和 preprocess-pe 准备索引/PE 特征。',
             '需要参考图/图像条件时选。'
         ),
         easycontrol: choiceHelp(
@@ -644,6 +1428,12 @@
             '图像控制条件方法，使用专用数据集和缓存目录。',
             '控制信号更直接；代价是数据准备和训练路径更专门。',
             '需要图像控制训练时选。'
+        ),
+        spd: choiceHelp(
+            'SPD CLI 实验',
+            '逐级分辨率轨迹适配器实验配置，由 scripts/distill_spd.py 读取，不走普通 train.py。',
+            '能在 WebUI 查看和编辑配置；启动训练请使用 tasks.py exp-spd 或对应 CLI 命令。',
+            '只把这里当配置入口，不要点击 Web 普通训练按钮。'
         ),
     };
 
@@ -732,16 +1522,16 @@
             '收敛快、参数效率高；过拟合风险更高，推理侧需要 LoKr 支持。',
             '多角色/复杂画风可试；注意控制训练轮数。'
         ),
-        postfix_ortho_cond: choiceHelp(
-            'Postfix 条件正交版',
-            'caption 条件后缀方法，使用专用 network_args。',
-            '参数少、适合文本条件实验；不是普通 LoRA 的直接替代。',
-            '做 Postfix 实验时选。'
+        chimera_hydra: choiceHelp(
+            'ChimeraHydra',
+            '双路由 Hydra 组合变体，内容路由和频率路由都启用。',
+            '更适合方法实验；代价是字段多、解释成本高。',
+            '做 Chimera 对照实验时选。'
         ),
         ip_adapter: choiceHelp(
             'IP-Adapter',
             '训练图像条件 cross-attention 适配器。',
-            '能使用参考图像条件；需要专用 dataset_config 和图像特征缓存。',
+            '新版支持 identity pair；通常需要先跑 caption-index 与 preprocess-pe，参考图像特征和索引都要准备好。',
             '需要参考图控制时选。'
         ),
         easycontrol: choiceHelp(
@@ -755,6 +1545,12 @@
             '训练软文本 token，当前偏实验/训练侧路径。',
             '参数量小；推理链路和普通 LoRA 不同。',
             '只建议方法实验。'
+        ),
+        spd: choiceHelp(
+            'SPD 实验配置',
+            'configs/methods/spd.toml 是专用 distill_spd 脚本配置，包含数据目录、迭代数和 SPD schedule。',
+            'Web 表单可补全常用字段；普通 Web 训练/预处理会明确拦截，避免误走 train.py。',
+            '运行时使用 CLI：tasks.py exp-spd，测试使用 exp-test-spd。'
         ),
     };
 
@@ -827,7 +1623,7 @@
         ),
         network_module: help(
             "训练时加载的网络实现模块。",
-            "普通 LoRA 家族保持 networks.lora_anima；Postfix、IP-Adapter 等变体由对应 TOML 自动填写。",
+            "普通 LoRA 家族保持 networks.lora_anima；IP-Adapter、EasyControl、Soft Tokens 等变体由对应 TOML 自动填写。",
             ["允许不同训练方法共用同一个 Web 表单。"],
             ["改错模块会导致启动失败，或加载到不匹配的参数。"],
             ["不要手动改成未注册/不存在的 Python 模块。"],
@@ -1211,7 +2007,7 @@
         ),
         learning_rate: help(
             "优化器基础学习率。",
-            "LoRA 家族常用 2e-5；ReFT/IP-Adapter/Postfix 可能更高，跟随变体默认。",
+            "LoRA 家族常用 2e-5；ReFT/IP-Adapter/Soft Tokens 可能更高，跟随变体默认。",
             ["直接影响收敛速度。"],
             ["越高越容易震荡，越低训练越慢。"],
             ["过高会损坏画面质量或让 loss 不稳定。"],
@@ -1263,7 +2059,7 @@
             ["有效批大小变大，训练更稳。"],
             ["每次参数更新变慢，日志步数理解更复杂。"],
             ["过高会让反馈变慢，也可能改变最佳学习率。"],
-            "默认即可；Postfix 等变体按 TOML 使用 4。"
+            "默认即可；实验变体按 TOML 使用自己的推荐值。"
         ),
         use_shuffled_caption_variants: help(
             "训练时使用预处理生成的 caption 打乱变体。",
@@ -1611,7 +2407,7 @@
         ),
         source_image_dir: help(
             "兼容旧配置的原始数据集路径；在多数据集模式中，它只是下方第 1 组原始路径的镜像。",
-            "不要在这里编辑多组路径；请在“多数据集路径”里逐行填写原始数据集、缩放图和缓存目录。",
+            "不要在这里编辑多组路径；请在“多数据集路径”里逐行填写原始数据集。",
             ["旧脚本仍能读到 source_image_dir，同时 WebUI 可以使用 dataset_config 管理多组数据。"],
             ["只代表第 1 组，不能表达第 2 组及之后的数据集。"],
             ["误以为它是全局路径，可能会忽略下方真正参与训练的多组路径。"],
@@ -2022,6 +2818,9 @@
                 if (btn.dataset.tab === 'preview') {
                     loadPreviewImages();
                 }
+                if (btn.dataset.tab === 'settings') {
+                    loadGlobalSettings();
+                }
             });
         });
     }
@@ -2050,6 +2849,7 @@
             rememberSelectionSnapshot();
             await loadTrainingHistoryList();
             await loadPreviewSettings();
+            await loadGlobalSettings();
             returnToLiveTraining({ refresh: false });
         } catch (e) {
             console.error('初始化失败:', e);
@@ -2124,6 +2924,7 @@
 
         const fieldsByKey = {};
         for (const [key, value] of Object.entries(config)) {
+            if (key === 'output_dir') continue;
             if (key === 'general' || key === 'datasets') continue;
             if (CONFIG_FORM_INTERNAL_KEYS.has(key)) continue;
             if (DATASET_BLUEPRINT_FIELDS.has(key)) continue;
@@ -2131,10 +2932,13 @@
             fieldsByKey[key] = value;
         }
         for (const [key, value] of Object.entries(FORM_UI_DEFAULTS)) {
+            if (key === 'output_dir') continue;
             if (CONFIG_FORM_INTERNAL_KEYS.has(key)) continue;
             if (DATASET_BLUEPRINT_FIELDS.has(key)) continue;
+            if (!shouldExposeUiDefaultField(key, config, fieldsByKey)) continue;
             if (!(key in fieldsByKey)) fieldsByKey[key] = value;
         }
+        applyNetworkArgFields(fieldsByKey, config);
         fieldsByKey.sample_prompts = currentSamplePromptText(config);
 
         const consumed = new Set();
@@ -2163,6 +2967,31 @@
         }
     }
 
+    function shouldExposeUiDefaultField(key, config, fieldsByKey = {}) {
+        if (key in fieldsByKey) return true;
+        if (NETWORK_ARG_FIELD_MAP.has(key)) return false;
+        const family = activeMethodKey(config);
+        if (SPD_UI_DEFAULT_FIELDS.has(key)) return family === 'spd';
+        if (CHIMERA_UI_DEFAULT_FIELDS.has(key)) return family === 'chimera';
+        if (IP_ADAPTER_UI_DEFAULT_FIELDS.has(key)) return family === 'ip_adapter';
+        if (SOFT_TOKENS_UI_DEFAULT_FIELDS.has(key)) return family === 'soft_tokens';
+        return true;
+    }
+
+    function applyNetworkArgFields(fieldsByKey, config) {
+        const specs = activeNetworkArgSpecs(config);
+        if (!specs.length) return;
+        const argMap = parseNetworkArgMap(config?.network_args);
+        for (const spec of specs) {
+            const rawValue = argMap.has(spec.arg) ? argMap.get(spec.arg) : spec.default;
+            fieldsByKey[spec.key] = coerceNetworkArgValue(rawValue, spec);
+        }
+    }
+
+    function isActiveNetworkArgFieldKey(key, config = currentConfig) {
+        return activeNetworkArgSpecs(config).some((spec) => spec.key === key);
+    }
+
     function collectSectionFields(fieldsByKey, orderedKeys, consumed) {
         const fields = [];
         for (const key of orderedKeys) {
@@ -2173,12 +3002,99 @@
         return fields;
     }
 
+    function activeNetworkArgSpecs(config = currentConfig) {
+        const families = activeNetworkArgFamilies(config);
+        const argMap = parseNetworkArgMap(config?.network_args);
+        return NETWORK_ARG_FIELD_SPECS.filter((spec) =>
+            families.has(spec.family) || argMap.has(spec.arg)
+        );
+    }
+
+    function activeNetworkArgFamilies(config = currentConfig) {
+        const families = new Set();
+        const moduleName = String(config?.network_module || '');
+        const method = activeMethodKey(config);
+        if (method === 'soft_tokens' || moduleName.includes('soft_tokens')) families.add('soft_tokens');
+        if (method === 'ip_adapter' || isTruthy(config?.use_ip_adapter) || moduleName.includes('ip_adapter')) {
+            families.add('ip_adapter');
+        }
+        if (method === 'easycontrol' || isTruthy(config?.use_easycontrol) || moduleName.includes('easycontrol')) {
+            families.add('easycontrol');
+        }
+        return families;
+    }
+
+    function parseNetworkArgMap(networkArgs) {
+        const map = new Map();
+        for (const raw of normalizeNetworkArgArray(networkArgs)) {
+            const parsed = parseNetworkArgEntry(raw);
+            if (parsed) map.set(parsed.arg, parsed.value);
+        }
+        return map;
+    }
+
+    function normalizeNetworkArgArray(networkArgs) {
+        if (Array.isArray(networkArgs)) return networkArgs.map((item) => String(item));
+        if (typeof networkArgs === 'string' && networkArgs.trim()) return parseArrayValue(networkArgs).map((item) => String(item));
+        return [];
+    }
+
+    function parseNetworkArgEntry(raw) {
+        const text = String(raw || '').trim();
+        const splitAt = text.indexOf('=');
+        if (splitAt <= 0) return null;
+        const arg = text.slice(0, splitAt).trim();
+        if (!arg) return null;
+        return {
+            arg,
+            value: stripNetworkArgQuotes(text.slice(splitAt + 1).trim()),
+            raw: text,
+        };
+    }
+
+    function stripNetworkArgQuotes(value) {
+        const text = String(value || '').trim();
+        if ((text.startsWith('"') && text.endsWith('"')) || (text.startsWith("'") && text.endsWith("'"))) {
+            return text.slice(1, -1);
+        }
+        return text;
+    }
+
+    function coerceNetworkArgValue(value, spec) {
+        if (spec.valueType === 'boolean' || spec.valueType === 'booleanInt') {
+            return parseBooleanNetworkArg(value, spec.default);
+        }
+        if (spec.valueType === 'integer') {
+            const n = Number(value);
+            return Number.isFinite(n) ? Math.trunc(n) : spec.default;
+        }
+        if (spec.valueType === 'number') {
+            const n = Number(value);
+            return Number.isFinite(n) ? n : spec.default;
+        }
+        return String(value ?? spec.default ?? '');
+    }
+
+    function parseBooleanNetworkArg(value, fallback = false) {
+        if (typeof value === 'boolean') return value;
+        if (value === 1 || value === 0) return Boolean(value);
+        const text = String(value ?? '').trim().toLowerCase();
+        if (['1', 'true', 'yes', 'on'].includes(text)) return true;
+        if (['0', 'false', 'no', 'off'].includes(text)) return false;
+        return Boolean(fallback);
+    }
+
     async function loadStepEstimate(parentSeq = configLoadSeq) {
         const requestSeq = ++stepEstimateSeq;
         const variant = currentTrainingSource.method || val('variant-select');
         const preset = val('preset-select');
         const methodsSubdir = currentTrainingSource.methods_subdir || 'gui-methods';
         if (!variant || location.protocol === 'file:') return;
+        if (isCliOnlySpdSource(variant, methodsSubdir)) {
+            currentStepEstimate = null;
+            updateStepEstimatePanel();
+            return;
+        }
         try {
             const datasetParam = selectedConfigDatasetFile ? `&dataset_config=${encodeURIComponent(selectedConfigDatasetFile)}` : '';
             const data = await api(`/api/config/steps?variant=${encodeURIComponent(variant)}&preset=${encodeURIComponent(preset)}&methods_subdir=${encodeURIComponent(methodsSubdir)}${datasetParam}`);
@@ -2197,6 +3113,16 @@
         const preset = val('preset-select');
         const methodsSubdir = currentTrainingSource.methods_subdir || 'gui-methods';
         if (!variant || location.protocol === 'file:') return;
+        if (isCliOnlySpdSource(variant, methodsSubdir)) {
+            datasetEditorState = {
+                ...datasetEditorState,
+                loading: false,
+                loaded: false,
+                error: 'SPD 是 CLI 实验配置，不使用 Web 数据集编辑器。',
+            };
+            renderDatasetEditor();
+            return;
+        }
         datasetEditorState.loading = true;
         datasetEditorState.error = '';
         renderDatasetEditor();
@@ -2477,6 +3403,9 @@
             });
             content.appendChild(hint);
         }
+        if (extraClass === 'config-group-model') {
+            header.appendChild(createFillGlobalModelPathsButton());
+        }
         section.appendChild(header);
         if (extraClass === 'config-group-data') {
             content.appendChild(createConfigDatasetPicker());
@@ -2488,6 +3417,57 @@
         }
         section.appendChild(content);
         return section;
+    }
+
+    function createFillGlobalModelPathsButton() {
+        const btn = document.createElement('button');
+        btn.id = 'btn-fill-global-model-paths';
+        btn.type = 'button';
+        btn.className = 'btn btn-small config-group-title-action';
+        btn.textContent = '填写全局路径配置';
+        btn.title = '用全局设置里的三项基础模型路径覆盖当前配置表单';
+        btn.addEventListener('click', () => {
+            fillGlobalModelPathsIntoConfigForm().catch((e) => {
+                setTomlStatus('error', '填写全局路径配置失败: ' + e.message);
+            });
+        });
+        return btn;
+    }
+
+    async function fillGlobalModelPathsIntoConfigForm() {
+        if (!globalSettings && location.protocol !== 'file:') {
+            await loadGlobalSettings();
+        }
+        const overrides = getGlobalModelPathOverrides();
+        const entries = GLOBAL_MODEL_PATH_FIELDS
+            .map(([key]) => [key, overrides[key]])
+            .filter(([, value]) => String(value || '').trim());
+        if (!entries.length) {
+            setTomlStatus('error', '全局设置里还没有可填写的基础模型路径');
+            return;
+        }
+
+        const confirmed = await showAppConfirmDialog({
+            title: '是否确认覆盖',
+            description: '填写全局路径配置',
+            message: '将用全局设置里的基础模型路径覆盖当前配置表单中的同名字段。',
+            confirmText: '是',
+            cancelText: '否',
+        });
+        if (!confirmed) return;
+
+        let applied = 0;
+        for (const [key, value] of entries) {
+            const input = document.querySelector(`#config-form .field-input[data-key="${CSS.escape(key)}"]`);
+            if (!input) continue;
+            input.value = value;
+            applied += 1;
+        }
+        handleFormFieldChange();
+        setTomlStatus(
+            applied ? '已填写全局路径配置，请保存当前配置后再训练' : '当前表单没有可覆盖的基础模型路径字段',
+            applied ? 'ok' : 'error'
+        );
     }
 
     function appendFieldRows(content, fields, groupClass) {
@@ -2746,9 +3726,7 @@
                 preset.filename,
                 preset.path,
                 summary.source_dir,
-                summary.image_dir,
-                summary.cache_dir,
-            ].some((value) => String(value || '').toLowerCase().includes(keyword));
+                            ].some((value) => String(value || '').toLowerCase().includes(keyword));
         });
     }
 
@@ -2821,8 +3799,6 @@
             ['数据组数', String(summary.dataset_count || 0)],
             ['重复合计', String(summary.repeat_total || 0)],
             ['第 1 组原始路径', summary.source_dir || '-'],
-            ['第 1 组缩放图', summary.image_dir || '-'],
-            ['第 1 组缓存', summary.cache_dir || '-'],
         ];
         if (selectedConfigDatasetFile !== (currentConfig.dataset_config || '')) {
             items.unshift(['状态', '未保存，保存当前配置后生效']);
@@ -2933,24 +3909,25 @@
         const list = document.getElementById('dataset-preset-list');
         if (!list) return;
         list.innerHTML = '';
-        if (datasetPresetState.loading && !(datasetPresetState.presets || []).length) {
+        const presets = datasetPresetState.presets || [];
+        const showErrorAsEmptyState = datasetPresetState.error && !presets.length;
+        if (datasetPresetState.loading && !presets.length) {
             const loading = document.createElement('p');
             loading.className = 'dataset-preset-empty';
             loading.textContent = '正在读取数据集预设...';
             list.appendChild(loading);
             return;
         }
-        if (datasetPresetState.error) {
+        if (showErrorAsEmptyState) {
             const error = document.createElement('p');
             error.className = 'dataset-preset-empty error';
             error.textContent = datasetPresetState.error;
             list.appendChild(error);
         }
-        const presets = datasetPresetState.presets || [];
         if (!presets.length) {
             const empty = document.createElement('p');
             empty.className = 'dataset-preset-empty';
-            empty.textContent = '还没有数据集预设。';
+            empty.textContent = datasetPresetState.error ? '读取数据集预设失败。' : '还没有数据集预设。';
             list.appendChild(empty);
             return;
         }
@@ -3036,7 +4013,7 @@
         const header = document.createElement('div');
         header.className = 'dataset-editor-header';
         const title = document.createElement('div');
-        title.innerHTML = '<strong>多数据集路径</strong><span>每一行是一组数据：原始图用于预处理，缩放图和缓存用于训练；重复次数只影响这一组权重。</span>';
+        title.innerHTML = '<strong>多数据集路径</strong><span>每一行是一组数据：填写原始图路径、重复次数和分桶参数；缩放图与 LoRA 缓存会在训练运行目录中自动生成。</span>';
         const actions = document.createElement('div');
         actions.className = 'dataset-editor-actions';
         const addBtn = document.createElement('button');
@@ -3045,13 +4022,7 @@
         addBtn.textContent = '添加数据集';
         addBtn.title = '新增一组数据集路径。适合把多个角色、画风或批次一起训练，并给每组设置独立重复次数。';
         addBtn.addEventListener('click', addDatasetEditorRow);
-        const suggestBtn = document.createElement('button');
-        suggestBtn.type = 'button';
-        suggestBtn.className = 'btn btn-small secondary';
-        suggestBtn.textContent = '自动填入缩放图和缓存目录';
-        suggestBtn.title = '根据每一行的原始数据集路径，自动填入对应的缩放图目录和 LoRA 缓存目录；不会创建文件或启动预处理。';
-        suggestBtn.addEventListener('click', applySuggestedDataDirs);
-        actions.append(addBtn, suggestBtn);
+        actions.append(addBtn);
         header.append(title, actions);
         panel.appendChild(header);
 
@@ -3281,8 +4252,6 @@
         const paths = document.createElement('div');
         paths.className = 'dataset-row-paths';
         paths.appendChild(createDatasetPathField(index, 'source_dir', '原始数据集路径', row.source_dir, 'image_dataset'));
-        paths.appendChild(createDatasetPathField(index, 'image_dir', '缩放图目录', row.image_dir, 'post_image_dataset/resized'));
-        paths.appendChild(createDatasetPathField(index, 'cache_dir', 'LoRA 缓存目录', row.cache_dir, 'post_image_dataset/lora'));
         wrap.appendChild(paths);
 
         wrap.appendChild(createDatasetRowSettingsEditor(row, index));
@@ -3378,7 +4347,7 @@
         const text = document.createElement('span');
         text.textContent = label;
         const titles = {
-            source_dir: '原始图片和 caption 所在目录。预处理从这里读图；训练通常不直接读原始图。',
+            source_dir: '原始图片和 caption 所在目录。预处理从这里读图；缩放图和 LoRA 缓存会写入本次训练运行目录。',
             image_dir: '缩放图目录。预处理会把图片按分辨率/分桶规则写到这里；训练从这里枚举训练图片。',
             cache_dir: 'LoRA 缓存目录。VAE latent、文本编码器缓存、PE 特征缓存会写到这里；训练用它加速。',
         };
@@ -3496,8 +4465,6 @@
             ['数据集文件', payload.file || datasetPresetState.selectedFile || '-'],
             ['当前目录', payload.directory || '-'],
             ['原始路径', row.source_dir || '-'],
-            ['缩放图目录', row.image_dir || '-'],
-            ['缓存目录', row.cache_dir || '-'],
             ['重复次数', row.num_repeats ?? '-'],
             ['分辨率', settings.resolution || '-'],
             ['分桶', settings.enable_bucket ? `${settings.min_bucket_reso}-${settings.max_bucket_reso}/${settings.bucket_reso_steps}` : '关闭'],
@@ -3597,6 +4564,14 @@
                 num_repeats: Math.max(1, Number.parseInt(row.num_repeats || 1, 10) || 1),
                 settings: normalizeDatasetRowSettings(row),
             }));
+    }
+
+    function datasetRowsForPayload(rows) {
+        return normalizeDatasetEditorRows(rows).map((row) => ({
+            source_dir: row.source_dir,
+            num_repeats: row.num_repeats,
+            settings: normalizeDatasetDefaults(row.settings || {}),
+        }));
     }
 
     function normalizeDatasetRowSettings(row) {
@@ -3777,90 +4752,16 @@
             .replace(/'/g, '&#39;');
     }
 
-    async function applySuggestedDataDirs() {
-        const state = datasetEditorStateForActivePanel();
-        if (state.datasets.length) {
-            const rows = normalizeDatasetEditorRows(state.datasets);
-            const sourceDirs = rows.map((row) => row.source_dir.trim());
-            if (!sourceDirs.some(Boolean)) {
-                alert('请先填写至少一个原始数据集路径');
-                return;
-            }
-            try {
-                const result = await api('/api/config/datasets/suggest', {
-                    method: 'POST',
-                    body: JSON.stringify({ source_dirs: sourceDirs }),
-                });
-                if (!result.ok) {
-                    alert(result.error || '生成路径失败');
-                    return;
-                }
-                const suggestions = result.datasets || [];
-                let cursor = 0;
-                const nextRows = rows.map((row) => {
-                    if (!row.source_dir.trim()) return row;
-                    const next = suggestions[cursor++] || {};
-                    return {
-                        ...row,
-                        source_dir: next.source_dir || row.source_dir,
-                        image_dir: next.image_dir || row.image_dir,
-                        cache_dir: next.cache_dir || row.cache_dir,
-                    };
-                });
-                if (isDatasetTabActive()) {
-                    datasetPresetState.datasets = nextRows;
-                    datasetPresetState.dirty = true;
-                } else {
-                    datasetEditorState.datasets = nextRows;
-                    datasetEditorState.dirty = true;
-                    syncDatasetEditorToCompatFields();
-                }
-                renderDatasetEditor();
-                if (isDatasetTabActive()) {
-                    datasetPresetState.status = '已根据原始数据集填入每组缩放图目录和 LoRA 缓存目录';
-                    renderDatasetPresetHeader();
-                } else {
-                    handleFormFieldChange();
-                    updateTomlDirtyState();
-                    setTomlStatus('ok', '已根据原始数据集填入每组缩放图目录和 LoRA 缓存目录，请保存后再训练', { persist: true });
-                }
-                return;
-            } catch (e) {
-                alert('生成路径失败: ' + e.message);
-                return;
-            }
-        }
-
-        if (isDatasetTabActive()) {
-            alert('请先添加至少一组数据集路径');
-            return;
-        }
-
-        const sourceInput = document.querySelector('#config-form .field-input[data-key="source_image_dir"]');
-        const resizedInput = document.querySelector('#config-form .field-input[data-key="resized_image_dir"]');
-        const cacheInput = document.querySelector('#config-form .field-input[data-key="lora_cache_dir"]');
-        const source = sourceInput?.value?.trim() || '';
-        if (!source) {
-            alert('请先填写源图像目录 / source_image_dir');
-            return;
-        }
-        try {
-            const result = await api(`/api/config/data-dirs/suggest?source_image_dir=${encodeURIComponent(source)}`);
-            if (!result.ok) {
-                alert(result.error || '生成路径失败');
-                return;
-            }
-            if (resizedInput) resizedInput.value = result.resized_image_dir || '';
-            if (cacheInput) cacheInput.value = result.lora_cache_dir || '';
-            handleFormFieldChange();
-            setTomlStatus('ok', '已根据原始数据集填入缩放图像目录和 LoRA 缓存目录，请保存更新当前选中配置后再训练', { persist: true });
-        } catch (e) {
-            alert('生成路径失败: ' + e.message);
-        }
-    }
-
     function setCurrentTrainingSourceFromVariant(variant) {
         if (!variant) return;
+        if (val('method-select') === 'spd' || variant === 'spd') {
+            currentTrainingSource = {
+                method: 'spd',
+                methods_subdir: 'methods',
+                file: 'configs/methods/spd.toml',
+            };
+            return;
+        }
         currentTrainingSource = {
             method: variant,
             methods_subdir: 'gui-methods',
@@ -3892,8 +4793,9 @@
     }
 
     async function confirmBeforeConfigSelectionChange(message) {
-        if (!hasPendingConfigChanges(currentTomlFile)) return true;
-        const ok = await confirmUnsavedDiscard(message);
+        const ok = await handlePendingConfigSwitch({
+            targetLabel: '新的配置选择',
+        });
         if (!ok) restoreSelectionSnapshot();
         return ok;
     }
@@ -4003,6 +4905,9 @@
     function activeMethodKey(config = currentConfig) {
         const inferred = inferMethodFromConfig(config);
         if (inferred) return inferred;
+        if (currentTrainingSource.methods_subdir === 'methods' && currentTrainingSource.method === 'spd') {
+            return 'spd';
+        }
         if (currentTrainingSource.methods_subdir === 'gui-methods') {
             return VARIANT_METHOD_FAMILY[currentTrainingSource.method] || val('method-select') || 'lora';
         }
@@ -4012,10 +4917,12 @@
     function inferMethodFromConfig(config) {
         if (!config || typeof config !== 'object') return '';
         const moduleName = String(config.network_module || '');
+        if (currentTrainingSource.methods_subdir === 'methods' && currentTrainingSource.method === 'spd') return 'spd';
+        if ('dit_path' in config && 'iterations' in config && currentTrainingSource.method === 'spd') return 'spd';
         if (isTruthy(config.use_lokr)) return 'lokr';
         if (isTruthy(config.use_easycontrol) || moduleName.includes('easycontrol')) return 'easycontrol';
         if (isTruthy(config.use_ip_adapter) || moduleName.includes('ip_adapter')) return 'ip_adapter';
-        if (moduleName.includes('postfix')) return 'postfix';
+        if (moduleName.includes('soft_tokens')) return 'soft_tokens';
         if (isTruthy(config.add_reft) || ('reft_dim' in config && Number(config.reft_dim) > 0)) return 'reft';
         if (
             isTruthy(config.use_hydra) ||
@@ -4024,6 +4931,7 @@
             moduleName.includes('chimera') ||
             moduleName.includes('hydra')
         ) {
+            if (moduleName.includes('chimera') || 'content_router_source' in config) return 'chimera';
             return 'hydralora';
         }
         if (isTruthy(config.use_timestep_mask)) return 'tlora';
@@ -4063,7 +4971,7 @@
             currentTrainingSource.file ? `文件: ${currentTrainingSource.file}` : '',
             config.dataset_config ? `数据集配置: ${config.dataset_config}` : '',
             config.output_name ? `输出名称: ${config.output_name}` : '',
-            config.output_dir ? `输出目录: ${config.output_dir}` : '',
+            globalSettings?.output_root ? `Web 输出根目录: ${globalSettings.output_root}` : '',
             config.source_image_dir ? `原始数据集: ${config.source_image_dir}` : '',
         ]);
         if (!details.length) return base;
@@ -4193,9 +5101,11 @@
             const key = input.dataset.key;
             if (!key) continue;
             if (CONFIG_FORM_INTERNAL_KEYS.has(key)) continue;
+            if (isActiveNetworkArgFieldKey(key)) continue;
             const original = key in liveConfig ? liveConfig[key] : FORM_UI_DEFAULTS[key];
             liveConfig[key] = readFieldInputValue(input, original);
         }
+        liveConfig.network_args = collectNetworkArgsFromForm(liveConfig).networkArgs;
         return liveConfig;
     }
 
@@ -4226,7 +5136,7 @@
             input.type = isNumericField(key, value) ? 'number' : 'text';
             if (input.type === 'number') {
                 input.step = isIntegerNumericField(key, value) ? '1' : '0.01';
-                input.min = '0';
+                if (!allowsNegativeNumberField(key)) input.min = '0';
             }
             input.value = Array.isArray(value) ? JSON.stringify(value) : (value ?? '');
         }
@@ -4494,6 +5404,10 @@
     }
 
     function isNumericField(key, value) {
+        const networkArgSpec = NETWORK_ARG_FIELD_MAP.get(key);
+        if (networkArgSpec) {
+            return ['integer', 'number'].includes(networkArgSpec.valueType);
+        }
         return typeof value === 'number' || [
             'max_train_epochs',
             'max_train_steps',
@@ -4508,6 +5422,8 @@
     }
 
     function isIntegerNumericField(key, value) {
+        const networkArgSpec = NETWORK_ARG_FIELD_MAP.get(key);
+        if (networkArgSpec) return networkArgSpec.valueType === 'integer';
         return [
             'max_train_epochs',
             'max_train_steps',
@@ -4518,6 +5434,10 @@
             'save_every_n_epochs',
             'checkpointing_epochs',
         ].includes(key) || Number.isInteger(value);
+    }
+
+    function allowsNegativeNumberField(key) {
+        return ['b_cond_init', 'pe_lora_layer_from'].includes(key);
     }
 
     function createSelectInput(key, value, options) {
@@ -4541,6 +5461,8 @@
         return select;
     }
 
+    Object.assign(FIELD_HELP_ZH, EXTRA_FIELD_HELP_ZH);
+
     function fieldValueType(value) {
         if (Array.isArray(value)) return 'array';
         if (typeof value === 'boolean') return 'boolean';
@@ -4549,6 +5471,12 @@
     }
 
     function fieldValueTypeForKey(key, value) {
+        const networkArgSpec = NETWORK_ARG_FIELD_MAP.get(key);
+        if (networkArgSpec) {
+            if (networkArgSpec.valueType === 'boolean' || networkArgSpec.valueType === 'booleanInt') return 'boolean';
+            if (networkArgSpec.valueType === 'integer' || networkArgSpec.valueType === 'number') return 'number';
+            return 'string';
+        }
         if (key === 'use_lokr') return 'boolean';
         if (key === 'lokr_factor') return 'number';
         if (isNumericField(key, value)) return 'number';
@@ -4567,6 +5495,22 @@
         }
         if (key === 'use_moe_style' && (value === false || value === 'false')) {
             return '关闭专家路由 / false';
+        }
+        if (key === 'splice_position') {
+            return value === 'front_of_padding' ? 'Padding 前沿 / front_of_padding' : '序列末尾 / end_of_sequence';
+        }
+        if (key === 'contrastive_negative_mode') {
+            return {
+                shuffled: '随机负样本 / shuffled',
+                jaccard: 'Jaccard 降权 / jaccard',
+                hard: '困难负样本 / hard',
+            }[value] || String(value);
+        }
+        if (key === 'contrastive_objective') {
+            return {
+                infonce: 'InfoNCE / infonce',
+                agsm: 'AGSM / agsm',
+            }[value] || String(value);
         }
         if (value === true) return '开启 / true';
         if (value === false) return '关闭 / false';
@@ -4665,6 +5609,52 @@
     }
 
     // ── TOML 编辑器 ──
+    function setTomlManagerMode(mode) {
+        const nextMode = mode === 'output' ? 'output' : 'project';
+        tomlManagerMode = nextMode;
+        document.querySelectorAll('.toml-mode-btn').forEach((btn) => {
+            btn.classList.toggle('active', btn.dataset.tomlMode === nextMode);
+        });
+        const projectManager = document.getElementById('toml-project-manager');
+        const outputManager = document.getElementById('output-run-manager');
+        const projectActions = document.querySelectorAll('.toml-primary-actions, .toml-secondary-actions');
+        const outputActions = document.getElementById('output-run-actions');
+        if (projectManager) projectManager.hidden = nextMode !== 'project';
+        if (outputManager) outputManager.hidden = nextMode !== 'output';
+        projectActions.forEach((el) => {
+            el.hidden = nextMode !== 'project';
+        });
+        if (outputActions) outputActions.hidden = nextMode !== 'output';
+        if (nextMode === 'output') {
+            const label = document.getElementById('toml-current-file');
+            if (label) label.textContent = outputRunState.file || outputRunState.selectedRun || '训练输出配置';
+            setBadge('toml-current-badge', false, '当前训练');
+            setBadge('toml-trainable-badge', Boolean(outputRunState.file), '只读快照');
+            setBadge('toml-lock-badge', Boolean(outputRunState.file), '只读');
+            setBadge('toml-dirty-badge', false, '未保存');
+            updateOutputRunActionState();
+            if (!outputRunState.runs.length && !outputRunState.loading) {
+                loadOutputRuns();
+            } else {
+                renderOutputRunManager();
+            }
+            return;
+        }
+        updateTomlSelectionUI(currentTomlFile);
+        updateTomlDirtyState();
+    }
+
+    async function switchTomlManagerMode(nextMode) {
+        const normalizedMode = nextMode === 'output' ? 'output' : 'project';
+        if (normalizedMode !== tomlManagerMode && normalizedMode === 'output' && hasPendingConfigChanges(currentTomlFile)) {
+            if (!(await confirmDiscardTomlChanges('当前项目预设有未保存修改，切换到训练输出配置会暂时隐藏这些修改。是否继续？'))) {
+                return false;
+            }
+        }
+        setTomlManagerMode(normalizedMode);
+        return true;
+    }
+
     async function loadTomlFileList(preferredFile = '', options = {}) {
         const groups = await api('/api/config/file-groups');
         tomlFileGroups = Array.isArray(groups) ? groups : [];
@@ -4702,6 +5692,399 @@
         }
     }
 
+    async function loadOutputRuns(options = {}) {
+        if (location.protocol === 'file:') return;
+        outputRunState = {
+            ...outputRunState,
+            loading: true,
+            error: '',
+        };
+        renderOutputRunManager();
+        try {
+            const data = await api('/api/config/output-runs');
+            if (!data.ok) throw new Error(data.error || '读取训练输出配置失败');
+            const runs = Array.isArray(data.runs) ? data.runs : [];
+            let selectedRun = outputRunState.selectedRun;
+            if (selectedRun && !runs.some((item) => item.name === selectedRun)) selectedRun = '';
+            if (!selectedRun && runs.length && options.keepSelection !== true) {
+                selectedRun = runs[0].name || '';
+            }
+            outputRunState = {
+                ...outputRunState,
+                loading: false,
+                runs,
+                outputRoot: data.output_root || '',
+                selectedRun,
+                error: '',
+            };
+            renderOutputRunManager();
+            if (selectedRun) {
+                await loadOutputRunConfig(selectedRun, preferredOutputRunKind(selectedRun));
+            } else {
+                updateOutputRunSelectionUI();
+            }
+        } catch (e) {
+            outputRunState = {
+                ...outputRunState,
+                loading: false,
+                runs: [],
+                content: '',
+                file: '',
+                error: e.message,
+            };
+            renderOutputRunManager();
+            setTomlStatus('error', '读取训练输出配置失败: ' + e.message);
+        }
+    }
+
+    async function loadOutputRunConfig(runName, kind = 'original') {
+        const run = outputRunState.runs.find((item) => item.name === runName);
+        if (!run) {
+            outputRunState = { ...outputRunState, selectedRun: '', content: '', file: '' };
+            renderOutputRunManager();
+            return;
+        }
+        const available = new Set((run.files || []).map((item) => item.kind));
+        const selectedKind = available.has(kind) ? kind : preferredOutputRunKind(runName);
+        outputRunState = {
+            ...outputRunState,
+            selectedRun: runName,
+            selectedKind,
+            content: '读取中...',
+            file: '',
+            saveAsOpen: false,
+            error: '',
+        };
+        renderOutputRunManager();
+        try {
+            const data = await api(`/api/config/output-runs/read?run=${encodeURIComponent(runName)}&kind=${encodeURIComponent(selectedKind)}`);
+            if (!data.ok) throw new Error(data.error || '读取运行配置失败');
+            outputRunState = {
+                ...outputRunState,
+                selectedRun: data.run || runName,
+                selectedKind: data.kind || selectedKind,
+                content: data.content || '',
+                file: data.file || '',
+                error: '',
+            };
+            renderOutputRunManager();
+            setTomlStatus('', '');
+        } catch (e) {
+            outputRunState = {
+                ...outputRunState,
+                content: '',
+                file: '',
+                error: e.message,
+            };
+            renderOutputRunManager();
+            setTomlStatus('error', '读取运行配置失败: ' + e.message);
+        }
+    }
+
+    function preferredOutputRunKind(runName = outputRunState.selectedRun) {
+        const run = outputRunState.runs.find((item) => item.name === runName);
+        const kinds = (run?.files || []).map((item) => item.kind);
+        if (kinds.includes(outputRunState.selectedKind)) return outputRunState.selectedKind;
+        if (kinds.includes('original')) return 'original';
+        if (kinds.includes('runtime')) return 'runtime';
+        if (kinds.includes('dataset')) return 'dataset';
+        return 'original';
+    }
+
+    function renderOutputRunManager() {
+        renderOutputRunList();
+        renderOutputRunDetail();
+        updateOutputRunActionState();
+        if (tomlManagerMode === 'output') {
+            updateOutputRunSelectionUI();
+        }
+    }
+
+    function renderOutputRunList() {
+        const container = document.getElementById('output-run-list');
+        if (!container) return;
+        container.innerHTML = '';
+        if (outputRunState.loading) {
+            const loading = document.createElement('div');
+            loading.className = 'output-run-empty';
+            loading.textContent = '正在读取全局输出文件夹...';
+            container.appendChild(loading);
+            return;
+        }
+        if (outputRunState.error) {
+            const error = document.createElement('div');
+            error.className = 'output-run-empty error';
+            error.textContent = outputRunState.error;
+            container.appendChild(error);
+            return;
+        }
+        const runs = filteredOutputRuns();
+        if (!runs.length) {
+            const empty = document.createElement('div');
+            empty.className = 'output-run-empty';
+            empty.textContent = outputRunState.search
+                ? '没有匹配的训练输出配置。'
+                : `没有在 ${outputRunState.outputRoot || '输出文件夹'} 找到训练配置。`;
+            container.appendChild(empty);
+            return;
+        }
+        for (const run of runs) {
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'output-run-item';
+            btn.classList.toggle('active', run.name === outputRunState.selectedRun);
+            btn.dataset.run = run.name;
+            btn.title = run.path || run.name;
+            btn.addEventListener('click', () => loadOutputRunConfig(run.name, preferredOutputRunKind(run.name)));
+
+            const name = document.createElement('strong');
+            name.textContent = run.name;
+            const meta = document.createElement('span');
+            const fileLabels = (run.files || []).map((item) => item.label).join(' / ');
+            meta.textContent = [run.mtime_text, fileLabels].filter(Boolean).join(' · ');
+            const path = document.createElement('small');
+            path.textContent = run.path || '';
+            btn.append(name, meta, path);
+            container.appendChild(btn);
+        }
+    }
+
+    function renderOutputRunDetail() {
+        const run = selectedOutputRun();
+        const title = document.getElementById('output-run-title');
+        const meta = document.getElementById('output-run-meta');
+        const tabs = document.getElementById('output-run-kind-tabs');
+        const viewer = document.getElementById('output-run-config-viewer');
+        const saveAs = document.getElementById('output-run-save-as');
+        if (title) title.textContent = run?.name || '未选择运行目录';
+        if (meta) {
+            meta.textContent = run
+                ? [run.path, run.mtime_text].filter(Boolean).join(' · ')
+                : `从 ${outputRunState.outputRoot || '全局输出文件夹'} 读取训练快照配置。`;
+        }
+        if (tabs) {
+            tabs.innerHTML = '';
+            const files = run?.files || [];
+            if (!files.length) {
+                const empty = document.createElement('span');
+                empty.className = 'output-run-kind-empty';
+                empty.textContent = '无可读 TOML';
+                tabs.appendChild(empty);
+            }
+            for (const file of files) {
+                const btn = document.createElement('button');
+                btn.type = 'button';
+                btn.className = 'output-run-kind-btn';
+                btn.classList.toggle('active', file.kind === outputRunState.selectedKind);
+                btn.textContent = file.label;
+                btn.title = file.file || file.filename;
+                btn.addEventListener('click', () => loadOutputRunConfig(run.name, file.kind));
+                tabs.appendChild(btn);
+            }
+        }
+        if (viewer) {
+            viewer.value = outputRunState.content || '';
+            viewer.placeholder = run ? '这个运行目录没有可显示的配置内容。' : '选择左侧运行目录后查看配置。';
+        }
+        if (saveAs) {
+            saveAs.hidden = !outputRunState.saveAsOpen;
+        }
+        renderOutputRunSaveAsControls();
+    }
+
+    function renderOutputRunSaveAsControls() {
+        const input = document.getElementById('output-run-save-name');
+        const select = document.getElementById('output-run-save-group');
+        if (input && !input.value && outputRunState.saveAsOpen) {
+            input.value = outputRunSaveAsDefaultName();
+        }
+        if (!select) return;
+        const current = select.value || 'imported';
+        select.innerHTML = '';
+        const groups = saveAsTargetGroups();
+        for (const group of groups) {
+            const opt = document.createElement('option');
+            opt.value = group.id;
+            opt.textContent = group.label || group.id;
+            select.appendChild(opt);
+        }
+        select.value = groups.some((group) => group.id === current) ? current : (groups[0]?.id || 'imported');
+    }
+
+    function filteredOutputRuns() {
+        const query = outputRunState.search.trim().toLowerCase();
+        if (!query) return outputRunState.runs;
+        return outputRunState.runs.filter((run) => {
+            const haystack = [
+                run.name,
+                run.path,
+                run.mtime_text,
+                ...(run.files || []).map((item) => `${item.kind} ${item.label} ${item.file}`),
+            ].join(' ').toLowerCase();
+            return haystack.includes(query);
+        });
+    }
+
+    function selectedOutputRun() {
+        return outputRunState.runs.find((item) => item.name === outputRunState.selectedRun) || null;
+    }
+
+    function updateOutputRunSelectionUI() {
+        const label = document.getElementById('toml-current-file');
+        if (label) {
+            label.textContent = outputRunState.file || outputRunState.selectedRun || '训练输出配置';
+        }
+        setBadge('toml-current-badge', false, '当前训练');
+        setBadge('toml-trainable-badge', Boolean(outputRunState.file), '只读快照');
+        setBadge('toml-lock-badge', Boolean(outputRunState.file), '只读');
+        setBadge('toml-dirty-badge', false, '未保存');
+    }
+
+    function updateOutputRunActionState() {
+        const run = selectedOutputRun();
+        const hasContent = Boolean(outputRunState.content && outputRunState.file);
+        const hasOriginal = Boolean(run?.has_original);
+        setButtonDisabled('btn-copy-output-config', !hasContent);
+        setButtonDisabled('btn-export-output-config', !hasContent);
+        const saveBtn = document.getElementById('btn-save-output-config-as');
+        if (saveBtn) {
+            saveBtn.disabled = !run || !hasOriginal;
+            saveBtn.title = !run
+                ? '请先选择一个训练运行目录'
+                : (hasOriginal ? '把 config.original.toml 复制到 configs/imported，随后可在项目预设中编辑。' : '这个运行目录没有 config.original.toml，不能复制为项目预设。');
+        }
+    }
+
+    function setButtonDisabled(id, disabled) {
+        const btn = document.getElementById(id);
+        if (btn) btn.disabled = Boolean(disabled);
+    }
+
+    async function copyOutputRunConfigContent() {
+        const text = outputRunState.content || '';
+        if (!text) return;
+        try {
+            if (navigator.clipboard?.writeText) {
+                await navigator.clipboard.writeText(text);
+            } else {
+                const viewer = document.getElementById('output-run-config-viewer');
+                viewer?.focus();
+                viewer?.select();
+                document.execCommand('copy');
+            }
+            setTomlStatus('ok', '已复制训练输出配置内容');
+        } catch (e) {
+            setTomlStatus('error', '复制失败: ' + e.message);
+        }
+    }
+
+    function exportOutputRunConfig() {
+        if (!outputRunState.content) return;
+        const filename = outputRunState.file
+            ? outputRunState.file.split('/').pop()
+            : `${outputRunState.selectedRun || 'output-run'}.${outputRunState.selectedKind}.toml`;
+        const blob = new Blob([outputRunState.content], { type: 'application/toml;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = filename || 'output-run-config.toml';
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        URL.revokeObjectURL(url);
+        setTomlStatus('ok', `已导出 ${filename}`);
+    }
+
+    function openOutputRunSaveAs() {
+        const run = selectedOutputRun();
+        if (!run) {
+            setTomlStatus('error', '请先选择一个训练运行目录');
+            return;
+        }
+        if (!run.has_original) {
+            setTomlStatus('error', '这个运行目录没有 config.original.toml，不能复制为项目预设');
+            return;
+        }
+        outputRunState = { ...outputRunState, saveAsOpen: true };
+        renderOutputRunManager();
+        const input = document.getElementById('output-run-save-name');
+        if (input) {
+            input.value = outputRunSaveAsDefaultName();
+            input.focus();
+            input.select();
+        }
+    }
+
+    function closeOutputRunSaveAs() {
+        outputRunState = { ...outputRunState, saveAsOpen: false };
+        renderOutputRunManager();
+    }
+
+    function outputRunSaveAsDefaultName() {
+        const run = selectedOutputRun();
+        const stem = String(run?.name || 'output_run')
+            .replace(/-\d{8}-\d{6}(?:-\d+)?$/i, '')
+            .replace(/[^A-Za-z0-9_.-]+/g, '_')
+            .replace(/^_+|_+$/g, '') || 'output_run';
+        return `${stem}_from_output`;
+    }
+
+    async function confirmOutputRunSaveAs() {
+        const run = selectedOutputRun();
+        if (!run) return;
+        const name = val('output-run-save-name') || outputRunSaveAsDefaultName();
+        const group = val('output-run-save-group') || 'imported';
+        try {
+            const res = await api('/api/config/output-runs/save-as', {
+                method: 'POST',
+                body: JSON.stringify({
+                    run: run.name,
+                    name,
+                    target_group: group,
+                }),
+            });
+            if (!res.ok) {
+                setTomlStatus('error', res.error || '复制为项目预设失败');
+                return;
+            }
+            outputRunState = { ...outputRunState, saveAsOpen: false };
+            if (hasPendingConfigChanges(currentTomlFile)) {
+                if (!(await confirmDiscardTomlChanges('复制完成后会回到项目预设并加载新文件，当前项目预设里已有未保存修改。是否继续？'))) {
+                    return;
+                }
+            }
+            await switchTomlManagerMode('project');
+            await loadTomlFileList(res.file, { force: true });
+            await loadTomlFile(res.file, { force: true });
+            setTomlStatus('ok', `已复制为新项目预设: ${res.file}`, { persist: true });
+        } catch (e) {
+            setTomlStatus('error', '复制为项目预设失败: ' + e.message);
+        }
+    }
+
+    async function selectAndApplyTomlFile(filePath) {
+        if (!filePath) return false;
+        const previousFile = currentTomlFile;
+        const previousSelect = document.getElementById('toml-file-select');
+        const targetLabel = tomlFileDisplayName(filePath);
+        const canSwitch = await handlePendingConfigSwitch({ targetLabel });
+        if (!canSwitch) {
+            if (previousSelect) previousSelect.value = previousFile || '';
+            updateTomlSelectionUI(previousFile);
+            return false;
+        }
+        await loadTomlFile(filePath, { force: true });
+        const meta = tomlFileMeta[filePath];
+        if (!meta?.trainable) {
+            setTomlStatus('error', '已打开该配置文件，但它不是完整训练配置，不能加载为当前训练入口');
+            return false;
+        }
+        await applyTomlToConfig({ silent: true });
+        rememberSelectionSnapshot();
+        setTomlStatus('ok', `已加载选中配置: ${meta.path || filePath}`);
+        return true;
+    }
+
     async function loadTomlFile(filePath, options = {}) {
         if (!options.force && !(await confirmDiscardTomlChanges('当前 TOML 有未保存修改，切换文件会丢失这些修改。是否继续？'))) {
             const select = document.getElementById('toml-file-select');
@@ -4734,11 +6117,11 @@
         const file = currentTomlFile || val('toml-file-select');
         if (!file) {
             setTomlStatus('error', '请先选择一个配置文件，或使用“另存新配置”保存导入内容');
-            return;
+            return false;
         }
         if (isTomlLocked(file)) {
             setTomlStatus('error', '该配置文件已锁定，请使用“另存新配置”创建可编辑配置');
-            return;
+            return false;
         }
         const editorDirty = isTomlDirty();
         const formDirty = hasUnsavedFormChanges(file);
@@ -4747,43 +6130,46 @@
             if (formDirty) {
                 setTomlStatus('error', '左侧表单或数据集预设选择有未保存修改，请先使用“保存更新当前选中配置”处理后再直接保存 TOML');
                 updateTomlActionState(file);
-                return;
+                return false;
             }
             if (!editorDirty) {
                 setTomlStatus('error', '直接编辑器没有未保存的 TOML 文本修改');
-                return;
+                return false;
             }
-            if (tomlSaveConfirmFile !== file) {
+            if (!options.skipConfirm && tomlSaveConfirmFile !== file) {
                 armTomlSaveConfirm(file);
-                return;
+                return false;
             }
             resetTomlSaveConfirm({ update: false });
-            await saveRawTomlContent(file, document.getElementById('toml-editor').value, { reloadConfig: currentTrainingSource.file === file });
-            return;
+            return await saveRawTomlContent(file, document.getElementById('toml-editor').value, { reloadConfig: currentTrainingSource.file === file });
         }
-        if (editorDirty && !formDirty && tomlSaveConfirmFile !== file) {
+        if (editorDirty && !formDirty && !options.skipConfirm && tomlSaveConfirmFile !== file) {
             armTomlSaveConfirm(file);
-            return;
+            return false;
         }
         resetTomlSaveConfirm({ update: false });
         if (currentTrainingSource.file === file) {
             const datasetApplied = await applySelectedDatasetPresetToCurrentConfig(file);
-            if (!datasetApplied) return;
-            const changedValues = collectChangedFormValues();
-            if (Object.keys(changedValues).length > 0) {
-                await saveFormPatchToToml(file, changedValues);
-                return;
+            if (!datasetApplied) return false;
+            const datasetWasDirty = datasetEditorState.dirty;
+            if (datasetWasDirty) {
+                const datasetSaved = await saveDatasetEditor({ trainFile: file, reloadList: false });
+                if (!datasetSaved) return false;
             }
-            if (datasetApplied.applied) {
+            const changedValues = collectChangedFormValues({ persistDefaultFields: true });
+            if (Object.keys(changedValues).length > 0) {
+                return await saveFormPatchToToml(file, changedValues);
+            }
+            if (datasetApplied.applied || datasetWasDirty) {
                 await loadConfig();
                 await loadTomlFileList(file);
                 updateTomlDirtyState();
-                setTomlStatus('ok', '✓ 已应用数据集预设');
-                return;
+                setTomlStatus('ok', datasetWasDirty ? '✓ 已保存数据集修改' : '✓ 已应用数据集预设');
+                return true;
             }
         }
         const content = document.getElementById('toml-editor').value;
-        await saveRawTomlContent(file, content, { reloadConfig: currentTrainingSource.file === file });
+        return await saveRawTomlContent(file, content, { reloadConfig: currentTrainingSource.file === file });
     }
 
     async function saveRawTomlContent(file, content, options = {}) {
@@ -4801,11 +6187,14 @@
                 if (options.reloadConfig) {
                     await loadConfig(); // 仅当前训练源被保存时刷新左侧表单
                 }
+                return true;
             } else {
                 setTomlStatus('error', res.error || '保存失败');
+                return false;
             }
         } catch (e) {
             setTomlStatus('error', '请求失败: ' + e.message);
+            return false;
         }
     }
 
@@ -4819,7 +6208,7 @@
             });
             if (!res.ok) {
                 setTomlStatus('error', res.error || '保存失败');
-                return;
+                return false;
             }
 
             if (typeof res.content === 'string') {
@@ -4831,8 +6220,10 @@
             await loadTomlFileList(file);
             updateTomlDirtyState();
             setTomlStatus('ok', `✓ 已保存 ${res.changed?.length || Object.keys(preparedValues).length} 个表单修改`);
+            return true;
         } catch (e) {
             setTomlStatus('error', '请求失败: ' + e.message);
+            return false;
         }
     }
 
@@ -4910,6 +6301,7 @@
             datasetPresetState.selectedFile = file;
         }
         const rows = normalizeDatasetEditorRows(datasetPresetState.datasets);
+        const payloadRows = datasetRowsForPayload(rows);
         if (!rows.length || rows.some((row) => !row.source_dir.trim())) {
             setDatasetPresetStatus('请至少填写一个原始数据集路径', 'error');
             return null;
@@ -4919,7 +6311,7 @@
                 method: 'PUT',
                 body: JSON.stringify({
                     file,
-                    datasets: rows,
+                    datasets: payloadRows,
                     defaults: normalizeDatasetDefaults(datasetPresetState.defaults || {}),
                 }),
             });
@@ -4980,12 +6372,13 @@
         const name = prompt('请输入复制后的数据集预设名称', `${datasetPresetState.selectedFile.split('/').pop().replace(/\.toml$/i, '')}_copy`);
         if (!name) return;
         const rows = normalizeDatasetEditorRows(datasetPresetState.datasets);
+        const payloadRows = datasetRowsForPayload(rows);
         try {
             const res = await api('/api/config/dataset-presets/save-as', {
                 method: 'POST',
                 body: JSON.stringify({
                     name,
-                    datasets: rows,
+                    datasets: payloadRows,
                     defaults: normalizeDatasetDefaults(datasetPresetState.defaults || {}),
                 }),
             });
@@ -5032,7 +6425,7 @@
                 method: 'POST',
                 body: JSON.stringify({
                     name,
-                    datasets: normalizeDatasetEditorRows(datasetPresetState.datasets),
+                    datasets: datasetRowsForPayload(datasetPresetState.datasets),
                     defaults: normalizeDatasetDefaults(datasetPresetState.defaults || {}),
                 }),
             });
@@ -5165,6 +6558,7 @@
         const targetFile = options.trainFile || currentTrainingSource.file || currentTomlFile || '';
         const targetContent = options.trainContent ?? (document.getElementById('toml-editor')?.value || '');
         const rows = normalizeDatasetEditorRows(datasetEditorState.datasets);
+        const payloadRows = datasetRowsForPayload(rows);
         if (!rows.length || rows.some((row) => !row.source_dir.trim())) {
             setTomlStatus('error', '请至少填写一个原始数据集路径');
             return null;
@@ -5179,7 +6573,7 @@
                     train_file: targetFile,
                     train_content: targetContent,
                     prefer_existing_dataset_config: options.preferExistingDatasetConfig !== false,
-                    datasets: rows,
+                    datasets: payloadRows,
                     defaults: normalizeDatasetDefaults(datasetEditorState.defaults || {}),
                 }),
             });
@@ -5223,12 +6617,17 @@
         }
     }
 
-    function collectChangedFormValues() {
+    function collectChangedFormValues(options = {}) {
         const values = {};
+        let networkArgsTouched = false;
         document.querySelectorAll('#config-form .field-input[data-key]').forEach((input) => {
             const key = input.dataset.key;
             if (!key) return;
             if (CONFIG_FORM_INTERNAL_KEYS.has(key)) return;
+            if (isActiveNetworkArgFieldKey(key)) {
+                if (networkArgInputChanged(input)) networkArgsTouched = true;
+                return;
+            }
             if (key === 'sample_prompts') {
                 if (samplePromptsMode === 'path') {
                     const original = typeof currentConfig.sample_prompts === 'string' ? currentConfig.sample_prompts : '';
@@ -5248,7 +6647,7 @@
             const original = hasOriginal ? currentConfig[key] : FORM_UI_DEFAULTS[key];
             const next = readFieldInputValue(input, original);
             if (!hasOriginal) {
-                if (shouldSkipUiDefaultField(key, next)) return;
+                if (shouldSkipUiDefaultField(key, next, options)) return;
                 values[key] = next;
                 return;
             }
@@ -5256,10 +6655,92 @@
                 values[key] = next;
             }
         });
+        if (networkArgsTouched) {
+            const merged = collectNetworkArgsFromForm({ network_args: values.network_args ?? currentConfig.network_args });
+            if (!valuesEqual(merged.networkArgs, currentConfig.network_args || [])) {
+                values.network_args = merged.networkArgs;
+            } else if ('network_args' in values) {
+                delete values.network_args;
+            }
+        }
         if (values.use_lokr === true && !('lokr_factor' in values) && !('lokr_factor' in currentConfig)) {
             values.lokr_factor = FORM_UI_DEFAULTS.lokr_factor;
         }
         return values;
+    }
+
+    function networkArgInputChanged(input) {
+        const spec = NETWORK_ARG_FIELD_MAP.get(input.dataset.key);
+        if (!spec) return false;
+        const original = networkArgFieldValueFromConfig(spec, currentConfig);
+        const next = readFieldInputValue(input, original);
+        return !valuesEqual(next, original);
+    }
+
+    function networkArgFieldValueFromConfig(spec, config = currentConfig) {
+        const argMap = parseNetworkArgMap(config?.network_args);
+        return coerceNetworkArgValue(argMap.has(spec.arg) ? argMap.get(spec.arg) : spec.default, spec);
+    }
+
+    function collectNetworkArgsFromForm(baseConfig = currentConfig) {
+        const baseArgs = normalizeNetworkArgArray(baseConfig?.network_args);
+        const inputs = [...document.querySelectorAll('#config-form .field-input[data-key]')]
+            .filter((input) => isActiveNetworkArgFieldKey(input.dataset.key));
+        if (!inputs.length) {
+            return { networkArgs: baseArgs, changed: !valuesEqual(baseArgs, currentConfig.network_args || []) };
+        }
+
+        const formValues = new Map();
+        const changedKeys = new Set();
+        for (const input of inputs) {
+            const spec = NETWORK_ARG_FIELD_MAP.get(input.dataset.key);
+            const original = networkArgFieldValueFromConfig(spec, currentConfig);
+            const next = readFieldInputValue(input, original);
+            formValues.set(spec.arg, { spec, value: next });
+            if (!valuesEqual(next, original)) changedKeys.add(spec.key);
+        }
+
+        const result = [];
+        const seenArgs = new Set();
+        for (const raw of baseArgs) {
+            const parsed = parseNetworkArgEntry(raw);
+            if (!parsed || !formValues.has(parsed.arg)) {
+                result.push(raw);
+                continue;
+            }
+            seenArgs.add(parsed.arg);
+            const { spec, value } = formValues.get(parsed.arg);
+            result.push(formatNetworkArg(spec, value));
+        }
+
+        for (const { spec, value } of formValues.values()) {
+            if (seenArgs.has(spec.arg)) continue;
+            if (!changedKeys.has(spec.key)) continue;
+            result.push(formatNetworkArg(spec, value));
+        }
+
+        return {
+            networkArgs: result,
+            changed: !valuesEqual(result, currentConfig.network_args || []),
+        };
+    }
+
+    function formatNetworkArg(spec, value) {
+        return `${spec.arg}=${formatNetworkArgValue(spec, value)}`;
+    }
+
+    function formatNetworkArgValue(spec, value) {
+        if (spec.valueType === 'booleanInt') return parseBooleanNetworkArg(value, spec.default) ? '1' : '0';
+        if (spec.valueType === 'boolean') return parseBooleanNetworkArg(value, spec.default) ? 'true' : 'false';
+        if (spec.valueType === 'integer') {
+            const n = Number(value);
+            return Number.isFinite(n) ? String(Math.trunc(n)) : String(spec.default);
+        }
+        if (spec.valueType === 'number') {
+            const n = Number(value);
+            return Number.isFinite(n) ? String(n) : String(spec.default);
+        }
+        return String(value ?? '').trim();
     }
 
     async function prepareFormPatchValues(values) {
@@ -5277,9 +6758,9 @@
         return nextValues;
     }
 
-    function shouldSkipUiDefaultField(key, value) {
+    function shouldSkipUiDefaultField(key, value, options = {}) {
         if (!(key in FORM_UI_DEFAULTS)) return false;
-        if (FORM_UI_PERSIST_DEFAULT_FIELDS.has(key)) return false;
+        if (options.persistDefaultFields && FORM_UI_PERSIST_DEFAULT_FIELDS.has(key)) return false;
         if (OPTIONAL_EMPTY_FIELDS.has(key) && value === '') return true;
         return valuesEqual(value, FORM_UI_DEFAULTS[key]);
     }
@@ -5340,7 +6821,28 @@
     }
 
     function valuesEqual(a, b) {
+        if (isBooleanLikeValue(a) && isBooleanLikeValue(b)) {
+            return normalizeBooleanLikeValue(a) === normalizeBooleanLikeValue(b);
+        }
+        if (isNumberLikeValue(a) && isNumberLikeValue(b)) {
+            return Number(a) === Number(b);
+        }
         return JSON.stringify(a) === JSON.stringify(b);
+    }
+
+    function isBooleanLikeValue(value) {
+        return value === true || value === false || value === 'true' || value === 'false';
+    }
+
+    function normalizeBooleanLikeValue(value) {
+        return value === true || value === 'true';
+    }
+
+    function isNumberLikeValue(value) {
+        if (typeof value === 'number') return Number.isFinite(value);
+        if (typeof value !== 'string') return false;
+        const trimmed = value.trim();
+        return trimmed !== '' && Number.isFinite(Number(trimmed));
     }
 
     function normalizeMultilineText(value) {
@@ -5500,7 +7002,7 @@
 
         try {
             const baseContent = editor.value;
-            const preparedValues = await prepareFormPatchValues(collectChangedFormValues());
+            const preparedValues = await prepareFormPatchValues(collectChangedFormValues({ persistDefaultFields: true }));
             const content = Object.keys(preparedValues).length
                 ? await previewPatchedTomlContent(file, baseContent, preparedValues)
                 : baseContent;
@@ -5548,6 +7050,82 @@
         }
     }
 
+    async function createBlankPresetFromLoraTemplate() {
+        let templateContent = '';
+        try {
+            const data = await api(`/api/config/raw?file=${encodeURIComponent(BLANK_PRESET_TEMPLATE_FILE)}`);
+            if (data?.ok === false) {
+                setTomlStatus('error', data.error || '读取 LoRA 模板失败');
+                return;
+            }
+            templateContent = typeof data.content === 'string' ? data.content : '';
+        } catch (e) {
+            setTomlStatus('error', '读取 LoRA 模板失败: ' + e.message);
+            return;
+        }
+        if (!templateContent.trim()) {
+            setTomlStatus('error', `读取 LoRA 模板失败: ${BLANK_PRESET_TEMPLATE_FILE} 内容为空或不存在`);
+            return;
+        }
+
+        const target = await showTomlSaveAsDialog(BLANK_PRESET_TEMPLATE_FILE, {
+            title: '创建空白预设配置',
+            description: `以 ${BLANK_PRESET_TEMPLATE_LABEL} 为模板，并套用全局基础模型路径，创建一个新的可编辑项目预设。`,
+            confirmText: '创建空白预设配置',
+            hint: '新文件默认创建到 configs/imported/；分组只影响右侧列表归类。全局模型路径只作为初始默认值，创建后仍可在配置页覆盖。',
+            currentText: `模板: ${BLANK_PRESET_TEMPLATE_LABEL} (${BLANK_PRESET_TEMPLATE_FILE})`,
+        });
+        if (target === null) return;
+
+        const file = normalizeTomlSaveAsPath(target?.name ?? target);
+        const targetGroupId = target?.group || 'imported';
+        if (!file) {
+            setTomlStatus('error', '创建空白预设配置失败: 请先输入新的配置名称');
+            return;
+        }
+        if (file === BLANK_PRESET_TEMPLATE_FILE) {
+            setTomlStatus('error', '创建空白预设配置失败: 不能覆盖 LoRA 标准模板');
+            return;
+        }
+        if (tomlFiles.includes(file)) {
+            setTomlStatus('error', `${file} 已存在，请换一个新的配置名称`);
+            return;
+        }
+
+        const canSwitch = await handlePendingConfigSwitch({ targetLabel: `新的空白预设配置 ${file.split('/').pop() || file}` });
+        if (!canSwitch) return;
+
+        try {
+            // 空白预设先复用模板，再把全局默认基础模型路径灌进去，减少新建后手工改三项的次数。
+            const globalModelPathOverrides = getGlobalModelPathOverrides();
+            const content = Object.keys(globalModelPathOverrides).length
+                ? await previewPatchedTomlContent(file, templateContent, globalModelPathOverrides)
+                : templateContent;
+            const res = await api('/api/config/raw/save-as', {
+                method: 'POST',
+                body: JSON.stringify({ file, content }),
+            });
+            if (!res.ok) {
+                setTomlStatus('error', res.error || '创建空白预设配置失败');
+                return;
+            }
+
+            const moved = await moveTomlFileToGroup(file, targetGroupId);
+            if (!moved) {
+                await loadTomlFileList(file, { force: true });
+                updateTomlDirtyState();
+                return;
+            }
+            await loadTomlFileList(file, { force: true });
+            await applyTomlToConfig({ silent: true });
+            updateTomlDirtyState();
+            const groupLabel = saveAsTargetGroups().find((group) => group.id === targetGroupId)?.label || targetGroupId;
+            setTomlStatus('ok', `已创建空白预设配置: ${file} → ${groupLabel}`, { persist: true });
+        } catch (e) {
+            setTomlStatus('error', '创建空白预设配置失败: ' + e.message);
+        }
+    }
+
     async function previewPatchedTomlContent(file, content, values) {
         const res = await api('/api/config/raw/patch-preview', {
             method: 'POST',
@@ -5559,18 +7137,18 @@
         return typeof res.content === 'string' ? res.content : content;
     }
 
-    async function showTomlSaveAsDialog(currentFile) {
+    async function showTomlSaveAsDialog(currentFile, options = {}) {
         const wrap = document.createElement('div');
         wrap.className = 'toml-save-as-dialog-body';
 
         const label = document.createElement('label');
         label.className = 'history-task-dialog-field';
         const labelText = document.createElement('span');
-        labelText.textContent = '新配置名称或 configs/ 路径';
+        labelText.textContent = options.nameLabel || '新配置名称或 configs/ 路径';
         const input = document.createElement('input');
         input.type = 'text';
         input.value = '';
-        input.placeholder = '例如 rokkotsu_v2 或 configs/imported/rokkotsu_v2.toml';
+        input.placeholder = options.placeholder || '例如 rokkotsu_v2 或 configs/imported/rokkotsu_v2.toml';
         input.className = 'history-task-dialog-input';
         label.append(labelText, input);
 
@@ -5607,19 +7185,20 @@
 
         const hint = document.createElement('p');
         hint.className = 'toml-save-as-hint';
-        hint.textContent = '只填写文件名时会创建到 configs/imported/，分组只影响右侧列表归类；必须使用新名称，不会覆盖当前选中配置。';
+        hint.textContent = options.hint || '只填写文件名时会创建到 configs/imported/，分组只影响右侧列表归类；必须使用新名称，不会覆盖当前选中配置。';
 
         const current = document.createElement('p');
         current.className = 'toml-save-as-current';
-        current.textContent = currentFile ? `当前选中配置: ${currentFile}` : '当前没有选中的配置文件，将使用编辑器内容创建新配置。';
+        current.textContent = options.currentText
+            || (currentFile ? `当前选中配置: ${currentFile}` : '当前没有选中的配置文件，将使用编辑器内容创建新配置。');
 
         wrap.append(label, groupWrap, hint, current);
 
         return showHistoryTaskDialog({
-            title: '另存新配置',
-            description: '输入一个新名称，并选择它在右侧配置列表中的目标分组。',
+            title: options.title || '另存新配置',
+            description: options.description || '输入一个新名称，并选择它在右侧配置列表中的目标分组。',
             body: wrap,
-            confirmText: '创建配置文件',
+            confirmText: options.confirmText || '创建配置文件',
             onOpen: () => input.focus(),
             getValue: () => {
                 const checked = wrap.querySelector('input[name="toml-save-as-target-group"]:checked');
@@ -5913,7 +7492,7 @@
         if (item.locked) btn.classList.add('readonly');
         btn.dataset.file = item.path;
         btn.title = tomlFileDisplayName(item);
-        btn.addEventListener('click', () => loadTomlFile(item.path));
+        btn.addEventListener('click', () => selectAndApplyTomlFile(item.path));
 
         const name = document.createElement('span');
         name.className = 'toml-file-name';
@@ -5985,7 +7564,9 @@
     function hasUnsavedFormChanges(filePath = currentTomlFile) {
         if (!filePath || currentTrainingSource.file !== filePath) return false;
         if (!currentConfig || Object.keys(currentConfig).length === 0) return false;
-        return selectedConfigDatasetFile !== (currentConfig.dataset_config || '') || Object.keys(collectChangedFormValues()).length > 0;
+        return datasetEditorState.dirty
+            || selectedConfigDatasetFile !== (currentConfig.dataset_config || '')
+            || Object.keys(collectChangedFormValues()).length > 0;
     }
 
     function hasPendingConfigChanges(filePath = currentTomlFile) {
@@ -6006,6 +7587,276 @@
             cancelText: '留在当前页面',
             danger: true,
         });
+    }
+
+    function collectPendingConfigChangeDetails(pending = pendingConfigSwitchState()) {
+        const changes = [];
+        if (pending.formDirty) {
+            if (selectedConfigDatasetFile !== (currentConfig.dataset_config || '')) {
+                changes.push({
+                    label: '数据集预设 / dataset_config',
+                    original: currentConfig.dataset_config || '未设置',
+                    next: selectedConfigDatasetFile || '未设置',
+                });
+            }
+            for (const [key, nextValue] of Object.entries(collectChangedFormValues())) {
+                changes.push({
+                    label: formatFieldName(key),
+                    original: originalValueForChange(key),
+                    next: nextValue,
+                });
+            }
+            if (datasetEditorState.dirty) {
+                changes.push({
+                    label: '多数据集路径与参数',
+                    original: currentConfig.dataset_config || '当前配置内的数据集字段',
+                    next: summarizeDatasetEditorState(datasetEditorState),
+                });
+            }
+        }
+        if (pending.editorDirty) {
+            const editorValue = document.getElementById('toml-editor')?.value || '';
+            changes.push({
+                label: '直接编辑 TOML',
+                original: summarizeTextChange(tomlSavedContent),
+                next: summarizeTextChange(editorValue),
+            });
+        }
+        return changes;
+    }
+
+    function originalValueForChange(key) {
+        if (key === 'sample_prompts' && samplePromptsMode !== 'path') {
+            return samplePromptsContent || '';
+        }
+        if (isActiveNetworkArgFieldKey(key)) {
+            return networkArgFieldValueFromConfig(NETWORK_ARG_FIELD_MAP.get(key), currentConfig);
+        }
+        if (key in currentConfig) return currentConfig[key];
+        return FORM_UI_DEFAULTS[key];
+    }
+
+    function summarizeDatasetEditorState(state) {
+        const rows = normalizeDatasetEditorRows(state.datasets || []);
+        const parts = rows.map((row, index) => {
+            const settings = normalizeDatasetDefaults(row.settings || state.defaults || {});
+            return [
+                `第 ${index + 1} 组`,
+                row.source_dir || '未设置原始路径',
+                `重复 ${row.num_repeats || 1}`,
+                `${settings.resolution}px`,
+            ].join(' · ');
+        });
+        const defaults = normalizeDatasetDefaults(state.defaults || {});
+        parts.push(`通用标注 ${defaults.caption_extension} · keep_tokens ${defaults.keep_tokens}`);
+        return parts.join('\n');
+    }
+
+    function summarizeTextChange(text) {
+        const value = String(text || '');
+        const lines = value.split(/\r?\n/).length;
+        const chars = value.length;
+        const preview = value.split(/\r?\n/).find((line) => line.trim()) || '空内容';
+        return `${lines} 行 / ${chars} 字符\n${preview}`;
+    }
+
+    function formatConfigChangeValue(value) {
+        let text;
+        if (typeof value === 'string') {
+            text = value;
+        } else {
+            try {
+                text = JSON.stringify(value, null, 2);
+            } catch {
+                text = String(value);
+            }
+        }
+        if (text === '') text = '空';
+        return text.length > 600 ? `${text.slice(0, 600)}\n...` : text;
+    }
+
+    function showConfigSwitchToast(filePath, stateText) {
+        const toast = document.getElementById('config-switch-toast');
+        if (!toast) return;
+        if (configSwitchToastTimer) {
+            clearTimeout(configSwitchToastTimer);
+            configSwitchToastTimer = null;
+        }
+        const file = (filePath || currentTomlFile || '当前配置').split('/').pop() || '当前配置';
+        toast.textContent = `${file}，${stateText}`;
+        toast.hidden = false;
+        configSwitchToastTimer = setTimeout(() => {
+            toast.hidden = true;
+            configSwitchToastTimer = null;
+        }, 2000);
+    }
+
+    async function handlePendingConfigSwitch({ targetLabel = '' } = {}) {
+        const pending = pendingConfigSwitchState();
+        if (!pending.hasChanges) return true;
+        const action = await showUnsavedConfigSwitchDialog({ pending, targetLabel });
+        if (action === 'cancel') return false;
+        if (action === 'discard') {
+            showConfigSwitchToast(pendingToastLabel(pending), '更改未保存');
+            return true;
+        }
+        const saved = await savePendingConfigSwitchChanges(pending);
+        if (!saved) return false;
+        showConfigSwitchToast(pendingToastLabel(pending), '更改保存完成');
+        return true;
+    }
+
+    function pendingConfigSwitchState() {
+        const editorFile = currentTomlFile || val('toml-file-select') || '';
+        const formFile = currentTrainingSource.file || '';
+        const editorDirty = isTomlDirty();
+        const formDirty = hasUnsavedFormChanges(formFile);
+        const dirtyFiles = [];
+        if (editorDirty && editorFile) dirtyFiles.push(editorFile);
+        if (formDirty && formFile && !dirtyFiles.includes(formFile)) dirtyFiles.push(formFile);
+        const canSave = dirtyFiles.length > 0 && dirtyFiles.every((file) => file && !isTomlLocked(file));
+        return {
+            editorDirty,
+            editorFile,
+            formDirty,
+            formFile,
+            dirtyFiles,
+            sourceFile: dirtyFiles[0] || formFile || editorFile || '',
+            hasChanges: editorDirty || formDirty,
+            canSave,
+        };
+    }
+
+    function pendingToastLabel(pending) {
+        const files = pending?.dirtyFiles || [];
+        if (files.length > 1) {
+            const first = files[0].split('/').pop() || files[0];
+            return `${first} 等 ${files.length} 个配置`;
+        }
+        return pending?.sourceFile || currentTomlFile || '当前配置';
+    }
+
+    async function savePendingConfigSwitchChanges(pending) {
+        if (pending.editorDirty) {
+            const savedEditor = await saveTomlFile({ skipConfirm: true, source: 'switch' });
+            if (!savedEditor) return false;
+        }
+        if (pending.formDirty && (!pending.editorDirty || pending.formFile !== pending.editorFile)) {
+            if (currentTomlFile !== pending.formFile) {
+                await loadTomlFile(pending.formFile, { force: true });
+            }
+            const savedForm = await saveTomlFile({ skipConfirm: true, source: 'switch' });
+            if (!savedForm) return false;
+        }
+        return true;
+    }
+
+    function showUnsavedConfigSwitchDialog({ pending = pendingConfigSwitchState(), targetLabel = '' } = {}) {
+        const dialog = document.getElementById('history-task-dialog');
+        const title = document.getElementById('history-task-dialog-title');
+        const desc = document.getElementById('history-task-dialog-desc');
+        const body = document.getElementById('history-task-dialog-body');
+        const cancelBtn = document.getElementById('history-task-dialog-cancel');
+        const confirmBtn = document.getElementById('history-task-dialog-confirm');
+        const closeBtn = dialog?.querySelector('.history-task-dialog-header button[value="cancel"]');
+        if (!dialog || !title || !desc || !body || !cancelBtn || !confirmBtn) {
+            return Promise.resolve('cancel');
+        }
+        if (sharedDialogBusy || dialog.open) {
+            return Promise.resolve('cancel');
+        }
+        sharedDialogBusy = true;
+
+        title.textContent = '有更改待保存';
+        desc.textContent = targetLabel ? `即将切换到 ${targetLabel}` : '即将切换配置';
+        body.innerHTML = '';
+        body.appendChild(createConfigSwitchDialogBody(pending));
+        cancelBtn.textContent = '放弃未保存的更改';
+        cancelBtn.value = 'discard';
+        confirmBtn.textContent = '保存更改并切换';
+        confirmBtn.value = 'save';
+        confirmBtn.disabled = !pending.canSave;
+        confirmBtn.title = pending.canSave ? '' : '存在只读配置，不能直接保存；请先另存为可编辑配置，或放弃未保存更改后切换。';
+        confirmBtn.classList.remove('btn-danger');
+        confirmBtn.classList.add('btn-primary');
+        dialog.returnValue = '';
+
+        return new Promise((resolve) => {
+            const cleanup = () => {
+                dialog.removeEventListener('close', handleClose);
+                sharedDialogBusy = false;
+                cancelBtn.value = 'cancel';
+                confirmBtn.value = 'confirm';
+                confirmBtn.title = '';
+                if (closeBtn) closeBtn.value = 'cancel';
+            };
+            const handleClose = () => {
+                const action = dialog.returnValue === 'save'
+                    ? 'save'
+                    : (dialog.returnValue === 'discard' ? 'discard' : 'cancel');
+                cleanup();
+                resolve(action);
+            };
+            dialog.addEventListener('close', handleClose);
+            try {
+                if (dialog.showModal) {
+                    dialog.showModal();
+                } else {
+                    dialog.setAttribute('open', 'open');
+                }
+            } catch {
+                cleanup();
+                resolve('cancel');
+                return;
+            }
+            requestAnimationFrame(() => cancelBtn.focus());
+        });
+    }
+
+    function createConfigSwitchDialogBody(pending = pendingConfigSwitchState()) {
+        const wrap = document.createElement('div');
+        wrap.className = 'config-switch-dialog-body';
+
+        const intro = document.createElement('p');
+        intro.textContent = '当前配置有未保存修改。请先选择保存后切换，或放弃这些修改后继续切换。';
+        wrap.appendChild(intro);
+
+        const list = document.createElement('div');
+        list.className = 'config-switch-change-list';
+        const changes = collectPendingConfigChangeDetails(pending);
+        if (!changes.length) {
+            const empty = document.createElement('p');
+            empty.textContent = '检测到未保存状态，但没有可展示的字段差异。';
+            list.appendChild(empty);
+        }
+        for (const change of changes) {
+            const item = document.createElement('article');
+            item.className = 'config-switch-change-item';
+
+            const label = document.createElement('strong');
+            label.textContent = change.label;
+            item.appendChild(label);
+
+            const values = document.createElement('div');
+            values.className = 'config-switch-change-values';
+            values.appendChild(createConfigSwitchChangeValue('原始', change.original));
+            values.appendChild(createConfigSwitchChangeValue('未保存的更改', change.next));
+            item.appendChild(values);
+            list.appendChild(item);
+        }
+        wrap.appendChild(list);
+        return wrap;
+    }
+
+    function createConfigSwitchChangeValue(labelText, value) {
+        const box = document.createElement('div');
+        box.className = 'config-switch-change-value';
+        const label = document.createElement('span');
+        label.textContent = labelText;
+        const code = document.createElement('code');
+        code.textContent = formatConfigChangeValue(value);
+        box.append(label, code);
+        return box;
     }
 
     function showAppConfirmDialog(options) {
@@ -6339,7 +8190,15 @@
             file: meta.path,
         };
 
-        if (meta.methods_subdir === 'gui-methods') {
+        if (meta.methods_subdir === 'methods' && meta.method === 'spd') {
+            const methodSelect = document.getElementById('method-select');
+            if ([...methodSelect.options].some((opt) => opt.value === 'spd')) {
+                methodSelect.value = 'spd';
+            }
+            const variantSelect = document.getElementById('variant-select');
+            const variants = await api('/api/methods/spd/variants');
+            populateSelect('variant-select', variants, 'spd');
+        } else if (meta.methods_subdir === 'gui-methods') {
             const methodFamily = VARIANT_METHOD_FAMILY[meta.method] || meta.method || 'lora';
             const methodSelect = document.getElementById('method-select');
             if ([...methodSelect.options].some((opt) => opt.value === methodFamily)) {
@@ -6697,6 +8556,18 @@
             danger: true,
         });
         if (!ok) return;
+        const reallyOk = await showHistoryTaskConfirmDialog({
+            title: '你真的确认吗？',
+            description: group.label || group.id,
+            message: count > 0
+                ? `确认后会删除这个分组，分组内 ${count} 个 TOML 文件会回到默认分组。`
+                : '确认后会删除这个空分组。',
+            confirmText: '我确认',
+            cancelText: '我觉得不对',
+            cancelPrimary: true,
+            danger: true,
+        });
+        if (!reallyOk) return;
         try {
             const res = await api(`/api/config/file-groups/${encodeURIComponent(group.id)}`, {
                 method: 'DELETE',
@@ -6835,16 +8706,29 @@
 
     // ── 训练控制 ──
     async function startTraining() {
-        if (hasPendingConfigChanges(currentTomlFile)) {
-            setTomlStatus('error', '当前配置有未保存修改，请先保存更新当前选中配置或另存新配置，再开始训练');
-            updateTomlActionState(currentTomlFile);
-            document.querySelector('[data-tab="config"]')?.click();
+        const selectedTrainingConfigFile = currentTrainingConfigFile();
+        if (tomlManagerMode !== 'output' || !outputRunState.file) {
+            if (hasPendingConfigChanges(currentTomlFile)) {
+                setTomlStatus('error', '当前配置有未保存修改，请先保存更新当前选中配置或另存新配置，再开始训练');
+                updateTomlActionState(currentTomlFile);
+                document.querySelector('[data-tab="config"]')?.click();
+                return;
+            }
+        }
+        if (!selectedTrainingConfigFile) {
+            setTomlStatus('error', '请选择要训练的配置文件');
             return;
         }
         const variant = currentTrainingSource.method || val('variant-select');
         const preset = val('preset-select');
         const methodsSubdir = currentTrainingSource.methods_subdir || 'gui-methods';
         if (!variant) return alert('请选择变体');
+        if (isCliOnlySpdSource(variant, methodsSubdir)) {
+            const message = 'SPD 是 CLI 实验配置，只能通过 tasks.py exp-spd / scripts/distill_spd.py 运行；Web 普通训练入口已拦截，避免误用 train.py。';
+            setTomlStatus('error', message, { persist: true });
+            alert(message);
+            return;
+        }
         const preflight = await runPreflight(variant, preset, methodsSubdir);
         if (!preflight) return;
         if (!preflight.ok) {
@@ -6869,12 +8753,21 @@
         try {
             return await api('/api/training/preflight', {
                 method: 'POST',
-                body: JSON.stringify({ variant, preset, methods_subdir: methodsSubdir }),
+                body: JSON.stringify({
+                    variant,
+                    preset,
+                    methods_subdir: methodsSubdir,
+                    config_file: currentTrainingConfigFile(),
+                }),
             });
         } catch (e) {
             alert('预检测请求失败: ' + e.message);
             return null;
         }
+    }
+
+    function isCliOnlySpdSource(variant, methodsSubdir) {
+        return String(methodsSubdir || '') === 'methods' && String(variant || '') === 'spd';
     }
 
     async function startTrainingUnchecked(variant, preset, methodsSubdir) {
@@ -6885,12 +8778,14 @@
                     variant,
                     preset,
                     methods_subdir: methodsSubdir,
+                    config_file: currentTrainingConfigFile(),
                     extra_args: [],
                     gpu_whitelist: selectedGpuPayload(),
                 }),
             });
             if (res.ok) {
                 document.querySelector('[data-tab="training"]').click();
+                appendLog(`[状态] ${res.message || '任务已启动'}`);
             } else {
                 if (res.preflight) {
                     const action = await showPreflightDialog(res.preflight, false);
@@ -7005,6 +8900,7 @@
                     variant,
                     preset,
                     methods_subdir: methodsSubdir,
+                    config_file: currentTrainingConfigFile(),
                     extra_args: [],
                     train_after: true,
                     gpu_whitelist: selectedGpuPayload(),
@@ -7019,6 +8915,13 @@
         } catch (e) {
             alert('预处理请求失败: ' + e.message);
         }
+    }
+
+    function currentTrainingConfigFile() {
+        if (tomlManagerMode === 'output' && outputRunState.file) {
+            return outputRunState.file;
+        }
+        return currentTrainingSource.file || currentTomlFile || val('toml-file-select') || '';
     }
 
     function preflightPlainText(result) {
@@ -7231,6 +9134,7 @@
             trainingRuntime.sampleConfig = msg.sample_config || null;
             trainingSampleState = trainingRuntime.sampleConfig;
         }
+        applyRuntimeInfoToState(msg);
 
         stopBtn.disabled = msg.state !== 'running';
 
@@ -7243,8 +9147,84 @@
             document.getElementById('progress-bar').style.width = '0%';
             trainingRuntime.quietHintShown = false;
             trainingRuntime.job = '';
+            if (!msg.output_dir) {
+                clearRuntimeInfo();
+            }
         }
+        renderCurrentRuntimePaths();
         refreshTrainingHealth();
+    }
+
+    function clearRuntimeInfo() {
+        trainingRuntime.runDir = '';
+        trainingRuntime.runtimeConfigFile = '';
+        trainingRuntime.originalConfigFile = '';
+        trainingRuntime.datasetConfigFile = '';
+        trainingRuntime.modelCacheDir = '';
+        trainingRuntime.datasetCacheDir = '';
+        trainingRuntime.trainingOutputDir = '';
+        trainingRuntime.logsDir = '';
+    }
+
+    function applyRuntimeInfoToState(msg) {
+        const fields = {
+            run_dir: 'runDir',
+            runtime_config_file: 'runtimeConfigFile',
+            original_config_file: 'originalConfigFile',
+            dataset_config_file: 'datasetConfigFile',
+            model_cache_dir: 'modelCacheDir',
+            dataset_cache_dir: 'datasetCacheDir',
+            training_output_dir: 'trainingOutputDir',
+            logs_dir: 'logsDir',
+        };
+        for (const [wireKey, stateKey] of Object.entries(fields)) {
+            if (msg[wireKey] !== undefined) {
+                trainingRuntime[stateKey] = msg[wireKey] || '';
+            }
+        }
+    }
+
+    function renderCurrentRuntimePaths() {
+        if (isHistoryReviewMode()) return;
+        const configPanel = document.getElementById('history-config-panel');
+        const configTitle = document.getElementById('history-config-title');
+        const configOutput = document.getElementById('history-config-output');
+        const task = currentRuntimeTaskInfo();
+        const hasRuntimePaths = runtimePathItems(task, { includeHistory: false }).length > 0;
+        if (configPanel) configPanel.hidden = !hasRuntimePaths;
+        if (!hasRuntimePaths) {
+            const paths = document.getElementById('history-paths');
+            if (paths) paths.innerHTML = '';
+            if (configOutput) configOutput.textContent = '';
+            return;
+        }
+        if (configTitle) {
+            configTitle.textContent = trainingRuntime.job === 'preprocess'
+                ? '当前预处理运行目录'
+                : '当前任务运行目录';
+        }
+        if (configOutput) {
+            configOutput.textContent = [
+                task.runtime_config_file ? `实际运行配置: ${task.runtime_config_file}` : '',
+                task.original_config_file ? `原始配置: ${task.original_config_file}` : '',
+            ].filter(Boolean).join('\n');
+        }
+        renderHistoryPaths(task, { includeHistory: false });
+    }
+
+    function currentRuntimeTaskInfo() {
+        return {
+            run_dir: trainingRuntime.runDir,
+            runtime_config_file: trainingRuntime.runtimeConfigFile,
+            original_config_file: trainingRuntime.originalConfigFile,
+            dataset_config_file: trainingRuntime.datasetConfigFile,
+            model_cache_dir: trainingRuntime.modelCacheDir,
+            dataset_cache_dir: trainingRuntime.datasetCacheDir,
+            training_output_dir: trainingRuntime.trainingOutputDir,
+            logs_dir: trainingRuntime.logsDir,
+            output_dir: trainingRuntime.outputDir,
+            sample_dir: trainingRuntime.sampleDir,
+        };
     }
 
     function updateSystem(msg) {
@@ -7384,6 +9364,104 @@
         return restMinutes ? `${hours}h ${restMinutes}m` : `${hours}h`;
     }
 
+    // ── 全局设置 ──
+    async function loadGlobalSettings() {
+        if (location.protocol === 'file:') return;
+        try {
+            const data = await api('/api/settings/global');
+            if (!data.ok) throw new Error(data.error || '读取全局设置失败');
+            globalSettings = data;
+            applyGlobalSettingsToInputs(data);
+            updateChoiceGuide();
+            setGlobalSettingsStatus('', '');
+            if (tomlManagerMode === 'output') {
+                await loadOutputRuns({ keepSelection: true });
+            }
+        } catch (e) {
+            setGlobalSettingsStatus('读取全局设置失败: ' + e.message, 'error');
+        }
+    }
+
+    async function saveGlobalSettings() {
+        try {
+            const payload = collectGlobalSettingsPayload();
+            const res = await api('/api/settings/global', {
+                method: 'PUT',
+                body: JSON.stringify(payload),
+            });
+            if (!res.ok) {
+                setGlobalSettingsStatus(res.error || '保存失败', 'error');
+                return;
+            }
+            globalSettings = {
+                ...(globalSettings || {}),
+                ...res,
+            };
+            applyGlobalSettingsToInputs(globalSettings);
+            updateChoiceGuide();
+            setGlobalSettingsStatus(res.message || '全局设置已保存', 'ok');
+        } catch (e) {
+            setGlobalSettingsStatus('保存失败: ' + e.message, 'error');
+        }
+    }
+
+    async function resetGlobalSettings() {
+        applyGlobalSettingsToInputs({
+            defaults: globalSettings?.defaults || {},
+            output_root: globalSettings?.defaults?.output_root || 'output/runs',
+            ...Object.fromEntries(GLOBAL_MODEL_PATH_FIELDS.map(([key]) => [key, globalSettings?.defaults?.[key] || ''])),
+        });
+        await saveGlobalSettings();
+    }
+
+    function setGlobalSettingsStatus(text, state = '') {
+        const el = document.getElementById('global-settings-status');
+        if (!el) return;
+        el.textContent = text;
+        el.className = `preview-status ${state}`.trim();
+    }
+
+    function applyGlobalSettingsToInputs(data) {
+        const snapshot = data || globalSettings || {};
+        for (const [key, id] of GLOBAL_SETTING_INPUTS) {
+            const input = document.getElementById(id);
+            if (!input) continue;
+            const fallback = snapshot?.defaults?.[key] || '';
+            input.value = snapshot?.[key] ?? fallback;
+        }
+    }
+
+    function collectGlobalSettingsPayload() {
+        const payload = {};
+        for (const [key, id] of GLOBAL_SETTING_INPUTS) {
+            const input = document.getElementById(id);
+            payload[key] = input ? input.value : (globalSettings?.[key] || '');
+        }
+        return payload;
+    }
+
+    function getGlobalModelPathOverrides() {
+        const overrides = {};
+        const source = globalSettings || {};
+        for (const [key] of GLOBAL_MODEL_PATH_FIELDS) {
+            const value = source[key] ?? source.defaults?.[key] ?? '';
+            if (String(value || '').trim()) {
+                overrides[key] = String(value).trim();
+            }
+        }
+        return overrides;
+    }
+
+    function toggleGlobalSettingHelp(button) {
+        if (!button) return;
+        const helpId = button.getAttribute('aria-controls');
+        const help = helpId ? document.getElementById(helpId) : null;
+        if (!help) return;
+        const visible = help.classList.toggle('visible');
+        button.classList.toggle('active', visible);
+        button.setAttribute('aria-expanded', visible ? 'true' : 'false');
+    }
+
     // ── 预览图 ──
     async function loadPreviewSettings() {
         if (location.protocol === 'file:') return;
@@ -7479,14 +9557,12 @@
             }
             return;
         }
-        if (currentPreviewSource !== 'training' || (!selectedPreviewTaskId && !selectedPreviewGroup)) {
+        if (currentPreviewSource !== 'training') {
             if (requestSeq === previewWeightRequestSeq) {
                 renderPreviewWeights({
                     ok: true,
                     weights: [],
-                    message: currentPreviewSource === 'training'
-                        ? '选择一个训练任务或训练分组后显示权重文件。'
-                        : '权重文件只随训练任务显示。',
+                    message: '权重文件只随训练来源显示。',
                 });
             }
             return;
@@ -7499,7 +9575,7 @@
                 params.set('variant', selectedPreviewGroup.variant);
                 params.set('preset', selectedPreviewGroup.preset || 'default');
                 params.set('include_archived', showArchivedHistory ? '1' : '0');
-            } else {
+            } else if (selectedPreviewTaskId) {
                 params.set('task_id', selectedPreviewTaskId);
             }
             const payload = await api(`/api/preview/weights?${params.toString()}`);
@@ -7535,8 +9611,8 @@
             .filter((task) => task.job === 'training' && (showArchivedHistory || !task.archived))
             .sort((a, b) => Number(b.started_at || 0) - Number(a.started_at || 0));
         liveOption.textContent = trainingTasks.length
-            ? `当前任务或默认目录 · ${trainingTasks.length} 个历史训练`
-            : '当前任务或默认目录 · 暂无历史训练';
+            ? `当前任务或最新运行目录 · ${trainingTasks.length} 个历史训练`
+            : '当前任务或最新运行目录 · 暂无历史训练';
 
         const groups = previewTrainingGroups(trainingTasks);
         if (groups.length) {
@@ -7657,7 +9733,7 @@
 
         title.textContent = payload.label || previewSourceLabel(currentPreviewSource);
         subtitle.textContent = payload.directory
-            ? `目录: ${payload.directory}`
+            ? `目录: ${payload.directory}${previewDirectoryHint(payload)}`
             : '尚未设置目录。';
         count.textContent = `${payload.count || 0} 张`;
         document.getElementById('preview-current-dir').textContent = payload.directory || '-';
@@ -7762,12 +9838,21 @@
         badge.textContent = item.scope_label || '';
         main.append(name, file, badge);
 
+        const actions = document.createElement('div');
+        actions.className = 'preview-weight-actions';
+        const download = document.createElement('a');
+        download.className = 'btn btn-small btn-primary preview-weight-download';
+        download.href = previewWeightDownloadUrl(item);
+        download.download = item.name || 'weight.safetensors';
+        download.textContent = '下载';
+        download.title = '通过浏览器下载这个权重文件。';
         const copy = document.createElement('button');
         copy.type = 'button';
         copy.className = 'btn btn-small preview-weight-copy';
         copy.textContent = '复制路径';
         copy.title = '复制这个权重文件的完整路径。';
         copy.addEventListener('click', () => copyPreviewWeightPath(item, copy));
+        actions.append(download, copy);
 
         const stats = document.createElement('div');
         stats.className = 'preview-weight-stats';
@@ -7782,8 +9867,16 @@
         const source = createPreviewWeightSource(item);
         if (source) stats.append(source);
 
-        row.append(main, stats, copy);
+        row.append(main, stats, actions);
         return row;
+    }
+
+    function previewWeightDownloadUrl(item) {
+        if (item.download_url) return item.download_url;
+        const params = new URLSearchParams({ file: item.file || '' });
+        const taskId = item.source_task?.id || '';
+        if (taskId) params.set('task_id', taskId);
+        return `/api/preview/weight?${params.toString()}`;
     }
 
     function createPreviewWeightSource(item) {
@@ -7943,6 +10036,9 @@
         const msg = cfg.message || '';
         if (!msg || base.includes(msg)) return base;
         if (cfg.enabled) return `${base} 如果训练刚开始，可能还没到达采样频率。`;
+        if (payload.preview_settings?.effective_training_source === 'latest_run') {
+            return `${base} 最新运行目录里还没有可显示的样张。`;
+        }
         return `${base} ${msg}。`;
     }
 
@@ -7956,6 +10052,16 @@
         } else {
             el.textContent = previewSettings.custom_dir || '-';
         }
+    }
+
+    function previewDirectoryHint(payload) {
+        const source = payload.preview_settings?.effective_training_source || '';
+        const latestRun = payload.preview_settings?.latest_run_dir || '';
+        if (source === 'current_task') return ' · 当前任务';
+        if (source === 'latest_run') {
+            return latestRun ? ` · 最新运行 ${latestRun}` : ' · 最新运行';
+        }
+        return '';
     }
 
     function setPreviewStatus(text, state = '') {
@@ -8100,6 +10206,14 @@
                 output_dir: status.output_dir,
                 sample_dir: status.sample_dir,
                 sample_config: status.sample_config,
+                run_dir: status.run_dir,
+                runtime_config_file: status.runtime_config_file,
+                original_config_file: status.original_config_file,
+                dataset_config_file: status.dataset_config_file,
+                model_cache_dir: status.model_cache_dir,
+                dataset_cache_dir: status.dataset_cache_dir,
+                training_output_dir: status.training_output_dir,
+                logs_dir: status.logs_dir,
             });
             if ((status.last_log_id || 0) > trainingRuntime.lastLogId) {
                 await replayTrainingLogs();
@@ -8164,10 +10278,11 @@
             map.get(group.key).tasks.push(task);
         }
         return Array.from(map.values())
+            .map(enrichHistoryGroup)
             .sort((a, b) => {
                 const aTime = Math.max(...a.tasks.map((task) => Number(task.started_at || 0)));
                 const bTime = Math.max(...b.tasks.map((task) => Number(task.started_at || 0)));
-                return (bTime - aTime) || a.label.localeCompare(b.label, 'zh-CN');
+                return (bTime - aTime) || historyGroupDisplayLabel(a).localeCompare(historyGroupDisplayLabel(b), 'zh-CN');
             });
     }
 
@@ -8175,17 +10290,89 @@
         const methodsSubdir = String(task.methods_subdir || '-');
         const variant = String(task.variant || '-');
         const preset = String(task.preset || 'default');
+        const legacyLabel = `${methodsSubdir} / ${variant} / ${preset}`;
+        const historyKey = String(task.history_group_key || '').trim();
+        const sourceConfig = String(task.history_source_config_file || '').trim();
+        const groupLabel = String(task.history_group_label || '').trim() || sourceConfig || legacyLabel;
         return {
-            key: [methodsSubdir, variant, preset].join('\u0001'),
+            key: historyKey || [methodsSubdir, variant, preset].join('\u0001'),
+            history_group_key: historyKey || '',
+            history_group_label: groupLabel,
+            history_source_config_file: sourceConfig,
             methods_subdir: methodsSubdir,
             variant,
             preset,
-            label: `${methodsSubdir} / ${variant} / ${preset}`,
+            label: groupLabel,
+            legacy_label: legacyLabel,
         };
     }
 
     function configGroupKey(group) {
+        if (group?.key) return group.key;
+        if (group?.history_group_key) return group.history_group_key;
         return [group.methods_subdir || '-', group.variant || '-', group.preset || 'default'].join('\u0001');
+    }
+
+    function enrichHistoryGroup(group) {
+        const tasks = [...(group.tasks || [])].sort((a, b) => {
+            const aTime = Number(a.started_at || 0);
+            const bTime = Number(b.started_at || 0);
+            return (bTime - aTime) || String(b.id || '').localeCompare(String(a.id || ''), 'zh-CN');
+        });
+        const latestTask = tasks[0] || {};
+        const runDirs = new Set(tasks.map((task) => historyTaskRunPath(task)).filter(Boolean));
+        return {
+            ...group,
+            tasks,
+            latestTask,
+            run_count: runDirs.size,
+            display_label: historyTaskDisplayName(latestTask) || group.label,
+            source_label: group.history_source_config_file || '',
+            fallback_group_label: group.history_group_label || group.legacy_label || group.label,
+        };
+    }
+
+    function historyTaskDisplayName(task) {
+        if (!task) return '';
+        return String(
+            task.name
+            || task.history_run_label
+            || runLabelFromPath(task.run_dir || task.training_output_dir || task.output_dir)
+            || task.id
+            || ''
+        ).trim();
+    }
+
+    function historyTaskRunPath(task) {
+        return String(task?.run_dir || task?.training_output_dir || task?.output_dir || '').trim();
+    }
+
+    function historyResumeLabel(task) {
+        const resume = task?.resume_from || {};
+        if (!resume || typeof resume !== 'object') return '';
+        const checkpoint = String(resume.checkpoint_name || '').trim();
+        const step = resume.checkpoint_step !== undefined && resume.checkpoint_step !== null
+            ? String(resume.checkpoint_step).trim()
+            : '';
+        if (checkpoint && step) return `从检查点恢复: ${checkpoint} · step ${step}`;
+        if (checkpoint) return `从检查点恢复: ${checkpoint}`;
+        if (step) return `从检查点恢复: step ${step}`;
+        return resume.source_task_id ? '从检查点恢复' : '';
+    }
+
+    function runLabelFromPath(value) {
+        const text = String(value || '').replace(/\\/g, '/').trim();
+        if (!text) return '';
+        const parts = text.split('/').filter(Boolean);
+        if (!parts.length) return text;
+        if (parts[parts.length - 1] === 'training_output' && parts.length > 1) {
+            return parts[parts.length - 2];
+        }
+        return parts[parts.length - 1];
+    }
+
+    function historyGroupDisplayLabel(group) {
+        return String(group?.display_label || group?.history_run_label || group?.label || configGroupLabel(group) || '').trim();
     }
 
     function createHistoryGroupHeading(group) {
@@ -8195,11 +10382,16 @@
         const preprocessCount = group.tasks.filter((task) => task.job === 'preprocess').length;
 
         const title = document.createElement('span');
-        title.textContent = [
-            group.label,
+        const name = document.createElement('strong');
+        name.textContent = historyGroupDisplayLabel(group);
+        const meta = document.createElement('em');
+        meta.textContent = [
+            group.source_label ? `源配置: ${group.source_label}` : `配置分组: ${group.fallback_group_label || group.label}`,
             `${trainingCount} 次训练`,
             preprocessCount ? `${preprocessCount} 个预处理` : '',
+            group.run_count ? `${group.run_count} 个运行目录` : '',
         ].filter(Boolean).join(' · ');
+        title.append(name, meta);
         heading.appendChild(title);
 
         if (trainingCount) {
@@ -8226,16 +10418,17 @@
         main.addEventListener('click', () => loadHistoryTask(task.id));
 
         const title = document.createElement('strong');
-        title.textContent = task.name || `${task.methods_subdir || '-'} / ${task.variant || '-'}`;
+        title.textContent = historyTaskDisplayName(task) || `${task.methods_subdir || '-'} / ${task.variant || '-'}`;
         const meta = document.createElement('span');
         meta.textContent = [
             task.job === 'preprocess' ? '预处理' : '训练',
+            historyResumeLabel(task),
             historyStateLabel(task.state),
             task.started_at_text || task.id,
             task.archived ? '已归档' : '',
         ].filter(Boolean).join(' · ');
         const paths = document.createElement('em');
-        paths.textContent = `目录: ${task.history_dir || task.id}`;
+        paths.textContent = `目录: ${task.run_dir || task.training_output_dir || task.output_dir || task.history_dir || task.id}`;
         const counts = document.createElement('em');
         counts.textContent = `${task.metric_count || 0} loss点 / ${task.log_count || 0} 日志`;
         main.append(title, meta, paths, counts);
@@ -8244,7 +10437,6 @@
         actions.className = 'task-history-actions';
         actions.append(
             createHistoryActionButton('重命名', () => renameHistoryTask(task)),
-            createHistoryActionButton('分组', () => regroupHistoryTask(task)),
             createHistoryActionButton(task.archived ? '取消归档' : '归档', () => archiveHistoryTask(task)),
             createHistoryActionButton('删除', () => deleteHistoryTask(task), 'danger'),
         );
@@ -8394,6 +10586,7 @@
             body: wrap,
             confirmText: options.confirmText || '确认',
             cancelText: options.cancelText || '取消',
+            cancelPrimary: options.cancelPrimary,
             danger: options.danger,
             getValue: () => true,
         });
@@ -8419,6 +10612,7 @@
         body.innerHTML = '';
         if (options.body) body.appendChild(options.body);
         cancelBtn.textContent = options.cancelText || '取消';
+        cancelBtn.classList.toggle('btn-primary', Boolean(options.cancelPrimary));
         confirmBtn.textContent = options.confirmText || '确认';
         confirmBtn.disabled = false;
         confirmBtn.classList.toggle('btn-danger', Boolean(options.danger));
@@ -8500,27 +10694,39 @@
     }
 
     async function chooseTimelineTasksForMerge(group) {
-        const selectedTaskIds = await showTimelineTaskSelectionDialog(group);
-        if (!selectedTaskIds) return;
+        const selection = await showTimelineTaskSelectionDialog(group);
+        if (!selection) return;
+        if (selection.group && !selection.taskIds?.length) {
+            await loadConfigGroupTimeline(selection.group, { skipSelectionDialog: true });
+            return;
+        }
         await loadConfigGroupTimeline(group, {
-            taskIds: selectedTaskIds,
+            taskIds: selection.taskIds || [],
             skipSelectionDialog: true,
         });
     }
 
     async function loadConfigGroupTimeline(group, options = {}) {
-        if (!group?.methods_subdir || !group?.variant) return;
+        if (!group?.history_group_key && (!group?.methods_subdir || !group?.variant)) return;
         let taskIds = Array.isArray(options.taskIds) ? options.taskIds.filter(Boolean) : [];
         if (!taskIds.length && !options.skipSelectionDialog) {
-            taskIds = await showTimelineTaskSelectionDialog(group);
-            if (!taskIds) return;
+            const selection = await showTimelineTaskSelectionDialog(group);
+            if (!selection) return;
+            if (selection.group && !selection.taskIds?.length) {
+                group = selection.group;
+            } else {
+                taskIds = selection.taskIds || [];
+            }
         }
         const query = new URLSearchParams({
-            methods_subdir: group.methods_subdir,
-            variant: group.variant,
+            methods_subdir: group.methods_subdir || '',
+            variant: group.variant || '',
             preset: group.preset || 'default',
             include_archived: showArchivedHistory ? '1' : '0',
         });
+        if (!taskIds.length && group.history_group_key) {
+            query.set('group_key', group.history_group_key);
+        }
         for (const taskId of taskIds) {
             query.append('task_id', taskId);
         }
@@ -8594,11 +10800,12 @@
             checkbox.checked = selectedGroupSet.has(item.key);
             const content = document.createElement('span');
             const title = document.createElement('strong');
-            title.textContent = item.label;
+            title.textContent = historyGroupDisplayLabel(item);
             const meta = document.createElement('em');
             const lossCount = item.trainingTasks.reduce((sum, task) => sum + Number(task.metric_count || 0), 0);
             const logCount = item.trainingTasks.reduce((sum, task) => sum + Number(task.log_count || 0), 0);
             meta.textContent = [
+                item.source_label ? `源配置: ${item.source_label}` : `配置分组: ${item.fallback_group_label || item.label}`,
                 `${item.trainingTasks.length} 次训练`,
                 `${lossCount} loss点`,
                 `${logCount} 日志`,
@@ -8635,10 +10842,13 @@
             onOpen: syncConfirm,
             getValue: () => {
                 const selectedGroupKeys = new Set(checkedValues());
-                const taskIds = candidates
-                    .filter((item) => selectedGroupKeys.has(item.key))
-                    .flatMap((item) => item.trainingTasks.map((task) => task.id).filter(Boolean));
-                return taskIds.length ? taskIds : null;
+                const selectedGroups = candidates.filter((item) => selectedGroupKeys.has(item.key));
+                if (!selectedGroups.length) return null;
+                if (selectedGroups.length === 1) {
+                    return { group: selectedGroups[0], taskIds: [] };
+                }
+                const taskIds = selectedGroups.flatMap((item) => item.trainingTasks.map((task) => task.id).filter(Boolean));
+                return taskIds.length ? { group: null, taskIds } : null;
             },
         });
     }
@@ -8676,7 +10886,7 @@
         const bannerTitle = document.getElementById('history-view-title');
         if (banner) banner.hidden = false;
         if (bannerTitle) {
-            bannerTitle.textContent = `历史任务: ${task.name || `${task.methods_subdir || '-'} / ${task.variant || '-'}`} · ${historyStateLabel(task.state)}`;
+            bannerTitle.textContent = `历史任务: ${historyTaskDisplayName(task) || `${task.methods_subdir || '-'} / ${task.variant || '-'}`} · ${historyStateLabel(task.state)}`;
         }
         document.getElementById('train-variant').textContent = task.variant || '-';
         document.getElementById('train-preset').textContent = task.preset || '-';
@@ -8861,6 +11071,7 @@
         el.innerHTML = '';
         const items = [
             ['配置文件', configGroupLabel(group)],
+            ['源配置', group.history_source_config_file || '-'],
             ['合并训练数', `${summary.task_count || 0}`],
             ['时间范围', `${summary.started_at_text || '-'} -> ${summary.finished_at_text || '未结束'}`],
             ['真实步数', formatStepRange(summary.start_display_step, summary.end_display_step)],
@@ -8881,7 +11092,7 @@
         if (group.methods_subdir === '手动选择') {
             return group.variant || '手动选择';
         }
-        return `${group.methods_subdir || '-'} / ${group.variant || '-'} / ${group.preset || 'default'}`;
+        return group.history_run_label || group.history_group_label || group.label || `${group.methods_subdir || '-'} / ${group.variant || '-'} / ${group.preset || 'default'}`;
     }
 
     function metricsWithProgressFallback(metrics, logs) {
@@ -9153,22 +11364,11 @@
         el.className = ['resume-status', state].filter(Boolean).join(' ');
     }
 
-    function renderHistoryPaths(task) {
+    function renderHistoryPaths(task, options = {}) {
         const el = document.getElementById('history-paths');
         if (!el) return;
         el.innerHTML = '';
-        const items = [
-            ['历史目录', task.history_dir_abs || task.history_dir],
-            ['源图像目录', task.source_image_dir],
-            ['缩放图像目录', task.resized_image_dir],
-            ['LoRA 缓存目录', task.lora_cache_dir],
-            ['输出目录', task.output_dir],
-            ['样张目录', task.sample_dir],
-            ['日志文件', task.logs_path],
-            ['指标文件', task.metrics_path],
-            ['系统指标文件', task.system_path],
-            ['TOML 快照', task.config_snapshot],
-        ].filter(([, value]) => value);
+        const items = runtimePathItems(task, options);
         for (const [label, value] of items) {
             const row = document.createElement('div');
             const key = document.createElement('span');
@@ -9178,6 +11378,26 @@
             row.append(key, valEl);
             el.appendChild(row);
         }
+    }
+
+    function runtimePathItems(task, options = {}) {
+        const includeHistory = options.includeHistory !== false;
+        return [
+            includeHistory ? ['历史目录', task.history_dir_abs || task.history_dir] : null,
+            ['本次运行目录', task.run_dir],
+            ['实际运行配置', task.runtime_config_file],
+            ['原始配置副本', task.original_config_file],
+            ['运行时数据集配置', task.dataset_config_file],
+            ['模型缓存目录', task.model_cache_dir],
+            ['数据集缓存目录', task.dataset_cache_dir],
+            ['训练结果目录', task.training_output_dir || task.output_dir],
+            ['样张目录', task.sample_dir],
+            ['日志目录', task.logs_dir],
+            includeHistory ? ['历史日志文件', task.logs_path] : null,
+            includeHistory ? ['历史指标文件', task.metrics_path] : null,
+            includeHistory ? ['系统指标文件', task.system_path] : null,
+            includeHistory ? ['历史 TOML 快照', task.config_snapshot] : null,
+        ].filter((item) => item && item[1]);
     }
 
     function historyStateLabel(state) {
@@ -9223,6 +11443,7 @@
         document.getElementById('btn-stop-training').addEventListener('click', stopTraining);
         document.getElementById('btn-apply-toml').addEventListener('click', applyTomlToConfig);
         document.getElementById('btn-move-toml-group').addEventListener('click', moveCurrentTomlToGroup);
+        document.getElementById('btn-create-blank-preset').addEventListener('click', createBlankPresetFromLoraTemplate);
         document.getElementById('btn-save-toml').addEventListener('click', saveTomlFile);
         document.getElementById('btn-toggle-toml-editor').addEventListener('click', toggleTomlEditorPanel);
         document.getElementById('btn-copy-toml').addEventListener('click', copyTomlEditorContent);
@@ -9234,6 +11455,18 @@
         document.getElementById('btn-delete-toml').addEventListener('click', deleteTomlFile);
         document.getElementById('btn-restore-system-toml').addEventListener('click', restoreSystemTomlPresets);
         document.getElementById('toml-import-input').addEventListener('change', handleTomlImport);
+        document.getElementById('btn-toml-mode-project').addEventListener('click', () => switchTomlManagerMode('project'));
+        document.getElementById('btn-toml-mode-output').addEventListener('click', () => switchTomlManagerMode('output'));
+        document.getElementById('btn-refresh-output-runs').addEventListener('click', () => loadOutputRuns({ keepSelection: true }));
+        document.getElementById('btn-copy-output-config').addEventListener('click', copyOutputRunConfigContent);
+        document.getElementById('btn-export-output-config').addEventListener('click', exportOutputRunConfig);
+        document.getElementById('btn-save-output-config-as').addEventListener('click', openOutputRunSaveAs);
+        document.getElementById('btn-confirm-output-config-save-as').addEventListener('click', confirmOutputRunSaveAs);
+        document.getElementById('btn-cancel-output-config-save-as').addEventListener('click', closeOutputRunSaveAs);
+        document.getElementById('output-run-search').addEventListener('input', (event) => {
+            outputRunState = { ...outputRunState, search: event.target.value || '' };
+            renderOutputRunList();
+        });
         document.getElementById('btn-new-dataset-preset').addEventListener('click', createNewDatasetPreset);
         document.getElementById('btn-copy-dataset-preset').addEventListener('click', copyDatasetPreset);
         document.getElementById('btn-rename-dataset-preset').addEventListener('click', renameDatasetPreset);
@@ -9255,7 +11488,7 @@
             }
         });
         document.getElementById('toml-file-select').addEventListener('change', (e) => {
-            loadTomlFile(e.target.value);
+            selectAndApplyTomlFile(e.target.value);
         });
         document.getElementById('toml-editor').addEventListener('input', updateTomlDirtyState);
         document.getElementById('btn-clear-log').addEventListener('click', () => {
@@ -9283,7 +11516,14 @@
         document.getElementById('btn-sort-weights').addEventListener('click', togglePreviewWeightSort);
         document.getElementById('btn-save-preview-settings').addEventListener('click', savePreviewSettings);
         document.getElementById('btn-reset-preview-settings').addEventListener('click', resetPreviewSettings);
+        document.getElementById('btn-save-global-settings').addEventListener('click', saveGlobalSettings);
+        document.getElementById('btn-reset-global-settings').addEventListener('click', resetGlobalSettings);
+        document.querySelectorAll('.global-setting-help-toggle').forEach((btn) => {
+            btn.addEventListener('click', () => toggleGlobalSettingHelp(btn));
+        });
         document.getElementById('preview-training-task').addEventListener('change', (e) => changePreviewTask(e.target.value));
+
+        setTomlManagerMode('project');
     }
 
     function installBeginnerTooltips() {
@@ -9305,12 +11545,21 @@
             'btn-save-as-toml': '把当前配置另存为新 TOML，适合从系统预设复制出自己的可编辑版本。',
             'btn-apply-toml': '把右侧选中的 TOML 加载到左侧表单，并设为当前训练入口。',
             'btn-move-toml-group': '移动右侧配置文件所在分组，只改变列表归类，不改变 TOML 内容。',
+            'btn-create-blank-preset': '以 LoRA 标准训练变体 lora.toml 为模板，并套用全局基础模型路径创建新的可编辑项目预设。',
+            'btn-fill-global-model-paths': '用全局设置里的基础 DiT、Qwen3、VAE 路径覆盖当前配置表单；覆盖前会要求确认。',
             'btn-reload-toml': '从磁盘重新读取当前 TOML；会丢弃未保存编辑。',
             'btn-copy-toml': '复制当前编辑器里的 TOML 内容，方便备份或排查。',
             'btn-save-toml-direct': '保存直接编辑器里的 TOML 文本。需要连续点击两次确认写入。',
             'btn-lock-toml': '锁定当前配置文件，防止误改；系统预设或分组锁定的文件可能无法手动解锁。',
             'btn-delete-toml': '删除当前选中的可编辑 TOML。需要二次确认；不会删除训练输出目录。',
             'btn-restore-system-toml': '把项目内置系统预设恢复到项目版本。会自动备份，但不影响用户导入配置。',
+            'btn-toml-mode-project': '管理 configs 下的项目预设，可编辑、另存、分组和锁定。',
+            'btn-toml-mode-output': '查看全局输出文件夹里的训练快照配置；只读，可复制为新的项目预设后编辑。',
+            'btn-refresh-output-runs': '重新扫描全局输出文件夹下的训练运行目录。',
+            'btn-copy-output-config': '复制当前只读训练快照 TOML 内容。',
+            'btn-export-output-config': '导出当前只读训练快照 TOML。',
+            'btn-save-output-config-as': '把当前运行目录的原始配置复制到项目预设中，再切回项目预设编辑。',
+            'output-run-search': '按运行目录名、时间或配置文件路径筛选训练输出配置。',
             'btn-live-training': '从历史任务视图回到当前正在监控的训练/预处理状态。',
             'btn-refresh-history': '重新读取训练任务历史列表，包括日志、loss、输出目录和样张目录记录。',
             'btn-refresh-history-view': '重新读取当前正在查看的历史日志和 Loss；适合训练仍在写日志时手动更新。',
@@ -9321,9 +11570,15 @@
             'btn-refresh-weights': '重新扫描选中训练任务的权重文件，显示保存轮次和步数。',
             'btn-sort-weights': '按 Epoch/Step 切换权重文件正序或反序排列。',
             'btn-save-preview-settings': '保存预览图路径设置，只影响预览图页面读取目录，不会改训练配置。',
-            'btn-reset-preview-settings': '恢复预览图目录默认值，例如训练样张默认 output/ckpt/sample。',
-            'preview-training-task': '选择一个历史训练任务后，预览图会读取该任务记录的 sample_dir，而不是只看默认目录。',
-            'preview-training-dir': '未选择历史任务时，训练中采样预览默认从这个目录读取。',
+            'btn-reset-preview-settings': '恢复预览图目录默认值，例如旧版训练样张兼容目录 output/ckpt/sample。',
+            'btn-save-global-settings': '保存 Web 训练输出根目录。每次训练都会在这里创建独立运行目录。',
+            'btn-reset-global-settings': '恢复 Web 训练输出根目录默认值 output/runs。',
+            'global-output-root': 'Web 训练输出根目录。支持项目相对路径或绝对路径。',
+            'global-pretrained-model-path': '新建空白预设时默认写入的基础 DiT 模型路径；单个配置仍可覆盖。',
+            'global-qwen3-path': '新建空白预设时默认写入的 Qwen3 文本编码器路径；单个配置仍可覆盖。',
+            'global-vae-path': '新建空白预设时默认写入的 VAE 路径；单个配置仍可覆盖。',
+            'preview-training-task': '选择一个历史训练任务后，预览图会读取该任务记录的 sample_dir；不选时会优先看当前任务和最新运行目录。',
+            'preview-training-dir': '训练中采样的兼容兜底目录；新 Web 运行通常会优先读取全局输出根目录下的最新运行目录。',
             'preview-inference-dir': '推理预览来源目录，通常存放手动推理或测试生成的图片。',
             'preview-custom-dir': '自定义预览目录。填任意项目内或绝对路径后，可在“自定义路径”来源中查看图片。',
             'btn-new-dataset-preset': '新建一个 configs/datasets 下的数据集预设。',
@@ -9347,13 +11602,14 @@
                 datasets: '数据集页：管理可复用的多数据集预设。',
                 training: '训练页：查看当前任务、历史任务、loss 曲线、日志和显存状态。',
                 preview: '预览图页：查看训练中样张、推理输出或自定义目录图片。',
+                settings: '全局设置页：设置 Web 训练输出根目录和新建预设默认模型路径。',
             };
             const key = btn.dataset.tab;
             if (labels[key]) btn.title = labels[key];
         });
         document.querySelectorAll('.preview-source-btn').forEach((btn) => {
             const labels = {
-                training: '读取训练任务的 sample_dir 或训练样张默认目录。',
+                training: '读取训练任务的 sample_dir，或优先读取最新 Web 运行目录里的训练样张。',
                 inference: '读取推理预览目录，适合查看手动测试生成图。',
                 custom: '读取你填写的自定义目录，适合临时检查任意图片文件夹。',
             };

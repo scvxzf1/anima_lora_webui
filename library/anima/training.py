@@ -233,6 +233,47 @@ def add_anima_training_arguments(parser: argparse.ArgumentParser):
         "Set to 0 to skip even the warm-up logs, or a large number to keep them on.",
     )
     parser.add_argument(
+        "--ip_pair_mode",
+        type=str,
+        default="self",
+        choices=["self", "identity", "identity_cross_artist"],
+        help="IP-Adapter distinct-pair (identity) training mode. 'self' (default) "
+        "= reference == VAE target (legacy, bit-identical). 'identity' draws the "
+        "IP-path reference from a DIFFERENT image of the target's identity "
+        "(character → franchise → artist back-off via the caption index), "
+        "removing the self-pair copy shortcut. 'identity_cross_artist' additionally "
+        "requires character/franchise matches from a different artist (drops the "
+        "source style). Requires --ip_features_cache_to_disk. "
+        "See docs/proposal/ip-adapter-identity-pairs.md.",
+    )
+    parser.add_argument(
+        "--ip_pair_prob",
+        type=float,
+        default=0.8,
+        help="Fraction of steps that draw a distinct reference under "
+        "--ip_pair_mode!=self; the rest self-pair (keeps some self-pairs in the "
+        "mix — reference recipes warm up better that way). Default 0.8.",
+    )
+    parser.add_argument(
+        "--ip_pair_min_level",
+        type=str,
+        default="artist",
+        choices=["character", "copyright", "artist"],
+        help="Loosest tier the identity-pair sampler will back off to before "
+        "self-pairing. 'character' = same-character only; 'artist' (default) = "
+        "full character → franchise → artist back-off.",
+    )
+    parser.add_argument(
+        "--ip_pair_caption_strip_p",
+        type=float,
+        default=0.0,
+        help="Probability of dropping the target's character/copyright tokens "
+        "from the caption on distinct-pair steps, forcing identity through the IP "
+        "image path rather than the text. INERT while cache_text_encoder_outputs=true "
+        "(the cached embedding still carries identity) — set it false to enable. "
+        "Default 0.0 (off).",
+    )
+    parser.add_argument(
         "--use_easycontrol",
         action="store_true",
         help="Enable EasyControl image conditioning (extended self-attn KV with "
@@ -315,15 +356,8 @@ def add_anima_training_arguments(parser: argparse.ArgumentParser):
             "sdpa",
         ],  # "sdpa" is for backward compatibility
         default=None,
-        help="Attention implementation to use. Default is None (torch). xformers requires --split_attn. sageattn does not support training (inference only). This option overrides --xformers or --sdpa."
+        help="Attention implementation to use. Default is None (torch). sageattn does not support training (inference only). This option overrides --xformers or --sdpa."
         "",
-    )
-    parser.add_argument(
-        "--trim_crossattn_kv",
-        action="store_true",
-        help="Trim zero-padded KV positions in cross-attention (flash4 only). "
-        "Uses bucketed lengths + LSE sigmoid correction for exact equivalence. "
-        "Typical 4x KV reduction for short captions → ~10-15%% faster training.",
     )
     parser.add_argument(
         "--static_token_count",
@@ -333,10 +367,16 @@ def add_anima_training_arguments(parser: argparse.ArgumentParser):
         "Enables constant-shape buckets and eliminates torch.compile recompilation.",
     )
     parser.add_argument(
-        "--split_attn",
-        action="store_true",
-        help="split attention computation to reduce memory usage",
+        "--no_static_pad",
+        action="store_false",
+        dest="static_pad",
+        help="With --static_token_count set, run each bucket at its native token "
+        "count instead of zero-padding to the target. Removes the flash static-pad "
+        "leak (bench/static_padding) at the cost of one block recompile per distinct "
+        "bucket token-count (2 with the shipped 4032/4200 buckets). This is the "
+        "base.toml default. Incompatible with --compile_mode full.",
     )
+    parser.set_defaults(static_pad=True)
     parser.add_argument(
         "--attn_softmax_scale",
         type=float,

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from urllib.parse import quote
+
 from aiohttp import web
 
 from web.services.preview_service import (
@@ -11,6 +13,7 @@ from web.services.preview_service import (
     list_preview_images,
     list_training_weights,
     resolve_preview_image,
+    resolve_training_weight,
     save_preview_settings,
 )
 
@@ -21,16 +24,21 @@ def setup_preview_routes(app: web.Application) -> None:
     app.router.add_get("/api/preview/images", handle_preview_images)
     app.router.add_get("/api/preview/image", handle_preview_image)
     app.router.add_get("/api/preview/weights", handle_preview_weights)
+    app.router.add_get("/api/preview/weight", handle_preview_weight_download)
 
 
 async def handle_preview_settings_get(request: web.Request) -> web.Response:
     try:
         sample_dir = _selected_sample_dir(request)
+        task_selected = _has_task_selection(request)
     except ValueError as e:
         return web.json_response({"ok": False, "error": str(e)}, status=400)
     except FileNotFoundError as e:
         return web.json_response({"ok": False, "error": str(e)}, status=404)
-    return web.json_response(get_preview_settings(sample_dir))
+    return web.json_response(get_preview_settings(
+        sample_dir,
+        allow_latest_fallback=not task_selected,
+    ))
 
 
 async def handle_preview_settings_put(request: web.Request) -> web.Response:
@@ -57,6 +65,7 @@ async def handle_preview_images(request: web.Request) -> web.Response:
             return web.json_response(payload)
 
         task = _selected_history_task(request)
+        task_selected = _has_task_selection(request)
         payload = list_preview_images(
             source,
             current_task_sample_dir=_selected_sample_dir(request, task=task),
@@ -64,6 +73,7 @@ async def handle_preview_images(request: web.Request) -> web.Response:
             task=task,
             task_id=task.get("id") if task else "",
             task_label=_history_task_label(task) if task else "",
+            allow_latest_fallback=not task_selected,
             limit=limit,
         )
         return web.json_response(payload)
@@ -103,13 +113,33 @@ async def handle_preview_weights(request: web.Request) -> web.Response:
                 preset=str(request.query.get("preset") or "default"),
             ))
         task = _selected_history_task(request)
-        return web.json_response(list_training_weights(task))
+        return web.json_response(list_training_weights(
+            task,
+            allow_latest_fallback=not _has_task_selection(request),
+        ))
     except ValueError as e:
         return web.json_response({"ok": False, "error": str(e)}, status=400)
     except FileNotFoundError as e:
         return web.json_response({"ok": False, "error": str(e)}, status=404)
     except OSError as e:
         return web.json_response({"ok": False, "error": f"读取权重资源失败: {e}"}, status=400)
+
+
+async def handle_preview_weight_download(request: web.Request) -> web.StreamResponse:
+    file_path = request.query.get("file", "")
+    if not file_path:
+        return web.json_response({"ok": False, "error": "缺少 file 参数"}, status=400)
+    try:
+        task = _selected_history_task(request)
+        path = resolve_training_weight(file_path, task=task)
+    except FileNotFoundError as e:
+        return web.json_response({"ok": False, "error": str(e)}, status=404)
+    except ValueError as e:
+        return web.json_response({"ok": False, "error": str(e)}, status=403)
+    headers = {
+        "Content-Disposition": f"attachment; filename*=UTF-8''{quote(path.name)}",
+    }
+    return web.FileResponse(path, headers=headers)
 
 
 def _current_sample_dir(request: web.Request) -> str:
@@ -125,6 +155,10 @@ def _current_sample_config(request: web.Request) -> dict:
         return {}
     value = getattr(svc, "current_sample_config", {}) or {}
     return value if isinstance(value, dict) else {}
+
+
+def _has_task_selection(request: web.Request) -> bool:
+    return bool((request.query.get("task_id") or "").strip())
 
 
 def _selected_history_task(request: web.Request) -> dict:

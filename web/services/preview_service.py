@@ -11,6 +11,8 @@ from urllib.parse import quote
 import toml
 from PIL import Image
 
+from web.services import settings_service
+
 ROOT = Path(__file__).resolve().parents[2]
 CONFIGS_DIR = ROOT / "configs"
 SETTINGS_FILE = CONFIGS_DIR / "web-ui-settings.toml"
@@ -19,6 +21,7 @@ IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".webp", ".bmp"}
 WEIGHT_EXTS = {".safetensors"}
 DEFAULT_TRAINING_DIR = "output/ckpt/sample"
 DEFAULT_INFERENCE_DIR = "output/tests"
+DEFAULT_OUTPUT_ROOT = settings_service.DEFAULT_OUTPUT_ROOT
 MAX_IMAGE_LIMIT = 500
 MAX_WEIGHT_LIMIT = 500
 SAMPLE_NAME_RE = re.compile(
@@ -26,21 +29,43 @@ SAMPLE_NAME_RE = re.compile(
 )
 
 
-def get_preview_settings(current_task_sample_dir: str | None = None) -> dict[str, Any]:
+def get_preview_settings(
+    current_task_sample_dir: str | None = None,
+    *,
+    allow_latest_fallback: bool = True,
+) -> dict[str, Any]:
     settings = _load_settings()
     task_dir = _normalize_optional_preview_dir(current_task_sample_dir)
-    training_dir = task_dir or settings["training_dir"]
+    latest_run = _latest_runtime_sample_dir()
+    if task_dir:
+        training_dir = task_dir
+        training_source = "current_task"
+    elif allow_latest_fallback and latest_run:
+        training_dir = latest_run["sample_dir"]
+        training_source = "latest_run"
+    elif not allow_latest_fallback:
+        training_dir = ""
+        training_source = "selected_task_missing"
+    else:
+        training_dir = settings["training_dir"]
+        training_source = "saved_default"
+    output_root = _resolve_global_output_root()
     return {
         "ok": True,
         "training_dir": settings["training_dir"],
         "inference_dir": settings["inference_dir"],
         "custom_dir": settings["custom_dir"],
+        "training_output_root": settings_service.display_path(output_root),
         "current_task_sample_dir": task_dir,
+        "latest_run_dir": latest_run["run_dir"] if latest_run else "",
+        "latest_run_sample_dir": latest_run["sample_dir"] if latest_run else "",
         "effective_training_dir": training_dir,
+        "effective_training_source": training_source,
         "defaults": {
             "training_dir": DEFAULT_TRAINING_DIR,
             "inference_dir": DEFAULT_INFERENCE_DIR,
             "custom_dir": "",
+            "training_output_root": DEFAULT_OUTPUT_ROOT,
         },
     }
 
@@ -58,8 +83,10 @@ def save_preview_settings(data: dict[str, Any]) -> dict[str, Any]:
         ),
         "custom_dir": _normalize_preview_dir(data.get("custom_dir", current["custom_dir"]) or "", allow_empty=True),
     }
+    raw = _load_raw_settings()
+    raw["preview"] = next_settings
     SETTINGS_FILE.parent.mkdir(parents=True, exist_ok=True)
-    SETTINGS_FILE.write_text(toml.dumps({"preview": next_settings}), encoding="utf-8")
+    SETTINGS_FILE.write_text(toml.dumps(raw), encoding="utf-8")
     return {"ok": True, "message": "预览图路径设置已保存", **next_settings}
 
 
@@ -71,16 +98,20 @@ def list_preview_images(
     task: dict[str, Any] | None = None,
     task_id: str | None = None,
     task_label: str | None = None,
+    allow_latest_fallback: bool = True,
     limit: int = 200,
 ) -> dict[str, Any]:
     source = (source or "training").strip().lower()
     if source not in {"training", "inference", "custom"}:
         raise ValueError("source 只能是 training、inference 或 custom")
 
-    settings = get_preview_settings(current_task_sample_dir)
+    settings = get_preview_settings(
+        current_task_sample_dir,
+        allow_latest_fallback=allow_latest_fallback,
+    )
     if source == "training":
         rel_dir = settings["effective_training_dir"]
-        label = f"训练过程中采样结果 · {task_label}" if task_id and task_label else "训练过程中采样结果"
+        label = _training_preview_label(settings, task_id=task_id, task_label=task_label)
     elif source == "inference":
         rel_dir = settings["inference_dir"]
         label = "推理预览"
@@ -89,7 +120,17 @@ def list_preview_images(
         label = "自定义路径"
 
     if not rel_dir:
-        return _empty_listing(source, label, "", exists=False, message="尚未设置自定义预览图路径")
+        message = (
+            "这个历史训练任务没有记录样张目录"
+            if source == "training" and not allow_latest_fallback and task_id
+            else "尚未设置自定义预览图路径"
+        )
+        listing = _empty_listing(source, label, "", exists=False, message=message)
+        listing["sample_config"] = sample_config or {}
+        listing["task_id"] = task_id or ""
+        listing["task_label"] = task_label or ""
+        listing["preview_settings"] = _preview_settings_meta(settings)
+        return listing
 
     resolved = _resolve_preview_dir(rel_dir, current_task_sample_dir=current_task_sample_dir if source == "training" else None)
     if resolved is None:
@@ -102,11 +143,12 @@ def list_preview_images(
             label,
             display_dir,
             exists=False,
-            message=_preview_empty_message(source, "目录不存在", sample_config),
+            message=_preview_empty_message(source, "目录不存在", sample_config, settings=settings),
         )
         listing["sample_config"] = sample_config or {}
         listing["task_id"] = task_id or ""
         listing["task_label"] = task_label or ""
+        listing["preview_settings"] = _preview_settings_meta(settings)
         return listing
     if not resolved.is_dir():
         return _empty_listing(source, label, display_dir, exists=False, message="路径不是目录")
@@ -139,10 +181,11 @@ def list_preview_images(
             )
             for path in candidates[:limit]
         ],
-        "message": "" if candidates else _preview_empty_message(source, "暂无预览图", sample_config),
+        "message": "" if candidates else _preview_empty_message(source, "暂无预览图", sample_config, settings=settings),
         "sample_config": sample_config or {},
         "task_id": task_id or "",
         "task_label": task_label or "",
+        "preview_settings": _preview_settings_meta(settings),
     }
 
 
@@ -277,11 +320,30 @@ def resolve_preview_image(rel_path: str, allowed_sample_dir: str | None = None) 
     return resolved
 
 
-def list_training_weights(task: dict[str, Any] | None = None) -> dict[str, Any]:
+def resolve_training_weight(rel_path: str, task: dict[str, Any] | None = None) -> Path:
+    resolved = _resolve_weight_file(rel_path, task=task)
+    if resolved.suffix.lower() not in WEIGHT_EXTS or resolved.name.endswith("_moe.safetensors"):
+        raise ValueError("只允许下载训练权重文件")
+    if not resolved.exists() or not resolved.is_file():
+        raise FileNotFoundError("权重文件不存在")
+    return resolved
+
+
+def list_training_weights(
+    task: dict[str, Any] | None = None,
+    *,
+    allow_latest_fallback: bool = True,
+) -> dict[str, Any]:
     task = task or {}
     output_dir = str(task.get("output_dir") or "")
     if not output_dir:
-        return _empty_weights_listing("", "训练任务没有记录输出目录")
+        if not allow_latest_fallback:
+            return _empty_weights_listing("", "这个历史训练任务没有记录输出目录")
+        latest = _latest_runtime_sample_dir()
+        if not latest:
+            return _empty_weights_listing("", "训练任务没有记录输出目录")
+        output_dir = str(Path(latest["sample_dir"]).parent)
+        task = {**task, "output_dir": output_dir}
 
     resolved = _resolve_training_output_dir(output_dir)
     if resolved is None:
@@ -332,7 +394,7 @@ def list_config_group_training_weights(
     directories: list[str] = []
 
     for task in tasks:
-        listing = list_training_weights(task)
+        listing = list_training_weights(task, allow_latest_fallback=False)
         directory = str(listing.get("directory") or "")
         if directory and directory not in directories:
             directories.append(directory)
@@ -396,12 +458,7 @@ def _load_settings() -> dict[str, str]:
         "inference_dir": DEFAULT_INFERENCE_DIR,
         "custom_dir": "",
     }
-    if not SETTINGS_FILE.exists():
-        return defaults
-    try:
-        raw = toml.loads(SETTINGS_FILE.read_text(encoding="utf-8"))
-    except toml.TomlDecodeError:
-        return defaults
+    raw = _load_raw_settings()
     preview = raw.get("preview", {}) if isinstance(raw, dict) else {}
     if not isinstance(preview, dict):
         return defaults
@@ -413,6 +470,16 @@ def _load_settings() -> dict[str, str]:
         except ValueError:
             out[key] = defaults[key]
     return out
+
+
+def _load_raw_settings() -> dict[str, Any]:
+    if not SETTINGS_FILE.exists():
+        return {}
+    try:
+        raw = toml.loads(SETTINGS_FILE.read_text(encoding="utf-8"))
+    except toml.TomlDecodeError:
+        return {}
+    return raw if isinstance(raw, dict) else {}
 
 
 def _empty_listing(source: str, label: str, directory: str, *, exists: bool, message: str) -> dict[str, Any]:
@@ -428,6 +495,17 @@ def _empty_listing(source: str, label: str, directory: str, *, exists: bool, mes
         "message": message,
         "sample_config": {},
     }
+
+
+def _preview_settings_meta(settings: dict[str, Any]) -> dict[str, Any]:
+    keys = (
+        "training_output_root",
+        "current_task_sample_dir",
+        "latest_run_dir",
+        "latest_run_sample_dir",
+        "effective_training_source",
+    )
+    return {key: settings.get(key, "") for key in keys}
 
 
 def _image_meta(
@@ -529,9 +607,15 @@ def _weight_meta(path: Path, *, task: dict[str, Any] | None = None) -> dict[str,
     output_name = str(metadata.get("ss_output_name") or "")
     kind = _weight_kind(path.name, output_name)
     scope = _weight_scope(stat.st_mtime, metadata, task)
+    rel_path = _display_path(path)
+    download_url = f"/api/preview/weight?file={quote(rel_path)}"
+    task_id = str((task or {}).get("id") or "")
+    if task_id:
+        download_url += f"&task_id={quote(task_id)}"
     return {
-        "file": _display_path(path),
+        "file": rel_path,
         "name": path.name,
+        "download_url": download_url,
         "kind": kind,
         "scope": scope,
         "scope_label": "本任务" if scope == "task" else "同目录其他运行",
@@ -883,6 +967,30 @@ def _resolve_preview_file(value: str, *, allowed_sample_dir: str | None = None) 
     return resolved
 
 
+def _resolve_weight_file(value: str, *, task: dict[str, Any] | None = None) -> Path:
+    clean = str(value or "").replace("\\", "/").strip()
+    if not clean:
+        raise ValueError("路径不能为空")
+    path = Path(clean)
+    if path.is_absolute():
+        resolved = path.resolve()
+    else:
+        normalized = _normalize_project_file(clean)
+        resolved = (ROOT / normalized).resolve()
+        try:
+            resolved.relative_to(ROOT.resolve())
+        except ValueError as exc:
+            raise ValueError("权重路径必须在项目目录内") from exc
+
+    for allowed in _allowed_weight_dirs(task):
+        try:
+            resolved.relative_to(allowed)
+            return resolved
+        except ValueError:
+            continue
+    raise ValueError("权重文件只允许从训练输出目录或全局输出目录下载")
+
+
 def _resolve_allowed_sample_dir(value: str | None) -> Path | None:
     if not value:
         return None
@@ -897,11 +1005,26 @@ def _allowed_external_preview_dirs(allowed_sample_dir: str | None) -> list[Path]
     sample_dir = _resolve_allowed_sample_dir(allowed_sample_dir)
     if sample_dir is not None:
         dirs.append(sample_dir)
+    dirs.append(_resolve_global_output_root())
     settings = _load_settings()
     for key in ("inference_dir", "custom_dir"):
         resolved = _resolve_display_path(settings.get(key, ""))
         if resolved is not None:
             dirs.append(resolved)
+    return dirs
+
+
+def _allowed_weight_dirs(task: dict[str, Any] | None = None) -> list[Path]:
+    dirs = [_resolve_global_output_root()]
+    output_dir = str((task or {}).get("output_dir") or "")
+    if output_dir:
+        resolved = _resolve_training_output_dir(output_dir)
+        if resolved is not None:
+            dirs.append(resolved)
+    settings = _load_settings()
+    training_dir = _resolve_display_path(settings.get("training_dir", ""))
+    if training_dir is not None:
+        dirs.append(training_dir.parent if training_dir.name == "sample" else training_dir)
     return dirs
 
 
@@ -939,9 +1062,26 @@ def _float_or_none(value: Any) -> float | None:
         return None
 
 
-def _preview_empty_message(source: str, fallback: str, sample_config: dict[str, Any] | None) -> str:
+def _preview_empty_message(
+    source: str,
+    fallback: str,
+    sample_config: dict[str, Any] | None,
+    *,
+    settings: dict[str, Any] | None = None,
+) -> str:
     if source != "training":
         return fallback
+    settings = settings or {}
+    training_source = str(settings.get("effective_training_source") or "")
+    if training_source == "latest_run":
+        cfg = sample_config or {}
+        message = str(cfg.get("message") or "")
+        if message and message != "训练中采样已配置":
+            return f"{fallback}。{message}。"
+        return f"{fallback}。最新运行目录里还没有可显示的样张。"
+    if training_source == "saved_default" and not settings.get("latest_run_sample_dir"):
+        root = str(settings.get("training_output_root") or DEFAULT_OUTPUT_ROOT)
+        return f"{fallback}。全局输出目录 {root} 下还没有可读取的 Web 运行样张目录。"
     cfg = sample_config or {}
     message = str(cfg.get("message") or "")
     if message and message != "训练中采样已配置":
@@ -956,3 +1096,69 @@ def _display_path(path: Path) -> str:
         return path.resolve().relative_to(ROOT.resolve()).as_posix()
     except ValueError:
         return str(path)
+
+
+def _training_preview_label(settings: dict[str, Any], *, task_id: str | None, task_label: str | None) -> str:
+    if task_id and task_label:
+        return f"训练过程中采样结果 · {task_label}"
+    source = str(settings.get("effective_training_source") or "")
+    if source == "current_task":
+        return "训练过程中采样结果 · 当前任务"
+    if source == "latest_run":
+        run_dir = str(settings.get("latest_run_dir") or "")
+        run_name = Path(run_dir).name if run_dir else "最新运行目录"
+        return f"训练过程中采样结果 · {run_name}"
+    return "训练过程中采样结果 · 兼容目录"
+
+
+def _latest_runtime_sample_dir() -> dict[str, str] | None:
+    output_root = _resolve_global_output_root()
+    if not output_root.exists() or not output_root.is_dir():
+        return None
+
+    candidates: list[tuple[float, str, Path, Path]] = []
+    try:
+        children = list(output_root.iterdir())
+    except OSError:
+        return None
+    for run_dir in children:
+        if not run_dir.is_dir():
+            continue
+        sample_dir = run_dir / "training_output" / "sample"
+        if not sample_dir.is_dir():
+            continue
+        candidates.append((_runtime_sample_sort_ts(run_dir, sample_dir), run_dir.name, run_dir, sample_dir))
+    if not candidates:
+        return None
+    _, _, run_dir, sample_dir = max(candidates, key=lambda item: (item[0], item[1]))
+    return {
+        "run_dir": _display_path(run_dir),
+        "sample_dir": _display_path(sample_dir),
+    }
+
+
+def _runtime_sample_sort_ts(run_dir: Path, sample_dir: Path) -> float:
+    timestamps: list[float] = []
+    for path in (run_dir, run_dir / "training_output", sample_dir):
+        try:
+            timestamps.append(path.stat().st_mtime)
+        except OSError:
+            continue
+    try:
+        latest_image = max(
+            (
+                path.stat().st_mtime
+                for path in sample_dir.iterdir()
+                if path.is_file() and path.suffix.lower() in IMAGE_EXTS
+            ),
+            default=None,
+        )
+        if latest_image is not None:
+            timestamps.append(latest_image)
+    except OSError:
+        pass
+    return max(timestamps, default=0.0)
+
+
+def _resolve_global_output_root() -> Path:
+    return settings_service.resolve_output_root()

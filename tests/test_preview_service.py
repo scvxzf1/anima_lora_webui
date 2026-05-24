@@ -1,8 +1,95 @@
 from __future__ import annotations
 
-from PIL import Image
+from pathlib import Path
+import os
 
-from web.services import preview_service
+from PIL import Image
+import toml
+
+from web.services import preview_service, settings_service
+
+
+def test_global_settings_default_save_and_resolve(tmp_path, monkeypatch):
+    settings_file = tmp_path / "configs" / "web-ui-settings.toml"
+    _write_base_model_defaults(settings_file.parent)
+    monkeypatch.setattr(settings_service, "ROOT", tmp_path)
+    monkeypatch.setattr(settings_service, "SETTINGS_FILE", settings_file)
+
+    defaults = settings_service.get_global_settings()
+    assert defaults["output_root"] == "output/runs"
+    assert defaults["pretrained_model_name_or_path"] == "models/base.safetensors"
+    assert defaults["qwen3"] == "models/qwen.safetensors"
+    assert defaults["vae"] == "models/vae.safetensors"
+    assert defaults["defaults"]["pretrained_model_name_or_path"] == "models/base.safetensors"
+
+    saved = settings_service.save_global_settings({
+        "output_root": "custom/runs",
+        "pretrained_model_name_or_path": "${ANIMA_DIT_MODEL}",
+        "qwen3": "/abs/qwen.safetensors",
+        "vae": "models/custom_vae.safetensors",
+    })
+    assert saved["output_root"] == "custom/runs"
+    assert saved["pretrained_model_name_or_path"] == "${ANIMA_DIT_MODEL}"
+    assert saved["qwen3"] == "/abs/qwen.safetensors"
+    assert saved["vae"] == "models/custom_vae.safetensors"
+    assert settings_service.resolve_output_root() == (tmp_path / "custom/runs").resolve()
+
+    blank_saved = settings_service.save_global_settings({
+        "pretrained_model_name_or_path": "",
+    })
+    assert blank_saved["pretrained_model_name_or_path"] == "${ANIMA_DIT_MODEL}"
+
+    absolute_root = tmp_path / "absolute-runs"
+    saved_abs = settings_service.save_global_settings({"output_root": str(absolute_root)})
+    assert saved_abs["output_root"] == absolute_root.resolve().as_posix()
+    assert saved_abs["pretrained_model_name_or_path"] == "${ANIMA_DIT_MODEL}"
+    assert settings_service.resolve_output_root() == absolute_root.resolve()
+
+    data = toml.loads(settings_file.read_text(encoding="utf-8"))
+    assert data["global"]["output_root"] == absolute_root.resolve().as_posix()
+    assert data["global"]["pretrained_model_name_or_path"] == "${ANIMA_DIT_MODEL}"
+    assert data["global"]["qwen3"] == "/abs/qwen.safetensors"
+    assert data["global"]["vae"] == "models/custom_vae.safetensors"
+
+
+def _write_base_model_defaults(configs: Path) -> None:
+    configs.mkdir(parents=True, exist_ok=True)
+    (configs / "base.toml").write_text(
+        "\n".join(
+            [
+                'pretrained_model_name_or_path = "models/base.safetensors"',
+                'qwen3 = "models/qwen.safetensors"',
+                'vae = "models/vae.safetensors"',
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+
+def _patch_preview_settings_file(monkeypatch, settings_file: Path, *, root: Path | None = None) -> None:
+    monkeypatch.setattr(preview_service, "SETTINGS_FILE", settings_file)
+    monkeypatch.setattr(settings_service, "SETTINGS_FILE", settings_file)
+    if root is not None:
+        monkeypatch.setattr(preview_service, "ROOT", root)
+        monkeypatch.setattr(settings_service, "ROOT", root)
+
+
+def test_preview_settings_preserve_global_section(tmp_path, monkeypatch):
+    settings_file = tmp_path / "configs" / "web-ui-settings.toml"
+    settings_file.parent.mkdir(parents=True)
+    settings_file.write_text('[global]\noutput_root = "custom/runs"\n', encoding="utf-8")
+    _patch_preview_settings_file(monkeypatch, settings_file)
+
+    preview_service.save_preview_settings(
+        {
+            "training_dir": "output/ckpt/sample",
+            "inference_dir": "output/tests",
+            "custom_dir": "",
+        }
+    )
+
+    data = toml.loads(settings_file.read_text(encoding="utf-8"))
+    assert data["global"]["output_root"] == "custom/runs"
 
 
 def test_preview_settings_allow_absolute_inference_and_custom_dirs(tmp_path, monkeypatch):
@@ -10,7 +97,7 @@ def test_preview_settings_allow_absolute_inference_and_custom_dirs(tmp_path, mon
     inference_dir = tmp_path / "inference"
     custom_dir = tmp_path / "custom"
 
-    monkeypatch.setattr(preview_service, "SETTINGS_FILE", settings_file)
+    _patch_preview_settings_file(monkeypatch, settings_file)
 
     payload = preview_service.save_preview_settings(
         {
@@ -26,6 +113,58 @@ def test_preview_settings_allow_absolute_inference_and_custom_dirs(tmp_path, mon
     assert preview_service.get_preview_settings()["custom_dir"] == custom_dir.resolve().as_posix()
 
 
+def test_training_preview_defaults_to_latest_runtime_run(tmp_path, monkeypatch):
+    settings_file = tmp_path / "configs" / "web-ui-settings.toml"
+    settings_file.parent.mkdir(parents=True)
+    settings_file.write_text('[global]\noutput_root = "output/runs"\n', encoding="utf-8")
+
+    _patch_preview_settings_file(monkeypatch, settings_file, root=tmp_path)
+
+    old_sample = tmp_path / "output" / "runs" / "522-20260523-114514" / "training_output" / "sample"
+    new_sample = tmp_path / "output" / "runs" / "522-20260523-114515" / "training_output" / "sample"
+    old_sample.mkdir(parents=True)
+    new_sample.mkdir(parents=True)
+
+    old_image = old_sample / "old_e000001_00_20260523114514_1.png"
+    new_image = new_sample / "new_e000001_00_20260523114515_2.png"
+    Image.new("RGB", (8, 8), color=(12, 34, 56)).save(old_image)
+    Image.new("RGB", (8, 8), color=(56, 34, 12)).save(new_image)
+
+    for ts, path in ((100.0, old_sample.parent.parent.parent), (100.0, old_sample.parent.parent), (100.0, old_sample), (100.0, old_image), (200.0, new_sample.parent.parent.parent), (200.0, new_sample.parent.parent), (200.0, new_sample), (200.0, new_image)):
+        os.utime(path, (ts, ts))
+
+    payload = preview_service.list_preview_images("training")
+
+    assert payload["directory"] == "output/runs/522-20260523-114515/training_output/sample"
+    assert payload["preview_settings"]["effective_training_source"] == "latest_run"
+    assert payload["preview_settings"]["latest_run_dir"] == "output/runs/522-20260523-114515"
+    assert payload["images"][0]["name"] == "new_e000001_00_20260523114515_2.png"
+
+
+def test_selected_history_task_without_sample_dir_does_not_fallback_to_latest_run(tmp_path, monkeypatch):
+    settings_file = tmp_path / "configs" / "web-ui-settings.toml"
+    settings_file.parent.mkdir(parents=True)
+    settings_file.write_text('[global]\noutput_root = "output/runs"\n', encoding="utf-8")
+    _patch_preview_settings_file(monkeypatch, settings_file, root=tmp_path)
+    latest_sample = tmp_path / "output" / "runs" / "522-20260523-114515" / "training_output" / "sample"
+    latest_sample.mkdir(parents=True)
+    Image.new("RGB", (8, 8), color=(56, 34, 12)).save(latest_sample / "latest_e000001_00_20260523114515_2.png")
+
+    payload = preview_service.list_preview_images(
+        "training",
+        current_task_sample_dir="",
+        task={"id": "task-old", "job": "training"},
+        task_id="task-old",
+        task_label="历史任务",
+        allow_latest_fallback=False,
+    )
+
+    assert payload["count"] == 0
+    assert payload["directory"] == ""
+    assert payload["message"] == "这个历史训练任务没有记录样张目录"
+    assert payload["preview_settings"]["effective_training_source"] == "selected_task_missing"
+
+
 def test_preview_image_absolute_file_must_be_under_saved_preview_dir(tmp_path, monkeypatch):
     settings_file = tmp_path / "web-ui-settings.toml"
     custom_dir = tmp_path / "custom"
@@ -37,7 +176,7 @@ def test_preview_image_absolute_file_must_be_under_saved_preview_dir(tmp_path, m
     Image.new("RGB", (8, 8), color=(12, 34, 56)).save(allowed_image)
     Image.new("RGB", (8, 8), color=(56, 34, 12)).save(blocked_image)
 
-    monkeypatch.setattr(preview_service, "SETTINGS_FILE", settings_file)
+    _patch_preview_settings_file(monkeypatch, settings_file)
     preview_service.save_preview_settings(
         {
             "training_dir": "output/ckpt/sample",
@@ -53,6 +192,21 @@ def test_preview_image_absolute_file_must_be_under_saved_preview_dir(tmp_path, m
         assert "已保存的预览目录" in str(exc)
     else:
         raise AssertionError("项目外且不在已保存预览目录内的图片不应允许读取")
+
+
+def test_preview_image_absolute_file_allowed_under_global_output_root(tmp_path, monkeypatch):
+    settings_file = tmp_path / "configs" / "web-ui-settings.toml"
+    settings_file.parent.mkdir(parents=True)
+    abs_root = tmp_path / "absolute-runs"
+    sample_dir = abs_root / "522-20260523-114514" / "training_output" / "sample"
+    sample_dir.mkdir(parents=True)
+    image_path = sample_dir / "allowed.png"
+    Image.new("RGB", (8, 8), color=(12, 34, 56)).save(image_path)
+    settings_file.write_text(f'[global]\noutput_root = "{abs_root.as_posix()}"\n', encoding="utf-8")
+
+    _patch_preview_settings_file(monkeypatch, settings_file, root=tmp_path)
+
+    assert preview_service.resolve_preview_image(str(image_path)) == image_path.resolve()
 
 
 def test_training_preview_images_include_sample_details(tmp_path, monkeypatch):
@@ -105,6 +259,106 @@ def test_training_preview_images_include_sample_details(tmp_path, monkeypatch):
         "seed": 1234,
         "sample_sampler": "euler",
     }
+
+
+def test_training_weights_default_to_latest_runtime_run(tmp_path, monkeypatch):
+    settings_file = tmp_path / "configs" / "web-ui-settings.toml"
+    settings_file.parent.mkdir(parents=True)
+    settings_file.write_text('[global]\noutput_root = "output/runs"\n', encoding="utf-8")
+
+    _patch_preview_settings_file(monkeypatch, settings_file, root=tmp_path)
+
+    sample_dir = tmp_path / "output" / "runs" / "522-20260523-114515" / "training_output" / "sample"
+    sample_dir.mkdir(parents=True)
+    weight_dir = sample_dir.parent
+    weight_path = weight_dir / "demo.safetensors"
+    weight_path.write_bytes(b"stub")
+
+    payload = preview_service.list_training_weights()
+
+    assert payload["directory"] == "output/runs/522-20260523-114515/training_output"
+    assert payload["count"] == 1
+    assert payload["weights"][0]["name"] == "demo.safetensors"
+    assert payload["weights"][0]["download_url"].startswith("/api/preview/weight?file=")
+
+
+def test_training_weight_download_resolves_allowed_paths(tmp_path, monkeypatch):
+    settings_file = tmp_path / "configs" / "web-ui-settings.toml"
+    settings_file.parent.mkdir(parents=True)
+    abs_root = tmp_path / "absolute-runs"
+    weight_dir = abs_root / "522-20260523-114514" / "training_output"
+    weight_dir.mkdir(parents=True)
+    weight = weight_dir / "demo.safetensors"
+    weight.write_bytes(b"stub")
+    settings_file.write_text(f'[global]\noutput_root = "{abs_root.as_posix()}"\n', encoding="utf-8")
+    _patch_preview_settings_file(monkeypatch, settings_file, root=tmp_path)
+
+    assert preview_service.resolve_training_weight(str(weight)) == weight.resolve()
+    assert preview_service.resolve_training_weight(weight.relative_to(tmp_path).as_posix()) == weight.resolve()
+
+
+def test_training_weight_download_resolves_selected_task_output(tmp_path, monkeypatch):
+    settings_file = tmp_path / "configs" / "web-ui-settings.toml"
+    settings_file.parent.mkdir(parents=True)
+    output_dir = tmp_path / "legacy-output"
+    output_dir.mkdir()
+    weight = output_dir / "demo.safetensors"
+    weight.write_bytes(b"stub")
+    settings_file.write_text('[global]\noutput_root = "output/runs"\n', encoding="utf-8")
+    _patch_preview_settings_file(monkeypatch, settings_file, root=tmp_path)
+
+    task = {"id": "task-a", "job": "training", "variant": "demo", "output_dir": str(output_dir)}
+    listing = preview_service.list_training_weights(task, allow_latest_fallback=False)
+
+    assert listing["weights"][0]["download_url"].endswith("&task_id=task-a")
+    assert preview_service.resolve_training_weight(str(weight), task=task) == weight.resolve()
+
+
+def test_training_weight_download_rejects_non_weight_and_outside_paths(tmp_path, monkeypatch):
+    settings_file = tmp_path / "configs" / "web-ui-settings.toml"
+    settings_file.parent.mkdir(parents=True)
+    output_root = tmp_path / "output" / "runs"
+    allowed_dir = output_root / "522-20260523-114514" / "training_output"
+    allowed_dir.mkdir(parents=True)
+    bad_ext = allowed_dir / "demo.txt"
+    bad_ext.write_text("not a weight", encoding="utf-8")
+    outside = tmp_path / "outside.safetensors"
+    outside.write_bytes(b"stub")
+    settings_file.write_text('[global]\noutput_root = "output/runs"\n', encoding="utf-8")
+    _patch_preview_settings_file(monkeypatch, settings_file, root=tmp_path)
+
+    try:
+        preview_service.resolve_training_weight(str(bad_ext))
+    except ValueError as exc:
+        assert "权重" in str(exc)
+    else:
+        raise AssertionError("非 safetensors 文件不应允许下载")
+
+    try:
+        preview_service.resolve_training_weight(str(outside))
+    except ValueError as exc:
+        assert "训练输出目录" in str(exc)
+    else:
+        raise AssertionError("全局输出目录外的权重不应允许下载")
+
+
+def test_selected_history_task_without_output_dir_does_not_fallback_to_latest_run(tmp_path, monkeypatch):
+    settings_file = tmp_path / "configs" / "web-ui-settings.toml"
+    settings_file.parent.mkdir(parents=True)
+    settings_file.write_text('[global]\noutput_root = "output/runs"\n', encoding="utf-8")
+    _patch_preview_settings_file(monkeypatch, settings_file, root=tmp_path)
+    sample_dir = tmp_path / "output" / "runs" / "522-20260523-114515" / "training_output" / "sample"
+    sample_dir.mkdir(parents=True)
+    (sample_dir.parent / "demo.safetensors").write_bytes(b"stub")
+
+    payload = preview_service.list_training_weights(
+        {"id": "task-old", "job": "training"},
+        allow_latest_fallback=False,
+    )
+
+    assert payload["count"] == 0
+    assert payload["directory"] == ""
+    assert payload["message"] == "这个历史训练任务没有记录输出目录"
 
 
 def test_step_sample_filename_uses_step_not_epoch():

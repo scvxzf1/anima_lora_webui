@@ -1,37 +1,26 @@
-# IP-Adapter 数据集蓝图。
+# IP-Adapter dataset blueprint.
 #
-# 这个文件只描述 IP-Adapter 如何读取数据，不是完整训练配置。
-# IP-Adapter 的训练入口在 configs/gui-methods/ip_adapter.toml 或
-# configs/methods/ip_adapter.toml。
-#
-# 它复用 LoRA 流程生成的缩放图和缓存：
-# - post_image_dataset/resized：预处理后的训练图片。
-# - post_image_dataset/lora：VAE latent、文本编码和 PE 图像特征缓存。
-# 自配对训练时，参考图和 VAE 目标图就是同一张图，因此不需要第二套数据集。
+# Reuses the LoRA pipeline's resized images and on-disk caches under
+# `post_image_dataset/resized` + `post_image_dataset/lora` (already populated by
+# `make preprocess` / `make preprocess-pe`). Self-paired training: the reference
+# image and the VAE target are the same image, so no separate dataset is needed.
 
 [general]
-# 标注文件扩展名。默认读取和图片同名的 .txt 文件。
 caption_extension = '.txt'
-
-# 保留 caption 开头的 token 数，避免核心触发词被随机处理破坏。
 keep_tokens = 3
 
 [[datasets]]
-# 训练分辨率、batch 和分桶设置。enable_bucket=true 会尽量保留原图宽高比。
 resolution = 1024
 batch_size = 1
 enable_bucket = true
-
-# 验证集比例和随机种子：固定种子可以让每次划分更稳定。
 validation_split = 0.025
 validation_seed = 42
 
   [[datasets.subsets]]
-  # 读取 LoRA 预处理后的缩放图。训练前通常要先完成预处理。
   image_dir = 'post_image_dataset/resized'
-
-  # 读取/写入 LoRA 共用缓存，包含 latent、文本编码和 PE 图像特征。
   cache_dir = 'post_image_dataset/lora'
-
-  # 每张图在一个 epoch 内重复训练的次数。
   num_repeats = 1
+  # Images live in nested artist subfolders (post_image_dataset/resized/<artist>/);
+  # walk them like the LoRA pipeline. Caches stay flat in cache_dir (stem-keyed),
+  # so stems must be unique across the tree.
+  recursive = true

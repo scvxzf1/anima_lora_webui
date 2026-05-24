@@ -40,9 +40,9 @@ _METHOD_ORDER = (
     "tlora",
     "hydralora",
     "reft",
-    "postfix",
     "fera",
     "chimera",
+    "soft_tokens",
     "ip_adapter",
     "easycontrol",
 )
@@ -203,6 +203,9 @@ _GROUPS = {
         "specialize_experts_by_sigma_buckets",
         "sigma_bucket_boundaries",
         "network_train_unet_only",
+        "content_router_source",
+        "content_router_init_std",
+        "content_router_layer_norm",
     },
     "Training": {
         "learning_rate",
@@ -216,6 +219,9 @@ _GROUPS = {
         "lr_scheduler",
         "timestep_sampling",
         "discrete_flow_shift",
+        "use_valid",
+        "validation_split_num",
+        "validation_baselines",
     },
     "Performance": {
         "attn_mode",
@@ -228,7 +234,9 @@ _GROUPS = {
         "cache_llm_adapter_outputs",
         "masked_loss",
         "mixed_precision",
+        "static_pad",
         "static_token_count",
+        "max_data_loader_n_workers",
         "vae_chunk_size",
         "vae_disable_cache",
         "cache_latents",
@@ -249,6 +257,9 @@ _GROUPS = {
         "source_image_dir",
         "resized_image_dir",
         "lora_cache_dir",
+        "path_pattern",
+        "drop_lowres_images",
+        "min_pixels",
     },
 }
 _K2G = {k: g for g, ks in _GROUPS.items() for k in ks}
@@ -276,6 +287,10 @@ _BASIC = {
     "source_image_dir",
     "resized_image_dir",
     "output_dir",
+    "path_pattern",
+    "drop_lowres_images",
+    "min_pixels",
+    "validation_split_num",
 }
 
 

@@ -16,6 +16,8 @@ Use as::
 
 from __future__ import annotations
 
+import json
+import os
 import re
 import time
 
@@ -127,4 +129,112 @@ class TqdmProgressTracker:
         if steps <= 0:
             return ""
         spi = (now - anchor_time) / steps
-        return f" — {spi:.2f}s/step"
+        remaining = tot - cur
+        if remaining <= 0:
+            return f" — {spi:.2f}s/step"
+        return f" — {spi:.2f}s/step — ETA {_format_duration(remaining * spi)}"
+
+
+class JsonlProgressReader:
+    """Drive a QProgressBar from a training progress.jsonl stream."""
+
+    def __init__(self, bar: QProgressBar) -> None:
+        self._bar = bar
+        self._path: str | None = None
+        self._pos = 0
+        self._total_steps = 0
+        self._active = False
+        self._anchor: tuple[float, int] | None = None
+
+    @property
+    def active(self) -> bool:
+        return self._active
+
+    def watch(self, path: str | None) -> None:
+        self._path = path
+        self._pos = 0
+        self._total_steps = 0
+        self._active = False
+        self._anchor = None
+
+    def reset(self) -> None:
+        self.watch(None)
+
+    def poll(self) -> None:
+        if not self._path or not os.path.exists(self._path):
+            return
+        try:
+            with open(self._path, "r", encoding="utf-8") as f:
+                f.seek(self._pos)
+                chunk = f.read()
+                self._pos = f.tell()
+        except OSError:
+            return
+        for line in chunk.splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                event = json.loads(line)
+            except ValueError:
+                self._pos -= len(line.encode("utf-8"))
+                return
+            if isinstance(event, dict):
+                self._consume(event)
+
+    def _consume(self, event: dict) -> None:
+        kind = event.get("ev")
+        if kind == "run_start":
+            self._active = True
+            self._total_steps = int(event.get("total_steps") or 0)
+            self._anchor = None
+            self._bar.setRange(0, self._total_steps or 0)
+            self._bar.setValue(0)
+            self._bar.setFormat("starting...")
+            self._bar.setVisible(True)
+            return
+        if kind == "step":
+            self._active = True
+            self._update_bar(int(event.get("global_step") or 0), event.get("ts"))
+            return
+        if kind == "val":
+            cmmd = event.get("cmmd")
+            if cmmd is not None and self._bar.isVisible():
+                self._bar.setFormat(self._bar.format() + f" — CMMD {cmmd:.4f}")
+
+    def _update_bar(self, cur: int, ts: float | None = None) -> None:
+        total = self._total_steps
+        rate = self._rate(cur, ts)
+        if total > 0:
+            self._bar.setRange(0, total)
+            self._bar.setValue(cur)
+            self._bar.setFormat(f"step {cur}/{total} (%p%){rate}")
+        else:
+            self._bar.setRange(0, 0)
+            self._bar.setFormat(f"step {cur}{rate}")
+        if not self._bar.isVisible():
+            self._bar.setVisible(True)
+
+    def _rate(self, cur: int, ts: float | None) -> str:
+        clock = ts if ts is not None else time.monotonic()
+        if self._anchor is None or cur < self._anchor[1]:
+            self._anchor = (clock, cur)
+            return ""
+        anchor_time, anchor_step = self._anchor
+        steps = cur - anchor_step
+        if steps <= 0:
+            return ""
+        spi = (clock - anchor_time) / steps
+        remaining = self._total_steps - cur
+        if self._total_steps <= 0 or remaining <= 0:
+            return f" — {spi:.2f}s/step"
+        return f" — {spi:.2f}s/step — ETA {_format_duration(remaining * spi)}"
+
+
+def _format_duration(seconds: float) -> str:
+    s = max(0, int(round(seconds)))
+    if s < 3600:
+        return f"{s // 60}:{s % 60:02d}"
+    h, rem = divmod(s, 3600)
+    m, sec = divmod(rem, 60)
+    return f"{h}:{m:02d}:{sec:02d}"

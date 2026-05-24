@@ -6,6 +6,7 @@ import shutil
 import subprocess
 from datetime import datetime
 from pathlib import Path
+import tomllib
 from typing import Any
 from urllib.parse import quote
 
@@ -13,6 +14,8 @@ import toml
 import tomlkit
 
 from library.env import expand_env_vars, expand_env_vars_in_obj, load_dotenv
+from web.services.settings_service import display_path as _display_settings_path
+from web.services.settings_service import resolve_output_root
 
 ROOT = Path(__file__).resolve().parents[2]
 CONFIGS_DIR = ROOT / "configs"
@@ -32,6 +35,11 @@ DATASET_PRESETS_DIR = CONFIGS_DIR / "datasets"
 DATASET_IMAGE_EXTS = frozenset({".png", ".jpg", ".jpeg", ".webp", ".bmp"})
 DATASET_PREVIEW_LIMIT = 120
 DATASET_CAPTION_MAX_CHARS = 20000
+OUTPUT_RUN_CONFIG_FILES = {
+    "original": ("config.original.toml", "原始配置"),
+    "runtime": ("config.runtime.toml", "运行时配置"),
+    "dataset": ("dataset.runtime.toml", "数据集配置"),
+}
 DATASET_SETTING_KEYS = frozenset({
     "resolution",
     "batch_size",
@@ -56,6 +64,10 @@ HIDDEN_DATASET_PRESET_FILES = frozenset({
     "configs/datasets/easycontrol.toml",
     "configs/datasets/ip_adapter.toml",
 })
+HIDDEN_CONFIG_FILES = frozenset({
+    "configs/gui-methods/postfix_ortho_cond.toml",
+    "configs/methods/postfix.toml",
+})
 SYSTEM_PRESET_PREFIXES = ("configs/methods/", "configs/gui-methods/")
 SYSTEM_MANAGED_FILES = frozenset({
     "configs/web-file-groups.toml",
@@ -75,7 +87,6 @@ CONFIG_FILE_LABELS_ZH = {
     "configs/gui-methods/lokr.toml": "LoKr 训练变体",
     "configs/gui-methods/lora-8gb.toml": "LoRA 低显存变体",
     "configs/gui-methods/lora.toml": "LoRA 标准训练变体",
-    "configs/gui-methods/postfix_ortho_cond.toml": "Postfix 条件正交变体",
     "configs/gui-methods/reft.toml": "ReFT 训练变体",
     "configs/gui-methods/soft_tokens.toml": "Soft Tokens 训练变体",
     "configs/gui-methods/tlora-8gb.toml": "T-LoRA 低显存变体",
@@ -85,8 +96,8 @@ CONFIG_FILE_LABELS_ZH = {
     "configs/methods/easycontrol.toml": "EasyControl 内置方法配置",
     "configs/methods/ip_adapter.toml": "IP-Adapter 内置方法配置",
     "configs/methods/lora.toml": "LoRA 内置方法配置",
-    "configs/methods/postfix.toml": "Postfix 内置方法配置",
     "configs/methods/soft_tokens.toml": "Soft Tokens 内置方法配置",
+    "configs/methods/spd.toml": "SPD 实验配置",
     "configs/methods/turbo.toml": "Turbo 内置方法配置",
 }
 SYSTEM_CONFIG_GROUP_IDS = frozenset({
@@ -121,7 +132,8 @@ load_dotenv()
 def list_methods() -> list[str]:
     return [
         "lora", "lokr", "ortholora", "tlora", "hydralora",
-        "reft", "postfix", "ip_adapter", "easycontrol",
+        "reft", "chimera", "soft_tokens", "ip_adapter", "easycontrol",
+        "spd",
     ]
 
 
@@ -132,13 +144,18 @@ _FAMILY_VARIANTS: dict[str, list[str]] = {
     "tlora": ["tlora", "tlora_ortho"],
     "hydralora": ["hydralora_sigma", "hydralora_experimental", "hydralora_fei", "fera"],
     "reft": ["reft", "tlora_ortho_reft"],
-    "postfix": ["postfix_ortho_cond"],
+    "chimera": ["chimera_hydra"],
+    "soft_tokens": ["soft_tokens"],
     "ip_adapter": ["ip_adapter"],
     "easycontrol": ["easycontrol"],
+    "spd": ["spd"],
 }
 
 
 def list_variants(method: str) -> list[str]:
+    if method == "spd":
+        spd_config = CONFIGS_DIR / "methods" / "spd.toml"
+        return ["spd"] if spd_config.exists() else []
     if not GUI_METHODS_DIR.exists():
         return []
     have = {p.stem for p in GUI_METHODS_DIR.glob("*.toml")}
@@ -149,7 +166,10 @@ def list_variants(method: str) -> list[str]:
 def list_all_variants() -> list[str]:
     if not GUI_METHODS_DIR.exists():
         return []
-    return sorted(p.stem for p in GUI_METHODS_DIR.glob("*.toml"))
+    return sorted(
+        p.stem for p in GUI_METHODS_DIR.glob("*.toml")
+        if _display_path(p) not in HIDDEN_CONFIG_FILES
+    )
 
 
 def list_presets() -> list[str]:
@@ -535,11 +555,18 @@ def apply_auto_data_dirs(cfg: dict[str, Any], *, create: bool = False) -> dict[s
     return next_cfg
 
 
-def preflight_training_config(variant: str, preset: str, methods_subdir: str = "gui-methods") -> dict[str, Any]:
-    cfg = apply_auto_data_dirs(load_merged_config(variant, preset, methods_subdir))
+def preflight_training_config(
+    variant: str,
+    preset: str,
+    methods_subdir: str = "gui-methods",
+    *,
+    config_file: str | None = None,
+) -> dict[str, Any]:
+    cfg = _load_training_config_for_web_run(variant, preset, methods_subdir, config_file=config_file)
     checks: list[dict[str, str]] = []
     errors: list[dict[str, str]] = []
     warnings: list[dict[str, str]] = []
+    runtime_config = is_web_runtime_config(config_file) or _looks_like_web_runtime_config(cfg)
 
     def add(level: str, key: str, message: str, path: Path | None = None) -> None:
         item = {
@@ -595,17 +622,15 @@ def preflight_training_config(variant: str, preset: str, methods_subdir: str = "
     check_file("pretrained_model_name_or_path", "基础 DiT 模型", (".safetensors", ".pt", ".pth", ".ckpt"))
     check_file("qwen3", "Qwen3 文本编码器", (".safetensors", ".pt", ".pth", ".bin"))
     check_file("vae", "VAE 模型", (".safetensors", ".pt", ".pth", ".ckpt"))
-    if cfg.get("dataset_config"):
+    dataset_config_path = _dataset_config_path_from_cfg(cfg)
+    if cfg.get("dataset_config") and (runtime_config or (dataset_config_path and dataset_config_path.exists())):
         check_file("dataset_config", "数据集配置", (".toml",))
 
-    check_dir("source_image_dir", "源图像目录", must_exist=True, warn_empty=True)
-    check_dir("resized_image_dir", "缩放图像目录", must_exist=False, warn_empty=True)
-    check_dir("lora_cache_dir", "LoRA 缓存目录", must_exist=False, warn_empty=True)
-    check_dir("output_dir", "输出目录", must_exist=False)
-
-    _check_dataset_paths(cfg, add)
-    _check_training_images(cfg, add)
-    _check_cache_sidecars(cfg, add)
+    _check_dataset_source_paths(cfg, add)
+    _check_dataset_paths(cfg, add, check_runtime_dirs=runtime_config)
+    if runtime_config:
+        _check_training_images(cfg, add)
+        _check_cache_sidecars(cfg, add)
 
     return {
         "ok": not errors,
@@ -621,6 +646,101 @@ def preflight_training_config(variant: str, preset: str, methods_subdir: str = "
         "errors": errors,
         "warnings": warnings,
     }
+
+
+def _load_training_config_for_web_run(
+    variant: str,
+    preset: str,
+    methods_subdir: str,
+    *,
+    config_file: str | None = None,
+) -> dict[str, Any]:
+    cfg = apply_auto_data_dirs(load_merged_config(variant, preset, methods_subdir))
+    source = _config_file_path(config_file)
+    if source is not None:
+        try:
+            cfg.update(expand_env_vars_in_obj(toml.loads(source.read_text(encoding="utf-8"))))
+        except toml.TomlDecodeError as exc:
+            raise ValueError(f"训练配置 TOML 解析失败: {config_file}") from exc
+    return apply_auto_data_dirs(cfg)
+
+
+def _config_file_path(config_file: str | None) -> Path | None:
+    raw = str(config_file or "").strip()
+    if not raw:
+        return None
+    path = Path(raw.replace("\\", "/"))
+    if ".." in path.parts:
+        raise ValueError("训练配置路径不能包含 ..")
+    if path.is_absolute():
+        resolved = path.resolve()
+    else:
+        normalized = _normalize_config_rel_path(raw)
+        resolved = (ROOT / normalized).resolve()
+    if not _is_allowed_training_config_path(resolved):
+        raise ValueError("训练配置必须在项目目录或全局输出文件夹内")
+    if not resolved.is_file():
+        raise FileNotFoundError(f"训练配置不存在: {config_file}")
+    if resolved.suffix.lower() != ".toml":
+        raise ValueError("训练配置必须是 TOML 文件")
+    return resolved
+
+
+def _is_allowed_training_config_path(path: Path) -> bool:
+    resolved = path.resolve()
+    try:
+        resolved.relative_to(ROOT.resolve())
+        return True
+    except ValueError:
+        pass
+    try:
+        rel_to_output = resolved.relative_to(resolve_output_root().resolve())
+    except ValueError:
+        return _is_web_runtime_config_tree(resolved)
+    return (
+        len(rel_to_output.parts) == 2
+        and rel_to_output.name == "config.runtime.toml"
+        and _is_web_runtime_config_tree(resolved)
+    )
+
+
+def _is_web_runtime_config_tree(path: Path) -> bool:
+    run_dir = path.parent
+    return (
+        path.name == "config.runtime.toml"
+        and path.is_file()
+        and (run_dir / "model_cache").is_dir()
+        and (run_dir / "dataset_cache").is_dir()
+        and (run_dir / "training_output").is_dir()
+    )
+
+
+def is_web_runtime_config(config_file: str | None) -> bool:
+    path = _config_file_path(config_file)
+    if path is None:
+        return False
+    run_dir = path.parent
+    return (
+        path.name == "config.runtime.toml"
+        and (run_dir / "model_cache").is_dir()
+        and (run_dir / "dataset_cache").is_dir()
+        and (run_dir / "training_output").is_dir()
+    )
+
+
+def _looks_like_web_runtime_config(cfg: dict[str, Any]) -> bool:
+    output_root = resolve_output_root().resolve()
+    for key in ("output_dir", "logging_dir", "dataset_config", "resized_image_dir", "lora_cache_dir"):
+        raw = str(cfg.get(key) or "").strip()
+        if not raw:
+            continue
+        path = _resolve_project_path(raw)
+        try:
+            path.relative_to(output_root)
+            return True
+        except ValueError:
+            continue
+    return False
 
 
 def estimate_training_steps(
@@ -722,7 +842,32 @@ def _dataset_config_path_from_cfg(cfg: dict[str, Any]) -> Path | None:
     rel_path = str(cfg.get("dataset_config") or "").strip()
     if not rel_path:
         return None
-    return _safe_resolve(_normalize_config_rel_path(rel_path))
+    path = _resolve_project_path(rel_path)
+    if path.suffix.lower() != ".toml":
+        return None
+    if not _is_allowed_dataset_config_path(path):
+        return None
+    return path
+
+
+def _is_allowed_dataset_config_path(path: Path) -> bool:
+    resolved = path.resolve()
+    for root in (ROOT.resolve(), resolve_output_root().resolve()):
+        try:
+            resolved.relative_to(root)
+            return True
+        except ValueError:
+            continue
+    if resolved.name == "dataset.runtime.toml":
+        run_dir = resolved.parent
+        return (
+            resolved.is_file()
+            and (run_dir / "config.runtime.toml").is_file()
+            and (run_dir / "model_cache").is_dir()
+            and (run_dir / "dataset_cache").is_dir()
+            and (run_dir / "training_output").is_dir()
+        )
+    return False
 
 
 def _dataset_config_rel_path(
@@ -1180,6 +1325,192 @@ def _positive_float(value: Any, fallback: float) -> float:
     except (TypeError, ValueError):
         return fallback
     return n if n > 0 else fallback
+
+
+def list_output_runs(limit: int = 200) -> dict[str, Any]:
+    output_root = resolve_output_root()
+    root_display = _display_settings_path(output_root)
+    if not output_root.exists():
+        return {
+            "ok": True,
+            "output_root": root_display,
+            "output_root_abs": str(output_root),
+            "runs": [],
+        }
+    if not output_root.is_dir():
+        raise ValueError(f"输出文件夹不是目录: {root_display}")
+
+    runs: list[dict[str, Any]] = []
+    for child in output_root.iterdir():
+        if not child.is_dir():
+            continue
+        try:
+            child.resolve().relative_to(output_root.resolve())
+        except ValueError:
+            continue
+        summary = _output_run_summary(child)
+        if summary["files"]:
+            runs.append(summary)
+
+    runs.sort(key=lambda item: (float(item.get("mtime") or 0), str(item.get("name") or "")), reverse=True)
+    return {
+        "ok": True,
+        "output_root": root_display,
+        "output_root_abs": str(output_root),
+        "runs": runs[:max(1, int(limit or 200))],
+    }
+
+
+def load_output_run_config(run: str, kind: str) -> dict[str, Any]:
+    run_dir = _resolve_output_run_dir(run)
+    file_path = _output_run_config_path(run_dir, kind)
+    if not file_path.exists() or not file_path.is_file():
+        raise FileNotFoundError(f"运行配置不存在: {run_dir.name}/{file_path.name}")
+    return {
+        "ok": True,
+        "run": run_dir.name,
+        "kind": kind,
+        "label": OUTPUT_RUN_CONFIG_FILES[kind][1],
+        "file": _display_settings_path(file_path),
+        "content": file_path.read_text(encoding="utf-8", errors="replace"),
+        "readonly": True,
+    }
+
+
+def save_output_run_config_as(run: str, name: str, target_group: str | None = None) -> dict[str, Any]:
+    run_dir = _resolve_output_run_dir(run)
+    original_path = run_dir / OUTPUT_RUN_CONFIG_FILES["original"][0]
+    if not original_path.exists() or not original_path.is_file():
+        raise ValueError("这个运行目录没有 config.original.toml，不能复制为项目预设")
+    content = original_path.read_text(encoding="utf-8", errors="replace")
+    try:
+        tomllib.loads(content)
+        tomlkit.parse(content)
+    except (tomllib.TOMLDecodeError, tomlkit.exceptions.TOMLKitError) as e:
+        raise ValueError(f"TOML 语法错误: {e}") from e
+
+    target = _normalize_output_run_save_as_path(name, fallback_stem=run_dir.name)
+    normalized_group = _normalize_group_id(target_group or "")
+    if normalized_group:
+        groups = {str(group.get("id") or ""): group for group in list_config_file_groups()}
+        group = groups.get(normalized_group)
+        if not group or not group.get("movable") or group.get("locked"):
+            raise ValueError("目标分组不可用或已锁定")
+
+    ok, msg = save_raw_file(target, content, overwrite=False)
+    if not ok:
+        raise ValueError(msg)
+
+    group_meta = None
+    if normalized_group:
+        moved, move_msg, group_meta = move_config_file_to_group(target, normalized_group)
+        if not moved:
+            raise ValueError(move_msg)
+
+    return {
+        "ok": True,
+        "message": "已复制为新项目预设",
+        "run": run_dir.name,
+        "file": target,
+        "meta": get_config_file_meta(target),
+        "group": group_meta,
+    }
+
+
+def _output_run_summary(run_dir: Path) -> dict[str, Any]:
+    files: list[dict[str, Any]] = []
+    mtimes = [_safe_mtime(run_dir)]
+    for kind, (filename, label) in OUTPUT_RUN_CONFIG_FILES.items():
+        path = run_dir / filename
+        if not path.is_file():
+            continue
+        mtime = _safe_mtime(path)
+        mtimes.append(mtime)
+        files.append({
+            "kind": kind,
+            "label": label,
+            "filename": filename,
+            "file": _display_settings_path(path),
+            "mtime": mtime,
+            "mtime_text": _format_file_time(mtime),
+        })
+    mtime = max(mtimes) if mtimes else 0.0
+    return {
+        "name": run_dir.name,
+        "path": _display_settings_path(run_dir),
+        "mtime": mtime,
+        "mtime_text": _format_file_time(mtime),
+        "files": files,
+        "has_original": any(item["kind"] == "original" for item in files),
+        "has_runtime": any(item["kind"] == "runtime" for item in files),
+        "has_dataset": any(item["kind"] == "dataset" for item in files),
+    }
+
+
+def _resolve_output_run_dir(run: str) -> Path:
+    name = _normalize_output_run_name(run)
+    root = resolve_output_root()
+    candidate = root / name
+    if not candidate.exists() or not candidate.is_dir():
+        raise FileNotFoundError(f"运行目录不存在: {name}")
+    resolved = candidate.resolve()
+    try:
+        resolved.relative_to(root.resolve())
+    except ValueError as exc:
+        raise ValueError("运行目录必须位于输出文件夹内") from exc
+    return resolved
+
+
+def _normalize_output_run_name(run: str) -> str:
+    name = str(run or "").replace("\\", "/").strip()
+    if not name or "/" in name or name in {".", ".."} or ".." in Path(name).parts:
+        raise ValueError("run 参数只允许输出文件夹下的直接目录名")
+    return name
+
+
+def _output_run_config_path(run_dir: Path, kind: str) -> Path:
+    normalized = str(kind or "").strip()
+    if normalized not in OUTPUT_RUN_CONFIG_FILES:
+        raise ValueError("kind 只能是 original、runtime 或 dataset")
+    return run_dir / OUTPUT_RUN_CONFIG_FILES[normalized][0]
+
+
+def _normalize_output_run_save_as_path(value: str, *, fallback_stem: str) -> str:
+    raw = str(value or "").replace("\\", "/").strip()
+    if not raw:
+        raw = fallback_stem
+    path = Path(raw)
+    if path.is_absolute():
+        try:
+            path = path.resolve().relative_to(ROOT.resolve())
+        except ValueError as exc:
+            raise ValueError("新项目预设必须保存在项目目录内") from exc
+    if ".." in path.parts:
+        raise ValueError("新项目预设路径不能包含 ..")
+    if path.suffix.lower() != ".toml":
+        path = path.with_suffix(".toml")
+    if len(path.parts) == 1:
+        path = Path("configs") / "imported" / path.name
+    normalized = path.as_posix().lstrip("/")
+    if not normalized.startswith("configs/imported/") or Path(normalized).name in {"", ".toml"}:
+        raise ValueError("新项目预设必须保存到 configs/imported/ 下")
+    safe_path = _safe_resolve(normalized)
+    if safe_path is None:
+        raise ValueError("新项目预设路径不合法")
+    return normalized
+
+
+def _safe_mtime(path: Path) -> float:
+    try:
+        return path.stat().st_mtime
+    except OSError:
+        return 0.0
+
+
+def _format_file_time(value: float) -> str:
+    if not value:
+        return ""
+    return datetime.fromtimestamp(value).strftime("%Y-%m-%d %H:%M:%S")
 
 
 def load_raw_file(rel_path: str) -> str:
@@ -1811,6 +2142,8 @@ def _build_config_file_group(spec: dict[str, Any]) -> dict[str, Any]:
         normalized = file_path.replace("\\", "/")
         if normalized in spec["exclude"] or normalized in seen_files:
             continue
+        if normalized in HIDDEN_CONFIG_FILES:
+            continue
         path = _safe_resolve(normalized)
         if path is None or not path.exists():
             continue
@@ -1857,7 +2190,10 @@ def _glob_config_files(pattern: str) -> list[str]:
     return [
         _display_path(path)
         for path in sorted(ROOT.glob(pattern))
-        if path.is_file() and path.suffix == ".toml" and _safe_resolve(_display_path(path))
+        if path.is_file()
+        and path.suffix == ".toml"
+        and _safe_resolve(_display_path(path))
+        and _display_path(path) not in HIDDEN_CONFIG_FILES
     ]
 
 
@@ -2187,7 +2523,7 @@ def _list_system_preset_files() -> list[str]:
         files.extend(
             _display_path(path)
             for path in sorted(folder.glob("*.toml"))
-            if path.is_file()
+            if path.is_file() and _display_path(path) not in HIDDEN_CONFIG_FILES
         )
     return sorted(dict.fromkeys(files))
 
@@ -2347,66 +2683,115 @@ def _display_path(path: Path) -> str:
 
 
 def _check_training_images(cfg: dict[str, Any], add) -> None:
-    image_dir = _resolve_project_path(str(cfg.get("resized_image_dir") or cfg.get("source_image_dir") or ""))
-    source_dir = _resolve_project_path(str(cfg.get("source_image_dir") or ""))
-    if not image_dir.is_dir():
-        return
-    image_exts = {".png", ".jpg", ".jpeg", ".webp", ".bmp"}
-    images = sorted(p for p in image_dir.iterdir() if p.suffix.lower() in image_exts)
-    if not images:
-        add("error", "training_images", "缩放图像目录里没有可训练图片，请先预处理生成训练图", image_dir)
-        return
-    missing_captions = []
-    for image in images[:50]:
-        source_caption = source_dir / f"{image.stem}.txt"
-        resized_caption = image.with_suffix(".txt")
-        if not source_caption.exists() and not resized_caption.exists():
-            missing_captions.append(image.name)
-    if missing_captions:
-        sample = ", ".join(missing_captions[:3])
-        add("warning", "captions", f"部分图片未找到同名 .txt 标注，例如 {sample}", image_dir)
-    else:
-        add("ok", "captions", "抽样图片均找到同名 .txt 标注", image_dir)
-
-
-def _check_dataset_paths(cfg: dict[str, Any], add) -> None:
     rows = _dataset_rows_for_estimate(cfg)
-    if len(rows) <= 1:
+    if not rows:
+        rows = [{
+            "source_dir": str(cfg.get("source_image_dir") or ""),
+            "image_dir": str(cfg.get("resized_image_dir") or cfg.get("source_image_dir") or ""),
+        }]
+    image_exts = {".png", ".jpg", ".jpeg", ".webp", ".bmp"}
+    all_missing_captions: list[str] = []
+    checked_groups = 0
+    for idx, row in enumerate(rows, start=1):
+        image_dir = _resolve_project_path(str(row.get("image_dir") or row.get("source_dir") or ""))
+        source_dir = _resolve_project_path(str(row.get("source_dir") or ""))
+        if not image_dir.is_dir():
+            continue
+        checked_groups += 1
+        images = sorted(p for p in image_dir.iterdir() if p.suffix.lower() in image_exts)
+        key = "training_images" if idx == 1 else f"dataset_{idx}_training_images"
+        label = "缩放图像目录" if idx == 1 else f"第 {idx} 组缩放图像目录"
+        if not images:
+            add("error", key, f"{label}里没有可训练图片，请先预处理生成训练图", image_dir)
+            continue
+        for image in images[:50]:
+            source_caption = source_dir / f"{image.stem}.txt"
+            resized_caption = image.with_suffix(".txt")
+            if not source_caption.exists() and not resized_caption.exists():
+                all_missing_captions.append(image.name)
+    if checked_groups == 0:
+        return
+    if all_missing_captions:
+        sample = ", ".join(all_missing_captions[:3])
+        add("warning", "captions", f"部分图片未找到同名 .txt 标注，例如 {sample}")
+    else:
+        add("ok", "captions", "抽样图片均找到同名 .txt 标注")
+
+
+def _check_dataset_source_paths(cfg: dict[str, Any], add) -> None:
+    rows = _dataset_rows_for_estimate(cfg)
+    if not rows:
         return
     for idx, row in enumerate(rows, start=1):
         source = _resolve_project_path(str(row.get("source_dir") or ""))
+        key = "source_image_dir" if idx == 1 else f"dataset_{idx}_source_dir"
+        label = "源图像目录" if idx == 1 else f"第 {idx} 组原始数据集目录"
+        if not str(row.get("source_dir") or "").strip():
+            add("error", key, f"{label} 未填写")
+        elif not source.exists():
+            add("error", key, f"{label} 不存在", source)
+        elif not source.is_dir():
+            add("error", key, f"{label} 不是目录", source)
+        elif not any(source.iterdir()):
+            add("warning", key, f"{label} 为空", source)
+        else:
+            add("ok", key, f"{label} 存在", source)
+
+
+def _check_dataset_paths(cfg: dict[str, Any], add, *, check_runtime_dirs: bool = True) -> None:
+    rows = _dataset_rows_for_estimate(cfg)
+    if not check_runtime_dirs:
+        return
+    for idx, row in enumerate(rows, start=1):
         image_dir = _resolve_project_path(str(row.get("image_dir") or ""))
         cache_dir = _resolve_project_path(str(row.get("cache_dir") or ""))
         prefix = f"dataset_{idx}"
-        if not source.exists():
-            add("warning", f"{prefix}_source_dir", f"第 {idx} 组原始数据集目录不存在", source)
-        elif not source.is_dir():
-            add("error", f"{prefix}_source_dir", f"第 {idx} 组原始数据集路径不是目录", source)
-        if image_dir.exists() and not image_dir.is_dir():
+        if not image_dir.exists():
+            add("error", f"{prefix}_image_dir", f"第 {idx} 组缩放图路径不存在", image_dir)
+        elif not image_dir.is_dir():
             add("error", f"{prefix}_image_dir", f"第 {idx} 组缩放图路径不是目录", image_dir)
-        if cache_dir.exists() and not cache_dir.is_dir():
+        if not cache_dir.exists():
+            add("error", f"{prefix}_cache_dir", f"第 {idx} 组缓存路径不存在", cache_dir)
+        elif not cache_dir.is_dir():
             add("error", f"{prefix}_cache_dir", f"第 {idx} 组缓存路径不是目录", cache_dir)
 
 
 def _check_cache_sidecars(cfg: dict[str, Any], add) -> None:
-    cache_dir = _resolve_project_path(str(cfg.get("lora_cache_dir") or ""))
-    if not cache_dir.is_dir():
+    cache_dirs: list[tuple[int, Path]] = []
+    for idx, row in enumerate(_dataset_rows_for_estimate(cfg), start=1):
+        raw = str(row.get("cache_dir") or "").strip()
+        if not raw:
+            continue
+        cache_dirs.append((idx, _resolve_project_path(raw)))
+    if not cache_dirs:
+        raw = str(cfg.get("lora_cache_dir") or "").strip()
+        if raw:
+            cache_dirs = [(1, _resolve_project_path(raw))]
+
+    cache_dirs = [(idx, path) for idx, path in cache_dirs if path.is_dir()]
+    if not cache_dirs:
         return
-    latent_count = len(list(cache_dir.glob("*.npz")))
-    te_count = len(list(cache_dir.glob("*_anima_te.safetensors")))
-    pe_count = len(list(cache_dir.glob("*_anima_pe.safetensors")))
+
     if cfg.get("cache_latents_to_disk", False):
-        if latent_count:
-            add("ok", "latent_cache", f"找到 {latent_count} 个 VAE latent 缓存", cache_dir)
-        else:
-            add("warning", "latent_cache", "未找到 .npz latent 缓存，可能需要先预处理", cache_dir)
+        _check_cache_sidecar_pattern(add, cache_dirs, "*.npz", "latent_cache", "VAE latent 缓存", "未找到 .npz latent 缓存，可能需要先预处理")
     if cfg.get("cache_text_encoder_outputs_to_disk", False):
-        if te_count:
-            add("ok", "text_cache", f"找到 {te_count} 个文本编码器缓存", cache_dir)
-        else:
-            add("warning", "text_cache", "未找到文本编码器缓存，可能需要先预处理", cache_dir)
+        _check_cache_sidecar_pattern(add, cache_dirs, "*_anima_te.safetensors", "text_cache", "文本编码器缓存", "未找到文本编码器缓存，可能需要先预处理")
     if cfg.get("ip_features_cache_to_disk", False) or cfg.get("use_repa", False) or cfg.get("use_ip_adapter", False):
-        if pe_count:
-            add("ok", "pe_cache", f"找到 {pe_count} 个 PE 图像特征缓存", cache_dir)
+        _check_cache_sidecar_pattern(add, cache_dirs, "*_anima_pe.safetensors", "pe_cache", "PE 图像特征缓存", "未找到 PE 图像特征缓存，IP-Adapter/REPA 可能需要先 preprocess-pe")
+
+
+def _check_cache_sidecar_pattern(
+    add,
+    cache_dirs: list[tuple[int, Path]],
+    pattern: str,
+    key: str,
+    label: str,
+    missing_message: str,
+) -> None:
+    for idx, cache_dir in cache_dirs:
+        count = len(list(cache_dir.glob(pattern)))
+        item_key = key if idx == 1 else f"dataset_{idx}_{key}"
+        if count:
+            add("ok", item_key, f"第 {idx} 组找到 {count} 个{label}", cache_dir)
         else:
-            add("warning", "pe_cache", "未找到 PE 图像特征缓存，IP-Adapter/REPA 可能需要先 preprocess-pe", cache_dir)
+            add("warning", item_key, f"第 {idx} 组{missing_message}", cache_dir)

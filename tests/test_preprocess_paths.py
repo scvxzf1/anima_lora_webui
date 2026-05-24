@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from PIL import Image
+import toml
 
 from preprocess import resize_images
 from scripts.tasks import preprocess
@@ -107,6 +108,32 @@ def test_inference_base_uses_configured_model_paths(monkeypatch):
         cmd[cmd.index("--vae") + 1]
         == "D:/models/VAE/qwen_image_vae.safetensors"
     )
+
+
+def test_path_overrides_use_anima_runtime_config(tmp_path, monkeypatch):
+    runtime_config = tmp_path / "runs" / "522-20260523-114514" / "config.runtime.toml"
+    runtime_config.parent.mkdir(parents=True)
+    runtime_config.write_text(
+        toml.dumps({
+            "dataset_config": "output/runs/522-20260523-114514/dataset.runtime.toml",
+            "output_dir": "output/runs/522-20260523-114514/training_output",
+            "source_image_dir": "image_dataset/source",
+            "resized_image_dir": "output/runs/522-20260523-114514/dataset_cache/dataset-01/resized",
+            "lora_cache_dir": "output/runs/522-20260523-114514/dataset_cache/dataset-01/lora",
+            "general": {"ignored": True},
+        }),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("ANIMA_RUNTIME_CONFIG", str(runtime_config))
+    monkeypatch.setattr(_common, "_PATH_OVERRIDES_CACHE", None)
+    monkeypatch.setattr(_common, "_PATH_OVERRIDES_CACHE_KEY", None)
+
+    overrides = _common._path_overrides()
+
+    assert overrides["dataset_config"].endswith("dataset.runtime.toml")
+    assert overrides["output_dir"].endswith("training_output")
+    assert overrides["resized_image_dir"].endswith("dataset-01/resized")
+    assert "general" not in overrides
 
 
 def test_distill_mod_uses_configured_paths(monkeypatch):

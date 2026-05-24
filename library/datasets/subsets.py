@@ -9,8 +9,6 @@ import cv2
 import numpy as np
 import torch
 
-from library.config.normalize import to_plain_config
-
 logger = logging.getLogger(__name__)
 
 
@@ -281,7 +279,7 @@ class BaseSubset:
         self.token_warmup_min = token_warmup_min
         self.token_warmup_step = token_warmup_step
 
-        self.custom_attributes = to_plain_config(
+        self.custom_attributes = (
             custom_attributes if custom_attributes is not None else {}
         )
 

@@ -26,6 +26,42 @@ from library.io.cache import (
 logger = logging.getLogger(__name__)
 
 
+class BucketBatchSampler(torch.utils.data.Sampler):
+    """Yields batches of sample indices grouped by resolution bucket.
+
+    Every batch contains only same-resolution samples, so the default
+    tensor-stacking collate still works at ``batch_size > 1`` (a plain
+    ``DataLoader(shuffle=True)`` would mix resolutions into one batch and crash
+    the stack). When ``shuffle`` is set, the *order of batches* is reshuffled
+    each time iteration restarts (i.e. once per epoch, since the training loop
+    rebuilds the iterator on ``StopIteration``) — but the largest-token-count
+    bucket's first batch is always pinned to step 0 so ``torch.compile``'s
+    biggest block graph + peak VRAM allocation land up front (fail-fast).
+    ``shuffle=False`` preserves the deterministic largest-first bucket order.
+    """
+
+    def __init__(self, batches, largest_idx, *, shuffle=True, seed=0):
+        self._batches = batches  # list[list[int]]
+        self._largest_idx = largest_idx  # index into _batches, or None
+        self._shuffle = shuffle
+        self._seed = seed
+        self._epoch = 0
+
+    def __len__(self):
+        return len(self._batches)
+
+    def __iter__(self):
+        order = list(range(len(self._batches)))
+        if self._shuffle:
+            random.Random(self._seed + self._epoch).shuffle(order)
+            self._epoch += 1
+            if self._largest_idx is not None:
+                order.remove(self._largest_idx)
+                order.insert(0, self._largest_idx)
+        for bi in order:
+            yield self._batches[bi]
+
+
 class CachedDataset(torch.utils.data.Dataset):
     """Loads pre-cached latents and text encoder outputs for distillation.
 
@@ -102,10 +138,30 @@ class CachedDataset(torch.utils.data.Dataset):
         # subsampling), keeping at least one sample per non-empty bucket so
         # debug/half presets don't silently drop entire resolutions.
         # Drop per-bucket remainders for whichever side we're emitting.
+        #
+        # Emit buckets largest-token-count first. The DataLoader runs
+        # shuffle=False, so iteration order == this bucket order; front-loading
+        # the biggest resolution means torch.compile traces the largest block
+        # graph and allocates peak activations on step 0. With native-shape
+        # buckets (4032 + 4200 token families), the 4200 bucket would otherwise
+        # only get hit once iteration reached it (~step 100), spiking VRAM
+        # mid-run — front-loading turns a mid-run OOM into a fail-fast at start.
+        def _tok_count(res: str) -> int:
+            a, b = res.split("x")
+            return int(a) * int(b)
+
         rng = random.Random(validation_seed)
+        self.batch_size = batch_size
         self.samples: list[tuple[str, str]] = []
+        # Same-resolution batches of sample indices, built as samples are
+        # emitted bucket-by-bucket (each bucket's remainder is dropped to a
+        # multiple of batch_size, so a contiguous chunk is always one bucket).
+        self._batches: list[list[int]] = []
+        self._batch_tok: list[int] = []
         n_train = n_val = 0
-        for _res, items in buckets.items():
+        for _res, items in sorted(
+            buckets.items(), key=lambda kv: _tok_count(kv[0]), reverse=True
+        ):
             items = list(items)
             rng.shuffle(items)
             n = len(items)
@@ -120,7 +176,12 @@ class CachedDataset(torch.utils.data.Dataset):
                 n_keep = max(1, int(round(len(picked) * sample_ratio)))
                 picked = picked[:n_keep]
             full = (len(picked) // batch_size) * batch_size
+            start = len(self.samples)
             self.samples.extend(picked[:full])
+            tok = _tok_count(_res)
+            for j in range(start, start + full, batch_size):
+                self._batches.append(list(range(j, j + batch_size)))
+                self._batch_tok.append(tok)
 
         sr_note = f", sample_ratio={sample_ratio}" if sample_ratio < 1.0 else ""
         source = (
@@ -135,6 +196,24 @@ class CachedDataset(torch.utils.data.Dataset):
 
     def __len__(self):
         return len(self.samples)
+
+    def make_batch_sampler(
+        self, *, shuffle: bool = True, seed: int = 0
+    ) -> BucketBatchSampler:
+        """Build a bucket-grouped batch sampler over this dataset.
+
+        Pass to ``DataLoader(batch_sampler=...)`` (not ``batch_size=``). Each
+        batch is one resolution; ``shuffle`` reshuffles batch order per epoch
+        while keeping the largest-token bucket first. See ``BucketBatchSampler``.
+        """
+        largest = (
+            max(range(len(self._batches)), key=lambda i: self._batch_tok[i])
+            if self._batches
+            else None
+        )
+        return BucketBatchSampler(
+            self._batches, largest, shuffle=shuffle, seed=seed
+        )
 
     def __getitem__(self, idx):
         latent_path, te_path = self.samples[idx]

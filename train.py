@@ -64,6 +64,7 @@ from library.training import (
     CheckpointSaver,
     LossContext,
     SAMPLER_REGISTRY,
+    RuntimeState,
     SamplerContext,
     TrainCtx,
     add_custom_train_arguments,
@@ -88,6 +89,8 @@ from library.training import (
     verify_training_args,
 )
 from library.training.loop import build_loop_state, run_training_loop
+from library.training.log_dispatch import dispatch_logs
+from library.training.progress import ProgressSink, run_scope
 from library.training.router_conditioning import apply_router_conditioning
 from library.training.text_conds import prepare_text_conds
 from library.training.forward_kwargs import build_forward_kwargs
@@ -108,23 +111,8 @@ class AnimaTrainer:
         # Per-method extensions (EasyControl, IP-Adapter, …). Resolved
         # from args+network in train() right after _create_and_apply_network.
         self._adapters: list[MethodAdapter] = []
-        # Per-step aux dict -- adapters' ``extra_forwards`` returns are merged
-        # here in ``get_noise_pred_and_target`` and consumed by the loss
-        # composer in ``_process_batch_inner``.
-        self._extras_for_step: dict = {}
-        # EMA λ state, mutated by the flow_matching_vr loss handler each step.
-        # The "frozen reference" for the AsymFlow §5.2 control variate is just
-        # the trainable DiT with ``network.set_multiplier(0)`` — see the VR
-        # block in ``get_noise_pred_and_target``.
-        self._vr_state: dict = {"lambda_ema": None}
-        # T5("") crossattn sidecar (shape ``(1, S, 1024)`` bf16 on device).
-        # Populated by ``_ensure_uncond_crossattn`` when caption dropout is
-        # enabled; consumed by ``prepare_text_conds`` so dropped rows match
-        # Anima's CFG-uncond inference path instead of falling back to zeros.
-        self._uncond_crossattn_1: Optional[torch.Tensor] = None
-        # Set during dataset prep from subset.caption_dropout_rate; gates
-        # whether ``_ensure_uncond_crossattn`` actually stages the sidecar.
-        self._caption_dropout_enabled: bool = False
+        # Feature-specific per-run state — see ``RuntimeState``.
+        self._state = RuntimeState()
 
     # region logging helpers
 
@@ -155,8 +143,8 @@ class AnimaTrainer:
             logs["norm/avg_combined_norm"] = mean_combined_norm
 
         if float(getattr(args, "vr_loss_weight", 0.0) or 0.0) > 0.0:
-            lambda_ema = self._vr_state.get("lambda_ema")
-            lambda_batch = self._vr_state.get("lambda_batch")
+            lambda_ema = self._state.vr.get("lambda_ema")
+            lambda_batch = self._state.vr.get("lambda_batch")
             if isinstance(lambda_ema, float):
                 logs["vr/lambda_ema"] = lambda_ema
             if isinstance(lambda_batch, float):
@@ -225,12 +213,26 @@ class AnimaTrainer:
     def step_logging(
         self, accelerator: Accelerator, logs: dict, global_step: int, epoch: int
     ):
-        self.accelerator_logging(accelerator, logs, global_step, global_step, epoch)
+        dispatch_logs(
+            accelerator,
+            logs,
+            global_step,
+            global_step,
+            epoch,
+            progress_sink=getattr(self, "progress_sink", None),
+        )
 
     def epoch_logging(
         self, accelerator: Accelerator, logs: dict, global_step: int, epoch: int
     ):
-        self.accelerator_logging(accelerator, logs, epoch, global_step, epoch)
+        dispatch_logs(
+            accelerator,
+            logs,
+            epoch,
+            global_step,
+            epoch,
+            progress_sink=getattr(self, "progress_sink", None),
+        )
 
     def val_logging(
         self,
@@ -240,45 +242,15 @@ class AnimaTrainer:
         epoch: int,
         val_step: int,
     ):
-        self.accelerator_logging(
-            accelerator, logs, global_step + val_step, global_step, epoch, val_step
+        dispatch_logs(
+            accelerator,
+            logs,
+            global_step + val_step,
+            global_step,
+            epoch,
+            val_step,
+            progress_sink=getattr(self, "progress_sink", None),
         )
-
-    def accelerator_logging(
-        self,
-        accelerator: Accelerator,
-        logs: dict,
-        step_value: int,
-        global_step: int,
-        epoch: int,
-        val_step: Optional[int] = None,
-    ):
-        """
-        step_value is for tensorboard, other values are for wandb
-        """
-        tensorboard_tracker = None
-        wandb_tracker = None
-        other_trackers = []
-        for tracker in accelerator.trackers:
-            if tracker.name == "tensorboard":
-                tensorboard_tracker = accelerator.get_tracker("tensorboard")
-            elif tracker.name == "wandb":
-                wandb_tracker = accelerator.get_tracker("wandb")
-            else:
-                other_trackers.append(accelerator.get_tracker(tracker.name))
-
-        if tensorboard_tracker is not None:
-            tensorboard_tracker.log(logs, step=step_value)
-
-        if wandb_tracker is not None:
-            logs["global_step"] = global_step
-            logs["epoch"] = epoch
-            if val_step is not None:
-                logs["val_step"] = val_step
-            wandb_tracker.log(logs)
-
-        for tracker in other_trackers:
-            tracker.log(logs, step=step_value)
 
     # endregion
 
@@ -380,35 +352,138 @@ class AnimaTrainer:
                 for dataset in val_dataset_group.datasets:
                     dataset.force_load_images_for_ip = True
 
+        # IP-Adapter distinct-pair (identity) training. When opted in
+        # (ip_pair_mode != "self") each dataset draws the IP-path reference from
+        # a *different* image of the target's identity instead of the target
+        # itself, removing the self-pair copy shortcut. Requires cached PE
+        # features (the pairing is a stem swap on disk). See
+        # docs/proposal/ip-adapter-identity-pairs.md.
+        ip_pair_mode = str(getattr(args, "ip_pair_mode", "self") or "self")
+        if getattr(args, "use_ip_adapter", False) and ip_pair_mode != "self":
+            if not getattr(args, "ip_features_cache_to_disk", False):
+                raise ValueError(
+                    "ip_pair_mode requires ip_features_cache_to_disk=true "
+                    "(distinct-pair training swaps which stem's cached PE "
+                    "features feed the IP path). PE-LoRA's live encoder is "
+                    "incompatible — set pe_lora_enabled=false."
+                )
+            index_path = getattr(
+                args,
+                "ip_pair_index",
+                "post_image_dataset/captions/caption_index.json",
+            )
+            if not os.path.exists(index_path):
+                raise FileNotFoundError(
+                    f"ip_pair_index not found: {index_path}. Run `make caption-index`."
+                )
+            pair_kwargs = dict(
+                index_path=index_path,
+                mode=ip_pair_mode,
+                prob=float(getattr(args, "ip_pair_prob", 0.8)),
+                min_level=str(getattr(args, "ip_pair_min_level", "artist")),
+                caption_strip_p=float(getattr(args, "ip_pair_caption_strip_p", 0.0)),
+            )
+            for dataset in train_dataset_group.datasets:
+                dataset.setup_identity_pairs(is_validation=False, **pair_kwargs)
+            if val_dataset_group is not None:
+                for dataset in val_dataset_group.datasets:
+                    dataset.setup_identity_pairs(is_validation=True, **pair_kwargs)
+            logger.info(
+                f"IP-Adapter distinct pairs: mode={ip_pair_mode} "
+                f"prob={pair_kwargs['prob']} min_level={pair_kwargs['min_level']} "
+                f"caption_strip_p={pair_kwargs['caption_strip_p']} "
+                f"index={index_path}"
+            )
+
+        # Soft-tokens contrastive negatives. The objective's knobs live in
+        # ``network_args`` (see configs/methods/soft_tokens.toml); preview them
+        # here to decide whether
+        # the dataset should surface cached negative text embeddings. Off unless
+        # contrastive_weight > 0. See docs/proposal/soft_tokens_contrastive.md.
+        if str(getattr(args, "network_module", "") or "") == (
+            "networks.methods.soft_tokens"
+        ):
+            net_arg_preview: dict[str, str] = {}
+            for na in args.network_args or []:
+                if "=" in na:
+                    pk, pv = na.split("=", 1)
+                    net_arg_preview[pk] = pv
+            con_weight = float(net_arg_preview.get("contrastive_weight", 0.0) or 0.0)
+            if con_weight > 0.0:
+                con_k = int(net_arg_preview.get("contrastive_k", 1) or 1)
+                con_mode = str(
+                    net_arg_preview.get("contrastive_negative_mode", "shuffled")
+                )
+                # The negative grouping always comes from the shared caption
+                # index `make caption-index` writes — not a user knob.
+                con_index = "post_image_dataset/captions/caption_index.json"
+                if not os.path.exists(con_index):
+                    raise FileNotFoundError(
+                        f"contrastive_index not found: {con_index}. "
+                        f"Run `make caption-index`."
+                    )
+                if not getattr(args, "cache_llm_adapter_outputs", False):
+                    raise ValueError(
+                        "soft_tokens contrastive requires "
+                        "cache_llm_adapter_outputs=true (negatives are cached "
+                        "crossattn_emb swapped off disk)."
+                    )
+                # Negatives only feed the training-step contrastive forward; the
+                # validation FM-MSE stays a clean baseline, so val datasets are
+                # left untouched.
+                for dataset in train_dataset_group.datasets:
+                    dataset.setup_contrastive_negatives(
+                        con_index, k=con_k, mode=con_mode, is_validation=False
+                    )
+                logger.info(
+                    f"Soft-tokens contrastive: weight={con_weight} k={con_k} "
+                    f"mode={con_mode} index={con_index}"
+                )
+
         train_dataset_group.verify_bucket_reso_steps(
             16
         )  # WanVAE spatial downscale = 8 and patch size = 2
         if val_dataset_group is not None:
             val_dataset_group.verify_bucket_reso_steps(16)
 
-    def load_target_model(self, args, weight_dtype, accelerator):
+    def load_target_model(
+        self, args, weight_dtype, accelerator, load_qwen3=True, load_vae=True
+    ):
         self.is_swapping_blocks = (
             args.blocks_to_swap is not None and args.blocks_to_swap > 0
         )
 
-        # Load Qwen3 text encoder (tokenizers already loaded in get_tokenize_strategy)
-        logger.info("Loading Qwen3 text encoder...")
-        qwen3_text_encoder, _ = anima_utils.load_qwen3_text_encoder(
-            args.qwen3, dtype=weight_dtype, device="cpu"
-        )
-        qwen3_text_encoder.eval()
+        # Load Qwen3 text encoder (tokenizers already loaded in get_tokenize_strategy).
+        # Skipped when every text-encoder output is already cached and no live
+        # encoding (sampling / TE training / cache disabled) needs it.
+        if load_qwen3:
+            logger.info("Loading Qwen3 text encoder...")
+            qwen3_text_encoder, _ = anima_utils.load_qwen3_text_encoder(
+                args.qwen3, dtype=weight_dtype, device="cpu"
+            )
+            qwen3_text_encoder.eval()
+        else:
+            logger.info(
+                "Skipping Qwen3 text encoder load: all text-encoder outputs cached."
+            )
+            qwen3_text_encoder = None
 
-        # Load VAE
-        logger.info("Loading Anima VAE...")
-        vae = qwen_image_autoencoder_kl.load_vae(
-            args.vae,
-            device="cpu",
-            disable_mmap=True,
-            spatial_chunk_size=args.vae_chunk_size,
-            disable_cache=args.vae_disable_cache,
-        )
-        vae.to(weight_dtype)
-        vae.eval()
+        # Load VAE. Skipped when every latent is already cached and no sampling
+        # (which decodes latents) is configured.
+        if load_vae:
+            logger.info("Loading Anima VAE...")
+            vae = qwen_image_autoencoder_kl.load_vae(
+                args.vae,
+                device="cpu",
+                disable_mmap=True,
+                spatial_chunk_size=args.vae_chunk_size,
+                disable_cache=args.vae_disable_cache,
+            )
+            vae.to(weight_dtype)
+            vae.eval()
+        else:
+            logger.info("Skipping VAE load: all latents cached and no sampling.")
+            vae = None
 
         # Return format: (model_type, text_encoders, vae, unet)
         return "anima", [qwen3_text_encoder], vae, None  # unet loaded lazily
@@ -465,13 +540,12 @@ class AnimaTrainer:
         # Load DiT
         attn_softmax_scale = getattr(args, "attn_softmax_scale", None)
         logger.info(
-            f"Loading Anima DiT model with split_attn: {args.split_attn}, attn_softmax_scale: {attn_softmax_scale}..."
+            f"Loading Anima DiT model with attn_softmax_scale: {attn_softmax_scale}..."
         )
         model = anima_utils.load_anima_model(
             accelerator.device,
             args.pretrained_model_name_or_path,
             attn_mode,
-            args.split_attn,
             loading_device,
             loading_dtype,
             lora_weights_list=lora_weights_list,
@@ -479,21 +553,48 @@ class AnimaTrainer:
             attn_softmax_scale=attn_softmax_scale,
         )
 
-        # Bucketed KV trimming for cross-attention
-        model.trim_crossattn_kv = getattr(args, "trim_crossattn_kv", False)
-
-        # Static token count (constant-shape padding for torch.compile)
+        # Static token count (constant-shape buckets for torch.compile)
         if getattr(args, "static_token_count", None) is not None:
-            model.set_static_token_count(args.static_token_count)
+            static_pad = getattr(args, "static_pad", True)
+            model.set_static_token_count(args.static_token_count, pad=static_pad)
+            if not static_pad and getattr(args, "compile_mode", "blocks") == "full":
+                raise ValueError(
+                    "--no_static_pad is incompatible with --compile_mode full: "
+                    "the native (unpadded) block stack is not shape-invariant. "
+                    "Use --compile_mode blocks (the default)."
+                )
             if (
                 args.torch_compile
                 and getattr(args, "compile_mode", "blocks") == "blocks"
             ):
+                if not static_pad:
+                    # Native mode traces one block graph per distinct bucket
+                    # token-count; fwd+bwd share the one `_forward` bytecode, so
+                    # give dynamo headroom or it falls back to eager mid-warmup.
+                    import torch._dynamo as _dynamo
+
+                    from library.datasets.buckets import CONSTANT_TOKEN_BUCKETS
+
+                    n_shapes = len(
+                        {(h // 16) * (w // 16) for h, w in CONSTANT_TOKEN_BUCKETS}
+                    )
+                    _dynamo.config.cache_size_limit = max(
+                        _dynamo.config.cache_size_limit, 2 * n_shapes + 8
+                    )
+                    logger.info(
+                        "no_static_pad: %d distinct bucket token-counts; "
+                        "cache_size_limit=%d",
+                        n_shapes,
+                        _dynamo.config.cache_size_limit,
+                    )
                 model.compile_blocks(
                     args.dynamo_backend,
                     mode=getattr(args, "compile_inductor_mode", None),
                 )
-            logger.info(f"static_token_count={args.static_token_count}")
+            logger.info(
+                f"static_token_count={args.static_token_count} "
+                f"pad_to_static={static_pad}"
+            )
 
         # Store unsloth preference so that when the base trainer calls
         # dit.enable_gradient_checkpointing(cpu_offload=...), we can override to use unsloth.
@@ -567,14 +668,14 @@ class AnimaTrainer:
         accelerator,
         weight_dtype: torch.dtype,
     ) -> None:
-        """Lazily load the T5("") crossattn sidecar onto ``self._uncond_crossattn_1``.
+        """Lazily load the T5("") crossattn sidecar onto ``self._state.uncond_crossattn_1``.
 
         Primary producer is ``make preprocess-te`` (drops the file at
         ``post_image_dataset/_anima_uncond_te.safetensors``); this method is
         the fallback that stages on demand if a training run was kicked off
         without the preprocess step.
         """
-        if self._uncond_crossattn_1 is not None:
+        if self._state.uncond_crossattn_1 is not None:
             return
         from library.inference.uncond import (
             DEFAULT_UNCOND_DIR,
@@ -597,12 +698,12 @@ class AnimaTrainer:
                 seq_len=512,
                 overwrite=False,
             )
-        self._uncond_crossattn_1 = load_uncond_crossattn(
+        self._state.uncond_crossattn_1 = load_uncond_crossattn(
             str(sidecar), device=accelerator.device, dtype=weight_dtype
         )
         logger.info(
             f"caption dropout uncond loaded: {sidecar} "
-            f"shape={tuple(self._uncond_crossattn_1.shape)}"
+            f"shape={tuple(self._state.uncond_crossattn_1.shape)}"
         )
 
     def get_noise_scheduler(
@@ -640,7 +741,7 @@ class AnimaTrainer:
 
         # Reset per-step adapter aux so stale tensors from a prior step can't
         # leak into the loss composer.
-        self._extras_for_step = {}
+        self._state.extras_for_step = {}
 
         # Sample noise
         if latents.ndim == 5:  # Fallback for 5D latents (old cache)
@@ -686,6 +787,9 @@ class AnimaTrainer:
             is_train=is_train,
             warmup_step=int(getattr(self, "_hydra_warmup_step", 0)),
             max_train_steps=int(getattr(args, "max_train_steps", 0) or 0),
+            gradient_accumulation_steps=int(
+                getattr(args, "gradient_accumulation_steps", 1) or 1
+            ),
         )
 
         # Gradient checkpointing support
@@ -706,15 +810,13 @@ class AnimaTrainer:
             network=network,
             device=accelerator.device,
             weight_dtype=weight_dtype,
-            trim_crossattn_kv=bool(args.trim_crossattn_kv),
-            uncond_crossattn_emb=self._uncond_crossattn_1,
+            uncond_crossattn_emb=self._state.uncond_crossattn_1,
         )
         crossattn_emb = tc.crossattn_emb
         prompt_embeds = tc.prompt_embeds
         attn_mask = tc.attn_mask
         t5_input_ids = tc.t5_input_ids
         t5_attn_mask = tc.t5_attn_mask
-        _max_crossattn_seqlen = tc.max_crossattn_seqlen
 
         # ChimeraHydra global content router (chimera with
         # ``content_router_source="crossattn"``): fire ONCE per step on the
@@ -727,6 +829,17 @@ class AnimaTrainer:
             and hasattr(network, "set_content")
         ):
             network.set_content(crossattn_emb)
+
+        # Network-level GlobalRouter routed on pooled text
+        # (``router_source="crossattn_emb"``, route_per_layer=False). Same
+        # timing rationale as the content router above — fires once per step
+        # on the materialized cross-attn text features. No-op otherwise.
+        if (
+            getattr(network, "use_crossattn_router", False)
+            and crossattn_emb is not None
+            and hasattr(network, "set_crossattn_routing")
+        ):
+            network.set_crossattn_routing(crossattn_emb)
 
         # Create padding mask
         bs = latents.shape[0]
@@ -758,14 +871,12 @@ class AnimaTrainer:
                 )
             else:
                 # crossattn_emb is already in target (T5-compatible) space.
-                # Postfix splice + KV-trim kwargs.
+                # Postfix splice kwargs.
                 fk = build_forward_kwargs(
                     network=network,
                     crossattn_emb=crossattn_emb,
                     t5_attn_mask=t5_attn_mask,
                     timesteps=timesteps,
-                    max_crossattn_seqlen=_max_crossattn_seqlen,
-                    trim_crossattn_kv=bool(args.trim_crossattn_kv),
                 )
                 crossattn_emb = fk.crossattn_emb
                 kw = fk.kw
@@ -805,7 +916,7 @@ class AnimaTrainer:
                     for adapter in self._adapters:
                         out = adapter.extra_forwards(step_ctx, primary)
                         if out:
-                            self._extras_for_step.update(out)
+                            self._state.extras_for_step.update(out)
 
                 # Functional MSE loss against a sampled stochastic inversion run.
                 # The captures dict is populated by trainer-owned forward hooks
@@ -845,9 +956,9 @@ class AnimaTrainer:
                         weight_dtype=weight_dtype,
                         fei_sigma_low_div=float(args.vr_fei_sigma_low_div),
                     )
-                    self._extras_for_step["vr"] = {
+                    self._state.extras_for_step["vr"] = {
                         "z": z_residual.detach(),
-                        "state": self._vr_state,
+                        "state": self._state.vr,
                     }
         model_pred = model_pred.squeeze(2)  # 5D to 4D, [B, C, 1, H, W] -> [B, C, H, W]
 
@@ -1078,7 +1189,7 @@ class AnimaTrainer:
 
         # Assemble aux dict for the composer: extra_forwards returns from each
         # method adapter plus the trainer-owned functional-loss capture.
-        loss_aux: dict = dict(self._extras_for_step)
+        loss_aux: dict = dict(self._state.extras_for_step)
 
         func_loss = getattr(self, "_func_loss", None)
         if func_loss is not None:
@@ -1193,6 +1304,20 @@ class AnimaTrainer:
         for adapter in self._adapters:
             adapter.on_step_start(step_ctx, batch, is_train=is_train)
 
+    def run_after_backward(self, ctx: TrainCtx):
+        """Dispatch the post-backward hook to adapters (between
+        ``accelerator.backward`` and gradient clipping)."""
+        if not self._adapters:
+            return
+        step_ctx = StepCtx(
+            args=ctx.args,
+            accelerator=ctx.accelerator,
+            network=ctx.network,
+            weight_dtype=ctx.weight_dtype,
+        )
+        for adapter in self._adapters:
+            adapter.after_backward(step_ctx)
+
     def is_train_text_encoder(self, args):
         return not args.network_train_unet_only
 
@@ -1224,87 +1349,60 @@ class AnimaTrainer:
         self,
         args,
         accelerator: Accelerator,
-        unet,
-        vae,
         text_encoders,
         dataset: DatasetGroup,
-        weight_dtype,
     ):
-        if args.cache_text_encoder_outputs:
-            if not args.lowram:
-                # We cannot move DiT to CPU because of block swap, so only move VAE
-                logger.info("move vae to cpu to save memory")
-                org_vae_device = vae.device
-                vae.to("cpu")
-                clean_memory_on_device(accelerator.device)
+        if not args.cache_text_encoder_outputs:
+            # Live-encoding mode (e.g. IP-Adapter cache_text_encoder_outputs=false):
+            # move the text encoder to device for per-step encoding.
+            text_encoders[0].to(accelerator.device)
+            return
 
+        # With caching on, the on-disk cache is guaranteed complete (asserted in
+        # train(), including the LLM adapter's crossattn_emb outputs, which
+        # preprocess writes). The dataset thus never needs encoding here — run
+        # the pass with no model purely to populate
+        # ImageInfo.text_encoder_outputs_npz (forms no batches).
+        dataset.new_cache_text_encoder_outputs([None], accelerator)
+
+        # The text encoder is in memory only to encode sample prompts (TE
+        # training is mutually exclusive with caching). It is None when no
+        # sample prompts are configured — nothing left to do.
+        if text_encoders[0] is not None and args.sample_prompts is not None:
+            logger.info(
+                f"cache Text Encoder outputs for sample prompts: {args.sample_prompts}"
+            )
             logger.info("move text encoder to gpu")
             text_encoders[0].to(accelerator.device)
 
-            llm_adapter = None
-            models_for_cache = text_encoders
-            if getattr(args, "cache_llm_adapter_outputs", False):
-                logger.info("Loading LLM adapter for caching outputs...")
-                llm_adapter = anima_utils.load_llm_adapter(
-                    args.pretrained_model_name_or_path,
-                    args.llm_adapter_path,
-                    dtype=weight_dtype,
-                    device=accelerator.device,
-                )
-                models_for_cache = [text_encoders[0], llm_adapter]
+            tokenize_strategy = text_strategies.TokenizeStrategy.get_strategy()
+            text_encoding_strategy = text_strategies.TextEncodingStrategy.get_strategy()
 
-            with accelerator.autocast():
-                dataset.new_cache_text_encoder_outputs(models_for_cache, accelerator)
-
-            # cache sample prompts
-            if args.sample_prompts is not None:
-                logger.info(
-                    f"cache Text Encoder outputs for sample prompts: {args.sample_prompts}"
-                )
-
-                tokenize_strategy = text_strategies.TokenizeStrategy.get_strategy()
-                text_encoding_strategy = (
-                    text_strategies.TextEncodingStrategy.get_strategy()
-                )
-
-                prompts = train_util.load_prompts(args.sample_prompts)
-                sample_prompts_te_outputs = {}
-                with accelerator.autocast(), torch.no_grad():
-                    for prompt_dict in prompts:
-                        for p in [
-                            prompt_dict.get("prompt", ""),
-                            prompt_dict.get("negative_prompt", ""),
-                        ]:
-                            if p not in sample_prompts_te_outputs:
-                                logger.info(f"  cache TE outputs for: {p}")
-                                tokens_and_masks = tokenize_strategy.tokenize(p)
-                                sample_prompts_te_outputs[p] = (
-                                    text_encoding_strategy.encode_tokens(
-                                        tokenize_strategy,
-                                        text_encoders,
-                                        tokens_and_masks,
-                                    )
+            prompts = train_util.load_prompts(args.sample_prompts)
+            sample_prompts_te_outputs = {}
+            with accelerator.autocast(), torch.no_grad():
+                for prompt_dict in prompts:
+                    for p in [
+                        prompt_dict.get("prompt", ""),
+                        prompt_dict.get("negative_prompt", ""),
+                    ]:
+                        if p not in sample_prompts_te_outputs:
+                            logger.info(f"  cache TE outputs for: {p}")
+                            tokens_and_masks = tokenize_strategy.tokenize(p)
+                            sample_prompts_te_outputs[p] = (
+                                text_encoding_strategy.encode_tokens(
+                                    tokenize_strategy,
+                                    text_encoders,
+                                    tokens_and_masks,
                                 )
-                self.sample_prompts_te_outputs = sample_prompts_te_outputs
+                            )
+            self.sample_prompts_te_outputs = sample_prompts_te_outputs
 
-            accelerator.wait_for_everyone()
-
-            if llm_adapter is not None:
-                logger.info("move LLM adapter back to cpu")
-                llm_adapter.to("cpu")
-
-            # move text encoder back to cpu
             logger.info("move text encoder back to cpu")
             text_encoders[0].to("cpu")
-
-            if not args.lowram:
-                logger.info("move vae back to original device")
-                vae.to(org_vae_device)
-
             clean_memory_on_device(accelerator.device)
-        else:
-            # move text encoder to device for encoding during training/validation
-            text_encoders[0].to(accelerator.device)
+
+        accelerator.wait_for_everyone()
 
     # endregion
 
@@ -1354,16 +1452,15 @@ class AnimaTrainer:
     def _prepare_dataset(self, args):
         """Build train/val dataset groups and the collator shared by both loaders."""
         use_dreambooth_method = args.in_json is None
-        dataset_config = str(args.dataset_config or "").strip()
-        use_user_config = bool(dataset_config)
+        use_user_config = args.dataset_config is not None
 
         if args.dataset_class is None:
             blueprint_generator = BlueprintGenerator(
                 ConfigSanitizer(support_dropout=True)
             )
             if use_user_config:
-                logger.info(f"Loading dataset config from {dataset_config}")
-                user_config = config_util.load_user_config(dataset_config)
+                logger.info(f"Loading dataset config from {args.dataset_config}")
+                user_config = config_util.load_user_config(args.dataset_config)
                 ignored = ["train_data_dir", "reg_data_dir", "in_json"]
                 if any(getattr(args, attr) is not None for attr in ignored):
                     logger.warning(
@@ -1429,8 +1526,10 @@ class AnimaTrainer:
                 for ds in train_dataset_group.datasets
                 for subset in ds.subsets
             ]
-            self._caption_dropout_enabled = bool(rates) and any(r > 0 for r in rates)
-            if self._caption_dropout_enabled:
+            self._state.caption_dropout_enabled = bool(rates) and any(
+                r > 0 for r in rates
+            )
+            if self._state.caption_dropout_enabled:
                 logger.info(f"caption dropout ENABLED -- per-subset rates: {rates}")
             else:
                 logger.info("caption dropout DISABLED (rate=0.0 on all subsets)")
@@ -1668,15 +1767,7 @@ class AnimaTrainer:
             **dataloader_kwargs,
         )
 
-        # Calculate training steps.
-        # max_train_epochs is the preferred duration knob. max_train_steps is
-        # a hard cap for step-based runs; 0 means "disabled" so epoch-based
-        # configs do not inherit an accidental step ceiling.
-        if args.max_train_epochs is None and int(getattr(args, "max_train_steps", 0) or 0) <= 0:
-            raise ValueError(
-                "max_train_steps=0 and max_train_epochs is not set. "
-                "Set max_train_epochs for epoch-based training, or set a positive max_train_steps."
-            )
+        # Calculate training steps
         if args.max_train_epochs is not None:
             args.max_train_steps = args.max_train_epochs * math.ceil(
                 len(train_dataloader)
@@ -1745,6 +1836,10 @@ class AnimaTrainer:
         if self.cast_unet(args):
             unet.to(dtype=unet_weight_dtype)
         for i, t_enc in enumerate(text_encoders):
+            # None when the TE was never loaded (cache_text_encoder_outputs with
+            # no sample prompts / val / TE-training -- qwen3_needed=False).
+            if t_enc is None:
+                continue
             t_enc.requires_grad_(False)
 
             # in case of cpu, dtype is already set to fp32 because cpu does not support fp16/bf16
@@ -1789,6 +1884,8 @@ class AnimaTrainer:
                     self.get_text_encoders_train_flags(args, text_encoders),
                 )
             ):
+                if t_enc is None:
+                    continue
                 t_enc.train()
 
                 # set top parameter requires_grad = True for gradient checkpointing works
@@ -1798,6 +1895,8 @@ class AnimaTrainer:
         else:
             unet.eval()
             for t_enc in text_encoders:
+                if t_enc is None:
+                    continue
                 t_enc.eval()
 
         # compile_mode='full': narrow torch.compile to _run_blocks (the constant-
@@ -1928,6 +2027,77 @@ class AnimaTrainer:
             args, train_dataset_group, val_dataset_group
         )  # may change some args
 
+        # Set the text-encoder-outputs caching strategy now (before the model
+        # load) so the cache-completeness probe below can use it to decide
+        # whether the Qwen3 text encoder needs loading at all.
+        text_encoder_outputs_caching_strategy = (
+            self.get_text_encoder_outputs_caching_strategy(args)
+        )
+        if text_encoder_outputs_caching_strategy is not None:
+            text_strategies.TextEncoderOutputsCachingStrategy.set_strategy(
+                text_encoder_outputs_caching_strategy
+            )
+
+        # Decide whether the heavy encoders are actually needed. When caching is
+        # enabled the caches MUST already be complete on disk (run `make
+        # preprocess` first) — train.py no longer encodes missing latents / TE
+        # outputs on the fly. With complete caches and nothing else needing them
+        # we skip loading the encoders entirely (saves the disk read, RAM, and
+        # the GPU round-trip). `cache_latents = false` (e.g. IP-Adapter) is a
+        # separate, explicit live-encoding mode, not a fallback.
+        sampling_enabled = bool(
+            args.sample_prompts
+            and (
+                args.sample_at_first
+                or args.sample_every_n_steps
+                or args.sample_every_n_epochs
+            )
+        )
+
+        def _latents_complete(group):
+            return group is None or group.is_latents_cache_complete()
+
+        def _te_complete(group):
+            return group is None or group.is_text_encoder_outputs_cache_complete()
+
+        if cache_latents and not (
+            _latents_complete(train_dataset_group)
+            and _latents_complete(val_dataset_group)
+        ):
+            raise RuntimeError(
+                "Latent cache is incomplete. train.py requires a completed "
+                "preprocess pass — run `make preprocess` (or set "
+                "cache_latents = false for live VAE encoding)."
+            )
+
+        if args.cache_text_encoder_outputs and not (
+            _te_complete(train_dataset_group) and _te_complete(val_dataset_group)
+        ):
+            raise RuntimeError(
+                "Text-encoder cache is incomplete. train.py requires a completed "
+                "preprocess pass — run `make preprocess` (or set "
+                "cache_text_encoder_outputs = false for live encoding)."
+            )
+
+        # CMMD validation generates samples and decodes them through the VAE
+        # (see library/training/validation.py). It reads cached TE outputs, so
+        # it needs the VAE but not the text encoder.
+        cmmd_validation = val_dataset_group is not None and getattr(
+            args, "use_cmmd", True
+        )
+        # VAE: needed only to live-encode (caching off), to decode training
+        # samples, or to decode CMMD validation samples. With caching on the
+        # cache is guaranteed complete above, so no encode pass is required.
+        vae_needed = (not cache_latents) or sampling_enabled or cmmd_validation
+
+        # Qwen3 TE: needed only to live-encode (caching off), to encode sample
+        # prompts, or when the text encoder itself is being trained.
+        qwen3_needed = (
+            (not args.cache_text_encoder_outputs)
+            or bool(args.sample_prompts)
+            or self.is_train_text_encoder(args)
+        )
+
         # Prepare accelerator
         logger.info("preparing accelerator")
         accelerator = prepare_accelerator(args)
@@ -1943,10 +2113,14 @@ class AnimaTrainer:
 
         # load target models: unet may be None for lazy loading
         model_version, text_encoder, vae, unet = self.load_target_model(
-            args, weight_dtype, accelerator
+            args,
+            weight_dtype,
+            accelerator,
+            load_qwen3=qwen3_needed,
+            load_vae=vae_needed,
         )
         if vae_dtype is None:
-            vae_dtype = vae.dtype
+            vae_dtype = vae.dtype if vae is not None else weight_dtype
             logger.info(
                 f"vae_dtype is set to {vae_dtype} by the model since cast_vae() is false"
             )
@@ -1956,18 +2130,23 @@ class AnimaTrainer:
             text_encoder if isinstance(text_encoder, list) else [text_encoder]
         )
 
-        # prepare dataset for latents caching if needed
+        # prepare dataset for latents caching if needed. When vae is None the
+        # latents are already fully cached -- new_cache_latents still runs to
+        # populate each ImageInfo.latents_npz path the dataloader reads, but
+        # forms no encode batches so the (absent) VAE is never touched.
         if cache_latents:
-            vae.to(accelerator.device, dtype=vae_dtype)
-            vae.requires_grad_(False)
-            vae.eval()
+            if vae is not None:
+                vae.to(accelerator.device, dtype=vae_dtype)
+                vae.requires_grad_(False)
+                vae.eval()
 
             train_dataset_group.new_cache_latents(vae, accelerator)
             if val_dataset_group is not None:
                 val_dataset_group.new_cache_latents(vae, accelerator)
 
-            vae.to("cpu")
-            clean_memory_on_device(accelerator.device)
+            if vae is not None:
+                vae.to("cpu")
+                clean_memory_on_device(accelerator.device)
 
             accelerator.wait_for_everyone()
 
@@ -1975,31 +2154,18 @@ class AnimaTrainer:
         text_encoding_strategy = self.get_text_encoding_strategy(args)
         text_strategies.TextEncodingStrategy.set_strategy(text_encoding_strategy)
 
-        text_encoder_outputs_caching_strategy = (
-            self.get_text_encoder_outputs_caching_strategy(args)
-        )
-        if text_encoder_outputs_caching_strategy is not None:
-            text_strategies.TextEncoderOutputsCachingStrategy.set_strategy(
-                text_encoder_outputs_caching_strategy
-            )
         self.cache_text_encoder_outputs_if_needed(
             args,
             accelerator,
-            unet,
-            vae,
             text_encoders,
             train_dataset_group,
-            weight_dtype,
         )
         if val_dataset_group is not None:
             self.cache_text_encoder_outputs_if_needed(
                 args,
                 accelerator,
-                unet,
-                vae,
                 text_encoders,
                 val_dataset_group,
-                weight_dtype,
             )
 
         if unet is None:
@@ -2011,7 +2177,7 @@ class AnimaTrainer:
         # Stage the T5("") sidecar once if caption dropout is on — dropped
         # rows then get the same crossattn embedding Anima feeds at
         # CFG-uncond inference instead of all-zeros (which is out-of-dist).
-        if self._caption_dropout_enabled:
+        if self._state.caption_dropout_enabled:
             self._ensure_uncond_crossattn(args, accelerator, weight_dtype)
 
         network_result = self._create_and_apply_network(
@@ -2091,6 +2257,27 @@ class AnimaTrainer:
             len(train_dataloader) / args.gradient_accumulation_steps
         )
         num_train_epochs = math.ceil(args.max_train_steps / num_update_steps_per_epoch)
+
+        # Structured progress sink (Phase 0): a JSONL event stream next to the
+        # checkpoint that the GUI / daemon can tail instead of regex-parsing
+        # tqdm. Main-process only; default on, gated by --progress_jsonl.
+        self.progress_sink = None
+        if is_main_process:
+            progress_path = ProgressSink.resolve_path(args)
+            if progress_path is not None:
+                self.progress_sink = ProgressSink(
+                    progress_path,
+                    run=args.output_name or "run",
+                    method=getattr(args, "method", None),
+                    preset=getattr(args, "preset", None),
+                    t0=training_started_at,
+                )
+                self.progress_sink.run_start(
+                    total_steps=args.max_train_steps,
+                    total_epochs=num_train_epochs,
+                    pid=os.getpid(),
+                )
+
         if (args.save_n_epoch_ratio is not None) and (args.save_n_epoch_ratio > 0):
             args.save_every_n_epochs = (
                 math.floor(num_train_epochs / args.save_n_epoch_ratio) or 1
@@ -2155,11 +2342,12 @@ class AnimaTrainer:
             get_sai_model_spec_fn=self.get_sai_model_spec,
             current_epoch=current_epoch,
             current_step=current_step,
+            progress_sink=self.progress_sink,
         )
         saver.register_hooks(network)
 
         # auto-resume from the resumable checkpoint if one exists
-        saver.auto_resume(network)
+        saver.auto_resume()
 
         # resume
         resume_from_local_or_hf_if_specified(accelerator, args)
@@ -2250,16 +2438,19 @@ class AnimaTrainer:
             metadata=metadata,
         )
 
-        run_training_loop(self, loop_state)
+        # run_scope emits the matching run_end (ok / stopped / error) on exit;
+        # run_start already fired when the sink was constructed above.
+        with run_scope(self.progress_sink, final_step=lambda: loop_state.global_step):
+            run_training_loop(self, loop_state)
 
-        accelerator.end_training()
-        optimizer_eval_fn()
+            accelerator.end_training()
+            optimizer_eval_fn()
 
-        if is_main_process and (args.save_state or args.save_state_on_train_end):
-            save_state_on_train_end(args, accelerator)
+            if is_main_process and (args.save_state or args.save_state_on_train_end):
+                save_state_on_train_end(args, accelerator)
 
-        saver.save_final(network, loop_state.global_step, num_train_epochs)
-        saver.cleanup_resumable()
+            saver.cleanup_resumable()
+            saver.save_final(network, loop_state.global_step, num_train_epochs)
 
     # endregion
 
@@ -2406,6 +2597,17 @@ def setup_parser() -> argparse.ArgumentParser:
         "on tight VRAM where the PE encoder + sampling path doesn't fit.",
     )
     parser.add_argument(
+        "--validation_baselines",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Run each method adapter's validation baselines (e.g. IP-Adapter "
+        "no_ip / shuffled_ref) as FM-MSE delta diagnostics during validation. "
+        "Set `validation_baselines = false` in the method TOML (or pass "
+        "`--no-validation_baselines`) to skip them — each baseline adds a full "
+        "extra val forward per (batch, σ), so this roughly halves IP-Adapter "
+        "validation time when you don't need the deltas.",
+    )
+    parser.add_argument(
         "--unsloth_offload_checkpointing",
         action="store_true",
         help="offload activations to CPU RAM using async non-blocking transfers (faster than --cpu_offload_checkpointing). "
@@ -2439,7 +2641,7 @@ from library.config import schema as _config_schema  # noqa: E402
 from networks import all_network_kwargs as _all_network_kwargs  # noqa: E402
 
 
-# Network-module-consumed flags (networks.lora_anima / networks.methods.postfix).
+# Network-module-consumed flags (networks.lora_anima / networks.methods.*).
 # These don't flow through argparse directly because `create_network` reads
 # them from ``kwargs``. Derived from the registry in ``networks/__init__.py``
 # (``SHARED_KWARG_FLAGS`` ∪ per-``NetworkSpec.kwarg_flags``) so adding a new
@@ -2465,7 +2667,78 @@ def build_network_extras() -> dict[str, _config_schema.ConfigKey]:
     }
 
 
+def _install_crash_reporter(argv: list[str]) -> None:
+    """Record a fatal startup/training exception into ``--progress_jsonl``.
+
+    The daemon launches us windowless under ``pythonw.exe``; that interpreter
+    drops the child's stdout/stderr (only the ``accelerate launch`` *parent*'s
+    output reaches ``stdout.log``), so an uncaught traceback here is lost and the
+    daemon falls back to a generic "process exited (code=1)" with nothing
+    actionable. ``progress.jsonl`` is written by path, not via the dead std
+    streams, so it survives — and it's what the daemon already reads to diagnose
+    a job (``manager._finalize_from_exit`` → ``run_end.error``).
+
+    ``run_scope`` already emits ``run_end(error=…)`` for failures inside the
+    training loop, but only *after* ``ProgressSink.run_start`` has fired — late
+    in ``train()``. Errors before that (latent/TE cache incomplete, config or
+    dataset build, model load) escape it entirely. This excepthook is the
+    catch-all: it appends a ``run_end`` error event for any uncaught exception,
+    wherever it's raised, so the GUI's finish banner shows the real cause.
+    """
+    path = None
+    for i, tok in enumerate(argv):
+        if tok == "--progress_jsonl" and i + 1 < len(argv):
+            path = argv[i + 1]
+        elif tok.startswith("--progress_jsonl="):
+            path = tok.split("=", 1)[1]
+    if not path or path.strip().lower() in ("", "none", "off"):
+        return
+
+    import json as _json
+
+    prev_hook = sys.excepthook
+
+    def _hook(exc_type, exc, tb):
+        # KeyboardInterrupt is a clean stop, handled by run_scope/the daemon's
+        # stop_requested path — don't mislabel it an error.
+        if not issubclass(exc_type, KeyboardInterrupt):
+            try:
+                # Dedupe: run_scope may already have written the terminal event
+                # for an in-loop failure; don't append a second one.
+                already_ended = False
+                if os.path.isfile(path):
+                    with open(path, "r", encoding="utf-8") as fh:
+                        for line in fh:
+                            line = line.strip()
+                            if line:
+                                last = line
+                    try:
+                        already_ended = _json.loads(last).get("ev") == "run_end"
+                    except (NameError, ValueError):
+                        already_ended = False
+                if not already_ended:
+                    os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+                    with open(path, "a", encoding="utf-8") as fh:
+                        fh.write(
+                            _json.dumps(
+                                {
+                                    "ev": "run_end",
+                                    "status": "error",
+                                    "final_step": -1,
+                                    "error": f"{exc_type.__name__}: {exc}",
+                                }
+                            )
+                            + "\n"
+                        )
+            except Exception:  # noqa: BLE001 — reporting must never mask the crash
+                pass
+        prev_hook(exc_type, exc, tb)
+
+    sys.excepthook = _hook
+
+
 if __name__ == "__main__":
+    _install_crash_reporter(sys.argv)
     parser = setup_parser()
     _config_schema.populate_schema(parser, extras=build_network_extras())
 

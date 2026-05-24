@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from aiohttp import web
 
-from web.services.config_service import preflight_training_config
+from web.services.config_service import is_web_runtime_config, preflight_training_config
 
 
 def setup_training_routes(app: web.Application) -> None:
@@ -31,8 +31,11 @@ async def handle_preflight(request: web.Request) -> web.Response:
     variant = data.get("variant", "lora")
     preset = data.get("preset", "default")
     methods_subdir = data.get("methods_subdir", "gui-methods")
+    config_file = str(data.get("config_file") or "").strip() or None
+    if _is_cli_only_spd(variant, methods_subdir):
+        return web.json_response(_cli_only_spd_payload(variant, preset, methods_subdir), status=400)
     try:
-        result = preflight_training_config(variant, preset, methods_subdir)
+        result = preflight_training_config(variant, preset, methods_subdir, config_file=config_file)
         return web.json_response(result)
     except Exception as e:
         return web.json_response({
@@ -63,18 +66,47 @@ async def handle_start(request: web.Request) -> web.Response:
     methods_subdir = data.get("methods_subdir", "gui-methods")
     extra_args = data.get("extra_args", [])
     gpu_whitelist = data.get("gpu_whitelist")
-    preflight = preflight_training_config(variant, preset, methods_subdir)
-    if not preflight.get("ok", False):
-        return web.json_response({
-            "ok": False,
-            "error": "预检测发现错误，已阻止训练启动",
-            "preflight": preflight,
-        }, status=400)
+    config_file = str(data.get("config_file") or "").strip() or None
+    if _is_cli_only_spd(variant, methods_subdir):
+        return web.json_response({"ok": False, "error": _cli_only_spd_message()}, status=400)
     try:
-        await svc.start(variant, preset, extra_args, methods_subdir, gpu_whitelist=gpu_whitelist)
-        return web.json_response({"ok": True, "message": "训练已启动"})
+        preflight = preflight_training_config(variant, preset, methods_subdir, config_file=config_file)
+        if not preflight.get("ok", False):
+            return web.json_response({
+                "ok": False,
+                "error": "预检测发现错误，已阻止训练启动",
+                "preflight": preflight,
+            }, status=400)
+        if not config_file or not is_web_runtime_config(config_file):
+            await svc.start_preprocess(
+                variant,
+                preset,
+                methods_subdir,
+                extra_args,
+                True,
+                gpu_whitelist=gpu_whitelist,
+                config_file=config_file,
+            )
+            return web.json_response({
+                "ok": True,
+                "job": "preprocess",
+                "train_after": True,
+                "message": "预处理已启动，完成后会自动开始训练",
+            })
+        await svc.start(
+            variant,
+            preset,
+            extra_args,
+            methods_subdir,
+            gpu_whitelist=gpu_whitelist,
+            config_file=config_file,
+            use_runtime_dir=False,
+        )
+        return web.json_response({"ok": True, "job": "training", "train_after": False, "message": "训练已启动"})
     except RuntimeError as e:
         return web.json_response({"ok": False, "error": str(e)}, status=409)
+    except (FileNotFoundError, ValueError) as e:
+        return web.json_response({"ok": False, "error": str(e)}, status=400)
 
 
 async def handle_resume(request: web.Request) -> web.Response:
@@ -105,8 +137,11 @@ async def handle_preprocess(request: web.Request) -> web.Response:
     extra_args = data.get("extra_args", [])
     train_after = bool(data.get("train_after", False))
     gpu_whitelist = data.get("gpu_whitelist")
+    config_file = str(data.get("config_file") or "").strip() or None
+    if _is_cli_only_spd(variant, methods_subdir):
+        return web.json_response({"ok": False, "error": _cli_only_spd_message()}, status=400)
     try:
-        preflight = preflight_training_config(variant, preset, methods_subdir)
+        preflight = preflight_training_config(variant, preset, methods_subdir, config_file=config_file)
     except Exception as e:
         return web.json_response({"ok": False, "error": f"预处理预检测失败: {e}"}, status=400)
     if not _preflight_allows_preprocess(preflight):
@@ -116,11 +151,21 @@ async def handle_preprocess(request: web.Request) -> web.Response:
             "preflight": preflight,
         }, status=400)
     try:
-        await svc.start_preprocess(variant, preset, methods_subdir, extra_args, train_after, gpu_whitelist=gpu_whitelist)
+        await svc.start_preprocess(
+            variant,
+            preset,
+            methods_subdir,
+            extra_args,
+            train_after,
+            gpu_whitelist=gpu_whitelist,
+            config_file=config_file,
+        )
         message = "预处理已启动，完成后会自动开始训练" if train_after else "预处理已启动"
         return web.json_response({"ok": True, "message": message})
     except RuntimeError as e:
         return web.json_response({"ok": False, "error": str(e)}, status=409)
+    except (FileNotFoundError, ValueError) as e:
+        return web.json_response({"ok": False, "error": str(e)}, status=400)
 
 
 def _preflight_allows_preprocess(result: dict) -> bool:
@@ -133,6 +178,51 @@ def _preflight_allows_preprocess(result: dict) -> bool:
         item.get("key") == "source_image_dir" and item.get("level") == "ok"
         for item in checks
     )
+
+
+def _is_cli_only_spd(variant: str, methods_subdir: str) -> bool:
+    return str(methods_subdir or "") == "methods" and str(variant or "") == "spd"
+
+
+def _cli_only_spd_message() -> str:
+    return "SPD 是 scripts/distill_spd.py 使用的 CLI 实验配置，当前 Web 训练入口不会用 train.py 启动它。请通过 tasks.py exp-spd 或对应 CLI 流程运行。"
+
+
+def _cli_only_spd_payload(variant: str, preset: str, methods_subdir: str) -> dict:
+    message = _cli_only_spd_message()
+    item = {"level": "error", "key": "spd", "message": message}
+    return {
+        "ok": False,
+        "variant": variant,
+        "preset": preset,
+        "methods_subdir": methods_subdir,
+        "summary": {"errors": 1, "warnings": 0, "checks": 1},
+        "checks": [item],
+        "errors": [item],
+        "warnings": [],
+    }
+
+
+def _preflight_requiring_preprocess(result: dict) -> dict:
+    checks = list(result.get("checks") or [])
+    item = {
+        "level": "error",
+        "key": "runtime_preprocess",
+        "message": "Web 训练会写入独立运行目录；请先点击“开始预处理”，完成后会自动训练。",
+    }
+    checks.append(item)
+    errors = list(result.get("errors") or [])
+    errors.append(item)
+    summary = dict(result.get("summary") or {})
+    summary["errors"] = len(errors)
+    summary["checks"] = len(checks)
+    return {
+        **result,
+        "ok": False,
+        "summary": summary,
+        "checks": checks,
+        "errors": errors,
+    }
 
 
 async def handle_stop(request: web.Request) -> web.Response:
@@ -186,15 +276,17 @@ async def handle_config_group_timeline(request: web.Request) -> web.Response:
     methods_subdir = str(request.query.get("methods_subdir") or "").strip()
     variant = str(request.query.get("variant") or "").strip()
     preset = str(request.query.get("preset") or "default").strip() or "default"
+    group_key = str(request.query.get("group_key") or "").strip()
     include_archived = str(request.query.get("include_archived") or "0").lower() in {"1", "true", "yes"}
     task_ids = _timeline_task_ids_from_query(request)
-    if not task_ids and (not methods_subdir or not variant):
-        return web.json_response({"ok": False, "error": "缺少 methods_subdir 或 variant"}, status=400)
+    if not task_ids and not group_key and (not methods_subdir or not variant):
+        return web.json_response({"ok": False, "error": "缺少 group_key 或 methods_subdir/variant"}, status=400)
     try:
         return web.json_response(svc.get_config_group_timeline(
             methods_subdir,
             variant,
             preset,
+            group_key=group_key,
             include_archived=include_archived,
             task_ids=task_ids,
         ))

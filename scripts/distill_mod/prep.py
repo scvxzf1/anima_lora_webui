@@ -61,15 +61,16 @@ from library.inference.uncond import (  # noqa: E402
 )
 from scripts.distill_mod.synth import generate_synthetic_latents  # noqa: E402
 
-# Phase 2 default synthesis allowlist: DCW's top-5 portrait buckets plus the
-# next 3 most-frequent buckets in post_image_dataset/lora/ (960x1088 near-square
-# portrait, 720x1440 tall portrait, 1024x1024 square). Not folded into
+# Phase 2 default synthesis allowlist: DCW's top-5 (portrait-heavy) buckets plus
+# the next 3 most-frequent buckets in post_image_dataset/lora/ (recounted
+# 2026-05-23) — all CONSTANT_TOKEN_BUCKETS training shapes that add the
+# near-square/landscape aspects the DCW-5 set lacks. Not folded into
 # DCW_ASPECT_BUCKETS — that tuple's order is the canonical aspect_id index for
-# shipped fusion-head checkpoints (see library/datasets/buckets.py:36-42).
+# shipped fusion-head checkpoints (see library/datasets/buckets.py).
 _DEFAULT_SYNTH_BUCKETS: tuple[str, ...] = DCW_ASPECT_NAMES + (
-    "960x1088",
-    "720x1440",
-    "1024x1024",
+    "1120x960",  # near-square portrait
+    "1024x1008",  # ~square
+    "960x1120",  # near-square landscape
 )
 
 logger = logging.getLogger(__name__)
@@ -169,12 +170,12 @@ def main() -> None:
     parser.add_argument(
         "--buckets",
         type=str,
-        default="1248x832",
+        default="1200x896",
         # default=",".join(_DEFAULT_SYNTH_BUCKETS),
         help=(
             "Comma-separated (H_pix x W_pix) resolution allowlist for synthesis. "
             "Default = DCW_ASPECT_NAMES (top-5 by frequency in "
-            "post_image_dataset/lora/) plus 960x1088, 720x1440, 1024x1024 — the "
+            "post_image_dataset/lora/) plus 1120x960, 1024x1008, 960x1120 — the "
             "next three most-frequent buckets, each a distinct aspect not "
             "covered by the DCW-5 set. Pass empty string to disable the filter "
             "and synthesize every cached resolution."
@@ -183,7 +184,7 @@ def main() -> None:
     parser.add_argument(
         "--n_per_bucket",
         type=int,
-        default=1500,
+        default=10,
         help=(
             "Cap synthesized stems per bucket (None = use every stem in the "
             "allowlist's buckets). With --shuffle_seed, picks deterministically "
@@ -289,7 +290,7 @@ def main() -> None:
         buckets=buckets,
         n_per_bucket=args.n_per_bucket,
         shuffle_seed=args.shuffle_seed,
-        compile_core=not args.no_compile,
+        do_compile=not args.no_compile,
     )
 
 

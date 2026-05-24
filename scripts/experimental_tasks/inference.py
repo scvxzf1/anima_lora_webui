@@ -1,7 +1,7 @@
 """Experimental inference entry-points (exp-test-* commands).
 
-Covers the unstable methods kept under ``make exp-*``:
-postfix / postfix_exp / postfix_func, IP-Adapter, EasyControl. Reference-image
+Covers the unstable methods kept under ``make exp-*``: soft tokens, IP-Adapter,
+EasyControl, plus the DirectEdit + postfix-tail inversion probes. Reference-image
 variants (exp-test-ip / exp-test-easycontrol) accept REF_IMAGE env or first
 positional arg, copy the ref alongside the generated output.
 """
@@ -27,61 +27,14 @@ _REF_IMAGE_EXTS = (".png", ".jpg", ".jpeg", ".webp")
 def _random_ref_image(directory: Path) -> str | None:
     if not directory.is_dir():
         return None
-    pool = [p for p in directory.iterdir() if p.suffix.lower() in _REF_IMAGE_EXTS]
+    # resized/ (and other source layouts) nest images under per-artist subdirs,
+    # so recurse rather than only scanning top-level files.
+    pool = [p for p in directory.rglob("*") if p.suffix.lower() in _REF_IMAGE_EXTS]
     if not pool:
         return None
     pick = random.choice(pool)
     print(f"  > Random ref: {pick}")
     return str(pick)
-
-
-def cmd_test_postfix(extra):
-    # exclude both _exp and _func so the vanilla postfix target doesn't grab them
-    outputs = sorted(
-        (
-            f
-            for f in (ROOT / "output" / "ckpt").glob("anima_postfix*.safetensors")
-            if "_exp" not in f.name and "_func" not in f.name
-        ),
-        key=lambda p: p.stat().st_mtime,
-        reverse=True,
-    )
-    if not outputs:
-        print(
-            "No 'anima_postfix*.safetensors' files found in output/ckpt/",
-            file=sys.stderr,
-        )
-        sys.exit(1)
-    run(
-        [
-            *INFERENCE_BASE,
-            "--postfix_weight",
-            str(outputs[0]),
-            *extra,
-        ]
-    )
-
-
-def cmd_test_postfix_exp(extra):
-    run(
-        [
-            *INFERENCE_BASE,
-            "--postfix_weight",
-            str(latest_output("anima_postfix_exp")),
-            *extra,
-        ]
-    )
-
-
-def cmd_test_postfix_func(extra):
-    run(
-        [
-            *INFERENCE_BASE,
-            "--postfix_weight",
-            str(latest_output("anima_postfix_func")),
-            *extra,
-        ]
-    )
 
 
 def cmd_test_soft(extra):
@@ -142,6 +95,48 @@ def _override_arg(argv: list[str], flag: str, value: str) -> list[str]:
     return argv[:i] + [flag, value] + argv[i + 2 :]
 
 
+def cmd_test_spd(extra):
+    """Inference with the latest SPD fine-tune LoRA on the SPD sampler.
+
+    Runs at the *schedule the LoRA was trained on* — read from the safetensors
+    metadata (``ss_spd_stages`` / ``ss_spd_transition_sigmas``, stamped by
+    ``scripts/distill_spd.py``) so the trajectory geometry can't silently
+    mismatch what was trained (proposal R2). CFG stays at the production
+    default (4.0); ``--spd`` forces Euler internally.
+
+        make exp-test-spd
+        make exp-test-spd ARGS="--spd_stages 0.5 0.75 1.0 --spd_transition_sigmas 0.6 0.4"
+        make exp-test-spd ARGS="--seed 1234 --image_size 832 1248"
+
+    User ``ARGS`` win: passing ``--spd_stages`` / ``--spd_transition_sigmas``
+    in ARGS overrides the metadata schedule.
+    """
+    import json
+
+    from safetensors import safe_open
+
+    weight = latest_output("anima_spd")
+    md: dict[str, str] = {}
+    try:
+        with safe_open(str(weight), "pt") as f:
+            md = f.metadata() or {}
+    except Exception as e:  # noqa: BLE001
+        print(f"  warn: could not read SPD schedule from {weight}: {e}")
+
+    base = _override_arg(list(INFERENCE_BASE), "--sampler", "euler")  # SPD forces Euler
+    cmd = [*base, "--lora_weight", str(weight), "--spd"]
+
+    stages = md.get("ss_spd_stages")
+    trans = md.get("ss_spd_transition_sigmas")
+    label = md.get("ss_spd_schedule_label", "?")
+    if stages and "--spd_stages" not in extra:
+        cmd += ["--spd_stages", *(str(s) for s in json.loads(stages))]
+    if trans and "--spd_transition_sigmas" not in extra:
+        cmd += ["--spd_transition_sigmas", *(str(s) for s in json.loads(trans))]
+    print(f"  > SPD LoRA: {weight}  schedule='{label}' stages={stages} σ={trans}")
+    run([*cmd, *extra])
+
+
 def cmd_test_ip(extra):
     """Inference with latest IP-Adapter weight.
 
@@ -186,7 +181,16 @@ def cmd_test_ip(extra):
     ]
     if scale := os.environ.get("IP_SCALE"):
         args += ["--ip_scale", scale]
-    args += ["--prompt", os.environ.get("PROMPT") or "double peace, v v,"]
+    # Default is a coherent *target*-scene prompt with NO character/copyright
+    # tag, so any identity match must come through the IP image rather than the
+    # text path. (Distinct-pair training pairs the target's own caption with the
+    # denoised latent; identity flows from a *different* ref image's PE features.
+    # A thin prompt like "double peace" under-constrains the scene -> garbage.)
+    default_prompt = (
+        "masterpiece, best quality, score_7, safe. 1girl, solo, standing in a "
+        "cafe, holding a coffee cup, looking at viewer, smile, soft lighting."
+    )
+    args += ["--prompt", os.environ.get("PROMPT") or default_prompt]
     if neg := os.environ.get("NEG"):
         args += ["--negative_prompt", neg]
     args += list(extra)
@@ -428,7 +432,7 @@ def _resolve_ref_image_pool(directory: Path, n: int) -> list[str]:
     """
     if not directory.is_dir():
         return []
-    pool = [p for p in directory.iterdir() if p.suffix.lower() in _REF_IMAGE_EXTS]
+    pool = [p for p in directory.rglob("*") if p.suffix.lower() in _REF_IMAGE_EXTS]
     if not pool:
         return []
     if n >= len(pool):
@@ -533,7 +537,7 @@ def cmd_invert_directedit(extra):
     attn_mode = _resolve_inference_base_flag("--attn_mode") or "flash"
 
     # Lazy import — keep the task module light when this command isn't run.
-    from library.inference.postfix_inversion import (  # noqa: PLC0415
+    from library.inference.editing.postfix_inversion import (  # noqa: PLC0415
         load_or_build_basis,
         load_tail_s,
         splice_tail_into_te_cache,

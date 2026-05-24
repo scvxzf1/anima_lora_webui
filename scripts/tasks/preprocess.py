@@ -46,6 +46,37 @@ def _min_pixels_args() -> list[str]:
     return ["--min_pixels", str(n)]
 
 
+def _config_min_pixels() -> int:
+    """The configured ``min_pixels`` threshold, default 0.5MP."""
+    from ._common import _path_overrides
+
+    raw = _path_overrides().get("min_pixels", 500_000)
+    try:
+        return max(0, int(raw))
+    except (TypeError, ValueError):
+        return 500_000
+
+
+def _resolve_lowres_filter(extra: list[str]) -> tuple[list[str], list[str]]:
+    """Reconcile low-res filtering convenience flags with forwarded args.
+
+    ``--min_pixels`` is authoritative when passed explicitly. ``--no_drop_lowres``
+    keeps every image; ``--drop_lowres`` forces the configured threshold.
+    """
+    cleaned = list(extra)
+    no_drop = "--no_drop_lowres" in cleaned
+    drop = "--drop_lowres" in cleaned
+    cleaned = [arg for arg in cleaned if arg not in ("--no_drop_lowres", "--drop_lowres")]
+
+    if "--min_pixels" in cleaned:
+        return [], cleaned
+    if no_drop:
+        return ["--min_pixels", "0"], cleaned
+    if drop:
+        return ["--min_pixels", str(_config_min_pixels())], cleaned
+    return _min_pixels_args(), cleaned
+
+
 def _truthy(value: Any) -> bool:
     return str(value).strip().lower() in {"1", "true", "yes", "on"}
 
@@ -232,6 +263,7 @@ def _recursive_args(row: dict[str, Any]) -> list[str]:
 
 
 def _run_preprocess_resize(row: dict[str, Any], extra: list[str]) -> None:
+    mp_args, extra = _resolve_lowres_filter(extra)
     src = str(row.get("source_image_dir") or _path("source_image_dir", "image_dataset"))
     dst = str(row.get("resized_image_dir") or _path("resized_image_dir", "post_image_dataset/resized"))
     if _same_path_text(src, dst) and not _has_extra_path_override(extra, "--src", "--dst"):
@@ -248,7 +280,7 @@ def _run_preprocess_resize(row: dict[str, Any], extra: list[str]) -> None:
             "--no_copy_captions",
             *_recursive_args(row),
             *_resize_bucket_args(row),
-            *_min_pixels_args(),
+            *mp_args,
             *extra,
         ]
     )
@@ -294,6 +326,7 @@ def _run_preprocess_te(
 ) -> None:
     shuffle_variants = shuffle_variants or os.environ.get("CAPTION_SHUFFLE_VARIANTS", "4")
     tag_dropout_rate = tag_dropout_rate or os.environ.get("CAPTION_TAG_DROPOUT_RATE", "0.1")
+    mp_args, extra = _resolve_lowres_filter(extra)
     run(
         [
             PY,
@@ -314,7 +347,7 @@ def _run_preprocess_te(
             "--caption_tag_dropout_rate",
             tag_dropout_rate,
             *_recursive_args(row),
-            *_min_pixels_args(),
+            *mp_args,
             *extra,
         ]
     )
@@ -378,12 +411,142 @@ def cmd_preprocess_pe(extra):
         )
 
 
+def cmd_caption_index(extra):
+    """Build the method-agnostic typed-tag caption index."""
+    run(
+        [
+            PY,
+            "preprocess/build_caption_index.py",
+            "--src",
+            _path("source_image_dir", "image_dataset"),
+            *extra,
+        ]
+    )
+
+
 def cmd_preprocess(extra):
     # PE features are intentionally NOT cached here — only IP-Adapter / CMMD /
     # DCW v4 need them, and those paths chain `preprocess-pe` explicitly (see
     # `exp-ip-adapter-preprocess`). Leaving PE out keeps the default LoRA
     # preprocess fast on machines that won't ever use the vision tower.
+    _, vae_extra = _resolve_lowres_filter(extra)
     for row in _preprocess_rows():
         _run_preprocess_resize(row, extra)
-        _run_preprocess_vae(row, extra)
+        _run_preprocess_vae(row, vae_extra)
         _run_preprocess_te(row, extra)
+
+
+def cmd_preprocess_config(extra):
+    """Preprocess the exact directories named in a ``--dataset_config`` TOML."""
+    import time
+
+    import toml
+
+    args = list(extra)
+    cfg_path: str | None = None
+    src_dir: str | None = None
+    vae_path = _path("vae", "models/vae/qwen_image_vae.safetensors")
+    qwen3_path = _path("qwen3", "models/text_encoders/qwen_3_06b_base.safetensors")
+    dit_path = _path(
+        "pretrained_model_name_or_path",
+        "models/diffusion_models/anima-base-v1.0.safetensors",
+    )
+    rest: list[str] = []
+    i = 0
+    while i < len(args):
+        if args[i] == "--dataset_config" and i + 1 < len(args):
+            cfg_path = args[i + 1]
+            i += 2
+        elif args[i] == "--src" and i + 1 < len(args):
+            src_dir = args[i + 1]
+            i += 2
+        elif args[i] == "--vae" and i + 1 < len(args):
+            vae_path = args[i + 1]
+            i += 2
+        elif args[i] == "--qwen3" and i + 1 < len(args):
+            qwen3_path = args[i + 1]
+            i += 2
+        elif args[i] == "--dit" and i + 1 < len(args):
+            dit_path = args[i + 1]
+            i += 2
+        else:
+            rest.append(args[i])
+            i += 1
+    if not cfg_path or not src_dir:
+        raise SystemExit("preprocess-config requires --dataset_config <path> and --src <dir>")
+
+    last_err: OSError | None = None
+    for attempt in range(10):
+        try:
+            cfg = toml.load(cfg_path)
+            break
+        except PermissionError as e:
+            last_err = e
+            time.sleep(0.2 * (attempt + 1))
+    else:
+        raise SystemExit(
+            f"could not read {cfg_path} after retrying (last error: {last_err}). "
+            "If this persists, exclude the dataset/temp dir from your antivirus."
+        )
+
+    subsets = [
+        sub
+        for ds in (cfg.get("datasets") or [])
+        for sub in (ds.get("subsets") or [])
+        if sub.get("image_dir")
+    ]
+    if not subsets:
+        raise SystemExit(f"no [[datasets.subsets]] with image_dir in {cfg_path}")
+
+    for sub in subsets:
+        image_dir = sub["image_dir"]
+        cache_dir = sub.get("cache_dir") or image_dir
+        run(
+            [
+                PY,
+                "preprocess/resize_images.py",
+                "--src",
+                src_dir,
+                "--dst",
+                image_dir,
+                "--no_copy_captions",
+                "--min_pixels",
+                "0",
+                "--bucket_reso_steps",
+                "64",
+                "--recursive",
+                *rest,
+            ]
+        )
+        run(
+            [
+                PY,
+                "preprocess/cache_latents.py",
+                "--dir",
+                image_dir,
+                "--cache_dir",
+                cache_dir,
+                "--vae",
+                vae_path,
+                "--batch_size",
+                "4",
+                "--chunk_size",
+                "64",
+                "--recursive",
+            ]
+        )
+        run(
+            [
+                PY,
+                "preprocess/cache_text_embeddings.py",
+                "--dir",
+                src_dir,
+                "--cache_dir",
+                cache_dir,
+                "--qwen3",
+                qwen3_path,
+                "--dit",
+                dit_path,
+                "--recursive",
+            ]
+        )
