@@ -3965,10 +3965,10 @@
         ].join('');
         header.append(title, meta);
         if (datasetPresetState.status) {
-            const statusEl = document.createElement('div');
+            const statusEl = document.createElement('span');
             statusEl.className = 'dataset-preset-status';
             statusEl.textContent = datasetPresetState.status;
-            header.appendChild(statusEl);
+            meta.appendChild(statusEl);
         }
         updateDatasetPresetActionState();
     }
@@ -6288,8 +6288,12 @@
         }
         let file = datasetPresetState.selectedFile || '';
         if (!file) {
-            const name = prompt('请输入数据集预设名称');
-            if (!name) return null;
+            const name = await showDatasetPresetNameDialog({
+                title: '保存数据集预设',
+                description: '当前预设还没有文件名。请输入一个名称，保存到 configs/datasets/。',
+                confirmText: '保存预设',
+            });
+            if (name === null) return null;
             file = datasetPresetPathFromName(name);
             datasetPresetState.selectedFile = file;
         }
@@ -6337,8 +6341,12 @@
 
     async function createNewDatasetPreset() {
         if (datasetPresetState.dirty && !(await confirmUnsavedDiscard('当前数据集预设有未保存修改，新建会丢弃这些修改。是否继续？'))) return;
-        const name = prompt('请输入新数据集预设名称');
-        if (!name) return;
+        const name = await showDatasetPresetNameDialog({
+            title: '新建数据集预设',
+            description: '输入新预设名称，稍后保存时会写入 configs/datasets/。',
+            confirmText: '创建预设',
+        });
+        if (name === null) return;
         datasetPresetState = {
             ...datasetPresetState,
             selectedFile: datasetPresetPathFromName(name),
@@ -6362,8 +6370,13 @@
 
     async function copyDatasetPreset() {
         if (!datasetPresetState.selectedFile) return;
-        const name = prompt('请输入复制后的数据集预设名称', `${datasetPresetState.selectedFile.split('/').pop().replace(/\.toml$/i, '')}_copy`);
-        if (!name) return;
+        const name = await showDatasetPresetNameDialog({
+            title: '复制数据集预设',
+            description: '使用当前编辑器中的内容复制为新的数据集预设。',
+            value: `${datasetPresetState.selectedFile.split('/').pop().replace(/\.toml$/i, '')}_copy`,
+            confirmText: '复制预设',
+        });
+        if (name === null) return;
         const rows = normalizeDatasetEditorRows(datasetPresetState.datasets);
         const payloadRows = datasetRowsForPayload(rows);
         try {
@@ -6390,8 +6403,13 @@
     async function renameDatasetPreset() {
         const oldFile = datasetPresetState.selectedFile;
         if (!oldFile || datasetPresetState.readonly) return;
-        const name = prompt('请输入新的数据集预设名称', oldFile.split('/').pop().replace(/\.toml$/i, ''));
-        if (!name) return;
+        const name = await showDatasetPresetNameDialog({
+            title: '重命名数据集预设',
+            description: '会先保存为新预设，再删除旧 TOML；图片、缩放图和缓存目录不受影响。',
+            value: oldFile.split('/').pop().replace(/\.toml$/i, ''),
+            confirmText: '重命名',
+        });
+        if (name === null) return;
         const nextFile = datasetPresetPathFromName(name);
         if (nextFile === oldFile) return;
         const saved = await copyDatasetPresetToName(name);
@@ -6474,8 +6492,13 @@
         if (!file) return;
         try {
             const content = await file.text();
-            const name = prompt('请输入导入后的数据集预设名称', file.name.replace(/\.toml$/i, ''));
-            if (!name) return;
+            const name = await showDatasetPresetNameDialog({
+                title: '导入数据集预设',
+                description: '输入导入后的预设名称，文件会保存到 configs/datasets/。',
+                value: file.name.replace(/\.toml$/i, ''),
+                confirmText: '导入预设',
+            });
+            if (name === null) return;
             const target = datasetPresetPathFromName(name);
             const res = await api('/api/config/raw/save-as', {
                 method: 'POST',
@@ -6528,6 +6551,24 @@
             .replace(/[^A-Za-z0-9_-]+/g, '_')
             .replace(/^_+|_+$/g, '') || 'dataset';
         return `configs/datasets/${stem}.toml`;
+    }
+
+    async function showDatasetPresetNameDialog(options = {}) {
+        const name = await showHistoryTaskInputDialog({
+            title: options.title || '数据集预设名称',
+            description: options.description || '请输入数据集预设名称。',
+            label: options.label || '预设名称',
+            value: options.value || '',
+            placeholder: options.placeholder || '例如 rokkotsu_goddess_v2',
+            confirmText: options.confirmText || '确认',
+        });
+        if (name === null) return null;
+        const clean = name.trim();
+        if (!clean) {
+            setDatasetPresetStatus('请输入数据集预设名称', 'error');
+            return null;
+        }
+        return clean;
     }
 
     function setDatasetPresetStatus(message, level = '') {

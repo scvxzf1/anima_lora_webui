@@ -1255,22 +1255,29 @@ main { padding: 1rem 1.5rem; }
 }
 
 .dataset-preset-header {
-    display: flex;
-    align-items: flex-start;
-    justify-content: space-between;
+    display: grid;
+    grid-template-columns: minmax(220px, 1fr) auto;
+    align-items: start;
     gap: 0.75rem;
     padding: 0.65rem 0.75rem;
     border-bottom: 1px solid var(--border);
 }
 
-.dataset-preset-meta {
-    display: flex;
-    flex-wrap: wrap;
-    justify-content: flex-end;
-    gap: 0.35rem;
+.dataset-preset-header > div:first-child {
+    min-width: 0;
 }
 
-.dataset-preset-meta span {
+.dataset-preset-meta {
+    display: flex;
+    flex-wrap: nowrap;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 0.35rem;
+    min-width: max-content;
+}
+
+.dataset-preset-meta span,
+.dataset-preset-status {
     margin: 0;
     padding: 0.2rem 0.4rem;
     border: 1px solid var(--border-soft);
@@ -1280,9 +1287,7 @@ main { padding: 1rem 1.5rem; }
 }
 
 .dataset-preset-status {
-    flex-basis: 100%;
-    color: var(--text-dim);
-    font-size: 0.72rem;
+    color: var(--accent);
 }
 
 .dataset-editor-standalone {
@@ -3861,9 +3866,16 @@ input[type="checkbox"].field-input {
     .dataset-editor-header,
     .dataset-editor-footer,
     .dataset-page-toolbar,
-    .dataset-preset-header,
     .config-dataset-picker-header {
         flex-direction: column;
+    }
+    .dataset-preset-header {
+        grid-template-columns: 1fr;
+    }
+    .dataset-preset-meta {
+        justify-content: flex-start;
+        max-width: 100%;
+        overflow-x: auto;
     }
     .dataset-editor-actions,
     .dataset-page-actions,
