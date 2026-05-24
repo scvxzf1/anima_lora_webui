@@ -926,6 +926,50 @@ def test_history_summary_includes_runtime_info(tmp_path, monkeypatch):
     assert task["history_group_key"] == "source:configs/imported/522.toml"
     assert task["history_group_label"] == "configs/imported/522.toml"
     assert task["history_run_label"] == "522-20260523-114514"
+    assert task["archived"] is True
+    assert task["name"] == "预处理 522-20260523-114514"
+
+
+def test_preprocess_history_summary_archives_legacy_placeholder_by_default(tmp_path, monkeypatch):
+    history_dir = tmp_path / "history"
+    _write_group_task(
+        history_dir,
+        "20260524-131053-preprocess-imported-522",
+        job="preprocess",
+        started_at=1000.0,
+        history_meta={
+            "history_run_label": "522-20260524-131053",
+            "run_dir": "output/runs/522-20260524-131053",
+        },
+    )
+    monkeypatch.setattr(training_service, "HISTORY_DIR", history_dir)
+
+    task = TrainingService(web.Application()).list_history_tasks()[0]
+
+    assert task["archived"] is True
+    assert task["name"] == "预处理 522-20260524-131053"
+
+
+def test_preprocess_history_summary_respects_manual_unarchive(tmp_path, monkeypatch):
+    history_dir = tmp_path / "history"
+    _write_group_task(
+        history_dir,
+        "20260524-131053-preprocess-imported-522",
+        job="preprocess",
+        started_at=1000.0,
+        archived=False,
+        history_meta={
+            "updated_at": 1100.0,
+            "history_run_label": "522-20260524-131053",
+            "run_dir": "output/runs/522-20260524-131053",
+        },
+    )
+    monkeypatch.setattr(training_service, "HISTORY_DIR", history_dir)
+
+    task = TrainingService(web.Application()).list_history_tasks()[0]
+
+    assert task["archived"] is False
+    assert task["name"] == "预处理 522-20260524-131053"
 
 
 def test_resume_from_history_requires_config_snapshot(tmp_path, monkeypatch):

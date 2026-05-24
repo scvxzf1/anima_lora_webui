@@ -3,6 +3,7 @@ from __future__ import annotations
 from PIL import Image
 import toml
 
+from preprocess import cache_text_embeddings
 from preprocess import resize_images
 from scripts.tasks import preprocess
 from scripts.tasks import _common, utilities
@@ -193,6 +194,39 @@ def test_resize_bucket_args_use_dataset_no_upscale(tmp_path, monkeypatch):
         "32",
         "--bucket_no_upscale",
     ]
+
+
+def test_cache_text_embeddings_keeps_uncaptioned_images(tmp_path):
+    captioned = tmp_path / "captioned.png"
+    missing = tmp_path / "missing.png"
+    empty = tmp_path / "empty.png"
+    small = tmp_path / "small.png"
+    for path, size in [
+        (captioned, (800, 800)),
+        (missing, (800, 800)),
+        (empty, (800, 800)),
+        (small, (32, 32)),
+    ]:
+        Image.new("RGB", size, color=(128, 128, 128)).save(path)
+    captioned.with_suffix(".txt").write_text("tag one, tag two\nignored", encoding="utf-8")
+    empty.with_suffix(".txt").write_text("\n", encoding="utf-8")
+
+    entries, skipped_small, missing_captions, empty_caption_files, samples = (
+        cache_text_embeddings._collect_image_caption_entries(
+            [captioned, missing, empty, small],
+            min_pixels=500_000,
+        )
+    )
+
+    assert skipped_small == 1
+    assert missing_captions == 1
+    assert empty_caption_files == 1
+    assert [(path.name, caption) for path, caption in entries] == [
+        ("captioned.png", "tag one, tag two"),
+        ("missing.png", ""),
+        ("empty.png", ""),
+    ]
+    assert samples == ["missing.png", "empty.png"]
 
 
 def test_preprocess_runs_all_dataset_config_rows(tmp_path, monkeypatch):

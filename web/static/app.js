@@ -677,19 +677,19 @@
         ),
         drop_lowres_images: help(
             '预处理时是否跳过像素太低的源图。',
-            '开启后，低于 min_pixels 的图片不会生成缩放图、VAE 缓存和文本缓存。关闭则所有图片都会进入训练。',
+            '开启后，低于 min_pixels 的图片不会生成缩放图、VAE 缓存和文本缓存。关闭后不再看 min_pixels，所有图片都会进入预处理和训练。',
             ['减少小图、糊图对训练结果的干扰。'],
-            ['真正有价值的小尺寸素材也会被排除。'],
-            ['如果阈值设太高，可能突然少掉很多训练图，导致训练不足。'],
-            '新手推荐开启；先用默认阈值，预处理后留意实际保留了多少张图。'
+            ['关闭后会保留更多素材，但小图也可能被放大、变糊或影响训练质量。'],
+            ['开启时如果 min_pixels 设太高，可能突然少掉很多训练图，导致训练不足。'],
+            '新手推荐开启；如果你明确想保留全部小图，就关闭它，并知道此时最低像素数不会生效。'
         ),
         min_pixels: help(
             '判断“低分辨率图”的像素数门槛。',
-            '宽 x 高低于这个值的图片会被过滤。例如 500000 约等于 0.5MP；drop_lowres_images=false 时这个字段不生效。',
+            '只有“过滤低分辨率图 / drop_lowres_images”开启时才生效。宽 x 高低于这个值的图片会被过滤；例如 500000 约等于 0.5MP。',
             ['能用一个数字控制预处理阶段的图片质量下限。'],
-            ['改完必须重新预处理，已经生成的缓存不会自动更新。'],
-            ['门槛太高会让数据集变小；门槛太低则可能保留糊图。'],
-            '默认 500000 比较稳；想完全不过滤可设 0。'
+            ['关闭低分辨率过滤时，这个字段会被忽略，填多少都不会过滤图片。'],
+            ['过滤开启时，门槛太高会让数据集变小；门槛太低则可能保留糊图。'],
+            '默认 500000 比较稳；想完全不过滤，优先关闭 drop_lowres_images，或把这里设为 0。'
         ),
         path_pattern: help(
             '从数据集里筛选哪些文件参与训练的路径规则。',
@@ -9618,7 +9618,7 @@
         select.appendChild(liveOption);
 
         const trainingTasks = historyTasks
-            .filter((task) => task.job === 'training' && (showArchivedHistory || !task.archived))
+            .filter((task) => task.job === 'training' && (showArchivedHistory || !historyTaskIsArchived(task)))
             .sort((a, b) => Number(b.started_at || 0) - Number(a.started_at || 0));
         liveOption.textContent = trainingTasks.length
             ? `当前任务或最新运行目录 · ${trainingTasks.length} 个历史训练`
@@ -10251,7 +10251,7 @@
         const list = document.getElementById('task-history-list');
         if (!list) return;
         list.innerHTML = '';
-        const visibleTasks = historyTasks.filter((task) => showArchivedHistory || !task.archived);
+        const visibleTasks = historyTasks.filter((task) => showArchivedHistory || !historyTaskIsArchived(task));
         if (!visibleTasks.length) {
             const empty = document.createElement('div');
             empty.className = 'task-history-empty';
@@ -10344,13 +10344,22 @@
 
     function historyTaskDisplayName(task) {
         if (!task) return '';
-        return String(
-            task.name
-            || task.history_run_label
+        const customName = String(task.name || '').trim();
+        if (customName) return customName;
+        const defaultName = String(
+            task.history_run_label
             || runLabelFromPath(task.run_dir || task.training_output_dir || task.output_dir)
             || task.id
             || ''
         ).trim();
+        return task.job === 'preprocess' && defaultName && !defaultName.startsWith('预处理')
+            ? `预处理 ${defaultName}`
+            : defaultName;
+    }
+
+    function historyTaskIsArchived(task) {
+        if (Boolean(task?.archived)) return true;
+        return task?.job === 'preprocess' && !task?.updated_at;
     }
 
     function historyTaskRunPath(task) {
@@ -10420,7 +10429,8 @@
         const card = document.createElement('article');
         card.className = 'task-history-item';
         if (historyViewMode === 'single' && task.id === viewingHistoryTaskId) card.classList.add('active');
-        if (task.archived) card.classList.add('archived');
+        const archived = historyTaskIsArchived(task);
+        if (archived) card.classList.add('archived');
 
         const main = document.createElement('button');
         main.type = 'button';
@@ -10435,7 +10445,7 @@
             historyResumeLabel(task),
             historyStateLabel(task.state),
             task.started_at_text || task.id,
-            task.archived ? '已归档' : '',
+            archived ? '已归档' : '',
         ].filter(Boolean).join(' · ');
         const paths = document.createElement('em');
         paths.textContent = `目录: ${task.run_dir || task.training_output_dir || task.output_dir || task.history_dir || task.id}`;
@@ -10447,7 +10457,7 @@
         actions.className = 'task-history-actions';
         actions.append(
             createHistoryActionButton('重命名', () => renameHistoryTask(task)),
-            createHistoryActionButton(task.archived ? '取消归档' : '归档', () => archiveHistoryTask(task)),
+            createHistoryActionButton(archived ? '取消归档' : '归档', () => archiveHistoryTask(task)),
             createHistoryActionButton('删除', () => deleteHistoryTask(task), 'danger'),
         );
 
@@ -10468,7 +10478,7 @@
     }
 
     async function renameHistoryTask(task) {
-        const fallback = task.name || `${task.methods_subdir || '-'} / ${task.variant || '-'}`;
+        const fallback = historyTaskDisplayName(task) || `${task.methods_subdir || '-'} / ${task.variant || '-'}`;
         const name = await showHistoryTaskInputDialog({
             title: '重命名任务',
             description: '只修改任务列表中的显示名称，不会改动磁盘目录。',
@@ -10495,16 +10505,17 @@
     }
 
     async function archiveHistoryTask(task) {
+        const archived = historyTaskIsArchived(task);
         const ok = await showHistoryTaskConfirmDialog({
-            title: task.archived ? '取消归档任务' : '归档任务',
+            title: archived ? '取消归档任务' : '归档任务',
             description: historyTaskLabel(task),
-            message: task.archived
+            message: archived
                 ? '取消归档后，这个任务会重新出现在默认任务列表中。'
                 : '归档后默认会隐藏这个任务，可勾选“显示归档”再次查看。',
-            confirmText: task.archived ? '取消归档' : '确认归档',
+            confirmText: archived ? '取消归档' : '确认归档',
         });
         if (!ok) return;
-        await updateHistoryTaskMeta(task.id, { archived: !task.archived });
+        await updateHistoryTaskMeta(task.id, { archived: !archived });
     }
 
     async function deleteHistoryTask(task) {
@@ -10553,7 +10564,7 @@
     }
 
     function historyTaskLabel(task) {
-        return task.name || `${task.methods_subdir || '-'} / ${task.variant || task.id}`;
+        return historyTaskDisplayName(task) || `${task.methods_subdir || '-'} / ${task.variant || task.id}`;
     }
 
     function showHistoryTaskInputDialog(options) {
@@ -10760,7 +10771,7 @@
     }
 
     function showTimelineTaskSelectionDialog(group) {
-        const visibleTasks = historyTasks.filter((task) => showArchivedHistory || !task.archived);
+        const visibleTasks = historyTasks.filter((task) => showArchivedHistory || !historyTaskIsArchived(task));
         const candidates = groupHistoryTasks(visibleTasks)
             .map((item) => ({
                 ...item,
@@ -10819,7 +10830,7 @@
                 `${item.trainingTasks.length} 次训练`,
                 `${lossCount} loss点`,
                 `${logCount} 日志`,
-                item.trainingTasks.some((task) => task.archived) ? '含归档' : '',
+                item.trainingTasks.some((task) => historyTaskIsArchived(task)) ? '含归档' : '',
             ].filter(Boolean).join(' · ');
             content.append(title, meta);
             label.append(checkbox, content);
@@ -11581,7 +11592,7 @@
             'btn-refresh-preview': '重新扫描当前预览来源目录，读取最新生成的样张图片。',
             'btn-refresh-weights': '重新扫描选中训练任务的权重文件，显示保存轮次和步数。',
             'btn-sort-weights': '按 Epoch/Step 切换权重文件正序或反序排列。',
-            'btn-save-preview-settings': '保存预览图路径设置，只影响预览图页面读取目录，不会改训练配置。',
+            'btn-save-preview-settings': '保存预览图路径设置，只影响预览结果页面读取目录，不会改训练配置。',
             'btn-reset-preview-settings': '恢复预览图目录默认值，例如旧版训练样张兼容目录 output/ckpt/sample。',
             'btn-save-global-settings': '保存 Web 训练输出根目录。每次训练都会在这里创建独立运行目录。',
             'btn-reset-global-settings': '恢复 Web 训练输出根目录默认值 output/runs。',
@@ -11613,7 +11624,7 @@
                 config: '配置页：选择方法/变体/预设，编辑训练参数并引用数据集预设。',
                 datasets: '数据集页：管理可复用的多数据集预设。',
                 training: '训练页：查看当前任务、历史任务、loss 曲线、日志和显存状态。',
-                preview: '预览图页：查看训练中样张、推理输出或自定义目录图片。',
+                preview: '预览结果页：查看训练中样张、推理输出或自定义目录图片。',
                 settings: '全局设置页：设置 Web 训练输出根目录和新建预设默认模型路径。',
             };
             const key = btn.dataset.tab;

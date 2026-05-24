@@ -26,7 +26,7 @@
             <button class="tab-btn active" data-tab="config">配置</button>
             <button class="tab-btn" data-tab="datasets">数据集</button>
             <button class="tab-btn" data-tab="training">训练</button>
-            <button class="tab-btn" data-tab="preview">预览图</button>
+            <button class="tab-btn" data-tab="preview">预览结果</button>
             <button class="tab-btn" data-tab="settings">全局设置</button>
         </nav>
         <div id="status-indicator">
@@ -408,6 +408,7 @@
                                 <section class="help-section">
                                     <div class="help-heading">为什么</div>
                                     <p>把输出和缓存集中到同一个根目录，能避免配置页和数据集页反复填写缓存路径，也更容易按训练时间找到结果、复盘配置和清理旧运行。</p>
+                                    <p>PS：缓存必须要有地方存放；让用户逐项单独配置太繁琐，所以最终只指定一个主路径来集中存放缓存和结果，既让用户知道文件会放在哪里，也减少需要配置的项目。</p>
                                 </section>
                             </div>
                         </div>
@@ -560,7 +561,7 @@
                             <span>看当前状态、日志、Loss 曲线和历史任务。从检查点恢复也在这里操作。</span>
                         </div>
                         <div>
-                            <strong>预览图页</strong>
+                            <strong>预览结果页</strong>
                             <span>看训练中采样图、权重文件；权重可以直接通过浏览器下载。</span>
                         </div>
                         <div>

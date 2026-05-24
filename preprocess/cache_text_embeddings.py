@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
-"""Cache text encoder (Qwen3) outputs for all captioned images in a dataset directory.
+"""Cache text encoder (Qwen3) outputs for all images in a dataset directory.
 
-Reads .txt caption sidecars, tokenizes with Qwen3 + T5, encodes through the
-Qwen3 text encoder, and optionally runs the LLM adapter to produce crossattn_emb.
-Saves results as *_anima_te.safetensors alongside each image.
+Reads .txt caption sidecars when present, falls back to an empty caption for
+uncaptioned images, tokenizes with Qwen3 + T5, encodes through the Qwen3 text
+encoder, and optionally runs the LLM adapter to produce crossattn_emb. Saves
+results as *_anima_te.safetensors alongside each image.
 
 Supports caption shuffle variants: with --caption_shuffle_variants N, generates
 N variants per image and caches them all in one file. v0 is the pristine
@@ -110,6 +111,58 @@ def _encode_batch(
         t5_input_ids.to(dtype=torch.long).cpu(),
         t5_attn_mask.to(dtype=torch.int32).cpu(),
         crossattn_emb,
+    )
+
+
+def _collect_image_caption_entries(
+    candidates: list[Path],
+    min_pixels: int,
+) -> tuple[list[tuple[Path, str]], int, int, int, list[str]]:
+    """Return images to cache plus caption diagnostics.
+
+    Missing or empty caption sidecars intentionally become empty captions.
+    Training already treats uncaptained images this way, and writing matching TE
+    caches keeps Web preprocess + train from disagreeing about sample count.
+    """
+    entries: list[tuple[Path, str]] = []
+    skipped_small = 0
+    missing_captions = 0
+    empty_caption_files = 0
+    empty_caption_samples: list[str] = []
+
+    for p in candidates:
+        if p.suffix.lower() not in IMAGE_EXTENSIONS:
+            continue
+        if min_pixels > 0:
+            try:
+                with Image.open(p) as im:
+                    w, h = im.size
+            except Exception as e:
+                print(f"  warn: could not read {p.name}: {e}")
+                continue
+            if w * h < min_pixels:
+                skipped_small += 1
+                continue
+
+        caption_path = p.with_suffix(".txt")
+        caption = ""
+        if caption_path.exists():
+            caption = caption_path.read_text(encoding="utf-8").strip().split("\n")[0]
+            if not caption:
+                empty_caption_files += 1
+        else:
+            missing_captions += 1
+
+        if not caption and len(empty_caption_samples) < 5:
+            empty_caption_samples.append(p.name)
+        entries.append((p, caption))
+
+    return (
+        entries,
+        skipped_small,
+        missing_captions,
+        empty_caption_files,
+        empty_caption_samples,
     )
 
 
@@ -241,8 +294,9 @@ def main() -> None:
             overwrite=bool(getattr(args, "force_recache_uncond", False)),
         )
 
-    # Collect images that have caption sidecars. Mirror the resize filter so
-    # we don't cache TE for images that would be dropped at resize time.
+    # Collect every image that survived the resize filter. Missing or empty
+    # captions are encoded as empty captions so the TE cache count matches the
+    # resized/latent cache count used by train.py.
     if args.recursive:
         candidates = sorted(
             p
@@ -269,32 +323,30 @@ def main() -> None:
     else:
         candidates = sorted(data_dir.iterdir())
 
-    entries: list[tuple[Path, str]] = []
-    skipped_small = 0
-    for p in candidates:
-        if p.suffix.lower() not in IMAGE_EXTENSIONS:
-            continue
-        caption_path = p.with_suffix(".txt")
-        if not caption_path.exists():
-            continue
-        if args.min_pixels > 0:
-            try:
-                with Image.open(p) as im:
-                    w, h = im.size
-            except Exception as e:
-                print(f"  warn: could not read {p.name}: {e}")
-                continue
-            if w * h < args.min_pixels:
-                skipped_small += 1
-                continue
-        caption = caption_path.read_text(encoding="utf-8").strip().split("\n")[0]
-        if caption:
-            entries.append((p, caption))
+    (
+        entries,
+        skipped_small,
+        missing_captions,
+        empty_caption_files,
+        empty_caption_samples,
+    ) = _collect_image_caption_entries(candidates, args.min_pixels)
 
     if skipped_small:
         print(
             f"Skipping {skipped_small} images below {args.min_pixels:,} pixels "
             f"({args.min_pixels / 1e6:.2f}MP) -- same filter as resize_images.py."
+        )
+    empty_caption_count = missing_captions + empty_caption_files
+    if empty_caption_count:
+        sample = ", ".join(empty_caption_samples)
+        detail = (
+            f"{missing_captions} missing .txt"
+            f", {empty_caption_files} empty .txt"
+        )
+        print(
+            f"Using empty caption for {empty_caption_count} image(s) "
+            f"({detail})."
+            + (f" Examples: {sample}" if sample else "")
         )
 
     total = len(entries)
@@ -422,7 +474,8 @@ def main() -> None:
 
     pbar.close()
     print(
-        f"\nText embedding caching complete: {cached} cached, {skipped} skipped (already existed)"
+        f"\nText embedding caching complete: {cached} cached, {skipped} skipped "
+        f"(already existed), {empty_caption_count} empty-caption"
     )
 
     text_encoder.to("cpu")

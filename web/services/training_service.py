@@ -881,11 +881,18 @@ class TrainingService:
             resume_info=resume_info,
             task_id=task_dir.name,
         )
+        default_name = _default_preprocess_history_name({
+            "id": task_dir.name,
+            "job": job,
+            "output_dir": output_dir,
+            **runtime_meta,
+            **history_meta,
+        })
         meta = {
             "id": task_dir.name,
-            "name": "",
+            "name": default_name,
             "group": "",
-            "archived": False,
+            "archived": _default_history_archived(job),
             "job": job,
             "state": "running",
             "variant": variant,
@@ -2081,7 +2088,7 @@ def _history_summary(meta: dict[str, Any], task_dir: Path) -> dict[str, Any]:
     out["id"] = task_dir.name
     out["name"] = str(out.get("name") or "")
     out["group"] = str(out.get("group") or "")
-    out["archived"] = bool(out.get("archived", False))
+    out["archived"] = _history_task_archived(out)
     out["history_dir"] = _display_project_path(str(task_dir))
     out["history_dir_abs"] = str(task_dir)
     out["config_snapshot"] = _display_project_path(str(task_dir / "config.snapshot.toml"))
@@ -2093,9 +2100,44 @@ def _history_summary(meta: dict[str, Any], task_dir: Path) -> dict[str, Any]:
         out[key] = str(out.get(key) or data_dirs.get(key) or "")
     _fill_history_runtime_meta(out)
     _fill_history_group_meta(out)
+    if not out["name"]:
+        out["name"] = _default_preprocess_history_name(out)
     out["log_count"] = int(out.get("log_count") or _count_jsonl(task_dir / "logs.jsonl"))
     out["metric_count"] = int(out.get("metric_count") or _count_jsonl(task_dir / "metrics.jsonl"))
     return out
+
+
+def _default_history_archived(job: str) -> bool:
+    return str(job or "").strip() == "preprocess"
+
+
+def _history_task_archived(task: dict[str, Any]) -> bool:
+    archived = bool(task.get("archived", False))
+    if archived:
+        return True
+    if str(task.get("job") or "").strip() != "preprocess":
+        return False
+    # 旧版本预处理占位默认写成 archived=false。没有用户更新痕迹时，
+    # 读取时按新的默认规则隐藏；用户手动取消归档后会带 updated_at。
+    return "updated_at" not in task
+
+
+def _default_preprocess_history_name(task: dict[str, Any]) -> str:
+    if str(task.get("job") or "").strip() != "preprocess":
+        return ""
+    label = str(task.get("history_run_label") or "").strip()
+    if not label:
+        label = _history_run_label_from_runtime(
+            str(task.get("output_dir") or ""),
+            _runtime_meta(task),
+            str(task.get("id") or ""),
+        )
+    label = label or str(task.get("id") or "").strip()
+    if not label:
+        return "预处理"
+    if label.startswith("预处理"):
+        return label
+    return f"预处理 {label}"
 
 
 def _fill_history_runtime_meta(task: dict[str, Any]) -> None:
