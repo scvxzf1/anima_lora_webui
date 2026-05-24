@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
-"""Cache text encoder (Qwen3) outputs for all captioned images in a dataset directory.
+"""Cache text encoder (Qwen3) outputs for all images in a dataset directory.
 
-Reads .txt caption sidecars, tokenizes with Qwen3 + T5, encodes through the
-Qwen3 text encoder, and optionally runs the LLM adapter to produce crossattn_emb.
-Saves results as *_anima_te.safetensors alongside each image (or under
-``--cache_dir``).
+Reads .txt caption sidecars when present and falls back to an empty caption
+when missing or blank, matching the training dataset behavior. Tokenizes with
+Qwen3 + T5, encodes through the Qwen3 text encoder, and optionally runs the
+LLM adapter to produce crossattn_emb. Saves results as
+*_anima_te.safetensors alongside each image (or under ``--cache_dir``).
 
 Supports caption shuffle variants: with --caption_shuffle_variants N, generates
 N variants per image and caches them all in one file. v0 is the pristine

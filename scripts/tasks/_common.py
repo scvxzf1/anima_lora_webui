@@ -294,6 +294,14 @@ def _has_console() -> bool:
         return True
 
 
+def _prepend_env_path(env: dict[str, str], key: str, path: Path | str) -> None:
+    """Prepend a path-like environment value without duplicating entries."""
+    value = str(path)
+    parts = [part for part in env.get(key, "").split(os.pathsep) if part]
+    if value not in parts:
+        env[key] = os.pathsep.join([value, *parts])
+
+
 def run(cmd: list[str], **kwargs):
     """Run a subprocess, exit on failure.
 
@@ -324,6 +332,10 @@ def run(cmd: list[str], **kwargs):
     # children's Python stdio line-/un-buffered so the GUI sees output as it
     # happens. Inherited by grandchildren too.
     env.setdefault("PYTHONUNBUFFERED", "1")
+    # Preprocess helpers are executed as ``python scripts/preprocess/*.py``.
+    # In that mode Python places ``scripts/preprocess`` on sys.path, not the
+    # repository root, so imports like ``from library...`` need PYTHONPATH.
+    _prepend_env_path(env, "PYTHONPATH", ROOT)
     cmd = list(cmd)
     if cmd and not Path(cmd[0]).is_absolute():
         resolved = shutil.which(cmd[0], path=env["PATH"])

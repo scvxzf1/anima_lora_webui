@@ -220,6 +220,46 @@ def test_preflight_uses_selected_config_file_dataset_paths(tmp_path: Path, monke
     assert source_checks[-1]["level"] == "ok"
     assert source_checks[-1]["path"] == "image_dataset/selected"
     assert "output_dir" not in {item["key"] for item in result["checks"]}
+    env_checks = [item for item in result["checks"] if item["key"] == "preprocess_environment"]
+    assert env_checks[-1]["level"] == "ok"
+
+
+def test_preflight_reports_missing_preprocess_environment_file(tmp_path: Path, monkeypatch):
+    configs, _dataset_path = _write_minimal_config_tree(tmp_path)
+    _patch_config_service_paths(monkeypatch, tmp_path)
+    source_dir = tmp_path / "image_dataset" / "selected"
+    source_dir.mkdir(parents=True)
+    Image.new("RGB", (8, 8), color=(20, 40, 60)).save(source_dir / "sample.png")
+    selected_config = configs / "imported" / "selected.toml"
+    selected_config.write_text(
+        "\n".join(
+            [
+                'source_image_dir = "image_dataset/selected"',
+                'pretrained_model_name_or_path = "models/anima.safetensors"',
+                'qwen3 = "models/qwen.safetensors"',
+                'vae = "models/vae.safetensors"',
+            ]
+        ),
+        encoding="utf-8",
+    )
+    (tmp_path / "models").mkdir()
+    (tmp_path / "models" / "anima.safetensors").write_bytes(b"model")
+    (tmp_path / "models" / "qwen.safetensors").write_bytes(b"qwen")
+    (tmp_path / "models" / "vae.safetensors").write_bytes(b"vae")
+    (tmp_path / "library" / "preprocess" / "__init__.py").unlink()
+
+    result = config_service.preflight_training_config(
+        "lora",
+        "default",
+        "imported",
+        config_file="configs/imported/selected.toml",
+    )
+
+    assert result["ok"] is False
+    errors = [item for item in result["errors"] if item["key"] == "preprocess_environment"]
+    assert errors
+    assert "预处理启动环境异常" in errors[-1]["message"]
+    assert "library/preprocess/__init__.py" in errors[-1]["message"]
 
 
 def test_preflight_ignores_legacy_cache_fields_for_plain_web_config(tmp_path: Path, monkeypatch):
@@ -1033,6 +1073,22 @@ def _write_minimal_config_tree(root: Path) -> tuple[Path, Path]:
     configs = root / "configs"
     (configs / "imported").mkdir(parents=True)
     (configs / "datasets").mkdir(parents=True)
+    (root / "tasks.py").write_text("print('tasks')\n", encoding="utf-8")
+    (root / "library" / "preprocess").mkdir(parents=True)
+    (root / "library" / "__init__.py").write_text("", encoding="utf-8")
+    (root / "library" / "preprocess" / "__init__.py").write_text("", encoding="utf-8")
+    preprocess_dir = root / "scripts" / "preprocess"
+    preprocess_dir.mkdir(parents=True)
+    (root / "scripts" / "__init__.py").write_text("", encoding="utf-8")
+    (root / "scripts" / "tasks").mkdir(parents=True)
+    (root / "scripts" / "tasks" / "__init__.py").write_text("", encoding="utf-8")
+    (root / "scripts" / "tasks" / "preprocess.py").write_text("", encoding="utf-8")
+    for rel_path in [
+        preprocess_dir / "resize_images.py",
+        preprocess_dir / "cache_latents.py",
+        preprocess_dir / "cache_text_embeddings.py",
+    ]:
+        rel_path.write_text("from library.preprocess import resize_to_buckets\n", encoding="utf-8")
     (configs / "base.toml").write_text(
         "\n".join(
             [

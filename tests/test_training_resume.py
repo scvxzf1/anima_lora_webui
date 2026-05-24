@@ -133,6 +133,22 @@ def _write_runtime_config_tree(root):
     datasets = configs / "datasets"
     imported.mkdir(parents=True)
     datasets.mkdir(parents=True)
+    (root / "tasks.py").write_text("print('tasks')\n", encoding="utf-8")
+    (root / "library" / "preprocess").mkdir(parents=True)
+    (root / "library" / "__init__.py").write_text("", encoding="utf-8")
+    (root / "library" / "preprocess" / "__init__.py").write_text("", encoding="utf-8")
+    preprocess_dir = root / "scripts" / "preprocess"
+    preprocess_dir.mkdir(parents=True)
+    (root / "scripts" / "__init__.py").write_text("", encoding="utf-8")
+    (root / "scripts" / "tasks").mkdir(parents=True)
+    (root / "scripts" / "tasks" / "__init__.py").write_text("", encoding="utf-8")
+    (root / "scripts" / "tasks" / "preprocess.py").write_text("", encoding="utf-8")
+    for path in (
+        preprocess_dir / "resize_images.py",
+        preprocess_dir / "cache_latents.py",
+        preprocess_dir / "cache_text_embeddings.py",
+    ):
+        path.write_text("from library.preprocess import resize_to_buckets\n", encoding="utf-8")
     (configs / "base.toml").write_text(
         "\n".join(
             [
@@ -400,7 +416,7 @@ def test_runtime_config_recovers_source_group_from_run_meta(tmp_path, monkeypatc
         runtime_info=recovered,
     )
 
-    task = svc.list_history_tasks()[0]
+    task = svc.list_history_tasks(include_archived=True)[0]
     assert task["history_group_key"] == "source:configs/imported/522.toml"
     assert task["history_source_config_file"] == "configs/imported/522.toml"
     assert task["history_run_label"] == "522-20260523-114514"
@@ -504,6 +520,8 @@ def test_handle_start_converts_plain_config_to_preprocess_train_after(tmp_path, 
             "config_file": "configs/imported/522.toml",
             "extra_args": ["--foo"],
             "gpu_whitelist": [0],
+            "confirmed": True,
+            "confirm_preprocess": True,
         },
         {"training_service": svc},
     )
@@ -521,6 +539,65 @@ def test_handle_start_converts_plain_config_to_preprocess_train_after(tmp_path, 
     assert args[:5] == ("522", "default", "imported", ["--foo"], True)
     assert kwargs["config_file"] == "configs/imported/522.toml"
     assert kwargs["gpu_whitelist"] == [0]
+
+
+def test_handle_start_requires_explicit_confirmation_before_preprocess_train_after(tmp_path, monkeypatch):
+    _write_runtime_config_tree(tmp_path)
+    _patch_runtime_service_paths(monkeypatch, tmp_path)
+    image_a = tmp_path / "image_dataset" / "a"
+    image_b = tmp_path / "image_dataset" / "b"
+    image_a.mkdir(parents=True)
+    image_b.mkdir(parents=True)
+    Image.new("RGB", (8, 8), color=(10, 20, 30)).save(image_a / "a.png")
+    Image.new("RGB", (8, 8), color=(30, 20, 10)).save(image_b / "b.png")
+    (tmp_path / "models").mkdir()
+    (tmp_path / "models" / "anima.safetensors").write_bytes(b"model")
+    (tmp_path / "models" / "qwen.safetensors").write_bytes(b"qwen")
+    (tmp_path / "models" / "vae.safetensors").write_bytes(b"vae")
+    (tmp_path / "configs" / "base.toml").write_text(
+        "\n".join(
+            [
+                'pretrained_model_name_or_path = "models/anima.safetensors"',
+                'qwen3 = "models/qwen.safetensors"',
+                'vae = "models/vae.safetensors"',
+                'dataset_config = "configs/datasets/522.toml"',
+                'source_image_dir = "image_dataset/a"',
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    class FakeService:
+        def __init__(self):
+            self.preprocess_calls = []
+            self.start_calls = []
+
+        async def start_preprocess(self, *args, **kwargs):
+            self.preprocess_calls.append((args, kwargs))
+
+        async def start(self, *args, **kwargs):
+            self.start_calls.append((args, kwargs))
+
+    svc = FakeService()
+    req = _FakeJsonRequest(
+        {
+            "variant": "522",
+            "preset": "default",
+            "methods_subdir": "imported",
+            "config_file": "configs/imported/522.toml",
+        },
+        {"training_service": svc},
+    )
+
+    response = asyncio.run(training_routes.handle_start(req))
+
+    assert response.status == 409
+    payload = json.loads(response.text)
+    assert payload["requires_confirmation"] is True
+    assert payload["requires_preprocess_confirmation"] is True
+    assert payload["preflight"]["ok"] is True
+    assert svc.preprocess_calls == []
+    assert svc.start_calls == []
 
 
 def test_start_preprocess_preserves_extra_args_for_pending_training(tmp_path, monkeypatch):
@@ -582,6 +659,181 @@ def test_handle_start_returns_400_for_missing_config_file(tmp_path, monkeypatch)
     response = asyncio.run(training_routes.handle_start(req))
 
     assert response.status == 400
+
+
+def test_handle_start_blocks_preprocess_environment_error(monkeypatch):
+    class FakeService:
+        def __init__(self):
+            self.preprocess_calls = []
+            self.start_calls = []
+
+        async def start_preprocess(self, *args, **kwargs):
+            self.preprocess_calls.append((args, kwargs))
+
+        async def start(self, *args, **kwargs):
+            self.start_calls.append((args, kwargs))
+
+    failure = {
+        "ok": False,
+        "summary": {"errors": 1, "warnings": 0, "checks": 1},
+        "checks": [{
+            "level": "error",
+            "key": "preprocess_environment",
+            "message": "预处理启动环境异常: ModuleNotFoundError",
+        }],
+        "errors": [{
+            "level": "error",
+            "key": "preprocess_environment",
+            "message": "预处理启动环境异常: ModuleNotFoundError",
+        }],
+        "warnings": [],
+    }
+    monkeypatch.setattr(training_routes, "preflight_training_config", lambda *args, **kwargs: failure)
+    svc = FakeService()
+    req = _FakeJsonRequest(
+        {
+            "variant": "522",
+            "preset": "default",
+            "methods_subdir": "imported",
+            "config_file": "configs/imported/522.toml",
+        },
+        {"training_service": svc},
+    )
+
+    response = asyncio.run(training_routes.handle_start(req))
+
+    assert response.status == 400
+    payload = json.loads(response.text)
+    assert payload["preflight"]["errors"][0]["key"] == "preprocess_environment"
+    assert svc.preprocess_calls == []
+    assert svc.start_calls == []
+
+
+def test_handle_preprocess_blocks_preprocess_environment_error(monkeypatch):
+    class FakeService:
+        def __init__(self):
+            self.preprocess_calls = []
+
+        async def start_preprocess(self, *args, **kwargs):
+            self.preprocess_calls.append((args, kwargs))
+
+    failure = {
+        "ok": False,
+        "summary": {"errors": 1, "warnings": 0, "checks": 2},
+        "checks": [
+            {"level": "ok", "key": "source_image_dir", "message": "源图像目录 存在"},
+            {
+                "level": "error",
+                "key": "preprocess_environment",
+                "message": "预处理启动环境异常: ModuleNotFoundError",
+            },
+        ],
+        "errors": [{
+            "level": "error",
+            "key": "preprocess_environment",
+            "message": "预处理启动环境异常: ModuleNotFoundError",
+        }],
+        "warnings": [],
+    }
+    monkeypatch.setattr(training_routes, "preflight_training_config", lambda *args, **kwargs: failure)
+    svc = FakeService()
+    req = _FakeJsonRequest(
+        {
+            "variant": "522",
+            "preset": "default",
+            "methods_subdir": "imported",
+            "config_file": "configs/imported/522.toml",
+        },
+        {"training_service": svc},
+    )
+
+    response = asyncio.run(training_routes.handle_preprocess(req))
+
+    assert response.status == 400
+    payload = json.loads(response.text)
+    assert payload["preflight"]["errors"][0]["key"] == "preprocess_environment"
+    assert svc.preprocess_calls == []
+
+
+def test_handle_preprocess_requires_confirmation_before_train_after(monkeypatch):
+    class FakeService:
+        def __init__(self):
+            self.preprocess_calls = []
+
+        async def start_preprocess(self, *args, **kwargs):
+            self.preprocess_calls.append((args, kwargs))
+
+    preflight = {
+        "ok": True,
+        "summary": {"errors": 0, "warnings": 0, "checks": 1},
+        "checks": [{"level": "ok", "key": "source_image_dir", "message": "源图像目录存在"}],
+        "errors": [],
+        "warnings": [],
+    }
+    monkeypatch.setattr(training_routes, "preflight_training_config", lambda *args, **kwargs: preflight)
+    svc = FakeService()
+    req = _FakeJsonRequest(
+        {
+            "variant": "522",
+            "preset": "default",
+            "methods_subdir": "imported",
+            "config_file": "configs/imported/522.toml",
+            "train_after": True,
+        },
+        {"training_service": svc},
+    )
+
+    response = asyncio.run(training_routes.handle_preprocess(req))
+
+    assert response.status == 409
+    payload = json.loads(response.text)
+    assert payload["requires_confirmation"] is True
+    assert payload["requires_train_after_confirmation"] is True
+    assert svc.preprocess_calls == []
+
+
+def test_handle_preprocess_allows_confirmed_train_after(monkeypatch):
+    class FakeService:
+        def __init__(self):
+            self.preprocess_calls = []
+
+        async def start_preprocess(self, *args, **kwargs):
+            self.preprocess_calls.append((args, kwargs))
+
+    preflight = {
+        "ok": True,
+        "summary": {"errors": 0, "warnings": 0, "checks": 1},
+        "checks": [{"level": "ok", "key": "source_image_dir", "message": "源图像目录存在"}],
+        "errors": [],
+        "warnings": [],
+    }
+    monkeypatch.setattr(training_routes, "preflight_training_config", lambda *args, **kwargs: preflight)
+    svc = FakeService()
+    req = _FakeJsonRequest(
+        {
+            "variant": "522",
+            "preset": "default",
+            "methods_subdir": "imported",
+            "config_file": "configs/imported/522.toml",
+            "extra_args": ["--foo"],
+            "gpu_whitelist": [0],
+            "train_after": True,
+            "confirmed": True,
+            "confirm_train_after": True,
+        },
+        {"training_service": svc},
+    )
+
+    response = asyncio.run(training_routes.handle_preprocess(req))
+
+    assert response.status == 200
+    payload = json.loads(response.text)
+    assert "自动开始训练" in payload["message"]
+    assert len(svc.preprocess_calls) == 1
+    args, kwargs = svc.preprocess_calls[0]
+    assert args[:5] == ("522", "default", "imported", ["--foo"], True)
+    assert kwargs["config_file"] == "configs/imported/522.toml"
+    assert kwargs["gpu_whitelist"] == [0]
 
 
 def test_handle_start_blocks_spd_cli_only_variant(monkeypatch):
@@ -649,6 +901,7 @@ def test_handle_start_uses_runtime_config_for_direct_training(tmp_path, monkeypa
             "methods_subdir": "imported",
             "config_file": "output/runs/522-20260523-114514/config.runtime.toml",
             "extra_args": ["--foo"],
+            "confirmed": True,
         },
         {"training_service": svc},
     )
@@ -665,6 +918,41 @@ def test_handle_start_uses_runtime_config_for_direct_training(tmp_path, monkeypa
     assert args[:4] == ("522", "default", ["--foo"], "imported")
     assert kwargs["config_file"] == "output/runs/522-20260523-114514/config.runtime.toml"
     assert kwargs["use_runtime_dir"] is False
+
+
+def test_handle_start_requires_explicit_confirmation_for_runtime_config(monkeypatch):
+    class FakeService:
+        def __init__(self):
+            self.preprocess_calls = []
+            self.start_calls = []
+
+        async def start_preprocess(self, *args, **kwargs):
+            self.preprocess_calls.append((args, kwargs))
+
+        async def start(self, *args, **kwargs):
+            self.start_calls.append((args, kwargs))
+
+    svc = FakeService()
+    monkeypatch.setattr(training_routes, "preflight_training_config", lambda *args, **kwargs: {"ok": True})
+    monkeypatch.setattr(training_routes, "is_web_runtime_config", lambda value: value.endswith("config.runtime.toml"))
+    req = _FakeJsonRequest(
+        {
+            "variant": "522",
+            "preset": "default",
+            "methods_subdir": "imported",
+            "config_file": "output/runs/522-20260523-114514/config.runtime.toml",
+        },
+        {"training_service": svc},
+    )
+
+    response = asyncio.run(training_routes.handle_start(req))
+
+    assert response.status == 409
+    payload = json.loads(response.text)
+    assert payload["requires_confirmation"] is True
+    assert payload["requires_preprocess_confirmation"] is False
+    assert svc.preprocess_calls == []
+    assert svc.start_calls == []
 
 
 def test_handle_start_uses_runtime_config_from_absolute_output_root(tmp_path, monkeypatch):
@@ -734,6 +1022,7 @@ def test_handle_start_uses_runtime_config_from_absolute_output_root(tmp_path, mo
             "preset": "default",
             "methods_subdir": "imported",
             "config_file": str(runtime_config),
+            "confirmed": True,
         },
         {"training_service": svc},
     )
@@ -912,7 +1201,8 @@ def test_history_summary_includes_runtime_info(tmp_path, monkeypatch):
         },
     )
 
-    task = svc.list_history_tasks()[0]
+    assert svc.list_history_tasks() == []
+    task = svc.list_history_tasks(include_archived=True)[0]
 
     assert task["run_dir"] == "output/runs/522-20260523-114514"
     assert task["runtime_config_file"].endswith("config.runtime.toml")
@@ -927,7 +1217,7 @@ def test_history_summary_includes_runtime_info(tmp_path, monkeypatch):
     assert task["history_group_label"] == "configs/imported/522.toml"
     assert task["history_run_label"] == "522-20260523-114514"
     assert task["archived"] is True
-    assert task["name"] == "预处理 522-20260523-114514"
+    assert task["name"] == "522-20260523-114514"
 
 
 def test_preprocess_history_summary_archives_legacy_placeholder_by_default(tmp_path, monkeypatch):
@@ -944,10 +1234,12 @@ def test_preprocess_history_summary_archives_legacy_placeholder_by_default(tmp_p
     )
     monkeypatch.setattr(training_service, "HISTORY_DIR", history_dir)
 
-    task = TrainingService(web.Application()).list_history_tasks()[0]
+    svc = TrainingService(web.Application())
+    assert svc.list_history_tasks() == []
+    task = svc.list_history_tasks(include_archived=True)[0]
 
     assert task["archived"] is True
-    assert task["name"] == "预处理 522-20260524-131053"
+    assert task["name"] == "522-20260524-131053"
 
 
 def test_preprocess_history_summary_respects_manual_unarchive(tmp_path, monkeypatch):
@@ -969,7 +1261,222 @@ def test_preprocess_history_summary_respects_manual_unarchive(tmp_path, monkeypa
     task = TrainingService(web.Application()).list_history_tasks()[0]
 
     assert task["archived"] is False
-    assert task["name"] == "预处理 522-20260524-131053"
+    assert task["name"] == "522-20260524-131053"
+
+
+def test_history_list_repairs_legacy_preprocess_archived_flag(tmp_path, monkeypatch):
+    history_dir = tmp_path / "history"
+    task_dir = _write_group_task(
+        history_dir,
+        "20260524-131053-preprocess-imported-522",
+        job="preprocess",
+        started_at=1000.0,
+        archived=False,
+        history_meta={
+            "history_run_label": "522-20260524-131053",
+            "run_dir": "output/runs/522-20260524-131053",
+        },
+    )
+    meta_path = task_dir / "meta.json"
+    meta = json.loads(meta_path.read_text(encoding="utf-8"))
+    meta.pop("updated_at", None)
+    meta["archived"] = False
+    meta_path.write_text(json.dumps(meta), encoding="utf-8")
+    monkeypatch.setattr(training_service, "HISTORY_DIR", history_dir)
+
+    svc = TrainingService(web.Application())
+    assert svc.list_history_tasks() == []
+    task = svc.list_history_tasks(include_archived=True)[0]
+
+    assert task["archived"] is True
+    repaired = json.loads(meta_path.read_text(encoding="utf-8"))
+    assert repaired["archived"] is True
+
+
+def test_history_list_repairs_legacy_preprocess_name_and_group_meta(tmp_path, monkeypatch):
+    history_dir = tmp_path / "history"
+    task_dir = _write_group_task(
+        history_dir,
+        "20260524-131053-preprocess-imported-522",
+        job="preprocess",
+        started_at=1000.0,
+        archived=False,
+        history_meta={
+            "run_dir": "output/runs/522-20260524-131053",
+            "history_source_config_file": "configs/imported/522.toml",
+        },
+    )
+    meta_path = task_dir / "meta.json"
+    meta = json.loads(meta_path.read_text(encoding="utf-8"))
+    for key in ("name", "history_group_key", "history_group_label", "history_run_label", "updated_at"):
+        meta.pop(key, None)
+    meta["archived"] = False
+    meta_path.write_text(json.dumps(meta), encoding="utf-8")
+    monkeypatch.setattr(training_service, "HISTORY_DIR", history_dir)
+
+    svc = TrainingService(web.Application())
+    assert svc.list_history_tasks() == []
+    task = svc.list_history_tasks(include_archived=True)[0]
+
+    assert task["archived"] is True
+    assert task["name"] == "522-20260524-131053"
+    assert task["history_run_label"] == "522-20260524-131053"
+    assert task["history_group_key"] == "source:configs/imported/522.toml"
+    repaired = json.loads(meta_path.read_text(encoding="utf-8"))
+    assert repaired["archived"] is True
+    assert repaired["name"] == "522-20260524-131053"
+    assert repaired["history_run_label"] == "522-20260524-131053"
+
+
+def test_history_list_repairs_old_auto_prefixed_preprocess_name(tmp_path, monkeypatch):
+    history_dir = tmp_path / "history"
+    task_dir = _write_group_task(
+        history_dir,
+        "20260524-131053-preprocess-imported-522",
+        job="preprocess",
+        started_at=1000.0,
+        archived=True,
+        history_meta={
+            "name": "预处理 522-20260524-131053",
+            "history_run_label": "522-20260524-131053",
+            "run_dir": "output/runs/522-20260524-131053",
+        },
+    )
+    monkeypatch.setattr(training_service, "HISTORY_DIR", history_dir)
+
+    task = TrainingService(web.Application()).list_history_tasks(include_archived=True)[0]
+
+    assert task["name"] == "522-20260524-131053"
+    repaired = json.loads((task_dir / "meta.json").read_text(encoding="utf-8"))
+    assert repaired["name"] == "522-20260524-131053"
+
+
+def test_delete_history_task_removes_directory_with_bad_files(tmp_path, monkeypatch):
+    history_dir = tmp_path / "history"
+    task_dir = history_dir / "20260524-124851-training-imported-522"
+    task_dir.mkdir(parents=True)
+    (task_dir / "metrics.jsonl").write_text("{}", encoding="utf-8")
+    (task_dir / "progress.jsonl").write_text("{}", encoding="utf-8")
+    (task_dir / "system.jsonl").write_text("{}", encoding="utf-8")
+    # 模拟一个损坏到无法正常读取/删除的残留文件。
+    bad_file = task_dir / "metrics.jsonl"
+    bad_file.unlink()
+    bad_file.write_bytes(b"broken")
+    try:
+        os.chmod(bad_file, 0)
+    except OSError:
+        pass
+
+    monkeypatch.setattr(training_service, "HISTORY_DIR", history_dir)
+    svc = TrainingService(web.Application())
+
+    result = svc.delete_history_task("20260524-124851-training-imported-522")
+
+    assert result["ok"] is True
+    assert not task_dir.exists()
+    assert svc.list_history_tasks() == []
+
+
+def test_delete_history_task_hides_record_when_cleanup_fails(tmp_path, monkeypatch):
+    history_dir = tmp_path / "history"
+    task_id = "20260524-124851-training-imported-522"
+    _write_group_task(history_dir, task_id, started_at=1000.0)
+    monkeypatch.setattr(training_service, "HISTORY_DIR", history_dir)
+
+    def fail_rmtree(_path):
+        raise OSError("无效的参数")
+
+    monkeypatch.setattr(training_service.shutil, "rmtree", fail_rmtree)
+    svc = TrainingService(web.Application())
+
+    result = svc.delete_history_task(task_id)
+
+    assert result["ok"] is True
+    assert "cleanup_error" in result
+    assert not (history_dir / task_id).exists()
+    assert svc.list_history_tasks() == []
+    tombstones = [path for path in history_dir.iterdir() if ".deleting-" in path.name]
+    assert len(tombstones) == 1
+
+
+def test_delete_training_history_task_removes_linked_preprocess_task(tmp_path, monkeypatch):
+    history_dir = tmp_path / "history"
+    run_dir = tmp_path / "runs" / "524-20260524-225059"
+    training_id = "20260524-225152-training-imported-524"
+    preprocess_id = "20260524-225059-preprocess-imported-524"
+    other_preprocess_id = "20260524-230000-preprocess-imported-524"
+    history_meta = {
+        "run_dir": str(run_dir),
+        "training_output_dir": str(run_dir / "training_output"),
+        "history_group_key": "source:configs/imported/524.toml",
+        "history_group_label": "configs/imported/524.toml",
+        "history_source_config_file": "configs/imported/524.toml",
+        "history_run_label": run_dir.name,
+    }
+    _write_group_task(
+        history_dir,
+        training_id,
+        job="training",
+        started_at=1000.0,
+        history_meta=history_meta,
+    )
+    _write_group_task(
+        history_dir,
+        preprocess_id,
+        job="preprocess",
+        started_at=990.0,
+        archived=True,
+        history_meta=history_meta,
+    )
+    _write_group_task(
+        history_dir,
+        other_preprocess_id,
+        job="preprocess",
+        started_at=980.0,
+        archived=True,
+        history_meta={
+            **history_meta,
+            "run_dir": str(tmp_path / "runs" / "524-20260524-230000"),
+            "training_output_dir": str(tmp_path / "runs" / "524-20260524-230000" / "training_output"),
+            "history_run_label": "524-20260524-230000",
+        },
+    )
+    monkeypatch.setattr(training_service, "HISTORY_DIR", history_dir)
+    svc = TrainingService(web.Application())
+
+    result = svc.delete_history_task(training_id)
+
+    assert result["ok"] is True
+    assert result["deleted_task_ids"] == [training_id, preprocess_id]
+    assert result["linked_preprocess_deleted"] == 1
+    assert not (history_dir / training_id).exists()
+    assert not (history_dir / preprocess_id).exists()
+    assert (history_dir / other_preprocess_id).exists()
+
+
+def test_delete_preprocess_history_task_does_not_remove_training_task(tmp_path, monkeypatch):
+    history_dir = tmp_path / "history"
+    run_dir = tmp_path / "runs" / "524-20260524-225059"
+    training_id = "20260524-225152-training-imported-524"
+    preprocess_id = "20260524-225059-preprocess-imported-524"
+    history_meta = {
+        "run_dir": str(run_dir),
+        "training_output_dir": str(run_dir / "training_output"),
+        "history_group_key": "source:configs/imported/524.toml",
+        "history_run_label": run_dir.name,
+    }
+    _write_group_task(history_dir, training_id, job="training", history_meta=history_meta)
+    _write_group_task(history_dir, preprocess_id, job="preprocess", archived=True, history_meta=history_meta)
+    monkeypatch.setattr(training_service, "HISTORY_DIR", history_dir)
+    svc = TrainingService(web.Application())
+
+    result = svc.delete_history_task(preprocess_id)
+
+    assert result["ok"] is True
+    assert result["deleted_task_ids"] == [preprocess_id]
+    assert result["linked_preprocess_deleted"] == 0
+    assert (history_dir / training_id).exists()
+    assert not (history_dir / preprocess_id).exists()
 
 
 def test_resume_from_history_requires_config_snapshot(tmp_path, monkeypatch):
@@ -1439,3 +1946,47 @@ def test_service_startup_marks_orphaned_running_tasks_interrupted(tmp_path, monk
     svc = TrainingService(web.Application())
     payload = svc.get_config_group_timeline("imported", "demo", "default")
     assert payload["tasks"][0]["state"] == "interrupted"
+
+
+def test_training_error_classifier_detects_cuda_oom():
+    text = (
+        "torch.OutOfMemoryError: CUDA out of memory. "
+        "Tried to allocate 64.00 MiB."
+    )
+
+    assert training_service.classify_training_error(text) == "大概率爆显存"
+
+
+def test_training_error_hint_is_added_once():
+    assert (
+        training_service._message_with_error_hint("训练异常退出 (code=1)", "大概率爆显存")
+        == "训练异常退出 (code=1)：大概率爆显存"
+    )
+    assert (
+        training_service._message_with_error_hint(
+            "训练异常退出 (code=1)：大概率爆显存",
+            "大概率爆显存",
+        )
+        == "训练异常退出 (code=1)：大概率爆显存"
+    )
+
+
+def test_progress_jsonl_oom_event_records_hint():
+    svc = TrainingService(web.Application())
+
+    asyncio.run(
+        svc._handle_progress_jsonl_event({
+            "ev": "run_end",
+            "status": "error",
+            "final_step": 0,
+            "error": "OutOfMemoryError: CUDA out of memory.",
+        })
+    )
+
+    lines = [item["line"] for item in svc.get_log_records()]
+    assert "大概率爆显存" in lines
+    assert any(
+        "结构化训练进度结束" in line and "大概率爆显存" in line
+        for line in lines
+    )
+    assert svc.get_status_snapshot()["error_hint"] == "大概率爆显存"

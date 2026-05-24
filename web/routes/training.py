@@ -67,6 +67,8 @@ async def handle_start(request: web.Request) -> web.Response:
     extra_args = data.get("extra_args", [])
     gpu_whitelist = data.get("gpu_whitelist")
     config_file = str(data.get("config_file") or "").strip() or None
+    confirmed = bool(data.get("confirmed", False))
+    confirm_preprocess = bool(data.get("confirm_preprocess", False))
     if _is_cli_only_spd(variant, methods_subdir):
         return web.json_response({"ok": False, "error": _cli_only_spd_message()}, status=400)
     try:
@@ -77,7 +79,16 @@ async def handle_start(request: web.Request) -> web.Response:
                 "error": "预检测发现错误，已阻止训练启动",
                 "preflight": preflight,
             }, status=400)
-        if not config_file or not is_web_runtime_config(config_file):
+        needs_preprocess = not config_file or not is_web_runtime_config(config_file)
+        if not confirmed or (needs_preprocess and not confirm_preprocess):
+            return web.json_response({
+                "ok": False,
+                "error": "请先确认训练前预检测结果",
+                "preflight": preflight,
+                "requires_confirmation": True,
+                "requires_preprocess_confirmation": needs_preprocess,
+            }, status=409)
+        if needs_preprocess:
             await svc.start_preprocess(
                 variant,
                 preset,
@@ -136,6 +147,11 @@ async def handle_preprocess(request: web.Request) -> web.Response:
     methods_subdir = data.get("methods_subdir", "gui-methods")
     extra_args = data.get("extra_args", [])
     train_after = bool(data.get("train_after", False))
+    confirmed = bool(data.get("confirmed", False))
+    confirm_train_after = bool(
+        data.get("confirm_train_after", False)
+        or data.get("confirm_preprocess", False)
+    )
     gpu_whitelist = data.get("gpu_whitelist")
     config_file = str(data.get("config_file") or "").strip() or None
     if _is_cli_only_spd(variant, methods_subdir):
@@ -150,6 +166,15 @@ async def handle_preprocess(request: web.Request) -> web.Response:
             "error": "当前配置还有预处理无法自动解决的问题，请先修正预检测错误",
             "preflight": preflight,
         }, status=400)
+    if train_after and (not confirmed or not confirm_train_after):
+        return web.json_response({
+            "ok": False,
+            "error": "请先确认预处理完成后自动开始训练",
+            "preflight": preflight,
+            "requires_confirmation": True,
+            "requires_preprocess_confirmation": True,
+            "requires_train_after_confirmation": True,
+        }, status=409)
     try:
         await svc.start_preprocess(
             variant,
@@ -257,7 +282,8 @@ async def handle_gpus(request: web.Request) -> web.Response:
 
 async def handle_history_list(request: web.Request) -> web.Response:
     svc = request.app["training_service"]
-    return web.json_response({"ok": True, "tasks": svc.list_history_tasks()})
+    include_archived = str(request.query.get("include_archived") or "0").lower() in {"1", "true", "yes"}
+    return web.json_response({"ok": True, "tasks": svc.list_history_tasks(include_archived=include_archived)})
 
 
 async def handle_history_detail(request: web.Request) -> web.Response:

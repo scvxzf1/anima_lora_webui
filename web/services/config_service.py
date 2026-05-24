@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import shutil
 import subprocess
+import sys
 from datetime import datetime
 from pathlib import Path
 import tomllib
@@ -29,6 +30,18 @@ DEFAULT_SAMPLE_PROMPTS_FILE = "configs/sample_prompts.txt"
 DEFAULT_RESIZED_IMAGE_DIR = "post_image_dataset/resized"
 DEFAULT_LORA_CACHE_DIR = "post_image_dataset/lora"
 DEFAULT_MAX_TRAIN_STEPS = 0
+PREPROCESS_ENV_CHECK_KEY = "preprocess_environment"
+PREPROCESS_ENV_REQUIRED_FILES = (
+    "tasks.py",
+    "library/__init__.py",
+    "library/preprocess/__init__.py",
+    "scripts/__init__.py",
+    "scripts/tasks/__init__.py",
+    "scripts/tasks/preprocess.py",
+    "scripts/preprocess/resize_images.py",
+    "scripts/preprocess/cache_latents.py",
+    "scripts/preprocess/cache_text_embeddings.py",
+)
 UI_ONLY_CONFIG_FIELDS = {
     "dataset_config_picker",
 }
@@ -629,6 +642,8 @@ def preflight_training_config(
 
     _check_dataset_source_paths(cfg, add)
     _check_dataset_paths(cfg, add, check_runtime_dirs=runtime_config)
+    if not runtime_config:
+        _check_web_preprocess_environment(add)
     if runtime_config:
         _check_training_images(cfg, add)
         _check_cache_sidecars(cfg, add)
@@ -742,6 +757,35 @@ def _looks_like_web_runtime_config(cfg: dict[str, Any]) -> bool:
         except ValueError:
             continue
     return False
+
+
+def _check_web_preprocess_environment(add) -> None:
+    python_exe = Path(_web_python_executable())
+    if not python_exe.is_file():
+        add(
+            "error",
+            PREPROCESS_ENV_CHECK_KEY,
+            f"预处理启动环境异常: Python 解释器不存在 {python_exe}",
+            python_exe,
+        )
+        return
+    missing = [rel for rel in PREPROCESS_ENV_REQUIRED_FILES if not (ROOT / rel).is_file()]
+    if missing:
+        add(
+            "error",
+            PREPROCESS_ENV_CHECK_KEY,
+            f"预处理启动环境异常: 缺少 {', '.join(missing)}",
+            ROOT / missing[0],
+        )
+        return
+    add("ok", PREPROCESS_ENV_CHECK_KEY, "预处理启动环境文件检查通过", ROOT)
+
+
+def _web_python_executable() -> str:
+    venv_python = ROOT / ".venv" / "bin" / "python"
+    if venv_python.exists():
+        return str(venv_python)
+    return sys.executable
 
 
 def estimate_training_steps(

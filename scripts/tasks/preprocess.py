@@ -272,7 +272,8 @@ def _run_preprocess_resize(row: dict[str, Any], extra: list[str]) -> None:
     run(
         [
             PY,
-            "scripts/preprocess/resize_images.py",
+            "-m",
+            "scripts.preprocess.resize_images",
             "--src",
             src,
             "--dst",
@@ -290,7 +291,8 @@ def _run_preprocess_vae(row: dict[str, Any], extra: list[str]) -> None:
     run(
         [
             PY,
-            "scripts/preprocess/cache_latents.py",
+            "-m",
+            "scripts.preprocess.cache_latents",
             "--dir",
             str(row.get("resized_image_dir") or _path("resized_image_dir", "post_image_dataset/resized")),
             "--cache_dir",
@@ -330,7 +332,8 @@ def _run_preprocess_te(
     run(
         [
             PY,
-            "scripts/preprocess/cache_text_embeddings.py",
+            "-m",
+            "scripts.preprocess.cache_text_embeddings",
             "--dir",
             str(row.get("source_image_dir") or _path("source_image_dir", "image_dataset")),
             "--cache_dir",
@@ -375,7 +378,8 @@ def cmd_preprocess_pooled(extra):
         run(
             [
                 PY,
-                "scripts/preprocess/cache_pooled_text.py",
+                "-m",
+                "scripts.preprocess.cache_pooled_text",
                 "--dir",
                 str(row.get("lora_cache_dir") or _path("lora_cache_dir", "post_image_dataset/lora")),
                 *extra,
@@ -398,7 +402,8 @@ def cmd_preprocess_pe(extra):
         run(
             [
                 PY,
-                "scripts/preprocess/cache_pe_encoder.py",
+                "-m",
+                "scripts.preprocess.cache_pe_encoder",
                 "--dir",
                 str(row.get("resized_image_dir") or _path("resized_image_dir", "post_image_dataset/resized")),
                 "--cache_dir",
@@ -416,7 +421,8 @@ def cmd_caption_index(extra):
     run(
         [
             PY,
-            "scripts/preprocess/build_caption_index.py",
+            "-m",
+            "scripts.preprocess.build_caption_index",
             "--src",
             _path("source_image_dir", "image_dataset"),
             *extra,
@@ -502,7 +508,8 @@ def cmd_preprocess_config(extra):
         run(
             [
                 PY,
-                "scripts/preprocess/resize_images.py",
+                "-m",
+                "scripts.preprocess.resize_images",
                 "--src",
                 src_dir,
                 "--dst",
@@ -519,7 +526,8 @@ def cmd_preprocess_config(extra):
         run(
             [
                 PY,
-                "scripts/preprocess/cache_latents.py",
+                "-m",
+                "scripts.preprocess.cache_latents",
                 "--dir",
                 image_dir,
                 "--cache_dir",
@@ -536,7 +544,8 @@ def cmd_preprocess_config(extra):
         run(
             [
                 PY,
-                "scripts/preprocess/cache_text_embeddings.py",
+                "-m",
+                "scripts.preprocess.cache_text_embeddings",
                 "--dir",
                 src_dir,
                 "--cache_dir",

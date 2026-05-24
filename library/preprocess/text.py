@@ -114,6 +114,56 @@ def _te_cache_path(image_path: Path, cache_dir: Path | None, image_dir: Path) ->
     )
 
 
+def collect_image_caption_entries(
+    candidates: list[Path],
+    min_pixels: int,
+) -> tuple[list[tuple[Path, str]], int, int, int, list[str]]:
+    """Collect image/caption pairs for TE caching.
+
+    Missing or blank caption sidecars are intentionally kept with an empty
+    caption. Training already treats those images as valid samples, so the
+    preprocess cache must do the same to keep the TE cache complete.
+    """
+    entries: list[tuple[Path, str]] = []
+    skipped_small = 0
+    missing_captions = 0
+    empty_caption_files = 0
+    empty_caption_samples: list[str] = []
+
+    for p in candidates:
+        if min_pixels > 0:
+            try:
+                with Image.open(p) as im:
+                    w, h = im.size
+            except Exception as e:
+                logger.warning("could not read %s: %s", p.name, e)
+                continue
+            if w * h < min_pixels:
+                skipped_small += 1
+                continue
+
+        caption_path = p.with_suffix(".txt")
+        caption = ""
+        if caption_path.exists():
+            caption = caption_path.read_text(encoding="utf-8").strip().split("\n")[0]
+            if not caption:
+                empty_caption_files += 1
+        else:
+            missing_captions += 1
+
+        if not caption and len(empty_caption_samples) < 5:
+            empty_caption_samples.append(p.name)
+        entries.append((p, caption))
+
+    return (
+        entries,
+        skipped_small,
+        missing_captions,
+        empty_caption_files,
+        empty_caption_samples,
+    )
+
+
 def cache_text_embeddings(
     data_dir: Path,
     tokenize_strategy,
@@ -131,40 +181,41 @@ def cache_text_embeddings(
     verbose: bool = True,
     progress: ProgressFn | None = None,
 ) -> PreprocessStats:
-    """Encode ``.txt`` captions for every captioned image under ``data_dir``.
+    """Encode captions for every training image under ``data_dir``.
 
     Strategies + encoder + (optional) ``llm_adapter`` are supplied loaded + on
     ``device``. Images below ``min_pixels`` are skipped (mirrors the resize
-    filter). With ``caption_shuffle_variants > 0`` each cache holds N variants
+    filter). Missing or blank caption sidecars are encoded as empty captions so
+    the text-encoder cache stays aligned with the resized/latent cache. With
+    ``caption_shuffle_variants > 0`` each cache holds N variants
     (v0 pristine, v1..v{N-1} shuffled + optionally tag-dropped). Returns counts;
     pass ``progress`` for a per-image bar.
     """
     candidates = walk_images(data_dir, recursive=recursive)
-
-    entries: list[tuple[Path, str]] = []
-    skipped_small = 0
-    for p in candidates:
-        caption_path = p.with_suffix(".txt")
-        if not caption_path.exists():
-            continue
-        if min_pixels > 0:
-            try:
-                with Image.open(p) as im:
-                    w, h = im.size
-            except Exception as e:
-                logger.warning("could not read %s: %s", p.name, e)
-                continue
-            if w * h < min_pixels:
-                skipped_small += 1
-                continue
-        caption = caption_path.read_text(encoding="utf-8").strip().split("\n")[0]
-        if caption:
-            entries.append((p, caption))
+    (
+        entries,
+        skipped_small,
+        missing_captions,
+        empty_caption_files,
+        empty_caption_samples,
+    ) = collect_image_caption_entries(candidates, min_pixels)
 
     if skipped_small and verbose:
         print(
             f"Skipping {skipped_small} images below {min_pixels:,} pixels "
             f"({min_pixels / 1e6:.2f}MP) -- same filter as resize_images.py."
+        )
+    empty_caption_count = missing_captions + empty_caption_files
+    if empty_caption_count and verbose:
+        sample = ", ".join(empty_caption_samples)
+        detail = (
+            f"{missing_captions} missing .txt, "
+            f"{empty_caption_files} empty .txt"
+        )
+        print(
+            f"Using empty caption for {empty_caption_count} image(s) "
+            f"({detail})."
+            + (f" Examples: {sample}" if sample else "")
         )
 
     stats = PreprocessStats(seen=len(entries))

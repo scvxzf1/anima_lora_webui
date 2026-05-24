@@ -1230,6 +1230,8 @@
         per_bucket_balance_weight: '分桶均衡权重',
         persistent_data_loader_workers: '常驻数据加载进程',
         pretrained_model_name_or_path: '基础模型路径',
+        preflight: '训练前预检测',
+        preprocess_environment: '预处理启动环境',
         qwen3: 'Qwen3 文本编码器路径',
         reft_alpha: 'ReFT Alpha',
         reft_dim: 'ReFT 秩',
@@ -8764,29 +8766,37 @@
             return;
         }
         const preflight = await runPreflight(variant, preset, methodsSubdir);
-        if (!preflight) return;
+        if (!preflight) {
+            if (isPreflightDialogOpen()) await waitForPreflightDialogClose();
+            return;
+        }
+        const willAutoPreprocess = !currentTrainingConfigIsRuntime();
         if (!preflight.ok) {
-            const action = await showPreflightDialog(preflight, false);
+            const action = await showPreflightDialog(preflight, false, { willAutoPreprocess });
             if (action === 'preprocess') {
                 await startPreprocessFromPreflight(preflight);
             }
             return;
         }
-        if ((preflight.summary?.warnings || 0) > 0) {
-            const action = await showPreflightDialog(preflight, true);
-            if (action === 'preprocess') {
-                await startPreprocessFromPreflight(preflight);
-                return;
-            }
-            if (action !== 'continue') return;
+        const action = await showPreflightDialog(preflight, true, { willAutoPreprocess });
+        if (action === 'preprocess') {
+            await startPreprocessFromPreflight(preflight);
+            return;
         }
-        await startTrainingUnchecked(variant, preset, methodsSubdir);
+        if (action !== 'continue') return;
+        await startTrainingUnchecked(variant, preset, methodsSubdir, { willAutoPreprocess });
     }
 
     async function runPreflight(variant, preset, methodsSubdir) {
+        const pending = showPreflightPendingDialog({
+            title: '训练前预检测',
+            message: '正在检查模型路径、数据集路径和预处理启动环境...',
+            detail: '这一步可能需要几秒钟；窗口保持打开表示仍在检查。',
+        });
         try {
-            return await api('/api/training/preflight', {
+            const res = await api('/api/training/preflight', {
                 method: 'POST',
+                signal: pending.signal,
                 body: JSON.stringify({
                     variant,
                     preset,
@@ -8794,8 +8804,14 @@
                     config_file: currentTrainingConfigFile(),
                 }),
             });
+            pending.resolve();
+            return res;
         } catch (e) {
-            alert('预检测请求失败: ' + e.message);
+            pending.resolve();
+            if (e.name === 'AbortError') {
+                return null;
+            }
+            showPreflightRequestError(`预检测请求失败: ${e.message}`);
             return null;
         }
     }
@@ -8804,7 +8820,35 @@
         return String(methodsSubdir || '') === 'methods' && String(variant || '') === 'spd';
     }
 
-    async function startTrainingUnchecked(variant, preset, methodsSubdir) {
+    function currentTrainingConfigIsRuntime() {
+        return currentTrainingConfigFile().replace(/\\/g, '/').endsWith('/config.runtime.toml');
+    }
+
+    async function confirmTrainingLaunch(options = {}) {
+        const willAutoPreprocess = Boolean(options.willAutoPreprocess);
+        return showAppConfirmDialog({
+            title: willAutoPreprocess ? '最终确认：预处理并训练' : '最终确认：开始训练',
+            description: '训练启动前的最后一步',
+            message: willAutoPreprocess
+                ? '确认后会立即创建本次运行目录并启动预处理；预处理完成后会自动开始训练。'
+                : '确认后会立即创建本次运行目录并启动训练进程。',
+            confirmText: willAutoPreprocess ? '确认预处理并训练' : '确认开始训练',
+            cancelText: '返回检查',
+        });
+    }
+
+    async function startTrainingUnchecked(variant, preset, methodsSubdir, options = {}) {
+        const willAutoPreprocess = Boolean(options.willAutoPreprocess);
+        if (!(await confirmTrainingLaunch({ willAutoPreprocess }))) return;
+        renderPreflightPending({
+            title: willAutoPreprocess ? '启动预处理后训练' : '启动训练',
+            message: willAutoPreprocess
+                ? '正在创建运行目录并启动预处理...'
+                : '正在创建运行目录并启动训练...',
+            detail: willAutoPreprocess
+                ? '预处理完成后会自动开始训练；成功后会自动切换到训练页。'
+                : '后端正在准备训练进程；启动成功后会自动切换到训练页。',
+        });
         try {
             const res = await api('/api/training/start', {
                 method: 'POST',
@@ -8815,9 +8859,13 @@
                     config_file: currentTrainingConfigFile(),
                     extra_args: [],
                     gpu_whitelist: selectedGpuPayload(),
+                    confirmed: true,
+                    confirm_preprocess: willAutoPreprocess,
                 }),
             });
             if (res.ok) {
+                const dialog = document.getElementById('preflight-dialog');
+                if (dialog?.open) dialog.close('training-started');
                 document.querySelector('[data-tab="training"]').click();
                 appendLog(`[状态] ${res.message || '任务已启动'}`);
             } else {
@@ -8827,27 +8875,28 @@
                         await startPreprocessFromPreflight(res.preflight);
                     }
                 } else {
-                    alert(res.error || '启动失败');
+                    showPreflightRequestError(res.error || '启动失败');
                 }
             }
         } catch (e) {
-            alert('请求失败: ' + e.message);
+            showPreflightRequestError('请求失败: ' + e.message);
         }
     }
 
-    function showPreflightDialog(result, allowContinue) {
+    function showPreflightDialog(result, allowContinue, options = {}) {
         const dialog = document.getElementById('preflight-dialog');
         if (!dialog) {
             if (!allowContinue) return Promise.resolve('cancel');
+            const confirmText = options.willAutoPreprocess ? '确认预处理并训练' : '确认开始训练';
             return showAppConfirmDialog({
                 title: '训练前预检测',
                 description: '检测到训练前提示',
                 message: `${preflightPlainText(result)}\n\n是否继续训练？`,
-                confirmText: '继续训练',
+                confirmText,
             }).then((ok) => ok ? 'continue' : 'cancel');
         }
-        renderPreflightResult(result, allowContinue);
-        dialog.showModal();
+        renderPreflightResult(result, allowContinue, options);
+        if (!dialog.open) dialog.showModal();
         return new Promise((resolve) => {
             dialog.addEventListener('close', () => {
                 resolve(dialog.returnValue || 'cancel');
@@ -8855,25 +8904,159 @@
         });
     }
 
-    function renderPreflightResult(result, allowContinue) {
+    function showPreflightPendingDialog(options = {}) {
+        const dialog = document.getElementById('preflight-dialog');
+        const controller = new AbortController();
+        if (!dialog) {
+            return { signal: controller.signal, resolve: () => {} };
+        }
+        renderPreflightPending(options);
+        let settled = false;
+        const cleanup = () => {
+            dialog.removeEventListener('close', handleClose);
+        };
+        const handleClose = () => {
+            cleanup();
+            if (!settled) {
+                controller.abort();
+            }
+        };
+        dialog.addEventListener('close', handleClose);
+        if (!dialog.open) {
+            try {
+                dialog.showModal();
+            } catch (e) {
+                dialog.setAttribute('open', 'open');
+            }
+        }
+        return {
+            signal: controller.signal,
+            resolve: () => {
+                settled = true;
+                cleanup();
+            },
+        };
+    }
+
+    function renderPreflightPending(options = {}) {
+        const dialog = document.getElementById('preflight-dialog');
+        const heading = dialog?.querySelector('.preflight-header h2');
         const summary = document.getElementById('preflight-summary');
         const list = document.getElementById('preflight-results');
         const continueBtn = document.getElementById('btn-preflight-continue');
         const preprocessBtn = document.getElementById('btn-preflight-preprocess');
+        const cancelBtn = document.getElementById('btn-preflight-cancel');
+        if (heading) heading.textContent = options.title || '训练前预检测';
+        if (summary) {
+            summary.className = 'preflight-summary pending';
+            summary.setAttribute('aria-live', 'polite');
+            summary.textContent = options.message || '正在预检测...';
+        }
+        if (list) {
+            list.innerHTML = '';
+            const row = document.createElement('div');
+            row.className = 'preflight-item pending';
+            row.setAttribute('aria-busy', 'true');
+
+            const badge = document.createElement('span');
+            badge.className = 'preflight-badge preflight-spinner';
+            badge.setAttribute('aria-label', '正在检查');
+            row.appendChild(badge);
+
+            const body = document.createElement('div');
+            body.className = 'preflight-body';
+            const title = document.createElement('div');
+            title.className = 'preflight-message';
+            title.textContent = options.detail || '正在连接后端并执行轻量检查...';
+            const path = document.createElement('div');
+            path.className = 'preflight-path';
+            path.textContent = '请稍等，预检测返回后会在这里显示每一项结果。';
+            body.append(title, path);
+            row.appendChild(body);
+            list.appendChild(row);
+        }
+        if (preprocessBtn) {
+            preprocessBtn.hidden = true;
+            preprocessBtn.disabled = true;
+        }
+        if (continueBtn) {
+            continueBtn.hidden = false;
+            continueBtn.disabled = true;
+            continueBtn.textContent = '正在检查...';
+        }
+        if (cancelBtn) {
+            cancelBtn.disabled = false;
+            cancelBtn.textContent = '取消';
+        }
+    }
+
+    function showPreflightRequestError(message) {
+        const result = {
+            ok: false,
+            summary: { errors: 1, warnings: 0, checks: 1 },
+            checks: [{
+                level: 'error',
+                key: 'preflight',
+                message,
+            }],
+            errors: [{
+                level: 'error',
+                key: 'preflight',
+                message,
+            }],
+            warnings: [],
+        };
+        const dialog = document.getElementById('preflight-dialog');
+        if (dialog) {
+            renderPreflightResult(result, false);
+            if (!dialog.open) dialog.showModal();
+        } else {
+            alert(message);
+        }
+    }
+
+    function isPreflightDialogOpen() {
+        const dialog = document.getElementById('preflight-dialog');
+        return Boolean(dialog?.open);
+    }
+
+    function waitForPreflightDialogClose() {
+        const dialog = document.getElementById('preflight-dialog');
+        if (!dialog?.open) return Promise.resolve();
+        return new Promise((resolve) => {
+            dialog.addEventListener('close', resolve, { once: true });
+        });
+    }
+
+    function renderPreflightResult(result, allowContinue, options = {}) {
+        const dialog = document.getElementById('preflight-dialog');
+        const heading = dialog?.querySelector('.preflight-header h2');
+        const summary = document.getElementById('preflight-summary');
+        const list = document.getElementById('preflight-results');
+        const continueBtn = document.getElementById('btn-preflight-continue');
+        const preprocessBtn = document.getElementById('btn-preflight-preprocess');
+        const cancelBtn = document.getElementById('btn-preflight-cancel');
         const errors = result.summary?.errors || 0;
         const warnings = result.summary?.warnings || 0;
         const checks = result.summary?.checks || 0;
         const canPreprocess = preflightCanStartPreprocess(result);
+        const willAutoPreprocess = Boolean(options.willAutoPreprocess);
 
+        if (heading) heading.textContent = '训练前预检测';
         summary.className = `preflight-summary ${errors ? 'error' : warnings ? 'warning' : 'ok'}`;
+        summary.removeAttribute('aria-live');
         if (errors && canPreprocess) {
-            summary.textContent = `发现 ${errors} 个错误：当前数据需要先预处理。点击“开始预处理”后，完成再启动训练。`;
+            summary.textContent = `发现 ${errors} 个错误：当前数据需要先预处理。点击下方按钮后，还会出现最终确认；确认后才会启动预处理并在完成后训练。`;
         } else {
             summary.textContent = errors
                 ? `发现 ${errors} 个错误，已阻止训练。`
                 : warnings
-                    ? `通过基础检查，但有 ${warnings} 个警告。`
-                    : `基础路径检查通过，共 ${checks} 项。`;
+                    ? (willAutoPreprocess
+                        ? `通过基础检查，但有 ${warnings} 个警告。点击下方按钮后，还需要最终确认才会预处理并训练。`
+                        : `通过基础检查，但有 ${warnings} 个警告。点击下方按钮后，还需要最终确认才会开始训练。`)
+                    : willAutoPreprocess
+                        ? `预检测通过，共 ${checks} 项。点击下方按钮后，还需要最终确认才会创建运行目录、预处理并自动训练。`
+                        : `预检测通过，共 ${checks} 项。点击下方按钮后，还需要最终确认才会开始训练。`;
         }
 
         list.innerHTML = '';
@@ -8907,7 +9090,13 @@
         preprocessBtn.disabled = !canPreprocess;
         continueBtn.hidden = !allowContinue;
         continueBtn.disabled = !allowContinue;
-        continueBtn.textContent = warnings ? '忽略警告并继续训练' : '继续训练';
+        continueBtn.textContent = warnings
+            ? (willAutoPreprocess ? '查看最终确认' : '查看最终确认')
+            : (willAutoPreprocess ? '下一步：最终确认' : '下一步：最终确认');
+        if (cancelBtn) {
+            cancelBtn.disabled = false;
+            cancelBtn.textContent = '取消';
+        }
     }
 
     function preflightCanStartPreprocess(result) {
@@ -8927,6 +9116,12 @@
         const variant = result.variant || currentTrainingSource.method || val('variant-select');
         const preset = result.preset || val('preset-select');
         const methodsSubdir = result.methods_subdir || currentTrainingSource.methods_subdir || 'gui-methods';
+        if (!(await confirmTrainingLaunch({ willAutoPreprocess: true }))) return;
+        renderPreflightPending({
+            title: '启动预处理',
+            message: '正在创建运行目录并启动预处理...',
+            detail: '正在把任务交给后端；成功后会自动切换到训练页。',
+        });
         try {
             const res = await api('/api/training/preprocess', {
                 method: 'POST',
@@ -8937,17 +9132,22 @@
                     config_file: currentTrainingConfigFile(),
                     extra_args: [],
                     train_after: true,
+                    confirmed: true,
+                    confirm_train_after: true,
+                    confirm_preprocess: true,
                     gpu_whitelist: selectedGpuPayload(),
                 }),
             });
             if (!res.ok) {
-                alert(res.error || '预处理启动失败');
+                showPreflightRequestError(res.error || '预处理启动失败');
                 return;
             }
+            const dialog = document.getElementById('preflight-dialog');
+            if (dialog?.open) dialog.close('preprocess-started');
             document.querySelector('[data-tab="training"]').click();
             appendLog(`[状态] ${res.message || '预处理已启动'}`);
         } catch (e) {
-            alert('预处理请求失败: ' + e.message);
+            showPreflightRequestError('预处理请求失败: ' + e.message);
         }
     }
 
@@ -10288,7 +10488,10 @@
     async function loadTrainingHistoryList() {
         if (location.protocol === 'file:') return;
         try {
-            const payload = await api('/api/training/history');
+            const params = new URLSearchParams();
+            if (showArchivedHistory) params.set('include_archived', '1');
+            const suffix = params.toString() ? `?${params.toString()}` : '';
+            const payload = await api(`/api/training/history${suffix}`);
             historyTasks = payload.tasks || [];
             renderTrainingHistoryList();
             renderPreviewTaskSelect();
@@ -10406,9 +10609,7 @@
             || task.id
             || ''
         ).trim();
-        return task.job === 'preprocess' && defaultName && !defaultName.startsWith('预处理')
-            ? `预处理 ${defaultName}`
-            : defaultName;
+        return defaultName;
     }
 
     function historyTaskIsArchived(task) {
@@ -10573,10 +10774,13 @@
     }
 
     async function deleteHistoryTask(task) {
+        const deletesLinkedPreprocess = task?.job === 'training';
         const ok = await showHistoryTaskConfirmDialog({
             title: '删除历史任务',
             description: historyTaskLabel(task),
-            message: '会删除该任务的日志、loss 指标和 TOML 快照。此操作不可撤销。',
+            message: deletesLinkedPreprocess
+                ? '会删除该训练任务的日志、loss 指标、TOML 快照，并一并删除同一运行目录下对应的预处理任务。此操作不可撤销。'
+                : '会删除该任务的日志、loss 指标和 TOML 快照。此操作不可撤销。',
             confirmText: '确认删除',
             danger: true,
         });
@@ -11582,7 +11786,7 @@
         document.getElementById('resume-checkpoint-select').addEventListener('change', renderResumePanelState);
         document.getElementById('history-show-archived').addEventListener('change', (e) => {
             showArchivedHistory = e.target.checked;
-            renderTrainingHistoryList();
+            loadTrainingHistoryList();
         });
         document.querySelectorAll('.preview-source-btn').forEach((btn) => {
             btn.addEventListener('click', () => setPreviewSource(btn.dataset.previewSource));

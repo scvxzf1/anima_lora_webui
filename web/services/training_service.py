@@ -64,6 +64,19 @@ METRIC_RE = re.compile(
     r"|(?:norm[:/]?\s*(?P<norm>[\d.]+))"
 )
 
+CUDA_OOM_RE = re.compile(
+    r"(?:"
+    r"cuda\s+out\s+of\s+memory"
+    r"|torch\.outofmemoryerror"
+    r"|outofmemoryerror:\s*cuda"
+    r"|cublas_status_alloc_failed"
+    r"|cudnn_status_alloc_failed"
+    r")",
+    re.IGNORECASE,
+)
+
+OOM_HINT = "大概率爆显存"
+
 
 class TrainingService:
     def __init__(self, app: web.Application):
@@ -96,6 +109,7 @@ class TrainingService:
         self._progress_jsonl_seen: set[tuple[Any, ...]] = set()
         self._progress_jsonl_lock: asyncio.Lock | None = None
         self._progress_total_steps: int | None = None
+        self._detected_error_hint: str = ""
         _mark_orphaned_running_history_tasks()
 
     async def start(
@@ -365,6 +379,7 @@ class TrainingService:
         self._progress_jsonl_seen = set()
         self._progress_jsonl_lock = asyncio.Lock()
         self._progress_total_steps = None
+        self._detected_error_hint = ""
         self._stop_requested = False
         self.current_task_id = ""
         self.current_task_dir = None
@@ -489,8 +504,8 @@ class TrainingService:
     async def list_gpus(self) -> list[dict[str, Any]]:
         return await _list_available_gpus()
 
-    def list_history_tasks(self) -> list[dict[str, Any]]:
-        return _list_history_tasks()
+    def list_history_tasks(self, *, include_archived: bool = False) -> list[dict[str, Any]]:
+        return _list_history_tasks(include_archived=include_archived)
 
     def get_history_task(self, task_id: str) -> dict[str, Any]:
         return _load_history_task(task_id)
@@ -547,9 +562,10 @@ class TrainingService:
         return _update_history_task(task_id, patch)
 
     def delete_history_task(self, task_id: str) -> dict[str, Any]:
-        if task_id == self.current_task_id and self.status == "running":
+        delete_task_ids = _history_task_ids_for_delete(task_id)
+        if self.status == "running" and self.current_task_id in delete_task_ids:
             raise RuntimeError("当前运行中的任务不能删除")
-        return _delete_history_task(task_id)
+        return _delete_history_tasks(delete_task_ids)
 
     def get_status_snapshot(self) -> dict[str, Any]:
         return {
@@ -566,6 +582,7 @@ class TrainingService:
             "last_output_at": self._last_output_at,
             "last_log_line": self._last_log_line,
             "last_log_id": self._log_records[-1]["id"] if self._log_records else 0,
+            "error_hint": self._detected_error_hint,
         }
 
     async def _read_output(self):
@@ -603,6 +620,8 @@ class TrainingService:
             msg = "预处理完成" if rc == 0 else f"预处理异常退出 (code={rc})"
         else:
             msg = "训练完成" if rc == 0 else f"训练异常退出 (code={rc})"
+        if state == "error":
+            msg = _message_with_error_hint(msg, self._detected_error_hint)
         self._remember_log("status", msg)
         self._finish_history_task(state=state, message=msg, returncode=rc)
         await self._broadcast({
@@ -684,6 +703,7 @@ class TrainingService:
 
         now = time.time()
         self._last_output_at = now
+        await self._maybe_note_error_hint(text, ts=now)
 
         m = TQDM_RE.search(text)
         if m:
@@ -816,13 +836,25 @@ class TrainingService:
             status = str(event.get("status") or "").strip() or "unknown"
             step = _int_or_none(event.get("final_step"))
             error = str(event.get("error") or "").strip()
+            hint = await self._maybe_note_error_hint(error, ts=ts)
             line = f"结构化训练进度结束: {status}"
             if step is not None:
                 line += f" final_step={step}"
             if error:
-                line += f" error={error}"
+                line += f" error={_message_with_error_hint(error, hint)}"
             record = self._remember_log("status", line, ts=ts)
             await self._broadcast({"type": "log", **record})
+
+    async def _maybe_note_error_hint(self, text: str, *, ts: float | None = None) -> str:
+        hint = classify_training_error(text)
+        if not hint:
+            return self._detected_error_hint
+        if self._detected_error_hint == hint:
+            return hint
+        self._detected_error_hint = hint
+        record = self._remember_log("status", hint, ts=ts)
+        await self._broadcast({"type": "log", **record})
+        return hint
 
     def _remember_log(self, kind: str, line: str, ts: float | None = None) -> dict[str, Any]:
         record = {
@@ -1556,14 +1588,19 @@ def _safe_run_stem(value: str) -> str:
     return clean[:80] or "run"
 
 
-def _list_history_tasks() -> list[dict[str, Any]]:
+def _list_history_tasks(*, include_archived: bool = False) -> list[dict[str, Any]]:
     if not HISTORY_DIR.exists():
         return []
     tasks = []
     for meta_path in HISTORY_DIR.glob("*/meta.json"):
+        if _is_deleting_history_dir(meta_path.parent):
+            continue
         meta = _read_json(meta_path)
         if meta:
-            tasks.append(_history_summary(meta, meta_path.parent))
+            _repair_history_meta(meta_path, meta)
+            task = _history_summary(meta, meta_path.parent)
+            if include_archived or not task.get("archived"):
+                tasks.append(task)
     tasks.sort(key=lambda item: item.get("started_at") or 0, reverse=True)
     return tasks[:MAX_HISTORY_ITEMS]
 
@@ -1573,6 +1610,8 @@ def _mark_orphaned_running_history_tasks() -> int:
         return 0
     count = 0
     for meta_path in HISTORY_DIR.glob("*/meta.json"):
+        if _is_deleting_history_dir(meta_path.parent):
+            continue
         meta = _read_json(meta_path)
         if not meta or meta.get("state") != "running":
             continue
@@ -1630,6 +1669,7 @@ def _load_history_task(task_id: str) -> dict[str, Any]:
     meta = _read_json(task_dir / "meta.json")
     if not meta:
         raise FileNotFoundError("任务元信息不存在")
+    _repair_history_meta(task_dir / "meta.json", meta)
     snapshot_path = task_dir / "config.snapshot.toml"
     return {
         "ok": True,
@@ -1653,7 +1693,7 @@ def _build_config_group_timeline(
     group = _history_config_group(methods_subdir, variant, preset)
     group_key = str(group_key or "").strip()
     selected_ids = _normalize_timeline_task_ids(task_ids)
-    all_tasks = _list_history_tasks()
+    all_tasks = _list_history_tasks(include_archived=True)
     if selected_ids:
         tasks = _select_timeline_tasks_by_id(
             all_tasks,
@@ -2071,15 +2111,95 @@ def _update_history_task(task_id: str, patch: dict[str, Any]) -> dict[str, Any]:
     return {"ok": True, "task": _history_summary(meta, task_dir)}
 
 
+def _history_task_ids_for_delete(task_id: str) -> list[str]:
+    task_dir = _history_task_dir(task_id)
+    if not _path_exists(task_dir):
+        raise FileNotFoundError("任务不存在")
+    meta = _read_json(task_dir / "meta.json")
+    if not meta:
+        return [task_id]
+    _repair_history_meta(task_dir / "meta.json", meta)
+    task = _history_summary(meta, task_dir)
+    task_ids = [task_id]
+    if str(task.get("job") or "").strip() != "training":
+        return task_ids
+
+    run_key = _history_delete_run_key(task)
+    if not run_key:
+        return task_ids
+    seen = {task_id}
+    for candidate in _list_history_tasks(include_archived=True):
+        candidate_id = str(candidate.get("id") or "").strip()
+        if not candidate_id or candidate_id in seen:
+            continue
+        if str(candidate.get("job") or "").strip() != "preprocess":
+            continue
+        if _history_delete_run_key(candidate) != run_key:
+            continue
+        task_ids.append(candidate_id)
+        seen.add(candidate_id)
+    return task_ids
+
+
+def _history_delete_run_key(task: dict[str, Any]) -> str:
+    for key in ("run_dir", "training_output_dir", "output_dir"):
+        path = _resolve_display_path(str(task.get(key) or ""))
+        if path is None:
+            continue
+        if path.name == "training_output":
+            path = path.parent
+        return str(path)
+    return ""
+
+
+def _delete_history_tasks(task_ids: list[str]) -> dict[str, Any]:
+    cleanup_errors: dict[str, str] = {}
+    deleted_task_ids: list[str] = []
+    for task_id in task_ids:
+        result = _delete_history_task(task_id)
+        deleted_task_ids.append(task_id)
+        if result.get("cleanup_error"):
+            cleanup_errors[task_id] = str(result.get("cleanup_error"))
+
+    linked_count = max(0, len(deleted_task_ids) - 1)
+    message = "任务已删除"
+    if linked_count:
+        message = f"任务已删除，并一并删除 {linked_count} 个对应预处理任务"
+    if cleanup_errors:
+        message = "任务已从列表移除，部分磁盘残留稍后可手动清理"
+    payload: dict[str, Any] = {
+        "ok": True,
+        "message": message,
+        "deleted_task_ids": deleted_task_ids,
+        "linked_preprocess_deleted": linked_count,
+    }
+    if cleanup_errors:
+        payload["cleanup_errors"] = cleanup_errors
+        payload["cleanup_error"] = "; ".join(
+            f"{key}: {value}" for key, value in cleanup_errors.items()
+        )
+    return payload
+
+
 def _delete_history_task(task_id: str) -> dict[str, Any]:
     task_dir = _history_task_dir(task_id)
-    if not task_dir.exists():
+    if not _path_exists(task_dir):
         raise FileNotFoundError("任务不存在")
-    for child in task_dir.iterdir():
-        if child.is_dir():
-            raise ValueError("任务目录包含子目录，已拒绝删除")
-        child.unlink()
-    task_dir.rmdir()
+    deleting_dir = _reserve_deleting_history_dir(task_dir)
+    try:
+        task_dir.rename(deleting_dir)
+    except OSError as exc:
+        raise ValueError(f"删除任务失败: {exc}") from exc
+
+    try:
+        shutil.rmtree(deleting_dir)
+    except OSError as exc:
+        # 先改名再清理，避免异常文件导致前端列表一直卡着删不掉。
+        return {
+            "ok": True,
+            "message": "任务已从列表移除，部分磁盘残留稍后可手动清理",
+            "cleanup_error": str(exc),
+        }
     return {"ok": True, "message": "任务已删除"}
 
 
@@ -2105,6 +2225,38 @@ def _history_summary(meta: dict[str, Any], task_dir: Path) -> dict[str, Any]:
     out["log_count"] = int(out.get("log_count") or _count_jsonl(task_dir / "logs.jsonl"))
     out["metric_count"] = int(out.get("metric_count") or _count_jsonl(task_dir / "metrics.jsonl"))
     return out
+
+
+def _repair_history_meta(meta_path: Path, meta: dict[str, Any]) -> None:
+    before = dict(meta)
+    _fill_history_runtime_meta(meta)
+    _fill_history_group_meta(meta)
+    if str(meta.get("job") or "").strip() == "preprocess":
+        # 旧版本写入 archived=false；没有 updated_at 表示用户没有手动取消归档。
+        if "updated_at" not in meta and meta.get("archived") is not True:
+            meta["archived"] = True
+        name = _default_preprocess_history_name(meta)
+        if name and _is_legacy_auto_preprocess_name(meta.get("name"), name):
+            meta["name"] = name
+    if meta != before:
+        try:
+            _write_json(meta_path, meta)
+        except OSError:
+            pass
+
+
+def _is_deleting_history_dir(task_dir: Path) -> bool:
+    return ".deleting-" in task_dir.name
+
+
+def _reserve_deleting_history_dir(task_dir: Path) -> Path:
+    base = f".{task_dir.name}.deleting-{int(time.time() * 1000)}"
+    candidate = task_dir.with_name(base)
+    suffix = 1
+    while _path_exists(candidate):
+        suffix += 1
+        candidate = task_dir.with_name(f"{base}-{suffix}")
+    return candidate
 
 
 def _default_history_archived(job: str) -> bool:
@@ -2135,9 +2287,14 @@ def _default_preprocess_history_name(task: dict[str, Any]) -> str:
     label = label or str(task.get("id") or "").strip()
     if not label:
         return "预处理"
-    if label.startswith("预处理"):
-        return label
-    return f"预处理 {label}"
+    return label
+
+
+def _is_legacy_auto_preprocess_name(value: Any, default_name: str) -> bool:
+    text = str(value or "").strip()
+    if not text:
+        return True
+    return bool(default_name) and text == f"预处理 {default_name}"
 
 
 def _fill_history_runtime_meta(task: dict[str, Any]) -> None:
@@ -2585,6 +2742,21 @@ def _metric_from_progress_jsonl_event(event: dict[str, Any], ts: float) -> dict[
             metric["lr"] = lr
 
     return metric if any(key in metric for key in ("loss", "lr", "cmmd")) else None
+
+
+def classify_training_error(text: str) -> str:
+    """Return a short user-facing hint for known high-signal training failures."""
+    if text and CUDA_OOM_RE.search(text):
+        return OOM_HINT
+    return ""
+
+
+def _message_with_error_hint(message: str, hint: str) -> str:
+    if not hint or not message:
+        return message
+    if hint in message:
+        return message
+    return f"{message}：{hint}"
 
 
 def _first_record_separator(text: str) -> int | None:

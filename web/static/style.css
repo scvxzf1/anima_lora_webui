@@ -198,8 +198,22 @@ main { padding: 1rem 1.5rem; }
     transition: all 0.15s;
 }
 .btn:hover { border-color: var(--accent); color: var(--accent); background: var(--surface-tint-hover); }
+.btn:disabled {
+    opacity: 0.55;
+    cursor: wait;
+}
+.btn:disabled:hover {
+    border-color: var(--border);
+    color: var(--text);
+    background: var(--bg-input);
+}
 .btn-primary { background: var(--accent); color: var(--on-accent); border-color: var(--accent); font-weight: 600; }
 .btn-primary:hover { background: var(--accent-hover); border-color: var(--accent-hover); color: var(--on-accent); }
+.btn-primary:disabled:hover {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: var(--on-accent);
+}
 .btn-highlight {
     border-color: var(--accent);
     background: var(--surface-tint-strong);
@@ -3746,6 +3760,10 @@ input[type="checkbox"].field-input {
     background: rgba(240, 195, 106, 0.12);
     color: var(--warning);
 }
+.preflight-summary.pending {
+    background: var(--surface-tint);
+    color: var(--accent);
+}
 .preflight-summary.error {
     background: rgba(239, 83, 80, 0.12);
     color: var(--danger-soft);
@@ -3769,6 +3787,7 @@ input[type="checkbox"].field-input {
 .preflight-item.ok { border-left-color: var(--success); }
 .preflight-item.warning { border-left-color: var(--warning); }
 .preflight-item.error { border-left-color: var(--danger); }
+.preflight-item.pending { border-left-color: var(--accent); }
 .preflight-badge {
     font-size: 0.68rem;
     font-weight: 700;
@@ -3777,6 +3796,18 @@ input[type="checkbox"].field-input {
 .preflight-item.ok .preflight-badge { color: var(--success); }
 .preflight-item.warning .preflight-badge { color: var(--warning); }
 .preflight-item.error .preflight-badge { color: var(--danger-soft); }
+.preflight-spinner {
+    display: inline-block;
+    width: 1rem;
+    height: 1rem;
+    border: 2px solid var(--border-strong);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: preflight-spin 0.8s linear infinite;
+}
+@keyframes preflight-spin {
+    to { transform: rotate(360deg); }
+}
 .preflight-message {
     font-size: 0.78rem;
     line-height: 1.45;
