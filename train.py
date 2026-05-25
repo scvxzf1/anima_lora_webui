@@ -262,15 +262,8 @@ class AnimaTrainer:
         train_dataset_group: Union[DatasetGroup, MinimalDataset],
         val_dataset_group: Optional[DatasetGroup],
     ):
-        if (
-            args.cache_text_encoder_outputs_to_disk
-            and not args.cache_text_encoder_outputs
-        ):
-            logger.warning(
-                "cache_text_encoder_outputs_to_disk is enabled, so cache_text_encoder_outputs is also enabled"
-            )
-            args.cache_text_encoder_outputs = True
-
+        # use_text_cache → cache_text_encoder_outputs{,_to_disk} is expanded in
+        # verify_training_args (runs first); just read the derived flag here.
         if args.cache_text_encoder_outputs:
             assert train_dataset_group.is_text_encoder_output_cacheable(
                 cache_supports_dropout=True
@@ -2000,7 +1993,7 @@ class AnimaTrainer:
             raise RuntimeError(
                 "Latent cache is incomplete. train.py requires a completed "
                 "preprocess pass — run `make preprocess` (or set "
-                "cache_latents = false for live VAE encoding)."
+                "use_vae_cache = false for live VAE encoding)."
             )
 
         if args.cache_text_encoder_outputs and not (
@@ -2009,7 +2002,7 @@ class AnimaTrainer:
             raise RuntimeError(
                 "Text-encoder cache is incomplete. train.py requires a completed "
                 "preprocess pass — run `make preprocess` (or set "
-                "cache_text_encoder_outputs = false for live encoding)."
+                "use_text_cache = false for live encoding)."
             )
 
         # CMMD validation generates samples and decodes them through the VAE

@@ -14,9 +14,9 @@
 # The dataset blueprint lives in configs/datasets/ip_adapter.toml.
 #
 # Feature source: PRE-CACHED PE features ({stem}_anima_pe.safetensors produced
-# by `make preprocess-pe`). cache_latents / cache_text_encoder_outputs all stay
-# true and the vision encoder is NOT loaded during training. Set
-# `ip_features_cache_to_disk = false` + `cache_latents = false` (and
+# by `make preprocess-pe`). use_vae_cache / use_text_cache both stay true and
+# the vision encoder is NOT loaded during training. Set
+# `ip_features_cache_to_disk = false` + `use_vae_cache = false` (and
 # pe_lora_enabled=true) to fall back to the live-encoding / PE-LoRA path.
 #
 # Phase 1 — distinct-pair (identity) training (Phase 1 of
@@ -69,7 +69,7 @@ network_args = [
     # PE-LoRA OFF for Phase 1 — it owns the vision encoder and trains it live
     # (slow: a PE forward+backward every step). Distinct-pair training attacks
     # the objective instead and runs entirely off cached features. Flip back to
-    # true (+ ip_features_cache_to_disk=false, cache_latents=false) to combine.
+    # true (+ ip_features_cache_to_disk=false, use_vae_cache=false) to combine.
     "pe_lora_enabled=false",
     "pe_lora_rank=16",
     "pe_lora_alpha=16",
@@ -101,7 +101,7 @@ ip_diagnostics_epochs = 999
 validation_baselines=false
 # Pre-cached PE features (no PE-LoRA) — encoder not loaded during training.
 ip_features_cache_to_disk = true
-cache_latents = true
+use_vae_cache = true
 
 # Distinct-pair (identity) training. mode: "self" | "identity" |
 # "identity_cross_artist". "identity" walks character → franchise → artist and
@@ -114,7 +114,7 @@ ip_pair_min_level = "artist"       # loosest tier before self-fallback
 # Caption-leakage guard: probability of dropping the target's character/
 # copyright tokens from the caption on distinct-pair steps so identity must
 # flow through the IP image path, not the text. INERT while
-# cache_text_encoder_outputs=true (the model reads the cached full embedding) —
+# use_text_cache=true (the model reads the cached full embedding) —
 # set it false to enable the guard (Phase 2). Kept 0 here for the fast path.
 ip_pair_caption_strip_p = 0.0
 

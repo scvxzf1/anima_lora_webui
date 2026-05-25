@@ -49,10 +49,13 @@ mixed_precision = "bf16"
 
 gradient_checkpointing = false
 unsloth_offload_checkpointing = false
-cache_latents = true
-cache_latents_to_disk = true
-cache_text_encoder_outputs = true
-cache_text_encoder_outputs_to_disk = true
+# Cache VAE latents + text-encoder outputs to disk (the normal pipeline:
+# `make preprocess` then train off the caches). Set false for live encoding
+# (e.g. IP-Adapter live mode). skip_cache_check stays separate: it trusts
+# existing cache files without re-validating contents — set false after any
+# tokenizer/padding or bucket-table change so stale caches are caught.
+use_vae_cache = true
+use_text_cache = true
 skip_cache_check = true
 vae_chunk_size = 64
 vae_disable_cache = true

@@ -197,9 +197,9 @@ def add_anima_training_arguments(parser: argparse.ArgumentParser):
         action="store_true",
         help="Enable IP-Adapter image conditioning (decoupled cross-attention). "
         "Requires the network module to expose set_ip_tokens (e.g. networks.methods.ip_adapter). "
-        "Live mode needs --cache_latents=false so batch['images'] carries the raw "
+        "Live mode needs --no-use_vae_cache so batch['images'] carries the raw "
         "reference; pre-cache mode (--ip_features_cache_to_disk) reads PE features "
-        "from sibling .safetensors and is compatible with --cache_latents=true.",
+        "from sibling .safetensors and is compatible with --use_vae_cache.",
     )
     parser.add_argument(
         "--ip_features_cache_to_disk",
@@ -207,7 +207,7 @@ def add_anima_training_arguments(parser: argparse.ArgumentParser):
         help="Read image features from sibling sidecars "
         "({stem}_anima_{ip_encoder}.safetensors, produced by `make preprocess-pe`) "
         "instead of running the vision encoder live. "
-        "Compatible with --cache_latents=true. Missing cache files raise FileNotFoundError.",
+        "Compatible with --use_vae_cache. Missing cache files raise FileNotFoundError.",
     )
     parser.add_argument(
         "--ip_image_drop_p",
@@ -269,7 +269,7 @@ def add_anima_training_arguments(parser: argparse.ArgumentParser):
         default=0.0,
         help="Probability of dropping the target's character/copyright tokens "
         "from the caption on distinct-pair steps, forcing identity through the IP "
-        "image path rather than the text. INERT while cache_text_encoder_outputs=true "
+        "image path rather than the text. INERT while use_text_cache=true "
         "(the cached embedding still carries identity) — set it false to enable. "
         "Default 0.0 (off).",
     )
@@ -280,7 +280,7 @@ def add_anima_training_arguments(parser: argparse.ArgumentParser):
         "VAE-encoded reference). Requires the network module to expose set_cond_tokens "
         "(e.g. networks.methods.easycontrol). The cond input is the clean VAE latent of "
         "the reference image; for ref==target training (Phase 1) this reuses the "
-        "existing cache_latents output — no new sidecar required.",
+        "existing VAE-cache output — no new sidecar required.",
     )
     parser.add_argument(
         "--easycontrol_drop_p",

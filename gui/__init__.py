@@ -255,10 +255,8 @@ _GROUPS = {
         "mixed_precision",
         "vae_chunk_size",
         "vae_disable_cache",
-        "cache_latents",
-        "cache_latents_to_disk",
-        "cache_text_encoder_outputs",
-        "cache_text_encoder_outputs_to_disk",
+        "use_vae_cache",
+        "use_text_cache",
         "skip_cache_check",
         "layer_start",
         "use_cmmd",
@@ -733,9 +731,7 @@ def confirm_stale_caches(parent: QWidget | None, cache_dir: Path) -> bool:
     examples = "\n".join(f"  • {reso}  ({n}×)" for reso, n in shown)
     if len(stale) > len(shown):
         examples += "\n  • …"
-    body = t(
-        "stale_cache_body", n=total, cache_dir=str(cache_dir), examples=examples
-    )
+    body = t("stale_cache_body", n=total, cache_dir=str(cache_dir), examples=examples)
     box = QMessageBox(parent)
     box.setIcon(QMessageBox.Warning)
     box.setWindowTitle(t("stale_cache_title"))
