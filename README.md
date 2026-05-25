@@ -5,8 +5,8 @@
 
 当前分支基于(https://github.com/sorryhyun/anima_lora#)构建的提供 WebUI前端
 
-借鉴“抄袭.jpg”名单:https://github.com/Moeblack/AnimaLoraToolkit
-https://github.com/TianDongL/DiffPipeForge
+借鉴“抄袭.jpg”名单:"https://github.com/Moeblack/AnimaLoraToolkit"
+"https://github.com/TianDongL/DiffPipeForge"
 
 ：配置编辑、数据集路径管理、多数据集重复次数、预处理、训练任务监控、历史任务和预览图查看。
 后端内容基本没动“实验性支持lokr”
