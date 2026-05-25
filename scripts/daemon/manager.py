@@ -485,10 +485,11 @@ class JobManager:
             methods_subdir=job.methods_subdir,
             extra=extra,
         )
-        # Windowless interpreter for the same reason as command jobs above:
-        # accelerate's `python -m accelerate_cli launch` parent and the train.py
-        # workers it spawns (via sys.executable) all inherit pythonw.exe, so
-        # nothing pops a closable console that would CTRL_CLOSE the run.
+        # Windowless interpreter for the same reason as command jobs above: the
+        # train.py worker (and, under ANIMA_ACCELERATE_LAUNCH, the accelerate
+        # launcher parent + the workers it re-spawns via sys.executable) all run
+        # as pythonw.exe, so nothing pops a closable console that would
+        # CTRL_CLOSE the run.
         cmd = build_launch_cmd(*args, python_exe=venv_python(windowless=True))
         return cmd, env
 

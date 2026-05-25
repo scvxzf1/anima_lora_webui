@@ -390,7 +390,7 @@ def add_training_arguments(parser: argparse.ArgumentParser, support_dreambooth: 
     parser.add_argument(
         "--max_data_loader_n_workers",
         type=int,
-        default=4,
+        default=1,
         help="max num workers for DataLoader",
     )
     parser.add_argument(
@@ -404,7 +404,7 @@ def add_training_arguments(parser: argparse.ArgumentParser, support_dreambooth: 
     parser.add_argument(
         "--dataloader_prefetch_factor",
         type=int,
-        default=2,
+        default=1,
         help="prefetch_factor for DataLoader workers (only valid when num_workers>0)",
     )
     parser.add_argument(
