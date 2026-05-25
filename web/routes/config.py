@@ -208,6 +208,7 @@ async def handle_dataset_preset_put(request: web.Request) -> web.Response:
     data = await request.json()
     datasets = data.get("datasets", [])
     defaults = data.get("defaults", {})
+    overwrite = data.get("overwrite", True)
     if not isinstance(datasets, list):
         return web.json_response({"ok": False, "error": "datasets 必须是数组"}, status=400)
     try:
@@ -215,6 +216,7 @@ async def handle_dataset_preset_put(request: web.Request) -> web.Response:
             str(data.get("file") or ""),
             datasets,
             defaults if isinstance(defaults, dict) else {},
+            overwrite=bool(overwrite),
         ))
     except Exception as e:
         return web.json_response({"ok": False, "error": str(e)}, status=400)

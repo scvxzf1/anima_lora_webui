@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import asyncio
+import json
 import os
 from pathlib import Path
 
@@ -7,6 +9,7 @@ import pytest
 import toml
 from PIL import Image
 
+from web.routes import config as config_routes
 from web.services import config_service
 
 
@@ -21,6 +24,41 @@ def test_spd_cli_config_is_exposed_as_method_variant(tmp_path: Path, monkeypatch
 
     assert "spd" in config_service.list_methods()
     assert config_service.list_variants("spd") == ["spd"]
+
+
+def test_web_variants_follow_variant_family_metadata(tmp_path: Path, monkeypatch):
+    configs, _dataset_path = _write_minimal_config_tree(tmp_path)
+    gui_methods = configs / "gui-methods"
+    gui_methods.mkdir()
+    (gui_methods / "lora.toml").write_text(
+        '[variant]\nfamily = "lora"\norder = 10\n',
+        encoding="utf-8",
+    )
+    (gui_methods / "lokr.toml").write_text(
+        '[variant]\nfamily = "lora"\norder = 12\n',
+        encoding="utf-8",
+    )
+    (gui_methods / "hydralora.toml").write_text(
+        '[variant]\nfamily = "hydralora"\norder = 20\n',
+        encoding="utf-8",
+    )
+    (gui_methods / "hydralora-8gb.toml").write_text(
+        '[variant]\nfamily = "hydralora"\norder = 10\n',
+        encoding="utf-8",
+    )
+    (gui_methods / "custom").mkdir()
+    (gui_methods / "custom" / "user_variant.toml").write_text(
+        'output_name = "user_variant"\n',
+        encoding="utf-8",
+    )
+    _patch_config_service_paths(monkeypatch, tmp_path)
+
+    assert config_service.list_variants("lora") == ["lora", "lokr", "custom/user_variant"]
+    assert config_service.list_variants("hydralora") == [
+        "hydralora-8gb",
+        "hydralora",
+        "custom/user_variant",
+    ]
 
 
 def test_save_dataset_editor_does_not_overwrite_dataset_when_train_patch_fails(tmp_path: Path, monkeypatch):
@@ -516,6 +554,21 @@ def test_is_allowed_training_config_accepts_runtime_configs_under_output_root(tm
     assert path == runtime_config.resolve()
 
 
+def test_output_run_training_config_rejects_non_runtime_snapshots(tmp_path: Path, monkeypatch):
+    _patch_config_service_paths(monkeypatch, tmp_path)
+    output_root = tmp_path / "output" / "runs"
+    run_dir = output_root / "522-20260523-114514"
+    run_dir.mkdir(parents=True)
+    (run_dir / "config.original.toml").write_text('output_name = "original"\n', encoding="utf-8")
+    (run_dir / "dataset.runtime.toml").write_text("[[datasets]]\n", encoding="utf-8")
+    monkeypatch.setattr(config_service, "resolve_output_root", lambda: output_root.resolve())
+
+    with pytest.raises(ValueError, match="config.runtime.toml"):
+        config_service._config_file_path("output/runs/522-20260523-114514/config.original.toml")
+    with pytest.raises(ValueError, match="config.runtime.toml"):
+        config_service._config_file_path("output/runs/522-20260523-114514/dataset.runtime.toml")
+
+
 def test_runtime_config_tree_allowed_when_output_root_changed(tmp_path: Path, monkeypatch):
     _patch_config_service_paths(monkeypatch, tmp_path)
     old_output_root = tmp_path.parent / "old-output-root"
@@ -698,6 +751,52 @@ def test_dataset_preset_save_read_list_and_apply(tmp_path: Path, monkeypatch):
     assert 'source_image_dir = "image_dataset/a"' in train_text
     assert 'resized_image_dir = "post_image_dataset/a_resized"' in train_text
     assert 'lora_cache_dir = "post_image_dataset/a_cache"' in train_text
+
+
+def test_dataset_preset_put_overwrite_false_preserves_existing_file(tmp_path: Path, monkeypatch):
+    configs, _dataset_path = _write_minimal_config_tree(tmp_path)
+    _patch_config_service_paths(monkeypatch, tmp_path)
+    preset_path = configs / "datasets" / "character_a.toml"
+    original = "# keep existing\n[[datasets]]\nresolution = 512\n"
+    preset_path.write_text(original, encoding="utf-8")
+
+    response = asyncio.run(config_routes.handle_dataset_preset_put(_JsonRequest({
+        "file": "configs/datasets/character_a.toml",
+        "overwrite": False,
+        "datasets": [{
+            "source_dir": "image_dataset/new",
+            "image_dir": "post_image_dataset/new_resized",
+            "cache_dir": "post_image_dataset/new_cache",
+            "num_repeats": 1,
+        }],
+    })))
+
+    assert response.status == 400
+    body = json.loads(response.text)
+    assert "已存在" in body["error"]
+    assert preset_path.read_text(encoding="utf-8") == original
+
+
+def test_dataset_preset_save_preserves_explicit_training_and_cache_dirs(tmp_path: Path, monkeypatch):
+    _write_minimal_config_tree(tmp_path)
+    _patch_config_service_paths(monkeypatch, tmp_path)
+
+    saved = config_service.save_dataset_preset(
+        "configs/datasets/preserve_paths.toml",
+        [{
+            "source_dir": "image_dataset/source",
+            "image_dir": "output/runs/run-a/dataset_cache/dataset-01/resized",
+            "cache_dir": "output/runs/run-a/dataset_cache/dataset-01/lora",
+            "num_repeats": 4,
+        }],
+        {},
+    )
+
+    data = toml.loads(saved["content"])
+    subset = data["datasets"][0]["subsets"][0]
+    assert subset["image_dir"] == "output/runs/run-a/dataset_cache/dataset-01/resized"
+    assert subset["cache_dir"] == "output/runs/run-a/dataset_cache/dataset-01/lora"
+    assert subset["custom_attributes"]["source_dir"] == "image_dataset/source"
 
 
 def test_system_dataset_preset_is_readonly_but_can_be_saved_as(tmp_path: Path, monkeypatch):
@@ -1156,3 +1255,11 @@ def _display_test_path(path: Path, root: Path) -> str:
         return path.resolve().relative_to(root.resolve()).as_posix()
     except ValueError:
         return str(path.resolve())
+
+
+class _JsonRequest:
+    def __init__(self, payload: dict) -> None:
+        self._payload = payload
+
+    async def json(self) -> dict:
+        return self._payload

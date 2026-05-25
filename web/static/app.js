@@ -57,6 +57,7 @@
     let datasetPresetState = {
         loading: false,
         dirty: false,
+        isNew: false,
         selectedFile: '',
         presets: [],
         datasets: [],
@@ -644,6 +645,9 @@
         ortholora: 'ortholora',
         tlora: 'tlora',
         tlora_ortho: 'tlora',
+        'tlora-8gb': 'tlora',
+        hydralora: 'hydralora',
+        'hydralora-8gb': 'hydralora',
         hydralora_sigma: 'hydralora',
         hydralora_experimental: 'hydralora',
         hydralora_fei: 'hydralora',
@@ -3162,14 +3166,15 @@
             datasetPresetState.presets = presets;
             datasetPresetState.loading = false;
             datasetPresetState.error = '';
+            const preserveDirtySelection = datasetPresetState.dirty;
             const selectedDatasetVisible = presets.some((preset) => preset.path === datasetPresetState.selectedFile);
-            if (!selectedDatasetVisible) {
+            if (!selectedDatasetVisible && !preserveDirtySelection) {
                 datasetPresetState.selectedFile = '';
             }
-            if (options.selectCurrent !== false && selectedConfigDatasetFile && !datasetPresetState.selectedFile && presets.some((preset) => preset.path === selectedConfigDatasetFile)) {
+            if (!preserveDirtySelection && options.selectCurrent !== false && selectedConfigDatasetFile && !datasetPresetState.selectedFile && presets.some((preset) => preset.path === selectedConfigDatasetFile)) {
                 datasetPresetState.selectedFile = selectedConfigDatasetFile;
             }
-            if (!datasetPresetState.selectedFile && presets.length) {
+            if (!preserveDirtySelection && !datasetPresetState.selectedFile && presets.length) {
                 datasetPresetState.selectedFile = presets[0].path;
             }
             selectedConfigDatasetSummary = datasetPresetSummaryByFile(selectedConfigDatasetFile);
@@ -3209,6 +3214,7 @@
                 ...datasetPresetState,
                 loading: false,
                 dirty: false,
+                isNew: false,
                 selectedFile: data.file || file,
                 datasets: normalizeDatasetEditorRows(data.datasets || []),
                 defaults: normalizeDatasetDefaults(data.defaults || {}),
@@ -4564,6 +4570,8 @@
     function datasetRowsForPayload(rows) {
         return normalizeDatasetEditorRows(rows).map((row) => ({
             source_dir: row.source_dir,
+            image_dir: row.image_dir,
+            cache_dir: row.cache_dir,
             num_repeats: row.num_repeats,
             settings: normalizeDatasetDefaults(row.settings || {}),
         }));
@@ -4762,6 +4770,11 @@
             methods_subdir: 'gui-methods',
             file: `configs/gui-methods/${variant}.toml`,
         };
+    }
+
+    function outputRunRuntimeFile(run = selectedOutputRun()) {
+        const runtime = (run?.files || []).find((item) => item.kind === 'runtime');
+        return runtime?.file || '';
     }
 
     function rememberSelectionSnapshot() {
@@ -6289,6 +6302,7 @@
             return null;
         }
         let file = datasetPresetState.selectedFile || '';
+        const wasUnnamedPreset = !file;
         if (!file) {
             const name = await showDatasetPresetNameDialog({
                 title: '保存数据集预设',
@@ -6312,6 +6326,7 @@
                     file,
                     datasets: payloadRows,
                     defaults: normalizeDatasetDefaults(datasetPresetState.defaults || {}),
+                    overwrite: !(datasetPresetState.isNew || wasUnnamedPreset),
                 }),
             });
             if (!res.ok) {
@@ -6324,6 +6339,7 @@
                 datasets: normalizeDatasetEditorRows(res.datasets || rows),
                 defaults: normalizeDatasetDefaults(res.defaults || datasetPresetState.defaults || {}),
                 dirty: false,
+                isNew: false,
                 readonly: false,
                 status: res.message || '已保存数据集预设',
             };
@@ -6349,9 +6365,14 @@
             confirmText: '创建预设',
         });
         if (name === null) return;
+        const nextFile = datasetPresetPathFromName(name);
+        if (datasetPresetByFile(nextFile)) {
+            setDatasetPresetStatus('数据集预设已存在，请换一个名称或使用复制/重命名', 'error');
+            return;
+        }
         datasetPresetState = {
             ...datasetPresetState,
-            selectedFile: datasetPresetPathFromName(name),
+            selectedFile: nextFile,
             datasets: normalizeDatasetEditorRows([{
                 source_dir: '',
                 image_dir: '',
@@ -6361,6 +6382,7 @@
             }]),
             defaults: normalizeDatasetDefaults({}),
             dirty: true,
+            isNew: true,
             readonly: false,
             error: '',
             status: '新预设尚未保存',
@@ -8752,7 +8774,10 @@
             }
         }
         if (!selectedTrainingConfigFile) {
-            setTomlStatus('error', '请选择要训练的配置文件');
+            const message = tomlManagerMode === 'output' && outputRunState.selectedRun
+                ? '这个训练输出没有可直接继续训练的 config.runtime.toml，请先另存原始配置或选择其他运行目录'
+                : '请选择要训练的配置文件';
+            setTomlStatus('error', message);
             return;
         }
         const variant = currentTrainingSource.method || val('variant-select');
@@ -9152,8 +9177,8 @@
     }
 
     function currentTrainingConfigFile() {
-        if (tomlManagerMode === 'output' && outputRunState.file) {
-            return outputRunState.file;
+        if (tomlManagerMode === 'output') {
+            return outputRunRuntimeFile();
         }
         return currentTrainingSource.file || currentTomlFile || val('toml-file-select') || '';
     }

@@ -151,30 +151,59 @@ def list_methods() -> list[str]:
     ]
 
 
-_FAMILY_VARIANTS: dict[str, list[str]] = {
-    "lora": ["lora", "lora_longer", "lora-8gb", "lora_repa"],
-    "lokr": ["lokr"],
-    "ortholora": ["ortholora"],
-    "tlora": ["tlora", "tlora_ortho"],
-    "hydralora": ["hydralora_sigma", "hydralora_experimental", "hydralora_fei", "fera"],
-    "reft": ["reft", "tlora_ortho_reft"],
-    "chimera": ["chimera_hydra"],
-    "soft_tokens": ["soft_tokens"],
-    "ip_adapter": ["ip_adapter"],
-    "easycontrol": ["easycontrol"],
-    "spd": ["spd"],
-}
-
-
 def list_variants(method: str) -> list[str]:
     if method == "spd":
         spd_config = CONFIGS_DIR / "methods" / "spd.toml"
         return ["spd"] if spd_config.exists() else []
     if not GUI_METHODS_DIR.exists():
         return []
-    have = {p.stem for p in GUI_METHODS_DIR.glob("*.toml")}
-    want = _FAMILY_VARIANTS.get(method, [])
-    return [v for v in want if v in have]
+    variants = [stem for _order, stem in _builtin_variants_by_family().get(method, [])]
+    if not variants:
+        variants = _legacy_exact_variant_for_method(method)
+    variants.extend(_custom_gui_variants())
+    return variants
+
+
+def _builtin_variants_by_family() -> dict[str, list[tuple[int, str]]]:
+    by_family: dict[str, list[tuple[int, str]]] = {}
+    if not GUI_METHODS_DIR.exists():
+        return by_family
+    for path in GUI_METHODS_DIR.glob("*.toml"):
+        if _display_path(path) in HIDDEN_CONFIG_FILES:
+            continue
+        meta = _read_variant_metadata(path)
+        family = meta.get("family")
+        if not isinstance(family, str) or not family:
+            continue
+        order = meta.get("order")
+        order_int = order if isinstance(order, int) else 100
+        by_family.setdefault(family, []).append((order_int, path.stem))
+    for entries in by_family.values():
+        entries.sort(key=lambda item: (item[0], item[1]))
+    return by_family
+
+
+def _read_variant_metadata(path: Path) -> dict[str, Any]:
+    try:
+        data = toml.loads(path.read_text(encoding="utf-8"))
+    except (OSError, toml.TomlDecodeError):
+        return {}
+    meta = data.get("variant")
+    return meta if isinstance(meta, dict) else {}
+
+
+def _legacy_exact_variant_for_method(method: str) -> list[str]:
+    path = GUI_METHODS_DIR / f"{method}.toml"
+    if not path.is_file() or _display_path(path) in HIDDEN_CONFIG_FILES:
+        return []
+    return [method]
+
+
+def _custom_gui_variants() -> list[str]:
+    custom_dir = GUI_METHODS_DIR / "custom"
+    if not custom_dir.exists():
+        return []
+    return [f"custom/{p.stem}" for p in sorted(custom_dir.glob("*.toml"))]
 
 
 def list_all_variants() -> list[str]:
@@ -693,6 +722,8 @@ def _config_file_path(config_file: str | None) -> Path | None:
     else:
         normalized = _normalize_config_rel_path(raw)
         resolved = (ROOT / normalized).resolve()
+    if _is_output_run_snapshot_config(resolved) and resolved.name != OUTPUT_RUN_CONFIG_FILES["runtime"][0]:
+        raise ValueError("训练输出目录只能使用 config.runtime.toml 作为训练配置")
     if not _is_allowed_training_config_path(resolved):
         raise ValueError("训练配置必须在项目目录或全局输出文件夹内")
     if not resolved.is_file():
@@ -725,7 +756,26 @@ def _is_web_runtime_config_tree(path: Path) -> bool:
     return (
         path.name == "config.runtime.toml"
         and path.is_file()
-        and (run_dir / "model_cache").is_dir()
+        and _has_web_runtime_dirs(run_dir)
+    )
+
+
+def _is_output_run_snapshot_config(path: Path) -> bool:
+    resolved = path.resolve()
+    if resolved.name not in {filename for filename, _label in OUTPUT_RUN_CONFIG_FILES.values()}:
+        return False
+    try:
+        rel_to_output = resolved.relative_to(resolve_output_root().resolve())
+        if len(rel_to_output.parts) == 2:
+            return True
+    except ValueError:
+        pass
+    return _has_web_runtime_dirs(resolved.parent)
+
+
+def _has_web_runtime_dirs(run_dir: Path) -> bool:
+    return (
+        (run_dir / "model_cache").is_dir()
         and (run_dir / "dataset_cache").is_dir()
         and (run_dir / "training_output").is_dir()
     )
