@@ -1415,6 +1415,31 @@ class AnimaTrainer:
         torch.cuda.set_rng_state(gpu_rng_state)
         random.setstate(python_rng_state)
 
+    @staticmethod
+    def _apply_train_batch_size_to_user_config(user_config: dict, args) -> None:
+        train_batch_size = getattr(args, "train_batch_size", None)
+        try:
+            train_batch_size = int(train_batch_size)
+        except (TypeError, ValueError):
+            return
+        if train_batch_size <= 1:
+            return
+
+        changed = 0
+        for dataset_config in user_config.get("datasets", []):
+            if not isinstance(dataset_config, dict):
+                continue
+            if dataset_config.get("batch_size") != train_batch_size:
+                dataset_config["batch_size"] = train_batch_size
+                changed += 1
+
+        if changed:
+            logger.info(
+                "Applied train_batch_size=%s to %s dataset batch_size setting(s)",
+                train_batch_size,
+                changed,
+            )
+
     def _prepare_dataset(self, args):
         """Build train/val dataset groups and the collator shared by both loaders."""
         use_dreambooth_method = args.in_json is None
@@ -1477,6 +1502,8 @@ class AnimaTrainer:
                     for sub in ds.get("subsets", []):
                         sub["sample_ratio"] = sample_ratio
                 logger.info(f"Applied --sample_ratio={sample_ratio} to all subsets")
+
+            self._apply_train_batch_size_to_user_config(user_config, args)
 
             blueprint = blueprint_generator.generate(user_config, args)
             train_dataset_group, val_dataset_group = (

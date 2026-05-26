@@ -161,6 +161,7 @@ def _write_runtime_config_tree(root):
                 'output_dir = "legacy/output"',
                 'logging_dir = "legacy/logs"',
                 'output_name = "demo"',
+                "train_batch_size = 2",
                 'dataset_config = "configs/datasets/522.toml"',
             ]
         ),
@@ -174,6 +175,7 @@ def _write_runtime_config_tree(root):
                 'output_dir = "legacy/from-toml"',
                 'logging_dir = "legacy/logs"',
                 'output_name = "522-demo"',
+                "train_batch_size = 2",
             ]
         ),
         encoding="utf-8",
@@ -407,6 +409,8 @@ def test_web_runtime_config_creates_run_directory_and_overrides_paths(tmp_path, 
     assert runtime_cfg["lora_cache_dir"] == "output/runs/522-20260523-114514/dataset_cache/dataset-01/lora"
 
     dataset_cfg = toml.loads((run_dir / "dataset.runtime.toml").read_text(encoding="utf-8"))
+    assert dataset_cfg["datasets"][0]["batch_size"] == 2
+    assert dataset_cfg["datasets"][1]["batch_size"] == 2
     first_subset = dataset_cfg["datasets"][0]["subsets"][0]
     second_subset = dataset_cfg["datasets"][1]["subsets"][0]
     assert first_subset["custom_attributes"]["source_dir"] == "image_dataset/a"

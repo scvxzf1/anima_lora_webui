@@ -1634,7 +1634,11 @@ def _prepare_web_runtime_config(
 
     dataset_config_path = run_dir / "dataset.runtime.toml"
     runtime_cfg = dict(cfg)
-    dataset_doc = _build_dataset_config_doc(runtime_rows, runtime_cfg)
+    dataset_doc = _build_dataset_config_doc(
+        runtime_rows,
+        runtime_cfg,
+        prefer_train_batch_size=True,
+    )
     dataset_config_path.write_text(dataset_doc, encoding="utf-8")
 
     first_row = runtime_rows[0]

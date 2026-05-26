@@ -1197,7 +1197,12 @@ def _normalize_dataset_defaults(raw: dict[str, Any]) -> dict[str, Any]:
     return out
 
 
-def _build_dataset_config_doc(clean_rows: list[dict[str, Any]], cfg: dict[str, Any]) -> str:
+def _build_dataset_config_doc(
+    clean_rows: list[dict[str, Any]],
+    cfg: dict[str, Any],
+    *,
+    prefer_train_batch_size: bool = False,
+) -> str:
     doc = tomlkit.document()
     doc.add(tomlkit.comment("Web UI 自动生成的数据集配置。"))
     doc.add(tomlkit.comment("原始数据集路径保存在 custom_attributes.source_dir，训练读取 image_dir/cache_dir。"))
@@ -1212,7 +1217,10 @@ def _build_dataset_config_doc(clean_rows: list[dict[str, Any]], cfg: dict[str, A
         row_cfg = _dataset_row_settings(row, cfg)
         dataset = tomlkit.table()
         dataset.add("resolution", _positive_int(row_cfg.get("resolution"), 1024))
-        dataset.add("batch_size", _positive_int(row_cfg.get("batch_size") or row_cfg.get("train_batch_size"), 1))
+        batch_size = row_cfg.get("batch_size")
+        if prefer_train_batch_size and cfg.get("train_batch_size") not in (None, ""):
+            batch_size = cfg.get("train_batch_size")
+        dataset.add("batch_size", _positive_int(batch_size, 1))
         dataset.add("enable_bucket", bool(row_cfg.get("enable_bucket", True)))
         dataset.add("min_bucket_reso", _positive_int(row_cfg.get("min_bucket_reso"), 256))
         dataset.add("max_bucket_reso", _positive_int(row_cfg.get("max_bucket_reso"), 1024))

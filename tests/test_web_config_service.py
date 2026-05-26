@@ -799,6 +799,23 @@ def test_dataset_preset_save_preserves_explicit_training_and_cache_dirs(tmp_path
     assert subset["custom_attributes"]["source_dir"] == "image_dataset/source"
 
 
+def test_runtime_dataset_doc_can_prefer_train_batch_size():
+    doc = config_service._build_dataset_config_doc(
+        [{
+            "source_dir": "image_dataset/source",
+            "image_dir": "post_image_dataset/resized",
+            "cache_dir": "post_image_dataset/lora",
+            "num_repeats": 1,
+            "settings": {"resolution": 1024, "batch_size": 1},
+        }],
+        {"train_batch_size": 2},
+        prefer_train_batch_size=True,
+    )
+
+    data = toml.loads(doc)
+    assert data["datasets"][0]["batch_size"] == 2
+
+
 def test_system_dataset_preset_is_readonly_but_can_be_saved_as(tmp_path: Path, monkeypatch):
     _write_minimal_config_tree(tmp_path)
     _patch_config_service_paths(monkeypatch, tmp_path)

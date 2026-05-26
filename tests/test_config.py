@@ -103,6 +103,37 @@ def test_int_to_float_coerced(populated_parser):
     assert out["network_alpha"] == 64.0
 
 
+def test_train_batch_size_overrides_dataset_config_batch_size():
+    import train
+
+    user_config = {
+        "datasets": [
+            {"batch_size": 1, "subsets": []},
+            {"subsets": []},
+        ]
+    }
+
+    train.AnimaTrainer._apply_train_batch_size_to_user_config(
+        user_config,
+        argparse.Namespace(train_batch_size=2),
+    )
+
+    assert [dataset["batch_size"] for dataset in user_config["datasets"]] == [2, 2]
+
+
+def test_default_train_batch_size_preserves_dataset_config_batch_size():
+    import train
+
+    user_config = {"datasets": [{"batch_size": 4, "subsets": []}]}
+
+    train.AnimaTrainer._apply_train_batch_size_to_user_config(
+        user_config,
+        argparse.Namespace(train_batch_size=1),
+    )
+
+    assert user_config["datasets"][0]["batch_size"] == 4
+
+
 # ---------------------------------------------------------------------------
 # Round-trip: all methods × presets produce no warnings
 # ---------------------------------------------------------------------------
