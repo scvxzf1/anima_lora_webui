@@ -142,6 +142,21 @@ def test_training_preview_defaults_to_latest_runtime_run(tmp_path, monkeypatch):
     assert payload["images"][0]["name"] == "new_e000001_00_20260523114515_2.png"
 
 
+def test_training_weights_include_absolute_path(tmp_path, monkeypatch):
+    output_dir = tmp_path / "output"
+    output_dir.mkdir()
+    weight = output_dir / "demo.safetensors"
+    weight.write_bytes(b"\x00" * 16)
+    monkeypatch.setattr(preview_service, "ROOT", tmp_path)
+
+    payload = preview_service.list_training_weights(
+        {"id": "task-demo", "job": "training", "output_dir": str(output_dir)}
+    )
+
+    assert payload["weights"][0]["name"] == "demo.safetensors"
+    assert payload["weights"][0]["abs_path"] == str(weight.resolve())
+
+
 def test_selected_history_task_without_sample_dir_does_not_fallback_to_latest_run(tmp_path, monkeypatch):
     settings_file = tmp_path / "configs" / "web-ui-settings.toml"
     settings_file.parent.mkdir(parents=True)

@@ -24,6 +24,8 @@ from networks import (
     resolve_network_spec,
 )
 from networks import lora_save
+from networks.lora_anima.factory import create_network_from_weights
+from networks.lora_modules.lokr import LoKrModule
 
 
 # ---------------------------------------------------------------------------
@@ -218,6 +220,45 @@ def test_save_lokr_roundtrip(tmp_path: Path):
         assert f"{base}_{suffix}.alpha" in loaded
     assert f"{prefix}.lokr_w1" not in loaded
     assert f"{prefix}.lokr_w2" not in loaded
+
+
+def test_create_network_from_lokr_weights_uses_lokr_module():
+    class Block(torch.nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.q_proj = torch.nn.Linear(4, 6, bias=False)
+
+    class TinyUnet(torch.nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.blocks = torch.nn.ModuleList([Block()])
+
+    weights_sd = {
+        "lora_unet_blocks_0_q_proj.lokr_w1": torch.randn(2, 2),
+        "lora_unet_blocks_0_q_proj.lokr_w2": torch.randn(3, 2),
+        "lora_unet_blocks_0_q_proj.alpha": _alpha(32),
+    }
+
+    unet = TinyUnet()
+    network, weights = create_network_from_weights(
+        multiplier=1.0,
+        file="",
+        ae=None,
+        text_encoders=[],
+        unet=unet,
+        weights_sd=weights_sd,
+        metadata={"ss_network_spec": "lokr", "ss_network_dim": "32"},
+    )
+
+    assert len(network.unet_loras) == 1
+    lokr = network.unet_loras[0]
+    assert isinstance(lokr, LoKrModule)
+    assert lokr.lora_dim == 32
+    assert lokr.factor == 2
+    network.apply_to([], unet, False, True)
+    info = network.load_state_dict(weights, strict=False)
+    assert info.missing_keys == []
+    assert info.unexpected_keys == []
 
 
 def test_save_ortho_roundtrip(tmp_path: Path):

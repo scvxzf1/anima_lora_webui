@@ -7,6 +7,7 @@ import os
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
 import toml
 import torch
 from aiohttp import web
@@ -130,8 +131,10 @@ def _write_group_task(
 def _write_runtime_config_tree(root):
     configs = root / "configs"
     imported = configs / "imported"
+    gui_methods = configs / "gui-methods"
     datasets = configs / "datasets"
     imported.mkdir(parents=True)
+    gui_methods.mkdir(parents=True)
     datasets.mkdir(parents=True)
     (root / "tasks.py").write_text("print('tasks')\n", encoding="utf-8")
     (root / "library" / "preprocess").mkdir(parents=True)
@@ -175,6 +178,25 @@ def _write_runtime_config_tree(root):
         ),
         encoding="utf-8",
     )
+    (gui_methods / "lora.toml").write_text(
+        "\n".join(
+            [
+                'network_module = "networks.lora_anima"',
+                'output_name = "lora-demo"',
+            ]
+        ),
+        encoding="utf-8",
+    )
+    (gui_methods / "lokr.toml").write_text(
+        "\n".join(
+            [
+                'network_module = "networks.lora_anima"',
+                'use_lokr = true',
+                'output_name = "lokr-demo"',
+            ]
+        ),
+        encoding="utf-8",
+    )
     (datasets / "522.toml").write_text(
         "\n".join(
             [
@@ -199,6 +221,33 @@ def _write_runtime_config_tree(root):
         ),
         encoding="utf-8",
     )
+
+
+def _write_continue_lora_weight(
+    path: Path,
+    *,
+    kind: str = "LoRA",
+    tensors=None,
+    metadata=None,
+) -> Path:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if tensors is None:
+        if kind == "LoKr":
+            tensors = {
+                "lora_unet_blocks_0_self_attn_q_proj.lokr_w1": torch.randn(2, 2),
+                "lora_unet_blocks_0_self_attn_q_proj.lokr_w2": torch.randn(4, 4),
+                "lora_unet_blocks_0_self_attn_q_proj.alpha": torch.tensor(32.0),
+            }
+            metadata = {"ss_network_spec": "lokr", "ss_network_dim": "32"}
+        else:
+            tensors = {
+                "lora_unet_blocks_0_self_attn_q_proj.lora_down.weight": torch.randn(4, 8),
+                "lora_unet_blocks_0_self_attn_q_proj.lora_up.weight": torch.randn(12, 4),
+                "lora_unet_blocks_0_self_attn_q_proj.alpha": torch.tensor(4.0),
+            }
+            metadata = {"ss_network_spec": "lora"}
+    save_file(tensors, str(path), metadata=metadata)
+    return path
 
 
 def _patch_runtime_service_paths(monkeypatch, root):
@@ -633,6 +682,242 @@ def test_start_preprocess_preserves_extra_args_for_pending_training(tmp_path, mo
     )
 
     assert svc._pending_train_after_preprocess["extra_args"] == ["--sample_every_n_steps", "5"]
+
+
+def test_inspect_continue_lora_weight_detects_lora_and_lokr(tmp_path, monkeypatch):
+    _write_runtime_config_tree(tmp_path)
+    _patch_runtime_service_paths(monkeypatch, tmp_path)
+    lora_path = _write_continue_lora_weight(tmp_path / "weights" / "demo.safetensors", kind="LoRA")
+    lokr_path = _write_continue_lora_weight(tmp_path / "weights" / "demo_lokr.safetensors", kind="LoKr")
+
+    lora_payload = training_service.inspect_continue_lora_weight(
+        str(lora_path),
+        variant="lora",
+        preset="default",
+        methods_subdir="gui-methods",
+    )
+    lokr_payload = training_service.inspect_continue_lora_weight(
+        str(lokr_path),
+        variant="lokr",
+        preset="default",
+        methods_subdir="gui-methods",
+    )
+    lokr_blocked = training_service.inspect_continue_lora_weight(
+        str(lokr_path),
+        variant="lora",
+        preset="default",
+        methods_subdir="gui-methods",
+    )
+
+    assert lora_payload["kind"] == "LoRA"
+    assert lora_payload["compatible"] is True
+    assert lokr_payload["kind"] == "LoKr"
+    assert lokr_payload["compatible"] is True
+    assert lokr_blocked["compatible"] is False
+    assert "lokr" in lokr_blocked["message"].lower()
+
+
+def test_inspect_continue_lora_weight_rejects_complex_lora_like_weights(tmp_path, monkeypatch):
+    _write_runtime_config_tree(tmp_path)
+    _patch_runtime_service_paths(monkeypatch, tmp_path)
+    plain_lora_tensors = {
+        "lora_unet_blocks_0_self_attn_q_proj.lora_down.weight": torch.randn(4, 8),
+        "lora_unet_blocks_0_self_attn_q_proj.lora_up.weight": torch.randn(12, 4),
+        "lora_unet_blocks_0_self_attn_q_proj.alpha": torch.tensor(4.0),
+    }
+    cases = [
+        (
+            "hydra_keys",
+            {
+                "lora_unet_blocks_0_self_attn_q_proj.lora_down.weight": torch.randn(4, 8),
+                "lora_unet_blocks_0_self_attn_q_proj.lora_ups.0.weight": torch.randn(12, 4),
+                "lora_unet_blocks_0_self_attn_q_proj.router.weight": torch.randn(2, 4),
+            },
+            None,
+        ),
+        (
+            "stacked_keys",
+            {
+                "lora_unet_blocks_0_self_attn_q_proj.lora_down_weight": torch.randn(2, 4, 8),
+                "lora_unet_blocks_0_self_attn_q_proj.lora_up_weight": torch.randn(2, 12, 4),
+            },
+            None,
+        ),
+        ("hydra_spec", plain_lora_tensors, {"ss_network_spec": "hydra"}),
+        ("stacked_spec", plain_lora_tensors, {"ss_network_spec": "stacked_experts_global_fei"}),
+        ("chimera_spec", plain_lora_tensors, {"ss_network_spec": "chimera_hydra"}),
+        (
+            "reft_key",
+            {"reft_unet_blocks_0.rotate_layer.weight": torch.randn(4, 4)},
+            {"ss_network_spec": "reft"},
+        ),
+    ]
+
+    for name, tensors, metadata in cases:
+        path = _write_continue_lora_weight(
+            tmp_path / "weights" / f"{name}.safetensors",
+            tensors=tensors,
+            metadata=metadata,
+        )
+        with pytest.raises(ValueError, match="未识别为 LoRA 或 LoKr"):
+            training_service.inspect_continue_lora_weight(
+                str(path),
+                variant="lora",
+                preset="default",
+                methods_subdir="gui-methods",
+            )
+
+
+def test_inspect_continue_lora_weight_reports_path_errors(tmp_path, monkeypatch):
+    _write_runtime_config_tree(tmp_path)
+    _patch_runtime_service_paths(monkeypatch, tmp_path)
+
+    with pytest.raises(FileNotFoundError, match="权重文件不存在"):
+        training_service.inspect_continue_lora_weight(
+            str(tmp_path / "weights" / "missing.safetensors"),
+            variant="lora",
+            preset="default",
+            methods_subdir="gui-methods",
+        )
+
+    txt_path = tmp_path / "weights" / "demo.txt"
+    txt_path.parent.mkdir(parents=True, exist_ok=True)
+    txt_path.write_text("not a safetensors file", encoding="utf-8")
+    with pytest.raises(ValueError, match="只支持 .safetensors"):
+        training_service.inspect_continue_lora_weight(
+            str(txt_path),
+            variant="lora",
+            preset="default",
+            methods_subdir="gui-methods",
+        )
+
+    directory_path = tmp_path / "weights" / "directory.safetensors"
+    directory_path.mkdir()
+    with pytest.raises(ValueError, match="权重路径不是文件"):
+        training_service.inspect_continue_lora_weight(
+            str(directory_path),
+            variant="lora",
+            preset="default",
+            methods_subdir="gui-methods",
+        )
+
+    unreadable_path = _write_continue_lora_weight(tmp_path / "weights" / "unreadable.safetensors")
+    real_access = os.access
+
+    def fake_access(path, mode):
+        if Path(path) == unreadable_path and mode == os.R_OK:
+            return False
+        return real_access(path, mode)
+
+    monkeypatch.setattr(training_service.os, "access", fake_access)
+    with pytest.raises(ValueError, match="权重文件不可读取"):
+        training_service.inspect_continue_lora_weight(
+            str(unreadable_path),
+            variant="lora",
+            preset="default",
+            methods_subdir="gui-methods",
+        )
+
+
+def test_start_training_appends_network_weights_and_history_meta(tmp_path, monkeypatch):
+    _write_runtime_config_tree(tmp_path)
+    _patch_runtime_service_paths(monkeypatch, tmp_path)
+    monkeypatch.setattr(training_service, "HISTORY_DIR", tmp_path / "history")
+    weight = _write_continue_lora_weight(tmp_path / "weights" / "demo.safetensors", kind="LoRA")
+
+    captured = {}
+    svc = TrainingService(web.Application())
+
+    async def fake_launch(cmd, env, **kwargs):
+        captured["cmd"] = cmd
+        captured["kwargs"] = kwargs
+        svc.current_task_dir = tmp_path / "history" / "fake-task"
+        svc.current_task_dir.mkdir(parents=True)
+        svc.current_task_id = "fake-task"
+        history_kwargs = {
+            key: kwargs[key]
+            for key in (
+                "job",
+                "variant",
+                "preset",
+                "methods_subdir",
+                "output_dir",
+                "sample_dir",
+                "data_dirs",
+                "sample_config",
+                "config_file",
+                "resume_info",
+                "continue_info",
+                "gpu_whitelist",
+                "runtime_info",
+            )
+            if key in kwargs
+        }
+        svc._start_history_task(command=cmd, **history_kwargs)
+
+    svc._launch_job = fake_launch
+    asyncio.run(
+        svc.start(
+            "lora",
+            "default",
+            [],
+            "gui-methods",
+            config_file="configs/gui-methods/lora.toml",
+            use_runtime_dir=False,
+            continue_info={"continue_from_weight_abs_path": str(weight)},
+        )
+    )
+
+    meta = json.loads((tmp_path / "history" / "fake-task" / "meta.json").read_text(encoding="utf-8"))
+    assert "--network_weights" in captured["cmd"]
+    assert str(weight.resolve()) in captured["cmd"]
+    assert "--dim_from_weights" in captured["cmd"]
+    assert meta["training_mode"] == "continue_lora"
+    assert meta["continue_from_weight_abs_path"] == str(weight.resolve())
+    assert meta["continue_from_weight_name"] == "demo.safetensors"
+    assert meta["continue_from_weight_kind"] == "LoRA"
+    snapshot = (tmp_path / "history" / "fake-task" / "config.snapshot.toml").read_text(encoding="utf-8")
+    assert '# training_mode = "continue_lora"' in snapshot
+    assert str(weight.resolve()) in snapshot
+
+
+def test_start_preprocess_keeps_continue_info_for_pending_training(tmp_path, monkeypatch):
+    _write_runtime_config_tree(tmp_path)
+    _patch_runtime_service_paths(monkeypatch, tmp_path)
+    runtime_config = tmp_path / "output" / "runs" / "522-20260523-114514" / "config.runtime.toml"
+    runtime_config.parent.mkdir(parents=True)
+    runtime_config.write_text('network_module = "networks.lora_anima"\n', encoding="utf-8")
+    weight = _write_continue_lora_weight(tmp_path / "weights" / "demo.safetensors", kind="LoRA")
+    monkeypatch.setattr(
+        training_service,
+        "_prepare_web_runtime_config",
+        lambda *args, **kwargs: {
+            "runtime_config_file": str(runtime_config),
+            "output_dir": "output/runs/522-20260523-114514/training_output",
+            "sample_dir": "output/runs/522-20260523-114514/training_output/sample",
+            "sample_config": {},
+            "data_dirs": {},
+            "run_dir": "output/runs/522-20260523-114514",
+        },
+    )
+
+    svc = TrainingService(web.Application())
+
+    async def fake_launch(*args, **kwargs):
+        return None
+
+    svc._launch_job = fake_launch
+    asyncio.run(
+        svc.start_preprocess(
+            "lora",
+            "default",
+            "gui-methods",
+            train_after=True,
+            continue_info={"continue_from_weight_abs_path": str(weight)},
+        )
+    )
+
+    assert svc._pending_train_after_preprocess["continue_info"]["continue_from_weight_abs_path"] == str(weight.resolve())
 
 
 def test_handle_start_returns_400_for_missing_config_file(tmp_path, monkeypatch):

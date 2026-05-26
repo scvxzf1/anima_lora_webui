@@ -334,10 +334,18 @@ def create_network_from_weights(
     # Refuse unfused attn projections so modules_dim reflects the runtime (qkv/kv fused).
     weights_sd = _refuse_unfused_attn_lora_keys(weights_sd)
 
+    try:
+        lokr_network_dim_meta = int(float(file_metadata.get("ss_network_dim", "")))
+    except (TypeError, ValueError):
+        lokr_network_dim_meta = None
+
     modules_dim = {}
     modules_alpha = {}
+    lokr_factors: set[int] = set()
+    lokr_module_names: set[str] = set()
     train_llm_adapter = False
     has_ortho = False
+    has_lokr = False
     has_ortho_hydra = False
     has_hydra = False
     # StackedExperts (independent-A): per-expert ``lora_down_weight`` (E, r, in)
@@ -396,6 +404,20 @@ def create_network_from_weights(
 
         if "alpha" in key:
             modules_alpha[lora_name] = value
+        elif key.endswith(".lokr_w1"):
+            has_lokr = True
+            lokr_module_names.add(lora_name)
+            if value.dim() == 2:
+                lokr_factors.add(int(value.size(0)))
+            modules_dim[lora_name] = lokr_network_dim_meta or (value.size(0) if value.dim() >= 1 else 1)
+            modules_alpha.setdefault(lora_name, torch.tensor(float(modules_dim[lora_name])))
+            plain_module_names.add(lora_name)
+        elif key.endswith(".lokr_w2"):
+            has_lokr = True
+            lokr_module_names.add(lora_name)
+            modules_dim.setdefault(lora_name, lokr_network_dim_meta or 1)
+            modules_alpha.setdefault(lora_name, torch.tensor(float(modules_dim[lora_name])))
+            plain_module_names.add(lora_name)
         elif key.endswith(".lora_up_c_weight") or key.endswith(".lora_up_f_weight"):
             # Chimera dual-A per-pool stacked ups (post-stack form). r is
             # the last dim; out_dim of this side is dim 1; pool size is
@@ -448,6 +470,15 @@ def create_network_from_weights(
                 plain_module_names.add(lora_name)
         if "llm_adapter" in lora_name:
             train_llm_adapter = True
+
+    if has_lokr and lokr_network_dim_meta is None:
+        for lora_name in lokr_module_names:
+            alpha_value = modules_alpha.get(lora_name)
+            if isinstance(alpha_value, torch.Tensor) and alpha_value.numel() == 1:
+                modules_dim[lora_name] = max(
+                    1,
+                    int(float(alpha_value.detach().float().cpu().item())),
+                )
 
     # Finalize the MoE shape now that the full scan is done. A module that
     # has only ``lora_up_weight`` (3-D) but no matching ``lora_down_weight``
@@ -563,6 +594,9 @@ def create_network_from_weights(
                     f"Inconsistent σ-feature dims across modules: expected "
                     f"{sigma_feature_dim_detected}, found {extra} at {k!r}."
                 )
+    elif has_lokr:
+        spec = NETWORK_REGISTRY["lokr"]
+        module_class = spec.module_class
     elif for_inference:
         # Force the plain LoRA spec even for ortho checkpoints — the
         # merge_to / fuse_weight path expects flat down/up weights, and
@@ -832,6 +866,7 @@ def create_network_from_weights(
         freq_router_layer_norm=chimera_freq_router_layer_norm,
         content_router_source=chimera_content_router_source,
         content_router_layer_norm=chimera_content_router_layer_norm,
+        lokr_factor=next(iter(sorted(lokr_factors))) if lokr_factors else 8,
     )
 
     network = LoRANetwork(text_encoders, unet, cfg, multiplier=multiplier)

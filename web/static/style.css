@@ -372,6 +372,69 @@ main { padding: 1rem 1.5rem; }
     line-height: 1.45;
 }
 
+.continue-training-source {
+    align-items: center;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    display: grid;
+    gap: 0.65rem;
+    grid-template-columns: minmax(170px, 0.42fr) minmax(260px, 1fr) auto;
+    margin-bottom: 0.55rem;
+    min-width: 0;
+    padding: 0.58rem 0.7rem;
+}
+.continue-training-source-title {
+    display: grid;
+    gap: 0.16rem;
+    min-width: 0;
+}
+.continue-training-source-title strong {
+    color: var(--text);
+    font-size: 0.78rem;
+}
+.continue-training-source-title span {
+    color: var(--text-dim);
+    font-size: 0.68rem;
+    line-height: 1.35;
+}
+.continue-training-source-summary {
+    display: grid;
+    gap: 0.18rem;
+    min-width: 0;
+}
+.continue-training-source-summary strong {
+    color: var(--text);
+    font-size: 0.78rem;
+    overflow-wrap: anywhere;
+}
+.continue-training-source-summary span,
+.continue-training-source-summary code {
+    color: var(--text-dim);
+    font-size: 0.68rem;
+    overflow-wrap: anywhere;
+}
+.continue-training-source-summary.selected {
+    border-left: 3px solid var(--success);
+    padding-left: 0.55rem;
+}
+.continue-training-source-summary.incompatible {
+    border-left: 3px solid var(--warning);
+    padding-left: 0.55rem;
+}
+.continue-training-source-summary .ok {
+    color: var(--success);
+}
+.continue-training-source-summary .warning {
+    color: var(--warning);
+}
+.continue-training-source-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+    justify-content: flex-end;
+}
+
 
 .choice-guide {
     display: grid;
@@ -1420,6 +1483,111 @@ main { padding: 1rem 1.5rem; }
     min-height: min(620px, calc(100vh - 12rem));
     overflow: auto;
     padding: 0.75rem;
+}
+
+.unnamed-dataset-dialog {
+    width: min(760px, calc(100vw - 2rem));
+}
+
+.unnamed-dataset-dialog-body {
+    min-height: min(420px, calc(100vh - 10rem));
+    padding: 0.75rem;
+}
+
+.continue-lora-dialog {
+    width: min(1120px, calc(100vw - 2rem));
+}
+.continue-lora-dialog-body {
+    display: grid;
+    gap: 0.75rem;
+    max-height: min(720px, calc(100vh - 9rem));
+    overflow: auto;
+    padding: 0.75rem;
+}
+.continue-lora-manual,
+.continue-lora-history {
+    background: var(--bg-input);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    display: grid;
+    gap: 0.55rem;
+    min-width: 0;
+    padding: 0.7rem;
+}
+.continue-lora-manual label,
+.continue-lora-history-toolbar label {
+    color: var(--text-dim);
+    display: grid;
+    gap: 0.3rem;
+    font-size: 0.72rem;
+}
+.continue-lora-manual-row {
+    display: grid;
+    gap: 0.45rem;
+    grid-template-columns: minmax(220px, 1fr) auto;
+}
+.continue-lora-status {
+    color: var(--text-dim);
+    font-size: 0.72rem;
+    line-height: 1.4;
+    margin: 0;
+    min-height: 1rem;
+    overflow-wrap: anywhere;
+}
+.continue-lora-status.ok {
+    color: var(--success);
+}
+.continue-lora-status.warning,
+.continue-lora-status.pending {
+    color: var(--warning);
+}
+.continue-lora-status.error {
+    color: var(--danger-subtle);
+}
+.continue-lora-history-toolbar {
+    align-items: end;
+    display: grid;
+    gap: 0.5rem;
+    grid-template-columns: minmax(240px, 1fr) auto;
+}
+.continue-lora-history-toolbar select {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    color: var(--text);
+    font-size: 0.76rem;
+    padding: 0.35rem 0.5rem;
+}
+.continue-lora-weight-list {
+    display: grid;
+    gap: 0.42rem;
+    min-height: 2rem;
+}
+.continue-lora-weight-item {
+    align-items: center;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    display: grid;
+    gap: 0.55rem;
+    grid-template-columns: minmax(0, 1fr) auto;
+    padding: 0.5rem 0.55rem;
+}
+.continue-lora-weight-item:hover {
+    border-color: var(--accent);
+}
+.continue-lora-weight-item strong {
+    color: var(--text);
+    display: block;
+    font-size: 0.75rem;
+    overflow-wrap: anywhere;
+}
+.continue-lora-weight-item code {
+    color: var(--text-dim);
+    display: block;
+    font-size: 0.66rem;
+    margin-top: 0.18rem;
+    overflow-wrap: anywhere;
 }
 
 .config-dataset-dialog-toolbar {
@@ -3915,6 +4083,17 @@ input[type="checkbox"].field-input {
         justify-content: flex-start;
     }
     .config-dataset-current {
+        grid-template-columns: 1fr;
+    }
+    .continue-training-source {
+        grid-template-columns: 1fr;
+    }
+    .continue-training-source-actions {
+        justify-content: flex-start;
+    }
+    .continue-lora-manual-row,
+    .continue-lora-history-toolbar,
+    .continue-lora-weight-item {
         grid-template-columns: 1fr;
     }
     .config-dataset-current-meta {

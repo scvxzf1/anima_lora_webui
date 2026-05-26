@@ -614,6 +614,7 @@ def _weight_meta(path: Path, *, task: dict[str, Any] | None = None) -> dict[str,
         download_url += f"&task_id={quote(task_id)}"
     return {
         "file": rel_path,
+        "abs_path": str(path.resolve()),
         "name": path.name,
         "download_url": download_url,
         "kind": kind,

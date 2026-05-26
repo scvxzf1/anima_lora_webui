@@ -5,10 +5,12 @@ from __future__ import annotations
 from aiohttp import web
 
 from web.services.config_service import is_web_runtime_config, preflight_training_config
+from web.services.training_service import inspect_continue_lora_weight
 
 
 def setup_training_routes(app: web.Application) -> None:
     app.router.add_post("/api/training/preflight", handle_preflight)
+    app.router.add_post("/api/training/continue-lora/inspect", handle_continue_lora_inspect)
     app.router.add_post("/api/training/start", handle_start)
     app.router.add_post("/api/training/resume", handle_resume)
     app.router.add_post("/api/training/preprocess", handle_preprocess)
@@ -58,6 +60,27 @@ async def handle_preflight(request: web.Request) -> web.Response:
         }, status=400)
 
 
+async def handle_continue_lora_inspect(request: web.Request) -> web.Response:
+    data = await request.json()
+    path = str(data.get("path") or "").strip()
+    variant = data.get("variant", "lora")
+    preset = data.get("preset", "default")
+    methods_subdir = data.get("methods_subdir", "gui-methods")
+    config_file = str(data.get("config_file") or "").strip() or None
+    try:
+        return web.json_response(inspect_continue_lora_weight(
+            path,
+            variant=variant,
+            preset=preset,
+            methods_subdir=methods_subdir,
+            config_file=config_file,
+        ))
+    except FileNotFoundError as e:
+        return web.json_response({"ok": False, "error": str(e)}, status=404)
+    except ValueError as e:
+        return web.json_response({"ok": False, "error": str(e)}, status=400)
+
+
 async def handle_start(request: web.Request) -> web.Response:
     svc = request.app["training_service"]
     data = await request.json()
@@ -69,6 +92,7 @@ async def handle_start(request: web.Request) -> web.Response:
     config_file = str(data.get("config_file") or "").strip() or None
     confirmed = bool(data.get("confirmed", False))
     confirm_preprocess = bool(data.get("confirm_preprocess", False))
+    continue_info = _continue_lora_info_from_request(data)
     if _is_cli_only_spd(variant, methods_subdir):
         return web.json_response({"ok": False, "error": _cli_only_spd_message()}, status=400)
     try:
@@ -97,6 +121,7 @@ async def handle_start(request: web.Request) -> web.Response:
                 True,
                 gpu_whitelist=gpu_whitelist,
                 config_file=config_file,
+                continue_info=continue_info,
             )
             return web.json_response({
                 "ok": True,
@@ -111,6 +136,7 @@ async def handle_start(request: web.Request) -> web.Response:
             methods_subdir,
             gpu_whitelist=gpu_whitelist,
             config_file=config_file,
+            continue_info=continue_info,
             use_runtime_dir=False,
         )
         return web.json_response({"ok": True, "job": "training", "train_after": False, "message": "训练已启动"})
@@ -154,6 +180,7 @@ async def handle_preprocess(request: web.Request) -> web.Response:
     )
     gpu_whitelist = data.get("gpu_whitelist")
     config_file = str(data.get("config_file") or "").strip() or None
+    continue_info = _continue_lora_info_from_request(data)
     if _is_cli_only_spd(variant, methods_subdir):
         return web.json_response({"ok": False, "error": _cli_only_spd_message()}, status=400)
     try:
@@ -184,6 +211,7 @@ async def handle_preprocess(request: web.Request) -> web.Response:
             train_after,
             gpu_whitelist=gpu_whitelist,
             config_file=config_file,
+            continue_info=continue_info,
         )
         message = "预处理已启动，完成后会自动开始训练" if train_after else "预处理已启动"
         return web.json_response({"ok": True, "message": message})
@@ -203,6 +231,17 @@ def _preflight_allows_preprocess(result: dict) -> bool:
         item.get("key") == "source_image_dir" and item.get("level") == "ok"
         for item in checks
     )
+
+
+def _continue_lora_info_from_request(data: dict) -> dict | None:
+    path = str(data.get("continue_from_weight_abs_path") or "").strip()
+    if not path:
+        return None
+    return {
+        "continue_from_weight_abs_path": path,
+        "continue_from_weight_name": str(data.get("continue_from_weight_name") or "").strip(),
+        "continue_from_weight_kind": str(data.get("continue_from_weight_kind") or "").strip(),
+    }
 
 
 def _is_cli_only_spd(variant: str, methods_subdir: str) -> bool:

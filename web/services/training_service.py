@@ -39,6 +39,33 @@ MAX_HISTORY_ITEMS = 100
 MAX_RESUME_CHECKPOINTS = 100
 MAX_TIMELINE_LOG_RECORDS = 20000
 MAX_TIMELINE_METRIC_RECORDS = 20000
+CONTINUE_LORA_KINDS = {"LoRA", "LoKr"}
+CONTINUE_LORA_ACCEPTED_LORA_SPECS = {"", "lora", "standard", "ortho", "ortholora", "tlora", "t_lora"}
+CONTINUE_LORA_UNSUPPORTED_SPEC_TOKENS = (
+    "hydra",
+    "chimera",
+    "stacked",
+    "fera",
+    "moe",
+    "reft",
+    "postfix",
+    "ip_adapter",
+    "easycontrol",
+    "soft_tokens",
+)
+CONTINUE_LORA_UNSUPPORTED_KEY_FRAGMENTS = (
+    ".lora_ups.",
+    ".lora_downs.",
+    ".lora_up_weight",
+    ".lora_down_weight",
+    ".lora_up_c_weight",
+    ".lora_up_f_weight",
+    ".lora_down_c.",
+    ".lora_down_f.",
+    ".router.",
+    "freq_router.",
+    "content_router.",
+)
 RUNTIME_META_KEYS = (
     "run_dir",
     "runtime_config_file",
@@ -124,6 +151,7 @@ class TrainingService:
         start_message: str | None = None,
         command_label: str | None = None,
         resume_info: dict[str, Any] | None = None,
+        continue_info: dict[str, Any] | None = None,
         gpu_whitelist: list[Any] | None = None,
         source_config_file: str | None = None,
         use_runtime_dir: bool = True,
@@ -160,6 +188,19 @@ class TrainingService:
             cmd.extend(["--config_file", config_file])
         if extra_args:
             cmd.extend(extra_args)
+        continue_payload = _normalize_continue_lora_info(
+            continue_info,
+            variant=variant,
+            preset=preset,
+            methods_subdir=methods_subdir,
+            config_file=config_file,
+        )
+        if continue_payload:
+            cmd.extend([
+                "--network_weights",
+                continue_payload["continue_from_weight_abs_path"],
+                "--dim_from_weights",
+            ])
 
         env["PYTHONUNBUFFERED"] = "1"
         env["PATH"] = str(ROOT / ".venv" / "bin") + ":" + env.get("PATH", "")
@@ -208,6 +249,7 @@ class TrainingService:
             reset_logs=reset_logs,
             config_file=config_file,
             resume_info=resume_info,
+            continue_info=continue_payload,
             gpu_whitelist=gpu_selection,
             runtime_info=runtime_info,
         )
@@ -280,10 +322,18 @@ class TrainingService:
         train_after: bool = False,
         gpu_whitelist: list[Any] | None = None,
         config_file: str | None = None,
+        continue_info: dict[str, Any] | None = None,
     ):
         if self.status == "running":
             raise RuntimeError("已有任务在运行中")
 
+        continue_payload = _normalize_continue_lora_info(
+            continue_info,
+            variant=variant,
+            preset=preset,
+            methods_subdir=methods_subdir,
+            config_file=config_file,
+        )
         venv_python = str(ROOT / ".venv" / "bin" / "python")
         if not Path(venv_python).exists():
             venv_python = sys.executable
@@ -322,6 +372,7 @@ class TrainingService:
             "config_file": runtime["runtime_config_file"],
             "source_config_file": runtime.get("history_source_config_file") or config_file,
             "gpu_whitelist": gpu_selection,
+            "continue_info": continue_payload,
         } if train_after else None
         await self._launch_job(
             cmd,
@@ -359,6 +410,7 @@ class TrainingService:
         reset_logs: bool = True,
         config_file: str | None = None,
         resume_info: dict[str, Any] | None = None,
+        continue_info: dict[str, Any] | None = None,
         gpu_whitelist: list[int] | None = None,
         runtime_info: dict[str, str] | None = None,
     ):
@@ -410,6 +462,7 @@ class TrainingService:
             command=cmd,
             config_file=config_file,
             resume_info=resume_info,
+            continue_info=continue_info,
             gpu_whitelist=gpu_whitelist,
             runtime_info=self.current_runtime_info,
         )
@@ -668,6 +721,7 @@ class TrainingService:
                 config_file=pending.get("config_file"),
                 source_config_file=pending.get("source_config_file"),
                 gpu_whitelist=pending.get("gpu_whitelist"),
+                continue_info=pending.get("continue_info"),
                 use_runtime_dir=False,
             )
         except Exception as e:
@@ -898,6 +952,7 @@ class TrainingService:
         command: list[str],
         config_file: str | None = None,
         resume_info: dict[str, Any] | None = None,
+        continue_info: dict[str, Any] | None = None,
         gpu_whitelist: list[int] | None = None,
         runtime_info: dict[str, str] | None = None,
     ) -> None:
@@ -917,9 +972,11 @@ class TrainingService:
             "id": task_dir.name,
             "job": job,
             "output_dir": output_dir,
+            **_continue_lora_history_meta(continue_info),
             **runtime_meta,
             **history_meta,
         })
+        continue_meta = _continue_lora_history_meta(continue_info)
         meta = {
             "id": task_dir.name,
             "name": default_name,
@@ -939,6 +996,7 @@ class TrainingService:
             "sample_config": sample_config,
             "command": command,
             "resume_from": resume_info or {},
+            **continue_meta,
             "gpu_whitelist": gpu_whitelist or [],
             **runtime_meta,
             **history_meta,
@@ -958,6 +1016,7 @@ class TrainingService:
             preset,
             methods_subdir,
             config_file=config_file,
+            continue_info=continue_info,
         )
 
     def _finish_history_task(self, *, state: str, message: str, returncode: int) -> None:
@@ -1159,6 +1218,235 @@ def _normalize_gpu_whitelist(value: Any) -> list[int]:
     return out
 
 
+def inspect_continue_lora_weight(
+    path: str,
+    *,
+    variant: str = "lora",
+    preset: str = "default",
+    methods_subdir: str = "gui-methods",
+    config_file: str | None = None,
+) -> dict[str, Any]:
+    raw_path = str(path or "").strip()
+    if not raw_path:
+        raise ValueError("请填写 LoRA/LoKr 权重路径")
+    weight_path = _resolve_display_path(raw_path)
+    if weight_path is None:
+        raise ValueError("权重路径不合法")
+    if not _path_exists(weight_path):
+        raise FileNotFoundError("权重文件不存在")
+    if not weight_path.is_file():
+        raise ValueError("权重路径不是文件")
+    if weight_path.suffix.lower() != ".safetensors":
+        raise ValueError("只支持 .safetensors 权重文件")
+    if not os.access(weight_path, os.R_OK):
+        raise ValueError("权重文件不可读取")
+
+    metadata, keys = _read_safetensors_header(weight_path)
+    kind = _detect_continue_lora_kind(keys, metadata)
+    if kind not in CONTINUE_LORA_KINDS:
+        raise ValueError("这个 safetensors 未识别为 LoRA 或 LoKr 权重")
+
+    compatible, message = _continue_lora_compatibility(
+        kind,
+        variant=variant,
+        preset=preset,
+        methods_subdir=methods_subdir,
+        config_file=config_file,
+    )
+    display_path = _display_project_path(str(weight_path))
+    return {
+        "ok": True,
+        "name": weight_path.name,
+        "abs_path": str(weight_path),
+        "path": display_path,
+        "kind": kind,
+        "metadata": _safe_continue_lora_metadata(metadata),
+        "compatible": compatible,
+        "message": message,
+    }
+
+
+def _normalize_continue_lora_info(
+    value: Any,
+    *,
+    variant: str,
+    preset: str,
+    methods_subdir: str,
+    config_file: str | None = None,
+) -> dict[str, Any] | None:
+    if not isinstance(value, dict):
+        return None
+    raw_path = str(
+        value.get("continue_from_weight_abs_path")
+        or value.get("abs_path")
+        or value.get("path")
+        or ""
+    ).strip()
+    if not raw_path:
+        return None
+    inspected = inspect_continue_lora_weight(
+        raw_path,
+        variant=variant,
+        preset=preset,
+        methods_subdir=methods_subdir,
+        config_file=config_file,
+    )
+    if not inspected.get("compatible"):
+        raise ValueError(inspected.get("message") or "当前训练配置与继续训练权重不兼容")
+    return {
+        "continue_from_weight_abs_path": inspected["abs_path"],
+        "continue_from_weight_name": inspected["name"],
+        "continue_from_weight_kind": inspected["kind"],
+    }
+
+
+def _read_safetensors_header(path: Path) -> tuple[dict[str, str], list[str]]:
+    try:
+        from safetensors import safe_open
+
+        with safe_open(path, framework="pt", device="cpu") as f:
+            metadata = {str(k): str(v) for k, v in (f.metadata() or {}).items()}
+            keys = list(f.keys())
+        return metadata, keys
+    except Exception as exc:
+        raise ValueError(f"读取 safetensors 权重失败: {exc}") from exc
+
+
+def _detect_continue_lora_kind(keys: list[str], metadata: dict[str, str]) -> str:
+    meta_spec = str(metadata.get("ss_network_spec") or "").strip().lower()
+    lowered_keys = [str(key).lower() for key in keys]
+    has_lokr_keys = any("lokr_w1" in key or "lokr_w2" in key for key in lowered_keys)
+    if has_lokr_keys:
+        return "LoKr"
+    if _continue_lora_has_unsupported_structure(lowered_keys, metadata, meta_spec):
+        return ""
+    has_plain_lora_keys = any(
+        key.endswith(".lora_down.weight") or key.endswith(".lora_up.weight")
+        for key in lowered_keys
+    )
+    if has_plain_lora_keys and meta_spec in CONTINUE_LORA_ACCEPTED_LORA_SPECS:
+        return "LoRA"
+    return ""
+
+
+def _continue_lora_has_unsupported_structure(
+    lowered_keys: list[str],
+    metadata: dict[str, str],
+    meta_spec: str,
+) -> bool:
+    if any(token in meta_spec for token in CONTINUE_LORA_UNSUPPORTED_SPEC_TOKENS):
+        return True
+    use_moe_style = str(metadata.get("ss_use_moe_style") or "").strip().lower()
+    if use_moe_style not in {"", "false", "none"}:
+        return True
+    router_source = str(metadata.get("ss_router_source") or "").strip().lower()
+    if router_source not in {"", "false", "none"}:
+        return True
+    if _truthy(metadata.get("ss_use_chimera_hydra")):
+        return True
+    if any(key in metadata for key in ("ss_num_experts_content", "ss_num_experts_freq")):
+        return True
+    for key in lowered_keys:
+        if key.startswith("reft_"):
+            return True
+        if key.endswith(".s_p") or key.endswith(".s_q"):
+            return True
+        if any(fragment in key for fragment in CONTINUE_LORA_UNSUPPORTED_KEY_FRAGMENTS):
+            return True
+    return False
+
+
+def _safe_continue_lora_metadata(metadata: dict[str, str]) -> dict[str, str]:
+    allowed = (
+        "ss_network_spec",
+        "ss_output_name",
+        "ss_epoch",
+        "ss_steps",
+        "ss_num_epochs",
+        "ss_max_train_steps",
+        "ss_learning_rate",
+        "ss_network_dim",
+        "ss_network_alpha",
+        "modelspec.architecture",
+        "modelspec.implementation",
+    )
+    return {key: str(metadata[key]) for key in allowed if key in metadata}
+
+
+def _continue_lora_compatibility(
+    kind: str,
+    *,
+    variant: str,
+    preset: str,
+    methods_subdir: str,
+    config_file: str | None = None,
+) -> tuple[bool, str]:
+    cfg = _load_config_file_config(config_file) if config_file else {}
+    if not cfg:
+        try:
+            cfg = load_merged_config(variant, preset, methods_subdir)
+        except Exception as exc:
+            return False, f"无法读取当前训练配置用于兼容性检查: {exc}"
+    current_kind = _continue_lora_config_kind(variant, methods_subdir, cfg)
+    if current_kind == "LoKr":
+        if kind == "LoKr":
+            return True, "兼容：当前变体为 LoKr，会基于该 LoKr 权重继续训练"
+        return False, "LoRA 权重不能直接用于 LoKr 变体；请切换到 LoRA 家族配置"
+    if current_kind == "LoRA":
+        if kind == "LoRA":
+            return True, "兼容：当前配置属于 LoRA 家族，会基于该 LoRA 权重继续训练"
+        return False, "LoKr 权重需要当前变体为 lokr，请先切换到 LoKr 变体"
+    return False, "第一版只支持 LoRA / LoKr 家族配置继续训练"
+
+
+def _continue_lora_config_kind(variant: str, methods_subdir: str, cfg: dict[str, Any]) -> str:
+    module_name = str(cfg.get("network_module") or "")
+    variant_key = str(variant or "").strip().lower()
+    if _truthy(cfg.get("use_lokr")) or variant_key == "lokr":
+        return "LoKr"
+    if module_name and "lora_anima" not in module_name:
+        return ""
+    if str(methods_subdir or "") == "gui-methods":
+        blocked = (
+            "hydra",
+            "fera",
+            "reft",
+            "ip_adapter",
+            "easycontrol",
+            "soft_tokens",
+            "postfix",
+            "chimera",
+        )
+        if any(token in variant_key for token in blocked):
+            return ""
+    if _truthy(cfg.get("use_chimera_hydra")):
+        return ""
+    if _truthy(cfg.get("add_reft")):
+        return ""
+    if str(cfg.get("use_moe_style") or "").strip().lower() not in {"", "false", "none"}:
+        return ""
+    return "LoRA"
+
+
+def _truthy(value: Any) -> bool:
+    if isinstance(value, bool):
+        return value
+    if value is None:
+        return False
+    return str(value).strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _continue_lora_history_meta(continue_info: dict[str, Any] | None) -> dict[str, str]:
+    if not isinstance(continue_info, dict) or not continue_info.get("continue_from_weight_abs_path"):
+        return {"training_mode": "fresh"}
+    return {
+        "training_mode": "continue_lora",
+        "continue_from_weight_abs_path": str(continue_info.get("continue_from_weight_abs_path") or ""),
+        "continue_from_weight_name": str(continue_info.get("continue_from_weight_name") or ""),
+        "continue_from_weight_kind": str(continue_info.get("continue_from_weight_kind") or ""),
+    }
+
+
 def _apply_gpu_whitelist(env: dict[str, str], whitelist: list[int]) -> None:
     if whitelist:
         env["CUDA_VISIBLE_DEVICES"] = ",".join(str(index) for index in whitelist)
@@ -1219,18 +1507,41 @@ def _write_config_snapshot(
     methods_subdir: str,
     *,
     config_file: str | None = None,
+    continue_info: dict[str, Any] | None = None,
 ) -> None:
     try:
         if config_file:
             source = _resolve_display_path(config_file)
             if source is None or not _path_exists(source):
                 raise FileNotFoundError("续训配置快照不存在")
-            path.write_text(source.read_text(encoding="utf-8", errors="replace"), encoding="utf-8")
+            text = source.read_text(encoding="utf-8", errors="replace")
+            path.write_text(_append_continue_lora_snapshot_note(text, continue_info), encoding="utf-8")
             return
         cfg = apply_auto_data_dirs(load_merged_config(variant, preset, methods_subdir))
-        path.write_text(toml_dumps_sorted(cfg), encoding="utf-8")
+        path.write_text(_append_continue_lora_snapshot_note(toml_dumps_sorted(cfg), continue_info), encoding="utf-8")
     except Exception as e:
         path.write_text(f"# 无法生成配置快照: {e}\n", encoding="utf-8")
+
+
+def _append_continue_lora_snapshot_note(text: str, continue_info: dict[str, Any] | None) -> str:
+    if not isinstance(continue_info, dict) or not continue_info.get("continue_from_weight_abs_path"):
+        return text
+    base = text.rstrip()
+    lines = [
+        "",
+        "",
+        "# WebUI 继续训练来源",
+        '# training_mode = "continue_lora"',
+        f'# continue_from_weight_kind = "{_toml_comment_string(continue_info.get("continue_from_weight_kind"))}"',
+        f'# continue_from_weight_name = "{_toml_comment_string(continue_info.get("continue_from_weight_name"))}"',
+        f'# continue_from_weight_abs_path = "{_toml_comment_string(continue_info.get("continue_from_weight_abs_path"))}"',
+        "",
+    ]
+    return base + "\n".join(lines)
+
+
+def _toml_comment_string(value: Any) -> str:
+    return str(value or "").replace("\\", "\\\\").replace('"', '\\"')
 
 
 def _load_config_file_config(config_file: str) -> dict[str, Any]:
@@ -2059,6 +2370,10 @@ def _timeline_task_brief(task: dict[str, Any]) -> dict[str, Any]:
         "id": task.get("id", ""),
         "name": task.get("name", ""),
         "label": _timeline_task_label(task),
+        "training_mode": task.get("training_mode", ""),
+        "continue_from_weight_abs_path": task.get("continue_from_weight_abs_path", ""),
+        "continue_from_weight_name": task.get("continue_from_weight_name", ""),
+        "continue_from_weight_kind": task.get("continue_from_weight_kind", ""),
         "state": task.get("state", ""),
         "variant": task.get("variant", ""),
         "preset": task.get("preset", ""),
@@ -2208,6 +2523,14 @@ def _history_summary(meta: dict[str, Any], task_dir: Path) -> dict[str, Any]:
     out["id"] = task_dir.name
     out["name"] = str(out.get("name") or "")
     out["group"] = str(out.get("group") or "")
+    if not str(out.get("training_mode") or "").strip():
+        out["training_mode"] = "continue_lora" if out.get("continue_from_weight_abs_path") else "fresh"
+    for key in (
+        "continue_from_weight_abs_path",
+        "continue_from_weight_name",
+        "continue_from_weight_kind",
+    ):
+        out[key] = str(out.get(key) or "")
     out["archived"] = _history_task_archived(out)
     out["history_dir"] = _display_project_path(str(task_dir))
     out["history_dir_abs"] = str(task_dir)
@@ -2275,6 +2598,11 @@ def _history_task_archived(task: dict[str, Any]) -> bool:
 
 
 def _default_preprocess_history_name(task: dict[str, Any]) -> str:
+    if str(task.get("job") or "").strip() == "training" and str(task.get("training_mode") or "") == "continue_lora":
+        kind = str(task.get("continue_from_weight_kind") or "LoRA").strip() or "LoRA"
+        name = str(task.get("continue_from_weight_name") or "").strip()
+        suffix = f" · {name}" if name else ""
+        return f"继续训练 {kind}{suffix}"
     if str(task.get("job") or "").strip() != "preprocess":
         return ""
     label = str(task.get("history_run_label") or "").strip()

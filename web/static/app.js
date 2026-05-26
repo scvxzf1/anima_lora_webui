@@ -115,6 +115,14 @@
         error: '',
         message: '',
     };
+    let continueTrainingSource = null;
+    let continueLoraDialogState = {
+        loading: false,
+        taskId: '',
+        weights: [],
+        error: '',
+        message: '',
+    };
     let historyTasks = [];
     let showArchivedHistory = false;
     const THEME_STORAGE_KEY = 'anima_lora_theme';
@@ -455,7 +463,7 @@
             ],
         },
         {
-            title: '数据筛选',
+            title: '更多数据集配置',
             description: '控制训练前预处理对源图的筛选规则；通常和预处理缓存一起重建。',
             open: false,
             keys: [
@@ -2885,6 +2893,10 @@
         selectedConfigDatasetFile = currentConfig.dataset_config || '';
         selectedConfigDatasetSummary = datasetPresetSummaryByFile(selectedConfigDatasetFile);
         renderConfigForm(currentConfig);
+        renderContinueTrainingSource();
+        if (continueTrainingSource?.abs_path) {
+            await refreshContinueTrainingSourceCompatibility();
+        }
         if (samplePromptsMode === 'editor-file') {
             loadSamplePrompts(samplePromptsPath, requestSeq);
         } else {
@@ -3535,12 +3547,18 @@
         manageBtn.className = 'btn btn-small';
         manageBtn.textContent = '管理数据集';
         manageBtn.addEventListener('click', () => document.querySelector('[data-tab="datasets"]')?.click());
+        const unnamedBtn = document.createElement('button');
+        unnamedBtn.id = 'btn-open-unnamed-dataset-dialog';
+        unnamedBtn.type = 'button';
+        unnamedBtn.className = 'btn btn-small';
+        unnamedBtn.textContent = '待命名';
+        unnamedBtn.addEventListener('click', openUnnamedDatasetDialog);
         const refreshBtn = document.createElement('button');
         refreshBtn.type = 'button';
         refreshBtn.className = 'btn btn-small';
         refreshBtn.textContent = '刷新预设';
         refreshBtn.addEventListener('click', () => loadDatasetPresets({ selectCurrent: false }));
-        actions.append(openBtn, manageBtn, refreshBtn);
+        actions.append(openBtn, manageBtn, unnamedBtn, refreshBtn);
         header.append(title, actions);
         panel.appendChild(header);
 
@@ -3622,6 +3640,272 @@
     function closeConfigDatasetPickerDialog() {
         const dialog = document.getElementById('config-dataset-picker-dialog');
         if (dialog?.open) dialog.close();
+    }
+
+    function openUnnamedDatasetDialog() {
+        const dialog = document.getElementById('unnamed-dataset-dialog');
+        if (!dialog) return;
+        if (dialog.showModal && !dialog.open) {
+            dialog.showModal();
+        } else if (!dialog.open) {
+            dialog.setAttribute('open', 'open');
+        }
+    }
+
+    function renderContinueTrainingSource() {
+        const summary = document.getElementById('continue-training-source-summary');
+        const chooseBtn = document.getElementById('btn-open-continue-lora-dialog');
+        const clearBtn = document.getElementById('btn-clear-continue-lora-source');
+        if (!summary || !chooseBtn || !clearBtn) return;
+        summary.innerHTML = '';
+        if (!continueTrainingSource) {
+            const title = document.createElement('strong');
+            title.textContent = '从零开始';
+            const detail = document.createElement('span');
+            detail.textContent = '不加载已有权重';
+            summary.append(title, detail);
+            summary.className = 'continue-training-source-summary';
+            chooseBtn.textContent = '选择 LoRA/LoKr';
+            clearBtn.hidden = true;
+            return;
+        }
+        const title = document.createElement('strong');
+        title.textContent = `继续训练 ${continueTrainingSource.kind || 'LoRA'} · ${continueTrainingSource.name || '未命名权重'}`;
+        const path = document.createElement('code');
+        path.textContent = continueTrainingSource.abs_path || '';
+        const state = document.createElement('span');
+        state.className = continueTrainingSource.compatible === false ? 'warning' : 'ok';
+        state.textContent = continueTrainingSource.compatible === false
+            ? (continueTrainingSource.message || '当前配置不兼容')
+            : '兼容 · 启动时会使用 --network_weights 与 --dim_from_weights';
+        summary.append(title, path, state);
+        summary.className = [
+            'continue-training-source-summary',
+            continueTrainingSource.compatible === false ? 'incompatible' : 'selected',
+        ].join(' ');
+        chooseBtn.textContent = '更换';
+        clearBtn.hidden = false;
+    }
+
+    function continueTrainingRequestPayload() {
+        if (!continueTrainingSource) return {};
+        return {
+            continue_from_weight_abs_path: continueTrainingSource.abs_path || '',
+            continue_from_weight_name: continueTrainingSource.name || '',
+            continue_from_weight_kind: continueTrainingSource.kind || '',
+        };
+    }
+
+    function clearContinueTrainingSource() {
+        continueTrainingSource = null;
+        renderContinueTrainingSource();
+        setTomlStatus('ok', '已恢复为从零开始训练');
+    }
+
+    async function openContinueLoraDialog() {
+        const dialog = document.getElementById('continue-lora-dialog');
+        if (!dialog) return;
+        if (!historyTasks.length) {
+            await loadTrainingHistoryList();
+        }
+        renderContinueLoraHistoryTasks();
+        const input = document.getElementById('continue-lora-path-input');
+        if (input && continueTrainingSource?.abs_path) {
+            input.value = continueTrainingSource.abs_path;
+        }
+        if (dialog.showModal && !dialog.open) {
+            dialog.showModal();
+        } else if (!dialog.open) {
+            dialog.setAttribute('open', 'open');
+        }
+        await loadContinueLoraWeights();
+        document.getElementById('continue-lora-path-input')?.focus({ preventScroll: true });
+    }
+
+    function renderContinueLoraHistoryTasks() {
+        const select = document.getElementById('continue-lora-history-task');
+        if (!select) return;
+        const previous = continueLoraDialogState.taskId;
+        const tasks = historyTasks.filter((task) => task.job === 'training');
+        select.innerHTML = '';
+        const latest = document.createElement('option');
+        latest.value = '';
+        latest.textContent = '最近一次训练输出';
+        select.appendChild(latest);
+        for (const task of tasks) {
+            const option = document.createElement('option');
+            option.value = task.id || '';
+            option.textContent = historyTaskDisplayName(task) || task.id || '训练任务';
+            select.appendChild(option);
+        }
+        if (previous && tasks.some((task) => task.id === previous)) {
+            select.value = previous;
+        } else {
+            continueLoraDialogState.taskId = '';
+            select.value = '';
+        }
+    }
+
+    async function loadContinueLoraWeights() {
+        const list = document.getElementById('continue-lora-weight-list');
+        if (!list) return;
+        continueLoraDialogState.loading = true;
+        continueLoraDialogState.error = '';
+        renderContinueLoraWeights();
+        try {
+            const params = new URLSearchParams();
+            if (continueLoraDialogState.taskId) {
+                params.set('task_id', continueLoraDialogState.taskId);
+            }
+            const suffix = params.toString() ? `?${params.toString()}` : '';
+            const payload = await api(`/api/preview/weights${suffix}`);
+            continueLoraDialogState = {
+                ...continueLoraDialogState,
+                loading: false,
+                weights: payload.weights || [],
+                error: payload.ok === false ? (payload.error || '读取权重失败') : '',
+                message: payload.message || '',
+            };
+        } catch (e) {
+            continueLoraDialogState = {
+                ...continueLoraDialogState,
+                loading: false,
+                weights: [],
+                error: e.message || '读取权重失败',
+            };
+        }
+        renderContinueLoraWeights();
+    }
+
+    function renderContinueLoraWeights() {
+        const list = document.getElementById('continue-lora-weight-list');
+        if (!list) return;
+        list.innerHTML = '';
+        if (continueLoraDialogState.loading) {
+            list.textContent = '正在读取历史权重...';
+            return;
+        }
+        if (continueLoraDialogState.error) {
+            list.textContent = continueLoraDialogState.error;
+            return;
+        }
+        if (!continueLoraDialogState.weights.length) {
+            list.textContent = continueLoraDialogState.message || '没有可选择的 .safetensors 权重。';
+            return;
+        }
+        for (const item of continueLoraDialogState.weights) {
+            const row = document.createElement('div');
+            row.className = 'continue-lora-weight-item';
+            const info = document.createElement('div');
+            const name = document.createElement('strong');
+            name.textContent = item.name || '未命名权重';
+            const path = document.createElement('code');
+            path.textContent = item.abs_path || item.file || '';
+            info.append(name, path);
+            const useBtn = document.createElement('button');
+            useBtn.type = 'button';
+            useBtn.className = 'btn btn-small btn-primary';
+            useBtn.textContent = '继续训练';
+            useBtn.addEventListener('click', () => selectContinueLoraWeight(item.abs_path || item.file || ''));
+            row.append(info, useBtn);
+            list.appendChild(row);
+        }
+    }
+
+    function setContinueLoraStatus(message, state = '') {
+        const status = document.getElementById('continue-lora-inspect-status');
+        if (!status) return;
+        status.className = ['continue-lora-status', state].filter(Boolean).join(' ');
+        status.textContent = message || '';
+    }
+
+    async function requestContinueLoraInspection(path) {
+        const variant = currentTrainingSource.method || val('variant-select');
+        const preset = val('preset-select');
+        const methodsSubdir = currentTrainingSource.methods_subdir || 'gui-methods';
+        return api('/api/training/continue-lora/inspect', {
+            method: 'POST',
+            body: JSON.stringify({
+                path,
+                variant,
+                preset,
+                methods_subdir: methodsSubdir,
+                config_file: currentTrainingConfigFile(),
+            }),
+        });
+    }
+
+    async function selectContinueLoraWeight(path, options = {}) {
+        const rawPath = String(path || '').trim();
+        if (!rawPath) {
+            setContinueLoraStatus('请填写 .safetensors 权重绝对路径。', 'error');
+            return false;
+        }
+        setContinueLoraStatus('正在检查权重结构与当前变体兼容性...', 'pending');
+        try {
+            const payload = await requestContinueLoraInspection(rawPath);
+            if (!payload.ok) {
+                setContinueLoraStatus(payload.error || '权重检测失败。', 'error');
+                if (!document.getElementById('continue-lora-dialog')?.open) {
+                    alert(payload.error || '权重检测失败。');
+                }
+                return false;
+            }
+            if (!payload.compatible) {
+                setContinueLoraStatus(payload.message || '当前配置与这个权重不兼容。', 'warning');
+                if (!document.getElementById('continue-lora-dialog')?.open) {
+                    alert(payload.message || '当前配置与这个权重不兼容。');
+                }
+                return false;
+            }
+            continueTrainingSource = payload;
+            renderContinueTrainingSource();
+            setContinueLoraStatus(payload.message || '已选择继续训练权重。', 'ok');
+            setTomlStatus('ok', `训练来源已设置为继续训练 ${payload.kind} · ${payload.name}`);
+            if (options.switchToConfig !== false) {
+                document.querySelector('[data-tab="config"]')?.click();
+            }
+            const dialog = document.getElementById('continue-lora-dialog');
+            if (dialog?.open && options.keepDialogOpen !== true) dialog.close();
+            return true;
+        } catch (e) {
+            setContinueLoraStatus('权重检测请求失败: ' + e.message, 'error');
+            if (!document.getElementById('continue-lora-dialog')?.open) {
+                alert('权重检测请求失败: ' + e.message);
+            }
+            return false;
+        }
+    }
+
+    async function refreshContinueTrainingSourceCompatibility() {
+        if (!continueTrainingSource?.abs_path) {
+            renderContinueTrainingSource();
+            return true;
+        }
+        let payload;
+        try {
+            payload = await requestContinueLoraInspection(continueTrainingSource.abs_path);
+        } catch (e) {
+            continueTrainingSource = {
+                ...continueTrainingSource,
+                compatible: false,
+                message: '无法重新检查继续训练权重: ' + e.message,
+            };
+            renderContinueTrainingSource();
+            return false;
+        }
+        if (!payload.ok) {
+            continueTrainingSource = {
+                ...continueTrainingSource,
+                compatible: false,
+                message: payload.error || '无法重新检查继续训练权重。',
+            };
+            renderContinueTrainingSource();
+            return false;
+        }
+        continueTrainingSource = payload;
+        renderContinueTrainingSource();
+        return Boolean(payload.compatible);
     }
 
     function renderConfigDatasetPickerDialog() {
@@ -8790,6 +9074,10 @@
             alert(message);
             return;
         }
+        if (continueTrainingSource && !(await refreshContinueTrainingSourceCompatibility())) {
+            setTomlStatus('error', continueTrainingSource.message || '继续训练权重与当前配置不兼容', { persist: true });
+            return;
+        }
         const preflight = await runPreflight(variant, preset, methodsSubdir);
         if (!preflight) {
             if (isPreflightDialogOpen()) await waitForPreflightDialogClose();
@@ -8851,12 +9139,15 @@
 
     async function confirmTrainingLaunch(options = {}) {
         const willAutoPreprocess = Boolean(options.willAutoPreprocess);
+        const sourceDetail = continueTrainingSource
+            ? `\n\n训练来源: 继续训练 ${continueTrainingSource.kind} · ${continueTrainingSource.name}\n基于权重: ${continueTrainingSource.abs_path}`
+            : '\n\n训练来源: 从零开始';
         return showAppConfirmDialog({
             title: willAutoPreprocess ? '最终确认：预处理并训练' : '最终确认：开始训练',
             description: '训练启动前的最后一步',
             message: willAutoPreprocess
-                ? '确认后会立即创建本次运行目录并启动预处理；预处理完成后会自动开始训练。'
-                : '确认后会立即创建本次运行目录并启动训练进程。',
+                ? `确认后会立即创建本次运行目录并启动预处理；预处理完成后会自动开始训练。${sourceDetail}`
+                : `确认后会立即创建本次运行目录并启动训练进程。${sourceDetail}`,
             confirmText: willAutoPreprocess ? '确认预处理并训练' : '确认开始训练',
             cancelText: '返回检查',
         });
@@ -8886,6 +9177,7 @@
                     gpu_whitelist: selectedGpuPayload(),
                     confirmed: true,
                     confirm_preprocess: willAutoPreprocess,
+                    ...continueTrainingRequestPayload(),
                 }),
             });
             if (res.ok) {
@@ -9148,6 +9440,10 @@
         const variant = result.variant || currentTrainingSource.method || val('variant-select');
         const preset = result.preset || val('preset-select');
         const methodsSubdir = result.methods_subdir || currentTrainingSource.methods_subdir || 'gui-methods';
+        if (continueTrainingSource && !(await refreshContinueTrainingSourceCompatibility())) {
+            showPreflightRequestError(continueTrainingSource.message || '继续训练权重与当前配置不兼容');
+            return;
+        }
         if (!(await confirmTrainingLaunch({ willAutoPreprocess: true }))) return;
         renderPreflightPending({
             title: '启动预处理',
@@ -9168,6 +9464,7 @@
                     confirm_train_after: true,
                     confirm_preprocess: true,
                     gpu_whitelist: selectedGpuPayload(),
+                    ...continueTrainingRequestPayload(),
                 }),
             });
             if (!res.ok) {
@@ -10130,7 +10427,13 @@
         copy.textContent = '复制路径';
         copy.title = '复制这个权重文件的完整路径。';
         copy.addEventListener('click', () => copyPreviewWeightPath(item, copy));
-        actions.append(download, copy);
+        const continueBtn = document.createElement('button');
+        continueBtn.type = 'button';
+        continueBtn.className = 'btn btn-small preview-weight-continue';
+        continueBtn.textContent = '继续训练';
+        continueBtn.title = '把这个权重设置为新的 LoRA/LoKr 补充训练来源。';
+        continueBtn.addEventListener('click', () => selectContinueLoraWeight(item.abs_path || item.file || ''));
+        actions.append(continueBtn, download, copy);
 
         const stats = document.createElement('div');
         stats.className = 'preview-weight-stats';
@@ -10201,7 +10504,7 @@
     }
 
     async function copyPreviewWeightPath(item, button) {
-        const path = item.file || '';
+        const path = item.abs_path || item.file || '';
         if (!path) return;
         try {
             await copyText(path);
@@ -10650,6 +10953,12 @@
     function historyTaskDisplayName(task) {
         if (!task) return '';
         const customName = String(task.name || '').trim();
+        if (task.training_mode === 'continue_lora') {
+            const kind = String(task.continue_from_weight_kind || 'LoRA').trim() || 'LoRA';
+            const name = String(task.continue_from_weight_name || '').trim();
+            const continueName = `继续训练 ${kind}${name ? ` · ${name}` : ''}`;
+            return customName && customName !== continueName ? customName : continueName;
+        }
         if (customName) return customName;
         const defaultName = String(
             task.history_run_label
@@ -10680,6 +10989,19 @@
         if (checkpoint) return `从检查点恢复: ${checkpoint}`;
         if (step) return `从检查点恢复: step ${step}`;
         return resume.source_task_id ? '从检查点恢复' : '';
+    }
+
+    function historyContinueLabel(task) {
+        if (task?.training_mode !== 'continue_lora') return '';
+        const kind = String(task.continue_from_weight_kind || 'LoRA').trim() || 'LoRA';
+        const name = String(task.continue_from_weight_name || '').trim();
+        return `继续训练 ${kind}${name ? `: ${name}` : ''}`;
+    }
+
+    function historyContinuePathLabel(task) {
+        if (task?.training_mode !== 'continue_lora') return '';
+        const path = String(task.continue_from_weight_abs_path || '').trim();
+        return path ? `基于: ${path}` : '';
     }
 
     function runLabelFromPath(value) {
@@ -10745,13 +11067,17 @@
         const meta = document.createElement('span');
         meta.textContent = [
             task.job === 'preprocess' ? '预处理' : '训练',
+            historyContinueLabel(task),
             historyResumeLabel(task),
             historyStateLabel(task.state),
             task.started_at_text || task.id,
             archived ? '已归档' : '',
         ].filter(Boolean).join(' · ');
         const paths = document.createElement('em');
-        paths.textContent = `目录: ${task.run_dir || task.training_output_dir || task.output_dir || task.history_dir || task.id}`;
+        paths.textContent = [
+            `目录: ${task.run_dir || task.training_output_dir || task.output_dir || task.history_dir || task.id}`,
+            historyContinuePathLabel(task),
+        ].filter(Boolean).join(' · ');
         const counts = document.createElement('em');
         counts.textContent = `${task.metric_count || 0} loss点 / ${task.log_count || 0} 日志`;
         main.append(title, meta, paths, counts);
@@ -11711,6 +12037,7 @@
         const includeHistory = options.includeHistory !== false;
         return [
             includeHistory ? ['历史目录', task.history_dir_abs || task.history_dir] : null,
+            task.training_mode === 'continue_lora' ? ['基于权重', task.continue_from_weight_abs_path] : null,
             ['本次运行目录', task.run_dir],
             ['实际运行配置', task.runtime_config_file],
             ['原始配置副本', task.original_config_file],
@@ -11767,6 +12094,16 @@
         });
         document.getElementById('btn-load-config').addEventListener('click', reloadCurrentConfig);
         document.getElementById('btn-start-from-config').addEventListener('click', startTraining);
+        document.getElementById('btn-open-continue-lora-dialog').addEventListener('click', openContinueLoraDialog);
+        document.getElementById('btn-clear-continue-lora-source').addEventListener('click', clearContinueTrainingSource);
+        document.getElementById('btn-inspect-continue-lora-path').addEventListener('click', () => {
+            selectContinueLoraWeight(document.getElementById('continue-lora-path-input')?.value || '');
+        });
+        document.getElementById('continue-lora-history-task').addEventListener('change', (event) => {
+            continueLoraDialogState.taskId = event.target.value || '';
+            loadContinueLoraWeights();
+        });
+        document.getElementById('btn-refresh-continue-lora-weights').addEventListener('click', loadContinueLoraWeights);
         document.getElementById('btn-open-tutorial').addEventListener('click', openTutorialDialog);
         document.getElementById('btn-stop-training').addEventListener('click', stopTraining);
         document.getElementById('btn-apply-toml').addEventListener('click', applyTomlToConfig);
@@ -11862,6 +12199,11 @@
             'gpu-picker-toggle': '选择训练时允许使用的 GPU 白名单。默认“全部 GPU”表示不限制；选择会保存在本机浏览器。',
             'btn-load-config': '重新读取当前方法、变体和预设合并后的配置；不会启动训练，也不会保存当前未保存修改。',
             'btn-start-from-config': '先做训练前预检测，再用当前左侧表单/当前训练配置启动训练。若数据缺缓存，会提示先预处理。',
+            'btn-open-continue-lora-dialog': '选择已有 LoRA 或 LoKr safetensors 权重作为新训练任务的初始化来源。',
+            'btn-clear-continue-lora-source': '清除继续训练来源，下一次启动会按从零开始训练。',
+            'btn-inspect-continue-lora-path': '检查这个 safetensors 是否为 LoRA/LoKr，并确认是否兼容当前变体。',
+            'continue-lora-history-task': '从历史训练任务中选择一个输出目录，读取其中保存的权重文件。',
+            'btn-refresh-continue-lora-weights': '重新扫描所选历史训练任务的 safetensors 权重。',
             'btn-open-tutorial': '打开基础教程，按顺序了解全局设置、数据集、配置保存、预处理和训练启动。',
             'btn-stop-training': '停止当前正在运行的训练或预处理任务；已经写出的日志、样张和权重文件会保留。',
             'btn-refresh-resume-options': '重新扫描这个历史任务输出目录里的训练状态目录，例如 output_name-checkpoint-state。',
@@ -11920,6 +12262,7 @@
             'btn-refresh-dataset-preview': '重新扫描当前数据集路径，读取最新图片和同名 caption 标注。',
             'btn-config-dataset-dialog-refresh': '重新读取可选的数据集预设列表，并保留当前配置页的选择状态。',
             'btn-config-dataset-dialog-manage': '切换到数据集页，编辑或新增可复用的数据集预设。',
+            'btn-open-unnamed-dataset-dialog': '打开待命名弹窗。',
         };
         for (const [id, title] of Object.entries(tips)) {
             const el = document.getElementById(id);

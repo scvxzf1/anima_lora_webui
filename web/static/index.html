@@ -17,7 +17,7 @@
             }
         })();
     </script>
-    <link rel="stylesheet" href="/static/style.css?v=tutorial-dialog-20260524-1">
+    <link rel="stylesheet" href="/static/style.css?v=continue-lora-20260526-1">
 </head>
 <body>
     <header>
@@ -68,6 +68,20 @@
                 <button id="btn-load-config" class="btn">刷新</button>
                 <button id="btn-start-from-config" class="btn btn-primary">开始训练</button>
             </div>
+            <section id="continue-training-source" class="continue-training-source" aria-label="训练来源">
+                <div class="continue-training-source-title">
+                    <strong>训练来源</strong>
+                    <span>选择已完成的 LoRA / LoKr 权重会创建新的补充训练任务。</span>
+                </div>
+                <div id="continue-training-source-summary" class="continue-training-source-summary">
+                    <strong>从零开始</strong>
+                    <span>不加载已有权重</span>
+                </div>
+                <div class="continue-training-source-actions">
+                    <button id="btn-open-continue-lora-dialog" class="btn btn-small" type="button">选择 LoRA/LoKr</button>
+                    <button id="btn-clear-continue-lora-source" class="btn btn-small" type="button" hidden>清除</button>
+                </div>
+            </section>
             <div id="choice-guide" class="choice-guide" aria-label="配置选择说明"></div>
             <div class="config-split">
                 <!-- 左侧：表单式配置 -->
@@ -645,6 +659,49 @@
         </form>
     </dialog>
 
+    <dialog id="unnamed-dataset-dialog" class="preview-dialog unnamed-dataset-dialog">
+        <form method="dialog">
+            <div class="preview-dialog-header">
+                <div>
+                    <h2>待命名</h2>
+                </div>
+                <button class="btn btn-small" value="close" type="submit">关闭</button>
+            </div>
+            <div class="unnamed-dataset-dialog-body"></div>
+        </form>
+    </dialog>
+
+    <dialog id="continue-lora-dialog" class="preview-dialog continue-lora-dialog">
+        <form method="dialog">
+            <div class="preview-dialog-header">
+                <div>
+                    <h2>选择 LoRA/LoKr 继续训练</h2>
+                    <p>载入已有权重后会启动新任务，不恢复旧优化器、调度器或训练步数。</p>
+                </div>
+                <button class="btn btn-small" value="close" type="submit">关闭</button>
+            </div>
+            <div class="continue-lora-dialog-body">
+                <section class="continue-lora-manual">
+                    <label for="continue-lora-path-input">本机 <code>.safetensors</code> 绝对路径</label>
+                    <div class="continue-lora-manual-row">
+                        <input id="continue-lora-path-input" class="field-input" type="text" spellcheck="false" placeholder="/absolute/path/to/adapter.safetensors">
+                        <button id="btn-inspect-continue-lora-path" class="btn btn-small btn-primary" type="button">检测并使用</button>
+                    </div>
+                    <p id="continue-lora-inspect-status" class="continue-lora-status" role="status" aria-live="polite"></p>
+                </section>
+                <section class="continue-lora-history">
+                    <div class="continue-lora-history-toolbar">
+                        <label for="continue-lora-history-task">历史训练权重
+                            <select id="continue-lora-history-task"></select>
+                        </label>
+                        <button id="btn-refresh-continue-lora-weights" class="btn btn-small" type="button">刷新权重</button>
+                    </div>
+                    <div id="continue-lora-weight-list" class="continue-lora-weight-list"></div>
+                </section>
+            </div>
+        </form>
+    </dialog>
+
     <dialog id="history-task-dialog" class="history-task-dialog">
         <form method="dialog">
             <div class="history-task-dialog-header">
@@ -665,6 +722,6 @@
     <div id="config-switch-toast" class="config-switch-toast" role="status" aria-live="polite" hidden></div>
 
     <script src="/static/chart.js?v=history-20260517-2"></script>
-    <script src="/static/app.js?v=training-confirm-20260524-1"></script>
+    <script src="/static/app.js?v=continue-lora-20260526-1"></script>
 </body>
 </html>
