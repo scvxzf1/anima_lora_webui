@@ -193,6 +193,15 @@ def main() -> None:
     )
     ap.add_argument("--num_samples", type=int, default=3)
     ap.add_argument(
+        "--num_seeds",
+        type=int,
+        default=3,
+        help="Independent noise draws per sample, averaged into the per-σ "
+        "curves (the headline metric is latent-MSE; per-prompt seed variance "
+        "dominates single-draw labels — project_dcw_seed_variance_dominates). "
+        "Only the first seed is decoded for the visual strip.",
+    )
+    ap.add_argument(
         "--sigmas",
         type=float,
         nargs="+",
@@ -249,35 +258,45 @@ def main() -> None:
         emb = emb.to(device, dtype).unsqueeze(0)  # (1,S,D)
         H, W = x0.shape[-2], x0.shape[-1]
         pad = torch.zeros(1, 1, H, W, dtype=dtype, device=device)
-
-        # one fixed noise draw per sample → strip columns are comparable
-        g = torch.Generator(device=device).manual_seed(args.seed + si)
-        eps = torch.randn(x0.shape, generator=g, device=device, dtype=dtype)
-        x0_f, eps_f = x0.float(), eps.float()
-        v_target = eps_f - x0_f  # rectified-flow target (train.py:922)
+        x0_f = x0.float()
 
         ref_img = decode(x0)
-        imgs = [ref_img]
+        imgs = [ref_img]  # strip = seed 0 only
         px_row: list[float] = []
         log.info(f"=== sample {si}: {Path(npz_path).name}  ({H * 8}×{W * 8}px) ===")
-        for s in sigma_grid:
-            noisy = ((1.0 - s) * x0_f + s * eps_f).to(dtype)
-            t = torch.full((1,), float(s), device=device, dtype=dtype)
-            with torch.no_grad():
-                v = anima(noisy, t, emb, padding_mask=pad).float()
-            x0_pred = noisy.float() - s * v
-            fm_mse[s].append(float(((v - v_target) ** 2).mean()))
-            lat_mse[s].append(float(((x0_pred - x0_f) ** 2).mean()))
-            pred_img = decode(x0_pred.to(dtype))
-            ra = np.asarray(ref_img.resize((96, 96)), np.float32) / 255.0
-            pa = np.asarray(pred_img.resize((96, 96)), np.float32) / 255.0
-            this_px = float(((ra - pa) ** 2).mean())
-            px_mse[s].append(this_px)
-            px_row.append(this_px)
-            imgs.append(pred_img)
+
+        # Average the per-σ curves over independent noise draws — single-draw
+        # labels are dominated by seed variance (project_dcw_seed_variance_dominates).
+        # Decode only seed 0 (VAE is the cost); other seeds feed lat/fm MSE only.
+        for seed_j in range(max(1, args.num_seeds)):
+            g = torch.Generator(device=device).manual_seed(
+                args.seed + si * 1000 + seed_j
+            )
+            eps = torch.randn(x0.shape, generator=g, device=device, dtype=dtype)
+            eps_f = eps.float()
+            v_target = eps_f - x0_f  # rectified-flow target (train.py:922)
+            decode_seed = seed_j == 0
+            for s in sigma_grid:
+                noisy = ((1.0 - s) * x0_f + s * eps_f).to(dtype)
+                t = torch.full((1,), float(s), device=device, dtype=dtype)
+                with torch.no_grad():
+                    v = anima(noisy, t, emb, padding_mask=pad).float()
+                x0_pred = noisy.float() - s * v
+                fm_mse[s].append(float(((v - v_target) ** 2).mean()))
+                lat_mse[s].append(float(((x0_pred - x0_f) ** 2).mean()))
+                if decode_seed:
+                    pred_img = decode(x0_pred.to(dtype))
+                    ra = np.asarray(ref_img.resize((96, 96)), np.float32) / 255.0
+                    pa = np.asarray(pred_img.resize((96, 96)), np.float32) / 255.0
+                    this_px = float(((ra - pa) ** 2).mean())
+                    px_mse[s].append(this_px)
+                    px_row.append(this_px)
+                    imgs.append(pred_img)
             log.info(
-                f"  σ={s:.2f}  fm_mse={fm_mse[s][-1]:.4f}  "
-                f"x0_lat_mse={lat_mse[s][-1]:.4f}  x0_px_mse={this_px:.4f}"
+                f"  seed {seed_j}: "
+                + "  ".join(
+                    f"σ{s:.2f} lat={lat_mse[s][-1]:.4f}" for s in sigma_grid
+                )
             )
         title = (
             f"s{si}: {Path(npz_path).name}  ({H * 8}×{W * 8}px)  —  x0_pred = x_σ − σ·v"
@@ -333,9 +352,9 @@ def main() -> None:
         ax1.set_ylabel("sampling density  p(σ)")
         ax1.set_xlim(0, 1)
         ax2 = ax1.twinx()
-        sig = mean_px / (mean_px.max() + 1e-9)
+        sig = mean_lat / (mean_lat.max() + 1e-9)
         ax2.plot(sg, sig, "k--", lw=2, label="recon error (norm.) — where signal is")
-        ax2.set_ylabel("normalized base recon error  (x0_px_mse)")
+        ax2.set_ylabel("normalized base recon error  (x0_lat_mse)")
         ax2.set_ylim(0, 1.05)
         lines = ax1.get_lines() + ax2.get_lines()
         ax1.legend(
@@ -354,7 +373,10 @@ def main() -> None:
 
     # ── quantify the schedule-vs-signal mismatch ──
     # "low-signal" σ = where the base already reconstructs well (norm err < 0.2).
-    norm_err = mean_px / (mean_px.max() + 1e-9)
+    # Keyed on full-res latent-MSE, NOT the 96px pixel-MSE: the downsample is an
+    # extra low-pass that pushes the crossover σ artificially high (overstating
+    # the case against low-σ sampling). px_mse stays as a strip annotation only.
+    norm_err = mean_lat / (mean_lat.max() + 1e-9)
     low_signal_max_sigma = float(
         max([s for s, e in zip(sigma_grid, norm_err) if e < 0.2], default=0.0)
     )
@@ -381,14 +403,18 @@ def main() -> None:
         "mean_fm_mse": mean_fm.tolist(),
         "mean_x0_lat_mse": mean_lat.tolist(),
         "mean_x0_px_mse": mean_px.tolist(),
+        "num_seeds": int(max(1, args.num_seeds)),
         "low_signal_max_sigma": low_signal_max_sigma,
+        "low_signal_metric": "x0_lat_mse",
         "low_signal_mass_fraction_per_schedule": wasted,
         "note": (
             "FM-MSE/recon-error is a 'where is the base uncertain' diagnostic, "
             "NOT a quality metric (project_fm_val_loss_uninformative). "
             "Coherence/where-signal-dies is a VISUAL call — open x0_vs_sigma_s*.png. "
             "low_signal_mass_fraction = sampling mass spent at σ where the base "
-            "already reconstructs x0 (norm recon err < 0.2) ≈ wasted training draws."
+            "already reconstructs x0 (norm latent-MSE < 0.2) ≈ wasted training "
+            "draws. Keyed on full-res latent-MSE, not the 96px pixel-MSE. Still "
+            "a CONTENT-reconstruction view — blind to style/identity low-σ signal."
         ),
     }
     artifacts = [*strip_names, "sigma_signal.csv"]

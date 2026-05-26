@@ -29,7 +29,7 @@ the measured per-σ reconstruction error.
 
 ```bash
 uv run python -m bench.timestep_sampling.probe_sigma_signal
-uv run python -m bench.timestep_sampling.probe_sigma_signal --num_samples 4
+uv run python -m bench.timestep_sampling.probe_sigma_signal --num_samples 4 --num_seeds 3
 uv run python -m bench.timestep_sampling.probe_sigma_signal --adapter output/ckpt/foo.safetensors
 ```
 
@@ -44,7 +44,9 @@ Artifacts in `results/<ts>-<label>/`:
 - `sigma_signal.csv`, `result.json` — numbers + the standard envelope.
   `result.json:metrics.low_signal_mass_fraction_per_schedule` = the fraction of
   each schedule's draws spent at σ where the base already reconstructs x0 well
-  (≈ wasted training samples).
+  (≈ wasted training samples). Keyed on full-res **latent-MSE** (not the 96px
+  pixel-MSE, which over-low-passes and inflates the dead zone); averaged over
+  `--num_seeds` noise draws.
 
 **Caveat (load-bearing):** FM-MSE / recon-error is a *where-is-the-base-uncertain*
 diagnostic, **not** a quality metric — lower FM val loss has never tracked
