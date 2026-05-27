@@ -721,6 +721,8 @@ class LoRANetwork(torch.nn.Module):
                     # by ``LoRANetworkCfg.from_kwargs`` invariant.
                     extra_kwargs["num_experts_content"] = cfg.num_experts_content
                     extra_kwargs["num_experts_freq"] = cfg.num_experts_freq
+                    extra_kwargs["centered_gate"] = cfg.chimera_centered_gate
+                    extra_kwargs["lambda_init"] = cfg.chimera_lambda_init
                     if cfg.content_router_source == "crossattn":
                         extra_kwargs["use_global_content_router"] = True
                 elif effective_module_class == ChimeraHydraInferenceModule:
@@ -730,6 +732,7 @@ class LoRANetwork(torch.nn.Module):
                     # ``cfg.from_weights``.
                     extra_kwargs["num_experts_content"] = cfg.num_experts_content
                     extra_kwargs["num_experts_freq"] = cfg.num_experts_freq
+                    extra_kwargs["centered_gate"] = cfg.chimera_centered_gate
                     if cfg.content_router_source == "crossattn":
                         extra_kwargs["use_global_content_router"] = True
                 elif effective_module_class == OrthoHydraLoRAModule:
@@ -1058,12 +1061,20 @@ class LoRANetwork(torch.nn.Module):
                     f"sigma_feature_dim > 0 for the FreqRouter input (got "
                     f"FEI={cfg.fei_feature_dim}, σ={cfg.sigma_feature_dim})."
                 )
+            # Under centered_gate the freq pool's cold-start is broken by the
+            # disjoint P_bases_f·λ_f residual (not router noise), so zero-init
+            # the router for an exactly-uniform π_f at step 0 → ΔW_f=0. The
+            # "zero-init is a fixed point" warning in FreqRouter's docstring
+            # only applies to the non-centered additive composition.
+            freq_init_std = 0.0 if cfg.chimera_centered_gate else float(
+                cfg.freq_router_init_std
+            )
             self.freq_router = FreqRouter(
                 input_dim=freq_input_dim,
                 num_freq_experts=int(cfg.num_experts_freq),
                 hidden_dim=int(cfg.router_hidden_dim),
                 tau=float(cfg.router_tau),
-                init_std=float(cfg.freq_router_init_std),
+                init_std=freq_init_std,
                 fei_dim=int(cfg.fei_feature_dim),
                 sigma_dim=int(cfg.sigma_feature_dim),
                 apply_layer_norm=bool(cfg.freq_router_layer_norm),
@@ -1097,12 +1108,18 @@ class LoRANetwork(torch.nn.Module):
             and cfg.content_router_source == "crossattn_emb"
             and self._chimera_aware_loras
         ):
+            # Same centered_gate zero-init as the FreqRouter above — the
+            # content pool's disjoint P_bases_c·λ_c residual breaks symmetry,
+            # so a uniform π_c at step 0 keeps ΔW_c=0.
+            content_init_std = 0.0 if cfg.chimera_centered_gate else float(
+                cfg.content_router_init_std
+            )
             self.content_router = ContentRouter(
                 input_dim=CROSSATTN_EMB_DIM,
                 num_content_experts=int(cfg.num_experts_content),
                 hidden_dim=int(cfg.router_hidden_dim),
                 tau=float(cfg.router_tau),
-                init_std=float(cfg.content_router_init_std),
+                init_std=content_init_std,
                 apply_layer_norm=bool(cfg.content_router_layer_norm),
             )
             self.use_content_router = True
@@ -3179,6 +3196,12 @@ class LoRANetwork(torch.nn.Module):
                 metadata["ss_chimera_content_router_layer_norm"] = (
                     "true" if self.cfg.content_router_layer_norm else "false"
                 )
+            # Centered-gate: both pools' ups are combined with ``(π - 1/K)``
+            # rather than the raw softmax. Stamp only when on so unconfigured
+            # chimera checkpoints stay byte-identical; the loader threads it
+            # into both inference paths' per-pool combine.
+            if self.cfg.chimera_centered_gate:
+                metadata["ss_chimera_centered_gate"] = "true"
 
         state_dict = self.state_dict()
         lora_save.save_network_weights(

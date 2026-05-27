@@ -166,6 +166,11 @@ _HYDRA_KWARG_FLAGS: Tuple[str, ...] = (
     "balance_loss_weight",
     "balance_loss_warmup_ratio",
     "expert_init_std",
+    # OrthoHydra centered-gate init: recenter gate to (g_e - 1/E) + zero-init
+    # router + start λ at ortho_lambda_init so the router gets a step-0 gradient
+    # while ΔW stays 0. Consumed by LoRANetworkCfg.from_kwargs.
+    "ortho_centered_gate",
+    "ortho_lambda_init",
     # Unified layer filter — scopes which Linears participate in routed
     # adaptation (Hydra MoE leaves + σ / FEI feature concatenation).
     "router_targets",
@@ -206,6 +211,11 @@ _CHIMERA_KWARG_FLAGS: Tuple[str, ...] = (
     "content_router_source",
     "content_router_init_std",
     "content_router_layer_norm",
+    # Centered-gate init for BOTH pools: recenter each pool's gate to (π - 1/K)
+    # + zero-init the content/freq routers + start λ_c/λ_f at chimera_lambda_init.
+    # The dual-pool analogue of ortho_centered_gate. LoRANetworkCfg.from_kwargs.
+    "chimera_centered_gate",
+    "chimera_lambda_init",
 )
 
 

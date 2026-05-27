@@ -359,6 +359,21 @@ class LoRANetworkCfg:
     content_router_init_std: float = 0.1
     content_router_layer_norm: bool = True
 
+    # ChimeraHydra centered-gate init (BOTH pools). The dual-pool analogue of
+    # ``ortho_centered_gate``: when on, each pool's gate is recentered to
+    # ``π - 1/K`` in the forward, the content + freq routers are zero-init (no
+    # symmetry-breaking noise — ``content_router_init_std`` / the FreqRouter's
+    # ``freq_router_init_std`` are overridden to 0), and ``lambda_c`` /
+    # ``lambda_f`` start at ``chimera_lambda_init`` (small nonzero) instead of
+    # 0. Result: ΔW = 0 at init (base preserved exactly), yet both routers get
+    # nonzero gradient at step 0 because each pool's disjoint per-expert
+    # P-subspaces survive the mean subtraction. Off + ``chimera_lambda_init=0``
+    # reproduces the legacy zero-init-λ behaviour (routers gated off until λ
+    # ramps; symmetry broken by router init_std instead). Per-pool balance loss
+    # still sees the RAW (uncentered) simplex.
+    chimera_centered_gate: bool = False
+    chimera_lambda_init: float = 0.0
+
     # SmoothQuant-style per-channel input pre-scaling
     channel_scales_dict: Optional[Dict[str, torch.Tensor]] = None
 
@@ -542,6 +557,18 @@ class LoRANetworkCfg:
         content_router_layer_norm = _as_bool(
             kwargs.get("content_router_layer_norm", True), default=True
         )
+        chimera_centered_gate = _as_bool(kwargs.get("chimera_centered_gate"))
+        chimera_lambda_init = float(kwargs.get("chimera_lambda_init", 0.0))
+        if chimera_centered_gate and chimera_lambda_init <= 0.0:
+            # Centering with λ0=0 is a no-op: each router's logit gradient is
+            # ∝ (P_k - mean)·diag(λ0)·ℓ and vanishes at λ0=0. Floor to a small
+            # nonzero default so the mechanism fires (1e-6 would be lost in
+            # bf16). Mirrors the ortho_lambda_init guard above.
+            chimera_lambda_init = 1e-2
+            logger.info(
+                "chimera_centered_gate=True with chimera_lambda_init<=0; "
+                "defaulting chimera_lambda_init=1e-2 (centering needs λ0>0)."
+            )
         if use_chimera_hydra:
             if num_experts_content <= 0 or num_experts_freq <= 0:
                 raise ValueError(
@@ -712,6 +739,8 @@ class LoRANetworkCfg:
             content_router_source=content_router_source,
             content_router_init_std=content_router_init_std,
             content_router_layer_norm=content_router_layer_norm,
+            chimera_centered_gate=chimera_centered_gate,
+            chimera_lambda_init=chimera_lambda_init,
             channel_scales_dict=channel_scales_dict,
             verbose=verbose,
         )
@@ -755,6 +784,7 @@ class LoRANetworkCfg:
         freq_router_layer_norm: bool = False,
         content_router_source: str = "input",
         content_router_layer_norm: bool = True,
+        chimera_centered_gate: bool = False,
     ) -> "LoRANetworkCfg":
         """Build cfg from a checkpoint key-sniff (warm-start / inference path).
 
@@ -867,4 +897,8 @@ class LoRANetworkCfg:
                 else "input"
             ),
             content_router_layer_norm=bool(content_router_layer_norm),
+            # λ_init is irrelevant at load (λ is folded into the saved weights);
+            # only the centering flag matters so the inference forward subtracts
+            # 1/K per pool exactly like training did.
+            chimera_centered_gate=bool(chimera_centered_gate),
         )

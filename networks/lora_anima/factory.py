@@ -764,6 +764,12 @@ def create_network_from_weights(
         and str(file_metadata.get("ss_chimera_content_router_layer_norm", "")).strip().lower()
         == "true"
     )
+    # Centered-gate: both pools' inference combine subtracts 1/K like training.
+    chimera_centered_gate: bool = (
+        is_chimera_hydra
+        and str(file_metadata.get("ss_chimera_centered_gate", "")).strip().lower()
+        == "true"
+    )
     if is_chimera_hydra:
         # On-disk format: per-pool distilled chimera (lora_down_{c,f} +
         # stacked lora_up_{c,f}_weight + content router) with q/k/v defused
@@ -838,6 +844,7 @@ def create_network_from_weights(
         freq_router_layer_norm=chimera_freq_router_layer_norm,
         content_router_source=chimera_content_router_source,
         content_router_layer_norm=chimera_content_router_layer_norm,
+        chimera_centered_gate=chimera_centered_gate,
     )
 
     network = LoRANetwork(text_encoders, unet, cfg, multiplier=multiplier)

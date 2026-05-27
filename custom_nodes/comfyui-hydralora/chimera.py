@@ -399,6 +399,13 @@ def _finalize_dual_a_chimera(
     chimera_dual["content_router_source"] = (
         "crossattn" if chimera_dual["content_router"] is not None else "input"
     )
+    # Centered-gate: both pools' combine subtracts 1/K (λ is baked into the
+    # saved ups, so this alone reproduces the trained forward). Matches
+    # ChimeraHydraInferenceModule with ``centered_gate=True``.
+    chimera_dual["centered_gate"] = (
+        str(file_metadata.get("ss_chimera_centered_gate", "")).strip().lower()
+        == "true"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -761,6 +768,9 @@ def _make_chimera_dual_a_hook(params: dict, strength: float, router_state: dict)
         # and the per-Linear pooled-lx_c softmax is skipped. Matches
         # ChimeraHydraInferenceModule with ``use_global_content_router=True``.
         "global_content_router": bool(params.get("global_content_router", False)),
+        # Centered-gate: subtract 1/K per pool before each combine (parity with
+        # ChimeraHydraInferenceModule.forward — λ is baked into the saved ups).
+        "centered_gate": bool(params.get("centered_gate", False)),
         "device": None,
     }
 
@@ -847,6 +857,12 @@ def _make_chimera_dual_a_hook(params: dict, strength: float, router_state: dict)
                 pi_f = pi_f.unsqueeze(0)
             if pi_f.shape[0] == 1 and B != 1:
                 pi_f = pi_f.expand(B, -1)
+
+        # Centered-gate parity: subtract per-pool 1/K so a uniform gate
+        # contributes 0 (mirrors training's recentered combine).
+        if state["centered_gate"]:
+            pi_c = pi_c - (1.0 / max(state["K_c"], 1))
+            pi_f = pi_f - (1.0 / max(state["K_f"], 1))
 
         # Gate-weighted per-pool combined ups (B, out, rank). Two einsums
         # because the two pools have different K — keeps the math 1:1
@@ -1029,6 +1045,7 @@ def _apply_chimera_dual_a_to_model(
             "num_experts_content": K_c,
             "num_experts_freq": K_f,
             "global_content_router": global_cr_on,
+            "centered_gate": bool(chimera_data.get("centered_gate", False)),
         }
         hook = _make_chimera_dual_a_hook(params, strength, sigma_state)
 
