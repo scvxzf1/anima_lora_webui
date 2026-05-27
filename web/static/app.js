@@ -499,6 +499,7 @@
             title: '输出格式与训练范围',
             description: '模型保存格式、保存精度和训练目标范围。',
             open: false,
+            className: 'config-group-output-scope',
             keys: [
                 'save_model_as',
                 'save_precision',
@@ -1337,7 +1338,7 @@
         lokr_factor: [2, 4, 8, 16],
         ip_pair_mode: ['identity', 'identity_cross_artist', 'self'],
         ip_pair_min_level: ['artist', 'copyright', 'character'],
-        lr_scheduler: ['constant', 'cosine', 'cosine_with_restarts', 'polynomial'],
+        lr_scheduler: ['constant', 'cosine', 'cosine_with_restarts', 'polynomial', 'lulu_loss_gated_cosine'],
         max_data_loader_n_workers: [0, 2, 4, 8],
         min_pixels: [0, 262144, 500000, 786432, 1048576],
         min_rank: [1, 2, 4, 8],
@@ -2107,10 +2108,10 @@
         ),
         lr_scheduler: help(
             "学习率调度策略。",
-            "constant 表示固定学习率；也可用 cosine 等调度。",
+            "constant 表示固定学习率；也可用 cosine、lulu_loss_gated_cosine 等调度。",
             ["调度可以让训练后期更平滑。"],
             ["多一个超参维度，需要搭配总步数理解。"],
-            ["不合适的调度可能过早降低学习率。"],
+            ["不合适的调度可能过早降低学习率；lulu 调度器的细调参数走 lr_scheduler_args。"],
             "默认 constant，先保持。"
         ),
         timestep_sampling: help(
@@ -3411,6 +3412,9 @@
         if (extraClass === 'config-group-model') {
             header.appendChild(createFillGlobalModelPathsButton());
         }
+        if (extraClass === 'config-group-output-scope') {
+            header.appendChild(createOpenUndefinedDialogButton());
+        }
         section.appendChild(header);
         if (extraClass === 'config-group-data') {
             content.appendChild(createConfigDatasetPicker());
@@ -3422,6 +3426,27 @@
         }
         section.appendChild(content);
         return section;
+    }
+
+    function createOpenUndefinedDialogButton() {
+        const btn = document.createElement('button');
+        btn.id = 'btn-open-undefined-dialog';
+        btn.type = 'button';
+        btn.className = 'btn btn-small config-group-title-action';
+        btn.textContent = '未定义';
+        btn.title = '打开未定义弹窗';
+        btn.addEventListener('click', openUndefinedDialog);
+        return btn;
+    }
+
+    function openUndefinedDialog() {
+        const dialog = document.getElementById('undefined-dialog');
+        if (!dialog) return;
+        if (dialog.showModal && !dialog.open) {
+            dialog.showModal();
+        } else if (!dialog.open) {
+            dialog.setAttribute('open', 'open');
+        }
     }
 
     function createFillGlobalModelPathsButton() {
@@ -11516,6 +11541,13 @@
         return resume.source_task_id ? '从检查点恢复' : '';
     }
 
+    function historyQueueLabel(task) {
+        const queueId = String(task?.queue_item_id || '').trim();
+        if (!Boolean(task?.from_queue) && !queueId) return '';
+        const attempt = Number(task?.queue_attempt || 1);
+        return attempt > 1 ? `来自队列 · 第 ${attempt} 次尝试` : '来自队列';
+    }
+
     function historyContinueLabel(task) {
         if (task?.training_mode !== 'continue_lora') return '';
         const kind = String(task.continue_from_weight_kind || 'LoRA').trim() || 'LoRA';
@@ -11592,6 +11624,7 @@
         const meta = document.createElement('span');
         meta.textContent = [
             task.job === 'preprocess' ? '预处理' : '训练',
+            historyQueueLabel(task),
             historyContinueLabel(task),
             historyResumeLabel(task),
             historyStateLabel(task.state),

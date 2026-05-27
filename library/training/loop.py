@@ -217,8 +217,13 @@ def build_loop_state(
         _ts_parts.append(f"sigmoid_bias={getattr(args, 'sigmoid_bias', 0.0)}")
     if args.timestep_sampling in ("shift", "flux_shift"):
         _ts_parts.append(f"discrete_flow_shift={args.discrete_flow_shift}")
-    if getattr(args, "t_min", None) is not None or getattr(args, "t_max", None) is not None:
-        _ts_parts.append(f"σ∈[{getattr(args, 't_min', None)}, {getattr(args, 't_max', None)}]")
+    if (
+        getattr(args, "t_min", None) is not None
+        or getattr(args, "t_max", None) is not None
+    ):
+        _ts_parts.append(
+            f"σ∈[{getattr(args, 't_min', None)}, {getattr(args, 't_max', None)}]"
+        )
     logger.info("sigma sampling: " + ", ".join(_ts_parts))
     for i, t_enc in enumerate(text_encoders):
         params_itr = t_enc.parameters()
@@ -486,12 +491,34 @@ def _run_step(trainer, state: LoopState, batch) -> torch.Tensor:
         if state.profile_started:
             torch.cuda.nvtx.range_push("optimizer")
         state.optimizer.step()
-        state.lr_scheduler.step()
+        _step_lr_scheduler(state, loss)
         state.optimizer.zero_grad(set_to_none=True)
         if state.profile_started:
             torch.cuda.nvtx.range_pop()
 
     return loss
+
+
+def _step_lr_scheduler(state: LoopState, loss: torch.Tensor) -> None:
+    scheduler = state.lr_scheduler
+    inner_scheduler = getattr(scheduler, "scheduler", scheduler)
+    if (
+        getattr(inner_scheduler, "is_loss_aware_lr_scheduler", False)
+        and state.accelerator.sync_gradients
+    ):
+        reduced_loss = state.accelerator.reduce(loss.detach(), reduction="mean")
+        step_loss = float(reduced_loss.float().item())
+        if hasattr(inner_scheduler, "set_step_loss"):
+            inner_scheduler.set_step_loss(step_loss)
+            try:
+                scheduler.step()
+            finally:
+                if hasattr(inner_scheduler, "clear_step_loss"):
+                    inner_scheduler.clear_step_loss()
+            return
+        scheduler.step(loss=step_loss)
+        return
+    scheduler.step()
 
 
 def _profiler_step_begin(state: LoopState) -> None:

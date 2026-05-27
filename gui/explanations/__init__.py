@@ -185,8 +185,8 @@ FIELD_HELP: dict[str, dict[str, str]] = {
         "ko": "옵티마이저 알고리즘. CAME는 pytorch-optimizer를 통해 사용할 수 있으며, 기본값이 아닌 옵티마이저는 학습률 재조정이 필요할 수 있습니다. ProdigyPlusScheduleFree는 실험적이며 learning_rate=1.0, lr_scheduler=constant, max_grad_norm=0으로 시작하는 것이 좋습니다.",
     },
     "lr_scheduler": {
-        "en": "Learning rate schedule. constant: fixed LR. Others: cosine, cosine_with_restarts, polynomial.",
-        "ko": "학습률 스케줄. constant: 고정 LR. 기타: cosine, cosine_with_restarts, polynomial.",
+        "en": "Learning rate schedule. constant: fixed LR. Others: cosine, cosine_with_restarts, polynomial, lulu_loss_gated_cosine. Fine-tune lulu via lr_scheduler_args.",
+        "ko": "학습률 스케줄. constant: 고정 LR. 기타: cosine, cosine_with_restarts, polynomial, lulu_loss_gated_cosine. lulu 세부 조정은 lr_scheduler_args로 설정합니다.",
     },
     "timestep_sampling": {
         "en": "How denoising timesteps are sampled during training. sigmoid: biased toward middle timesteps (recommended for flow matching).",

@@ -34,7 +34,7 @@
   "use_shuffled_caption_variants": "从文本编码器缓存使用预处理的字幕洗牌变体。当缓存有多个变体时，每个样本随机抽取一个。若未预处理变体，则静默回退到单变体。",
   "caption_dropout_rate": "每个样本丢弃字幕（替换为空文本嵌入）的概率。将LoRA推向无条件偏置 — 适合希望风格无论提示词如何都能应用的风格训练。典型值：角色/概念LoRA为0.0–0.05，风格LoRA为0.1–0.25。过高会模糊提示词驱动的多样性（姿势/构图）。",
   "optimizer_type": "优化器算法。AdamW8bit：内存高效的8位Adam。其他：AdamW、Lion、Prodigy等。",
-  "lr_scheduler": "学习率调度。constant：固定LR。其他：cosine、cosine_with_restarts、polynomial。",
+  "lr_scheduler": "学习率调度。constant：固定LR。其他：cosine、cosine_with_restarts、polynomial、lulu_loss_gated_cosine。lulu细调参数走lr_scheduler_args。",
   "timestep_sampling": "训练时去噪时间步的采样方式。sigmoid：偏向中间时间步（推荐用于flow matching）。",
   "discrete_flow_shift": "控制噪声调度分布的flow-matching偏移参数。默认值：1.0。",
   "attn_mode": "注意力后端。flash4：FlashAttention-4（Linux，最快）。flash：FlashAttention-2。flex：PyTorch flex注意力（跨平台）。",

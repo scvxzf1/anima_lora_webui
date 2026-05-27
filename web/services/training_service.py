@@ -146,6 +146,7 @@ class TrainingService:
         self._queue_paused: bool = bool(self._queue.get("paused", False))
         self._queue_failure_policy: str = _normalize_queue_failure_policy(self._queue.get("failure_policy"))
         self._current_queue_item_id: str = ""
+        self._queue_launching_item_id: str = ""
         self._queue_dispatch_task: asyncio.Task | None = None
         _mark_orphaned_running_history_tasks()
         self._repair_queue_on_startup()
@@ -171,8 +172,7 @@ class TrainingService:
         use_runtime_dir: bool = True,
         queue_item_id: str = "",
     ):
-        if self.status == "running":
-            raise RuntimeError("已有任务在运行中")
+        self._ensure_launch_allowed(queue_item_id)
 
         runtime = None
         if source_config_file and use_runtime_dir:
@@ -350,8 +350,7 @@ class TrainingService:
         runtime: dict[str, Any] | None = None,
         queue_item_id: str = "",
     ):
-        if self.status == "running":
-            raise RuntimeError("已有任务在运行中")
+        self._ensure_launch_allowed(queue_item_id)
 
         continue_payload = _normalize_continue_lora_info(
             continue_info,
@@ -495,6 +494,7 @@ class TrainingService:
             continue_info=continue_info,
             gpu_whitelist=gpu_whitelist,
             runtime_info=self.current_runtime_info,
+            queue_info=self._queue_history_meta(self._current_queue_item_id),
         )
         try:
             self.process = await asyncio.create_subprocess_exec(
@@ -1197,6 +1197,20 @@ class TrainingService:
         item["message"] = "正在运行"
         self._save_queue()
 
+    def _queue_history_meta(self, item_id: str) -> dict[str, Any]:
+        item = self._find_queue_item(item_id)
+        if item is None:
+            return {}
+        return {
+            "from_queue": True,
+            "queue_item_id": str(item.get("id") or item_id or ""),
+            "queue_kind": str(item.get("kind") or ""),
+            "queue_retry_of": str(item.get("retry_of") or ""),
+            "queue_attempt": max(1, _positive_int_or_none(item.get("attempt")) or 1),
+            "queue_created_at": item.get("created_at"),
+            "queue_created_at_text": str(item.get("created_at_text") or ""),
+        }
+
     def _compact_queue(self) -> None:
         items = self._queue_items()
         if len(items) <= MAX_QUEUE_ITEMS:
@@ -1213,13 +1227,13 @@ class TrainingService:
         self._queue["failure_policy"] = self._queue_failure_policy
         self._queue["updated_at"] = time.time()
         self._queue["updated_at_text"] = _format_ts(self._queue["updated_at"])
-        _write_json(QUEUE_FILE, self._queue)
+        _write_training_queue_state(self._queue)
 
     async def _broadcast_queue(self) -> None:
         await self._broadcast({"type": "queue", **self.get_queue_snapshot()})
 
     def _schedule_queue_dispatch(self) -> None:
-        if self._queue_paused or self.status == "running":
+        if self._queue_paused or self.status == "running" or self._queue_launching_item_id:
             return
         if self._queue_dispatch_task and not self._queue_dispatch_task.done():
             return
@@ -1232,26 +1246,31 @@ class TrainingService:
         self._queue_dispatch_task = loop.create_task(self._dispatch_queue())
 
     async def _dispatch_queue(self) -> None:
-        if self._queue_paused or self.status == "running":
+        if self._queue_paused or self.status == "running" or self._queue_launching_item_id:
             return
         item = next((entry for entry in self._queue_items() if entry.get("state") == "queued"), None)
         if item is None:
             return
+        queue_item_id = str(item.get("id") or "")
+        if not queue_item_id:
+            return
+        self._queue_launching_item_id = queue_item_id
         now = time.time()
-        item.update({
-            "state": "running",
-            "message": "正在启动",
-            "started_at": now,
-            "started_at_text": _format_ts(now),
-            "finished_at": None,
-            "finished_at_text": "",
-        })
-        self._save_queue()
-        await self._broadcast_queue()
-
+        failed = False
         try:
+            item.update({
+                "state": "running",
+                "message": "正在启动",
+                "started_at": now,
+                "started_at_text": _format_ts(now),
+                "finished_at": None,
+                "finished_at_text": "",
+            })
+            self._save_queue()
+            await self._broadcast_queue()
             await self._start_queue_item(item)
         except Exception as e:
+            failed = True
             now = time.time()
             self._pause_queue_after_failure()
             item.update({
@@ -1264,6 +1283,10 @@ class TrainingService:
             self.status = "idle"
             self._save_queue()
             await self._broadcast_queue()
+        finally:
+            if self._queue_launching_item_id == queue_item_id:
+                self._queue_launching_item_id = ""
+        if failed:
             self._schedule_queue_dispatch()
 
     def _pause_queue_after_failure(self) -> bool:
@@ -1272,6 +1295,12 @@ class TrainingService:
         self._queue_paused = True
         self._queue["paused"] = True
         return True
+
+    def _ensure_launch_allowed(self, queue_item_id: str = "") -> None:
+        launching = self._queue_launching_item_id
+        same_queue_item = launching and str(queue_item_id or "") == launching
+        if self.status == "running" or (launching and not same_queue_item):
+            raise RuntimeError("已有任务在运行中")
 
     async def _start_queue_item(self, item: dict[str, Any]) -> None:
         variant = str(item.get("variant") or "")
@@ -1545,6 +1574,7 @@ class TrainingService:
         continue_info: dict[str, Any] | None = None,
         gpu_whitelist: list[int] | None = None,
         runtime_info: dict[str, str] | None = None,
+        queue_info: dict[str, Any] | None = None,
     ) -> None:
         task_dir = self.current_task_dir or self._reserve_history_task_dir(job, methods_subdir, variant)
         now = time.time()
@@ -1567,6 +1597,7 @@ class TrainingService:
             **history_meta,
         })
         continue_meta = _continue_lora_history_meta(continue_info)
+        queue_meta = queue_info if isinstance(queue_info, dict) else {}
         meta = {
             "id": task_dir.name,
             "name": default_name,
@@ -1590,6 +1621,7 @@ class TrainingService:
             "gpu_whitelist": gpu_whitelist or [],
             **runtime_meta,
             **history_meta,
+            **queue_meta,
             "started_at": now,
             "started_at_text": _format_ts(now),
             "finished_at": None,
@@ -2623,7 +2655,7 @@ def _safe_run_stem(value: str) -> str:
 
 
 def _load_training_queue_state() -> dict[str, Any]:
-    data = _read_json(QUEUE_FILE)
+    data = _read_training_queue_state()
     if not isinstance(data, dict):
         data = {}
     items = data.get("items")
@@ -2632,6 +2664,32 @@ def _load_training_queue_state() -> dict[str, Any]:
     data["paused"] = bool(data.get("paused", False))
     data["failure_policy"] = _normalize_queue_failure_policy(data.get("failure_policy"))
     return data
+
+
+def _read_training_queue_state() -> dict[str, Any]:
+    data = _read_json_object(QUEUE_FILE)
+    if isinstance(data, dict):
+        return data
+    backup = _read_json_object(_queue_backup_file())
+    if isinstance(backup, dict):
+        try:
+            _write_json_atomic(QUEUE_FILE, backup)
+        except Exception:
+            pass
+        return backup
+    return {}
+
+
+def _write_training_queue_state(payload: dict[str, Any]) -> None:
+    _write_json_atomic(QUEUE_FILE, payload)
+    try:
+        _write_json_atomic(_queue_backup_file(), payload)
+    except Exception:
+        pass
+
+
+def _queue_backup_file() -> Path:
+    return QUEUE_FILE.with_name(QUEUE_FILE.name + ".bak")
 
 
 def _normalize_queue_failure_policy(value: Any) -> str:
@@ -3545,16 +3603,52 @@ def _paired_resume_weight(state_dir: Path, output_dir: Path) -> str:
 
 
 def _read_json(path: Path) -> dict[str, Any]:
+    data = _read_json_object(path)
+    return data if isinstance(data, dict) else {}
+
+
+def _read_json_object(path: Path) -> dict[str, Any] | None:
     if not _path_exists(path):
-        return {}
+        return None
     try:
-        return json.loads(path.read_text(encoding="utf-8"))
+        data = json.loads(path.read_text(encoding="utf-8"))
     except Exception:
-        return {}
+        return None
+    return data if isinstance(data, dict) else None
 
 
 def _write_json(path: Path, payload: dict[str, Any]) -> None:
     path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def _write_json_atomic(path: Path, payload: dict[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp_path = path.with_name(f".{path.name}.{os.getpid()}.{time.time_ns()}.tmp")
+    try:
+        with tmp_path.open("w", encoding="utf-8") as f:
+            f.write(json.dumps(payload, ensure_ascii=False, indent=2))
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp_path, path)
+        _fsync_parent_dir(path)
+    finally:
+        try:
+            tmp_path.unlink()
+        except OSError:
+            pass
+
+
+def _fsync_parent_dir(path: Path) -> None:
+    try:
+        fd = os.open(path.parent, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0))
+    except OSError:
+        return
+    try:
+        os.fsync(fd)
+    except OSError:
+        pass
+    finally:
+        os.close(fd)
 
 
 def _read_jsonl(path: Path) -> list[dict[str, Any]]:

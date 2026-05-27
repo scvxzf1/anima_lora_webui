@@ -5,6 +5,8 @@ import json
 from pathlib import Path
 
 from aiohttp import web
+import pytest
+import toml
 
 from web.routes import training as training_routes
 from web.services import training_service
@@ -131,6 +133,126 @@ def test_queue_startup_repairs_stale_running_item(tmp_path, monkeypatch):
     items = svc.get_queue_snapshot()["items"]
     assert items[0]["state"] == "error"
     assert items[1]["state"] == "queued"
+    assert svc.get_queue_snapshot()["paused"] is True
+
+
+def test_queue_startup_dispatches_when_unpaused_and_clean(tmp_path, monkeypatch):
+    queue_dir = _patch_queue_paths(tmp_path, monkeypatch)
+    queue_dir.mkdir(parents=True)
+    (queue_dir / "queue.json").write_text(
+        json.dumps({"paused": False, "items": [{"id": "next", "state": "queued"}]}),
+        encoding="utf-8",
+    )
+    svc = TrainingService(web.Application())
+    called = {"dispatch": False}
+
+    async def fake_dispatch():
+        called["dispatch"] = True
+
+    monkeypatch.setattr(svc, "_dispatch_queue", fake_dispatch)
+
+    async def run():
+        await svc.start_queue_on_startup()
+        await asyncio.sleep(0)
+
+    asyncio.run(run())
+
+    assert called["dispatch"] is True
+
+
+def test_queue_launch_guard_blocks_manual_start_during_startup_window(tmp_path, monkeypatch):
+    _patch_queue_paths(tmp_path, monkeypatch)
+    svc = TrainingService(web.Application())
+    svc._queue = {"paused": False, "items": [{"id": "q1", "state": "queued"}]}
+    svc._queue_paused = False
+    checked = {"manual_start_rejected": False}
+    launched = {"item_id": ""}
+
+    async def fake_broadcast_queue():
+        if checked["manual_start_rejected"]:
+            return
+        with pytest.raises(RuntimeError, match="已有任务在运行中"):
+            await svc.start("manual", "default")
+        checked["manual_start_rejected"] = True
+
+    async def fake_start_queue_item(item):
+        launched["item_id"] = item["id"]
+
+    monkeypatch.setattr(svc, "_broadcast_queue", fake_broadcast_queue)
+    monkeypatch.setattr(svc, "_start_queue_item", fake_start_queue_item)
+
+    asyncio.run(svc._dispatch_queue())
+
+    assert checked["manual_start_rejected"] is True
+    assert launched["item_id"] == "q1"
+    assert svc._queue_launching_item_id == ""
+
+
+def test_queue_state_recovers_from_backup_when_main_file_is_corrupt(tmp_path, monkeypatch):
+    queue_dir = _patch_queue_paths(tmp_path, monkeypatch)
+    svc = TrainingService(web.Application())
+    svc._queue = {"paused": False, "items": [{"id": "q1", "state": "queued"}]}
+
+    svc._save_queue()
+
+    backup_file = queue_dir / "queue.json.bak"
+    assert backup_file.is_file()
+    (queue_dir / "queue.json").write_text("{broken", encoding="utf-8")
+
+    recovered = training_service._load_training_queue_state()
+
+    assert recovered["items"][0]["id"] == "q1"
+    restored = json.loads((queue_dir / "queue.json").read_text(encoding="utf-8"))
+    assert restored["items"][0]["id"] == "q1"
+
+
+def test_queue_history_metadata_is_written_on_launch(tmp_path, monkeypatch):
+    _patch_queue_paths(tmp_path, monkeypatch)
+    svc = TrainingService(web.Application())
+    svc._queue = {
+        "paused": True,
+        "items": [{
+            "id": "q1",
+            "state": "running",
+            "kind": "training",
+            "retry_of": "old-q",
+            "attempt": 3,
+            "created_at": 123.0,
+            "created_at_text": "2026-05-27 10:00:00",
+        }],
+    }
+
+    async def fake_create_subprocess_exec(*args, **kwargs):
+        return object()
+
+    async def fake_background_task():
+        return None
+
+    monkeypatch.setattr(training_service.asyncio, "create_subprocess_exec", fake_create_subprocess_exec)
+    monkeypatch.setattr(svc, "_read_output", fake_background_task)
+    monkeypatch.setattr(svc, "_monitor_system", fake_background_task)
+
+    asyncio.run(svc._launch_job(
+        ["python", "-c", "pass"],
+        {},
+        variant="demo",
+        preset="default",
+        methods_subdir="imported",
+        output_dir=str(tmp_path / "out"),
+        sample_dir=str(tmp_path / "out" / "sample"),
+        data_dirs={},
+        sample_config={},
+        job="preprocess",
+        start_message="queued",
+        command_label="queued",
+        queue_item_id="q1",
+    ))
+
+    meta = json.loads((Path(svc.current_task_dir) / "meta.json").read_text(encoding="utf-8"))
+    assert meta["from_queue"] is True
+    assert meta["queue_item_id"] == "q1"
+    assert meta["queue_retry_of"] == "old-q"
+    assert meta["queue_attempt"] == 3
 
 
 def test_stop_running_queue_item_cancels_and_pauses(tmp_path, monkeypatch):
@@ -162,6 +284,115 @@ def test_stop_running_queue_item_cancels_and_pauses(tmp_path, monkeypatch):
     item = svc.get_queue_snapshot()["items"][0]
     assert svc.get_queue_snapshot()["paused"] is True
     assert item["state"] == "canceled"
+
+
+def test_queue_process_error_pauses_and_keeps_next_waiting(tmp_path, monkeypatch):
+    _patch_queue_paths(tmp_path, monkeypatch)
+    svc = TrainingService(web.Application())
+    svc._queue = {
+        "paused": False,
+        "failure_policy": "pause",
+        "items": [
+            {"id": "q1", "state": "running"},
+            {"id": "q2", "state": "queued"},
+        ],
+    }
+    svc._queue_paused = False
+    svc._queue_failure_policy = "pause"
+    svc._current_queue_item_id = "q1"
+    svc.status = "running"
+    svc.current_job = "training"
+
+    class FakeStdout:
+        async def read(self, _size):
+            return b""
+
+    class FakeProcess:
+        stdout = FakeStdout()
+
+        async def wait(self):
+            return 7
+
+    svc.process = FakeProcess()
+
+    asyncio.run(svc._read_output())
+
+    snapshot = svc.get_queue_snapshot()
+    assert snapshot["paused"] is True
+    items = {item["id"]: item for item in snapshot["items"]}
+    assert items["q1"]["state"] == "error"
+    assert items["q2"]["state"] == "queued"
+
+
+def test_queue_retry_clones_frozen_runtime_config(tmp_path, monkeypatch):
+    _patch_queue_paths(tmp_path, monkeypatch)
+    retry_root = tmp_path / "retry-runs"
+    monkeypatch.setattr(training_service, "resolve_output_root", lambda: retry_root)
+    runtime = _runtime_payload(tmp_path, "old-run")
+    svc = TrainingService(web.Application())
+    svc._queue_paused = True
+    svc._queue = {
+        "paused": True,
+        "items": [{
+            "id": "q1",
+            "state": "error",
+            "kind": "training",
+            "requires_preprocess": True,
+            "variant": "demo",
+            "preset": "default",
+            "methods_subdir": "imported",
+            "runtime_config_file": runtime["runtime_config_file"],
+            "source_config_file": "configs/imported/source.toml",
+            "extra_args": [],
+            "gpu_whitelist": [0],
+            "continue_info": {},
+            "resume_info": {},
+            "history_task_ids": ["old-history"],
+            "attempt": 1,
+        }],
+    }
+
+    payload = asyncio.run(svc.retry_queue_item("q1"))
+
+    retry = payload["item"]
+    assert retry["state"] == "queued"
+    assert retry["retry_of"] == "q1"
+    assert retry["attempt"] == 2
+    assert retry["history_task_ids"] == []
+    assert retry["runtime_config_file"] != runtime["runtime_config_file"]
+    retry_cfg = toml.loads(Path(retry["runtime_config_file"]).read_text(encoding="utf-8"))
+    old_cfg = toml.loads(Path(runtime["runtime_config_file"]).read_text(encoding="utf-8"))
+    assert retry_cfg["output_dir"] != old_cfg["output_dir"]
+    assert retry_cfg["source_image_dir"] == old_cfg["source_image_dir"]
+
+
+def test_queue_top_bottom_cancel_waiting_and_clear_finished(tmp_path, monkeypatch):
+    _patch_queue_paths(tmp_path, monkeypatch)
+    svc = TrainingService(web.Application())
+    svc._queue_paused = True
+    svc._queue = {
+        "paused": True,
+        "items": [
+            {"id": "a", "state": "queued"},
+            {"id": "b", "state": "queued"},
+            {"id": "c", "state": "queued"},
+            {"id": "d", "state": "done"},
+            {"id": "e", "state": "error"},
+        ],
+    }
+
+    asyncio.run(svc.move_queue_item("c", "top"))
+    assert [item["id"] for item in svc.get_queue_snapshot()["items"][:3]] == ["c", "a", "b"]
+    asyncio.run(svc.move_queue_item("c", "bottom"))
+    assert [item["id"] for item in svc.get_queue_snapshot()["items"][:3]] == ["a", "b", "c"]
+
+    canceled = asyncio.run(svc.cancel_waiting_queue_items())
+    assert canceled["canceled"] == 3
+    assert all(item["state"] != "queued" for item in svc.get_queue_snapshot()["items"])
+
+    cleared = asyncio.run(svc.clear_finished_queue_items())
+    assert cleared["removed"] == 5
+    assert svc.get_queue_snapshot()["items"] == []
 
 
 def test_handle_queue_start_uses_enqueue_service(monkeypatch):
@@ -222,3 +453,45 @@ def test_handle_queue_resume_uses_history_checkpoint_service():
     assert payload["task_id"] == "task-a"
     assert payload["checkpoint"] == "state-dir"
     assert payload["gpu_whitelist"] == [1]
+
+
+def test_queue_management_routes_call_service():
+    class FakeService:
+        def __init__(self):
+            self.calls = []
+
+        async def set_queue_settings(self, **kwargs):
+            self.calls.append(("settings", kwargs))
+            return {"ok": True, "paused": kwargs.get("paused"), "failure_policy": kwargs.get("failure_policy")}
+
+        async def retry_queue_item(self, item_id):
+            self.calls.append(("retry", item_id))
+            return {"ok": True, "item_id": item_id}
+
+        async def cancel_waiting_queue_items(self):
+            self.calls.append(("cancel-waiting", None))
+            return {"ok": True, "canceled": 2}
+
+        async def clear_finished_queue_items(self):
+            self.calls.append(("clear", None))
+            return {"ok": True, "removed": 3}
+
+    svc = FakeService()
+    app = {"training_service": svc}
+
+    settings = asyncio.run(training_routes.handle_queue_settings(
+        _FakeJsonRequest({"paused": True, "failure_policy": "pause"}, app)
+    ))
+    retry = asyncio.run(training_routes.handle_queue_retry(
+        _FakeJsonRequest({}, app, {"item_id": "q1"})
+    ))
+    cancel = asyncio.run(training_routes.handle_queue_cancel_waiting(_FakeJsonRequest({}, app)))
+    clear = asyncio.run(training_routes.handle_queue_clear(_FakeJsonRequest({}, app)))
+
+    assert settings.status == retry.status == cancel.status == clear.status == 200
+    assert svc.calls == [
+        ("settings", {"paused": True, "failure_policy": "pause"}),
+        ("retry", "q1"),
+        ("cancel-waiting", None),
+        ("clear", None),
+    ]

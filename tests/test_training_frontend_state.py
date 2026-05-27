@@ -88,3 +88,39 @@ def test_resume_queue_button_is_wired() -> None:
     listener_section = _section(source, "function setupEventListeners", "function installBeginnerTooltips")
     assert "queueResumeTrainingFromCheckpoint" in source
     assert "btn-queue-resume-training" in listener_section
+
+
+def test_history_list_marks_queue_tasks() -> None:
+    source = APP_JS.read_text(encoding="utf-8")
+
+    queue_label = _section(source, "function historyQueueLabel", "function historyContinueLabel")
+    task_item = _section(source, "function createHistoryTaskItem", "function createHistoryActionButton")
+
+    assert "来自队列" in queue_label
+    assert "queue_attempt" in queue_label
+    assert "historyQueueLabel(task)" in task_item
+
+
+def test_output_scope_group_opens_undefined_dialog() -> None:
+    source = APP_JS.read_text(encoding="utf-8")
+    html = INDEX_HTML.read_text(encoding="utf-8")
+
+    section = _section(source, "title: '输出格式与训练范围'", "title: '方法内部与实验架构'")
+    create_group = _section(source, "function createGroup", "function createOpenUndefinedDialogButton")
+    button_factory = _section(source, "function createOpenUndefinedDialogButton", "function createFillGlobalModelPathsButton")
+
+    assert "className: 'config-group-output-scope'" in section
+    assert "if (extraClass === 'config-group-output-scope')" in create_group
+    assert source.count("header.appendChild(createOpenUndefinedDialogButton());") == 1
+
+    assert "btn-open-undefined-dialog" in button_factory
+    assert "btn.textContent = '未定义';" in button_factory
+    assert "btn.addEventListener('click', openUndefinedDialog);" in button_factory
+    assert "function openUndefinedDialog()" in button_factory
+    assert "undefined-dialog" in button_factory
+    assert "showModal" in button_factory
+
+    assert 'id="undefined-dialog"' in html
+    assert 'class="preview-dialog undefined-dialog"' in html
+    assert "<h2>未定义</h2>" in html
+    assert "undefined-dialog-body" in html

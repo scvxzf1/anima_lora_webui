@@ -34,7 +34,7 @@
   "use_shuffled_caption_variants": "전처리된 캡션 셔플 변형을 텍스트 인코더 캐시에서 사용. 캐시에 여러 변형이 있으면 샘플당 무작위 선택. 변형이 전처리되지 않았다면 단일 캡션으로 자동 대체.",
   "caption_dropout_rate": "샘플별로 캡션을 비울(빈 텍스트 임베딩으로 대체) 확률. LoRA를 무조건부(unconditional) 방향으로 학습시켜, 프롬프트와 무관하게 항상 적용되는 \"스타일\"을 학습할 때 유리. 일반적: 캐릭터/컨셉 LoRA는 0.0–0.05, 그림체 학습은 0.1–0.25. 너무 높이면 캡션이 담당하던 다양성(포즈/구도)까지 함께 약해짐.",
   "optimizer_type": "옵티마이저 알고리즘. AdamW8bit: 메모리 효율적 8비트 Adam. 기타: AdamW, Lion, Prodigy 등.",
-  "lr_scheduler": "학습률 스케줄. constant: 고정 LR. 기타: cosine, cosine_with_restarts, polynomial.",
+  "lr_scheduler": "학습률 스케줄. constant: 고정 LR. 기타: cosine, cosine_with_restarts, polynomial, lulu_loss_gated_cosine. lulu 세부 조정은 lr_scheduler_args로 설정합니다.",
   "timestep_sampling": "학습 중 디노이징 타임스텝 샘플링 방법. sigmoid: 중간 타임스텝 편향 (flow matching 권장).",
   "discrete_flow_shift": "노이즈 스케줄 분포를 제어하는 flow-matching 시프트 매개변수. 기본값: 1.0.",
   "attn_mode": "어텐션 백엔드. flash4: FlashAttention-4 (Linux, 최속). flash: FlashAttention-2. flex: PyTorch flex attention (크로스 플랫폼).",

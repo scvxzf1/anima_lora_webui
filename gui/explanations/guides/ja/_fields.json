@@ -34,7 +34,7 @@
   "use_shuffled_caption_variants": "テキストエンコーダーキャッシュから前処理済みのキャプションシャッフルバリアントを使用します。キャッシュに複数のバリアントがある場合、サンプルごとにランダムに選択されます。バリアントが前処理されていない場合は単一バリアントにサイレントフォールバックします。",
   "caption_dropout_rate": "キャプションをドロップする (空のテキスト埋め込みに置換する) サンプルごとの確率。LoRA を無条件バイアスに向けてプッシュします。スタイル学習 (任意のプロンプトに対してその見た目を適用したい場合) で有効。典型値: キャラクター/コンセプト LoRA では 0.0–0.05、スタイル LoRA (絵柄学習) では 0.1–0.25。高すぎるとプロンプトによるポーズ/構図の多様性が失われる可能性があります。",
   "optimizer_type": "オプティマイザーアルゴリズム。AdamW8bit: メモリ効率の良い 8-bit Adam。その他: AdamW、Lion、Prodigy など。",
-  "lr_scheduler": "学習率スケジュール。constant: 固定 LR。その他: cosine、cosine_with_restarts、polynomial。",
+  "lr_scheduler": "学習率スケジュール。constant: 固定 LR。その他: cosine、cosine_with_restarts、polynomial、lulu_loss_gated_cosine。lulu の細かな調整は lr_scheduler_args で行います。",
   "timestep_sampling": "学習中のノイズ除去タイムステップのサンプリング方法。sigmoid: 中間タイムステップにバイアスをかけます (flow matching で推奨)。",
   "discrete_flow_shift": "ノイズスケジュール分布を制御する flow-matching シフトパラメーター。デフォルト: 1.0。",
   "attn_mode": "アテンションバックエンド。flash4: FlashAttention-4 (Linux、最速)。flash: FlashAttention-2。flex: PyTorch flex attention (クロスプラットフォーム)。",

@@ -1494,6 +1494,15 @@ main { padding: 1rem 1.5rem; }
     padding: 0.75rem;
 }
 
+.undefined-dialog {
+    width: min(760px, calc(100vw - 2rem));
+}
+
+.undefined-dialog-body {
+    min-height: min(420px, calc(100vh - 10rem));
+    padding: 0.75rem;
+}
+
 .continue-lora-dialog {
     width: min(1120px, calc(100vw - 2rem));
 }
@@ -2796,7 +2805,9 @@ input[type="checkbox"].field-input {
     justify-content: space-between;
     margin-bottom: 0.75rem;
 }
-.training-queue-manager-head h3 { margin: 0 0 0.18rem; }
+.training-queue-manager-head h3 {
+    margin: 0 0 0.18rem;
+}
 .training-queue-manager-head p {
     color: var(--text-dim);
     font-size: 0.76rem;
@@ -2898,7 +2909,9 @@ input[type="checkbox"].field-input {
     color: var(--text);
     margin: 0 0 0.35rem;
 }
-.training-history-placeholder p { margin: 0; }
+.training-history-placeholder p {
+    margin: 0;
+}
 .training-queue-manager-item {
     background: var(--bg-input);
     border: 1px solid var(--border);
@@ -2907,8 +2920,12 @@ input[type="checkbox"].field-input {
     gap: 0.55rem;
     padding: 0.65rem;
 }
-.training-queue-manager-item.running { border-color: rgba(34, 197, 94, 0.45); }
-.training-queue-manager-item.error { border-color: rgba(239, 83, 80, 0.45); }
+.training-queue-manager-item.running {
+    border-color: rgba(34, 197, 94, 0.45);
+}
+.training-queue-manager-item.error {
+    border-color: rgba(239, 83, 80, 0.45);
+}
 .training-queue-manager-item-head {
     align-items: flex-start;
     display: grid;
