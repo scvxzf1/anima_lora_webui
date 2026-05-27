@@ -877,6 +877,8 @@ def test_start_training_appends_network_weights_and_history_meta(tmp_path, monke
     )
 
     meta = json.loads((tmp_path / "history" / "fake-task" / "meta.json").read_text(encoding="utf-8"))
+    assert captured["cmd"][1] == str(tmp_path / "train.py")
+    assert "accelerate.commands.accelerate_cli" not in captured["cmd"]
     assert "--network_weights" in captured["cmd"]
     assert str(weight.resolve()) in captured["cmd"]
     assert "--dim_from_weights" in captured["cmd"]

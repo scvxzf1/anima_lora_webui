@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Mapping
 
 ACCELERATE_NUM_PROCESSES_ENV = "ANIMA_ACCELERATE_NUM_PROCESSES"
+ACCELERATE_LAUNCH_ENV = "ANIMA_ACCELERATE_LAUNCH"
 
 
 def resolve_accelerate_num_processes(env: Mapping[str, str] | None = None) -> str:
@@ -32,6 +33,9 @@ def accelerate_training_command_prefix(
     train_script: str | Path,
     env: Mapping[str, str] | None = None,
 ) -> list[str]:
+    values = os.environ if env is None else env
+    if not values.get(ACCELERATE_LAUNCH_ENV):
+        return [python_exe, str(train_script)]
     return [
         python_exe,
         "-m",
