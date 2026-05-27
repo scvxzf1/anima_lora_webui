@@ -123,6 +123,13 @@
         error: '',
         message: '',
     };
+    let trainingQueueState = {
+        loading: false,
+        paused: false,
+        items: [],
+        error: '',
+        currentItemId: '',
+    };
     let historyTasks = [];
     let showArchivedHistory = false;
     const THEME_STORAGE_KEY = 'anima_lora_theme';
@@ -1345,7 +1352,7 @@
         ],
         num_experts: [2, 4, 6, 8],
         num_sigma_buckets: [2, 3, 4],
-        optimizer_type: ['AdamW', 'AdamW8bit', 'Lion', 'Prodigy'],
+        optimizer_type: ['AdamW', 'CAME', 'AdamW8bit', 'Lion', 'Prodigy', 'ProdigyPlusScheduleFree'],
         reft_alpha: [16, 32, 64, 128],
         reft_dim: [16, 32, 64, 128],
         reft_layers: ['last_8', 'first_4', 'stride_2', 'all'],
@@ -2083,11 +2090,12 @@
         ),
         optimizer_type: help(
             "优化器算法。",
-            "默认 AdamW；低显存或实验可用 AdamW8bit、Lion、Prodigy 等。",
+            "默认 AdamW；可选 CAME、AdamW8bit、Lion、Prodigy、ProdigyPlusScheduleFree 等。",
             ["不同优化器适合不同内存和收敛偏好。"],
-            ["非默认优化器可能需要重新调学习率。"],
+            ["CAME 是内存友好的自适应优化器，但通常需要重新确认学习率。"],
+            ["ProdigyPlusScheduleFree 属于实验优化器；推荐 learning_rate=1.0、lr_scheduler=constant、max_grad_norm=0。"],
             ["随意切换会让历史经验不再适用。"],
-            "先用 AdamW；显存紧张再考虑 8bit。"
+            "先用 AdamW；想实验 ProdigyPlusScheduleFree 时，先用上游推荐的 constant scheduler。"
         ),
         optimizer_args: help(
             "传给优化器的额外参数。",
@@ -2845,6 +2853,7 @@
             await loadConfig();
             await loadTomlFileList();
             rememberSelectionSnapshot();
+            await loadTrainingQueue();
             await loadTrainingHistoryList();
             await loadPreviewSettings();
             await loadGlobalSettings();
@@ -9137,6 +9146,42 @@
         return currentTrainingConfigFile().replace(/\\/g, '/').endsWith('/config.runtime.toml');
     }
 
+    async function chooseTrainingLaunchMode(options = {}) {
+        const willAutoPreprocess = Boolean(options.willAutoPreprocess);
+        const isRunning = trainingRuntime.state === 'running' || trainingRuntime.state === 'compiling';
+        const sourceDetail = continueTrainingSource
+            ? `\n\n训练来源: 继续训练 ${continueTrainingSource.kind} · ${continueTrainingSource.name}\n基于权重: ${continueTrainingSource.abs_path}`
+            : '\n\n训练来源: 从零开始';
+        if (isRunning) {
+            const ok = await showAppConfirmDialog({
+                title: '加入训练队列',
+                description: '当前已有任务在运行',
+                message: `确认后会冻结当前配置，并加入队列等待自动执行。${sourceDetail}`,
+                confirmText: '加入队列',
+                cancelText: '取消',
+            });
+            return ok ? 'queue' : 'cancel';
+        }
+        const startNow = await showAppConfirmDialog({
+            title: willAutoPreprocess ? '最终确认：预处理并训练' : '最终确认：开始训练',
+            description: '可以立即启动，也可以先加入队列',
+            message: willAutoPreprocess
+                ? `确认后会立即创建本次运行目录并启动预处理。${sourceDetail}`
+                : `确认后会立即创建本次运行目录并启动训练进程。${sourceDetail}`,
+            confirmText: willAutoPreprocess ? '立即预处理并训练' : '立即开始训练',
+            cancelText: '不立即启动',
+        });
+        if (startNow) return 'start';
+        const queue = await showAppConfirmDialog({
+            title: '加入训练队列',
+            description: '冻结当前配置并等待自动执行',
+            message: `确认后会创建独立运行配置并加入队列。${sourceDetail}`,
+            confirmText: '加入队列',
+            cancelText: '取消',
+        });
+        return queue ? 'queue' : 'cancel';
+    }
+
     async function confirmTrainingLaunch(options = {}) {
         const willAutoPreprocess = Boolean(options.willAutoPreprocess);
         const sourceDetail = continueTrainingSource
@@ -9155,7 +9200,12 @@
 
     async function startTrainingUnchecked(variant, preset, methodsSubdir, options = {}) {
         const willAutoPreprocess = Boolean(options.willAutoPreprocess);
-        if (!(await confirmTrainingLaunch({ willAutoPreprocess }))) return;
+        const mode = await chooseTrainingLaunchMode({ willAutoPreprocess });
+        if (mode === 'cancel') return;
+        if (mode === 'queue') {
+            await enqueueTrainingFromConfig(variant, preset, methodsSubdir, { willAutoPreprocess });
+            return;
+        }
         renderPreflightPending({
             title: willAutoPreprocess ? '启动预处理后训练' : '启动训练',
             message: willAutoPreprocess
@@ -9197,6 +9247,46 @@
             }
         } catch (e) {
             showPreflightRequestError('请求失败: ' + e.message);
+        }
+    }
+
+    async function enqueueTrainingFromConfig(variant, preset, methodsSubdir, options = {}) {
+        const willAutoPreprocess = Boolean(options.willAutoPreprocess);
+        renderPreflightPending({
+            title: '加入训练队列',
+            message: '正在冻结当前配置并加入队列...',
+            detail: '队列会保存独立运行配置；之后修改当前 TOML 不会影响这个队列任务。',
+        });
+        try {
+            const res = await api('/api/training/queue/start', {
+                method: 'POST',
+                body: JSON.stringify({
+                    variant,
+                    preset,
+                    methods_subdir: methodsSubdir,
+                    config_file: currentTrainingConfigFile(),
+                    extra_args: [],
+                    gpu_whitelist: selectedGpuPayload(),
+                    confirmed: true,
+                    confirm_preprocess: willAutoPreprocess,
+                    ...continueTrainingRequestPayload(),
+                }),
+            });
+            if (!res.ok) {
+                if (res.preflight) {
+                    await showPreflightDialog(res.preflight, false, { willAutoPreprocess });
+                } else {
+                    showPreflightRequestError(res.error || '加入队列失败');
+                }
+                return;
+            }
+            const dialog = document.getElementById('preflight-dialog');
+            if (dialog?.open) dialog.close('queued');
+            updateTrainingQueueFromPayload(res);
+            document.querySelector('[data-tab="training"]')?.click();
+            appendLog(`[状态] ${res.message || '已加入训练队列'}`);
+        } catch (e) {
+            showPreflightRequestError('加入队列失败: ' + e.message);
         }
     }
 
@@ -9444,7 +9534,12 @@
             showPreflightRequestError(continueTrainingSource.message || '继续训练权重与当前配置不兼容');
             return;
         }
-        if (!(await confirmTrainingLaunch({ willAutoPreprocess: true }))) return;
+        const mode = await chooseTrainingLaunchMode({ willAutoPreprocess: true });
+        if (mode === 'cancel') return;
+        if (mode === 'queue') {
+            await enqueueTrainingFromConfig(variant, preset, methodsSubdir, { willAutoPreprocess: true });
+            return;
+        }
         renderPreflightPending({
             title: '启动预处理',
             message: '正在创建运行目录并启动预处理...',
@@ -9550,6 +9645,11 @@
                     break;
                 }
                 updateStatus(msg);
+                loadTrainingQueue();
+                loadTrainingHistoryList();
+                break;
+            case 'queue':
+                updateTrainingQueueFromPayload(msg);
                 loadTrainingHistoryList();
                 break;
             case 'system':
@@ -10806,6 +10906,196 @@
         return `${(n / 1024 / 1024).toFixed(1)} MB`;
     }
 
+    // ── 训练队列 ──
+    async function loadTrainingQueue() {
+        if (location.protocol === 'file:') return;
+        trainingQueueState = { ...trainingQueueState, loading: true, error: '' };
+        renderTrainingQueue();
+        try {
+            const payload = await api('/api/training/queue');
+            updateTrainingQueueFromPayload(payload);
+        } catch (e) {
+            trainingQueueState = { ...trainingQueueState, loading: false, error: '读取队列失败: ' + e.message };
+            renderTrainingQueue();
+        }
+    }
+
+    function updateTrainingQueueFromPayload(payload = {}) {
+        trainingQueueState = {
+            loading: false,
+            paused: Boolean(payload.paused),
+            items: Array.isArray(payload.items) ? payload.items : [],
+            error: payload.ok === false ? (payload.error || '队列状态异常') : '',
+            currentItemId: String(payload.current_item_id || ''),
+        };
+        renderTrainingQueue();
+    }
+
+    function renderTrainingQueue() {
+        const list = document.getElementById('training-queue-list');
+        const summary = document.getElementById('training-queue-summary');
+        const pauseBtn = document.getElementById('btn-toggle-queue-pause');
+        if (!list || !summary) return;
+        list.innerHTML = '';
+        const activeItems = trainingQueueState.items.filter((item) =>
+            ['queued', 'running'].includes(String(item.state || ''))
+        );
+        const queuedCount = activeItems.filter((item) => item.state === 'queued').length;
+        const running = activeItems.find((item) => item.state === 'running');
+        summary.className = [
+            'training-queue-summary',
+            trainingQueueState.paused ? 'paused' : '',
+            running ? 'running' : '',
+        ].filter(Boolean).join(' ');
+        if (trainingQueueState.loading) {
+            summary.textContent = '正在读取队列...';
+        } else if (trainingQueueState.error) {
+            summary.textContent = trainingQueueState.error;
+        } else if (running) {
+            summary.textContent = `正在运行：${queueItemTitle(running)} · 等待 ${queuedCount} 个`;
+        } else if (queuedCount) {
+            summary.textContent = trainingQueueState.paused
+                ? `队列已暂停 · 等待 ${queuedCount} 个任务`
+                : `空闲时会自动启动 · 等待 ${queuedCount} 个任务`;
+        } else {
+            summary.textContent = trainingQueueState.paused ? '队列已暂停，暂无等待任务。' : '暂无等待任务。';
+        }
+        if (pauseBtn) {
+            pauseBtn.textContent = trainingQueueState.paused ? '继续' : '暂停';
+            pauseBtn.disabled = trainingQueueState.loading;
+        }
+        const visible = activeItems.length
+            ? activeItems
+            : trainingQueueState.items
+                .filter((item) => ['done', 'error', 'canceled'].includes(String(item.state || '')))
+                .slice(-3)
+                .reverse();
+        if (!visible.length) {
+            const empty = document.createElement('div');
+            empty.className = 'task-history-empty';
+            empty.textContent = '从配置页开始训练时，可以选择加入队列。';
+            list.appendChild(empty);
+            return;
+        }
+        for (const item of visible) {
+            list.appendChild(createTrainingQueueItem(item));
+        }
+    }
+
+    function createTrainingQueueItem(item) {
+        const card = document.createElement('article');
+        card.className = ['training-queue-item', item.state || 'queued'].join(' ');
+        const state = document.createElement('span');
+        state.className = 'training-queue-state';
+        state.textContent = queueStateLabel(item.state);
+
+        const main = document.createElement('div');
+        main.className = 'training-queue-main';
+        const title = document.createElement('strong');
+        title.textContent = queueItemTitle(item);
+        const meta = document.createElement('span');
+        meta.textContent = [
+            item.requires_preprocess ? '预处理后训练' : (item.kind === 'resume' ? '续训' : '训练'),
+            `${item.methods_subdir || '-'} / ${item.variant || '-'}`,
+            `GPU: ${queueGpuLabel(item.gpu_whitelist)}`,
+        ].filter(Boolean).join(' · ');
+        const path = document.createElement('em');
+        path.textContent = item.runtime_config_file || item.source_config_file || '';
+        const message = document.createElement('em');
+        message.textContent = [
+            item.message || '',
+            item.created_at_text ? `入队: ${item.created_at_text}` : '',
+        ].filter(Boolean).join(' · ');
+        main.append(title, meta, path, message);
+
+        const actions = document.createElement('div');
+        actions.className = 'training-queue-item-actions';
+        if (item.state === 'queued') {
+            actions.append(
+                createQueueActionButton('上移', () => moveQueueItem(item.id, 'up')),
+                createQueueActionButton('下移', () => moveQueueItem(item.id, 'down')),
+                createQueueActionButton('取消', () => cancelQueueItem(item.id), 'danger'),
+            );
+        }
+        card.append(state, main);
+        if (actions.childNodes.length) card.appendChild(actions);
+        return card;
+    }
+
+    function createQueueActionButton(label, handler, tone = '') {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = ['task-history-action', tone].filter(Boolean).join(' ');
+        btn.textContent = label;
+        btn.addEventListener('click', handler);
+        return btn;
+    }
+
+    function queueItemTitle(item) {
+        const resumeName = item?.resume_info?.checkpoint_name || '';
+        const source = item?.source_config_file || item?.runtime_config_file || '';
+        const fallback = runLabelFromPath(source) || `${item?.variant || '训练'} / ${item?.preset || 'default'}`;
+        return item?.kind === 'resume' && resumeName ? `续训 · ${resumeName}` : fallback;
+    }
+
+    function queueGpuLabel(value) {
+        const list = Array.isArray(value) ? value : [];
+        return list.length ? list.join(',') : '全部';
+    }
+
+    function queueStateLabel(state) {
+        return {
+            queued: '等待',
+            running: '运行中',
+            done: '完成',
+            error: '异常',
+            canceled: '已取消',
+        }[state] || state || '未知';
+    }
+
+    async function moveQueueItem(itemId, direction) {
+        try {
+            const payload = await api(`/api/training/queue/${encodeURIComponent(itemId)}/move`, {
+                method: 'POST',
+                body: JSON.stringify({ direction }),
+            });
+            updateTrainingQueueFromPayload(payload);
+            if (!payload.ok) appendLog(`[状态] ${payload.error || '移动队列任务失败'}`);
+        } catch (e) {
+            appendLog(`[状态] 移动队列任务失败: ${e.message}`);
+        }
+    }
+
+    async function cancelQueueItem(itemId) {
+        const ok = await showAppConfirmDialog({
+            title: '取消队列任务',
+            description: '等待中的任务会从自动调度中移除',
+            message: '确定要取消这个队列任务吗？已创建的运行目录会保留，方便排查。',
+            confirmText: '取消任务',
+            danger: true,
+        });
+        if (!ok) return;
+        try {
+            const payload = await api(`/api/training/queue/${encodeURIComponent(itemId)}`, { method: 'DELETE' });
+            updateTrainingQueueFromPayload(payload);
+            if (!payload.ok) appendLog(`[状态] ${payload.error || '取消队列任务失败'}`);
+        } catch (e) {
+            appendLog(`[状态] 取消队列任务失败: ${e.message}`);
+        }
+    }
+
+    async function toggleTrainingQueuePause() {
+        try {
+            const payload = await api('/api/training/queue/pause', {
+                method: 'POST',
+                body: JSON.stringify({ paused: !trainingQueueState.paused }),
+            });
+            updateTrainingQueueFromPayload(payload);
+        } catch (e) {
+            appendLog(`[状态] 切换队列暂停失败: ${e.message}`);
+        }
+    }
+
     // ── 状态轮询 ──
     async function pollStatus() {
         if (isHistoryReviewMode()) return;
@@ -11874,6 +12164,7 @@
         const panel = document.getElementById('history-resume-panel');
         const select = document.getElementById('resume-checkpoint-select');
         const btn = document.getElementById('btn-resume-training');
+        const queueBtn = document.getElementById('btn-queue-resume-training');
         const summary = document.getElementById('resume-checkpoint-summary');
         const status = document.getElementById('resume-training-status');
         if (!panel || !select || !btn || !summary || !status) return;
@@ -11884,6 +12175,7 @@
             select.innerHTML = '<option value="">选择历史训练任务后读取</option>';
             select.disabled = true;
             btn.disabled = true;
+            if (queueBtn) queueBtn.disabled = true;
             summary.textContent = '';
             status.textContent = '';
             status.className = 'resume-status';
@@ -11906,6 +12198,7 @@
         const hasCheckpoint = Boolean(select.value);
         select.disabled = resumeOptionsState.loading || !hasCheckpoint || isRunning;
         btn.disabled = resumeOptionsState.loading || !hasCheckpoint || isRunning;
+        if (queueBtn) queueBtn.disabled = resumeOptionsState.loading || !hasCheckpoint;
         summary.innerHTML = '';
         const selected = selectedResumeCheckpoint();
         if (selected) {
@@ -12010,6 +12303,44 @@
         }
     }
 
+    async function queueResumeTrainingFromCheckpoint() {
+        if (!viewingHistoryTaskId) return;
+        const selected = selectedResumeCheckpoint();
+        if (!selected) {
+            setResumeStatus('请先选择一个可续训状态目录。', 'error');
+            return;
+        }
+        const taskName = historyTaskLabel(currentHistoryTaskForResume || {});
+        const ok = await showHistoryTaskConfirmDialog({
+            title: '续训加入队列',
+            description: taskName,
+            message: `将使用这个历史任务的配置快照，并从 ${selected.name} 续训。任务会排队等待当前训练结束后自动启动。`,
+            confirmText: '加入队列',
+        });
+        if (!ok) return;
+
+        setResumeStatus('正在加入队列...', '');
+        try {
+            const res = await api('/api/training/queue/resume', {
+                method: 'POST',
+                body: JSON.stringify({
+                    task_id: viewingHistoryTaskId,
+                    checkpoint: selected.path,
+                    gpu_whitelist: selectedGpuPayload(),
+                }),
+            });
+            if (!res.ok) {
+                setResumeStatus(res.error || '续训加入队列失败', 'error');
+                return;
+            }
+            updateTrainingQueueFromPayload(res);
+            setResumeStatus(res.message || '续训任务已加入队列', 'ok');
+            document.querySelector('[data-tab="training"]')?.click();
+        } catch (e) {
+            setResumeStatus('续训加入队列失败: ' + e.message, 'error');
+        }
+    }
+
     function setResumeStatus(text, state = '') {
         const el = document.getElementById('resume-training-status');
         if (!el) return;
@@ -12106,6 +12437,8 @@
         document.getElementById('btn-refresh-continue-lora-weights').addEventListener('click', loadContinueLoraWeights);
         document.getElementById('btn-open-tutorial').addEventListener('click', openTutorialDialog);
         document.getElementById('btn-stop-training').addEventListener('click', stopTraining);
+        document.getElementById('btn-refresh-queue').addEventListener('click', loadTrainingQueue);
+        document.getElementById('btn-toggle-queue-pause').addEventListener('click', toggleTrainingQueuePause);
         document.getElementById('btn-apply-toml').addEventListener('click', applyTomlToConfig);
         document.getElementById('btn-move-toml-group').addEventListener('click', moveCurrentTomlToGroup);
         document.getElementById('btn-create-blank-preset').addEventListener('click', createBlankPresetFromLoraTemplate);
@@ -12168,6 +12501,7 @@
         document.getElementById('btn-close-history').addEventListener('click', returnToLiveTraining);
         document.getElementById('btn-refresh-resume-options').addEventListener('click', () => loadResumeOptionsForTask());
         document.getElementById('btn-resume-training').addEventListener('click', resumeTrainingFromCheckpoint);
+        document.getElementById('btn-queue-resume-training').addEventListener('click', queueResumeTrainingFromCheckpoint);
         document.getElementById('resume-checkpoint-select').addEventListener('change', renderResumePanelState);
         document.getElementById('history-show-archived').addEventListener('change', (e) => {
             showArchivedHistory = e.target.checked;
@@ -12206,8 +12540,11 @@
             'btn-refresh-continue-lora-weights': '重新扫描所选历史训练任务的 safetensors 权重。',
             'btn-open-tutorial': '打开基础教程，按顺序了解全局设置、数据集、配置保存、预处理和训练启动。',
             'btn-stop-training': '停止当前正在运行的训练或预处理任务；已经写出的日志、样张和权重文件会保留。',
+            'btn-refresh-queue': '重新读取训练队列状态，包括等待、运行、异常和已取消任务。',
+            'btn-toggle-queue-pause': '暂停或继续队列自动启动。暂停不会停止当前正在运行的任务。',
             'btn-refresh-resume-options': '重新扫描这个历史任务输出目录里的训练状态目录，例如 output_name-checkpoint-state。',
             'btn-resume-training': '从选中的训练状态目录恢复训练。它不是加载普通权重热启动，而是恢复 optimizer、scheduler、随机状态和步数。',
+            'btn-queue-resume-training': '把选中的续训状态加入队列，等待当前任务结束后自动启动。',
             'resume-checkpoint-select': '只有包含 train_state.json 的状态目录才会出现在这里；普通 safetensors 权重不能完整恢复训练进度。',
             'btn-import-toml': '从本地选择 TOML 文件导入到 WebUI 管理区；导入后仍需要加载或保存为配置才能训练。',
             'btn-export-toml': '下载/导出当前选中的 TOML 内容，适合训练前备份或分享配置。',

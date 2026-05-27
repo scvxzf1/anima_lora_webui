@@ -217,15 +217,28 @@
                 <button id="btn-stop-training" class="btn btn-danger" disabled>停止训练</button>
             </div>
             <div class="training-workspace">
-                <aside class="panel task-history-panel">
-                    <div class="task-history-head">
-                        <h3>任务列表</h3>
-                        <label class="task-archive-toggle">
-                            <input id="history-show-archived" type="checkbox">
-                            显示归档
-                        </label>
-                    </div>
-                    <div id="task-history-list" class="task-history-list"></div>
+                <aside class="training-sidebar">
+                    <section class="panel training-queue-panel" aria-label="任务队列">
+                        <div class="task-history-head">
+                            <h3>任务队列</h3>
+                            <div class="training-queue-actions">
+                                <button id="btn-toggle-queue-pause" class="task-history-action" type="button">暂停</button>
+                                <button id="btn-refresh-queue" class="task-history-action" type="button">刷新</button>
+                            </div>
+                        </div>
+                        <div id="training-queue-summary" class="training-queue-summary">正在读取队列...</div>
+                        <div id="training-queue-list" class="training-queue-list"></div>
+                    </section>
+                    <section class="panel task-history-panel">
+                        <div class="task-history-head">
+                            <h3>历史任务</h3>
+                            <label class="task-archive-toggle">
+                                <input id="history-show-archived" type="checkbox">
+                                显示归档
+                            </label>
+                        </div>
+                        <div id="task-history-list" class="task-history-list"></div>
+                    </section>
                 </aside>
                 <div class="training-main">
                     <div id="history-view-banner" class="history-view-banner" hidden>
@@ -251,6 +264,7 @@
                                 </select>
                             </label>
                             <button id="btn-resume-training" class="btn btn-primary" type="button" disabled>从检查点继续训练</button>
+                            <button id="btn-queue-resume-training" class="btn" type="button" disabled>加入队列</button>
                         </div>
                         <div id="resume-checkpoint-summary" class="resume-checkpoint-summary"></div>
                         <div id="resume-training-status" class="resume-status"></div>

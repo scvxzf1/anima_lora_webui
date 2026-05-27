@@ -32,6 +32,8 @@ from web.services.settings_service import resolve_output_root
 
 ROOT = Path(__file__).resolve().parents[2]
 HISTORY_DIR = ROOT / "configs" / "web-training-history"
+QUEUE_DIR = ROOT / "configs" / "web-training-queue"
+QUEUE_FILE = QUEUE_DIR / "queue.json"
 RUN_META_FILE = "run.meta.json"
 OUTPUT_READ_SIZE = 4096
 MAX_LOG_RECORDS = 3000
@@ -39,6 +41,7 @@ MAX_HISTORY_ITEMS = 100
 MAX_RESUME_CHECKPOINTS = 100
 MAX_TIMELINE_LOG_RECORDS = 20000
 MAX_TIMELINE_METRIC_RECORDS = 20000
+MAX_QUEUE_ITEMS = 200
 CONTINUE_LORA_KINDS = {"LoRA", "LoKr"}
 CONTINUE_LORA_ACCEPTED_LORA_SPECS = {"", "lora", "standard", "ortho", "ortholora", "tlora", "t_lora"}
 CONTINUE_LORA_UNSUPPORTED_SPEC_TOKENS = (
@@ -137,7 +140,12 @@ class TrainingService:
         self._progress_jsonl_lock: asyncio.Lock | None = None
         self._progress_total_steps: int | None = None
         self._detected_error_hint: str = ""
+        self._queue: dict[str, Any] = _load_training_queue_state()
+        self._queue_paused: bool = bool(self._queue.get("paused", False))
+        self._current_queue_item_id: str = ""
+        self._queue_dispatch_task: asyncio.Task | None = None
         _mark_orphaned_running_history_tasks()
+        self._repair_queue_on_startup()
 
     async def start(
         self,
@@ -155,6 +163,7 @@ class TrainingService:
         gpu_whitelist: list[Any] | None = None,
         source_config_file: str | None = None,
         use_runtime_dir: bool = True,
+        queue_item_id: str = "",
     ):
         if self.status == "running":
             raise RuntimeError("已有任务在运行中")
@@ -252,6 +261,7 @@ class TrainingService:
             continue_info=continue_payload,
             gpu_whitelist=gpu_selection,
             runtime_info=runtime_info,
+            queue_item_id=queue_item_id,
         )
 
     async def resume_from_history_task(
@@ -261,37 +271,8 @@ class TrainingService:
         *,
         gpu_whitelist: list[Any] | None = None,
     ) -> dict[str, Any]:
-        payload = _load_history_task(task_id)
-        task = payload.get("task") if isinstance(payload, dict) else {}
-        if not isinstance(task, dict):
-            raise ValueError("任务不存在")
-        if task.get("job") != "training":
-            raise ValueError("只能从训练任务继续训练")
-
-        checkpoints = _list_resume_checkpoints(task)
-        if not checkpoints:
-            raise ValueError("这个训练任务没有可续训的检查点")
-
-        selected = _select_resume_checkpoint(checkpoints, checkpoint)
-        if selected is None:
-            raise ValueError("未找到指定的检查点")
-
-        snapshot_path = _history_snapshot_path(task_id)
-        if snapshot_path is None:
-            raise ValueError("历史任务缺少配置快照，无法安全续训")
+        task, selected, snapshot_path, resume_info = self._build_resume_payload(task_id, checkpoint)
         config_file = _display_project_path(str(snapshot_path))
-        resume_info = {
-            "source_task_id": task_id,
-            "source_task_name": str(task.get("name") or ""),
-            "history_group_key": str(task.get("history_group_key") or ""),
-            "history_group_label": str(task.get("history_group_label") or ""),
-            "history_source_config_file": str(task.get("history_source_config_file") or ""),
-            "checkpoint": selected["path"],
-            "checkpoint_name": selected["name"],
-            "checkpoint_kind": selected["kind"],
-            "checkpoint_epoch": selected.get("epoch"),
-            "checkpoint_step": selected.get("step"),
-        }
 
         await self.start(
             str(task.get("variant") or ""),
@@ -313,6 +294,43 @@ class TrainingService:
             "checkpoint": selected,
         }
 
+    def _build_resume_payload(
+        self,
+        task_id: str,
+        checkpoint: str | None = None,
+    ) -> tuple[dict[str, Any], dict[str, Any], Path, dict[str, Any]]:
+        payload = _load_history_task(task_id)
+        task = payload.get("task") if isinstance(payload, dict) else {}
+        if not isinstance(task, dict):
+            raise ValueError("任务不存在")
+        if task.get("job") != "training":
+            raise ValueError("只能从训练任务继续训练")
+
+        checkpoints = _list_resume_checkpoints(task)
+        if not checkpoints:
+            raise ValueError("这个训练任务没有可续训的检查点")
+
+        selected = _select_resume_checkpoint(checkpoints, checkpoint)
+        if selected is None:
+            raise ValueError("未找到指定的检查点")
+
+        snapshot_path = _history_snapshot_path(task_id)
+        if snapshot_path is None:
+            raise ValueError("历史任务缺少配置快照，无法安全续训")
+        resume_info = {
+            "source_task_id": task_id,
+            "source_task_name": str(task.get("name") or ""),
+            "history_group_key": str(task.get("history_group_key") or ""),
+            "history_group_label": str(task.get("history_group_label") or ""),
+            "history_source_config_file": str(task.get("history_source_config_file") or ""),
+            "checkpoint": selected["path"],
+            "checkpoint_name": selected["name"],
+            "checkpoint_kind": selected["kind"],
+            "checkpoint_epoch": selected.get("epoch"),
+            "checkpoint_step": selected.get("step"),
+        }
+        return task, selected, snapshot_path, resume_info
+
     async def start_preprocess(
         self,
         variant: str,
@@ -323,6 +341,8 @@ class TrainingService:
         gpu_whitelist: list[Any] | None = None,
         config_file: str | None = None,
         continue_info: dict[str, Any] | None = None,
+        runtime: dict[str, Any] | None = None,
+        queue_item_id: str = "",
     ):
         if self.status == "running":
             raise RuntimeError("已有任务在运行中")
@@ -338,7 +358,7 @@ class TrainingService:
         if not Path(venv_python).exists():
             venv_python = sys.executable
 
-        runtime = _prepare_web_runtime_config(
+        runtime = runtime or _prepare_web_runtime_config(
             variant,
             preset,
             methods_subdir,
@@ -373,6 +393,7 @@ class TrainingService:
             "source_config_file": runtime.get("history_source_config_file") or config_file,
             "gpu_whitelist": gpu_selection,
             "continue_info": continue_payload,
+            "queue_item_id": queue_item_id,
         } if train_after else None
         await self._launch_job(
             cmd,
@@ -390,6 +411,7 @@ class TrainingService:
             gpu_whitelist=gpu_selection,
             config_file=runtime["runtime_config_file"],
             runtime_info=runtime_info,
+            queue_item_id=queue_item_id,
         )
 
     async def _launch_job(
@@ -413,8 +435,10 @@ class TrainingService:
         continue_info: dict[str, Any] | None = None,
         gpu_whitelist: list[int] | None = None,
         runtime_info: dict[str, str] | None = None,
+        queue_item_id: str = "",
     ):
         self.status = "running"
+        self._current_queue_item_id = str(queue_item_id or "")
         self.current_job = job
         self.current_variant = variant
         self.current_preset = preset
@@ -496,7 +520,11 @@ class TrainingService:
             "sample_config": self.current_sample_config,
             **self.current_runtime_info,
             "task_id": self.current_task_id,
+            "queue_item_id": self._current_queue_item_id,
         })
+        if self._current_queue_item_id:
+            self._attach_history_task_to_queue_item(self._current_queue_item_id, self.current_task_id)
+            await self._broadcast_queue()
         asyncio.create_task(self._read_output())
         asyncio.create_task(self._monitor_system())
         if self._progress_jsonl_path:
@@ -506,6 +534,17 @@ class TrainingService:
         if not self.process or self.process.returncode is not None:
             self.status = "idle"
             return
+        queue_item_id = self._current_queue_item_id
+        if queue_item_id:
+            self._queue_paused = True
+            self._queue["paused"] = True
+            self._update_queue_item(queue_item_id, {
+                "state": "canceled",
+                "message": "用户停止了队列任务，队列已自动暂停",
+                "finished_at": time.time(),
+                "finished_at_text": _format_ts(time.time()),
+            })
+            self._save_queue()
         try:
             pid = self.process.pid
             parent = psutil.Process(pid)
@@ -538,7 +577,10 @@ class TrainingService:
             "sample_config": self.current_sample_config,
             **self.current_runtime_info,
             "task_id": self.current_task_id,
+            "queue_item_id": queue_item_id,
         })
+        if queue_item_id:
+            await self._broadcast_queue()
 
     def subscribe(self, ws: web.WebSocketResponse):
         self._ws_clients.add(ws)
@@ -556,6 +598,175 @@ class TrainingService:
 
     async def list_gpus(self) -> list[dict[str, Any]]:
         return await _list_available_gpus()
+
+    def get_queue_snapshot(self) -> dict[str, Any]:
+        self._normalize_queue()
+        return {
+            "ok": True,
+            "paused": self._queue_paused,
+            "status": self.status,
+            "current_item_id": self._current_queue_item_id,
+            "items": [dict(item) for item in self._queue_items()],
+        }
+
+    async def enqueue_training(
+        self,
+        variant: str,
+        preset: str,
+        methods_subdir: str = "gui-methods",
+        *,
+        extra_args: list[str] | None = None,
+        config_file: str | None = None,
+        gpu_whitelist: list[Any] | None = None,
+        continue_info: dict[str, Any] | None = None,
+        requires_preprocess: bool = True,
+    ) -> dict[str, Any]:
+        extra = list(extra_args or [])
+        gpu_selection = _normalize_gpu_whitelist(gpu_whitelist)
+        runtime = None
+        runtime_config_file = str(config_file or "").strip()
+        source_config_file = str(config_file or "").strip()
+        if requires_preprocess:
+            runtime = _prepare_web_runtime_config(
+                variant,
+                preset,
+                methods_subdir,
+                source_config_file=config_file,
+            )
+            runtime_config_file = runtime["runtime_config_file"]
+            source_config_file = runtime.get("history_source_config_file") or source_config_file
+
+        continue_payload = _normalize_continue_lora_info(
+            continue_info,
+            variant=variant,
+            preset=preset,
+            methods_subdir=methods_subdir,
+            config_file=runtime_config_file or config_file,
+        )
+        now = time.time()
+        item = {
+            "id": _new_queue_item_id("training", methods_subdir, variant),
+            "state": "queued",
+            "kind": "training",
+            "requires_preprocess": bool(requires_preprocess),
+            "variant": variant,
+            "preset": preset,
+            "methods_subdir": methods_subdir,
+            "runtime_config_file": runtime_config_file,
+            "source_config_file": source_config_file,
+            "extra_args": extra,
+            "gpu_whitelist": gpu_selection,
+            "continue_info": continue_payload or {},
+            "resume_info": {},
+            "history_task_ids": [],
+            "message": "等待队列调度",
+            "created_at": now,
+            "created_at_text": _format_ts(now),
+            "started_at": None,
+            "started_at_text": "",
+            "finished_at": None,
+            "finished_at_text": "",
+            "runtime_info": _runtime_meta(runtime) if runtime else {},
+        }
+        self._queue_items().append(item)
+        self._compact_queue()
+        self._save_queue()
+        await self._broadcast_queue()
+        self._schedule_queue_dispatch()
+        return {"ok": True, "message": "已加入训练队列", "item": dict(item), **self.get_queue_snapshot()}
+
+    async def enqueue_resume_from_history_task(
+        self,
+        task_id: str,
+        checkpoint: str | None = None,
+        *,
+        gpu_whitelist: list[Any] | None = None,
+    ) -> dict[str, Any]:
+        task, selected, snapshot_path, resume_info = self._build_resume_payload(task_id, checkpoint)
+        now = time.time()
+        item = {
+            "id": _new_queue_item_id("resume", str(task.get("methods_subdir") or "gui-methods"), str(task.get("variant") or "training")),
+            "state": "queued",
+            "kind": "resume",
+            "requires_preprocess": False,
+            "variant": str(task.get("variant") or ""),
+            "preset": str(task.get("preset") or "default"),
+            "methods_subdir": str(task.get("methods_subdir") or "gui-methods"),
+            "runtime_config_file": _display_project_path(str(snapshot_path)),
+            "source_config_file": str(task.get("history_source_config_file") or ""),
+            "extra_args": ["--resume", selected["path"], "--skip_until_initial_step"],
+            "gpu_whitelist": _normalize_gpu_whitelist(gpu_whitelist),
+            "continue_info": {},
+            "resume_info": resume_info,
+            "history_task_ids": [],
+            "message": "等待续训队列调度",
+            "created_at": now,
+            "created_at_text": _format_ts(now),
+            "started_at": None,
+            "started_at_text": "",
+            "finished_at": None,
+            "finished_at_text": "",
+            "runtime_info": {},
+        }
+        self._queue_items().append(item)
+        self._compact_queue()
+        self._save_queue()
+        await self._broadcast_queue()
+        self._schedule_queue_dispatch()
+        return {
+            "ok": True,
+            "message": "续训任务已加入队列",
+            "item": dict(item),
+            "checkpoint": selected,
+            **self.get_queue_snapshot(),
+        }
+
+    async def move_queue_item(self, item_id: str, direction: str) -> dict[str, Any]:
+        items = self._queue_items()
+        queued_indices = [i for i, item in enumerate(items) if item.get("state") == "queued"]
+        index = next((i for i in queued_indices if items[i].get("id") == item_id), None)
+        if index is None:
+            raise ValueError("只能移动等待中的队列任务")
+        position = queued_indices.index(index)
+        if direction == "up" and position > 0:
+            other = queued_indices[position - 1]
+        elif direction == "down" and position < len(queued_indices) - 1:
+            other = queued_indices[position + 1]
+        else:
+            return self.get_queue_snapshot()
+        items[index], items[other] = items[other], items[index]
+        self._save_queue()
+        await self._broadcast_queue()
+        return self.get_queue_snapshot()
+
+    async def cancel_queue_item(self, item_id: str) -> dict[str, Any]:
+        item = self._find_queue_item(item_id)
+        if item is None:
+            raise FileNotFoundError("队列任务不存在")
+        if item.get("state") == "running" and item_id == self._current_queue_item_id:
+            await self.stop()
+            return self.get_queue_snapshot()
+        if item.get("state") != "queued":
+            raise ValueError("只能取消等待中的队列任务")
+        now = time.time()
+        item.update({
+            "state": "canceled",
+            "message": "已取消",
+            "finished_at": now,
+            "finished_at_text": _format_ts(now),
+        })
+        self._save_queue()
+        await self._broadcast_queue()
+        return self.get_queue_snapshot()
+
+    async def set_queue_paused(self, paused: bool) -> dict[str, Any]:
+        self._queue_paused = bool(paused)
+        self._queue["paused"] = self._queue_paused
+        self._save_queue()
+        await self._broadcast_queue()
+        if not self._queue_paused:
+            self._schedule_queue_dispatch()
+        return self.get_queue_snapshot()
 
     def list_history_tasks(self, *, include_archived: bool = False) -> list[dict[str, Any]]:
         return _list_history_tasks(include_archived=include_archived)
@@ -636,6 +847,9 @@ class TrainingService:
             "last_log_line": self._last_log_line,
             "last_log_id": self._log_records[-1]["id"] if self._log_records else 0,
             "error_hint": self._detected_error_hint,
+            "queue_paused": self._queue_paused,
+            "queue_count": sum(1 for item in self._queue_items() if item.get("state") == "queued"),
+            "queue_item_id": self._current_queue_item_id,
         }
 
     async def _read_output(self):
@@ -659,11 +873,13 @@ class TrainingService:
         job = self.current_job
         stop_requested = self._stop_requested
         pending_train = self._pending_train_after_preprocess
+        queue_item_id = self._current_queue_item_id
         await self._ingest_progress_jsonl(final=True)
         self.status = "idle"
         self.current_job = ""
         self._stop_requested = False
         self._pending_train_after_preprocess = None
+        self._current_queue_item_id = ""
         state = "idle" if rc == 0 or stop_requested else "error"
         if stop_requested and job == "preprocess":
             msg = "预处理已停止"
@@ -687,6 +903,7 @@ class TrainingService:
             "sample_config": self.current_sample_config,
             **self.current_runtime_info,
             "task_id": self.current_task_id,
+            "queue_item_id": queue_item_id,
         })
         if (
             job == "preprocess"
@@ -695,6 +912,25 @@ class TrainingService:
             and pending_train is not None
         ):
             await self._start_pending_training(pending_train)
+            return
+        if queue_item_id:
+            if stop_requested:
+                self._update_queue_item(queue_item_id, {
+                    "state": "canceled",
+                    "message": msg,
+                    "finished_at": time.time(),
+                    "finished_at_text": _format_ts(time.time()),
+                })
+            else:
+                self._update_queue_item(queue_item_id, {
+                    "state": "done" if rc == 0 else "error",
+                    "message": msg,
+                    "finished_at": time.time(),
+                    "finished_at_text": _format_ts(time.time()),
+                })
+            self._save_queue()
+            await self._broadcast_queue()
+        self._schedule_queue_dispatch()
 
     async def _start_pending_training(self, pending: dict[str, Any]) -> None:
         self._remember_log("status", "预处理完成，自动开始训练")
@@ -723,9 +959,20 @@ class TrainingService:
                 gpu_whitelist=pending.get("gpu_whitelist"),
                 continue_info=pending.get("continue_info"),
                 use_runtime_dir=False,
+                queue_item_id=pending.get("queue_item_id") or "",
             )
         except Exception as e:
             msg = f"自动开始训练失败: {e}"
+            queue_item_id = str(pending.get("queue_item_id") or "")
+            if queue_item_id:
+                self._update_queue_item(queue_item_id, {
+                    "state": "error",
+                    "message": msg,
+                    "finished_at": time.time(),
+                    "finished_at_text": _format_ts(time.time()),
+                })
+                self._save_queue()
+                await self._broadcast_queue()
             self._remember_log("status", msg)
             await self._broadcast({
                 "type": "status",
@@ -737,7 +984,192 @@ class TrainingService:
                 "sample_config": self.current_sample_config,
                 **self.current_runtime_info,
                 "task_id": self.current_task_id,
+                "queue_item_id": queue_item_id,
             })
+            self._schedule_queue_dispatch()
+
+    def _repair_queue_on_startup(self) -> None:
+        changed = False
+        now = time.time()
+        self._normalize_queue()
+        for item in self._queue_items():
+            if item.get("state") == "running":
+                item.update({
+                    "state": "error",
+                    "message": "WebUI 重启时发现旧运行中队列项，已标记为异常",
+                    "finished_at": now,
+                    "finished_at_text": _format_ts(now),
+                })
+                changed = True
+        if changed:
+            self._save_queue()
+
+    def _normalize_queue(self) -> None:
+        if not isinstance(self._queue, dict):
+            self._queue = {}
+        items = self._queue.get("items")
+        if not isinstance(items, list):
+            self._queue["items"] = []
+        self._queue_paused = bool(self._queue.get("paused", self._queue_paused))
+        self._queue["paused"] = self._queue_paused
+
+    def _queue_items(self) -> list[dict[str, Any]]:
+        self._normalize_queue()
+        items = self._queue["items"]
+        out: list[dict[str, Any]] = []
+        for item in items:
+            if isinstance(item, dict):
+                out.append(item)
+        self._queue["items"] = out
+        return out
+
+    def _find_queue_item(self, item_id: str) -> dict[str, Any] | None:
+        needle = str(item_id or "").strip()
+        for item in self._queue_items():
+            if str(item.get("id") or "") == needle:
+                return item
+        return None
+
+    def _update_queue_item(self, item_id: str, patch: dict[str, Any]) -> None:
+        item = self._find_queue_item(item_id)
+        if item is not None:
+            item.update(patch)
+
+    def _attach_history_task_to_queue_item(self, item_id: str, task_id: str) -> None:
+        item = self._find_queue_item(item_id)
+        if item is None or not task_id:
+            return
+        history_ids = item.get("history_task_ids")
+        if not isinstance(history_ids, list):
+            history_ids = []
+            item["history_task_ids"] = history_ids
+        if task_id not in history_ids:
+            history_ids.append(task_id)
+        item["message"] = "正在运行"
+        self._save_queue()
+
+    def _compact_queue(self) -> None:
+        items = self._queue_items()
+        if len(items) <= MAX_QUEUE_ITEMS:
+            return
+        protected = [item for item in items if item.get("state") in {"queued", "running"}]
+        finished = [item for item in items if item.get("state") not in {"queued", "running"}]
+        keep_finished = max(0, MAX_QUEUE_ITEMS - len(protected))
+        self._queue["items"] = [*protected, *(finished[-keep_finished:] if keep_finished else [])]
+
+    def _save_queue(self) -> None:
+        self._normalize_queue()
+        QUEUE_DIR.mkdir(parents=True, exist_ok=True)
+        self._queue["paused"] = self._queue_paused
+        self._queue["updated_at"] = time.time()
+        self._queue["updated_at_text"] = _format_ts(self._queue["updated_at"])
+        _write_json(QUEUE_FILE, self._queue)
+
+    async def _broadcast_queue(self) -> None:
+        await self._broadcast({"type": "queue", **self.get_queue_snapshot()})
+
+    def _schedule_queue_dispatch(self) -> None:
+        if self._queue_paused or self.status == "running":
+            return
+        if self._queue_dispatch_task and not self._queue_dispatch_task.done():
+            return
+        if not any(item.get("state") == "queued" for item in self._queue_items()):
+            return
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            return
+        self._queue_dispatch_task = loop.create_task(self._dispatch_queue())
+
+    async def _dispatch_queue(self) -> None:
+        if self._queue_paused or self.status == "running":
+            return
+        item = next((entry for entry in self._queue_items() if entry.get("state") == "queued"), None)
+        if item is None:
+            return
+        now = time.time()
+        item.update({
+            "state": "running",
+            "message": "正在启动",
+            "started_at": now,
+            "started_at_text": _format_ts(now),
+            "finished_at": None,
+            "finished_at_text": "",
+        })
+        self._save_queue()
+        await self._broadcast_queue()
+
+        try:
+            await self._start_queue_item(item)
+        except Exception as e:
+            now = time.time()
+            item.update({
+                "state": "error",
+                "message": f"队列任务启动失败: {e}",
+                "finished_at": now,
+                "finished_at_text": _format_ts(now),
+            })
+            self._current_queue_item_id = ""
+            self.status = "idle"
+            self._save_queue()
+            await self._broadcast_queue()
+            self._schedule_queue_dispatch()
+
+    async def _start_queue_item(self, item: dict[str, Any]) -> None:
+        variant = str(item.get("variant") or "")
+        preset = str(item.get("preset") or "default")
+        methods_subdir = str(item.get("methods_subdir") or "gui-methods")
+        extra_args = list(item.get("extra_args") or [])
+        queue_item_id = str(item.get("id") or "")
+        if item.get("requires_preprocess"):
+            runtime = self._queue_item_runtime(item)
+            await self.start_preprocess(
+                variant,
+                preset,
+                methods_subdir,
+                extra_args,
+                True,
+                gpu_whitelist=item.get("gpu_whitelist"),
+                config_file=str(item.get("source_config_file") or item.get("runtime_config_file") or ""),
+                continue_info=item.get("continue_info") if isinstance(item.get("continue_info"), dict) else None,
+                runtime=runtime,
+                queue_item_id=queue_item_id,
+            )
+            return
+
+        await self.start(
+            variant,
+            preset,
+            extra_args,
+            methods_subdir,
+            config_file=str(item.get("runtime_config_file") or ""),
+            start_message=(
+                f"从队列启动续训: {item.get('resume_info', {}).get('checkpoint_name')}"
+                if item.get("kind") == "resume"
+                else f"从队列启动训练: {methods_subdir}/{variant} / {preset}"
+            ),
+            command_label="队列训练命令",
+            resume_info=item.get("resume_info") if isinstance(item.get("resume_info"), dict) else None,
+            continue_info=item.get("continue_info") if isinstance(item.get("continue_info"), dict) else None,
+            gpu_whitelist=item.get("gpu_whitelist"),
+            source_config_file=str(item.get("source_config_file") or ""),
+            use_runtime_dir=False,
+            queue_item_id=queue_item_id,
+        )
+
+    def _queue_item_runtime(self, item: dict[str, Any]) -> dict[str, Any]:
+        runtime_config_file = str(item.get("runtime_config_file") or "")
+        runtime = _runtime_from_config_file(
+            runtime_config_file,
+            source_config_file=str(item.get("source_config_file") or "") or None,
+        )
+        if runtime is None:
+            raise FileNotFoundError(f"队列运行配置不可用: {runtime_config_file}")
+        runtime["sample_config"] = _sample_config_from_cfg(
+            _load_config_file_config(runtime["runtime_config_file"]),
+            list(item.get("extra_args") or []),
+        )
+        return runtime
 
     async def _drain_output_buffer(self, buffer: str) -> str:
         """同时处理普通换行和 tqdm 常用的回车刷新。"""
@@ -1901,6 +2333,33 @@ def _legacy_history_group_label(group: dict[str, str]) -> str:
 def _safe_run_stem(value: str) -> str:
     clean = re.sub(r"[^A-Za-z0-9_.-]+", "-", str(value or "").strip()).strip(".-")
     return clean[:80] or "run"
+
+
+def _load_training_queue_state() -> dict[str, Any]:
+    data = _read_json(QUEUE_FILE)
+    if not isinstance(data, dict):
+        data = {}
+    items = data.get("items")
+    if not isinstance(items, list):
+        data["items"] = []
+    data["paused"] = bool(data.get("paused", False))
+    return data
+
+
+def _new_queue_item_id(kind: str, methods_subdir: str, variant: str) -> str:
+    raw = datetime.now().strftime("%Y%m%d-%H%M%S") + f"-queue-{kind}-{methods_subdir}-{variant}"
+    base = _safe_task_id(raw)
+    existing = {
+        str(item.get("id") or "")
+        for item in _load_training_queue_state().get("items", [])
+        if isinstance(item, dict)
+    }
+    if base not in existing:
+        return base
+    suffix = 2
+    while f"{base}-{suffix}" in existing:
+        suffix += 1
+    return f"{base}-{suffix}"
 
 
 def _list_history_tasks(*, include_archived: bool = False) -> list[dict[str, Any]]:

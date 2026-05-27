@@ -19,6 +19,12 @@ def setup_training_routes(app: web.Application) -> None:
     app.router.add_get("/api/training/metrics", handle_metrics)
     app.router.add_get("/api/training/logs", handle_logs)
     app.router.add_get("/api/training/gpus", handle_gpus)
+    app.router.add_get("/api/training/queue", handle_queue_status)
+    app.router.add_post("/api/training/queue/start", handle_queue_start)
+    app.router.add_post("/api/training/queue/resume", handle_queue_resume)
+    app.router.add_post("/api/training/queue/{item_id}/move", handle_queue_move)
+    app.router.add_delete("/api/training/queue/{item_id}", handle_queue_cancel)
+    app.router.add_post("/api/training/queue/pause", handle_queue_pause)
     app.router.add_get("/api/training/history", handle_history_list)
     app.router.add_get("/api/training/history/config-group/timeline", handle_config_group_timeline)
     app.router.add_get("/api/training/history/{task_id}", handle_history_detail)
@@ -317,6 +323,110 @@ async def handle_logs(request: web.Request) -> web.Response:
 async def handle_gpus(request: web.Request) -> web.Response:
     svc = request.app["training_service"]
     return web.json_response({"ok": True, "gpus": await svc.list_gpus()})
+
+
+async def handle_queue_status(request: web.Request) -> web.Response:
+    svc = request.app["training_service"]
+    return web.json_response(svc.get_queue_snapshot())
+
+
+async def handle_queue_start(request: web.Request) -> web.Response:
+    svc = request.app["training_service"]
+    data = await request.json()
+    variant = data.get("variant", "lora")
+    preset = data.get("preset", "default")
+    methods_subdir = data.get("methods_subdir", "gui-methods")
+    extra_args = data.get("extra_args", [])
+    gpu_whitelist = data.get("gpu_whitelist")
+    config_file = str(data.get("config_file") or "").strip() or None
+    confirmed = bool(data.get("confirmed", False))
+    confirm_preprocess = bool(
+        data.get("confirm_preprocess", False)
+        or data.get("confirm_train_after", False)
+    )
+    continue_info = _continue_lora_info_from_request(data)
+    if _is_cli_only_spd(variant, methods_subdir):
+        return web.json_response({"ok": False, "error": _cli_only_spd_message()}, status=400)
+    try:
+        preflight = preflight_training_config(variant, preset, methods_subdir, config_file=config_file)
+        needs_preprocess = not config_file or not is_web_runtime_config(config_file)
+        if not preflight.get("ok", False):
+            if not (needs_preprocess and confirm_preprocess and _preflight_allows_preprocess(preflight)):
+                return web.json_response({
+                    "ok": False,
+                    "error": "预检测发现错误，已阻止加入队列",
+                    "preflight": preflight,
+                }, status=400)
+        if not confirmed or (needs_preprocess and not confirm_preprocess):
+            return web.json_response({
+                "ok": False,
+                "error": "请先确认训练前预检测结果",
+                "preflight": preflight,
+                "requires_confirmation": True,
+                "requires_preprocess_confirmation": needs_preprocess,
+            }, status=409)
+        payload = await svc.enqueue_training(
+            variant,
+            preset,
+            methods_subdir,
+            extra_args=extra_args,
+            config_file=config_file,
+            gpu_whitelist=gpu_whitelist,
+            continue_info=continue_info,
+            requires_preprocess=needs_preprocess,
+        )
+        return web.json_response(payload)
+    except (FileNotFoundError, ValueError) as e:
+        return web.json_response({"ok": False, "error": str(e)}, status=400)
+
+
+async def handle_queue_resume(request: web.Request) -> web.Response:
+    svc = request.app["training_service"]
+    data = await request.json()
+    task_id = str(data.get("task_id") or "").strip()
+    checkpoint = str(data.get("checkpoint") or "").strip()
+    gpu_whitelist = data.get("gpu_whitelist")
+    if not task_id:
+        return web.json_response({"ok": False, "error": "缺少 task_id"}, status=400)
+    try:
+        return web.json_response(await svc.enqueue_resume_from_history_task(
+            task_id,
+            checkpoint or None,
+            gpu_whitelist=gpu_whitelist,
+        ))
+    except FileNotFoundError as e:
+        return web.json_response({"ok": False, "error": str(e)}, status=404)
+    except ValueError as e:
+        return web.json_response({"ok": False, "error": str(e)}, status=400)
+
+
+async def handle_queue_move(request: web.Request) -> web.Response:
+    svc = request.app["training_service"]
+    data = await request.json()
+    direction = str(data.get("direction") or "").strip()
+    if direction not in {"up", "down"}:
+        return web.json_response({"ok": False, "error": "direction 必须是 up 或 down"}, status=400)
+    try:
+        return web.json_response(await svc.move_queue_item(request.match_info["item_id"], direction))
+    except ValueError as e:
+        return web.json_response({"ok": False, "error": str(e)}, status=400)
+
+
+async def handle_queue_cancel(request: web.Request) -> web.Response:
+    svc = request.app["training_service"]
+    try:
+        return web.json_response(await svc.cancel_queue_item(request.match_info["item_id"]))
+    except FileNotFoundError as e:
+        return web.json_response({"ok": False, "error": str(e)}, status=404)
+    except ValueError as e:
+        return web.json_response({"ok": False, "error": str(e)}, status=400)
+
+
+async def handle_queue_pause(request: web.Request) -> web.Response:
+    svc = request.app["training_service"]
+    data = await request.json()
+    paused = bool(data.get("paused", False))
+    return web.json_response(await svc.set_queue_paused(paused))
 
 
 async def handle_history_list(request: web.Request) -> web.Response:

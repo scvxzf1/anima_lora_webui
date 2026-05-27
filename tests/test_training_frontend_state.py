@@ -43,3 +43,33 @@ def test_return_to_live_training_clears_runtime_cursor() -> None:
         "lossChart?.clear();",
     ):
         assert snippet in body
+
+
+def test_training_queue_frontend_hooks_are_present() -> None:
+    source = APP_JS.read_text(encoding="utf-8")
+
+    queue_section = _section(source, "async function loadTrainingQueue()", "// ── 状态轮询 ──")
+    assert "function renderTrainingQueue()" in queue_section
+    assert "function createTrainingQueueItem" in queue_section
+    assert "async function toggleTrainingQueuePause()" in queue_section
+    assert "/api/training/queue" in queue_section
+
+    ws_section = _section(source, "function handleWsMessage", "function appendLog")
+    assert "case 'queue':" in ws_section
+    assert "updateTrainingQueueFromPayload(msg);" in ws_section
+
+    start_section = _section(source, "async function startTrainingUnchecked", "function enterLiveTrainingForNewRun")
+    assert "enqueueTrainingFromConfig" in start_section
+    assert "chooseTrainingLaunchMode" in source
+
+
+def test_resume_queue_button_is_wired() -> None:
+    source = APP_JS.read_text(encoding="utf-8")
+
+    resume_section = _section(source, "function renderResumePanelState", "function optionNode")
+    assert "btn-queue-resume-training" in resume_section
+    assert "queueBtn.disabled" in resume_section
+
+    listener_section = _section(source, "function setupEventListeners", "function installBeginnerTooltips")
+    assert "queueResumeTrainingFromCheckpoint" in source
+    assert "btn-queue-resume-training" in listener_section

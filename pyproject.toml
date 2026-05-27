@@ -16,6 +16,7 @@ dependencies = [
     "schedulefree>=1.4",
     "pytorch-optimizer>=3.9.0",
     "prodigyopt>=1.1.2",
+    "prodigy-plus-schedule-free>=2.0.1,<3",
     # Data & Config
     "toml>=0.10.2",
     "voluptuous>=0.15.2",

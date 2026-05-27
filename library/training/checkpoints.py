@@ -1,6 +1,8 @@
 import argparse
+from dataclasses import dataclass
 import json
 import logging
+import math
 import os
 import shutil
 import time
@@ -23,6 +25,13 @@ STEP_DIFFUSERS_DIR_NAME = "{}-step{:08d}"
 
 CHECKPOINT_STATE_NAME = "{}-checkpoint-state"
 CHECKPOINT_FILE_NAME = "{}-checkpoint"
+
+
+@dataclass(frozen=True)
+class ResumeStartPlan:
+    initial_step: int
+    epoch_to_start: int
+    steps_from_state: Optional[int] = None
 
 
 def default_if_none(value, default):
@@ -221,6 +230,63 @@ def get_checkpoint_state_dir(args: argparse.Namespace):
 def get_checkpoint_ckpt_name(args: argparse.Namespace, ext: str):
     model_name = default_if_none(args.output_name, DEFAULT_LAST_OUTPUT_NAME)
     return CHECKPOINT_FILE_NAME.format(model_name) + ext
+
+
+def plan_resume_start(
+    args: argparse.Namespace,
+    *,
+    steps_from_state: Optional[int],
+    batches_per_epoch: int,
+    num_processes: int,
+) -> ResumeStartPlan:
+    """Resolve resume/initial-step counters without mutating checkpoint state."""
+    steps_from_state_out = steps_from_state
+    initial_steps_per_epoch = math.ceil(
+        batches_per_epoch / num_processes / args.gradient_accumulation_steps
+    )
+    skip_batches_per_epoch = math.ceil(
+        batches_per_epoch / args.gradient_accumulation_steps
+    )
+
+    initial_step = 0
+    if args.initial_epoch is not None or args.initial_step is not None:
+        if steps_from_state is not None:
+            logger.warning(
+                "steps from the state is ignored because initial_step is specified"
+            )
+        if args.initial_step is not None:
+            initial_step = args.initial_step
+        else:
+            initial_step = (args.initial_epoch - 1) * initial_steps_per_epoch
+    else:
+        if steps_from_state is not None:
+            initial_step = steps_from_state
+            steps_from_state_out = None
+
+    if initial_step > 0:
+        assert args.max_train_steps > initial_step, (
+            "max_train_steps should be greater than initial step"
+        )
+
+    epoch_to_start = 0
+    if initial_step > 0:
+        if args.skip_until_initial_step:
+            if not args.resume:
+                logger.info(
+                    "initial_step is specified but not resuming. lr scheduler will be started from the beginning"
+                )
+            logger.info(f"skipping {initial_step} steps")
+            initial_step *= args.gradient_accumulation_steps
+            epoch_to_start = initial_step // skip_batches_per_epoch
+        else:
+            epoch_to_start = initial_step // skip_batches_per_epoch
+            initial_step = 0
+
+    return ResumeStartPlan(
+        initial_step=initial_step,
+        epoch_to_start=epoch_to_start,
+        steps_from_state=steps_from_state_out,
+    )
 
 
 def _remove_path(path: str) -> None:

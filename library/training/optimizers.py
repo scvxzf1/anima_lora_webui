@@ -11,6 +11,28 @@ from torch.optim import Optimizer
 logger = logging.getLogger(__name__)
 
 
+def get_optimizer_kwargs(args) -> dict:
+    optimizer_kwargs = {}
+    if args.optimizer_args is not None and len(args.optimizer_args) > 0:
+        for arg in args.optimizer_args:
+            key, value = arg.split("=", 1)
+            value = ast.literal_eval(value)
+            optimizer_kwargs[key] = value
+    return optimizer_kwargs
+
+
+def is_prodigy_plus_schedulefree_type(args: argparse.Namespace) -> bool:
+    return (
+        getattr(args, "optimizer_type", "") or ""
+    ).lower() == "prodigyplusschedulefree".lower()
+
+
+def is_prodigy_plus_schedulefree_enabled(args: argparse.Namespace) -> bool:
+    if not is_prodigy_plus_schedulefree_type(args):
+        return False
+    return bool(get_optimizer_kwargs(args).get("use_schedulefree", True))
+
+
 def get_optimizer(args, trainable_params) -> tuple[str, str, object]:
     optimizer_type = args.optimizer_type
     if args.use_8bit_adam:
@@ -40,12 +62,7 @@ def get_optimizer(args, trainable_params) -> tuple[str, str, object]:
             "fused_backward_pass does not work with gradient_accumulation_steps > 1"
         )
 
-    optimizer_kwargs = {}
-    if args.optimizer_args is not None and len(args.optimizer_args) > 0:
-        for arg in args.optimizer_args:
-            key, value = arg.split("=")
-            value = ast.literal_eval(value)
-            optimizer_kwargs[key] = value
+    optimizer_kwargs = get_optimizer_kwargs(args)
 
     lr = args.learning_rate
     optimizer = None
@@ -275,6 +292,49 @@ def get_optimizer(args, trainable_params) -> tuple[str, str, object]:
         optimizer_class = torch.optim.AdamW
         optimizer = optimizer_class(trainable_params, lr=lr, **optimizer_kwargs)
 
+    elif optimizer_type == "CAME".lower():
+        try:
+            import pytorch_optimizer
+        except ImportError:
+            raise ImportError("No pytorch_optimizer")
+
+        logger.info(f"use CAME optimizer | {optimizer_kwargs}")
+        optimizer_class = pytorch_optimizer.CAME
+        optimizer = optimizer_class(trainable_params, lr=lr, **optimizer_kwargs)
+
+    elif optimizer_type == "ProdigyPlusScheduleFree".lower():
+        try:
+            from prodigyplus.prodigy_plus_schedulefree import (
+                ProdigyPlusScheduleFree,
+            )
+        except ImportError:
+            raise ImportError("No prodigy-plus-schedule-free")
+
+        schedulefree_enabled = bool(optimizer_kwargs.get("use_schedulefree", True))
+        if schedulefree_enabled:
+            if lr != 1.0:
+                logger.warning(
+                    "ProdigyPlusScheduleFree usually expects learning_rate=1.0: lr=%s",
+                    lr,
+                )
+                logger.warning("recommend option: learning_rate=1.0")
+            if args.lr_scheduler != "constant":
+                logger.warning(
+                    "ProdigyPlusScheduleFree with schedule-free enabled should use lr_scheduler=constant: lr_scheduler=%s",
+                    args.lr_scheduler,
+                )
+                logger.warning("recommend option: lr_scheduler=constant")
+            if args.max_grad_norm != 0.0:
+                logger.warning(
+                    "ProdigyPlusScheduleFree handles update scaling internally; external max_grad_norm may hamper LR adaptation: max_grad_norm=%s",
+                    args.max_grad_norm,
+                )
+                logger.warning("recommend option: max_grad_norm=0")
+
+        logger.info(f"use ProdigyPlusScheduleFree optimizer | {optimizer_kwargs}")
+        optimizer_class = ProdigyPlusScheduleFree
+        optimizer = optimizer_class(trainable_params, lr=lr, **optimizer_kwargs)
+
     # elif optimizer_type == "Rose".lower():
     #     # Rose (MatthewK78/Rose) — Range-Of-Slice Equilibration, stateless.
     #     # Disabled: kept as reference. Clone https://github.com/MatthewK78/Rose
@@ -353,4 +413,6 @@ def get_optimizer_train_eval_fn(
 
 
 def is_schedulefree_optimizer(optimizer: Optimizer, args: argparse.Namespace) -> bool:
+    if is_prodigy_plus_schedulefree_type(args):
+        return is_prodigy_plus_schedulefree_enabled(args)
     return args.optimizer_type.lower().endswith("schedulefree".lower())

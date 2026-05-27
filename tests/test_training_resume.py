@@ -14,7 +14,11 @@ from aiohttp import web
 from PIL import Image
 from safetensors.torch import save_file
 
-from library.training.checkpoints import CheckpointSaver, save_checkpoint_state
+from library.training.checkpoints import (
+    CheckpointSaver,
+    plan_resume_start,
+    save_checkpoint_state,
+)
 from web.routes import training as training_routes
 from web.services import config_service, settings_service, training_service
 from web.services.training_service import TrainingService
@@ -1923,6 +1927,71 @@ def test_auto_resume_uses_compatible_network_state(tmp_path):
 
     assert args.resume == str(state_dir)
     assert args.skip_until_initial_step is True
+
+
+def test_plan_resume_start_uses_steps_from_state():
+    args = SimpleNamespace(
+        initial_epoch=None,
+        initial_step=None,
+        gradient_accumulation_steps=2,
+        max_train_steps=100,
+        skip_until_initial_step=True,
+        resume="state-dir",
+    )
+
+    plan = plan_resume_start(
+        args,
+        steps_from_state=8,
+        batches_per_epoch=10,
+        num_processes=1,
+    )
+
+    assert plan.initial_step == 16
+    assert plan.epoch_to_start == 3
+    assert plan.steps_from_state is None
+
+
+def test_plan_resume_start_initial_step_overrides_state():
+    args = SimpleNamespace(
+        initial_epoch=None,
+        initial_step=6,
+        gradient_accumulation_steps=2,
+        max_train_steps=100,
+        skip_until_initial_step=False,
+        resume="state-dir",
+    )
+
+    plan = plan_resume_start(
+        args,
+        steps_from_state=42,
+        batches_per_epoch=10,
+        num_processes=1,
+    )
+
+    assert plan.initial_step == 0
+    assert plan.epoch_to_start == 1
+    assert plan.steps_from_state == 42
+
+
+def test_plan_resume_start_skip_until_initial_step_scales_by_grad_accum():
+    args = SimpleNamespace(
+        initial_epoch=3,
+        initial_step=None,
+        gradient_accumulation_steps=3,
+        max_train_steps=100,
+        skip_until_initial_step=True,
+        resume=None,
+    )
+
+    plan = plan_resume_start(
+        args,
+        steps_from_state=None,
+        batches_per_epoch=12,
+        num_processes=2,
+    )
+
+    assert plan.initial_step == 12
+    assert plan.epoch_to_start == 3
 
 
 def test_config_group_timeline_merges_by_file_identity(tmp_path, monkeypatch):

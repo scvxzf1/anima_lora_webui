@@ -71,6 +71,13 @@ from library.training.contexts import (
     TrainCtx,
     ValCtx,
 )
+from library.training.bootstrap import (
+    AcceleratorPrepareResult,
+    DatasetBuildResult,
+    NetworkBuildResult,
+    OptimizerBuildResult,
+    TrainingBootstrap,
+)
 from library.training.loss_recorder import LossRecorder
 from library.training.checkpoints import (
     EPOCH_STATE_NAME,
@@ -84,6 +91,7 @@ from library.training.checkpoints import (
     STEP_FILE_NAME,
     STEP_DIFFUSERS_DIR_NAME,
     CheckpointSaver,
+    ResumeStartPlan,
     default_if_none,
     get_epoch_ckpt_name,
     get_step_ckpt_name,
@@ -97,6 +105,7 @@ from library.training.checkpoints import (
     save_sd_model_on_train_end_common,
     get_checkpoint_state_dir,
     get_checkpoint_ckpt_name,
+    plan_resume_start,
     save_checkpoint_state,
 )
 
@@ -105,6 +114,11 @@ __all__ = [
     "RuntimeState",
     "TrainCtx",
     "ValCtx",
+    "AcceleratorPrepareResult",
+    "DatasetBuildResult",
+    "NetworkBuildResult",
+    "OptimizerBuildResult",
+    "TrainingBootstrap",
     # samplers
     "SamplerContext",
     "SamplerOut",
@@ -176,6 +190,7 @@ __all__ = [
     "STEP_FILE_NAME",
     "STEP_DIFFUSERS_DIR_NAME",
     "CheckpointSaver",
+    "ResumeStartPlan",
     "default_if_none",
     "get_epoch_ckpt_name",
     "get_step_ckpt_name",
@@ -189,5 +204,6 @@ __all__ = [
     "save_sd_model_on_train_end_common",
     "get_checkpoint_state_dir",
     "get_checkpoint_ckpt_name",
+    "plan_resume_start",
     "save_checkpoint_state",
 ]
