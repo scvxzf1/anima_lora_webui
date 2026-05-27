@@ -206,7 +206,7 @@ def _parse_hydra(weights_sd: Dict[str, torch.Tensor]) -> Optional[dict]:
 def _extract_lora_sd(
     weights_sd: Dict[str, torch.Tensor],
 ) -> Optional[Dict[str, torch.Tensor]]:
-    """Pull standard LoRA keys (lora_down/lora_up/alpha/dora_scale).
+    """Pull standard LoRA keys (lora_down/lora_up/alpha).
     Returns None if no lora_up.weight keys are present.
 
     Hydra-prefix keys are excluded *entirely* — not just the per-expert
@@ -356,6 +356,13 @@ def load_adapter(file_path: str) -> dict:
         hydra["num_sigma_buckets"] = num_buckets
         hydra["sigma_bucket_boundaries"] = boundaries
 
+        # OrthoHydra centered-gate: distilled with (g_e - 1/E) combine. Stamped
+        # only when on; absent → standard softmax combine. Single-pool only —
+        # ignored for chimera dual-pool (handled by its own hook).
+        hydra["ortho_centered_gate"] = (
+            str(file_metadata.get("ss_ortho_centered_gate", "")).lower() == "true"
+        )
+
         # FeRA-style FEI router (content-aware routing). Trained when
         # `use_fei_router=true`; the router's input dim then has
         # `fei_feature_dim` columns past the σ-feature slice, fed per-step
@@ -379,16 +386,16 @@ def load_adapter(file_path: str) -> dict:
             fei_feature_dim = 0
         try:
             fei_sigma_low_div = (
-                float(file_metadata["ssfei_sigma_low_div"])
-                if fei_on and "ssfei_sigma_low_div" in file_metadata
-                else 8.0  # training-side default (configs/methods/fera.toml)
+                float(file_metadata["ss_fei_sigma_low_div"])
+                if fei_on and "ss_fei_sigma_low_div" in file_metadata
+                else 4.0  # training-side default (config.py / configs/methods/lora.toml)
             )
         except (TypeError, ValueError):
             logger.warning(
-                f"{file_path}: ssfei_sigma_low_div is malformed "
-                f"({file_metadata.get('ssfei_sigma_low_div')!r}) — using default 8.0."
+                f"{file_path}: ss_fei_sigma_low_div is malformed "
+                f"({file_metadata.get('ss_fei_sigma_low_div')!r}) — using default 4.0."
             )
-            fei_sigma_low_div = 8.0
+            fei_sigma_low_div = 4.0
         hydra["use_fei_router"] = fei_on and fei_feature_dim > 0
         hydra["fei_feature_dim"] = fei_feature_dim if hydra["use_fei_router"] else 0
         hydra["fei_sigma_low_div"] = fei_sigma_low_div
@@ -503,6 +510,11 @@ def _make_hydra_hook(params: dict, strength: float, sigma_state: dict):
         "num_sigma_buckets": int(params.get("num_sigma_buckets", 0)),
         "expert_band": params.get("expert_band"),  # (E,) long, or None
         "sigma_edges": params.get("sigma_edges"),  # (B-1,) fp32, or None
+        # OrthoHydra centered-gate parity: combine with (g_e - 1/E) instead of
+        # the raw softmax. λ is folded symmetrically into the saved ups, so
+        # this exactly reproduces the trained ``ortho_centered_gate`` forward.
+        "centered_gate": bool(params.get("ortho_centered_gate", False)),
+        "num_experts": int(params["lora_ups"].shape[0]),
         "device": None,
     }
 
@@ -590,6 +602,8 @@ def _make_hydra_hook(params: dict, strength: float, sigma_state: dict):
                 state["sigma_edges"],
             )
         gate = torch.softmax(logits, dim=-1)
+        if state["centered_gate"]:
+            gate = gate - (1.0 / state["num_experts"])
 
         # gate-weighted combined ups (B, out, rank)
         combined = torch.einsum("be,eor->bor", gate, state["lora_ups"])
@@ -865,6 +879,9 @@ def _apply_hydra_live_to_model(model, hydra_data: dict, strength: float) -> int:
                 "num_sigma_buckets": num_sigma_buckets,
                 "expert_band": expert_band,
                 "sigma_edges": sigma_edges,
+                "ortho_centered_gate": bool(
+                    hydra_data.get("ortho_centered_gate", False)
+                ),
             }
             hook = _make_hydra_hook(params, strength, sigma_state)
 
@@ -918,11 +935,41 @@ def _apply_hydra_live_to_model(model, hydra_data: dict, strength: float) -> int:
     return patched
 
 
+def _fold_inv_scale(lora_sd: Dict[str, torch.Tensor]) -> Dict[str, torch.Tensor]:
+    """Fold per_channel_scaling ``inv_scale`` into ``lora_down`` and drop it.
+
+    ``per_channel_scaling`` (SmoothQuant-style channel absorption) bakes
+    ``s_norm`` into the saved ``lora_down.weight`` (``W[:,c] *= s_norm[c]``)
+    and stores ``inv_scale = 1/s_norm`` separately; the trained forward is
+    ``F.linear(x * inv_scale, down)``. ComfyUI's LoRA patcher doesn't know the
+    ``.inv_scale`` suffix, so it would warn ``lora key not loaded`` and silently
+    drop it — applying a delta that's off by ``s_norm`` per input column.
+
+    Mirror ``LoRAModule.merge_to`` exactly: ``down *= inv_scale`` then strip the
+    key. Returns a new dict (the caller's dict is cached by path, so we must not
+    mutate it — repeated applies would double-fold).
+    """
+    inv_keys = [k for k in lora_sd if k.endswith(".inv_scale")]
+    if not inv_keys:
+        return lora_sd
+    out = dict(lora_sd)
+    for inv_key in inv_keys:
+        prefix = inv_key[: -len(".inv_scale")]
+        down_key = f"{prefix}.lora_down.weight"
+        inv_scale = out.pop(inv_key)
+        down = out.get(down_key)
+        if down is None or down.dim() != 2:
+            continue
+        out[down_key] = down.to(torch.float) * inv_scale.to(torch.float).unsqueeze(0)
+    return out
+
+
 def _apply_lora_sd_to_model(model, lora_sd: Dict[str, torch.Tensor], strength: float):
     """Apply a standard LoRA state_dict via ComfyUI's weight patching."""
     import comfy.lora
     import comfy.lora_convert
 
+    lora_sd = _fold_inv_scale(lora_sd)
     key_map = comfy.lora.model_lora_keys_unet(model.model, {})
     lora_sd = comfy.lora_convert.convert_lora(lora_sd)
     loaded = comfy.lora.load_lora(lora_sd, key_map)

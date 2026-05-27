@@ -22,7 +22,6 @@ from library.anima.text_strategies import (
 )
 from library.datasets.buckets import BucketBatchIndex, BucketManager
 from library.datasets.image_utils import (
-    resize_image,
     validate_interpolation_fn,
     IMAGE_TRANSFORMS,
     is_disk_cached_latents_is_expected,
@@ -71,15 +70,12 @@ def enable_high_vram():
 class BaseDataset(torch.utils.data.Dataset):
     def __init__(
         self,
-        resolution: Optional[Tuple[int, int]],
         network_multiplier: float,
         debug_dataset: bool,
         resize_interpolation: Optional[str] = None,
     ) -> None:
         super().__init__()
 
-        # width/height is used when enable_bucket==False
-        self.width, self.height = (None, None) if resolution is None else resolution
         self.network_multiplier = network_multiplier
         self.debug_dataset = debug_dataset
 
@@ -90,12 +86,7 @@ class BaseDataset(torch.utils.data.Dataset):
         self.XTI_layers = None
         self.token_strings = None
 
-        self.enable_bucket = False
         self.bucket_manager: BucketManager = None  # not initialized
-        self.min_bucket_reso = None
-        self.max_bucket_reso = None
-        self.bucket_reso_steps = None
-        self.bucket_no_upscale = None
         self.bucket_info = None  # for metadata
 
         self.current_epoch: int = 0
@@ -180,42 +171,6 @@ class BaseDataset(torch.utils.data.Dataset):
             TextEncoderOutputsCachingStrategy.get_strategy()
         )
         self.latents_caching_strategy = LatentsCachingStrategy.get_strategy()
-
-    def adjust_min_max_bucket_reso_by_steps(
-        self,
-        resolution: Tuple[int, int],
-        min_bucket_reso: int,
-        max_bucket_reso: int,
-        bucket_reso_steps: int,
-    ) -> Tuple[int, int]:
-        # make min/max bucket reso to be multiple of bucket_reso_steps
-        if min_bucket_reso % bucket_reso_steps != 0:
-            adjusted_min_bucket_reso = (
-                min_bucket_reso - min_bucket_reso % bucket_reso_steps
-            )
-            logger.warning(
-                "min_bucket_reso is adjusted to be multiple of bucket_reso_steps"
-            )
-            min_bucket_reso = adjusted_min_bucket_reso
-        if max_bucket_reso % bucket_reso_steps != 0:
-            adjusted_max_bucket_reso = (
-                max_bucket_reso
-                + bucket_reso_steps
-                - max_bucket_reso % bucket_reso_steps
-            )
-            logger.warning(
-                "max_bucket_reso is adjusted to be multiple of bucket_reso_steps"
-            )
-            max_bucket_reso = adjusted_max_bucket_reso
-
-        assert min(resolution) >= min_bucket_reso, (
-            "min_bucket_reso must be equal or less than resolution"
-        )
-        assert max(resolution) <= max_bucket_reso, (
-            "max_bucket_reso must be equal or greater than resolution"
-        )
-
-        return min_bucket_reso, max_bucket_reso
 
     def set_seed(self, seed):
         self.seed = seed
@@ -471,58 +426,35 @@ class BaseDataset(torch.utils.data.Dataset):
         self.image_to_subset[info.image_key] = subset
 
     def make_buckets(self, constant_token_buckets: bool = False):
-        """
-        bucketingbucket
-        min_size and max_size are ignored when enable_bucket is False
+        """Assign every image to its nearest bucket resolution.
+
+        With ``constant_token_buckets`` (the only training mode) buckets come
+        from the fixed ``CONSTANT_TOKEN_BUCKETS`` table — native shapes, no
+        padding.
         """
         logger.info("loading image sizes.")
         for info in tqdm(self.image_data.values()):
             if info.image_size is None:
                 info.image_size = self.get_image_size(info.absolute_path)
 
-        if self.enable_bucket:
-            logger.info("make buckets")
-        else:
-            logger.info("prepare dataset")
+        logger.info("make buckets")
 
-        if self.enable_bucket:
-            if self.bucket_manager is None:
-                self.bucket_manager = BucketManager(
-                    self.bucket_no_upscale,
-                    (self.width, self.height),
-                    self.min_bucket_reso,
-                    self.max_bucket_reso,
-                    self.bucket_reso_steps,
-                )
-                if not self.bucket_no_upscale:
-                    self.bucket_manager.make_buckets(
-                        constant_token_buckets=constant_token_buckets
-                    )
-                else:
-                    logger.warning(
-                        "min_bucket_reso and max_bucket_reso are ignored if bucket_no_upscale is set, because bucket reso is defined by image size automatically"
-                    )
-
-            img_ar_errors = []
-            for image_info in self.image_data.values():
-                image_width, image_height = image_info.image_size
-                image_info.bucket_reso, image_info.resized_size, ar_error = (
-                    self.bucket_manager.select_bucket(image_width, image_height)
-                )
-
-                img_ar_errors.append(abs(ar_error))
-
-            self.bucket_manager.sort()
-        else:
-            self.bucket_manager = BucketManager(
-                False, (self.width, self.height), None, None, None
+        if self.bucket_manager is None:
+            self.bucket_manager = BucketManager()
+            self.bucket_manager.make_buckets(
+                constant_token_buckets=constant_token_buckets
             )
-            self.bucket_manager.set_predefined_resos([(self.width, self.height)])
-            for image_info in self.image_data.values():
-                image_width, image_height = image_info.image_size
-                image_info.bucket_reso, image_info.resized_size, _ = (
-                    self.bucket_manager.select_bucket(image_width, image_height)
-                )
+
+        img_ar_errors = []
+        for image_info in self.image_data.values():
+            image_width, image_height = image_info.image_size
+            image_info.bucket_reso, image_info.resized_size, ar_error = (
+                self.bucket_manager.select_bucket(image_width, image_height)
+            )
+
+            img_ar_errors.append(abs(ar_error))
+
+        self.bucket_manager.sort()
 
         for image_info in self.image_data.values():
             for _ in range(image_info.num_repeats):
@@ -530,27 +462,26 @@ class BaseDataset(torch.utils.data.Dataset):
                     image_info.bucket_reso, image_info.image_key
                 )
 
-        if self.enable_bucket:
-            self.bucket_info = {"buckets": {}}
-            logger.info("number of images (including repeats)")
-            for i, (reso, bucket) in enumerate(
-                zip(self.bucket_manager.resos, self.bucket_manager.buckets)
-            ):
-                count = len(bucket)
-                if count > 0:
-                    self.bucket_info["buckets"][i] = {
-                        "resolution": reso,
-                        "count": len(bucket),
-                    }
-                    logger.info(f"bucket {i}: resolution {reso}, count: {len(bucket)}")
+        self.bucket_info = {"buckets": {}}
+        logger.info("number of images (including repeats)")
+        for i, (reso, bucket) in enumerate(
+            zip(self.bucket_manager.resos, self.bucket_manager.buckets)
+        ):
+            count = len(bucket)
+            if count > 0:
+                self.bucket_info["buckets"][i] = {
+                    "resolution": reso,
+                    "count": len(bucket),
+                }
+                logger.info(f"bucket {i}: resolution {reso}, count: {len(bucket)}")
 
-            if len(img_ar_errors) == 0:
-                mean_img_ar_error = 0  # avoid NaN
-            else:
-                img_ar_errors = np.array(img_ar_errors)
-                mean_img_ar_error = np.mean(np.abs(img_ar_errors))
-            self.bucket_info["mean_img_ar_error"] = mean_img_ar_error
-            logger.info(f"mean ar error (without repeats): {mean_img_ar_error}")
+        if len(img_ar_errors) == 0:
+            mean_img_ar_error = 0  # avoid NaN
+        else:
+            img_ar_errors = np.array(img_ar_errors)
+            mean_img_ar_error = np.mean(np.abs(img_ar_errors))
+        self.bucket_info["mean_img_ar_error"] = mean_img_ar_error
+        logger.info(f"mean ar error (without repeats): {mean_img_ar_error}")
 
         # Drop incomplete last batches to keep batch dim constant for torch.compile,
         # but only when no subset uses sample_ratio (where every image matters more).
@@ -642,14 +573,6 @@ class BaseDataset(torch.utils.data.Dataset):
                 if i:
                     self.buckets_indices.insert(0, self.buckets_indices.pop(i))
                 return
-
-    def verify_bucket_reso_steps(self, min_steps: int):
-        assert (
-            self.bucket_reso_steps is None or self.bucket_reso_steps % min_steps == 0
-        ), (
-            f"bucket_reso_steps is {self.bucket_reso_steps}. it must be divisible by {min_steps}.\n"
-            + f"bucket_reso_steps{self.bucket_reso_steps}{min_steps}"
-        )
 
     def is_latent_cacheable(self):
         return all(
@@ -1152,61 +1075,6 @@ class BaseDataset(torch.utils.data.Dataset):
 
         return img, face_cx, face_cy, face_w, face_h
 
-    def crop_target(self, subset: BaseSubset, image, face_cx, face_cy, face_w, face_h):
-        height, width = image.shape[0:2]
-        if height == self.height and width == self.width:
-            return image
-
-        face_size = max(face_w, face_h)
-        size = min(self.height, self.width)
-        min_scale = max(self.height / height, self.width / width)
-        min_scale = min(
-            1.0, max(min_scale, size / (face_size * subset.face_crop_aug_range[1]))
-        )
-        max_scale = min(
-            1.0, max(min_scale, size / (face_size * subset.face_crop_aug_range[0]))
-        )
-        if min_scale >= max_scale:
-            scale = min_scale
-        else:
-            scale = random.uniform(min_scale, max_scale)
-
-        nh = int(height * scale + 0.5)
-        nw = int(width * scale + 0.5)
-        assert nh >= self.height and nw >= self.width, (
-            f"internal error. small scale {scale}, {width}*{height}"
-        )
-        image = resize_image(image, width, height, nw, nh, subset.resize_interpolation)
-        face_cx = int(face_cx * scale + 0.5)
-        face_cy = int(face_cy * scale + 0.5)
-        height, width = nh, nw
-
-        for axis, (target_size, length, face_p) in enumerate(
-            zip((self.height, self.width), (height, width), (face_cy, face_cx))
-        ):
-            p1 = face_p - target_size // 2
-
-            if subset.random_crop:
-                range_ = max(length - face_p, face_p)
-                p1 = (
-                    p1
-                    + (random.randint(0, range_) + random.randint(0, range_))
-                    - range_
-                )
-            else:
-                if subset.face_crop_aug_range[0] != subset.face_crop_aug_range[1]:
-                    if face_size > size // 10 and face_size >= 40:
-                        p1 = p1 + random.randint(-face_size // 20, +face_size // 20)
-
-            p1 = max(0, min(p1, length - target_size))
-
-            if axis == 0:
-                image = image[p1 : p1 + target_size, :]
-            else:
-                image = image[:, p1 : p1 + target_size]
-
-        return image
-
     def __len__(self):
         return self._length
 
@@ -1355,17 +1223,21 @@ class BaseDataset(torch.utils.data.Dataset):
         the soft-tokens contrastive objective.
 
         ``mode`` (docs/proposal/soft_tokens_contrastive.md):
-          - ``shuffled`` — an unrelated image (no character/copyright overlap).
-          - ``jaccard``  — shuffled sourcing + a per-negative tag-overlap weight
-            (``neg_jaccard``) the loss uses to down-weight near-misses.
-          - ``hard``     — a same-artist / different-character sibling (falls
+          - ``shuffled``    — an unrelated image (no character/copyright overlap).
+          - ``jaccard``     — shuffled sourcing + a per-negative tag-overlap
+            weight (``neg_jaccard``) the loss uses to down-weight near-misses.
+          - ``hard``        — a same-artist / different-character sibling (falls
             back to shuffled for orphan artists).
+          - ``hard_backoff`` — tiered hard negative: same-artist/different-
+            character → same-copyright/different-character → shuffled. The
+            copyright tier rescues most of ``hard``'s ~71% orphan fallback.
 
         The candidate pool is restricted to this dataset's registered stems so
         negatives never leak in from another split."""
-        if mode not in ("shuffled", "jaccard", "hard"):
+        if mode not in ("shuffled", "jaccard", "hard", "hard_backoff"):
             raise ValueError(
-                f"contrastive_negative_mode must be shuffled/jaccard/hard, got {mode!r}"
+                "contrastive_negative_mode must be shuffled/jaccard/hard/"
+                f"hard_backoff, got {mode!r}"
             )
         from library.datasets.identity_pairs import IdentityPairSampler
 
@@ -1390,6 +1262,30 @@ class BaseDataset(torch.utils.data.Dataset):
                 f"are absent from {index_path} (will skip negatives for those). "
                 f"Re-run `make caption-index` if the dataset changed."
             )
+
+        # One-shot hardness diagnostic: tally the negative *level* each registered
+        # stem would draw under this mode (one deterministic draw per stem). Lets
+        # you read the strict-vs-shuffled mix before committing to a run — e.g.
+        # how much of `hard`'s shuffled fallback the `hard_backoff` copyright tier
+        # actually rescues. Skipped for shuffled/jaccard (every draw is shuffled).
+        if mode in ("hard", "hard_backoff"):
+            from collections import Counter
+
+            diag_rng = random.Random(0)
+            hist: Counter[str] = Counter()
+            for s in sorted(registered):
+                if self.contrastive_neg_sampler.has(s):
+                    _, lvl = self.contrastive_neg_sampler.draw(s, mode, diag_rng)
+                    hist[lvl] += 1
+            total = sum(hist.values())
+            if total:
+                breakdown = ", ".join(
+                    f"{lvl}={n} ({100 * n / total:.0f}%)"
+                    for lvl, n in sorted(hist.items(), key=lambda kv: -kv[1])
+                )
+                logger.info(
+                    f"[contrastive] negative-level mix ({mode}, n={total}): {breakdown}"
+                )
 
     def _load_te_for_stem(
         self, stem: str, subset, rel_dir: str
@@ -1480,14 +1376,13 @@ class BaseDataset(torch.utils.data.Dataset):
         img, _, _, _, _ = self.load_image_with_face_info(
             subset, image_info.absolute_path, subset.alpha_mask
         )
-        if self.enable_bucket:
-            img, _, _ = trim_and_resize_if_required(
-                False,  # force deterministic crop — must match the cached latent
-                img,
-                image_info.bucket_reso,
-                image_info.resized_size,
-                resize_interpolation=image_info.resize_interpolation,
-            )
+        img, _, _ = trim_and_resize_if_required(
+            False,  # force deterministic crop — must match the cached latent
+            img,
+            image_info.bucket_reso,
+            image_info.resized_size,
+            resize_interpolation=image_info.resize_interpolation,
+        )
         if flipped:
             img = img[:, ::-1, :].copy()
         img = img[:, :, :3]
@@ -1573,42 +1468,17 @@ class BaseDataset(torch.utils.data.Dataset):
                 else:
                     image = None
             else:
-                img, face_cx, face_cy, face_w, face_h = self.load_image_with_face_info(
+                img, _, _, _, _ = self.load_image_with_face_info(
                     subset, image_info.absolute_path, subset.alpha_mask
                 )
-                im_h, im_w = img.shape[0:2]
 
-                if self.enable_bucket:
-                    img, original_size, crop_ltrb = trim_and_resize_if_required(
-                        subset.random_crop,
-                        img,
-                        image_info.bucket_reso,
-                        image_info.resized_size,
-                        resize_interpolation=image_info.resize_interpolation,
-                    )
-                else:
-                    if face_cx > 0:
-                        img = self.crop_target(
-                            subset, img, face_cx, face_cy, face_w, face_h
-                        )
-                    elif im_h > self.height or im_w > self.width:
-                        assert subset.random_crop, (
-                            "image too large, but cropping and bucketing are disabled"
-                        )
-                        if im_h > self.height:
-                            p = random.randint(0, im_h - self.height)
-                            img = img[p : p + self.height]
-                        if im_w > self.width:
-                            p = random.randint(0, im_w - self.width)
-                            img = img[:, p : p + self.width]
-
-                    im_h, im_w = img.shape[0:2]
-                    assert im_h == self.height and im_w == self.width, (
-                        "image size is small"
-                    )
-
-                    original_size = [im_w, im_h]
-                    crop_ltrb = (0, 0, 0, 0)
+                img, original_size, crop_ltrb = trim_and_resize_if_required(
+                    subset.random_crop,
+                    img,
+                    image_info.bucket_reso,
+                    image_info.resized_size,
+                    resize_interpolation=image_info.resize_interpolation,
+                )
 
                 aug = self.aug_helper.get_augmentor(subset.color_aug)
                 if aug is not None:
@@ -1814,10 +1684,7 @@ class BaseDataset(torch.utils.data.Dataset):
                 neg_feats: List[torch.Tensor] = []
                 neg_jacc: List[float] = []
                 for _ in range(k):
-                    if mode == "hard":
-                        neg_stem, _lvl = neg_sampler.hard_negative(target_stem, nrng)
-                    else:  # shuffled / jaccard both source shuffled negatives
-                        neg_stem, _lvl = neg_sampler.shuffled(target_stem, nrng)
+                    neg_stem, _lvl = neg_sampler.draw(target_stem, mode, nrng)
                     if neg_stem == target_stem:
                         continue  # no distinct negative reachable
                     feat = self._load_te_for_stem(

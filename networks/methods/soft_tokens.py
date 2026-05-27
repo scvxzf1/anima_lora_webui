@@ -42,8 +42,9 @@ DEFAULT_EMBED_DIM = 1024
 # Contrastive negative-sourcing modes (docs/proposal/soft_tokens_contrastive.md):
 # ``shuffled`` = unrelated cached-TE negative; ``jaccard`` = shuffled but logit
 # down-weighted by caption tag-overlap; ``hard`` = same-artist/different-character
-# sibling (falls back to shuffled for orphan artists).
-CONTRASTIVE_MODES = ("shuffled", "jaccard", "hard")
+# sibling (falls back to shuffled for orphan artists); ``hard_backoff`` = tiered
+# same-artist → same-copyright → shuffled (copyright tier rescues hard's fallback).
+CONTRASTIVE_MODES = ("shuffled", "jaccard", "hard", "hard_backoff")
 
 # Contrastive objective, sharing the extra-forward plumbing:
 #   ``infonce`` — SoftREPA InfoNCE over cached-TE negatives (default).
@@ -832,6 +833,13 @@ class SoftTokensMethodAdapter(MethodAdapter):
             return None
         net = ctx.accelerator.unwrap_model(ctx.network)
         if float(getattr(net, "_contrastive_target_weight", 0.0) or 0.0) <= 0.0:
+            return None
+        # Warmup gate: while ``_contrastive_weight`` is held at 0 (first
+        # ``_contrastive_warmup_ratio`` of training) the loss is multiplied by 0
+        # downstream and ``after_backward`` is already skipped — so the k negative
+        # DiT value forwards below would be pure waste. Skip the whole block.
+        if float(getattr(net, "_contrastive_weight", 0.0) or 0.0) <= 0.0:
+            self._pending_gradcache = None
             return None
         # Cadence gate: skip the whole contrastive block (no_grad value pass +
         # after_backward replay) on non-firing steps. The flag is set per step

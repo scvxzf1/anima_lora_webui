@@ -67,7 +67,9 @@ def _parse_chimera_content_router(
     ``ContentRouter`` in ``networks/lora_anima/network.py``.
     """
     source = str(file_metadata.get("ss_chimera_content_router_source", "input")).strip().lower()
-    if source != "crossattn":
+    # ``"crossattn"`` is the pre-rename spelling; accept it alongside the
+    # current ``"crossattn_emb"`` so older chimera checkpoints still load.
+    if source not in ("crossattn", "crossattn_emb"):
         return None
     try:
         cr_w0 = weights_sd["content_router.net.0.weight"]
@@ -76,7 +78,7 @@ def _parse_chimera_content_router(
         cr_b2 = weights_sd["content_router.net.2.bias"]
     except KeyError as exc:
         raise ValueError(
-            f"{file_path}: ss_chimera_content_router_source='crossattn' but "
+            f"{file_path}: ss_chimera_content_router_source={source!r} but "
             f"checkpoint is missing ContentRouter weight key {exc} "
             "(expected content_router.net.{0,2}.weight/bias)."
         ) from exc
@@ -220,7 +222,7 @@ def _attach_single_a_chimera_metadata(
             file_metadata.get("ss_chimera_sigma_feature_dim", 0)
         )
         chimera_sigma_low_div = float(
-            file_metadata.get("ss_chimerafei_sigma_low_div", 4.0)
+            file_metadata.get("ss_chimera_fei_sigma_low_div", 4.0)
         )
     except (TypeError, ValueError) as exc:
         raise ValueError(
@@ -342,15 +344,9 @@ def _finalize_dual_a_chimera(
         chimera_sigma_dim = int(
             file_metadata.get("ss_chimera_sigma_feature_dim", 0)
         )
-        # New stamp name (post-c4851b6): ``ss_chimera_fei_sigma_low_div``
-        # with an underscore. Fall back to the legacy single-A stamp
-        # ``ss_chimerafei_sigma_low_div`` (no underscore) for forward-
-        # compat with files saved on the legacy code path.
+        # Stamp name (network.py:3065): ``ss_chimera_fei_sigma_low_div``.
         chimera_sigma_low_div = float(
-            file_metadata.get(
-                "ss_chimera_fei_sigma_low_div",
-                file_metadata.get("ss_chimerafei_sigma_low_div", 4.0),
-            )
+            file_metadata.get("ss_chimera_fei_sigma_low_div", 4.0)
         )
     except (TypeError, ValueError) as exc:
         raise ValueError(
@@ -402,6 +398,13 @@ def _finalize_dual_a_chimera(
     )
     chimera_dual["content_router_source"] = (
         "crossattn" if chimera_dual["content_router"] is not None else "input"
+    )
+    # Centered-gate: both pools' combine subtracts 1/K (λ is baked into the
+    # saved ups, so this alone reproduces the trained forward). Matches
+    # ChimeraHydraInferenceModule with ``centered_gate=True``.
+    chimera_dual["centered_gate"] = (
+        str(file_metadata.get("ss_chimera_centered_gate", "")).strip().lower()
+        == "true"
     )
 
 
@@ -765,6 +768,9 @@ def _make_chimera_dual_a_hook(params: dict, strength: float, router_state: dict)
         # and the per-Linear pooled-lx_c softmax is skipped. Matches
         # ChimeraHydraInferenceModule with ``use_global_content_router=True``.
         "global_content_router": bool(params.get("global_content_router", False)),
+        # Centered-gate: subtract 1/K per pool before each combine (parity with
+        # ChimeraHydraInferenceModule.forward — λ is baked into the saved ups).
+        "centered_gate": bool(params.get("centered_gate", False)),
         "device": None,
     }
 
@@ -851,6 +857,12 @@ def _make_chimera_dual_a_hook(params: dict, strength: float, router_state: dict)
                 pi_f = pi_f.unsqueeze(0)
             if pi_f.shape[0] == 1 and B != 1:
                 pi_f = pi_f.expand(B, -1)
+
+        # Centered-gate parity: subtract per-pool 1/K so a uniform gate
+        # contributes 0 (mirrors training's recentered combine).
+        if state["centered_gate"]:
+            pi_c = pi_c - (1.0 / max(state["K_c"], 1))
+            pi_f = pi_f - (1.0 / max(state["K_f"], 1))
 
         # Gate-weighted per-pool combined ups (B, out, rank). Two einsums
         # because the two pools have different K — keeps the math 1:1
@@ -1033,6 +1045,7 @@ def _apply_chimera_dual_a_to_model(
             "num_experts_content": K_c,
             "num_experts_freq": K_f,
             "global_content_router": global_cr_on,
+            "centered_gate": bool(chimera_data.get("centered_gate", False)),
         }
         hook = _make_chimera_dual_a_hook(params, strength, sigma_state)
 

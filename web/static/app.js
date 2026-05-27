@@ -126,10 +126,14 @@
     let trainingQueueState = {
         loading: false,
         paused: false,
+        failurePolicy: 'pause',
         items: [],
         error: '',
         currentItemId: '',
+        summary: {},
     };
+    let trainingQueueFilter = 'all';
+    let trainingViewMode = 'live';
     let historyTasks = [];
     let showArchivedHistory = false;
     const THEME_STORAGE_KEY = 'anima_lora_theme';
@@ -460,10 +464,8 @@
             description: '控制 latent、文本编码器和方法特征缓存；换图片、caption、分桶参数后通常需要重建。',
             open: false,
             keys: [
-                'cache_latents',
-                'cache_latents_to_disk',
-                'cache_text_encoder_outputs',
-                'cache_text_encoder_outputs_to_disk',
+                'use_vae_cache',
+                'use_text_cache',
                 'cache_llm_adapter_outputs',
                 'skip_cache_check',
                 'ip_features_cache_to_disk',
@@ -1152,11 +1154,9 @@
         balance_w_freq: '频率池均衡权重',
         b_cond_init: '条件注意力初始门控',
         blocks_to_swap: 'CPU/GPU 交换块数',
-        cache_latents: '缓存潜变量',
-        cache_latents_to_disk: '潜变量写入磁盘',
+        use_vae_cache: '使用 VAE 缓存',
         cache_llm_adapter_outputs: '缓存 LLM 适配器输出',
-        cache_text_encoder_outputs: '缓存文本编码器输出',
-        cache_text_encoder_outputs_to_disk: '文本编码器缓存写入磁盘',
+        use_text_cache: '使用文本缓存',
         batch_size: '数据集批大小',
         bucket_no_upscale: '禁止放大图片',
         bucket_reso_steps: '桶尺寸步长',
@@ -2273,36 +2273,20 @@
             ["关闭后预处理/采样阶段可能占更多显存。"],
             "推荐 true。"
         ),
-        cache_latents: help(
-            "缓存 VAE 编码后的 latent。",
-            "训练前预处理/缓存流程中保持开启。",
+        use_vae_cache: help(
+            "使用 VAE latent 缓存。",
+            "开启后训练读取预处理生成的 latent 缓存。",
             ["避免每轮重复编码图像。"],
-            ["需要内存或磁盘保存缓存。"],
+            ["需要磁盘保存缓存。"],
             ["图像或预处理参数变化后必须重建缓存。"],
             "推荐 true。"
         ),
-        cache_latents_to_disk: help(
-            "把 latent 缓存写到磁盘。",
-            "数据集较大时开启。",
-            ["降低 RAM 占用，训练可复用缓存。"],
-            ["占磁盘，读取依赖 I/O。"],
-            ["旧缓存不更新会训练到过期数据。"],
-            "推荐 true。"
-        ),
-        cache_text_encoder_outputs: help(
-            "缓存文本编码器输出。",
-            "本项目延迟加载流程需要开启。",
+        use_text_cache: help(
+            "使用文本编码器输出缓存。",
+            "开启后训练读取预处理生成的文本缓存。",
             ["编码后可释放文本编码器，给 DiT 腾显存。"],
             ["caption 改动后需要重新缓存。"],
             ["缓存和 caption 不一致会导致训练内容不对。"],
-            "推荐 true。"
-        ),
-        cache_text_encoder_outputs_to_disk: help(
-            "把文本编码器输出写到磁盘。",
-            "保持开启，配合释放文本编码器显存。",
-            ["支持大数据集和低显存训练。"],
-            ["占磁盘，首次预处理更久。"],
-            ["tokenizer/padding 改动后旧缓存必须重建。"],
             "推荐 true。"
         ),
         skip_cache_check: help(
@@ -9284,6 +9268,7 @@
             if (dialog?.open) dialog.close('queued');
             updateTrainingQueueFromPayload(res);
             document.querySelector('[data-tab="training"]')?.click();
+            showTrainingView('queue');
             appendLog(`[状态] ${res.message || '已加入训练队列'}`);
         } catch (e) {
             showPreflightRequestError('加入队列失败: ' + e.message);
@@ -10924,56 +10909,84 @@
         trainingQueueState = {
             loading: false,
             paused: Boolean(payload.paused),
+            failurePolicy: payload.failure_policy || trainingQueueState.failurePolicy || 'pause',
             items: Array.isArray(payload.items) ? payload.items : [],
             error: payload.ok === false ? (payload.error || '队列状态异常') : '',
             currentItemId: String(payload.current_item_id || ''),
+            summary: payload.summary || {},
         };
         renderTrainingQueue();
     }
 
     function renderTrainingQueue() {
+        renderTrainingQueueSummary();
+        renderTrainingQueueManager();
+        renderTrainingViewMode();
+    }
+
+    function queueSummaryCounts() {
+        const base = { total: 0, queued: 0, running: 0, done: 0, error: 0, canceled: 0 };
+        const source = trainingQueueState.summary || {};
+        for (const key of Object.keys(base)) {
+            base[key] = Number(source[key] || 0);
+        }
+        if (!source.total && trainingQueueState.items.length) {
+            for (const item of trainingQueueState.items) {
+                base.total += 1;
+                const state = String(item.state || '');
+                if (Object.prototype.hasOwnProperty.call(base, state)) base[state] += 1;
+            }
+        }
+        return base;
+    }
+
+    function renderTrainingQueueSummary() {
         const list = document.getElementById('training-queue-list');
         const summary = document.getElementById('training-queue-summary');
         const pauseBtn = document.getElementById('btn-toggle-queue-pause');
+        const managerPauseBtn = document.getElementById('btn-manager-toggle-queue-pause');
+        const badge = document.getElementById('training-queue-tab-badge');
         if (!list || !summary) return;
         list.innerHTML = '';
-        const activeItems = trainingQueueState.items.filter((item) =>
-            ['queued', 'running'].includes(String(item.state || ''))
-        );
-        const queuedCount = activeItems.filter((item) => item.state === 'queued').length;
-        const running = activeItems.find((item) => item.state === 'running');
+        const counts = queueSummaryCounts();
+        const running = trainingQueueState.items.find((item) => item.state === 'running');
+        const nextQueued = trainingQueueState.items.find((item) => item.state === 'queued');
         summary.className = [
             'training-queue-summary',
             trainingQueueState.paused ? 'paused' : '',
             running ? 'running' : '',
+            counts.error ? 'error' : '',
         ].filter(Boolean).join(' ');
         if (trainingQueueState.loading) {
             summary.textContent = '正在读取队列...';
         } else if (trainingQueueState.error) {
             summary.textContent = trainingQueueState.error;
         } else if (running) {
-            summary.textContent = `正在运行：${queueItemTitle(running)} · 等待 ${queuedCount} 个`;
-        } else if (queuedCount) {
+            summary.textContent = `正在运行：${queueItemTitle(running)} · 等待 ${counts.queued} 个`;
+        } else if (counts.queued) {
             summary.textContent = trainingQueueState.paused
-                ? `队列已暂停 · 等待 ${queuedCount} 个任务`
-                : `空闲时会自动启动 · 等待 ${queuedCount} 个任务`;
+                ? `队列已暂停 · 等待 ${counts.queued} 个任务`
+                : `空闲时会自动启动 · 等待 ${counts.queued} 个任务`;
+        } else if (counts.error) {
+            summary.textContent = `有 ${counts.error} 个异常任务，队列${trainingQueueState.paused ? '已暂停' : '可继续'}。`;
         } else {
             summary.textContent = trainingQueueState.paused ? '队列已暂停，暂无等待任务。' : '暂无等待任务。';
         }
-        if (pauseBtn) {
-            pauseBtn.textContent = trainingQueueState.paused ? '继续' : '暂停';
-            pauseBtn.disabled = trainingQueueState.loading;
+        for (const btn of [pauseBtn, managerPauseBtn]) {
+            if (!btn) continue;
+            btn.textContent = trainingQueueState.paused ? '继续' : '暂停';
+            btn.disabled = trainingQueueState.loading;
         }
-        const visible = activeItems.length
-            ? activeItems
-            : trainingQueueState.items
-                .filter((item) => ['done', 'error', 'canceled'].includes(String(item.state || '')))
-                .slice(-3)
-                .reverse();
+        if (badge) {
+            const active = counts.queued + counts.running;
+            badge.hidden = active <= 0;
+            badge.textContent = String(active);
+        }
+        const visible = [running, nextQueued].filter(Boolean);
         if (!visible.length) {
             const empty = document.createElement('div');
             empty.className = 'task-history-empty';
-            empty.textContent = '从配置页开始训练时，可以选择加入队列。';
+            empty.textContent = counts.total ? '没有正在运行或等待的任务。' : '从配置页开始训练时，可以选择加入队列。';
             list.appendChild(empty);
             return;
         }
@@ -10982,44 +10995,167 @@
         }
     }
 
+    function renderTrainingQueueManager() {
+        const status = document.getElementById('training-queue-manager-status');
+        const stats = document.getElementById('training-queue-stats');
+        const list = document.getElementById('training-queue-manager-list');
+        const policy = document.getElementById('training-queue-failure-policy');
+        if (!status || !stats || !list) return;
+        const counts = queueSummaryCounts();
+        status.textContent = trainingQueueState.loading
+            ? '正在读取队列...'
+            : trainingQueueState.error
+                ? trainingQueueState.error
+                : queueManagerStatusText(counts);
+        if (policy && policy.value !== trainingQueueState.failurePolicy) {
+            policy.value = trainingQueueState.failurePolicy || 'pause';
+        }
+        stats.innerHTML = '';
+        [
+            ['运行中', counts.running, 'running'],
+            ['等待中', counts.queued, 'queued'],
+            ['异常', counts.error, 'error'],
+            ['完成', counts.done, 'done'],
+            ['已取消', counts.canceled, 'canceled'],
+            ['总计', counts.total, 'total'],
+        ].forEach(([label, value, state]) => {
+            const item = document.createElement('div');
+            item.className = ['training-queue-stat', state].join(' ');
+            const valueEl = document.createElement('strong');
+            valueEl.textContent = String(value);
+            const labelEl = document.createElement('span');
+            labelEl.textContent = label;
+            item.append(valueEl, labelEl);
+            stats.appendChild(item);
+        });
+        document.querySelectorAll('.training-queue-filter').forEach((btn) => {
+            btn.classList.toggle('active', btn.dataset.queueFilter === trainingQueueFilter);
+        });
+        list.innerHTML = '';
+        const visible = queueFilteredItems();
+        if (!visible.length) {
+            const empty = document.createElement('div');
+            empty.className = 'training-queue-manager-empty';
+            empty.textContent = trainingQueueFilter === 'all' ? '队列为空。' : '当前筛选下没有任务。';
+            list.appendChild(empty);
+            return;
+        }
+        for (const item of visible) {
+            list.appendChild(createTrainingQueueManagerItem(item));
+        }
+    }
+
+    function queueManagerStatusText(counts) {
+        if (trainingQueueState.paused) return `队列已暂停 · 等待 ${counts.queued} 个 · 异常 ${counts.error} 个`;
+        if (counts.running) return `队列运行中 · 等待 ${counts.queued} 个`;
+        if (counts.queued) return `空闲时会自动启动 · 等待 ${counts.queued} 个`;
+        return counts.total ? '没有等待任务。' : '队列为空。';
+    }
+
+    function queueFilteredItems() {
+        if (trainingQueueFilter === 'all') return trainingQueueState.items;
+        return trainingQueueState.items.filter((item) => item.state === trainingQueueFilter);
+    }
+
     function createTrainingQueueItem(item) {
         const card = document.createElement('article');
         card.className = ['training-queue-item', item.state || 'queued'].join(' ');
         const state = document.createElement('span');
         state.className = 'training-queue-state';
         state.textContent = queueStateLabel(item.state);
-
         const main = document.createElement('div');
         main.className = 'training-queue-main';
         const title = document.createElement('strong');
         title.textContent = queueItemTitle(item);
         const meta = document.createElement('span');
         meta.textContent = [
-            item.requires_preprocess ? '预处理后训练' : (item.kind === 'resume' ? '续训' : '训练'),
+            queueKindLabel(item),
             `${item.methods_subdir || '-'} / ${item.variant || '-'}`,
             `GPU: ${queueGpuLabel(item.gpu_whitelist)}`,
         ].filter(Boolean).join(' · ');
-        const path = document.createElement('em');
-        path.textContent = item.runtime_config_file || item.source_config_file || '';
         const message = document.createElement('em');
         message.textContent = [
             item.message || '',
             item.created_at_text ? `入队: ${item.created_at_text}` : '',
         ].filter(Boolean).join(' · ');
-        main.append(title, meta, path, message);
+        main.append(title, meta, message);
+        card.append(state, main);
+        return card;
+    }
+
+    function createTrainingQueueManagerItem(item) {
+        const card = document.createElement('article');
+        card.className = ['training-queue-manager-item', item.state || 'queued'].join(' ');
+        const head = document.createElement('div');
+        head.className = 'training-queue-manager-item-head';
+        const state = document.createElement('span');
+        state.className = 'training-queue-state';
+        state.textContent = queueStateLabel(item.state);
+        const titleWrap = document.createElement('div');
+        titleWrap.className = 'training-queue-manager-title';
+        const title = document.createElement('strong');
+        title.textContent = queueItemTitle(item);
+        const meta = document.createElement('span');
+        meta.textContent = [
+            queueKindLabel(item),
+            `${item.methods_subdir || '-'} / ${item.variant || '-'}`,
+            item.preset ? `预设: ${item.preset}` : '',
+            `GPU: ${queueGpuLabel(item.gpu_whitelist)}`,
+            queueAttemptLabel(item),
+        ].filter(Boolean).join(' · ');
+        titleWrap.append(title, meta);
+        head.append(state, titleWrap);
 
         const actions = document.createElement('div');
-        actions.className = 'training-queue-item-actions';
+        actions.className = 'training-queue-manager-item-actions';
         if (item.state === 'queued') {
             actions.append(
+                createQueueActionButton('置顶', () => moveQueueItem(item.id, 'top')),
                 createQueueActionButton('上移', () => moveQueueItem(item.id, 'up')),
                 createQueueActionButton('下移', () => moveQueueItem(item.id, 'down')),
+                createQueueActionButton('置底', () => moveQueueItem(item.id, 'bottom')),
                 createQueueActionButton('取消', () => cancelQueueItem(item.id), 'danger'),
             );
+        } else if (item.state === 'running') {
+            actions.append(createQueueActionButton('停止', () => cancelQueueItem(item.id), 'danger'));
+        } else {
+            actions.append(createQueueActionButton('重新入队', () => retryQueueItem(item.id)));
         }
-        card.append(state, main);
-        if (actions.childNodes.length) card.appendChild(actions);
+        head.appendChild(actions);
+
+        const details = document.createElement('details');
+        details.className = 'training-queue-details';
+        const summary = document.createElement('summary');
+        summary.textContent = item.message || '查看任务详情';
+        details.appendChild(summary);
+        const grid = document.createElement('div');
+        grid.className = 'training-queue-detail-grid';
+        [
+            ['任务 ID', item.id],
+            ['运行配置', item.runtime_config_file],
+            ['源配置', item.source_config_file],
+            ['创建时间', item.created_at_text],
+            ['开始时间', item.started_at_text],
+            ['结束时间', item.finished_at_text],
+            ['关联历史', queueHistoryLabel(item)],
+            ['重试来源', item.retry_of || ''],
+        ].forEach(([label, value]) => {
+            if (!value) return;
+            grid.appendChild(queueDetailRow(label, value));
+        });
+        details.appendChild(grid);
+        card.append(head, details);
         return card;
+    }
+
+    function queueDetailRow(label, value) {
+        const row = document.createElement('div');
+        const key = document.createElement('span');
+        key.textContent = label;
+        const valEl = document.createElement('code');
+        valEl.textContent = String(value || '-');
+        row.append(key, valEl);
+        return row;
     }
 
     function createQueueActionButton(label, handler, tone = '') {
@@ -11036,6 +11172,22 @@
         const source = item?.source_config_file || item?.runtime_config_file || '';
         const fallback = runLabelFromPath(source) || `${item?.variant || '训练'} / ${item?.preset || 'default'}`;
         return item?.kind === 'resume' && resumeName ? `续训 · ${resumeName}` : fallback;
+    }
+
+    function queueKindLabel(item) {
+        if (item?.requires_preprocess) return '预处理后训练';
+        if (item?.kind === 'resume') return '续训';
+        return '训练';
+    }
+
+    function queueAttemptLabel(item) {
+        const attempt = Number(item?.attempt || 1);
+        return attempt > 1 ? `第 ${attempt} 次尝试` : '';
+    }
+
+    function queueHistoryLabel(item) {
+        const list = Array.isArray(item?.history_task_ids) ? item.history_task_ids : [];
+        return list.join(', ');
     }
 
     function queueGpuLabel(value) {
@@ -11067,11 +11219,15 @@
     }
 
     async function cancelQueueItem(itemId) {
+        const item = trainingQueueState.items.find((entry) => entry.id === itemId);
+        const running = item?.state === 'running';
         const ok = await showAppConfirmDialog({
-            title: '取消队列任务',
-            description: '等待中的任务会从自动调度中移除',
-            message: '确定要取消这个队列任务吗？已创建的运行目录会保留，方便排查。',
-            confirmText: '取消任务',
+            title: running ? '停止队列任务' : '取消队列任务',
+            description: queueItemTitle(item || {}),
+            message: running
+                ? '会停止当前正在运行的进程，并自动暂停队列，避免立刻启动下一项。'
+                : '等待中的任务会从自动调度中移除；已创建的运行目录会保留。',
+            confirmText: running ? '停止任务' : '取消任务',
             danger: true,
         });
         if (!ok) return;
@@ -11084,16 +11240,95 @@
         }
     }
 
-    async function toggleTrainingQueuePause() {
+    async function retryQueueItem(itemId) {
+        const item = trainingQueueState.items.find((entry) => entry.id === itemId);
+        const ok = await showAppConfirmDialog({
+            title: '重新加入队列',
+            description: queueItemTitle(item || {}),
+            message: '会从该任务冻结的 runtime 配置克隆出新的运行目录，不会读取当前已修改的源 TOML。',
+            confirmText: '重新入队',
+        });
+        if (!ok) return;
         try {
-            const payload = await api('/api/training/queue/pause', {
+            const payload = await api(`/api/training/queue/${encodeURIComponent(itemId)}/retry`, { method: 'POST' });
+            updateTrainingQueueFromPayload(payload);
+            if (!payload.ok) appendLog(`[状态] ${payload.error || '重新入队失败'}`);
+        } catch (e) {
+            appendLog(`[状态] 重新入队失败: ${e.message}`);
+        }
+    }
+
+    async function cancelWaitingQueueItems() {
+        const count = queueSummaryCounts().queued;
+        if (!count) return;
+        const ok = await showAppConfirmDialog({
+            title: '取消全部等待任务',
+            description: `${count} 个等待任务`,
+            message: '只会取消尚未启动的队列项；运行中任务、历史记录和运行目录都会保留。',
+            confirmText: '取消全部等待',
+            danger: true,
+        });
+        if (!ok) return;
+        try {
+            updateTrainingQueueFromPayload(await api('/api/training/queue/cancel-waiting', { method: 'POST' }));
+        } catch (e) {
+            appendLog(`[状态] 批量取消队列失败: ${e.message}`);
+        }
+    }
+
+    async function clearFinishedQueueItems() {
+        const counts = queueSummaryCounts();
+        const count = counts.done + counts.error + counts.canceled;
+        if (!count) return;
+        const ok = await showAppConfirmDialog({
+            title: '清理已结束记录',
+            description: `${count} 条已结束记录`,
+            message: '只会清理队列文件里的终态记录，不删除训练历史、日志、样张、权重或运行目录。',
+            confirmText: '清理记录',
+        });
+        if (!ok) return;
+        try {
+            updateTrainingQueueFromPayload(await api('/api/training/queue/clear', { method: 'POST' }));
+        } catch (e) {
+            appendLog(`[状态] 清理队列记录失败: ${e.message}`);
+        }
+    }
+
+    async function updateTrainingQueueSettings(patch) {
+        try {
+            const payload = await api('/api/training/queue/settings', {
                 method: 'POST',
-                body: JSON.stringify({ paused: !trainingQueueState.paused }),
+                body: JSON.stringify(patch),
             });
             updateTrainingQueueFromPayload(payload);
         } catch (e) {
-            appendLog(`[状态] 切换队列暂停失败: ${e.message}`);
+            appendLog(`[状态] 更新队列设置失败: ${e.message}`);
+            loadTrainingQueue();
         }
+    }
+
+    async function toggleTrainingQueuePause() {
+        await updateTrainingQueueSettings({ paused: !trainingQueueState.paused });
+    }
+
+    function showTrainingView(mode) {
+        trainingViewMode = ['live', 'queue', 'history'].includes(mode) ? mode : 'live';
+        renderTrainingViewMode();
+    }
+
+    function renderTrainingViewMode() {
+        const queueView = document.getElementById('training-queue-manager');
+        const monitorView = document.getElementById('training-monitor-view');
+        const historyPlaceholder = document.getElementById('training-history-placeholder');
+        const isQueue = trainingViewMode === 'queue';
+        const isHistory = trainingViewMode === 'history';
+        const hasHistorySelection = isHistoryReviewMode();
+        if (queueView) queueView.hidden = !isQueue;
+        if (monitorView) monitorView.hidden = isQueue || (isHistory && !hasHistorySelection);
+        if (historyPlaceholder) historyPlaceholder.hidden = !isHistory || hasHistorySelection;
+        document.querySelectorAll('.training-view-tab').forEach((btn) => {
+            btn.classList.toggle('active', btn.dataset.trainingView === trainingViewMode);
+        });
     }
 
     // ── 状态轮询 ──
@@ -11606,6 +11841,7 @@
             }
             viewingHistoryTaskId = taskId;
             historyViewMode = 'single';
+            showTrainingView('history');
             currentHistoryConfigGroup = null;
             currentHistoryTimelineSelection = [];
             resumeOptionsState = {
@@ -11681,6 +11917,7 @@
             }
             historyViewMode = 'config_group';
             viewingHistoryTaskId = '';
+            showTrainingView('history');
             currentHistoryConfigGroup = payload.group || group;
             currentHistoryTimelineSelection = (payload.summary?.selected_task_ids || taskIds || []).filter(Boolean);
             currentHistoryTaskForResume = null;
@@ -12065,6 +12302,7 @@
 
     function returnToLiveTraining(options = {}) {
         const refresh = options.refresh !== false;
+        showTrainingView('live');
         viewingHistoryTaskId = '';
         historyViewMode = 'live';
         currentHistoryConfigGroup = null;
@@ -12336,6 +12574,7 @@
             updateTrainingQueueFromPayload(res);
             setResumeStatus(res.message || '续训任务已加入队列', 'ok');
             document.querySelector('[data-tab="training"]')?.click();
+            showTrainingView('queue');
         } catch (e) {
             setResumeStatus('续训加入队列失败: ' + e.message, 'error');
         }
@@ -12437,8 +12676,24 @@
         document.getElementById('btn-refresh-continue-lora-weights').addEventListener('click', loadContinueLoraWeights);
         document.getElementById('btn-open-tutorial').addEventListener('click', openTutorialDialog);
         document.getElementById('btn-stop-training').addEventListener('click', stopTraining);
+        document.getElementById('btn-open-queue-manager').addEventListener('click', () => showTrainingView('queue'));
+        document.getElementById('btn-training-queue-view').addEventListener('click', () => showTrainingView('queue'));
+        document.getElementById('btn-training-history-view').addEventListener('click', () => showTrainingView('history'));
         document.getElementById('btn-refresh-queue').addEventListener('click', loadTrainingQueue);
+        document.getElementById('btn-manager-refresh-queue').addEventListener('click', loadTrainingQueue);
         document.getElementById('btn-toggle-queue-pause').addEventListener('click', toggleTrainingQueuePause);
+        document.getElementById('btn-manager-toggle-queue-pause').addEventListener('click', toggleTrainingQueuePause);
+        document.getElementById('btn-cancel-waiting-queue').addEventListener('click', cancelWaitingQueueItems);
+        document.getElementById('btn-clear-finished-queue').addEventListener('click', clearFinishedQueueItems);
+        document.querySelectorAll('.training-queue-filter').forEach((btn) => {
+            btn.addEventListener('click', () => {
+                trainingQueueFilter = btn.dataset.queueFilter || 'all';
+                renderTrainingQueue();
+            });
+        });
+        document.getElementById('training-queue-failure-policy').addEventListener('change', (e) => {
+            updateTrainingQueueSettings({ failure_policy: e.target.value || 'pause' });
+        });
         document.getElementById('btn-apply-toml').addEventListener('click', applyTomlToConfig);
         document.getElementById('btn-move-toml-group').addEventListener('click', moveCurrentTomlToGroup);
         document.getElementById('btn-create-blank-preset').addEventListener('click', createBlankPresetFromLoraTemplate);
@@ -12540,8 +12795,16 @@
             'btn-refresh-continue-lora-weights': '重新扫描所选历史训练任务的 safetensors 权重。',
             'btn-open-tutorial': '打开基础教程，按顺序了解全局设置、数据集、配置保存、预处理和训练启动。',
             'btn-stop-training': '停止当前正在运行的训练或预处理任务；已经写出的日志、样张和权重文件会保留。',
+            'btn-open-queue-manager': '打开完整队列管理视图，可筛选、调序、重试、批量取消和清理记录。',
+            'btn-training-queue-view': '打开训练队列管理视图，查看等待、运行、异常、完成和已取消任务。',
+            'btn-training-history-view': '切换到历史任务回顾视图。从左侧历史列表选择任务后会显示日志、Loss 和配置快照。',
             'btn-refresh-queue': '重新读取训练队列状态，包括等待、运行、异常和已取消任务。',
+            'btn-manager-refresh-queue': '重新读取完整训练队列状态。',
             'btn-toggle-queue-pause': '暂停或继续队列自动启动。暂停不会停止当前正在运行的任务。',
+            'btn-manager-toggle-queue-pause': '暂停或继续队列自动启动。失败策略为暂停时，异常任务会自动触发暂停。',
+            'btn-cancel-waiting-queue': '取消所有等待中的队列任务，不影响运行中任务和历史记录。',
+            'btn-clear-finished-queue': '只清理队列里的完成、异常和已取消记录，不删除运行目录。',
+            'training-queue-failure-policy': '选择队列任务失败后的默认策略。建议暂停队列，确认后再继续。',
             'btn-refresh-resume-options': '重新扫描这个历史任务输出目录里的训练状态目录，例如 output_name-checkpoint-state。',
             'btn-resume-training': '从选中的训练状态目录恢复训练。它不是加载普通权重热启动，而是恢复 optimizer、scheduler、随机状态和步数。',
             'btn-queue-resume-training': '把选中的续训状态加入队列，等待当前任务结束后自动启动。',

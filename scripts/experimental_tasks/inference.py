@@ -69,7 +69,7 @@ def cmd_test_turbo(extra):
     base = list(INFERENCE_BASE)
     # Replace defaults so `--infer_steps`/`--guidance_scale` reflect the turbo
     # contract (4 steps, cfg=1.0). User extra args still win since they come last.
-    base = _override_arg(base, "--sampler", "lcm")
+    base = _override_arg(base, "--sampler", "euler")
     base = _override_arg(base, "--infer_steps", "4")
     base = _override_arg(base, "--guidance_scale", "1.0")
     run(

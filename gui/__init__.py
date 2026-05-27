@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 
 import toml
 from PySide6.QtCore import Qt
@@ -42,7 +43,6 @@ _METHOD_ORDER = (
     "reft",
     "fera",
     "chimera",
-    "soft_tokens",
     "ip_adapter",
     "easycontrol",
 )
@@ -60,6 +60,31 @@ _METHOD_ORDER = (
 # ``configs/gui-methods/custom/`` are intentionally permissive — they don't
 # need a ``[variant]`` block and are surfaced under every family the same way
 # they were before.
+
+
+class LazyTabMixin:
+    """Defer a tab's first expensive scan until the tab is actually opened.
+
+    Several tabs walk dataset/checkpoint directories (and the Merge tab reads
+    safetensors keys) during construction. Doing that for *every* tab up front
+    is what made the window slow to appear, even though only the first tab is
+    visible at launch. Mixing this in lets construction stay cheap: the heavy
+    work runs on the first ``showEvent`` — i.e. when the user selects the tab —
+    and exactly once thereafter. Subclasses override ``_lazy_init``.
+
+    Mix in BEFORE ``QWidget`` so ``super().showEvent`` resolves to Qt's.
+    """
+
+    _lazy_done = False
+
+    def showEvent(self, event):  # noqa: N802 — Qt event handler name
+        super().showEvent(event)
+        if not self._lazy_done:
+            self._lazy_done = True
+            self._lazy_init()
+
+    def _lazy_init(self) -> None:
+        """Run the tab's first directory scan / classification. Override."""
 
 
 def _read_variant_metadata(path: Path) -> dict:
@@ -139,7 +164,7 @@ def is_custom_variant(name: str) -> bool:
 
 def custom_variant_path(name: str) -> Path:
     """Resolve 'custom/<name>' (or bare '<name>') to the on-disk file path."""
-    stem = name[len("custom/"):] if name.startswith("custom/") else name
+    stem = name[len("custom/") :] if name.startswith("custom/") else name
     return CUSTOM_VARIANTS_DIR / f"{stem}.toml"
 
 
@@ -203,9 +228,6 @@ _GROUPS = {
         "specialize_experts_by_sigma_buckets",
         "sigma_bucket_boundaries",
         "network_train_unet_only",
-        "content_router_source",
-        "content_router_init_std",
-        "content_router_layer_norm",
     },
     "Training": {
         "learning_rate",
@@ -221,7 +243,6 @@ _GROUPS = {
         "discrete_flow_shift",
         "use_valid",
         "validation_split_num",
-        "validation_baselines",
     },
     "Performance": {
         "attn_mode",
@@ -229,20 +250,13 @@ _GROUPS = {
         "unsloth_offload_checkpointing",
         "blocks_to_swap",
         "torch_compile",
-        "compile_mode",
-        "trim_crossattn_kv",
         "cache_llm_adapter_outputs",
         "masked_loss",
         "mixed_precision",
-        "static_pad",
-        "static_token_count",
-        "max_data_loader_n_workers",
         "vae_chunk_size",
         "vae_disable_cache",
-        "cache_latents",
-        "cache_latents_to_disk",
-        "cache_text_encoder_outputs",
-        "cache_text_encoder_outputs_to_disk",
+        "use_vae_cache",
+        "use_text_cache",
         "skip_cache_check",
         "layer_start",
         "use_cmmd",
@@ -265,6 +279,13 @@ _GROUPS = {
 _K2G = {k: g for g, ks in _GROUPS.items() for k in ks}
 _SKIP = {"base_config", "dataset_config", "general", "datasets", "variant"}
 
+# Virtual keys appear in the form like normal fields but don't round-trip as
+# flat TOML keys — they're derived from / written into structured sections
+# (e.g. ``use_valid`` toggles a `[[datasets]]` validation_split_num override).
+# The save loop in ConfigTab skips these, and per-key apply helpers handle the
+# structured write.
+_VIRTUAL_KEYS = {"use_valid", "validation_split_num"}
+
 # Fields shown under the "Basic" section. Everything else falls under the
 # collapsible "Advanced" section. Picked to cover the knobs a first-time user
 # realistically wants to touch (rate/length/output, headline architecture
@@ -283,19 +304,20 @@ _BASIC = {
     "caption_dropout_rate",
     "gradient_checkpointing",
     "blocks_to_swap",
-    "mixed_precision",
     "source_image_dir",
-    "resized_image_dir",
+    "lora_cache_dir",
     "output_dir",
     "path_pattern",
     "drop_lowres_images",
     "min_pixels",
+    "use_valid",
     "validation_split_num",
 }
 
 
 def is_basic_field(key: str) -> bool:
     return key in _BASIC
+
 
 # flash4 is not supported yet (flash-attention-sm120 disabled)
 _ATTN_MODES = ["flex", "flash"]
@@ -331,9 +353,7 @@ def merged_method_preset(method: str, preset: str) -> tuple[dict, dict[str, str]
     return merged, origin
 
 
-def merged_gui_variant_preset(
-    variant: str, preset: str
-) -> tuple[dict, dict[str, str]]:
+def merged_gui_variant_preset(variant: str, preset: str) -> tuple[dict, dict[str, str]]:
     """Merge base + preset + gui-methods/<variant>.toml. The GUI uses this
     instead of `merged_method_preset` so edits/training target the clean
     per-variant file, not the toggle-block methods/ tree."""
@@ -351,7 +371,158 @@ def merged_gui_variant_preset(
     for k, v in meth.items():
         merged[k] = v
         origin[k] = "method"
+
+    # Inject the `use_valid` virtual key derived from the [[datasets]] block.
+    # The variant file may shallow-override base.toml's validation_split_num /
+    # validation_split via _apply_dataset_overrides in library/config/io.py; we
+    # surface that as a single checkbox the user can flip in the form.
+    variant_override = _variant_validation_override(meth)
+    if variant_override is not None:
+        merged["use_valid"] = variant_override
+        origin["use_valid"] = "method"
+    else:
+        merged["use_valid"] = _base_validation_enabled(base)
+        origin["use_valid"] = "base"
+
+    # Inject `validation_split_num` (integer) from the same [[datasets]] block.
+    # Shown as a basic field so users can resize the held-out slice directly
+    # without dropping to base.toml. When the variant doesn't override it, the
+    # value comes from base.toml.
+    variant_vsn = _variant_validation_split_num(meth)
+    if variant_vsn is not None:
+        merged["validation_split_num"] = variant_vsn
+        origin["validation_split_num"] = "method"
+    else:
+        merged["validation_split_num"] = _base_validation_split_num(base)
+        origin["validation_split_num"] = "base"
     return merged, origin
+
+
+def _validation_enabled_from_datasets(datasets: Any) -> Optional[bool]:
+    """Inspect a TOML ``[[datasets]]`` list and decide whether validation is
+    enabled. Returns ``True`` / ``False`` when either validation key is
+    explicitly set on the first dataset entry, or ``None`` when no override
+    is present (caller falls back to the parent layer in the merge chain)."""
+    if not isinstance(datasets, list) or not datasets:
+        return None
+    first = datasets[0]
+    if not isinstance(first, dict):
+        return None
+    vsn = first.get("validation_split_num")
+    vs = first.get("validation_split")
+    if vsn is None and vs is None:
+        return None
+    return (vsn or 0) > 0 or (vs or 0.0) > 0.0
+
+
+def _variant_validation_override(variant_data: dict) -> Optional[bool]:
+    """Return the variant TOML's explicit use_valid override, or None when
+    the variant doesn't touch validation_split[_num]."""
+    return _validation_enabled_from_datasets(variant_data.get("datasets"))
+
+
+def _base_validation_enabled(base_data: dict) -> bool:
+    """Default use_valid pulled from configs/base.toml's [[datasets]] block.
+    Falls back to False when the block is missing — matches the
+    `validation_split == 0 and validation_split_num <= 0` short-circuit in
+    library/config/loader.py:generate_dataset_group_by_blueprint."""
+    return bool(_validation_enabled_from_datasets(base_data.get("datasets")))
+
+
+def _validation_split_num_from_datasets(datasets: Any) -> Optional[int]:
+    """Pull ``validation_split_num`` off the first [[datasets]] entry as an
+    int. Returns None when the block is missing or the key isn't set."""
+    if not isinstance(datasets, list) or not datasets:
+        return None
+    first = datasets[0]
+    if not isinstance(first, dict):
+        return None
+    vsn = first.get("validation_split_num")
+    if vsn is None:
+        return None
+    try:
+        return int(vsn)
+    except (TypeError, ValueError):
+        return None
+
+
+def _variant_validation_split_num(variant_data: dict) -> Optional[int]:
+    """Return the variant TOML's explicit validation_split_num override, or
+    None when the variant doesn't touch it."""
+    return _validation_split_num_from_datasets(variant_data.get("datasets"))
+
+
+def _base_validation_split_num(base_data: dict) -> int:
+    """Default validation_split_num pulled from configs/base.toml. Falls back
+    to 0 when the block / key is missing."""
+    return _validation_split_num_from_datasets(base_data.get("datasets")) or 0
+
+
+def apply_validation_choice(
+    out: dict,
+    enabled: bool,
+    split_num: Optional[int] = None,
+    base_split_num: Optional[int] = None,
+) -> None:
+    """Encode the use_valid checkbox (+ optional validation_split_num int)
+    into the variant TOML dict ``out``.
+
+    Enabled  → if ``split_num`` is provided and differs from ``base_split_num``,
+               write {validation_split_num = split_num} on the first
+               [[datasets]] entry (strips any fractional validation_split).
+               Otherwise strip both keys so the base.toml value wins through
+               the merge chain.
+    Disabled → write {validation_split_num = 0, validation_split = 0.0} on the
+               first [[datasets]] entry, creating the block if absent. This is
+               applied by _apply_dataset_overrides in library/config/io.py and
+               causes generate_dataset_group_by_blueprint to skip the val set.
+               (The ``split_num`` int is ignored when disabled.)
+
+    Other keys in the variant's [[datasets]] block (e.g. a custom batch_size)
+    are preserved; we only touch the two validation keys."""
+    existing = out.get("datasets")
+    if enabled:
+        keep_override = (
+            split_num is not None
+            and split_num > 0
+            and split_num != (base_split_num or 0)
+        )
+        if keep_override:
+            if not isinstance(existing, list):
+                existing = []
+                out["datasets"] = existing
+            if not existing:
+                existing.append({})
+            first = existing[0]
+            if not isinstance(first, dict):
+                first = {}
+                existing[0] = first
+            first["validation_split_num"] = int(split_num)
+            first.pop("validation_split", None)
+            return
+        # No override needed — strip any zero/value override so base wins.
+        if not isinstance(existing, list) or not existing:
+            return
+        first = existing[0]
+        if not isinstance(first, dict):
+            return
+        first.pop("validation_split_num", None)
+        first.pop("validation_split", None)
+        if not first and len(existing) == 1:
+            del out["datasets"]
+        return
+
+    if not isinstance(existing, list):
+        existing = []
+        out["datasets"] = existing
+    if not existing:
+        existing.append({})
+    first = existing[0]
+    if not isinstance(first, dict):
+        first = {}
+        existing[0] = first
+    first["validation_split_num"] = 0
+    first["validation_split"] = 0.0
 
 
 def confirm_resumable_checkpoint(parent: QWidget | None, merged: dict) -> bool:
@@ -400,23 +571,26 @@ def confirm_resumable_checkpoint(parent: QWidget | None, merged: dict) -> bool:
 
 
 # Cache-file suffixes written by the preprocess scripts. Kept in sync with
-# preprocess/cache_latents.py, cache_text_embeddings.py, cache_pe_encoder.py.
+# scripts/preprocess/cache_latents.py, cache_text_embeddings.py, cache_pe_encoder.py.
 _LATENT_SUFFIX = "_anima.npz"
 _TE_SUFFIX = "_anima_te.safetensors"
 _PE_SUFFIX = "_anima_pe.safetensors"
 
 
 def count_preprocess_caches(cache_dir: Path) -> dict[str, int]:
-    """Count existing latent / TE / PE cache sidecars in a cache directory.
+    """Count existing latent / TE / PE cache sidecars under a cache directory.
 
     Returns zeros (without raising) if the directory does not exist. Used to
     surface a reassurance popup that ``make preprocess`` reuses existing caches
     rather than wiping them — a recurring point of confusion for new users.
+
+    Walks recursively so nested caches (mirroring a subfoldered source tree)
+    are counted.
     """
     out = {"latents": 0, "te": 0, "pe": 0}
     if not cache_dir.is_dir():
         return out
-    for p in cache_dir.iterdir():
+    for p in cache_dir.rglob("*"):
         if not p.is_file():
             continue
         n = p.name
@@ -439,8 +613,8 @@ def confirm_existing_caches(
     or missing, so the call site can wrap every preprocess launch in this.
     """
     counts = count_preprocess_caches(cache_dir)
-    has_any = counts["latents"] > 0 or counts["te"] > 0 or (
-        require_pe and counts["pe"] > 0
+    has_any = (
+        counts["latents"] > 0 or counts["te"] > 0 or (require_pe and counts["pe"] > 0)
     )
     if not has_any:
         return True
@@ -465,6 +639,106 @@ def confirm_existing_caches(
     box.setStandardButtons(QMessageBox.Ok | QMessageBox.Cancel)
     box.setDefaultButton(QMessageBox.Ok)
     return box.exec() == QMessageBox.Ok
+
+
+def confirm_train_using_cache(
+    parent: QWidget | None, cache_dir: Path, require_pe: bool = False
+) -> bool | None:
+    """Train-side cache confirmation: returns True to launch training against
+    the existing cache, False if the user cancelled, or None when no cache was
+    found on disk (caller should auto-chain a preprocess run instead).
+
+    Distinct from ``confirm_existing_caches`` (which reassures during
+    Preprocess) — this gates Train and exposes the empty-cache case as a
+    separate ``None`` so the caller can branch into the auto-preprocess flow.
+    """
+    counts = count_preprocess_caches(cache_dir)
+    has_any = (
+        counts["latents"] > 0 or counts["te"] > 0 or (require_pe and counts["pe"] > 0)
+    )
+    if not has_any:
+        return None
+
+    parts: list[str] = []
+    if counts["latents"]:
+        parts.append(t("preprocess_cache_count_latents", n=counts["latents"]))
+    if counts["te"]:
+        parts.append(t("preprocess_cache_count_te", n=counts["te"]))
+    if require_pe and counts["pe"]:
+        parts.append(t("preprocess_cache_count_pe", n=counts["pe"]))
+
+    body = t(
+        "train_using_cache_body",
+        cache_dir=str(cache_dir),
+        items="  • " + "\n  • ".join(parts),
+    )
+    box = QMessageBox(parent)
+    box.setIcon(QMessageBox.Question)
+    box.setWindowTitle(t("train_using_cache_title"))
+    box.setText(body)
+    box.setStandardButtons(QMessageBox.Yes | QMessageBox.Cancel)
+    box.setDefaultButton(QMessageBox.Yes)
+    return box.exec() == QMessageBox.Yes
+
+
+def find_stale_latent_caches(cache_dir: Path) -> dict[str, int]:
+    """Return a ``{"WxH": count}`` map of VAE latent caches whose pixel
+    resolution is NOT in the live ``CONSTANT_TOKEN_BUCKETS`` table.
+
+    Caches written under an older bucket layout (pre-4032/4200) sit at
+    resolutions the current dataloader no longer buckets at, so they get
+    skipped or mis-bucketed at train time. Returns ``{}`` when the directory
+    is missing or every cache matches a live bucket. Resolution is parsed from
+    the ``{stem}_{WxH}_anima.npz`` filename — a cheap name-only scan, no npz
+    reads.
+    """
+    if not cache_dir.is_dir():
+        return {}
+    from library.datasets.buckets import CONSTANT_TOKEN_BUCKETS
+
+    valid = {f"{w}x{h}" for (w, h) in CONSTANT_TOKEN_BUCKETS}
+    stale: dict[str, int] = {}
+    for p in cache_dir.rglob("*"):
+        if not p.is_file() or not p.name.endswith(_LATENT_SUFFIX):
+            continue
+        # {stem}_{WxH}_anima.npz → take the trailing "_{WxH}" segment.
+        tail = p.name.removesuffix(_LATENT_SUFFIX).rsplit("_", 1)
+        if len(tail) < 2:
+            continue
+        m = re.fullmatch(r"(\d+)x(\d+)", tail[1])
+        if not m:
+            continue
+        # int() normalizes the zero-padded {W:04d}x{H:04d} on-disk form.
+        key = f"{int(m.group(1))}x{int(m.group(2))}"
+        if key not in valid:
+            stale[key] = stale.get(key, 0) + 1
+    return stale
+
+
+def confirm_stale_caches(parent: QWidget | None, cache_dir: Path) -> bool:
+    """Warn if any VAE latent cache sits at a resolution outside the current
+    4032/4200 bucket table. Returns True to proceed (no stale caches found, or
+    the user chose to train anyway), False if the user cancelled.
+
+    No-op (returns True without prompting) when there are no stale caches, so
+    the call site can wrap every train launch in this.
+    """
+    stale = find_stale_latent_caches(cache_dir)
+    if not stale:
+        return True
+    total = sum(stale.values())
+    shown = sorted(stale.items(), key=lambda kv: -kv[1])[:6]
+    examples = "\n".join(f"  • {reso}  ({n}×)" for reso, n in shown)
+    if len(stale) > len(shown):
+        examples += "\n  • …"
+    body = t("stale_cache_body", n=total, cache_dir=str(cache_dir), examples=examples)
+    box = QMessageBox(parent)
+    box.setIcon(QMessageBox.Warning)
+    box.setWindowTitle(t("stale_cache_title"))
+    box.setText(body)
+    box.setStandardButtons(QMessageBox.Yes | QMessageBox.Cancel)
+    box.setDefaultButton(QMessageBox.Cancel)
+    return box.exec() == QMessageBox.Yes
 
 
 def find_resumable_checkpoint(merged: dict) -> tuple[Path, int] | None:
@@ -500,10 +774,17 @@ def find_resumable_checkpoint(merged: dict) -> tuple[Path, int] | None:
 
 
 def _imgs(d: Path) -> list[Path]:
-    return (
-        sorted(p for p in d.iterdir() if p.suffix.lower() in IMAGE_EXTS)
-        if d.exists()
-        else []
+    """Return every image file under ``d`` (recursively).
+
+    Walks subfolders so users who organize ``image_dataset/`` by character /
+    series see the full pool in the browser. Cache filenames are stem-keyed
+    and flat, so stems must stay unique across the tree — the trainer enforces
+    this via ``_assert_unique_stems``; here we just sort and return.
+    """
+    if not d.exists():
+        return []
+    return sorted(
+        p for p in d.rglob("*") if p.is_file() and p.suffix.lower() in IMAGE_EXTS
     )
 
 
@@ -579,7 +860,15 @@ def _widget(v: Any, key: str = "") -> QWidget:
         return w
     if isinstance(v, int):
         w = QSpinBox()
-        w.setRange(0, 10000)
+        # Per-key range overrides for fields that legitimately exceed the
+        # default 10k cap (silently clips otherwise). Keep these explicit
+        # rather than raising the global ceiling — most int fields are
+        # small (epochs, ranks, expert counts) and a 10k cap keeps the
+        # user from typoing a giant value into them.
+        if key == "min_pixels":
+            w.setRange(0, 100_000_000)  # 100MP — covers any real image
+        else:
+            w.setRange(0, 10000)
         w.setValue(v)
         w.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         w.wheelEvent = lambda e: e.ignore()

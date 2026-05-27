@@ -1,0 +1,875 @@
+"""PreprocessingTab — caption shuffle/dropout + SAM3/MIT mask config.
+
+Layout mirrors ConfigTab:
+- Top action bar (refresh + per-step Run buttons + Save + Stop)
+- Horizontal split: form on left (clickable labels show help on the right),
+  explanation panel on the right
+- Log panel below in a vertical splitter
+
+Surfaces the knobs that the bare ``make preprocess`` / ``make mask`` paths
+hardcode: caption shuffle variant count, per-tag dropout rate, SAM prompt
+list / threshold / dilate, MIT text-threshold / dilate.
+
+Settings persist to:
+- ``configs/sam_mask.yaml`` — SAM prompts / threshold / dilate (existing
+  canonical location, read directly by ``scripts/preprocess/generate_masks.py``).
+- ``gui/gui_settings.json`` — TE-cache and MIT knobs, picked up by this
+  tab on launch and forwarded to subprocesses via env vars
+  (``CAPTION_SHUFFLE_VARIANTS``, ``CAPTION_TAG_DROPOUT_RATE``,
+  ``MIT_TEXT_THRESHOLD``, ``MIT_DILATE``) consumed by
+  ``scripts/tasks/preprocess.py`` and ``scripts/tasks/masking.py``.
+"""
+
+from __future__ import annotations
+
+import html
+import json
+import re
+import sys
+from pathlib import Path
+
+import yaml
+from PySide6.QtCore import Qt, QTimer, Signal
+from PySide6.QtWidgets import (
+    QApplication,
+    QCheckBox,
+    QFormLayout,
+    QGroupBox,
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
+    QMessageBox,
+    QPlainTextEdit,
+    QPushButton,
+    QScrollArea,
+    QSpinBox,
+    QSplitter,
+    QTextBrowser,
+    QVBoxLayout,
+    QWidget,
+)
+
+from gui import IMAGE_EXTS, ROOT, LazyTabMixin, count_preprocess_caches
+from gui import daemon as gui_daemon
+from gui.explanations import preprocess_field_help, preprocess_guide
+from gui.i18n import t
+from gui.progress import TQDM_RE, TqdmProgressTracker, make_progress_bar
+from gui.tabs.config_tab import ClickableLabel
+
+SAM_YAML = ROOT / "configs" / "sam_mask.yaml"
+SETTINGS_FILE = Path(__file__).resolve().parent.parent / "gui_settings.json"
+
+# Defaults match the historical hardcoded values in scripts/tasks/preprocess.py
+# and scripts/preprocess/generate_masks_mit.py so a freshly installed GUI runs the
+# same pipeline as the bare CLI.
+DEFAULT_TE_SHUFFLE_VARIANTS = 4
+DEFAULT_TE_TAG_DROPOUT = 0.1
+DEFAULT_SAM_PROMPTS = ("speech bubble", "text bubble")
+DEFAULT_SAM_THRESHOLD = 0.5
+DEFAULT_SAM_DILATE = 5
+DEFAULT_MASK_PATH_PATTERN = "*"
+DEFAULT_MIT_TEXT_THRESHOLD = 0.8
+DEFAULT_MIT_DILATE = 5
+DEFAULT_RUN_SAM_MASK = True
+DEFAULT_RUN_MIT_MASK = True
+
+RESIZED_DIR = ROOT / "post_image_dataset" / "resized"
+LORA_CACHE_DIR = ROOT / "post_image_dataset" / "lora"
+# Merged masks now live under the cache root alongside the resized tree
+# (the SAM/MIT intermediates run through a tempdir during `make mask`).
+MASK_DIR = ROOT / "post_image_dataset" / "masks"
+
+
+def _load_settings() -> dict:
+    if not SETTINGS_FILE.exists():
+        return {}
+    try:
+        return json.loads(SETTINGS_FILE.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+
+
+def _save_settings(updates: dict) -> None:
+    """Merge ``updates`` into the existing settings JSON, preserving other keys."""
+    data = _load_settings()
+    data.update(updates)
+    SETTINGS_FILE.write_text(json.dumps(data, indent=2), encoding="utf-8")
+
+
+def _load_sam_yaml() -> dict:
+    if not SAM_YAML.exists():
+        return {}
+    try:
+        return yaml.safe_load(SAM_YAML.read_text(encoding="utf-8")) or {}
+    except (OSError, yaml.YAMLError):
+        return {}
+
+
+class _IndentedListDumper(yaml.SafeDumper):
+    """SafeDumper that indents list items under mapping keys.
+
+    PyYAML's default dumper writes list items flush with the parent key,
+    which is valid YAML but doesn't match the canonical sam_mask.yaml
+    formatting (2-space indent on the dash). Overriding ``increase_indent``
+    to disable ``indentless`` mode gives us the indented form so saving
+    from the GUI doesn't churn the file's whitespace.
+    """
+
+    def increase_indent(self, flow=False, indentless=False):  # noqa: D401
+        return super().increase_indent(flow, False)
+
+
+def _load_rules(sam_yaml: dict) -> list[dict]:
+    """Normalize either schema into a list of per-card rule dicts.
+
+    A ``rules:`` array is returned card-for-card (per-rule threshold/dilate
+    fall back to the top-level values). A flat config (no ``rules:`` key)
+    collapses to one catch-all card carrying the top-level prompts.
+    """
+    default_threshold = float(sam_yaml.get("threshold", DEFAULT_SAM_THRESHOLD))
+    default_dilate = int(sam_yaml.get("dilate", DEFAULT_SAM_DILATE))
+    raw = sam_yaml.get("rules")
+    if raw is None:
+        return [
+            {
+                "path_pattern": "",
+                "prompts": sam_yaml.get("prompts") or list(DEFAULT_SAM_PROMPTS),
+                "focus_prompts": sam_yaml.get("focus_prompts") or [],
+                "threshold": default_threshold,
+                "dilate": default_dilate,
+            }
+        ]
+    return [
+        {
+            "path_pattern": r.get("path_pattern") or "",
+            "prompts": r.get("prompts") or [],
+            "focus_prompts": r.get("focus_prompts") or [],
+            "threshold": float(r.get("threshold", default_threshold)),
+            "dilate": int(r.get("dilate", default_dilate)),
+        }
+        for r in raw
+    ]
+
+
+def _save_sam_yaml(
+    rules: list[dict],
+    path_pattern: str = DEFAULT_MASK_PATH_PATTERN,
+) -> None:
+    SAM_YAML.parent.mkdir(parents=True, exist_ok=True)
+    payload = {
+        # Each rule routes a subset of images (by path_pattern) to its prompt
+        # set; `prompts` mask OUT, `focus_prompts` keep ONLY. Matching rules
+        # compose. See scripts/preprocess/generate_masks.py for the full rule.
+        "rules": rules,
+        # Read by scripts/tasks/masking.py and forwarded to BOTH the SAM and
+        # MIT backends; "*" (the default) masks every resized image.
+        "path_pattern": path_pattern or DEFAULT_MASK_PATH_PATTERN,
+    }
+    text = yaml.dump(
+        payload,
+        Dumper=_IndentedListDumper,
+        default_flow_style=False,
+        sort_keys=False,
+    )
+    # Blank line before the trailing global path_pattern, matching the
+    # canonical layout's separation between the list and the scalar settings.
+    text = text.replace("\npath_pattern:", "\n\npath_pattern:", 1)
+    SAM_YAML.write_text(text, encoding="utf-8")
+
+
+def _count_masks(mask_dir: Path) -> int:
+    if not mask_dir.is_dir():
+        return 0
+    # rglob picks up the nested `<rel>/` subtrees produced by `make mask`
+    # under the consolidated layout; legacy flat trees still count correctly.
+    return sum(1 for _ in mask_dir.rglob("*_mask.png"))
+
+
+def _count_resized() -> int:
+    if not RESIZED_DIR.is_dir():
+        return 0
+    # rglob picks up the nested `<rel>/` subtrees produced by recursive
+    # resize_images.py; flat trees still count correctly.
+    return sum(
+        1
+        for p in RESIZED_DIR.rglob("*")
+        if p.is_file() and p.suffix.lower() in IMAGE_EXTS
+    )
+
+
+class _RuleCard(QGroupBox):
+    """One SAM mask rule editor: path_pattern + prompts/focus + threshold/dilate.
+
+    ``prompts`` mask OUT (ignored in the loss); ``focus_prompts`` keep ONLY
+    that subject (reversed polarity). An empty / ``*`` path_pattern is a
+    catch-all. Emits ``removed(self)`` when its Remove button is clicked.
+    """
+
+    removed = Signal(object)
+
+    def __init__(self, rule: dict, help_cb):
+        super().__init__(t("preprocess_sam_rule"))
+        self._help_cb = help_cb
+        form = QFormLayout(self)
+
+        self.path_pattern_edit = QLineEdit(rule.get("path_pattern", ""))
+        self.path_pattern_edit.setPlaceholderText("*")
+        self.path_pattern_edit.setToolTip(t("preprocess_sam_rule_path_pattern_tip"))
+        form.addRow(
+            self._label(
+                "sam_rule_path_pattern", t("preprocess_sam_rule_path_pattern")
+            ),
+            self.path_pattern_edit,
+        )
+
+        self.prompts_edit = QPlainTextEdit("\n".join(rule.get("prompts") or []))
+        self.prompts_edit.setMaximumHeight(70)
+        self.prompts_edit.setStyleSheet("font-family:monospace;")
+        self.prompts_edit.setToolTip(t("preprocess_sam_prompts_tip"))
+        form.addRow(
+            self._label("sam_prompts", t("preprocess_sam_prompts")), self.prompts_edit
+        )
+
+        self.focus_prompts_edit = QPlainTextEdit(
+            "\n".join(rule.get("focus_prompts") or [])
+        )
+        self.focus_prompts_edit.setMaximumHeight(70)
+        self.focus_prompts_edit.setStyleSheet("font-family:monospace;")
+        self.focus_prompts_edit.setToolTip(t("preprocess_sam_focus_prompts_tip"))
+        form.addRow(
+            self._label("sam_focus_prompts", t("preprocess_sam_focus_prompts")),
+            self.focus_prompts_edit,
+        )
+
+        self.threshold_edit = QLineEdit(
+            f"{float(rule.get('threshold', DEFAULT_SAM_THRESHOLD)):g}"
+        )
+        self.threshold_edit.setToolTip(t("preprocess_sam_threshold_tip"))
+        form.addRow(
+            self._label("sam_threshold", t("preprocess_sam_threshold")),
+            self.threshold_edit,
+        )
+
+        self.dilate_spin = QSpinBox()
+        self.dilate_spin.setRange(0, 64)
+        self.dilate_spin.setValue(int(rule.get("dilate", DEFAULT_SAM_DILATE)))
+        self.dilate_spin.wheelEvent = lambda e: e.ignore()
+        form.addRow(self._label("sam_dilate", t("preprocess_dilate")), self.dilate_spin)
+
+        self.remove_btn = QPushButton(t("preprocess_sam_remove_rule"))
+        self.remove_btn.clicked.connect(lambda: self.removed.emit(self))
+        form.addRow("", self.remove_btn)
+
+    def _label(self, key: str, text: str) -> ClickableLabel:
+        """Clickable field label that routes this field's help to the panel."""
+        lbl = ClickableLabel(text)
+        lbl.setStyleSheet("color:#f0f0f0; text-decoration: underline dotted;")
+        help_text = preprocess_field_help(key)
+        lbl.clicked.connect(lambda _t=text, _h=help_text: self._help_cb(_t, _h))
+        return lbl
+
+    def to_dict(self) -> dict:
+        """Serialize to a rule dict. Raises ValueError on an unparseable threshold."""
+        text = self.threshold_edit.text().strip()
+        try:
+            threshold = float(text)
+        except ValueError as exc:
+            raise ValueError(text) from exc
+        rule: dict = {}
+        pattern = self.path_pattern_edit.text().strip()
+        if pattern and pattern != "*":
+            rule["path_pattern"] = pattern
+        prompts = [
+            line.strip()
+            for line in self.prompts_edit.toPlainText().splitlines()
+            if line.strip()
+        ]
+        if prompts:
+            rule["prompts"] = prompts
+        focus = [
+            line.strip()
+            for line in self.focus_prompts_edit.toPlainText().splitlines()
+            if line.strip()
+        ]
+        if focus:
+            rule["focus_prompts"] = focus
+        rule["threshold"] = threshold
+        rule["dilate"] = int(self.dilate_spin.value())
+        return rule
+
+
+class PreprocessingTab(LazyTabMixin, QWidget):
+    def __init__(self):
+        super().__init__()
+        # Daemon-backed preprocessing (mirrors ConfigTab's Train button): each
+        # Run submits a "command" job to the local daemon — not a child of this
+        # tab — so a long cache build / mask pass survives the GUI closing and
+        # shares the daemon's serial queue with training (one GPU, one job at a
+        # time). The tab observes the job by polling the per-job files the
+        # daemon writes (job.json for state, stdout.log for the log/bar) off a
+        # single timer; no SSE thread (daemon is localhost-only).
+        self._job_id: str | None = None
+        self._stdout_tailer = gui_daemon.FileTailer()
+        self._stdout_buf = ""
+        self._job_timer = QTimer(self)
+        self._job_timer.setInterval(400)
+        self._job_timer.timeout.connect(self._poll_job)
+        self._run_buttons: list[QPushButton] = []
+
+        outer = QVBoxLayout(self)
+
+        # ── Top action bar ────────────────────────────────────────
+        # Mirrors ConfigTab: Save + per-step Run buttons + Stop, all under
+        # the tab strip on a single row. No manual refresh — the status
+        # one-liner is rebuilt automatically when a job finishes.
+        top = QHBoxLayout()
+
+        # Color semantics (matches ConfigTab):
+        #   Save           → neutral (default styling, no background tint)
+        #   Cache / mask   → blue   (#2980b9) — run a specific preprocess step
+        #   Stop           → red    (#c0392b) — abort the running subprocess
+        run_step_style = (
+            "background:#2980b9;color:white;font-weight:bold;padding:4px 16px;"
+        )
+
+        self.save_btn = QPushButton(t("preprocess_save_settings"))
+        self.save_btn.setToolTip(t("preprocess_save_settings_tip"))
+        self.save_btn.clicked.connect(self._save_all_clicked)
+        top.addWidget(self.save_btn)
+
+        # Per-step Run buttons. Save is implicit on each Run (same pattern
+        # as ConfigTab's auto-save before Train/Preprocess).
+        self.run_te_btn = QPushButton(t("preprocess_run_te"))
+        self.run_te_btn.setStyleSheet(run_step_style)
+        self.run_te_btn.clicked.connect(self._run_te)
+        self._run_buttons.append(self.run_te_btn)
+        top.addWidget(self.run_te_btn)
+
+        self.run_mask_btn = QPushButton(t("preprocess_run_mask"))
+        self.run_mask_btn.setStyleSheet(run_step_style)
+        self.run_mask_btn.clicked.connect(self._run_mask)
+        self._run_buttons.append(self.run_mask_btn)
+        top.addWidget(self.run_mask_btn)
+
+        top.addStretch()
+        self.stop_btn = QPushButton(t("stop"))
+        self.stop_btn.setStyleSheet(
+            "background:#c0392b;color:white;font-weight:bold;padding:4px 16px;"
+        )
+        self.stop_btn.clicked.connect(self._stop)
+        self.stop_btn.setEnabled(False)
+        top.addWidget(self.stop_btn)
+        outer.addLayout(top)
+
+        # tqdm bar (same look as ConfigTab — shared QSS in gui/progress.py).
+        # Shown when the observed daemon job emits a parseable tqdm line, hidden
+        # again when the job finishes.
+        self.progress = make_progress_bar()
+        self._progress_tracker = TqdmProgressTracker(self.progress)
+        outer.addWidget(self.progress)
+
+        # Status one-liner stays directly under the progress bar.
+        self.status_lbl = QLabel("")
+        self.status_lbl.setStyleSheet("color:#dcdcdc; padding: 2px 0;")
+        outer.addWidget(self.status_lbl)
+
+        # ── Body: vertical splitter (form+explain top, log bottom) ──
+        vsplit = QSplitter(Qt.Vertical)
+
+        # Horizontal splitter: form on left, explanation panel on right.
+        hsplit = QSplitter(Qt.Horizontal)
+
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        form_host = QWidget()
+        form_layout = QVBoxLayout(form_host)
+        form_layout.setContentsMargins(0, 0, 0, 0)
+
+        settings = _load_settings()
+        sam_yaml = _load_sam_yaml()
+        # Normalize either schema (flat or rules array) into a list of rule
+        # dicts, one per editor card below. Flat configs collapse to a single
+        # catch-all card; saving always re-emits the rules form.
+        sam_rules = _load_rules(sam_yaml)
+        mask_path_pattern = sam_yaml.get("path_pattern") or DEFAULT_MASK_PATH_PATTERN
+
+        # Text caching group
+        text_box = QGroupBox(t("preprocess_text_caching"))
+        text_form = QFormLayout()
+        self.shuffle_spin = QSpinBox()
+        self.shuffle_spin.setRange(0, 64)
+        self.shuffle_spin.setValue(
+            int(settings.get("caption_shuffle_variants", DEFAULT_TE_SHUFFLE_VARIANTS))
+        )
+        # Block scroll-wheel changes (matches gui/__init__.py::_widget convention).
+        self.shuffle_spin.wheelEvent = lambda e: e.ignore()
+        text_form.addRow(
+            self._field_label(
+                "caption_shuffle_variants",
+                t("preprocess_caption_shuffle_variants"),
+            ),
+            self.shuffle_spin,
+        )
+
+        self.dropout_edit = QLineEdit(
+            f"{float(settings.get('caption_tag_dropout_rate', DEFAULT_TE_TAG_DROPOUT)):g}"
+        )
+        text_form.addRow(
+            self._field_label(
+                "caption_tag_dropout_rate",
+                t("preprocess_caption_tag_dropout_rate"),
+            ),
+            self.dropout_edit,
+        )
+        text_box.setLayout(text_form)
+        form_layout.addWidget(text_box)
+
+        # SAM masking group
+        sam_box = QGroupBox(t("preprocess_masking_sam"))
+        sam_outer = QVBoxLayout()
+
+        # Top form: run toggle + global scope (forwarded to BOTH backends).
+        sam_form = QFormLayout()
+        self.run_sam_mask_chk = QCheckBox(t("preprocess_run_sam_mask"))
+        self.run_sam_mask_chk.setToolTip(t("preprocess_run_sam_mask_tip"))
+        self.run_sam_mask_chk.setChecked(
+            bool(settings.get("run_sam_mask", DEFAULT_RUN_SAM_MASK))
+        )
+        sam_form.addRow(
+            self._field_label("run_sam_mask", t("preprocess_run_sam_mask")),
+            self.run_sam_mask_chk,
+        )
+        # Stored in sam_mask.yaml but scopes BOTH backends — masking.py reads
+        # it and forwards --path-pattern to SAM and MIT alike.
+        self.mask_path_pattern_edit = QLineEdit(mask_path_pattern)
+        self.mask_path_pattern_edit.setPlaceholderText("*")
+        self.mask_path_pattern_edit.setToolTip(t("preprocess_mask_path_pattern_tip"))
+        sam_form.addRow(
+            self._field_label("mask_path_pattern", t("preprocess_mask_path_pattern")),
+            self.mask_path_pattern_edit,
+        )
+        sam_outer.addLayout(sam_form)
+
+        # One card per rule: each routes a subset of images (by path_pattern)
+        # to its own prompt set. Rules whose pattern matches an image compose.
+        self._rule_cards: list[_RuleCard] = []
+        self._rules_layout = QVBoxLayout()
+        self._rules_layout.setContentsMargins(0, 0, 0, 0)
+        sam_outer.addLayout(self._rules_layout)
+        for rule in sam_rules:
+            self._add_rule_card(rule)
+
+        self.add_rule_btn = QPushButton(t("preprocess_sam_add_rule"))
+        self.add_rule_btn.setToolTip(t("preprocess_sam_add_rule_tip"))
+        self.add_rule_btn.clicked.connect(lambda: self._add_rule_card())
+        sam_outer.addWidget(self.add_rule_btn)
+
+        sam_box.setLayout(sam_outer)
+        form_layout.addWidget(sam_box)
+
+        # MIT masking group
+        mit_box = QGroupBox(t("preprocess_masking_mit"))
+        mit_form = QFormLayout()
+        self.run_mit_mask_chk = QCheckBox(t("preprocess_run_mit_mask"))
+        self.run_mit_mask_chk.setToolTip(t("preprocess_run_mit_mask_tip"))
+        self.run_mit_mask_chk.setChecked(
+            bool(settings.get("run_mit_mask", DEFAULT_RUN_MIT_MASK))
+        )
+        mit_form.addRow(
+            self._field_label("run_mit_mask", t("preprocess_run_mit_mask")),
+            self.run_mit_mask_chk,
+        )
+
+        self.mit_threshold_edit = QLineEdit(
+            f"{float(settings.get('mit_text_threshold', DEFAULT_MIT_TEXT_THRESHOLD)):g}"
+        )
+        mit_form.addRow(
+            self._field_label("mit_text_threshold", t("preprocess_mit_threshold")),
+            self.mit_threshold_edit,
+        )
+
+        self.mit_dilate_spin = QSpinBox()
+        self.mit_dilate_spin.setRange(0, 64)
+        self.mit_dilate_spin.setValue(
+            int(settings.get("mit_dilate", DEFAULT_MIT_DILATE))
+        )
+        self.mit_dilate_spin.wheelEvent = lambda e: e.ignore()
+        mit_form.addRow(
+            self._field_label("mit_dilate", t("preprocess_dilate")),
+            self.mit_dilate_spin,
+        )
+        mit_box.setLayout(mit_form)
+        form_layout.addWidget(mit_box)
+
+        form_layout.addStretch()
+        scroll.setWidget(form_host)
+        hsplit.addWidget(scroll)
+
+        # Right panel — same QTextBrowser style as ConfigTab's explain panel
+        # so the look matches across tabs.
+        self._explain = QTextBrowser()
+        self._explain.setOpenExternalLinks(True)
+        self._explain.setStyleSheet(
+            "QTextBrowser { font-size: 13px; padding: 12px; "
+            "background: #2b2b2b; color: #e0e0e0; }"
+        )
+        self._explain.setMinimumWidth(320)
+        self._show_default_explain()
+        hsplit.addWidget(self._explain)
+        hsplit.setStretchFactor(0, 3)
+        hsplit.setStretchFactor(1, 2)
+        hsplit.setSizes([720, 420])
+        vsplit.addWidget(hsplit)
+
+        self.log = QPlainTextEdit()
+        self.log.setReadOnly(True)
+        self.log.setStyleSheet("font-family:monospace;font-size:11px;")
+        self.log.setPlaceholderText(t("preprocess_log_placeholder"))
+        vsplit.addWidget(self.log)
+        vsplit.setSizes([520, 200])
+        outer.addWidget(vsplit, 1)
+
+    def _lazy_init(self) -> None:
+        # Cache-count scan deferred to first show of the tab.
+        self._refresh_status()
+        # Re-bind to a preprocess/mask job still running from a previous GUI
+        # session (or one submitted by the CLI) so closing+reopening re-attaches.
+        self._try_reattach()
+
+    # ── Field labels & explain panel ───────────────────────────────
+
+    def _field_label(self, key: str, text_str: str) -> ClickableLabel:
+        """Build a ClickableLabel that shows this field's help when clicked."""
+        lbl = ClickableLabel(text_str)
+        lbl.setStyleSheet("color:#f0f0f0; text-decoration: underline dotted;")
+        help_text = preprocess_field_help(key)
+        lbl.clicked.connect(
+            lambda _k=key, _h=help_text, _t=text_str: self._show_field_help(_t, _h)
+        )
+        return lbl
+
+    def _show_default_explain(self) -> None:
+        self._explain.setHtml(preprocess_guide())
+
+    def _show_field_help(self, field_label: str, help_text: str | None) -> None:
+        parts = [
+            f"<h2 style='margin:0 0 10px 0; font-size:18px;'>"
+            f"{html.escape(field_label)}</h2>"
+        ]
+        if help_text:
+            parts.append(
+                f"<p style='font-size:14px; line-height:1.6;'>"
+                f"{html.escape(help_text)}</p>"
+            )
+        else:
+            parts.append(
+                f"<p style='color:#888; font-style:italic;'>"
+                f"{html.escape(t('no_help_available'))}</p>"
+            )
+        self._explain.setHtml("".join(parts))
+
+    # ── Status panel ───────────────────────────────────────────────
+
+    def _refresh_status(self) -> None:
+        n_resized = _count_resized()
+        caches = count_preprocess_caches(LORA_CACHE_DIR)
+        mask_n = _count_masks(MASK_DIR)
+        if n_resized == 0:
+            self.status_lbl.setText(t("preprocess_status_no_resized"))
+            return
+        lines = [
+            t("preprocess_status_resized", n=n_resized),
+            t(
+                "preprocess_status_caches",
+                lat=caches["latents"],
+                te=caches["te"],
+                pe=caches["pe"],
+            ),
+            t("preprocess_status_masks", masks=mask_n),
+        ]
+        self.status_lbl.setText("  |  ".join(lines))
+
+    # ── SAM rule cards ─────────────────────────────────────────────
+
+    def _add_rule_card(self, rule: dict | None = None) -> None:
+        card = _RuleCard(rule or {}, self._show_field_help)
+        card.removed.connect(self._remove_rule_card)
+        self._rule_cards.append(card)
+        self._rules_layout.addWidget(card)
+        self._update_remove_buttons()
+
+    def _remove_rule_card(self, card: _RuleCard) -> None:
+        if len(self._rule_cards) <= 1:
+            return  # keep at least one rule
+        self._rule_cards.remove(card)
+        self._rules_layout.removeWidget(card)
+        card.deleteLater()
+        self._update_remove_buttons()
+
+    def _update_remove_buttons(self) -> None:
+        # A lone rule can't be removed (would leave an empty config).
+        sole = len(self._rule_cards) <= 1
+        for card in self._rule_cards:
+            card.remove_btn.setEnabled(not sole)
+
+    def _collect_rules(self) -> list[dict] | None:
+        """Serialize every rule card, or None if one fails validation."""
+        rules: list[dict] = []
+        for card in self._rule_cards:
+            try:
+                rules.append(card.to_dict())
+            except ValueError as bad_threshold:
+                QMessageBox.warning(
+                    self,
+                    t("error"),
+                    t(
+                        "preprocess_invalid_float",
+                        field=t("preprocess_sam_threshold"),
+                        value=str(bad_threshold),
+                    ),
+                )
+                return None
+        return rules
+
+    # ── Settings persistence ───────────────────────────────────────
+
+    def _parse_float(self, text: str, field_label: str) -> float | None:
+        try:
+            return float(text)
+        except ValueError:
+            QMessageBox.warning(
+                self,
+                t("error"),
+                t("preprocess_invalid_float", field=field_label, value=text),
+            )
+            return None
+
+    def _save_all(self) -> bool:
+        """Validate and persist every form value. Returns True on success."""
+        dropout = self._parse_float(
+            self.dropout_edit.text().strip(),
+            t("preprocess_caption_tag_dropout_rate"),
+        )
+        if dropout is None:
+            return False
+        mit_threshold = self._parse_float(
+            self.mit_threshold_edit.text().strip(),
+            t("preprocess_mit_threshold"),
+        )
+        if mit_threshold is None:
+            return False
+
+        rules = self._collect_rules()
+        if rules is None:
+            return False
+
+        mask_path_pattern = (
+            self.mask_path_pattern_edit.text().strip() or DEFAULT_MASK_PATH_PATTERN
+        )
+        _save_sam_yaml(rules, mask_path_pattern)
+        _save_settings(
+            {
+                "caption_shuffle_variants": int(self.shuffle_spin.value()),
+                "caption_tag_dropout_rate": dropout,
+                "mit_text_threshold": mit_threshold,
+                "mit_dilate": int(self.mit_dilate_spin.value()),
+                "run_sam_mask": self.run_sam_mask_chk.isChecked(),
+                "run_mit_mask": self.run_mit_mask_chk.isChecked(),
+            }
+        )
+        return True
+
+    def _save_all_clicked(self) -> None:
+        if self._save_all():
+            QMessageBox.information(self, t("saved"), t("preprocess_settings_saved"))
+
+    # ── Daemon job actions ─────────────────────────────────────────
+
+    def _is_running(self) -> bool:
+        return self._job_id is not None
+
+    def _run_te(self) -> None:
+        # Unified "caching" step — runs `tasks.py preprocess`, which chains
+        # resize → VAE-latent cache → text-embedding cache. Replaces the old
+        # text-only path now that the ConfigTab's standalone Preprocess
+        # button is gone and this tab owns the cache-build UI. The TE knobs
+        # (shuffle / dropout) are still surfaced as env vars; resize and VAE
+        # currently have no GUI-tunable parameters, so the form stays TE-only.
+        if not self._save_all():
+            return
+        self._submit(
+            label="preprocess",
+            argv=["tasks.py", "preprocess"],
+            extra_env={
+                "CAPTION_SHUFFLE_VARIANTS": str(int(self.shuffle_spin.value())),
+                "CAPTION_TAG_DROPOUT_RATE": self.dropout_edit.text().strip(),
+            },
+        )
+
+    def _run_mask(self) -> None:
+        # Single-shot pipeline. ``tasks.py mask`` runs SAM and/or MIT into
+        # a tempdir, merges the produced sources, and writes only the
+        # merged result to ``post_image_dataset/masks/<rel>/``. SAM reads
+        # ``configs/sam_mask.yaml`` directly; MIT picks up the
+        # ``MIT_TEXT_THRESHOLD`` / ``MIT_DILATE`` env vars set below.
+        # ``RUN_SAM_MASK`` / ``RUN_MIT_MASK`` gate each backend.
+        if not self._save_all():
+            return
+        run_sam = self.run_sam_mask_chk.isChecked()
+        run_mit = self.run_mit_mask_chk.isChecked()
+        if not (run_sam or run_mit):
+            QMessageBox.warning(self, t("error"), t("preprocess_mask_nothing_enabled"))
+            return
+        self._submit(
+            label="mask",
+            argv=["tasks.py", "mask"],
+            extra_env={
+                "MIT_TEXT_THRESHOLD": self.mit_threshold_edit.text().strip(),
+                "MIT_DILATE": str(int(self.mit_dilate_spin.value())),
+                "RUN_SAM_MASK": "1" if run_sam else "0",
+                "RUN_MIT_MASK": "1" if run_mit else "0",
+            },
+        )
+
+    def _submit(self, *, label: str, argv: list[str], extra_env: dict) -> None:
+        """Submit a preprocess/mask job to the daemon, then observe it.
+
+        The daemon spawns ``python <argv>`` detached and serializes it behind
+        any running training job (single GPU). Pre-launch validation
+        (``_save_all`` + per-step gating) is the caller's job."""
+        if self._is_running():
+            QMessageBox.information(self, "", t("preprocess_already_running"))
+            return
+        # Busy UI + repaint before the submit so the tab feels responsive while
+        # the daemon auto-start + /health wait completes on a cold start.
+        for btn in self._run_buttons:
+            btn.setEnabled(False)
+        self.save_btn.setEnabled(False)
+        self.stop_btn.setEnabled(True)
+        self.log.clear()
+        self._stdout_buf = ""
+        self._progress_tracker.reset()
+        self._progress_tracker.mark_starting(t("starting"))
+        self.log.appendPlainText("> " + " ".join([sys.executable, *argv]))
+        self.log.appendPlainText(t("daemon_submitting"))
+        QApplication.processEvents()
+
+        try:
+            resp = gui_daemon.submit_command(
+                label=label, argv=argv, extra_env=extra_env
+            )
+        except Exception as e:  # noqa: BLE001 — daemon failed to start / submit
+            QMessageBox.warning(self, t("error"), t("daemon_submit_failed", err=str(e)))
+            self._restore_idle_ui()
+            return
+        job_id = resp.get("job_id") if isinstance(resp, dict) else None
+        if not job_id:
+            QMessageBox.warning(
+                self, t("error"), t("daemon_submit_failed", err=str(resp))
+            )
+            self._restore_idle_ui()
+            return
+        self.log.appendPlainText(t("daemon_queued", job_id=job_id).rstrip("\n"))
+        self._attach_to_job(job_id, replay_log=False)
+
+    def _try_reattach(self) -> None:
+        """Bind to a preprocess/mask job still running when the tab first opens.
+
+        Makes "close GUI mid-preprocess → reopen → re-attach" work. Skips a
+        training job (that one belongs to the ConfigTab) and stays idle when the
+        daemon is down."""
+        try:
+            job_id = gui_daemon.active_job_id()
+        except Exception:  # noqa: BLE001 — daemon unreachable → nothing to attach
+            return
+        if not job_id or gui_daemon.read_job_kind(job_id) != "command":
+            return
+        # An auto-chain preprocess (tagged ANIMA_CHAIN_TRAIN) belongs to the
+        # ConfigTab — it re-claims that one so the bar + Train-blocking + chain
+        # into training stay on the training tab. Leave it alone here.
+        if gui_daemon.read_job_chain_variant(job_id):
+            return
+        self.log.clear()
+        self._stdout_buf = ""
+        self._progress_tracker.reset()
+        self._progress_tracker.mark_starting(t("starting"))
+        self.log.appendPlainText(t("daemon_reattached", job_id=job_id).rstrip("\n"))
+        self._attach_to_job(job_id, replay_log=True)
+
+    def _attach_to_job(self, job_id: str, *, replay_log: bool) -> None:
+        """Point the log + bar at a daemon job's on-disk files and start polling.
+
+        ``replay_log`` reads ``stdout.log`` from the top (re-attach after a GUI
+        restart); otherwise pre-existing output is skipped so a fresh launch
+        shows only new lines."""
+        self._job_id = job_id
+        self._stdout_buf = ""
+        self._stdout_tailer.watch(gui_daemon.stdout_path(job_id))
+        if not replay_log:
+            self._stdout_tailer.read_new()  # discard backlog
+        for btn in self._run_buttons:
+            btn.setEnabled(False)
+        self.save_btn.setEnabled(False)
+        self.stop_btn.setEnabled(True)
+        self._job_timer.start()
+
+    def _poll_job(self) -> None:
+        if not self._job_id:
+            return
+        self._drain_job_stdout()
+        state = gui_daemon.read_job_state(self._job_id)
+        if gui_daemon.is_terminal(state):
+            self._on_job_finished(state)
+
+    def _drain_job_stdout(self) -> None:
+        """Append new stdout.log lines to the log (carriage-return aware); tqdm
+        lines drive the bar instead of spamming the log (no progress.jsonl for
+        preprocess/mask, so tqdm is the only progress signal)."""
+        chunk = self._stdout_tailer.read_new()
+        if not chunk:
+            return
+        parts = re.split(r"[\r\n]", self._stdout_buf + chunk)
+        self._stdout_buf = parts[-1]  # incomplete trailing fragment
+        for line in parts[:-1]:
+            if self._progress_tracker.feed(line):
+                continue
+            if line:
+                self.log.appendPlainText(line)
+
+    def _on_job_finished(self, state: str | None) -> None:
+        self._job_timer.stop()
+        # Drain any trailing stdout before the finish banner. A half-written
+        # tqdm fragment is dropped — the bar already reflected its state.
+        self._drain_job_stdout()
+        if self._stdout_buf and not TQDM_RE.search(self._stdout_buf):
+            self.log.appendPlainText(self._stdout_buf)
+        self._stdout_buf = ""
+        job_id = self._job_id
+        self._job_id = None
+        self._stdout_tailer.reset()
+        self._progress_tracker.reset()
+        self.log.appendPlainText(gui_daemon.format_finish_banner(job_id, state))
+        self._restore_idle_ui()
+        self._refresh_status()
+
+    def _restore_idle_ui(self) -> None:
+        for btn in self._run_buttons:
+            btn.setEnabled(True)
+        self.save_btn.setEnabled(True)
+        self.stop_btn.setEnabled(False)
+
+    def _stop(self) -> None:
+        # Abort the daemon job; the poll loop then observes the 'stopped' state
+        # and restores the UI. The daemon stays up and advances its queue.
+        if not self._job_id:
+            return
+        try:
+            gui_daemon.stop_job(self._job_id)
+        except Exception as e:  # noqa: BLE001
+            self.log.appendPlainText(f"stop failed: {e}")
+
+    def cleanup_subprocess(self) -> None:
+        """App-shutdown hook. Stops observing but deliberately leaves the daemon
+        job alive — it runs detached so a cache build / mask pass survives the
+        GUI closing (re-attached on next launch)."""
+        self._job_timer.stop()

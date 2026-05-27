@@ -80,6 +80,8 @@ class ChimeraHydraLoRAModule(BaseLoRAModule):
         num_experts_freq: int = 3,
         channel_scale=None,
         use_global_content_router: bool = False,
+        centered_gate: bool = False,
+        lambda_init: float = 0.0,
     ):
         super().__init__(
             lora_name,
@@ -91,6 +93,12 @@ class ChimeraHydraLoRAModule(BaseLoRAModule):
             rank_dropout=rank_dropout,
             module_dropout=module_dropout,
         )
+
+        # Centered-gate init (both pools). When on, each pool's gate is
+        # recentered to ``π - 1/K`` in forward and λ starts at ``lambda_init``
+        # (>0) so the routers get step-0 gradient while ΔW stays 0 — see
+        # ``LoRANetworkCfg.chimera_centered_gate``.
+        self._centered_gate = bool(centered_gate)
 
         if num_experts_content <= 0 or num_experts_freq <= 0:
             raise ValueError(
@@ -180,10 +188,14 @@ class ChimeraHydraLoRAModule(BaseLoRAModule):
         self.S_p_c = torch.nn.Parameter(torch.zeros(K_c, r, r))
         self.S_p_f = torch.nn.Parameter(torch.zeros(K_f, r, r))
 
-        # Per-pool λ: ΔW=0 at step 0 (zero-init) and the two pools have
-        # independent magnitudes through training (no shared scaling).
-        self.lambda_c = torch.nn.Parameter(torch.zeros(1, r))
-        self.lambda_f = torch.nn.Parameter(torch.zeros(1, r))
+        # Per-pool λ: the two pools have independent magnitudes through
+        # training (no shared scaling). Default zero-init → ΔW=0 at step 0,
+        # but then the routers are gradient-starved until λ ramps. Under
+        # centered_gate λ starts at ``lambda_init`` (>0): the recentered gate
+        # keeps ΔW=0 at init while feeding the routers a step-0 gradient.
+        lam0 = float(lambda_init) if self._centered_gate else 0.0
+        self.lambda_c = torch.nn.Parameter(torch.full((1, r), lam0))
+        self.lambda_f = torch.nn.Parameter(torch.full((1, r), lam0))
 
         # Per-Linear content router: pooled rank-R lx_c → K_c. The freq
         # router lives at the network level (one FreqRouter shared across
@@ -195,7 +207,16 @@ class ChimeraHydraLoRAModule(BaseLoRAModule):
         if not self.use_global_content_router:
             self.router = torch.nn.Linear(r, K_c, bias=True)
             with torch.no_grad():
-                torch.nn.init.normal_(self.router.weight, std=0.01)
+                # Centered-gate: zero-init for an exactly-uniform π_c at step 0
+                # (so the recentered gate is 0 → ΔW_c=0). The symmetry break
+                # then comes from the disjoint P_bases_c·λ0 residual. But in the
+                # narrow-layer fallback the per-expert P slices start IDENTICAL
+                # (_disjoint_basis=False), so (P_k - P̄)=0 and a zero router would
+                # deadlock — keep the std seed as the only symmetry-breaker there.
+                if self._centered_gate and self._disjoint_basis:
+                    self.router.weight.zero_()
+                else:
+                    torch.nn.init.normal_(self.router.weight, std=0.01)
                 self.router.bias.zero_()
         else:
             self.router = None
@@ -427,7 +448,18 @@ class ChimeraHydraLoRAModule(BaseLoRAModule):
             # Plain STORE_ATTR — see HydraLoRAModule.forward for the
             # rationale; @compiler.disable would force a graph break and
             # explode saved-for-backward memory under torch.compile.
+            # Cache the RAW (uncentered) simplex: the per-pool balance loss
+            # (_get_chimera_balance_loss) needs a probability distribution,
+            # NOT the centered residual.
             self._last_gate = self._full_gate(pi_c)
+
+        # Centered-gate: subtract the per-pool uniform 1/K_c so a uniform
+        # (zero-init router) gate contributes exactly 0 at step 0 — base
+        # preserved while the disjoint content P-subspaces still feed the
+        # router a nonzero gradient (mirrors ortho_centered_gate). π_f is
+        # centered at its einsum below.
+        if self._centered_gate:
+            pi_c = pi_c - (1.0 / self.num_experts_content)
 
         # λ application + T-LoRA mask (content only). Freq branch keeps
         # full rank at every t — by construction the freq pool's job is
@@ -453,6 +485,11 @@ class ChimeraHydraLoRAModule(BaseLoRAModule):
         pi_f = self._freq_routing_weights
         if pi_f.dim() == 1:
             pi_f = pi_f.unsqueeze(0)
+        # Center π_f the same way (NOT in-place — the buffer carries the
+        # FreqRouter's grad_fn; ``pi_f - c`` preserves it). The freq router is
+        # zero-init under centered_gate so π_f is uniform at step 0 → ΔW_f=0.
+        if self._centered_gate:
+            pi_f = pi_f - (1.0 / self.num_experts_freq)
         pi_f_w = pi_f.to(work).expand(pi_c_w.shape[0], -1)
 
         P_combined_c = torch.einsum("bc,cor->bor", pi_c_w, P_eff_c)
@@ -741,6 +778,7 @@ class ChimeraHydraInferenceModule(BaseLoRAModule):
         num_experts_freq: int = 3,
         channel_scale=None,
         use_global_content_router: bool = False,
+        centered_gate: bool = False,
     ):
         super().__init__(
             lora_name,
@@ -752,6 +790,11 @@ class ChimeraHydraInferenceModule(BaseLoRAModule):
             rank_dropout=rank_dropout,
             module_dropout=module_dropout,
         )
+
+        # Centered-gate parity: λ is folded symmetrically into the saved
+        # per-pool ups, so reproducing the trained forward is exactly
+        # ``π_c -= 1/K_c`` / ``π_f -= 1/K_f`` before each pool's combine.
+        self._centered_gate = bool(centered_gate)
 
         K_c = int(num_experts_content)
         K_f = int(num_experts_freq)
@@ -863,6 +906,13 @@ class ChimeraHydraInferenceModule(BaseLoRAModule):
         if pi_f.dim() == 1:
             pi_f = pi_f.unsqueeze(0)
         pi_f = pi_f.to(pi_c.dtype).expand(pi_c.shape[0], -1)
+
+        # Centered-gate parity with training: subtract per-pool 1/K. λ is
+        # already baked into the saved ups, so this reproduces the trained
+        # ``Σ (π[k] - 1/K)·B[k]`` combine exactly.
+        if self._centered_gate:
+            pi_c = pi_c - (1.0 / self.num_experts_content)
+            pi_f = pi_f - (1.0 / self.num_experts_freq)
 
         if self.dropout is not None and self.training:
             lx_c = torch.nn.functional.dropout(lx_c, p=self.dropout)

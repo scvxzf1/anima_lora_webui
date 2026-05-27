@@ -733,6 +733,10 @@ def create_network_from_weights(
     new_router_source_stamp: Optional[str] = (
         new_router_source if new_router_source else None
     )
+    ortho_centered_gate = (
+        str(file_metadata.get("ss_ortho_centered_gate", "")).strip().lower()
+        == "true"
+    )
 
     # ChimeraHydra stamps. Presence of ``ss_use_chimera_hydra="true"``
     # flips the loader to the chimera spec. The chimera-native save format
@@ -791,6 +795,11 @@ def create_network_from_weights(
     chimera_content_router_layer_norm: bool = (
         is_chimera_hydra
         and str(file_metadata.get("ss_chimera_content_router_layer_norm", "")).strip().lower()
+        == "true"
+    )
+    chimera_centered_gate = (
+        is_chimera_hydra
+        and str(file_metadata.get("ss_chimera_centered_gate", "")).strip().lower()
         == "true"
     )
     if is_chimera_hydra:
@@ -860,12 +869,14 @@ def create_network_from_weights(
         new_use_moe_style=new_use_moe_style,
         new_route_per_layer=new_route_per_layer,
         new_router_source=new_router_source_stamp,
+        ortho_centered_gate=ortho_centered_gate,
         is_chimera_hydra=is_chimera_hydra,
         num_experts_content=chimera_num_experts_content,
         num_experts_freq=chimera_num_experts_freq,
         freq_router_layer_norm=chimera_freq_router_layer_norm,
         content_router_source=chimera_content_router_source,
         content_router_layer_norm=chimera_content_router_layer_norm,
+        chimera_centered_gate=chimera_centered_gate,
         lokr_factor=next(iter(sorted(lokr_factors))) if lokr_factors else 8,
     )
 

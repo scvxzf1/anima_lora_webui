@@ -32,9 +32,15 @@ identity-pair sampler, artist balancing, dataset analytics.
 import argparse
 import json
 import os
+import re
 from collections import OrderedDict
 from datetime import datetime, timezone
 from pathlib import Path
+
+# Shared tag-shape primitives (torch-free) — single source of truth for the
+# artist ``@``-prefix rule, count-tag detection, and the raw-caption rating set,
+# kept in sync with the Anima Tagger vocab build (scripts/anima_tagger/vocab.py).
+from library.captioning.taxonomy import CAPTION_RATINGS, is_artist_tag, is_count_tag
 
 
 DEFAULT_VOCAB = "models/captioners/anima-tagger-v2/vocab.json"
@@ -43,6 +49,52 @@ DEFAULT_OUT = "post_image_dataset/captions/caption_index.json"
 # vocab artist list); character/copyright/count are classified by vocab
 # membership, matching the Anima Tagger's category labels.
 VOCAB_AXES = ("character", "copyright", "count")
+
+# Danbooru disambiguator form: ``character_name (copyright_name)``. The tagger
+# vocab only carries the ~135 character names frozen at its training cutoff, so
+# newer characters (``endministrator (arknights)``, ``mualani (genshin
+# impact)``, …) are emitted in captions but miss the exact-membership classifier
+# and the image reads as character-less. ``_recover_paren_character`` rescues
+# them: a ``name (series)`` tag is a character when the parenthetical series is a
+# real franchise — a known vocab copyright, or present as a standalone tag in
+# the *same* caption (danbooru always co-tags the bare franchise) — and not one
+# of these generic disambiguators (``X (cosplay)`` does not make X a character).
+_PAREN_RE = re.compile(r"^(.+?)\s*\(([^)]+)\)$")
+_GENERIC_PAREN_QUALIFIERS = frozenset(
+    {"cosplay", "costume", "alternate costume", "meme", "food", "fruit", "maid", "animal", "object"}
+)
+
+# Positional recovery: many characters are tagged as a *bare name* with no
+# `(series)` disambiguator (`nakiri ayame`, `yuigahama yui`, hololive/idolmaster
+# members), so the paren pass can't see them either. Danbooru caption order is
+# rigid — ``[rating] [count] [character…] [copyright…] @artist [general…]`` —
+# so the character band is the run of pre-`@artist` tags that are not rating /
+# count / copyright. The risk is *franchise sub-titles* (``pokemon scarlet and
+# violet``, ``gakuen idolmaster``, ``arknights: endfield``) that sit in the same
+# pre-artist span but are copyright, not character: they are excluded because
+# they share a (≥4-char, non-generic) word with a known copyright in the same
+# caption. The shared ``CAPTION_RATINGS`` / ``is_count_tag`` (from
+# ``library.captioning.taxonomy``) strip the leading rating/count band;
+# ``_COPYRIGHT_STOPWORDS`` are generic franchise-title words too weak to anchor
+# the sub-title test. Residual false positives (event/brand meta tags like
+# ``comiket 104``) are rare (<0.3% of images) and left as noise.
+_COPYRIGHT_STOPWORDS = frozenset(
+    {
+        "club", "high", "school", "idol", "story", "world", "project", "series",
+        "love", "live", "girl", "girls", "boy", "boys", "the", "and", "no",
+    }
+)
+
+
+def _norm_words(tag: str) -> set[str]:
+    """≥4-char alphanumeric words of a tag, minus generic franchise-title
+    stopwords — the unit the positional pass uses to test whether a pre-artist
+    tag is a franchise sub-title of a known copyright."""
+    return {
+        w
+        for w in re.split(r"[^a-z0-9]+", tag)
+        if len(w) >= 4 and w not in _COPYRIGHT_STOPWORDS
+    }
 
 
 def _load_vocab_sets(vocab_path: str) -> dict[str, set[str]]:
@@ -77,9 +129,16 @@ def _iter_captions(src: Path):
             yield name[:-4], rel, text
 
 
-def _classify(text: str, vsets: dict[str, set[str]]) -> dict[str, list[str]]:
+def _classify(
+    text: str,
+    vsets: dict[str, set[str]],
+    *,
+    recover_paren: bool = True,
+    recover_positional: bool = True,
+) -> dict[str, list[str]]:
     tags = [t.strip().lower() for t in text.split(",")]
     tags = [t for t in tags if t]
+    bare = set(tags)
     out: dict[str, list[str]] = {axis: [] for axis in (*VOCAB_AXES, "artist")}
     seen = {axis: set() for axis in out}
 
@@ -89,15 +148,69 @@ def _classify(text: str, vsets: dict[str, set[str]]) -> dict[str, list[str]]:
             out[axis].append(tag)
 
     for tag in tags:
-        if tag.startswith("@"):
+        if is_artist_tag(tag):
             _add("artist", tag)
+            continue
+        matched = False
         for axis in VOCAB_AXES:
             if tag in vsets[axis]:
                 _add(axis, tag)
+                matched = True
+        if matched or not recover_paren:
+            continue
+        # Vocab missed it — try the danbooru `name (series)` character recovery.
+        m = _PAREN_RE.match(tag)
+        if m:
+            series = m.group(2).strip()
+            if series not in _GENERIC_PAREN_QUALIFIERS and (
+                series in vsets["copyright"] or series in bare
+            ):
+                _add("character", tag)
+                _add("copyright", series)
+
+    # Positional recovery of bare-name characters (see _RATINGS/_norm_words note):
+    # everything in the pre-`@artist` band that isn't rating / count / copyright
+    # and isn't a franchise sub-title (shares a word with a known copyright here).
+    if recover_positional:
+        artist_at = next(
+            (i for i, t in enumerate(tags) if is_artist_tag(t)), None
+        )
+        if artist_at is not None:
+            copy_words: set[str] = set()
+            for cp in out["copyright"]:
+                copy_words |= _norm_words(cp)
+            for tag in tags[:artist_at]:
+                if (
+                    tag in seen["character"]
+                    or tag in seen["copyright"]
+                    or tag in seen["count"]
+                ):
+                    continue
+                if tag in CAPTION_RATINGS or is_count_tag(tag) or _PAREN_RE.match(tag):
+                    continue
+                if _norm_words(tag) & copy_words:
+                    continue  # franchise sub-title of a known copyright
+                _add("character", tag)
+
+    # Danbooru `original` copyright = original character — no *named* franchise
+    # character. When it is the SOLE copyright, drop any character tags (vocab
+    # OCs, `oc_name (artist)` circle tags like `ichigo (mignon)`) so OC images
+    # read as character-less, which also routes them to the contrastive
+    # `hard_original` negative tier. Crossover images (`original` + a real
+    # franchise, e.g. `liko (pokemon)`) keep their characters.
+    if set(out["copyright"]) == {"original"}:
+        out["character"] = []
+        seen["character"] = set()
     return out
 
 
-def build_index(src: str, vocab_path: str) -> dict:
+def build_index(
+    src: str,
+    vocab_path: str,
+    *,
+    recover_paren: bool = True,
+    recover_positional: bool = True,
+) -> dict:
     vsets = _load_vocab_sets(vocab_path)
     image_meta: dict[str, dict] = OrderedDict()
     groups: dict[str, dict[str, list[str]]] = {
@@ -107,7 +220,12 @@ def build_index(src: str, vocab_path: str) -> dict:
     n_seen = 0
     for stem, rel, text in sorted(_iter_captions(Path(src))):
         n_seen += 1
-        typed = _classify(text, vsets)
+        typed = _classify(
+            text,
+            vsets,
+            recover_paren=recover_paren,
+            recover_positional=recover_positional,
+        )
         if stem in image_meta:
             # Stems must be unique across the tree; surface a collision rather
             # than silently dropping one image's tags.
@@ -143,6 +261,8 @@ def build_index(src: str, vocab_path: str) -> dict:
             ).isoformat(timespec="seconds"),
             "n_images": n_seen,
             "axes": ["character", "copyright", "artist", "count"],
+            "paren_recover": recover_paren,
+            "positional_recover": recover_positional,
             "note": "method-agnostic typed-tag parse; sampling policy lives in method config",
         },
         "image_meta": image_meta,
@@ -165,9 +285,26 @@ def main():
     ap.add_argument(
         "--out", default=DEFAULT_OUT, help=f"Output JSON (default: {DEFAULT_OUT})"
     )
+    ap.add_argument(
+        "--no-paren-recover",
+        action="store_true",
+        help="Disable the danbooru `name (series)` character-recovery heuristic "
+        "(exact vocab membership only).",
+    )
+    ap.add_argument(
+        "--no-positional-recover",
+        action="store_true",
+        help="Disable the positional bare-name character recovery (pre-`@artist` "
+        "band minus rating/count/copyright/franchise-sub-titles).",
+    )
     args = ap.parse_args()
 
-    index = build_index(args.src, args.vocab)
+    index = build_index(
+        args.src,
+        args.vocab,
+        recover_paren=not args.no_paren_recover,
+        recover_positional=not args.no_positional_recover,
+    )
     out = Path(args.out)
     out.parent.mkdir(parents=True, exist_ok=True)
     with open(out, "w", encoding="utf-8") as f:

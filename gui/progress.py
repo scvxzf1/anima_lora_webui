@@ -136,7 +136,24 @@ class TqdmProgressTracker:
 
 
 class JsonlProgressReader:
-    """Drive a QProgressBar from a training progress.jsonl stream."""
+    """Drives a QProgressBar from a training ``progress.jsonl`` event stream.
+
+    This is the Phase-0 replacement for tqdm-stdout parsing: the trainer writes
+    structured ``run_start`` / ``step`` / ``val`` / ``run_end`` events
+    (``library/training/progress.py``) next to the checkpoint, and this reader
+    tails that file. It is *additive* — the caller keeps the tqdm
+    :class:`TqdmProgressTracker` as a fallback and only hands the bar over once
+    ``active`` flips True (first event seen). When the file never appears (older
+    train.py, progress disabled) the reader stays inert and tqdm drives the bar.
+
+    Usage::
+
+        self._jsonl_reader = JsonlProgressReader(self.progress)
+        self._jsonl_reader.watch(progress_path)   # at launch
+        # on a timer:
+        self._jsonl_reader.poll()
+        # in the stdout handler, suppress tqdm bar updates while active.
+    """
 
     def __init__(self, bar: QProgressBar) -> None:
         self._bar = bar
@@ -144,6 +161,9 @@ class JsonlProgressReader:
         self._pos = 0
         self._total_steps = 0
         self._active = False
+        # (anchor_ts, anchor_step) seeded from the first step event. Uses the
+        # event's embedded ``ts`` (seconds since run start), not wall-clock —
+        # see ``_rate`` for why that matters on GUI re-attach.
         self._anchor: tuple[float, int] | None = None
 
     @property
@@ -151,6 +171,8 @@ class JsonlProgressReader:
         return self._active
 
     def watch(self, path: str | None) -> None:
+        """Point the reader at *path* and reset state. Pass ``None`` to disable
+        (e.g. for test / preprocess runs that emit no progress.jsonl)."""
         self._path = path
         self._pos = 0
         self._total_steps = 0
@@ -161,6 +183,8 @@ class JsonlProgressReader:
         self.watch(None)
 
     def poll(self) -> None:
+        """Read any complete new lines and update the bar. No-op while the
+        file is absent (the trainer hasn't emitted ``run_start`` yet)."""
         if not self._path or not os.path.exists(self._path):
             return
         try:
@@ -175,47 +199,56 @@ class JsonlProgressReader:
             if not line:
                 continue
             try:
-                event = json.loads(line)
+                ev = json.loads(line)
             except ValueError:
+                # partial line written between our reads — rewind and retry next poll
                 self._pos -= len(line.encode("utf-8"))
                 return
-            if isinstance(event, dict):
-                self._consume(event)
+            self._consume(ev)
 
-    def _consume(self, event: dict) -> None:
-        kind = event.get("ev")
+    def _consume(self, ev: dict) -> None:
+        kind = ev.get("ev")
         if kind == "run_start":
             self._active = True
-            self._total_steps = int(event.get("total_steps") or 0)
+            self._total_steps = int(ev.get("total_steps") or 0)
             self._anchor = None
             self._bar.setRange(0, self._total_steps or 0)
             self._bar.setValue(0)
-            self._bar.setFormat("starting...")
+            self._bar.setFormat("starting…")
             self._bar.setVisible(True)
-            return
-        if kind == "step":
+        elif kind == "step":
             self._active = True
-            self._update_bar(int(event.get("global_step") or 0), event.get("ts"))
-            return
-        if kind == "val":
-            cmmd = event.get("cmmd")
+            self._update_bar(int(ev.get("global_step") or 0), ev.get("ts"))
+        elif kind == "val":
+            # CMMD val pass — keep the bar where it is, annotate if we have it.
+            cmmd = ev.get("cmmd")
             if cmmd is not None and self._bar.isVisible():
                 self._bar.setFormat(self._bar.format() + f" — CMMD {cmmd:.4f}")
 
     def _update_bar(self, cur: int, ts: float | None = None) -> None:
-        total = self._total_steps
+        tot = self._total_steps
         rate = self._rate(cur, ts)
-        if total > 0:
-            self._bar.setRange(0, total)
+        if tot > 0:
+            self._bar.setRange(0, tot)
             self._bar.setValue(cur)
-            self._bar.setFormat(f"step {cur}/{total} (%p%){rate}")
+            self._bar.setFormat(f"step {cur}/{tot} (%p%){rate}")
         else:
-            self._bar.setRange(0, 0)
+            self._bar.setRange(0, 0)  # total unknown → indeterminate
             self._bar.setFormat(f"step {cur}{rate}")
         if not self._bar.isVisible():
             self._bar.setVisible(True)
 
     def _rate(self, cur: int, ts: float | None) -> str:
+        """Compute s/step, anchoring on the event's embedded ``ts``.
+
+        ``ts`` is seconds-since-run-start written by the trainer. Using it
+        (rather than ``time.monotonic()``) makes the rate re-attach-safe: when
+        the GUI reopens mid-run it re-reads the whole progress.jsonl in one
+        burst, so wall-clock deltas between consecutive events collapse to ~0
+        and s/step would read near zero (the "all steps done instantly" bug).
+        The embedded ``ts`` carries the real step spacing no matter when we
+        read the file. Falls back to wall-clock only if ``ts`` is absent.
+        """
         clock = ts if ts is not None else time.monotonic()
         if self._anchor is None or cur < self._anchor[1]:
             self._anchor = (clock, cur)
@@ -232,6 +265,11 @@ class JsonlProgressReader:
 
 
 def _format_duration(seconds: float) -> str:
+    """Render a duration as ``M:SS`` (under an hour) or ``H:MM:SS``.
+
+    Matches tqdm's own remaining-time style so the ETA reads naturally next
+    to the s/step rate.
+    """
     s = max(0, int(round(seconds)))
     if s < 3600:
         return f"{s // 60}:{s % 60:02d}"

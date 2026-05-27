@@ -4,6 +4,7 @@ from pathlib import Path
 
 
 APP_JS = Path(__file__).resolve().parents[1] / "web" / "static" / "app.js"
+INDEX_HTML = Path(__file__).resolve().parents[1] / "web" / "static" / "index.html"
 
 
 def _section(source: str, start: str, end: str) -> str:
@@ -47,12 +48,26 @@ def test_return_to_live_training_clears_runtime_cursor() -> None:
 
 def test_training_queue_frontend_hooks_are_present() -> None:
     source = APP_JS.read_text(encoding="utf-8")
+    html = INDEX_HTML.read_text(encoding="utf-8")
 
     queue_section = _section(source, "async function loadTrainingQueue()", "// ── 状态轮询 ──")
     assert "function renderTrainingQueue()" in queue_section
+    assert "function renderTrainingQueueManager()" in queue_section
     assert "function createTrainingQueueItem" in queue_section
+    assert "function createTrainingQueueManagerItem" in queue_section
     assert "async function toggleTrainingQueuePause()" in queue_section
+    assert "retryQueueItem" in queue_section
+    assert "cancelWaitingQueueItems" in queue_section
+    assert "clearFinishedQueueItems" in queue_section
+    assert "trainingQueueFilter" in queue_section
     assert "/api/training/queue" in queue_section
+    assert "/api/training/queue/settings" in queue_section
+    assert "/api/training/queue/cancel-waiting" in queue_section
+    assert "/api/training/queue/clear" in queue_section
+
+    assert "training-queue-manager" in html
+    assert "btn-training-queue-view" in html
+    assert "training-queue-failure-policy" in html
 
     ws_section = _section(source, "function handleWsMessage", "function appendLog")
     assert "case 'queue':" in ws_section

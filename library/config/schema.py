@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import argparse
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any, Optional
 
 
@@ -119,6 +119,22 @@ def populate_schema(
         if key is None:
             continue
         CONFIG_SCHEMA[key.name] = key
+
+    # Back-compat aliases: the cache surface collapsed from four flags
+    # (cache_latents{,_to_disk}, cache_text_encoder_outputs{,_to_disk}) to two
+    # semantic knobs. Old configs / snapshots still resolve onto the new keys.
+    for _canon, _old in (
+        ("use_vae_cache", ("cache_latents", "cache_latents_to_disk")),
+        (
+            "use_text_cache",
+            ("cache_text_encoder_outputs", "cache_text_encoder_outputs_to_disk"),
+        ),
+    ):
+        if _canon in CONFIG_SCHEMA:
+            CONFIG_SCHEMA[_canon] = replace(
+                CONFIG_SCHEMA[_canon],
+                aliases=CONFIG_SCHEMA[_canon].aliases + _old,
+            )
 
     # Manual TOML-only / non-argparse extras. `base_config` is the only one
     # essential today; future methods can extend via ``extras``.

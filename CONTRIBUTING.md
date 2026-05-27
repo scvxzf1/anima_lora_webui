@@ -14,7 +14,7 @@ Thanks for considering a contribution. This repo welcomes targeted fixes and new
 
 ## Priority areas
 
-Four areas where outside contributions would have the biggest impact right now. Each item below carries a tier annotation that maps to the requirements in the rest of this document. Open a draft PR or issue early on anything bigger than Tier 1 — happy to scope and review.
+Five areas where outside contributions would have the biggest impact right now. Each item below carries a tier annotation that maps to the requirements in the rest of this document. Open a draft PR or issue early on anything bigger than Tier 1 — happy to scope and review.
 
 ### 1. EasyControl adapters
 
@@ -70,6 +70,41 @@ A second-order bench-gap contribution worth calling out:
 
 - **Envelope conformance.** Older bench scripts predate `bench/_common.py` and don't drop a `result.json` via `make_run_dir` + `write_result`. Auditing each script and converting the holdouts (so cross-run indexing actually works) is a clean Tier 1 PR per script.
 - **`bench/turbo/` doesn't exist yet** — it lands as part of the Turbo LoRA contribution in (2) above.
+
+### 5. Translations & localization
+
+Translatable content lives in four places, each with its own contribution shape but all reviewed as Tier 1 (no bench, no test — `make gui` walkthrough screenshots in the PR description are the proof). Missing entries in every surface below **fall back to English**, so it's fine to ship an incomplete translation and grow it over time. Currently shipped: `en` (canonical), `ko` (mostly complete), `cn` (machine-translated stub, unproofread).
+
+**(a) GUI strings — `gui/i18n/<code>.py`.** One module per language, each exporting `STRINGS: dict[str, str]`. `gui/i18n/__init__.py` assembles these into `TRANSLATIONS` and `t(key, **kwargs)` resolves keys against the current language. To **add a new language**, drop in `gui/i18n/<code>.py` mirroring `en.py`'s key set, register it in `TRANSLATIONS`, and add a friendly label to `LANG_NAMES` in `gui/app.py` (e.g. `"ja": "日本語"`). Every key you do include must use the same `{placeholder}` names as the English source — `t()` calls `.format(**kwargs)` and will raise at runtime on a typo. *[Tier 1]*
+
+**(b) Per-field tooltips — `gui/explanations/__init__.py`.** Two dict-of-dicts power the form-field help: `FIELD_HELP` (config-form tooltips, ~50 keys) and `PREPROCESS_FIELD_HELP` (Preprocessing tab knobs, ~10 keys). Each entry is `{"en": "...", "ko": "..."}`. Add your language code as a sibling key in every entry you want translated. `field_help()` / `preprocess_field_help()` fall back to `"en"` for missing language keys. These are the strings users see when they click a form-row label, so translation quality matters more than for transient buttons — keep technical terms (LoRA, MoE, σ-bucket, VAE) untranslated. *[Tier 1]*
+
+**(c) Long-form method guides — `gui/explanations/guides/<name>.<lang>.html`.** Right-panel HTML blocks for method variants and the Preprocessing tab. Filename convention is `<name>.<lang>.html`; the loader (`_read_guide` in `gui/explanations/__init__.py`) auto-falls back to `.en.html` when the language version is absent. Names currently present: `lora`, `tlora`, `hydralora`, `fera`, `reft`, `postfix`, `preprocess`, plus the shared snippets `_apply_note` and `_not_mergeable`. To translate, drop in `<name>.<code>.html` files alongside the English ones — no code change required. Preserve any `<a href="…">`, `<code>`, and color-coded `<span>` markup; the GUI's QTextBrowser renders these. *[Tier 1]*
+
+**(d) Docs and structure images — `docs/`.**
+- `docs/guidelines/가이드북.md` is the end-to-end onboarding doc and only exists in Korean. An English translation (or any other language) would significantly widen the audience. The `guidebook_tooltip` string in `gui/i18n/en.py` currently points users at the Korean file — once a translation lands, wire the Guidebook button (in `gui/app.py`) to pick the right file based on `current_language()`.
+- `docs/structure_images_korean/` holds Korean-labeled versions of the architecture diagrams under `docs/structure_images/` (e.g. `animakor.png` ↔ `anima.png`). English/other-language equivalents are welcome under the natural sibling tree (`docs/structure_images/` is the English baseline; `docs/structure_images_<lang>/` for translations). Mention which markdown files reference the diagram so the reviewer can update the embed paths.
+- Method docs under `docs/methods/`, `docs/experimental/`, `docs/proposal/`, and `docs/optimizations/` are **English-only by convention** — translations are welcome as `<name>.<code>.md` siblings, but nothing reads them at runtime yet. If you contribute one, also propose how it should surface (e.g. a language switcher in the README's docs table, or wiring it into a GUI "Open method doc" button). Don't translate `CLAUDE.md` — that file is consumed by Claude Code and is single-source-of-truth for project conventions.
+
+**Parity check (covers all per-language surfaces):**
+```bash
+python -c "
+from gui.i18n import TRANSLATIONS as T
+from gui.explanations import FIELD_HELP, PREPROCESS_FIELD_HELP
+en_keys = set(T['en'])
+for lang in T:
+    if lang == 'en': continue
+    missing = sorted(en_keys - set(T[lang]))
+    print(f'{lang} i18n missing  ({len(missing)}):', missing[:5], '…' if len(missing) > 5 else '')
+for name, d in (('FIELD_HELP', FIELD_HELP), ('PREPROCESS_FIELD_HELP', PREPROCESS_FIELD_HELP)):
+    en_entries = {k for k, v in d.items() if 'en' in v}
+    for lang in ('ko', 'cn'):
+        missing = sorted(k for k in en_entries if lang not in d[k])
+        print(f'{lang} {name:24s} missing ({len(missing)}):', missing[:5], '…' if len(missing) > 5 else '')
+"
+```
+
+If a translated string is too long for its widget, mention it in the PR — the fix is usually a layout tweak in the relevant `gui/tabs/*.py`, not a shorter translation.
 
 ## Tier 1 — bug fixes, typos, UI, arg/CLI tweaks
 

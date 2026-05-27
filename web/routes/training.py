@@ -22,7 +22,11 @@ def setup_training_routes(app: web.Application) -> None:
     app.router.add_get("/api/training/queue", handle_queue_status)
     app.router.add_post("/api/training/queue/start", handle_queue_start)
     app.router.add_post("/api/training/queue/resume", handle_queue_resume)
+    app.router.add_post("/api/training/queue/settings", handle_queue_settings)
+    app.router.add_post("/api/training/queue/cancel-waiting", handle_queue_cancel_waiting)
+    app.router.add_post("/api/training/queue/clear", handle_queue_clear)
     app.router.add_post("/api/training/queue/{item_id}/move", handle_queue_move)
+    app.router.add_post("/api/training/queue/{item_id}/retry", handle_queue_retry)
     app.router.add_delete("/api/training/queue/{item_id}", handle_queue_cancel)
     app.router.add_post("/api/training/queue/pause", handle_queue_pause)
     app.router.add_get("/api/training/history", handle_history_list)
@@ -404,10 +408,44 @@ async def handle_queue_move(request: web.Request) -> web.Response:
     svc = request.app["training_service"]
     data = await request.json()
     direction = str(data.get("direction") or "").strip()
-    if direction not in {"up", "down"}:
-        return web.json_response({"ok": False, "error": "direction 必须是 up 或 down"}, status=400)
+    if direction not in {"up", "down", "top", "bottom"}:
+        return web.json_response({"ok": False, "error": "direction 必须是 up、down、top 或 bottom"}, status=400)
     try:
         return web.json_response(await svc.move_queue_item(request.match_info["item_id"], direction))
+    except ValueError as e:
+        return web.json_response({"ok": False, "error": str(e)}, status=400)
+
+
+async def handle_queue_retry(request: web.Request) -> web.Response:
+    svc = request.app["training_service"]
+    try:
+        return web.json_response(await svc.retry_queue_item(request.match_info["item_id"]))
+    except FileNotFoundError as e:
+        return web.json_response({"ok": False, "error": str(e)}, status=404)
+    except ValueError as e:
+        return web.json_response({"ok": False, "error": str(e)}, status=400)
+
+
+async def handle_queue_cancel_waiting(request: web.Request) -> web.Response:
+    svc = request.app["training_service"]
+    return web.json_response(await svc.cancel_waiting_queue_items())
+
+
+async def handle_queue_clear(request: web.Request) -> web.Response:
+    svc = request.app["training_service"]
+    return web.json_response(await svc.clear_finished_queue_items())
+
+
+async def handle_queue_settings(request: web.Request) -> web.Response:
+    svc = request.app["training_service"]
+    data = await request.json()
+    paused = data.get("paused") if "paused" in data else None
+    failure_policy = data.get("failure_policy") if "failure_policy" in data else None
+    try:
+        return web.json_response(await svc.set_queue_settings(
+            paused=bool(paused) if paused is not None else None,
+            failure_policy=str(failure_policy) if failure_policy is not None else None,
+        ))
     except ValueError as e:
         return web.json_response({"ok": False, "error": str(e)}, status=400)
 

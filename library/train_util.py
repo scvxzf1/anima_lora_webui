@@ -94,7 +94,7 @@ def get_sai_model_spec_dataclass(
         lora,
         timestamp,
         title=title,
-        reso=args.resolution,
+        reso=None,
         author=args.metadata_author,
         description=args.metadata_description,
         license=args.metadata_license,
@@ -108,12 +108,6 @@ def prepare_dataset_args(args: argparse.Namespace, support_metadata: bool):
     if args.caption_extention is not None:
         args.caption_extension = args.caption_extention
         args.caption_extention = None
-
-    if args.resolution is not None:
-        args.resolution = tuple([int(r) for r in args.resolution.split(",")])
-        if len(args.resolution) == 1:
-            args.resolution = (args.resolution[0], args.resolution[0])
-        assert len(args.resolution) == 2, "resolution must be 'size' or 'width,height'"
 
     if args.face_crop_aug_range is not None:
         args.face_crop_aug_range = tuple(

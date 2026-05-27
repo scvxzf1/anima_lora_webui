@@ -267,6 +267,8 @@ class LoRANetworkCfg:
     # (``OrthoLoRA`` / ``OrthoHydra``) and this field is informational.
     use_ortho: bool = False
     ortho_init_std: float = 0.02
+    ortho_centered_gate: bool = False
+    ortho_lambda_init: float = 0.0
 
     # σ-conditional router parameters (consumed when ``router_source="sigma"``).
     # Layer scope is shared with Hydra and FEI via ``router_targets`` above.
@@ -349,6 +351,8 @@ class LoRANetworkCfg:
     content_router_source: Literal["input", "crossattn_emb"] = "input"
     content_router_init_std: float = 0.1
     content_router_layer_norm: bool = True
+    chimera_centered_gate: bool = False
+    chimera_lambda_init: float = 0.0
 
     # SmoothQuant-style per-channel input pre-scaling
     channel_scales_dict: Optional[Dict[str, torch.Tensor]] = None
@@ -472,6 +476,14 @@ class LoRANetworkCfg:
 
         use_ortho = _as_bool(kwargs.get("use_ortho"))
         ortho_init_std = float(kwargs.get("ortho_init_std", 0.02))
+        ortho_centered_gate = _as_bool(kwargs.get("ortho_centered_gate"))
+        ortho_lambda_init = float(kwargs.get("ortho_lambda_init", 0.0))
+        if ortho_centered_gate and ortho_lambda_init <= 0.0:
+            ortho_lambda_init = 1e-2
+            logger.warning(
+                "ortho_centered_gate=True with ortho_lambda_init<=0; "
+                "defaulting ortho_lambda_init=1e-2."
+            )
 
         # FECL knobs. Default off; turning it on requires `num_bands >= 3`
         # to be a meaningful objective (see compute_fecl docstring).
@@ -520,6 +532,14 @@ class LoRANetworkCfg:
         content_router_layer_norm = _as_bool(
             kwargs.get("content_router_layer_norm", True), default=True
         )
+        chimera_centered_gate = _as_bool(kwargs.get("chimera_centered_gate"))
+        chimera_lambda_init = float(kwargs.get("chimera_lambda_init", 0.0))
+        if chimera_centered_gate and chimera_lambda_init <= 0.0:
+            chimera_lambda_init = 1e-2
+            logger.warning(
+                "chimera_centered_gate=True with chimera_lambda_init<=0; "
+                "defaulting chimera_lambda_init=1e-2."
+            )
         if use_chimera_hydra:
             if num_experts_content <= 0 or num_experts_freq <= 0:
                 raise ValueError(
@@ -675,6 +695,8 @@ class LoRANetworkCfg:
             router_tau=router_tau,
             use_ortho=use_ortho,
             ortho_init_std=ortho_init_std,
+            ortho_centered_gate=ortho_centered_gate,
+            ortho_lambda_init=ortho_lambda_init,
             fera_fecl_weight=fera_fecl_weight,
             fera_num_bands=fera_num_bands,
             use_chimera_hydra=use_chimera_hydra,
@@ -689,6 +711,8 @@ class LoRANetworkCfg:
             content_router_source=content_router_source,
             content_router_init_std=content_router_init_std,
             content_router_layer_norm=content_router_layer_norm,
+            chimera_centered_gate=chimera_centered_gate,
+            chimera_lambda_init=chimera_lambda_init,
             channel_scales_dict=channel_scales_dict,
             verbose=verbose,
         )
@@ -722,6 +746,7 @@ class LoRANetworkCfg:
         new_use_moe_style: Optional[str] = None,
         new_route_per_layer: Optional[bool] = None,
         new_router_source: Optional[str] = None,
+        ortho_centered_gate: bool = False,
         # ChimeraHydra stamps. Present only on chimera checkpoints — when
         # set the loader builds ``ChimeraHydraLoRAModule`` instead of
         # ``OrthoHydraLoRAModule`` and the network attaches a FreqRouter.
@@ -731,6 +756,7 @@ class LoRANetworkCfg:
         freq_router_layer_norm: bool = False,
         content_router_source: str = "input",
         content_router_layer_norm: bool = True,
+        chimera_centered_gate: bool = False,
         lokr_factor: int = 8,
     ) -> "LoRANetworkCfg":
         """Build cfg from a checkpoint key-sniff (warm-start / inference path).
@@ -808,6 +834,7 @@ class LoRANetworkCfg:
             reft_layers=sorted(reft_block_indices) if has_reft else "all",
             num_experts=hydra_num_experts if is_hydra_or_ortho_hydra else 4,
             channel_scales_dict=channel_scales_dict,
+            ortho_centered_gate=bool(ortho_centered_gate),
             use_moe_style=use_moe_style,
             route_per_layer=route_per_layer,
             router_source=router_source,
@@ -844,4 +871,5 @@ class LoRANetworkCfg:
                 else "input"
             ),
             content_router_layer_norm=bool(content_router_layer_norm),
+            chimera_centered_gate=bool(chimera_centered_gate),
         )

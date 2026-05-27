@@ -42,6 +42,8 @@ MAX_RESUME_CHECKPOINTS = 100
 MAX_TIMELINE_LOG_RECORDS = 20000
 MAX_TIMELINE_METRIC_RECORDS = 20000
 MAX_QUEUE_ITEMS = 200
+QUEUE_FAILURE_POLICIES = {"pause", "continue"}
+QUEUE_TERMINAL_STATES = {"done", "error", "canceled"}
 CONTINUE_LORA_KINDS = {"LoRA", "LoKr"}
 CONTINUE_LORA_ACCEPTED_LORA_SPECS = {"", "lora", "standard", "ortho", "ortholora", "tlora", "t_lora"}
 CONTINUE_LORA_UNSUPPORTED_SPEC_TOKENS = (
@@ -142,10 +144,14 @@ class TrainingService:
         self._detected_error_hint: str = ""
         self._queue: dict[str, Any] = _load_training_queue_state()
         self._queue_paused: bool = bool(self._queue.get("paused", False))
+        self._queue_failure_policy: str = _normalize_queue_failure_policy(self._queue.get("failure_policy"))
         self._current_queue_item_id: str = ""
         self._queue_dispatch_task: asyncio.Task | None = None
         _mark_orphaned_running_history_tasks()
         self._repair_queue_on_startup()
+
+    async def start_queue_on_startup(self) -> None:
+        self._schedule_queue_dispatch()
 
     async def start(
         self,
@@ -601,11 +607,26 @@ class TrainingService:
 
     def get_queue_snapshot(self) -> dict[str, Any]:
         self._normalize_queue()
+        summary = {
+            "total": 0,
+            "queued": 0,
+            "running": 0,
+            "done": 0,
+            "error": 0,
+            "canceled": 0,
+        }
+        for item in self._queue_items():
+            summary["total"] += 1
+            state = str(item.get("state") or "")
+            if state in summary:
+                summary[state] += 1
         return {
             "ok": True,
             "paused": self._queue_paused,
+            "failure_policy": self._queue_failure_policy,
             "status": self.status,
             "current_item_id": self._current_queue_item_id,
+            "summary": summary,
             "items": [dict(item) for item in self._queue_items()],
         }
 
@@ -658,6 +679,8 @@ class TrainingService:
             "gpu_whitelist": gpu_selection,
             "continue_info": continue_payload or {},
             "resume_info": {},
+            "retry_of": "",
+            "attempt": 1,
             "history_task_ids": [],
             "message": "等待队列调度",
             "created_at": now,
@@ -698,6 +721,8 @@ class TrainingService:
             "gpu_whitelist": _normalize_gpu_whitelist(gpu_whitelist),
             "continue_info": {},
             "resume_info": resume_info,
+            "retry_of": "",
+            "attempt": 1,
             "history_task_ids": [],
             "message": "等待续训队列调度",
             "created_at": now,
@@ -722,6 +747,7 @@ class TrainingService:
         }
 
     async def move_queue_item(self, item_id: str, direction: str) -> dict[str, Any]:
+        direction = str(direction or "").strip()
         items = self._queue_items()
         queued_indices = [i for i, item in enumerate(items) if item.get("state") == "queued"]
         index = next((i for i in queued_indices if items[i].get("id") == item_id), None)
@@ -730,11 +756,21 @@ class TrainingService:
         position = queued_indices.index(index)
         if direction == "up" and position > 0:
             other = queued_indices[position - 1]
+            items[index], items[other] = items[other], items[index]
         elif direction == "down" and position < len(queued_indices) - 1:
             other = queued_indices[position + 1]
+            items[index], items[other] = items[other], items[index]
+        elif direction == "top" and position > 0:
+            item = items.pop(index)
+            items.insert(queued_indices[0], item)
+        elif direction == "bottom" and position < len(queued_indices) - 1:
+            item = items.pop(index)
+            insert_at = queued_indices[-1]
+            if index < insert_at:
+                insert_at -= 1
+            items.insert(insert_at + 1, item)
         else:
             return self.get_queue_snapshot()
-        items[index], items[other] = items[other], items[index]
         self._save_queue()
         await self._broadcast_queue()
         return self.get_queue_snapshot()
@@ -759,14 +795,106 @@ class TrainingService:
         await self._broadcast_queue()
         return self.get_queue_snapshot()
 
-    async def set_queue_paused(self, paused: bool) -> dict[str, Any]:
-        self._queue_paused = bool(paused)
-        self._queue["paused"] = self._queue_paused
+    async def retry_queue_item(self, item_id: str) -> dict[str, Any]:
+        item = self._find_queue_item(item_id)
+        if item is None:
+            raise FileNotFoundError("队列任务不存在")
+        if item.get("state") == "running":
+            raise ValueError("运行中的队列任务不能重新入队")
+        retry = self._clone_queue_item_for_retry(item)
+        self._queue_items().append(retry)
+        self._compact_queue()
+        self._save_queue()
+        await self._broadcast_queue()
+        self._schedule_queue_dispatch()
+        return {"ok": True, "message": "已重新加入队列", "item": dict(retry), **self.get_queue_snapshot()}
+
+    async def cancel_waiting_queue_items(self) -> dict[str, Any]:
+        now = time.time()
+        count = 0
+        for item in self._queue_items():
+            if item.get("state") != "queued":
+                continue
+            item.update({
+                "state": "canceled",
+                "message": "已批量取消",
+                "finished_at": now,
+                "finished_at_text": _format_ts(now),
+            })
+            count += 1
+        if count:
+            self._save_queue()
+            await self._broadcast_queue()
+        return {"ok": True, "message": f"已取消 {count} 个等待任务", "canceled": count, **self.get_queue_snapshot()}
+
+    async def clear_finished_queue_items(self) -> dict[str, Any]:
+        before = len(self._queue_items())
+        self._queue["items"] = [
+            item for item in self._queue_items()
+            if item.get("state") not in QUEUE_TERMINAL_STATES
+        ]
+        removed = before - len(self._queue["items"])
+        if removed:
+            self._save_queue()
+            await self._broadcast_queue()
+        return {"ok": True, "message": f"已清理 {removed} 条已结束记录", "removed": removed, **self.get_queue_snapshot()}
+
+    async def set_queue_settings(
+        self,
+        *,
+        paused: bool | None = None,
+        failure_policy: str | None = None,
+    ) -> dict[str, Any]:
+        if paused is not None:
+            self._queue_paused = bool(paused)
+            self._queue["paused"] = self._queue_paused
+        if failure_policy is not None:
+            self._queue_failure_policy = _normalize_queue_failure_policy(failure_policy)
+            self._queue["failure_policy"] = self._queue_failure_policy
         self._save_queue()
         await self._broadcast_queue()
         if not self._queue_paused:
             self._schedule_queue_dispatch()
         return self.get_queue_snapshot()
+
+    async def set_queue_paused(self, paused: bool) -> dict[str, Any]:
+        return await self.set_queue_settings(paused=paused)
+
+    def _clone_queue_item_for_retry(self, item: dict[str, Any]) -> dict[str, Any]:
+        runtime = _clone_frozen_runtime_config(
+            str(item.get("runtime_config_file") or ""),
+            source_config_file=str(item.get("source_config_file") or ""),
+            reset_data_dirs=bool(item.get("requires_preprocess")),
+        )
+        now = time.time()
+        retry_of = str(item.get("retry_of") or item.get("id") or "")
+        attempt = int(item.get("attempt") or 1) + 1
+        retry = {
+            key: value for key, value in item.items()
+            if key not in {
+                "id", "state", "message", "created_at", "created_at_text",
+                "started_at", "started_at_text", "finished_at", "finished_at_text",
+                "history_task_ids", "runtime_config_file", "runtime_info",
+            }
+        }
+        retry.update({
+            "id": _new_queue_item_id(str(item.get("kind") or "retry"), str(item.get("methods_subdir") or "gui-methods"), str(item.get("variant") or "training")),
+            "state": "queued",
+            "runtime_config_file": runtime["runtime_config_file"],
+            "source_config_file": str(item.get("source_config_file") or runtime.get("history_source_config_file") or ""),
+            "retry_of": retry_of,
+            "attempt": attempt,
+            "history_task_ids": [],
+            "message": f"第 {attempt} 次尝试，等待队列调度",
+            "created_at": now,
+            "created_at_text": _format_ts(now),
+            "started_at": None,
+            "started_at_text": "",
+            "finished_at": None,
+            "finished_at_text": "",
+            "runtime_info": _runtime_meta(runtime),
+        })
+        return retry
 
     def list_history_tasks(self, *, include_archived: bool = False) -> list[dict[str, Any]]:
         return _list_history_tasks(include_archived=include_archived)
@@ -914,6 +1042,7 @@ class TrainingService:
             await self._start_pending_training(pending_train)
             return
         if queue_item_id:
+            queue_failed = (not stop_requested) and rc != 0
             if stop_requested:
                 self._update_queue_item(queue_item_id, {
                     "state": "canceled",
@@ -921,9 +1050,17 @@ class TrainingService:
                     "finished_at": time.time(),
                     "finished_at_text": _format_ts(time.time()),
                 })
+            elif queue_failed:
+                self._pause_queue_after_failure()
+                self._update_queue_item(queue_item_id, {
+                    "state": "error",
+                    "message": msg,
+                    "finished_at": time.time(),
+                    "finished_at_text": _format_ts(time.time()),
+                })
             else:
                 self._update_queue_item(queue_item_id, {
-                    "state": "done" if rc == 0 else "error",
+                    "state": "done",
                     "message": msg,
                     "finished_at": time.time(),
                     "finished_at_text": _format_ts(time.time()),
@@ -965,6 +1102,7 @@ class TrainingService:
             msg = f"自动开始训练失败: {e}"
             queue_item_id = str(pending.get("queue_item_id") or "")
             if queue_item_id:
+                self._pause_queue_after_failure()
                 self._update_queue_item(queue_item_id, {
                     "state": "error",
                     "message": msg,
@@ -1002,6 +1140,8 @@ class TrainingService:
                 })
                 changed = True
         if changed:
+            self._queue_paused = True
+            self._queue["paused"] = True
             self._save_queue()
 
     def _normalize_queue(self) -> None:
@@ -1012,6 +1152,15 @@ class TrainingService:
             self._queue["items"] = []
         self._queue_paused = bool(self._queue.get("paused", self._queue_paused))
         self._queue["paused"] = self._queue_paused
+        self._queue_failure_policy = _normalize_queue_failure_policy(
+            self._queue.get("failure_policy", self._queue_failure_policy)
+        )
+        self._queue["failure_policy"] = self._queue_failure_policy
+        for item in self._queue["items"]:
+            if not isinstance(item, dict):
+                continue
+            item.setdefault("retry_of", "")
+            item["attempt"] = max(1, _positive_int_or_none(item.get("attempt")) or 1)
 
     def _queue_items(self) -> list[dict[str, Any]]:
         self._normalize_queue()
@@ -1061,6 +1210,7 @@ class TrainingService:
         self._normalize_queue()
         QUEUE_DIR.mkdir(parents=True, exist_ok=True)
         self._queue["paused"] = self._queue_paused
+        self._queue["failure_policy"] = self._queue_failure_policy
         self._queue["updated_at"] = time.time()
         self._queue["updated_at_text"] = _format_ts(self._queue["updated_at"])
         _write_json(QUEUE_FILE, self._queue)
@@ -1103,6 +1253,7 @@ class TrainingService:
             await self._start_queue_item(item)
         except Exception as e:
             now = time.time()
+            self._pause_queue_after_failure()
             item.update({
                 "state": "error",
                 "message": f"队列任务启动失败: {e}",
@@ -1114,6 +1265,13 @@ class TrainingService:
             self._save_queue()
             await self._broadcast_queue()
             self._schedule_queue_dispatch()
+
+    def _pause_queue_after_failure(self) -> bool:
+        if self._queue_failure_policy != "pause":
+            return False
+        self._queue_paused = True
+        self._queue["paused"] = True
+        return True
 
     async def _start_queue_item(self, item: dict[str, Any]) -> None:
         variant = str(item.get("variant") or "")
@@ -2211,6 +2369,135 @@ def _runtime_from_config_file(
     }
 
 
+def _clone_frozen_runtime_config(
+    config_file: str,
+    *,
+    source_config_file: str = "",
+    reset_data_dirs: bool = False,
+) -> dict[str, Any]:
+    config_path = _resolve_display_path(config_file)
+    if config_path is None or not _path_exists(config_path) or not config_path.is_file():
+        raise FileNotFoundError(f"冻结运行配置不存在: {config_file}")
+
+    cfg = _load_config_file_config(_display_settings_path(config_path))
+    if not cfg:
+        raise ValueError("冻结运行配置为空或无法解析")
+
+    previous_run_dir = config_path.parent
+    run_stem = _safe_run_stem(f"{previous_run_dir.name or config_path.stem}-retry")
+    run_dir = _unique_runtime_dir(resolve_output_root(), run_stem)
+    model_cache_dir = run_dir / "model_cache"
+    dataset_cache_dir = run_dir / "dataset_cache"
+    training_output_dir = run_dir / "training_output"
+    sample_dir = training_output_dir / "sample"
+    logs_dir = model_cache_dir / "logs"
+    torchinductor_dir = model_cache_dir / "torchinductor"
+    triton_dir = model_cache_dir / "triton"
+    for path in (
+        model_cache_dir,
+        dataset_cache_dir,
+        training_output_dir,
+        sample_dir,
+        logs_dir,
+        torchinductor_dir,
+        triton_dir,
+    ):
+        path.mkdir(parents=True, exist_ok=True)
+
+    original_config_path = run_dir / "config.original.toml"
+    old_original = previous_run_dir / "config.original.toml"
+    shutil.copy2(old_original if _path_exists(old_original) else config_path, original_config_path)
+
+    dataset_config_path = run_dir / "dataset.runtime.toml"
+    runtime_rows = _dataset_rows_for_estimate(cfg)
+    if reset_data_dirs:
+        if not runtime_rows:
+            raise ValueError("冻结运行配置缺少数据集路径，无法重新预处理")
+        cloned_rows: list[dict[str, Any]] = []
+        for index, row in enumerate(runtime_rows, start=1):
+            group_dir = dataset_cache_dir / f"dataset-{index:02d}"
+            resized_dir = group_dir / "resized"
+            lora_dir = group_dir / "lora"
+            resized_dir.mkdir(parents=True, exist_ok=True)
+            lora_dir.mkdir(parents=True, exist_ok=True)
+            cloned_rows.append({
+                "source_dir": str(row.get("source_dir") or row.get("image_dir") or ""),
+                "image_dir": _display_settings_path(resized_dir),
+                "cache_dir": _display_settings_path(lora_dir),
+                "num_repeats": row.get("num_repeats") or 1,
+                "settings": row.get("settings") if isinstance(row.get("settings"), dict) else {},
+            })
+        dataset_config_path.write_text(
+            _build_dataset_config_doc(cloned_rows, cfg, prefer_train_batch_size=True),
+            encoding="utf-8",
+        )
+        first_row = cloned_rows[0]
+        data_dirs = {
+            "source_image_dir": first_row["source_dir"],
+            "resized_image_dir": first_row["image_dir"],
+            "lora_cache_dir": first_row["cache_dir"],
+        }
+    else:
+        old_dataset_path = _resolve_display_path(str(cfg.get("dataset_config") or ""))
+        if old_dataset_path is not None and _path_exists(old_dataset_path) and old_dataset_path.is_file():
+            shutil.copy2(old_dataset_path, dataset_config_path)
+        else:
+            dataset_config_path.write_text(
+                _build_dataset_config_doc(runtime_rows, cfg, prefer_train_batch_size=True),
+                encoding="utf-8",
+            )
+        data_dirs = {
+            "source_image_dir": str(cfg.get("source_image_dir") or ""),
+            "resized_image_dir": str(cfg.get("resized_image_dir") or ""),
+            "lora_cache_dir": str(cfg.get("lora_cache_dir") or ""),
+        }
+
+    runtime_cfg = dict(cfg)
+    runtime_cfg.update({
+        "output_dir": _display_settings_path(training_output_dir),
+        "logging_dir": _display_settings_path(logs_dir),
+        "dataset_config": _display_settings_path(dataset_config_path),
+    })
+    runtime_cfg.update({key: value for key, value in data_dirs.items() if value})
+
+    runtime_config_path = run_dir / "config.runtime.toml"
+    runtime_config_path.write_text(toml_dumps_sorted(runtime_cfg), encoding="utf-8")
+
+    run_meta = _read_runtime_run_meta(previous_run_dir)
+    history_source_config_file = _display_project_path(
+        source_config_file
+        or str(run_meta.get("history_source_config_file") or run_meta.get("source_config_file") or "")
+    )
+    _write_runtime_run_meta(
+        run_dir,
+        {
+            "history_source_config_file": history_source_config_file,
+            "source_config_file": history_source_config_file,
+            "run_dir": _display_settings_path(run_dir),
+            "runtime_config_file": _display_settings_path(runtime_config_path),
+            "original_config_file": _display_settings_path(original_config_path),
+            "dataset_config_file": _display_settings_path(dataset_config_path),
+        },
+    )
+    return {
+        "run_dir": _display_settings_path(run_dir),
+        "runtime_config_file": _display_settings_path(runtime_config_path),
+        "original_config_file": _display_settings_path(original_config_path),
+        "dataset_config_file": _display_settings_path(dataset_config_path),
+        "output_dir": runtime_cfg["output_dir"],
+        "sample_dir": _display_settings_path(sample_dir),
+        "model_cache_dir": _display_settings_path(model_cache_dir),
+        "dataset_cache_dir": _display_settings_path(dataset_cache_dir),
+        "training_output_dir": runtime_cfg["output_dir"],
+        "logs_dir": runtime_cfg["logging_dir"],
+        "torchinductor_cache_dir": _display_settings_path(torchinductor_dir),
+        "triton_cache_dir": _display_settings_path(triton_dir),
+        "history_source_config_file": history_source_config_file,
+        "data_dirs": data_dirs,
+        "sample_config": _sample_config_from_cfg(runtime_cfg, []),
+    }
+
+
 def _unique_runtime_dir(output_root: Path, stem: str) -> Path:
     timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
     base = output_root / f"{stem}-{timestamp}"
@@ -2343,7 +2630,13 @@ def _load_training_queue_state() -> dict[str, Any]:
     if not isinstance(items, list):
         data["items"] = []
     data["paused"] = bool(data.get("paused", False))
+    data["failure_policy"] = _normalize_queue_failure_policy(data.get("failure_policy"))
     return data
+
+
+def _normalize_queue_failure_policy(value: Any) -> str:
+    text = str(value or "").strip().lower()
+    return text if text in QUEUE_FAILURE_POLICIES else "pause"
 
 
 def _new_queue_item_id(kind: str, methods_subdir: str, variant: str) -> str:

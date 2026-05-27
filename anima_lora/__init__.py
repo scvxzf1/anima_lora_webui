@@ -30,11 +30,18 @@ a ``pathlib.Path`` — the single source of truth for building repo-relative pat
 in tooling, instead of each script re-deriving it with its own
 ``Path(__file__).parents[N]`` arithmetic.
 
-Note: model/config paths are still resolved relative to the current working
-directory — run from the repo root (``anima_lora/``), same as the CLI. Internal
-tooling under ``bench/`` / ``scripts/`` / ``preprocess/`` still needs its
-``sys.path`` bootstrap to import *sibling* modules (those trees are not
-installed packages — only ``anima_lora`` / ``library`` / ``networks`` are).
+This module is the **stable API** — the names exported here are what we keep
+stable across releases. ``library.*`` / ``networks.*`` / ``scripts.*`` are
+installed and importable for advanced use, but may change without a deprecation
+cycle; pin a tag if you depend on them directly.
+
+Note: repo-relative model/config paths resolve against the repo home, not the
+current working directory, so ``import anima_lora`` works from anywhere (see
+``library.env.resolve_under_home`` / ``anima_home``; set ``ANIMA_HOME`` to point
+at a relocated checkout). Internal tooling under ``bench/`` / ``scripts/`` /
+``preprocess/`` still needs its ``sys.path`` bootstrap to import *sibling*
+modules (those trees are not installed packages — only ``anima_lora`` /
+``library`` / ``networks`` are).
 """
 
 from __future__ import annotations

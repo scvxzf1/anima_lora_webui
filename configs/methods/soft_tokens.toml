@@ -42,11 +42,14 @@ network_dim = 8
 #                                 contrastive_weight if you want to hold the
 #                                 average pull constant. Costs no extra memory
 #                                 (firing-step peak unchanged, off-steps cheaper).
-# contrastive_negative_mode     — negative sourcing. "shuffled" (unrelated
-#                                 cached negative), "jaccard" (shuffled + logit
-#                                 down-weight by caption tag-overlap), or "hard"
-#                                 (same-artist / different-character; falls back
-#                                 to shuffled for orphan artists).
+# contrastive_negative_mode     — negative sourcing: "shuffled" (unrelated),
+#                                 "jaccard" (shuffled + tag-overlap logit
+#                                 down-weight), "hard" (same-artist/diff-char),
+#                                 or "hard_backoff" (tiered same-artist → same-
+#                                 copyright → same-artist-`original` → shuffled).
+#                                 Setup log prints the level mix; genuine-negative
+#                                 rate tracks caption_index.json char coverage —
+#                                 regen with `make caption-index` if stale.
 # contrastive_jaccard_alpha     — logit penalty for "jaccard" mode (ℓ_neg −= α·s,
 #                                 sweep 0.5–2.0). Unused by other modes.
 # contrastive_tau               — InfoNCE temperature on the logit
@@ -76,10 +79,10 @@ network_args = [
     "n_t_buckets=14",
     "init_std=0.02",
     "splice_position=front_of_padding",
-    "contrastive_weight=0.05",
+    "contrastive_weight=0.15",
     "contrastive_every_n=3",
     "contrastive_k=1",
-    "contrastive_negative_mode=hard",
+    "contrastive_negative_mode=hard_backoff",
 
     "contrastive_objective=agsm",
     "agsm_gamma=0.5",
@@ -89,7 +92,7 @@ network_args = [
     "contrastive_tau=0.5",
     "contrastive_warmup_ratio=0.1",
 ]
-output_name = "anima_soft_tokens"
+output_name = "anima_soft_tokens_tenth"
 weight_decay=1e-4
 # Soft tokens are independent of the cached crossattn (they overwrite zero-
 # padding tail), so cache_llm_adapter_outputs is the right default.

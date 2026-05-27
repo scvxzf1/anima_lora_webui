@@ -137,44 +137,79 @@ To recover pre-0413 uniform behavior (not recommended — prone to pink-collapse
 
 The projection MLP must be trained via distillation before modulation guidance can be used. This trains only `pooled_text_proj` (~8M params) with the rest of the model frozen.
 
-**How distillation works:**
-1. Teacher forward: full model with `pooled_text_proj` disabled (original behavior)
-2. Student forward: `crossattn_emb` zeroed out, but real pooled text injected via `pooled_text_proj` — forces the model to perceive text only through modulation
-3. Loss: MSE between student and teacher noise predictions
+**How distillation works** (paper-faithful, Starodubcev et al. §5 — *"we propagate the textual prompt solely through the pooled text embedding, using an unconditional prompt for T5"*):
+
+1. **Teacher** forward — full model with the real `crossattn_emb` and `pooled_text_proj` disabled (original Anima behavior).
+2. **Student** forward — `crossattn_emb` swapped for a cached `T5("")` unconditional baseline (same input Anima's own CFG-uncond branch uses), with the real pooled text injected via `pooled_text_proj`. This forces the projection to carry every bit of text information through the modulation path.
+3. **Loss** — MSE between student and teacher noise predictions.
+
+#### Step 1 — pre-stage with `make distill-prep`
+
+`make distill-prep` runs two phases:
+
+- **Phase 1 (mandatory)** — encodes `T5("")` once into `post_image_dataset/lora/_anima_uncond_te.safetensors`. The training loop loads this as the student's unconditional crossattn input; without it `make distill-mod` won't start.
+- **Phase 2 (optional, recommended)** — runs the frozen teacher (full CFG denoise from fresh noise, conditioned on each cached prompt) and writes clean latents under `post_image_dataset/distill_mod_synth/`. Training against these instead of real-image latents removes the real-vs-teacher distribution gap that floored the original val loss.
 
 ```bash
-make distill-mod
+make distill-prep                       # both phases (default)
+python -m scripts.distill_mod.prep --skip_synth   # Phase 1 only (uncond sidecar)
+python -m scripts.distill_mod.prep --skip_uncond  # Phase 2 only (assumes sidecar exists)
+python -m scripts.distill_mod.prep --max_samples 16   # smoke-test the synth pass
 ```
 
-Or invoke directly:
+Phase 2 defaults are tuned to Anima's production environment (`num_steps=20`, `cfg_scale=2.5`, `flow_shift=1.0`, top portrait bucket). Override `--buckets`, `--n_per_bucket`, `--num_steps`, `--cfg_scale` to taste.
+
+#### Step 2 — run `make distill-mod`
 
 ```bash
-python scripts/distill_modulation.py \
-    --data_dir post_image_dataset \
+make distill-mod                                                 # train on real-image latents
+make distill-mod ARGS='--synth_data_dir post_image_dataset/distill_mod_synth'   # paper-faithful (recommended)
+```
+
+`make distill-mod` honors `PRESET` — `PRESET=low_vram make distill-mod` adds grad ckpt + unsloth CPU offload from `configs/presets.toml`.
+
+Direct invocation (current defaults shown):
+
+```bash
+python -m scripts.distill_mod.distill \
+    --data_dir post_image_dataset/lora \
     --dit_path models/diffusion_models/anima-base-v1.0.safetensors \
-    --output_path output/pooled_text_proj.safetensors \
-    --iterations 1500 \
-    --lr 1e-5 \
-    --warmup 0.05 \
-    --blocks_to_swap 0 \
-    --attn_mode flash \
-    --no_grad_ckpt
+    --output_path output/ckpt/pooled_text_proj.safetensors \
+    --synth_data_dir post_image_dataset/distill_mod_synth \
+    --iterations 5000 \
+    --lr 2e-5 \
+    --batch_size 1 \
+    --warmup 0.02 \
+    --attn_mode flash
 ```
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--data_dir` | — | Directory with cached latents/text embeddings |
-| `--dit_path` | — | Base model path |
-| `--iterations` | 100 | Training iterations |
-| `--lr` | 1e-4 | Learning rate |
-| `--batch_size` | 2 | Batch size |
-| `--grad_ckpt` / `--no_grad_ckpt` | on | Gradient checkpointing w/ CPU offload. Disable if you have VRAM headroom — faster iteration. |
-| `--blocks_to_swap` | 0 | CPU-offload N blocks. Only needed on very tight VRAM. |
-| `--torch_compile` | false | Enable torch.compile on block forwards |
+| `--data_dir` | `post_image_dataset/lora` | Directory with cached latents + TE sidecars. Also where the Phase 1 `_anima_uncond_te.safetensors` sidecar is looked up. |
+| `--uncond_te_path` | `<data_dir>/_anima_uncond_te.safetensors` | Override path to the T5("") sidecar from `make distill-prep` Phase 1. |
+| `--synth_data_dir` | `None` | Phase 2 synthetic-latent dir. When set, latents come from here (matched by stem + resolution); TE caches still come from `--data_dir`. |
+| `--dit_path` | `models/diffusion_models/anima-base-v1.0.safetensors` | Base model. |
+| `--output_path` | `output/ckpt/pooled_text_proj.safetensors` | Where to save the trained projection (`make test MOD=1` picks this path up automatically). |
+| `--iterations` | 5000 | Training iterations. |
+| `--lr` | 2e-5 | Peak learning rate (cosine to 10%). |
+| `--warmup` | 0.02 | ≥1 = absolute steps; <1 = ratio of iterations. |
+| `--batch_size` | 1 | Per-step batch size. |
+| `--grad_accum` | 1 | Gradient accumulation steps (effective batch = `batch_size * grad_accum`). |
+| `--grad_ckpt` / `--no_grad_ckpt` | on | Gradient checkpointing w/ unsloth CPU offload. Disable if you have VRAM headroom — faster iteration. |
+| `--blocks_to_swap` | 0 | CPU-offload N transformer blocks. Only needed on very tight VRAM. |
+| `--torch_compile` / `--no_compile` | on | Compile each `Block._forward` on native-shape buckets (one block graph per distinct token count, no static-pad flash leak). |
+| `--validation_split` | 0.05 | Held-out fraction for val pass; set 0 to disable. |
+| `--validate_every_n_steps` | 1000 | Val cadence. Best-val checkpoint replaces step-cadence saves when validation is on. |
+| `--teacher_cache_K` | 6 | Number of pre-sampled sigma bins per sample. Each visit returns one of K deterministic (σ, noise) pairs, so the teacher forward is run at most K times per sample across the run. |
+| `--no_teacher_cache` | off | A/B against the cache or recover the original continuous-sigma sampler. |
+| `--prefill_teacher_cache` | off | Eagerly run every (sample, σ_idx) up front (~K·N teacher forwards) so training is teacher-free. |
+| `--sample_ratio` | 1.0 | Fraction of (post-split) samples to keep per bucket; mirrors LoRA's per-subset `sample_ratio`. |
 
 **VRAM notes.** The teacher forward runs under `torch.no_grad()` so it holds almost nothing; the student forward is what dominates peak VRAM (~12 GB on the default config). With `--no_grad_ckpt` you'll see VRAM swing between the weights-only baseline and that student peak — this is normal. Leave `--grad_ckpt` on (the default) only if the peak doesn't fit; if it does, `--no_grad_ckpt --blocks_to_swap 0` is faster.
 
-Output: `output/pooled_text_proj.safetensors`. Use it at inference via `--pooled_text_proj <path>`.
+**Teacher cache.** Because the K-grid pre-samples both σ and per-(sample, σ_idx) noise, every cache miss commits one deterministic teacher prediction that every later visit hits directly — no recomputation, identical (latents, noise, σ) inputs to the student whether the cache hit or missed. RAM footprint scales as `dataset_size × K × latent_bytes` (≈ few GB at default K=6 + Anima's 16×H×W bf16 latents); shrink K if RAM is tight.
+
+Output: `output/ckpt/pooled_text_proj.safetensors`. Use it at inference via `--pooled_text_proj <path>` (or `make test MOD=1`, which auto-discovers it).
 
 ## Compatibility
 

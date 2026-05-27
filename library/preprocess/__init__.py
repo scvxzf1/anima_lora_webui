@@ -26,7 +26,6 @@ from library.preprocess.pe import (
 from library.preprocess.text import (
     cache_pooled_text,
     cache_text_embeddings,
-    collect_image_caption_entries,
     generate_caption_variants,
 )
 
@@ -44,7 +43,6 @@ __all__ = [
     "get_latents_npz_path",
     "cache_text_embeddings",
     "cache_pooled_text",
-    "collect_image_caption_entries",
     "generate_caption_variants",
     "cache_pe_features",
     "compute_pe_centroid",

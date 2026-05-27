@@ -28,6 +28,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
 
+from library.env import resolve_under_home
 from library.io.safetensors import load_safetensors
 
 from library.log import setup_logging
@@ -1817,6 +1818,7 @@ def load_vae(
     pass ``dtype=torch.bfloat16, eval=True`` to get a ready-to-run model.
     Both default off to preserve the historical "raw load" behaviour.
     """
+    vae_path = str(resolve_under_home(vae_path))
     VAE_CONFIG_JSON = """
 {
   "_class_name": "AutoencoderKLQwenImage",

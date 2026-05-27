@@ -102,7 +102,10 @@ def _write_chimera_checkpoint(
         "ss_num_experts_freq": str(K_f),
         "ss_chimera_fei_feature_dim": str(fei_dim),
         "ss_chimera_sigma_feature_dim": str(sigma_dim),
-        "ss_chimera_fei_sigma_low_div": "4.0",
+        # Non-default (config default is 4.0) so a key-name typo on the read
+        # side surfaces instead of coinciding with the fallback. 8.0 keeps the
+        # blur kernel small enough for the 16x16 synth latent in the pre-hook test.
+        "ss_chimera_fei_sigma_low_div": "8.0",
         "ss_use_moe_style": "shared_A",
         "ss_route_per_layer": "true",
         "ss_router_source": "input",
@@ -132,6 +135,9 @@ def test_load_adapter_recognizes_chimera(tmp_path):
     assert chimera["num_experts_freq"] == 2
     assert chimera["fei_feature_dim"] == 2
     assert chimera["sigma_feature_dim"] == 0
+    # Stamped σ_low div must survive the read (guards the ss_chimera_fei_sigma_low_div
+    # key name — a typo here would silently fall back to the 4.0 default).
+    assert chimera["fei_sigma_low_div"] == 8.0
     fr = chimera["freq_router_sd"]
     assert fr["net.0.weight"].shape == (8, 2)
     assert fr["net.2.weight"].shape == (2, 8)
@@ -152,14 +158,18 @@ def test_load_adapter_rejects_misshaped_freq_router(tmp_path):
     )
     from safetensors.torch import load_file
     from safetensors import safe_open
-    sd = load_file(str(path))
-    sd["freq_router.net.2.weight"] = torch.randn(99, 8)
-    sd["freq_router.net.2.bias"] = torch.zeros(99)
+    # Clone out of the mmap so the source file's mapping is dropped before we
+    # write — on Windows an open mmap blocks overwriting the same path
+    # (os error 1224). Write the misshaped copy to a fresh path to be safe.
+    sd = {k: v.clone() for k, v in load_file(str(path)).items()}
     with safe_open(str(path), framework="pt") as f:
         meta = dict(f.metadata() or {})
-    save_file(sd, str(path), metadata=meta)
+    sd["freq_router.net.2.weight"] = torch.randn(99, 8)
+    sd["freq_router.net.2.bias"] = torch.zeros(99)
+    bad_path = tmp_path / "bad_chimera_misshaped.safetensors"
+    save_file(sd, str(bad_path), metadata=meta)
     with pytest.raises(ValueError, match="FreqRouter output dim"):
-        adapter.load_adapter(str(path))
+        adapter.load_adapter(str(bad_path))
 
 
 def test_chimera_pre_hook_emits_pi_f(tmp_path):
@@ -220,7 +230,6 @@ def test_chimera_hook_dispatches_dual_pool(tmp_path):
     )
     bundle = adapter.load_adapter(str(path))
     hydra = bundle["hydra"]
-    chimera = hydra["chimera"]
     prefix = "lora_unet_blocks_0_mlp_layer1"
     mod = hydra["modules"][prefix]
     ups_stacked = torch.stack(
@@ -440,11 +449,14 @@ def _write_chimera_dual_a_crossattn_checkpoint(
     fr_hidden: int = 8,
     layer_norm: bool = True,
     prefix: str = "lora_unet_blocks_0_mlp_layer1",
+    source_stamp: str = "crossattn",
 ) -> None:
     """Synth a chimera dual-A checkpoint trained with
-    ``content_router_source="crossattn"`` — the per-Linear ``router.*``
+    ``content_router_source="crossattn_emb"`` — the per-Linear ``router.*``
     keys are absent and the network-level ``content_router.net.*`` MLP
-    is present.
+    is present. ``source_stamp`` selects the on-disk metadata spelling so
+    both the current ``"crossattn_emb"`` and the legacy ``"crossattn"`` alias
+    can be exercised.
     """
     torch.manual_seed(555)
     sd = {
@@ -476,7 +488,7 @@ def _write_chimera_dual_a_crossattn_checkpoint(
         "ss_use_moe_style": "shared_A",
         "ss_route_per_layer": "true",
         "ss_router_source": "input",
-        "ss_chimera_content_router_source": "crossattn",
+        "ss_chimera_content_router_source": source_stamp,
         "ss_chimera_content_router_layer_norm": "true" if layer_norm else "false",
     }
     save_file(sd, str(path), metadata=metadata)
@@ -498,6 +510,28 @@ def test_load_adapter_recognizes_crossattn_content_router(tmp_path):
     cd = bundle["chimera_dual_a"]
     assert cd is not None
     assert cd["content_router_source"] == "crossattn"
+    cr = cd["content_router"]
+    assert cr is not None
+    assert cr["K_c"] == 4
+    assert cr["input_dim"] == 1024
+
+
+def test_load_adapter_recognizes_crossattn_emb_content_router(tmp_path):
+    """The current ``"crossattn_emb"`` stamp loads the same way as the
+    legacy ``"crossattn"`` alias (backward + forward compatibility)."""
+    adapter = _load_adapter_module()
+    adapter._adapter_cache.clear()
+
+    path = tmp_path / "anima_chimera_crossattn_emb_chimera.safetensors"
+    _write_chimera_dual_a_crossattn_checkpoint(
+        path, K_c=4, K_f=2, rank=4, in_dim=8, out_dim=8,
+        fei_dim=2, sigma_dim=0, cr_input_dim=1024,
+        source_stamp="crossattn_emb",
+    )
+
+    bundle = adapter.load_adapter(str(path))
+    cd = bundle["chimera_dual_a"]
+    assert cd is not None
     cr = cd["content_router"]
     assert cr is not None
     assert cr["K_c"] == 4
@@ -525,14 +559,17 @@ def test_load_adapter_rejects_crossattn_without_content_router_keys(tmp_path):
     )
     from safetensors.torch import load_file
     from safetensors import safe_open
-    sd = load_file(str(path))
+    # Clone out of the mmap before writing — an open mmap blocks overwriting
+    # the same path on Windows (os error 1224); write to a fresh path too.
+    sd = {k: v.clone() for k, v in load_file(str(path)).items()}
     for k in [k for k in list(sd.keys()) if k.startswith("content_router.")]:
         del sd[k]
     with safe_open(str(path), framework="pt") as f:
         meta = dict(f.metadata() or {})
-    save_file(sd, str(path), metadata=meta)
+    bad_path = tmp_path / "bad_crossattn_chimera_stripped.safetensors"
+    save_file(sd, str(bad_path), metadata=meta)
     with pytest.raises(ValueError, match="ContentRouter weight key"):
-        adapter.load_adapter(str(path))
+        adapter.load_adapter(str(bad_path))
 
 
 def test_content_router_llm_adapter_hook_emits_pi_c(tmp_path):
@@ -645,10 +682,13 @@ def test_chimera_dual_a_metadata_mismatch_rejected(tmp_path):
     # Rewrite metadata with bogus K_c so loader can catch it.
     from safetensors.torch import load_file
     from safetensors import safe_open
-    sd = load_file(str(path))
+    # Clone out of the mmap before writing — an open mmap blocks overwriting
+    # the same path on Windows (os error 1224); write to a fresh path too.
+    sd = {k: v.clone() for k, v in load_file(str(path)).items()}
     with safe_open(str(path), framework="pt") as f:
         meta = dict(f.metadata() or {})
     meta["ss_num_experts_content"] = "99"
-    save_file(sd, str(path), metadata=meta)
+    bad_path = tmp_path / "bad_dual_chimera_mismatch.safetensors"
+    save_file(sd, str(bad_path), metadata=meta)
     with pytest.raises(ValueError, match="ss_num_experts_content=99"):
-        adapter.load_adapter(str(path))
+        adapter.load_adapter(str(bad_path))

@@ -722,7 +722,9 @@ class LoRANetwork(torch.nn.Module):
                     # by ``LoRANetworkCfg.from_kwargs`` invariant.
                     extra_kwargs["num_experts_content"] = cfg.num_experts_content
                     extra_kwargs["num_experts_freq"] = cfg.num_experts_freq
-                    if cfg.content_router_source == "crossattn":
+                    extra_kwargs["centered_gate"] = cfg.chimera_centered_gate
+                    extra_kwargs["lambda_init"] = cfg.chimera_lambda_init
+                    if cfg.content_router_source == "crossattn_emb":
                         extra_kwargs["use_global_content_router"] = True
                 elif effective_module_class == ChimeraHydraInferenceModule:
                     # Inference (free-form) twin of the chimera training
@@ -731,15 +733,19 @@ class LoRANetwork(torch.nn.Module):
                     # ``cfg.from_weights``.
                     extra_kwargs["num_experts_content"] = cfg.num_experts_content
                     extra_kwargs["num_experts_freq"] = cfg.num_experts_freq
-                    if cfg.content_router_source == "crossattn":
+                    extra_kwargs["centered_gate"] = cfg.chimera_centered_gate
+                    if cfg.content_router_source == "crossattn_emb":
                         extra_kwargs["use_global_content_router"] = True
                 elif effective_module_class == OrthoHydraLoRAModule:
                     extra_kwargs["num_experts"] = cfg.num_experts
+                    extra_kwargs["centered_gate"] = cfg.ortho_centered_gate
+                    extra_kwargs["lambda_init"] = cfg.ortho_lambda_init
                     if self._use_global_router_for_hydra:
                         extra_kwargs["use_global_router"] = True
                         self._global_router_hits += 1
                 elif effective_module_class == HydraLoRAModule:
                     extra_kwargs["num_experts"] = cfg.num_experts
+                    extra_kwargs["centered_gate"] = cfg.ortho_centered_gate
                     if cfg.expert_init_std > 0.0:
                         extra_kwargs["expert_init_std"] = cfg.expert_init_std
                     if self._use_global_router_for_hydra:
@@ -753,7 +759,7 @@ class LoRANetwork(torch.nn.Module):
                         # network-level FreqRouter broadcast. σ/FEI feature
                         # dims must stay 0 here — FreqRouter owns those axes.
                         extra_kwargs["num_experts_content"] = cfg.num_experts_content
-                        if cfg.content_router_source == "crossattn":
+                        if cfg.content_router_source == "crossattn_emb":
                             extra_kwargs["use_global_content_router"] = True
                 elif effective_module_class == StackedExpertsLoRAModule:
                     # Independent-A (FeRA). Gates arrive via the network-level
@@ -3077,6 +3083,9 @@ class LoRANetwork(torch.nn.Module):
             )
             metadata["ss_router_source"] = str(self.cfg.router_source)
 
+        if getattr(self.cfg, "ortho_centered_gate", False):
+            metadata["ss_ortho_centered_gate"] = "true"
+
         # FEI router params (router-source-specific scalars the loader needs
         # to size the router input). Stamped for both per-Linear and global
         # FEI routers.
@@ -3123,6 +3132,8 @@ class LoRANetwork(torch.nn.Module):
                 metadata["ss_chimera_content_router_layer_norm"] = (
                     "true" if self.cfg.content_router_layer_norm else "false"
                 )
+            if getattr(self.cfg, "chimera_centered_gate", False):
+                metadata["ss_chimera_centered_gate"] = "true"
 
         state_dict = self.state_dict()
         lora_save.save_network_weights(

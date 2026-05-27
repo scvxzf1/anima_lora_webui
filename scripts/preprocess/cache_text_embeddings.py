@@ -1,11 +1,10 @@
 #!/usr/bin/env python3
-"""Cache text encoder (Qwen3) outputs for all images in a dataset directory.
+"""Cache text encoder (Qwen3) outputs for all captioned images in a dataset directory.
 
-Reads .txt caption sidecars when present and falls back to an empty caption
-when missing or blank, matching the training dataset behavior. Tokenizes with
-Qwen3 + T5, encodes through the Qwen3 text encoder, and optionally runs the
-LLM adapter to produce crossattn_emb. Saves results as
-*_anima_te.safetensors alongside each image (or under ``--cache_dir``).
+Reads .txt caption sidecars, tokenizes with Qwen3 + T5, encodes through the
+Qwen3 text encoder, and optionally runs the LLM adapter to produce crossattn_emb.
+Saves results as *_anima_te.safetensors alongside each image (or under
+``--cache_dir``).
 
 Supports caption shuffle variants: with --caption_shuffle_variants N, generates
 N variants per image and caches them all in one file. v0 is the pristine
@@ -21,11 +20,54 @@ model load + the one-time uncond sidecar staging.
 import argparse
 from pathlib import Path
 
+from PIL import Image
 import torch
 
 
 from library.preprocess import cache_text_embeddings, tqdm_progress
 from library.runtime.cli import add_io_args
+
+
+def _collect_image_caption_entries(image_paths, *, min_pixels: int = 500_000):
+    """Compatibility helper for older tests/tooling.
+
+    The real cache loop now lives in ``library.preprocess.text``; this helper
+    keeps the old script-level inspection contract: return cacheable
+    ``(image_path, caption)`` pairs while counting low-res, missing, and empty
+    captions.
+    """
+    entries = []
+    skipped_small = 0
+    missing_captions = 0
+    empty_caption_files = 0
+    samples = []
+
+    for image_path in [Path(p) for p in image_paths]:
+        if min_pixels > 0:
+            try:
+                with Image.open(image_path) as image:
+                    w, h = image.size
+            except Exception:
+                continue
+            if w * h < min_pixels:
+                skipped_small += 1
+                continue
+
+        caption_path = image_path.with_suffix(".txt")
+        if not caption_path.exists():
+            missing_captions += 1
+            samples.append(image_path.name)
+            entries.append((image_path, ""))
+            continue
+
+        caption = caption_path.read_text(encoding="utf-8").splitlines()
+        caption_text = caption[0].strip() if caption else ""
+        if not caption_text:
+            empty_caption_files += 1
+            samples.append(image_path.name)
+        entries.append((image_path, caption_text))
+
+    return entries, skipped_small, missing_captions, empty_caption_files, samples
 
 
 def main() -> None:

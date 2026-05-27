@@ -156,6 +156,26 @@ class IdentityPairSampler:
                 return cand, "shuffled"
         return target_stem, "self"
 
+    def _diff_char_candidates(
+        self, target_stem: str, level: str, target_chars: set[str]
+    ) -> set[str]:
+        """Stems sharing a ``level`` tag (``artist``/``copyright``) with the
+        target but whose ``character`` tags are non-empty and **disjoint** from
+        the target's — a genuine same-context / different-identity negative.
+        Empty when the target's ``level`` tags are unpopulated or every sibling
+        shares a character. Shared by ``hard_negative`` (artist tier) and
+        ``hard_negative_backoff`` (artist then copyright)."""
+        meta = self.image_meta.get(target_stem, {})
+        candidates: set[str] = set()
+        for tag in meta.get(level, []):
+            for s in self.groups.get(level, {}).get(tag, []):
+                if s == target_stem or not self._eligible(s):
+                    continue
+                cand_chars = set(self.image_meta.get(s, {}).get("character", []))
+                if cand_chars and not (cand_chars & target_chars):
+                    candidates.add(s)
+        return candidates
+
     def hard_negative(self, target_stem: str, rng: random.Random) -> tuple[str, str]:
         """Return ``(reference_stem, level)`` for a *hard* negative — a
         same-artist image whose ``character`` tags are **disjoint** from the
@@ -167,7 +187,9 @@ class IdentityPairSampler:
         images all share characters — falls back to ``shuffled()`` (returning
         its ``"shuffled"`` level so callers can see the degradation). This is
         the Phase-0-measured fallback: ~71% of steps land here on the current
-        dataset (character tagging caps the strict pool at ~29%)."""
+        dataset (character tagging caps the strict pool at ~29%). Use
+        ``hard_negative_backoff`` to rescue most of that fallback via the
+        copyright tier."""
         meta = self.image_meta.get(target_stem)
         if meta is None:
             return self.shuffled(target_stem, rng)
@@ -176,18 +198,82 @@ class IdentityPairSampler:
         if not target_chars or not target_artists:
             return self.shuffled(target_stem, rng)
 
+        candidates = self._diff_char_candidates(target_stem, "artist", target_chars)
+        if candidates:
+            return rng.choice(sorted(candidates)), "hard"
+        return self.shuffled(target_stem, rng)
+
+    def _same_artist_original_candidates(self, target_stem: str) -> set[str]:
+        """Same-artist stems also tagged ``original`` — a *different original
+        work* by the same artist. For OC targets (``copyright == ["original"]``)
+        there is no character tag to disjoint on, so this is the only
+        style-matched hard negative available. May occasionally surface the
+        artist's own recurring OC (the ``original`` tag does not disambiguate
+        which OC), which is a weaker — but still meaningfully harder than
+        ``shuffled`` — negative. Empty when the target is not ``original`` or
+        has no same-artist ``original`` sibling."""
+        meta = self.image_meta.get(target_stem, {})
+        if "original" not in set(meta.get("copyright", [])):
+            return set()
         candidates: set[str] = set()
-        for artist in target_artists:
+        for artist in meta.get("artist", []):
             for s in self.groups.get("artist", {}).get(artist, []):
                 if s == target_stem or not self._eligible(s):
                     continue
-                cand_chars = set(self.image_meta.get(s, {}).get("character", []))
-                # Genuine hard negative: the candidate is character-tagged and
-                # shares no character with the target.
-                if cand_chars and not (cand_chars & target_chars):
+                if "original" in set(self.image_meta.get(s, {}).get("copyright", [])):
                     candidates.add(s)
-        if candidates:
-            return rng.choice(sorted(candidates)), "hard"
+        return candidates
+
+    def hard_negative_backoff(
+        self, target_stem: str, rng: random.Random
+    ) -> tuple[str, str]:
+        """Tiered hard negative: same-artist/different-character, then
+        same-copyright/different-character, then (for ``original`` targets) a
+        different same-artist ``original`` work, then ``shuffled()``. Mirrors
+        ``resolve``'s back-off but on the *negative* side.
+
+        The copyright tier rescues character-tagged targets whose artist has no
+        different-character sibling (franchises are densely populated). The
+        ``original`` tier rescues OC targets — which carry no character tag at
+        all and so skip both character tiers — with a style-matched
+        same-artist/different-work negative (the bulk of the residual
+        ``shuffled`` fallback on OC-heavy datasets). Each tier trades a little
+        style/identity control for far more genuine, non-``shuffled`` negatives.
+
+        Returns ``(reference_stem, level)`` with ``level`` in
+        ``{"hard_artist", "hard_copyright", "hard_original", "shuffled"}`` so
+        callers can log the hardness mix. Falls back to ``shuffled()`` only when
+        no tier is reachable."""
+        meta = self.image_meta.get(target_stem)
+        if meta is None:
+            return self.shuffled(target_stem, rng)
+        target_chars = set(meta.get("character", []))
+        if target_chars:
+            for level, label in (
+                ("artist", "hard_artist"),
+                ("copyright", "hard_copyright"),
+            ):
+                candidates = self._diff_char_candidates(target_stem, level, target_chars)
+                if candidates:
+                    return rng.choice(sorted(candidates)), label
+
+        original = self._same_artist_original_candidates(target_stem)
+        if original:
+            return rng.choice(sorted(original)), "hard_original"
+        return self.shuffled(target_stem, rng)
+
+    def draw(
+        self, target_stem: str, mode: str, rng: random.Random
+    ) -> tuple[str, str]:
+        """Dispatch a single negative draw by ``mode`` string, returning
+        ``(reference_stem, level)``. One path shared by the dataset's
+        ``__getitem__`` and the setup-time level histogram. ``shuffled`` and
+        ``jaccard`` both source ``shuffled()`` (jaccard adds a weight, not a
+        different stem)."""
+        if mode == "hard":
+            return self.hard_negative(target_stem, rng)
+        if mode == "hard_backoff":
+            return self.hard_negative_backoff(target_stem, rng)
         return self.shuffled(target_stem, rng)
 
     def tag_jaccard(self, stem_a: str, stem_b: str) -> float:

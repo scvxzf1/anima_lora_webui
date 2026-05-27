@@ -1,116 +1,206 @@
 # Training Reference
 
-## LoRA Variants
+Every training run resolves a method + hardware preset via the merge chain
+`configs/base.toml → configs/presets.toml[<preset>] → configs/methods/<method>.toml → CLI args`
+(method beats preset on overlap — so e.g. postfix forces `blocks_to_swap = 0`).
+Method TOMLs in `configs/methods/` are toggle-block files that hold several
+variants behind comments; the clean per-variant tree lives in
+`configs/gui-methods/` and is wrapped by `make lora-gui GUI_PRESETS=<variant>`.
+
+```bash
+make lora                                      # methods/lora.toml + presets[default]
+make lora PRESET=low_vram                      # any preset can be swapped in
+make lora-gui GUI_PRESETS=tlora                # one self-contained variant file
+make print-config METHOD=lora PRESET=default   # dump the merged config
+```
+
+Run `ls configs/gui-methods/` for the live variant list.
+
+## LoRA family — the three-axis surface
+
+`configs/methods/lora.toml` covers LoRA / OrthoLoRA / T-LoRA / HydraLoRA / FeRA /
+ReFT under one routing surface:
+
+```toml
+use_moe_style    = false | "shared_A" | "independent_A"
+route_per_layer  = true | false
+router_source    = "none" | "input" | "sigma" | "fei"
+```
+
+The shipped default is `use_moe_style = false` (plain LoRA stack) with
+`use_ortho = true` + `use_timestep_mask = true`. Uncomment a routing block to
+get HydraLoRA (σ-routed shared-A experts), FeRA-on-Hydra (FEI-routed
+shared-A), or author-faithful FeRA (`independent_A` + global FEI router —
+already pre-baked in `configs/gui-methods/fera.toml`).
+
+Pre-three-axis checkpoints carrying `ss_use_hydra` / `ss_use_fei_router`
+metadata no longer load — the legacy fallback was removed.
 
 ### OrthoLoRA (Cayley + PSOFT-inspired)
 
-Cayley-parameterized orthogonal rotation of frozen SVD bases with a zero-init guarantee. Orthogonality is structural — no regularization hyperparameter.
+Cayley-parameterized orthogonal rotation of frozen SVD bases with a zero-init
+guarantee. Orthogonality is structural — no regularization knob.
 
 ```toml
-# network_args
 use_ortho = true
 ```
 
-Linear layers only (no Conv2d). See [`../methods/psoft-integrated-ortholora.md`](../methods/psoft-integrated-ortholora.md) for the full design.
+Linear layers only (no Conv2d). See [`../methods/psoft-integrated-ortholora.md`](../methods/psoft-integrated-ortholora.md).
 
-### T-LoRA (Timestep-Dependent Rank Masking)
+### T-LoRA (timestep-dependent rank masking)
 
-Dynamically adjusts effective LoRA rank based on the denoising timestep. Early (high-noise) steps use full rank; later steps use reduced rank. Composes with LoRA, OrthoLoRA, HydraLoRA, and ReFT. See [`../methods/timestep_mask.md`](../methods/timestep_mask.md).
+Early (high-noise) steps use full rank; later steps use reduced rank.
+Composes with every variant in the family. Training-time only — inference
+runs full rank by design.
 
 ```toml
-# network_args
 use_timestep_mask = true
-min_rank = 1                # minimum rank to preserve
-alpha_rank_scale = 1.0      # power-law schedule exponent
+min_rank = 8
+alpha_rank_scale = 1.0
 ```
 
-The rank schedule follows:
+Schedule: `r(t) = floor((1 - t)^alpha_rank_scale * (network_dim - min_rank)) + min_rank`.
+See [`../methods/timestep_mask.md`](../methods/timestep_mask.md).
 
-```
-r(t) = floor((1 - t)^alpha_rank_scale * (network_dim - min_rank)) + min_rank
-```
+### HydraLoRA / FeRA / Hydra+FEI
 
-### HydraLoRA and ReFT
+Multi-head expert routing variants. See [`../methods/hydra-lora.md`](../methods/hydra-lora.md)
+and [`../../docs/experimental/fera.md`](../experimental/fera.md). The
+`balance_loss_weight` ceiling is ~5e-5 on Anima — above that the Switch loss
+saturates.
 
-See the dedicated docs for multi-head expert routing ([`../methods/hydra-lora.md`](../methods/hydra-lora.md)) and block-level residual-stream intervention ([`../methods/reft.md`](../methods/reft.md)). The default `configs/methods/lora.toml` stacks LoRA + OrthoLoRA + T-LoRA + ReFT; flip the individual toggles to test subsets.
+### ReFT
 
-## FP32 Accumulation
+Block-level residual-stream intervention. Off by default; flip
+`add_reft = true` and pick a layer band (`reft_layers = "last_8"`).
+See [`../methods/reft.md`](../methods/reft.md).
 
-Unconditional. LoRA/Hydra/ReFT bottleneck matmuls run in fp32 regardless of autocast; stored parameters stay bf16. The previous `lora_fp32_accumulation` flag is deprecated and ignored.
+## Other adapter families
 
-## Cross-Attention KV Trim
+Each has its own method TOML and `make` entrypoint:
 
-Removed — the trim path only ran under `attn_mode = "flash4"`, which we evaluated and removed. See [`../optimizations/fa4.md`](../optimizations/fa4.md) for the postmortem. Training now always runs full 512-length cross-attention KV; the zero-padded positions act as attention sinks and cost negligible compute on FA2.
+| Family | Config | Train target |
+|--------|--------|--------------|
+| ChimeraHydra (dual-pool MoE) | `methods/chimera.toml` | `make exp-chimera` |
+| Postfix (free + cond+ortho) | `methods/postfix.toml` | `make exp-postfix` |
+| IP-Adapter | `methods/ip_adapter.toml` | `make exp-ip-adapter` |
+| EasyControl | `methods/easycontrol.toml` | `make exp-easycontrol` |
+| Soft Tokens (SoftREPA) | `methods/soft_tokens.toml` | `make exp-soft-tokens` |
 
-## Caption Shuffle Variants
+Deep dives in `docs/methods/` (shipped) and `docs/experimental/`.
 
-Generates multiple shuffled caption permutations per image per epoch, cached as separate text encoder outputs. Increases caption diversity without disk overhead.
+## FP32 accumulation
+
+Unconditional. LoRA / Hydra / ReFT bottleneck matmuls run in fp32 regardless
+of autocast; stored parameters stay bf16. The legacy `lora_fp32_accumulation`
+flag is deprecated and ignored.
+
+## Cross-attention KV trim
+
+Removed — the trim path only ran under `attn_mode = "flash4"`, which we
+evaluated and dropped. See [`../optimizations/fa4.md`](../optimizations/fa4.md).
+Training now always runs full 512-length cross-attention KV; the zero-padded
+positions act as attention sinks and cost negligible compute on FA2.
+
+## Caption shuffle variants
+
+Pre-cached caption permutations, one drawn per batch item per epoch — extra
+diversity without re-running the text encoder.
 
 ```toml
-caption_shuffle_variants = 4         # number of variants per image (preprocess)
-use_shuffled_caption_variants = true # pick one at random per batch item (train)
+caption_shuffle_variants = 4         # generated by preprocess-te
+use_shuffled_caption_variants = true # picked at train time
 cache_text_encoder_outputs = true
 ```
 
-The smart shuffle algorithm preserves `@artist` tags and section delimiters (`On the ...`, `In the ...`) while shuffling tags within each section. During training, one variant is randomly selected per batch item.
+The shuffle preserves `@artist` tags and section markers (`On the ...`,
+`In the ...`); only intra-section tags rotate. Regenerate the cache after
+changing tokenizer or padding.
 
-## Masked Loss (SAM / MIT)
+## Masked loss (SAM / MIT)
 
-Exclude regions (e.g. text bubbles) from the training loss using spatial masks.
-
-### Generating masks
-
-Easiest path — one make target:
+Exclude regions like text bubbles from the training loss. `masked_loss = true`
+is on by default in `base.toml`; turn it off in the method TOML if a run
+shouldn't use masks even when the mask dir exists.
 
 ```bash
-make mask             # SAM3 + MIT; calls both then merges into masks/
-make mask-sam         # SAM3 only
-make mask-mit         # MIT / ComicTextDetector only
-make mask-clean       # remove all generated masks
+make mask        # SAM3 + MIT (via tempdir) → post_image_dataset/masks/
+make mask-clean  # rm -rf post_image_dataset/masks/
 ```
 
-These operate on `post_image_dataset/` (the resized output of `make preprocess-resize`).
+These read `post_image_dataset/resized/` (the resized output of
+`make preprocess`). Subsets auto-pick `post_image_dataset/masks/` if
+present, falling back to legacy `masks/{merged,sam,mit}/` so users who
+haven't re-run `make mask` after the consolidation keep training.
 
-### Using masks in training
+## Dataset configuration
 
-```toml
-# training config
-masked_loss = true
-
-# dataset config — point to the merged mask directory
-[[datasets.subsets]]
-image_dir = 'post_image_dataset'
-mask_dir = 'masks'
-```
-
-Masks are interpolated to match the latent spatial dimensions and applied element-wise to the loss.
-
-## Dataset Configuration
+The default LoRA blueprint lives in `base.toml` (under `[general]` /
+`[[datasets]]` / `[[datasets.subsets]]`) and is *not* part of the flat
+merge chain — `_DATASET_CONFIG_SECTIONS` in `library/train_util.py` skips it
+so it never pollutes argparse. Top-level path keys interpolate into the
+blueprint at load time:
 
 ```toml
+source_image_dir  = "image_dataset"            # captions live here
+resized_image_dir = "post_image_dataset/resized"
+lora_cache_dir    = "post_image_dataset/lora"
+
 [general]
 caption_extension = '.txt'
-keep_tokens = 3              # preserve first N tokens from shuffling
+keep_tokens = 3
 
 [[datasets]]
 resolution = 1024
-batch_size = 4
-enable_bucket = true         # dynamic aspect-ratio bucketing
-min_bucket_reso = 512
-max_bucket_reso = 1536
-bucket_reso_steps = 64
-validation_split = 0.05
+batch_size = 1
+enable_bucket = true
+validation_split_num = 16
 validation_seed = 42
 
   [[datasets.subsets]]
-  image_dir = 'post_image_dataset'
+  image_dir = '{resized_image_dir}'
+  cache_dir = '{lora_cache_dir}'
   num_repeats = 1
 ```
 
-Each image needs a corresponding `.txt` caption sidecar file in the same directory.
+`cache_dir` redirects every VAE / TE / PE sidecar to a flat,
+stem-keyed location — used so IP-Adapter and EasyControl can keep their
+source dirs (`ip-adapter-dataset/`, `easycontrol-dataset/`) purely
+user-facing while caches all land under `post_image_dataset/`.
+
+To shallow-override the blueprint, drop a `[general]` / `[[datasets]]` block
+into the method TOML — `_apply_dataset_overrides` in `library/config/io.py`
+merges top-level scalars (e.g. `batch_size`). Subset-level keys must go
+through `--dataset_config <path>`.
+
+The `[half]` preset (and similar) sets `sample_ratio = 0.5` for every
+subset via the global `--sample_ratio` override — it shrinks **train only**;
+validation count stays exact.
+
+## Validation
+
+Default val signal is **paired CMMD²** (PE-Core MMD between paired
+samples) — set by `use_cmmd = true` and sized by `validation_split_num`
+(integer count) or `validation_split` (fraction). With CMMD off, val falls
+back to the legacy per-σ FM-MSE pass; that signal hasn't correlated with
+sample quality on Anima, so prefer CMMD unless VRAM forces the swap.
 
 ## Multi-GPU (removed)
 
-The repo is single-GPU only. The launcher (`scripts/tasks/_common.py::accelerate_launch`) hardcodes a single-process invocation, and the trainer no longer carries DDP plumbing — the `--ddp_*` CLI flags, `InitProcessGroupKwargs` / `DistributedDataParallelKwargs` setup, and the manual `all_reduce_network()` grad sync were all removed. Accelerate's built-in collectives still work (so `accelerator.num_processes` scaling for batch size and LR scheduler steps is harmless at 1 process), but nothing in this repo turns them on.
+The repo is single-GPU only. `scripts/tasks/_common.py::accelerate_launch`
+hardcodes a single-process invocation, and the trainer no longer carries
+DDP plumbing — the `--ddp_*` flags, `InitProcessGroupKwargs` /
+`DistributedDataParallelKwargs` setup, and manual `all_reduce_network()`
+sync are all gone. Accelerate's collectives still work harmlessly at
+1 process.
 
-If you re-add multi-GPU later, the non-obvious design choice to preserve is **don't `accelerator.prepare(network)` and rely on the default DDP wrap.** With the DiT frozen and only the adapter trainable, wrapping the LoRA `nn.Module` directly is awkward (the buckets don't match the frozen base) and wrapping the DiT wastes bandwidth on params that never get gradients. The previous approach was: leave the network unwrapped, run a manual fused all-reduce on `[p.grad for p in network.parameters() if p.grad is not None]` once per `sync_gradients` step, fused via `_flatten_dense_tensors` to avoid N serialized collectives. Any grad-clip must run *after* that all-reduce so it sees global-mean grads.
+If you re-add multi-GPU later, the non-obvious design choice to preserve is
+**don't `accelerator.prepare(network)` and rely on the default DDP wrap.**
+With the DiT frozen and only the adapter trainable, wrapping the LoRA
+`nn.Module` directly is awkward (the buckets don't match the frozen base)
+and wrapping the DiT wastes bandwidth on params that never get gradients.
+The previous approach was: leave the network unwrapped, run a manual fused
+all-reduce on `[p.grad for p in network.parameters() if p.grad is not None]`
+once per `sync_gradients` step (`_flatten_dense_tensors` avoids N serialized
+collectives). Any grad-clip must run *after* that all-reduce so it sees
+global-mean grads.

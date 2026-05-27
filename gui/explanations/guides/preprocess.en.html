@@ -1,7 +1,0 @@
-<h2 style='margin:0 0 10px 0; font-size:18px;'>Preprocessing</h2>
-<p>Three artifact lanes feed training:</p>
-<p><b>1. Text caching</b> &mdash; tokenizes captions through Qwen3 + T5 and writes <code>{stem}_anima_te.safetensors</code> sidecars. When <i>shuffle variants</i> &gt; 0, each cache holds N captions and the dataloader samples one per training step (turn on <code>use_shuffled_caption_variants</code> in your method config to use them).</p>
-<p><b>2. SAM3 masking</b> &mdash; finds text-bubble regions using natural-language prompts. Saved to <code>masks/sam/</code>.</p>
-<p><b>3. MIT masking</b> &mdash; runs a manga-specific text segmenter trained on glyph-level data. Saved to <code>masks/mit/</code>.</p>
-<p>The <b>Merge</b> step unions SAM + MIT into <code>masks/merged/</code>. When the merged dir exists, training subsets pick it up automatically (see <code>masked_loss</code> in the method config).</p>
-<p style='color:#888; font-style:italic; margin-top:12px;'>Click any field label on the left to see its explanation here.</p>

@@ -655,9 +655,9 @@ def main() -> None:
     vae.to("cpu")
     clean_memory_on_device(device)
 
-    # 6. Sigma schedule. timesteps in generate_body are sigmas/1000-shifted,
-    #    but invert/edit_forward consume sigmas directly.
-    timesteps, sigmas = inference_utils.get_timesteps_sigmas(
+    # 6. Sigma schedule. invert/edit_forward consume sigmas directly; the
+    #    timesteps return (σ∈[0,1]) is unused here.
+    _, sigmas = inference_utils.get_timesteps_sigmas(
         args.infer_steps, args.flow_shift, device
     )
     sigmas = sigmas.to(device)

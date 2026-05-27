@@ -83,44 +83,6 @@ def test_partition_cached(tmp_path: Path) -> None:
     assert [p.name for p in pending] == ["img0.png", "img2.png"]
 
 
-def test_collect_text_cache_entries_keeps_missing_and_blank_captions(
-    tmp_path: Path,
-) -> None:
-    from library.preprocess import collect_image_caption_entries
-
-    captioned = tmp_path / "captioned.png"
-    missing = tmp_path / "missing.png"
-    empty = tmp_path / "empty.png"
-    small = tmp_path / "small.png"
-    for path, size in (
-        (captioned, (800, 800)),
-        (missing, (800, 800)),
-        (empty, (800, 800)),
-        (small, (32, 32)),
-    ):
-        _write_image(path, size)
-    captioned.with_suffix(".txt").write_text(
-        "tag one, tag two\nignored", encoding="utf-8"
-    )
-    empty.with_suffix(".txt").write_text("\n", encoding="utf-8")
-
-    entries, skipped_small, missing_count, empty_count, samples = (
-        collect_image_caption_entries(
-            [captioned, missing, empty, small], min_pixels=500_000
-        )
-    )
-
-    assert skipped_small == 1
-    assert missing_count == 1
-    assert empty_count == 1
-    assert [(path.name, caption) for path, caption in entries] == [
-        ("captioned.png", "tag one, tag two"),
-        ("missing.png", ""),
-        ("empty.png", ""),
-    ]
-    assert samples == ["missing.png", "empty.png"]
-
-
 # ---------------------------------------------------------------------------
 # Model-free end-to-end coverage for the loops moved into library/preprocess/
 # (item A of the proposal). cache_pe_features / cache_latents /

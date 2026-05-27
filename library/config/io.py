@@ -21,6 +21,7 @@ from typing import Any, Optional, Sequence
 import toml
 
 from library.config import schema as _config_schema
+from library.env import anima_home, resolve_under_home
 from library.runtime.proc import no_window_kwargs
 
 logger = logging.getLogger(__name__)
@@ -201,6 +202,7 @@ def load_dataset_config_from_base(
     scalars only — see ``_apply_dataset_overrides``). This lets a method file
     bump ``batch_size`` etc. without duplicating the whole blueprint.
     """
+    configs_dir = str(resolve_under_home(configs_dir))
     base_path = os.path.join(configs_dir, "base.toml")
     if not os.path.exists(base_path):
         return None
@@ -243,6 +245,7 @@ def load_path_overrides(
     callers fall back to whatever earlier layer provided a value, then to
     hard-coded defaults.
     """
+    configs_dir = str(resolve_under_home(configs_dir))
     out: dict = {}
 
     def _flat_scalars(d: dict) -> dict:
@@ -254,6 +257,7 @@ def load_path_overrides(
             if k not in _NON_FLAT_SECTIONS and not isinstance(v, (dict, list))
         }
 
+    configs_dir = str(resolve_under_home(configs_dir))
     base_path = os.path.join(configs_dir, "base.toml")
     if os.path.exists(base_path):
         with open(base_path, "r", encoding="utf-8") as f:
@@ -290,6 +294,19 @@ def _load_toml_with_base(path: str, *, strict: bool = False) -> dict:
     return merged
 
 
+def _posix(path: str) -> str:
+    return path.replace(os.sep, "/")
+
+
+def _display_path(path: str) -> str:
+    """Return repo-relative provenance when the path lives under ANIMA_HOME."""
+    try:
+        rel = pathlib.Path(path).resolve().relative_to(anima_home())
+        return _posix(str(rel))
+    except ValueError:
+        return _posix(path)
+
+
 def _resolve_preset(preset: str, configs_dir: str = "configs") -> tuple[dict, str, str]:
     """Resolve a preset name to ``(section, source_path, source_tag)``.
 
@@ -297,6 +314,7 @@ def _resolve_preset(preset: str, configs_dir: str = "configs") -> tuple[dict, st
     ``configs/custom/<preset>.toml`` (one file per user-created preset, flat
     key=value with no section header — the filename is the preset name).
     """
+    configs_dir = str(resolve_under_home(configs_dir))
     presets_path = os.path.join(configs_dir, "presets.toml")
     if os.path.exists(presets_path):
         with open(presets_path, "r", encoding="utf-8") as f:
@@ -305,14 +323,14 @@ def _resolve_preset(preset: str, configs_dir: str = "configs") -> tuple[dict, st
             section = presets[preset]
             if not isinstance(section, dict):
                 raise ValueError(f"Preset '{preset}' in {presets_path} is not a table")
-            return dict(section), presets_path, f"{presets_path}[{preset}]"
+            return dict(section), presets_path, f"{_display_path(presets_path)}[{preset}]"
     custom_path = os.path.join(configs_dir, "custom", f"{preset}.toml")
     if os.path.exists(custom_path):
         with open(custom_path, "r", encoding="utf-8") as f:
             data = toml.load(f)
         if not isinstance(data, dict):
             raise ValueError(f"Custom preset {custom_path} is not a TOML table")
-        return data, custom_path, custom_path
+        return data, custom_path, _display_path(custom_path)
     available: list[str] = []
     if os.path.exists(presets_path):
         with open(presets_path, "r", encoding="utf-8") as f:
@@ -369,9 +387,10 @@ def load_method_preset(
     with open(base_path, "r", encoding="utf-8") as f:
         base_raw = toml.load(f)
     base_flat = _flatten_toml(base_raw, source=base_path, strict=strict)
+    base_tag = _display_path(base_path)
     for k, v in base_flat.items():
         merged[k] = v
-        provenance[k] = base_path
+        provenance[k] = base_tag
 
     preset_section, preset_path, preset_tag = _resolve_preset(preset, configs_dir)
     preset_flat = _flatten_toml(
@@ -384,9 +403,10 @@ def load_method_preset(
     with open(method_path, "r", encoding="utf-8") as f:
         method_raw = toml.load(f)
     method_flat = _flatten_toml(method_raw, source=method_path, strict=strict)
+    method_tag = _display_path(method_path)
     for k, v in method_flat.items():
         merged[k] = v
-        provenance[k] = method_path
+        provenance[k] = method_tag
 
     if return_provenance:
         return merged, provenance

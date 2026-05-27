@@ -17,8 +17,6 @@ import subprocess
 import sys
 from pathlib import Path
 
-from library.runtime.launch import accelerate_training_command_prefix
-
 try:
     import tomllib
 except ModuleNotFoundError:  # pragma: no cover - Python < 3.11 fallback
@@ -551,28 +549,35 @@ def _nsys_run_stats(rep_path: Path) -> None:
 
 
 def build_launch_cmd(*args: str, python_exe: str | None = None) -> list[str]:
-    """Build the ``accelerate launch ... train.py`` command list (no side effects).
+    """Build the training launch command list (no side effects).
 
-    The daemon needs this pure command builder so it can spawn and monitor a
-    detached training process itself, while the normal CLI path still runs the
-    same argv through ``run()``.
+    Default single-GPU path runs ``train.py`` directly. Set
+    ``ANIMA_ACCELERATE_LAUNCH=1`` for multi-GPU / distributed launches where
+    accelerate must provide rank and world-size environment variables. The
+    daemon reuses this pure builder so CLI, queue, and WebUI launches stay on
+    one command path.
     """
+    py = python_exe or PY
+    if not os.environ.get("ANIMA_ACCELERATE_LAUNCH"):
+        return [py, "train.py", *args]
     return [
-        *accelerate_training_command_prefix(python_exe or PY, "train.py"),
+        py,
+        "-m",
+        "accelerate.commands.accelerate_cli",
+        "launch",
+        "--num_cpu_threads_per_process",
+        "3",
+        "--mixed_precision",
+        "bf16",
+        "train.py",
         *args,
     ]
 
 
 def accelerate_launch(*args: str):
-    """Launch training via accelerate with extra CLI args forwarded.
+    """Launch training with extra CLI args forwarded.
 
-    Invoked as ``python -m accelerate.commands.accelerate_cli launch`` rather
-    than the bare ``accelerate`` console-script. This keeps ``sys.executable``
-    propagating from this process through to accelerate's workers — so when
-    the GUI is launched via pythonw.exe (no console), the workers also run
-    under pythonw.exe and don't pop terminal windows. The accelerate.exe
-    shim hardcodes python.exe as the worker interpreter, defeating that.
-
+    Builds the command via ``build_launch_cmd`` and runs it through ``run``.
     When PROFILE_STEPS is set, wraps the launch with ``nsys profile`` so
     ``make <method> PROFILE_STEPS=3-5`` produces a navigable Nsight report
     at ``output/nsys/profile.nsys-rep`` (override with NSYS_OUT). After the

@@ -10,6 +10,7 @@ from accelerate import init_empty_weights
 
 from networks.lora_utils import load_safetensors_with_lora
 from library.anima import models as anima_models
+from library.env import resolve_under_home
 from library.io.safetensors import WeightTransformHooks
 from library.log import setup_logging
 
@@ -141,6 +142,7 @@ def load_anima_model(
     if dit_weight_dtype is None:
         dit_weight_dtype = torch.bfloat16
 
+    dit_path = str(resolve_under_home(dit_path))
     device = torch.device(device)
     loading_device = torch.device(loading_device)
 
@@ -354,6 +356,7 @@ def load_qwen3_tokenizer(qwen3_path: str):
     """
     from transformers import AutoTokenizer
 
+    qwen3_path = str(resolve_under_home(qwen3_path))
     if os.path.isdir(qwen3_path):
         tokenizer = AutoTokenizer.from_pretrained(qwen3_path, local_files_only=True)
     else:
@@ -388,6 +391,7 @@ def load_qwen3_text_encoder(
     import transformers
     from transformers import AutoTokenizer
 
+    qwen3_path = str(resolve_under_home(qwen3_path))
     is_qwen35 = _is_qwen3_5(qwen3_path)
     model_label = "Qwen3.5" if is_qwen35 else "Qwen3"
     logger.info(f"Loading {model_label} text encoder from {qwen3_path}")

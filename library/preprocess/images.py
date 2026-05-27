@@ -14,12 +14,45 @@ from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
 
 from PIL import Image
+from PIL.PngImagePlugin import PngInfo
 
 from library.datasets.buckets import BucketManager
 from library.preprocess._dataset import PreprocessStats, walk_images
 from library.preprocess._progress import ProgressFn
 
 CAPTION_EXTENSIONS = {".txt", ".caption"}
+
+
+def _collect_metadata(src: Image.Image) -> dict:
+    """Pull through metadata that ``convert("RGB")`` + a bare ``save()`` drops.
+
+    Captured from the *original* opened image (before resize/crop produces a
+    fresh object that no longer carries ``.text``): the ICC color profile, raw
+    EXIF, and PNG text chunks — the last is where ComfyUI / A1111 stash the
+    generation prompt + params. Returned as ``save()`` kwargs. Each field is
+    best-effort so a malformed chunk never kills the worker.
+    """
+    save_kwargs: dict = {}
+
+    icc = src.info.get("icc_profile")
+    if icc:
+        save_kwargs["icc_profile"] = icc
+
+    exif = src.info.get("exif")
+    if exif:
+        save_kwargs["exif"] = exif
+
+    text_chunks = getattr(src, "text", None)
+    if text_chunks:
+        pnginfo = PngInfo()
+        for key, value in text_chunks.items():
+            try:
+                pnginfo.add_text(key, str(value))
+            except Exception:
+                continue
+        save_kwargs["pnginfo"] = pnginfo
+
+    return save_kwargs
 
 
 def process_image(
@@ -35,9 +68,12 @@ def process_image(
     the output mirrors it as ``out_dir / rel_dir / stem.png``. Empty ``rel_dir``
     collapses to the flat layout.
     """
-    max_reso, min_size, max_size, reso_steps, use_constant = bucket_args
+    if len(bucket_args) == 6:
+        max_reso, min_size, max_size, reso_steps, use_constant, bucket_no_upscale = bucket_args
+    else:
+        max_reso, min_size, max_size, reso_steps, use_constant = bucket_args
+        bucket_no_upscale = False
     bucket_mgr = BucketManager(
-        no_upscale=False,
         max_reso=max_reso,
         min_size=min_size,
         max_size=max_size,
@@ -45,10 +81,30 @@ def process_image(
     )
     bucket_mgr.make_buckets(constant_token_buckets=use_constant)
 
-    img = Image.open(image_path).convert("RGB")
+    src_img = Image.open(image_path)
+    save_kwargs = _collect_metadata(src_img)
+    img = src_img.convert("RGB")
     w, h = img.size
 
     bucket_reso, _, _ = bucket_mgr.select_bucket(w, h)
+    if bucket_no_upscale and (bucket_reso[0] > w or bucket_reso[1] > h):
+        candidates = [
+            reso
+            for reso in bucket_mgr.predefined_resos
+            if reso[0] <= w and reso[1] <= h
+        ]
+        if candidates:
+            aspect = w / h
+            bucket_reso = min(
+                candidates,
+                key=lambda reso: (abs((reso[0] / reso[1]) - aspect), -reso[0] * reso[1]),
+            )
+            bucket_mgr.add_if_new_reso(bucket_reso)
+        else:
+            down_w = max(min_size, (min(bucket_reso[0], w) // reso_steps) * reso_steps)
+            down_h = max(min_size, (min(bucket_reso[1], h) // reso_steps) * reso_steps)
+            bucket_reso = (down_w, down_h)
+            bucket_mgr.add_if_new_reso(bucket_reso)
     bw, bh = bucket_reso
 
     # Resize preserving aspect ratio so the image covers the bucket.
@@ -72,7 +128,7 @@ def process_image(
     target_dir.mkdir(parents=True, exist_ok=True)
 
     out_path = target_dir / f"{image_path.stem}.png"
-    img.save(out_path, format="PNG")
+    img.save(out_path, format="PNG", **save_kwargs)
 
     if copy_captions:
         for ext in CAPTION_EXTENSIONS:

@@ -169,6 +169,8 @@ _HYDRA_KWARG_FLAGS: Tuple[str, ...] = (
     "balance_loss_weight",
     "balance_loss_warmup_ratio",
     "expert_init_std",
+    "ortho_centered_gate",
+    "ortho_lambda_init",
     # Unified layer filter — scopes which Linears participate in routed
     # adaptation (Hydra MoE leaves + σ / FEI feature concatenation).
     "router_targets",
@@ -209,6 +211,8 @@ _CHIMERA_KWARG_FLAGS: Tuple[str, ...] = (
     "content_router_source",
     "content_router_init_std",
     "content_router_layer_norm",
+    "chimera_centered_gate",
+    "chimera_lambda_init",
 )
 
 _LOKR_KWARG_FLAGS: Tuple[str, ...] = (

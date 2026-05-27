@@ -5,6 +5,7 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
+import toml
 from PySide6.QtCore import QSize, Qt, QUrl
 from PySide6.QtGui import QColor, QDesktopServices, QFont, QIcon, QPalette, QPixmap
 from PySide6.QtWidgets import (
@@ -23,8 +24,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from gui.adapter_tab import EasyControlTab, IPAdapterTab
-from gui.config_tab import ConfigTab
+from gui import daemon as gui_daemon
 from gui.i18n import (
     available_languages,
     current_language,
@@ -32,21 +32,40 @@ from gui.i18n import (
     save_language,
     t,
 )
-from gui.image_tab import ImageViewerTab
-from gui.merge_tab import MergeTab
-from gui.preprocess_tab import PreprocessingTab
+from gui.tabs.adapter_tab import (
+    EasyControlTab,
+    IPAdapterTab,
+    SPDTrainTab,
+    TurboTrainTab,
+)
+from gui.tabs.config_tab import ConfigTab
+from gui.tabs.image_tab import ImageViewerTab
+from gui.tabs.merge_tab import MergeTab
+from gui.tabs.preprocess_tab import PreprocessingTab
 from gui.system_dialog import (
     GITHUB_ISSUES_URL,
+    check_for_update_async,
     open_models_dialog,
     open_update_dialog,
 )
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
-GUIDEBOOK_PATH = _REPO_ROOT / "docs" / "guidelines" / "가이드북.md"
+_GUIDELINES = _REPO_ROOT / "docs" / "guidelines"
+_GUIDEBOOK_BY_LANG: dict[str, Path] = {
+    "en": _GUIDELINES / "guidebook.md",
+    "ko": _GUIDELINES / "가이드북.md",
+    "cn": _GUIDELINES / "指南书.md",
+    "ja": _GUIDELINES / "ガイドブック.md",
+}
+_GUIDEBOOK_FALLBACK = _GUIDEBOOK_BY_LANG["en"]
 ICON_PATH = Path(__file__).resolve().parent / "icon.ico"
 
 
-LANG_NAMES = {"en": "English", "ko": "한국어"}
+def _guidebook_path() -> Path:
+    return _GUIDEBOOK_BY_LANG.get(current_language(), _GUIDEBOOK_FALLBACK)
+
+
+LANG_NAMES = {"en": "English", "ko": "한국어", "cn": "简体中文", "ja": "日本語"}
 
 
 def _dark(app: QApplication):
@@ -205,6 +224,13 @@ class MainWindow(QMainWindow):
         self.update_btn.setToolTip(t("update_btn_tooltip"))
         self.update_btn.clicked.connect(lambda: open_update_dialog(self))
         lang_bar.addWidget(self.update_btn)
+        # Background check — paints the button amber + "Update ●" when a newer
+        # release exists. Skips silently when .anima_release.json is missing
+        # (no baseline → can't tell if user is already current) and reuses the
+        # 6h gui_settings.json cache so launches don't hit GitHub each time.
+        self._update_check_thread = check_for_update_async(
+            self, self._show_update_available
+        )
 
         self.issues_btn = QPushButton(t("report_issue"))
         self.issues_btn.setToolTip(t("report_issue_tooltip"))
@@ -263,18 +289,20 @@ class MainWindow(QMainWindow):
         self.tabs.addTab(ImageViewerTab(), t("tab_images"))
         self.tabs.addTab(MergeTab(), t("tab_merge"))
 
-        # Experimental set: Postfix + FeRA + image-conditioning adapters. The
-        # first tab hosts a ConfigTab whose method picker exposes Postfix and
-        # FeRA (both LoRA-family but author-faithful research variants kept
+        # Experimental set: FeRA + ChimeraHydra + image-conditioning adapters.
+        # The first tab hosts a ConfigTab whose method picker exposes FeRA and
+        # ChimeraHydra (LoRA-family author-faithful research variants kept
         # behind the experimental gate). IP-Adapter and EasyControl have their
         # own preprocess/dataset lifecycles, so they keep dedicated tabs.
         self.experimental_tabs = QTabWidget()
         self.experimental_tabs.addTab(
-            ConfigTab(methods=["postfix", "fera", "chimera"]),
+            ConfigTab(methods=["fera", "chimera"]),
             t("tab_methods"),
         )
         self.experimental_tabs.addTab(IPAdapterTab(), t("tab_ip_adapter"))
         self.experimental_tabs.addTab(EasyControlTab(), t("tab_easycontrol"))
+        self.experimental_tabs.addTab(SPDTrainTab(), t("tab_spd"))
+        self.experimental_tabs.addTab(TurboTrainTab(), t("tab_turbo"))
 
         self.tab_stack = QStackedWidget()
         self.tab_stack.addWidget(self.tabs)
@@ -294,25 +322,32 @@ class MainWindow(QMainWindow):
                     cleanup()
         super().closeEvent(event)
 
-    def _toggle_experimental(self, on: bool):
-        self.tab_stack.setCurrentWidget(
-            self.experimental_tabs if on else self.tabs
+    def _show_update_available(self, latest_tag: str) -> None:
+        self.update_btn.setText(t("update_btn_available"))
+        self.update_btn.setToolTip(t("update_btn_available_tooltip", v=latest_tag))
+        self.update_btn.setStyleSheet(
+            "QPushButton { background:#b45309; color:white; font-weight:bold; "
+            "padding:4px 12px; border:1px solid #b45309; border-radius:3px; }"
+            "QPushButton:hover { background:#d97706; }"
         )
+
+    def _toggle_experimental(self, on: bool):
+        self.tab_stack.setCurrentWidget(self.experimental_tabs if on else self.tabs)
         self._update_experimental_btn_style(on)
 
     def _update_experimental_btn_style(self, on: bool):
         self.experimental_btn.setStyleSheet(
-            self._experimental_active_style if on
-            else self._experimental_idle_style
+            self._experimental_active_style if on else self._experimental_idle_style
         )
 
     def _open_guidebook(self):
-        if not GUIDEBOOK_PATH.exists():
+        path = _guidebook_path()
+        if not path.exists():
             QMessageBox.warning(
-                self, t("guidebook"), t("guidebook_missing", path=str(GUIDEBOOK_PATH))
+                self, t("guidebook"), t("guidebook_missing", path=str(path))
             )
             return
-        dlg = GuidebookDialog(GUIDEBOOK_PATH, self)
+        dlg = GuidebookDialog(path, self)
         dlg.show()
 
     def _change_lang(self, idx: int):
@@ -327,12 +362,43 @@ class MainWindow(QMainWindow):
         )
 
 
+def _ensure_source_image_dir() -> None:
+    """Create the training source dir on launch so first-time users hit an
+    empty folder rather than a confusing "no images found" error from the
+    preprocess pipeline. Path comes from base.toml's `source_image_dir`
+    so preset/method overrides are respected; falls back to `image_dataset/`.
+    """
+    src = "image_dataset"
+    base_path = _REPO_ROOT / "configs" / "base.toml"
+    try:
+        if base_path.exists():
+            raw = toml.loads(base_path.read_text(encoding="utf-8"))
+            cfg_src = raw.get("source_image_dir")
+            if isinstance(cfg_src, str) and cfg_src.strip():
+                src = cfg_src
+    except (OSError, toml.TomlDecodeError):
+        pass
+    src_path = Path(src)
+    if not src_path.is_absolute():
+        src_path = _REPO_ROOT / src_path
+    try:
+        src_path.mkdir(parents=True, exist_ok=True)
+    except OSError as e:
+        print(f"warn: could not create {src_path}: {e}", file=sys.stderr)
+
+
 def main():
     load_language()
+    _ensure_source_image_dir()
     app = QApplication(sys.argv)
     if ICON_PATH.exists():
         app.setWindowIcon(QIcon(str(ICON_PATH)))
     _dark(app)
+    # Bring the local training daemon up at launch (idempotent — reuses one
+    # already started by the CLI / a previous session, spawns one otherwise) so
+    # the queue, the Train button, and re-attach are ready immediately. Best-
+    # effort: a failure here never blocks the GUI from opening.
+    gui_daemon.ensure_daemon_quietly()
     win = MainWindow()
     win.show()
     sys.exit(app.exec())

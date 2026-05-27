@@ -40,6 +40,11 @@ from tqdm import tqdm  # noqa: E402
 from library.anima import weights as anima_utils  # noqa: E402
 from library.anima.models import Anima  # noqa: E402
 from library.datasets.distill import CachedDataset  # noqa: E402
+from library.runtime.harness import (  # noqa: E402
+    compile_dit_blocks,
+    enable_training_grad_ckpt,
+    place_dit_for_training,
+)
 from library.inference.uncond import (  # noqa: E402
     default_uncond_path,
     load_uncond_crossattn,
@@ -353,40 +358,20 @@ def main():
         state = load_file(args.resume)
         model.pooled_text_proj.load_state_dict(state)
 
-    # Enable block swap for VRAM efficiency (two forwards per step)
-    if args.blocks_to_swap > 0:
-        model.enable_block_swap(args.blocks_to_swap, device)
-        model.move_to_device_except_swap_blocks(device)
-        model.switch_block_swap_for_training()  # forward+backward block movement
-    else:
-        model.to(device)
+    # Block swap for VRAM efficiency (two forwards per step), then compile each
+    # block._forward (native-shape flatten → no flash pad-leak into the target).
+    # This pool's latents span more than the 2 CONSTANT_TOKEN_BUCKETS families,
+    # so bump the dynamo cache to trace every distinct token count.
+    place_dit_for_training(model, device, blocks_to_swap=args.blocks_to_swap)
+    compile_dit_blocks(
+        model, enabled=args.torch_compile, mode=args.compile_inductor_mode
+    )
 
-    # Compile individual block._forward for speedup. compile_blocks turns on
-    # native-shape flattening (every aspect bucket runs at its real token count,
-    # no padding → no flash pad-leak into the distillation target) and compiles
-    # _forward (the inner computation) not forward — unsloth_checkpoint wraps
-    # Block.forward with @torch._disable_dynamo. This pool's latents span more
-    # than the 2 CONSTANT_TOKEN_BUCKETS families, so pre-raise the dynamo cache
-    # (compile_blocks' max() won't lower it) to trace every distinct token count
-    # instead of falling back to eager mid-warmup.
-    if args.torch_compile:
-        import torch._dynamo as _dynamo
-
-        _dynamo.config.cache_size_limit = max(_dynamo.config.cache_size_limit, 64)
-        model.compile_blocks(mode=args.compile_inductor_mode)
-
-    # Gradient checkpointing with CPU offload: recompute block activations
-    # during backward, offloading saved tensors to CPU between forward/backward.
-    # Teacher runs under no_grad so only the student pass holds activations;
-    # peak is ~12 GB without checkpointing, flat otherwise. Disable with
-    # --no_grad_ckpt for speed when you have the VRAM headroom.
-    # Note: must keep model in train() mode because Block.forward gates
-    # checkpointing behind self.training.
-    if args.grad_ckpt:
-        model.enable_gradient_checkpointing(unsloth_offload=True)
-        logger.info("Gradient checkpointing: enabled (unsloth CPU offload)")
-    else:
-        logger.info("Gradient checkpointing: disabled")
+    # Gradient checkpointing recomputes block activations in backward (teacher
+    # runs under no_grad, so only the student pass holds activations; peak ~12 GB
+    # off, flat on). Keep the model in train() mode — Block.forward gates
+    # checkpointing on self.training.
+    enable_training_grad_ckpt(model, enabled=args.grad_ckpt)
     model.train()
 
     # Freeze everything, then unfreeze pooled_text_proj

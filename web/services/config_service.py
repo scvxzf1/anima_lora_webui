@@ -2892,9 +2892,9 @@ def _check_cache_sidecars(cfg: dict[str, Any], add) -> None:
     if not cache_dirs:
         return
 
-    if cfg.get("cache_latents_to_disk", False):
+    if cfg.get("use_vae_cache", cfg.get("cache_latents_to_disk", False)):
         _check_cache_sidecar_pattern(add, cache_dirs, "*.npz", "latent_cache", "VAE latent 缓存", "未找到 .npz latent 缓存，可能需要先预处理")
-    if cfg.get("cache_text_encoder_outputs_to_disk", False):
+    if cfg.get("use_text_cache", cfg.get("cache_text_encoder_outputs_to_disk", False)):
         _check_cache_sidecar_pattern(add, cache_dirs, "*_anima_te.safetensors", "text_cache", "文本编码器缓存", "未找到文本编码器缓存，可能需要先预处理")
     if cfg.get("ip_features_cache_to_disk", False) or cfg.get("use_repa", False) or cfg.get("use_ip_adapter", False):
         _check_cache_sidecar_pattern(add, cache_dirs, "*_anima_pe.safetensors", "pe_cache", "PE 图像特征缓存", "未找到 PE 图像特征缓存，IP-Adapter/REPA 可能需要先 preprocess-pe")

@@ -115,42 +115,7 @@ def run_training(
 GPU_TIER_PRESET = {
     "8GB": "low_vram",
     "16GB": "default",
-    "high": "32gb",
 }
-
-
-def gpu_tier_overrides(tier: str) -> dict:
-    """Overrides to layer on top of the preset for each simple-node gpu tier.
-
-    - 8GB → keep low_vram's grad_ckpt + unsloth offload, blocks_to_swap=0
-    - 16GB → no grad_ckpt, blocks_to_swap=12
-    - high → no grad_ckpt, blocks_to_swap=0
-    """
-    if tier == "16GB":
-        return {
-            "blocks_to_swap": 12,
-            "gradient_checkpointing": False,
-            "unsloth_offload_checkpointing": False,
-        }
-    if tier == "high":
-        return {
-            "blocks_to_swap": 0,
-            "gradient_checkpointing": False,
-            "unsloth_offload_checkpointing": False,
-        }
-    # 8GB → low_vram preset already sets the right flags; no overrides needed.
-    return {}
-
-
-def rank_overrides(rank: int) -> dict:
-    """lr + dim + alpha mapping for the simple node."""
-    if rank not in (16, 32):
-        raise ValueError(f"Simple node only supports rank 16 or 32, got {rank}")
-    return {
-        "network_dim": rank,
-        "network_alpha": float(rank),
-        "learning_rate": 1e-4 if rank == 16 else 5e-5,
-    }
 
 
 def find_anima_lora_root(start: Optional[str] = None) -> str:

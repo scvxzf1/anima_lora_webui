@@ -104,7 +104,9 @@ def make_bucket_resolutions(max_reso, min_size=256, max_size=1024, divisible=64)
 
 
 class BucketManager:
-    def __init__(self, no_upscale, max_reso, min_size, max_size, reso_steps) -> None:
+    def __init__(
+        self, max_reso=None, min_size=None, max_size=None, reso_steps=None
+    ) -> None:
         if max_size is not None:
             if max_reso is not None:
                 assert max_size >= max_reso[0], (
@@ -118,7 +120,6 @@ class BucketManager:
                     "the max_size should be larger than the min_size"
                 )
 
-        self.no_upscale = no_upscale
         if max_reso is None:
             self.max_reso = None
             self.max_area = None
@@ -177,66 +178,26 @@ class BucketManager:
             self.resos.append(reso)
             self.buckets.append([])
 
-    def round_to_steps(self, x):
-        x = int(x + 0.5)
-        return x - x % self.reso_steps
-
     def select_bucket(self, image_width, image_height):
         aspect_ratio = image_width / image_height
-        if not self.no_upscale:
-            reso = (image_width, image_height)
-            if reso in self.predefined_resos_set:
-                pass
-            else:
-                ar_errors = self.predefined_aspect_ratios - aspect_ratio
-                predefined_bucket_id = np.abs(ar_errors).argmin()
-                reso = self.predefined_resos[predefined_bucket_id]
-
-            ar_reso = reso[0] / reso[1]
-            if aspect_ratio > ar_reso:
-                scale = reso[1] / image_height
-            else:
-                scale = reso[0] / image_width
-
-            resized_size = (
-                int(image_width * scale + 0.5),
-                int(image_height * scale + 0.5),
-            )
+        reso = (image_width, image_height)
+        if reso in self.predefined_resos_set:
+            pass
         else:
-            if image_width * image_height > self.max_area:
-                resized_width = math.sqrt(self.max_area * aspect_ratio)
-                resized_height = self.max_area / resized_width
-                assert abs(resized_width / resized_height - aspect_ratio) < 1e-2, (
-                    "aspect is illegal"
-                )
+            ar_errors = self.predefined_aspect_ratios - aspect_ratio
+            predefined_bucket_id = np.abs(ar_errors).argmin()
+            reso = self.predefined_resos[predefined_bucket_id]
 
-                b_width_rounded = self.round_to_steps(resized_width)
-                b_height_in_wr = self.round_to_steps(b_width_rounded / aspect_ratio)
-                ar_width_rounded = b_width_rounded / b_height_in_wr
+        ar_reso = reso[0] / reso[1]
+        if aspect_ratio > ar_reso:
+            scale = reso[1] / image_height
+        else:
+            scale = reso[0] / image_width
 
-                b_height_rounded = self.round_to_steps(resized_height)
-                b_width_in_hr = self.round_to_steps(b_height_rounded * aspect_ratio)
-                ar_height_rounded = b_width_in_hr / b_height_rounded
-
-                if abs(ar_width_rounded - aspect_ratio) < abs(
-                    ar_height_rounded - aspect_ratio
-                ):
-                    resized_size = (
-                        b_width_rounded,
-                        int(b_width_rounded / aspect_ratio + 0.5),
-                    )
-                else:
-                    resized_size = (
-                        int(b_height_rounded * aspect_ratio + 0.5),
-                        b_height_rounded,
-                    )
-            else:
-                resized_size = (image_width, image_height)
-
-            bucket_width = resized_size[0] - resized_size[0] % self.reso_steps
-            bucket_height = resized_size[1] - resized_size[1] % self.reso_steps
-
-            reso = (bucket_width, bucket_height)
+        resized_size = (
+            int(image_width * scale + 0.5),
+            int(image_height * scale + 0.5),
+        )
 
         self.add_if_new_reso(reso)
 

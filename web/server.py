@@ -52,6 +52,7 @@ async def _on_startup(app: web.Application) -> None:
     from web.services.training_service import TrainingService
     svc = TrainingService(app)
     app["training_service"] = svc
+    await svc.start_queue_on_startup()
 
 
 async def _on_shutdown(app: web.Application) -> None:

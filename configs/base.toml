@@ -29,8 +29,8 @@ lora_cache_dir = "post_image_dataset/lora"
 path_pattern = "*"
 
 # Preprocess input filter. When true, scripts/tasks/preprocess.py forwards
-# `--min_pixels = min_pixels` to both scripts/preprocess/resize_images.py and
-# scripts/preprocess/cache_text_embeddings.py so under-sized source images never
+# `--min_pixels = min_pixels` to both preprocess/resize_images.py and
+# preprocess/cache_text_embeddings.py so under-sized source images never
 # enter the resize / VAE / TE caches. Default 500_000 = 0.5MP — matches the
 # scripts' own argparse defaults. Set drop_lowres_images = false to keep
 # every image regardless of size. Override per-run without editing this file:
@@ -41,34 +41,31 @@ drop_lowres_images = true
 min_pixels = 500000
 
 optimizer_type = "AdamW"
-lr_scheduler = "constant"
+lr_scheduler = "cosine"
+lr_warmup_steps = 0.05   # ratio (<1) → 5% of total steps; warms AdamW before full LR
 
 timestep_sampling = "sigmoid"
+sigmoid_bias = 0.0
 discrete_flow_shift = 1.0
 mixed_precision = "bf16"
 
 gradient_checkpointing = false
 unsloth_offload_checkpointing = false
-cache_latents = true
-cache_latents_to_disk = true
-cache_text_encoder_outputs = true
-cache_text_encoder_outputs_to_disk = true
+
+use_vae_cache = true
+use_text_cache = true
 skip_cache_check = true
 vae_chunk_size = 64
 vae_disable_cache = true
 masked_loss = true
-torch_compile = true               # native constant-token bucketing is the only mode; when
-                                   # torch_compile is on, compile_blocks() turns on native-shape
-                                   # flattening (one block graph per token-count family: 4032/4200)
-                                   # and compiles each block. No padding, no flash static-pad leak.
+torch_compile = true
 attn_mode = "flash"
 save_precision= "bf16"
 use_custom_down_autograd = true
 log_every_n_steps=2
 dataloader_pin_memory = true
-persistent_data_loader_workers= false
+persistent_data_loader_workers= true
 use_cmmd = false
-max_data_loader_n_workers=0
 
 # ── Dataset config ───────────────────────────────────────────────────────
 # Formerly configs/dataset_config.toml. Consumed directly by the dataset
@@ -82,13 +79,8 @@ caption_extension = '.txt'
 keep_tokens = 3
 
 [[datasets]]
-resolution = 1024
 batch_size = 1
-enable_bucket = true
-# Validation set size — used both for held-out paired CMMD eval (the live
-# val signal that replaced the legacy FM-MSE pass) and for any downstream
-# val machinery. Set `validation_split_num` (integer) to pin an exact
-# count; when non-zero it wins over the fractional `validation_split`.
+
 # validation_split = 0.025
 validation_split_num = 0
 validation_seed = 42

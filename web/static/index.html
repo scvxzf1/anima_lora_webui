@@ -212,16 +212,24 @@
                     <span id="train-variant">-</span> /
                     <span id="train-preset">-</span>
                 </div>
-                <button id="btn-live-training" class="btn btn-small" type="button">当前监控</button>
+                <div class="training-view-tabs" role="group" aria-label="训练视图">
+                    <button id="btn-live-training" class="training-view-tab active" type="button" data-training-view="live">当前监控</button>
+                    <button id="btn-training-queue-view" class="training-view-tab" type="button" data-training-view="queue">
+                        队列管理
+                        <span id="training-queue-tab-badge" class="training-view-badge" hidden></span>
+                    </button>
+                    <button id="btn-training-history-view" class="training-view-tab" type="button" data-training-view="history">历史任务</button>
+                </div>
                 <button id="btn-refresh-history" class="btn btn-small" type="button">刷新任务列表</button>
                 <button id="btn-stop-training" class="btn btn-danger" disabled>停止训练</button>
             </div>
             <div class="training-workspace">
                 <aside class="training-sidebar">
-                    <section class="panel training-queue-panel" aria-label="任务队列">
+                    <section class="panel training-queue-panel" aria-label="队列摘要">
                         <div class="task-history-head">
-                            <h3>任务队列</h3>
+                            <h3>队列摘要</h3>
                             <div class="training-queue-actions">
+                                <button id="btn-open-queue-manager" class="task-history-action" type="button">管理</button>
                                 <button id="btn-toggle-queue-pause" class="task-history-action" type="button">暂停</button>
                                 <button id="btn-refresh-queue" class="task-history-action" type="button">刷新</button>
                             </div>
@@ -241,6 +249,44 @@
                     </section>
                 </aside>
                 <div class="training-main">
+                    <section id="training-queue-manager" class="training-view-panel training-queue-manager" hidden>
+                        <div class="training-queue-manager-head">
+                            <div>
+                                <h3>队列管理</h3>
+                                <p id="training-queue-manager-status">正在读取队列...</p>
+                            </div>
+                            <div class="training-queue-manager-actions">
+                                <button id="btn-manager-toggle-queue-pause" class="btn btn-small" type="button">暂停</button>
+                                <button id="btn-manager-refresh-queue" class="btn btn-small" type="button">刷新</button>
+                                <button id="btn-cancel-waiting-queue" class="btn btn-small btn-subtle-danger" type="button">取消全部等待</button>
+                                <button id="btn-clear-finished-queue" class="btn btn-small" type="button">清理已结束</button>
+                            </div>
+                        </div>
+                        <div id="training-queue-stats" class="training-queue-stats" aria-label="队列统计"></div>
+                        <div class="training-queue-manager-tools">
+                            <div id="training-queue-filters" class="training-queue-filters" role="group" aria-label="队列筛选">
+                                <button class="training-queue-filter active" type="button" data-queue-filter="all">全部</button>
+                                <button class="training-queue-filter" type="button" data-queue-filter="queued">等待</button>
+                                <button class="training-queue-filter" type="button" data-queue-filter="running">运行</button>
+                                <button class="training-queue-filter" type="button" data-queue-filter="error">异常</button>
+                                <button class="training-queue-filter" type="button" data-queue-filter="done">完成</button>
+                                <button class="training-queue-filter" type="button" data-queue-filter="canceled">已取消</button>
+                            </div>
+                            <label class="training-queue-policy">
+                                <span>失败后</span>
+                                <select id="training-queue-failure-policy">
+                                    <option value="pause">暂停队列</option>
+                                    <option value="continue">继续下一个</option>
+                                </select>
+                            </label>
+                        </div>
+                        <div id="training-queue-manager-list" class="training-queue-manager-list"></div>
+                    </section>
+                    <section id="training-history-placeholder" class="training-view-panel training-history-placeholder" hidden>
+                        <h3>历史任务</h3>
+                        <p>从左侧历史任务列表选择一条记录，或选择合并查看同一配置的多次训练。</p>
+                    </section>
+                    <section id="training-monitor-view" class="training-view-panel training-monitor-view">
                     <div id="history-view-banner" class="history-view-banner" hidden>
                         <span id="history-view-title">历史任务</span>
                         <div class="history-view-actions">
@@ -329,6 +375,7 @@
                             <pre id="log-output"></pre>
                         </div>
                     </div>
+                    </section>
                 </div>
             </div>
         </section>

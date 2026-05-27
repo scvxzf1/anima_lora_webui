@@ -31,9 +31,9 @@ def check_inputs(args) -> Tuple[int, int]:
     height = args.image_size[0]
     width = args.image_size[1]
 
-    if height % 32 != 0 or width % 32 != 0:
+    if height % 16 != 0 or width % 16 != 0:
         raise ValueError(
-            f"`height` and `width` have to be divisible by 32 but are {height} and {width}."
+            f"`height` and `width` have to be divisible by 16 but are {height} and {width}."
         )
 
     return height, width

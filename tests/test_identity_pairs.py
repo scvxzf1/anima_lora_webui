@@ -177,6 +177,71 @@ def test_hard_negative_unknown_stem_falls_back(index_path):
     assert level in ("shuffled", "self")
 
 
+def test_hard_negative_backoff_prefers_artist_tier(index_path):
+    s = IdentityPairSampler(index_path, min_level="artist")
+    rng = random.Random(0)
+    # a3 (frieren, @y) has same-artist disjoint-character siblings b1/c1 → the
+    # artist tier fires before copyright is ever consulted.
+    refs = {s.hard_negative_backoff("a3", rng) for _ in range(20)}
+    assert {stem for stem, _ in refs} <= {"b1", "c1"}
+    assert all(level == "hard_artist" for _, level in refs)
+
+
+def test_hard_negative_backoff_copyright_tier_rescues(index_path):
+    s = IdentityPairSampler(index_path, min_level="artist")
+    rng = random.Random(0)
+    # a1 (frieren, @x): the only same-artist sibling a2 shares the character, so
+    # plain hard_negative falls back to shuffled — but the franchise tier finds
+    # b1 (fern, same copyright, different character), the back-off's whole point.
+    assert s.hard_negative("a1", rng)[1] == "shuffled"
+    stem, level = s.hard_negative_backoff("a1", rng)
+    assert (stem, level) == ("b1", "hard_copyright")
+
+
+def test_hard_negative_backoff_original_tier(tmp_path):
+    # Two original works by @x (no character tags), plus an unrelated franchise
+    # image. The OC target o1 has no character to disjoint on → the back-off's
+    # original tier returns the same-artist sibling o2, not shuffled.
+    meta = {
+        "o1": {"path": "x/o1.txt", "character": [], "copyright": ["original"], "artist": ["@x"]},
+        "o2": {"path": "x/o2.txt", "character": [], "copyright": ["original"], "artist": ["@x"]},
+        "f1": {"path": "y/f1.txt", "character": ["miku"], "copyright": ["vocaloid"], "artist": ["@y"]},
+    }
+    s = IdentityPairSampler(_write_index(tmp_path, meta), min_level="artist")
+    rng = random.Random(0)
+    # plain hard has no character → shuffled; backoff rescues via the original tier.
+    assert s.hard_negative("o1", rng)[1] == "shuffled"
+    stem, level = s.hard_negative_backoff("o1", rng)
+    assert (stem, level) == ("o2", "hard_original")
+
+
+def test_hard_negative_backoff_original_tier_only_for_original(tmp_path):
+    # A franchise target with no diff-character sibling must NOT borrow an
+    # original negative — the original tier is gated on the target being OC.
+    meta = {
+        "f1": {"path": "x/f1.txt", "character": ["miku"], "copyright": ["vocaloid"], "artist": ["@x"]},
+        "o1": {"path": "x/o1.txt", "character": [], "copyright": ["original"], "artist": ["@x"]},
+    }
+    s = IdentityPairSampler(_write_index(tmp_path, meta), min_level="artist")
+    stem, level = s.hard_negative_backoff("f1", random.Random(0))
+    assert level == "shuffled"
+
+
+def test_hard_negative_backoff_unknown_stem_falls_back(index_path):
+    s = IdentityPairSampler(index_path, min_level="artist")
+    stem, level = s.hard_negative_backoff("does_not_exist", random.Random(0))
+    assert level in ("shuffled", "self")
+
+
+def test_draw_dispatch(index_path):
+    s = IdentityPairSampler(index_path, min_level="artist")
+    rng = random.Random(0)
+    assert s.draw("a1", "hard", rng)[1] == "shuffled"
+    assert s.draw("a1", "hard_backoff", rng)[1] == "hard_copyright"
+    assert s.draw("a1", "shuffled", rng)[1] in ("shuffled", "self")
+    assert s.draw("a1", "jaccard", rng)[1] in ("shuffled", "self")
+
+
 def test_tag_jaccard(index_path):
     s = IdentityPairSampler(index_path, min_level="artist")
     # identical tag sets (frieren/sousou/@x)
