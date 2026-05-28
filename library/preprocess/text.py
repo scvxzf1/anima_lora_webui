@@ -131,11 +131,13 @@ def cache_text_embeddings(
     verbose: bool = True,
     progress: ProgressFn | None = None,
 ) -> PreprocessStats:
-    """Encode ``.txt`` captions for every captioned image under ``data_dir``.
+    """Encode ``.txt`` captions for every image under ``data_dir``.
 
     Strategies + encoder + (optional) ``llm_adapter`` are supplied loaded + on
     ``device``. Images below ``min_pixels`` are skipped (mirrors the resize
-    filter). With ``caption_shuffle_variants > 0`` each cache holds N variants
+    filter). Missing or empty ``.txt`` sidecars are encoded as empty captions so
+    the cached set stays aligned with the image dataset. With
+    ``caption_shuffle_variants > 0`` each cache holds N variants
     (v0 pristine, v1..v{N-1} shuffled + optionally tag-dropped). Returns counts;
     pass ``progress`` for a per-image bar.
     """
@@ -144,9 +146,6 @@ def cache_text_embeddings(
     entries: list[tuple[Path, str]] = []
     skipped_small = 0
     for p in candidates:
-        caption_path = p.with_suffix(".txt")
-        if not caption_path.exists():
-            continue
         if min_pixels > 0:
             try:
                 with Image.open(p) as im:
@@ -157,10 +156,16 @@ def cache_text_embeddings(
             if w * h < min_pixels:
                 skipped_small += 1
                 continue
-        # An empty caption file is a valid explicit empty caption
+
+        caption_path = p.with_suffix(".txt")
+        # A missing or empty caption file is a valid explicit empty caption
         # (unconditional / style-LoRA training) — encode "" rather than
         # dropping the image, so the cached set matches the training dataset.
-        caption = caption_path.read_text(encoding="utf-8").strip().split("\n")[0]
+        if caption_path.exists():
+            lines = caption_path.read_text(encoding="utf-8").splitlines()
+            caption = lines[0].strip() if lines else ""
+        else:
+            caption = ""
         entries.append((p, caption))
 
     if skipped_small and verbose:

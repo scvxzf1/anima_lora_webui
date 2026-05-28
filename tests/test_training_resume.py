@@ -415,12 +415,16 @@ def test_web_runtime_config_creates_run_directory_and_overrides_paths(tmp_path, 
     dataset_cfg = toml.loads((run_dir / "dataset.runtime.toml").read_text(encoding="utf-8"))
     assert dataset_cfg["datasets"][0]["batch_size"] == 2
     assert dataset_cfg["datasets"][1]["batch_size"] == 2
+    assert "resolution" not in dataset_cfg["datasets"][0]
+    assert "bucket_reso_steps" not in dataset_cfg["datasets"][0]
     first_subset = dataset_cfg["datasets"][0]["subsets"][0]
     second_subset = dataset_cfg["datasets"][1]["subsets"][0]
     assert first_subset["custom_attributes"]["source_dir"] == "image_dataset/a"
+    assert first_subset["custom_attributes"]["preprocess"]["resolution"] == 768
     assert first_subset["image_dir"].endswith("dataset-01/resized")
     assert first_subset["cache_dir"].endswith("dataset-01/lora")
     assert second_subset["custom_attributes"]["source_dir"] == "image_dataset/b"
+    assert second_subset["custom_attributes"]["preprocess"]["resolution"] == 1024
     assert second_subset["image_dir"].endswith("dataset-02/resized")
     assert second_subset["cache_dir"].endswith("dataset-02/lora")
 

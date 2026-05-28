@@ -26,6 +26,45 @@ class DatasetGroup(torch.utils.data.ConcatDataset):
             self.num_train_images += dataset.num_train_images
             self.num_reg_images += dataset.num_reg_images
 
+    def verify_bucket_reso_steps(self, divisible: int) -> None:
+        """Ensure every active bucket resolution fits the model patch grid."""
+        try:
+            divisible = int(divisible)
+        except (TypeError, ValueError) as exc:
+            raise ValueError(f"bucket resolution divisor must be an integer: {divisible}") from exc
+        if divisible <= 0:
+            raise ValueError(f"bucket resolution divisor must be positive: {divisible}")
+
+        invalid: list[str] = []
+        for dataset_index, dataset in enumerate(self.datasets):
+            resos = self._bucket_resolutions(dataset)
+            for width, height in sorted(resos):
+                if width % divisible != 0 or height % divisible != 0:
+                    invalid.append(f"dataset {dataset_index}: {width}x{height}")
+
+        if invalid:
+            joined = ", ".join(invalid)
+            raise ValueError(
+                f"bucket resolution must be divisible by {divisible}: {joined}"
+            )
+
+    @staticmethod
+    def _bucket_resolutions(dataset: DreamBoothDataset) -> set[tuple[int, int]]:
+        bucket_manager = getattr(dataset, "bucket_manager", None)
+        resos = getattr(bucket_manager, "resos", None)
+        if resos:
+            return {
+                (int(width), int(height))
+                for width, height in resos
+            }
+
+        image_data = getattr(dataset, "image_data", {}) or {}
+        return {
+            (int(reso[0]), int(reso[1]))
+            for info in image_data.values()
+            if (reso := getattr(info, "bucket_reso", None)) is not None
+        }
+
     def add_replacement(self, str_from, str_to):
         for dataset in self.datasets:
             dataset.add_replacement(str_from, str_to)

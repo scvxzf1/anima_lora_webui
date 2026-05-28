@@ -395,6 +395,26 @@ def test_queue_top_bottom_cancel_waiting_and_clear_finished(tmp_path, monkeypatc
     assert svc.get_queue_snapshot()["items"] == []
 
 
+def test_delete_terminal_queue_item_only_removes_that_record(tmp_path, monkeypatch):
+    _patch_queue_paths(tmp_path, monkeypatch)
+    svc = TrainingService(web.Application())
+    svc._queue_paused = True
+    svc._queue = {
+        "paused": True,
+        "items": [
+            {"id": "waiting", "state": "queued"},
+            {"id": "failed", "state": "error", "history_task_ids": ["hist-a"]},
+            {"id": "done", "state": "done"},
+        ],
+    }
+
+    deleted = asyncio.run(svc.cancel_queue_item("failed"))
+
+    assert deleted["deleted"] == 1
+    assert deleted["message"] == "已删除队列记录"
+    assert [item["id"] for item in svc.get_queue_snapshot()["items"]] == ["waiting", "done"]
+
+
 def test_handle_queue_start_uses_enqueue_service(monkeypatch):
     class FakeService:
         def __init__(self):

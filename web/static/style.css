@@ -1494,13 +1494,242 @@ main { padding: 1rem 1.5rem; }
     padding: 0.75rem;
 }
 
-.undefined-dialog {
-    width: min(760px, calc(100vw - 2rem));
+.stage-resolution-dialog {
+    width: min(1180px, calc(100vw - 2rem));
 }
 
-.undefined-dialog-body {
-    min-height: min(420px, calc(100vh - 10rem));
+.stage-resolution-dialog-body {
+    display: grid;
+    gap: 0.65rem;
+    min-height: min(680px, calc(100vh - 10rem));
+    overflow: auto;
     padding: 0.75rem;
+}
+
+.stage-resolution-summary {
+    display: grid;
+    grid-template-columns: minmax(190px, 1.25fr) repeat(5, minmax(0, 1fr));
+    gap: 0.5rem;
+}
+
+.stage-resolution-summary-item,
+.stage-resolution-chart-panel,
+.stage-resolution-editor,
+.stage-resolution-table-panel {
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--bg-card);
+}
+
+.stage-resolution-summary-item {
+    min-width: 0;
+    padding: 0.55rem 0.65rem;
+}
+
+.stage-resolution-summary-item strong {
+    display: block;
+    color: var(--text);
+    font-family: monospace;
+    font-size: 0.9rem;
+}
+
+.stage-resolution-summary-item span {
+    display: block;
+    margin-top: 0.12rem;
+    color: var(--text-dim);
+    font-size: 0.68rem;
+}
+
+.stage-resolution-enable-control {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: center;
+    gap: 0.55rem;
+    cursor: pointer;
+}
+
+.stage-resolution-enable-control input {
+    width: 16px;
+    height: 16px;
+    accent-color: var(--accent);
+}
+
+.stage-resolution-enable-control > span {
+    min-width: 0;
+}
+
+.stage-resolution-workspace {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(280px, 360px);
+    gap: 0.65rem;
+    align-items: stretch;
+}
+
+.stage-resolution-chart-panel,
+.stage-resolution-editor,
+.stage-resolution-table-panel {
+    min-width: 0;
+    overflow: hidden;
+}
+
+.stage-resolution-panel-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 0.65rem;
+    padding: 0.6rem 0.7rem;
+    border-bottom: 1px solid var(--border-soft);
+}
+
+.stage-resolution-panel-head strong {
+    display: block;
+    color: var(--text);
+    font-size: 0.8rem;
+}
+
+.stage-resolution-panel-head span {
+    display: block;
+    margin-top: 0.14rem;
+    color: var(--text-dim);
+    font-size: 0.68rem;
+    line-height: 1.35;
+}
+
+#stage-resolution-chart {
+    display: block;
+    width: 100%;
+    height: 280px;
+    cursor: pointer;
+}
+
+.stage-resolution-fields {
+    display: grid;
+    gap: 0.5rem;
+    padding: 0.65rem;
+}
+
+.stage-resolution-field {
+    display: grid;
+    grid-template-columns: minmax(92px, 0.45fr) minmax(0, 1fr);
+    gap: 0.45rem;
+    align-items: center;
+    color: var(--text-dim);
+    font-size: 0.7rem;
+}
+
+.stage-resolution-field input,
+.stage-resolution-field output {
+    width: 100%;
+    min-width: 0;
+    height: 32px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: var(--bg-input);
+    color: var(--text);
+    font-family: monospace;
+    font-size: 0.78rem;
+    padding: 0.32rem 0.45rem;
+}
+
+.stage-resolution-field output {
+    display: flex;
+    align-items: center;
+}
+
+.stage-resolution-field input:focus {
+    border-color: var(--accent);
+    outline: none;
+}
+
+.stage-resolution-repeat-field label {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    color: var(--text-dim);
+}
+
+.stage-resolution-repeat-field label input {
+    width: auto;
+    height: auto;
+}
+
+.stage-resolution-table-wrap {
+    overflow-x: auto;
+}
+
+.stage-resolution-table {
+    width: 100%;
+    min-width: 760px;
+    border-collapse: collapse;
+}
+
+.stage-resolution-table th,
+.stage-resolution-table td {
+    border-bottom: 1px solid var(--border-soft);
+    padding: 0.48rem 0.55rem;
+    color: var(--text-dim);
+    font-size: 0.7rem;
+    text-align: left;
+    white-space: nowrap;
+}
+
+.stage-resolution-table th {
+    color: var(--text);
+    font-weight: 700;
+    background: var(--surface-raised);
+}
+
+.stage-resolution-table tr.selected td {
+    background: var(--surface-tint-hover);
+}
+
+.stage-resolution-table-input {
+    width: 96px;
+    min-width: 0;
+    height: 28px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: var(--bg-input);
+    color: var(--text);
+    font-family: monospace;
+    font-size: 0.72rem;
+    padding: 0.26rem 0.36rem;
+}
+
+.stage-resolution-table-input:focus {
+    border-color: var(--accent);
+    outline: none;
+}
+
+.stage-resolution-status {
+    display: inline-flex;
+    align-items: center;
+    min-height: 22px;
+    padding: 0.12rem 0.42rem;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    color: var(--text-dim);
+}
+
+.stage-resolution-status.ok {
+    border-color: rgba(34, 197, 94, 0.45);
+    color: var(--success);
+}
+
+.stage-resolution-status.warning {
+    border-color: rgba(240, 195, 106, 0.58);
+    color: var(--warning);
+}
+
+.stage-resolution-status.error {
+    border-color: rgba(239, 83, 80, 0.58);
+    color: var(--danger);
+}
+
+.stage-resolution-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem;
 }
 
 .continue-lora-dialog {
@@ -4394,6 +4623,8 @@ input[type="checkbox"].field-input {
     .global-settings-layout { grid-template-columns: 1fr; }
     .preview-source-tabs { grid-template-columns: repeat(3, minmax(0, 1fr)); }
     .preview-dialog-body { grid-template-columns: 1fr; }
+    .stage-resolution-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .stage-resolution-workspace { grid-template-columns: 1fr; }
     .dataset-preview-dialog-body { grid-template-columns: 1fr; }
     .dataset-preview-info { position: static; }
     .preview-dialog-view img { max-height: 62vh; }
@@ -4539,6 +4770,9 @@ input[type="checkbox"].field-input {
         padding-top: 0;
     }
     .preview-source-tabs { grid-template-columns: 1fr; }
+    .stage-resolution-summary { grid-template-columns: 1fr; }
+    .stage-resolution-field { grid-template-columns: 1fr; }
+    #stage-resolution-chart { height: 240px; }
     .dataset-preview-dialog-actions {
         justify-content: flex-start;
     }

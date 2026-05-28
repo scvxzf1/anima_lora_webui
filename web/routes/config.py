@@ -16,7 +16,6 @@ from web.services.config_service import (
     get_groups,
     load_dataset_editor,
     load_sample_prompts_file,
-    list_all_variants,
     list_config_file_groups,
     list_config_files,
     list_dataset_presets,
@@ -421,9 +420,14 @@ async def handle_sample_prompts_get(request: web.Request) -> web.Response:
 async def handle_sample_prompts_put(request: web.Request) -> web.Response:
     data = await request.json()
     file_path = data.get("file", "")
+    train_config_file = data.get("train_config_file", "")
     content = data.get("content", "")
     try:
-        return web.json_response(save_sample_prompts_file(content, file_path or None))
+        return web.json_response(save_sample_prompts_file(
+            content,
+            file_path or None,
+            train_config_file=train_config_file or None,
+        ))
     except ValueError as e:
         return web.json_response({"ok": False, "error": str(e)}, status=400)
 

@@ -205,6 +205,16 @@ class ConfigSanitizer:
         "network_multiplier": float,
         "resize_interpolation": str,
     }
+    PREPROCESS_ONLY_DATASET_KEYS = frozenset(
+        {
+            "resolution",
+            "enable_bucket",
+            "min_bucket_reso",
+            "max_bucket_reso",
+            "bucket_reso_steps",
+            "bucket_no_upscale",
+        }
+    )
 
     # options handled by argparse but not handled by user config
     ARGPARSE_SPECIFIC_SCHEMA = {
@@ -269,9 +279,48 @@ class ConfigSanitizer:
             Object(self.argparse_schema), extra=voluptuous.ALLOW_EXTRA
         )
 
+    @classmethod
+    def strip_preprocess_only_dataset_keys(cls, user_config: dict) -> dict:
+        datasets = user_config.get("datasets")
+        if not isinstance(datasets, list):
+            return user_config
+
+        changed = False
+        ignored_keys: set[str] = set()
+        cleaned_datasets = []
+        for dataset_config in datasets:
+            if not isinstance(dataset_config, dict):
+                cleaned_datasets.append(dataset_config)
+                continue
+            ignored = cls.PREPROCESS_ONLY_DATASET_KEYS.intersection(dataset_config)
+            if not ignored:
+                cleaned_datasets.append(dataset_config)
+                continue
+            changed = True
+            ignored_keys.update(ignored)
+            cleaned_datasets.append(
+                {
+                    key: value
+                    for key, value in dataset_config.items()
+                    if key not in cls.PREPROCESS_ONLY_DATASET_KEYS
+                }
+            )
+
+        if not changed:
+            return user_config
+        logger.info(
+            "Ignoring preprocess-only dataset config key(s): %s",
+            ", ".join(sorted(ignored_keys)),
+        )
+        cleaned = dict(user_config)
+        cleaned["datasets"] = cleaned_datasets
+        return cleaned
+
     def sanitize_user_config(self, user_config: dict) -> dict:
         try:
-            return self.user_config_validator(user_config)
+            return self.user_config_validator(
+                self.strip_preprocess_only_dataset_keys(user_config)
+            )
         except MultipleInvalid:
             logger.error("Invalid user config")
             raise

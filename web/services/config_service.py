@@ -66,6 +66,16 @@ DATASET_SETTING_KEYS = frozenset({
     "validation_split_num",
     "validation_seed",
 })
+PREPROCESS_DATASET_SETTING_ORDER = (
+    "resolution",
+    "enable_bucket",
+    "min_bucket_reso",
+    "max_bucket_reso",
+    "bucket_reso_steps",
+    "bucket_no_upscale",
+)
+PREPROCESS_DATASET_SETTING_KEYS = frozenset(PREPROCESS_DATASET_SETTING_ORDER)
+RUNTIME_PREPROCESS_ATTR_KEY = "preprocess"
 SYSTEM_PRESET_FILES = frozenset({
     "configs/base.toml",
     "configs/presets.toml",
@@ -1113,12 +1123,14 @@ def _dataset_rows_from_config(data: dict[str, Any], cfg: dict[str, Any]) -> list
             image_dir = _dataset_path_value(subset.get("image_dir") or fallback_image, cfg)
             cache_dir = _dataset_path_value(subset.get("cache_dir") or fallback_cache, cfg)
             source_dir = _dataset_path_value(attrs.get("source_dir") or fallback_source or image_dir, cfg)
+            settings = _dataset_defaults_from_dataset(dataset, data)
+            settings.update(_preprocess_settings_from_custom_attributes(attrs))
             rows.append({
                 "source_dir": source_dir,
                 "image_dir": image_dir,
                 "cache_dir": cache_dir,
                 "num_repeats": _positive_int(subset.get("num_repeats"), 1),
-                "settings": _dataset_defaults_from_dataset(dataset, data),
+                "settings": settings,
             })
 
     if not rows:
@@ -1197,11 +1209,41 @@ def _normalize_dataset_defaults(raw: dict[str, Any]) -> dict[str, Any]:
     return out
 
 
+def _normalize_preprocess_dataset_settings(raw: dict[str, Any]) -> dict[str, Any]:
+    if not isinstance(raw, dict):
+        return {}
+    out: dict[str, Any] = {}
+    if "resolution" in raw:
+        out["resolution"] = _positive_int(raw.get("resolution"), 1024)
+    if "enable_bucket" in raw:
+        out["enable_bucket"] = str(raw.get("enable_bucket", True)).lower() not in {"0", "false", "no", "off"}
+    if "min_bucket_reso" in raw:
+        out["min_bucket_reso"] = _positive_int(raw.get("min_bucket_reso"), 256)
+    if "max_bucket_reso" in raw:
+        out["max_bucket_reso"] = _positive_int(raw.get("max_bucket_reso"), 1024)
+    if "bucket_reso_steps" in raw:
+        out["bucket_reso_steps"] = _positive_int(raw.get("bucket_reso_steps"), 64)
+    if "bucket_no_upscale" in raw:
+        out["bucket_no_upscale"] = str(raw.get("bucket_no_upscale", False)).lower() in {"1", "true", "yes", "on"}
+    return out
+
+
+def _preprocess_settings_from_custom_attributes(attrs: dict[str, Any]) -> dict[str, Any]:
+    raw = attrs.get(RUNTIME_PREPROCESS_ATTR_KEY) if isinstance(attrs, dict) else None
+    return _normalize_preprocess_dataset_settings(raw) if isinstance(raw, dict) else {}
+
+
+def _preprocess_settings_for_runtime_attrs(row_cfg: dict[str, Any]) -> dict[str, Any]:
+    normalized = _normalize_dataset_defaults(row_cfg)
+    return {key: normalized[key] for key in PREPROCESS_DATASET_SETTING_ORDER if key in normalized}
+
+
 def _build_dataset_config_doc(
     clean_rows: list[dict[str, Any]],
     cfg: dict[str, Any],
     *,
     prefer_train_batch_size: bool = False,
+    include_preprocess_settings: bool = True,
 ) -> str:
     doc = tomlkit.document()
     doc.add(tomlkit.comment("Web UI 自动生成的数据集配置。"))
@@ -1216,16 +1258,18 @@ def _build_dataset_config_doc(
     for row in clean_rows:
         row_cfg = _dataset_row_settings(row, cfg)
         dataset = tomlkit.table()
-        dataset.add("resolution", _positive_int(row_cfg.get("resolution"), 1024))
+        if include_preprocess_settings:
+            dataset.add("resolution", _positive_int(row_cfg.get("resolution"), 1024))
         batch_size = row_cfg.get("batch_size")
         if prefer_train_batch_size and cfg.get("train_batch_size") not in (None, ""):
             batch_size = cfg.get("train_batch_size")
         dataset.add("batch_size", _positive_int(batch_size, 1))
-        dataset.add("enable_bucket", bool(row_cfg.get("enable_bucket", True)))
-        dataset.add("min_bucket_reso", _positive_int(row_cfg.get("min_bucket_reso"), 256))
-        dataset.add("max_bucket_reso", _positive_int(row_cfg.get("max_bucket_reso"), 1024))
-        dataset.add("bucket_reso_steps", _positive_int(row_cfg.get("bucket_reso_steps"), 64))
-        dataset.add("bucket_no_upscale", bool(row_cfg.get("bucket_no_upscale", False)))
+        if include_preprocess_settings:
+            dataset.add("enable_bucket", bool(row_cfg.get("enable_bucket", True)))
+            dataset.add("min_bucket_reso", _positive_int(row_cfg.get("min_bucket_reso"), 256))
+            dataset.add("max_bucket_reso", _positive_int(row_cfg.get("max_bucket_reso"), 1024))
+            dataset.add("bucket_reso_steps", _positive_int(row_cfg.get("bucket_reso_steps"), 64))
+            dataset.add("bucket_no_upscale", bool(row_cfg.get("bucket_no_upscale", False)))
         validation_split_num = _positive_int(row_cfg.get("validation_split_num"), 0)
         if validation_split_num > 0:
             dataset.add("validation_split_num", validation_split_num)
@@ -1239,6 +1283,11 @@ def _build_dataset_config_doc(
         subset.add("num_repeats", _positive_int(row.get("num_repeats"), 1))
         attrs = tomlkit.inline_table()
         attrs.add("source_dir", row["source_dir"])
+        if not include_preprocess_settings:
+            preprocess_attrs = tomlkit.inline_table()
+            for key, value in _preprocess_settings_for_runtime_attrs(row_cfg).items():
+                preprocess_attrs.add(key, value)
+            attrs.add(RUNTIME_PREPROCESS_ATTR_KEY, preprocess_attrs)
         subset.add("custom_attributes", attrs)
         subsets.append(subset)
         dataset.add("subsets", subsets)
@@ -1656,8 +1705,15 @@ def load_sample_prompts_file(rel_path: str | None = None) -> dict[str, Any]:
     }
 
 
-def save_sample_prompts_file(content: str, rel_path: str | None = None) -> dict[str, Any]:
+def save_sample_prompts_file(
+    content: str,
+    rel_path: str | None = None,
+    *,
+    train_config_file: str | None = None,
+) -> dict[str, Any]:
     normalized = _normalize_prompt_file_path(rel_path or DEFAULT_SAMPLE_PROMPTS_FILE)
+    if train_config_file:
+        normalized = _sample_prompts_path_for_config(train_config_file)
     text = str(content or "")
     lines = text.splitlines()
     prompts = [line.strip() for line in lines if line.strip() and not line.lstrip().startswith("#")]
@@ -2753,6 +2809,19 @@ def _normalize_prompt_file_path(value: str) -> str:
     if not path.as_posix().startswith("configs/"):
         raise ValueError("提示词文件必须保存在 configs/ 下")
     return path.as_posix().lstrip("/")
+
+
+def _sample_prompts_path_for_config(train_config_file: str) -> str:
+    normalized_config = _normalize_config_rel_path(train_config_file)
+    config_path = _safe_resolve(normalized_config)
+    if config_path is None or Path(normalized_config).suffix.lower() != ".toml":
+        raise ValueError("训练配置文件路径不合法")
+    try:
+        rel_to_configs = Path(normalized_config).relative_to("configs")
+    except ValueError as exc:
+        raise ValueError("训练配置文件必须保存在 configs/ 下") from exc
+    prompt_path = Path("configs") / "sample-prompts" / rel_to_configs.with_suffix(".txt")
+    return _normalize_prompt_file_path(prompt_path.as_posix())
 
 
 def _safe_config_subdir(subdir: str) -> Path | None:

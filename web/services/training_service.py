@@ -782,8 +782,19 @@ class TrainingService:
         if item.get("state") == "running" and item_id == self._current_queue_item_id:
             await self.stop()
             return self.get_queue_snapshot()
+        if item.get("state") in QUEUE_TERMINAL_STATES:
+            before = len(self._queue_items())
+            self._queue["items"] = [
+                entry for entry in self._queue_items()
+                if str(entry.get("id") or "") != str(item_id or "")
+            ]
+            removed = before - len(self._queue_items())
+            if removed:
+                self._save_queue()
+                await self._broadcast_queue()
+            return {"ok": True, "message": "已删除队列记录", "deleted": removed, **self.get_queue_snapshot()}
         if item.get("state") != "queued":
-            raise ValueError("只能取消等待中的队列任务")
+            raise ValueError("只能取消等待中的队列任务或删除已结束记录")
         now = time.time()
         item.update({
             "state": "canceled",
@@ -2260,6 +2271,7 @@ def _prepare_web_runtime_config(
         runtime_rows,
         runtime_cfg,
         prefer_train_batch_size=True,
+        include_preprocess_settings=False,
     )
     dataset_config_path.write_text(dataset_doc, encoding="utf-8")
 
@@ -2460,7 +2472,12 @@ def _clone_frozen_runtime_config(
                 "settings": row.get("settings") if isinstance(row.get("settings"), dict) else {},
             })
         dataset_config_path.write_text(
-            _build_dataset_config_doc(cloned_rows, cfg, prefer_train_batch_size=True),
+            _build_dataset_config_doc(
+                cloned_rows,
+                cfg,
+                prefer_train_batch_size=True,
+                include_preprocess_settings=False,
+            ),
             encoding="utf-8",
         )
         first_row = cloned_rows[0]
@@ -2475,7 +2492,12 @@ def _clone_frozen_runtime_config(
             shutil.copy2(old_dataset_path, dataset_config_path)
         else:
             dataset_config_path.write_text(
-                _build_dataset_config_doc(runtime_rows, cfg, prefer_train_batch_size=True),
+                _build_dataset_config_doc(
+                    runtime_rows,
+                    cfg,
+                    prefer_train_batch_size=True,
+                    include_preprocess_settings=False,
+                ),
                 encoding="utf-8",
             )
         data_dirs = {

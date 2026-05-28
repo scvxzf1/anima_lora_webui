@@ -56,6 +56,9 @@ def test_training_queue_frontend_hooks_are_present() -> None:
     assert "function createTrainingQueueItem" in queue_section
     assert "function createTrainingQueueManagerItem" in queue_section
     assert "async function toggleTrainingQueuePause()" in queue_section
+    assert "deleteQueueItem" in queue_section
+    assert "删除队列记录" in queue_section
+    assert "不会删除历史任务、日志、样张、权重或运行目录" in queue_section
     assert "retryQueueItem" in queue_section
     assert "cancelWaitingQueueItems" in queue_section
     assert "clearFinishedQueueItems" in queue_section
@@ -90,6 +93,15 @@ def test_resume_queue_button_is_wired() -> None:
     assert "btn-queue-resume-training" in listener_section
 
 
+def test_sample_prompts_save_uses_current_training_config_context() -> None:
+    source = APP_JS.read_text(encoding="utf-8")
+    body = _section(source, "async function saveSamplePrompts", "async function importTomlFile")
+    prepare_body = _section(source, "async function prepareFormPatchValues", "function shouldSkipUiDefaultField")
+
+    assert "train_config_file: currentTrainingSource.file || currentTomlFile || ''" in body
+    assert "await saveSamplePrompts('');" not in prepare_body
+
+
 def test_history_list_marks_queue_tasks() -> None:
     source = APP_JS.read_text(encoding="utf-8")
 
@@ -101,26 +113,41 @@ def test_history_list_marks_queue_tasks() -> None:
     assert "historyQueueLabel(task)" in task_item
 
 
-def test_output_scope_group_opens_undefined_dialog() -> None:
+def test_output_scope_group_opens_stage_resolution_dialog() -> None:
     source = APP_JS.read_text(encoding="utf-8")
     html = INDEX_HTML.read_text(encoding="utf-8")
 
     section = _section(source, "title: '输出格式与训练范围'", "title: '方法内部与实验架构'")
-    create_group = _section(source, "function createGroup", "function createOpenUndefinedDialogButton")
-    button_factory = _section(source, "function createOpenUndefinedDialogButton", "function createFillGlobalModelPathsButton")
+    create_group = _section(source, "function createGroup", "function createOpenStageResolutionDialogButton")
+    button_factory = _section(source, "function createOpenStageResolutionDialogButton", "function createFillGlobalModelPathsButton")
 
     assert "className: 'config-group-output-scope'" in section
     assert "if (extraClass === 'config-group-output-scope')" in create_group
-    assert source.count("header.appendChild(createOpenUndefinedDialogButton());") == 1
+    assert source.count("header.appendChild(createOpenStageResolutionDialogButton());") == 1
 
-    assert "btn-open-undefined-dialog" in button_factory
-    assert "btn.textContent = '未定义';" in button_factory
-    assert "btn.addEventListener('click', openUndefinedDialog);" in button_factory
-    assert "function openUndefinedDialog()" in button_factory
-    assert "undefined-dialog" in button_factory
+    assert "btn-open-stage-resolution-dialog" in button_factory
+    assert "btn.textContent = '阶段调度';" in button_factory
+    assert "btn.addEventListener('click', openStageResolutionDialog);" in button_factory
+    assert "function openStageResolutionDialog()" in button_factory
+    assert "stage-resolution-dialog" in button_factory
     assert "showModal" in button_factory
+    assert "enabled: false" in source
+    assert "stage-resolution-enable-toggle" in button_factory
+    assert "function setStageResolutionEnabled(enabled)" in button_factory
+    assert "stageResolutionState.enabled = Boolean(enabled);" in button_factory
+    assert "启用阶段调度" in button_factory
 
-    assert 'id="undefined-dialog"' in html
-    assert 'class="preview-dialog undefined-dialog"' in html
-    assert "<h2>未定义</h2>" in html
-    assert "undefined-dialog-body" in html
+    assert 'id="stage-resolution-dialog"' in html
+    assert 'class="preview-dialog stage-resolution-dialog"' in html
+    assert "<h2>阶段分辨率调度</h2>" in html
+    assert "stage-resolution-dialog-body" in html
+
+    for snippet in (
+        "function renderStageResolutionDialog()",
+        "function drawStageResolutionChart()",
+        "function createStageResolutionEditor",
+        "function createStageResolutionTable",
+        "stageResolutionState",
+        "STAGE_RESOLUTION_STEPS_PER_EPOCH",
+    ):
+        assert snippet in source

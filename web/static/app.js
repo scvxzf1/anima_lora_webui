@@ -107,6 +107,15 @@
     let currentHistoryTaskForResume = null;
     let currentHistoryConfigGroup = null;
     let currentHistoryTimelineSelection = [];
+    const STAGE_RESOLUTION_STEPS_PER_EPOCH = 1000;
+    let stageResolutionState = {
+        enabled: false,
+        selectedIndex: 0,
+        stages: [
+            { name: 'EP1', epochs: 1, maxSide: 1024, downRange: 256, manualRepeats: false, repeats: 1 },
+            { name: 'EP2', epochs: 1, maxSide: 1536, downRange: 512, manualRepeats: false, repeats: 1 },
+        ],
+    };
     let resumeOptionsState = {
         loading: false,
         taskId: '',
@@ -3413,7 +3422,7 @@
             header.appendChild(createFillGlobalModelPathsButton());
         }
         if (extraClass === 'config-group-output-scope') {
-            header.appendChild(createOpenUndefinedDialogButton());
+            header.appendChild(createOpenStageResolutionDialogButton());
         }
         section.appendChild(header);
         if (extraClass === 'config-group-data') {
@@ -3428,25 +3437,555 @@
         return section;
     }
 
-    function createOpenUndefinedDialogButton() {
+    function createOpenStageResolutionDialogButton() {
         const btn = document.createElement('button');
-        btn.id = 'btn-open-undefined-dialog';
+        btn.id = 'btn-open-stage-resolution-dialog';
         btn.type = 'button';
         btn.className = 'btn btn-small config-group-title-action';
-        btn.textContent = '未定义';
-        btn.title = '打开未定义弹窗';
-        btn.addEventListener('click', openUndefinedDialog);
+        btn.textContent = '阶段调度';
+        btn.title = '打开阶段分辨率调度面板';
+        btn.addEventListener('click', openStageResolutionDialog);
         return btn;
     }
 
-    function openUndefinedDialog() {
-        const dialog = document.getElementById('undefined-dialog');
+    function openStageResolutionDialog() {
+        const dialog = document.getElementById('stage-resolution-dialog');
         if (!dialog) return;
+        renderStageResolutionDialog();
         if (dialog.showModal && !dialog.open) {
             dialog.showModal();
         } else if (!dialog.open) {
             dialog.setAttribute('open', 'open');
         }
+        requestAnimationFrame(drawStageResolutionChart);
+    }
+
+    function normalizedStageResolutionStages() {
+        if (!Array.isArray(stageResolutionState.stages) || !stageResolutionState.stages.length) {
+            stageResolutionState.stages = [
+                { name: 'EP1', epochs: 1, maxSide: 1024, downRange: 256, manualRepeats: false, repeats: 1 },
+            ];
+        }
+        stageResolutionState.stages = stageResolutionState.stages.map((stage, index) => ({
+            name: String(stage.name || `EP${index + 1}`).trim() || `EP${index + 1}`,
+            epochs: Number(stage.epochs) || 0,
+            maxSide: Number(stage.maxSide) || 0,
+            downRange: Number(stage.downRange) || 0,
+            manualRepeats: Boolean(stage.manualRepeats),
+            repeats: Math.max(1, Math.round(Number(stage.repeats) || 1)),
+        }));
+        stageResolutionState.selectedIndex = Math.max(
+            0,
+            Math.min(stageResolutionState.selectedIndex || 0, stageResolutionState.stages.length - 1)
+        );
+        return stageResolutionState.stages;
+    }
+
+    function stageResolutionMetrics() {
+        stageResolutionState.enabled = Boolean(stageResolutionState.enabled);
+        const stages = normalizedStageResolutionStages();
+        let cursorStep = 0;
+        const ranges = stages.map((stage, index) => {
+            const epochs = Number(stage.epochs);
+            const maxSide = Number(stage.maxSide);
+            const downRange = Number(stage.downRange);
+            const minSide = maxSide - downRange;
+            const startStep = cursorStep;
+            const steps = Math.max(0, epochs) * STAGE_RESOLUTION_STEPS_PER_EPOCH;
+            cursorStep += steps;
+            const problems = [];
+            const warnings = [];
+            if (!Number.isFinite(epochs) || epochs <= 0) problems.push('epochs 必须大于 0');
+            if (!Number.isFinite(maxSide) || maxSide <= 0) problems.push('单边最大值无效');
+            if (!Number.isFinite(downRange) || downRange <= 0) problems.push('向下波动必须大于 0');
+            if (Number.isFinite(minSide) && minSide <= 0) problems.push('单边最小值无效');
+            if (Number.isFinite(minSide) && Number.isFinite(maxSide) && minSide >= maxSide) problems.push('范围为空');
+            return {
+                ...stage,
+                index,
+                startStep,
+                endStep: cursorStep,
+                steps,
+                minSide,
+                imageCount: null,
+                autoRepeats: stage.manualRepeats ? stage.repeats : 1,
+                problems,
+                warnings,
+            };
+        });
+
+        for (let i = 0; i < ranges.length; i += 1) {
+            for (let j = i + 1; j < ranges.length; j += 1) {
+                const a = ranges[i];
+                const b = ranges[j];
+                if (a.problems.length || b.problems.length) continue;
+                const overlaps = Math.max(a.minSide, b.minSide) < Math.min(a.maxSide, b.maxSide);
+                if (overlaps) {
+                    a.warnings.push('范围重叠');
+                    b.warnings.push('范围重叠');
+                }
+            }
+        }
+        const sorted = ranges
+            .filter((item) => !item.problems.length)
+            .slice()
+            .sort((a, b) => a.minSide - b.minSide);
+        for (let i = 1; i < sorted.length; i += 1) {
+            if (sorted[i].minSide > sorted[i - 1].maxSide) {
+                sorted[i - 1].warnings.push('存在断档');
+                sorted[i].warnings.push('存在断档');
+            }
+        }
+
+        const problemCount = ranges.filter((item) => item.problems.length).length;
+        const warningCount = ranges.filter((item) => item.warnings.length).length;
+        return {
+            enabled: stageResolutionState.enabled,
+            stages: ranges,
+            totalSteps: cursorStep,
+            problemCount,
+            warningCount,
+            selected: ranges[stageResolutionState.selectedIndex] || ranges[0],
+        };
+    }
+
+    function stageResolutionStatus(stage) {
+        if (stage.problems.length) return { tone: 'error', text: stage.problems[0] };
+        if (stage.warnings.length) return { tone: 'warning', text: stage.warnings[0] };
+        return { tone: 'ok', text: '就绪' };
+    }
+
+    function renderStageResolutionDialog() {
+        const body = document.getElementById('stage-resolution-dialog-body');
+        if (!body) return;
+        const metrics = stageResolutionMetrics();
+        body.innerHTML = '';
+        body.appendChild(createStageResolutionSummary(metrics));
+
+        const workspace = document.createElement('div');
+        workspace.className = 'stage-resolution-workspace';
+        workspace.appendChild(createStageResolutionChartPanel());
+        workspace.appendChild(createStageResolutionEditor(metrics.selected));
+        body.appendChild(workspace);
+
+        body.appendChild(createStageResolutionTable(metrics.stages));
+        requestAnimationFrame(drawStageResolutionChart);
+    }
+
+    function createStageResolutionSummary(metrics) {
+        const wrap = document.createElement('div');
+        wrap.className = 'stage-resolution-summary';
+        const rows = [
+            ['调度状态', metrics.enabled ? '已启用' : '未启用'],
+            ['阶段数', `${metrics.stages.length}`],
+            ['预计 steps', `${metrics.totalSteps}`],
+            ['配置检查', metrics.problemCount ? `${metrics.problemCount} 项错误` : (metrics.warningCount ? `${metrics.warningCount} 项提示` : '就绪')],
+            ['图片统计', '待接入'],
+        ];
+        wrap.appendChild(createStageResolutionEnableControl(metrics.enabled));
+        rows.forEach(([label, value]) => {
+            const item = document.createElement('div');
+            item.className = 'stage-resolution-summary-item';
+            const strong = document.createElement('strong');
+            strong.textContent = value;
+            const span = document.createElement('span');
+            span.textContent = label;
+            item.append(strong, span);
+            wrap.appendChild(item);
+        });
+        return wrap;
+    }
+
+    function createStageResolutionEnableControl(enabled) {
+        const item = document.createElement('label');
+        item.className = 'stage-resolution-summary-item stage-resolution-enable-control';
+        const input = document.createElement('input');
+        input.id = 'stage-resolution-enable-toggle';
+        input.type = 'checkbox';
+        input.checked = enabled;
+        input.addEventListener('change', (event) => {
+            setStageResolutionEnabled(event.target.checked);
+        });
+        const copy = document.createElement('span');
+        const strong = document.createElement('strong');
+        strong.textContent = '启用阶段调度';
+        const hint = document.createElement('span');
+        hint.textContent = enabled ? '将用于阶段方案' : '草稿，不影响训练';
+        copy.append(strong, hint);
+        item.append(input, copy);
+        return item;
+    }
+
+    function setStageResolutionEnabled(enabled) {
+        stageResolutionState.enabled = Boolean(enabled);
+        renderStageResolutionDialog();
+    }
+
+    function createStageResolutionChartPanel() {
+        const panel = document.createElement('section');
+        panel.className = 'stage-resolution-chart-panel';
+        const header = document.createElement('div');
+        header.className = 'stage-resolution-panel-head';
+        const title = document.createElement('div');
+        title.innerHTML = '<strong>阶段折线</strong><span>点表示阶段，阴影表示该阶段的单边范围。</span>';
+        const addBtn = document.createElement('button');
+        addBtn.type = 'button';
+        addBtn.className = 'btn btn-small';
+        addBtn.textContent = '新增阶段';
+        addBtn.addEventListener('click', addStageResolutionPoint);
+        header.append(title, addBtn);
+        const canvas = document.createElement('canvas');
+        canvas.id = 'stage-resolution-chart';
+        canvas.width = 720;
+        canvas.height = 280;
+        canvas.addEventListener('click', selectStageResolutionPointFromCanvas);
+        panel.append(header, canvas);
+        return panel;
+    }
+
+    function createStageResolutionEditor(stage) {
+        const aside = document.createElement('aside');
+        aside.className = 'stage-resolution-editor';
+        const head = document.createElement('div');
+        head.className = 'stage-resolution-panel-head';
+        const title = document.createElement('div');
+        title.innerHTML = '<strong>当前点编辑器</strong><span>修改后立即同步折线图和阶段表。</span>';
+        head.appendChild(title);
+        aside.appendChild(head);
+        if (!stage) return aside;
+
+        const fields = document.createElement('div');
+        fields.className = 'stage-resolution-fields';
+        fields.append(
+            createStageResolutionInput('阶段名', 'name', stage.name, 'text'),
+            createStageResolutionInput('epochs', 'epochs', stage.epochs, 'number'),
+            createStageResolutionInput('单边最大值', 'maxSide', stage.maxSide, 'number'),
+            createStageResolutionInput('向下波动', 'downRange', stage.downRange, 'number'),
+            createStageResolutionReadonly('单边最小值', `${Math.max(0, stage.minSide || 0)}`),
+            createStageResolutionReadonly('预计图片数', '待统计'),
+            createStageResolutionRepeats(stage)
+        );
+        aside.appendChild(fields);
+        return aside;
+    }
+
+    function createStageResolutionInput(labelText, key, value, type) {
+        const label = document.createElement('label');
+        label.className = 'stage-resolution-field';
+        const span = document.createElement('span');
+        span.textContent = labelText;
+        const input = document.createElement('input');
+        input.type = type;
+        input.value = value;
+        input.dataset.stageField = key;
+        if (type === 'number') {
+            input.min = key === 'epochs' ? '1' : '0';
+            input.step = '1';
+        }
+        input.addEventListener('input', updateSelectedStageResolutionField);
+        label.append(span, input);
+        return label;
+    }
+
+    function createStageResolutionReadonly(labelText, value) {
+        const label = document.createElement('label');
+        label.className = 'stage-resolution-field';
+        const span = document.createElement('span');
+        span.textContent = labelText;
+        const output = document.createElement('output');
+        output.textContent = value;
+        label.append(span, output);
+        return label;
+    }
+
+    function createStageResolutionRepeats(stage) {
+        const wrap = document.createElement('div');
+        wrap.className = 'stage-resolution-field stage-resolution-repeat-field';
+        const label = document.createElement('label');
+        const check = document.createElement('input');
+        check.type = 'checkbox';
+        check.checked = stage.manualRepeats;
+        check.addEventListener('change', (event) => {
+            updateStageResolutionStage(stage.index, { manualRepeats: event.target.checked });
+        });
+        label.append(check, document.createTextNode('手动 repeats'));
+        const input = document.createElement('input');
+        input.type = 'number';
+        input.min = '1';
+        input.step = '1';
+        input.value = stage.autoRepeats;
+        input.disabled = !stage.manualRepeats;
+        input.addEventListener('input', (event) => {
+            updateStageResolutionStage(stage.index, { repeats: Math.max(1, Math.round(Number(event.target.value) || 1)) });
+        });
+        wrap.append(label, input);
+        return wrap;
+    }
+
+    function createStageResolutionTable(stages) {
+        const section = document.createElement('section');
+        section.className = 'stage-resolution-table-panel';
+        const head = document.createElement('div');
+        head.className = 'stage-resolution-panel-head';
+        const title = document.createElement('div');
+        title.innerHTML = '<strong>阶段表</strong><span>每行对应一个阶段点。</span>';
+        head.appendChild(title);
+        const tableWrap = document.createElement('div');
+        tableWrap.className = 'stage-resolution-table-wrap';
+        const table = document.createElement('table');
+        table.className = 'stage-resolution-table';
+        table.innerHTML = '<thead><tr><th>阶段</th><th>epochs</th><th>单边最大</th><th>向下波动</th><th>step 范围</th><th>分辨率范围</th><th>图片</th><th>repeats</th><th>状态</th><th>操作</th></tr></thead>';
+        const tbody = document.createElement('tbody');
+        stages.forEach((stage) => tbody.appendChild(createStageResolutionTableRow(stage)));
+        table.appendChild(tbody);
+        tableWrap.appendChild(table);
+        section.append(head, tableWrap);
+        return section;
+    }
+
+    function createStageResolutionTableRow(stage) {
+        const tr = document.createElement('tr');
+        const selected = stage.index === stageResolutionState.selectedIndex;
+        const status = stageResolutionStatus(stage);
+        tr.className = selected ? 'selected' : '';
+        tr.dataset.stageIndex = String(stage.index);
+        tr.append(
+            stageResolutionTableInputCell(stage, 'name', stage.name, 'text'),
+            stageResolutionTableInputCell(stage, 'epochs', stage.epochs, 'number'),
+            stageResolutionTableInputCell(stage, 'maxSide', stage.maxSide, 'number'),
+            stageResolutionTableInputCell(stage, 'downRange', stage.downRange, 'number'),
+            stageResolutionTableCell(`${stage.startStep}-${stage.endStep}`),
+            stageResolutionTableCell(`${Math.max(0, stage.minSide)}-${stage.maxSide}`),
+            stageResolutionTableCell('待统计'),
+            stageResolutionTableCell(`${stage.autoRepeats}`),
+            stageResolutionStatusCell(status),
+            stageResolutionActionCell(stage)
+        );
+        tr.addEventListener('click', (event) => {
+            if (event.target.closest('button')) return;
+            selectStageResolutionPoint(stage.index);
+        });
+        return tr;
+    }
+
+    function stageResolutionTableInputCell(stage, key, value, type) {
+        const td = document.createElement('td');
+        const input = document.createElement('input');
+        input.className = 'stage-resolution-table-input';
+        input.type = type;
+        input.value = value;
+        if (type === 'number') {
+            input.min = key === 'epochs' ? '1' : '0';
+            input.step = '1';
+        }
+        input.addEventListener('click', (event) => event.stopPropagation());
+        input.addEventListener('input', (event) => {
+            const next = key === 'name' ? event.target.value : Number(event.target.value);
+            updateStageResolutionStage(stage.index, { [key]: next });
+        });
+        td.appendChild(input);
+        return td;
+    }
+
+    function stageResolutionTableCell(text) {
+        const td = document.createElement('td');
+        td.textContent = text;
+        return td;
+    }
+
+    function stageResolutionStatusCell(status) {
+        const td = document.createElement('td');
+        const badge = document.createElement('span');
+        badge.className = `stage-resolution-status ${status.tone}`;
+        badge.textContent = status.text;
+        td.appendChild(badge);
+        return td;
+    }
+
+    function stageResolutionActionCell(stage) {
+        const td = document.createElement('td');
+        td.className = 'stage-resolution-actions';
+        const up = stageResolutionActionButton('↑', '上移', () => moveStageResolutionPoint(stage.index, -1));
+        const down = stageResolutionActionButton('↓', '下移', () => moveStageResolutionPoint(stage.index, 1));
+        const del = stageResolutionActionButton('删', '删除', () => deleteStageResolutionPoint(stage.index));
+        up.disabled = stage.index <= 0;
+        down.disabled = stage.index >= stageResolutionState.stages.length - 1;
+        del.disabled = stageResolutionState.stages.length <= 1;
+        td.append(up, down, del);
+        return td;
+    }
+
+    function stageResolutionActionButton(text, title, handler) {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'btn btn-small';
+        btn.textContent = text;
+        btn.title = title;
+        btn.addEventListener('click', handler);
+        return btn;
+    }
+
+    function updateSelectedStageResolutionField(event) {
+        const key = event.target.dataset.stageField;
+        const value = key === 'name' ? event.target.value : Number(event.target.value);
+        updateStageResolutionStage(stageResolutionState.selectedIndex, { [key]: value });
+    }
+
+    function updateStageResolutionStage(index, patch) {
+        const stages = normalizedStageResolutionStages();
+        if (!stages[index]) return;
+        stageResolutionState.stages[index] = { ...stages[index], ...patch };
+        renderStageResolutionDialog();
+    }
+
+    function addStageResolutionPoint() {
+        const stages = normalizedStageResolutionStages();
+        const last = stages[stages.length - 1] || { maxSide: 1024, downRange: 256 };
+        stages.push({
+            name: `EP${stages.length + 1}`,
+            epochs: 1,
+            maxSide: Math.max(256, Number(last.maxSide || 1024) + 512),
+            downRange: Math.max(64, Number(last.downRange || 256)),
+            manualRepeats: false,
+            repeats: 1,
+        });
+        stageResolutionState.selectedIndex = stages.length - 1;
+        renderStageResolutionDialog();
+    }
+
+    function deleteStageResolutionPoint(index) {
+        const stages = normalizedStageResolutionStages();
+        if (stages.length <= 1) return;
+        stages.splice(index, 1);
+        stageResolutionState.selectedIndex = Math.max(0, Math.min(index, stages.length - 1));
+        renderStageResolutionDialog();
+    }
+
+    function moveStageResolutionPoint(index, direction) {
+        const stages = normalizedStageResolutionStages();
+        const nextIndex = index + direction;
+        if (nextIndex < 0 || nextIndex >= stages.length) return;
+        [stages[index], stages[nextIndex]] = [stages[nextIndex], stages[index]];
+        stageResolutionState.selectedIndex = nextIndex;
+        renderStageResolutionDialog();
+    }
+
+    function selectStageResolutionPoint(index) {
+        stageResolutionState.selectedIndex = index;
+        renderStageResolutionDialog();
+    }
+
+    function selectStageResolutionPointFromCanvas(event) {
+        const canvas = event.currentTarget;
+        const points = canvas._stageResolutionPoints || [];
+        if (!points.length) return;
+        const rect = canvas.getBoundingClientRect();
+        const x = event.clientX - rect.left;
+        let nearest = points[0];
+        for (const point of points) {
+            if (Math.abs(point.x - x) < Math.abs(nearest.x - x)) nearest = point;
+        }
+        selectStageResolutionPoint(nearest.index);
+    }
+
+    function drawStageResolutionChart() {
+        const canvas = document.getElementById('stage-resolution-chart');
+        if (!canvas) return;
+        const ctx = canvas.getContext('2d');
+        const metrics = stageResolutionMetrics();
+        const stages = metrics.stages;
+        const rect = canvas.getBoundingClientRect();
+        const width = Math.max(320, Math.floor(rect.width || 720));
+        const height = Math.max(220, Math.floor(rect.height || 280));
+        const ratio = Math.max(1, Math.min(window.devicePixelRatio || 1, 2));
+        canvas.width = Math.round(width * ratio);
+        canvas.height = Math.round(height * ratio);
+        ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+        ctx.clearRect(0, 0, width, height);
+
+        const styles = getComputedStyle(document.documentElement);
+        const accent = styles.getPropertyValue('--accent').trim() || '#4fc3f7';
+        const warning = styles.getPropertyValue('--warning').trim() || '#f0c36a';
+        const danger = styles.getPropertyValue('--danger').trim() || '#ef5350';
+        const grid = styles.getPropertyValue('--chart-grid').trim() || '#2a3a5e';
+        const text = styles.getPropertyValue('--text-dim').trim() || '#8892a4';
+        const success = styles.getPropertyValue('--success').trim() || '#22c55e';
+        const pad = { top: 24, right: 38, bottom: 38, left: 46 };
+        const plotW = width - pad.left - pad.right;
+        const plotH = height - pad.top - pad.bottom;
+        if (!stages.length || plotW <= 0 || plotH <= 0) return;
+
+        const values = stages.flatMap((stage) => [stage.maxSide, Math.max(0, stage.minSide)]);
+        let minY = Math.min(...values);
+        let maxY = Math.max(...values);
+        if (minY === maxY) {
+            minY -= 128;
+            maxY += 128;
+        }
+        minY = Math.max(0, Math.floor(minY / 128) * 128);
+        maxY = Math.ceil(maxY / 128) * 128;
+        const yFor = (value) => pad.top + (1 - ((value - minY) / Math.max(1, maxY - minY))) * plotH;
+        const xFor = (index) => stages.length === 1
+            ? pad.left + plotW / 2
+            : pad.left + (plotW * index / (stages.length - 1));
+
+        ctx.strokeStyle = grid;
+        ctx.lineWidth = 0.5;
+        ctx.fillStyle = text;
+        ctx.font = '10px monospace';
+        ctx.textAlign = 'right';
+        for (let i = 0; i <= 4; i += 1) {
+            const y = pad.top + (plotH * i / 4);
+            const value = maxY - ((maxY - minY) * i / 4);
+            ctx.beginPath();
+            ctx.moveTo(pad.left, y);
+            ctx.lineTo(width - pad.right, y);
+            ctx.stroke();
+            ctx.fillText(String(Math.round(value)), pad.left - 8, y + 3);
+        }
+
+        const points = [];
+        stages.forEach((stage, index) => {
+            const x = xFor(index);
+            const yMax = yFor(stage.maxSide);
+            const yMin = yFor(Math.max(0, stage.minSide));
+            const status = stageResolutionStatus(stage);
+            const color = status.tone === 'error' ? danger : (status.tone === 'warning' ? warning : accent);
+            ctx.fillStyle = color;
+            ctx.globalAlpha = 0.16;
+            ctx.fillRect(x - 24, yMax, 48, Math.max(2, yMin - yMax));
+            ctx.globalAlpha = 1;
+            points.push({ x, y: yMax, index });
+        });
+
+        ctx.strokeStyle = accent;
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        points.forEach((point, index) => {
+            if (index === 0) ctx.moveTo(point.x, point.y);
+            else ctx.lineTo(point.x, point.y);
+        });
+        ctx.stroke();
+
+        points.forEach((point) => {
+            const stage = stages[point.index];
+            const status = stageResolutionStatus(stage);
+            const selected = point.index === stageResolutionState.selectedIndex;
+            const color = status.tone === 'error' ? danger : (status.tone === 'warning' ? warning : success);
+            ctx.fillStyle = color;
+            ctx.strokeStyle = selected ? warning : accent;
+            ctx.lineWidth = selected ? 3 : 1.5;
+            ctx.beginPath();
+            ctx.arc(point.x, point.y, selected ? 6 : 4.5, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.stroke();
+
+            ctx.fillStyle = text;
+            ctx.font = '10px monospace';
+            ctx.textAlign = 'center';
+            ctx.fillText(`${stage.startStep}-${stage.endStep}`, point.x, height - 18);
+        });
+        canvas._stageResolutionPoints = points;
     }
 
     function createFillGlobalModelPathsButton() {
@@ -7111,7 +7650,6 @@
                 const saved = await saveSamplePrompts(promptText);
                 nextValues.sample_prompts = saved.file || samplePromptsPath;
             } else {
-                await saveSamplePrompts('');
                 nextValues.sample_prompts = '';
             }
         }
@@ -7280,7 +7818,11 @@
     async function saveSamplePrompts(content) {
         const res = await api('/api/config/sample-prompts', {
             method: 'PUT',
-            body: JSON.stringify({ file: samplePromptsPath, content }),
+            body: JSON.stringify({
+                file: samplePromptsPath,
+                train_config_file: currentTrainingSource.file || currentTomlFile || '',
+                content,
+            }),
         });
         if (!res.ok) {
             throw new Error(res.error || '保存预览提示词失败');
@@ -11144,7 +11686,10 @@
         } else if (item.state === 'running') {
             actions.append(createQueueActionButton('停止', () => cancelQueueItem(item.id), 'danger'));
         } else {
-            actions.append(createQueueActionButton('重新入队', () => retryQueueItem(item.id)));
+            actions.append(
+                createQueueActionButton('重新入队', () => retryQueueItem(item.id)),
+                createQueueActionButton('删除', () => deleteQueueItem(item.id), 'danger'),
+            );
         }
         head.appendChild(actions);
 
@@ -11262,6 +11807,25 @@
             if (!payload.ok) appendLog(`[状态] ${payload.error || '取消队列任务失败'}`);
         } catch (e) {
             appendLog(`[状态] 取消队列任务失败: ${e.message}`);
+        }
+    }
+
+    async function deleteQueueItem(itemId) {
+        const item = trainingQueueState.items.find((entry) => entry.id === itemId);
+        const ok = await showAppConfirmDialog({
+            title: '删除队列记录',
+            description: queueItemTitle(item || {}),
+            message: '只会从队列管理中删除这条已结束记录，不会删除历史任务、日志、样张、权重或运行目录。',
+            confirmText: '删除记录',
+            danger: true,
+        });
+        if (!ok) return;
+        try {
+            const payload = await api(`/api/training/queue/${encodeURIComponent(itemId)}`, { method: 'DELETE' });
+            updateTrainingQueueFromPayload(payload);
+            if (!payload.ok) appendLog(`[状态] ${payload.error || '删除队列记录失败'}`);
+        } catch (e) {
+            appendLog(`[状态] 删除队列记录失败: ${e.message}`);
         }
     }
 
@@ -12851,6 +13415,7 @@
             'btn-move-toml-group': '移动右侧配置文件所在分组，只改变列表归类，不改变 TOML 内容。',
             'btn-create-blank-preset': '以 LoRA 标准训练变体 lora.toml 为模板，并套用全局基础模型路径创建新的可编辑项目预设。',
             'btn-fill-global-model-paths': '用全局设置里的基础 DiT、Qwen3、VAE 路径覆盖当前配置表单；覆盖前会要求确认。',
+            'btn-open-stage-resolution-dialog': '打开阶段分辨率调度面板，预览按阶段切换数据分辨率范围的配置。',
             'btn-reload-toml': '从磁盘重新读取当前 TOML；会丢弃未保存编辑。',
             'btn-copy-toml': '复制当前编辑器里的 TOML 内容，方便备份或排查。',
             'btn-save-toml-direct': '保存直接编辑器里的 TOML 文本。需要连续点击两次确认写入。',

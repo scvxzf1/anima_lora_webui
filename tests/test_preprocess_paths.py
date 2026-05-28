@@ -2,7 +2,9 @@ from __future__ import annotations
 
 from PIL import Image
 import toml
+import torch
 
+from library.preprocess import text as preprocess_text
 from preprocess import cache_text_embeddings
 from preprocess import resize_images
 from scripts.tasks import preprocess
@@ -220,6 +222,53 @@ def test_resize_bucket_args_use_dataset_no_upscale(tmp_path, monkeypatch):
     ]
 
 
+def test_resize_bucket_args_use_runtime_preprocess_attrs(tmp_path, monkeypatch):
+    dataset_path = tmp_path / "runs" / "demo" / "dataset.runtime.toml"
+    dataset_path.parent.mkdir(parents=True)
+    dataset_path.write_text(
+        "\n".join(
+            [
+                "[[datasets]]",
+                "batch_size = 1",
+                "",
+                "[[datasets.subsets]]",
+                'image_dir = "post_image_dataset/a_resized"',
+                'cache_dir = "post_image_dataset/a_cache"',
+                (
+                    'custom_attributes = {source_dir = "image_dataset/a", '
+                    'preprocess = {resolution = 768, min_bucket_reso = 256, '
+                    'max_bucket_reso = 768, bucket_reso_steps = 32, '
+                    'bucket_no_upscale = true}}'
+                ),
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(preprocess, "ROOT", tmp_path)
+    monkeypatch.setattr(
+        _common,
+        "_PATH_OVERRIDES_CACHE",
+        {"dataset_config": "runs/demo/dataset.runtime.toml"},
+    )
+
+    rows = preprocess._preprocess_rows()
+    args = preprocess._resize_bucket_args(rows[0])
+
+    assert rows[0]["source_image_dir"] == "image_dataset/a"
+    assert args == [
+        "--resolution",
+        "768",
+        "--min_bucket_reso",
+        "256",
+        "--max_bucket_reso",
+        "768",
+        "--bucket_reso_steps",
+        "32",
+        "--bucket_no_upscale",
+    ]
+
+
 def test_cache_text_embeddings_keeps_uncaptioned_images(tmp_path):
     captioned = tmp_path / "captioned.png"
     missing = tmp_path / "missing.png"
@@ -251,6 +300,55 @@ def test_cache_text_embeddings_keeps_uncaptioned_images(tmp_path):
         ("empty.png", ""),
     ]
     assert samples == ["missing.png", "empty.png"]
+
+
+def test_cache_text_embeddings_writes_missing_caption_caches(tmp_path, monkeypatch):
+    captioned = tmp_path / "captioned.png"
+    missing = tmp_path / "missing.png"
+    empty = tmp_path / "empty.png"
+    for path in (captioned, missing, empty):
+        Image.new("RGB", (800, 800), color=(128, 128, 128)).save(path)
+    captioned.with_suffix(".txt").write_text("tag one\n", encoding="utf-8")
+    empty.with_suffix(".txt").write_text("\n", encoding="utf-8")
+
+    seen_captions: list[str] = []
+
+    def fake_encode_batch(
+        captions,
+        _tokenize_strategy,
+        _encoding_strategy,
+        _text_encoder,
+        _llm_adapter,
+        _device,
+    ):
+        seen_captions.extend(captions)
+        n = len(captions)
+        return (
+            torch.zeros((n, 2, 3), dtype=torch.bfloat16),
+            torch.ones((n, 2), dtype=torch.int32),
+            torch.zeros((n, 2), dtype=torch.long),
+            torch.ones((n, 2), dtype=torch.int32),
+            None,
+        )
+
+    monkeypatch.setattr(preprocess_text, "_encode_batch", fake_encode_batch)
+
+    stats = preprocess_text.cache_text_embeddings(
+        tmp_path,
+        object(),
+        object(),
+        object(),
+        device=torch.device("cpu"),
+        cache_dir=tmp_path / "cache",
+        batch_size=8,
+        min_pixels=500_000,
+        verbose=False,
+    )
+
+    assert stats.written == 3
+    assert seen_captions == ["tag one", "", ""]
+    for path in (captioned, missing, empty):
+        assert (tmp_path / "cache" / f"{path.stem}_anima_te.safetensors").is_file()
 
 
 def test_preprocess_runs_all_dataset_config_rows(tmp_path, monkeypatch):

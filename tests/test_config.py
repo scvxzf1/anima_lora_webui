@@ -134,6 +134,43 @@ def test_default_train_batch_size_preserves_dataset_config_batch_size():
     assert user_config["datasets"][0]["batch_size"] == 4
 
 
+def test_dataset_config_ignores_legacy_preprocess_only_keys():
+    from library.config.loader import ConfigSanitizer
+
+    user_config = {
+        "general": {"caption_extension": ".txt"},
+        "datasets": [
+            {
+                "resolution": 1024,
+                "batch_size": 1,
+                "enable_bucket": True,
+                "min_bucket_reso": 256,
+                "max_bucket_reso": 1024,
+                "bucket_reso_steps": 64,
+                "bucket_no_upscale": False,
+                "validation_split": 0.025,
+                "validation_seed": 42,
+                "subsets": [
+                    {
+                        "image_dir": "post_image_dataset/resized",
+                        "cache_dir": "post_image_dataset/lora",
+                        "custom_attributes": {"source_dir": "image_dataset"},
+                    }
+                ],
+            }
+        ],
+    }
+
+    sanitized = ConfigSanitizer(support_dropout=True).sanitize_user_config(user_config)
+    dataset = sanitized["datasets"][0]
+
+    for key in ConfigSanitizer.PREPROCESS_ONLY_DATASET_KEYS:
+        assert key not in dataset
+    assert dataset["batch_size"] == 1
+    assert dataset["validation_seed"] == 42
+    assert dataset["subsets"][0]["image_dir"] == "post_image_dataset/resized"
+
+
 # ---------------------------------------------------------------------------
 # Round-trip: all methods × presets produce no warnings
 # ---------------------------------------------------------------------------

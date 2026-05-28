@@ -136,6 +136,33 @@ def test_sample_prompts_roundtrip_preserves_comments_blank_lines_and_spacing(tmp
     assert loaded["prompts"] == ["masterpiece, best quality", "solo, 1girl"]
 
 
+def test_sample_prompts_save_can_fork_to_training_config_specific_file(tmp_path: Path, monkeypatch):
+    configs, _dataset_path = _write_minimal_config_tree(tmp_path)
+    _patch_config_service_paths(monkeypatch, tmp_path)
+
+    saved = config_service.save_sample_prompts_file(
+        "solo, character a\n",
+        "configs/sample_prompts.txt",
+        train_config_file="configs/imported/lora.toml",
+    )
+
+    assert saved["file"] == "configs/sample-prompts/imported/lora.txt"
+    assert (configs / "sample_prompts.txt").exists() is False
+    assert (configs / "sample-prompts" / "imported" / "lora.txt").read_text(encoding="utf-8") == "solo, character a\n"
+
+
+def test_sample_prompts_save_rejects_training_config_outside_configs(tmp_path: Path, monkeypatch):
+    _write_minimal_config_tree(tmp_path)
+    _patch_config_service_paths(monkeypatch, tmp_path)
+
+    with pytest.raises(ValueError, match="训练配置文件路径不合法"):
+        config_service.save_sample_prompts_file(
+            "solo\n",
+            "configs/sample_prompts.txt",
+            train_config_file="../outside.toml",
+        )
+
+
 def test_raw_patch_ignores_dataset_picker_ui_field(tmp_path: Path, monkeypatch):
     configs, _dataset_path = _write_minimal_config_tree(tmp_path)
     _patch_config_service_paths(monkeypatch, tmp_path)
@@ -814,6 +841,46 @@ def test_runtime_dataset_doc_can_prefer_train_batch_size():
 
     data = toml.loads(doc)
     assert data["datasets"][0]["batch_size"] == 2
+
+
+def test_runtime_dataset_doc_hides_preprocess_settings_from_training_schema():
+    doc = config_service._build_dataset_config_doc(
+        [{
+            "source_dir": "image_dataset/source",
+            "image_dir": "post_image_dataset/resized",
+            "cache_dir": "post_image_dataset/lora",
+            "num_repeats": 1,
+            "settings": {
+                "resolution": 768,
+                "batch_size": 1,
+                "enable_bucket": True,
+                "min_bucket_reso": 256,
+                "max_bucket_reso": 768,
+                "bucket_reso_steps": 32,
+                "bucket_no_upscale": True,
+                "validation_split_num": 4,
+            },
+        }],
+        {"train_batch_size": 2},
+        prefer_train_batch_size=True,
+        include_preprocess_settings=False,
+    )
+
+    data = toml.loads(doc)
+    dataset = data["datasets"][0]
+    for key in config_service.PREPROCESS_DATASET_SETTING_KEYS:
+        assert key not in dataset
+    assert dataset["batch_size"] == 2
+    assert dataset["validation_split_num"] == 4
+
+    attrs = dataset["subsets"][0]["custom_attributes"]
+    assert attrs["preprocess"]["resolution"] == 768
+    assert attrs["preprocess"]["bucket_reso_steps"] == 32
+    assert attrs["preprocess"]["bucket_no_upscale"] is True
+
+    from library.config.loader import ConfigSanitizer
+
+    ConfigSanitizer(support_dropout=True).sanitize_user_config(data)
 
 
 def test_system_dataset_preset_is_readonly_but_can_be_saved_as(tmp_path: Path, monkeypatch):

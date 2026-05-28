@@ -16,6 +16,8 @@ else:
 
 from ._common import PY, ROOT, _path, run
 
+RUNTIME_PREPROCESS_ATTR_KEY = "preprocess"
+
 
 # Subfolders under the source dir are walked by default — matches the
 # `recursive = true` subset default in configs/base.toml. Stems must stay
@@ -91,6 +93,22 @@ def _positive_int(value: Any) -> int | None:
     except (TypeError, ValueError):
         return None
     return n if n > 0 else None
+
+
+def _preprocess_settings_from_custom_attributes(attrs: dict[str, Any]) -> dict[str, Any]:
+    raw = attrs.get(RUNTIME_PREPROCESS_ATTR_KEY) if isinstance(attrs, dict) else None
+    if not isinstance(raw, dict):
+        return {}
+    out: dict[str, Any] = {}
+    for key in ("resolution", "min_bucket_reso", "max_bucket_reso", "bucket_reso_steps"):
+        value = _positive_int(raw.get(key))
+        if value is not None:
+            out[key] = value
+    if "bucket_no_upscale" in raw:
+        out["bucket_no_upscale"] = raw.get("bucket_no_upscale")
+    if "enable_bucket" in raw:
+        out["enable_bucket"] = raw.get("enable_bucket")
+    return out
 
 
 def _resolve_project_path(value: Any) -> Path | None:
@@ -172,6 +190,7 @@ def _dataset_rows(dataset_config: Any, overrides: dict[str, Any] | None = None) 
                 continue
             row = dict(dataset)
             row.pop("subsets", None)
+            row.update(_preprocess_settings_from_custom_attributes(attrs))
             row.update(
                 {
                     "source_image_dir": source_dir,
