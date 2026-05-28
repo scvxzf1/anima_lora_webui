@@ -16,6 +16,13 @@ from library.preprocess._dataset import (
 )
 from library.preprocess._progress import ProgressFn, tqdm_progress
 from library.preprocess.images import process_image, resize_to_buckets
+from library.preprocess.captions import (
+    CaptionSource,
+    StructuredCaption,
+    load_json_caption,
+    read_caption_source,
+    structured_caption_from_json,
+)
 from library.preprocess.latents import cache_latents, get_latents_npz_path
 from library.preprocess.pe import (
     cache_path_for as pe_cache_path_for,
@@ -50,4 +57,10 @@ __all__ = [
     "pe_cache_path_for",
     "resize_to_buckets",
     "process_image",
+    # caption sidecars
+    "CaptionSource",
+    "StructuredCaption",
+    "load_json_caption",
+    "read_caption_source",
+    "structured_caption_from_json",
 ]

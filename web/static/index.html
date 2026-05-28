@@ -17,7 +17,7 @@
             }
         })();
     </script>
-    <link rel="stylesheet" href="/static/style.css?v=continue-lora-20260526-1">
+    <link rel="stylesheet" href="/static/style.css?v=history-collections-20260528-6">
 </head>
 <body>
     <header>
@@ -258,14 +258,20 @@
                             <div class="training-queue-manager-actions">
                                 <button id="btn-manager-toggle-queue-pause" class="btn btn-small" type="button">暂停</button>
                                 <button id="btn-manager-refresh-queue" class="btn btn-small" type="button">刷新</button>
-                                <button id="btn-cancel-waiting-queue" class="btn btn-small btn-subtle-danger" type="button">取消全部等待</button>
-                                <button id="btn-clear-finished-queue" class="btn btn-small" type="button">清理已结束</button>
+                                <details class="training-queue-more-menu">
+                                    <summary class="btn btn-small">更多</summary>
+                                    <div class="training-queue-more-menu-popover">
+                                        <button id="btn-cancel-waiting-queue" class="btn btn-small btn-subtle-danger" type="button">取消全部等待</button>
+                                        <button id="btn-clear-finished-queue" class="btn btn-small" type="button">清理已结束</button>
+                                    </div>
+                                </details>
                             </div>
                         </div>
                         <div id="training-queue-stats" class="training-queue-stats" aria-label="队列统计"></div>
                         <div class="training-queue-manager-tools">
                             <div id="training-queue-filters" class="training-queue-filters" role="group" aria-label="队列筛选">
-                                <button class="training-queue-filter active" type="button" data-queue-filter="all">全部</button>
+                                <button class="training-queue-filter active" type="button" data-queue-filter="actionable">待处理</button>
+                                <button class="training-queue-filter" type="button" data-queue-filter="all">全部</button>
                                 <button class="training-queue-filter" type="button" data-queue-filter="queued">等待</button>
                                 <button class="training-queue-filter" type="button" data-queue-filter="running">运行</button>
                                 <button class="training-queue-filter" type="button" data-queue-filter="error">异常</button>
@@ -282,9 +288,114 @@
                         </div>
                         <div id="training-queue-manager-list" class="training-queue-manager-list"></div>
                     </section>
+                    <section id="training-history-manager" class="training-view-panel training-history-manager" hidden>
+                        <div class="history-manager-head">
+                            <div>
+                                <h3>历史任务</h3>
+                                <p id="history-manager-status">正在读取历史任务...</p>
+                            </div>
+                        <div class="history-manager-actions">
+                            <button id="btn-history-manager-refresh" class="btn btn-small" type="button">刷新</button>
+                            <button id="btn-history-collections-workbench" class="btn btn-small" type="button">集合管理</button>
+                            <button id="btn-history-manager-merge" class="btn btn-small" type="button" disabled>合并查看</button>
+                        </div>
+                        </div>
+                        <div id="history-manager-stats" class="history-manager-stats" aria-label="历史任务统计"></div>
+                        <div class="history-manager-tools">
+                            <label class="history-manager-search">
+                                <span>搜索</span>
+                                <input id="history-manager-search" type="search" placeholder="任务名 / 配置 / 目录">
+                            </label>
+                            <label class="history-manager-search">
+                                <span>集合搜索</span>
+                                <input id="history-collection-search" type="search" placeholder="集合名 / 配置 / 任务">
+                            </label>
+                            <label class="history-manager-search">
+                                <span>配置组搜索</span>
+                                <input id="history-config-group-search" type="search" placeholder="配置名 / 源配置 / 任务">
+                            </label>
+                            <label>
+                                <span>类型</span>
+                                <select id="history-filter-kind">
+                                    <option value="all">全部</option>
+                                    <option value="training">训练</option>
+                                    <option value="preprocess">预处理</option>
+                                </select>
+                            </label>
+                            <label>
+                                <span>状态</span>
+                                <select id="history-filter-state">
+                                    <option value="all">全部</option>
+                                    <option value="idle">完成</option>
+                                    <option value="running">运行中</option>
+                                    <option value="error">异常</option>
+                                    <option value="interrupted">已中断</option>
+                                </select>
+                            </label>
+                            <label>
+                                <span>归档</span>
+                                <select id="history-filter-archived">
+                                    <option value="active">未归档</option>
+                                    <option value="all">全部</option>
+                                    <option value="archived">已归档</option>
+                                </select>
+                            </label>
+                            <label>
+                                <span>来源</span>
+                                <select id="history-filter-source">
+                                    <option value="all">全部</option>
+                                    <option value="queue">来自队列</option>
+                                    <option value="resume">续训</option>
+                                    <option value="continue">继续训练</option>
+                                </select>
+                            </label>
+                            <label>
+                                <span>视图</span>
+                                <select id="history-group-mode">
+                                    <option value="collection">集合分组</option>
+                                    <option value="collections">集合管理</option>
+                                    <option value="config">配置分组</option>
+                                    <option value="flat">平铺列表</option>
+                                </select>
+                            </label>
+                            <label>
+                                <span>排序</span>
+                                <select id="history-sort-mode">
+                                    <option value="newest">最新优先</option>
+                                    <option value="oldest">最早优先</option>
+                                    <option value="loss">Loss 点数</option>
+                                    <option value="logs">日志行数</option>
+                                    <option value="name">名称</option>
+                                </select>
+                            </label>
+                        </div>
+                        <div id="history-bulk-bar" class="history-bulk-bar" hidden>
+                            <span id="history-bulk-summary">已选 0 项</span>
+                            <button id="btn-history-bulk-archive" class="btn btn-small" type="button">归档</button>
+                            <button id="btn-history-bulk-unarchive" class="btn btn-small" type="button">取消归档</button>
+                            <button id="btn-history-bulk-group" class="btn btn-small" type="button">设置集合</button>
+                            <button id="btn-history-bulk-delete" class="btn btn-small btn-subtle-danger" type="button">彻底删除</button>
+                        </div>
+                        <div class="history-manager-grid">
+                            <div class="history-table-panel">
+                                <div class="history-table-head">
+                                    <label class="history-select-all">
+                                        <input id="history-select-all" type="checkbox">
+                                        选择
+                                    </label>
+                                    <span>任务</span>
+                                    <span>状态</span>
+                                    <span>时间</span>
+                                    <span>数据</span>
+                                    <span>操作</span>
+                                </div>
+                                <div id="history-manager-list" class="history-manager-list"></div>
+                            </div>
+                        </div>
+                    </section>
                     <section id="training-history-placeholder" class="training-view-panel training-history-placeholder" hidden>
                         <h3>历史任务</h3>
-                        <p>从左侧历史任务列表选择一条记录，或选择合并查看同一配置的多次训练。</p>
+                        <p>从历史任务页签进入管理台。</p>
                     </section>
                     <section id="training-monitor-view" class="training-view-panel training-monitor-view">
                     <div id="history-view-banner" class="history-view-banner" hidden>
@@ -793,9 +904,34 @@
         </form>
     </dialog>
 
+    <dialog id="history-detail-dialog" class="history-detail-dialog" aria-labelledby="history-detail-title">
+        <form method="dialog" class="history-detail-dialog-shell">
+            <div class="history-detail-dialog-header">
+                <div class="history-detail-title-block">
+                    <h2 id="history-detail-title">历史任务</h2>
+                    <p id="history-detail-meta"></p>
+                </div>
+                <div class="history-detail-header-actions">
+                    <div id="history-detail-actions" class="history-detail-actions"></div>
+                    <button id="btn-close-history-detail" class="btn btn-small" type="button">关闭</button>
+                </div>
+            </div>
+            <div class="history-detail-tabs" role="tablist" aria-label="历史任务详情">
+                <button class="history-detail-tab active" type="button" data-history-detail-tab="overview">概览</button>
+                <button class="history-detail-tab" type="button" data-history-detail-tab="resume">续训</button>
+                <button class="history-detail-tab" type="button" data-history-detail-tab="chart">曲线</button>
+                <button class="history-detail-tab" type="button" data-history-detail-tab="logs">日志</button>
+                <button class="history-detail-tab" type="button" data-history-detail-tab="system">系统</button>
+                <button class="history-detail-tab" type="button" data-history-detail-tab="config">配置</button>
+                <button class="history-detail-tab" type="button" data-history-detail-tab="paths">文件</button>
+            </div>
+            <div id="history-detail-content" class="history-detail-content"></div>
+        </form>
+    </dialog>
+
     <div id="config-switch-toast" class="config-switch-toast" role="status" aria-live="polite" hidden></div>
 
     <script src="/static/chart.js?v=history-20260517-2"></script>
-    <script src="/static/app.js?v=continue-lora-20260526-1"></script>
+    <script src="/static/app.js?v=history-collections-20260528-6"></script>
 </body>
 </html>

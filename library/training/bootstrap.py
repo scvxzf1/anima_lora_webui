@@ -109,7 +109,7 @@ class TrainingBootstrap:
             train_batch_size = int(train_batch_size)
         except (TypeError, ValueError):
             return
-        if train_batch_size <= 1:
+        if train_batch_size < 1:
             return
 
         changed = 0

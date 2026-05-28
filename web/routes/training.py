@@ -30,6 +30,9 @@ def setup_training_routes(app: web.Application) -> None:
     app.router.add_delete("/api/training/queue/{item_id}", handle_queue_cancel)
     app.router.add_post("/api/training/queue/pause", handle_queue_pause)
     app.router.add_get("/api/training/history", handle_history_list)
+    app.router.add_post("/api/training/history/batch", handle_history_batch)
+    app.router.add_get("/api/training/history/collections/settings", handle_history_collection_settings_get)
+    app.router.add_put("/api/training/history/collections/settings", handle_history_collection_settings_put)
     app.router.add_get("/api/training/history/config-group/timeline", handle_config_group_timeline)
     app.router.add_get("/api/training/history/{task_id}", handle_history_detail)
     app.router.add_get("/api/training/history/{task_id}/resume-options", handle_history_resume_options)
@@ -171,6 +174,8 @@ async def handle_resume(request: web.Request) -> web.Response:
         return web.json_response({"ok": False, "error": str(e)}, status=404)
     except ValueError as e:
         return web.json_response({"ok": False, "error": str(e)}, status=400)
+    except OSError as e:
+        return web.json_response({"ok": False, "error": f"删除运行缓存失败: {e}"}, status=500)
     except RuntimeError as e:
         return web.json_response({"ok": False, "error": str(e)}, status=409)
 
@@ -453,11 +458,20 @@ async def handle_queue_settings(request: web.Request) -> web.Response:
 async def handle_queue_cancel(request: web.Request) -> web.Response:
     svc = request.app["training_service"]
     try:
-        return web.json_response(await svc.cancel_queue_item(request.match_info["item_id"]))
+        data = await request.json()
+    except Exception:
+        data = {}
+    try:
+        return web.json_response(await svc.cancel_queue_item(
+            request.match_info["item_id"],
+            delete_runtime=bool(data.get("delete_runtime")),
+        ))
     except FileNotFoundError as e:
         return web.json_response({"ok": False, "error": str(e)}, status=404)
     except ValueError as e:
         return web.json_response({"ok": False, "error": str(e)}, status=400)
+    except OSError as e:
+        return web.json_response({"ok": False, "error": f"删除运行缓存失败: {e}"}, status=500)
 
 
 async def handle_queue_pause(request: web.Request) -> web.Response:
@@ -470,7 +484,48 @@ async def handle_queue_pause(request: web.Request) -> web.Response:
 async def handle_history_list(request: web.Request) -> web.Response:
     svc = request.app["training_service"]
     include_archived = str(request.query.get("include_archived") or "0").lower() in {"1", "true", "yes"}
-    return web.json_response({"ok": True, "tasks": svc.list_history_tasks(include_archived=include_archived)})
+    limit = _positive_query_int(request.query.get("limit"))
+    return web.json_response({
+        "ok": True,
+        "tasks": svc.list_history_tasks(include_archived=include_archived, limit=limit),
+    })
+
+
+async def handle_history_batch(request: web.Request) -> web.Response:
+    svc = request.app["training_service"]
+    try:
+        data = await request.json()
+        return web.json_response(svc.batch_update_history_tasks(data))
+    except FileNotFoundError as e:
+        return web.json_response({"ok": False, "error": str(e)}, status=404)
+    except RuntimeError as e:
+        return web.json_response({"ok": False, "error": str(e)}, status=409)
+    except ValueError as e:
+        return web.json_response({"ok": False, "error": str(e)}, status=400)
+
+
+async def handle_history_collection_settings_get(request: web.Request) -> web.Response:
+    svc = request.app["training_service"]
+    return web.json_response(svc.get_history_collection_settings())
+
+
+async def handle_history_collection_settings_put(request: web.Request) -> web.Response:
+    svc = request.app["training_service"]
+    try:
+        data = await request.json()
+        return web.json_response(svc.save_history_collection_settings(data))
+    except ValueError as e:
+        return web.json_response({"ok": False, "error": str(e)}, status=400)
+    except OSError as e:
+        return web.json_response({"ok": False, "error": f"保存集合设置失败: {e}"}, status=500)
+
+
+def _positive_query_int(value) -> int | None:
+    try:
+        number = int(str(value or "").strip())
+    except ValueError:
+        return None
+    return number if number > 0 else None
 
 
 async def handle_history_detail(request: web.Request) -> web.Response:

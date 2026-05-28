@@ -204,6 +204,7 @@ class ConfigSanitizer:
         "validation_split_num": int,
         "network_multiplier": float,
         "resize_interpolation": str,
+        "prefer_json_caption": bool,
     }
     PREPROCESS_ONLY_DATASET_KEYS = frozenset(
         {

@@ -83,6 +83,12 @@ def _truthy(value: Any) -> bool:
     return str(value).strip().lower() in {"1", "true", "yes", "on"}
 
 
+def _optional_bool(value: Any) -> bool | None:
+    if value is None:
+        return None
+    return _truthy(value)
+
+
 def _positive_int(value: Any) -> int | None:
     if isinstance(value, (list, tuple)):
         nums = [_positive_int(item) for item in value]
@@ -161,6 +167,10 @@ def _dataset_rows(dataset_config: Any, overrides: dict[str, Any] | None = None) 
     datasets = data.get("datasets") or []
     if not isinstance(datasets, list):
         return []
+    general = data.get("general") if isinstance(data.get("general"), dict) else {}
+    general_prefer_json = _optional_bool(
+        general.get("prefer_json_caption", general.get("prefer_json"))
+    )
 
     rows: list[dict[str, Any]] = []
     fallback_source = str(overrides.get("source_image_dir") or "")
@@ -199,6 +209,16 @@ def _dataset_rows(dataset_config: Any, overrides: dict[str, Any] | None = None) 
                     "recursive": subset.get("recursive", dataset.get("recursive", True)),
                 }
             )
+            prefer_json = _optional_bool(
+                dataset.get(
+                    "prefer_json_caption",
+                    subset.get("prefer_json_caption"),
+                )
+            )
+            if prefer_json is None:
+                prefer_json = general_prefer_json
+            if prefer_json is not None:
+                row["prefer_json_caption"] = prefer_json
             rows.append(row)
     return rows
 
@@ -348,6 +368,13 @@ def _run_preprocess_te(
     shuffle_variants = shuffle_variants or os.environ.get("CAPTION_SHUFFLE_VARIANTS", "4")
     tag_dropout_rate = tag_dropout_rate or os.environ.get("CAPTION_TAG_DROPOUT_RATE", "0.1")
     mp_args, extra = _resolve_lowres_filter(extra)
+    prefer_json_env = os.environ.get("CAPTION_PREFER_JSON")
+    prefer_json = (
+        _truthy(prefer_json_env)
+        if prefer_json_env is not None
+        else _truthy(row.get("prefer_json_caption"))
+    )
+    json_args = ["--prefer_json_caption"] if prefer_json else []
     run(
         [
             PY,
@@ -368,6 +395,7 @@ def _run_preprocess_te(
             shuffle_variants,
             "--caption_tag_dropout_rate",
             tag_dropout_rate,
+            *json_args,
             *_recursive_args(row),
             *mp_args,
             *extra,
@@ -512,6 +540,10 @@ def cmd_preprocess_config(extra):
             "If this persists, exclude the dataset/temp dir from your antivirus."
         )
 
+    general = cfg.get("general") if isinstance(cfg.get("general"), dict) else {}
+    prefer_json = _truthy(general.get("prefer_json_caption", general.get("prefer_json")))
+    json_args = ["--prefer_json_caption"] if prefer_json else []
+
     subsets = [
         sub
         for ds in (cfg.get("datasets") or [])
@@ -573,6 +605,7 @@ def cmd_preprocess_config(extra):
                 qwen3_path,
                 "--dit",
                 dit_path,
+                *json_args,
                 "--recursive",
             ]
         )

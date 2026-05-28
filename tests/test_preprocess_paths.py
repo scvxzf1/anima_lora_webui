@@ -269,6 +269,45 @@ def test_resize_bucket_args_use_runtime_preprocess_attrs(tmp_path, monkeypatch):
     ]
 
 
+def test_runtime_dataset_config_supplies_json_caption_flag(tmp_path, monkeypatch):
+    dataset_path = tmp_path / "runs" / "demo" / "dataset.runtime.toml"
+    dataset_path.parent.mkdir(parents=True)
+    dataset_path.write_text(
+        "\n".join(
+            [
+                "[general]",
+                "prefer_json_caption = true",
+                "",
+                "[[datasets]]",
+                "batch_size = 1",
+                "",
+                "[[datasets.subsets]]",
+                'image_dir = "post_image_dataset/a_resized"',
+                'cache_dir = "post_image_dataset/a_cache"',
+                'custom_attributes = {source_dir = "image_dataset/a"}',
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    commands: list[list[str]] = []
+    monkeypatch.setattr(preprocess, "ROOT", tmp_path)
+    monkeypatch.setattr(
+        _common,
+        "_PATH_OVERRIDES_CACHE",
+        {
+            "dataset_config": "runs/demo/dataset.runtime.toml",
+            "qwen3": "D:/models/qwen3.safetensors",
+            "pretrained_model_name_or_path": "D:/models/anima.safetensors",
+        },
+    )
+    monkeypatch.setattr(preprocess, "run", commands.append)
+
+    preprocess.cmd_preprocess_te([])
+
+    assert "--prefer_json_caption" in commands[0]
+
+
 def test_cache_text_embeddings_keeps_uncaptioned_images(tmp_path):
     captioned = tmp_path / "captioned.png"
     missing = tmp_path / "missing.png"

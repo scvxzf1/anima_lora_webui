@@ -16,6 +16,7 @@ import tomlkit
 from PIL import Image, UnidentifiedImageError
 
 from library.env import expand_env_vars, expand_env_vars_in_obj, load_dotenv
+from library.preprocess.captions import load_json_caption
 from web.services.settings_service import display_path as _display_settings_path
 from web.services.settings_service import resolve_output_root
 
@@ -56,7 +57,6 @@ OUTPUT_RUN_CONFIG_FILES = {
 }
 DATASET_SETTING_KEYS = frozenset({
     "resolution",
-    "batch_size",
     "enable_bucket",
     "min_bucket_reso",
     "max_bucket_reso",
@@ -65,6 +65,7 @@ DATASET_SETTING_KEYS = frozenset({
     "validation_split",
     "validation_split_num",
     "validation_seed",
+    "prefer_json_caption",
 })
 PREPROCESS_DATASET_SETTING_ORDER = (
     "resolution",
@@ -438,9 +439,10 @@ def list_dataset_preset_images(
     row = rows[dataset_index]
     defaults = _normalize_dataset_defaults(preset.get("defaults") or {})
     settings = _normalize_dataset_defaults(row.get("settings") or defaults)
-    caption_extension = str(defaults.get("caption_extension") or ".txt").strip() or ".txt"
+    caption_extension = str(settings.get("caption_extension") or ".txt").strip() or ".txt"
     if not caption_extension.startswith("."):
         caption_extension = f".{caption_extension}"
+    prefer_json_caption = _bool_value(settings.get("prefer_json_caption"), False)
     source_kind = "source" if str(source or "").strip().lower() == "source" else "training"
     image_dir_raw = row.get("source_dir") if source_kind == "source" else row.get("image_dir")
     image_dir = _resolve_project_path(str(image_dir_raw or ""))
@@ -455,6 +457,7 @@ def list_dataset_preset_images(
             dataset_index=dataset_index,
             source=source_kind,
             caption_extension=caption_extension,
+            prefer_json_caption=prefer_json_caption,
             source_dir=source_dir,
             train_dir=train_dir,
         )
@@ -471,6 +474,7 @@ def list_dataset_preset_images(
         "directory": _display_path(image_dir),
         "directory_exists": directory_exists,
         "caption_extension": caption_extension,
+        "prefer_json_caption": prefer_json_caption,
         "count": len(images),
         "total": listing["total"],
         "limit": listing["limit"],
@@ -570,7 +574,11 @@ def save_dataset_editor(
         if not ok:
             raise ValueError(msg)
 
-    dataset_doc = _build_dataset_config_doc(clean_rows, cfg)
+    dataset_doc = _build_dataset_config_doc(
+        clean_rows,
+        cfg,
+        prefer_train_batch_size=True,
+    )
     dataset_existed = dataset_path.exists()
     previous_dataset_doc = dataset_path.read_text(encoding="utf-8") if dataset_existed else ""
     ok, msg = save_raw_file(dataset_rel, dataset_doc, overwrite=True)
@@ -1011,6 +1019,7 @@ def _single_dataset_config_from_cfg(cfg: dict[str, Any]) -> dict[str, Any]:
         "general": {
             "caption_extension": ".txt",
             "keep_tokens": 3,
+            "prefer_json_caption": False,
         },
         "datasets": [
             {
@@ -1050,6 +1059,7 @@ def _dataset_defaults_from_config(data: dict[str, Any]) -> dict[str, Any]:
         "validation_seed": _positive_int(_first_dataset_value(data, "validation_seed", 42), 42),
         "caption_extension": str((data.get("general") or {}).get("caption_extension") or ".txt"),
         "keep_tokens": _positive_int((data.get("general") or {}).get("keep_tokens"), 3),
+        "prefer_json_caption": _bool_value((data.get("general") or {}).get("prefer_json_caption"), False),
     }
 
 
@@ -1206,6 +1216,7 @@ def _normalize_dataset_defaults(raw: dict[str, Any]) -> dict[str, Any]:
     out["validation_seed"] = _positive_int(raw.get("validation_seed"), 42)
     out["caption_extension"] = str(raw.get("caption_extension") or ".txt").strip() or ".txt"
     out["keep_tokens"] = _positive_int(raw.get("keep_tokens"), 3)
+    out["prefer_json_caption"] = _bool_value(raw.get("prefer_json_caption"), False)
     return out
 
 
@@ -1252,6 +1263,8 @@ def _build_dataset_config_doc(
     general = tomlkit.table()
     general.add("caption_extension", str(cfg.get("caption_extension") or ".txt"))
     general.add("keep_tokens", _positive_int(cfg.get("keep_tokens"), 3))
+    if _bool_value(cfg.get("prefer_json_caption"), False):
+        general.add("prefer_json_caption", True)
     doc.add("general", general)
 
     datasets = tomlkit.aot()
@@ -1350,11 +1363,18 @@ def _dataset_image_preview_meta(
     dataset_index: int,
     source: str,
     caption_extension: str,
+    prefer_json_caption: bool,
     source_dir: Path,
     train_dir: Path,
 ) -> dict[str, Any]:
     stat = path.stat()
-    caption = _dataset_caption_meta(path, caption_extension, source_dir, train_dir)
+    caption = _dataset_caption_meta(
+        path,
+        caption_extension,
+        source_dir,
+        train_dir,
+        prefer_json_caption=prefer_json_caption,
+    )
     dimensions = _dataset_image_dimensions(path)
     rel_path = _display_path(path)
     url = (
@@ -1391,12 +1411,46 @@ def _dataset_image_dimensions(path: Path) -> dict[str, int]:
     }
 
 
-def _dataset_caption_meta(path: Path, caption_extension: str, source_dir: Path, train_dir: Path) -> dict[str, Any]:
+def _dataset_caption_meta(
+    path: Path,
+    caption_extension: str,
+    source_dir: Path,
+    train_dir: Path,
+    *,
+    prefer_json_caption: bool = False,
+) -> dict[str, Any]:
     extension = caption_extension if caption_extension.startswith(".") else f".{caption_extension}"
-    candidates = []
+    directories = []
     for directory in (path.parent, source_dir, train_dir):
         if not directory:
             continue
+        directory = directory.resolve()
+        if directory not in directories:
+            directories.append(directory)
+
+    if prefer_json_caption:
+        for directory in directories:
+            candidate = directory / f"{path.stem}.json"
+            if not candidate.exists() or not candidate.is_file():
+                continue
+            try:
+                text = load_json_caption(candidate).render()
+            except Exception:
+                continue
+            truncated = len(text) > DATASET_CAPTION_MAX_CHARS
+            if truncated:
+                text = text[:DATASET_CAPTION_MAX_CHARS]
+            return {
+                "ok": True,
+                "file": _display_path(candidate),
+                "extension": ".json",
+                "text": text,
+                "truncated": truncated,
+                "length": len(text),
+            }
+
+    candidates = []
+    for directory in directories:
         candidate = (directory / f"{path.stem}{extension}").resolve()
         if candidate not in candidates:
             candidates.append(candidate)
@@ -1494,6 +1548,14 @@ def _positive_float(value: Any, fallback: float) -> float:
     except (TypeError, ValueError):
         return fallback
     return n if n > 0 else fallback
+
+
+def _bool_value(value: Any, fallback: bool = False) -> bool:
+    if value is None:
+        return fallback
+    if isinstance(value, bool):
+        return value
+    return str(value).strip().lower() in {"1", "true", "yes", "on"}
 
 
 def list_output_runs(limit: int = 200) -> dict[str, Any]:
@@ -2884,6 +2946,14 @@ def _check_training_images(cfg: dict[str, Any], add) -> None:
     for idx, row in enumerate(rows, start=1):
         image_dir = _resolve_project_path(str(row.get("image_dir") or row.get("source_dir") or ""))
         source_dir = _resolve_project_path(str(row.get("source_dir") or ""))
+        settings = row.get("settings") if isinstance(row.get("settings"), dict) else {}
+        caption_extension = str(settings.get("caption_extension") or cfg.get("caption_extension") or ".txt")
+        if not caption_extension.startswith("."):
+            caption_extension = f".{caption_extension}"
+        prefer_json_caption = _bool_value(
+            settings.get("prefer_json_caption", cfg.get("prefer_json_caption")),
+            False,
+        )
         if not image_dir.is_dir():
             continue
         checked_groups += 1
@@ -2894,17 +2964,24 @@ def _check_training_images(cfg: dict[str, Any], add) -> None:
             add("error", key, f"{label}里没有可训练图片，请先预处理生成训练图", image_dir)
             continue
         for image in images[:50]:
-            source_caption = source_dir / f"{image.stem}.txt"
-            resized_caption = image.with_suffix(".txt")
-            if not source_caption.exists() and not resized_caption.exists():
+            source_caption = source_dir / f"{image.stem}{caption_extension}"
+            resized_caption = image.with_suffix(caption_extension)
+            json_exists = (
+                prefer_json_caption
+                and (
+                    (source_dir / f"{image.stem}.json").exists()
+                    or image.with_suffix(".json").exists()
+                )
+            )
+            if not json_exists and not source_caption.exists() and not resized_caption.exists():
                 all_missing_captions.append(image.name)
     if checked_groups == 0:
         return
     if all_missing_captions:
         sample = ", ".join(all_missing_captions[:3])
-        add("warning", "captions", f"部分图片未找到同名 .txt 标注，例如 {sample}")
+        add("warning", "captions", f"部分图片未找到同名标注，例如 {sample}")
     else:
-        add("ok", "captions", "抽样图片均找到同名 .txt 标注")
+        add("ok", "captions", "抽样图片均找到同名标注")
 
 
 def _check_dataset_source_paths(cfg: dict[str, Any], add) -> None:

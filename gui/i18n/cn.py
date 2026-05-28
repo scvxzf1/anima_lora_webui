@@ -39,6 +39,11 @@ STRINGS: dict[str, str] = {
         "直到首个 @artist 标记之前的标签 (含该标记) 永不丢弃。"
         "当随机变体数 ≤ 0 时忽略。"
     ),
+    "preprocess_prefer_json_caption": "优先使用 JSON 标注",
+    "preprocess_prefer_json_caption_tip": (
+        "开启后预处理优先读取同名 .json 标注，并按分类打乱 "
+        "appearance/tags/environment；JSON 缺失或解析失败时回退 .txt。"
+    ),
     "preprocess_run_te": "运行缓存 (VAE + 文本)",
     "preprocess_masking_sam": "SAM3 蒙版 (对话气泡)",
     "preprocess_masking_mit": "MIT 蒙版 (漫画文字)",

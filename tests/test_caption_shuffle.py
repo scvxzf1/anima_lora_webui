@@ -30,6 +30,11 @@ from library.anima.training import (  # noqa: E402
     find_anima_prefix_end,
     strip_no_artist_sentinel,
 )
+from library.preprocess import (  # noqa: E402
+    CaptionSource,
+    read_caption_source,
+    structured_caption_from_json,
+)
 
 
 # ----- predicate ----------------------------------------------------------
@@ -190,3 +195,136 @@ def test_variants_multi_artist_protected_from_dropout():
         assert "@artist1" in toks
         assert "@artist2" in toks
         assert "@artist3" in toks
+
+
+# ----- JSON caption format -----------------------------------------------
+
+
+def test_json_caption_full_format_render_order():
+    cap = structured_caption_from_json(
+        {
+            "fixed": {
+                "quality": "newest, safe",
+                "series": "project name",
+                "artist": "@artist name",
+            },
+            "character": {"name": "character name", "variant": "adult"},
+            "from_path": {"appearance": ["blonde hair", "casual clothes"]},
+            "ai_output": {
+                "count": "1girl",
+                "appearance": ["long hair", "blue eyes"],
+                "tags": ["standing", "looking at viewer"],
+                "environment": ["outdoors", "sky"],
+                "nl": "A cheerful girl stands under the bright sky.",
+            },
+        }
+    )
+
+    assert cap.render() == (
+        "newest, safe, 1girl, character name, adult, project name, "
+        "@artist name, blonde hair, casual clothes, long hair, blue eyes, "
+        "standing, looking at viewer, outdoors, sky. "
+        "A cheerful girl stands under the bright sky."
+    )
+
+
+def test_json_caption_simplified_format_render_order():
+    cap = structured_caption_from_json(
+        {
+            "quality": "newest, safe",
+            "count": "1girl",
+            "character": "hatsune miku",
+            "series": "vocaloid",
+            "artist": "@wlop",
+            "appearance": ["long hair", "blue hair"],
+            "tags": ["singing", "microphone"],
+            "environment": ["stage", "spotlight"],
+            "nl": "Miku performs energetically on stage.",
+        }
+    )
+
+    assert cap.render() == (
+        "newest, safe, 1girl, hatsune miku, vocaloid, @wlop, "
+        "long hair, blue hair, singing, microphone, stage, spotlight. "
+        "Miku performs energetically on stage."
+    )
+
+
+def test_json_caption_variants_shuffle_inside_categories_only():
+    random.seed(2)
+    cap = structured_caption_from_json(
+        {
+            "quality": "newest",
+            "count": "1girl",
+            "character": "hero",
+            "series": "series",
+            "artist": "@artist",
+            "appearance": ["a1", "a2", "a3"],
+            "tags": ["t1", "t2", "t3"],
+            "environment": ["e1", "e2"],
+            "nl": "fixed natural language.",
+        }
+    )
+
+    out = _gen_variants(CaptionSource(structured=cap), num_variants=4, tag_dropout_rate=0.0)
+
+    assert out[0] == (
+        "newest, 1girl, hero, series, @artist, a1, a2, a3, "
+        "t1, t2, t3, e1, e2. fixed natural language."
+    )
+    fixed_len = 5
+    for variant in out[1:]:
+        assert variant.endswith(". fixed natural language.")
+        tag_text = variant.removesuffix(". fixed natural language.")
+        tags = [tag.strip() for tag in tag_text.split(",")]
+        assert tags[:fixed_len] == ["newest", "1girl", "hero", "series", "@artist"]
+        assert set(tags[fixed_len : fixed_len + 3]) == {"a1", "a2", "a3"}
+        assert set(tags[fixed_len + 3 : fixed_len + 6]) == {"t1", "t2", "t3"}
+        assert set(tags[fixed_len + 6 :]) == {"e1", "e2"}
+
+
+def test_json_caption_tag_dropout_keeps_fixed_fields_and_nl():
+    random.seed(0)
+    cap = structured_caption_from_json(
+        {
+            "quality": "newest, safe",
+            "count": "1girl",
+            "artist": "@artist",
+            "appearance": ["a1", "a2"],
+            "tags": ["t1"],
+            "environment": ["e1"],
+            "nl": "fixed tail.",
+        }
+    )
+
+    out = _gen_variants(CaptionSource(structured=cap), num_variants=3, tag_dropout_rate=1.0)
+
+    assert out[0] == "newest, safe, 1girl, @artist, a1, a2, t1, e1. fixed tail."
+    assert out[1:] == [
+        "newest, safe, 1girl, @artist. fixed tail.",
+        "newest, safe, 1girl, @artist. fixed tail.",
+    ]
+
+
+def test_json_caption_reading_falls_back_to_txt_on_invalid_json(tmp_path):
+    img = tmp_path / "hero.png"
+    img.write_bytes(b"")
+    img.with_suffix(".json").write_text("{bad json", encoding="utf-8")
+    img.with_suffix(".txt").write_text("txt caption\nignored", encoding="utf-8")
+
+    source = read_caption_source(img, prefer_json_caption=True)
+
+    assert source.from_json is False
+    assert source.render() == "txt caption"
+
+
+def test_json_caption_reading_requires_explicit_prefer_json(tmp_path):
+    img = tmp_path / "hero.png"
+    img.write_bytes(b"")
+    img.with_suffix(".json").write_text('{"quality":"json caption"}', encoding="utf-8")
+    img.with_suffix(".txt").write_text("txt caption", encoding="utf-8")
+
+    source = read_caption_source(img, prefer_json_caption=False)
+
+    assert source.from_json is False
+    assert source.render() == "txt caption"

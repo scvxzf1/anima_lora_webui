@@ -215,6 +215,16 @@ def test_blank_preset_template_can_receive_global_model_paths(tmp_path: Path, mo
 
 def test_save_dataset_editor_accepts_source_only_rows(tmp_path: Path, monkeypatch):
     configs, dataset_path = _write_minimal_config_tree(tmp_path)
+    (configs / "imported" / "lora.toml").write_text(
+        "\n".join(
+            [
+                'dataset_config = "configs/datasets/lora.toml"',
+                "train_batch_size = 3",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
     _patch_config_service_paths(monkeypatch, tmp_path)
 
     result = config_service.save_dataset_editor(
@@ -236,6 +246,7 @@ def test_save_dataset_editor_accepts_source_only_rows(tmp_path: Path, monkeypatc
     assert result["datasets"][0]["image_dir"].endswith("source_only_resized")
     assert result["datasets"][0]["cache_dir"].endswith("source_only_lora_cache")
     data = toml.loads(dataset_path.read_text(encoding="utf-8"))
+    assert data["datasets"][0]["batch_size"] == 3
     subset = data["datasets"][0]["subsets"][0]
     assert subset["custom_attributes"]["source_dir"] == "image_dataset/source_only"
     assert subset["image_dir"].endswith("source_only_resized")
@@ -1067,10 +1078,11 @@ def test_dataset_preset_writes_independent_dataset_settings_per_path(tmp_path: P
                 },
             },
         ],
-        {"caption_extension": ".txt", "keep_tokens": 2},
+        {"caption_extension": ".txt", "keep_tokens": 2, "prefer_json_caption": True},
     )
 
     data = toml.loads(saved["content"])
+    assert data["general"]["prefer_json_caption"] is True
     assert len(data["datasets"]) == 2
     assert data["datasets"][0]["resolution"] == 768
     assert data["datasets"][0]["max_bucket_reso"] == 768
@@ -1083,6 +1095,7 @@ def test_dataset_preset_writes_independent_dataset_settings_per_path(tmp_path: P
     assert data["datasets"][1]["validation_split"] == 0.1
 
     loaded = config_service.load_dataset_preset("configs/datasets/multi_bucket.toml")
+    assert loaded["defaults"]["prefer_json_caption"] is True
     assert loaded["datasets"][0]["settings"]["resolution"] == 768
     assert loaded["datasets"][1]["settings"]["max_bucket_reso"] == 1344
 
@@ -1119,6 +1132,53 @@ def test_dataset_preset_image_preview_reads_training_images_and_captions(tmp_pat
     assert listing["images"][0]["caption"]["ok"] is True
     assert listing["images"][0]["caption"]["text"] == "1girl, blue eyes"
     assert "dataset_index=0" in listing["images"][0]["url"]
+
+
+def test_dataset_preset_image_preview_prefers_json_caption(tmp_path: Path, monkeypatch):
+    _write_minimal_config_tree(tmp_path)
+    _patch_config_service_paths(monkeypatch, tmp_path)
+    source_dir = tmp_path / "image_dataset" / "a"
+    image_dir = tmp_path / "post_image_dataset" / "a_resized"
+    source_dir.mkdir(parents=True)
+    image_dir.mkdir(parents=True)
+    Image.new("RGB", (8, 6), color=(120, 20, 40)).save(image_dir / "hero.png")
+    (source_dir / "hero.txt").write_text("txt fallback", encoding="utf-8")
+    (source_dir / "hero.json").write_text(
+        json.dumps(
+            {
+                "quality": "newest, safe",
+                "count": "1girl",
+                "artist": "@artist",
+                "appearance": ["blue eyes"],
+                "tags": ["looking at viewer"],
+                "environment": ["sky"],
+                "nl": "A fixed tail.",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    config_service.save_dataset_preset(
+        "configs/datasets/preview_json.toml",
+        [{
+            "source_dir": "image_dataset/a",
+            "image_dir": "post_image_dataset/a_resized",
+            "cache_dir": "post_image_dataset/a_cache",
+            "num_repeats": 2,
+        }],
+        {"caption_extension": ".txt", "keep_tokens": 1, "prefer_json_caption": True},
+    )
+
+    listing = config_service.list_dataset_preset_images("configs/datasets/preview_json.toml", 0)
+
+    caption = listing["images"][0]["caption"]
+    assert listing["prefer_json_caption"] is True
+    assert caption["ok"] is True
+    assert caption["extension"] == ".json"
+    assert caption["text"] == (
+        "newest, safe, 1girl, @artist, blue eyes, looking at viewer, sky. "
+        "A fixed tail."
+    )
 
 
 def test_dataset_preview_image_resolver_rejects_files_outside_selected_row(tmp_path: Path, monkeypatch):

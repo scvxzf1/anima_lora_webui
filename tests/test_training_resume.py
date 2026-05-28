@@ -270,9 +270,10 @@ def _patch_runtime_service_paths(monkeypatch, root):
 
 
 class _FakeJsonRequest:
-    def __init__(self, data, app=None):
+    def __init__(self, data, app=None, query=None):
         self._data = data
         self.app = app or {}
+        self.query = query or {}
 
     async def json(self):
         return self._data
@@ -311,6 +312,72 @@ def test_resume_options_hide_other_directory_states(tmp_path, monkeypatch):
     assert payload["ok"] is True
     assert [item["path"] for item in payload["checkpoints"]] == [str(state_dir)]
     assert all(item["scope"] == "task" for item in payload["checkpoints"])
+
+
+def test_resume_options_diagnose_missing_output_dir(tmp_path, monkeypatch):
+    task_id = "20260517-000000-training-imported-missing-output"
+    history_dir = tmp_path / "history"
+    task_dir = history_dir / task_id
+    task_dir.mkdir(parents=True)
+    missing_output_dir = tmp_path / "missing-output"
+    (task_dir / "meta.json").write_text(
+        json.dumps({
+            "id": task_id,
+            "job": "training",
+            "state": "idle",
+            "variant": "demo",
+            "preset": "default",
+            "methods_subdir": "imported",
+            "output_dir": str(missing_output_dir),
+            "started_at": 1000.0,
+            "finished_at": 2000.0,
+        }),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(training_service, "HISTORY_DIR", history_dir)
+
+    svc = TrainingService(web.Application())
+    payload = svc.get_resume_options(task_id)
+
+    assert payload["ok"] is True
+    assert payload["checkpoints"] == []
+    assert payload["diagnostic"]["output_dir_exists"] is False
+    assert "输出目录不存在" in payload["diagnostic"]["reason"]
+    assert "输出目录不存在" in payload["message"]
+
+
+def test_resume_options_diagnose_missing_train_state(tmp_path, monkeypatch):
+    task_id = "20260517-000000-training-imported-no-state"
+    history_dir = tmp_path / "history"
+    task_dir = history_dir / task_id
+    output_dir = tmp_path / "output-no-state"
+    (output_dir / "demo-checkpoint-state").mkdir(parents=True)
+    task_dir.mkdir(parents=True)
+    (task_dir / "meta.json").write_text(
+        json.dumps({
+            "id": task_id,
+            "job": "training",
+            "state": "idle",
+            "variant": "demo",
+            "preset": "default",
+            "methods_subdir": "imported",
+            "output_dir": str(output_dir),
+            "started_at": 1000.0,
+            "finished_at": 2000.0,
+        }),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(training_service, "HISTORY_DIR", history_dir)
+
+    svc = TrainingService(web.Application())
+    payload = svc.get_resume_options(task_id)
+
+    assert payload["ok"] is True
+    assert payload["checkpoints"] == []
+    assert payload["diagnostic"]["output_dir_exists"] is True
+    assert payload["diagnostic"]["state_dir_count"] == 1
+    assert payload["diagnostic"]["train_state_count"] == 0
+    assert "没有包含 train_state.json" in payload["diagnostic"]["reason"]
 
 
 def test_resume_from_history_rejects_other_directory_state(tmp_path, monkeypatch):
@@ -1650,6 +1717,148 @@ def test_history_list_repairs_old_auto_prefixed_preprocess_name(tmp_path, monkey
     assert repaired["name"] == "522-20260524-131053"
 
 
+def test_history_list_binds_preprocess_collection_to_training_group(tmp_path, monkeypatch):
+    history_dir = tmp_path / "history"
+    history_meta = {
+        "history_group_key": "source:configs/imported/522.toml",
+        "history_group_label": "configs/imported/522.toml",
+        "history_source_config_file": "configs/imported/522.toml",
+        "history_run_label": "522-20260524-131053",
+    }
+    preprocess_dir = _write_group_task(
+        history_dir,
+        "20260524-131053-preprocess-imported-522",
+        job="preprocess",
+        started_at=1000.0,
+        archived=True,
+        history_meta={**history_meta, "group": ""},
+    )
+    _write_group_task(
+        history_dir,
+        "20260524-131153-training-imported-522",
+        job="training",
+        started_at=1010.0,
+        history_meta={**history_meta, "group": "骨女测试集合", "updated_at": 1200.0},
+    )
+    monkeypatch.setattr(training_service, "HISTORY_DIR", history_dir)
+
+    tasks = TrainingService(web.Application()).list_history_tasks(include_archived=True)
+
+    assert {task["group"] for task in tasks} == {"骨女测试集合"}
+    repaired = json.loads((preprocess_dir / "meta.json").read_text(encoding="utf-8"))
+    assert repaired["group"] == "骨女测试集合"
+
+
+def test_history_collection_binding_is_idempotent_and_uses_atomic_write(tmp_path, monkeypatch):
+    history_dir = tmp_path / "history"
+    history_meta = {
+        "history_group_key": "source:configs/imported/522.toml",
+        "history_group_label": "configs/imported/522.toml",
+        "history_source_config_file": "configs/imported/522.toml",
+        "history_run_label": "522-20260524-131053",
+    }
+    preprocess_dir = _write_group_task(
+        history_dir,
+        "20260524-131053-preprocess-imported-522",
+        job="preprocess",
+        started_at=1000.0,
+        archived=True,
+        history_meta={**history_meta, "group": ""},
+    )
+    _write_group_task(
+        history_dir,
+        "20260524-131153-training-imported-522",
+        job="training",
+        started_at=1010.0,
+        history_meta={**history_meta, "group": "正式集合", "updated_at": 1200.0},
+    )
+    monkeypatch.setattr(training_service, "HISTORY_DIR", history_dir)
+    writes = []
+    original_atomic = training_service._write_json_atomic
+
+    def record_atomic(path, payload):
+        writes.append(Path(path))
+        original_atomic(path, payload)
+
+    monkeypatch.setattr(training_service, "_write_json_atomic", record_atomic)
+
+    assert training_service._sync_bound_history_collection_groups() == 1
+    assert writes == [preprocess_dir / "meta.json"]
+    assert json.loads((preprocess_dir / "meta.json").read_text(encoding="utf-8"))["group"] == "正式集合"
+
+    writes.clear()
+    assert training_service._sync_bound_history_collection_groups() == 0
+    assert writes == []
+
+
+def test_setting_collection_expands_to_bound_preprocess_tasks(tmp_path, monkeypatch):
+    history_dir = tmp_path / "history"
+    history_meta = {
+        "history_group_key": "source:configs/imported/522.toml",
+        "history_group_label": "configs/imported/522.toml",
+        "history_source_config_file": "configs/imported/522.toml",
+        "history_run_label": "522-20260524-131053",
+    }
+    preprocess_id = "20260524-131053-preprocess-imported-522"
+    training_id = "20260524-131153-training-imported-522"
+    preprocess_dir = _write_group_task(
+        history_dir,
+        preprocess_id,
+        job="preprocess",
+        started_at=1000.0,
+        archived=True,
+        history_meta=history_meta,
+    )
+    training_dir = _write_group_task(
+        history_dir,
+        training_id,
+        job="training",
+        started_at=1010.0,
+        history_meta=history_meta,
+    )
+    monkeypatch.setattr(training_service, "HISTORY_DIR", history_dir)
+
+    result = TrainingService(web.Application()).batch_update_history_tasks({
+        "action": "set_group",
+        "task_ids": [training_id],
+        "group": "同配置集合",
+    })
+
+    assert result["ok"] is True
+    assert result["requested"] == 1
+    assert result["updated"] == 2
+    assert json.loads((training_dir / "meta.json").read_text(encoding="utf-8"))["group"] == "同配置集合"
+    assert json.loads((preprocess_dir / "meta.json").read_text(encoding="utf-8"))["group"] == "同配置集合"
+
+
+def test_history_detail_limits_logs_and_system_records(tmp_path, monkeypatch):
+    history_dir = tmp_path / "history"
+    task_id = "20260524-131153-training-imported-522"
+    task_dir = _write_group_task(history_dir, task_id, job="training", started_at=1000.0)
+    monkeypatch.setattr(training_service, "HISTORY_DIR", history_dir)
+    monkeypatch.setattr(training_service, "MAX_HISTORY_DETAIL_LOG_RECORDS", 3)
+    monkeypatch.setattr(training_service, "MAX_HISTORY_DETAIL_SYSTEM_RECORDS", 2)
+    (task_dir / "logs.jsonl").write_text(
+        "\n".join(json.dumps({"id": idx, "line": f"log-{idx}"}) for idx in range(5)) + "\n",
+        encoding="utf-8",
+    )
+    (task_dir / "system.jsonl").write_text(
+        "\n".join(json.dumps({"ts": idx, "gpu_util": idx * 10}) for idx in range(4)) + "\n",
+        encoding="utf-8",
+    )
+
+    payload = TrainingService(web.Application()).get_history_task(task_id)
+
+    assert [item["line"] for item in payload["logs"]] == ["log-2", "log-3", "log-4"]
+    assert [item["ts"] for item in payload["system"]] == [2, 3]
+    assert payload["limits"]["logs_total"] == 5
+    assert payload["limits"]["logs_returned"] == 3
+    assert payload["limits"]["logs_truncated"] is True
+    assert payload["limits"]["system_total"] == 4
+    assert payload["limits"]["system_returned"] == 2
+    assert payload["limits"]["system_truncated"] is True
+
+
 def test_delete_history_task_removes_directory_with_bad_files(tmp_path, monkeypatch):
     history_dir = tmp_path / "history"
     task_dir = history_dir / "20260524-124851-training-imported-522"
@@ -1776,6 +1985,208 @@ def test_delete_preprocess_history_task_does_not_remove_training_task(tmp_path, 
     assert result["linked_preprocess_deleted"] == 0
     assert (history_dir / training_id).exists()
     assert not (history_dir / preprocess_id).exists()
+
+
+def _write_web_runtime_dir(output_root: Path, name: str) -> Path:
+    run_dir = output_root / name
+    (run_dir / "model_cache").mkdir(parents=True)
+    (run_dir / "dataset_cache").mkdir(parents=True)
+    (run_dir / "training_output" / "sample").mkdir(parents=True)
+    (run_dir / "config.runtime.toml").write_text("output_name = 'demo'\n", encoding="utf-8")
+    (run_dir / "training_output" / "demo.safetensors").write_bytes(b"weight")
+    return run_dir
+
+
+def test_history_batch_archive_unarchive_and_group(tmp_path, monkeypatch):
+    history_dir = tmp_path / "history"
+    first = "20260524-225152-training-imported-a"
+    second = "20260524-225153-training-imported-b"
+    _write_group_task(history_dir, first, job="training", started_at=1000.0)
+    _write_group_task(history_dir, second, job="training", started_at=1001.0)
+    monkeypatch.setattr(training_service, "HISTORY_DIR", history_dir)
+    svc = TrainingService(web.Application())
+
+    archived = svc.batch_update_history_tasks({"action": "archive", "task_ids": [first, second]})
+    assert archived["updated"] == 2
+    assert all(task["archived"] for task in svc.list_history_tasks(include_archived=True))
+
+    grouped = svc.batch_update_history_tasks({"action": "set_group", "task_ids": [first], "group": "正式训练"})
+    assert grouped["tasks"][0]["group"] == "正式训练"
+
+    unarchived = svc.batch_update_history_tasks({"action": "unarchive", "task_ids": [first]})
+    assert unarchived["updated"] == 1
+    tasks = {task["id"]: task for task in svc.list_history_tasks(include_archived=True)}
+    assert tasks[first]["archived"] is False
+    assert tasks[second]["archived"] is True
+
+
+def test_history_collection_settings_round_trip_and_normalize(tmp_path, monkeypatch):
+    history_dir = tmp_path / "history"
+    monkeypatch.setattr(training_service, "HISTORY_DIR", history_dir)
+    monkeypatch.setattr(training_service, "HISTORY_COLLECTIONS_FILE", history_dir / "collections.json")
+    svc = TrainingService(web.Application())
+
+    empty = svc.get_history_collection_settings()
+    assert empty["ok"] is True
+    assert empty["collection_order"] == []
+    assert empty["config_group_order"] == {}
+
+    saved = svc.save_history_collection_settings({
+        "collection_order": ["B", "", "A", "B", "  C  "],
+        "config_group_order": {
+            "A": ["g2", "g1", "g2", ""],
+            "": ["bad"],
+            "B": "not-list",
+        },
+    })
+
+    assert saved["collection_order"] == ["B", "A", "C"]
+    assert saved["config_group_order"] == {"A": ["g2", "g1"]}
+    assert (history_dir / "collections.json").exists()
+    loaded = svc.get_history_collection_settings()
+    assert loaded["collection_order"] == ["B", "A", "C"]
+    assert loaded["config_group_order"] == {"A": ["g2", "g1"]}
+
+
+def test_history_collection_settings_routes(tmp_path, monkeypatch):
+    history_dir = tmp_path / "history"
+    monkeypatch.setattr(training_service, "HISTORY_DIR", history_dir)
+    monkeypatch.setattr(training_service, "HISTORY_COLLECTIONS_FILE", history_dir / "collections.json")
+    svc = TrainingService(web.Application())
+
+    put_req = _FakeJsonRequest(
+        {"collection_order": ["正式训练"], "config_group_order": {"正式训练": ["config-a"]}},
+        {"training_service": svc},
+    )
+    put_response = asyncio.run(training_routes.handle_history_collection_settings_put(put_req))
+    put_payload = json.loads(put_response.text)
+    assert put_response.status == 200
+    assert put_payload["collection_order"] == ["正式训练"]
+
+    get_req = _FakeJsonRequest({}, {"training_service": svc})
+    get_response = asyncio.run(training_routes.handle_history_collection_settings_get(get_req))
+    get_payload = json.loads(get_response.text)
+    assert get_response.status == 200
+    assert get_payload["config_group_order"] == {"正式训练": ["config-a"]}
+
+
+def test_history_batch_delete_dry_run_and_confirm_removes_runtime_dir(tmp_path, monkeypatch):
+    history_dir = tmp_path / "history"
+    output_root = tmp_path / "runs"
+    run_dir = _write_web_runtime_dir(output_root, "524-20260524-225059")
+    training_id = "20260524-225152-training-imported-524"
+    preprocess_id = "20260524-225059-preprocess-imported-524"
+    history_meta = {
+        "run_dir": str(run_dir),
+        "training_output_dir": str(run_dir / "training_output"),
+        "history_run_label": run_dir.name,
+    }
+    _write_group_task(history_dir, training_id, job="training", history_meta=history_meta)
+    _write_group_task(history_dir, preprocess_id, job="preprocess", archived=True, history_meta=history_meta)
+    monkeypatch.setattr(training_service, "HISTORY_DIR", history_dir)
+    monkeypatch.setattr(training_service, "resolve_output_root", lambda: output_root)
+    svc = TrainingService(web.Application())
+
+    preview = svc.batch_update_history_tasks({
+        "action": "delete",
+        "task_ids": [training_id],
+        "delete_runtime_dirs": True,
+        "dry_run": True,
+    })
+
+    assert preview["dry_run"] is True
+    assert preview["blocked"] == []
+    assert {task["id"] for task in preview["tasks"]} == {training_id, preprocess_id}
+    assert preview["runtime_dirs"][0]["path"] == str(run_dir)
+
+    with pytest.raises(ValueError, match="彻底删除"):
+        svc.batch_update_history_tasks({
+            "action": "delete",
+            "task_ids": [training_id],
+            "delete_runtime_dirs": True,
+        })
+
+    deleted = svc.batch_update_history_tasks({
+        "action": "delete",
+        "task_ids": [training_id],
+        "delete_runtime_dirs": True,
+        "confirm_text": "彻底删除",
+    })
+
+    assert deleted["ok"] is True
+    assert set(deleted["deleted_task_ids"]) == {training_id, preprocess_id}
+    assert deleted["deleted_runtime_dirs"] == [str(run_dir)]
+    assert not run_dir.exists()
+    assert svc.list_history_tasks(include_archived=True) == []
+
+
+def test_history_batch_delete_blocks_current_task_and_queue_references(tmp_path, monkeypatch):
+    history_dir = tmp_path / "history"
+    output_root = tmp_path / "runs"
+    run_dir = _write_web_runtime_dir(output_root, "blocked-run")
+    task_id = "20260524-225152-training-imported-blocked"
+    _write_group_task(
+        history_dir,
+        task_id,
+        job="training",
+        history_meta={"run_dir": str(run_dir), "training_output_dir": str(run_dir / "training_output")},
+    )
+    monkeypatch.setattr(training_service, "HISTORY_DIR", history_dir)
+    monkeypatch.setattr(training_service, "resolve_output_root", lambda: output_root)
+    svc = TrainingService(web.Application())
+    svc.status = "running"
+    svc.current_task_id = task_id
+    svc._queue = {
+        "items": [
+            {
+                "id": "queue-a",
+                "state": "queued",
+                "runtime_info": {"run_dir": str(run_dir)},
+            },
+        ],
+    }
+
+    preview = svc.batch_update_history_tasks({
+        "action": "delete",
+        "task_ids": [task_id],
+        "delete_runtime_dirs": True,
+        "dry_run": True,
+    })
+
+    reasons = "\n".join(item["reason"] for item in preview["blocked"])
+    assert "当前运行中的任务不能删除" in reasons
+    assert "队列项引用" in reasons
+    with pytest.raises(RuntimeError, match="不能删除"):
+        svc.batch_update_history_tasks({
+            "action": "delete",
+            "task_ids": [task_id],
+            "delete_runtime_dirs": True,
+            "confirm_text": "彻底删除",
+        })
+    assert run_dir.exists()
+
+
+def test_history_batch_route_calls_service():
+    class FakeService:
+        def __init__(self):
+            self.payload = None
+
+        def batch_update_history_tasks(self, payload):
+            self.payload = payload
+            return {"ok": True, "updated": len(payload["task_ids"])}
+
+    svc = FakeService()
+    req = _FakeJsonRequest(
+        {"action": "archive", "task_ids": ["a", "b"]},
+        {"training_service": svc},
+    )
+
+    response = asyncio.run(training_routes.handle_history_batch(req))
+    payload = json.loads(response.text)
+
+    assert response.status == 200
+    assert payload["updated"] == 2
+    assert svc.payload == {"action": "archive", "task_ids": ["a", "b"]}
 
 
 def test_resume_from_history_requires_config_snapshot(tmp_path, monkeypatch):

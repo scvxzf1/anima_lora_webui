@@ -366,7 +366,96 @@ def test_queue_retry_clones_frozen_runtime_config(tmp_path, monkeypatch):
     assert retry_cfg["source_image_dir"] == old_cfg["source_image_dir"]
 
 
-def test_queue_top_bottom_cancel_waiting_and_clear_finished(tmp_path, monkeypatch):
+def test_queue_retry_training_clones_dataset_cache_before_old_runtime_delete(tmp_path, monkeypatch):
+    _patch_queue_paths(tmp_path, monkeypatch)
+    output_root = tmp_path / "runs"
+    monkeypatch.setattr(training_service, "resolve_output_root", lambda: output_root)
+    runtime = _runtime_payload(tmp_path, "old-run")
+    old_run_dir = Path(runtime["run_dir"])
+    old_resized = old_run_dir / "dataset_cache" / "dataset-01" / "resized"
+    old_lora = old_run_dir / "dataset_cache" / "dataset-01" / "lora"
+    old_resized.mkdir(parents=True, exist_ok=True)
+    old_lora.mkdir(parents=True, exist_ok=True)
+    (old_resized / "sample.png").write_text("image", encoding="utf-8")
+    (old_lora / "sample.npz").write_text("cache", encoding="utf-8")
+    dataset_config = old_run_dir / "dataset.runtime.toml"
+    dataset_config.write_text(
+        toml.dumps({
+            "general": {"caption_extension": ".txt", "keep_tokens": 3},
+            "datasets": [{
+                "batch_size": 1,
+                "subsets": [{
+                    "image_dir": str(old_resized),
+                    "cache_dir": str(old_lora),
+                    "num_repeats": 1,
+                    "custom_attributes": {"source_dir": "image_dataset/a"},
+                }],
+            }],
+        }),
+        encoding="utf-8",
+    )
+    runtime_config = Path(runtime["runtime_config_file"])
+    cfg = toml.loads(runtime_config.read_text(encoding="utf-8"))
+    cfg.update({
+        "dataset_config": str(dataset_config),
+        "source_image_dir": "image_dataset/a",
+        "resized_image_dir": str(old_resized),
+        "lora_cache_dir": str(old_lora),
+    })
+    runtime_config.write_text(toml.dumps(cfg), encoding="utf-8")
+    runtime["dataset_config_file"] = str(dataset_config)
+    runtime["data_dirs"] = {
+        "source_image_dir": "image_dataset/a",
+        "resized_image_dir": str(old_resized),
+        "lora_cache_dir": str(old_lora),
+    }
+
+    svc = TrainingService(web.Application())
+    svc._queue_paused = True
+    svc._queue = {
+        "paused": True,
+        "items": [{
+            "id": "q1",
+            "state": "error",
+            "kind": "training",
+            "requires_preprocess": False,
+            "variant": "demo",
+            "preset": "default",
+            "methods_subdir": "imported",
+            "runtime_config_file": runtime["runtime_config_file"],
+            "source_config_file": "configs/imported/source.toml",
+            "extra_args": [],
+            "gpu_whitelist": [0],
+            "continue_info": {},
+            "resume_info": {},
+            "history_task_ids": ["old-history"],
+            "runtime_info": runtime,
+            "attempt": 1,
+        }],
+    }
+
+    payload = asyncio.run(svc.retry_queue_item("q1"))
+    retry = payload["item"]
+    retry_cfg = toml.loads(Path(retry["runtime_config_file"]).read_text(encoding="utf-8"))
+    retry_dataset = toml.loads(Path(retry_cfg["dataset_config"]).read_text(encoding="utf-8"))
+    retry_subset = retry_dataset["datasets"][0]["subsets"][0]
+
+    assert retry_cfg["resized_image_dir"] != str(old_resized)
+    assert retry_cfg["lora_cache_dir"] != str(old_lora)
+    assert retry_subset["image_dir"] == retry_cfg["resized_image_dir"]
+    assert retry_subset["cache_dir"] == retry_cfg["lora_cache_dir"]
+    assert Path(retry_subset["image_dir"], "sample.png").read_text(encoding="utf-8") == "image"
+    assert Path(retry_subset["cache_dir"], "sample.npz").read_text(encoding="utf-8") == "cache"
+
+    deleted = asyncio.run(svc.cancel_queue_item("q1", delete_runtime=True))
+
+    assert deleted["deleted_runtime"] is True
+    assert not old_run_dir.exists()
+    assert Path(retry_subset["image_dir"], "sample.png").exists()
+    assert Path(retry_subset["cache_dir"], "sample.npz").exists()
+
+
+def test_queue_top_bottom_cancel_waiting_and_clear_finished_keeps_error_records(tmp_path, monkeypatch):
     _patch_queue_paths(tmp_path, monkeypatch)
     svc = TrainingService(web.Application())
     svc._queue_paused = True
@@ -391,8 +480,43 @@ def test_queue_top_bottom_cancel_waiting_and_clear_finished(tmp_path, monkeypatc
     assert all(item["state"] != "queued" for item in svc.get_queue_snapshot()["items"])
 
     cleared = asyncio.run(svc.clear_finished_queue_items())
-    assert cleared["removed"] == 5
-    assert svc.get_queue_snapshot()["items"] == []
+    assert cleared["removed"] == 4
+    remaining = svc.get_queue_snapshot()["items"]
+    assert [(item["id"], item["state"]) for item in remaining] == [("e", "error")]
+
+
+def test_queue_launch_lock_serializes_manual_and_queue_start(tmp_path, monkeypatch):
+    _patch_queue_paths(tmp_path, monkeypatch)
+    svc = TrainingService(web.Application())
+    svc._queue = {"paused": False, "items": [{"id": "q1", "state": "queued"}]}
+    svc._queue_paused = False
+    ready = asyncio.Event()
+    release = asyncio.Event()
+    launched = []
+
+    async def fake_start_queue_item(item):
+        launched.append(item["id"])
+        ready.set()
+        await release.wait()
+        svc.status = "running"
+
+    monkeypatch.setattr(svc, "_start_queue_item", fake_start_queue_item)
+
+    async def run():
+        dispatch_task = asyncio.create_task(svc._dispatch_queue())
+        await ready.wait()
+        manual_task = asyncio.create_task(svc.start("manual", "default"))
+        await asyncio.sleep(0)
+        assert manual_task.done() is False
+        release.set()
+        await dispatch_task
+        with pytest.raises(RuntimeError, match="已有任务在运行中"):
+            await manual_task
+
+    asyncio.run(run())
+
+    assert launched == ["q1"]
+    assert svc._queue_launching_item_id == ""
 
 
 def test_delete_terminal_queue_item_only_removes_that_record(tmp_path, monkeypatch):
@@ -413,6 +537,156 @@ def test_delete_terminal_queue_item_only_removes_that_record(tmp_path, monkeypat
     assert deleted["deleted"] == 1
     assert deleted["message"] == "已删除队列记录"
     assert [item["id"] for item in svc.get_queue_snapshot()["items"]] == ["waiting", "done"]
+
+
+def test_delete_terminal_queue_item_can_remove_runtime_dir(tmp_path, monkeypatch):
+    _patch_queue_paths(tmp_path, monkeypatch)
+    runtime = _runtime_payload(tmp_path)
+    monkeypatch.setattr(training_service, "resolve_output_root", lambda: tmp_path / "runs")
+    svc = TrainingService(web.Application())
+    svc._queue_paused = True
+    svc._queue = {
+        "paused": True,
+        "items": [
+            {
+                "id": "failed",
+                "state": "error",
+                "runtime_config_file": runtime["runtime_config_file"],
+                "runtime_info": runtime,
+            },
+        ],
+    }
+
+    deleted = asyncio.run(svc.cancel_queue_item("failed", delete_runtime=True))
+
+    assert deleted["deleted"] == 1
+    assert deleted["deleted_runtime"] is True
+    assert not Path(runtime["run_dir"]).exists()
+    assert svc.get_queue_snapshot()["items"] == []
+
+
+def test_delete_terminal_queue_item_marks_cleanup_before_runtime_delete_failure(tmp_path, monkeypatch):
+    _patch_queue_paths(tmp_path, monkeypatch)
+    runtime = _runtime_payload(tmp_path)
+    monkeypatch.setattr(training_service, "resolve_output_root", lambda: tmp_path / "runs")
+    svc = TrainingService(web.Application())
+    svc._queue_paused = True
+    svc._queue = {
+        "paused": True,
+        "items": [
+            {
+                "id": "failed",
+                "state": "error",
+                "runtime_config_file": runtime["runtime_config_file"],
+                "runtime_info": runtime,
+            },
+        ],
+    }
+    saves: list[dict] = []
+    original_save = svc._save_queue
+
+    def record_save():
+        saves.append(json.loads(json.dumps(svc._queue)))
+        original_save()
+
+    def fail_rmtree(path):
+        raise OSError("boom")
+
+    monkeypatch.setattr(svc, "_save_queue", record_save)
+    monkeypatch.setattr(training_service.shutil, "rmtree", fail_rmtree)
+
+    with pytest.raises(OSError, match="boom"):
+        asyncio.run(svc.cancel_queue_item("failed", delete_runtime=True))
+
+    item = svc.get_queue_snapshot()["items"][0]
+    assert item["cleanup_state"] == "error"
+    assert item["cleanup_error"] == "boom"
+    assert Path(runtime["run_dir"]).exists()
+    assert any(
+        saved["items"][0].get("cleanup_state") == "deleting_runtime"
+        for saved in saves
+    )
+
+
+def test_delete_terminal_queue_item_rejects_incomplete_runtime_marker(tmp_path, monkeypatch):
+    _patch_queue_paths(tmp_path, monkeypatch)
+    runtime = _runtime_payload(tmp_path)
+    monkeypatch.setattr(training_service, "resolve_output_root", lambda: tmp_path / "runs")
+    training_service.shutil.rmtree(Path(runtime["run_dir"]) / "dataset_cache")
+    svc = TrainingService(web.Application())
+    svc._queue_paused = True
+    svc._queue = {
+        "paused": True,
+        "items": [
+            {
+                "id": "failed",
+                "state": "error",
+                "runtime_config_file": runtime["runtime_config_file"],
+                "runtime_info": runtime,
+            },
+        ],
+    }
+
+    with pytest.raises(ValueError, match="runtime 标记"):
+        asyncio.run(svc.cancel_queue_item("failed", delete_runtime=True))
+
+    assert Path(runtime["run_dir"]).exists()
+    assert svc.get_queue_snapshot()["items"][0]["id"] == "failed"
+
+
+def test_delete_terminal_queue_item_rejects_runtime_config_mismatch(tmp_path, monkeypatch):
+    _patch_queue_paths(tmp_path, monkeypatch)
+    runtime = _runtime_payload(tmp_path, "old-run")
+    other = _runtime_payload(tmp_path, "other-run")
+    monkeypatch.setattr(training_service, "resolve_output_root", lambda: tmp_path / "runs")
+    svc = TrainingService(web.Application())
+    svc._queue_paused = True
+    svc._queue = {
+        "paused": True,
+        "items": [
+            {
+                "id": "failed",
+                "state": "error",
+                "runtime_config_file": runtime["runtime_config_file"],
+                "runtime_info": {
+                    **runtime,
+                    "run_dir": other["run_dir"],
+                    "runtime_config_file": runtime["runtime_config_file"],
+                },
+            },
+        ],
+    }
+
+    with pytest.raises(ValueError, match="runtime 配置不匹配"):
+        asyncio.run(svc.cancel_queue_item("failed", delete_runtime=True))
+
+    assert Path(other["run_dir"]).exists()
+    assert svc.get_queue_snapshot()["items"][0]["id"] == "failed"
+
+
+def test_delete_terminal_queue_item_rejects_runtime_outside_output_root(tmp_path, monkeypatch):
+    _patch_queue_paths(tmp_path, monkeypatch)
+    runtime = _runtime_payload(tmp_path, "outside")
+    monkeypatch.setattr(training_service, "resolve_output_root", lambda: tmp_path / "other-runs")
+    svc = TrainingService(web.Application())
+    svc._queue_paused = True
+    svc._queue = {
+        "paused": True,
+        "items": [
+            {
+                "id": "failed",
+                "state": "error",
+                "runtime_config_file": runtime["runtime_config_file"],
+                "runtime_info": runtime,
+            },
+        ],
+    }
+
+    with pytest.raises(ValueError, match="输出根目录"):
+        asyncio.run(svc.cancel_queue_item("failed", delete_runtime=True))
+
+    assert Path(runtime["run_dir"]).exists()
+    assert svc.get_queue_snapshot()["items"][0]["id"] == "failed"
 
 
 def test_handle_queue_start_uses_enqueue_service(monkeypatch):
@@ -496,6 +770,10 @@ def test_queue_management_routes_call_service():
             self.calls.append(("clear", None))
             return {"ok": True, "removed": 3}
 
+        async def cancel_queue_item(self, item_id, *, delete_runtime=False):
+            self.calls.append(("cancel", item_id, delete_runtime))
+            return {"ok": True, "item_id": item_id, "deleted_runtime": delete_runtime}
+
     svc = FakeService()
     app = {"training_service": svc}
 
@@ -507,11 +785,15 @@ def test_queue_management_routes_call_service():
     ))
     cancel = asyncio.run(training_routes.handle_queue_cancel_waiting(_FakeJsonRequest({}, app)))
     clear = asyncio.run(training_routes.handle_queue_clear(_FakeJsonRequest({}, app)))
+    delete = asyncio.run(training_routes.handle_queue_cancel(
+        _FakeJsonRequest({"delete_runtime": True}, app, {"item_id": "q2"})
+    ))
 
-    assert settings.status == retry.status == cancel.status == clear.status == 200
+    assert settings.status == retry.status == cancel.status == clear.status == delete.status == 200
     assert svc.calls == [
         ("settings", {"paused": True, "failure_policy": "pause"}),
         ("retry", "q1"),
         ("cancel-waiting", None),
         ("clear", None),
+        ("cancel", "q2", True),
     ]

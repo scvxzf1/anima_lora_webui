@@ -121,7 +121,7 @@ def test_train_batch_size_overrides_dataset_config_batch_size():
     assert [dataset["batch_size"] for dataset in user_config["datasets"]] == [2, 2]
 
 
-def test_default_train_batch_size_preserves_dataset_config_batch_size():
+def test_default_train_batch_size_overrides_dataset_config_batch_size():
     import train
 
     user_config = {"datasets": [{"batch_size": 4, "subsets": []}]}
@@ -131,7 +131,7 @@ def test_default_train_batch_size_preserves_dataset_config_batch_size():
         argparse.Namespace(train_batch_size=1),
     )
 
-    assert user_config["datasets"][0]["batch_size"] == 4
+    assert user_config["datasets"][0]["batch_size"] == 1
 
 
 def test_dataset_config_ignores_legacy_preprocess_only_keys():

@@ -12,6 +12,8 @@ original caption (no shuffle, no dropout); v1..v{N-1} are smart-shuffled and,
 if --caption_tag_dropout_rate > 0, have non-prefix tags independently dropped
 at that rate. The strategy loader picks v0 with 20% probability and uniform
 v1..v{N-1} with 80% probability when use_shuffled_caption_variants is on.
+Pass --prefer_json_caption (or --prefer_json) to prefer same-stem .json
+caption sidecars, falling back to .txt when JSON is missing or invalid.
 
 The encode loop lives in ``library/preprocess/text.py``; this file is argparse +
 model load + the one-time uncond sidecar staging.
@@ -28,7 +30,12 @@ from library.preprocess import cache_text_embeddings, tqdm_progress
 from library.runtime.cli import add_io_args
 
 
-def _collect_image_caption_entries(image_paths, *, min_pixels: int = 500_000):
+def _collect_image_caption_entries(
+    image_paths,
+    *,
+    min_pixels: int = 500_000,
+    prefer_json_caption: bool = False,
+):
     """Compatibility helper for older tests/tooling.
 
     The real cache loop now lives in ``library.preprocess.text``; this helper
@@ -52,6 +59,24 @@ def _collect_image_caption_entries(image_paths, *, min_pixels: int = 500_000):
             if w * h < min_pixels:
                 skipped_small += 1
                 continue
+
+        if prefer_json_caption:
+            from library.preprocess.captions import read_caption_source
+
+            source = read_caption_source(
+                image_path,
+                prefer_json_caption=True,
+                caption_extension=".txt",
+            )
+            caption_text = source.render()
+            if source.path is None:
+                missing_captions += 1
+                samples.append(image_path.name)
+            elif source.path.suffix.lower() == ".txt" and not caption_text:
+                empty_caption_files += 1
+                samples.append(image_path.name)
+            entries.append((image_path, caption_text))
+            continue
 
         caption_path = image_path.with_suffix(".txt")
         if not caption_path.exists():
@@ -111,6 +136,16 @@ def main() -> None:
             "Per-tag dropout probability applied to v1..v{N-1} only. Tags up "
             "to and including the first @artist marker are never dropped. "
             "Ignored when --caption_shuffle_variants <= 0."
+        ),
+    )
+    parser.add_argument(
+        "--prefer_json_caption",
+        "--prefer_json",
+        dest="prefer_json_caption",
+        action="store_true",
+        help=(
+            "Prefer same-stem .json caption sidecars and fall back to .txt "
+            "when JSON is missing or invalid. Disabled by default."
         ),
     )
     parser.add_argument(
@@ -194,6 +229,8 @@ def main() -> None:
             "warn: --caption_tag_dropout_rate ignored because "
             "--caption_shuffle_variants <= 0 (single-variant cache)."
         )
+    if args.prefer_json_caption:
+        print("Caption source: prefer JSON sidecars (.json -> .txt fallback)")
 
     stats = cache_text_embeddings(
         data_dir,
@@ -207,6 +244,7 @@ def main() -> None:
         batch_size=args.batch_size,
         caption_shuffle_variants=N,
         caption_tag_dropout_rate=tag_dropout_rate,
+        prefer_json_caption=args.prefer_json_caption,
         min_pixels=args.min_pixels,
         progress=tqdm_progress("Caching text embeddings"),
     )

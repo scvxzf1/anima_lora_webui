@@ -17,6 +17,7 @@ import torch
 from PIL import Image
 
 from library.io.cache import POOLED_CACHE_SUFFIX, TE_CACHE_SUFFIX, resolve_cache_path
+from library.preprocess.captions import CaptionSource, read_caption_source
 from library.preprocess._dataset import PreprocessStats, walk_images
 from library.preprocess._progress import ProgressFn
 
@@ -24,7 +25,7 @@ logger = logging.getLogger(__name__)
 
 
 def generate_caption_variants(
-    caption: str, num_variants: int, tag_dropout_rate: float
+    caption: str | CaptionSource, num_variants: int, tag_dropout_rate: float
 ) -> list[str]:
     """Generate ``num_variants`` caption variants for stochastic train-time sampling.
 
@@ -34,6 +35,11 @@ def generate_caption_variants(
     ``@no-artist`` sentinel participates in the boundary but is stripped from
     every variant (including v0) before it is written.
     """
+    if isinstance(caption, CaptionSource):
+        if caption.structured is not None:
+            return caption.structured.generate_variants(num_variants, tag_dropout_rate)
+        caption = caption.text
+
     from library.anima import training as anima_train_utils
 
     sentinel = anima_train_utils.NO_ARTIST_SENTINEL
@@ -127,15 +133,17 @@ def cache_text_embeddings(
     batch_size: int = 16,
     caption_shuffle_variants: int = 0,
     caption_tag_dropout_rate: float = 0.0,
+    prefer_json_caption: bool = False,
+    caption_extension: str = ".txt",
     min_pixels: int = 500_000,
     verbose: bool = True,
     progress: ProgressFn | None = None,
 ) -> PreprocessStats:
-    """Encode ``.txt`` captions for every image under ``data_dir``.
+    """Encode captions for every image under ``data_dir``.
 
     Strategies + encoder + (optional) ``llm_adapter`` are supplied loaded + on
     ``device``. Images below ``min_pixels`` are skipped (mirrors the resize
-    filter). Missing or empty ``.txt`` sidecars are encoded as empty captions so
+    filter). Missing or empty caption sidecars are encoded as empty captions so
     the cached set stays aligned with the image dataset. With
     ``caption_shuffle_variants > 0`` each cache holds N variants
     (v0 pristine, v1..v{N-1} shuffled + optionally tag-dropped). Returns counts;
@@ -143,7 +151,7 @@ def cache_text_embeddings(
     """
     candidates = walk_images(data_dir, recursive=recursive)
 
-    entries: list[tuple[Path, str]] = []
+    entries: list[tuple[Path, CaptionSource]] = []
     skipped_small = 0
     for p in candidates:
         if min_pixels > 0:
@@ -157,15 +165,15 @@ def cache_text_embeddings(
                 skipped_small += 1
                 continue
 
-        caption_path = p.with_suffix(".txt")
         # A missing or empty caption file is a valid explicit empty caption
         # (unconditional / style-LoRA training) — encode "" rather than
         # dropping the image, so the cached set matches the training dataset.
-        if caption_path.exists():
-            lines = caption_path.read_text(encoding="utf-8").splitlines()
-            caption = lines[0].strip() if lines else ""
-        else:
-            caption = ""
+        caption = read_caption_source(
+            p,
+            prefer_json_caption=prefer_json_caption,
+            caption_extension=caption_extension,
+            warn=logger.warning,
+        )
         entries.append((p, caption))
 
     if skipped_small and verbose:
@@ -188,7 +196,7 @@ def cache_text_embeddings(
         batch = entries[batch_start : batch_start + batch_size]
 
         # Skip already-cached entries.
-        to_encode: list[tuple[Path, str, Path]] = []
+        to_encode: list[tuple[Path, CaptionSource, Path]] = []
         for img_path, caption in batch:
             cache_path = _te_cache_path(img_path, cache_dir, data_dir)
             if cache_path.exists():
@@ -202,7 +210,7 @@ def cache_text_embeddings(
             continue
 
         if n_variants <= 0:
-            captions = [c for _, c, _ in to_encode]
+            captions = [c.render() for _, c, _ in to_encode]
             prompt_embeds, attn_mask, t5_input_ids, t5_attn_mask, crossattn_emb = (
                 _encode_batch(
                     captions,

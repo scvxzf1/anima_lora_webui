@@ -16,7 +16,7 @@ Settings persist to:
 - ``gui/gui_settings.json`` — TE-cache and MIT knobs, picked up by this
   tab on launch and forwarded to subprocesses via env vars
   (``CAPTION_SHUFFLE_VARIANTS``, ``CAPTION_TAG_DROPOUT_RATE``,
-  ``MIT_TEXT_THRESHOLD``, ``MIT_DILATE``) consumed by
+  ``CAPTION_PREFER_JSON``, ``MIT_TEXT_THRESHOLD``, ``MIT_DILATE``) consumed by
   ``scripts/tasks/preprocess.py`` and ``scripts/tasks/masking.py``.
 """
 
@@ -64,6 +64,7 @@ SETTINGS_FILE = Path(__file__).resolve().parent.parent / "gui_settings.json"
 # same pipeline as the bare CLI.
 DEFAULT_TE_SHUFFLE_VARIANTS = 4
 DEFAULT_TE_TAG_DROPOUT = 0.1
+DEFAULT_PREFER_JSON_CAPTION = False
 DEFAULT_SAM_PROMPTS = ("speech bubble", "text bubble")
 DEFAULT_SAM_THRESHOLD = 0.5
 DEFAULT_SAM_DILATE = 5
@@ -421,6 +422,18 @@ class PreprocessingTab(LazyTabMixin, QWidget):
             ),
             self.dropout_edit,
         )
+        self.prefer_json_chk = QCheckBox(t("preprocess_prefer_json_caption"))
+        self.prefer_json_chk.setToolTip(t("preprocess_prefer_json_caption_tip"))
+        self.prefer_json_chk.setChecked(
+            bool(settings.get("prefer_json_caption", DEFAULT_PREFER_JSON_CAPTION))
+        )
+        text_form.addRow(
+            self._field_label(
+                "prefer_json_caption",
+                t("preprocess_prefer_json_caption"),
+            ),
+            self.prefer_json_chk,
+        )
         text_box.setLayout(text_form)
         form_layout.addWidget(text_box)
 
@@ -671,6 +684,7 @@ class PreprocessingTab(LazyTabMixin, QWidget):
             {
                 "caption_shuffle_variants": int(self.shuffle_spin.value()),
                 "caption_tag_dropout_rate": dropout,
+                "prefer_json_caption": self.prefer_json_chk.isChecked(),
                 "mit_text_threshold": mit_threshold,
                 "mit_dilate": int(self.mit_dilate_spin.value()),
                 "run_sam_mask": self.run_sam_mask_chk.isChecked(),
@@ -703,6 +717,7 @@ class PreprocessingTab(LazyTabMixin, QWidget):
             extra_env={
                 "CAPTION_SHUFFLE_VARIANTS": str(int(self.shuffle_spin.value())),
                 "CAPTION_TAG_DROPOUT_RATE": self.dropout_edit.text().strip(),
+                "CAPTION_PREFER_JSON": "1" if self.prefer_json_chk.isChecked() else "0",
             },
         )
 

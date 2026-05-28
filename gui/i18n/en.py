@@ -36,6 +36,12 @@ STRINGS: dict[str, str] = {
         "including the first @artist marker are never dropped. Ignored when "
         "shuffle variants ≤ 0."
     ),
+    "preprocess_prefer_json_caption": "Prefer JSON captions",
+    "preprocess_prefer_json_caption_tip": (
+        "Prefer same-stem .json captions during preprocessing and shuffle "
+        "appearance/tags/environment within each category. Falls back to .txt "
+        "when JSON is missing or invalid."
+    ),
     "preprocess_run_te": "Run caching (VAE + text)",
     "preprocess_masking_sam": "SAM3 masking (text bubbles)",
     "preprocess_masking_mit": "MIT masking (manga text)",

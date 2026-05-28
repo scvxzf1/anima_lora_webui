@@ -32,6 +32,7 @@ from web.services.settings_service import resolve_output_root
 
 ROOT = Path(__file__).resolve().parents[2]
 HISTORY_DIR = ROOT / "configs" / "web-training-history"
+HISTORY_COLLECTIONS_FILE = HISTORY_DIR / "collections.json"
 QUEUE_DIR = ROOT / "configs" / "web-training-queue"
 QUEUE_FILE = QUEUE_DIR / "queue.json"
 RUN_META_FILE = "run.meta.json"
@@ -41,9 +42,13 @@ MAX_HISTORY_ITEMS = 100
 MAX_RESUME_CHECKPOINTS = 100
 MAX_TIMELINE_LOG_RECORDS = 20000
 MAX_TIMELINE_METRIC_RECORDS = 20000
+MAX_HISTORY_DETAIL_LOG_RECORDS = 5000
+MAX_HISTORY_DETAIL_SYSTEM_RECORDS = 1000
 MAX_QUEUE_ITEMS = 200
 QUEUE_FAILURE_POLICIES = {"pause", "continue"}
 QUEUE_TERMINAL_STATES = {"done", "error", "canceled"}
+# “清理已结束”保留 error，方便用户确认后重试或手动删除异常记录。
+QUEUE_CLEARABLE_STATES = {"done", "canceled"}
 CONTINUE_LORA_KINDS = {"LoRA", "LoKr"}
 CONTINUE_LORA_ACCEPTED_LORA_SPECS = {"", "lora", "standard", "ortho", "ortholora", "tlora", "t_lora"}
 CONTINUE_LORA_UNSUPPORTED_SPEC_TOKENS = (
@@ -148,6 +153,7 @@ class TrainingService:
         self._current_queue_item_id: str = ""
         self._queue_launching_item_id: str = ""
         self._queue_dispatch_task: asyncio.Task | None = None
+        self._launch_lock = asyncio.Lock()
         _mark_orphaned_running_history_tasks()
         self._repair_queue_on_startup()
 
@@ -155,6 +161,42 @@ class TrainingService:
         self._schedule_queue_dispatch()
 
     async def start(
+        self,
+        variant: str,
+        preset: str,
+        extra_args: list[str] | None = None,
+        methods_subdir: str = "gui-methods",
+        *,
+        reset_logs: bool = True,
+        config_file: str | None = None,
+        start_message: str | None = None,
+        command_label: str | None = None,
+        resume_info: dict[str, Any] | None = None,
+        continue_info: dict[str, Any] | None = None,
+        gpu_whitelist: list[Any] | None = None,
+        source_config_file: str | None = None,
+        use_runtime_dir: bool = True,
+        queue_item_id: str = "",
+    ):
+        async with self._launch_lock:
+            await self._start_unlocked(
+                variant,
+                preset,
+                extra_args,
+                methods_subdir,
+                reset_logs=reset_logs,
+                config_file=config_file,
+                start_message=start_message,
+                command_label=command_label,
+                resume_info=resume_info,
+                continue_info=continue_info,
+                gpu_whitelist=gpu_whitelist,
+                source_config_file=source_config_file,
+                use_runtime_dir=use_runtime_dir,
+                queue_item_id=queue_item_id,
+            )
+
+    async def _start_unlocked(
         self,
         variant: str,
         preset: str,
@@ -338,6 +380,33 @@ class TrainingService:
         return task, selected, snapshot_path, resume_info
 
     async def start_preprocess(
+        self,
+        variant: str,
+        preset: str,
+        methods_subdir: str = "gui-methods",
+        extra_args: list[str] | None = None,
+        train_after: bool = False,
+        gpu_whitelist: list[Any] | None = None,
+        config_file: str | None = None,
+        continue_info: dict[str, Any] | None = None,
+        runtime: dict[str, Any] | None = None,
+        queue_item_id: str = "",
+    ):
+        async with self._launch_lock:
+            await self._start_preprocess_unlocked(
+                variant,
+                preset,
+                methods_subdir,
+                extra_args,
+                train_after,
+                gpu_whitelist,
+                config_file,
+                continue_info,
+                runtime,
+                queue_item_id,
+            )
+
+    async def _start_preprocess_unlocked(
         self,
         variant: str,
         preset: str,
@@ -775,7 +844,7 @@ class TrainingService:
         await self._broadcast_queue()
         return self.get_queue_snapshot()
 
-    async def cancel_queue_item(self, item_id: str) -> dict[str, Any]:
+    async def cancel_queue_item(self, item_id: str, *, delete_runtime: bool = False) -> dict[str, Any]:
         item = self._find_queue_item(item_id)
         if item is None:
             raise FileNotFoundError("队列任务不存在")
@@ -783,6 +852,31 @@ class TrainingService:
             await self.stop()
             return self.get_queue_snapshot()
         if item.get("state") in QUEUE_TERMINAL_STATES:
+            deleted_runtime = False
+            runtime_dir = ""
+            if delete_runtime:
+                runtime_dir = _queue_item_runtime_dir_label(item)
+                now = time.time()
+                item.update({
+                    "cleanup_state": "deleting_runtime",
+                    "cleanup_runtime_dir": runtime_dir,
+                    "cleanup_error": "",
+                    "cleanup_started_at": now,
+                    "cleanup_started_at_text": _format_ts(now),
+                })
+                self._save_queue()
+                try:
+                    delete_result = _delete_queue_item_runtime_dir(item)
+                    deleted_runtime = bool(delete_result.get("deleted"))
+                    runtime_dir = str(delete_result.get("runtime_dir") or runtime_dir)
+                except Exception as e:
+                    item.update({
+                        "cleanup_state": "error",
+                        "cleanup_error": str(e),
+                    })
+                    self._save_queue()
+                    await self._broadcast_queue()
+                    raise
             before = len(self._queue_items())
             self._queue["items"] = [
                 entry for entry in self._queue_items()
@@ -792,7 +886,15 @@ class TrainingService:
             if removed:
                 self._save_queue()
                 await self._broadcast_queue()
-            return {"ok": True, "message": "已删除队列记录", "deleted": removed, **self.get_queue_snapshot()}
+            message = "已删除队列记录和运行缓存" if delete_runtime else "已删除队列记录"
+            return {
+                "ok": True,
+                "message": message,
+                "deleted": removed,
+                "deleted_runtime": deleted_runtime,
+                "runtime_dir": runtime_dir,
+                **self.get_queue_snapshot(),
+            }
         if item.get("state") != "queued":
             raise ValueError("只能取消等待中的队列任务或删除已结束记录")
         now = time.time()
@@ -842,7 +944,7 @@ class TrainingService:
         before = len(self._queue_items())
         self._queue["items"] = [
             item for item in self._queue_items()
-            if item.get("state") not in QUEUE_TERMINAL_STATES
+            if item.get("state") not in QUEUE_CLEARABLE_STATES
         ]
         removed = before - len(self._queue["items"])
         if removed:
@@ -907,8 +1009,8 @@ class TrainingService:
         })
         return retry
 
-    def list_history_tasks(self, *, include_archived: bool = False) -> list[dict[str, Any]]:
-        return _list_history_tasks(include_archived=include_archived)
+    def list_history_tasks(self, *, include_archived: bool = False, limit: int | None = None) -> list[dict[str, Any]]:
+        return _list_history_tasks(include_archived=include_archived, limit=limit)
 
     def get_history_task(self, task_id: str) -> dict[str, Any]:
         return _load_history_task(task_id)
@@ -932,6 +1034,16 @@ class TrainingService:
             task_ids=task_ids,
         )
 
+    def get_history_collection_settings(self) -> dict[str, Any]:
+        return _load_history_collection_settings()
+
+    def save_history_collection_settings(self, payload: dict[str, Any]) -> dict[str, Any]:
+        settings = _normalize_history_collection_settings(payload)
+        settings["updated_at"] = datetime.now().timestamp()
+        settings["updated_at_text"] = _format_ts(settings["updated_at"])
+        _write_json_atomic(HISTORY_COLLECTIONS_FILE, settings)
+        return {"ok": True, **settings}
+
     def get_resume_options(self, task_id: str) -> dict[str, Any]:
         payload = _load_history_task(task_id)
         task = payload.get("task") if isinstance(payload, dict) else {}
@@ -940,10 +1052,11 @@ class TrainingService:
         if task.get("job") != "training":
             raise ValueError("只能从训练任务读取续训检查点")
         checkpoints = _list_resume_checkpoints(task)
+        diagnostic = _resume_checkpoint_diagnostic(task, checkpoints)
         default_checkpoint = checkpoints[0]["path"] if checkpoints else ""
         message = "选择一个保存了训练状态的目录继续训练。普通权重文件不能恢复优化器和步数。"
         if not checkpoints:
-            message = "这个任务没有找到可续训的状态目录。只有保存了 train_state.json 的目录才能继续训练。"
+            message = diagnostic.get("reason") or "这个任务没有找到可续训的状态目录。只有保存了 train_state.json 的目录才能继续训练。"
         return {
             "ok": True,
             "task": {
@@ -959,16 +1072,118 @@ class TrainingService:
             "checkpoints": checkpoints,
             "default_checkpoint": default_checkpoint,
             "message": message,
+            "diagnostic": diagnostic,
         }
 
     def update_history_task(self, task_id: str, patch: dict[str, Any]) -> dict[str, Any]:
         return _update_history_task(task_id, patch)
+
+    def batch_update_history_tasks(self, payload: dict[str, Any]) -> dict[str, Any]:
+        action = str(payload.get("action") or "").strip().lower()
+        task_ids = _normalize_history_task_ids(payload.get("task_ids"))
+        if not task_ids:
+            raise ValueError("请先选择历史任务")
+        if action in {"archive", "unarchive"}:
+            return _batch_archive_history_tasks(task_ids, archived=(action == "archive"))
+        if action == "set_group":
+            return _batch_set_history_group(task_ids, payload.get("group"))
+        if action == "delete":
+            return self._batch_delete_history_tasks(payload, task_ids)
+        raise ValueError("不支持的批量操作")
 
     def delete_history_task(self, task_id: str) -> dict[str, Any]:
         delete_task_ids = _history_task_ids_for_delete(task_id)
         if self.status == "running" and self.current_task_id in delete_task_ids:
             raise RuntimeError("当前运行中的任务不能删除")
         return _delete_history_tasks(delete_task_ids)
+
+    def _batch_delete_history_tasks(self, payload: dict[str, Any], task_ids: list[str]) -> dict[str, Any]:
+        delete_runtime_dirs = bool(payload.get("delete_runtime_dirs"))
+        plan = self._plan_history_delete(task_ids, delete_runtime_dirs=delete_runtime_dirs)
+        if payload.get("dry_run", False):
+            return {"ok": True, "dry_run": True, **plan}
+        if plan["blocked"]:
+            raise RuntimeError("存在不能删除的任务或运行目录，请先处理阻止项")
+        if delete_runtime_dirs and str(payload.get("confirm_text") or "").strip() != "彻底删除":
+            raise ValueError("彻底删除需要输入确认文本：彻底删除")
+        result = _delete_history_tasks([item["id"] for item in plan["tasks"]])
+        deleted_runtime_dirs: list[str] = []
+        runtime_cleanup_errors: dict[str, str] = {}
+        if delete_runtime_dirs:
+            for item in plan["runtime_dirs"]:
+                path = _resolve_display_path(str(item.get("path") or ""))
+                if path is None or not _path_exists(path):
+                    continue
+                try:
+                    shutil.rmtree(path)
+                    deleted_runtime_dirs.append(str(item.get("path") or ""))
+                except OSError as exc:
+                    runtime_cleanup_errors[str(item.get("path") or "")] = str(exc)
+        result.update({
+            "dry_run": False,
+            "deleted_runtime_dirs": deleted_runtime_dirs,
+            "runtime_cleanup_errors": runtime_cleanup_errors,
+            "preview": plan,
+        })
+        if delete_runtime_dirs:
+            result["message"] = f"已彻底删除 {len(result.get('deleted_task_ids') or [])} 个历史记录和 {len(deleted_runtime_dirs)} 个运行目录"
+        return result
+
+    def _plan_history_delete(self, task_ids: list[str], *, delete_runtime_dirs: bool) -> dict[str, Any]:
+        tasks_by_id = {
+            str(task.get("id") or ""): task
+            for task in _list_history_tasks(include_archived=True, limit=0)
+        }
+        selected: list[dict[str, Any]] = []
+        seen: set[str] = set()
+        blocked: list[dict[str, str]] = []
+        for task_id in task_ids:
+            task = tasks_by_id.get(task_id)
+            if not task:
+                blocked.append({"id": task_id, "reason": "任务不存在"})
+                continue
+            for linked_id in _history_task_ids_for_delete(task_id):
+                if linked_id in seen:
+                    continue
+                linked = tasks_by_id.get(linked_id)
+                if linked:
+                    selected.append(linked)
+                    seen.add(linked_id)
+        if self.status == "running" and self.current_task_id in seen:
+            blocked.append({"id": self.current_task_id, "reason": "当前运行中的任务不能删除"})
+
+        runtime_dirs: list[dict[str, str]] = []
+        if delete_runtime_dirs:
+            run_keys = {
+                _history_delete_run_key(task)
+                for task in selected
+                if _history_delete_run_key(task)
+            }
+            for candidate in tasks_by_id.values():
+                candidate_id = str(candidate.get("id") or "")
+                if not candidate_id or candidate_id in seen:
+                    continue
+                if _history_delete_run_key(candidate) not in run_keys:
+                    continue
+                selected.append(candidate)
+                seen.add(candidate_id)
+            if self.status == "running" and self.current_task_id in seen and not any(
+                item.get("id") == self.current_task_id for item in blocked
+            ):
+                blocked.append({"id": self.current_task_id, "reason": "当前运行中的任务不能删除"})
+            runtime_dirs, runtime_blocked = _history_runtime_delete_dirs_for_tasks(selected)
+            blocked.extend(runtime_blocked)
+            queue_refs = _queue_runtime_delete_blockers(self._queue_items(), runtime_dirs)
+            blocked.extend(queue_refs)
+
+        return {
+            "tasks": [_history_delete_task_preview(task) for task in selected],
+            "runtime_dirs": runtime_dirs,
+            "blocked": blocked,
+            "delete_runtime_dirs": delete_runtime_dirs,
+            "task_count": len(selected),
+            "runtime_dir_count": len(runtime_dirs),
+        }
 
     def get_status_snapshot(self) -> dict[str, Any]:
         return {
@@ -1257,46 +1472,69 @@ class TrainingService:
         self._queue_dispatch_task = loop.create_task(self._dispatch_queue())
 
     async def _dispatch_queue(self) -> None:
-        if self._queue_paused or self.status == "running" or self._queue_launching_item_id:
-            return
-        item = next((entry for entry in self._queue_items() if entry.get("state") == "queued"), None)
-        if item is None:
-            return
-        queue_item_id = str(item.get("id") or "")
-        if not queue_item_id:
-            return
-        self._queue_launching_item_id = queue_item_id
-        now = time.time()
         failed = False
-        try:
-            item.update({
-                "state": "running",
-                "message": "正在启动",
-                "started_at": now,
-                "started_at_text": _format_ts(now),
-                "finished_at": None,
-                "finished_at_text": "",
-            })
-            self._save_queue()
-            await self._broadcast_queue()
-            await self._start_queue_item(item)
-        except Exception as e:
-            failed = True
+        queue_item_id = ""
+        item: dict[str, Any] | None = None
+        async with self._launch_lock:
+            if self._queue_paused or self.status == "running" or self._queue_launching_item_id:
+                return
+            item = next((entry for entry in self._queue_items() if entry.get("state") == "queued"), None)
+            if item is None:
+                return
+            queue_item_id = str(item.get("id") or "")
+            if not queue_item_id:
+                return
+            self._queue_launching_item_id = queue_item_id
             now = time.time()
-            self._pause_queue_after_failure()
-            item.update({
-                "state": "error",
-                "message": f"队列任务启动失败: {e}",
-                "finished_at": now,
-                "finished_at_text": _format_ts(now),
-            })
-            self._current_queue_item_id = ""
-            self.status = "idle"
-            self._save_queue()
-            await self._broadcast_queue()
-        finally:
-            if self._queue_launching_item_id == queue_item_id:
-                self._queue_launching_item_id = ""
+            try:
+                item.update({
+                    "state": "running",
+                    "message": "正在启动",
+                    "started_at": now,
+                    "started_at_text": _format_ts(now),
+                    "finished_at": None,
+                    "finished_at_text": "",
+                })
+                self._save_queue()
+            except Exception as e:
+                failed = True
+                now = time.time()
+                self._pause_queue_after_failure()
+                item.update({
+                    "state": "error",
+                    "message": f"队列任务启动失败: {e}",
+                    "finished_at": now,
+                    "finished_at_text": _format_ts(now),
+                })
+                self._current_queue_item_id = ""
+                self.status = "idle"
+                self._save_queue()
+            finally:
+                if failed and self._queue_launching_item_id == queue_item_id:
+                    self._queue_launching_item_id = ""
+        await self._broadcast_queue()
+        if not failed and item is not None:
+            try:
+                async with self._launch_lock:
+                    await self._start_queue_item(item)
+            except Exception as e:
+                failed = True
+                now = time.time()
+                self._pause_queue_after_failure()
+                item.update({
+                    "state": "error",
+                    "message": f"队列任务启动失败: {e}",
+                    "finished_at": now,
+                    "finished_at_text": _format_ts(now),
+                })
+                self._current_queue_item_id = ""
+                self.status = "idle"
+                self._save_queue()
+            finally:
+                if self._queue_launching_item_id == queue_item_id:
+                    self._queue_launching_item_id = ""
+            if failed:
+                await self._broadcast_queue()
         if failed:
             self._schedule_queue_dispatch()
 
@@ -1321,7 +1559,7 @@ class TrainingService:
         queue_item_id = str(item.get("id") or "")
         if item.get("requires_preprocess"):
             runtime = self._queue_item_runtime(item)
-            await self.start_preprocess(
+            await self._start_preprocess_unlocked(
                 variant,
                 preset,
                 methods_subdir,
@@ -1335,7 +1573,7 @@ class TrainingService:
             )
             return
 
-        await self.start(
+        await self._start_unlocked(
             variant,
             preset,
             extra_args,
@@ -1642,7 +1880,7 @@ class TrainingService:
             "log_count": 0,
             "metric_count": 0,
         }
-        _write_json(task_dir / "meta.json", meta)
+        _write_json_atomic(task_dir / "meta.json", meta)
         _write_config_snapshot(
             task_dir / "config.snapshot.toml",
             variant,
@@ -1666,7 +1904,7 @@ class TrainingService:
             "log_count": _count_jsonl(self.current_task_dir / "logs.jsonl"),
             "metric_count": _count_jsonl(self.current_task_dir / "metrics.jsonl"),
         })
-        _write_json(self.current_task_dir / "meta.json", meta)
+        _write_json_atomic(self.current_task_dir / "meta.json", meta)
 
     def _append_history_jsonl(self, filename: str, payload: dict[str, Any]) -> None:
         if not self.current_task_dir:
@@ -2342,6 +2580,75 @@ def _runtime_meta(runtime: dict[str, Any] | None) -> dict[str, str]:
     }
 
 
+def _delete_queue_item_runtime_dir(item: dict[str, Any]) -> dict[str, Any]:
+    run_dir = _queue_item_runtime_delete_dir(item)
+    if run_dir is None:
+        return {"deleted": False, "runtime_dir": ""}
+
+    runtime_dir = _display_settings_path(run_dir)
+    if not _path_exists(run_dir):
+        return {"deleted": False, "runtime_dir": runtime_dir}
+    if not run_dir.is_dir():
+        raise ValueError("运行缓存路径不是目录，已阻止删除")
+
+    output_root = resolve_output_root()
+    if run_dir == output_root or not _path_is_relative_to(run_dir, output_root):
+        raise ValueError("运行缓存目录不在 WebUI 输出根目录内，已阻止删除")
+    if not _is_web_runtime_dir(run_dir):
+        raise ValueError("运行缓存目录缺少 WebUI runtime 标记，已阻止删除")
+    _validate_queue_runtime_dir_match(item, run_dir)
+
+    shutil.rmtree(run_dir)
+    return {"deleted": True, "runtime_dir": runtime_dir}
+
+
+def _queue_item_runtime_dir_label(item: dict[str, Any]) -> str:
+    run_dir = _queue_item_runtime_delete_dir(item)
+    return _display_settings_path(run_dir) if run_dir is not None else ""
+
+
+def _queue_item_runtime_delete_dir(item: dict[str, Any]) -> Path | None:
+    runtime_info = item.get("runtime_info") if isinstance(item.get("runtime_info"), dict) else {}
+    run_dir = _resolve_display_path(str(runtime_info.get("run_dir") or ""))
+    if run_dir is not None:
+        return run_dir
+    for value in (
+        str(runtime_info.get("runtime_config_file") or ""),
+        str(item.get("runtime_config_file") or ""),
+    ):
+        path = _resolve_display_path(value)
+        if path is not None and path.name == "config.runtime.toml":
+            return path.parent
+    output_dir = _resolve_display_path(str(runtime_info.get("training_output_dir") or runtime_info.get("output_dir") or ""))
+    if output_dir is not None and output_dir.name == "training_output":
+        return output_dir.parent
+    return None
+
+
+def _validate_queue_runtime_dir_match(item: dict[str, Any], run_dir: Path) -> None:
+    expected_config = _resolve_display_path(str(item.get("runtime_config_file") or ""))
+    runtime_info = item.get("runtime_info") if isinstance(item.get("runtime_info"), dict) else {}
+    info_config = _resolve_display_path(str(runtime_info.get("runtime_config_file") or ""))
+    valid_configs = [path.resolve() for path in (expected_config, info_config) if path is not None]
+    actual_config = (run_dir / "config.runtime.toml").resolve()
+    if not valid_configs:
+        raise ValueError("队列记录缺少 runtime 配置，已阻止删除")
+    if actual_config not in valid_configs:
+        raise ValueError("运行缓存目录与队列记录的 runtime 配置不匹配，已阻止删除")
+    run_meta = _read_runtime_run_meta(run_dir)
+    meta_config = _resolve_display_path(str(run_meta.get("runtime_config_file") or ""))
+    if meta_config is not None and meta_config.resolve() != actual_config:
+        raise ValueError("运行缓存目录的 runtime 元数据不匹配，已阻止删除")
+
+
+def _path_is_relative_to(path: Path, parent: Path) -> bool:
+    try:
+        path.resolve().relative_to(parent.resolve())
+        return True
+    except ValueError:
+        return False
+
+
 def _write_runtime_run_meta(run_dir: Path, payload: dict[str, Any]) -> None:
     meta = {key: value for key, value in payload.items() if str(value or "").strip()}
     _write_json(run_dir / RUN_META_FILE, meta)
@@ -2454,57 +2761,28 @@ def _clone_frozen_runtime_config(
 
     dataset_config_path = run_dir / "dataset.runtime.toml"
     runtime_rows = _dataset_rows_for_estimate(cfg)
-    if reset_data_dirs:
-        if not runtime_rows:
-            raise ValueError("冻结运行配置缺少数据集路径，无法重新预处理")
-        cloned_rows: list[dict[str, Any]] = []
-        for index, row in enumerate(runtime_rows, start=1):
-            group_dir = dataset_cache_dir / f"dataset-{index:02d}"
-            resized_dir = group_dir / "resized"
-            lora_dir = group_dir / "lora"
-            resized_dir.mkdir(parents=True, exist_ok=True)
-            lora_dir.mkdir(parents=True, exist_ok=True)
-            cloned_rows.append({
-                "source_dir": str(row.get("source_dir") or row.get("image_dir") or ""),
-                "image_dir": _display_settings_path(resized_dir),
-                "cache_dir": _display_settings_path(lora_dir),
-                "num_repeats": row.get("num_repeats") or 1,
-                "settings": row.get("settings") if isinstance(row.get("settings"), dict) else {},
-            })
-        dataset_config_path.write_text(
-            _build_dataset_config_doc(
-                cloned_rows,
-                cfg,
-                prefer_train_batch_size=True,
-                include_preprocess_settings=False,
-            ),
-            encoding="utf-8",
-        )
-        first_row = cloned_rows[0]
-        data_dirs = {
-            "source_image_dir": first_row["source_dir"],
-            "resized_image_dir": first_row["image_dir"],
-            "lora_cache_dir": first_row["cache_dir"],
-        }
-    else:
-        old_dataset_path = _resolve_display_path(str(cfg.get("dataset_config") or ""))
-        if old_dataset_path is not None and _path_exists(old_dataset_path) and old_dataset_path.is_file():
-            shutil.copy2(old_dataset_path, dataset_config_path)
-        else:
-            dataset_config_path.write_text(
-                _build_dataset_config_doc(
-                    runtime_rows,
-                    cfg,
-                    prefer_train_batch_size=True,
-                    include_preprocess_settings=False,
-                ),
-                encoding="utf-8",
-            )
-        data_dirs = {
-            "source_image_dir": str(cfg.get("source_image_dir") or ""),
-            "resized_image_dir": str(cfg.get("resized_image_dir") or ""),
-            "lora_cache_dir": str(cfg.get("lora_cache_dir") or ""),
-        }
+    if not runtime_rows:
+        raise ValueError("冻结运行配置缺少数据集路径，无法重新预处理" if reset_data_dirs else "冻结运行配置缺少数据集路径，无法重新入队")
+    cloned_rows = _clone_runtime_dataset_rows(
+        runtime_rows,
+        dataset_cache_dir,
+        copy_existing=not reset_data_dirs,
+    )
+    dataset_config_path.write_text(
+        _build_dataset_config_doc(
+            cloned_rows,
+            cfg,
+            prefer_train_batch_size=True,
+            include_preprocess_settings=False,
+        ),
+        encoding="utf-8",
+    )
+    first_row = cloned_rows[0]
+    data_dirs = {
+        "source_image_dir": first_row["source_dir"],
+        "resized_image_dir": first_row["image_dir"],
+        "lora_cache_dir": first_row["cache_dir"],
+    }
 
     runtime_cfg = dict(cfg)
     runtime_cfg.update({
@@ -2550,6 +2828,41 @@ def _clone_frozen_runtime_config(
         "data_dirs": data_dirs,
         "sample_config": _sample_config_from_cfg(runtime_cfg, []),
     }
+
+
+def _clone_runtime_dataset_rows(
+    runtime_rows: list[dict[str, Any]],
+    dataset_cache_dir: Path,
+    *,
+    copy_existing: bool,
+) -> list[dict[str, Any]]:
+    cloned_rows: list[dict[str, Any]] = []
+    for index, row in enumerate(runtime_rows, start=1):
+        group_dir = dataset_cache_dir / f"dataset-{index:02d}"
+        resized_dir = group_dir / "resized"
+        lora_dir = group_dir / "lora"
+        resized_dir.mkdir(parents=True, exist_ok=True)
+        lora_dir.mkdir(parents=True, exist_ok=True)
+        if copy_existing:
+            _copy_runtime_dataset_dir(str(row.get("image_dir") or row.get("resized_image_dir") or ""), resized_dir)
+            _copy_runtime_dataset_dir(str(row.get("cache_dir") or row.get("lora_cache_dir") or ""), lora_dir)
+        cloned_rows.append({
+            "source_dir": str(row.get("source_dir") or row.get("source_image_dir") or row.get("image_dir") or ""),
+            "image_dir": _display_settings_path(resized_dir),
+            "cache_dir": _display_settings_path(lora_dir),
+            "num_repeats": row.get("num_repeats") or 1,
+            "settings": row.get("settings") if isinstance(row.get("settings"), dict) else {},
+        })
+    return cloned_rows
+
+
+def _copy_runtime_dataset_dir(source: str, target: Path) -> None:
+    source_path = _resolve_display_path(source)
+    if source_path is None or not _path_exists(source_path) or not source_path.is_dir():
+        return
+    if source_path.resolve() == target.resolve():
+        return
+    shutil.copytree(source_path, target, dirs_exist_ok=True)
 
 
 def _unique_runtime_dir(output_root: Path, stem: str) -> Path:
@@ -2714,6 +3027,52 @@ def _queue_backup_file() -> Path:
     return QUEUE_FILE.with_name(QUEUE_FILE.name + ".bak")
 
 
+def _load_history_collection_settings() -> dict[str, Any]:
+    data = _read_json_object(HISTORY_COLLECTIONS_FILE) or {}
+    settings = _normalize_history_collection_settings(data)
+    updated_at = _float_or_none(data.get("updated_at")) if isinstance(data, dict) else None
+    updated_at = updated_at or 0.0
+    settings["updated_at"] = updated_at
+    settings["updated_at_text"] = _format_ts(updated_at) if updated_at else ""
+    return {"ok": True, **settings}
+
+
+def _normalize_history_collection_settings(payload: dict[str, Any] | None) -> dict[str, Any]:
+    payload = payload if isinstance(payload, dict) else {}
+    return {
+        "collection_order": _normalize_unique_string_list(payload.get("collection_order")),
+        "config_group_order": _normalize_config_group_order(payload.get("config_group_order")),
+    }
+
+
+def _normalize_unique_string_list(value: Any) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    out: list[str] = []
+    seen: set[str] = set()
+    for item in value:
+        text = str(item or "").strip()
+        if not text or text in seen:
+            continue
+        out.append(text)
+        seen.add(text)
+    return out
+
+
+def _normalize_config_group_order(value: Any) -> dict[str, list[str]]:
+    if not isinstance(value, dict):
+        return {}
+    out: dict[str, list[str]] = {}
+    for raw_key, raw_order in value.items():
+        key = str(raw_key or "").strip()
+        if not key:
+            continue
+        order = _normalize_unique_string_list(raw_order)
+        if order:
+            out[key] = order
+    return out
+
+
 def _normalize_queue_failure_policy(value: Any) -> str:
     text = str(value or "").strip().lower()
     return text if text in QUEUE_FAILURE_POLICIES else "pause"
@@ -2735,21 +3094,170 @@ def _new_queue_item_id(kind: str, methods_subdir: str, variant: str) -> str:
     return f"{base}-{suffix}"
 
 
-def _list_history_tasks(*, include_archived: bool = False) -> list[dict[str, Any]]:
+def _list_history_tasks(*, include_archived: bool = False, limit: int | None = None) -> list[dict[str, Any]]:
     if not HISTORY_DIR.exists():
         return []
+    meta_paths = [
+        meta_path for meta_path in HISTORY_DIR.glob("*/meta.json")
+        if not _is_deleting_history_dir(meta_path.parent)
+    ]
+    for meta_path in meta_paths:
+        meta = _read_json(meta_path)
+        if meta:
+            _repair_history_meta(meta_path, meta)
+    _sync_bound_history_collection_groups(meta_paths)
+
     tasks = []
-    for meta_path in HISTORY_DIR.glob("*/meta.json"):
+    for meta_path in meta_paths:
         if _is_deleting_history_dir(meta_path.parent):
             continue
         meta = _read_json(meta_path)
         if meta:
-            _repair_history_meta(meta_path, meta)
             task = _history_summary(meta, meta_path.parent)
             if include_archived or not task.get("archived"):
                 tasks.append(task)
     tasks.sort(key=lambda item: item.get("started_at") or 0, reverse=True)
-    return tasks[:MAX_HISTORY_ITEMS]
+    if limit is None:
+        limit = MAX_HISTORY_ITEMS
+    if limit and limit > 0:
+        return tasks[:limit]
+    return tasks
+
+
+def _normalize_history_task_ids(value: Any) -> list[str]:
+    raw_items = value if isinstance(value, list) else [value]
+    out: list[str] = []
+    seen: set[str] = set()
+    for raw in raw_items:
+        task_id = str(raw or "").strip()
+        if not task_id or task_id in seen:
+            continue
+        _history_task_dir(task_id)
+        out.append(task_id)
+        seen.add(task_id)
+    return out
+
+
+def _batch_archive_history_tasks(task_ids: list[str], *, archived: bool) -> dict[str, Any]:
+    tasks = []
+    for task_id in task_ids:
+        tasks.append(_update_history_task(task_id, {"archived": archived})["task"])
+    return {
+        "ok": True,
+        "message": "已归档所选历史任务" if archived else "已取消归档所选历史任务",
+        "updated": len(tasks),
+        "tasks": tasks,
+    }
+
+
+def _batch_set_history_group(task_ids: list[str], group: Any) -> dict[str, Any]:
+    expanded_task_ids = _bound_history_task_ids(task_ids)
+    tasks = []
+    for task_id in expanded_task_ids:
+        tasks.append(_update_history_task(task_id, {"group": group}, bind_group=False)["task"])
+    return {
+        "ok": True,
+        "message": "已更新同配置文件自动分组内的历史任务集合",
+        "updated": len(tasks),
+        "requested": len(task_ids),
+        "tasks": tasks,
+    }
+
+
+def _history_meta_records(meta_paths: list[Path] | None = None) -> list[dict[str, Any]]:
+    paths = meta_paths if meta_paths is not None else list(HISTORY_DIR.glob("*/meta.json")) if HISTORY_DIR.exists() else []
+    records: list[dict[str, Any]] = []
+    for meta_path in paths:
+        if _is_deleting_history_dir(meta_path.parent):
+            continue
+        meta = _read_json(meta_path)
+        if not meta:
+            continue
+        task_id = str(meta.get("id") or meta_path.parent.name).strip()
+        work = dict(meta)
+        _fill_history_runtime_meta(work)
+        _fill_history_group_meta(work)
+        records.append({
+            "id": task_id,
+            "path": meta_path,
+            "meta": meta,
+            "group_key": str(work.get("history_group_key") or "").strip(),
+            "job": str(meta.get("job") or "").strip(),
+            "group": _clean_history_text(meta.get("group"), max_len=48),
+            "updated_at": float(meta.get("updated_at") or 0),
+            "started_at": float(meta.get("started_at") or 0),
+        })
+    return records
+
+
+def _bound_history_task_ids(task_ids: list[str]) -> list[str]:
+    requested = [str(task_id or "").strip() for task_id in task_ids if str(task_id or "").strip()]
+    if not requested:
+        return []
+    requested_set = set(requested)
+    records = _history_meta_records()
+    selected_keys = {
+        str(record["group_key"])
+        for record in records
+        if record["id"] in requested_set and str(record["group_key"])
+    }
+    if not selected_keys:
+        return requested
+    expanded = [
+        str(record["id"])
+        for record in records
+        if record["id"] in requested_set or str(record["group_key"]) in selected_keys
+    ]
+    ordered: list[str] = []
+    for task_id in requested + expanded:
+        if task_id not in ordered:
+            ordered.append(task_id)
+    return ordered
+
+
+def _sync_bound_history_collection_groups(meta_paths: list[Path] | None = None) -> int:
+    records = _history_meta_records(meta_paths)
+    grouped: dict[str, list[dict[str, Any]]] = {}
+    for record in records:
+        key = str(record.get("group_key") or "")
+        if not key:
+            continue
+        grouped.setdefault(key, []).append(record)
+
+    changed = 0
+    for records_in_group in grouped.values():
+        target_group = _preferred_bound_history_collection_group(records_in_group)
+        if target_group is None:
+            continue
+        for record in records_in_group:
+            if str(record.get("group") or "") == target_group:
+                continue
+            meta = dict(record["meta"])
+            meta["group"] = target_group
+            now = time.time()
+            meta["updated_at"] = now
+            meta["updated_at_text"] = _format_ts(now)
+            try:
+                _write_json_atomic(record["path"], meta)
+                changed += 1
+            except OSError:
+                continue
+    return changed
+
+
+def _preferred_bound_history_collection_group(records: list[dict[str, Any]]) -> str | None:
+    candidates = [record for record in records if str(record.get("group") or "").strip()]
+    if not candidates:
+        return None
+    candidates.sort(
+        key=lambda record: (
+            1 if record.get("job") == "training" else 0,
+            float(record.get("updated_at") or 0),
+            float(record.get("started_at") or 0),
+        ),
+        reverse=True,
+    )
+    return str(candidates[0].get("group") or "").strip()
 
 
 def _mark_orphaned_running_history_tasks() -> int:
@@ -2775,7 +3283,7 @@ def _mark_orphaned_running_history_tasks() -> int:
             "interrupted_at": time.time(),
             "interrupted_at_text": _format_ts(time.time()),
         })
-        _write_json(meta_path, meta)
+        _write_json_atomic(meta_path, meta)
         count += 1
     return count
 
@@ -2818,12 +3326,32 @@ def _load_history_task(task_id: str) -> dict[str, Any]:
         raise FileNotFoundError("任务元信息不存在")
     _repair_history_meta(task_dir / "meta.json", meta)
     snapshot_path = task_dir / "config.snapshot.toml"
+    logs, logs_total, logs_truncated = _read_jsonl_limited(
+        task_dir / "logs.jsonl",
+        limit=MAX_HISTORY_DETAIL_LOG_RECORDS,
+    )
+    system, system_total, system_truncated = _read_jsonl_limited(
+        task_dir / "system.jsonl",
+        limit=MAX_HISTORY_DETAIL_SYSTEM_RECORDS,
+    )
+    metrics = _read_jsonl(task_dir / "metrics.jsonl")
     return {
         "ok": True,
         "task": _history_summary(meta, task_dir),
-        "logs": _read_jsonl(task_dir / "logs.jsonl"),
-        "metrics": _read_jsonl(task_dir / "metrics.jsonl"),
-        "system": _read_jsonl(task_dir / "system.jsonl"),
+        "logs": logs,
+        "metrics": metrics,
+        "system": system,
+        "limits": {
+            "logs_total": logs_total,
+            "logs_returned": len(logs),
+            "logs_truncated": logs_truncated,
+            "system_total": system_total,
+            "system_returned": len(system),
+            "system_truncated": system_truncated,
+            "metrics_total": len(metrics),
+            "metrics_returned": len(metrics),
+            "metrics_truncated": False,
+        },
         "config_toml": _read_text_file(snapshot_path),
     }
 
@@ -3240,7 +3768,21 @@ def _timeline_task_label(task: dict[str, Any]) -> str:
     )
 
 
-def _update_history_task(task_id: str, patch: dict[str, Any]) -> dict[str, Any]:
+def _update_history_task(task_id: str, patch: dict[str, Any], *, bind_group: bool = True) -> dict[str, Any]:
+    if bind_group and set(patch.keys()) == {"group"}:
+        expanded_task_ids = _bound_history_task_ids([task_id])
+        tasks = [
+            _update_history_task(bound_id, patch, bind_group=False)["task"]
+            for bound_id in expanded_task_ids
+        ]
+        primary = next((task for task in tasks if task.get("id") == task_id), tasks[0] if tasks else {})
+        return {
+            "ok": True,
+            "task": primary,
+            "tasks": tasks,
+            "updated": len(tasks),
+        }
+
     task_dir = _history_task_dir(task_id)
     if not task_dir.exists():
         raise FileNotFoundError("任务不存在")
@@ -3258,7 +3800,7 @@ def _update_history_task(task_id: str, patch: dict[str, Any]) -> dict[str, Any]:
 
     meta["updated_at"] = time.time()
     meta["updated_at_text"] = _format_ts(meta["updated_at"])
-    _write_json(meta_path, meta)
+    _write_json_atomic(meta_path, meta)
     return {"ok": True, "task": _history_summary(meta, task_dir)}
 
 
@@ -3301,6 +3843,90 @@ def _history_delete_run_key(task: dict[str, Any]) -> str:
             path = path.parent
         return str(path)
     return ""
+
+
+def _history_delete_task_preview(task: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "id": str(task.get("id") or ""),
+        "name": str(task.get("name") or task.get("history_run_label") or ""),
+        "job": str(task.get("job") or ""),
+        "state": str(task.get("state") or ""),
+        "started_at_text": str(task.get("started_at_text") or ""),
+        "run_dir": str(task.get("run_dir") or ""),
+        "output_dir": str(task.get("training_output_dir") or task.get("output_dir") or ""),
+    }
+
+
+def _history_runtime_delete_dirs_for_tasks(tasks: list[dict[str, Any]]) -> tuple[list[dict[str, str]], list[dict[str, str]]]:
+    out: list[dict[str, str]] = []
+    blocked: list[dict[str, str]] = []
+    seen: set[str] = set()
+    for task in tasks:
+        raw = _history_delete_run_key(task)
+        if not raw or raw in seen:
+            continue
+        seen.add(raw)
+        path = _resolve_display_path(raw)
+        label = _display_settings_path(path) if path is not None else raw
+        if path is None:
+            blocked.append({"path": raw, "reason": "运行目录路径无效"})
+            continue
+        if not _path_exists(path):
+            out.append({"path": label, "status": "missing"})
+            continue
+        if not path.is_dir():
+            blocked.append({"path": label, "reason": "运行目录不是文件夹"})
+            continue
+        try:
+            output_root = resolve_output_root()
+        except Exception as exc:
+            blocked.append({"path": label, "reason": f"无法解析输出根目录: {exc}"})
+            continue
+        if path == output_root or not _path_is_relative_to(path, output_root):
+            blocked.append({"path": label, "reason": "运行目录不在 WebUI 输出根目录内"})
+            continue
+        if not _is_web_runtime_dir(path):
+            blocked.append({"path": label, "reason": "缺少 WebUI runtime 标记"})
+            continue
+        out.append({"path": label, "status": "ready"})
+    return out, blocked
+
+
+def _is_web_runtime_dir(path: Path) -> bool:
+    return (
+        ((path / "config.runtime.toml").is_file() or (path / RUN_META_FILE).is_file())
+        and (path / "model_cache").is_dir()
+        and (path / "dataset_cache").is_dir()
+        and (path / "training_output").is_dir()
+    )
+
+
+def _queue_runtime_delete_blockers(
+    queue_items: list[dict[str, Any]],
+    runtime_dirs: list[dict[str, str]],
+) -> list[dict[str, str]]:
+    protected = {
+        str(item.get("path") or "")
+        for item in runtime_dirs
+        if str(item.get("status") or "") == "ready"
+    }
+    if not protected:
+        return []
+    blocked: list[dict[str, str]] = []
+    for item in queue_items:
+        if item.get("state") not in {"queued", "running"}:
+            continue
+        run_dir = _queue_item_runtime_delete_dir(item)
+        if run_dir is None:
+            continue
+        label = _display_settings_path(run_dir)
+        if label in protected:
+            blocked.append({
+                "id": str(item.get("id") or ""),
+                "path": label,
+                "reason": "运行目录仍被等待或运行中的队列项引用",
+            })
+    return blocked
 
 
 def _delete_history_tasks(task_ids: list[str]) -> dict[str, Any]:
@@ -3399,7 +4025,7 @@ def _repair_history_meta(meta_path: Path, meta: dict[str, Any]) -> None:
             meta["name"] = name
     if meta != before:
         try:
-            _write_json(meta_path, meta)
+            _write_json_atomic(meta_path, meta)
         except OSError:
             pass
 
@@ -3546,6 +4172,49 @@ def _list_resume_checkpoints(task: dict[str, Any]) -> list[dict[str, Any]]:
     return items[:MAX_RESUME_CHECKPOINTS]
 
 
+def _resume_checkpoint_diagnostic(task: dict[str, Any], checkpoints: list[dict[str, Any]] | None = None) -> dict[str, Any]:
+    raw_output_dir = str(task.get("output_dir") or "")
+    output_dir = _resolve_display_path(raw_output_dir)
+    diagnostic: dict[str, Any] = {
+        "output_dir": raw_output_dir,
+        "output_dir_resolved": _display_project_path(str(output_dir)) if output_dir is not None else "",
+        "output_dir_valid": output_dir is not None,
+        "output_dir_exists": bool(output_dir is not None and _path_exists(output_dir)),
+        "output_dir_is_dir": bool(output_dir is not None and _path_exists(output_dir) and output_dir.is_dir()),
+        "state_dir_count": 0,
+        "train_state_count": 0,
+        "checkpoint_count": len(checkpoints or []),
+        "reason": "",
+        "recommendation": "如需继续训练，可回到配置页选择这个任务导出的 LoRA/LoKr 权重做热启动；热启动不会恢复 optimizer、scheduler 和已完成步数。",
+    }
+    if output_dir is None:
+        diagnostic["reason"] = "这个历史任务记录的输出目录不合法，无法扫描完整续训状态。"
+        return diagnostic
+    if not _path_exists(output_dir):
+        diagnostic["reason"] = "这个历史任务记录的输出目录不存在，完整续训所需的 train_state.json 状态目录无法读取。"
+        return diagnostic
+    if not output_dir.is_dir():
+        diagnostic["reason"] = "这个历史任务记录的输出路径不是目录，无法扫描完整续训状态。"
+        return diagnostic
+
+    state_dirs = [
+        child
+        for child in output_dir.iterdir()
+        if child.is_dir() and not _is_transient_resume_state_dir(child.name)
+    ]
+    diagnostic["state_dir_count"] = len(state_dirs)
+    diagnostic["train_state_count"] = sum(1 for child in state_dirs if _path_exists(child / "train_state.json"))
+    if checkpoints:
+        diagnostic["reason"] = "已找到可完整续训的状态目录。"
+    elif diagnostic["train_state_count"]:
+        diagnostic["reason"] = "输出目录里存在 train_state.json 状态目录，但不属于当前历史任务时间范围。"
+    elif diagnostic["state_dir_count"]:
+        diagnostic["reason"] = "输出目录里有子目录，但没有包含 train_state.json 的完整续训状态目录。"
+    else:
+        diagnostic["reason"] = "输出目录里没有完整续训状态目录；训练完成时 checkpoint-state 可能已被清理，或该配置未写出训练状态。"
+    return diagnostic
+
+
 def _is_transient_resume_state_dir(name: str) -> bool:
     return name.endswith((".tmp", ".backup"))
 
@@ -3674,23 +4343,30 @@ def _fsync_parent_dir(path: Path) -> None:
 
 
 def _read_jsonl(path: Path) -> list[dict[str, Any]]:
+    return _read_jsonl_limited(path)[0]
+
+
+def _read_jsonl_limited(path: Path, *, limit: int | None = None) -> tuple[list[dict[str, Any]], int, bool]:
     if not _path_exists(path):
-        return []
+        return [], 0, False
     out: list[dict[str, Any]] = []
     try:
-        lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
+        lines = [line for line in path.read_text(encoding="utf-8", errors="replace").splitlines() if line.strip()]
     except OSError:
-        return []
+        return [], 0, False
+    total = len(lines)
+    safe_limit = _positive_int_or_none(limit)
+    truncated = bool(safe_limit and total > safe_limit)
+    if safe_limit:
+        lines = lines[-safe_limit:]
     for line in lines:
-        if not line.strip():
-            continue
         try:
             value = json.loads(line)
             if isinstance(value, dict):
                 out.append(value)
         except Exception:
             continue
-    return out
+    return out, total, truncated
 
 
 def _count_jsonl(path: Path) -> int:
