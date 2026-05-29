@@ -19,7 +19,11 @@ from aiohttp import web
 import toml
 
 from library.env import load_dotenv
-from library.preprocess.captions import CAPTIONS_JSON_FILE, normalize_caption_source_mode
+from library.preprocess.captions import (
+    CAPTION_SOURCE_CAPTIONS_JSON,
+    CAPTIONS_JSON_FILE,
+    normalize_caption_source_mode,
+)
 from library.runtime.launch import accelerate_training_command_prefix
 from web.services.config_service import (
     NL_TAG_MIX_CLASSIFICATION_METHOD,
@@ -29,6 +33,7 @@ from web.services.config_service import (
     _nl_tag_mix_caption_source,
     _nl_tag_mix_image_files,
     _normalize_nl_tag_mix,
+    _normalize_trigger_clone,
     apply_auto_data_dirs,
     load_merged_config,
     preflight_training_config,
@@ -2529,6 +2534,24 @@ def _prepare_web_runtime_config(
             "recursive": _bool_value_for_row(row.get("recursive"), True),
             "settings": row.get("settings") if isinstance(row.get("settings"), dict) else {},
         })
+        trigger_clone = _normalize_trigger_clone(row.get("trigger_clone"))
+        if trigger_clone["enabled"]:
+            clone_source_dir = _prepare_runtime_trigger_clone_source(row, group_dir, source_dir)
+            clone_resized_dir = group_dir / "trigger-clone-resized"
+            clone_lora_dir = group_dir / "trigger-clone-lora"
+            clone_resized_dir.mkdir(parents=True, exist_ok=True)
+            clone_lora_dir.mkdir(parents=True, exist_ok=True)
+            clone_settings = dict(row.get("settings") if isinstance(row.get("settings"), dict) else {})
+            clone_settings["caption_source_mode"] = CAPTION_SOURCE_CAPTIONS_JSON
+            clone_settings["prefer_json_caption"] = False
+            runtime_rows.append({
+                "source_dir": clone_source_dir,
+                "image_dir": _display_settings_path(clone_resized_dir),
+                "cache_dir": _display_settings_path(clone_lora_dir),
+                "num_repeats": trigger_clone["num_repeats"],
+                "recursive": _bool_value_for_row(row.get("recursive"), True),
+                "settings": clone_settings,
+            })
 
     original_config_path = run_dir / "config.original.toml"
     if source_path is not None:
@@ -2872,8 +2895,16 @@ def _clone_runtime_dataset_rows(
     cloned_rows: list[dict[str, Any]] = []
     for index, row in enumerate(runtime_rows, start=1):
         group_dir = dataset_cache_dir / f"dataset-{index:02d}"
-        resized_dir = group_dir / "resized"
-        lora_dir = group_dir / "lora"
+        resized_dir = group_dir / _runtime_dataset_child_name(
+            str(row.get("image_dir") or row.get("resized_image_dir") or ""),
+            default="resized",
+            allowed={"resized", "trigger-clone-resized"},
+        )
+        lora_dir = group_dir / _runtime_dataset_child_name(
+            str(row.get("cache_dir") or row.get("lora_cache_dir") or ""),
+            default="lora",
+            allowed={"lora", "trigger-clone-lora"},
+        )
         resized_dir.mkdir(parents=True, exist_ok=True)
         lora_dir.mkdir(parents=True, exist_ok=True)
         if copy_existing:
@@ -2881,7 +2912,11 @@ def _clone_runtime_dataset_rows(
             _copy_runtime_dataset_dir(str(row.get("cache_dir") or row.get("lora_cache_dir") or ""), lora_dir)
         source_dir = str(row.get("source_dir") or row.get("source_image_dir") or row.get("image_dir") or "")
         source_path = _resolve_display_path(source_dir)
-        source_target = group_dir / "source"
+        source_target = group_dir / _runtime_dataset_child_name(
+            source_dir,
+            default="source",
+            allowed={"source", "trigger-clone-source"},
+        )
         if (
             copy_existing
             and source_path
@@ -2899,6 +2934,12 @@ def _clone_runtime_dataset_rows(
             "settings": row.get("settings") if isinstance(row.get("settings"), dict) else {},
         })
     return cloned_rows
+
+
+def _runtime_dataset_child_name(value: str, *, default: str, allowed: set[str]) -> str:
+    path = _resolve_display_path(value)
+    name = path.name if path is not None else ""
+    return name if name in allowed else default
 
 
 def _bool_value_for_row(value: Any, fallback: bool = False) -> bool:
@@ -2929,6 +2970,61 @@ def _prepare_runtime_nl_tag_mix_source(row: dict[str, Any], group_dir: Path, sou
         **caption_settings,
     )
     (target_dir / "results.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
+    return _display_settings_path(target_dir)
+
+
+def _prepare_runtime_trigger_clone_source(row: dict[str, Any], group_dir: Path, source_dir: str) -> str:
+    clone = _normalize_trigger_clone(row.get("trigger_clone"))
+    if not clone["enabled"]:
+        return source_dir
+    prompt = clone["prompt"]
+    if not prompt:
+        raise ValueError("触发提示词图像克隆需要填写触发提示词")
+    source_path = _resolve_display_path(source_dir)
+    if source_path is None:
+        raise ValueError("触发提示词图像克隆需要填写原始数据集路径")
+    if not source_path.is_dir():
+        raise ValueError(f"触发提示词图像克隆失败: {source_dir} 不是目录")
+    target_dir = group_dir / "trigger-clone-source"
+    target_dir.mkdir(parents=True, exist_ok=True)
+    recursive = _bool_value_for_row(row.get("recursive"), True)
+    images = _nl_tag_mix_image_files(source_path, DATASET_IMAGE_EXTS, recursive=recursive)
+    if not images:
+        raise ValueError("触发提示词图像克隆失败: 数据集目录里没有可训练图片")
+
+    captions_json: dict[str, list[str]] = {}
+    items: list[dict[str, str]] = []
+    for image_path in images:
+        rel_image = _nl_tag_mix_relative_image_path(image_path, source_path)
+        target_image = target_dir / rel_image
+        target_image.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(image_path, target_image)
+        rel_key = rel_image.as_posix()
+        captions_json[rel_key] = [prompt]
+        items.append({
+            "image": _display_settings_path(image_path),
+            "target": _display_settings_path(target_image),
+            "caption_key": rel_key,
+        })
+
+    (target_dir / CAPTIONS_JSON_FILE).write_text(
+        json.dumps(captions_json, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+    manifest = {
+        "prompt": prompt,
+        "num_repeats": clone["num_repeats"],
+        "recursive": recursive,
+        "source_dir": _display_settings_path(source_path),
+        "target_dir": _display_settings_path(target_dir),
+        "caption_source_mode": CAPTION_SOURCE_CAPTIONS_JSON,
+        "total": len(items),
+        "items": items,
+    }
+    (target_dir / "trigger-clone-results.json").write_text(
+        json.dumps(manifest, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
     return _display_settings_path(target_dir)
 
 
@@ -3241,7 +3337,7 @@ def _copy_runtime_dataset_dir(source: str, target: Path) -> None:
 
 def _is_materialized_runtime_source_dir(path: Path) -> bool:
     parts = {part.lower() for part in path.parts}
-    return path.name == "source" and "dataset_cache" in parts
+    return path.name in {"source", "trigger-clone-source"} and "dataset_cache" in parts
 
 
 def _unique_runtime_dir(output_root: Path, stem: str) -> Path:

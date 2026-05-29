@@ -503,6 +503,38 @@ def test_preflight_nl_tag_mix_warns_when_no_readable_captions(tmp_path: Path, mo
     assert "全部按 tag 处理" in caption_checks[-1]["message"]
 
 
+def test_preflight_trigger_clone_requires_prompt(tmp_path: Path, monkeypatch):
+    configs, dataset_path = _write_minimal_config_tree(tmp_path)
+    source_dir = tmp_path / "image_dataset" / "character"
+    source_dir.mkdir(parents=True)
+    Image.new("RGB", (8, 8), color=(20, 40, 60)).save(source_dir / "sample.png")
+    dataset_path.write_text(
+        "\n".join(
+            [
+                "[[datasets]]",
+                "",
+                "[[datasets.subsets]]",
+                'image_dir = "post_image_dataset/character_resized"',
+                'cache_dir = "post_image_dataset/character_lora"',
+                'custom_attributes = {source_dir = "image_dataset/character", trigger_clone = {enabled = true, prompt = "", num_repeats = 2}}',
+            ]
+        ),
+        encoding="utf-8",
+    )
+    _patch_config_service_paths(monkeypatch, tmp_path)
+
+    result = config_service.preflight_training_config(
+        "lora",
+        "default",
+        "imported",
+        config_file="configs/imported/lora.toml",
+    )
+
+    prompt_checks = [item for item in result["checks"] if item["key"] == "source_image_dir_trigger_clone_prompt"]
+    assert prompt_checks[-1]["level"] == "error"
+    assert "触发提示词为空" in prompt_checks[-1]["message"]
+
+
 def test_preflight_reports_missing_preprocess_environment_file(tmp_path: Path, monkeypatch):
     configs, _dataset_path = _write_minimal_config_tree(tmp_path)
     _patch_config_service_paths(monkeypatch, tmp_path)
@@ -1122,6 +1154,38 @@ def test_dataset_preset_save_read_preserves_nl_tag_mix(tmp_path: Path, monkeypat
     assert loaded["datasets"][0]["nl_tag_mix"] == {"enabled": True, "tag_ratio": 0.7}
 
 
+def test_dataset_preset_save_read_preserves_trigger_clone(tmp_path: Path, monkeypatch):
+    _write_minimal_config_tree(tmp_path)
+    _patch_config_service_paths(monkeypatch, tmp_path)
+
+    saved = config_service.save_dataset_preset(
+        "configs/datasets/trigger_clone.toml",
+        [{
+            "source_dir": "image_dataset/character",
+            "image_dir": "post_image_dataset/character_resized",
+            "cache_dir": "post_image_dataset/character_cache",
+            "num_repeats": 2,
+            "trigger_clone": {"enabled": True, "prompt": "my_character", "num_repeats": 3},
+        }],
+        {},
+    )
+
+    data = toml.loads(saved["content"])
+    attrs = data["datasets"][0]["subsets"][0]["custom_attributes"]
+    assert attrs["trigger_clone"] == {
+        "enabled": True,
+        "prompt": "my_character",
+        "num_repeats": 3,
+    }
+
+    loaded = config_service.load_dataset_preset("configs/datasets/trigger_clone.toml")
+    assert loaded["datasets"][0]["trigger_clone"] == {
+        "enabled": True,
+        "prompt": "my_character",
+        "num_repeats": 3,
+    }
+
+
 def test_runtime_dataset_doc_can_prefer_train_batch_size():
     doc = config_service._build_dataset_config_doc(
         [{
@@ -1283,6 +1347,46 @@ def test_step_estimate_prefers_epochs_over_max_train_steps(tmp_path: Path, monke
     assert estimate["duration_configured"] is True
     assert estimate["duration_mode"] == "epochs"
     assert estimate["total_steps"] == 30
+
+
+def test_step_estimate_counts_trigger_clone_weight(tmp_path: Path, monkeypatch):
+    configs, dataset_path = _write_minimal_config_tree(tmp_path)
+    _patch_config_service_paths(monkeypatch, tmp_path)
+    source_dir = tmp_path / "image_dataset" / "character"
+    nested_dir = source_dir / "nested"
+    nested_dir.mkdir(parents=True)
+    for idx in range(4):
+        target_dir = nested_dir if idx == 3 else source_dir
+        Image.new("RGB", (8, 8), color=(idx, 20, 40)).save(target_dir / f"{idx}.png")
+    resized_dir = tmp_path / "post_image_dataset" / "character_resized"
+    resized_dir.mkdir(parents=True)
+    for idx in range(3):
+        Image.new("RGB", (8, 8), color=(idx, 60, 40)).save(resized_dir / f"{idx}.png")
+    dataset_path.write_text(
+        "\n".join(
+            [
+                "[[datasets]]",
+                "",
+                "[[datasets.subsets]]",
+                'image_dir = "post_image_dataset/character_resized"',
+                'cache_dir = "post_image_dataset/character_lora"',
+                "recursive = true",
+                "num_repeats = 5",
+                'custom_attributes = {source_dir = "image_dataset/character", trigger_clone = {enabled = true, prompt = "my_character", num_repeats = 2}}',
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    estimate = config_service.estimate_training_steps("lora", "default", "imported")
+
+    assert estimate["weighted_image_count"] == 23
+    assert estimate["train_image_count"] == 7
+    assert estimate["steps_per_epoch"] == 23
+    row = estimate["datasets"][0]
+    assert row["weighted_image_count"] == 15
+    assert row["trigger_clone_image_count"] == 4
+    assert row["trigger_clone_weighted_image_count"] == 8
 
 
 def test_imported_config_can_move_to_rokkotsu_group(tmp_path: Path, monkeypatch):

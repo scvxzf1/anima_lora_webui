@@ -353,6 +353,11 @@
         enabled: false,
         tag_ratio: 0.7,
     });
+    const DEFAULT_TRIGGER_CLONE = Object.freeze({
+        enabled: false,
+        prompt: '',
+        num_repeats: 1,
+    });
     const CAPTION_SOURCE_MODE_OPTIONS = Object.freeze([
         { value: 'auto', label: 'Auto', detail: '自动识别' },
         { value: 'txt', label: 'sd-scripts', detail: '.txt' },
@@ -3399,6 +3404,7 @@
             '<div><span>重复后样本</span><strong id="step-repeated-images">-</strong></div>',
             '<div><span>有效批大小</span><strong id="step-effective-batch">-</strong></div>',
             '<div><span>每轮步数</span><strong id="step-per-epoch">-</strong></div>',
+            '<div><span>最大训练轮数</span><strong id="step-max-train-epochs">-</strong></div>',
             '<div><span>总步数</span><strong id="step-total">-</strong></div>',
             '</div>',
             '<div id="step-dataset-breakdown" class="step-dataset-breakdown"></div>',
@@ -3430,10 +3436,14 @@
         setText('step-repeated-images', `${repeatedImages} = ${weightedImages} x ${sampleRatio}`);
         setText('step-effective-batch', `${effectiveBatch} = ${batchSize} x ${gradAccum}`);
         setText('step-per-epoch', String(stepsPerEpoch));
-        setText('step-total', durationMode === 'unset' ? '未配置' : String(totalSteps));
+        setText('step-max-train-epochs', durationMode === 'epochs' ? String(epochs) : '未设置');
+        const totalLabel = durationMode === 'epochs'
+            ? `${totalSteps} = ${stepsPerEpoch} x ${epochs}`
+            : (durationMode === 'steps' ? `${totalSteps} = max_train_steps` : '未配置');
+        setText('step-total', totalLabel);
         renderStepDatasetBreakdown(datasets);
         const note = durationMode === 'epochs'
-            ? `公式: Σ(每组训练图片 x 重复次数) x sample_ratio / (train_batch_size x gradient_accumulation_steps) x max_train_epochs。max_train_epochs 已设置，max_train_steps 此时不生效。`
+            ? `公式: 向上取整(重复后样本 / 有效批大小) = 每轮步数；每轮步数 x max_train_epochs(${epochs}) = 总步数。max_train_epochs 已设置，max_train_steps 此时不生效。`
             : (durationMode === 'steps'
                 ? `当前未设置 max_train_epochs，训练将直接按 max_train_steps=${maxTrainSteps} 作为固定总步数运行。若填写 epoch，则会按每轮步数重新推导总步数。`
                 : `当前未设置 max_train_epochs，且 max_train_steps=0 表示不启用固定步数。启动训练前需要设置最大训练轮数，或把最大训练步数填成正数。`);
@@ -5263,12 +5273,14 @@
         const subtitle = document.createElement('span');
         const settings = normalizeDatasetDefaults(row.settings || datasetEditorStateForActivePanel().defaults || {});
         const mix = normalizeNlTagMix(row.nl_tag_mix);
+        const triggerClone = normalizeTriggerClone(row.trigger_clone);
         subtitle.textContent = [
             `${settings.resolution}px`,
             `桶 ${settings.min_bucket_reso}-${settings.max_bucket_reso}/${settings.bucket_reso_steps}`,
             `重复 ${row.num_repeats || 1}`,
             captionSourceModeLabel(settings.caption_source_mode),
             mix.enabled ? nlTagMixSummary(mix) : '',
+            triggerClone.enabled ? `触发克隆 x${triggerClone.num_repeats}` : '',
         ].filter(Boolean).join(' · ');
         titleBox.append(title, subtitle);
         const headActions = document.createElement('div');
@@ -5340,6 +5352,7 @@
         body.className = 'dataset-experimental-body';
         body.append(
             createDatasetExperimentalScopePicker(index),
+            createDatasetTriggerCloneEditor(row, index),
             createDatasetCaptionExtensionEditor(row, index),
         );
 
@@ -5586,6 +5599,73 @@
 
         scope.append(copy, actions, chips);
         return scope;
+    }
+
+    function createDatasetTriggerCloneEditor(row, index) {
+        const clone = normalizeTriggerClone(row.trigger_clone);
+        const panel = document.createElement('div');
+        panel.className = ['dataset-trigger-clone', clone.enabled ? 'enabled' : ''].filter(Boolean).join(' ');
+        panel.dataset.index = String(index);
+
+        const toggle = document.createElement('label');
+        toggle.className = 'dataset-trigger-clone-toggle';
+        const checkbox = document.createElement('input');
+        checkbox.type = 'checkbox';
+        checkbox.checked = clone.enabled;
+        checkbox.setAttribute('aria-label', '触发提示词图像克隆');
+        const toggleText = document.createElement('span');
+        toggleText.innerHTML = '<strong>触发提示词图像克隆</strong><small>开启后，本次运行目录会生成额外训练子集；原始数据集不会被修改。</small>';
+        checkbox.addEventListener('change', () => {
+            updateDatasetEditorRowTriggerClone(index, {
+                enabled: checkbox.checked,
+            }, { render: true });
+        });
+        toggle.append(checkbox, toggleText);
+
+        const prompt = document.createElement('label');
+        prompt.className = 'dataset-trigger-clone-prompt';
+        const promptText = document.createElement('span');
+        promptText.textContent = '触发提示词';
+        const promptInput = document.createElement('input');
+        promptInput.type = 'text';
+        promptInput.className = 'field-input';
+        promptInput.value = clone.prompt;
+        promptInput.placeholder = '例如 my_character_token';
+        promptInput.disabled = !clone.enabled;
+        promptInput.addEventListener('input', () => {
+            updateDatasetEditorRowTriggerClone(index, {
+                enabled: true,
+                prompt: promptInput.value,
+            });
+        });
+        prompt.append(promptText, promptInput);
+
+        const repeats = document.createElement('label');
+        repeats.className = 'dataset-trigger-clone-repeats';
+        const repeatsText = document.createElement('span');
+        repeatsText.textContent = '克隆循环次数';
+        const repeatsInput = document.createElement('input');
+        repeatsInput.type = 'number';
+        repeatsInput.min = '1';
+        repeatsInput.step = '1';
+        repeatsInput.value = String(clone.num_repeats);
+        repeatsInput.disabled = !clone.enabled;
+        repeatsInput.addEventListener('input', () => {
+            updateDatasetEditorRowTriggerClone(index, {
+                enabled: true,
+                num_repeats: repeatsInput.value,
+            });
+        });
+        repeats.append(repeatsText, repeatsInput);
+
+        const summary = document.createElement('span');
+        summary.className = 'dataset-trigger-clone-summary';
+        summary.textContent = clone.enabled
+            ? `额外训练权重 x${clone.num_repeats}`
+            : '默认关闭';
+
+        panel.append(toggle, prompt, repeats, summary);
+        return panel;
     }
 
     function normalizeCaptionSourceMode(value, preferJson = false) {
@@ -5961,6 +6041,15 @@
         return `${tagPercent}% tag + ${100 - tagPercent}% nl`;
     }
 
+    function normalizeTriggerClone(raw) {
+        const source = raw && typeof raw === 'object' ? raw : {};
+        return {
+            enabled: source.enabled === true || source.enabled === 'true',
+            prompt: String(source.prompt || '').trim(),
+            num_repeats: Math.max(1, Number.parseInt(source.num_repeats || 1, 10) || 1),
+        };
+    }
+
     function normalizeDatasetEditorRows(rows) {
         return (rows || [])
             .filter((row) => row && typeof row === 'object')
@@ -5970,6 +6059,7 @@
                 cache_dir: String(row.cache_dir || row.lora_cache_dir || ''),
                 num_repeats: Math.max(1, Number.parseInt(row.num_repeats || 1, 10) || 1),
                 nl_tag_mix: normalizeNlTagMix(row.nl_tag_mix),
+                trigger_clone: normalizeTriggerClone(row.trigger_clone),
                 settings: normalizeDatasetRowSettings(row),
             }));
     }
@@ -5981,6 +6071,7 @@
             cache_dir: row.cache_dir,
             num_repeats: row.num_repeats,
             nl_tag_mix: normalizeNlTagMix(row.nl_tag_mix),
+            trigger_clone: normalizeTriggerClone(row.trigger_clone),
             settings: normalizeDatasetDefaults(row.settings || {}),
         }));
     }
@@ -6118,6 +6209,25 @@
         renderDatasetEditor();
     }
 
+    function updateDatasetEditorRowTriggerClone(index, nextClone, options = {}) {
+        const state = datasetEditorStateForActivePanel();
+        const rows = normalizeDatasetEditorRows(state.datasets);
+        if (!rows[index]) return;
+        rows[index].trigger_clone = normalizeTriggerClone({
+            ...rows[index].trigger_clone,
+            ...nextClone,
+        });
+        if (isDatasetTabActive()) {
+            datasetPresetState.datasets = rows;
+        } else {
+            datasetEditorState.datasets = rows;
+        }
+        markDatasetEditorDirty();
+        if (options.render) {
+            renderDatasetEditor();
+        }
+    }
+
     function datasetExperimentalScopeKey(index) {
         return `${isDatasetTabActive() ? 'dataset-preset' : 'config-dataset'}:${index}`;
     }
@@ -6177,6 +6287,7 @@
             image_dir: '',
             cache_dir: '',
             num_repeats: 1,
+            trigger_clone: normalizeTriggerClone(DEFAULT_TRIGGER_CLONE),
             settings: normalizeDatasetDefaults(state.defaults || {}),
         });
         if (isDatasetTabActive()) {
@@ -9266,13 +9377,15 @@
         const rows = normalizeDatasetEditorRows(state.datasets || []);
         const parts = rows.map((row, index) => {
             const settings = normalizeDatasetDefaults(row.settings || state.defaults || {});
+            const triggerClone = normalizeTriggerClone(row.trigger_clone);
             return [
                 `第 ${index + 1} 组`,
                 row.source_dir || '未设置原始路径',
                 `重复 ${row.num_repeats || 1}`,
                 `${settings.resolution}px`,
                 `标注 ${captionSourceModeLabel(settings.caption_source_mode)}`,
-            ].join(' · ');
+                triggerClone.enabled ? `触发克隆 x${triggerClone.num_repeats}` : '',
+            ].filter(Boolean).join(' · ');
         });
         const defaults = normalizeDatasetDefaults(state.defaults || {});
         parts.push(`通用 keep_tokens ${defaults.keep_tokens}`);

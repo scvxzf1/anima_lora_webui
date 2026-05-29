@@ -96,6 +96,7 @@ PREPROCESS_DATASET_SETTING_ORDER = (
 PREPROCESS_DATASET_SETTING_KEYS = frozenset(PREPROCESS_DATASET_SETTING_ORDER)
 RUNTIME_PREPROCESS_ATTR_KEY = "preprocess"
 NL_TAG_MIX_ATTR_KEY = "nl_tag_mix"
+TRIGGER_CLONE_ATTR_KEY = "trigger_clone"
 DEFAULT_NL_TAG_MIX_TAG_RATIO = 0.7
 NL_TAG_MIX_CLASSIFICATION_METHOD = "caption_text_v1"
 CAPTION_SOURCE_MODE_LABELS = {
@@ -916,15 +917,27 @@ def estimate_training_steps(
         resized_dir = _resolve_project_path(str(row.get("image_dir") or ""))
         repeats = _positive_int(row.get("num_repeats"), 1)
         mix = _normalize_nl_tag_mix(row.get("nl_tag_mix"))
+        trigger_clone = _normalize_trigger_clone(row.get("trigger_clone"))
         recursive = _bool_value(row.get("recursive"), True)
         mix_count = _nl_tag_mix_available_count(source_dir, image_exts, recursive=recursive) if mix["enabled"] else None
-        src_count = mix_count if mix_count is not None else _count_images(source_dir, image_exts)
+        src_count = (
+            mix_count
+            if mix_count is not None
+            else _count_source_images(source_dir, image_exts, recursive=recursive)
+        )
         resized_count = _count_images(resized_dir, image_exts)
         used_count = resized_count or src_count
+        trigger_clone_image_count = (
+            _count_source_images(source_dir, image_exts, recursive=recursive)
+            if trigger_clone["enabled"]
+            else 0
+        )
+        trigger_clone_repeats = trigger_clone["num_repeats"] if trigger_clone["enabled"] else 0
+        trigger_clone_weighted = trigger_clone_image_count * trigger_clone_repeats
         source_images += src_count
         resized_images += resized_count
-        train_images += used_count
-        weighted_images += used_count * repeats
+        train_images += used_count + trigger_clone_image_count
+        weighted_images += used_count * repeats + trigger_clone_weighted
         dataset_repeats += repeats
         detail_rows.append({
             "index": idx + 1,
@@ -936,6 +949,9 @@ def estimate_training_steps(
             "train_image_count": used_count,
             "num_repeats": repeats,
             "weighted_image_count": used_count * repeats,
+            "trigger_clone": trigger_clone,
+            "trigger_clone_image_count": trigger_clone_image_count,
+            "trigger_clone_weighted_image_count": trigger_clone_weighted,
             "uses_preprocessed_images": resized_count > 0,
             "recursive": recursive,
             "nl_tag_mix": mix,
@@ -1193,6 +1209,7 @@ def _dataset_rows_from_config(data: dict[str, Any], cfg: dict[str, Any]) -> list
                 "num_repeats": _positive_int(subset.get("num_repeats"), 1),
                 "recursive": _bool_value(subset.get("recursive", dataset.get("recursive")), True),
                 "nl_tag_mix": _normalize_nl_tag_mix(attrs.get(NL_TAG_MIX_ATTR_KEY)),
+                "trigger_clone": _normalize_trigger_clone(attrs.get(TRIGGER_CLONE_ATTR_KEY)),
                 "settings": settings,
             })
 
@@ -1230,6 +1247,9 @@ def _normalize_dataset_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
             "num_repeats": _positive_int(raw.get("num_repeats"), 1),
             "recursive": _bool_value(raw.get("recursive"), True),
             "nl_tag_mix": _normalize_nl_tag_mix(raw.get(NL_TAG_MIX_ATTR_KEY) or raw.get("nl_tag_mix")),
+            "trigger_clone": _normalize_trigger_clone(
+                raw.get(TRIGGER_CLONE_ATTR_KEY) or raw.get("trigger_clone")
+            ),
             "settings": _normalize_dataset_row_settings(raw),
         })
     return clean_rows
@@ -1315,6 +1335,24 @@ def _normalize_nl_tag_mix(raw: Any) -> dict[str, Any]:
     }
 
 
+def _normalize_trigger_clone(raw: Any) -> dict[str, Any]:
+    source = raw if isinstance(raw, dict) else {}
+    return {
+        "enabled": _bool_value(source.get("enabled"), False),
+        "prompt": str(source.get("prompt") or "").strip(),
+        "num_repeats": _positive_int(source.get("num_repeats"), 1),
+    }
+
+
+def _trigger_clone_should_persist(clone: dict[str, Any]) -> bool:
+    normalized = _normalize_trigger_clone(clone)
+    return (
+        bool(normalized["enabled"])
+        or bool(normalized["prompt"])
+        or _positive_int(normalized.get("num_repeats"), 1) != 1
+    )
+
+
 def _nl_tag_mix_enabled(row: dict[str, Any]) -> bool:
     return bool(_normalize_nl_tag_mix(row.get("nl_tag_mix")).get("enabled"))
 
@@ -1393,6 +1431,13 @@ def _build_dataset_config_doc(
             mix_attrs.add("enabled", True)
             mix_attrs.add("tag_ratio", mix["tag_ratio"])
             attrs.add(NL_TAG_MIX_ATTR_KEY, mix_attrs)
+        trigger_clone = _normalize_trigger_clone(row.get("trigger_clone"))
+        if _trigger_clone_should_persist(trigger_clone):
+            clone_attrs = tomlkit.inline_table()
+            clone_attrs.add("enabled", bool(trigger_clone["enabled"]))
+            clone_attrs.add("prompt", trigger_clone["prompt"])
+            clone_attrs.add("num_repeats", _positive_int(trigger_clone.get("num_repeats"), 1))
+            attrs.add(TRIGGER_CLONE_ATTR_KEY, clone_attrs)
         if not include_preprocess_settings:
             preprocess_attrs = tomlkit.inline_table()
             for key, value in _preprocess_settings_for_runtime_attrs(row_cfg).items():
@@ -1652,6 +1697,12 @@ def _count_images(path: Path, image_exts: set[str]) -> int:
     if not path.is_dir():
         return 0
     return sum(1 for item in path.iterdir() if item.is_file() and item.suffix.lower() in image_exts)
+
+
+def _count_source_images(path: Path, image_exts: set[str], *, recursive: bool = True) -> int:
+    if not path.is_dir():
+        return 0
+    return len(_nl_tag_mix_image_files(path, image_exts, recursive=recursive))
 
 
 def _dataset_num_repeats(cfg: dict[str, Any]) -> int:
@@ -3309,12 +3360,23 @@ def _check_dataset_source_paths(cfg: dict[str, Any], add) -> None:
         source = _resolve_project_path(str(row.get("source_dir") or ""))
         key = "source_image_dir" if idx == 1 else f"dataset_{idx}_source_dir"
         label = "源图像目录" if idx == 1 else f"第 {idx} 组原始数据集目录"
+        recursive = _bool_value(row.get("recursive"), True)
+        trigger_clone = _normalize_trigger_clone(row.get("trigger_clone"))
+        if trigger_clone["enabled"] and not trigger_clone["prompt"]:
+            add(
+                "error",
+                f"{key}_trigger_clone_prompt",
+                f"{label} 的触发提示词图像克隆已开启，但触发提示词为空",
+                source,
+            )
         if not str(row.get("source_dir") or "").strip():
             add("error", key, f"{label} 未填写")
         elif not source.exists():
             add("error", key, f"{label} 不存在", source)
         elif not source.is_dir():
             add("error", key, f"{label} 不是目录", source)
+        elif trigger_clone["enabled"] and _count_source_images(source, DATASET_IMAGE_EXTS, recursive=recursive) <= 0:
+            add("error", f"{key}_trigger_clone_images", f"{label} 中没有可克隆的训练图片", source)
         elif _nl_tag_mix_enabled(row):
             settings = row.get("settings") if isinstance(row.get("settings"), dict) else {}
             caption_extension = str(settings.get("caption_extension") or cfg.get("caption_extension") or ".txt")
@@ -3333,7 +3395,7 @@ def _check_dataset_source_paths(cfg: dict[str, Any], add) -> None:
                 caption_source_mode=caption_source_mode,
                 caption_extension=caption_extension,
                 prefer_json_caption=prefer_json_caption,
-                recursive=_bool_value(row.get("recursive"), True),
+                recursive=recursive,
             )
             if image_count <= 0:
                 add("error", f"{key}_nl_tag_mix", f"{label} 中没有可训练图片", source)

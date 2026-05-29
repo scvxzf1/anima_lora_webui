@@ -124,6 +124,18 @@ def test_sample_prompts_save_uses_current_training_config_context() -> None:
     assert "await saveSamplePrompts('');" not in prepare_body
 
 
+def test_step_estimate_panel_shows_epoch_factor() -> None:
+    source = APP_JS.read_text(encoding="utf-8")
+    create_body = _section(source, "function createStepEstimatePanel", "function updateStepEstimatePanel")
+    update_body = _section(source, "function updateStepEstimatePanel", "function liveDatasetRowsForEstimate")
+
+    assert "最大训练轮数" in create_body
+    assert "step-max-train-epochs" in create_body
+    assert "setText('step-max-train-epochs'" in update_body
+    assert "${totalSteps} = ${stepsPerEpoch} x ${epochs}" in update_body
+    assert "每轮步数 x max_train_epochs" in update_body
+
+
 def test_history_list_marks_queue_tasks() -> None:
     source = APP_JS.read_text(encoding="utf-8")
 
@@ -526,6 +538,7 @@ def test_dataset_json_caption_switch_ui_is_wired() -> None:
     assert "实验性/高级/旧功能" in experimental_factory
     assert "dataset-experimental-features" in experimental_factory
     assert "createDatasetExperimentalScopePicker(index)" in experimental_factory
+    assert "createDatasetTriggerCloneEditor(row, index)" in experimental_factory
     assert "createDatasetCaptionExtensionEditor(row, index)" in experimental_factory
     assert "createDatasetNlTagMixEditor(row, index)" not in experimental_factory
     assert "createDatasetRowCaptionSourceModeEditor(settings, index)" not in experimental_factory
@@ -550,6 +563,16 @@ def test_dataset_json_caption_switch_ui_is_wired() -> None:
     assert ".dataset-caption-extension-advanced" in css
     assert ".dataset-caption-extension-input" in css
     assert ".dataset-caption-extension-help" in css
+    assert ".dataset-trigger-clone" in css
+    assert ".dataset-trigger-clone-summary" in css
+
+    trigger_clone_factory = _section(source, "function createDatasetTriggerCloneEditor", "function normalizeCaptionSourceMode")
+    assert "触发提示词图像克隆" in trigger_clone_factory
+    assert "触发提示词" in trigger_clone_factory
+    assert "克隆循环次数" in trigger_clone_factory
+    assert "本次运行目录会生成额外训练子集" in trigger_clone_factory
+    assert "原始数据集不会被修改" in trigger_clone_factory
+    assert "updateDatasetEditorRowTriggerClone(index" in trigger_clone_factory
 
     assert "文本标注扩展名 / caption_extension" in caption_extension_factory
     assert "高级兼容项：仅在 txt 来源或 auto 回退到文本 sidecar 时使用。" in caption_extension_factory
@@ -593,6 +616,10 @@ def test_dataset_json_caption_switch_ui_is_wired() -> None:
     assert "datasetExperimentalScopeIndices(index)" not in caption_source_factory
     assert "input.type === 'checkbox'" in row_update_factory
     assert "DEFAULT_NL_TAG_MIX" in normalize_factory
+    assert "DEFAULT_TRIGGER_CLONE" in source
     assert "nl_tag_mix: normalizeNlTagMix(row.nl_tag_mix)" in normalize_factory
+    assert "trigger_clone: normalizeTriggerClone(row.trigger_clone)" in normalize_factory
+    assert "trigger_clone: normalizeTriggerClone(row.trigger_clone)" in source
+    assert "function updateDatasetEditorRowTriggerClone" in source
     assert ".dataset-nl-tag-mix" in css
     assert ".dataset-nl-tag-summary" in css
