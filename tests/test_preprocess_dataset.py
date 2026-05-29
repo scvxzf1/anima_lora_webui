@@ -167,3 +167,79 @@ def test_resize_to_buckets_min_pixels_filter(tmp_path: Path) -> None:
     assert stats.skipped == 1
     assert stats.written == 0
     assert not (dst / "tiny.png").exists()
+
+
+def test_backup_caption_sidecars_mirrors_nested_layout(tmp_path: Path) -> None:
+    from library.preprocess import backup_caption_sidecars
+
+    src = tmp_path / "src"
+    backup = tmp_path / "run" / "dataset_cache" / "dataset-01" / "caption_backup"
+    _write_image(src / "hero.png", (8, 8))
+    (src / "hero.txt").write_text("plain", encoding="utf-8")
+    (src / "hero.caption").write_text("caption", encoding="utf-8")
+    (src / "hero.json").write_text('{"tags": ["json"]}', encoding="utf-8")
+    (src / "orphan.txt").write_text("not tied to an image", encoding="utf-8")
+    _write_image(src / "nested" / "pose.png", (8, 8))
+    (src / "nested" / "pose.txt").write_text("nested", encoding="utf-8")
+    _write_image(src / "missing.png", (8, 8))
+
+    stats = backup_caption_sidecars(src, backup, recursive=True)
+
+    assert stats.images_seen == 3
+    assert stats.copied == 4
+    assert stats.missing == 1
+    assert (backup / "hero.txt").read_text(encoding="utf-8") == "plain"
+    assert (backup / "hero.caption").read_text(encoding="utf-8") == "caption"
+    assert (backup / "hero.json").is_file()
+    assert (backup / "nested" / "pose.txt").read_text(encoding="utf-8") == "nested"
+    assert not (backup / "orphan.txt").exists()
+
+
+def test_backup_caption_sidecars_includes_custom_extension(tmp_path: Path) -> None:
+    from library.preprocess import backup_caption_sidecars
+
+    src = tmp_path / "src"
+    backup = tmp_path / "backup"
+    _write_image(src / "hero.png", (8, 8))
+    (src / "hero.tags").write_text("custom", encoding="utf-8")
+
+    stats = backup_caption_sidecars(src, backup, caption_extension="tags")
+
+    assert stats.copied == 1
+    assert (backup / "hero.tags").read_text(encoding="utf-8") == "custom"
+
+
+def test_backup_caption_sidecars_warns_and_continues(tmp_path: Path, monkeypatch) -> None:
+    from library.preprocess import captions
+
+    src = tmp_path / "src"
+    backup = tmp_path / "backup"
+    _write_image(src / "hero.png", (8, 8))
+    (src / "hero.txt").write_text("plain", encoding="utf-8")
+    warnings: list[str] = []
+
+    def fail_copy(_source, _target):
+        raise OSError("copy denied")
+
+    monkeypatch.setattr(captions.shutil, "copy2", fail_copy)
+
+    stats = captions.backup_caption_sidecars(src, backup, warn=warnings.append)
+
+    assert stats.failed == 1
+    assert stats.copied == 0
+    assert warnings and "copy denied" in warnings[0]
+
+
+def test_backup_caption_sidecars_missing_source_is_warning_only(tmp_path: Path) -> None:
+    from library.preprocess import backup_caption_sidecars
+
+    warnings: list[str] = []
+    stats = backup_caption_sidecars(
+        tmp_path / "missing",
+        tmp_path / "backup",
+        warn=warnings.append,
+    )
+
+    assert stats.images_seen == 0
+    assert stats.failed == 0
+    assert warnings and "source directory does not exist" in warnings[0]

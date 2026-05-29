@@ -293,7 +293,20 @@ class AnimaTextEncoderOutputsCachingStrategy(TextEncoderOutputsCachingStrategy):
         with _safe_open(cache_path, framework="pt") as f:
             keys = set(f.keys())
             has_variants = "num_variants" in keys
-            if has_variants and self.use_shuffled_caption_variants:
+            if has_variants and "caption_multi_source" in keys:
+                num_variants = int(f.get_tensor("num_variants"))
+                vi = random.randint(0, max(0, num_variants - 1))
+                prompt_embeds = f.get_tensor(f"prompt_embeds_v{vi}")
+                attn_mask = f.get_tensor(f"attn_mask_v{vi}")
+                t5_input_ids = f.get_tensor(f"t5_input_ids_v{vi}")
+                t5_attn_mask = f.get_tensor(f"t5_attn_mask_v{vi}")
+                crossattn_key = f"crossattn_emb_v{vi}"
+                crossattn_emb = (
+                    f.get_tensor(crossattn_key)
+                    if self.cache_llm_adapter_outputs and crossattn_key in keys
+                    else None
+                )
+            elif has_variants and self.use_shuffled_caption_variants:
                 num_variants = int(f.get_tensor("num_variants"))
                 v0_intact = "v0_intact" in keys
                 if not v0_intact:

@@ -7,6 +7,7 @@ import subprocess
 import sys
 from datetime import datetime
 from pathlib import Path
+import re
 import tomllib
 from typing import Any
 from urllib.parse import quote
@@ -16,7 +17,16 @@ import tomlkit
 from PIL import Image, UnidentifiedImageError
 
 from library.env import expand_env_vars, expand_env_vars_in_obj, load_dotenv
-from library.preprocess.captions import load_json_caption
+from library.preprocess.captions import (
+    CAPTION_SOURCE_AUTO,
+    CAPTION_SOURCE_CAPTIONS_JSON,
+    CAPTION_SOURCE_JSON,
+    CAPTION_SOURCE_TXT,
+    normalize_caption_source_mode,
+    read_caption_source,
+    read_caption_source_from_dirs,
+)
+from library.preprocess._dataset import walk_images
 from web.services.settings_service import display_path as _display_settings_path
 from web.services.settings_service import resolve_output_root
 
@@ -46,8 +56,14 @@ PREPROCESS_ENV_REQUIRED_FILES = (
 UI_ONLY_CONFIG_FIELDS = {
     "dataset_config_picker",
 }
+RETIRED_TOP_LEVEL_CONFIG_FIELDS = {
+    "use_hydra",
+    "use_sigma_router",
+    "use_fei_router",
+}
 DATASET_PRESETS_DIR = CONFIGS_DIR / "datasets"
 DATASET_IMAGE_EXTS = frozenset({".png", ".jpg", ".jpeg", ".webp", ".bmp"})
+DATASET_CAPTION_EXTS = (".txt", ".json", ".caption")
 DATASET_PREVIEW_LIMIT = 120
 DATASET_CAPTION_MAX_CHARS = 20000
 OUTPUT_RUN_CONFIG_FILES = {
@@ -66,6 +82,8 @@ DATASET_SETTING_KEYS = frozenset({
     "validation_split_num",
     "validation_seed",
     "prefer_json_caption",
+    "caption_extension",
+    "caption_source_mode",
 })
 PREPROCESS_DATASET_SETTING_ORDER = (
     "resolution",
@@ -77,6 +95,15 @@ PREPROCESS_DATASET_SETTING_ORDER = (
 )
 PREPROCESS_DATASET_SETTING_KEYS = frozenset(PREPROCESS_DATASET_SETTING_ORDER)
 RUNTIME_PREPROCESS_ATTR_KEY = "preprocess"
+NL_TAG_MIX_ATTR_KEY = "nl_tag_mix"
+DEFAULT_NL_TAG_MIX_TAG_RATIO = 0.7
+NL_TAG_MIX_CLASSIFICATION_METHOD = "caption_text_v1"
+CAPTION_SOURCE_MODE_LABELS = {
+    CAPTION_SOURCE_AUTO: "自动识别",
+    CAPTION_SOURCE_TXT: "sd-scripts .txt",
+    CAPTION_SOURCE_JSON: "AnimaLoraToolkit .json",
+    CAPTION_SOURCE_CAPTIONS_JSON: "DiffPipeForge captions.json",
+}
 SYSTEM_PRESET_FILES = frozenset({
     "configs/base.toml",
     "configs/presets.toml",
@@ -443,6 +470,10 @@ def list_dataset_preset_images(
     if not caption_extension.startswith("."):
         caption_extension = f".{caption_extension}"
     prefer_json_caption = _bool_value(settings.get("prefer_json_caption"), False)
+    caption_source_mode = normalize_caption_source_mode(
+        settings.get("caption_source_mode"),
+        prefer_json_caption,
+    )
     source_kind = "source" if str(source or "").strip().lower() == "source" else "training"
     image_dir_raw = row.get("source_dir") if source_kind == "source" else row.get("image_dir")
     image_dir = _resolve_project_path(str(image_dir_raw or ""))
@@ -458,11 +489,13 @@ def list_dataset_preset_images(
             source=source_kind,
             caption_extension=caption_extension,
             prefer_json_caption=prefer_json_caption,
+            caption_source_mode=caption_source_mode,
             source_dir=source_dir,
             train_dir=train_dir,
         )
         for path in listing["items"]
     ]
+    caption_summary = _dataset_caption_detection_summary(images)
     directory_exists = image_dir.is_dir()
     return {
         "ok": True,
@@ -475,6 +508,9 @@ def list_dataset_preset_images(
         "directory_exists": directory_exists,
         "caption_extension": caption_extension,
         "prefer_json_caption": prefer_json_caption,
+        "caption_source_mode": caption_source_mode,
+        "caption_source_label": _caption_source_mode_label(caption_source_mode),
+        "caption_summary": caption_summary,
         "count": len(images),
         "total": listing["total"],
         "limit": listing["limit"],
@@ -879,7 +915,10 @@ def estimate_training_steps(
         source_dir = _resolve_project_path(str(row.get("source_dir") or ""))
         resized_dir = _resolve_project_path(str(row.get("image_dir") or ""))
         repeats = _positive_int(row.get("num_repeats"), 1)
-        src_count = _count_images(source_dir, image_exts)
+        mix = _normalize_nl_tag_mix(row.get("nl_tag_mix"))
+        recursive = _bool_value(row.get("recursive"), True)
+        mix_count = _nl_tag_mix_available_count(source_dir, image_exts, recursive=recursive) if mix["enabled"] else None
+        src_count = mix_count if mix_count is not None else _count_images(source_dir, image_exts)
         resized_count = _count_images(resized_dir, image_exts)
         used_count = resized_count or src_count
         source_images += src_count
@@ -898,6 +937,9 @@ def estimate_training_steps(
             "num_repeats": repeats,
             "weighted_image_count": used_count * repeats,
             "uses_preprocessed_images": resized_count > 0,
+            "recursive": recursive,
+            "nl_tag_mix": mix,
+            "nl_tag_mix_missing": mix["enabled"] and mix_count is None,
         })
 
     sample_ratio = _positive_float(cfg.get("sample_ratio"), 1.0)
@@ -1020,6 +1062,7 @@ def _single_dataset_config_from_cfg(cfg: dict[str, Any]) -> dict[str, Any]:
             "caption_extension": ".txt",
             "keep_tokens": 3,
             "prefer_json_caption": False,
+            "caption_source_mode": CAPTION_SOURCE_AUTO,
         },
         "datasets": [
             {
@@ -1057,9 +1100,17 @@ def _dataset_defaults_from_config(data: dict[str, Any]) -> dict[str, Any]:
         "validation_split": _positive_float(_first_dataset_value(data, "validation_split", 0.025), 0.025),
         "validation_split_num": _positive_int(_first_dataset_value(data, "validation_split_num", 0), 0),
         "validation_seed": _positive_int(_first_dataset_value(data, "validation_seed", 42), 42),
-        "caption_extension": str((data.get("general") or {}).get("caption_extension") or ".txt"),
+        "caption_extension": str(_first_dataset_value(
+            data,
+            "caption_extension",
+            (data.get("general") or {}).get("caption_extension") or ".txt",
+        )),
         "keep_tokens": _positive_int((data.get("general") or {}).get("keep_tokens"), 3),
-        "prefer_json_caption": _bool_value((data.get("general") or {}).get("prefer_json_caption"), False),
+        "prefer_json_caption": _bool_value(_first_dataset_value(data, "prefer_json_caption"), False),
+        "caption_source_mode": normalize_caption_source_mode(
+            _first_dataset_value(data, "caption_source_mode"),
+            _bool_value(_first_dataset_value(data, "prefer_json_caption"), False),
+        ),
     }
 
 
@@ -1140,6 +1191,8 @@ def _dataset_rows_from_config(data: dict[str, Any], cfg: dict[str, Any]) -> list
                 "image_dir": image_dir,
                 "cache_dir": cache_dir,
                 "num_repeats": _positive_int(subset.get("num_repeats"), 1),
+                "recursive": _bool_value(subset.get("recursive", dataset.get("recursive")), True),
+                "nl_tag_mix": _normalize_nl_tag_mix(attrs.get(NL_TAG_MIX_ATTR_KEY)),
                 "settings": settings,
             })
 
@@ -1175,6 +1228,8 @@ def _normalize_dataset_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
             "image_dir": _display_path(image_path),
             "cache_dir": _display_path(cache_path),
             "num_repeats": _positive_int(raw.get("num_repeats"), 1),
+            "recursive": _bool_value(raw.get("recursive"), True),
+            "nl_tag_mix": _normalize_nl_tag_mix(raw.get(NL_TAG_MIX_ATTR_KEY) or raw.get("nl_tag_mix")),
             "settings": _normalize_dataset_row_settings(raw),
         })
     return clean_rows
@@ -1216,7 +1271,12 @@ def _normalize_dataset_defaults(raw: dict[str, Any]) -> dict[str, Any]:
     out["validation_seed"] = _positive_int(raw.get("validation_seed"), 42)
     out["caption_extension"] = str(raw.get("caption_extension") or ".txt").strip() or ".txt"
     out["keep_tokens"] = _positive_int(raw.get("keep_tokens"), 3)
-    out["prefer_json_caption"] = _bool_value(raw.get("prefer_json_caption"), False)
+    prefer_json = _bool_value(raw.get("prefer_json_caption"), False)
+    out["prefer_json_caption"] = prefer_json
+    out["caption_source_mode"] = normalize_caption_source_mode(
+        raw.get("caption_source_mode"),
+        prefer_json,
+    )
     return out
 
 
@@ -1237,6 +1297,26 @@ def _normalize_preprocess_dataset_settings(raw: dict[str, Any]) -> dict[str, Any
     if "bucket_no_upscale" in raw:
         out["bucket_no_upscale"] = str(raw.get("bucket_no_upscale", False)).lower() in {"1", "true", "yes", "on"}
     return out
+
+
+def _normalize_nl_tag_mix(raw: Any) -> dict[str, Any]:
+    source = raw if isinstance(raw, dict) else {}
+    enabled = _bool_value(source.get("enabled"), False)
+    try:
+        tag_ratio = float(source.get("tag_ratio", DEFAULT_NL_TAG_MIX_TAG_RATIO))
+    except (TypeError, ValueError):
+        tag_ratio = DEFAULT_NL_TAG_MIX_TAG_RATIO
+    if tag_ratio > 1:
+        tag_ratio = tag_ratio / 100
+    tag_ratio = min(1.0, max(0.0, tag_ratio))
+    return {
+        "enabled": enabled,
+        "tag_ratio": tag_ratio,
+    }
+
+
+def _nl_tag_mix_enabled(row: dict[str, Any]) -> bool:
+    return bool(_normalize_nl_tag_mix(row.get("nl_tag_mix")).get("enabled"))
 
 
 def _preprocess_settings_from_custom_attributes(attrs: dict[str, Any]) -> dict[str, Any]:
@@ -1263,8 +1343,6 @@ def _build_dataset_config_doc(
     general = tomlkit.table()
     general.add("caption_extension", str(cfg.get("caption_extension") or ".txt"))
     general.add("keep_tokens", _positive_int(cfg.get("keep_tokens"), 3))
-    if _bool_value(cfg.get("prefer_json_caption"), False):
-        general.add("prefer_json_caption", True)
     doc.add("general", general)
 
     datasets = tomlkit.aot()
@@ -1277,6 +1355,17 @@ def _build_dataset_config_doc(
         if prefer_train_batch_size and cfg.get("train_batch_size") not in (None, ""):
             batch_size = cfg.get("train_batch_size")
         dataset.add("batch_size", _positive_int(batch_size, 1))
+        caption_source_mode = normalize_caption_source_mode(
+            row_cfg.get("caption_source_mode"),
+            _bool_value(row_cfg.get("prefer_json_caption"), False),
+        )
+        dataset.add("caption_source_mode", caption_source_mode)
+        dataset.add("caption_extension", str(row_cfg.get("caption_extension") or cfg.get("caption_extension") or ".txt"))
+        dataset.add(
+            "prefer_json_caption",
+            caption_source_mode == CAPTION_SOURCE_JSON
+            or _bool_value(row_cfg.get("prefer_json_caption"), False),
+        )
         if include_preprocess_settings:
             dataset.add("enable_bucket", bool(row_cfg.get("enable_bucket", True)))
             dataset.add("min_bucket_reso", _positive_int(row_cfg.get("min_bucket_reso"), 256))
@@ -1294,8 +1383,16 @@ def _build_dataset_config_doc(
         subset.add("image_dir", row["image_dir"])
         subset.add("cache_dir", row["cache_dir"])
         subset.add("num_repeats", _positive_int(row.get("num_repeats"), 1))
+        if not _bool_value(row.get("recursive"), True):
+            subset.add("recursive", False)
         attrs = tomlkit.inline_table()
         attrs.add("source_dir", row["source_dir"])
+        mix = _normalize_nl_tag_mix(row.get("nl_tag_mix"))
+        if mix["enabled"]:
+            mix_attrs = tomlkit.inline_table()
+            mix_attrs.add("enabled", True)
+            mix_attrs.add("tag_ratio", mix["tag_ratio"])
+            attrs.add(NL_TAG_MIX_ATTR_KEY, mix_attrs)
         if not include_preprocess_settings:
             preprocess_attrs = tomlkit.inline_table()
             for key, value in _preprocess_settings_for_runtime_attrs(row_cfg).items():
@@ -1364,6 +1461,7 @@ def _dataset_image_preview_meta(
     source: str,
     caption_extension: str,
     prefer_json_caption: bool,
+    caption_source_mode: str,
     source_dir: Path,
     train_dir: Path,
 ) -> dict[str, Any]:
@@ -1374,6 +1472,7 @@ def _dataset_image_preview_meta(
         source_dir,
         train_dir,
         prefer_json_caption=prefer_json_caption,
+        caption_source_mode=caption_source_mode,
     )
     dimensions = _dataset_image_dimensions(path)
     rel_path = _display_path(path)
@@ -1418,9 +1517,11 @@ def _dataset_caption_meta(
     train_dir: Path,
     *,
     prefer_json_caption: bool = False,
+    caption_source_mode: str | None = None,
 ) -> dict[str, Any]:
     extension = caption_extension if caption_extension.startswith(".") else f".{caption_extension}"
-    directories = []
+    source_mode = normalize_caption_source_mode(caption_source_mode, prefer_json_caption)
+    directories: list[Path] = []
     for directory in (path.parent, source_dir, train_dir):
         if not directory:
             continue
@@ -1428,47 +1529,29 @@ def _dataset_caption_meta(
         if directory not in directories:
             directories.append(directory)
 
-    if prefer_json_caption:
-        for directory in directories:
-            candidate = directory / f"{path.stem}.json"
-            if not candidate.exists() or not candidate.is_file():
-                continue
-            try:
-                text = load_json_caption(candidate).render()
-            except Exception:
-                continue
-            truncated = len(text) > DATASET_CAPTION_MAX_CHARS
-            if truncated:
-                text = text[:DATASET_CAPTION_MAX_CHARS]
-            return {
-                "ok": True,
-                "file": _display_path(candidate),
-                "extension": ".json",
-                "text": text,
-                "truncated": truncated,
-                "length": len(text),
-            }
-
-    candidates = []
-    for directory in directories:
-        candidate = (directory / f"{path.stem}{extension}").resolve()
-        if candidate not in candidates:
-            candidates.append(candidate)
-
-    for candidate in candidates:
-        if not candidate.exists() or not candidate.is_file():
-            continue
-        try:
-            text = candidate.read_text(encoding="utf-8")
-        except UnicodeDecodeError:
-            text = candidate.read_text(encoding="utf-8", errors="replace")
+    source = read_caption_source_from_dirs(
+        path,
+        directories,
+        prefer_json_caption=prefer_json_caption,
+        caption_source_mode=source_mode,
+        caption_extension=extension,
+        warn=None,
+    )
+    if source.path is not None:
+        texts = source.caption_texts()
+        text = _format_caption_preview_text(texts)
         truncated = len(text) > DATASET_CAPTION_MAX_CHARS
         if truncated:
             text = text[:DATASET_CAPTION_MAX_CHARS]
         return {
             "ok": True,
-            "file": _display_path(candidate),
-            "extension": extension,
+            "file": _display_path(source.path),
+            "extension": _caption_extension_for_detected_mode(source.detected_mode, extension),
+            "source_mode": source_mode,
+            "source_label": _caption_source_mode_label(source_mode),
+            "detected_mode": source.detected_mode,
+            "format_label": _caption_source_mode_label(source.detected_mode),
+            "caption_count": len(texts),
             "text": text,
             "truncated": truncated,
             "length": len(text),
@@ -1476,11 +1559,73 @@ def _dataset_caption_meta(
     return {
         "ok": False,
         "file": "",
-        "extension": extension,
+        "extension": _caption_extension_for_detected_mode(source_mode, extension),
+        "source_mode": source_mode,
+        "source_label": _caption_source_mode_label(source_mode),
+        "detected_mode": "",
+        "format_label": "",
+        "caption_count": 0,
         "text": "",
         "truncated": False,
         "length": 0,
     }
+
+
+def _caption_source_mode_label(mode: str | None) -> str:
+    return CAPTION_SOURCE_MODE_LABELS.get(str(mode or ""), str(mode or "自动识别"))
+
+
+def _caption_extension_for_detected_mode(mode: str | None, fallback: str) -> str:
+    if mode == CAPTION_SOURCE_CAPTIONS_JSON:
+        return "captions.json"
+    if mode == CAPTION_SOURCE_JSON:
+        return ".json"
+    if mode == CAPTION_SOURCE_TXT:
+        return fallback
+    if mode == CAPTION_SOURCE_AUTO:
+        return "auto"
+    return fallback
+
+
+def _format_caption_preview_text(texts: list[str]) -> str:
+    if len(texts) <= 1:
+        return texts[0] if texts else ""
+    return "\n".join(f"{idx}. {text}" for idx, text in enumerate(texts, start=1))
+
+
+def _dataset_caption_detection_summary(images: list[dict[str, Any]]) -> str:
+    counts: dict[str, int] = {}
+    caption_total = 0
+    missing = 0
+    for image in images:
+        caption = image.get("caption") if isinstance(image, dict) else {}
+        if not isinstance(caption, dict) or not caption.get("ok"):
+            missing += 1
+            continue
+        mode = str(caption.get("detected_mode") or "")
+        counts[mode] = counts.get(mode, 0) + 1
+        caption_total += _positive_int(caption.get("caption_count"), 1)
+    parts = [
+        f"{_caption_source_mode_label(mode)} {count} 张"
+        for mode, count in counts.items()
+        if mode
+    ]
+    if missing:
+        parts.append(f"缺少 {missing} 张")
+    if caption_total and counts.get(CAPTION_SOURCE_CAPTIONS_JSON):
+        parts.append(f"共 {caption_total} 条标注")
+    return "，".join(parts)
+
+
+def _caption_detection_counts_text(counts: dict[str, int], caption_total: int) -> str:
+    parts = [
+        f"{_caption_source_mode_label(mode)} {count} 张"
+        for mode, count in counts.items()
+        if mode
+    ]
+    if caption_total and counts.get(CAPTION_SOURCE_CAPTIONS_JSON):
+        parts.append(f"共 {caption_total} 条标注")
+    return "识别结果：" + "，".join(parts) if parts else ""
 
 
 def _dataset_preview_empty_message(directory: Path, source: str) -> str:
@@ -1887,17 +2032,18 @@ def _prepare_raw_file_patch(
     values = {
         key: value
         for key, value in values.items()
-        if key not in UI_ONLY_CONFIG_FIELDS
+        if key not in UI_ONLY_CONFIG_FIELDS and key not in RETIRED_TOP_LEVEL_CONFIG_FIELDS
     }
 
     source = content if content is not None else load_raw_file(rel_path)
     try:
         next_content = _patch_toml_top_level(source, values)
+        next_content, removed_keys = _remove_retired_top_level_fields(next_content)
         toml.loads(next_content)
     except Exception as e:
         return False, f"TOML 更新失败: {e}", None, "", []
 
-    return True, "保存成功", path, next_content, sorted(values.keys())
+    return True, "保存成功", path, next_content, sorted([*values.keys(), *removed_keys])
 
 
 def _restore_dataset_config_after_failed_train_patch(path: Path, existed: bool, previous_content: str) -> None:
@@ -2806,6 +2952,18 @@ def _patch_toml_top_level(content: str, values: dict[str, Any]) -> str:
     return tomlkit.dumps(doc)
 
 
+def _remove_retired_top_level_fields(content: str) -> tuple[str, list[str]]:
+    doc = tomlkit.parse(content or "")
+    removed: list[str] = []
+    for key in sorted(RETIRED_TOP_LEVEL_CONFIG_FIELDS):
+        if key in doc:
+            del doc[key]
+            removed.append(key)
+    if not removed:
+        return content, []
+    return tomlkit.dumps(doc), removed
+
+
 def _normalize_patch_value(key: str, value: Any) -> Any:
     if key in {"sample_every_n_epochs", "sample_every_n_steps"}:
         if value in ("", None):
@@ -2933,6 +3091,155 @@ def _display_path(path: Path) -> str:
         return str(path)
 
 
+def _nl_tag_mix_available_count(source_dir: Path, image_exts: set[str], *, recursive: bool = True) -> int | None:
+    if not source_dir.is_dir():
+        return None
+    return len(_nl_tag_mix_image_files(source_dir, image_exts, recursive=recursive))
+
+
+def _nl_tag_mix_image_files(
+    source_dir: Path,
+    image_exts: set[str] | frozenset[str] = DATASET_IMAGE_EXTS,
+    *,
+    recursive: bool = True,
+) -> list[Path]:
+    if not source_dir.is_dir():
+        return []
+    return sorted(
+        path
+        for path in walk_images(source_dir, recursive=recursive)
+        if path.suffix.lower() in image_exts
+    )
+
+
+def _nl_tag_mix_caption_source(
+    image_path: Path,
+    *,
+    caption_source_mode: str | None = None,
+    caption_extension: str = ".txt",
+    prefer_json_caption: bool = False,
+    captions_root: Path | None = None,
+):
+    return read_caption_source(
+        image_path,
+        prefer_json_caption=prefer_json_caption,
+        caption_source_mode=caption_source_mode or CAPTION_SOURCE_AUTO,
+        caption_extension=caption_extension,
+        captions_root=captions_root or image_path.parent,
+    )
+
+
+def _nl_tag_mix_caption_path_and_text(
+    image_path: Path,
+    *,
+    caption_source_mode: str | None = None,
+    caption_extension: str = ".txt",
+    prefer_json_caption: bool = False,
+    captions_root: Path | None = None,
+) -> tuple[Path | None, str]:
+    source = _nl_tag_mix_caption_source(
+        image_path,
+        caption_source_mode=caption_source_mode,
+        caption_extension=caption_extension,
+        prefer_json_caption=prefer_json_caption,
+        captions_root=captions_root,
+    )
+    text = "\n".join(source.caption_texts())
+    if source.path is not None and text.strip():
+        return source.path, text
+    return None, ""
+
+
+def _nl_tag_mix_caption_counts(
+    source_dir: Path,
+    *,
+    caption_source_mode: str | None = None,
+    caption_extension: str = ".txt",
+    prefer_json_caption: bool = False,
+    recursive: bool = True,
+) -> tuple[int, int]:
+    images = _nl_tag_mix_image_files(source_dir, recursive=recursive)
+    captioned = 0
+    for image in images:
+        _caption_path, text = _nl_tag_mix_caption_path_and_text(
+            image,
+            caption_source_mode=caption_source_mode,
+            caption_extension=caption_extension,
+            prefer_json_caption=prefer_json_caption,
+            captions_root=source_dir,
+        )
+        if text.strip():
+            captioned += 1
+    return len(images), captioned
+
+
+def _classify_nl_tag_caption_text(text: str) -> dict[str, Any]:
+    normalized = " ".join(str(text or "").split())
+    if not normalized:
+        return {
+            "kind": "tag",
+            "reason": "missing_or_empty_caption_default_tag",
+            "method": NL_TAG_MIX_CLASSIFICATION_METHOD,
+            "metrics": {"length": 0},
+        }
+
+    comma_parts = [part.strip() for part in re.split(r"[,，]", normalized) if part.strip()]
+    word_groups = re.findall(r"[A-Za-z]+|[\u4e00-\u9fff]+|\d+", normalized)
+    sentence_marks = len(re.findall(r"[.!?。！？]", normalized))
+    segment_word_counts = [
+        len(re.findall(r"[A-Za-z]+|[\u4e00-\u9fff]+|\d+", part))
+        for part in comma_parts
+    ]
+    short_segments = sum(1 for count in segment_word_counts if 0 < count <= 4)
+    short_segment_ratio = short_segments / len(segment_word_counts) if segment_word_counts else 0.0
+    avg_segment_words = sum(segment_word_counts) / len(segment_word_counts) if segment_word_counts else float(len(word_groups))
+    lower = normalized.lower()
+    prose_markers = len(re.findall(
+        r"\b(a|an|the|with|and|of|in|on|as|while|where|who|that|this|she|he|they|it|is|are|was|were|takes|place|scene|composition|rendered|illustration)\b",
+        lower,
+    ))
+
+    is_nl = (
+        sentence_marks >= 2
+        or (sentence_marks >= 1 and len(word_groups) >= 24)
+        or (len(word_groups) >= 35 and avg_segment_words >= 6 and prose_markers >= 3)
+    )
+    is_tag = (
+        len(comma_parts) >= 4
+        and short_segment_ratio >= 0.62
+        and sentence_marks <= 1
+    )
+    metrics = {
+        "length": len(normalized),
+        "word_count": len(word_groups),
+        "comma_part_count": len(comma_parts),
+        "sentence_mark_count": sentence_marks,
+        "short_segment_ratio": round(short_segment_ratio, 4),
+        "avg_segment_words": round(avg_segment_words, 4),
+        "prose_marker_count": prose_markers,
+    }
+    if is_nl:
+        return {
+            "kind": "nl",
+            "reason": "caption_has_sentence_prose_shape",
+            "method": NL_TAG_MIX_CLASSIFICATION_METHOD,
+            "metrics": metrics,
+        }
+    if is_tag:
+        return {
+            "kind": "tag",
+            "reason": "caption_has_comma_tag_shape",
+            "method": NL_TAG_MIX_CLASSIFICATION_METHOD,
+            "metrics": metrics,
+        }
+    return {
+        "kind": "tag",
+        "reason": "ambiguous_caption_default_tag",
+        "method": NL_TAG_MIX_CLASSIFICATION_METHOD,
+        "metrics": metrics,
+    }
+
+
 def _check_training_images(cfg: dict[str, Any], add) -> None:
     rows = _dataset_rows_for_estimate(cfg)
     if not rows:
@@ -2942,6 +3249,8 @@ def _check_training_images(cfg: dict[str, Any], add) -> None:
         }]
     image_exts = {".png", ".jpg", ".jpeg", ".webp", ".bmp"}
     all_missing_captions: list[str] = []
+    detected_caption_modes: dict[str, int] = {}
+    detected_caption_total = 0
     checked_groups = 0
     for idx, row in enumerate(rows, start=1):
         image_dir = _resolve_project_path(str(row.get("image_dir") or row.get("source_dir") or ""))
@@ -2954,6 +3263,10 @@ def _check_training_images(cfg: dict[str, Any], add) -> None:
             settings.get("prefer_json_caption", cfg.get("prefer_json_caption")),
             False,
         )
+        caption_source_mode = normalize_caption_source_mode(
+            settings.get("caption_source_mode", cfg.get("caption_source_mode")),
+            prefer_json_caption,
+        )
         if not image_dir.is_dir():
             continue
         checked_groups += 1
@@ -2964,24 +3277,28 @@ def _check_training_images(cfg: dict[str, Any], add) -> None:
             add("error", key, f"{label}里没有可训练图片，请先预处理生成训练图", image_dir)
             continue
         for image in images[:50]:
-            source_caption = source_dir / f"{image.stem}{caption_extension}"
-            resized_caption = image.with_suffix(caption_extension)
-            json_exists = (
-                prefer_json_caption
-                and (
-                    (source_dir / f"{image.stem}.json").exists()
-                    or image.with_suffix(".json").exists()
-                )
+            source = read_caption_source_from_dirs(
+                image,
+                [source_dir, image.parent],
+                prefer_json_caption=prefer_json_caption,
+                caption_source_mode=caption_source_mode,
+                caption_extension=caption_extension,
             )
-            if not json_exists and not source_caption.exists() and not resized_caption.exists():
+            if source.path is None:
                 all_missing_captions.append(image.name)
+            else:
+                detected_caption_modes[source.detected_mode] = (
+                    detected_caption_modes.get(source.detected_mode, 0) + 1
+                )
+                detected_caption_total += len(source.caption_texts())
     if checked_groups == 0:
         return
     if all_missing_captions:
         sample = ", ".join(all_missing_captions[:3])
         add("warning", "captions", f"部分图片未找到同名标注，例如 {sample}")
     else:
-        add("ok", "captions", "抽样图片均找到同名标注")
+        summary = _caption_detection_counts_text(detected_caption_modes, detected_caption_total)
+        add("ok", "captions", f"抽样图片均找到标注；{summary}" if summary else "抽样图片均找到标注")
 
 
 def _check_dataset_source_paths(cfg: dict[str, Any], add) -> None:
@@ -2998,6 +3315,37 @@ def _check_dataset_source_paths(cfg: dict[str, Any], add) -> None:
             add("error", key, f"{label} 不存在", source)
         elif not source.is_dir():
             add("error", key, f"{label} 不是目录", source)
+        elif _nl_tag_mix_enabled(row):
+            settings = row.get("settings") if isinstance(row.get("settings"), dict) else {}
+            caption_extension = str(settings.get("caption_extension") or cfg.get("caption_extension") or ".txt")
+            if not caption_extension.startswith("."):
+                caption_extension = f".{caption_extension}"
+            prefer_json_caption = _bool_value(
+                settings.get("prefer_json_caption", cfg.get("prefer_json_caption")),
+                False,
+            )
+            caption_source_mode = normalize_caption_source_mode(
+                settings.get("caption_source_mode", cfg.get("caption_source_mode")),
+                prefer_json_caption,
+            )
+            image_count, captioned_count = _nl_tag_mix_caption_counts(
+                source,
+                caption_source_mode=caption_source_mode,
+                caption_extension=caption_extension,
+                prefer_json_caption=prefer_json_caption,
+                recursive=_bool_value(row.get("recursive"), True),
+            )
+            if image_count <= 0:
+                add("error", f"{key}_nl_tag_mix", f"{label} 中没有可训练图片", source)
+            else:
+                if captioned_count <= 0:
+                    add(
+                        "warning",
+                        f"{key}_nl_tag_mix_captions",
+                        f"{label} 未找到可读取标注，captions格式nl/tag权重调整会全部按 tag 处理",
+                        source,
+                    )
+                add("ok", key, f"{label} 存在", source)
         elif not any(source.iterdir()):
             add("warning", key, f"{label} 为空", source)
         else:

@@ -26,6 +26,15 @@
     --surface-raised-strong: rgba(255, 255, 255, 0.065);
     --border-soft: rgba(148, 163, 184, 0.22);
     --border-strong: rgba(148, 163, 184, 0.5);
+    --history-manager-bg: #141d2b;
+    --history-collection-bg: rgba(30, 41, 59, 0.88);
+    --history-config-bg: rgba(24, 34, 53, 0.92);
+    --history-row-bg: rgba(15, 23, 42, 0.42);
+    --history-row-hover-bg: rgba(59, 130, 246, 0.09);
+    --history-level-border: rgba(148, 163, 184, 0.36);
+    --history-collection-accent: #60a5fa;
+    --history-config-accent: #f0c36a;
+    --history-ungrouped-accent: #94a3b8;
     --dialog-backdrop: rgba(0, 0, 0, 0.68);
     --chart-grid: #2a3a5e;
     --radius: 6px;
@@ -59,6 +68,15 @@
     --surface-raised-strong: #eef2f6;
     --border-soft: rgba(216, 222, 230, 0.78);
     --border-strong: rgba(190, 201, 216, 0.9);
+    --history-manager-bg: #f8fafc;
+    --history-collection-bg: #eaf1fb;
+    --history-config-bg: #f4f7fb;
+    --history-row-bg: #ffffff;
+    --history-row-hover-bg: #f0f7ff;
+    --history-level-border: #c7d2e0;
+    --history-collection-accent: #2563eb;
+    --history-config-accent: #b7791f;
+    --history-ungrouped-accent: #64748b;
     --dialog-backdrop: rgba(17, 24, 39, 0.42);
     --chart-grid: #dde3eb;
 }
@@ -2046,7 +2064,13 @@ main { padding: 1rem 1.5rem; }
 
 .dataset-editor-list {
     display: grid;
-    gap: 0.5rem;
+    gap: 0.75rem;
+}
+
+.dataset-editor-item {
+    display: grid;
+    gap: 0.42rem;
+    min-width: 0;
 }
 
 .dataset-defaults-list {
@@ -2192,6 +2216,7 @@ select.dataset-config-input {
     color: var(--text-dim);
     font-size: 0.68rem;
     line-height: 1.3;
+    overflow-wrap: anywhere;
 }
 
 .dataset-json-switch-state {
@@ -2242,6 +2267,145 @@ select.dataset-config-input {
     background: var(--success-soft);
 }
 
+.dataset-caption-source {
+    display: grid;
+    gap: 0.45rem;
+    min-width: 0;
+    padding: 0.5rem;
+    border: 1px solid var(--border-soft);
+    border-radius: 4px;
+    background: var(--surface-raised);
+}
+
+.dataset-caption-source-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 0.5rem;
+    min-width: 0;
+}
+
+.dataset-caption-source-copy {
+    display: grid;
+    gap: 0.12rem;
+    min-width: 0;
+}
+
+.dataset-caption-source-title-row {
+    align-items: center;
+    display: flex;
+    gap: 0.35rem;
+    min-width: 0;
+}
+
+.dataset-caption-source-title-row strong {
+    color: var(--text);
+    font-size: 0.72rem;
+    line-height: 1.25;
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+.dataset-caption-source-help-toggle {
+    height: 16px;
+    width: 16px;
+    font-size: 0.66rem;
+}
+
+.dataset-caption-source-copy span {
+    color: var(--text-dim);
+    font-size: 0.66rem;
+    line-height: 1.35;
+    overflow-wrap: anywhere;
+}
+
+.dataset-caption-source-state {
+    flex: 0 0 auto;
+    padding: 0.18rem 0.45rem;
+    border: 1px solid var(--border-soft);
+    border-radius: 999px;
+    color: var(--accent);
+    background: var(--surface-tint);
+    font-size: 0.66rem;
+    font-weight: 700;
+    white-space: nowrap;
+}
+
+.dataset-caption-source-options {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 0.35rem;
+    min-width: 0;
+}
+
+.dataset-caption-source-option {
+    position: relative;
+    display: grid;
+    min-width: 0;
+    min-height: 46px;
+    padding: 0.38rem 0.45rem;
+    border: 1px solid var(--border-soft);
+    border-radius: 4px;
+    background: var(--bg-input);
+    color: var(--text-dim);
+    cursor: pointer;
+    transition: border-color 160ms ease, background 160ms ease, color 160ms ease;
+}
+
+.dataset-caption-source-option:hover {
+    border-color: var(--border-strong);
+    color: var(--text);
+}
+
+.dataset-caption-source-option.selected {
+    border-color: var(--accent);
+    color: var(--text);
+    background: var(--surface-tint);
+}
+
+.dataset-caption-source-option input {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    opacity: 0;
+    pointer-events: none;
+}
+
+.dataset-caption-source-option span {
+    min-width: 0;
+    overflow: hidden;
+    color: inherit;
+    font-size: 0.68rem;
+    font-weight: 800;
+    line-height: 1.2;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.dataset-caption-source-option small {
+    min-width: 0;
+    overflow: hidden;
+    color: var(--text-dim);
+    font-size: 0.62rem;
+    line-height: 1.25;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.dataset-caption-source-notes {
+    display: grid;
+    gap: 0.12rem;
+    margin: 0;
+    padding: 0.35rem 0.45rem 0.35rem 1.25rem;
+    border: 1px dashed var(--border-soft);
+    border-radius: 4px;
+    color: var(--text-dim);
+    background: var(--bg-input);
+    font-family: monospace;
+    font-size: 0.64rem;
+    line-height: 1.35;
+}
+
 .dataset-config-field .field-help {
     margin-top: 0;
     padding: 0.15rem 0 0.1rem;
@@ -2261,6 +2425,8 @@ select.dataset-config-input {
 
 .dataset-row-head,
 .dataset-row-paths,
+.dataset-caption-source,
+.dataset-nl-tag-mix,
 .dataset-row-settings {
     grid-column: 1 / -1;
 }
@@ -2299,6 +2465,282 @@ select.dataset-config-input {
     display: grid;
     grid-template-columns: minmax(220px, 1fr);
     gap: 0.45rem;
+}
+
+.dataset-experimental-features {
+    display: grid;
+    gap: 0.45rem;
+    padding: 0.55rem;
+    border: 1px solid var(--border-strong);
+    border-radius: 4px;
+    background: var(--bg-card);
+    box-shadow: inset 3px 0 0 var(--accent);
+}
+
+.dataset-experimental-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 0.55rem;
+    min-width: 0;
+}
+
+.dataset-experimental-head strong {
+    flex: 0 0 auto;
+    color: var(--text);
+    font-size: 0.74rem;
+    line-height: 1.25;
+}
+
+.dataset-experimental-head span {
+    min-width: 0;
+    color: var(--text-dim);
+    font-size: 0.66rem;
+    line-height: 1.35;
+    overflow-wrap: anywhere;
+}
+
+.dataset-experimental-body {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0.45rem;
+    align-items: stretch;
+    min-width: 0;
+}
+
+.dataset-experimental-scope {
+    display: grid;
+    grid-template-columns: minmax(260px, 1fr) auto;
+    gap: 0.45rem 0.65rem;
+    align-items: start;
+    padding: 0.5rem;
+    border: 1px solid var(--border-soft);
+    border-radius: 4px;
+    background: var(--surface-raised);
+}
+
+.dataset-experimental-scope-copy {
+    display: grid;
+    gap: 0.1rem;
+    min-width: 0;
+}
+
+.dataset-experimental-scope-copy strong {
+    color: var(--text);
+    font-size: 0.72rem;
+    line-height: 1.25;
+}
+
+.dataset-experimental-scope-copy span {
+    color: var(--text-dim);
+    font-size: 0.66rem;
+    line-height: 1.35;
+    overflow-wrap: anywhere;
+}
+
+.dataset-experimental-scope-actions {
+    display: flex;
+    justify-content: flex-end;
+}
+
+.dataset-experimental-scope-chips {
+    grid-column: 1 / -1;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.32rem;
+    min-width: 0;
+}
+
+.dataset-scope-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.28rem;
+    min-height: 26px;
+    padding: 0.16rem 0.45rem;
+    border: 1px solid var(--border-soft);
+    border-radius: 999px;
+    color: var(--text-dim);
+    background: var(--bg-input);
+    font-size: 0.66rem;
+    font-weight: 700;
+    cursor: pointer;
+    transition: border-color 160ms ease, background 160ms ease, color 160ms ease;
+}
+
+.dataset-scope-chip:hover {
+    border-color: var(--border-strong);
+    color: var(--text);
+}
+
+.dataset-scope-chip.selected {
+    border-color: var(--accent);
+    color: var(--accent);
+    background: var(--surface-tint);
+}
+
+.dataset-scope-chip input {
+    width: 13px;
+    height: 13px;
+    margin: 0;
+    accent-color: var(--accent);
+}
+
+.dataset-experimental-body .dataset-json-switch,
+.dataset-experimental-body .dataset-caption-extension-advanced {
+    min-height: 100%;
+}
+
+.dataset-json-switch-row {
+    align-self: stretch;
+}
+
+.dataset-caption-extension-advanced {
+    align-items: start;
+    display: grid;
+    gap: 0.45rem;
+    grid-template-columns: minmax(230px, 1fr) minmax(110px, 0.42fr);
+    min-width: 0;
+    padding: 0.5rem;
+    border: 1px solid var(--border-soft);
+    border-radius: 4px;
+    background: var(--surface-raised);
+}
+
+.dataset-caption-extension-copy {
+    display: grid;
+    gap: 0.12rem;
+    min-width: 0;
+}
+
+.dataset-caption-extension-title-row {
+    align-items: center;
+    display: flex;
+    gap: 0.35rem;
+    min-width: 0;
+}
+
+.dataset-caption-extension-title-row strong {
+    color: var(--text);
+    font-size: 0.72rem;
+    line-height: 1.25;
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+.dataset-caption-extension-help-toggle {
+    height: 16px;
+    width: 16px;
+    font-size: 0.66rem;
+}
+
+.dataset-caption-extension-copy small {
+    color: var(--text-dim);
+    font-size: 0.66rem;
+    line-height: 1.35;
+    overflow-wrap: anywhere;
+}
+
+.dataset-caption-extension-input {
+    height: 30px;
+    font-size: 0.74rem;
+}
+
+.dataset-caption-extension-help {
+    grid-column: 1 / -1;
+}
+
+.dataset-nl-tag-mix {
+    display: grid;
+    grid-template-columns: minmax(230px, 1fr) minmax(180px, 0.9fr) 74px auto;
+    gap: 0.45rem;
+    align-items: center;
+    padding: 0.5rem;
+    border: 1px solid var(--border-soft);
+    border-radius: 4px;
+    background: var(--surface-raised);
+}
+
+.dataset-nl-tag-mix.enabled {
+    border-color: rgba(102, 187, 106, 0.56);
+    background: linear-gradient(135deg, rgba(102, 187, 106, 0.1), var(--surface-raised) 72%);
+}
+
+.dataset-nl-tag-toggle {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: 0.45rem;
+    align-items: center;
+    min-width: 0;
+    cursor: pointer;
+}
+
+.dataset-nl-tag-toggle input {
+    width: 16px;
+    height: 16px;
+    accent-color: var(--success);
+}
+
+.dataset-nl-tag-toggle strong,
+.dataset-nl-tag-toggle small {
+    display: block;
+    min-width: 0;
+}
+
+.dataset-nl-tag-toggle strong {
+    color: var(--text);
+    font-size: 0.72rem;
+    line-height: 1.25;
+}
+
+.dataset-nl-tag-toggle small {
+    margin-top: 0.1rem;
+    color: var(--text-dim);
+    font-size: 0.66rem;
+    line-height: 1.3;
+    overflow-wrap: anywhere;
+}
+
+.dataset-nl-tag-ratio {
+    display: grid;
+    gap: 0.24rem;
+    min-width: 0;
+}
+
+.dataset-nl-tag-ratio span {
+    color: var(--text);
+    font-size: 0.66rem;
+    font-weight: 700;
+}
+
+.dataset-nl-tag-ratio input {
+    width: 100%;
+    min-width: 0;
+    accent-color: var(--accent);
+}
+
+.dataset-nl-tag-number {
+    width: 74px;
+    height: 30px;
+    padding: 0.25rem 0.35rem;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: var(--bg-input);
+    color: var(--text);
+    font-family: monospace;
+    font-size: 0.74rem;
+    text-align: center;
+}
+
+.dataset-nl-tag-summary {
+    justify-self: end;
+    padding: 0.22rem 0.5rem;
+    border: 1px solid var(--border-soft);
+    border-radius: 999px;
+    color: var(--text);
+    background: var(--bg-input);
+    font-size: 0.68rem;
+    font-weight: 700;
+    white-space: nowrap;
 }
 
 .dataset-row-settings {
@@ -2703,6 +3145,25 @@ select.dataset-config-input {
     border-color: var(--accent);
 }
 
+.sample-prompts-textarea {
+    width: 100%;
+    min-height: 220px;
+    resize: vertical;
+    padding: 0.5rem 0.6rem;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: var(--bg-input);
+    color: var(--text);
+    font-family: monospace;
+    font-size: 0.78rem;
+    line-height: 1.55;
+}
+
+.sample-prompts-textarea:focus {
+    outline: none;
+    border-color: var(--accent);
+}
+
 .sample-prompt-remove {
     height: 30px;
     background: var(--bg-card);
@@ -3052,6 +3513,12 @@ input[type="checkbox"].field-input {
 .task-history-head h3 {
     margin: 0;
 }
+.task-history-note {
+    color: var(--text-dim);
+    font-size: 0.68rem;
+    line-height: 1.35;
+    margin: 0.16rem 0 0;
+}
 .task-archive-toggle {
     display: inline-flex;
     align-items: center;
@@ -3321,12 +3788,13 @@ input[type="checkbox"].field-input {
     margin: 0;
 }
 .training-history-manager {
-    background: var(--bg-card);
-    border: 1px solid var(--border);
+    background: var(--history-manager-bg);
+    border: 1px solid var(--history-level-border);
     border-radius: var(--radius);
     display: grid;
     gap: 0.8rem;
     padding: 0.85rem;
+    box-shadow: 0 1px 0 color-mix(in srgb, var(--history-level-border) 52%, transparent);
 }
 .history-manager-head,
 .history-detail-dialog-header {
@@ -3440,8 +3908,8 @@ input[type="checkbox"].field-input {
     grid-template-columns: minmax(0, 1fr);
 }
 .history-table-panel {
-    background: var(--bg-input);
-    border: 1px solid var(--border);
+    background: var(--history-manager-bg);
+    border: 1px solid var(--history-level-border);
     border-radius: var(--radius);
     min-width: 0;
 }
@@ -3455,8 +3923,8 @@ input[type="checkbox"].field-input {
     grid-template-columns: 58px minmax(220px, 1.8fr) minmax(110px, 0.8fr) minmax(150px, 1fr) minmax(110px, 0.75fr) minmax(150px, auto);
 }
 .history-table-head {
-    background: var(--surface-raised);
-    border-bottom: 1px solid var(--border);
+    background: color-mix(in srgb, var(--history-config-bg) 76%, var(--history-manager-bg));
+    border-bottom: 1px solid var(--history-level-border);
     color: var(--text-dim);
     font-size: 0.68rem;
     font-weight: 700;
@@ -3555,8 +4023,8 @@ input[type="checkbox"].field-input {
     grid-template-columns: minmax(300px, 0.82fr) minmax(440px, 1.18fr);
 }
 .history-collections-panel {
-    background: var(--bg-card);
-    border: 1px solid var(--border);
+    background: var(--history-manager-bg);
+    border: 1px solid var(--history-level-border);
     border-radius: var(--radius);
     display: grid;
     gap: 0.5rem;
@@ -3584,8 +4052,8 @@ input[type="checkbox"].field-input {
 }
 .history-collection-card,
 .history-config-group-card {
-    background: var(--bg-input);
-    border: 1px solid var(--border-soft);
+    background: var(--history-row-bg);
+    border: 1px solid var(--history-level-border);
     border-radius: 6px;
     min-width: 0;
 }
@@ -3593,17 +4061,19 @@ input[type="checkbox"].field-input {
     display: grid;
     gap: 0.45rem;
     padding: 0.5rem;
+    box-shadow: inset 4px 0 0 var(--history-collection-accent);
 }
 .history-collection-card.target {
-    border-color: var(--accent);
-    box-shadow: inset 3px 0 0 var(--accent);
+    border-color: var(--history-collection-accent);
+    box-shadow: inset 4px 0 0 var(--history-collection-accent), 0 0 0 1px color-mix(in srgb, var(--history-collection-accent) 34%, transparent);
 }
 .history-collection-card.active {
-    background: color-mix(in srgb, var(--accent) 10%, var(--bg-input));
-    border-color: var(--accent);
+    background: color-mix(in srgb, var(--history-collection-accent) 10%, var(--history-row-bg));
+    border-color: var(--history-collection-accent);
 }
 .history-collection-card.ungrouped {
     opacity: 0.92;
+    box-shadow: inset 4px 0 0 var(--history-ungrouped-accent);
 }
 .history-collection-card-head,
 .history-config-group-card {
@@ -3659,8 +4129,8 @@ input[type="checkbox"].field-input {
     white-space: nowrap;
 }
 .history-collection-config-chip.selected {
-    border-color: var(--accent);
-    color: var(--accent);
+    border-color: var(--history-config-accent);
+    color: var(--history-config-accent);
 }
 .history-collection-config-chip.muted {
     cursor: default;
@@ -3669,10 +4139,11 @@ input[type="checkbox"].field-input {
 .history-config-group-card {
     grid-template-columns: minmax(96px, auto) minmax(0, 1fr) minmax(180px, auto);
     padding: 0.5rem;
+    box-shadow: inset 3px 0 0 var(--history-config-accent);
 }
 .history-config-group-card.selected {
-    background: color-mix(in srgb, var(--accent) 10%, var(--bg-input));
-    border-color: var(--accent);
+    background: color-mix(in srgb, var(--history-config-accent) 9%, var(--history-row-bg));
+    border-color: var(--history-config-accent);
 }
 .history-config-group-select {
     align-items: center;
@@ -3744,15 +4215,21 @@ input[type="checkbox"].field-input {
 }
 .history-manager-collection,
 .history-manager-config-group {
-    border-bottom: 1px solid var(--border-soft);
+    border-bottom: 1px solid var(--history-level-border);
     display: grid;
     min-width: 0;
 }
 .history-manager-collection {
-    background: color-mix(in srgb, var(--surface-raised) 62%, transparent);
+    background: var(--history-collection-bg);
+    border-left: 5px solid var(--history-collection-accent);
 }
 .history-manager-collection.ungrouped {
-    background: color-mix(in srgb, var(--bg-input) 78%, transparent);
+    background: color-mix(in srgb, var(--history-collection-bg) 78%, var(--history-manager-bg));
+    border-left-color: var(--history-ungrouped-accent);
+}
+.history-manager-config-group {
+    background: var(--history-config-bg);
+    border-left: 3px solid var(--history-config-accent);
 }
 .history-manager-collection-body,
 .history-manager-config-group-body {
@@ -3760,7 +4237,7 @@ input[type="checkbox"].field-input {
     min-width: 0;
 }
 .history-manager-collection-body {
-    border-top: 1px solid var(--border-soft);
+    border-top: 1px solid var(--history-level-border);
 }
 .history-manager-collection-body .history-manager-config-group:last-child,
 .history-manager-config-group-body .history-manager-row:last-child {
@@ -3775,11 +4252,12 @@ input[type="checkbox"].field-input {
     padding: 0.58rem 0.62rem;
 }
 .history-manager-group-head.collection {
-    background: color-mix(in srgb, var(--accent) 8%, var(--surface-raised));
+    background: linear-gradient(90deg, color-mix(in srgb, var(--history-collection-accent) 13%, var(--history-collection-bg)), var(--history-collection-bg));
+    border-bottom: 1px solid color-mix(in srgb, var(--history-level-border) 70%, transparent);
 }
 .history-manager-group-head.config {
-    background: color-mix(in srgb, var(--surface-raised) 68%, var(--bg-input));
-    border-top: 1px solid var(--border-soft);
+    background: linear-gradient(90deg, color-mix(in srgb, var(--history-config-accent) 10%, var(--history-config-bg)), var(--history-config-bg));
+    border-top: 1px solid var(--history-level-border);
 }
 .history-manager-list[data-group-mode="config"] > .history-manager-config-group:first-child .history-manager-group-head.config,
 .history-manager-collection-body > .history-manager-config-group:first-child .history-manager-group-head.config {
@@ -3806,9 +4284,14 @@ input[type="checkbox"].field-input {
 }
 .history-manager-group-title strong {
     color: var(--text);
-    font-size: 0.78rem;
+    font-size: 0.8rem;
+    font-weight: 750;
     line-height: 1.25;
     overflow-wrap: anywhere;
+}
+.history-manager-group-head.collection .history-manager-group-title strong {
+    font-size: 0.86rem;
+    font-weight: 800;
 }
 .history-manager-group-title em {
     color: var(--text-dim);
@@ -3828,15 +4311,17 @@ input[type="checkbox"].field-input {
 }
 .history-manager-row {
     align-items: start;
-    border-bottom: 1px solid var(--border-soft);
+    background: var(--history-row-bg);
+    border-bottom: 1px solid color-mix(in srgb, var(--history-level-border) 72%, transparent);
     padding: 0.55rem;
 }
 .history-manager-row:hover,
 .history-manager-row.active {
-    background: var(--surface-tint-hover);
+    background: var(--history-row-hover-bg);
 }
 .history-manager-row.archived {
-    opacity: 0.7;
+    background: color-mix(in srgb, var(--history-row-bg) 70%, var(--history-manager-bg));
+    opacity: 0.78;
 }
 .history-row-main {
     background: transparent;
@@ -3855,7 +4340,6 @@ input[type="checkbox"].field-input {
     overflow-wrap: anywhere;
 }
 .history-row-main span,
-.history-row-state,
 .history-row-time,
 .history-row-data {
     color: var(--text-dim);
@@ -3865,6 +4349,39 @@ input[type="checkbox"].field-input {
 }
 .history-row-state.error,
 .history-row-state.interrupted {
+    color: var(--danger-subtle);
+}
+.history-row-state {
+    align-self: start;
+    background: color-mix(in srgb, var(--text-muted) 9%, transparent);
+    border: 1px solid color-mix(in srgb, var(--text-muted) 30%, transparent);
+    border-radius: 999px;
+    color: var(--text-dim);
+    display: inline-flex;
+    font-size: 0.66rem;
+    font-weight: 700;
+    justify-self: start;
+    line-height: 1.25;
+    max-width: 100%;
+    padding: 0.2rem 0.48rem;
+}
+.history-row-state.done,
+.history-row-state.completed {
+    background: color-mix(in srgb, var(--success) 13%, transparent);
+    border-color: color-mix(in srgb, var(--success) 46%, transparent);
+    color: var(--success-soft);
+}
+.history-row-state.running,
+.history-row-state.queued {
+    background: color-mix(in srgb, var(--history-collection-accent) 12%, transparent);
+    border-color: color-mix(in srgb, var(--history-collection-accent) 45%, transparent);
+    color: var(--history-collection-accent);
+}
+.history-row-state.error,
+.history-row-state.interrupted,
+.history-row-state.canceled {
+    background: color-mix(in srgb, var(--danger) 12%, transparent);
+    border-color: color-mix(in srgb, var(--danger) 48%, transparent);
     color: var(--danger-subtle);
 }
 .history-row-actions {
@@ -4832,8 +5349,12 @@ input[type="checkbox"].field-input {
 
 .training-panels {
     display: grid;
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: minmax(360px, 0.95fr) minmax(440px, 1.05fr);
     gap: 0.75rem;
+    align-items: start;
+}
+.training-panels.training-dashboard {
+    grid-template-columns: minmax(0, 1fr);
 }
 
 .panel {
@@ -4851,6 +5372,57 @@ input[type="checkbox"].field-input {
     gap: 0.5rem;
 }
 
+.training-dashboard-head {
+    display: grid;
+    gap: 0.7rem;
+    grid-column: 1 / -1;
+}
+.training-dashboard-title {
+    align-items: flex-start;
+    display: flex;
+    gap: 0.65rem;
+    min-width: 0;
+}
+.training-dashboard-title h3 {
+    color: var(--accent);
+    font-size: 0.95rem;
+    margin: 0 0 0.18rem;
+}
+.training-dashboard-title p,
+.training-run-summary {
+    color: var(--text-dim);
+    font-size: 0.72rem;
+    line-height: 1.45;
+    margin: 0;
+    overflow-wrap: anywhere;
+}
+.training-run-state {
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    color: var(--text-dim);
+    flex: 0 0 auto;
+    font-size: 0.7rem;
+    line-height: 1;
+    padding: 0.28rem 0.48rem;
+    white-space: nowrap;
+}
+.training-run-state.running,
+.training-run-state.compiling {
+    border-color: rgba(34, 197, 94, 0.45);
+    color: var(--success);
+}
+.training-run-state.error {
+    border-color: rgba(239, 83, 80, 0.45);
+    color: var(--danger-soft);
+}
+.training-run-state.history {
+    border-color: rgba(79, 195, 247, 0.45);
+    color: var(--accent);
+}
+.training-dashboard-progress {
+    display: grid;
+    gap: 0.35rem;
+}
 .progress-panel { grid-column: 1 / -1; }
 .progress-bar-container {
     background: var(--bg-input);
@@ -4870,16 +5442,28 @@ input[type="checkbox"].field-input {
 
 .metrics-grid {
     display: grid;
-    grid-template-columns: repeat(3, 1fr);
+    grid-template-columns: repeat(auto-fit, minmax(136px, 1fr));
     gap: 0.5rem;
 }
 .metric-item {
+    background: var(--surface-raised);
+    border: 1px solid var(--border-soft);
+    border-radius: 6px;
     display: flex;
     flex-direction: column;
     gap: 0.15rem;
+    min-width: 0;
+    padding: 0.42rem 0.48rem;
 }
 .metric-label { font-size: 0.7rem; color: var(--text-dim); }
-.metric-value { font-size: 1rem; font-weight: 600; font-family: monospace; }
+.metric-value {
+    font-size: 0.92rem;
+    font-weight: 600;
+    font-family: monospace;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
 .training-health {
     margin-top: 0.65rem;
     padding-top: 0.55rem;
@@ -4892,11 +5476,14 @@ input[type="checkbox"].field-input {
 .training-health.warning { color: var(--warning); }
 .training-health.error { color: var(--danger-soft); }
 
-.chart-panel { grid-column: 1 / -1; }
+.metrics-panel,
+.chart-panel {
+    grid-column: 1 / -1;
+}
 #loss-chart {
     display: block;
     width: 100%;
-    height: 220px;
+    height: 260px;
 }
 
 .log-panel { grid-column: 1 / -1; }
@@ -4963,7 +5550,10 @@ input[type="checkbox"].field-input {
     line-height: 1.4;
 }
 
-/* Preview Tab */
+/* Preview workspace */
+#preview-page-mount {
+    min-width: 0;
+}
 .preview-layout {
     display: grid;
     grid-template-columns: minmax(260px, 320px) 1fr;
@@ -5326,6 +5916,56 @@ input[type="checkbox"].field-input {
 }
 .preview-weight-item:not(.preview-weight-task) {
     opacity: 0.72;
+}
+.preview-panel-dialog {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    color: var(--text);
+    height: min(92vh, 1100px);
+    margin: auto;
+    max-height: 92vh;
+    padding: 0;
+    width: min(96vw, 1600px);
+}
+.preview-panel-dialog::backdrop {
+    background: var(--dialog-backdrop);
+}
+.preview-panel-shell {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    min-height: 0;
+}
+.preview-panel-header {
+    align-items: flex-start;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    flex: 0 0 auto;
+    gap: 1rem;
+    justify-content: space-between;
+    padding: 0.75rem 1rem;
+}
+.preview-panel-header h2 {
+    color: var(--accent);
+    font-size: 1rem;
+    margin: 0 0 0.22rem;
+}
+.preview-panel-header p {
+    color: var(--text-dim);
+    font-size: 0.72rem;
+    line-height: 1.35;
+    margin: 0;
+    overflow-wrap: anywhere;
+}
+.preview-panel-body {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: auto;
+    padding: 0.85rem;
+}
+.preview-panel-body .preview-layout {
+    min-height: 100%;
 }
 .preview-dialog {
     position: fixed;
@@ -5953,7 +6593,10 @@ input[type="checkbox"].field-input {
     .sample-prompt-field-text { grid-column: 1 / -1; }
     .sample-prompt-row-actions { justify-self: start; }
     .dataset-row-paths,
+    .dataset-nl-tag-mix,
     .dataset-row-settings { grid-template-columns: 1fr 1fr; }
+    .dataset-experimental-body { grid-template-columns: minmax(0, 1fr); }
+    .dataset-nl-tag-summary { justify-self: start; }
     .config-dataset-workspace { grid-template-columns: 1fr; }
     .config-dataset-preset-list { max-height: 260px; }
     .dataset-page-layout { grid-template-columns: 1fr; }
@@ -5965,6 +6608,7 @@ input[type="checkbox"].field-input {
     #toml-editor { height: 300px; }
     #output-run-config-viewer { height: 300px; }
     .training-panels { grid-template-columns: 1fr; }
+    .chart-panel { grid-column: 1; }
     .training-workspace { grid-template-columns: 1fr; }
     .training-toolbar { align-items: stretch; flex-wrap: wrap; }
     .training-view-tabs { order: 2; width: 100%; }
@@ -6047,6 +6691,11 @@ input[type="checkbox"].field-input {
     .task-history-list { max-height: 260px; }
     .training-queue-list { max-height: 220px; }
     .preview-layout { grid-template-columns: 1fr; }
+    .preview-panel-dialog {
+        height: calc(100vh - 1rem);
+        max-height: calc(100vh - 1rem);
+        width: calc(100vw - 1rem);
+    }
     .global-settings-layout { grid-template-columns: 1fr; }
     .preview-source-tabs { grid-template-columns: repeat(3, minmax(0, 1fr)); }
     .preview-dialog-body { grid-template-columns: 1fr; }
@@ -6187,8 +6836,21 @@ input[type="checkbox"].field-input {
         grid-template-columns: 1fr;
     }
     .dataset-row-paths,
+    .dataset-experimental-body,
+    .dataset-experimental-scope,
+    .dataset-caption-extension-advanced,
+    .dataset-nl-tag-mix,
     .dataset-row-settings {
         grid-template-columns: 1fr;
+    }
+    .dataset-caption-source-head {
+        display: grid;
+    }
+    .dataset-caption-source-state {
+        justify-self: start;
+    }
+    .dataset-caption-source-options {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
     }
     .dataset-row-head {
         align-items: flex-start;
@@ -6233,6 +6895,9 @@ input[type="checkbox"].field-input {
         align-items: flex-start;
         flex-direction: column;
     }
+    .metrics-grid {
+        grid-template-columns: 1fr;
+    }
     .preview-grid { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
     .preview-weight-item {
         grid-template-columns: 1fr;
@@ -6243,6 +6908,13 @@ input[type="checkbox"].field-input {
     .preview-weight-actions {
         justify-self: start;
         justify-content: flex-start;
+    }
+    .preview-panel-header {
+        align-items: stretch;
+        flex-direction: column;
+    }
+    .preview-panel-body {
+        padding: 0.55rem;
     }
     .preview-dialog {
         width: calc(100vw - 1rem);

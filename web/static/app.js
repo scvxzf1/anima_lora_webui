@@ -31,6 +31,7 @@
     let datasetPresetLoadSeq = 0;
     let datasetPreviewLoadSeq = 0;
     let configGroupHintSeq = 0;
+    let datasetCaptionSourceHelpSeq = 0;
     let choiceGuideHintSeq = 0;
     const selectionSnapshot = {
         method: '',
@@ -44,6 +45,11 @@
     let previewRequestSeq = 0;
     let previewWeightRequestSeq = 0;
     let previewWeightSortDirection = 'asc';
+    const previewPanelState = {
+        open: false,
+        previousTab: '',
+        restoreTrainingView: '',
+    };
     let currentStepEstimate = null;
     let datasetEditorState = {
         loading: false,
@@ -224,7 +230,6 @@
         content_router_layer_norm: true,
         use_cmmd: false,
         ip_diagnostics_epochs: 999,
-        weight_decay: 0.0,
         dit_path: 'models/diffusion_models/anima-base-v1.0.safetensors',
         data_dir: 'post_image_dataset/lora',
         iterations: 2000,
@@ -279,6 +284,7 @@
         caption_extension: '.txt',
         keep_tokens: 3,
         prefer_json_caption: false,
+        caption_source_mode: 'auto',
     };
     const OPTIONAL_EMPTY_FIELDS = new Set([
         'sample_prompts',
@@ -296,6 +302,14 @@
         'compile_mode',
         'static_pad',
         'static_token_count',
+    ]);
+    const RETIRED_CONFIG_FORM_FIELDS = new Set([
+        'use_hydra',
+        'use_sigma_router',
+        'use_fei_router',
+    ]);
+    const METHOD_SCOPED_CONFIG_FORM_FIELDS = new Map([
+        ['weight_decay', new Set(['spd'])],
     ]);
     const DATASET_EDITOR_COMPAT_FIELDS = new Set([
         'source_image_dir',
@@ -320,6 +334,7 @@
         'caption_extension',
         'keep_tokens',
         'prefer_json_caption',
+        'caption_source_mode',
     ]);
     const DATASET_SETTING_KEYS = new Set([
         'resolution',
@@ -331,7 +346,20 @@
         'validation_split',
         'validation_split_num',
         'validation_seed',
+        'caption_extension',
+        'caption_source_mode',
     ]);
+    const DEFAULT_NL_TAG_MIX = Object.freeze({
+        enabled: false,
+        tag_ratio: 0.7,
+    });
+    const CAPTION_SOURCE_MODE_OPTIONS = Object.freeze([
+        { value: 'auto', label: 'Auto', detail: '自动识别' },
+        { value: 'txt', label: 'sd-scripts', detail: '.txt' },
+        { value: 'json', label: 'AnimaLoraToolkit', detail: '.json' },
+        { value: 'captions_json', label: 'DiffPipeForge', detail: 'captions.json' },
+    ]);
+    const datasetExperimentalScopeSelections = new Map();
     const NETWORK_ARG_FIELD_SPECS = [
         { family: 'soft_tokens', key: 'n_layers', arg: 'n_layers', default: 14, valueType: 'integer' },
         { family: 'soft_tokens', key: 'n_t_buckets', arg: 'n_t_buckets', default: 14, valueType: 'integer' },
@@ -364,7 +392,7 @@
     ];
     const NETWORK_ARG_FIELD_MAP = new Map(NETWORK_ARG_FIELD_SPECS.map((spec) => [spec.key, spec]));
     const NETWORK_ARG_SPEC_BY_ARG = new Map(NETWORK_ARG_FIELD_SPECS.map((spec) => [spec.arg, spec]));
-    const SPD_UI_DEFAULT_FIELDS = new Set(['dit_path', 'data_dir', 'iterations', 'seed', 'channel_scaling_alpha']);
+    const SPD_UI_DEFAULT_FIELDS = new Set(['dit_path', 'data_dir', 'iterations', 'seed', 'channel_scaling_alpha', 'weight_decay']);
     const CHIMERA_UI_DEFAULT_FIELDS = new Set([
         'use_chimera_hydra',
         'channel_scaling_alpha',
@@ -378,15 +406,27 @@
         'freq_router_layer_norm',
     ]);
     const IP_ADAPTER_UI_DEFAULT_FIELDS = new Set(['ip_diagnostics_epochs']);
-    const SOFT_TOKENS_UI_DEFAULT_FIELDS = new Set(['weight_decay']);
+    const SOFT_TOKENS_UI_DEFAULT_FIELDS = new Set([]);
     const trainingRuntime = {
         state: 'idle',
+        variant: '',
+        preset: '',
+        methodsSubdir: '',
+        job: '',
         lastOutputAt: 0,
         lastUiActivityAt: 0,
         lastGpuUtil: null,
+        lastGpuTemp: null,
+        lastVramUsedGb: null,
+        lastVramTotalGb: null,
+        peakGpuUtil: null,
+        peakGpuTemp: null,
+        peakVramUsedGb: null,
         quietHintShown: false,
         lastLogId: 0,
         logLineCount: 0,
+        logBuffer: [],
+        logFlushPending: false,
         outputDir: '',
         sampleDir: '',
         sampleConfig: null,
@@ -603,8 +643,6 @@
                 'use_easycontrol',
                 'easycontrol_drop_p',
                 'easycontrol_cond_noise_max',
-                'use_hydra',
-                'use_sigma_router',
                 'fera_num_bands',
                 'fei_feature_dim',
                 'fei_sigma_low_div',
@@ -1209,9 +1247,11 @@
         use_text_cache: '使用文本缓存',
         bucket_no_upscale: '禁止放大图片',
         bucket_reso_steps: '桶尺寸步长',
-        caption_extension: 'Caption 扩展名',
+        caption_extension: '文本标注扩展名',
         caption_dropout_rate: '标题丢弃率',
         prefer_json_caption: '优先 JSON 标注',
+        caption_source_mode: '标注来源',
+        captions: '标注检测',
         channel_scaling_alpha: '通道缩放 Alpha',
         checkpointing_epochs: '训练状态保存间隔',
         compile_inductor_mode: 'Inductor 编译模式',
@@ -2549,11 +2589,11 @@
             "默认 42；做参数对比时保持不变。"
         ),
         caption_extension: help(
-            "caption 标注文件扩展名。",
-            "常用 .txt；如果标注文件是 .caption 等格式就改成对应后缀。",
-            ["让数据加载器找到图片同名标注。"],
-            ["支持不同标注文件命名习惯。"],
-            ["扩展名填错会导致读不到 caption。"],
+            "文本 sidecar 标注文件扩展名。",
+            "仅在标注来源为 txt，或 auto 没有找到 captions.json / 同名 .json 并回退到文本 sidecar 时生效。",
+            ["让数据加载器找到图片同名文本标注。"],
+            ["支持 .txt、.caption 等不同文本标注命名习惯。"],
+            ["json / captions.json 模式会忽略此项；扩展名填错会导致文本标注读不到。"],
             "默认 .txt。"
         ),
         keep_tokens: help(
@@ -2571,6 +2611,14 @@
             ["修改 JSON 后需要重新生成文本缓存。"],
             ["如果目录里有无关 JSON 元数据，开启前应确认格式正确。"],
             "默认关闭，保持旧 .txt 行为。"
+        ),
+        caption_source_mode: help(
+            "数据集标注来源。",
+            "auto 会自动识别三种常见格式：同名 .txt、同名 .json、目录级 captions.json。",
+            ["无需手动切换就能预览和预检测数据集格式。"],
+            ["DiffPipeForge captions.json 中一张图的多条 caption 会作为多标注缓存。"],
+            ["强制模式选错时会提示缺少标注。"],
+            "默认 auto。"
         ),
         logging_dir: help(
             "训练日志目录，主要给 TensorBoard 和历史曲线使用。",
@@ -2833,11 +2881,12 @@
             tooltipText: styles.getPropertyValue('--text').trim() || '#e0e0e0',
             highlight: styles.getPropertyValue('--warning').trim() || '#f0c36a',
             crosshair: styles.getPropertyValue('--accent').trim() || '#4fc3f7',
+            lr: styles.getPropertyValue('--warning').trim() || '#f0c36a',
         };
     }
 
     function isHistoryReviewMode() {
-        return historyViewMode !== 'live' || Boolean(viewingHistoryTaskId);
+        return historyViewMode !== 'live';
     }
 
     function openTutorialDialog() {
@@ -2851,7 +2900,27 @@
     }
 
     // ── Tab 切换 ──
+    function normalizeTopLevelTabState() {
+        const activeButton = document.querySelector('.tab-btn.active');
+        const activeName = activeButton?.dataset.tab || '';
+        const hasUsableActiveTab =
+            activeName &&
+            activeName !== 'preview' &&
+            document.getElementById(`tab-${activeName}`);
+        const fallbackButton = document.querySelector('[data-tab="training"]') || document.querySelector('[data-tab="config"]');
+        const nextButton = hasUsableActiveTab ? activeButton : fallbackButton;
+        const nextName = nextButton?.dataset.tab || '';
+        document.querySelectorAll('.tab-btn').forEach(btn => {
+            btn.classList.toggle('active', btn === nextButton);
+        });
+        document.querySelectorAll('.tab-content').forEach(tab => {
+            tab.classList.toggle('active', tab.id === `tab-${nextName}`);
+        });
+        document.getElementById('tab-preview')?.classList.remove('active');
+    }
+
     function setupTabs() {
+        normalizeTopLevelTabState();
         document.querySelectorAll('.tab-btn').forEach(btn => {
             btn.addEventListener('click', () => {
                 const previousTab = document.querySelector('.tab-btn.active')?.dataset.tab || '';
@@ -2868,9 +2937,6 @@
                 }
                 if (nextTab === 'training' && lossChart?.resize) {
                     lossChart.resize();
-                }
-                if (nextTab === 'preview') {
-                    loadPreviewImages();
                 }
                 if (nextTab === 'settings') {
                     loadGlobalSettings();
@@ -2896,9 +2962,11 @@
             populateSelect('method-select', methods, 'lora');
             populateSelect('preset-select', presets, 'default');
             await loadGpuOptions();
-            await loadVariants();
+            const variants = await loadVariants();
             await loadDatasetPresets({ selectCurrent: false });
-            await loadConfig();
+            if (variants.length) {
+                await loadConfig();
+            }
             await loadTomlFileList();
             rememberSelectionSnapshot();
             await loadTrainingQueue();
@@ -2930,8 +2998,16 @@
         const method = val('method-select');
         const variants = await api(`/api/methods/${method}/variants`);
         populateSelect('variant-select', variants, reset ? (variants[0] || method) : method);
-        setCurrentTrainingSourceFromVariant(val('variant-select'));
+        const selectedVariant = val('variant-select');
+        if (!selectedVariant) {
+            clearCurrentTrainingSource();
+            setTomlStatus('error', `方法 ${method} 暂无可训练变体，已阻止加载配置`, { persist: true });
+            updateChoiceGuide();
+            return [];
+        }
+        setCurrentTrainingSourceFromVariant(selectedVariant);
         updateChoiceGuide();
+        return variants;
     }
 
     async function loadConfig() {
@@ -2986,7 +3062,7 @@
             if (key === 'output_dir') continue;
             if (key === 'general' || key === 'datasets') continue;
             if (CONFIG_FORM_INTERNAL_KEYS.has(key)) continue;
-            if (DEPRECATED_CONFIG_FORM_FIELDS.has(key)) continue;
+            if (shouldSkipConfigFormField(key, config)) continue;
             if (DATASET_BLUEPRINT_FIELDS.has(key)) continue;
             if (typeof value === 'object' && value !== null && !Array.isArray(value)) continue;
             fieldsByKey[key] = value;
@@ -2994,7 +3070,7 @@
         for (const [key, value] of Object.entries(FORM_UI_DEFAULTS)) {
             if (key === 'output_dir') continue;
             if (CONFIG_FORM_INTERNAL_KEYS.has(key)) continue;
-            if (DEPRECATED_CONFIG_FORM_FIELDS.has(key)) continue;
+            if (shouldSkipConfigFormField(key, config)) continue;
             if (DATASET_BLUEPRINT_FIELDS.has(key)) continue;
             if (!shouldExposeUiDefaultField(key, config, fieldsByKey)) continue;
             if (!(key in fieldsByKey)) fieldsByKey[key] = value;
@@ -3032,6 +3108,14 @@
     function shouldRenderConfigSection(section, config = currentConfig) {
         if (!section?.method) return true;
         return activeMethodKey(config) === section.method;
+    }
+
+    function shouldSkipConfigFormField(key, config = currentConfig) {
+        if (DEPRECATED_CONFIG_FORM_FIELDS.has(key)) return true;
+        if (RETIRED_CONFIG_FORM_FIELDS.has(key)) return true;
+        const scopedFamilies = METHOD_SCOPED_CONFIG_FORM_FIELDS.get(key);
+        if (!scopedFamilies) return false;
+        return !scopedFamilies.has(activeMethodKey(config));
     }
 
     function shouldExposeUiDefaultField(key, config, fieldsByKey = {}) {
@@ -3474,9 +3558,6 @@
         }
         if (extraClass === 'config-group-model') {
             header.appendChild(createFillGlobalModelPathsButton());
-        }
-        if (extraClass === 'config-group-output-scope') {
-            header.appendChild(createOpenStageResolutionDialogButton());
         }
         section.appendChild(header);
         if (extraClass === 'config-group-data') {
@@ -4158,18 +4239,12 @@
         manageBtn.className = 'btn btn-small';
         manageBtn.textContent = '管理数据集';
         manageBtn.addEventListener('click', () => document.querySelector('[data-tab="datasets"]')?.click());
-        const unnamedBtn = document.createElement('button');
-        unnamedBtn.id = 'btn-open-unnamed-dataset-dialog';
-        unnamedBtn.type = 'button';
-        unnamedBtn.className = 'btn btn-small';
-        unnamedBtn.textContent = '待命名';
-        unnamedBtn.addEventListener('click', openUnnamedDatasetDialog);
         const refreshBtn = document.createElement('button');
         refreshBtn.type = 'button';
         refreshBtn.className = 'btn btn-small';
         refreshBtn.textContent = '刷新预设';
         refreshBtn.addEventListener('click', () => loadDatasetPresets({ selectCurrent: false }));
-        actions.append(openBtn, manageBtn, unnamedBtn, refreshBtn);
+        actions.append(openBtn, manageBtn, refreshBtn);
         header.append(title, actions);
         panel.appendChild(header);
 
@@ -4953,7 +5028,7 @@
         const list = document.createElement('div');
         list.className = 'dataset-editor-list';
         rows.forEach((row, index) => {
-            list.appendChild(createDatasetEditorRow(row, index));
+            list.appendChild(createDatasetEditorItem(row, index));
         });
         panel.appendChild(list);
 
@@ -5009,13 +5084,11 @@
 
         const heading = document.createElement('div');
         heading.className = 'dataset-defaults-heading';
-        heading.innerHTML = '<strong>通用标注设置</strong><span>分辨率、分桶和验证集参数已移到每个数据集路径卡片中，可按路径独立配置。</span>';
+        heading.innerHTML = '<strong>通用标注设置</strong><span>这里只保留 keep_tokens；文本标注扩展名等兼容项在每组数据集的高级区配置。</span>';
         wrap.appendChild(heading);
 
         const fields = [
-            ['caption_extension', 'text'],
             ['keep_tokens', 'number'],
-            ['prefer_json_caption', 'switch', 'switch'],
         ];
 
         for (const [key, type, layout] of fields) {
@@ -5150,9 +5223,10 @@
             validation_split: '验证集比例',
             validation_split_num: '固定验证数量',
             validation_seed: '验证随机种子',
-            caption_extension: '标注扩展名',
+            caption_extension: '文本标注扩展名',
             keep_tokens: '保留前置 token',
             prefer_json_caption: '优先 JSON 标注',
+            caption_source_mode: '标注来源',
         };
         return `${labels[key] || FIELD_LABEL_ZH[key] || key} / ${key}`;
     }
@@ -5163,6 +5237,17 @@
 
     function updateDatasetConfigValue(key, input) {
         updateDatasetDefault(key, input);
+    }
+
+    function createDatasetEditorItem(row, index) {
+        const item = document.createElement('div');
+        item.className = 'dataset-editor-item';
+        item.dataset.index = String(index);
+        item.append(
+            createDatasetEditorRow(row, index),
+            createDatasetExperimentalFeaturesEditor(row, index),
+        );
+        return item;
     }
 
     function createDatasetEditorRow(row, index) {
@@ -5177,7 +5262,14 @@
         title.textContent = `第 ${index + 1} 组数据集`;
         const subtitle = document.createElement('span');
         const settings = normalizeDatasetDefaults(row.settings || datasetEditorStateForActivePanel().defaults || {});
-        subtitle.textContent = `${settings.resolution}px · 桶 ${settings.min_bucket_reso}-${settings.max_bucket_reso}/${settings.bucket_reso_steps} · 重复 ${row.num_repeats || 1}`;
+        const mix = normalizeNlTagMix(row.nl_tag_mix);
+        subtitle.textContent = [
+            `${settings.resolution}px`,
+            `桶 ${settings.min_bucket_reso}-${settings.max_bucket_reso}/${settings.bucket_reso_steps}`,
+            `重复 ${row.num_repeats || 1}`,
+            captionSourceModeLabel(settings.caption_source_mode),
+            mix.enabled ? nlTagMixSummary(mix) : '',
+        ].filter(Boolean).join(' · ');
         titleBox.append(title, subtitle);
         const headActions = document.createElement('div');
         headActions.className = 'dataset-row-head-actions';
@@ -5201,6 +5293,8 @@
         paths.appendChild(createDatasetPathField(index, 'source_dir', '原始数据集路径', row.source_dir, 'image_dataset'));
         wrap.appendChild(paths);
 
+        wrap.appendChild(createDatasetRowCaptionSourceModeEditor(settings, index));
+        wrap.appendChild(createDatasetNlTagMixEditor(row, index));
         wrap.appendChild(createDatasetRowSettingsEditor(row, index));
 
         const repeat = document.createElement('label');
@@ -5227,6 +5321,30 @@
         remove.addEventListener('click', () => removeDatasetEditorRow(index));
         wrap.appendChild(remove);
         return wrap;
+    }
+
+    function createDatasetExperimentalFeaturesEditor(row, index) {
+        const panel = document.createElement('section');
+        panel.className = 'dataset-experimental-features';
+        panel.dataset.index = String(index);
+
+        const head = document.createElement('div');
+        head.className = 'dataset-experimental-head';
+        const title = document.createElement('strong');
+        title.textContent = '实验性/高级/旧功能';
+        const note = document.createElement('span');
+        note.textContent = `对应第 ${index + 1} 组数据集；这些选项按当前这组数据集单独保存，收纳高级兼容项、旧格式入口和需要先小范围验证的功能。`;
+        head.append(title, note);
+
+        const body = document.createElement('div');
+        body.className = 'dataset-experimental-body';
+        body.append(
+            createDatasetExperimentalScopePicker(index),
+            createDatasetCaptionExtensionEditor(row, index),
+        );
+
+        panel.append(head, body);
+        return panel;
     }
 
     function createDatasetRowSettingsEditor(row, index) {
@@ -5282,6 +5400,293 @@
             panel.appendChild(field);
         }
         panel.appendChild(helpDiv);
+        return panel;
+    }
+
+    function createDatasetCaptionExtensionEditor(row, index) {
+        const settings = normalizeDatasetDefaults(row.settings || datasetEditorStateForActivePanel().defaults || {});
+        const panel = document.createElement('div');
+        panel.className = 'dataset-caption-extension-advanced';
+        panel.dataset.index = String(index);
+
+        const copy = document.createElement('div');
+        copy.className = 'dataset-caption-extension-copy';
+        const titleRow = document.createElement('div');
+        titleRow.className = 'dataset-caption-extension-title-row';
+        const title = document.createElement('strong');
+        title.textContent = '文本标注扩展名 / caption_extension';
+        const helpBtn = document.createElement('button');
+        helpBtn.className = 'info-toggle dataset-caption-extension-help-toggle';
+        helpBtn.textContent = '?';
+        helpBtn.type = 'button';
+        helpBtn.title = '查看填写建议、好处、代价、风险和推荐';
+        titleRow.append(title, helpBtn);
+        const desc = document.createElement('small');
+        desc.textContent = '高级兼容项：仅在 txt 来源或 auto 回退到文本 sidecar 时使用。';
+        copy.append(titleRow, desc);
+
+        const input = document.createElement('input');
+        input.type = 'text';
+        input.className = 'field-input dataset-caption-extension-input';
+        input.value = settings.caption_extension || '.txt';
+        input.placeholder = '.txt';
+        input.setAttribute('aria-label', '文本标注扩展名');
+        input.addEventListener('input', () => {
+            updateDatasetEditorRowsSettingValue(
+                datasetExperimentalScopeIndices(index),
+                'caption_extension',
+                input.value,
+            );
+        });
+        input.addEventListener('change', () => {
+            updateDatasetEditorRowsSettingValue(
+                datasetExperimentalScopeIndices(index),
+                'caption_extension',
+                input.value,
+                { render: true },
+            );
+        });
+
+        const helpDiv = document.createElement('div');
+        helpDiv.className = 'field-help dataset-caption-extension-help';
+        helpDiv.appendChild(createHelpContent('caption_extension', settings.caption_extension || '.txt'));
+        helpBtn.addEventListener('click', () => {
+            helpBtn.classList.toggle('active');
+            helpDiv.classList.toggle('visible');
+        });
+
+        panel.append(copy, input, helpDiv);
+        return panel;
+    }
+
+    function createDatasetNlTagMixEditor(row, index) {
+        const mix = normalizeNlTagMix(row.nl_tag_mix);
+        const panel = document.createElement('div');
+        panel.className = ['dataset-nl-tag-mix', mix.enabled ? 'enabled' : ''].filter(Boolean).join(' ');
+        panel.dataset.index = String(index);
+
+        const toggle = document.createElement('label');
+        toggle.className = 'dataset-nl-tag-toggle';
+        const checkbox = document.createElement('input');
+        checkbox.type = 'checkbox';
+        checkbox.checked = mix.enabled;
+        checkbox.setAttribute('aria-label', 'captions格式nl/tag权重调整');
+        checkbox.addEventListener('change', () => {
+            updateDatasetEditorRowNlTagMix(index, {
+                enabled: checkbox.checked,
+                tag_ratio: mix.tag_ratio,
+            });
+        });
+        const toggleText = document.createElement('span');
+        toggleText.innerHTML = '<strong>captions格式nl/tag权重调整</strong><small>面向 DiffPipeForge captions.json 的多标注数据集优化；按短标签串和自然语言句子判断 tag/nl，按比例抽样重建运行时 captions.json，并写入 results.json。</small>';
+        toggle.append(checkbox, toggleText);
+
+        const ratio = document.createElement('label');
+        ratio.className = 'dataset-nl-tag-ratio';
+        const ratioHead = document.createElement('span');
+        ratioHead.textContent = 'tag 占比';
+        const ratioInput = document.createElement('input');
+        ratioInput.type = 'range';
+        ratioInput.min = '0';
+        ratioInput.max = '100';
+        ratioInput.step = '5';
+        ratioInput.value = String(Math.round(mix.tag_ratio * 100));
+        ratioInput.disabled = !mix.enabled;
+        ratioInput.addEventListener('input', () => {
+            updateDatasetEditorRowNlTagMix(index, {
+                enabled: true,
+                tag_ratio: Number(ratioInput.value) / 100,
+            });
+        });
+        ratio.append(ratioHead, ratioInput);
+
+        const ratioNumber = document.createElement('input');
+        ratioNumber.type = 'number';
+        ratioNumber.min = '0';
+        ratioNumber.max = '100';
+        ratioNumber.step = '5';
+        ratioNumber.value = String(Math.round(mix.tag_ratio * 100));
+        ratioNumber.disabled = !mix.enabled;
+        ratioNumber.className = 'dataset-nl-tag-number';
+        ratioNumber.setAttribute('aria-label', 'tag 占比百分比');
+        ratioNumber.addEventListener('input', () => {
+            updateDatasetEditorRowNlTagMix(index, {
+                enabled: true,
+                tag_ratio: Number(ratioNumber.value) / 100,
+            });
+        });
+
+        const summary = document.createElement('output');
+        summary.className = 'dataset-nl-tag-summary';
+        summary.value = nlTagMixSummary(mix);
+        summary.textContent = nlTagMixSummary(mix);
+
+        panel.append(toggle, ratio, ratioNumber, summary);
+        return panel;
+    }
+
+    function createDatasetExperimentalScopePicker(index) {
+        const state = datasetEditorStateForActivePanel();
+        const rows = normalizeDatasetEditorRows(state.datasets);
+        const selected = new Set(datasetExperimentalScopeIndices(index, rows.length));
+        const scope = document.createElement('div');
+        scope.className = 'dataset-experimental-scope';
+
+        const copy = document.createElement('div');
+        copy.className = 'dataset-experimental-scope-copy';
+        const title = document.createElement('strong');
+        title.textContent = '生效范围 / 对多数据集负责';
+        const desc = document.createElement('span');
+        desc.textContent = '选择这个实验框要同步写入的数据集组；保存时仍按每组独立配置落盘。';
+        copy.append(title, desc);
+
+        const actions = document.createElement('div');
+        actions.className = 'dataset-experimental-scope-actions';
+        const selectAll = document.createElement('button');
+        selectAll.type = 'button';
+        selectAll.className = 'btn btn-small';
+        selectAll.textContent = '全选数据集';
+        selectAll.disabled = rows.length <= 1 || selected.size === rows.length;
+        selectAll.title = rows.length <= 1
+            ? '当前只有一组数据集'
+            : '让这个实验框同时负责所有数据集组。';
+        selectAll.addEventListener('click', () => {
+            setDatasetExperimentalScopeIndices(index, rows.map((_row, rowIndex) => rowIndex));
+            renderDatasetEditor();
+        });
+        actions.appendChild(selectAll);
+
+        const chips = document.createElement('div');
+        chips.className = 'dataset-experimental-scope-chips';
+        rows.forEach((_row, rowIndex) => {
+            const chip = document.createElement('label');
+            chip.className = ['dataset-scope-chip', selected.has(rowIndex) ? 'selected' : ''].filter(Boolean).join(' ');
+            const input = document.createElement('input');
+            input.type = 'checkbox';
+            input.checked = selected.has(rowIndex);
+            input.setAttribute('aria-label', `第 ${rowIndex + 1} 组数据集生效`);
+            input.addEventListener('change', () => {
+                const next = new Set(datasetExperimentalScopeIndices(index, rows.length));
+                if (input.checked) {
+                    next.add(rowIndex);
+                } else {
+                    next.delete(rowIndex);
+                }
+                if (!next.size) {
+                    next.add(index);
+                }
+                setDatasetExperimentalScopeIndices(index, [...next]);
+                renderDatasetEditor();
+            });
+            const text = document.createElement('span');
+            text.textContent = `第 ${rowIndex + 1} 组`;
+            chip.append(input, text);
+            chips.appendChild(chip);
+        });
+
+        scope.append(copy, actions, chips);
+        return scope;
+    }
+
+    function normalizeCaptionSourceMode(value, preferJson = false) {
+        const raw = String(value || '').trim().toLowerCase().replace(/-/g, '_');
+        const allowed = new Set(CAPTION_SOURCE_MODE_OPTIONS.map((option) => option.value));
+        if (allowed.has(raw)) return raw;
+        if (raw === 'captions.json' || raw === 'diffpipeforge') return 'captions_json';
+        if (raw === '.json' || raw === 'same_stem_json') return 'json';
+        if (raw === '.txt' || raw === 'text') return 'txt';
+        return preferJson ? 'json' : 'auto';
+    }
+
+    function captionSourceModeLabel(value) {
+        const mode = normalizeCaptionSourceMode(value);
+        const option = CAPTION_SOURCE_MODE_OPTIONS.find((item) => item.value === mode);
+        return option ? `${option.label} (${option.detail})` : mode;
+    }
+
+    function createDatasetRowCaptionSourceModeEditor(settings, index) {
+        const current = normalizeCaptionSourceMode(settings.caption_source_mode, settings.prefer_json_caption);
+        const panel = document.createElement('div');
+        panel.className = 'dataset-caption-source';
+        panel.dataset.mode = current;
+
+        const head = document.createElement('div');
+        head.className = 'dataset-caption-source-head';
+        const copy = document.createElement('div');
+        copy.className = 'dataset-caption-source-copy';
+        const titleRow = document.createElement('div');
+        titleRow.className = 'dataset-caption-source-title-row';
+        const title = document.createElement('strong');
+        title.textContent = '标注来源 / caption_source_mode';
+        const helpId = `dataset-caption-source-notes-${++datasetCaptionSourceHelpSeq}`;
+        const helpBtn = document.createElement('button');
+        helpBtn.className = 'info-toggle dataset-caption-source-help-toggle';
+        helpBtn.type = 'button';
+        helpBtn.textContent = '?';
+        helpBtn.title = '展开标注来源注释';
+        helpBtn.setAttribute('aria-label', '标注来源格式注释');
+        helpBtn.setAttribute('aria-controls', helpId);
+        helpBtn.setAttribute('aria-expanded', 'false');
+        titleRow.append(title, helpBtn);
+        const desc = document.createElement('span');
+        desc.textContent = '默认 auto 自动识别；保存后预览和训练前预检测都会显示识别结果，也可以强制指定格式。';
+        copy.append(titleRow, desc);
+        const state = document.createElement('span');
+        state.className = 'dataset-caption-source-state';
+        state.textContent = captionSourceModeLabel(current);
+        head.append(copy, state);
+
+        const controls = document.createElement('div');
+        controls.className = 'dataset-caption-source-options';
+        CAPTION_SOURCE_MODE_OPTIONS.forEach((option) => {
+            const label = document.createElement('label');
+            label.className = ['dataset-caption-source-option', option.value === current ? 'selected' : ''].filter(Boolean).join(' ');
+            const input = document.createElement('input');
+            input.type = 'radio';
+            input.name = `dataset-caption-source-${index}`;
+            input.value = option.value;
+            input.checked = option.value === current;
+            input.setAttribute('aria-label', `${option.label} ${option.detail}`);
+            input.addEventListener('change', () => {
+                if (!input.checked) return;
+                updateDatasetEditorRowsSettingValue(
+                    [index],
+                    'caption_source_mode',
+                    option.value,
+                    { render: true },
+                );
+            });
+            const labelText = document.createElement('span');
+            labelText.textContent = option.label;
+            const detail = document.createElement('small');
+            detail.textContent = option.detail;
+            label.append(input, labelText, detail);
+            controls.appendChild(label);
+        });
+
+        const notes = document.createElement('ul');
+        notes.className = 'dataset-caption-source-notes';
+        notes.id = helpId;
+        notes.hidden = true;
+        [
+            '"1.png+1.txt"*n = sd-scripts格式标注',
+            '"1.png+1.json"*n = AnimaLoraToolkit格式标注',
+            '"png*n"+captions.json = DiffPipeForge格式标注',
+            'caption_extension 仅影响 txt 来源或 auto 回退到文本标注；json / captions.json 模式会忽略它。',
+        ].forEach((text) => {
+            const item = document.createElement('li');
+            item.textContent = text;
+            notes.appendChild(item);
+        });
+        helpBtn.addEventListener('click', () => {
+            const nextVisible = notes.hidden;
+            notes.hidden = !nextVisible;
+            helpBtn.classList.toggle('active', nextVisible);
+            helpBtn.setAttribute('aria-expanded', String(nextVisible));
+            helpBtn.title = nextVisible ? '收起标注来源注释' : '展开标注来源注释';
+        });
+
+        panel.append(head, controls, notes);
         return panel;
     }
 
@@ -5414,7 +5819,9 @@
         }
 
         const countText = `${payload.count || 0}/${payload.total || 0} 张`;
-        meta.textContent = `${payload.source_label || '原始图目录'} · ${payload.directory || '-'} · ${countText} · 标注 ${payload.caption_extension || '.txt'}`;
+        const sourceLabel = payload.caption_source_label || captionSourceModeLabel(payload.caption_source_mode || 'auto');
+        const detectedSummary = payload.caption_summary ? ` · 识别 ${payload.caption_summary}` : '';
+        meta.textContent = `${payload.source_label || '原始图目录'} · ${payload.directory || '-'} · ${countText} · 标注来源 ${sourceLabel}${detectedSummary}`;
         renderDatasetPreviewDetails(payload);
         grid.innerHTML = '';
         const images = Array.isArray(payload.images) ? payload.images : [];
@@ -5443,6 +5850,8 @@
             ['分辨率', settings.resolution || '-'],
             ['分桶', settings.enable_bucket ? `${settings.min_bucket_reso}-${settings.max_bucket_reso}/${settings.bucket_reso_steps}` : '关闭'],
             ['验证集', datasetPreviewValidationText(settings)],
+            ['标注来源', payload.caption_source_label || captionSourceModeLabel(settings.caption_source_mode || 'auto')],
+            ['识别结果', payload.caption_summary || '-'],
         ];
         for (const [label, value] of items) {
             details.appendChild(createPreviewDetailRow(label, String(value)));
@@ -5486,7 +5895,11 @@
         captionBox.className = ['dataset-preview-caption', caption.ok ? '' : 'missing'].filter(Boolean).join(' ');
         const captionHead = document.createElement('div');
         const captionTitle = document.createElement('span');
-        captionTitle.textContent = caption.ok ? `标注 ${caption.extension || ''}` : `缺少标注 ${caption.extension || ''}`;
+        const captionCount = Number(caption.caption_count || 0);
+        const formatLabel = caption.format_label || caption.extension || '';
+        captionTitle.textContent = caption.ok
+            ? `标注 ${formatLabel}${captionCount > 1 ? ` · ${captionCount} 条` : ''}`
+            : `缺少标注 · ${caption.source_label || captionSourceModeLabel(caption.source_mode || 'auto')}`;
         captionHead.appendChild(captionTitle);
         if (caption.file) {
             const copyBtn = document.createElement('button');
@@ -5497,7 +5910,7 @@
             captionHead.appendChild(copyBtn);
         }
         const pre = document.createElement('pre');
-        pre.textContent = caption.ok ? (caption.text || '(空标注)') : '未找到同名 caption 文件';
+        pre.textContent = caption.ok ? (caption.text || '(空标注)') : '未按当前标注来源找到 caption 文件';
         captionBox.append(captionHead, pre);
         body.appendChild(captionBox);
 
@@ -5529,6 +5942,25 @@
         }
     }
 
+    function normalizeNlTagMix(raw) {
+        const source = raw && typeof raw === 'object' ? raw : {};
+        const enabled = source.enabled === true || source.enabled === 'true';
+        const parsedRatio = Number(source.tag_ratio ?? source.tagRatio ?? DEFAULT_NL_TAG_MIX.tag_ratio);
+        const tagRatio = Number.isFinite(parsedRatio)
+            ? Math.min(1, Math.max(0, parsedRatio > 1 ? parsedRatio / 100 : parsedRatio))
+            : DEFAULT_NL_TAG_MIX.tag_ratio;
+        return {
+            enabled,
+            tag_ratio: tagRatio,
+        };
+    }
+
+    function nlTagMixSummary(mix) {
+        const normalized = normalizeNlTagMix(mix);
+        const tagPercent = Math.round(normalized.tag_ratio * 100);
+        return `${tagPercent}% tag + ${100 - tagPercent}% nl`;
+    }
+
     function normalizeDatasetEditorRows(rows) {
         return (rows || [])
             .filter((row) => row && typeof row === 'object')
@@ -5537,6 +5969,7 @@
                 image_dir: String(row.image_dir || row.resized_image_dir || ''),
                 cache_dir: String(row.cache_dir || row.lora_cache_dir || ''),
                 num_repeats: Math.max(1, Number.parseInt(row.num_repeats || 1, 10) || 1),
+                nl_tag_mix: normalizeNlTagMix(row.nl_tag_mix),
                 settings: normalizeDatasetRowSettings(row),
             }));
     }
@@ -5547,6 +5980,7 @@
             image_dir: row.image_dir,
             cache_dir: row.cache_dir,
             num_repeats: row.num_repeats,
+            nl_tag_mix: normalizeNlTagMix(row.nl_tag_mix),
             settings: normalizeDatasetDefaults(row.settings || {}),
         }));
     }
@@ -5563,6 +5997,8 @@
 
     function normalizeDatasetDefaults(defaults) {
         const raw = defaults && typeof defaults === 'object' ? defaults : {};
+        const preferJson = raw.prefer_json_caption === true || raw.prefer_json_caption === 'true';
+        const captionSourceMode = normalizeCaptionSourceMode(raw.caption_source_mode, preferJson);
         return {
             resolution: Math.max(1, Number.parseInt(raw.resolution || 1024, 10) || 1024),
             enable_bucket: raw.enable_bucket !== false && raw.enable_bucket !== 'false',
@@ -5575,7 +6011,8 @@
             validation_seed: Math.max(0, Number.parseInt(raw.validation_seed || 42, 10) || 42),
             caption_extension: String(raw.caption_extension || '.txt'),
             keep_tokens: Math.max(0, Number.parseInt(raw.keep_tokens || 3, 10) || 0),
-            prefer_json_caption: raw.prefer_json_caption === true || raw.prefer_json_caption === 'true',
+            prefer_json_caption: preferJson,
+            caption_source_mode: captionSourceMode,
         };
     }
 
@@ -5621,24 +6058,98 @@
     }
 
     function updateDatasetEditorRowSetting(index, key, input) {
+        let value;
+        if (input.type === 'checkbox') {
+            value = input.checked;
+        } else if (input.tagName === 'SELECT') {
+            value = input.value === 'true';
+        } else if (input.type === 'number') {
+            value = key === 'validation_split' ? Math.max(0, Number(input.value) || 0) : Math.max(0, Number.parseInt(input.value || '0', 10) || 0);
+        } else {
+            value = input.value;
+        }
+        updateDatasetEditorRowSettingValue(index, key, value);
+    }
+
+    function updateDatasetEditorRowSettingValue(index, key, value) {
+        updateDatasetEditorRowsSettingValue([index], key, value);
+    }
+
+    function updateDatasetEditorRowsSettingValue(indices, key, value, options = {}) {
         const state = datasetEditorStateForActivePanel();
         const rows = normalizeDatasetEditorRows(state.datasets);
-        if (!rows[index]) return;
-        const settings = normalizeDatasetDefaults(rows[index].settings || state.defaults || {});
-        if (input.tagName === 'SELECT') {
-            settings[key] = input.value === 'true';
-        } else if (input.type === 'number') {
-            settings[key] = key === 'validation_split' ? Math.max(0, Number(input.value) || 0) : Math.max(0, Number.parseInt(input.value || '0', 10) || 0);
-        } else {
-            settings[key] = input.value;
+        const targets = datasetValidTargetIndices(indices, rows.length);
+        if (!targets.length) return;
+        for (const targetIndex of targets) {
+            const settings = normalizeDatasetDefaults(rows[targetIndex].settings || state.defaults || {});
+            settings[key] = value;
+            rows[targetIndex].settings = settings;
         }
-        rows[index].settings = settings;
         if (isDatasetTabActive()) {
             datasetPresetState.datasets = rows;
         } else {
             datasetEditorState.datasets = rows;
         }
         markDatasetEditorDirty();
+        if (options.render) {
+            renderDatasetEditor();
+        }
+    }
+
+    function updateDatasetEditorRowNlTagMix(index, nextMix) {
+        updateDatasetEditorRowsNlTagMix([index], nextMix);
+    }
+
+    function updateDatasetEditorRowsNlTagMix(indices, nextMix) {
+        const state = datasetEditorStateForActivePanel();
+        const rows = normalizeDatasetEditorRows(state.datasets);
+        const targets = datasetValidTargetIndices(indices, rows.length);
+        if (!targets.length) return;
+        const mix = normalizeNlTagMix(nextMix);
+        for (const targetIndex of targets) {
+            rows[targetIndex].nl_tag_mix = mix;
+        }
+        if (isDatasetTabActive()) {
+            datasetPresetState.datasets = rows;
+        } else {
+            datasetEditorState.datasets = rows;
+        }
+        markDatasetEditorDirty();
+        renderDatasetEditor();
+    }
+
+    function datasetExperimentalScopeKey(index) {
+        return `${isDatasetTabActive() ? 'dataset-preset' : 'config-dataset'}:${index}`;
+    }
+
+    function datasetExperimentalScopeIndices(index, total = null) {
+        const state = datasetEditorStateForActivePanel();
+        const count = total ?? normalizeDatasetEditorRows(state.datasets).length;
+        const key = datasetExperimentalScopeKey(index);
+        const raw = datasetExperimentalScopeSelections.get(key) || [index];
+        const selected = datasetValidTargetIndices(raw, count);
+        if (!selected.length && index >= 0 && index < count) {
+            selected.push(index);
+        }
+        datasetExperimentalScopeSelections.set(key, selected);
+        return selected;
+    }
+
+    function setDatasetExperimentalScopeIndices(index, indices) {
+        const state = datasetEditorStateForActivePanel();
+        const count = normalizeDatasetEditorRows(state.datasets).length;
+        const selected = datasetValidTargetIndices(indices, count);
+        if (!selected.length && index >= 0 && index < count) {
+            selected.push(index);
+        }
+        datasetExperimentalScopeSelections.set(datasetExperimentalScopeKey(index), selected);
+    }
+
+    function datasetValidTargetIndices(indices, count) {
+        return [...new Set((indices || [])
+            .map((value) => Number.parseInt(value, 10))
+            .filter((value) => Number.isInteger(value) && value >= 0 && value < count))]
+            .sort((left, right) => left - right);
     }
 
     function markDatasetEditorDirty() {
@@ -5676,7 +6187,10 @@
             datasetEditorState.dirty = true;
         }
         renderDatasetEditor();
-        if (!isDatasetTabActive()) updateTomlDirtyState();
+        if (!isDatasetTabActive()) {
+            updateTomlDirtyState();
+            updateStepEstimatePanel();
+        }
     }
 
     function removeDatasetEditorRow(index) {
@@ -5730,7 +6244,10 @@
     }
 
     function setCurrentTrainingSourceFromVariant(variant) {
-        if (!variant) return;
+        if (!variant) {
+            clearCurrentTrainingSource();
+            return;
+        }
         if (val('method-select') === 'spd' || variant === 'spd') {
             currentTrainingSource = {
                 method: 'spd',
@@ -5743,6 +6260,14 @@
             method: variant,
             methods_subdir: 'gui-methods',
             file: `configs/gui-methods/${variant}.toml`,
+        };
+    }
+
+    function clearCurrentTrainingSource() {
+        currentTrainingSource = {
+            method: '',
+            methods_subdir: '',
+            file: '',
         };
     }
 
@@ -6036,6 +6561,7 @@
                 const labelActions = document.createElement('div');
                 labelActions.className = 'field-label-actions';
                 labelActions.appendChild(createSamplePromptAddButton(rowsWrap));
+                labelActions.appendChild(createSamplePromptTextModeButton(input));
                 labelStack.appendChild(labelActions);
             }
             main.appendChild(labelStack);
@@ -6172,11 +6698,36 @@
         addBtn.textContent = '添加行';
         addBtn.addEventListener('click', () => {
             const editor = rowsWrap.closest('.sample-prompts-editor');
+            if (editor?.dataset.mode === 'text') {
+                const textarea = editor.querySelector('.sample-prompts-textarea');
+                if (textarea) {
+                    if (textarea.value && !textarea.value.endsWith('\n')) textarea.value += '\n';
+                    textarea.focus();
+                    textarea.setSelectionRange(textarea.value.length, textarea.value.length);
+                    markSamplePromptsEditorTouched(editor);
+                    handleFormFieldChange();
+                    return;
+                }
+            }
             appendSamplePromptRow(rowsWrap, blankSamplePromptRow());
             markSamplePromptsEditorTouched(editor);
             handleFormFieldChange();
         });
         return addBtn;
+    }
+
+    function createSamplePromptTextModeButton(editor) {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'btn btn-small sample-prompts-add-btn';
+        btn.textContent = '文本模式';
+        btn.title = '保留注释、空行和原始参数格式';
+        btn.addEventListener('click', () => {
+            switchSamplePromptsEditorToTextMode(editor);
+            markSamplePromptsEditorTouched(editor);
+            handleFormFieldChange();
+        });
+        return btn;
     }
 
     function setSamplePromptsEditorContent(editor, content) {
@@ -6194,11 +6745,37 @@
         const rowsWrap = editor.querySelector('.sample-prompts-rows');
         if (!rowsWrap) return;
         rowsWrap.innerHTML = '';
+        editor.dataset.mode = samplePromptsContentNeedsTextMode(content) ? 'text' : 'table';
+        if (editor.dataset.mode === 'text') {
+            const textarea = document.createElement('textarea');
+            textarea.className = 'sample-prompts-textarea';
+            textarea.value = content || '';
+            textarea.spellcheck = false;
+            textarea.addEventListener('input', () => markSamplePromptsEditorTouched(editor));
+            rowsWrap.appendChild(textarea);
+            return;
+        }
         const rows = parseSamplePromptRows(content);
         for (const row of rows) {
             appendSamplePromptRow(rowsWrap, row);
         }
         updateSamplePromptRemoveButtons(rowsWrap);
+    }
+
+    function switchSamplePromptsEditorToTextMode(editor) {
+        if (!editor || editor.dataset.mode === 'text') return;
+        const rowsWrap = editor.querySelector('.sample-prompts-rows');
+        if (!rowsWrap) return;
+        const text = serializeSamplePromptsEditor(editor);
+        rowsWrap.innerHTML = '';
+        editor.dataset.mode = 'text';
+        const textarea = document.createElement('textarea');
+        textarea.className = 'sample-prompts-textarea';
+        textarea.value = text;
+        textarea.spellcheck = false;
+        textarea.addEventListener('input', () => markSamplePromptsEditorTouched(editor));
+        rowsWrap.appendChild(textarea);
+        textarea.focus();
     }
 
     function appendSamplePromptRow(rowsWrap, row) {
@@ -6291,6 +6868,16 @@
         return { prompt: '', height: '', width: '', cfg: '', steps: '', seed: '', extra: '' };
     }
 
+    function samplePromptsContentNeedsTextMode(content) {
+        const text = String(content || '');
+        if (!text) return false;
+        return text.split(/\r?\n/).some((line) => {
+            const trimmed = line.trim();
+            if (!trimmed || trimmed.startsWith('#')) return true;
+            return serializeSamplePromptRow(parseSamplePromptLine(line)) !== trimmed;
+        });
+    }
+
     function parseSamplePromptRows(content) {
         const rows = String(content || '')
             .split(/\r?\n/)
@@ -6340,6 +6927,9 @@
     }
 
     function serializeSamplePromptsEditor(editor) {
+        if (editor.dataset.mode === 'text') {
+            return editor.querySelector('.sample-prompts-textarea')?.value || '';
+        }
         const rows = [];
         for (const rowEl of editor.querySelectorAll('.sample-prompt-row')) {
             const row = samplePromptRowFromElement(rowEl);
@@ -8681,10 +9271,11 @@
                 row.source_dir || '未设置原始路径',
                 `重复 ${row.num_repeats || 1}`,
                 `${settings.resolution}px`,
+                `标注 ${captionSourceModeLabel(settings.caption_source_mode)}`,
             ].join(' · ');
         });
         const defaults = normalizeDatasetDefaults(state.defaults || {});
-        parts.push(`通用标注 ${defaults.caption_extension} · keep_tokens ${defaults.keep_tokens} · JSON ${defaults.prefer_json_caption ? '开' : '关'}`);
+        parts.push(`通用 keep_tokens ${defaults.keep_tokens}`);
         return parts.join('\n');
     }
 
@@ -10353,17 +10944,31 @@
         if (record?.id && record.id <= trainingRuntime.lastLogId) return;
         if (record?.id) trainingRuntime.lastLogId = record.id;
 
-        const el = document.getElementById('log-output');
         const line = record?.line ?? '';
         const prefix = record?.kind === 'progress' ? '[进度] ' : '';
-        el.textContent += prefix + line + '\n';
+        trainingRuntime.logBuffer.push(prefix + line);
         trainingRuntime.logLineCount += 1;
+        scheduleLogFlush();
+    }
 
-        if (trainingRuntime.logLineCount > MAX_LOG_LINES) {
-            const lines = el.textContent.split('\n').filter(Boolean).slice(-MAX_LOG_LINES);
-            el.textContent = lines.join('\n') + '\n';
-            trainingRuntime.logLineCount = lines.length;
-        }
+    function scheduleLogFlush() {
+        if (trainingRuntime.logFlushPending) return;
+        trainingRuntime.logFlushPending = true;
+        const schedule = window.requestAnimationFrame
+            ? (fn) => window.requestAnimationFrame(fn)
+            : (fn) => window.setTimeout(fn, 16);
+        schedule(flushLogBuffer);
+    }
+
+    function flushLogBuffer() {
+        trainingRuntime.logFlushPending = false;
+        if (!trainingRuntime.logBuffer.length) return;
+        const el = document.getElementById('log-output');
+        const nextText = `${el.textContent}${trainingRuntime.logBuffer.join('\n')}\n`;
+        trainingRuntime.logBuffer = [];
+        const lines = nextText.split('\n').filter(Boolean).slice(-MAX_LOG_LINES);
+        el.textContent = lines.length ? `${lines.join('\n')}\n` : '';
+        trainingRuntime.logLineCount = lines.length;
         el.scrollTop = el.scrollHeight;
         updateLogStatusText();
     }
@@ -10428,18 +11033,28 @@
         document.getElementById('progress-text').textContent = text;
         document.getElementById('metric-step').textContent = msg.current;
         if (msg.rate) document.getElementById('metric-rate').textContent = msg.rate;
+        renderLiveTrainingDashboard();
     }
 
     function updateMetrics(msg) {
         if (isHistoryReviewMode()) return;
         markTrainingActivity(msg.ts);
+        const lrText = msg.lr !== undefined ? formatLr(msg.lr) : '';
+        const lrNumber = msg.lr !== undefined ? Number(msg.lr) : null;
         if (msg.loss !== undefined) {
-            document.getElementById('metric-loss').textContent = msg.loss.toFixed(5);
+            const loss = Number(msg.loss);
+            if (!Number.isFinite(loss)) return;
+            document.getElementById('metric-loss').textContent = loss.toFixed(5);
             const step = msg.step || ++stepCounter;
-            lossChart?.push(step, msg.loss, { rawStep: msg.step ?? step });
+            const metadata = { rawStep: msg.step ?? step };
+            if (Number.isFinite(lrNumber)) metadata.lr = lrNumber;
+            lossChart?.push(step, loss, metadata);
         }
         if (msg.lr !== undefined) {
-            document.getElementById('metric-lr').textContent = msg.lr.toExponential(2);
+            document.getElementById('metric-lr').textContent = lrText;
+            if (msg.loss === undefined && Number.isFinite(lrNumber)) {
+                lossChart?.updatePointMetadata?.(msg.step, { lr: lrNumber });
+            }
         }
         if (msg.step !== undefined) {
             document.getElementById('metric-step').textContent = msg.step;
@@ -10447,6 +11062,7 @@
         if (msg.rate) {
             document.getElementById('metric-rate').textContent = msg.rate;
         }
+        renderLiveTrainingDashboard();
     }
 
     function updateStatus(msg) {
@@ -10461,12 +11077,16 @@
         text.textContent = msg.state === 'running' ? jobLabel : (stateMap[msg.state] || msg.state);
         trainingRuntime.state = msg.state;
         trainingRuntime.job = msg.job || trainingRuntime.job || '';
+        trainingRuntime.variant = msg.variant || trainingRuntime.variant || '';
+        trainingRuntime.preset = msg.preset || trainingRuntime.preset || '';
+        trainingRuntime.methodsSubdir = msg.methods_subdir || trainingRuntime.methodsSubdir || '';
         if (msg.last_output_at) {
             markTrainingActivity(msg.last_output_at);
         }
         if (msg.state !== 'running' && msg.state !== 'compiling') {
             trainingRuntime.lastOutputAt = 0;
             trainingRuntime.lastUiActivityAt = 0;
+            resetLiveSystemPeaks();
         }
         if (msg.output_dir !== undefined) {
             trainingRuntime.outputDir = msg.output_dir || '';
@@ -10501,7 +11121,24 @@
             }
         }
         renderCurrentRuntimePaths();
+        renderLiveTrainingDashboard();
         refreshTrainingHealth();
+    }
+
+    function resetLiveSystemPeaks() {
+        trainingRuntime.lastGpuUtil = null;
+        trainingRuntime.lastGpuTemp = null;
+        trainingRuntime.lastVramUsedGb = null;
+        trainingRuntime.lastVramTotalGb = null;
+        trainingRuntime.peakGpuUtil = null;
+        trainingRuntime.peakGpuTemp = null;
+        trainingRuntime.peakVramUsedGb = null;
+        setText('metric-vram', '-');
+        setText('metric-vram-peak', '-');
+        setText('metric-gpu', '-');
+        setText('metric-gpu-peak', '-');
+        setText('metric-temp', '-');
+        setText('metric-temp-peak', '-');
     }
 
     function clearRuntimeInfo() {
@@ -10582,16 +11219,75 @@
             markTrainingActivity(msg.last_output_at);
         }
         if (msg.vram_used_gb !== undefined) {
-            document.getElementById('metric-vram').textContent =
-                `${msg.vram_used_gb}/${msg.vram_total_gb} GB`;
+            trainingRuntime.lastVramUsedGb = Number(msg.vram_used_gb);
+            trainingRuntime.lastVramTotalGb = Number(msg.vram_total_gb);
+            if (Number.isFinite(trainingRuntime.lastVramUsedGb)) {
+                trainingRuntime.peakVramUsedGb = Math.max(
+                    trainingRuntime.peakVramUsedGb ?? 0,
+                    trainingRuntime.lastVramUsedGb
+                );
+            }
+            document.getElementById('metric-vram').textContent = formatRuntimeVram(
+                trainingRuntime.lastVramUsedGb,
+                trainingRuntime.lastVramTotalGb
+            );
+            document.getElementById('metric-vram-peak').textContent = formatRuntimeVram(
+                trainingRuntime.peakVramUsedGb,
+                trainingRuntime.lastVramTotalGb
+            );
         }
         if (msg.gpu_util !== undefined) {
             trainingRuntime.lastGpuUtil = Number(msg.gpu_util);
-            let gpuText = `${msg.gpu_util}%`;
-            if (msg.gpu_temp) gpuText += ` ${msg.gpu_temp}°C`;
-            document.getElementById('metric-gpu').textContent = gpuText;
+            if (Number.isFinite(trainingRuntime.lastGpuUtil)) {
+                trainingRuntime.peakGpuUtil = Math.max(trainingRuntime.peakGpuUtil ?? 0, trainingRuntime.lastGpuUtil);
+            }
+            document.getElementById('metric-gpu').textContent = formatSystemPercent(trainingRuntime.lastGpuUtil);
+            document.getElementById('metric-gpu-peak').textContent = formatSystemPercent(trainingRuntime.peakGpuUtil);
         }
+        if (msg.gpu_temp !== undefined) {
+            trainingRuntime.lastGpuTemp = Number(msg.gpu_temp);
+            if (Number.isFinite(trainingRuntime.lastGpuTemp)) {
+                trainingRuntime.peakGpuTemp = Math.max(trainingRuntime.peakGpuTemp ?? 0, trainingRuntime.lastGpuTemp);
+            }
+            document.getElementById('metric-temp').textContent = formatSystemTemperature(trainingRuntime.lastGpuTemp);
+            document.getElementById('metric-temp-peak').textContent = formatSystemTemperature(trainingRuntime.peakGpuTemp);
+        }
+        renderLiveTrainingDashboard();
         refreshTrainingHealth();
+    }
+
+    function formatRuntimeVram(used, total) {
+        const usedNumber = numberOrNull(used);
+        if (usedNumber === null) return '-';
+        const usedText = formatCompactNumber(usedNumber);
+        if (usedText === '-') return '-';
+        const totalNumber = numberOrNull(total);
+        const totalText = totalNumber === null ? '-' : formatCompactNumber(totalNumber);
+        return totalText === '-' ? `${usedText} GB` : `${usedText} / ${totalText} GB`;
+    }
+
+    function renderLiveTrainingDashboard() {
+        if (isHistoryReviewMode()) return;
+        const stateMap = { idle: '空闲', running: '运行中', error: '错误', compiling: '编译中' };
+        const jobLabel = trainingRuntime.job === 'preprocess' ? '预处理' : '训练';
+        const stateText = trainingRuntime.state === 'running'
+            ? `${jobLabel}中`
+            : (stateMap[trainingRuntime.state] || trainingRuntime.state || '空闲');
+        setText('training-run-state', stateText);
+        const stateEl = document.getElementById('training-run-state');
+        if (stateEl) stateEl.className = `training-run-state ${trainingRuntime.state || 'idle'}`;
+        setText('training-run-title', trainingRuntime.state === 'running' ? `当前${jobLabel}` : '当前监控');
+        setText('training-run-meta', [
+            trainingRuntime.methodsSubdir ? `方法目录 ${trainingRuntime.methodsSubdir}` : '',
+            trainingRuntime.variant ? `配置 ${trainingRuntime.variant}` : '',
+            trainingRuntime.preset ? `预设 ${trainingRuntime.preset}` : '',
+        ].filter(Boolean).join(' · ') || '等待训练任务启动。');
+        setText('training-run-summary', [
+            trainingRuntime.runDir ? `运行目录: ${trainingRuntime.runDir}` : '',
+            trainingRuntime.runtimeConfigFile ? `实际配置: ${trainingRuntime.runtimeConfigFile}` : '',
+            trainingRuntime.outputDir ? `输出: ${trainingRuntime.outputDir}` : '',
+            trainingRuntime.sampleDir ? `样张: ${trainingRuntime.sampleDir}` : '',
+        ].filter(Boolean).join(' · ') || '运行目录和配置快照会在任务启动后显示。');
     }
 
     function markTrainingActivity(ts) {
@@ -10812,6 +11508,108 @@
     }
 
     // ── 预览图 ──
+    function previewWorkspace() {
+        return document.getElementById('preview-workspace');
+    }
+
+    function mountPreviewWorkspace(target) {
+        const workspace = previewWorkspace();
+        if (!workspace || !target || workspace.parentElement === target) return;
+        target.appendChild(workspace);
+    }
+
+    function mountPreviewWorkspaceInPage() {
+        mountPreviewWorkspace(document.getElementById('preview-page-mount'));
+    }
+
+    function mountPreviewWorkspaceInDialog() {
+        mountPreviewWorkspace(document.getElementById('preview-dialog-mount'));
+    }
+
+    function activeTabName() {
+        return document.querySelector('.tab-btn.active')?.dataset.tab || '';
+    }
+
+    function closePreviewImageDialog() {
+        const dialog = document.getElementById('preview-dialog');
+        if (dialog?.open) {
+            dialog.close();
+        }
+    }
+
+    function previewPanelSourceSummary() {
+        if (currentPreviewSource !== 'training') return previewSourceLabel(currentPreviewSource);
+        if (selectedPreviewGroup) {
+            return `配置组: ${selectedPreviewGroup.label || selectedPreviewGroup.history_group_label || '-'}`;
+        }
+        if (selectedPreviewTaskId) {
+            const task = historyTasks.find((item) => item.id === selectedPreviewTaskId);
+            return `历史任务: ${task?.name || selectedPreviewTaskId}`;
+        }
+        return '当前任务 / 最新运行目录';
+    }
+
+    function syncPreviewPanelSubtitle() {
+        const subtitle = document.getElementById('preview-panel-subtitle');
+        if (!subtitle) return;
+        const title = document.getElementById('preview-title')?.textContent || previewSourceLabel(currentPreviewSource);
+        const count = document.getElementById('preview-count')?.textContent || '';
+        const dir = document.getElementById('preview-current-dir')?.textContent || '';
+        const parts = [
+            previewPanelSourceSummary(),
+            title,
+            count && count !== '0 张' ? count : '',
+            dir && dir !== '-' ? `目录: ${dir}` : '',
+        ].filter(Boolean);
+        subtitle.textContent = parts.join(' · ') || '训练样张、权重文件和路径设置。';
+    }
+
+    function openPreviewPanel() {
+        const dialog = document.getElementById('preview-panel-dialog');
+        if (!dialog) return;
+        if (!previewPanelState.open) {
+            previewPanelState.previousTab = activeTabName();
+            previewPanelState.restoreTrainingView = trainingViewMode;
+        }
+        mountPreviewWorkspaceInDialog();
+        previewPanelState.open = true;
+        syncPreviewPanelSubtitle();
+        try {
+            if (dialog.showModal && !dialog.open) {
+                dialog.showModal();
+            } else if (!dialog.open) {
+                dialog.setAttribute('open', 'open');
+            }
+        } catch (e) {
+            dialog.setAttribute('open', 'open');
+        }
+        window.requestAnimationFrame(() => {
+            document.getElementById('btn-close-preview-panel')?.focus();
+        });
+    }
+
+    function restorePreviewWorkspaceAfterPanelClose() {
+        closePreviewImageDialog();
+        mountPreviewWorkspaceInPage();
+        if (previewPanelState.previousTab === 'training' && activeTabName() === 'training' && previewPanelState.restoreTrainingView) {
+            showTrainingView(previewPanelState.restoreTrainingView);
+        }
+        previewPanelState.open = false;
+        previewPanelState.previousTab = '';
+        previewPanelState.restoreTrainingView = '';
+    }
+
+    function closePreviewPanel() {
+        const dialog = document.getElementById('preview-panel-dialog');
+        closePreviewImageDialog();
+        if (dialog?.open) {
+            dialog.close();
+            return;
+        }
+        dialog?.removeAttribute('open');
+        restorePreviewWorkspaceAfterPanelClose();
+    }
+
     async function loadPreviewSettings() {
         if (location.protocol === 'file:') return;
         try {
@@ -10953,6 +11751,48 @@
         loadPreviewImages();
     }
 
+    async function openTrainingPreview(options = {}) {
+        currentPreviewSource = 'training';
+        selectedPreviewTaskId = '';
+        selectedPreviewGroup = null;
+        if (options.group) {
+            selectedPreviewGroup = normalizePreviewGroup(options.group);
+        } else if (options.taskId) {
+            selectedPreviewTaskId = String(options.taskId || '');
+        }
+        previewSettings = null;
+        previewWeightRequestSeq += 1;
+        closeHistoryDetailDialog();
+        openPreviewPanel();
+        document.querySelectorAll('.preview-source-btn').forEach((btn) => {
+            btn.classList.toggle('active', btn.dataset.previewSource === 'training');
+        });
+        updatePreviewTaskVisibility();
+        renderPreviewTaskSelect();
+        syncPreviewPanelSubtitle();
+        await loadPreviewSettings();
+        await loadPreviewImages();
+    }
+
+    function openCurrentTrainingPreview(event) {
+        event?.preventDefault?.();
+        event?.stopPropagation?.();
+        openTrainingPreview();
+    }
+
+    function normalizePreviewGroup(group) {
+        if (!group) return null;
+        return {
+            methods_subdir: group.methods_subdir || '',
+            variant: group.variant || '',
+            preset: group.preset || 'default',
+            history_group_key: group.history_group_key || '',
+            history_group_label: group.history_group_label || group.label || '',
+            history_source_config_file: group.history_source_config_file || group.source_label || '',
+            label: group.label || group.history_group_label || group.history_source_config_file || `${group.methods_subdir || '-'} / ${group.variant || '-'}`,
+        };
+    }
+
     function renderPreviewTaskSelect() {
         const select = document.getElementById('preview-training-task');
         if (!select) return;
@@ -11075,6 +11915,7 @@
     function updatePreviewTaskVisibility() {
         const field = document.getElementById('preview-training-task-field');
         if (field) field.hidden = currentPreviewSource !== 'training';
+        syncPreviewPanelSubtitle();
     }
 
     async function changePreviewTask(taskId) {
@@ -11098,6 +11939,7 @@
             : '尚未设置目录。';
         count.textContent = `${payload.count || 0} 张`;
         document.getElementById('preview-current-dir').textContent = payload.directory || '-';
+        syncPreviewPanelSubtitle();
 
         grid.innerHTML = '';
         if (!payload.images?.length) {
@@ -11130,12 +11972,14 @@
         if (!sortedWeights.length) {
             empty.textContent = payload.error || payload.message || '未找到权重文件。';
             empty.hidden = false;
+            syncPreviewPanelSubtitle();
             return;
         }
         empty.hidden = true;
         for (const item of sortedWeights) {
             list.appendChild(createPreviewWeightItem(item));
         }
+        syncPreviewPanelSubtitle();
     }
 
     function sortPreviewWeights(weights) {
@@ -11386,6 +12230,7 @@
         document.getElementById('preview-count').textContent = '读取中';
         document.getElementById('preview-grid').innerHTML = '';
         setPreviewEmpty('正在读取预览图...');
+        syncPreviewPanelSubtitle();
     }
 
     function setPreviewEmpty(message) {
@@ -11394,6 +12239,7 @@
         empty.textContent = message;
         empty.hidden = false;
         document.getElementById('preview-grid').innerHTML = '';
+        syncPreviewPanelSubtitle();
     }
 
     function previewEmptyMessage(payload) {
@@ -11423,6 +12269,7 @@
         } else {
             el.textContent = previewSettings.custom_dir || '-';
         }
+        syncPreviewPanelSubtitle();
     }
 
     function previewDirectoryHint(payload) {
@@ -12188,6 +13035,7 @@
                 state: status.status,
                 variant: status.variant,
                 preset: status.preset,
+                methods_subdir: status.methods_subdir,
                 job: status.job,
                 last_output_at: status.last_output_at,
                 last_log_id: status.last_log_id,
@@ -12302,31 +13150,30 @@
         const list = document.getElementById('task-history-list');
         if (!list) return;
         list.innerHTML = '';
-        const visibleTasks = historyTasks.filter((task) => showArchivedHistory || !historyTaskIsArchived(task));
-        if (!visibleTasks.length) {
+        const recentTasks = recentTrainingSidebarTasks();
+        if (!recentTasks.length) {
             const empty = document.createElement('div');
             empty.className = 'task-history-empty';
             empty.textContent = historyTasks.length
-                ? '没有未归档任务。勾选“显示归档”可查看已归档记录。'
+                ? '最近没有未归档训练任务；归档和预处理请到历史任务大界面查看。'
                 : '暂无历史任务。下一次训练启动后会自动记录。';
             list.appendChild(empty);
             return;
         }
-        const groups = groupHistoryTasks(visibleTasks);
-        const selectedTimelineTasks = new Set(currentHistoryTimelineSelection || []);
-        for (const group of groups) {
-            const section = document.createElement('section');
-            section.className = 'task-history-group';
-            const groupSelected = group.tasks.some((task) => selectedTimelineTasks.has(task.id));
-            if (historyViewMode === 'config_group' && currentHistoryConfigGroup && (configGroupKey(group) === configGroupKey(currentHistoryConfigGroup) || groupSelected)) {
-                section.classList.add('active');
-            }
-            section.appendChild(createHistoryGroupHeading(group));
-            for (const task of group.tasks) {
-                section.appendChild(createHistoryTaskItem(task));
-            }
-            list.appendChild(section);
+        for (const task of recentTasks) {
+            list.appendChild(createHistoryTaskItem(task));
         }
+    }
+
+    function recentTrainingSidebarTasks() {
+        return historyTasks
+            .filter((task) => task.job === 'training' && !historyTaskIsArchived(task))
+            .sort((a, b) => {
+                const aTime = Number(a.started_at || a.updated_at || 0);
+                const bTime = Number(b.started_at || b.updated_at || 0);
+                return (bTime - aTime) || String(b.id || '').localeCompare(String(a.id || ''), 'zh-CN');
+            })
+            .slice(0, 20);
     }
 
     function renderHistoryManager() {
@@ -12341,8 +13188,9 @@
         const selectAll = document.getElementById('history-select-all');
         const mergeBtn = document.getElementById('btn-history-manager-merge');
         if (!list) return;
+        historyManagerFilters.groupMode = normalizeHistoryGroupMode(historyManagerFilters.groupMode);
         const visible = historyManagerFilteredTasks();
-        const groupMode = historyManagerFilters.groupMode || 'collection';
+        const groupMode = normalizeHistoryGroupMode(historyManagerFilters.groupMode);
         if (tablePanel) tablePanel.classList.toggle('collections-mode', groupMode === 'collections');
         if (status) {
             const archivedCount = historyTasks.filter(historyTaskIsArchived).length;
@@ -12370,36 +13218,17 @@
     }
 
     function renderHistoryManagerItems(list, visible) {
-        const mode = historyManagerFilters.groupMode || 'collection';
+        const mode = normalizeHistoryGroupMode(historyManagerFilters.groupMode);
         list.dataset.groupMode = mode;
         if (mode === 'collections') {
             renderHistoryCollectionsWorkbench(list, visible);
             return;
         }
-        if (mode === 'flat') {
-            for (const task of visible) {
-                list.appendChild(createHistoryManagerRow(task));
-            }
-            return;
-        }
-        renderHistoryManagerGrouped(list, visible, mode);
+        renderHistoryManagerGrouped(list, visible);
     }
 
-    function renderHistoryManagerGrouped(list, visible, mode) {
+    function renderHistoryManagerGrouped(list, visible) {
         const splitCollections = historyConfigGroupCollectionMap(visible);
-        if (mode === 'config') {
-            const groups = sortedHistoryConfigGroups(groupHistoryTasks(visible).map(sortHistoryManagerGroupTasks), '__all__');
-            for (const group of groups) {
-                list.appendChild(createHistoryManagerConfigGroupSection(group, {
-                    splitCollections,
-                    collectionKey: 'all',
-                    groups,
-                    collection: '__all__',
-                }));
-            }
-            return;
-        }
-
         const collections = groupHistoryTasksByCollection(visible);
         for (const collection of collections) {
             list.appendChild(createHistoryManagerCollectionSection(collection, splitCollections, collections));
@@ -12415,16 +13244,8 @@
 
     function collapseVisibleHistoryManagerGroups() {
         const visible = historyManagerFilteredTasks();
-        const mode = historyManagerFilters.groupMode || 'collection';
         collapsedHistoryCollections = new Set();
         collapsedHistoryConfigGroups = new Set();
-        if (mode === 'config') {
-            const groups = sortedHistoryConfigGroups(groupHistoryTasks(visible).map(sortHistoryManagerGroupTasks), '__all__');
-            for (const group of groups) {
-                collapsedHistoryConfigGroups.add(historyConfigGroupCollapseKey(group, 'all'));
-            }
-            return;
-        }
         const collections = groupHistoryTasksByCollection(visible);
         for (const collection of collections) {
             collapsedHistoryCollections.add(collection.key);
@@ -12584,7 +13405,7 @@
             archived: 'all',
             source: 'all',
             sort: historyManagerFilters.sort || 'newest',
-            groupMode: historyManagerFilters.groupMode || 'collection',
+            groupMode: normalizeHistoryGroupMode(historyManagerFilters.groupMode),
         };
         if (state === 'training' || state === 'preprocess') {
             next.kind = state;
@@ -12608,7 +13429,7 @@
         const base =
             searchEmpty &&
             Boolean(historyManagerFilters.sort || 'newest') &&
-            Boolean(historyManagerFilters.groupMode || 'collection') &&
+            Boolean(normalizeHistoryGroupMode(historyManagerFilters.groupMode)) &&
             (state === 'archived'
                 ? historyManagerFilters.archived === 'archived'
                 : (historyManagerFilters.archived || 'active') === 'all');
@@ -12674,25 +13495,9 @@
         const configSearch = historyConfigGroupSearch.trim().toLowerCase();
         if (!collectionSearch && !configSearch) return base;
 
-        const mode = historyManagerFilters.groupMode || 'collection';
-        if (mode === 'flat') {
-            return base.filter((task) => {
-                if (collectionSearch && !historyTaskMatchesCollectionSearch(task, collectionSearch)) return false;
-                if (configSearch && !historyTaskMatchesConfigGroupSearch(task, configSearch)) return false;
-                return true;
-            });
-        }
-
-        if (mode === 'config') {
-            const groups = groupHistoryTasks(base)
-                .map(sortHistoryManagerGroupTasks)
-                .filter((group) => historyConfigGroupVisibleForSearch(group, collectionSearch, configSearch));
-            return uniqueHistoryTasks(groups.flatMap((group) => group.tasks || []));
-        }
-
         const collections = groupHistoryTasksByCollection(base)
             .filter((collection) => !collectionSearch || historyCollectionSearchText(collection).includes(collectionSearch));
-        const selectedCollection = mode === 'collections' && selectedHistoryCollectionKey
+        const selectedCollection = normalizeHistoryGroupMode(historyManagerFilters.groupMode) === 'collections' && selectedHistoryCollectionKey
             ? historyCollectionByKey(collections, selectedHistoryCollectionKey)
             : null;
         const scopedCollections = selectedCollection ? [selectedCollection] : collections;
@@ -12704,12 +13509,6 @@
             }
         }
         return uniqueHistoryTasks(visibleGroups.flatMap((group) => group.tasks || []));
-    }
-
-    function historyConfigGroupVisibleForSearch(group, collectionSearch, configSearch) {
-        if (configSearch && !historyConfigGroupSearchText(group).includes(configSearch)) return false;
-        if (collectionSearch && !(group.tasks || []).some((task) => historyTaskMatchesCollectionSearch(task, collectionSearch))) return false;
-        return true;
     }
 
     function uniqueHistoryTasks(tasks) {
@@ -12760,17 +13559,6 @@
         ].filter(Boolean).join('\n').toLowerCase().includes(search);
     }
 
-    function historyTaskMatchesConfigGroupSearch(task, search) {
-        const group = historyConfigGroupFromTask(task);
-        return [
-            historyGroupDisplayLabel(group),
-            group.source_label,
-            group.history_source_config_file,
-            group.fallback_group_label,
-            historyTaskSearchText(task),
-        ].filter(Boolean).join('\n').toLowerCase().includes(search);
-    }
-
     function historyTaskSortComparator(mode) {
         return (a, b) => {
             if (mode === 'oldest') return (Number(a.started_at || 0) - Number(b.started_at || 0));
@@ -12784,7 +13572,7 @@
     function createHistoryManagerRow(task) {
         const row = document.createElement('article');
         row.className = 'history-manager-row';
-        if (viewingHistoryTaskId === task.id && historyViewMode === 'single') row.classList.add('active');
+        if (viewingHistoryTaskId === task.id && isHistoryDetailDialogOpen()) row.classList.add('active');
         if (historyTaskIsArchived(task)) row.classList.add('archived');
 
         const select = document.createElement('label');
@@ -12832,6 +13620,11 @@
 
         const actions = document.createElement('div');
         actions.className = 'history-row-actions';
+        if (task.job === 'training') {
+            actions.append(
+                createHistoryActionButton('预览结果', () => openTrainingPreview({ taskId: task.id })),
+            );
+        }
         actions.append(
             createHistoryActionButton('查看', () => loadHistoryTask(task.id)),
             createHistoryActionButton(historyTaskIsArchived(task) ? '取消归档' : '归档', () => archiveHistoryTask(task)),
@@ -13065,7 +13858,8 @@
             createHistoryManagerGroupButton('置底', () => moveHistoryConfigGroup(group, 'bottom', options.groups, options.collection)),
         );
         if (trainingCount) {
-            actions.append(createHistoryManagerGroupButton('合并查看', () => chooseTimelineTasksForMerge(group)));
+            actions.append(createHistoryConfigGroupMergeButton(group));
+            actions.append(createHistoryConfigGroupPreviewButton(group));
         }
 
         card.append(select, main, actions);
@@ -13415,7 +14209,8 @@
             createHistoryManagerGroupButton(historyTasksAllSelected(group.tasks) ? '取消选择' : '选择分组', () => toggleHistoryTaskSelection(group.tasks)),
         );
         if (trainingCount) {
-            actions.append(createHistoryManagerGroupButton('合并查看', () => chooseTimelineTasksForMerge(group)));
+            actions.append(createHistoryConfigGroupMergeButton(group));
+            actions.append(createHistoryConfigGroupPreviewButton(group));
         }
         if (Array.isArray(options.groups) && options.groups.length > 1) {
             actions.append(
@@ -13455,6 +14250,22 @@
         const btn = createHistoryActionButton(label, handler, tone);
         btn.classList.add('history-manager-group-action');
         return btn;
+    }
+
+    function createHistoryConfigGroupMergeButton(group) {
+        const btn = createHistoryManagerGroupButton('合并查看', () => loadConfigGroupTimeline(group, { skipSelectionDialog: true }));
+        btn.title = '查看这个自动配置分组内的全部训练结果';
+        return btn;
+    }
+
+    function createHistoryConfigGroupPreviewButton(group) {
+        const btn = createHistoryManagerGroupButton('预览结果', () => openTrainingPreview({ group }));
+        btn.title = '打开预览结果弹窗，查看这个配置分组的样张和权重';
+        return btn;
+    }
+
+    function canPreviewHistoryConfigGroup(group) {
+        return Boolean(group && group.methods_subdir && group.variant && group.methods_subdir !== '手动选择');
     }
 
     async function setHistoryCollectionForTasks(tasks, value = '', description = '') {
@@ -13552,6 +14363,7 @@
     }
 
     function syncHistoryFilterControls() {
+        historyManagerFilters.groupMode = normalizeHistoryGroupMode(historyManagerFilters.groupMode);
         const controls = {
             'history-manager-search': 'search',
             'history-filter-kind': 'kind',
@@ -13577,6 +14389,10 @@
         if (key === 'sort') return 'newest';
         if (key === 'groupMode') return 'collection';
         return 'all';
+    }
+
+    function normalizeHistoryGroupMode(value) {
+        return value === 'collections' ? 'collections' : 'collection';
     }
 
     function openHistoryCollectionsWorkbench() {
@@ -13749,10 +14565,17 @@
             const btn = document.createElement('button');
             btn.type = 'button';
             btn.className = 'task-history-group-action';
-            btn.textContent = '选择合并查看';
-            btn.title = '手动选择要合并查阅的训练任务，再合并查看日志和 Loss 曲线。';
-            btn.addEventListener('click', () => chooseTimelineTasksForMerge(group));
+            btn.textContent = '合并查看';
+            btn.title = '查看这个自动配置分组内的全部训练结果';
+            btn.addEventListener('click', () => loadConfigGroupTimeline(group, { skipSelectionDialog: true }));
             heading.appendChild(btn);
+            const previewBtn = document.createElement('button');
+            previewBtn.type = 'button';
+            previewBtn.className = 'task-history-group-action';
+            previewBtn.textContent = '预览结果';
+            previewBtn.title = '打开预览结果弹窗，查看这个配置分组的样张和权重';
+            previewBtn.addEventListener('click', () => openTrainingPreview({ group }));
+            heading.appendChild(previewBtn);
         }
         return heading;
     }
@@ -13760,7 +14583,7 @@
     function createHistoryTaskItem(task) {
         const card = document.createElement('article');
         card.className = 'task-history-item';
-        if (historyViewMode === 'single' && task.id === viewingHistoryTaskId) card.classList.add('active');
+        if (task.id === viewingHistoryTaskId && isHistoryDetailDialogOpen()) card.classList.add('active');
         const archived = historyTaskIsArchived(task);
         if (archived) card.classList.add('archived');
 
@@ -13792,7 +14615,13 @@
 
         const actions = document.createElement('div');
         actions.className = 'task-history-actions';
+        if (task.job === 'training') {
+            actions.append(
+                createHistoryActionButton('预览结果', () => openTrainingPreview({ taskId: task.id })),
+            );
+        }
         actions.append(
+            createHistoryActionButton('查看', () => loadHistoryTask(task.id)),
             createHistoryActionButton('重命名', () => renameHistoryTask(task)),
             createHistoryActionButton(archived ? '取消归档' : '归档', () => archiveHistoryTask(task)),
             createHistoryActionButton('删除', () => deleteHistoryTask(task), 'danger'),
@@ -14048,7 +14877,7 @@
             if (viewingHistoryTaskId === taskId) {
                 const payload = await api(`/api/training/history/${encodeURIComponent(taskId)}`);
                 if (payload.ok) {
-                    renderHistoryTask(payload);
+                    currentHistoryTaskForResume = payload.task || null;
                     renderHistoryManagerDetail(payload, { open: isHistoryDetailDialogOpen() });
                 }
             }
@@ -14299,10 +15128,19 @@
             ].filter(Boolean).join(' · ');
         actions.innerHTML = '';
         if (task) {
+            if (task.job === 'training') {
+                actions.append(
+                    createHistoryActionButton('预览结果', () => openTrainingPreview({ taskId: task.id })),
+                );
+            }
             actions.append(
                 createHistoryActionButton('重命名', () => renameHistoryTask(task)),
                 createHistoryActionButton(historyTaskIsArchived(task) ? '取消归档' : '归档', () => archiveHistoryTask(task)),
                 createHistoryActionButton('彻底删除', () => deleteHistoryTask(task), 'danger'),
+            );
+        } else if (payload.mode === 'config_group' && canPreviewHistoryConfigGroup(group)) {
+            actions.append(
+                createHistoryActionButton('预览结果', () => openTrainingPreview({ group })),
             );
         }
         document.querySelectorAll('#history-detail-dialog .history-detail-tab').forEach((btn) => {
@@ -14737,6 +15575,7 @@
             step,
             loss,
             rawStep: Number.isFinite(Number(item.rawStep ?? item.step)) ? Number(item.rawStep ?? item.step) : step,
+            lr: numberOrNull(item.lr ?? item.learningRate ?? item.learning_rate),
             ts: numberOrNull(item.ts),
             sourceTaskId: strOrEmpty(item.source_task_id || item.sourceTaskId),
             sourceTaskIndex: Number(item.source_task_index || item.sourceTaskIndex || 0),
@@ -15106,6 +15945,7 @@
             ['原始 Step', point.rawStep ?? '-'],
             ['Loss', formatLossValue(point.loss)],
             ['平滑 Loss', formatLossValue(point.smoothLoss)],
+            ['学习率', formatLr(point.lr)],
             ['时间', formatHistorySystemTime(point.ts)],
             ['来源任务', point.sourceTaskLabel || point.sourceTaskId || '-'],
         ].forEach(([label, value]) => box.appendChild(historyDetailRow(label, value)));
@@ -15568,10 +16408,10 @@
                 return;
             }
             viewingHistoryTaskId = taskId;
-            historyViewMode = 'single';
-            showTrainingView('history');
+            historyViewMode = 'live';
             currentHistoryConfigGroup = null;
             currentHistoryTimelineSelection = [];
+            currentHistoryTaskForResume = payload.task || null;
             resumeOptionsState = {
                 loading: true,
                 taskId,
@@ -15589,9 +16429,9 @@
                 message: '正在读取可热启动权重...',
             };
             historyCurveState.hoverStep = null;
-            renderTrainingHistoryList();
-            renderHistoryTask(payload);
             renderHistoryManagerDetail(payload, { open: true });
+            renderTrainingHistoryList();
+            renderHistoryManager();
             await loadResumeOptionsForTask(taskId);
         } catch (e) {
             alert('读取历史任务失败: ' + e.message);
@@ -15610,31 +16450,9 @@
         await loadHistoryTask(viewingHistoryTaskId);
     }
 
-    async function chooseTimelineTasksForMerge(group) {
-        const selection = await showTimelineTaskSelectionDialog(group);
-        if (!selection) return;
-        if (selection.group && !selection.taskIds?.length) {
-            await loadConfigGroupTimeline(selection.group, { skipSelectionDialog: true });
-            return;
-        }
-        await loadConfigGroupTimeline(group, {
-            taskIds: selection.taskIds || [],
-            skipSelectionDialog: true,
-        });
-    }
-
     async function loadConfigGroupTimeline(group, options = {}) {
         if (!group?.history_group_key && (!group?.methods_subdir || !group?.variant)) return;
-        let taskIds = Array.isArray(options.taskIds) ? options.taskIds.filter(Boolean) : [];
-        if (!taskIds.length && !options.skipSelectionDialog) {
-            const selection = await showTimelineTaskSelectionDialog(group);
-            if (!selection) return;
-            if (selection.group && !selection.taskIds?.length) {
-                group = selection.group;
-            } else {
-                taskIds = selection.taskIds || [];
-            }
-        }
+        const taskIds = Array.isArray(options.taskIds) ? options.taskIds.filter(Boolean) : [];
         const query = new URLSearchParams({
             methods_subdir: group.methods_subdir || '',
             variant: group.variant || '',
@@ -15667,110 +16485,6 @@
         } catch (e) {
             alert('读取配置分组合并日志失败: ' + e.message);
         }
-    }
-
-    function showTimelineTaskSelectionDialog(group) {
-        const visibleTasks = historyTasks.filter((task) => showArchivedHistory || !historyTaskIsArchived(task));
-        const candidates = groupHistoryTasks(visibleTasks)
-            .map((item) => ({
-                ...item,
-                trainingTasks: item.tasks.filter((task) => task.job === 'training'),
-            }))
-            .filter((item) => item.trainingTasks.length);
-
-        if (!candidates.length) {
-            alert('没有可合并的训练分组');
-            return Promise.resolve(null);
-        }
-
-        const body = document.createElement('div');
-        body.className = 'history-merge-dialog-body';
-
-        const toolbar = document.createElement('div');
-        toolbar.className = 'history-merge-dialog-toolbar';
-        const hint = document.createElement('span');
-        hint.textContent = `已列出 ${candidates.length} 个训练分组`;
-        const selectAll = document.createElement('button');
-        selectAll.type = 'button';
-        selectAll.className = 'btn btn-small';
-        selectAll.textContent = '全选';
-        const clearAll = document.createElement('button');
-        clearAll.type = 'button';
-        clearAll.className = 'btn btn-small';
-        clearAll.textContent = '清空';
-        toolbar.append(hint, selectAll, clearAll);
-        body.appendChild(toolbar);
-
-        const list = document.createElement('div');
-        list.className = 'history-merge-task-list';
-        const selectedTaskSet = new Set(currentHistoryTimelineSelection || []);
-        const selectedGroupSet = new Set(
-            currentHistoryTimelineSelection.length
-                ? candidates
-                    .filter((item) => item.trainingTasks.some((task) => selectedTaskSet.has(task.id)))
-                    .map((item) => item.key)
-                : [configGroupKey(group)]
-        );
-        for (const item of candidates) {
-            const label = document.createElement('label');
-            label.className = 'history-merge-task-option';
-            const checkbox = document.createElement('input');
-            checkbox.type = 'checkbox';
-            checkbox.value = item.key || '';
-            checkbox.checked = selectedGroupSet.has(item.key);
-            const content = document.createElement('span');
-            const title = document.createElement('strong');
-            title.textContent = historyGroupDisplayLabel(item);
-            const meta = document.createElement('em');
-            const lossCount = item.trainingTasks.reduce((sum, task) => sum + Number(task.metric_count || 0), 0);
-            const logCount = item.trainingTasks.reduce((sum, task) => sum + Number(task.log_count || 0), 0);
-            meta.textContent = [
-                item.source_label ? `源配置: ${item.source_label}` : `配置分组: ${item.fallback_group_label || item.label}`,
-                `${item.trainingTasks.length} 次训练`,
-                `${lossCount} loss点`,
-                `${logCount} 日志`,
-                item.trainingTasks.some((task) => historyTaskIsArchived(task)) ? '含归档' : '',
-            ].filter(Boolean).join(' · ');
-            content.append(title, meta);
-            label.append(checkbox, content);
-            list.appendChild(label);
-        }
-        body.appendChild(list);
-
-        const checkedValues = () => Array.from(list.querySelectorAll('input[type="checkbox"]:checked'))
-            .map((input) => input.value)
-            .filter(Boolean);
-        const syncConfirm = () => {
-            const confirmBtn = document.getElementById('history-task-dialog-confirm');
-            if (confirmBtn) confirmBtn.disabled = checkedValues().length === 0;
-        };
-        list.addEventListener('change', syncConfirm);
-        selectAll.addEventListener('click', () => {
-            list.querySelectorAll('input[type="checkbox"]').forEach((input) => { input.checked = true; });
-            syncConfirm();
-        });
-        clearAll.addEventListener('click', () => {
-            list.querySelectorAll('input[type="checkbox"]').forEach((input) => { input.checked = false; });
-            syncConfirm();
-        });
-
-        return showHistoryTaskDialog({
-            title: '选择要合并查看的训练分组',
-            description: '勾选一个或多个分组后合并查看 Loss 和日志',
-            body,
-            confirmText: '合并查看',
-            onOpen: syncConfirm,
-            getValue: () => {
-                const selectedGroupKeys = new Set(checkedValues());
-                const selectedGroups = candidates.filter((item) => selectedGroupKeys.has(item.key));
-                if (!selectedGroups.length) return null;
-                if (selectedGroups.length === 1) {
-                    return { group: selectedGroups[0], taskIds: [] };
-                }
-                const taskIds = selectedGroups.flatMap((item) => item.trainingTasks.map((task) => task.id).filter(Boolean));
-                return taskIds.length ? { group: null, taskIds } : null;
-            },
-        });
     }
 
     function historyTaskStepOffset(task) {
@@ -15813,12 +16527,30 @@
         if (bannerTitle) {
             bannerTitle.textContent = `历史任务: ${historyTaskDisplayName(task) || `${task.methods_subdir || '-'} / ${task.variant || '-'}`} · ${historyStateLabel(task.state)}`;
         }
+        setText('training-run-state', '历史');
+        const stateEl = document.getElementById('training-run-state');
+        if (stateEl) stateEl.className = 'training-run-state history';
+        setText('training-run-title', historyTaskDisplayName(task) || '历史任务');
+        setText('training-run-meta', [
+            task.methods_subdir ? `方法目录 ${task.methods_subdir}` : '',
+            task.variant ? `配置 ${task.variant}` : '',
+            task.preset ? `预设 ${task.preset}` : '',
+        ].filter(Boolean).join(' · ') || '历史任务记录');
+        setText('training-run-summary', [
+            task.run_dir ? `运行目录: ${task.run_dir}` : '',
+            task.output_dir ? `输出: ${task.output_dir}` : '',
+            task.sample_dir ? `样张: ${task.sample_dir}` : '',
+        ].filter(Boolean).join(' · ') || '该任务没有记录运行目录。');
         document.getElementById('train-variant').textContent = task.variant || '-';
         document.getElementById('train-preset').textContent = task.preset || '-';
         document.getElementById('progress-bar').style.width = task.state === 'idle' ? '100%' : '0%';
         document.getElementById('progress-text').textContent = `${task.started_at_text || '-'} → ${task.finished_at_text || '未结束'}`;
         document.getElementById('metric-vram').textContent = '-';
+        document.getElementById('metric-vram-peak').textContent = '-';
         document.getElementById('metric-gpu').textContent = '-';
+        document.getElementById('metric-gpu-peak').textContent = '-';
+        document.getElementById('metric-temp').textContent = '-';
+        document.getElementById('metric-temp-peak').textContent = '-';
         document.getElementById('metric-log-age').textContent = task.finished_at_text ? '已结束' : '历史';
         document.getElementById('metric-rate').textContent = '-';
 
@@ -15840,18 +16572,27 @@
         const configLr = readConfigNumber(payload.config_toml, 'learning_rate');
         const system = payload.system || [];
         const lastSystem = system[system.length - 1] || {};
+        const systemSummary = historySystemSummary(payload);
         document.getElementById('metric-loss').textContent = lastMetric.loss !== undefined ? Number(lastMetric.loss).toFixed(5) : '-';
         document.getElementById('metric-lr').textContent = formatLr(lastValue(metrics, 'lr') ?? configLr);
         document.getElementById('metric-step').textContent = lastChartPoint.step ?? lastValue(metrics, 'step') ?? lastLossMetric.step ?? '-';
         document.getElementById('metric-rate').textContent = lastValue(metrics, 'rate') || '-';
         document.getElementById('metric-vram').textContent =
             lastSystem.vram_used_gb !== undefined ? `${lastSystem.vram_used_gb}/${lastSystem.vram_total_gb} GB` : '-';
+        document.getElementById('metric-vram-peak').textContent =
+            systemSummary.hasSystem ? formatSystemVram(systemSummary.peakVramRecord) : '-';
         if (lastSystem.gpu_util !== undefined) {
             document.getElementById('metric-gpu').textContent =
                 `${lastSystem.gpu_util}%${lastSystem.gpu_temp ? ` ${lastSystem.gpu_temp}°C` : ''}`;
         } else {
             document.getElementById('metric-gpu').textContent = '-';
         }
+        document.getElementById('metric-gpu-peak').textContent =
+            systemSummary.hasSystem ? formatSystemPercent(systemSummary.peakGpu) : '-';
+        document.getElementById('metric-temp').textContent =
+            lastSystem.gpu_temp !== undefined ? formatSystemTemperature(lastSystem.gpu_temp) : '-';
+        document.getElementById('metric-temp-peak').textContent =
+            systemSummary.hasSystem ? formatSystemTemperature(systemSummary.peakTemp) : '-';
 
         const logEl = document.getElementById('log-output');
         logEl.textContent = logs
@@ -15890,6 +16631,21 @@
         if (bannerTitle) {
             bannerTitle.textContent = `合并查看: ${configGroupLabel(group)} · ${summary.task_count || 0} 次训练`;
         }
+        setText('training-run-state', '合并');
+        const stateEl = document.getElementById('training-run-state');
+        if (stateEl) stateEl.className = 'training-run-state history';
+        setText('training-run-title', `合并查看: ${configGroupLabel(group)}`);
+        setText('training-run-meta', [
+            group.methods_subdir ? `方法目录 ${group.methods_subdir}` : '',
+            group.variant ? `配置 ${group.variant}` : '',
+            group.preset ? `预设 ${group.preset}` : '',
+        ].filter(Boolean).join(' · ') || '配置组训练结果');
+        setText('training-run-summary', [
+            `${summary.task_count || 0} 次训练`,
+            `${summary.loss_count || 0} 个 Loss 点`,
+            `${summary.log_count || 0} 行日志`,
+            `时间: ${summary.started_at_text || '-'} → ${summary.finished_at_text || '未结束'}`,
+        ].filter(Boolean).join(' · '));
 
         document.getElementById('train-variant').textContent = group.variant || '-';
         document.getElementById('train-preset').textContent = group.preset || '-';
@@ -15897,7 +16653,11 @@
         document.getElementById('progress-text').textContent =
             `${summary.started_at_text || '-'} → ${summary.finished_at_text || '持续/未结束'}`;
         document.getElementById('metric-vram').textContent = '-';
+        document.getElementById('metric-vram-peak').textContent = '-';
         document.getElementById('metric-gpu').textContent = '-';
+        document.getElementById('metric-gpu-peak').textContent = '-';
+        document.getElementById('metric-temp').textContent = '-';
+        document.getElementById('metric-temp-peak').textContent = '-';
         document.getElementById('metric-log-age').textContent = '分组合并';
         document.getElementById('metric-rate').textContent = '-';
 
@@ -15913,6 +16673,7 @@
         lossChart?.setData(lossPoints.map((item) => ({
             step: item.display_step || item.step || 0,
             loss: item.loss,
+            lr: item.lr,
             rawStep: item.step,
             displayStepOffset: item.display_step_offset || 0,
             sourceTaskLabel: item.source_task_label || '',
@@ -16070,8 +16831,12 @@
         const paths = document.getElementById('history-paths');
         if (paths) paths.innerHTML = '';
         document.getElementById('log-output').textContent = '';
+        trainingRuntime.logBuffer = [];
+        trainingRuntime.logFlushPending = false;
         trainingRuntime.lastLogId = 0;
         trainingRuntime.logLineCount = 0;
+        resetLiveSystemPeaks();
+        renderLiveTrainingDashboard();
         stepCounter = 0;
         lossChart?.clear();
         lossChart?.setXLabel?.('step');
@@ -16226,7 +16991,7 @@
         const status = document.getElementById('resume-training-status');
         if (!panel || !select || !btn || !summary || !status) return;
 
-        const isTrainingTask = historyViewMode === 'single' && viewingHistoryTaskId && currentHistoryTaskForResume?.job === 'training';
+        const isTrainingTask = Boolean(viewingHistoryTaskId && currentHistoryTaskForResume?.job === 'training');
         panel.hidden = !isTrainingTask;
         if (!isTrainingTask) {
             select.innerHTML = '<option value="">选择历史训练任务后读取</option>';
@@ -16463,8 +17228,10 @@
                 return;
             }
             updateChoiceGuide();
-            await loadVariants({ reset: true });
-            await loadConfig();
+            const variants = await loadVariants({ reset: true });
+            if (variants.length) {
+                await loadConfig();
+            }
             rememberSelectionSnapshot();
         });
         document.getElementById('variant-select').addEventListener('change', async () => {
@@ -16569,10 +17336,13 @@
         document.getElementById('btn-clear-log').addEventListener('click', () => {
             if (isHistoryReviewMode()) return;
             document.getElementById('log-output').textContent = '';
+            trainingRuntime.logBuffer = [];
+            trainingRuntime.logFlushPending = false;
             trainingRuntime.logLineCount = 0;
             updateLogStatusText();
         });
         document.getElementById('btn-refresh-history').addEventListener('click', loadTrainingHistoryList);
+        document.getElementById('btn-preview-training-results').addEventListener('click', openCurrentTrainingPreview);
         document.getElementById('btn-history-manager-refresh').addEventListener('click', loadTrainingHistoryList);
         document.getElementById('btn-history-collections-workbench').addEventListener('click', openHistoryCollectionsWorkbench);
         document.getElementById('btn-history-manager-merge').addEventListener('click', mergeSelectedHistoryTasks);
@@ -16600,7 +17370,8 @@
         };
         for (const [id, key] of Object.entries(historyFilterMap)) {
             document.getElementById(id).addEventListener(id === 'history-manager-search' ? 'input' : 'change', (event) => {
-                historyManagerFilters[key] = event.target.value || historyManagerFilterDefault(key);
+                const value = event.target.value || historyManagerFilterDefault(key);
+                historyManagerFilters[key] = key === 'groupMode' ? normalizeHistoryGroupMode(value) : value;
                 renderHistoryManager();
             });
         }
@@ -16641,6 +17412,11 @@
         document.getElementById('btn-sort-weights').addEventListener('click', togglePreviewWeightSort);
         document.getElementById('btn-save-preview-settings').addEventListener('click', savePreviewSettings);
         document.getElementById('btn-reset-preview-settings').addEventListener('click', resetPreviewSettings);
+        document.getElementById('btn-close-preview-panel').addEventListener('click', closePreviewPanel);
+        document.getElementById('preview-panel-dialog').addEventListener('click', (event) => {
+            if (event.target === event.currentTarget) closePreviewPanel();
+        });
+        document.getElementById('preview-panel-dialog').addEventListener('close', restorePreviewWorkspaceAfterPanelClose);
         document.getElementById('btn-save-global-settings').addEventListener('click', saveGlobalSettings);
         document.getElementById('btn-reset-global-settings').addEventListener('click', resetGlobalSettings);
         document.querySelectorAll('.global-setting-help-toggle').forEach((btn) => {
@@ -16689,7 +17465,6 @@
             'btn-move-toml-group': '移动右侧配置文件所在分组，只改变列表归类，不改变 TOML 内容。',
             'btn-create-blank-preset': '以 LoRA 标准训练变体 lora.toml 为模板，并套用全局基础模型路径创建新的可编辑项目预设。',
             'btn-fill-global-model-paths': '用全局设置里的基础 DiT、Qwen3、VAE 路径覆盖当前配置表单；覆盖前会要求确认。',
-            'btn-open-stage-resolution-dialog': '打开阶段分辨率调度面板，预览按阶段切换数据分辨率范围的配置。',
             'btn-reload-toml': '从磁盘重新读取当前 TOML；会丢弃未保存编辑。',
             'btn-copy-toml': '复制当前编辑器里的 TOML 内容，方便备份或排查。',
             'btn-save-toml-direct': '保存直接编辑器里的 TOML 文本。需要连续点击两次确认写入。',
@@ -16705,6 +17480,7 @@
             'output-run-search': '按运行目录名、时间或配置文件路径筛选训练输出配置。',
             'btn-live-training': '从历史任务视图回到当前正在监控的训练/预处理状态。',
             'btn-refresh-history': '重新读取训练任务历史列表，包括日志、loss、输出目录和样张目录记录。',
+            'btn-preview-training-results': '打开预览结果弹窗，查看当前训练任务或最新运行目录里的样张和权重，关闭后回到训练页。',
             'btn-history-manager-refresh': '重新读取历史任务管理台数据。',
             'btn-history-collections-workbench': '打开集合管理大界面，以配置分组为单位整理历史任务。',
             'btn-history-manager-merge': '合并查看选中的训练任务，预处理任务不会参与合并。',
@@ -16718,7 +17494,7 @@
             'history-filter-archived': '筛选未归档、已归档或全部历史任务。',
             'history-filter-source': '按队列、续训或继续训练来源筛选。',
             'history-sort-mode': '调整历史任务排序方式。',
-            'history-group-mode': '切换历史任务大界面的集合分组、集合管理、配置分组或平铺列表。',
+            'history-group-mode': '切换历史任务大界面的集合分组或集合管理。',
             'btn-refresh-history-view': '重新读取当前正在查看的历史日志和 Loss；适合训练仍在写日志时手动更新。',
             'btn-merge-config-group-history': '按同一个配置文件分组合并查看训练日志和 Loss 曲线；预处理任务不会参与合并。',
             'btn-clear-log': '清空当前页面显示的日志文本；不会删除磁盘上的历史日志。',
@@ -16726,7 +17502,7 @@
             'btn-refresh-preview': '重新扫描当前预览来源目录，读取最新生成的样张图片。',
             'btn-refresh-weights': '重新扫描选中训练任务的权重文件，显示保存轮次和步数。',
             'btn-sort-weights': '按 Epoch/Step 切换权重文件正序或反序排列。',
-            'btn-save-preview-settings': '保存预览图路径设置，只影响预览结果页面读取目录，不会改训练配置。',
+            'btn-save-preview-settings': '保存预览图路径设置，只影响预览结果工作区读取目录，不会改训练配置。',
             'btn-reset-preview-settings': '恢复预览图目录默认值，例如旧版训练样张兼容目录 output/ckpt/sample。',
             'btn-save-global-settings': '保存 Web 训练输出根目录。每次训练都会在这里创建独立运行目录。',
             'btn-reset-global-settings': '恢复 Web 训练输出根目录默认值 output/runs。',
@@ -16748,7 +17524,6 @@
             'btn-refresh-dataset-preview': '重新扫描当前数据集路径，读取最新图片和同名 caption 标注。',
             'btn-config-dataset-dialog-refresh': '重新读取可选的数据集预设列表，并保留当前配置页的选择状态。',
             'btn-config-dataset-dialog-manage': '切换到数据集页，编辑或新增可复用的数据集预设。',
-            'btn-open-unnamed-dataset-dialog': '打开待命名弹窗。',
         };
         for (const [id, title] of Object.entries(tips)) {
             const el = document.getElementById(id);
@@ -16759,7 +17534,6 @@
                 config: '配置页：选择方法/变体/预设，编辑训练参数并引用数据集预设。',
                 datasets: '数据集页：管理可复用的多数据集预设。',
                 training: '训练页：查看当前任务、历史任务、loss 曲线、日志和显存状态。',
-                preview: '预览结果页：查看训练中样张、推理输出或自定义目录图片。',
                 settings: '全局设置页：设置 Web 训练输出根目录和新建预设默认模型路径。',
             };
             const key = btn.dataset.tab;
@@ -16799,17 +17573,19 @@
 
     function populateSelect(id, items, preferred = '') {
         const sel = document.getElementById(id);
+        const choices = Array.isArray(items) ? items : [];
         const prev = sel.value;
         sel.innerHTML = '';
-        for (const item of items) {
+        sel.disabled = !choices.length;
+        for (const item of choices) {
             const opt = document.createElement('option');
             opt.value = item;
             opt.textContent = item;
             sel.appendChild(opt);
         }
-        if (items.includes(prev)) {
+        if (choices.includes(prev)) {
             sel.value = prev;
-        } else if (preferred && items.includes(preferred)) {
+        } else if (preferred && choices.includes(preferred)) {
             sel.value = preferred;
         }
     }

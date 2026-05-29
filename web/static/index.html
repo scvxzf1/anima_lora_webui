@@ -17,7 +17,7 @@
             }
         })();
     </script>
-    <link rel="stylesheet" href="/static/style.css?v=history-collections-20260528-6">
+    <link rel="stylesheet" href="/static/style.css?v=config-validity-20260529-1">
 </head>
 <body>
     <header>
@@ -26,7 +26,6 @@
             <button class="tab-btn active" data-tab="config">配置</button>
             <button class="tab-btn" data-tab="datasets">数据集</button>
             <button class="tab-btn" data-tab="training">训练</button>
-            <button class="tab-btn" data-tab="preview">预览结果</button>
             <button class="tab-btn" data-tab="settings">全局设置</button>
         </nav>
         <div id="status-indicator">
@@ -221,6 +220,7 @@
                     <button id="btn-training-history-view" class="training-view-tab" type="button" data-training-view="history">历史任务</button>
                 </div>
                 <button id="btn-refresh-history" class="btn btn-small" type="button">刷新任务列表</button>
+                <button id="btn-preview-training-results" class="btn btn-small" type="button">预览结果</button>
                 <button id="btn-stop-training" class="btn btn-danger" disabled>停止训练</button>
             </div>
             <div class="training-workspace">
@@ -239,11 +239,11 @@
                     </section>
                     <section class="panel task-history-panel">
                         <div class="task-history-head">
-                            <h3>历史任务</h3>
-                            <label class="task-archive-toggle">
-                                <input id="history-show-archived" type="checkbox">
-                                显示归档
-                            </label>
+                            <div>
+                                <h3>最近训练</h3>
+                                <p class="task-history-note">未归档 · 最新 20 个训练任务</p>
+                            </div>
+                            <input id="history-show-archived" type="checkbox" hidden>
                         </div>
                         <div id="task-history-list" class="task-history-list"></div>
                     </section>
@@ -354,8 +354,6 @@
                                 <select id="history-group-mode">
                                     <option value="collection">集合分组</option>
                                     <option value="collections">集合管理</option>
-                                    <option value="config">配置分组</option>
-                                    <option value="flat">平铺列表</option>
                                 </select>
                             </label>
                             <label>
@@ -426,14 +424,23 @@
                         <div id="resume-checkpoint-summary" class="resume-checkpoint-summary"></div>
                         <div id="resume-training-status" class="resume-status"></div>
                     </div>
-                    <div class="training-panels">
-                        <div class="panel progress-panel">
-                            <h3>进度</h3>
-                            <div class="progress-bar-container">
-                                <div id="progress-bar" class="progress-bar"></div>
+                    <div class="training-panels training-dashboard">
+                        <section class="panel training-dashboard-head">
+                            <div class="training-dashboard-title">
+                                <span id="training-run-state" class="training-run-state">空闲</span>
+                                <div>
+                                    <h3 id="training-run-title">当前监控</h3>
+                                    <p id="training-run-meta">等待训练任务启动。</p>
+                                </div>
                             </div>
-                            <div id="progress-text">-</div>
-                        </div>
+                            <div class="training-dashboard-progress">
+                                <div class="progress-bar-container">
+                                    <div id="progress-bar" class="progress-bar"></div>
+                                </div>
+                                <div id="progress-text">-</div>
+                            </div>
+                            <div id="training-run-summary" class="training-run-summary">运行目录和配置快照会在任务启动后显示。</div>
+                        </section>
                         <div class="panel metrics-panel">
                             <h3>实时指标</h3>
                             <div class="metrics-grid">
@@ -454,12 +461,28 @@
                                     <span id="metric-rate" class="metric-value">-</span>
                                 </div>
                                 <div class="metric-item">
-                                    <span class="metric-label">显存</span>
+                                    <span class="metric-label">最后 VRAM</span>
                                     <span id="metric-vram" class="metric-value">-</span>
                                 </div>
                                 <div class="metric-item">
-                                    <span class="metric-label">GPU</span>
+                                    <span class="metric-label">峰值 VRAM</span>
+                                    <span id="metric-vram-peak" class="metric-value">-</span>
+                                </div>
+                                <div class="metric-item">
+                                    <span class="metric-label">最后 GPU</span>
                                     <span id="metric-gpu" class="metric-value">-</span>
+                                </div>
+                                <div class="metric-item">
+                                    <span class="metric-label">峰值 GPU</span>
+                                    <span id="metric-gpu-peak" class="metric-value">-</span>
+                                </div>
+                                <div class="metric-item">
+                                    <span class="metric-label">最后温度</span>
+                                    <span id="metric-temp" class="metric-value">-</span>
+                                </div>
+                                <div class="metric-item">
+                                    <span class="metric-label">峰值温度</span>
+                                    <span id="metric-temp-peak" class="metric-value">-</span>
                                 </div>
                                 <div class="metric-item">
                                     <span class="metric-label">日志活动</span>
@@ -491,79 +514,81 @@
             </div>
         </section>
 
-        <!-- 预览图 Tab -->
-        <section id="tab-preview" class="tab-content">
-            <div class="preview-layout">
-                <aside class="preview-sidebar">
-                    <div class="panel preview-settings-panel">
-                        <h3>预览来源</h3>
-                        <div class="preview-source-tabs" role="group" aria-label="预览图来源">
-                            <button class="preview-source-btn active" type="button" data-preview-source="training">训练中采样</button>
-                            <button class="preview-source-btn" type="button" data-preview-source="inference">推理预览</button>
-                            <button class="preview-source-btn" type="button" data-preview-source="custom">自定义路径</button>
+        <!-- 预览结果工作区：默认隐藏，需要时移动到弹窗中展示。 -->
+        <section id="tab-preview" class="preview-workspace-host" hidden aria-hidden="true">
+            <div id="preview-page-mount">
+                <div id="preview-workspace" class="preview-layout">
+                    <aside class="preview-sidebar">
+                        <div class="panel preview-settings-panel">
+                            <h3>预览来源</h3>
+                            <div class="preview-source-tabs" role="group" aria-label="预览图来源">
+                                <button class="preview-source-btn active" type="button" data-preview-source="training">训练中采样</button>
+                                <button class="preview-source-btn" type="button" data-preview-source="inference">推理预览</button>
+                                <button class="preview-source-btn" type="button" data-preview-source="custom">自定义路径</button>
+                            </div>
+                            <div class="preview-path-summary">
+                                <span>当前目录</span>
+                                <strong id="preview-current-dir">-</strong>
+                            </div>
+                            <label id="preview-training-task-field" class="preview-setting-field">
+                                <span>训练任务选择</span>
+                                <select id="preview-training-task" class="preview-training-task-select">
+                                    <option value="">当前任务 / 最新运行目录</option>
+                                </select>
+                            </label>
+                            <div class="preview-actions">
+                                <button id="btn-refresh-preview" class="btn btn-primary" type="button">刷新预览图</button>
+                            </div>
                         </div>
-                        <div class="preview-path-summary">
-                            <span>当前目录</span>
-                            <strong id="preview-current-dir">-</strong>
-                        </div>
-                        <label id="preview-training-task-field" class="preview-setting-field">
-                            <span>训练任务选择</span>
-                            <select id="preview-training-task" class="preview-training-task-select">
-                                <option value="">当前任务 / 最新运行目录</option>
-                            </select>
-                        </label>
-                        <div class="preview-actions">
-                            <button id="btn-refresh-preview" class="btn btn-primary" type="button">刷新预览图</button>
-                        </div>
-                    </div>
 
-                    <div class="panel preview-settings-panel">
-                        <h3>路径设置</h3>
-                        <label class="preview-setting-field">
-                            <span>兼容训练样张目录</span>
-                            <input id="preview-training-dir" type="text" placeholder="output/ckpt/sample">
-                        </label>
-                        <label class="preview-setting-field">
-                            <span>推理预览目录</span>
-                            <input id="preview-inference-dir" type="text" placeholder="output/tests">
-                        </label>
-                        <label class="preview-setting-field">
-                            <span>自定义目录</span>
-                            <input id="preview-custom-dir" type="text" placeholder="例如 output/my-preview">
-                        </label>
-                        <div class="preview-actions">
-                            <button id="btn-save-preview-settings" class="btn btn-primary" type="button">保存路径设置</button>
-                            <button id="btn-reset-preview-settings" class="btn" type="button">恢复默认</button>
+                        <div class="panel preview-settings-panel">
+                            <h3>路径设置</h3>
+                            <label class="preview-setting-field">
+                                <span>兼容训练样张目录</span>
+                                <input id="preview-training-dir" type="text" placeholder="output/ckpt/sample">
+                            </label>
+                            <label class="preview-setting-field">
+                                <span>推理预览目录</span>
+                                <input id="preview-inference-dir" type="text" placeholder="output/tests">
+                            </label>
+                            <label class="preview-setting-field">
+                                <span>自定义目录</span>
+                                <input id="preview-custom-dir" type="text" placeholder="例如 output/my-preview">
+                            </label>
+                            <div class="preview-actions">
+                                <button id="btn-save-preview-settings" class="btn btn-primary" type="button">保存路径设置</button>
+                                <button id="btn-reset-preview-settings" class="btn" type="button">恢复默认</button>
+                            </div>
+                            <div id="preview-settings-status" class="preview-status"></div>
                         </div>
-                        <div id="preview-settings-status" class="preview-status"></div>
-                    </div>
-                </aside>
+                    </aside>
 
-                <section class="preview-main">
-                    <div class="preview-header-row">
-                        <div>
-                            <h2 id="preview-title">训练过程中采样结果</h2>
-                            <p id="preview-subtitle">按修改时间显示最新采样结果。</p>
-                        </div>
-                        <div id="preview-count" class="preview-count">0 张</div>
-                    </div>
-                    <div id="preview-empty" class="preview-empty" hidden></div>
-                    <div id="preview-grid" class="preview-grid" aria-live="polite"></div>
-                    <section id="preview-weights-panel" class="preview-weights-panel">
-                        <div class="preview-weights-head">
+                    <section class="preview-main">
+                        <div class="preview-header-row">
                             <div>
-                                <h3>权重文件</h3>
-                                <p id="preview-weights-subtitle">选择训练任务后显示保存轮次、步数和对应权重。</p>
+                                <h2 id="preview-title">训练过程中采样结果</h2>
+                                <p id="preview-subtitle">按修改时间显示最新采样结果。</p>
                             </div>
-                            <div class="preview-weights-actions">
-                                <button id="btn-sort-weights" class="btn btn-small" type="button">正序</button>
-                                <button id="btn-refresh-weights" class="btn btn-small" type="button">刷新权重</button>
-                            </div>
+                            <div id="preview-count" class="preview-count">0 张</div>
                         </div>
-                        <div id="preview-weights-empty" class="preview-empty" hidden></div>
-                        <div id="preview-weights-list" class="preview-weights-list"></div>
+                        <div id="preview-empty" class="preview-empty" hidden></div>
+                        <div id="preview-grid" class="preview-grid" aria-live="polite"></div>
+                        <section id="preview-weights-panel" class="preview-weights-panel">
+                            <div class="preview-weights-head">
+                                <div>
+                                    <h3>权重文件</h3>
+                                    <p id="preview-weights-subtitle">选择训练任务后显示保存轮次、步数和对应权重。</p>
+                                </div>
+                                <div class="preview-weights-actions">
+                                    <button id="btn-sort-weights" class="btn btn-small" type="button">正序</button>
+                                    <button id="btn-refresh-weights" class="btn btn-small" type="button">刷新权重</button>
+                                </div>
+                            </div>
+                            <div id="preview-weights-empty" class="preview-empty" hidden></div>
+                            <div id="preview-weights-list" class="preview-weights-list"></div>
+                        </section>
                     </section>
-                </section>
+                </div>
             </div>
         </section>
 
@@ -747,8 +772,8 @@
                             <span>看当前状态、日志、Loss 曲线和历史任务。从检查点恢复也在这里操作。</span>
                         </div>
                         <div>
-                            <strong>预览结果页</strong>
-                            <span>看训练中采样图、权重文件；权重可以直接通过浏览器下载。</span>
+                            <strong>预览结果弹窗</strong>
+                            <span>从训练页或历史任务打开，查看采样图和权重文件；权重可以直接通过浏览器下载。</span>
                         </div>
                         <div>
                             <strong>输出目录</strong>
@@ -766,6 +791,19 @@
                 </section>
             </div>
         </form>
+    </dialog>
+
+    <dialog id="preview-panel-dialog" class="preview-panel-dialog" aria-labelledby="preview-panel-title" aria-describedby="preview-panel-subtitle">
+        <div class="preview-panel-shell" role="document">
+            <div class="preview-panel-header">
+                <div>
+                    <h2 id="preview-panel-title">预览结果</h2>
+                    <p id="preview-panel-subtitle">训练样张、权重文件和路径设置。</p>
+                </div>
+                <button id="btn-close-preview-panel" class="btn btn-small" type="button">关闭</button>
+            </div>
+            <div id="preview-dialog-mount" class="preview-panel-body"></div>
+        </div>
     </dialog>
 
     <dialog id="preview-dialog" class="preview-dialog">
@@ -828,31 +866,6 @@
                 </div>
             </div>
             <div id="config-dataset-picker-dialog-body" class="config-dataset-picker-dialog-body"></div>
-        </form>
-    </dialog>
-
-    <dialog id="unnamed-dataset-dialog" class="preview-dialog unnamed-dataset-dialog">
-        <form method="dialog">
-            <div class="preview-dialog-header">
-                <div>
-                    <h2>待命名</h2>
-                </div>
-                <button class="btn btn-small" value="close" type="submit">关闭</button>
-            </div>
-            <div class="unnamed-dataset-dialog-body"></div>
-        </form>
-    </dialog>
-
-    <dialog id="stage-resolution-dialog" class="preview-dialog stage-resolution-dialog">
-        <form method="dialog">
-            <div class="preview-dialog-header">
-                <div>
-                    <h2>阶段分辨率调度</h2>
-                    <p>按阶段配置单边分辨率范围、epochs 与 repeats 预览。</p>
-                </div>
-                <button class="btn btn-small" value="close" type="submit">关闭</button>
-            </div>
-            <div id="stage-resolution-dialog-body" class="stage-resolution-dialog-body"></div>
         </form>
     </dialog>
 
@@ -931,7 +944,7 @@
 
     <div id="config-switch-toast" class="config-switch-toast" role="status" aria-live="polite" hidden></div>
 
-    <script src="/static/chart.js?v=history-20260517-2"></script>
-    <script src="/static/app.js?v=history-collections-20260528-6"></script>
+    <script src="/static/chart.js?v=lr-overlay-20260529-1"></script>
+    <script src="/static/app.js?v=lr-persist-preview-dialog-20260529-3"></script>
 </body>
 </html>

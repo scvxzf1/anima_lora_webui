@@ -93,7 +93,7 @@ network_args = [
     "contrastive_warmup_ratio=0.1",
 ]
 output_name = "anima_soft_tokens_tenth"
-weight_decay=1e-4
+optimizer_args = ["weight_decay=1e-4"]
 # Soft tokens are independent of the cached crossattn (they overwrite zero-
 # padding tail), so cache_llm_adapter_outputs is the right default.
 use_shuffled_caption_variants = true

@@ -36,6 +36,8 @@ def generate_caption_variants(
     every variant (including v0) before it is written.
     """
     if isinstance(caption, CaptionSource):
+        if caption.captions is not None:
+            return caption.caption_texts() or [""]
         if caption.structured is not None:
             return caption.structured.generate_variants(num_variants, tag_dropout_rate)
         caption = caption.text
@@ -68,6 +70,18 @@ def generate_caption_variants(
         shuffled = anima_train_utils.strip_no_artist_sentinel(shuffled)
         variants.append(", ".join(shuffled))
     return variants
+
+
+def _caption_variants_for_cache(
+    caption: CaptionSource,
+    num_variants: int,
+    tag_dropout_rate: float,
+) -> list[str]:
+    if caption.captions is not None:
+        return caption.caption_texts() or [""]
+    if num_variants <= 0:
+        return [caption.render()]
+    return generate_caption_variants(caption, num_variants, tag_dropout_rate)
 
 
 def _encode_batch(
@@ -134,6 +148,7 @@ def cache_text_embeddings(
     caption_shuffle_variants: int = 0,
     caption_tag_dropout_rate: float = 0.0,
     prefer_json_caption: bool = False,
+    caption_source_mode: str | None = None,
     caption_extension: str = ".txt",
     min_pixels: int = 500_000,
     verbose: bool = True,
@@ -171,7 +186,9 @@ def cache_text_embeddings(
         caption = read_caption_source(
             p,
             prefer_json_caption=prefer_json_caption,
+            caption_source_mode=caption_source_mode,
             caption_extension=caption_extension,
+            captions_root=data_dir,
             warn=logger.warning,
         )
         entries.append((p, caption))
@@ -209,8 +226,14 @@ def cache_text_embeddings(
         if not to_encode:
             continue
 
-        if n_variants <= 0:
-            captions = [c.render() for _, c, _ in to_encode]
+        variants_by_entry = [
+            _caption_variants_for_cache(caption, n_variants, tag_dropout_rate)
+            for _, caption, _ in to_encode
+        ]
+        use_variant_cache = n_variants > 0 or any(len(variants) > 1 for variants in variants_by_entry)
+
+        if not use_variant_cache:
+            captions = [variants[0] for variants in variants_by_entry]
             prompt_embeds, attn_mask, t5_input_ids, t5_attn_mask, crossattn_emb = (
                 _encode_batch(
                     captions,
@@ -238,10 +261,8 @@ def cache_text_embeddings(
                     progress(1, detail=f"{img_path.name}")
         else:
             all_captions: list[str] = []
-            for _, caption, _ in to_encode:
-                all_captions.extend(
-                    generate_caption_variants(caption, n_variants, tag_dropout_rate)
-                )
+            for variants in variants_by_entry:
+                all_captions.extend(variants)
 
             prompt_embeds, attn_mask, t5_input_ids, t5_attn_mask, crossattn_emb = (
                 _encode_batch(
@@ -254,17 +275,22 @@ def cache_text_embeddings(
                 )
             )
 
-            for i, (img_path, _, cache_path) in enumerate(to_encode):
+            offset = 0
+            for img_path, caption, cache_path in to_encode:
+                variants = variants_by_entry.pop(0)
+                variant_count = len(variants)
                 save_dict = {
-                    "num_variants": torch.tensor(n_variants, dtype=torch.int64),
+                    "num_variants": torch.tensor(variant_count, dtype=torch.int64),
                     # Marker: v0 is the pristine original caption (no shuffle,
                     # no tag dropout). Loaders use this to switch on weighted
                     # 20%/80% sampling between v0 and v1..v{N-1}.
                     "v0_intact": torch.tensor(1, dtype=torch.int8),
                     "caption_dropout_rate": caption_dropout_rate,
                 }
-                for vi in range(n_variants):
-                    flat_idx = i * n_variants + vi
+                if caption.captions is not None:
+                    save_dict["caption_multi_source"] = torch.tensor(1, dtype=torch.int8)
+                for vi in range(variant_count):
+                    flat_idx = offset + vi
                     save_dict[f"prompt_embeds_v{vi}"] = prompt_embeds[flat_idx]
                     save_dict[f"attn_mask_v{vi}"] = attn_mask[flat_idx]
                     save_dict[f"t5_input_ids_v{vi}"] = t5_input_ids[flat_idx]
@@ -272,9 +298,10 @@ def cache_text_embeddings(
                     if crossattn_emb is not None:
                         save_dict[f"crossattn_emb_v{vi}"] = crossattn_emb[flat_idx]
                 save_file(save_dict, str(cache_path))
+                offset += variant_count
                 stats.written += 1
                 if progress is not None:
-                    progress(1, detail=f"{img_path.name} ({n_variants}v)")
+                    progress(1, detail=f"{img_path.name} ({variant_count}v)")
 
     return stats
 

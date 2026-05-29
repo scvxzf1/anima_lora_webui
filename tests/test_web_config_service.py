@@ -183,6 +183,41 @@ def test_raw_patch_ignores_dataset_picker_ui_field(tmp_path: Path, monkeypatch):
     assert "dataset_config_picker" not in (configs / "imported" / "lora.toml").read_text(encoding="utf-8")
 
 
+def test_raw_patch_removes_retired_router_fields(tmp_path: Path, monkeypatch):
+    configs, _dataset_path = _write_minimal_config_tree(tmp_path)
+    train_rel = "configs/imported/lora.toml"
+    (configs / "imported" / "lora.toml").write_text(
+        "\n".join(
+            [
+                'output_name = "anima"',
+                "use_hydra = true",
+                "use_sigma_router = true",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    _patch_config_service_paths(monkeypatch, tmp_path)
+
+    ok, msg, content, changed = config_service.patch_raw_file_values(
+        train_rel,
+        {
+            "use_hydra": False,
+            "use_sigma_router": False,
+            "output_name": "clean",
+        },
+    )
+
+    assert ok is True, msg
+    assert changed == ["output_name", "use_hydra", "use_sigma_router"]
+    assert 'output_name = "clean"' in content
+    assert "use_hydra" not in content
+    assert "use_sigma_router" not in content
+    saved = (configs / "imported" / "lora.toml").read_text(encoding="utf-8")
+    assert "use_hydra" not in saved
+    assert "use_sigma_router" not in saved
+
+
 def test_blank_preset_template_can_receive_global_model_paths(tmp_path: Path, monkeypatch):
     _write_minimal_config_tree(tmp_path)
     _patch_config_service_paths(monkeypatch, tmp_path)
@@ -298,6 +333,174 @@ def test_preflight_uses_selected_config_file_dataset_paths(tmp_path: Path, monke
     assert "output_dir" not in {item["key"] for item in result["checks"]}
     env_checks = [item for item in result["checks"] if item["key"] == "preprocess_environment"]
     assert env_checks[-1]["level"] == "ok"
+
+
+def test_preflight_nl_tag_mix_accepts_single_captioned_directory(tmp_path: Path, monkeypatch):
+    configs, dataset_path = _write_minimal_config_tree(tmp_path)
+    source_dir = tmp_path / "image_dataset" / "mixed"
+    source_dir.mkdir(parents=True)
+    Image.new("RGB", (8, 8), color=(20, 40, 60)).save(source_dir / "sample.png")
+    (source_dir / "sample.txt").write_text(
+        "1girl, solo, silver hair, purple eyes, white dress, standing\n",
+        encoding="utf-8",
+    )
+    dataset_path.write_text(
+        "\n".join(
+            [
+                "[[datasets]]",
+                "",
+                "[[datasets.subsets]]",
+                'image_dir = "post_image_dataset/mixed_resized"',
+                'cache_dir = "post_image_dataset/mixed_lora"',
+                'custom_attributes = {source_dir = "image_dataset/mixed", nl_tag_mix = {enabled = true, tag_ratio = 0.7}}',
+            ]
+        ),
+        encoding="utf-8",
+    )
+    _patch_config_service_paths(monkeypatch, tmp_path)
+
+    result = config_service.preflight_training_config(
+        "lora",
+        "default",
+        "imported",
+        config_file="configs/imported/lora.toml",
+    )
+
+    mix_checks = [item for item in result["checks"] if item["key"] == "source_image_dir_nl_tag_mix"]
+    assert mix_checks == []
+    source_checks = [item for item in result["checks"] if item["key"] == "source_image_dir"]
+    assert source_checks[-1]["level"] == "ok"
+
+
+@pytest.mark.parametrize(
+    ("caption_source_mode", "sidecar_name", "sidecar_content"),
+    [
+        (
+            "json",
+            "sample.json",
+            json.dumps({"quality": "newest", "tags": ["1girl", "solo", "blue eyes"]}),
+        ),
+        (
+            "captions_json",
+            "captions.json",
+            json.dumps({"sample.png": ["1girl, solo, blue eyes, white dress"]}),
+        ),
+    ],
+)
+def test_preflight_nl_tag_mix_accepts_structured_caption_sources(
+    tmp_path: Path,
+    monkeypatch,
+    caption_source_mode: str,
+    sidecar_name: str,
+    sidecar_content: str,
+):
+    configs, dataset_path = _write_minimal_config_tree(tmp_path)
+    source_dir = tmp_path / "image_dataset" / "mixed"
+    source_dir.mkdir(parents=True)
+    Image.new("RGB", (8, 8), color=(20, 40, 60)).save(source_dir / "sample.png")
+    (source_dir / sidecar_name).write_text(sidecar_content, encoding="utf-8")
+    dataset_path.write_text(
+        "\n".join(
+            [
+                "[[datasets]]",
+                f'caption_source_mode = "{caption_source_mode}"',
+                "",
+                "[[datasets.subsets]]",
+                'image_dir = "post_image_dataset/mixed_resized"',
+                'cache_dir = "post_image_dataset/mixed_lora"',
+                'custom_attributes = {source_dir = "image_dataset/mixed", nl_tag_mix = {enabled = true, tag_ratio = 0.7}}',
+            ]
+        ),
+        encoding="utf-8",
+    )
+    _patch_config_service_paths(monkeypatch, tmp_path)
+
+    result = config_service.preflight_training_config(
+        "lora",
+        "default",
+        "imported",
+        config_file="configs/imported/lora.toml",
+    )
+
+    caption_checks = [item for item in result["checks"] if item["key"] == "source_image_dir_nl_tag_mix_captions"]
+    assert caption_checks == []
+    source_checks = [item for item in result["checks"] if item["key"] == "source_image_dir"]
+    assert source_checks[-1]["level"] == "ok"
+
+
+def test_preflight_nl_tag_mix_accepts_recursive_captions_json(
+    tmp_path: Path,
+    monkeypatch,
+):
+    configs, dataset_path = _write_minimal_config_tree(tmp_path)
+    source_dir = tmp_path / "image_dataset" / "mixed"
+    nested_dir = source_dir / "nested"
+    nested_dir.mkdir(parents=True)
+    Image.new("RGB", (8, 8), color=(20, 40, 60)).save(nested_dir / "sample.png")
+    (source_dir / "captions.json").write_text(
+        json.dumps({"nested/sample.png": ["1girl, solo, blue eyes, white dress"]}),
+        encoding="utf-8",
+    )
+    dataset_path.write_text(
+        "\n".join(
+            [
+                "[[datasets]]",
+                'caption_source_mode = "captions_json"',
+                "",
+                "[[datasets.subsets]]",
+                'image_dir = "post_image_dataset/mixed_resized"',
+                'cache_dir = "post_image_dataset/mixed_lora"',
+                'recursive = true',
+                'custom_attributes = {source_dir = "image_dataset/mixed", nl_tag_mix = {enabled = true, tag_ratio = 0.7}}',
+            ]
+        ),
+        encoding="utf-8",
+    )
+    _patch_config_service_paths(monkeypatch, tmp_path)
+
+    result = config_service.preflight_training_config(
+        "lora",
+        "default",
+        "imported",
+        config_file="configs/imported/lora.toml",
+    )
+
+    caption_checks = [item for item in result["checks"] if item["key"] == "source_image_dir_nl_tag_mix_captions"]
+    assert caption_checks == []
+    source_checks = [item for item in result["checks"] if item["key"] == "source_image_dir"]
+    assert source_checks[-1]["level"] == "ok"
+
+
+def test_preflight_nl_tag_mix_warns_when_no_readable_captions(tmp_path: Path, monkeypatch):
+    configs, dataset_path = _write_minimal_config_tree(tmp_path)
+    source_dir = tmp_path / "image_dataset" / "mixed"
+    source_dir.mkdir(parents=True)
+    Image.new("RGB", (8, 8), color=(20, 40, 60)).save(source_dir / "sample.png")
+    dataset_path.write_text(
+        "\n".join(
+            [
+                "[[datasets]]",
+                "",
+                "[[datasets.subsets]]",
+                'image_dir = "post_image_dataset/mixed_resized"',
+                'cache_dir = "post_image_dataset/mixed_lora"',
+                'custom_attributes = {source_dir = "image_dataset/mixed", nl_tag_mix = {enabled = true, tag_ratio = 0.7}}',
+            ]
+        ),
+        encoding="utf-8",
+    )
+    _patch_config_service_paths(monkeypatch, tmp_path)
+
+    result = config_service.preflight_training_config(
+        "lora",
+        "default",
+        "imported",
+        config_file="configs/imported/lora.toml",
+    )
+
+    caption_checks = [item for item in result["checks"] if item["key"] == "source_image_dir_nl_tag_mix_captions"]
+    assert caption_checks[-1]["level"] == "warning"
+    assert "全部按 tag 处理" in caption_checks[-1]["message"]
 
 
 def test_preflight_reports_missing_preprocess_environment_file(tmp_path: Path, monkeypatch):
@@ -503,6 +706,64 @@ def test_preflight_runtime_config_checks_all_dataset_groups(tmp_path: Path, monk
     keys = {item["key"] for item in result["checks"]}
     assert "dataset_2_cache_dir" in keys
     assert result["ok"] is False
+
+
+def test_preflight_runtime_config_reports_caption_source_detection(tmp_path: Path, monkeypatch):
+    _write_minimal_config_tree(tmp_path)
+    _patch_config_service_paths(monkeypatch, tmp_path)
+    run_dir = tmp_path / "output" / "runs" / "522-20260523-114514"
+    source_dir = tmp_path / "image_dataset" / "a"
+    resized_dir = run_dir / "dataset_cache" / "dataset-01" / "resized"
+    cache_dir = run_dir / "dataset_cache" / "dataset-01" / "lora"
+    for path in (source_dir, resized_dir, cache_dir, run_dir / "model_cache", run_dir / "training_output"):
+        path.mkdir(parents=True)
+    Image.new("RGB", (8, 8), color=(20, 40, 60)).save(resized_dir / "hero.png")
+    (source_dir / "captions.json").write_text(
+        json.dumps({"hero.png": ["caption one", "caption two"]}),
+        encoding="utf-8",
+    )
+    (tmp_path / "models").mkdir()
+    (tmp_path / "models" / "anima.safetensors").write_bytes(b"model")
+    (tmp_path / "models" / "qwen.safetensors").write_bytes(b"qwen")
+    (tmp_path / "models" / "vae.safetensors").write_bytes(b"vae")
+    runtime_config = run_dir / "config.runtime.toml"
+    dataset_config = run_dir / "dataset.runtime.toml"
+    runtime_config.write_text(
+        "\n".join(
+            [
+                f'dataset_config = "{dataset_config.relative_to(tmp_path).as_posix()}"',
+                'pretrained_model_name_or_path = "models/anima.safetensors"',
+                'qwen3 = "models/qwen.safetensors"',
+                'vae = "models/vae.safetensors"',
+            ]
+        ),
+        encoding="utf-8",
+    )
+    dataset_config.write_text(
+        "\n".join(
+            [
+                "[[datasets]]",
+                'caption_source_mode = "auto"',
+                "[[datasets.subsets]]",
+                f'image_dir = "{resized_dir.relative_to(tmp_path).as_posix()}"',
+                f'cache_dir = "{cache_dir.relative_to(tmp_path).as_posix()}"',
+                f'custom_attributes = {{ source_dir = "{source_dir.relative_to(tmp_path).as_posix()}" }}',
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    result = config_service.preflight_training_config(
+        "lora",
+        "default",
+        "imported",
+        config_file=runtime_config.relative_to(tmp_path).as_posix(),
+    )
+
+    caption_check = [item for item in result["checks"] if item["key"] == "captions"][-1]
+    assert caption_check["level"] == "ok"
+    assert "DiffPipeForge captions.json 1 张" in caption_check["message"]
+    assert "共 2 条标注" in caption_check["message"]
 
 
 def test_preflight_runtime_config_checks_cache_sidecars_per_dataset(tmp_path: Path, monkeypatch):
@@ -837,6 +1098,30 @@ def test_dataset_preset_save_preserves_explicit_training_and_cache_dirs(tmp_path
     assert subset["custom_attributes"]["source_dir"] == "image_dataset/source"
 
 
+def test_dataset_preset_save_read_preserves_nl_tag_mix(tmp_path: Path, monkeypatch):
+    _write_minimal_config_tree(tmp_path)
+    _patch_config_service_paths(monkeypatch, tmp_path)
+
+    saved = config_service.save_dataset_preset(
+        "configs/datasets/mix.toml",
+        [{
+            "source_dir": "image_dataset/mixed",
+            "image_dir": "post_image_dataset/mixed_resized",
+            "cache_dir": "post_image_dataset/mixed_cache",
+            "num_repeats": 2,
+            "nl_tag_mix": {"enabled": True, "tag_ratio": 70},
+        }],
+        {},
+    )
+
+    data = toml.loads(saved["content"])
+    attrs = data["datasets"][0]["subsets"][0]["custom_attributes"]
+    assert attrs["nl_tag_mix"] == {"enabled": True, "tag_ratio": 0.7}
+
+    loaded = config_service.load_dataset_preset("configs/datasets/mix.toml")
+    assert loaded["datasets"][0]["nl_tag_mix"] == {"enabled": True, "tag_ratio": 0.7}
+
+
 def test_runtime_dataset_doc_can_prefer_train_batch_size():
     doc = config_service._build_dataset_config_doc(
         [{
@@ -1060,6 +1345,8 @@ def test_dataset_preset_writes_independent_dataset_settings_per_path(tmp_path: P
                     "bucket_no_upscale": True,
                     "validation_split_num": 4,
                     "validation_seed": 7,
+                    "caption_extension": ".caption",
+                    "caption_source_mode": "json",
                 },
             },
             {
@@ -1075,29 +1362,78 @@ def test_dataset_preset_writes_independent_dataset_settings_per_path(tmp_path: P
                     "bucket_no_upscale": False,
                     "validation_split": 0.1,
                     "validation_seed": 99,
+                    "caption_source_mode": "auto",
                 },
             },
         ],
-        {"caption_extension": ".txt", "keep_tokens": 2, "prefer_json_caption": True},
+        {"caption_extension": ".txt", "keep_tokens": 2},
     )
 
     data = toml.loads(saved["content"])
-    assert data["general"]["prefer_json_caption"] is True
+    assert "prefer_json_caption" not in data["general"]
+    assert "caption_source_mode" not in data["general"]
     assert len(data["datasets"]) == 2
     assert data["datasets"][0]["resolution"] == 768
+    assert data["datasets"][0]["caption_source_mode"] == "json"
+    assert data["datasets"][0]["caption_extension"] == ".caption"
     assert data["datasets"][0]["max_bucket_reso"] == 768
     assert data["datasets"][0]["bucket_reso_steps"] == 32
     assert data["datasets"][0]["bucket_no_upscale"] is True
     assert data["datasets"][0]["validation_split_num"] == 4
     assert data["datasets"][1]["resolution"] == 1024
+    assert data["datasets"][1]["caption_source_mode"] == "auto"
     assert data["datasets"][1]["min_bucket_reso"] == 384
     assert data["datasets"][1]["max_bucket_reso"] == 1344
     assert data["datasets"][1]["validation_split"] == 0.1
 
     loaded = config_service.load_dataset_preset("configs/datasets/multi_bucket.toml")
-    assert loaded["defaults"]["prefer_json_caption"] is True
     assert loaded["datasets"][0]["settings"]["resolution"] == 768
+    assert loaded["datasets"][0]["settings"]["caption_source_mode"] == "json"
+    assert loaded["datasets"][0]["settings"]["caption_extension"] == ".caption"
     assert loaded["datasets"][1]["settings"]["max_bucket_reso"] == 1344
+    assert loaded["datasets"][1]["settings"]["caption_source_mode"] == "auto"
+
+
+def test_dataset_preset_load_migrates_legacy_general_prefer_json_caption(tmp_path: Path, monkeypatch):
+    configs, _dataset_path = _write_minimal_config_tree(tmp_path)
+    _patch_config_service_paths(monkeypatch, tmp_path)
+    preset_path = configs / "datasets" / "legacy_json.toml"
+    preset_path.write_text(
+        "\n".join(
+            [
+                "[general]",
+                'caption_extension = ".txt"',
+                "keep_tokens = 2",
+                "prefer_json_caption = true",
+                "",
+                "[[datasets]]",
+                "resolution = 768",
+                "batch_size = 1",
+                "",
+                "[[datasets.subsets]]",
+                'image_dir = "post_image_dataset/a_resized"',
+                'cache_dir = "post_image_dataset/a_cache"',
+                'custom_attributes = {source_dir = "image_dataset/a"}',
+                "",
+                "[[datasets]]",
+                "resolution = 1024",
+                "batch_size = 1",
+                "",
+                "[[datasets.subsets]]",
+                'image_dir = "post_image_dataset/b_resized"',
+                'cache_dir = "post_image_dataset/b_cache"',
+                'custom_attributes = {source_dir = "image_dataset/b"}',
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    loaded = config_service.load_dataset_preset("configs/datasets/legacy_json.toml")
+
+    assert loaded["defaults"]["prefer_json_caption"] is True
+    assert loaded["defaults"]["caption_source_mode"] == "json"
+    assert [row["settings"]["prefer_json_caption"] for row in loaded["datasets"]] == [True, True]
+    assert [row["settings"]["caption_source_mode"] for row in loaded["datasets"]] == ["json", "json"]
 
 
 def test_dataset_preset_image_preview_reads_training_images_and_captions(tmp_path: Path, monkeypatch):
@@ -1173,12 +1509,54 @@ def test_dataset_preset_image_preview_prefers_json_caption(tmp_path: Path, monke
 
     caption = listing["images"][0]["caption"]
     assert listing["prefer_json_caption"] is True
+    assert listing["caption_source_mode"] == "json"
     assert caption["ok"] is True
     assert caption["extension"] == ".json"
+    assert caption["detected_mode"] == "json"
+    assert caption["format_label"] == "AnimaLoraToolkit .json"
     assert caption["text"] == (
         "newest, safe, 1girl, @artist, blue eyes, looking at viewer, sky. "
         "A fixed tail."
     )
+
+
+def test_dataset_preset_image_preview_auto_detects_captions_json(tmp_path: Path, monkeypatch):
+    _write_minimal_config_tree(tmp_path)
+    _patch_config_service_paths(monkeypatch, tmp_path)
+    source_dir = tmp_path / "image_dataset" / "a"
+    image_dir = tmp_path / "post_image_dataset" / "a_resized"
+    source_dir.mkdir(parents=True)
+    image_dir.mkdir(parents=True)
+    Image.new("RGB", (8, 6), color=(120, 20, 40)).save(source_dir / "hero.png")
+    Image.new("RGB", (8, 6), color=(120, 20, 40)).save(image_dir / "hero.png")
+    (source_dir / "hero.txt").write_text("txt fallback", encoding="utf-8")
+    (source_dir / "captions.json").write_text(
+        json.dumps({"hero.png": ["caption one", "caption two"]}),
+        encoding="utf-8",
+    )
+
+    config_service.save_dataset_preset(
+        "configs/datasets/preview_captions_json.toml",
+        [{
+            "source_dir": "image_dataset/a",
+            "image_dir": "post_image_dataset/a_resized",
+            "cache_dir": "post_image_dataset/a_cache",
+            "num_repeats": 2,
+        }],
+        {"caption_extension": ".txt", "keep_tokens": 1, "caption_source_mode": "auto"},
+    )
+
+    listing = config_service.list_dataset_preset_images("configs/datasets/preview_captions_json.toml", 0)
+
+    caption = listing["images"][0]["caption"]
+    assert listing["caption_source_mode"] == "auto"
+    assert "DiffPipeForge captions.json 1 张" in listing["caption_summary"]
+    assert "共 2 条标注" in listing["caption_summary"]
+    assert caption["ok"] is True
+    assert caption["extension"] == "captions.json"
+    assert caption["detected_mode"] == "captions_json"
+    assert caption["caption_count"] == 2
+    assert caption["text"] == "1. caption one\n2. caption two"
 
 
 def test_dataset_preview_image_resolver_rejects_files_outside_selected_row(tmp_path: Path, monkeypatch):

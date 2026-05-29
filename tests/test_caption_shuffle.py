@@ -318,13 +318,69 @@ def test_json_caption_reading_falls_back_to_txt_on_invalid_json(tmp_path):
     assert source.render() == "txt caption"
 
 
+def test_explicit_json_caption_mode_does_not_fallback_to_txt(tmp_path):
+    img = tmp_path / "hero.png"
+    img.write_bytes(b"")
+    img.with_suffix(".json").write_text("{bad json", encoding="utf-8")
+    img.with_suffix(".txt").write_text("txt caption\nignored", encoding="utf-8")
+
+    source = read_caption_source(img, caption_source_mode="json")
+
+    assert source.path is None
+    assert source.render() == ""
+
+
+def test_explicit_json_caption_mode_missing_json_does_not_use_txt(tmp_path):
+    img = tmp_path / "hero.png"
+    img.write_bytes(b"")
+    img.with_suffix(".txt").write_text("txt caption", encoding="utf-8")
+
+    source = read_caption_source(img, caption_source_mode="json")
+
+    assert source.path is None
+    assert source.render() == ""
+
+
 def test_json_caption_reading_requires_explicit_prefer_json(tmp_path):
     img = tmp_path / "hero.png"
     img.write_bytes(b"")
     img.with_suffix(".json").write_text('{"quality":"json caption"}', encoding="utf-8")
     img.with_suffix(".txt").write_text("txt caption", encoding="utf-8")
 
-    source = read_caption_source(img, prefer_json_caption=False)
+    source = read_caption_source(img, caption_source_mode="txt")
 
     assert source.from_json is False
     assert source.render() == "txt caption"
+
+
+def test_captions_json_auto_detects_multiple_captions(tmp_path):
+    img = tmp_path / "hero.png"
+    img.write_bytes(b"")
+    (tmp_path / "captions.json").write_text(
+        '{"hero.png": ["caption one", "caption two"]}',
+        encoding="utf-8",
+    )
+    img.with_suffix(".txt").write_text("txt caption", encoding="utf-8")
+
+    source = read_caption_source(img, caption_source_mode="auto")
+
+    assert source.from_captions_json is True
+    assert source.caption_texts() == ["caption one", "caption two"]
+    assert source.render() == "caption one"
+
+
+def test_captions_json_supports_relative_keys_from_dataset_root(tmp_path):
+    root = tmp_path / "dataset"
+    sub = root / "nested"
+    sub.mkdir(parents=True)
+    img = sub / "hero.png"
+    img.write_bytes(b"")
+    (root / "captions.json").write_text(
+        '{"nested/hero.png": ["root caption"]}',
+        encoding="utf-8",
+    )
+
+    source = read_caption_source(img, caption_source_mode="auto", captions_root=root)
+
+    assert source.from_captions_json is True
+    assert source.caption_texts() == ["root caption"]

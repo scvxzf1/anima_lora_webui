@@ -205,6 +205,7 @@ class ConfigSanitizer:
         "network_multiplier": float,
         "resize_interpolation": str,
         "prefer_json_caption": bool,
+        "caption_source_mode": str,
     }
     PREPROCESS_ONLY_DATASET_KEYS = frozenset(
         {

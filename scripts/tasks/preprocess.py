@@ -17,6 +17,7 @@ else:
 from ._common import PY, ROOT, _path, run
 
 RUNTIME_PREPROCESS_ATTR_KEY = "preprocess"
+CAPTION_SOURCE_MODES = {"auto", "txt", "json", "captions_json"}
 
 
 # Subfolders under the source dir are walked by default — matches the
@@ -87,6 +88,41 @@ def _optional_bool(value: Any) -> bool | None:
     if value is None:
         return None
     return _truthy(value)
+
+
+def _caption_source_mode(value: Any = None, prefer_json: Any = None) -> str:
+    raw = str(value or "").strip().lower().replace("-", "_")
+    if raw in CAPTION_SOURCE_MODES:
+        return raw
+    aliases = {
+        "text": "txt",
+        ".txt": "txt",
+        "same_stem_json": "json",
+        ".json": "json",
+        "captions.json": "captions_json",
+        "captions-json": "captions_json",
+        "diffpipeforge": "captions_json",
+    }
+    if raw in aliases:
+        return aliases[raw]
+    return "json" if _truthy(prefer_json) else "auto"
+
+
+def _explicit_caption_source_mode(value: Any) -> bool:
+    return bool(str(value or "").strip())
+
+
+def _caption_source_args(value: Any, prefer_json: Any = None) -> list[str]:
+    if not _explicit_caption_source_mode(value):
+        return []
+    return ["--caption_source_mode", _caption_source_mode(value, prefer_json)]
+
+
+def _first_explicit_caption_source_mode(*values: Any) -> Any:
+    for value in values:
+        if _explicit_caption_source_mode(value):
+            return value
+    return None
 
 
 def _positive_int(value: Any) -> int | None:
@@ -168,9 +204,11 @@ def _dataset_rows(dataset_config: Any, overrides: dict[str, Any] | None = None) 
     if not isinstance(datasets, list):
         return []
     general = data.get("general") if isinstance(data.get("general"), dict) else {}
+    general_caption_extension = str(general.get("caption_extension") or "").strip()
     general_prefer_json = _optional_bool(
         general.get("prefer_json_caption", general.get("prefer_json"))
     )
+    general_caption_source_mode = str(general.get("caption_source_mode") or "").strip()
 
     rows: list[dict[str, Any]] = []
     fallback_source = str(overrides.get("source_image_dir") or "")
@@ -219,6 +257,22 @@ def _dataset_rows(dataset_config: Any, overrides: dict[str, Any] | None = None) 
                 prefer_json = general_prefer_json
             if prefer_json is not None:
                 row["prefer_json_caption"] = prefer_json
+            caption_source_mode = _first_explicit_caption_source_mode(
+                dataset.get("caption_source_mode"),
+                subset.get("caption_source_mode"),
+                general_caption_source_mode,
+            )
+            if caption_source_mode is not None:
+                row["caption_source_mode"] = _caption_source_mode(caption_source_mode, prefer_json)
+            caption_extension = str(
+                dataset.get(
+                    "caption_extension",
+                    subset.get("caption_extension", general_caption_extension),
+                )
+                or ""
+            ).strip()
+            if caption_extension:
+                row["caption_extension"] = caption_extension
             rows.append(row)
     return rows
 
@@ -301,6 +355,50 @@ def _recursive_args(row: dict[str, Any]) -> list[str]:
     return ["--recursive"] if _truthy(row.get("recursive", True)) else []
 
 
+def _caption_extension_for_row(row: dict[str, Any]) -> str:
+    from ._common import _path_overrides  # local import: avoids unused circular
+
+    return str(
+        row.get("caption_extension")
+        or _path_overrides().get("caption_extension")
+        or ".txt"
+    )
+
+
+def _caption_extension_args_for_row(row: dict[str, Any]) -> list[str]:
+    return ["--caption_extension", _caption_extension_for_row(row)]
+
+
+def _caption_backup_dir_for_row(row: dict[str, Any]) -> Path | None:
+    cache_raw = str(row.get("lora_cache_dir") or _path("lora_cache_dir", "post_image_dataset/lora"))
+    cache_dir = _resolve_project_path(cache_raw)
+    if cache_dir is None:
+        return None
+    return cache_dir.parent / "caption_backup"
+
+
+def _run_caption_backup(row: dict[str, Any]) -> None:
+    from library.preprocess import backup_caption_sidecars
+
+    src = _resolve_project_path(row.get("source_image_dir") or _path("source_image_dir", "image_dataset"))
+    backup_dir = _caption_backup_dir_for_row(row)
+    if src is None or backup_dir is None:
+        print("warn: caption backup skipped: source or backup directory is empty")
+        return
+    stats = backup_caption_sidecars(
+        src,
+        backup_dir,
+        recursive=_truthy(row.get("recursive", True)),
+        caption_extension=_caption_extension_for_row(row),
+        warn=lambda msg: print(f"warn: {msg}"),
+    )
+    print(
+        "caption backup: "
+        f"{stats.copied} files copied to {backup_dir} "
+        f"({stats.missing} images without sidecar, {stats.failed} failed)"
+    )
+
+
 def _run_preprocess_resize(row: dict[str, Any], extra: list[str]) -> None:
     mp_args, extra = _resolve_lowres_filter(extra)
     src = str(row.get("source_image_dir") or _path("source_image_dir", "image_dataset"))
@@ -364,7 +462,10 @@ def _run_preprocess_te(
     extra: list[str],
     shuffle_variants: str | None = None,
     tag_dropout_rate: str | None = None,
+    backup_captions: bool = True,
 ) -> None:
+    if backup_captions:
+        _run_caption_backup(row)
     shuffle_variants = shuffle_variants or os.environ.get("CAPTION_SHUFFLE_VARIANTS", "4")
     tag_dropout_rate = tag_dropout_rate or os.environ.get("CAPTION_TAG_DROPOUT_RATE", "0.1")
     mp_args, extra = _resolve_lowres_filter(extra)
@@ -374,7 +475,10 @@ def _run_preprocess_te(
         if prefer_json_env is not None
         else _truthy(row.get("prefer_json_caption"))
     )
+    source_mode_env = os.environ.get("CAPTION_SOURCE_MODE")
+    caption_source_value = source_mode_env if source_mode_env is not None else row.get("caption_source_mode")
     json_args = ["--prefer_json_caption"] if prefer_json else []
+    source_args = _caption_source_args(caption_source_value, prefer_json)
     run(
         [
             PY,
@@ -395,6 +499,8 @@ def _run_preprocess_te(
             shuffle_variants,
             "--caption_tag_dropout_rate",
             tag_dropout_rate,
+            *source_args,
+            *_caption_extension_args_for_row(row),
             *json_args,
             *_recursive_args(row),
             *mp_args,
@@ -484,9 +590,10 @@ def cmd_preprocess(extra):
     # preprocess fast on machines that won't ever use the vision tower.
     _, vae_extra = _resolve_lowres_filter(extra)
     for row in _preprocess_rows():
+        _run_caption_backup(row)
         _run_preprocess_resize(row, extra)
         _run_preprocess_vae(row, vae_extra)
-        _run_preprocess_te(row, extra)
+        _run_preprocess_te(row, extra, backup_captions=False)
 
 
 def cmd_preprocess_config(extra):
@@ -541,21 +648,55 @@ def cmd_preprocess_config(extra):
         )
 
     general = cfg.get("general") if isinstance(cfg.get("general"), dict) else {}
-    prefer_json = _truthy(general.get("prefer_json_caption", general.get("prefer_json")))
-    json_args = ["--prefer_json_caption"] if prefer_json else []
+    general_prefer_json = _optional_bool(general.get("prefer_json_caption", general.get("prefer_json")))
+    general_caption_source_mode = str(general.get("caption_source_mode") or "").strip()
+    general_caption_extension = str(general.get("caption_extension") or ".txt").strip() or ".txt"
 
-    subsets = [
-        sub
-        for ds in (cfg.get("datasets") or [])
-        for sub in (ds.get("subsets") or [])
-        if sub.get("image_dir")
-    ]
-    if not subsets:
+    subset_entries: list[dict[str, Any]] = []
+    for dataset in cfg.get("datasets") or []:
+        if not isinstance(dataset, dict):
+            continue
+        for subset in dataset.get("subsets") or []:
+            if not isinstance(subset, dict) or not subset.get("image_dir"):
+                continue
+            prefer_json = _optional_bool(
+                dataset.get(
+                    "prefer_json_caption",
+                    subset.get("prefer_json_caption"),
+                )
+            )
+            if prefer_json is None:
+                prefer_json = general_prefer_json
+            prefer_json = bool(prefer_json)
+            caption_source_mode = _first_explicit_caption_source_mode(
+                dataset.get("caption_source_mode"),
+                subset.get("caption_source_mode"),
+                general_caption_source_mode,
+            )
+            caption_extension = str(
+                dataset.get(
+                    "caption_extension",
+                    subset.get("caption_extension", general_caption_extension),
+                )
+                or ".txt"
+            ).strip() or ".txt"
+            subset_entries.append({
+                "subset": subset,
+                "prefer_json": prefer_json,
+                "caption_source_mode": caption_source_mode,
+                "caption_extension": caption_extension,
+            })
+    if not subset_entries:
         raise SystemExit(f"no [[datasets.subsets]] with image_dir in {cfg_path}")
 
-    for sub in subsets:
+    for entry in subset_entries:
+        sub = entry["subset"]
         image_dir = sub["image_dir"]
         cache_dir = sub.get("cache_dir") or image_dir
+        prefer_json = bool(entry["prefer_json"])
+        json_args = ["--prefer_json_caption"] if prefer_json else []
+        source_args = _caption_source_args(entry.get("caption_source_mode"), prefer_json)
+        caption_extension_args = ["--caption_extension", str(entry.get("caption_extension") or ".txt")]
         run(
             [
                 PY,
@@ -605,6 +746,8 @@ def cmd_preprocess_config(extra):
                 qwen3_path,
                 "--dit",
                 dit_path,
+                *source_args,
+                *caption_extension_args,
                 *json_args,
                 "--recursive",
             ]

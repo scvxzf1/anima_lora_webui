@@ -17,10 +17,22 @@ from library.preprocess._dataset import (
 from library.preprocess._progress import ProgressFn, tqdm_progress
 from library.preprocess.images import process_image, resize_to_buckets
 from library.preprocess.captions import (
+    CAPTION_SOURCE_AUTO,
+    CAPTION_SOURCE_CAPTIONS_JSON,
+    CAPTION_SOURCE_JSON,
+    CAPTION_SOURCE_TXT,
+    CAPTIONS_JSON_FILE,
+    CaptionBackupStats,
     CaptionSource,
     StructuredCaption,
+    backup_caption_sidecars,
+    caption_backup_extensions,
+    captions_json_texts_for_image,
+    load_captions_json,
     load_json_caption,
+    normalize_caption_source_mode,
     read_caption_source,
+    read_caption_source_from_dirs,
     structured_caption_from_json,
 )
 from library.preprocess.latents import cache_latents, get_latents_npz_path
@@ -58,9 +70,21 @@ __all__ = [
     "resize_to_buckets",
     "process_image",
     # caption sidecars
+    "CAPTION_SOURCE_AUTO",
+    "CAPTION_SOURCE_CAPTIONS_JSON",
+    "CAPTION_SOURCE_JSON",
+    "CAPTION_SOURCE_TXT",
+    "CAPTIONS_JSON_FILE",
+    "CaptionBackupStats",
     "CaptionSource",
     "StructuredCaption",
+    "backup_caption_sidecars",
+    "caption_backup_extensions",
+    "captions_json_texts_for_image",
+    "load_captions_json",
     "load_json_caption",
+    "normalize_caption_source_mode",
     "read_caption_source",
+    "read_caption_source_from_dirs",
     "structured_caption_from_json",
 ]

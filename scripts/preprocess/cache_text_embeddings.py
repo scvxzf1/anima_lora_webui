@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Cache text encoder (Qwen3) outputs for all captioned images in a dataset directory.
 
-Reads .txt caption sidecars, tokenizes with Qwen3 + T5, encodes through the
-Qwen3 text encoder, and optionally runs the LLM adapter to produce crossattn_emb.
+Reads caption sidecars, tokenizes with Qwen3 + T5, encodes through the Qwen3
+text encoder, and optionally runs the LLM adapter to produce crossattn_emb.
 Saves results as *_anima_te.safetensors alongside each image (or under
 ``--cache_dir``).
 
@@ -12,8 +12,10 @@ original caption (no shuffle, no dropout); v1..v{N-1} are smart-shuffled and,
 if --caption_tag_dropout_rate > 0, have non-prefix tags independently dropped
 at that rate. The strategy loader picks v0 with 20% probability and uniform
 v1..v{N-1} with 80% probability when use_shuffled_caption_variants is on.
-Pass --prefer_json_caption (or --prefer_json) to prefer same-stem .json
-caption sidecars, falling back to .txt when JSON is missing or invalid.
+Caption source defaults to ``auto``: captions.json (DiffPipeForge) ->
+same-stem .json (AnimaLoraToolkit) -> same-stem .txt (sd-scripts). Pass
+``--caption_source_mode`` to force a source; ``--prefer_json_caption`` keeps
+the legacy same-stem .json -> .txt fallback behavior.
 
 The encode loop lives in ``library/preprocess/text.py``; this file is argparse +
 model load + the one-time uncond sidecar staging.
@@ -35,6 +37,8 @@ def _collect_image_caption_entries(
     *,
     min_pixels: int = 500_000,
     prefer_json_caption: bool = False,
+    caption_source_mode: str | None = None,
+    caption_extension: str = ".txt",
 ):
     """Compatibility helper for older tests/tooling.
 
@@ -60,13 +64,20 @@ def _collect_image_caption_entries(
                 skipped_small += 1
                 continue
 
-        if prefer_json_caption:
-            from library.preprocess.captions import read_caption_source
+        from library.preprocess.captions import (
+            CAPTION_SOURCE_TXT,
+            normalize_caption_source_mode,
+            read_caption_source,
+        )
 
+        source_mode = normalize_caption_source_mode(caption_source_mode, prefer_json_caption)
+        if source_mode != CAPTION_SOURCE_TXT or prefer_json_caption:
             source = read_caption_source(
                 image_path,
-                prefer_json_caption=True,
-                caption_extension=".txt",
+                prefer_json_caption=prefer_json_caption,
+                caption_source_mode=caption_source_mode,
+                caption_extension=caption_extension,
+                captions_root=image_path.parent,
             )
             caption_text = source.render()
             if source.path is None:
@@ -78,7 +89,8 @@ def _collect_image_caption_entries(
             entries.append((image_path, caption_text))
             continue
 
-        caption_path = image_path.with_suffix(".txt")
+        extension = caption_extension if str(caption_extension).startswith(".") else f".{caption_extension}"
+        caption_path = image_path.with_suffix(extension)
         if not caption_path.exists():
             missing_captions += 1
             samples.append(image_path.name)
@@ -147,6 +159,23 @@ def main() -> None:
             "Prefer same-stem .json caption sidecars and fall back to .txt "
             "when JSON is missing or invalid. Disabled by default."
         ),
+    )
+    parser.add_argument(
+        "--caption_source_mode",
+        choices=["auto", "txt", "json", "captions_json"],
+        default=None,
+        help=(
+            "Caption source mode. auto detects captions.json first, then "
+            "same-stem .json, then same-stem text; txt forces sd-scripts "
+            "sidecars; json forces AnimaLoraToolkit .json; "
+            "captions_json forces DiffPipeForge captions.json."
+        ),
+    )
+    parser.add_argument(
+        "--caption_extension",
+        type=str,
+        default=".txt",
+        help="Text caption sidecar extension used for txt mode (default: .txt).",
     )
     parser.add_argument(
         "--min_pixels",
@@ -229,8 +258,13 @@ def main() -> None:
             "warn: --caption_tag_dropout_rate ignored because "
             "--caption_shuffle_variants <= 0 (single-variant cache)."
         )
-    if args.prefer_json_caption:
-        print("Caption source: prefer JSON sidecars (.json -> .txt fallback)")
+    from library.preprocess.captions import normalize_caption_source_mode
+
+    caption_source_mode = normalize_caption_source_mode(
+        args.caption_source_mode,
+        args.prefer_json_caption,
+    )
+    print(f"Caption source mode: {caption_source_mode}")
 
     stats = cache_text_embeddings(
         data_dir,
@@ -245,6 +279,8 @@ def main() -> None:
         caption_shuffle_variants=N,
         caption_tag_dropout_rate=tag_dropout_rate,
         prefer_json_caption=args.prefer_json_caption,
+        caption_source_mode=args.caption_source_mode,
+        caption_extension=args.caption_extension,
         min_pixels=args.min_pixels,
         progress=tqdm_progress("Caching text embeddings"),
     )

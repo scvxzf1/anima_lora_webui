@@ -22,6 +22,7 @@ from pathlib import Path
 import pytest
 import toml
 
+from web.services import config_service
 from library.config.io import load_method_preset
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -142,3 +143,15 @@ def test_variant_discovery_matches_filesystem():
             f"family={family}: list_gui_variants returned {sorted(listed)}, "
             f"expected {sorted(expected)}"
         )
+
+
+def test_web_method_list_has_no_empty_variant_family():
+    """Every Web method choice must either map to a real GUI variant or be the
+    dedicated SPD CLI entry."""
+    empty = {
+        method: config_service.list_variants(method)
+        for method in config_service.list_methods()
+        if not config_service.list_variants(method)
+    }
+
+    assert not empty, f"methods with no trainable variants: {empty}"

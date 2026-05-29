@@ -9,6 +9,8 @@ class MetricsChart {
         this.maxPoints = options.maxPoints || 300;
         this.label = options.label || 'Loss';
         this.color = options.color || '#4fc3f7';
+        this.lrLabel = options.lrLabel || 'LR';
+        this.lrColor = options.lrColor || '#f0c36a';
         this.gridColor = options.gridColor || options.grid || '#2a3a5e';
         this.textColor = options.textColor || options.text || '#8892a4';
         this.tooltipBg = options.tooltipBg || options.tooltipBackground || '#16213e';
@@ -36,6 +38,7 @@ class MetricsChart {
 
     setTheme(theme = {}) {
         this.color = theme.color || this.color;
+        this.lrColor = theme.lrColor || theme.lr || this.lrColor;
         this.gridColor = theme.grid || theme.gridColor || this.gridColor;
         this.textColor = theme.text || theme.textColor || this.textColor;
         this.tooltipBg = theme.tooltipBg || theme.tooltipBackground || this.tooltipBg;
@@ -108,17 +111,58 @@ class MetricsChart {
         this.render();
     }
 
+    updatePointMetadata(step, metadata = {}) {
+        if (!this.data.length) return;
+        const normalizedStep = Number(step);
+        let target = null;
+        if (Number.isFinite(normalizedStep)) {
+            for (let i = this.data.length - 1; i >= 0; i -= 1) {
+                if (this.data[i].step === normalizedStep) {
+                    target = this.data[i];
+                    break;
+                }
+            }
+        }
+        if (!target) target = this.data[this.data.length - 1];
+        const lr = Number(metadata.lr ?? metadata.learningRate ?? metadata.learning_rate);
+        if (Number.isFinite(lr)) {
+            target.lr = lr;
+            this.render();
+        }
+    }
+
     _normalizePoint(point = {}) {
         const step = Number(point.step);
         const value = Number(point.value ?? point.loss);
         if (!Number.isFinite(step) || !Number.isFinite(value)) return null;
         const normalized = { ...point, step, value };
+        const lr = Number(point.lr ?? point.learningRate ?? point.learning_rate);
+        if (Number.isFinite(lr)) normalized.lr = lr;
         delete normalized.loss;
         return normalized;
     }
 
     _padding() {
-        return { top: 24, right: 58, bottom: 28, left: 12 };
+        return { top: 24, right: 70, bottom: 28, left: 52 };
+    }
+
+    _lrValues() {
+        return this.data
+            .map((point) => Number(point.lr))
+            .filter((value) => Number.isFinite(value));
+    }
+
+    _lrRange() {
+        const values = this._lrValues();
+        if (values.length < 2) return null;
+        let min = Math.min(...values);
+        let max = Math.max(...values);
+        if (min === max) {
+            const pad = Math.max(Math.abs(min) * 0.08, 1e-12);
+            min -= pad;
+            max += pad;
+        }
+        return { min, max };
     }
 
     _sanitizeHover() {
@@ -198,6 +242,7 @@ class MetricsChart {
         const plotW = w - pad.left - pad.right;
         const plotH = h - pad.top - pad.bottom;
         const xRange = this._xRange();
+        const lrRange = this._lrRange();
 
         // Grid lines
         ctx.strokeStyle = this.gridColor;
@@ -213,11 +258,21 @@ class MetricsChart {
         // Y-axis labels
         ctx.fillStyle = this.textColor;
         ctx.font = '10px monospace';
-        ctx.textAlign = 'right';
+        ctx.textAlign = 'left';
         for (let i = 0; i <= 4; i++) {
             const val = maxV - (rangeV * i / 4);
             const y = pad.top + (plotH * i / 4);
-            ctx.fillText(val.toFixed(4), w - 5, y + 3);
+            ctx.fillText(val.toFixed(4), 5, y + 3);
+        }
+
+        if (lrRange) {
+            ctx.fillStyle = this.lrColor;
+            ctx.textAlign = 'right';
+            for (let i = 0; i <= 4; i++) {
+                const val = lrRange.max - ((lrRange.max - lrRange.min) * i / 4);
+                const y = pad.top + (plotH * i / 4);
+                ctx.fillText(this._formatLr(val), w - 5, y + 3);
+            }
         }
 
         this._drawStageMarkers(ctx, { w, h, pad, plotW, xRange });
@@ -237,6 +292,8 @@ class MetricsChart {
         }
         if (hasLine) ctx.stroke();
 
+        this._drawLrLine(ctx, { pad, plotW, plotH, xRange, lrRange });
+
         // Current value
         const last = this.data[this.data.length - 1];
         ctx.fillStyle = this.color;
@@ -244,6 +301,14 @@ class MetricsChart {
         ctx.textAlign = 'left';
         ctx.textBaseline = 'alphabetic';
         ctx.fillText(`${this.label}: ${last.value.toFixed(5)}`, pad.left + 5, 14);
+        if (lrRange) {
+            const lastLrPoint = [...this.data].reverse().find((point) => Number.isFinite(Number(point.lr)));
+            if (lastLrPoint) {
+                ctx.fillStyle = this.lrColor;
+                ctx.textAlign = 'right';
+                ctx.fillText(`${this.lrLabel}: ${this._formatLr(lastLrPoint.lr)}`, w - pad.right, 14);
+            }
+        }
 
         // Step range
         ctx.fillStyle = this.textColor;
@@ -253,7 +318,41 @@ class MetricsChart {
         ctx.textAlign = 'right';
         ctx.fillText(`${this.xLabel} ${this._formatStep(xRange.max)}`, w - pad.right, h - 5);
 
-        this._drawHover(ctx, { w, h, pad, plotW, plotH, maxV, rangeV, xRange });
+        this._drawHover(ctx, { w, h, pad, plotW, plotH, maxV, rangeV, xRange, lrRange });
+        ctx.restore();
+    }
+
+    _drawLrLine(ctx, layout) {
+        const { pad, plotW, plotH, xRange, lrRange } = layout;
+        if (!lrRange) return;
+        const range = lrRange.max - lrRange.min;
+        if (range <= 0) return;
+        ctx.save();
+        ctx.strokeStyle = this.lrColor;
+        ctx.lineWidth = 1.25;
+        ctx.lineJoin = 'round';
+        ctx.setLineDash([5, 4]);
+        ctx.beginPath();
+        let drawing = false;
+        let hasLine = false;
+        for (let i = 0; i < this.data.length; i++) {
+            const lr = Number(this.data[i].lr);
+            if (!Number.isFinite(lr)) {
+                drawing = false;
+                continue;
+            }
+            const x = this._xForPoint(this.data[i], i, { pad, plotW, xRange });
+            const y = pad.top + ((lrRange.max - lr) / range) * plotH;
+            if (!drawing || this.data[i].stageBreakBefore) {
+                ctx.moveTo(x, y);
+                drawing = true;
+            } else {
+                ctx.lineTo(x, y);
+                hasLine = true;
+            }
+        }
+        if (hasLine) ctx.stroke();
+        ctx.setLineDash([]);
         ctx.restore();
     }
 
@@ -341,7 +440,7 @@ class MetricsChart {
         const position = this._pointPosition(this.hoverIndex, layout);
         if (!position) return;
 
-        const { w, h, pad } = layout;
+        const { w, h, pad, plotH, lrRange } = layout;
         const { point, x, y } = position;
 
         ctx.save();
@@ -363,6 +462,17 @@ class MetricsChart {
         ctx.arc(x, y, 4.5, 0, Math.PI * 2);
         ctx.fill();
         ctx.stroke();
+
+        const lr = Number(point.lr);
+        if (lrRange && Number.isFinite(lr)) {
+            const lrY = pad.top + ((lrRange.max - lr) / Math.max(1e-12, lrRange.max - lrRange.min)) * plotH;
+            ctx.fillStyle = this.lrColor;
+            ctx.strokeStyle = this.tooltipBg;
+            ctx.beginPath();
+            ctx.arc(x, lrY, 4, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.stroke();
+        }
 
         const lines = this._hoverLines(point, this.hoverIndex);
         const font = '11px monospace';
@@ -403,6 +513,8 @@ class MetricsChart {
             lines.push(`${this.xLabel}: ${this._formatStep(point.step)}`);
         }
         lines.push(`Loss: ${point.value.toFixed(5)}`);
+        const lr = this._firstFinite(point.lr, point.learningRate, point.learning_rate);
+        if (lr !== null) lines.push(`LR: ${this._formatLr(lr)}`);
         const rawStep = this._firstFinite(point.rawStep, point.raw_step, point.originalStep, point.trainStep);
         lines.push(`真实步数: ${this._formatStep(point.step)}`);
         if (rawStep !== null && rawStep !== point.step) {
@@ -426,6 +538,11 @@ class MetricsChart {
     _formatStep(value) {
         const number = Number(value);
         return Number.isFinite(number) ? String(number) : '-';
+    }
+
+    _formatLr(value) {
+        const number = Number(value);
+        return Number.isFinite(number) ? number.toExponential(2) : '-';
     }
 
     _shorten(value, maxLength) {

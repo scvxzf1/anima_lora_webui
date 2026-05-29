@@ -3,6 +3,7 @@ from __future__ import annotations
 from PIL import Image
 import toml
 import torch
+from safetensors.torch import load_file
 
 from library.preprocess import text as preprocess_text
 from preprocess import cache_text_embeddings
@@ -291,6 +292,7 @@ def test_runtime_dataset_config_supplies_json_caption_flag(tmp_path, monkeypatch
         encoding="utf-8",
     )
     commands: list[list[str]] = []
+    backups: list[str] = []
     monkeypatch.setattr(preprocess, "ROOT", tmp_path)
     monkeypatch.setattr(
         _common,
@@ -302,10 +304,125 @@ def test_runtime_dataset_config_supplies_json_caption_flag(tmp_path, monkeypatch
         },
     )
     monkeypatch.setattr(preprocess, "run", commands.append)
+    monkeypatch.setattr(
+        preprocess,
+        "_run_caption_backup",
+        lambda row: backups.append(row["source_image_dir"]),
+    )
 
     preprocess.cmd_preprocess_te([])
 
+    assert backups == ["image_dataset/a"]
     assert "--prefer_json_caption" in commands[0]
+    assert "--caption_source_mode" not in commands[0]
+
+
+def test_runtime_dataset_config_supplies_caption_source_mode(tmp_path, monkeypatch):
+    dataset_path = tmp_path / "runs" / "demo" / "dataset.runtime.toml"
+    dataset_path.parent.mkdir(parents=True)
+    dataset_path.write_text(
+        "\n".join(
+            [
+                "[[datasets]]",
+                'caption_source_mode = "captions_json"',
+                "batch_size = 1",
+                "",
+                "[[datasets.subsets]]",
+                'image_dir = "post_image_dataset/a_resized"',
+                'cache_dir = "post_image_dataset/a_cache"',
+                'custom_attributes = {source_dir = "image_dataset/a"}',
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    commands: list[list[str]] = []
+    monkeypatch.setattr(preprocess, "ROOT", tmp_path)
+    monkeypatch.setattr(
+        _common,
+        "_PATH_OVERRIDES_CACHE",
+        {
+            "dataset_config": "runs/demo/dataset.runtime.toml",
+            "qwen3": "D:/models/qwen3.safetensors",
+            "pretrained_model_name_or_path": "D:/models/anima.safetensors",
+        },
+    )
+    monkeypatch.setattr(preprocess, "run", commands.append)
+    monkeypatch.setattr(preprocess, "_run_caption_backup", lambda row: None)
+
+    preprocess.cmd_preprocess_te([])
+
+    assert commands[0][commands[0].index("--caption_source_mode") + 1] == "captions_json"
+
+
+def test_preprocess_config_uses_dataset_level_caption_sources(tmp_path, monkeypatch):
+    dataset_path = tmp_path / "runs" / "demo" / "dataset.runtime.toml"
+    dataset_path.parent.mkdir(parents=True)
+    dataset_path.write_text(
+        "\n".join(
+            [
+                "[general]",
+                'caption_source_mode = "auto"',
+                'caption_extension = ".txt"',
+                "",
+                "[[datasets]]",
+                'caption_source_mode = "txt"',
+                'caption_extension = ".caption"',
+                "batch_size = 1",
+                "",
+                "[[datasets.subsets]]",
+                'image_dir = "post_image_dataset/a_resized"',
+                'cache_dir = "post_image_dataset/a_cache"',
+                "",
+                "[[datasets]]",
+                'caption_source_mode = "captions_json"',
+                "batch_size = 1",
+                "",
+                "[[datasets.subsets]]",
+                'image_dir = "post_image_dataset/b_resized"',
+                'cache_dir = "post_image_dataset/b_cache"',
+            ]
+        ),
+        encoding="utf-8",
+    )
+    commands: list[list[str]] = []
+    monkeypatch.setattr(preprocess, "run", commands.append)
+
+    preprocess.cmd_preprocess_config([
+        "--dataset_config",
+        str(dataset_path),
+        "--src",
+        "image_dataset/source",
+        "--vae",
+        "D:/models/vae.safetensors",
+        "--qwen3",
+        "D:/models/qwen3.safetensors",
+        "--dit",
+        "D:/models/anima.safetensors",
+    ])
+
+    assert len(commands) == 6
+    te_a = commands[2]
+    te_b = commands[5]
+    assert te_a[te_a.index("--caption_source_mode") + 1] == "txt"
+    assert te_a[te_a.index("--caption_extension") + 1] == ".caption"
+    assert te_b[te_b.index("--caption_source_mode") + 1] == "captions_json"
+    assert te_b[te_b.index("--caption_extension") + 1] == ".txt"
+
+
+def test_caption_backup_dir_uses_cache_parent_and_stays_out_of_training_dirs(tmp_path, monkeypatch):
+    monkeypatch.setattr(preprocess, "ROOT", tmp_path)
+    row = {
+        "source_image_dir": "image_dataset/a",
+        "resized_image_dir": "output/runs/demo/dataset_cache/dataset-02/resized",
+        "lora_cache_dir": "output/runs/demo/dataset_cache/dataset-02/lora",
+    }
+
+    backup_dir = preprocess._caption_backup_dir_for_row(row)
+
+    assert backup_dir == tmp_path / "output/runs/demo/dataset_cache/dataset-02/caption_backup"
+    assert backup_dir != tmp_path / row["resized_image_dir"]
+    assert backup_dir != tmp_path / row["lora_cache_dir"]
 
 
 def test_cache_text_embeddings_keeps_uncaptioned_images(tmp_path):
@@ -390,6 +507,57 @@ def test_cache_text_embeddings_writes_missing_caption_caches(tmp_path, monkeypat
         assert (tmp_path / "cache" / f"{path.stem}_anima_te.safetensors").is_file()
 
 
+def test_cache_text_embeddings_writes_captions_json_as_multi_source_variants(tmp_path, monkeypatch):
+    image = tmp_path / "hero.png"
+    Image.new("RGB", (800, 800), color=(128, 128, 128)).save(image)
+    (tmp_path / "captions.json").write_text(
+        '{"hero.png": ["caption one", "caption two"]}',
+        encoding="utf-8",
+    )
+
+    seen_captions: list[str] = []
+
+    def fake_encode_batch(
+        captions,
+        _tokenize_strategy,
+        _encoding_strategy,
+        _text_encoder,
+        _llm_adapter,
+        _device,
+    ):
+        seen_captions.extend(captions)
+        n = len(captions)
+        return (
+            torch.zeros((n, 2, 3), dtype=torch.bfloat16),
+            torch.ones((n, 2), dtype=torch.int32),
+            torch.zeros((n, 2), dtype=torch.long),
+            torch.ones((n, 2), dtype=torch.int32),
+            None,
+        )
+
+    monkeypatch.setattr(preprocess_text, "_encode_batch", fake_encode_batch)
+
+    stats = preprocess_text.cache_text_embeddings(
+        tmp_path,
+        object(),
+        object(),
+        object(),
+        device=torch.device("cpu"),
+        cache_dir=tmp_path / "cache",
+        batch_size=8,
+        min_pixels=500_000,
+        verbose=False,
+        caption_source_mode="auto",
+        caption_shuffle_variants=0,
+    )
+
+    cache = load_file(str(tmp_path / "cache" / "hero_anima_te.safetensors"))
+    assert stats.written == 1
+    assert seen_captions == ["caption one", "caption two"]
+    assert int(cache["num_variants"]) == 2
+    assert int(cache["caption_multi_source"]) == 1
+
+
 def test_preprocess_runs_all_dataset_config_rows(tmp_path, monkeypatch):
     dataset_path = tmp_path / "configs" / "datasets" / "multi.toml"
     dataset_path.parent.mkdir(parents=True)
@@ -424,6 +592,7 @@ def test_preprocess_runs_all_dataset_config_rows(tmp_path, monkeypatch):
         encoding="utf-8",
     )
     commands: list[list[str]] = []
+    backups: list[str] = []
     monkeypatch.setattr(preprocess, "ROOT", tmp_path)
     monkeypatch.setattr(
         _common,
@@ -436,9 +605,15 @@ def test_preprocess_runs_all_dataset_config_rows(tmp_path, monkeypatch):
         },
     )
     monkeypatch.setattr(preprocess, "run", commands.append)
+    monkeypatch.setattr(
+        preprocess,
+        "_run_caption_backup",
+        lambda row: backups.append(row["source_image_dir"]),
+    )
 
     preprocess.cmd_preprocess([])
 
+    assert backups == ["image_dataset/a", "image_dataset/b"]
     assert len(commands) == 6
     resize_a, vae_a, te_a, resize_b, vae_b, te_b = commands
     assert resize_a[1:3] == ["-m", "scripts.preprocess.resize_images"]
