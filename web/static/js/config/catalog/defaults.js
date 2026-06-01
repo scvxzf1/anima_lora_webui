@@ -1,0 +1,232 @@
+export const BLANK_PRESET_TEMPLATE_FILE = 'configs/gui-methods/lora.toml';
+export const BLANK_PRESET_TEMPLATE_LABEL = 'LoRA 标准训练变体 / lora.toml';
+export const FORM_UI_DEFAULTS = {
+    train_batch_size: 1,
+    gradient_accumulation_steps: 1,
+    sample_prompts: '',
+    sample_every_n_epochs: '',
+    sample_every_n_steps: '',
+    gradient_checkpointing: true,
+    max_train_epochs: '',
+    max_train_steps: 0,
+    sample_at_first: false,
+    sample_sampler: 'ddim',
+    use_lokr: false,
+    lokr_factor: 8,
+    max_data_loader_n_workers: 0,
+    path_pattern: '*',
+    drop_lowres_images: true,
+    min_pixels: 500000,
+    validation_baselines: false,
+    ip_pair_mode: 'identity',
+    ip_pair_prob: 0.8,
+    ip_pair_min_level: 'artist',
+    ip_pair_caption_strip_p: 0.0,
+    content_router_source: 'crossattn_emb',
+    content_router_init_std: 0.001,
+    content_router_layer_norm: true,
+    use_cmmd: false,
+    ip_diagnostics_epochs: 999,
+    dit_path: 'models/diffusion_models/anima-base-v1.0.safetensors',
+    data_dir: 'post_image_dataset/lora',
+    iterations: 2000,
+    seed: 42,
+    use_chimera_hydra: false,
+    channel_scaling_alpha: 0.5,
+    num_experts_content: 4,
+    num_experts_freq: 2,
+    balance_w_content: 0.000002,
+    balance_w_freq: 0.000005,
+    network_content_router_lr_scale: 10.0,
+    network_freq_router_lr_scale: 2.0,
+    freq_router_init_std: 0.02,
+    freq_router_layer_norm: true,
+    n_layers: 14,
+    n_t_buckets: 14,
+    init_std: 0.02,
+    splice_position: 'front_of_padding',
+    contrastive_weight: 0.05,
+    contrastive_k: 1,
+    contrastive_every_n: 3,
+    contrastive_negative_mode: 'hard',
+    contrastive_objective: 'agsm',
+    agsm_gamma: 0.5,
+    agsm_ema_decay: 0.99,
+    contrastive_jaccard_alpha: 1.0,
+    contrastive_tau: 0.5,
+    contrastive_warmup_ratio: 0.1,
+    encoder: 'pe',
+    encoder_dim: 1024,
+    resampler_layers: 2,
+    resampler_heads: 8,
+    ip_scale: 1.0,
+    gate_lr: 0.001,
+    pe_lora_enabled: false,
+    pe_lora_rank: 16,
+    pe_lora_alpha: 16,
+    pe_lora_layer_from: 8,
+    b_cond_init: -10.0,
+    cond_scale: 1.0,
+    apply_ffn_lora: true,
+    cond_token_count: 4096,
+    resolution: 1024,
+    enable_bucket: true,
+    min_bucket_reso: 256,
+    max_bucket_reso: 1024,
+    bucket_reso_steps: 64,
+    bucket_no_upscale: false,
+    validation_split: 0.025,
+    validation_split_num: 0,
+    validation_seed: 42,
+    caption_extension: '.txt',
+    keep_tokens: 3,
+    prefer_json_caption: false,
+    caption_source_mode: 'auto',
+};
+export const OPTIONAL_EMPTY_FIELDS = new Set([
+    'sample_prompts',
+    'sample_every_n_epochs',
+    'sample_every_n_steps',
+    'max_train_epochs',
+]);
+export const OPTIONAL_EMPTY_NUMBER_FIELDS = new Set([
+    'sample_every_n_epochs',
+    'sample_every_n_steps',
+    'max_train_epochs',
+]);
+export const FORM_UI_PERSIST_DEFAULT_FIELDS = new Set([
+    'gradient_checkpointing',
+]);
+export const CONFIG_FORM_INTERNAL_KEYS = new Set([
+    'dataset_config_picker',
+]);
+export const DEPRECATED_CONFIG_FORM_FIELDS = new Set([
+    'compile_mode',
+    'static_pad',
+    'static_token_count',
+]);
+export const RETIRED_CONFIG_FORM_FIELDS = new Set([
+    'per_channel_scaling',
+    'repa_layer',
+    'repa_lr_scale',
+    'repa_weight',
+    'trim_crossattn_kv',
+    'use_repa',
+    'use_hydra',
+    'use_sigma_router',
+    'use_fei_router',
+]);
+export const METHOD_SCOPED_CONFIG_FORM_FIELDS = new Map([
+    ['weight_decay', new Set(['spd'])],
+]);
+export const DATASET_EDITOR_COMPAT_FIELDS = new Set([
+    'source_image_dir',
+    'resized_image_dir',
+    'lora_cache_dir',
+    'dataset_config',
+]);
+export const DATASET_BLUEPRINT_FIELDS = new Set([
+    'dataset_config',
+    'source_image_dir',
+    'resized_image_dir',
+    'lora_cache_dir',
+    'resolution',
+    'enable_bucket',
+    'min_bucket_reso',
+    'max_bucket_reso',
+    'bucket_reso_steps',
+    'bucket_no_upscale',
+    'validation_split',
+    'validation_split_num',
+    'validation_seed',
+    'caption_extension',
+    'keep_tokens',
+    'prefer_json_caption',
+    'caption_source_mode',
+]);
+export const DATASET_SETTING_KEYS = new Set([
+    'resolution',
+    'enable_bucket',
+    'min_bucket_reso',
+    'max_bucket_reso',
+    'bucket_reso_steps',
+    'bucket_no_upscale',
+    'validation_split',
+    'validation_split_num',
+    'validation_seed',
+    'caption_extension',
+    'caption_source_mode',
+]);
+export const DEFAULT_NL_TAG_MIX = Object.freeze({
+    enabled: false,
+    tag_ratio: 0.7,
+});
+export const DEFAULT_TRIGGER_CLONE = Object.freeze({
+    enabled: false,
+    prompt: '',
+    num_repeats: 1,
+});
+export const CAPTION_SOURCE_MODE_OPTIONS = Object.freeze([
+    { value: 'auto', label: 'Auto', detail: '自动识别' },
+    { value: 'txt', label: 'sd-scripts', detail: '.txt' },
+    { value: 'json', label: 'AnimaLoraToolkit', detail: '.json' },
+    { value: 'captions_json', label: 'DiffPipeForge', detail: 'captions.json' },
+]);
+
+export const NETWORK_ARG_FIELD_SPECS = [
+    { family: 'soft_tokens', key: 'n_layers', arg: 'n_layers', default: 14, valueType: 'integer' },
+    { family: 'soft_tokens', key: 'n_t_buckets', arg: 'n_t_buckets', default: 14, valueType: 'integer' },
+    { family: 'soft_tokens', key: 'init_std', arg: 'init_std', default: 0.02, valueType: 'number' },
+    { family: 'soft_tokens', key: 'splice_position', arg: 'splice_position', default: 'front_of_padding', valueType: 'string' },
+    { family: 'soft_tokens', key: 'contrastive_weight', arg: 'contrastive_weight', default: 0.05, valueType: 'number' },
+    { family: 'soft_tokens', key: 'contrastive_k', arg: 'contrastive_k', default: 1, valueType: 'integer' },
+    { family: 'soft_tokens', key: 'contrastive_every_n', arg: 'contrastive_every_n', default: 3, valueType: 'integer' },
+    { family: 'soft_tokens', key: 'contrastive_negative_mode', arg: 'contrastive_negative_mode', default: 'hard', valueType: 'string' },
+    { family: 'soft_tokens', key: 'contrastive_objective', arg: 'contrastive_objective', default: 'agsm', valueType: 'string' },
+    { family: 'soft_tokens', key: 'agsm_gamma', arg: 'agsm_gamma', default: 0.5, valueType: 'number' },
+    { family: 'soft_tokens', key: 'agsm_ema_decay', arg: 'agsm_ema_decay', default: 0.99, valueType: 'number' },
+    { family: 'soft_tokens', key: 'contrastive_jaccard_alpha', arg: 'contrastive_jaccard_alpha', default: 1.0, valueType: 'number' },
+    { family: 'soft_tokens', key: 'contrastive_tau', arg: 'contrastive_tau', default: 0.5, valueType: 'number' },
+    { family: 'soft_tokens', key: 'contrastive_warmup_ratio', arg: 'contrastive_warmup_ratio', default: 0.1, valueType: 'number' },
+    { family: 'ip_adapter', key: 'encoder', arg: 'encoder', default: 'pe', valueType: 'string' },
+    { family: 'ip_adapter', key: 'encoder_dim', arg: 'encoder_dim', default: 1024, valueType: 'integer' },
+    { family: 'ip_adapter', key: 'resampler_layers', arg: 'resampler_layers', default: 2, valueType: 'integer' },
+    { family: 'ip_adapter', key: 'resampler_heads', arg: 'resampler_heads', default: 8, valueType: 'integer' },
+    { family: 'ip_adapter', key: 'ip_scale', arg: 'ip_scale', default: 1.0, valueType: 'number' },
+    { family: 'ip_adapter', key: 'gate_lr', arg: 'gate_lr', default: 0.001, valueType: 'number' },
+    { family: 'ip_adapter', key: 'pe_lora_enabled', arg: 'pe_lora_enabled', default: false, valueType: 'boolean' },
+    { family: 'ip_adapter', key: 'pe_lora_rank', arg: 'pe_lora_rank', default: 16, valueType: 'integer' },
+    { family: 'ip_adapter', key: 'pe_lora_alpha', arg: 'pe_lora_alpha', default: 16, valueType: 'number' },
+    { family: 'ip_adapter', key: 'pe_lora_layer_from', arg: 'pe_lora_layer_from', default: 8, valueType: 'integer' },
+    { family: 'easycontrol', key: 'b_cond_init', arg: 'b_cond_init', default: -10.0, valueType: 'number' },
+    { family: 'easycontrol', key: 'cond_scale', arg: 'cond_scale', default: 1.0, valueType: 'number' },
+    { family: 'easycontrol', key: 'apply_ffn_lora', arg: 'apply_ffn_lora', default: true, valueType: 'booleanInt' },
+    { family: 'easycontrol', key: 'cond_token_count', arg: 'cond_token_count', default: 4096, valueType: 'integer' },
+];
+export const NETWORK_ARG_FIELD_MAP = new Map(NETWORK_ARG_FIELD_SPECS.map((spec) => [spec.key, spec]));
+export const NETWORK_ARG_SPEC_BY_ARG = new Map(NETWORK_ARG_FIELD_SPECS.map((spec) => [spec.arg, spec]));
+export const SPD_UI_DEFAULT_FIELDS = new Set(['dit_path', 'data_dir', 'iterations', 'seed', 'channel_scaling_alpha', 'weight_decay']);
+export const CHIMERA_UI_DEFAULT_FIELDS = new Set([
+    'use_chimera_hydra',
+    'channel_scaling_alpha',
+    'num_experts_content',
+    'num_experts_freq',
+    'balance_w_content',
+    'balance_w_freq',
+    'network_content_router_lr_scale',
+    'network_freq_router_lr_scale',
+    'freq_router_init_std',
+    'freq_router_layer_norm',
+]);
+export const IP_ADAPTER_UI_DEFAULT_FIELDS = new Set(['ip_diagnostics_epochs']);
+export const SOFT_TOKENS_UI_DEFAULT_FIELDS = new Set([]);
+export const MAX_LOG_LINES = 2000;
+export const GLOBAL_MODEL_PATH_FIELDS = [
+    ['pretrained_model_name_or_path', 'global-pretrained-model-path'],
+    ['qwen3', 'global-qwen3-path'],
+    ['vae', 'global-vae-path'],
+];
+export const GLOBAL_SETTING_INPUTS = [
+    ['output_root', 'global-output-root'],
+    ...GLOBAL_MODEL_PATH_FIELDS,
+];

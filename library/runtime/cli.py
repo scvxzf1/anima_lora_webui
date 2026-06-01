@@ -41,6 +41,7 @@ def add_io_args(
     cache_noun: str = "caches",
     include_cache_dir: bool = True,
     include_recursive: bool = True,
+    include_path_pattern: bool = True,
     include_batch_size: bool = False,
     batch_size_default: int = 8,
     include_num_workers: bool = False,
@@ -54,6 +55,8 @@ def add_io_args(
         --cache_dir    optional redirect for cache writes (sidecar by default).
         --recursive    walk subfolders, mirroring source subdirs under
                        ``--cache_dir`` with a per-subdir stem-collision check.
+        --path_pattern optional relative-path glob matching training subset
+                       ``path_pattern`` semantics.
         --batch_size   encode batch size (off by default — defaults differ per
                        encoder, so the caller passes ``batch_size_default``).
         --num_workers  DataLoader workers for parallel decode (off by default).
@@ -86,6 +89,16 @@ def add_io_args(
                 "Walk subfolders under --dir. Caches mirror the source subdir "
                 "structure under --cache_dir; stems must be unique within each "
                 "subfolder but the same stem can repeat across folders."
+            ),
+        )
+    if include_path_pattern:
+        parser.add_argument(
+            "--path_pattern",
+            type=str,
+            default="*",
+            help=(
+                "Optional relative-path glob filter matching dataset subset "
+                "path_pattern semantics. Use | to combine patterns."
             ),
         )
     if include_batch_size:

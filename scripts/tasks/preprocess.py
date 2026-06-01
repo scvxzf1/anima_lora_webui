@@ -18,6 +18,7 @@ from ._common import PY, ROOT, _path, run
 
 RUNTIME_PREPROCESS_ATTR_KEY = "preprocess"
 CAPTION_SOURCE_MODES = {"auto", "txt", "json", "captions_json"}
+_CAPTION_INDEX_VOCAB = "models/captioners/anima-tagger-v2/vocab.json"
 
 
 # Subfolders under the source dir are walked by default — matches the
@@ -245,6 +246,7 @@ def _dataset_rows(dataset_config: Any, overrides: dict[str, Any] | None = None) 
                     "resized_image_dir": image_dir,
                     "lora_cache_dir": cache_dir,
                     "recursive": subset.get("recursive", dataset.get("recursive", True)),
+                    "path_pattern": subset.get("path_pattern", dataset.get("path_pattern", "*")),
                 }
             )
             prefer_json = _optional_bool(
@@ -348,11 +350,18 @@ def _resize_bucket_args(settings: dict[str, Any] | None = None) -> list[str]:
             out.extend([flag, str(n)])
     if _truthy(settings.get("bucket_no_upscale")):
         out.append("--bucket_no_upscale")
+    if not _truthy(settings.get("enable_bucket", True)):
+        out.append("--no_enable_bucket")
     return out
 
 
 def _recursive_args(row: dict[str, Any]) -> list[str]:
     return ["--recursive"] if _truthy(row.get("recursive", True)) else []
+
+
+def _path_pattern_args(row: dict[str, Any]) -> list[str]:
+    pattern = str(row.get("path_pattern") or "*").strip() or "*"
+    return ["--path_pattern", pattern] if pattern != "*" else []
 
 
 def _caption_extension_for_row(row: dict[str, Any]) -> str:
@@ -389,6 +398,7 @@ def _run_caption_backup(row: dict[str, Any]) -> None:
         src,
         backup_dir,
         recursive=_truthy(row.get("recursive", True)),
+        path_pattern=str(row.get("path_pattern") or "*"),
         caption_extension=_caption_extension_for_row(row),
         warn=lambda msg: print(f"warn: {msg}"),
     )
@@ -417,6 +427,7 @@ def _run_preprocess_resize(row: dict[str, Any], extra: list[str]) -> None:
             dst,
             "--no_copy_captions",
             *_recursive_args(row),
+            *_path_pattern_args(row),
             *_resize_bucket_args(row),
             *mp_args,
             *extra,
@@ -441,6 +452,7 @@ def _run_preprocess_vae(row: dict[str, Any], extra: list[str]) -> None:
             "--chunk_size",
             "64",
             *_recursive_args(row),
+            *_path_pattern_args(row),
             *extra,
         ]
     )
@@ -503,6 +515,7 @@ def _run_preprocess_te(
             *_caption_extension_args_for_row(row),
             *json_args,
             *_recursive_args(row),
+            *_path_pattern_args(row),
             *mp_args,
             *extra,
         ]
@@ -564,6 +577,7 @@ def cmd_preprocess_pe(extra):
                 "--encoder",
                 "pe",
                 *_recursive_args(row),
+                *_path_pattern_args(row),
                 *extra,
             ]
         )
@@ -583,6 +597,31 @@ def cmd_caption_index(extra):
     )
 
 
+def _build_caption_index_best_effort() -> None:
+    """Build caption-index after GPU preprocess without making it fatal."""
+    vocab = _path("caption_index_vocab", _CAPTION_INDEX_VOCAB)
+    if not os.path.exists(vocab):
+        print("  [preprocess] tagger vocab missing; fetching it for caption-index")
+        try:
+            from .downloads import cmd_download_tagger
+
+            cmd_download_tagger([])
+        except (SystemExit, OSError, Exception) as e:  # noqa: BLE001
+            print(f"  [preprocess] tagger vocab auto-download failed: {e}")
+
+    if os.path.exists(vocab):
+        try:
+            cmd_caption_index([])
+        except (SystemExit, OSError, Exception) as e:  # noqa: BLE001
+            print(f"  [preprocess] caption-index build failed: {e}")
+    else:
+        print(
+            "  [preprocess] skipping caption-index: tagger vocab not found at "
+            f"{_CAPTION_INDEX_VOCAB}. Run `make download-tagger`, then "
+            "`make caption-index` if soft-tokens contrastive training needs it."
+        )
+
+
 def cmd_preprocess(extra):
     # PE features are intentionally NOT cached here — only IP-Adapter / CMMD /
     # DCW v4 need them, and those paths chain `preprocess-pe` explicitly (see
@@ -594,6 +633,7 @@ def cmd_preprocess(extra):
         _run_preprocess_resize(row, extra)
         _run_preprocess_vae(row, vae_extra)
         _run_preprocess_te(row, extra, backup_captions=False)
+    _build_caption_index_best_effort()
 
 
 def cmd_preprocess_config(extra):

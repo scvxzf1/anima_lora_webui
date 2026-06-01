@@ -59,18 +59,18 @@ def cmd_test_soft(extra):
 
 
 def cmd_test_turbo(extra):
-    """Inference with the latest turbo student LoRA at 4 steps, cfg=1.0.
+    """Inference with the latest turbo student LoRA at 2 steps, cfg=1.0.
 
     CFG is baked into the student during distillation, so production inference
-    runs cfg=1.0 (no double-CFG). Step count defaults to 4 — the value the
-    student was distilled at — but extra args can override.
+    runs cfg=1.0 (no double-CFG). Step count defaults to 2 — the value the
+    DP-DMD student was distilled at — but extra args can override.
     """
     weight = latest_output("anima_turbo")
     base = list(INFERENCE_BASE)
     # Replace defaults so `--infer_steps`/`--guidance_scale` reflect the turbo
-    # contract (4 steps, cfg=1.0). User extra args still win since they come last.
+    # contract (2 steps, cfg=1.0). User extra args still win since they come last.
     base = _override_arg(base, "--sampler", "euler")
-    base = _override_arg(base, "--infer_steps", "4")
+    base = _override_arg(base, "--infer_steps", "2")
     base = _override_arg(base, "--guidance_scale", "1.0")
     run(
         [
@@ -85,7 +85,7 @@ def cmd_test_turbo(extra):
 def _override_arg(argv: list[str], flag: str, value: str) -> list[str]:
     """Replace a ``--flag VALUE`` (or ``--flag V1 V2``) pair in argv with a
     fresh ``--flag value`` pair. Used to retarget INFERENCE_BASE defaults
-    for the turbo contract (4 steps, cfg=1.0) without rewriting the whole list.
+    for the turbo contract (2 steps, cfg=1.0) without rewriting the whole list.
     """
     if flag not in argv:
         return argv + [flag, value]

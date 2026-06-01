@@ -44,6 +44,7 @@ def test_defaults_when_all_kwargs_absent():
     assert cfg.module_dropout is None
     assert cfg.reg_dims is None
     assert cfg.reg_lrs is None
+    assert cfg.plugin_args == {}
 
 
 def test_string_bool_parsing_matches_old_factory_path():

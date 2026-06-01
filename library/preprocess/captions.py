@@ -495,6 +495,7 @@ def backup_caption_sidecars(
     backup_dir: Path,
     *,
     recursive: bool = False,
+    path_pattern: str | None = None,
     caption_extension: str | None = ".txt",
     warn: WarnFn | None = None,
 ) -> CaptionBackupStats:
@@ -512,7 +513,7 @@ def backup_caption_sidecars(
         return stats
 
     try:
-        image_paths = walk_images(source_dir, recursive=recursive)
+        image_paths = walk_images(source_dir, recursive=recursive, pattern=path_pattern)
     except Exception as e:  # noqa: BLE001
         if warn is not None:
             warn(f"caption backup skipped: could not scan {source_dir}: {e}")

@@ -11,7 +11,7 @@ from accelerate import init_empty_weights
 from networks.lora_utils import load_safetensors_with_lora
 from library.anima import models as anima_models
 from library.env import resolve_under_home
-from library.io.safetensors import WeightTransformHooks
+from library.io.safetensors_io import WeightTransformHooks
 from library.log import setup_logging
 
 setup_logging()

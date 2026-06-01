@@ -94,6 +94,31 @@ def test_enqueue_training_freezes_runtime_config_while_running(tmp_path, monkeyp
     assert item["gpu_whitelist"] == [1]
 
 
+def test_enqueue_training_can_pause_queue_for_manual_start(tmp_path, monkeypatch):
+    _patch_queue_paths(tmp_path, monkeypatch)
+    runtime = _runtime_payload(tmp_path)
+    monkeypatch.setattr(training_service, "_prepare_web_runtime_config", lambda *args, **kwargs: runtime)
+    svc = TrainingService(web.Application())
+    called = {"dispatch": False}
+
+    monkeypatch.setattr(svc, "_schedule_queue_dispatch", lambda: called.update(dispatch=True))
+
+    payload = asyncio.run(svc.enqueue_training(
+        "demo",
+        "default",
+        "imported",
+        config_file="configs/imported/source.toml",
+        requires_preprocess=True,
+        start_paused=True,
+    ))
+
+    assert payload["ok"] is True
+    assert payload["paused"] is True
+    assert payload["message"] == "已加入训练队列，队列已暂停"
+    assert payload["item"]["state"] == "queued"
+    assert called["dispatch"] is False
+
+
 def test_queue_move_and_cancel_waiting_items(tmp_path, monkeypatch):
     _patch_queue_paths(tmp_path, monkeypatch)
     svc = TrainingService(web.Application())
@@ -455,7 +480,7 @@ def test_queue_retry_training_clones_dataset_cache_before_old_runtime_delete(tmp
     assert Path(retry_subset["cache_dir"], "sample.npz").exists()
 
 
-def test_queue_top_bottom_cancel_waiting_and_clear_finished_keeps_error_records(tmp_path, monkeypatch):
+def test_queue_top_bottom_cancel_waiting_and_clear_terminal_states_separately(tmp_path, monkeypatch):
     _patch_queue_paths(tmp_path, monkeypatch)
     svc = TrainingService(web.Application())
     svc._queue_paused = True
@@ -479,10 +504,120 @@ def test_queue_top_bottom_cancel_waiting_and_clear_finished_keeps_error_records(
     assert canceled["canceled"] == 3
     assert all(item["state"] != "queued" for item in svc.get_queue_snapshot()["items"])
 
-    cleared = asyncio.run(svc.clear_finished_queue_items())
-    assert cleared["removed"] == 4
+    cleared_canceled = asyncio.run(svc.clear_canceled_queue_items())
+    assert cleared_canceled["removed"] == 3
+    assert cleared_canceled["removed_by_state"] == {"canceled": 3}
+    assert [(item["id"], item["state"]) for item in svc.get_queue_snapshot()["items"]] == [
+        ("d", "done"),
+        ("e", "error"),
+    ]
+
+    cleared_done = asyncio.run(svc.clear_completed_queue_items())
+    assert cleared_done["removed"] == 1
+    assert cleared_done["removed_by_state"] == {"done": 1}
     remaining = svc.get_queue_snapshot()["items"]
     assert [(item["id"], item["state"]) for item in remaining] == [("e", "error")]
+
+
+def test_clear_finished_queue_items_keeps_compatibility_and_runtime_files(tmp_path, monkeypatch):
+    _patch_queue_paths(tmp_path, monkeypatch)
+    done_runtime = _runtime_payload(tmp_path, "done")
+    canceled_runtime = _runtime_payload(tmp_path, "canceled")
+    done_cache = Path(done_runtime["dataset_cache_dir"]) / "keep.npz"
+    canceled_log = Path(canceled_runtime["logs_dir"]) / "keep.log"
+    done_cache.write_text("cache", encoding="utf-8")
+    canceled_log.write_text("log", encoding="utf-8")
+    svc = TrainingService(web.Application())
+    svc._queue_paused = True
+    svc._queue = {
+        "paused": True,
+        "items": [
+            {"id": "done", "state": "done", "runtime_info": done_runtime},
+            {"id": "canceled", "state": "canceled", "runtime_info": canceled_runtime},
+            {"id": "error", "state": "error", "runtime_info": done_runtime},
+        ],
+    }
+
+    cleared = asyncio.run(svc.clear_finished_queue_items())
+
+    assert cleared["removed"] == 2
+    assert cleared["removed_by_state"] == {"canceled": 1, "done": 1}
+    assert [(item["id"], item["state"]) for item in svc.get_queue_snapshot()["items"]] == [("error", "error")]
+    assert Path(done_runtime["run_dir"]).exists()
+    assert Path(canceled_runtime["run_dir"]).exists()
+    assert done_cache.read_text(encoding="utf-8") == "cache"
+    assert canceled_log.read_text(encoding="utf-8") == "log"
+
+
+def test_cancel_all_queue_items_cancels_waiting_and_stale_running(tmp_path, monkeypatch):
+    _patch_queue_paths(tmp_path, monkeypatch)
+    svc = TrainingService(web.Application())
+    svc._current_queue_item_id = "running"
+    svc._queue = {
+        "paused": False,
+        "items": [
+            {"id": "running", "state": "running"},
+            {"id": "a", "state": "queued"},
+            {"id": "b", "state": "queued"},
+            {"id": "done", "state": "done"},
+            {"id": "error", "state": "error"},
+        ],
+    }
+
+    canceled = asyncio.run(svc.cancel_all_queue_items())
+
+    assert canceled["canceled"] == 3
+    assert canceled["canceled_waiting"] == 2
+    assert canceled["stopped_running"] == 0
+    states = {item["id"]: item["state"] for item in svc.get_queue_snapshot()["items"]}
+    assert states == {
+        "running": "canceled",
+        "a": "canceled",
+        "b": "canceled",
+        "done": "done",
+        "error": "error",
+    }
+
+
+def test_cancel_all_queue_items_stops_active_running_item(tmp_path, monkeypatch):
+    _patch_queue_paths(tmp_path, monkeypatch)
+    svc = TrainingService(web.Application())
+    svc._queue = {
+        "paused": False,
+        "items": [
+            {"id": "running", "state": "running"},
+            {"id": "waiting", "state": "queued"},
+        ],
+    }
+    svc._queue_paused = False
+    svc._current_queue_item_id = "running"
+    svc.status = "running"
+    svc.current_job = "training"
+
+    class FakeProcess:
+        pid = 123
+        returncode = None
+
+    class FakePsutilProcess:
+        def children(self, recursive=True):
+            return []
+
+        def terminate(self):
+            return None
+
+    monkeypatch.setattr(training_service.psutil, "Process", lambda pid: FakePsutilProcess())
+    monkeypatch.setattr(training_service.psutil, "wait_procs", lambda family, timeout: (family, []))
+    svc.process = FakeProcess()
+
+    canceled = asyncio.run(svc.cancel_all_queue_items())
+
+    assert canceled["canceled"] == 2
+    assert canceled["canceled_waiting"] == 1
+    assert canceled["stopped_running"] == 1
+    snapshot = svc.get_queue_snapshot()
+    assert snapshot["paused"] is True
+    states = {item["id"]: item["state"] for item in snapshot["items"]}
+    assert states == {"running": "canceled", "waiting": "canceled"}
 
 
 def test_queue_launch_lock_serializes_manual_and_queue_start(tmp_path, monkeypatch):
@@ -535,7 +670,7 @@ def test_delete_terminal_queue_item_only_removes_that_record(tmp_path, monkeypat
     deleted = asyncio.run(svc.cancel_queue_item("failed"))
 
     assert deleted["deleted"] == 1
-    assert deleted["message"] == "已删除队列记录"
+    assert deleted["message"] == "已从队列列表移除"
     assert [item["id"] for item in svc.get_queue_snapshot()["items"]] == ["waiting", "done"]
 
 
@@ -766,9 +901,21 @@ def test_queue_management_routes_call_service():
             self.calls.append(("cancel-waiting", None))
             return {"ok": True, "canceled": 2}
 
+        async def cancel_all_queue_items(self):
+            self.calls.append(("cancel-all", None))
+            return {"ok": True, "canceled": 4}
+
         async def clear_finished_queue_items(self):
             self.calls.append(("clear", None))
             return {"ok": True, "removed": 3}
+
+        async def clear_completed_queue_items(self):
+            self.calls.append(("clear-completed", None))
+            return {"ok": True, "removed": 1}
+
+        async def clear_canceled_queue_items(self):
+            self.calls.append(("clear-canceled", None))
+            return {"ok": True, "removed": 2}
 
         async def cancel_queue_item(self, item_id, *, delete_runtime=False):
             self.calls.append(("cancel", item_id, delete_runtime))
@@ -783,17 +930,33 @@ def test_queue_management_routes_call_service():
     retry = asyncio.run(training_routes.handle_queue_retry(
         _FakeJsonRequest({}, app, {"item_id": "q1"})
     ))
+    cancel_all = asyncio.run(training_routes.handle_queue_cancel_all(_FakeJsonRequest({}, app)))
     cancel = asyncio.run(training_routes.handle_queue_cancel_waiting(_FakeJsonRequest({}, app)))
     clear = asyncio.run(training_routes.handle_queue_clear(_FakeJsonRequest({}, app)))
+    clear_completed = asyncio.run(training_routes.handle_queue_clear_completed(_FakeJsonRequest({}, app)))
+    clear_canceled = asyncio.run(training_routes.handle_queue_clear_canceled(_FakeJsonRequest({}, app)))
     delete = asyncio.run(training_routes.handle_queue_cancel(
         _FakeJsonRequest({"delete_runtime": True}, app, {"item_id": "q2"})
     ))
 
-    assert settings.status == retry.status == cancel.status == clear.status == delete.status == 200
+    assert (
+        settings.status
+        == retry.status
+        == cancel_all.status
+        == cancel.status
+        == clear.status
+        == clear_completed.status
+        == clear_canceled.status
+        == delete.status
+        == 200
+    )
     assert svc.calls == [
         ("settings", {"paused": True, "failure_policy": "pause"}),
         ("retry", "q1"),
+        ("cancel-all", None),
         ("cancel-waiting", None),
         ("clear", None),
+        ("clear-completed", None),
+        ("clear-canceled", None),
         ("cancel", "q2", True),
     ]

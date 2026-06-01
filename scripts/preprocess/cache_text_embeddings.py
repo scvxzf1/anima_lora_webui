@@ -275,6 +275,7 @@ def main() -> None:
         device=device,
         cache_dir=cache_dir,
         recursive=args.recursive,
+        path_pattern=args.path_pattern,
         batch_size=args.batch_size,
         caption_shuffle_variants=N,
         caption_tag_dropout_rate=tag_dropout_rate,

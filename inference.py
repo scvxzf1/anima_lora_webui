@@ -528,6 +528,23 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "so the α path is the only mode now. α=0.2 is the production default.",
     )
 
+    # CNS: Colored Noise Sampling. Recolors er_sde's injected noise from a
+    # calibrated completion matrix so stochastic budget lands in unresolved
+    # frequency bands. No-op for deterministic samplers.
+    parser.add_argument(
+        "--cns",
+        type=str,
+        default=None,
+        help="Enable CNS noise recoloring on er_sde. Pass a cns_gamma.npz path "
+        "or 'auto' for networks/calibration/cns_gamma.npz. No-op on euler/lcm.",
+    )
+    parser.add_argument(
+        "--cns_strength",
+        type=float,
+        default=1.0,
+        help="Blend white↔recolored noise, then RMS-renormalize. 1.0 = full CNS.",
+    )
+
     # arguments for batch and interactive modes
     parser.add_argument(
         "--from_file", type=str, default=None, help="Read prompts from a file"

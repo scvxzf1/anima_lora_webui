@@ -170,6 +170,7 @@ def build_loop_state(
         tokenizers,
         text_encoder,
         unet,
+        network=network,
     )
     optimizer_train_fn()
     is_tracking = len(accelerator.trackers) > 0
@@ -355,6 +356,7 @@ def run_training_loop(trainer, state: LoopState) -> None:
             state.tokenizers,
             state.text_encoder,
             state.unet,
+            network=state.network,
         )
         state.optimizer_train_fn()
 
@@ -587,6 +589,7 @@ def _sample_at_step(trainer, state: LoopState) -> None:
         state.tokenizers,
         state.text_encoder,
         state.unet,
+        network=state.network,
     )
 
 

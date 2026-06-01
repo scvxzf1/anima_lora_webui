@@ -64,7 +64,10 @@ def test_add_io_args_required_and_optional() -> None:
     assert args.dir == "/tmp/x"
     assert args.cache_dir is None
     assert args.recursive is False
+    assert args.path_pattern == "*"
     assert args.batch_size == 4
+    filtered = p.parse_args(["--dir", "/tmp/x", "--path_pattern", "charA/*"])
+    assert filtered.path_pattern == "charA/*"
     with pytest.raises(SystemExit):
         p.parse_args([])  # --dir required by default
 

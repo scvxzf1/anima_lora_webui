@@ -277,31 +277,6 @@ def defuse_standard_qkv(state_dict: Dict[str, torch.Tensor]) -> None:
                 state_dict[f"{new_prefix}.dora_scale"] = dora_chunks[idx]
 
 
-def defuse_lokr_qkv(state_dict: Dict[str, torch.Tensor]) -> None:
-    """Split runtime-fused LoKr keys into LyCORIS-compatible q/k/v slices."""
-    fused_groups: List[tuple] = []
-    for key in list(state_dict.keys()):
-        if not key.endswith(".lokr_w1"):
-            continue
-        prefix = key.removesuffix(".lokr_w1")
-        spec = match_fused_spec(prefix)
-        if spec is not None:
-            fused_groups.append((prefix, spec))
-
-    for prefix, spec in fused_groups:
-        w1 = state_dict.pop(f"{prefix}.lokr_w1")
-        w2 = state_dict.pop(f"{prefix}.lokr_w2")
-        alpha = state_dict.pop(f"{prefix}.alpha", None)
-        w2_chunks = w2.chunk(len(spec.component_letters), dim=0)
-        base_prefix = prefix.removesuffix(spec.fused_frag)
-        for letter, w2_chunk in zip(spec.component_letters, w2_chunks):
-            new_prefix = base_prefix + spec.component_frag(letter)
-            state_dict[f"{new_prefix}.lokr_w1"] = w1.clone()
-            state_dict[f"{new_prefix}.lokr_w2"] = w2_chunk
-            if alpha is not None:
-                state_dict[f"{new_prefix}.alpha"] = alpha.clone()
-
-
 def rename_dora_scale(state_dict: Dict[str, torch.Tensor]) -> None:
     """Convert legacy runtime DoRA buffers to the export ``.dora_scale`` layout."""
     for key in list(state_dict.keys()):
@@ -356,6 +331,5 @@ def defuse_and_bake_standard(
 ) -> None:
     """Standard write pipeline: fused-key conversion plus inv_scale bake."""
     defuse_standard_qkv(state_dict)
-    defuse_lokr_qkv(state_dict)
     rename_dora_scale(state_dict)
     bake_inv_scale(state_dict)

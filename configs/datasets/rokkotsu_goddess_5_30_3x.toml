@@ -1,0 +1,26 @@
+# Web UI 自动生成的数据集配置。
+# 原始数据集路径保存在 custom_attributes.source_dir，训练读取 image_dir/cache_dir。
+
+[general]
+caption_extension = ".txt"
+keep_tokens = 3
+
+[[datasets]]
+resolution = 1024
+batch_size = 1
+caption_source_mode = "auto"
+caption_extension = ".txt"
+prefer_json_caption = false
+enable_bucket = true
+min_bucket_reso = 256
+max_bucket_reso = 1024
+bucket_reso_steps = 64
+bucket_no_upscale = false
+validation_split = 0.025
+validation_seed = 42
+
+[[datasets.subsets]]
+image_dir = "/home/scv/图片/安/5-29-3x_resized"
+cache_dir = "/home/scv/图片/安/5-29-3x_lora_cache"
+num_repeats = 5
+custom_attributes = {source_dir = "/home/scv/图片/安/5-29-3x"}

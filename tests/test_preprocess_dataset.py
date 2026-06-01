@@ -43,6 +43,17 @@ def test_walk_images_recursive_same_stem_across_folders_ok(tmp_path: Path) -> No
     assert len(paths) == 2  # same stem in different folders is fine
 
 
+def test_walk_images_path_pattern_filters_relative_paths(tmp_path: Path) -> None:
+    from library.preprocess import walk_images
+
+    _write_image(tmp_path / "charA" / "cover.png", (8, 8))
+    _write_image(tmp_path / "charB" / "cover.png", (8, 8))
+
+    paths = walk_images(tmp_path, recursive=True, pattern="charA/*")
+
+    assert [path.relative_to(tmp_path).as_posix() for path in paths] == ["charA/cover.png"]
+
+
 def test_walk_images_collision_within_folder_raises(tmp_path: Path) -> None:
     from library.preprocess import walk_images
 
@@ -169,6 +180,29 @@ def test_resize_to_buckets_min_pixels_filter(tmp_path: Path) -> None:
     assert not (dst / "tiny.png").exists()
 
 
+def test_resize_to_buckets_without_buckets_writes_square_resolution(tmp_path: Path) -> None:
+    from library.preprocess import resize_to_buckets
+
+    src = tmp_path / "src"
+    dst = tmp_path / "dst"
+    _write_image(src / "wide.png", (1200, 800))
+
+    stats, bucket_counts = resize_to_buckets(
+        src,
+        dst,
+        resolution=768,
+        enable_bucket=False,
+        min_pixels=0,
+        workers=1,
+        verbose=False,
+    )
+
+    assert stats.written == 1
+    assert bucket_counts == {(768, 768): 1}
+    with Image.open(dst / "wide.png") as image:
+        assert image.size == (768, 768)
+
+
 def test_backup_caption_sidecars_mirrors_nested_layout(tmp_path: Path) -> None:
     from library.preprocess import backup_caption_sidecars
 
@@ -207,6 +241,28 @@ def test_backup_caption_sidecars_includes_custom_extension(tmp_path: Path) -> No
 
     assert stats.copied == 1
     assert (backup / "hero.tags").read_text(encoding="utf-8") == "custom"
+
+
+def test_backup_caption_sidecars_respects_path_pattern(tmp_path: Path) -> None:
+    from library.preprocess import backup_caption_sidecars
+
+    src = tmp_path / "src"
+    backup = tmp_path / "backup"
+    _write_image(src / "charA" / "hero.png", (8, 8))
+    (src / "charA" / "hero.txt").write_text("keep", encoding="utf-8")
+    _write_image(src / "charB" / "hero.png", (8, 8))
+    (src / "charB" / "hero.txt").write_text("skip", encoding="utf-8")
+
+    stats = backup_caption_sidecars(
+        src,
+        backup,
+        recursive=True,
+        path_pattern="charA/*",
+    )
+
+    assert stats.images_seen == 1
+    assert (backup / "charA" / "hero.txt").is_file()
+    assert not (backup / "charB" / "hero.txt").exists()
 
 
 def test_backup_caption_sidecars_warns_and_continues(tmp_path: Path, monkeypatch) -> None:

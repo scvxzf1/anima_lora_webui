@@ -29,7 +29,7 @@ import torch.nn.functional as F
 import numpy as np
 
 from library.env import resolve_under_home
-from library.io.safetensors import load_safetensors
+from library.io.safetensors_io import load_safetensors
 
 from library.log import setup_logging
 

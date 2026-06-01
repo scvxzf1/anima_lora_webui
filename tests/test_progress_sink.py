@@ -105,6 +105,17 @@ def test_flatten_logs_drops_nonscalar():
     assert flat == {"loss": 0.5, "ok": True, "name": "x"}
 
 
+def test_flatten_logs_adds_loss_and_lr_aliases():
+    flat = _flatten_logs({
+        "loss/average": 0.25,
+        "loss/current": 0.5,
+        "lr/unet": 1e-4,
+        "lr/group0": 2e-4,
+    })
+    assert flat["loss"] == 0.25
+    assert flat["lr"] == 1e-4
+
+
 def test_find_cmmd():
     assert _find_cmmd({"loss/val_cmmd": 0.042, "loss": 1.0}) == 0.042
     assert _find_cmmd({"loss": 1.0}) is None

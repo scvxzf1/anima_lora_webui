@@ -68,11 +68,15 @@ def process_image(
     the output mirrors it as ``out_dir / rel_dir / stem.png``. Empty ``rel_dir``
     collapses to the flat layout.
     """
-    if len(bucket_args) == 6:
+    if len(bucket_args) == 7:
+        max_reso, min_size, max_size, reso_steps, use_constant, bucket_no_upscale, enable_bucket = bucket_args
+    elif len(bucket_args) == 6:
         max_reso, min_size, max_size, reso_steps, use_constant, bucket_no_upscale = bucket_args
+        enable_bucket = True
     else:
         max_reso, min_size, max_size, reso_steps, use_constant = bucket_args
         bucket_no_upscale = False
+        enable_bucket = True
     bucket_mgr = BucketManager(
         max_reso=max_reso,
         min_size=min_size,
@@ -86,25 +90,28 @@ def process_image(
     img = src_img.convert("RGB")
     w, h = img.size
 
-    bucket_reso, _, _ = bucket_mgr.select_bucket(w, h)
-    if bucket_no_upscale and (bucket_reso[0] > w or bucket_reso[1] > h):
-        candidates = [
-            reso
-            for reso in bucket_mgr.predefined_resos
-            if reso[0] <= w and reso[1] <= h
-        ]
-        if candidates:
-            aspect = w / h
-            bucket_reso = min(
-                candidates,
-                key=lambda reso: (abs((reso[0] / reso[1]) - aspect), -reso[0] * reso[1]),
-            )
-            bucket_mgr.add_if_new_reso(bucket_reso)
-        else:
-            down_w = max(min_size, (min(bucket_reso[0], w) // reso_steps) * reso_steps)
-            down_h = max(min_size, (min(bucket_reso[1], h) // reso_steps) * reso_steps)
-            bucket_reso = (down_w, down_h)
-            bucket_mgr.add_if_new_reso(bucket_reso)
+    if enable_bucket:
+        bucket_reso, _, _ = bucket_mgr.select_bucket(w, h)
+        if bucket_no_upscale and (bucket_reso[0] > w or bucket_reso[1] > h):
+            candidates = [
+                reso
+                for reso in bucket_mgr.predefined_resos
+                if reso[0] <= w and reso[1] <= h
+            ]
+            if candidates:
+                aspect = w / h
+                bucket_reso = min(
+                    candidates,
+                    key=lambda reso: (abs((reso[0] / reso[1]) - aspect), -reso[0] * reso[1]),
+                )
+                bucket_mgr.add_if_new_reso(bucket_reso)
+            else:
+                down_w = max(min_size, (min(bucket_reso[0], w) // reso_steps) * reso_steps)
+                down_h = max(min_size, (min(bucket_reso[1], h) // reso_steps) * reso_steps)
+                bucket_reso = (down_w, down_h)
+                bucket_mgr.add_if_new_reso(bucket_reso)
+    else:
+        bucket_reso = max_reso
     bw, bh = bucket_reso
 
     # Resize preserving aspect ratio so the image covers the bucket.
@@ -147,11 +154,14 @@ def resize_to_buckets(
     min_bucket_reso: int = 512,
     max_bucket_reso: int = 2048,
     bucket_reso_steps: int = 64,
+    bucket_no_upscale: bool = False,
+    enable_bucket: bool = True,
     constant_token_buckets: bool = True,
     workers: int = 4,
     min_pixels: int = 500_000,
     copy_captions: bool = True,
     recursive: bool = False,
+    path_pattern: str | None = None,
     verbose: bool = True,
     progress: ProgressFn | None = None,
 ) -> tuple[PreprocessStats, dict[tuple[int, int], int]]:
@@ -170,11 +180,13 @@ def resize_to_buckets(
         max_bucket_reso,
         bucket_reso_steps,
         constant_token_buckets,
+        bucket_no_upscale,
+        enable_bucket,
     )
 
     # walk_images enforces per-subfolder stem uniqueness (same-folder stem
     # collisions would collide the resized output).
-    image_files = walk_images(src, recursive=recursive)
+    image_files = walk_images(src, recursive=recursive, pattern=path_pattern)
     stats = PreprocessStats(seen=len(image_files))
 
     if min_pixels > 0:
@@ -205,7 +217,8 @@ def resize_to_buckets(
     if verbose:
         print(
             f"Resizing {len(image_files)} images to "
-            f"{'constant-token' if constant_token_buckets else 'standard'} buckets"
+            f"{'constant-token' if constant_token_buckets else 'standard'} "
+            f"{'buckets' if enable_bucket else 'square resize'}"
         )
 
     def _rel_for(p: Path) -> str:

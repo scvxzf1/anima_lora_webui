@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import io
 import shutil
 import subprocess
 import sys
+import zipfile
 from datetime import datetime
 from pathlib import Path
 import re
@@ -27,6 +29,9 @@ from library.preprocess.captions import (
     read_caption_source_from_dirs,
 )
 from library.preprocess._dataset import walk_images
+from web.services.continue_lora_service import (
+    inspect_continue_lora_weight as _inspect_continue_lora_weight,
+)
 from web.services.settings_service import display_path as _display_settings_path
 from web.services.settings_service import resolve_output_root
 
@@ -57,7 +62,13 @@ UI_ONLY_CONFIG_FIELDS = {
     "dataset_config_picker",
 }
 RETIRED_TOP_LEVEL_CONFIG_FIELDS = {
+    "per_channel_scaling",
+    "repa_layer",
+    "repa_lr_scale",
+    "repa_weight",
+    "trim_crossattn_kv",
     "use_hydra",
+    "use_repa",
     "use_sigma_router",
     "use_fei_router",
 }
@@ -315,20 +326,30 @@ def suggest_dataset_dirs(source_dirs: list[str]) -> dict[str, Any]:
 
 def list_dataset_presets() -> dict[str, Any]:
     DATASET_PRESETS_DIR.mkdir(parents=True, exist_ok=True)
-    presets: list[dict[str, Any]] = []
+    presets_by_path: dict[str, dict[str, Any]] = {}
     for path in sorted(DATASET_PRESETS_DIR.glob("*.toml")):
         rel_path = _display_path(path)
         if rel_path in HIDDEN_DATASET_PRESET_FILES:
             continue
         meta = get_config_file_meta(rel_path)
         summary = _dataset_preset_summary(rel_path)
-        presets.append({
+        presets_by_path[rel_path] = {
             **meta,
             "readonly": _is_dataset_preset_readonly(rel_path),
             "system_preset": rel_path in SYSTEM_DATASET_PRESET_FILES,
             "summary": summary,
-        })
-    return {"ok": True, "presets": presets}
+        }
+
+    groups = _dataset_preset_groups_for_ui(presets_by_path)
+    ordered_paths: list[str] = []
+    for group in groups:
+        for item in group.get("files", []):
+            path = item.get("path")
+            if isinstance(path, str) and path not in ordered_paths:
+                ordered_paths.append(path)
+
+    presets = [presets_by_path[path] for path in ordered_paths if path in presets_by_path]
+    return {"ok": True, "presets": presets, "groups": groups}
 
 
 def load_dataset_preset(rel_path: str) -> dict[str, Any]:
@@ -480,8 +501,15 @@ def list_dataset_preset_images(
     image_dir = _resolve_project_path(str(image_dir_raw or ""))
     source_dir = _resolve_project_path(str(row.get("source_dir") or ""))
     train_dir = _resolve_project_path(str(row.get("image_dir") or ""))
+    recursive = _bool_value(row.get("recursive"), True)
+    path_pattern = _normalize_path_pattern(row.get("path_pattern"))
 
-    listing = _list_dataset_image_files(image_dir, limit)
+    listing = _list_dataset_image_files(
+        image_dir,
+        limit,
+        recursive=recursive,
+        path_pattern=path_pattern,
+    )
     images = [
         _dataset_image_preview_meta(
             path,
@@ -720,6 +748,7 @@ def preflight_training_config(
     check_file("pretrained_model_name_or_path", "基础 DiT 模型", (".safetensors", ".pt", ".pth", ".ckpt"))
     check_file("qwen3", "Qwen3 文本编码器", (".safetensors", ".pt", ".pth", ".bin"))
     check_file("vae", "VAE 模型", (".safetensors", ".pt", ".pth", ".ckpt"))
+    _check_network_weights(cfg, add, variant, preset, methods_subdir, config_file)
     dataset_config_path = _dataset_config_path_from_cfg(cfg)
     if cfg.get("dataset_config") and (runtime_config or (dataset_config_path and dataset_config_path.exists())):
         check_file("dataset_config", "数据集配置", (".toml",))
@@ -746,6 +775,63 @@ def preflight_training_config(
         "errors": errors,
         "warnings": warnings,
     }
+
+
+def _inspect_network_weight(
+    path: str,
+    *,
+    variant: str,
+    preset: str,
+    methods_subdir: str,
+    config_file: str | None = None,
+    cfg: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    del config_file
+    return _inspect_continue_lora_weight(
+        path,
+        variant=variant,
+        preset=preset,
+        methods_subdir=methods_subdir,
+        cfg=cfg,
+        root=ROOT,
+    )
+
+
+def _check_network_weights(
+    cfg: dict[str, Any],
+    add,
+    variant: str,
+    preset: str,
+    methods_subdir: str,
+    config_file: str | None,
+) -> None:
+    raw = str(cfg.get("network_weights") or "").strip()
+    if not raw:
+        return
+    try:
+        info = _inspect_network_weight(
+            raw,
+            variant=variant,
+            preset=preset,
+            methods_subdir=methods_subdir,
+            config_file=config_file,
+            cfg=cfg,
+        )
+    except Exception as exc:
+        add("error", "network_weights", f"热启动权重不可用：{exc}", _resolve_project_path(raw))
+        return
+
+    weight_path = _resolve_project_path(str(info.get("abs_path") or raw))
+    if not info.get("compatible", False):
+        message = str(info.get("message") or "当前训练配置与 network_weights 不兼容")
+        add("error", "network_weights", message, weight_path)
+        return
+
+    kind = str(info.get("kind") or "LoRA/LoKr")
+    message = f"热启动权重可用（{kind}）"
+    if _bool_value(cfg.get("dim_from_weights"), False):
+        message += "，将从权重读取维度"
+    add("ok", "network_weights", message, weight_path)
 
 
 def _load_training_config_for_web_run(
@@ -919,16 +1005,41 @@ def estimate_training_steps(
         mix = _normalize_nl_tag_mix(row.get("nl_tag_mix"))
         trigger_clone = _normalize_trigger_clone(row.get("trigger_clone"))
         recursive = _bool_value(row.get("recursive"), True)
-        mix_count = _nl_tag_mix_available_count(source_dir, image_exts, recursive=recursive) if mix["enabled"] else None
+        path_pattern = _normalize_path_pattern(row.get("path_pattern"))
+        mix_count = (
+            _nl_tag_mix_available_count(
+                source_dir,
+                image_exts,
+                recursive=recursive,
+                path_pattern=path_pattern,
+            )
+            if mix["enabled"]
+            else None
+        )
         src_count = (
             mix_count
             if mix_count is not None
-            else _count_source_images(source_dir, image_exts, recursive=recursive)
+            else _count_source_images(
+                source_dir,
+                image_exts,
+                recursive=recursive,
+                path_pattern=path_pattern,
+            )
         )
-        resized_count = _count_images(resized_dir, image_exts)
+        resized_count = _count_images(
+            resized_dir,
+            image_exts,
+            recursive=recursive,
+            path_pattern=path_pattern,
+        )
         used_count = resized_count or src_count
         trigger_clone_image_count = (
-            _count_source_images(source_dir, image_exts, recursive=recursive)
+            _count_source_images(
+                source_dir,
+                image_exts,
+                recursive=recursive,
+                path_pattern=path_pattern,
+            )
             if trigger_clone["enabled"]
             else 0
         )
@@ -954,6 +1065,7 @@ def estimate_training_steps(
             "trigger_clone_weighted_image_count": trigger_clone_weighted,
             "uses_preprocessed_images": resized_count > 0,
             "recursive": recursive,
+            "path_pattern": path_pattern,
             "nl_tag_mix": mix,
             "nl_tag_mix_missing": mix["enabled"] and mix_count is None,
         })
@@ -1113,9 +1225,9 @@ def _dataset_defaults_from_config(data: dict[str, Any]) -> dict[str, Any]:
         "max_bucket_reso": _positive_int(_first_dataset_value(data, "max_bucket_reso"), 1024),
         "bucket_reso_steps": _positive_int(_first_dataset_value(data, "bucket_reso_steps"), 64),
         "bucket_no_upscale": bool(_first_dataset_value(data, "bucket_no_upscale", False)),
-        "validation_split": _positive_float(_first_dataset_value(data, "validation_split", 0.025), 0.025),
-        "validation_split_num": _positive_int(_first_dataset_value(data, "validation_split_num", 0), 0),
-        "validation_seed": _positive_int(_first_dataset_value(data, "validation_seed", 42), 42),
+        "validation_split": _nonnegative_float(_first_dataset_value(data, "validation_split", 0.025), 0.025),
+        "validation_split_num": _nonnegative_int(_first_dataset_value(data, "validation_split_num", 0), 0),
+        "validation_seed": _nonnegative_int(_first_dataset_value(data, "validation_seed", 42), 42),
         "caption_extension": str(_first_dataset_value(
             data,
             "caption_extension",
@@ -1143,6 +1255,70 @@ def _dataset_preset_summary(rel_path: str) -> dict[str, Any]:
     except Exception as e:
         return {"ok": False, "error": str(e), "dataset_count": 0}
     return preset.get("summary") or {}
+
+
+def _dataset_preset_groups_for_ui(presets_by_path: dict[str, dict[str, Any]]) -> list[dict[str, Any]]:
+    groups: list[dict[str, Any]] = []
+    covered: set[str] = set()
+    for group in list_config_file_groups():
+        group_id = str(group.get("id") or "")
+        files = [
+            presets_by_path[item["path"]]
+            for item in group.get("files", [])
+            if item.get("path") in presets_by_path
+        ]
+        if not _is_dataset_group_for_ui(group, files):
+            continue
+        covered.update(item["path"] for item in files)
+        groups.append({
+            "id": group_id,
+            "label": group.get("label") or group_id or "数据集分组",
+            "open": group_id == "unfiled_datasets",
+            "locked": bool(group.get("locked", False)),
+            "group_locked": bool(group.get("group_locked", False)),
+            "user_group_locked": bool(group.get("user_group_locked", False)),
+            "system_locked": bool(group.get("system_locked", False)),
+            "lockable": bool(group.get("lockable", False)),
+            "user_managed": bool(group.get("user_managed", False)),
+            "kind": group.get("kind") or "dataset",
+            "renamable": bool(group.get("renamable", False)),
+            "deletable": bool(group.get("deletable", False)),
+            "movable": bool(group.get("movable", False)),
+            "trainable": False,
+            "methods_subdir": "",
+            "files": files,
+        })
+
+    ungrouped = [
+        presets_by_path[path]
+        for path in sorted(presets_by_path)
+        if path not in covered
+    ]
+    if ungrouped:
+        groups.append({
+            "id": "unfiled_datasets",
+            "label": "未分组数据集配置",
+            "open": True,
+            "locked": False,
+            "group_locked": False,
+            "user_group_locked": False,
+            "system_locked": False,
+            "lockable": False,
+            "user_managed": True,
+            "kind": "dataset",
+            "renamable": False,
+            "deletable": False,
+            "movable": True,
+            "trainable": False,
+            "methods_subdir": "",
+            "files": ungrouped,
+        })
+    return sorted(groups, key=lambda group: 0 if group.get("id") == "unfiled_datasets" else 1)
+
+
+def _is_dataset_group_for_ui(group: dict[str, Any], files: list[dict[str, Any]]) -> bool:
+    group_id = str(group.get("id") or "")
+    return bool(files) or group.get("kind") == "dataset" or group_id in {"datasets", "unfiled_datasets"}
 
 
 def _dataset_summary_from_rows(rows: list[dict[str, Any]], defaults: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -1184,6 +1360,7 @@ def _dataset_rows_from_config(data: dict[str, Any], cfg: dict[str, Any]) -> list
     fallback_source = str(cfg.get("source_image_dir") or "")
     fallback_image = str(cfg.get("resized_image_dir") or fallback_source)
     fallback_cache = str(cfg.get("lora_cache_dir") or "")
+    fallback_path_pattern = cfg.get("path_pattern")
 
     for dataset in datasets:
         if not isinstance(dataset, dict):
@@ -1208,6 +1385,9 @@ def _dataset_rows_from_config(data: dict[str, Any], cfg: dict[str, Any]) -> list
                 "cache_dir": cache_dir,
                 "num_repeats": _positive_int(subset.get("num_repeats"), 1),
                 "recursive": _bool_value(subset.get("recursive", dataset.get("recursive")), True),
+                "path_pattern": _normalize_path_pattern(
+                    subset.get("path_pattern", dataset.get("path_pattern", fallback_path_pattern))
+                ),
                 "nl_tag_mix": _normalize_nl_tag_mix(attrs.get(NL_TAG_MIX_ATTR_KEY)),
                 "trigger_clone": _normalize_trigger_clone(attrs.get(TRIGGER_CLONE_ATTR_KEY)),
                 "settings": settings,
@@ -1246,6 +1426,7 @@ def _normalize_dataset_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
             "cache_dir": _display_path(cache_path),
             "num_repeats": _positive_int(raw.get("num_repeats"), 1),
             "recursive": _bool_value(raw.get("recursive"), True),
+            "path_pattern": _normalize_path_pattern(raw.get("path_pattern")),
             "nl_tag_mix": _normalize_nl_tag_mix(raw.get(NL_TAG_MIX_ATTR_KEY) or raw.get("nl_tag_mix")),
             "trigger_clone": _normalize_trigger_clone(
                 raw.get(TRIGGER_CLONE_ATTR_KEY) or raw.get("trigger_clone")
@@ -1286,9 +1467,9 @@ def _normalize_dataset_defaults(raw: dict[str, Any]) -> dict[str, Any]:
     out["bucket_reso_steps"] = _positive_int(raw.get("bucket_reso_steps"), 64)
     out["bucket_no_upscale"] = str(raw.get("bucket_no_upscale", False)).lower() in {"1", "true", "yes", "on"}
     if raw.get("validation_split_num") not in (None, ""):
-        out["validation_split_num"] = _positive_int(raw.get("validation_split_num"), 0)
-    out["validation_split"] = _positive_float(raw.get("validation_split"), 0.025)
-    out["validation_seed"] = _positive_int(raw.get("validation_seed"), 42)
+        out["validation_split_num"] = _nonnegative_int(raw.get("validation_split_num"), 0)
+    out["validation_split"] = _nonnegative_float(raw.get("validation_split"), 0.025)
+    out["validation_seed"] = _nonnegative_int(raw.get("validation_seed"), 42)
     out["caption_extension"] = str(raw.get("caption_extension") or ".txt").strip() or ".txt"
     out["keep_tokens"] = _positive_int(raw.get("keep_tokens"), 3)
     prefer_json = _bool_value(raw.get("prefer_json_caption"), False)
@@ -1410,11 +1591,11 @@ def _build_dataset_config_doc(
             dataset.add("max_bucket_reso", _positive_int(row_cfg.get("max_bucket_reso"), 1024))
             dataset.add("bucket_reso_steps", _positive_int(row_cfg.get("bucket_reso_steps"), 64))
             dataset.add("bucket_no_upscale", bool(row_cfg.get("bucket_no_upscale", False)))
-        validation_split_num = _positive_int(row_cfg.get("validation_split_num"), 0)
+        validation_split_num = _nonnegative_int(row_cfg.get("validation_split_num"), 0)
         if validation_split_num > 0:
             dataset.add("validation_split_num", validation_split_num)
-        dataset.add("validation_split", _positive_float(row_cfg.get("validation_split"), 0.025))
-        dataset.add("validation_seed", _positive_int(row_cfg.get("validation_seed"), 42))
+        dataset.add("validation_split", _nonnegative_float(row_cfg.get("validation_split"), 0.025))
+        dataset.add("validation_seed", _nonnegative_int(row_cfg.get("validation_seed"), 42))
 
         subsets = tomlkit.aot()
         subset = tomlkit.table()
@@ -1423,6 +1604,9 @@ def _build_dataset_config_doc(
         subset.add("num_repeats", _positive_int(row.get("num_repeats"), 1))
         if not _bool_value(row.get("recursive"), True):
             subset.add("recursive", False)
+        path_pattern = _normalize_path_pattern(row.get("path_pattern"))
+        if path_pattern != "*":
+            subset.add("path_pattern", path_pattern)
         attrs = tomlkit.inline_table()
         attrs.add("source_dir", row["source_dir"])
         mix = _normalize_nl_tag_mix(row.get("nl_tag_mix"))
@@ -1485,16 +1669,20 @@ def _dataset_path_value(value: Any, cfg: dict[str, Any]) -> str:
     return _display_path(_resolve_project_path(expand_env_vars(text)))
 
 
-def _list_dataset_image_files(directory: Path, limit: int) -> dict[str, Any]:
+def _list_dataset_image_files(
+    directory: Path,
+    limit: int,
+    *,
+    recursive: bool = True,
+    path_pattern: str = "*",
+) -> dict[str, Any]:
     clean_limit = max(1, min(_positive_int(limit, DATASET_PREVIEW_LIMIT), DATASET_PREVIEW_LIMIT))
-    if not directory.is_dir():
-        return {"items": [], "total": 0, "limit": clean_limit}
-    items = [
-        path
-        for path in directory.iterdir()
-        if path.is_file() and path.suffix.lower() in DATASET_IMAGE_EXTS
-    ]
-    items.sort(key=lambda path: (path.name.lower(), path.name))
+    items = _dataset_image_files(
+        directory,
+        DATASET_IMAGE_EXTS,
+        recursive=recursive,
+        path_pattern=path_pattern,
+    )
     return {"items": items[:clean_limit], "total": len(items), "limit": clean_limit}
 
 
@@ -1693,16 +1881,62 @@ def _safe_file_stem(value: str) -> str:
     return "".join(chars).strip("_-") or "dataset"
 
 
-def _count_images(path: Path, image_exts: set[str]) -> int:
-    if not path.is_dir():
-        return 0
-    return sum(1 for item in path.iterdir() if item.is_file() and item.suffix.lower() in image_exts)
+def _normalize_path_pattern(value: Any) -> str:
+    return str(value or "*").strip() or "*"
 
 
-def _count_source_images(path: Path, image_exts: set[str], *, recursive: bool = True) -> int:
+def _dataset_image_files(
+    path: Path,
+    image_exts: set[str] | frozenset[str],
+    *,
+    recursive: bool = True,
+    path_pattern: str = "*",
+) -> list[Path]:
     if not path.is_dir():
-        return 0
-    return len(_nl_tag_mix_image_files(path, image_exts, recursive=recursive))
+        return []
+    return sorted(
+        item
+        for item in walk_images(
+            path,
+            recursive=recursive,
+            pattern=_normalize_path_pattern(path_pattern),
+        )
+        if item.suffix.lower() in image_exts
+    )
+
+
+def _count_images(
+    path: Path,
+    image_exts: set[str],
+    *,
+    recursive: bool = True,
+    path_pattern: str = "*",
+) -> int:
+    return len(
+        _dataset_image_files(
+            path,
+            image_exts,
+            recursive=recursive,
+            path_pattern=path_pattern,
+        )
+    )
+
+
+def _count_source_images(
+    path: Path,
+    image_exts: set[str],
+    *,
+    recursive: bool = True,
+    path_pattern: str = "*",
+) -> int:
+    return len(
+        _nl_tag_mix_image_files(
+            path,
+            image_exts,
+            recursive=recursive,
+            path_pattern=path_pattern,
+        )
+    )
 
 
 def _dataset_num_repeats(cfg: dict[str, Any]) -> int:
@@ -1733,6 +1967,14 @@ def _positive_int(value: Any, fallback: int) -> int:
 def _nonnegative_int(value: Any, fallback: int) -> int:
     try:
         n = int(value)
+    except (TypeError, ValueError):
+        return fallback
+    return n if n >= 0 else fallback
+
+
+def _nonnegative_float(value: Any, fallback: float) -> float:
+    try:
+        n = float(value)
     except (TypeError, ValueError):
         return fallback
     return n if n >= 0 else fallback
@@ -2158,14 +2400,14 @@ def set_user_group_lock(group_id: str, locked: bool) -> tuple[bool, str, dict[st
     return True, ("已锁定当前分组" if locked else "已解除分组锁定"), next_group
 
 
-def create_config_file_group(label: str) -> tuple[bool, str, dict[str, Any] | None]:
+def create_config_file_group(label: str, kind: str = "training") -> tuple[bool, str, dict[str, Any] | None]:
     clean_label = _normalize_group_label(label)
     if not clean_label:
         return False, "分组名称不能为空", None
 
     specs = _load_config_file_group_specs()
     group_id = _unique_group_id(_slugify_group_label(clean_label), specs)
-    spec = _new_user_config_group_spec(group_id, clean_label)
+    spec = _new_user_config_group_spec(group_id, clean_label, kind=kind)
     specs.append(spec)
     _save_config_file_group_specs(specs)
     return True, "分组已创建", _build_config_file_group(spec)
@@ -2271,8 +2513,9 @@ def move_config_file_to_group(rel_path: str, group_id: str) -> tuple[bool, str, 
     target = _find_config_group_spec(specs, target_group_id)
     if target is None:
         return False, "目标分组不存在", None
-    if not _is_move_target_group(target):
-        return False, "只能移动到导入配置、数据集配置或用户自定义分组", _build_config_file_group(target)
+    if not _is_move_target_group(target, normalized_file):
+        message = "数据集预设只能移动到数据集分组" if normalized_file.startswith("configs/datasets/") else "只能移动到导入配置、数据集配置或用户自定义分组"
+        return False, message, _build_config_file_group(target)
     if target.get("locked") or _is_user_group_locked(target_group_id):
         return False, "目标分组已锁定，不能移入配置", _build_config_file_group(target)
 
@@ -2297,6 +2540,99 @@ def move_config_file_to_group(rel_path: str, group_id: str) -> tuple[bool, str, 
 
     _save_config_file_group_specs(specs)
     return True, "配置已移动到分组", _build_config_file_group(target)
+
+
+def place_config_file_in_group(
+    rel_path: str,
+    group_id: str,
+    index: Any | None = None,
+) -> tuple[bool, str, dict[str, Any] | None]:
+    normalized_file = _normalize_config_rel_path(rel_path)
+    target_group_id = _normalize_group_id(group_id)
+    path = _safe_resolve(normalized_file)
+    if path is None or path.suffix.lower() != ".toml" or not path.exists():
+        return False, "配置文件不存在或路径不合法", None
+    if _is_system_locked_path(normalized_file):
+        return False, "系统预设和 Web 管理配置不能移动分组", None
+    if not normalized_file.startswith(("configs/imported/", "configs/datasets/")):
+        return False, "当前仅支持移动导入配置和数据集配置", None
+
+    specs = _load_config_file_group_specs()
+    target = _find_config_group_spec(specs, target_group_id)
+    if target is None:
+        return False, "目标分组不存在", None
+    if not _is_move_target_group(target, normalized_file):
+        message = "数据集预设只能移动到数据集分组" if normalized_file.startswith("configs/datasets/") else "只能移动到导入配置、数据集配置或用户自定义分组"
+        return False, message, _build_config_file_group(target)
+    if target.get("locked") or _is_user_group_locked(target_group_id):
+        return False, "目标分组已锁定，不能移入配置", _build_config_file_group(target)
+
+    for spec in specs:
+        spec["files"] = [item for item in spec.get("files", []) if item != normalized_file]
+        spec["order"] = [item for item in spec.get("order", []) if item != normalized_file]
+        exclude = [item for item in spec.get("exclude", []) if item != normalized_file]
+        if _group_patterns_include_file(spec, normalized_file) and spec["id"] != target_group_id:
+            exclude.append(normalized_file)
+        spec["exclude"] = sorted(dict.fromkeys(exclude))
+
+    current_files = [
+        item["path"]
+        for item in _build_config_file_group(target).get("files", [])
+        if item.get("path") != normalized_file
+    ]
+    target_index = _place_index(index, len(current_files))
+    current_files.insert(target_index, normalized_file)
+
+    target.setdefault("files", [])
+    if normalized_file not in target["files"]:
+        target["files"].append(normalized_file)
+    target["files"] = list(dict.fromkeys(target["files"]))
+    target["order"] = current_files
+    if normalized_file in target.get("exclude", []):
+        target["exclude"] = [item for item in target["exclude"] if item != normalized_file]
+
+    _save_config_file_group_specs(specs)
+    return True, "配置位置已更新", _build_config_file_group(target)
+
+
+def place_config_file_group(
+    group_id: str,
+    scope: str,
+    index: Any | None,
+) -> tuple[bool, str, dict[str, Any] | None]:
+    normalized = _normalize_group_id(group_id)
+    clean_scope = _normalize_config_file_group_kind_filter(scope or "")
+    if clean_scope not in {"training", "dataset"}:
+        return False, "scope 必须是 training 或 dataset", None
+    if not normalized:
+        return False, "缺少 group 参数", None
+
+    specs = _load_config_file_group_specs()
+    spec = _find_config_group_spec(specs, normalized)
+    if spec is None:
+        return False, "分组不存在", None
+    if not _is_sortable_config_group_for_place(spec, clean_scope):
+        return False, "该分组不能在当前范围内拖动排序", _build_config_file_group(spec)
+
+    current_index = next((idx for idx, item in enumerate(specs) if item.get("id") == normalized), -1)
+    if current_index < 0:
+        return False, "分组不在可排序列表中", _build_config_file_group(spec)
+
+    moving = specs.pop(current_index)
+    remaining_indices = [
+        idx for idx, item in enumerate(specs)
+        if _is_sortable_config_group_for_place(item, clean_scope)
+    ]
+    target_index = _place_index(index, len(remaining_indices))
+    if target_index >= len(remaining_indices):
+        insert_at = (remaining_indices[-1] + 1) if remaining_indices else len(specs)
+    else:
+        insert_at = remaining_indices[target_index]
+    specs.insert(insert_at, moving)
+
+    _save_config_file_group_specs(specs)
+    moved = _find_config_group_spec(specs, normalized)
+    return True, "分组位置已更新", _build_config_file_group(moved) if moved else None
 
 
 def reorder_config_file_in_group(
@@ -2399,9 +2735,61 @@ def list_config_files() -> list[str]:
     return [item["path"] for group in list_config_file_groups() for item in group["files"]]
 
 
-def list_config_file_groups() -> list[dict[str, Any]]:
+def list_config_file_groups(kind: str | None = None) -> list[dict[str, Any]]:
     specs = _sort_config_file_group_specs_for_display(_load_config_file_group_specs())
-    return [_build_config_file_group(spec) for spec in specs]
+    groups = [_build_config_file_group(spec) for spec in specs]
+    kind_filter = _normalize_config_file_group_kind_filter(kind)
+    if kind_filter == "all":
+        return groups
+    return [group for group in groups if str(group.get("kind") or "training") == kind_filter]
+
+
+def export_config_file_group_archive(group_id: str, kind: str | None = "training") -> dict[str, Any]:
+    normalized_group_id = _normalize_group_id(group_id)
+    groups = list_config_file_groups(kind=kind)
+    group = next((item for item in groups if item.get("id") == normalized_group_id), None)
+    if group is None:
+        raise FileNotFoundError("配置分组不存在")
+
+    files = [
+        item for item in group.get("files", [])
+        if item.get("path") and str(item.get("path")).lower().endswith(".toml")
+    ]
+    if not files:
+        raise ValueError("该分组没有可导出的 TOML 文件")
+
+    archive_stem = _safe_archive_name(str(group.get("label") or group.get("id") or "toml-group"))
+    used_names: set[str] = set()
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+        for item in files:
+            rel_path = _normalize_config_rel_path(str(item.get("path") or ""))
+            path = _safe_resolve(rel_path)
+            if path is None or not path.is_file():
+                raise FileNotFoundError(f"配置文件不存在: {rel_path}")
+            archive_name = _unique_archive_member_name(
+                _safe_archive_name(str(item.get("filename") or Path(rel_path).name)),
+                used_names,
+            )
+            archive.writestr(archive_name, path.read_text(encoding="utf-8"))
+
+    return {
+        "filename": f"{archive_stem}.zip",
+        "content": buffer.getvalue(),
+        "count": len(files),
+        "group": group,
+    }
+
+
+def _normalize_config_file_group_kind_filter(kind: str | None) -> str:
+    clean = str(kind or "all").strip().lower()
+    if clean in {"", "all", "*"}:
+        return "all"
+    if clean in {"training", "config", "configs"}:
+        return "training"
+    if clean in {"dataset", "datasets"}:
+        return "dataset"
+    raise ValueError("kind 参数只支持 training、dataset 或 all")
 
 
 def _get_config_file_group(group_id: str) -> dict[str, Any] | None:
@@ -2410,6 +2798,22 @@ def _get_config_file_group(group_id: str) -> dict[str, Any] | None:
         if group.get("id") == normalized:
             return group
     return None
+
+
+def _config_group_kind(raw: dict[str, Any]) -> str:
+    explicit = str(raw.get("kind") or "").strip().lower()
+    if explicit in {"dataset", "datasets"}:
+        return "dataset"
+    if explicit in {"training", "config", "configs"}:
+        return "training"
+
+    group_id = str(raw.get("id") or "").strip()
+    paths = [*_string_list(raw.get("files")), *_string_list(raw.get("patterns"))]
+    if group_id in {"datasets", "unfiled_datasets"}:
+        return "dataset"
+    if any(str(item).replace("\\", "/").startswith("configs/datasets/") for item in paths):
+        return "dataset"
+    return "training"
 
 
 def get_config_file_meta(
@@ -2515,6 +2919,7 @@ def _load_config_file_group_specs() -> list[dict[str, Any]]:
             "locked": bool(raw.get("locked", False)),
             "trainable": bool(raw.get("trainable", False)),
             "methods_subdir": str(raw.get("methods_subdir") or ""),
+            "kind": _config_group_kind(raw),
             "user_managed": bool(raw.get("user_managed", False)),
             "files": _string_list(raw.get("files")),
             "order": _string_list(raw.get("order")),
@@ -2546,6 +2951,8 @@ def _save_config_file_group_specs(specs: list[dict[str, Any]]) -> None:
         table.add("open", bool(spec.get("open", True)))
         table.add("locked", bool(spec.get("locked", False)))
         table.add("trainable", bool(spec.get("trainable", False)))
+        if spec.get("kind") and spec.get("kind") != "training":
+            table.add("kind", str(spec.get("kind") or ""))
         if spec.get("methods_subdir"):
             table.add("methods_subdir", str(spec.get("methods_subdir") or ""))
         if spec.get("user_managed"):
@@ -2600,6 +3007,7 @@ def _build_config_file_group(spec: dict[str, Any]) -> dict[str, Any]:
         "system_locked": spec["id"] not in USER_LOCKABLE_GROUPS and spec["locked"],
         "lockable": spec["id"] in USER_LOCKABLE_GROUPS or _is_user_managed_group(spec),
         "user_managed": _is_user_managed_group(spec),
+        "kind": spec.get("kind") or "training",
         "renamable": _is_renamable_config_group(spec),
         "deletable": _is_deletable_config_group(spec),
         "movable": _is_move_target_group(spec),
@@ -2667,7 +3075,23 @@ def _find_config_group_spec(specs: list[dict[str, Any]], group_id: str) -> dict[
     return None
 
 
-def _new_user_config_group_spec(group_id: str, label: str) -> dict[str, Any]:
+def _new_user_config_group_spec(group_id: str, label: str, kind: str = "training") -> dict[str, Any]:
+    clean_kind = str(kind or "").strip().lower()
+    if clean_kind in {"dataset", "datasets"}:
+        return {
+            "id": group_id,
+            "label": label,
+            "open": False,
+            "locked": False,
+            "trainable": False,
+            "methods_subdir": "",
+            "kind": "dataset",
+            "user_managed": True,
+            "files": [],
+            "order": [],
+            "patterns": [],
+            "exclude": set(),
+        }
     return {
         "id": group_id,
         "label": label,
@@ -2675,6 +3099,7 @@ def _new_user_config_group_spec(group_id: str, label: str) -> dict[str, Any]:
         "locked": False,
         "trainable": True,
         "methods_subdir": "imported",
+        "kind": "training",
         "user_managed": True,
         "files": [],
         "order": [],
@@ -2768,9 +3193,35 @@ def _is_renamable_config_group(spec: dict[str, Any]) -> bool:
     return group_id not in FIXED_SYSTEM_CONFIG_GROUP_IDS and not bool(spec.get("locked"))
 
 
-def _is_move_target_group(spec: dict[str, Any]) -> bool:
+def _is_move_target_group(spec: dict[str, Any], rel_path: str = "") -> bool:
     group_id = str(spec.get("id") or "")
+    normalized = _normalize_config_rel_path(rel_path)
+    if normalized.startswith("configs/datasets/"):
+        return spec.get("kind") == "dataset" or group_id in {"datasets", "unfiled_datasets"}
     return _is_user_managed_group(spec) or group_id in FILE_MOVE_TARGET_GROUPS
+
+
+def _is_sortable_config_group_for_place(spec: dict[str, Any], scope: str) -> bool:
+    group_id = str(spec.get("id") or "")
+    if group_id == "unfiled_datasets":
+        return False
+    if _config_group_kind(spec) != scope:
+        return False
+    if _is_fixed_config_group(spec):
+        return False
+    if bool(spec.get("locked")) or _is_user_group_locked(group_id):
+        return False
+    return True
+
+
+def _place_index(value: Any | None, length: int) -> int:
+    if value is None or value == "":
+        return max(0, length)
+    try:
+        index = int(value)
+    except (TypeError, ValueError):
+        return max(0, length)
+    return max(0, min(index, max(0, length)))
 
 
 def _lockable_group_ids() -> set[str]:
@@ -2858,6 +3309,26 @@ def _normalize_dataset_preset_path(rel_path: str, *, must_exist: bool) -> str:
 
 def _normalize_group_id(group_id: str) -> str:
     return str(group_id or "").strip()
+
+
+def _safe_archive_name(name: str) -> str:
+    clean = re.sub(r'[\\/:*?"<>|\r\n\t]+', "_", str(name or "").strip())
+    clean = re.sub(r"\s+", "_", clean).strip("._")
+    return clean or "toml-group"
+
+
+def _unique_archive_member_name(name: str, used_names: set[str]) -> str:
+    clean = _safe_archive_name(name)
+    if not clean.lower().endswith(".toml"):
+        clean = f"{clean}.toml"
+    candidate = clean
+    stem = candidate[:-5]
+    index = 2
+    while candidate in used_names:
+        candidate = f"{stem}-{index}.toml"
+        index += 1
+    used_names.add(candidate)
+    return candidate
 
 
 def _is_system_preset_path(rel_path: str) -> bool:
@@ -3142,10 +3613,23 @@ def _display_path(path: Path) -> str:
         return str(path)
 
 
-def _nl_tag_mix_available_count(source_dir: Path, image_exts: set[str], *, recursive: bool = True) -> int | None:
+def _nl_tag_mix_available_count(
+    source_dir: Path,
+    image_exts: set[str],
+    *,
+    recursive: bool = True,
+    path_pattern: str = "*",
+) -> int | None:
     if not source_dir.is_dir():
         return None
-    return len(_nl_tag_mix_image_files(source_dir, image_exts, recursive=recursive))
+    return len(
+        _nl_tag_mix_image_files(
+            source_dir,
+            image_exts,
+            recursive=recursive,
+            path_pattern=path_pattern,
+        )
+    )
 
 
 def _nl_tag_mix_image_files(
@@ -3153,13 +3637,13 @@ def _nl_tag_mix_image_files(
     image_exts: set[str] | frozenset[str] = DATASET_IMAGE_EXTS,
     *,
     recursive: bool = True,
+    path_pattern: str = "*",
 ) -> list[Path]:
-    if not source_dir.is_dir():
-        return []
-    return sorted(
-        path
-        for path in walk_images(source_dir, recursive=recursive)
-        if path.suffix.lower() in image_exts
+    return _dataset_image_files(
+        source_dir,
+        image_exts,
+        recursive=recursive,
+        path_pattern=path_pattern,
     )
 
 
@@ -3208,8 +3692,13 @@ def _nl_tag_mix_caption_counts(
     caption_extension: str = ".txt",
     prefer_json_caption: bool = False,
     recursive: bool = True,
+    path_pattern: str = "*",
 ) -> tuple[int, int]:
-    images = _nl_tag_mix_image_files(source_dir, recursive=recursive)
+    images = _nl_tag_mix_image_files(
+        source_dir,
+        recursive=recursive,
+        path_pattern=path_pattern,
+    )
     captioned = 0
     for image in images:
         _caption_path, text = _nl_tag_mix_caption_path_and_text(
@@ -3307,6 +3796,8 @@ def _check_training_images(cfg: dict[str, Any], add) -> None:
         image_dir = _resolve_project_path(str(row.get("image_dir") or row.get("source_dir") or ""))
         source_dir = _resolve_project_path(str(row.get("source_dir") or ""))
         settings = row.get("settings") if isinstance(row.get("settings"), dict) else {}
+        recursive = _bool_value(row.get("recursive"), True)
+        path_pattern = _normalize_path_pattern(row.get("path_pattern"))
         caption_extension = str(settings.get("caption_extension") or cfg.get("caption_extension") or ".txt")
         if not caption_extension.startswith("."):
             caption_extension = f".{caption_extension}"
@@ -3321,9 +3812,18 @@ def _check_training_images(cfg: dict[str, Any], add) -> None:
         if not image_dir.is_dir():
             continue
         checked_groups += 1
-        images = sorted(p for p in image_dir.iterdir() if p.suffix.lower() in image_exts)
         key = "training_images" if idx == 1 else f"dataset_{idx}_training_images"
         label = "缩放图像目录" if idx == 1 else f"第 {idx} 组缩放图像目录"
+        try:
+            images = _dataset_image_files(
+                image_dir,
+                image_exts,
+                recursive=recursive,
+                path_pattern=path_pattern,
+            )
+        except ValueError as exc:
+            add("error", key, str(exc), image_dir)
+            continue
         if not images:
             add("error", key, f"{label}里没有可训练图片，请先预处理生成训练图", image_dir)
             continue
@@ -3361,6 +3861,7 @@ def _check_dataset_source_paths(cfg: dict[str, Any], add) -> None:
         key = "source_image_dir" if idx == 1 else f"dataset_{idx}_source_dir"
         label = "源图像目录" if idx == 1 else f"第 {idx} 组原始数据集目录"
         recursive = _bool_value(row.get("recursive"), True)
+        path_pattern = _normalize_path_pattern(row.get("path_pattern"))
         trigger_clone = _normalize_trigger_clone(row.get("trigger_clone"))
         if trigger_clone["enabled"] and not trigger_clone["prompt"]:
             add(
@@ -3375,7 +3876,12 @@ def _check_dataset_source_paths(cfg: dict[str, Any], add) -> None:
             add("error", key, f"{label} 不存在", source)
         elif not source.is_dir():
             add("error", key, f"{label} 不是目录", source)
-        elif trigger_clone["enabled"] and _count_source_images(source, DATASET_IMAGE_EXTS, recursive=recursive) <= 0:
+        elif trigger_clone["enabled"] and _count_source_images(
+            source,
+            DATASET_IMAGE_EXTS,
+            recursive=recursive,
+            path_pattern=path_pattern,
+        ) <= 0:
             add("error", f"{key}_trigger_clone_images", f"{label} 中没有可克隆的训练图片", source)
         elif _nl_tag_mix_enabled(row):
             settings = row.get("settings") if isinstance(row.get("settings"), dict) else {}
@@ -3396,6 +3902,7 @@ def _check_dataset_source_paths(cfg: dict[str, Any], add) -> None:
                 caption_extension=caption_extension,
                 prefer_json_caption=prefer_json_caption,
                 recursive=recursive,
+                path_pattern=path_pattern,
             )
             if image_count <= 0:
                 add("error", f"{key}_nl_tag_mix", f"{label} 中没有可训练图片", source)
@@ -3433,18 +3940,18 @@ def _check_dataset_paths(cfg: dict[str, Any], add, *, check_runtime_dirs: bool =
 
 
 def _check_cache_sidecars(cfg: dict[str, Any], add) -> None:
-    cache_dirs: list[tuple[int, Path]] = []
+    cache_dirs: list[tuple[int, Path, bool]] = []
     for idx, row in enumerate(_dataset_rows_for_estimate(cfg), start=1):
         raw = str(row.get("cache_dir") or "").strip()
         if not raw:
             continue
-        cache_dirs.append((idx, _resolve_project_path(raw)))
+        cache_dirs.append((idx, _resolve_project_path(raw), _bool_value(row.get("recursive"), True)))
     if not cache_dirs:
         raw = str(cfg.get("lora_cache_dir") or "").strip()
         if raw:
-            cache_dirs = [(1, _resolve_project_path(raw))]
+            cache_dirs = [(1, _resolve_project_path(raw), True)]
 
-    cache_dirs = [(idx, path) for idx, path in cache_dirs if path.is_dir()]
+    cache_dirs = [(idx, path, recursive) for idx, path, recursive in cache_dirs if path.is_dir()]
     if not cache_dirs:
         return
 
@@ -3452,20 +3959,21 @@ def _check_cache_sidecars(cfg: dict[str, Any], add) -> None:
         _check_cache_sidecar_pattern(add, cache_dirs, "*.npz", "latent_cache", "VAE latent 缓存", "未找到 .npz latent 缓存，可能需要先预处理")
     if cfg.get("use_text_cache", cfg.get("cache_text_encoder_outputs_to_disk", False)):
         _check_cache_sidecar_pattern(add, cache_dirs, "*_anima_te.safetensors", "text_cache", "文本编码器缓存", "未找到文本编码器缓存，可能需要先预处理")
-    if cfg.get("ip_features_cache_to_disk", False) or cfg.get("use_repa", False) or cfg.get("use_ip_adapter", False):
-        _check_cache_sidecar_pattern(add, cache_dirs, "*_anima_pe.safetensors", "pe_cache", "PE 图像特征缓存", "未找到 PE 图像特征缓存，IP-Adapter/REPA 可能需要先 preprocess-pe")
+    if cfg.get("ip_features_cache_to_disk", False) or cfg.get("use_ip_adapter", False):
+        _check_cache_sidecar_pattern(add, cache_dirs, "*_anima_pe.safetensors", "pe_cache", "PE 图像特征缓存", "未找到 PE 图像特征缓存，IP-Adapter 可能需要先 preprocess-pe")
 
 
 def _check_cache_sidecar_pattern(
     add,
-    cache_dirs: list[tuple[int, Path]],
+    cache_dirs: list[tuple[int, Path, bool]],
     pattern: str,
     key: str,
     label: str,
     missing_message: str,
 ) -> None:
-    for idx, cache_dir in cache_dirs:
-        count = len(list(cache_dir.glob(pattern)))
+    for idx, cache_dir, recursive in cache_dirs:
+        matches = cache_dir.rglob(pattern) if recursive else cache_dir.glob(pattern)
+        count = sum(1 for path in matches if path.is_file())
         item_key = key if idx == 1 else f"dataset_{idx}_{key}"
         if count:
             add("ok", item_key, f"第 {idx} 组找到 {count} 个{label}", cache_dir)

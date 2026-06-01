@@ -25,6 +25,9 @@ from library.preprocess.captions import (
     normalize_caption_source_mode,
 )
 from library.runtime.launch import accelerate_training_command_prefix
+from web.services.continue_lora_service import (
+    inspect_continue_lora_weight as _inspect_continue_lora_weight,
+)
 from web.services.config_service import (
     NL_TAG_MIX_CLASSIFICATION_METHOD,
     _build_dataset_config_doc,
@@ -33,6 +36,7 @@ from web.services.config_service import (
     _nl_tag_mix_caption_source,
     _nl_tag_mix_image_files,
     _normalize_nl_tag_mix,
+    _normalize_path_pattern,
     _normalize_trigger_clone,
     apply_auto_data_dirs,
     load_merged_config,
@@ -58,37 +62,11 @@ MAX_HISTORY_DETAIL_SYSTEM_RECORDS = 1000
 MAX_QUEUE_ITEMS = 200
 QUEUE_FAILURE_POLICIES = {"pause", "continue"}
 QUEUE_TERMINAL_STATES = {"done", "error", "canceled"}
-# “清理已结束”保留 error，方便用户确认后重试或手动删除异常记录。
+# 队列批量清理只移除 queue.json 里的列表记录，保留 error 方便确认后重试或手动删除。
 QUEUE_CLEARABLE_STATES = {"done", "canceled"}
+QUEUE_CLEARABLE_STATE_LABELS = {"done": "已完成", "canceled": "已取消"}
 DATASET_IMAGE_EXTS = frozenset({".png", ".jpg", ".jpeg", ".webp", ".bmp"})
 DATASET_CAPTION_EXTS = (".txt", ".json", ".caption")
-CONTINUE_LORA_KINDS = {"LoRA", "LoKr"}
-CONTINUE_LORA_ACCEPTED_LORA_SPECS = {"", "lora", "standard", "ortho", "ortholora", "tlora", "t_lora"}
-CONTINUE_LORA_UNSUPPORTED_SPEC_TOKENS = (
-    "hydra",
-    "chimera",
-    "stacked",
-    "fera",
-    "moe",
-    "reft",
-    "postfix",
-    "ip_adapter",
-    "easycontrol",
-    "soft_tokens",
-)
-CONTINUE_LORA_UNSUPPORTED_KEY_FRAGMENTS = (
-    ".lora_ups.",
-    ".lora_downs.",
-    ".lora_up_weight",
-    ".lora_down_weight",
-    ".lora_up_c_weight",
-    ".lora_up_f_weight",
-    ".lora_down_c.",
-    ".lora_down_f.",
-    ".router.",
-    "freq_router.",
-    "content_router.",
-)
 RUNTIME_META_KEYS = (
     "run_dir",
     "runtime_config_file",
@@ -100,6 +78,17 @@ RUNTIME_META_KEYS = (
     "logs_dir",
     "history_source_config_file",
 )
+HISTORY_ARTIFACT_FILES = {
+    "config-snapshot": "config.snapshot.toml",
+    "logs": "logs.jsonl",
+    "metrics": "metrics.jsonl",
+    "system": "system.jsonl",
+}
+HISTORY_RUNTIME_ARTIFACT_FIELDS = {
+    "runtime-config": "runtime_config_file",
+    "original-config": "original_config_file",
+    "dataset-config": "dataset_config_file",
+}
 
 TQDM_RE = re.compile(
     r"^(?P<label>.*?):?\s*(?P<pct>\d+)%\|[^|]*\|\s*(?P<cur>\d+)/(?P<tot>\d+)"
@@ -723,6 +712,7 @@ class TrainingService:
         gpu_whitelist: list[Any] | None = None,
         continue_info: dict[str, Any] | None = None,
         requires_preprocess: bool = True,
+        start_paused: bool = False,
     ) -> dict[str, Any]:
         extra = list(extra_args or [])
         gpu_selection = _normalize_gpu_whitelist(gpu_whitelist)
@@ -773,12 +763,17 @@ class TrainingService:
             "finished_at_text": "",
             "runtime_info": _runtime_meta(runtime) if runtime else {},
         }
+        if start_paused:
+            self._queue_paused = True
+            self._queue["paused"] = True
         self._queue_items().append(item)
         self._compact_queue()
         self._save_queue()
         await self._broadcast_queue()
-        self._schedule_queue_dispatch()
-        return {"ok": True, "message": "已加入训练队列", "item": dict(item), **self.get_queue_snapshot()}
+        if not self._queue_paused:
+            self._schedule_queue_dispatch()
+        message = "已加入训练队列，队列已暂停" if start_paused else "已加入训练队列"
+        return {"ok": True, "message": message, "item": dict(item), **self.get_queue_snapshot()}
 
     async def enqueue_resume_from_history_task(
         self,
@@ -899,7 +894,7 @@ class TrainingService:
             if removed:
                 self._save_queue()
                 await self._broadcast_queue()
-            message = "已删除队列记录和运行缓存" if delete_runtime else "已删除队列记录"
+            message = "已删除队列记录和运行缓存" if delete_runtime else "已从队列列表移除"
             return {
                 "ok": True,
                 "message": message,
@@ -953,17 +948,84 @@ class TrainingService:
             await self._broadcast_queue()
         return {"ok": True, "message": f"已取消 {count} 个等待任务", "canceled": count, **self.get_queue_snapshot()}
 
+    async def cancel_all_queue_items(self) -> dict[str, Any]:
+        now = time.time()
+        waiting_count = 0
+        stale_running_count = 0
+        stop_running = False
+        running_item_id = str(self._current_queue_item_id or "")
+        for item in self._queue_items():
+            state = item.get("state")
+            if state == "queued":
+                item.update({
+                    "state": "canceled",
+                    "message": "已一键取消队列",
+                    "finished_at": now,
+                    "finished_at_text": _format_ts(now),
+                })
+                waiting_count += 1
+            elif state == "running":
+                item_id = str(item.get("id") or "")
+                if item_id == running_item_id and self.process and self.process.returncode is None:
+                    stop_running = True
+                else:
+                    item.update({
+                        "state": "canceled",
+                        "message": "已一键取消队列",
+                        "finished_at": now,
+                        "finished_at_text": _format_ts(now),
+                    })
+                    stale_running_count += 1
+        if waiting_count or stale_running_count:
+            self._save_queue()
+            await self._broadcast_queue()
+        if stop_running:
+            await self.stop()
+        canceled = waiting_count + stale_running_count + (1 if stop_running else 0)
+        return {
+            "ok": True,
+            "message": f"已取消 {canceled} 个队列任务",
+            "canceled": canceled,
+            "canceled_waiting": waiting_count,
+            "stopped_running": 1 if stop_running else 0,
+            **self.get_queue_snapshot(),
+        }
+
     async def clear_finished_queue_items(self) -> dict[str, Any]:
+        return await self.clear_queue_items_by_state(QUEUE_CLEARABLE_STATES, label="已结束")
+
+    async def clear_completed_queue_items(self) -> dict[str, Any]:
+        return await self.clear_queue_items_by_state({"done"}, label="已完成")
+
+    async def clear_canceled_queue_items(self) -> dict[str, Any]:
+        return await self.clear_queue_items_by_state({"canceled"}, label="已取消")
+
+    async def clear_queue_items_by_state(self, states: set[str], *, label: str = "") -> dict[str, Any]:
+        clear_states = {str(state or "").strip() for state in states}
+        if not clear_states or clear_states - QUEUE_CLEARABLE_STATES:
+            raise ValueError("只能清理已完成或已取消的队列记录")
         before = len(self._queue_items())
-        self._queue["items"] = [
-            item for item in self._queue_items()
-            if item.get("state") not in QUEUE_CLEARABLE_STATES
-        ]
+        removed_by_state = {state: 0 for state in sorted(clear_states)}
+        remaining: list[dict[str, Any]] = []
+        for item in self._queue_items():
+            state = str(item.get("state") or "")
+            if state in clear_states:
+                removed_by_state[state] = removed_by_state.get(state, 0) + 1
+                continue
+            remaining.append(item)
+        self._queue["items"] = remaining
         removed = before - len(self._queue["items"])
         if removed:
             self._save_queue()
             await self._broadcast_queue()
-        return {"ok": True, "message": f"已清理 {removed} 条已结束记录", "removed": removed, **self.get_queue_snapshot()}
+        clean_label = label or _queue_clearable_state_label(clear_states)
+        return {
+            "ok": True,
+            "message": f"已清理 {removed} 条{clean_label}记录",
+            "removed": removed,
+            "removed_by_state": removed_by_state,
+            **self.get_queue_snapshot(),
+        }
 
     async def set_queue_settings(
         self,
@@ -1027,6 +1089,12 @@ class TrainingService:
 
     def get_history_task(self, task_id: str) -> dict[str, Any]:
         return _load_history_task(task_id)
+
+    def get_history_log_path(self, task_id: str) -> Path:
+        return _history_log_path(task_id)
+
+    def get_history_artifact_path(self, task_id: str, artifact_key: str) -> Path:
+        return _history_artifact_path(task_id, artifact_key)
 
     def get_config_group_timeline(
         self,
@@ -2133,44 +2201,37 @@ def inspect_continue_lora_weight(
     methods_subdir: str = "gui-methods",
     config_file: str | None = None,
 ) -> dict[str, Any]:
-    raw_path = str(path or "").strip()
-    if not raw_path:
-        raise ValueError("请填写 LoRA/LoKr 权重路径")
-    weight_path = _resolve_display_path(raw_path)
-    if weight_path is None:
-        raise ValueError("权重路径不合法")
-    if not _path_exists(weight_path):
-        raise FileNotFoundError("权重文件不存在")
-    if not weight_path.is_file():
-        raise ValueError("权重路径不是文件")
-    if weight_path.suffix.lower() != ".safetensors":
-        raise ValueError("只支持 .safetensors 权重文件")
-    if not os.access(weight_path, os.R_OK):
-        raise ValueError("权重文件不可读取")
-
-    metadata, keys = _read_safetensors_header(weight_path)
-    kind = _detect_continue_lora_kind(keys, metadata)
-    if kind not in CONTINUE_LORA_KINDS:
-        raise ValueError("这个 safetensors 未识别为 LoRA 或 LoKr 权重")
-
-    compatible, message = _continue_lora_compatibility(
-        kind,
+    cfg, config_error = _continue_lora_inspection_config(
         variant=variant,
         preset=preset,
         methods_subdir=methods_subdir,
         config_file=config_file,
     )
-    display_path = _display_project_path(str(weight_path))
-    return {
-        "ok": True,
-        "name": weight_path.name,
-        "abs_path": str(weight_path),
-        "path": display_path,
-        "kind": kind,
-        "metadata": _safe_continue_lora_metadata(metadata),
-        "compatible": compatible,
-        "message": message,
-    }
+    return _inspect_continue_lora_weight(
+        path,
+        variant=variant,
+        preset=preset,
+        methods_subdir=methods_subdir,
+        cfg=cfg,
+        config_error=config_error,
+        root=ROOT,
+    )
+
+
+def _continue_lora_inspection_config(
+    *,
+    variant: str,
+    preset: str,
+    methods_subdir: str,
+    config_file: str | None,
+) -> tuple[dict[str, Any] | None, Exception | None]:
+    cfg = _load_config_file_config(config_file) if config_file else {}
+    if cfg:
+        return cfg, None
+    try:
+        return load_merged_config(variant, preset, methods_subdir), None
+    except Exception as exc:
+        return None, exc
 
 
 def _normalize_continue_lora_info(
@@ -2205,142 +2266,6 @@ def _normalize_continue_lora_info(
         "continue_from_weight_name": inspected["name"],
         "continue_from_weight_kind": inspected["kind"],
     }
-
-
-def _read_safetensors_header(path: Path) -> tuple[dict[str, str], list[str]]:
-    try:
-        from safetensors import safe_open
-
-        with safe_open(path, framework="pt", device="cpu") as f:
-            metadata = {str(k): str(v) for k, v in (f.metadata() or {}).items()}
-            keys = list(f.keys())
-        return metadata, keys
-    except Exception as exc:
-        raise ValueError(f"读取 safetensors 权重失败: {exc}") from exc
-
-
-def _detect_continue_lora_kind(keys: list[str], metadata: dict[str, str]) -> str:
-    meta_spec = str(metadata.get("ss_network_spec") or "").strip().lower()
-    lowered_keys = [str(key).lower() for key in keys]
-    has_lokr_keys = any("lokr_w1" in key or "lokr_w2" in key for key in lowered_keys)
-    if has_lokr_keys:
-        return "LoKr"
-    if _continue_lora_has_unsupported_structure(lowered_keys, metadata, meta_spec):
-        return ""
-    has_plain_lora_keys = any(
-        key.endswith(".lora_down.weight") or key.endswith(".lora_up.weight")
-        for key in lowered_keys
-    )
-    if has_plain_lora_keys and meta_spec in CONTINUE_LORA_ACCEPTED_LORA_SPECS:
-        return "LoRA"
-    return ""
-
-
-def _continue_lora_has_unsupported_structure(
-    lowered_keys: list[str],
-    metadata: dict[str, str],
-    meta_spec: str,
-) -> bool:
-    if any(token in meta_spec for token in CONTINUE_LORA_UNSUPPORTED_SPEC_TOKENS):
-        return True
-    use_moe_style = str(metadata.get("ss_use_moe_style") or "").strip().lower()
-    if use_moe_style not in {"", "false", "none"}:
-        return True
-    router_source = str(metadata.get("ss_router_source") or "").strip().lower()
-    if router_source not in {"", "false", "none"}:
-        return True
-    if _truthy(metadata.get("ss_use_chimera_hydra")):
-        return True
-    if any(key in metadata for key in ("ss_num_experts_content", "ss_num_experts_freq")):
-        return True
-    for key in lowered_keys:
-        if key.startswith("reft_"):
-            return True
-        if key.endswith(".s_p") or key.endswith(".s_q"):
-            return True
-        if any(fragment in key for fragment in CONTINUE_LORA_UNSUPPORTED_KEY_FRAGMENTS):
-            return True
-    return False
-
-
-def _safe_continue_lora_metadata(metadata: dict[str, str]) -> dict[str, str]:
-    allowed = (
-        "ss_network_spec",
-        "ss_output_name",
-        "ss_epoch",
-        "ss_steps",
-        "ss_num_epochs",
-        "ss_max_train_steps",
-        "ss_learning_rate",
-        "ss_network_dim",
-        "ss_network_alpha",
-        "modelspec.architecture",
-        "modelspec.implementation",
-    )
-    return {key: str(metadata[key]) for key in allowed if key in metadata}
-
-
-def _continue_lora_compatibility(
-    kind: str,
-    *,
-    variant: str,
-    preset: str,
-    methods_subdir: str,
-    config_file: str | None = None,
-) -> tuple[bool, str]:
-    cfg = _load_config_file_config(config_file) if config_file else {}
-    if not cfg:
-        try:
-            cfg = load_merged_config(variant, preset, methods_subdir)
-        except Exception as exc:
-            return False, f"无法读取当前训练配置用于兼容性检查: {exc}"
-    current_kind = _continue_lora_config_kind(variant, methods_subdir, cfg)
-    if current_kind == "LoKr":
-        if kind == "LoKr":
-            return True, "兼容：当前变体为 LoKr，会基于该 LoKr 权重继续训练"
-        return False, "LoRA 权重不能直接用于 LoKr 变体；请切换到 LoRA 家族配置"
-    if current_kind == "LoRA":
-        if kind == "LoRA":
-            return True, "兼容：当前配置属于 LoRA 家族，会基于该 LoRA 权重继续训练"
-        return False, "LoKr 权重需要当前变体为 lokr，请先切换到 LoKr 变体"
-    return False, "第一版只支持 LoRA / LoKr 家族配置继续训练"
-
-
-def _continue_lora_config_kind(variant: str, methods_subdir: str, cfg: dict[str, Any]) -> str:
-    module_name = str(cfg.get("network_module") or "")
-    variant_key = str(variant or "").strip().lower()
-    if _truthy(cfg.get("use_lokr")) or variant_key == "lokr":
-        return "LoKr"
-    if module_name and "lora_anima" not in module_name:
-        return ""
-    if str(methods_subdir or "") == "gui-methods":
-        blocked = (
-            "hydra",
-            "fera",
-            "reft",
-            "ip_adapter",
-            "easycontrol",
-            "soft_tokens",
-            "postfix",
-            "chimera",
-        )
-        if any(token in variant_key for token in blocked):
-            return ""
-    if _truthy(cfg.get("use_chimera_hydra")):
-        return ""
-    if _truthy(cfg.get("add_reft")):
-        return ""
-    if str(cfg.get("use_moe_style") or "").strip().lower() not in {"", "false", "none"}:
-        return ""
-    return "LoRA"
-
-
-def _truthy(value: Any) -> bool:
-    if isinstance(value, bool):
-        return value
-    if value is None:
-        return False
-    return str(value).strip().lower() in {"1", "true", "yes", "on"}
 
 
 def _continue_lora_history_meta(continue_info: dict[str, Any] | None) -> dict[str, str]:
@@ -2532,6 +2457,7 @@ def _prepare_web_runtime_config(
             "cache_dir": _display_settings_path(lora_dir),
             "num_repeats": row.get("num_repeats") or 1,
             "recursive": _bool_value_for_row(row.get("recursive"), True),
+            "path_pattern": _normalize_path_pattern(row.get("path_pattern")),
             "settings": row.get("settings") if isinstance(row.get("settings"), dict) else {},
         })
         trigger_clone = _normalize_trigger_clone(row.get("trigger_clone"))
@@ -2550,6 +2476,7 @@ def _prepare_web_runtime_config(
                 "cache_dir": _display_settings_path(clone_lora_dir),
                 "num_repeats": trigger_clone["num_repeats"],
                 "recursive": _bool_value_for_row(row.get("recursive"), True),
+                "path_pattern": _normalize_path_pattern(row.get("path_pattern")),
                 "settings": clone_settings,
             })
 
@@ -2931,6 +2858,7 @@ def _clone_runtime_dataset_rows(
             "cache_dir": _display_settings_path(lora_dir),
             "num_repeats": row.get("num_repeats") or 1,
             "recursive": _bool_value_for_row(row.get("recursive"), True),
+            "path_pattern": _normalize_path_pattern(row.get("path_pattern")),
             "settings": row.get("settings") if isinstance(row.get("settings"), dict) else {},
         })
     return cloned_rows
@@ -2967,6 +2895,7 @@ def _prepare_runtime_nl_tag_mix_source(row: dict[str, Any], group_dir: Path, sou
         target_dir,
         tag_ratio=float(mix.get("tag_ratio") or 0.0),
         recursive=_bool_value_for_row(row.get("recursive"), True),
+        path_pattern=_normalize_path_pattern(row.get("path_pattern")),
         **caption_settings,
     )
     (target_dir / "results.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -2988,7 +2917,13 @@ def _prepare_runtime_trigger_clone_source(row: dict[str, Any], group_dir: Path, 
     target_dir = group_dir / "trigger-clone-source"
     target_dir.mkdir(parents=True, exist_ok=True)
     recursive = _bool_value_for_row(row.get("recursive"), True)
-    images = _nl_tag_mix_image_files(source_path, DATASET_IMAGE_EXTS, recursive=recursive)
+    path_pattern = _normalize_path_pattern(row.get("path_pattern"))
+    images = _nl_tag_mix_image_files(
+        source_path,
+        DATASET_IMAGE_EXTS,
+        recursive=recursive,
+        path_pattern=path_pattern,
+    )
     if not images:
         raise ValueError("触发提示词图像克隆失败: 数据集目录里没有可训练图片")
 
@@ -3047,6 +2982,7 @@ def _build_nl_tag_mix_source(
     *,
     tag_ratio: float,
     recursive: bool = True,
+    path_pattern: str = "*",
     caption_source_mode: str = "auto",
     caption_extension: str = ".txt",
     prefer_json_caption: bool = False,
@@ -3054,6 +2990,7 @@ def _build_nl_tag_mix_source(
     samples = _classify_nl_tag_mix_samples(
         source_dir,
         recursive=recursive,
+        path_pattern=path_pattern,
         caption_source_mode=caption_source_mode,
         caption_extension=caption_extension,
         prefer_json_caption=prefer_json_caption,
@@ -3148,6 +3085,7 @@ def _build_nl_tag_mix_source(
         "classification_method": NL_TAG_MIX_CLASSIFICATION_METHOD,
         "caption_source_mode": caption_source_mode,
         "recursive": bool(recursive),
+        "path_pattern": _normalize_path_pattern(path_pattern),
         "source_dir": _display_settings_path(source_dir),
         "available_tag_count": available_counts["tag"],
         "available_nl_count": available_counts["nl"],
@@ -3167,12 +3105,18 @@ def _classify_nl_tag_mix_samples(
     source_dir: Path,
     *,
     recursive: bool = True,
+    path_pattern: str = "*",
     caption_source_mode: str = "auto",
     caption_extension: str = ".txt",
     prefer_json_caption: bool = False,
 ) -> list[dict[str, Any]]:
     samples: list[dict[str, Any]] = []
-    for image_path in _nl_tag_mix_image_files(source_dir, DATASET_IMAGE_EXTS, recursive=recursive):
+    for image_path in _nl_tag_mix_image_files(
+        source_dir,
+        DATASET_IMAGE_EXTS,
+        recursive=recursive,
+        path_pattern=path_pattern,
+    ):
         caption_source = _nl_tag_mix_caption_source(
             image_path,
             caption_source_mode=caption_source_mode,
@@ -3553,6 +3497,15 @@ def _normalize_queue_failure_policy(value: Any) -> str:
     return text if text in QUEUE_FAILURE_POLICIES else "pause"
 
 
+def _queue_clearable_state_label(states: set[str]) -> str:
+    clean = {str(state or "").strip() for state in states}
+    if clean == {"done"}:
+        return QUEUE_CLEARABLE_STATE_LABELS["done"]
+    if clean == {"canceled"}:
+        return QUEUE_CLEARABLE_STATE_LABELS["canceled"]
+    return "已结束"
+
+
 def _new_queue_item_id(kind: str, methods_subdir: str, variant: str) -> str:
     raw = datetime.now().strftime("%Y%m%d-%H%M%S") + f"-queue-{kind}-{methods_subdir}-{variant}"
     base = _safe_task_id(raw)
@@ -3570,12 +3523,7 @@ def _new_queue_item_id(kind: str, methods_subdir: str, variant: str) -> str:
 
 
 def _list_history_tasks(*, include_archived: bool = False, limit: int | None = None) -> list[dict[str, Any]]:
-    if not HISTORY_DIR.exists():
-        return []
-    meta_paths = [
-        meta_path for meta_path in HISTORY_DIR.glob("*/meta.json")
-        if not _is_deleting_history_dir(meta_path.parent)
-    ]
+    meta_paths = _history_meta_paths()
     for meta_path in meta_paths:
         meta = _read_json(meta_path)
         if meta:
@@ -3588,7 +3536,9 @@ def _list_history_tasks(*, include_archived: bool = False, limit: int | None = N
             continue
         meta = _read_json(meta_path)
         if meta:
-            task = _history_summary(meta, meta_path.parent)
+            task = _safe_history_summary(meta, meta_path.parent)
+            if task is None:
+                continue
             if include_archived or not task.get("archived"):
                 tasks.append(task)
     tasks.sort(key=lambda item: item.get("started_at") or 0, reverse=True)
@@ -3597,6 +3547,23 @@ def _list_history_tasks(*, include_archived: bool = False, limit: int | None = N
     if limit and limit > 0:
         return tasks[:limit]
     return tasks
+
+
+def _history_meta_paths() -> list[Path]:
+    if not _path_exists(HISTORY_DIR):
+        return []
+    try:
+        candidates = list(HISTORY_DIR.iterdir())
+    except OSError:
+        return []
+    out: list[Path] = []
+    for task_dir in candidates:
+        if _is_deleting_history_dir(task_dir):
+            continue
+        meta_path = task_dir / "meta.json"
+        if _path_exists(meta_path):
+            out.append(meta_path)
+    return out
 
 
 def _normalize_history_task_ids(value: Any) -> list[str]:
@@ -3640,7 +3607,7 @@ def _batch_set_history_group(task_ids: list[str], group: Any) -> dict[str, Any]:
 
 
 def _history_meta_records(meta_paths: list[Path] | None = None) -> list[dict[str, Any]]:
-    paths = meta_paths if meta_paths is not None else list(HISTORY_DIR.glob("*/meta.json")) if HISTORY_DIR.exists() else []
+    paths = meta_paths if meta_paths is not None else _history_meta_paths()
     records: list[dict[str, Any]] = []
     for meta_path in paths:
         if _is_deleting_history_dir(meta_path.parent):
@@ -3736,10 +3703,8 @@ def _preferred_bound_history_collection_group(records: list[dict[str, Any]]) -> 
 
 
 def _mark_orphaned_running_history_tasks() -> int:
-    if not HISTORY_DIR.exists():
-        return 0
     count = 0
-    for meta_path in HISTORY_DIR.glob("*/meta.json"):
+    for meta_path in _history_meta_paths():
         if _is_deleting_history_dir(meta_path.parent):
             continue
         meta = _read_json(meta_path)
@@ -3758,7 +3723,10 @@ def _mark_orphaned_running_history_tasks() -> int:
             "interrupted_at": time.time(),
             "interrupted_at_text": _format_ts(time.time()),
         })
-        _write_json_atomic(meta_path, meta)
+        try:
+            _write_json_atomic(meta_path, meta)
+        except OSError:
+            continue
         count += 1
     return count
 
@@ -3809,7 +3777,7 @@ def _load_history_task(task_id: str) -> dict[str, Any]:
         task_dir / "system.jsonl",
         limit=MAX_HISTORY_DETAIL_SYSTEM_RECORDS,
     )
-    metrics = _read_jsonl(task_dir / "metrics.jsonl")
+    metrics = _history_metrics_for_task(task_dir, logs=logs)
     return {
         "ok": True,
         "task": _history_summary(meta, task_dir),
@@ -3829,6 +3797,68 @@ def _load_history_task(task_id: str) -> dict[str, Any]:
         },
         "config_toml": _read_text_file(snapshot_path),
     }
+
+
+def _history_log_path(task_id: str) -> Path:
+    task_dir = _history_task_dir(task_id)
+    if not _path_exists(task_dir):
+        raise FileNotFoundError("任务不存在")
+    path = (task_dir / "logs.jsonl").resolve()
+    try:
+        path.relative_to(task_dir.resolve())
+    except ValueError as exc:
+        raise ValueError("任务日志路径不合法") from exc
+    if not _path_exists(path) or not path.is_file():
+        raise FileNotFoundError("任务日志不存在")
+    return path
+
+
+def _history_artifact_path(task_id: str, artifact_key: str) -> Path:
+    key = str(artifact_key or "").strip()
+    if key in HISTORY_ARTIFACT_FILES:
+        return _history_task_file_artifact_path(task_id, HISTORY_ARTIFACT_FILES[key])
+    if key in HISTORY_RUNTIME_ARTIFACT_FIELDS:
+        return _history_runtime_artifact_path(task_id, HISTORY_RUNTIME_ARTIFACT_FIELDS[key])
+    raise ValueError("历史文件类型不支持")
+
+
+def _history_task_file_artifact_path(task_id: str, filename: str) -> Path:
+    task_dir = _history_task_dir(task_id)
+    if not _path_exists(task_dir):
+        raise FileNotFoundError("任务不存在")
+    path = (task_dir / filename).resolve()
+    try:
+        path.relative_to(task_dir.resolve())
+    except ValueError as exc:
+        raise ValueError("历史文件路径不合法") from exc
+    if not _path_exists(path) or not path.is_file():
+        raise FileNotFoundError("历史文件不存在")
+    return path
+
+
+def _history_runtime_artifact_path(task_id: str, field: str) -> Path:
+    task_dir = _history_task_dir(task_id)
+    if not _path_exists(task_dir):
+        raise FileNotFoundError("任务不存在")
+    meta = _read_json(task_dir / "meta.json")
+    if not meta:
+        raise FileNotFoundError("任务元信息不存在")
+    task = _history_summary(meta, task_dir)
+    run_dir = _resolve_display_path(str(task.get("run_dir") or ""))
+    path = _resolve_display_path(str(task.get(field) or ""))
+    if run_dir is None or path is None:
+        raise FileNotFoundError("运行文件不存在")
+    run_dir = run_dir.resolve()
+    path = path.resolve()
+    output_root = resolve_output_root().resolve()
+    try:
+        run_dir.relative_to(output_root)
+        path.relative_to(run_dir)
+    except ValueError as exc:
+        raise ValueError("运行文件路径不合法") from exc
+    if not _path_exists(path) or not path.is_file():
+        raise FileNotFoundError("运行文件不存在")
+    return path
 
 
 def _build_config_group_timeline(
@@ -3888,7 +3918,7 @@ def _build_config_group_timeline(
         task_dir = _history_task_dir(task_id)
         task_logs = _read_jsonl(task_dir / "logs.jsonl")
         visible_logs = [record for record in task_logs if record.get("kind") != "progress"]
-        task_metrics = _timeline_training_metrics(_metrics_from_history(task_logs, _read_jsonl(task_dir / "metrics.jsonl")))
+        task_metrics = _timeline_training_metrics(_history_metrics_for_task(task_dir, logs=task_logs))
         if task_metrics:
             start_visual_step = next_visual_step
             next_visual_step = _assign_visual_steps(task_metrics, next_visual_step)
@@ -4077,18 +4107,76 @@ def _history_group_from_task(task: dict[str, Any]) -> dict[str, str]:
     }
 
 
-def _metrics_from_history(logs: list[dict[str, Any]], metrics: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def _history_metrics_for_task(
+    task_dir: Path,
+    *,
+    logs: list[dict[str, Any]] | None = None,
+) -> list[dict[str, Any]]:
+    task_logs = logs if logs is not None else _read_jsonl(task_dir / "logs.jsonl")
+    metrics = _read_jsonl(task_dir / "metrics.jsonl")
+    progress_metrics = _metrics_from_progress_jsonl(task_dir / "progress.jsonl", task_dir)
+    return _metrics_from_history(task_logs, metrics, progress_metrics)
+
+
+def _metrics_from_progress_jsonl(progress_path: Path, task_dir: Path) -> list[dict[str, Any]]:
+    events = _read_jsonl(progress_path)
+    if not events:
+        return []
+    meta = _read_json(task_dir / "meta.json")
+    started_at = _float_or_none(meta.get("started_at")) if isinstance(meta, dict) else None
     out: list[dict[str, Any]] = []
-    seen: set[tuple[int | None, float | None, float | None]] = set()
-    for item in metrics:
+    for event in events:
+        if str(event.get("ev") or "") not in {"step", "val"}:
+            continue
+        metric = _metric_from_progress_jsonl_event(
+            event,
+            _progress_event_wall_ts_from_started_at(event, started_at),
+        )
+        if metric:
+            out.append(metric)
+    return out
+
+
+def _metrics_from_history(
+    logs: list[dict[str, Any]],
+    metrics: list[dict[str, Any]],
+    progress_metrics: list[dict[str, Any]] | None = None,
+) -> list[dict[str, Any]]:
+    out: list[dict[str, Any]] = []
+    seen: set[tuple[int | None, float | None, float | None, float | None, str]] = set()
+
+    def add_metric(item: dict[str, Any]) -> None:
         normalized = _normalize_metric_record(item)
         if normalized is None:
-            continue
+            return
         key = _metric_seen_key(normalized)
         if key in seen:
-            continue
+            return
         seen.add(key)
         out.append(normalized)
+
+    normalized_progress = [
+        item
+        for item in (_normalize_metric_record(record) for record in (progress_metrics or []))
+        if item is not None
+    ]
+    has_structured_loss = any(
+        str(item.get("kind") or "") != "val" and _float_or_none(item.get("loss")) is not None
+        for item in normalized_progress
+    )
+
+    if has_structured_loss:
+        for item in normalized_progress:
+            add_metric(item)
+        for item in metrics:
+            normalized = _normalize_metric_record(item)
+            if normalized is not None and _is_validation_metric(normalized):
+                add_metric(normalized)
+    else:
+        for item in metrics:
+            add_metric(item)
+        for item in normalized_progress:
+            add_metric(item)
 
     for record in logs:
         if record.get("kind") != "progress":
@@ -4098,14 +4186,16 @@ def _metrics_from_history(logs: list[dict[str, Any]], metrics: list[dict[str, An
             continue
         if record.get("ts") is not None:
             parsed["ts"] = record.get("ts")
-        key = _metric_seen_key(parsed)
-        if key in seen:
+        if has_structured_loss and not _is_validation_metric(parsed):
             continue
-        seen.add(key)
-        out.append(parsed)
+        add_metric(parsed)
 
     out.sort(key=lambda item: (float(item.get("ts") or 0), int(item.get("step") or 0)))
     return out
+
+
+def _is_validation_metric(item: dict[str, Any]) -> bool:
+    return str(item.get("kind") or "") == "val" or _float_or_none(item.get("cmmd")) is not None
 
 
 def _timeline_training_metrics(metrics: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -4485,6 +4575,13 @@ def _history_summary(meta: dict[str, Any], task_dir: Path) -> dict[str, Any]:
     out["log_count"] = int(out.get("log_count") or _count_jsonl(task_dir / "logs.jsonl"))
     out["metric_count"] = int(out.get("metric_count") or _count_jsonl(task_dir / "metrics.jsonl"))
     return out
+
+
+def _safe_history_summary(meta: dict[str, Any], task_dir: Path) -> dict[str, Any] | None:
+    try:
+        return _history_summary(meta, task_dir)
+    except (OSError, TypeError, ValueError):
+        return None
 
 
 def _repair_history_meta(meta_path: Path, meta: dict[str, Any]) -> None:
@@ -5053,12 +5150,16 @@ def _progress_event_key(event: dict[str, Any]) -> tuple[Any, ...]:
 
 
 def _progress_event_wall_ts(event: dict[str, Any], task_dir: Path | None) -> float:
-    rel_ts = _float_or_none(event.get("ts"))
     started_at = None
     if task_dir is not None:
         meta = _read_json(task_dir / "meta.json")
         if isinstance(meta, dict):
             started_at = _float_or_none(meta.get("started_at"))
+    return _progress_event_wall_ts_from_started_at(event, started_at)
+
+
+def _progress_event_wall_ts_from_started_at(event: dict[str, Any], started_at: float | None) -> float:
+    rel_ts = _float_or_none(event.get("ts"))
     if rel_ts is not None and started_at is not None:
         return started_at + rel_ts
     if rel_ts is not None and rel_ts > 1_000_000_000:
@@ -5085,14 +5186,47 @@ def _metric_from_progress_jsonl_event(event: dict[str, Any], ts: float) -> dict[
         if val_step is not None:
             metric["val_step"] = val_step
     else:
-        loss = _float_or_none(event.get("loss"))
+        loss = _progress_event_loss(event)
         if loss is not None:
             metric["loss"] = loss
-        lr = _float_or_none(event.get("lr"))
+        lr = _progress_event_lr(event)
         if lr is not None:
             metric["lr"] = lr
 
     return metric if any(key in metric for key in ("loss", "lr", "cmmd")) else None
+
+
+def _progress_event_loss(event: dict[str, Any]) -> float | None:
+    return _first_float_field(event, ("loss", "loss/average", "loss/current"))
+
+
+def _progress_event_lr(event: dict[str, Any]) -> float | None:
+    direct = _first_float_field(
+        event,
+        ("lr", "learning_rate", "lr/unet", "lr/group0", "lr/textencoder"),
+    )
+    if direct is not None:
+        return direct
+    for key, value in event.items():
+        key_text = str(key)
+        if key_text.startswith("lr/") and not key_text.startswith("lr/d*lr/"):
+            lr = _float_or_none(value)
+            if lr is not None:
+                return lr
+    for key, value in event.items():
+        if str(key).startswith("lr/d*lr"):
+            lr = _float_or_none(value)
+            if lr is not None:
+                return lr
+    return None
+
+
+def _first_float_field(record: dict[str, Any], keys: tuple[str, ...]) -> float | None:
+    for key in keys:
+        value = _float_or_none(record.get(key))
+        if value is not None:
+            return value
+    return None
 
 
 def classify_training_error(text: str) -> str:

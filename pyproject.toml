@@ -61,6 +61,8 @@ dependencies = [
     "simpleeval>=1.0.7",
     "pytest>=9.0.3",
     "blake3>=1.0.8",
+    "softtorch>=0.1.1",
+    "torchaudio>=2.11.0",
 ]
 
 [project.optional-dependencies]

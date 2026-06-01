@@ -3,8 +3,8 @@ from __future__ import annotations
 import torch
 import torch.nn.functional as F
 
-from networks.lora_modules.custom_autograd import lokr_project
-from networks.lora_modules.lokr import LoKrModule
+from networks.plugins.lokr.autograd import lokr_project
+from networks.plugins.lokr.module import LoKrModule
 
 
 def test_lokr_eval_forward_ignores_stale_timestep_mask():
