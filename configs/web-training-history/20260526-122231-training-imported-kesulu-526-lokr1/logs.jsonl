@@ -1,0 +1,513 @@
+{"id": 191, "kind": "status", "line": "训练命令: /home/scv/nvme0n1p1/训练器相关/anima_lora/.venv/bin/python -m accelerate.commands.accelerate_cli launch --num_processes 1 --num_machines 1 --dynamo_backend no --num_cpu_threads_per_process 3 --mixed_precision bf16 /home/scv/nvme0n1p1/训练器相关/anima_lora/train.py --method kesulu-526-lokr1 --preset default --methods_subdir imported --config_file /home/scv/nvme0n1p1/训练器相关/anima缓存/kesulu-526-lokr1-20260526-122131/config.runtime.toml --network_weights /home/scv/nvme0n1p1/训练器相关/anima缓存/kesulu-526-lokr-20260526-114616/training_output/kesulu.safetensors --dim_from_weights --progress_jsonl /home/scv/nvme0n1p1/训练器相关/anima_lora/configs/web-training-history/20260526-122231-training-imported-kesulu-526-lokr1/progress.jsonl", "ts": 1779769351.8573384}
+{"id": 192, "kind": "log", "line": "2026-05-26 12:22:40 INFO     Loading settings from                     io.py:642", "ts": 1779769360.3691692}
+{"id": 193, "kind": "log", "line": "/home/scv/nvme0n1p1/训练器相关/anima缓存/", "ts": 1779769360.369886}
+{"id": 194, "kind": "log", "line": "kesulu-526-lokr1-20260526-122131/config.r", "ts": 1779769360.3703249}
+{"id": 195, "kind": "log", "line": "untime.toml...", "ts": 1779769360.3707364}
+{"id": 196, "kind": "log", "line": "INFO     Config snapshot written:                  io.py:515", "ts": 1779769360.3790443}
+{"id": 197, "kind": "log", "line": "/home/scv/nvme0n1p1/训练器相关/anima缓存/", "ts": 1779769360.3796358}
+{"id": 198, "kind": "log", "line": "kesulu-526-lokr1-20260526-122131/training", "ts": 1779769360.3800848}
+{"id": 199, "kind": "log", "line": "_output/kesulu.snapshot.toml", "ts": 1779769360.380491}
+{"id": 200, "kind": "log", "line": "INFO     Config snapshot mirrored:                 io.py:535", "ts": 1779769360.3832664}
+{"id": 201, "kind": "log", "line": "/home/scv/nvme0n1p1/训练器相关/anima缓存/", "ts": 1779769360.3838565}
+{"id": 202, "kind": "log", "line": "kesulu-526-lokr1-20260526-122131/model_ca", "ts": 1779769360.384295}
+{"id": 203, "kind": "log", "line": "che/logs/kesulu-526-lokr1_default_2026052", "ts": 1779769360.3846967}
+{"id": 204, "kind": "log", "line": "6-1222/kesulu.snapshot.toml", "ts": 1779769360.3851273}
+{"id": 205, "kind": "log", "line": "2026-05-26 12:22:41 INFO     Loading dataset config from           train.py:1428", "ts": 1779769361.0839765}
+{"id": 206, "kind": "log", "line": "/home/scv/nvme0n1p1/训练器相关/anima", "ts": 1779769361.084595}
+{"id": 207, "kind": "log", "line": "缓存/kesulu-526-lokr1-20260526-122131", "ts": 1779769361.085054}
+{"id": 208, "kind": "log", "line": "/dataset.runtime.toml", "ts": 1779769361.0855157}
+{"id": 209, "kind": "log", "line": "WARNING  Training pool has 39 image(s) (< 100) loader.py:440", "ts": 1779769361.0885222}
+{"id": 210, "kind": "log", "line": "— auto-disabling", "ts": 1779769361.0891318}
+{"id": 211, "kind": "log", "line": "validation_split_num=0 /", "ts": 1779769361.089689}
+{"id": 212, "kind": "log", "line": "validation_split=0.025. The whole", "ts": 1779769361.090326}
+{"id": 213, "kind": "log", "line": "pool will be used for training and no", "ts": 1779769361.0909748}
+{"id": 214, "kind": "log", "line": "validation pass will run.", "ts": 1779769361.0916102}
+{"id": 215, "kind": "log", "line": "INFO     prepare images.                   dreambooth.py:380", "ts": 1779769361.0924077}
+{"id": 216, "kind": "log", "line": "INFO     get image size from name of cache dreambooth.py:166", "ts": 1779769361.093158}
+{"id": 217, "kind": "log", "line": "files", "ts": 1779769361.0937054}
+{"id": 218, "kind": "progress", "line": "0%|          | 0/39 [00:00<?, ?it/s]", "ts": 1779769361.0943549}
+{"id": 219, "kind": "progress", "line": "100%|██████████| 39/39 [00:00<00:00, 517651.44it/s]", "ts": 1779769361.0948567}
+{"id": 220, "kind": "log", "line": "INFO     set image size from cache files:  dreambooth.py:210", "ts": 1779769361.0952902}
+{"id": 221, "kind": "log", "line": "0/39", "ts": 1779769361.0957444}
+{"id": 222, "kind": "log", "line": "INFO     found directory                   dreambooth.py:253", "ts": 1779769361.096275}
+{"id": 223, "kind": "log", "line": "/home/scv/nvme0n1p1/训练器相关/an", "ts": 1779769361.0968466}
+{"id": 224, "kind": "log", "line": "ima缓存/kesulu-526-lokr1-20260526", "ts": 1779769361.0973895}
+{"id": 225, "kind": "log", "line": "-122131/dataset_cache/dataset-01/", "ts": 1779769361.0979478}
+{"id": 226, "kind": "log", "line": "resized contains 39 image files", "ts": 1779769361.098524}
+{"id": 227, "kind": "progress", "line": "read caption:   0%|          | 0/39 [00:00<?, ?it/s]", "ts": 1779769361.0993276}
+{"id": 228, "kind": "progress", "line": "read caption: 100%|██████████| 39/39 [00:00<00:00, 47249.53it/s]", "ts": 1779769361.0999467}
+{"id": 229, "kind": "log", "line": "INFO     195 train images with repeats.    dreambooth.py:456", "ts": 1779769361.1005712}
+{"id": 230, "kind": "log", "line": "INFO     0 reg images with repeats.        dreambooth.py:460", "ts": 1779769361.1012197}
+{"id": 231, "kind": "log", "line": "WARNING  no regularization images          dreambooth.py:465", "ts": 1779769361.1018255}
+{"id": 232, "kind": "log", "line": "INFO     [Dataset 0]                           loader.py:559", "ts": 1779769361.1042917}
+{"id": 233, "kind": "log", "line": "batch_size: 1", "ts": 1779769361.1049788}
+{"id": 234, "kind": "log", "line": "resolution: (1024, 1024)", "ts": 1779769361.1055164}
+{"id": 235, "kind": "log", "line": "resize_interpolation: None", "ts": 1779769361.1060889}
+{"id": 236, "kind": "log", "line": "enable_bucket: True", "ts": 1779769361.1066384}
+{"id": 237, "kind": "log", "line": "min_bucket_reso: 256", "ts": 1779769361.1071951}
+{"id": 238, "kind": "log", "line": "max_bucket_reso: 1024", "ts": 1779769361.1076612}
+{"id": 239, "kind": "log", "line": "bucket_reso_steps: 64", "ts": 1779769361.1080604}
+{"id": 240, "kind": "log", "line": "bucket_no_upscale: False", "ts": 1779769361.1084344}
+{"id": 241, "kind": "log", "line": "[Subset 0 of Dataset 0]", "ts": 1779769361.108824}
+{"id": 242, "kind": "log", "line": "image_dir:", "ts": 1779769361.1091933}
+{"id": 243, "kind": "log", "line": "\"/home/scv/nvme0n1p1/训练器相关/anima", "ts": 1779769361.10954}
+{"id": 244, "kind": "log", "line": "缓存/kesulu-526-lokr1-20260526-122131", "ts": 1779769361.1099172}
+{"id": 245, "kind": "log", "line": "/dataset_cache/dataset-01/resized\"", "ts": 1779769361.1103115}
+{"id": 246, "kind": "log", "line": "image_count: 39", "ts": 1779769361.1106946}
+{"id": 247, "kind": "log", "line": "num_repeats: 5", "ts": 1779769361.1110952}
+{"id": 248, "kind": "log", "line": "sample_ratio: 1.0", "ts": 1779769361.1114728}
+{"id": 249, "kind": "log", "line": "keep_tokens: 3", "ts": 1779769361.111861}
+{"id": 250, "kind": "log", "line": "caption_dropout_rate: 0.1", "ts": 1779769361.112236}
+{"id": 251, "kind": "log", "line": "caption_dropout_every_n_epochs: 0", "ts": 1779769361.112601}
+{"id": 252, "kind": "log", "line": "caption_tag_dropout_rate: 0.0", "ts": 1779769361.1129954}
+{"id": 253, "kind": "log", "line": "caption_prefix: None", "ts": 1779769361.1133723}
+{"id": 254, "kind": "log", "line": "caption_suffix: None", "ts": 1779769361.1137347}
+{"id": 255, "kind": "log", "line": "color_aug: False", "ts": 1779769361.1141224}
+{"id": 256, "kind": "log", "line": "flip_aug: False", "ts": 1779769361.114483}
+{"id": 257, "kind": "log", "line": "face_crop_aug_range: None", "ts": 1779769361.1148531}
+{"id": 258, "kind": "log", "line": "random_crop: False", "ts": 1779769361.1152287}
+{"id": 259, "kind": "log", "line": "token_warmup_min: 1,", "ts": 1779769361.1155863}
+{"id": 260, "kind": "log", "line": "token_warmup_step: 0,", "ts": 1779769361.1159694}
+{"id": 261, "kind": "log", "line": "alpha_mask: False", "ts": 1779769361.1163518}
+{"id": 262, "kind": "log", "line": "resize_interpolation: None", "ts": 1779769361.1167116}
+{"id": 263, "kind": "log", "line": "custom_attributes: {'source_dir':", "ts": 1779769361.1170971}
+{"id": 264, "kind": "log", "line": "'/home/scv/nvme0n1p1/lora/kesul-anima", "ts": 1779769361.1174767}
+{"id": 265, "kind": "log", "line": "'}", "ts": 1779769361.1178586}
+{"id": 266, "kind": "log", "line": "is_reg: False", "ts": 1779769361.1182373}
+{"id": 267, "kind": "log", "line": "class_tokens: None", "ts": 1779769361.1185904}
+{"id": 268, "kind": "log", "line": "caption_extension: .txt", "ts": 1779769361.1189723}
+{"id": 269, "kind": "log", "line": "INFO     [Prepare dataset 0]                   loader.py:571", "ts": 1779769361.1195142}
+{"id": 270, "kind": "log", "line": "INFO     loading image sizes.                    base.py:478", "ts": 1779769361.1199613}
+{"id": 271, "kind": "progress", "line": "0%|          | 0/39 [00:00<?, ?it/s]", "ts": 1779769361.186941}
+{"id": 272, "kind": "progress", "line": "100%|██████████| 39/39 [00:00<00:00, 484.03it/s]", "ts": 1779769361.1875136}
+{"id": 273, "kind": "log", "line": "INFO     make buckets                            base.py:484", "ts": 1779769361.1881008}
+{"id": 274, "kind": "log", "line": "INFO     number of images (including repeats)    base.py:535", "ts": 1779769361.1894124}
+{"id": 275, "kind": "log", "line": "INFO     bucket 0: resolution (1008, 1024),      base.py:545", "ts": 1779769361.1905198}
+{"id": 276, "kind": "log", "line": "count: 195", "ts": 1779769361.1910312}
+{"id": 277, "kind": "log", "line": "INFO     mean ar error (without repeats): 0.0    base.py:553", "ts": 1779769361.1915789}
+{"id": 278, "kind": "log", "line": "INFO     caption dropout ENABLED -- per-subset train.py:1501", "ts": 1779769361.1930747}
+{"id": 279, "kind": "log", "line": "rates: [0.1]", "ts": 1779769361.193592}
+{"id": 280, "kind": "log", "line": "INFO     preparing accelerator                 train.py:2035", "ts": 1779769361.1971624}
+{"id": 281, "kind": "log", "line": "accelerator device: cuda", "ts": 1779769361.2423885}
+{"id": 282, "kind": "log", "line": "INFO     Loading Qwen3 text encoder...          train.py:460", "ts": 1779769361.243559}
+{"id": 283, "kind": "log", "line": "INFO     Loading Qwen3 text encoder from      weights.py:393", "ts": 1779769361.2447739}
+{"id": 284, "kind": "log", "line": "/home/scv/nvme0n1p1/ComfyUI/models/t", "ts": 1779769361.2452598}
+{"id": 285, "kind": "log", "line": "ext_encoders/anima/anima_qwen_3_06b_", "ts": 1779769361.2456627}
+{"id": 286, "kind": "log", "line": "base.safetensors", "ts": 1779769361.2460678}
+{"id": 287, "kind": "log", "line": "2026-05-26 12:22:51 INFO     Loaded Qwen3 state dict: <All keys   weights.py:446", "ts": 1779769371.7155383}
+{"id": 288, "kind": "log", "line": "matched successfully>", "ts": 1779769371.7162168}
+{"id": 289, "kind": "log", "line": "2026-05-26 12:22:52 INFO     Loaded Qwen3 text encoder.           weights.py:454", "ts": 1779769372.0250573}
+{"id": 290, "kind": "log", "line": "Parameters: 596,049,920", "ts": 1779769372.0257351}
+{"id": 291, "kind": "log", "line": "INFO     Loading Anima VAE...                   train.py:474", "ts": 1779769372.0506408}
+{"id": 292, "kind": "log", "line": "INFO     Initializing VAE                   qwen_vae.py:1878", "ts": 1779769372.051455}
+{"id": 293, "kind": "log", "line": "INFO     Loading VAE from                   qwen_vae.py:1902", "ts": 1779769372.9602077}
+{"id": 294, "kind": "log", "line": "/home/scv/nvme0n1p1/ComfyUI/models", "ts": 1779769372.960856}
+{"id": 295, "kind": "log", "line": "/vae/anima/anima_vae.safetensors", "ts": 1779769372.9612796}
+{"id": 296, "kind": "log", "line": "2026-05-26 12:22:53 INFO     Converted ComfyUI AutoencoderKL    qwen_vae.py:1799", "ts": 1779769373.0601552}
+{"id": 297, "kind": "log", "line": "state dict keys to official format", "ts": 1779769373.0611253}
+{"id": 298, "kind": "log", "line": "INFO     Loaded VAE: <All keys matched      qwen_vae.py:1909", "ts": 1779769373.0863855}
+{"id": 299, "kind": "log", "line": "successfully>", "ts": 1779769373.087039}
+{"id": 300, "kind": "log", "line": "INFO     [Dataset 0]                             group.py:59", "ts": 1779769373.3632536}
+{"id": 301, "kind": "log", "line": "INFO     caching latents with caching strategy.  base.py:728", "ts": 1779769373.3640642}
+{"id": 302, "kind": "log", "line": "INFO     caching latents...                      base.py:782", "ts": 1779769373.365106}
+{"id": 303, "kind": "progress", "line": "0%|          | 0/39 [00:00<?, ?it/s]", "ts": 1779769373.3664935}
+{"id": 304, "kind": "progress", "line": "100%|██████████| 39/39 [00:00<00:00, 37117.73it/s]", "ts": 1779769373.3670156}
+{"id": 305, "kind": "log", "line": "INFO     [Dataset 0]                            group.py:111", "ts": 1779769373.6956675}
+{"id": 306, "kind": "log", "line": "INFO     caching Text Encoder outputs with       base.py:952", "ts": 1779769373.6964903}
+{"id": 307, "kind": "log", "line": "caching strategy.", "ts": 1779769373.696993}
+{"id": 308, "kind": "log", "line": "INFO     checking cache validity...              base.py:963", "ts": 1779769373.6975286}
+{"id": 309, "kind": "progress", "line": "0%|          | 0/39 [00:00<?, ?it/s]", "ts": 1779769373.6988237}
+{"id": 310, "kind": "progress", "line": "100%|██████████| 39/39 [00:00<00:00, 39636.02it/s]", "ts": 1779769373.69933}
+{"id": 311, "kind": "log", "line": "INFO     no Text Encoder outputs to cache        base.py:994", "ts": 1779769373.6999326}
+{"id": 312, "kind": "log", "line": "INFO     cache Text Encoder outputs for sample train.py:1338", "ts": 1779769373.7008116}
+{"id": 313, "kind": "log", "line": "prompts: configs/sample_prompts.txt", "ts": 1779769373.701282}
+{"id": 314, "kind": "log", "line": "INFO     move text encoder to gpu              train.py:1341", "ts": 1779769373.7018542}
+{"id": 315, "kind": "log", "line": "INFO       cache TE outputs for: {@Ethel       train.py:1356", "ts": 1779769373.9159565}
+{"id": 316, "kind": "log", "line": "Vorgath, fantasy art, digital", "ts": 1779769373.9166074}
+{"id": 317, "kind": "log", "line": "painting, painterly, painterly", "ts": 1779769373.9170835}
+{"id": 318, "kind": "log", "line": "shading, textured brushwork,", "ts": 1779769373.9175313}
+{"id": 319, "kind": "log", "line": "atmospheric lighting, cinematic", "ts": 1779769373.917971}
+{"id": 320, "kind": "log", "line": "lighting, dramatic lighting,", "ts": 1779769373.9183867}
+{"id": 321, "kind": "log", "line": "volumetric lighting, ambient light,", "ts": 1779769373.9187894}
+{"id": 322, "kind": "log", "line": "rim light, ethereal glow, glowing", "ts": 1779769373.9191895}
+{"id": 323, "kind": "log", "line": "effects, luminous colors, vibrant", "ts": 1779769373.9195888}
+{"id": 324, "kind": "log", "line": "colors, rich color palette, high", "ts": 1779769373.9199977}
+{"id": 325, "kind": "log", "line": "contrast, cool colors, jewel tones,", "ts": 1779769373.9203835}
+{"id": 326, "kind": "log", "line": "iridescent colors, soft gradients,", "ts": 1779769373.9207807}
+{"id": 327, "kind": "log", "line": "moody lighting, dreamy atmosphere,", "ts": 1779769373.9211683}
+{"id": 328, "kind": "log", "line": "mystical atmosphere, ethereal", "ts": 1779769373.9215384}
+{"id": 329, "kind": "log", "line": "aesthetic, stylized rendering, semi", "ts": 1779769373.921937}
+{"id": 330, "kind": "log", "line": "realistic shading, polished", "ts": 1779769373.9223237}
+{"id": 331, "kind": "log", "line": "rendering, smooth texture, concept", "ts": 1779769373.9227338}
+{"id": 332, "kind": "log", "line": "art style}, no humans, landscape,", "ts": 1779769373.9231195}
+{"id": 333, "kind": "log", "line": "scenery, fantasy, night, starry sky,", "ts": 1779769373.9234765}
+{"id": 334, "kind": "log", "line": "aurora, mountains, snow capped", "ts": 1779769373.9238546}
+{"id": 335, "kind": "log", "line": "mountains, forest, pine trees, bare", "ts": 1779769373.9242163}
+{"id": 336, "kind": "log", "line": "tree, train, locomotive, railroad", "ts": 1779769373.924569}
+{"id": 337, "kind": "log", "line": "tracks, headlight, glowing trail,", "ts": 1779769373.9249578}
+{"id": 338, "kind": "log", "line": "light trail, mist, fog, clouds, moon,", "ts": 1779769373.925322}
+{"id": 339, "kind": "log", "line": "distant mountains, wilderness,", "ts": 1779769373.925683}
+{"id": 340, "kind": "log", "line": "flowers, glowing plants,", "ts": 1779769373.9260445}
+{"id": 341, "kind": "log", "line": "bioluminescence, wide shot, panoramic", "ts": 1779769373.9263968}
+{"id": 342, "kind": "log", "line": "view, depth of field, outdoors,", "ts": 1779769373.9268103}
+{"id": 343, "kind": "log", "line": "nature, valley, cold environment,", "ts": 1779769373.9271722}
+{"id": 344, "kind": "log", "line": "magical forest", "ts": 1779769373.927558}
+{"id": 345, "kind": "log", "line": "2026-05-26 12:22:55 INFO       cache TE outputs for:               train.py:1356", "ts": 1779769375.473313}
+{"id": 346, "kind": "log", "line": "INFO       cache TE outputs for: {@Ethel       train.py:1356", "ts": 1779769375.5278955}
+{"id": 347, "kind": "log", "line": "Vorgath, fantasy art, digital", "ts": 1779769375.528524}
+{"id": 348, "kind": "log", "line": "painting, painterly, painterly", "ts": 1779769375.529167}
+{"id": 349, "kind": "log", "line": "shading, textured brushwork,", "ts": 1779769375.5297797}
+{"id": 350, "kind": "log", "line": "atmospheric lighting, cinematic", "ts": 1779769375.5303628}
+{"id": 351, "kind": "log", "line": "lighting, dramatic lighting,", "ts": 1779769375.5309672}
+{"id": 352, "kind": "log", "line": "volumetric lighting, ambient light,", "ts": 1779769375.5315404}
+{"id": 353, "kind": "log", "line": "rim light, ethereal glow, glowing", "ts": 1779769375.5321403}
+{"id": 354, "kind": "log", "line": "effects, luminous colors, vibrant", "ts": 1779769375.532718}
+{"id": 355, "kind": "log", "line": "colors, rich color palette, high", "ts": 1779769375.5333176}
+{"id": 356, "kind": "log", "line": "contrast, cool colors, jewel tones,", "ts": 1779769375.5339582}
+{"id": 357, "kind": "log", "line": "iridescent colors, soft gradients,", "ts": 1779769375.534592}
+{"id": 358, "kind": "log", "line": "moody lighting, dreamy atmosphere,", "ts": 1779769375.5352561}
+{"id": 359, "kind": "log", "line": "mystical atmosphere, ethereal", "ts": 1779769375.5359159}
+{"id": 360, "kind": "log", "line": "aesthetic, stylized rendering, semi", "ts": 1779769375.5365388}
+{"id": 361, "kind": "log", "line": "realistic shading, polished", "ts": 1779769375.5371985}
+{"id": 362, "kind": "log", "line": "rendering, smooth texture, concept", "ts": 1779769375.5378058}
+{"id": 363, "kind": "log", "line": "art style}, no humans, scenery, cave,", "ts": 1779769375.538396}
+{"id": 364, "kind": "log", "line": "cavern, underground, rock formation,", "ts": 1779769375.5390131}
+{"id": 365, "kind": "log", "line": "natural arch, ruins, bone, skull,", "ts": 1779769375.539622}
+{"id": 366, "kind": "log", "line": "skeleton, rib bones, red crystals,", "ts": 1779769375.540256}
+{"id": 367, "kind": "log", "line": "water, pond, stone path, small house,", "ts": 1779769375.5408916}
+{"id": 368, "kind": "log", "line": "shack, doorway, glowing portal,", "ts": 1779769375.541502}
+{"id": 369, "kind": "log", "line": "yellow light, stalactites, surreal,", "ts": 1779769375.5421233}
+{"id": 370, "kind": "log", "line": "wide shot", "ts": 1779769375.5427334}
+{"id": 371, "kind": "log", "line": "INFO     move text encoder back to cpu         train.py:1367", "ts": 1779769375.582272}
+{"id": 372, "kind": "log", "line": "2026-05-26 12:22:56 INFO     Using Flash Attention 2 (flash_attn    train.py:514", "ts": 1779769376.4433944}
+{"id": 373, "kind": "log", "line": "2.8.3)", "ts": 1779769376.4440541}
+{"id": 374, "kind": "log", "line": "INFO     Loading Anima DiT model with           train.py:542", "ts": 1779769376.4448586}
+{"id": 375, "kind": "log", "line": "attn_softmax_scale: None...", "ts": 1779769376.4455516}
+{"id": 376, "kind": "log", "line": "INFO     Loading DiT model from               weights.py:165", "ts": 1779769376.5324993}
+{"id": 377, "kind": "log", "line": "/home/scv/nvme0n1p1/ComfyUI/models/d", "ts": 1779769376.5329907}
+{"id": 378, "kind": "log", "line": "iffusion_models/anima/anima-preview3", "ts": 1779769376.533363}
+{"id": 379, "kind": "log", "line": "-base.safetensors, device=cuda", "ts": 1779769376.5337806}
+{"id": 380, "kind": "log", "line": "INFO     Loading model files:              lora_utils.py:163", "ts": 1779769376.5342863}
+{"id": 381, "kind": "log", "line": "['/home/scv/nvme0n1p1/ComfyUI/mod", "ts": 1779769376.534713}
+{"id": 382, "kind": "log", "line": "els/diffusion_models/anima/anima-", "ts": 1779769376.5351129}
+{"id": 383, "kind": "log", "line": "preview3-base.safetensors']", "ts": 1779769376.5355065}
+{"id": 384, "kind": "log", "line": "INFO     Loading state dict. Dtype of      lora_utils.py:320", "ts": 1779769376.5359955}
+{"id": 385, "kind": "log", "line": "weight: torch.bfloat16, hook", "ts": 1779769376.53641}
+{"id": 386, "kind": "log", "line": "enabled: False", "ts": 1779769376.5368452}
+{"id": 387, "kind": "progress", "line": "Loading anima-preview3-base.safetensors:   0%|          | 0/545 [00:00<?, ?it/s]", "ts": 1779769376.6414979}
+{"id": 388, "kind": "progress", "line": "Loading anima-preview3-base.safetensors:   8%|▊         | 43/545 [00:00<00:01, 414.64it/s]", "ts": 1779769376.7462032}
+{"id": 389, "kind": "progress", "line": "Loading anima-preview3-base.safetensors:  16%|█▌        | 88/545 [00:00<00:01, 423.69it/s]", "ts": 1779769376.850684}
+{"id": 390, "kind": "progress", "line": "Loading anima-preview3-base.safetensors:  24%|██▍       | 133/545 [00:00<00:00, 426.92it/s]", "ts": 1779769376.9551597}
+{"id": 391, "kind": "progress", "line": "Loading anima-preview3-base.safetensors:  33%|███▎      | 178/545 [00:00<00:00, 428.44it/s]", "ts": 1779769377.0603716}
+{"id": 392, "kind": "progress", "line": "Loading anima-preview3-base.safetensors:  41%|████      | 223/545 [00:00<00:00, 428.13it/s]", "ts": 1779769377.1646953}
+{"id": 393, "kind": "progress", "line": "Loading anima-preview3-base.safetensors:  49%|████▉     | 268/545 [00:00<00:00, 429.33it/s]", "ts": 1779769377.2690425}
+{"id": 394, "kind": "progress", "line": "Loading anima-preview3-base.safetensors:  57%|█████▋    | 313/545 [00:00<00:00, 430.02it/s]", "ts": 1779769377.3732975}
+{"id": 395, "kind": "progress", "line": "Loading anima-preview3-base.safetensors:  66%|██████▌   | 358/545 [00:00<00:00, 430.48it/s]", "ts": 1779769377.4765098}
+{"id": 396, "kind": "progress", "line": "Loading anima-preview3-base.safetensors:  74%|███████▍  | 403/545 [00:00<00:00, 432.12it/s]", "ts": 1779769377.5767124}
+{"id": 397, "kind": "progress", "line": "Loading anima-preview3-base.safetensors:  95%|█████████▌| 520/545 [00:01<00:00, 653.44it/s]", "ts": 1779769377.6132839}
+{"id": 398, "kind": "log", "line": "2026-05-26 12:22:57 INFO     Loaded DiT model from                weights.py:208", "ts": 1779769377.629069}
+{"id": 399, "kind": "log", "line": "/home/scv/nvme0n1p1/ComfyUI/models/d", "ts": 1779769377.6296468}
+{"id": 400, "kind": "log", "line": "iffusion_models/anima/anima-preview3", "ts": 1779769377.6300738}
+{"id": 401, "kind": "log", "line": "-base.safetensors, unexpected", "ts": 1779769377.6304538}
+{"id": 402, "kind": "log", "line": "missing keys: 0, unexpected keys: 0", "ts": 1779769377.630859}
+{"id": 403, "kind": "log", "line": "Anima: native_flatten on, 2 token-count families (cache_size_limit=12); compiled 28 block._forward with backend=inductor, mode=None", "ts": 1779769378.4255793}
+{"id": 404, "kind": "log", "line": "2026-05-26 12:22:58 INFO     caption dropout uncond loaded:         train.py:670", "ts": 1779769378.4287946}
+{"id": 405, "kind": "log", "line": "post_image_dataset/_anima_uncond_te.sa", "ts": 1779769378.4293573}
+{"id": 406, "kind": "log", "line": "fetensors shape=(1, 512, 1024)", "ts": 1779769378.4300516}
+{"id": 407, "kind": "log", "line": "import network module: networks.lora_anima", "ts": 1779769378.4305367}
+{"id": 408, "kind": "log", "line": "INFO     create LoRA network from weights     network.py:502", "ts": 1779769378.4663382}
+{"id": 409, "kind": "log", "line": "INFO     create LoRA for Text Encoder 1:      network.py:885", "ts": 1779769378.4674108}
+{"id": 410, "kind": "log", "line": "Creating TE1 LoRA: 0it [00:00, ?it/s]", "ts": 1779769378.4686322}
+{"id": 411, "kind": "log", "line": "INFO     create LoRA for Text Encoder 1: 0    network.py:892", "ts": 1779769378.4699185}
+{"id": 412, "kind": "log", "line": "modules.", "ts": 1779769378.4705338}
+{"id": 413, "kind": "progress", "line": "Creating DiT LoRA:   0%|          | 0/140 [00:00<?, ?it/s]", "ts": 1779769378.5209203}
+{"id": 414, "kind": "log", "line": "INFO     create LoRA for Anima DiT: 140       network.py:906", "ts": 1779769378.5222774}
+{"id": 415, "kind": "log", "line": "modules.", "ts": 1779769378.522989}
+{"id": 416, "kind": "log", "line": "INFO     enable LoRA for DiT: 140 modules    network.py:2692", "ts": 1779769378.523693}
+{"id": 417, "kind": "log", "line": "load network weights from /home/scv/nvme0n1p1/训练器相关/anima缓存/kesulu-526-lokr-20260526-114616/training_output/kesulu.safetensors: _IncompatibleKeys(missing_keys=[], unexpected_keys=['lora_unet_blocks_0_cross_attn_k_proj.alpha', 'lora_unet_blocks_0_cross_attn_k_proj.lokr_w1', 'lora_unet_blocks_0_cross_attn_k_proj.lokr_w2', 'lora_unet_blocks_0_cross_attn_v_proj.alpha', 'lora_unet_blocks_0_cross_attn_v_proj.lokr_w1', 'lora_unet_blocks_0_cross_attn_v_proj.lokr_w2', 'lora_unet_blocks_0_self_attn_k_proj.alpha', 'lora_unet_blocks_0_self_attn_k_proj.lokr_w1', 'lora_unet_blocks_0_self_attn_k_proj.lokr_w2', 'lora_unet_blocks_0_self_attn_q_proj.alpha', 'lora_unet_blocks_0_self_attn_q_proj.lokr_w1', 'lora_unet_blocks_0_self_attn_q_proj.lokr_w2', 'lora_unet_blocks_0_self_attn_v_proj.alpha', 'lora_unet_blocks_0_self_attn_v_proj.lokr_w1', 'lora_unet_blocks_0_self_attn_v_proj.lokr_w2', 'lora_unet_blocks_10_cross_attn_k_proj.alpha', 'lora_unet_blocks_10_cross_attn_k_proj.lokr_w1', 'lora_unet_blocks_10_cross_attn_k_proj.lokr_w2', 'lora_unet_blocks_10_cross_attn_v_proj.alpha', 'lora_unet_blocks_10_cross_attn_v_proj.lokr_w1', 'lora_unet_blocks_10_cross_attn_v_proj.lokr_w2', 'lora_unet_blocks_10_self_attn_k_proj.alpha', 'lora_unet_blocks_10_self_attn_k_proj.lokr_w1', 'lora_unet_blocks_10_self_attn_k_proj.lokr_w2', 'lora_unet_blocks_10_self_attn_q_proj.alpha', 'lora_unet_blocks_10_self_attn_q_proj.lokr_w1', 'lora_unet_blocks_10_self_attn_q_proj.lokr_w2', 'lora_unet_blocks_10_self_attn_v_proj.alpha', 'lora_unet_blocks_10_self_attn_v_proj.lokr_w1', 'lora_unet_blocks_10_self_attn_v_proj.lokr_w2', 'lora_unet_blocks_11_cross_attn_k_proj.alpha', 'lora_unet_blocks_11_cross_attn_k_proj.lokr_w1', 'lora_unet_blocks_11_cross_attn_k_proj.lokr_w2', 'lora_unet_blocks_11_cross_attn_v_proj.alpha', 'lora_unet_blocks_11_cross_attn_v_proj.lokr_w1', 'lora_unet_blocks_11_cross_attn_v_proj.lokr_w2', 'lora_unet_blocks_11_self_attn_k_proj.alpha', 'lora_unet_blocks_11_self_attn_k_proj.lokr_w1', 'lora_unet_blocks_11_self_attn_k_proj.lokr_w2', 'lora_unet_blocks_11_self_attn_q_proj.alpha', 'lora_unet_blocks_11_self_attn_q_proj.lokr_w1', 'lora_unet_blocks_11_self_attn_q_proj.lokr_w2', 'lora_unet_blocks_11_self_attn_v_proj.alpha', 'lora_unet_blocks_11_self_attn_v_proj.lokr_w1', 'lora_unet_blocks_11_self_attn_v_proj.lokr_w2', 'lora_unet_blocks_12_cross_attn_k_proj.alpha', 'lora_unet_blocks_12_cross_attn_k_proj.lokr_w1', 'lora_unet_blocks_12_cross_attn_k_proj.lokr_w2', 'lora_unet_blocks_12_cross_attn_v_proj.alpha', 'lora_unet_blocks_12_cross_attn_v_proj.lokr_w1', 'lora_unet_blocks_12_cross_attn_v_proj.lokr_w2', 'lora_unet_blocks_12_self_attn_k_proj.alpha', 'lora_unet_blocks_12_self_attn_k_proj.lokr_w1', 'lora_unet_blocks_12_self_attn_k_proj.lokr_w2', 'lora_unet_blocks_12_self_attn_q_proj.alpha', 'lora_unet_blocks_12_self_attn_q_proj.lokr_w1', 'lora_unet_blocks_12_self_attn_q_proj.lokr_w2', 'lora_unet_blocks_12_self_attn_v_proj.alpha', 'lora_unet_blocks_12_self_attn_v_proj.lokr_w1', 'lora_unet_blocks_12_self_attn_v_proj.lokr_w2', 'lora_unet_blocks_13_cross_attn_k_proj.alpha', 'lora_unet_blocks_13_cross_attn_k_proj.lokr_w1', 'lora_unet_blocks_13_cross_attn_k_proj.lokr_w2', 'lora_unet_blocks_13_cross_attn_v_proj.alpha', 'lora_unet_blocks_13_cross_attn_v_proj.lokr_w1', 'lora_unet_blocks_13_cross_attn_v_proj.lokr_w2', 'lora_unet_blocks_13_self_attn_k_proj.alpha', 'lora_unet_blocks_13_self_attn_k_proj.lokr_w1', 'lora_unet_blocks_13_self_attn_k_proj.lokr_w2', 'lora_unet_blocks_13_self_attn_q_proj.alpha', 'lora_unet_blocks_13_self_attn_q_proj.lokr_w1', 'lora_unet_blocks_13_self_attn_q_proj.lokr_w2', 'lora_unet_blocks_13_self_attn_v_proj.alpha', 'lora_unet_blocks_13_self_attn_v_proj.lokr_w1', 'lora_unet_blocks_13_self_attn_v_proj.lokr_w2', 'lora_unet_blocks_14_cross_attn_k_proj.alpha', 'lora_unet_blocks_14_cross_attn_k_proj.lokr_w1', 'lora_unet_blocks_14_cross_attn_k_proj.lokr_w2', 'lora_unet_blocks_14_cross_attn_v_proj.alpha', 'lora_unet_blocks_14_cross_attn_v_proj.lokr_w1', 'lora_unet_blocks_14_cross_attn_v_proj.lokr_w2', 'lora_unet_blocks_14_self_attn_k_proj.alpha', 'lora_unet_blocks_14_self_attn_k_proj.lokr_w1', 'lora_unet_blocks_14_self_attn_k_proj.lokr_w2', 'lora_unet_blocks_14_self_attn_q_proj.alpha', 'lora_unet_blocks_14_self_attn_q_proj.lokr_w1', 'lora_unet_blocks_14_self_attn_q_proj.lokr_w2', 'lora_unet_blocks_14_self_attn_v_proj.alpha', 'lora_unet_blocks_14_self_attn_v_proj.lokr_w1', 'lora_unet_blocks_14_self_attn_v_proj.lokr_w2', 'lora_unet_blocks_15_cross_attn_k_proj.alpha', 'lora_unet_blocks_15_cross_attn_k_proj.lokr_w1', 'lora_unet_blocks_15_cross_attn_k_proj.lokr_w2', 'lora_unet_blocks_15_cross_attn_v_proj.alpha', 'lora_unet_blocks_15_cross_attn_v_proj.lokr_w1', 'lora_unet_blocks_15_cross_attn_v_proj.lokr_w2', 'lora_unet_blocks_15_self_attn_k_proj.alpha', 'lora_unet_blocks_15_self_attn_k_proj.lokr_w1', 'lora_unet_blocks_15_self_attn_k_proj.lokr_w2', 'lora_unet_blocks_15_self_attn_q_proj.alpha', 'lora_unet_blocks_15_self_attn_q_proj.lokr_w1', 'lora_unet_blocks_15_self_attn_q_proj.lokr_w2', 'lora_unet_blocks_15_self_attn_v_proj.alpha', 'lora_unet_blocks_15_self_attn_v_proj.lokr_w1', 'lora_unet_blocks_15_self_attn_v_proj.lokr_w2', 'lora_unet_blocks_16_cross_attn_k_proj.alpha', 'lora_unet_blocks_16_cross_attn_k_proj.lokr_w1', 'lora_unet_blocks_16_cross_attn_k_proj.lokr_w2', 'lora_unet_blocks_16_cross_attn_v_proj.alpha', 'lora_unet_blocks_16_cross_attn_v_proj.lokr_w1', 'lora_unet_blocks_16_cross_attn_v_proj.lokr_w2', 'lora_unet_blocks_16_self_attn_k_proj.alpha', 'lora_unet_blocks_16_self_attn_k_proj.lokr_w1', 'lora_unet_blocks_16_self_attn_k_proj.lokr_w2', 'lora_unet_blocks_16_self_attn_q_proj.alpha', 'lora_unet_blocks_16_self_attn_q_proj.lokr_w1', 'lora_unet_blocks_16_self_attn_q_proj.lokr_w2', 'lora_unet_blocks_16_self_attn_v_proj.alpha', 'lora_unet_blocks_16_self_attn_v_proj.lokr_w1', 'lora_unet_blocks_16_self_attn_v_proj.lokr_w2', 'lora_unet_blocks_17_cross_attn_k_proj.alpha', 'lora_unet_blocks_17_cross_attn_k_proj.lokr_w1', 'lora_unet_blocks_17_cross_attn_k_proj.lokr_w2', 'lora_unet_blocks_17_cross_attn_v_proj.alpha', 'lora_unet_blocks_17_cross_attn_v_proj.lokr_w1', 'lora_unet_blocks_17_cross_attn_v_proj.lokr_w2', 'lora_unet_blocks_17_self_attn_k_proj.alpha', 'lora_unet_blocks_17_self_attn_k_proj.lokr_w1', 'lora_unet_blocks_17_self_attn_k_proj.lokr_w2', 'lora_unet_blocks_17_self_attn_q_proj.alpha', 'lora_unet_blocks_17_self_attn_q_proj.lokr_w1', 'lora_unet_blocks_17_self_attn_q_proj.lokr_w2', 'lora_unet_blocks_17_self_attn_v_proj.alpha', 'lora_unet_blocks_17_self_attn_v_proj.lokr_w1', 'lora_unet_blocks_17_self_attn_v_proj.lokr_w2', 'lora_unet_blocks_18_cross_attn_k_proj.alpha', 'lora_unet_blocks_18_cross_attn_k_proj.lokr_w1', 'lora_unet_blocks_18_cross_attn_k_proj.lokr_w2', 'lora_unet_blocks_18_cross_attn_v_proj.alpha', 'lora_unet_blocks_18_cross_attn_v_proj.lokr_w1', 'lora_unet_blocks_18_cross_attn_v_proj.lokr_w2', 'lora_unet_blocks_18_self_attn_k_proj.alpha', 'lora_unet_blocks_18_self_attn_k_proj.lokr_w1', 'lora_unet_blocks_18_self_attn_k_proj.lokr_w2', 'lora_unet_blocks_18_self_attn_q_proj.alpha', 'lora_unet_blocks_18_self_attn_q_proj.lokr_w1', 'lora_unet_blocks_18_self_attn_q_proj.lokr_w2', 'lora_unet_blocks_18_self_attn_v_proj.alpha', 'lora_unet_blocks_18_self_attn_v_proj.lokr_w1', 'lora_unet_blocks_18_self_attn_v_proj.lokr_w2', 'lora_unet_blocks_19_cross_attn_k_proj.alpha', 'lora_unet_blocks_19_cross_attn_k_proj.lokr_w1', 'lora_unet_blocks_19_cross_attn_k_proj.lokr_w2', 'lora_unet_blocks_19_cross_attn_v_proj.alpha', 'lora_unet_blocks_19_cross_attn_v_proj.lokr_w1', 'lora_unet_blocks_19_cross_attn_v_proj.lokr_w2', 'lora_unet_blocks_19_self_attn_k_proj.alpha', 'lora_unet_blocks_19_self_attn_k_proj.lokr_w1', 'lora_unet_blocks_19_self_attn_k_proj.lokr_w2', 'lora_unet_blocks_19_self_attn_q_proj.alpha', 'lora_unet_blocks_19_self_attn_q_proj.lokr_w1', 'lora_unet_blocks_19_self_attn_q_proj.lokr_w2', 'lora_unet_blocks_19_self_attn_v_proj.alpha', 'lora_unet_blocks_19_self_attn_v_proj.lokr_w1', 'lora_unet_blocks_19_self_attn_v_proj.lokr_w2', 'lora_unet_blocks_1_cross_attn_k_proj.alpha', 'lora_unet_blocks_1_cross_attn_k_proj.lokr_w1', 'lora_unet_blocks_1_cross_attn_k_proj.lokr_w2', 'lora_unet_blocks_1_cross_attn_v_proj.alpha', 'lora_unet_blocks_1_cross_attn_v_proj.lokr_w1', 'lora_unet_blocks_1_cross_attn_v_proj.lokr_w2', 'lora_unet_blocks_1_self_attn_k_proj.alpha', 'lora_unet_blocks_1_self_attn_k_proj.lokr_w1', 'lora_unet_blocks_1_self_attn_k_proj.lokr_w2', 'lora_unet_blocks_1_self_attn_q_proj.alpha', 'lora_unet_blocks_1_self_attn_q_proj.lokr_w1', 'lora_unet_blocks_1_self_attn_q_proj.lokr_w2', 'lora_unet_blocks_1_self_attn_v_proj.alpha', 'lora_unet_blocks_1_self_attn_v_proj.lokr_w1', 'lora_unet_blocks_1_self_attn_v_proj.lokr_w2', 'lora_unet_blocks_20_cross_attn_k_proj.alpha', 'lora_unet_blocks_20_cross_attn_k_proj.lokr_w1', 'lora_unet_blocks_20_cross_attn_k_proj.lokr_w2', 'lora_unet_blocks_20_cross_attn_v_proj.alpha', 'lora_unet_blocks_20_cross_attn_v_proj.lokr_w1', 'lora_unet_blocks_20_cross_attn_v_proj.lokr_w2', 'lora_unet_blocks_20_self_attn_k_proj.alpha', 'lora_unet_blocks_20_self_attn_k_proj.lokr_w1', 'lora_unet_blocks_20_self_attn_k_proj.lokr_w2', 'lora_unet_blocks_20_self_attn_q_proj.alpha', 'lora_unet_blocks_20_self_attn_q_proj.lokr_w1', 'lora_unet_blocks_20_self_attn_q_proj.lokr_w2', 'lora_unet_blocks_20_self_attn_v_proj.alpha', 'lora_unet_blocks_20_self_attn_v_proj.lokr_w1', 'lora_unet_blocks_20_self_attn_v_proj.lokr_w2', 'lora_unet_blocks_21_cross_attn_k_proj.alpha', 'lora_unet_blocks_21_cross_attn_k_proj.lokr_w1', 'lora_unet_blocks_21_cross_attn_k_proj.lokr_w2', 'lora_unet_blocks_21_cross_attn_v_proj.alpha', 'lora_unet_blocks_21_cross_attn_v_proj.lokr_w1', 'lora_unet_blocks_21_cross_attn_v_proj.lokr_w2', 'lora_unet_blocks_21_self_attn_k_proj.alpha', 'lora_unet_blocks_21_self_attn_k_proj.lokr_w1', 'lora_unet_blocks_21_self_attn_k_proj.lokr_w2', 'lora_unet_blocks_21_self_attn_q_proj.alpha', 'lora_unet_blocks_21_self_attn_q_proj.lokr_w1', 'lora_unet_blocks_21_self_attn_q_proj.lokr_w2', 'lora_unet_blocks_21_self_attn_v_proj.alpha', 'lora_unet_blocks_21_self_attn_v_proj.lokr_w1', 'lora_unet_blocks_21_self_attn_v_proj.lokr_w2', 'lora_unet_blocks_22_cross_attn_k_proj.alpha', 'lora_unet_blocks_22_cross_attn_k_proj.lokr_w1', 'lora_unet_blocks_22_cross_attn_k_proj.lokr_w2', 'lora_unet_blocks_22_cross_attn_v_proj.alpha', 'lora_unet_blocks_22_cross_attn_v_proj.lokr_w1', 'lora_unet_blocks_22_cross_attn_v_proj.lokr_w2', 'lora_unet_blocks_22_self_attn_k_proj.alpha', 'lora_unet_blocks_22_self_attn_k_proj.lokr_w1', 'lora_unet_blocks_22_self_attn_k_proj.lokr_w2', 'lora_unet_blocks_22_self_attn_q_proj.alpha', 'lora_unet_blocks_22_self_attn_q_proj.lokr_w1', 'lora_unet_blocks_22_self_attn_q_proj.lokr_w2', 'lora_unet_blocks_22_self_attn_v_proj.alpha', 'lora_unet_blocks_22_self_attn_v_proj.lokr_w1', 'lora_unet_blocks_22_self_attn_v_proj.lokr_w2', 'lora_unet_blocks_23_cross_attn_k_proj.alpha', 'lora_unet_blocks_23_cross_attn_k_proj.lokr_w1', 'lora_unet_blocks_23_cross_attn_k_proj.lokr_w2', 'lora_unet_blocks_23_cross_attn_v_proj.alpha', 'lora_unet_blocks_23_cross_attn_v_proj.lokr_w1', 'lora_unet_blocks_23_cross_attn_v_proj.lokr_w2', 'lora_unet_blocks_23_self_attn_k_proj.alpha', 'lora_unet_blocks_23_self_attn_k_proj.lokr_w1', 'lora_unet_blocks_23_self_attn_k_proj.lokr_w2', 'lora_unet_blocks_23_self_attn_q_proj.alpha', 'lora_unet_blocks_23_self_attn_q_proj.lokr_w1', 'lora_unet_blocks_23_self_attn_q_proj.lokr_w2', 'lora_unet_blocks_23_self_attn_v_proj.alpha', 'lora_unet_blocks_23_self_attn_v_proj.lokr_w1', 'lora_unet_blocks_23_self_attn_v_proj.lokr_w2', 'lora_unet_blocks_24_cross_attn_k_proj.alpha', 'lora_unet_blocks_24_cross_attn_k_proj.lokr_w1', 'lora_unet_blocks_24_cross_attn_k_proj.lokr_w2', 'lora_unet_blocks_24_cross_attn_v_proj.alpha', 'lora_unet_blocks_24_cross_attn_v_proj.lokr_w1', 'lora_unet_blocks_24_cross_attn_v_proj.lokr_w2', 'lora_unet_blocks_24_self_attn_k_proj.alpha', 'lora_unet_blocks_24_self_attn_k_proj.lokr_w1', 'lora_unet_blocks_24_self_attn_k_proj.lokr_w2', 'lora_unet_blocks_24_self_attn_q_proj.alpha', 'lora_unet_blocks_24_self_attn_q_proj.lokr_w1', 'lora_unet_blocks_24_self_attn_q_proj.lokr_w2', 'lora_unet_blocks_24_self_attn_v_proj.alpha', 'lora_unet_blocks_24_self_attn_v_proj.lokr_w1', 'lora_unet_blocks_24_self_attn_v_proj.lokr_w2', 'lora_unet_blocks_25_cross_attn_k_proj.alpha', 'lora_unet_blocks_25_cross_attn_k_proj.lokr_w1', 'lora_unet_blocks_25_cross_attn_k_proj.lokr_w2', 'lora_unet_blocks_25_cross_attn_v_proj.alpha', 'lora_unet_blocks_25_cross_attn_v_proj.lokr_w1', 'lora_unet_blocks_25_cross_attn_v_proj.lokr_w2', 'lora_unet_blocks_25_self_attn_k_proj.alpha', 'lora_unet_blocks_25_self_attn_k_proj.lokr_w1', 'lora_unet_blocks_25_self_attn_k_proj.lokr_w2', 'lora_unet_blocks_25_self_attn_q_proj.alpha', 'lora_unet_blocks_25_self_attn_q_proj.lokr_w1', 'lora_unet_blocks_25_self_attn_q_proj.lokr_w2', 'lora_unet_blocks_25_self_attn_v_proj.alpha', 'lora_unet_blocks_25_self_attn_v_proj.lokr_w1', 'lora_unet_blocks_25_self_attn_v_proj.lokr_w2', 'lora_unet_blocks_26_cross_attn_k_proj.alpha', 'lora_unet_blocks_26_cross_attn_k_proj.lokr_w1', 'lora_unet_blocks_26_cross_attn_k_proj.lokr_w2', 'lora_unet_blocks_26_cross_attn_v_proj.alpha', 'lora_unet_blocks_26_cross_attn_v_proj.lokr_w1', 'lora_unet_blocks_26_cross_attn_v_proj.lokr_w2', 'lora_unet_blocks_26_self_attn_k_proj.alpha', 'lora_unet_blocks_26_self_attn_k_proj.lokr_w1', 'lora_unet_blocks_26_self_attn_k_proj.lokr_w2', 'lora_unet_blocks_26_self_attn_q_proj.alpha', 'lora_unet_blocks_26_self_attn_q_proj.lokr_w1', 'lora_unet_blocks_26_self_attn_q_proj.lokr_w2', 'lora_unet_blocks_26_self_attn_v_proj.alpha', 'lora_unet_blocks_26_self_attn_v_proj.lokr_w1', 'lora_unet_blocks_26_self_attn_v_proj.lokr_w2', 'lora_unet_blocks_27_cross_attn_k_proj.alpha', 'lora_unet_blocks_27_cross_attn_k_proj.lokr_w1', 'lora_unet_blocks_27_cross_attn_k_proj.lokr_w2', 'lora_unet_blocks_27_cross_attn_v_proj.alpha', 'lora_unet_blocks_27_cross_attn_v_proj.lokr_w1', 'lora_unet_blocks_27_cross_attn_v_proj.lokr_w2', 'lora_unet_blocks_27_self_attn_k_proj.alpha', 'lora_unet_blocks_27_self_attn_k_proj.lokr_w1', 'lora_unet_blocks_27_self_attn_k_proj.lokr_w2', 'lora_unet_blocks_27_self_attn_q_proj.alpha', 'lora_unet_blocks_27_self_attn_q_proj.lokr_w1', 'lora_unet_blocks_27_self_attn_q_proj.lokr_w2', 'lora_unet_blocks_27_self_attn_v_proj.alpha', 'lora_unet_blocks_27_self_attn_v_proj.lokr_w1', 'lora_unet_blocks_27_self_attn_v_proj.lokr_w2', 'lora_unet_blocks_2_cross_attn_k_proj.alpha', 'lora_unet_blocks_2_cross_attn_k_proj.lokr_w1', 'lora_unet_blocks_2_cross_attn_k_proj.lokr_w2', 'lora_unet_blocks_2_cross_attn_v_proj.alpha', 'lora_unet_blocks_2_cross_attn_v_proj.lokr_w1', 'lora_unet_blocks_2_cross_attn_v_proj.lokr_w2', 'lora_unet_blocks_2_self_attn_k_proj.alpha', 'lora_unet_blocks_2_self_attn_k_proj.lokr_w1', 'lora_unet_blocks_2_self_attn_k_proj.lokr_w2', 'lora_unet_blocks_2_self_attn_q_proj.alpha', 'lora_unet_blocks_2_self_attn_q_proj.lokr_w1', 'lora_unet_blocks_2_self_attn_q_proj.lokr_w2', 'lora_unet_blocks_2_self_attn_v_proj.alpha', 'lora_unet_blocks_2_self_attn_v_proj.lokr_w1', 'lora_unet_blocks_2_self_attn_v_proj.lokr_w2', 'lora_unet_blocks_3_cross_attn_k_proj.alpha', 'lora_unet_blocks_3_cross_attn_k_proj.lokr_w1', 'lora_unet_blocks_3_cross_attn_k_proj.lokr_w2', 'lora_unet_blocks_3_cross_attn_v_proj.alpha', 'lora_unet_blocks_3_cross_attn_v_proj.lokr_w1', 'lora_unet_blocks_3_cross_attn_v_proj.lokr_w2', 'lora_unet_blocks_3_self_attn_k_proj.alpha', 'lora_unet_blocks_3_self_attn_k_proj.lokr_w1', 'lora_unet_blocks_3_self_attn_k_proj.lokr_w2', 'lora_unet_blocks_3_self_attn_q_proj.alpha', 'lora_unet_blocks_3_self_attn_q_proj.lokr_w1', 'lora_unet_blocks_3_self_attn_q_proj.lokr_w2', 'lora_unet_blocks_3_self_attn_v_proj.alpha', 'lora_unet_blocks_3_self_attn_v_proj.lokr_w1', 'lora_unet_blocks_3_self_attn_v_proj.lokr_w2', 'lora_unet_blocks_4_cross_attn_k_proj.alpha', 'lora_unet_blocks_4_cross_attn_k_proj.lokr_w1', 'lora_unet_blocks_4_cross_attn_k_proj.lokr_w2', 'lora_unet_blocks_4_cross_attn_v_proj.alpha', 'lora_unet_blocks_4_cross_attn_v_proj.lokr_w1', 'lora_unet_blocks_4_cross_attn_v_proj.lokr_w2', 'lora_unet_blocks_4_self_attn_k_proj.alpha', 'lora_unet_blocks_4_self_attn_k_proj.lokr_w1', 'lora_unet_blocks_4_self_attn_k_proj.lokr_w2', 'lora_unet_blocks_4_self_attn_q_proj.alpha', 'lora_unet_blocks_4_self_attn_q_proj.lokr_w1', 'lora_unet_blocks_4_self_attn_q_proj.lokr_w2', 'lora_unet_blocks_4_self_attn_v_proj.alpha', 'lora_unet_blocks_4_self_attn_v_proj.lokr_w1', 'lora_unet_blocks_4_self_attn_v_proj.lokr_w2', 'lora_unet_blocks_5_cross_attn_k_proj.alpha', 'lora_unet_blocks_5_cross_attn_k_proj.lokr_w1', 'lora_unet_blocks_5_cross_attn_k_proj.lokr_w2', 'lora_unet_blocks_5_cross_attn_v_proj.alpha', 'lora_unet_blocks_5_cross_attn_v_proj.lokr_w1', 'lora_unet_blocks_5_cross_attn_v_proj.lokr_w2', 'lora_unet_blocks_5_self_attn_k_proj.alpha', 'lora_unet_blocks_5_self_attn_k_proj.lokr_w1', 'lora_unet_blocks_5_self_attn_k_proj.lokr_w2', 'lora_unet_blocks_5_self_attn_q_proj.alpha', 'lora_unet_blocks_5_self_attn_q_proj.lokr_w1', 'lora_unet_blocks_5_self_attn_q_proj.lokr_w2', 'lora_unet_blocks_5_self_attn_v_proj.alpha', 'lora_unet_blocks_5_self_attn_v_proj.lokr_w1', 'lora_unet_blocks_5_self_attn_v_proj.lokr_w2', 'lora_unet_blocks_6_cross_attn_k_proj.alpha', 'lora_unet_blocks_6_cross_attn_k_proj.lokr_w1', 'lora_unet_blocks_6_cross_attn_k_proj.lokr_w2', 'lora_unet_blocks_6_cross_attn_v_proj.alpha', 'lora_unet_blocks_6_cross_attn_v_proj.lokr_w1', 'lora_unet_blocks_6_cross_attn_v_proj.lokr_w2', 'lora_unet_blocks_6_self_attn_k_proj.alpha', 'lora_unet_blocks_6_self_attn_k_proj.lokr_w1', 'lora_unet_blocks_6_self_attn_k_proj.lokr_w2', 'lora_unet_blocks_6_self_attn_q_proj.alpha', 'lora_unet_blocks_6_self_attn_q_proj.lokr_w1', 'lora_unet_blocks_6_self_attn_q_proj.lokr_w2', 'lora_unet_blocks_6_self_attn_v_proj.alpha', 'lora_unet_blocks_6_self_attn_v_proj.lokr_w1', 'lora_unet_blocks_6_self_attn_v_proj.lokr_w2', 'lora_unet_blocks_7_cross_attn_k_proj.alpha', 'lora_unet_blocks_7_cross_attn_k_proj.lokr_w1', 'lora_unet_blocks_7_cross_attn_k_proj.lokr_w2', 'lora_unet_blocks_7_cross_attn_v_proj.alpha', 'lora_unet_blocks_7_cross_attn_v_proj.lokr_w1', 'lora_unet_blocks_7_cross_attn_v_proj.lokr_w2', 'lora_unet_blocks_7_self_attn_k_proj.alpha', 'lora_unet_blocks_7_self_attn_k_proj.lokr_w1', 'lora_unet_blocks_7_self_attn_k_proj.lokr_w2', 'lora_unet_blocks_7_self_attn_q_proj.alpha', 'lora_unet_blocks_7_self_attn_q_proj.lokr_w1', 'lora_unet_blocks_7_self_attn_q_proj.lokr_w2', 'lora_unet_blocks_7_self_attn_v_proj.alpha', 'lora_unet_blocks_7_self_attn_v_proj.lokr_w1', 'lora_unet_blocks_7_self_attn_v_proj.lokr_w2', 'lora_unet_blocks_8_cross_attn_k_proj.alpha', 'lora_unet_blocks_8_cross_attn_k_proj.lokr_w1', 'lora_unet_blocks_8_cross_attn_k_proj.lokr_w2', 'lora_unet_blocks_8_cross_attn_v_proj.alpha', 'lora_unet_blocks_8_cross_attn_v_proj.lokr_w1', 'lora_unet_blocks_8_cross_attn_v_proj.lokr_w2', 'lora_unet_blocks_8_self_attn_k_proj.alpha', 'lora_unet_blocks_8_self_attn_k_proj.lokr_w1', 'lora_unet_blocks_8_self_attn_k_proj.lokr_w2', 'lora_unet_blocks_8_self_attn_q_proj.alpha', 'lora_unet_blocks_8_self_attn_q_proj.lokr_w1', 'lora_unet_blocks_8_self_attn_q_proj.lokr_w2', 'lora_unet_blocks_8_self_attn_v_proj.alpha', 'lora_unet_blocks_8_self_attn_v_proj.lokr_w1', 'lora_unet_blocks_8_self_attn_v_proj.lokr_w2', 'lora_unet_blocks_9_cross_attn_k_proj.alpha', 'lora_unet_blocks_9_cross_attn_k_proj.lokr_w1', 'lora_unet_blocks_9_cross_attn_k_proj.lokr_w2', 'lora_unet_blocks_9_cross_attn_v_proj.alpha', 'lora_unet_blocks_9_cross_attn_v_proj.lokr_w1', 'lora_unet_blocks_9_cross_attn_v_proj.lokr_w2', 'lora_unet_blocks_9_self_attn_k_proj.alpha', 'lora_unet_blocks_9_self_attn_k_proj.lokr_w1', 'lora_unet_blocks_9_self_attn_k_proj.lokr_w2', 'lora_unet_blocks_9_self_attn_q_proj.alpha', 'lora_unet_blocks_9_self_attn_q_proj.lokr_w1', 'lora_unet_blocks_9_self_attn_q_proj.lokr_w2', 'lora_unet_blocks_9_self_attn_v_proj.alpha', 'lora_unet_blocks_9_self_attn_v_proj.lokr_w1', 'lora_unet_blocks_9_self_attn_v_proj.lokr_w2'])", "ts": 1779769378.5805168}
+{"id": 418, "kind": "log", "line": "prepare optimizer, data loader etc.", "ts": 1779769378.5931518}
+{"id": 419, "kind": "log", "line": "INFO     use AdamW optimizer | {'fused':   optimizers.py:274", "ts": 1779769378.593732}
+{"id": 420, "kind": "log", "line": "True}", "ts": 1779769378.5943644}
+{"id": 421, "kind": "log", "line": "override steps. steps for 4 epochs is", "ts": 1779769378.5949435}
+{"id": 422, "kind": "log", "line": "running training", "ts": 1779769378.6603837}
+{"id": 423, "kind": "log", "line": "num train images * repeats", "ts": 1779769378.661105}
+{"id": 424, "kind": "log", "line": "num validation images * repeats", "ts": 1779769378.6617136}
+{"id": 425, "kind": "log", "line": "num reg images", "ts": 1779769378.6623583}
+{"id": 426, "kind": "log", "line": "num batches per epoch", "ts": 1779769378.663007}
+{"id": 427, "kind": "log", "line": "num epochs", "ts": 1779769378.6634164}
+{"id": 428, "kind": "log", "line": "batch size per device", "ts": 1779769378.6638515}
+{"id": 429, "kind": "log", "line": "gradient accumulation steps", "ts": 1779769378.6644158}
+{"id": 430, "kind": "log", "line": "total optimization steps", "ts": 1779769378.6649313}
+{"id": 431, "kind": "status", "line": "结构化训练进度已开始", "ts": 1779769370.125467}
+{"id": 432, "kind": "log", "line": "2026-05-26 12:23:10 INFO     text_encoder is not needed for          loop.py:153", "ts": 1779769390.3920646}
+{"id": 433, "kind": "log", "line": "training. deleting to save memory.", "ts": 1779769390.3927314}
+{"id": 434, "kind": "log", "line": "INFO     Generating sample images at step 0  training.py:845", "ts": 1779769390.8339305}
+{"id": 435, "kind": "log", "line": "INFO       prompt: {@Ethel Vorgath, fantasy  training.py:938", "ts": 1779769390.839357}
+{"id": 436, "kind": "log", "line": "art, digital painting, painterly,", "ts": 1779769390.8399436}
+{"id": 437, "kind": "log", "line": "painterly shading, textured", "ts": 1779769390.8404434}
+{"id": 438, "kind": "log", "line": "brushwork, atmospheric lighting,", "ts": 1779769390.8409488}
+{"id": 439, "kind": "log", "line": "cinematic lighting, dramatic", "ts": 1779769390.8413792}
+{"id": 440, "kind": "log", "line": "lighting, volumetric lighting,", "ts": 1779769390.8418832}
+{"id": 441, "kind": "log", "line": "ambient light, rim light, ethereal", "ts": 1779769390.842303}
+{"id": 442, "kind": "log", "line": "glow, glowing effects, luminous", "ts": 1779769390.8426998}
+{"id": 443, "kind": "log", "line": "colors, vibrant colors, rich color", "ts": 1779769390.8431053}
+{"id": 444, "kind": "log", "line": "palette, high contrast, cool", "ts": 1779769390.843484}
+{"id": 445, "kind": "log", "line": "colors, jewel tones, iridescent", "ts": 1779769390.8438876}
+{"id": 446, "kind": "log", "line": "colors, soft gradients, moody", "ts": 1779769390.8443217}
+{"id": 447, "kind": "log", "line": "lighting, dreamy atmosphere,", "ts": 1779769390.844703}
+{"id": 448, "kind": "log", "line": "mystical atmosphere, ethereal", "ts": 1779769390.8451636}
+{"id": 449, "kind": "log", "line": "aesthetic, stylized rendering, semi", "ts": 1779769390.8457115}
+{"id": 450, "kind": "log", "line": "realistic shading, polished", "ts": 1779769390.8461578}
+{"id": 451, "kind": "log", "line": "rendering, smooth texture, concept", "ts": 1779769390.8465607}
+{"id": 452, "kind": "log", "line": "art style}, no humans, landscape,", "ts": 1779769390.8469677}
+{"id": 453, "kind": "log", "line": "scenery, fantasy, night, starry", "ts": 1779769390.847327}
+{"id": 454, "kind": "log", "line": "sky, aurora, mountains, snow capped", "ts": 1779769390.8476844}
+{"id": 455, "kind": "log", "line": "mountains, forest, pine trees, bare", "ts": 1779769390.8480716}
+{"id": 456, "kind": "log", "line": "tree, train, locomotive, railroad", "ts": 1779769390.8484743}
+{"id": 457, "kind": "log", "line": "tracks, headlight, glowing trail,", "ts": 1779769390.848873}
+{"id": 458, "kind": "log", "line": "light trail, mist, fog, clouds,", "ts": 1779769390.849251}
+{"id": 459, "kind": "log", "line": "moon, distant mountains,", "ts": 1779769390.8496985}
+{"id": 460, "kind": "log", "line": "wilderness, flowers, glowing", "ts": 1779769390.850131}
+{"id": 461, "kind": "log", "line": "plants, bioluminescence, wide shot,", "ts": 1779769390.8504899}
+{"id": 462, "kind": "log", "line": "panoramic view, depth of field,", "ts": 1779769390.8508654}
+{"id": 463, "kind": "log", "line": "outdoors, nature, valley, cold", "ts": 1779769390.851223}
+{"id": 464, "kind": "log", "line": "environment, magical forest, size:", "ts": 1779769390.8515675}
+{"id": 465, "kind": "log", "line": "1024x1024, steps: 28, scale: 7.5,", "ts": 1779769390.851943}
+{"id": 466, "kind": "log", "line": "flow_shift: 3.0, seed: 114", "ts": 1779769390.8523347}
+{"id": 467, "kind": "progress", "line": "Sampling:   0%|          | 0/28 [00:00<?, ?it/s]W0526 12:23:13.409000 27171 .venv/lib/python3.13/site-packages/torch/_inductor/utils.py:1709] [0/0] Not enough SMs to use max_autotune_gemm mode", "ts": 1779769393.4102023}
+{"id": 468, "kind": "progress", "line": "Sampling:   4%|▎         | 1/28 [00:09<04:29,  9.97s/it]", "ts": 1779769402.556996}
+{"id": 469, "kind": "progress", "line": "Sampling:   7%|▋         | 2/28 [00:11<02:08,  4.94s/it]", "ts": 1779769404.0365112}
+{"id": 470, "kind": "progress", "line": "Sampling:  11%|█         | 3/28 [00:12<01:24,  3.36s/it]", "ts": 1779769405.5156527}
+{"id": 471, "kind": "progress", "line": "Sampling:  14%|█▍        | 4/28 [00:14<01:02,  2.62s/it]", "ts": 1779769406.9953375}
+{"id": 472, "kind": "progress", "line": "Sampling:  18%|█▊        | 5/28 [00:15<00:50,  2.21s/it]", "ts": 1779769408.477579}
+{"id": 473, "kind": "progress", "line": "Sampling:  21%|██▏       | 6/28 [00:17<00:43,  1.96s/it]", "ts": 1779769409.957059}
+{"id": 474, "kind": "progress", "line": "Sampling:  25%|██▌       | 7/28 [00:18<00:37,  1.80s/it]", "ts": 1779769411.4373457}
+{"id": 475, "kind": "progress", "line": "Sampling:  29%|██▊       | 8/28 [00:20<00:34,  1.70s/it]", "ts": 1779769412.9204187}
+{"id": 476, "kind": "progress", "line": "Sampling:  32%|███▏      | 9/28 [00:21<00:31,  1.63s/it]", "ts": 1779769414.401059}
+{"id": 477, "kind": "progress", "line": "Sampling:  36%|███▌      | 10/28 [00:23<00:28,  1.59s/it]", "ts": 1779769415.883089}
+{"id": 478, "kind": "progress", "line": "Sampling:  39%|███▉      | 11/28 [00:24<00:26,  1.55s/it]", "ts": 1779769417.361201}
+{"id": 479, "kind": "progress", "line": "Sampling:  43%|████▎     | 12/28 [00:26<00:24,  1.53s/it]", "ts": 1779769418.8394463}
+{"id": 480, "kind": "progress", "line": "Sampling:  46%|████▋     | 13/28 [00:27<00:22,  1.51s/it]", "ts": 1779769420.3179474}
+{"id": 481, "kind": "progress", "line": "Sampling:  50%|█████     | 14/28 [00:29<00:21,  1.50s/it]", "ts": 1779769421.7986343}
+{"id": 482, "kind": "progress", "line": "Sampling:  54%|█████▎    | 15/28 [00:30<00:19,  1.50s/it]", "ts": 1779769423.2789843}
+{"id": 483, "kind": "progress", "line": "Sampling:  57%|█████▋    | 16/28 [00:32<00:17,  1.49s/it]", "ts": 1779769424.7609086}
+{"id": 484, "kind": "progress", "line": "Sampling:  61%|██████    | 17/28 [00:33<00:16,  1.49s/it]", "ts": 1779769426.2416818}
+{"id": 485, "kind": "progress", "line": "Sampling:  64%|██████▍   | 18/28 [00:35<00:14,  1.49s/it]", "ts": 1779769427.7239985}
+{"id": 486, "kind": "progress", "line": "Sampling:  68%|██████▊   | 19/28 [00:36<00:13,  1.49s/it]", "ts": 1779769429.2055738}
+{"id": 487, "kind": "progress", "line": "Sampling:  71%|███████▏  | 20/28 [00:38<00:11,  1.48s/it]", "ts": 1779769430.6866515}
+{"id": 488, "kind": "progress", "line": "Sampling:  75%|███████▌  | 21/28 [00:39<00:10,  1.48s/it]", "ts": 1779769432.1693337}
+{"id": 489, "kind": "progress", "line": "Sampling:  79%|███████▊  | 22/28 [00:41<00:08,  1.48s/it]", "ts": 1779769433.6509125}
+{"id": 490, "kind": "progress", "line": "Sampling:  82%|████████▏ | 23/28 [00:42<00:07,  1.48s/it]", "ts": 1779769435.1312144}
+{"id": 491, "kind": "progress", "line": "Sampling:  86%|████████▌ | 24/28 [00:43<00:05,  1.48s/it]", "ts": 1779769436.6134818}
+{"id": 492, "kind": "progress", "line": "Sampling:  89%|████████▉ | 25/28 [00:45<00:04,  1.48s/it]", "ts": 1779769438.095958}
+{"id": 493, "kind": "progress", "line": "Sampling:  93%|█████████▎| 26/28 [00:46<00:02,  1.48s/it]", "ts": 1779769439.5790849}
+{"id": 494, "kind": "progress", "line": "Sampling:  96%|█████████▋| 27/28 [00:48<00:01,  1.48s/it]", "ts": 1779769441.0592778}
+{"id": 495, "kind": "progress", "line": "Sampling: 100%|██████████| 28/28 [00:49<00:00,  1.48s/it]", "ts": 1779769441.0601602}
+{"id": 496, "kind": "progress", "line": "Sampling: 100%|██████████| 28/28 [00:49<00:00,  1.78s/it]", "ts": 1779769441.060655}
+{"id": 497, "kind": "log", "line": "2026-05-26 12:24:03 INFO       prompt: {@Ethel Vorgath, fantasy  training.py:938", "ts": 1779769443.7741094}
+{"id": 498, "kind": "log", "line": "art, digital painting, painterly,", "ts": 1779769443.7744956}
+{"id": 499, "kind": "log", "line": "painterly shading, textured", "ts": 1779769443.7747514}
+{"id": 500, "kind": "log", "line": "brushwork, atmospheric lighting,", "ts": 1779769443.775006}
+{"id": 501, "kind": "log", "line": "cinematic lighting, dramatic", "ts": 1779769443.7753415}
+{"id": 502, "kind": "log", "line": "lighting, volumetric lighting,", "ts": 1779769443.775598}
+{"id": 503, "kind": "log", "line": "ambient light, rim light, ethereal", "ts": 1779769443.7758439}
+{"id": 504, "kind": "log", "line": "glow, glowing effects, luminous", "ts": 1779769443.7760699}
+{"id": 505, "kind": "log", "line": "colors, vibrant colors, rich color", "ts": 1779769443.7762954}
+{"id": 506, "kind": "log", "line": "palette, high contrast, cool", "ts": 1779769443.776551}
+{"id": 507, "kind": "log", "line": "colors, jewel tones, iridescent", "ts": 1779769443.777003}
+{"id": 508, "kind": "log", "line": "colors, soft gradients, moody", "ts": 1779769443.7774222}
+{"id": 509, "kind": "log", "line": "lighting, dreamy atmosphere,", "ts": 1779769443.7778568}
+{"id": 510, "kind": "log", "line": "mystical atmosphere, ethereal", "ts": 1779769443.7782745}
+{"id": 511, "kind": "log", "line": "aesthetic, stylized rendering, semi", "ts": 1779769443.7789032}
+{"id": 512, "kind": "log", "line": "realistic shading, polished", "ts": 1779769443.7794864}
+{"id": 513, "kind": "log", "line": "rendering, smooth texture, concept", "ts": 1779769443.7799275}
+{"id": 514, "kind": "log", "line": "art style}, no humans, scenery,", "ts": 1779769443.7802887}
+{"id": 515, "kind": "log", "line": "cave, cavern, underground, rock", "ts": 1779769443.7806904}
+{"id": 516, "kind": "log", "line": "formation, natural arch, ruins,", "ts": 1779769443.78109}
+{"id": 517, "kind": "log", "line": "bone, skull, skeleton, rib bones,", "ts": 1779769443.781448}
+{"id": 518, "kind": "log", "line": "red crystals, water, pond, stone", "ts": 1779769443.7818222}
+{"id": 519, "kind": "log", "line": "path, small house, shack, doorway,", "ts": 1779769443.7821822}
+{"id": 520, "kind": "log", "line": "glowing portal, yellow light,", "ts": 1779769443.78261}
+{"id": 521, "kind": "log", "line": "stalactites, surreal, wide shot,", "ts": 1779769443.7830045}
+{"id": 522, "kind": "log", "line": "size: 1024x1024, steps: 28, scale:", "ts": 1779769443.7833564}
+{"id": 523, "kind": "log", "line": "7.5, flow_shift: 3.0, seed: 114", "ts": 1779769443.7837276}
+{"id": 524, "kind": "progress", "line": "Sampling:   0%|          | 0/28 [00:00<?, ?it/s]", "ts": 1779769444.8956559}
+{"id": 525, "kind": "progress", "line": "Sampling:   4%|▎         | 1/28 [00:00<00:20,  1.34it/s]", "ts": 1779769446.3729856}
+{"id": 526, "kind": "progress", "line": "Sampling:   7%|▋         | 2/28 [00:02<00:30,  1.18s/it]", "ts": 1779769447.8539886}
+{"id": 527, "kind": "progress", "line": "Sampling:  11%|█         | 3/28 [00:03<00:32,  1.32s/it]", "ts": 1779769449.3347316}
+{"id": 528, "kind": "progress", "line": "Sampling:  14%|█▍        | 4/28 [00:05<00:33,  1.38s/it]", "ts": 1779769450.8144877}
+{"id": 529, "kind": "progress", "line": "Sampling:  18%|█▊        | 5/28 [00:06<00:32,  1.42s/it]", "ts": 1779769452.2971237}
+{"id": 530, "kind": "progress", "line": "Sampling:  21%|██▏       | 6/28 [00:08<00:31,  1.44s/it]", "ts": 1779769453.7788708}
+{"id": 531, "kind": "progress", "line": "Sampling:  25%|██▌       | 7/28 [00:09<00:30,  1.45s/it]", "ts": 1779769455.2613108}
+{"id": 532, "kind": "progress", "line": "Sampling:  29%|██▊       | 8/28 [00:11<00:29,  1.46s/it]", "ts": 1779769456.7418067}
+{"id": 533, "kind": "progress", "line": "Sampling:  32%|███▏      | 9/28 [00:12<00:27,  1.47s/it]", "ts": 1779769458.223338}
+{"id": 534, "kind": "progress", "line": "Sampling:  36%|███▌      | 10/28 [00:14<00:26,  1.47s/it]", "ts": 1779769459.702637}
+{"id": 535, "kind": "progress", "line": "Sampling:  39%|███▉      | 11/28 [00:15<00:25,  1.47s/it]", "ts": 1779769461.175774}
+{"id": 536, "kind": "progress", "line": "Sampling:  43%|████▎     | 12/28 [00:17<00:23,  1.47s/it]", "ts": 1779769462.647369}
+{"id": 537, "kind": "progress", "line": "Sampling:  46%|████▋     | 13/28 [00:18<00:22,  1.47s/it]", "ts": 1779769464.1223292}
+{"id": 538, "kind": "progress", "line": "Sampling:  50%|█████     | 14/28 [00:19<00:20,  1.47s/it]", "ts": 1779769465.5970707}
+{"id": 539, "kind": "progress", "line": "Sampling:  54%|█████▎    | 15/28 [00:21<00:19,  1.47s/it]", "ts": 1779769467.0724695}
+{"id": 540, "kind": "progress", "line": "Sampling:  57%|█████▋    | 16/28 [00:22<00:17,  1.47s/it]", "ts": 1779769468.5431561}
+{"id": 541, "kind": "progress", "line": "Sampling:  61%|██████    | 17/28 [00:24<00:16,  1.47s/it]", "ts": 1779769470.0163476}
+{"id": 542, "kind": "progress", "line": "Sampling:  64%|██████▍   | 18/28 [00:25<00:14,  1.47s/it]", "ts": 1779769471.492693}
+{"id": 543, "kind": "progress", "line": "Sampling:  68%|██████▊   | 19/28 [00:27<00:13,  1.47s/it]", "ts": 1779769472.9638693}
+{"id": 544, "kind": "progress", "line": "Sampling:  71%|███████▏  | 20/28 [00:28<00:11,  1.47s/it]", "ts": 1779769474.4360871}
+{"id": 545, "kind": "progress", "line": "Sampling:  75%|███████▌  | 21/28 [00:30<00:10,  1.47s/it]", "ts": 1779769475.9065619}
+{"id": 546, "kind": "progress", "line": "Sampling:  79%|███████▊  | 22/28 [00:31<00:08,  1.47s/it]", "ts": 1779769477.377268}
+{"id": 547, "kind": "progress", "line": "Sampling:  82%|████████▏ | 23/28 [00:33<00:07,  1.47s/it]", "ts": 1779769478.8473008}
+{"id": 548, "kind": "progress", "line": "Sampling:  86%|████████▌ | 24/28 [00:34<00:05,  1.47s/it]", "ts": 1779769480.3172917}
+{"id": 549, "kind": "progress", "line": "Sampling:  89%|████████▉ | 25/28 [00:36<00:04,  1.47s/it]", "ts": 1779769481.7886062}
+{"id": 550, "kind": "progress", "line": "Sampling:  93%|█████████▎| 26/28 [00:37<00:02,  1.47s/it]", "ts": 1779769483.2624311}
+{"id": 551, "kind": "progress", "line": "Sampling:  96%|█████████▋| 27/28 [00:39<00:01,  1.47s/it]", "ts": 1779769484.7342126}
+{"id": 552, "kind": "progress", "line": "Sampling: 100%|██████████| 28/28 [00:40<00:00,  1.47s/it]", "ts": 1779769484.735074}
+{"id": 553, "kind": "progress", "line": "Sampling: 100%|██████████| 28/28 [00:40<00:00,  1.45s/it]", "ts": 1779769484.7358491}
+{"id": 554, "kind": "log", "line": "2026-05-26 12:24:47 INFO     unet dtype: torch.bfloat16, device:     loop.py:213", "ts": 1779769487.4210293}
+{"id": 555, "kind": "log", "line": "cuda:0", "ts": 1779769487.4216871}
+{"id": 556, "kind": "progress", "line": "steps:   0%|          | 0/780 [00:00<?, ?it/s]", "ts": 1779769487.6968827}
+{"id": 557, "kind": "log", "line": "epoch 1/4", "ts": 1779769487.6975253}
+{"id": 558, "kind": "log", "line": "INFO     epoch is incremented. current_epoch: 0, base.py:229", "ts": 1779769487.7029936}
+{"id": 559, "kind": "log", "line": "epoch: 1", "ts": 1779769487.7035232}
+{"id": 560, "kind": "log", "line": "Traceback (most recent call last):", "ts": 1779769493.957604}
+{"id": 561, "kind": "log", "line": "File \"/home/scv/nvme0n1p1/训练器相关/anima_lora/train.py\", line 2697, in <module>", "ts": 1779769493.9610097}
+{"id": 562, "kind": "log", "line": "trainer.train(args)", "ts": 1779769493.9616034}
+{"id": 563, "kind": "log", "line": "~~~~~~~~~~~~~^^^^^^", "ts": 1779769493.962057}
+{"id": 564, "kind": "log", "line": "File \"/home/scv/nvme0n1p1/训练器相关/anima_lora/train.py\", line 2377, in train", "ts": 1779769493.9624553}
+{"id": 565, "kind": "log", "line": "run_training_loop(self, loop_state)", "ts": 1779769493.9629152}
+{"id": 566, "kind": "log", "line": "~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^", "ts": 1779769493.9633412}
+{"id": 567, "kind": "log", "line": "File \"/home/scv/nvme0n1p1/训练器相关/anima_lora/library/training/loop.py\", line 319, in run_training_loop", "ts": 1779769493.9637785}
+{"id": 568, "kind": "log", "line": "_run_epoch_steps(trainer, state, epoch)", "ts": 1779769493.9643128}
+{"id": 569, "kind": "log", "line": "~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^", "ts": 1779769493.9647205}
+{"id": 570, "kind": "log", "line": "File \"/home/scv/nvme0n1p1/训练器相关/anima_lora/library/training/loop.py\", line 371, in _run_epoch_steps", "ts": 1779769493.9650643}
+{"id": 571, "kind": "log", "line": "loss = _run_step(trainer, state, batch)", "ts": 1779769493.9654334}
+{"id": 572, "kind": "log", "line": "File \"/home/scv/nvme0n1p1/训练器相关/anima_lora/library/training/loop.py\", line 439, in _run_step", "ts": 1779769493.9659388}
+{"id": 573, "kind": "log", "line": "loss = trainer.process_batch(state.train_ctx, batch, is_train=True)", "ts": 1779769493.966236}
+{"id": 574, "kind": "log", "line": "File \"/home/scv/nvme0n1p1/训练器相关/anima_lora/train.py\", line 1032, in process_batch", "ts": 1779769493.9665227}
+{"id": 575, "kind": "log", "line": "return self._process_batch_inner(ctx, batch, is_train=is_train)", "ts": 1779769493.9667704}
+{"id": 576, "kind": "log", "line": "~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^", "ts": 1779769493.9670146}
+{"id": 577, "kind": "log", "line": "File \"/home/scv/nvme0n1p1/训练器相关/anima_lora/train.py\", line 1146, in _process_batch_inner", "ts": 1779769493.9673073}
+{"id": 578, "kind": "log", "line": "noise_pred, target, timesteps, weighting = self.get_noise_pred_and_target(", "ts": 1779769493.9682589}
+{"id": 579, "kind": "log", "line": "~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^", "ts": 1779769493.9689271}
+{"id": 580, "kind": "log", "line": "ctx,", "ts": 1779769493.9694595}
+{"id": 581, "kind": "log", "line": "^^^^", "ts": 1779769493.9699743}
+{"id": 582, "kind": "log", "line": "...<3 lines>...", "ts": 1779769493.9704206}
+{"id": 583, "kind": "log", "line": "is_train=is_train,", "ts": 1779769493.9708357}
+{"id": 584, "kind": "log", "line": "^^^^^^^^^^^^^^^^^^", "ts": 1779769493.9712427}
+{"id": 585, "kind": "log", "line": ")", "ts": 1779769493.971608}
+{"id": 586, "kind": "log", "line": "^", "ts": 1779769493.97197}
+{"id": 587, "kind": "log", "line": "File \"/home/scv/nvme0n1p1/训练器相关/anima_lora/train.py\", line 850, in get_noise_pred_and_target", "ts": 1779769493.9723186}
+{"id": 588, "kind": "log", "line": "model_pred = anima(", "ts": 1779769493.9727507}
+{"id": 589, "kind": "log", "line": "noisy_model_input,", "ts": 1779769493.973168}
+{"id": 590, "kind": "log", "line": "...<3 lines>...", "ts": 1779769493.973529}
+{"id": 591, "kind": "log", "line": "**kw,", "ts": 1779769493.9741676}
+{"id": 592, "kind": "log", "line": ")", "ts": 1779769493.9745445}
+{"id": 593, "kind": "log", "line": "File \"/home/scv/nvme0n1p1/训练器相关/anima_lora/.venv/lib/python3.13/site-packages/torch/nn/modules/module.py\", line 1778, in _wrapped_call_impl", "ts": 1779769493.9749286}
+{"id": 594, "kind": "log", "line": "return self._call_impl(*args, **kwargs)", "ts": 1779769493.9754186}
+{"id": 595, "kind": "log", "line": "~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^", "ts": 1779769493.9758687}
+{"id": 596, "kind": "log", "line": "File \"/home/scv/nvme0n1p1/训练器相关/anima_lora/.venv/lib/python3.13/site-packages/torch/nn/modules/module.py\", line 1789, in _call_impl", "ts": 1779769493.9763076}
+{"id": 597, "kind": "log", "line": "return forward_call(*args, **kwargs)", "ts": 1779769493.976869}
+{"id": 598, "kind": "log", "line": "File \"/home/scv/nvme0n1p1/训练器相关/anima_lora/.venv/lib/python3.13/site-packages/accelerate/utils/operations.py\", line 823, in forward", "ts": 1779769493.9773207}
+{"id": 599, "kind": "log", "line": "return model_forward(*args, **kwargs)", "ts": 1779769493.9778981}
+{"id": 600, "kind": "log", "line": "File \"/home/scv/nvme0n1p1/训练器相关/anima_lora/.venv/lib/python3.13/site-packages/accelerate/utils/operations.py\", line 811, in __call__", "ts": 1779769493.9783568}
+{"id": 601, "kind": "log", "line": "return convert_to_fp32(self.model_forward(*args, **kwargs))", "ts": 1779769493.9788926}
+{"id": 602, "kind": "log", "line": "~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^", "ts": 1779769493.9793327}
+{"id": 603, "kind": "log", "line": "File \"/home/scv/nvme0n1p1/训练器相关/anima_lora/.venv/lib/python3.13/site-packages/torch/amp/autocast_mode.py\", line 44, in decorate_autocast", "ts": 1779769493.9797258}
+{"id": 604, "kind": "log", "line": "return func(*args, **kwargs)", "ts": 1779769493.9802377}
+{"id": 605, "kind": "log", "line": "File \"/home/scv/nvme0n1p1/训练器相关/anima_lora/library/anima/models.py\", line 1829, in forward", "ts": 1779769493.9806435}
+{"id": 606, "kind": "log", "line": "return self.forward_mini_train_dit(", "ts": 1779769493.9811168}
+{"id": 607, "kind": "log", "line": "~~~~~~~~~~~~~~~~~~~~~~~~~~~^", "ts": 1779769493.9814608}
+{"id": 608, "kind": "log", "line": "x,", "ts": 1779769493.9817348}
+{"id": 609, "kind": "log", "line": "^^", "ts": 1779769493.9820082}
+{"id": 610, "kind": "log", "line": "...<7 lines>...", "ts": 1779769493.982247}
+{"id": 611, "kind": "log", "line": "**kwargs,", "ts": 1779769493.9824867}
+{"id": 612, "kind": "log", "line": "^^^^^^^^^", "ts": 1779769493.9827192}
+{"id": 613, "kind": "log", "line": ")", "ts": 1779769493.9829688}
+{"id": 614, "kind": "log", "line": "^", "ts": 1779769493.9831934}
+{"id": 615, "kind": "log", "line": "File \"/home/scv/nvme0n1p1/训练器相关/anima_lora/library/anima/models.py\", line 1784, in forward_mini_train_dit", "ts": 1779769493.9834168}
+{"id": 616, "kind": "log", "line": "x_B_T_H_W_D = self._run_blocks(", "ts": 1779769493.9838064}
+{"id": 617, "kind": "log", "line": "x_B_T_H_W_D,", "ts": 1779769493.9841564}
+{"id": 618, "kind": "log", "line": "...<3 lines>...", "ts": 1779769493.9843998}
+{"id": 619, "kind": "log", "line": "**block_kwargs,", "ts": 1779769493.984653}
+{"id": 620, "kind": "log", "line": ")", "ts": 1779769493.9849303}
+{"id": 621, "kind": "log", "line": "File \"/home/scv/nvme0n1p1/训练器相关/anima_lora/library/anima/models.py\", line 1618, in _run_blocks", "ts": 1779769493.9851928}
+{"id": 622, "kind": "log", "line": "x = block(", "ts": 1779769493.985472}
+{"id": 623, "kind": "log", "line": "x,", "ts": 1779769493.9857073}
+{"id": 624, "kind": "log", "line": "...<3 lines>...", "ts": 1779769493.9859579}
+{"id": 625, "kind": "log", "line": "**block_kwargs,", "ts": 1779769493.9862163}
+{"id": 626, "kind": "log", "line": ")", "ts": 1779769493.9864442}
+{"id": 627, "kind": "log", "line": "File \"/home/scv/nvme0n1p1/训练器相关/anima_lora/.venv/lib/python3.13/site-packages/torch/nn/modules/module.py\", line 1778, in _wrapped_call_impl", "ts": 1779769493.9866645}
+{"id": 628, "kind": "log", "line": "return self._call_impl(*args, **kwargs)", "ts": 1779769493.9869828}
+{"id": 629, "kind": "log", "line": "~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^", "ts": 1779769493.987225}
+{"id": 630, "kind": "log", "line": "File \"/home/scv/nvme0n1p1/训练器相关/anima_lora/.venv/lib/python3.13/site-packages/torch/nn/modules/module.py\", line 1789, in _call_impl", "ts": 1779769493.987463}
+{"id": 631, "kind": "log", "line": "return forward_call(*args, **kwargs)", "ts": 1779769493.987742}
+{"id": 632, "kind": "log", "line": "File \"/home/scv/nvme0n1p1/训练器相关/anima_lora/library/anima/models.py\", line 1152, in forward", "ts": 1779769493.988187}
+{"id": 633, "kind": "log", "line": "return self._forward(", "ts": 1779769493.9885035}
+{"id": 634, "kind": "log", "line": "~~~~~~~~~~~~~^", "ts": 1779769493.9887848}
+{"id": 635, "kind": "log", "line": "x_B_T_H_W_D,", "ts": 1779769493.9890983}
+{"id": 636, "kind": "log", "line": "^^^^^^^^^^^^", "ts": 1779769493.9893422}
+{"id": 637, "kind": "log", "line": "...<4 lines>...", "ts": 1779769493.9896064}
+{"id": 638, "kind": "log", "line": "adaln_lora_B_T_3D,", "ts": 1779769493.9899094}
+{"id": 639, "kind": "log", "line": "^^^^^^^^^^^^^^^^^^", "ts": 1779769493.990159}
+{"id": 640, "kind": "log", "line": ")", "ts": 1779769493.9903948}
+{"id": 641, "kind": "log", "line": "^", "ts": 1779769493.990714}
+{"id": 642, "kind": "log", "line": "File \"/home/scv/nvme0n1p1/训练器相关/anima_lora/.venv/lib/python3.13/site-packages/torch/_dynamo/eval_frame.py\", line 1041, in compile_wrapper", "ts": 1779769493.9910686}
+{"id": 643, "kind": "log", "line": "return fn(*args, **kwargs)", "ts": 1779769493.9919047}
+{"id": 644, "kind": "log", "line": "File \"/home/scv/nvme0n1p1/训练器相关/anima_lora/library/anima/models.py\", line 1003, in _forward", "ts": 1779769493.9922109}
+{"id": 645, "kind": "log", "line": "def _forward(", "ts": 1779769493.9926066}
+{"id": 646, "kind": "log", "line": "File \"/home/scv/nvme0n1p1/训练器相关/anima_lora/.venv/lib/python3.13/site-packages/torch/_dynamo/eval_frame.py\", line 1281, in _fn", "ts": 1779769493.9929376}
+{"id": 647, "kind": "log", "line": "return fn(*args, **kwargs)", "ts": 1779769493.9932656}
+{"id": 648, "kind": "log", "line": "File \"/home/scv/nvme0n1p1/训练器相关/anima_lora/.venv/lib/python3.13/site-packages/torch/_functorch/aot_autograd.py\", line 1273, in forward", "ts": 1779769493.9935288}
+{"id": 649, "kind": "log", "line": "return compiled_fn(full_args)", "ts": 1779769493.9938557}
+{"id": 650, "kind": "log", "line": "File \"/home/scv/nvme0n1p1/训练器相关/anima_lora/.venv/lib/python3.13/site-packages/torch/_functorch/_aot_autograd/runtime_wrappers.py\", line 777, in runtime_wrapper", "ts": 1779769493.9941168}
+{"id": 651, "kind": "log", "line": "all_outs = compiled_invoker.run(args, on_before_call=exit_prologue)", "ts": 1779769493.9944246}
+{"id": 652, "kind": "log", "line": "File \"/home/scv/nvme0n1p1/训练器相关/anima_lora/.venv/lib/python3.13/site-packages/torch/_functorch/_aot_autograd/runtime_wrappers.py\", line 506, in run", "ts": 1779769493.9947057}
+{"id": 653, "kind": "log", "line": "return call_func_at_runtime_with_args(", "ts": 1779769493.9950273}
+{"id": 654, "kind": "log", "line": "self.compiled_fn,", "ts": 1779769493.9952855}
+{"id": 655, "kind": "log", "line": "...<2 lines>...", "ts": 1779769493.9955256}
+{"id": 656, "kind": "log", "line": "steal_args=True,", "ts": 1779769493.995771}
+{"id": 657, "kind": "log", "line": ")", "ts": 1779769493.9960096}
+{"id": 658, "kind": "log", "line": "File \"/home/scv/nvme0n1p1/训练器相关/anima_lora/.venv/lib/python3.13/site-packages/torch/_functorch/_aot_autograd/utils.py\", line 126, in call_func_at_runtime_with_args", "ts": 1779769493.9962456}
+{"id": 659, "kind": "log", "line": "out = normalize_as_list(f(args))", "ts": 1779769493.9965453}
+{"id": 660, "kind": "log", "line": "~^^^^^^", "ts": 1779769493.9968295}
+{"id": 661, "kind": "log", "line": "File \"/home/scv/nvme0n1p1/训练器相关/anima_lora/.venv/lib/python3.13/site-packages/torch/_functorch/_aot_autograd/utils.py\", line 93, in g", "ts": 1779769493.997177}
+{"id": 662, "kind": "log", "line": "return f(*args)", "ts": 1779769493.997513}
+{"id": 663, "kind": "log", "line": "File \"/home/scv/nvme0n1p1/训练器相关/anima_lora/.venv/lib/python3.13/site-packages/torch/autograd/function.py\", line 596, in apply", "ts": 1779769493.997789}
+{"id": 664, "kind": "log", "line": "return super().apply(*args, **kwargs)  # type: ignore[misc]", "ts": 1779769493.9981463}
+{"id": 665, "kind": "log", "line": "~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^", "ts": 1779769493.9984193}
+{"id": 666, "kind": "log", "line": "File \"/home/scv/nvme0n1p1/训练器相关/anima_lora/.venv/lib/python3.13/site-packages/torch/_functorch/_aot_autograd/runtime_wrappers.py\", line 2844, in forward", "ts": 1779769493.998676}
+{"id": 667, "kind": "log", "line": "fw_outs = call_func_at_runtime_with_args(", "ts": 1779769493.9990203}
+{"id": 668, "kind": "log", "line": "CompiledFunction.compiled_fw,", "ts": 1779769493.99928}
+{"id": 669, "kind": "log", "line": "...<2 lines>...", "ts": 1779769493.999544}
+{"id": 670, "kind": "log", "line": "disable_amp=disable_amp,", "ts": 1779769493.999812}
+{"id": 671, "kind": "log", "line": ")", "ts": 1779769494.0000536}
+{"id": 672, "kind": "log", "line": "File \"/home/scv/nvme0n1p1/训练器相关/anima_lora/.venv/lib/python3.13/site-packages/torch/_functorch/_aot_autograd/utils.py\", line 126, in call_func_at_runtime_with_args", "ts": 1779769494.0002897}
+{"id": 673, "kind": "log", "line": "out = normalize_as_list(f(args))", "ts": 1779769494.0006244}
+{"id": 674, "kind": "log", "line": "~^^^^^^", "ts": 1779769494.0009277}
+{"id": 675, "kind": "log", "line": "File \"/home/scv/nvme0n1p1/训练器相关/anima_lora/.venv/lib/python3.13/site-packages/torch/_functorch/_aot_autograd/runtime_wrappers.py\", line 850, in wrapper", "ts": 1779769494.00118}
+{"id": 676, "kind": "log", "line": "return compiled_fn(runtime_args)", "ts": 1779769494.0014808}
+{"id": 677, "kind": "log", "line": "File \"/home/scv/nvme0n1p1/训练器相关/anima_lora/.venv/lib/python3.13/site-packages/torch/_functorch/_aot_autograd/runtime_wrappers.py\", line 1055, in inner_fn", "ts": 1779769494.001721}
+{"id": 678, "kind": "log", "line": "outs = compiled_fn(args)", "ts": 1779769494.0020564}
+{"id": 679, "kind": "log", "line": "File \"/home/scv/nvme0n1p1/训练器相关/anima_lora/.venv/lib/python3.13/site-packages/torch/_inductor/output_code.py\", line 725, in __call__", "ts": 1779769494.0024834}
+{"id": 680, "kind": "log", "line": "return self.current_callable(inputs)", "ts": 1779769494.0028615}
+{"id": 681, "kind": "log", "line": "~~~~~~~~~~~~~~~~~~~~~^^^^^^^^", "ts": 1779769494.0031693}
+{"id": 682, "kind": "log", "line": "File \"/home/scv/nvme0n1p1/训练器相关/anima缓存/kesulu-526-lokr1-20260526-122131/model_cache/torchinductor/ug/cugu7gb6znqpsfuo2mtw6ya7vrb326ywdniyt22jcpmoir76eawd.py\", line 1539, in call", "ts": 1779769494.003475}
+{"id": 683, "kind": "log", "line": "buf28 = empty_strided_cuda((1, 4032, 2048), (8257536, 2048, 1), torch.bfloat16)", "ts": 1779769494.0038755}
+{"id": 684, "kind": "status", "line": "大概率爆显存", "ts": 1779769494.0041769}
+{"id": 685, "kind": "log", "line": "torch.OutOfMemoryError: CUDA out of memory. Tried to allocate 16.00 MiB. GPU 0 has a total capacity of 15.58 GiB of which 45.62 MiB is free. Process 4579 has 191.31 MiB memory in use. Including non-PyTorch memory, this process has 14.74 GiB memory in use. Of the allocated memory 14.49 GiB is allocated by PyTorch, and 22.91 MiB is reserved by PyTorch but unallocated. If reserved but unallocated memory is large try setting PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True to avoid fragmentation.  See documentation for Memory Management  (https://docs.pytorch.org/docs/stable/notes/cuda.html#optimizing-memory-usage-with-pytorch-cuda-alloc-conf)", "ts": 1779769494.0041769}
+{"id": 686, "kind": "status", "line": "结构化训练进度结束: error final_step=0 error=OutOfMemoryError: CUDA out of memory. Tried to allocate 16.00 MiB. GPU 0 has a total capacity of 15.58 GiB of which 45.62 MiB is free. Process 4579 has 191.31 MiB memory in use. Including non-PyTorch memory, this process has 14.74 GiB memory in use. Of the allocated memory 14.49 GiB is allocated by PyTorch, and 22.91 MiB is reserved by PyTorch but unallocated. If reserved but unallocated memory is large try setting PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True to avoid fragmentation.  See documentation for Memory Management  (https://docs.pytorch.org/docs/stable/notes/cuda.html#optimizing-memory-usage-with-pytorch-cuda-alloc-conf)：大概率爆显存", "ts": 1779769485.418467}
+{"id": 687, "kind": "progress", "line": "steps:   0%|          | 0/780 [00:07<?, ?it/s]", "ts": 1779769495.2107341}
+{"id": 688, "kind": "log", "line": "Traceback (most recent call last):", "ts": 1779769496.670495}
+{"id": 689, "kind": "log", "line": "File \"<frozen runpy>\", line 198, in _run_module_as_main", "ts": 1779769496.6713605}
+{"id": 690, "kind": "log", "line": "File \"<frozen runpy>\", line 88, in _run_code", "ts": 1779769496.6720366}
+{"id": 691, "kind": "log", "line": "File \"/home/scv/nvme0n1p1/训练器相关/anima_lora/.venv/lib/python3.13/site-packages/accelerate/commands/accelerate_cli.py\", line 54, in <module>", "ts": 1779769496.67278}
+{"id": 692, "kind": "log", "line": "main()", "ts": 1779769496.6735423}
+{"id": 693, "kind": "log", "line": "~~~~^^", "ts": 1779769496.6739757}
+{"id": 694, "kind": "log", "line": "File \"/home/scv/nvme0n1p1/训练器相关/anima_lora/.venv/lib/python3.13/site-packages/accelerate/commands/accelerate_cli.py\", line 50, in main", "ts": 1779769496.6743853}
+{"id": 695, "kind": "log", "line": "args.func(args)", "ts": 1779769496.674869}
+{"id": 696, "kind": "log", "line": "~~~~~~~~~^^^^^^", "ts": 1779769496.6752846}
+{"id": 697, "kind": "log", "line": "File \"/home/scv/nvme0n1p1/训练器相关/anima_lora/.venv/lib/python3.13/site-packages/accelerate/commands/launch.py\", line 1405, in launch_command", "ts": 1779769496.6758063}
+{"id": 698, "kind": "log", "line": "simple_launcher(args)", "ts": 1779769496.6764596}
+{"id": 699, "kind": "log", "line": "~~~~~~~~~~~~~~~^^^^^^", "ts": 1779769496.677137}
+{"id": 700, "kind": "log", "line": "File \"/home/scv/nvme0n1p1/训练器相关/anima_lora/.venv/lib/python3.13/site-packages/accelerate/commands/launch.py\", line 993, in simple_launcher", "ts": 1779769496.6776545}
+{"id": 701, "kind": "log", "line": "raise subprocess.CalledProcessError(returncode=process.returncode, cmd=cmd)", "ts": 1779769496.6781826}
+{"id": 702, "kind": "log", "line": "subprocess.CalledProcessError: Command '['/home/scv/nvme0n1p1/训练器相关/anima_lora/.venv/bin/python', '/home/scv/nvme0n1p1/训练器相关/anima_lora/train.py', '--method', 'kesulu-526-lokr1', '--preset', 'default', '--methods_subdir', 'imported', '--config_file', '/home/scv/nvme0n1p1/训练器相关/anima缓存/kesulu-526-lokr1-20260526-122131/config.runtime.toml', '--network_weights', '/home/scv/nvme0n1p1/训练器相关/anima缓存/kesulu-526-lokr-20260526-114616/training_output/kesulu.safetensors', '--dim_from_weights', '--progress_jsonl', '/home/scv/nvme0n1p1/训练器相关/anima_lora/configs/web-training-history/20260526-122231-training-imported-kesulu-526-lokr1/progress.jsonl']' returned non-zero exit status 1.", "ts": 1779769496.6786191}
+{"id": 703, "kind": "status", "line": "训练异常退出 (code=1)：大概率爆显存", "ts": 1779769497.5230775}

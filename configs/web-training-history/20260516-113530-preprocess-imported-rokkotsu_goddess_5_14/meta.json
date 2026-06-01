@@ -1,8 +1,8 @@
 {
   "id": "20260516-113530-preprocess-imported-rokkotsu_goddess_5_14",
-  "name": "",
-  "group": "",
-  "archived": false,
+  "name": "mylora",
+  "group": "113",
+  "archived": true,
   "job": "preprocess",
   "state": "idle",
   "variant": "rokkotsu_goddess_5_14",
@@ -32,5 +32,11 @@
   "message": "预处理完成",
   "returncode": 0,
   "log_count": 259,
-  "metric_count": 0
+  "metric_count": 0,
+  "history_group_key": "legacy:imported\u0001rokkotsu_goddess_5_14\u0001default",
+  "history_group_label": "imported / rokkotsu_goddess_5_14 / default",
+  "history_source_config_file": "",
+  "history_run_label": "mylora",
+  "updated_at": 1779983223.7058465,
+  "updated_at_text": "2026-05-28 23:47:03"
 }

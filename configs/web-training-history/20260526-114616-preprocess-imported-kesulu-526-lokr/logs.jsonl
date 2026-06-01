@@ -1,0 +1,190 @@
+{"id": 1, "kind": "status", "line": "预处理命令: /home/scv/nvme0n1p1/训练器相关/anima_lora/.venv/bin/python tasks.py preprocess", "ts": 1779767176.9580593}
+{"id": 2, "kind": "log", "line": "> /home/scv/nvme0n1p1/训练器相关/anima_lora/.venv/bin/python -m scripts.preprocess.resize_images --src /home/scv/nvme0n1p1/lora/kesul-anima --dst /home/scv/nvme0n1p1/训练器相关/anima缓存/kesulu-526-lokr-20260526-114616/dataset_cache/dataset-01/resized --no_copy_captions --recursive --resolution 1024 --min_bucket_reso 256 --max_bucket_reso 1024 --bucket_reso_steps 64 --min_pixels 500000", "ts": 1779767177.0736735}
+{"id": 3, "kind": "log", "line": "Resizing 39 images to constant-token buckets", "ts": 1779767181.4063582}
+{"id": 4, "kind": "progress", "line": "Resizing:   0%|          | 0/39 [00:00<?, ?it/s]", "ts": 1779767181.8572156}
+{"id": 5, "kind": "progress", "line": "Resizing:   0%|          | 0/39 [00:00<?, ?it/s, comfyui-airport-editorial_00004_.png → 1008x1024]", "ts": 1779767181.8581119}
+{"id": 6, "kind": "progress", "line": "Resizing:   3%|▎         | 1/39 [00:00<00:17,  2.22it/s, comfyui-airport-editorial_00004_.png → 1008x1024]", "ts": 1779767181.9439964}
+{"id": 7, "kind": "progress", "line": "Resizing:   3%|▎         | 1/39 [00:00<00:17,  2.22it/s, comfyui-airport-editorial_00007_.png → 1008x1024]", "ts": 1779767181.9848387}
+{"id": 8, "kind": "progress", "line": "Resizing:   5%|▌         | 2/39 [00:00<00:16,  2.22it/s, comfyui-airport-editorial_00008_.png → 1008x1024]", "ts": 1779767181.9855733}
+{"id": 9, "kind": "progress", "line": "Resizing:   8%|▊         | 3/39 [00:00<00:05,  6.10it/s, comfyui-airport-editorial_00008_.png → 1008x1024]", "ts": 1779767182.035612}
+{"id": 10, "kind": "progress", "line": "Resizing:   8%|▊         | 3/39 [00:00<00:05,  6.10it/s, comfyui-airport-editorial_00005_.png → 1008x1024]", "ts": 1779767182.2196326}
+{"id": 11, "kind": "progress", "line": "Resizing:  10%|█         | 4/39 [00:00<00:05,  6.10it/s, comfyui-airport-editorial_00009_.png → 1008x1024]", "ts": 1779767182.2204232}
+{"id": 12, "kind": "progress", "line": "Resizing:  13%|█▎        | 5/39 [00:00<00:04,  7.14it/s, comfyui-airport-editorial_00009_.png → 1008x1024]", "ts": 1779767182.4380019}
+{"id": 13, "kind": "progress", "line": "Resizing:  13%|█▎        | 5/39 [00:01<00:04,  7.14it/s, comfyui-airport-editorial_00010_.png → 1008x1024]", "ts": 1779767182.4388926}
+{"id": 14, "kind": "progress", "line": "Resizing:  15%|█▌        | 6/39 [00:01<00:05,  6.21it/s, comfyui-airport-editorial_00010_.png → 1008x1024]", "ts": 1779767182.489218}
+{"id": 15, "kind": "progress", "line": "Resizing:  15%|█▌        | 6/39 [00:01<00:05,  6.21it/s, comfyui-airport-editorial_00013_.png → 1008x1024]", "ts": 1779767182.5511591}
+{"id": 16, "kind": "progress", "line": "Resizing:  18%|█▊        | 7/39 [00:01<00:05,  6.21it/s, comfyui-airport-editorial_00014_.png → 1008x1024]", "ts": 1779767182.5519884}
+{"id": 17, "kind": "progress", "line": "Resizing:  21%|██        | 8/39 [00:01<00:03,  8.64it/s, comfyui-airport-editorial_00014_.png → 1008x1024]", "ts": 1779767182.603147}
+{"id": 18, "kind": "progress", "line": "Resizing:  21%|██        | 8/39 [00:01<00:03,  8.64it/s, comfyui-airport-editorial_00015_.png → 1008x1024]", "ts": 1779767182.70201}
+{"id": 19, "kind": "progress", "line": "Resizing:  23%|██▎       | 9/39 [00:01<00:03,  8.64it/s, comfyui-airport-editorial_00017_.png → 1008x1024]", "ts": 1779767182.702739}
+{"id": 20, "kind": "progress", "line": "Resizing:  26%|██▌       | 10/39 [00:01<00:02,  9.97it/s, comfyui-airport-editorial_00017_.png → 1008x1024]", "ts": 1779767182.8865032}
+{"id": 21, "kind": "progress", "line": "Resizing:  26%|██▌       | 10/39 [00:01<00:02,  9.97it/s, comfyui-airport-editorial_00018_.png → 1008x1024]", "ts": 1779767182.9404724}
+{"id": 22, "kind": "progress", "line": "Resizing:  28%|██▊       | 11/39 [00:01<00:02,  9.97it/s, comfyui-airport-editorial_00020_.png → 1008x1024]", "ts": 1779767182.941244}
+{"id": 23, "kind": "progress", "line": "Resizing:  31%|███       | 12/39 [00:01<00:02,  9.35it/s, comfyui-airport-editorial_00020_.png → 1008x1024]", "ts": 1779767183.0693657}
+{"id": 24, "kind": "progress", "line": "Resizing:  31%|███       | 12/39 [00:01<00:02,  9.35it/s, comfyui-airport-editorial_00021_.png → 1008x1024]", "ts": 1779767183.0922732}
+{"id": 25, "kind": "progress", "line": "Resizing:  33%|███▎      | 13/39 [00:01<00:02,  9.35it/s, comfyui-airport-editorial_00019_.png → 1008x1024]", "ts": 1779767183.0928195}
+{"id": 26, "kind": "progress", "line": "Resizing:  36%|███▌      | 14/39 [00:01<00:02, 10.36it/s, comfyui-airport-editorial_00019_.png → 1008x1024]", "ts": 1779767183.2649229}
+{"id": 27, "kind": "progress", "line": "Resizing:  36%|███▌      | 14/39 [00:01<00:02, 10.36it/s, comfyui-airport-editorial_00022_.png → 1008x1024]", "ts": 1779767183.3474834}
+{"id": 28, "kind": "progress", "line": "Resizing:  38%|███▊      | 15/39 [00:01<00:02, 10.36it/s, comfyui-airport-editorial_00024_.png → 1008x1024]", "ts": 1779767183.3482573}
+{"id": 29, "kind": "progress", "line": "Resizing:  41%|████      | 16/39 [00:01<00:02,  9.38it/s, comfyui-airport-editorial_00024_.png → 1008x1024]", "ts": 1779767183.3815703}
+{"id": 30, "kind": "progress", "line": "Resizing:  41%|████      | 16/39 [00:01<00:02,  9.38it/s, comfyui-airport-editorial_00023_.png → 1008x1024]", "ts": 1779767183.4965005}
+{"id": 31, "kind": "progress", "line": "Resizing:  44%|████▎     | 17/39 [00:02<00:02,  9.38it/s, comfyui-airport-editorial_00025_.png → 1008x1024]", "ts": 1779767183.4973383}
+{"id": 32, "kind": "progress", "line": "Resizing:  46%|████▌     | 18/39 [00:02<00:02, 10.37it/s, comfyui-airport-editorial_00025_.png → 1008x1024]", "ts": 1779767183.6464193}
+{"id": 33, "kind": "progress", "line": "Resizing:  46%|████▌     | 18/39 [00:02<00:02, 10.37it/s, comfyui-airport-editorial_00026_.png → 1008x1024]", "ts": 1779767183.750158}
+{"id": 34, "kind": "progress", "line": "Resizing:  49%|████▊     | 19/39 [00:02<00:01, 10.37it/s, comfyui-airport-editorial_00030_.png → 1008x1024]", "ts": 1779767183.7509108}
+{"id": 35, "kind": "progress", "line": "Resizing:  51%|█████▏    | 20/39 [00:02<00:02,  9.44it/s, comfyui-airport-editorial_00030_.png → 1008x1024]", "ts": 1779767183.788312}
+{"id": 36, "kind": "progress", "line": "Resizing:  51%|█████▏    | 20/39 [00:02<00:02,  9.44it/s, comfyui-airport-editorial_00027_.png → 1008x1024]", "ts": 1779767183.7920437}
+{"id": 37, "kind": "progress", "line": "Resizing:  54%|█████▍    | 21/39 [00:02<00:01,  9.44it/s, comfyui-airport-editorial_00031_.png → 1008x1024]", "ts": 1779767184.1334097}
+{"id": 38, "kind": "progress", "line": "Resizing:  56%|█████▋    | 22/39 [00:02<00:01,  9.44it/s, comfyui-airport-editorial_00033_.png → 1008x1024]", "ts": 1779767184.1342049}
+{"id": 39, "kind": "progress", "line": "Resizing:  59%|█████▉    | 23/39 [00:02<00:01,  8.72it/s, comfyui-airport-editorial_00033_.png → 1008x1024]", "ts": 1779767184.1714554}
+{"id": 40, "kind": "progress", "line": "Resizing:  59%|█████▉    | 23/39 [00:02<00:01,  8.72it/s, comfyui-airport-editorial_00034_.png → 1008x1024]", "ts": 1779767184.2189841}
+{"id": 41, "kind": "progress", "line": "Resizing:  62%|██████▏   | 24/39 [00:02<00:01,  8.72it/s, comfyui-airport-editorial_00038_.png → 1008x1024]", "ts": 1779767184.229481}
+{"id": 42, "kind": "progress", "line": "Resizing:  64%|██████▍   | 25/39 [00:02<00:01,  8.72it/s, comfyui-airport-editorial_00039_.png → 1008x1024]", "ts": 1779767184.5709646}
+{"id": 43, "kind": "progress", "line": "Resizing:  67%|██████▋   | 26/39 [00:03<00:01,  8.72it/s, comfyui-airport-editorial_00041_.png → 1008x1024]", "ts": 1779767184.5716183}
+{"id": 44, "kind": "progress", "line": "Resizing:  69%|██████▉   | 27/39 [00:03<00:01,  8.90it/s, comfyui-airport-editorial_00041_.png → 1008x1024]", "ts": 1779767184.5822706}
+{"id": 45, "kind": "progress", "line": "Resizing:  69%|██████▉   | 27/39 [00:03<00:01,  8.90it/s, comfyui-airport-editorial_00042_.png → 1008x1024]", "ts": 1779767184.6241064}
+{"id": 46, "kind": "progress", "line": "Resizing:  72%|███████▏  | 28/39 [00:03<00:01,  8.90it/s, comfyui-airport-editorial_00040_.png → 1008x1024]", "ts": 1779767184.6669493}
+{"id": 47, "kind": "progress", "line": "Resizing:  74%|███████▍  | 29/39 [00:03<00:01,  8.90it/s, comfyui-airport-editorial_00043_.png → 1008x1024]", "ts": 1779767184.9204936}
+{"id": 48, "kind": "progress", "line": "Resizing:  77%|███████▋  | 30/39 [00:03<00:01,  8.90it/s, comfyui-airport-editorial_00045_.png → 1008x1024]", "ts": 1779767184.9213824}
+{"id": 49, "kind": "progress", "line": "Resizing:  79%|███████▉  | 31/39 [00:03<00:00,  9.72it/s, comfyui-airport-editorial_00045_.png → 1008x1024]", "ts": 1779767184.9310162}
+{"id": 50, "kind": "progress", "line": "Resizing:  79%|███████▉  | 31/39 [00:03<00:00,  9.72it/s, comfyui-airport-editorial_00044_.png → 1008x1024]", "ts": 1779767185.0721383}
+{"id": 51, "kind": "progress", "line": "Resizing:  82%|████████▏ | 32/39 [00:03<00:00,  9.72it/s, comfyui-airport-editorial_00046_.png → 1008x1024]", "ts": 1779767185.072822}
+{"id": 52, "kind": "progress", "line": "Resizing:  85%|████████▍ | 33/39 [00:03<00:00, 10.31it/s, comfyui-airport-editorial_00046_.png → 1008x1024]", "ts": 1779767185.1049557}
+{"id": 53, "kind": "progress", "line": "Resizing:  85%|████████▍ | 33/39 [00:03<00:00, 10.31it/s, comfyui-airport-editorial_00047_.png → 1008x1024]", "ts": 1779767185.240342}
+{"id": 54, "kind": "progress", "line": "Resizing:  87%|████████▋ | 34/39 [00:03<00:00, 10.31it/s, comfyui-airport-editorial_00049_.png → 1008x1024]", "ts": 1779767185.2410076}
+{"id": 55, "kind": "progress", "line": "Resizing:  90%|████████▉ | 35/39 [00:03<00:00, 10.64it/s, comfyui-airport-editorial_00049_.png → 1008x1024]", "ts": 1779767185.332528}
+{"id": 56, "kind": "progress", "line": "Resizing:  90%|████████▉ | 35/39 [00:03<00:00, 10.64it/s, comfyui-airport-editorial_00050_.png → 1008x1024]", "ts": 1779767185.3749635}
+{"id": 57, "kind": "progress", "line": "Resizing:  92%|█████████▏| 36/39 [00:03<00:00, 10.64it/s, comfyui-airport-editorial_00048_.png → 1008x1024]", "ts": 1779767185.3756254}
+{"id": 58, "kind": "progress", "line": "Resizing:  95%|█████████▍| 37/39 [00:03<00:00, 11.45it/s, comfyui-airport-editorial_00048_.png → 1008x1024]", "ts": 1779767185.6294696}
+{"id": 59, "kind": "progress", "line": "Resizing:  95%|█████████▍| 37/39 [00:04<00:00, 11.45it/s, comfyui-airport-editorial_00051_.png → 1008x1024]", "ts": 1779767185.6357086}
+{"id": 60, "kind": "progress", "line": "Resizing:  97%|█████████▋| 38/39 [00:04<00:00, 11.45it/s, comfyui-airport-editorial_00052_.png → 1008x1024]", "ts": 1779767185.6363935}
+{"id": 61, "kind": "progress", "line": "Resizing: 100%|██████████| 39/39 [00:04<00:00, 10.13it/s, comfyui-airport-editorial_00052_.png → 1008x1024]", "ts": 1779767185.6515038}
+{"id": 62, "kind": "log", "line": "Bucket distribution:", "ts": 1779767185.6523597}
+{"id": 63, "kind": "log", "line": "1008x1024:  39 images  (4032 tokens)", "ts": 1779767185.6529458}
+{"id": 64, "kind": "progress", "line": "Resizing: 100%|██████████| 39/39 [00:04<00:00,  9.19it/s, comfyui-airport-editorial_00052_.png → 1008x1024]", "ts": 1779767185.653624}
+{"id": 65, "kind": "log", "line": "> /home/scv/nvme0n1p1/训练器相关/anima_lora/.venv/bin/python -m scripts.preprocess.cache_latents --dir /home/scv/nvme0n1p1/训练器相关/anima缓存/kesulu-526-lokr-20260526-114616/dataset_cache/dataset-01/resized --cache_dir /home/scv/nvme0n1p1/训练器相关/anima缓存/kesulu-526-lokr-20260526-114616/dataset_cache/dataset-01/lora --vae /home/scv/nvme0n1p1/ComfyUI/models/vae/anima/anima_vae.safetensors --batch_size 4 --chunk_size 64 --recursive", "ts": 1779767186.5211716}
+{"id": 66, "kind": "log", "line": "Loading VAE from /home/scv/nvme0n1p1/ComfyUI/models/vae/anima/anima_vae.safetensors ...", "ts": 1779767190.7524374}
+{"id": 67, "kind": "log", "line": "2026-05-26 11:46:30 INFO     Initializing VAE                   qwen_vae.py:1878", "ts": 1779767190.7558863}
+{"id": 68, "kind": "log", "line": "2026-05-26 11:46:31 INFO     Loading VAE from                   qwen_vae.py:1902", "ts": 1779767191.653447}
+{"id": 69, "kind": "log", "line": "/home/scv/nvme0n1p1/ComfyUI/models", "ts": 1779767191.6540964}
+{"id": 70, "kind": "log", "line": "/vae/anima/anima_vae.safetensors", "ts": 1779767191.6545188}
+{"id": 71, "kind": "log", "line": "INFO     Converted ComfyUI AutoencoderKL    qwen_vae.py:1799", "ts": 1779767191.7559526}
+{"id": 72, "kind": "log", "line": "state dict keys to official format", "ts": 1779767191.7565832}
+{"id": 73, "kind": "log", "line": "INFO     Loaded VAE: <All keys matched      qwen_vae.py:1909", "ts": 1779767191.784535}
+{"id": 74, "kind": "log", "line": "successfully>", "ts": 1779767191.7851257}
+{"id": 75, "kind": "progress", "line": "Caching latents:   0%|          | 0/39 [00:00<?, ?it/s]", "ts": 1779767193.9794312}
+{"id": 76, "kind": "progress", "line": "Caching latents:   0%|          | 0/39 [00:01<?, ?it/s, comfyui-airport-editorial_00004_.png → 1008x1024]", "ts": 1779767193.980359}
+{"id": 77, "kind": "progress", "line": "Caching latents:   3%|▎         | 1/39 [00:01<01:14,  1.97s/it, comfyui-airport-editorial_00004_.png → 1008x1024]", "ts": 1779767193.9844825}
+{"id": 78, "kind": "progress", "line": "Caching latents:   3%|▎         | 1/39 [00:01<01:14,  1.97s/it, comfyui-airport-editorial_00005_.png → 1008x1024]", "ts": 1779767193.9870605}
+{"id": 79, "kind": "progress", "line": "Caching latents:   5%|▌         | 2/39 [00:01<01:12,  1.97s/it, comfyui-airport-editorial_00007_.png → 1008x1024]", "ts": 1779767193.9896567}
+{"id": 80, "kind": "progress", "line": "Caching latents:   8%|▊         | 3/39 [00:01<01:10,  1.97s/it, comfyui-airport-editorial_00008_.png → 1008x1024]", "ts": 1779767195.6566107}
+{"id": 81, "kind": "progress", "line": "Caching latents:  10%|█         | 4/39 [00:03<01:08,  1.97s/it, comfyui-airport-editorial_00009_.png → 1008x1024]", "ts": 1779767195.6570735}
+{"id": 82, "kind": "progress", "line": "Caching latents:  13%|█▎        | 5/39 [00:03<00:22,  1.54it/s, comfyui-airport-editorial_00009_.png → 1008x1024]", "ts": 1779767195.661365}
+{"id": 83, "kind": "progress", "line": "Caching latents:  13%|█▎        | 5/39 [00:03<00:22,  1.54it/s, comfyui-airport-editorial_00010_.png → 1008x1024]", "ts": 1779767195.663974}
+{"id": 84, "kind": "progress", "line": "Caching latents:  15%|█▌        | 6/39 [00:03<00:21,  1.54it/s, comfyui-airport-editorial_00013_.png → 1008x1024]", "ts": 1779767195.6665483}
+{"id": 85, "kind": "progress", "line": "Caching latents:  18%|█▊        | 7/39 [00:03<00:20,  1.54it/s, comfyui-airport-editorial_00014_.png → 1008x1024]", "ts": 1779767197.3331792}
+{"id": 86, "kind": "progress", "line": "Caching latents:  21%|██        | 8/39 [00:05<00:20,  1.54it/s, comfyui-airport-editorial_00015_.png → 1008x1024]", "ts": 1779767197.3336782}
+{"id": 87, "kind": "progress", "line": "Caching latents:  23%|██▎       | 9/39 [00:05<00:15,  1.91it/s, comfyui-airport-editorial_00015_.png → 1008x1024]", "ts": 1779767197.337886}
+{"id": 88, "kind": "progress", "line": "Caching latents:  23%|██▎       | 9/39 [00:05<00:15,  1.91it/s, comfyui-airport-editorial_00017_.png → 1008x1024]", "ts": 1779767197.3404593}
+{"id": 89, "kind": "progress", "line": "Caching latents:  26%|██▌       | 10/39 [00:05<00:15,  1.91it/s, comfyui-airport-editorial_00018_.png → 1008x1024]", "ts": 1779767197.342939}
+{"id": 90, "kind": "progress", "line": "Caching latents:  28%|██▊       | 11/39 [00:05<00:14,  1.91it/s, comfyui-airport-editorial_00019_.png → 1008x1024]", "ts": 1779767199.0090506}
+{"id": 91, "kind": "progress", "line": "Caching latents:  31%|███       | 12/39 [00:06<00:14,  1.91it/s, comfyui-airport-editorial_00020_.png → 1008x1024]", "ts": 1779767199.0099123}
+{"id": 92, "kind": "progress", "line": "Caching latents:  33%|███▎      | 13/39 [00:06<00:12,  2.09it/s, comfyui-airport-editorial_00020_.png → 1008x1024]", "ts": 1779767199.012326}
+{"id": 93, "kind": "progress", "line": "Caching latents:  33%|███▎      | 13/39 [00:07<00:12,  2.09it/s, comfyui-airport-editorial_00021_.png → 1008x1024]", "ts": 1779767199.0153296}
+{"id": 94, "kind": "progress", "line": "Caching latents:  36%|███▌      | 14/39 [00:07<00:11,  2.09it/s, comfyui-airport-editorial_00022_.png → 1008x1024]", "ts": 1779767199.0184214}
+{"id": 95, "kind": "progress", "line": "Caching latents:  38%|███▊      | 15/39 [00:07<00:11,  2.09it/s, comfyui-airport-editorial_00023_.png → 1008x1024]", "ts": 1779767200.6999302}
+{"id": 96, "kind": "progress", "line": "Caching latents:  41%|████      | 16/39 [00:08<00:10,  2.09it/s, comfyui-airport-editorial_00024_.png → 1008x1024]", "ts": 1779767200.700725}
+{"id": 97, "kind": "progress", "line": "Caching latents:  44%|████▎     | 17/39 [00:08<00:10,  2.19it/s, comfyui-airport-editorial_00024_.png → 1008x1024]", "ts": 1779767200.7024004}
+{"id": 98, "kind": "progress", "line": "Caching latents:  44%|████▎     | 17/39 [00:08<00:10,  2.19it/s, comfyui-airport-editorial_00025_.png → 1008x1024]", "ts": 1779767200.7070067}
+{"id": 99, "kind": "progress", "line": "Caching latents:  46%|████▌     | 18/39 [00:08<00:09,  2.19it/s, comfyui-airport-editorial_00026_.png → 1008x1024]", "ts": 1779767200.70945}
+{"id": 100, "kind": "progress", "line": "Caching latents:  49%|████▊     | 19/39 [00:08<00:09,  2.19it/s, comfyui-airport-editorial_00027_.png → 1008x1024]", "ts": 1779767202.3646863}
+{"id": 101, "kind": "progress", "line": "Caching latents:  51%|█████▏    | 20/39 [00:10<00:08,  2.19it/s, comfyui-airport-editorial_00030_.png → 1008x1024]", "ts": 1779767202.3656976}
+{"id": 102, "kind": "progress", "line": "Caching latents:  54%|█████▍    | 21/39 [00:10<00:07,  2.26it/s, comfyui-airport-editorial_00030_.png → 1008x1024]", "ts": 1779767202.3696005}
+{"id": 103, "kind": "progress", "line": "Caching latents:  54%|█████▍    | 21/39 [00:10<00:07,  2.26it/s, comfyui-airport-editorial_00031_.png → 1008x1024]", "ts": 1779767202.3721187}
+{"id": 104, "kind": "progress", "line": "Caching latents:  56%|█████▋    | 22/39 [00:10<00:07,  2.26it/s, comfyui-airport-editorial_00033_.png → 1008x1024]", "ts": 1779767202.374719}
+{"id": 105, "kind": "progress", "line": "Caching latents:  59%|█████▉    | 23/39 [00:10<00:07,  2.26it/s, comfyui-airport-editorial_00034_.png → 1008x1024]", "ts": 1779767204.032355}
+{"id": 106, "kind": "progress", "line": "Caching latents:  62%|██████▏   | 24/39 [00:12<00:06,  2.26it/s, comfyui-airport-editorial_00038_.png → 1008x1024]", "ts": 1779767204.0328054}
+{"id": 107, "kind": "progress", "line": "Caching latents:  64%|██████▍   | 25/39 [00:12<00:06,  2.31it/s, comfyui-airport-editorial_00038_.png → 1008x1024]", "ts": 1779767204.034891}
+{"id": 108, "kind": "progress", "line": "Caching latents:  64%|██████▍   | 25/39 [00:12<00:06,  2.31it/s, comfyui-airport-editorial_00039_.png → 1008x1024]", "ts": 1779767204.0376143}
+{"id": 109, "kind": "progress", "line": "Caching latents:  67%|██████▋   | 26/39 [00:12<00:05,  2.31it/s, comfyui-airport-editorial_00040_.png → 1008x1024]", "ts": 1779767204.0400786}
+{"id": 110, "kind": "progress", "line": "Caching latents:  69%|██████▉   | 27/39 [00:12<00:05,  2.31it/s, comfyui-airport-editorial_00041_.png → 1008x1024]", "ts": 1779767205.6940706}
+{"id": 111, "kind": "progress", "line": "Caching latents:  72%|███████▏  | 28/39 [00:13<00:04,  2.31it/s, comfyui-airport-editorial_00042_.png → 1008x1024]", "ts": 1779767205.694925}
+{"id": 112, "kind": "progress", "line": "Caching latents:  74%|███████▍  | 29/39 [00:13<00:04,  2.34it/s, comfyui-airport-editorial_00042_.png → 1008x1024]", "ts": 1779767205.6965575}
+{"id": 113, "kind": "progress", "line": "Caching latents:  74%|███████▍  | 29/39 [00:13<00:04,  2.34it/s, comfyui-airport-editorial_00043_.png → 1008x1024]", "ts": 1779767205.6990757}
+{"id": 114, "kind": "progress", "line": "Caching latents:  77%|███████▋  | 30/39 [00:13<00:03,  2.34it/s, comfyui-airport-editorial_00044_.png → 1008x1024]", "ts": 1779767205.7016053}
+{"id": 115, "kind": "progress", "line": "Caching latents:  79%|███████▉  | 31/39 [00:13<00:03,  2.34it/s, comfyui-airport-editorial_00045_.png → 1008x1024]", "ts": 1779767207.3588374}
+{"id": 116, "kind": "progress", "line": "Caching latents:  82%|████████▏ | 32/39 [00:15<00:02,  2.34it/s, comfyui-airport-editorial_00046_.png → 1008x1024]", "ts": 1779767207.3596385}
+{"id": 117, "kind": "progress", "line": "Caching latents:  85%|████████▍ | 33/39 [00:15<00:02,  2.36it/s, comfyui-airport-editorial_00046_.png → 1008x1024]", "ts": 1779767207.3612907}
+{"id": 118, "kind": "progress", "line": "Caching latents:  85%|████████▍ | 33/39 [00:15<00:02,  2.36it/s, comfyui-airport-editorial_00047_.png → 1008x1024]", "ts": 1779767207.3638}
+{"id": 119, "kind": "progress", "line": "Caching latents:  87%|████████▋ | 34/39 [00:15<00:02,  2.36it/s, comfyui-airport-editorial_00048_.png → 1008x1024]", "ts": 1779767207.366285}
+{"id": 120, "kind": "progress", "line": "Caching latents:  90%|████████▉ | 35/39 [00:15<00:01,  2.36it/s, comfyui-airport-editorial_00049_.png → 1008x1024]", "ts": 1779767208.621214}
+{"id": 121, "kind": "progress", "line": "Caching latents:  92%|█████████▏| 36/39 [00:16<00:01,  2.36it/s, comfyui-airport-editorial_00050_.png → 1008x1024]", "ts": 1779767208.6220787}
+{"id": 122, "kind": "progress", "line": "Caching latents:  95%|█████████▍| 37/39 [00:16<00:00,  2.56it/s, comfyui-airport-editorial_00050_.png → 1008x1024]", "ts": 1779767208.62381}
+{"id": 123, "kind": "progress", "line": "Caching latents:  95%|█████████▍| 37/39 [00:16<00:00,  2.56it/s, comfyui-airport-editorial_00051_.png → 1008x1024]", "ts": 1779767208.626292}
+{"id": 124, "kind": "progress", "line": "Caching latents:  97%|█████████▋| 38/39 [00:16<00:00,  2.56it/s, comfyui-airport-editorial_00052_.png → 1008x1024]", "ts": 1779767208.6271062}
+{"id": 125, "kind": "progress", "line": "Caching latents: 100%|██████████| 39/39 [00:16<00:00,  2.35it/s, comfyui-airport-editorial_00052_.png → 1008x1024]", "ts": 1779767208.6277301}
+{"id": 126, "kind": "log", "line": "Latent caching complete: 39 cached, 0 skipped (already existed)", "ts": 1779767208.628333}
+{"id": 127, "kind": "log", "line": "> /home/scv/nvme0n1p1/训练器相关/anima_lora/.venv/bin/python -m scripts.preprocess.cache_text_embeddings --dir /home/scv/nvme0n1p1/lora/kesul-anima --cache_dir /home/scv/nvme0n1p1/训练器相关/anima缓存/kesulu-526-lokr-20260526-114616/dataset_cache/dataset-01/lora --qwen3 /home/scv/nvme0n1p1/ComfyUI/models/text_encoders/anima/anima_qwen_3_06b_base.safetensors --dit /home/scv/nvme0n1p1/ComfyUI/models/diffusion_models/anima/anima-preview3-base.safetensors --caption_shuffle_variants 4 --caption_tag_dropout_rate 0.1 --recursive --min_pixels 500000", "ts": 1779767209.6382875}
+{"id": 128, "kind": "log", "line": "Loading Qwen3 text encoder from /home/scv/nvme0n1p1/ComfyUI/models/text_encoders/anima/anima_qwen_3_06b_base.safetensors ...", "ts": 1779767214.0013523}
+{"id": 129, "kind": "log", "line": "2026-05-26 11:46:54 INFO     Loading Qwen3 text encoder from      weights.py:393", "ts": 1779767214.0700526}
+{"id": 130, "kind": "log", "line": "/home/scv/nvme0n1p1/ComfyUI/models/t", "ts": 1779767214.0706885}
+{"id": 131, "kind": "log", "line": "ext_encoders/anima/anima_qwen_3_06b_", "ts": 1779767214.071284}
+{"id": 132, "kind": "log", "line": "base.safetensors", "ts": 1779767214.0717492}
+{"id": 133, "kind": "log", "line": "2026-05-26 11:47:04 INFO     Loaded Qwen3 state dict: <All keys   weights.py:446", "ts": 1779767224.6793063}
+{"id": 134, "kind": "log", "line": "matched successfully>", "ts": 1779767224.6797051}
+{"id": 135, "kind": "log", "line": "2026-05-26 11:47:05 INFO     Loaded Qwen3 text encoder.           weights.py:454", "ts": 1779767225.2058632}
+{"id": 136, "kind": "log", "line": "Parameters: 596,049,920", "ts": 1779767225.206236}
+{"id": 137, "kind": "log", "line": "Loading LLM adapter from /home/scv/nvme0n1p1/ComfyUI/models/diffusion_models/anima/anima-preview3-base.safetensors ...", "ts": 1779767225.2867906}
+{"id": 138, "kind": "log", "line": "2026-05-26 11:47:06 INFO     Uncond sidecar already exists at      uncond.py:206", "ts": 1779767226.3058805}
+{"id": 139, "kind": "log", "line": "post_image_dataset/_anima_uncond_te.s", "ts": 1779767226.306292}
+{"id": 140, "kind": "log", "line": "afetensors; skipping encode.", "ts": 1779767226.3065438}
+{"id": 141, "kind": "log", "line": "Caption shuffle variants: 4 (v0=pristine, v1..v3=shuffled + tag dropout p=0.100)", "ts": 1779767226.3068185}
+{"id": 142, "kind": "progress", "line": "Caching text embeddings:   0%|          | 0/39 [00:00<?, ?it/s]", "ts": 1779767230.8458955}
+{"id": 143, "kind": "progress", "line": "Caching text embeddings:   0%|          | 0/39 [00:04<?, ?it/s, comfyui-airport-editorial_00004_.png (4v)]", "ts": 1779767230.846544}
+{"id": 144, "kind": "progress", "line": "Caching text embeddings:   3%|▎         | 1/39 [00:04<02:52,  4.53s/it, comfyui-airport-editorial_00004_.png (4v)]", "ts": 1779767230.8523297}
+{"id": 145, "kind": "progress", "line": "Caching text embeddings:   3%|▎         | 1/39 [00:04<02:52,  4.53s/it, comfyui-airport-editorial_00005_.png (4v)]", "ts": 1779767230.8623114}
+{"id": 146, "kind": "progress", "line": "Caching text embeddings:   5%|▌         | 2/39 [00:04<02:47,  4.53s/it, comfyui-airport-editorial_00007_.png (4v)]", "ts": 1779767230.868749}
+{"id": 147, "kind": "progress", "line": "Caching text embeddings:   8%|▊         | 3/39 [00:04<02:42,  4.53s/it, comfyui-airport-editorial_00008_.png (4v)]", "ts": 1779767230.8749247}
+{"id": 148, "kind": "progress", "line": "Caching text embeddings:  10%|█         | 4/39 [00:04<02:38,  4.53s/it, comfyui-airport-editorial_00009_.png (4v)]", "ts": 1779767230.8810766}
+{"id": 149, "kind": "progress", "line": "Caching text embeddings:  13%|█▎        | 5/39 [00:04<02:33,  4.53s/it, comfyui-airport-editorial_00010_.png (4v)]", "ts": 1779767230.8871922}
+{"id": 150, "kind": "progress", "line": "Caching text embeddings:  15%|█▌        | 6/39 [00:04<02:29,  4.53s/it, comfyui-airport-editorial_00013_.png (4v)]", "ts": 1779767230.893423}
+{"id": 151, "kind": "progress", "line": "Caching text embeddings:  18%|█▊        | 7/39 [00:04<02:24,  4.53s/it, comfyui-airport-editorial_00014_.png (4v)]", "ts": 1779767230.899711}
+{"id": 152, "kind": "progress", "line": "Caching text embeddings:  21%|██        | 8/39 [00:04<02:20,  4.53s/it, comfyui-airport-editorial_00015_.png (4v)]", "ts": 1779767230.9080908}
+{"id": 153, "kind": "progress", "line": "Caching text embeddings:  23%|██▎       | 9/39 [00:04<02:15,  4.53s/it, comfyui-airport-editorial_00017_.png (4v)]", "ts": 1779767230.915065}
+{"id": 154, "kind": "progress", "line": "Caching text embeddings:  26%|██▌       | 10/39 [00:04<02:11,  4.53s/it, comfyui-airport-editorial_00018_.png (4v)]", "ts": 1779767230.9211817}
+{"id": 155, "kind": "progress", "line": "Caching text embeddings:  28%|██▊       | 11/39 [00:04<02:06,  4.53s/it, comfyui-airport-editorial_00019_.png (4v)]", "ts": 1779767230.9273953}
+{"id": 156, "kind": "progress", "line": "Caching text embeddings:  31%|███       | 12/39 [00:04<02:02,  4.53s/it, comfyui-airport-editorial_00020_.png (4v)]", "ts": 1779767230.933501}
+{"id": 157, "kind": "progress", "line": "Caching text embeddings:  33%|███▎      | 13/39 [00:04<01:57,  4.53s/it, comfyui-airport-editorial_00021_.png (4v)]", "ts": 1779767230.9398553}
+{"id": 158, "kind": "progress", "line": "Caching text embeddings:  36%|███▌      | 14/39 [00:04<01:53,  4.53s/it, comfyui-airport-editorial_00022_.png (4v)]", "ts": 1779767230.946029}
+{"id": 159, "kind": "progress", "line": "Caching text embeddings:  38%|███▊      | 15/39 [00:04<01:48,  4.53s/it, comfyui-airport-editorial_00023_.png (4v)]", "ts": 1779767230.9466546}
+{"id": 160, "kind": "progress", "line": "Caching text embeddings:  41%|████      | 16/39 [00:04<00:04,  4.80it/s, comfyui-airport-editorial_00023_.png (4v)]", "ts": 1779767233.072349}
+{"id": 161, "kind": "progress", "line": "Caching text embeddings:  41%|████      | 16/39 [00:06<00:04,  4.80it/s, comfyui-airport-editorial_00024_.png (4v)]", "ts": 1779767233.0782387}
+{"id": 162, "kind": "progress", "line": "Caching text embeddings:  44%|████▎     | 17/39 [00:06<00:04,  4.80it/s, comfyui-airport-editorial_00025_.png (4v)]", "ts": 1779767233.0843651}
+{"id": 163, "kind": "progress", "line": "Caching text embeddings:  46%|████▌     | 18/39 [00:06<00:04,  4.80it/s, comfyui-airport-editorial_00026_.png (4v)]", "ts": 1779767233.0933785}
+{"id": 164, "kind": "progress", "line": "Caching text embeddings:  49%|████▊     | 19/39 [00:06<00:04,  4.80it/s, comfyui-airport-editorial_00027_.png (4v)]", "ts": 1779767233.099709}
+{"id": 165, "kind": "progress", "line": "Caching text embeddings:  51%|█████▏    | 20/39 [00:06<00:03,  4.80it/s, comfyui-airport-editorial_00030_.png (4v)]", "ts": 1779767233.1059}
+{"id": 166, "kind": "progress", "line": "Caching text embeddings:  54%|█████▍    | 21/39 [00:06<00:03,  4.80it/s, comfyui-airport-editorial_00031_.png (4v)]", "ts": 1779767233.1119893}
+{"id": 167, "kind": "progress", "line": "Caching text embeddings:  56%|█████▋    | 22/39 [00:06<00:03,  4.80it/s, comfyui-airport-editorial_00033_.png (4v)]", "ts": 1779767233.1182396}
+{"id": 168, "kind": "progress", "line": "Caching text embeddings:  59%|█████▉    | 23/39 [00:06<00:03,  4.80it/s, comfyui-airport-editorial_00034_.png (4v)]", "ts": 1779767233.1242635}
+{"id": 169, "kind": "progress", "line": "Caching text embeddings:  62%|██████▏   | 24/39 [00:06<00:03,  4.80it/s, comfyui-airport-editorial_00038_.png (4v)]", "ts": 1779767233.12499}
+{"id": 170, "kind": "progress", "line": "Caching text embeddings:  64%|██████▍   | 25/39 [00:06<00:03,  4.48it/s, comfyui-airport-editorial_00038_.png (4v)]", "ts": 1779767233.1304638}
+{"id": 171, "kind": "progress", "line": "Caching text embeddings:  64%|██████▍   | 25/39 [00:06<00:03,  4.48it/s, comfyui-airport-editorial_00039_.png (4v)]", "ts": 1779767233.1385884}
+{"id": 172, "kind": "progress", "line": "Caching text embeddings:  67%|██████▋   | 26/39 [00:06<00:02,  4.48it/s, comfyui-airport-editorial_00040_.png (4v)]", "ts": 1779767233.144803}
+{"id": 173, "kind": "progress", "line": "Caching text embeddings:  69%|██████▉   | 27/39 [00:06<00:02,  4.48it/s, comfyui-airport-editorial_00041_.png (4v)]", "ts": 1779767233.1509717}
+{"id": 174, "kind": "progress", "line": "Caching text embeddings:  72%|███████▏  | 28/39 [00:06<00:02,  4.48it/s, comfyui-airport-editorial_00042_.png (4v)]", "ts": 1779767233.1568909}
+{"id": 175, "kind": "progress", "line": "Caching text embeddings:  74%|███████▍  | 29/39 [00:06<00:02,  4.48it/s, comfyui-airport-editorial_00043_.png (4v)]", "ts": 1779767233.162876}
+{"id": 176, "kind": "progress", "line": "Caching text embeddings:  77%|███████▋  | 30/39 [00:06<00:02,  4.48it/s, comfyui-airport-editorial_00044_.png (4v)]", "ts": 1779767233.1689482}
+{"id": 177, "kind": "progress", "line": "Caching text embeddings:  79%|███████▉  | 31/39 [00:06<00:01,  4.48it/s, comfyui-airport-editorial_00045_.png (4v)]", "ts": 1779767234.13262}
+{"id": 178, "kind": "progress", "line": "Caching text embeddings:  82%|████████▏ | 32/39 [00:07<00:01,  4.48it/s, comfyui-airport-editorial_00046_.png (4v)]", "ts": 1779767234.133357}
+{"id": 179, "kind": "progress", "line": "Caching text embeddings:  85%|████████▍ | 33/39 [00:07<00:01,  5.32it/s, comfyui-airport-editorial_00046_.png (4v)]", "ts": 1779767234.139178}
+{"id": 180, "kind": "progress", "line": "Caching text embeddings:  85%|████████▍ | 33/39 [00:07<00:01,  5.32it/s, comfyui-airport-editorial_00047_.png (4v)]", "ts": 1779767234.1451266}
+{"id": 181, "kind": "progress", "line": "Caching text embeddings:  87%|████████▋ | 34/39 [00:07<00:00,  5.32it/s, comfyui-airport-editorial_00048_.png (4v)]", "ts": 1779767234.1510508}
+{"id": 182, "kind": "progress", "line": "Caching text embeddings:  90%|████████▉ | 35/39 [00:07<00:00,  5.32it/s, comfyui-airport-editorial_00049_.png (4v)]", "ts": 1779767234.157254}
+{"id": 183, "kind": "progress", "line": "Caching text embeddings:  92%|█████████▏| 36/39 [00:07<00:00,  5.32it/s, comfyui-airport-editorial_00050_.png (4v)]", "ts": 1779767234.1632326}
+{"id": 184, "kind": "progress", "line": "Caching text embeddings:  95%|█████████▍| 37/39 [00:07<00:00,  5.32it/s, comfyui-airport-editorial_00051_.png (4v)]", "ts": 1779767234.169277}
+{"id": 185, "kind": "progress", "line": "Caching text embeddings:  97%|█████████▋| 38/39 [00:07<00:00,  5.32it/s, comfyui-airport-editorial_00052_.png (4v)]", "ts": 1779767234.170037}
+{"id": 186, "kind": "progress", "line": "Caching text embeddings: 100%|██████████| 39/39 [00:07<00:00,  4.97it/s, comfyui-airport-editorial_00052_.png (4v)]", "ts": 1779767234.170587}
+{"id": 187, "kind": "log", "line": "Text embedding caching complete: 39 cached, 0 skipped (already existed)", "ts": 1779767234.17247}
+{"id": 188, "kind": "status", "line": "预处理完成", "ts": 1779767236.1436145}
+{"id": 189, "kind": "status", "line": "预处理完成，自动开始训练", "ts": 1779767236.1456466}
+{"id": 190, "kind": "log", "line": "[状态] 预处理完成，自动开始训练", "ts": 1779767236.1458948}

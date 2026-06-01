@@ -1,8 +1,8 @@
 {
   "id": "20260516-113646-training-imported-rokkotsu_goddess_5_14",
   "name": "",
-  "group": "",
-  "archived": false,
+  "group": "113",
+  "archived": true,
   "job": "training",
   "state": "idle",
   "variant": "rokkotsu_goddess_5_14",
@@ -45,6 +45,10 @@
   "returncode": -15,
   "log_count": 1033,
   "metric_count": 426,
-  "updated_at": 1778903559.8197758,
-  "updated_at_text": "2026-05-16 11:52:39"
+  "updated_at": 1779983223.7019885,
+  "updated_at_text": "2026-05-28 23:47:03",
+  "history_group_key": "legacy:imported\u0001rokkotsu_goddess_5_14\u0001default",
+  "history_group_label": "imported / rokkotsu_goddess_5_14 / default",
+  "history_source_config_file": "",
+  "history_run_label": "mylora"
 }
