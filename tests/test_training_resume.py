@@ -270,10 +270,11 @@ def _patch_runtime_service_paths(monkeypatch, root):
 
 
 class _FakeJsonRequest:
-    def __init__(self, data, app=None, query=None):
+    def __init__(self, data, app=None, query=None, match_info=None):
         self._data = data
         self.app = app or {}
         self.query = query or {}
+        self.match_info = match_info or {}
 
     async def json(self):
         return self._data
@@ -1933,6 +1934,7 @@ def test_training_service_ingests_progress_jsonl(tmp_path, monkeypatch):
     events = [
         {"ev": "run_start", "ts": 0.0, "total_steps": 10, "total_epochs": 1, "pid": 1},
         {"ev": "step", "ts": 1.0, "global_step": 1, "epoch": 0, "loss": 0.5, "lr": 1e-4},
+        {"ev": "step", "ts": 1.5, "global_step": 2, "epoch": 0, "loss/average": 0.4, "lr/unet": 2e-4},
         {"ev": "val", "ts": 2.0, "global_step": 1, "epoch": 0, "cmmd": 0.03},
         {"ev": "ckpt", "ts": 3.0, "global_step": 1, "path": "output/demo.safetensors"},
         {"ev": "run_end", "ts": 4.0, "status": "ok", "final_step": 1},
@@ -1965,11 +1967,52 @@ def test_training_service_ingests_progress_jsonl(tmp_path, monkeypatch):
     assert metrics[0]["step"] == 1
     assert metrics[0]["loss"] == 0.5
     assert metrics[0]["ts"] == 1001.0
-    assert metrics[1]["kind"] == "val"
-    assert metrics[1]["cmmd"] == 0.03
+    assert metrics[1]["step"] == 2
+    assert metrics[1]["loss"] == 0.4
+    assert metrics[1]["lr"] == 2e-4
+    assert metrics[2]["kind"] == "val"
+    assert metrics[2]["cmmd"] == 0.03
     assert any("结构化训练进度已开始" in item["line"] for item in logs)
     assert any("已保存检查点" in item["line"] for item in logs)
     assert any("结构化训练进度结束" in item["line"] for item in logs)
+
+
+def test_history_detail_recovers_lr_from_progress_jsonl(tmp_path, monkeypatch):
+    history_dir = tmp_path / "history"
+    monkeypatch.setattr(training_service, "HISTORY_DIR", history_dir)
+    task_dir = history_dir / "task"
+    task_dir.mkdir(parents=True)
+    (task_dir / "meta.json").write_text(
+        json.dumps({
+            "id": "task",
+            "job": "training",
+            "state": "idle",
+            "started_at": 1000.0,
+        }),
+        encoding="utf-8",
+    )
+    (task_dir / "config.snapshot.toml").write_text("learning_rate = 0.001\n", encoding="utf-8")
+    (task_dir / "metrics.jsonl").write_text(
+        "\n".join([
+            json.dumps({"step": 2, "ts": 1001.0, "loss": 0.5}),
+            json.dumps({"step": 3, "ts": 1002.0, "loss": 0.4}),
+        ]) + "\n",
+        encoding="utf-8",
+    )
+    (task_dir / "progress.jsonl").write_text(
+        "\n".join([
+            json.dumps({"ev": "run_start", "ts": 0.0, "total_steps": 2, "total_epochs": 1, "pid": 1}),
+            json.dumps({"ev": "step", "ts": 1.0, "global_step": 1, "epoch": 0, "loss/average": 0.5, "lr/unet": 1e-4}),
+            json.dumps({"ev": "step", "ts": 2.0, "global_step": 2, "epoch": 0, "loss/average": 0.4, "lr/group0": 2e-4}),
+        ]) + "\n",
+        encoding="utf-8",
+    )
+
+    payload = training_service._load_history_task("task")
+
+    assert [item["step"] for item in payload["metrics"]] == [1, 2]
+    assert [item["loss"] for item in payload["metrics"]] == [0.5, 0.4]
+    assert [item["lr"] for item in payload["metrics"]] == [1e-4, 2e-4]
 
 
 def test_training_service_persists_learning_rate_change_logs(tmp_path, monkeypatch):
@@ -2197,6 +2240,33 @@ def test_history_list_repairs_old_auto_prefixed_preprocess_name(tmp_path, monkey
     assert repaired["name"] == "522-20260524-131053"
 
 
+def test_history_list_skips_single_unreadable_summary(tmp_path, monkeypatch):
+    history_dir = tmp_path / "history"
+    bad_dir = _write_group_task(
+        history_dir,
+        "20260524-131053-training-imported-bad",
+        started_at=2000.0,
+    )
+    good_dir = _write_group_task(
+        history_dir,
+        "20260524-131054-training-imported-good",
+        started_at=1000.0,
+    )
+    monkeypatch.setattr(training_service, "HISTORY_DIR", history_dir)
+    original_count_jsonl = training_service._count_jsonl
+
+    def flaky_count_jsonl(path: Path) -> int:
+        if path.parent == bad_dir:
+            raise OSError("stale file handle")
+        return original_count_jsonl(path)
+
+    monkeypatch.setattr(training_service, "_count_jsonl", flaky_count_jsonl)
+
+    tasks = TrainingService(web.Application()).list_history_tasks(include_archived=True)
+
+    assert [task["id"] for task in tasks] == [good_dir.name]
+
+
 def test_history_list_binds_preprocess_collection_to_training_group(tmp_path, monkeypatch):
     history_dir = tmp_path / "history"
     history_meta = {
@@ -2337,6 +2407,121 @@ def test_history_detail_limits_logs_and_system_records(tmp_path, monkeypatch):
     assert payload["limits"]["system_total"] == 4
     assert payload["limits"]["system_returned"] == 2
     assert payload["limits"]["system_truncated"] is True
+
+
+def test_history_log_download_path_rejects_escape(tmp_path, monkeypatch):
+    history_dir = tmp_path / "history"
+    task_id = "20260524-131153-training-imported-522"
+    task_dir = history_dir / task_id
+    task_dir.mkdir(parents=True)
+    logs_path = task_dir / "logs.jsonl"
+    logs_path.write_text('{"line": "ok"}\n', encoding="utf-8")
+    monkeypatch.setattr(training_service, "HISTORY_DIR", history_dir)
+    svc = TrainingService(web.Application())
+
+    assert svc.get_history_log_path(task_id) == logs_path.resolve()
+    with pytest.raises(ValueError, match="任务 ID 不合法"):
+        svc.get_history_log_path("../outside")
+
+    logs_path.unlink()
+    outside = tmp_path / "outside.jsonl"
+    outside.write_text('{"line": "outside"}\n', encoding="utf-8")
+    logs_path.symlink_to(outside)
+    with pytest.raises(ValueError, match="路径不合法"):
+        svc.get_history_log_path(task_id)
+
+
+def test_history_log_download_route_returns_full_jsonl(tmp_path, monkeypatch):
+    history_dir = tmp_path / "history"
+    task_id = "20260524-131153-training-imported-522"
+    task_dir = history_dir / task_id
+    task_dir.mkdir(parents=True)
+    logs_path = task_dir / "logs.jsonl"
+    logs_path.write_text('{"line": "first"}\n{"line": "last"}\n', encoding="utf-8")
+    monkeypatch.setattr(training_service, "HISTORY_DIR", history_dir)
+    svc = TrainingService(web.Application())
+    req = _FakeJsonRequest({}, {"training_service": svc}, match_info={"task_id": task_id})
+
+    response = asyncio.run(training_routes.handle_history_log_download(req))
+
+    assert response.status == 200
+    assert response._path == logs_path.resolve()
+    assert response.headers["Content-Disposition"].endswith(f"{task_id}.logs.jsonl")
+
+
+def test_history_artifact_path_allows_whitelisted_task_and_runtime_files(tmp_path, monkeypatch):
+    history_dir = tmp_path / "history"
+    output_root = tmp_path / "runs"
+    task_id = "20260524-131153-training-imported-522"
+    task_dir = history_dir / task_id
+    run_dir = output_root / "demo-run"
+    task_dir.mkdir(parents=True)
+    run_dir.mkdir(parents=True)
+    (task_dir / "config.snapshot.toml").write_text('learning_rate = 0.0001\n', encoding="utf-8")
+    runtime_config = run_dir / "config.runtime.toml"
+    runtime_config.write_text('output_name = "demo"\n', encoding="utf-8")
+    (task_dir / "meta.json").write_text(
+        json.dumps({
+            "id": task_id,
+            "job": "training",
+            "state": "idle",
+            "run_dir": str(run_dir),
+            "runtime_config_file": str(runtime_config),
+        }),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(training_service, "HISTORY_DIR", history_dir)
+    monkeypatch.setattr(training_service, "resolve_output_root", lambda: output_root)
+    svc = TrainingService(web.Application())
+
+    assert svc.get_history_artifact_path(task_id, "config-snapshot") == (task_dir / "config.snapshot.toml").resolve()
+    assert svc.get_history_artifact_path(task_id, "runtime-config") == runtime_config.resolve()
+
+    outside = tmp_path / "outside.toml"
+    outside.write_text("escape = true\n", encoding="utf-8")
+    (task_dir / "meta.json").write_text(
+        json.dumps({
+            "id": task_id,
+            "job": "training",
+            "state": "idle",
+            "run_dir": str(run_dir),
+            "runtime_config_file": str(outside),
+        }),
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="运行文件路径不合法"):
+        svc.get_history_artifact_path(task_id, "runtime-config")
+
+
+def test_history_artifact_route_sets_inline_or_attachment(tmp_path, monkeypatch):
+    history_dir = tmp_path / "history"
+    task_id = "20260524-131153-training-imported-522"
+    task_dir = history_dir / task_id
+    task_dir.mkdir(parents=True)
+    snapshot = task_dir / "config.snapshot.toml"
+    snapshot.write_text("max_train_epochs = 1\n", encoding="utf-8")
+    monkeypatch.setattr(training_service, "HISTORY_DIR", history_dir)
+    svc = TrainingService(web.Application())
+
+    view_req = _FakeJsonRequest(
+        {},
+        {"training_service": svc},
+        match_info={"task_id": task_id, "artifact_key": "config-snapshot"},
+    )
+    view_response = asyncio.run(training_routes.handle_history_artifact(view_req))
+    assert view_response.status == 200
+    assert view_response._path == snapshot.resolve()
+    assert view_response.headers["Content-Disposition"].startswith("inline;")
+
+    download_req = _FakeJsonRequest(
+        {},
+        {"training_service": svc},
+        query={"download": "1"},
+        match_info={"task_id": task_id, "artifact_key": "config-snapshot"},
+    )
+    download_response = asyncio.run(training_routes.handle_history_artifact(download_req))
+    assert download_response.status == 200
+    assert download_response.headers["Content-Disposition"].startswith("attachment;")
 
 
 def test_delete_history_task_removes_directory_with_bad_files(tmp_path, monkeypatch):
@@ -3198,9 +3383,44 @@ def test_service_startup_marks_orphaned_running_tasks_interrupted(tmp_path, monk
     assert meta["log_count"] == 2
     assert meta["metric_count"] == 2
 
+
+def test_service_startup_keeps_history_available_when_orphan_repair_write_fails(tmp_path, monkeypatch):
+    history_dir = tmp_path / "history"
+    bad_dir = _write_group_task(
+        history_dir,
+        "20260517-000001-training-imported-bad",
+        started_at=1000.0,
+        state="running",
+    )
+    good_dir = _write_group_task(
+        history_dir,
+        "20260517-000002-training-imported-good",
+        started_at=2000.0,
+        state="running",
+    )
+    monkeypatch.setattr(training_service, "HISTORY_DIR", history_dir)
+    original_write_json_atomic = training_service._write_json_atomic
+
+    def flaky_write_json_atomic(path: Path, payload: dict) -> None:
+        if path.parent == bad_dir:
+            raise OSError("stale file handle")
+        original_write_json_atomic(path, payload)
+
+    monkeypatch.setattr(training_service, "_write_json_atomic", flaky_write_json_atomic)
+
+    count = training_service._mark_orphaned_running_history_tasks()
+
+    assert count == 1
+    bad_meta = json.loads((bad_dir / "meta.json").read_text(encoding="utf-8"))
+    good_meta = json.loads((good_dir / "meta.json").read_text(encoding="utf-8"))
+    assert bad_meta["state"] == "running"
+    assert good_meta["state"] == "interrupted"
+
     svc = TrainingService(web.Application())
     payload = svc.get_config_group_timeline("imported", "demo", "default")
-    assert payload["tasks"][0]["state"] == "interrupted"
+    tasks = {task["id"]: task for task in payload["tasks"]}
+    assert tasks[bad_dir.name]["state"] == "running"
+    assert tasks[good_dir.name]["state"] == "interrupted"
 
 
 def test_training_error_classifier_detects_cuda_oom():

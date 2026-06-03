@@ -25,7 +25,7 @@ from networks import (
 )
 from networks import lora_save
 from networks.lora_anima.factory import create_network_from_weights
-from networks.lora_modules.lokr import LoKrModule
+from networks.plugins.lokr.module import LoKrModule
 
 
 # ---------------------------------------------------------------------------
@@ -96,6 +96,22 @@ def test_lokr_kwargs_registered():
     must_have = {"use_lokr", "lokr_factor"}
     assert must_have.issubset(set(all_network_kwargs()))
     assert "lokr_factor" in set(NETWORK_REGISTRY["lokr"].kwarg_flags)
+
+
+def test_lokr_lives_in_plugin_not_core_imports():
+    core_files = [
+        Path("networks/__init__.py"),
+        Path("networks/lora_anima/network.py"),
+        Path("networks/lora_anima/factory.py"),
+        Path("networks/lora_save.py"),
+        Path("networks/lora_modules/__init__.py"),
+        Path("networks/lora_modules/custom_autograd.py"),
+    ]
+    forbidden = ("LoKrModule", "lokr_project", "networks.lora_modules.lokr")
+    for path in core_files:
+        text = path.read_text(encoding="utf-8")
+        for token in forbidden:
+            assert token not in text, f"{path} still references {token}"
 
 
 # ---------------------------------------------------------------------------

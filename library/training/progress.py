@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 import os
 import time
 from contextlib import contextmanager
@@ -59,7 +60,55 @@ def _flatten_logs(logs: dict) -> dict:
                     out[key] = item()
                 except Exception:
                     continue
+    _add_progress_aliases(out)
     return out
+
+
+def _number_or_none(value: Any) -> float | None:
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    return number if math.isfinite(number) else None
+
+
+def _first_number(logs: dict, keys: tuple[str, ...]) -> float | None:
+    for key in keys:
+        number = _number_or_none(logs.get(key))
+        if number is not None:
+            return number
+    return None
+
+
+def _primary_lr(logs: dict) -> float | None:
+    direct = _first_number(
+        logs,
+        ("lr", "learning_rate", "lr/unet", "lr/group0", "lr/textencoder"),
+    )
+    if direct is not None:
+        return direct
+    for key, value in logs.items():
+        if key.startswith("lr/") and not key.startswith("lr/d*lr/"):
+            number = _number_or_none(value)
+            if number is not None:
+                return number
+    for key, value in logs.items():
+        if key.startswith("lr/d*lr"):
+            number = _number_or_none(value)
+            if number is not None:
+                return number
+    return None
+
+
+def _add_progress_aliases(logs: dict) -> None:
+    if _number_or_none(logs.get("loss")) is None:
+        loss = _first_number(logs, ("loss/average", "loss/current"))
+        if loss is not None:
+            logs["loss"] = loss
+    if _number_or_none(logs.get("lr")) is None:
+        lr = _primary_lr(logs)
+        if lr is not None:
+            logs["lr"] = lr
 
 
 def _find_cmmd(logs: dict) -> Optional[float]:

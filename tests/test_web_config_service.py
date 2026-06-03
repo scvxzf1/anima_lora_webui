@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import asyncio
+import io
 import json
 import os
+import zipfile
 from pathlib import Path
 
 import pytest
@@ -183,14 +185,32 @@ def test_raw_patch_ignores_dataset_picker_ui_field(tmp_path: Path, monkeypatch):
     assert "dataset_config_picker" not in (configs / "imported" / "lora.toml").read_text(encoding="utf-8")
 
 
-def test_raw_patch_removes_retired_router_fields(tmp_path: Path, monkeypatch):
+def test_raw_patch_removes_retired_config_fields(tmp_path: Path, monkeypatch):
     configs, _dataset_path = _write_minimal_config_tree(tmp_path)
     train_rel = "configs/imported/lora.toml"
+    retired_keys = [
+        "per_channel_scaling",
+        "repa_layer",
+        "repa_lr_scale",
+        "repa_weight",
+        "trim_crossattn_kv",
+        "use_fei_router",
+        "use_hydra",
+        "use_repa",
+        "use_sigma_router",
+    ]
     (configs / "imported" / "lora.toml").write_text(
         "\n".join(
             [
                 'output_name = "anima"',
+                "per_channel_scaling = true",
+                "repa_layer = 8",
+                "repa_lr_scale = 1.0",
+                "repa_weight = 0.5",
+                "trim_crossattn_kv = true",
+                "use_fei_router = true",
                 "use_hydra = true",
+                "use_repa = true",
                 "use_sigma_router = true",
                 "",
             ]
@@ -202,20 +222,27 @@ def test_raw_patch_removes_retired_router_fields(tmp_path: Path, monkeypatch):
     ok, msg, content, changed = config_service.patch_raw_file_values(
         train_rel,
         {
+            "per_channel_scaling": False,
+            "repa_layer": 0,
+            "repa_lr_scale": 0,
+            "repa_weight": 0,
+            "trim_crossattn_kv": False,
+            "use_fei_router": False,
             "use_hydra": False,
+            "use_repa": False,
             "use_sigma_router": False,
             "output_name": "clean",
         },
     )
 
     assert ok is True, msg
-    assert changed == ["output_name", "use_hydra", "use_sigma_router"]
+    assert changed == sorted(["output_name", *retired_keys])
     assert 'output_name = "clean"' in content
-    assert "use_hydra" not in content
-    assert "use_sigma_router" not in content
+    for key in retired_keys:
+        assert key not in content
     saved = (configs / "imported" / "lora.toml").read_text(encoding="utf-8")
-    assert "use_hydra" not in saved
-    assert "use_sigma_router" not in saved
+    for key in retired_keys:
+        assert key not in saved
 
 
 def test_blank_preset_template_can_receive_global_model_paths(tmp_path: Path, monkeypatch):
@@ -333,6 +360,63 @@ def test_preflight_uses_selected_config_file_dataset_paths(tmp_path: Path, monke
     assert "output_dir" not in {item["key"] for item in result["checks"]}
     env_checks = [item for item in result["checks"] if item["key"] == "preprocess_environment"]
     assert env_checks[-1]["level"] == "ok"
+
+
+def test_preflight_checks_manual_network_weights_before_launch(tmp_path: Path, monkeypatch):
+    configs, _dataset_path = _write_minimal_config_tree(tmp_path)
+    _patch_config_service_paths(monkeypatch, tmp_path)
+    source_dir = tmp_path / "image_dataset" / "selected"
+    source_dir.mkdir(parents=True)
+    Image.new("RGB", (8, 8), color=(20, 40, 60)).save(source_dir / "sample.png")
+    (tmp_path / "models").mkdir()
+    (tmp_path / "models" / "anima.safetensors").write_bytes(b"model")
+    (tmp_path / "models" / "qwen.safetensors").write_bytes(b"qwen")
+    (tmp_path / "models" / "vae.safetensors").write_bytes(b"vae")
+    selected_config = configs / "imported" / "selected.toml"
+    selected_config.write_text(
+        "\n".join(
+            [
+                'source_image_dir = "image_dataset/selected"',
+                'pretrained_model_name_or_path = "models/anima.safetensors"',
+                'qwen3 = "models/qwen.safetensors"',
+                'vae = "models/vae.safetensors"',
+                'network_weights = "weights/demo_lokr.safetensors"',
+                "dim_from_weights = true",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    called: dict[str, str] = {}
+
+    def fake_inspect(path: str, **kwargs) -> dict:
+        called["path"] = path
+        called["variant"] = kwargs["variant"]
+        called["config_file"] = kwargs["config_file"]
+        return {
+            "compatible": False,
+            "message": "LoKr 权重需要当前变体为 lokr",
+            "kind": "LoKr",
+            "abs_path": str(tmp_path / "weights" / "demo_lokr.safetensors"),
+        }
+
+    monkeypatch.setattr(config_service, "_inspect_network_weight", fake_inspect)
+
+    result = config_service.preflight_training_config(
+        "lora",
+        "default",
+        "imported",
+        config_file="configs/imported/selected.toml",
+    )
+
+    weight_checks = [item for item in result["checks"] if item["key"] == "network_weights"]
+    assert called == {
+        "path": "weights/demo_lokr.safetensors",
+        "variant": "lora",
+        "config_file": "configs/imported/selected.toml",
+    }
+    assert result["ok"] is False
+    assert weight_checks[-1]["level"] == "error"
+    assert "LoKr 权重需要当前变体为 lokr" in weight_checks[-1]["message"]
 
 
 def test_preflight_nl_tag_mix_accepts_single_captioned_directory(tmp_path: Path, monkeypatch):
@@ -1038,6 +1122,402 @@ def test_unlocked_default_group_can_be_renamed(tmp_path: Path, monkeypatch):
     assert renamed["label"] == "常用导入配置"
 
 
+def test_dataset_groups_are_dataset_only_and_presets_list_returns_groups(tmp_path: Path, monkeypatch):
+    configs, _dataset_path = _write_minimal_config_tree(tmp_path)
+    (configs / "web-file-groups.toml").write_text(
+        "\n".join(
+            [
+                "[[groups]]",
+                'id = "datasets"',
+                'label = "数据集配置"',
+                "open = true",
+                "locked = false",
+                "trainable = false",
+                'patterns = ["configs/datasets/*.toml"]',
+                'exclude = ["configs/datasets/character_b.toml"]',
+                "",
+                "[[groups]]",
+                'id = "imported"',
+                'label = "导入配置"',
+                "open = true",
+                "locked = false",
+                "trainable = true",
+                'methods_subdir = "imported"',
+                'patterns = ["configs/imported/*.toml"]',
+            ]
+        ),
+        encoding="utf-8",
+    )
+    _patch_config_service_paths(monkeypatch, tmp_path)
+    config_service.save_dataset_preset(
+        "configs/datasets/character_a.toml",
+        [{"source_dir": "image_dataset/a", "image_dir": "post/a", "cache_dir": "cache/a", "num_repeats": 1}],
+        {},
+    )
+    config_service.save_dataset_preset(
+        "configs/datasets/character_b.toml",
+        [{"source_dir": "image_dataset/b", "image_dir": "post/b", "cache_dir": "cache/b", "num_repeats": 1}],
+        {},
+    )
+
+    ok, message, group = config_service.create_config_file_group("角色数据集", kind="dataset")
+    assert ok is True, message
+    assert group is not None
+    assert group["kind"] == "dataset"
+    assert group["trainable"] is False
+    assert group["open"] is False
+
+    ok, message, moved = config_service.move_config_file_to_group(
+        "configs/datasets/character_a.toml",
+        group["id"],
+    )
+    assert ok is True, message
+    assert moved is not None
+    assert [item["path"] for item in moved["files"]] == ["configs/datasets/character_a.toml"]
+
+    all_group_ids = [item["id"] for item in config_service.list_config_file_groups(kind="all")]
+    training_group_ids = [item["id"] for item in config_service.list_config_file_groups(kind="training")]
+    dataset_group_ids = [item["id"] for item in config_service.list_config_file_groups(kind="dataset")]
+    assert "imported" in all_group_ids
+    assert "datasets" in all_group_ids
+    assert group["id"] in all_group_ids
+    assert training_group_ids == ["imported"]
+    assert "datasets" in dataset_group_ids
+    assert group["id"] in dataset_group_ids
+    assert "imported" not in dataset_group_ids
+    with pytest.raises(ValueError, match="kind"):
+        config_service.list_config_file_groups(kind="sample")
+
+    response = asyncio.run(config_routes.handle_file_groups(_QueryRequest({})))
+    assert response.status == 200
+    body = json.loads(response.text)
+    assert [item["id"] for item in body] == ["imported"]
+
+    response = asyncio.run(config_routes.handle_file_groups(_QueryRequest({"kind": "dataset"})))
+    assert response.status == 200
+    body = json.loads(response.text)
+    assert "datasets" in [item["id"] for item in body]
+    assert "imported" not in [item["id"] for item in body]
+
+    response = asyncio.run(config_routes.handle_file_groups(_QueryRequest({"kind": "all"})))
+    assert response.status == 200
+    body = json.loads(response.text)
+    assert "datasets" in [item["id"] for item in body]
+    assert "imported" in [item["id"] for item in body]
+
+    ok, message, _group = config_service.move_config_file_to_group(
+        "configs/datasets/character_a.toml",
+        "imported",
+    )
+    assert ok is False
+    assert "数据集预设只能移动到数据集分组" in message
+
+    listed = config_service.list_dataset_presets()
+    assert listed["ok"] is True
+    assert listed["groups"][0]["id"] == "unfiled_datasets"
+    assert listed["groups"][0]["open"] is True
+    assert listed["groups"][0]["files"][0]["path"] == "configs/datasets/character_b.toml"
+    assert any(item["id"] == group["id"] for item in listed["groups"])
+    dataset_group = next(item for item in listed["groups"] if item["id"] == group["id"])
+    assert dataset_group["open"] is False
+    assert dataset_group["files"][0]["path"] == "configs/datasets/character_a.toml"
+
+
+def test_place_config_file_in_group_uses_exact_drop_index(tmp_path: Path, monkeypatch):
+    configs, _dataset_path = _write_minimal_config_tree(tmp_path)
+    for name in ["alpha", "beta", "gamma"]:
+        (configs / "imported" / f"{name}.toml").write_text(f'output_name = "{name}"\n', encoding="utf-8")
+    (configs / "web-file-groups.toml").write_text(
+        "\n".join(
+            [
+                "[[groups]]",
+                'id = "imported"',
+                'label = "导入配置"',
+                "open = true",
+                "locked = false",
+                "trainable = true",
+                'methods_subdir = "imported"',
+                'patterns = ["configs/imported/*.toml"]',
+                "",
+                "[[groups]]",
+                'id = "custom_group"',
+                'label = "自定义分组"',
+                "open = true",
+                "locked = false",
+                "trainable = true",
+                'methods_subdir = "imported"',
+                "user_managed = true",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    _patch_config_service_paths(monkeypatch, tmp_path)
+
+    ok, message, group = config_service.place_config_file_in_group("configs/imported/alpha.toml", "custom_group", 0)
+    assert ok is True, message
+    assert [item["path"] for item in group["files"]] == ["configs/imported/alpha.toml"]
+
+    ok, message, group = config_service.place_config_file_in_group("configs/imported/beta.toml", "custom_group", 0)
+    assert ok is True, message
+    assert [item["path"] for item in group["files"]] == [
+        "configs/imported/beta.toml",
+        "configs/imported/alpha.toml",
+    ]
+
+    ok, message, group = config_service.place_config_file_in_group("configs/imported/gamma.toml", "custom_group", 1)
+    assert ok is True, message
+    assert [item["path"] for item in group["files"]] == [
+        "configs/imported/beta.toml",
+        "configs/imported/gamma.toml",
+        "configs/imported/alpha.toml",
+    ]
+
+    ok, message, group = config_service.place_config_file_in_group("configs/imported/alpha.toml", "custom_group", 0)
+    assert ok is True, message
+    assert [item["path"] for item in group["files"]] == [
+        "configs/imported/alpha.toml",
+        "configs/imported/beta.toml",
+        "configs/imported/gamma.toml",
+    ]
+
+    response = asyncio.run(config_routes.handle_file_group_place(_JsonRequest({
+        "target": "file",
+        "file": "configs/imported/gamma.toml",
+        "group": "custom_group",
+        "index": 1,
+    })))
+    assert response.status == 200
+    body = json.loads(response.text)
+    assert [item["path"] for item in body["group"]["files"]] == [
+        "configs/imported/alpha.toml",
+        "configs/imported/gamma.toml",
+        "configs/imported/beta.toml",
+    ]
+
+
+def test_place_config_file_rejects_cross_kind_and_locked_targets(tmp_path: Path, monkeypatch):
+    configs, _dataset_path = _write_minimal_config_tree(tmp_path)
+    (configs / "datasets" / "character.toml").write_text(
+        "[[datasets]]\n[[datasets.subsets]]\nimage_dir = \"image_dataset/a\"\n",
+        encoding="utf-8",
+    )
+    (configs / "web-file-groups.toml").write_text(
+        "\n".join(
+            [
+                "[[groups]]",
+                'id = "imported"',
+                'label = "导入配置"',
+                "open = true",
+                "locked = false",
+                "trainable = true",
+                'methods_subdir = "imported"',
+                'patterns = ["configs/imported/*.toml"]',
+                "",
+                "[[groups]]",
+                'id = "locked_imported"',
+                'label = "锁定导入"',
+                "open = true",
+                "locked = true",
+                "trainable = true",
+                'methods_subdir = "imported"',
+                "user_managed = true",
+                "",
+                "[[groups]]",
+                'id = "datasets"',
+                'label = "数据集配置"',
+                "open = true",
+                "locked = false",
+                "trainable = false",
+                'patterns = ["configs/datasets/*.toml"]',
+            ]
+        ),
+        encoding="utf-8",
+    )
+    _patch_config_service_paths(monkeypatch, tmp_path)
+
+    ok, message, _group = config_service.place_config_file_in_group(
+        "configs/datasets/character.toml",
+        "imported",
+        0,
+    )
+    assert ok is False
+    assert "数据集预设只能移动到数据集分组" in message
+
+    ok, message, _group = config_service.place_config_file_in_group(
+        "configs/imported/lora.toml",
+        "locked_imported",
+        0,
+    )
+    assert ok is False
+    assert "目标分组已锁定" in message
+
+
+def test_place_config_file_group_sorts_within_scope_only(tmp_path: Path, monkeypatch):
+    configs, _dataset_path = _write_minimal_config_tree(tmp_path)
+    (configs / "web-file-groups.toml").write_text(
+        "\n".join(
+            [
+                "[[groups]]",
+                'id = "imported"',
+                'label = "导入配置"',
+                "open = true",
+                "locked = false",
+                "trainable = true",
+                'methods_subdir = "imported"',
+                'patterns = ["configs/imported/*.toml"]',
+                "",
+                "[[groups]]",
+                'id = "alpha"',
+                'label = "Alpha"',
+                "open = true",
+                "locked = false",
+                "trainable = true",
+                'methods_subdir = "imported"',
+                "user_managed = true",
+                "",
+                "[[groups]]",
+                'id = "beta"',
+                'label = "Beta"',
+                "open = true",
+                "locked = false",
+                "trainable = true",
+                'methods_subdir = "imported"',
+                "user_managed = true",
+                "",
+                "[[groups]]",
+                'id = "datasets"',
+                'label = "数据集配置"',
+                "open = true",
+                "locked = false",
+                "trainable = false",
+                'patterns = ["configs/datasets/*.toml"]',
+                "",
+                "[[groups]]",
+                'id = "dataset_extra"',
+                'label = "额外数据集"',
+                "open = false",
+                "locked = false",
+                "trainable = false",
+                'kind = "dataset"',
+                "user_managed = true",
+                "",
+                "[[groups]]",
+                'id = "locked_custom"',
+                'label = "锁定分组"',
+                "open = true",
+                "locked = true",
+                "trainable = true",
+                'methods_subdir = "imported"',
+                "user_managed = true",
+                "",
+                "[[groups]]",
+                'id = "gui_methods"',
+                'label = "可训练方法变体"',
+                "open = true",
+                "locked = false",
+                "trainable = true",
+                'methods_subdir = "gui-methods"',
+            ]
+        ),
+        encoding="utf-8",
+    )
+    _patch_config_service_paths(monkeypatch, tmp_path)
+
+    ok, message, group = config_service.place_config_file_group("beta", "training", 0)
+    assert ok is True, message
+    assert group["id"] == "beta"
+    assert [item["id"] for item in config_service.list_config_file_groups(kind="training")[:3]] == [
+        "beta",
+        "imported",
+        "alpha",
+    ]
+    assert [item["id"] for item in config_service.list_config_file_groups(kind="dataset")] == [
+        "datasets",
+        "dataset_extra",
+    ]
+
+    ok, message, group = config_service.place_config_file_group("dataset_extra", "dataset", 0)
+    assert ok is True, message
+    assert group["id"] == "dataset_extra"
+    assert [item["id"] for item in config_service.list_config_file_groups(kind="dataset")] == [
+        "dataset_extra",
+        "datasets",
+    ]
+
+    ok, message, _group = config_service.place_config_file_group("locked_custom", "training", 0)
+    assert ok is False
+    assert "不能在当前范围内拖动排序" in message
+
+    ok, message, _group = config_service.place_config_file_group("gui_methods", "training", 0)
+    assert ok is False
+    assert "不能在当前范围内拖动排序" in message
+
+
+def test_export_config_file_group_archive_contains_independent_toml_files(tmp_path: Path, monkeypatch):
+    configs = tmp_path / "configs"
+    imported = configs / "imported"
+    imported.mkdir(parents=True)
+    (imported / "alpha.toml").write_text('output_name = "alpha"\n', encoding="utf-8")
+    (imported / "beta.toml").write_text('output_name = "beta"\n', encoding="utf-8")
+    (configs / "web-file-groups.toml").write_text(
+        "\n".join(
+            [
+                "[[groups]]",
+                'id = "custom_group"',
+                'label = "我的配置/分组"',
+                "open = true",
+                "trainable = true",
+                'files = ["configs/imported/alpha.toml", "configs/imported/beta.toml"]',
+            ]
+        ),
+        encoding="utf-8",
+    )
+    _patch_config_service_paths(monkeypatch, tmp_path)
+
+    archive = config_service.export_config_file_group_archive("custom_group")
+
+    assert archive["filename"] == "我的配置_分组.zip"
+    assert archive["count"] == 2
+    with zipfile.ZipFile(io.BytesIO(archive["content"])) as zf:
+        assert sorted(zf.namelist()) == ["alpha.toml", "beta.toml"]
+        assert zf.read("alpha.toml").decode("utf-8") == 'output_name = "alpha"\n'
+        assert zf.read("beta.toml").decode("utf-8") == 'output_name = "beta"\n'
+
+
+def test_handle_file_group_export_returns_zip_response(tmp_path: Path, monkeypatch):
+    configs = tmp_path / "configs"
+    imported = configs / "imported"
+    imported.mkdir(parents=True)
+    (imported / "alpha.toml").write_text('output_name = "alpha"\n', encoding="utf-8")
+    (configs / "web-file-groups.toml").write_text(
+        "\n".join(
+            [
+                "[[groups]]",
+                'id = "custom_group"',
+                'label = "导出测试"',
+                "open = true",
+                "trainable = true",
+                'files = ["configs/imported/alpha.toml"]',
+            ]
+        ),
+        encoding="utf-8",
+    )
+    _patch_config_service_paths(monkeypatch, tmp_path)
+
+    class _MatchQueryRequest(_QueryRequest):
+        def __init__(self, group_id: str, query: dict[str, str] | None = None) -> None:
+            super().__init__(query)
+            self.match_info = {"group_id": group_id}
+
+    response = asyncio.run(config_routes.handle_file_group_export(_MatchQueryRequest("custom_group")))
+
+    assert response.status == 200
+    assert response.content_type == "application/zip"
+    assert "filename*=UTF-8''" in response.headers["Content-Disposition"]
+    with zipfile.ZipFile(io.BytesIO(response.body)) as zf:
+        assert zf.namelist() == ["alpha.toml"]
+
+
 def test_dataset_preset_save_read_list_and_apply(tmp_path: Path, monkeypatch):
     configs, _dataset_path = _write_minimal_config_tree(tmp_path)
     _patch_config_service_paths(monkeypatch, tmp_path)
@@ -1184,6 +1664,112 @@ def test_dataset_preset_save_read_preserves_trigger_clone(tmp_path: Path, monkey
         "prompt": "my_character",
         "num_repeats": 3,
     }
+
+
+def test_dataset_preset_save_read_preserves_subset_filter_and_zero_validation_split(
+    tmp_path: Path,
+    monkeypatch,
+):
+    _write_minimal_config_tree(tmp_path)
+    _patch_config_service_paths(monkeypatch, tmp_path)
+
+    saved = config_service.save_dataset_preset(
+        "configs/datasets/filtered.toml",
+        [{
+            "source_dir": "image_dataset/filtered",
+            "image_dir": "post_image_dataset/filtered_resized",
+            "cache_dir": "post_image_dataset/filtered_cache",
+            "num_repeats": 1,
+            "recursive": False,
+            "path_pattern": "char_a/*",
+            "settings": {
+                "validation_split": 0,
+                "validation_seed": 0,
+            },
+        }],
+        {},
+    )
+
+    data = toml.loads(saved["content"])
+    dataset = data["datasets"][0]
+    subset = dataset["subsets"][0]
+    assert dataset["validation_split"] == 0
+    assert dataset["validation_seed"] == 0
+    assert subset["recursive"] is False
+    assert subset["path_pattern"] == "char_a/*"
+
+    loaded = config_service.load_dataset_preset("configs/datasets/filtered.toml")
+    assert loaded["datasets"][0]["recursive"] is False
+    assert loaded["datasets"][0]["path_pattern"] == "char_a/*"
+    assert loaded["datasets"][0]["settings"]["validation_split"] == 0
+    assert loaded["datasets"][0]["settings"]["validation_seed"] == 0
+
+
+def test_dataset_rows_for_estimate_inherits_top_level_path_pattern(
+    tmp_path: Path,
+    monkeypatch,
+):
+    _write_minimal_config_tree(tmp_path)
+    _patch_config_service_paths(monkeypatch, tmp_path)
+
+    rows = config_service._dataset_rows_for_estimate(
+        {
+            "source_image_dir": "image_dataset/filtered",
+            "resized_image_dir": "post_image_dataset/filtered_resized",
+            "lora_cache_dir": "post_image_dataset/filtered_cache",
+            "path_pattern": "char_a/*",
+        }
+    )
+
+    assert rows[0]["path_pattern"] == "char_a/*"
+
+
+def test_runtime_preflight_checks_nested_training_images_and_cache_sidecars(
+    tmp_path: Path,
+    monkeypatch,
+):
+    configs, _dataset_path = _write_minimal_config_tree(tmp_path)
+    _patch_config_service_paths(monkeypatch, tmp_path)
+    source_dir = tmp_path / "image_dataset" / "nested"
+    resized_dir = tmp_path / "post_image_dataset" / "nested_resized"
+    cache_dir = tmp_path / "post_image_dataset" / "nested_cache"
+    for path in (source_dir / "char_a", resized_dir / "char_a", cache_dir / "char_a"):
+        path.mkdir(parents=True)
+    Image.new("RGB", (8, 8), color=(20, 40, 60)).save(resized_dir / "char_a" / "hero.png")
+    (cache_dir / "char_a" / "hero_0008x0008_anima.npz").write_bytes(b"latent")
+    (cache_dir / "char_a" / "hero_anima_te.safetensors").write_bytes(b"te")
+    dataset_path = configs / "datasets" / "nested.toml"
+    dataset_path.write_text(
+        "\n".join(
+            [
+                "[[datasets]]",
+                "[[datasets.subsets]]",
+                'image_dir = "post_image_dataset/nested_resized"',
+                'cache_dir = "post_image_dataset/nested_cache"',
+                "recursive = true",
+                'path_pattern = "char_a/*"',
+                'custom_attributes = { source_dir = "image_dataset/nested" }',
+            ]
+        ),
+        encoding="utf-8",
+    )
+    checks: list[dict[str, str]] = []
+
+    def add(level, key, message, path=None):
+        checks.append({"level": level, "key": key, "message": message})
+
+    cfg = {
+        "dataset_config": "configs/datasets/nested.toml",
+        "cache_latents_to_disk": True,
+        "cache_text_encoder_outputs_to_disk": True,
+    }
+    config_service._check_training_images(cfg, add)
+    config_service._check_cache_sidecars(cfg, add)
+
+    by_key = {item["key"]: item for item in checks}
+    assert "training_images" not in by_key
+    assert by_key["latent_cache"]["level"] == "ok"
+    assert by_key["text_cache"]["level"] == "ok"
 
 
 def test_runtime_dataset_doc_can_prefer_train_batch_size():
@@ -1889,3 +2475,8 @@ class _JsonRequest:
 
     async def json(self) -> dict:
         return self._payload
+
+
+class _QueryRequest:
+    def __init__(self, query: dict[str, str] | None = None) -> None:
+        self.query = query or {}

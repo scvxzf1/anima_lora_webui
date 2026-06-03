@@ -92,6 +92,7 @@ def cache_pe_features(
     *,
     cache_dir: Path | None = None,
     recursive: bool = False,
+    path_pattern: str | None = None,
     batch_size: int = 8,
     num_workers: int = 4,
     save_dtype: torch.dtype = torch.bfloat16,
@@ -104,7 +105,7 @@ def cache_pe_features(
     The encoder is supplied loaded (``load_pe_encoder``) so model setup stays in
     the caller. Returns counts; pass ``progress`` for a per-image bar.
     """
-    image_files = walk_images(data_dir, recursive=recursive)
+    image_files = walk_images(data_dir, recursive=recursive, pattern=path_pattern)
     stats = PreprocessStats(seen=len(image_files))
 
     # Pre-skip cached files so workers never decode them.

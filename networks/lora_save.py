@@ -37,6 +37,7 @@ from typing import Dict, Optional
 import torch
 
 from library.log import setup_logging
+from .registry import SAVE_HANDLERS
 from networks.lora_modules import (
     ChimeraHydraLoRAModule,
     HydraLoRAModule,
@@ -167,6 +168,12 @@ def save_network_weights(
     OrthoHydraLoRAModule.distill_save_state_dict(state_dict, dtype)
     OrthoLoRAModule.distill_save_state_dict(state_dict, dtype)
     _convert_legacy_ortho_to_lora(state_dict, dtype)
+
+    plugin_handler = SAVE_HANDLERS.get(save_variant)
+    if plugin_handler is not None and plugin_handler(
+        state_dict, file, dtype, metadata
+    ):
+        return
 
     # Variant dispatch.
     #   * ``stacked_experts_global_fei``: independent-A per-expert

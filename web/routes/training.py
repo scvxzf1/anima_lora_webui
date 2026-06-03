@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from urllib.parse import quote
+
 from aiohttp import web
 
 from web.services.config_service import is_web_runtime_config, preflight_training_config
@@ -23,8 +25,11 @@ def setup_training_routes(app: web.Application) -> None:
     app.router.add_post("/api/training/queue/start", handle_queue_start)
     app.router.add_post("/api/training/queue/resume", handle_queue_resume)
     app.router.add_post("/api/training/queue/settings", handle_queue_settings)
+    app.router.add_post("/api/training/queue/cancel-all", handle_queue_cancel_all)
     app.router.add_post("/api/training/queue/cancel-waiting", handle_queue_cancel_waiting)
     app.router.add_post("/api/training/queue/clear", handle_queue_clear)
+    app.router.add_post("/api/training/queue/clear-completed", handle_queue_clear_completed)
+    app.router.add_post("/api/training/queue/clear-canceled", handle_queue_clear_canceled)
     app.router.add_post("/api/training/queue/{item_id}/move", handle_queue_move)
     app.router.add_post("/api/training/queue/{item_id}/retry", handle_queue_retry)
     app.router.add_delete("/api/training/queue/{item_id}", handle_queue_cancel)
@@ -34,6 +39,8 @@ def setup_training_routes(app: web.Application) -> None:
     app.router.add_get("/api/training/history/collections/settings", handle_history_collection_settings_get)
     app.router.add_put("/api/training/history/collections/settings", handle_history_collection_settings_put)
     app.router.add_get("/api/training/history/config-group/timeline", handle_config_group_timeline)
+    app.router.add_get("/api/training/history/{task_id}/logs/download", handle_history_log_download)
+    app.router.add_get("/api/training/history/{task_id}/artifacts/{artifact_key}", handle_history_artifact)
     app.router.add_get("/api/training/history/{task_id}", handle_history_detail)
     app.router.add_get("/api/training/history/{task_id}/resume-options", handle_history_resume_options)
     app.router.add_patch("/api/training/history/{task_id}", handle_history_update)
@@ -353,6 +360,7 @@ async def handle_queue_start(request: web.Request) -> web.Response:
         data.get("confirm_preprocess", False)
         or data.get("confirm_train_after", False)
     )
+    start_paused = bool(data.get("start_paused", False))
     continue_info = _continue_lora_info_from_request(data)
     if _is_cli_only_spd(variant, methods_subdir):
         return web.json_response({"ok": False, "error": _cli_only_spd_message()}, status=400)
@@ -383,6 +391,7 @@ async def handle_queue_start(request: web.Request) -> web.Response:
             gpu_whitelist=gpu_whitelist,
             continue_info=continue_info,
             requires_preprocess=needs_preprocess,
+            start_paused=start_paused,
         )
         return web.json_response(payload)
     except (FileNotFoundError, ValueError) as e:
@@ -436,9 +445,24 @@ async def handle_queue_cancel_waiting(request: web.Request) -> web.Response:
     return web.json_response(await svc.cancel_waiting_queue_items())
 
 
+async def handle_queue_cancel_all(request: web.Request) -> web.Response:
+    svc = request.app["training_service"]
+    return web.json_response(await svc.cancel_all_queue_items())
+
+
 async def handle_queue_clear(request: web.Request) -> web.Response:
     svc = request.app["training_service"]
     return web.json_response(await svc.clear_finished_queue_items())
+
+
+async def handle_queue_clear_completed(request: web.Request) -> web.Response:
+    svc = request.app["training_service"]
+    return web.json_response(await svc.clear_completed_queue_items())
+
+
+async def handle_queue_clear_canceled(request: web.Request) -> web.Response:
+    svc = request.app["training_service"]
+    return web.json_response(await svc.clear_canceled_queue_items())
 
 
 async def handle_queue_settings(request: web.Request) -> web.Response:
@@ -537,6 +561,39 @@ async def handle_history_detail(request: web.Request) -> web.Response:
         return web.json_response({"ok": False, "error": str(e)}, status=404)
     except ValueError as e:
         return web.json_response({"ok": False, "error": str(e)}, status=400)
+
+
+async def handle_history_log_download(request: web.Request) -> web.StreamResponse:
+    svc = request.app["training_service"]
+    task_id = request.match_info["task_id"]
+    try:
+        path = svc.get_history_log_path(task_id)
+    except FileNotFoundError as e:
+        return web.json_response({"ok": False, "error": str(e)}, status=404)
+    except ValueError as e:
+        return web.json_response({"ok": False, "error": str(e)}, status=400)
+    headers = {
+        "Content-Disposition": f"attachment; filename*=UTF-8''{quote(f'{task_id}.logs.jsonl')}",
+    }
+    return web.FileResponse(path, headers=headers)
+
+
+async def handle_history_artifact(request: web.Request) -> web.StreamResponse:
+    svc = request.app["training_service"]
+    task_id = request.match_info["task_id"]
+    artifact_key = request.match_info["artifact_key"]
+    try:
+        path = svc.get_history_artifact_path(task_id, artifact_key)
+    except FileNotFoundError as e:
+        return web.json_response({"ok": False, "error": str(e)}, status=404)
+    except ValueError as e:
+        return web.json_response({"ok": False, "error": str(e)}, status=400)
+    disposition = "attachment" if str(request.query.get("download") or "").lower() in {"1", "true", "yes"} else "inline"
+    headers = {
+        "Content-Disposition": f"{disposition}; filename*=UTF-8''{quote(path.name)}",
+        "Content-Type": "text/plain; charset=utf-8",
+    }
+    return web.FileResponse(path, headers=headers)
 
 
 async def handle_config_group_timeline(request: web.Request) -> web.Response:

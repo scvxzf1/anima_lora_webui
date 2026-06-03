@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from urllib.parse import quote
+
 from aiohttp import web
 
 from web.services.config_service import (
@@ -11,6 +13,7 @@ from web.services.config_service import (
     delete_raw_file,
     delete_config_file_group,
     estimate_training_steps,
+    export_config_file_group_archive,
     get_config_file_meta,
     get_field_help,
     get_groups,
@@ -41,6 +44,8 @@ from web.services.config_service import (
     set_user_file_lock,
     set_user_group_lock,
     move_config_file_to_group,
+    place_config_file_group,
+    place_config_file_in_group,
     rename_config_file_group,
     reorder_config_file_group,
     reorder_config_file_in_group,
@@ -84,8 +89,10 @@ def setup_config_routes(app: web.Application) -> None:
     app.router.add_patch("/api/config/file-groups/{group_id}", handle_file_group_update)
     app.router.add_delete("/api/config/file-groups/{group_id}", handle_file_group_delete)
     app.router.add_post("/api/config/file-groups/move-file", handle_file_group_move_file)
+    app.router.add_post("/api/config/file-groups/place", handle_file_group_place)
     app.router.add_post("/api/config/file-groups/reorder-file", handle_file_group_reorder_file)
     app.router.add_post("/api/config/file-groups/reorder-group", handle_file_group_reorder_group)
+    app.router.add_get("/api/config/file-groups/{group_id}/export", handle_file_group_export)
     app.router.add_post("/api/config/restore-system", handle_restore_system)
     app.router.add_get("/api/config/files", handle_files)
     app.router.add_get("/api/config/file-groups", handle_file_groups)
@@ -458,7 +465,7 @@ async def handle_config_group_lock(request: web.Request) -> web.Response:
 
 async def handle_file_group_create(request: web.Request) -> web.Response:
     data = await request.json()
-    ok, msg, group = create_config_file_group(data.get("label", ""))
+    ok, msg, group = create_config_file_group(data.get("label", ""), data.get("kind", "training"))
     if ok:
         return web.json_response({"ok": True, "message": msg, "group": group})
     return web.json_response({"ok": False, "error": msg, "group": group}, status=400)
@@ -489,6 +496,28 @@ async def handle_file_group_move_file(request: web.Request) -> web.Response:
     return web.json_response({"ok": False, "error": msg, "group": group}, status=400)
 
 
+async def handle_file_group_place(request: web.Request) -> web.Response:
+    data = await request.json()
+    target = str(data.get("target") or "").strip().lower()
+    if target == "file":
+        ok, msg, group = place_config_file_in_group(
+            data.get("file", ""),
+            data.get("group", ""),
+            data.get("index"),
+        )
+    elif target == "group":
+        ok, msg, group = place_config_file_group(
+            data.get("group", ""),
+            data.get("scope", ""),
+            data.get("index"),
+        )
+    else:
+        ok, msg, group = False, "target 必须是 file 或 group", None
+    if ok:
+        return web.json_response({"ok": True, "message": msg, "group": group})
+    return web.json_response({"ok": False, "error": msg, "group": group}, status=400)
+
+
 async def handle_file_group_reorder_file(request: web.Request) -> web.Response:
     data = await request.json()
     ok, msg, group = reorder_config_file_in_group(
@@ -512,6 +541,27 @@ async def handle_file_group_reorder_group(request: web.Request) -> web.Response:
     return web.json_response({"ok": False, "error": msg, "group": group}, status=400)
 
 
+async def handle_file_group_export(request: web.Request) -> web.StreamResponse:
+    group_id = request.match_info["group_id"]
+    kind = request.query.get("kind", "training")
+    try:
+        archive = export_config_file_group_archive(group_id, kind=kind)
+    except FileNotFoundError as e:
+        return web.json_response({"ok": False, "error": str(e)}, status=404)
+    except Exception as e:
+        return web.json_response({"ok": False, "error": str(e)}, status=400)
+
+    filename = archive["filename"]
+    headers = {
+        "Content-Disposition": f"attachment; filename*=UTF-8''{quote(filename)}",
+    }
+    return web.Response(
+        body=archive["content"],
+        headers=headers,
+        content_type="application/zip",
+    )
+
+
 async def handle_restore_system(request: web.Request) -> web.Response:
     data = await request.json()
     files = data.get("files")
@@ -531,7 +581,11 @@ async def handle_files(request: web.Request) -> web.Response:
 
 
 async def handle_file_groups(request: web.Request) -> web.Response:
-    return web.json_response(list_config_file_groups())
+    kind = request.query.get("kind", "training")
+    try:
+        return web.json_response(list_config_file_groups(kind=kind))
+    except ValueError as e:
+        return web.json_response({"ok": False, "error": str(e)}, status=400)
 
 
 async def handle_field_help(request: web.Request) -> web.Response:

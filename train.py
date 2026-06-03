@@ -35,8 +35,8 @@ from library.training.method_adapter import (
     MethodAdapter,
     SetupCtx,
     StepCtx,
-    resolve_adapters,
 )
+from library.training.adapter_resolver import resolve_adapters
 from library.config.io import (
     read_config_from_file,
 )
@@ -153,6 +153,39 @@ def _decode_deferred_samples_safely(
         anima_train_utils.decode_pending_samples(accelerator, args, vae)
     except Exception as exc:  # noqa: BLE001 - never mask the real train exit
         logger.error(f"Failed to decode deferred sample images during cleanup: {exc}")
+
+
+def _normalize_sample_args(args):
+    """Normalize inline sample prompts and disabled sample cadence."""
+    for knob in ("sample_every_n_epochs", "sample_every_n_steps"):
+        value = getattr(args, knob, None)
+        if value is not None and value <= 0:
+            setattr(args, knob, None)
+
+    value = getattr(args, "sample_prompts", None)
+    if value is None:
+        return
+
+    if isinstance(value, (list, tuple)):
+        lines = [str(item).strip() for item in value]
+    elif isinstance(value, str):
+        if os.path.isfile(value):
+            return
+        lines = [line.strip() for line in value.splitlines()]
+    else:
+        return
+
+    lines = [line for line in lines if line and not line.startswith("#")]
+    if not lines:
+        args.sample_prompts = None
+        return
+
+    os.makedirs(args.output_dir, exist_ok=True)
+    prompt_path = os.path.join(args.output_dir, "sample_prompts.txt")
+    with open(prompt_path, "w", encoding="utf-8") as f:
+        f.write("\n".join(lines) + "\n")
+    logger.info(f"Wrote {len(lines)} inline sample prompt(s) to {prompt_path}")
+    args.sample_prompts = prompt_path
 
 
 class AnimaTrainer:
@@ -1678,6 +1711,7 @@ class AnimaTrainer:
     def train(self, args):
         session_id = random.randint(0, 2**32)
         training_started_at = time.time()
+        _normalize_sample_args(args)
         verify_training_args(args)
         train_util.prepare_dataset_args(args, True)
         setup_logging(args, reset=True)
@@ -2138,6 +2172,14 @@ class AnimaTrainer:
             accelerator.end_training()
             optimizer_eval_fn()
             _decode_deferred_samples_safely(accelerator, args, loop_state, vae)
+
+            if is_main_process and args.sample_prompts:
+                try:
+                    accelerator.unwrap_model(loop_state.unet).to("cpu")
+                except Exception:
+                    pass
+                clean_memory_on_device(accelerator.device)
+                anima_train_utils.decode_pending_samples(accelerator, args, vae)
 
             if is_main_process and (args.save_state or args.save_state_on_train_end):
                 save_state_on_train_end(args, accelerator)

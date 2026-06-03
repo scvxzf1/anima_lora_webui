@@ -236,9 +236,14 @@ COMMANDS = {
     # surface. May produce broken output, change without notice, or be removed.
     "exp-turbo": (
         exp_training.cmd_turbo,
-        "[experimental] Decoupled DMD2 distillation — bakes CFG=4 / 28-step Anima "
-        "into a 4-step LoRA student (configs/methods/turbo.toml). "
+        "[experimental] DP-DMD distillation — bakes CFG=4 / 28-step Anima "
+        "into a 2-step LoRA student (configs/methods/turbo.toml). "
         "Single-GPU bespoke loop (bypasses train.py/accelerate, like distill-mod).",
+    ),
+    "exp-turbo-prep": (
+        exp_training.cmd_turbo_prep,
+        "[experimental] Turbo dataset curation — score cached stems and emit "
+        "post_image_dataset/turbo_prep/keep_list.json.",
     ),
     "exp-spd": (
         exp_training.cmd_spd,
@@ -282,7 +287,7 @@ COMMANDS = {
     ),
     "exp-test-turbo": (
         exp_inference.cmd_test_turbo,
-        "[experimental] Inference with latest turbo student LoRA at 4 steps, cfg=1.0 "
+        "[experimental] Inference with latest turbo student LoRA at 2 steps, cfg=1.0 "
         "(CFG is baked into the student).",
     ),
     "exp-test-spd": (

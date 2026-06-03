@@ -31,6 +31,29 @@ from library.inference.sampler_context import SamplerSideChannels
 
 logger = logging.getLogger(__name__)
 
+
+def _build_cns_recolorer(args):
+    """Build CNS noise recoloring for er_sde, or return None."""
+    spec = getattr(args, "cns", None)
+    if not spec:
+        return None
+    if getattr(args, "sampler", "euler") != "er_sde":
+        logger.warning(
+            "--cns is set but --sampler=%s injects no noise; CNS is a no-op "
+            "(use --sampler er_sde).",
+            getattr(args, "sampler", "euler"),
+        )
+        return None
+
+    from library.inference.corrections.cns import CNSRecolorer
+
+    recolorer = CNSRecolorer.from_path(
+        spec, strength=getattr(args, "cns_strength", 1.0)
+    )
+    logger.info("CNS noise recoloring enabled (strength=%.2f).", recolorer.strength)
+    return recolorer
+
+
 # Spectrum runner registry. The spectrum implementation lives in
 # networks/spectrum.py (or a downstream package); it self-registers on import.
 # generation.py never imports it directly so the dep edge can point inward
@@ -295,11 +318,15 @@ def generate_body_tiled(
     )
     timesteps = timesteps.to(device, dtype=torch.bfloat16)  # σ∈[0,1] — DiT time arg
 
+    cns = _build_cns_recolorer(args)
+
     # Create sampler. Variable kept named `er_sde` for historic minimum-diff
     # reasons; both ERSDESampler and LCMSampler share the same .step interface.
     er_sde = None
     if args.sampler == "er_sde":
-        er_sde = inference_utils.ERSDESampler(sigmas, seed=args.seed, device=device)
+        er_sde = inference_utils.ERSDESampler(
+            sigmas, seed=args.seed, device=device, cns=cns
+        )
     elif args.sampler == "lcm":
         er_sde = inference_utils.LCMSampler(sigmas, seed=args.seed, device=device)
 
@@ -608,11 +635,15 @@ def generate_body(
             if not dcw_calibrator.is_active:
                 dcw_calibrator = None  # graceful degrade to scalar/none
 
+    cns = _build_cns_recolorer(args)
+
     # Create sampler. Variable kept named `er_sde` for historic minimum-diff
     # reasons; both ERSDESampler and LCMSampler share the same .step interface.
     er_sde = None
     if args.sampler == "er_sde":
-        er_sde = inference_utils.ERSDESampler(sigmas, seed=args.seed, device=device)
+        er_sde = inference_utils.ERSDESampler(
+            sigmas, seed=args.seed, device=device, cns=cns
+        )
     elif args.sampler == "lcm":
         er_sde = inference_utils.LCMSampler(sigmas, seed=args.seed, device=device)
 

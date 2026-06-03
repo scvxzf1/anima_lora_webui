@@ -11,6 +11,7 @@ from torchvision import transforms
 import cv2
 
 from library.datasets.buckets import BucketManager
+from library.datasets import runtime_flags
 from library.datasets.subsets import ImageInfo
 from library.runtime.device import clean_memory_on_device
 
@@ -439,10 +440,7 @@ def cache_batch_latents(
                 info.latents_flipped = flipped_latent
             info.alpha_mask = alpha_mask
 
-    # import here to avoid circular dependency at module level
-    from library.datasets.base import HIGH_VRAM
-
-    if not HIGH_VRAM:
+    if not runtime_flags.HIGH_VRAM:
         clean_memory_on_device(vae.device)
 
 

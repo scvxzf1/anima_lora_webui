@@ -12,7 +12,7 @@ import torch
 
 from library.log import setup_logging
 from library.training.metrics import MetricContext
-from networks import NETWORK_REGISTRY, NetworkSpec, lora_save
+from networks import ModuleCreationContext, NETWORK_REGISTRY, NetworkSpec, lora_save
 from networks.lora_anima.config import LoRANetworkCfg
 from networks.lora_anima.loading import (
     _parse_reft_layers,
@@ -25,7 +25,6 @@ from networks.lora_modules import (
     ChimeraHydraInferenceModule,
     ChimeraHydraLoRAModule,
     HydraLoRAModule,
-    LoKrModule,
     LoRAModule,
     OrthoHydraLoRAModule,
     OrthoLoRAModule,
@@ -414,6 +413,14 @@ class LoRANetwork(torch.nn.Module):
         # Local aliases for the closure body and the post-closure ReFT block.
         # Reading via `cfg.foo` works too; aliases just keep the diff small.
         module_class = cfg.module_class
+        nominal_spec = next(
+            (
+                spec
+                for spec in NETWORK_REGISTRY.values()
+                if spec.module_class is module_class
+            ),
+            None,
+        )
         modules_dim = cfg.modules_dim
         modules_alpha = cfg.modules_alpha
         dropout = cfg.dropout
@@ -772,8 +779,36 @@ class LoRANetwork(torch.nn.Module):
                     extra_kwargs["ortho"] = cfg.use_ortho
                     if cfg.use_ortho:
                         extra_kwargs["ortho_init_std"] = cfg.ortho_init_std
-                elif effective_module_class == LoKrModule:
-                    extra_kwargs["factor"] = cfg.lokr_factor
+
+                effective_spec = (
+                    nominal_spec
+                    if nominal_spec is not None
+                    and effective_module_class is nominal_spec.module_class
+                    else next(
+                        (
+                            spec
+                            for spec in NETWORK_REGISTRY.values()
+                            if spec.module_class is effective_module_class
+                        ),
+                        None,
+                    )
+                )
+                if (
+                    effective_spec is not None
+                    and effective_spec.module_kwargs is not None
+                ):
+                    extra_kwargs.update(
+                        effective_spec.module_kwargs(
+                            ModuleCreationContext(
+                                cfg=cfg,
+                                is_unet=is_unet,
+                                lora_name=lora_name,
+                                original_name=original_name,
+                                child_module=child_module,
+                                module_class=effective_module_class,
+                            )
+                        )
+                    )
 
                 # Hard σ-band expert partition: applied to every Hydra/
                 # OrthoHydra module (independent of the σ-feature router

@@ -46,6 +46,16 @@ def main() -> None:
         help="Bucket step size (default: 64)",
     )
     parser.add_argument(
+        "--bucket_no_upscale",
+        action="store_true",
+        help="Avoid bucket choices that upscale smaller images.",
+    )
+    parser.add_argument(
+        "--no_enable_bucket",
+        action="store_true",
+        help="Disable aspect-ratio buckets and resize every image to --resolution square.",
+    )
+    parser.add_argument(
         "--constant_token_buckets",
         action="store_true",
         default=True,
@@ -85,6 +95,12 @@ def main() -> None:
             "within each subfolder; the same stem can repeat across folders."
         ),
     )
+    parser.add_argument(
+        "--path_pattern",
+        type=str,
+        default="*",
+        help="Optional relative-path glob filter. Use | to combine patterns.",
+    )
     args = parser.parse_args()
 
     constant_token_buckets = (
@@ -98,11 +114,14 @@ def main() -> None:
         min_bucket_reso=args.min_bucket_reso,
         max_bucket_reso=args.max_bucket_reso,
         bucket_reso_steps=args.bucket_reso_steps,
+        bucket_no_upscale=args.bucket_no_upscale,
+        enable_bucket=not args.no_enable_bucket,
         constant_token_buckets=constant_token_buckets,
         workers=args.workers,
         min_pixels=args.min_pixels,
         copy_captions=not args.no_copy_captions,
         recursive=args.recursive,
+        path_pattern=args.path_pattern,
         progress=tqdm_progress("Resizing"),
     )
 

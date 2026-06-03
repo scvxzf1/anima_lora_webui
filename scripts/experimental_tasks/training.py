@@ -14,13 +14,13 @@ from scripts.tasks._common import PY, _path, _preset, bespoke_preset_flags, run,
 
 
 def cmd_turbo(extra):
-    """Turbo Anima — Decoupled DMD2 distillation (proposal: docs/proposal/turbo_anima_dmd_lora.md).
+    """Turbo Anima — DP-DMD distillation (docs: docs/experimental/dpdmd.md).
 
     Bypasses train.py / accelerate (single-GPU bespoke loop, like distill-mod).
     Reads ``configs/methods/turbo.toml``; trailing args are forwarded so user
     CLI flags override TOML values, e.g.::
 
-        make exp-turbo                                  # defaults: rank=48, 4-step
+        make exp-turbo                                  # defaults: rank=64, 2-step
         make exp-turbo ARGS="--student_rank 64 --iterations 5000"
         make exp-turbo ARGS="--single_prompt_idx 0"     # Phase 0 single-prompt overfit
 
@@ -31,7 +31,12 @@ def cmd_turbo(extra):
     ``extra`` is appended last, so user CLI overrides win.
     """
     preset_flags = bespoke_preset_flags(_preset())
-    run([PY, "scripts/distill_turbo.py", *preset_flags, *extra])
+    run([PY, "-m", "scripts.distill_turbo.distill", *preset_flags, *extra])
+
+
+def cmd_turbo_prep(extra):
+    """Turbo dataset curation for the optional DP-DMD keep_list path."""
+    run([PY, "-m", "scripts.distill_turbo.prep", *extra])
 
 
 def cmd_spd(extra):

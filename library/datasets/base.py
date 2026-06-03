@@ -21,6 +21,7 @@ from library.anima.text_strategies import (
     TokenizeStrategy,
 )
 from library.datasets.buckets import BucketBatchIndex, BucketManager
+from library.datasets import runtime_flags
 from library.datasets.image_utils import (
     validate_interpolation_fn,
     IMAGE_TRANSFORMS,
@@ -37,7 +38,7 @@ from library.datasets.subsets import (
 
 logger = logging.getLogger(__name__)
 
-HIGH_VRAM = False
+HIGH_VRAM = runtime_flags.HIGH_VRAM
 
 # Module-level artist filter — set from train.py (`--artist_filter`). When non-empty,
 # `load_dreambooth_dir` keeps only images whose caption contains the `@<artist>` tag.
@@ -64,7 +65,8 @@ def _caption_has_artist(caption: Optional[str], needle: str) -> bool:
 
 def enable_high_vram():
     global HIGH_VRAM
-    HIGH_VRAM = True
+    runtime_flags.enable_high_vram()
+    HIGH_VRAM = runtime_flags.HIGH_VRAM
 
 
 class BaseDataset(torch.utils.data.Dataset):
@@ -741,7 +743,7 @@ class BaseDataset(torch.utils.data.Dataset):
                 if len(batch) > 0 and current_condition != condition:
                     submit_batch(batch, current_condition)
                     batch = []
-                if condition != current_condition and HIGH_VRAM:
+                if condition != current_condition and runtime_flags.HIGH_VRAM:
                     clean_memory_on_device(accelerator.device)
 
                 if info.image is None:

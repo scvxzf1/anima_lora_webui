@@ -17,7 +17,7 @@
             }
         })();
     </script>
-    <link rel="stylesheet" href="/static/style.css?v=config-validity-20260529-1">
+    <link rel="stylesheet" href="/static/style.css?v=right-drag-fallback-20260601-1">
 </head>
 <body>
     <header>
@@ -40,101 +40,130 @@
     </header>
 
     <main>
-        <!-- 配置 Tab：左 2/3 表单 + 右 1/3 TOML 编辑 -->
+        <!-- 配置 Tab：左侧训练配置工作台 + 右侧配置预设管理 -->
         <section id="tab-config" class="tab-content active">
-            <div class="config-toolbar">
-                <label>方法:
-                    <select id="method-select"></select>
-                </label>
-                <label>变体:
-                    <select id="variant-select"></select>
-                </label>
-                <label>预设:
-                    <select id="preset-select"></select>
-                </label>
-                <div id="gpu-picker" class="gpu-picker">
-                    <span class="gpu-picker-caption">GPU选择:</span>
-                    <button id="gpu-picker-toggle" class="gpu-picker-toggle" type="button" aria-expanded="false">读取 GPU...</button>
-                    <div id="gpu-picker-panel" class="gpu-picker-panel" hidden>
-                        <label class="gpu-option gpu-option-all">
-                            <input id="gpu-all-checkbox" type="checkbox">
-                            <span>全部 GPU</span>
-                        </label>
-                        <div id="gpu-option-list" class="gpu-option-list"></div>
-                        <p id="gpu-picker-note" class="gpu-picker-note">选择会保存在本机浏览器，训练启动时作为 GPU 白名单使用。</p>
-                    </div>
-                </div>
-                <button id="btn-load-config" class="btn">刷新</button>
-                <button id="btn-start-from-config" class="btn btn-primary">开始训练</button>
-            </div>
-            <section id="continue-training-source" class="continue-training-source" aria-label="训练来源">
-                <div class="continue-training-source-title">
-                    <strong>训练来源</strong>
-                    <span>选择已完成的 LoRA / LoKr 权重会创建新的补充训练任务。</span>
-                </div>
-                <div id="continue-training-source-summary" class="continue-training-source-summary">
-                    <strong>从零开始</strong>
-                    <span>不加载已有权重</span>
-                </div>
-                <div class="continue-training-source-actions">
-                    <button id="btn-open-continue-lora-dialog" class="btn btn-small" type="button">选择 LoRA/LoKr</button>
-                    <button id="btn-clear-continue-lora-source" class="btn btn-small" type="button" hidden>清除</button>
-                </div>
-            </section>
-            <div id="choice-guide" class="choice-guide" aria-label="配置选择说明"></div>
-            <div class="config-split">
-                <!-- 左侧：表单式配置 -->
-                <div class="config-left">
-                    <div id="config-form"></div>
-                </div>
-                <!-- 右侧：TOML 直接编辑 -->
-                <div class="config-right">
-                    <div class="toml-header">
-                        <div class="toml-file-row">
-                            <div class="toml-current-file">
-                                <span>当前文件</span>
-                                <strong id="toml-current-file">-</strong>
-                                <select id="toml-file-select" hidden></select>
+            <div class="config-page-layout config-forge-layout">
+                <aside class="config-preset-manager" aria-label="配置预设管理">
+                    <div class="config-page-toolbar config-sidebar-project">
+                        <div id="config-page-summary" class="config-page-summary">
+                            <div class="config-page-summary-stat">
+                                <strong id="config-sidebar-mode-label">项目</strong>
+                                <small>当前模式</small>
                             </div>
-                            <div id="toml-badges" class="toml-badges" aria-label="TOML 文件状态">
-                                <span id="toml-current-badge" class="toml-badge" hidden>当前训练</span>
-                                <span id="toml-trainable-badge" class="toml-badge" hidden>可训练</span>
-                                <span id="toml-lock-badge" class="toml-badge toml-badge-warning" hidden>只读</span>
-                                <span id="toml-dirty-badge" class="toml-badge toml-badge-danger" hidden>未保存</span>
+                            <div class="config-page-summary-stat">
+                                <strong id="config-sidebar-file-count">-</strong>
+                                <small id="config-sidebar-count-label">配置文件</small>
                             </div>
                         </div>
-                        <div class="toml-mode-tabs" aria-label="配置管理模式">
-                            <button id="btn-toml-mode-project" class="toml-mode-btn active" type="button" data-toml-mode="project">项目预设</button>
-                            <button id="btn-toml-mode-output" class="toml-mode-btn" type="button" data-toml-mode="output">训练输出配置</button>
-                        </div>
-                        <div class="toml-file-actions toml-primary-actions" aria-label="常用 TOML 操作">
-                            <input id="toml-import-input" type="file" accept=".toml,.txt,text/plain" hidden>
-                            <button id="btn-save-toml" class="btn btn-small btn-primary" type="button">保存更新当前选中配置</button>
-                            <button id="btn-save-as-toml" class="btn btn-small btn-primary" type="button">另存新配置</button>
-                            <button id="btn-apply-toml" class="btn btn-small btn-primary" type="button">加载选中配置</button>
-                            <button id="btn-toggle-toml-editor" class="btn btn-small btn-highlight" type="button">直接编辑配置文件</button>
-                            <button id="btn-move-toml-group" class="btn btn-small" type="button">移动分组位置</button>
-                            <button id="btn-create-blank-preset" class="btn btn-small" type="button">创建空白预设配置</button>
-                        </div>
-                        <div class="toml-file-actions toml-secondary-actions" aria-label="次要 TOML 操作">
-                            <button id="btn-import-toml" class="btn btn-small" type="button">导入 TOML</button>
-                            <button id="btn-export-toml" class="btn btn-small" type="button">导出</button>
-                            <button id="btn-reload-toml" class="btn btn-small" type="button">重新读取文件</button>
-                            <button id="btn-lock-toml" class="btn btn-small" type="button">锁定</button>
-                            <button id="btn-delete-toml" class="btn btn-small btn-subtle-danger" type="button">删除当前配置</button>
-                            <button id="btn-restore-system-toml" class="btn btn-small btn-subtle-danger" type="button">还原系统预设</button>
-                        </div>
-                        <div id="output-run-actions" class="toml-file-actions output-run-actions" aria-label="训练输出配置操作" hidden>
-                            <button id="btn-refresh-output-runs" class="btn btn-small" type="button">刷新</button>
-                            <button id="btn-copy-output-config" class="btn btn-small" type="button">复制内容</button>
-                            <button id="btn-export-output-config" class="btn btn-small" type="button">导出当前 TOML</button>
-                            <button id="btn-save-output-config-as" class="btn btn-small btn-primary" type="button">复制为新项目预设</button>
-                        </div>
-                        <span id="toml-status"></span>
                     </div>
+                    <div class="toml-mode-tabs" aria-label="配置管理模式">
+                        <button id="btn-toml-mode-project" class="toml-mode-btn active" type="button" data-toml-mode="project">项目预设</button>
+                        <button id="btn-toml-mode-output" class="toml-mode-btn" type="button" data-toml-mode="output">训练输出配置</button>
+                    </div>
+                    <div class="toml-file-row">
+                        <div class="toml-current-file">
+                            <span>当前文件</span>
+                            <strong id="toml-current-file">-</strong>
+                            <select id="toml-file-select" hidden></select>
+                        </div>
+                        <div id="toml-badges" class="toml-badges" aria-label="TOML 文件状态">
+                            <span id="toml-current-badge" class="toml-badge" hidden>当前训练</span>
+                            <span id="toml-trainable-badge" class="toml-badge" hidden>可训练</span>
+                            <span id="toml-lock-badge" class="toml-badge toml-badge-warning" hidden>只读</span>
+                            <span id="toml-dirty-badge" class="toml-badge toml-badge-danger" hidden>未保存</span>
+                        </div>
+                    </div>
+                    <div class="toml-file-actions toml-primary-actions" aria-label="常用 TOML 操作">
+                        <input id="toml-import-input" type="file" accept=".toml,.txt,text/plain" hidden>
+                        <button id="btn-save-toml" class="btn btn-small btn-primary" type="button">保存更新当前选中配置</button>
+                        <button id="btn-save-as-toml" class="btn btn-small" type="button">另存新配置</button>
+                        <details class="toml-more-actions">
+                            <summary class="btn btn-small" aria-label="更多配置文件操作">更多操作</summary>
+                            <div class="toml-more-actions-popover">
+                                <button id="btn-apply-toml" class="btn btn-small btn-primary" type="button">加载选中配置</button>
+                                <button id="btn-toggle-toml-editor" class="btn btn-small btn-highlight" type="button">直接编辑配置文件</button>
+                                <button id="btn-move-toml-group" class="btn btn-small" type="button">移动分组位置</button>
+                                <button id="btn-create-blank-preset" class="btn btn-small" type="button">创建空白预设配置</button>
+                                <button id="btn-import-toml" class="btn btn-small" type="button">导入 TOML</button>
+                                <button id="btn-export-toml" class="btn btn-small" type="button">导出单个</button>
+                                <button id="btn-reload-toml" class="btn btn-small" type="button">重新读取文件</button>
+                                <button id="btn-lock-toml" class="btn btn-small" type="button">锁定</button>
+                                <button id="btn-delete-toml" class="btn btn-small btn-subtle-danger" type="button">删除当前配置</button>
+                                <button id="btn-restore-system-toml" class="btn btn-small btn-subtle-danger" type="button">还原系统预设</button>
+                            </div>
+                        </details>
+                    </div>
+                    <div id="output-run-actions" class="toml-file-actions output-run-actions" aria-label="训练输出配置操作" hidden>
+                        <button id="btn-refresh-output-runs" class="btn btn-small" type="button">刷新</button>
+                        <button id="btn-copy-output-config" class="btn btn-small" type="button">复制内容</button>
+                        <button id="btn-export-output-config" class="btn btn-small" type="button">导出当前 TOML</button>
+                        <button id="btn-save-output-config-as" class="btn btn-small btn-primary" type="button">复制为新项目预设</button>
+                    </div>
+                    <span id="toml-status"></span>
                     <div id="toml-project-manager" class="toml-manager">
                         <aside id="toml-file-groups" class="toml-file-groups" aria-label="配置文件分组"></aside>
-                        <section id="toml-edit-panel" class="toml-edit-panel" hidden aria-label="直接编辑配置文件">
+                    </div>
+                    <div id="output-run-manager" class="output-run-manager" hidden>
+                        <aside class="output-run-sidebar" aria-label="训练输出运行列表">
+                            <label class="output-run-search">
+                                <span>搜索运行目录</span>
+                                <input id="output-run-search" type="search" placeholder="输入配置名或时间">
+                            </label>
+                            <div id="output-run-list" class="output-run-list"></div>
+                        </aside>
+                    </div>
+                </aside>
+                <section class="config-preset-editor">
+                    <div id="config-form-workspace" class="config-form-workspace">
+                        <div class="config-toolbar">
+                            <div class="config-selection-state" hidden>
+                                <label>方法:
+                                    <select id="method-select"></select>
+                                </label>
+                                <label>变体:
+                                    <select id="variant-select"></select>
+                                </label>
+                                <label>预设:
+                                    <select id="preset-select"></select>
+                                </label>
+                            </div>
+                            <div id="gpu-picker" class="gpu-picker">
+                                <span class="gpu-picker-caption">GPU选择:</span>
+                                <button id="gpu-picker-toggle" class="gpu-picker-toggle" type="button" aria-expanded="false">读取 GPU...</button>
+                                <div id="gpu-picker-panel" class="gpu-picker-panel" hidden>
+                                    <label class="gpu-option gpu-option-all">
+                                        <input id="gpu-all-checkbox" type="checkbox">
+                                        <span>全部 GPU</span>
+                                    </label>
+                                    <div id="gpu-option-list" class="gpu-option-list"></div>
+                                    <p id="gpu-picker-note" class="gpu-picker-note">选择会保存在本机浏览器，训练启动时作为 GPU 白名单使用。</p>
+                                </div>
+                            </div>
+                            <button id="btn-load-config" class="btn">刷新</button>
+                            <button id="btn-start-from-config" class="btn btn-primary">开始训练</button>
+                            <button id="btn-queue-from-config" class="btn btn-highlight" type="button">加入队列</button>
+                        </div>
+                        <section id="continue-training-source" class="continue-training-source" aria-label="训练来源">
+                            <div class="continue-training-source-title">
+                                <strong>训练来源</strong>
+                                <span>选择已完成的 LoRA / LoKr 权重会创建新的补充训练任务。</span>
+                            </div>
+                            <div id="continue-training-source-summary" class="continue-training-source-summary">
+                                <strong>从零开始</strong>
+                                <span>不加载已有权重</span>
+                            </div>
+                            <div class="continue-training-source-actions">
+                                <button id="btn-open-continue-lora-dialog" class="btn btn-small" type="button">选择 LoRA/LoKr</button>
+                                <button id="btn-clear-continue-lora-source" class="btn btn-small" type="button" hidden>清除</button>
+                            </div>
+                        </section>
+                        <div id="choice-guide" class="choice-guide" aria-label="配置选择说明"></div>
+                        <div id="config-project-workspace" class="config-project-workspace">
+                            <div class="config-left">
+                                <div id="config-form"></div>
+                            </div>
+                            <div id="config-direct-editor" class="config-direct-editor" hidden>
+                                <section id="toml-edit-panel" class="toml-edit-panel" hidden aria-label="直接编辑配置文件">
                             <div class="toml-edit-toolbar">
                                 <div>
                                     <strong>直接编辑配置文件</strong>
@@ -147,16 +176,29 @@
                             </div>
                             <textarea id="toml-editor" spellcheck="false"></textarea>
                         </section>
+                            </div>
+                        </div>
+                        <div id="config-sticky-actions" class="config-sticky-actions" aria-label="配置目录快捷切换">
+                            <span class="config-sticky-title">配置目录</span>
+                            <button id="btn-sticky-config-required" class="config-sticky-tab" type="button" data-sticky-config-category="required">
+                                <strong>必填</strong>
+                                <em>0 项</em>
+                            </button>
+                            <button id="btn-sticky-config-common" class="config-sticky-tab" type="button" data-sticky-config-category="common">
+                                <strong>常用</strong>
+                                <em>0 项</em>
+                            </button>
+                            <button id="btn-sticky-config-preview" class="config-sticky-tab" type="button" data-sticky-config-category="preview">
+                                <strong>预览</strong>
+                                <em>0 项</em>
+                            </button>
+                            <button id="btn-sticky-config-advanced" class="config-sticky-tab" type="button" data-sticky-config-category="advanced">
+                                <strong>高级</strong>
+                                <em>0 项</em>
+                            </button>
+                        </div>
                     </div>
-                    <div id="output-run-manager" class="output-run-manager" hidden>
-                        <aside class="output-run-sidebar" aria-label="训练输出运行列表">
-                            <label class="output-run-search">
-                                <span>搜索运行目录</span>
-                                <input id="output-run-search" type="search" placeholder="输入配置名或时间">
-                            </label>
-                            <div id="output-run-list" class="output-run-list"></div>
-                        </aside>
-                        <section class="output-run-detail" aria-label="训练输出配置详情">
+                    <section id="output-run-detail-panel" class="output-run-detail config-output-detail" hidden aria-label="训练输出配置详情">
                             <div class="output-run-detail-header">
                                 <div>
                                     <strong id="output-run-title">未选择运行目录</strong>
@@ -171,32 +213,47 @@
                                 <button id="btn-cancel-output-config-save-as" class="btn btn-small" type="button">取消</button>
                             </div>
                             <textarea id="output-run-config-viewer" readonly spellcheck="false" placeholder="选择左侧运行目录后查看配置。"></textarea>
-                        </section>
-                    </div>
-                </div>
+                    </section>
+                </section>
             </div>
         </section>
 
         <!-- 数据集 Tab：独立管理可复用 dataset_config 预设 -->
         <section id="tab-datasets" class="tab-content">
-            <div class="dataset-page-toolbar">
-                <div>
-                    <strong>数据集预设</strong>
-                    <span>管理 configs/datasets 下的多数据集蓝图；配置页只负责选择并保存引用。</span>
-                </div>
-                <div class="dataset-page-actions">
-                    <input id="dataset-import-input" type="file" accept=".toml,.txt,text/plain" hidden>
-                    <button id="btn-new-dataset-preset" class="btn btn-small" type="button">新建预设</button>
-                    <button id="btn-copy-dataset-preset" class="btn btn-small" type="button">复制预设</button>
-                    <button id="btn-rename-dataset-preset" class="btn btn-small" type="button">重命名</button>
-                    <button id="btn-import-dataset-preset" class="btn btn-small" type="button">导入</button>
-                    <button id="btn-export-dataset-preset" class="btn btn-small" type="button">导出</button>
-                    <button id="btn-delete-dataset-preset" class="btn btn-small btn-subtle-danger" type="button">删除预设</button>
-                    <button id="btn-save-dataset-preset" class="btn btn-small btn-primary" type="button">保存数据集预设</button>
-                </div>
-            </div>
-            <div class="dataset-page-layout">
-                <aside id="dataset-preset-list" class="dataset-preset-list" aria-label="数据集预设列表"></aside>
+            <div class="dataset-page-layout dataset-forge-layout">
+                <aside class="dataset-preset-manager" aria-label="数据集预设管理">
+                    <div class="dataset-page-toolbar dataset-sidebar-project">
+                        <div>
+                            <span class="dataset-forge-eyebrow">DATASET FORGE</span>
+                            <strong>数据集蓝图</strong>
+                            <span>管理 configs/datasets 下的可复用训练数据结构。</span>
+                        </div>
+                        <div id="dataset-page-summary" class="dataset-page-summary">正在读取预设...</div>
+                    </div>
+                    <div class="dataset-preset-manager-head">
+                        <div>
+                            <strong>预设管理</strong>
+                            <span>按分组整理、排序和移动数据集蓝图。</span>
+                        </div>
+                        <button id="btn-refresh-dataset-presets" class="btn btn-small" type="button">刷新</button>
+                    </div>
+                    <label class="dataset-preset-search">
+                        <span>搜索预设</span>
+                        <input id="dataset-preset-search" type="search" placeholder="名称、路径或原始目录">
+                    </label>
+                    <div class="dataset-preset-manager-actions">
+                        <input id="dataset-import-input" type="file" accept=".toml,.txt,text/plain" hidden>
+                        <button id="btn-new-dataset-preset" class="btn btn-small" type="button">新建预设</button>
+                        <button id="btn-copy-dataset-preset" class="btn btn-small" type="button">复制</button>
+                        <button id="btn-rename-dataset-preset" class="btn btn-small" type="button">重命名</button>
+                        <button id="btn-create-dataset-preset-group" class="btn btn-small" type="button">新建分组</button>
+                        <button id="btn-import-dataset-preset" class="btn btn-small" type="button">导入</button>
+                        <button id="btn-export-dataset-preset" class="btn btn-small" type="button">导出</button>
+                        <button id="btn-delete-dataset-preset" class="btn btn-small btn-subtle-danger" type="button">删除</button>
+                        <button id="btn-save-dataset-preset" class="btn btn-small btn-primary" type="button">保存</button>
+                    </div>
+                    <div id="dataset-preset-list" class="dataset-preset-list" aria-label="数据集预设列表"></div>
+                </aside>
                 <section class="dataset-preset-editor">
                     <div id="dataset-preset-header" class="dataset-preset-header"></div>
                     <div id="dataset-editor" class="dataset-editor dataset-editor-standalone"></div>
@@ -207,21 +264,35 @@
         <!-- 训练监控 Tab -->
         <section id="tab-training" class="tab-content">
             <div class="training-toolbar">
-                <div class="training-info">
-                    <span id="train-variant">-</span> /
-                    <span id="train-preset">-</span>
+                <div class="training-info training-title-block">
+                    <span class="training-forge-eyebrow">TRAINING FORGE</span>
+                    <div class="training-title-row">
+                        <strong>训练工作台</strong>
+                        <span id="training-toolbar-state" class="training-toolbar-state idle">
+                            <span class="training-state-dot" aria-hidden="true"></span>
+                            <span id="training-toolbar-state-text">空闲</span>
+                        </span>
+                    </div>
+                    <span class="training-current-config">
+                        <span id="train-variant">-</span> /
+                        <span id="train-preset">-</span>
+                    </span>
                 </div>
-                <div class="training-view-tabs" role="group" aria-label="训练视图">
-                    <button id="btn-live-training" class="training-view-tab active" type="button" data-training-view="live">当前监控</button>
-                    <button id="btn-training-queue-view" class="training-view-tab" type="button" data-training-view="queue">
-                        队列管理
-                        <span id="training-queue-tab-badge" class="training-view-badge" hidden></span>
-                    </button>
-                    <button id="btn-training-history-view" class="training-view-tab" type="button" data-training-view="history">历史任务</button>
+                <div class="training-toolbar-nav" aria-label="训练视图导航">
+                    <div class="training-view-tabs" role="tablist" aria-label="训练视图">
+                        <button id="btn-live-training" class="training-view-tab active" type="button" role="tab" aria-selected="true" data-training-view="live">当前监控</button>
+                        <button id="btn-training-queue-view" class="training-view-tab" type="button" role="tab" aria-selected="false" data-training-view="queue">
+                            队列管理
+                            <span id="training-queue-tab-badge" class="training-view-badge" hidden></span>
+                        </button>
+                        <button id="btn-training-history-view" class="training-view-tab" type="button" role="tab" aria-selected="false" data-training-view="history">历史任务</button>
+                    </div>
                 </div>
-                <button id="btn-refresh-history" class="btn btn-small" type="button">刷新任务列表</button>
-                <button id="btn-preview-training-results" class="btn btn-small" type="button">预览结果</button>
-                <button id="btn-stop-training" class="btn btn-danger" disabled>停止训练</button>
+                <div class="training-toolbar-actions" aria-label="训练操作">
+                    <button id="btn-refresh-history" class="btn btn-small" type="button">刷新任务列表</button>
+                    <button id="btn-preview-training-results" class="btn btn-small" type="button">当前预览</button>
+                    <button id="btn-stop-training" class="btn btn-danger" disabled>停止训练</button>
+                </div>
             </div>
             <div class="training-workspace">
                 <aside class="training-sidebar">
@@ -241,8 +312,9 @@
                         <div class="task-history-head">
                             <div>
                                 <h3>最近训练</h3>
-                                <p class="task-history-note">未归档 · 最新 20 个训练任务</p>
+                                <p class="task-history-note">未归档 · 最新 6 个训练任务</p>
                             </div>
+                            <button id="btn-open-history-manager" class="task-history-action" type="button">查看全部</button>
                             <input id="history-show-archived" type="checkbox" hidden>
                         </div>
                         <div id="task-history-list" class="task-history-list"></div>
@@ -261,8 +333,10 @@
                                 <details class="training-queue-more-menu">
                                     <summary class="btn btn-small">更多</summary>
                                     <div class="training-queue-more-menu-popover">
+                                        <button id="btn-cancel-all-queue" class="btn btn-small btn-subtle-danger" type="button">取消全部队列</button>
                                         <button id="btn-cancel-waiting-queue" class="btn btn-small btn-subtle-danger" type="button">取消全部等待</button>
-                                        <button id="btn-clear-finished-queue" class="btn btn-small" type="button">清理已结束</button>
+                                        <button id="btn-clear-completed-queue" class="btn btn-small" type="button">清理已完成</button>
+                                        <button id="btn-clear-canceled-queue" class="btn btn-small" type="button">清理已取消</button>
                                     </div>
                                 </details>
                             </div>
@@ -291,26 +365,27 @@
                     <section id="training-history-manager" class="training-view-panel training-history-manager" hidden>
                         <div class="history-manager-head">
                             <div>
+                                <span class="history-forge-eyebrow">HISTORY FORGE</span>
                                 <h3>历史任务</h3>
                                 <p id="history-manager-status">正在读取历史任务...</p>
                             </div>
-                        <div class="history-manager-actions">
-                            <button id="btn-history-manager-refresh" class="btn btn-small" type="button">刷新</button>
-                            <button id="btn-history-collections-workbench" class="btn btn-small" type="button">集合管理</button>
-                            <button id="btn-history-manager-merge" class="btn btn-small" type="button" disabled>合并查看</button>
-                        </div>
+                            <div class="history-manager-actions">
+                                <button id="btn-history-manager-refresh" class="btn btn-small" type="button">刷新</button>
+                                <button id="btn-history-collections-workbench" class="btn btn-small" type="button">集合管理</button>
+                                <button id="btn-history-manager-merge" class="btn btn-small" type="button" disabled>合并查看</button>
+                            </div>
                         </div>
                         <div id="history-manager-stats" class="history-manager-stats" aria-label="历史任务统计"></div>
                         <div class="history-manager-tools">
-                            <label class="history-manager-search">
-                                <span>搜索</span>
-                                <input id="history-manager-search" type="search" placeholder="任务名 / 配置 / 目录">
+                            <label class="history-manager-search history-manager-smart-search">
+                                <span>全局搜索</span>
+                                <input id="history-manager-search" type="search" placeholder="任务 / 配置 / 目录，支持 组:骨女 或 配置:lora">
                             </label>
-                            <label class="history-manager-search">
+                            <label class="history-manager-search history-manager-legacy-search" hidden>
                                 <span>集合搜索</span>
                                 <input id="history-collection-search" type="search" placeholder="集合名 / 配置 / 任务">
                             </label>
-                            <label class="history-manager-search">
+                            <label class="history-manager-search history-manager-legacy-search" hidden>
                                 <span>配置组搜索</span>
                                 <input id="history-config-group-search" type="search" placeholder="配置名 / 源配置 / 任务">
                             </label>
@@ -347,13 +422,6 @@
                                     <option value="queue">来自队列</option>
                                     <option value="resume">续训</option>
                                     <option value="continue">继续训练</option>
-                                </select>
-                            </label>
-                            <label>
-                                <span>视图</span>
-                                <select id="history-group-mode">
-                                    <option value="collection">集合分组</option>
-                                    <option value="collections">集合管理</option>
                                 </select>
                             </label>
                             <label>
@@ -433,67 +501,111 @@
                                     <p id="training-run-meta">等待训练任务启动。</p>
                                 </div>
                             </div>
-                            <div class="training-dashboard-progress">
+                            <div class="training-dashboard-progress is-idle">
                                 <div class="progress-bar-container">
                                     <div id="progress-bar" class="progress-bar"></div>
                                 </div>
-                                <div id="progress-text">-</div>
+                                <div id="progress-text">暂无正在运行的任务目录...</div>
                             </div>
                             <div id="training-run-summary" class="training-run-summary">运行目录和配置快照会在任务启动后显示。</div>
                         </section>
                         <div class="panel metrics-panel">
                             <h3>实时指标</h3>
                             <div class="metrics-grid">
-                                <div class="metric-item">
-                                    <span class="metric-label">Loss</span>
-                                    <span id="metric-loss" class="metric-value">-</span>
+                                <div class="metric-item metric-item-primary">
+                                    <span class="metric-label"><span class="metric-icon metric-icon-curve" aria-hidden="true"></span>Loss</span>
+                                    <span id="metric-loss" class="metric-value metric-empty">N/A</span>
+                                </div>
+                                <div class="metric-item metric-item-primary">
+                                    <span class="metric-label"><span class="metric-icon metric-icon-bolt" aria-hidden="true"></span>学习率</span>
+                                    <span id="metric-lr" class="metric-value metric-empty">N/A</span>
+                                </div>
+                                <div class="metric-item metric-item-primary">
+                                    <span class="metric-label"><span class="metric-icon metric-icon-steps" aria-hidden="true"></span>步数</span>
+                                    <span id="metric-step" class="metric-value metric-empty">N/A</span>
                                 </div>
                                 <div class="metric-item">
-                                    <span class="metric-label">学习率</span>
-                                    <span id="metric-lr" class="metric-value">-</span>
+                                    <span class="metric-label"><span class="metric-icon metric-icon-gauge" aria-hidden="true"></span>速度</span>
+                                    <span id="metric-rate" class="metric-value metric-empty">N/A</span>
                                 </div>
                                 <div class="metric-item">
-                                    <span class="metric-label">步数</span>
-                                    <span id="metric-step" class="metric-value">-</span>
+                                    <span class="metric-label"><span class="metric-icon metric-icon-chip" aria-hidden="true"></span>最后 VRAM</span>
+                                    <span id="metric-vram" class="metric-value metric-empty">N/A</span>
                                 </div>
                                 <div class="metric-item">
-                                    <span class="metric-label">速度</span>
-                                    <span id="metric-rate" class="metric-value">-</span>
+                                    <span class="metric-label"><span class="metric-icon metric-icon-chip" aria-hidden="true"></span>峰值 VRAM</span>
+                                    <span id="metric-vram-peak" class="metric-value metric-empty">N/A</span>
                                 </div>
                                 <div class="metric-item">
-                                    <span class="metric-label">最后 VRAM</span>
-                                    <span id="metric-vram" class="metric-value">-</span>
+                                    <span class="metric-label"><span class="metric-icon metric-icon-gpu" aria-hidden="true"></span>最后 GPU</span>
+                                    <span id="metric-gpu" class="metric-value metric-empty">N/A</span>
                                 </div>
                                 <div class="metric-item">
-                                    <span class="metric-label">峰值 VRAM</span>
-                                    <span id="metric-vram-peak" class="metric-value">-</span>
+                                    <span class="metric-label"><span class="metric-icon metric-icon-gpu" aria-hidden="true"></span>峰值 GPU</span>
+                                    <span id="metric-gpu-peak" class="metric-value metric-empty">N/A</span>
                                 </div>
                                 <div class="metric-item">
-                                    <span class="metric-label">最后 GPU</span>
-                                    <span id="metric-gpu" class="metric-value">-</span>
+                                    <span class="metric-label"><span class="metric-icon metric-icon-temp" aria-hidden="true"></span>最后温度</span>
+                                    <span id="metric-temp" class="metric-value metric-empty">N/A</span>
                                 </div>
                                 <div class="metric-item">
-                                    <span class="metric-label">峰值 GPU</span>
-                                    <span id="metric-gpu-peak" class="metric-value">-</span>
+                                    <span class="metric-label"><span class="metric-icon metric-icon-temp" aria-hidden="true"></span>峰值温度</span>
+                                    <span id="metric-temp-peak" class="metric-value metric-empty">N/A</span>
                                 </div>
                                 <div class="metric-item">
-                                    <span class="metric-label">最后温度</span>
-                                    <span id="metric-temp" class="metric-value">-</span>
+                                    <span class="metric-label"><span class="metric-icon metric-icon-log" aria-hidden="true"></span>日志活动</span>
+                                    <span id="metric-log-age" class="metric-value metric-empty">N/A</span>
                                 </div>
-                                <div class="metric-item">
-                                    <span class="metric-label">峰值温度</span>
-                                    <span id="metric-temp-peak" class="metric-value">-</span>
-                                </div>
-                                <div class="metric-item">
-                                    <span class="metric-label">日志活动</span>
-                                    <span id="metric-log-age" class="metric-value">-</span>
+                                <div class="metric-item metric-item-eta">
+                                    <span class="metric-label"><span class="metric-icon metric-icon-clock" aria-hidden="true"></span>预计完成</span>
+                                    <span id="metric-eta" class="metric-value metric-empty">待计算</span>
                                 </div>
                             </div>
                             <div id="training-health" class="training-health">等待训练状态...</div>
                         </div>
-                        <div class="panel chart-panel">
-                            <h3>Loss 曲线</h3>
-                            <canvas id="loss-chart" width="600" height="200"></canvas>
+                        <div class="panel chart-panel live-chart-panel">
+                            <div class="live-chart-head">
+                                <h3>Loss / 学习率曲线</h3>
+                                <div class="live-chart-controls" aria-label="曲线显示设置">
+                                    <label class="live-chart-toggle">
+                                        <input id="live-chart-toggle-lr" type="checkbox" checked>
+                                        <span>学习率</span>
+                                    </label>
+                                    <label class="live-chart-field">
+                                        <span>范围</span>
+                                        <select id="live-chart-range">
+                                            <option value="all">全部</option>
+                                            <option value="last100">最近 100 点</option>
+                                            <option value="last25">最近 25 点</option>
+                                        </select>
+                                    </label>
+                                </div>
+                            </div>
+                            <div id="live-chart-stats" class="live-chart-stats" aria-label="Loss 与学习率摘要">
+                                <div class="live-chart-stat is-empty">
+                                    <strong id="live-chart-stat-loss">N/A</strong>
+                                    <span>最新 Loss</span>
+                                </div>
+                                <div class="live-chart-stat is-empty">
+                                    <strong id="live-chart-stat-lr">N/A</strong>
+                                    <span>最新学习率</span>
+                                </div>
+                                <div class="live-chart-stat is-empty">
+                                    <strong id="live-chart-stat-points">0</strong>
+                                    <span>曲线点数</span>
+                                </div>
+                                <div class="live-chart-stat is-empty">
+                                    <strong id="live-chart-stat-range">N/A</strong>
+                                    <span>Step 范围</span>
+                                </div>
+                            </div>
+                            <div class="live-chart-legend">
+                                <span class="live-chart-legend-item loss"><i></i>Loss</span>
+                                <span id="live-chart-lr-legend" class="live-chart-legend-item lr"><i></i>学习率</span>
+                            </div>
+                            <div id="loss-chart-shell" class="loss-chart-shell is-empty">
+                                <canvas id="loss-chart" width="600" height="200"></canvas>
+                            </div>
                         </div>
                         <div class="panel history-config-panel" id="history-config-panel" hidden>
                             <h3 id="history-config-title">任务配置快照</h3>
@@ -541,26 +653,31 @@
                             </div>
                         </div>
 
-                        <div class="panel preview-settings-panel">
-                            <h3>路径设置</h3>
-                            <label class="preview-setting-field">
-                                <span>兼容训练样张目录</span>
-                                <input id="preview-training-dir" type="text" placeholder="output/ckpt/sample">
-                            </label>
-                            <label class="preview-setting-field">
-                                <span>推理预览目录</span>
-                                <input id="preview-inference-dir" type="text" placeholder="output/tests">
-                            </label>
-                            <label class="preview-setting-field">
-                                <span>自定义目录</span>
-                                <input id="preview-custom-dir" type="text" placeholder="例如 output/my-preview">
-                            </label>
-                            <div class="preview-actions">
-                                <button id="btn-save-preview-settings" class="btn btn-primary" type="button">保存路径设置</button>
-                                <button id="btn-reset-preview-settings" class="btn" type="button">恢复默认</button>
+                        <details class="panel preview-settings-panel preview-path-settings-panel">
+                            <summary class="preview-settings-summary">
+                                <span>路径设置</span>
+                                <small>低频设置</small>
+                            </summary>
+                            <div class="preview-path-settings-body">
+                                <label class="preview-setting-field">
+                                    <span>兼容训练样张目录</span>
+                                    <input id="preview-training-dir" type="text" placeholder="output/ckpt/sample">
+                                </label>
+                                <label class="preview-setting-field">
+                                    <span>推理预览目录</span>
+                                    <input id="preview-inference-dir" type="text" placeholder="output/tests">
+                                </label>
+                                <label class="preview-setting-field">
+                                    <span>自定义目录</span>
+                                    <input id="preview-custom-dir" type="text" placeholder="例如 output/my-preview">
+                                </label>
+                                <div class="preview-actions preview-path-actions">
+                                    <button id="btn-save-preview-settings" class="btn btn-primary" type="button">保存路径设置</button>
+                                    <button id="btn-reset-preview-settings" class="btn" type="button">恢复默认</button>
+                                </div>
+                                <div id="preview-settings-status" class="preview-status"></div>
                             </div>
-                            <div id="preview-settings-status" class="preview-status"></div>
-                        </div>
+                        </details>
                     </aside>
 
                     <section class="preview-main">
@@ -594,120 +711,191 @@
 
         <!-- 全局设置 Tab -->
         <section id="tab-settings" class="tab-content">
-            <div class="global-settings-layout">
-                <section class="panel global-settings-panel" aria-label="全局设置">
-                    <h3>输出文件夹</h3>
-                    <div class="preview-setting-field global-setting-field">
-                        <div class="global-setting-label-row">
-                            <label for="global-output-root">输出文件夹</label>
-                            <button
-                                id="btn-global-output-root-help"
-                                class="info-toggle global-setting-help-toggle"
-                                type="button"
-                                title="查看作用和为什么"
-                                aria-expanded="false"
-                                aria-controls="global-output-root-help"
-                            >?</button>
+            <div class="global-settings-layout global-forge-layout">
+                <aside class="global-settings-sidebar" aria-label="全局设置概览">
+                    <div class="global-settings-project">
+                        <span class="global-settings-eyebrow">GLOBAL FORGE</span>
+                        <strong>全局设置</strong>
+                        <span>集中管理 Web 训练输出根目录和新建配置默认模型路径。</span>
+                    </div>
+                    <div class="global-settings-summary" aria-label="全局设置范围">
+                        <div class="global-settings-summary-stat">
+                            <strong>1</strong>
+                            <small>输出根目录</small>
                         </div>
-                        <input id="global-output-root" type="text" placeholder="output/runs">
-                        <div id="global-output-root-help" class="field-help global-setting-help">
-                            <div class="help-content">
-                                <section class="help-section help-summary">
-                                    <div class="help-heading">作用</div>
-                                    <p>作为 Web 训练的统一输出根目录；每次启动训练或预处理时，系统会在这里创建独立运行目录，集中保存模型缓存、数据集缓存、训练结果和运行时配置快照。</p>
-                                </section>
-                                <section class="help-section">
-                                    <div class="help-heading">为什么</div>
-                                    <p>把输出和缓存集中到同一个根目录，能避免配置页和数据集页反复填写缓存路径，也更容易按训练时间找到结果、复盘配置和清理旧运行。</p>
-                                    <p>PS：缓存必须要有地方存放；让用户逐项单独配置太繁琐，所以最终只指定一个主路径来集中存放缓存和结果，既让用户知道文件会放在哪里，也减少需要配置的项目。</p>
-                                </section>
+                        <div class="global-settings-summary-stat">
+                            <strong>3</strong>
+                            <small>模型默认路径</small>
+                        </div>
+                        <div class="global-settings-summary-note">单个训练配置里的同名字段仍会优先使用自己的值。</div>
+                    </div>
+                </aside>
+
+                <section class="global-settings-editor" aria-label="全局设置">
+                    <div class="global-settings-header">
+                        <div class="global-settings-title-block">
+                            <span class="global-settings-breadcrumb">GLOBAL SETTINGS</span>
+                            <strong>路径与默认模型</strong>
+                            <span>保存后用于 Web 训练运行目录和新建空白预设。</span>
+                        </div>
+                        <div class="global-settings-meta" aria-label="全局设置字段概览">
+                            <div class="global-settings-meta-item">
+                                <small>ROOT</small>
+                                <strong>1 项</strong>
+                            </div>
+                            <div class="global-settings-meta-item">
+                                <small>MODELS</small>
+                                <strong>3 项</strong>
                             </div>
                         </div>
                     </div>
-                    <h3>基础模型路径 (3 项)</h3>
-                    <div class="preview-setting-field global-setting-field">
-                        <div class="global-setting-label-row">
-                            <label for="global-pretrained-model-path">基础 DiT 模型</label>
-                            <button
-                                id="btn-global-pretrained-model-path-help"
-                                class="info-toggle global-setting-help-toggle"
-                                type="button"
-                                title="查看作用和为什么"
-                                aria-expanded="false"
-                                aria-controls="global-pretrained-model-path-help"
-                            >?</button>
-                        </div>
-                        <input id="global-pretrained-model-path" type="text" placeholder="models/diffusion_models/anima-base-v1.0.safetensors">
-                        <div id="global-pretrained-model-path-help" class="field-help global-setting-help">
-                            <div class="help-content">
-                                <section class="help-section help-summary">
-                                    <div class="help-heading">作用</div>
-                                    <p>作为新建空白预设配置时写入的默认基础 DiT 权重路径；配置页里的同名字段仍可单独覆盖。</p>
-                                </section>
-                                <section class="help-section">
-                                    <div class="help-heading">为什么</div>
-                                    <p>把最常复用的底模路径放到全局设置，可以减少每次新建配置后重复改路径的步骤。</p>
-                                </section>
+
+                    <div class="global-settings-form">
+                        <section class="global-settings-card" aria-labelledby="global-output-settings-title">
+                            <div class="global-settings-card-head">
+                                <div class="global-settings-card-title">
+                                    <span class="global-settings-card-mark">01</span>
+                                    <div>
+                                        <strong id="global-output-settings-title">输出文件夹</strong>
+                                        <span>统一运行目录与缓存根目录。</span>
+                                    </div>
+                                </div>
                             </div>
-                        </div>
-                    </div>
-                    <div class="preview-setting-field global-setting-field">
-                        <div class="global-setting-label-row">
-                            <label for="global-qwen3-path">Qwen3 文本编码器</label>
-                            <button
-                                id="btn-global-qwen3-path-help"
-                                class="info-toggle global-setting-help-toggle"
-                                type="button"
-                                title="查看作用和为什么"
-                                aria-expanded="false"
-                                aria-controls="global-qwen3-path-help"
-                            >?</button>
-                        </div>
-                        <input id="global-qwen3-path" type="text" placeholder="models/text_encoders/qwen_3_06b_base.safetensors">
-                        <div id="global-qwen3-path-help" class="field-help global-setting-help">
-                            <div class="help-content">
-                                <section class="help-section help-summary">
-                                    <div class="help-heading">作用</div>
-                                    <p>作为新建空白预设配置时写入的默认文本编码器权重路径；单个训练配置仍可改成其它路径。</p>
-                                </section>
-                                <section class="help-section">
-                                    <div class="help-heading">为什么</div>
-                                    <p>文本编码器通常全项目共用，放到全局设置后，新预设能直接继承当前机器上的常用模型位置。</p>
-                                </section>
+                            <div class="global-setting-grid">
+                                <div class="preview-setting-field global-setting-field">
+                                    <div class="global-setting-label-row">
+                                        <label for="global-output-root">输出文件夹</label>
+                                        <button
+                                            id="btn-global-output-root-help"
+                                            class="info-toggle global-setting-help-toggle"
+                                            type="button"
+                                            title="查看作用和为什么"
+                                            aria-expanded="false"
+                                            aria-controls="global-output-root-help"
+                                        >?</button>
+                                    </div>
+                                    <input id="global-output-root" type="text" placeholder="output/runs">
+                                    <div id="global-output-root-help" class="field-help global-setting-help">
+                                        <div class="help-content">
+                                            <section class="help-section help-summary">
+                                                <div class="help-heading">作用</div>
+                                                <p>作为 Web 训练的统一输出根目录；每次启动训练或预处理时，系统会在这里创建独立运行目录，集中保存模型缓存、数据集缓存、训练结果和运行时配置快照。</p>
+                                            </section>
+                                            <section class="help-section">
+                                                <div class="help-heading">为什么</div>
+                                                <p>把输出和缓存集中到同一个根目录，能避免配置页和数据集页反复填写缓存路径，也更容易按训练时间找到结果、复盘配置和清理旧运行。</p>
+                                                <p>PS：缓存必须要有地方存放；让用户逐项单独配置太繁琐，所以最终只指定一个主路径来集中存放缓存和结果，既让用户知道文件会放在哪里，也减少需要配置的项目。</p>
+                                            </section>
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
-                        </div>
-                    </div>
-                    <div class="preview-setting-field global-setting-field">
-                        <div class="global-setting-label-row">
-                            <label for="global-vae-path">VAE 模型</label>
-                            <button
-                                id="btn-global-vae-path-help"
-                                class="info-toggle global-setting-help-toggle"
-                                type="button"
-                                title="查看作用和为什么"
-                                aria-expanded="false"
-                                aria-controls="global-vae-path-help"
-                            >?</button>
-                        </div>
-                        <input id="global-vae-path" type="text" placeholder="models/vae/qwen_image_vae.safetensors">
-                        <div id="global-vae-path-help" class="field-help global-setting-help">
-                            <div class="help-content">
-                                <section class="help-section help-summary">
-                                    <div class="help-heading">作用</div>
-                                    <p>作为新建空白预设配置时写入的默认 VAE 权重路径；配置页里的 VAE 路径仍可按配置覆盖。</p>
-                                </section>
-                                <section class="help-section">
-                                    <div class="help-heading">为什么</div>
-                                    <p>VAE 会影响预处理缓存和采样结果，集中设置默认路径能降低新配置漏改模型组件的概率。</p>
-                                </section>
+                        </section>
+
+                        <section class="global-settings-card" aria-labelledby="global-model-settings-title">
+                            <div class="global-settings-card-head">
+                                <div class="global-settings-card-title">
+                                    <span class="global-settings-card-mark">02</span>
+                                    <div>
+                                        <strong id="global-model-settings-title">基础模型路径</strong>
+                                        <span>新建空白预设写入的默认模型组件。</span>
+                                    </div>
+                                </div>
                             </div>
+                            <div class="global-setting-grid">
+                                <div class="preview-setting-field global-setting-field">
+                                    <div class="global-setting-label-row">
+                                        <label for="global-pretrained-model-path">基础 DiT 模型</label>
+                                        <button
+                                            id="btn-global-pretrained-model-path-help"
+                                            class="info-toggle global-setting-help-toggle"
+                                            type="button"
+                                            title="查看作用和为什么"
+                                            aria-expanded="false"
+                                            aria-controls="global-pretrained-model-path-help"
+                                        >?</button>
+                                    </div>
+                                    <input id="global-pretrained-model-path" type="text" placeholder="models/diffusion_models/anima-base-v1.0.safetensors">
+                                    <div id="global-pretrained-model-path-help" class="field-help global-setting-help">
+                                        <div class="help-content">
+                                            <section class="help-section help-summary">
+                                                <div class="help-heading">作用</div>
+                                                <p>作为新建空白预设配置时写入的默认基础 DiT 权重路径；配置页里的同名字段仍可单独覆盖。</p>
+                                            </section>
+                                            <section class="help-section">
+                                                <div class="help-heading">为什么</div>
+                                                <p>把最常复用的底模路径放到全局设置，可以减少每次新建配置后重复改路径的步骤。</p>
+                                            </section>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="preview-setting-field global-setting-field">
+                                    <div class="global-setting-label-row">
+                                        <label for="global-qwen3-path">Qwen3 文本编码器</label>
+                                        <button
+                                            id="btn-global-qwen3-path-help"
+                                            class="info-toggle global-setting-help-toggle"
+                                            type="button"
+                                            title="查看作用和为什么"
+                                            aria-expanded="false"
+                                            aria-controls="global-qwen3-path-help"
+                                        >?</button>
+                                    </div>
+                                    <input id="global-qwen3-path" type="text" placeholder="models/text_encoders/qwen_3_06b_base.safetensors">
+                                    <div id="global-qwen3-path-help" class="field-help global-setting-help">
+                                        <div class="help-content">
+                                            <section class="help-section help-summary">
+                                                <div class="help-heading">作用</div>
+                                                <p>作为新建空白预设配置时写入的默认文本编码器权重路径；单个训练配置仍可改成其它路径。</p>
+                                            </section>
+                                            <section class="help-section">
+                                                <div class="help-heading">为什么</div>
+                                                <p>文本编码器通常全项目共用，放到全局设置后，新预设能直接继承当前机器上的常用模型位置。</p>
+                                            </section>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="preview-setting-field global-setting-field">
+                                    <div class="global-setting-label-row">
+                                        <label for="global-vae-path">VAE 模型</label>
+                                        <button
+                                            id="btn-global-vae-path-help"
+                                            class="info-toggle global-setting-help-toggle"
+                                            type="button"
+                                            title="查看作用和为什么"
+                                            aria-expanded="false"
+                                            aria-controls="global-vae-path-help"
+                                        >?</button>
+                                    </div>
+                                    <input id="global-vae-path" type="text" placeholder="models/vae/qwen_image_vae.safetensors">
+                                    <div id="global-vae-path-help" class="field-help global-setting-help">
+                                        <div class="help-content">
+                                            <section class="help-section help-summary">
+                                                <div class="help-heading">作用</div>
+                                                <p>作为新建空白预设配置时写入的默认 VAE 权重路径；配置页里的 VAE 路径仍可按配置覆盖。</p>
+                                            </section>
+                                            <section class="help-section">
+                                                <div class="help-heading">为什么</div>
+                                                <p>VAE 会影响预处理缓存和采样结果，集中设置默认路径能降低新配置漏改模型组件的概率。</p>
+                                            </section>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </section>
+
+                        <div class="global-settings-action-card">
+                            <div class="global-settings-action-copy">
+                                <strong>写入全局设置</strong>
+                                <span>保存后配置页可继续按单个 TOML 覆盖。</span>
+                            </div>
+                            <div class="preview-actions global-settings-actions">
+                                <button id="btn-save-global-settings" class="btn btn-primary" type="button">保存全局设置</button>
+                                <button id="btn-reset-global-settings" class="btn" type="button">恢复默认</button>
+                            </div>
+                            <div id="global-settings-status" class="preview-status"></div>
                         </div>
                     </div>
-                    <div class="preview-actions">
-                        <button id="btn-save-global-settings" class="btn btn-primary" type="button">保存全局设置</button>
-                        <button id="btn-reset-global-settings" class="btn" type="button">恢复默认</button>
-                    </div>
-                    <div id="global-settings-status" class="preview-status"></div>
                 </section>
             </div>
         </section>
@@ -917,8 +1105,8 @@
         </form>
     </dialog>
 
-    <dialog id="history-detail-dialog" class="history-detail-dialog" aria-labelledby="history-detail-title">
-        <form method="dialog" class="history-detail-dialog-shell">
+    <section id="history-detail-dialog" class="history-detail-dialog" role="dialog" aria-modal="false" aria-labelledby="history-detail-title" aria-describedby="history-detail-meta" tabindex="-1" hidden aria-hidden="true">
+        <div class="history-detail-dialog-shell">
             <div class="history-detail-dialog-header">
                 <div class="history-detail-title-block">
                     <h2 id="history-detail-title">历史任务</h2>
@@ -926,25 +1114,16 @@
                 </div>
                 <div class="history-detail-header-actions">
                     <div id="history-detail-actions" class="history-detail-actions"></div>
-                    <button id="btn-close-history-detail" class="btn btn-small" type="button">关闭</button>
+                    <button id="btn-close-history-detail" class="btn btn-small" type="button">关闭详情</button>
                 </div>
             </div>
-            <div class="history-detail-tabs" role="tablist" aria-label="历史任务详情">
-                <button class="history-detail-tab active" type="button" data-history-detail-tab="overview">概览</button>
-                <button class="history-detail-tab" type="button" data-history-detail-tab="resume">续训</button>
-                <button class="history-detail-tab" type="button" data-history-detail-tab="chart">曲线</button>
-                <button class="history-detail-tab" type="button" data-history-detail-tab="logs">日志</button>
-                <button class="history-detail-tab" type="button" data-history-detail-tab="system">系统</button>
-                <button class="history-detail-tab" type="button" data-history-detail-tab="config">配置</button>
-                <button class="history-detail-tab" type="button" data-history-detail-tab="paths">文件</button>
-            </div>
+            <div class="history-detail-tabs" role="tablist" aria-label="历史任务详情"></div>
             <div id="history-detail-content" class="history-detail-content"></div>
-        </form>
-    </dialog>
+        </div>
+    </section>
 
     <div id="config-switch-toast" class="config-switch-toast" role="status" aria-live="polite" hidden></div>
 
-    <script src="/static/chart.js?v=lr-overlay-20260529-1"></script>
-    <script src="/static/app.js?v=lr-persist-preview-dialog-20260529-3"></script>
+    <script type="module" src="/static/app.js?v=module-bootstrap-20260601-8"></script>
 </body>
 </html>

@@ -4,7 +4,7 @@ from typing import Dict, List, Optional, Union
 import torch
 from tqdm import tqdm
 from library.runtime.device import synchronize_device
-from library.io.safetensors import (
+from library.io.safetensors_io import (
     MemoryEfficientSafeOpen,
     TensorWeightAdapter,
     WeightTransformHooks,

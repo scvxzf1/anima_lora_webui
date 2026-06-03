@@ -270,6 +270,79 @@ def test_resize_bucket_args_use_runtime_preprocess_attrs(tmp_path, monkeypatch):
     ]
 
 
+def test_resize_bucket_args_disable_bucket_when_dataset_requests_square_resize(tmp_path, monkeypatch):
+    dataset_path = tmp_path / "configs" / "datasets" / "square.toml"
+    dataset_path.parent.mkdir(parents=True)
+    dataset_path.write_text(
+        "\n".join(
+            [
+                "[[datasets]]",
+                "resolution = 768",
+                "enable_bucket = false",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(preprocess, "ROOT", tmp_path)
+    monkeypatch.setattr(
+        _common,
+        "_PATH_OVERRIDES_CACHE",
+        {"dataset_config": "configs/datasets/square.toml"},
+    )
+
+    args = preprocess._resize_bucket_args()
+
+    assert args == ["--resolution", "768", "--no_enable_bucket"]
+
+
+def test_preprocess_forwards_path_pattern_to_resize_and_cache_steps(tmp_path, monkeypatch):
+    dataset_path = tmp_path / "configs" / "datasets" / "filtered.toml"
+    dataset_path.parent.mkdir(parents=True)
+    dataset_path.write_text(
+        "\n".join(
+            [
+                "[[datasets]]",
+                "resolution = 768",
+                "",
+                "[[datasets.subsets]]",
+                'image_dir = "post_image_dataset/a_resized"',
+                'cache_dir = "post_image_dataset/a_cache"',
+                'path_pattern = "char_a/*"',
+                'custom_attributes = {source_dir = "image_dataset/a"}',
+            ]
+        ),
+        encoding="utf-8",
+    )
+    commands: list[list[str]] = []
+    backups: list[tuple[str, str]] = []
+    monkeypatch.setattr(preprocess, "ROOT", tmp_path)
+    monkeypatch.setattr(
+        _common,
+        "_PATH_OVERRIDES_CACHE",
+        {
+            "dataset_config": "configs/datasets/filtered.toml",
+            "vae": "D:/models/vae.safetensors",
+            "qwen3": "D:/models/qwen3.safetensors",
+            "pretrained_model_name_or_path": "D:/models/anima.safetensors",
+        },
+    )
+    monkeypatch.setattr(preprocess, "run", commands.append)
+    monkeypatch.setattr(
+        preprocess,
+        "_run_caption_backup",
+        lambda row: backups.append((row["source_image_dir"], row.get("path_pattern"))),
+    )
+    monkeypatch.setattr(preprocess, "_build_caption_index_best_effort", lambda: None)
+
+    preprocess.cmd_preprocess([])
+    preprocess.cmd_preprocess_pe([])
+
+    assert backups == [("image_dataset/a", "char_a/*")]
+    resize_cmd, vae_cmd, te_cmd, pe_cmd = commands
+    for cmd in (resize_cmd, vae_cmd, te_cmd, pe_cmd):
+        assert cmd[cmd.index("--path_pattern") + 1] == "char_a/*"
+
+
 def test_runtime_dataset_config_supplies_json_caption_flag(tmp_path, monkeypatch):
     dataset_path = tmp_path / "runs" / "demo" / "dataset.runtime.toml"
     dataset_path.parent.mkdir(parents=True)
@@ -610,6 +683,7 @@ def test_preprocess_runs_all_dataset_config_rows(tmp_path, monkeypatch):
         "_run_caption_backup",
         lambda row: backups.append(row["source_image_dir"]),
     )
+    monkeypatch.setattr(preprocess, "_build_caption_index_best_effort", lambda: None)
 
     preprocess.cmd_preprocess([])
 

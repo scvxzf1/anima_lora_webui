@@ -1,8 +1,9 @@
 """Per-method extension protocol for AnimaTrainer.
 
 Concrete adapters live next to their network module (e.g.
-``networks/methods/easycontrol.py::EasyControlMethodAdapter``) and are
-instantiated by ``resolve_adapters`` based on ``args`` + the built network.
+``networks/methods/easycontrol.py::EasyControlMethodAdapter``). Resolution is
+kept in ``library.training.adapter_resolver`` so this protocol module does not
+depend on concrete network implementations.
 
 The trainer holds ``self._adapters: list[MethodAdapter]`` and dispatches
 each lifecycle event to all of them. This replaces the per-method ``if
@@ -161,27 +162,3 @@ class MethodAdapter:
         per-step metrics don't have to implement anything.
         """
         return {}
-
-
-def resolve_adapters(args, network) -> list[MethodAdapter]:
-    """Sniff ``args`` + ``network`` and return the adapters that apply.
-
-    Imports each adapter lazily so this module stays cheap to import.
-    """
-    adapters: list[MethodAdapter] = []
-    if getattr(args, "use_ip_adapter", False):
-        from networks.methods.ip_adapter import IPAdapterMethodAdapter
-
-        adapters.append(IPAdapterMethodAdapter())
-    if getattr(args, "use_easycontrol", False):
-        from networks.methods.easycontrol import EasyControlMethodAdapter
-
-        adapters.append(EasyControlMethodAdapter())
-    # Soft-tokens contrastive: opt-in via a positive contrastive weight on the
-    # built network (the objective leaves no learned params, so it's detected
-    # off the network's target weight rather than an args flag).
-    if float(getattr(network, "_contrastive_target_weight", 0.0) or 0.0) > 0.0:
-        from networks.methods.soft_tokens import SoftTokensMethodAdapter
-
-        adapters.append(SoftTokensMethodAdapter())
-    return adapters

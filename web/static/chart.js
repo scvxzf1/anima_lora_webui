@@ -1,7 +1,7 @@
 /**
  * Lightweight Canvas chart for loss curve visualization.
  */
-class MetricsChart {
+export class MetricsChart {
     constructor(canvas, options = {}) {
         this.canvas = canvas;
         this.ctx = canvas.getContext('2d');
@@ -18,8 +18,10 @@ class MetricsChart {
         this.tooltipText = options.tooltipText || options.text || '#e0e0e0';
         this.highlightColor = options.highlightColor || options.highlight || '#f0c36a';
         this.crosshairColor = options.crosshairColor || options.crosshair || this.color;
-        this.emptyText = options.emptyText || '等待 loss 数据...';
+        this.emptyText = options.emptyText ?? '等待 loss 数据...';
         this.xLabel = options.xLabel || 'step';
+        this.showLr = options.showLr !== false;
+        this.rangeMode = options.rangeMode || 'all';
         this.hoverIndex = null;
         this.useStepScale = false;
         this.xRange = null;
@@ -57,6 +59,13 @@ class MetricsChart {
     setScaleMode(mode, options = {}) {
         this.useStepScale = mode === 'step';
         this.xRange = this.useStepScale ? this._normalizeRange(options.xRange) : null;
+        this.render();
+    }
+
+    setDisplayOptions(options = {}) {
+        if (options.showLr !== undefined) this.showLr = options.showLr !== false;
+        if (options.rangeMode !== undefined) this.rangeMode = options.rangeMode || 'all';
+        this._sanitizeHover();
         this.render();
     }
 
@@ -147,14 +156,16 @@ class MetricsChart {
     }
 
     _lrValues() {
-        return this.data
+        return this._displayData()
             .map((point) => Number(point.lr))
             .filter((value) => Number.isFinite(value));
     }
 
-    _lrRange() {
-        const values = this._lrValues();
-        if (values.length < 2) return null;
+    _lrRange(data = this._displayData()) {
+        const values = data
+            .map((point) => Number(point.lr))
+            .filter((value) => Number.isFinite(value));
+        if (!values.length) return null;
         let min = Math.min(...values);
         let max = Math.max(...values);
         if (min === max) {
@@ -166,7 +177,8 @@ class MetricsChart {
     }
 
     _sanitizeHover() {
-        if (this.hoverIndex !== null && (this.hoverIndex < 0 || this.hoverIndex >= this.data.length)) {
+        const data = this._displayData();
+        if (this.hoverIndex !== null && (this.hoverIndex < 0 || this.hoverIndex >= data.length)) {
             this.hoverIndex = null;
         }
     }
@@ -178,7 +190,8 @@ class MetricsChart {
     }
 
     _handleMouseMove(event) {
-        if (this.data.length < 2) {
+        const data = this._displayData();
+        if (data.length < 2) {
             this._clearHover();
             return;
         }
@@ -201,8 +214,8 @@ class MetricsChart {
 
         const ratio = (x - pad.left) / plotW;
         const nextIndex = this.useStepScale
-            ? this._nearestIndexByX(x, { pad, plotW })
-            : Math.max(0, Math.min(this.data.length - 1, Math.round(ratio * (this.data.length - 1))));
+            ? this._nearestIndexByX(x, { pad, plotW, data })
+            : Math.max(0, Math.min(data.length - 1, Math.round(ratio * (data.length - 1))));
         if (nextIndex === this.hoverIndex) return;
         this.hoverIndex = nextIndex;
         this.render();
@@ -224,16 +237,17 @@ class MetricsChart {
         ctx.save();
         ctx.textBaseline = 'middle';
 
-        if (this.data.length < 2) {
+        const data = this._displayData();
+        if (data.length < 2) {
             ctx.fillStyle = this.textColor;
             ctx.font = '12px monospace';
             ctx.textAlign = 'center';
-            ctx.fillText(this.data.length === 1 ? '已收到 1 个 loss 点，等待更多数据...' : this.emptyText, w / 2, h / 2);
+            ctx.fillText(data.length === 1 ? '已收到 1 个 loss 点，等待更多数据...' : this.emptyText, w / 2, h / 2);
             ctx.restore();
             return;
         }
 
-        const values = this.data.map(d => d.value);
+        const values = data.map(d => d.value);
         let minV = Math.min(...values);
         let maxV = Math.max(...values);
         if (minV === maxV) { minV -= 0.01; maxV += 0.01; }
@@ -241,8 +255,8 @@ class MetricsChart {
 
         const plotW = w - pad.left - pad.right;
         const plotH = h - pad.top - pad.bottom;
-        const xRange = this._xRange();
-        const lrRange = this._lrRange();
+        const xRange = this._xRange(data);
+        const lrRange = this.showLr ? this._lrRange(data) : null;
 
         // Grid lines
         ctx.strokeStyle = this.gridColor;
@@ -275,7 +289,7 @@ class MetricsChart {
             }
         }
 
-        this._drawStageMarkers(ctx, { w, h, pad, plotW, xRange });
+        this._drawStageMarkers(ctx, { w, h, pad, plotW, xRange, data });
 
         // Line
         ctx.strokeStyle = this.color;
@@ -283,26 +297,26 @@ class MetricsChart {
         ctx.lineJoin = 'round';
         ctx.beginPath();
         let hasLine = false;
-        for (let i = 0; i < this.data.length; i++) {
-            const x = this._xForPoint(this.data[i], i, { pad, plotW, xRange });
-            const y = pad.top + ((maxV - this.data[i].value) / rangeV) * plotH;
-            if (i === 0 || this.data[i].stageBreakBefore) ctx.moveTo(x, y);
+        for (let i = 0; i < data.length; i++) {
+            const x = this._xForPoint(data[i], i, { pad, plotW, xRange, data });
+            const y = pad.top + ((maxV - data[i].value) / rangeV) * plotH;
+            if (i === 0 || data[i].stageBreakBefore) ctx.moveTo(x, y);
             else ctx.lineTo(x, y);
             hasLine = true;
         }
         if (hasLine) ctx.stroke();
 
-        this._drawLrLine(ctx, { pad, plotW, plotH, xRange, lrRange });
+        this._drawLrLine(ctx, { pad, plotW, plotH, xRange, lrRange, data });
 
         // Current value
-        const last = this.data[this.data.length - 1];
+        const last = data[data.length - 1];
         ctx.fillStyle = this.color;
         ctx.font = 'bold 11px monospace';
         ctx.textAlign = 'left';
         ctx.textBaseline = 'alphabetic';
         ctx.fillText(`${this.label}: ${last.value.toFixed(5)}`, pad.left + 5, 14);
         if (lrRange) {
-            const lastLrPoint = [...this.data].reverse().find((point) => Number.isFinite(Number(point.lr)));
+            const lastLrPoint = [...data].reverse().find((point) => Number.isFinite(Number(point.lr)));
             if (lastLrPoint) {
                 ctx.fillStyle = this.lrColor;
                 ctx.textAlign = 'right';
@@ -318,12 +332,13 @@ class MetricsChart {
         ctx.textAlign = 'right';
         ctx.fillText(`${this.xLabel} ${this._formatStep(xRange.max)}`, w - pad.right, h - 5);
 
-        this._drawHover(ctx, { w, h, pad, plotW, plotH, maxV, rangeV, xRange, lrRange });
+        this._drawHover(ctx, { w, h, pad, plotW, plotH, maxV, rangeV, xRange, lrRange, data });
         ctx.restore();
     }
 
     _drawLrLine(ctx, layout) {
         const { pad, plotW, plotH, xRange, lrRange } = layout;
+        const data = layout.data || this._displayData();
         if (!lrRange) return;
         const range = lrRange.max - lrRange.min;
         if (range <= 0) return;
@@ -335,15 +350,15 @@ class MetricsChart {
         ctx.beginPath();
         let drawing = false;
         let hasLine = false;
-        for (let i = 0; i < this.data.length; i++) {
-            const lr = Number(this.data[i].lr);
+        for (let i = 0; i < data.length; i++) {
+            const lr = Number(data[i].lr);
             if (!Number.isFinite(lr)) {
                 drawing = false;
                 continue;
             }
-            const x = this._xForPoint(this.data[i], i, { pad, plotW, xRange });
+            const x = this._xForPoint(data[i], i, { pad, plotW, xRange, data });
             const y = pad.top + ((lrRange.max - lr) / range) * plotH;
-            if (!drawing || this.data[i].stageBreakBefore) {
+            if (!drawing || data[i].stageBreakBefore) {
                 ctx.moveTo(x, y);
                 drawing = true;
             } else {
@@ -357,30 +372,33 @@ class MetricsChart {
     }
 
     _pointPosition(index, layout) {
-        const point = this.data[index];
-        if (!point || this.data.length < 2) return null;
+        const data = layout.data || this._displayData();
+        const point = data[index];
+        if (!point || data.length < 2) return null;
         const { pad, plotW, plotH, maxV, rangeV, xRange } = layout;
         return {
             point,
-            x: this._xForPoint(point, index, { pad, plotW, xRange }),
+            x: this._xForPoint(point, index, { pad, plotW, xRange, data }),
             y: pad.top + ((maxV - point.value) / rangeV) * plotH,
         };
     }
 
     _xForPoint(point, index, layout) {
         const { pad, plotW, xRange } = layout;
+        const dataLength = Math.max(1, (layout.data || this._displayData()).length);
         if (!this.useStepScale || !xRange || xRange.max <= xRange.min) {
-            return pad.left + (index / (this.data.length - 1)) * plotW;
+            return pad.left + (index / Math.max(1, dataLength - 1)) * plotW;
         }
         const ratio = (point.step - xRange.min) / (xRange.max - xRange.min);
         return pad.left + Math.max(0, Math.min(1, ratio)) * plotW;
     }
 
     _nearestIndexByX(x, layout) {
+        const data = layout.data || this._displayData();
         let bestIndex = 0;
         let bestDistance = Infinity;
-        for (let i = 0; i < this.data.length; i++) {
-            const pointX = this._xForPoint(this.data[i], i, { ...layout, xRange: this._xRange() });
+        for (let i = 0; i < data.length; i++) {
+            const pointX = this._xForPoint(data[i], i, { ...layout, xRange: this._xRange(data), data });
             const distance = Math.abs(pointX - x);
             if (distance < bestDistance) {
                 bestDistance = distance;
@@ -390,9 +408,9 @@ class MetricsChart {
         return bestIndex;
     }
 
-    _xRange() {
-        if (this.xRange) return this.xRange;
-        const steps = this.data.map((point) => point.step).filter(Number.isFinite);
+    _xRange(data = this._displayData()) {
+        if (this.xRange && data.length === this.data.length) return this.xRange;
+        const steps = data.map((point) => point.step).filter(Number.isFinite);
         const min = Math.min(...steps);
         const max = Math.max(...steps);
         return { min, max };
@@ -408,7 +426,8 @@ class MetricsChart {
 
     _drawStageMarkers(ctx, layout) {
         const { w, h, pad, plotW, xRange } = layout;
-        const markers = this.data.filter((point) => point.stageBreakBefore);
+        const data = layout.data || this._displayData();
+        const markers = data.filter((point) => point.stageBreakBefore);
         if (!markers.length) return;
         ctx.save();
         ctx.strokeStyle = this.highlightColor;
@@ -420,7 +439,7 @@ class MetricsChart {
         ctx.textAlign = 'left';
         ctx.textBaseline = 'alphabetic';
         for (const point of markers) {
-            const x = this._xForPoint(point, this.data.indexOf(point), { pad, plotW, xRange });
+            const x = this._xForPoint(point, data.indexOf(point), { pad, plotW, xRange, data });
             ctx.beginPath();
             ctx.moveTo(x, pad.top);
             ctx.lineTo(x, h - pad.bottom);
@@ -474,7 +493,8 @@ class MetricsChart {
             ctx.stroke();
         }
 
-        const lines = this._hoverLines(point, this.hoverIndex);
+        const data = layout.data || this._displayData();
+        const lines = this._hoverLines(point, this.hoverIndex, data.length);
         const font = '11px monospace';
         const lineHeight = 16;
         const paddingX = 8;
@@ -507,8 +527,8 @@ class MetricsChart {
         ctx.restore();
     }
 
-    _hoverLines(point, index) {
-        const lines = [`位置: 第 ${index + 1}/${this.data.length} 个 Loss 点`];
+    _hoverLines(point, index, dataLength = this._displayData().length) {
+        const lines = [`位置: 第 ${index + 1}/${dataLength} 个 Loss 点`];
         if (this.xLabel && this.xLabel !== 'step') {
             lines.push(`${this.xLabel}: ${this._formatStep(point.step)}`);
         }
@@ -527,8 +547,20 @@ class MetricsChart {
         return lines;
     }
 
+    _displayData() {
+        const data = this.data || [];
+        const mode = String(this.rangeMode || 'all');
+        const match = mode.match(/^last(\d+)$/);
+        if (match) {
+            const count = Number(match[1]);
+            return Number.isFinite(count) && count > 0 ? data.slice(-count) : data;
+        }
+        return data;
+    }
+
     _firstFinite(...values) {
         for (const value of values) {
+            if (value === undefined || value === null || value === '') continue;
             const number = Number(value);
             if (Number.isFinite(number)) return number;
         }
@@ -541,6 +573,7 @@ class MetricsChart {
     }
 
     _formatLr(value) {
+        if (value === undefined || value === null || value === '') return '-';
         const number = Number(value);
         return Number.isFinite(number) ? number.toExponential(2) : '-';
     }

@@ -38,4 +38,7 @@ logs
 .anima-update-backups
 node.zip
 _archive/
+!_archive/
+!_archive/proposals/
+!_archive/proposals/dpdmd.md
 gui/gui_settings.json

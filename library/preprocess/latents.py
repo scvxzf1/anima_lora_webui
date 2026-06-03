@@ -54,6 +54,7 @@ def cache_latents(
     *,
     cache_dir: Path | None = None,
     recursive: bool = False,
+    path_pattern: str | None = None,
     batch_size: int = 4,
     progress: ProgressFn | None = None,
 ) -> PreprocessStats:
@@ -62,7 +63,7 @@ def cache_latents(
     ``vae`` is supplied loaded + on-device (``device``/``dtype`` are read off
     it). Returns counts; pass ``progress`` for a per-image bar.
     """
-    image_files = walk_images(data_dir, recursive=recursive)
+    image_files = walk_images(data_dir, recursive=recursive, pattern=path_pattern)
     reso_groups = group_by_shape(image_files)
     stats = PreprocessStats(seen=len(image_files))
 

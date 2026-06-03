@@ -183,7 +183,7 @@ class LoRANetworkCfg:
     lora_dim: int = 4
     alpha: float = 1.0
     module_class: Type = LoRAModule
-    lokr_factor: int = 8
+    plugin_args: Dict[str, Any] = field(default_factory=dict)
     # warm-start path supplies these from the checkpoint; fresh path leaves None
     modules_dim: Optional[Dict[str, int]] = None
     modules_alpha: Optional[Dict[str, float]] = None
@@ -376,7 +376,44 @@ class LoRANetworkCfg:
             network_dim = 4
         if network_alpha is None:
             network_alpha = 1.0
-        lokr_factor = int(kwargs.get("lokr_factor", 8))
+        plugin_args = {
+            key: value
+            for key, value in kwargs.items()
+            if key not in {
+                "train_llm_adapter",
+                "exclude_patterns",
+                "include_patterns",
+                "layer_start",
+                "layer_end",
+                "rank_dropout",
+                "module_dropout",
+                "verbose",
+                "network_reg_dims",
+                "network_reg_lrs",
+                "network_router_lr_scale",
+                "loraplus_lr_ratio",
+                "loraplus_unet_lr_ratio",
+                "loraplus_text_encoder_lr_ratio",
+                "use_timestep_mask",
+                "min_rank",
+                "alpha_rank_scale",
+                "channel_scaling_alpha",
+                "use_custom_down_autograd",
+                "use_ortho",
+                "ortho_init_std",
+                "use_moe_style",
+                "route_per_layer",
+                "router_source",
+                "router_hidden_dim",
+                "router_tau",
+                "fera_fecl_weight",
+                "fera_num_bands",
+                "add_reft",
+                "reft_dim",
+                "reft_alpha",
+                "reft_layers",
+            }
+        }
 
         train_llm_adapter = _as_bool(kwargs.get("train_llm_adapter"))
 
@@ -659,7 +696,7 @@ class LoRANetworkCfg:
             lora_dim=network_dim,
             alpha=network_alpha,
             module_class=module_class,
-            lokr_factor=lokr_factor,
+            plugin_args=plugin_args,
             train_llm_adapter=train_llm_adapter,
             exclude_patterns=exclude_patterns,
             include_patterns=include_patterns,
@@ -757,7 +794,7 @@ class LoRANetworkCfg:
         content_router_source: str = "input",
         content_router_layer_norm: bool = True,
         chimera_centered_gate: bool = False,
-        lokr_factor: int = 8,
+        plugin_args: Optional[Dict[str, Any]] = None,
     ) -> "LoRANetworkCfg":
         """Build cfg from a checkpoint key-sniff (warm-start / inference path).
 
@@ -825,7 +862,7 @@ class LoRANetworkCfg:
             lora_dim=4,
             alpha=1.0,
             module_class=module_class,
-            lokr_factor=int(lokr_factor),
+            plugin_args=dict(plugin_args or {}),
             modules_dim=modules_dim,
             modules_alpha=modules_alpha,
             train_llm_adapter=train_llm_adapter,

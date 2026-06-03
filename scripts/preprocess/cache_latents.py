@@ -66,6 +66,7 @@ def main() -> None:
         vae,
         cache_dir=cache_dir,
         recursive=args.recursive,
+        path_pattern=args.path_pattern,
         batch_size=args.batch_size,
         progress=tqdm_progress("Caching latents"),
     )

@@ -1,18 +1,196 @@
 from __future__ import annotations
 
+import re
 from pathlib import Path
+from urllib.parse import parse_qs, unquote, urlparse
 
 
-APP_JS = Path(__file__).resolve().parents[1] / "web" / "static" / "app.js"
-CHART_JS = Path(__file__).resolve().parents[1] / "web" / "static" / "chart.js"
-INDEX_HTML = Path(__file__).resolve().parents[1] / "web" / "static" / "index.html"
-STYLE_CSS = Path(__file__).resolve().parents[1] / "web" / "static" / "style.css"
+STATIC_DIR = Path(__file__).resolve().parents[1] / "web" / "static"
+APP_JS_PATH = STATIC_DIR / "app.js"
+CHART_JS = STATIC_DIR / "chart.js"
+INDEX_HTML = STATIC_DIR / "index.html"
+STYLE_CSS = STATIC_DIR / "style.css"
+MODULE_IMPORT_RE = re.compile(
+    r"""(?:import|export)\s+(?:[^'"]*?\s+from\s+)?['"]([^'"]+\.js(?:\?[^'"]*)?)['"]"""
+)
+
+
+def _resolve_frontend_module(parent: Path, specifier: str) -> Path | None:
+    parsed = urlparse(specifier)
+    if parsed.scheme or parsed.netloc:
+        return None
+    path = unquote(parsed.path)
+    if not path.endswith(".js"):
+        return None
+    if path.startswith("/static/"):
+        resolved = (STATIC_DIR / path.removeprefix("/static/")).resolve()
+    elif path.startswith("./") or path.startswith("../"):
+        resolved = (parent.parent / path).resolve()
+    else:
+        return None
+    if resolved == STATIC_DIR.resolve() or STATIC_DIR.resolve() in resolved.parents:
+        return resolved
+    raise AssertionError(f"frontend module import escapes static dir: {parent} -> {specifier}")
+
+
+def _frontend_module_graph(entry: Path = APP_JS_PATH) -> list[Path]:
+    seen: set[Path] = set()
+    ordered: list[Path] = []
+
+    def visit(path: Path) -> None:
+        resolved = path.resolve()
+        if resolved in seen:
+            return
+        seen.add(resolved)
+        ordered.append(resolved)
+        source = resolved.read_text(encoding="utf-8")
+        for specifier in MODULE_IMPORT_RE.findall(source):
+            child = _resolve_frontend_module(resolved, specifier)
+            if child is not None:
+                assert child.is_file(), f"missing frontend module import: {resolved} -> {specifier}"
+                visit(child)
+
+    visit(entry)
+    return ordered
+
+
+def _frontend_module_text(relative_path: str) -> str:
+    path = (STATIC_DIR / relative_path).resolve()
+    graph = _frontend_module_graph()
+    assert path in graph, f"{relative_path} is not reachable from app.js"
+    return path.read_text(encoding="utf-8")
+
+
+def _frontend_feature_text(*relative_paths: str) -> str:
+    return "\n".join(_frontend_module_text(relative_path) for relative_path in relative_paths)
+
+
+def _module_cache_token(specifier: str) -> str | None:
+    return parse_qs(urlparse(specifier).query).get("v", [None])[0]
+
+
+class _FrontendJsSource:
+    def read_text(self, encoding: str = "utf-8") -> str:
+        return "\n".join(path.read_text(encoding=encoding) for path in _frontend_module_graph())
+
+
+APP_JS = _FrontendJsSource()
 
 
 def _section(source: str, start: str, end: str) -> str:
     start_index = source.index(start)
     end_index = source.index(end, start_index)
     return source[start_index:end_index]
+
+
+def test_frontend_module_graph_follows_production_entrypoint() -> None:
+    graph = _frontend_module_graph()
+    relative = [path.relative_to(STATIC_DIR).as_posix() for path in graph]
+
+    assert relative[0] == "app.js"
+    assert "chart.js" in relative
+    assert "js/features/legacy-app.js" in relative
+    assert "js/features/preview/index.js" in relative
+    assert "js/features/preview/state.js" in relative
+    assert "js/features/preview/api.js" in relative
+    assert "js/features/preview/workspace.js" in relative
+    assert "js/features/preview/images.js" in relative
+    assert "js/features/preview/weights.js" in relative
+    assert "js/features/preview/dialog.js" in relative
+    assert "js/features/queue/index.js" in relative
+    assert "js/features/queue/state.js" in relative
+    assert "js/features/queue/api.js" in relative
+    assert "js/features/queue/render.js" in relative
+    assert "js/features/queue/actions.js" in relative
+    assert "js/features/queue/enqueue.js" in relative
+    assert "js/features/history-detail/index.js" in relative
+    assert "js/features/history-detail/state.js" in relative
+    assert "js/features/history-detail/api.js" in relative
+    assert "js/features/history-detail/dialog.js" in relative
+    assert "js/features/history-detail/overview.js" in relative
+    assert "js/features/history-detail/resume/index.js" in relative
+    assert "js/features/history-detail/resume/state.js" in relative
+    assert "js/features/history-detail/resume/panel.js" in relative
+    assert "js/features/history-detail/resume/detail.js" in relative
+    assert "js/features/history-detail/resume/actions.js" in relative
+    assert "js/features/history-detail/analysis.js" in relative
+    assert "js/features/history-detail/curve/index.js" in relative
+    assert "js/features/history-detail/curve/data.js" in relative
+    assert "js/features/history-detail/curve/toolbar.js" in relative
+    assert "js/features/history-detail/curve/chart.js" in relative
+    assert "js/features/history-detail/curve/hover.js" in relative
+    assert "js/features/history-detail/system.js" in relative
+    assert "js/features/history-detail/logs.js" in relative
+    assert "js/features/history-detail/config-files.js" in relative
+    assert "js/features/history-detail/workspace.js" in relative
+    assert "js/features/history-detail/ui.js" in relative
+    assert "js/config/catalog.js" in relative
+    assert "js/config/catalog/labels-options.js" in relative
+    assert "js/features/history-detail/resume.js" not in relative
+    assert "js/features/history-detail/curve.js" not in relative
+    assert "createHistoryResumeFeature } from './resume/index.js" in (
+        STATIC_DIR / "js/features/history-detail/resume.js"
+    ).read_text(encoding="utf-8")
+    assert "createHistoryCurveRenderer } from './curve/index.js" in (
+        STATIC_DIR / "js/features/history-detail/curve.js"
+    ).read_text(encoding="utf-8")
+    assert all(path.startswith(("app.js", "chart.js", "js/")) for path in relative)
+
+
+def test_frontend_module_cache_tokens_match_entrypoint() -> None:
+    html = INDEX_HTML.read_text(encoding="utf-8")
+    match = re.search(r'<script[^>]+src="/static/app\.js\?v=([^"]+)"', html)
+    assert match, "missing versioned frontend module entrypoint"
+    entry_token = match.group(1)
+    assert entry_token.startswith("module-bootstrap-")
+
+    mismatches: list[str] = []
+    for path in _frontend_module_graph():
+        source = path.read_text(encoding="utf-8")
+        for specifier in MODULE_IMPORT_RE.findall(source):
+            child = _resolve_frontend_module(path, specifier)
+            if child is None:
+                continue
+            token = _module_cache_token(specifier)
+            if token != entry_token:
+                relative = path.relative_to(STATIC_DIR).as_posix()
+                mismatches.append(f"{relative}: {specifier} uses {token!r}, expected {entry_token!r}")
+
+    assert not mismatches
+
+def test_preview_feature_modules_are_loaded_from_production_entrypoint() -> None:
+    legacy_source = _frontend_module_text("js/features/legacy-app.js")
+    preview_index = _frontend_module_text("js/features/preview/index.js")
+    preview_state = _frontend_module_text("js/features/preview/state.js")
+    preview_workspace = _frontend_module_text("js/features/preview/workspace.js")
+
+    assert "createPreviewFeature(ctx, {" in legacy_source
+    for name in (
+        "loadPreviewSettings",
+        "savePreviewSettings",
+        "resetPreviewSettings",
+        "loadPreviewImages",
+        "loadPreviewWeights",
+        "setPreviewSource",
+        "changePreviewTask",
+        "openTrainingPreview",
+        "openCurrentTrainingPreview",
+        "openHistoryConfigGroupPreview",
+        "openPreviewPanel",
+        "closePreviewPanel",
+        "mountPreviewWorkspaceInHistoryDetail",
+        "restorePreviewWorkspaceFromHistoryDetail",
+        "activateHistoryDetailPreview",
+        "updateRuntimeSampleState",
+    ):
+        assert name in preview_index
+    assert "let previewSettings" not in legacy_source
+    assert "let currentPreviewSource" not in legacy_source
+    assert "state.selectedGroup = normalizePreviewGroup(options.group)" in preview_index
+    assert "function mountPreviewWorkspace(target)" in preview_workspace
+    assert "target.appendChild(workspace);" in preview_workspace
+    assert "document.getElementById('preview-workspace')" in preview_workspace
+    assert "export function normalizePreviewGroup(group)" in preview_state
 
 
 def test_new_training_launch_enters_live_monitoring() -> None:
@@ -53,46 +231,113 @@ def test_return_to_live_training_clears_runtime_cursor() -> None:
 
 def test_training_queue_frontend_hooks_are_present() -> None:
     source = APP_JS.read_text(encoding="utf-8")
+    legacy_source = _frontend_module_text("js/features/legacy-app.js")
+    queue_index = _frontend_module_text("js/features/queue/index.js")
+    queue_state = _frontend_module_text("js/features/queue/state.js")
+    queue_api = _frontend_module_text("js/features/queue/api.js")
+    queue_render = _frontend_module_text("js/features/queue/render.js")
+    queue_actions = _frontend_module_text("js/features/queue/actions.js")
+    queue_enqueue = _frontend_module_text("js/features/queue/enqueue.js")
+    queue_feature_source = "\n".join([
+        queue_index,
+        queue_state,
+        queue_api,
+        queue_render,
+        queue_actions,
+        queue_enqueue,
+    ])
     html = INDEX_HTML.read_text(encoding="utf-8")
+    css = STYLE_CSS.read_text(encoding="utf-8")
 
-    queue_section = _section(source, "async function loadTrainingQueue()", "// ── 状态轮询 ──")
+    queue_section = queue_feature_source
+    listener_section = _section(legacy_source, "function setupEventListeners", "function installBeginnerTooltips")
+    group_actions = _section(source, "function createTomlGroupActions", "function createTomlGroupActionButton")
+    current_queue = _section(queue_enqueue, "async function queueCurrentTrainingFromConfig", "async function enqueueTrainingFromConfig")
+    enqueue_section = _section(queue_enqueue, "async function enqueueTrainingFromConfig", "async function enqueueTrainingQueueRequest")
+    view_section = _section(legacy_source, "function renderTrainingViewMode", "// ── 状态轮询 ──")
+    assert "createQueueFeature(ctx, {" in legacy_source
+    assert "ensureQueueFeature().bindQueueEvents();" in listener_section
+    for name in (
+        "loadTrainingQueue",
+        "renderTrainingQueue",
+        "updateTrainingQueueFromPayload",
+        "updateRunningQueueProgress",
+        "queueCurrentTrainingFromConfig",
+        "enqueueTrainingFromConfig",
+        "enqueueTrainingQueueRequest",
+        "queueResumeTrainingFromCheckpoint",
+        "bindQueueEvents",
+    ):
+        assert name in queue_index
     assert "function renderTrainingQueue()" in queue_section
     assert "function renderTrainingQueueManager()" in queue_section
-    assert "function queueManagerSections()" in queue_section
+    assert "function queueManagerSections(state)" in queue_state
     assert "function createTrainingQueueSection" in queue_section
     assert "function createTrainingQueueItem" in queue_section
     assert "function createTrainingQueueManagerItem" in queue_section
-    assert "let trainingQueueFilter = 'actionable';" in source
+    assert "filter: 'actionable'" in queue_state
+    assert "let trainingQueueState" not in legacy_source
+    assert "let trainingQueueFilter" not in legacy_source
     assert "async function toggleTrainingQueuePause()" in queue_section
-    assert "deleteQueueItem" in queue_section
-    assert "删除队列记录和缓存" in queue_section
-    assert "delete_runtime: true" in queue_section
-    assert "queueDeleteRuntimeMessage" in queue_section
-    assert "queueRuntimeDirLabel" in queue_section
+    assert "cancelAllQueueItems" in queue_section
+    assert "removeQueueItemFromList" in queue_section
+    assert "移除列表" in queue_section
+    assert "只会将这条记录从队列界面移除" in queue_section
+    assert "delete_runtime: true" not in queue_section
+    assert "queueDeleteRuntimeMessage" not in queue_section
+    assert "queueRuntimeDirLabel" not in queue_section
     assert "新任务已加入队列" in queue_section
-    assert "删除原记录和缓存" in queue_section
-    assert "完成和已取消记录" in queue_section
+    assert "移除原记录" in queue_section
+    assert "清理已完成记录" in queue_section
+    assert "清理已取消记录" in queue_section
     assert "retryQueueItem" in queue_section
     assert "cancelWaitingQueueItems" in queue_section
-    assert "clearFinishedQueueItems" in queue_section
-    assert "trainingQueueFilter" in queue_section
+    assert "clearCompletedQueueItems" in queue_section
+    assert "clearCanceledQueueItems" in queue_section
+    assert "focusQueueFilterAfterTerminalClear" in queue_section
+    assert "已完成记录已保留" in queue_section
+    assert "清理已取消不会影响这里" in queue_section
+    assert "清理已完成不会影响这里" in queue_section
+    assert "缓存或任何实际文件" in queue_section
+    assert "btn-clear-completed-queue" in html
+    assert "btn-clear-canceled-queue" in html
+    assert "state.filter" in queue_section
     assert "/api/training/queue" in queue_section
     assert "/api/training/queue/settings" in queue_section
+    assert "/api/training/queue/cancel-all" in queue_section
     assert "/api/training/queue/cancel-waiting" in queue_section
-    assert "/api/training/queue/clear" in queue_section
+    assert "/api/training/queue/clear-completed" in queue_section
+    assert "/api/training/queue/clear-canceled" in queue_section
 
     assert "training-queue-manager" in html
     assert "btn-training-queue-view" in html
     assert "training-queue-failure-policy" in html
     assert 'data-queue-filter="actionable">待处理' in html
     assert "training-queue-more-menu" in html
+    assert "btn-queue-from-config" in html
+    assert "btn-open-history-manager" in html
+    assert "未归档 · 最新 6 个训练任务" in html
+    assert "queueCurrentTrainingFromConfig" in listener_section
+    assert "btn-open-history-manager').addEventListener('click', () => showTrainingView('history'))" in listener_section
+    assert "const mainWide = isQueue || isHistory;" in view_section
+    assert "workspace.classList.toggle('main-wide', mainWide)" in view_section
+    assert "trainingRoot.classList.toggle('history-mode', isHistory)" in view_section
+    assert "workspace.classList.toggle('history-mode', isHistory)" in view_section
+    assert "history-wide" not in view_section
+    assert ".slice(0, 6)" in source
 
     summary_panel = _section(html, '<section class="panel training-queue-panel"', '<section class="panel task-history-panel">')
     manager_panel = _section(html, '<section id="training-queue-manager"', '<section id="training-history-placeholder"')
+    assert "btn-cancel-all-queue" not in summary_panel
     assert "btn-cancel-waiting-queue" not in summary_panel
     assert "btn-clear-finished-queue" not in summary_panel
+    assert "btn-clear-completed-queue" not in summary_panel
+    assert "btn-clear-canceled-queue" not in summary_panel
+    assert "btn-cancel-all-queue" in manager_panel
     assert "btn-cancel-waiting-queue" in manager_panel
-    assert "btn-clear-finished-queue" in manager_panel
+    assert "btn-clear-finished-queue" not in manager_panel
+    assert "btn-clear-completed-queue" in manager_panel
+    assert "btn-clear-canceled-queue" in manager_panel
 
     ws_section = _section(source, "function handleWsMessage", "function appendLog")
     assert "case 'queue':" in ws_section
@@ -101,17 +346,229 @@ def test_training_queue_frontend_hooks_are_present() -> None:
     start_section = _section(source, "async function startTrainingUnchecked", "function enterLiveTrainingForNewRun")
     assert "enqueueTrainingFromConfig" in start_section
     assert "chooseTrainingLaunchMode" in source
+    assert "await enqueueTrainingFromConfig(variant, preset, methodsSubdir" in current_queue
+    assert "options.configFile || deps.currentTrainingConfigFile()" in enqueue_section
+    assert "const startPaused = options.startPaused !== false" in enqueue_section
+    assert "队列会保存独立运行配置并保持暂停" in enqueue_section
+    assert "includeContinueSource === false" in enqueue_section
+    assert "async function enqueueTrainingQueueRequest" in queue_enqueue
+    assert "createTomlGroupActionButton('加入队列', () => enqueueTomlGroupToQueue(group)" in group_actions
+    assert "queueableTomlGroupFiles(group)" in group_actions
+    assert "async function enqueueTomlGroupToQueue" in source
+    assert "showTomlGroupQueueConfirmDialog(group, files)" in source
+    assert "队列会保持暂停，等待你手动继续" in group_actions
+    assert "startPaused: true" in group_actions
+    assert "start_paused: Boolean(options.startPaused)" in queue_api
+    assert ".toml-group-action-btn-queue" in css
+    assert "导出单个" in html
+    assert "createTomlGroupActionButton('导出分组', () => exportTomlGroup(group)" in group_actions
+    assert "exportableTomlGroupFiles(group)" in group_actions
+    assert "async function exportTomlGroup" in source
+    assert "createTomlZipBlob(entries)" in source
+    assert "downloadBlob(blob, filename)" in source
+    assert "/api/config/raw?file=${encodeURIComponent(path)}" in source
+    assert "uniqueZipEntryName" in source
+    assert "ZIP_CRC_TABLE" in source
+    assert "内含 ${files.length} 个独立 TOML 文件" in source
+    assert ".toml-group-action-btn-export" in css
+
+
+def test_launch_readiness_panel_is_removed() -> None:
+    source = APP_JS.read_text(encoding="utf-8")
+    html = INDEX_HTML.read_text(encoding="utf-8")
+    css = STYLE_CSS.read_text(encoding="utf-8")
+
+    listener_section = _section(source, "function setupEventListeners", "function installBeginnerTooltips")
+    action_state = _section(source, "function updateTomlActionState", "function readTomlGroupState")
+
+    assert "launch-readiness" not in html
+    assert "launch-readiness" not in css
+    assert "launchReadiness" not in source
+    assert "启动准备" not in html
+    assert "启动准备" not in source
+
+    assert "btn-start-from-config" in html
+    assert "btn-queue-from-config" in html
+    assert "btn-start-from-config').addEventListener('click', startTraining)" in listener_section
+    assert "btn-queue-from-config').addEventListener('click', queueCurrentTrainingFromConfig)" in listener_section
+    assert "handleLaunchReadinessPrimaryAction" not in source
+    assert "btn-start-from-config" in action_state
+    assert "startBtn.textContent = '开始训练';" in action_state
+
+
+def test_config_toolbar_is_first_visible_config_row() -> None:
+    html = INDEX_HTML.read_text(encoding="utf-8")
+    css = STYLE_CSS.read_text(encoding="utf-8")
+
+    editor_html = _section(html, '<section class="config-preset-editor">', '<section id="continue-training-source"')
+    toolbar_html = _section(html, '<div class="config-toolbar">', '<div id="gpu-picker" class="gpu-picker">')
+    form_workspace_css = _section(css, "#tab-config .config-form-workspace,", "#tab-config .config-toolbar {")
+    toolbar_css = _section(css, "#tab-config .config-toolbar {", "#tab-config .config-toolbar label")
+
+    assert "config-preset-header" not in editor_html
+    assert "CONFIG FORGE" not in editor_html
+    assert "CONFIG PRESET" not in editor_html
+    assert "配置工作台" not in editor_html
+    assert "训练配置" not in editor_html
+    assert "config-selection-state\" hidden" in toolbar_html
+    assert "method-select" in toolbar_html
+    assert "variant-select" in toolbar_html
+    assert "preset-select" in toolbar_html
+    assert "padding: 1rem 1.65rem 1.7rem;" in form_workspace_css
+    assert "align-items: center;" in toolbar_css
+
+
+def test_config_form_uses_navigation_search_and_progressive_disclosure() -> None:
+    source = APP_JS.read_text(encoding="utf-8")
+    css = STYLE_CSS.read_text(encoding="utf-8")
+
+    category_defs = _section(source, "const FORM_CATEGORY_DEFS = [", "const FORM_CATEGORY_SECTION_MAP")
+    render_section = _section(source, "function renderConfigForm", "function shouldRenderConfigSection")
+    order_section = _section(source, "function appendConfigGroupsByCategory", "function createGroup")
+    collect_section = _section(source, "function collectChangedFormValues", "function networkArgInputChanged")
+
+    assert category_defs.count("id: '") == 4
+    assert category_defs.index("id: 'common'") < category_defs.index("id: 'preview'")
+    assert category_defs.index("id: 'preview'") < category_defs.index("id: 'advanced'")
+
+    for title in [
+        "基础模型路径",
+        "常用训练设置",
+        "步数与训练量",
+        "数据集设置",
+        "训练中预览图",
+        "显存与速度",
+        "缓存与预处理",
+        "更多数据集配置",
+        "SPD CLI 实验",
+        "输出格式与训练范围",
+        "方法内部与实验架构",
+        "Soft Tokens 参数",
+        "IP-Adapter 高级参数",
+        "EasyControl 高级参数",
+        "其他高级选项",
+    ]:
+        assert title in category_defs
+
+    assert "sectionEntries.push(createConfigGroupEntry(" in render_section
+    assert "appendConfigGroupsByCategory(container, sectionEntries);" in render_section
+    assert "const buckets = new Map(FORM_CATEGORY_DEFS.map((category) => [category.id, []]));" in order_section
+    assert "FORM_CATEGORY_SECTION_MAP.get(group.name) || 'advanced'" in order_section
+    assert "createConfigFormControls(groups, renderedGroups, searchText)" in order_section
+    assert "filterConfigGroupEntry(group, searchText)" in order_section
+    assert "configFormState.showAdvanced || !category.advanced" in source
+    assert "configFormState.search = event.target.value || ''" in source
+    assert "configFormState.activeCategory = categoryId" in source
+    assert "draftValues: new Map()" in source
+    assert "syncConfigDraftFromForm();" in source
+    assert "displayConfigFieldValue(key, value)" in source
+    assert "configGroupIsCollapsed(name, searchText)" in source
+    assert "if (searchText) return false;" in source
+    assert "function createConfigCategory" not in source
+    assert "configFormState.draftValues.entries()" in collect_section
+    assert "collectNetworkArgsFromForm({ network_args: values.network_args ?? currentConfig.network_args })" in collect_section
+    assert "function updateChangedFieldMarks" in source
+    assert "field-row-changed" in source
+    assert "config-modified-count" in source
+    assert ".config-form-shell" in css
+    assert "createConfigNav" not in source
+    assert ".config-form-nav" not in css
+    assert ".config-nav-tab" not in css
+    assert ".config-search-box" in css
+    assert ".config-advanced-toggle" in css
+    assert ".field-row-changed" in css
+    assert ".config-group" in css
+    assert "content.className = 'config-group-body';" in source
+    assert "titleActions.className = 'config-group-title-actions';" in source
+    assert "titleActions.appendChild(createFillGlobalModelPathsButton());" in source
+    assert "titleActions.appendChild(collapseBtn);" in source
+    assert ".config-category" not in css
+    assert ".config-field-grid-4col" in css
+    assert ".config-group-title-actions" in css
+
+    primary_section = _section(source, "title: '常用训练设置'", "title: '步数与训练量'")
+    resource_section = _section(source, "title: '显存与速度'", "title: '缓存与预处理'")
+    assert "'gradient_checkpointing'," in primary_section
+    assert "'gradient_checkpointing'," not in resource_section
+
+
+def test_config_actions_are_de_noised_and_sticky_controls_are_wired() -> None:
+    source = APP_JS.read_text(encoding="utf-8")
+    html = INDEX_HTML.read_text(encoding="utf-8")
+    css = STYLE_CSS.read_text(encoding="utf-8")
+
+    listener_section = _section(source, "function setupEventListeners", "function installBeginnerTooltips")
+
+    assert "toml-more-actions" in html
+    assert "toml-more-actions-popover" in html
+    assert "toml-secondary-actions" not in html
+    assert "btn-apply-toml" in html
+    assert "btn-toggle-toml-editor" in html
+    assert ".toml-more-actions-popover" in css
+    assert "opacity: 0;" in _section(css, ".toml-group-actions", ".toml-group-action-btn,")
+
+    assert "config-sticky-actions" in html
+    assert "配置目录" in html
+    assert "data-sticky-config-category=\"required\"" in html
+    assert "data-sticky-config-category=\"common\"" in html
+    assert "data-sticky-config-category=\"preview\"" in html
+    assert "data-sticky-config-category=\"advanced\"" in html
+    assert "btn-sticky-config-advanced" in html
+    assert "高级</strong>" in html
+    assert "btn-sticky-save-config" not in html
+    assert "btn-sticky-start-from-config" not in html
+    assert "btn-sticky-queue-from-config" not in html
+    assert "data-sticky-config-category" in listener_section
+    assert "selectConfigCategory(btn.dataset.stickyConfigCategory, { scrollToForm: true })" in listener_section
+    assert "function updateConfigStickyDirectory" in source
+    assert "STICKY_CONFIG_CATEGORY_IDS" in source
+    assert "new Set(['required', 'common', 'preview', 'advanced'])" in source
+    assert "ADVANCED_CATEGORY_DEFAULT_OPEN_GROUPS" in source
+    assert "new Set(['显存与速度', '缓存与预处理'])" in source
+    assert "if (category?.advanced) {" in source
+    assert "configFormState.showAdvanced = true;" in source
+    assert "(visibleCategories.has(categoryId) || (category.advanced && hasFields))" in source
+    assert "configFormState.activeCategory === 'advanced' && ADVANCED_CATEGORY_DEFAULT_OPEN_GROUPS.has(name)" in source
+    assert "function scrollConfigFormContentToTop" in source
+    assert "scroller.scrollTo({ top: 0, behavior });" in source
+    assert "scrollIntoView" not in _section(source, "function selectConfigCategory", "function scrollConfigFormContentToTop")
+    assert "function updateConfigStickyPlacement" in source
+    assert "--config-sticky-left" in source
+    assert "--config-sticky-width" in source
+    assert "--config-sticky-safe-space" in source
+    assert "--config-left-max-height" in source
+    assert "stickyActions.hidden = nextMode !== 'project'" in source
+    assert ".config-sticky-actions" in css
+    assert ".config-sticky-tab" in css
+    sticky_css = _section(css, "#tab-config .config-sticky-actions", "#tab-config .config-sticky-title")
+    config_left_css = _section(css, "#tab-config .config-left", "#tab-config .config-direct-editor")
+    assert "width: var(--config-sticky-width, min(1040px, calc(100vw - 2rem)));" in sticky_css
+    assert "grid-template-columns: auto repeat(4, minmax(142px, 1fr));" in sticky_css
+    assert "left: var(--config-sticky-left, 1rem);" in sticky_css
+    assert "position: fixed;" in sticky_css
+    assert "position: sticky;" not in sticky_css
+    assert "max-height: var(--config-left-max-height);" in config_left_css
+    assert "overflow-y: auto;" in config_left_css
+    assert "overscroll-behavior: contain;" in config_left_css
+    assert "padding-bottom: var(--config-sticky-safe-space);" in config_left_css
+    assert "min-height: 68px;" in _section(css, "#tab-config .config-sticky-tab", "#tab-config .config-sticky-tab:hover")
 
 
 def test_resume_queue_button_is_wired() -> None:
-    source = APP_JS.read_text(encoding="utf-8")
+    legacy_source = _frontend_module_text("js/features/legacy-app.js")
+    resume_source = _frontend_module_text("js/features/history-detail/resume/panel.js")
 
-    resume_section = _section(source, "function renderResumePanelState", "function optionNode")
+    resume_section = _section(resume_source, "function renderResumePanelState", "return { renderResumePanelState")
+    history_detail_deps = _section(legacy_source, "function ensureHistoryDetailFeature", "// ── 初始化 ──")
     assert "btn-queue-resume-training" in resume_section
     assert "queueBtn.disabled" in resume_section
+    assert "deps.shouldRenderInlineResumePanel?.() !== true" in resume_section
+    assert "resetInlineResumePanel(panel, select, btn, queueBtn, summary, status);" in resume_section
+    assert "syncHistoryDetailResumeContent();" in resume_section
+    assert "shouldRenderInlineResumePanel" in history_detail_deps
 
-    listener_section = _section(source, "function setupEventListeners", "function installBeginnerTooltips")
-    assert "queueResumeTrainingFromCheckpoint" in source
+    listener_section = _section(legacy_source, "function setupEventListeners", "function installBeginnerTooltips")
+    assert "queueResumeTrainingFromCheckpoint" in legacy_source
     assert "btn-queue-resume-training" in listener_section
 
 
@@ -122,6 +579,17 @@ def test_sample_prompts_save_uses_current_training_config_context() -> None:
 
     assert "train_config_file: currentTrainingSource.file || currentTomlFile || ''" in body
     assert "await saveSamplePrompts('');" not in prepare_body
+
+
+def test_optional_number_fields_can_be_cleared() -> None:
+    source = APP_JS.read_text(encoding="utf-8")
+    optional_numbers = _section(source, "const OPTIONAL_EMPTY_NUMBER_FIELDS = new Set([", "const FORM_UI_PERSIST_DEFAULT_FIELDS")
+    reader = _section(source, "function readFieldInputValue", "function readLoKrEnabled")
+
+    for key in ("sample_every_n_epochs", "sample_every_n_steps", "max_train_epochs"):
+        assert f"'{key}'" in optional_numbers
+    assert "String(raw).trim() === '' && OPTIONAL_EMPTY_NUMBER_FIELDS.has(input.dataset.key)" in reader
+    assert "return parseNumberValue(raw, originalValue);" in reader
 
 
 def test_step_estimate_panel_shows_epoch_factor() -> None:
@@ -149,22 +617,56 @@ def test_history_list_marks_queue_tasks() -> None:
 
 def test_history_manager_frontend_hooks_are_present() -> None:
     source = APP_JS.read_text(encoding="utf-8")
+    legacy_source = _frontend_module_text("js/features/legacy-app.js")
     chart_source = CHART_JS.read_text(encoding="utf-8")
     html = INDEX_HTML.read_text(encoding="utf-8")
     css = STYLE_CSS.read_text(encoding="utf-8")
+    preview_index = _frontend_module_text("js/features/preview/index.js")
+    preview_workspace = _frontend_module_text("js/features/preview/workspace.js")
+    preview_state = _frontend_module_text("js/features/preview/state.js")
+    history_detail_index = _frontend_module_text("js/features/history-detail/index.js")
+    history_detail_api = _frontend_module_text("js/features/history-detail/api.js")
+    history_detail_dialog = _frontend_module_text("js/features/history-detail/dialog.js")
+    history_detail_state = _frontend_module_text("js/features/history-detail/state.js")
+    history_detail_workspace = _frontend_module_text("js/features/history-detail/workspace.js")
+    history_detail_source = _frontend_feature_text(
+        "js/features/history-detail/index.js",
+        "js/features/history-detail/api.js",
+        "js/features/history-detail/dialog.js",
+        "js/features/history-detail/overview.js",
+        "js/features/history-detail/resume/index.js",
+        "js/features/history-detail/resume/state.js",
+        "js/features/history-detail/resume/panel.js",
+        "js/features/history-detail/resume/detail.js",
+        "js/features/history-detail/resume/actions.js",
+        "js/features/history-detail/analysis.js",
+        "js/features/history-detail/curve/index.js",
+        "js/features/history-detail/curve/data.js",
+        "js/features/history-detail/curve/toolbar.js",
+        "js/features/history-detail/curve/chart.js",
+        "js/features/history-detail/curve/hover.js",
+        "js/features/history-detail/system.js",
+        "js/features/history-detail/logs.js",
+        "js/features/history-detail/config-files.js",
+        "js/features/history-detail/workspace.js",
+        "js/features/history-detail/ui.js",
+    )
+    history_curve_chart = _frontend_module_text("js/features/history-detail/curve/chart.js")
 
-    history_section = _section(source, "async function loadTrainingHistoryList()", "function groupHistoryTasks")
-    detail_section = _section(source, "function renderHistoryManagerDetail", "async function loadHistoryTask")
-    listener_section = _section(source, "function setupEventListeners", "function installBeginnerTooltips")
-    preview_open_section = _section(source, "async function openTrainingPreview", "function normalizePreviewGroup")
-    tab_setup_section = _section(source, "function setupTabs()", "// ── 加载初始数据 ──")
-    sidebar_history_section = _section(source, "function renderTrainingHistoryList()", "function recentTrainingSidebarTasks")
-    recent_sidebar_section = _section(source, "function recentTrainingSidebarTasks()", "function renderHistoryManager")
-    log_append_section = _section(source, "function appendLogRecord", "async function replayTrainingLogs")
-    history_review_mode_section = _section(source, "function isHistoryReviewMode()", "function openTutorialDialog")
-    sidebar_task_item_section = _section(source, "function createHistoryTaskItem", "function createHistoryActionButton")
-    manager_row_section = _section(source, "function createHistoryManagerRow", "function selectedHistoryConfigGroups")
-    load_task_section = _section(source, "async function loadHistoryTask", "async function refreshHistoryView")
+    history_section = _section(legacy_source, "async function loadTrainingHistoryList()", "function groupHistoryTasks")
+    detail_section = history_detail_source
+    listener_section = _section(legacy_source, "function setupEventListeners", "function installBeginnerTooltips")
+    preview_open_section = _section(preview_index, "async function openTrainingPreview", "function openCurrentTrainingPreview")
+    tab_setup_section = _section(legacy_source, "function setupTabs()", "// ── 加载初始数据 ──")
+    sidebar_history_section = _section(legacy_source, "function renderTrainingHistoryList()", "function recentTrainingSidebarTasks")
+    recent_sidebar_section = _section(legacy_source, "function recentTrainingSidebarTasks()", "function renderHistoryManager")
+    log_append_section = _section(legacy_source, "function appendLogRecord", "async function replayTrainingLogs")
+    history_review_mode_section = _section(legacy_source, "function isHistoryReviewMode()", "function openTutorialDialog")
+    sidebar_task_item_section = _section(legacy_source, "function createHistoryTaskItem", "function createHistoryActionButton")
+    manager_row_section = _section(legacy_source, "function createHistoryManagerRow", "function selectedHistoryConfigGroups")
+    collection_card_section = _section(legacy_source, "function createHistoryCollectionWorkbenchCard", "function createHistoryConfigGroupWorkbenchCard")
+    config_card_section = _section(legacy_source, "function createHistoryConfigGroupWorkbenchCard", "function historyCollectionNamesForTasks")
+    load_task_section = _section(history_detail_index, "async function loadHistoryTask", "function clearHistoryDetailState")
 
     assert "training-history-manager" in html
     assert "history-manager-search" in html
@@ -172,13 +674,14 @@ def test_history_manager_frontend_hooks_are_present() -> None:
     assert "history-config-group-search" in html
     assert "集合搜索" in html
     assert "配置组搜索" in html
-    assert "history-group-mode" in html
-    assert "集合分组" in html
+    assert "history-group-mode" not in html
+    assert "集合分组" not in html
     assert "集合管理" in html
     assert '<option value="config">配置分组</option>' not in html
     assert '<option value="flat">平铺列表</option>' not in html
     assert "btn-history-collections-workbench" in html
     assert "btn-preview-training-results" in html
+    assert "当前预览" in html
     assert "预览结果" in html
     assert 'data-tab="preview"' not in html
     assert 'class="preview-workspace-host" hidden aria-hidden="true"' in html
@@ -194,10 +697,15 @@ def test_history_manager_frontend_hooks_are_present() -> None:
     assert "metric-gpu-peak" in html
     assert "metric-temp" in html
     assert "metric-temp-peak" in html
+    assert "metric-eta" in html
+    assert "预计完成" in html
     assert "最近训练" in html
-    assert "未归档 · 最新 20 个训练任务" in html
-    assert "chart.js?v=lr-overlay" in html
-    assert "app.js?v=lr-persist" in html
+    assert "未归档 · 最新 6 个训练任务" in html
+    assert "btn-open-history-manager" in html
+    assert 'type="module" src="/static/app.js?v=' in html
+    assert "import { MetricsChart } from './chart.js?v=module-bootstrap-20260601-" in source
+    assert "style.css?v=" in html
+    assert "app.js?v=" in html
     assert "history-bulk-bar" in html
     assert "btn-history-bulk-delete" in html
     assert "设置集合" in html
@@ -206,39 +714,53 @@ def test_history_manager_frontend_hooks_are_present() -> None:
     assert "history-detail-dialog-shell" in html
     assert "btn-close-history-detail" in html
     assert "history-detail-tabs" in html
-    assert "data-history-detail-tab=\"overview\"" in html
-    assert "data-history-detail-tab=\"system\"" in html
-    assert "data-history-detail-tab=\"config\"" in html
+    assert "HISTORY FORGE" in html
+    assert "function renderHistoryDetailTabs" in history_detail_dialog
+    assert "btn.dataset.historyDetailTab = item.key" in history_detail_dialog
+    assert "{ key: 'overview', label: '概览' }" in history_detail_state
+    assert "{ key: 'analysis', label: '训练分析' }" in history_detail_state
+    assert "{ key: 'preview', label: '样张与权重' }" in history_detail_state
+    assert "{ key: 'config_files', label: '配置与文件' }" in history_detail_state
 
     assert "renderHistoryManager()" in history_section
+    assert "params.set('include_archived', '1');" in history_section
+    assert "params.set('limit', '500')" not in history_section
     assert "recentTrainingSidebarTasks" in history_section
     assert "groupHistoryTasks(" not in sidebar_history_section
     assert "task.job === 'training' && !historyTaskIsArchived(task)" in recent_sidebar_section
-    assert ".slice(0, 20)" in recent_sidebar_section
+    assert ".slice(0, 6)" in recent_sidebar_section
     assert "historyManagerFilteredTasks" in history_section
     assert "function historyManagerBaseFilteredTasks" in history_section
     assert "function historyManagerVisibleTasks" in history_section
-    assert "normalizeHistoryGroupMode" in history_section
-    assert "historyManagerVisibleTasks(historyManagerBaseFilteredTasks())" in history_section
+    assert "normalizeHistoryGroupMode" not in source
+    assert "const baseVisible = historyManagerBaseFilteredTasks();" in history_section
+    assert "const visible = historyManagerVisibleTasks(baseVisible);" in history_section
     assert "mode === 'config'" not in history_section
     assert "mode === 'flat'" not in history_section
     assert "historyConfigGroupVisibleForSearch" not in source
     assert "uniqueHistoryTasks" in history_section
     assert "createHistoryManagerRow" in history_section
-    assert "renderHistoryManagerGrouped" in history_section
+    assert "renderHistoryManagerGrouped" not in source
     assert "resetTrainingExpandedStateOnLeave" in history_section
-    assert "collapseVisibleHistoryManagerGroups" in history_section
-    assert "collapsedHistoryCollections.add(collection.key)" in history_section
-    assert "collapsedHistoryConfigGroups.add(historyConfigGroupCollapseKey(group, collection.key))" in history_section
+    assert "collapseVisibleHistoryManagerGroups" not in source
+    assert "collapsedHistoryCollections" not in source
+    assert "collapsedHistoryConfigGroups" not in source
+    assert "historyConfigGroupCollapseKey" not in source
     assert "expandHistoryCollectionConfigGroups" not in source
     assert "historyStatFilterIsActive" in history_section
     assert "archived: 'all'" in history_section
     assert "next.kind = state" in history_section
-    assert "createHistoryManagerCollectionSection" in history_section
-    assert "createHistoryManagerConfigGroupSection" in source
-    assert "createHistoryManagerCollectionSection(collection, splitCollections, collections)" in history_section
+    assert "createHistoryManagerCollectionSection" not in source
+    assert "createHistoryManagerConfigGroupSection" not in source
+    assert "list.dataset.groupMode = 'collections';" in history_section
     assert "collection: selectedCollection" in history_section
-    assert "groups: collection.groups" in source
+    assert "history-current-group-content" in history_section
+    assert "history-collection-nav" in history_section
+    assert "HISTORY_UNGROUPED_COLLECTION_KEY" in source
+    assert "selectedHistoryCollectionKey = HISTORY_UNGROUPED_COLLECTION_KEY" in source
+    assert "未分类任务" in source
+    assert "分组导航" in source
+    assert "新建分组" in source
     assert "renderHistoryCollectionsWorkbench" in history_section
     assert "createHistoryCollectionWorkbenchCard" in history_section
     assert "createHistoryConfigGroupWorkbenchCard" in history_section
@@ -248,8 +770,12 @@ def test_history_manager_frontend_hooks_are_present() -> None:
     assert "historyConfigGroupSearch" in source
     assert "historyTaskMatchesCollectionSearch" in source
     assert "historyTaskMatchesConfigGroupSearch" not in source
-    assert "historyCollectionSearchText(collection).includes(collectionSearch)" in source
-    assert "historyConfigGroupSearchText(group).includes(configSearch)" in source
+    assert "historyCollectionMatchesSearch(collection, terms)" in source
+    assert "selectedHistoryCollectionForWorkbench(collections, collectionSearchTerms)" in source
+    assert "visibleHistoryCollectionsForSearch(allCollections, collectionSearchTerms)" in source
+    assert "collectionSearchTerms.length ? candidates[0] : null" in source
+    assert "createHistoryCollectionSearchEmptyCollection" in source
+    assert "historySearchTextMatches(historyConfigGroupSearchText(group), configSearchTerms)" in source
     assert "document.getElementById('history-collection-search').addEventListener('input'" in source
     assert "document.getElementById('history-config-group-search').addEventListener('input'" in source
     assert "selectedHistoryCollectionKey" in source
@@ -260,38 +786,69 @@ def test_history_manager_frontend_hooks_are_present() -> None:
     assert "config_group_order" in source
     assert "moveHistoryCollection" in source
     assert "moveHistoryConfigGroup" in source
-    assert "moveHistoryCollection(collection, 'top', allCollections)" in source
-    assert "moveHistoryConfigGroup(group, 'top', options.groups, options.collection)" in source
+    assert "reorderHistoryCollectionValue" in source
+    assert "moveItemNearList" in source
+    assert "moveHistoryCollection(collection, 'top', allCollections)" in collection_card_section
+    assert "moveHistoryCollection(collection, 'bottom', allCollections)" in collection_card_section
+    for direction in ("top", "up", "down", "bottom"):
+        assert f"moveHistoryConfigGroup(group, '{direction}', options.groups, options.collection)" not in config_card_section
     assert "applySelectedHistoryTasksToCollection" in source
     assert "groupHistoryTasks(scopedTasks)" in history_section
     assert "task?.group" in source
     assert "设置集合" in source
     assert "清除集合" in source
     assert "搜索或新建集合" in source
-    assert "未分配集合" in source
-    assert "selectedHistoryCollectionKey === collection.key ? '' : collection.key" in source
-    assert "加入已选" in source
+    assert "未分类" in source
+    assert "selectedHistoryCollectionKey === collection.key ? '' : collection.key" not in source
+    assert "selectedHistoryCollectionKey = collection.key" in source
+    assert "collection.is_ungrouped ? '未分类' : '移入'" in collection_card_section
+    assert "if (selectedTaskCount > 0) actions.append(joinSelectedBtn);" in collection_card_section
     assert "加入目标" in source
-    assert "查看集合" in source
-    assert "取消查看" in source
+    assert "查看集合" not in source
+    assert "取消查看" not in source
     assert "选择分组" in source
-    assert "置顶" in source
-    assert "置底" in source
+    assert "拖拽分组调整顺序" in collection_card_section
+    assert "history-collection-drag-handle" in collection_card_section
+    assert "beginHistoryCollectionDrag(event, collection)" in collection_card_section
+    assert "dropHistoryCollectionToSort(event, collection, allCollections)" in collection_card_section
+    for label in ("置顶", "上移", "下移", "置底"):
+        assert f"createHistoryManagerGroupButton('{label}'" in collection_card_section
+    for label in ("置顶", "上移", "下移", "置底"):
+        assert f"createHistoryManagerGroupButton('{label}'" not in config_card_section
     assert "合并查看" in source
+    assert "查阅分组详情" in source
+    assert "createHistoryActionButton('配置'" in source
+    assert "createHistoryTaskConfigButton(task)" in manager_row_section
+    assert "createHistoryMoreActions([" in manager_row_section
+    assert "compactHistoryPathLabel" in source
+    assert "historyCompactGroupMetaParts" in source
+    assert "history-compact-meta" in source
+    assert "history-more-actions" in source
+    assert "loadHistoryTask(task.id, { detailTab: 'config_files' })" in source
+    assert "if (options.detailTab)" in source
+    assert "normalizeHistoryDetailTab(options.detailTab)" in source
+    assert "任务预览" in source
+    assert "分组预览" in source
+    assert "只查看这一次训练任务的样张和权重" in source
+    assert "汇总查看这个配置分组下所有训练任务的样张和权重" in source
     assert "createHistoryConfigGroupMergeButton" in source
     assert "createHistoryConfigGroupPreviewButton" in source
     assert "loadConfigGroupTimeline(group, { skipSelectionDialog: true })" in source
-    assert "查看这个自动配置分组内的全部训练结果" in source
-    assert "openTrainingPreview({ group })" in source
-    assert "openTrainingPreview({ taskId: task.id })" in source
+    assert "查阅这个自动配置分组内的训练日志、Loss 曲线和任务明细" in source
+    assert "openHistoryConfigGroupPreview(group)" in source
+    assert "loadConfigGroupTimeline(group, { skipSelectionDialog: true, detailTab: 'preview' })" in source
+    assert "loadHistoryTask(task.id, { detailTab: 'preview' })" in source
+    assert "mountPreviewWorkspaceInHistoryDetail" in source
+    assert "restorePreviewWorkspaceFromHistoryDetail" in source
+    assert "history-detail-preview-mount" in history_detail_workspace
     assert "canPreviewHistoryConfigGroup" in source
-    assert "normalizePreviewGroup" in source
-    assert "selectedPreviewGroup = normalizePreviewGroup(options.group)" in source
+    assert "normalizePreviewGroup" in preview_state
+    assert "state.selectedGroup = normalizePreviewGroup(options.group)" in preview_index
     assert "openPreviewPanel" in source
     assert "closePreviewPanel" in source
-    assert "mountPreviewWorkspaceInDialog" in source
-    assert "mountPreviewWorkspaceInPage" in source
-    assert "openPreviewPanel();" in preview_open_section
+    assert "mountPreviewWorkspaceInDialog" in preview_workspace
+    assert "mountPreviewWorkspaceInPage" in preview_workspace
+    assert "workspace.openPreviewPanel();" in preview_open_section
     assert "document.querySelector('[data-tab=\"preview\"]')?.click()" not in preview_open_section
     assert "if (nextTab === 'preview')" not in tab_setup_section
     assert "mountPreviewWorkspaceInPage();" not in tab_setup_section
@@ -304,7 +861,7 @@ def test_history_manager_frontend_hooks_are_present() -> None:
     assert "showTimelineTaskSelectionDialog" not in source
     assert "选择要合并查看的训练分组" not in source
     assert "选择合并查看" not in source
-    assert "该配置组分布在" in source
+    assert "分布在 ${split.size} 个分组" in source
     assert "selectedHistoryTaskIds" in source
     assert "applyHistoryBatchAction" in source
     assert "deleteHistoryTasksThorough" in source
@@ -313,36 +870,106 @@ def test_history_manager_frontend_hooks_are_present() -> None:
     assert "/api/training/history/batch" in source
     assert "openHistoryDetailDialog" in source
     assert "closeHistoryDetailDialog" in source
+    assert "createHistoryDetailFeature(ctx, {" in legacy_source
+    for name in (
+        "loadHistoryTask",
+        "renderHistoryManagerDetail",
+        "renderHistoryDetailDialog",
+        "closeHistoryDetailDialog",
+        "isHistoryDetailDialogOpen",
+        "handleHistoryDetailWindowKeydown",
+        "loadResumeOptionsForTask",
+        "clearResumeOptions",
+        "renderResumePanelState",
+        "selectedResumeCheckpoint",
+        "resumeTrainingFromCheckpoint",
+        "selectedHistoryManagerResumeCheckpoint",
+        "resumeTrainingFromHistoryDetail",
+        "setResumeStatus",
+        "getCurrentPayload",
+        "getActiveTab",
+        "setActiveTab",
+    ):
+        assert name in history_detail_index
+    assert "fetchHistoryTask(ctx, taskId)" in history_detail_index
+    assert "/api/training/history/${encodeURIComponent(taskId)}" in history_detail_api
+    assert "/api/training/history/${encodeURIComponent(taskId)}/resume-options" in history_detail_api
+    assert "/api/preview/weights?task_id=" in history_detail_api
+    assert "/api/training/queue/resume" in history_detail_api
+    assert "/api/training/resume" in history_detail_api
     assert "return historyViewMode !== 'live';" in history_review_mode_section
     assert "Boolean(viewingHistoryTaskId)" not in history_review_mode_section
     assert "main.addEventListener('click', () => loadHistoryTask(task.id))" in sidebar_task_item_section
+    assert "createHistoryTaskPreviewButton(task)" in sidebar_task_item_section
     assert "createHistoryActionButton('查看', () => loadHistoryTask(task.id))" in sidebar_task_item_section
+    assert "renameHistoryTask(task)" not in sidebar_task_item_section
+    assert "archiveHistoryTask(task)" not in sidebar_task_item_section
+    assert "deleteHistoryTask(task)" not in sidebar_task_item_section
     assert "main.addEventListener('click', () => loadHistoryTask(task.id))" in manager_row_section
     assert "createHistoryActionButton('查看', () => loadHistoryTask(task.id))" in manager_row_section
     assert "showTrainingView('history')" not in load_task_section
     assert "renderHistoryTask(payload)" not in load_task_section
-    assert "currentHistoryTaskForResume = payload.task || null;" in load_task_section
-    assert "renderHistoryManagerDetail(payload, { open: true })" in load_task_section
+    assert "deps.setViewingHistoryTaskContext({" in load_task_section
+    assert "task: payload.task || null" in load_task_section
+    assert "dialog.setResumeLoadingForTask(taskId);" in load_task_section
+    assert "dialog.renderHistoryManagerDetail(payload, { open: true })" in load_task_section
+    assert "await dialog.loadResumeOptionsForTask(taskId);" in load_task_section
+    assert "deps.clearViewingHistoryTaskContext?.(state.currentPayload);" in detail_section
+    assert "function clearViewingHistoryTaskContext" in source
+    assert "currentHistoryTaskForResume = null;" in _section(source, "function clearViewingHistoryTaskContext", "function handleHistoryDetailWindowKeydown")
 
     assert "renderHistoryDetailDialog" in detail_section
     assert "renderHistoryDetailOverview" in detail_section
+    assert "renderHistoryDetailAnalysis" in detail_section
     assert "renderHistoryDetailResume" in detail_section
     assert "renderHistoryDetailChart" in detail_section
     assert "renderHistoryDetailLogs" in detail_section
     assert "renderHistoryDetailSystem" in detail_section
     assert "renderHistoryDetailConfig" in detail_section
     assert "renderHistoryDetailPaths" in detail_section
-    assert "historyCurveState" in source
+    assert "renderHistoryDetailConfigFiles" in detail_section
+    assert "renderHistoryDetailPathSummary" in detail_section
+    assert "historyCurveState" in detail_section
     assert "renderHistoryCurveStats" in detail_section
     assert "renderHistoryCurveToolbar" in detail_section
     assert "renderHistoryCurveMainChart" in detail_section
     assert "createHistoryCurveSvg" in detail_section
     assert "renderHistoryCurveInspector" in detail_section
     assert "renderHistoryCurveSegments" in detail_section
+    assert "function historyCurveMetric(" not in detail_section
+    assert "曲线指标" not in detail_section
+    assert "HISTORY_CURVE_METRICS" in detail_section
+    assert "historyCurvePointHasAnyMetric" in detail_section
+    assert "historyCurveRawPointHasAnyMetric" in detail_section
+    assert ".filter(historyCurveRawPointHasAnyMetric)" in detail_section
+    assert ".map(historyCurveNormalizeRawMetricPoint)" in detail_section
+    assert "historyCurveMetricStats" in detail_section
+    assert "historyCurveMetricRange" in detail_section
+    assert "appendHistoryCurveLineSegments" in detail_section
+    assert "renderHistoryCurveLegend" not in detail_section
+    assert "drawHistoryCurveMetricPoints" in detail_section
+    assert "historyCurveStatsWithHover" in detail_section
+    assert "updateHistoryCurveHoverLayer" in detail_section
+    assert "renderHistoryCurveInspectorRows" in detail_section
+    assert "requestAnimationFrame" in detail_section
+    assert "scheduleHoverStep" in detail_section
+    assert "renderHistoryDetailContent();" not in _section(history_curve_chart, "function createHistoryCurveSvg", "function renderHistoryCurveSegments")
+    assert "dual-metric" in detail_section
+    assert "history-curve-hover-layer" in detail_section
+    assert "loss-axis" in detail_section
+    assert "lr-axis" in detail_section
+    assert "学习率点" in detail_section
+    assert "最后有效学习率" in detail_section
+    assert "峰值学习率" in detail_section
+    assert "没有可绘制的 Loss 或学习率数据。" in detail_section
+    assert "当前范围没有可绘制的 Loss 或学习率点。请调整范围筛选。" in detail_section
+    assert "smoothLoss" in detail_section
+    assert "smoothLr" in detail_section
+    assert "formatSignedLr" in detail_section
     assert "historyCurveSmoothPoints" in detail_section
     assert "historyCurveFilteredPoints" in detail_section
     assert "historyCurveDisplayPoints" in detail_section
-    assert "HISTORY_CURVE_RENDER_POINT_LIMIT" in source
+    assert "HISTORY_CURVE_RENDER_POINT_LIMIT" in detail_section
     assert "绘图已降采样" in detail_section
     assert "stageBreakBefore" in detail_section
     assert "display_step" in detail_section
@@ -353,21 +980,31 @@ def test_history_manager_frontend_hooks_are_present() -> None:
     assert "box.appendChild(createHistorySparkline(lossPoints));" not in source
     assert "historySystemSummary" in detail_section
     assert "historySystemRecords" in detail_section
-    assert "HISTORY_SYSTEM_TABLE_RENDER_LIMIT" in source
+    assert "HISTORY_SYSTEM_TABLE_RENDER_LIMIT" in detail_section
     assert "historyDetailLimitNotice" in detail_section
     assert "仅显示最近" in detail_section
+    assert "syncHistoryLogConsoleState" in detail_section
+    assert "renderHistoryLogCommandCard" in detail_section
+    assert "复制完整命令" in detail_section
+    assert "搜索 Error、Epoch..." in detail_section
+    assert "historyLogMatchesLevel" in detail_section
+    assert "appendAnsiLogText" in detail_section
+    assert "stripAnsiCodes" in detail_section
+    assert "/logs/download" in detail_section
+    assert "下载完整日志" in detail_section
     assert "最后 VRAM" in detail_section
     assert "峰值 GPU" in detail_section
     assert "无系统采样记录" in detail_section
     assert "system.jsonl" in detail_section
     assert "history-detail-metrics-body" in detail_section
-    assert "historyDetailSection('任务信息'" not in source
-    assert "history-detail-section info" not in source
-    assert "loadHistoryResumeWeights" in source
-    assert "/api/preview/weights?task_id=" in source
-    assert "diagnostic" in source
-    assert "权重热启动" in source
-    assert "optimizer、scheduler 和已完成步数" in source
+    assert "task.job === 'training'" in detail_section
+    assert "historyDetailSection('任务信息'" not in detail_section
+    assert "history-detail-section info" not in detail_section
+    assert "loadHistoryResumeWeights" in detail_section
+    assert "/api/preview/weights?task_id=" in history_detail_api
+    assert "diagnostic" in detail_section
+    assert "权重热启动" in detail_section
+    assert "optimizer、scheduler 和已完成步数" in detail_section
 
     assert "btn-history-manager-refresh" in listener_section
     assert "btn-history-collections-workbench" in listener_section
@@ -375,10 +1012,12 @@ def test_history_manager_frontend_hooks_are_present() -> None:
     assert "btn-live-training" in listener_section
     assert "returnToLiveTraining" in listener_section
     assert "history-filter-kind" in listener_section
-    assert "history-group-mode" in listener_section
-    assert "key === 'groupMode' ? normalizeHistoryGroupMode(value) : value" in listener_section
-    assert "history-detail-tab" in listener_section
-    assert "btn-close-history-detail" in listener_section
+    assert "history-group-mode" not in listener_section
+    assert "groupMode" not in listener_section
+    assert "ensureHistoryDetailFeature().bindHistoryDetailEvents();" in listener_section
+    assert "history-detail-tab" in history_detail_dialog
+    assert "setHistoryDetailTab(state, btn.dataset.historyDetailTab)" in history_detail_dialog
+    assert "btn-close-history-detail" in history_detail_dialog
     assert "logBuffer" in source
     assert "scheduleLogFlush" in log_append_section
     assert "requestAnimationFrame" in log_append_section
@@ -387,25 +1026,48 @@ def test_history_manager_frontend_hooks_are_present() -> None:
     assert "recordLearningRateChange" not in source
     assert "announceLr" not in source
     assert "updatePointMetadata" in source
-    assert "['学习率', formatLr(point.lr)]" in source
+    assert "['Loss', formatLossValue(lossPoint.loss)]" in source
+    assert "['平滑 Loss', formatLossValue(lossPoint.smoothLoss)]" in source
+    assert "['学习率', formatLr(lrPoint.lr)]" in source
+    assert "['平滑学习率', formatLr(lrPoint.smoothLr)]" in source
     assert "lr: item.lr" in source
     assert "peakVramUsedGb" in source
     assert "peakGpuUtil" in source
     assert "peakGpuTemp" in source
     assert "renderLiveTrainingDashboard" in source
+    assert "function trainingEtaMetricInfo" in source
+    assert "parseProgressRateSeconds(msg.rate)" in source
+    assert "setEtaMetricText(trainingEtaMetricInfo());" in source
+    assert "progressSecondsPerStep" in source
     assert "resetLiveSystemPeaks" in source
 
-    assert ".training-workspace.history-wide" in css
+    assert ".training-workspace.main-wide" in css
+    assert ".training-workspace.main-wide .training-sidebar" in css
+    assert ".training-workspace.history-mode .training-main" in css
+    assert "#tab-training .training-history-manager" in css
+    assert "#tab-training .history-forge-eyebrow" in css
+    assert ".training-workspace.history-wide" not in css
     assert ".training-dashboard-head" in css
     assert ".training-run-state" in css
     assert ".training-run-summary" in css
+    assert ".metric-item-eta .metric-value" in css
+    assert ".metric-icon-clock::before" in css
+    assert ".history-curve-legend" not in css
+    assert ".history-curve-legend-swatch" not in css
+    assert ".history-curve-axis-label.loss-axis" in css
+    assert ".history-curve-axis-label.lr-axis" in css
+    assert ".history-curve-line.loss.smooth" in css
+    assert ".history-curve-line.lr.smooth" in css
+    assert ".history-curve-hover-layer" in css
+    assert "pointer-events: none;" in css
+    assert ".history-curve-svg.metric-lr .history-curve-line.smooth" not in css
     assert ".training-panels.training-dashboard" in css
     assert ".metrics-panel,\n.chart-panel" in css
     assert "grid-column: 1 / -1;" in css
     assert ".history-manager-grid" in css
     assert ".history-manager-row" in css
-    assert ".history-manager-collection" in css
-    assert ".history-manager-config-group" in css
+    assert ".history-manager-collection" not in css
+    assert ".history-manager-config-group" not in css
     assert "--history-manager-bg" in css
     assert "--history-collection-bg" in css
     assert "--history-config-bg" in css
@@ -415,36 +1077,65 @@ def test_history_manager_frontend_hooks_are_present() -> None:
     assert "--history-collection-accent" in css
     assert "--history-config-accent" in css
     assert "--history-ungrouped-accent" in css
-    assert ".history-manager-collection.ungrouped" in css
-    assert "border-left: 5px solid var(--history-collection-accent)" in css
-    assert "border-left: 3px solid var(--history-config-accent)" in css
+    assert ".history-manager-collection.ungrouped" not in css
+    assert "border-left: 5px solid var(--history-collection-accent)" not in css
+    assert "border-left: 3px solid var(--history-config-accent)" not in css
     assert "background: var(--history-row-bg)" in css
     assert "background: var(--history-row-hover-bg)" in css
+    assert ".history-collections-workbench.compact" in css
+    assert ".history-compact-meta" in css
+    assert ".history-more-actions" in css
+    assert ".history-more-actions-menu" in css
     assert ".history-row-state.done" in css
     assert ".history-row-state.running" in css
     assert ".history-row-state.queued" in css
     assert ".history-row-state.interrupted" in css
     assert ".history-collections-workbench" in css
+    assert "workbench.className = 'history-collections-workbench compact'" in history_section
+    assert "`当前: ${selectedCollection.label}`" in history_section
     assert ".history-collections-body" in css
+    assert ".history-collection-nav .history-collection-card" in css
+    assert "max-height: min(520px, calc(100vh - 18rem));" in css
+    assert ".history-manager-list[data-group-mode=\"collections\"]" in css
+    assert "height: min(680px, calc(100vh - 14rem));" in css
+    assert "grid-template-rows: auto auto minmax(0, 1fr);" in css
+    assert "align-items: stretch;" in css
+    assert "overflow: hidden;" in css
+    assert "overflow-y: scroll;" in css
+    assert "scrollbar-gutter: stable;" in css
+    assert "overscroll-behavior: contain;" in css
     assert ".history-collection-card" in css
     assert ".history-collection-card.active" in css
     assert ".history-collection-select-dialog" in css
     assert ".history-collection-select-list" in css
     assert ".history-config-group-card" in css
     assert ".history-config-group-task-list" in css
-    assert ".history-manager-group-head" in css
-    assert ".history-manager-group-actions" in css
+    assert ".history-manager-group-head" not in css
+    assert ".history-manager-group-actions" not in css
     assert ".history-manager-stat.active" in css
     assert ".history-detail-dialog" in css
     assert ".history-detail-overview-dashboard" in css
+    assert ".history-detail-preview" in css
+    assert ".history-detail-preview-mount" in css
     assert ".history-detail-progress" in css
     assert ".history-detail-metrics-body" in css
+    assert ".history-detail-analysis" in css
+    assert ".history-detail-config-files" in css
     assert ".history-curve-workbench" in css
     assert ".history-curve-toolbar" in css
     assert ".history-curve-svg" in css
     assert ".history-curve-inspector" in css
     assert ".history-curve-segment-line" in css
     assert ".history-detail-limit-note" in css
+    assert ".history-command-card" in css
+    assert ".history-log-console" in css
+    assert ".history-log-toolbar" in css
+    assert ".history-log-output.history-detail-pre" in css
+    assert ".history-log-line.error" in css
+    assert ".history-log-line.warning" in css
+    assert ".history-log-line.progress" in css
+    assert ".history-log-match.current" in css
+    assert ".history-log-ansi-red" in css
     assert ".history-system-trends" in css
     assert ".history-system-table" in css
     assert ".history-detail-section.info" not in css
@@ -456,6 +1147,241 @@ def test_history_manager_frontend_hooks_are_present() -> None:
     assert "updatePointMetadata" in chart_source
     assert "LR:" in chart_source
     assert "_formatLr" in chart_source
+    assert "if (value === undefined || value === null || value === '') return '-';" in chart_source
+    assert "if (value === undefined || value === null || value === '') return null;" in source
+
+
+def test_history_collection_drag_drop_frontend_hooks_are_present() -> None:
+    source = APP_JS.read_text(encoding="utf-8")
+    css = STYLE_CSS.read_text(encoding="utf-8")
+
+    workbench = _section(source, "function renderHistoryCollectionsWorkbench", "function renderHistoryManagerStats")
+    drag_helpers = _section(source, "function historyDragTaskIdsForGroup", "function createHistoryCollectionWorkbenchCard")
+    collection_card = _section(source, "function createHistoryCollectionWorkbenchCard", "function createHistoryConfigGroupWorkbenchCard")
+    config_card = _section(source, "function createHistoryConfigGroupWorkbenchCard", "function historyCollectionNamesForTasks")
+
+    assert "const HISTORY_TASK_DRAG_MIME = 'application/x-anima-history-task-ids';" in source
+    assert "const HISTORY_COLLECTION_DRAG_MIME = 'application/x-anima-history-collection';" in source
+    assert "let historyDragState = {" in source
+    for key in ("active: false", "taskIds: []", "sourceGroupKey: ''", "activeDropTarget: ''", "pending: false", "popover: {"):
+        assert key in source
+    assert "let historyCollectionDragState = {" in source
+    for key in ("sourceValue: ''", "dropPosition: 'after'", "pending: false"):
+        assert key in source
+    assert "let historyCollectionPointerDrag = null;" in source
+    assert "application/x-anima-history-task-ids" in source
+    assert "application/x-anima-history-collection" in source
+    assert "event.dataTransfer.setData(HISTORY_TASK_DRAG_MIME" in source
+    assert "event.dataTransfer.setData(HISTORY_COLLECTION_DRAG_MIME" in source
+    assert "event.dataTransfer.setData('text/plain'" in source
+
+    assert "collectionList.appendChild(createHistoryCollectionDropzone());" not in workbench
+    assert "renderHistoryDropPopover(workbench);" in workbench
+    assert "createHistoryCollectionDropzone" not in source
+    assert "history-collection-dropzone" not in source
+    assert "createHistoryCollectionConfigChip" not in source
+    assert "history-collection-config-chip" not in source
+    assert "history-collection-create-btn" in workbench
+    assert "openHistoryNewCollectionPopover(event, [])" in workbench
+    assert "新建分组" in workbench
+    assert "historyCompactGroupMetaParts" in source
+    assert "history-compact-meta" in source
+    assert "createHistoryMoreActions([" in source
+    assert "renameHistoryCollection(collection)" in collection_card
+    assert "clearHistoryCollection(collection)" in collection_card
+    assert "setHistoryCollectionForTasks(collection.tasks, collection.value, collection.label)" not in collection_card
+    assert "clearHistoryCollectionForTasks(collection.tasks, collection.label)" not in collection_card
+    assert "renameHistoryCollectionOrderValue" in source
+    assert "renameHistoryConfigGroupOrderKey" in source
+    assert "removeHistoryCollectionSettingValue" in source
+    assert "ids.length ? '清空集合' : '删除空集合'" in source
+
+    assert "history-drag-handle" in config_card
+    assert "拖拽配置分组到集合" in config_card
+    assert "handle.draggable = true;" in config_card
+    assert "beginHistoryConfigGroupDrag(event, group)" in config_card
+    assert "finishHistoryDrag()" in config_card
+
+    assert "history-collection-drag-handle" in collection_card
+    assert "拖拽分组调整顺序" in collection_card
+    assert "dragHandle.draggable = true;" in collection_card
+    assert "dragHandle.addEventListener('pointerdown'" in collection_card
+    assert "beginHistoryCollectionDrag(event, collection)" in collection_card
+    assert "startHistoryCollectionPointerDrag(event, collection, allCollections, dragHandle)" in collection_card
+    assert "finishHistoryCollectionDrag()" in collection_card
+    assert "historyCollectionOrderDragEnter(event, collection, card)" in collection_card
+    assert "dropHistoryCollectionToSort(event, collection, allCollections)" in collection_card
+    assert "reorderHistoryCollectionValue(source, target, position, allCollections)" in source
+    for label in ("置顶", "上移", "下移", "置底"):
+        assert f"createHistoryManagerGroupButton('{label}'" in collection_card
+
+    assert "dragenter" in collection_card
+    assert "dragover" in collection_card
+    assert "dragleave" in collection_card
+    assert "dropHistoryTasksToCollection(event, collection.value || '', collection.label)" in collection_card
+    assert "collection.value || '__ungrouped__'" in collection_card
+    assert "applyHistoryTaskIdsToCollection(taskIds, clean, { clearSelection: true })" in drag_helpers
+    assert "historyDraggedTasksAlreadyInCollection(taskIds, clean)" in drag_helpers
+    assert "selectedHistoryCollectionKey = clean ? `collection:${clean}` : HISTORY_UNGROUPED_COLLECTION_KEY" in drag_helpers
+    for hook in (
+        "function startHistoryCollectionPointerDrag",
+        "function startHistoryCollectionMouseDrag",
+        "function startHistoryCollectionTouchDrag",
+        "function finishHistoryCollectionPointerDrag",
+        "function historyCollectionEventPoint",
+        "function historyCollectionPointerTargetFromPoint",
+        "function autoScrollHistoryCollectionPointerDrag",
+        "document.addEventListener('pointermove', drag.onMove, { passive: false })",
+        "document.addEventListener('pointerup', drag.onUp, { passive: false })",
+        "document.addEventListener('pointercancel', drag.onCancel, { passive: false })",
+        "document.addEventListener('mousemove', drag.onMouseMove, { passive: false })",
+        "document.addEventListener('mouseup', drag.onMouseUp, { passive: false })",
+        "document.addEventListener('touchmove', drag.onTouchMove, { passive: false })",
+        "document.addEventListener('touchend', drag.onTouchEnd, { passive: false })",
+        "document.addEventListener('touchcancel', drag.onTouchCancel, { passive: false })",
+        "document.addEventListener('keydown', drag.onKeydown)",
+    ):
+        assert hook in drag_helpers
+    assert "dragHandle.addEventListener('mousedown'" in collection_card
+    assert "dragHandle.addEventListener('touchstart'" in collection_card
+    assert "startHistoryCollectionMouseDrag(event, collection, allCollections, dragHandle)" in collection_card
+    assert "startHistoryCollectionTouchDrag(event, collection, allCollections, dragHandle)" in collection_card
+
+    assert "history-drop-popover" in source
+    assert "event.key === 'Escape'" in source
+    assert "event.key === 'Enter'" in source
+    assert "input.maxLength = 48;" in source
+    assert "state.taskIds.length ? `${state.taskIds.length} 条任务归入新分组` : '新建分组'" in source
+    assert "defaultHistoryCollectionName" in source
+    assert "uniqueHistoryCollectionName" in source
+
+    assert "/api/training/history/batch" in source
+    assert "/api/collections/create-and-assign" not in source
+    assert "/api/tasks/assign-collection" not in source
+
+    for selector in (
+        ".history-config-group-card.draggable",
+        ".history-drag-handle",
+        ".history-current-group-content",
+        ".history-collection-nav",
+        ".history-collection-drag-handle",
+        ".history-collection-card.nav-card",
+        ".history-collection-card.drop-active",
+        ".history-collection-card.sort-active",
+        ".history-collections-workbench.collection-reordering",
+        ".history-collection-pointer-drag-active",
+        ".history-collection-drag-image-pointer",
+        ".history-collection-create-btn",
+        ".history-collections-workbench.dragging",
+        ".history-collections-workbench.compact",
+        ".history-compact-meta",
+        ".history-more-actions",
+        ".history-drop-popover",
+        "prefers-reduced-motion",
+    ):
+        assert selector in css
+
+
+def test_history_detail_overview_de_noises_paths_and_resume_weights() -> None:
+    overview_source = _frontend_module_text("js/features/history-detail/overview.js")
+    resume_source = _frontend_module_text("js/features/history-detail/resume/detail.js")
+    ui_source = _frontend_module_text("js/features/history-detail/ui.js")
+    css = STYLE_CSS.read_text(encoding="utf-8")
+
+    overview = _section(overview_source, "function renderHistoryDetailOverview", "function renderHistoryDetailProgress")
+    progress = _section(overview_source, "function renderHistoryDetailProgress", "function renderHistoryDetailPathSummary")
+    path_summary = _section(overview_source, "function renderHistoryDetailPathSummary", "return { renderHistoryDetailOverview")
+    resume = _section(resume_source, "function renderHistoryDetailResume", "function renderResumeDiagnosticBlock")
+    weights = _section(resume_source, "function renderHistoryResumeWeightOptions", "function formatDiagnosticBool")
+    row_helpers = _section(ui_source, "export function historyDetailRow", "export function historyDetailEmptyText")
+
+    assert "icon.className = `metric-icon metric-icon-${iconName}`" in overview
+    assert "['训练总时间', formatHistoryTrainingDuration(task), 'time']" in overview
+    assert "function formatHistoryTrainingDuration(record)" in overview_source
+    assert "ctx.format.formatDuration" in overview_source
+    assert "muted: taskFinished && ['队列', '续训'].includes(label) && value === '-'" in overview
+    assert "section.classList.toggle('is-complete', finished);" in progress
+
+    assert "historyDetailRunRoot(task)" in path_summary
+    assert "'运行根目录'" in path_summary
+    assert "relativeHistoryDetailPath(value, rootPath)" in path_summary
+    assert "copyValue: value" in path_summary
+    assert "export function relativeHistoryDetailPath" in ui_source
+    assert "row.appendChild(helpers.copyButton(options.copyValue" in row_helpers
+
+    assert "controls.className = 'history-resume-control-row';" in resume
+    assert "fullResume.append(controls, summary);" in resume
+    assert "name.textContent = fileNameFromPath(item.name || weightPath)" in weights
+    assert "info.append(name, meta);" in weights
+    assert "info.append(name, path, meta);" not in weights
+    assert "history-resume-weight-actions" in weights
+    assert "historyDetailCopyButton(weightPath" in weights
+
+    assert ".history-detail-progress.is-complete .history-detail-progress-bar span" in css
+    assert ".history-detail-stat .metric-icon-time::before" in css
+    assert ".history-detail-path-summary .history-detail-path-root" in css
+    assert ".history-detail-copy-btn" in css
+    assert ".history-resume-control-row" in css
+    assert ".history-resume-weight-actions" in css
+
+
+def test_history_detail_config_files_are_tool_ready() -> None:
+    legacy_source = _frontend_module_text("js/features/legacy-app.js")
+    config_files_source = _frontend_module_text("js/features/history-detail/config-files.js")
+    html = INDEX_HTML.read_text(encoding="utf-8")
+    css = STYLE_CSS.read_text(encoding="utf-8")
+
+    config_files = _section(config_files_source, "function renderHistoryDetailConfig", "function renderHistoryDetailConfigFiles")
+    path_items = _section(legacy_source, "function runtimePathItems", "function historyStateLabel")
+
+    assert "history-config-viewer" in config_files
+    assert "history-config-toolbar" in config_files
+    assert "history-config-search" in config_files
+    assert "renderHistoryConfigCode(pre, content, searchText, currentMatch)" in config_files
+    assert "history-config-token-key" in config_files
+    assert "history-config-token-path" in config_files
+    assert "history-config-search-hit current" not in config_files
+    assert "historyConfigMatchCount(content, searchText)" in config_files
+    assert "downloadBlob(new Blob([content], { type: 'text/plain;charset=utf-8' }), filename)" in config_files
+    assert "history-detail-file-browser" in config_files
+    assert "history-file-root" in config_files
+    assert "historyDetailFileRow(task, label, value, artifactKey, rootPath)" in config_files
+    assert "relativeHistoryDetailPath(rawValue, rootPath)" in config_files
+    assert "deps.historyArtifactUrl(task, artifactKey)" in config_files
+    assert "deps.historyArtifactUrl(task, artifactKey, { download: true })" in config_files
+    assert "function makeHistoryArtifactUrl" in legacy_source
+    assert "historyArtifactUrl: makeHistoryArtifactUrl" in legacy_source
+    assert "choiceHelp, help" in _frontend_module_text("js/config/catalog.js")
+    assert "help," in legacy_source
+
+    for artifact in (
+        "'runtime-config'",
+        "'original-config'",
+        "'dataset-config'",
+        "'logs'",
+        "'metrics'",
+        "'system'",
+        "'config-snapshot'",
+    ):
+        assert artifact in path_items
+
+    assert "module-bootstrap-20260601-" in html
+    for selector in (
+        ".history-config-viewer",
+        ".history-config-toolbar",
+        ".history-config-code.history-detail-pre",
+        ".history-config-token-key",
+        ".history-config-token-path",
+        ".history-detail-file-browser",
+        ".history-file-root",
+        ".history-file-row",
+        ".history-file-actions",
+        ".history-detail-icon-btn",
+    ):
+        assert selector in css
+    assert ".history-detail-config-files > .history-detail-section" in css
+    assert ".history-detail-kv > div" in css
+    assert ".history-detail-kv div" not in css
 
 
 def test_output_scope_group_does_not_expose_unwired_stage_resolution_dialog() -> None:
@@ -476,10 +1402,28 @@ def test_output_scope_group_does_not_expose_unwired_stage_resolution_dialog() ->
 def test_config_form_hides_retired_and_unread_fields() -> None:
     source = APP_JS.read_text(encoding="utf-8")
 
+    resource_section = _section(source, "title: '显存与速度'", "title: '输出格式与训练范围'")
     method_section = _section(source, "title: '方法内部与实验架构'", "title: 'Soft Tokens 参数'")
+    retired_fields = [
+        "per_channel_scaling",
+        "repa_layer",
+        "repa_lr_scale",
+        "repa_weight",
+        "trim_crossattn_kv",
+        "use_fei_router",
+        "use_hydra",
+        "use_repa",
+        "use_sigma_router",
+    ]
+    for key in retired_fields:
+        assert f"'{key}'," in source
     assert "'use_hydra'," not in method_section
     assert "'use_sigma_router'," not in method_section
-    assert "'use_fei_router'," in source
+    assert "'use_fei_router'," not in method_section
+    assert "'use_repa'," not in method_section
+    assert "'per_channel_scaling'," not in method_section
+    assert "'trim_crossattn_kv'," not in resource_section
+    assert "LoRA + REPA" not in source
     assert "const RETIRED_CONFIG_FORM_FIELDS = new Set([" in source
     assert "if (RETIRED_CONFIG_FORM_FIELDS.has(key)) return true;" in source
     assert "['weight_decay', new Set(['spd'])]" in source
@@ -487,12 +1431,11 @@ def test_config_form_hides_retired_and_unread_fields() -> None:
 
 
 def test_balanced_16g_block_swap_fields_are_visible() -> None:
-    source = APP_JS.read_text(encoding="utf-8")
+    form_layout = _frontend_module_text("js/config/catalog/form-layout.js")
+    labels_options = _frontend_module_text("js/config/catalog/labels-options.js")
+    guides = _frontend_module_text("js/config/catalog/guides.js")
 
-    resource_section = _section(source, "title: '显存与速度'", "title: '缓存与预处理'")
-    labels = _section(source, "const FIELD_LABEL_ZH = {", "const FIELD_OPTIONS = {")
-    options = _section(source, "const FIELD_OPTIONS = {", "const METHOD_GUIDE_ZH = {")
-    presets = _section(source, "const PRESET_GUIDE_ZH = {", "function defaultPresetGuide")
+    resource_section = _section(form_layout, "title: '显存与速度'", "title: '缓存与预处理'")
 
     for key in (
         "blocks_to_swap",
@@ -502,13 +1445,30 @@ def test_balanced_16g_block_swap_fields_are_visible() -> None:
     ):
         assert f"'{key}'," in resource_section
 
-    assert "block_swap_profile_jsonl: '块交换 Profile'" in labels
-    assert "selective_checkpoint: '选择性重算'" in labels
-    assert "disable_block_swap_for_eval: '评估时暂停交换块'" in labels
-    assert "selective_checkpoint: ['off', 'mlp_only', 'every_other']" in options
-    assert "'max-autotune-no-cudagraphs'" in options
-    assert "balanced_16g" in presets
-    assert "预测式 DiT block swap" in presets
+    assert "block_swap_profile_jsonl: '块交换 Profile'" in labels_options
+    assert "selective_checkpoint: '选择性重算'" in labels_options
+    assert "disable_block_swap_for_eval: '评估时暂停交换块'" in labels_options
+    assert "selective_checkpoint: ['off', 'mlp_only', 'every_other']" in labels_options
+    assert "'max-autotune-no-cudagraphs'" in labels_options
+    assert "balanced_16g" in guides
+    assert "预测式 DiT block swap" in guides
+
+
+def test_config_form_options_cover_backend_choices() -> None:
+    field_options = (STATIC_DIR / "js" / "config" / "catalog" / "labels-options.js").read_text(encoding="utf-8")
+
+    for option in ["torch", "xformers", "flash", "sageattn", "flex", "sdpa"]:
+        assert f"'{option}'" in field_options
+    assert "'max-autotune-no-cudagraphs'" in field_options
+    for option in ["tensorboard", "wandb", "all"]:
+        assert f"'{option}'" in field_options
+    for option in ["dpm_2", "dpm_2_a", "dpmsingle", "k_dpm_2", "k_dpm_2_a"]:
+        assert f"'{option}'" in field_options
+    for option in ["ckpt", "pt", "safetensors"]:
+        assert f"'{option}'" in field_options
+    for option in ["sigma", "uniform", "sigmoid", "shift", "flux_shift"]:
+        assert f"'{option}'" in field_options
+    assert "'hard_backoff'" in field_options
 
 
 def test_config_page_hides_unimplemented_dataset_placeholder() -> None:
@@ -521,15 +1481,219 @@ def test_config_page_hides_unimplemented_dataset_placeholder() -> None:
     assert 'id="unnamed-dataset-dialog"' not in html
 
 
+def test_config_workbench_manager_is_right_column() -> None:
+    html = INDEX_HTML.read_text(encoding="utf-8")
+    css = STYLE_CSS.read_text(encoding="utf-8")
+
+    layout = _section(css, "#tab-config .config-forge-layout", "#tab-config .config-preset-manager,")
+    manager = _section(css, "#tab-config .config-preset-manager {", "#tab-config .config-sidebar-project")
+    editor = _section(css, "#tab-config .config-preset-editor {", "#tab-config .config-preset-header")
+    compact = _section(css, "@media (max-width: 900px)", "@media (max-width: 520px)")
+    phone = _section(css, "@media (max-width: 520px)", "@media (max-width: 640px)")
+
+    assert "左侧训练配置工作台 + 右侧配置预设管理" in html
+    assert "grid-template-columns: minmax(0, 1fr) clamp(260px, 24vw, 360px);" in layout
+    assert "grid-column: 2;" in manager
+    assert "border-left: 1px solid var(--config-border-strong);" in manager
+    assert "grid-column: 1;" in editor
+    assert "grid-template-columns: minmax(0, 1fr) minmax(260px, 300px);" in compact
+    assert "grid-template-columns: 1fr;" in phone
+
+
+def test_dataset_preset_page_has_group_manager_controls() -> None:
+    source = APP_JS.read_text(encoding="utf-8")
+    html = INDEX_HTML.read_text(encoding="utf-8")
+    css = STYLE_CSS.read_text(encoding="utf-8")
+
+    list_body = _section(source, "function renderDatasetPresetList", "function renderDatasetPresetHeader")
+    listener_section = _section(source, "function setupEventListeners", "function installBeginnerTooltips")
+
+    assert "dataset-preset-manager" in html
+    assert "dataset-preset-search" in html
+    assert "btn-create-dataset-preset-group" in html
+    assert "btn-refresh-dataset-presets" in html
+    assert "dataset-page-summary" in html
+
+    assert "createDatasetPresetGroupNode(group, stored)" in list_body
+    assert "createDatasetPresetGroupDragHandle" in list_body
+    assert "createDatasetPresetGroupActions" in list_body
+    assert "createDatasetPresetGroupFileRow" in list_body
+    assert "setupFileGroupRowDropTarget" in list_body
+    assert "setupFileGroupListDropTarget" in list_body
+    assert "setupFileGroupHeaderDropTarget(summary, group, datasetPresetDragOptions())" in list_body
+    assert "setupConfigGroupDropTarget" in list_body
+    assert "function setupFileGroupHeaderDropTarget" in source
+    assert "function setFileGroupDragData" in source
+    assert "function createFileGroupDragImage" in source
+    assert "document.createElement('button')" in source
+    assert "handle.textContent = '⋮⋮'" in source
+    assert "transfer.setDragImage(image, 12, 12)" in source
+    assert "row.addEventListener('dragenter', updateDropTarget)" in source
+    assert "list.addEventListener('dragenter', updateDropTarget)" in source
+    assert "node.addEventListener('dragenter', updateDropTarget)" in source
+    assert "fileGroupContainsRelatedTarget" in source
+    assert "if (!presets.length && !groups.length)" in list_body
+    assert "dataset-preset-empty-state" in source
+    assert "placeDatasetPresetFile" in list_body
+    assert "placeDatasetPresetGroup" in list_body
+    assert "/api/config/file-groups/place" in source
+    assert "createDatasetPresetGroupOrderActions" not in source
+    assert "reorderDatasetPresetInGroup" not in source
+    assert "reorderDatasetPresetGroup" not in source
+    assert "moveDatasetPresetToGroup" not in source
+    assert "createDatasetPresetRowActionButton" not in source
+    assert "dataset-preset-row-actions" not in source
+    assert "DATASET_PRESET_GROUP_STATE_KEY" in source
+    assert "anima_lora_dataset_preset_groups_v2" in source
+    assert "kind: 'dataset'" in source
+    assert "function isUnfiledDatasetGroup" in source
+    assert "return sortDatasetPresetGroups(groups);" in source
+    assert "orderDatasetPresetsForGroups(presets, sortedGroups)" in source
+    assert "const defaultOpen = isUnfiledDatasetGroup(group);" in source
+    assert "stored[group.id] ?? defaultOpen" in source
+    assert "!isUnfiledDatasetGroup(group)" in source
+    assert "JSON.stringify({ label: label.trim(), kind: 'dataset' })" in source
+    assert "btn-create-dataset-preset-group" in listener_section
+    assert "dataset-preset-search" in listener_section
+    assert "btn-refresh-dataset-presets" in listener_section
+
+    assert ".dataset-preset-manager" in css
+    assert ".dataset-preset-group" in css
+    assert ".dataset-preset-row-actions" not in css
+    assert ".dataset-preset-row-action-btn" not in css
+    assert ".file-group-drag-handle" in css
+    assert ".file-group-drag-image" in css
+    assert "-webkit-user-drag: element;" in css
+    assert ".file-group-drop-before" in css
+    assert ".dataset-preset-group.empty" in css
+    assert ".dataset-preset-empty-state" in css
+    assert ".dataset-page-summary" in css
+
+
+def test_file_group_drag_has_pointer_fallback() -> None:
+    source = APP_JS.read_text(encoding="utf-8")
+    css = STYLE_CSS.read_text(encoding="utf-8")
+
+    drag_helpers = _section(source, "function setFileGroupDragData", "function createFileGroupDragHandle")
+    handle_body = _section(source, "function createFileGroupDragHandle", "function finishFileGroupDrag")
+    drop_targets = _section(source, "function setupFileGroupRowDropTarget", "function createDatasetPresetGroupNode")
+
+    assert "application/x-anima-file-group" in drag_helpers
+    assert "function registerFileGroupDropTarget" in drag_helpers
+    assert "function resolveFileGroupPointerDropTarget" in drag_helpers
+    assert "function resolveNearestFileGroupDropTarget" in drag_helpers
+    assert "function startFileGroupPointerDrag" in drag_helpers
+    assert "function startFileGroupMouseDrag" in drag_helpers
+    assert "function finishFileGroupPointerDrag" in drag_helpers
+    assert "handle.addEventListener('pointerdown'" in handle_body
+    assert "handle.addEventListener('mousedown'" in handle_body
+    assert "document.addEventListener('pointermove', drag.onMove, { passive: false })" in drag_helpers
+    assert "document.addEventListener('pointerup', drag.onUp, { passive: false })" in drag_helpers
+    assert "document.addEventListener('pointercancel', drag.onCancel, { passive: false })" in drag_helpers
+    assert "const addMouseFallbackListeners = () =>" in drag_helpers
+    assert "document.addEventListener('mousemove', drag.onMouseMove, { passive: false })" in drag_helpers
+    assert "document.addEventListener('mouseup', drag.onMouseUp, { passive: false })" in drag_helpers
+    assert "addMouseFallbackListeners();" in drag_helpers
+    assert "document.addEventListener('keydown', drag.onKeydown)" in drag_helpers
+    assert "fileGroupPointerDrag" in source
+    assert "fileGroupDropTargetNodes" in source
+    assert "data-file-group-drop-target" in source
+    assert "autoScrollFileGroupPointerDrag" in drag_helpers
+
+    assert drop_targets.count("registerFileGroupDropTarget") == 4
+    assert "position: 'inside'" in drop_targets
+    assert "configFileDropIndex(group, targetFile, placeAfter, payload.file)" in drop_targets
+    assert "configGroupDropIndex(options.getSortableGroups(), group.id, placeAfter, payload.groupId)" in drop_targets
+
+    assert ".file-group-pointer-drag-active" in css
+    assert ".file-group-drag-image-pointer" in css
+
+
+def test_dataset_preset_manager_is_isolated_from_config_page() -> None:
+    source = APP_JS.read_text(encoding="utf-8")
+
+    tab_active = _section(source, "function isDatasetTabActive", "function setActiveDatasetRows")
+    load_presets = _section(
+        source,
+        "async function loadDatasetPresets(options = {})",
+        "async function loadDatasetPreset(file)",
+    )
+    listener_section = _section(source, "function setupEventListeners", "function installBeginnerTooltips")
+
+    assert "classList.contains('active')" in tab_active
+    assert "closest('#tab-datasets')" not in tab_active
+    assert "const managePresets = options.manage === true || (options.manage !== false && isDatasetTabActive());" in load_presets
+    assert "if (!managePresets)" in load_presets
+    assert "await loadDatasetPreset(datasetPresetState.selectedFile)" in load_presets
+    assert "loadDatasetPresets({ selectCurrent: false, manage: false })" in source
+    assert "loadDatasetPresets({ manage: true })" in source
+    assert "btn-refresh-dataset-presets" in listener_section
+    assert "btn-config-dataset-dialog-refresh" in listener_section
+    assert "btn-config-dataset-dialog-refresh').addEventListener('click', () => loadDatasetPresets({ selectCurrent: false, manage: false }))" in listener_section
+
+
+def test_config_toml_manager_excludes_dataset_groups() -> None:
+    source = APP_JS.read_text(encoding="utf-8")
+    css = STYLE_CSS.read_text(encoding="utf-8")
+
+    load_toml = _section(source, "async function loadTomlFileList", "async function loadOutputRuns")
+    toml_render = _section(source, "function renderTomlFileGroups", "function createTomlGroupActions")
+    file_button = _section(source, "function createTomlFileButton", "function updateTomlSelectionUI")
+    save_as_groups = _section(source, "function saveAsTargetGroups", "async function moveTomlFileToGroup")
+    helper_section = _section(source, "function isDatasetConfigGroup", "function populateTomlFileSelect")
+    create_group = _section(source, "async function createTomlGroup", "async function renameTomlGroup")
+    movable_groups = _section(source, "function getMovableTomlGroups", "function deleteTomlGroupButtonTitle")
+
+    assert "/api/config/file-groups?kind=training" in load_toml
+    assert "tomlFileGroups = filterTrainingTomlGroups(groups);" in load_toml
+    assert "function isTrainingTomlGroup" in helper_section
+    assert "function filterTrainingTomlGroups" in helper_section
+    assert "configs/datasets/" in helper_section
+    assert "return isTrainingTomlGroup(group) && !isFixedSystemTomlGroup(group);" in helper_section
+    assert "isTrainingTomlGroup(group) && (group.user_managed || group.lockable" in helper_section
+    assert "isTrainingTomlGroup(group) && !isFixedSystemTomlGroup(group)" in helper_section
+    assert "function isTomlGroupDraggable" in helper_section
+    assert "function canDropTomlFileToGroup" in helper_section
+    assert "function tomlFileDragOptions" in helper_section
+    assert "function tomlGroupDragOptions" in helper_section
+    assert "createTomlGroupDragHandle(group, details)" in toml_render
+    assert "setupFileGroupListDropTarget(list, group, tomlFileDragOptions())" in toml_render
+    assert "setupFileGroupHeaderDropTarget(summary, group, tomlFileDragOptions())" in toml_render
+    assert "setupConfigGroupDropTarget(details, group, tomlGroupDragOptions())" in toml_render
+    assert "createFileGroupDragHandle" in file_button
+    assert "placeTomlFile" in source
+    assert "placeTomlGroup" in source
+    assert "createTomlGroupOrderActions" not in source
+    assert "createTomlFileOrderButton" not in source
+    assert "toml-file-order-btn" not in css
+    assert "const trainingGroups = filterTrainingTomlGroups(tomlFileGroups);" in save_as_groups
+    assert "const imported = trainingGroups.find((group) => group.id === 'imported');" in save_as_groups
+    assert "JSON.stringify({ label: label.trim(), kind: 'training' })" in create_group
+    assert "isTrainingTomlGroup(group) && group.movable" in movable_groups
+
+
 def test_sample_prompts_editor_preserves_raw_text_when_needed() -> None:
     source = APP_JS.read_text(encoding="utf-8")
     render_body = _section(source, "function renderSamplePromptRows", "function switchSamplePromptsEditorToTextMode")
+    mode_button_body = _section(source, "function createSamplePromptTextModeButton", "function updateSamplePromptModeButtonState")
+    table_mode_body = _section(source, "function switchSamplePromptsEditorToTableMode", "function appendSamplePromptRow")
     serialize_body = _section(source, "function serializeSamplePromptsEditor", "function samplePromptRowFromElement")
+    css = STYLE_CSS.read_text(encoding="utf-8")
 
     assert "samplePromptsContentNeedsTextMode(content)" in render_body
     assert "sample-prompts-textarea" in render_body
     assert "return editor.querySelector('.sample-prompts-textarea')?.value || '';" in serialize_body
     assert "function createSamplePromptTextModeButton" in source
+    assert "function switchSamplePromptsEditorToTableMode" in source
+    assert "function updateSamplePromptModeButtonState" in source
+    assert "btn.dataset.samplePromptsModeToggle = '1';" in mode_button_body
+    assert "switchSamplePromptsEditorToTableMode(editor);" in mode_button_body
+    assert "switchSamplePromptsEditorToTextMode(editor);" in mode_button_body
+    assert "btn.textContent = textMode ? '表格模式' : '文本模式';" in source
+    assert "btn.setAttribute('aria-pressed', String(textMode));" in source
+    assert "const text = serializeSamplePromptsEditor(editor);" in table_mode_body
+    assert "for (const row of parseSamplePromptRows(text))" in table_mode_body
+    assert ".sample-prompts-mode-btn[aria-pressed=\"true\"]" in css
 
 
 def test_dataset_json_caption_switch_ui_is_wired() -> None:
@@ -555,7 +1719,7 @@ def test_dataset_json_caption_switch_ui_is_wired() -> None:
 
     assert "createDatasetEditorItem(row, index)" in source
     assert "dataset-editor-item" in item_factory
-    assert "createDatasetEditorRow(row, index)" in item_factory
+    assert "createDatasetEditorRow(row, index, item)" in item_factory
     assert "createDatasetExperimentalFeaturesEditor(row, index)" in item_factory
     assert "createDatasetExperimentalFeaturesEditor(row, index)" not in row_factory
     assert "createDatasetRowCaptionSourceModeEditor(settings, index)" in row_factory
@@ -648,3 +1812,61 @@ def test_dataset_json_caption_switch_ui_is_wired() -> None:
     assert "function updateDatasetEditorRowTriggerClone" in source
     assert ".dataset-nl-tag-mix" in css
     assert ".dataset-nl-tag-summary" in css
+
+
+def test_dataset_editor_preserves_subset_filters_and_rederives_hidden_paths() -> None:
+    source = APP_JS.read_text(encoding="utf-8")
+    css = STYLE_CSS.read_text(encoding="utf-8")
+    experimental_factory = _section(source, "function createDatasetExperimentalFeaturesEditor", "function createDatasetRowSettingsEditor")
+    filter_factory = _section(source, "function createDatasetPathFilterEditor", "function createDatasetRowSettingsEditor")
+    normalize_factory = _section(source, "function normalizeDatasetEditorRows", "function normalizeDatasetRowSettings")
+    defaults_factory = _section(source, "function normalizeDatasetDefaults", "function updateDatasetDefault")
+    row_update_factory = _section(source, "function updateDatasetEditorRow(index", "function updateDatasetEditorRowSetting")
+
+    assert "createDatasetPathFilterEditor(row, index)" in experimental_factory
+    assert "递归扫描子目录 / recursive" in filter_factory
+    assert "路径筛选 / path_pattern" in filter_factory
+    assert "recursive: row.recursive !== false && row.recursive !== 'false'" in normalize_factory
+    assert "path_pattern: String(row.path_pattern || '*').trim() || '*'" in normalize_factory
+    assert "recursive: row.recursive" in normalize_factory
+    assert "path_pattern: row.path_pattern" in normalize_factory
+    assert "rows[index].image_dir = '';" in row_update_factory
+    assert "rows[index].cache_dir = '';" in row_update_factory
+    assert "raw.validation_seed ?? 42" in defaults_factory
+    assert ".dataset-path-filter-advanced" in css
+
+
+def test_dataset_editor_drag_has_browser_fallbacks() -> None:
+    source = APP_JS.read_text(encoding="utf-8")
+    css = STYLE_CSS.read_text(encoding="utf-8")
+    drag_helpers = _section(source, "function datasetEditorEventPoint", "function setupDatasetEditorItemDropTarget")
+    row_sort_helpers = _section(source, "function setDatasetEditorRowsAfterSort", "function removeDatasetEditorRow")
+    row_factory = _section(source, "function createDatasetEditorRow", "function createDatasetExperimentalFeaturesEditor")
+    item_factory = _section(source, "function createDatasetEditorItem", "function createDatasetEditorRow")
+
+    assert "function datasetEditorEventPoint(event)" in drag_helpers
+    assert "event.changedTouches?.[0]" in drag_helpers
+    assert "function finishDatasetEditorPointerDrag(commit = false)" in drag_helpers
+    assert "document.addEventListener('mousemove'" in drag_helpers
+    assert "document.addEventListener('mouseup'" in drag_helpers
+    assert "document.addEventListener('touchmove'" in drag_helpers
+    assert "document.addEventListener('touchend'" in drag_helpers
+    assert "document.addEventListener('touchcancel'" in drag_helpers
+    assert "function startDatasetEditorMouseDrag(event, index, item, handle)" in drag_helpers
+    assert "function startDatasetEditorTouchDrag(event, index, item, handle)" in drag_helpers
+    assert "handle.addEventListener('mousedown'" in drag_helpers
+    assert "handle.addEventListener('touchstart'" in drag_helpers
+    assert "autoScrollFileGroupPointerDrag(" in drag_helpers
+    assert "datasetEditorDropTargetFromPoint(" in drag_helpers
+    assert "application/x-anima-dataset-row" in drag_helpers
+    assert "Alt+方向键" in drag_helpers
+    assert "moveDatasetEditorRowToIndex(index, targetIndex)" in drag_helpers
+    assert "moveDatasetEditorRow(sourceIndex, clamped, clamped > sourceIndex)" in row_sort_helpers
+    assert "if (insertIndex === sourceIndex) return false;" in row_sort_helpers
+    assert "setupDatasetEditorItemDropTarget(item, index);" in item_factory
+    assert "createDatasetEditorDragHandle(index, item)" in row_factory
+    assert ".dataset-editor-drag-handle" in css
+    assert ".dataset-editor-drag-image" in css
+    assert ".dataset-editor-drop-before::before" in css
+    assert ".dataset-editor-drop-after::after" in css
+    assert ".dataset-editor-pointer-drag-active" in css

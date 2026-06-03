@@ -1,7 +1,6 @@
-# LoKr (Low-Rank Kronecker Product) module.
-#
-# Saved tensor layout follows LyCORIS/ComfyUI convention:
-# ``{lora_name}.lokr_w1`` and ``{lora_name}.lokr_w2``.
+"""LoKr (Low-Rank Kronecker Product) plugin module."""
+
+from __future__ import annotations
 
 import logging
 import math
@@ -10,17 +9,13 @@ import torch
 import torch.nn.functional as F
 
 from networks.lora_modules.base import BaseLoRAModule
-from networks.lora_modules.custom_autograd import lokr_project
+from networks.plugins.lokr.autograd import lokr_project
 
 logger = logging.getLogger(__name__)
 
 
 class LoKrModule(BaseLoRAModule):
-    """LyCORIS-style LoKr adapter for Linear layers.
-
-    Delta weight is materialized as ``kron(w1, w2)`` where ``w1`` is
-    ``factor x factor`` and ``w2`` is ``(out / factor) x (in / factor)``.
-    """
+    """LyCORIS-style LoKr adapter for Linear layers."""
 
     supports_conv2d = False
 

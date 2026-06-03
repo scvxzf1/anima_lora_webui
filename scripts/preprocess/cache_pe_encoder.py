@@ -195,6 +195,7 @@ def main() -> None:
         bundle,
         cache_dir=cache_dir,
         recursive=args.recursive,
+        path_pattern=args.path_pattern,
         batch_size=args.batch_size,
         num_workers=args.num_workers,
         save_dtype=save_dtype,
