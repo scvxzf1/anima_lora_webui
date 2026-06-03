@@ -1,10 +1,10 @@
-import { optionNode } from '../ui.js?v=module-bootstrap-20260601-11';
+import { optionNode } from '../ui.js?v=module-bootstrap-20260603-5';
 import {
     resumeCheckpointOptionLabel,
     resumeCheckpointProgressText,
     resumeSummaryLine,
     selectedResumeCheckpointFromState,
-} from './state.js?v=module-bootstrap-20260601-11';
+} from './state.js?v=module-bootstrap-20260603-5';
 
 export function createHistoryResumePanelRenderer({ state, deps, slots }) {
     function syncHistoryDetailResumeContent() {

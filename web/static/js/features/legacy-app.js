@@ -1,13 +1,13 @@
-import { createPreviewFeature } from './preview/index.js?v=module-bootstrap-20260601-11';
-import { createQueueFeature } from './queue/index.js?v=module-bootstrap-20260601-11';
-import { createHistoryDetailFeature } from './history-detail/index.js?v=module-bootstrap-20260601-11';
+import { createPreviewFeature } from './preview/index.js?v=module-bootstrap-20260603-5';
+import { createQueueFeature } from './queue/index.js?v=module-bootstrap-20260603-5';
+import { createHistoryDetailFeature } from './history-detail/index.js?v=module-bootstrap-20260603-5';
 import {
     formatSystemPercent,
     formatSystemTemperature,
     formatSystemVram,
     historySystemSummary,
-} from './history-detail/system.js?v=module-bootstrap-20260601-11';
-import { formatCompactNumber, numberOrNull } from './history-detail/ui.js?v=module-bootstrap-20260601-11';
+} from './history-detail/system.js?v=module-bootstrap-20260603-5';
+import { formatCompactNumber, numberOrNull } from './history-detail/ui.js?v=module-bootstrap-20260603-5';
 
 function formatLossValue(value) {
     const n = Number(value);
@@ -48,6 +48,9 @@ export function createLegacyApp(ctx) {
 	    let tomlGroupActionBusy = false;
 	    let fileGroupDragState = null;
 	    let fileGroupPointerDrag = null;
+	    let fileGroupDropPreviewElement = null;
+	    let fileGroupActiveDropTargetNode = null;
+	    let fileGroupActiveDropPosition = '';
 	    let datasetEditorDragState = null;
 	    let datasetEditorPointerDrag = null;
 	    const fileGroupDropTargets = new WeakMap();
@@ -235,6 +238,7 @@ export function createLegacyApp(ctx) {
     let historyCurrentVisibleTaskIds = [];
     const HISTORY_TASK_DRAG_MIME = 'application/x-anima-history-task-ids';
     const HISTORY_COLLECTION_DRAG_MIME = 'application/x-anima-history-collection';
+    const HISTORY_CONFIG_GROUP_DRAG_MIME = 'application/x-anima-history-config-group';
     let historyDragState = {
         active: false,
         taskIds: [],
@@ -256,8 +260,18 @@ export function createLegacyApp(ctx) {
         dropPosition: 'after',
         pending: false,
     };
+    let historyConfigGroupSortState = {
+        active: false,
+        sourceKey: '',
+        collectionKey: '',
+        activeDropTarget: '',
+        dropPosition: 'after',
+        pending: false,
+    };
+    let historyConfigGroupPointerDrag = null;
     let historyCollectionPointerDrag = null;
     let historyDragImageElement = null;
+    let historyConfigGroupDropPreviewElement = null;
     let historyDropPopoverOutsideHandler = null;
     let historyDropFeedback = { message: '', tone: '' };
     let historyDropFeedbackTimer = null;
@@ -3632,6 +3646,43 @@ export function createLegacyApp(ctx) {
         markFileGroupDropTarget(target.node, target.position);
     }
 
+    function removeFileGroupDropPreview() {
+        if (fileGroupDropPreviewElement?.parentNode) {
+            fileGroupDropPreviewElement.parentNode.removeChild(fileGroupDropPreviewElement);
+        }
+        fileGroupDropPreviewElement = null;
+    }
+
+    function ensureFileGroupDropPreview() {
+        if (fileGroupDropPreviewElement?.isConnected) return fileGroupDropPreviewElement;
+        const preview = document.createElement('div');
+        preview.className = 'file-group-drop-preview';
+        preview.setAttribute('aria-hidden', 'true');
+        const label = document.createElement('span');
+        label.textContent = '释放后插入到这里';
+        preview.appendChild(label);
+        document.body.appendChild(preview);
+        fileGroupDropPreviewElement = preview;
+        return preview;
+    }
+
+    function placeFileGroupDropPreview(node, position) {
+        if (!node || position !== 'before' && position !== 'after') {
+            removeFileGroupDropPreview();
+            return;
+        }
+        const rect = node.getBoundingClientRect?.();
+        if (!rect || rect.width <= 0 || rect.height <= 0) {
+            removeFileGroupDropPreview();
+            return;
+        }
+        const preview = ensureFileGroupDropPreview();
+        preview.dataset.position = position;
+        preview.style.left = `${rect.left + 4}px`;
+        preview.style.top = `${position === 'before' ? rect.top : rect.bottom}px`;
+        preview.style.width = `${Math.max(40, rect.width - 8)}px`;
+    }
+
     function findScrollableFileGroupAncestor(origin) {
         let node = origin instanceof Element ? origin : null;
         while (node && node !== document.body) {
@@ -3807,7 +3858,11 @@ export function createLegacyApp(ctx) {
             startFileGroupMouseDrag(event, payload, handle, disabled);
         });
         handle.addEventListener('dragstart', (event) => {
-            if (fileGroupPointerDrag) finishFileGroupPointerDrag(false);
+            if (fileGroupPointerDrag) {
+                event.preventDefault();
+                event.stopPropagation();
+                return;
+            }
             if (!canBeginFileGroupDrag(payload, disabled)) {
                 event.preventDefault();
                 return;
@@ -3829,15 +3884,33 @@ export function createLegacyApp(ctx) {
         clearFileGroupDropIndicators();
     }
 
-    function clearFileGroupDropIndicators() {
+    function clearFileGroupDropIndicators(options = {}) {
+        if (!options.keepPreview) {
+            removeFileGroupDropPreview();
+        }
         document.querySelectorAll('.file-group-drop-before, .file-group-drop-after, .file-group-drop-inside').forEach((node) => {
             node.classList.remove('file-group-drop-before', 'file-group-drop-after', 'file-group-drop-inside');
         });
+        fileGroupActiveDropTargetNode = null;
+        fileGroupActiveDropPosition = '';
     }
 
     function markFileGroupDropTarget(node, position) {
-        clearFileGroupDropIndicators();
-        if (node && position) node.classList.add(`file-group-drop-${position}`);
+        if (!node || !position) {
+            clearFileGroupDropIndicators();
+            return;
+        }
+        const normalizedPosition = position === 'before' || position === 'after' ? position : 'inside';
+        if (fileGroupActiveDropTargetNode === node && fileGroupActiveDropPosition === normalizedPosition) {
+            node.classList.add(`file-group-drop-${normalizedPosition}`);
+            placeFileGroupDropPreview(node, normalizedPosition);
+            return;
+        }
+        clearFileGroupDropIndicators({ keepPreview: true });
+        fileGroupActiveDropTargetNode = node;
+        fileGroupActiveDropPosition = normalizedPosition;
+        node.classList.add(`file-group-drop-${normalizedPosition}`);
+        placeFileGroupDropPreview(node, normalizedPosition);
     }
 
     function configFileDropIndex(group, targetFile, placeAfter, draggedFile) {
@@ -9818,6 +9891,53 @@ export function createLegacyApp(ctx) {
         return pending?.sourceFile || currentTomlFile || '当前配置';
     }
 
+    function sharedHistoryTaskDialogParts() {
+        const dialog = document.getElementById('history-task-dialog');
+        const title = document.getElementById('history-task-dialog-title');
+        const desc = document.getElementById('history-task-dialog-desc');
+        const body = document.getElementById('history-task-dialog-body');
+        const cancelBtn = document.getElementById('history-task-dialog-cancel');
+        const confirmBtn = document.getElementById('history-task-dialog-confirm');
+        const closeBtn = dialog?.querySelector('.history-task-dialog-header button[value="cancel"]');
+        const form = dialog?.querySelector('form');
+        if (!dialog || !title || !desc || !body || !cancelBtn || !confirmBtn) return null;
+        return { dialog, title, desc, body, cancelBtn, confirmBtn, closeBtn, form };
+    }
+
+    function sharedHistoryTaskDialogIsOpen(dialog) {
+        return Boolean(dialog?.open || dialog?.hasAttribute?.('open'));
+    }
+
+    function openSharedHistoryTaskDialog(dialog) {
+        document.body.classList.remove('history-task-dialog-fallback-open');
+        if (typeof dialog.showModal === 'function') {
+            try {
+                dialog.showModal();
+                return;
+            } catch (e) {
+                if (sharedHistoryTaskDialogIsOpen(dialog)) return;
+            }
+        }
+        dialog.setAttribute('open', 'open');
+        dialog.setAttribute('role', 'dialog');
+        dialog.setAttribute('aria-modal', 'true');
+        document.body.classList.add('history-task-dialog-fallback-open');
+    }
+
+    function closeSharedHistoryTaskDialog(dialog, value, fallbackClose) {
+        dialog.returnValue = value || '';
+        if (typeof dialog.close === 'function' && sharedHistoryTaskDialogIsOpen(dialog)) {
+            try {
+                dialog.close(dialog.returnValue);
+                return;
+            } catch (e) {
+                /* 部分浏览器的 dialog close 可能在 fallback 状态下抛错，继续手动关闭。 */
+            }
+        }
+        dialog.removeAttribute('open');
+        fallbackClose();
+    }
+
     async function savePendingConfigSwitchChanges(pending) {
         if (pending.editorDirty) {
             const savedEditor = await saveTomlFile({ skipConfirm: true, source: 'switch' });
@@ -9834,17 +9954,12 @@ export function createLegacyApp(ctx) {
     }
 
     function showUnsavedConfigSwitchDialog({ pending = pendingConfigSwitchState(), targetLabel = '' } = {}) {
-        const dialog = document.getElementById('history-task-dialog');
-        const title = document.getElementById('history-task-dialog-title');
-        const desc = document.getElementById('history-task-dialog-desc');
-        const body = document.getElementById('history-task-dialog-body');
-        const cancelBtn = document.getElementById('history-task-dialog-cancel');
-        const confirmBtn = document.getElementById('history-task-dialog-confirm');
-        const closeBtn = dialog?.querySelector('.history-task-dialog-header button[value="cancel"]');
-        if (!dialog || !title || !desc || !body || !cancelBtn || !confirmBtn) {
+        const parts = sharedHistoryTaskDialogParts();
+        if (!parts) {
             return Promise.resolve('cancel');
         }
-        if (sharedDialogBusy || dialog.open) {
+        const { dialog, title, desc, body, cancelBtn, confirmBtn, closeBtn, form } = parts;
+        if (sharedDialogBusy || sharedHistoryTaskDialogIsOpen(dialog)) {
             return Promise.resolve('cancel');
         }
         sharedDialogBusy = true;
@@ -9861,18 +9976,45 @@ export function createLegacyApp(ctx) {
         confirmBtn.title = pending.canSave ? '' : '存在只读配置，不能直接保存；请先另存为可编辑配置，或放弃未保存更改后切换。';
         confirmBtn.classList.remove('btn-danger');
         confirmBtn.classList.add('btn-primary');
+        cancelBtn.hidden = false;
         dialog.returnValue = '';
 
         return new Promise((resolve) => {
+            let settled = false;
+            const closeClick = (event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                closeSharedHistoryTaskDialog(dialog, event.currentTarget?.value || 'cancel', handleClose);
+            };
+            const submitDialog = (event) => {
+                event.preventDefault();
+                const value = event.submitter?.value || (confirmBtn.disabled ? 'cancel' : 'save');
+                if (value === 'save' && confirmBtn.disabled) return;
+                closeSharedHistoryTaskDialog(dialog, value, handleClose);
+            };
+            const keydownDialog = (event) => {
+                if (event.key !== 'Escape') return;
+                event.preventDefault();
+                closeSharedHistoryTaskDialog(dialog, 'cancel', handleClose);
+            };
             const cleanup = () => {
                 dialog.removeEventListener('close', handleClose);
+                form?.removeEventListener('submit', submitDialog);
+                closeBtn?.removeEventListener('click', closeClick);
+                cancelBtn.removeEventListener('click', closeClick);
+                confirmBtn.removeEventListener('click', closeClick);
+                dialog.removeEventListener('keydown', keydownDialog);
+                document.body.classList.remove('history-task-dialog-fallback-open');
                 sharedDialogBusy = false;
+                cancelBtn.hidden = false;
                 cancelBtn.value = 'cancel';
                 confirmBtn.value = 'confirm';
                 confirmBtn.title = '';
                 if (closeBtn) closeBtn.value = 'cancel';
             };
             const handleClose = () => {
+                if (settled) return;
+                settled = true;
                 const action = dialog.returnValue === 'save'
                     ? 'save'
                     : (dialog.returnValue === 'discard' ? 'discard' : 'cancel');
@@ -9880,12 +10022,13 @@ export function createLegacyApp(ctx) {
                 resolve(action);
             };
             dialog.addEventListener('close', handleClose);
+            form?.addEventListener('submit', submitDialog);
+            closeBtn?.addEventListener('click', closeClick);
+            cancelBtn.addEventListener('click', closeClick);
+            confirmBtn.addEventListener('click', closeClick);
+            dialog.addEventListener('keydown', keydownDialog);
             try {
-                if (dialog.showModal) {
-                    dialog.showModal();
-                } else {
-                    dialog.setAttribute('open', 'open');
-                }
+                openSharedHistoryTaskDialog(dialog);
             } catch {
                 cleanup();
                 resolve('cancel');
@@ -13102,7 +13245,11 @@ export function createLegacyApp(ctx) {
         historyDragImageElement = null;
     }
 
-    function beginHistoryConfigGroupDrag(event, group) {
+    function canBeginHistoryConfigGroupDrag(group) {
+        return Boolean(!historyDragState.pending && !historyConfigGroupSortState.pending && historyTaskIds(group?.tasks || []).length);
+    }
+
+    function beginHistoryConfigGroupDrag(event, group, options = {}) {
         if (historyDragState.pending) {
             event.preventDefault();
             return;
@@ -13128,8 +13275,19 @@ export function createLegacyApp(ctx) {
             },
         };
         const payload = JSON.stringify(taskIds);
+        const groupKey = configGroupKey(group);
+        const collectionKey = historyCollectionStorageKey(options.collection || '__all__');
+        historyConfigGroupSortState = {
+            active: Boolean(groupKey),
+            sourceKey: groupKey,
+            collectionKey,
+            activeDropTarget: '',
+            dropPosition: 'after',
+            pending: false,
+        };
         if (event.dataTransfer) {
             event.dataTransfer.setData(HISTORY_TASK_DRAG_MIME, payload);
+            event.dataTransfer.setData(HISTORY_CONFIG_GROUP_DRAG_MIME, JSON.stringify({ groupKey, collectionKey }));
             event.dataTransfer.setData('text/plain', payload);
             event.dataTransfer.effectAllowed = 'move';
             const dragImage = createHistoryDragImage(taskIds.length);
@@ -13140,14 +13298,484 @@ export function createLegacyApp(ctx) {
 
     function finishHistoryDrag() {
         removeHistoryDragImage();
+        removeHistoryConfigGroupDropPreview();
         historyDragState.active = false;
         historyDragState.taskIds = [];
         historyDragState.sourceGroupKey = '';
         historyDragState.activeDropTarget = '';
+        historyConfigGroupSortState = {
+            active: false,
+            sourceKey: '',
+            collectionKey: '',
+            activeDropTarget: '',
+            dropPosition: 'after',
+            pending: false,
+        };
         document.querySelectorAll('.history-collection-card.drop-active').forEach((item) => {
             item.classList.remove('drop-active');
         });
+        document.querySelectorAll('.history-config-group-card.config-sort-active, .history-config-group-card.config-sort-source').forEach((item) => {
+            item.classList.remove('config-sort-active', 'config-sort-before', 'config-sort-after', 'config-sort-source');
+        });
         document.querySelector('.history-collections-workbench')?.classList.remove('dragging');
+    }
+
+    function readHistoryDraggedConfigGroup(event) {
+        try {
+            const raw = event?.dataTransfer?.getData(HISTORY_CONFIG_GROUP_DRAG_MIME);
+            if (raw) {
+                const parsed = JSON.parse(raw);
+                return {
+                    groupKey: String(parsed?.groupKey || '').trim(),
+                    collectionKey: historyCollectionStorageKey(parsed?.collectionKey || '__all__'),
+                };
+            }
+        } catch (e) {
+            /* DataTransfer 在部分浏览器只能在 drop 阶段读取。 */
+        }
+        return {
+            groupKey: historyConfigGroupSortState.sourceKey || '',
+            collectionKey: historyConfigGroupSortState.collectionKey || '__all__',
+        };
+    }
+
+    function historyConfigGroupDropPosition(event, element) {
+        const rect = element?.getBoundingClientRect?.();
+        if (!rect) return 'after';
+        return Number(event?.clientY || 0) < rect.top + (rect.height / 2) ? 'before' : 'after';
+    }
+
+    function removeHistoryConfigGroupDropPreview() {
+        if (historyConfigGroupDropPreviewElement?.parentNode) {
+            historyConfigGroupDropPreviewElement.parentNode.removeChild(historyConfigGroupDropPreviewElement);
+        }
+        historyConfigGroupDropPreviewElement = null;
+    }
+
+    function ensureHistoryConfigGroupDropPreview() {
+        if (historyConfigGroupDropPreviewElement?.isConnected) return historyConfigGroupDropPreviewElement;
+        const preview = document.createElement('div');
+        preview.className = 'history-config-group-drop-preview';
+        preview.setAttribute('aria-hidden', 'true');
+        const label = document.createElement('span');
+        label.textContent = '释放后插入到这里';
+        preview.appendChild(label);
+        historyConfigGroupDropPreviewElement = preview;
+        return preview;
+    }
+
+    function placeHistoryConfigGroupDropPreview(element, position) {
+        const parent = element?.parentElement;
+        if (!parent) return;
+        const preview = ensureHistoryConfigGroupDropPreview();
+        const placement = position === 'before' ? 'before' : 'after';
+        const parentStyle = window.getComputedStyle(parent);
+        const gap = Number.parseFloat(parentStyle.rowGap || parentStyle.gap || '0') || 0;
+        const top = placement === 'before'
+            ? Math.max(0, element.offsetTop - (gap / 2))
+            : element.offsetTop + element.offsetHeight + (gap / 2);
+        preview.dataset.position = placement;
+        preview.style.top = `${top}px`;
+        if (preview.parentElement !== parent) parent.appendChild(preview);
+    }
+
+    function setHistoryConfigGroupSortTarget(targetKey, position, element) {
+        historyConfigGroupSortState.activeDropTarget = `config-sort:${targetKey || ''}`;
+        historyConfigGroupSortState.dropPosition = position === 'before' ? 'before' : 'after';
+        document.querySelectorAll('.history-config-group-card.config-sort-active').forEach((item) => {
+            if (item !== element) item.classList.remove('config-sort-active', 'config-sort-before', 'config-sort-after');
+        });
+        element?.classList.add(
+            'config-sort-active',
+            historyConfigGroupSortState.dropPosition === 'before' ? 'config-sort-before' : 'config-sort-after',
+        );
+        placeHistoryConfigGroupDropPreview(element, historyConfigGroupSortState.dropPosition);
+    }
+
+    function clearHistoryConfigGroupSortTarget(targetKey, element) {
+        if (historyConfigGroupSortState.activeDropTarget === `config-sort:${targetKey || ''}`) {
+            historyConfigGroupSortState.activeDropTarget = '';
+            removeHistoryConfigGroupDropPreview();
+        }
+        element?.classList.remove('config-sort-active', 'config-sort-before', 'config-sort-after');
+    }
+
+    function clearHistoryConfigGroupSortIndicators() {
+        historyConfigGroupSortState.activeDropTarget = '';
+        removeHistoryConfigGroupDropPreview();
+        document.querySelectorAll('.history-config-group-card.config-sort-active').forEach((item) => {
+            item.classList.remove('config-sort-active', 'config-sort-before', 'config-sort-after');
+        });
+    }
+
+    function historyConfigGroupOrderDragEnter(event, group, element, options = {}) {
+        if (!historyConfigGroupSortState.active || historyConfigGroupSortState.pending) return false;
+        const source = readHistoryDraggedConfigGroup(event);
+        const targetKey = configGroupKey(group);
+        const collectionKey = historyCollectionStorageKey(options.collection || '__all__');
+        if (!source.groupKey || !targetKey || source.groupKey === targetKey || source.collectionKey !== collectionKey) return false;
+        event.preventDefault();
+        event.stopPropagation();
+        if (event.dataTransfer) event.dataTransfer.dropEffect = 'move';
+        const position = historyConfigGroupDropPosition(event, element);
+        setHistoryConfigGroupSortTarget(targetKey, position, element);
+        return true;
+    }
+
+    function historyConfigGroupOrderDragLeave(event, group, element) {
+        if (!historyConfigGroupSortState.active) return false;
+        if (element?.contains(event.relatedTarget)) return true;
+        if (historyConfigGroupDropPreviewElement?.contains(event.relatedTarget)) return true;
+        if (event.relatedTarget instanceof Element && event.relatedTarget.closest('.history-config-group-card-list')) return true;
+        clearHistoryConfigGroupSortTarget(configGroupKey(group), element);
+        return true;
+    }
+
+    function historyConfigGroupForPointerCard(card, groups = []) {
+        if (!card) return null;
+        const key = String(card.dataset.configGroupKey || '').trim();
+        return (groups || []).find((group) => configGroupKey(group) === key) || null;
+    }
+
+    function historyConfigGroupPointerTargetForCard(card, x, y, groups = [], collection = null) {
+        const group = historyConfigGroupForPointerCard(card, groups);
+        if (!group) return null;
+        return {
+            element: card,
+            group,
+            key: configGroupKey(group),
+            collectionKey: historyCollectionStorageKey(collection || '__all__'),
+            position: historyConfigGroupDropPosition({ clientY: y }, card),
+        };
+    }
+
+    function nearestHistoryConfigGroupPointerTarget(x, y, groups = [], collection = null) {
+        let best = null;
+        document.querySelectorAll('.history-config-group-card').forEach((card) => {
+            if (!card?.isConnected) return;
+            const rect = card.getBoundingClientRect();
+            if (rect.width <= 0 || rect.height <= 0) return;
+            const dx = x < rect.left ? rect.left - x : x > rect.right ? x - rect.right : 0;
+            const dy = y < rect.top ? rect.top - y : y > rect.bottom ? y - rect.bottom : 0;
+            const distance = Math.hypot(dx, dy);
+            const maxDistance = Math.max(24, Math.min(76, rect.height * 0.9));
+            if (distance > maxDistance || (best && distance >= best.distance)) return;
+            const target = historyConfigGroupPointerTargetForCard(card, x, y, groups, collection);
+            if (target) best = { ...target, distance };
+        });
+        if (!best) return null;
+        const { distance, ...target } = best;
+        return target;
+    }
+
+    function historyConfigGroupPointerTargetFromPoint(x, y, groups = [], collection = null) {
+        const origin = document.elementFromPoint(x, y);
+        const card = origin instanceof Element ? origin.closest('.history-config-group-card') : null;
+        return historyConfigGroupPointerTargetForCard(card, x, y, groups, collection)
+            || nearestHistoryConfigGroupPointerTarget(x, y, groups, collection);
+    }
+
+    function historyCollectionDropTargetFromPoint(x, y) {
+        const origin = document.elementFromPoint(x, y);
+        return origin instanceof Element ? origin.closest('.history-collection-card.nav-card') : null;
+    }
+
+    function cleanupHistoryConfigGroupPointerDrag() {
+        const drag = historyConfigGroupPointerDrag;
+        if (!drag) return null;
+        document.removeEventListener('pointermove', drag.onMove);
+        document.removeEventListener('pointerup', drag.onUp);
+        document.removeEventListener('pointercancel', drag.onCancel);
+        document.removeEventListener('mousemove', drag.onMouseMove);
+        document.removeEventListener('mouseup', drag.onMouseUp);
+        document.removeEventListener('touchmove', drag.onTouchMove);
+        document.removeEventListener('touchend', drag.onTouchEnd);
+        document.removeEventListener('touchcancel', drag.onTouchCancel);
+        document.removeEventListener('keydown', drag.onKeydown);
+        try {
+            if (drag.pointerId !== null && drag.pointerId !== undefined) {
+                drag.handle?.releasePointerCapture?.(drag.pointerId);
+            }
+        } catch (e) {
+            /* 指针可能已被浏览器释放，忽略即可。 */
+        }
+        removeHistoryDragImage();
+        drag.handle?.classList.remove('dragging');
+        document.body.classList.remove('history-config-group-pointer-drag-active');
+        historyConfigGroupPointerDrag = null;
+        return drag;
+    }
+
+    async function finishHistoryConfigGroupPointerDrag(commit = false) {
+        const drag = cleanupHistoryConfigGroupPointerDrag();
+        if (!drag) return;
+        const target = commit && drag.active ? drag.currentDrop : null;
+        const collectionTarget = commit && drag.active ? drag.currentCollectionDrop : null;
+        if (collectionTarget && drag.taskIds.length) {
+            await dropHistoryTasksToCollectionLikePointer(collectionTarget, drag.taskIds);
+            return;
+        }
+        if (!target || !drag.sourceKey) {
+            if (drag.active) finishHistoryDrag();
+            return;
+        }
+        if (target.key === drag.sourceKey) {
+            setHistoryDropFeedback('配置分组顺序未变化。', 'ok');
+            finishHistoryDrag();
+            return;
+        }
+        historyConfigGroupSortState.pending = true;
+        try {
+            const changed = await reorderHistoryConfigGroupValue(
+                drag.sourceKey,
+                target.key,
+                target.position,
+                drag.groups,
+                drag.collection,
+            );
+            setHistoryDropFeedback(changed ? '已调整配置分组顺序。' : '配置分组顺序未变化。', 'ok');
+        } catch (e) {
+            setHistoryDropFeedback(`调整配置分组顺序失败: ${e.message}`, 'error');
+        } finally {
+            finishHistoryDrag();
+            renderHistoryManager();
+        }
+    }
+
+    async function dropHistoryTasksToCollectionLikePointer(targetCard, taskIds) {
+        const groupValue = String(targetCard.dataset.collectionValue || '').trim();
+        const label = targetCard.querySelector('.history-collection-card-title strong')?.textContent || groupValue || '未分类';
+        const clean = groupValue;
+        if (!taskIds.length) {
+            setHistoryDropFeedback('没有可移动的历史任务。', 'error');
+            finishHistoryDrag();
+            return;
+        }
+        if (historyDraggedTasksAlreadyInCollection(taskIds, clean)) {
+            setHistoryDropFeedback(`已在${clean ? `分组「${clean}」` : '未分类'}中。`, 'ok');
+            finishHistoryDrag();
+            return;
+        }
+        historyDragState.pending = true;
+        document.querySelector('.history-collections-workbench')?.classList.add('drop-pending');
+        try {
+            const res = await applyHistoryTaskIdsToCollection(taskIds, clean, { clearSelection: true });
+            if (res === null) {
+                setHistoryDropFeedback('移动失败，列表未更改。', 'error');
+            } else {
+                selectedHistoryCollectionKey = clean ? `collection:${clean}` : HISTORY_UNGROUPED_COLLECTION_KEY;
+                setHistoryDropFeedback(`${taskIds.length} 条任务已移动到${clean ? `「${label || clean}」` : '未分类'}。`, 'ok');
+            }
+        } catch (e) {
+            setHistoryDropFeedback(`移动失败: ${e.message}`, 'error');
+        } finally {
+            historyDragState.pending = false;
+            finishHistoryDrag();
+            renderHistoryManager();
+        }
+    }
+
+    function startHistoryConfigGroupPointerDrag(event, group, options = {}, handle = null, fallback = { pointer: true }) {
+        const usePointer = fallback.pointer !== false && 'pointerId' in event;
+        if (historyConfigGroupPointerDrag) return;
+        if ((usePointer || fallback.mouse) && 'button' in event && event.button !== 0) return;
+        if (usePointer && event.isPrimary === false) return;
+        if (!canBeginHistoryConfigGroupDrag(group)) {
+            event.preventDefault();
+            event.stopPropagation();
+            return;
+        }
+        const startPoint = historyCollectionEventPoint(event);
+        if (!startPoint) return;
+        event.stopPropagation();
+        if (fallback.touch) event.preventDefault();
+        const taskIds = uniqueStringList(historyDragTaskIdsForGroup(group));
+        const sourceKey = configGroupKey(group);
+        const collectionKey = historyCollectionStorageKey(options.collection || '__all__');
+        const dragHandle = handle || event.currentTarget;
+        const pointerId = usePointer ? event.pointerId : null;
+        const drag = {
+            sourceKey,
+            collectionKey,
+            taskIds,
+            groups: options.groups || [],
+            collection: options.collection || null,
+            handle: dragHandle,
+            pointerId,
+            startX: startPoint.x,
+            startY: startPoint.y,
+            active: false,
+            image: null,
+            currentDrop: null,
+            currentCollectionDrop: null,
+        };
+        const moveDrag = (moveEvent) => {
+            const point = historyCollectionEventPoint(moveEvent);
+            if (!point) return;
+            const distance = Math.hypot(point.x - drag.startX, point.y - drag.startY);
+            if (!drag.active) {
+                if (distance < 5) return;
+                closeHistoryDropPopover(false);
+                historyDragState = {
+                    ...historyDragState,
+                    active: true,
+                    taskIds,
+                    sourceGroupKey: sourceKey,
+                    activeDropTarget: '',
+                    popover: {
+                        open: false,
+                        x: 0,
+                        y: 0,
+                        taskIds: [],
+                        defaultName: '',
+                    },
+                };
+                historyConfigGroupSortState = {
+                    active: Boolean(sourceKey),
+                    sourceKey,
+                    collectionKey,
+                    activeDropTarget: '',
+                    dropPosition: 'after',
+                    pending: false,
+                };
+                drag.active = true;
+                drag.image = createHistoryDragImage(taskIds.length);
+                dragHandle?.classList.add('dragging');
+                dragHandle?.closest('.history-config-group-card')?.classList.add('config-sort-source');
+                document.body.classList.add('history-config-group-pointer-drag-active');
+                document.querySelector('.history-collections-workbench')?.classList.add('dragging');
+            }
+            moveEvent.preventDefault();
+            moveEvent.stopPropagation();
+            moveHistoryCollectionPointerDragImage(drag.image, point.x, point.y);
+            autoScrollHistoryCollectionPointerDrag(point.x, point.y);
+            drag.currentCollectionDrop = historyCollectionDropTargetFromPoint(point.x, point.y);
+            if (drag.currentCollectionDrop) {
+                drag.currentDrop = null;
+                setHistoryDropTarget(`collection:${drag.currentCollectionDrop.dataset.collectionValue || '__ungrouped__'}`, drag.currentCollectionDrop);
+                clearHistoryConfigGroupSortIndicators();
+                return;
+            }
+            clearHistoryDropIndicators();
+            drag.currentDrop = historyConfigGroupPointerTargetFromPoint(point.x, point.y, drag.groups, drag.collection);
+            if (drag.currentDrop && drag.currentDrop.key !== drag.sourceKey) {
+                setHistoryConfigGroupSortTarget(drag.currentDrop.key, drag.currentDrop.position, drag.currentDrop.element);
+            } else {
+                drag.currentDrop = null;
+                clearHistoryConfigGroupSortIndicators();
+            }
+        };
+        drag.onMove = (moveEvent) => {
+            if (moveEvent.pointerId !== pointerId) return;
+            moveDrag(moveEvent);
+        };
+        drag.onUp = (upEvent) => {
+            if (upEvent.pointerId !== pointerId) return;
+            upEvent.preventDefault();
+            upEvent.stopPropagation();
+            finishHistoryConfigGroupPointerDrag(true);
+        };
+        drag.onCancel = (cancelEvent) => {
+            if (cancelEvent.pointerId !== pointerId) return;
+            finishHistoryConfigGroupPointerDrag(false);
+        };
+        drag.onMouseMove = (moveEvent) => moveDrag(moveEvent);
+        drag.onMouseUp = (upEvent) => {
+            upEvent.preventDefault();
+            upEvent.stopPropagation();
+            finishHistoryConfigGroupPointerDrag(true);
+        };
+        drag.onTouchMove = (moveEvent) => moveDrag(moveEvent);
+        drag.onTouchEnd = (touchEvent) => {
+            touchEvent.preventDefault();
+            touchEvent.stopPropagation();
+            finishHistoryConfigGroupPointerDrag(true);
+        };
+        drag.onTouchCancel = () => finishHistoryConfigGroupPointerDrag(false);
+        drag.onKeydown = (keyEvent) => {
+            if (keyEvent.key === 'Escape') finishHistoryConfigGroupPointerDrag(false);
+        };
+        historyConfigGroupPointerDrag = drag;
+        if (usePointer) {
+            try {
+                dragHandle?.setPointerCapture?.(pointerId);
+            } catch (e) {
+                /* 某些浏览器会让原生拖拽抢占捕获，文档级监听仍作为兜底。 */
+            }
+            document.addEventListener('pointermove', drag.onMove, { passive: false });
+            document.addEventListener('pointerup', drag.onUp, { passive: false });
+            document.addEventListener('pointercancel', drag.onCancel, { passive: false });
+        } else if (fallback.touch) {
+            document.addEventListener('touchmove', drag.onTouchMove, { passive: false });
+            document.addEventListener('touchend', drag.onTouchEnd, { passive: false });
+            document.addEventListener('touchcancel', drag.onTouchCancel, { passive: false });
+        } else {
+            document.addEventListener('mousemove', drag.onMouseMove, { passive: false });
+            document.addEventListener('mouseup', drag.onMouseUp, { passive: false });
+        }
+        document.addEventListener('keydown', drag.onKeydown);
+    }
+
+    function startHistoryConfigGroupMouseDrag(event, group, options = {}, handle = null) {
+        startHistoryConfigGroupPointerDrag(event, group, options, handle, { pointer: false, mouse: true });
+    }
+
+    function startHistoryConfigGroupTouchDrag(event, group, options = {}, handle = null) {
+        startHistoryConfigGroupPointerDrag(event, group, options, handle, { pointer: false, touch: true });
+    }
+
+    async function reorderHistoryConfigGroupValue(sourceKey, targetKey, position, groups = [], collection = null) {
+        const source = String(sourceKey || '').trim();
+        const target = String(targetKey || '').trim();
+        if (!source || !target) return false;
+        const collectionKey = historyCollectionStorageKey(collection || '__all__');
+        const currentOrder = configGroupOrderValues(groups, collection);
+        const nextOrder = moveItemNearList(currentOrder, source, target, position);
+        if (nextOrder.length === currentOrder.length && nextOrder.every((value, idx) => value === currentOrder[idx])) {
+            return false;
+        }
+        await saveHistoryCollectionSettings({
+            ...historyCollectionSettings,
+            config_group_order: {
+                ...(historyCollectionSettings.config_group_order || {}),
+                [collectionKey]: nextOrder,
+            },
+        });
+        return true;
+    }
+
+    async function dropHistoryConfigGroupToSort(event, targetGroup, options = {}) {
+        if (!historyConfigGroupSortState.active) return false;
+        const source = readHistoryDraggedConfigGroup(event);
+        const targetKey = configGroupKey(targetGroup);
+        const collectionKey = historyCollectionStorageKey(options.collection || '__all__');
+        if (!source.groupKey || !targetKey || source.collectionKey !== collectionKey) return false;
+        event.preventDefault();
+        event.stopPropagation();
+        const position = historyConfigGroupSortState.dropPosition || historyConfigGroupDropPosition(event, event.currentTarget);
+        clearHistoryConfigGroupSortTarget(targetKey, event.currentTarget);
+        if (source.groupKey === targetKey) {
+            setHistoryDropFeedback('配置分组顺序未变化。', 'ok');
+            finishHistoryDrag();
+            return true;
+        }
+        historyConfigGroupSortState.pending = true;
+        try {
+            const changed = await reorderHistoryConfigGroupValue(
+                source.groupKey,
+                targetKey,
+                position,
+                options.groups || [],
+                options.collection || null,
+            );
+            setHistoryDropFeedback(changed ? '已调整配置分组顺序。' : '配置分组顺序未变化。', 'ok');
+        } catch (e) {
+            setHistoryDropFeedback(`调整配置分组顺序失败: ${e.message}`, 'error');
+        } finally {
+            finishHistoryDrag();
+            renderHistoryManager();
+        }
+        return true;
     }
 
     function readHistoryDraggedTaskIds(event) {
@@ -13187,6 +13815,13 @@ export function createLegacyApp(ctx) {
             historyDragState.activeDropTarget = '';
         }
         element?.classList.remove('drop-active');
+    }
+
+    function clearHistoryDropIndicators() {
+        historyDragState.activeDropTarget = '';
+        document.querySelectorAll('.history-collection-card.drop-active').forEach((item) => {
+            item.classList.remove('drop-active');
+        });
     }
 
     function historyTasksByIds(ids) {
@@ -14017,6 +14652,35 @@ export function createLegacyApp(ctx) {
         const card = document.createElement('article');
         card.className = ['history-config-group-card', historyTasksAllSelected(group.tasks) ? 'selected' : ''].filter(Boolean).join(' ');
         card.classList.add('draggable');
+        const groupKey = configGroupKey(group);
+        card.dataset.configGroupKey = groupKey;
+        card.dataset.collectionKey = historyCollectionStorageKey(options.collection || '__all__');
+        if (historyConfigGroupSortState.sourceKey && historyConfigGroupSortState.sourceKey === groupKey) {
+            card.classList.add('config-sort-source');
+        }
+        if (historyConfigGroupSortState.active && historyConfigGroupSortState.activeDropTarget === `config-sort:${groupKey}`) {
+            card.classList.add(
+                'config-sort-active',
+                historyConfigGroupSortState.dropPosition === 'before' ? 'config-sort-before' : 'config-sort-after',
+            );
+            requestAnimationFrame(() => {
+                if (card.isConnected && historyConfigGroupSortState.activeDropTarget === `config-sort:${groupKey}`) {
+                    placeHistoryConfigGroupDropPreview(card, historyConfigGroupSortState.dropPosition);
+                }
+            });
+        }
+        card.addEventListener('dragenter', (event) => {
+            historyConfigGroupOrderDragEnter(event, group, card, options);
+        });
+        card.addEventListener('dragover', (event) => {
+            historyConfigGroupOrderDragEnter(event, group, card, options);
+        });
+        card.addEventListener('dragleave', (event) => {
+            historyConfigGroupOrderDragLeave(event, group, card);
+        });
+        card.addEventListener('drop', async (event) => {
+            if (await dropHistoryConfigGroupToSort(event, group, options)) return;
+        });
         const ids = historyTaskIds(group.tasks);
         const selectedCount = ids.filter((id) => selectedHistoryTaskIds.has(id)).length;
 
@@ -14031,13 +14695,25 @@ export function createLegacyApp(ctx) {
 
         const handle = document.createElement('button');
         handle.type = 'button';
-        handle.className = 'history-drag-handle';
+        handle.className = 'history-drag-handle history-config-group-drag-handle';
         handle.textContent = '⋮⋮';
-        handle.title = '拖拽配置分组到集合';
-        handle.setAttribute('aria-label', '拖拽配置分组到集合');
+        handle.title = '拖拽配置分组调整顺序或移到右侧分组';
+        handle.setAttribute('aria-label', '拖拽配置分组调整顺序或移到右侧分组');
         handle.draggable = true;
         handle.addEventListener('click', (event) => event.stopPropagation());
-        handle.addEventListener('dragstart', (event) => beginHistoryConfigGroupDrag(event, group));
+        handle.addEventListener('pointerdown', (event) => startHistoryConfigGroupPointerDrag(event, group, options, handle));
+        handle.addEventListener('mousedown', (event) => {
+            event.stopPropagation();
+            if (!('PointerEvent' in window)) startHistoryConfigGroupMouseDrag(event, group, options, handle);
+        });
+        handle.addEventListener('touchstart', (event) => {
+            event.stopPropagation();
+            if (!('PointerEvent' in window)) startHistoryConfigGroupTouchDrag(event, group, options, handle);
+        }, { passive: false });
+        handle.addEventListener('dragstart', (event) => {
+            if (historyConfigGroupPointerDrag) finishHistoryConfigGroupPointerDrag(false);
+            beginHistoryConfigGroupDrag(event, group, options);
+        });
         handle.addEventListener('dragend', () => finishHistoryDrag());
 
         if ((group.tasks || []).length === 1) {
@@ -14101,6 +14777,10 @@ export function createLegacyApp(ctx) {
             actions.append(
                 createHistoryActionButton('查看', () => loadHistoryTask(task.id)),
                 createHistoryMoreActions([
+                    createHistoryManagerGroupButton('置顶', () => moveHistoryConfigGroup(group, 'top', options.groups, options.collection)),
+                    createHistoryManagerGroupButton('上移', () => moveHistoryConfigGroup(group, 'up', options.groups, options.collection)),
+                    createHistoryManagerGroupButton('下移', () => moveHistoryConfigGroup(group, 'down', options.groups, options.collection)),
+                    createHistoryManagerGroupButton('置底', () => moveHistoryConfigGroup(group, 'bottom', options.groups, options.collection)),
                     createHistoryTaskConfigButton(task),
                     createHistoryConfigGroupMergeButton(group),
                     createHistoryManagerGroupButton('设置分组', () => setHistoryCollectionForTasks(group.tasks, commonHistoryCollectionValue(group.tasks), historyGroupDisplayLabel(group))),
@@ -14145,6 +14825,10 @@ export function createLegacyApp(ctx) {
             actions.append(createHistoryConfigGroupPreviewButton(group));
         }
         actions.append(createHistoryMoreActions([
+            createHistoryManagerGroupButton('置顶', () => moveHistoryConfigGroup(group, 'top', options.groups, options.collection)),
+            createHistoryManagerGroupButton('上移', () => moveHistoryConfigGroup(group, 'up', options.groups, options.collection)),
+            createHistoryManagerGroupButton('下移', () => moveHistoryConfigGroup(group, 'down', options.groups, options.collection)),
+            createHistoryManagerGroupButton('置底', () => moveHistoryConfigGroup(group, 'bottom', options.groups, options.collection)),
             createHistoryConfigGroupMergeButton(group),
             createHistoryManagerGroupButton('设置分组', () => setHistoryCollectionForTasks(group.tasks, commonHistoryCollectionValue(group.tasks), historyGroupDisplayLabel(group))),
             createHistoryManagerGroupButton('清除分组', () => clearHistoryCollectionForTasks(group.tasks, historyGroupDisplayLabel(group))),
@@ -14941,7 +15625,11 @@ export function createLegacyApp(ctx) {
             body: JSON.stringify({ action, task_ids: ids, ...extra }),
         });
         if (!res.ok) {
-            alert(res.error || '批量操作失败');
+            await showHistoryTaskMessageDialog({
+                title: '批量操作失败',
+                message: res.error || '批量操作失败',
+                tone: 'error',
+            });
             return null;
         }
         if (options.clearSelection) {
@@ -14994,7 +15682,11 @@ export function createLegacyApp(ctx) {
             .map((task) => task.id)
             .filter(Boolean);
         if (!taskIds.length) {
-            alert('请先选择至少一个训练任务。');
+            await showHistoryTaskMessageDialog({
+                title: '无法合并查看',
+                message: '请先选择至少一个训练任务。',
+                tone: 'warning',
+            });
             return;
         }
         await loadConfigGroupTimeline(
@@ -15003,8 +15695,66 @@ export function createLegacyApp(ctx) {
         );
     }
 
+    function historyBatchDeleteUnavailable(res) {
+        const message = String(res?.error || res?.message || '').trim();
+        return /\b405\b|method not allowed/i.test(message);
+    }
+
+    async function deleteHistoryTasksWithLegacyEndpoint(taskIds, options = {}) {
+        const ids = uniqueStringList(taskIds || []).filter(Boolean);
+        if (!ids.length) return;
+        if (!options.confirmed) {
+            const ok = await showHistoryTaskConfirmDialog({
+                title: '兼容删除历史任务',
+                description: `${ids.length} 条历史记录`,
+                message: '当前服务未提供批量删除预览，将使用兼容删除接口逐条删除历史记录；不会清理 WebUI 运行目录、权重、样张和缓存。',
+                confirmText: '删除历史记录',
+                danger: true,
+            });
+            if (!ok) return;
+        }
+        const deletedIds = [];
+        const failures = [];
+        for (const id of ids) {
+            try {
+                const res = await api(`/api/training/history/${encodeURIComponent(id)}`, { method: 'DELETE' });
+                if (!res.ok) {
+                    failures.push(`${id}: ${res.error || res.message || '删除失败'}`);
+                    continue;
+                }
+                deletedIds.push(...(res.deleted_task_ids || [id]).filter(Boolean));
+            } catch (e) {
+                failures.push(`${id}: ${e.message || '删除失败'}`);
+            }
+        }
+        const touchedIds = uniqueStringList(deletedIds);
+        touchedIds.forEach((id) => selectedHistoryTaskIds.delete(id));
+        if (touchedIds.includes(viewingHistoryTaskId)) {
+            clearHistoryManagerDetail();
+        }
+        if (deletedIds.length) {
+            await loadTrainingHistoryList();
+        }
+        if (failures.length) {
+            await showHistoryTaskMessageDialog({
+                title: deletedIds.length ? '部分历史任务删除失败' : '删除失败',
+                message: deletedIds.length
+                    ? '部分历史记录已删除，其余项目未能删除。'
+                    : '兼容删除接口也未能删除这些历史记录。',
+                detailLines: failures,
+                tone: deletedIds.length ? 'warning' : 'error',
+            });
+            return;
+        }
+        await showHistoryTaskMessageDialog({
+            title: '已删除历史记录',
+            message: '已通过兼容接口删除历史记录；运行目录、权重、样张和缓存没有被清理。',
+            tone: 'ok',
+        });
+    }
+
     async function deleteHistoryTasksThorough(taskIds) {
-        const ids = (taskIds || []).filter(Boolean);
+        const ids = uniqueStringList(taskIds || []).filter(Boolean);
         if (!ids.length) return;
         let preview;
         try {
@@ -15018,15 +15768,32 @@ export function createLegacyApp(ctx) {
                 }),
             });
         } catch (e) {
-            alert('读取删除预览失败: ' + e.message);
+            await showHistoryTaskMessageDialog({
+                title: '读取删除预览失败',
+                message: e.message,
+                tone: 'error',
+            });
             return;
         }
         if (!preview.ok) {
-            alert(preview.error || '读取删除预览失败');
+            if (historyBatchDeleteUnavailable(preview)) {
+                await deleteHistoryTasksWithLegacyEndpoint(ids);
+                return;
+            }
+            await showHistoryTaskMessageDialog({
+                title: '读取删除预览失败',
+                message: preview.error || '读取删除预览失败',
+                tone: 'error',
+            });
             return;
         }
         if ((preview.blocked || []).length) {
-            alert('存在不能删除的任务或运行目录：\n' + preview.blocked.map((item) => `${item.id || item.path || '-'}: ${item.reason || '-'}`).join('\n'));
+            await showHistoryTaskMessageDialog({
+                title: '存在不能删除的任务或运行目录',
+                message: '请先处理以下阻止项，再重新执行删除。',
+                detailLines: preview.blocked.map((item) => `${item.id || item.path || '-'}: ${item.reason || '-'}`),
+                tone: 'error',
+            });
             return;
         }
         const confirmText = await showHistoryDeletePreviewDialog(preview);
@@ -15042,7 +15809,15 @@ export function createLegacyApp(ctx) {
                 }),
             });
             if (!res.ok) {
-                alert(res.error || '删除失败');
+                if (historyBatchDeleteUnavailable(res)) {
+                    await deleteHistoryTasksWithLegacyEndpoint(ids, { confirmed: true });
+                    return;
+                }
+                await showHistoryTaskMessageDialog({
+                    title: '删除失败',
+                    message: res.error || '删除失败',
+                    tone: 'error',
+                });
                 return;
             }
             selectedHistoryTaskIds.clear();
@@ -15051,7 +15826,11 @@ export function createLegacyApp(ctx) {
             }
             await loadTrainingHistoryList();
         } catch (e) {
-            alert('删除失败: ' + e.message);
+            await showHistoryTaskMessageDialog({
+                title: '删除失败',
+                message: e.message,
+                tone: 'error',
+            });
         }
     }
 
@@ -15160,7 +15939,11 @@ export function createLegacyApp(ctx) {
                 body: JSON.stringify(patch),
             });
             if (!res.ok) {
-                alert(res.error || '更新任务失败');
+                await showHistoryTaskMessageDialog({
+                    title: '更新任务失败',
+                    message: res.error || '更新任务失败',
+                    tone: 'error',
+                });
                 return;
             }
             await loadTrainingHistoryList();
@@ -15172,7 +15955,11 @@ export function createLegacyApp(ctx) {
                 }
             }
         } catch (e) {
-            alert('更新任务失败: ' + e.message);
+            await showHistoryTaskMessageDialog({
+                title: '更新任务失败',
+                message: e.message,
+                tone: 'error',
+            });
         }
     }
 
@@ -15318,17 +16105,38 @@ export function createLegacyApp(ctx) {
         });
     }
 
+    function showHistoryTaskMessageDialog(options = {}) {
+        const wrap = document.createElement('div');
+        wrap.className = ['history-task-dialog-message', `tone-${options.tone || 'info'}`].filter(Boolean).join(' ');
+        const message = document.createElement('p');
+        message.textContent = options.message || '';
+        if (options.message) wrap.appendChild(message);
+
+        const detailLines = (options.detailLines || []).map((line) => String(line || '').trim()).filter(Boolean);
+        if (detailLines.length) {
+            const list = document.createElement('pre');
+            list.className = 'history-task-dialog-detail-list';
+            list.textContent = detailLines.join('\n');
+            wrap.appendChild(list);
+        }
+
+        return showHistoryTaskDialog({
+            title: options.title || '提示',
+            description: options.description || '',
+            body: wrap,
+            confirmText: options.confirmText || '知道了',
+            hideCancel: true,
+            getValue: () => true,
+        });
+    }
+
     function showHistoryTaskDialog(options) {
-        const dialog = document.getElementById('history-task-dialog');
-        const title = document.getElementById('history-task-dialog-title');
-        const desc = document.getElementById('history-task-dialog-desc');
-        const body = document.getElementById('history-task-dialog-body');
-        const cancelBtn = document.getElementById('history-task-dialog-cancel');
-        const confirmBtn = document.getElementById('history-task-dialog-confirm');
-        if (!dialog || !title || !desc || !body || !cancelBtn || !confirmBtn) {
+        const parts = sharedHistoryTaskDialogParts();
+        if (!parts) {
             return Promise.resolve(null);
         }
-        if (sharedDialogBusy || dialog.open) {
+        const { dialog, title, desc, body, cancelBtn, confirmBtn, closeBtn, form } = parts;
+        if (sharedDialogBusy || sharedHistoryTaskDialogIsOpen(dialog)) {
             return Promise.resolve(null);
         }
         sharedDialogBusy = true;
@@ -15339,6 +16147,7 @@ export function createLegacyApp(ctx) {
         if (options.body) body.appendChild(options.body);
         cancelBtn.textContent = options.cancelText || '取消';
         cancelBtn.classList.toggle('btn-primary', Boolean(options.cancelPrimary));
+        cancelBtn.hidden = Boolean(options.hideCancel);
         confirmBtn.textContent = options.confirmText || '确认';
         confirmBtn.disabled = false;
         confirmBtn.classList.toggle('btn-danger', Boolean(options.danger));
@@ -15346,11 +16155,40 @@ export function createLegacyApp(ctx) {
         dialog.returnValue = '';
 
         return new Promise((resolve) => {
+            let settled = false;
+            const closeClick = (event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                closeSharedHistoryTaskDialog(dialog, event.currentTarget?.value || 'cancel', handleClose);
+            };
+            const submitDialog = (event) => {
+                event.preventDefault();
+                const value = event.submitter?.value || 'confirm';
+                if (value === 'confirm' && confirmBtn.disabled) return;
+                closeSharedHistoryTaskDialog(dialog, value, handleClose);
+            };
+            const keydownDialog = (event) => {
+                if (event.key !== 'Escape') return;
+                event.preventDefault();
+                closeSharedHistoryTaskDialog(dialog, 'cancel', handleClose);
+            };
             const cleanup = () => {
                 dialog.removeEventListener('close', handleClose);
+                form?.removeEventListener('submit', submitDialog);
+                closeBtn?.removeEventListener('click', closeClick);
+                cancelBtn.removeEventListener('click', closeClick);
+                confirmBtn.removeEventListener('click', closeClick);
+                dialog.removeEventListener('keydown', keydownDialog);
+                document.body.classList.remove('history-task-dialog-fallback-open');
                 sharedDialogBusy = false;
+                cancelBtn.hidden = false;
+                cancelBtn.classList.remove('btn-primary');
+                confirmBtn.classList.remove('btn-danger');
+                confirmBtn.classList.add('btn-primary');
             };
             const handleClose = () => {
+                if (settled) return;
+                settled = true;
                 cleanup();
                 if (dialog.returnValue === 'confirm') {
                     resolve(options.getValue ? options.getValue() : true);
@@ -15359,12 +16197,13 @@ export function createLegacyApp(ctx) {
                 }
             };
             dialog.addEventListener('close', handleClose);
+            form?.addEventListener('submit', submitDialog);
+            closeBtn?.addEventListener('click', closeClick);
+            cancelBtn.addEventListener('click', closeClick);
+            confirmBtn.addEventListener('click', closeClick);
+            dialog.addEventListener('keydown', keydownDialog);
             try {
-                if (dialog.showModal) {
-                    dialog.showModal();
-                } else {
-                    dialog.setAttribute('open', 'open');
-                }
+                openSharedHistoryTaskDialog(dialog);
             } catch (e) {
                 cleanup();
                 resolve(null);
@@ -15483,7 +16322,11 @@ export function createLegacyApp(ctx) {
         try {
             const payload = await api(`/api/training/history/config-group/timeline?${query.toString()}`);
             if (!payload.ok) {
-                alert(payload.error || '读取配置分组合并日志失败');
+                await showHistoryTaskMessageDialog({
+                    title: '读取配置分组失败',
+                    message: payload.error || '读取配置分组合并日志失败',
+                    tone: 'error',
+                });
                 return;
             }
             if (options.detailTab) {
@@ -15501,7 +16344,11 @@ export function createLegacyApp(ctx) {
             renderConfigGroupTimeline(payload);
             renderHistoryManagerDetail(payload, { open: true });
         } catch (e) {
-            alert('读取配置分组合并日志失败: ' + e.message);
+            await showHistoryTaskMessageDialog({
+                title: '读取配置分组失败',
+                message: e.message,
+                tone: 'error',
+            });
         }
     }
 

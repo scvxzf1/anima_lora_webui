@@ -1052,6 +1052,40 @@ main { padding: 1rem 1.5rem; }
     outline-offset: -2px;
     background: var(--surface-tint);
 }
+.file-group-drop-preview {
+    align-items: center;
+    background: color-mix(in srgb, var(--accent) 14%, var(--bg-card));
+    border: 1px dashed color-mix(in srgb, var(--accent) 68%, transparent);
+    border-radius: 4px;
+    box-shadow: 0 8px 22px color-mix(in srgb, var(--accent) 18%, transparent);
+    color: var(--accent);
+    display: flex;
+    font-size: 0.7rem;
+    font-weight: 800;
+    gap: 0.42rem;
+    height: 28px;
+    left: 0;
+    padding: 0 0.72rem;
+    pointer-events: none;
+    position: fixed;
+    top: 0;
+    transform: translateY(-50%);
+    z-index: 10020;
+}
+.file-group-drop-preview::before,
+.file-group-drop-preview::after {
+    background: currentColor;
+    border-radius: 999px;
+    content: "";
+    display: block;
+    flex: 1 1 auto;
+    height: 2px;
+    opacity: 0.78;
+}
+.file-group-drop-preview span {
+    flex: 0 0 auto;
+    line-height: 1;
+}
 
 .toml-edit-panel {
     display: flex;
@@ -7048,6 +7082,7 @@ input[type="checkbox"].field-input {
     overflow-y: scroll;
     overscroll-behavior: contain;
     padding-right: 0.25rem;
+    position: relative;
     scrollbar-gutter: stable;
 }
 .history-collection-nav-head {
@@ -7232,6 +7267,57 @@ input[type="checkbox"].field-input {
     background: color-mix(in srgb, var(--history-config-accent) 12%, var(--history-row-bg));
     box-shadow: inset 3px 0 0 var(--history-config-accent), 0 1px 5px color-mix(in srgb, var(--history-config-accent) 22%, transparent);
 }
+.history-config-group-card.config-sort-active {
+    background: color-mix(in srgb, var(--history-config-accent) 11%, var(--history-row-bg));
+}
+.history-config-group-card.config-sort-active.config-sort-before {
+    box-shadow: inset 3px 0 0 var(--history-config-accent), 0 -2px 0 var(--history-config-accent);
+}
+.history-config-group-card.config-sort-active.config-sort-after {
+    box-shadow: inset 3px 0 0 var(--history-config-accent), 0 2px 0 var(--history-config-accent);
+}
+.history-config-group-card.config-sort-source {
+    opacity: 0.58;
+}
+.history-config-group-drop-preview {
+    align-items: center;
+    background: color-mix(in srgb, var(--history-config-accent) 14%, transparent);
+    border: 1px dashed color-mix(in srgb, var(--history-config-accent) 66%, transparent);
+    border-radius: 4px;
+    color: var(--history-config-accent);
+    display: flex;
+    font-size: 0.72rem;
+    font-weight: 800;
+    gap: 0.45rem;
+    height: 28px;
+    left: 0.35rem;
+    padding: 0 0.75rem;
+    pointer-events: none;
+    position: absolute;
+    right: 0.65rem;
+    top: 0;
+    transform: translateY(-50%);
+    z-index: 5;
+}
+.history-config-group-drop-preview::before,
+.history-config-group-drop-preview::after {
+    background: currentColor;
+    border-radius: 999px;
+    content: "";
+    display: block;
+    flex: 1 1 auto;
+    height: 2px;
+    opacity: 0.76;
+}
+.history-config-group-drop-preview span {
+    flex: 0 0 auto;
+    line-height: 1;
+}
+.history-config-group-pointer-drag-active,
+.history-config-group-pointer-drag-active * {
+    cursor: grabbing !important;
+    user-select: none;
+}
 .history-config-group-card.single-task {
     align-items: center;
     background: var(--history-row-bg);
@@ -7360,6 +7446,10 @@ input[type="checkbox"].field-input {
 }
 .history-drag-handle:active {
     cursor: grabbing;
+}
+.history-config-group-drag-handle {
+    touch-action: none;
+    -webkit-user-drag: element;
 }
 .history-collection-drag-handle {
     align-self: center;
@@ -10984,18 +11074,37 @@ body.history-detail-window-open {
     inset: 0;
     margin: auto;
     width: min(520px, calc(100vw - 2rem));
+    max-height: min(82vh, 680px);
     background: var(--bg-card);
     border: 1px solid var(--border);
     border-radius: var(--radius);
     color: var(--text);
     padding: 0;
+    z-index: 10020;
+}
+.history-task-dialog:not([open]) {
+    display: none;
+}
+.history-task-dialog[open] {
+    display: block;
 }
 .history-task-dialog::backdrop {
     background: var(--dialog-backdrop);
 }
+body.history-task-dialog-fallback-open {
+    overflow: hidden;
+}
+body.history-task-dialog-fallback-open::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    background: var(--dialog-backdrop);
+    z-index: 10010;
+}
 .history-task-dialog form {
     display: flex;
     flex-direction: column;
+    max-height: inherit;
 }
 .history-task-dialog-header {
     display: flex;
@@ -11017,6 +11126,8 @@ body.history-detail-window-open {
     margin: 0;
 }
 .history-task-dialog-body {
+    min-height: 0;
+    overflow: auto;
     padding: 0.9rem 1rem;
 }
 .history-task-dialog-field {
@@ -11053,6 +11164,36 @@ body.history-detail-window-open {
     font-size: 0.78rem;
     line-height: 1.5;
     margin: 0;
+}
+.history-task-dialog-message.tone-error {
+    border-left: 3px solid color-mix(in srgb, var(--danger) 72%, var(--border));
+    padding-left: 0.7rem;
+}
+.history-task-dialog-message.tone-error p {
+    color: color-mix(in srgb, var(--danger-subtle) 58%, var(--text));
+}
+.history-task-dialog-message.tone-warning {
+    border-left: 3px solid color-mix(in srgb, var(--warning) 72%, var(--border));
+    padding-left: 0.7rem;
+}
+.history-task-dialog-message.tone-ok {
+    border-left: 3px solid color-mix(in srgb, var(--success) 72%, var(--border));
+    padding-left: 0.7rem;
+}
+.history-task-dialog-detail-list {
+    background: var(--bg);
+    border: 1px solid var(--border-soft);
+    border-radius: 4px;
+    color: var(--text);
+    font-family: monospace;
+    font-size: 0.72rem;
+    line-height: 1.45;
+    margin: 0;
+    max-height: min(38vh, 320px);
+    overflow: auto;
+    padding: 0.55rem;
+    white-space: pre-wrap;
+    word-break: break-word;
 }
 .config-switch-dialog-body {
     display: grid;

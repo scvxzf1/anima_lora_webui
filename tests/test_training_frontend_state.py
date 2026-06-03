@@ -793,7 +793,7 @@ def test_history_manager_frontend_hooks_are_present() -> None:
     assert "未归档 · 最新 6 个训练任务" in html
     assert "btn-open-history-manager" in html
     assert 'type="module" src="/static/app.js?v=' in html
-    assert "import { MetricsChart } from './chart.js?v=module-bootstrap-20260601-" in source
+    assert "import { MetricsChart } from './chart.js?v=module-bootstrap-20260603-" in source
     assert "style.css?v=" in html
     assert "app.js?v=" in html
     assert "history-bulk-bar" in html
@@ -881,7 +881,7 @@ def test_history_manager_frontend_hooks_are_present() -> None:
     assert "moveHistoryCollection(collection, 'top', allCollections)" in collection_card_section
     assert "moveHistoryCollection(collection, 'bottom', allCollections)" in collection_card_section
     for direction in ("top", "up", "down", "bottom"):
-        assert f"moveHistoryConfigGroup(group, '{direction}', options.groups, options.collection)" not in config_card_section
+        assert f"moveHistoryConfigGroup(group, '{direction}', options.groups, options.collection)" in config_card_section
     assert "applySelectedHistoryTasksToCollection" in source
     assert "groupHistoryTasks(scopedTasks)" in history_section
     assert "task?.group" in source
@@ -904,7 +904,7 @@ def test_history_manager_frontend_hooks_are_present() -> None:
     for label in ("置顶", "上移", "下移", "置底"):
         assert f"createHistoryManagerGroupButton('{label}'" in collection_card_section
     for label in ("置顶", "上移", "下移", "置底"):
-        assert f"createHistoryManagerGroupButton('{label}'" not in config_card_section
+        assert f"createHistoryManagerGroupButton('{label}'" in config_card_section
     assert "合并查看" in source
     assert "查阅分组详情" in source
     assert "createHistoryActionButton('配置'" in source
@@ -1252,17 +1252,25 @@ def test_history_collection_drag_drop_frontend_hooks_are_present() -> None:
 
     assert "const HISTORY_TASK_DRAG_MIME = 'application/x-anima-history-task-ids';" in source
     assert "const HISTORY_COLLECTION_DRAG_MIME = 'application/x-anima-history-collection';" in source
+    assert "const HISTORY_CONFIG_GROUP_DRAG_MIME = 'application/x-anima-history-config-group';" in source
     assert "let historyDragState = {" in source
     for key in ("active: false", "taskIds: []", "sourceGroupKey: ''", "activeDropTarget: ''", "pending: false", "popover: {"):
         assert key in source
     assert "let historyCollectionDragState = {" in source
     for key in ("sourceValue: ''", "dropPosition: 'after'", "pending: false"):
         assert key in source
+    assert "let historyConfigGroupSortState = {" in source
+    for key in ("sourceKey: ''", "collectionKey: ''", "activeDropTarget: ''", "dropPosition: 'after'"):
+        assert key in source
+    assert "let historyConfigGroupPointerDrag = null;" in source
+    assert "let historyConfigGroupDropPreviewElement = null;" in source
     assert "let historyCollectionPointerDrag = null;" in source
     assert "application/x-anima-history-task-ids" in source
     assert "application/x-anima-history-collection" in source
+    assert "application/x-anima-history-config-group" in source
     assert "event.dataTransfer.setData(HISTORY_TASK_DRAG_MIME" in source
     assert "event.dataTransfer.setData(HISTORY_COLLECTION_DRAG_MIME" in source
+    assert "event.dataTransfer.setData(HISTORY_CONFIG_GROUP_DRAG_MIME" in source
     assert "event.dataTransfer.setData('text/plain'" in source
 
     assert "collectionList.appendChild(createHistoryCollectionDropzone());" not in workbench
@@ -1287,10 +1295,46 @@ def test_history_collection_drag_drop_frontend_hooks_are_present() -> None:
     assert "ids.length ? '清空集合' : '删除空集合'" in source
 
     assert "history-drag-handle" in config_card
-    assert "拖拽配置分组到集合" in config_card
+    assert "拖拽配置分组调整顺序或移到右侧分组" in config_card
+    assert "history-config-group-drag-handle" in config_card
     assert "handle.draggable = true;" in config_card
-    assert "beginHistoryConfigGroupDrag(event, group)" in config_card
+    assert "handle.addEventListener('pointerdown'" in config_card
+    assert "startHistoryConfigGroupPointerDrag(event, group, options, handle)" in config_card
+    assert "startHistoryConfigGroupMouseDrag(event, group, options, handle)" in config_card
+    assert "startHistoryConfigGroupTouchDrag(event, group, options, handle)" in config_card
+    assert "beginHistoryConfigGroupDrag(event, group, options)" in config_card
     assert "finishHistoryDrag()" in config_card
+    assert "historyConfigGroupOrderDragEnter(event, group, card, options)" in config_card
+    assert "historyConfigGroupOrderDragLeave(event, group, card)" in config_card
+    assert "dropHistoryConfigGroupToSort(event, group, options)" in config_card
+    assert "reorderHistoryConfigGroupValue" in source
+    assert "function ensureHistoryConfigGroupDropPreview" in drag_helpers
+    assert "function placeHistoryConfigGroupDropPreview" in drag_helpers
+    assert "function removeHistoryConfigGroupDropPreview" in drag_helpers
+    assert "释放后插入到这里" in drag_helpers
+    assert "placeHistoryConfigGroupDropPreview(element, historyConfigGroupSortState.dropPosition)" in drag_helpers
+    assert "preview.style.top" in drag_helpers
+    assert "parent.appendChild(preview)" in drag_helpers
+    assert "event.relatedTarget.closest('.history-config-group-card-list')" in drag_helpers
+    for label in ("置顶", "上移", "下移", "置底"):
+        assert f"createHistoryManagerGroupButton('{label}'" in config_card
+    for hook in (
+        "function startHistoryConfigGroupPointerDrag",
+        "function startHistoryConfigGroupMouseDrag",
+        "function startHistoryConfigGroupTouchDrag",
+        "function finishHistoryConfigGroupPointerDrag",
+        "function historyConfigGroupPointerTargetFromPoint",
+        "function historyCollectionDropTargetFromPoint",
+        "document.addEventListener('pointermove', drag.onMove, { passive: false })",
+        "document.addEventListener('pointerup', drag.onUp, { passive: false })",
+        "document.addEventListener('pointercancel', drag.onCancel, { passive: false })",
+        "document.addEventListener('mousemove', drag.onMouseMove, { passive: false })",
+        "document.addEventListener('mouseup', drag.onMouseUp, { passive: false })",
+        "document.addEventListener('touchmove', drag.onTouchMove, { passive: false })",
+        "document.addEventListener('touchend', drag.onTouchEnd, { passive: false })",
+        "document.addEventListener('touchcancel', drag.onTouchCancel, { passive: false })",
+    ):
+        assert hook in drag_helpers
 
     assert "history-collection-drag-handle" in collection_card
     assert "拖拽分组调整顺序" in collection_card
@@ -1351,6 +1395,10 @@ def test_history_collection_drag_drop_frontend_hooks_are_present() -> None:
 
     for selector in (
         ".history-config-group-card.draggable",
+        ".history-config-group-card.config-sort-active",
+        ".history-config-group-card.config-sort-source",
+        ".history-config-group-drop-preview",
+        ".history-config-group-pointer-drag-active",
         ".history-drag-handle",
         ".history-current-group-content",
         ".history-collection-nav",
@@ -1455,7 +1503,7 @@ def test_history_detail_config_files_are_tool_ready() -> None:
     ):
         assert artifact in path_items
 
-    assert "module-bootstrap-20260601-" in html
+    assert "module-bootstrap-20260603-" in html
     for selector in (
         ".history-config-viewer",
         ".history-config-toolbar",
@@ -1678,8 +1726,16 @@ def test_file_group_drag_has_pointer_fallback() -> None:
     assert "function startFileGroupPointerDrag" in drag_helpers
     assert "function startFileGroupMouseDrag" in drag_helpers
     assert "function finishFileGroupPointerDrag" in drag_helpers
+    assert "function ensureFileGroupDropPreview" in drag_helpers
+    assert "function placeFileGroupDropPreview" in drag_helpers
+    assert "function removeFileGroupDropPreview" in drag_helpers
+    assert "释放后插入到这里" in drag_helpers
+    assert "clearFileGroupDropIndicators({ keepPreview: true })" in drag_helpers
+    assert "placeFileGroupDropPreview(node, position)" in drag_helpers
     assert "handle.addEventListener('pointerdown'" in handle_body
     assert "handle.addEventListener('mousedown'" in handle_body
+    assert "if (fileGroupPointerDrag) {" in handle_body
+    assert "event.preventDefault();" in _section(handle_body, "handle.addEventListener('dragstart'", "if (!canBeginFileGroupDrag")
     assert "document.addEventListener('pointermove', drag.onMove, { passive: false })" in drag_helpers
     assert "document.addEventListener('pointerup', drag.onUp, { passive: false })" in drag_helpers
     assert "document.addEventListener('pointercancel', drag.onCancel, { passive: false })" in drag_helpers
@@ -1689,9 +1745,12 @@ def test_file_group_drag_has_pointer_fallback() -> None:
     assert "addMouseFallbackListeners();" in drag_helpers
     assert "document.addEventListener('keydown', drag.onKeydown)" in drag_helpers
     assert "fileGroupPointerDrag" in source
+    assert "fileGroupActiveDropTargetNode" in source
+    assert "fileGroupActiveDropPosition" in source
     assert "fileGroupDropTargetNodes" in source
     assert "data-file-group-drop-target" in source
     assert "autoScrollFileGroupPointerDrag" in drag_helpers
+    assert "fileGroupActiveDropTargetNode === node && fileGroupActiveDropPosition === normalizedPosition" in source
 
     assert drop_targets.count("registerFileGroupDropTarget") == 4
     assert "position: 'inside'" in drop_targets
@@ -1700,6 +1759,8 @@ def test_file_group_drag_has_pointer_fallback() -> None:
 
     assert ".file-group-pointer-drag-active" in css
     assert ".file-group-drag-image-pointer" in css
+    assert ".file-group-drop-preview" in css
+    assert "position: fixed;" in css
 
 
 def test_dataset_preset_manager_is_isolated_from_config_page() -> None:

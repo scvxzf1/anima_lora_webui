@@ -8,7 +8,7 @@ import {
     numberOrNull,
     svgLine,
     svgText,
-} from './ui.js?v=module-bootstrap-20260601-11';
+} from './ui.js?v=module-bootstrap-20260603-5';
 
 const HISTORY_SYSTEM_TABLE_RENDER_LIMIT = 500;
 
