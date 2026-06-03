@@ -40,6 +40,10 @@ def test_web_variants_follow_variant_family_metadata(tmp_path: Path, monkeypatch
         '[variant]\nfamily = "lora"\norder = 12\n',
         encoding="utf-8",
     )
+    (gui_methods / "loha.toml").write_text(
+        '[variant]\nfamily = "lora"\norder = 11\n',
+        encoding="utf-8",
+    )
     (gui_methods / "hydralora.toml").write_text(
         '[variant]\nfamily = "hydralora"\norder = 20\n',
         encoding="utf-8",
@@ -55,7 +59,7 @@ def test_web_variants_follow_variant_family_metadata(tmp_path: Path, monkeypatch
     )
     _patch_config_service_paths(monkeypatch, tmp_path)
 
-    assert config_service.list_variants("lora") == ["lora", "lokr", "custom/user_variant"]
+    assert config_service.list_variants("lora") == ["lora", "loha", "lokr", "custom/user_variant"]
     assert config_service.list_variants("hydralora") == [
         "hydralora-8gb",
         "hydralora",

@@ -203,6 +203,16 @@ def _write_runtime_config_tree(root):
         ),
         encoding="utf-8",
     )
+    (gui_methods / "loha.toml").write_text(
+        "\n".join(
+            [
+                'network_module = "networks.lora_anima"',
+                'use_loha = true',
+                'output_name = "loha-demo"',
+            ]
+        ),
+        encoding="utf-8",
+    )
     (datasets / "522.toml").write_text(
         "\n".join(
             [
@@ -238,7 +248,16 @@ def _write_continue_lora_weight(
 ) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
     if tensors is None:
-        if kind == "LoKr":
+        if kind == "LoHa":
+            tensors = {
+                "lora_unet_blocks_0_self_attn_q_proj.hada_w1_a": torch.randn(12, 4),
+                "lora_unet_blocks_0_self_attn_q_proj.hada_w1_b": torch.randn(4, 8),
+                "lora_unet_blocks_0_self_attn_q_proj.hada_w2_a": torch.randn(12, 4),
+                "lora_unet_blocks_0_self_attn_q_proj.hada_w2_b": torch.randn(4, 8),
+                "lora_unet_blocks_0_self_attn_q_proj.alpha": torch.tensor(4.0),
+            }
+            metadata = {"ss_network_spec": "loha", "ss_network_dim": "4"}
+        elif kind == "LoKr":
             tensors = {
                 "lora_unet_blocks_0_self_attn_q_proj.lokr_w1": torch.randn(2, 2),
                 "lora_unet_blocks_0_self_attn_q_proj.lokr_w2": torch.randn(4, 4),
@@ -1201,14 +1220,27 @@ def test_start_preprocess_preserves_extra_args_for_pending_training(tmp_path, mo
     assert svc._pending_train_after_preprocess["extra_args"] == ["--sample_every_n_steps", "5"]
 
 
-def test_inspect_continue_lora_weight_detects_lora_and_lokr(tmp_path, monkeypatch):
+def test_inspect_continue_lora_weight_detects_lora_loha_and_lokr(tmp_path, monkeypatch):
     _write_runtime_config_tree(tmp_path)
     _patch_runtime_service_paths(monkeypatch, tmp_path)
     lora_path = _write_continue_lora_weight(tmp_path / "weights" / "demo.safetensors", kind="LoRA")
+    loha_path = _write_continue_lora_weight(tmp_path / "weights" / "demo_loha.safetensors", kind="LoHa")
     lokr_path = _write_continue_lora_weight(tmp_path / "weights" / "demo_lokr.safetensors", kind="LoKr")
 
     lora_payload = training_service.inspect_continue_lora_weight(
         str(lora_path),
+        variant="lora",
+        preset="default",
+        methods_subdir="gui-methods",
+    )
+    loha_payload = training_service.inspect_continue_lora_weight(
+        str(loha_path),
+        variant="loha",
+        preset="default",
+        methods_subdir="gui-methods",
+    )
+    loha_blocked = training_service.inspect_continue_lora_weight(
+        str(loha_path),
         variant="lora",
         preset="default",
         methods_subdir="gui-methods",
@@ -1228,6 +1260,10 @@ def test_inspect_continue_lora_weight_detects_lora_and_lokr(tmp_path, monkeypatc
 
     assert lora_payload["kind"] == "LoRA"
     assert lora_payload["compatible"] is True
+    assert loha_payload["kind"] == "LoHa"
+    assert loha_payload["compatible"] is True
+    assert loha_blocked["compatible"] is False
+    assert "loha" in loha_blocked["message"].lower()
     assert lokr_payload["kind"] == "LoKr"
     assert lokr_payload["compatible"] is True
     assert lokr_blocked["compatible"] is False
@@ -1276,7 +1312,7 @@ def test_inspect_continue_lora_weight_rejects_complex_lora_like_weights(tmp_path
             tensors=tensors,
             metadata=metadata,
         )
-        with pytest.raises(ValueError, match="未识别为 LoRA 或 LoKr"):
+        with pytest.raises(ValueError, match="未识别为 LoRA、LoHa 或 LoKr"):
             training_service.inspect_continue_lora_weight(
                 str(path),
                 variant="lora",

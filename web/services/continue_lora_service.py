@@ -1,4 +1,4 @@
-"""LoRA/LoKr continue-training weight inspection.
+"""LoRA/LoHa/LoKr continue-training weight inspection.
 
 This module is intentionally stateless: callers provide the already-loaded
 training config and project root. That keeps config preflight and training
@@ -12,7 +12,7 @@ import os
 from pathlib import Path
 from typing import Any, Mapping
 
-CONTINUE_LORA_KINDS = {"LoRA", "LoKr"}
+CONTINUE_LORA_KINDS = {"LoRA", "LoHa", "LoKr"}
 CONTINUE_LORA_ACCEPTED_LORA_SPECS = {
     "",
     "lora",
@@ -63,7 +63,7 @@ def inspect_continue_lora_weight(
     project_root = Path(root).resolve() if root is not None else Path.cwd().resolve()
     raw_path = str(path or "").strip()
     if not raw_path:
-        raise ValueError("请填写 LoRA/LoKr 权重路径")
+        raise ValueError("请填写 LoRA/LoHa/LoKr 权重路径")
     weight_path = _resolve_display_path(raw_path, project_root)
     if weight_path is None:
         raise ValueError("权重路径不合法")
@@ -79,7 +79,7 @@ def inspect_continue_lora_weight(
     metadata, keys = _read_safetensors_header(weight_path)
     kind = _detect_continue_lora_kind(keys, metadata)
     if kind not in CONTINUE_LORA_KINDS:
-        raise ValueError("这个 safetensors 未识别为 LoRA 或 LoKr 权重")
+        raise ValueError("这个 safetensors 未识别为 LoRA、LoHa 或 LoKr 权重")
 
     compatible, message = _continue_lora_compatibility(
         kind,
@@ -188,15 +188,21 @@ def _continue_lora_compatibility(
     if cfg is None and config_error is not None:
         return False, f"无法读取当前训练配置用于兼容性检查: {config_error}"
     current_kind = _continue_lora_config_kind(variant, methods_subdir, dict(cfg or {}))
+    if current_kind == "LoHa":
+        if kind == "LoHa":
+            return True, "兼容：当前变体为 LoHa，会基于该 LoHa 权重继续训练"
+        return False, f"{kind} 权重不能直接用于 LoHa 变体；请切换到匹配的训练变体"
     if current_kind == "LoKr":
         if kind == "LoKr":
             return True, "兼容：当前变体为 LoKr，会基于该 LoKr 权重继续训练"
-        return False, "LoRA 权重不能直接用于 LoKr 变体；请切换到 LoRA 家族配置"
+        return False, f"{kind} 权重不能直接用于 LoKr 变体；请切换到匹配的训练变体"
     if current_kind == "LoRA":
         if kind == "LoRA":
             return True, "兼容：当前配置属于 LoRA 家族，会基于该 LoRA 权重继续训练"
+        if kind == "LoHa":
+            return False, "LoHa 权重需要当前变体为 loha，请先切换到 LoHa 变体"
         return False, "LoKr 权重需要当前变体为 lokr，请先切换到 LoKr 变体"
-    return False, "第一版只支持 LoRA / LoKr 家族配置继续训练"
+    return False, "当前只支持 LoRA / LoHa / LoKr 家族配置继续训练"
 
 
 def _continue_lora_config_kind(
@@ -204,6 +210,8 @@ def _continue_lora_config_kind(
 ) -> str:
     module_name = str(cfg.get("network_module") or "")
     variant_key = str(variant or "").strip().lower()
+    if _truthy(cfg.get("use_loha")) or variant_key == "loha":
+        return "LoHa"
     if _truthy(cfg.get("use_lokr")) or variant_key == "lokr":
         return "LoKr"
     if module_name and "lora_anima" not in module_name:

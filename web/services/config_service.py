@@ -148,6 +148,7 @@ CONFIG_FILE_LABELS_ZH = {
     "configs/gui-methods/hydralora-8gb.toml": "HydraLoRA 低显存变体",
     "configs/gui-methods/hydralora.toml": "HydraLoRA 训练变体",
     "configs/gui-methods/ip_adapter.toml": "IP-Adapter 训练变体",
+    "configs/gui-methods/loha.toml": "LoHa 训练变体",
     "configs/gui-methods/lokr.toml": "LoKr 训练变体",
     "configs/gui-methods/lora-8gb.toml": "LoRA 低显存变体",
     "configs/gui-methods/lora.toml": "LoRA 标准训练变体",
@@ -827,7 +828,7 @@ def _check_network_weights(
         add("error", "network_weights", message, weight_path)
         return
 
-    kind = str(info.get("kind") or "LoRA/LoKr")
+    kind = str(info.get("kind") or "LoRA/LoHa/LoKr")
     message = f"热启动权重可用（{kind}）"
     if _bool_value(cfg.get("dim_from_weights"), False):
         message += "，将从权重读取维度"

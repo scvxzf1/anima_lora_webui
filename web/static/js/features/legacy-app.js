@@ -2687,7 +2687,7 @@ export function createLegacyApp(ctx) {
             detail.textContent = '不加载已有权重';
             summary.append(title, detail);
             summary.className = 'continue-training-source-summary';
-            chooseBtn.textContent = '选择 LoRA/LoKr';
+            chooseBtn.textContent = '选择 LoRA/LoHa/LoKr';
             clearBtn.hidden = true;
             updateTomlActionState(currentTomlFile);
             return;
@@ -6142,6 +6142,7 @@ export function createLegacyApp(ctx) {
         const moduleName = String(config.network_module || '');
         if (currentTrainingSource.methods_subdir === 'methods' && currentTrainingSource.method === 'spd') return 'spd';
         if ('dit_path' in config && 'iterations' in config && currentTrainingSource.method === 'spd') return 'spd';
+        if (isTruthy(config.use_loha)) return 'loha';
         if (isTruthy(config.use_lokr)) return 'lokr';
         if (isTruthy(config.use_easycontrol) || moduleName.includes('easycontrol')) return 'easycontrol';
         if (isTruthy(config.use_ip_adapter) || moduleName.includes('ip_adapter')) return 'ip_adapter';
@@ -6166,6 +6167,7 @@ export function createLegacyApp(ctx) {
         const base = METHOD_GUIDE_ZH[methodKey] || defaultMethodGuide();
         const details = compactList([
             flagDetail('use_lokr', 'LoKr', config.use_lokr),
+            flagDetail('use_loha', 'LoHa', config.use_loha),
             isTruthy(config.use_lokr) ? valueDetail('lokr_factor', config.lokr_factor) : '',
             valueDetail('network_dim', config.network_dim),
             valueDetail('network_alpha', config.network_alpha),
@@ -6797,7 +6799,7 @@ export function createLegacyApp(ctx) {
             if (networkArgSpec.valueType === 'integer' || networkArgSpec.valueType === 'number') return 'number';
             return 'string';
         }
-        if (key === 'use_lokr') return 'boolean';
+        if (key === 'use_lokr' || key === 'use_loha') return 'boolean';
         if (key === 'lokr_factor') return 'number';
         if (isNumericField(key, value)) return 'number';
         return fieldValueType(value);
@@ -6812,6 +6814,9 @@ export function createLegacyApp(ctx) {
     function optionLabel(key, value) {
         if (key === 'use_lokr') {
             return value === true || value === 'true' ? '启用 LoKr' : '普通 LoRA';
+        }
+        if (key === 'use_loha') {
+            return value === true || value === 'true' ? '启用 LoHa' : '普通 LoRA';
         }
         if (key === 'use_moe_style' && (value === false || value === 'false')) {
             return '关闭专家路由 / false';
@@ -15969,9 +15974,9 @@ export function createLegacyApp(ctx) {
             'btn-sticky-config-required': '底部配置目录快捷入口，切换到模型路径和数据集必填项。',
             'btn-sticky-config-common': '底部配置目录快捷入口，切换到训练轮数、学习率和输出等常用项。',
             'btn-sticky-config-preview': '底部配置目录快捷入口，切换到训练中样张设置。',
-            'btn-open-continue-lora-dialog': '选择已有 LoRA 或 LoKr safetensors 权重作为新训练任务的初始化来源。',
+            'btn-open-continue-lora-dialog': '选择已有 LoRA、LoHa 或 LoKr safetensors 权重作为新训练任务的初始化来源。',
             'btn-clear-continue-lora-source': '清除继续训练来源，下一次启动会按从零开始训练。',
-            'btn-inspect-continue-lora-path': '检查这个 safetensors 是否为 LoRA/LoKr，并确认是否兼容当前变体。',
+            'btn-inspect-continue-lora-path': '检查这个 safetensors 是否为 LoRA/LoHa/LoKr，并确认是否兼容当前变体。',
             'continue-lora-history-task': '从历史训练任务中选择一个输出目录，读取其中保存的权重文件。',
             'btn-refresh-continue-lora-weights': '重新扫描所选历史训练任务的 safetensors 权重。',
             'btn-open-tutorial': '打开基础教程，按顺序了解全局设置、数据集、配置保存、预处理和训练启动。',

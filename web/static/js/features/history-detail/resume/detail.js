@@ -132,7 +132,7 @@ export function createHistoryResumeDetailRenderer({ ctx, state, deps, slots, act
         box.className = 'history-resume-hotstart-body';
         const hint = document.createElement('p');
         hint.className = 'history-resume-hint';
-        hint.textContent = '权重热启动只加载 LoRA/LoKr 权重，不恢复 optimizer、scheduler 和已完成步数；适合 checkpoint-state 已丢失但还有 safetensors 权重时继续训练。';
+        hint.textContent = '权重热启动只加载 LoRA/LoHa/LoKr 权重，不恢复 optimizer、scheduler 和已完成步数；适合 checkpoint-state 已丢失但还有 safetensors 权重时继续训练。';
         box.appendChild(hint);
 
         if (state.resumeWeights.loading) {

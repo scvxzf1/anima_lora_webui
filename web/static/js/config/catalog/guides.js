@@ -31,6 +31,12 @@ export const METHOD_GUIDE_ZH = {
         '适合复杂画风或多角色；代价是推理需要 LyCORIS/LoKr 兼容加载器。',
         '需要 LoKr 训练时选，简单单角色仍可用普通 LoRA。'
     ),
+    loha: choiceHelp(
+        'LoHa',
+        '使用 Hadamard product 分解 LoRA 更新，输出 hada_w1/hada_w2 权重。',
+        '适合需要 PEFT/LyCORIS LoHa 兼容权重的训练；代价是推理侧也需要 LoHa 兼容加载器。',
+        '明确要 LoHa 格式时选，普通训练仍优先 LoRA。'
+    ),
     reft: choiceHelp(
         'ReFT',
         '在 DiT 块残差流上做可训练干预，可和 LoRA/T-LoRA 组合。',
@@ -147,6 +153,12 @@ export const VARIANT_GUIDE_ZH = {
         '输出 LyCORIS 兼容的 lokr_w1/lokr_w2 权重，默认 factor=8。',
         '收敛快、参数效率高；过拟合风险更高，推理侧需要 LoKr 支持。',
         '多角色/复杂画风可试；注意控制训练轮数。'
+    ),
+    loha: choiceHelp(
+        'LoHa',
+        '输出 PEFT/LyCORIS 兼容的 hada_w1/hada_w2 权重，默认 rank=32。',
+        '可合并进 DiT Linear 权重；推理或继续训练时需要 LoHa 权重识别支持。',
+        '只有需要 LoHa 兼容格式时选。'
     ),
     chimera_hydra: choiceHelp(
         'ChimeraHydra',

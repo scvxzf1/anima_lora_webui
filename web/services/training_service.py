@@ -4768,7 +4768,7 @@ def _resume_checkpoint_diagnostic(task: dict[str, Any], checkpoints: list[dict[s
         "train_state_count": 0,
         "checkpoint_count": len(checkpoints or []),
         "reason": "",
-        "recommendation": "如需继续训练，可回到配置页选择这个任务导出的 LoRA/LoKr 权重做热启动；热启动不会恢复 optimizer、scheduler 和已完成步数。",
+        "recommendation": "如需继续训练，可回到配置页选择这个任务导出的 LoRA/LoHa/LoKr 权重做热启动；热启动不会恢复 optimizer、scheduler 和已完成步数。",
     }
     if output_dir is None:
         diagnostic["reason"] = "这个历史任务记录的输出目录不合法，无法扫描完整续训状态。"

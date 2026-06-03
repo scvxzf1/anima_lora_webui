@@ -25,6 +25,7 @@ from networks import (
 )
 from networks import lora_save
 from networks.lora_anima.factory import create_network_from_weights
+from networks.plugins.loha.module import LoHaModule
 from networks.plugins.lokr.module import LoKrModule
 
 
@@ -35,6 +36,7 @@ from networks.plugins.lokr.module import LoKrModule
 
 EXPECTED_VARIANTS = {
     "lora",
+    "loha",
     "lokr",
     "ortho",
     "hydra",
@@ -98,6 +100,12 @@ def test_lokr_kwargs_registered():
     assert "lokr_factor" in set(NETWORK_REGISTRY["lokr"].kwarg_flags)
 
 
+def test_loha_kwargs_registered():
+    must_have = {"use_loha"}
+    assert must_have.issubset(set(all_network_kwargs()))
+    assert "use_loha" in set(NETWORK_REGISTRY["loha"].kwarg_flags)
+
+
 def test_lokr_lives_in_plugin_not_core_imports():
     core_files = [
         Path("networks/__init__.py"),
@@ -123,6 +131,7 @@ def test_lokr_lives_in_plugin_not_core_imports():
     "kwargs, expected",
     [
         ({}, "lora"),
+        ({"use_loha": "true"}, "loha"),
         ({"use_lokr": "true"}, "lokr"),
         ({"use_ortho": "true"}, "ortho"),
         ({"use_moe_style": "shared_A"}, "hydra"),
@@ -149,6 +158,20 @@ def test_resolve_precedence(kwargs, expected):
 )
 def test_lokr_mutual_exclusion(kwargs):
     with pytest.raises(ValueError, match="use_lokr is mutually exclusive"):
+        resolve_network_spec(kwargs)
+
+
+@pytest.mark.parametrize(
+    "kwargs",
+    [
+        {"use_loha": "true", "use_lokr": "true"},
+        {"use_loha": "true", "use_ortho": "true"},
+        {"use_loha": "true", "use_moe_style": "shared_A"},
+        {"use_loha": "true", "use_chimera_hydra": "true"},
+    ],
+)
+def test_loha_mutual_exclusion(kwargs):
+    with pytest.raises(ValueError, match="use_loha is mutually exclusive"):
         resolve_network_spec(kwargs)
 
 
@@ -238,6 +261,30 @@ def test_save_lokr_roundtrip(tmp_path: Path):
     assert f"{prefix}.lokr_w2" not in loaded
 
 
+def test_save_loha_roundtrip(tmp_path: Path):
+    r, in_dim, out_dim = 4, 8, 12
+    prefix = "lora_unet_blocks_0_self_attn_qkv_proj"
+    sd = {
+        f"{prefix}.hada_w1_a": torch.randn(3 * out_dim, r),
+        f"{prefix}.hada_w1_b": torch.randn(r, in_dim),
+        f"{prefix}.hada_w2_a": torch.randn(3 * out_dim, r),
+        f"{prefix}.hada_w2_b": torch.randn(r, in_dim),
+        f"{prefix}.alpha": _alpha(r),
+    }
+
+    loaded = _save_and_reload(sd, tmp_path, save_variant="loha")
+
+    base = "lora_unet_blocks_0_self_attn"
+    for suffix in ("q_proj", "k_proj", "v_proj"):
+        assert loaded[f"{base}_{suffix}.hada_w1_a"].shape == (out_dim, r)
+        assert loaded[f"{base}_{suffix}.hada_w1_b"].shape == (r, in_dim)
+        assert loaded[f"{base}_{suffix}.hada_w2_a"].shape == (out_dim, r)
+        assert loaded[f"{base}_{suffix}.hada_w2_b"].shape == (r, in_dim)
+        assert f"{base}_{suffix}.alpha" in loaded
+    assert f"{prefix}.hada_w1_a" not in loaded
+    assert f"{prefix}.hada_w2_a" not in loaded
+
+
 def test_create_network_from_lokr_weights_uses_lokr_module():
     class Block(torch.nn.Module):
         def __init__(self):
@@ -271,6 +318,46 @@ def test_create_network_from_lokr_weights_uses_lokr_module():
     assert isinstance(lokr, LoKrModule)
     assert lokr.lora_dim == 32
     assert lokr.factor == 2
+    network.apply_to([], unet, False, True)
+    info = network.load_state_dict(weights, strict=False)
+    assert info.missing_keys == []
+    assert info.unexpected_keys == []
+
+
+def test_create_network_from_loha_weights_uses_loha_module():
+    class Block(torch.nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.q_proj = torch.nn.Linear(4, 6, bias=False)
+
+    class TinyUnet(torch.nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.blocks = torch.nn.ModuleList([Block()])
+
+    weights_sd = {
+        "lora_unet_blocks_0_q_proj.hada_w1_a": torch.randn(6, 2),
+        "lora_unet_blocks_0_q_proj.hada_w1_b": torch.randn(2, 4),
+        "lora_unet_blocks_0_q_proj.hada_w2_a": torch.randn(6, 2),
+        "lora_unet_blocks_0_q_proj.hada_w2_b": torch.randn(2, 4),
+        "lora_unet_blocks_0_q_proj.alpha": _alpha(2),
+    }
+
+    unet = TinyUnet()
+    network, weights = create_network_from_weights(
+        multiplier=1.0,
+        file="",
+        ae=None,
+        text_encoders=[],
+        unet=unet,
+        weights_sd=weights_sd,
+        metadata={"ss_network_spec": "loha", "ss_network_dim": "2"},
+    )
+
+    assert len(network.unet_loras) == 1
+    loha = network.unet_loras[0]
+    assert isinstance(loha, LoHaModule)
+    assert loha.lora_dim == 2
     network.apply_to([], unet, False, True)
     info = network.load_state_dict(weights, strict=False)
     assert info.missing_keys == []

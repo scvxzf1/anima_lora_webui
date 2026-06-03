@@ -81,6 +81,14 @@ export const FIELD_HELP_METHOD_ZH = {
         ["与 OrthoLoRA、Hydra/FeRA、DoRA 互斥；小数据更要注意过拟合。"],
         "推荐使用 lokr 变体默认值：learning_rate=1e-4，factor=8。"
     ),
+    use_loha: help(
+        "启用 LoHa（Low-Rank Hadamard Product）。",
+        "用两组低秩矩阵的 Hadamard product 形成 ΔW，保存为 hada_w1/hada_w2。",
+        ["可以导出 PEFT/LyCORIS 兼容 LoHa 权重，也能走静态 merge 路径。"],
+        ["不是普通 LoRA 键名，推理侧或继续训练侧需要 LoHa 识别支持。"],
+        ["与 LoKr、OrthoLoRA、Hydra/FeRA、ChimeraHydra 互斥。"],
+        "推荐直接使用 loha 变体默认值；不需要 LoHa 兼容格式时选普通 LoRA。"
+    ),
     lokr_factor: help(
         "LoKr 的 Kronecker 分解因子。",
         "W1 为 factor×factor，W2 为 (out/factor)×(in/factor)。",

@@ -25,6 +25,7 @@ export const FORM_SECTION_DEFS = [
             'gradient_checkpointing',
             'network_dim',
             'network_alpha',
+            'use_loha',
             'use_lokr',
             'lokr_factor',
             'network_weights',
@@ -314,7 +315,7 @@ export const CONFIG_COMPACT_FIELD_GROUPS = {
         },
         {
             className: 'config-field-grid-4col',
-            keys: ['network_dim', 'network_alpha', 'use_lokr', 'lokr_factor'],
+            keys: ['network_dim', 'network_alpha', 'use_loha', 'use_lokr', 'lokr_factor'],
         },
     ],
     'config-group-steps': [
@@ -349,6 +350,7 @@ export const VARIANT_METHOD_FAMILY = {
     lora: 'lora',
     lora_longer: 'lora',
     'lora-8gb': 'lora',
+    loha: 'lora',
     lokr: 'lokr',
     ortholora: 'ortholora',
     tlora: 'tlora',

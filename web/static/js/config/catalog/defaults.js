@@ -11,6 +11,7 @@ export const FORM_UI_DEFAULTS = {
     max_train_steps: 0,
     sample_at_first: false,
     sample_sampler: 'ddim',
+    use_loha: false,
     use_lokr: false,
     lokr_factor: 8,
     max_data_loader_n_workers: 0,

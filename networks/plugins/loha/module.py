@@ -1,0 +1,153 @@
+"""LoHa (Low-Rank Hadamard Product) plugin module."""
+
+from __future__ import annotations
+
+import logging
+import math
+
+import torch
+import torch.nn.functional as F
+
+from networks.lora_modules.base import BaseLoRAModule
+
+logger = logging.getLogger(__name__)
+
+
+def _make_weight(
+    w1_a: torch.Tensor,
+    w1_b: torch.Tensor,
+    w2_a: torch.Tensor,
+    w2_b: torch.Tensor,
+) -> torch.Tensor:
+    return (w1_a.float() @ w1_b.float()) * (w2_a.float() @ w2_b.float())
+
+
+class LoHaModule(BaseLoRAModule):
+    """PEFT/LyCORIS-style LoHa adapter for Linear layers."""
+
+    supports_conv2d = False
+
+    def __init__(
+        self,
+        lora_name,
+        org_module: torch.nn.Module,
+        multiplier=1.0,
+        lora_dim=4,
+        alpha=1,
+        dropout=None,
+        rank_dropout=None,
+        module_dropout=None,
+        channel_scale=None,
+    ):
+        if not isinstance(org_module, torch.nn.Linear):
+            raise ValueError("LoHaModule only supports torch.nn.Linear modules")
+        super().__init__(
+            lora_name,
+            org_module,
+            multiplier=multiplier,
+            lora_dim=lora_dim,
+            alpha=alpha,
+            dropout=dropout,
+            rank_dropout=rank_dropout,
+            module_dropout=module_dropout,
+        )
+
+        in_features = int(org_module.in_features)
+        out_features = int(org_module.out_features)
+
+        self.hada_w1_a = torch.nn.Parameter(torch.empty(out_features, self.lora_dim))
+        self.hada_w1_b = torch.nn.Parameter(torch.empty(self.lora_dim, in_features))
+        self.hada_w2_a = torch.nn.Parameter(torch.empty(out_features, self.lora_dim))
+        self.hada_w2_b = torch.nn.Parameter(torch.empty(self.lora_dim, in_features))
+
+        torch.nn.init.kaiming_uniform_(self.hada_w1_a, a=math.sqrt(5))
+        torch.nn.init.kaiming_uniform_(self.hada_w1_b, a=math.sqrt(5))
+        torch.nn.init.kaiming_uniform_(self.hada_w2_a, a=math.sqrt(5))
+        torch.nn.init.zeros_(self.hada_w2_b)
+
+        if channel_scale is not None:
+            logger.warning(
+                "LoHa module %s: channel_scale ignored because Hadamard "
+                "weights cannot safely absorb per-input-column scale",
+                lora_name,
+            )
+
+        self.org_module_ref = [org_module]
+        self._fused = False
+
+    def _compute_weight(self) -> torch.Tensor:
+        return _make_weight(
+            self.hada_w1_a,
+            self.hada_w1_b,
+            self.hada_w2_a,
+            self.hada_w2_b,
+        )
+
+    @staticmethod
+    def _drop_output_rows(weight: torch.Tensor, p: float | None) -> torch.Tensor:
+        if p is None or p <= 0.0:
+            return weight
+        keep = (torch.rand(weight.size(0), device=weight.device) > p).to(weight.dtype)
+        keep = keep.view(-1, *([1] * (weight.dim() - 1)))
+        return weight * keep / keep.mean().clamp_min(1e-6)
+
+    def _scalar_timestep_gate(self, y: torch.Tensor) -> torch.Tensor:
+        gate = self._timestep_mask[:, :1].to(device=y.device, dtype=y.dtype)
+        while gate.dim() < y.dim():
+            gate = gate.unsqueeze(1)
+        return gate
+
+    def forward(self, x):
+        if not self.enabled or self._fused:
+            return self.org_forward(x)
+
+        org_forwarded = self.org_forward(x)
+        if self._skip_module():
+            return org_forwarded
+
+        x_loha = F.dropout(x, p=self.dropout) if self.training and self.dropout else x
+        weight = self._compute_weight()
+        if self.training:
+            weight = self._drop_output_rows(weight, self.rank_dropout)
+        y = F.linear(x_loha.float(), weight.float())
+        if self.training:
+            y = y * self._scalar_timestep_gate(y)
+        return org_forwarded + (y * self.multiplier * self.scale).to(org_forwarded.dtype)
+
+    def get_weight(self, multiplier=None):
+        if multiplier is None:
+            multiplier = self.multiplier
+        return self._compute_weight().float() * multiplier * self.scale
+
+    def merge_to(self, sd, dtype, device):
+        with torch.no_grad():
+            weight = self.org_module.weight
+            org_dtype = weight.dtype
+            if dtype is None:
+                dtype = org_dtype
+            if device is None:
+                device = weight.device
+
+            delta = _make_weight(
+                sd["hada_w1_a"].to(device),
+                sd["hada_w1_b"].to(device),
+                sd["hada_w2_a"].to(device),
+                sd["hada_w2_b"].to(device),
+            )
+            weight.data.add_((delta * self.multiplier * self.scale).to(dtype))
+
+    def fuse_weight(self):
+        if self._fused:
+            return
+        org_module = self.org_module_ref[0]
+        delta = self.get_weight().to(org_module.weight.dtype)
+        org_module.weight.data += delta
+        self._fused = True
+
+    def unfuse_weight(self):
+        if not self._fused:
+            return
+        org_module = self.org_module_ref[0]
+        delta = self.get_weight().to(org_module.weight.dtype)
+        org_module.weight.data -= delta
+        self._fused = False
