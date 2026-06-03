@@ -3566,6 +3566,7 @@ select.dataset-config-input {
     flex-direction: column;
     grid-column: 2;
     grid-row: 1;
+    isolation: isolate;
     position: relative;
     z-index: 60;
     overflow: visible;
@@ -3681,20 +3682,23 @@ select.dataset-config-input {
     position: relative;
     z-index: 65;
     overflow: visible;
-    padding: 0 1.25rem 0.8rem;
+    padding: 0 1.25rem 0.8rem calc(1.25rem + 6px);
 }
 
 #tab-config .toml-current-file {
+    box-sizing: border-box;
     display: grid;
     gap: 0.15rem;
+    min-width: 0;
     position: relative;
     z-index: 1;
     overflow: visible;
-    padding: 0.58rem 0.65rem;
+    padding: 0.58rem 0.65rem 0.58rem 0.82rem;
     border-color: var(--config-border);
     border-left: 0;
     border-radius: 6px;
     background: var(--config-panel-soft);
+    box-shadow: inset 3px 0 0 var(--config-accent);
 }
 
 #tab-config .toml-current-file span {

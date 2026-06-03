@@ -514,8 +514,13 @@ def test_config_actions_are_de_noised_and_sticky_controls_are_wired() -> None:
     toml_current_file_css = _section(css, "#tab-config .toml-current-file {", "#tab-config .toml-current-file span")
     assert "overflow: visible;" in toml_current_row_css
     assert "z-index: 65;" in toml_current_row_css
+    assert "padding: 0 1.25rem 0.8rem calc(1.25rem + 6px);" in toml_current_row_css
     assert "position: relative;" in toml_current_file_css
     assert "overflow: visible;" in toml_current_file_css
+    assert "box-sizing: border-box;" in toml_current_file_css
+    assert "min-width: 0;" in toml_current_file_css
+    assert "padding: 0.58rem 0.65rem 0.58rem 0.82rem;" in toml_current_file_css
+    assert "box-shadow: inset 3px 0 0 var(--config-accent);" in toml_current_file_css
     toml_actions_css = _section(css, "#tab-config .toml-file-actions", "#tab-config .toml-primary-actions,")
     toml_more_css = _section(css, "#tab-config .toml-more-actions {", "#tab-config .toml-more-actions > summary")
     toml_more_open_css = _section(css, "#tab-config .toml-more-actions[open]", "#tab-config .toml-more-actions > summary")
@@ -1514,6 +1519,7 @@ def test_config_workbench_manager_is_right_column() -> None:
     assert "左侧训练配置工作台 + 右侧配置预设管理" in html
     assert "grid-template-columns: minmax(0, 1fr) clamp(260px, 24vw, 360px);" in layout
     assert "grid-column: 2;" in manager
+    assert "isolation: isolate;" in manager
     assert "z-index: 60;" in manager
     assert "overflow: visible;" in manager
     assert "border-left: 1px solid var(--config-border-strong);" in manager
