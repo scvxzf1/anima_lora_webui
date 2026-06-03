@@ -36,7 +36,7 @@ methods_subdir = "imported"
 files = ["configs/imported/rokkotsu_goddess.toml", "configs/imported/rokkotsu_goddess_copy.toml", "configs/imported/12313.toml"]
 order = ["configs/imported/tlora_copy.toml", "configs/imported/12313.toml", "configs/imported/rokkotsu_goddess_copy.toml", "configs/imported/rokkotsu_goddess.toml", "configs/imported/kesulu-528-lora-tag.toml"]
 patterns = ["configs/imported/*.toml"]
-exclude = ["configs/imported/5-30-3x.toml", "configs/imported/5-30-nl-tag.toml", "configs/imported/5-30-tag-73tag-触发1.toml", "configs/imported/5-30-tag-73tag.toml", "configs/imported/5-30-tag-7tag+3nl.toml", "configs/imported/5-30-tag-nl-高级73-额外触发.toml", "configs/imported/5-30-tag-nl-高级73.toml", "configs/imported/kesulu-526-lokr.toml", "configs/imported/kesulu-526-lokr1.toml", "configs/imported/rokkotsu_goddess_528_7nl3tag.toml", "configs/imported/rokkotsu_goddess_528_7tag3nl.toml", "configs/imported/rokkotsu_goddess_528_nl.toml", "configs/imported/rokkotsu_goddess_528_tag.toml", "configs/imported/rokkotsu_goddess_5_14.toml", "configs/imported/rokkotsu_goddess_5_14_copy.toml"]
+exclude = ["configs/imported/5-30-3x.toml", "configs/imported/5-30-nl-tag.toml", "configs/imported/5-30-tag-73tag-触发1.toml", "configs/imported/5-30-tag-73tag.toml", "configs/imported/5-30-tag-7tag+3nl.toml", "configs/imported/5-30-tag-nl-高级73-额外触发.toml", "configs/imported/5-30-tag-nl-高级73.toml", "configs/imported/kesulu-526-lokr.toml", "configs/imported/kesulu-526-lokr1.toml", "configs/imported/rokkotsu_goddess_528_7nl3tag.toml", "configs/imported/rokkotsu_goddess_528_7tag3nl.toml", "configs/imported/rokkotsu_goddess_528_nl.toml", "configs/imported/rokkotsu_goddess_528_tag.toml", "configs/imported/rokkotsu_goddess_5_14.toml", "configs/imported/rokkotsu_goddess_5_14_copy.toml", "configs/imported/测试1.toml"]
 
 [[groups]]
 id = "rokkotsu_goddess"
@@ -88,6 +88,8 @@ locked = false
 trainable = true
 methods_subdir = "imported"
 user_managed = true
+files = ["configs/imported/测试1.toml"]
+order = ["configs/imported/测试1.toml"]
 
 [[groups]]
 id = "5-27-4x"
