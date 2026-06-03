@@ -485,6 +485,11 @@ def test_config_form_uses_navigation_search_and_progressive_disclosure() -> None
     assert ".config-category" not in css
     assert ".config-field-grid-4col" in css
     assert ".config-group-title-actions" in css
+    compact_field_css = _section(css, ".config-field-grid-3col .field-main", ".field-label-stack")
+    assert "grid-template-rows: auto auto;" in compact_field_css
+    assert "row-gap: 0.24rem;" in compact_field_css
+    assert "grid-row: 1;" in compact_field_css
+    assert "grid-row: 2;" in compact_field_css
 
     primary_section = _section(source, "title: '常用训练设置'", "title: '步数与训练量'")
     resource_section = _section(source, "title: '显存与速度'", "title: '缓存与预处理'")
@@ -505,6 +510,21 @@ def test_config_actions_are_de_noised_and_sticky_controls_are_wired() -> None:
     assert "btn-apply-toml" in html
     assert "btn-toggle-toml-editor" in html
     assert ".toml-more-actions-popover" in css
+    toml_current_row_css = _section(css, "#tab-config .toml-file-row {", "#tab-config .toml-current-file {")
+    toml_current_file_css = _section(css, "#tab-config .toml-current-file {", "#tab-config .toml-current-file span")
+    assert "overflow: visible;" in toml_current_row_css
+    assert "z-index: 65;" in toml_current_row_css
+    assert "position: relative;" in toml_current_file_css
+    assert "overflow: visible;" in toml_current_file_css
+    toml_actions_css = _section(css, "#tab-config .toml-file-actions", "#tab-config .toml-primary-actions,")
+    toml_more_css = _section(css, "#tab-config .toml-more-actions {", "#tab-config .toml-more-actions > summary")
+    toml_more_open_css = _section(css, "#tab-config .toml-more-actions[open]", "#tab-config .toml-more-actions > summary")
+    toml_popover_css = _section(css, "#tab-config .toml-more-actions-popover", "#tab-config #toml-status")
+    assert "overflow: visible;" in toml_actions_css
+    assert "z-index: 70;" in toml_actions_css
+    assert "position: relative;" in toml_more_css
+    assert "z-index: 220;" in toml_more_open_css
+    assert "z-index: 220;" in toml_popover_css
     assert "opacity: 0;" in _section(css, ".toml-group-actions", ".toml-group-action-btn,")
 
     assert "config-sticky-actions" in html
@@ -1494,6 +1514,8 @@ def test_config_workbench_manager_is_right_column() -> None:
     assert "左侧训练配置工作台 + 右侧配置预设管理" in html
     assert "grid-template-columns: minmax(0, 1fr) clamp(260px, 24vw, 360px);" in layout
     assert "grid-column: 2;" in manager
+    assert "z-index: 60;" in manager
+    assert "overflow: visible;" in manager
     assert "border-left: 1px solid var(--config-border-strong);" in manager
     assert "grid-column: 1;" in editor
     assert "grid-template-columns: minmax(0, 1fr) minmax(260px, 300px);" in compact

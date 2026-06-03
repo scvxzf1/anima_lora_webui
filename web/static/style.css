@@ -3566,7 +3566,9 @@ select.dataset-config-input {
     flex-direction: column;
     grid-column: 2;
     grid-row: 1;
-    overflow: hidden;
+    position: relative;
+    z-index: 60;
+    overflow: visible;
     border-left: 1px solid var(--config-border-strong);
     background: var(--config-sidebar-bg);
 }
@@ -3676,12 +3678,18 @@ select.dataset-config-input {
 #tab-config .toml-file-row {
     display: grid;
     gap: 0.5rem;
+    position: relative;
+    z-index: 65;
+    overflow: visible;
     padding: 0 1.25rem 0.8rem;
 }
 
 #tab-config .toml-current-file {
     display: grid;
     gap: 0.15rem;
+    position: relative;
+    z-index: 1;
+    overflow: visible;
     padding: 0.58rem 0.65rem;
     border-color: var(--config-border);
     border-left: 0;
@@ -3728,6 +3736,9 @@ select.dataset-config-input {
     display: grid;
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
     gap: 0.38rem;
+    position: relative;
+    z-index: 70;
+    overflow: visible;
     padding: 0 1.25rem 0.75rem;
 }
 
@@ -3749,6 +3760,12 @@ select.dataset-config-input {
 
 #tab-config .toml-more-actions {
     min-width: 0;
+    position: relative;
+    z-index: 1;
+}
+
+#tab-config .toml-more-actions[open] {
+    z-index: 220;
 }
 
 #tab-config .toml-more-actions > summary {
@@ -3767,6 +3784,9 @@ select.dataset-config-input {
 }
 
 #tab-config .toml-more-actions-popover {
+    right: 0;
+    z-index: 220;
+    width: min(360px, calc(100vw - 2rem));
     border-color: var(--config-border-strong);
     border-radius: 6px;
     background: var(--config-panel-bg);
@@ -5792,22 +5812,28 @@ select.dataset-config-input {
 .config-field-grid-4col .field-main {
     display: grid;
     grid-template-columns: minmax(0, 1fr) 18px;
+    grid-template-rows: auto auto;
     align-items: center;
+    column-gap: 0.35rem;
+    row-gap: 0.24rem;
 }
 .config-field-grid-3col .field-name,
 .config-field-grid-4col .field-name {
     grid-column: 1;
+    grid-row: 1;
     min-width: 0;
     font-size: 0.7rem;
 }
 .config-field-grid-3col .field-input,
 .config-field-grid-4col .field-input {
     grid-column: 1 / -1;
+    grid-row: 2;
     width: 100%;
 }
 .config-field-grid-3col .info-toggle,
 .config-field-grid-4col .info-toggle {
     grid-column: 2;
+    grid-row: 1;
     justify-self: end;
 }
 
