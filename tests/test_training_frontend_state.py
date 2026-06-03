@@ -497,11 +497,13 @@ def test_config_form_uses_navigation_search_and_progressive_disclosure() -> None
     assert "grid-template-columns: repeat(auto-fit, minmax(96px, 1fr));" in resource_quick_css
     assert "grid-column: 1 / -1;" in _section(css, ".config-resource-quick-label {", ".config-resource-preset-btn")
     assert "RESOURCE_QUICK_PRESETS" in source
-    for label in ["全 GPU", "Balanced 16G", "更省显存", "OOM 兜底"]:
+    for label in ["全 GPU", "Balanced 16G", "FP8 测试", "更省显存", "OOM 兜底"]:
         assert label in source
     for value in [
         "blocks_to_swap: 12",
         "blocks_to_swap: 16",
+        "block_swap_transfer_dtype: 'bf16'",
+        "block_swap_transfer_dtype: 'fp8_e4m3'",
         "selective_checkpoint: 'mlp_only'",
         "block_swap_profile_jsonl: 'auto'",
     ]:
@@ -530,7 +532,10 @@ def test_config_form_uses_navigation_search_and_progressive_disclosure() -> None
     resource_compact = _section(source, "'config-group-resource': [", "const VARIANT_METHOD_FAMILY")
     assert "'gradient_checkpointing'," in primary_section
     assert "'gradient_checkpointing'," not in resource_section
-    assert "keys: ['blocks_to_swap', 'selective_checkpoint', 'block_swap_profile_jsonl']" in resource_compact
+    assert "'block_swap_transfer_dtype'," in resource_section
+    assert "block_swap_transfer_dtype: '块交换传输精度'" in source
+    assert "block_swap_transfer_dtype: ['bf16', 'fp8_e4m3']" in source
+    assert "keys: ['blocks_to_swap', 'block_swap_transfer_dtype', 'selective_checkpoint', 'block_swap_profile_jsonl']" in resource_compact
     assert "keys: ['disable_block_swap_for_eval', 'unsloth_offload_checkpointing']" in resource_compact
     assert "config-field-grid-2col config-field-grid-inline-flags" in resource_compact
 
@@ -1966,6 +1971,11 @@ def test_dataset_json_caption_switch_ui_is_wired() -> None:
     assert "function updateDatasetEditorRowTriggerClone" in source
     assert ".dataset-nl-tag-mix" in css
     assert ".dataset-nl-tag-summary" in css
+    assert "grid-template-columns: minmax(78px, 1fr) minmax(100px, 124px) minmax(78px, 1fr);" in css
+    assert "#tab-datasets .dataset-repeat-field {\n    grid-column: 2;" in css
+    assert "#tab-datasets .dataset-remove-btn {\n    grid-column: 3;" in css
+    assert "justify-items: center;" in css
+    assert "grid-template-columns: minmax(100px, 124px) auto;\n        justify-content: center;" in css
 
 
 def test_dataset_editor_preserves_subset_filters_and_rederives_hidden_paths() -> None:

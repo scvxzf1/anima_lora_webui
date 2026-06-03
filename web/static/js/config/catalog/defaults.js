@@ -7,6 +7,7 @@ export const FORM_UI_DEFAULTS = {
     sample_every_n_epochs: '',
     sample_every_n_steps: '',
     gradient_checkpointing: true,
+    block_swap_transfer_dtype: 'bf16',
     max_train_epochs: '',
     max_train_steps: 0,
     sample_at_first: false,

@@ -5508,10 +5508,20 @@ select.dataset-config-input {
 
 #tab-datasets .dataset-row-bottom-actions {
     display: grid;
-    grid-template-columns: minmax(100px, 124px) auto;
+    grid-template-columns: minmax(78px, 1fr) minmax(100px, 124px) minmax(78px, 1fr);
     gap: 0.45rem;
     align-items: end;
-    justify-content: end;
+    justify-items: center;
+}
+
+#tab-datasets .dataset-repeat-field {
+    grid-column: 2;
+    width: 100%;
+}
+
+#tab-datasets .dataset-remove-btn {
+    grid-column: 3;
+    justify-self: start;
 }
 
 #tab-datasets .dataset-repeat-field input {
@@ -5714,6 +5724,17 @@ select.dataset-config-input {
     #tab-datasets .dataset-row-settings,
     #tab-datasets .dataset-row-bottom-actions {
         margin-inline: 0.8rem;
+    }
+
+    #tab-datasets .dataset-row-bottom-actions {
+        grid-template-columns: minmax(100px, 124px) auto;
+        justify-content: center;
+        justify-items: stretch;
+    }
+
+    #tab-datasets .dataset-repeat-field,
+    #tab-datasets .dataset-remove-btn {
+        grid-column: auto;
     }
 }
 

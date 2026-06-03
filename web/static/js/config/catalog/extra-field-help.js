@@ -1,4 +1,4 @@
-import { help } from './help-builder.js?v=module-bootstrap-20260603-5';
+import { help } from './help-builder.js?v=module-bootstrap-20260603-6';
 
 export const EXTRA_FIELD_HELP_ZH = {
     max_data_loader_n_workers: help(

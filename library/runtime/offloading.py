@@ -44,16 +44,63 @@ def _can_swap_frozen_weight_to_cpu(module: nn.Module) -> bool:
     )
 
 
-def _capture_cpu_master(weight: torch.Tensor, *, pin_memory: bool) -> torch.Tensor:
+_BLOCK_SWAP_TRANSFER_DTYPES = {"bf16", "fp8_e4m3"}
+
+
+def normalize_block_swap_transfer_dtype(value: Optional[str]) -> str:
+    dtype = str(value or "bf16").strip().lower()
+    aliases = {
+        "bfloat16": "bf16",
+        "float8_e4m3": "fp8_e4m3",
+        "float8_e4m3fn": "fp8_e4m3",
+        "e4m3": "fp8_e4m3",
+    }
+    dtype = aliases.get(dtype, dtype)
+    if dtype not in _BLOCK_SWAP_TRANSFER_DTYPES:
+        raise ValueError(
+            "block_swap_transfer_dtype must be one of: "
+            f"{', '.join(sorted(_BLOCK_SWAP_TRANSFER_DTYPES))}"
+        )
+    if dtype == "fp8_e4m3" and not hasattr(torch, "float8_e4m3fn"):
+        raise ValueError("block_swap_transfer_dtype=fp8_e4m3 requires torch.float8_e4m3fn")
+    return dtype
+
+
+def _capture_cpu_master(
+    weight: torch.Tensor, *, pin_memory: bool, transfer_dtype: str
+) -> tuple[torch.Tensor, dict[str, float]]:
     master = weight.detach()
     if master.device.type != "cpu":
         master = master.to("cpu", non_blocking=False)
+    stats: dict[str, float] = {
+        "source_bytes": float(_tensor_nbytes(master)),
+        "stored_bytes": float(_tensor_nbytes(master)),
+        "max_abs": 0.0,
+        "max_abs_error": 0.0,
+        "mean_abs_error": 0.0,
+        "relative_l2": 0.0,
+        "saturated": 0.0,
+    }
+    if transfer_dtype == "fp8_e4m3":
+        source = master
+        source_float = source.float()
+        stats["max_abs"] = float(source_float.abs().max().item()) if source.numel() else 0.0
+        finfo = torch.finfo(torch.float8_e4m3fn)
+        stats["saturated"] = float(bool((source_float.abs() > finfo.max).any().item()))
+        master = source.to(torch.float8_e4m3fn)
+        restored = master.to(source.dtype).float()
+        diff = source_float - restored
+        stats["stored_bytes"] = float(_tensor_nbytes(master))
+        stats["max_abs_error"] = float(diff.abs().max().item()) if source.numel() else 0.0
+        stats["mean_abs_error"] = float(diff.abs().mean().item()) if source.numel() else 0.0
+        denom = float(source_float.norm().item())
+        stats["relative_l2"] = float(diff.norm().item()) / denom if denom > 0.0 else 0.0
     if pin_memory:
         try:
             master = master.pin_memory()
         except Exception:
             pass
-    return master
+    return master, stats
 
 
 def _finalize_async_cuda_timings(timings: dict[str, Any]) -> None:
@@ -247,11 +294,13 @@ class Offloader:
         device: torch.device,
         debug: bool = False,
         profile_jsonl: Optional[Union[str, BlockSwapProfiler]] = None,
+        transfer_dtype: Optional[str] = None,
     ):
         self.num_blocks = num_blocks
         self.blocks_to_swap = blocks_to_swap
         self.device = device
         self.debug = debug
+        self.transfer_dtype = normalize_block_swap_transfer_dtype(transfer_dtype)
 
         self.thread_pool = ThreadPoolExecutor(max_workers=1)
         self.futures = {}
@@ -259,8 +308,18 @@ class Offloader:
         self.profiler = _resolve_profiler(profile_jsonl)
         self.profile_step = 0
         self._cpu_weight_masters: Optional[list[dict[str, torch.Tensor]]] = None
+        self._cpu_weight_master_dtypes: Optional[list[dict[str, torch.dtype]]] = None
         self._frozen_weight_bytes_by_block: list[int] = [0 for _ in range(num_blocks)]
+        self._bf16_weight_bytes_by_block: list[int] = [0 for _ in range(num_blocks)]
+        self._fp8_weight_bytes_by_block: list[int] = [0 for _ in range(num_blocks)]
+        self._fp8_max_abs_by_block: list[float] = [0.0 for _ in range(num_blocks)]
+        self._fp8_max_abs_error_by_block: list[float] = [0.0 for _ in range(num_blocks)]
+        self._fp8_mean_abs_error_by_block: list[float] = [0.0 for _ in range(num_blocks)]
+        self._fp8_relative_l2_by_block: list[float] = [0.0 for _ in range(num_blocks)]
+        self._fp8_saturated_tensors = 0
         self._frozen_weight_master_bytes = 0
+        self._bf16_master_bytes = 0
+        self._fp8_master_bytes = 0
         self._reported_weight_masters = False
 
     def _ensure_cpu_weight_masters(
@@ -271,29 +330,91 @@ class Offloader:
 
         pin_memory = self.cuda_available
         masters: list[dict[str, torch.Tensor]] = []
+        master_dtypes: list[dict[str, torch.dtype]] = []
         bytes_by_block: list[int] = []
+        bf16_bytes_by_block: list[int] = []
+        fp8_bytes_by_block: list[int] = []
+        fp8_max_abs_by_block: list[float] = []
+        fp8_max_abs_error_by_block: list[float] = []
+        fp8_mean_abs_error_by_block: list[float] = []
+        fp8_relative_l2_by_block: list[float] = []
         total_bytes = 0
+        total_bf16_bytes = 0
+        total_fp8_bytes = 0
+        saturated_tensors = 0
         for block in blocks:
             block_masters: dict[str, torch.Tensor] = {}
+            block_dtypes: dict[str, torch.dtype] = {}
             block_bytes = 0
+            block_bf16_bytes = 0
+            block_fp8_bytes = 0
+            block_max_abs = 0.0
+            block_max_abs_error = 0.0
+            block_mean_abs_errors: list[float] = []
+            block_relative_l2s: list[float] = []
             for name, module in block.named_modules():
                 weight = getattr(module, "weight", None)
                 if weight is None or not _can_swap_frozen_weight_to_cpu(module):
                     continue
-                master = _capture_cpu_master(weight.data, pin_memory=pin_memory)
+                master, stats = _capture_cpu_master(
+                    weight.data,
+                    pin_memory=pin_memory,
+                    transfer_dtype=self.transfer_dtype,
+                )
                 block_masters[name] = master
-                block_bytes += _tensor_nbytes(master)
+                block_dtypes[name] = weight.data.dtype
+                stored_bytes = int(stats["stored_bytes"])
+                source_bytes = int(stats["source_bytes"])
+                fp8_bytes = stored_bytes if self.transfer_dtype == "fp8_e4m3" else 0
+                block_bytes += stored_bytes
+                block_bf16_bytes += source_bytes
+                block_fp8_bytes += fp8_bytes
+                block_max_abs = max(block_max_abs, float(stats["max_abs"]))
+                block_max_abs_error = max(
+                    block_max_abs_error, float(stats["max_abs_error"])
+                )
+                block_mean_abs_errors.append(float(stats["mean_abs_error"]))
+                block_relative_l2s.append(float(stats["relative_l2"]))
+                saturated_tensors += int(stats["saturated"])
             masters.append(block_masters)
+            master_dtypes.append(block_dtypes)
             bytes_by_block.append(block_bytes)
+            bf16_bytes_by_block.append(block_bf16_bytes)
+            fp8_bytes_by_block.append(block_fp8_bytes)
+            fp8_max_abs_by_block.append(block_max_abs)
+            fp8_max_abs_error_by_block.append(block_max_abs_error)
+            fp8_mean_abs_error_by_block.append(
+                sum(block_mean_abs_errors) / len(block_mean_abs_errors)
+                if block_mean_abs_errors
+                else 0.0
+            )
+            fp8_relative_l2_by_block.append(
+                sum(block_relative_l2s) / len(block_relative_l2s)
+                if block_relative_l2s
+                else 0.0
+            )
             total_bytes += block_bytes
+            total_bf16_bytes += block_bf16_bytes
+            total_fp8_bytes += block_fp8_bytes
 
         self._cpu_weight_masters = masters
+        self._cpu_weight_master_dtypes = master_dtypes
         self._frozen_weight_bytes_by_block = bytes_by_block
+        self._bf16_weight_bytes_by_block = bf16_bytes_by_block
+        self._fp8_weight_bytes_by_block = fp8_bytes_by_block
+        self._fp8_max_abs_by_block = fp8_max_abs_by_block
+        self._fp8_max_abs_error_by_block = fp8_max_abs_error_by_block
+        self._fp8_mean_abs_error_by_block = fp8_mean_abs_error_by_block
+        self._fp8_relative_l2_by_block = fp8_relative_l2_by_block
+        self._fp8_saturated_tensors = saturated_tensors
         self._frozen_weight_master_bytes = total_bytes
+        self._bf16_master_bytes = total_bf16_bytes
+        self._fp8_master_bytes = total_fp8_bytes
         if not self._reported_weight_masters:
             logger.info(
                 "Block swap frozen CPU masters prepared: "
-                f"{total_bytes / (1024 ** 3):.2f} GiB across {len(blocks)} blocks"
+                f"{total_bytes / (1024 ** 3):.2f} GiB across {len(blocks)} blocks "
+                f"(transfer_dtype={self.transfer_dtype})"
             )
             self._reported_weight_masters = True
         if self.profiler is not None:
@@ -303,8 +424,18 @@ class Offloader:
                     "step": self.profile_step,
                     "num_blocks": self.num_blocks,
                     "blocks_to_swap": self.blocks_to_swap,
+                    "transfer_dtype": self.transfer_dtype,
                     "frozen_weight_master_bytes": total_bytes,
                     "frozen_weight_bytes_by_block": bytes_by_block,
+                    "bf16_master_bytes": total_bf16_bytes,
+                    "bf16_weight_bytes_by_block": bf16_bytes_by_block,
+                    "fp8_master_bytes": total_fp8_bytes,
+                    "fp8_weight_bytes_by_block": fp8_bytes_by_block,
+                    "fp8_saturated_tensors": saturated_tensors,
+                    "fp8_max_abs_by_block": fp8_max_abs_by_block,
+                    "fp8_max_abs_error_by_block": fp8_max_abs_error_by_block,
+                    "fp8_mean_abs_error_by_block": fp8_mean_abs_error_by_block,
+                    "fp8_relative_l2_by_block": fp8_relative_l2_by_block,
                     "h2d_only": True,
                 }
             )
@@ -330,12 +461,16 @@ class Offloader:
 
         source_masters = self._cpu_weight_masters[block_idx_to_cpu]
         target_masters = self._cpu_weight_masters[block_idx_to_cuda]
+        source_dtypes = (self._cpu_weight_master_dtypes or [])[block_idx_to_cpu]
+        target_dtypes = (self._cpu_weight_master_dtypes or [])[block_idx_to_cuda]
         if self.cuda_available:
             return self._swap_weight_devices_cached_cuda(
                 block_to_cpu,
                 block_to_cuda,
                 source_masters,
                 target_masters,
+                source_dtypes,
+                target_dtypes,
                 ready_event=ready_event,
             )
         return self._swap_weight_devices_cached_no_cuda(
@@ -343,6 +478,8 @@ class Offloader:
             block_to_cuda,
             source_masters,
             target_masters,
+            source_dtypes,
+            target_dtypes,
         )
 
     def _swap_weight_devices_cached_cuda(
@@ -351,13 +488,23 @@ class Offloader:
         layer_to_cuda: nn.Module,
         source_masters: dict[str, torch.Tensor],
         target_masters: dict[str, torch.Tensor],
+        source_dtypes: dict[str, torch.dtype],
+        target_dtypes: dict[str, torch.dtype],
         *,
         ready_event: Optional[Any] = None,
     ) -> dict[str, float]:
         assert layer_to_cpu.__class__ == layer_to_cuda.__class__
 
         weight_swap_jobs: list[
-            Tuple[nn.Module, nn.Module, torch.Tensor, torch.Tensor, torch.Tensor]
+            Tuple[
+                nn.Module,
+                nn.Module,
+                torch.Tensor,
+                torch.Tensor,
+                torch.Tensor,
+                torch.dtype,
+                torch.dtype,
+            ]
         ] = []
         modules_to_cpu = {k: v for k, v in layer_to_cpu.named_modules()}
         for module_to_cuda_name, module_to_cuda in layer_to_cuda.named_modules():
@@ -367,10 +514,14 @@ class Offloader:
             module_to_cpu = modules_to_cpu.get(module_to_cuda_name, None)
             source_master = source_masters.get(module_to_cuda_name)
             target_master = target_masters.get(module_to_cuda_name)
+            source_dtype = source_dtypes.get(module_to_cuda_name)
+            target_dtype = target_dtypes.get(module_to_cuda_name)
             if (
                 module_to_cpu is not None
                 and source_master is not None
                 and target_master is not None
+                and source_dtype is not None
+                and target_dtype is not None
                 and module_to_cpu.weight.shape == module_to_cuda.weight.shape
             ):
                 weight_swap_jobs.append(
@@ -380,6 +531,8 @@ class Offloader:
                         module_to_cpu.weight.data,
                         source_master,
                         target_master,
+                        source_dtype,
+                        target_dtype,
                     )
                 )
             else:
@@ -413,6 +566,8 @@ class Offloader:
                 cuda_data_view,
                 source_master,
                 target_master,
+                source_dtype,
+                target_dtype,
             ) in weight_swap_jobs:
                 module_to_cpu.weight.data = source_master
                 cuda_data_view.record_stream(stream)
@@ -431,6 +586,8 @@ class Offloader:
         layer_to_cuda: nn.Module,
         source_masters: dict[str, torch.Tensor],
         target_masters: dict[str, torch.Tensor],
+        source_dtypes: dict[str, torch.dtype],
+        target_dtypes: dict[str, torch.dtype],
     ) -> dict[str, float]:
         assert layer_to_cpu.__class__ == layer_to_cuda.__class__
 
@@ -443,15 +600,19 @@ class Offloader:
             module_to_cpu = modules_to_cpu.get(module_to_cuda_name, None)
             source_master = source_masters.get(module_to_cuda_name)
             target_master = target_masters.get(module_to_cuda_name)
+            source_dtype = source_dtypes.get(module_to_cuda_name)
+            target_dtype = target_dtypes.get(module_to_cuda_name)
             if (
                 module_to_cpu is not None
                 and source_master is not None
                 and target_master is not None
+                and source_dtype is not None
+                and target_dtype is not None
                 and module_to_cpu.weight.shape == module_to_cuda.weight.shape
             ):
                 module_to_cpu.weight.data = source_master
                 module_to_cuda.weight.data = target_master.to(
-                    self.device, non_blocking=True
+                    self.device, dtype=target_dtype, non_blocking=True
                 )
             else:
                 _ensure_weight_on_device(module_to_cuda, self.device)
@@ -459,6 +620,29 @@ class Offloader:
                     _ensure_weight_on_device(module_to_cpu, self.device)
         synchronize_device(self.device)
         return {"d2h_ms": 0.0, "h2d_ms": (time.perf_counter() - t0) * 1000.0}
+
+    def restore_blocks_to_device(
+        self, blocks: Union[list[nn.Module], nn.ModuleList], device: torch.device
+    ) -> None:
+        """Restore all cached frozen masters to their execution dtype on device."""
+        if self._cpu_weight_masters is None or self._cpu_weight_master_dtypes is None:
+            for b in blocks:
+                weighs_to_device(b, device)
+            return
+
+        for block, masters, dtypes in zip(
+            blocks, self._cpu_weight_masters, self._cpu_weight_master_dtypes
+        ):
+            modules = {name: module for name, module in block.named_modules()}
+            for name, master in masters.items():
+                module = modules.get(name)
+                weight = getattr(module, "weight", None) if module is not None else None
+                if weight is None:
+                    continue
+                dtype = dtypes.get(name, weight.data.dtype)
+                weight.data = master.to(device=device, dtype=dtype, non_blocking=True)
+            weighs_to_device(block, device, include_trainable=True)
+        synchronize_device(device)
 
     def _submit_move_blocks(
         self,
@@ -563,6 +747,7 @@ class Offloader:
                     "step": meta.get("step"),
                     "block_idx": block_idx,
                     "block_idx_to_cpu": meta.get("block_idx_to_cpu"),
+                    "transfer_dtype": self.transfer_dtype,
                     "wait_ms": wait_ms,
                     "h2d_ms": float(timings.get("h2d_ms", 0.0)),
                     "d2h_ms": float(timings.get("d2h_ms", 0.0)),
@@ -600,8 +785,16 @@ class ModelOffloader(Offloader):
         supports_backward: bool = True,
         debug: bool = False,
         profile_jsonl: Optional[Union[str, BlockSwapProfiler]] = None,
+        transfer_dtype: Optional[str] = None,
     ):
-        super().__init__(len(blocks), blocks_to_swap, device, debug, profile_jsonl)
+        super().__init__(
+            len(blocks),
+            blocks_to_swap,
+            device,
+            debug,
+            profile_jsonl,
+            transfer_dtype=transfer_dtype,
+        )
 
         self.supports_backward = supports_backward
         self.forward_only = (

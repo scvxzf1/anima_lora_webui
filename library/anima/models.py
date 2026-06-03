@@ -1538,6 +1538,7 @@ class Anima(nn.Module):
         device: torch.device,
         *,
         profile_jsonl: Optional[str] = None,
+        transfer_dtype: Optional[str] = None,
     ):
         self.blocks_to_swap = num_blocks
 
@@ -1550,9 +1551,12 @@ class Anima(nn.Module):
             self.blocks_to_swap,
             device,
             profile_jsonl=profile_jsonl,
+            transfer_dtype=transfer_dtype,
         )
         logger.info(
-            f"Anima: Block swap enabled. Swapping {num_blocks} blocks, total blocks: {self.num_blocks}, device: {device}."
+            "Anima: Block swap enabled. "
+            f"Swapping {num_blocks} blocks, total blocks: {self.num_blocks}, "
+            f"device: {device}, transfer_dtype: {self.offloader.transfer_dtype}."
         )
 
     def move_to_device_except_swap_blocks(self, device: torch.device):
@@ -1592,8 +1596,7 @@ class Anima(nn.Module):
             return False  # already paused
         for block_idx in list(self.offloader.futures.keys()):
             self.offloader._wait_blocks_move(block_idx)
-        for b in self.blocks:
-            weighs_to_device(b, self.offloader.device)
+        self.offloader.restore_blocks_to_device(self.blocks, self.offloader.device)
         if self.offloader.cuda_available:
             torch.cuda.synchronize()
         self._paused_blocks_to_swap = self.blocks_to_swap

@@ -1,4 +1,4 @@
-import { historySystemSummary, formatSystemPercent, formatSystemVram } from './system.js?v=module-bootstrap-20260603-5';
+import { historySystemSummary, formatSystemPercent, formatSystemVram } from './system.js?v=module-bootstrap-20260603-6';
 import {
     createHistoryDetailCopyButton,
     historyDetailEmptyText,
@@ -7,7 +7,7 @@ import {
     historyDetailSection,
     normalizedHistoryDetailPath,
     relativeHistoryDetailPath,
-} from './ui.js?v=module-bootstrap-20260603-5';
+} from './ui.js?v=module-bootstrap-20260603-6';
 
 export function createHistoryOverviewRenderer({ ctx, state, deps, renderHistoryDetailResume }) {
     const {

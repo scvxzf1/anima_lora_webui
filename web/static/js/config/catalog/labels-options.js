@@ -11,6 +11,7 @@ export const FIELD_LABEL_ZH = {
     balance_w_freq: '频率池均衡权重',
     b_cond_init: '条件注意力初始门控',
     block_swap_profile_jsonl: '块交换 Profile',
+    block_swap_transfer_dtype: '块交换传输精度',
     blocks_to_swap: 'CPU/GPU 交换块数',
     use_vae_cache: '使用 VAE 缓存',
     cache_llm_adapter_outputs: '缓存 LLM 适配器输出',
@@ -173,6 +174,7 @@ export const FIELD_LABEL_ZH = {
 export const FIELD_OPTIONS = {
     attn_mode: ['torch', 'xformers', 'flash', 'sageattn', 'flex', 'sdpa'],
     compile_inductor_mode: ['default', 'reduce-overhead', 'max-autotune', 'max-autotune-no-cudagraphs'],
+    block_swap_transfer_dtype: ['bf16', 'fp8_e4m3'],
     selective_checkpoint: ['off', 'mlp_only', 'every_other'],
     apply_ffn_lora: [true, false],
     contrastive_negative_mode: ['shuffled', 'jaccard', 'hard', 'hard_backoff'],

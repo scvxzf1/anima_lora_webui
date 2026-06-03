@@ -1,4 +1,4 @@
-import { help } from './help-builder.js?v=module-bootstrap-20260603-5';
+import { help } from './help-builder.js?v=module-bootstrap-20260603-6';
 
 export const FIELD_HELP_TRAINING_ZH = {    learning_rate: help(
         "学习率，决定每一步参数改动有多大。",
@@ -192,6 +192,14 @@ export const FIELD_HELP_TRAINING_ZH = {    learning_rate: help(
         ["CPU/GPU 来回搬运会明显拖慢训练。"],
         ["设太高会慢到不实用，也可能受 CPU 内存和硬盘交换影响。"],
         "显存够用保持 0；OOM 时先用 low_vram 或 lora-8gb 预设。"
+    ),
+    block_swap_transfer_dtype: help(
+        "块交换 frozen base 权重在 CPU 侧保存和传输时使用的精度。",
+        "bf16 是当前稳定路径；fp8_e4m3 会压缩 PCIe 传输，再在 GPU 上还原为执行精度。",
+        ["可能降低 H2D 等待时间。"],
+        ["fp8_e4m3 会引入 frozen base 权重量化误差。"],
+        ["只影响 frozen base block，不会量化 LoRA、router 或优化器状态。"],
+        "保持 bf16；只有做 FP8 交换传输消融时再改为 fp8_e4m3。"
     ),
     torch_compile: help(
         "是否让 PyTorch 先编译模型计算图再训练。",

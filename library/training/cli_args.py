@@ -779,6 +779,17 @@ def add_dit_training_arguments(parser: argparse.ArgumentParser):
         ),
     )
     parser.add_argument(
+        "--block_swap_transfer_dtype",
+        type=str,
+        default="bf16",
+        choices=["bf16", "fp8_e4m3"],
+        help=(
+            "Transfer/storage dtype for frozen DiT block-swap CPU masters. "
+            "bf16 keeps the current path; fp8_e4m3 is experimental and only "
+            "quantizes frozen base weights while restoring them to the execution dtype."
+        ),
+    )
+    parser.add_argument(
         "--selective_checkpoint",
         type=str,
         default="off",

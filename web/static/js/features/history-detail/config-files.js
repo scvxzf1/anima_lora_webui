@@ -9,7 +9,7 @@ import {
     historyDetailRunRoot,
     historyDetailSection,
     relativeHistoryDetailPath,
-} from './ui.js?v=module-bootstrap-20260603-5';
+} from './ui.js?v=module-bootstrap-20260603-6';
 
 export function createHistoryConfigFilesRenderer({ ctx, deps }) {
     const historyDetailCopyButton = (value, label) => createHistoryDetailCopyButton(ctx.dom.copyText, value, label);

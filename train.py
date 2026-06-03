@@ -29,6 +29,7 @@ from library.anima import (
 from library.models import qwen_vae as qwen_image_autoencoder_kl
 from library.models import sai_spec as sai_model_spec
 from library.runtime import noise as noise_utils
+from library.runtime.offloading import normalize_block_swap_transfer_dtype
 from library.config import loader as config_util
 from library.training.method_adapter import (
     ForwardArtifacts,
@@ -398,6 +399,9 @@ class AnimaTrainer:
             raise ValueError(
                 "--selective_checkpoint does not support CPU activation offload."
             )
+        args.block_swap_transfer_dtype = normalize_block_swap_transfer_dtype(
+            getattr(args, "block_swap_transfer_dtype", "bf16")
+        )
 
         assert (
             args.blocks_to_swap is None or args.blocks_to_swap == 0
@@ -727,12 +731,14 @@ class AnimaTrainer:
             logger.info(
                 "enable block swap: "
                 f"blocks_to_swap={args.blocks_to_swap}, "
+                f"transfer_dtype={args.block_swap_transfer_dtype}, "
                 f"profile_jsonl={profile_jsonl or 'off'}"
             )
             model.enable_block_swap(
                 args.blocks_to_swap,
                 accelerator.device,
                 profile_jsonl=profile_jsonl,
+                transfer_dtype=args.block_swap_transfer_dtype,
             )
 
         # Variance-reduced FM loss: the "frozen reference" is the trainable

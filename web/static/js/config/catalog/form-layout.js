@@ -82,6 +82,7 @@ export const FORM_SECTION_DEFS = [
         className: 'config-group-resource',
         keys: [
             'blocks_to_swap',
+            'block_swap_transfer_dtype',
             'selective_checkpoint',
             'block_swap_profile_jsonl',
             'disable_block_swap_for_eval',
@@ -337,8 +338,8 @@ export const CONFIG_COMPACT_FIELD_GROUPS = {
     ],
     'config-group-resource': [
         {
-            className: 'config-field-grid-3col',
-            keys: ['blocks_to_swap', 'selective_checkpoint', 'block_swap_profile_jsonl'],
+            className: 'config-field-grid-4col',
+            keys: ['blocks_to_swap', 'block_swap_transfer_dtype', 'selective_checkpoint', 'block_swap_profile_jsonl'],
         },
         {
             className: 'config-field-grid-2col config-field-grid-inline-flags',

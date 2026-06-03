@@ -1,18 +1,18 @@
-import * as defaults from './catalog/defaults.js?v=module-bootstrap-20260603-5';
-import * as extraFieldHelp from './catalog/extra-field-help.js?v=module-bootstrap-20260603-5';
-import * as formLayout from './catalog/form-layout.js?v=module-bootstrap-20260603-5';
-import { FIELD_HELP_ZH } from './catalog/field-help.js?v=module-bootstrap-20260603-5';
-import * as guides from './catalog/guides.js?v=module-bootstrap-20260603-5';
-import { choiceHelp, help } from './catalog/help-builder.js?v=module-bootstrap-20260603-5';
-import * as labelsOptions from './catalog/labels-options.js?v=module-bootstrap-20260603-5';
+import * as defaults from './catalog/defaults.js?v=module-bootstrap-20260603-6';
+import * as extraFieldHelp from './catalog/extra-field-help.js?v=module-bootstrap-20260603-6';
+import * as formLayout from './catalog/form-layout.js?v=module-bootstrap-20260603-6';
+import { FIELD_HELP_ZH } from './catalog/field-help.js?v=module-bootstrap-20260603-6';
+import * as guides from './catalog/guides.js?v=module-bootstrap-20260603-6';
+import { choiceHelp, help } from './catalog/help-builder.js?v=module-bootstrap-20260603-6';
+import * as labelsOptions from './catalog/labels-options.js?v=module-bootstrap-20260603-6';
 
-export * from './catalog/defaults.js?v=module-bootstrap-20260603-5';
-export * from './catalog/extra-field-help.js?v=module-bootstrap-20260603-5';
-export * from './catalog/form-layout.js?v=module-bootstrap-20260603-5';
-export { FIELD_HELP_ZH } from './catalog/field-help.js?v=module-bootstrap-20260603-5';
-export * from './catalog/guides.js?v=module-bootstrap-20260603-5';
-export { choiceHelp, help } from './catalog/help-builder.js?v=module-bootstrap-20260603-5';
-export * from './catalog/labels-options.js?v=module-bootstrap-20260603-5';
+export * from './catalog/defaults.js?v=module-bootstrap-20260603-6';
+export * from './catalog/extra-field-help.js?v=module-bootstrap-20260603-6';
+export * from './catalog/form-layout.js?v=module-bootstrap-20260603-6';
+export { FIELD_HELP_ZH } from './catalog/field-help.js?v=module-bootstrap-20260603-6';
+export * from './catalog/guides.js?v=module-bootstrap-20260603-6';
+export { choiceHelp, help } from './catalog/help-builder.js?v=module-bootstrap-20260603-6';
+export * from './catalog/labels-options.js?v=module-bootstrap-20260603-6';
 
 export function createCatalog() {
     return Object.freeze({

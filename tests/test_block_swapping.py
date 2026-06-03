@@ -8,7 +8,11 @@ import torch
 from torch import nn
 
 from library.runtime.device import should_move_weight_to_device
-from library.runtime.offloading import ModelOffloader, swap_weight_devices_no_cuda
+from library.runtime.offloading import (
+    ModelOffloader,
+    normalize_block_swap_transfer_dtype,
+    swap_weight_devices_no_cuda,
+)
 
 
 class _TinyBlock(nn.Module):
@@ -101,6 +105,7 @@ def test_block_swap_profile_jsonl_records_forward_wait(tmp_path) -> None:
     assert event["submit_phase"] == "forward_prefetch"
     assert event["block_idx"] == 2
     assert event["block_idx_to_cpu"] == 0
+    assert event["transfer_dtype"] == "bf16"
     assert event["wait_ms"] >= 0
     assert event["h2d_ms"] >= 0
     assert event["d2h_ms"] >= 0
@@ -129,10 +134,85 @@ def test_block_swap_profile_records_h2d_only_cpu_masters(tmp_path) -> None:
     config = [event for event in events if event["ev"] == "block_swap_config"][0]
     waits = [event for event in events if event["ev"] == "block_swap"]
     assert config["h2d_only"] is True
+    assert config["transfer_dtype"] == "bf16"
     assert config["frozen_weight_master_bytes"] > 0
+    assert config["bf16_master_bytes"] == config["frozen_weight_master_bytes"]
+    assert config["fp8_master_bytes"] == 0
     assert len(config["frozen_weight_bytes_by_block"]) == 3
     assert waits[0]["d2h_ms"] == 0
     assert waits[0]["h2d_ms"] >= 0
+
+
+def test_block_swap_transfer_dtype_aliases_and_rejects_invalid() -> None:
+    assert normalize_block_swap_transfer_dtype(None) == "bf16"
+    assert normalize_block_swap_transfer_dtype("bfloat16") == "bf16"
+    assert normalize_block_swap_transfer_dtype("float8_e4m3fn") == "fp8_e4m3"
+    with pytest.raises(ValueError):
+        normalize_block_swap_transfer_dtype("int8")
+
+
+@pytest.mark.skipif(
+    not hasattr(torch, "float8_e4m3fn"),
+    reason="torch build does not expose float8_e4m3fn",
+)
+def test_fp8_block_swap_cpu_master_restores_execution_dtype(tmp_path) -> None:
+    blocks = nn.ModuleList([_TinyBlock(), _TinyBlock(), _TinyBlock()])
+    profile_path = tmp_path / "block_swap_profile.jsonl"
+    offloader = ModelOffloader(
+        blocks,
+        blocks_to_swap=1,
+        device=torch.device("cpu"),
+        supports_backward=False,
+        profile_jsonl=str(profile_path),
+        transfer_dtype="fp8_e4m3",
+    )
+
+    offloader.prepare_block_devices_before_forward(blocks, free_cache=False)
+    assert offloader._cpu_weight_masters is not None
+    assert offloader._cpu_weight_masters[0]["base"].dtype == torch.float8_e4m3fn
+    assert "adapter" not in offloader._cpu_weight_masters[0]
+
+    offloader.submit_move_blocks(blocks, 0)
+    offloader.wait_for_block(2)
+
+    assert blocks[0].base.weight.dtype == torch.float8_e4m3fn
+    assert blocks[2].base.weight.dtype == torch.float32
+    assert blocks[2].adapter.weight.dtype == torch.float32
+    assert blocks[2].adapter.weight.requires_grad
+
+    events = [json.loads(line) for line in profile_path.read_text().splitlines()]
+    config = [event for event in events if event["ev"] == "block_swap_config"][0]
+    assert config["transfer_dtype"] == "fp8_e4m3"
+    assert config["fp8_master_bytes"] > 0
+    assert config["fp8_master_bytes"] < config["bf16_master_bytes"]
+    assert len(config["fp8_mean_abs_error_by_block"]) == 3
+    assert len(config["fp8_relative_l2_by_block"]) == 3
+
+
+@pytest.mark.skipif(
+    not hasattr(torch, "float8_e4m3fn"),
+    reason="torch build does not expose float8_e4m3fn",
+)
+def test_fp8_block_swap_restore_all_blocks_to_device_uses_execution_dtype() -> None:
+    blocks = nn.ModuleList([_TinyBlock(), _TinyBlock(), _TinyBlock()])
+    offloader = ModelOffloader(
+        blocks,
+        blocks_to_swap=1,
+        device=torch.device("cpu"),
+        supports_backward=False,
+        transfer_dtype="fp8_e4m3",
+    )
+
+    offloader.prepare_block_devices_before_forward(blocks, free_cache=False)
+    offloader.submit_move_blocks(blocks, 0)
+    offloader.wait_for_block(2)
+    assert blocks[0].base.weight.dtype == torch.float8_e4m3fn
+
+    offloader.restore_blocks_to_device(blocks, torch.device("cpu"))
+
+    assert all(block.base.weight.dtype == torch.float32 for block in blocks)
+    assert all(block.adapter.weight.dtype == torch.float32 for block in blocks)
+    assert all(block.adapter.weight.requires_grad for block in blocks)
 
 
 def test_block_swap_backward_next_use_wait_is_profiled(tmp_path) -> None:

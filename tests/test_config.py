@@ -50,6 +50,7 @@ def test_schema_has_known_keys(populated_parser):
         "max_train_epochs",
         "mixed_precision",
         "attn_mode",
+        "block_swap_transfer_dtype",
         "base_config",  # manual extra
         "use_moe_style",  # network-module allowlist (three-axis routing)
     ):
@@ -60,6 +61,9 @@ def test_choices_preserved(populated_parser):
     mp = config_schema.get_schema()["mixed_precision"]
     assert "bf16" in mp.choices
     assert "no" in mp.choices
+    transfer_dtype = config_schema.get_schema()["block_swap_transfer_dtype"]
+    assert "bf16" in transfer_dtype.choices
+    assert "fp8_e4m3" in transfer_dtype.choices
 
 
 # ---------------------------------------------------------------------------
@@ -226,6 +230,7 @@ def test_balanced_16g_preset_is_block_swap_first(populated_parser):
     assert merged["unsloth_offload_checkpointing"] is False
     assert merged["selective_checkpoint"] == "off"
     assert merged["block_swap_profile_jsonl"] == "auto"
+    assert merged["block_swap_transfer_dtype"] == "bf16"
 
 
 def test_gui_lora_respects_balanced_16g_blockswap(populated_parser):

@@ -1,13 +1,13 @@
-import { createPreviewFeature } from './preview/index.js?v=module-bootstrap-20260603-5';
-import { createQueueFeature } from './queue/index.js?v=module-bootstrap-20260603-5';
-import { createHistoryDetailFeature } from './history-detail/index.js?v=module-bootstrap-20260603-5';
+import { createPreviewFeature } from './preview/index.js?v=module-bootstrap-20260603-6';
+import { createQueueFeature } from './queue/index.js?v=module-bootstrap-20260603-6';
+import { createHistoryDetailFeature } from './history-detail/index.js?v=module-bootstrap-20260603-6';
 import {
     formatSystemPercent,
     formatSystemTemperature,
     formatSystemVram,
     historySystemSummary,
-} from './history-detail/system.js?v=module-bootstrap-20260603-5';
-import { formatCompactNumber, numberOrNull } from './history-detail/ui.js?v=module-bootstrap-20260603-5';
+} from './history-detail/system.js?v=module-bootstrap-20260603-6';
+import { formatCompactNumber, numberOrNull } from './history-detail/ui.js?v=module-bootstrap-20260603-6';
 
 function formatLossValue(value) {
     const n = Number(value);
@@ -78,6 +78,7 @@ export function createLegacyApp(ctx) {
             note: '显存充足优先；最快，不做 block swap。',
             values: {
                 blocks_to_swap: 0,
+                block_swap_transfer_dtype: 'bf16',
                 selective_checkpoint: 'off',
                 block_swap_profile_jsonl: 'off',
                 unsloth_offload_checkpointing: false,
@@ -90,6 +91,20 @@ export function createLegacyApp(ctx) {
             note: '推荐 16GB；约省 4GB，速度损失较低。',
             values: {
                 blocks_to_swap: 12,
+                block_swap_transfer_dtype: 'bf16',
+                selective_checkpoint: 'off',
+                block_swap_profile_jsonl: 'auto',
+                unsloth_offload_checkpointing: false,
+                torch_compile: true,
+            },
+        },
+        {
+            id: 'fp8_swap_test',
+            label: 'FP8 测试',
+            note: '实验项；压缩 frozen base block 传输，只用于对照测试。',
+            values: {
+                blocks_to_swap: 12,
+                block_swap_transfer_dtype: 'fp8_e4m3',
                 selective_checkpoint: 'off',
                 block_swap_profile_jsonl: 'auto',
                 unsloth_offload_checkpointing: false,
@@ -102,6 +117,7 @@ export function createLegacyApp(ctx) {
             note: '交换 16 块；更省显存，训练会更慢。',
             values: {
                 blocks_to_swap: 16,
+                block_swap_transfer_dtype: 'bf16',
                 selective_checkpoint: 'off',
                 block_swap_profile_jsonl: 'auto',
                 unsloth_offload_checkpointing: false,
@@ -114,6 +130,7 @@ export function createLegacyApp(ctx) {
             note: '仍然 OOM 时用；开启 mlp_only 重算。',
             values: {
                 blocks_to_swap: 12,
+                block_swap_transfer_dtype: 'bf16',
                 selective_checkpoint: 'mlp_only',
                 block_swap_profile_jsonl: 'auto',
                 unsloth_offload_checkpointing: false,
@@ -2555,7 +2572,7 @@ export function createLegacyApp(ctx) {
         btn.type = 'button';
         btn.className = 'btn btn-small config-group-title-action config-resource-quick-toggle';
         btn.textContent = '快速填写';
-        btn.title = '显示四个显存与速度预设，一键填写当前表单';
+        btn.title = '显示显存与速度预设，一键填写当前表单';
         btn.setAttribute('aria-expanded', 'false');
         btn.addEventListener('click', () => {
             const panel = content.querySelector('.config-resource-quick-presets');
@@ -2564,7 +2581,7 @@ export function createLegacyApp(ctx) {
             panel.hidden = !nextVisible;
             btn.classList.toggle('active', nextVisible);
             btn.setAttribute('aria-expanded', String(nextVisible));
-            btn.title = nextVisible ? '收起显存与速度快速预设' : '显示四个显存与速度预设，一键填写当前表单';
+            btn.title = nextVisible ? '收起显存与速度快速预设' : '显示显存与速度预设，一键填写当前表单';
             if (nextVisible && content.hidden) {
                 content.hidden = false;
                 collapseBtn.textContent = '收起';
