@@ -198,6 +198,46 @@ def test_method_configs_clean(populated_parser, method: str, caplog):
         assert not offenders, f"{method} × {preset} warnings: {offenders}"
 
 
+def test_low_vram_blockswap_preset_is_available(populated_parser):
+    preset = toml.load("configs/presets.toml")["low_vram_blockswap"]
+    assert preset["blocks_to_swap"] == 8
+    assert preset["gradient_checkpointing"] is True
+    assert preset["unsloth_offload_checkpointing"] is False
+    assert preset["torch_compile"] is False
+
+    merged = load_method_preset("lora", "low_vram_blockswap")
+    assert merged["blocks_to_swap"] == 8
+    assert merged["disable_block_swap_for_eval"] is False
+
+
+def test_balanced_16g_preset_is_block_swap_first(populated_parser):
+    preset = toml.load("configs/presets.toml")["balanced_16g"]
+    assert preset["blocks_to_swap"] == 12
+    assert preset["gradient_checkpointing"] is False
+    assert preset["unsloth_offload_checkpointing"] is False
+    assert preset["torch_compile"] is True
+    assert "compile_inductor_mode" not in preset
+    assert preset["selective_checkpoint"] == "off"
+    assert preset["block_swap_profile_jsonl"] == "auto"
+
+    merged = load_method_preset("lora", "balanced_16g")
+    assert merged["blocks_to_swap"] == 12
+    assert merged["gradient_checkpointing"] is False
+    assert merged["unsloth_offload_checkpointing"] is False
+    assert merged["selective_checkpoint"] == "off"
+    assert merged["block_swap_profile_jsonl"] == "auto"
+
+
+def test_gui_lora_respects_balanced_16g_blockswap(populated_parser):
+    merged = load_method_preset(
+        "lora",
+        "balanced_16g",
+        methods_subdir="gui-methods",
+    )
+    assert merged["blocks_to_swap"] == 12
+    assert merged["unsloth_offload_checkpointing"] is False
+
+
 # ---------------------------------------------------------------------------
 # Provenance + render
 # ---------------------------------------------------------------------------

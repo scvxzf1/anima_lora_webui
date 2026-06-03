@@ -5,6 +5,20 @@ blocks_to_swap = 0
 gradient_checkpointing = true # only triggered when low_vram was set
 unsloth_offload_checkpointing = true  # only triggered when low_vram was set
 
+[low_vram_blockswap]
+blocks_to_swap = 8
+gradient_checkpointing = true
+unsloth_offload_checkpointing = false
+torch_compile = false
+
+[balanced_16g]
+blocks_to_swap = 12
+gradient_checkpointing = false
+unsloth_offload_checkpointing = false
+torch_compile = true
+selective_checkpoint = "off"
+block_swap_profile_jsonl = "auto"
+
 [graft]
 blocks_to_swap = 20
 

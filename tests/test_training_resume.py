@@ -502,6 +502,46 @@ def test_web_runtime_config_creates_run_directory_and_overrides_paths(tmp_path, 
     assert env["TRITON_CACHE_DIR"].endswith("model_cache/triton")
 
 
+def test_block_swap_profile_auto_config_targets_current_history_task(
+    tmp_path, monkeypatch
+):
+    _patch_runtime_service_paths(monkeypatch, tmp_path)
+    history_dir = tmp_path / "configs" / "web-training-history"
+    monkeypatch.setattr(training_service, "HISTORY_DIR", history_dir)
+    config_path = tmp_path / "output" / "runs" / "demo" / "config.runtime.toml"
+    config_path.parent.mkdir(parents=True)
+    profile_path = history_dir / "task-new" / "block_swap_profile.jsonl"
+
+    config_path.write_text('block_swap_profile_jsonl = "auto"\n', encoding="utf-8")
+    training_service._resolve_block_swap_profile_auto_config(
+        str(config_path), profile_path
+    )
+    cfg = toml.loads(config_path.read_text(encoding="utf-8"))
+    assert cfg["block_swap_profile_jsonl"] == str(profile_path)
+
+    old_profile_path = history_dir / "task-old" / "block_swap_profile.jsonl"
+    config_path.write_text(
+        toml.dumps({"block_swap_profile_jsonl": str(old_profile_path)}),
+        encoding="utf-8",
+    )
+    training_service._resolve_block_swap_profile_auto_config(
+        str(config_path), profile_path
+    )
+    cfg = toml.loads(config_path.read_text(encoding="utf-8"))
+    assert cfg["block_swap_profile_jsonl"] == str(profile_path)
+
+    explicit_profile_path = tmp_path / "logs" / "explicit.jsonl"
+    config_path.write_text(
+        toml.dumps({"block_swap_profile_jsonl": str(explicit_profile_path)}),
+        encoding="utf-8",
+    )
+    training_service._resolve_block_swap_profile_auto_config(
+        str(config_path), profile_path
+    )
+    cfg = toml.loads(config_path.read_text(encoding="utf-8"))
+    assert cfg["block_swap_profile_jsonl"] == str(explicit_profile_path)
+
+
 def test_web_runtime_config_materializes_nl_tag_mix_source(tmp_path, monkeypatch):
     _write_runtime_config_tree(tmp_path)
     _patch_runtime_service_paths(monkeypatch, tmp_path)

@@ -105,6 +105,16 @@ def test_flatten_logs_drops_nonscalar():
     assert flat == {"loss": 0.5, "ok": True, "name": "x"}
 
 
+def test_flatten_logs_preserves_cuda_memory_metrics():
+    flat = _flatten_logs({
+        "avr_loss": 0.5,
+        "cuda/max_memory_allocated_gb": 12.5,
+        "cuda/max_memory_reserved_gb": 13.25,
+    })
+    assert flat["cuda/max_memory_allocated_gb"] == 12.5
+    assert flat["cuda/max_memory_reserved_gb"] == 13.25
+
+
 def test_find_cmmd():
     assert _find_cmmd({"loss/val_cmmd": 0.042, "loss": 1.0}) == 0.042
     assert _find_cmmd({"loss": 1.0}) is None

@@ -538,6 +538,9 @@
             className: 'config-group-resource',
             keys: [
                 'blocks_to_swap',
+                'selective_checkpoint',
+                'block_swap_profile_jsonl',
+                'disable_block_swap_for_eval',
                 'gradient_checkpointing',
                 'unsloth_offload_checkpointing',
                 'mixed_precision',
@@ -1246,7 +1249,9 @@
         balance_w_content: '内容池均衡权重',
         balance_w_freq: '频率池均衡权重',
         b_cond_init: '条件注意力初始门控',
+        block_swap_profile_jsonl: '块交换 Profile',
         blocks_to_swap: 'CPU/GPU 交换块数',
+        disable_block_swap_for_eval: '评估时暂停交换块',
         use_vae_cache: '使用 VAE 缓存',
         cache_llm_adapter_outputs: '缓存 LLM 适配器输出',
         use_text_cache: '使用文本缓存',
@@ -1372,6 +1377,7 @@
         save_model_as: '模型保存格式',
         save_precision: '保存精度',
         seed: '随机种子',
+        selective_checkpoint: '选择性重算',
         sigma_bucket_boundaries: 'Sigma 桶边界',
         sigma_feature_dim: 'Sigma 特征维度',
         skip_cache_check: '跳过缓存检查',
@@ -1408,7 +1414,7 @@
 
     const FIELD_OPTIONS = {
         attn_mode: ['flash', 'flex'],
-        compile_inductor_mode: ['default', 'reduce-overhead', 'max-autotune'],
+        compile_inductor_mode: ['default', 'reduce-overhead', 'max-autotune', 'max-autotune-no-cudagraphs'],
         apply_ffn_lora: [true, false],
         contrastive_negative_mode: ['shuffled', 'jaccard', 'hard'],
         contrastive_objective: ['infonce', 'agsm'],
@@ -1469,6 +1475,7 @@
         ],
         save_model_as: ['safetensors'],
         save_precision: ['bf16', 'fp16', 'float'],
+        selective_checkpoint: ['off', 'mlp_only', 'every_other'],
         timestep_sampling: ['sigmoid', 'uniform', 'shift'],
         use_moe_style: ['false', 'shared_A', 'independent_A'],
         vae_chunk_size: [16, 32, 64, 128],
@@ -1672,6 +1679,18 @@
             '开启梯度检查点和 CPU 卸载，降低显存峰值。',
             '更不容易 OOM；代价是训练速度下降。',
             '显存不够时选。'
+        ),
+        low_vram_blockswap: choiceHelp(
+            '低显存交换块',
+            '使用较少 DiT block swap，并保留梯度检查点。',
+            '比 Unsloth low_vram 更偏速度；显存压力仍大时再加重交换或 checkpoint。',
+            '想先避开 CPU activation offload 时选。'
+        ),
+        balanced_16g: choiceHelp(
+            '16G Balanced',
+            '以预测式 DiT block swap 为主，默认交换 12 个 frozen block。',
+            '默认不开 Unsloth 和选择性重算，目标是在 16GB 显卡上保留余量并控制速度损失。',
+            '16G 正式训练优先试这个。'
         ),
         graft: choiceHelp(
             '交换块预设',
@@ -2290,9 +2309,10 @@
         ),
         unsloth_offload_checkpointing: help(
             "把梯度检查点卸载到 CPU 内存。",
-            "需要 gradient_checkpointing=true；极低显存时开启。",
+            "需要 gradient_checkpointing=true；极低显存时开启。不能和 CPU/GPU 交换块数同时使用。",
             ["进一步节省 GPU 显存。"],
             ["CPU 内存和 PCIe 传输压力上升，速度下降明显。"],
+            ["和 blocks_to_swap 互斥；二选一，不要两个都开。"],
             ["CPU 内存不足也会导致训练不稳定或被系统杀掉。"],
             "只有 OOM 时开启。"
         ),
@@ -2301,8 +2321,31 @@
             "0 表示尽量都放在 GPU。显存不足时可以增加，但每增加一些都会让训练更慢。",
             ["能降低 GPU 显存峰值，让低显存机器也可能跑起来。"],
             ["CPU/GPU 来回搬运会明显拖慢训练。"],
+            ["和 Unsloth 检查点卸载互斥；16G 优先选 balanced_16g，极低显存再选 low_vram_blockswap。"],
             ["设太高会慢到不实用，也可能受 CPU 内存和硬盘交换影响。"],
-            "显存够用保持 0；OOM 时先用 low_vram 或 lora-8gb 预设。"
+            "显存够用保持 0；16G 推荐 balanced_16g，手动调参可从 8/12/16 对比 Profile。"
+        ),
+        selective_checkpoint: help(
+            "只对一部分 DiT 计算做重算，配合 block swap 进一步压低显存峰值。",
+            "off 保持正常数学路径；mlp_only 只重算 MLP 分支；every_other 每隔一个 block 做整块重算。",
+            ["Balanced 16G 默认关闭，主要靠预测式 block swap 保速度。"],
+            ["仍然 OOM 时先试 mlp_only，最后再试 every_other。"],
+            ["不要和 full gradient_checkpointing、Unsloth 或 CPU offload 同时开启。"],
+            "默认 off；只有 balanced_16g 仍 OOM 时再开。"
+        ),
+        block_swap_profile_jsonl: help(
+            "记录块交换的等待和搬运耗时。",
+            "auto 会在 WebUI 历史任务目录写入 block_swap_profile.jsonl；off/none 关闭；也可以填写显式路径。",
+            ["适合比较 blocks_to_swap=8/12/16 时的 wait_ms、h2d_ms、d2h_ms。"],
+            ["会产生额外日志文件，但开销很小。"],
+            "balanced_16g 默认 auto；普通训练保持 off。"
+        ),
+        disable_block_swap_for_eval: help(
+            "验证和预览采样时临时关闭交换块。",
+            "只影响 eval/sample 阶段，训练阶段仍按 blocks_to_swap 换块。",
+            ["评估显存足够时可以减少 CPU/GPU 搬运，预览会更快。"],
+            ["评估显存不够时开启会 OOM。"],
+            "显存有余且只想训练低显存时开启；不确定就保持 false。"
         ),
         torch_compile: help(
             "是否让 PyTorch 先编译模型计算图再训练。",
@@ -6609,6 +6652,9 @@
             valueDetail('train_batch_size', config.train_batch_size),
             valueDetail('gradient_accumulation_steps', config.gradient_accumulation_steps),
             valueDetail('sample_ratio', config.sample_ratio),
+            valueDetail('blocks_to_swap', config.blocks_to_swap),
+            valueDetail('selective_checkpoint', config.selective_checkpoint),
+            valueDetail('block_swap_profile_jsonl', config.block_swap_profile_jsonl),
         ]);
         if (!details.length) return base;
         return {

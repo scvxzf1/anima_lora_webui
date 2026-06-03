@@ -51,6 +51,9 @@ mixed_precision = "bf16"
 
 gradient_checkpointing = false
 unsloth_offload_checkpointing = false
+selective_checkpoint = "off"
+block_swap_profile_jsonl = "off"
+disable_block_swap_for_eval = false
 
 use_vae_cache = true
 use_text_cache = true

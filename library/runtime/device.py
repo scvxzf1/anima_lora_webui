@@ -33,9 +33,35 @@ def synchronize_device(device: Optional[Union[str, torch.device]]):
         torch.cuda.synchronize()
 
 
-def weighs_to_device(layer: nn.Module, device: torch.device):
+def should_move_weight_to_device(
+    module: nn.Module,
+    device: torch.device,
+    *,
+    include_trainable: bool = True,
+) -> bool:
+    weight = getattr(module, "weight", None)
+    if weight is None:
+        return False
+    target_device = torch.device(device)
+    if (
+        not include_trainable
+        and target_device.type == "cpu"
+        and getattr(weight, "requires_grad", False)
+    ):
+        return False
+    return True
+
+
+def weighs_to_device(
+    layer: nn.Module,
+    device: torch.device,
+    *,
+    include_trainable: bool = True,
+):
     for module in layer.modules():
-        if hasattr(module, "weight") and module.weight is not None:
+        if should_move_weight_to_device(
+            module, device, include_trainable=include_trainable
+        ):
             module.weight.data = module.weight.data.to(device, non_blocking=True)
 
 

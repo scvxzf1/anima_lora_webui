@@ -558,6 +558,17 @@ class TrainingService:
         if job == "training" and not _command_has_option(cmd, "--progress_jsonl"):
             cmd = [*cmd, "--progress_jsonl", str(task_dir / "progress.jsonl")]
         if job == "training":
+            block_swap_profile_path = task_dir / "block_swap_profile.jsonl"
+            config_wants_block_swap_profile = _resolve_block_swap_profile_auto_config(
+                config_file, block_swap_profile_path
+            )
+            cmd = _resolve_block_swap_profile_auto_arg(cmd, block_swap_profile_path)
+            if (
+                config_wants_block_swap_profile
+                and not _command_has_option(cmd, "--block_swap_profile_jsonl")
+            ):
+                cmd = [*cmd, "--block_swap_profile_jsonl", str(block_swap_profile_path)]
+        if job == "training":
             progress_jsonl = _command_option_value(cmd, "--progress_jsonl")
             self._progress_jsonl_path = _resolve_display_path(progress_jsonl or str(task_dir / "progress.jsonl"))
         self.current_command = cmd
@@ -5026,6 +5037,53 @@ def _command_option_value(args: list[str], option: str) -> str | None:
         if str(arg).startswith(prefix):
             return str(arg).split("=", 1)[1]
     return None
+
+
+def _resolve_block_swap_profile_auto_arg(args: list[str], path: Path) -> list[str]:
+    out = list(args)
+    option = "--block_swap_profile_jsonl"
+    prefix = f"{option}="
+    replacement = str(path)
+    idx = 0
+    while idx < len(out):
+        arg = str(out[idx])
+        if arg == option and idx + 1 < len(out):
+            if str(out[idx + 1]).strip().lower() == "auto":
+                out[idx + 1] = replacement
+            idx += 2
+            continue
+        if arg.startswith(prefix) and arg.split("=", 1)[1].strip().lower() == "auto":
+            out[idx] = f"{option}={replacement}"
+        idx += 1
+    return out
+
+
+def _resolve_block_swap_profile_auto_config(config_file: str | None, path: Path) -> bool:
+    config_path = _resolve_display_path(str(config_file or ""))
+    if config_path is None or not _path_exists(config_path) or not config_path.is_file():
+        return False
+    try:
+        cfg = toml.loads(config_path.read_text(encoding="utf-8"))
+    except Exception:
+        return False
+    value = str(cfg.get("block_swap_profile_jsonl") or "").strip()
+    if value.lower() != "auto" and not _is_history_block_swap_profile_path(value):
+        return False
+    if config_path.name == "config.runtime.toml":
+        cfg["block_swap_profile_jsonl"] = str(path)
+        config_path.write_text(toml_dumps_sorted(cfg), encoding="utf-8")
+    return True
+
+
+def _is_history_block_swap_profile_path(value: str) -> bool:
+    profile_path = _resolve_display_path(value)
+    if profile_path is None or profile_path.name != "block_swap_profile.jsonl":
+        return False
+    try:
+        profile_path.resolve().relative_to(HISTORY_DIR.resolve())
+    except ValueError:
+        return False
+    return True
 
 
 def _live_metric_key(item: dict[str, Any]) -> tuple[Any, ...]:

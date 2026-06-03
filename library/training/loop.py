@@ -170,6 +170,7 @@ def build_loop_state(
         tokenizers,
         text_encoder,
         unet,
+        network=network,
     )
     optimizer_train_fn()
     is_tracking = len(accelerator.trackers) > 0
@@ -355,6 +356,7 @@ def run_training_loop(trainer, state: LoopState) -> None:
             state.tokenizers,
             state.text_encoder,
             state.unet,
+            network=state.network,
         )
         state.optimizer_train_fn()
 
@@ -587,7 +589,34 @@ def _sample_at_step(trainer, state: LoopState) -> None:
         state.tokenizers,
         state.text_encoder,
         state.unet,
+        network=state.network,
     )
+
+
+def _cuda_memory_logs(device) -> dict[str, float]:
+    try:
+        torch_device = torch.device(device)
+    except Exception:
+        return {}
+    if torch_device.type != "cuda" or not torch.cuda.is_available():
+        return {}
+    try:
+        idx = torch_device.index
+        if idx is None:
+            idx = torch.cuda.current_device()
+        allocated = torch.cuda.memory_allocated(idx)
+        reserved = torch.cuda.memory_reserved(idx)
+        max_allocated = torch.cuda.max_memory_allocated(idx)
+        max_reserved = torch.cuda.max_memory_reserved(idx)
+    except Exception:
+        return {}
+    gib = float(1024**3)
+    return {
+        "cuda/memory_allocated_gb": allocated / gib,
+        "cuda/memory_reserved_gb": reserved / gib,
+        "cuda/max_memory_allocated_gb": max_allocated / gib,
+        "cuda/max_memory_reserved_gb": max_reserved / gib,
+    }
 
 
 def _log_step(
@@ -618,7 +647,9 @@ def _log_step(
     current_loss = loss.detach().item()
     state.loss_recorder.add(epoch=epoch, step=step, loss=current_loss)
     avr_loss: float = state.loss_recorder.moving_average
+    memory_logs = _cuda_memory_logs(state.accelerator.device) if should_log_step else {}
     logs = {"avr_loss": avr_loss}
+    logs.update(memory_logs)
     _unwrapped_net = state.accelerator.unwrap_model(state.network)
     # Refresh router_H only on log cadence — get_router_entropy → full
     # get_router_stats compute (with D2H syncs) is wasted if the only
@@ -656,6 +687,7 @@ def _log_step(
             None,  # mean_grad_norm — not tracked here
             None,  # mean_combined_norm — not tracked here
         )
+        logs.update(memory_logs)
         producers = [_unwrapped_net, *trainer._adapters]
         logs.update(
             collect_metrics(

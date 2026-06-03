@@ -769,6 +769,33 @@ def add_dit_training_arguments(parser: argparse.ArgumentParser):
         default=None,
         help="[EXPERIMENTAL] Sets the number of blocks to swap during the forward and backward passes.",
     )
+    parser.add_argument(
+        "--block_swap_profile_jsonl",
+        type=str,
+        default=None,
+        help=(
+            "Write block-swap transfer/wait timings to JSONL. Use off/none to "
+            "disable, auto for the caller-resolved default path, or an explicit path."
+        ),
+    )
+    parser.add_argument(
+        "--selective_checkpoint",
+        type=str,
+        default="off",
+        choices=["off", "every_other", "mlp_only"],
+        help=(
+            "Selective DiT activation checkpointing for block-swap training. "
+            "off keeps the normal path; every_other checkpoints every other block; "
+            "mlp_only checkpoints only each block's MLP branch."
+        ),
+    )
+    parser.add_argument(
+        "--disable_block_swap_for_eval",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help="Temporarily disable block swapping during validation/sample preview. "
+        "Only use when eval fits in VRAM without swapped blocks.",
+    )
 
 
 def add_network_arguments(parser: argparse.ArgumentParser):

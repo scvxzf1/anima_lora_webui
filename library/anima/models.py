@@ -960,6 +960,7 @@ class Block(nn.Module):
         self.gradient_checkpointing = False
         self.cpu_offload_checkpointing = False
         self.unsloth_offload_checkpointing = False
+        self.mlp_checkpointing = False
 
     def enable_gradient_checkpointing(
         self, cpu_offload: bool = False, unsloth_offload: bool = False
@@ -967,11 +968,19 @@ class Block(nn.Module):
         self.gradient_checkpointing = True
         self.cpu_offload_checkpointing = cpu_offload if not unsloth_offload else False
         self.unsloth_offload_checkpointing = unsloth_offload
+        self.mlp_checkpointing = False
 
     def disable_gradient_checkpointing(self):
         self.gradient_checkpointing = False
         self.cpu_offload_checkpointing = False
         self.unsloth_offload_checkpointing = False
+        self.mlp_checkpointing = False
+
+    def enable_mlp_checkpointing(self):
+        self.gradient_checkpointing = False
+        self.cpu_offload_checkpointing = False
+        self.unsloth_offload_checkpointing = False
+        self.mlp_checkpointing = True
 
     def reset_parameters(self) -> None:
         self.layer_norm_self_attn.reset_parameters()
@@ -1086,7 +1095,14 @@ class Block(nn.Module):
         normalized_x = _adaln_fn(
             x_B_T_H_W_D, self.layer_norm_mlp, scale_mlp_B_T_1_1_D, shift_mlp_B_T_1_1_D
         )
-        result = self.mlp(normalized_x)
+        if self.training and self.mlp_checkpointing:
+            result = torch_checkpoint(
+                self.mlp,
+                normalized_x,
+                use_reentrant=False,
+            )
+        else:
+            result = self.mlp(normalized_x)
         x_B_T_H_W_D = x_B_T_H_W_D + gate_mlp_B_T_1_1_D * result
 
         return x_B_T_H_W_D
@@ -1225,6 +1241,7 @@ class Anima(nn.Module):
         self.offloader: Optional[custom_offloading_utils.ModelOffloader] = None
         # Stashed blocks_to_swap while paused (e.g. during eval). None = not paused.
         self._paused_blocks_to_swap: Optional[int] = None
+        self.selective_checkpoint = "off"
 
         # Native-shape flattening for torch.compile. Flipped True by
         # compile_blocks(): the forward flattens each bucket's patch sequence to
@@ -1348,6 +1365,20 @@ class Anima(nn.Module):
     def disable_gradient_checkpointing(self):
         for block in self.blocks:
             block.disable_gradient_checkpointing()
+
+    def enable_selective_checkpointing(self, mode: str = "off"):
+        mode = str(mode or "off").strip().lower()
+        if mode not in {"off", "every_other", "mlp_only"}:
+            raise ValueError(
+                f"selective_checkpoint must be off, every_other, or mlp_only; got {mode!r}"
+            )
+        self.selective_checkpoint = mode
+        for idx, block in enumerate(self.blocks):
+            block.disable_gradient_checkpointing()
+            if mode == "every_other" and idx % 2 == 0:
+                block.enable_gradient_checkpointing(cpu_offload=False, unsloth_offload=False)
+            elif mode == "mlp_only":
+                block.enable_mlp_checkpointing()
 
     def compile_blocks(self, backend: str = "inductor", mode: Optional[str] = None):
         """Enable native-shape flattening and torch.compile each block's _forward.
@@ -1501,7 +1532,13 @@ class Anima(nn.Module):
         )
         return x_B_C_Tt_Hp_Wp
 
-    def enable_block_swap(self, num_blocks: int, device: torch.device):
+    def enable_block_swap(
+        self,
+        num_blocks: int,
+        device: torch.device,
+        *,
+        profile_jsonl: Optional[str] = None,
+    ):
         self.blocks_to_swap = num_blocks
 
         assert self.blocks_to_swap <= self.num_blocks - 2, (
@@ -1509,7 +1546,10 @@ class Anima(nn.Module):
         )
 
         self.offloader = custom_offloading_utils.ModelOffloader(
-            self.blocks, self.blocks_to_swap, device
+            self.blocks,
+            self.blocks_to_swap,
+            device,
+            profile_jsonl=profile_jsonl,
         )
         logger.info(
             f"Anima: Block swap enabled. Swapping {num_blocks} blocks, total blocks: {self.num_blocks}, device: {device}."

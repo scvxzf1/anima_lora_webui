@@ -8,6 +8,7 @@ from typing import Any, Union, Optional
 import sys
 import random
 import time
+import signal
 
 import torch
 import torch.nn as nn
@@ -92,6 +93,66 @@ setup_logging()
 import logging  # noqa: E402
 
 logger = logging.getLogger(__name__)
+
+
+def _install_stop_signal_handlers() -> None:
+    """Make SIGTERM follow the same cleanup path as Ctrl-C."""
+
+    if not hasattr(signal, "SIGTERM"):
+        return
+
+    def _raise_keyboard_interrupt(signum, frame):
+        raise KeyboardInterrupt
+
+    signal.signal(signal.SIGTERM, _raise_keyboard_interrupt)
+
+
+def _resolve_block_swap_profile_jsonl(args) -> Optional[str]:
+    explicit = getattr(args, "block_swap_profile_jsonl", None)
+    if explicit is None:
+        return None
+    value = str(explicit).strip()
+    if value.lower() in {"", "off", "none", "false", "0"}:
+        return None
+    if value.lower() != "auto":
+        return value
+
+    output_dir = getattr(args, "output_dir", None)
+    if not output_dir:
+        return None
+    output_name = getattr(args, "output_name", None) or "run"
+    parent = os.path.dirname(os.path.normpath(output_dir))
+    logs_dir = os.path.join(parent or output_dir, "logs")
+    return os.path.join(logs_dir, f"{output_name}.block_swap_profile.jsonl")
+
+
+def _decode_deferred_samples_safely(
+    accelerator: Accelerator,
+    args,
+    loop_state,
+    vae,
+    *,
+    optimizer_eval_fn=None,
+) -> None:
+    if not accelerator.is_main_process or not getattr(args, "sample_prompts", None):
+        return
+    try:
+        if optimizer_eval_fn is not None:
+            try:
+                optimizer_eval_fn()
+            except Exception as exc:  # noqa: BLE001 - cleanup must keep going
+                logger.warning(
+                    "Could not switch optimizer to eval before sample decode: "
+                    f"{exc}"
+                )
+        try:
+            accelerator.unwrap_model(loop_state.unet).to("cpu")
+        except Exception:
+            pass
+        clean_memory_on_device(accelerator.device)
+        anima_train_utils.decode_pending_samples(accelerator, args, vae)
+    except Exception as exc:  # noqa: BLE001 - never mask the real train exit
+        logger.error(f"Failed to decode deferred sample images during cleanup: {exc}")
 
 
 class AnimaTrainer:
@@ -288,6 +349,23 @@ class AnimaTrainer:
             "network for Text Encoder cannot be trained with caching Text Encoder outputs"
         )
 
+        args.selective_checkpoint = str(
+            getattr(args, "selective_checkpoint", "off") or "off"
+        ).strip().lower()
+        if args.selective_checkpoint not in {"off", "every_other", "mlp_only"}:
+            raise ValueError(
+                "--selective_checkpoint must be one of: off, every_other, mlp_only"
+            )
+        if args.selective_checkpoint != "off" and args.gradient_checkpointing:
+            raise ValueError(
+                "--selective_checkpoint is a selective DiT checkpoint mode; "
+                "do not combine it with full --gradient_checkpointing."
+            )
+        if args.selective_checkpoint != "off" and args.cpu_offload_checkpointing:
+            raise ValueError(
+                "--selective_checkpoint does not support CPU activation offload."
+            )
+
         assert (
             args.blocks_to_swap is None or args.blocks_to_swap == 0
         ) or not args.cpu_offload_checkpointing, (
@@ -295,6 +373,11 @@ class AnimaTrainer:
         )
 
         if args.unsloth_offload_checkpointing:
+            if args.selective_checkpoint != "off":
+                raise ValueError(
+                    "--selective_checkpoint cannot be combined with "
+                    "--unsloth_offload_checkpointing."
+                )
             if not args.gradient_checkpointing:
                 logger.warning(
                     "unsloth_offload_checkpointing is enabled, so gradient_checkpointing is also enabled"
@@ -306,6 +389,44 @@ class AnimaTrainer:
             assert args.blocks_to_swap is None or args.blocks_to_swap == 0, (
                 "blocks_to_swap is not supported with unsloth_offload_checkpointing"
             )
+
+        if args.blocks_to_swap is not None and args.blocks_to_swap > 0:
+            if getattr(args, "torch_compile", False) and getattr(
+                args, "dynamo_backend", None
+            ) == "cudagraphs":
+                logger.warning(
+                    "blocks_to_swap moves DiT block weights between CPU/GPU, "
+                    "so dynamo_backend='cudagraphs' is unsafe. Disabling torch_compile."
+                )
+                args.torch_compile = False
+
+            compile_mode = getattr(args, "compile_inductor_mode", None)
+            if getattr(args, "torch_compile", False) and compile_mode in {
+                "reduce-overhead",
+                "max-autotune",
+            }:
+                safe_mode = (
+                    "max-autotune-no-cudagraphs"
+                    if compile_mode == "max-autotune"
+                    else None
+                )
+                logger.warning(
+                    "blocks_to_swap is incompatible with Inductor CUDAGraph modes "
+                    f"({compile_mode!r}); using {safe_mode or 'default'} mode instead."
+                )
+                args.compile_inductor_mode = safe_mode
+
+            network_module = str(getattr(args, "network_module", "") or "")
+            if network_module == "networks.methods.soft_tokens":
+                raise ValueError(
+                    "blocks_to_swap is not supported with soft_tokens. "
+                    "Keep blocks_to_swap=0 for this multi-forward method."
+                )
+            if float(getattr(args, "functional_loss_weight", 0.0) or 0.0) > 0.0:
+                raise ValueError(
+                    "blocks_to_swap is not supported with functional_loss_weight > 0. "
+                    "Disable block swap for postfix/functional multi-forward training."
+                )
 
         # Propagate inversion_dir to datasets for functional-loss supervision (postfix-func).
         inversion_dir = getattr(args, "inversion_dir", None)
@@ -559,13 +680,27 @@ class AnimaTrainer:
         # dit.enable_gradient_checkpointing(cpu_offload=...), we can override to use unsloth.
         self._use_unsloth_offload_checkpointing = args.unsloth_offload_checkpointing
 
+        selective_checkpoint = getattr(args, "selective_checkpoint", "off") or "off"
+        if selective_checkpoint != "off":
+            logger.info(f"enable selective checkpoint: {selective_checkpoint}")
+            model.enable_selective_checkpointing(selective_checkpoint)
+
         # Block swap
         self.is_swapping_blocks = (
             args.blocks_to_swap is not None and args.blocks_to_swap > 0
         )
         if self.is_swapping_blocks:
-            logger.info(f"enable block swap: blocks_to_swap={args.blocks_to_swap}")
-            model.enable_block_swap(args.blocks_to_swap, accelerator.device)
+            profile_jsonl = _resolve_block_swap_profile_jsonl(args)
+            logger.info(
+                "enable block swap: "
+                f"blocks_to_swap={args.blocks_to_swap}, "
+                f"profile_jsonl={profile_jsonl or 'off'}"
+            )
+            model.enable_block_swap(
+                args.blocks_to_swap,
+                accelerator.device,
+                profile_jsonl=profile_jsonl,
+            )
 
         # Variance-reduced FM loss: the "frozen reference" is the trainable
         # DiT itself with ``network.set_multiplier(0)`` during the no-grad
@@ -945,6 +1080,7 @@ class AnimaTrainer:
         tokenizer,
         text_encoder,
         unet,
+        network=None,
     ):
         text_encoders = (
             text_encoder if isinstance(text_encoder, list) else [text_encoder]
@@ -965,6 +1101,7 @@ class AnimaTrainer:
             tokenize_strategy,
             text_encoding_strategy,
             self.sample_prompts_te_outputs,
+            network=network,
         )
 
     def prepare_unet_with_accelerator(
@@ -1984,10 +2121,23 @@ class AnimaTrainer:
         # run_scope emits the matching run_end (ok / stopped / error) on exit;
         # run_start already fired when the sink was constructed above.
         with run_scope(self.progress_sink, final_step=lambda: loop_state.global_step):
-            run_training_loop(self, loop_state)
+            training_loop_completed = False
+            try:
+                run_training_loop(self, loop_state)
+                training_loop_completed = True
+            finally:
+                if not training_loop_completed:
+                    _decode_deferred_samples_safely(
+                        accelerator,
+                        args,
+                        loop_state,
+                        vae,
+                        optimizer_eval_fn=optimizer_eval_fn,
+                    )
 
             accelerator.end_training()
             optimizer_eval_fn()
+            _decode_deferred_samples_safely(accelerator, args, loop_state, vae)
 
             if is_main_process and (args.save_state or args.save_state_on_train_end):
                 save_state_on_train_end(args, accelerator)
@@ -2262,6 +2412,7 @@ def _install_crash_reporter(argv: list[str]) -> None:
 
 
 if __name__ == "__main__":
+    _install_stop_signal_handlers()
     _install_crash_reporter(sys.argv)
     parser = setup_parser()
     _config_schema.populate_schema(parser, extras=build_network_extras())

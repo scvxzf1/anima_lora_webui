@@ -56,7 +56,15 @@ def run_validation(
     ctx.optimizer_eval_fn()
     accelerator.unwrap_model(ctx.network).eval()
     unwrapped_unet = accelerator.unwrap_model(ctx.unet)
-    if hasattr(unwrapped_unet, "switch_block_swap_for_inference"):
+    block_swap_paused = False
+    if (
+        getattr(args, "disable_block_swap_for_eval", False)
+        and hasattr(unwrapped_unet, "pause_block_swap")
+    ):
+        block_swap_paused = unwrapped_unet.pause_block_swap()
+        if block_swap_paused:
+            logger.info("Block swap paused during validation.")
+    elif hasattr(unwrapped_unet, "switch_block_swap_for_inference"):
         unwrapped_unet.switch_block_swap_for_inference()
     rng_states = trainer._switch_rng_state(
         args.validation_seed if args.validation_seed is not None else args.seed
@@ -115,7 +123,9 @@ def run_validation(
         args.t_max = val.original_t_max
         ctx.optimizer_train_fn()
         accelerator.unwrap_model(ctx.network).train()
-        if hasattr(unwrapped_unet, "switch_block_swap_for_training"):
+        if block_swap_paused and hasattr(unwrapped_unet, "resume_block_swap"):
+            unwrapped_unet.resume_block_swap()
+        elif hasattr(unwrapped_unet, "switch_block_swap_for_training"):
             unwrapped_unet.switch_block_swap_for_training()
         clean_memory_on_device(accelerator.device)
 

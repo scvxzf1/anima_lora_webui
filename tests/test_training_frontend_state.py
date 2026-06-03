@@ -486,6 +486,31 @@ def test_config_form_hides_retired_and_unread_fields() -> None:
     assert "const SOFT_TOKENS_UI_DEFAULT_FIELDS = new Set([]);" in source
 
 
+def test_balanced_16g_block_swap_fields_are_visible() -> None:
+    source = APP_JS.read_text(encoding="utf-8")
+
+    resource_section = _section(source, "title: '显存与速度'", "title: '缓存与预处理'")
+    labels = _section(source, "const FIELD_LABEL_ZH = {", "const FIELD_OPTIONS = {")
+    options = _section(source, "const FIELD_OPTIONS = {", "const METHOD_GUIDE_ZH = {")
+    presets = _section(source, "const PRESET_GUIDE_ZH = {", "function defaultPresetGuide")
+
+    for key in (
+        "blocks_to_swap",
+        "selective_checkpoint",
+        "block_swap_profile_jsonl",
+        "disable_block_swap_for_eval",
+    ):
+        assert f"'{key}'," in resource_section
+
+    assert "block_swap_profile_jsonl: '块交换 Profile'" in labels
+    assert "selective_checkpoint: '选择性重算'" in labels
+    assert "disable_block_swap_for_eval: '评估时暂停交换块'" in labels
+    assert "selective_checkpoint: ['off', 'mlp_only', 'every_other']" in options
+    assert "'max-autotune-no-cudagraphs'" in options
+    assert "balanced_16g" in presets
+    assert "预测式 DiT block swap" in presets
+
+
 def test_config_page_hides_unimplemented_dataset_placeholder() -> None:
     source = APP_JS.read_text(encoding="utf-8")
     html = INDEX_HTML.read_text(encoding="utf-8")
