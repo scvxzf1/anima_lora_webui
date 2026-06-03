@@ -1,4 +1,4 @@
-import { help } from './help-builder.js?v=module-bootstrap-20260601-8';
+import { help } from './help-builder.js?v=module-bootstrap-20260601-11';
 
 export const FIELD_HELP_METHOD_ZH = {
     network_dim: help(
@@ -72,6 +72,14 @@ export const FIELD_HELP_METHOD_ZH = {
         ["多一个时间步相关超参，调试复杂度上升。"],
         ["min_rank 太低可能削弱低噪声阶段的细节修正。"],
         "推荐直接使用 tlora 或 tlora_ortho 变体。"
+    ),
+    lora_adapter_kind: help(
+        "选择当前训练使用的 LoRA 家族结构。",
+        "普通 LoRA 会关闭 use_loha/use_lokr；LoHa 会写入 use_loha=true；LoKr 会写入 use_lokr=true，并启用 LoKr Factor。",
+        ["把两个互斥开关合并成一个选择，避免同时打开 LoHa 和 LoKr。"],
+        ["切换结构会改变权重格式和推理兼容性，不只是改 UI 文案。"],
+        ["LoHa/LoKr 与 OrthoLoRA、Hydra/FeRA、ChimeraHydra 等结构互斥，保存前要确认当前变体支持。"],
+        "不需要 LyCORIS 兼容格式时保持普通 LoRA；需要 LoKr 时再切到 LoKr 并确认 factor。"
     ),
     use_lokr: help(
         "启用 LoKr（Low-Rank Kronecker Product）。",

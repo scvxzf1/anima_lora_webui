@@ -1379,6 +1379,34 @@ main { padding: 1rem 1.5rem; }
     margin-left: 0;
 }
 
+.config-resource-quick-presets {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(96px, 1fr));
+    gap: 0.45rem;
+    align-items: center;
+    padding: 0.55rem 0.75rem;
+    border-bottom: 1px solid var(--border-soft);
+    background: var(--surface-raised);
+}
+
+.config-resource-quick-presets[hidden] {
+    display: none;
+}
+
+.config-resource-quick-label {
+    grid-column: 1 / -1;
+    color: var(--text-dim);
+    font-size: 0.72rem;
+    font-weight: 800;
+    white-space: nowrap;
+}
+
+.config-resource-preset-btn {
+    justify-content: center;
+    min-width: 0;
+    white-space: normal;
+}
+
 .config-group-primary,
 .config-group-steps,
 .config-group-sampling,
@@ -4196,7 +4224,28 @@ select.dataset-config-input {
     margin-left: 0;
 }
 
+#tab-config .config-resource-quick-toggle.active,
 #tab-config .config-group-collapse:hover {
+    border-color: var(--config-accent);
+    color: var(--config-accent);
+}
+
+#tab-config .config-resource-quick-presets {
+    padding: 0.62rem 0.9rem;
+    border-bottom-color: var(--config-border);
+    background: var(--config-panel-bg);
+}
+
+#tab-config .config-resource-preset-btn {
+    min-height: 32px;
+    border-color: var(--config-border);
+    border-radius: 5px;
+    background: var(--config-field-bg);
+    color: var(--config-text);
+    font-weight: 800;
+}
+
+#tab-config .config-resource-preset-btn:hover {
     border-color: var(--config-accent);
     color: var(--config-accent);
 }
@@ -5834,10 +5883,46 @@ select.dataset-config-input {
     grid-row: 2;
     width: 100%;
 }
+.config-field-grid-3col input[type="checkbox"].field-input,
+.config-field-grid-4col input[type="checkbox"].field-input {
+    justify-self: start;
+}
 .config-field-grid-3col .info-toggle,
 .config-field-grid-4col .info-toggle {
     grid-column: 2;
     grid-row: 1;
+    justify-self: end;
+}
+
+.config-field-grid-inline-flags .field-main {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto 18px;
+    grid-template-rows: auto;
+    align-items: center;
+    column-gap: 0.42rem;
+}
+
+.config-field-grid-inline-flags .field-name,
+.config-field-grid-inline-flags .field-input,
+.config-field-grid-inline-flags .info-toggle {
+    grid-row: 1;
+}
+
+.config-field-grid-inline-flags .field-name {
+    grid-column: 1;
+    min-width: 0;
+    font-size: 0.7rem;
+}
+
+.config-field-grid-inline-flags input[type="checkbox"].field-input {
+    grid-column: 2;
+    justify-self: center;
+    width: 14px;
+    height: 14px;
+}
+
+.config-field-grid-inline-flags .info-toggle {
+    grid-column: 3;
     justify-self: end;
 }
 

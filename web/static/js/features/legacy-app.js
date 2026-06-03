@@ -1,13 +1,13 @@
-import { createPreviewFeature } from './preview/index.js?v=module-bootstrap-20260601-8';
-import { createQueueFeature } from './queue/index.js?v=module-bootstrap-20260601-8';
-import { createHistoryDetailFeature } from './history-detail/index.js?v=module-bootstrap-20260601-8';
+import { createPreviewFeature } from './preview/index.js?v=module-bootstrap-20260601-11';
+import { createQueueFeature } from './queue/index.js?v=module-bootstrap-20260601-11';
+import { createHistoryDetailFeature } from './history-detail/index.js?v=module-bootstrap-20260601-11';
 import {
     formatSystemPercent,
     formatSystemTemperature,
     formatSystemVram,
     historySystemSummary,
-} from './history-detail/system.js?v=module-bootstrap-20260601-8';
-import { formatCompactNumber, numberOrNull } from './history-detail/ui.js?v=module-bootstrap-20260601-8';
+} from './history-detail/system.js?v=module-bootstrap-20260601-11';
+import { formatCompactNumber, numberOrNull } from './history-detail/ui.js?v=module-bootstrap-20260601-11';
 
 function formatLossValue(value) {
     const n = Number(value);
@@ -68,6 +68,56 @@ export function createLegacyApp(ctx) {
         collapsedGroups: new Set(),
         draftValues: new Map(),
     };
+    const RESOURCE_QUICK_PRESETS = [
+        {
+            id: 'gpu_full',
+            label: '全 GPU',
+            note: '显存充足优先；最快，不做 block swap。',
+            values: {
+                blocks_to_swap: 0,
+                selective_checkpoint: 'off',
+                block_swap_profile_jsonl: 'off',
+                unsloth_offload_checkpointing: false,
+                torch_compile: true,
+            },
+        },
+        {
+            id: 'balanced_16g',
+            label: 'Balanced 16G',
+            note: '推荐 16GB；约省 4GB，速度损失较低。',
+            values: {
+                blocks_to_swap: 12,
+                selective_checkpoint: 'off',
+                block_swap_profile_jsonl: 'auto',
+                unsloth_offload_checkpointing: false,
+                torch_compile: true,
+            },
+        },
+        {
+            id: 'vram_saver',
+            label: '更省显存',
+            note: '交换 16 块；更省显存，训练会更慢。',
+            values: {
+                blocks_to_swap: 16,
+                selective_checkpoint: 'off',
+                block_swap_profile_jsonl: 'auto',
+                unsloth_offload_checkpointing: false,
+                torch_compile: true,
+            },
+        },
+        {
+            id: 'oom_fallback',
+            label: 'OOM 兜底',
+            note: '仍然 OOM 时用；开启 mlp_only 重算。',
+            values: {
+                blocks_to_swap: 12,
+                selective_checkpoint: 'mlp_only',
+                block_swap_profile_jsonl: 'auto',
+                unsloth_offload_checkpointing: false,
+                torch_compile: true,
+            },
+        },
+    ];
     let datasetCaptionSourceHelpSeq = 0;
     let choiceGuideHintSeq = 0;
     const selectionSnapshot = {
@@ -228,6 +278,7 @@ export function createLegacyApp(ctx) {
         OPTIONAL_EMPTY_NUMBER_FIELDS,
         FORM_UI_PERSIST_DEFAULT_FIELDS,
         CONFIG_FORM_INTERNAL_KEYS,
+        CONFIG_FORM_MERGED_FIELDS,
         DEPRECATED_CONFIG_FORM_FIELDS,
         RETIRED_CONFIG_FORM_FIELDS,
         METHOD_SCOPED_CONFIG_FORM_FIELDS,
@@ -893,6 +944,10 @@ export function createLegacyApp(ctx) {
         if (!key || CONFIG_FORM_INTERNAL_KEYS.has(key)) return;
         const original = originalConfigFieldValue(key);
         const next = readFieldInputValue(input, original);
+        if (key === 'lora_adapter_kind') {
+            applyLoraAdapterDraft(next);
+            return;
+        }
         if (configDraftValueChanged(key, next, original, options)) {
             configFormState.draftValues.set(key, next);
         } else {
@@ -907,11 +962,19 @@ export function createLegacyApp(ctx) {
         if (isActiveNetworkArgFieldKey(key)) {
             return networkArgFieldValueFromConfig(NETWORK_ARG_FIELD_MAP.get(key), currentConfig);
         }
+        if (key === 'lora_adapter_kind') {
+            return loraAdapterKindFromConfig(currentConfig);
+        }
         if (key in currentConfig) return currentConfig[key];
         return FORM_UI_DEFAULTS[key];
     }
 
     function displayConfigFieldValue(key, value) {
+        if (key === 'lora_adapter_kind') {
+            return configFormState.draftValues.has(key)
+                ? configFormState.draftValues.get(key)
+                : loraAdapterKindFromConfig(currentConfig);
+        }
         return configFormState.draftValues.has(key)
             ? configFormState.draftValues.get(key)
             : value;
@@ -923,6 +986,10 @@ export function createLegacyApp(ctx) {
         }
         if (isActiveNetworkArgFieldKey(key)) {
             return !valuesEqual(next, original);
+        }
+        if (key === 'lora_adapter_kind') {
+            return normalizeLoraAdapterKind(next) !== normalizeLoraAdapterKind(original)
+                || !loraAdapterFlagsMatchConfig(next, currentConfig);
         }
         const hasOriginal = key in currentConfig;
         if (!hasOriginal && shouldSkipUiDefaultField(key, next, options)) return false;
@@ -938,6 +1005,7 @@ export function createLegacyApp(ctx) {
             if (key === 'output_dir') continue;
             if (key === 'general' || key === 'datasets') continue;
             if (CONFIG_FORM_INTERNAL_KEYS.has(key)) continue;
+            if (CONFIG_FORM_MERGED_FIELDS?.has?.(key)) continue;
             if (shouldSkipConfigFormField(key, config)) continue;
             if (DATASET_BLUEPRINT_FIELDS.has(key)) continue;
             if (typeof value === 'object' && value !== null && !Array.isArray(value)) continue;
@@ -946,6 +1014,7 @@ export function createLegacyApp(ctx) {
         for (const [key, value] of Object.entries(FORM_UI_DEFAULTS)) {
             if (key === 'output_dir') continue;
             if (CONFIG_FORM_INTERNAL_KEYS.has(key)) continue;
+            if (CONFIG_FORM_MERGED_FIELDS?.has?.(key)) continue;
             if (shouldSkipConfigFormField(key, config)) continue;
             if (DATASET_BLUEPRINT_FIELDS.has(key)) continue;
             if (!shouldExposeUiDefaultField(key, config, fieldsByKey)) continue;
@@ -979,6 +1048,7 @@ export function createLegacyApp(ctx) {
             ));
         }
         appendConfigGroupsByCategory(container, sectionEntries);
+        updateLoKrFieldState();
     }
 
     function shouldRenderConfigSection(section, config = currentConfig) {
@@ -987,6 +1057,7 @@ export function createLegacyApp(ctx) {
     }
 
     function shouldSkipConfigFormField(key, config = currentConfig) {
+        if (CONFIG_FORM_MERGED_FIELDS?.has?.(key)) return true;
         if (DEPRECATED_CONFIG_FORM_FIELDS.has(key)) return true;
         if (RETIRED_CONFIG_FORM_FIELDS.has(key)) return true;
         const scopedFamilies = METHOD_SCOPED_CONFIG_FORM_FIELDS.get(key);
@@ -1877,11 +1948,17 @@ export function createLegacyApp(ctx) {
         if (extraClass === 'config-group-model') {
             titleActions.appendChild(createFillGlobalModelPathsButton());
         }
+        if (extraClass === 'config-group-resource') {
+            titleActions.appendChild(createResourceQuickPresetsButton(content, collapseBtn));
+        }
         titleActions.appendChild(collapseBtn);
         header.appendChild(titleActions);
         section.appendChild(header);
         if (extraClass === 'config-group-data') {
             content.appendChild(createConfigDatasetPicker());
+        }
+        if (extraClass === 'config-group-resource') {
+            content.appendChild(createResourceQuickPresetPanel());
         }
         appendFieldRows(content, fields, extraClass);
         if (extraClass === 'config-group-steps') {
@@ -2456,6 +2533,66 @@ export function createLegacyApp(ctx) {
             });
         });
         return btn;
+    }
+
+    function createResourceQuickPresetsButton(content, collapseBtn) {
+        const btn = document.createElement('button');
+        btn.id = 'btn-resource-quick-presets';
+        btn.type = 'button';
+        btn.className = 'btn btn-small config-group-title-action config-resource-quick-toggle';
+        btn.textContent = '快速填写';
+        btn.title = '显示四个显存与速度预设，一键填写当前表单';
+        btn.setAttribute('aria-expanded', 'false');
+        btn.addEventListener('click', () => {
+            const panel = content.querySelector('.config-resource-quick-presets');
+            if (!panel) return;
+            const nextVisible = panel.hidden;
+            panel.hidden = !nextVisible;
+            btn.classList.toggle('active', nextVisible);
+            btn.setAttribute('aria-expanded', String(nextVisible));
+            btn.title = nextVisible ? '收起显存与速度快速预设' : '显示四个显存与速度预设，一键填写当前表单';
+            if (nextVisible && content.hidden) {
+                content.hidden = false;
+                collapseBtn.textContent = '收起';
+                collapseBtn.setAttribute('aria-expanded', 'true');
+                collapseBtn.title = '收起这个配置区';
+                configFormState.expandedGroups.add('显存与速度');
+                configFormState.collapsedGroups.delete('显存与速度');
+            }
+        });
+        return btn;
+    }
+
+    function createResourceQuickPresetPanel() {
+        const panel = document.createElement('div');
+        panel.className = 'config-resource-quick-presets';
+        panel.hidden = true;
+        panel.setAttribute('aria-label', '显存与速度快速预设');
+
+        const label = document.createElement('span');
+        label.className = 'config-resource-quick-label';
+        label.textContent = '快速预设';
+        panel.appendChild(label);
+
+        for (const preset of RESOURCE_QUICK_PRESETS) {
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'btn btn-small config-resource-preset-btn';
+            btn.dataset.resourcePreset = preset.id;
+            btn.textContent = preset.label;
+            btn.title = preset.note;
+            btn.addEventListener('click', () => applyResourceQuickPreset(preset));
+            panel.appendChild(btn);
+        }
+        return panel;
+    }
+
+    function applyResourceQuickPreset(preset) {
+        for (const [key, value] of Object.entries(preset.values)) {
+            setFieldInputValue(key, value);
+        }
+        handleFormFieldChange();
+        setTomlStatus('ok', `已填写显存与速度预设: ${preset.label}`);
     }
 
     async function fillGlobalModelPathsIntoConfigForm() {
@@ -5950,7 +6087,7 @@ export function createLegacyApp(ctx) {
         if (input.type === 'checkbox') {
             input.checked = Boolean(value);
         } else {
-            input.value = value || '';
+            input.value = value ?? '';
         }
         updateConfigDraftFromInput(input);
     }
@@ -6142,8 +6279,8 @@ export function createLegacyApp(ctx) {
         const moduleName = String(config.network_module || '');
         if (currentTrainingSource.methods_subdir === 'methods' && currentTrainingSource.method === 'spd') return 'spd';
         if ('dit_path' in config && 'iterations' in config && currentTrainingSource.method === 'spd') return 'spd';
-        if (isTruthy(config.use_loha)) return 'loha';
         if (isTruthy(config.use_lokr)) return 'lokr';
+        if (isTruthy(config.use_loha)) return 'loha';
         if (isTruthy(config.use_easycontrol) || moduleName.includes('easycontrol')) return 'easycontrol';
         if (isTruthy(config.use_ip_adapter) || moduleName.includes('ip_adapter')) return 'ip_adapter';
         if (moduleName.includes('soft_tokens')) return 'soft_tokens';
@@ -6227,6 +6364,67 @@ export function createLegacyApp(ctx) {
 
     function isTruthy(value) {
         return value === true || value === 1 || value === '1' || String(value).toLowerCase() === 'true';
+    }
+
+    function normalizeLoraAdapterKind(value) {
+        const text = String(value ?? '').trim().toLowerCase();
+        if (text === 'loha' || text === 'lokr') return text;
+        return 'lora';
+    }
+
+    function loraAdapterKindFromConfig(config = currentConfig) {
+        if (isTruthy(config?.use_lokr)) return 'lokr';
+        if (isTruthy(config?.use_loha)) return 'loha';
+        return 'lora';
+    }
+
+    function loraAdapterFlagsForKind(kind) {
+        const normalized = normalizeLoraAdapterKind(kind);
+        return {
+            use_loha: normalized === 'loha',
+            use_lokr: normalized === 'lokr',
+        };
+    }
+
+    function applyLoraAdapterDraft(kind) {
+        const normalized = normalizeLoraAdapterKind(kind);
+        const originalKind = loraAdapterKindFromConfig(currentConfig);
+        if (normalized === originalKind && loraAdapterFlagsMatchConfig(normalized, currentConfig)) {
+            configFormState.draftValues.delete('lora_adapter_kind');
+        } else {
+            configFormState.draftValues.set('lora_adapter_kind', normalized);
+        }
+        configFormState.draftValues.delete('use_loha');
+        configFormState.draftValues.delete('use_lokr');
+    }
+
+    function readLiveLoraAdapterKind() {
+        if (configFormState.draftValues.has('lora_adapter_kind')) {
+            return normalizeLoraAdapterKind(configFormState.draftValues.get('lora_adapter_kind'));
+        }
+        const input = document.querySelector('#config-form .field-input[data-key="lora_adapter_kind"]');
+        if (input) {
+            return normalizeLoraAdapterKind(readFieldInputValue(input, loraAdapterKindFromConfig(currentConfig)));
+        }
+        return loraAdapterKindFromConfig(currentConfig);
+    }
+
+    function applyLoraAdapterPatch(values) {
+        if (!configFormState.draftValues.has('lora_adapter_kind')) return values;
+        const nextKind = normalizeLoraAdapterKind(configFormState.draftValues.get('lora_adapter_kind'));
+        const flags = loraAdapterFlagsForKind(nextKind);
+        values.use_loha = flags.use_loha;
+        values.use_lokr = flags.use_lokr;
+        if (flags.use_lokr && !('lokr_factor' in values) && !('lokr_factor' in currentConfig)) {
+            values.lokr_factor = FORM_UI_DEFAULTS.lokr_factor;
+        }
+        return values;
+    }
+
+    function loraAdapterFlagsMatchConfig(kind, config = currentConfig) {
+        const flags = loraAdapterFlagsForKind(kind);
+        return isTruthy(config?.use_loha) === flags.use_loha
+            && isTruthy(config?.use_lokr) === flags.use_lokr;
     }
 
     function compactList(items) {
@@ -6332,6 +6530,10 @@ export function createLegacyApp(ctx) {
             if (!key) continue;
             if (CONFIG_FORM_INTERNAL_KEYS.has(key)) continue;
             if (isActiveNetworkArgFieldKey(key)) continue;
+            if (key === 'lora_adapter_kind') {
+                Object.assign(liveConfig, loraAdapterFlagsForKind(next));
+                continue;
+            }
             liveConfig[key] = next;
         }
         liveConfig.network_args = collectNetworkArgsFromForm(liveConfig).networkArgs;
@@ -6799,6 +7001,7 @@ export function createLegacyApp(ctx) {
             if (networkArgSpec.valueType === 'integer' || networkArgSpec.valueType === 'number') return 'number';
             return 'string';
         }
+        if (key === 'lora_adapter_kind') return 'string';
         if (key === 'use_lokr' || key === 'use_loha') return 'boolean';
         if (key === 'lokr_factor') return 'number';
         if (isNumericField(key, value)) return 'number';
@@ -6812,6 +7015,13 @@ export function createLegacyApp(ctx) {
     }
 
     function optionLabel(key, value) {
+        if (key === 'lora_adapter_kind') {
+            return {
+                lora: '普通 LoRA',
+                loha: 'LoHa',
+                lokr: 'LoKr',
+            }[normalizeLoraAdapterKind(value)] || String(value);
+        }
         if (key === 'use_lokr') {
             return value === true || value === 'true' ? '启用 LoKr' : '普通 LoRA';
         }
@@ -8185,6 +8395,9 @@ export function createLegacyApp(ctx) {
                 }
                 continue;
             }
+            if (key === 'lora_adapter_kind') {
+                continue;
+            }
             const hasOriginal = key in currentConfig;
             const original = hasOriginal ? currentConfig[key] : FORM_UI_DEFAULTS[key];
             if (!hasOriginal) {
@@ -8205,7 +8418,7 @@ export function createLegacyApp(ctx) {
         if (values.use_lokr === true && !('lokr_factor' in values) && !('lokr_factor' in currentConfig)) {
             values.lokr_factor = FORM_UI_DEFAULTS.lokr_factor;
         }
-        return values;
+        return applyLoraAdapterPatch(values);
     }
 
     function networkArgInputChanged(input) {
@@ -8334,12 +8547,7 @@ export function createLegacyApp(ctx) {
     }
 
     function readLoKrEnabled() {
-        if (configFormState.draftValues.has('use_lokr')) {
-            return configFormState.draftValues.get('use_lokr') === true;
-        }
-        const input = document.querySelector('#config-form .field-input[data-key="use_lokr"]');
-        if (!input) return currentConfig.use_lokr === true;
-        return readFieldInputValue(input, currentConfig.use_lokr ?? FORM_UI_DEFAULTS.use_lokr) === true;
+        return readLiveLoraAdapterKind() === 'lokr';
     }
 
     function updateLoKrFieldState() {

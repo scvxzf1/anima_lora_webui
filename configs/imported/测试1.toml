@@ -39,7 +39,8 @@ caption_dropout_rate = 0.0
 output_dir = "/home/scv/sda1/DiffPipeForge2/output/肋骨女神/mylora"
 output_name = "rokkotsu_goddess_5_14"
 
-blocks_to_swap = 0
+blocks_to_swap = 12
 sample_prompts = "configs/sample-prompts/imported/rokkotsu_goddess_528_tag.txt"
 sample_every_n_epochs = 1
 sample_sampler = "euler"
+block_swap_profile_jsonl = "auto"

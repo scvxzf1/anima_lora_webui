@@ -11,6 +11,7 @@ export const FORM_UI_DEFAULTS = {
     max_train_steps: 0,
     sample_at_first: false,
     sample_sampler: 'ddim',
+    lora_adapter_kind: 'lora',
     use_loha: false,
     use_lokr: false,
     lokr_factor: 8,
@@ -100,6 +101,10 @@ export const FORM_UI_PERSIST_DEFAULT_FIELDS = new Set([
 ]);
 export const CONFIG_FORM_INTERNAL_KEYS = new Set([
     'dataset_config_picker',
+]);
+export const CONFIG_FORM_MERGED_FIELDS = new Set([
+    'use_loha',
+    'use_lokr',
 ]);
 export const DEPRECATED_CONFIG_FORM_FIELDS = new Set([
     'compile_mode',

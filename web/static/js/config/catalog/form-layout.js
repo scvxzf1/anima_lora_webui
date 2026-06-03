@@ -25,8 +25,7 @@ export const FORM_SECTION_DEFS = [
             'gradient_checkpointing',
             'network_dim',
             'network_alpha',
-            'use_loha',
-            'use_lokr',
+            'lora_adapter_kind',
             'lokr_factor',
             'network_weights',
             'dim_from_weights',
@@ -59,8 +58,8 @@ export const FORM_SECTION_DEFS = [
         className: 'config-group-data',
         keys: [
             'use_shuffled_caption_variants',
-            'caption_dropout_rate',
             'masked_loss',
+            'caption_dropout_rate',
         ],
     },
     {
@@ -315,13 +314,19 @@ export const CONFIG_COMPACT_FIELD_GROUPS = {
         },
         {
             className: 'config-field-grid-4col',
-            keys: ['network_dim', 'network_alpha', 'use_loha', 'use_lokr', 'lokr_factor'],
+            keys: ['network_dim', 'network_alpha', 'lora_adapter_kind', 'lokr_factor'],
         },
     ],
     'config-group-steps': [
         {
             className: 'config-field-grid-4col',
             keys: ['max_train_steps', 'train_batch_size', 'gradient_accumulation_steps', 'sample_ratio'],
+        },
+    ],
+    'config-group-data': [
+        {
+            className: 'config-field-grid-2col config-field-grid-inline-flags',
+            keys: ['use_shuffled_caption_variants', 'masked_loss'],
         },
     ],
     'config-group-sampling': [
@@ -333,7 +338,11 @@ export const CONFIG_COMPACT_FIELD_GROUPS = {
     'config-group-resource': [
         {
             className: 'config-field-grid-3col',
-            keys: ['blocks_to_swap', 'unsloth_offload_checkpointing', 'mixed_precision'],
+            keys: ['blocks_to_swap', 'selective_checkpoint', 'block_swap_profile_jsonl'],
+        },
+        {
+            className: 'config-field-grid-2col config-field-grid-inline-flags',
+            keys: ['disable_block_swap_for_eval', 'unsloth_offload_checkpointing'],
         },
         {
             className: 'config-field-grid-3col',

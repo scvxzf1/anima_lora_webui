@@ -414,6 +414,7 @@ def test_config_toolbar_is_first_visible_config_row() -> None:
     assert "method-select" in toolbar_html
     assert "variant-select" in toolbar_html
     assert "preset-select" in toolbar_html
+    assert 'id="choice-guide"' not in html
     assert "padding: 1rem 1.65rem 1.7rem;" in form_workspace_css
     assert "align-items: center;" in toolbar_css
 
@@ -467,6 +468,9 @@ def test_config_form_uses_navigation_search_and_progressive_disclosure() -> None
     assert "function createConfigCategory" not in source
     assert "configFormState.draftValues.entries()" in collect_section
     assert "collectNetworkArgsFromForm({ network_args: values.network_args ?? currentConfig.network_args })" in collect_section
+    assert "applyLoraAdapterPatch(values)" in collect_section
+    assert "const container = document.getElementById('choice-guide');" in source
+    assert "if (!container) return;" in source
     assert "function updateChangedFieldMarks" in source
     assert "field-row-changed" in source
     assert "config-modified-count" in source
@@ -481,20 +485,81 @@ def test_config_form_uses_navigation_search_and_progressive_disclosure() -> None
     assert "content.className = 'config-group-body';" in source
     assert "titleActions.className = 'config-group-title-actions';" in source
     assert "titleActions.appendChild(createFillGlobalModelPathsButton());" in source
+    assert "titleActions.appendChild(createResourceQuickPresetsButton(content, collapseBtn));" in source
+    assert "content.appendChild(createResourceQuickPresetPanel());" in source
     assert "titleActions.appendChild(collapseBtn);" in source
     assert ".config-category" not in css
     assert ".config-field-grid-4col" in css
     assert ".config-group-title-actions" in css
+    assert ".config-resource-quick-presets" in css
+    assert ".config-resource-preset-btn" in css
+    resource_quick_css = _section(css, ".config-resource-quick-presets {", ".config-resource-quick-presets[hidden]")
+    assert "grid-template-columns: repeat(auto-fit, minmax(96px, 1fr));" in resource_quick_css
+    assert "grid-column: 1 / -1;" in _section(css, ".config-resource-quick-label {", ".config-resource-preset-btn")
+    assert "RESOURCE_QUICK_PRESETS" in source
+    for label in ["全 GPU", "Balanced 16G", "更省显存", "OOM 兜底"]:
+        assert label in source
+    for value in [
+        "blocks_to_swap: 12",
+        "blocks_to_swap: 16",
+        "selective_checkpoint: 'mlp_only'",
+        "block_swap_profile_jsonl: 'auto'",
+    ]:
+        assert value in source
+    set_field_section = _section(source, "function setFieldInputValue", "function escapeHtml")
+    assert "input.value = value ?? '';" in set_field_section
     compact_field_css = _section(css, ".config-field-grid-3col .field-main", ".field-label-stack")
     assert "grid-template-rows: auto auto;" in compact_field_css
     assert "row-gap: 0.24rem;" in compact_field_css
     assert "grid-row: 1;" in compact_field_css
     assert "grid-row: 2;" in compact_field_css
+    data_section = _section(source, "title: '数据集设置'", "title: '训练中预览图'")
+    data_compact = _section(source, "'config-group-data': [", "'config-group-sampling': [")
+    inline_flag_css = _section(css, ".config-field-grid-inline-flags .field-main", ".field-label-stack")
+    assert "'use_shuffled_caption_variants'," in data_section
+    assert "'masked_loss'," in data_section
+    assert "'caption_dropout_rate'," in data_section
+    assert data_section.index("'masked_loss',") < data_section.index("'caption_dropout_rate',")
+    assert "config-field-grid-2col config-field-grid-inline-flags" in data_compact
+    assert "keys: ['use_shuffled_caption_variants', 'masked_loss']" in data_compact
+    assert "grid-template-columns: minmax(0, 1fr) auto 18px;" in inline_flag_css
+    assert "grid-template-rows: auto;" in inline_flag_css
 
     primary_section = _section(source, "title: '常用训练设置'", "title: '步数与训练量'")
     resource_section = _section(source, "title: '显存与速度'", "title: '缓存与预处理'")
+    resource_compact = _section(source, "'config-group-resource': [", "const VARIANT_METHOD_FAMILY")
     assert "'gradient_checkpointing'," in primary_section
     assert "'gradient_checkpointing'," not in resource_section
+    assert "keys: ['blocks_to_swap', 'selective_checkpoint', 'block_swap_profile_jsonl']" in resource_compact
+    assert "keys: ['disable_block_swap_for_eval', 'unsloth_offload_checkpointing']" in resource_compact
+    assert "config-field-grid-2col config-field-grid-inline-flags" in resource_compact
+
+
+def test_config_form_merges_loha_lokr_into_single_adapter_selector() -> None:
+    source = APP_JS.read_text(encoding="utf-8")
+    defaults = _section(source, "const FORM_UI_DEFAULTS = {", "const OPTIONAL_EMPTY_FIELDS")
+    layout = _section(source, "const FORM_SECTION_DEFS = [", "const STICKY_CONFIG_CATEGORY_IDS")
+    merged_fields = _section(source, "const CONFIG_FORM_MERGED_FIELDS = new Set([", "const DEPRECATED_CONFIG_FORM_FIELDS")
+    render_section = _section(source, "function renderConfigForm", "function shouldRenderConfigSection")
+    collect_section = _section(source, "function collectChangedFormValues", "function networkArgInputChanged")
+    live_section = _section(source, "function liveConfigFromForm", "function formatFieldName")
+    state_section = _section(source, "function readLoKrEnabled", "function updateLoKrFieldState")
+
+    assert "lora_adapter_kind: 'lora'" in defaults
+    assert "'lora_adapter_kind'" in layout
+    assert "'use_loha'" not in layout
+    assert "'use_lokr'" not in layout
+    assert "keys: ['network_dim', 'network_alpha', 'lora_adapter_kind', 'lokr_factor']" in source
+    assert "'use_loha'" in merged_fields
+    assert "'use_lokr'" in merged_fields
+    assert "CONFIG_FORM_MERGED_FIELDS?.has?.(key)" in render_section
+    assert "function loraAdapterFlagsForKind" in source
+    assert "values.use_loha = flags.use_loha" in source
+    assert "values.use_lokr = flags.use_lokr" in source
+    assert "if (key === 'lora_adapter_kind')" in collect_section
+    assert "continue;" in collect_section
+    assert "Object.assign(liveConfig, loraAdapterFlagsForKind(next));" in live_section
+    assert "return readLiveLoraAdapterKind() === 'lokr';" in state_section
 
 
 def test_config_actions_are_de_noised_and_sticky_controls_are_wired() -> None:

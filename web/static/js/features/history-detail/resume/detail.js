@@ -5,13 +5,13 @@ import {
     historyDetailRow,
     historyDetailSection,
     optionNode,
-} from '../ui.js?v=module-bootstrap-20260601-8';
+} from '../ui.js?v=module-bootstrap-20260601-11';
 import {
     resumeCheckpointOptionLabel,
     resumeCheckpointProgressText,
     resumeSummaryLine,
     selectedHistoryManagerResumeCheckpointFromState,
-} from './state.js?v=module-bootstrap-20260601-8';
+} from './state.js?v=module-bootstrap-20260601-11';
 
 export function createHistoryResumeDetailRenderer({ ctx, state, deps, slots, actions }) {
     const historyDetailCopyButton = (value, label) => createHistoryDetailCopyButton(ctx.dom.copyText, value, label);

@@ -1,10 +1,10 @@
-import { createHistoryAnalysisRenderer } from './analysis.js?v=module-bootstrap-20260601-8';
-import { createHistoryConfigFilesRenderer } from './config-files.js?v=module-bootstrap-20260601-8';
-import { createHistoryLogsRenderer } from './logs.js?v=module-bootstrap-20260601-8';
-import { createHistoryOverviewRenderer } from './overview.js?v=module-bootstrap-20260601-8';
-import { createHistoryResumeFeature } from './resume/index.js?v=module-bootstrap-20260601-8';
-import { HISTORY_DETAIL_TABS, normalizeHistoryDetailTab, setHistoryDetailTab } from './state.js?v=module-bootstrap-20260601-8';
-import { createHistoryDetailWorkspace } from './workspace.js?v=module-bootstrap-20260601-8';
+import { createHistoryAnalysisRenderer } from './analysis.js?v=module-bootstrap-20260601-11';
+import { createHistoryConfigFilesRenderer } from './config-files.js?v=module-bootstrap-20260601-11';
+import { createHistoryLogsRenderer } from './logs.js?v=module-bootstrap-20260601-11';
+import { createHistoryOverviewRenderer } from './overview.js?v=module-bootstrap-20260601-11';
+import { createHistoryResumeFeature } from './resume/index.js?v=module-bootstrap-20260601-11';
+import { HISTORY_DETAIL_TABS, normalizeHistoryDetailTab, setHistoryDetailTab } from './state.js?v=module-bootstrap-20260601-11';
+import { createHistoryDetailWorkspace } from './workspace.js?v=module-bootstrap-20260601-11';
 
 export function createHistoryDetailDialog({ ctx, state, deps }) {
     const slots = {};
