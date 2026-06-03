@@ -45,7 +45,12 @@ def _validate(kwargs: Mapping[str, Any]) -> None:
 
 
 def _module_kwargs(ctx: ModuleCreationContext) -> dict[str, Any]:
-    return {"factor": int(ctx.cfg.plugin_args.get("lokr_factor", 8))}
+    return {
+        "factor": int(ctx.cfg.plugin_args.get("lokr_factor", 8)),
+        "lokr_factor_group_size": int(
+            ctx.cfg.plugin_args.get("lokr_factor_group_size", 8)
+        ),
+    }
 
 
 def _detect_from_weights(ctx: WeightDetectionContext) -> bool:
@@ -116,7 +121,7 @@ register_network_spec(
         name="lokr",
         module_class=LoKrModule,
         save_variant="lokr",
-        kwarg_flags=("use_lokr", "lokr_factor"),
+        kwarg_flags=("use_lokr", "lokr_factor", "lokr_factor_group_size"),
         selector=_selector,
         validate=_validate,
         module_kwargs=_module_kwargs,

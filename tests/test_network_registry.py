@@ -95,9 +95,10 @@ def test_hydra_router_kwargs_registered():
 
 
 def test_lokr_kwargs_registered():
-    must_have = {"use_lokr", "lokr_factor"}
+    must_have = {"use_lokr", "lokr_factor", "lokr_factor_group_size"}
     assert must_have.issubset(set(all_network_kwargs()))
     assert "lokr_factor" in set(NETWORK_REGISTRY["lokr"].kwarg_flags)
+    assert "lokr_factor_group_size" in set(NETWORK_REGISTRY["lokr"].kwarg_flags)
 
 
 def test_loha_kwargs_registered():

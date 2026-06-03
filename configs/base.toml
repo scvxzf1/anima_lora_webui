@@ -54,6 +54,8 @@ unsloth_offload_checkpointing = false
 selective_checkpoint = "off"
 block_swap_profile_jsonl = "off"
 block_swap_transfer_dtype = "bf16"
+memory_probe_jsonl = "off"
+memory_probe_max_steps = 2
 disable_block_swap_for_eval = false
 
 use_vae_cache = true

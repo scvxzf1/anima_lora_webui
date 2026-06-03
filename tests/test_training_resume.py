@@ -562,6 +562,49 @@ def test_block_swap_profile_auto_config_targets_current_history_task(
     assert cfg["block_swap_profile_jsonl"] == str(explicit_profile_path)
 
 
+def test_memory_probe_auto_config_targets_current_history_task(tmp_path, monkeypatch):
+    _patch_runtime_service_paths(monkeypatch, tmp_path)
+    history_dir = tmp_path / "configs" / "web-training-history"
+    monkeypatch.setattr(training_service, "HISTORY_DIR", history_dir)
+    config_path = tmp_path / "output" / "runs" / "demo" / "config.runtime.toml"
+    config_path.parent.mkdir(parents=True)
+    probe_path = history_dir / "task-new" / "memory_probe.jsonl"
+
+    config_path.write_text('memory_probe_jsonl = "auto"\n', encoding="utf-8")
+    training_service._resolve_memory_probe_auto_config(str(config_path), probe_path)
+    cfg = toml.loads(config_path.read_text(encoding="utf-8"))
+    assert cfg["memory_probe_jsonl"] == str(probe_path)
+
+    old_probe_path = history_dir / "task-old" / "memory_probe.jsonl"
+    config_path.write_text(
+        toml.dumps({"memory_probe_jsonl": str(old_probe_path)}),
+        encoding="utf-8",
+    )
+    training_service._resolve_memory_probe_auto_config(str(config_path), probe_path)
+    cfg = toml.loads(config_path.read_text(encoding="utf-8"))
+    assert cfg["memory_probe_jsonl"] == str(probe_path)
+
+    explicit_probe_path = tmp_path / "logs" / "explicit-memory.jsonl"
+    config_path.write_text(
+        toml.dumps({"memory_probe_jsonl": str(explicit_probe_path)}),
+        encoding="utf-8",
+    )
+    training_service._resolve_memory_probe_auto_config(str(config_path), probe_path)
+    cfg = toml.loads(config_path.read_text(encoding="utf-8"))
+    assert cfg["memory_probe_jsonl"] == str(explicit_probe_path)
+
+    args = [
+        "python",
+        "train.py",
+        "--memory_probe_jsonl",
+        "auto",
+        "--block_swap_profile_jsonl=auto",
+    ]
+    resolved = training_service._resolve_memory_probe_auto_arg(args, probe_path)
+    assert resolved[3] == str(probe_path)
+    assert resolved[-1] == "--block_swap_profile_jsonl=auto"
+
+
 def test_web_runtime_config_materializes_nl_tag_mix_source(tmp_path, monkeypatch):
     _write_runtime_config_tree(tmp_path)
     _patch_runtime_service_paths(monkeypatch, tmp_path)

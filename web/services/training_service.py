@@ -557,6 +557,16 @@ class TrainingService:
                 and not _command_has_option(cmd, "--block_swap_profile_jsonl")
             ):
                 cmd = [*cmd, "--block_swap_profile_jsonl", str(block_swap_profile_path)]
+            memory_probe_path = task_dir / "memory_probe.jsonl"
+            config_wants_memory_probe = _resolve_memory_probe_auto_config(
+                config_file, memory_probe_path
+            )
+            cmd = _resolve_memory_probe_auto_arg(cmd, memory_probe_path)
+            if (
+                config_wants_memory_probe
+                and not _command_has_option(cmd, "--memory_probe_jsonl")
+            ):
+                cmd = [*cmd, "--memory_probe_jsonl", str(memory_probe_path)]
         if job == "training":
             progress_jsonl = _command_option_value(cmd, "--progress_jsonl")
             self._progress_jsonl_path = _resolve_display_path(progress_jsonl or str(task_dir / "progress.jsonl"))
@@ -5137,8 +5147,33 @@ def _command_option_value(args: list[str], option: str) -> str | None:
 
 
 def _resolve_block_swap_profile_auto_arg(args: list[str], path: Path) -> list[str]:
+    return _resolve_auto_path_arg(args, "--block_swap_profile_jsonl", path)
+
+
+def _resolve_block_swap_profile_auto_config(config_file: str | None, path: Path) -> bool:
+    return _resolve_auto_path_config(
+        config_file,
+        config_key="block_swap_profile_jsonl",
+        path=path,
+        is_history_path_fn=_is_history_block_swap_profile_path,
+    )
+
+
+def _resolve_memory_probe_auto_arg(args: list[str], path: Path) -> list[str]:
+    return _resolve_auto_path_arg(args, "--memory_probe_jsonl", path)
+
+
+def _resolve_memory_probe_auto_config(config_file: str | None, path: Path) -> bool:
+    return _resolve_auto_path_config(
+        config_file,
+        config_key="memory_probe_jsonl",
+        path=path,
+        is_history_path_fn=_is_history_memory_probe_path,
+    )
+
+
+def _resolve_auto_path_arg(args: list[str], option: str, path: Path) -> list[str]:
     out = list(args)
-    option = "--block_swap_profile_jsonl"
     prefix = f"{option}="
     replacement = str(path)
     idx = 0
@@ -5155,7 +5190,13 @@ def _resolve_block_swap_profile_auto_arg(args: list[str], path: Path) -> list[st
     return out
 
 
-def _resolve_block_swap_profile_auto_config(config_file: str | None, path: Path) -> bool:
+def _resolve_auto_path_config(
+    config_file: str | None,
+    *,
+    config_key: str,
+    path: Path,
+    is_history_path_fn,
+) -> bool:
     config_path = _resolve_display_path(str(config_file or ""))
     if config_path is None or not _path_exists(config_path) or not config_path.is_file():
         return False
@@ -5163,21 +5204,29 @@ def _resolve_block_swap_profile_auto_config(config_file: str | None, path: Path)
         cfg = toml.loads(config_path.read_text(encoding="utf-8"))
     except Exception:
         return False
-    value = str(cfg.get("block_swap_profile_jsonl") or "").strip()
-    if value.lower() != "auto" and not _is_history_block_swap_profile_path(value):
+    value = str(cfg.get(config_key) or "").strip()
+    if value.lower() != "auto" and not is_history_path_fn(value):
         return False
     if config_path.name == "config.runtime.toml":
-        cfg["block_swap_profile_jsonl"] = str(path)
+        cfg[config_key] = str(path)
         config_path.write_text(toml_dumps_sorted(cfg), encoding="utf-8")
     return True
 
 
 def _is_history_block_swap_profile_path(value: str) -> bool:
-    profile_path = _resolve_display_path(value)
-    if profile_path is None or profile_path.name != "block_swap_profile.jsonl":
+    return _is_history_artifact_path(value, "block_swap_profile.jsonl")
+
+
+def _is_history_memory_probe_path(value: str) -> bool:
+    return _is_history_artifact_path(value, "memory_probe.jsonl")
+
+
+def _is_history_artifact_path(value: str, filename: str) -> bool:
+    artifact_path = _resolve_display_path(value)
+    if artifact_path is None or artifact_path.name != filename:
         return False
     try:
-        profile_path.resolve().relative_to(HISTORY_DIR.resolve())
+        artifact_path.resolve().relative_to(HISTORY_DIR.resolve())
     except ValueError:
         return False
     return True

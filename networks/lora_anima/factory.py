@@ -129,15 +129,25 @@ def create_network(
 
     if use_custom_down_autograd:
         _hits = 0
+        _lokr_hits = 0
         _skipped = 0
         for mod in network.text_encoder_loras + network.unet_loras:
             if hasattr(mod, "use_custom_down_autograd"):
                 mod.use_custom_down_autograd = True
                 _hits += 1
+            elif hasattr(mod, "use_custom_lokr_autograd"):
+                mod.use_custom_lokr_autograd = True
+                _lokr_hits += 1
             else:
                 _skipped += 1
+        hit_parts = []
+        if _hits:
+            hit_parts.append(f"{_hits} LoRA-family modules")
+        if _lokr_hits:
+            hit_parts.append(f"{_lokr_hits} LoKr modules")
+        hit_text = " and ".join(hit_parts) if hit_parts else "0 LoRA-family modules"
         logger.info(
-            f"use_custom_down_autograd: enabled on {_hits} LoRA-family modules"
+            f"use_custom_down_autograd: enabled on {hit_text}"
             + (f" ({_skipped} unsupported skipped)" if _skipped else "")
             + " (saves ~32-128 MiB/Linear of fp32 activation per step)"
         )

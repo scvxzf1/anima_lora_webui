@@ -82,6 +82,7 @@ from library.training.bootstrap import TrainingBootstrap
 from library.training.checkpoints import plan_resume_start
 from library.training.loop import build_loop_state, run_training_loop
 from library.training.log_dispatch import dispatch_logs
+from library.training.memory_probe import MemoryProbe
 from library.training.progress import ProgressSink, run_scope
 from library.training.router_conditioning import apply_router_conditioning
 from library.training.text_conds import prepare_text_conds
@@ -125,6 +126,20 @@ def _resolve_block_swap_profile_jsonl(args) -> Optional[str]:
     parent = os.path.dirname(os.path.normpath(output_dir))
     logs_dir = os.path.join(parent or output_dir, "logs")
     return os.path.join(logs_dir, f"{output_name}.block_swap_profile.jsonl")
+
+
+def _maybe_probe(trainer, label: str, **kwargs) -> None:
+    probe = getattr(trainer, "memory_probe", None)
+    if probe is None:
+        return
+    probe.snapshot(label, **kwargs)
+
+
+def _maybe_probe_components(trainer, label: str, **kwargs) -> None:
+    probe = getattr(trainer, "memory_probe", None)
+    if probe is None:
+        return
+    probe.component_summary(label, **kwargs)
 
 
 def _decode_deferred_samples_safely(
@@ -193,6 +208,7 @@ class AnimaTrainer:
     def __init__(self, bootstrap: TrainingBootstrap | None = None):
         self.bootstrap = bootstrap or TrainingBootstrap()
         self.sample_prompts_te_outputs = None
+        self.memory_probe = None
         self._padding_mask_cache = {}
         # Per-method extensions (EasyControl, IP-Adapter, …). Resolved
         # from args+network in train() right after _create_and_apply_network.
@@ -703,15 +719,16 @@ class AnimaTrainer:
             lora_multipliers=lora_multipliers,
             attn_softmax_scale=attn_softmax_scale,
         )
-
-        # Native-shape flattening + per-block torch.compile. compile_blocks turns
-        # on the flatten (one block graph per token-count family: 4032/4200) and
-        # raises the dynamo cache-size budget itself.
-        if args.torch_compile:
-            model.compile_blocks(
-                args.dynamo_backend,
-                mode=getattr(args, "compile_inductor_mode", None),
-            )
+        _maybe_probe_components(
+            self,
+            "dit_loaded",
+            unet=model,
+            device=accelerator.device,
+            phase="setup",
+            attn_mode=attn_mode,
+            loading_device=loading_device,
+            loading_dtype=loading_dtype,
+        )
 
         # Store unsloth preference so that when the base trainer calls
         # dit.enable_gradient_checkpointing(cpu_offload=...), we can override to use unsloth.
@@ -721,6 +738,25 @@ class AnimaTrainer:
         if selective_checkpoint != "off":
             logger.info(f"enable selective checkpoint: {selective_checkpoint}")
             model.enable_selective_checkpointing(selective_checkpoint)
+
+        # Native-shape flattening + per-block torch.compile. compile_blocks turns
+        # on the flatten (one block graph per token-count family: 4032/4200) and
+        # raises the dynamo cache-size budget itself. Selective checkpoint flags
+        # must be installed first, otherwise compiled _forward can specialize on
+        # the non-checkpointed MLP branch.
+        if args.torch_compile:
+            model.compile_blocks(
+                args.dynamo_backend,
+                mode=getattr(args, "compile_inductor_mode", None),
+            )
+            _maybe_probe(
+                self,
+                "dit_compiled",
+                device=accelerator.device,
+                phase="setup",
+                dynamo_backend=args.dynamo_backend,
+                compile_inductor_mode=getattr(args, "compile_inductor_mode", None),
+            )
 
         # Block swap
         self.is_swapping_blocks = (
@@ -739,6 +775,16 @@ class AnimaTrainer:
                 accelerator.device,
                 profile_jsonl=profile_jsonl,
                 transfer_dtype=args.block_swap_transfer_dtype,
+            )
+            _maybe_probe_components(
+                self,
+                "block_swap_enabled",
+                unet=model,
+                device=accelerator.device,
+                phase="setup",
+                blocks_to_swap=args.blocks_to_swap,
+                block_swap_profile_jsonl=profile_jsonl or "off",
+                block_swap_transfer_dtype=args.block_swap_transfer_dtype,
             )
 
         # Variance-reduced FM loss: the "frozen reference" is the trainable
@@ -1859,6 +1905,27 @@ class AnimaTrainer:
         logger.info("preparing accelerator")
         accelerator = prepare_accelerator(args)
         is_main_process = accelerator.is_main_process
+        self.memory_probe = MemoryProbe.from_args(
+            args,
+            is_main_process=is_main_process,
+            t0=training_started_at,
+        )
+        _maybe_probe(
+            self,
+            "accelerator_ready",
+            device=accelerator.device,
+            phase="setup",
+            session_id=session_id,
+            method=getattr(args, "method", None),
+            preset=getattr(args, "preset", None),
+            network_module=getattr(args, "network_module", None),
+            torch_compile=getattr(args, "torch_compile", False),
+            compile_inductor_mode=getattr(args, "compile_inductor_mode", None),
+            attn_mode=getattr(args, "attn_mode", None),
+            blocks_to_swap=getattr(args, "blocks_to_swap", None),
+            selective_checkpoint=getattr(args, "selective_checkpoint", "off"),
+            memory_probe_jsonl=getattr(self.memory_probe, "path", None),
+        )
 
         # mixed precision dtype
         weight_dtype, save_dtype = prepare_dtype(args)
@@ -1875,6 +1942,15 @@ class AnimaTrainer:
             accelerator,
             load_qwen3=qwen3_needed,
             load_vae=vae_needed,
+        )
+        _maybe_probe(
+            self,
+            "target_models_loaded",
+            device=accelerator.device,
+            phase="setup",
+            qwen3_loaded=bool(qwen3_needed),
+            vae_loaded=bool(vae_needed),
+            vae_dtype=getattr(vae, "dtype", None) if vae is not None else None,
         )
         if vae_dtype is None:
             vae_dtype = vae.dtype if vae is not None else weight_dtype
@@ -1959,6 +2035,17 @@ class AnimaTrainer:
             )
             for adapter in self._adapters:
                 adapter.on_network_built(setup_ctx)
+        _maybe_probe_components(
+            self,
+            "network_applied",
+            network=network,
+            unet=unet,
+            device=accelerator.device,
+            phase="setup",
+            adapter_count=len(self._adapters),
+            use_lokr=getattr(args, "use_lokr", None),
+            lokr_factor=getattr(args, "lokr_factor", None),
+        )
 
         (
             optimizer,
@@ -1978,6 +2065,16 @@ class AnimaTrainer:
             train_dataset_group,
             val_dataset_group,
             collator,
+        )
+        _maybe_probe_components(
+            self,
+            "optimizer_built",
+            network=network,
+            unet=unet,
+            optimizer=optimizer,
+            device=accelerator.device,
+            phase="setup",
+            optimizer_name=optimizer_name,
         )
 
         (
@@ -2008,6 +2105,15 @@ class AnimaTrainer:
             train_unet,
             train_text_encoder,
             cache_latents,
+        )
+        _maybe_probe_components(
+            self,
+            "accelerator_prepared",
+            network=network,
+            unet=unet,
+            optimizer=optimizer,
+            device=accelerator.device,
+            phase="setup",
         )
 
         num_update_steps_per_epoch = math.ceil(
@@ -2156,6 +2262,15 @@ class AnimaTrainer:
             epoch_to_start=epoch_to_start,
             initial_step=initial_step,
             metadata=metadata,
+        )
+        _maybe_probe(
+            self,
+            "loop_ready",
+            device=accelerator.device,
+            phase="setup",
+            global_step=loop_state.global_step,
+            max_train_steps=args.max_train_steps,
+            num_train_epochs=num_train_epochs,
         )
 
         # run_scope emits the matching run_end (ok / stopped / error) on exit;

@@ -39,6 +39,37 @@ from library.training.validation import run_validation
 logger = logging.getLogger(__name__)
 
 
+def _memory_probe_for_step(trainer, state) -> Any | None:
+    probe = getattr(trainer, "memory_probe", None)
+    if probe is None:
+        return None
+    if not probe.should_record_step(state.global_step):
+        return None
+    return probe
+
+
+def _probe_exception_fields(exc: BaseException) -> dict[str, Any]:
+    message = str(exc)
+    return {
+        "exception_type": type(exc).__name__,
+        "exception_message": message[:1000],
+        "is_cuda_oom": "out of memory" in message.lower(),
+    }
+
+
+def _probe_step(probe, state, label: str, **fields: Any) -> None:
+    if probe is None:
+        return
+    probe.snapshot(
+        label,
+        device=state.accelerator.device,
+        step=state.global_step,
+        phase="train",
+        sync_gradients=state.accelerator.sync_gradients,
+        **fields,
+    )
+
+
 @dataclass
 class LoopState:
     """Bundles every local that used to live in ``train()``'s for-epoch scope.
@@ -421,6 +452,9 @@ def _run_step(trainer, state: LoopState, batch) -> torch.Tensor:
     args = state.args
     accelerator = state.accelerator
     network = state.network
+    memory_probe = _memory_probe_for_step(trainer, state)
+
+    _probe_step(memory_probe, state, "step_enter")
 
     with accelerator.accumulate(state.training_model):
         state.on_step_start_for_network(state.text_encoder, state.unet)
@@ -452,20 +486,43 @@ def _run_step(trainer, state: LoopState, batch) -> torch.Tensor:
 
         if state.profile_started:
             torch.cuda.nvtx.range_push("forward")
-        loss = trainer.process_batch(state.train_ctx, batch, is_train=True)
+        _probe_step(memory_probe, state, "before_forward")
+        try:
+            loss = trainer.process_batch(state.train_ctx, batch, is_train=True)
+        except Exception as exc:
+            _probe_step(memory_probe, state, "forward_exception", **_probe_exception_fields(exc))
+            raise
+        _probe_step(
+            memory_probe,
+            state,
+            "after_forward",
+            loss_dtype=getattr(loss, "dtype", None),
+            loss_device=getattr(loss, "device", None),
+            loss_requires_grad=getattr(loss, "requires_grad", None),
+        )
         if state.profile_started:
             torch.cuda.nvtx.range_pop()
 
         if state.profile_started:
             torch.cuda.nvtx.range_push("backward")
-        accelerator.backward(loss)
+        _probe_step(memory_probe, state, "before_backward")
+        try:
+            accelerator.backward(loss)
+        except Exception as exc:
+            _probe_step(memory_probe, state, "backward_exception", **_probe_exception_fields(exc))
+            raise
+        _probe_step(memory_probe, state, "after_backward")
         if state.profile_started:
             torch.cuda.nvtx.range_pop()
 
         # Post-backward adapter hook (before clip/step) — injects extra grad
         # contributions that can't share the primary backward, e.g. soft-tokens
         # gradient-cached contrastive negatives under active block swapping.
-        trainer.run_after_backward(state.train_ctx)
+        try:
+            trainer.run_after_backward(state.train_ctx)
+        except Exception as exc:
+            _probe_step(memory_probe, state, "after_backward_hook_exception", **_probe_exception_fields(exc))
+            raise
 
         if accelerator.sync_gradients:
             net_unwrapped = accelerator.unwrap_model(network)
@@ -492,9 +549,15 @@ def _run_step(trainer, state: LoopState, batch) -> torch.Tensor:
 
         if state.profile_started:
             torch.cuda.nvtx.range_push("optimizer")
-        state.optimizer.step()
-        _step_lr_scheduler(state, loss)
-        state.optimizer.zero_grad(set_to_none=True)
+        _probe_step(memory_probe, state, "before_optimizer")
+        try:
+            state.optimizer.step()
+            _step_lr_scheduler(state, loss)
+            state.optimizer.zero_grad(set_to_none=True)
+        except Exception as exc:
+            _probe_step(memory_probe, state, "optimizer_exception", **_probe_exception_fields(exc))
+            raise
+        _probe_step(memory_probe, state, "after_optimizer")
         if state.profile_started:
             torch.cuda.nvtx.range_pop()
 

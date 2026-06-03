@@ -105,6 +105,14 @@ export const FIELD_HELP_METHOD_ZH = {
         ["过大可能限制表达，过小则更接近大矩阵更新、参数量上升。"],
         "Anima DiT 默认用 8；不确定时保持默认。"
     ),
+    lokr_factor_group_size: help(
+        "LoKr 自定义反向一次计算的输出 factor 组数。",
+        "值越大，重复投影越少，速度更快，但临时激活会变大。",
+        ["8 在 16GB LoKr 10-step 短跑中继续稳定，速度明显快于 4。"],
+        ["它会一次计算完整 LoKr delta 输出，显存不稳或 OOM 时先退回 4，再退 2/1。"],
+        ["只影响训练时 custom LoKr apply，不改变保存权重格式。"],
+        "当前推荐 8；追求更稳时使用 4。"
+    ),
     min_rank: help(
         "T-LoRA 在低噪声时间步保留的最小活跃 rank。",
         "常用 1/2/4。rank 总量较低时不要设太低。",

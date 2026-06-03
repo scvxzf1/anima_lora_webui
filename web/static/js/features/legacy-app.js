@@ -81,6 +81,8 @@ export function createLegacyApp(ctx) {
                 block_swap_transfer_dtype: 'bf16',
                 selective_checkpoint: 'off',
                 block_swap_profile_jsonl: 'off',
+                memory_probe_jsonl: 'off',
+                memory_probe_max_steps: 2,
                 unsloth_offload_checkpointing: false,
                 torch_compile: true,
             },
@@ -94,6 +96,8 @@ export function createLegacyApp(ctx) {
                 block_swap_transfer_dtype: 'bf16',
                 selective_checkpoint: 'off',
                 block_swap_profile_jsonl: 'auto',
+                memory_probe_jsonl: 'off',
+                memory_probe_max_steps: 2,
                 unsloth_offload_checkpointing: false,
                 torch_compile: true,
             },
@@ -107,6 +111,8 @@ export function createLegacyApp(ctx) {
                 block_swap_transfer_dtype: 'fp8_e4m3',
                 selective_checkpoint: 'off',
                 block_swap_profile_jsonl: 'auto',
+                memory_probe_jsonl: 'auto',
+                memory_probe_max_steps: 2,
                 unsloth_offload_checkpointing: false,
                 torch_compile: true,
             },
@@ -120,6 +126,22 @@ export function createLegacyApp(ctx) {
                 block_swap_transfer_dtype: 'bf16',
                 selective_checkpoint: 'off',
                 block_swap_profile_jsonl: 'auto',
+                unsloth_offload_checkpointing: false,
+                torch_compile: true,
+            },
+        },
+        {
+            id: 'lokr_16g_rescue',
+            label: 'LoKr 16G',
+            note: 'LoKr 专用；实测交换 23 块，分组 8 作为当前速度默认。',
+            values: {
+                blocks_to_swap: 23,
+                block_swap_transfer_dtype: 'bf16',
+                selective_checkpoint: 'off',
+                block_swap_profile_jsonl: 'auto',
+                memory_probe_jsonl: 'auto',
+                memory_probe_max_steps: 3,
+                lokr_factor_group_size: 8,
                 unsloth_offload_checkpointing: false,
                 torch_compile: true,
             },
@@ -1144,6 +1166,7 @@ export function createLegacyApp(ctx) {
         const moduleName = String(config?.network_module || '');
         const method = activeMethodKey(config);
         if (method === 'soft_tokens' || moduleName.includes('soft_tokens')) families.add('soft_tokens');
+        if (method === 'lokr' || isTruthy(config?.use_lokr)) families.add('lokr');
         if (method === 'ip_adapter' || isTruthy(config?.use_ip_adapter) || moduleName.includes('ip_adapter')) {
             families.add('ip_adapter');
         }
@@ -6173,7 +6196,12 @@ export function createLegacyApp(ctx) {
 
     function setFieldInputValue(key, value) {
         const input = document.querySelector(`#config-form .field-input[data-key="${CSS.escape(key)}"]`);
-        if (!input) return;
+        if (!input) {
+            if (NETWORK_ARG_FIELD_MAP.has(key)) {
+                configFormState.draftValues.set(key, value);
+            }
+            return;
+        }
         if (input.type === 'checkbox') {
             input.checked = Boolean(value);
         } else {
@@ -6508,6 +6536,9 @@ export function createLegacyApp(ctx) {
         if (flags.use_lokr && !('lokr_factor' in values) && !('lokr_factor' in currentConfig)) {
             values.lokr_factor = FORM_UI_DEFAULTS.lokr_factor;
         }
+        if (flags.use_lokr && !('lokr_factor_group_size' in values) && !('lokr_factor_group_size' in currentConfig)) {
+            values.lokr_factor_group_size = FORM_UI_DEFAULTS.lokr_factor_group_size;
+        }
         return values;
     }
 
@@ -6663,7 +6694,7 @@ export function createLegacyApp(ctx) {
             input.value = Array.isArray(value) ? JSON.stringify(value) : (value ?? '');
         }
         input.className = 'field-input';
-        if (key === 'lokr_factor') {
+        if (key === 'lokr_factor' || key === 'lokr_factor_group_size') {
             input.disabled = !readLoKrEnabled();
             input.title = input.disabled ? '启用 LoKr 后生效' : '';
         }
@@ -8508,6 +8539,9 @@ export function createLegacyApp(ctx) {
         if (values.use_lokr === true && !('lokr_factor' in values) && !('lokr_factor' in currentConfig)) {
             values.lokr_factor = FORM_UI_DEFAULTS.lokr_factor;
         }
+        if (values.use_lokr === true && !('lokr_factor_group_size' in values) && !('lokr_factor_group_size' in currentConfig)) {
+            values.lokr_factor_group_size = FORM_UI_DEFAULTS.lokr_factor_group_size;
+        }
         return applyLoraAdapterPatch(values);
     }
 
@@ -8641,13 +8675,17 @@ export function createLegacyApp(ctx) {
     }
 
     function updateLoKrFieldState() {
-        const factorInput = document.querySelector('#config-form .field-input[data-key="lokr_factor"]');
-        if (!factorInput) return;
         const enabled = readLoKrEnabled();
-        factorInput.disabled = !enabled;
-        factorInput.title = enabled ? '' : '启用 LoKr 后生效';
-        const row = factorInput.closest('.field-row');
-        if (row) row.classList.toggle('field-row-disabled', !enabled);
+        const inputs = [
+            document.querySelector('#config-form .field-input[data-key="lokr_factor"]'),
+            document.querySelector('#config-form .field-input[data-key="lokr_factor_group_size"]'),
+        ].filter(Boolean);
+        for (const input of inputs) {
+            input.disabled = !enabled;
+            input.title = enabled ? '' : '启用 LoKr 后生效';
+            const row = input.closest('.field-row');
+            if (row) row.classList.toggle('field-row-disabled', !enabled);
+        }
     }
 
     function parseNumberValue(raw, fallback) {

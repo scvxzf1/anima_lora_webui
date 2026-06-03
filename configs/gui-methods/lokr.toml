@@ -17,6 +17,10 @@ caption_dropout_rate = 0.1
 
 use_lokr = true
 lokr_factor = 8
+# LoKr custom autograd computes output factors in small groups. Larger values
+# reduce repeated projection work but increase temporary activation memory.
+# 8 is the current speed recommendation; lower to 4/2 if VRAM is unstable.
+lokr_factor_group_size = 8
 
 output_name = "anima_lokr"
 

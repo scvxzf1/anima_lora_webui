@@ -9,7 +9,7 @@ import torch
 import torch.nn.functional as F
 
 from networks.lora_modules.base import BaseLoRAModule
-from networks.plugins.lokr.autograd import lokr_project
+from networks.plugins.lokr.autograd import lokr_project_factor_group
 
 logger = logging.getLogger(__name__)
 
@@ -31,6 +31,7 @@ class LoKrModule(BaseLoRAModule):
         module_dropout=None,
         channel_scale=None,
         factor=8,
+        lokr_factor_group_size=8,
     ):
         if not isinstance(org_module, torch.nn.Linear):
             raise ValueError("LoKrModule only supports torch.nn.Linear modules")
@@ -73,6 +74,7 @@ class LoKrModule(BaseLoRAModule):
         self.org_module_ref = [org_module]
         self._fused = False
         self.use_custom_lokr_autograd = False
+        self.lokr_factor_group_size = max(1, int(lokr_factor_group_size))
 
     @staticmethod
     def _find_factor(in_features: int, out_features: int, target_factor: int) -> int:
@@ -98,14 +100,27 @@ class LoKrModule(BaseLoRAModule):
         x_lokr = F.dropout(x, p=self.dropout) if self.training and self.dropout else x
         if self.training:
             if self.use_custom_lokr_autograd:
-                lx = lokr_project(
-                    x_lokr,
-                    self.lokr_w1,
-                    self.lokr_w2,
-                    self.factor,
-                    self.in_dim,
-                    self.out_dim,
-                )
+                result = org_forwarded
+                gate_scale = self._timestep_mask[:, :1] * self.multiplier * self.scale
+                group_size = max(1, min(int(self.lokr_factor_group_size), self.factor))
+                for out_start in range(0, self.factor, group_size):
+                    out_count = min(group_size, self.factor - out_start)
+                    start = out_start * self.out_dim
+                    end = start + out_count * self.out_dim
+                    lx_slice = lokr_project_factor_group(
+                        x_lokr,
+                        self.lokr_w1,
+                        self.lokr_w2,
+                        out_start,
+                        out_count,
+                        self.factor,
+                        self.in_dim,
+                        self.out_dim,
+                    )
+                    result[..., start:end].add_(
+                        (lx_slice * gate_scale).to(org_forwarded.dtype)
+                    )
+                return result
             else:
                 lx = F.linear(x_lokr.float(), self._compute_weight().float())
             # LoKr has no rank axis; T-LoRA masks reduce to a scalar gate.

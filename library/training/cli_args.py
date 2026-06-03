@@ -186,6 +186,26 @@ def add_training_arguments(parser: argparse.ArgumentParser, support_dreambooth: 
         "/ 'none' / 'off' to disable.",
     )
     parser.add_argument(
+        "--memory_probe_jsonl",
+        type=str,
+        default=None,
+        help=(
+            "Write opt-in CUDA memory / adapter / optimizer diagnostics to JSONL. "
+            "Use off/none to disable, auto for <logs>/<output_name>.memory_probe.jsonl, "
+            "or an explicit path."
+        ),
+    )
+    parser.add_argument(
+        "--memory_probe_max_steps",
+        type=int,
+        default=2,
+        help=(
+            "Maximum number of training steps for detailed memory probe snapshots. "
+            "0 means record every step. Setup summaries are always recorded when "
+            "--memory_probe_jsonl is enabled."
+        ),
+    )
+    parser.add_argument(
         "--huggingface_repo_id",
         type=str,
         default=None,

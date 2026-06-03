@@ -16,6 +16,7 @@ export const FORM_UI_DEFAULTS = {
     use_loha: false,
     use_lokr: false,
     lokr_factor: 8,
+    lokr_factor_group_size: 8,
     max_data_loader_n_workers: 0,
     path_pattern: '*',
     drop_lowres_images: true,
@@ -181,6 +182,7 @@ export const CAPTION_SOURCE_MODE_OPTIONS = Object.freeze([
 ]);
 
 export const NETWORK_ARG_FIELD_SPECS = [
+    { family: 'lokr', key: 'lokr_factor_group_size', arg: 'lokr_factor_group_size', default: 8, valueType: 'integer' },
     { family: 'soft_tokens', key: 'n_layers', arg: 'n_layers', default: 14, valueType: 'integer' },
     { family: 'soft_tokens', key: 'n_t_buckets', arg: 'n_t_buckets', default: 14, valueType: 'integer' },
     { family: 'soft_tokens', key: 'init_std', arg: 'init_std', default: 0.02, valueType: 'number' },

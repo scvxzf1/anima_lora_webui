@@ -85,6 +85,9 @@ export const FORM_SECTION_DEFS = [
             'block_swap_transfer_dtype',
             'selective_checkpoint',
             'block_swap_profile_jsonl',
+            'memory_probe_jsonl',
+            'memory_probe_max_steps',
+            'lokr_factor_group_size',
             'disable_block_swap_for_eval',
             'unsloth_offload_checkpointing',
             'mixed_precision',
@@ -340,6 +343,10 @@ export const CONFIG_COMPACT_FIELD_GROUPS = {
         {
             className: 'config-field-grid-4col',
             keys: ['blocks_to_swap', 'block_swap_transfer_dtype', 'selective_checkpoint', 'block_swap_profile_jsonl'],
+        },
+        {
+            className: 'config-field-grid-3col',
+            keys: ['memory_probe_jsonl', 'memory_probe_max_steps', 'lokr_factor_group_size'],
         },
         {
             className: 'config-field-grid-2col config-field-grid-inline-flags',

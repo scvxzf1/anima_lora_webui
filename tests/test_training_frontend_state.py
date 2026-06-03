@@ -497,15 +497,20 @@ def test_config_form_uses_navigation_search_and_progressive_disclosure() -> None
     assert "grid-template-columns: repeat(auto-fit, minmax(96px, 1fr));" in resource_quick_css
     assert "grid-column: 1 / -1;" in _section(css, ".config-resource-quick-label {", ".config-resource-preset-btn")
     assert "RESOURCE_QUICK_PRESETS" in source
-    for label in ["全 GPU", "Balanced 16G", "FP8 测试", "更省显存", "OOM 兜底"]:
+    for label in ["全 GPU", "Balanced 16G", "FP8 测试", "更省显存", "LoKr 16G", "OOM 兜底"]:
         assert label in source
     for value in [
         "blocks_to_swap: 12",
         "blocks_to_swap: 16",
+        "blocks_to_swap: 23",
         "block_swap_transfer_dtype: 'bf16'",
         "block_swap_transfer_dtype: 'fp8_e4m3'",
         "selective_checkpoint: 'mlp_only'",
         "block_swap_profile_jsonl: 'auto'",
+        "memory_probe_jsonl: 'auto'",
+        "memory_probe_max_steps: 2",
+        "memory_probe_max_steps: 3",
+        "lokr_factor_group_size: 8",
     ]:
         assert value in source
     set_field_section = _section(source, "function setFieldInputValue", "function escapeHtml")
@@ -533,9 +538,17 @@ def test_config_form_uses_navigation_search_and_progressive_disclosure() -> None
     assert "'gradient_checkpointing'," in primary_section
     assert "'gradient_checkpointing'," not in resource_section
     assert "'block_swap_transfer_dtype'," in resource_section
+    assert "'memory_probe_jsonl'," in resource_section
+    assert "'memory_probe_max_steps'," in resource_section
+    assert "'lokr_factor_group_size'," in resource_section
     assert "block_swap_transfer_dtype: '块交换传输精度'" in source
     assert "block_swap_transfer_dtype: ['bf16', 'fp8_e4m3']" in source
+    assert "memory_probe_jsonl: '显存探针'" in source
+    assert "memory_probe_jsonl: ['off', 'auto']" in source
+    assert "lokr_factor_group_size: 'LoKr 分组'" in source
+    assert "lokr_factor_group_size: [1, 2, 4, 8]" in source
     assert "keys: ['blocks_to_swap', 'block_swap_transfer_dtype', 'selective_checkpoint', 'block_swap_profile_jsonl']" in resource_compact
+    assert "keys: ['memory_probe_jsonl', 'memory_probe_max_steps', 'lokr_factor_group_size']" in resource_compact
     assert "keys: ['disable_block_swap_for_eval', 'unsloth_offload_checkpointing']" in resource_compact
     assert "config-field-grid-2col config-field-grid-inline-flags" in resource_compact
 
@@ -543,6 +556,7 @@ def test_config_form_uses_navigation_search_and_progressive_disclosure() -> None
 def test_config_form_merges_loha_lokr_into_single_adapter_selector() -> None:
     source = APP_JS.read_text(encoding="utf-8")
     defaults = _section(source, "const FORM_UI_DEFAULTS = {", "const OPTIONAL_EMPTY_FIELDS")
+    network_arg_specs = _section(source, "const NETWORK_ARG_FIELD_SPECS = [", "const NETWORK_ARG_FIELD_MAP")
     layout = _section(source, "const FORM_SECTION_DEFS = [", "const STICKY_CONFIG_CATEGORY_IDS")
     merged_fields = _section(source, "const CONFIG_FORM_MERGED_FIELDS = new Set([", "const DEPRECATED_CONFIG_FORM_FIELDS")
     render_section = _section(source, "function renderConfigForm", "function shouldRenderConfigSection")
@@ -555,6 +569,7 @@ def test_config_form_merges_loha_lokr_into_single_adapter_selector() -> None:
     assert "'use_loha'" not in layout
     assert "'use_lokr'" not in layout
     assert "keys: ['network_dim', 'network_alpha', 'lora_adapter_kind', 'lokr_factor']" in source
+    assert "{ family: 'lokr', key: 'lokr_factor_group_size', arg: 'lokr_factor_group_size', default: 8, valueType: 'integer' }" in network_arg_specs
     assert "'use_loha'" in merged_fields
     assert "'use_lokr'" in merged_fields
     assert "CONFIG_FORM_MERGED_FIELDS?.has?.(key)" in render_section
@@ -1584,14 +1599,22 @@ def test_balanced_16g_block_swap_fields_are_visible() -> None:
         "blocks_to_swap",
         "selective_checkpoint",
         "block_swap_profile_jsonl",
+        "memory_probe_jsonl",
+        "memory_probe_max_steps",
+        "lokr_factor_group_size",
         "disable_block_swap_for_eval",
     ):
         assert f"'{key}'," in resource_section
 
     assert "block_swap_profile_jsonl: '块交换 Profile'" in labels_options
+    assert "memory_probe_jsonl: '显存探针'" in labels_options
+    assert "memory_probe_max_steps: '探针步数'" in labels_options
+    assert "lokr_factor_group_size: 'LoKr 分组'" in labels_options
     assert "selective_checkpoint: '选择性重算'" in labels_options
     assert "disable_block_swap_for_eval: '评估时暂停交换块'" in labels_options
     assert "selective_checkpoint: ['off', 'mlp_only', 'every_other']" in labels_options
+    assert "memory_probe_jsonl: ['off', 'auto']" in labels_options
+    assert "lokr_factor_group_size: [1, 2, 4, 8]" in labels_options
     assert "'max-autotune-no-cudagraphs'" in labels_options
     assert "balanced_16g" in guides
     assert "预测式 DiT block swap" in guides

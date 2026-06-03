@@ -51,8 +51,11 @@ def test_schema_has_known_keys(populated_parser):
         "mixed_precision",
         "attn_mode",
         "block_swap_transfer_dtype",
+        "memory_probe_jsonl",
+        "memory_probe_max_steps",
         "base_config",  # manual extra
         "use_moe_style",  # network-module allowlist (three-axis routing)
+        "lokr_factor_group_size",  # LoKr grouped projection tuning
     ):
         assert k in schema, f"expected {k!r} in populated schema"
 
