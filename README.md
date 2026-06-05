@@ -1,8 +1,10 @@
 # Anima LoRA WebUI
 
-这是一个面向 Anima 模型的 训练的 WebUI 项目，基于 [sorryhyun/anima_lora](https://github.com/sorryhyun/anima_lora#) 的 WebUI 前端项目继续扩展。它把训练配置、数据集预处理、任务队列、历史记录和推理预览集中到一个网页里，适合不想长期手写 TOML 和命令行参数的用户。
+这是一个面向 Anima 模型的 训练的 WebUI 项目，基于 [sorryhyun/anima_lora](https://github.com/sorryhyun/anima_lora#) 的 WebUI 前端扩展项目
 
 感谢你选择我们的全绊屎山项目。它一定不优雅，但目标也不一定明确，项目尽量还能跑同，每天都折腾，天天都是大更新每天都在debug。
+
+后端会和欧巴的有些变动不完全对齐，作者偶尔会发挥主观能动性加点小巧思进来
 
 ## 大概有哪些能力
 
