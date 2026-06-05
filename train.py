@@ -30,6 +30,7 @@ from library.models import qwen_vae as qwen_image_autoencoder_kl
 from library.models import sai_spec as sai_model_spec
 from library.runtime import noise as noise_utils
 from library.runtime.offloading import normalize_block_swap_transfer_dtype
+from library.runtime.peak_probe import PeakProbe
 from library.config import loader as config_util
 from library.training.method_adapter import (
     ForwardArtifacts,
@@ -142,6 +143,20 @@ def _maybe_probe_components(trainer, label: str, **kwargs) -> None:
     probe.component_summary(label, **kwargs)
 
 
+def _attach_peak_probe_to_network(network, probe) -> int:
+    if probe is None or network is None:
+        return 0
+    count = 0
+    modules = []
+    for attr in ("text_encoder_loras", "unet_loras"):
+        modules.extend(list(getattr(network, attr, []) or []))
+    for module in modules:
+        if hasattr(module, "_peak_probe"):
+            module._peak_probe = probe
+            count += 1
+    return count
+
+
 def _decode_deferred_samples_safely(
     accelerator: Accelerator,
     args,
@@ -209,6 +224,7 @@ class AnimaTrainer:
         self.bootstrap = bootstrap or TrainingBootstrap()
         self.sample_prompts_te_outputs = None
         self.memory_probe = None
+        self.peak_probe = None
         self._padding_mask_cache = {}
         # Per-method extensions (EasyControl, IP-Adapter, …). Resolved
         # from args+network in train() right after _create_and_apply_network.
@@ -402,10 +418,22 @@ class AnimaTrainer:
         args.selective_checkpoint = str(
             getattr(args, "selective_checkpoint", "off") or "off"
         ).strip().lower()
-        if args.selective_checkpoint not in {"off", "every_other", "mlp_only"}:
+        valid_selective_checkpoints = {
+            "off",
+            "every_other",
+            "mlp_only",
+            "mlp_layer1_only",
+            "peak_blocks_mlp",
+            "peak_blocks_mlp_layer1",
+        }
+        if args.selective_checkpoint not in valid_selective_checkpoints:
             raise ValueError(
-                "--selective_checkpoint must be one of: off, every_other, mlp_only"
+                "--selective_checkpoint must be one of: "
+                + ", ".join(sorted(valid_selective_checkpoints))
             )
+        args.selective_checkpoint_blocks = str(
+            getattr(args, "selective_checkpoint_blocks", "") or ""
+        ).strip()
         if args.selective_checkpoint != "off" and args.gradient_checkpointing:
             raise ValueError(
                 "--selective_checkpoint is a selective DiT checkpoint mode; "
@@ -729,6 +757,16 @@ class AnimaTrainer:
             loading_device=loading_device,
             loading_dtype=loading_dtype,
         )
+        if self.peak_probe is not None and hasattr(model, "enable_peak_probe"):
+            model.enable_peak_probe(self.peak_probe)
+            self.peak_probe.write(
+                {
+                    "ev": "peak_probe_config",
+                    "label": "dit_peak_probe_attached",
+                    "phase": "setup",
+                    "block_count": len(getattr(model, "blocks", []) or []),
+                }
+            )
 
         # Store unsloth preference so that when the base trainer calls
         # dit.enable_gradient_checkpointing(cpu_offload=...), we can override to use unsloth.
@@ -736,8 +774,22 @@ class AnimaTrainer:
 
         selective_checkpoint = getattr(args, "selective_checkpoint", "off") or "off"
         if selective_checkpoint != "off":
-            logger.info(f"enable selective checkpoint: {selective_checkpoint}")
-            model.enable_selective_checkpointing(selective_checkpoint)
+            selective_checkpoint_blocks = getattr(
+                args, "selective_checkpoint_blocks", ""
+            )
+            logger.info(
+                "enable selective checkpoint: "
+                f"{selective_checkpoint}"
+                + (
+                    f" blocks={selective_checkpoint_blocks or 'auto'}"
+                    if str(selective_checkpoint).startswith("peak_blocks_")
+                    else ""
+                )
+            )
+            model.enable_selective_checkpointing(
+                selective_checkpoint,
+                blocks=selective_checkpoint_blocks,
+            )
 
         # Native-shape flattening + per-block torch.compile. compile_blocks turns
         # on the flatten (one block graph per token-count family: 4032/4200) and
@@ -1910,6 +1962,11 @@ class AnimaTrainer:
             is_main_process=is_main_process,
             t0=training_started_at,
         )
+        self.peak_probe = PeakProbe.from_args(
+            args,
+            is_main_process=is_main_process,
+            t0=training_started_at,
+        )
         _maybe_probe(
             self,
             "accelerator_ready",
@@ -1924,8 +1981,31 @@ class AnimaTrainer:
             attn_mode=getattr(args, "attn_mode", None),
             blocks_to_swap=getattr(args, "blocks_to_swap", None),
             selective_checkpoint=getattr(args, "selective_checkpoint", "off"),
+            selective_checkpoint_blocks=getattr(
+                args, "selective_checkpoint_blocks", ""
+            ),
             memory_probe_jsonl=getattr(self.memory_probe, "path", None),
+            peak_probe_jsonl=getattr(self.peak_probe, "path", None),
         )
+        if self.peak_probe is not None:
+            self.peak_probe.write(
+                {
+                    "ev": "peak_probe_config",
+                    "label": "accelerator_ready",
+                    "phase": "setup",
+                    "path": self.peak_probe.path,
+                    "max_steps": self.peak_probe.max_steps,
+                    "level": self.peak_probe.level,
+                    "torch_compile": getattr(args, "torch_compile", False),
+                    "compile_inductor_mode": getattr(args, "compile_inductor_mode", None),
+                    "attn_mode": getattr(args, "attn_mode", None),
+                    "blocks_to_swap": getattr(args, "blocks_to_swap", None),
+                    "selective_checkpoint": getattr(args, "selective_checkpoint", "off"),
+                    "selective_checkpoint_blocks": getattr(
+                        args, "selective_checkpoint_blocks", ""
+                    ),
+                }
+            )
 
         # mixed precision dtype
         weight_dtype, save_dtype = prepare_dtype(args)
@@ -2019,6 +2099,16 @@ class AnimaTrainer:
         if network_result is None:
             return
         network, net_kwargs, train_unet, train_text_encoder = network_result
+        peak_probe_lokr_modules = _attach_peak_probe_to_network(network, self.peak_probe)
+        if self.peak_probe is not None:
+            self.peak_probe.write(
+                {
+                    "ev": "peak_probe_config",
+                    "label": "network_peak_probe_attached",
+                    "phase": "setup",
+                    "module_count": peak_probe_lokr_modules,
+                }
+            )
 
         # Resolve and run on_network_built for each method adapter (EasyControl,
         # IP-Adapter, …). Each adapter validates its runtime contract and

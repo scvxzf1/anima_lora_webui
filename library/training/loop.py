@@ -48,6 +48,15 @@ def _memory_probe_for_step(trainer, state) -> Any | None:
     return probe
 
 
+def _peak_probe_for_step(trainer, state) -> Any | None:
+    probe = getattr(trainer, "peak_probe", None)
+    if probe is None:
+        return None
+    if not probe.should_record_step(state.global_step):
+        return None
+    return probe
+
+
 def _probe_exception_fields(exc: BaseException) -> dict[str, Any]:
     message = str(exc)
     return {
@@ -453,8 +462,11 @@ def _run_step(trainer, state: LoopState, batch) -> torch.Tensor:
     accelerator = state.accelerator
     network = state.network
     memory_probe = _memory_probe_for_step(trainer, state)
+    peak_probe = _peak_probe_for_step(trainer, state)
 
     _probe_step(memory_probe, state, "step_enter")
+    if peak_probe is not None:
+        peak_probe.begin_step(state.global_step, device=accelerator.device)
 
     with accelerator.accumulate(state.training_model):
         state.on_step_start_for_network(state.text_encoder, state.unet)
@@ -560,6 +572,9 @@ def _run_step(trainer, state: LoopState, batch) -> torch.Tensor:
         _probe_step(memory_probe, state, "after_optimizer")
         if state.profile_started:
             torch.cuda.nvtx.range_pop()
+
+    if peak_probe is not None:
+        peak_probe.end_step(device=accelerator.device)
 
     return loss
 

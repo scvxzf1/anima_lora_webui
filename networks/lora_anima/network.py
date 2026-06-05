@@ -668,6 +668,24 @@ class LoRANetwork(torch.nn.Module):
             ]
             skipped = [ln for ln, cm, d, a, on, skip in candidates if skip]
 
+            # VeRA uses one frozen random projection bank (A/B) and slices it
+            # per adapted Linear.  The plugin owns the module implementation;
+            # the network builder only supplies the largest shape visible in
+            # this create scope so all VeRA leaves share one deterministic
+            # bank instead of allocating layer-local random matrices.
+            if nominal_spec is not None and nominal_spec.name == "vera":
+                linear_candidates = [
+                    cm for _ln, cm, _d, _a, _on in non_skipped
+                    if isinstance(cm, torch.nn.Linear)
+                ]
+                if linear_candidates:
+                    cfg.plugin_args["_vera_max_in_features"] = max(
+                        int(m.in_features) for m in linear_candidates
+                    )
+                    cfg.plugin_args["_vera_max_out_features"] = max(
+                        int(m.out_features) for m in linear_candidates
+                    )
+
             label = (
                 "DiT"
                 if is_unet
@@ -3117,6 +3135,28 @@ class LoRANetwork(torch.nn.Module):
                 "true" if self.cfg.route_per_layer else "false"
             )
             metadata["ss_router_source"] = str(self.cfg.router_source)
+
+        if spec.name == "vera":
+            plugin_args = getattr(self.cfg, "plugin_args", {}) or {}
+            projection_key = plugin_args.get(
+                "vera_projection_prng_key",
+                plugin_args.get("projection_prng_key", 0),
+            )
+            d_initial = plugin_args.get(
+                "vera_d_initial",
+                plugin_args.get("d_initial", 0.1),
+            )
+            save_projection = plugin_args.get(
+                "vera_save_projection",
+                plugin_args.get("save_projection", False),
+            )
+            metadata["ss_vera_projection_prng_key"] = str(int(projection_key))
+            metadata["ss_vera_d_initial"] = str(float(d_initial))
+            metadata["ss_vera_save_projection"] = (
+                "true"
+                if str(save_projection).strip().lower() in {"1", "true", "yes", "on"}
+                else "false"
+            )
 
         if getattr(self.cfg, "ortho_centered_gate", False):
             metadata["ss_ortho_centered_gate"] = "true"

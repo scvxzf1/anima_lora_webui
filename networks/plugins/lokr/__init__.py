@@ -6,6 +6,7 @@ from typing import Any, Mapping
 
 import torch
 
+from networks.plugins.lokr.autograd import DEFAULT_LOKR_PROJECT_CHUNK_BYTES
 from networks.plugins.lokr.module import LoKrModule
 from networks.plugins.lokr.save import save_lokr_weights
 from networks.registry import (
@@ -36,10 +37,11 @@ def _validate(kwargs: Mapping[str, Any]) -> None:
     if (
         _truthy(kwargs.get("use_ortho"))
         or _truthy(kwargs.get("use_chimera_hydra"))
+        or _truthy(kwargs.get("use_vera"))
         or kwargs.get("use_moe_style") not in (None, False, "", "false", "False")
     ):
         raise ValueError(
-            "use_lokr is mutually exclusive with use_ortho, "
+            "use_lokr is mutually exclusive with use_ortho, use_vera, "
             "use_moe_style, and use_chimera_hydra."
         )
 
@@ -49,6 +51,11 @@ def _module_kwargs(ctx: ModuleCreationContext) -> dict[str, Any]:
         "factor": int(ctx.cfg.plugin_args.get("lokr_factor", 8)),
         "lokr_factor_group_size": int(
             ctx.cfg.plugin_args.get("lokr_factor_group_size", 8)
+        ),
+        "lokr_project_chunk_bytes": int(
+            ctx.cfg.plugin_args.get(
+                "lokr_project_chunk_bytes", DEFAULT_LOKR_PROJECT_CHUNK_BYTES
+            )
         ),
     }
 
@@ -121,7 +128,12 @@ register_network_spec(
         name="lokr",
         module_class=LoKrModule,
         save_variant="lokr",
-        kwarg_flags=("use_lokr", "lokr_factor", "lokr_factor_group_size"),
+        kwarg_flags=(
+            "use_lokr",
+            "lokr_factor",
+            "lokr_factor_group_size",
+            "lokr_project_chunk_bytes",
+        ),
         selector=_selector,
         validate=_validate,
         module_kwargs=_module_kwargs,

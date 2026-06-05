@@ -21,6 +21,8 @@ lokr_factor = 8
 # reduce repeated projection work but increase temporary activation memory.
 # 8 is the current speed recommendation; lower to 4/2 if VRAM is unstable.
 lokr_factor_group_size = 8
+# Row-chunk byte threshold for custom LoKr projection. Default 4MiB.
+lokr_project_chunk_bytes = 4194304
 
 output_name = "anima_lokr"
 

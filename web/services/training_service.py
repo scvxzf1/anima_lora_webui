@@ -60,6 +60,8 @@ MAX_TIMELINE_METRIC_RECORDS = 20000
 MAX_HISTORY_DETAIL_LOG_RECORDS = 5000
 MAX_HISTORY_DETAIL_SYSTEM_RECORDS = 1000
 MAX_QUEUE_ITEMS = 200
+PROGRESS_RATE_SAMPLE_WINDOW = 9
+HISTORY_AVERAGE_SPEED_VERSION = 1
 QUEUE_FAILURE_POLICIES = {"pause", "continue"}
 QUEUE_TERMINAL_STATES = {"done", "error", "canceled"}
 # 队列批量清理只移除 queue.json 里的列表记录，保留 error 方便确认后重试或手动删除。
@@ -93,6 +95,10 @@ HISTORY_RUNTIME_ARTIFACT_FIELDS = {
 TQDM_RE = re.compile(
     r"^(?P<label>.*?):?\s*(?P<pct>\d+)%\|[^|]*\|\s*(?P<cur>\d+)/(?P<tot>\d+)"
     r"(?:[^\[]*\[[^\]]*?(?P<rate>[\d.]+)(?P<unit>it/s|s/it)[^\]]*\])?"
+)
+TRAINING_PROGRESS_LOG_RE = re.compile(
+    r"(?:^|\r)steps:\s*\d+%\|[^|]*\|\s*(?P<cur>\d+)/(?P<tot>\d+)\s*\[",
+    re.IGNORECASE,
 )
 
 load_dotenv()
@@ -137,6 +143,10 @@ class TrainingService:
         self._pending_train_after_preprocess: dict[str, Any] | None = None
         self._ws_clients: set[web.WebSocketResponse] = set()
         self._anchor: tuple[float, int] | None = None
+        self._stdout_rate_last: tuple[float, int] | None = None
+        self._stdout_rate_samples: deque[float] = deque(maxlen=PROGRESS_RATE_SAMPLE_WINDOW)
+        self._structured_rate_last: tuple[float, int] | None = None
+        self._structured_rate_samples: deque[float] = deque(maxlen=PROGRESS_RATE_SAMPLE_WINDOW)
         self._metrics_history: list[dict[str, Any]] = []
         self._last_output_at: float | None = None
         self._last_log_line: str = ""
@@ -525,6 +535,7 @@ class TrainingService:
         self.current_sample_config = sample_config
         self.current_runtime_info = _runtime_meta(runtime_info)
         self._anchor = None
+        self._reset_progress_rate_state()
         self._reset_metric_runtime_state()
         self._progress_jsonl_path = None
         self._progress_jsonl_offset = 0
@@ -567,6 +578,16 @@ class TrainingService:
                 and not _command_has_option(cmd, "--memory_probe_jsonl")
             ):
                 cmd = [*cmd, "--memory_probe_jsonl", str(memory_probe_path)]
+            peak_probe_path = task_dir / "peak_probe.jsonl"
+            config_wants_peak_probe = _resolve_peak_probe_auto_config(
+                config_file, peak_probe_path
+            )
+            cmd = _resolve_peak_probe_auto_arg(cmd, peak_probe_path)
+            if (
+                config_wants_peak_probe
+                and not _command_has_option(cmd, "--peak_probe_jsonl")
+            ):
+                cmd = [*cmd, "--peak_probe_jsonl", str(peak_probe_path)]
         if job == "training":
             progress_jsonl = _command_option_value(cmd, "--progress_jsonl")
             self._progress_jsonl_path = _resolve_display_path(progress_jsonl or str(task_dir / "progress.jsonl"))
@@ -1206,8 +1227,8 @@ class TrainingService:
             return {"ok": True, "dry_run": True, **plan}
         if plan["blocked"]:
             raise RuntimeError("存在不能删除的任务或运行目录，请先处理阻止项")
-        if delete_runtime_dirs and str(payload.get("confirm_text") or "").strip() != "彻底删除":
-            raise ValueError("彻底删除需要输入确认文本：彻底删除")
+        if delete_runtime_dirs and payload.get("confirmed") is not True:
+            raise ValueError("彻底删除需要完成二次按钮确认")
         result = _delete_history_tasks([item["id"] for item in plan["tasks"]])
         deleted_runtime_dirs: list[str] = []
         runtime_cleanup_errors: dict[str, str] = {}
@@ -1775,6 +1796,13 @@ class TrainingService:
         self._metric_seen_keys = set()
         self._last_lr_log_text = ""
 
+    def _reset_progress_rate_state(self) -> None:
+        self._anchor = None
+        self._stdout_rate_last = None
+        self._stdout_rate_samples.clear()
+        self._structured_rate_last = None
+        self._structured_rate_samples.clear()
+
     def _remember_lr_change_log(self, metric: dict[str, Any]) -> dict[str, Any] | None:
         lr = _float_or_none(metric.get("lr"))
         if lr is None:
@@ -1855,10 +1883,11 @@ class TrainingService:
             return
 
         if ev in {"step", "val"}:
-            metric = _metric_from_progress_jsonl_event(event, ts)
+            step = _int_or_none(event.get("global_step"))
+            rate_str = self._compute_structured_rate(step, ts) if ev == "step" and step is not None else ""
+            metric = _metric_from_progress_jsonl_event(event, ts, rate=rate_str)
             if metric:
                 await self._record_metric(metric)
-            step = _int_or_none(event.get("global_step"))
             total = self._progress_total_steps
             if ev == "step" and step is not None and total:
                 await self._broadcast({
@@ -1866,7 +1895,7 @@ class TrainingService:
                     "current": step,
                     "total": total,
                     "label": "Training",
-                    "rate": "",
+                    "rate": rate_str,
                     "ts": ts,
                 })
             return
@@ -2048,17 +2077,25 @@ class TrainingService:
             pass
 
     def _compute_rate(self, cur: int, tot: int) -> str:
-        now = time.monotonic()
-        if self._anchor is None or cur <= 1:
-            if cur >= 1:
-                self._anchor = (now, cur)
-            return ""
-        anchor_time, anchor_step = self._anchor
-        steps = cur - anchor_step
-        if steps <= 0:
-            return ""
-        spi = (now - anchor_time) / steps
-        return f"{spi:.2f}s/step"
+        del tot
+        rate, last = _step_rate_text_from_sample(
+            self._stdout_rate_last,
+            self._stdout_rate_samples,
+            cur,
+            time.monotonic(),
+        )
+        self._stdout_rate_last = last
+        return rate
+
+    def _compute_structured_rate(self, step: int, ts: float) -> str:
+        rate, last = _step_rate_text_from_sample(
+            self._structured_rate_last,
+            self._structured_rate_samples,
+            step,
+            ts,
+        )
+        self._structured_rate_last = last
+        return rate
 
     def _extract_metrics_from_tqdm(self, line: str, step: int) -> dict | None:
         parts = line.split(",")
@@ -3769,6 +3806,95 @@ def _last_history_event_ts(task_dir: Path, meta: dict[str, Any]) -> float:
     return max(candidates) if candidates else time.time()
 
 
+def _ensure_history_average_speed_meta(meta_path: Path, task_dir: Path, meta: dict[str, Any]) -> None:
+    if str(meta.get("job") or "").strip() != "training":
+        return
+    if str(meta.get("state") or "").strip() in {"running", "compiling", "queued"}:
+        return
+    current_version = _int_or_none(meta.get("average_step_speed_version"))
+    existing_seconds = _float_or_none(meta.get("average_step_seconds"))
+    if current_version == HISTORY_AVERAGE_SPEED_VERSION and existing_seconds is not None and existing_seconds > 0:
+        return
+    stats = _history_average_speed_from_logs(task_dir / "logs.jsonl")
+    if not stats:
+        return
+    now = time.time()
+    meta.update(stats)
+    meta["average_step_speed_version"] = HISTORY_AVERAGE_SPEED_VERSION
+    meta["average_step_computed_at"] = now
+    meta["average_step_computed_at_text"] = _format_ts(now)
+    try:
+        _write_json_atomic(meta_path, meta)
+    except OSError:
+        pass
+
+
+def _history_average_speed_from_logs(logs_path: Path) -> dict[str, Any] | None:
+    first: tuple[int, float] | None = None
+    last: tuple[int, float] | None = None
+    sample_count = 0
+    try:
+        with logs_path.open("r", encoding="utf-8") as f:
+            for raw in f:
+                try:
+                    record = json.loads(raw)
+                except json.JSONDecodeError:
+                    continue
+                if record.get("kind") != "progress":
+                    continue
+                sample = _training_progress_log_sample(record)
+                if sample is None:
+                    continue
+                step, ts = sample
+                sample_count += 1
+                if first is None:
+                    first = sample
+                    continue
+                first_step, first_ts = first
+                if step <= first_step or ts <= first_ts:
+                    continue
+                if last is None or step > last[0] or (step == last[0] and ts > last[1]):
+                    last = sample
+    except OSError:
+        return None
+    if first is None or last is None:
+        return None
+    first_step, first_ts = first
+    last_step, last_ts = last
+    step_delta = last_step - first_step
+    seconds_delta = last_ts - first_ts
+    if step_delta <= 0 or seconds_delta <= 0:
+        return None
+    seconds_per_step = seconds_delta / step_delta
+    if not _is_finite_number(seconds_per_step) or seconds_per_step <= 0:
+        return None
+    return {
+        "average_step_seconds": round(seconds_per_step, 4),
+        "average_step_rate": _format_step_rate(seconds_per_step),
+        "average_step_source": "logs.jsonl",
+        "average_step_sample_count": sample_count,
+        "average_step_start_step": first_step,
+        "average_step_end_step": last_step,
+        "average_step_started_at": first_ts,
+        "average_step_finished_at": last_ts,
+    }
+
+
+def _training_progress_log_sample(record: dict[str, Any]) -> tuple[int, float] | None:
+    ts = _float_or_none(record.get("ts"))
+    if ts is None:
+        return None
+    line = str(record.get("line") or "")
+    match = TRAINING_PROGRESS_LOG_RE.search(line)
+    if not match:
+        return None
+    step = _int_or_none(match.group("cur"))
+    total = _int_or_none(match.group("tot"))
+    if step is None or total is None or step < 0 or total <= 0:
+        return None
+    return step, ts
+
+
 def _history_task_dir(task_id: str) -> Path:
     safe_id = _safe_task_id(task_id)
     if safe_id != task_id:
@@ -3789,6 +3915,7 @@ def _load_history_task(task_id: str) -> dict[str, Any]:
     if not meta:
         raise FileNotFoundError("任务元信息不存在")
     _repair_history_meta(task_dir / "meta.json", meta)
+    _ensure_history_average_speed_meta(task_dir / "meta.json", task_dir, meta)
     snapshot_path = task_dir / "config.snapshot.toml"
     logs, logs_total, logs_truncated = _read_jsonl_limited(
         task_dir / "logs.jsonl",
@@ -4146,16 +4273,74 @@ def _metrics_from_progress_jsonl(progress_path: Path, task_dir: Path) -> list[di
     meta = _read_json(task_dir / "meta.json")
     started_at = _float_or_none(meta.get("started_at")) if isinstance(meta, dict) else None
     out: list[dict[str, Any]] = []
+    rate_last: tuple[float, int] | None = None
+    rate_samples: deque[float] = deque(maxlen=PROGRESS_RATE_SAMPLE_WINDOW)
     for event in events:
-        if str(event.get("ev") or "") not in {"step", "val"}:
+        ev = str(event.get("ev") or "")
+        if ev not in {"step", "val"}:
             continue
+        ts = _progress_event_wall_ts_from_started_at(event, started_at)
+        step = _int_or_none(event.get("global_step"))
+        rate = ""
+        if ev == "step" and step is not None:
+            rate, rate_last = _step_rate_text_from_sample(rate_last, rate_samples, step, ts)
         metric = _metric_from_progress_jsonl_event(
             event,
-            _progress_event_wall_ts_from_started_at(event, started_at),
+            ts,
+            rate=rate,
         )
         if metric:
             out.append(metric)
     return out
+
+
+def _step_rate_text_from_sample(
+    last: tuple[float, int] | None,
+    samples: deque[float],
+    step: int,
+    timestamp: float,
+) -> tuple[str, tuple[float, int] | None]:
+    current_step = int(step)
+    current_ts = float(timestamp)
+    if current_step <= 0 or not _is_finite_number(current_ts):
+        return (_format_step_rate(_median_or_none(samples)) if samples else ""), last
+    if last is None:
+        return "", (current_ts, current_step)
+    last_ts, last_step = last
+    if current_step == last_step:
+        return (_format_step_rate(_median_or_none(samples)) if samples else ""), last
+    if current_step < last_step or current_ts <= last_ts:
+        samples.clear()
+        return "", (current_ts, current_step)
+    step_delta = current_step - last_step
+    seconds_per_step = (current_ts - last_ts) / step_delta
+    if _is_finite_number(seconds_per_step) and seconds_per_step > 0:
+        samples.append(seconds_per_step)
+    return _format_step_rate(_median_or_none(samples)), (current_ts, current_step)
+
+
+def _median_or_none(values: deque[float] | list[float]) -> float | None:
+    finite = sorted(value for value in values if _is_finite_number(value) and value > 0)
+    if not finite:
+        return None
+    mid = len(finite) // 2
+    if len(finite) % 2:
+        return finite[mid]
+    return (finite[mid - 1] + finite[mid]) / 2
+
+
+def _format_step_rate(seconds_per_step: float | None) -> str:
+    if seconds_per_step is None or not _is_finite_number(seconds_per_step) or seconds_per_step <= 0:
+        return ""
+    return f"{seconds_per_step:.2f}s/step"
+
+
+def _is_finite_number(value: Any) -> bool:
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return False
+    return number == number and number not in {float("inf"), float("-inf")}
 
 
 def _metrics_from_history(
@@ -5172,6 +5357,19 @@ def _resolve_memory_probe_auto_config(config_file: str | None, path: Path) -> bo
     )
 
 
+def _resolve_peak_probe_auto_arg(args: list[str], path: Path) -> list[str]:
+    return _resolve_auto_path_arg(args, "--peak_probe_jsonl", path)
+
+
+def _resolve_peak_probe_auto_config(config_file: str | None, path: Path) -> bool:
+    return _resolve_auto_path_config(
+        config_file,
+        config_key="peak_probe_jsonl",
+        path=path,
+        is_history_path_fn=_is_history_peak_probe_path,
+    )
+
+
 def _resolve_auto_path_arg(args: list[str], option: str, path: Path) -> list[str]:
     out = list(args)
     prefix = f"{option}="
@@ -5219,6 +5417,10 @@ def _is_history_block_swap_profile_path(value: str) -> bool:
 
 def _is_history_memory_probe_path(value: str) -> bool:
     return _is_history_artifact_path(value, "memory_probe.jsonl")
+
+
+def _is_history_peak_probe_path(value: str) -> bool:
+    return _is_history_artifact_path(value, "peak_probe.jsonl")
 
 
 def _is_history_artifact_path(value: str, filename: str) -> bool:
@@ -5274,7 +5476,7 @@ def _progress_event_wall_ts_from_started_at(event: dict[str, Any], started_at: f
     return time.time()
 
 
-def _metric_from_progress_jsonl_event(event: dict[str, Any], ts: float) -> dict[str, Any] | None:
+def _metric_from_progress_jsonl_event(event: dict[str, Any], ts: float, *, rate: str = "") -> dict[str, Any] | None:
     metric: dict[str, Any] = {"ts": ts}
     step = _int_or_none(event.get("global_step"))
     if step is not None:
@@ -5282,6 +5484,8 @@ def _metric_from_progress_jsonl_event(event: dict[str, Any], ts: float) -> dict[
     epoch = _int_or_none(event.get("epoch"))
     if epoch is not None:
         metric["epoch"] = epoch
+    if rate:
+        metric["rate"] = rate
 
     if str(event.get("ev") or "") == "val":
         metric["kind"] = "val"

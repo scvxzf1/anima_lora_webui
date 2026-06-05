@@ -10,6 +10,7 @@ from aiohttp import web
 
 ROOT = Path(__file__).resolve().parents[1]
 STATIC_DIR = Path(__file__).resolve().parent / "static"
+MAX_UPLOAD_BYTES = 512 * 1024 * 1024
 
 
 async def index_handler(request: web.Request) -> web.FileResponse:
@@ -32,7 +33,7 @@ async def static_handler(request: web.Request) -> web.FileResponse:
 
 
 def create_app() -> web.Application:
-    app = web.Application()
+    app = web.Application(client_max_size=MAX_UPLOAD_BYTES)
 
     app["root"] = ROOT
     app["training_service"] = None  # lazy init on first import

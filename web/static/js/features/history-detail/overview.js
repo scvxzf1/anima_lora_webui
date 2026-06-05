@@ -1,4 +1,4 @@
-import { historySystemSummary, formatSystemPercent, formatSystemVram } from './system.js?v=module-bootstrap-20260603-6';
+import { historySystemSummary, formatSystemPercent, formatSystemVram } from './system.js?v=module-bootstrap-20260604-8';
 import {
     createHistoryDetailCopyButton,
     historyDetailEmptyText,
@@ -7,7 +7,7 @@ import {
     historyDetailSection,
     normalizedHistoryDetailPath,
     relativeHistoryDetailPath,
-} from './ui.js?v=module-bootstrap-20260603-6';
+} from './ui.js?v=module-bootstrap-20260604-8';
 
 export function createHistoryOverviewRenderer({ ctx, state, deps, renderHistoryDetailResume }) {
     const {
@@ -56,6 +56,7 @@ export function createHistoryOverviewRenderer({ ctx, state, deps, renderHistoryD
                 ['日志', task.log_count || logs.length || 0, 'log'],
                 ['峰值 VRAM', systemSummary.hasSystem ? formatSystemVram(systemSummary.peakVramRecord) : '无系统采样记录', 'chip'],
                 ['峰值 GPU', systemSummary.hasSystem ? formatSystemPercent(systemSummary.peakGpu) : '无系统采样记录', 'gpu'],
+                ['平均速度', formatHistoryAverageSpeed(task), 'gauge'],
                 ['训练总时间', formatHistoryTrainingDuration(task), 'time'],
             ];
         for (const [label, value, iconName] of rows) {
@@ -160,6 +161,13 @@ export function createHistoryOverviewRenderer({ ctx, state, deps, renderHistoryD
             ? finishedAt
             : Date.now() / 1000;
         return ctx.format.formatDuration(Math.round(Math.max(0, endAt - startedAt)));
+    }
+
+    function formatHistoryAverageSpeed(record) {
+        const rate = String(record?.average_step_rate || '').trim();
+        if (rate) return rate;
+        const seconds = Number(record?.average_step_seconds);
+        return Number.isFinite(seconds) && seconds > 0 ? `${seconds.toFixed(2)}s/step` : '-';
     }
 
     function renderHistoryDetailPathSummary(payload) {

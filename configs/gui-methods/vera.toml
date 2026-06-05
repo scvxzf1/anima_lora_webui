@@ -1,0 +1,37 @@
+# gui-methods/vera.toml — VeRA (Vector-based Random Matrix Adaptation).
+#
+# 共享冻结随机低秩 A/B，只训练每层两个缩放向量。
+# 参数量远小于 LoRA/LoKr，适合 DiT 大模型的多概念小体积 adapter 实验。
+
+network_dim = 256
+network_alpha = 256
+
+learning_rate = 2e-4
+max_train_epochs = 10
+save_every_n_epochs = 5
+checkpointing_epochs = 5
+
+use_shuffled_caption_variants = true
+cache_llm_adapter_outputs = true
+caption_dropout_rate = 0.1
+
+use_vera = true
+vera_projection_prng_key = 0
+vera_d_initial = 0.1
+# false 时 checkpoint 只保存可训练向量与随机种子，加载时确定性重建 A/B。
+vera_save_projection = false
+
+# VeRA 有显式 rank 轴，可复用训练期 T-LoRA rank mask。
+use_timestep_mask = true
+min_rank = 64
+alpha_rank_scale = 1.0
+rank_dropout = 0.05
+
+output_name = "anima_vera"
+blocks_to_swap = 0
+
+[variant]
+family = "lora"
+label = "VeRA"
+description = "共享冻结随机投影，只训练向量缩放的极低参数 adapter。"
+order = 13

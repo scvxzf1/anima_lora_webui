@@ -1,4 +1,4 @@
-import { choiceHelp } from './help-builder.js?v=module-bootstrap-20260603-6';
+import { choiceHelp } from './help-builder.js?v=module-bootstrap-20260604-8';
 
 export const METHOD_GUIDE_ZH = {
     lora: choiceHelp(
@@ -30,6 +30,12 @@ export const METHOD_GUIDE_ZH = {
         '使用 Kronecker 积分解代替标准低秩分解，参数效率更高。',
         '适合复杂画风或多角色；代价是推理需要 LyCORIS/LoKr 兼容加载器。',
         '需要 LoKr 训练时选，简单单角色仍可用普通 LoRA。'
+    ),
+    vera: choiceHelp(
+        'VeRA',
+        '共享冻结随机投影，只训练向量缩放的极低参数 adapter。',
+        '适合短期 rank/种子消融；代价是推理和继续训练需要 VeRA 兼容加载路径。',
+        '想快速比较极低参数 adapter 时选。'
     ),
     loha: choiceHelp(
         'LoHa',
@@ -159,6 +165,12 @@ export const VARIANT_GUIDE_ZH = {
         '输出 PEFT/LyCORIS 兼容的 hada_w1/hada_w2 权重，默认 rank=32。',
         '可合并进 DiT Linear 权重；推理或继续训练时需要 LoHa 权重识别支持。',
         '只有需要 LoHa 兼容格式时选。'
+    ),
+    vera: choiceHelp(
+        'VeRA',
+        '启用 VeRA，默认 rank 256，冻结共享随机投影 A/B，只训练缩放向量。',
+        '参数量极低，适合短跑消融；保存时可选择是否写入随机投影矩阵。',
+        '建议固定 projection_prng_key 后比较 rank、T-LoRA mask 和学习率。'
     ),
     chimera_hydra: choiceHelp(
         'ChimeraHydra',

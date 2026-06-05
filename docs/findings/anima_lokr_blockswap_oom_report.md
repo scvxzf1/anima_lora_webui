@@ -1,6 +1,6 @@
 # Anima LoKr Block Swap OOM 技术报告
 
-日期：2026-06-03
+日期：2026-06-04
 
 ## 结论摘要
 
@@ -13,6 +13,7 @@
 - LoKr projection 改为 output-factor slice + token-row chunk，避免一次性 fp32 大临时。
 - LoKr custom forward 不再 `torch.empty_like(org_forwarded)` 分配完整 result，而是在 frozen Linear 输出上按 slice 原地累加 delta。
 - LoKr projection 新增 factor group 计算，默认 `lokr_factor_group_size=8`，减少重复的 `x @ w2.T` 投影。
+- LoKr G8 进一步改成 fused row-chunk delta apply：不再把每个 output-factor group 的完整 fp32 delta tensor 返回给 Python，再写入 base output；而是在 custom autograd forward 里按 row chunk 直接写入 frozen Linear 输出，并在 backward 重算 delta。
 - WebUI 资源快捷按钮新增 `LoKr 16G`，一键设置实测救场参数。
 
 最终建议：
@@ -43,7 +44,7 @@ memory_probe_max_steps = 3
 PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True,max_split_size_mb:256
 ```
 
-D36 使用该 allocator 配置三步通过；D37 的 `selective_checkpoint=mlp_only` 和 D38 的 `blocks_to_swap=24` 都在第二步 forward OOM，错误点仍是 compiled DiT block 内的 MLP/attention 临时 buffer。
+D36 使用该 allocator 配置三步通过；D37 的 `selective_checkpoint=mlp_only` 和 D38 的 `blocks_to_swap=24` 都在第二步 forward OOM，错误点仍是 compiled DiT block 内的 MLP/attention 临时 buffer。后续 50-step 复测也确认：更细粒度的 `mlp_layer1_only` / `peak_blocks_mlp_layer1` / `peak_blocks_mlp` 没有把最低 free 拉到 `300MiB+`；fused LoKr delta apply 降低了 `max allocated`，但 allocator `reserved` 仍会把 NVML free 压到约 `66MiB`。
 
 ## 固定约束
 
@@ -197,7 +198,189 @@ max_train_steps = 3 / 10 / 30 / 50 / 300
 - 但 `gradient_checkpointing=true` 的速度代价很大，50-step 平均约 `7.0s/step`，比 G8 无检查点交换块慢约 `28%`。
 - `gradient_checkpointing=true + blocks_to_swap=23` 并没有比单独 checkpoint 更快，反而仍在 `7.02s/step` 左右。
 - 结论是：全量 checkpoint 适合作为省显存兜底，不适合作为 LoKr 16G 的首选提速方案；当前速度默认仍应保留 `gradient_checkpointing=false` 与 `lokr_factor_group_size=8`。
+
+## selective_checkpoint 同口径复测
+
+2026-06-04 追加复测：由于 `/tmp/anima-lokr-group-ab/` 旧 runtime 已被系统清理，本轮用当前仍存在的 `ichika87_style--61a1-20260602-173252` 缓存重建等价 LoKr G8 runtime。该表只在本节内部横向比较，不与上方 `tag-es1` 旧短跑直接混算。
+
+固定配置：
+
+```toml
+blocks_to_swap = 23
+block_swap_transfer_dtype = "bf16"
+lokr_factor_group_size = 8
+gradient_checkpointing = false
+torch_compile = true
+attn_mode = "flash"
+PYTORCH_CUDA_ALLOC_CONF = "expandable_segments:True,max_split_size_mb:256"
+max_train_steps = 50
+```
+
+| run | selective_checkpoint | status | final_step | avg step | steady avg | tail10 avg | max allocated | max reserved | min forward free | wait p95 | h2d p95 | 结论 |
+| --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| SC_off_50 | off | ok | 50 | 6.35s | 6.23s | 5.88s | 13.392GiB | 14.014GiB | 0.060GiB | 0.902ms | 17.120ms | 同口径 baseline |
+| SC_mlp_only_50 | mlp_only | ok | 50 | 5.97s | 5.91s | 5.95s | 13.392GiB | 14.066GiB | 0.047GiB | 0.981ms | 14.847ms | 速度最好，但余量反而更薄 |
+| SC_every_other_50 | every_other | ok | 50 | 6.34s | 6.21s | 6.15s | 13.396GiB | 14.006GiB | 0.049GiB | 0.993ms | 17.615ms | 更慢，余量未改善 |
+
+关键观察：
+
+- 现有 `selective_checkpoint=mlp_only/every_other` 都能跑通 50-step，但没有把 min forward free 拉到 `300MiB+`；最低仍只有 `47-49MiB`，甚至比 `off` 组的 `60MiB` 更差。
+- `mlp_only` 虽然是三组里最快的，但只是把均速拉回到接近 G8 baseline，没换来更高显存余量；`every_other` 反而更慢。
+- 三组 `wait p95` 仍都在 `1ms` 左右，说明这轮差异依旧不是 block swap 等待导致，而是 forward 峰值和 allocator 行为主导。
+- 因此当前实现下不建议把 `selective_checkpoint` 纳入默认 LoKr 16G 方案。它可以保留为诊断开关，但真正有价值的下一步应是更细粒度的高峰分支/高峰 block checkpoint，而不是现有粗粒度模式。
 - allocator 碎片行为已由 D36/D37/D38 验证为残余主因之一；当前推荐把 `expandable_segments` 作为 LoKr 16G 的第一 fallback。
+
+## peak_probe 峰值定位阶段
+
+2026-06-04 追加实现了独立 `peak_probe_jsonl`，用于 LoKr 16G 后续定点优化。它和 `memory_probe_jsonl` 分离，支持 `peak_probe_level`：
+
+- `block`：只在 DiT block 边界记录，插桩点在 compiled block 外，适合 50-step baseline。
+- `ops`：记录 block 内 self-attn / cross-attn / MLP 阶段；会在 compiled block 内引入诊断 graph break，只适合短跑。
+- `lokr`：记录 LoKr base output 与 delta apply 前后；同样只适合短跑。
+- `full`：全量诊断，当前会明显扰动 16G 极限余量，不适合 50-step。
+
+### 50-step block 级 baseline
+
+输出目录：
+
+```text
+/tmp/anima-lokr-peak-probe/
+  baseline_g8_50.runtime.toml
+  progress.jsonl
+  memory_probe.jsonl
+  block_swap_profile.jsonl
+  peak_probe.jsonl
+```
+
+固定配置仍是 LoKr G8 速度默认：
+
+```toml
+blocks_to_swap = 23
+lokr_factor_group_size = 8
+selective_checkpoint = "off"
+gradient_checkpointing = false
+torch_compile = true
+attn_mode = "flash"
+peak_probe_level = "block"
+PYTORCH_CUDA_ALLOC_CONF = "expandable_segments:True,max_split_size_mb:256"
+max_train_steps = 50
+```
+
+| run | status | final_step | avg step | steady avg | tail10 avg | max allocated | max reserved | min before-forward free | wait p95 | h2d p95 |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| baseline_g8_50 + block peak | ok | 50 | 6.28s | 6.21s | 6.11s | 13.384GiB | 14.006GiB | 0.025GiB | 0.847ms | 15.357ms |
+
+block 边界 top low-free 事件集中在 step 17，token shape 为 `[1, 1, 4032, 1, 2048]`：
+
+| rank | label | block_idx | free | allocated | reserved | 说明 |
+| ---: | --- | ---: | ---: | ---: | ---: | --- |
+| 1 | block_after | 11 | 0.023GiB | 6.124GiB | 13.832GiB | block 11 后 |
+| 2 | block_before | 12 | 0.023GiB | 6.124GiB | 13.832GiB | 同一低余量传到下个 block |
+| 3 | block_after | 10 | 0.023GiB | 5.716GiB | 13.832GiB | block 10 后 |
+| 4 | block_before | 11 | 0.023GiB | 5.716GiB | 13.832GiB | 同一低余量传到下个 block |
+| 5 | block_after | 7 | 0.024GiB | 4.495GiB | 13.832GiB | block 7 后 |
+
+解释：
+
+- 这组 50-step 跑通，但最低 `cuda_free_gb` 只有约 `25MiB`，比旧 G8 300-step 的 `46MiB` 还薄。
+- 低点不是 H2D wait：`wait p95=0.847ms`。
+- block 边界的 allocated 只有 `~6GiB`，但 reserved 已到 `13.832GiB`，说明低 free 很大程度来自 allocator/reserved 与非 PyTorch 常驻占用；单看 block 边界无法捕获 compiled block 内部瞬时高峰。
+
+### 短跑 op / LoKr 定位
+
+由于在 compiled block 内记录 `ops/full` 会改变图分段并放大峰值，`ops_probe_3` 在 step0 OOM；这本身验证了内部余量极薄。失败点是 `blocks.27.mlp.layer1` 的 LoKr delta apply 附近：
+
+```text
+ops_probe_3: step0 forward OOM
+CUDA tried to allocate 132MiB
+stack: Block._forward -> self.mlp -> GPT2FeedForward.layer1 -> LoKrModule.forward
+```
+
+`ops_probe_3.peak_probe.jsonl` 在 OOM 前的最低事件：
+
+| label | block_idx | phase | free | allocated | reserved |
+| --- | ---: | --- | ---: | ---: | ---: |
+| cross_attn_after_projection | 27 | cross_attn | 0.349GiB | 13.557GiB | 13.688GiB |
+| mlp_before_norm | 27 | mlp | 0.349GiB | 13.557GiB | 13.688GiB |
+| mlp_after_projection | 26 | mlp | 0.449GiB | 13.277GiB | 13.588GiB |
+
+`lokr_probe_1` 用 `peak_probe_level="lokr"` 单步通过，最低 LoKr 事件进一步确认末端 block 的 MLP LoKr 是最危险路径：
+
+| label | op | block_idx | free | allocated | reserved |
+| --- | --- | ---: | ---: | ---: | ---: |
+| lokr_after_delta_apply | mlp_layer2 | 27 | 0.787GiB | 13.012GiB | 13.258GiB |
+| lokr_before_delta_apply | mlp_layer2 | 27 | 0.787GiB | 12.980GiB | 13.258GiB |
+| lokr_after_delta_apply | mlp_layer1 | 27 | 0.787GiB | 13.028GiB | 13.258GiB |
+| lokr_after_base | mlp_layer1 | 27 | 1.100GiB | 12.900GiB | 12.945GiB |
+
+阶段结论：
+
+- 50-step baseline 说明当前 G8 默认仍是“能跑但极薄”，最低 free 只有 `~25MiB`，没有达到 `300MiB` 目标。
+- 细粒度短跑把风险收敛到后段 DiT block，尤其是 `block 27` 的 `MLP layer1/layer2` LoKr delta apply。
+- 现有粗粒度 `mlp_only/every_other` 已证明不能有效抬高余量；因此后续实现了更细粒度候选：`mlp_layer1_only`、`peak_blocks_mlp_layer1`、`peak_blocks_mlp`。结果见下一节。
+- `ops/full` 探针不能作为 50-step 常规 profile 模式；后续 50-step 消融应使用 `peak_probe_level="block"`，短跑才开 `ops/lokr`。
+
+## 定点 checkpoint 与 fused LoKr delta 消融
+
+2026-06-04 继续推进后实现并测试了三类更细粒度候选：
+
+- `selective_checkpoint = "mlp_layer1_only"`
+- `selective_checkpoint = "peak_blocks_mlp_layer1"`，分别覆盖 `25-27` 与 `24-27`
+- `selective_checkpoint = "peak_blocks_mlp"`，覆盖 `25-27`
+
+随后又实现了 fused LoKr delta apply：custom autograd forward 不再返回完整 `N × group × out_dim` fp32 delta 临时，而是按 row chunk 直接把 delta 写入 frozen Linear 的 base output；backward 从保存的 `x/w1/w2` 重算梯度。该实现保持权重格式不变，不 materialize `torch.kron`，也不量化 trainable adapter。
+
+固定配置：
+
+```toml
+blocks_to_swap = 23
+block_swap_transfer_dtype = "bf16"
+lokr_factor_group_size = 8
+gradient_checkpointing = false
+unsloth_offload_checkpointing = false
+torch_compile = true
+attn_mode = "flash"
+peak_probe_level = "block"
+PYTORCH_CUDA_ALLOC_CONF = "expandable_segments:True,max_split_size_mb:256"
+max_train_steps = 50
+```
+
+输出目录：
+
+```text
+/tmp/anima-lokr-peak-probe/
+  B0_baseline_g8_current_50.*
+  C1_mlp_layer1_only_50.*
+  C2_peak_25_27_layer1_50.*
+  C3_peak_24_27_layer1_50.*
+  C4_peak_25_27_mlp_50.*
+  F0_fused_lokr_add_g8_50.*
+  F1_fused_lokr_add_g8_alloc64_gc_50.*
+```
+
+| run | selective_checkpoint | blocks | status | final_step | steady avg | tail10 avg | max allocated | max reserved | min before free | min peak free | wait p95 | h2d p95 | 结论 |
+| --- | --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| B0_baseline_g8_current_50 | off | - | ok | 50 | 5.470s | 5.449s | 13.392GiB | 13.891GiB | 65MiB | 65MiB | 0.749ms | 13.953ms | 当前同口径 baseline |
+| C1_mlp_layer1_only_50 | mlp_layer1_only | - | ok | 50 | 5.620s | 5.677s | 13.388GiB | 13.904GiB | 73MiB | 73MiB | 0.753ms | 14.570ms | 只增加约 8MiB，未达标 |
+| C2_peak_25_27_layer1_50 | peak_blocks_mlp_layer1 | 25-27 | ok | 50 | 5.618s | 5.692s | 13.388GiB | 13.910GiB | 69MiB | 69MiB | 0.798ms | 14.570ms | 未达标 |
+| C3_peak_24_27_layer1_50 | peak_blocks_mlp_layer1 | 24-27 | ok | 50 | 5.486s | 5.430s | 13.395GiB | 13.910GiB | 64MiB | 64MiB | 0.707ms | 14.324ms | 未达标 |
+| C4_peak_25_27_mlp_50 | peak_blocks_mlp | 25-27 | ok | 50 | 5.713s | 5.820s | 13.396GiB | 13.908GiB | 76MiB | 76MiB | 0.809ms | 14.092ms | 本组最高 free 也只有 76MiB |
+| F0_fused_lokr_add_g8_50 | off | - | ok | 50 | 6.040s | 5.971s | 13.251GiB | 13.910GiB | 66MiB | 66MiB | 0.832ms | 13.934ms | `max allocated` 降约 145MiB，但 free 仍未抬高 |
+| F1_fused_lokr_add_g8_alloc64_gc_50 | off | - | ok | 50 | 5.903s | 5.875s | 13.247GiB | 13.922GiB | 66MiB | 66MiB | 0.726ms | 13.873ms | allocator GC 会阶段性释放 cache，但峰值 free 仍未达标 |
+
+关键观察：
+
+- 定点 checkpoint 没有解决目标问题。`mlp_layer1_only`、`peak_blocks_mlp_layer1`、`peak_blocks_mlp` 全部 50-step 通过，但最低 free 仍只有 `64-76MiB`，离 `300MiB` 门槛很远。
+- fused LoKr delta apply 确实降低了 PyTorch `max allocated`：从 baseline `13.392GiB` 降到 `13.247-13.251GiB`，说明完整 fp32 delta group 临时已经被削掉一部分。
+- 但 fused 后 `max reserved` 仍在 `13.91GiB` 左右，NVML free 仍只有 `~66MiB`。也就是说当前最小 free 主要被 allocator reserved / CUDA context / 桌面常驻显存共同决定，而不是单个 MLP checkpoint 可以释放的 saved activation。
+- `wait p95` 仍低于 `1ms`，H2D 约 `13.9-14.6ms`，再次证明 block swap 等待不是当前瓶颈。
+- F1 的 `max_split_size_mb=64,garbage_collection_threshold=0.8` 能在部分 step 后把 `memory_reserved_gb` 降到 `4-5GiB`，但 forward 峰值仍会重新顶到 `13.9GiB+`，没有把最低 free 提到 300MiB。
+
+阶段结论：
+
+- 新增细粒度 checkpoint 模式可以保留为诊断/手动开关，但不推荐作为 LoKr 16G 默认。
+- fused LoKr delta apply 是正确方向，能降低 `max allocated` 且速度损失约 `7.5%~10.9%`，符合速度门槛；但它单独不足以达成 `min free >= 300MiB`。
+- 下一轮不应继续堆 checkpoint；应围绕“降低 allocator 峰值 reserved / 减少 CUDA context 外常驻 / 更彻底地 fused base+delta Linear 输出”继续优化。
 
 ## 验证记录
 
@@ -213,6 +396,16 @@ timeout 60 .venv/bin/python -m pytest tests/test_training_resume.py -k "block_sw
 timeout 60 .venv/bin/python -m pytest tests/test_training_frontend_state.py -k "block_swap or resource" -q
 ```
 
+本轮新增验证：
+
+```bash
+timeout 60 .venv/bin/python -m py_compile library/runtime/peak_probe.py library/anima/models.py networks/plugins/lokr/module.py library/training/loop.py train.py library/training/cli_args.py tests/test_lokr.py tests/test_block_swapping.py tests/test_config.py
+timeout 60 .venv/bin/python -m pytest tests/test_lokr.py -q
+timeout 60 .venv/bin/python -m pytest tests/test_block_swapping.py -q
+timeout 60 .venv/bin/python -m pytest tests/test_config.py -q
+timeout 60 .venv/bin/python -m pytest tests/test_training_frontend_state.py -k "block_swap or resource or selective_checkpoint" -q
+```
+
 短实验通过：
 
 ```text
@@ -221,4 +414,86 @@ D24: blocks_to_swap=23, max_train_steps=3, status=ok, 最小 forward free 约 0.
 D36: blocks_to_swap=23 + expandable_segments/max_split_size_mb=256, max_train_steps=3, status=ok
 D37: blocks_to_swap=23 + selective_checkpoint=mlp_only, status=error, step1 forward OOM
 D38: blocks_to_swap=24, status=error, step1 MLP layer1 OOM
+B0/C1/C2/C3/C4: 定点 selective checkpoint 50-step 全部 status=ok，但 min peak free 仅 64-76MiB
+F0/F1: fused LoKr delta apply 50-step status=ok，max allocated 降到约 13.25GiB，但 min peak free 仍约 66MiB
 ```
+
+## 2026-06-05 allocator / blocks / FP8 追加消融
+
+本轮在用户授权后继续沿 `goal` 推进，固定约束不变：
+
+```toml
+use_lokr = true
+use_custom_down_autograd = true
+lokr_factor_group_size = 8
+selective_checkpoint = "off"
+gradient_checkpointing = false
+unsloth_offload_checkpointing = false
+torch_compile = true
+attn_mode = "flash"
+peak_probe_level = "block"
+max_train_steps = 50
+```
+
+输出目录：
+
+```text
+/tmp/anima-lokr-allocator-ablation/
+/tmp/anima-lokr-blocks-ablation/
+```
+
+### allocator 消融
+
+| run | status | final | avg step | steady avg | tail10 avg | min peak free | max allocated | max reserved | wait p95 | h2d p95 |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| alloc256_baseline | ok | 50 | 5.847s | 5.816s | 5.790s | 67.2MiB | 13.251GiB | 13.986GiB | 0.718ms | 14.573ms |
+| alloc128 | ok | 50 | 6.006s | 5.927s | 5.830s | 53.9MiB | 13.247GiB | 14.145GiB | 0.728ms | 14.664ms |
+| alloc64_gc08 | ok | 50 | 5.954s | 5.893s | 6.018s | 78.5MiB | 13.239GiB | 13.912GiB | 0.736ms | 14.640ms |
+| alloc32_gc08 | ok | 50 | 5.856s | 5.809s | 5.981s | 70.9MiB | 13.247GiB | 13.910GiB | 0.806ms | 14.453ms |
+
+结论：allocator 调参能改变 `reserved` 形态，但不能把最低 free 从 `~50-80MiB` 拉到目标 `300MiB+`。`max_split_size_mb=64 + garbage_collection_threshold=0.8` 是本组最低 `max_reserved` / 最高最低 free 的候选，但收益只有约十几 MiB，不能作为根本修复。
+
+### blocks_to_swap=24 复测
+
+在 `PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True,max_split_size_mb:64,garbage_collection_threshold:0.8` 下，把 `blocks_to_swap` 从 23 提到 24：
+
+| run | status | final | avg step | steady avg | tail10 avg | min peak free | max allocated | max reserved | wait p95 | h2d p95 |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| bs24_alloc64_gc08 | ok | 50 | 5.831s | 5.775s | 5.747s | 78.7MiB | 13.118GiB | 13.898GiB | 0.737ms | 14.507ms |
+
+结论：多换 1 个 block 会降低 `max allocated`，但最低 free 仍只有约 `79MiB`，并没有形成 300MiB 级别余量。当前不建议继续盲目把 LoKr 16G 默认推到更高 `blocks_to_swap`；收益已被 allocator/reserved 与 compiled forward 峰值掩盖。
+
+### FP8 transfer 消融
+
+同样固定 `blocks_to_swap=24 + alloc64_gc08`，只把 frozen block swap transfer 从 bf16 改为 `fp8_e4m3`：
+
+| run | transfer | status | final | avg step | steady avg | tail10 avg | min peak free | max allocated | max reserved | wait p95 | h2d p95 | CPU master |
+| --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| bs24_alloc64_gc08 | bf16 | ok | 50 | 5.831s | 5.775s | 5.747s | 78.7MiB | 13.118GiB | 13.898GiB | 0.737ms | 14.507ms | 3.61GiB |
+| bs24_alloc64_gc08_fp8 | fp8_e4m3 | ok | 50 | 5.935s | 5.868s | 5.830s | 82.0MiB | 13.118GiB | 13.906GiB | 0.637ms | 11.102ms | 1.80GiB |
+
+FP8 量化统计：`fp8_relative_l2_by_block` 最大约 `0.083`，未见 saturated tensor。
+
+结论：FP8 transfer 有工程价值：CPU pinned master 减半，H2D p95 从约 `14.5ms` 降到约 `11.1ms`，wait p95 也略降。但它不降低 GPU 上 active block 的 bf16 执行权重，也不解决最低 free；50-step 最低 free 仍只有约 `82MiB`。因此 FP8 transfer 可以作为速度/PCIe 优化开关，不应被宣传为 LoKr 16G OOM 根因修复。
+
+## 当前最终结论
+
+在当前约束下，已经验证过以下路线：
+
+- no-kron LoKr forward
+- grouped LoKr projection
+- fused LoKr delta apply
+- `blocks_to_swap=23/24`
+- allocator `max_split_size_mb=256/128/64/32` 与 GC 阈值
+- coarse / fine selective checkpoint
+- bf16 vs fp8 block-swap transfer
+
+这些路线能把 LoKr 16G 从“直接 OOM”推进到 50/300-step 可跑，但**仍无法稳定达到 `min forward free >= 300MiB`**。当前最佳短跑最低 free 仍在 `~80MiB` 量级。
+
+因此后续若必须达到 300MiB+ 余量，只剩三类方向：
+
+1. 接受更大数学/速度代价：full `gradient_checkpointing=true` 或降低 token/resolution/batch 峰值。
+2. 做更深层 kernel/graph 级重构：融合 base Linear backward 与 LoKr delta backward，减少 compiled graph / autograd saved tensor 生命周期，而不是继续调 block swap。
+3. 降低外部常驻显存与 allocator 压力：独占 GPU、关闭桌面/浏览器占用、保持 `expandable_segments`，但这只能救场，不能保证 300MiB+。
+
+面向用户的稳定建议保持不变：默认仍用 `LoKr 16G` 速度方案；如果仍 OOM，优先用 allocator fallback 和降低 `lokr_factor_group_size`，最后才考虑 full checkpoint。FP8 transfer 可手动开启用于 PCIe/H2D 消融，不作为显存余量修复。

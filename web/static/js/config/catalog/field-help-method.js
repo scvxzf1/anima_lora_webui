@@ -1,4 +1,4 @@
-import { help } from './help-builder.js?v=module-bootstrap-20260603-6';
+import { help } from './help-builder.js?v=module-bootstrap-20260604-8';
 
 export const FIELD_HELP_METHOD_ZH = {
     network_dim: help(
@@ -75,11 +75,19 @@ export const FIELD_HELP_METHOD_ZH = {
     ),
     lora_adapter_kind: help(
         "选择当前训练使用的 LoRA 家族结构。",
-        "普通 LoRA 会关闭 use_loha/use_lokr；LoHa 会写入 use_loha=true；LoKr 会写入 use_lokr=true，并启用 LoKr Factor。",
-        ["把两个互斥开关合并成一个选择，避免同时打开 LoHa 和 LoKr。"],
+        "普通 LoRA 会关闭 use_loha/use_lokr/use_vera；LoHa、LoKr、VeRA 会分别写入对应开关。",
+        ["把互斥 adapter 开关合并成一个选择，避免同时打开多个结构。"],
         ["切换结构会改变权重格式和推理兼容性，不只是改 UI 文案。"],
-        ["LoHa/LoKr 与 OrthoLoRA、Hydra/FeRA、ChimeraHydra 等结构互斥，保存前要确认当前变体支持。"],
-        "不需要 LyCORIS 兼容格式时保持普通 LoRA；需要 LoKr 时再切到 LoKr 并确认 factor。"
+        ["LoHa/LoKr/VeRA 与 OrthoLoRA、Hydra/FeRA、ChimeraHydra 等结构互斥，保存前要确认当前变体支持。"],
+        "不需要特殊格式时保持普通 LoRA；做极低参数 VeRA 消融时选择 VeRA。"
+    ),
+    use_vera: help(
+        "启用 VeRA（Vector-based Random Matrix Adaptation）。",
+        "共享冻结随机投影 A/B，只训练每层缩放向量，通常使用更高 rank 但参数量很低。",
+        ["参数量远小于普通 LoRA/LoKr，适合短期消融和多种 rank 对照。"],
+        ["推理和继续训练需要 VeRA 兼容加载路径；不等价于普通 LoRA 权重。"],
+        ["与 LoHa、LoKr、OrthoLoRA、Hydra/FeRA 等结构互斥。"],
+        "推荐直接选 VeRA 变体；短测可用 rank 256/512，并固定投影随机种子。"
     ),
     use_lokr: help(
         "启用 LoKr（Low-Rank Kronecker Product）。",
@@ -112,6 +120,38 @@ export const FIELD_HELP_METHOD_ZH = {
         ["它会一次计算完整 LoKr delta 输出，显存不稳或 OOM 时先退回 4，再退 2/1。"],
         ["只影响训练时 custom LoKr apply，不改变保存权重格式。"],
         "当前推荐 8；追求更稳时使用 4。"
+    ),
+    lokr_project_chunk_bytes: help(
+        "LoKr 投影内部 row chunk 的字节阈值。",
+        "默认 4194304，也就是 4MiB。调小会把 LoKr delta apply 切得更碎，降低单次临时张量峰值；调大会减少循环次数、可能更快。",
+        ["1MiB/2MiB 适合 16GB 下显存只剩几十 MiB 的救场测试。"],
+        ["阈值越小 Python/autograd 循环越多，速度可能下降。"],
+        ["阈值越大峰值越高，可能重新触发 LoKr MLP OOM。"],
+        "默认 4MiB；仍然 OOM 时先试 2MiB，再试 1MiB。"
+    ),
+    vera_projection_prng_key: help(
+        "VeRA 冻结随机投影 A/B 的生成种子。",
+        "相同 rank、层形状和种子会确定性重建同一组投影矩阵。",
+        ["便于消融实验中只改变 rank、学习率或 mask，不改变随机基底。"],
+        ["换种子会改变投影子空间，结果不应和旧实验直接混为一次重复。"],
+        ["如果保存投影矩阵为 false，加载端必须使用相同种子重建。"],
+        "短期测试默认 0；做多种子稳定性时再用 1/2/3。"
+    ),
+    vera_d_initial: help(
+        "VeRA 中 lambda_d 缩放向量的初始值。",
+        "默认 0.1，控制随机投影路径一开始的有效更新幅度。",
+        ["较小初值更保守，训练初期更稳。"],
+        ["过大可能让随机投影路径一开始就扰动过强。"],
+        ["不同 rank 下最优值可能不同，消融时要固定其它变量。"],
+        "推荐 0.1；不稳定时先试 0.05 或 0.01。"
+    ),
+    vera_save_projection: help(
+        "是否把 VeRA 冻结随机投影矩阵也写进 checkpoint。",
+        "关闭时只保存可训练向量和随机种子，加载时确定性重建投影。",
+        ["关闭可显著减小权重文件体积。"],
+        ["开启后文件更大，但对非确定性加载器或迁移排错更直接。"],
+        ["关闭时必须保留 projection_prng_key 元数据。"],
+        "默认关闭；调试加载兼容性时再开启。"
     ),
     min_rank: help(
         "T-LoRA 在低噪声时间步保留的最小活跃 rank。",

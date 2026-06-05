@@ -1,4 +1,4 @@
-import { enqueueTrainingQueue, resumeTrainingQueue } from './api.js?v=module-bootstrap-20260603-6';
+import { enqueueTrainingQueue, resumeTrainingQueue } from './api.js?v=module-bootstrap-20260604-8';
 
 export function createQueueEnqueue({ ctx, deps, updateTrainingQueueFromPayload }) {
     async function queueCurrentTrainingFromConfig() {

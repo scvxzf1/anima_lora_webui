@@ -17,7 +17,7 @@
             }
         })();
     </script>
-    <link rel="stylesheet" href="/static/style.css?v=drag-drop-preview-20260603-4">
+    <link rel="stylesheet" href="/static/style.css?v=history-top-align-20260604-2">
 </head>
 <body>
     <header>
@@ -26,6 +26,7 @@
             <button class="tab-btn active" data-tab="config">配置</button>
             <button class="tab-btn" data-tab="datasets">数据集</button>
             <button class="tab-btn" data-tab="training">训练</button>
+            <button class="tab-btn" data-tab="weight-analysis">ΔW 分析</button>
             <button class="tab-btn" data-tab="settings">全局设置</button>
         </nav>
         <div id="status-indicator">
@@ -189,6 +190,10 @@
                             </button>
                             <button id="btn-sticky-config-preview" class="config-sticky-tab" type="button" data-sticky-config-category="preview">
                                 <strong>预览</strong>
+                                <em>0 项</em>
+                            </button>
+                            <button id="btn-sticky-config-optimization" class="config-sticky-tab" type="button" data-sticky-config-category="optimization">
+                                <strong>优化</strong>
                                 <em>0 项</em>
                             </button>
                             <button id="btn-sticky-config-advanced" class="config-sticky-tab" type="button" data-sticky-config-category="advanced">
@@ -708,6 +713,150 @@
             </div>
         </section>
 
+
+        <!-- ΔW 权重结构分析 Tab：只读 safetensors 静态权重，不跑图不占 GPU。 -->
+        <section id="tab-weight-analysis" class="tab-content">
+            <div class="weight-analysis-layout weight-analysis-dashboard">
+                <div class="weight-analysis-topbar">
+                    <div class="weight-analysis-hero panel">
+                        <span class="weight-analysis-eyebrow">STATIC ΔW INSPECTOR</span>
+                        <div>
+                            <h2>ΔW 权重结构分析</h2>
+                            <p>这里分析的是 safetensors 内的静态 ΔW 范数，不是跑图激活。</p>
+                        </div>
+                    </div>
+                    <div class="weight-analysis-top-actions" aria-label="ΔW 分析操作">
+                        <button id="btn-toggle-weight-compare" class="btn" type="button" aria-pressed="false">开启对比</button>
+                        <button id="btn-export-weight-analysis" class="btn btn-primary" type="button">导出报告</button>
+                    </div>
+                </div>
+
+                <section class="panel weight-analysis-import-panel" aria-label="导入权重">
+                    <div class="weight-analysis-import-head">
+                        <div>
+                            <span class="weight-analysis-eyebrow">IMPORT</span>
+                            <h3>导入面板</h3>
+                            <p>选择训练输出、手填安全路径，或直接拖入 .safetensors 临时分析。</p>
+                        </div>
+                        <div id="weight-analysis-status" class="preview-status" aria-live="polite"></div>
+                    </div>
+                    <div class="weight-analysis-import-grid">
+                        <div class="weight-analysis-import-slot primary">
+                            <div class="weight-analysis-slot-head">
+                                <strong>主权重 A</strong>
+                                <span>单文件分析 / 对比基准</span>
+                            </div>
+                            <label class="preview-setting-field weight-analysis-field">
+                                <span>训练权重列表</span>
+                                <select id="weight-analysis-select">
+                                    <option value="">当前任务 / 最新运行目录</option>
+                                </select>
+                            </label>
+                            <label class="preview-setting-field weight-analysis-field">
+                                <span>手填权重路径</span>
+                                <input id="weight-analysis-path" type="text" placeholder="output/runs/.../training_output/anima.safetensors">
+                            </label>
+                            <div id="weight-analysis-dropzone" class="weight-analysis-dropzone" role="button" tabindex="0" aria-label="拖入 safetensors 权重文件或路径">
+                                <strong>拖入 .safetensors 或路径</strong>
+                                <span>拖文件会临时上传到后端 CPU 分析；拖 file:// / 文本路径会填入路径框。</span>
+                                <small>上传文件只在内存读取，不写入权重目录。</small>
+                            </div>
+                            <input id="weight-analysis-file" type="file" accept=".safetensors" hidden>
+                        </div>
+
+                        <div id="weight-analysis-compare-slot" class="weight-analysis-import-slot compare" hidden>
+                            <div class="weight-analysis-slot-head">
+                                <strong>对比权重 B</strong>
+                                <span>计算 B - A 的层级差异</span>
+                            </div>
+                            <label class="preview-setting-field weight-analysis-field">
+                                <span>手填对比路径</span>
+                                <input id="weight-analysis-compare-path" type="text" placeholder="选择第二个 .safetensors 进行对比">
+                            </label>
+                            <div id="weight-analysis-compare-dropzone" class="weight-analysis-dropzone secondary" role="button" tabindex="0" aria-label="拖入第二个 safetensors 权重文件或路径">
+                                <strong>拖入第二个权重</strong>
+                                <span>支持文件上传或路径；启用对比后会展示层类型与 block 差值。</span>
+                                <small>对比同样不跑图、不加载 DiT。</small>
+                            </div>
+                            <input id="weight-analysis-compare-file" type="file" accept=".safetensors" hidden>
+                        </div>
+
+                        <div class="weight-analysis-import-actions">
+                            <button id="btn-refresh-analysis-weights" class="btn" type="button">刷新权重</button>
+                            <button id="btn-run-weight-analysis" class="btn btn-primary" type="button">分析权重</button>
+                        </div>
+                    </div>
+                </section>
+
+                <section class="weight-analysis-main" aria-label="ΔW 分析结果">
+                    <div class="panel weight-analysis-insight-strip">
+                        <div>
+                            <span class="weight-analysis-eyebrow">DEFAULT READING</span>
+                            <strong>默认解读摘要</strong>
+                        </div>
+                        <ul>
+                            <li>mlp_layer1 更像风格染色器</li>
+                            <li>cross_attn_k_proj / v_proj 更像提示词到风格的绑定</li>
+                            <li>self_attn_output_proj 影响整体气质和一致性</li>
+                            <li>早期 block 0–8 通常较弱，中后段 13–18、25–26 更值得关注</li>
+                        </ul>
+                    </div>
+
+                    <div id="weight-analysis-summary" class="weight-analysis-summary" aria-live="polite"></div>
+                    <div id="weight-analysis-compare-summary" class="weight-analysis-compare-summary" aria-live="polite"></div>
+
+                    <div class="weight-analysis-results-grid">
+                        <section class="panel weight-analysis-card weight-analysis-rank-card">
+                            <div class="weight-analysis-card-head">
+                                <div>
+                                    <h3>层类型贡献排行</h3>
+                                    <span>点击层类型可联动高亮 Top 候选层</span>
+                                </div>
+                            </div>
+                            <div id="weight-analysis-layer-list" class="weight-analysis-rank-list"></div>
+                        </section>
+
+                        <section class="panel weight-analysis-card weight-analysis-rank-card">
+                            <div class="weight-analysis-card-head">
+                                <div>
+                                    <h3>Block 贡献排行</h3>
+                                    <span>输入端 → 中段 → 输出端能量分布</span>
+                                </div>
+                            </div>
+                            <div id="weight-analysis-block-structure" class="weight-analysis-block-structure" aria-label="U-Net block 能量示意图"></div>
+                            <div id="weight-analysis-block-list" class="weight-analysis-rank-list"></div>
+                        </section>
+                    </div>
+
+                    <section class="panel weight-analysis-card weight-analysis-candidate-card">
+                        <div class="weight-analysis-card-head">
+                            <div>
+                                <h3>Top20 候选层</h3>
+                                <span>启发式候选，不等同真实语义结论</span>
+                            </div>
+                            <div class="weight-analysis-candidate-tabs" role="tablist" aria-label="候选层切换">
+                                <button id="weight-analysis-candidate-tab-style" class="weight-analysis-candidate-tab active" type="button" role="tab" aria-selected="true" data-candidate-kind="style">风格层</button>
+                                <button id="weight-analysis-candidate-tab-character" class="weight-analysis-candidate-tab" type="button" role="tab" aria-selected="false" data-candidate-kind="character">角色/结构层</button>
+                            </div>
+                        </div>
+                        <div id="weight-analysis-style-top" class="weight-analysis-candidate-list" data-candidate-panel="style"></div>
+                        <div id="weight-analysis-character-top" class="weight-analysis-candidate-list" data-candidate-panel="character" hidden></div>
+                        <button id="btn-weight-analysis-toggle-candidates" class="btn weight-analysis-toggle-candidates" type="button">查看全部 Top20</button>
+                    </section>
+
+                    <section class="panel weight-analysis-heatmap-card">
+                        <div class="weight-analysis-card-head">
+                            <div>
+                                <h3>Block × Layer Type 热力图</h3>
+                                <span>浅蓝 → 深紫表示 ΔW 范数贡献升高</span>
+                            </div>
+                        </div>
+                        <div id="weight-analysis-heatmap" class="weight-analysis-heatmap"></div>
+                    </section>
+                </section>
+            </div>
+        </section>
+
         <!-- 全局设置 Tab -->
         <section id="tab-settings" class="tab-content">
             <div class="global-settings-layout global-forge-layout">
@@ -1123,6 +1272,6 @@
 
     <div id="config-switch-toast" class="config-switch-toast" role="status" aria-live="polite" hidden></div>
 
-    <script type="module" src="/static/app.js?v=module-bootstrap-20260603-6"></script>
+    <script type="module" src="/static/app.js?v=module-bootstrap-20260604-8"></script>
 </body>
 </html>

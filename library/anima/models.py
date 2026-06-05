@@ -14,6 +14,7 @@ from torch.utils.checkpoint import checkpoint as torch_checkpoint
 
 from library.runtime import offloading as custom_offloading_utils
 from library.runtime.device import weighs_to_device
+from library.runtime.peak_probe import record_peak_probe_event
 from networks import attention_dispatch
 
 
@@ -240,6 +241,7 @@ class GPT2FeedForward(nn.Module):
         self.activation = nn.GELU()
         self.layer1 = nn.Linear(d_model, d_ff, bias=False)
         self.layer2 = nn.Linear(d_ff, d_model, bias=False)
+        self.layer1_checkpointing = False
 
         self._layer_id = None
         self._dim = d_model
@@ -255,9 +257,19 @@ class GPT2FeedForward(nn.Module):
             std = std / math.sqrt(2 * (self._layer_id + 1))
         torch.nn.init.trunc_normal_(self.layer2.weight, std=std, a=-3 * std, b=3 * std)
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def _layer1_activation(self, x: torch.Tensor) -> torch.Tensor:
         x = self.layer1(x)
-        x = self.activation(x)
+        return self.activation(x)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        if self.training and self.layer1_checkpointing:
+            x = torch_checkpoint(
+                self._layer1_activation,
+                x,
+                use_reentrant=False,
+            )
+        else:
+            x = self._layer1_activation(x)
         x = self.layer2(x)
         return x
 
@@ -961,6 +973,9 @@ class Block(nn.Module):
         self.cpu_offload_checkpointing = False
         self.unsloth_offload_checkpointing = False
         self.mlp_checkpointing = False
+        self.mlp.layer1_checkpointing = False
+        self._peak_probe = None
+        self._block_idx = None
 
     def enable_gradient_checkpointing(
         self, cpu_offload: bool = False, unsloth_offload: bool = False
@@ -969,18 +984,28 @@ class Block(nn.Module):
         self.cpu_offload_checkpointing = cpu_offload if not unsloth_offload else False
         self.unsloth_offload_checkpointing = unsloth_offload
         self.mlp_checkpointing = False
+        self.mlp.layer1_checkpointing = False
 
     def disable_gradient_checkpointing(self):
         self.gradient_checkpointing = False
         self.cpu_offload_checkpointing = False
         self.unsloth_offload_checkpointing = False
         self.mlp_checkpointing = False
+        self.mlp.layer1_checkpointing = False
 
     def enable_mlp_checkpointing(self):
         self.gradient_checkpointing = False
         self.cpu_offload_checkpointing = False
         self.unsloth_offload_checkpointing = False
         self.mlp_checkpointing = True
+        self.mlp.layer1_checkpointing = False
+
+    def enable_mlp_layer1_checkpointing(self):
+        self.gradient_checkpointing = False
+        self.cpu_offload_checkpointing = False
+        self.unsloth_offload_checkpointing = False
+        self.mlp_checkpointing = False
+        self.mlp.layer1_checkpointing = True
 
     def reset_parameters(self) -> None:
         self.layer_norm_self_attn.reset_parameters()
@@ -1018,6 +1043,17 @@ class Block(nn.Module):
         rope_cos_sin: Optional[tuple[torch.Tensor, torch.Tensor]] = None,
         adaln_lora_B_T_3D: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
+        peak_probe = self._peak_probe
+        record_ops = bool(getattr(peak_probe, "record_block_ops", False))
+        if record_ops:
+            record_peak_probe_event(
+                peak_probe,
+                "block_enter",
+                tensor=x_B_T_H_W_D,
+                module_type="block",
+                block_idx=self._block_idx,
+                block_phase="block",
+            )
         # Compute AdaLN modulation parameters
         if self.use_adaln_lora:
             fused_down = self.adaln_fused_down(emb_B_T_D)
@@ -1061,6 +1097,15 @@ class Block(nn.Module):
             return _norm_layer(_x) * (1 + _scale) + _shift
 
         # 1. Self-attention
+        if record_ops:
+            record_peak_probe_event(
+                peak_probe,
+                "self_attn_before_norm",
+                tensor=x_B_T_H_W_D,
+                module_type="block",
+                block_idx=self._block_idx,
+                block_phase="self_attn",
+            )
         normalized_x = _adaln_fn(
             x_B_T_H_W_D,
             self.layer_norm_self_attn,
@@ -1074,9 +1119,36 @@ class Block(nn.Module):
             x_flat,
             rope_cos_sin=rope_cos_sin,
         ).unflatten(1, (T, H, W))
+        if record_ops:
+            record_peak_probe_event(
+                peak_probe,
+                "self_attn_after_projection",
+                tensor=result,
+                module_type="block",
+                block_idx=self._block_idx,
+                block_phase="self_attn",
+            )
         x_B_T_H_W_D = x_B_T_H_W_D + gate_self_attn_B_T_1_1_D * result
+        if record_ops:
+            record_peak_probe_event(
+                peak_probe,
+                "self_attn_after_residual",
+                tensor=x_B_T_H_W_D,
+                module_type="block",
+                block_idx=self._block_idx,
+                block_phase="self_attn",
+            )
 
         # 2. Cross-attention
+        if record_ops:
+            record_peak_probe_event(
+                peak_probe,
+                "cross_attn_before_norm",
+                tensor=x_B_T_H_W_D,
+                module_type="block",
+                block_idx=self._block_idx,
+                block_phase="cross_attn",
+            )
         normalized_x = _adaln_fn(
             x_B_T_H_W_D,
             self.layer_norm_cross_attn,
@@ -1089,9 +1161,36 @@ class Block(nn.Module):
             crossattn_emb,
             rope_cos_sin=rope_cos_sin,
         ).unflatten(1, (T, H, W))
+        if record_ops:
+            record_peak_probe_event(
+                peak_probe,
+                "cross_attn_after_projection",
+                tensor=result,
+                module_type="block",
+                block_idx=self._block_idx,
+                block_phase="cross_attn",
+            )
         x_B_T_H_W_D = result * gate_cross_attn_B_T_1_1_D + x_B_T_H_W_D
+        if record_ops:
+            record_peak_probe_event(
+                peak_probe,
+                "cross_attn_after_residual",
+                tensor=x_B_T_H_W_D,
+                module_type="block",
+                block_idx=self._block_idx,
+                block_phase="cross_attn",
+            )
 
         # 3. MLP
+        if record_ops:
+            record_peak_probe_event(
+                peak_probe,
+                "mlp_before_norm",
+                tensor=x_B_T_H_W_D,
+                module_type="block",
+                block_idx=self._block_idx,
+                block_phase="mlp",
+            )
         normalized_x = _adaln_fn(
             x_B_T_H_W_D, self.layer_norm_mlp, scale_mlp_B_T_1_1_D, shift_mlp_B_T_1_1_D
         )
@@ -1103,8 +1202,35 @@ class Block(nn.Module):
             )
         else:
             result = self.mlp(normalized_x)
+        if record_ops:
+            record_peak_probe_event(
+                peak_probe,
+                "mlp_after_projection",
+                tensor=result,
+                module_type="block",
+                block_idx=self._block_idx,
+                block_phase="mlp",
+            )
         x_B_T_H_W_D = x_B_T_H_W_D + gate_mlp_B_T_1_1_D * result
+        if record_ops:
+            record_peak_probe_event(
+                peak_probe,
+                "mlp_after_residual",
+                tensor=x_B_T_H_W_D,
+                module_type="block",
+                block_idx=self._block_idx,
+                block_phase="mlp",
+            )
 
+        if record_ops:
+            record_peak_probe_event(
+                peak_probe,
+                "block_exit",
+                tensor=x_B_T_H_W_D,
+                module_type="block",
+                block_idx=self._block_idx,
+                block_phase="block",
+            )
         return x_B_T_H_W_D
 
     def forward(
@@ -1242,6 +1368,7 @@ class Anima(nn.Module):
         # Stashed blocks_to_swap while paused (e.g. during eval). None = not paused.
         self._paused_blocks_to_swap: Optional[int] = None
         self.selective_checkpoint = "off"
+        self._peak_probe = None
 
         # Native-shape flattening for torch.compile. Flipped True by
         # compile_blocks(): the forward flattens each bucket's patch sequence to
@@ -1284,6 +1411,8 @@ class Anima(nn.Module):
                 for _ in range(num_blocks)
             ]
         )
+        for idx, block in enumerate(self.blocks):
+            block._block_idx = idx
 
         self.final_layer = FinalLayer(
             hidden_size=self.model_channels,
@@ -1366,19 +1495,85 @@ class Anima(nn.Module):
         for block in self.blocks:
             block.disable_gradient_checkpointing()
 
-    def enable_selective_checkpointing(self, mode: str = "off"):
-        mode = str(mode or "off").strip().lower()
-        if mode not in {"off", "every_other", "mlp_only"}:
+    def enable_peak_probe(self, probe=None):
+        """Attach an opt-in fine-grained peak probe to DiT blocks."""
+        self._peak_probe = probe
+        for idx, block in enumerate(self.blocks):
+            block._peak_probe = probe
+            block._block_idx = idx
+
+    @staticmethod
+    def _parse_selective_checkpoint_blocks(
+        blocks_spec: Optional[str],
+        *,
+        num_blocks: int,
+        default_last: int = 3,
+    ) -> set[int]:
+        value = str(blocks_spec or "").strip().lower()
+        if value in {"", "auto", "last3"}:
+            start = max(0, int(num_blocks) - int(default_last))
+            return set(range(start, int(num_blocks)))
+
+        out: set[int] = set()
+        for raw_part in value.replace(";", ",").split(","):
+            part = raw_part.strip()
+            if not part:
+                continue
+            if "-" in part:
+                start_s, end_s = part.split("-", 1)
+                start = int(start_s.strip())
+                end = int(end_s.strip())
+                if start > end:
+                    start, end = end, start
+                out.update(range(start, end + 1))
+            else:
+                out.add(int(part))
+        invalid = sorted(idx for idx in out if idx < 0 or idx >= int(num_blocks))
+        if invalid:
             raise ValueError(
-                f"selective_checkpoint must be off, every_other, or mlp_only; got {mode!r}"
+                f"selective_checkpoint_blocks contains invalid block index {invalid}; "
+                f"valid range is 0..{int(num_blocks) - 1}"
+            )
+        return out
+
+    def enable_selective_checkpointing(
+        self,
+        mode: str = "off",
+        blocks: Optional[str] = None,
+    ):
+        mode = str(mode or "off").strip().lower()
+        valid_modes = {
+            "off",
+            "every_other",
+            "mlp_only",
+            "mlp_layer1_only",
+            "peak_blocks_mlp",
+            "peak_blocks_mlp_layer1",
+        }
+        if mode not in valid_modes:
+            raise ValueError(
+                "selective_checkpoint must be one of "
+                f"{', '.join(sorted(valid_modes))}; got {mode!r}"
             )
         self.selective_checkpoint = mode
+        peak_block_indices: set[int] = set()
+        if mode.startswith("peak_blocks_"):
+            peak_block_indices = self._parse_selective_checkpoint_blocks(
+                blocks,
+                num_blocks=len(self.blocks),
+            )
         for idx, block in enumerate(self.blocks):
             block.disable_gradient_checkpointing()
             if mode == "every_other" and idx % 2 == 0:
                 block.enable_gradient_checkpointing(cpu_offload=False, unsloth_offload=False)
             elif mode == "mlp_only":
                 block.enable_mlp_checkpointing()
+            elif mode == "mlp_layer1_only":
+                block.enable_mlp_layer1_checkpointing()
+            elif mode == "peak_blocks_mlp" and idx in peak_block_indices:
+                block.enable_mlp_checkpointing()
+            elif mode == "peak_blocks_mlp_layer1" and idx in peak_block_indices:
+                block.enable_mlp_layer1_checkpointing()
 
     def compile_blocks(self, backend: str = "inductor", mode: Optional[str] = None):
         """Enable native-shape flattening and torch.compile each block's _forward.
@@ -1648,9 +1843,21 @@ class Anima(nn.Module):
         # the loop were ever traced per-block. requires_grad_(True) is a no-op
         # under torch.no_grad().
         x = x_padded.requires_grad_()
+        peak_probe = self._peak_probe
+        record_boundaries = bool(getattr(peak_probe, "record_block_boundaries", False))
         for block_idx, block in enumerate(self.blocks):
             if self.blocks_to_swap:
                 self.offloader.wait_for_block(block_idx)
+
+            if record_boundaries:
+                record_peak_probe_event(
+                    peak_probe,
+                    "block_before",
+                    tensor=x,
+                    module_type="block_boundary",
+                    block_idx=block_idx,
+                    block_phase="block",
+                )
 
             # Unconditional: zero buffers collapse to identity when guidance
             # is off; avoids a data-dependent branch inside the compiled frame.
@@ -1665,6 +1872,16 @@ class Anima(nn.Module):
                 attn_params,
                 **block_kwargs,
             )
+
+            if record_boundaries:
+                record_peak_probe_event(
+                    peak_probe,
+                    "block_after",
+                    tensor=x,
+                    module_type="block_boundary",
+                    block_idx=block_idx,
+                    block_phase="block",
+                )
 
             if self.blocks_to_swap:
                 self.offloader.submit_move_blocks(self.blocks, block_idx)
@@ -1843,10 +2060,37 @@ class Anima(nn.Module):
         t_emb_final = t_embedding_B_T_D + (
             self._mod_guidance_final_w * self._mod_guidance_delta
         ).unsqueeze(1)
+        record_peak_probe_event(
+            self._peak_probe,
+            "final_layer_before",
+            tensor=x_B_T_H_W_D,
+            module_type="anima",
+            block_idx="final",
+            block_phase="final_projection",
+            op_name="final_layer",
+        )
         x_B_T_H_W_O = self.final_layer(
             x_B_T_H_W_D, t_emb_final, adaln_lora_B_T_3D=adaln_lora_B_T_3D
         )
+        record_peak_probe_event(
+            self._peak_probe,
+            "final_layer_after",
+            tensor=x_B_T_H_W_O,
+            module_type="anima",
+            block_idx="final",
+            block_phase="final_projection",
+            op_name="final_layer",
+        )
         x_B_C_Tt_Hp_Wp = self.unpatchify(x_B_T_H_W_O)
+        record_peak_probe_event(
+            self._peak_probe,
+            "unpatchify_after",
+            tensor=x_B_C_Tt_Hp_Wp,
+            module_type="anima",
+            block_idx="final",
+            block_phase="unpatchify",
+            op_name="unpatchify",
+        )
         return x_B_C_Tt_Hp_Wp
 
     def forward(

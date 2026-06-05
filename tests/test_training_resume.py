@@ -605,6 +605,49 @@ def test_memory_probe_auto_config_targets_current_history_task(tmp_path, monkeyp
     assert resolved[-1] == "--block_swap_profile_jsonl=auto"
 
 
+def test_peak_probe_auto_config_targets_current_history_task(tmp_path, monkeypatch):
+    _patch_runtime_service_paths(monkeypatch, tmp_path)
+    history_dir = tmp_path / "configs" / "web-training-history"
+    monkeypatch.setattr(training_service, "HISTORY_DIR", history_dir)
+    config_path = tmp_path / "output" / "runs" / "demo" / "config.runtime.toml"
+    config_path.parent.mkdir(parents=True)
+    probe_path = history_dir / "task-new" / "peak_probe.jsonl"
+
+    config_path.write_text('peak_probe_jsonl = "auto"\n', encoding="utf-8")
+    training_service._resolve_peak_probe_auto_config(str(config_path), probe_path)
+    cfg = toml.loads(config_path.read_text(encoding="utf-8"))
+    assert cfg["peak_probe_jsonl"] == str(probe_path)
+
+    old_probe_path = history_dir / "task-old" / "peak_probe.jsonl"
+    config_path.write_text(
+        toml.dumps({"peak_probe_jsonl": str(old_probe_path)}),
+        encoding="utf-8",
+    )
+    training_service._resolve_peak_probe_auto_config(str(config_path), probe_path)
+    cfg = toml.loads(config_path.read_text(encoding="utf-8"))
+    assert cfg["peak_probe_jsonl"] == str(probe_path)
+
+    explicit_probe_path = tmp_path / "logs" / "explicit-peak.jsonl"
+    config_path.write_text(
+        toml.dumps({"peak_probe_jsonl": str(explicit_probe_path)}),
+        encoding="utf-8",
+    )
+    training_service._resolve_peak_probe_auto_config(str(config_path), probe_path)
+    cfg = toml.loads(config_path.read_text(encoding="utf-8"))
+    assert cfg["peak_probe_jsonl"] == str(explicit_probe_path)
+
+    args = [
+        "python",
+        "train.py",
+        "--peak_probe_jsonl",
+        "auto",
+        "--memory_probe_jsonl=auto",
+    ]
+    resolved = training_service._resolve_peak_probe_auto_arg(args, probe_path)
+    assert resolved[3] == str(probe_path)
+    assert resolved[-1] == "--memory_probe_jsonl=auto"
+
+
 def test_web_runtime_config_materializes_nl_tag_mix_source(tmp_path, monkeypatch):
     _write_runtime_config_tree(tmp_path)
     _patch_runtime_service_paths(monkeypatch, tmp_path)
@@ -2137,6 +2180,101 @@ def test_training_service_metric_runtime_reset_clears_learning_rate_log_state():
     assert svc._last_lr_log_text == ""
 
 
+def test_training_service_rate_uses_recent_step_median(monkeypatch):
+    svc = TrainingService(web.Application())
+    ticks = iter([0.0, 8.0, 16.0, 24.0, 146.0, 154.0, 162.0])
+    monkeypatch.setattr(training_service.time, "monotonic", lambda: next(ticks))
+
+    assert svc._compute_rate(1, 100) == ""
+    assert svc._compute_rate(2, 100) == "8.00s/step"
+    assert svc._compute_rate(3, 100) == "8.00s/step"
+    assert svc._compute_rate(4, 100) == "8.00s/step"
+    # 单次长暂停不应把“当前速度”拖成全局平均值。
+    assert svc._compute_rate(5, 100) == "8.00s/step"
+    assert svc._compute_rate(6, 100) == "8.00s/step"
+    assert svc._compute_rate(7, 100) == "8.00s/step"
+
+
+def test_progress_jsonl_metrics_derive_recent_step_rate(tmp_path, monkeypatch):
+    history_dir = tmp_path / "history"
+    monkeypatch.setattr(training_service, "HISTORY_DIR", history_dir)
+    task_dir = history_dir / "task"
+    task_dir.mkdir(parents=True)
+    (task_dir / "meta.json").write_text(json.dumps({"started_at": 1000.0}), encoding="utf-8")
+    (task_dir / "progress.jsonl").write_text(
+        "\n".join([
+            json.dumps({"ev": "step", "ts": 1.0, "global_step": 1, "loss": 0.5, "lr": 1e-4}),
+            json.dumps({"ev": "step", "ts": 9.0, "global_step": 2, "loss": 0.4, "lr": 1e-4}),
+            json.dumps({"ev": "step", "ts": 17.0, "global_step": 3, "loss": 0.3, "lr": 1e-4}),
+            json.dumps({"ev": "step", "ts": 139.0, "global_step": 4, "loss": 0.2, "lr": 1e-4}),
+            json.dumps({"ev": "step", "ts": 147.0, "global_step": 5, "loss": 0.1, "lr": 1e-4}),
+        ]) + "\n",
+        encoding="utf-8",
+    )
+
+    metrics = training_service._metrics_from_progress_jsonl(task_dir / "progress.jsonl", task_dir)
+
+    assert [item.get("rate") for item in metrics] == [
+        None,
+        "8.00s/step",
+        "8.00s/step",
+        "8.00s/step",
+        "8.00s/step",
+    ]
+
+
+def test_history_detail_persists_average_speed_from_logs_once(tmp_path, monkeypatch):
+    history_dir = tmp_path / "history"
+    monkeypatch.setattr(training_service, "HISTORY_DIR", history_dir)
+    task_dir = history_dir / "task"
+    task_dir.mkdir(parents=True)
+    (task_dir / "meta.json").write_text(
+        json.dumps({
+            "id": "task",
+            "job": "training",
+            "state": "idle",
+            "started_at": 1000.0,
+            "finished_at": 1040.0,
+        }),
+        encoding="utf-8",
+    )
+    (task_dir / "logs.jsonl").write_text(
+        "\n".join([
+            json.dumps({"id": 1, "kind": "progress", "line": "steps:   0%| | 0/100 [00:00<?, ?it/s]", "ts": 1000.0}),
+            json.dumps({"id": 2, "kind": "progress", "line": "steps:   1%| | 1/100 [00:10<00:00, 10.00s/it, avr_loss=0.5]", "ts": 1010.0}),
+            json.dumps({"id": 3, "kind": "progress", "line": "steps:   2%| | 2/100 [00:20<00:00, 10.00s/it, avr_loss=0.4]", "ts": 1020.0}),
+            json.dumps({"id": 4, "kind": "progress", "line": "steps:   3%| | 3/100 [00:30<00:00, 10.00s/it, avr_loss=0.3]", "ts": 1030.0}),
+        ]) + "\n",
+        encoding="utf-8",
+    )
+
+    payload = training_service._load_history_task("task")
+    task = payload["task"]
+
+    assert task["average_step_rate"] == "10.00s/step"
+    assert task["average_step_seconds"] == 10.0
+    assert task["average_step_source"] == "logs.jsonl"
+    assert task["average_step_sample_count"] == 4
+    assert task["average_step_start_step"] == 0
+    assert task["average_step_end_step"] == 3
+
+    persisted = json.loads((task_dir / "meta.json").read_text(encoding="utf-8"))
+    assert persisted["average_step_rate"] == "10.00s/step"
+    assert persisted["average_step_speed_version"] == training_service.HISTORY_AVERAGE_SPEED_VERSION
+
+    (task_dir / "logs.jsonl").write_text(
+        "\n".join([
+            json.dumps({"id": 1, "kind": "progress", "line": "steps:   0%| | 0/100 [00:00<?, ?it/s]", "ts": 1000.0}),
+            json.dumps({"id": 2, "kind": "progress", "line": "steps:   3%| | 3/100 [01:00<00:00, 20.00s/it, avr_loss=0.3]", "ts": 1060.0}),
+        ]) + "\n",
+        encoding="utf-8",
+    )
+
+    payload_after_log_change = training_service._load_history_task("task")
+
+    assert payload_after_log_change["task"]["average_step_rate"] == "10.00s/step"
+
+
 def test_history_summary_includes_runtime_info(tmp_path, monkeypatch):
     history_dir = tmp_path / "history"
     monkeypatch.setattr(training_service, "HISTORY_DIR", history_dir)
@@ -2843,7 +2981,7 @@ def test_history_batch_delete_dry_run_and_confirm_removes_runtime_dir(tmp_path, 
     assert {task["id"] for task in preview["tasks"]} == {training_id, preprocess_id}
     assert preview["runtime_dirs"][0]["path"] == str(run_dir)
 
-    with pytest.raises(ValueError, match="彻底删除"):
+    with pytest.raises(ValueError, match="二次按钮确认"):
         svc.batch_update_history_tasks({
             "action": "delete",
             "task_ids": [training_id],
@@ -2854,7 +2992,7 @@ def test_history_batch_delete_dry_run_and_confirm_removes_runtime_dir(tmp_path, 
         "action": "delete",
         "task_ids": [training_id],
         "delete_runtime_dirs": True,
-        "confirm_text": "彻底删除",
+        "confirmed": True,
     })
 
     assert deleted["ok"] is True
@@ -2905,7 +3043,7 @@ def test_history_batch_delete_blocks_current_task_and_queue_references(tmp_path,
             "action": "delete",
             "task_ids": [task_id],
             "delete_runtime_dirs": True,
-            "confirm_text": "彻底删除",
+            "confirmed": True,
         })
     assert run_dir.exists()
 

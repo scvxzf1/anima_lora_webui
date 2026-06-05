@@ -1,5 +1,5 @@
-import { historyDetailEmptyText, historyDetailSection } from '../ui.js?v=module-bootstrap-20260603-6';
-import { createHistoryCurveChart } from './chart.js?v=module-bootstrap-20260603-6';
+import { historyDetailEmptyText, historyDetailSection } from '../ui.js?v=module-bootstrap-20260604-8';
+import { createHistoryCurveChart } from './chart.js?v=module-bootstrap-20260604-8';
 import {
     createHistoryCurveMetrics,
     historyCurveDisplayPoints,
@@ -7,9 +7,9 @@ import {
     historyCurvePoints,
     historyCurveSmoothPoints,
     historyCurveStats,
-} from './data.js?v=module-bootstrap-20260603-6';
-import { createHistoryCurveHover } from './hover.js?v=module-bootstrap-20260603-6';
-import { createHistoryCurveToolbar } from './toolbar.js?v=module-bootstrap-20260603-6';
+} from './data.js?v=module-bootstrap-20260604-8';
+import { createHistoryCurveHover } from './hover.js?v=module-bootstrap-20260604-8';
+import { createHistoryCurveToolbar } from './toolbar.js?v=module-bootstrap-20260604-8';
 
 export function createHistoryCurveRenderer({ state, deps, renderHistoryDetailContent, renderHistoryDetailSystem }) {
     const { curve: historyCurveState } = state;
@@ -42,7 +42,7 @@ export function createHistoryCurveRenderer({ state, deps, renderHistoryDetailCon
         const chartPoints = historyCurveDisplayPoints(filteredPoints);
         const chartSmoothPoints = historyCurveSmoothPoints(chartPoints, historyCurveState.smoothWindow, metrics);
         box.append(
-            renderHistoryCurveStats(stats),
+            renderHistoryCurveStats(stats, payload),
             toolbar.renderHistoryCurveToolbar(allPoints),
             chart.renderHistoryCurveMainChart(payload, chartPoints, chartSmoothPoints, stats, filteredPoints.length),
             hover.renderHistoryCurveInspector(stats),
@@ -61,9 +61,10 @@ export function createHistoryCurveRenderer({ state, deps, renderHistoryDetailCon
         return box;
     }
 
-    function renderHistoryCurveStats(stats) {
+    function renderHistoryCurveStats(stats, payload = {}) {
         const grid = document.createElement('div');
         grid.className = 'history-curve-stat-grid';
+        const task = payload.task || {};
         grid.append(
             historyCurveStatGroup('Loss 组', [
                 ['Loss 点', stats.loss.count],
@@ -83,6 +84,12 @@ export function createHistoryCurveRenderer({ state, deps, renderHistoryDetailCon
                 ['原始 Step', stats.latest?.rawStep ?? '-'],
                 ['平滑窗口', historyCurveState.smoothWindow],
             ], 'step'),
+            historyCurveStatGroup('速度组', [
+                ['平均速度', formatHistoryAverageSpeed(task)],
+                ['采样范围', formatAverageSpeedStepRange(task)],
+                ['采样数', task.average_step_sample_count || '-'],
+                ['来源', task.average_step_source || '-'],
+            ], 'speed'),
         );
         return grid;
     }
@@ -123,6 +130,20 @@ export function createHistoryCurveRenderer({ state, deps, renderHistoryDetailCon
         if (!Number.isFinite(n)) return '-';
         const sign = n > 0 ? '+' : '';
         return `${sign}${n.toExponential(2)}`;
+    }
+
+    function formatHistoryAverageSpeed(task) {
+        const rate = String(task?.average_step_rate || '').trim();
+        if (rate) return rate;
+        const seconds = Number(task?.average_step_seconds);
+        return Number.isFinite(seconds) && seconds > 0 ? `${seconds.toFixed(2)}s/step` : '-';
+    }
+
+    function formatAverageSpeedStepRange(task) {
+        const start = Number(task?.average_step_start_step);
+        const end = Number(task?.average_step_end_step);
+        if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) return '-';
+        return `${Math.round(start)} → ${Math.round(end)}`;
     }
 
     return { renderHistoryDetailChart, renderHistoryDetailAnalysis };

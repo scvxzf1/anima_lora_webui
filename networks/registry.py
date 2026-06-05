@@ -72,6 +72,7 @@ class NetworkSpec:
     validate: Optional[Callable[[Mapping[str, Any]], None]] = None
     module_kwargs: Optional[Callable[[ModuleCreationContext], dict[str, Any]]] = None
     detect_from_weights: Optional[Callable[[WeightDetectionContext], bool]] = None
+    preprocess_weights: Optional[Callable[[dict[str, Any]], dict[str, Any]]] = None
     finish_weight_detection: Optional[
         Callable[[dict[str, Any], dict[str, int], dict[str, Any]], dict[str, Any]]
     ] = None
@@ -397,6 +398,16 @@ def detect_network_spec_from_weights(
     return state
 
 
+def preprocess_weights_from_plugins(weights_sd: dict[str, Any]) -> dict[str, Any]:
+    """Let plugin variants rewrite checkpoint keys before core sniffing."""
+
+    ensure_builtin_plugins_loaded()
+    for spec in NETWORK_REGISTRY.values():
+        if spec.preprocess_weights is not None:
+            weights_sd = spec.preprocess_weights(weights_sd)
+    return weights_sd
+
+
 def continue_weight_kind_from_plugins(
     keys: list[str],
     metadata: Mapping[str, str],
@@ -432,6 +443,7 @@ __all__ = [
     "continue_weight_kind_from_plugins",
     "detect_network_spec_from_weights",
     "ensure_builtin_plugins_loaded",
+    "preprocess_weights_from_plugins",
     "register_network_spec",
     "register_save_handler",
     "resolve_network_spec",

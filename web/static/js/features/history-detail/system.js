@@ -6,9 +6,12 @@ import {
     maxRecordBy,
     maxValue,
     numberOrNull,
+    svgCircle,
+    svgGroup,
     svgLine,
+    svgRect,
     svgText,
-} from './ui.js?v=module-bootstrap-20260603-6';
+} from './ui.js?v=module-bootstrap-20260604-8';
 
 const HISTORY_SYSTEM_TABLE_RENDER_LIMIT = 500;
 
@@ -231,6 +234,8 @@ function historySystemTrendCard(label, records, key, formatter, options = {}) {
         .map((record, index) => ({
             x: Number.isFinite(record.ts) ? record.ts : index,
             y: numberOrNull(record[key]),
+            ts: record.ts,
+            index,
         }))
         .filter((point) => point.y !== null);
     const latest = points[points.length - 1]?.y;
@@ -239,6 +244,7 @@ function historySystemTrendCard(label, records, key, formatter, options = {}) {
     head.append(title, summary);
     card.append(head, createHistorySystemSparkline(points, {
         ...options,
+        label,
         formatter,
     }));
     return card;
@@ -251,6 +257,7 @@ function createHistorySystemSparkline(points, options = {}) {
     const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
     svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
     svg.setAttribute('role', 'img');
+    svg.setAttribute('aria-label', `${options.label || '系统指标'}趋势图，悬停查看采样值`);
     svg.classList.add('history-system-sparkline', options.tone || 'metric');
     if (!points.length) return svg;
     const gradientId = `history-system-area-${options.tone || 'metric'}-${Math.random().toString(36).slice(2, 9)}`;
@@ -307,7 +314,123 @@ function createHistorySystemSparkline(points, options = {}) {
     line.setAttribute('points', linePoints.map(([x, y]) => `${x.toFixed(2)},${y.toFixed(2)}`).join(' '));
     line.setAttribute('class', 'history-sparkline-line');
     svg.appendChild(line);
+    appendHistorySystemSparklineHover(svg, points, {
+        width,
+        height,
+        pad,
+        plotW,
+        plotH,
+        minX,
+        maxX,
+        xScale,
+        yScale,
+        label: options.label || '指标',
+        formatter: options.formatter || formatCompactNumber,
+    });
     return svg;
+}
+
+function appendHistorySystemSparklineHover(svg, points, layout) {
+    const hoverLayer = svgGroup('history-system-hover-layer');
+    const hoverLine = svgLine(0, layout.pad.top, 0, layout.height - layout.pad.bottom, 'history-system-hover-line');
+    const hoverPoint = svgCircle(0, 0, 4.4, 'history-system-hover-point');
+    const hoverLabel = svgGroup('history-system-hover-label');
+    const hoverLabelBg = svgRect(0, 0, 1, 1, 'history-system-hover-label-bg');
+    const hoverLabelValue = svgText(0, 0, '', 'history-system-hover-label-value');
+    const hoverLabelTime = svgText(0, 0, '', 'history-system-hover-label-time');
+    hoverLabel.append(hoverLabelBg, hoverLabelValue, hoverLabelTime);
+    hoverLayer.append(hoverLine, hoverPoint, hoverLabel);
+    setSvgVisibility(hoverLayer, false);
+    svg.appendChild(hoverLayer);
+
+    const overlay = svgRect(layout.pad.left, layout.pad.top, layout.plotW, layout.plotH, 'history-system-hover-overlay');
+    const updateHover = (event) => {
+        const svgPoint = svgClientPoint(svg, event);
+        const viewX = svgPoint?.x ?? (() => {
+            const rect = svg.getBoundingClientRect();
+            const ratioX = (event.clientX - rect.left) / Math.max(1, rect.width);
+            return ratioX * layout.width;
+        })();
+        const targetX = layout.minX
+            + ((clampNumber(viewX, layout.pad.left, layout.width - layout.pad.right) - layout.pad.left) / Math.max(1, layout.plotW))
+            * (layout.maxX - layout.minX);
+        const nearest = nearestHistorySystemPoint(points, targetX);
+        if (!nearest) {
+            setSvgVisibility(hoverLayer, false);
+            return;
+        }
+        positionHistorySystemHover(layout, nearest, hoverLine, hoverPoint, hoverLabelBg, hoverLabelValue, hoverLabelTime);
+        hideSiblingHistorySystemHovers(svg, hoverLayer);
+        setSvgVisibility(hoverLayer, true);
+    };
+    overlay.addEventListener('mousemove', updateHover);
+    overlay.addEventListener('mouseenter', updateHover);
+    overlay.addEventListener('mouseleave', () => setSvgVisibility(hoverLayer, false));
+    svg.appendChild(overlay);
+}
+
+function hideSiblingHistorySystemHovers(svg, activeLayer) {
+    svg.closest('.history-system-trends')
+        ?.querySelectorAll('.history-system-hover-layer')
+        .forEach((layer) => {
+            if (layer !== activeLayer) setSvgVisibility(layer, false);
+        });
+}
+
+function nearestHistorySystemPoint(points, targetX) {
+    let best = null;
+    let bestDistance = Infinity;
+    for (const point of points) {
+        const distance = Math.abs(Number(point.x) - targetX);
+        if (distance < bestDistance) {
+            best = point;
+            bestDistance = distance;
+        }
+    }
+    return best;
+}
+
+function positionHistorySystemHover(layout, point, hoverLine, hoverPoint, labelBg, labelValue, labelTime) {
+    const x = layout.xScale(point.x);
+    const y = layout.yScale(point.y);
+    hoverLine.setAttribute('x1', `${x}`);
+    hoverLine.setAttribute('x2', `${x}`);
+    hoverPoint.setAttribute('cx', `${x}`);
+    hoverPoint.setAttribute('cy', `${y}`);
+
+    const valueText = `${layout.label} ${layout.formatter(point.y)}`;
+    const timeText = formatHistorySystemTime(point.ts) || `采样 ${point.index + 1}`;
+    const labelW = Math.max(116, Math.min(210, Math.max(valueText.length * 7.4, timeText.length * 6.2) + 18));
+    const labelH = 38;
+    const labelX = clampNumber(x + 10, layout.pad.left + 4, layout.width - layout.pad.right - labelW - 4);
+    const preferTop = y > layout.pad.top + labelH + 14;
+    const labelY = preferTop
+        ? y - labelH - 10
+        : clampNumber(y + 10, layout.pad.top + 4, layout.height - layout.pad.bottom - labelH - 4);
+    labelBg.setAttribute('x', `${labelX}`);
+    labelBg.setAttribute('y', `${labelY}`);
+    labelBg.setAttribute('width', `${labelW}`);
+    labelBg.setAttribute('height', `${labelH}`);
+    labelValue.setAttribute('x', `${labelX + 9}`);
+    labelValue.setAttribute('y', `${labelY + 15}`);
+    labelValue.textContent = valueText;
+    labelTime.setAttribute('x', `${labelX + 9}`);
+    labelTime.setAttribute('y', `${labelY + 30}`);
+    labelTime.textContent = timeText;
+}
+
+function svgClientPoint(svg, event) {
+    if (!svg?.createSVGPoint || !svg.getScreenCTM) return null;
+    const matrix = svg.getScreenCTM();
+    if (!matrix) return null;
+    const point = svg.createSVGPoint();
+    point.x = event.clientX;
+    point.y = event.clientY;
+    return point.matrixTransform(matrix.inverse());
+}
+
+function setSvgVisibility(node, visible) {
+    node.setAttribute('visibility', visible ? 'visible' : 'hidden');
 }
 
 function historySystemAreaPath(points, baselineY) {

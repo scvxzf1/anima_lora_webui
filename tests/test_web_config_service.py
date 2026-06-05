@@ -65,6 +65,7 @@ def test_web_variants_follow_variant_family_metadata(tmp_path: Path, monkeypatch
         "hydralora",
         "custom/user_variant",
     ]
+    assert config_service.CONFIG_FILE_LABELS_ZH["configs/gui-methods/vera.toml"] == "VeRA 训练变体"
 
 
 def test_save_dataset_editor_does_not_overwrite_dataset_when_train_patch_fails(tmp_path: Path, monkeypatch):
@@ -189,6 +190,58 @@ def test_raw_patch_ignores_dataset_picker_ui_field(tmp_path: Path, monkeypatch):
     assert "dataset_config_picker" not in (configs / "imported" / "lora.toml").read_text(encoding="utf-8")
 
 
+def test_raw_patch_clears_optional_sample_schedule_fields(tmp_path: Path, monkeypatch):
+    configs, _dataset_path = _write_minimal_config_tree(tmp_path)
+    _patch_config_service_paths(monkeypatch, tmp_path)
+    train_rel = "configs/imported/lora.toml"
+    (configs / "imported" / "lora.toml").write_text(
+        "\n".join(
+            [
+                'output_name = "anima"',
+                "sample_every_n_epochs = 2",
+                "sample_every_n_steps = 300",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    ok, msg, content, changed = config_service.patch_raw_file_values(
+        train_rel,
+        {
+            "sample_every_n_epochs": "",
+            "sample_every_n_steps": None,
+        },
+    )
+
+    assert ok is True, msg
+    assert changed == ["sample_every_n_epochs", "sample_every_n_steps"]
+    assert 'output_name = "anima"' in content
+    assert "sample_every_n_epochs" not in content
+    assert "sample_every_n_steps" not in content
+    saved = toml.loads((configs / "imported" / "lora.toml").read_text(encoding="utf-8"))
+    assert saved == {"output_name": "anima"}
+
+
+def test_raw_patch_writes_non_blank_sample_schedule_fields_as_int(tmp_path: Path, monkeypatch):
+    configs, _dataset_path = _write_minimal_config_tree(tmp_path)
+    _patch_config_service_paths(monkeypatch, tmp_path)
+
+    ok, msg, content, changed = config_service.patch_raw_file_values(
+        "configs/imported/lora.toml",
+        {
+            "sample_every_n_epochs": "4",
+            "sample_every_n_steps": 500,
+        },
+    )
+
+    assert ok is True, msg
+    assert changed == ["sample_every_n_epochs", "sample_every_n_steps"]
+    parsed = toml.loads(content)
+    assert parsed["sample_every_n_epochs"] == 4
+    assert parsed["sample_every_n_steps"] == 500
+
+
 def test_raw_patch_removes_retired_config_fields(tmp_path: Path, monkeypatch):
     configs, _dataset_path = _write_minimal_config_tree(tmp_path)
     train_rel = "configs/imported/lora.toml"
@@ -247,6 +300,102 @@ def test_raw_patch_removes_retired_config_fields(tmp_path: Path, monkeypatch):
     saved = (configs / "imported" / "lora.toml").read_text(encoding="utf-8")
     for key in retired_keys:
         assert key not in saved
+
+
+def test_raw_patch_auto_fixes_came_two_beta_optimizer_args(tmp_path: Path, monkeypatch):
+    configs, _dataset_path = _write_minimal_config_tree(tmp_path)
+    train_rel = "configs/imported/lora.toml"
+    (configs / "imported" / "lora.toml").write_text(
+        "\n".join(
+            [
+                'output_name = "anima"',
+                'optimizer_type = "CAME"',
+                'optimizer_args = ["weight_decay=0.01", "eps=1e-8", "betas=0.9,0.99"]',
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    _patch_config_service_paths(monkeypatch, tmp_path)
+
+    ok, msg, content, changed = config_service.patch_raw_file_values(
+        train_rel,
+        {
+            "output_name": "clean",
+        },
+    )
+
+    assert ok is True, msg
+    assert changed == ["optimizer_args", "output_name"]
+    parsed = toml.loads(content)
+    assert parsed["output_name"] == "clean"
+    assert parsed["optimizer_args"] == ["weight_decay=0.01", "eps=1e-8", "betas=0.9,0.999,0.9999"]
+    saved = toml.loads((configs / "imported" / "lora.toml").read_text(encoding="utf-8"))
+    assert saved["optimizer_args"][-1] == "betas=0.9,0.999,0.9999"
+
+
+def test_save_raw_file_auto_fixes_came_two_beta_optimizer_args(tmp_path: Path, monkeypatch):
+    configs, _dataset_path = _write_minimal_config_tree(tmp_path)
+    _patch_config_service_paths(monkeypatch, tmp_path)
+
+    ok, msg = config_service.save_raw_file(
+        "configs/imported/came.toml",
+        "\n".join(
+            [
+                'optimizer_type = "CAME"',
+                'optimizer_args = ["weight_decay=0.01", "eps=1e-8", "betas=0.9,0.99"]',
+                "",
+            ]
+        ),
+    )
+
+    assert ok is True, msg
+    saved = toml.loads((configs / "imported" / "came.toml").read_text(encoding="utf-8"))
+    assert saved["optimizer_args"] == ["weight_decay=0.01", "eps=1e-8", "betas=0.9,0.999,0.9999"]
+
+
+def test_save_raw_file_does_not_touch_non_came_two_beta_optimizer_args(tmp_path: Path, monkeypatch):
+    configs, _dataset_path = _write_minimal_config_tree(tmp_path)
+    _patch_config_service_paths(monkeypatch, tmp_path)
+
+    ok, msg = config_service.save_raw_file(
+        "configs/imported/adamw.toml",
+        "\n".join(
+            [
+                'optimizer_type = "AdamW"',
+                'optimizer_args = ["weight_decay=0.01", "betas=0.9,0.99"]',
+                "",
+            ]
+        ),
+    )
+
+    assert ok is True, msg
+    saved_text = (configs / "imported" / "adamw.toml").read_text(encoding="utf-8")
+    assert 'optimizer_args = ["weight_decay=0.01", "betas=0.9,0.99"]' in saved_text
+    saved = toml.loads(saved_text)
+    assert saved["optimizer_args"][-1] == "betas=0.9,0.99"
+
+
+def test_save_raw_file_keeps_came_three_beta_optimizer_args(tmp_path: Path, monkeypatch):
+    configs, _dataset_path = _write_minimal_config_tree(tmp_path)
+    _patch_config_service_paths(monkeypatch, tmp_path)
+
+    ok, msg = config_service.save_raw_file(
+        "configs/imported/came_ready.toml",
+        "\n".join(
+            [
+                'optimizer_type = "CAME"',
+                'optimizer_args = ["weight_decay=0.01", "eps=1e-8", "betas=0.9,0.99,0.999"]',
+                "",
+            ]
+        ),
+    )
+
+    assert ok is True, msg
+    saved_text = (configs / "imported" / "came_ready.toml").read_text(encoding="utf-8")
+    assert 'optimizer_args = ["weight_decay=0.01", "eps=1e-8", "betas=0.9,0.99,0.999"]' in saved_text
+    saved = toml.loads(saved_text)
+    assert saved["optimizer_args"][-1] == "betas=0.9,0.99,0.999"
 
 
 def test_blank_preset_template_can_receive_global_model_paths(tmp_path: Path, monkeypatch):

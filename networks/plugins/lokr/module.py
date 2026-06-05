@@ -8,8 +8,13 @@ import math
 import torch
 import torch.nn.functional as F
 
+from library.runtime.peak_probe import record_peak_probe_event
 from networks.lora_modules.base import BaseLoRAModule
-from networks.plugins.lokr.autograd import lokr_project_factor_group
+from networks.plugins.lokr.autograd import (
+    DEFAULT_LOKR_PROJECT_CHUNK_BYTES,
+    lokr_add_grouped_delta_,
+    lokr_project_factor_group,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -32,6 +37,7 @@ class LoKrModule(BaseLoRAModule):
         channel_scale=None,
         factor=8,
         lokr_factor_group_size=8,
+        lokr_project_chunk_bytes=DEFAULT_LOKR_PROJECT_CHUNK_BYTES,
     ):
         if not isinstance(org_module, torch.nn.Linear):
             raise ValueError("LoKrModule only supports torch.nn.Linear modules")
@@ -75,6 +81,8 @@ class LoKrModule(BaseLoRAModule):
         self._fused = False
         self.use_custom_lokr_autograd = False
         self.lokr_factor_group_size = max(1, int(lokr_factor_group_size))
+        self.lokr_project_chunk_bytes = max(1, int(lokr_project_chunk_bytes))
+        self._peak_probe = None
 
     @staticmethod
     def _find_factor(in_features: int, out_features: int, target_factor: int) -> int:
@@ -94,31 +102,88 @@ class LoKrModule(BaseLoRAModule):
             return self.org_forward(x)
 
         org_forwarded = self.org_forward(x)
+        original_name = getattr(self, "original_name", None)
+        peak_probe = self._peak_probe
+        record_lokr = bool(getattr(peak_probe, "record_lokr", False))
+        if record_lokr:
+            record_peak_probe_event(
+                peak_probe,
+                "lokr_after_base",
+                tensor=org_forwarded,
+                module_type="lokr",
+                lora_name=self.lora_name,
+                original_name=original_name,
+                factor=self.factor,
+                group_size=self.lokr_factor_group_size,
+                chunk_bytes=self.lokr_project_chunk_bytes,
+            )
         if self._skip_module():
             return org_forwarded
 
         x_lokr = F.dropout(x, p=self.dropout) if self.training and self.dropout else x
+        if record_lokr:
+            record_peak_probe_event(
+                peak_probe,
+                "lokr_before_delta_apply",
+                tensor=x_lokr,
+                module_type="lokr",
+                lora_name=self.lora_name,
+                original_name=original_name,
+                factor=self.factor,
+                group_size=self.lokr_factor_group_size,
+                chunk_bytes=self.lokr_project_chunk_bytes,
+            )
         if self.training:
             if self.use_custom_lokr_autograd:
-                result = org_forwarded
                 gate_scale = self._timestep_mask[:, :1] * self.multiplier * self.scale
                 group_size = max(1, min(int(self.lokr_factor_group_size), self.factor))
-                for out_start in range(0, self.factor, group_size):
-                    out_count = min(group_size, self.factor - out_start)
-                    start = out_start * self.out_dim
-                    end = start + out_count * self.out_dim
-                    lx_slice = lokr_project_factor_group(
+                if gate_scale.numel() == 1 and org_forwarded.is_contiguous():
+                    result = lokr_add_grouped_delta_(
+                        org_forwarded,
                         x_lokr,
                         self.lokr_w1,
                         self.lokr_w2,
-                        out_start,
-                        out_count,
+                        gate_scale,
                         self.factor,
                         self.in_dim,
                         self.out_dim,
+                        group_size,
+                        self.lokr_project_chunk_bytes,
                     )
-                    result[..., start:end].add_(
-                        (lx_slice * gate_scale).to(org_forwarded.dtype)
+                else:
+                    # Preserve the existing broadcast semantics for rare
+                    # non-scalar T-LoRA masks; the fused path intentionally
+                    # optimizes the standard scalar LoKr gate used by Anima.
+                    result = org_forwarded
+                    for out_start in range(0, self.factor, group_size):
+                        out_count = min(group_size, self.factor - out_start)
+                        start = out_start * self.out_dim
+                        end = start + out_count * self.out_dim
+                        lx_slice = lokr_project_factor_group(
+                            x_lokr,
+                            self.lokr_w1,
+                            self.lokr_w2,
+                            out_start,
+                            out_count,
+                            self.factor,
+                            self.in_dim,
+                            self.out_dim,
+                            self.lokr_project_chunk_bytes,
+                        )
+                        result[..., start:end].add_(
+                            (lx_slice * gate_scale).to(org_forwarded.dtype)
+                        )
+                if record_lokr:
+                    record_peak_probe_event(
+                        peak_probe,
+                        "lokr_after_delta_apply",
+                        tensor=result,
+                        module_type="lokr",
+                        lora_name=self.lora_name,
+                        original_name=original_name,
+                        factor=self.factor,
+                        group_size=self.lokr_factor_group_size,
+                        chunk_bytes=self.lokr_project_chunk_bytes,
                     )
                 return result
             else:
@@ -130,7 +195,20 @@ class LoKrModule(BaseLoRAModule):
             weight = self._compute_weight()
             lx = F.linear(x_lokr, weight.to(x_lokr.dtype))
 
-        return org_forwarded + lx * self.multiplier * self.scale
+        result = org_forwarded + lx * self.multiplier * self.scale
+        if record_lokr:
+            record_peak_probe_event(
+                peak_probe,
+                "lokr_after_delta_apply",
+                tensor=result,
+                module_type="lokr",
+                lora_name=self.lora_name,
+                original_name=original_name,
+                factor=self.factor,
+                group_size=self.lokr_factor_group_size,
+                chunk_bytes=self.lokr_project_chunk_bytes,
+            )
+        return result
 
     def get_weight(self, multiplier=None):
         if multiplier is None:

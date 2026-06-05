@@ -206,6 +206,37 @@ def add_training_arguments(parser: argparse.ArgumentParser, support_dreambooth: 
         ),
     )
     parser.add_argument(
+        "--peak_probe_jsonl",
+        type=str,
+        default=None,
+        help=(
+            "Write fine-grained DiT/LoKr CUDA peak diagnostics to JSONL. "
+            "Use off/none to disable, auto for <logs>/<output_name>.peak_probe.jsonl, "
+            "or an explicit path. Intended for short tight-VRAM profiling runs."
+        ),
+    )
+    parser.add_argument(
+        "--peak_probe_max_steps",
+        type=int,
+        default=2,
+        help=(
+            "Maximum number of training steps for fine-grained peak probe events. "
+            "0 means record every step."
+        ),
+    )
+    parser.add_argument(
+        "--peak_probe_level",
+        type=str,
+        default="block",
+        choices=["block", "ops", "lokr", "full"],
+        help=(
+            "Granularity for --peak_probe_jsonl. block records per-DiT-block "
+            "boundaries outside compiled block graphs; ops adds in-block "
+            "attention/MLP markers; lokr adds LoKr delta markers; full records all. "
+            "Use block for 50-step baselines, full only for short focused runs."
+        ),
+    )
+    parser.add_argument(
         "--huggingface_repo_id",
         type=str,
         default=None,
@@ -813,11 +844,29 @@ def add_dit_training_arguments(parser: argparse.ArgumentParser):
         "--selective_checkpoint",
         type=str,
         default="off",
-        choices=["off", "every_other", "mlp_only"],
+        choices=[
+            "off",
+            "every_other",
+            "mlp_only",
+            "mlp_layer1_only",
+            "peak_blocks_mlp",
+            "peak_blocks_mlp_layer1",
+        ],
         help=(
             "Selective DiT activation checkpointing for block-swap training. "
             "off keeps the normal path; every_other checkpoints every other block; "
-            "mlp_only checkpoints only each block's MLP branch."
+            "mlp_only checkpoints each block's full MLP branch; mlp_layer1_only "
+            "checkpoints only MLP layer1+GELU; peak_blocks_* applies only to "
+            "--selective_checkpoint_blocks."
+        ),
+    )
+    parser.add_argument(
+        "--selective_checkpoint_blocks",
+        type=str,
+        default="",
+        help=(
+            "Comma/range list for peak_blocks selective checkpoint modes, "
+            "e.g. '25-27' or '24,25,26,27'. Empty/auto defaults to the last 3 DiT blocks."
         ),
     )
     parser.add_argument(

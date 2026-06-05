@@ -15,8 +15,13 @@ export const FORM_UI_DEFAULTS = {
     lora_adapter_kind: 'lora',
     use_loha: false,
     use_lokr: false,
+    use_vera: false,
     lokr_factor: 8,
     lokr_factor_group_size: 8,
+    lokr_project_chunk_bytes: 4194304,
+    vera_projection_prng_key: 0,
+    vera_d_initial: 0.1,
+    vera_save_projection: false,
     max_data_loader_n_workers: 0,
     path_pattern: '*',
     drop_lowres_images: true,
@@ -107,6 +112,7 @@ export const CONFIG_FORM_INTERNAL_KEYS = new Set([
 export const CONFIG_FORM_MERGED_FIELDS = new Set([
     'use_loha',
     'use_lokr',
+    'use_vera',
 ]);
 export const DEPRECATED_CONFIG_FORM_FIELDS = new Set([
     'compile_mode',
@@ -183,6 +189,7 @@ export const CAPTION_SOURCE_MODE_OPTIONS = Object.freeze([
 
 export const NETWORK_ARG_FIELD_SPECS = [
     { family: 'lokr', key: 'lokr_factor_group_size', arg: 'lokr_factor_group_size', default: 8, valueType: 'integer' },
+    { family: 'lokr', key: 'lokr_project_chunk_bytes', arg: 'lokr_project_chunk_bytes', default: 4194304, valueType: 'integer' },
     { family: 'soft_tokens', key: 'n_layers', arg: 'n_layers', default: 14, valueType: 'integer' },
     { family: 'soft_tokens', key: 'n_t_buckets', arg: 'n_t_buckets', default: 14, valueType: 'integer' },
     { family: 'soft_tokens', key: 'init_std', arg: 'init_std', default: 0.02, valueType: 'number' },

@@ -51,11 +51,16 @@ def test_schema_has_known_keys(populated_parser):
         "mixed_precision",
         "attn_mode",
         "block_swap_transfer_dtype",
+        "selective_checkpoint_blocks",
         "memory_probe_jsonl",
         "memory_probe_max_steps",
+        "peak_probe_jsonl",
+        "peak_probe_max_steps",
+        "peak_probe_level",
         "base_config",  # manual extra
         "use_moe_style",  # network-module allowlist (three-axis routing)
         "lokr_factor_group_size",  # LoKr grouped projection tuning
+        "lokr_project_chunk_bytes",  # LoKr projection row-chunk threshold
     ):
         assert k in schema, f"expected {k!r} in populated schema"
 

@@ -1,13 +1,14 @@
-import { createPreviewFeature } from './preview/index.js?v=module-bootstrap-20260603-6';
-import { createQueueFeature } from './queue/index.js?v=module-bootstrap-20260603-6';
-import { createHistoryDetailFeature } from './history-detail/index.js?v=module-bootstrap-20260603-6';
+import { createPreviewFeature } from './preview/index.js?v=module-bootstrap-20260604-8';
+import { createQueueFeature } from './queue/index.js?v=module-bootstrap-20260604-8';
+import { createHistoryDetailFeature } from './history-detail/index.js?v=module-bootstrap-20260604-8';
+import { createWeightAnalysisFeature } from './weight-analysis/index.js?v=module-bootstrap-20260604-8';
 import {
     formatSystemPercent,
     formatSystemTemperature,
     formatSystemVram,
     historySystemSummary,
-} from './history-detail/system.js?v=module-bootstrap-20260603-6';
-import { formatCompactNumber, numberOrNull } from './history-detail/ui.js?v=module-bootstrap-20260603-6';
+} from './history-detail/system.js?v=module-bootstrap-20260604-8';
+import { formatCompactNumber, numberOrNull } from './history-detail/ui.js?v=module-bootstrap-20260604-8';
 
 function formatLossValue(value) {
     const n = Number(value);
@@ -142,6 +143,7 @@ export function createLegacyApp(ctx) {
                 memory_probe_jsonl: 'auto',
                 memory_probe_max_steps: 3,
                 lokr_factor_group_size: 8,
+                lokr_project_chunk_bytes: 4194304,
                 unsloth_offload_checkpointing: false,
                 torch_compile: true,
             },
@@ -411,6 +413,13 @@ export function createLegacyApp(ctx) {
     let previewFeature = null;
     let queueFeature = null;
     let historyDetailFeature = null;
+    let weightAnalysisFeature = null;
+    function ensureWeightAnalysisFeature() {
+        if (weightAnalysisFeature) return weightAnalysisFeature;
+        weightAnalysisFeature = createWeightAnalysisFeature(ctx);
+        return weightAnalysisFeature;
+    }
+
     function ensureQueueFeature() {
         if (queueFeature) return queueFeature;
         queueFeature = createQueueFeature(ctx, {
@@ -865,6 +874,9 @@ export function createLegacyApp(ctx) {
                 if (nextTab === 'training' && lossChart?.resize) {
                     lossChart.resize();
                 }
+                if (nextTab === 'weight-analysis') {
+                    ensureWeightAnalysisFeature().loadAnalysisWeights();
+                }
                 if (nextTab === 'settings') {
                     loadGlobalSettings();
                 }
@@ -954,6 +966,7 @@ export function createLegacyApp(ctx) {
         selectedConfigDatasetFile = currentConfig.dataset_config || '';
         selectedConfigDatasetSummary = datasetPresetSummaryByFile(selectedConfigDatasetFile);
         renderConfigForm(currentConfig);
+        const compatibilityPatch = applyConfigCompatibilityDrafts();
         renderContinueTrainingSource();
         if (continueTrainingSource?.abs_path) {
             await refreshContinueTrainingSourceCompatibility();
@@ -969,7 +982,11 @@ export function createLegacyApp(ctx) {
         // 同步加载对应的 TOML 文件到右侧编辑器
         const tomlFile = currentTrainingSource.file || `configs/${methodsSubdir}/${variant}.toml`;
         if (tomlFiles.includes(tomlFile) && currentTomlFile !== tomlFile) {
-            loadTomlFile(tomlFile, { force: true });
+            await loadTomlFile(tomlFile, { force: true });
+        }
+        if (Object.keys(compatibilityPatch).length > 0) {
+            updateTomlDirtyState();
+            setTomlStatus('error', '已自动修正 CAME optimizer_args 的 betas 格式，请保存当前配置后再训练。', { persist: true });
         }
     }
 
@@ -984,6 +1001,22 @@ export function createLegacyApp(ctx) {
     // ── 配置表单渲染 ──
     function resetConfigFormDraft() {
         configFormState.draftValues.clear();
+    }
+
+    function applyConfigCompatibilityDrafts() {
+        const patch = applyOptimizerCompatibilityPatch({});
+        for (const [key, value] of Object.entries(patch)) {
+            configFormState.draftValues.set(key, value);
+            const input = document.querySelector(`#config-form .field-input[data-key="${CSS.escape(key)}"]`);
+            if (!input) continue;
+            if (input.type === 'checkbox') {
+                input.checked = Boolean(value);
+            } else {
+                input.value = Array.isArray(value) ? JSON.stringify(value) : (value ?? '');
+            }
+            input.title = `${input.title ? `${input.title}\n` : ''}已自动修正兼容性参数，请保存当前配置后再训练。`;
+        }
+        return patch;
     }
 
     function syncConfigDraftFromForm(options = {}) {
@@ -1102,6 +1135,7 @@ export function createLegacyApp(ctx) {
         }
         appendConfigGroupsByCategory(container, sectionEntries);
         updateLoKrFieldState();
+        updateVeRAFieldState();
     }
 
     function shouldRenderConfigSection(section, config = currentConfig) {
@@ -2595,7 +2629,7 @@ export function createLegacyApp(ctx) {
         btn.type = 'button';
         btn.className = 'btn btn-small config-group-title-action config-resource-quick-toggle';
         btn.textContent = '快速填写';
-        btn.title = '显示显存与速度预设，一键填写当前表单';
+        btn.title = '显示显存与速度优化预设，一键填写当前表单';
         btn.setAttribute('aria-expanded', 'false');
         btn.addEventListener('click', () => {
             const panel = content.querySelector('.config-resource-quick-presets');
@@ -2604,14 +2638,14 @@ export function createLegacyApp(ctx) {
             panel.hidden = !nextVisible;
             btn.classList.toggle('active', nextVisible);
             btn.setAttribute('aria-expanded', String(nextVisible));
-            btn.title = nextVisible ? '收起显存与速度快速预设' : '显示显存与速度预设，一键填写当前表单';
+            btn.title = nextVisible ? '收起显存与速度优化快速预设' : '显示显存与速度优化预设，一键填写当前表单';
             if (nextVisible && content.hidden) {
                 content.hidden = false;
                 collapseBtn.textContent = '收起';
                 collapseBtn.setAttribute('aria-expanded', 'true');
                 collapseBtn.title = '收起这个配置区';
-                configFormState.expandedGroups.add('显存与速度');
-                configFormState.collapsedGroups.delete('显存与速度');
+                configFormState.expandedGroups.add('显存与速度优化');
+                configFormState.collapsedGroups.delete('显存与速度优化');
             }
         });
         return btn;
@@ -2621,7 +2655,7 @@ export function createLegacyApp(ctx) {
         const panel = document.createElement('div');
         panel.className = 'config-resource-quick-presets';
         panel.hidden = true;
-        panel.setAttribute('aria-label', '显存与速度快速预设');
+        panel.setAttribute('aria-label', '显存与速度优化快速预设');
 
         const label = document.createElement('span');
         label.className = 'config-resource-quick-label';
@@ -2646,7 +2680,7 @@ export function createLegacyApp(ctx) {
             setFieldInputValue(key, value);
         }
         handleFormFieldChange();
-        setTomlStatus('ok', `已填写显存与速度预设: ${preset.label}`);
+        setTomlStatus('ok', `已填写显存与速度优化预设: ${preset.label}`);
     }
 
     async function fillGlobalModelPathsIntoConfigForm() {
@@ -3878,6 +3912,24 @@ export function createLegacyApp(ctx) {
         startFileGroupFallbackDrag(event, payload, handle, disabled, { mouse: true });
     }
 
+    function markFileGroupDropTarget(node, position) {
+        if (!node || !position) {
+            clearFileGroupDropIndicators();
+            return;
+        }
+        const normalizedPosition = position === 'before' || position === 'after' ? position : 'inside';
+        if (fileGroupActiveDropTargetNode === node && fileGroupActiveDropPosition === normalizedPosition) {
+            node.classList.add(`file-group-drop-${normalizedPosition}`);
+            placeFileGroupDropPreview(node, normalizedPosition);
+            return;
+        }
+        clearFileGroupDropIndicators({ keepPreview: true });
+        fileGroupActiveDropTargetNode = node;
+        fileGroupActiveDropPosition = normalizedPosition;
+        node.classList.add(`file-group-drop-${normalizedPosition}`);
+        placeFileGroupDropPreview(node, normalizedPosition);
+    }
+
     function createFileGroupDragHandle(payload, options = {}) {
         const handle = document.createElement('button');
         const disabled = Boolean(options.disabled);
@@ -3933,24 +3985,6 @@ export function createLegacyApp(ctx) {
         });
         fileGroupActiveDropTargetNode = null;
         fileGroupActiveDropPosition = '';
-    }
-
-    function markFileGroupDropTarget(node, position) {
-        if (!node || !position) {
-            clearFileGroupDropIndicators();
-            return;
-        }
-        const normalizedPosition = position === 'before' || position === 'after' ? position : 'inside';
-        if (fileGroupActiveDropTargetNode === node && fileGroupActiveDropPosition === normalizedPosition) {
-            node.classList.add(`file-group-drop-${normalizedPosition}`);
-            placeFileGroupDropPreview(node, normalizedPosition);
-            return;
-        }
-        clearFileGroupDropIndicators({ keepPreview: true });
-        fileGroupActiveDropTargetNode = node;
-        fileGroupActiveDropPosition = normalizedPosition;
-        node.classList.add(`file-group-drop-${normalizedPosition}`);
-        placeFileGroupDropPreview(node, normalizedPosition);
     }
 
     function configFileDropIndex(group, targetFile, placeAfter, draggedFile) {
@@ -6397,6 +6431,7 @@ export function createLegacyApp(ctx) {
         const moduleName = String(config.network_module || '');
         if (currentTrainingSource.methods_subdir === 'methods' && currentTrainingSource.method === 'spd') return 'spd';
         if ('dit_path' in config && 'iterations' in config && currentTrainingSource.method === 'spd') return 'spd';
+        if (isTruthy(config.use_vera)) return 'vera';
         if (isTruthy(config.use_lokr)) return 'lokr';
         if (isTruthy(config.use_loha)) return 'loha';
         if (isTruthy(config.use_easycontrol) || moduleName.includes('easycontrol')) return 'easycontrol';
@@ -6421,9 +6456,12 @@ export function createLegacyApp(ctx) {
     function methodGuideFromConfig(methodKey, config = currentConfig) {
         const base = METHOD_GUIDE_ZH[methodKey] || defaultMethodGuide();
         const details = compactList([
+            flagDetail('use_vera', 'VeRA', config.use_vera),
             flagDetail('use_lokr', 'LoKr', config.use_lokr),
             flagDetail('use_loha', 'LoHa', config.use_loha),
             isTruthy(config.use_lokr) ? valueDetail('lokr_factor', config.lokr_factor) : '',
+            isTruthy(config.use_vera) ? valueDetail('vera_projection_prng_key', config.vera_projection_prng_key) : '',
+            isTruthy(config.use_vera) ? valueDetail('vera_d_initial', config.vera_d_initial) : '',
             valueDetail('network_dim', config.network_dim),
             valueDetail('network_alpha', config.network_alpha),
             valueDetail('learning_rate', config.learning_rate),
@@ -6486,11 +6524,12 @@ export function createLegacyApp(ctx) {
 
     function normalizeLoraAdapterKind(value) {
         const text = String(value ?? '').trim().toLowerCase();
-        if (text === 'loha' || text === 'lokr') return text;
+        if (text === 'loha' || text === 'lokr' || text === 'vera') return text;
         return 'lora';
     }
 
     function loraAdapterKindFromConfig(config = currentConfig) {
+        if (isTruthy(config?.use_vera)) return 'vera';
         if (isTruthy(config?.use_lokr)) return 'lokr';
         if (isTruthy(config?.use_loha)) return 'loha';
         return 'lora';
@@ -6501,6 +6540,7 @@ export function createLegacyApp(ctx) {
         return {
             use_loha: normalized === 'loha',
             use_lokr: normalized === 'lokr',
+            use_vera: normalized === 'vera',
         };
     }
 
@@ -6514,6 +6554,7 @@ export function createLegacyApp(ctx) {
         }
         configFormState.draftValues.delete('use_loha');
         configFormState.draftValues.delete('use_lokr');
+        configFormState.draftValues.delete('use_vera');
     }
 
     function readLiveLoraAdapterKind() {
@@ -6533,19 +6574,94 @@ export function createLegacyApp(ctx) {
         const flags = loraAdapterFlagsForKind(nextKind);
         values.use_loha = flags.use_loha;
         values.use_lokr = flags.use_lokr;
+        values.use_vera = flags.use_vera;
         if (flags.use_lokr && !('lokr_factor' in values) && !('lokr_factor' in currentConfig)) {
             values.lokr_factor = FORM_UI_DEFAULTS.lokr_factor;
         }
         if (flags.use_lokr && !('lokr_factor_group_size' in values) && !('lokr_factor_group_size' in currentConfig)) {
             values.lokr_factor_group_size = FORM_UI_DEFAULTS.lokr_factor_group_size;
         }
+        if (flags.use_lokr && !('lokr_project_chunk_bytes' in values) && !('lokr_project_chunk_bytes' in currentConfig)) {
+            values.lokr_project_chunk_bytes = FORM_UI_DEFAULTS.lokr_project_chunk_bytes;
+        }
+        if (flags.use_vera && !('vera_projection_prng_key' in values) && !('vera_projection_prng_key' in currentConfig)) {
+            values.vera_projection_prng_key = FORM_UI_DEFAULTS.vera_projection_prng_key;
+        }
+        if (flags.use_vera && !('vera_d_initial' in values) && !('vera_d_initial' in currentConfig)) {
+            values.vera_d_initial = FORM_UI_DEFAULTS.vera_d_initial;
+        }
+        if (flags.use_vera && !('vera_save_projection' in values) && !('vera_save_projection' in currentConfig)) {
+            values.vera_save_projection = FORM_UI_DEFAULTS.vera_save_projection;
+        }
         return values;
+    }
+
+    function normalizeOptimizerType(value) {
+        return String(value ?? '').trim().toLowerCase();
+    }
+
+    function optimizerArgEntryKey(raw) {
+        const text = String(raw || '').trim();
+        const splitAt = text.indexOf('=');
+        return splitAt > 0 ? text.slice(0, splitAt).trim().toLowerCase() : '';
+    }
+
+    function optimizerArgEntryValue(raw) {
+        const text = String(raw || '').trim();
+        const splitAt = text.indexOf('=');
+        return splitAt > 0 ? text.slice(splitAt + 1).trim() : '';
+    }
+
+    function normalizeOptimizerArgArray(value) {
+        if (Array.isArray(value)) return value.map((item) => String(item));
+        if (typeof value === 'string' && value.trim()) return parseArrayValue(value).map((item) => String(item));
+        return [];
+    }
+
+    function cameBetasNeedPatch(rawBetas) {
+        const parts = String(rawBetas || '')
+            .split(',')
+            .map((item) => item.trim())
+            .filter(Boolean);
+        return parts.length === 2;
+    }
+
+    function normalizeCameOptimizerArgs(args) {
+        const result = normalizeOptimizerArgArray(args);
+        let betasIndex = -1;
+        for (let index = 0; index < result.length; index += 1) {
+            if (optimizerArgEntryKey(result[index]) === 'betas') {
+                betasIndex = index;
+                break;
+            }
+        }
+        if (betasIndex < 0) {
+            return result;
+        }
+        const rawBetas = optimizerArgEntryValue(result[betasIndex]);
+        if (cameBetasNeedPatch(rawBetas)) {
+            result[betasIndex] = 'betas=0.9,0.999,0.9999';
+        }
+        return result;
+    }
+
+    function applyOptimizerCompatibilityPatch(values) {
+        const nextValues = { ...values };
+        const optimizerType = 'optimizer_type' in nextValues ? nextValues.optimizer_type : currentConfig.optimizer_type;
+        if (normalizeOptimizerType(optimizerType) !== 'came') return nextValues;
+        const baseArgs = 'optimizer_args' in nextValues ? nextValues.optimizer_args : currentConfig.optimizer_args;
+        const normalizedArgs = normalizeCameOptimizerArgs(baseArgs);
+        if (!valuesEqual(normalizedArgs, baseArgs || [])) {
+            nextValues.optimizer_args = normalizedArgs;
+        }
+        return nextValues;
     }
 
     function loraAdapterFlagsMatchConfig(kind, config = currentConfig) {
         const flags = loraAdapterFlagsForKind(kind);
         return isTruthy(config?.use_loha) === flags.use_loha
-            && isTruthy(config?.use_lokr) === flags.use_lokr;
+            && isTruthy(config?.use_lokr) === flags.use_lokr
+            && isTruthy(config?.use_vera) === flags.use_vera;
     }
 
     function compactList(items) {
@@ -6636,6 +6752,7 @@ export function createLegacyApp(ctx) {
         updateTomlDirtyState();
         updateStepEstimatePanel();
         updateLoKrFieldState();
+        updateVeRAFieldState();
         updateChoiceGuideFromLiveForm();
     }
 
@@ -6694,9 +6811,13 @@ export function createLegacyApp(ctx) {
             input.value = Array.isArray(value) ? JSON.stringify(value) : (value ?? '');
         }
         input.className = 'field-input';
-        if (key === 'lokr_factor' || key === 'lokr_factor_group_size') {
+        if (key === 'lokr_factor' || key === 'lokr_factor_group_size' || key === 'lokr_project_chunk_bytes') {
             input.disabled = !readLoKrEnabled();
             input.title = input.disabled ? '启用 LoKr 后生效' : '';
+        }
+        if (key === 'vera_projection_prng_key' || key === 'vera_d_initial' || key === 'vera_save_projection') {
+            input.disabled = !readVeRAEnabled();
+            input.title = input.disabled ? '启用 VeRA 后生效' : '';
         }
         return input;
     }
@@ -7063,12 +7184,15 @@ export function createLegacyApp(ctx) {
             'sample_every_n_steps',
             'save_every_n_epochs',
             'checkpointing_epochs',
+            'network_dim',
+            'network_alpha',
         ].includes(key);
     }
 
     function isIntegerNumericField(key, value) {
         const networkArgSpec = NETWORK_ARG_FIELD_MAP.get(key);
         if (networkArgSpec) return networkArgSpec.valueType === 'integer';
+        if (key === 'network_alpha') return false;
         return [
             'max_train_epochs',
             'max_train_steps',
@@ -7078,6 +7202,7 @@ export function createLegacyApp(ctx) {
             'sample_every_n_steps',
             'save_every_n_epochs',
             'checkpointing_epochs',
+            'network_dim',
         ].includes(key) || Number.isInteger(value);
     }
 
@@ -7123,8 +7248,9 @@ export function createLegacyApp(ctx) {
             return 'string';
         }
         if (key === 'lora_adapter_kind') return 'string';
-        if (key === 'use_lokr' || key === 'use_loha') return 'boolean';
-        if (key === 'lokr_factor') return 'number';
+        if (key === 'use_lokr' || key === 'use_loha' || key === 'use_vera') return 'boolean';
+        if (key === 'lokr_factor' || key === 'vera_projection_prng_key' || key === 'vera_d_initial') return 'number';
+        if (key === 'vera_save_projection') return 'boolean';
         if (isNumericField(key, value)) return 'number';
         return fieldValueType(value);
     }
@@ -7141,6 +7267,7 @@ export function createLegacyApp(ctx) {
                 lora: '普通 LoRA',
                 loha: 'LoHa',
                 lokr: 'LoKr',
+                vera: 'VeRA',
             }[normalizeLoraAdapterKind(value)] || String(value);
         }
         if (key === 'use_lokr') {
@@ -7149,11 +7276,29 @@ export function createLegacyApp(ctx) {
         if (key === 'use_loha') {
             return value === true || value === 'true' ? '启用 LoHa' : '普通 LoRA';
         }
+        if (key === 'use_vera') {
+            return value === true || value === 'true' ? '启用 VeRA' : '普通 LoRA';
+        }
         if (key === 'use_moe_style' && (value === false || value === 'false')) {
             return '关闭专家路由 / false';
         }
         if (key === 'splice_position') {
             return value === 'front_of_padding' ? 'Padding 前沿 / front_of_padding' : '序列末尾 / end_of_sequence';
+        }
+        if (key === 'lokr_project_chunk_bytes') {
+            const bytes = Number(value);
+            if (Number.isFinite(bytes) && bytes > 0) {
+                return `${formatCompactNumber(bytes / (1024 * 1024))}MiB / ${Math.trunc(bytes)}`;
+            }
+            return String(value);
+        }
+        if (key === 'peak_probe_level') {
+            return {
+                block: 'Block 边界 / block',
+                ops: 'Block 内算子 / ops',
+                lokr: 'LoKr delta / lokr',
+                full: '全量事件 / full',
+            }[value] || String(value);
         }
         if (key === 'contrastive_negative_mode') {
             return {
@@ -8542,6 +8687,9 @@ export function createLegacyApp(ctx) {
         if (values.use_lokr === true && !('lokr_factor_group_size' in values) && !('lokr_factor_group_size' in currentConfig)) {
             values.lokr_factor_group_size = FORM_UI_DEFAULTS.lokr_factor_group_size;
         }
+        if (values.use_lokr === true && !('lokr_project_chunk_bytes' in values) && !('lokr_project_chunk_bytes' in currentConfig)) {
+            values.lokr_project_chunk_bytes = FORM_UI_DEFAULTS.lokr_project_chunk_bytes;
+        }
         return applyLoraAdapterPatch(values);
     }
 
@@ -8629,7 +8777,7 @@ export function createLegacyApp(ctx) {
     }
 
     async function prepareFormPatchValues(values) {
-        const nextValues = { ...values };
+        const nextValues = applyOptimizerCompatibilityPatch(values);
         if ('sample_prompts' in nextValues && samplePromptsMode !== 'path') {
             const promptText = String(nextValues.sample_prompts || '');
             if (promptText.trim()) {
@@ -8679,10 +8827,30 @@ export function createLegacyApp(ctx) {
         const inputs = [
             document.querySelector('#config-form .field-input[data-key="lokr_factor"]'),
             document.querySelector('#config-form .field-input[data-key="lokr_factor_group_size"]'),
+            document.querySelector('#config-form .field-input[data-key="lokr_project_chunk_bytes"]'),
         ].filter(Boolean);
         for (const input of inputs) {
             input.disabled = !enabled;
             input.title = enabled ? '' : '启用 LoKr 后生效';
+            const row = input.closest('.field-row');
+            if (row) row.classList.toggle('field-row-disabled', !enabled);
+        }
+    }
+
+    function readVeRAEnabled() {
+        return readLiveLoraAdapterKind() === 'vera';
+    }
+
+    function updateVeRAFieldState() {
+        const enabled = readVeRAEnabled();
+        const inputs = [
+            document.querySelector('#config-form .field-input[data-key="vera_projection_prng_key"]'),
+            document.querySelector('#config-form .field-input[data-key="vera_d_initial"]'),
+            document.querySelector('#config-form .field-input[data-key="vera_save_projection"]'),
+        ].filter(Boolean);
+        for (const input of inputs) {
+            input.disabled = !enabled;
+            input.title = enabled ? '' : '启用 VeRA 后生效';
             const row = input.closest('.field-row');
             if (row) row.classList.toggle('field-row-disabled', !enabled);
         }
@@ -15003,8 +15171,8 @@ export function createLegacyApp(ctx) {
         const aIndex = a.value ? order.indexOf(a.value) : -1;
         const bIndex = b.value ? order.indexOf(b.value) : -1;
         if (aIndex !== bIndex) {
-            if (aIndex < 0) return 1;
-            if (bIndex < 0) return -1;
+            if (aIndex < 0) return -1;
+            if (bIndex < 0) return 1;
             return aIndex - bIndex;
         }
         return (b.latest_started_at - a.latest_started_at) || a.label.localeCompare(b.label, 'zh-CN');
@@ -15034,8 +15202,8 @@ export function createLegacyApp(ctx) {
             const aIndex = order.indexOf(aKey);
             const bIndex = order.indexOf(bKey);
             if (aIndex !== bIndex) {
-                if (aIndex < 0) return 1;
-                if (bIndex < 0) return -1;
+                if (aIndex < 0) return -1;
+                if (bIndex < 0) return 1;
                 return aIndex - bIndex;
             }
             const aTime = Math.max(0, ...a.tasks.map((task) => Number(task.started_at || 0)));
@@ -15851,8 +16019,8 @@ export function createLegacyApp(ctx) {
             });
             return;
         }
-        const confirmText = await showHistoryDeletePreviewDialog(preview);
-        if (confirmText !== '彻底删除') return;
+        const confirmed = await showHistoryDeletePreviewDialog(preview);
+        if (!confirmed) return;
         try {
             const res = await api('/api/training/history/batch', {
                 method: 'POST',
@@ -15860,7 +16028,7 @@ export function createLegacyApp(ctx) {
                     action: 'delete',
                     task_ids: ids,
                     delete_runtime_dirs: true,
-                    confirm_text: confirmText,
+                    confirmed: true,
                 }),
             });
             if (!res.ok) {
@@ -15889,7 +16057,7 @@ export function createLegacyApp(ctx) {
         }
     }
 
-    function showHistoryDeletePreviewDialog(preview) {
+    async function showHistoryDeletePreviewDialog(preview) {
         const wrap = document.createElement('div');
         wrap.className = 'history-delete-preview';
         const summary = document.createElement('div');
@@ -15911,35 +16079,24 @@ export function createLegacyApp(ctx) {
         ].join('\n');
         wrap.appendChild(taskList);
 
-        const label = document.createElement('label');
-        label.className = 'history-task-dialog-field';
-        const span = document.createElement('span');
-        span.textContent = '输入“彻底删除”确认';
-        const input = document.createElement('input');
-        input.type = 'text';
-        input.className = 'history-task-dialog-input';
-        input.placeholder = '彻底删除';
-        label.append(span, input);
-        wrap.appendChild(label);
-
-        const sync = () => {
-            const confirmBtn = document.getElementById('history-task-dialog-confirm');
-            if (confirmBtn) confirmBtn.disabled = input.value.trim() !== '彻底删除';
-        };
-        input.addEventListener('input', sync);
-
-        return showHistoryTaskDialog({
+        const firstConfirmed = await showHistoryTaskDialog({
             title: '彻底删除历史任务',
-            description: '',
+            description: '第一步确认：请检查删除范围。',
             body: wrap,
             confirmText: '彻底删除',
             danger: true,
-            onOpen: () => {
-                input.focus();
-                sync();
-            },
-            getValue: () => input.value.trim(),
+            getValue: () => true,
         });
+        if (!firstConfirmed) return false;
+
+        const finalConfirmed = await showHistoryTaskConfirmDialog({
+            title: '确认要删吗',
+            description: `${preview.task_count || 0} 条历史记录 · ${preview.runtime_dir_count || 0} 个运行目录`,
+            message: '这是最后一次确认。确认后会立即删除历史记录目录和对应运行目录内的权重、样张、日志、缓存及 runtime 配置。',
+            confirmText: '确认要删吗',
+            danger: true,
+        });
+        return Boolean(finalConfirmed);
     }
 
     async function renameHistoryTask(task) {
@@ -16932,6 +17089,7 @@ export function createLegacyApp(ctx) {
         on('btn-training-history-view', 'click', () => showTrainingView('history'));
         document.getElementById('btn-open-history-manager').addEventListener('click', () => showTrainingView('history'));
         ensureQueueFeature().bindQueueEvents();
+        ensureWeightAnalysisFeature().bindWeightAnalysisEvents();
         document.getElementById('btn-apply-toml').addEventListener('click', applyTomlToConfig);
         document.getElementById('btn-move-toml-group').addEventListener('click', moveCurrentTomlToGroup);
         document.getElementById('btn-create-blank-preset').addEventListener('click', createBlankPresetFromLoraTemplate);
@@ -17084,12 +17242,22 @@ export function createLegacyApp(ctx) {
             'btn-sticky-config-required': '底部配置目录快捷入口，切换到模型路径和数据集必填项。',
             'btn-sticky-config-common': '底部配置目录快捷入口，切换到训练轮数、学习率和输出等常用项。',
             'btn-sticky-config-preview': '底部配置目录快捷入口，切换到训练中样张设置。',
+            'btn-sticky-config-optimization': '底部配置目录快捷入口，切换到显存、速度、block swap 和 LoKr 专用优化项。',
             'btn-open-continue-lora-dialog': '选择已有 LoRA、LoHa 或 LoKr safetensors 权重作为新训练任务的初始化来源。',
             'btn-clear-continue-lora-source': '清除继续训练来源，下一次启动会按从零开始训练。',
             'btn-inspect-continue-lora-path': '检查这个 safetensors 是否为 LoRA/LoHa/LoKr，并确认是否兼容当前变体。',
             'continue-lora-history-task': '从历史训练任务中选择一个输出目录，读取其中保存的权重文件。',
             'btn-refresh-continue-lora-weights': '重新扫描所选历史训练任务的 safetensors 权重。',
             'btn-open-tutorial': '打开基础教程，按顺序了解全局设置、数据集、配置保存、预处理和训练启动。',
+            'weight-analysis-select': '从训练输出目录或全局输出目录选择 .safetensors 权重，只做静态 ΔW 分析。',
+            'weight-analysis-path': '也可以手填权重路径；为安全起见，只允许训练输出目录或全局输出目录下的 .safetensors。',
+            'weight-analysis-dropzone': '拖入 .safetensors 文件会临时上传到后端做 CPU 静态分析；拖入 file:// 或文本路径会自动填入路径框。',
+            'weight-analysis-compare-path': '对比模式下的第二个权重路径；会与主权重 A 做 B - A 静态能量差值。',
+            'weight-analysis-compare-dropzone': '拖入第二个 .safetensors 权重作为 B，不写入权重目录。',
+            'btn-toggle-weight-compare': '开启后可分析两个 LoRA 权重的层类型和 block 静态能量差异。',
+            'btn-export-weight-analysis': '打开浏览器打印导出，可在系统对话框中保存为 PDF 报告。',
+            'btn-refresh-analysis-weights': '重新扫描当前可读取的训练权重列表，不会加载模型。',
+            'btn-run-weight-analysis': '在 CPU 上读取 safetensors 并计算 ΔW 范数，不跑图、不占 GPU。',
             'btn-stop-training': '停止当前正在运行的训练或预处理任务；已经写出的日志、样张和权重文件会保留。',
             'btn-open-queue-manager': '打开完整队列管理视图，可筛选、调序、重试、批量取消和清理记录。',
             'btn-training-queue-view': '打开训练队列管理视图，查看等待、运行、异常、完成和已取消任务。',
@@ -17139,7 +17307,7 @@ export function createLegacyApp(ctx) {
             'btn-history-bulk-archive': '把选中的历史任务批量归档，默认列表会隐藏它们。',
             'btn-history-bulk-unarchive': '把选中的历史任务批量取消归档。',
             'btn-history-bulk-group': '给选中的历史任务设置同一个集合名称；同配置文件自动分组会继续保留。',
-            'btn-history-bulk-delete': '彻底删除选中的历史记录和 WebUI 运行目录，需要输入确认文本。',
+            'btn-history-bulk-delete': '彻底删除选中的历史记录和 WebUI 运行目录，需要连续两次按钮确认。',
             'history-manager-search': '按任务名、配置、目录、消息等字段搜索历史任务。',
             'history-filter-kind': '按训练或预处理任务筛选。',
             'history-filter-state': '按完成、异常、中断或运行状态筛选。',
@@ -17188,6 +17356,7 @@ export function createLegacyApp(ctx) {
                 config: '配置页：选择方法/变体/预设，编辑训练参数并引用数据集预设。',
                 datasets: '数据集页：管理可复用的多数据集预设。',
                 training: '训练页：查看当前任务、历史任务、loss 曲线、日志和显存状态。',
+                'weight-analysis': 'ΔW 分析页：读取 safetensors 静态权重能量，不跑图、不占 GPU。',
                 settings: '全局设置页：设置 Web 训练输出根目录和新建预设默认模型路径。',
             };
             const key = btn.dataset.tab;

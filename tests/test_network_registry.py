@@ -27,6 +27,7 @@ from networks import lora_save
 from networks.lora_anima.factory import create_network_from_weights
 from networks.plugins.loha.module import LoHaModule
 from networks.plugins.lokr.module import LoKrModule
+from networks.plugins.vera.module import VeRAModule
 
 
 # ---------------------------------------------------------------------------
@@ -41,6 +42,7 @@ EXPECTED_VARIANTS = {
     "ortho",
     "hydra",
     "ortho_hydra",
+    "vera",
 }
 
 
@@ -95,16 +97,33 @@ def test_hydra_router_kwargs_registered():
 
 
 def test_lokr_kwargs_registered():
-    must_have = {"use_lokr", "lokr_factor", "lokr_factor_group_size"}
+    must_have = {
+        "use_lokr",
+        "lokr_factor",
+        "lokr_factor_group_size",
+        "lokr_project_chunk_bytes",
+    }
     assert must_have.issubset(set(all_network_kwargs()))
     assert "lokr_factor" in set(NETWORK_REGISTRY["lokr"].kwarg_flags)
     assert "lokr_factor_group_size" in set(NETWORK_REGISTRY["lokr"].kwarg_flags)
+    assert "lokr_project_chunk_bytes" in set(NETWORK_REGISTRY["lokr"].kwarg_flags)
 
 
 def test_loha_kwargs_registered():
     must_have = {"use_loha"}
     assert must_have.issubset(set(all_network_kwargs()))
     assert "use_loha" in set(NETWORK_REGISTRY["loha"].kwarg_flags)
+
+
+def test_vera_kwargs_registered():
+    must_have = {
+        "use_vera",
+        "vera_projection_prng_key",
+        "vera_d_initial",
+        "vera_save_projection",
+    }
+    assert must_have.issubset(set(all_network_kwargs()))
+    assert must_have.issubset(set(NETWORK_REGISTRY["vera"].kwarg_flags))
 
 
 def test_lokr_lives_in_plugin_not_core_imports():
@@ -134,6 +153,7 @@ def test_lokr_lives_in_plugin_not_core_imports():
         ({}, "lora"),
         ({"use_loha": "true"}, "loha"),
         ({"use_lokr": "true"}, "lokr"),
+        ({"use_vera": "true"}, "vera"),
         ({"use_ortho": "true"}, "ortho"),
         ({"use_moe_style": "shared_A"}, "hydra"),
         ({"use_moe_style": "shared_A", "use_ortho": "true"}, "ortho_hydra"),
@@ -173,6 +193,21 @@ def test_lokr_mutual_exclusion(kwargs):
 )
 def test_loha_mutual_exclusion(kwargs):
     with pytest.raises(ValueError, match="use_loha is mutually exclusive"):
+        resolve_network_spec(kwargs)
+
+
+@pytest.mark.parametrize(
+    "kwargs",
+    [
+        {"use_vera": "true", "use_lokr": "true"},
+        {"use_vera": "true", "use_loha": "true"},
+        {"use_vera": "true", "use_ortho": "true"},
+        {"use_vera": "true", "use_moe_style": "shared_A"},
+        {"use_vera": "true", "use_chimera_hydra": "true"},
+    ],
+)
+def test_vera_mutual_exclusion(kwargs):
+    with pytest.raises(ValueError, match="mutually exclusive"):
         resolve_network_spec(kwargs)
 
 
@@ -286,6 +321,26 @@ def test_save_loha_roundtrip(tmp_path: Path):
     assert f"{prefix}.hada_w2_a" not in loaded
 
 
+def test_save_vera_roundtrip(tmp_path: Path):
+    r, out_dim = 4, 12
+    prefix = "lora_unet_blocks_0_self_attn_qkv_proj"
+    sd = {
+        f"{prefix}.vera_lambda_b": torch.randn(3 * out_dim),
+        f"{prefix}.vera_lambda_d": torch.randn(r),
+        f"{prefix}.alpha": _alpha(r),
+    }
+
+    loaded = _save_and_reload(sd, tmp_path, save_variant="vera")
+
+    base = "lora_unet_blocks_0_self_attn"
+    for suffix in ("q_proj", "k_proj", "v_proj"):
+        assert loaded[f"{base}_{suffix}.vera_lambda_b"].shape == (out_dim,)
+        assert loaded[f"{base}_{suffix}.vera_lambda_d"].shape == (r,)
+        assert f"{base}_{suffix}.alpha" in loaded
+    assert f"{prefix}.vera_lambda_b" not in loaded
+    assert f"{prefix}.vera_lambda_d" not in loaded
+
+
 def test_create_network_from_lokr_weights_uses_lokr_module():
     class Block(torch.nn.Module):
         def __init__(self):
@@ -359,6 +414,51 @@ def test_create_network_from_loha_weights_uses_loha_module():
     loha = network.unet_loras[0]
     assert isinstance(loha, LoHaModule)
     assert loha.lora_dim == 2
+
+
+def test_create_network_from_vera_weights_uses_vera_module():
+    class Block(torch.nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.self_attn = torch.nn.Module()
+            self.self_attn.qkv_proj = torch.nn.Linear(4, 18, bias=False)
+
+    class TinyUnet(torch.nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.blocks = torch.nn.ModuleList([Block()])
+
+    shared_lambda_d = torch.randn(3)
+    weights_sd = {
+        "lora_unet_blocks_0_self_attn_q_proj.vera_lambda_b": torch.randn(6),
+        "lora_unet_blocks_0_self_attn_k_proj.vera_lambda_b": torch.randn(6),
+        "lora_unet_blocks_0_self_attn_v_proj.vera_lambda_b": torch.randn(6),
+        "lora_unet_blocks_0_self_attn_q_proj.vera_lambda_d": shared_lambda_d,
+        "lora_unet_blocks_0_self_attn_k_proj.vera_lambda_d": shared_lambda_d.clone(),
+        "lora_unet_blocks_0_self_attn_v_proj.vera_lambda_d": shared_lambda_d.clone(),
+        "lora_unet_blocks_0_self_attn_q_proj.alpha": _alpha(3),
+    }
+
+    unet = TinyUnet()
+    network, weights = create_network_from_weights(
+        multiplier=1.0,
+        file="",
+        ae=None,
+        text_encoders=[],
+        unet=unet,
+        weights_sd=weights_sd,
+        metadata={
+            "ss_network_spec": "vera",
+            "ss_vera_projection_prng_key": "7",
+            "ss_vera_d_initial": "0.1",
+        },
+    )
+
+    assert len(network.unet_loras) == 1
+    vera = network.unet_loras[0]
+    assert isinstance(vera, VeRAModule)
+    assert vera.lora_dim == 3
+    assert vera.projection_bank is not None
     network.apply_to([], unet, False, True)
     info = network.load_state_dict(weights, strict=False)
     assert info.missing_keys == []

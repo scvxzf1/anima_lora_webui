@@ -34,6 +34,8 @@ def _validate(kwargs: Mapping[str, Any]) -> None:
         return
     if _truthy(kwargs.get("use_lokr")):
         raise ValueError("use_loha is mutually exclusive with use_lokr.")
+    if _truthy(kwargs.get("use_vera")):
+        raise ValueError("use_loha is mutually exclusive with use_vera.")
     if (
         _truthy(kwargs.get("use_ortho"))
         or _truthy(kwargs.get("use_chimera_hydra"))

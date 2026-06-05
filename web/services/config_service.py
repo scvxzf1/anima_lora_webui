@@ -82,6 +82,7 @@ OUTPUT_RUN_CONFIG_FILES = {
     "runtime": ("config.runtime.toml", "运行时配置"),
     "dataset": ("dataset.runtime.toml", "数据集配置"),
 }
+_DELETE_TOML_KEY = object()
 DATASET_SETTING_KEYS = frozenset({
     "resolution",
     "enable_bucket",
@@ -157,6 +158,7 @@ CONFIG_FILE_LABELS_ZH = {
     "configs/gui-methods/tlora-8gb.toml": "T-LoRA 低显存变体",
     "configs/gui-methods/tlora.toml": "T-LoRA 训练变体",
     "configs/gui-methods/tlora_ortho_reft.toml": "T-LoRA + Ortho + ReFT 组合变体",
+    "configs/gui-methods/vera.toml": "VeRA 训练变体",
     "configs/methods/chimera.toml": "Chimera 内置方法配置",
     "configs/methods/easycontrol.toml": "EasyControl 内置方法配置",
     "configs/methods/ip_adapter.toml": "IP-Adapter 内置方法配置",
@@ -2248,7 +2250,8 @@ def save_raw_file(
         return False, f"{_lock_reason_message(meta)}，请使用新名称保存新配置后编辑"
     try:
         toml.loads(content)
-    except toml.TomlDecodeError as e:
+        content = _normalize_saved_raw_config_content(content)
+    except (toml.TomlDecodeError, tomlkit.exceptions.TOMLKitError) as e:
         return False, f"TOML 语法错误: {e}"
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(content, encoding="utf-8")
@@ -2333,11 +2336,13 @@ def _prepare_raw_file_patch(
     try:
         next_content = _patch_toml_top_level(source, values)
         next_content, removed_keys = _remove_retired_top_level_fields(next_content)
+        next_content, compatibility_keys = _normalize_saved_raw_config_content_with_changed_keys(next_content)
         toml.loads(next_content)
     except Exception as e:
         return False, f"TOML 更新失败: {e}", None, "", []
 
-    return True, "保存成功", path, next_content, sorted([*values.keys(), *removed_keys])
+    changed_keys = {*values.keys(), *removed_keys, *compatibility_keys}
+    return True, "保存成功", path, next_content, sorted(changed_keys)
 
 
 def _restore_dataset_config_after_failed_train_patch(path: Path, existed: bool, previous_content: str) -> None:
@@ -3471,7 +3476,12 @@ def _patch_toml_top_level(content: str, values: dict[str, Any]) -> str:
             continue
         if "." in key or key in {"general", "datasets"}:
             raise ValueError(f"不支持写入嵌套字段: {key}")
-        doc[key] = _normalize_patch_value(key, value)
+        normalized = _normalize_patch_value(key, value)
+        if normalized is _DELETE_TOML_KEY:
+            if key in doc:
+                del doc[key]
+            continue
+        doc[key] = normalized
     return tomlkit.dumps(doc)
 
 
@@ -3490,7 +3500,9 @@ def _remove_retired_top_level_fields(content: str) -> tuple[str, list[str]]:
 def _normalize_patch_value(key: str, value: Any) -> Any:
     if key in {"sample_every_n_epochs", "sample_every_n_steps"}:
         if value in ("", None):
-            return None
+            # TOML 没有 null。WebUI 留空表示禁用该采样频率，
+            # 因此删除顶层键，让训练端按缺省 None 处理。
+            return _DELETE_TOML_KEY
         try:
             return int(value)
         except (TypeError, ValueError) as exc:
@@ -3500,6 +3512,32 @@ def _normalize_patch_value(key: str, value: Any) -> Any:
             return value
         return str(value).strip().lower() in {"1", "true", "yes", "on"}
     return value
+
+
+def _normalize_saved_raw_config_content(content: str) -> str:
+    normalized, _changed_keys = _normalize_saved_raw_config_content_with_changed_keys(content)
+    return normalized
+
+
+def _normalize_saved_raw_config_content_with_changed_keys(content: str) -> tuple[str, list[str]]:
+    doc = tomlkit.parse(content or "")
+    optimizer_type = str(doc.get("optimizer_type") or "").strip().lower()
+    if optimizer_type != "came" or "optimizer_args" not in doc:
+        return content, []
+    raw_args = doc["optimizer_args"]
+    if not isinstance(raw_args, list):
+        return content, []
+    for index, arg in enumerate(raw_args):
+        text = str(arg).strip()
+        if not text.lower().startswith("betas="):
+            continue
+        raw_betas = text.split("=", 1)[1].strip()
+        parts = [item.strip() for item in raw_betas.split(",") if item.strip()]
+        if len(parts) == 2:
+            raw_args[index] = "betas=0.9,0.999,0.9999"
+            return tomlkit.dumps(doc), ["optimizer_args"]
+        return content, []
+    return content, []
 
 
 def get_field_help() -> dict[str, dict[str, str]]:

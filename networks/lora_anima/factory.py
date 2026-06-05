@@ -16,6 +16,7 @@ from library.log import setup_logging
 from networks import (
     NETWORK_REGISTRY,
     detect_network_spec_from_weights,
+    preprocess_weights_from_plugins,
     resolve_network_spec,
 )
 from networks.lora_anima.config import LoRANetworkCfg
@@ -347,6 +348,7 @@ def create_network_from_weights(
     weights_sd = _refuse_split_chimera_keys(weights_sd)
     # Refuse unfused attn projections so modules_dim reflects the runtime (qkv/kv fused).
     weights_sd = _refuse_unfused_attn_lora_keys(weights_sd)
+    weights_sd = preprocess_weights_from_plugins(weights_sd)
 
     modules_dim = {}
     modules_alpha = {}

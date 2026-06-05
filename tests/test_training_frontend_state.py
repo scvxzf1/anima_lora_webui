@@ -103,6 +103,10 @@ def test_frontend_module_graph_follows_production_entrypoint() -> None:
     assert "js/features/queue/render.js" in relative
     assert "js/features/queue/actions.js" in relative
     assert "js/features/queue/enqueue.js" in relative
+    assert "js/features/weight-analysis/index.js" in relative
+    assert "js/features/weight-analysis/state.js" in relative
+    assert "js/features/weight-analysis/api.js" in relative
+    assert "js/features/weight-analysis/render.js" in relative
     assert "js/features/history-detail/index.js" in relative
     assert "js/features/history-detail/state.js" in relative
     assert "js/features/history-detail/api.js" in relative
@@ -191,6 +195,112 @@ def test_preview_feature_modules_are_loaded_from_production_entrypoint() -> None
     assert "target.appendChild(workspace);" in preview_workspace
     assert "document.getElementById('preview-workspace')" in preview_workspace
     assert "export function normalizePreviewGroup(group)" in preview_state
+
+
+
+def test_weight_analysis_feature_modules_are_loaded_from_production_entrypoint() -> None:
+    legacy_source = _frontend_module_text("js/features/legacy-app.js")
+    weight_index = _frontend_module_text("js/features/weight-analysis/index.js")
+    weight_api = _frontend_module_text("js/features/weight-analysis/api.js")
+    weight_render = _frontend_module_text("js/features/weight-analysis/render.js")
+    weight_state = _frontend_module_text("js/features/weight-analysis/state.js")
+    html = INDEX_HTML.read_text(encoding="utf-8")
+    css = STYLE_CSS.read_text(encoding="utf-8")
+    listener_section = _section(legacy_source, "function setupEventListeners", "function installBeginnerTooltips")
+    tab_setup = _section(legacy_source, "function setupTabs()", "// ── 加载初始数据 ──")
+    tooltip_section = _section(legacy_source, "function installBeginnerTooltips()", "// ── 工具函数 ──")
+
+    assert "createWeightAnalysisFeature(ctx)" in legacy_source
+    assert "ensureWeightAnalysisFeature().bindWeightAnalysisEvents();" in listener_section
+    assert "if (nextTab === 'weight-analysis')" in tab_setup
+    assert "ensureWeightAnalysisFeature().loadAnalysisWeights();" in tab_setup
+    assert "bindWeightAnalysisEvents" in weight_index
+    assert "loadAnalysisWeights" in weight_index
+    assert "runWeightAnalysis" in weight_index
+    assert "createWeightAnalysisState" in weight_state
+    assert "compareEnabled" in weight_state
+    assert "candidateExpanded" in weight_state
+    assert "fetchAnalysisWeights" in weight_api
+    assert "inspectAnalysisWeight" in weight_api
+    assert "inspectAnalysisWeightFile" in weight_api
+    assert "'/api/analysis/weights'" in weight_api
+    assert "'/api/analysis/inspect'" in weight_api
+    assert "'/api/analysis/inspect-upload'" in weight_api
+    assert "new FormData()" in weight_api
+    assert "headers: {}" in weight_api
+    assert "renderWeightOptions" in weight_render
+    assert "renderHeatmap" in weight_render
+    assert "renderComparison" in weight_render
+    assert "renderBlockStructure" in weight_render
+    assert "toggleCandidateExpanded" in weight_render
+    assert "setActiveComponent" in weight_render
+    assert "bindDropzoneEvents" in weight_index
+    assert "handleWeightDrop" in weight_index
+    assert "analyzeDroppedWeightFile" in weight_index
+    assert "extractDroppedPath" in weight_index
+    assert "toggleCompareMode" in weight_index
+    assert "runWeightComparison" in weight_index
+    assert "exportWeightAnalysisReport" in weight_index
+    assert "renderer.showCandidateKind" in weight_index
+    assert "event.key === 'Enter'" in weight_index
+
+    assert 'data-tab="weight-analysis"' in html
+    assert 'id="tab-weight-analysis"' in html
+    assert 'ΔW 权重结构分析' in html
+    assert 'weight-analysis-select' in html
+    assert 'weight-analysis-path' in html
+    assert 'weight-analysis-dropzone' in html
+    assert 'weight-analysis-file' in html
+    assert 'weight-analysis-compare-path' in html
+    assert 'weight-analysis-compare-dropzone' in html
+    assert 'weight-analysis-compare-file' in html
+    assert 'btn-toggle-weight-compare' in html
+    assert 'btn-export-weight-analysis' in html
+    assert 'btn-refresh-analysis-weights' in html
+    assert 'btn-run-weight-analysis' in html
+    assert 'weight-analysis-summary' in html
+    assert 'weight-analysis-layer-list' in html
+    assert 'weight-analysis-block-list' in html
+    assert 'weight-analysis-style-top' in html
+    assert 'weight-analysis-character-top' in html
+    assert 'weight-analysis-block-structure' in html
+    assert 'weight-analysis-compare-summary' in html
+    assert 'btn-weight-analysis-toggle-candidates' in html
+    assert 'weight-analysis-candidate-tab-style' in html
+    assert 'weight-analysis-candidate-tab-character' in html
+    assert 'weight-analysis-heatmap' in html
+    assert '这里分析的是 safetensors 内的静态 ΔW 范数，不是跑图激活。' in html
+    assert '早期 block 0–8 通常较弱，中后段 13–18、25–26 更值得关注' in html
+
+    for selector in (
+        "#tab-weight-analysis",
+        ".weight-analysis-layout",
+        ".weight-analysis-summary",
+        ".weight-analysis-rank-list",
+        ".weight-analysis-rank-bar",
+        ".weight-analysis-candidate-list",
+        ".weight-analysis-candidate-tabs",
+        ".weight-analysis-block-structure",
+        ".weight-analysis-compare-card",
+        ".weight-analysis-dropzone",
+        ".weight-analysis-heatmap-grid",
+        ".weight-analysis-heatmap-cell",
+    ):
+        assert selector in css
+
+    for tooltip_id in (
+        "weight-analysis-select",
+        "weight-analysis-path",
+        "weight-analysis-dropzone",
+        "weight-analysis-compare-path",
+        "weight-analysis-compare-dropzone",
+        "btn-toggle-weight-compare",
+        "btn-export-weight-analysis",
+        "btn-refresh-analysis-weights",
+        "btn-run-weight-analysis",
+        "weight-analysis",
+    ):
+        assert tooltip_id in tooltip_section
 
 
 def test_new_training_launch_enters_live_monitoring() -> None:
@@ -428,9 +538,10 @@ def test_config_form_uses_navigation_search_and_progressive_disclosure() -> None
     order_section = _section(source, "function appendConfigGroupsByCategory", "function createGroup")
     collect_section = _section(source, "function collectChangedFormValues", "function networkArgInputChanged")
 
-    assert category_defs.count("id: '") == 4
+    assert category_defs.count("id: '") == 5
     assert category_defs.index("id: 'common'") < category_defs.index("id: 'preview'")
-    assert category_defs.index("id: 'preview'") < category_defs.index("id: 'advanced'")
+    assert category_defs.index("id: 'preview'") < category_defs.index("id: 'optimization'")
+    assert category_defs.index("id: 'optimization'") < category_defs.index("id: 'advanced'")
 
     for title in [
         "基础模型路径",
@@ -438,7 +549,9 @@ def test_config_form_uses_navigation_search_and_progressive_disclosure() -> None
         "步数与训练量",
         "数据集设置",
         "训练中预览图",
-        "显存与速度",
+        "显存与速度优化",
+        "LoKr 专用优化",
+        "数据加载与 VAE 资源",
         "缓存与预处理",
         "更多数据集配置",
         "SPD CLI 实验",
@@ -511,6 +624,7 @@ def test_config_form_uses_navigation_search_and_progressive_disclosure() -> None
         "memory_probe_max_steps: 2",
         "memory_probe_max_steps: 3",
         "lokr_factor_group_size: 8",
+        "lokr_project_chunk_bytes: 4194304",
     ]:
         assert value in source
     set_field_section = _section(source, "function setFieldInputValue", "function escapeHtml")
@@ -533,24 +647,38 @@ def test_config_form_uses_navigation_search_and_progressive_disclosure() -> None
     assert "grid-template-rows: auto;" in inline_flag_css
 
     primary_section = _section(source, "title: '常用训练设置'", "title: '步数与训练量'")
-    resource_section = _section(source, "title: '显存与速度'", "title: '缓存与预处理'")
-    resource_compact = _section(source, "'config-group-resource': [", "const VARIANT_METHOD_FAMILY")
-    assert "'gradient_checkpointing'," in primary_section
-    assert "'gradient_checkpointing'," not in resource_section
-    assert "'block_swap_transfer_dtype'," in resource_section
-    assert "'memory_probe_jsonl'," in resource_section
-    assert "'memory_probe_max_steps'," in resource_section
-    assert "'lokr_factor_group_size'," in resource_section
+    optimization_section = _section(source, "title: '显存与速度优化'", "title: '缓存与预处理'")
+    resource_compact = _section(source, "'config-group-resource': [", "'config-group-data-resource': [")
+    data_resource_compact = _section(source, "'config-group-data-resource': [", "const VARIANT_METHOD_FAMILY")
+    assert "'gradient_checkpointing'," not in primary_section
+    assert "'gradient_checkpointing'," in optimization_section
+    assert "'block_swap_transfer_dtype'," in optimization_section
+    assert "'memory_probe_jsonl'," in optimization_section
+    assert "'memory_probe_max_steps'," in optimization_section
+    assert "'peak_probe_jsonl'," in optimization_section
+    assert "'peak_probe_max_steps'," in optimization_section
+    assert "'peak_probe_level'," in optimization_section
+    assert "'lokr_factor_group_size'," in optimization_section
+    assert "'lokr_project_chunk_bytes'," in optimization_section
     assert "block_swap_transfer_dtype: '块交换传输精度'" in source
     assert "block_swap_transfer_dtype: ['bf16', 'fp8_e4m3']" in source
     assert "memory_probe_jsonl: '显存探针'" in source
     assert "memory_probe_jsonl: ['off', 'auto']" in source
+    assert "peak_probe_jsonl: '峰值探针'" in source
+    assert "peak_probe_jsonl: ['off', 'auto']" in source
+    assert "peak_probe_level: ['block', 'ops', 'lokr', 'full']" in source
     assert "lokr_factor_group_size: 'LoKr 分组'" in source
     assert "lokr_factor_group_size: [1, 2, 4, 8]" in source
-    assert "keys: ['blocks_to_swap', 'block_swap_transfer_dtype', 'selective_checkpoint', 'block_swap_profile_jsonl']" in resource_compact
-    assert "keys: ['memory_probe_jsonl', 'memory_probe_max_steps', 'lokr_factor_group_size']" in resource_compact
-    assert "keys: ['disable_block_swap_for_eval', 'unsloth_offload_checkpointing']" in resource_compact
-    assert "config-field-grid-2col config-field-grid-inline-flags" in resource_compact
+    assert "lokr_project_chunk_bytes: 'LoKr 张量切块阈值'" in source
+    assert "lokr_project_chunk_bytes: [1048576, 2097152, 4194304, 8388608, 16777216]" in source
+    assert "keys: ['blocks_to_swap', 'block_swap_transfer_dtype', 'selective_checkpoint', 'selective_checkpoint_blocks']" in resource_compact
+    assert "keys: ['block_swap_profile_jsonl', 'memory_probe_jsonl', 'memory_probe_max_steps']" in resource_compact
+    assert "keys: ['peak_probe_jsonl', 'peak_probe_max_steps', 'peak_probe_level']" in resource_compact
+    assert "keys: ['gradient_checkpointing', 'unsloth_offload_checkpointing', 'disable_block_swap_for_eval']" in resource_compact
+    assert "keys: ['max_data_loader_n_workers', 'vae_chunk_size', 'vae_disable_cache']" in data_resource_compact
+    assert "keys: ['dataloader_pin_memory', 'persistent_data_loader_workers']" in data_resource_compact
+    assert "config-field-grid-3col config-field-grid-inline-flags" in resource_compact
+    assert "config-field-grid-2col config-field-grid-inline-flags" in data_resource_compact
 
 
 def test_config_form_merges_loha_lokr_into_single_adapter_selector() -> None:
@@ -565,21 +693,30 @@ def test_config_form_merges_loha_lokr_into_single_adapter_selector() -> None:
     state_section = _section(source, "function readLoKrEnabled", "function updateLoKrFieldState")
 
     assert "lora_adapter_kind: 'lora'" in defaults
+    assert "use_vera: false" in defaults
+    assert "vera_projection_prng_key: 0" in defaults
+    assert "vera_d_initial: 0.1" in defaults
+    assert "vera_save_projection: false" in defaults
     assert "'lora_adapter_kind'" in layout
     assert "'use_loha'" not in layout
     assert "'use_lokr'" not in layout
-    assert "keys: ['network_dim', 'network_alpha', 'lora_adapter_kind', 'lokr_factor']" in source
+    assert "'use_vera'" not in layout
+    assert "keys: ['network_dim', 'network_alpha', 'lora_adapter_kind', 'lokr_factor', 'vera_projection_prng_key', 'vera_d_initial', 'vera_save_projection']" in source
     assert "{ family: 'lokr', key: 'lokr_factor_group_size', arg: 'lokr_factor_group_size', default: 8, valueType: 'integer' }" in network_arg_specs
+    assert "{ family: 'lokr', key: 'lokr_project_chunk_bytes', arg: 'lokr_project_chunk_bytes', default: 4194304, valueType: 'integer' }" in network_arg_specs
     assert "'use_loha'" in merged_fields
     assert "'use_lokr'" in merged_fields
+    assert "'use_vera'" in merged_fields
     assert "CONFIG_FORM_MERGED_FIELDS?.has?.(key)" in render_section
     assert "function loraAdapterFlagsForKind" in source
     assert "values.use_loha = flags.use_loha" in source
     assert "values.use_lokr = flags.use_lokr" in source
+    assert "values.use_vera = flags.use_vera" in source
     assert "if (key === 'lora_adapter_kind')" in collect_section
     assert "continue;" in collect_section
     assert "Object.assign(liveConfig, loraAdapterFlagsForKind(next));" in live_section
     assert "return readLiveLoraAdapterKind() === 'lokr';" in state_section
+    assert "return readLiveLoraAdapterKind() === 'vera';" in source
 
 
 def test_config_actions_are_de_noised_and_sticky_controls_are_wired() -> None:
@@ -622,7 +759,10 @@ def test_config_actions_are_de_noised_and_sticky_controls_are_wired() -> None:
     assert "data-sticky-config-category=\"required\"" in html
     assert "data-sticky-config-category=\"common\"" in html
     assert "data-sticky-config-category=\"preview\"" in html
+    assert "data-sticky-config-category=\"optimization\"" in html
     assert "data-sticky-config-category=\"advanced\"" in html
+    assert "btn-sticky-config-optimization" in html
+    assert "优化</strong>" in html
     assert "btn-sticky-config-advanced" in html
     assert "高级</strong>" in html
     assert "btn-sticky-save-config" not in html
@@ -632,9 +772,9 @@ def test_config_actions_are_de_noised_and_sticky_controls_are_wired() -> None:
     assert "selectConfigCategory(btn.dataset.stickyConfigCategory, { scrollToForm: true })" in listener_section
     assert "function updateConfigStickyDirectory" in source
     assert "STICKY_CONFIG_CATEGORY_IDS" in source
-    assert "new Set(['required', 'common', 'preview', 'advanced'])" in source
+    assert "new Set(['required', 'common', 'preview', 'optimization', 'advanced'])" in source
     assert "ADVANCED_CATEGORY_DEFAULT_OPEN_GROUPS" in source
-    assert "new Set(['显存与速度', '缓存与预处理'])" in source
+    assert "new Set(['缓存与预处理'])" in source
     assert "if (category?.advanced) {" in source
     assert "configFormState.showAdvanced = true;" in source
     assert "(visibleCategories.has(categoryId) || (category.advanced && hasFields))" in source
@@ -653,7 +793,7 @@ def test_config_actions_are_de_noised_and_sticky_controls_are_wired() -> None:
     sticky_css = _section(css, "#tab-config .config-sticky-actions", "#tab-config .config-sticky-title")
     config_left_css = _section(css, "#tab-config .config-left", "#tab-config .config-direct-editor")
     assert "width: var(--config-sticky-width, min(1040px, calc(100vw - 2rem)));" in sticky_css
-    assert "grid-template-columns: auto repeat(4, minmax(142px, 1fr));" in sticky_css
+    assert "grid-template-columns: auto repeat(5, minmax(118px, 1fr));" in sticky_css
     assert "left: var(--config-sticky-left, 1rem);" in sticky_css
     assert "position: fixed;" in sticky_css
     assert "position: sticky;" not in sticky_css
@@ -813,7 +953,7 @@ def test_history_manager_frontend_hooks_are_present() -> None:
     assert "未归档 · 最新 6 个训练任务" in html
     assert "btn-open-history-manager" in html
     assert 'type="module" src="/static/app.js?v=' in html
-    assert "import { MetricsChart } from './chart.js?v=module-bootstrap-20260603-" in source
+    assert "import { MetricsChart } from './chart.js?v=module-bootstrap-20260604-" in source
     assert "style.css?v=" in html
     assert "app.js?v=" in html
     assert "history-bulk-bar" in html
@@ -894,6 +1034,8 @@ def test_history_manager_frontend_hooks_are_present() -> None:
     assert "saveHistoryCollectionSettings" in source
     assert "collection_order" in source
     assert "config_group_order" in source
+    assert "if (aIndex < 0) return -1;" in source
+    assert "if (bIndex < 0) return 1;" in source
     assert "moveHistoryCollection" in source
     assert "moveHistoryConfigGroup" in source
     assert "reorderHistoryCollectionValue" in source
@@ -975,7 +1117,12 @@ def test_history_manager_frontend_hooks_are_present() -> None:
     assert "selectedHistoryTaskIds" in source
     assert "applyHistoryBatchAction" in source
     assert "deleteHistoryTasksThorough" in source
-    assert "confirm_text: confirmText" in source
+    assert "confirmed: true" in source
+    assert "confirm_text: confirmText" not in source
+    assert "const confirmText = '彻底删除';" not in source
+    assert "title: '确认要删吗'" in source
+    assert "confirmText: '确认要删吗'" in source
+    assert "输入“彻底删除”确认" not in source
     assert "彻底删除" in source
     assert "/api/training/history/batch" in source
     assert "openHistoryDetailDialog" in source
@@ -1208,6 +1355,19 @@ def test_history_manager_frontend_hooks_are_present() -> None:
     assert "max-height: min(520px, calc(100vh - 18rem));" in css
     assert ".history-manager-list[data-group-mode=\"collections\"]" in css
     assert "height: min(680px, calc(100vh - 14rem));" in css
+    assert "height: calc(100vh - 176px);" in css
+    assert "max-height: calc(100vh - 176px);" in css
+    assert "--history-training-panel-head-height: 42px;" in css
+    assert "#tab-training .history-collection-nav-head {" in css
+    nav_head_css = _section(css, "#tab-training .history-collection-nav-head {", "#tab-training .history-collection-nav-head .history-collections-panel-title")
+    assert "height: var(--history-training-panel-head-height);" in nav_head_css
+    assert "min-height: var(--history-training-panel-head-height);" in nav_head_css
+    assert "max-height: var(--history-training-panel-head-height);" in nav_head_css
+    assert "padding: 0 0.72rem;" in nav_head_css
+    nav_title_css = _section(css, "#tab-training .history-collection-nav-head .history-collections-panel-title", "#tab-training .history-collection-create-btn")
+    assert "height: auto;" in nav_title_css
+    assert "padding: 0;" in nav_title_css
+    assert "background: transparent;" in nav_title_css
     assert "grid-template-rows: auto auto minmax(0, 1fr);" in css
     assert "align-items: stretch;" in css
     assert "overflow: hidden;" in css
@@ -1449,16 +1609,22 @@ def test_history_detail_overview_de_noises_paths_and_resume_weights() -> None:
     overview = _section(overview_source, "function renderHistoryDetailOverview", "function renderHistoryDetailProgress")
     progress = _section(overview_source, "function renderHistoryDetailProgress", "function renderHistoryDetailPathSummary")
     path_summary = _section(overview_source, "function renderHistoryDetailPathSummary", "return { renderHistoryDetailOverview")
+    curve_index_source = _frontend_module_text("js/features/history-detail/curve/index.js")
     resume = _section(resume_source, "function renderHistoryDetailResume", "function renderResumeDiagnosticBlock")
     weights = _section(resume_source, "function renderHistoryResumeWeightOptions", "function formatDiagnosticBool")
     row_helpers = _section(ui_source, "export function historyDetailRow", "export function historyDetailEmptyText")
 
     assert "icon.className = `metric-icon metric-icon-${iconName}`" in overview
+    assert "['平均速度', formatHistoryAverageSpeed(task), 'gauge']" in overview
     assert "['训练总时间', formatHistoryTrainingDuration(task), 'time']" in overview
+    assert "function formatHistoryAverageSpeed(record)" in overview_source
     assert "function formatHistoryTrainingDuration(record)" in overview_source
     assert "ctx.format.formatDuration" in overview_source
     assert "muted: taskFinished && ['队列', '续训'].includes(label) && value === '-'" in overview
     assert "section.classList.toggle('is-complete', finished);" in progress
+    assert "historyCurveStatGroup('速度组'" in curve_index_source
+    assert "['平均速度', formatHistoryAverageSpeed(task)]" in curve_index_source
+    assert "['采样范围', formatAverageSpeedStepRange(task)]" in curve_index_source
 
     assert "historyDetailRunRoot(task)" in path_summary
     assert "'运行根目录'" in path_summary
@@ -1477,6 +1643,7 @@ def test_history_detail_overview_de_noises_paths_and_resume_weights() -> None:
 
     assert ".history-detail-progress.is-complete .history-detail-progress-bar span" in css
     assert ".history-detail-stat .metric-icon-time::before" in css
+    assert ".history-curve-stat-group.speed" in css
     assert ".history-detail-path-summary .history-detail-path-root" in css
     assert ".history-detail-copy-btn" in css
     assert ".history-resume-control-row" in css
@@ -1523,7 +1690,7 @@ def test_history_detail_config_files_are_tool_ready() -> None:
     ):
         assert artifact in path_items
 
-    assert "module-bootstrap-20260603-" in html
+    assert "module-bootstrap-20260604-" in html
     for selector in (
         ".history-config-viewer",
         ".history-config-toolbar",
@@ -1560,7 +1727,7 @@ def test_output_scope_group_does_not_expose_unwired_stage_resolution_dialog() ->
 def test_config_form_hides_retired_and_unread_fields() -> None:
     source = APP_JS.read_text(encoding="utf-8")
 
-    resource_section = _section(source, "title: '显存与速度'", "title: '输出格式与训练范围'")
+    resource_section = _section(source, "title: '显存与速度优化'", "title: '缓存与预处理'")
     method_section = _section(source, "title: '方法内部与实验架构'", "title: 'Soft Tokens 参数'")
     retired_fields = [
         "per_channel_scaling",
@@ -1588,33 +1755,82 @@ def test_config_form_hides_retired_and_unread_fields() -> None:
     assert "const SOFT_TOKENS_UI_DEFAULT_FIELDS = new Set([]);" in source
 
 
+def test_config_form_auto_fixes_came_optimizer_args_frontend_hooks_are_present() -> None:
+    source = APP_JS.read_text(encoding="utf-8")
+    compatibility_section = _section(source, "function normalizeOptimizerType", "function loraAdapterFlagsMatchConfig")
+    load_config_section = _section(source, "async function loadConfig()", "function syncConfigDraftFromForm")
+    prepare_section = _section(source, "async function prepareFormPatchValues", "function shouldSkipUiDefaultField")
+
+    assert "function normalizeCameOptimizerArgs(args)" in compatibility_section
+    assert "function applyOptimizerCompatibilityPatch(values)" in compatibility_section
+    assert "normalizeOptimizerType(optimizerType) !== 'came'" in compatibility_section
+    assert "cameBetasNeedPatch(rawBetas)" in compatibility_section
+    assert "result[betasIndex] = 'betas=0.9,0.999,0.9999';" in compatibility_section
+    assert "const compatibilityPatch = applyConfigCompatibilityDrafts();" in load_config_section
+    assert "function applyConfigCompatibilityDrafts()" in load_config_section
+    assert "configFormState.draftValues.set(key, value);" in load_config_section
+    assert "已自动修正 CAME optimizer_args 的 betas 格式" in load_config_section
+    assert "const nextValues = applyOptimizerCompatibilityPatch(values);" in prepare_section
+
+
 def test_balanced_16g_block_swap_fields_are_visible() -> None:
+    source = APP_JS.read_text(encoding="utf-8")
     form_layout = _frontend_module_text("js/config/catalog/form-layout.js")
     labels_options = _frontend_module_text("js/config/catalog/labels-options.js")
     guides = _frontend_module_text("js/config/catalog/guides.js")
 
-    resource_section = _section(form_layout, "title: '显存与速度'", "title: '缓存与预处理'")
+    optimization_section = _section(form_layout, "title: '显存与速度优化'", "title: '缓存与预处理'")
 
     for key in (
         "blocks_to_swap",
         "selective_checkpoint",
+        "selective_checkpoint_blocks",
         "block_swap_profile_jsonl",
         "memory_probe_jsonl",
         "memory_probe_max_steps",
+        "peak_probe_jsonl",
+        "peak_probe_max_steps",
+        "peak_probe_level",
         "lokr_factor_group_size",
+        "lokr_project_chunk_bytes",
         "disable_block_swap_for_eval",
     ):
-        assert f"'{key}'," in resource_section
+        assert f"'{key}'," in optimization_section
 
     assert "block_swap_profile_jsonl: '块交换 Profile'" in labels_options
     assert "memory_probe_jsonl: '显存探针'" in labels_options
     assert "memory_probe_max_steps: '探针步数'" in labels_options
+    assert "peak_probe_jsonl: '峰值探针'" in labels_options
+    assert "peak_probe_max_steps: '峰值探针步数'" in labels_options
+    assert "peak_probe_level: '峰值探针粒度'" in labels_options
     assert "lokr_factor_group_size: 'LoKr 分组'" in labels_options
+    assert "lokr_project_chunk_bytes: 'LoKr 张量切块阈值'" in labels_options
+    assert "use_vera: '启用 VeRA'" in labels_options
+    assert "vera_projection_prng_key: 'VeRA 投影随机种子'" in labels_options
+    assert "vera_d_initial: 'VeRA d 初始值'" in labels_options
+    assert "vera_save_projection: '保存 VeRA 投影矩阵'" in labels_options
     assert "selective_checkpoint: '选择性重算'" in labels_options
+    assert "selective_checkpoint_blocks: '定点重算块'" in labels_options
     assert "disable_block_swap_for_eval: '评估时暂停交换块'" in labels_options
-    assert "selective_checkpoint: ['off', 'mlp_only', 'every_other']" in labels_options
+    assert "selective_checkpoint: ['off', 'mlp_layer1_only', 'peak_blocks_mlp_layer1', 'peak_blocks_mlp', 'mlp_only', 'every_other']" in labels_options
     assert "memory_probe_jsonl: ['off', 'auto']" in labels_options
+    assert "peak_probe_jsonl: ['off', 'auto']" in labels_options
+    assert "peak_probe_level: ['block', 'ops', 'lokr', 'full']" in labels_options
     assert "lokr_factor_group_size: [1, 2, 4, 8]" in labels_options
+    assert "lokr_project_chunk_bytes: [1048576, 2097152, 4194304, 8388608, 16777216]" in labels_options
+    assert "lora_adapter_kind: ['lora', 'loha', 'lokr', 'vera']" in labels_options
+    assert "use_vera: [false, true]" in labels_options
+    assert "vera_projection_prng_key: [0, 1, 2, 3]" in labels_options
+    assert "vera_d_initial: [0.01, 0.05, 0.1, 0.2]" in labels_options
+    assert "vera_save_projection: [false, true]" in labels_options
+    assert "network_dim: [" not in labels_options
+    assert "network_alpha: [" not in labels_options
+    numeric_field_section = _section(source, "function isNumericField", "function isIntegerNumericField")
+    integer_field_section = _section(source, "function isIntegerNumericField", "function allowsNegativeNumberField")
+    assert "'network_dim'," in numeric_field_section
+    assert "'network_alpha'," in numeric_field_section
+    assert "'network_dim'," in integer_field_section
+    assert "'network_alpha'," not in integer_field_section
     assert "'max-autotune-no-cudagraphs'" in labels_options
     assert "balanced_16g" in guides
     assert "预测式 DiT block swap" in guides

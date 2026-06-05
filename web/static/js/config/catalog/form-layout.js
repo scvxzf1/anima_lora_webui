@@ -22,11 +22,13 @@ export const FORM_SECTION_DEFS = [
             'save_every_n_epochs',
             'checkpointing_epochs',
             'network_train_unet_only',
-            'gradient_checkpointing',
             'network_dim',
             'network_alpha',
             'lora_adapter_kind',
             'lokr_factor',
+            'vera_projection_prng_key',
+            'vera_d_initial',
+            'vera_save_projection',
             'network_weights',
             'dim_from_weights',
             'optimizer_type',
@@ -76,28 +78,50 @@ export const FORM_SECTION_DEFS = [
         ],
     },
     {
-        title: '显存与速度',
-        description: 'OOM、训练速度和编译相关；显存不足时先看这里。',
+        title: '显存与速度优化',
+        description: 'OOM、训练速度、block swap、checkpoint、显存探针和编译相关；显存不足或速度异常时先看这里。',
         open: false,
         className: 'config-group-resource',
         keys: [
             'blocks_to_swap',
             'block_swap_transfer_dtype',
             'selective_checkpoint',
+            'selective_checkpoint_blocks',
             'block_swap_profile_jsonl',
             'memory_probe_jsonl',
             'memory_probe_max_steps',
-            'lokr_factor_group_size',
-            'disable_block_swap_for_eval',
+            'peak_probe_jsonl',
+            'peak_probe_max_steps',
+            'peak_probe_level',
+            'gradient_checkpointing',
             'unsloth_offload_checkpointing',
+            'disable_block_swap_for_eval',
             'mixed_precision',
             'attn_mode',
             'torch_compile',
             'compile_inductor_mode',
+            'use_custom_down_autograd',
+        ],
+    },
+    {
+        title: 'LoKr 专用优化',
+        description: 'LoKr 16G / Kronecker adapter 的专用显存与吞吐调优；普通 LoRA 不需要手动调整。',
+        open: false,
+        className: 'config-group-lokr-optimization',
+        keys: [
+            'lokr_factor_group_size',
+            'lokr_project_chunk_bytes',
+        ],
+    },
+    {
+        title: '数据加载与 VAE 资源',
+        description: 'DataLoader、VAE 分块和缓存行为；主要影响预处理、采样和数据搬运阶段的显存/速度。',
+        open: false,
+        className: 'config-group-data-resource',
+        keys: [
             'max_data_loader_n_workers',
             'vae_chunk_size',
             'vae_disable_cache',
-            'use_custom_down_autograd',
             'dataloader_pin_memory',
             'persistent_data_loader_workers',
         ],
@@ -285,12 +309,17 @@ export const FORM_CATEGORY_DEFS = [
         sections: ['训练中预览图'],
     },
     {
+        id: 'optimization',
+        title: '优化',
+        description: '显存、速度、诊断和编译。',
+        sections: ['显存与速度优化', 'LoKr 专用优化', '数据加载与 VAE 资源'],
+    },
+    {
         id: 'advanced',
         title: '高级',
-        description: '显存、缓存、速度和方法实验参数。',
+        description: '缓存、输出和方法实验参数。',
         advanced: true,
         sections: [
-            '显存与速度',
             '缓存与预处理',
             '更多数据集配置',
             'SPD CLI 实验',
@@ -303,8 +332,8 @@ export const FORM_CATEGORY_DEFS = [
         ],
     },
 ];
-export const STICKY_CONFIG_CATEGORY_IDS = new Set(['required', 'common', 'preview', 'advanced']);
-export const ADVANCED_CATEGORY_DEFAULT_OPEN_GROUPS = new Set(['显存与速度', '缓存与预处理']);
+export const STICKY_CONFIG_CATEGORY_IDS = new Set(['required', 'common', 'preview', 'optimization', 'advanced']);
+export const ADVANCED_CATEGORY_DEFAULT_OPEN_GROUPS = new Set(['缓存与预处理']);
 export const FORM_CATEGORY_SECTION_MAP = new Map(
     FORM_CATEGORY_DEFS.flatMap((category) =>
         category.sections.map((sectionTitle) => [sectionTitle, category.id])
@@ -318,7 +347,7 @@ export const CONFIG_COMPACT_FIELD_GROUPS = {
         },
         {
             className: 'config-field-grid-4col',
-            keys: ['network_dim', 'network_alpha', 'lora_adapter_kind', 'lokr_factor'],
+            keys: ['network_dim', 'network_alpha', 'lora_adapter_kind', 'lokr_factor', 'vera_projection_prng_key', 'vera_d_initial', 'vera_save_projection'],
         },
     ],
     'config-group-steps': [
@@ -342,15 +371,19 @@ export const CONFIG_COMPACT_FIELD_GROUPS = {
     'config-group-resource': [
         {
             className: 'config-field-grid-4col',
-            keys: ['blocks_to_swap', 'block_swap_transfer_dtype', 'selective_checkpoint', 'block_swap_profile_jsonl'],
+            keys: ['blocks_to_swap', 'block_swap_transfer_dtype', 'selective_checkpoint', 'selective_checkpoint_blocks'],
         },
         {
             className: 'config-field-grid-3col',
-            keys: ['memory_probe_jsonl', 'memory_probe_max_steps', 'lokr_factor_group_size'],
+            keys: ['block_swap_profile_jsonl', 'memory_probe_jsonl', 'memory_probe_max_steps'],
         },
         {
-            className: 'config-field-grid-2col config-field-grid-inline-flags',
-            keys: ['disable_block_swap_for_eval', 'unsloth_offload_checkpointing'],
+            className: 'config-field-grid-3col',
+            keys: ['peak_probe_jsonl', 'peak_probe_max_steps', 'peak_probe_level'],
+        },
+        {
+            className: 'config-field-grid-3col config-field-grid-inline-flags',
+            keys: ['gradient_checkpointing', 'unsloth_offload_checkpointing', 'disable_block_swap_for_eval'],
         },
         {
             className: 'config-field-grid-3col',
@@ -359,6 +392,16 @@ export const CONFIG_COMPACT_FIELD_GROUPS = {
         {
             className: 'config-field-grid-3col',
             keys: ['max_data_loader_n_workers', 'vae_chunk_size', 'vae_disable_cache'],
+        },
+    ],
+    'config-group-data-resource': [
+        {
+            className: 'config-field-grid-3col',
+            keys: ['max_data_loader_n_workers', 'vae_chunk_size', 'vae_disable_cache'],
+        },
+        {
+            className: 'config-field-grid-2col config-field-grid-inline-flags',
+            keys: ['dataloader_pin_memory', 'persistent_data_loader_workers'],
         },
     ],
 };

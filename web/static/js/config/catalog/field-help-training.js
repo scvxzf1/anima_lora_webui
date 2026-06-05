@@ -1,4 +1,4 @@
-import { help } from './help-builder.js?v=module-bootstrap-20260603-6';
+import { help } from './help-builder.js?v=module-bootstrap-20260604-8';
 
 export const FIELD_HELP_TRAINING_ZH = {    learning_rate: help(
         "学习率，决定每一步参数改动有多大。",
@@ -200,6 +200,70 @@ export const FIELD_HELP_TRAINING_ZH = {    learning_rate: help(
         ["fp8_e4m3 会引入 frozen base 权重量化误差。"],
         ["只影响 frozen base block，不会量化 LoRA、router 或优化器状态。"],
         "保持 bf16；只有做 FP8 交换传输消融时再改为 fp8_e4m3。"
+    ),
+    selective_checkpoint: help(
+        "只对部分 DiT 计算做 activation 重算。",
+        "off 是最快默认；mlp_layer1_only 只重算每个 block 的 MLP 第一层；peak_blocks_* 只对指定高峰 block 生效。",
+        ["能在 block swap 仍然接近 OOM 时补出一些显存余量。"],
+        ["会增加 backward 重算成本，速度会下降。"],
+        ["不要和 full gradient_checkpointing 或 Unsloth offload 叠加。"],
+        "LoKr 16G 优先试 mlp_layer1_only 或 peak_blocks_mlp_layer1；普通 LoRA 保持 off。"
+    ),
+    selective_checkpoint_blocks: help(
+        "定点重算的 DiT block 编号列表。",
+        "只在 peak_blocks_mlp_layer1 / peak_blocks_mlp 模式下使用。支持 25-27 或 24,25,26,27；留空/auto 表示最后 3 个 block。",
+        ["可以只重算峰值最高的后段 block，减少速度损失。"],
+        ["填错范围会启动失败，Anima 当前有效 block 是 0-27。"],
+        ["对 off、mlp_layer1_only、mlp_only、every_other 没有效果。"],
+        "当前 LoKr 16G 消融优先填 25-27。"
+    ),
+    block_swap_profile_jsonl: help(
+        "记录每个交换块的搬运和等待耗时。",
+        "off 关闭；auto 在 WebUI 训练时写入当前任务目录的 block_swap_profile.jsonl。",
+        ["能判断 block swap 是否真的卡在 H2D/D2H 或等待同步。"],
+        ["会增加少量 I/O，长训通常只在调参阶段开启。"],
+        ["显式路径写错会让 profile 无法落盘，但不应影响训练。"],
+        "Balanced 16G 和 LoKr 16G 排查时用 auto；稳定后可关掉。"
+    ),
+    memory_probe_jsonl: help(
+        "记录训练级 CUDA 显存和 adapter/optimizer 摘要。",
+        "off 关闭；auto 在 WebUI 训练时写入当前任务目录的 memory_probe.jsonl。",
+        ["能定位 before_forward、backward、optimizer 等阶段的显存峰值。"],
+        ["详细快照会带来少量开销，不建议长期每步记录。"],
+        ["它是诊断工具，不会直接降低显存。"],
+        "OOM 排查时设 auto，并把探针步数设为 1~3。"
+    ),
+    memory_probe_max_steps: help(
+        "显存探针记录详细 step 快照的步数上限。",
+        "0 表示每步记录；setup 摘要不受这个限制。",
+        ["短跑定位时可以减少日志体积。"],
+        ["设为 0 会产生大量 JSONL，不适合长训。"],
+        ["步数太少可能错过后续才出现的峰值。"],
+        "一般填 1、2 或 3；长训稳定后关闭显存探针。"
+    ),
+    peak_probe_jsonl: help(
+        "记录更细粒度的 DiT block / LoKr 峰值显存事件。",
+        "off 关闭；auto 在 WebUI 训练时写入当前任务目录的 peak_probe.jsonl。",
+        ["能定位具体 block、MLP 或 LoKr delta apply 附近的峰值。"],
+        ["ops/lokr/full 粒度会扰动 compiled graph，只适合短跑定位。"],
+        ["它只做观测，不改变训练数学结果。"],
+        "常规 50-step 定位用 block；只在短跑深查时改 ops、lokr 或 full。"
+    ),
+    peak_probe_max_steps: help(
+        "峰值探针记录详细事件的步数上限。",
+        "0 表示每步记录；峰值探针通常比普通显存探针更细。",
+        ["控制 JSONL 体积和额外观测开销。"],
+        ["设太大可能明显干扰速度统计。"],
+        ["设太小可能只看到 warmup，不代表稳定阶段。"],
+        "建议短跑填 1~2；需要跨 warmup 再填 5。"
+    ),
+    peak_probe_level: help(
+        "峰值探针的事件粒度。",
+        "block 只记录 DiT block 边界；ops 加 block 内 attention/MLP；lokr 加 LoKr delta；full 全开。",
+        ["block 对 torch.compile 扰动最小。"],
+        ["full 信息最多，但最容易影响速度和编译缓存。"],
+        ["不要把 full 粒度的速度当成真实性能。"],
+        "默认 block；只有确认 LoKr/MLP 峰值时再临时提高粒度。"
     ),
     torch_compile: help(
         "是否让 PyTorch 先编译模型计算图再训练。",

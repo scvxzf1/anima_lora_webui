@@ -295,18 +295,28 @@ class _FakeCheckpointBlock:
         self.cpu_offload_checkpointing = cpu_offload
         self.unsloth_offload_checkpointing = unsloth_offload
         self.mlp_checkpointing = False
+        self.mlp_layer1_checkpointing = False
 
     def disable_gradient_checkpointing(self) -> None:
         self.gradient_checkpointing = False
         self.cpu_offload_checkpointing = False
         self.unsloth_offload_checkpointing = False
         self.mlp_checkpointing = False
+        self.mlp_layer1_checkpointing = False
 
     def enable_mlp_checkpointing(self) -> None:
         self.gradient_checkpointing = False
         self.cpu_offload_checkpointing = False
         self.unsloth_offload_checkpointing = False
         self.mlp_checkpointing = True
+        self.mlp_layer1_checkpointing = False
+
+    def enable_mlp_layer1_checkpointing(self) -> None:
+        self.gradient_checkpointing = False
+        self.cpu_offload_checkpointing = False
+        self.unsloth_offload_checkpointing = False
+        self.mlp_checkpointing = False
+        self.mlp_layer1_checkpointing = True
 
 
 def test_selective_checkpoint_modes_set_block_flags() -> None:
@@ -331,11 +341,57 @@ def test_selective_checkpoint_modes_set_block_flags() -> None:
     assert model.selective_checkpoint == "mlp_only"
     assert not any(block.gradient_checkpointing for block in model.blocks)
     assert all(block.mlp_checkpointing for block in model.blocks)
+    assert not any(block.mlp_layer1_checkpointing for block in model.blocks)
+
+    Anima.enable_selective_checkpointing(model, "mlp_layer1_only")
+    assert model.selective_checkpoint == "mlp_layer1_only"
+    assert not any(block.gradient_checkpointing for block in model.blocks)
+    assert not any(block.mlp_checkpointing for block in model.blocks)
+    assert all(block.mlp_layer1_checkpointing for block in model.blocks)
+
+    Anima.enable_selective_checkpointing(
+        model,
+        "peak_blocks_mlp_layer1",
+        blocks="1-2",
+    )
+    assert model.selective_checkpoint == "peak_blocks_mlp_layer1"
+    assert [block.mlp_layer1_checkpointing for block in model.blocks] == [
+        False,
+        True,
+        True,
+        False,
+    ]
+    assert not any(block.mlp_checkpointing for block in model.blocks)
+
+    Anima.enable_selective_checkpointing(model, "peak_blocks_mlp", blocks="2,3")
+    assert model.selective_checkpoint == "peak_blocks_mlp"
+    assert [block.mlp_checkpointing for block in model.blocks] == [
+        False,
+        False,
+        True,
+        True,
+    ]
+    assert not any(block.mlp_layer1_checkpointing for block in model.blocks)
 
     Anima.enable_selective_checkpointing(model, "off")
     assert model.selective_checkpoint == "off"
     assert not any(block.gradient_checkpointing for block in model.blocks)
     assert not any(block.mlp_checkpointing for block in model.blocks)
+    assert not any(block.mlp_layer1_checkpointing for block in model.blocks)
+
+
+def test_peak_probe_attachment_sets_block_indices() -> None:
+    from library.anima.models import Anima
+
+    model = object.__new__(Anima)
+    model.blocks = [_FakeCheckpointBlock() for _ in range(3)]
+    probe = object()
+
+    Anima.enable_peak_probe(model, probe)
+
+    assert model._peak_probe is probe
+    assert [block._peak_probe for block in model.blocks] == [probe, probe, probe]
+    assert [block._block_idx for block in model.blocks] == [0, 1, 2]
 
 
 def test_block_swap_compile_mode_is_downgraded_for_cudagraph_modes(caplog) -> None:
