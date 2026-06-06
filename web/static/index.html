@@ -17,7 +17,7 @@
             }
         })();
     </script>
-    <link rel="stylesheet" href="/static/style.css?v=history-top-align-20260604-2">
+    <link rel="stylesheet" href="/static/style.css?v=config-preset-fallback-history-layout-20260607-4">
 </head>
 <body>
     <header>
@@ -124,10 +124,10 @@
                                 <label>变体:
                                     <select id="variant-select"></select>
                                 </label>
-                                <label>预设:
-                                    <select id="preset-select"></select>
-                                </label>
                             </div>
+                            <label class="config-run-preset">运行覆盖:
+                                <select id="preset-select" aria-label="运行覆盖预设" title="来自 configs/presets.toml，会在训练时覆盖硬件、采样或性能参数"></select>
+                            </label>
                             <div id="gpu-picker" class="gpu-picker">
                                 <span class="gpu-picker-caption">GPU选择:</span>
                                 <button id="gpu-picker-toggle" class="gpu-picker-toggle" type="button" aria-expanded="false">读取 GPU...</button>
@@ -1272,6 +1272,6 @@
 
     <div id="config-switch-toast" class="config-switch-toast" role="status" aria-live="polite" hidden></div>
 
-    <script type="module" src="/static/app.js?v=module-bootstrap-20260604-10"></script>
+    <script type="module" src="/static/app.js?v=module-bootstrap-20260604-11"></script>
 </body>
 </html>

@@ -167,6 +167,8 @@ def test_preview_feature_modules_are_loaded_from_production_entrypoint() -> None
     preview_index = _frontend_module_text("js/features/preview/index.js")
     preview_state = _frontend_module_text("js/features/preview/state.js")
     preview_workspace = _frontend_module_text("js/features/preview/workspace.js")
+    preview_images = _frontend_module_text("js/features/preview/images.js")
+    css = STYLE_CSS.read_text(encoding="utf-8")
 
     assert "createPreviewFeature(ctx, {" in legacy_source
     for name in (
@@ -195,6 +197,13 @@ def test_preview_feature_modules_are_loaded_from_production_entrypoint() -> None
     assert "target.appendChild(workspace);" in preview_workspace
     assert "document.getElementById('preview-workspace')" in preview_workspace
     assert "export function normalizePreviewGroup(group)" in preview_state
+    assert "grid.appendChild(createPreviewCard(image, index));" in preview_images
+    assert "img.loading = previewImageLoadingMode(index);" in preview_images
+    assert "const isHistorySelection = Boolean(state.selectedTaskId || state.selectedGroup);" in preview_images
+    assert "return isHistorySelection && index < 80 ? 'eager' : 'lazy';" in preview_images
+    assert "preview-card-error-message" in preview_images
+    assert "图片加载失败" in preview_images
+    assert ".preview-card-error-message" in css
 
 
 
@@ -310,8 +319,7 @@ def test_new_training_launch_enters_live_monitoring() -> None:
 
     assert "returnToLiveTraining({ refresh: false });" in helper
     assert 'document.querySelector(\'[data-tab="training"]\')?.click();' in helper
-    assert "pollStatus();" in helper
-    assert "replayTrainingLogs();" in helper
+    assert "recoverLiveTrainingState();" in helper
     assert "previousTab === 'training' && nextTab !== 'training'" in tab_setup
     assert "resetTrainingExpandedStateOnLeave();" in tab_setup
 
@@ -335,8 +343,50 @@ def test_return_to_live_training_clears_runtime_cursor() -> None:
         "trainingRuntime.logLineCount = 0;",
         "stepCounter = 0;",
         "lossChart?.clear();",
+        "recoverLiveTrainingState();",
     ):
         assert snippet in body
+
+
+def test_live_training_rest_fallbacks_are_wired() -> None:
+    source = APP_JS.read_text(encoding="utf-8")
+    poll_section = _section(source, "async function pollStatus", "async function loadTrainingHistoryList")
+    update_status = _section(source, "function updateStatus", "function resetLiveSystemPeaks")
+    health_section = _section(source, "function refreshTrainingHealth", "function parseMetricsFromProgressLine")
+    recovery_section = _section(source, "async function recoverLiveTrainingState", "function updateProgress")
+    ready_section = _section(source, "document.addEventListener('DOMContentLoaded'", "function currentTheme")
+
+    assert "function isLiveRunningState" in source
+    assert "last_log_line: status.last_log_line" in poll_section
+    assert "error_hint: status.error_hint" in poll_section
+    assert "applyStatusSnapshotFallbacks(status);" in poll_section
+    assert "options.forceReplayMetrics || isLiveRunningState()" in poll_section
+    assert "options.forceReplayMetrics || isLiveRunningState() || hasStatusPayload(status.latest_metric)" not in poll_section
+    assert "function applyStatusSnapshotFallbacks(status = {})" in poll_section
+    assert "updateProgress(status.latest_progress, { replay: true });" in poll_section
+    assert "updateMetrics(status.latest_metric, { replay: true });" in poll_section
+    assert "updateSystem(status.latest_system, { replay: true });" in poll_section
+    assert "function hasStatusPayload(value)" in poll_section
+
+    assert "const state = liveStatusState(msg);" in update_status
+    assert "const terminalMessage = terminalStatusMessage(msg);" in update_status
+    assert "trainingRuntime.lastTerminalMessage = state === 'error' ? terminalMessage : '';" in update_status
+    assert "const canStop = isLiveRunningState(state);" in update_status
+    assert "stopBtn.disabled = !canStop;" in update_status
+    assert "function liveStatusState(msg = {})" in update_status
+    assert "if (state === 'idle' && terminalStatusMessage(msg)) return 'error';" in update_status
+    assert "function terminalStatusMessage(msg = {})" in update_status
+    assert "const state = String(msg.state || '');" in update_status
+    assert "const lineIsError = logLineTone(line) === 'error';" in update_status
+    assert "if (state !== 'error' && !lineIsError) return '';" in update_status
+    assert "return line.includes(hint) ? line : `${line}；${hint}`;" in update_status
+
+    assert "trainingRuntime.state === 'error' && trainingRuntime.lastTerminalMessage" in health_section
+    assert "最近任务异常" in health_section
+    assert "pollStatus({ forceReplayMetrics: true });" in recovery_section
+    assert "replayTrainingLogs({ includeMetrics: false });" in recovery_section
+    assert "document.addEventListener('visibilitychange'" in ready_section
+    assert "window.addEventListener('online', recoverLiveTrainingState);" in ready_section
 
 
 def test_training_queue_frontend_hooks_are_present() -> None:
@@ -365,6 +415,8 @@ def test_training_queue_frontend_hooks_are_present() -> None:
     current_queue = _section(queue_enqueue, "async function queueCurrentTrainingFromConfig", "async function enqueueTrainingFromConfig")
     enqueue_section = _section(queue_enqueue, "async function enqueueTrainingFromConfig", "async function enqueueTrainingQueueRequest")
     view_section = _section(legacy_source, "function renderTrainingViewMode", "// ── 状态轮询 ──")
+    stop_section = _section(legacy_source, "async function stopTraining()", "    // ── WebSocket ──")
+    poll_section = _section(legacy_source, "async function pollStatus", "async function loadTrainingHistoryList")
     assert "createQueueFeature(ctx, {" in legacy_source
     assert "ensureQueueFeature().bindQueueEvents();" in listener_section
     for name in (
@@ -382,6 +434,9 @@ def test_training_queue_frontend_hooks_are_present() -> None:
     assert "function renderTrainingQueue()" in queue_section
     assert "function renderTrainingQueueManager()" in queue_section
     assert "function queueManagerSections(state)" in queue_state
+    assert "const isErrorOnly = payload.ok === false && !hasItems" in queue_state
+    assert "isErrorOnly ? (previous.items || []) : []" in queue_state
+    assert "isErrorOnly ? (previous.summary || {}) : {}" in queue_state
     assert "function createTrainingQueueSection" in queue_section
     assert "function createTrainingQueueItem" in queue_section
     assert "function createTrainingQueueManagerItem" in queue_section
@@ -466,6 +521,15 @@ def test_training_queue_frontend_hooks_are_present() -> None:
     assert "const startPaused = options.startPaused !== false" in enqueue_section
     assert "队列会保存独立运行配置并保持暂停" in enqueue_section
     assert "includeContinueSource === false" in enqueue_section
+    assert "const wasDisabled = Boolean(stopBtn?.disabled)" in stop_section
+    assert "await pollStatus();" in stop_section
+    assert "await loadTrainingQueue();" in stop_section
+    assert "setTrainingHealthNotice(message, 'error')" in stop_section
+    assert "let trainingStatusPollFailures = 0" in legacy_source
+    assert "if (status.ok === false) throw new Error(status.error || '读取训练状态失败')" in poll_section
+    assert "trainingStatusPollFailures < 3" in poll_section
+    assert "训练状态轮询连续失败" in poll_section
+    assert "setTrainingHealthNotice(message, 'error')" in poll_section
     assert "async function enqueueTrainingQueueRequest" in queue_enqueue
     assert "createTomlGroupActionButton('加入队列', () => enqueueTomlGroupToQueue(group)" in group_actions
     assert "queueableTomlGroupFiles(group)" in group_actions
@@ -526,9 +590,15 @@ def test_config_toolbar_is_first_visible_config_row() -> None:
     assert "配置工作台" not in editor_html
     assert "训练配置" not in editor_html
     assert "config-selection-state\" hidden" in toolbar_html
+    hidden_selection_html = _section(toolbar_html, '<div class="config-selection-state" hidden>', '</div>')
     assert "method-select" in toolbar_html
     assert "variant-select" in toolbar_html
     assert "preset-select" in toolbar_html
+    assert "preset-select" not in hidden_selection_html
+    assert "config-run-preset" in toolbar_html
+    assert "运行覆盖" in toolbar_html
+    assert "来自 configs/presets.toml" in toolbar_html
+    assert ".config-run-preset" in css
     assert 'id="choice-guide"' not in html
     assert "padding: 1rem 1.65rem 1.7rem;" in form_workspace_css
     assert "align-items: center;" in toolbar_css
@@ -537,12 +607,14 @@ def test_config_toolbar_is_first_visible_config_row() -> None:
 def test_config_form_uses_navigation_search_and_progressive_disclosure() -> None:
     source = APP_JS.read_text(encoding="utf-8")
     css = STYLE_CSS.read_text(encoding="utf-8")
+    labels_options = (STATIC_DIR / "js" / "config" / "catalog" / "labels-options.js").read_text(encoding="utf-8")
 
     category_defs = _section(source, "const FORM_CATEGORY_DEFS = [", "const FORM_CATEGORY_SECTION_MAP")
     render_section = _section(source, "function renderConfigForm", "function shouldRenderConfigSection")
     order_section = _section(source, "function appendConfigGroupsByCategory", "function createGroup")
     collect_section = _section(source, "function collectChangedFormValues", "function networkArgInputChanged")
     defaults = _section(source, "const FORM_UI_DEFAULTS = {", "const OPTIONAL_EMPTY_FIELDS")
+    options = _section(labels_options, "export const FIELD_OPTIONS = {", "\n};")
 
     assert category_defs.count("id: '") == 5
     assert category_defs.index("id: 'common'") < category_defs.index("id: 'preview'")
@@ -590,13 +662,19 @@ def test_config_form_uses_navigation_search_and_progressive_disclosure() -> None
     assert "if (searchText) return false;" in source
     assert "function createConfigCategory" not in source
     assert "configFormState.draftValues.entries()" in collect_section
-    assert "collectNetworkArgsFromForm({ network_args: values.network_args ?? currentConfig.network_args })" in collect_section
+    assert "const rawNetworkArgsChanged = 'network_args' in values;" in collect_section
+    assert "{ skipUnchangedInputs: rawNetworkArgsChanged }" in collect_section
     assert "applyLoraAdapterPatch(values)" in collect_section
     assert "const container = document.getElementById('choice-guide');" in source
     assert "if (!container) return;" in source
     assert "function updateChangedFieldMarks" in source
     assert "field-row-changed" in source
     assert "config-modified-count" in source
+    assert "if (selectedConfigDatasetFile !== (currentConfig.dataset_config || ''))" in source
+    assert "const params = new URLSearchParams({" in source
+    assert "params.set('dataset_config', selectedConfigDatasetFile);" in source
+    assert "const data = await api(`/api/config/steps?${params.toString()}`);" in source
+    assert "setTomlStatus(\n            applied ? 'ok' : 'error'," in source
     assert ".config-form-shell" in css
     assert "createConfigNav" not in source
     assert ".config-form-nav" not in css
@@ -625,6 +703,18 @@ def test_config_form_uses_navigation_search_and_progressive_disclosure() -> None
     assert "RESOURCE_QUICK_PRESETS" in source
     for label in ["全 GPU", "Balanced 16G", "FP8 测试", "更省显存", "LoKr 16G", "OOM 兜底"]:
         assert label in source
+    assert "merge: {" in source
+    assert "blocks_to_swap: 'max'" in source
+    assert "selective_checkpoint: 'checkpoint_strength_max'" in source
+    quick_presets = _section(source, "const RESOURCE_QUICK_PRESETS = [", "const SELECTIVE_CHECKPOINT_STRENGTH")
+    assert quick_presets.count("gradient_checkpointing: false") == 6
+    assert "const SELECTIVE_CHECKPOINT_STRENGTH = new Map([" in source
+    assert "['mlp_only', 4]" in source
+    assert "['every_other', 5]" in source
+    assert "function resourceQuickPresetValue(preset, key, value)" in source
+    assert "function strongerSelectiveCheckpointValue(current, fallback)" in source
+    assert "return Math.max(current, next);" in source
+    assert "return currentStrength >= fallbackStrength ? currentKey : fallbackKey;" in source
     for value in [
         "blocks_to_swap: 12",
         "blocks_to_swap: 16",
@@ -702,6 +792,7 @@ def test_config_form_uses_navigation_search_and_progressive_disclosure() -> None
     assert "block_swap_transfer_dtype: ['bf16', 'fp8_e4m3']" in source
     assert "memory_probe_jsonl: '显存探针'" in source
     assert "memory_probe_jsonl: ['off', 'auto']" in source
+    assert "memory_probe_max_steps: [1, 2, 3, 5, 0]" in source
     assert "peak_probe_jsonl: '峰值探针'" in source
     assert "peak_probe_jsonl: ['off', 'auto']" in source
     assert "peak_probe_level: ['block', 'ops', 'lokr', 'full']" in source
@@ -717,6 +808,53 @@ def test_config_form_uses_navigation_search_and_progressive_disclosure() -> None
     assert "keys: ['dataloader_pin_memory', 'persistent_data_loader_workers']" in data_resource_compact
     assert "config-field-grid-3col config-field-grid-inline-flags" in resource_compact
     assert "config-field-grid-2col config-field-grid-inline-flags" in data_resource_compact
+    assert "sample_sampler: 'euler'" in defaults
+    assert "sample_sampler: ['euler', 'er_sde', 'lcm']" in options
+
+
+def test_soft_tokens_advanced_fields_match_training_defaults() -> None:
+    source = APP_JS.read_text(encoding="utf-8")
+    labels_options = (STATIC_DIR / "js" / "config" / "catalog" / "labels-options.js").read_text(encoding="utf-8")
+    defaults = _section(source, "const FORM_UI_DEFAULTS = {", "const OPTIONAL_EMPTY_FIELDS")
+    network_arg_specs = _section(source, "const NETWORK_ARG_FIELD_SPECS = [", "const NETWORK_ARG_FIELD_MAP")
+    layout = _section(source, "title: 'Soft Tokens 参数'", "title: 'IP-Adapter 高级参数'")
+    options = _section(labels_options, "export const FIELD_OPTIONS = {", "\n};")
+    option_labels = _section(source, "function optionLabel", "function generateDefaultHelp")
+    extra_help = _section(source, "export const EXTRA_FIELD_HELP_ZH = {", "    encoder: help(")
+
+    assert "agsm" not in network_arg_specs.lower()
+    assert "agsm" not in options.lower()
+    assert "AGSM" not in option_labels
+    assert "AGSM" not in extra_help
+    assert "contrastive_objective: 'infonce'" in defaults
+    assert "contrastive_negative_mode: 'shuffled'" in defaults
+    assert "contrastive_every_n: 1" in defaults
+    assert "n_layers: 10" in defaults
+    assert "n_t_buckets: 100" in defaults
+    assert "splice_position: 'end_of_sequence'" in defaults
+    assert "{ family: 'soft_tokens', key: 'contrastive_objective', arg: 'contrastive_objective', default: 'infonce', valueType: 'string' }" in network_arg_specs
+    assert "{ family: 'soft_tokens', key: 'softrank_softness', arg: 'softrank_softness', default: 0.1, valueType: 'number' }" in network_arg_specs
+    assert "{ family: 'soft_tokens', key: 'softrank_method', arg: 'softrank_method', default: 'neuralsort', valueType: 'string' }" in network_arg_specs
+    assert "{ family: 'soft_tokens', key: 'dual_bank', arg: 'dual_bank', default: false, valueType: 'boolean' }" in network_arg_specs
+    assert "contrastive_objective: ['infonce', 'softrank']" in options
+    assert "softrank_method: ['neuralsort', 'softsort']" in options
+    assert "dual_bank: [false, true]" in options
+    for key in ("'softrank_softness'", "'softrank_method'", "'dual_bank'"):
+        assert key in layout
+
+
+def test_network_args_raw_editor_keeps_unmodified_split_controls_from_overwriting() -> None:
+    source = APP_JS.read_text(encoding="utf-8")
+    collect_section = _section(source, "function collectChangedFormValues", "function networkArgInputChanged")
+    live_section = _section(source, "function liveConfigFromForm", "function formatFieldName")
+    network_args_section = _section(source, "function collectNetworkArgsFromForm", "function formatNetworkArg")
+
+    assert "const rawNetworkArgsChanged = 'network_args' in values;" in collect_section
+    assert "{ skipUnchangedInputs: rawNetworkArgsChanged }" in collect_section
+    assert "const rawNetworkArgsChanged = configFormState.draftValues.has('network_args');" in live_section
+    assert "collectNetworkArgsFromForm(liveConfig, { skipUnchangedInputs: rawNetworkArgsChanged })" in live_section
+    assert "function collectNetworkArgsFromForm(baseConfig = currentConfig, options = {})" in network_args_section
+    assert "if (options.skipUnchangedInputs && !networkArgInputChanged(input)) continue;" in network_args_section
 
 
 def test_config_form_keeps_dora_as_lora_addon_and_merges_exclusive_adapters() -> None:
@@ -1353,6 +1491,17 @@ def test_history_manager_frontend_hooks_are_present() -> None:
     assert ".training-workspace.main-wide .training-sidebar" in css
     assert ".training-workspace.history-mode .training-main" in css
     assert "#tab-training .training-history-manager" in css
+    training_history_css = _section(
+        css,
+        "#tab-training .training-history-manager {",
+        "#tab-training .history-forge-eyebrow {",
+    )
+    assert '"head content"\n        "stats content"\n        "tools content"\n        ". content"\n        "bulk content"' in training_history_css
+    assert "grid-template-rows: auto auto auto minmax(0, 1fr) auto;" in training_history_css
+    assert "#tab-training .history-manager-head {\n    grid-area: head;\n    align-self: start;" in css
+    assert "#tab-training .history-manager-stats {\n    grid-area: stats;\n    align-self: start;" in css
+    assert "#tab-training .history-manager-tools {\n    grid-area: tools;\n    align-self: start;" in css
+    assert "#tab-training .history-bulk-bar {\n    grid-area: bulk;" in css
     assert "#tab-training .history-forge-eyebrow" in css
     assert ".training-workspace.history-wide" not in css
     assert ".training-dashboard-head" in css
@@ -1526,6 +1675,8 @@ def test_history_collection_drag_drop_frontend_hooks_are_present() -> None:
     assert "ids.length ? '清空集合' : '删除空集合'" in source
 
     assert "history-drag-handle" in config_card
+    assert "history-config-group-card-head" in config_card
+    assert "head.append(select, handle, main, actions)" in config_card
     assert "拖拽配置分组调整顺序或移到右侧分组" in config_card
     assert "history-config-group-drag-handle" in config_card
     assert "handle.draggable = true;" in config_card
@@ -1628,6 +1779,7 @@ def test_history_collection_drag_drop_frontend_hooks_are_present() -> None:
         ".history-config-group-card.draggable",
         ".history-config-group-card.config-sort-active",
         ".history-config-group-card.config-sort-source",
+        ".history-config-group-card-head",
         ".history-config-group-drop-preview",
         ".history-config-group-pointer-drag-active",
         ".history-drag-handle",
@@ -1650,21 +1802,58 @@ def test_history_collection_drag_drop_frontend_hooks_are_present() -> None:
     ):
         assert selector in css
     assert ".history-config-group-card.selected > .history-config-group-card-actions" not in css
-    assert "grid-template-columns: 18px 22px minmax(0, 1fr) max-content;" in css
+    assert "--history-config-group-select-width: 18px;" in css
+    assert "--history-config-group-handle-width: 28px;" in css
+    assert "grid-template-columns: var(--history-config-group-select-width) var(--history-config-group-handle-width) minmax(0, 1fr);" in css
+    config_card_head_css = _section(
+        css,
+        ".history-config-group-card-head {",
+        ".history-config-group-card.draggable {",
+    )
+    assert "min-height: 32px;" in config_card_head_css
+    assert "width: 100%;" in config_card_head_css
+    config_card_actions_css = _section(
+        css,
+        ".history-config-group-card-head > .history-config-group-card-actions {",
+        ".history-config-group-card.single-task .history-config-group-card-head > .history-config-group-card-actions {",
+    )
+    assert "position: absolute;" in config_card_actions_css
     single_task_actions_css = _section(
         css,
-        ".history-config-group-card.single-task > .history-config-group-card-actions {",
-        ".history-config-group-card:not(.single-task) > .history-config-group-card-actions {",
+        ".history-config-group-card.single-task .history-config-group-card-head > .history-config-group-card-actions {",
+        ".history-config-group-card-main strong",
     )
     assert "position: absolute;" not in single_task_actions_css
-    assert "transform: translateY(-50%);" not in single_task_actions_css
+    assert "transform: translateY(-50%);" in single_task_actions_css
     assert ".history-config-group-card:focus-within > .history-config-group-card-actions" not in css
     assert ".history-manager-row:focus-within .history-row-actions" not in css
-    assert ".history-config-group-card > .history-config-group-card-actions:focus-within" in css
+    assert ".history-config-group-card-head > .history-config-group-card-actions:focus-within" in css
     assert ".history-row-actions:focus-within" in css
+    config_group_select_css = _section(
+        css,
+        ".history-config-group-select {",
+        ".history-config-group-task-list {",
+    )
+    assert "font-size: 0;" in config_group_select_css
+    assert "gap: 0;" in config_group_select_css
+    assert "justify-content: center;" in config_group_select_css
+    assert ".history-config-group-select input" in css
+    config_group_handle_css = _section(
+        css,
+        ".history-config-group-card-head > .history-drag-handle {",
+        ".history-config-group-card.single-task .history-config-group-card-head > .history-drag-handle {",
+    )
+    assert "min-width: 0;" in config_group_handle_css
+    assert "width: 100%;" in config_group_handle_css
+    single_task_handle_css = _section(
+        css,
+        ".history-config-group-card.single-task .history-config-group-card-head > .history-drag-handle {",
+        "\n.history-drag-handle {",
+    )
+    assert "min-width: 0;" in single_task_handle_css
 
 
-def test_history_detail_overview_de_noises_paths_and_resume_weights() -> None:
+def test_history_detail_overview_uses_full_copyable_paths_and_resume_weights() -> None:
     overview_source = _frontend_module_text("js/features/history-detail/overview.js")
     resume_source = _frontend_module_text("js/features/history-detail/resume/detail.js")
     ui_source = _frontend_module_text("js/features/history-detail/ui.js")
@@ -1691,10 +1880,14 @@ def test_history_detail_overview_de_noises_paths_and_resume_weights() -> None:
     assert "['采样范围', formatAverageSpeedStepRange(task)]" in curve_index_source
 
     assert "historyDetailRunRoot(task)" in path_summary
+    assert "return normalizedHistoryDetailPath(task.run_dir_abs || task.run_dir || '');" in ui_source
     assert "'运行根目录'" in path_summary
-    assert "relativeHistoryDetailPath(value, rootPath)" in path_summary
+    assert "relativeHistoryDetailPath(value, rootPath)" not in path_summary
     assert "copyValue: value" in path_summary
     assert "export function relativeHistoryDetailPath" in ui_source
+    assert "export function selectAllTextOnDoubleClick" in ui_source
+    assert "range.selectNodeContents(el)" in ui_source
+    assert "selectAllTextOnDoubleClick(val)" in row_helpers
     assert "row.appendChild(helpers.copyButton(options.copyValue" in row_helpers
 
     assert "controls.className = 'history-resume-control-row';" in resume
@@ -1709,6 +1902,7 @@ def test_history_detail_overview_de_noises_paths_and_resume_weights() -> None:
     assert ".history-detail-stat .metric-icon-time::before" in css
     assert ".history-curve-stat-group.speed" in css
     assert ".history-detail-path-summary .history-detail-path-root" in css
+    assert ".history-detail-select-all" in css
     assert ".history-detail-copy-btn" in css
     assert ".history-resume-control-row" in css
     assert ".history-resume-weight-actions" in css
@@ -1734,8 +1928,10 @@ def test_history_detail_config_files_are_tool_ready() -> None:
     assert "downloadBlob(new Blob([content], { type: 'text/plain;charset=utf-8' }), filename)" in config_files
     assert "history-detail-file-browser" in config_files
     assert "history-file-root" in config_files
-    assert "historyDetailFileRow(task, label, value, artifactKey, rootPath)" in config_files
-    assert "relativeHistoryDetailPath(rawValue, rootPath)" in config_files
+    assert "historyDetailFileRow(task, label, value, artifactKey)" in config_files
+    assert "relativeHistoryDetailPath(rawValue, rootPath)" not in config_files
+    assert "val.textContent = rawValue" in config_files
+    assert "selectAllTextOnDoubleClick(val)" in config_files
     assert "deps.historyArtifactUrl(task, artifactKey)" in config_files
     assert "deps.historyArtifactUrl(task, artifactKey, { download: true })" in config_files
     assert "function makeHistoryArtifactUrl" in legacy_source
@@ -1753,6 +1949,10 @@ def test_history_detail_config_files_are_tool_ready() -> None:
         "'config-snapshot'",
     ):
         assert artifact in path_items
+    assert "const runDir = absolutePath(task.run_dir_abs || task.run_dir)" in path_items
+    assert "function historyAbsolutePath(value, task = {}, basePath = '')" in path_items
+    assert "function historyProjectRoot(task = {})" in path_items
+    assert "project_root_abs" in path_items
 
     assert "module-bootstrap-20260604-" in html
     for selector in (
@@ -1766,8 +1966,14 @@ def test_history_detail_config_files_are_tool_ready() -> None:
         ".history-file-row",
         ".history-file-actions",
         ".history-detail-icon-btn",
+        ".history-detail-select-all",
     ):
         assert selector in css
+    assert "text-overflow: ellipsis;" not in _section(
+        css,
+        ".history-detail-path-row code,",
+        ".history-detail-select-all {",
+    )
     assert ".history-detail-config-files > .history-detail-section" in css
     assert ".history-detail-kv > div" in css
     assert ".history-detail-kv div" not in css
@@ -1911,8 +2117,10 @@ def test_config_form_options_cover_backend_choices() -> None:
     assert "'max-autotune-no-cudagraphs'" in field_options
     for option in ["tensorboard", "wandb", "all"]:
         assert f"'{option}'" in field_options
-    for option in ["dpm_2", "dpm_2_a", "dpmsingle", "k_dpm_2", "k_dpm_2_a"]:
+    for option in ["euler", "er_sde", "lcm"]:
         assert f"'{option}'" in field_options
+    for legacy_sampler in ["ddim", "dpmsolver++", "k_dpm_2"]:
+        assert f"'{legacy_sampler}'" not in field_options
     for option in ["ckpt", "pt", "safetensors"]:
         assert f"'{option}'" in field_options
     for option in ["sigma", "uniform", "sigmoid", "shift", "flux_shift"]:
@@ -2083,13 +2291,26 @@ def test_dataset_preset_manager_is_isolated_from_config_page() -> None:
         "async function loadDatasetPresets(options = {})",
         "async function loadDatasetPreset(file)",
     )
+    import_presets = _section(
+        source,
+        "async function handleDatasetPresetImport(event)",
+        "async function exportDatasetPreset()",
+    )
+    api_helpers = _section(source, "async function api(url, opts = {})", "function val(id)")
     listener_section = _section(source, "function setupEventListeners", "function installBeginnerTooltips")
 
     assert "classList.contains('active')" in tab_active
     assert "closest('#tab-datasets')" not in tab_active
+    assert "DATASET_PRESET_REQUEST_TIMEOUT_MS" in source
+    assert "async function datasetPresetApi" in api_helpers
+    assert "数据集预设请求超时" in api_helpers
     assert "const managePresets = options.manage === true || (options.manage !== false && isDatasetTabActive());" in load_presets
     assert "if (!managePresets)" in load_presets
+    assert "datasetPresetApi('/api/config/dataset-presets')" in load_presets
     assert "await loadDatasetPreset(datasetPresetState.selectedFile)" in load_presets
+    assert "/api/config/dataset-presets/import" in import_presets
+    assert "/api/config/raw/save-as" not in import_presets
+    assert "datasetPresetState.loading = false;" in import_presets
     assert "loadDatasetPresets({ selectCurrent: false, manage: false })" in source
     assert "loadDatasetPresets({ manage: true })" in source
     assert "btn-refresh-dataset-presets" in listener_section

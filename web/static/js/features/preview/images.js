@@ -1,4 +1,4 @@
-import { previewSourceLabel } from './state.js?v=module-bootstrap-20260604-10';
+import { previewSourceLabel } from './state.js?v=module-bootstrap-20260604-11';
 
 export function createPreviewImages({ ctx, state, deps, openPreviewDialog, syncPreviewPanelSubtitle }) {
     const { formatBytes } = ctx.format;
@@ -24,12 +24,12 @@ export function createPreviewImages({ ctx, state, deps, openPreviewDialog, syncP
             return;
         }
         empty.hidden = true;
-        for (const image of payload.images) {
-            grid.appendChild(createPreviewCard(image));
-        }
+        payload.images.forEach((image, index) => {
+            grid.appendChild(createPreviewCard(image, index));
+        });
     }
 
-    function createPreviewCard(image) {
+    function createPreviewCard(image, index = 0) {
         const button = document.createElement('button');
         button.type = 'button';
         button.className = 'preview-card';
@@ -41,15 +41,25 @@ export function createPreviewImages({ ctx, state, deps, openPreviewDialog, syncP
         const img = document.createElement('img');
         img.src = image.url;
         img.alt = image.name;
-        img.loading = 'lazy';
+        img.loading = previewImageLoadingMode(index);
+        const errorMessage = document.createElement('span');
+        errorMessage.className = 'preview-card-error-message';
+        errorMessage.textContent = '图片加载失败';
+        errorMessage.hidden = true;
+        img.addEventListener('load', () => {
+            button.classList.remove('preview-card-error');
+            errorMessage.hidden = true;
+        });
         img.addEventListener('error', () => {
             button.classList.add('preview-card-error');
             img.alt = '图片加载失败';
+            errorMessage.hidden = false;
+            button.title = `图片加载失败: ${image.file || image.name || '预览图'}`;
         });
         const previewHint = document.createElement('span');
         previewHint.className = 'preview-card-preview-indicator';
         previewHint.setAttribute('aria-hidden', 'true');
-        imageWrap.append(img, previewHint);
+        imageWrap.append(img, previewHint, errorMessage);
 
         const meta = document.createElement('div');
         meta.className = 'preview-card-meta';
@@ -116,6 +126,11 @@ export function createPreviewImages({ ctx, state, deps, openPreviewDialog, syncP
             return latestRun ? ` · 最新运行 ${latestRun}` : ' · 最新运行';
         }
         return '';
+    }
+
+    function previewImageLoadingMode(index) {
+        const isHistorySelection = Boolean(state.selectedTaskId || state.selectedGroup);
+        return isHistorySelection && index < 80 ? 'eager' : 'lazy';
     }
 
     function previewCardTitle(image) {

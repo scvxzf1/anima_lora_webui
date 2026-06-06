@@ -22,14 +22,20 @@ export function setQueueError(state, message) {
 }
 
 export function updateQueueStateFromPayload(state, payload = {}) {
+    const previous = state.queue || {};
+    const hasItems = Array.isArray(payload.items);
+    const hasSummary = payload.summary && typeof payload.summary === 'object';
+    const isErrorOnly = payload.ok === false && !hasItems;
     state.queue = {
         loading: false,
-        paused: Boolean(payload.paused),
-        failurePolicy: payload.failure_policy || state.queue.failurePolicy || 'pause',
-        items: Array.isArray(payload.items) ? payload.items : [],
+        paused: payload.paused === undefined ? Boolean(previous.paused) : Boolean(payload.paused),
+        failurePolicy: payload.failure_policy || previous.failurePolicy || 'pause',
+        items: hasItems ? payload.items : (isErrorOnly ? (previous.items || []) : []),
         error: payload.ok === false ? (payload.error || '队列状态异常') : '',
-        currentItemId: String(payload.current_item_id || ''),
-        summary: payload.summary || {},
+        currentItemId: payload.current_item_id === undefined
+            ? (isErrorOnly ? (previous.currentItemId || '') : '')
+            : String(payload.current_item_id || ''),
+        summary: hasSummary ? payload.summary : (isErrorOnly ? (previous.summary || {}) : {}),
     };
     return state.queue;
 }

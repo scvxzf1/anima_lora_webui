@@ -681,7 +681,7 @@ def add_training_arguments(parser: argparse.ArgumentParser, support_dreambooth: 
         "--sample_every_n_epochs",
         type=int,
         default=None,
-        help="generate sample images every N epochs (overwrites n_steps)",
+        help="generate sample images every N epochs",
     )
     parser.add_argument(
         "--sample_prompts",
@@ -692,12 +692,14 @@ def add_training_arguments(parser: argparse.ArgumentParser, support_dreambooth: 
     parser.add_argument(
         "--sample_sampler",
         type=str,
-        default="ddim",
+        default="euler",
         choices=[
+            "euler",
+            "er_sde",
+            "lcm",
             "ddim",
             "pndm",
             "lms",
-            "euler",
             "euler_a",
             "heun",
             "dpm_2",
@@ -711,7 +713,10 @@ def add_training_arguments(parser: argparse.ArgumentParser, support_dreambooth: 
             "k_dpm_2",
             "k_dpm_2_a",
         ],
-        help="sampler (scheduler) type for sample images",
+        help=(
+            "sampler for Anima training preview images. Legacy Diffusers "
+            "scheduler names are accepted and fall back to euler."
+        ),
     )
 
     parser.add_argument(

@@ -73,6 +73,10 @@ def test_choices_preserved(populated_parser):
     transfer_dtype = config_schema.get_schema()["block_swap_transfer_dtype"]
     assert "bf16" in transfer_dtype.choices
     assert "fp8_e4m3" in transfer_dtype.choices
+    sample_sampler = config_schema.get_schema()["sample_sampler"]
+    assert sample_sampler.default == "euler"
+    for option in ("euler", "er_sde", "lcm", "ddim", "dpmsolver++"):
+        assert option in sample_sampler.choices
 
 
 # ---------------------------------------------------------------------------

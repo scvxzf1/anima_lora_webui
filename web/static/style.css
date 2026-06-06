@@ -4091,6 +4091,11 @@ select.dataset-config-input {
     text-transform: uppercase;
 }
 
+#tab-config .config-run-preset {
+    flex: 0 0 auto;
+    min-width: 156px;
+}
+
 #tab-config .config-toolbar select,
 #tab-config .toml-header select,
 #tab-config .output-run-search input,
@@ -4621,6 +4626,10 @@ select.dataset-config-input {
 
     #tab-config .config-toolbar {
         align-items: stretch;
+    }
+
+    #tab-config .config-run-preset {
+        width: 100%;
     }
 }
 
@@ -7329,11 +7338,24 @@ input[type="checkbox"].field-input {
     align-items: center;
     background: color-mix(in srgb, var(--history-collection-accent) 7%, var(--history-row-bg));
     box-shadow: 0 1px 3px color-mix(in srgb, var(--history-level-border) 40%, transparent);
-    column-gap: 0.42rem;
-    grid-template-columns: max-content 28px minmax(0, 1fr);
+    --history-config-group-select-width: 18px;
+    --history-config-group-handle-width: 28px;
+    --history-config-group-column-gap: 0.42rem;
+    display: grid;
+    gap: 0.22rem;
     padding: 0.58rem 0.64rem 0.5rem;
     position: relative;
     transition: background 0.18s ease, box-shadow 0.18s ease;
+}
+.history-config-group-card-head {
+    align-items: center;
+    column-gap: var(--history-config-group-column-gap);
+    display: grid;
+    grid-template-columns: var(--history-config-group-select-width) var(--history-config-group-handle-width) minmax(0, 1fr);
+    min-height: 32px;
+    min-width: 0;
+    position: relative;
+    width: 100%;
 }
 .history-config-group-card.draggable {
     cursor: default;
@@ -7397,25 +7419,13 @@ input[type="checkbox"].field-input {
     align-items: center;
     background: var(--history-row-bg);
     box-shadow: 0 1px 2px color-mix(in srgb, var(--history-level-border) 22%, transparent);
-    column-gap: 0.22rem;
-    gap: 0.12rem;
-    grid-template-columns: 18px 22px minmax(0, 1fr) max-content;
+    --history-config-group-handle-width: 22px;
+    --history-config-group-column-gap: 0.22rem;
+    gap: 0;
     min-height: 0;
     padding: 3px 6px;
 }
-.history-config-group-card.single-task > .history-config-group-card-actions {
-    align-items: center;
-    border-radius: 4px;
-    justify-self: end;
-    max-width: none;
-    padding-left: 0.35rem;
-    position: static;
-    right: auto;
-    top: auto;
-    transform: none;
-    z-index: auto;
-}
-.history-config-group-card:not(.single-task) > .history-config-group-card-actions {
+.history-config-group-card-head > .history-config-group-card-actions {
     align-items: center;
     background: linear-gradient(90deg, transparent, var(--history-row-bg) 18%);
     border-radius: 4px;
@@ -7425,6 +7435,12 @@ input[type="checkbox"].field-input {
     right: 0.45rem;
     top: 0.46rem;
     z-index: 2;
+}
+.history-config-group-card.single-task .history-config-group-card-head > .history-config-group-card-actions {
+    max-width: min(260px, calc(100% - 4.2rem));
+    right: 0.3rem;
+    top: 50%;
+    transform: translateY(-50%);
 }
 .history-config-group-card-main strong {
     align-items: center;
@@ -7492,21 +7508,21 @@ input[type="checkbox"].field-input {
     outline-offset: 2px;
 }
 .history-config-group-card.single-task .history-config-group-select {
-    font-size: 0;
-    gap: 0;
     justify-self: center;
 }
 .history-config-group-card.single-task .history-compact-meta,
 .history-single-task-title-row .history-row-state {
     white-space: nowrap;
 }
-.history-config-group-card > .history-drag-handle {
+.history-config-group-card-head > .history-drag-handle {
     align-self: center;
     min-height: 32px;
+    min-width: 0;
+    width: 100%;
 }
-.history-config-group-card.single-task > .history-drag-handle {
+.history-config-group-card.single-task .history-config-group-card-head > .history-drag-handle {
     min-height: 26px;
-    min-width: 24px;
+    min-width: 0;
     padding: 0;
 }
 .history-drag-handle {
@@ -7591,16 +7607,26 @@ input[type="checkbox"].field-input {
     align-items: center;
     color: var(--text-dim);
     display: inline-flex;
-    font-size: 0.62rem;
-    gap: 0.22rem;
+    font-size: 0;
+    gap: 0;
+    justify-content: center;
+    min-width: 0;
     white-space: nowrap;
+    width: 100%;
+}
+.history-config-group-select input {
+    margin: 0;
 }
 .history-config-group-task-list {
     border-top: 1px solid color-mix(in srgb, var(--history-level-border) 42%, transparent);
     display: grid;
-    grid-column: 1 / -1;
     gap: 0;
-    margin: 0.22rem 0 0 2.1rem;
+    margin: 0.22rem 0 0 calc(
+        var(--history-config-group-select-width)
+        + var(--history-config-group-handle-width)
+        + var(--history-config-group-column-gap)
+        + var(--history-config-group-column-gap)
+    );
     padding-left: 0.85rem;
     position: relative;
 }
@@ -7854,8 +7880,8 @@ input[type="checkbox"].field-input {
 .history-manager-row:hover .history-row-actions,
 .history-manager-row.active .history-row-actions,
 .history-row-actions:focus-within,
-.history-config-group-card:hover > .history-config-group-card-actions,
-.history-config-group-card > .history-config-group-card-actions:focus-within,
+.history-config-group-card:hover .history-config-group-card-head > .history-config-group-card-actions,
+.history-config-group-card-head > .history-config-group-card-actions:focus-within,
 .history-collection-card:hover .history-collection-card-actions,
 .history-collection-card:focus-within .history-collection-card-actions,
 .history-collection-card.active .history-collection-card-actions,
@@ -8165,6 +8191,7 @@ body.history-detail-window-open {
 .history-detail-kv code {
     color: var(--text);
     font-size: 0.68rem;
+    min-width: 0;
     overflow-wrap: anywhere;
     white-space: normal;
 }
@@ -8177,14 +8204,16 @@ body.history-detail-window-open {
     color: var(--accent);
     font-weight: 800;
 }
-.history-detail-path-row code {
+.history-detail-path-row code,
+.history-file-root code,
+.history-file-row code {
     overflow: hidden;
-    text-overflow: ellipsis;
+    text-overflow: clip;
     white-space: nowrap;
 }
-.history-detail-path-root code {
-    overflow-wrap: anywhere;
-    white-space: normal;
+.history-detail-select-all {
+    cursor: text;
+    user-select: text;
 }
 .history-detail-icon-btn {
     align-items: center;
@@ -8389,7 +8418,7 @@ body.history-detail-window-open {
     color: var(--text);
     font-size: 0.68rem;
     overflow: hidden;
-    text-overflow: ellipsis;
+    text-overflow: clip;
     white-space: nowrap;
 }
 .history-file-list {
@@ -8413,7 +8442,7 @@ body.history-detail-window-open {
 }
 .history-file-row code {
     overflow: hidden;
-    text-overflow: ellipsis;
+    text-overflow: clip;
     white-space: nowrap;
 }
 .history-file-actions {
@@ -9972,7 +10001,9 @@ body.history-detail-window-open {
 .history-paths code {
     color: var(--text);
     font-family: monospace;
-    overflow-wrap: anywhere;
+    overflow: hidden;
+    text-overflow: clip;
+    white-space: nowrap;
 }
 #history-config-output {
     background: var(--bg);
@@ -10773,6 +10804,25 @@ body.history-detail-window-open {
 .preview-card-error img {
     object-fit: contain;
     opacity: 0.35;
+}
+.preview-card-error-message {
+    align-items: center;
+    background: rgba(15, 23, 42, 0.72);
+    color: #fff;
+    display: flex;
+    font-size: 0.78rem;
+    font-weight: 700;
+    inset: 0;
+    justify-content: center;
+    padding: 0.75rem;
+    position: absolute;
+    text-align: center;
+}
+.preview-card-error-message[hidden] {
+    display: none;
+}
+.preview-card-error .preview-card-preview-indicator {
+    display: none;
 }
 .preview-card-meta {
     display: flex;
@@ -13126,9 +13176,10 @@ body.history-task-dialog-fallback-open::before {
         "head content"
         "stats content"
         "tools content"
+        ". content"
         "bulk content";
     grid-template-columns: minmax(300px, 360px) minmax(0, 1fr);
-    grid-template-rows: auto auto auto auto;
+    grid-template-rows: auto auto auto minmax(0, 1fr) auto;
     align-content: start;
     gap: 0;
     min-height: calc(100vh - 142px);
@@ -13152,6 +13203,7 @@ body.history-task-dialog-fallback-open::before {
 
 #tab-training .history-manager-head {
     grid-area: head;
+    align-self: start;
     display: grid;
     grid-template-columns: minmax(0, 1fr);
     gap: 0.75rem;
@@ -13189,6 +13241,7 @@ body.history-task-dialog-fallback-open::before {
 
 #tab-training .history-manager-stats {
     grid-area: stats;
+    align-self: start;
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 0.45rem;
@@ -13246,6 +13299,7 @@ body.history-task-dialog-fallback-open::before {
 
 #tab-training .history-manager-tools {
     grid-area: tools;
+    align-self: start;
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 0.5rem 0.45rem;
@@ -13506,7 +13560,7 @@ body.history-task-dialog-fallback-open::before {
     padding: 5px 8px;
 }
 
-#tab-training .history-config-group-card.single-task > .history-config-group-card-actions {
+#tab-training .history-config-group-card.single-task .history-config-group-card-head > .history-config-group-card-actions {
     background: transparent;
 }
 
@@ -13662,6 +13716,7 @@ body.history-task-dialog-fallback-open::before {
             "bulk"
             "content";
         grid-template-columns: minmax(0, 1fr);
+        grid-template-rows: auto auto auto auto auto;
         min-height: 0;
         overflow: visible;
     }
@@ -13675,6 +13730,11 @@ body.history-task-dialog-fallback-open::before {
 
     #tab-training .history-manager-grid {
         padding: 1rem;
+    }
+
+    #tab-training .history-bulk-bar {
+        align-self: stretch;
+        position: static;
     }
 
     #tab-training .history-collections-head,
@@ -13868,8 +13928,7 @@ body.history-task-dialog-fallback-open::before {
     .history-manager-search { grid-column: 1 / -1; }
     .history-manager-grid { grid-template-columns: 1fr; }
     .history-collections-head,
-    .history-collections-body,
-    .history-config-group-card {
+    .history-collections-body {
         grid-template-columns: 1fr;
     }
     .history-single-task-title-row {

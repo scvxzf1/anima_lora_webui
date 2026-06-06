@@ -1,4 +1,4 @@
-import { help } from './help-builder.js?v=module-bootstrap-20260604-10';
+import { help } from './help-builder.js?v=module-bootstrap-20260604-11';
 
 export const EXTRA_FIELD_HELP_ZH = {
     max_data_loader_n_workers: help(
@@ -239,7 +239,7 @@ export const EXTRA_FIELD_HELP_ZH = {
         ['层数越多，软 token 影响范围越大。'],
         ['参数、显存和过拟合风险上升。'],
         ['超过模型层数会在启动时报错。'],
-        '默认 14；小显存或快速对照时再下调。'
+        '默认 10；小显存或快速对照时再下调。'
     ),
     n_t_buckets: help(
         'Soft Tokens 的时间桶数量。',
@@ -247,7 +247,7 @@ export const EXTRA_FIELD_HELP_ZH = {
         ['更多桶能表达更细的时间步差异。'],
         ['数据不足时许多桶训练很少。'],
         ['桶太多会增加参数并拖慢收敛。'],
-        '默认 14；数据量更大时再提高桶数量。'
+        '默认 100；数据量较小时可先降低做对照。'
     ),
     init_std: help(
         'Soft Tokens 基础 token 初始化标准差。',
@@ -263,7 +263,7 @@ export const EXTRA_FIELD_HELP_ZH = {
         ['可控制软 token 与文本 token 的相对位置。'],
         ['不同模式需要配合缓存/推理链路理解。'],
         ['切换会改变训练语义，不能和旧权重简单对照。'],
-        '默认 front_of_padding；需要复现旧实验时再改成 end_of_sequence。'
+        '默认 end_of_sequence；需要复现旧实验时再确认原配置写法。'
     ),
     contrastive_weight: help(
         'Soft Tokens 对比目标权重。',
@@ -271,7 +271,7 @@ export const EXTRA_FIELD_HELP_ZH = {
         ['可能增强提示词区分能力。'],
         ['每次触发会增加额外 DiT forward，训练变慢。'],
         ['权重过高会压过 FM 主损失。'],
-        '默认 0.05；想关闭额外目标时设为 0。'
+        '默认 0；需要对比目标实验时再小步调高。'
     ),
     contrastive_k: help(
         '每步使用的对比负样本数。',
@@ -287,7 +287,7 @@ export const EXTRA_FIELD_HELP_ZH = {
         ['可以控制额外前向频率。'],
         ['有效对比强度约随 1/N 下降。'],
         ['如果想维持平均强度，需要同步调整 weight。'],
-        '默认 3；需要更强对比信号时再降低。'
+        '默认 1；如果训练太慢，可增大间隔降低成本。'
     ),
     contrastive_negative_mode: help(
         'Soft Tokens 负样本来源。',
@@ -295,31 +295,15 @@ export const EXTRA_FIELD_HELP_ZH = {
         ['hard/jaccard 能提供更有针对性的区分信号。'],
         ['依赖 caption-index 质量。'],
         ['索引缺失或标签差时会退化或引入噪声。'],
-        '默认 hard；没有高质量 caption-index 时可退回 shuffled。'
+        '默认 shuffled；有高质量 caption-index 后再尝试 hard/jaccard。'
     ),
     contrastive_objective: help(
         'Soft Tokens 对比目标函数。',
-        'infonce 使用传统对比分类；agsm 使用有界目标偏移。',
-        ['AGSM 可能降低负样本无界发散。'],
-        ['仍是实验路径，成本更高。'],
+        'infonce 使用传统对比分类；softrank 使用可微排序目标。',
+        ['softrank 更直接优化匹配 caption 的排序位置。'],
+        ['softrank 依赖 softtorch 排序松弛，成本和调参复杂度更高。'],
         ['目标函数切换后历史经验不可直接套用。'],
-        '默认 agsm；需要复现传统对比分类时再选 infonce。'
-    ),
-    agsm_gamma: help(
-        'AGSM 目标偏移强度。',
-        '只在 contrastive_objective=agsm 且 contrastive_weight>0 时生效。',
-        ['控制正负目标分离幅度。'],
-        ['太高可能让目标偏离主 FM 任务。'],
-        ['太低则 AGSM 信号弱。'],
-        '默认 0.5。'
-    ),
-    agsm_ema_decay: help(
-        'AGSM 读取自身预测 EMA 的衰减。',
-        '越接近 1 越平滑，越小越跟随当前预测。',
-        ['稳定目标偏移估计。'],
-        ['过高会反应慢。'],
-        ['必须在 0 和 1 之间。'],
-        '默认 0.99。'
+        '默认 infonce；做排序目标实验时再切到 softrank。'
     ),
     contrastive_jaccard_alpha: help(
         'jaccard 负样本模式的 tag 重叠惩罚。',
@@ -334,7 +318,7 @@ export const EXTRA_FIELD_HELP_ZH = {
         '只对 infonce 目标生效，越小 logits 越尖锐。',
         ['可调节对比分类强度。'],
         ['过小容易梯度尖锐，过大信号变弱。'],
-        ['AGSM 目标不使用它。'],
+        ['softrank 目标不使用它。'],
         '默认 0.5。'
     ),
     contrastive_warmup_ratio: help(
@@ -344,6 +328,30 @@ export const EXTRA_FIELD_HELP_ZH = {
         ['预热太长会让对比目标影响不足。'],
         ['太短可能早期不稳定。'],
         '默认 0.1。'
+    ),
+    softrank_softness: help(
+        'SoftRank 排序松弛的 softness。',
+        '只在 contrastive_objective=softrank 且 contrastive_weight>0 时生效；数值越小排序越接近硬排序。',
+        ['能调节排序目标的锐利程度。'],
+        ['太小可能梯度不稳，太大排序信号会变钝。'],
+        ['和 contrastive_k、softrank_method 一起影响显存和速度。'],
+        '默认 0.1。'
+    ),
+    softrank_method: help(
+        'SoftRank 使用的可微排序实现。',
+        'neuralsort 是默认路径；softsort 可用于对照，但两者曲线和显存成本可能不同。',
+        ['便于比较不同排序松弛的训练表现。'],
+        ['切换后历史曲线不能直接横向比较。'],
+        ['值写错会在训练启动时报错。'],
+        '默认 neuralsort。'
+    ),
+    dual_bank: help(
+        '是否启用正负两套 Soft Tokens bank。',
+        '开启后会分别学习 ψ+ / ψ- token bank，用于 Soft Tokens 对比路径实验。',
+        ['给正负分支更大的表达空间。'],
+        ['参数量和调参复杂度增加。'],
+        ['旧 checkpoint 不一定能和该结构直接对齐。'],
+        '默认关闭。'
     ),
     encoder: help(
         'IP-Adapter 使用的视觉编码器。',

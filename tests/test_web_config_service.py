@@ -192,6 +192,26 @@ def test_raw_patch_ignores_dataset_picker_ui_field(tmp_path: Path, monkeypatch):
     assert "dataset_config_picker" not in (configs / "imported" / "lora.toml").read_text(encoding="utf-8")
 
 
+def test_raw_patch_rejects_blank_output_name(tmp_path: Path, monkeypatch):
+    configs, _dataset_path = _write_minimal_config_tree(tmp_path)
+    _patch_config_service_paths(monkeypatch, tmp_path)
+    train_rel = "configs/imported/lora.toml"
+    original = (configs / "imported" / "lora.toml").read_text(encoding="utf-8")
+
+    ok, msg, content, changed = config_service.patch_raw_file_values(
+        train_rel,
+        {
+            "output_name": "   ",
+        },
+    )
+
+    assert ok is False
+    assert "output_name 不能为空" in msg
+    assert content == ""
+    assert changed == []
+    assert (configs / "imported" / "lora.toml").read_text(encoding="utf-8") == original
+
+
 def test_raw_patch_clears_optional_sample_schedule_fields(tmp_path: Path, monkeypatch):
     configs, _dataset_path = _write_minimal_config_tree(tmp_path)
     _patch_config_service_paths(monkeypatch, tmp_path)
@@ -242,6 +262,52 @@ def test_raw_patch_writes_non_blank_sample_schedule_fields_as_int(tmp_path: Path
     parsed = toml.loads(content)
     assert parsed["sample_every_n_epochs"] == 4
     assert parsed["sample_every_n_steps"] == 500
+
+
+def test_raw_patch_writes_spd_fields_to_nested_tables(tmp_path: Path, monkeypatch):
+    configs, _dataset_path = _write_minimal_config_tree(tmp_path)
+    spd_path = configs / "imported" / "spd.toml"
+    spd_path.write_text(
+        "\n".join(
+            [
+                'dit_path = "models/anima.safetensors"',
+                'data_dir = "post_image_dataset/lora"',
+                "iterations = 4000",
+                "channel_scaling_alpha = 0.1",
+                "weight_decay = 0.2",
+                "",
+                "[network]",
+                "rank = 48",
+                "channel_scaling_alpha = 0.5",
+                "",
+                "[optim]",
+                "lr = 2e-5",
+                "weight_decay = 0.0",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    _patch_config_service_paths(monkeypatch, tmp_path)
+
+    ok, msg, content, changed = config_service.patch_raw_file_values(
+        "configs/imported/spd.toml",
+        {
+            "channel_scaling_alpha": 0.25,
+            "weight_decay": 0.01,
+        },
+    )
+
+    assert ok is True, msg
+    assert changed == ["channel_scaling_alpha", "weight_decay"]
+    parsed = toml.loads(content)
+    assert parsed["network"]["channel_scaling_alpha"] == 0.25
+    assert parsed["optim"]["weight_decay"] == 0.01
+    assert "channel_scaling_alpha" not in parsed
+    assert "weight_decay" not in parsed
+    saved = toml.loads(spd_path.read_text(encoding="utf-8"))
+    assert saved["network"]["channel_scaling_alpha"] == 0.25
+    assert saved["optim"]["weight_decay"] == 0.01
 
 
 def test_raw_patch_removes_retired_config_fields(tmp_path: Path, monkeypatch):
@@ -334,6 +400,20 @@ def test_raw_patch_auto_fixes_came_two_beta_optimizer_args(tmp_path: Path, monke
     assert parsed["optimizer_args"] == ["weight_decay=0.01", "eps=1e-8", "betas=0.9,0.999,0.9999"]
     saved = toml.loads((configs / "imported" / "lora.toml").read_text(encoding="utf-8"))
     assert saved["optimizer_args"][-1] == "betas=0.9,0.999,0.9999"
+
+
+def test_save_raw_file_rejects_blank_output_name(tmp_path: Path, monkeypatch):
+    configs, _dataset_path = _write_minimal_config_tree(tmp_path)
+    _patch_config_service_paths(monkeypatch, tmp_path)
+
+    ok, msg = config_service.save_raw_file(
+        "configs/imported/blank.toml",
+        'output_name = "   "\n',
+    )
+
+    assert ok is False
+    assert "output_name 不能为空" in msg
+    assert not (configs / "imported" / "blank.toml").exists()
 
 
 def test_save_raw_file_auto_fixes_came_two_beta_optimizer_args(tmp_path: Path, monkeypatch):
@@ -515,6 +595,92 @@ def test_preflight_uses_selected_config_file_dataset_paths(tmp_path: Path, monke
     assert "output_dir" not in {item["key"] for item in result["checks"]}
     env_checks = [item for item in result["checks"] if item["key"] == "preprocess_environment"]
     assert env_checks[-1]["level"] == "ok"
+
+
+def test_preflight_rejects_blank_output_name(tmp_path: Path, monkeypatch):
+    configs, _dataset_path = _write_minimal_config_tree(tmp_path)
+    _patch_config_service_paths(monkeypatch, tmp_path)
+    source_dir = tmp_path / "image_dataset" / "selected"
+    source_dir.mkdir(parents=True)
+    Image.new("RGB", (8, 8), color=(20, 40, 60)).save(source_dir / "sample.png")
+    (tmp_path / "models").mkdir()
+    (tmp_path / "models" / "anima.safetensors").write_bytes(b"model")
+    (tmp_path / "models" / "qwen.safetensors").write_bytes(b"qwen")
+    (tmp_path / "models" / "vae.safetensors").write_bytes(b"vae")
+    selected_config = configs / "imported" / "selected.toml"
+    selected_config.write_text(
+        "\n".join(
+            [
+                'output_name = "   "',
+                'source_image_dir = "image_dataset/selected"',
+                'pretrained_model_name_or_path = "models/anima.safetensors"',
+                'qwen3 = "models/qwen.safetensors"',
+                'vae = "models/vae.safetensors"',
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    result = config_service.preflight_training_config(
+        "lora",
+        "default",
+        "imported",
+        config_file="configs/imported/selected.toml",
+    )
+
+    output_checks = [item for item in result["errors"] if item["key"] == "output_name"]
+    assert result["ok"] is False
+    assert output_checks[-1]["message"] == "输出名称未填写"
+
+
+def test_preflight_warns_when_sample_prompts_have_no_schedule(tmp_path: Path, monkeypatch):
+    configs, _dataset_path = _write_minimal_config_tree(tmp_path)
+    _patch_config_service_paths(monkeypatch, tmp_path)
+    selected_config = configs / "imported" / "selected.toml"
+    selected_config.write_text(
+        "\n".join([
+            'sample_prompts = "configs/sample_prompts.txt"',
+            'source_image_dir = "image_dataset/selected"',
+        ]),
+        encoding="utf-8",
+    )
+
+    result = config_service.preflight_training_config(
+        "lora",
+        "default",
+        "imported",
+        config_file="configs/imported/selected.toml",
+    )
+
+    messages = [item["message"] for item in result["warnings"]]
+    assert any("未启用训练前、按轮或按步采样" in message for message in messages)
+
+
+def test_preflight_warns_for_dual_sample_schedule_and_legacy_sampler(tmp_path: Path, monkeypatch):
+    configs, _dataset_path = _write_minimal_config_tree(tmp_path)
+    _patch_config_service_paths(monkeypatch, tmp_path)
+    selected_config = configs / "imported" / "selected.toml"
+    selected_config.write_text(
+        "\n".join([
+            'sample_prompts = "configs/sample_prompts.txt"',
+            "sample_every_n_epochs = 1",
+            "sample_every_n_steps = 500",
+            'sample_sampler = "ddim"',
+            'source_image_dir = "image_dataset/selected"',
+        ]),
+        encoding="utf-8",
+    )
+
+    result = config_service.preflight_training_config(
+        "lora",
+        "default",
+        "imported",
+        config_file="configs/imported/selected.toml",
+    )
+
+    warnings = {item["key"]: item["message"] for item in result["warnings"]}
+    assert "同时启用按轮和按步采样" in warnings["sample_schedule"]
+    assert "会按 euler 兼容处理" in warnings["sample_sampler"]
 
 
 def test_preflight_checks_manual_network_weights_before_launch(tmp_path: Path, monkeypatch):
@@ -1378,6 +1544,93 @@ def test_dataset_groups_are_dataset_only_and_presets_list_returns_groups(tmp_pat
     assert dataset_group["files"][0]["path"] == "configs/datasets/character_a.toml"
 
 
+def test_dataset_group_specs_accept_windows_slashes(tmp_path: Path, monkeypatch):
+    configs, _dataset_path = _write_minimal_config_tree(tmp_path)
+    (configs / "datasets" / "character_a.toml").write_text(
+        'source_image_dir = "image_dataset/a"\n',
+        encoding="utf-8",
+    )
+    (configs / "datasets" / "character_b.toml").write_text(
+        'source_image_dir = "image_dataset/b"\n',
+        encoding="utf-8",
+    )
+    (configs / "web-file-groups.toml").write_text(
+        "\n".join(
+            [
+                "[[groups]]",
+                'id = "datasets"',
+                'label = "数据集配置"',
+                "open = true",
+                "locked = false",
+                "trainable = false",
+                'patterns = ["configs\\\\datasets\\\\*.toml"]',
+                'exclude = ["configs\\\\datasets\\\\character_b.toml"]',
+                'order = ["configs\\\\datasets\\\\character_a.toml"]',
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    _patch_config_service_paths(monkeypatch, tmp_path)
+
+    groups = config_service.list_config_file_groups(kind="dataset")
+
+    assert groups[0]["files"][0]["path"] == "configs/datasets/character_a.toml"
+    assert all(item["path"] != "configs/datasets/character_b.toml" for item in groups[0]["files"])
+    saved = (configs / "web-file-groups.toml").read_text(encoding="utf-8")
+    assert "configs\\\\datasets" in saved
+
+
+def test_moving_dataset_group_file_cleans_legacy_windows_paths(tmp_path: Path, monkeypatch):
+    configs, _dataset_path = _write_minimal_config_tree(tmp_path)
+    for stem in ["character_a", "character_b"]:
+        (configs / "datasets" / f"{stem}.toml").write_text(
+            f'source_image_dir = "image_dataset/{stem}"\n',
+            encoding="utf-8",
+        )
+    (configs / "web-file-groups.toml").write_text(
+        "\n".join(
+            [
+                "[[groups]]",
+                'id = "datasets"',
+                'label = "数据集配置"',
+                "open = true",
+                "locked = false",
+                "trainable = false",
+                'files = ["configs\\\\datasets\\\\character_a.toml", "configs/datasets/character_b.toml"]',
+                'order = ["configs\\\\datasets\\\\character_a.toml", "configs/datasets/character_b.toml"]',
+                "",
+                "[[groups]]",
+                'id = "custom_datasets"',
+                'label = "角色数据集"',
+                "open = true",
+                "locked = false",
+                "trainable = false",
+                'kind = "dataset"',
+                "user_managed = true",
+                "files = []",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    _patch_config_service_paths(monkeypatch, tmp_path)
+
+    ok, message, moved = config_service.move_config_file_to_group(
+        "configs/datasets/character_a.toml",
+        "custom_datasets",
+    )
+
+    assert ok is True, message
+    assert [item["path"] for item in moved["files"]] == ["configs/datasets/character_a.toml"]
+    groups = config_service.list_config_file_groups(kind="dataset")
+    datasets = next(group for group in groups if group["id"] == "datasets")
+    assert [item["path"] for item in datasets["files"]] == ["configs/datasets/character_b.toml"]
+    saved = (configs / "web-file-groups.toml").read_text(encoding="utf-8")
+    assert "configs\\\\datasets\\\\character_a.toml" not in saved
+    assert 'configs/datasets/character_a.toml' in saved
+
+
 def test_place_config_file_in_group_uses_exact_drop_index(tmp_path: Path, monkeypatch):
     configs, _dataset_path = _write_minimal_config_tree(tmp_path)
     for name in ["alpha", "beta", "gamma"]:
@@ -1748,6 +2001,95 @@ def test_dataset_preset_diagnose_reports_scan_context(tmp_path: Path, monkeypatc
     assert body["target"] == "configs/datasets/character_a.toml"
 
 
+def test_dataset_preset_listing_normalizes_windows_display_paths(tmp_path: Path, monkeypatch):
+    configs, _dataset_path = _write_minimal_config_tree(tmp_path)
+    _patch_config_service_paths(monkeypatch, tmp_path)
+    config_service.save_dataset_preset(
+        "configs/datasets/hikarucs.toml",
+        [{"source_dir": "train_set/hikaru", "image_dir": "train_set/hikaru_resized", "cache_dir": "train_set/hikaru_cache", "num_repeats": 6}],
+        {},
+    )
+
+    original_display_path = config_service._display_path
+
+    def windows_display_path(path: Path) -> str:
+        text = original_display_path(path)
+        if text.startswith("configs/datasets/"):
+            return text.replace("/", "\\")
+        return text
+
+    monkeypatch.setattr(config_service, "_display_path", windows_display_path)
+
+    listed = config_service.list_dataset_presets()
+    assert listed["ok"] is True
+    assert [item["path"] for item in listed["presets"]] == ["configs/datasets/hikarucs.toml"]
+    assert listed["groups"][0]["files"][0]["path"] == "configs/datasets/hikarucs.toml"
+
+    report = config_service.diagnose_dataset_presets("configs/datasets/hikarucs.toml")
+    assert report["listed_count"] == 1
+    assert report["files"][0]["path"] == "configs/datasets/hikarucs.toml"
+    assert report["files"][0]["selected"] is True
+
+
+def test_import_dataset_preset_parses_and_normalizes_uploaded_toml(tmp_path: Path, monkeypatch):
+    configs, _dataset_path = _write_minimal_config_tree(tmp_path)
+    _patch_config_service_paths(monkeypatch, tmp_path)
+    content = "\n".join(
+        [
+            "[general]",
+            "keep_tokens = 4",
+            "",
+            "[[datasets]]",
+            "resolution = 768",
+            "",
+            "[[datasets.subsets]]",
+            'image_dir = "post_image_dataset/a_resized"',
+            'cache_dir = "post_image_dataset/a_cache"',
+            "num_repeats = 6",
+            "",
+            "[datasets.subsets.custom_attributes]",
+            'source_dir = "image_dataset/a"',
+            "",
+        ]
+    )
+
+    imported = config_service.import_dataset_preset("character a.toml", content)
+
+    assert imported["ok"] is True
+    assert imported["file"] == "configs/datasets/character_a.toml"
+    assert imported["summary"]["repeat_total"] == 6
+    loaded = config_service.load_dataset_preset(imported["file"])
+    assert loaded["defaults"]["resolution"] == 768
+    assert loaded["defaults"]["keep_tokens"] == 4
+    assert loaded["datasets"][0]["source_dir"] == "image_dataset/a"
+
+    response = asyncio.run(config_routes.handle_dataset_preset_import(_JsonRequest({
+        "name": "character b.toml",
+        "content": content.replace("image_dataset/a", "image_dataset/b"),
+    })))
+    assert response.status == 200
+    body = json.loads(response.text)
+    assert body["file"] == "configs/datasets/character_b.toml"
+
+
+def test_import_dataset_preset_rejects_existing_target(tmp_path: Path, monkeypatch):
+    configs, _dataset_path = _write_minimal_config_tree(tmp_path)
+    _patch_config_service_paths(monkeypatch, tmp_path)
+    existing = configs / "datasets" / "character_a.toml"
+    existing.write_text(
+        'source_image_dir = "keep"\n',
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="已存在"):
+        config_service.import_dataset_preset(
+            "character_a.toml",
+            'source_image_dir = "image_dataset/a"\n',
+        )
+
+    assert existing.read_text(encoding="utf-8") == 'source_image_dir = "keep"\n'
+
+
 def test_save_dataset_preset_logs_terminal_context(tmp_path: Path, monkeypatch, caplog):
     _write_minimal_config_tree(tmp_path)
     _patch_config_service_paths(monkeypatch, tmp_path)
@@ -2084,6 +2426,25 @@ def test_step_estimate_defaults_max_train_steps_to_disabled_when_epoch_missing(t
     assert estimate["duration_configured"] is False
     assert estimate["duration_mode"] == "unset"
     assert estimate["total_steps"] == 0
+
+
+def test_step_estimate_empty_dataset_config_override_clears_preset(tmp_path: Path, monkeypatch):
+    configs, dataset_path = _write_minimal_config_tree(tmp_path)
+    _patch_config_service_paths(monkeypatch, tmp_path)
+    _write_step_estimate_dataset(tmp_path, dataset_path)
+    base_resized = tmp_path / "image_dataset_resized"
+    base_resized.mkdir(parents=True)
+    for idx in range(2):
+        Image.new("RGB", (8, 8), color=(idx, 80, 120)).save(base_resized / f"base-{idx}.png")
+
+    with_dataset = config_service.estimate_training_steps("lora", "default", "imported")
+    cleared = config_service.estimate_training_steps("lora", "default", "imported", dataset_config="")
+
+    assert with_dataset["steps_per_epoch"] == 15
+    assert with_dataset["dataset_num_repeats"] == 5
+    assert cleared["steps_per_epoch"] == 2
+    assert cleared["dataset_num_repeats"] == 1
+    assert cleared["resized_dir"].endswith("image_dataset_resized")
 
 
 def test_step_estimate_uses_explicit_max_train_steps_when_epoch_missing(tmp_path: Path, monkeypatch):

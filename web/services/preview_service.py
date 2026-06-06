@@ -1096,7 +1096,7 @@ def _display_path(path: Path) -> str:
     try:
         return path.resolve().relative_to(ROOT.resolve()).as_posix()
     except ValueError:
-        return str(path)
+        return path.resolve().as_posix()
 
 
 def _training_preview_label(settings: dict[str, Any], *, task_id: str | None, task_label: str | None) -> str:

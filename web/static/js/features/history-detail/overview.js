@@ -1,4 +1,4 @@
-import { historySystemSummary, formatSystemPercent, formatSystemVram } from './system.js?v=module-bootstrap-20260604-10';
+import { historySystemSummary, formatSystemPercent, formatSystemVram } from './system.js?v=module-bootstrap-20260604-11';
 import {
     createHistoryDetailCopyButton,
     historyDetailEmptyText,
@@ -6,8 +6,7 @@ import {
     historyDetailRunRoot,
     historyDetailSection,
     normalizedHistoryDetailPath,
-    relativeHistoryDetailPath,
-} from './ui.js?v=module-bootstrap-20260604-10';
+} from './ui.js?v=module-bootstrap-20260604-11';
 
 export function createHistoryOverviewRenderer({ ctx, state, deps, renderHistoryDetailResume }) {
     const {
@@ -195,7 +194,6 @@ export function createHistoryOverviewRenderer({ ctx, state, deps, renderHistoryD
             box.appendChild(historyDetailRow(label, value, {
                 className: 'history-detail-path-row',
                 copyValue: value,
-                displayValue: relativeHistoryDetailPath(value, rootPath),
             }));
         }
         if (!box.childElementCount) {

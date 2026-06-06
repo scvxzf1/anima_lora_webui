@@ -47,6 +47,24 @@ DEFAULT_SAMPLE_PROMPTS_FILE = "configs/sample_prompts.txt"
 DEFAULT_RESIZED_IMAGE_DIR = "post_image_dataset/resized"
 DEFAULT_LORA_CACHE_DIR = "post_image_dataset/lora"
 DEFAULT_MAX_TRAIN_STEPS = 0
+SUPPORTED_TRAINING_SAMPLE_SAMPLERS = frozenset({"euler", "er_sde", "lcm"})
+LEGACY_TRAINING_SAMPLE_SAMPLERS = frozenset({
+    "ddim",
+    "pndm",
+    "lms",
+    "euler_a",
+    "heun",
+    "dpm_2",
+    "dpm_2_a",
+    "dpmsolver",
+    "dpmsolver++",
+    "dpmsingle",
+    "k_lms",
+    "k_euler",
+    "k_euler_a",
+    "k_dpm_2",
+    "k_dpm_2_a",
+})
 PREPROCESS_ENV_CHECK_KEY = "preprocess_environment"
 PREPROCESS_ENV_REQUIRED_FILES = (
     "tasks.py",
@@ -61,6 +79,10 @@ PREPROCESS_ENV_REQUIRED_FILES = (
 )
 UI_ONLY_CONFIG_FIELDS = {
     "dataset_config_picker",
+}
+SPD_NESTED_PATCH_FIELDS = {
+    "channel_scaling_alpha": ("network", "channel_scaling_alpha"),
+    "weight_decay": ("optim", "weight_decay"),
 }
 RETIRED_TOP_LEVEL_CONFIG_FIELDS = {
     "per_channel_scaling",
@@ -335,7 +357,7 @@ def list_dataset_presets() -> dict[str, Any]:
     DATASET_PRESETS_DIR.mkdir(parents=True, exist_ok=True)
     presets_by_path: dict[str, dict[str, Any]] = {}
     for path in sorted(DATASET_PRESETS_DIR.glob("*.toml")):
-        rel_path = _display_path(path)
+        rel_path = _normalize_config_rel_path(_display_path(path))
         if rel_path in HIDDEN_DATASET_PRESET_FILES:
             continue
         meta = get_config_file_meta(rel_path)
@@ -368,7 +390,7 @@ def diagnose_dataset_presets(rel_path: str = "") -> dict[str, Any]:
 
     files: list[dict[str, Any]] = []
     for path in sorted(DATASET_PRESETS_DIR.glob("*.toml")):
-        rel = _display_path(path)
+        rel = _normalize_config_rel_path(_display_path(path))
         stat = path.stat()
         item: dict[str, Any] = {
             "path": rel,
@@ -496,6 +518,28 @@ def save_dataset_preset_as(
 ) -> dict[str, Any]:
     stem = _safe_file_stem(name)
     return save_dataset_preset(f"configs/datasets/{stem}.toml", rows, defaults, overwrite=False)
+
+
+def import_dataset_preset(
+    name: str,
+    content: str,
+    *,
+    overwrite: bool = False,
+) -> dict[str, Any]:
+    stem = _safe_file_stem(name)
+    text = str(content or "")
+    try:
+        data = toml.loads(text)
+    except toml.TomlDecodeError as exc:
+        raise ValueError(f"导入失败，TOML 语法错误: {exc}") from exc
+    if not isinstance(data, dict):
+        raise ValueError("导入失败，TOML 内容不合法")
+
+    rows = _normalize_dataset_rows(_dataset_rows_from_config(data, data))
+    if not rows or any(not str(row.get("source_dir") or "").strip() for row in rows):
+        raise ValueError("导入失败，未找到可用的数据集路径")
+    defaults = _dataset_defaults_from_config(data)
+    return save_dataset_preset(f"configs/datasets/{stem}.toml", rows, defaults, overwrite=overwrite)
 
 
 def delete_dataset_preset(rel_path: str) -> dict[str, Any]:
@@ -825,6 +869,8 @@ def preflight_training_config(
             return
         add("ok", key, f"{label} 存在", path)
 
+    if "output_name" in cfg and _is_blank_output_name(cfg.get("output_name")):
+        add("error", "output_name", "输出名称未填写")
     check_file("pretrained_model_name_or_path", "基础 DiT 模型", (".safetensors", ".pt", ".pth", ".ckpt"))
     check_file("qwen3", "Qwen3 文本编码器", (".safetensors", ".pt", ".pth", ".bin"))
     check_file("vae", "VAE 模型", (".safetensors", ".pt", ".pth", ".ckpt"))
@@ -835,6 +881,7 @@ def preflight_training_config(
 
     _check_dataset_source_paths(cfg, add)
     _check_dataset_paths(cfg, add, check_runtime_dirs=runtime_config)
+    _check_training_sample_config(cfg, add)
     if not runtime_config:
         _check_web_preprocess_environment(add)
     if runtime_config:
@@ -912,6 +959,42 @@ def _check_network_weights(
     if _bool_value(cfg.get("dim_from_weights"), False):
         message += "，将从权重读取维度"
     add("ok", "network_weights", message, weight_path)
+
+
+def _check_training_sample_config(cfg: dict[str, Any], add) -> None:
+    sample_prompts = str(cfg.get("sample_prompts") or "").strip()
+    epoch_freq = _positive_int_or_none(cfg.get("sample_every_n_epochs"))
+    step_freq = _positive_int_or_none(cfg.get("sample_every_n_steps"))
+    sample_at_first = _bool_value(cfg.get("sample_at_first"), False)
+
+    if sample_prompts and epoch_freq is None and step_freq is None and not sample_at_first:
+        add(
+            "warning",
+            "sample_prompts",
+            "已填写 sample_prompts，但未启用训练前、按轮或按步采样，训练不会生成样张",
+        )
+
+    if epoch_freq is not None and step_freq is not None:
+        add(
+            "warning",
+            "sample_schedule",
+            "已同时启用按轮和按步采样，会分别在轮末和步数命中时生成样张，采样开销会增加",
+        )
+
+    raw_sampler = str(cfg.get("sample_sampler") or "euler").strip().lower()
+    sampler, sampler_status = training_sample_sampler_status(raw_sampler)
+    if sampler_status == "legacy":
+        add(
+            "warning",
+            "sample_sampler",
+            f"sample_sampler={raw_sampler} 是旧 Diffusers 采样器名，训练预览会按 {sampler} 兼容处理",
+        )
+    elif sampler_status == "unknown":
+        add(
+            "warning",
+            "sample_sampler",
+            f"sample_sampler={raw_sampler} 当前训练预览不支持，会按 {sampler} 处理",
+        )
 
 
 def _load_training_config_for_web_run(
@@ -1070,6 +1153,8 @@ def estimate_training_steps(
         dataset_rel = _normalize_config_rel_path(str(dataset_config or ""))
         if dataset_rel:
             cfg["dataset_config"] = dataset_rel
+        else:
+            cfg.pop("dataset_config", None)
     image_exts = {".png", ".jpg", ".jpeg", ".webp", ".bmp"}
     dataset_rows = _dataset_rows_for_estimate(cfg)
     detail_rows: list[dict[str, Any]] = []
@@ -2044,6 +2129,14 @@ def _positive_int(value: Any, fallback: int) -> int:
     return n if n > 0 else fallback
 
 
+def _positive_int_or_none(value: Any) -> int | None:
+    try:
+        n = int(value)
+    except (TypeError, ValueError):
+        return None
+    return n if n > 0 else None
+
+
 def _nonnegative_int(value: Any, fallback: int) -> int:
     try:
         n = int(value)
@@ -2074,6 +2167,15 @@ def _bool_value(value: Any, fallback: bool = False) -> bool:
     if isinstance(value, bool):
         return value
     return str(value).strip().lower() in {"1", "true", "yes", "on"}
+
+
+def training_sample_sampler_status(value: Any) -> tuple[str, str]:
+    sampler = str(value or "euler").strip().lower()
+    if sampler in SUPPORTED_TRAINING_SAMPLE_SAMPLERS:
+        return sampler, "supported"
+    if sampler in LEGACY_TRAINING_SAMPLE_SAMPLERS:
+        return "euler", "legacy"
+    return "euler", "unknown"
 
 
 def list_output_runs(limit: int = 200) -> dict[str, Any]:
@@ -2330,6 +2432,8 @@ def save_raw_file(
         content = _normalize_saved_raw_config_content(content)
     except (toml.TomlDecodeError, tomlkit.exceptions.TOMLKitError) as e:
         return False, f"TOML 语法错误: {e}"
+    except ValueError as e:
+        return False, str(e)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(content, encoding="utf-8")
     return True, "保存成功"
@@ -2411,7 +2515,7 @@ def _prepare_raw_file_patch(
 
     source = content if content is not None else load_raw_file(rel_path)
     try:
-        next_content = _patch_toml_top_level(source, values)
+        next_content = _patch_toml_top_level(source, values, rel_path=normalized)
         next_content, removed_keys = _remove_retired_top_level_fields(next_content)
         next_content, compatibility_keys = _normalize_saved_raw_config_content_with_changed_keys(next_content)
         toml.loads(next_content)
@@ -2603,23 +2707,20 @@ def move_config_file_to_group(rel_path: str, group_id: str) -> tuple[bool, str, 
         return False, "目标分组已锁定，不能移入配置", _build_config_file_group(target)
 
     for spec in specs:
-        files = [item for item in spec.get("files", []) if item != normalized_file]
-        spec["files"] = files
-        spec["order"] = [item for item in spec.get("order", []) if item != normalized_file]
-        exclude = [item for item in spec.get("exclude", []) if item != normalized_file]
+        spec["files"] = [item for item in _config_group_path_list(spec.get("files")) if item != normalized_file]
+        spec["order"] = [item for item in _config_group_path_list(spec.get("order")) if item != normalized_file]
+        exclude = [item for item in _config_group_path_list(spec.get("exclude")) if item != normalized_file]
         if _group_patterns_include_file(spec, normalized_file) and spec["id"] != target_group_id:
             exclude.append(normalized_file)
         spec["exclude"] = sorted(dict.fromkeys(exclude))
 
     target.setdefault("files", [])
-    if normalized_file not in target["files"]:
-        target["files"].append(normalized_file)
-    target["files"] = list(dict.fromkeys(target["files"]))
+    target["files"] = _config_group_path_list([*target["files"], normalized_file])
     target.setdefault("order", [])
-    target["order"] = [item for item in target["order"] if item != normalized_file]
+    target["order"] = [item for item in _config_group_path_list(target["order"]) if item != normalized_file]
     target["order"].append(normalized_file)
     if normalized_file in target.get("exclude", []):
-        target["exclude"] = [item for item in target["exclude"] if item != normalized_file]
+        target["exclude"] = [item for item in _config_group_path_list(target["exclude"]) if item != normalized_file]
 
     _save_config_file_group_specs(specs)
     return True, "配置已移动到分组", _build_config_file_group(target)
@@ -2651,9 +2752,9 @@ def place_config_file_in_group(
         return False, "目标分组已锁定，不能移入配置", _build_config_file_group(target)
 
     for spec in specs:
-        spec["files"] = [item for item in spec.get("files", []) if item != normalized_file]
-        spec["order"] = [item for item in spec.get("order", []) if item != normalized_file]
-        exclude = [item for item in spec.get("exclude", []) if item != normalized_file]
+        spec["files"] = [item for item in _config_group_path_list(spec.get("files")) if item != normalized_file]
+        spec["order"] = [item for item in _config_group_path_list(spec.get("order")) if item != normalized_file]
+        exclude = [item for item in _config_group_path_list(spec.get("exclude")) if item != normalized_file]
         if _group_patterns_include_file(spec, normalized_file) and spec["id"] != target_group_id:
             exclude.append(normalized_file)
         spec["exclude"] = sorted(dict.fromkeys(exclude))
@@ -2667,12 +2768,10 @@ def place_config_file_in_group(
     current_files.insert(target_index, normalized_file)
 
     target.setdefault("files", [])
-    if normalized_file not in target["files"]:
-        target["files"].append(normalized_file)
-    target["files"] = list(dict.fromkeys(target["files"]))
+    target["files"] = _config_group_path_list([*target["files"], normalized_file])
     target["order"] = current_files
     if normalized_file in target.get("exclude", []):
-        target["exclude"] = [item for item in target["exclude"] if item != normalized_file]
+        target["exclude"] = [item for item in _config_group_path_list(target["exclude"]) if item != normalized_file]
 
     _save_config_file_group_specs(specs)
     return True, "配置位置已更新", _build_config_file_group(target)
@@ -3004,10 +3103,10 @@ def _load_config_file_group_specs() -> list[dict[str, Any]]:
             "methods_subdir": str(raw.get("methods_subdir") or ""),
             "kind": _config_group_kind(raw),
             "user_managed": bool(raw.get("user_managed", False)),
-            "files": _string_list(raw.get("files")),
-            "order": _string_list(raw.get("order")),
-            "patterns": _string_list(raw.get("patterns")),
-            "exclude": set(_string_list(raw.get("exclude"))),
+            "files": _config_group_path_list(raw.get("files")),
+            "order": _config_group_path_list(raw.get("order")),
+            "patterns": _config_group_path_list(raw.get("patterns")),
+            "exclude": set(_config_group_path_list(raw.get("exclude"))),
         })
     return specs
 
@@ -3041,13 +3140,13 @@ def _save_config_file_group_specs(specs: list[dict[str, Any]]) -> None:
         if spec.get("user_managed"):
             table.add("user_managed", True)
         if spec.get("files"):
-            table.add("files", list(spec.get("files") or []))
+            table.add("files", _config_group_path_list(spec.get("files")))
         if spec.get("order"):
-            table.add("order", list(spec.get("order") or []))
+            table.add("order", _config_group_path_list(spec.get("order")))
         if spec.get("patterns"):
-            table.add("patterns", list(spec.get("patterns") or []))
+            table.add("patterns", _config_group_path_list(spec.get("patterns")))
         if spec.get("exclude"):
-            table.add("exclude", list(spec.get("exclude") or []))
+            table.add("exclude", _config_group_path_list(spec.get("exclude")))
         group_array.append(table)
     doc.add("groups", group_array)
     WEB_FILE_GROUPS_FILE.parent.mkdir(parents=True, exist_ok=True)
@@ -3064,7 +3163,7 @@ def _build_config_file_group(spec: dict[str, Any]) -> dict[str, Any]:
     unique_files: list[str] = []
     seen_files: set[str] = set()
     for file_path in files:
-        normalized = file_path.replace("\\", "/")
+        normalized = _normalize_config_rel_path(file_path)
         if normalized in spec["exclude"] or normalized in seen_files:
             continue
         if normalized in HIDDEN_CONFIG_FILES:
@@ -3111,11 +3210,12 @@ def _build_config_file_group(spec: dict[str, Any]) -> dict[str, Any]:
 
 
 def _glob_config_files(pattern: str) -> list[str]:
-    if not pattern.startswith("configs/") or ".." in Path(pattern).parts:
+    normalized_pattern = _normalize_config_rel_path(pattern)
+    if not normalized_pattern.startswith("configs/") or ".." in Path(normalized_pattern).parts:
         return []
     return [
         _display_path(path)
-        for path in sorted(ROOT.glob(pattern))
+        for path in sorted(ROOT.glob(normalized_pattern))
         if path.is_file()
         and path.suffix == ".toml"
         and _safe_resolve(_display_path(path))
@@ -3541,25 +3641,60 @@ def _backup_relative_path(rel_path: str) -> Path:
 def _string_list(value: Any) -> list[str]:
     if isinstance(value, str):
         return [value]
-    if not isinstance(value, list):
+    if isinstance(value, (set, frozenset)):
+        return [str(item) for item in sorted(value) if item]
+    if not isinstance(value, (list, tuple)):
         return []
     return [str(item) for item in value if item]
 
 
-def _patch_toml_top_level(content: str, values: dict[str, Any]) -> str:
+def _config_group_path_list(value: Any) -> list[str]:
+    paths: list[str] = []
+    for raw in _string_list(value):
+        normalized = _normalize_config_rel_path(raw)
+        if normalized:
+            paths.append(normalized)
+    return list(dict.fromkeys(paths))
+
+
+def _patch_toml_top_level(content: str, values: dict[str, Any], *, rel_path: str = "") -> str:
     doc = tomlkit.parse(content or "")
+    nested_patch_fields = SPD_NESTED_PATCH_FIELDS if _is_spd_patch_target(rel_path, doc) else {}
     for key, value in values.items():
         if not isinstance(key, str) or not key:
             continue
         if "." in key or key in {"general", "datasets"}:
             raise ValueError(f"不支持写入嵌套字段: {key}")
         normalized = _normalize_patch_value(key, value)
+        if key in nested_patch_fields:
+            table_key, nested_key = nested_patch_fields[key]
+            table = doc.get(table_key)
+            if not isinstance(table, dict):
+                table = tomlkit.table()
+                doc[table_key] = table
+            if key in doc:
+                del doc[key]
+            if normalized is _DELETE_TOML_KEY:
+                if nested_key in table:
+                    del table[nested_key]
+                continue
+            table[nested_key] = normalized
+            continue
         if normalized is _DELETE_TOML_KEY:
             if key in doc:
                 del doc[key]
             continue
         doc[key] = normalized
     return tomlkit.dumps(doc)
+
+
+def _is_spd_patch_target(rel_path: str, doc: dict[str, Any]) -> bool:
+    normalized = _normalize_config_rel_path(rel_path) if rel_path else ""
+    if normalized == "configs/methods/spd.toml" or Path(normalized).stem == "spd":
+        return True
+    return all(key in doc for key in ("dit_path", "data_dir", "iterations")) and (
+        "schedule" in doc or "network" in doc or "optim" in doc
+    )
 
 
 def _remove_retired_top_level_fields(content: str) -> tuple[str, list[str]]:
@@ -3575,6 +3710,10 @@ def _remove_retired_top_level_fields(content: str) -> tuple[str, list[str]]:
 
 
 def _normalize_patch_value(key: str, value: Any) -> Any:
+    if key == "output_name":
+        if _is_blank_output_name(value):
+            raise ValueError("output_name 不能为空")
+        return str(value).strip()
     if key in {"sample_every_n_epochs", "sample_every_n_steps"}:
         if value in ("", None):
             # TOML 没有 null。WebUI 留空表示禁用该采样频率，
@@ -3591,6 +3730,10 @@ def _normalize_patch_value(key: str, value: Any) -> Any:
     return value
 
 
+def _is_blank_output_name(value: Any) -> bool:
+    return value is None or str(value).strip() == ""
+
+
 def _normalize_saved_raw_config_content(content: str) -> str:
     normalized, _changed_keys = _normalize_saved_raw_config_content_with_changed_keys(content)
     return normalized
@@ -3598,6 +3741,8 @@ def _normalize_saved_raw_config_content(content: str) -> str:
 
 def _normalize_saved_raw_config_content_with_changed_keys(content: str) -> tuple[str, list[str]]:
     doc = tomlkit.parse(content or "")
+    if "output_name" in doc and _is_blank_output_name(doc["output_name"]):
+        raise ValueError("output_name 不能为空")
     optimizer_type = str(doc.get("optimizer_type") or "").strip().lower()
     if optimizer_type != "came" or "optimizer_args" not in doc:
         return content, []
@@ -3724,9 +3869,9 @@ def _is_builtin_default_data_dir(value: str) -> bool:
 
 def _display_path(path: Path) -> str:
     try:
-        return str(path.relative_to(ROOT))
-    except ValueError:
-        return str(path)
+        return path.relative_to(ROOT).as_posix()
+    except (TypeError, ValueError):
+        return path.as_posix()
 
 
 def _nl_tag_mix_available_count(

@@ -8,8 +8,8 @@ import {
     historyDetailRow as createHistoryDetailRow,
     historyDetailRunRoot,
     historyDetailSection,
-    relativeHistoryDetailPath,
-} from './ui.js?v=module-bootstrap-20260604-10';
+    selectAllTextOnDoubleClick,
+} from './ui.js?v=module-bootstrap-20260604-11';
 
 export function createHistoryConfigFilesRenderer({ ctx, deps }) {
     const historyDetailCopyButton = (value, label) => createHistoryDetailCopyButton(ctx.dom.copyText, value, label);
@@ -342,7 +342,7 @@ export function createHistoryConfigFilesRenderer({ ctx, deps }) {
         const list = document.createElement('div');
         list.className = 'history-detail-kv history-file-list';
         for (const [label, value, artifactKey] of deps.runtimePathItems(task)) {
-            list.appendChild(historyDetailFileRow(task, label, value, artifactKey, rootPath));
+            list.appendChild(historyDetailFileRow(task, label, value, artifactKey));
         }
         if (!list.childElementCount) {
             list.appendChild(historyDetailEmptyText('这个任务没有记录可展示的文件路径。'));
@@ -359,19 +359,21 @@ export function createHistoryConfigFilesRenderer({ ctx, deps }) {
         const code = document.createElement('code');
         code.textContent = rootPath;
         code.title = rootPath;
+        selectAllTextOnDoubleClick(code);
         root.append(label, code, historyDetailCopyButton(rootPath, '基础目录'));
         return root;
     }
 
-    function historyDetailFileRow(task, label, value, artifactKey, rootPath) {
+    function historyDetailFileRow(task, label, value, artifactKey) {
         const rawValue = String(value || '-');
         const row = document.createElement('div');
         row.className = 'history-file-row has-file-actions';
         const key = document.createElement('span');
         key.textContent = label;
         const val = document.createElement('code');
-        val.textContent = relativeHistoryDetailPath(rawValue, rootPath);
+        val.textContent = rawValue;
         val.title = rawValue;
+        selectAllTextOnDoubleClick(val);
         const actions = document.createElement('div');
         actions.className = 'history-file-actions';
         actions.appendChild(historyDetailCopyButton(rawValue, `${label}完整路径`));

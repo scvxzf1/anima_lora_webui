@@ -1,4 +1,4 @@
-import { help } from './help-builder.js?v=module-bootstrap-20260604-10';
+import { help } from './help-builder.js?v=module-bootstrap-20260604-11';
 
 export const FIELD_HELP_TRAINING_ZH = {    learning_rate: help(
         "学习率，决定每一步参数改动有多大。",
@@ -211,11 +211,11 @@ export const FIELD_HELP_TRAINING_ZH = {    learning_rate: help(
     ),
     sample_sampler: help(
         "训练中样张使用的采样器。",
-        "常用 ddim、euler、euler_a、dpmsolver++。",
+        "当前训练预览支持 euler、er_sde、lcm。旧配置里的 ddim、euler_a、dpmsolver++ 等 Diffusers 采样器名会按 euler 兼容处理。",
         ["会影响样张风格和速度。"],
         ["和最终推理采样器不同，样张观感会有差异。"],
         ["频繁切换会让训练过程对比不直观。"],
-        "默认 ddim；想贴近常用推理体验可试 euler_a 或 dpmsolver++。"
+        "默认 euler；需要更随机的预览可试 er_sde，需要少步数蒸馏类预览可试 lcm。"
     ),
     attn_mode: help(
         "注意力计算使用的后端实现。",

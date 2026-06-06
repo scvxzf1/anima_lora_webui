@@ -41,6 +41,7 @@ from web.services.config_service import (
     apply_auto_data_dirs,
     load_merged_config,
     preflight_training_config,
+    training_sample_sampler_status,
 )
 from web.services.settings_service import display_path as _display_settings_path
 from web.services.settings_service import resolve_output_root
@@ -149,6 +150,8 @@ class TrainingService:
         self._structured_rate_last: tuple[float, int] | None = None
         self._structured_rate_samples: deque[float] = deque(maxlen=PROGRESS_RATE_SAMPLE_WINDOW)
         self._metrics_history: list[dict[str, Any]] = []
+        self._latest_progress: dict[str, Any] | None = None
+        self._latest_system_stats: dict[str, Any] | None = None
         self._last_output_at: float | None = None
         self._last_log_line: str = ""
         self._last_lr_log_text: str = ""
@@ -539,6 +542,8 @@ class TrainingService:
         self._anchor = None
         self._reset_progress_rate_state()
         self._reset_metric_runtime_state()
+        self._latest_progress = None
+        self._latest_system_stats = None
         self._progress_jsonl_path = None
         self._progress_jsonl_offset = 0
         self._progress_jsonl_seen = set()
@@ -1325,6 +1330,9 @@ class TrainingService:
             "last_output_at": self._last_output_at,
             "last_log_line": self._last_log_line,
             "last_log_id": self._log_records[-1]["id"] if self._log_records else 0,
+            "latest_progress": dict(self._latest_progress or {}),
+            "latest_metric": dict(self._metrics_history[-1]) if self._metrics_history else {},
+            "latest_system": dict(self._latest_system_stats or {}),
             "error_hint": self._detected_error_hint,
             "queue_paused": self._queue_paused,
             "queue_count": sum(1 for item in self._queue_items() if item.get("state") == "queued"),
@@ -1759,8 +1767,7 @@ class TrainingService:
             tot = int(m.group("tot"))
             label = m.group("label").strip() or "Training"
             rate_str = self._compute_rate(cur, tot)
-            await self._broadcast({
-                "type": "progress",
+            await self._broadcast_progress({
                 "current": cur,
                 "total": tot,
                 "label": label,
@@ -1873,8 +1880,7 @@ class TrainingService:
             total = _int_or_none(event.get("total_steps"))
             if total is not None and total > 0:
                 self._progress_total_steps = total
-                await self._broadcast({
-                    "type": "progress",
+                await self._broadcast_progress({
                     "current": 0,
                     "total": total,
                     "label": "Training",
@@ -1893,8 +1899,7 @@ class TrainingService:
                 await self._record_metric(metric)
             total = self._progress_total_steps
             if ev == "step" and step is not None and total:
-                await self._broadcast({
-                    "type": "progress",
+                await self._broadcast_progress({
                     "current": step,
                     "total": total,
                     "label": "Training",
@@ -2164,9 +2169,15 @@ class TrainingService:
             if stats:
                 stats["last_output_at"] = self._last_output_at
                 stats["ts"] = time.time()
+                self._latest_system_stats = dict(stats)
                 self._append_history_jsonl("system.jsonl", stats)
                 await self._broadcast({"type": "system", **stats})
             await asyncio.sleep(5)
+
+    async def _broadcast_progress(self, msg: dict[str, Any]) -> None:
+        payload = {"type": "progress", **msg}
+        self._latest_progress = dict(payload)
+        await self._broadcast(payload)
 
     async def _broadcast(self, msg: dict):
         import json
@@ -4037,12 +4048,13 @@ def _history_runtime_artifact_path(task_id: str, field: str) -> Path:
         raise FileNotFoundError("运行文件不存在")
     run_dir = run_dir.resolve()
     path = path.resolve()
-    output_root = resolve_output_root().resolve()
     try:
-        run_dir.relative_to(output_root)
         path.relative_to(run_dir)
     except ValueError as exc:
         raise ValueError("运行文件路径不合法") from exc
+    output_root = resolve_output_root().resolve()
+    if not _path_is_relative_to(run_dir, output_root) and not _is_web_runtime_dir(run_dir):
+        raise ValueError("运行文件路径不合法")
     if not _path_exists(path) or not path.is_file():
         raise FileNotFoundError("运行文件不存在")
     return path
@@ -4804,6 +4816,7 @@ def _history_summary(meta: dict[str, Any], task_dir: Path) -> dict[str, Any]:
     ):
         out[key] = str(out.get(key) or "")
     out["archived"] = _history_task_archived(out)
+    out["project_root_abs"] = str(ROOT.resolve())
     out["history_dir"] = _display_project_path(str(task_dir))
     out["history_dir_abs"] = str(task_dir)
     out["config_snapshot"] = _display_project_path(str(task_dir / "config.snapshot.toml"))
@@ -4814,6 +4827,7 @@ def _history_summary(meta: dict[str, Any], task_dir: Path) -> dict[str, Any]:
     for key in ("source_image_dir", "resized_image_dir", "lora_cache_dir"):
         out[key] = str(out.get(key) or data_dirs.get(key) or "")
     _fill_history_runtime_meta(out)
+    out["run_dir_abs"] = _absolute_display_path(out.get("run_dir"))
     _fill_history_group_meta(out)
     if not out["name"]:
         out["name"] = _default_preprocess_history_name(out)
@@ -5236,7 +5250,7 @@ def _default_sample_config() -> dict[str, Any]:
         "sample_every_n_epochs": None,
         "sample_every_n_steps": None,
         "sample_at_first": False,
-        "sample_sampler": "ddim",
+        "sample_sampler": "euler",
         "message": "未启用训练中采样",
     }
 
@@ -5246,7 +5260,7 @@ def _sample_config_from_cfg(cfg: dict[str, Any], extra_args: list[str]) -> dict[
     sample_every_n_epochs = cfg.get("sample_every_n_epochs")
     sample_every_n_steps = cfg.get("sample_every_n_steps")
     sample_at_first = bool(cfg.get("sample_at_first", False))
-    sample_sampler = str(cfg.get("sample_sampler") or "ddim")
+    sample_sampler_raw = str(cfg.get("sample_sampler") or "euler")
 
     overrides = _cli_arg_overrides(extra_args)
     if "sample_prompts" in overrides:
@@ -5258,10 +5272,11 @@ def _sample_config_from_cfg(cfg: dict[str, Any], extra_args: list[str]) -> dict[
     if "sample_at_first" in overrides:
         sample_at_first = True
     if "sample_sampler" in overrides:
-        sample_sampler = str(overrides["sample_sampler"] or sample_sampler)
+        sample_sampler_raw = str(overrides["sample_sampler"] or sample_sampler_raw)
 
     epoch_freq = _positive_int_or_none(sample_every_n_epochs)
     step_freq = _positive_int_or_none(sample_every_n_steps)
+    sample_sampler, sample_sampler_status = training_sample_sampler_status(sample_sampler_raw)
     prompt_path = _resolve_display_path(str(sample_prompts or ""))
     prompt_exists = prompt_path.is_file() if prompt_path else False
     enabled = bool(prompt_path and prompt_exists and (epoch_freq is not None or step_freq is not None or sample_at_first))
@@ -5283,6 +5298,8 @@ def _sample_config_from_cfg(cfg: dict[str, Any], extra_args: list[str]) -> dict[
         "sample_every_n_steps": step_freq,
         "sample_at_first": sample_at_first,
         "sample_sampler": sample_sampler,
+        "sample_sampler_raw": sample_sampler_raw,
+        "sample_sampler_status": sample_sampler_status,
         "message": message,
     }
 
@@ -5353,6 +5370,11 @@ def _display_project_path(value: str) -> str:
         return path.resolve().relative_to(ROOT.resolve()).as_posix()
     except ValueError:
         return raw
+
+
+def _absolute_display_path(value: Any) -> str:
+    path = _resolve_display_path(str(value or ""))
+    return str(path) if path is not None else ""
 
 
 def _command_has_option(args: list[str], option: str) -> bool:

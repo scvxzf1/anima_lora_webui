@@ -142,6 +142,23 @@ def test_training_preview_defaults_to_latest_runtime_run(tmp_path, monkeypatch):
     assert payload["images"][0]["name"] == "new_e000001_00_20260523114515_2.png"
 
 
+def test_preview_display_path_uses_posix_for_external_paths():
+    class FakeExternalPath:
+        def resolve(self):
+            return self
+
+        def relative_to(self, _root):
+            raise ValueError
+
+        def as_posix(self):
+            return "E:/anima-cache/run/training_output/sample/demo.png"
+
+        def __str__(self):
+            return r"E:\anima-cache\run\training_output\sample\demo.png"
+
+    assert preview_service._display_path(FakeExternalPath()) == "E:/anima-cache/run/training_output/sample/demo.png"
+
+
 def test_training_weights_include_absolute_path(tmp_path, monkeypatch):
     output_dir = tmp_path / "output"
     output_dir.mkdir()

@@ -18,6 +18,7 @@ from web.services.config_service import (
     get_config_file_meta,
     get_field_help,
     get_groups,
+    import_dataset_preset,
     load_dataset_editor,
     load_sample_prompts_file,
     list_config_file_groups,
@@ -69,6 +70,7 @@ def setup_config_routes(app: web.Application) -> None:
     app.router.add_get("/api/config/dataset-presets/diagnose", handle_dataset_presets_diagnose)
     app.router.add_get("/api/config/dataset-presets/read", handle_dataset_preset_read)
     app.router.add_put("/api/config/dataset-presets", handle_dataset_preset_put)
+    app.router.add_post("/api/config/dataset-presets/import", handle_dataset_preset_import)
     app.router.add_post("/api/config/dataset-presets/save-as", handle_dataset_preset_save_as)
     app.router.add_delete("/api/config/dataset-presets", handle_dataset_preset_delete)
     app.router.add_post("/api/config/dataset-presets/apply", handle_dataset_preset_apply)
@@ -251,6 +253,18 @@ async def handle_dataset_preset_save_as(request: web.Request) -> web.Response:
             str(data.get("name") or data.get("file") or ""),
             datasets,
             defaults if isinstance(defaults, dict) else {},
+        ))
+    except Exception as e:
+        return web.json_response({"ok": False, "error": str(e)}, status=400)
+
+
+async def handle_dataset_preset_import(request: web.Request) -> web.Response:
+    data = await request.json()
+    try:
+        return web.json_response(import_dataset_preset(
+            str(data.get("name") or data.get("file") or ""),
+            str(data.get("content") or ""),
+            overwrite=bool(data.get("overwrite", False)),
         ))
     except Exception as e:
         return web.json_response({"ok": False, "error": str(e)}, status=400)

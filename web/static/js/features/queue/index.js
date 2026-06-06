@@ -1,13 +1,13 @@
-import { fetchTrainingQueue } from './api.js?v=module-bootstrap-20260604-10';
-import { createQueueActions } from './actions.js?v=module-bootstrap-20260604-10';
-import { createQueueEnqueue } from './enqueue.js?v=module-bootstrap-20260604-10';
-import { createQueueRenderer } from './render.js?v=module-bootstrap-20260604-10';
+import { fetchTrainingQueue } from './api.js?v=module-bootstrap-20260604-11';
+import { createQueueActions } from './actions.js?v=module-bootstrap-20260604-11';
+import { createQueueEnqueue } from './enqueue.js?v=module-bootstrap-20260604-11';
+import { createQueueRenderer } from './render.js?v=module-bootstrap-20260604-11';
 import {
     createQueueState,
     setQueueError,
     setQueueLoading,
     updateQueueStateFromPayload,
-} from './state.js?v=module-bootstrap-20260604-10';
+} from './state.js?v=module-bootstrap-20260604-11';
 
 export function createQueueFeature(ctx, deps) {
     const state = createQueueState();

@@ -1,14 +1,14 @@
-import { createPreviewFeature } from './preview/index.js?v=module-bootstrap-20260604-10';
-import { createQueueFeature } from './queue/index.js?v=module-bootstrap-20260604-10';
-import { createHistoryDetailFeature } from './history-detail/index.js?v=module-bootstrap-20260604-10';
-import { createWeightAnalysisFeature } from './weight-analysis/index.js?v=module-bootstrap-20260604-10';
+import { createPreviewFeature } from './preview/index.js?v=module-bootstrap-20260604-11';
+import { createQueueFeature } from './queue/index.js?v=module-bootstrap-20260604-11';
+import { createHistoryDetailFeature } from './history-detail/index.js?v=module-bootstrap-20260604-11';
+import { createWeightAnalysisFeature } from './weight-analysis/index.js?v=module-bootstrap-20260604-11';
 import {
     formatSystemPercent,
     formatSystemTemperature,
     formatSystemVram,
     historySystemSummary,
-} from './history-detail/system.js?v=module-bootstrap-20260604-10';
-import { formatCompactNumber, numberOrNull } from './history-detail/ui.js?v=module-bootstrap-20260604-10';
+} from './history-detail/system.js?v=module-bootstrap-20260604-11';
+import { formatCompactNumber, numberOrNull } from './history-detail/ui.js?v=module-bootstrap-20260604-11';
 
 function formatLossValue(value) {
     const n = Number(value);
@@ -33,6 +33,7 @@ export function createLegacyApp(ctx) {
     let ws = null;
     let lossChart = null;
     let stepCounter = 0;
+    let trainingStatusPollFailures = 0;
     let tomlStatusTimer = null;
     let tomlFiles = [];
     let tomlFileGroups = [];
@@ -84,6 +85,7 @@ export function createLegacyApp(ctx) {
                 block_swap_profile_jsonl: 'off',
                 memory_probe_jsonl: 'off',
                 memory_probe_max_steps: 2,
+                gradient_checkpointing: false,
                 unsloth_offload_checkpointing: false,
                 torch_compile: true,
             },
@@ -99,6 +101,7 @@ export function createLegacyApp(ctx) {
                 block_swap_profile_jsonl: 'auto',
                 memory_probe_jsonl: 'off',
                 memory_probe_max_steps: 2,
+                gradient_checkpointing: false,
                 unsloth_offload_checkpointing: false,
                 torch_compile: true,
             },
@@ -114,6 +117,7 @@ export function createLegacyApp(ctx) {
                 block_swap_profile_jsonl: 'auto',
                 memory_probe_jsonl: 'auto',
                 memory_probe_max_steps: 2,
+                gradient_checkpointing: false,
                 unsloth_offload_checkpointing: false,
                 torch_compile: true,
             },
@@ -127,6 +131,7 @@ export function createLegacyApp(ctx) {
                 block_swap_transfer_dtype: 'bf16',
                 selective_checkpoint: 'off',
                 block_swap_profile_jsonl: 'auto',
+                gradient_checkpointing: false,
                 unsloth_offload_checkpointing: false,
                 torch_compile: true,
             },
@@ -144,6 +149,7 @@ export function createLegacyApp(ctx) {
                 memory_probe_max_steps: 3,
                 lokr_factor_group_size: 8,
                 lokr_project_chunk_bytes: 4194304,
+                gradient_checkpointing: false,
                 unsloth_offload_checkpointing: false,
                 torch_compile: true,
             },
@@ -157,11 +163,24 @@ export function createLegacyApp(ctx) {
                 block_swap_transfer_dtype: 'bf16',
                 selective_checkpoint: 'mlp_only',
                 block_swap_profile_jsonl: 'auto',
+                gradient_checkpointing: false,
                 unsloth_offload_checkpointing: false,
                 torch_compile: true,
             },
+            merge: {
+                blocks_to_swap: 'max',
+                selective_checkpoint: 'checkpoint_strength_max',
+            },
         },
     ];
+    const SELECTIVE_CHECKPOINT_STRENGTH = new Map([
+        ['off', 0],
+        ['peak_blocks_mlp_layer1', 1],
+        ['mlp_layer1_only', 2],
+        ['peak_blocks_mlp', 3],
+        ['mlp_only', 4],
+        ['every_other', 5],
+    ]);
     let datasetCaptionSourceHelpSeq = 0;
     let choiceGuideHintSeq = 0;
     const selectionSnapshot = {
@@ -202,6 +221,7 @@ export function createLegacyApp(ctx) {
         'configs/datasets/easycontrol.toml',
         'configs/datasets/ip_adapter.toml',
     ]);
+    const DATASET_PRESET_REQUEST_TIMEOUT_MS = 15000;
     const DATASET_PRESET_GROUP_STATE_KEY = 'anima_lora_dataset_preset_groups_v2';
     let selectedConfigDatasetFile = '';
     let selectedConfigDatasetSummary = null;
@@ -392,6 +412,8 @@ export function createLegacyApp(ctx) {
         peakGpuTemp: null,
         peakVramUsedGb: null,
         quietHintShown: false,
+        lastTerminalMessage: '',
+        lastTerminalHint: '',
         lastLogId: 0,
         logLineCount: 0,
         logBuffer: [],
@@ -414,6 +436,10 @@ export function createLegacyApp(ctx) {
         progressSecondsPerStep: null,
         progressUpdatedAt: 0,
     };
+
+    function isLiveRunningState(state = trainingRuntime.state) {
+        return state === 'running' || state === 'compiling';
+    }
     let globalSettings = null;
     let previewFeature = null;
     let queueFeature = null;
@@ -581,9 +607,13 @@ export function createLegacyApp(ctx) {
         await loadInitialData();
         if (location.protocol !== 'file:') {
             connectWebSocket();
-            pollStatus();
+            recoverLiveTrainingState();
             setInterval(pollStatus, 10000);
             setInterval(refreshTrainingHealth, 1000);
+            document.addEventListener('visibilitychange', () => {
+                if (!document.hidden) recoverLiveTrainingState();
+            });
+            window.addEventListener('online', recoverLiveTrainingState);
         }
     });
 
@@ -1291,8 +1321,15 @@ export function createLegacyApp(ctx) {
             return;
         }
         try {
-            const datasetParam = selectedConfigDatasetFile ? `&dataset_config=${encodeURIComponent(selectedConfigDatasetFile)}` : '';
-            const data = await api(`/api/config/steps?variant=${encodeURIComponent(variant)}&preset=${encodeURIComponent(preset)}&methods_subdir=${encodeURIComponent(methodsSubdir)}${datasetParam}`);
+            const params = new URLSearchParams({
+                variant,
+                preset,
+                methods_subdir: methodsSubdir,
+            });
+            if (selectedConfigDatasetFile || currentConfig.dataset_config) {
+                params.set('dataset_config', selectedConfigDatasetFile);
+            }
+            const data = await api(`/api/config/steps?${params.toString()}`);
             if (parentSeq !== configLoadSeq || requestSeq !== stepEstimateSeq) return;
             currentStepEstimate = data?.ok === false ? null : data;
         } catch {
@@ -1358,7 +1395,7 @@ export function createLegacyApp(ctx) {
             renderDatasetPresetList();
         }
         try {
-            const data = await api('/api/config/dataset-presets');
+            const data = await datasetPresetApi('/api/config/dataset-presets');
             if (requestSeq !== datasetPresetLoadSeq) return false;
             if (!data.ok) throw new Error(data.error || '读取数据集预设失败');
             const presets = (Array.isArray(data.presets) ? data.presets : [])
@@ -1440,7 +1477,7 @@ export function createLegacyApp(ctx) {
         renderDatasetPresetHeader();
         renderDatasetEditor();
         try {
-            const data = await api(`/api/config/dataset-presets/read?file=${encodeURIComponent(file)}`);
+            const data = await datasetPresetApi(`/api/config/dataset-presets/read?file=${encodeURIComponent(file)}`);
             if (!data.ok) throw new Error(data.error || '读取数据集预设失败');
             datasetPresetState = {
                 ...datasetPresetState,
@@ -2715,10 +2752,46 @@ export function createLegacyApp(ctx) {
 
     function applyResourceQuickPreset(preset) {
         for (const [key, value] of Object.entries(preset.values)) {
-            setFieldInputValue(key, value);
+            setFieldInputValue(key, resourceQuickPresetValue(preset, key, value));
         }
         handleFormFieldChange();
         setTomlStatus('ok', `已填写显存与速度优化预设: ${preset.label}`);
+    }
+
+    function resourceQuickPresetValue(preset, key, value) {
+        const strategy = preset?.merge?.[key] || '';
+        if (strategy === 'max') {
+            const current = Number(resourceQuickCurrentValue(key));
+            const next = Number(value);
+            if (Number.isFinite(current) && Number.isFinite(next)) {
+                return Math.max(current, next);
+            }
+        }
+        if (strategy === 'checkpoint_strength_max') {
+            return strongerSelectiveCheckpointValue(resourceQuickCurrentValue(key), value);
+        }
+        return value;
+    }
+
+    function strongerSelectiveCheckpointValue(current, fallback) {
+        const currentKey = String(current ?? '').trim() || 'off';
+        const fallbackKey = String(fallback ?? '').trim() || 'off';
+        const currentStrength = SELECTIVE_CHECKPOINT_STRENGTH.get(currentKey);
+        const fallbackStrength = SELECTIVE_CHECKPOINT_STRENGTH.get(fallbackKey);
+        if (currentStrength === undefined) return fallbackKey;
+        if (fallbackStrength === undefined) return currentKey;
+        return currentStrength >= fallbackStrength ? currentKey : fallbackKey;
+    }
+
+    function resourceQuickCurrentValue(key) {
+        const input = document.querySelector(`#config-form .field-input[data-key="${CSS.escape(key)}"]`);
+        if (input) {
+            return readFieldInputValue(input, originalConfigFieldValue(key));
+        }
+        if (configFormState.draftValues.has(key)) {
+            return configFormState.draftValues.get(key);
+        }
+        return originalConfigFieldValue(key);
     }
 
     async function fillGlobalModelPathsIntoConfigForm() {
@@ -2752,8 +2825,8 @@ export function createLegacyApp(ctx) {
         }
         handleFormFieldChange();
         setTomlStatus(
-            applied ? '已填写全局路径配置，请保存当前配置后再训练' : '当前表单没有可覆盖的基础模型路径字段',
-            applied ? 'ok' : 'error'
+            applied ? 'ok' : 'error',
+            applied ? '已填写全局路径配置，请保存当前配置后再训练' : '当前表单没有可覆盖的基础模型路径字段'
         );
     }
 
@@ -3434,7 +3507,7 @@ export function createLegacyApp(ctx) {
                 source: 'source',
                 limit: '1',
             });
-            const payload = await api(`/api/config/dataset-presets/images?${params.toString()}`);
+            const payload = await datasetPresetApi(`/api/config/dataset-presets/images?${params.toString()}`);
             if (requestSeq !== configDatasetPreviewRequestSeq || file !== selectedConfigDatasetFile) return;
             if (!payload.ok) throw new Error(payload.error || '读取数据集预览失败');
             configDatasetPreviewState = {
@@ -5742,7 +5815,7 @@ export function createLegacyApp(ctx) {
                 source: 'source',
                 limit: '120',
             });
-            const payload = await api(`/api/config/dataset-presets/images?${params.toString()}`);
+            const payload = await datasetPresetApi(`/api/config/dataset-presets/images?${params.toString()}`);
             if (requestSeq !== datasetPreviewLoadSeq) return;
             if (!payload.ok) throw new Error(payload.error || '读取数据集预览失败');
             datasetPreviewState.payload = payload;
@@ -6824,6 +6897,7 @@ export function createLegacyApp(ctx) {
 
     function liveConfigFromForm() {
         syncConfigDraftFromForm();
+        const rawNetworkArgsChanged = configFormState.draftValues.has('network_args');
         const liveConfig = { ...(currentConfig || {}) };
         for (const [key, next] of configFormState.draftValues.entries()) {
             if (!key) continue;
@@ -6837,7 +6911,7 @@ export function createLegacyApp(ctx) {
             }
             liveConfig[key] = next;
         }
-        liveConfig.network_args = collectNetworkArgsFromForm(liveConfig).networkArgs;
+        liveConfig.network_args = collectNetworkArgsFromForm(liveConfig, { skipUnchangedInputs: rawNetworkArgsChanged }).networkArgs;
         return liveConfig;
     }
 
@@ -7384,7 +7458,7 @@ export function createLegacyApp(ctx) {
         if (key === 'contrastive_objective') {
             return {
                 infonce: 'InfoNCE / infonce',
-                agsm: 'AGSM / agsm',
+                softrank: 'SoftRank / softrank',
             }[value] || String(value);
         }
         if (value === true) return '开启 / true';
@@ -8165,7 +8239,7 @@ export function createLegacyApp(ctx) {
             return { applied: false };
         }
         try {
-            const res = await api('/api/config/dataset-presets/apply', {
+            const res = await datasetPresetApi('/api/config/dataset-presets/apply', {
                 method: 'POST',
                 body: JSON.stringify({
                     dataset_file: nextDataset,
@@ -8219,8 +8293,13 @@ export function createLegacyApp(ctx) {
             setDatasetPresetStatus('请至少填写一个原始数据集路径', 'error');
             return null;
         }
+        datasetPresetState.loading = true;
+        datasetPresetState.error = '';
+        renderDatasetPresetList();
+        renderDatasetPresetHeader();
+        renderDatasetEditor();
         try {
-            const res = await api('/api/config/dataset-presets', {
+            const res = await datasetPresetApi('/api/config/dataset-presets', {
                 method: 'PUT',
                 body: JSON.stringify({
                     file,
@@ -8230,11 +8309,16 @@ export function createLegacyApp(ctx) {
                 }),
             });
             if (!res.ok) {
+                datasetPresetState.loading = false;
+                renderDatasetPresetList();
+                renderDatasetPresetHeader();
+                renderDatasetEditor();
                 setDatasetPresetStatus(res.error || '保存数据集预设失败', 'error');
                 return null;
             }
             datasetPresetState = {
                 ...datasetPresetState,
+                loading: false,
                 selectedFile: res.file || file,
                 datasets: normalizeDatasetEditorRows(res.datasets || rows),
                 defaults: normalizeDatasetDefaults(res.defaults || datasetPresetState.defaults || {}),
@@ -8259,6 +8343,10 @@ export function createLegacyApp(ctx) {
             }
             return res;
         } catch (e) {
+            datasetPresetState.loading = false;
+            renderDatasetPresetList();
+            renderDatasetPresetHeader();
+            renderDatasetEditor();
             setDatasetPresetStatus('保存数据集预设失败: ' + e.message, 'error');
             return null;
         }
@@ -8311,7 +8399,7 @@ export function createLegacyApp(ctx) {
         const rows = normalizeDatasetEditorRows(datasetPresetState.datasets);
         const payloadRows = datasetRowsForPayload(rows);
         try {
-            const res = await api('/api/config/dataset-presets/save-as', {
+            const res = await datasetPresetApi('/api/config/dataset-presets/save-as', {
                 method: 'POST',
                 body: JSON.stringify({
                     name,
@@ -8346,7 +8434,7 @@ export function createLegacyApp(ctx) {
         const saved = await copyDatasetPresetToName(name);
         if (!saved) return;
         try {
-            const del = await api(`/api/config/dataset-presets?file=${encodeURIComponent(oldFile)}`, { method: 'DELETE' });
+            const del = await datasetPresetApi(`/api/config/dataset-presets?file=${encodeURIComponent(oldFile)}`, { method: 'DELETE' });
             if (!del.ok) {
                 setDatasetPresetStatus(del.error || '新预设已保存，但旧预设删除失败', 'error');
                 return;
@@ -8363,7 +8451,7 @@ export function createLegacyApp(ctx) {
 
     async function copyDatasetPresetToName(name) {
         try {
-            const res = await api('/api/config/dataset-presets/save-as', {
+            const res = await datasetPresetApi('/api/config/dataset-presets/save-as', {
                 method: 'POST',
                 body: JSON.stringify({
                     name,
@@ -8394,7 +8482,7 @@ export function createLegacyApp(ctx) {
         });
         if (!ok) return;
         try {
-            const res = await api(`/api/config/dataset-presets?file=${encodeURIComponent(file)}`, { method: 'DELETE' });
+            const res = await datasetPresetApi(`/api/config/dataset-presets?file=${encodeURIComponent(file)}`, { method: 'DELETE' });
             if (!res.ok) {
                 setDatasetPresetStatus(res.error || '删除数据集预设失败', 'error');
                 return;
@@ -8430,19 +8518,47 @@ export function createLegacyApp(ctx) {
                 confirmText: '导入预设',
             });
             if (name === null) return;
+            datasetPresetState.loading = true;
+            datasetPresetState.error = '';
+            renderDatasetPresetList();
+            renderDatasetPresetHeader();
+            renderDatasetEditor();
             const target = datasetPresetPathFromName(name);
-            const res = await api('/api/config/raw/save-as', {
+            const res = await datasetPresetApi('/api/config/dataset-presets/import', {
                 method: 'POST',
-                body: JSON.stringify({ file: target, content }),
+                body: JSON.stringify({ name, content }),
             });
             if (!res.ok) {
+                datasetPresetState.loading = false;
+                renderDatasetPresetList();
+                renderDatasetPresetHeader();
+                renderDatasetEditor();
                 setDatasetPresetStatus(res.error || '导入数据集预设失败', 'error');
                 return;
             }
-            await loadDatasetPresets({ selectCurrent: false, manage: true });
-            await loadDatasetPreset(target);
+            datasetPresetState = {
+                ...datasetPresetState,
+                loading: false,
+                dirty: false,
+                isNew: false,
+                selectedFile: res.file || target,
+                datasets: normalizeDatasetEditorRows(res.datasets || []),
+                defaults: normalizeDatasetDefaults(res.defaults || {}),
+                readonly: false,
+                error: '',
+            };
+            const listRefreshed = await loadDatasetPresets({ selectCurrent: false, manage: true });
+            if (!listRefreshed) {
+                setDatasetPresetStatus(`已导入 ${res.file || target}，但刷新左侧列表失败，请点“刷新”或查看终端日志。`, 'warn');
+                return;
+            }
+            await loadDatasetPreset(res.file || target);
             setDatasetPresetStatus('已导入数据集预设', 'ok');
         } catch (e) {
+            datasetPresetState.loading = false;
+            renderDatasetPresetList();
+            renderDatasetPresetHeader();
+            renderDatasetEditor();
             setDatasetPresetStatus('导入数据集预设失败: ' + e.message, 'error');
         } finally {
             fileInput.value = '';
@@ -8453,7 +8569,7 @@ export function createLegacyApp(ctx) {
         const file = datasetPresetState.selectedFile;
         if (!file) return;
         try {
-            const data = await api(`/api/config/dataset-presets/read?file=${encodeURIComponent(file)}`);
+            const data = await datasetPresetApi(`/api/config/dataset-presets/read?file=${encodeURIComponent(file)}`);
             if (!data.ok) {
                 setDatasetPresetStatus(data.error || '导出数据集预设失败', 'error');
                 return;
@@ -8756,7 +8872,11 @@ export function createLegacyApp(ctx) {
                 values[key] = next;
             }
         }
-        const merged = collectNetworkArgsFromForm({ network_args: values.network_args ?? currentConfig.network_args });
+        const rawNetworkArgsChanged = 'network_args' in values;
+        const merged = collectNetworkArgsFromForm(
+            { network_args: values.network_args ?? currentConfig.network_args },
+            { skipUnchangedInputs: rawNetworkArgsChanged },
+        );
         if (merged.changed) {
             values.network_args = merged.networkArgs;
         } else if ('network_args' in values) {
@@ -8787,7 +8907,7 @@ export function createLegacyApp(ctx) {
         return coerceNetworkArgValue(argMap.has(spec.arg) ? argMap.get(spec.arg) : spec.default, spec);
     }
 
-    function collectNetworkArgsFromForm(baseConfig = currentConfig) {
+    function collectNetworkArgsFromForm(baseConfig = currentConfig, options = {}) {
         const baseArgs = normalizeNetworkArgArray(baseConfig?.network_args);
         const formValues = new Map();
         const changedKeys = new Set();
@@ -8805,6 +8925,7 @@ export function createLegacyApp(ctx) {
         const inputs = [...document.querySelectorAll('#config-form .field-input[data-key]')]
             .filter((input) => isActiveNetworkArgFieldKey(input.dataset.key));
         for (const input of inputs) {
+            if (options.skipUnchangedInputs && !networkArgInputChanged(input)) continue;
             const spec = NETWORK_ARG_FIELD_MAP.get(input.dataset.key);
             const original = networkArgFieldValueFromConfig(spec, currentConfig);
             applyNetworkArgFormValue(input.dataset.key, readFieldInputValue(input, original));
@@ -10499,6 +10620,9 @@ export function createLegacyApp(ctx) {
                 changedCount += 1;
             }
         }
+        if (selectedConfigDatasetFile !== (currentConfig.dataset_config || '')) {
+            changedCount += 1;
+        }
         const count = document.getElementById('config-modified-count');
         if (count) count.textContent = String(changedCount);
     }
@@ -11413,7 +11537,7 @@ export function createLegacyApp(ctx) {
 
     async function chooseTrainingLaunchMode(options = {}) {
         const willAutoPreprocess = Boolean(options.willAutoPreprocess);
-        const isRunning = trainingRuntime.state === 'running' || trainingRuntime.state === 'compiling';
+        const isRunning = isLiveRunningState();
         const sourceDetail = continueTrainingSource
             ? `\n\n训练来源: 继续训练 ${continueTrainingSource.kind} · ${continueTrainingSource.name}\n基于权重: ${continueTrainingSource.abs_path}`
             : '\n\n训练来源: 从零开始';
@@ -11526,8 +11650,7 @@ export function createLegacyApp(ctx) {
     function enterLiveTrainingForNewRun() {
         returnToLiveTraining({ refresh: false });
         document.querySelector('[data-tab="training"]')?.click();
-        pollStatus();
-        replayTrainingLogs();
+        recoverLiveTrainingState();
     }
 
     function showPreflightDialog(result, allowContinue, options = {}) {
@@ -11822,6 +11945,7 @@ export function createLegacyApp(ctx) {
     }
 
     async function stopTraining() {
+        const stopBtn = document.getElementById('btn-stop-training');
         const ok = await showAppConfirmDialog({
             title: '停止训练',
             description: '当前运行中的训练任务',
@@ -11830,7 +11954,28 @@ export function createLegacyApp(ctx) {
             danger: true,
         });
         if (!ok) return;
-        await api('/api/training/stop', { method: 'POST' });
+        const wasDisabled = Boolean(stopBtn?.disabled);
+        if (stopBtn) stopBtn.disabled = true;
+        try {
+            const res = await api('/api/training/stop', { method: 'POST' });
+            if (!res.ok) {
+                const message = res.error || '停止训练失败';
+                appendLog(`[状态] ${message}`);
+                setLogStatus('停止训练失败', 'error');
+                setTrainingHealthNotice(message, 'error');
+                return;
+            }
+            appendLog(`[状态] ${res.message || '训练停止请求已发送'}`);
+            await pollStatus();
+            await loadTrainingQueue();
+        } catch (e) {
+            const message = `停止训练请求失败: ${e.message}`;
+            appendLog(`[状态] ${message}`);
+            setLogStatus('停止训练失败', 'error');
+            setTrainingHealthNotice(message, 'error');
+        } finally {
+            if (stopBtn) stopBtn.disabled = wasDisabled || !isLiveRunningState();
+        }
     }
 
     // ── WebSocket ──
@@ -11840,7 +11985,7 @@ export function createLegacyApp(ctx) {
         ws = new WebSocket(`${proto}//${location.host}/ws/training`);
         ws.onopen = () => {
             setLogStatus('已连接', 'ok');
-            replayTrainingLogs();
+            recoverLiveTrainingState();
         };
         ws.onmessage = (e) => {
             const msg = JSON.parse(e.data);
@@ -11968,8 +12113,9 @@ export function createLegacyApp(ctx) {
         updateLogStatusText();
     }
 
-    async function replayTrainingLogs() {
+    async function replayTrainingLogs(options = {}) {
         if (isHistoryReviewMode()) return;
+        const includeMetrics = options.includeMetrics !== false;
         try {
             const payload = await api(`/api/training/logs?after=${trainingRuntime.lastLogId}&limit=1000`);
             for (const record of payload.records || []) {
@@ -11977,7 +12123,7 @@ export function createLegacyApp(ctx) {
                 appendLogRecord(record);
                 replayMetricsFromLogRecord(record);
             }
-            await replayMetricsHistory();
+            if (includeMetrics) await replayMetricsHistory();
             updateLogStatusText();
         } catch (e) {
             setLogStatus('日志回放失败', 'error');
@@ -11989,7 +12135,7 @@ export function createLegacyApp(ctx) {
         try {
             const records = await api('/api/training/metrics');
             for (const record of records || []) {
-                updateMetrics(record);
+                updateMetrics(record, { replay: true });
             }
         } catch (e) {
             // 历史指标不是训练控制关键路径，失败时保留日志回放。
@@ -12018,9 +12164,24 @@ export function createLegacyApp(ctx) {
         setLogStatus(text, state);
     }
 
-    function updateProgress(msg) {
+    function setTrainingHealthNotice(message, state = 'warning') {
+        const el = document.getElementById('training-health');
+        if (!el) return;
+        el.className = `training-health ${state}`.trim();
+        el.textContent = message;
+    }
+
+    async function recoverLiveTrainingState() {
+        if (isHistoryReviewMode() || location.protocol === 'file:') return;
+        await pollStatus({ forceReplayMetrics: true });
+        await replayTrainingLogs({ includeMetrics: false });
+        await replayMetricsHistory();
+        await loadTrainingQueue();
+    }
+
+    function updateProgress(msg, options = {}) {
         if (isHistoryReviewMode()) return;
-        markTrainingActivity(msg.ts);
+        markTrainingActivity(msg.ts, { resetQuietHint: options.replay !== true });
         const previousCurrent = Number(trainingRuntime.progressCurrent || 0);
         const previousUpdatedAt = Number(trainingRuntime.progressUpdatedAt || 0);
         const now = Date.now();
@@ -12029,10 +12190,11 @@ export function createLegacyApp(ctx) {
         trainingRuntime.progressTotal = Number(msg.total) || 0;
         trainingRuntime.progressLabel = msg.label || '';
         trainingRuntime.progressRate = msg.rate || '';
+        const progressAdvanced = trainingRuntime.progressCurrent > previousCurrent;
         const rateSeconds = parseProgressRateSeconds(msg.rate);
         if (rateSeconds !== null) {
             trainingRuntime.progressSecondsPerStep = rateSeconds;
-        } else if (previousUpdatedAt && trainingRuntime.progressCurrent > previousCurrent) {
+        } else if (previousUpdatedAt && progressAdvanced) {
             const elapsedSeconds = (now - previousUpdatedAt) / 1000;
             const stepDelta = trainingRuntime.progressCurrent - previousCurrent;
             const inferredSeconds = elapsedSeconds / stepDelta;
@@ -12040,7 +12202,9 @@ export function createLegacyApp(ctx) {
                 trainingRuntime.progressSecondsPerStep = inferredSeconds;
             }
         }
-        trainingRuntime.progressUpdatedAt = now;
+        if (!options.replay || progressAdvanced || !previousUpdatedAt) {
+            trainingRuntime.progressUpdatedAt = now;
+        }
         document.getElementById('progress-bar').style.width = pct.toFixed(1) + '%';
         let text = `${msg.label}: ${msg.current}/${msg.total} (${pct.toFixed(1)}%)`;
         if (msg.rate) text += ` — ${msg.rate}`;
@@ -12052,9 +12216,9 @@ export function createLegacyApp(ctx) {
         refreshQueueRunningProgressViews();
     }
 
-    function updateMetrics(msg) {
+    function updateMetrics(msg, options = {}) {
         if (isHistoryReviewMode()) return;
-        markTrainingActivity(msg.ts);
+        markTrainingActivity(msg.ts, { resetQuietHint: options.replay !== true });
         const lrText = msg.lr !== undefined ? formatLr(msg.lr) : '';
         const lrNumber = msg.lr !== undefined ? Number(msg.lr) : null;
         if (msg.loss !== undefined) {
@@ -12091,21 +12255,25 @@ export function createLegacyApp(ctx) {
         const dot = document.querySelector('.dot');
         const text = document.getElementById('status-text');
         const stopBtn = document.getElementById('btn-stop-training');
+        const state = liveStatusState(msg);
+        const terminalMessage = terminalStatusMessage(msg);
 
-        dot.className = 'dot ' + msg.state;
+        dot.className = 'dot ' + state;
         const stateMap = { idle: '空闲', running: '训练中', error: '错误', compiling: '编译中' };
-        const jobLabel = msg.job === 'preprocess' ? '预处理中' : (stateMap[msg.state] || msg.state);
-        text.textContent = msg.state === 'running' ? jobLabel : (stateMap[msg.state] || msg.state);
-        updateTrainingToolbarState(msg.state, text.textContent);
-        trainingRuntime.state = msg.state;
+        const jobLabel = msg.job === 'preprocess' ? '预处理中' : (stateMap[state] || state);
+        text.textContent = state === 'running' ? jobLabel : (stateMap[state] || state);
+        updateTrainingToolbarState(state, text.textContent);
+        trainingRuntime.state = state;
         trainingRuntime.job = msg.job || trainingRuntime.job || '';
         trainingRuntime.variant = msg.variant || trainingRuntime.variant || '';
         trainingRuntime.preset = msg.preset || trainingRuntime.preset || '';
         trainingRuntime.methodsSubdir = msg.methods_subdir || trainingRuntime.methodsSubdir || '';
+        trainingRuntime.lastTerminalMessage = state === 'error' ? terminalMessage : '';
+        trainingRuntime.lastTerminalHint = state === 'error' ? String(msg.error_hint || '').trim() : '';
         if (msg.last_output_at) {
             markTrainingActivity(msg.last_output_at);
         }
-        if (msg.state !== 'running' && msg.state !== 'compiling') {
+        if (!isLiveRunningState(state)) {
             trainingRuntime.lastOutputAt = 0;
             trainingRuntime.lastUiActivityAt = 0;
             resetLiveSystemPeaks();
@@ -12123,15 +12291,16 @@ export function createLegacyApp(ctx) {
         }
         applyRuntimeInfoToState(msg);
 
-        stopBtn.disabled = msg.state !== 'running';
-        stopBtn.classList.toggle('is-emergency', msg.state === 'running');
+        const canStop = isLiveRunningState(state);
+        stopBtn.disabled = !canStop;
+        stopBtn.classList.toggle('is-emergency', canStop);
 
         if (msg.variant) document.getElementById('train-variant').textContent = msg.variant;
         if (msg.preset) document.getElementById('train-preset').textContent = msg.preset;
 
         if (msg.message) appendLog(`[状态] ${msg.message}`);
 
-        if (msg.state === 'idle' || msg.state === 'error') {
+        if (state === 'idle' || state === 'error') {
             document.getElementById('progress-bar').style.width = '0%';
             trainingRuntime.progressCurrent = 0;
             trainingRuntime.progressTotal = 0;
@@ -12151,6 +12320,25 @@ export function createLegacyApp(ctx) {
         renderCurrentRuntimePaths();
         renderLiveTrainingDashboard();
         refreshTrainingHealth();
+    }
+
+    function liveStatusState(msg = {}) {
+        const state = String(msg.state || 'idle');
+        if (state === 'idle' && terminalStatusMessage(msg)) return 'error';
+        return state;
+    }
+
+    function terminalStatusMessage(msg = {}) {
+        const state = String(msg.state || '');
+        const hint = String(msg.error_hint || '').trim();
+        const line = String(msg.message || msg.last_log_line || '').trim();
+        const lineIsError = logLineTone(line) === 'error';
+        if (state !== 'error' && !lineIsError) return '';
+        if (hint) {
+            if (!line || line === hint) return hint;
+            return line.includes(hint) ? line : `${line}；${hint}`;
+        }
+        return lineIsError ? line : '';
     }
 
     function resetLiveSystemPeaks() {
@@ -12236,10 +12424,10 @@ export function createLegacyApp(ctx) {
         };
     }
 
-    function updateSystem(msg) {
+    function updateSystem(msg, options = {}) {
         if (isHistoryReviewMode()) return;
         if (msg.last_output_at) {
-            markTrainingActivity(msg.last_output_at);
+            markTrainingActivity(msg.last_output_at, { resetQuietHint: options.replay !== true });
         }
         if (msg.vram_used_gb !== undefined) {
             trainingRuntime.lastVramUsedGb = Number(msg.vram_used_gb);
@@ -12293,15 +12481,15 @@ export function createLegacyApp(ctx) {
         if (isHistoryReviewMode()) return;
         const stateMap = { idle: '空闲', running: '运行中', error: '错误', compiling: '编译中' };
         const jobLabel = trainingRuntime.job === 'preprocess' ? '预处理' : '训练';
-        const stateText = trainingRuntime.state === 'running'
+        const stateText = isLiveRunningState()
             ? `${jobLabel}中`
             : (stateMap[trainingRuntime.state] || trainingRuntime.state || '空闲');
         setText('training-run-state', stateText);
         const stateEl = document.getElementById('training-run-state');
         if (stateEl) stateEl.className = `training-run-state ${trainingRuntime.state || 'idle'}`;
         updateTrainingToolbarState(trainingRuntime.state || 'idle', stateText);
-        updateDashboardProgressIdleState(trainingRuntime.state === 'running' || trainingRuntime.state === 'compiling');
-        setText('training-run-title', trainingRuntime.state === 'running' ? `当前${jobLabel}` : '当前监控');
+        updateDashboardProgressIdleState(isLiveRunningState());
+        setText('training-run-title', isLiveRunningState() ? `当前${jobLabel}` : '当前监控');
         setText('training-run-meta', [
             trainingRuntime.methodsSubdir ? `方法目录 ${trainingRuntime.methodsSubdir}` : '',
             trainingRuntime.variant ? `配置 ${trainingRuntime.variant}` : '',
@@ -12317,7 +12505,7 @@ export function createLegacyApp(ctx) {
     }
 
     function trainingEtaMetricInfo() {
-        const isRunning = trainingRuntime.state === 'running' || trainingRuntime.state === 'compiling';
+        const isRunning = isLiveRunningState();
         if (!isRunning) {
             return { text: '待计算', empty: true, title: '训练开始并收到进度后显示预计完成时间。' };
         }
@@ -12377,7 +12565,7 @@ export function createLegacyApp(ctx) {
             && a.getDate() === b.getDate();
     }
 
-    function markTrainingActivity(ts) {
+    function markTrainingActivity(ts, options = {}) {
         const value = Number(ts);
         const ms = value > 100000000000 ? value : value * 1000;
         if (Number.isFinite(ms) && ms > 0) {
@@ -12386,7 +12574,9 @@ export function createLegacyApp(ctx) {
             trainingRuntime.lastOutputAt = Date.now();
         }
         trainingRuntime.lastUiActivityAt = Date.now();
-        trainingRuntime.quietHintShown = false;
+        if (options.resetQuietHint !== false) {
+            trainingRuntime.quietHintShown = false;
+        }
     }
 
     function refreshTrainingHealth() {
@@ -12399,10 +12589,15 @@ export function createLegacyApp(ctx) {
             return;
         }
 
-        const isRunning = trainingRuntime.state === 'running' || trainingRuntime.state === 'compiling';
+        const isRunning = isLiveRunningState();
         if (!isRunning) {
             setMetricText('metric-log-age', 'N/A');
             setEtaMetricText({ text: '待计算', empty: true, title: '训练开始并收到进度后显示预计完成时间。' });
+            if (trainingRuntime.state === 'error' && trainingRuntime.lastTerminalMessage) {
+                el.className = 'training-health error';
+                el.textContent = `最近任务异常: ${trainingRuntime.lastTerminalMessage}`;
+                return;
+            }
             el.className = 'training-health';
             el.textContent = '未运行任务。';
             return;
@@ -12764,10 +12959,15 @@ export function createLegacyApp(ctx) {
     }
 
     // ── 状态轮询 ──
-    async function pollStatus() {
+    async function pollStatus(options = {}) {
         if (isHistoryReviewMode()) return;
         try {
             const status = await api('/api/training/status');
+            if (status.ok === false) throw new Error(status.error || '读取训练状态失败');
+            if (trainingStatusPollFailures) {
+                trainingStatusPollFailures = 0;
+                updateLogStatusText();
+            }
             updateStatus({
                 state: status.status,
                 variant: status.variant,
@@ -12776,6 +12976,8 @@ export function createLegacyApp(ctx) {
                 job: status.job,
                 last_output_at: status.last_output_at,
                 last_log_id: status.last_log_id,
+                last_log_line: status.last_log_line,
+                error_hint: status.error_hint,
                 output_dir: status.output_dir,
                 sample_dir: status.sample_dir,
                 sample_config: status.sample_config,
@@ -12788,10 +12990,37 @@ export function createLegacyApp(ctx) {
                 training_output_dir: status.training_output_dir,
                 logs_dir: status.logs_dir,
             });
+            applyStatusSnapshotFallbacks(status);
             if ((status.last_log_id || 0) > trainingRuntime.lastLogId) {
                 await replayTrainingLogs();
+            } else if (options.forceReplayMetrics || isLiveRunningState()) {
+                await replayMetricsHistory();
             }
-        } catch (e) { /* ignore */ }
+        } catch (e) {
+            trainingStatusPollFailures += 1;
+            if (trainingStatusPollFailures < 3) return;
+            const message = `训练状态轮询连续失败 ${trainingStatusPollFailures} 次: ${e.message}`;
+            setLogStatus('状态轮询失败', 'error');
+            setTrainingHealthNotice(message, 'error');
+            if (trainingStatusPollFailures === 3) appendLog(`[状态] ${message}`);
+        }
+    }
+
+    function applyStatusSnapshotFallbacks(status = {}) {
+        if (!isLiveRunningState(status.status)) return;
+        if (hasStatusPayload(status.latest_progress)) {
+            updateProgress(status.latest_progress, { replay: true });
+        }
+        if (hasStatusPayload(status.latest_metric)) {
+            updateMetrics(status.latest_metric, { replay: true });
+        }
+        if (hasStatusPayload(status.latest_system)) {
+            updateSystem(status.latest_system, { replay: true });
+        }
+    }
+
+    function hasStatusPayload(value) {
+        return value && typeof value === 'object' && Object.keys(value).length > 0;
     }
 
     async function loadTrainingHistoryList() {
@@ -15172,7 +15401,10 @@ export function createLegacyApp(ctx) {
                 ]),
             );
 
-            card.append(select, handle, main, actions);
+            const head = document.createElement('div');
+            head.className = 'history-config-group-card-head';
+            head.append(select, handle, main, actions);
+            card.appendChild(head);
             return card;
         }
 
@@ -15216,7 +15448,10 @@ export function createLegacyApp(ctx) {
             createHistoryManagerGroupButton('清除分组', () => clearHistoryCollectionForTasks(group.tasks, historyGroupDisplayLabel(group))),
         ]));
 
-        card.append(select, handle, main, actions);
+        const head = document.createElement('div');
+        head.className = 'history-config-group-card-head';
+        head.append(select, handle, main, actions);
+        card.appendChild(head);
         const taskList = document.createElement('div');
         taskList.className = 'history-config-group-task-list';
         for (const task of group.tasks) {
@@ -17012,6 +17247,8 @@ export function createLegacyApp(ctx) {
             key.textContent = label;
             const valEl = document.createElement('code');
             valEl.textContent = value;
+            valEl.title = value;
+            installSelectableHistoryPathText(valEl);
             row.append(key, valEl);
             el.appendChild(row);
         }
@@ -17093,8 +17330,7 @@ export function createLegacyApp(ctx) {
         lossChart?.setScaleMode?.('index');
         renderTrainingHistoryList();
         if (refresh) {
-            pollStatus();
-            replayTrainingLogs();
+            recoverLiveTrainingState();
         }
     }
 
@@ -17137,6 +17373,8 @@ export function createLegacyApp(ctx) {
             key.textContent = label;
             const valEl = document.createElement('code');
             valEl.textContent = value;
+            valEl.title = value;
+            installSelectableHistoryPathText(valEl);
             row.append(key, valEl);
             el.appendChild(row);
         }
@@ -17144,23 +17382,98 @@ export function createLegacyApp(ctx) {
 
     function runtimePathItems(task, options = {}) {
         const includeHistory = options.includeHistory !== false;
+        const absolutePath = (value, basePath = '') => historyAbsolutePath(value, task, basePath);
+        const runDir = absolutePath(task.run_dir_abs || task.run_dir);
         return [
-            includeHistory ? ['历史目录', task.history_dir_abs || task.history_dir] : null,
-            task.training_mode === 'continue_lora' ? ['基于权重', task.continue_from_weight_abs_path] : null,
-            ['本次运行目录', task.run_dir],
-            ['实际运行配置', task.runtime_config_file, 'runtime-config'],
-            ['原始配置副本', task.original_config_file, 'original-config'],
-            ['运行时数据集配置', task.dataset_config_file, 'dataset-config'],
-            ['模型缓存目录', task.model_cache_dir],
-            ['数据集缓存目录', task.dataset_cache_dir],
-            ['训练结果目录', task.training_output_dir || task.output_dir],
-            ['样张目录', task.sample_dir],
-            ['日志目录', task.logs_dir],
-            includeHistory ? ['历史日志文件', task.logs_path, 'logs'] : null,
-            includeHistory ? ['历史指标文件', task.metrics_path, 'metrics'] : null,
-            includeHistory ? ['系统指标文件', task.system_path, 'system'] : null,
-            includeHistory ? ['历史 TOML 快照', task.config_snapshot, 'config-snapshot'] : null,
+            includeHistory ? ['历史目录', absolutePath(task.history_dir_abs || task.history_dir)] : null,
+            task.training_mode === 'continue_lora' ? ['基于权重', absolutePath(task.continue_from_weight_abs_path)] : null,
+            ['本次运行目录', runDir],
+            ['实际运行配置', absolutePath(task.runtime_config_file, runDir), 'runtime-config'],
+            ['原始配置副本', absolutePath(task.original_config_file, runDir), 'original-config'],
+            ['运行时数据集配置', absolutePath(task.dataset_config_file, runDir), 'dataset-config'],
+            ['模型缓存目录', absolutePath(task.model_cache_dir, runDir)],
+            ['数据集缓存目录', absolutePath(task.dataset_cache_dir, runDir)],
+            ['训练结果目录', absolutePath(task.training_output_dir || task.output_dir, runDir)],
+            ['样张目录', absolutePath(task.sample_dir, runDir)],
+            ['日志目录', absolutePath(task.logs_dir, runDir)],
+            includeHistory ? ['历史日志文件', absolutePath(task.logs_path), 'logs'] : null,
+            includeHistory ? ['历史指标文件', absolutePath(task.metrics_path), 'metrics'] : null,
+            includeHistory ? ['系统指标文件', absolutePath(task.system_path), 'system'] : null,
+            includeHistory ? ['历史 TOML 快照', absolutePath(task.config_snapshot), 'config-snapshot'] : null,
         ].filter((item) => item && item[1]);
+    }
+
+    function historyAbsolutePath(value, task = {}, basePath = '') {
+        const raw = historyCleanPath(value);
+        if (!raw) return '';
+        if (historyIsSpecialPath(raw) || historyIsAbsolutePath(raw)) return historyTrimPath(raw);
+        const clean = raw.replace(/^\.\//, '').replace(/^\/+/, '');
+        if (!clean || clean === '.') {
+            return historyAbsolutePath(basePath || task.run_dir_abs || task.run_dir || task.history_dir_abs || '', task);
+        }
+        const projectRoot = historyProjectRoot(task);
+        if (projectRoot && historyLooksProjectRelativePath(clean)) {
+            return historyJoinPath(projectRoot, clean);
+        }
+        if (basePath) {
+            const base = historyAbsolutePath(basePath, task);
+            if (base) return historyJoinPath(base, clean);
+        }
+        if (projectRoot) return historyJoinPath(projectRoot, clean);
+        return raw;
+    }
+
+    function historyProjectRoot(task = {}) {
+        const explicit = historyCleanPath(task.project_root_abs);
+        if (historyIsAbsolutePath(explicit)) return historyTrimPath(explicit);
+        const historyDir = historyCleanPath(task.history_dir_abs);
+        const historyMarker = '/configs/web-training-history/';
+        const historyIndex = historyDir.indexOf(historyMarker);
+        if (historyIndex > 0) return historyDir.slice(0, historyIndex);
+        const runDir = historyCleanPath(task.run_dir_abs || task.run_dir);
+        const outputMarker = '/output/runs/';
+        const outputIndex = runDir.indexOf(outputMarker);
+        if (historyIsAbsolutePath(runDir) && outputIndex > 0) return runDir.slice(0, outputIndex);
+        return '';
+    }
+
+    function historyLooksProjectRelativePath(value) {
+        return /^(configs|image_dataset|library|logs|models|networks|output|post_image_dataset|scripts|tests|web)(\/|$)/.test(String(value || ''));
+    }
+
+    function historyCleanPath(value) {
+        return String(value || '').trim().replace(/\\/g, '/');
+    }
+
+    function historyIsAbsolutePath(value) {
+        return value.startsWith('/') || /^[A-Za-z]:\//.test(value);
+    }
+
+    function historyIsSpecialPath(value) {
+        return /^[a-z][a-z0-9+.-]*:\/\//i.test(value);
+    }
+
+    function historyTrimPath(value) {
+        if (value === '/' || /^[A-Za-z]:\/?$/.test(value)) return value;
+        return value.replace(/\/+$/, '');
+    }
+
+    function historyJoinPath(base, path) {
+        return `${historyTrimPath(base)}/${String(path || '').replace(/^\/+/, '')}`;
+    }
+
+    function installSelectableHistoryPathText(el) {
+        if (!el) return;
+        el.classList.add('history-detail-select-all');
+        el.addEventListener('dblclick', (event) => {
+            event.preventDefault();
+            const selection = window.getSelection?.();
+            if (!selection || !document.createRange) return;
+            const range = document.createRange();
+            range.selectNodeContents(el);
+            selection.removeAllRanges();
+            selection.addRange(range);
+        });
     }
 
     function historyArtifactUrl(task, artifactKey, options = {}) {
@@ -17535,6 +17848,27 @@ export function createLegacyApp(ctx) {
     // ── 工具函数 ──
     async function api(url, opts = {}) {
         return ctx.api(url, opts);
+    }
+
+    async function datasetPresetApi(url, opts = {}) {
+        const timeoutMs = Number(opts.timeoutMs || DATASET_PRESET_REQUEST_TIMEOUT_MS);
+        const requestOpts = { ...opts };
+        delete requestOpts.timeoutMs;
+        let timeoutId = null;
+        try {
+            return await Promise.race([
+                api(url, requestOpts),
+                new Promise((_, reject) => {
+                    timeoutId = window.setTimeout(() => {
+                        reject(new Error('数据集预设请求超时，请查看终端日志或刷新预设列表'));
+                    }, timeoutMs);
+                }),
+            ]);
+        } finally {
+            if (timeoutId !== null) {
+                window.clearTimeout(timeoutId);
+            }
+        }
     }
 
     function val(id) {

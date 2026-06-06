@@ -5,6 +5,7 @@ from datetime import datetime
 import json
 import os
 from pathlib import Path
+import shutil
 from types import SimpleNamespace
 
 import pytest
@@ -542,6 +543,7 @@ def test_web_runtime_config_creates_run_directory_and_overrides_paths(tmp_path, 
     assert runtime_cfg["output_dir"] == "output/runs/522-20260523-114514/training_output"
     assert runtime_cfg["logging_dir"] == "output/runs/522-20260523-114514/model_cache/logs"
     assert runtime_cfg["dataset_config"] == "output/runs/522-20260523-114514/dataset.runtime.toml"
+
     assert runtime_cfg["source_image_dir"] == "image_dataset/a"
     assert runtime_cfg["resized_image_dir"] == "output/runs/522-20260523-114514/dataset_cache/dataset-01/resized"
     assert runtime_cfg["lora_cache_dir"] == "output/runs/522-20260523-114514/dataset_cache/dataset-01/lora"
@@ -567,6 +569,32 @@ def test_web_runtime_config_creates_run_directory_and_overrides_paths(tmp_path, 
     assert env["ANIMA_RUNTIME_CONFIG"] == "output/runs/522-20260523-114514/config.runtime.toml"
     assert env["TORCHINDUCTOR_CACHE_DIR"].endswith("model_cache/torchinductor")
     assert env["TRITON_CACHE_DIR"].endswith("model_cache/triton")
+
+
+def test_training_sample_config_reports_effective_sampler() -> None:
+    sample = training_service._sample_config_from_cfg(
+        {
+            "sample_prompts": "configs/sample_prompts.txt",
+            "sample_every_n_epochs": 1,
+            "sample_sampler": "ddim",
+        },
+        ["--sample_sampler", "dpmsolver++"],
+    )
+
+    assert sample["sample_sampler"] == "euler"
+    assert sample["sample_sampler_raw"] == "dpmsolver++"
+    assert sample["sample_sampler_status"] == "legacy"
+
+    supported = training_service._sample_config_from_cfg(
+        {
+            "sample_prompts": "configs/sample_prompts.txt",
+            "sample_every_n_steps": 50,
+            "sample_sampler": "lcm",
+        },
+        [],
+    )
+    assert supported["sample_sampler"] == "lcm"
+    assert supported["sample_sampler_status"] == "supported"
 
 
 def test_block_swap_profile_auto_config_targets_current_history_task(
@@ -2194,6 +2222,12 @@ def test_training_service_ingests_progress_jsonl(tmp_path, monkeypatch):
     assert any("结构化训练进度已开始" in item["line"] for item in logs)
     assert any("已保存检查点" in item["line"] for item in logs)
     assert any("结构化训练进度结束" in item["line"] for item in logs)
+    snapshot = svc.get_status_snapshot()
+    assert snapshot["latest_progress"]["current"] == 2
+    assert snapshot["latest_progress"]["total"] == 10
+    assert snapshot["latest_progress"]["label"] == "Training"
+    assert snapshot["latest_metric"]["kind"] == "val"
+    assert snapshot["latest_metric"]["cmmd"] == 0.03
 
 
 def test_history_detail_recovers_lr_from_progress_jsonl(tmp_path, monkeypatch):
@@ -2250,6 +2284,7 @@ def test_training_service_persists_learning_rate_change_logs(tmp_path, monkeypat
         await svc._record_metric({"step": 4, "loss": 0.4, "ts": 1004.0})
 
     asyncio.run(record_metrics())
+    assert svc.get_status_snapshot()["latest_metric"]["step"] == 4
 
     logs = [
         json.loads(line)
@@ -2408,6 +2443,8 @@ def test_history_summary_includes_runtime_info(tmp_path, monkeypatch):
     task = svc.list_history_tasks(include_archived=True)[0]
 
     assert task["run_dir"] == "output/runs/522-20260523-114514"
+    assert task["project_root_abs"] == str(training_service.ROOT.resolve())
+    assert task["run_dir_abs"] == str((training_service.ROOT / "output/runs/522-20260523-114514").resolve())
     assert task["runtime_config_file"].endswith("config.runtime.toml")
     assert task["original_config_file"].endswith("config.original.toml")
     assert task["dataset_config_file"].endswith("dataset.runtime.toml")
@@ -2803,6 +2840,40 @@ def test_history_artifact_path_allows_whitelisted_task_and_runtime_files(tmp_pat
         }),
         encoding="utf-8",
     )
+    with pytest.raises(ValueError, match="运行文件路径不合法"):
+        svc.get_history_artifact_path(task_id, "runtime-config")
+
+
+def test_history_artifact_path_keeps_old_runtime_after_output_root_changes(tmp_path, monkeypatch):
+    history_dir = tmp_path / "history"
+    old_output_root = tmp_path / "old-runs"
+    current_output_root = tmp_path / "current-runs"
+    task_id = "20260524-131153-training-imported-522"
+    task_dir = history_dir / task_id
+    run_dir = old_output_root / "demo-run"
+    task_dir.mkdir(parents=True)
+    (run_dir / "model_cache").mkdir(parents=True)
+    (run_dir / "dataset_cache").mkdir(parents=True)
+    (run_dir / "training_output").mkdir(parents=True)
+    runtime_config = run_dir / "config.runtime.toml"
+    runtime_config.write_text('output_name = "demo"\n', encoding="utf-8")
+    (task_dir / "meta.json").write_text(
+        json.dumps({
+            "id": task_id,
+            "job": "training",
+            "state": "idle",
+            "run_dir": str(run_dir),
+            "runtime_config_file": str(runtime_config),
+        }),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(training_service, "HISTORY_DIR", history_dir)
+    monkeypatch.setattr(training_service, "resolve_output_root", lambda: current_output_root)
+    svc = TrainingService(web.Application())
+
+    assert svc.get_history_artifact_path(task_id, "runtime-config") == runtime_config.resolve()
+
+    shutil.rmtree(run_dir / "model_cache")
     with pytest.raises(ValueError, match="运行文件路径不合法"):
         svc.get_history_artifact_path(task_id, "runtime-config")
 

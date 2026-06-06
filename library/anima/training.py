@@ -26,6 +26,7 @@ from library.training.checkpoints import (
 )
 from library.anima import models as anima_models, weights as anima_utils
 from library.models import qwen_vae as qwen_image_autoencoder_kl
+from library.inference import sampling as inference_sampling
 
 from library.log import setup_logging
 
@@ -33,6 +34,44 @@ setup_logging()
 import logging  # noqa: E402
 
 logger = logging.getLogger(__name__)
+
+_TRAINING_SAMPLE_SAMPLERS = {"euler", "er_sde", "lcm"}
+_LEGACY_TRAINING_SAMPLE_SAMPLERS = {
+    "ddim",
+    "pndm",
+    "lms",
+    "euler_a",
+    "heun",
+    "dpm_2",
+    "dpm_2_a",
+    "dpmsolver",
+    "dpmsolver++",
+    "dpmsingle",
+    "k_lms",
+    "k_euler",
+    "k_euler_a",
+    "k_dpm_2",
+    "k_dpm_2_a",
+}
+
+
+def normalize_training_sample_sampler(value: object) -> str:
+    """Return a sampler supported by Anima's flow-matching preview loop."""
+    sampler = str(value or "euler").strip().lower()
+    if sampler in _TRAINING_SAMPLE_SAMPLERS:
+        return sampler
+    if sampler in _LEGACY_TRAINING_SAMPLE_SAMPLERS:
+        logger.warning(
+            "sample_sampler=%s is a legacy Diffusers scheduler name; "
+            "training preview falls back to euler.",
+            sampler,
+        )
+        return "euler"
+    logger.warning(
+        "Unknown sample_sampler=%s; training preview falls back to euler.",
+        sampler,
+    )
+    return "euler"
 
 
 # Sentinel users can drop into captions that lack a real artist tag, so the
@@ -752,7 +791,7 @@ def save_anima_model_on_epoch_end_or_stepwise(
     )
 
 
-# Sampling (Euler discrete for rectified flow)
+# Sampling for rectified flow training previews
 def do_sample(
     height: int,
     width: int,
@@ -765,9 +804,10 @@ def do_sample(
     guidance_scale: float = 1.0,
     flow_shift: float = 3.0,
     neg_crossattn_emb: Optional[torch.Tensor] = None,
+    sampler: str = "euler",
     show_progress: bool = True,
 ) -> torch.Tensor:
-    """Generate a sample using Euler discrete sampling for rectified flow.
+    """Generate a sample using Anima flow-matching sampling.
 
     Args:
         height, width: Output image dimensions
@@ -802,11 +842,26 @@ def do_sample(
         .to(device)
     )
 
-    # Timestep schedule: linear from 1.0 to 0.0
-    sigmas = torch.linspace(1.0, 0.0, steps + 1, device=device, dtype=dtype)
-    flow_shift = float(flow_shift)
-    if flow_shift != 1.0:
-        sigmas = (sigmas * flow_shift) / (1 + (flow_shift - 1) * sigmas)
+    sampler = normalize_training_sample_sampler(sampler)
+    _timesteps, sigmas = inference_sampling.get_timesteps_sigmas(
+        steps,
+        float(flow_shift),
+        device,
+    )
+    sigmas = sigmas.to(device=device, dtype=dtype)
+    sampler_stepper = None
+    if sampler == "er_sde":
+        sampler_stepper = inference_sampling.ERSDESampler(
+            sigmas.detach().float().to(device),
+            seed=seed,
+            device=device,
+        )
+    elif sampler == "lcm":
+        sampler_stepper = inference_sampling.LCMSampler(
+            sigmas.detach().float().to(device),
+            seed=seed,
+            device=device,
+        )
 
     # Start from pure noise
     x = noise.clone()
@@ -832,9 +887,11 @@ def do_sample(
             model_output = dit(x, t, crossattn_emb, padding_mask=padding_mask)
             model_output = model_output.float()
 
-        # Euler step: x_{t-1} = x_t - (sigma_t - sigma_{t-1}) * model_output
-        dt = sigmas[i + 1] - sigma
-        x = x + model_output * dt
+        if sampler_stepper is None:
+            x = inference_sampling.step(x, model_output, sigmas, i)
+        else:
+            denoised = x.float() - sigma.float() * model_output.float()
+            x = sampler_stepper.step(x, denoised, i)
         x = x.to(dtype)
 
     return x
@@ -869,14 +926,13 @@ def sample_images(
         if not args.sample_at_first:
             return
     else:
-        if args.sample_every_n_steps is None and args.sample_every_n_epochs is None:
+        sample_this_call = False
+        if epoch is not None and args.sample_every_n_epochs is not None:
+            sample_this_call = epoch % args.sample_every_n_epochs == 0
+        if epoch is None and args.sample_every_n_steps is not None:
+            sample_this_call = steps % args.sample_every_n_steps == 0
+        if not sample_this_call:
             return
-        if args.sample_every_n_epochs is not None:
-            if epoch is None or epoch % args.sample_every_n_epochs != 0:
-                return
-        else:
-            if steps % args.sample_every_n_steps != 0 or epoch is not None:
-                return
 
     logger.info(f"Generating sample images at step {steps}")
     if not os.path.isfile(args.sample_prompts) and sample_prompts_te_outputs is None:
@@ -982,7 +1038,7 @@ def _sample_image_inference(
     sample_steps = prompt_dict.get("sample_steps", 30)
     width = prompt_dict.get("width", 512)
     height = prompt_dict.get("height", 512)
-    scale = prompt_dict.get("scale", 7.5)
+    scale = prompt_dict.get("guidance_scale", prompt_dict.get("scale", 7.5))
     seed = prompt_dict.get("seed")
     if seed is None:
         # No explicit `--d` on this prompt: pin to a stable per-prompt seed so
@@ -995,6 +1051,9 @@ def _sample_image_inference(
             prompt_dict.get("enum", 0)
         )
     flow_shift = prompt_dict.get("flow_shift", 3.0)
+    sample_sampler = normalize_training_sample_sampler(
+        prompt_dict.get("sample_sampler", getattr(args, "sample_sampler", "euler"))
+    )
 
     if prompt_replacement is not None:
         prompt = prompt.replace(prompt_replacement[0], prompt_replacement[1])
@@ -1011,7 +1070,7 @@ def _sample_image_inference(
     width = max(64, width - width % 16)
 
     logger.info(
-        f"  prompt: {prompt}, size: {width}x{height}, steps: {sample_steps}, scale: {scale}, flow_shift: {flow_shift}, seed: {seed}"
+        f"  prompt: {prompt}, size: {width}x{height}, steps: {sample_steps}, scale: {scale}, flow_shift: {flow_shift}, sampler: {sample_sampler}, seed: {seed}"
     )
 
     # Encode prompt
@@ -1111,6 +1170,7 @@ def _sample_image_inference(
         scale,
         flow_shift,
         neg_crossattn_emb,
+        sample_sampler,
     )
 
     ts_str = time.strftime("%Y%m%d%H%M%S", time.localtime())
@@ -1313,6 +1373,7 @@ def sample_image_to_tensor(
         guidance_scale,
         flow_shift,
         neg_crossattn_emb,
+        "euler",
         show_progress=show_progress,
     )
 

@@ -165,7 +165,7 @@ def _decode_deferred_samples_safely(
     *,
     optimizer_eval_fn=None,
 ) -> None:
-    if not accelerator.is_main_process or not getattr(args, "sample_prompts", None):
+    if not accelerator.is_main_process or not _sample_preview_enabled(args):
         return
     try:
         if optimizer_eval_fn is not None:
@@ -217,6 +217,17 @@ def _normalize_sample_args(args):
         f.write("\n".join(lines) + "\n")
     logger.info(f"Wrote {len(lines)} inline sample prompt(s) to {prompt_path}")
     args.sample_prompts = prompt_path
+
+
+def _sample_preview_enabled(args) -> bool:
+    return bool(
+        getattr(args, "sample_prompts", None)
+        and (
+            getattr(args, "sample_at_first", False)
+            or getattr(args, "sample_every_n_steps", None)
+            or getattr(args, "sample_every_n_epochs", None)
+        )
+    )
 
 
 class AnimaTrainer:
@@ -1613,10 +1624,9 @@ class AnimaTrainer:
         # ImageInfo.text_encoder_outputs_npz (forms no batches).
         dataset.new_cache_text_encoder_outputs([None], accelerator)
 
-        # The text encoder is in memory only to encode sample prompts (TE
-        # training is mutually exclusive with caching). It is None when no
-        # sample prompts are configured — nothing left to do.
-        if text_encoders[0] is not None and args.sample_prompts is not None:
+        # The text encoder is in memory only to encode sample prompts when
+        # sampling will actually run. It is None when no preview needs it.
+        if text_encoders[0] is not None and _sample_preview_enabled(args):
             logger.info(
                 f"cache Text Encoder outputs for sample prompts: {args.sample_prompts}"
             )
@@ -1915,14 +1925,7 @@ class AnimaTrainer:
         # we skip loading the encoders entirely (saves the disk read, RAM, and
         # the GPU round-trip). `cache_latents = false` (e.g. IP-Adapter) is a
         # separate, explicit live-encoding mode, not a fallback.
-        sampling_enabled = bool(
-            args.sample_prompts
-            and (
-                args.sample_at_first
-                or args.sample_every_n_steps
-                or args.sample_every_n_epochs
-            )
-        )
+        sampling_enabled = _sample_preview_enabled(args)
 
         def _latents_complete(group):
             return group is None or group.is_latents_cache_complete()
@@ -1960,11 +1963,11 @@ class AnimaTrainer:
         # cache is guaranteed complete above, so no encode pass is required.
         vae_needed = (not cache_latents) or sampling_enabled or cmmd_validation
 
-        # Qwen3 TE: needed only to live-encode (caching off), to encode sample
-        # prompts, or when the text encoder itself is being trained.
+        # Qwen3 TE: needed only to live-encode (caching off), to encode active
+        # sample prompts, or when the text encoder itself is being trained.
         qwen3_needed = (
             (not args.cache_text_encoder_outputs)
-            or bool(args.sample_prompts)
+            or sampling_enabled
             or self.is_train_text_encoder(args)
         )
 
@@ -2399,7 +2402,7 @@ class AnimaTrainer:
             optimizer_eval_fn()
             _decode_deferred_samples_safely(accelerator, args, loop_state, vae)
 
-            if is_main_process and args.sample_prompts:
+            if is_main_process and _sample_preview_enabled(args):
                 try:
                     accelerator.unwrap_model(loop_state.unet).to("cpu")
                 except Exception:

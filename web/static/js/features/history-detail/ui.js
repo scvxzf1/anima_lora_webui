@@ -17,6 +17,21 @@ export function historyDetailSection(title, body, className = 'history-detail-se
     return section;
 }
 
+export function selectAllTextOnDoubleClick(el) {
+    if (!el) return el;
+    el.classList.add('history-detail-select-all');
+    el.addEventListener('dblclick', (event) => {
+        event.preventDefault();
+        const selection = window.getSelection?.();
+        if (!selection || !document.createRange) return;
+        const range = document.createRange();
+        range.selectNodeContents(el);
+        selection.removeAllRanges();
+        selection.addRange(range);
+    });
+    return el;
+}
+
 export function historyDetailRow(label, value, options = {}, helpers = {}) {
     const row = document.createElement('div');
     row.className = options.className || '';
@@ -29,6 +44,7 @@ export function historyDetailRow(label, value, options = {}, helpers = {}) {
     if (options.copyValue) {
         row.classList.add('has-copy-action');
         val.title = rawValue;
+        selectAllTextOnDoubleClick(val);
     }
     row.append(key, val);
     if (options.copyValue && helpers.copyButton) {
@@ -140,7 +156,7 @@ export function fileNameFromPath(value) {
 }
 
 export function historyDetailRunRoot(task) {
-    return task.run_dir || '';
+    return normalizedHistoryDetailPath(task.run_dir_abs || task.run_dir || '');
 }
 
 export function normalizedHistoryDetailPath(value) {
