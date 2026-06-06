@@ -447,11 +447,14 @@ class AnimaTrainer:
             getattr(args, "block_swap_transfer_dtype", "bf16")
         )
 
-        assert (
-            args.blocks_to_swap is None or args.blocks_to_swap == 0
-        ) or not args.cpu_offload_checkpointing, (
-            "blocks_to_swap is not supported with cpu_offload_checkpointing"
-        )
+        if (
+            args.blocks_to_swap is not None
+            and args.blocks_to_swap > 0
+            and args.cpu_offload_checkpointing
+        ):
+            raise ValueError(
+                "blocks_to_swap is not supported with cpu_offload_checkpointing"
+            )
 
         if args.unsloth_offload_checkpointing:
             if args.selective_checkpoint != "off":
@@ -464,12 +467,14 @@ class AnimaTrainer:
                     "unsloth_offload_checkpointing is enabled, so gradient_checkpointing is also enabled"
                 )
                 args.gradient_checkpointing = True
-            assert not args.cpu_offload_checkpointing, (
-                "Cannot use both --unsloth_offload_checkpointing and --cpu_offload_checkpointing"
-            )
-            assert args.blocks_to_swap is None or args.blocks_to_swap == 0, (
-                "blocks_to_swap is not supported with unsloth_offload_checkpointing"
-            )
+            if args.cpu_offload_checkpointing:
+                raise ValueError(
+                    "Cannot use both --unsloth_offload_checkpointing and --cpu_offload_checkpointing"
+                )
+            if args.blocks_to_swap is not None and args.blocks_to_swap > 0:
+                raise ValueError(
+                    "blocks_to_swap is not supported with unsloth_offload_checkpointing"
+                )
 
         if args.blocks_to_swap is not None and args.blocks_to_swap > 0:
             if getattr(args, "torch_compile", False) and getattr(
@@ -1201,7 +1206,11 @@ class AnimaTrainer:
 
         # Loss weighting
         weighting = anima_train_utils.compute_loss_weighting_for_anima(
-            weighting_scheme=args.weighting_scheme, sigmas=sigmas
+            weighting_scheme=args.weighting_scheme,
+            sigmas=sigmas,
+            min_snr_gamma=getattr(args, "min_snr_gamma", None),
+            p2_gamma=getattr(args, "p2_gamma", 1.0),
+            p2_k=getattr(args, "p2_k", 1.0),
         )
 
         return model_pred, target, timesteps, weighting
@@ -1506,6 +1515,12 @@ class AnimaTrainer:
         metadata["ss_logit_mean"] = args.logit_mean
         metadata["ss_logit_std"] = args.logit_std
         metadata["ss_mode_scale"] = args.mode_scale
+        metadata["ss_min_snr_gamma"] = str(getattr(args, "min_snr_gamma", None))
+        metadata["ss_p2_gamma"] = str(getattr(args, "p2_gamma", None))
+        metadata["ss_p2_k"] = str(getattr(args, "p2_k", None))
+        metadata["ss_velocity_direction_loss_weight"] = str(
+            getattr(args, "velocity_direction_loss_weight", 0.0)
+        )
         metadata["ss_timestep_sampling"] = args.timestep_sampling
         metadata["ss_sigmoid_scale"] = args.sigmoid_scale
         metadata["ss_discrete_flow_shift"] = args.discrete_flow_shift

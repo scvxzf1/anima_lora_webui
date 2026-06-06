@@ -1,4 +1,4 @@
-import { help } from './help-builder.js?v=module-bootstrap-20260604-8';
+import { help } from './help-builder.js?v=module-bootstrap-20260604-10';
 
 export const FIELD_HELP_METHOD_ZH = {
     network_dim: help(
@@ -75,11 +75,27 @@ export const FIELD_HELP_METHOD_ZH = {
     ),
     lora_adapter_kind: help(
         "选择当前训练使用的 LoRA 家族结构。",
-        "普通 LoRA 会关闭 use_loha/use_lokr/use_vera；LoHa、LoKr、VeRA 会分别写入对应开关。",
+        "普通 LoRA 会关闭 use_glora/use_loha/use_lokr/use_vera；LoHa、LoKr、GLoRA、VeRA 会分别写入对应开关。DoRA 不是这里的结构变体，它由“启用 DoRA”单独控制。",
         ["把互斥 adapter 开关合并成一个选择，避免同时打开多个结构。"],
         ["切换结构会改变权重格式和推理兼容性，不只是改 UI 文案。"],
-        ["LoHa/LoKr/VeRA 与 OrthoLoRA、Hydra/FeRA、ChimeraHydra 等结构互斥，保存前要确认当前变体支持。"],
-        "不需要特殊格式时保持普通 LoRA；做极低参数 VeRA 消融时选择 VeRA。"
+        ["LoHa/LoKr/GLoRA/VeRA 与 OrthoLoRA、Hydra/FeRA、ChimeraHydra 等结构互斥，保存前要确认当前变体支持。"],
+        "不需要特殊格式时保持普通 LoRA；想训练方向/幅度分解时保持普通 LoRA 并打开 DoRA。"
+    ),
+    dora_wd: help(
+        "在普通 LoRA 上启用 DoRA（Weight-Decomposed LoRA）。",
+        "开启后会写入 dora_wd=true，训练模块仍沿用 LoRA 的低秩方向，同时额外学习输出通道幅度。",
+        ["比同 rank 普通 LoRA 多一个幅度分解自由度，可能提升拟合能力。"],
+        ["前向更重，导出的权重会带 dora_scale，需要兼容 DoRA 的加载/继续训练路径。"],
+        ["当前仅支持叠加在普通 LoRA 上；不要和 LoHa、LoKr、GLoRA、VeRA、OrthoLoRA、Hydra/FeRA、ChimeraHydra 混开。"],
+        "想要原项目 DoRA 用法时，LoRA 结构保持“普通 LoRA”，再打开这个开关。"
+    ),
+    use_glora: help(
+        "启用 GLoRA（Generalized LoRA）。",
+        "用低秩 A 路径先调制 Linear 输入，再叠加低秩 B 路径；保存为 a1/a2/b1/b2/alpha。",
+        ["比普通 LoRA 多一条依赖底模权重的输入调制路径，表达方式更接近 LyCORIS GLoRA。"],
+        ["不能无损改写成普通 lora_up/lora_down，推理和继续训练都需要 GLoRA 兼容加载器。"],
+        ["与 DoRA、LoHa、LoKr、VeRA、OrthoLoRA、Hydra/FeRA、ChimeraHydra 等结构互斥。"],
+        "明确需要 GLoRA/LyCORIS 兼容格式时选择 glora 变体；普通训练仍优先 LoRA。"
     ),
     use_vera: help(
         "启用 VeRA（Vector-based Random Matrix Adaptation）。",

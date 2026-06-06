@@ -280,6 +280,39 @@ def test_queue_history_metadata_is_written_on_launch(tmp_path, monkeypatch):
     assert meta["queue_attempt"] == 3
 
 
+def test_start_queue_item_applies_gpu_whitelist_to_child_env(tmp_path):
+    runtime = _runtime_payload(tmp_path)
+    svc = TrainingService(web.Application())
+    captured = {}
+
+    async def fake_launch(cmd, env, **kwargs):
+        captured["cmd"] = cmd
+        captured["env"] = env
+        captured["kwargs"] = kwargs
+
+    svc._launch_job = fake_launch
+    asyncio.run(svc._start_queue_item({
+        "id": "q-gpu",
+        "state": "queued",
+        "kind": "training",
+        "requires_preprocess": False,
+        "variant": "demo",
+        "preset": "default",
+        "methods_subdir": "imported",
+        "runtime_config_file": runtime["runtime_config_file"],
+        "source_config_file": "configs/imported/source.toml",
+        "extra_args": [],
+        "gpu_whitelist": [1],
+        "continue_info": {},
+        "resume_info": {},
+    }))
+
+    assert captured["env"]["CUDA_DEVICE_ORDER"] == "PCI_BUS_ID"
+    assert captured["env"]["CUDA_VISIBLE_DEVICES"] == "1"
+    assert captured["kwargs"]["gpu_whitelist"] == [1]
+    assert captured["kwargs"]["queue_item_id"] == "q-gpu"
+
+
 def test_stop_running_queue_item_cancels_and_pauses(tmp_path, monkeypatch):
     _patch_queue_paths(tmp_path, monkeypatch)
     svc = TrainingService(web.Application())

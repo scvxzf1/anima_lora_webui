@@ -393,6 +393,9 @@ def test_training_queue_frontend_hooks_are_present() -> None:
     assert "removeQueueItemFromList" in queue_section
     assert "移除列表" in queue_section
     assert "只会将这条记录从队列界面移除" in queue_section
+    assert "event.preventDefault()" in queue_section
+    assert "event.stopPropagation()" in queue_section
+    assert "HTMLDetailsElement" in queue_section
     assert "delete_runtime: true" not in queue_section
     assert "queueDeleteRuntimeMessage" not in queue_section
     assert "queueRuntimeDirLabel" not in queue_section
@@ -411,6 +414,8 @@ def test_training_queue_frontend_hooks_are_present() -> None:
     assert "缓存或任何实际文件" in queue_section
     assert "btn-clear-completed-queue" in html
     assert "btn-clear-canceled-queue" in html
+    assert ".training-queue-item-more[open]" in css
+    assert "z-index: 130" in css
     assert "state.filter" in queue_section
     assert "/api/training/queue" in queue_section
     assert "/api/training/queue/settings" in queue_section
@@ -537,6 +542,7 @@ def test_config_form_uses_navigation_search_and_progressive_disclosure() -> None
     render_section = _section(source, "function renderConfigForm", "function shouldRenderConfigSection")
     order_section = _section(source, "function appendConfigGroupsByCategory", "function createGroup")
     collect_section = _section(source, "function collectChangedFormValues", "function networkArgInputChanged")
+    defaults = _section(source, "const FORM_UI_DEFAULTS = {", "const OPTIONAL_EMPTY_FIELDS")
 
     assert category_defs.count("id: '") == 5
     assert category_defs.index("id: 'common'") < category_defs.index("id: 'preview'")
@@ -552,6 +558,7 @@ def test_config_form_uses_navigation_search_and_progressive_disclosure() -> None
         "显存与速度优化",
         "LoKr 专用优化",
         "数据加载与 VAE 资源",
+        "实验性功能",
         "缓存与预处理",
         "更多数据集配置",
         "SPD CLI 实验",
@@ -576,7 +583,10 @@ def test_config_form_uses_navigation_search_and_progressive_disclosure() -> None
     assert "draftValues: new Map()" in source
     assert "syncConfigDraftFromForm();" in source
     assert "displayConfigFieldValue(key, value)" in source
-    assert "configGroupIsCollapsed(name, searchText)" in source
+    assert "section.open" in render_section
+    assert "section.notice || ''" in render_section
+    assert "configGroupIsCollapsed(name, searchText, defaultOpen)" in source
+    assert "if (defaultOpen === false) return true;" in source
     assert "if (searchText) return false;" in source
     assert "function createConfigCategory" not in source
     assert "configFormState.draftValues.entries()" in collect_section
@@ -604,6 +614,9 @@ def test_config_form_uses_navigation_search_and_progressive_disclosure() -> None
     assert ".config-category" not in css
     assert ".config-field-grid-4col" in css
     assert ".config-group-title-actions" in css
+    assert ".config-group-badge-experimental" in css
+    assert ".config-group-notice" in css
+    assert ".field-state-hint" in css
     assert ".config-resource-quick-presets" in css
     assert ".config-resource-preset-btn" in css
     resource_quick_css = _section(css, ".config-resource-quick-presets {", ".config-resource-quick-presets[hidden]")
@@ -647,10 +660,13 @@ def test_config_form_uses_navigation_search_and_progressive_disclosure() -> None
     assert "grid-template-rows: auto;" in inline_flag_css
 
     primary_section = _section(source, "title: '常用训练设置'", "title: '步数与训练量'")
+    resource_section = _section(source, "title: '显存与速度优化'", "title: 'LoKr 专用优化'")
     optimization_section = _section(source, "title: '显存与速度优化'", "title: '缓存与预处理'")
+    experimental_section = _section(source, "title: '实验性功能'", "title: '缓存与预处理'")
     resource_compact = _section(source, "'config-group-resource': [", "'config-group-data-resource': [")
     data_resource_compact = _section(source, "'config-group-data-resource': [", "const VARIANT_METHOD_FAMILY")
     assert "'gradient_checkpointing'," not in primary_section
+    assert "open: true," in resource_section
     assert "'gradient_checkpointing'," in optimization_section
     assert "'block_swap_transfer_dtype'," in optimization_section
     assert "'memory_probe_jsonl'," in optimization_section
@@ -660,6 +676,28 @@ def test_config_form_uses_navigation_search_and_progressive_disclosure() -> None
     assert "'peak_probe_level'," in optimization_section
     assert "'lokr_factor_group_size'," in optimization_section
     assert "'lokr_project_chunk_bytes'," in optimization_section
+    assert "sections: ['显存与速度优化', 'LoKr 专用优化', '数据加载与 VAE 资源', '实验性功能']" in category_defs
+    assert category_defs.index("数据加载与 VAE 资源") < category_defs.index("实验性功能")
+    assert "notice: '建议：正式训练保持默认。'" in experimental_section
+    assert "config-group-badge-experimental" in source
+    assert "LOSS_WEIGHTING_DEPENDENT_FIELDS = new Map([" in source
+    assert "['min_snr_gamma', 'min_snr']" in source
+    assert "['p2_gamma', 'p2']" in source
+    assert "['p2_k', 'p2']" in source
+    assert "function updateLossWeightingFieldState()" in source
+    assert "仅 weighting_scheme = ${state.requiredScheme} 时生效" in source
+    assert "updateLossWeightingFieldState();" in source
+    for key in (
+        "sigmoid_scale",
+        "sigmoid_bias",
+        "weighting_scheme",
+        "min_snr_gamma",
+        "p2_gamma",
+        "p2_k",
+        "velocity_direction_loss_weight",
+    ):
+        assert f"'{key}'," in experimental_section
+        assert f"{key}:" in defaults
     assert "block_swap_transfer_dtype: '块交换传输精度'" in source
     assert "block_swap_transfer_dtype: ['bf16', 'fp8_e4m3']" in source
     assert "memory_probe_jsonl: '显存探针'" in source
@@ -681,7 +719,7 @@ def test_config_form_uses_navigation_search_and_progressive_disclosure() -> None
     assert "config-field-grid-2col config-field-grid-inline-flags" in data_resource_compact
 
 
-def test_config_form_merges_loha_lokr_into_single_adapter_selector() -> None:
+def test_config_form_keeps_dora_as_lora_addon_and_merges_exclusive_adapters() -> None:
     source = APP_JS.read_text(encoding="utf-8")
     defaults = _section(source, "const FORM_UI_DEFAULTS = {", "const OPTIONAL_EMPTY_FIELDS")
     network_arg_specs = _section(source, "const NETWORK_ARG_FIELD_SPECS = [", "const NETWORK_ARG_FIELD_MAP")
@@ -690,33 +728,46 @@ def test_config_form_merges_loha_lokr_into_single_adapter_selector() -> None:
     render_section = _section(source, "function renderConfigForm", "function shouldRenderConfigSection")
     collect_section = _section(source, "function collectChangedFormValues", "function networkArgInputChanged")
     live_section = _section(source, "function liveConfigFromForm", "function formatFieldName")
-    state_section = _section(source, "function readLoKrEnabled", "function updateLoKrFieldState")
+    state_section = _section(source, "function readLoKrEnabled", "function currentLossWeightingScheme")
 
     assert "lora_adapter_kind: 'lora'" in defaults
+    assert "dora_wd: false" in defaults
+    assert "use_glora: false" in defaults
     assert "use_vera: false" in defaults
     assert "vera_projection_prng_key: 0" in defaults
     assert "vera_d_initial: 0.1" in defaults
     assert "vera_save_projection: false" in defaults
     assert "'lora_adapter_kind'" in layout
+    assert "'dora_wd'" in layout
     assert "'use_loha'" not in layout
     assert "'use_lokr'" not in layout
+    assert "'use_glora'" not in layout
     assert "'use_vera'" not in layout
-    assert "keys: ['network_dim', 'network_alpha', 'lora_adapter_kind', 'lokr_factor', 'vera_projection_prng_key', 'vera_d_initial', 'vera_save_projection']" in source
+    assert "keys: ['network_dim', 'network_alpha', 'lora_adapter_kind', 'dora_wd', 'lokr_factor', 'vera_projection_prng_key', 'vera_d_initial', 'vera_save_projection']" in source
     assert "{ family: 'lokr', key: 'lokr_factor_group_size', arg: 'lokr_factor_group_size', default: 8, valueType: 'integer' }" in network_arg_specs
     assert "{ family: 'lokr', key: 'lokr_project_chunk_bytes', arg: 'lokr_project_chunk_bytes', default: 4194304, valueType: 'integer' }" in network_arg_specs
+    assert "'dora_wd'" not in merged_fields
+    assert "'use_glora'" in merged_fields
     assert "'use_loha'" in merged_fields
     assert "'use_lokr'" in merged_fields
     assert "'use_vera'" in merged_fields
     assert "CONFIG_FORM_MERGED_FIELDS?.has?.(key)" in render_section
     assert "function loraAdapterFlagsForKind" in source
+    assert "values.use_glora = flags.use_glora" in source
     assert "values.use_loha = flags.use_loha" in source
     assert "values.use_lokr = flags.use_lokr" in source
     assert "values.use_vera = flags.use_vera" in source
+    assert "values.dora_wd = false" in source
     assert "if (key === 'lora_adapter_kind')" in collect_section
     assert "continue;" in collect_section
-    assert "Object.assign(liveConfig, loraAdapterFlagsForKind(next));" in live_section
+    assert "Object.assign(liveConfig, loraAdapterFlagsForKind(nextKind));" in live_section
+    assert "if (nextKind !== 'lora') liveConfig.dora_wd = false;" in live_section
     assert "return readLiveLoraAdapterKind() === 'lokr';" in state_section
     assert "return readLiveLoraAdapterKind() === 'vera';" in source
+    assert "return readLiveLoraAdapterKind() === 'lora';" in state_section
+    assert "function updateDoRAFieldState" in state_section
+    assert "input.checked = false" in state_section
+    assert "DoRA 仅支持普通 LoRA；切到 LoHa/LoKr/GLoRA/VeRA 时会自动关闭" in source
 
 
 def test_config_actions_are_de_noised_and_sticky_controls_are_wired() -> None:
@@ -1598,6 +1649,19 @@ def test_history_collection_drag_drop_frontend_hooks_are_present() -> None:
         "prefers-reduced-motion",
     ):
         assert selector in css
+    assert ".history-config-group-card.selected > .history-config-group-card-actions" not in css
+    assert "grid-template-columns: 18px 22px minmax(0, 1fr) max-content;" in css
+    single_task_actions_css = _section(
+        css,
+        ".history-config-group-card.single-task > .history-config-group-card-actions {",
+        ".history-config-group-card:not(.single-task) > .history-config-group-card-actions {",
+    )
+    assert "position: absolute;" not in single_task_actions_css
+    assert "transform: translateY(-50%);" not in single_task_actions_css
+    assert ".history-config-group-card:focus-within > .history-config-group-card-actions" not in css
+    assert ".history-manager-row:focus-within .history-row-actions" not in css
+    assert ".history-config-group-card > .history-config-group-card-actions:focus-within" in css
+    assert ".history-row-actions:focus-within" in css
 
 
 def test_history_detail_overview_de_noises_paths_and_resume_weights() -> None:
@@ -1805,6 +1869,7 @@ def test_balanced_16g_block_swap_fields_are_visible() -> None:
     assert "peak_probe_level: '峰值探针粒度'" in labels_options
     assert "lokr_factor_group_size: 'LoKr 分组'" in labels_options
     assert "lokr_project_chunk_bytes: 'LoKr 张量切块阈值'" in labels_options
+    assert "use_glora: '启用 GLoRA'" in labels_options
     assert "use_vera: '启用 VeRA'" in labels_options
     assert "vera_projection_prng_key: 'VeRA 投影随机种子'" in labels_options
     assert "vera_d_initial: 'VeRA d 初始值'" in labels_options
@@ -1818,7 +1883,9 @@ def test_balanced_16g_block_swap_fields_are_visible() -> None:
     assert "peak_probe_level: ['block', 'ops', 'lokr', 'full']" in labels_options
     assert "lokr_factor_group_size: [1, 2, 4, 8]" in labels_options
     assert "lokr_project_chunk_bytes: [1048576, 2097152, 4194304, 8388608, 16777216]" in labels_options
-    assert "lora_adapter_kind: ['lora', 'loha', 'lokr', 'vera']" in labels_options
+    assert "lora_adapter_kind: ['lora', 'loha', 'lokr', 'glora', 'vera']" in labels_options
+    assert "dora_wd: [false, true]" not in labels_options
+    assert "use_glora: [false, true]" in labels_options
     assert "use_vera: [false, true]" in labels_options
     assert "vera_projection_prng_key: [0, 1, 2, 3]" in labels_options
     assert "vera_d_initial: [0.01, 0.05, 0.1, 0.2]" in labels_options

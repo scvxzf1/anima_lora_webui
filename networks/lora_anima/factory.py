@@ -25,6 +25,7 @@ from networks.lora_anima.loading import (
     _refuse_split_hydra_keys,
     _refuse_split_stacked_experts_keys,
     _refuse_unfused_attn_lora_keys,
+    _rename_dora_scale_for_load,
     _stack_chimera_lora_ups,
     _stack_lora_ups,
 )
@@ -348,6 +349,7 @@ def create_network_from_weights(
     weights_sd = _refuse_split_chimera_keys(weights_sd)
     # Refuse unfused attn projections so modules_dim reflects the runtime (qkv/kv fused).
     weights_sd = _refuse_unfused_attn_lora_keys(weights_sd)
+    weights_sd = _rename_dora_scale_for_load(weights_sd)
     weights_sd = preprocess_weights_from_plugins(weights_sd)
 
     modules_dim = {}
@@ -365,6 +367,7 @@ def create_network_from_weights(
     has_stacked_experts = False
     hydra_num_experts = 0
     has_reft = False
+    has_dora = False
     reft_dim = None
     reft_block_indices: set[int] = set()
     # Per-module hydra flag: which lora_names were trained as MoE (Hydra) vs
@@ -412,6 +415,8 @@ def create_network_from_weights(
 
         if "alpha" in key:
             modules_alpha[lora_name] = value
+        elif key.endswith(".magnitude"):
+            has_dora = True
         elif key.endswith(".lora_up_c_weight") or key.endswith(".lora_up_f_weight"):
             # Chimera dual-A per-pool stacked ups (post-stack form). r is
             # the last dim; out_dim of this side is dim 1; pool size is
@@ -589,6 +594,9 @@ def create_network_from_weights(
                 )
     elif plugin_detection.get("detected_spec"):
         spec = NETWORK_REGISTRY[str(plugin_detection["detected_spec"])]
+        module_class = spec.module_class
+    elif has_dora:
+        spec = NETWORK_REGISTRY["dora"]
         module_class = spec.module_class
     elif for_inference:
         # Force the plain LoRA spec even for ortho checkpoints — the
@@ -871,6 +879,7 @@ def create_network_from_weights(
         content_router_layer_norm=chimera_content_router_layer_norm,
         chimera_centered_gate=chimera_centered_gate,
         plugin_args=plugin_detection.get("plugin_args"),
+        is_dora=has_dora,
     )
 
     network = LoRANetwork(text_encoders, unet, cfg, multiplier=multiplier)

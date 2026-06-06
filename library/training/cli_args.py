@@ -794,6 +794,8 @@ def add_dit_training_arguments(parser: argparse.ArgumentParser):
             "logit_normal",
             "mode",
             "cosmap",
+            "min_snr",
+            "p2",
             "none",
             "uniform",
         ],
@@ -1058,6 +1060,9 @@ def enable_high_vram(args: argparse.Namespace):
 
 def verify_training_args(args: argparse.Namespace):
     enable_high_vram(args)
+
+    if getattr(args, "blocks_to_swap", None) is not None and args.blocks_to_swap < 0:
+        raise ValueError("blocks_to_swap must be greater than or equal to 0")
 
     if args.v2 and args.clip_skip is not None:
         logger.warning("v2 with clip_skip will be unexpected")

@@ -90,6 +90,7 @@ SAVE_HANDLERS: dict[str, SaveHandler] = {}
 # LoRA+, T-LoRA). Variant selectors owned by plugins live in their spec
 # ``kwarg_flags`` instead of here.
 SHARED_KWARG_FLAGS: Tuple[str, ...] = (
+    "dora_wd",
     "train_llm_adapter",
     "exclude_patterns",
     "include_patterns",
@@ -226,6 +227,7 @@ def _register_core_specs() -> None:
 
     from .lora_modules import (
         ChimeraHydraLoRAModule,
+        DoRALoRAModule,
         HydraLoRAModule,
         LoRAModule,
         OrthoHydraLoRAModule,
@@ -235,6 +237,9 @@ def _register_core_specs() -> None:
 
     register_network_spec(
         NetworkSpec(name="lora", module_class=LoRAModule, save_variant="standard")
+    )
+    register_network_spec(
+        NetworkSpec(name="dora", module_class=DoRALoRAModule, save_variant="standard")
     )
     register_network_spec(
         NetworkSpec(
@@ -314,6 +319,7 @@ def resolve_network_spec(kwargs: Mapping[str, Any]) -> NetworkSpec:
 
     ensure_builtin_plugins_loaded()
 
+    use_dora = _parse_bool_flag(kwargs, "dora_wd")
     use_ortho = _parse_bool_flag(kwargs, "use_ortho")
     use_chimera = _parse_bool_flag(kwargs, "use_chimera_hydra")
 
@@ -321,6 +327,7 @@ def resolve_network_spec(kwargs: Mapping[str, Any]) -> NetworkSpec:
         if spec.name in {
             "lora",
             "ortho",
+            "dora",
             "hydra",
             "ortho_hydra",
             "chimera_hydra",
@@ -333,6 +340,8 @@ def resolve_network_spec(kwargs: Mapping[str, Any]) -> NetworkSpec:
             return spec
 
     if use_chimera:
+        if use_dora:
+            raise ValueError("dora_wd=True is incompatible with ChimeraHydra.")
         return NETWORK_REGISTRY["chimera_hydra"]
 
     raw_moe = kwargs.get("use_moe_style")
@@ -350,6 +359,13 @@ def resolve_network_spec(kwargs: Mapping[str, Any]) -> NetworkSpec:
         raise ValueError(
             f"use_moe_style={raw_moe!r}: expected False, 'shared_A', or 'independent_A'."
         )
+
+    if use_dora:
+        if use_ortho:
+            raise ValueError("dora_wd=True is incompatible with use_ortho=True.")
+        if moe_style:
+            raise ValueError("dora_wd=True is only supported for plain LoRA.")
+        return NETWORK_REGISTRY["dora"]
 
     if moe_style == "independent_A":
         return NETWORK_REGISTRY["stacked_experts_global_fei"]

@@ -183,6 +183,7 @@ class LoRANetworkCfg:
     lora_dim: int = 4
     alpha: float = 1.0
     module_class: Type = LoRAModule
+    use_dora: bool = False
     plugin_args: Dict[str, Any] = field(default_factory=dict)
     # warm-start path supplies these from the checkpoint; fresh path leaves None
     modules_dim: Optional[Dict[str, int]] = None
@@ -381,6 +382,7 @@ class LoRANetworkCfg:
             for key, value in kwargs.items()
             if key not in {
                 "train_llm_adapter",
+                "dora_wd",
                 "exclude_patterns",
                 "include_patterns",
                 "layer_start",
@@ -416,6 +418,7 @@ class LoRANetworkCfg:
         }
 
         train_llm_adapter = _as_bool(kwargs.get("train_llm_adapter"))
+        use_dora = _as_bool(kwargs.get("dora_wd"))
 
         exclude_patterns = _as_str_list(kwargs.get("exclude_patterns")) or []
         exclude_patterns.append(_DEFAULT_EXCLUDE)
@@ -696,6 +699,7 @@ class LoRANetworkCfg:
             lora_dim=network_dim,
             alpha=network_alpha,
             module_class=module_class,
+            use_dora=use_dora,
             plugin_args=plugin_args,
             train_llm_adapter=train_llm_adapter,
             exclude_patterns=exclude_patterns,
@@ -795,6 +799,7 @@ class LoRANetworkCfg:
         content_router_layer_norm: bool = True,
         chimera_centered_gate: bool = False,
         plugin_args: Optional[Dict[str, Any]] = None,
+        is_dora: bool = False,
     ) -> "LoRANetworkCfg":
         """Build cfg from a checkpoint key-sniff (warm-start / inference path).
 
@@ -862,6 +867,7 @@ class LoRANetworkCfg:
             lora_dim=4,
             alpha=1.0,
             module_class=module_class,
+            use_dora=bool(is_dora),
             plugin_args=dict(plugin_args or {}),
             modules_dim=modules_dim,
             modules_alpha=modules_alpha,

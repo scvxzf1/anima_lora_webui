@@ -38,10 +38,11 @@ def _validate(kwargs: Mapping[str, Any]) -> None:
         _truthy(kwargs.get("use_ortho"))
         or _truthy(kwargs.get("use_chimera_hydra"))
         or _truthy(kwargs.get("use_vera"))
+        or _truthy(kwargs.get("dora_wd"))
         or kwargs.get("use_moe_style") not in (None, False, "", "false", "False")
     ):
         raise ValueError(
-            "use_lokr is mutually exclusive with use_ortho, use_vera, "
+            "use_lokr is mutually exclusive with dora_wd, use_ortho, use_vera, "
             "use_moe_style, and use_chimera_hydra."
         )
 

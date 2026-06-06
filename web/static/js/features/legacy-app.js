@@ -1,14 +1,14 @@
-import { createPreviewFeature } from './preview/index.js?v=module-bootstrap-20260604-8';
-import { createQueueFeature } from './queue/index.js?v=module-bootstrap-20260604-8';
-import { createHistoryDetailFeature } from './history-detail/index.js?v=module-bootstrap-20260604-8';
-import { createWeightAnalysisFeature } from './weight-analysis/index.js?v=module-bootstrap-20260604-8';
+import { createPreviewFeature } from './preview/index.js?v=module-bootstrap-20260604-10';
+import { createQueueFeature } from './queue/index.js?v=module-bootstrap-20260604-10';
+import { createHistoryDetailFeature } from './history-detail/index.js?v=module-bootstrap-20260604-10';
+import { createWeightAnalysisFeature } from './weight-analysis/index.js?v=module-bootstrap-20260604-10';
 import {
     formatSystemPercent,
     formatSystemTemperature,
     formatSystemVram,
     historySystemSummary,
-} from './history-detail/system.js?v=module-bootstrap-20260604-8';
-import { formatCompactNumber, numberOrNull } from './history-detail/ui.js?v=module-bootstrap-20260604-8';
+} from './history-detail/system.js?v=module-bootstrap-20260604-10';
+import { formatCompactNumber, numberOrNull } from './history-detail/ui.js?v=module-bootstrap-20260604-10';
 
 function formatLossValue(value) {
     const n = Number(value);
@@ -370,6 +370,11 @@ export function createLegacyApp(ctx) {
         choiceHelp,
         help,
     } = ctx.catalog;
+    const LOSS_WEIGHTING_DEPENDENT_FIELDS = new Map([
+        ['min_snr_gamma', 'min_snr'],
+        ['p2_gamma', 'p2'],
+        ['p2_k', 'p2'],
+    ]);
     const datasetExperimentalScopeSelections = new Map();
     const trainingRuntime = {
         state: 'idle',
@@ -1119,7 +1124,9 @@ export function createLegacyApp(ctx) {
                     section.title,
                     fields,
                     section.className || '',
-                    section.description || ''
+                    section.description || '',
+                    section.open,
+                    section.notice || ''
                 ));
             }
         }
@@ -1136,6 +1143,8 @@ export function createLegacyApp(ctx) {
         appendConfigGroupsByCategory(container, sectionEntries);
         updateLoKrFieldState();
         updateVeRAFieldState();
+        updateDoRAFieldState();
+        updateLossWeightingFieldState();
     }
 
     function shouldRenderConfigSection(section, config = currentConfig) {
@@ -1341,7 +1350,7 @@ export function createLegacyApp(ctx) {
     }
 
     async function loadDatasetPresets(options = {}) {
-        if (location.protocol === 'file:') return;
+        if (location.protocol === 'file:') return false;
         const requestSeq = ++datasetPresetLoadSeq;
         const managePresets = options.manage === true || (options.manage !== false && isDatasetTabActive());
         if (managePresets) {
@@ -1350,7 +1359,7 @@ export function createLegacyApp(ctx) {
         }
         try {
             const data = await api('/api/config/dataset-presets');
-            if (requestSeq !== datasetPresetLoadSeq) return;
+            if (requestSeq !== datasetPresetLoadSeq) return false;
             if (!data.ok) throw new Error(data.error || '读取数据集预设失败');
             const presets = (Array.isArray(data.presets) ? data.presets : [])
                 .filter((preset) => !HIDDEN_DATASET_PRESET_FILES.has(preset.path));
@@ -1375,7 +1384,7 @@ export function createLegacyApp(ctx) {
                 if (isConfigDatasetPickerDialogOpen()) {
                     renderConfigDatasetPickerDialog();
                 }
-                return;
+                return true;
             }
             const preserveDirtySelection = datasetPresetState.dirty;
             const selectedDatasetVisible = presets.some((preset) => preset.path === datasetPresetState.selectedFile);
@@ -1395,8 +1404,9 @@ export function createLegacyApp(ctx) {
             } else {
                 renderDatasetEditor();
             }
+            return true;
         } catch (e) {
-            if (requestSeq !== datasetPresetLoadSeq) return;
+            if (requestSeq !== datasetPresetLoadSeq) return false;
             if (managePresets) {
                 datasetPresetState.loading = false;
             }
@@ -1410,6 +1420,10 @@ export function createLegacyApp(ctx) {
                     renderConfigDatasetPickerDialog();
                 }
             }
+            if (options.throwOnError) {
+                throw e;
+            }
+            return false;
         }
     }
 
@@ -1714,7 +1728,7 @@ export function createLegacyApp(ctx) {
         if (textEl) textEl.textContent = label || '空闲';
     }
 
-    function createConfigGroupEntry(name, fields, extraClass = '', description = '') {
+    function createConfigGroupEntry(name, fields, extraClass = '', description = '', defaultOpen = undefined, notice = '') {
         const categoryId = FORM_CATEGORY_SECTION_MAP.get(name) || 'advanced';
         return {
             name,
@@ -1722,6 +1736,8 @@ export function createLegacyApp(ctx) {
             extraClass,
             description,
             categoryId,
+            defaultOpen,
+            notice,
         };
     }
 
@@ -1769,7 +1785,15 @@ export function createLegacyApp(ctx) {
             groupList.appendChild(createConfigFormEmpty(searchText ? '没有匹配的配置项。' : '这个分类暂无可编辑项。'));
         } else {
             for (const group of renderedGroups) {
-                groupList.appendChild(createGroup(group.name, group.fields, group.extraClass, group.description, searchText));
+                groupList.appendChild(createGroup(
+                    group.name,
+                    group.fields,
+                    group.extraClass,
+                    group.description,
+                    searchText,
+                    group.defaultOpen,
+                    group.notice
+                ));
             }
         }
         main.appendChild(groupList);
@@ -1961,15 +1985,17 @@ export function createLegacyApp(ctx) {
         return Boolean(FORM_CATEGORY_DEFS.find((category) => category.id === categoryId)?.advanced);
     }
 
-    function configGroupIsCollapsed(name, searchText = '') {
+    function configGroupIsCollapsed(name, searchText = '', defaultOpen = undefined) {
         if (searchText) return false;
         if (configFormState.collapsedGroups.has(name)) return true;
         if (configFormState.expandedGroups.has(name)) return false;
         if (configFormState.activeCategory === 'advanced' && ADVANCED_CATEGORY_DEFAULT_OPEN_GROUPS.has(name)) return false;
+        if (defaultOpen === true) return false;
+        if (defaultOpen === false) return true;
         return configCategoryIsAdvanced(FORM_CATEGORY_SECTION_MAP.get(name) || 'advanced');
     }
 
-    function createGroup(name, fields, extraClass = '', description = '', searchText = '') {
+    function createGroup(name, fields, extraClass = '', description = '', searchText = '', defaultOpen = undefined, notice = '') {
         const section = document.createElement('section');
         section.className = ['config-group', extraClass].filter(Boolean).join(' ');
         section.dataset.groupName = name;
@@ -1979,10 +2005,16 @@ export function createLegacyApp(ctx) {
         const title = document.createElement('span');
         title.textContent = `${name} (${fields.length} 项)`;
         header.appendChild(title);
+        if (extraClass === 'config-group-experimental') {
+            const badge = document.createElement('span');
+            badge.className = 'config-group-badge config-group-badge-experimental';
+            badge.textContent = '实验项 / 默认关闭';
+            header.appendChild(badge);
+        }
 
         const content = document.createElement('div');
         content.className = 'config-group-body';
-        const collapsed = searchText ? configGroupIsCollapsed(name, searchText) : configGroupIsCollapsed(name);
+        const collapsed = configGroupIsCollapsed(name, searchText, defaultOpen);
         content.hidden = collapsed;
         const collapseBtn = document.createElement('button');
         collapseBtn.type = 'button';
@@ -2030,6 +2062,12 @@ export function createLegacyApp(ctx) {
                 btn.title = nextVisible ? '收起分组说明' : '展开分组说明';
             });
             content.appendChild(hint);
+        }
+        if (notice) {
+            const noticeEl = document.createElement('p');
+            noticeEl.className = 'config-group-notice';
+            noticeEl.textContent = notice;
+            content.appendChild(noticeEl);
         }
         const titleActions = document.createElement('div');
         titleActions.className = 'config-group-title-actions';
@@ -2912,7 +2950,7 @@ export function createLegacyApp(ctx) {
             detail.textContent = '不加载已有权重';
             summary.append(title, detail);
             summary.className = 'continue-training-source-summary';
-            chooseBtn.textContent = '选择 LoRA/LoHa/LoKr';
+            chooseBtn.textContent = '选择 LoRA/LoHa/LoKr/GLoRA';
             clearBtn.hidden = true;
             updateTomlActionState(currentTomlFile);
             return;
@@ -6431,6 +6469,7 @@ export function createLegacyApp(ctx) {
         const moduleName = String(config.network_module || '');
         if (currentTrainingSource.methods_subdir === 'methods' && currentTrainingSource.method === 'spd') return 'spd';
         if ('dit_path' in config && 'iterations' in config && currentTrainingSource.method === 'spd') return 'spd';
+        if (isTruthy(config.use_glora)) return 'glora';
         if (isTruthy(config.use_vera)) return 'vera';
         if (isTruthy(config.use_lokr)) return 'lokr';
         if (isTruthy(config.use_loha)) return 'loha';
@@ -6456,9 +6495,11 @@ export function createLegacyApp(ctx) {
     function methodGuideFromConfig(methodKey, config = currentConfig) {
         const base = METHOD_GUIDE_ZH[methodKey] || defaultMethodGuide();
         const details = compactList([
+            flagDetail('use_glora', 'GLoRA', config.use_glora),
             flagDetail('use_vera', 'VeRA', config.use_vera),
             flagDetail('use_lokr', 'LoKr', config.use_lokr),
             flagDetail('use_loha', 'LoHa', config.use_loha),
+            flagDetail('dora_wd', 'DoRA', config.dora_wd),
             isTruthy(config.use_lokr) ? valueDetail('lokr_factor', config.lokr_factor) : '',
             isTruthy(config.use_vera) ? valueDetail('vera_projection_prng_key', config.vera_projection_prng_key) : '',
             isTruthy(config.use_vera) ? valueDetail('vera_d_initial', config.vera_d_initial) : '',
@@ -6524,11 +6565,12 @@ export function createLegacyApp(ctx) {
 
     function normalizeLoraAdapterKind(value) {
         const text = String(value ?? '').trim().toLowerCase();
-        if (text === 'loha' || text === 'lokr' || text === 'vera') return text;
+        if (text === 'loha' || text === 'lokr' || text === 'glora' || text === 'vera') return text;
         return 'lora';
     }
 
     function loraAdapterKindFromConfig(config = currentConfig) {
+        if (isTruthy(config?.use_glora)) return 'glora';
         if (isTruthy(config?.use_vera)) return 'vera';
         if (isTruthy(config?.use_lokr)) return 'lokr';
         if (isTruthy(config?.use_loha)) return 'loha';
@@ -6538,6 +6580,7 @@ export function createLegacyApp(ctx) {
     function loraAdapterFlagsForKind(kind) {
         const normalized = normalizeLoraAdapterKind(kind);
         return {
+            use_glora: normalized === 'glora',
             use_loha: normalized === 'loha',
             use_lokr: normalized === 'lokr',
             use_vera: normalized === 'vera',
@@ -6552,6 +6595,10 @@ export function createLegacyApp(ctx) {
         } else {
             configFormState.draftValues.set('lora_adapter_kind', normalized);
         }
+        if (normalized !== 'lora') {
+            setDoRADraftValue(false);
+        }
+        configFormState.draftValues.delete('use_glora');
         configFormState.draftValues.delete('use_loha');
         configFormState.draftValues.delete('use_lokr');
         configFormState.draftValues.delete('use_vera');
@@ -6572,9 +6619,13 @@ export function createLegacyApp(ctx) {
         if (!configFormState.draftValues.has('lora_adapter_kind')) return values;
         const nextKind = normalizeLoraAdapterKind(configFormState.draftValues.get('lora_adapter_kind'));
         const flags = loraAdapterFlagsForKind(nextKind);
+        values.use_glora = flags.use_glora;
         values.use_loha = flags.use_loha;
         values.use_lokr = flags.use_lokr;
         values.use_vera = flags.use_vera;
+        if (nextKind !== 'lora') {
+            values.dora_wd = false;
+        }
         if (flags.use_lokr && !('lokr_factor' in values) && !('lokr_factor' in currentConfig)) {
             values.lokr_factor = FORM_UI_DEFAULTS.lokr_factor;
         }
@@ -6659,7 +6710,8 @@ export function createLegacyApp(ctx) {
 
     function loraAdapterFlagsMatchConfig(kind, config = currentConfig) {
         const flags = loraAdapterFlagsForKind(kind);
-        return isTruthy(config?.use_loha) === flags.use_loha
+        return isTruthy(config?.use_glora) === flags.use_glora
+            && isTruthy(config?.use_loha) === flags.use_loha
             && isTruthy(config?.use_lokr) === flags.use_lokr
             && isTruthy(config?.use_vera) === flags.use_vera;
     }
@@ -6739,6 +6791,13 @@ export function createLegacyApp(ctx) {
         main.appendChild(btn);
         row.appendChild(main);
 
+        if (LOSS_WEIGHTING_DEPENDENT_FIELDS.has(key)) {
+            const stateHint = document.createElement('p');
+            stateHint.className = 'field-state-hint';
+            stateHint.hidden = true;
+            row.appendChild(stateHint);
+        }
+
         const helpDiv = document.createElement('div');
         helpDiv.className = 'field-help';
         helpDiv.appendChild(createHelpContent(key, value));
@@ -6753,6 +6812,8 @@ export function createLegacyApp(ctx) {
         updateStepEstimatePanel();
         updateLoKrFieldState();
         updateVeRAFieldState();
+        updateDoRAFieldState();
+        updateLossWeightingFieldState();
         updateChoiceGuideFromLiveForm();
     }
 
@@ -6769,7 +6830,9 @@ export function createLegacyApp(ctx) {
             if (CONFIG_FORM_INTERNAL_KEYS.has(key)) continue;
             if (isActiveNetworkArgFieldKey(key)) continue;
             if (key === 'lora_adapter_kind') {
-                Object.assign(liveConfig, loraAdapterFlagsForKind(next));
+                const nextKind = normalizeLoraAdapterKind(next);
+                Object.assign(liveConfig, loraAdapterFlagsForKind(nextKind));
+                if (nextKind !== 'lora') liveConfig.dora_wd = false;
                 continue;
             }
             liveConfig[key] = next;
@@ -6811,6 +6874,12 @@ export function createLegacyApp(ctx) {
             input.value = Array.isArray(value) ? JSON.stringify(value) : (value ?? '');
         }
         input.className = 'field-input';
+        if (key === 'dora_wd') {
+            const enabled = readDoRAAvailable();
+            input.disabled = !enabled;
+            input.title = enabled ? '' : 'DoRA 仅支持普通 LoRA；切到 LoHa/LoKr/GLoRA/VeRA 时会自动关闭';
+            if (!enabled) input.checked = false;
+        }
         if (key === 'lokr_factor' || key === 'lokr_factor_group_size' || key === 'lokr_project_chunk_bytes') {
             input.disabled = !readLoKrEnabled();
             input.title = input.disabled ? '启用 LoKr 后生效' : '';
@@ -6819,6 +6888,7 @@ export function createLegacyApp(ctx) {
             input.disabled = !readVeRAEnabled();
             input.title = input.disabled ? '启用 VeRA 后生效' : '';
         }
+        applyLossWeightingFieldInputState(input, key);
         return input;
     }
 
@@ -7248,7 +7318,7 @@ export function createLegacyApp(ctx) {
             return 'string';
         }
         if (key === 'lora_adapter_kind') return 'string';
-        if (key === 'use_lokr' || key === 'use_loha' || key === 'use_vera') return 'boolean';
+        if (key === 'dora_wd' || key === 'use_lokr' || key === 'use_loha' || key === 'use_glora' || key === 'use_vera') return 'boolean';
         if (key === 'lokr_factor' || key === 'vera_projection_prng_key' || key === 'vera_d_initial') return 'number';
         if (key === 'vera_save_projection') return 'boolean';
         if (isNumericField(key, value)) return 'number';
@@ -7267,11 +7337,15 @@ export function createLegacyApp(ctx) {
                 lora: '普通 LoRA',
                 loha: 'LoHa',
                 lokr: 'LoKr',
+                glora: 'GLoRA',
                 vera: 'VeRA',
             }[normalizeLoraAdapterKind(value)] || String(value);
         }
         if (key === 'use_lokr') {
             return value === true || value === 'true' ? '启用 LoKr' : '普通 LoRA';
+        }
+        if (key === 'use_glora') {
+            return value === true || value === 'true' ? '启用 GLoRA' : '普通 LoRA';
         }
         if (key === 'use_loha') {
             return value === true || value === 'true' ? '启用 LoHa' : '普通 LoRA';
@@ -8169,7 +8243,14 @@ export function createLegacyApp(ctx) {
                 readonly: false,
                 status: res.message || '已保存数据集预设',
             };
-            await loadDatasetPresets({ selectCurrent: false, manage: true });
+            const listRefreshed = await loadDatasetPresets({ selectCurrent: false, manage: true });
+            if (!listRefreshed) {
+                const message = datasetPresetState.error
+                    ? `已保存 ${res.file || file}，但刷新左侧列表失败: ${datasetPresetState.error}`
+                    : `已保存 ${res.file || file}，但左侧列表刷新失败，请点“刷新”或查看终端日志。`;
+                setDatasetPresetStatus(message, 'warn');
+                return res;
+            }
             await loadDatasetPreset(datasetPresetState.selectedFile);
             setDatasetPresetStatus(res.message || '已保存数据集预设', 'ok');
             if (selectedConfigDatasetFile === datasetPresetState.selectedFile) {
@@ -8841,6 +8922,33 @@ export function createLegacyApp(ctx) {
         return readLiveLoraAdapterKind() === 'vera';
     }
 
+    function readDoRAAvailable() {
+        return readLiveLoraAdapterKind() === 'lora';
+    }
+
+    function setDoRADraftValue(value) {
+        const original = originalConfigFieldValue('dora_wd');
+        if (configDraftValueChanged('dora_wd', value, original, { persistDefaultFields: true })) {
+            configFormState.draftValues.set('dora_wd', value);
+        } else {
+            configFormState.draftValues.delete('dora_wd');
+        }
+    }
+
+    function updateDoRAFieldState() {
+        const input = document.querySelector('#config-form .field-input[data-key="dora_wd"]');
+        if (!input) return;
+        const enabled = readDoRAAvailable();
+        if (!enabled) {
+            input.checked = false;
+            setDoRADraftValue(false);
+        }
+        input.disabled = !enabled;
+        input.title = enabled ? '' : 'DoRA 仅支持普通 LoRA；切到 LoHa/LoKr/GLoRA/VeRA 时会自动关闭';
+        const row = input.closest('.field-row');
+        if (row) row.classList.toggle('field-row-disabled', !enabled);
+    }
+
     function updateVeRAFieldState() {
         const enabled = readVeRAEnabled();
         const inputs = [
@@ -8853,6 +8961,57 @@ export function createLegacyApp(ctx) {
             input.title = enabled ? '' : '启用 VeRA 后生效';
             const row = input.closest('.field-row');
             if (row) row.classList.toggle('field-row-disabled', !enabled);
+        }
+    }
+
+    function currentLossWeightingScheme() {
+        const input = document.querySelector('#config-form .field-input[data-key="weighting_scheme"]');
+        if (input) {
+            return String(readFieldInputValue(input, originalConfigFieldValue('weighting_scheme')) || 'uniform');
+        }
+        if (configFormState.draftValues.has('weighting_scheme')) {
+            return String(configFormState.draftValues.get('weighting_scheme') || 'uniform');
+        }
+        return String(currentConfig?.weighting_scheme ?? FORM_UI_DEFAULTS.weighting_scheme ?? 'uniform');
+    }
+
+    function lossWeightingFieldState(key) {
+        const requiredScheme = LOSS_WEIGHTING_DEPENDENT_FIELDS.get(key);
+        if (!requiredScheme) return { enabled: true, requiredScheme: '', currentScheme: currentLossWeightingScheme() };
+        const currentScheme = currentLossWeightingScheme();
+        return {
+            enabled: currentScheme === requiredScheme,
+            requiredScheme,
+            currentScheme,
+        };
+    }
+
+    function lossWeightingDisabledHint(key, state = lossWeightingFieldState(key)) {
+        if (!state.requiredScheme) return '';
+        return `仅 weighting_scheme = ${state.requiredScheme} 时生效；当前 ${state.currentScheme || 'uniform'}，不生效。`;
+    }
+
+    function applyLossWeightingFieldInputState(input, key) {
+        if (!input || !LOSS_WEIGHTING_DEPENDENT_FIELDS.has(key)) return;
+        const state = lossWeightingFieldState(key);
+        input.disabled = !state.enabled;
+        input.title = state.enabled ? '' : lossWeightingDisabledHint(key, state);
+    }
+
+    function updateLossWeightingFieldState() {
+        for (const key of LOSS_WEIGHTING_DEPENDENT_FIELDS.keys()) {
+            const input = document.querySelector(`#config-form .field-input[data-key="${CSS.escape(key)}"]`);
+            if (!input) continue;
+            const state = lossWeightingFieldState(key);
+            applyLossWeightingFieldInputState(input, key);
+            const row = input.closest('.field-row');
+            if (!row) continue;
+            row.classList.toggle('field-row-disabled', !state.enabled);
+            const hint = row.querySelector('.field-state-hint');
+            if (hint) {
+                hint.textContent = state.enabled ? '' : lossWeightingDisabledHint(key, state);
+                hint.hidden = state.enabled;
+            }
         }
     }
 
@@ -17243,9 +17402,9 @@ export function createLegacyApp(ctx) {
             'btn-sticky-config-common': '底部配置目录快捷入口，切换到训练轮数、学习率和输出等常用项。',
             'btn-sticky-config-preview': '底部配置目录快捷入口，切换到训练中样张设置。',
             'btn-sticky-config-optimization': '底部配置目录快捷入口，切换到显存、速度、block swap 和 LoKr 专用优化项。',
-            'btn-open-continue-lora-dialog': '选择已有 LoRA、LoHa 或 LoKr safetensors 权重作为新训练任务的初始化来源。',
+            'btn-open-continue-lora-dialog': '选择已有 LoRA、LoHa、LoKr 或 GLoRA safetensors 权重作为新训练任务的初始化来源。',
             'btn-clear-continue-lora-source': '清除继续训练来源，下一次启动会按从零开始训练。',
-            'btn-inspect-continue-lora-path': '检查这个 safetensors 是否为 LoRA/LoHa/LoKr，并确认是否兼容当前变体。',
+            'btn-inspect-continue-lora-path': '检查这个 safetensors 是否为 LoRA/LoHa/LoKr/GLoRA，并确认是否兼容当前变体。',
             'continue-lora-history-task': '从历史训练任务中选择一个输出目录，读取其中保存的权重文件。',
             'btn-refresh-continue-lora-weights': '重新扫描所选历史训练任务的 safetensors 权重。',
             'btn-open-tutorial': '打开基础教程，按顺序了解全局设置、数据集、配置保存、预处理和训练启动。',

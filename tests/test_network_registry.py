@@ -25,6 +25,8 @@ from networks import (
 )
 from networks import lora_save
 from networks.lora_anima.factory import create_network_from_weights
+from networks.lora_modules import DoRALoRAModule
+from networks.plugins.glora.module import GLoRAModule
 from networks.plugins.loha.module import LoHaModule
 from networks.plugins.lokr.module import LoKrModule
 from networks.plugins.vera.module import VeRAModule
@@ -36,6 +38,8 @@ from networks.plugins.vera.module import VeRAModule
 
 
 EXPECTED_VARIANTS = {
+    "dora",
+    "glora",
     "lora",
     "loha",
     "lokr",
@@ -109,10 +113,23 @@ def test_lokr_kwargs_registered():
     assert "lokr_project_chunk_bytes" in set(NETWORK_REGISTRY["lokr"].kwarg_flags)
 
 
+def test_dora_kwargs_registered():
+    assert "dora_wd" in set(all_network_kwargs())
+    assert "dora_wd" in set(SHARED_KWARG_FLAGS)
+    assert NETWORK_REGISTRY["dora"].module_class is DoRALoRAModule
+
+
 def test_loha_kwargs_registered():
     must_have = {"use_loha"}
     assert must_have.issubset(set(all_network_kwargs()))
     assert "use_loha" in set(NETWORK_REGISTRY["loha"].kwarg_flags)
+
+
+def test_glora_kwargs_registered():
+    must_have = {"use_glora"}
+    assert must_have.issubset(set(all_network_kwargs()))
+    assert "use_glora" in set(NETWORK_REGISTRY["glora"].kwarg_flags)
+    assert NETWORK_REGISTRY["glora"].module_class is GLoRAModule
 
 
 def test_vera_kwargs_registered():
@@ -151,9 +168,11 @@ def test_lokr_lives_in_plugin_not_core_imports():
     "kwargs, expected",
     [
         ({}, "lora"),
+        ({"use_glora": "true"}, "glora"),
         ({"use_loha": "true"}, "loha"),
         ({"use_lokr": "true"}, "lokr"),
         ({"use_vera": "true"}, "vera"),
+        ({"dora_wd": "true"}, "dora"),
         ({"use_ortho": "true"}, "ortho"),
         ({"use_moe_style": "shared_A"}, "hydra"),
         ({"use_moe_style": "shared_A", "use_ortho": "true"}, "ortho_hydra"),
@@ -183,6 +202,22 @@ def test_lokr_mutual_exclusion(kwargs):
 
 
 @pytest.mark.parametrize(
+    "kwargs, message",
+    [
+        ({"dora_wd": "true", "use_ortho": "true"}, "incompatible"),
+        ({"dora_wd": "true", "use_moe_style": "shared_A"}, "plain LoRA"),
+        ({"dora_wd": "true", "use_chimera_hydra": "true"}, "ChimeraHydra"),
+        ({"dora_wd": "true", "use_loha": "true"}, "mutually exclusive"),
+        ({"dora_wd": "true", "use_lokr": "true"}, "mutually exclusive"),
+        ({"dora_wd": "true", "use_vera": "true"}, "mutually exclusive"),
+    ],
+)
+def test_dora_mutual_exclusion(kwargs, message):
+    with pytest.raises(ValueError, match=message):
+        resolve_network_spec(kwargs)
+
+
+@pytest.mark.parametrize(
     "kwargs",
     [
         {"use_loha": "true", "use_lokr": "true"},
@@ -193,6 +228,23 @@ def test_lokr_mutual_exclusion(kwargs):
 )
 def test_loha_mutual_exclusion(kwargs):
     with pytest.raises(ValueError, match="use_loha is mutually exclusive"):
+        resolve_network_spec(kwargs)
+
+
+@pytest.mark.parametrize(
+    "kwargs",
+    [
+        {"use_glora": "true", "use_loha": "true"},
+        {"use_glora": "true", "use_lokr": "true"},
+        {"use_glora": "true", "use_vera": "true"},
+        {"use_glora": "true", "dora_wd": "true"},
+        {"use_glora": "true", "use_ortho": "true"},
+        {"use_glora": "true", "use_moe_style": "shared_A"},
+        {"use_glora": "true", "use_chimera_hydra": "true"},
+    ],
+)
+def test_glora_mutual_exclusion(kwargs):
+    with pytest.raises(ValueError, match="use_glora is mutually exclusive"):
         resolve_network_spec(kwargs)
 
 
@@ -274,6 +326,28 @@ def test_save_standard_lora_roundtrip(tmp_path: Path):
     assert f"{prefix}.lora_down.weight" not in loaded
 
 
+def test_save_standard_dora_roundtrip_exports_dora_scale(tmp_path: Path):
+    r, in_dim, out_dim = 4, 8, 12
+    prefix = "lora_unet_blocks_0_self_attn_qkv_proj"
+    sd = _make_std_lora_sd(prefix, r, in_dim, out_dim)
+    sd[f"{prefix}.magnitude"] = torch.arange(
+        1,
+        3 * out_dim + 1,
+        dtype=torch.float32,
+    )
+
+    loaded = _save_and_reload(sd, tmp_path, save_variant="standard")
+
+    base = "lora_unet_blocks_0_self_attn"
+    for idx, suffix in enumerate(("q_proj", "k_proj", "v_proj")):
+        key = f"{base}_{suffix}.dora_scale"
+        assert key in loaded
+        assert loaded[key].shape == (out_dim,)
+        expected = sd[f"{prefix}.magnitude"][idx * out_dim : (idx + 1) * out_dim]
+        assert torch.equal(loaded[key], expected)
+    assert f"{prefix}.magnitude" not in loaded
+
+
 def test_save_lokr_roundtrip(tmp_path: Path):
     factor, in_dim, out_dim = 2, 8, 12
     prefix = "lora_unet_blocks_0_self_attn_qkv_proj"
@@ -319,6 +393,30 @@ def test_save_loha_roundtrip(tmp_path: Path):
         assert f"{base}_{suffix}.alpha" in loaded
     assert f"{prefix}.hada_w1_a" not in loaded
     assert f"{prefix}.hada_w2_a" not in loaded
+
+
+def test_save_glora_roundtrip(tmp_path: Path):
+    r, in_dim, out_dim = 4, 8, 12
+    prefix = "lora_unet_blocks_0_self_attn_qkv_proj"
+    sd = {
+        f"{prefix}.a1.weight": torch.randn(in_dim, r),
+        f"{prefix}.a2.weight": torch.randn(r, in_dim),
+        f"{prefix}.b1.weight": torch.randn(3 * out_dim, r),
+        f"{prefix}.b2.weight": torch.randn(r, in_dim),
+        f"{prefix}.alpha": _alpha(r),
+    }
+
+    loaded = _save_and_reload(sd, tmp_path, save_variant="glora")
+
+    base = "lora_unet_blocks_0_self_attn"
+    for suffix in ("q_proj", "k_proj", "v_proj"):
+        assert loaded[f"{base}_{suffix}.a1.weight"].shape == (in_dim, r)
+        assert loaded[f"{base}_{suffix}.a2.weight"].shape == (r, in_dim)
+        assert loaded[f"{base}_{suffix}.b1.weight"].shape == (out_dim, r)
+        assert loaded[f"{base}_{suffix}.b2.weight"].shape == (r, in_dim)
+        assert f"{base}_{suffix}.alpha" in loaded
+    assert f"{prefix}.a1.weight" not in loaded
+    assert f"{prefix}.b1.weight" not in loaded
 
 
 def test_save_vera_roundtrip(tmp_path: Path):
@@ -380,6 +478,55 @@ def test_create_network_from_lokr_weights_uses_lokr_module():
     assert info.unexpected_keys == []
 
 
+def test_create_network_from_dora_split_dora_magnitude_uses_dora_module():
+    class Block(torch.nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.self_attn = torch.nn.Module()
+            self.self_attn.qkv_proj = torch.nn.Linear(4, 18, bias=False)
+
+    class TinyUnet(torch.nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.blocks = torch.nn.ModuleList([Block()])
+
+    rank = 2
+    out_per = 6
+    weights_sd = {}
+    down = torch.randn(rank, 4)
+    for letter in ("q", "k", "v"):
+        prefix = f"lora_unet_blocks_0_self_attn_{letter}_proj"
+        weights_sd[f"{prefix}.lora_down.weight"] = down.clone()
+        weights_sd[f"{prefix}.lora_up.weight"] = torch.randn(out_per, rank)
+        weights_sd[f"{prefix}.alpha"] = _alpha(rank)
+        weights_sd[f"{prefix}.dora_magnitude"] = torch.rand(out_per) + 0.5
+
+    unet = TinyUnet()
+    network, weights = create_network_from_weights(
+        multiplier=1.0,
+        file="",
+        ae=None,
+        text_encoders=[],
+        unet=unet,
+        weights_sd=weights_sd,
+        metadata={"ss_network_spec": "dora"},
+    )
+
+    assert len(network.unet_loras) == 1
+    dora = network.unet_loras[0]
+    assert isinstance(dora, DoRALoRAModule)
+    assert network.cfg.use_dora is True
+    fused_prefix = "lora_unet_blocks_0_self_attn_qkv_proj"
+    assert f"{fused_prefix}.magnitude" in weights
+    assert weights[f"{fused_prefix}.magnitude"].shape == (3 * out_per,)
+    assert not any(key.endswith(".dora_magnitude") for key in weights)
+
+    network.apply_to([], unet, False, True)
+    info = network.load_state_dict(weights, strict=False)
+    assert info.missing_keys == []
+    assert info.unexpected_keys == []
+
+
 def test_create_network_from_loha_weights_uses_loha_module():
     class Block(torch.nn.Module):
         def __init__(self):
@@ -414,6 +561,134 @@ def test_create_network_from_loha_weights_uses_loha_module():
     loha = network.unet_loras[0]
     assert isinstance(loha, LoHaModule)
     assert loha.lora_dim == 2
+
+
+def test_create_network_from_glora_weights_uses_glora_module():
+    class Block(torch.nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.q_proj = torch.nn.Linear(4, 6, bias=False)
+
+    class TinyUnet(torch.nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.blocks = torch.nn.ModuleList([Block()])
+
+    weights_sd = {
+        "lora_unet_blocks_0_q_proj.a1.weight": torch.randn(4, 2),
+        "lora_unet_blocks_0_q_proj.a2.weight": torch.randn(2, 4),
+        "lora_unet_blocks_0_q_proj.b1.weight": torch.randn(6, 2),
+        "lora_unet_blocks_0_q_proj.b2.weight": torch.randn(2, 4),
+        "lora_unet_blocks_0_q_proj.alpha": _alpha(2),
+    }
+
+    unet = TinyUnet()
+    network, weights = create_network_from_weights(
+        multiplier=1.0,
+        file="",
+        ae=None,
+        text_encoders=[],
+        unet=unet,
+        weights_sd=weights_sd,
+        metadata={"ss_network_spec": "glora", "ss_network_dim": "2"},
+    )
+
+    assert len(network.unet_loras) == 1
+    glora = network.unet_loras[0]
+    assert isinstance(glora, GLoRAModule)
+    assert glora.lora_dim == 2
+    network.apply_to([], unet, False, True)
+    info = network.load_state_dict(weights, strict=False)
+    assert info.missing_keys == []
+    assert info.unexpected_keys == []
+
+
+def test_create_network_from_split_glora_qkv_fuses_runtime_keys():
+    class Block(torch.nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.self_attn = torch.nn.Module()
+            self.self_attn.qkv_proj = torch.nn.Linear(4, 18, bias=False)
+
+    class TinyUnet(torch.nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.blocks = torch.nn.ModuleList([Block()])
+
+    rank = 2
+    out_per = 6
+    shared_a1 = torch.randn(4, rank)
+    shared_a2 = torch.randn(rank, 4)
+    shared_b2 = torch.randn(rank, 4)
+    weights_sd = {}
+    for letter in ("q", "k", "v"):
+        prefix = f"lora_unet_blocks_0_self_attn_{letter}_proj"
+        weights_sd[f"{prefix}.a1.weight"] = shared_a1.clone()
+        weights_sd[f"{prefix}.a2.weight"] = shared_a2.clone()
+        weights_sd[f"{prefix}.b1.weight"] = torch.randn(out_per, rank)
+        weights_sd[f"{prefix}.b2.weight"] = shared_b2.clone()
+        weights_sd[f"{prefix}.alpha"] = _alpha(rank)
+
+    unet = TinyUnet()
+    network, weights = create_network_from_weights(
+        multiplier=1.0,
+        file="",
+        ae=None,
+        text_encoders=[],
+        unet=unet,
+        weights_sd=weights_sd,
+        metadata={"ss_network_spec": "glora", "ss_network_dim": str(rank)},
+    )
+
+    assert len(network.unet_loras) == 1
+    glora = network.unet_loras[0]
+    assert isinstance(glora, GLoRAModule)
+    fused_prefix = "lora_unet_blocks_0_self_attn_qkv_proj"
+    assert weights[f"{fused_prefix}.a1.weight"].shape == (4, rank)
+    assert weights[f"{fused_prefix}.a2.weight"].shape == (rank, 4)
+    assert weights[f"{fused_prefix}.b1.weight"].shape == (3 * out_per, rank)
+    assert weights[f"{fused_prefix}.b2.weight"].shape == (rank, 4)
+    network.apply_to([], unet, False, True)
+    info = network.load_state_dict(weights, strict=False)
+    assert info.missing_keys == []
+    assert info.unexpected_keys == []
+
+
+def test_create_network_from_split_glora_qkv_rejects_unshared_input_factors():
+    class Block(torch.nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.self_attn = torch.nn.Module()
+            self.self_attn.qkv_proj = torch.nn.Linear(4, 18, bias=False)
+
+    class TinyUnet(torch.nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.blocks = torch.nn.ModuleList([Block()])
+
+    rank = 2
+    out_per = 6
+    shared_a1 = torch.randn(4, rank)
+    shared_b2 = torch.randn(rank, 4)
+    weights_sd = {}
+    for idx, letter in enumerate(("q", "k", "v")):
+        prefix = f"lora_unet_blocks_0_self_attn_{letter}_proj"
+        weights_sd[f"{prefix}.a1.weight"] = shared_a1.clone()
+        weights_sd[f"{prefix}.a2.weight"] = torch.randn(rank, 4) + idx
+        weights_sd[f"{prefix}.b1.weight"] = torch.randn(out_per, rank)
+        weights_sd[f"{prefix}.b2.weight"] = shared_b2.clone()
+        weights_sd[f"{prefix}.alpha"] = _alpha(rank)
+
+    with pytest.raises(RuntimeError, match="Split GLoRA checkpoint"):
+        create_network_from_weights(
+            multiplier=1.0,
+            file="",
+            ae=None,
+            text_encoders=[],
+            unet=TinyUnet(),
+            weights_sd=weights_sd,
+            metadata={"ss_network_spec": "glora", "ss_network_dim": str(rank)},
+        )
 
 
 def test_create_network_from_vera_weights_uses_vera_module():

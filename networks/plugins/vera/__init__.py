@@ -35,7 +35,13 @@ def _validate(kwargs: Mapping[str, Any]) -> None:
     if not _selector(kwargs):
         return
     conflicts = []
-    for key in ("use_lokr", "use_loha", "use_ortho", "use_chimera_hydra"):
+    for key in (
+        "dora_wd",
+        "use_lokr",
+        "use_loha",
+        "use_ortho",
+        "use_chimera_hydra",
+    ):
         if _truthy(kwargs.get(key)):
             conflicts.append(key)
     if kwargs.get("use_moe_style") not in (None, False, "", "false", "False"):

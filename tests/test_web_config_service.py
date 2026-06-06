@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import io
 import json
+import logging
 import os
 import zipfile
 from pathlib import Path
@@ -65,6 +66,7 @@ def test_web_variants_follow_variant_family_metadata(tmp_path: Path, monkeypatch
         "hydralora",
         "custom/user_variant",
     ]
+    assert config_service.CONFIG_FILE_LABELS_ZH["configs/gui-methods/glora.toml"] == "GLoRA 训练变体"
     assert config_service.CONFIG_FILE_LABELS_ZH["configs/gui-methods/vera.toml"] == "VeRA 训练变体"
 
 
@@ -1715,6 +1717,53 @@ def test_dataset_preset_save_read_list_and_apply(tmp_path: Path, monkeypatch):
     assert 'source_image_dir = "image_dataset/a"' in train_text
     assert 'resized_image_dir = "post_image_dataset/a_resized"' in train_text
     assert 'lora_cache_dir = "post_image_dataset/a_cache"' in train_text
+
+
+def test_dataset_preset_diagnose_reports_scan_context(tmp_path: Path, monkeypatch):
+    configs, _dataset_path = _write_minimal_config_tree(tmp_path)
+    _patch_config_service_paths(monkeypatch, tmp_path)
+    config_service.save_dataset_preset(
+        "configs/datasets/character_a.toml",
+        [{"source_dir": "image_dataset/a", "image_dir": "post/a", "cache_dir": "cache/a", "num_repeats": 4}],
+        {"resolution": 768},
+    )
+
+    report = config_service.diagnose_dataset_presets("configs/datasets/character_a.toml")
+
+    assert report["ok"] is True
+    assert report["root"] == str(tmp_path.resolve())
+    assert report["absolute_dataset_dir"] == str((configs / "datasets").resolve())
+    assert report["file_count"] == 1
+    assert report["listed_count"] == 1
+    assert report["target"] == "configs/datasets/character_a.toml"
+    assert report["groups"][0]["files"] == ["configs/datasets/character_a.toml"]
+    assert report["files"][0]["selected"] is True
+    assert report["files"][0]["summary"]["repeat_total"] == 4
+
+    response = asyncio.run(config_routes.handle_dataset_presets_diagnose(_QueryRequest({
+        "file": "configs/datasets/character_a.toml",
+    })))
+    assert response.status == 200
+    body = json.loads(response.text)
+    assert body["target"] == "configs/datasets/character_a.toml"
+
+
+def test_save_dataset_preset_logs_terminal_context(tmp_path: Path, monkeypatch, caplog):
+    _write_minimal_config_tree(tmp_path)
+    _patch_config_service_paths(monkeypatch, tmp_path)
+
+    with caplog.at_level(logging.INFO, logger="web.services.config_service"):
+        config_service.save_dataset_preset(
+            "configs/datasets/character_a.toml",
+            [{"source_dir": "image_dataset/a", "image_dir": "post/a", "cache_dir": "cache/a", "num_repeats": 1}],
+            {},
+        )
+
+    assert any(
+        "saved dataset preset file=configs/datasets/character_a.toml" in record.message
+        and f"root={tmp_path.resolve()}" in record.message
+        for record in caplog.records
+    )
 
 
 def test_dataset_preset_put_overwrite_false_preserves_existing_file(tmp_path: Path, monkeypatch):

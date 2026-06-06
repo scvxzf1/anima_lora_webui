@@ -501,21 +501,41 @@ def add_anima_training_arguments(parser: argparse.ArgumentParser):
 
 
 def compute_loss_weighting_for_anima(
-    weighting_scheme: str, sigmas: torch.Tensor
+    weighting_scheme: str,
+    sigmas: torch.Tensor,
+    *,
+    min_snr_gamma: float | None = None,
+    p2_gamma: float = 1.0,
+    p2_k: float = 1.0,
 ) -> torch.Tensor:
     """Compute loss weighting for Anima training.
 
-    Same schemes as SD3 but can add Anima-specific ones if needed in future.
+    `sigmas` are Anima's rectified-flow σ in [0,1], where
+    x_σ = (1-σ)·x0 + σ·ε. For SNR-style schemes we use the natural RF analogue:
+
+        SNR(σ) = ((1 - σ) / σ)²
     """
+    sigmas_f = sigmas.float()
     if weighting_scheme == "sigma_sqrt":
-        weighting = (sigmas**-2.0).float()
+        weighting = (sigmas_f**-2.0).float()
     elif weighting_scheme == "cosmap":
-        bot = 1 - 2 * sigmas + 2 * sigmas**2
+        bot = 1 - 2 * sigmas_f + 2 * sigmas_f**2
         weighting = 2 / (math.pi * bot)
+    elif weighting_scheme == "min_snr":
+        gamma = 5.0 if min_snr_gamma is None else float(min_snr_gamma)
+        sigma_safe = sigmas_f.clamp(1e-6, 1.0 - 1e-6)
+        snr = ((1.0 - sigma_safe) / sigma_safe).pow(2)
+        weighting = torch.minimum(snr, torch.full_like(snr, gamma)) / snr.clamp_min(
+            1e-12
+        )
+    elif weighting_scheme == "p2":
+        sigma_safe = sigmas_f.clamp(1e-6, 1.0 - 1e-6)
+        snr = ((1.0 - sigma_safe) / sigma_safe).pow(2)
+        weighting = (float(p2_k) + snr).pow(-float(p2_gamma))
     elif weighting_scheme == "none" or weighting_scheme is None:
-        weighting = torch.ones_like(sigmas)
+        weighting = torch.ones_like(sigmas_f)
     else:
-        weighting = torch.ones_like(sigmas)
+        weighting = torch.ones_like(sigmas_f)
     return weighting
 
 

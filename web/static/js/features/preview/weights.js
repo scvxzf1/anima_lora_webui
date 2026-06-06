@@ -121,7 +121,7 @@ export function createPreviewWeights({ ctx, state, deps, syncPreviewPanelSubtitl
         continueBtn.type = 'button';
         continueBtn.className = 'btn btn-small preview-weight-continue';
         continueBtn.textContent = '继续训练';
-        continueBtn.title = '把这个权重设置为新的 LoRA/LoHa/LoKr 补充训练来源。';
+        continueBtn.title = '把这个权重设置为新的 LoRA/LoHa/LoKr/GLoRA 补充训练来源。';
         continueBtn.addEventListener('click', () => deps.selectContinueLoraWeight(item.abs_path || item.file || ''));
         actions.append(download, copy, continueBtn);
 

@@ -31,6 +31,7 @@ def test_defaults_when_all_kwargs_absent():
     assert cfg.alpha == 1.0
     assert cfg.module_class is LoRAModule
     assert cfg.train_llm_adapter is False
+    assert cfg.use_dora is False
     assert cfg.add_reft is False
     assert cfg.use_timestep_mask is False
     assert cfg.use_moe_style is False
@@ -55,6 +56,7 @@ def test_string_bool_parsing_matches_old_factory_path():
     """
     kwargs = {
         "train_llm_adapter": "true",
+        "dora_wd": "true",
         "add_reft": "True",  # case-insensitive
         "use_timestep_mask": "TRUE",
         "use_moe_style": "shared_A",
@@ -70,6 +72,8 @@ def test_string_bool_parsing_matches_old_factory_path():
         module_class=LoRAModule,
     )
     assert cfg.train_llm_adapter is True
+    assert cfg.use_dora is True
+    assert "dora_wd" not in cfg.plugin_args
     assert cfg.add_reft is True
     assert cfg.use_timestep_mask is True
     assert cfg.use_moe_style == "shared_A"
@@ -309,11 +313,32 @@ def test_from_weights_no_reft_no_sigma():
         channel_scales_dict=None,
     )
     assert cfg.add_reft is False
+    assert cfg.use_dora is False
     assert cfg.reft_dim == 4  # default fallback
     assert cfg.reft_layers == "all"
     assert cfg.num_experts == 4  # default fallback (not 0)
     assert cfg.use_moe_style is False
     assert cfg.router_source == "none"
+
+
+def test_from_weights_marks_dora_checkpoints():
+    cfg = LoRANetworkCfg.from_weights(
+        modules_dim={"foo": 4},
+        modules_alpha={"foo": 1.0},
+        module_class=LoRAModule,
+        train_llm_adapter=False,
+        has_reft=False,
+        reft_dim=None,
+        reft_block_indices=set(),
+        is_hydra_or_ortho_hydra=False,
+        hydra_num_experts=0,
+        sigma_feature_dim_detected=None,
+        sigma_router_names=None,
+        hydra_router_names=None,
+        channel_scales_dict=None,
+        is_dora=True,
+    )
+    assert cfg.use_dora is True
 
 
 def test_from_weights_moe_without_stamps_raises():

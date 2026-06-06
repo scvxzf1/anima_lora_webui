@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import io
+import logging
 import shutil
 import subprocess
 import sys
@@ -146,6 +147,7 @@ CONFIG_FILE_LABELS_ZH = {
     "configs/datasets/ip_adapter.toml": "IP-Adapter 数据集蓝图",
     "configs/gui-methods/chimera_hydra.toml": "Chimera Hydra 训练变体",
     "configs/gui-methods/easycontrol.toml": "EasyControl 训练变体",
+    "configs/gui-methods/glora.toml": "GLoRA 训练变体",
     "configs/gui-methods/hydralora-8gb.toml": "HydraLoRA 低显存变体",
     "configs/gui-methods/hydralora.toml": "HydraLoRA 训练变体",
     "configs/gui-methods/ip_adapter.toml": "IP-Adapter 训练变体",
@@ -194,6 +196,8 @@ USER_LOCKABLE_GROUPS = frozenset({
 })
 
 load_dotenv()
+
+LOGGER = logging.getLogger(__name__)
 
 
 def list_methods() -> list[str]:
@@ -355,6 +359,72 @@ def list_dataset_presets() -> dict[str, Any]:
     return {"ok": True, "presets": presets, "groups": groups}
 
 
+def diagnose_dataset_presets(rel_path: str = "") -> dict[str, Any]:
+    """Return a compact scan report for debugging WebUI dataset preset visibility."""
+    DATASET_PRESETS_DIR.mkdir(parents=True, exist_ok=True)
+    target = ""
+    if str(rel_path or "").strip():
+        target = _normalize_dataset_preset_path(rel_path, must_exist=False)
+
+    files: list[dict[str, Any]] = []
+    for path in sorted(DATASET_PRESETS_DIR.glob("*.toml")):
+        rel = _display_path(path)
+        stat = path.stat()
+        item: dict[str, Any] = {
+            "path": rel,
+            "absolute_path": str(path.resolve()),
+            "size": stat.st_size,
+            "mtime": datetime.fromtimestamp(stat.st_mtime).isoformat(timespec="seconds"),
+            "hidden": rel in HIDDEN_DATASET_PRESET_FILES,
+            "selected": bool(target and rel == target),
+        }
+        try:
+            loaded = load_dataset_preset(rel)
+            item.update({
+                "ok": True,
+                "readonly": bool(loaded.get("readonly")),
+                "summary": loaded.get("summary") or {},
+            })
+        except Exception as exc:
+            item.update({
+                "ok": False,
+                "error": str(exc),
+            })
+        files.append(item)
+
+    try:
+        listed = list_dataset_presets()
+        listed_count = len(listed.get("presets", []))
+        groups = [
+            {
+                "id": group.get("id"),
+                "label": group.get("label"),
+                "file_count": len(group.get("files", []) or []),
+                "files": [item.get("path") for item in (group.get("files", []) or [])],
+            }
+            for group in listed.get("groups", [])
+        ]
+        list_error = ""
+    except Exception as exc:
+        listed_count = 0
+        groups = []
+        list_error = str(exc)
+
+    return {
+        "ok": not bool(list_error),
+        "root": str(ROOT.resolve()),
+        "dataset_dir": _display_path(DATASET_PRESETS_DIR),
+        "absolute_dataset_dir": str(DATASET_PRESETS_DIR.resolve()),
+        "target": target,
+        "file_count": len(files),
+        "listed_count": listed_count,
+        "hidden_count": sum(1 for item in files if item.get("hidden")),
+        "groups": groups,
+        "files": files,
+        "error": list_error,
+    }
+
+
 def load_dataset_preset(rel_path: str) -> dict[str, Any]:
     normalized = _normalize_dataset_preset_path(rel_path, must_exist=True)
     path = _safe_resolve(normalized)
@@ -401,6 +471,13 @@ def save_dataset_preset(
     ok, msg = save_raw_file(normalized, content, overwrite=overwrite)
     if not ok:
         raise ValueError(msg)
+    LOGGER.info(
+        "saved dataset preset file=%s root=%s datasets=%d first_source=%s",
+        normalized,
+        ROOT.resolve(),
+        len(clean_rows),
+        clean_rows[0].get("source_dir") if clean_rows else "",
+    )
     return {
         "ok": True,
         "message": f"已保存数据集预设 {Path(normalized).name}",
@@ -830,7 +907,7 @@ def _check_network_weights(
         add("error", "network_weights", message, weight_path)
         return
 
-    kind = str(info.get("kind") or "LoRA/LoHa/LoKr")
+    kind = str(info.get("kind") or "LoRA/LoHa/LoKr/GLoRA")
     message = f"热启动权重可用（{kind}）"
     if _bool_value(cfg.get("dim_from_weights"), False):
         message += "，将从权重读取维度"

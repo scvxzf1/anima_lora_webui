@@ -1,4 +1,4 @@
-import { help } from './help-builder.js?v=module-bootstrap-20260604-8';
+import { help } from './help-builder.js?v=module-bootstrap-20260604-10';
 
 export const FIELD_HELP_TRAINING_ZH = {    learning_rate: help(
         "学习率，决定每一步参数改动有多大。",
@@ -104,6 +104,62 @@ export const FIELD_HELP_TRAINING_ZH = {    learning_rate: help(
         ["改变后会影响模型学到的噪声阶段分布。"],
         ["不匹配方法假设时可能降低质量。"],
         "推荐 sigmoid。"
+    ),
+    sigmoid_scale: help(
+        "sigmoid/logit-normal 时间步采样的缩放系数。",
+        "值越大，采样越集中在接近 0 或 1 的 sigma 两端；值越小，分布越靠中间。",
+        ["可做 FasterDiT 类时间步分布消融。"],
+        ["会改变模型看到的噪声阶段比例，和已有训练经验不可直接对比。"],
+        ["不要和 sigmoid_bias、Min-SNR、P2 同时大幅调整。"],
+        "短跑实验用 0.75 / 1.0 / 1.5 对照；正式训练先保持 1.0。"
+    ),
+    sigmoid_bias: help(
+        "sigmoid/logit-normal 时间步采样的 logit 偏置。",
+        "正值把采样推向高 sigma 的结构阶段；负值推向低 sigma 的细节阶段。",
+        ["适合检查模型是否欠结构或欠细节。"],
+        ["偏置过大可能让训练分布过窄，泛化变差。"],
+        ["不同数据集最佳值可能不同。"],
+        "短跑实验可试 -0.5 / 0 / 0.5；正式训练先保持 0。"
+    ),
+    weighting_scheme: help(
+        "按 sigma/SNR 给基础 flow-matching loss 加权。",
+        "uniform/none 基本等价于不额外加权；min_snr 和 p2 用 SNR 思路缓解时间步梯度冲突。",
+        ["可减少低效时间步对训练的拖累。"],
+        ["loss 数值会和 baseline 不再完全可比，要看样张和验证指标。"],
+        ["配合时间步采样一起调时，变量太多，难判断原因。"],
+        "先用 uniform 做基线；再单独试 min_snr=5 或 p2_gamma=0.5。"
+    ),
+    min_snr_gamma: help(
+        "Min-SNR 权重方案的 gamma 上限。",
+        "只在 weighting_scheme=min_snr 时生效；常见起点是 5。",
+        ["能压低高 SNR/低 sigma 阶段的损失权重。"],
+        ["gamma 越低干预越强，可能牺牲细节阶段学习。"],
+        ["设了但 weighting_scheme 不是 min_snr 时不会生效。"],
+        "短跑用 3 / 5 / 7 对照；默认先用 5。"
+    ),
+    p2_gamma: help(
+        "P2 权重方案的指数强度。",
+        "只在 weighting_scheme=p2 时生效；值越大，对高 SNR 阶段降权越强。",
+        ["适合测试感知优先的训练权重。"],
+        ["过强时可能低 sigma 细节不足。"],
+        ["设了但 weighting_scheme 不是 p2 时不会生效。"],
+        "短跑先试 0.5，再和 1.0 对照。"
+    ),
+    p2_k: help(
+        "P2 权重方案的 SNR 偏移项。",
+        "只在 weighting_scheme=p2 时生效；一般保持 1.0。",
+        ["可以控制极端 SNR 区间的权重形状。"],
+        ["不是优先调参项，乱改会增加实验维度。"],
+        ["设了但 weighting_scheme 不是 p2 时不会生效。"],
+        "保持 1.0。"
+    ),
+    velocity_direction_loss_weight: help(
+        "FasterDiT 风格的速度方向辅助损失权重。",
+        "在基础 velocity MSE 外，额外约束预测速度和目标速度的方向一致；验证 FM-MSE 不计入此项。",
+        ["给每个像素位置增加方向监督，可能加快早期收敛。"],
+        ["权重过大会压过 MSE 幅值学习，导致 loss/样张异常。"],
+        ["属于实验项，不建议和多个 SNR/时间步改动一起开。"],
+        "短跑先试 0.01 / 0.03 / 0.05；正式训练默认 0。"
     ),
     discrete_flow_shift: help(
         "flow matching 噪声调度偏移参数。",
@@ -224,6 +280,14 @@ export const FIELD_HELP_TRAINING_ZH = {    learning_rate: help(
         ["会增加少量 I/O，长训通常只在调参阶段开启。"],
         ["显式路径写错会让 profile 无法落盘，但不应影响训练。"],
         "Balanced 16G 和 LoKr 16G 排查时用 auto；稳定后可关掉。"
+    ),
+    disable_block_swap_for_eval: help(
+        "验证和训练中预览图阶段临时暂停块交换。",
+        "开启后会先把交换到 CPU 的 DiT 块恢复到 GPU，评估结束后再恢复训练时的 block swap 布局。",
+        ["评估/预览可能更快，适合训练需要换块但评估显存够用的机器。"],
+        ["如果评估阶段放不下完整 DiT，会直接 OOM。"],
+        ["只影响验证和预览，不改变训练 step 的块交换数量。"],
+        "不确定就保持 false；只有 eval 明显慢且显存有余量时再打开。"
     ),
     memory_probe_jsonl: help(
         "记录训练级 CUDA 显存和 adapter/optimizer 摘要。",

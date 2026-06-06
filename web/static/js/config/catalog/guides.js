@@ -1,4 +1,4 @@
-import { choiceHelp } from './help-builder.js?v=module-bootstrap-20260604-8';
+import { choiceHelp } from './help-builder.js?v=module-bootstrap-20260604-10';
 
 export const METHOD_GUIDE_ZH = {
     lora: choiceHelp(
@@ -6,6 +6,12 @@ export const METHOD_GUIDE_ZH = {
         '最基础、兼容性最好的低秩微调方法，适合大多数角色、画风和概念训练。',
         '好处是稳定、可合并、推理链路最简单；代价是表达力主要靠 rank 和训练轮数。',
         '新手优先选它。'
+    ),
+    dora: choiceHelp(
+        'DoRA',
+        '在普通 LoRA 上额外训练输出通道幅度，把方向和幅度拆开学习。',
+        '通常比同 rank 的普通 LoRA 更能贴近全量微调；代价是训练前向更重，且只适合普通 LoRA 路线。',
+        '想增强普通 LoRA 拟合能力时选。'
     ),
     ortholora: choiceHelp(
         'OrthoLoRA',
@@ -30,6 +36,12 @@ export const METHOD_GUIDE_ZH = {
         '使用 Kronecker 积分解代替标准低秩分解，参数效率更高。',
         '适合复杂画风或多角色；代价是推理需要 LyCORIS/LoKr 兼容加载器。',
         '需要 LoKr 训练时选，简单单角色仍可用普通 LoRA。'
+    ),
+    glora: choiceHelp(
+        'GLoRA',
+        '使用 Generalized LoRA 的 A/B 双低秩路径，导出 a1/a2/b1/b2 权重。',
+        '表达方式不同于普通 LoRA；代价是推理、继续训练和合并路径都必须识别 GLoRA。',
+        '明确需要 LyCORIS/GLoRA 格式时选。'
     ),
     vera: choiceHelp(
         'VeRA',
@@ -159,6 +171,12 @@ export const VARIANT_GUIDE_ZH = {
         '输出 LyCORIS 兼容的 lokr_w1/lokr_w2 权重，默认 factor=8。',
         '收敛快、参数效率高；过拟合风险更高，推理侧需要 LoKr 支持。',
         '多角色/复杂画风可试；注意控制训练轮数。'
+    ),
+    glora: choiceHelp(
+        'GLoRA',
+        '输出 LyCORIS/ComfyUI 可识别的 a1/a2/b1/b2 权重，默认 rank=32。',
+        'A 路径依赖底模 Linear 权重，不能当普通 LoRA up/down 无损转换。',
+        '需要 GLoRA 格式或做兼容性实验时选；继续训练请使用同类 GLoRA 权重。'
     ),
     loha: choiceHelp(
         'LoHa',

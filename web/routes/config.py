@@ -12,6 +12,7 @@ from web.services.config_service import (
     delete_dataset_preset,
     delete_raw_file,
     delete_config_file_group,
+    diagnose_dataset_presets,
     estimate_training_steps,
     export_config_file_group_archive,
     get_config_file_meta,
@@ -65,6 +66,7 @@ def setup_config_routes(app: web.Application) -> None:
     app.router.add_put("/api/config/datasets", handle_datasets_put)
     app.router.add_post("/api/config/datasets/suggest", handle_datasets_suggest)
     app.router.add_get("/api/config/dataset-presets", handle_dataset_presets_list)
+    app.router.add_get("/api/config/dataset-presets/diagnose", handle_dataset_presets_diagnose)
     app.router.add_get("/api/config/dataset-presets/read", handle_dataset_preset_read)
     app.router.add_put("/api/config/dataset-presets", handle_dataset_preset_put)
     app.router.add_post("/api/config/dataset-presets/save-as", handle_dataset_preset_save_as)
@@ -198,6 +200,16 @@ async def handle_datasets_suggest(request: web.Request) -> web.Response:
 async def handle_dataset_presets_list(request: web.Request) -> web.Response:
     try:
         return web.json_response(list_dataset_presets())
+    except Exception as e:
+        return web.json_response({"ok": False, "error": str(e)}, status=400)
+
+
+async def handle_dataset_presets_diagnose(request: web.Request) -> web.Response:
+    file = request.query.get("file", "")
+    try:
+        result = diagnose_dataset_presets(file)
+        status = 200 if result.get("ok") else 400
+        return web.json_response(result, status=status)
     except Exception as e:
         return web.json_response({"ok": False, "error": str(e)}, status=400)
 

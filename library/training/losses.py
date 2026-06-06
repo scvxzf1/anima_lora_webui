@@ -29,6 +29,7 @@ from dataclasses import dataclass, field
 from typing import Callable, Optional
 
 import torch
+import torch.nn.functional as F
 
 
 def add_custom_train_arguments(
@@ -55,6 +56,33 @@ def add_custom_train_arguments(
         "--debiased_estimation_loss",
         action="store_true",
         help="debiased estimation loss",
+    )
+    parser.add_argument(
+        "--velocity_direction_loss_weight",
+        type=float,
+        default=0.0,
+        help=(
+            "Weight for a FasterDiT-style auxiliary velocity direction loss. "
+            "0 disables it. The term is training-only and keeps validation FM-MSE clean."
+        ),
+    )
+    parser.add_argument(
+        "--velocity_direction_loss_eps",
+        type=float,
+        default=1e-6,
+        help="Numerical epsilon for velocity direction cosine similarity.",
+    )
+    parser.add_argument(
+        "--p2_gamma",
+        type=float,
+        default=1.0,
+        help="Gamma for weighting_scheme='p2' loss weighting.",
+    )
+    parser.add_argument(
+        "--p2_k",
+        type=float,
+        default=1.0,
+        help="k offset for weighting_scheme='p2' loss weighting.",
     )
     if support_weighted_captions:
         parser.add_argument(
@@ -286,6 +314,35 @@ def _flow_matching_vr_loss(ctx: LossContext) -> torch.Tensor:
     return weight * loss
 
 
+def _velocity_direction_loss(ctx: LossContext) -> torch.Tensor:
+    """FasterDiT-style auxiliary direction loss for velocity prediction.
+
+    The paper computes a cosine term between predicted and target velocity at
+    each spatial position. Here `ctx.model_pred` / `ctx.target` have already
+    been squeezed to Anima's 4D latent shape `[B,C,H,W]`, so cosine over dim=1
+    gives a per-pixel direction residual. This term is training-only so
+    validation remains a comparable FM-MSE signal across experiments.
+    """
+    if not ctx.is_train:
+        return ctx.model_pred.new_zeros(ctx.model_pred.shape[0])
+    weight = float(getattr(ctx.args, "velocity_direction_loss_weight", 0.0) or 0.0)
+    if weight <= 0.0:
+        return ctx.model_pred.new_zeros(ctx.model_pred.shape[0])
+
+    eps = float(getattr(ctx.args, "velocity_direction_loss_eps", 1e-6) or 1e-6)
+    pred = ctx.model_pred.float()
+    target = ctx.target.float()
+    loss = 1.0 - F.cosine_similarity(pred, target, dim=1, eps=eps)
+    loss = loss.unsqueeze(1)  # [B,1,H,W], compatible with apply_masked_loss
+    if ctx.args.masked_loss or (
+        "alpha_masks" in ctx.batch and ctx.batch["alpha_masks"] is not None
+    ):
+        loss = apply_masked_loss(loss, ctx.batch)
+    loss = loss.mean(dim=list(range(1, loss.ndim)))
+    loss = loss * ctx.loss_weights
+    return weight * loss
+
+
 # ---------------------------------------------------------------------------
 # Scalar-broadcast regularizers (added to the per-sample [B] tensor)
 # ---------------------------------------------------------------------------
@@ -468,6 +525,7 @@ def _multiscale_loss(ctx: LossContext) -> torch.Tensor:
 LOSS_REGISTRY: dict[str, LossFn] = {
     "flow_match": _flow_match_loss,
     "flow_matching_vr": _flow_matching_vr_loss,
+    "velocity_direction": _velocity_direction_loss,
     "ortho_reg": _ortho_reg_loss,
     "hydra_balance": _hydra_balance_loss,
     "functional": _functional_loss,
@@ -479,8 +537,9 @@ LOSS_REGISTRY: dict[str, LossFn] = {
 
 # Which stage each registered loss runs in (see module docstring).
 # `flow_match` and `flow_matching_vr` are mutually exclusive — both produce
-# the per-sample [B] tensor that downstream stages add into.
-_STAGE_PER_SAMPLE = ("flow_match", "flow_matching_vr")
+# the primary per-sample [B] tensor. `velocity_direction` is an optional
+# FasterDiT-style auxiliary per-sample term.
+_STAGE_PER_SAMPLE = ("flow_match", "flow_matching_vr", "velocity_direction")
 _STAGE_SCALAR_BROADCAST = (
     "ortho_reg",
     "hydra_balance",
@@ -573,6 +632,7 @@ def build_loss_composer(args: argparse.Namespace, network: object) -> LossCompos
       - exactly one of flow_match / flow_matching_vr is active. VR wins when
         args.vr_loss_weight > 0 (the trainer is responsible for running the
         adapter-bypass no-grad forward and stashing ctx.aux['vr']).
+      - velocity_direction active iff args.velocity_direction_loss_weight > 0.
       - ortho_reg active iff network._ortho_reg_weight > 0.
       - hydra_balance active iff network._balance_loss_weight > 0.
       - functional active iff args.functional_loss_weight > 0.
@@ -587,6 +647,9 @@ def build_loss_composer(args: argparse.Namespace, network: object) -> LossCompos
         else "flow_match"
     )
     active: list[str] = [fm_name]
+
+    if float(getattr(args, "velocity_direction_loss_weight", 0.0) or 0.0) > 0.0:
+        active.append("velocity_direction")
 
     if float(getattr(network, "_ortho_reg_weight", 0.0) or 0.0) > 0.0:
         active.append("ortho_reg")

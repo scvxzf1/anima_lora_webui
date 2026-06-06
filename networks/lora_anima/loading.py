@@ -428,12 +428,21 @@ def _refuse_unfused_attn_lora_keys(
         ups: List[torch.Tensor] = []
         alphas: List[Optional[torch.Tensor]] = []
         inv_scales: List[Optional[torch.Tensor]] = []
+        dora_scales: List[Optional[torch.Tensor]] = []
         complete = True
         for suf in suffixes:
             dk = f"{shared_prefix}{suf}_proj.lora_down.weight"
             uk = f"{shared_prefix}{suf}_proj.lora_up.weight"
             ak = f"{shared_prefix}{suf}_proj.alpha"
             ik = f"{shared_prefix}{suf}_proj.inv_scale"
+            dora_key = next(
+                (
+                    f"{shared_prefix}{suf}_proj.{leaf}"
+                    for leaf in ("dora_scale", "dora_magnitude", "magnitude")
+                    if f"{shared_prefix}{suf}_proj.{leaf}" in state_dict
+                ),
+                None,
+            )
             if dk not in state_dict or uk not in state_dict:
                 complete = False
                 break
@@ -441,6 +450,7 @@ def _refuse_unfused_attn_lora_keys(
             ups.append(state_dict[uk])
             alphas.append(state_dict.get(ak))
             inv_scales.append(state_dict.get(ik))
+            dora_scales.append(state_dict.get(dora_key) if dora_key else None)
         if not complete:
             continue
 
@@ -520,6 +530,15 @@ def _refuse_unfused_attn_lora_keys(
                 f"attn LoRA fuse: partial inv_scale at {shared_prefix}*, "
                 "dropping channel scaling on fused module"
             )
+        if all(s is not None for s in dora_scales):
+            state_dict[f"{fused_prefix}.magnitude"] = torch.cat(
+                [s for s in dora_scales if s is not None], dim=0
+            ).contiguous()
+        elif any(s is not None for s in dora_scales):
+            logger.warning(
+                f"attn LoRA fuse: partial DoRA magnitude at {shared_prefix}*, "
+                "dropping DoRA magnitude on fused module"
+            )
 
         for suf in suffixes:
             for subk in (
@@ -527,7 +546,25 @@ def _refuse_unfused_attn_lora_keys(
                 "lora_up.weight",
                 "alpha",
                 "inv_scale",
+                "dora_scale",
+                "dora_magnitude",
+                "magnitude",
             ):
                 state_dict.pop(f"{shared_prefix}{suf}_proj.{subk}", None)
 
+    return state_dict
+
+
+def _rename_dora_scale_for_load(
+    state_dict: Dict[str, torch.Tensor],
+) -> Dict[str, torch.Tensor]:
+    """Map export ``.dora_scale`` keys back to DoRA module ``.magnitude``."""
+    for key in list(state_dict.keys()):
+        if not key.endswith(".dora_scale"):
+            if not key.endswith(".dora_magnitude"):
+                continue
+            prefix = key.removesuffix(".dora_magnitude")
+        else:
+            prefix = key.removesuffix(".dora_scale")
+        state_dict[f"{prefix}.magnitude"] = state_dict.pop(key)
     return state_dict

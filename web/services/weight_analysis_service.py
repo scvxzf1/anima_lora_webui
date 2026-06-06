@@ -492,6 +492,19 @@ def _detect_adapter_type(keys: list[str], metadata: Mapping[str, str]) -> tuple[
 
 
 def _unsupported_reason(lowered_keys: list[str], metadata: Mapping[str, str], meta_spec: str) -> str:
+    adapter_variant = str(metadata.get("ss_adapter_variant") or "").strip().lower()
+    if (
+        meta_spec == "dora"
+        or adapter_variant == "dora"
+        or any(
+            key.endswith((".dora_scale", ".dora_magnitude"))
+            for key in lowered_keys
+        )
+    ):
+        return (
+            "DoRA 需要底模权重才能还原幅度归一后的真实 ΔW，"
+            "静态分析页暂不做近似重建。"
+        )
     if any(token in meta_spec for token in UNSUPPORTED_SPEC_TOKENS):
         return "该权重疑似 Hydra / Chimera / FeRA / ReFT / VeRA 等结构，第一版暂不重建完整 ΔW。"
     use_moe_style = str(metadata.get("ss_use_moe_style") or "").strip().lower()
@@ -510,6 +523,10 @@ def _unsupported_reason(lowered_keys: list[str], metadata: Mapping[str, str], me
 
 
 def _label_from_meta_or_keys(lowered_keys: list[str], meta_spec: str) -> str:
+    if "dora" in meta_spec or any(
+        key.endswith((".dora_scale", ".dora_magnitude")) for key in lowered_keys
+    ):
+        return "DoRA"
     if "vera" in meta_spec or any("vera_lambda_" in key for key in lowered_keys):
         return "VeRA"
     if any(token in meta_spec for token in ("chimera", "hydra", "fera", "moe")):

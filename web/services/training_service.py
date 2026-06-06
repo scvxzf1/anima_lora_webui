@@ -136,6 +136,7 @@ class TrainingService:
         self.current_sample_config: dict[str, Any] = _default_sample_config()
         self.current_runtime_info: dict[str, str] = {}
         self.current_job: str = ""
+        self.current_gpu_whitelist: list[int] = []
         self.current_task_id: str = ""
         self.current_task_dir: Path | None = None
         self.current_command: list[str] = []
@@ -534,6 +535,7 @@ class TrainingService:
         self.current_sample_dir = sample_dir
         self.current_sample_config = sample_config
         self.current_runtime_info = _runtime_meta(runtime_info)
+        self.current_gpu_whitelist = list(gpu_whitelist or [])
         self._anchor = None
         self._reset_progress_rate_state()
         self._reset_metric_runtime_state()
@@ -1327,6 +1329,7 @@ class TrainingService:
             "queue_paused": self._queue_paused,
             "queue_count": sum(1 for item in self._queue_items() if item.get("state") == "queued"),
             "queue_item_id": self._current_queue_item_id,
+            "gpu_whitelist": self.current_gpu_whitelist,
         }
 
     async def _read_output(self):
@@ -2157,7 +2160,7 @@ class TrainingService:
 
     async def _monitor_system(self):
         while self.status == "running":
-            stats = await _get_gpu_stats()
+            stats = await _get_gpu_stats(self.current_gpu_whitelist)
             if stats:
                 stats["last_output_at"] = self._last_output_at
                 stats["ts"] = time.time()
@@ -2177,27 +2180,62 @@ class TrainingService:
         self._ws_clients -= dead
 
 
-async def _get_gpu_stats() -> dict:
+async def _get_gpu_stats(gpu_whitelist: list[int] | None = None) -> dict:
     try:
         proc = await asyncio.create_subprocess_exec(
             "nvidia-smi",
-            "--query-gpu=memory.used,memory.total,utilization.gpu,temperature.gpu",
+            "--query-gpu=index,memory.used,memory.total,utilization.gpu,temperature.gpu",
             "--format=csv,noheader,nounits",
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.DEVNULL,
         )
         stdout, _ = await proc.communicate()
-        parts = stdout.decode().strip().split(", ")
-        if len(parts) >= 4:
-            return {
-                "vram_used_gb": round(int(parts[0]) / 1024, 2),
-                "vram_total_gb": round(int(parts[1]) / 1024, 2),
-                "gpu_util": int(parts[2]),
-                "gpu_temp": int(parts[3]),
-            }
+        rows = _parse_gpu_stats_rows(stdout.decode(errors="replace"))
+        selected = _normalize_gpu_whitelist(gpu_whitelist)
+        if selected:
+            selected_set = set(selected)
+            rows = [row for row in rows if row["index"] in selected_set]
+        else:
+            rows = rows[:1]
+        return _aggregate_gpu_stats_rows(rows)
     except Exception:
         pass
     return {}
+
+
+def _parse_gpu_stats_rows(text: str) -> list[dict[str, int]]:
+    rows: list[dict[str, int]] = []
+    for line in text.splitlines():
+        parts = [part.strip() for part in line.split(",")]
+        if len(parts) < 5:
+            continue
+        try:
+            rows.append({
+                "index": int(parts[0]),
+                "memory_used_mb": int(parts[1]),
+                "memory_total_mb": int(parts[2]),
+                "gpu_util": int(parts[3]),
+                "gpu_temp": int(parts[4]),
+            })
+        except ValueError:
+            continue
+    return rows
+
+
+def _aggregate_gpu_stats_rows(rows: list[dict[str, int]]) -> dict[str, Any]:
+    if not rows:
+        return {}
+    indices = [row["index"] for row in rows]
+    used_mb = sum(row["memory_used_mb"] for row in rows)
+    total_mb = sum(row["memory_total_mb"] for row in rows)
+    return {
+        "gpu_index": indices[0],
+        "gpu_indices": indices,
+        "vram_used_gb": round(used_mb / 1024, 2),
+        "vram_total_gb": round(total_mb / 1024, 2),
+        "gpu_util": max(row["gpu_util"] for row in rows),
+        "gpu_temp": max(row["gpu_temp"] for row in rows),
+    }
 
 
 async def _list_available_gpus() -> list[dict[str, Any]]:
@@ -2339,6 +2377,7 @@ def _continue_lora_history_meta(continue_info: dict[str, Any] | None) -> dict[st
 
 def _apply_gpu_whitelist(env: dict[str, str], whitelist: list[int]) -> None:
     if whitelist:
+        env["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
         env["CUDA_VISIBLE_DEVICES"] = ",".join(str(index) for index in whitelist)
 
 
@@ -4963,7 +5002,7 @@ def _resume_checkpoint_diagnostic(task: dict[str, Any], checkpoints: list[dict[s
         "train_state_count": 0,
         "checkpoint_count": len(checkpoints or []),
         "reason": "",
-        "recommendation": "如需继续训练，可回到配置页选择这个任务导出的 LoRA/LoHa/LoKr 权重做热启动；热启动不会恢复 optimizer、scheduler 和已完成步数。",
+        "recommendation": "如需继续训练，可回到配置页选择这个任务导出的 LoRA/LoHa/LoKr/GLoRA 权重做热启动；热启动不会恢复 optimizer、scheduler 和已完成步数。",
     }
     if output_dir is None:
         diagnostic["reason"] = "这个历史任务记录的输出目录不合法，无法扫描完整续训状态。"

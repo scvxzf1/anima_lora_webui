@@ -25,6 +25,7 @@ def _make_args(**overrides) -> argparse.Namespace:
         masked_loss=False,
         multiscale_loss_weight=0.0,
         functional_loss_weight=0.0,
+        velocity_direction_loss_weight=0.0,
     )
     base.update(overrides)
     return argparse.Namespace(**base)
@@ -44,6 +45,7 @@ def test_registry_contains_expected_keys():
         "hydra_balance",
         "functional",
         "multiscale",
+        "velocity_direction",
     }.issubset(set(LOSS_REGISTRY.keys()))
 
 
@@ -71,3 +73,9 @@ def test_multiscale_activates_when_weight_set():
     args = _make_args(method="lora", multiscale_loss_weight=0.5)
     composer = build_loss_composer(args, _net())
     assert "multiscale" in composer.active_losses
+
+
+def test_velocity_direction_activates_when_weight_set():
+    args = _make_args(method="lora", velocity_direction_loss_weight=0.05)
+    composer = build_loss_composer(args, _net())
+    assert composer.active_losses == ["flow_match", "velocity_direction"]

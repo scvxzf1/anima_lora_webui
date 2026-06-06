@@ -19,6 +19,7 @@ from networks.lora_anima.loading import (
     _refuse_split_hydra_keys,
     _refuse_split_stacked_experts_keys,
     _refuse_unfused_attn_lora_keys,
+    _rename_dora_scale_for_load,
     _stack_lora_ups,
 )
 from networks.lora_modules import (
@@ -2695,6 +2696,7 @@ class LoRANetwork(torch.nn.Module):
         weights_sd = _refuse_split_hydra_keys(weights_sd)
         # Refuse unfused attn projections (inverse of save_weights defusing).
         weights_sd = _refuse_unfused_attn_lora_keys(weights_sd)
+        weights_sd = _rename_dora_scale_for_load(weights_sd)
 
         self._reabsorb_baked_inv_scale(weights_sd)
 
@@ -3161,6 +3163,11 @@ class LoRANetwork(torch.nn.Module):
         if getattr(self.cfg, "ortho_centered_gate", False):
             metadata["ss_ortho_centered_gate"] = "true"
 
+        if getattr(self.cfg, "use_dora", False):
+            metadata["ss_network_spec"] = "dora"
+            metadata["ss_adapter_variant"] = "dora"
+            metadata["ss_dora_compatible_export"] = "true"
+
         # FEI router params (router-source-specific scalars the loader needs
         # to size the router input). Stamped for both per-Linear and global
         # FEI routers.
@@ -3250,6 +3257,9 @@ class LoRANetwork(torch.nn.Module):
                 lora.enabled = False
 
     def apply_max_norm_regularization(self, max_norm_value, device):
+        if getattr(self.cfg, "use_dora", False):
+            return 0, 0, 0
+
         downkeys = []
         upkeys = []
         alphakeys = []

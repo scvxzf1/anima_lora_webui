@@ -1,4 +1,4 @@
-"""LoRA/LoHa/LoKr continue-training weight inspection.
+"""LoRA/LoHa/LoKr/GLoRA continue-training weight inspection.
 
 This module is intentionally stateless: callers provide the already-loaded
 training config and project root. That keeps config preflight and training
@@ -12,10 +12,11 @@ import os
 from pathlib import Path
 from typing import Any, Mapping
 
-CONTINUE_LORA_KINDS = {"LoRA", "LoHa", "LoKr"}
+CONTINUE_LORA_KINDS = {"LoRA", "DoRA", "LoHa", "LoKr", "GLoRA"}
 CONTINUE_LORA_ACCEPTED_LORA_SPECS = {
     "",
     "lora",
+    "dora",
     "standard",
     "ortho",
     "ortholora",
@@ -63,7 +64,7 @@ def inspect_continue_lora_weight(
     project_root = Path(root).resolve() if root is not None else Path.cwd().resolve()
     raw_path = str(path or "").strip()
     if not raw_path:
-        raise ValueError("请填写 LoRA/LoHa/LoKr 权重路径")
+        raise ValueError("请填写 LoRA/LoHa/LoKr/GLoRA 权重路径")
     weight_path = _resolve_display_path(raw_path, project_root)
     if weight_path is None:
         raise ValueError("权重路径不合法")
@@ -79,7 +80,7 @@ def inspect_continue_lora_weight(
     metadata, keys = _read_safetensors_header(weight_path)
     kind = _detect_continue_lora_kind(keys, metadata)
     if kind not in CONTINUE_LORA_KINDS:
-        raise ValueError("这个 safetensors 未识别为 LoRA、LoHa 或 LoKr 权重")
+        raise ValueError("这个 safetensors 未识别为 LoRA、DoRA、LoHa、LoKr 或 GLoRA 权重")
 
     compatible, message = _continue_lora_compatibility(
         kind,
@@ -116,6 +117,7 @@ def _detect_continue_lora_kind(keys: list[str], metadata: dict[str, str]) -> str
     from networks.registry import continue_weight_kind_from_plugins
 
     meta_spec = str(metadata.get("ss_network_spec") or "").strip().lower()
+    adapter_variant = str(metadata.get("ss_adapter_variant") or "").strip().lower()
     lowered_keys = [str(key).lower() for key in keys]
     plugin_kind = continue_weight_kind_from_plugins(keys, metadata)
     if plugin_kind:
@@ -126,6 +128,14 @@ def _detect_continue_lora_kind(keys: list[str], metadata: dict[str, str]) -> str
         key.endswith(".lora_down.weight") or key.endswith(".lora_up.weight")
         for key in lowered_keys
     )
+    has_dora_magnitude = any(
+        key.endswith((".dora_scale", ".dora_magnitude", ".magnitude"))
+        for key in lowered_keys
+    )
+    if has_plain_lora_keys and (
+        meta_spec == "dora" or adapter_variant == "dora" or has_dora_magnitude
+    ):
+        return "DoRA"
     if has_plain_lora_keys and meta_spec in CONTINUE_LORA_ACCEPTED_LORA_SPECS:
         return "LoRA"
     return ""
@@ -171,6 +181,8 @@ def _safe_continue_lora_metadata(metadata: dict[str, str]) -> dict[str, str]:
         "ss_learning_rate",
         "ss_network_dim",
         "ss_network_alpha",
+        "ss_adapter_variant",
+        "ss_dora_compatible_export",
         "modelspec.architecture",
         "modelspec.implementation",
     )
@@ -191,18 +203,51 @@ def _continue_lora_compatibility(
     if current_kind == "LoHa":
         if kind == "LoHa":
             return True, "兼容：当前变体为 LoHa，会基于该 LoHa 权重继续训练"
-        return False, f"{kind} 权重不能直接用于 LoHa 变体；请切换到匹配的训练变体"
+        return (
+            False,
+            f"{kind} 权重不能直接用于 LoHa 变体；请切换到匹配的训练变体",
+        )
     if current_kind == "LoKr":
         if kind == "LoKr":
             return True, "兼容：当前变体为 LoKr，会基于该 LoKr 权重继续训练"
-        return False, f"{kind} 权重不能直接用于 LoKr 变体；请切换到匹配的训练变体"
+        return (
+            False,
+            f"{kind} 权重不能直接用于 LoKr 变体；请切换到匹配的训练变体",
+        )
+    if current_kind == "GLoRA":
+        if kind == "GLoRA":
+            return True, "兼容：当前变体为 GLoRA，会基于该 GLoRA 权重继续训练"
+        return (
+            False,
+            f"{kind} 权重不能直接用于 GLoRA 变体；请切换到匹配的训练变体",
+        )
+    if current_kind == "DoRA":
+        if kind == "DoRA":
+            return (
+                True,
+                "兼容：当前配置已启用 DoRA，会基于该 DoRA 权重继续训练",
+            )
+        return (
+            False,
+            f"{kind} 权重不能直接用于 DoRA 配置；请切换到匹配的训练变体",
+        )
     if current_kind == "LoRA":
         if kind == "LoRA":
-            return True, "兼容：当前配置属于 LoRA 家族，会基于该 LoRA 权重继续训练"
+            return (
+                True,
+                "兼容：当前配置属于 LoRA 家族，会基于该 LoRA 权重继续训练",
+            )
+        if kind == "DoRA":
+            return (
+                False,
+                "DoRA 权重需要当前配置启用 DoRA，请先在 LoRA 结构中选择 DoRA",
+            )
         if kind == "LoHa":
             return False, "LoHa 权重需要当前变体为 loha，请先切换到 LoHa 变体"
-        return False, "LoKr 权重需要当前变体为 lokr，请先切换到 LoKr 变体"
-    return False, "当前只支持 LoRA / LoHa / LoKr 家族配置继续训练"
+        if kind == "LoKr":
+            return False, "LoKr 权重需要当前变体为 lokr，请先切换到 LoKr 变体"
+        return False, "GLoRA 权重需要当前变体为 glora，请先切换到 GLoRA 变体"
+    return False, "当前只支持 LoRA / DoRA / LoHa / LoKr / GLoRA 家族配置继续训练"
 
 
 def _continue_lora_config_kind(
@@ -210,10 +255,14 @@ def _continue_lora_config_kind(
 ) -> str:
     module_name = str(cfg.get("network_module") or "")
     variant_key = str(variant or "").strip().lower()
+    if _truthy(cfg.get("use_glora")) or variant_key == "glora":
+        return "GLoRA"
     if _truthy(cfg.get("use_loha")) or variant_key == "loha":
         return "LoHa"
     if _truthy(cfg.get("use_lokr")) or variant_key == "lokr":
         return "LoKr"
+    if _truthy(cfg.get("dora_wd")) or variant_key == "dora":
+        return "DoRA"
     if module_name and "lora_anima" not in module_name:
         return ""
     if str(methods_subdir or "") == "gui-methods":

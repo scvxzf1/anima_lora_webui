@@ -59,6 +59,7 @@ def test_bootstrap_forwards_top_level_network_kwargs_with_cli_precedence():
     args = SimpleNamespace(
         network_args=["router_targets=cli_value"],
         router_targets="toml_value",
+        dora_wd=True,
         use_lokr=True,
         gradient_accumulation_steps=4,
     )
@@ -66,5 +67,6 @@ def test_bootstrap_forwards_top_level_network_kwargs_with_cli_precedence():
     net_kwargs = TrainingBootstrap.build_net_kwargs(args)
 
     assert net_kwargs["router_targets"] == "cli_value"
+    assert net_kwargs["dora_wd"] == "True"
     assert net_kwargs["use_lokr"] == "True"
     assert net_kwargs["gradient_accumulation_steps"] == "4"

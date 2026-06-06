@@ -447,6 +447,43 @@ def test_block_swap_rejects_soft_tokens_multi_forward_override() -> None:
         train.AnimaTrainer().assert_extra_args(args, _CacheableDataset(), None)
 
 
+def test_block_swap_rejects_cpu_activation_offload() -> None:
+    import train
+
+    args = _args_for_assert_extra(
+        blocks_to_swap=8,
+        cpu_offload_checkpointing=True,
+    )
+
+    with pytest.raises(ValueError, match="cpu_offload_checkpointing"):
+        train.AnimaTrainer().assert_extra_args(args, _CacheableDataset(), None)
+
+
+def test_block_swap_rejects_unsloth_activation_offload() -> None:
+    import train
+
+    args = _args_for_assert_extra(
+        blocks_to_swap=8,
+        gradient_checkpointing=True,
+        unsloth_offload_checkpointing=True,
+    )
+
+    with pytest.raises(ValueError, match="unsloth_offload_checkpointing"):
+        train.AnimaTrainer().assert_extra_args(args, _CacheableDataset(), None)
+
+
+def test_training_args_reject_negative_blocks_to_swap() -> None:
+    import train
+
+    from library.training.cli_args import verify_training_args
+
+    args = train.setup_parser().parse_args([])
+    args.blocks_to_swap = -1
+
+    with pytest.raises(ValueError, match="blocks_to_swap"):
+        verify_training_args(args)
+
+
 def test_selective_checkpoint_rejects_full_checkpointing() -> None:
     import train
 

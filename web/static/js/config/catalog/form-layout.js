@@ -25,6 +25,7 @@ export const FORM_SECTION_DEFS = [
             'network_dim',
             'network_alpha',
             'lora_adapter_kind',
+            'dora_wd',
             'lokr_factor',
             'vera_projection_prng_key',
             'vera_d_initial',
@@ -80,7 +81,7 @@ export const FORM_SECTION_DEFS = [
     {
         title: '显存与速度优化',
         description: 'OOM、训练速度、block swap、checkpoint、显存探针和编译相关；显存不足或速度异常时先看这里。',
-        open: false,
+        open: true,
         className: 'config-group-resource',
         keys: [
             'blocks_to_swap',
@@ -124,6 +125,22 @@ export const FORM_SECTION_DEFS = [
             'vae_disable_cache',
             'dataloader_pin_memory',
             'persistent_data_loader_workers',
+        ],
+    },
+    {
+        title: '实验性功能',
+        description: 'FasterDiT / SNR 类收敛信号实验开关；用于短跑对照，不建议在正式训练中一次改多个。',
+        notice: '建议：正式训练保持默认。',
+        open: false,
+        className: 'config-group-experimental',
+        keys: [
+            'sigmoid_scale',
+            'sigmoid_bias',
+            'weighting_scheme',
+            'min_snr_gamma',
+            'p2_gamma',
+            'p2_k',
+            'velocity_direction_loss_weight',
         ],
     },
     {
@@ -312,7 +329,7 @@ export const FORM_CATEGORY_DEFS = [
         id: 'optimization',
         title: '优化',
         description: '显存、速度、诊断和编译。',
-        sections: ['显存与速度优化', 'LoKr 专用优化', '数据加载与 VAE 资源'],
+        sections: ['显存与速度优化', 'LoKr 专用优化', '数据加载与 VAE 资源', '实验性功能'],
     },
     {
         id: 'advanced',
@@ -347,7 +364,7 @@ export const CONFIG_COMPACT_FIELD_GROUPS = {
         },
         {
             className: 'config-field-grid-4col',
-            keys: ['network_dim', 'network_alpha', 'lora_adapter_kind', 'lokr_factor', 'vera_projection_prng_key', 'vera_d_initial', 'vera_save_projection'],
+            keys: ['network_dim', 'network_alpha', 'lora_adapter_kind', 'dora_wd', 'lokr_factor', 'vera_projection_prng_key', 'vera_d_initial', 'vera_save_projection'],
         },
     ],
     'config-group-steps': [
@@ -404,12 +421,23 @@ export const CONFIG_COMPACT_FIELD_GROUPS = {
             keys: ['dataloader_pin_memory', 'persistent_data_loader_workers'],
         },
     ],
+    'config-group-experimental': [
+        {
+            className: 'config-field-grid-3col',
+            keys: ['sigmoid_scale', 'sigmoid_bias', 'weighting_scheme'],
+        },
+        {
+            className: 'config-field-grid-4col',
+            keys: ['min_snr_gamma', 'p2_gamma', 'p2_k', 'velocity_direction_loss_weight'],
+        },
+    ],
 };
 
 export const VARIANT_METHOD_FAMILY = {
     lora: 'lora',
     lora_longer: 'lora',
     'lora-8gb': 'lora',
+    glora: 'glora',
     loha: 'lora',
     lokr: 'lokr',
     ortholora: 'ortholora',

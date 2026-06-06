@@ -1,4 +1,4 @@
-import { queueManagerSections, queueSummaryCounts } from './state.js?v=module-bootstrap-20260604-8';
+import { queueManagerSections, queueSummaryCounts } from './state.js?v=module-bootstrap-20260604-10';
 
 export function createQueueRenderer({ state, deps, actions }) {
     function renderTrainingQueue() {
@@ -365,7 +365,13 @@ export function createQueueRenderer({ state, deps, actions }) {
         btn.type = 'button';
         btn.className = ['task-history-action', tone].filter(Boolean).join(' ');
         btn.textContent = label;
-        btn.addEventListener('click', handler);
+        btn.addEventListener('click', (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            const menu = btn.closest('.training-queue-item-more, .training-queue-more-menu');
+            if (menu instanceof HTMLDetailsElement) menu.open = false;
+            handler(event);
+        });
         return btn;
     }
 
@@ -387,6 +393,7 @@ export function createQueueRenderer({ state, deps, actions }) {
         summary.setAttribute('aria-label', '更多操作');
         const popover = document.createElement('div');
         popover.className = 'training-queue-item-more-popover';
+        popover.addEventListener('click', (event) => event.stopPropagation());
         actions.forEach((action) => popover.appendChild(action));
         menu.append(summary, popover);
         return menu;

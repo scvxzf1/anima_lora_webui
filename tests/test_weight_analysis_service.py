@@ -168,6 +168,30 @@ def test_unsupported_adapter_returns_stable_json_shape(tmp_path, monkeypatch):
     assert payload["heatmap"] == {"blocks": [], "components": [], "matrix": [], "max_value": 0.0, "cells": []}
 
 
+def test_dora_weight_analysis_is_marked_unsupported_without_base_weight(tmp_path, monkeypatch):
+    root = _patch_weight_analysis_root(tmp_path, monkeypatch)
+    out = _training_output(root)
+    path = out / "dora.safetensors"
+    prefix = "lora_unet_blocks_0_self_attn_q_proj"
+    save_file(
+        {
+            f"{prefix}.lora_down.weight": torch.ones(1, 2),
+            f"{prefix}.lora_up.weight": torch.ones(3, 1),
+            f"{prefix}.alpha": torch.tensor(1.0),
+            f"{prefix}.dora_scale": torch.ones(3),
+        },
+        str(path),
+        metadata={"ss_network_spec": "dora", "ss_adapter_variant": "dora"},
+    )
+
+    payload = weight_analysis_service.inspect_weight(str(path))
+
+    assert payload["adapter_type"] == "DoRA"
+    assert payload["unsupported"]["unsupported"] is True
+    assert "底模权重" in payload["unsupported"]["reason"]
+    assert payload["layers"] == []
+
+
 def test_uploaded_safetensors_bytes_are_inspected_without_path_boundary(tmp_path, monkeypatch):
     _patch_weight_analysis_root(tmp_path, monkeypatch)
     prefix = "lora_unet_blocks_18_cross_attn_v_proj"

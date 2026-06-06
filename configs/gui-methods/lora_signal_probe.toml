@@ -1,0 +1,38 @@
+# Quick LoRA signal probe — fast A/B runs for FasterDiT-style convergence ideas.
+# Keep this config deliberately small and step-driven: pass --max_train_steps from
+# the runner, do not use max_train_epochs here.
+
+pretrained_model_name_or_path = "models/diffusion_models/anima-preview3-base.safetensors"
+
+network_dim = 16
+network_alpha = 16
+learning_rate = 2e-5
+
+# Fast repeated validation: avoid compile warmup and expensive CMMD sampling.
+# Memory-safe default for the local 16GB 3080Ti, especially when desktop apps occupy VRAM.
+blocks_to_swap = 12
+gradient_checkpointing = true
+unsloth_offload_checkpointing = false
+block_swap_profile_jsonl = "off"
+torch_compile = false
+use_cmmd = false
+log_every_n_steps = 1
+
+# Plain LoRA baseline; no Hydra/T-LoRA/Ortho confounders in the first sweep.
+use_shuffled_caption_variants = true
+cache_llm_adapter_outputs = true
+caption_dropout_rate = 0.1
+
+# Keep resumable checkpoints disabled; final checkpoint is still saved by train.py.
+checkpointing_epochs = 0
+
+# Bench output path is normally overridden by bench/signal_probe/run_training.py.
+output_dir = "output/bench/fasterdit_signal/manual"
+output_name = "signal_probe"
+
+[variant]
+family = "lora"
+label = "LoRA signal probe"
+description = "Fast plain-LoRA probe config for timestep/loss convergence experiments."
+order = 95
+experimental = true

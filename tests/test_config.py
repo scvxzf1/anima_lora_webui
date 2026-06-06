@@ -59,6 +59,7 @@ def test_schema_has_known_keys(populated_parser):
         "peak_probe_level",
         "base_config",  # manual extra
         "use_moe_style",  # network-module allowlist (three-axis routing)
+        "use_glora",  # GLoRA plugin selector
         "lokr_factor_group_size",  # LoKr grouped projection tuning
         "lokr_project_chunk_bytes",  # LoKr projection row-chunk threshold
     ):

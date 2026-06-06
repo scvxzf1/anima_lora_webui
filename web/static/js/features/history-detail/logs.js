@@ -1,4 +1,4 @@
-import { historyDetailLimitNotice } from './system.js?v=module-bootstrap-20260604-8';
+import { historyDetailLimitNotice } from './system.js?v=module-bootstrap-20260604-10';
 
 export function createHistoryLogsRenderer({ state, deps }) {
 
