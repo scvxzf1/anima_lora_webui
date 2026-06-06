@@ -37,6 +37,45 @@ def _random_ref_image(directory: Path) -> str | None:
     return str(pick)
 
 
+def _resolve_ref_image(
+    extra,
+    fallback_dir: Path,
+    *,
+    usage: str,
+) -> tuple[str, list[str]]:
+    ref_image = os.environ.get("REF_IMAGE", "").strip()
+    remaining_extra = list(extra)
+    if not ref_image and remaining_extra and not remaining_extra[0].startswith("-"):
+        ref_image = remaining_extra[0]
+        remaining_extra = remaining_extra[1:]
+    if not ref_image:
+        ref_image = _random_ref_image(fallback_dir) or ""
+    if not ref_image:
+        print(usage, file=sys.stderr)
+        sys.exit(1)
+    return ref_image, remaining_extra
+
+
+def _copy_latest_png_sidecar(
+    save_dir: Path,
+    source_image: str,
+    *,
+    suffix: str,
+    message: str,
+) -> Path | None:
+    pngs = sorted(
+        (p for p in save_dir.glob("*.png") if not p.name.endswith(suffix)),
+        key=lambda p: p.stat().st_mtime,
+        reverse=True,
+    )
+    if not pngs:
+        return None
+    sidecar_path = pngs[0].with_name(pngs[0].stem + suffix)
+    shutil.copy(source_image, sidecar_path)
+    print(f"  > {message}: {sidecar_path}")
+    return sidecar_path
+
+
 def cmd_test_soft(extra):
     """Inference with latest soft_tokens weight (SoftREPA-style per-layer × per-t bank).
 
@@ -170,20 +209,15 @@ def cmd_test_ip(extra):
       REF_IMAGE=ref.png IP_SCALE=0.8 python tasks.py exp-test-ip
       python tasks.py exp-test-ip                 # random ref from post_image_dataset/resized/
     """
-    ref_image = os.environ.get("REF_IMAGE", "").strip()
-    if not ref_image and extra and not extra[0].startswith("-"):
-        ref_image = extra[0]
-        extra = extra[1:]
-    if not ref_image:
-        ref_image = _random_ref_image(ROOT / "post_image_dataset" / "resized") or ""
-    if not ref_image:
-        print(
+    ref_image, extra = _resolve_ref_image(
+        extra,
+        ROOT / "post_image_dataset" / "resized",
+        usage=(
             "Usage: python tasks.py exp-test-ip <ref_image> [extra...]\n"
             "   or: REF_IMAGE=path/to/ref.png python tasks.py exp-test-ip [extra...]\n"
-            "   (no ref given and post_image_dataset/resized/ is empty)",
-            file=sys.stderr,
-        )
-        sys.exit(1)
+            "   (no ref given and post_image_dataset/resized/ is empty)"
+        ),
+    )
 
     save_dir = ROOT / "output" / "tests" / "ip"
     save_dir.mkdir(parents=True, exist_ok=True)
@@ -215,15 +249,12 @@ def cmd_test_ip(extra):
     args += list(extra)
     run(args)
 
-    pngs = sorted(
-        (p for p in save_dir.glob("*.png") if not p.name.endswith("_ref.png")),
-        key=lambda p: p.stat().st_mtime,
-        reverse=True,
+    _copy_latest_png_sidecar(
+        save_dir,
+        ref_image,
+        suffix="_ref.png",
+        message="Ref pasted",
     )
-    if pngs:
-        ref_dst = pngs[0].with_name(pngs[0].stem + "_ref.png")
-        shutil.copy(ref_image, ref_dst)
-        print(f"  > Ref pasted: {ref_dst}")
 
 
 def cmd_test_directedit(extra):
@@ -250,20 +281,15 @@ def cmd_test_directedit(extra):
       python tasks.py exp-test-directedit foo.png --prompt 'smile'
     """
     # 1. Resolve source image — same logic as cmd_test_ip / cmd_test_easycontrol.
-    ref_image = os.environ.get("REF_IMAGE", "").strip()
-    if not ref_image and extra and not extra[0].startswith("-"):
-        ref_image = extra[0]
-        extra = extra[1:]
-    if not ref_image:
-        ref_image = _random_ref_image(ROOT / "post_image_dataset" / "resized") or ""
-    if not ref_image:
-        print(
+    ref_image, extra = _resolve_ref_image(
+        extra,
+        ROOT / "post_image_dataset" / "resized",
+        usage=(
             "Usage: python tasks.py exp-test-directedit [<ref_image>] [extra...]\n"
             "   or: REF_IMAGE=path/to/ref.png python tasks.py exp-test-directedit\n"
-            "   (no ref given and post_image_dataset/resized/ is empty)",
-            file=sys.stderr,
-        )
-        sys.exit(1)
+            "   (no ref given and post_image_dataset/resized/ is empty)"
+        ),
+    )
 
     # 2. Pull the user-supplied edit instruction. PROMPT env wins; fall back
     #    to a ``--prompt`` flag in extra; final default = "double peace".
@@ -344,15 +370,12 @@ def cmd_test_directedit(extra):
     run(args)
 
     # 5. Copy the source alongside the edited output for side-by-side review.
-    pngs = sorted(
-        (p for p in save_dir.glob("*.png") if not p.name.endswith("_src.png")),
-        key=lambda p: p.stat().st_mtime,
-        reverse=True,
+    _copy_latest_png_sidecar(
+        save_dir,
+        ref_image,
+        suffix="_src.png",
+        message="Source pasted",
     )
-    if pngs:
-        src_dst = pngs[0].with_name(pngs[0].stem + "_src.png")
-        shutil.copy(ref_image, src_dst)
-        print(f"  > Source pasted: {src_dst}")
 
 
 def cmd_test_directedit_dry(extra):
@@ -371,20 +394,15 @@ def cmd_test_directedit_dry(extra):
       REF_IMAGE=foo.png make exp-test-directedit-dry
       python tasks.py exp-test-directedit-dry foo.png --seed 7
     """
-    ref_image = os.environ.get("REF_IMAGE", "").strip()
-    if not ref_image and extra and not extra[0].startswith("-"):
-        ref_image = extra[0]
-        extra = extra[1:]
-    if not ref_image:
-        ref_image = _random_ref_image(ROOT / "post_image_dataset" / "resized") or ""
-    if not ref_image:
-        print(
+    ref_image, extra = _resolve_ref_image(
+        extra,
+        ROOT / "post_image_dataset" / "resized",
+        usage=(
             "Usage: python tasks.py exp-test-directedit-dry [<ref_image>] [extra...]\n"
             "   or: REF_IMAGE=path/to/ref.png python tasks.py exp-test-directedit-dry\n"
-            "   (no ref given and post_image_dataset/resized/ is empty)",
-            file=sys.stderr,
-        )
-        sys.exit(1)
+            "   (no ref given and post_image_dataset/resized/ is empty)"
+        ),
+    )
 
     # Auto-resolve the matching TE cache file. Try the standard cache_dir
     # location first (post_image_dataset/lora/ — what configs/base.toml's
@@ -429,15 +447,12 @@ def cmd_test_directedit_dry(extra):
     run(args)
 
     # Copy the source alongside the reconstruction for side-by-side review.
-    pngs = sorted(
-        (p for p in save_dir.glob("*.png") if not p.name.endswith("_src.png")),
-        key=lambda p: p.stat().st_mtime,
-        reverse=True,
+    _copy_latest_png_sidecar(
+        save_dir,
+        ref_image,
+        suffix="_src.png",
+        message="Source pasted",
     )
-    if pngs:
-        src_dst = pngs[0].with_name(pngs[0].stem + "_src.png")
-        shutil.copy(ref_image, src_dst)
-        print(f"  > Source pasted: {src_dst}")
 
 
 def _resolve_inference_base_flag(name: str) -> str | None:
@@ -699,15 +714,12 @@ def cmd_invert_directedit(extra):
             run(edit_cmd)
 
             # Paste the source for side-by-side eyeballing.
-            pngs = sorted(
-                (p for p in save_dir.glob("*.png") if not p.name.endswith("_src.png")),
-                key=lambda p: p.stat().st_mtime,
-                reverse=True,
+            _copy_latest_png_sidecar(
+                save_dir,
+                ref_image,
+                suffix="_src.png",
+                message=f"[{label}] source pasted",
             )
-            if pngs:
-                src_dst = pngs[0].with_name(pngs[0].stem + "_src.png")
-                shutil.copy(ref_image, src_dst)
-                print(f"  > [{label}] source pasted: {src_dst}")
 
 
 def _filter_inference_base_for_edit(args: list[str]) -> list[str]:
@@ -776,20 +788,15 @@ def cmd_test_easycontrol(extra):
         else ROOT / "easycontrol-dataset"
     )
 
-    ref_image = os.environ.get("REF_IMAGE", "").strip()
-    if not ref_image and extra and not extra[0].startswith("-"):
-        ref_image = extra[0]
-        extra = extra[1:]
-    if not ref_image:
-        ref_image = _random_ref_image(ref_fallback_dir) or ""
-    if not ref_image:
-        print(
+    ref_image, extra = _resolve_ref_image(
+        extra,
+        ref_fallback_dir,
+        usage=(
             "Usage: python tasks.py exp-test-easycontrol <ref_image> [extra...]\n"
             "   or: REF_IMAGE=path/to/ref.png python tasks.py exp-test-easycontrol [extra...]\n"
-            f"   (no ref given and {ref_fallback_dir}/ is empty)",
-            file=sys.stderr,
-        )
-        sys.exit(1)
+            f"   (no ref given and {ref_fallback_dir}/ is empty)"
+        ),
+    )
 
     save_dir = ROOT / "output" / "tests" / out_sub
     save_dir.mkdir(parents=True, exist_ok=True)
@@ -815,12 +822,9 @@ def cmd_test_easycontrol(extra):
     args += list(extra)
     run(args)
 
-    pngs = sorted(
-        (p for p in save_dir.glob("*.png") if not p.name.endswith("_ref.png")),
-        key=lambda p: p.stat().st_mtime,
-        reverse=True,
+    _copy_latest_png_sidecar(
+        save_dir,
+        ref_image,
+        suffix="_ref.png",
+        message="Ref pasted",
     )
-    if pngs:
-        ref_dst = pngs[0].with_name(pngs[0].stem + "_ref.png")
-        shutil.copy(ref_image, ref_dst)
-        print(f"  > Ref pasted: {ref_dst}")
