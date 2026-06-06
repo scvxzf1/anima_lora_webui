@@ -9,8 +9,21 @@ vars + extra argv into the right ``train.py`` (via ``accelerate launch``) or
 
 from __future__ import annotations
 
+import os
+
 from scripts.tasks import preprocess as _preprocess
 from scripts.tasks._common import PY, _path, _preset, bespoke_preset_flags, run, train
+
+_EASYADAPTERS = {"colorize"}
+
+
+def _easyadapter() -> str:
+    adapter = (os.environ.get("EASYADAPTER") or "").strip()
+    if adapter and adapter not in _EASYADAPTERS:
+        raise SystemExit(
+            f"Unknown EASYADAPTER={adapter!r}. Known: {sorted(_EASYADAPTERS)}."
+        )
+    return adapter
 
 
 def cmd_turbo(extra):
@@ -98,7 +111,20 @@ def cmd_ip_adapter_preprocess(extra):
 
 
 def cmd_easycontrol(extra):
-    train("easycontrol", extra)
+    train(_easyadapter() or "easycontrol", extra)
+
+
+def cmd_easycontrol_download(extra):
+    from scripts.tasks import downloads as _downloads
+
+    adapter = _easyadapter()
+    if adapter == "colorize":
+        _downloads.cmd_download_sketch2manga(extra)
+        return
+    print(
+        "Default EasyControl needs no extra weights. Set EASYADAPTER=colorize "
+        "to download Sketch2Manga screening weights."
+    )
 
 
 def cmd_easycontrol_preprocess(extra):
@@ -106,6 +132,11 @@ def cmd_easycontrol_preprocess(extra):
 
     Source: ``easycontrol-dataset/``  Caches: ``post_image_dataset/easycontrol/``.
     """
+    adapter = _easyadapter()
+    if adapter == "colorize":
+        run([PY, "easycontrol_adapters/colorization/prep.py", *extra])
+        return
+
     src = "easycontrol-dataset"
     dst = "post_image_dataset/easycontrol"
     run(
@@ -143,5 +174,30 @@ def cmd_easycontrol_preprocess(extra):
             "4",
             "--caption_tag_dropout_rate",
             "0.1",
+        ]
+    )
+
+
+def cmd_byg(extra):
+    train("byg", extra)
+
+
+def cmd_byg_data(extra):
+    run(
+        [
+            PY,
+            "scripts/byg/build_edit_tuples.py",
+            "--dir",
+            "image_dataset",
+            "--cache_dir",
+            "post_image_dataset/byg",
+            "--qwen3",
+            _path("qwen3", "models/text_encoders/qwen_3_06b_base.safetensors"),
+            "--dit",
+            _path(
+                "pretrained_model_name_or_path",
+                "models/diffusion_models/anima-base-v1.0.safetensors",
+            ),
+            *extra,
         ]
     )

@@ -71,6 +71,8 @@ Per training step:
         target   = ε_fake - x_θ.detach()                    # flow-matching target
         fake_loss = MSE(v_fake, target)  → fake.step()
 
-Output: ``output/ckpt/anima_turbo.safetensors`` — a normal plain-LoRA file
-loadable by the standard inference path at ``--infer_steps 2 --cfg 1.0``.
+Output: ``output/ckpt/anima_turbo.safetensors``. With ``per_step_expert=false``
+this is a normal plain-LoRA file. With ``per_step_expert=true`` (current
+default) it is a kept-live multi-head adapter, so inference must select the
+active head per denoise step and static merge is refused.
 """

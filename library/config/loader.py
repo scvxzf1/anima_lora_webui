@@ -95,6 +95,8 @@ class DreamBoothSubsetParams(BaseSubsetParams):
     alpha_mask: bool = False
     mask_dir: Optional[str] = None
     cache_dir: Optional[str] = None
+    cond_cache_dir: Optional[str] = None
+    text_cache_dir: Optional[str] = None
 
 
 @dataclass
@@ -193,6 +195,8 @@ class ConfigSanitizer:
         "is_reg": bool,
         "alpha_mask": bool,
         "cache_dir": str,
+        "cond_cache_dir": str,
+        "text_cache_dir": str,
         "mask_dir": str,
         "recursive": bool,
     }

@@ -6,10 +6,10 @@
 # Diversity-Preserved DMD (Wu et al., arXiv:2602.03139) on a frozen Anima DiT:
 # an N-step rollout student whose first step is supervised toward a teacher
 # K-step CFG anchor (diversity) then detached, with DMD refining x_θ over steps
-# 2..N (quality) against a co-trained fake/critic LoRA. Output
-# `output/ckpt/anima_turbo.safetensors` is a normal LoRA — load it through the
-# standard inference path with --infer_steps 2 --cfg 1.0 (CFG is baked into the
-# student during distillation).
+# 2..N (quality) against a co-trained fake/critic LoRA. With per_step_expert on,
+# `output/ckpt/anima_turbo.safetensors` is a kept-live multi-head adapter rather
+# than a mergeable plain LoRA; load it through the standard inference path with
+# --infer_steps matching student_steps and --cfg 1.0 (CFG is baked in).
 
 output_name = "anima_turbo"
 dit_path = "models/diffusion_models/anima-base-v1.0.safetensors"
@@ -37,6 +37,10 @@ student_alpha = 64
 fake_rank = 64
 fake_alpha = 64
 attn_mode = "flash"
+# Split the student into K = student_steps up-heads off a shared down-proj.
+# Head k serves denoise step k. This avoids diversity/quality gradients fighting
+# over one up-projection, but the output cannot be merged into a static DiT.
+per_step_expert = true
 
 # DMD schedule.
 [dmd]

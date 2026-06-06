@@ -12,6 +12,7 @@ GLoRA is bakeable because the merge path has access to the base Linear weight.)
 Not supported (refuse by default; --allow-partial to drop and proceed):
   - ReFT              (block-level hook, not a Linear weight delta)
   - HydraLoRA moe     (layer-local router can't be baked under static weights)
+  - step-expert turbo (per-step heads can't be baked into one DiT weight)
   - postfix / prefix  (cross-attn KV splice, not a weight delta)
 
 Same merge path as train.py:1499's --base_weights warm-start.
@@ -39,7 +40,7 @@ logger = logging.getLogger(__name__)
 _NON_BAKEABLE_MARKERS: dict[str, str] = {
     "reft_": "ReFT (block-level hook)",
     ".lora_up_weight": "HydraLoRA stacked (per-layer router)",
-    ".lora_ups.": "HydraLoRA split (per-layer router)",
+    ".lora_ups.": "HydraLoRA split (per-layer router) / step-expert turbo (per-step heads)",
     "postfix_": "postfix (cross-attn KV splice)",
     "prefix_": "prefix (cross-attn KV splice)",
 }

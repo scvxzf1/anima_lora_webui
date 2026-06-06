@@ -11,7 +11,11 @@ The two pools' outputs are **added**. No multiplicative gate, no σ-band overlap
 
 Recap from `hydralora.md`: a HydraLoRA module replaces a single $B$ with $E$ stacked heads + a layer-local router that emits a per-sample softmax over them. ChimeraHydra keeps the exact same einsum kernel but constructs the gate from **two disjoint sources** stitched together: `gate = cat([π_c, π_f], dim=-1)`. The forward pass is mathematically identical to single-pool routing with a partitioned $E = K_c + K_f$ gate vector.
 
-> Currently experimental — see `docs/proposal/chimera_hydra.md` for the bench plan and `docs/experimental/chimera-hydra.md` for the user-facing entry points (`make exp-chimera`, `make lora-gui GUI_PRESETS=chimera_hydra`).
+> Currently experimental — see `docs/experimental/chimera-hydra.md` for the
+> user-facing entry points (`make exp-chimera`,
+> `make lora-gui GUI_PRESETS=chimera_hydra`). The earlier proposal trail is
+> archived or missing; this structural walkthrough is the current technical
+> reference.
 
 ---
 

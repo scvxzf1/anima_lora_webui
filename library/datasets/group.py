@@ -26,6 +26,17 @@ class DatasetGroup(torch.utils.data.ConcatDataset):
             self.num_train_images += dataset.num_train_images
             self.num_reg_images += dataset.num_reg_images
 
+    def refresh_concat_state(self):
+        """Recompute ConcatDataset state after member dataset lengths change."""
+        self.cumulative_sizes = self.cumsum(self.datasets)
+        self.image_data = {}
+        self.num_train_images = 0
+        self.num_reg_images = 0
+        for dataset in self.datasets:
+            self.image_data.update(dataset.image_data)
+            self.num_train_images += dataset.num_train_images
+            self.num_reg_images += dataset.num_reg_images
+
     def verify_bucket_reso_steps(self, divisible: int) -> None:
         """Ensure every active bucket resolution fits the model patch grid."""
         try:

@@ -1,9 +1,9 @@
 # DirectEdit (v3) — flow-inversion image editing on Anima
 
-Successor to [`docs/proposal/directedit_editing_v2.md`](../proposal/directedit_editing_v2.md).
-v2 was the proposal; this doc covers what's actually wired and runnable
-in the tree. The Anima Tagger arm of v2 ("phase v3.0") is documented
-separately in [`anima_tagger.md`](./anima_tagger.md).
+The v2 proposal is historical; its content trail is archived or missing in
+the current tree. This doc covers what's actually wired and runnable.
+The Anima Tagger arm ("phase v3.0") is documented separately in
+[`anima_tagger.md`](./anima_tagger.md).
 
 ## Status
 
@@ -280,12 +280,12 @@ Move-out-of-archive needed; otherwise no new code.
 
 ### v2.2 — img2emb
 
-Defers per the v2 plan to "only if the tagger arm + v2.1 don't cover the
-use cases." Has its own design doc in
-[`docs/proposal/img2emb_plan.md`](../proposal/img2emb_plan.md). The
-tagger arm shipped first to avoid the failure mode the archived img2emb
-hit — solving the cheap problem (Anima-distribution vocabulary) before
-attempting the hard one (manifold-correct continuous embeddings).
+Deferred per the v2 plan to "only if the tagger arm + v2.1 don't cover the
+use cases." The related img2emb design doc is archived or missing in the
+current tree. The tagger arm shipped first to avoid the failure mode the
+archived img2emb hit — solving the cheap problem (Anima-distribution
+vocabulary) before attempting the hard one (manifold-correct continuous
+embeddings).
 
 ### Mask blending (paper Eq. 12)
 
@@ -335,4 +335,4 @@ result is on the editor, not the encoder.
   reference; source for the inversion / edit-forward step rules and the
   V-injection scheme.
 * **Tagger arm.** [`anima_tagger.md`](./anima_tagger.md).
-* **v2 design doc.** [`docs/proposal/directedit_editing_v2.md`](../proposal/directedit_editing_v2.md).
+* **v2 design doc.** Historical reference only; archived or missing in the current tree.

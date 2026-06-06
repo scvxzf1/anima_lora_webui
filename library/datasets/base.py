@@ -118,6 +118,16 @@ class BaseDataset(torch.utils.data.Dataset):
         self.inversion_dir: Optional[str] = None
         self.inversion_num_runs: int = 3
 
+        # BYG unpaired-editing per-image text conditionings. Set via
+        # `dataset.byg_text_dir = ...` after construction; None disables.
+        self.byg_text_dir: Optional[str] = None
+        self._byg_roles = (
+            "src_caption",
+            "tgt_caption",
+            "instruction",
+            "reverse_instruction",
+        )
+
         # IP-Adapter cached PE/vision features (sibling sidecars). Set via
         # `dataset.ip_features_cache_to_disk = True; dataset.ip_features_encoder = "pe"`
         # after construction. When enabled, __getitem__ loads
@@ -638,7 +648,10 @@ class BaseDataset(torch.utils.data.Dataset):
             subset = self.image_to_subset.get(info.image_key)
             npz_path = caching_strategy.get_outputs_npz_path(
                 info.absolute_path,
-                cache_dir=getattr(subset, "cache_dir", None),
+                cache_dir=(
+                    getattr(subset, "text_cache_dir", None)
+                    or getattr(subset, "cache_dir", None)
+                ),
                 image_dir=getattr(subset, "image_dir", None),
             )
             if not caching_strategy.is_disk_cached_outputs_expected(npz_path):
@@ -892,7 +905,10 @@ class BaseDataset(torch.utils.data.Dataset):
             if caching_strategy.cache_to_disk:
                 te_out_npz = caching_strategy.get_outputs_npz_path(
                     info.absolute_path,
-                    cache_dir=getattr(subset, "cache_dir", None),
+                    cache_dir=(
+                        getattr(subset, "text_cache_dir", None)
+                        or getattr(subset, "cache_dir", None)
+                    ),
                     image_dir=getattr(subset, "image_dir", None),
                 )
                 info.text_encoder_outputs_npz = te_out_npz
@@ -1363,6 +1379,81 @@ class BaseDataset(torch.utils.data.Dataset):
             runs.append(t.float())
         return torch.stack(runs, dim=0)  # [N_runs, S, D]
 
+    def _load_cond_latent(
+        self, subset, image_info, flipped: bool
+    ) -> Optional[torch.Tensor]:
+        """Load a stem-matched condition latent for cond!=target tasks."""
+        cond_dir = getattr(subset, "cond_cache_dir", None)
+        if not cond_dir:
+            return None
+        npz_path = self.latents_caching_strategy.get_latents_npz_path(
+            image_info.absolute_path,
+            image_info.bucket_reso,
+            cache_dir=str(cond_dir),
+            image_dir=subset.image_dir,
+        )
+        if not os.path.exists(npz_path):
+            raise FileNotFoundError(
+                f"Condition latent cache missing for {image_info.absolute_path!r}: "
+                f"{npz_path}. Run the condition prep step first."
+            )
+        cond, _, _, cond_flipped, _ = self.latents_caching_strategy.load_latents_from_disk(
+            npz_path, image_info.bucket_reso
+        )
+        if flipped:
+            if cond_flipped is None:
+                raise ValueError(
+                    f"flip_aug is on but condition cache {npz_path} has no "
+                    "flipped latent. Set flip_aug=false or regenerate the cache."
+                )
+            cond = cond_flipped
+        return torch.FloatTensor(cond)
+
+    def restrict_to_byg_tuples(self) -> tuple[int, int]:
+        """Drop images without a BYG edit-tuple sidecar and rebuild buckets."""
+        if not self.byg_text_dir:
+            return (0, 0)
+        kept: Dict[str, ImageInfo] = {}
+        dropped = 0
+        for key, info in self.image_data.items():
+            stem = os.path.splitext(os.path.basename(info.absolute_path))[0]
+            path = os.path.join(self.byg_text_dir, f"{stem}_byg.safetensors")
+            if os.path.exists(path):
+                kept[key] = info
+            else:
+                dropped += 1
+        if dropped == 0:
+            return (len(kept), 0)
+        self.image_data = kept
+        self.num_train_images = sum(info.num_repeats for info in kept.values())
+        self.bucket_manager = None
+        self.make_buckets(
+            constant_token_buckets=getattr(self, "_constant_token_buckets", True)
+        )
+        return (len(kept), dropped)
+
+    def _try_load_byg_tuple(self, image_abs_path: str) -> Optional[dict]:
+        """Load <stem>_byg.safetensors from ``self.byg_text_dir``."""
+        if not self.byg_text_dir:
+            return None
+        stem = os.path.splitext(os.path.basename(image_abs_path))[0]
+        path = os.path.join(self.byg_text_dir, f"{stem}_byg.safetensors")
+        if not os.path.exists(path):
+            return None
+        from safetensors.torch import load_file
+
+        sd = load_file(path)
+        out = {}
+        for role in self._byg_roles:
+            emb = sd.get(f"{role}_emb")
+            if emb is None:
+                return None
+            out[f"{role}_emb"] = emb.float()
+            mask = sd.get(f"{role}_mask")
+            if mask is not None:
+                out[f"{role}_mask"] = mask
+        return out
+
     def _load_image_at_bucket(self, subset, image_info, flipped: bool) -> torch.Tensor:
         """Reload the source image at bucket resolution for IP-Adapter live
         PE encoding alongside cached latents.
@@ -1404,6 +1495,7 @@ class BaseDataset(torch.utils.data.Dataset):
         captions = []
         input_ids_list = []
         latents_list = []
+        cond_latents_list: List[Optional[torch.Tensor]] = []
         alpha_mask_list = []
         images = []
         original_sizes_hw = []
@@ -1420,6 +1512,8 @@ class BaseDataset(torch.utils.data.Dataset):
         neg_crossattn_list: List[Optional[torch.Tensor]] = []
         # Per-image (k,) tag-overlap weights for jaccard mode; None otherwise.
         neg_jaccard_list: List[Optional[torch.Tensor]] = []
+        # BYG per-image edit-tuple dicts (role embeddings + masks), or None.
+        byg_tuple_list: List[Optional[dict]] = []
 
         for image_key in bucket[image_index : image_index + bucket_batch_size]:
             image_info = self.image_data[image_key]
@@ -1536,6 +1630,7 @@ class BaseDataset(torch.utils.data.Dataset):
 
             images.append(image)
             latents_list.append(latents)
+            cond_latents_list.append(self._load_cond_latent(subset, image_info, flipped))
             alpha_mask_list.append(alpha_mask)
 
             target_size = (
@@ -1642,6 +1737,13 @@ class BaseDataset(torch.utils.data.Dataset):
 
             input_ids_list.append(input_ids)
             captions.append(caption)
+
+            if self.byg_text_dir:
+                byg_tuple_list.append(
+                    self._try_load_byg_tuple(image_info.absolute_path)
+                )
+            else:
+                byg_tuple_list.append(None)
 
             if self.inversion_dir:
                 inversion_runs_list.append(
@@ -1810,6 +1912,16 @@ class BaseDataset(torch.utils.data.Dataset):
         example["latents"] = (
             torch.stack(latents_list) if latents_list[0] is not None else None
         )
+        if cond_latents_list and any(t is not None for t in cond_latents_list):
+            if not all(t is not None for t in cond_latents_list):
+                raise ValueError(
+                    "Mixed cond_cache_dir batch: some samples have condition "
+                    "latents and some do not. Split condition-control data into "
+                    "its own dataset."
+                )
+            example["cond_latents"] = torch.stack(cond_latents_list)
+        else:
+            example["cond_latents"] = None
         example["captions"] = captions
 
         example["original_sizes_hw"] = torch.stack(
@@ -1879,6 +1991,18 @@ class BaseDataset(torch.utils.data.Dataset):
             example["neg_jaccard"] = torch.stack(neg_jaccard_list, dim=0)
         else:
             example["neg_jaccard"] = None
+
+        # BYG edit-tuple text conditionings. All cached embeddings use padded
+        # sequence length, so per-role stacking is shape-stable.
+        if byg_tuple_list and all(t is not None for t in byg_tuple_list):
+            for role in self._byg_roles:
+                example[f"byg_{role}_emb"] = torch.stack(
+                    [t[f"{role}_emb"] for t in byg_tuple_list], dim=0
+                )
+                if all(f"{role}_mask" in t for t in byg_tuple_list):
+                    example[f"byg_{role}_mask"] = torch.stack(
+                        [t[f"{role}_mask"] for t in byg_tuple_list], dim=0
+                    )
 
         if self.debug_dataset:
             example["image_keys"] = bucket[image_index : image_index + self.batch_size]

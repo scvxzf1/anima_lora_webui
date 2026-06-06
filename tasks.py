@@ -279,6 +279,20 @@ COMMANDS = {
         "[experimental] Full EasyControl preprocess: latents + text emb. "
         "Source: easycontrol-dataset/  Cache: post_image_dataset/easycontrol/.",
     ),
+    "exp-easycontrol-download": (
+        exp_training.cmd_easycontrol_download,
+        "[experimental] Download an EasyControl adapter's extra weights. "
+        "EASYADAPTER=colorize downloads Sketch2Manga screening weights.",
+    ),
+    "exp-byg": (
+        exp_training.cmd_byg,
+        "[experimental] BYG unpaired instruction-editing training "
+        "(configs/methods/byg.toml). Run exp-byg-data first.",
+    ),
+    "exp-byg-data": (
+        exp_training.cmd_byg_data,
+        "[experimental] Build BYG edit-tuple sidecars into post_image_dataset/byg/.",
+    ),
     "exp-test-soft": (
         exp_inference.cmd_test_soft,
         "[experimental] Inference with latest soft_tokens weight "
@@ -302,6 +316,10 @@ COMMANDS = {
     "exp-test-easycontrol": (
         exp_inference.cmd_test_easycontrol,
         "[experimental] Inference with latest EasyControl weight. Usage: exp-test-easycontrol <ref_image> [--prompt ... --easycontrol_scale ...]",
+    ),
+    "exp-test-byg": (
+        exp_inference.cmd_test_byg,
+        "[experimental] BYG inference placeholder. Training is available via exp-byg.",
     ),
     "exp-test-directedit": (
         exp_inference.cmd_test_directedit,

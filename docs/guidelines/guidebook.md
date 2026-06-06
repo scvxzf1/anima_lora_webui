@@ -553,6 +553,6 @@ make update -- --dry-run # Preview which files would change
 - [`docs/methods/mod-guidance.md`](../methods/mod-guidance.md) — Modulation guidance
 - [`docs/methods/hydra-lora.md`](../methods/hydra-lora.md) — HydraLoRA multi-head routing
 - [`docs/methods/reft.md`](../methods/reft.md) — ReFT representation editing
-- [`docs/experimental/postfix.md`](../experimental/postfix.md) — Postfix (cond+ortho)
+- [`docs/guidelines/training.md#postfix`](training.md#postfix) — Postfix (experimental entry point)
 
 Questions and bug reports are welcome on GitHub Issues. Happy training!

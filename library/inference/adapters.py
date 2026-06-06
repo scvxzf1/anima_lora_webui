@@ -154,6 +154,41 @@ def set_hydra_crossattn(model: Any, crossattn_emb: torch.Tensor) -> None:
             set_crossattn(crossattn_emb)
 
 
+def iter_step_expert_networks(model: Any) -> Iterable[Any]:
+    """Yield attached per-step-expert turbo networks, deduped and compile-aware."""
+    candidates = []
+    containers = [model]
+    orig_mod = getattr(model, "_orig_mod", None)
+    if orig_mod is not None and orig_mod is not model:
+        containers.append(orig_mod)
+    for container in containers:
+        candidates.extend(
+            _as_iterable(getattr(container, "_step_expert_networks", None))
+        )
+
+    seen = set()
+    for network in candidates:
+        if network is None:
+            continue
+        ident = id(network)
+        if ident in seen:
+            continue
+        seen.add(ident)
+        yield network
+
+
+def set_step_expert_index(model: Any, step: int) -> None:
+    """Select the active step-expert up-head for the current denoise step."""
+    for network in iter_step_expert_networks(model):
+        set_idx = getattr(network, "set_step_index", None)
+        if not callable(set_idx):
+            continue
+        K = 1
+        for lora in getattr(network, "unet_loras", []):
+            K = max(K, int(getattr(lora, "K", 1)))
+        set_idx(min(step, K - 1))
+
+
 def compute_and_set_hydra_fei(model: Any, z: torch.Tensor) -> None:
     """One-shot per-step FEI compute + propagate.
 
@@ -172,5 +207,4 @@ def compute_and_set_hydra_fei(model: Any, z: torch.Tensor) -> None:
     sigma_low = fei_sigma_low(h_lat, w_lat, div)
     fei = compute_fei_2band(z, sigma_low)
     set_hydra_fei(model, fei)
-
 

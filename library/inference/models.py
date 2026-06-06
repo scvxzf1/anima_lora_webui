@@ -12,6 +12,17 @@ from library.runtime.device import clean_memory_on_device
 
 logger = logging.getLogger(__name__)
 
+_TRUE_METADATA_VALUES = {"1", "true", "True"}
+
+
+def _metadata_flag_enabled(
+    metadata: dict, key: str, *, case_insensitive_true: bool = False
+) -> bool:
+    value = str(metadata.get(key, "")).strip()
+    if case_insensitive_true:
+        return value.lower() == "true"
+    return value in _TRUE_METADATA_VALUES
+
 
 def _is_hydra_moe(path: str) -> bool:
     """Cheap check: peek at the safetensors header for a per-expert ups key.
@@ -68,7 +79,21 @@ def _is_chimera_moe(path: str) -> bool:
     try:
         with safe_open(path, framework="pt") as f:
             md = f.metadata() or {}
-            return str(md.get("ss_use_chimera_hydra", "")).strip().lower() == "true"
+            return _metadata_flag_enabled(
+                md, "ss_use_chimera_hydra", case_insensitive_true=True
+            )
+    except Exception:
+        return False
+
+
+def _is_step_expert_turbo(path: str) -> bool:
+    """Peek at safetensors metadata for per-step-expert turbo checkpoints."""
+    from safetensors import safe_open
+
+    try:
+        with safe_open(path, framework="pt") as f:
+            md = f.metadata() or {}
+            return _metadata_flag_enabled(md, "ss_turbo_per_step_expert")
     except Exception:
         return False
 
@@ -80,6 +105,7 @@ def attach_adapters(
     *,
     pgraft_mode: bool,
     hydra_mode: bool,
+    step_expert_mode: bool = False,
 ) -> None:
     """Attach LoRA-family adapters that ride as dynamic forward hooks.
 
@@ -95,7 +121,7 @@ def attach_adapters(
     caller already derives them to decide whether to skip the static merge.
     """
     # P-GRAFT: attach LoRA as dynamic hooks (can be toggled mid-denoising)
-    if pgraft_mode and not hydra_mode:
+    if pgraft_mode and not hydra_mode and not step_expert_mode:
         from networks import lora_anima
 
         logger.info("P-GRAFT: Loading LoRA as dynamic hooks (not static merge)")
@@ -200,6 +226,33 @@ def attach_adapters(
                 f"cutoff_step={getattr(args, 'lora_cutoff_step', None)})"
             )
 
+    # Per-step-expert turbo: K up-heads cannot be merged into one static DiT
+    # weight. Attach it dynamically and let generation.py select head i.
+    if step_expert_mode:
+        from safetensors import safe_open
+
+        from networks.methods.turbo_dmd import load_step_expert_student
+
+        logger.info("step-expert turbo: loading as router-free kept-live hooks")
+        for lora_weight_path in args.lora_weight:
+            with safe_open(lora_weight_path, framework="pt") as f:
+                se_metadata = dict(f.metadata() or {})
+            lora_sd = load_file(lora_weight_path)
+            lora_sd = {k: v for k, v in lora_sd.items() if k.startswith("lora_unet_")}
+            multiplier = (
+                args.lora_multiplier
+                if isinstance(args.lora_multiplier, (int, float))
+                else args.lora_multiplier[0]
+            )
+            network = load_step_expert_student(
+                model, lora_sd, se_metadata, multiplier=multiplier
+            )
+            network.to(device, dtype=torch.bfloat16)
+            network.eval().requires_grad_(False)
+            step_nets = list(getattr(model, "_step_expert_networks", []))
+            step_nets.append(network)
+            model._step_expert_networks = step_nets
+
 
 def load_dit_model(
     args: argparse.Namespace,
@@ -223,9 +276,22 @@ def load_dit_model(
     # --pgraft is set. ``_is_hydra_moe`` matches the ``lora_ups.{i}.weight``
     # key pattern shared by both shared-A Hydra and the plan2 stacked-experts
     # save format.
+    step_expert_mode = False
+    if args.lora_weight is not None and len(args.lora_weight) > 0:
+        se_flags = [_is_step_expert_turbo(p) for p in args.lora_weight]
+        if any(se_flags):
+            if not all(se_flags) or len(args.lora_weight) > 1:
+                raise ValueError(
+                    "Per-step-expert turbo must be loaded alone. Composing it "
+                    "with other LoRAs or static merge is unsupported."
+                )
+            step_expert_mode = True
+
     hydra_mode = False
     if args.lora_weight is not None and len(args.lora_weight) > 0:
-        hydra_flags = [_is_hydra_moe(p) for p in args.lora_weight]
+        hydra_flags = [
+            _is_hydra_moe(p) for p in args.lora_weight
+        ] if not step_expert_mode else []
         if any(hydra_flags):
             if not all(hydra_flags):
                 raise ValueError(
@@ -243,10 +309,12 @@ def load_dit_model(
         and len(args.lora_weight) > 0
     )
 
-    # load LoRA weights (skip static merge for P-GRAFT and HydraLoRA moe)
+    # load LoRA weights (skip static merge for P-GRAFT, HydraLoRA moe, and
+    # per-step-expert turbo)
     if (
         not pgraft_mode
         and not hydra_mode
+        and not step_expert_mode
         and args.lora_weight is not None
         and len(args.lora_weight) > 0
     ):
@@ -288,9 +356,16 @@ def load_dit_model(
 
     model.eval().requires_grad_(False)
 
-    # Dynamic-hook adapters (P-GRAFT toggle / HydraLoRA router-live) that can't
-    # ride the static merge above.
-    attach_adapters(model, args, device, pgraft_mode=pgraft_mode, hydra_mode=hydra_mode)
+    # Dynamic-hook adapters (P-GRAFT toggle / HydraLoRA router-live /
+    # step-expert turbo) that can't ride the static merge above.
+    attach_adapters(
+        model,
+        args,
+        device,
+        pgraft_mode=pgraft_mode,
+        hydra_mode=hydra_mode,
+        step_expert_mode=step_expert_mode,
+    )
 
     if getattr(args, "compile", False):
         logger.info("Compiling DiT model with torch.compile...")

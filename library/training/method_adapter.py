@@ -66,6 +66,28 @@ class ValidationBaseline:
 
 
 @dataclass(frozen=True)
+class ComputeLossCtx:
+    """Context for an adapter that owns the whole training step.
+
+    Most methods use the standard path: one DiT forward, flow-matching loss,
+    then optional auxiliary losses from ``extra_forwards``. Methods such as BYG
+    run their own multi-forward objective instead, so the trainer delegates the
+    whole scalar loss to the adapter.
+    """
+
+    args: Any
+    accelerator: Accelerator
+    network: Any
+    unet: Any
+    noise_scheduler: Any
+    weight_dtype: torch.dtype
+    batch: dict
+    latents: torch.Tensor
+    text_encoder_conds: list
+    is_train: bool
+
+
+@dataclass(frozen=True)
 class ForwardArtifacts:
     """Inputs and outputs of the primary DiT forward, handed to adapters
     that need to run additional forwards inside ``extra_forwards``.
@@ -107,6 +129,17 @@ class MethodAdapter:
     def on_network_built(self, ctx: SetupCtx) -> None:
         """Called once after ``network.apply_to``. Validate runtime contract,
         load auxiliary encoders, install forward hooks, assert preconditions."""
+
+    def owns_training_step(self, args) -> bool:
+        """Return True when this adapter computes the entire step loss itself."""
+        return False
+
+    def compute_loss(self, ctx: ComputeLossCtx) -> torch.Tensor:
+        """Compute the full step loss for owning adapters."""
+        raise NotImplementedError(
+            f"{type(self).__name__}.owns_training_step is True but "
+            "compute_loss is not implemented"
+        )
 
     def on_step_start(self, ctx: StepCtx, batch, *, is_train: bool) -> None:
         """Called at the start of each train/val step (before forward)."""

@@ -1,4 +1,4 @@
-"""Turbo Anima — Decoupled DMD distillation harness.
+"""Turbo Anima — DP-DMD distillation harness.
 
 Owns two plain ``LoRANetwork`` instances (student + fake) on one frozen Anima
 DiT. Both call ``apply_to(unet)`` which chains them onto every targeted
@@ -11,13 +11,16 @@ Each LoRA module short-circuits at ``not self.enabled`` (see
 ``set_enabled(bool)`` on each network — O(num_modules) Python loop, negligible
 vs a DiT forward.
 
-Used by ``scripts/distill_turbo.py``. Inference loads the saved
-``anima_turbo.safetensors`` through the standard LoRA path (no inference-side
-turbo code) — the student LoRA is just a normal LoRA with CFG=4 baked in.
+Used by ``scripts/distill_turbo/distill.py``. Plain turbo students load through
+the normal LoRA path; per-step-expert students are kept live so inference can
+select the active up-head by denoise step. CFG is baked in during distillation.
 
-Proposal: ``docs/proposal/turbo_anima_dmd_lora.md``.
-Paper: Liu et al., "CFG Augmentation as the Spear, Distribution Matching as
-the Shield" (arXiv:2511.22677).
+This harness is method-agnostic (two view-toggled LoRA stacks); the shipped
+objective driving it is DP-DMD.
+
+Docs: ``docs/structure/dpdmd.md`` (structure), ``docs/experimental/dpdmd.md`` (ops).
+Paper: Wu, Li, Zhang, Ma, "Diversity-Preserved Distribution Matching
+Distillation" (arXiv:2602.03139).
 """
 
 from __future__ import annotations
@@ -33,6 +36,62 @@ from networks.lora_anima.network import LoRANetwork
 logger = logging.getLogger(__name__)
 
 View = Literal["teacher", "student", "fake"]
+
+
+def load_step_expert_student(
+    unet,
+    weights_sd: dict[str, torch.Tensor],
+    metadata: dict[str, str],
+    *,
+    multiplier: float = 1.0,
+) -> LoRANetwork:
+    """Rebuild a per-step-expert turbo student as a router-free kept-live net.
+
+    Per-step-expert checkpoints cannot be merged into one static DiT weight.
+    They keep K up-heads per adapted Linear and select the active head by the
+    denoise step counter, so inference must attach the network dynamically.
+    """
+    K = int(metadata.get("ss_turbo_step_expert_K", "0") or "0")
+    if K <= 1:
+        raise RuntimeError(
+            "load_step_expert_student called on a checkpoint without "
+            "ss_turbo_step_expert_K > 1."
+        )
+    rank = int(metadata.get("ss_turbo_student_rank", "0") or "0")
+    if rank <= 0:
+        raise RuntimeError(
+            "per-step-expert turbo checkpoint missing ss_turbo_student_rank "
+            "metadata."
+        )
+    alpha = float(metadata.get("ss_turbo_student_alpha", str(rank)) or rank)
+
+    network = create_network(
+        multiplier=multiplier,
+        network_dim=rank,
+        network_alpha=alpha,
+        vae=None,
+        text_encoders=[],
+        unet=unet,
+        step_expert_K=K,
+    )
+    network.apply_to([], unet, apply_text_encoder=False, apply_unet=True)
+    info = network.load_state_dict(weights_sd, strict=False)
+    if info.unexpected_keys:
+        logger.warning(
+            f"step-expert turbo: unexpected keys in state dict: "
+            f"{info.unexpected_keys[:5]}..."
+        )
+    if info.missing_keys:
+        logger.warning(
+            f"step-expert turbo: {len(info.missing_keys)} missing keys "
+            f"(first: {info.missing_keys[:5]})"
+        )
+    network.set_step_index(0)
+    logger.info(
+        f"step-expert turbo: router-free kept-live attached "
+        f"({len(network.unet_loras)} modules, K={K} heads, rank={rank})"
+    )
+    return network
 
 
 class TurboDMDNetwork:
@@ -52,10 +111,12 @@ class TurboDMDNetwork:
         student_alpha: float | None = None,
         fake_alpha: float | None = None,
         use_custom_down_autograd: bool = False,
+        student_step_expert_K: int = 0,
     ) -> None:
         self.unet = unet
         self.student_rank = int(student_rank)
         self.fake_rank = int(fake_rank)
+        self.student_step_expert_K = int(student_step_expert_K)
 
         # Plain LoRA on both — defaults from LoRANetworkCfg give us
         # use_moe_style=False / route_per_layer=False / router_source="none" /
@@ -69,6 +130,9 @@ class TurboDMDNetwork:
         # ``use_custom_down_autograd`` is forwarded as a ``**kwargs`` key because
         # ``create_network``'s positional surface doesn't include it — the factory
         # reads it out of ``kwargs`` and flips each module's flag post-construction.
+        _student_kwargs: dict = {}
+        if self.student_step_expert_K > 1:
+            _student_kwargs["step_expert_K"] = self.student_step_expert_K
         self.student: LoRANetwork = create_network(
             multiplier=1.0,
             network_dim=self.student_rank,
@@ -77,6 +141,7 @@ class TurboDMDNetwork:
             text_encoders=[],
             unet=unet,
             use_custom_down_autograd=use_custom_down_autograd,
+            **_student_kwargs,
         )
         self.fake: LoRANetwork = create_network(
             multiplier=1.0,
@@ -113,8 +178,11 @@ class TurboDMDNetwork:
         )
 
         # Start in teacher view — both off, base DiT is exactly itself.
+        # LoRA modules default enabled=True, so disable explicitly before
+        # recording the current view.
+        self.student.set_enabled(False)
+        self.fake.set_enabled(False)
         self._view: View = "teacher"
-        self.set_view("teacher")
 
     # ----------------- view toggle -----------------
 
@@ -157,6 +225,13 @@ class TurboDMDNetwork:
     @property
     def view(self) -> View:
         return self._view
+
+    # ----------------- per-step expert head selection -----------------
+
+    def set_student_step(self, i: int) -> None:
+        """Select the student's step-``i`` up-head when per-step expert is on."""
+        if self.student_step_expert_K > 1:
+            self.student.set_step_index(i)
 
     # ----------------- param accessors -----------------
 
@@ -204,8 +279,6 @@ class TurboDMDNetwork:
         Output is loadable by ``inference.py --lora_weight <file>`` — the
         fake network is training scaffolding and never shipped.
         """
-        from networks.lora_save import save_network_weights
-
         # Pull exactly the student's params, prefixed by LoRA-net key style
         # (this is what LoRANetwork.state_dict() returns — naturally so
         # because each LoRA was add_module'd onto the network).
@@ -214,6 +287,13 @@ class TurboDMDNetwork:
         # LoRA shouldn't have any, but the LoRANetwork instance itself may
         # carry buffers that aren't load-bearing for inference).
         sd = {k: v for k, v in sd.items() if ".lora_" in k or ".alpha" in k}
+
+        if self.student_step_expert_K > 1:
+            self._save_student_step_expert(sd, file, dtype, metadata)
+            return
+
+        from networks.lora_save import save_network_weights
+
         save_network_weights(
             sd,
             file=file,
@@ -222,3 +302,34 @@ class TurboDMDNetwork:
             save_variant="standard",
         )
         logger.info(f"saved student LoRA → {file}  ({len(sd)} keys)")
+
+    def _save_student_step_expert(
+        self,
+        sd: dict[str, torch.Tensor],
+        file: str,
+        dtype: torch.dtype,
+        metadata: dict[str, str] | None,
+    ) -> None:
+        """Write the per-step-expert student in its kept-live layout."""
+        from safetensors.torch import save_file
+
+        from library.training.hashing import precalculate_safetensors_hashes
+        from networks.lora_modules.lora import bake_inv_scale
+
+        # Fold any per-channel scaling into lora_down (no-op when absent) so the
+        # on-disk delta acts on raw inputs.
+        bake_inv_scale(sd)
+
+        if dtype is not None:
+            sd = {k: v.detach().clone().to("cpu").to(dtype) for k, v in sd.items()}
+
+        meta = dict(metadata or {})
+        model_hash, legacy_hash = precalculate_safetensors_hashes(sd, meta)
+        meta["sshs_model_hash"] = model_hash
+        meta["sshs_legacy_hash"] = legacy_hash
+
+        save_file(sd, file, meta)
+        logger.info(
+            f"saved step-expert student LoRA → {file}  ({len(sd)} keys, "
+            f"K={self.student_step_expert_K} up-heads/Linear; kept-live only)"
+        )

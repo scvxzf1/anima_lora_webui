@@ -1542,7 +1542,11 @@ class EasyControlMethodAdapter(MethodAdapter):
             network.set_cond(None)
             return
 
-        cond_latent = latents.to(ctx.accelerator.device, dtype=ctx.weight_dtype)
+        cond_latents = batch.get("cond_latents")
+        if cond_latents is not None:
+            cond_latent = cond_latents.to(ctx.accelerator.device, dtype=ctx.weight_dtype)
+        else:
+            cond_latent = latents.to(ctx.accelerator.device, dtype=ctx.weight_dtype)
 
         sigma_max = float(getattr(args, "easycontrol_cond_noise_max", 0.0) or 0.0)
         if is_train and sigma_max > 0.0:

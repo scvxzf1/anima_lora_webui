@@ -62,15 +62,34 @@ def cmd_test_turbo(extra):
     """Inference with the latest turbo student LoRA at 2 steps, cfg=1.0.
 
     CFG is baked into the student during distillation, so production inference
-    runs cfg=1.0 (no double-CFG). Step count defaults to 2 — the value the
-    DP-DMD student was distilled at — but extra args can override.
+    runs cfg=1.0 (no double-CFG). Step count defaults to 2, or to the trained
+    head count for per-step-expert checkpoints. Extra args still win.
     """
     weight = latest_output("anima_turbo")
     base = list(INFERENCE_BASE)
     # Replace defaults so `--infer_steps`/`--guidance_scale` reflect the turbo
     # contract (2 steps, cfg=1.0). User extra args still win since they come last.
     base = _override_arg(base, "--sampler", "euler")
-    base = _override_arg(base, "--infer_steps", "2")
+    infer_steps = "2"
+    try:
+        from safetensors import safe_open
+
+        with safe_open(str(weight), framework="pt") as f:
+            md = f.metadata() or {}
+        if str(md.get("ss_turbo_per_step_expert", "")).strip() in (
+            "1",
+            "true",
+            "True",
+        ):
+            K = int(md.get("ss_turbo_step_expert_K", "2") or "2")
+            infer_steps = str(K)
+            print(
+                f"[test-turbo] per-step-expert checkpoint: pinning "
+                f"--infer_steps {K} (= trained head count)."
+            )
+    except Exception:
+        pass
+    base = _override_arg(base, "--infer_steps", infer_steps)
     base = _override_arg(base, "--guidance_scale", "1.0")
     run(
         [
@@ -722,6 +741,15 @@ def _filter_inference_base_for_edit(args: list[str]) -> list[str]:
     return out
 
 
+def cmd_test_byg(extra):
+    """Placeholder for BYG source-concat inference wiring."""
+    raise SystemExit(
+        "exp-test-byg: BYG inference (source-concat patch install + ref encode) "
+        "is not wired yet. Training (exp-byg) is functional; the checkpoint is "
+        "a plain LoRA loadable via --lora_weight."
+    )
+
+
 def cmd_test_easycontrol(extra):
     """Inference with latest EasyControl weight.
 
@@ -736,23 +764,34 @@ def cmd_test_easycontrol(extra):
       python tasks.py exp-test-easycontrol ref.png --prompt "a girl in a coffee shop"
       REF_IMAGE=ref.png EC_SCALE=0.8 python tasks.py exp-test-easycontrol
       python tasks.py exp-test-easycontrol         # random ref from easycontrol-dataset/
+      REF_IMAGE=manga.png EASYADAPTER=colorize python tasks.py exp-test-easycontrol
     """
+    adapter = (os.environ.get("EASYADAPTER") or "").strip()
+    is_colorize = adapter == "colorize"
+    weight_name = "anima_colorize" if is_colorize else "anima_easycontrol"
+    out_sub = "colorize" if is_colorize else "easycontrol"
+    ref_fallback_dir = (
+        ROOT / "post_image_dataset" / "resized"
+        if is_colorize
+        else ROOT / "easycontrol-dataset"
+    )
+
     ref_image = os.environ.get("REF_IMAGE", "").strip()
     if not ref_image and extra and not extra[0].startswith("-"):
         ref_image = extra[0]
         extra = extra[1:]
     if not ref_image:
-        ref_image = _random_ref_image(ROOT / "easycontrol-dataset") or ""
+        ref_image = _random_ref_image(ref_fallback_dir) or ""
     if not ref_image:
         print(
             "Usage: python tasks.py exp-test-easycontrol <ref_image> [extra...]\n"
             "   or: REF_IMAGE=path/to/ref.png python tasks.py exp-test-easycontrol [extra...]\n"
-            "   (no ref given and easycontrol-dataset/ is empty)",
+            f"   (no ref given and {ref_fallback_dir}/ is empty)",
             file=sys.stderr,
         )
         sys.exit(1)
 
-    save_dir = ROOT / "output" / "tests" / "easycontrol"
+    save_dir = ROOT / "output" / "tests" / out_sub
     save_dir.mkdir(parents=True, exist_ok=True)
 
     args = [
@@ -760,7 +799,7 @@ def cmd_test_easycontrol(extra):
         "--save_path",
         str(save_dir),
         "--easycontrol_weight",
-        str(latest_output("anima_easycontrol")),
+        str(latest_output(weight_name)),
         "--easycontrol_image",
         ref_image,
         "--easycontrol_image_match_size",
@@ -769,6 +808,8 @@ def cmd_test_easycontrol(extra):
         args += ["--easycontrol_scale", scale]
     if prompt := os.environ.get("PROMPT"):
         args += ["--prompt", prompt]
+    elif is_colorize and not any(a == "--prompt" for a in extra):
+        args += ["--prompt", ""]
     if neg := os.environ.get("NEG"):
         args += ["--negative_prompt", neg]
     args += list(extra)

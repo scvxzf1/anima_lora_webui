@@ -95,7 +95,8 @@ that result.
 
 ## Prior art in tree
 
-`orthogonal_postfix.md` §5 already flags this as a small follow-up:
+The archived or missing orthogonal-postfix trail already flagged this as a
+small follow-up:
 
 > Adding an `--ortho` flag to [`invert_reference.py`] re-runs the same workload
 > with the symmetry broken. If the orthogonal version produces meaningfully
@@ -113,7 +114,7 @@ Practical consequence: the implementation is mostly a copy of
 the *actual cached T5(tags)*, not a templated `"a photo"`; (2) the K trainable
 slots become `Q @ diag(s)` instead of free `(K, D)` parameters; (3) the
 analysis runs over N images jointly, not per-image-in-isolation. Items (1)
-and (2) come directly from `orthogonal_postfix.md`'s parameterization.
+and (2) come from the archived orthogonal-postfix trail.
 
 ## Architecture (the probe instrument)
 
@@ -353,13 +354,13 @@ entirely in `scripts/` + `bench/` + `library/inference/`.
   the lane lever, FM + `L_directedit_dry` supervision) are guesses; the
   probe either supports or invalidates each one. **Run this first; do not
   build the encoder before the probe report exists.**
-- **`orthogonal_postfix.md`** §5 (line 192–201): explicitly proposes adding
+- **Archived orthogonal-postfix design**: explicitly proposes adding
   `--ortho` to `invert_reference.py` as a small follow-up if the structural
   fix passes v1. This proposal is that follow-up scoped harder — as a
   probe of the residual manifold, not as a method tweak. The Cayley-rotated
-  basis from `orthogonal_postfix.md` is what `Q` is (or simpler — diag
-  scales over the same SVD basis).
-- **`img2emb_plan.md`**: orthogonal goal (full image embedding replacing
+  basis from that design is what `Q` is (or simpler — diag scales over the
+  same SVD basis).
+- **Archived img2emb design**: orthogonal goal (full image embedding replacing
   text). Could in principle be probed the same way (invert the entire
   prefix region per image), but `archive/inversion/invert_embedding.py`
   already does that for analysis purposes; img2emb's question is

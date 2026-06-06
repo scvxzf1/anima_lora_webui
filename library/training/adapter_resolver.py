@@ -25,6 +25,10 @@ def resolve_adapters(args, network) -> list[MethodAdapter]:
         from networks.methods.easycontrol import EasyControlMethodAdapter
 
         adapters.append(EasyControlMethodAdapter())
+    if getattr(args, "use_byg", False):
+        from networks.methods.byg import BYGMethodAdapter
+
+        adapters.append(BYGMethodAdapter())
     # Soft-tokens contrastive: opt-in via a positive contrastive weight on the
     # built network (the objective leaves no learned params, so it's detected
     # off the network's target weight rather than an args flag).

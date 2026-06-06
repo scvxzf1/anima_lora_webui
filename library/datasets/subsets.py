@@ -328,6 +328,8 @@ class DreamBoothSubset(BaseSubset):
         resize_interpolation: Optional[str] = None,
         mask_dir: Optional[str] = None,
         cache_dir: Optional[str] = None,
+        cond_cache_dir: Optional[str] = None,
+        text_cache_dir: Optional[str] = None,
         recursive: bool = False,
         path_pattern: Optional[str] = None,
     ) -> None:
@@ -384,6 +386,11 @@ class DreamBoothSubset(BaseSubset):
         self.cache_dir = cache_dir
         if cache_dir:
             os.makedirs(cache_dir, exist_ok=True)
+        # Optional split caches. cond_cache_dir stores a stem-matched condition
+        # latent for cond!=target tasks such as colorize; text_cache_dir stores
+        # TE outputs without moving VAE/PE caches away from cache_dir.
+        self.cond_cache_dir = cond_cache_dir
+        self.text_cache_dir = text_cache_dir
 
     def __eq__(self, other) -> bool:
         if not isinstance(other, DreamBoothSubset):

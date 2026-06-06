@@ -33,6 +33,7 @@ from library.runtime.offloading import normalize_block_swap_transfer_dtype
 from library.runtime.peak_probe import PeakProbe
 from library.config import loader as config_util
 from library.training.method_adapter import (
+    ComputeLossCtx,
     ForwardArtifacts,
     MethodAdapter,
     SetupCtx,
@@ -536,6 +537,28 @@ class AnimaTrainer:
                 for dataset in val_dataset_group.datasets:
                     dataset.inversion_dir = inversion_dir
                     dataset.inversion_num_runs = num_runs
+
+        # BYG consumes pre-built per-image edit tuples. Filter out images with
+        # no tuple before dataloader construction so every sampled batch has a
+        # complete BYG conditioning surface.
+        if getattr(args, "use_byg", False):
+            byg_text_dir = getattr(args, "byg_text_dir", None) or os.path.join(
+                "post_image_dataset", "byg"
+            )
+            for dataset in train_dataset_group.datasets:
+                dataset.byg_text_dir = byg_text_dir
+                kept, dropped = dataset.restrict_to_byg_tuples()
+                if dropped:
+                    logger.info(
+                        f"BYG: kept {kept} images with edit-tuple sidecars, "
+                        f"dropped {dropped} without BYG tuple."
+                    )
+            train_dataset_group.refresh_concat_state()
+            if val_dataset_group is not None:
+                for dataset in val_dataset_group.datasets:
+                    dataset.byg_text_dir = byg_text_dir
+                    dataset.restrict_to_byg_tuples()
+                val_dataset_group.refresh_concat_state()
 
         # Propagate IP-Adapter feature-cache flag so datasets load
         # {stem}_anima_{encoder}.safetensors sidecars into batch["ip_features"].
@@ -1428,6 +1451,31 @@ class AnimaTrainer:
                 for i in range(len(encoded_text_encoder_conds)):
                     if encoded_text_encoder_conds[i] is not None:
                         text_encoder_conds[i] = encoded_text_encoder_conds[i]
+
+        # Some methods own the entire objective instead of producing a standard
+        # flow-matching prediction/target pair. BYG is the current user: it runs
+        # bootstrap, prior, cycle and identity forwards inside its adapter.
+        owners = [adapter for adapter in self._adapters if adapter.owns_training_step(args)]
+        if owners:
+            if len(owners) != 1:
+                raise ValueError(
+                    "at most one adapter may own the training step; got "
+                    f"{[adapter.name for adapter in owners]}"
+                )
+            return owners[0].compute_loss(
+                ComputeLossCtx(
+                    args=args,
+                    accelerator=accelerator,
+                    network=getattr(self, "_network", network),
+                    unet=ctx.unet,
+                    noise_scheduler=noise_scheduler,
+                    weight_dtype=weight_dtype,
+                    batch=batch,
+                    latents=latents,
+                    text_encoder_conds=text_encoder_conds,
+                    is_train=is_train,
+                )
+            )
 
         # sample noise, call unet, get target
         noise_pred, target, timesteps, weighting = self.get_noise_pred_and_target(

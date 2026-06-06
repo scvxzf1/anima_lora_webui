@@ -1,11 +1,12 @@
 # postfix_residual — image-conditional postfix as DirectEdit's ψ_src residual carrier
 
-Companion proposal to [`img2emb_plan.md`](img2emb_plan.md) and
-[`orthogonal_postfix.md`](orthogonal_postfix.md). Different question, same
-neighbourhood. img2emb asks "can we learn an image → ψ encoder that replaces
-text conditioning"; this proposal asks "can we learn a small image-conditional
-postfix that *augments* T5(tags) so DirectEdit's dry-run reconstructs without
-disturbing the text-editable interface."
+Companion to the historical img2emb / orthogonal-postfix trail. Those earlier
+proposal files are archived or missing in the current tree; this document is
+the active reference here. Different question, same neighbourhood. img2emb asks
+"can we learn an image → ψ encoder that replaces text conditioning"; this
+proposal asks "can we learn a small image-conditional postfix that *augments*
+T5(tags) so DirectEdit's dry-run reconstructs without disturbing the
+text-editable interface."
 
 ## Motivation
 
@@ -44,13 +45,13 @@ classical inversion.
 
 ## What this is not
 
-- **Not img2emb.** img2emb (`docs/proposal/img2emb_plan.md`) trains an encoder
-  to produce K tokens that *replace* T5 cross-attention via FM loss from
-  noise. That's a hard target (classical inversion in amortized form).
-  postfix_residual trains a smaller bank of tokens to *augment* T5(tags) and
-  is supervised against DirectEdit's actual contract (dry-run reconstructs).
-  The two proposals are complementary, not redundant: img2emb is "no text",
-  postfix_residual is "text + residual".
+- **Not img2emb.** The earlier img2emb proposal trail is archived or missing.
+  It trained an encoder to produce K tokens that *replace* T5 cross-attention
+  via FM loss from noise. That's a hard target (classical inversion in
+  amortized form). postfix_residual trains a smaller bank of tokens to
+  *augment* T5(tags) and is supervised against DirectEdit's actual contract
+  (dry-run reconstructs). The two proposals are complementary, not redundant:
+  img2emb is "no text", postfix_residual is "text + residual".
 - **Not IP-Adapter.** IP-Adapter routes image conditioning through a
   *parallel* KV branch (`to_k_ip`/`to_v_ip`). For DirectEdit that decouples
   the edit-acting channel (text) from the fidelity-carrying channel (KV) so
@@ -203,7 +204,7 @@ Keep:
 
 - **Pooling strategy.** Mean-pool vs attention-pool over PE patch tokens. Mean
   is the IP-Adapter resampler's input baseline. Attention-pool (with a learned
-  query) is closer to what img2emb_plan.md describes. Default mean; revisit if
+  query) is closer to the archived img2emb design. Default mean; revisit if
   postfix can't carry enough information.
 - **K.** Start at 8. Compare K∈{4, 8, 16}. Larger K is more capacity but more
   lane-overgrowth risk.
@@ -231,13 +232,13 @@ Keep:
 
 ## Relationship to other proposals
 
-- **`img2emb_plan.md`**: a *replacement* for text conditioning, motivated by
+- **Archived img2emb design**: a *replacement* for text conditioning, motivated by
   caption-less generation use cases. Trains against FM loss from noise.
   This proposal is *additive* to text, motivated by DirectEdit. They can
   coexist: img2emb is the "give me an image-conditioned generator" path;
   postfix_residual is the "give me an editable image-conditioned anchor"
   path.
-- **`orthogonal_postfix.md`**: the structural-orthogonality move on the
+- **Archived orthogonal-postfix design**: the structural-orthogonality move on the
   pure-text postfix. This proposal is downstream of that — it assumes the
   ortho fix carries over to image-conditional postfix (re-validation step
   required, see "slot collapse" above). If the fix doesn't port, this

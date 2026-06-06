@@ -1395,6 +1395,14 @@ class LoRANetwork(torch.nn.Module):
         r = r.clamp(max=float(max_rank))
         mask.copy_((self._timestep_mask_arange < r).to(mask.dtype).unsqueeze(0))
 
+    def set_step_index(self, step_index: int) -> None:
+        """Broadcast a hard denoising-step index to step-expert modules."""
+        k = int(step_index)
+        for lora in self.text_encoder_loras + self.unet_loras:
+            set_step = getattr(lora, "set_step", None)
+            if set_step is not None:
+                set_step(k)
+
     def set_reft_timestep_mask(
         self, timesteps: torch.Tensor, max_timestep: float = 1.0
     ):

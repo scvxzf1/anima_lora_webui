@@ -15,6 +15,7 @@ from networks.lora_modules.ortho import (
 )
 from networks.lora_modules.reft import ReFTModule
 from networks.lora_modules.stacked_experts import StackedExpertsLoRAModule
+from networks.lora_modules.step_expert import StepExpertLoRAModule
 
 __all__ = [
     "BaseLoRAModule",
@@ -27,6 +28,7 @@ __all__ = [
     "OrthoLoRAModule",
     "ReFTModule",
     "StackedExpertsLoRAModule",
+    "StepExpertLoRAModule",
     "_absorb_channel_scale",
     "_sigma_sinusoidal_features",
 ]

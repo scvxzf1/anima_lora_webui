@@ -172,6 +172,7 @@ def main():
         student_alpha=cfg.student_alpha,
         fake_alpha=cfg.fake_alpha,
         use_custom_down_autograd=cfg.use_custom_down_autograd,
+        student_step_expert_K=cfg.step_expert_K,
     )
     turbo.freeze_dit()
     turbo.student.to(device=device, dtype=dtype)
@@ -263,6 +264,20 @@ def main():
 
     # ---------------- Logging ----------------
     Path(cfg.output_dir).mkdir(parents=True, exist_ok=True)
+
+    # Canonical config snapshot beside the checkpoint, matching train.py's
+    # convention. Write it even under --no_log so the artifact remains
+    # traceable without TensorBoard logs.
+    canonical_snapshot = Path(cfg.output_dir) / f"{cfg.output_name}.snapshot.toml"
+    try:
+        canonical_snapshot.write_text(
+            snapshot_toml_text(cfg, source_config=args.config),
+            encoding="utf-8",
+        )
+        logger.info(f"Config snapshot written: {canonical_snapshot}")
+    except OSError as e:
+        logger.warning(f"Could not write config snapshot to {canonical_snapshot}: {e}")
+
     writer = None
     if not cfg.no_log:
         run_name = datetime.now().strftime("%Y%m%d-%H%M%S")
@@ -492,6 +507,7 @@ def main():
         # Step 0: the diversity-supervised first step (grad → v_first).
         s0, s0_next = student_sigmas[0], student_sigmas[1]
         t_b = torch.full((B,), s0, device=device, dtype=dtype)
+        turbo.set_student_step(0)
         v_first = _forward("student", x, t_b, crossattn_emb, no_grad=False).squeeze(2)
         x = x - (s0 - s0_next) * v_first
         div_loss_t = nn.functional.mse_loss(v_first.float(), v_target)
@@ -509,6 +525,7 @@ def main():
             s_i = student_sigmas[i]
             s_next = student_sigmas[i + 1]
             t_b = torch.full((B,), s_i, device=device, dtype=dtype)
+            turbo.set_student_step(i)
             v = _forward(
                 "student", x, t_b, crossattn_emb, no_grad=False
             ).squeeze(2)
@@ -645,12 +662,16 @@ def main():
             metadata = {
                 "ss_turbo_objective": "dpdmd",
                 "ss_turbo_student_rank": str(cfg.student_rank),
+                "ss_turbo_student_alpha": str(cfg.student_alpha),
                 "ss_turbo_student_steps": str(cfg.student_steps),
                 "ss_turbo_teacher_cfg": str(cfg.teacher_cfg),
                 "ss_turbo_step": str(n),
                 "ss_turbo_k_anchor": str(cfg.k_anchor),
                 "ss_turbo_div_weight": str(cfg.div_weight),
             }
+            if cfg.per_step_expert:
+                metadata["ss_turbo_per_step_expert"] = "1"
+                metadata["ss_turbo_step_expert_K"] = str(cfg.step_expert_K)
             save_names = [f"{cfg.output_name}_{_step_tag(n)}"]
             if is_final:
                 save_names.append(cfg.output_name)  # canonical bare name

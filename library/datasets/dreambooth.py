@@ -251,7 +251,9 @@ class DreamBoothDataset(BaseDataset):
                 # not an error — training reads the cached prompt embeddings.
                 # Key by (rel_subdir, stem) to support nested cache layouts
                 # where two images can share a stem in different subdirs.
-                cache_dir = getattr(subset, "cache_dir", None)
+                cache_dir = getattr(subset, "text_cache_dir", None) or getattr(
+                    subset, "cache_dir", None
+                )
                 te_suffix = "_anima_te.safetensors"
                 te_cached_keys: set[tuple[str, str]] = set()
                 if cache_dir and os.path.isdir(cache_dir):

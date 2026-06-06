@@ -2,6 +2,10 @@
 
 Training-free diffusion sampling acceleration via **Chebyshev polynomial feature forecasting**.
 
+> **For the structural walkthrough** (hook point, fast path, Chebyshev ridge
+> regression, adaptive schedule, CFG handling, residual calibration), see
+> **`docs/structure/spectrum.md`**. This doc is the usage / ops reference.
+
 Paper: [Adaptive Spectral Feature Forecasting for Diffusion Sampling Acceleration](https://arxiv.org/abs/2603.01623) (Han et al., CVPR 2026, Stanford/ByteDance)
 
 Reference implementation: `Spectrum/` (cloned from upstream repo)

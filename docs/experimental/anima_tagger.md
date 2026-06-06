@@ -377,6 +377,6 @@ scaffolding, or `Save Text File` for LoRA dataset pre-fill.
    through the loader registry.
 2. **Embedding output instead of tag string.** `predict_caption` emits a
    string that gets re-tokenized by T5. We could add a head producing
-   `[K, D_t5]` continuous tokens directly — but that's the img2emb design
-   (`docs/proposal/img2emb_plan.md`) and hits the same structural
-   challenges. Stick with tag-string output for now.
+   `[K, D_t5]` continuous tokens directly — but that's the archived img2emb
+   design line and hits the same structural challenges. Stick with tag-string
+   output for now.

@@ -1,6 +1,7 @@
 # ChimeraHydra — dual-A additive routing for timestep-aware MoE
 
-Proposal: [`docs/proposal/chimera_hydra.md`](../proposal/chimera_hydra.md).
+历史提案已归档或缺失，当前以本文和
+[structure/chimera-hydra.md](../structure/chimera-hydra.md) 为准。
 
 ## Why "chimera"
 
@@ -308,7 +309,8 @@ ChimeraHydra's bet: dual-A + structurally-enforced router-input separation makes
 - [`configs/methods/chimera.toml`](../../configs/methods/chimera.toml) — canonical method config (`make exp-chimera`).
 - [`configs/gui-methods/chimera_hydra.toml`](../../configs/gui-methods/chimera_hydra.toml) — GUI-friendly variant config.
 - [`scripts/experimental_tasks/training.py`](../../scripts/experimental_tasks/training.py) — `cmd_chimera` shim.
-- [`docs/proposal/chimera_hydra.md`](../proposal/chimera_hydra.md) — design rationale, bench plan, decision tree, risks.
+- 历史提案与早期决策记录：已归档或缺失，当前以本文和
+  [`docs/structure/chimera-hydra.md`](../structure/chimera-hydra.md) 为准。
 
 ## Status
 
@@ -318,4 +320,4 @@ ComfyUI mirror needs ~150 lines of new node-side code to handle the 2-A on-disk 
 
 The proposal's bench plan (cells A / B / C / C+T / C-split / C-fei) plus a new dual-A vs single-A A/B is the prerequisite before promoting chimera to a default LoRA-family variant.
 
-See [`docs/proposal/chimera_hydra.md`](../proposal/chimera_hydra.md) §"Decision tree" for the ship/archive criteria after bench results land.
+See [`docs/structure/chimera-hydra.md`](../structure/chimera-hydra.md) for the current structural status and ship/archive criteria.

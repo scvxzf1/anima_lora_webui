@@ -89,6 +89,17 @@ Each has its own method TOML and `make` entrypoint:
 
 Deep dives in `docs/methods/` (shipped) and `docs/experimental/`.
 
+### Postfix
+
+Postfix is still treated as an experimental entry. The current user-facing
+start points are:
+
+- `make exp-postfix`
+- `make lora-gui GUI_PRESETS=postfix_ortho_cond`
+
+The compatibility note that used to live under `docs/experimental/postfix.md`
+now points back here so older links still have a landing page.
+
 ## FP32 accumulation
 
 Unconditional. LoRA / Hydra / ReFT bottleneck matmuls run in fp32 regardless
