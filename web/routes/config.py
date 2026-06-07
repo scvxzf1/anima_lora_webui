@@ -132,9 +132,18 @@ async def handle_steps(request: web.Request) -> web.Response:
     variant = request.query.get("variant", "lora")
     preset = request.query.get("preset", "default")
     methods_subdir = request.query.get("methods_subdir", "gui-methods")
+    config_file = request.query.get("config_file")
     dataset_config = request.query.get("dataset_config")
     try:
-        return web.json_response(estimate_training_steps(variant, preset, methods_subdir, dataset_config=dataset_config))
+        return web.json_response(
+            estimate_training_steps(
+                variant,
+                preset,
+                methods_subdir,
+                config_file=config_file,
+                dataset_config=dataset_config,
+            )
+        )
     except Exception as e:
         return web.json_response({"ok": False, "error": str(e)}, status=400)
 
@@ -153,8 +162,18 @@ async def handle_datasets_get(request: web.Request) -> web.Response:
     variant = request.query.get("variant", "lora")
     preset = request.query.get("preset", "default")
     methods_subdir = request.query.get("methods_subdir", "gui-methods")
+    config_file = request.query.get("config_file")
+    dataset_config = request.query.get("dataset_config")
     try:
-        return web.json_response(load_dataset_editor(variant, preset, methods_subdir))
+        return web.json_response(
+            load_dataset_editor(
+                variant,
+                preset,
+                methods_subdir,
+                config_file=config_file,
+                dataset_config=dataset_config,
+            )
+        )
     except Exception as e:
         return web.json_response({"ok": False, "error": str(e)}, status=400)
 

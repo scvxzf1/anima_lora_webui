@@ -527,8 +527,6 @@ class LatentsCachingStrategy:
             return False
         if not os.path.exists(npz_path):
             return False
-        if self.skip_disk_cache_validity_check:
-            return True
 
         expected_latents_size = (
             bucket_reso[1] // latents_stride,
@@ -542,13 +540,28 @@ class LatentsCachingStrategy:
             else ""
         )
 
+        return self._disk_cache_has_required_latent_keys(
+            npz_path,
+            key_reso_suffix,
+            flip_aug,
+            apply_alpha_mask,
+        )
+
+    @staticmethod
+    def _disk_cache_has_required_latent_keys(
+        npz_path: str,
+        key_reso_suffix: str,
+        flip_aug: bool,
+        apply_alpha_mask: bool,
+    ) -> bool:
         try:
-            npz = np.load(npz_path)
-            if "latents" + key_reso_suffix not in npz:
+            with np.load(npz_path) as npz:
+                keys = set(npz.files)
+            if "latents" + key_reso_suffix not in keys:
                 return False
-            if flip_aug and "latents_flipped" + key_reso_suffix not in npz:
+            if flip_aug and "latents_flipped" + key_reso_suffix not in keys:
                 return False
-            if apply_alpha_mask and "alpha_mask" + key_reso_suffix not in npz:
+            if apply_alpha_mask and "alpha_mask" + key_reso_suffix not in keys:
                 return False
         except Exception as e:
             logger.error(f"Error loading file: {npz_path}")

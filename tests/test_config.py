@@ -186,6 +186,187 @@ def test_dataset_config_ignores_legacy_preprocess_only_keys():
     assert dataset["batch_size"] == 1
     assert dataset["validation_seed"] == 42
     assert dataset["subsets"][0]["image_dir"] == "post_image_dataset/resized"
+    assert dataset["subsets"][0]["custom_attributes"]["preprocess"] == {
+        "resolution": 1024,
+        "enable_bucket": True,
+        "min_bucket_reso": 256,
+        "max_bucket_reso": 1024,
+        "bucket_reso_steps": 64,
+        "bucket_no_upscale": False,
+    }
+
+
+def test_dataset_preprocess_resolution_drives_training_bucket_params():
+    from library.config.loader import BlueprintGenerator, ConfigSanitizer
+
+    user_config = {
+        "general": {"caption_extension": ".txt"},
+        "datasets": [
+            {
+                "batch_size": 1,
+                "subsets": [
+                    {
+                        "image_dir": "post_image_dataset/resized",
+                        "cache_dir": "post_image_dataset/lora",
+                        "custom_attributes": {
+                            "preprocess": {
+                                "resolution": 768,
+                                "enable_bucket": "false",
+                                "min_bucket_reso": 256,
+                                "max_bucket_reso": 1344,
+                                "bucket_reso_steps": 32,
+                                "bucket_no_upscale": "true",
+                            }
+                        },
+                    }
+                ],
+            }
+        ],
+    }
+    args = argparse.Namespace(
+        train_batch_size=None,
+        debug_dataset=False,
+        max_token_length=None,
+        prior_loss_weight=1.0,
+    )
+
+    blueprint = BlueprintGenerator(ConfigSanitizer(support_dropout=True)).generate(
+        user_config, args
+    )
+    params = blueprint.dataset_group.datasets[0].params
+
+    assert params.resolution == 768
+    assert params.enable_bucket is False
+    assert params.min_bucket_reso == 256
+    assert params.max_bucket_reso == 1344
+    assert params.bucket_reso_steps == 32
+    assert params.bucket_no_upscale is True
+
+
+def test_training_dataset_uses_square_bucket_when_preprocess_bucket_disabled(tmp_path):
+    from library.config.loader import (
+        BlueprintGenerator,
+        ConfigSanitizer,
+        generate_dataset_group_by_blueprint,
+    )
+
+    image_dir = tmp_path / "resized"
+    image_dir.mkdir()
+    from PIL import Image
+
+    Image.new("RGB", (768, 768), color=(20, 40, 60)).save(image_dir / "square.png")
+
+    user_config = {
+        "general": {"caption_extension": ".txt"},
+        "datasets": [
+            {
+                "batch_size": 1,
+                "subsets": [
+                    {
+                        "image_dir": str(image_dir),
+                        "custom_attributes": {
+                            "preprocess": {
+                                "resolution": 768,
+                                "enable_bucket": False,
+                            }
+                        },
+                    }
+                ],
+            }
+        ],
+    }
+    args = argparse.Namespace(
+        train_batch_size=None,
+        debug_dataset=False,
+        max_token_length=None,
+        prior_loss_weight=1.0,
+    )
+
+    blueprint = BlueprintGenerator(ConfigSanitizer(support_dropout=True)).generate(
+        user_config, args
+    )
+    group, _ = generate_dataset_group_by_blueprint(
+        blueprint.dataset_group,
+        constant_token_buckets=True,
+    )
+    dataset = group.datasets[0]
+    info = next(iter(dataset.image_data.values()))
+
+    assert dataset.enable_bucket is False
+    assert dataset.bucket_manager.resos == [(768, 768)]
+    assert info.bucket_reso == (768, 768)
+    assert info.resized_size == (768, 768)
+
+
+def test_training_dataset_no_upscale_uses_preprocessed_image_size(tmp_path):
+    from library.config.loader import (
+        BlueprintGenerator,
+        ConfigSanitizer,
+        generate_dataset_group_by_blueprint,
+    )
+
+    image_dir = tmp_path / "resized"
+    image_dir.mkdir()
+    from PIL import Image
+
+    Image.new("RGB", (512, 768), color=(20, 40, 60)).save(image_dir / "portrait.png")
+
+    user_config = {
+        "general": {"caption_extension": ".txt"},
+        "datasets": [
+            {
+                "batch_size": 1,
+                "subsets": [
+                    {
+                        "image_dir": str(image_dir),
+                        "custom_attributes": {
+                            "preprocess": {
+                                "resolution": 768,
+                                "bucket_no_upscale": True,
+                            }
+                        },
+                    }
+                ],
+            }
+        ],
+    }
+    args = argparse.Namespace(
+        train_batch_size=None,
+        debug_dataset=False,
+        max_token_length=None,
+        prior_loss_weight=1.0,
+    )
+
+    blueprint = BlueprintGenerator(ConfigSanitizer(support_dropout=True)).generate(
+        user_config, args
+    )
+    group, _ = generate_dataset_group_by_blueprint(
+        blueprint.dataset_group,
+        constant_token_buckets=True,
+    )
+    dataset = group.datasets[0]
+    info = next(iter(dataset.image_data.values()))
+
+    assert dataset.bucket_no_upscale is True
+    assert dataset.bucket_manager.resos == [(512, 768)]
+    assert info.bucket_reso == (512, 768)
+    assert info.resized_size == (512, 768)
+
+
+def test_collect_bucket_resolutions_prefers_active_bucket_manager_resos():
+    import train
+
+    class BucketManager:
+        resos = [(752, 768), (768, 752)]
+
+    class Dataset:
+        bucket_manager = BucketManager()
+        image_data = {}
+
+    class Group:
+        datasets = [Dataset()]
+
+    assert train._collect_bucket_resolutions(Group()) == [(752, 768), (768, 752)]
 
 
 # ---------------------------------------------------------------------------

@@ -306,6 +306,19 @@ def get_optimizer(args, trainable_params) -> tuple[str, str, object]:
         optimizer_class = pytorch_optimizer.CAME
         optimizer = optimizer_class(trainable_params, lr=lr, **optimizer_kwargs)
 
+    elif optimizer_type == "Automagic".lower():
+        from library.training.automagic import Automagic
+
+        if args.lr_scheduler != "constant":
+            logger.warning(
+                "Automagic manages effective learning rates internally; external lr_scheduler=%s will be ignored.",
+                args.lr_scheduler,
+            )
+            logger.warning("recommend option: lr_scheduler=constant")
+        logger.info(f"use Automagic optimizer | {optimizer_kwargs}")
+        optimizer_class = Automagic
+        optimizer = optimizer_class(trainable_params, lr=lr, **optimizer_kwargs)
+
     elif optimizer_type == "ProdigyPlusScheduleFree".lower():
         try:
             from prodigyplus.prodigy_plus_schedulefree import (
@@ -420,3 +433,8 @@ def is_schedulefree_optimizer(optimizer: Optimizer, args: argparse.Namespace) ->
     if is_prodigy_plus_schedulefree_type(args):
         return is_prodigy_plus_schedulefree_enabled(args)
     return args.optimizer_type.lower().endswith("schedulefree".lower())
+
+
+def is_self_managed_lr_optimizer(optimizer: Optimizer, args: argparse.Namespace) -> bool:
+    optimizer_type = (getattr(args, "optimizer_type", "") or "").lower()
+    return optimizer_type == "automagic" and hasattr(optimizer, "get_learning_rates")

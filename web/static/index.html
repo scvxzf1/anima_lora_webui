@@ -17,7 +17,7 @@
             }
         })();
     </script>
-    <link rel="stylesheet" href="/static/style.css?v=config-preset-fallback-history-layout-20260607-4">
+    <link rel="stylesheet" href="/static/style.css?v=config-toolbar-actions-20260607-1">
 </head>
 <body>
     <header>
@@ -440,11 +440,21 @@
                             </label>
                         </div>
                         <div id="history-bulk-bar" class="history-bulk-bar" hidden>
-                            <span id="history-bulk-summary">已选 0 项</span>
-                            <button id="btn-history-bulk-archive" class="btn btn-small" type="button">归档</button>
-                            <button id="btn-history-bulk-unarchive" class="btn btn-small" type="button">取消归档</button>
-                            <button id="btn-history-bulk-group" class="btn btn-small" type="button">设置集合</button>
-                            <button id="btn-history-bulk-delete" class="btn btn-small btn-subtle-danger" type="button">彻底删除</button>
+                            <div class="history-bulk-head">
+                                <div class="history-bulk-title">
+                                    <span class="history-bulk-eyebrow">MULTI SELECT</span>
+                                    <strong>已选操作</strong>
+                                </div>
+                                <span id="history-bulk-summary" class="history-bulk-summary">已选 0 项</span>
+                            </div>
+                            <div class="history-bulk-primary-actions">
+                                <button id="btn-history-bulk-archive" class="btn btn-small" type="button">归档已选</button>
+                                <button id="btn-history-bulk-delete" class="btn btn-small btn-subtle-danger" type="button">彻底删除</button>
+                            </div>
+                            <div class="history-bulk-secondary-actions">
+                                <button id="btn-history-bulk-unarchive" class="btn btn-small" type="button">取消归档</button>
+                                <button id="btn-history-bulk-group" class="btn btn-small" type="button">设置集合</button>
+                            </div>
                         </div>
                         <div class="history-manager-grid">
                             <div class="history-table-panel">

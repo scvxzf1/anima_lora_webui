@@ -12,6 +12,7 @@ dependencies = [
     "diffusers>=0.37.0",
     "einops>=0.7.0",
     # Optimizers
+    "bitsandbytes>=0.49.2 ; sys_platform == 'linux' or sys_platform == 'win32'",
     "lion-pytorch>=0.2.3",
     "schedulefree>=1.4",
     "pytorch-optimizer>=3.9.0",
@@ -39,8 +40,8 @@ dependencies = [
     "albumentations>=1.4.0",
     "packaging",
     "pycocotools>=2.0.11",
-    "flash-attn @ https://github.com/mjun0812/flash-attention-prebuild-wheels/releases/download/v0.9.17/flash_attn-2.8.3+cu132torch2.12-cp313-cp313-linux_x86_64.whl ; sys_platform == 'linux'",
-    "flash-attn @ https://github.com/mjun0812/flash-attention-prebuild-wheels/releases/download/v0.9.25/flash_attn-2.8.3+cu132torch2.12-cp313-cp313-win_amd64.whl ; sys_platform == 'win32'",
+    "flash-attn @ https://github.com/mjun0812/flash-attention-prebuild-wheels/releases/download/v0.9.17/flash_attn-2.8.3+cu130torch2.12-cp313-cp313-linux_x86_64.whl ; sys_platform == 'linux'",
+    "flash-attn @ https://github.com/mjun0812/flash-attention-prebuild-wheels/releases/download/v0.9.25/flash_attn-2.8.3+cu130torch2.12-cp313-cp313-win_amd64.whl ; sys_platform == 'win32'",
     "triton-windows>=3.7.0,<3.8.0 ; sys_platform == 'win32'",
     "pyside6>=6.11.0",
     "ruff>=0.15.9",
@@ -75,10 +76,10 @@ dev = [
 
 [tool.uv]
 index-strategy = "unsafe-best-match"
-# Both wheels are looked up from these indexes — the version pin in
-# `dependencies` (active vs. commented) decides which one resolves.
+# Keep the default CUDA runtime on 13.0: bitsandbytes currently ships
+# prebuilt binaries for CUDA 13.0, but not for the CUDA 13.2 PyTorch track.
 extra-index-url = [
-    "https://download.pytorch.org/whl/cu132"
+    "https://download.pytorch.org/whl/cu130"
 ]
 prerelease = "allow"
 override-dependencies = ["numpy>=2.0.0"]

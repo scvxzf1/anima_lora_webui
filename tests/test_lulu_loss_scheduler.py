@@ -220,3 +220,22 @@ def test_get_scheduler_fix_keeps_legacy_lulu_name_as_alias():
     scheduler = get_scheduler_fix(args, opt, num_processes=1)
 
     assert isinstance(scheduler, LuluLossWeightedAnnealedCosineScheduler)
+
+
+def test_get_scheduler_fix_supports_constant_with_warmup():
+    pytest.importorskip("transformers")
+    opt = _optimizer()
+    args = _optimizer_args(
+        lr_scheduler="constant_with_warmup",
+        lr_warmup_steps=2,
+        max_train_steps=8,
+    )
+
+    scheduler = get_scheduler_fix(args, opt, num_processes=1)
+    lrs = [scheduler.get_last_lr()[0]]
+    for _ in range(5):
+        opt.step()
+        scheduler.step()
+        lrs.append(scheduler.get_last_lr()[0])
+
+    assert lrs == pytest.approx([0.0, 0.5, 1.0, 1.0, 1.0, 1.0])

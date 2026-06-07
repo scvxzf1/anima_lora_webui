@@ -33,16 +33,16 @@ This document is a comprehensive English guide for using the **Anima LoRA** trai
 
 ---
 
-## 2. Installing CUDA 13.2
+## 2. Installing CUDA 13.0.2
 
-You need the latest CUDA for stable operation with PyTorch 2.x + Flash Attention 2. Download 13.2 from the NVIDIA official archive.
+Install CUDA 13.0.2 to match the locked PyTorch, Flash Attention, and bitsandbytes wheels. Do not install the CUDA 13.2 PyTorch track for this project, because bitsandbytes does not ship CUDA 13.2 binaries.
 
-Download page: <https://developer.nvidia.com/cuda-13-2-0-download-archive>
+Download page: <https://developer.nvidia.com/cuda-13-0-2-download-archive>
 
 ### 2.1 Windows Installation
 
 1. On the page above, select **Operating System: Windows → Architecture: x86_64 → Version: 11/10 → Installer Type: exe (local)**.
-2. Run the downloaded `cuda_13.2.1_windows.exe` → choose "Express (Recommended)" install.
+2. Run the downloaded `cuda_13.0.2_windows.exe` → choose "Express (Recommended)" install.
 3. After installation, verify in PowerShell:
 
    ```powershell
@@ -53,13 +53,13 @@ Download page: <https://developer.nvidia.com/cuda-13-2-0-download-archive>
 4. If `nvcc` is not recognized, add the following to your system `Path` environment variable:
 
    ```
-   C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v13.2\bin
-   C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v13.2\libnvvp
+   C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v13.0\bin
+   C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v13.0\libnvvp
    ```
 
 5. Reboot and verify `nvcc --version` again.
 
-> **Driver note**: CUDA 13.x requires NVIDIA driver 595 or higher. If you have an older driver, update it first via GeForce Experience or the NVIDIA Download Center.
+> **Driver note**: CUDA 13.x requires a recent NVIDIA driver. If you have an older driver, update it first via GeForce Experience or the NVIDIA Download Center.
 
 ## 3. Python Environment and Repository Setup
 

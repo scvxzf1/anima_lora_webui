@@ -3,11 +3,13 @@ from __future__ import annotations
 import asyncio
 
 from web.services import training_service
+from web.services.training import gpu as gpu_helpers
 from web.services.training_service import _apply_gpu_whitelist, _normalize_gpu_whitelist
 
 
 def test_normalize_gpu_whitelist_filters_invalid_and_duplicates():
     assert _normalize_gpu_whitelist(["1", 0, "bad", 1, "-2", 2]) == [1, 0, 2]
+    assert gpu_helpers.normalize_gpu_whitelist(["1", 0, "bad", 1, "-2", 2]) == [1, 0, 2]
 
 
 def test_apply_gpu_whitelist_sets_cuda_visible_devices():
@@ -70,3 +72,42 @@ def test_get_gpu_stats_without_selection_keeps_first_gpu(monkeypatch):
     assert stats["gpu_index"] == 0
     assert stats["gpu_indices"] == [0]
     assert stats["gpu_util"] == 11
+
+
+def test_training_gpu_helper_lists_available_gpus_with_injected_runner():
+    class FakeProcess:
+        async def communicate(self):
+            return (
+                b"0, NVIDIA RTX 5060 Ti, 16384\n"
+                b"bad,row\n"
+                b"1, NVIDIA RTX 4090, 24576\n",
+                b"",
+            )
+
+    async def fake_create_subprocess_exec(*args, **kwargs):
+        return FakeProcess()
+
+    gpus = asyncio.run(
+        gpu_helpers.list_available_gpus(
+            create_subprocess_exec=fake_create_subprocess_exec,
+            stdout_pipe=object(),
+            stderr_devnull=object(),
+        )
+    )
+
+    assert gpus == [
+        {
+            "index": 0,
+            "name": "NVIDIA RTX 5060 Ti",
+            "label": "GPU 0 · NVIDIA RTX 5060 Ti",
+            "memory_total_mb": 16384,
+            "memory_total_gb": 16.0,
+        },
+        {
+            "index": 1,
+            "name": "NVIDIA RTX 4090",
+            "label": "GPU 1 · NVIDIA RTX 4090",
+            "memory_total_mb": 24576,
+            "memory_total_gb": 24.0,
+        },
+    ]

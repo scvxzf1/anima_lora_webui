@@ -18,11 +18,12 @@
 项目的 `pyproject.toml` 在 Linux 上默认解析：
 
 - Python `3.13.*`
-- PyTorch `2.12` nightly
-- CUDA `13.2` 对应 wheel
+- PyTorch `2.12`
+- CUDA `13.0` 对应 wheel
 - Flash Attention 2 预编译 wheel
+- bitsandbytes 预编译 wheel，可用于 `AdamW8bit`
 
-如果你的驱动太旧，不支持 CUDA 13.x 运行时，请先升级 NVIDIA 驱动。
+不要把环境解析到 CUDA `13.2` 的 PyTorch / Flash Attention 轨道：bitsandbytes 当前没有 CUDA 13.2 二进制包，`AdamW8bit` 会不可用。如果你的驱动太旧，不支持 CUDA 13.x 运行时，请先升级 NVIDIA 驱动。
 
 
 ## 2. 安装系统依赖

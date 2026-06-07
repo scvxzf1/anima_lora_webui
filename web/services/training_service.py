@@ -45,6 +45,15 @@ from web.services.config_service import (
 )
 from web.services.settings_service import display_path as _display_settings_path
 from web.services.settings_service import resolve_output_root
+from web.services.training import progress_parser as _progress_parser
+from web.services.training.gpu import (
+    aggregate_gpu_stats_rows as _aggregate_gpu_stats_rows_impl,
+    apply_gpu_whitelist as _apply_gpu_whitelist_impl,
+    get_gpu_stats as _get_gpu_stats_impl,
+    list_available_gpus as _list_available_gpus_impl,
+    normalize_gpu_whitelist as _normalize_gpu_whitelist_impl,
+    parse_gpu_stats_rows as _parse_gpu_stats_rows_impl,
+)
 
 ROOT = Path(__file__).resolve().parents[2]
 HISTORY_DIR = ROOT / "configs" / "web-training-history"
@@ -2192,112 +2201,32 @@ class TrainingService:
 
 
 async def _get_gpu_stats(gpu_whitelist: list[int] | None = None) -> dict:
-    try:
-        proc = await asyncio.create_subprocess_exec(
-            "nvidia-smi",
-            "--query-gpu=index,memory.used,memory.total,utilization.gpu,temperature.gpu",
-            "--format=csv,noheader,nounits",
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.DEVNULL,
-        )
-        stdout, _ = await proc.communicate()
-        rows = _parse_gpu_stats_rows(stdout.decode(errors="replace"))
-        selected = _normalize_gpu_whitelist(gpu_whitelist)
-        if selected:
-            selected_set = set(selected)
-            rows = [row for row in rows if row["index"] in selected_set]
-        else:
-            rows = rows[:1]
-        return _aggregate_gpu_stats_rows(rows)
-    except Exception:
-        pass
-    return {}
+    return await _get_gpu_stats_impl(
+        gpu_whitelist,
+        create_subprocess_exec=asyncio.create_subprocess_exec,
+        stdout_pipe=asyncio.subprocess.PIPE,
+        stderr_devnull=asyncio.subprocess.DEVNULL,
+    )
 
 
 def _parse_gpu_stats_rows(text: str) -> list[dict[str, int]]:
-    rows: list[dict[str, int]] = []
-    for line in text.splitlines():
-        parts = [part.strip() for part in line.split(",")]
-        if len(parts) < 5:
-            continue
-        try:
-            rows.append({
-                "index": int(parts[0]),
-                "memory_used_mb": int(parts[1]),
-                "memory_total_mb": int(parts[2]),
-                "gpu_util": int(parts[3]),
-                "gpu_temp": int(parts[4]),
-            })
-        except ValueError:
-            continue
-    return rows
+    return _parse_gpu_stats_rows_impl(text)
 
 
 def _aggregate_gpu_stats_rows(rows: list[dict[str, int]]) -> dict[str, Any]:
-    if not rows:
-        return {}
-    indices = [row["index"] for row in rows]
-    used_mb = sum(row["memory_used_mb"] for row in rows)
-    total_mb = sum(row["memory_total_mb"] for row in rows)
-    return {
-        "gpu_index": indices[0],
-        "gpu_indices": indices,
-        "vram_used_gb": round(used_mb / 1024, 2),
-        "vram_total_gb": round(total_mb / 1024, 2),
-        "gpu_util": max(row["gpu_util"] for row in rows),
-        "gpu_temp": max(row["gpu_temp"] for row in rows),
-    }
+    return _aggregate_gpu_stats_rows_impl(rows)
 
 
 async def _list_available_gpus() -> list[dict[str, Any]]:
-    try:
-        proc = await asyncio.create_subprocess_exec(
-            "nvidia-smi",
-            "--query-gpu=index,name,memory.total",
-            "--format=csv,noheader,nounits",
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.DEVNULL,
-        )
-        stdout, _ = await proc.communicate()
-    except Exception:
-        return []
-
-    gpus: list[dict[str, Any]] = []
-    for line in stdout.decode(errors="replace").splitlines():
-        parts = [part.strip() for part in line.split(",", 2)]
-        if len(parts) < 2:
-            continue
-        try:
-            index = int(parts[0])
-        except ValueError:
-            continue
-        memory_total_mb = _int_or_none(parts[2]) if len(parts) >= 3 else None
-        item: dict[str, Any] = {
-            "index": index,
-            "name": parts[1],
-            "label": f"GPU {index} · {parts[1]}",
-        }
-        if memory_total_mb is not None:
-            item["memory_total_mb"] = memory_total_mb
-            item["memory_total_gb"] = round(memory_total_mb / 1024, 1)
-        gpus.append(item)
-    return gpus
+    return await _list_available_gpus_impl(
+        create_subprocess_exec=asyncio.create_subprocess_exec,
+        stdout_pipe=asyncio.subprocess.PIPE,
+        stderr_devnull=asyncio.subprocess.DEVNULL,
+    )
 
 
 def _normalize_gpu_whitelist(value: Any) -> list[int]:
-    if value is None or value == "":
-        return []
-    raw_items = value if isinstance(value, list) else [value]
-    out: list[int] = []
-    for item in raw_items:
-        try:
-            index = int(str(item).strip())
-        except (TypeError, ValueError):
-            continue
-        if index < 0 or index in out:
-            continue
-        out.append(index)
-    return out
+    return _normalize_gpu_whitelist_impl(value)
 
 
 def inspect_continue_lora_weight(
@@ -2387,9 +2316,7 @@ def _continue_lora_history_meta(continue_info: dict[str, Any] | None) -> dict[st
 
 
 def _apply_gpu_whitelist(env: dict[str, str], whitelist: list[int]) -> None:
-    if whitelist:
-        env["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
-        env["CUDA_VISIBLE_DEVICES"] = ",".join(str(index) for index in whitelist)
+    _apply_gpu_whitelist_impl(env, whitelist)
 
 
 def _resolve_training_runtime_info(
@@ -4351,47 +4278,19 @@ def _step_rate_text_from_sample(
     step: int,
     timestamp: float,
 ) -> tuple[str, tuple[float, int] | None]:
-    current_step = int(step)
-    current_ts = float(timestamp)
-    if current_step <= 0 or not _is_finite_number(current_ts):
-        return (_format_step_rate(_median_or_none(samples)) if samples else ""), last
-    if last is None:
-        return "", (current_ts, current_step)
-    last_ts, last_step = last
-    if current_step == last_step:
-        return (_format_step_rate(_median_or_none(samples)) if samples else ""), last
-    if current_step < last_step or current_ts <= last_ts:
-        samples.clear()
-        return "", (current_ts, current_step)
-    step_delta = current_step - last_step
-    seconds_per_step = (current_ts - last_ts) / step_delta
-    if _is_finite_number(seconds_per_step) and seconds_per_step > 0:
-        samples.append(seconds_per_step)
-    return _format_step_rate(_median_or_none(samples)), (current_ts, current_step)
+    return _progress_parser.step_rate_text_from_sample(last, samples, step, timestamp)
 
 
 def _median_or_none(values: deque[float] | list[float]) -> float | None:
-    finite = sorted(value for value in values if _is_finite_number(value) and value > 0)
-    if not finite:
-        return None
-    mid = len(finite) // 2
-    if len(finite) % 2:
-        return finite[mid]
-    return (finite[mid - 1] + finite[mid]) / 2
+    return _progress_parser.median_or_none(values)
 
 
 def _format_step_rate(seconds_per_step: float | None) -> str:
-    if seconds_per_step is None or not _is_finite_number(seconds_per_step) or seconds_per_step <= 0:
-        return ""
-    return f"{seconds_per_step:.2f}s/step"
+    return _progress_parser.format_step_rate(seconds_per_step)
 
 
 def _is_finite_number(value: Any) -> bool:
-    try:
-        number = float(value)
-    except (TypeError, ValueError):
-        return False
-    return number == number and number not in {float("inf"), float("-inf")}
+    return _progress_parser.is_finite_number(value)
 
 
 def _metrics_from_history(
@@ -4456,68 +4355,19 @@ def _is_validation_metric(item: dict[str, Any]) -> bool:
 
 
 def _timeline_training_metrics(metrics: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    out: list[dict[str, Any]] = []
-    max_step: int | None = None
-    for item in metrics:
-        step = _int_or_none(item.get("step"))
-        if step is not None:
-            if max_step is not None and step < max_step:
-                continue
-            max_step = step if max_step is None else max(max_step, step)
-        out.append(item)
-    return out
+    return _progress_parser.timeline_training_metrics(metrics)
 
 
 def _normalize_metric_record(item: dict[str, Any]) -> dict[str, Any] | None:
-    out: dict[str, Any] = {}
-    step = _int_or_none(item.get("step"))
-    if step is not None:
-        out["step"] = step
-    for key in ("loss", "lr", "cmmd"):
-        value = _float_or_none(item.get(key))
-        if value is not None:
-            out[key] = value
-    if item.get("kind"):
-        out["kind"] = str(item.get("kind"))
-    if item.get("rate"):
-        out["rate"] = str(item.get("rate"))
-    ts = _float_or_none(item.get("ts"))
-    if ts is not None:
-        out["ts"] = ts
-    if not any(key in out for key in ("loss", "lr", "cmmd")):
-        return None
-    return out
+    return _progress_parser.normalize_metric_record(item)
 
 
 def _metric_from_progress_line(line: str) -> dict[str, Any] | None:
-    out: dict[str, Any] = {}
-    step_match = re.search(r"\|\s*(\d+)\/\d+\s*\[", line) or re.search(r"step[=:/\s]+(\d+)", line, re.IGNORECASE)
-    if step_match:
-        out["step"] = int(step_match.group(1))
-    loss = _extract_float_metric(line, ("avr_loss", "loss"))
-    if loss is not None:
-        out["loss"] = loss
-    lr = _extract_float_metric(line, ("lr", "learning_rate"))
-    if lr is not None:
-        out["lr"] = lr
-    rate_match = re.search(r"([\d.]+\s*(?:s/it|it/s|s/step))", line, re.IGNORECASE)
-    if rate_match:
-        out["rate"] = rate_match.group(1).replace(" ", "")
-    return out if any(key in out for key in ("loss", "lr")) else None
+    return _progress_parser.metric_from_progress_line(line)
 
 
 def _metric_seen_key(item: dict[str, Any]) -> tuple[int | None, float | None, float | None, float | None, str]:
-    step = _int_or_none(item.get("step"))
-    loss = _float_or_none(item.get("loss"))
-    lr = _float_or_none(item.get("lr"))
-    cmmd = _float_or_none(item.get("cmmd"))
-    return (
-        step,
-        round(loss, 8) if loss is not None else None,
-        round(lr, 12) if lr is not None else None,
-        round(cmmd, 8) if cmmd is not None else None,
-        str(item.get("kind") or ""),
-    )
+    return _progress_parser.metric_seen_key(item)
 
 
 def _assign_visual_steps(metrics: list[dict[str, Any]], next_step: int) -> int:
@@ -4536,19 +4386,7 @@ def _timeline_resume_step_offset(task: dict[str, Any]) -> int:
 
 
 def _assign_display_steps(metrics: list[dict[str, Any]], offset: int) -> tuple[int | None, int | None]:
-    start_step: int | None = None
-    last_step: int | None = None
-    for item in metrics:
-        raw_step = _int_or_none(item.get("step"))
-        display_step = (offset + raw_step) if raw_step is not None else ((last_step or offset) + 1)
-        if last_step is not None and display_step <= last_step:
-            display_step = last_step + 1
-        item["display_step"] = display_step
-        item["display_step_offset"] = offset
-        if start_step is None:
-            start_step = display_step
-        last_step = display_step
-    return start_step, last_step
+    return _progress_parser.assign_display_steps(metrics, offset)
 
 
 def _timeline_task_brief(task: dict[str, Any]) -> dict[str, Any]:
@@ -5496,27 +5334,11 @@ def _is_history_artifact_path(value: str, filename: str) -> bool:
 
 
 def _live_metric_key(item: dict[str, Any]) -> tuple[Any, ...]:
-    return (
-        _int_or_none(item.get("step")),
-        _int_or_none(item.get("epoch")),
-        round(_float_or_none(item.get("loss")) or 0.0, 8) if _float_or_none(item.get("loss")) is not None else None,
-        round(_float_or_none(item.get("lr")) or 0.0, 12) if _float_or_none(item.get("lr")) is not None else None,
-        round(_float_or_none(item.get("cmmd")) or 0.0, 8) if _float_or_none(item.get("cmmd")) is not None else None,
-        str(item.get("kind") or ""),
-    )
+    return _progress_parser.live_metric_key(item)
 
 
 def _progress_event_key(event: dict[str, Any]) -> tuple[Any, ...]:
-    return (
-        str(event.get("ev") or ""),
-        event.get("ts"),
-        event.get("global_step"),
-        event.get("epoch"),
-        event.get("val_step"),
-        event.get("path"),
-        event.get("status"),
-        event.get("final_step"),
-    )
+    return _progress_parser.progress_event_key(event)
 
 
 def _progress_event_wall_ts(event: dict[str, Any], task_dir: Path | None) -> float:
@@ -5529,76 +5351,23 @@ def _progress_event_wall_ts(event: dict[str, Any], task_dir: Path | None) -> flo
 
 
 def _progress_event_wall_ts_from_started_at(event: dict[str, Any], started_at: float | None) -> float:
-    rel_ts = _float_or_none(event.get("ts"))
-    if rel_ts is not None and started_at is not None:
-        return started_at + rel_ts
-    if rel_ts is not None and rel_ts > 1_000_000_000:
-        return rel_ts
-    return time.time()
+    return _progress_parser.progress_event_wall_ts_from_started_at(event, started_at, now_fn=time.time)
 
 
 def _metric_from_progress_jsonl_event(event: dict[str, Any], ts: float, *, rate: str = "") -> dict[str, Any] | None:
-    metric: dict[str, Any] = {"ts": ts}
-    step = _int_or_none(event.get("global_step"))
-    if step is not None:
-        metric["step"] = step
-    epoch = _int_or_none(event.get("epoch"))
-    if epoch is not None:
-        metric["epoch"] = epoch
-    if rate:
-        metric["rate"] = rate
-
-    if str(event.get("ev") or "") == "val":
-        metric["kind"] = "val"
-        cmmd = _float_or_none(event.get("cmmd"))
-        if cmmd is not None:
-            metric["cmmd"] = cmmd
-            metric["loss"] = cmmd
-        val_step = _int_or_none(event.get("val_step"))
-        if val_step is not None:
-            metric["val_step"] = val_step
-    else:
-        loss = _progress_event_loss(event)
-        if loss is not None:
-            metric["loss"] = loss
-        lr = _progress_event_lr(event)
-        if lr is not None:
-            metric["lr"] = lr
-
-    return metric if any(key in metric for key in ("loss", "lr", "cmmd")) else None
+    return _progress_parser.metric_from_progress_jsonl_event(event, ts, rate=rate)
 
 
 def _progress_event_loss(event: dict[str, Any]) -> float | None:
-    return _first_float_field(event, ("loss", "loss/average", "loss/current"))
+    return _progress_parser.progress_event_loss(event)
 
 
 def _progress_event_lr(event: dict[str, Any]) -> float | None:
-    direct = _first_float_field(
-        event,
-        ("lr", "learning_rate", "lr/unet", "lr/group0", "lr/textencoder"),
-    )
-    if direct is not None:
-        return direct
-    for key, value in event.items():
-        key_text = str(key)
-        if key_text.startswith("lr/") and not key_text.startswith("lr/d*lr/"):
-            lr = _float_or_none(value)
-            if lr is not None:
-                return lr
-    for key, value in event.items():
-        if str(key).startswith("lr/d*lr"):
-            lr = _float_or_none(value)
-            if lr is not None:
-                return lr
-    return None
+    return _progress_parser.progress_event_lr(event)
 
 
 def _first_float_field(record: dict[str, Any], keys: tuple[str, ...]) -> float | None:
-    for key in keys:
-        value = _float_or_none(record.get(key))
-        if value is not None:
-            return value
-    return None
+    return _progress_parser.first_float_field(record, keys)
 
 
 def classify_training_error(text: str) -> str:
@@ -5628,8 +5397,4 @@ def _clean_output_record(text: str) -> str:
 
 
 def _extract_float_metric(text: str, names: tuple[str, ...]) -> float | None:
-    for name in names:
-        match = re.search(rf"{re.escape(name)}[=:/\s]+([\d.eE\-+]+)", text, re.IGNORECASE)
-        if match:
-            return float(match.group(1))
-    return None
+    return _progress_parser.extract_float_metric(text, names)

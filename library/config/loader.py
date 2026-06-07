@@ -113,6 +113,12 @@ class BaseDatasetParams:
 class DreamBoothDatasetParams(BaseDatasetParams):
     batch_size: int = 1
     prior_loss_weight: float = 1.0
+    resolution: int = 1024
+    enable_bucket: bool = True
+    min_bucket_reso: int = 256
+    max_bucket_reso: int = 2048
+    bucket_reso_steps: int = 64
+    bucket_no_upscale: bool = False
 
 
 @dataclass
@@ -304,13 +310,33 @@ class ConfigSanitizer:
                 continue
             changed = True
             ignored_keys.update(ignored)
-            cleaned_datasets.append(
-                {
-                    key: value
-                    for key, value in dataset_config.items()
-                    if key not in cls.PREPROCESS_ONLY_DATASET_KEYS
-                }
-            )
+            preprocess_settings = {
+                key: value
+                for key, value in dataset_config.items()
+                if key in cls.PREPROCESS_ONLY_DATASET_KEYS
+            }
+            cleaned_dataset = {
+                key: value
+                for key, value in dataset_config.items()
+                if key not in cls.PREPROCESS_ONLY_DATASET_KEYS
+            }
+            subsets = cleaned_dataset.get("subsets")
+            if isinstance(subsets, list) and preprocess_settings:
+                cleaned_subsets = []
+                for subset_config in subsets:
+                    if not isinstance(subset_config, dict):
+                        cleaned_subsets.append(subset_config)
+                        continue
+                    cleaned_subset = dict(subset_config)
+                    attrs = cleaned_subset.get("custom_attributes")
+                    attrs = dict(attrs) if isinstance(attrs, dict) else {}
+                    existing = attrs.get("preprocess")
+                    existing = dict(existing) if isinstance(existing, dict) else {}
+                    attrs["preprocess"] = {**preprocess_settings, **existing}
+                    cleaned_subset["custom_attributes"] = attrs
+                    cleaned_subsets.append(cleaned_subset)
+                cleaned_dataset["subsets"] = cleaned_subsets
+            cleaned_datasets.append(cleaned_dataset)
 
         if not changed:
             return user_config
@@ -403,6 +429,9 @@ class BlueprintGenerator:
                 DreamBoothDatasetParams,
                 [dataset_config, general_config, argparse_config, runtime_params],
             )
+            params = self.apply_preprocess_params_from_subsets(
+                params, subset_blueprints
+            )
             dataset_blueprints.append(DatasetBlueprint(params, subset_blueprints))
 
         dataset_group_blueprint = DatasetGroupBlueprint(dataset_blueprints)
@@ -424,6 +453,54 @@ class BlueprintGenerator:
         }
 
         return param_klass(**params)
+
+    @staticmethod
+    def apply_preprocess_params_from_subsets(
+        params: DreamBoothDatasetParams,
+        subset_blueprints: Sequence[SubsetBlueprint],
+    ) -> DreamBoothDatasetParams:
+        for subset_blueprint in subset_blueprints:
+            attrs = getattr(subset_blueprint.params, "custom_attributes", None)
+            raw = attrs.get("preprocess") if isinstance(attrs, dict) else None
+            if not isinstance(raw, dict):
+                continue
+            for key in (
+                "resolution",
+                "min_bucket_reso",
+                "max_bucket_reso",
+                "bucket_reso_steps",
+            ):
+                value = raw.get(key)
+                try:
+                    value = int(value)
+                except (TypeError, ValueError):
+                    continue
+                if value > 0:
+                    setattr(params, key, value)
+            for key in ("enable_bucket", "bucket_no_upscale"):
+                value = BlueprintGenerator.coerce_optional_bool(raw.get(key))
+                if value is not None:
+                    setattr(params, key, value)
+            break
+        return params
+
+    @staticmethod
+    def coerce_optional_bool(value) -> Optional[bool]:
+        if value is None:
+            return None
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, (int, float)):
+            if value == 1:
+                return True
+            if value == 0:
+                return False
+        text = str(value).strip().lower()
+        if text in {"1", "true", "yes", "on"}:
+            return True
+        if text in {"0", "false", "no", "off"}:
+            return False
+        return None
 
     @staticmethod
     def search_value(key: str, fallbacks: Sequence[dict], default_value=None):

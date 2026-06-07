@@ -99,6 +99,26 @@ import logging  # noqa: E402
 logger = logging.getLogger(__name__)
 
 
+def _collect_bucket_resolutions(*dataset_groups) -> list[tuple[int, int]]:
+    resos: set[tuple[int, int]] = set()
+    for group in dataset_groups:
+        if group is None:
+            continue
+        datasets = getattr(group, "datasets", None) or []
+        for dataset in datasets:
+            bucket_manager = getattr(dataset, "bucket_manager", None)
+            active_resos = getattr(bucket_manager, "resos", None)
+            if active_resos:
+                resos.update((int(w), int(h)) for w, h in active_resos)
+                continue
+            image_data = getattr(dataset, "image_data", {}) or {}
+            for info in image_data.values():
+                reso = getattr(info, "bucket_reso", None)
+                if reso is not None:
+                    resos.add((int(reso[0]), int(reso[1])))
+    return sorted(resos)
+
+
 def _install_stop_signal_handlers() -> None:
     """Make SIGTERM follow the same cleanup path as Ctrl-C."""
 
@@ -839,6 +859,7 @@ class AnimaTrainer:
             model.compile_blocks(
                 args.dynamo_backend,
                 mode=getattr(args, "compile_inductor_mode", None),
+                bucket_resolutions=getattr(args, "bucket_resolutions", None),
             )
             _maybe_probe(
                 self,
@@ -1927,6 +1948,9 @@ class AnimaTrainer:
             use_user_config,
             use_dreambooth_method,
         ) = self._prepare_dataset(args)
+        args.bucket_resolutions = _collect_bucket_resolutions(
+            train_dataset_group, val_dataset_group
+        )
 
         if args.debug_dataset:
             train_dataset_group.set_current_strategies()  # dataset needs to know the strategies explicitly

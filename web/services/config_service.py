@@ -33,6 +33,7 @@ from library.preprocess._dataset import walk_images
 from web.services.continue_lora_service import (
     inspect_continue_lora_weight as _inspect_continue_lora_weight,
 )
+from web.services.config import paths as _config_paths
 from web.services.settings_service import display_path as _display_settings_path
 from web.services.settings_service import resolve_output_root
 
@@ -702,8 +703,26 @@ def resolve_dataset_preview_image(
     return path
 
 
-def load_dataset_editor(variant: str, preset: str, methods_subdir: str = "gui-methods") -> dict[str, Any]:
-    cfg = apply_auto_data_dirs(load_merged_config(variant, preset, methods_subdir))
+def load_dataset_editor(
+    variant: str,
+    preset: str,
+    methods_subdir: str = "gui-methods",
+    *,
+    config_file: str | None = None,
+    dataset_config: str | None = None,
+) -> dict[str, Any]:
+    cfg = _load_training_config_for_web_run(
+        variant,
+        preset,
+        methods_subdir,
+        config_file=config_file,
+    )
+    if dataset_config is not None:
+        dataset_rel = _normalize_config_rel_path(str(dataset_config or ""))
+        if dataset_rel:
+            cfg["dataset_config"] = dataset_rel
+        else:
+            cfg.pop("dataset_config", None)
     dataset_path = _dataset_config_path_from_cfg(cfg)
     if dataset_path and dataset_path.exists():
         data = toml.loads(dataset_path.read_text(encoding="utf-8"))
@@ -1146,9 +1165,16 @@ def estimate_training_steps(
     variant: str,
     preset: str,
     methods_subdir: str = "gui-methods",
+    *,
+    config_file: str | None = None,
     dataset_config: str | None = None,
 ) -> dict[str, Any]:
-    cfg = apply_auto_data_dirs(load_merged_config(variant, preset, methods_subdir))
+    cfg = _load_training_config_for_web_run(
+        variant,
+        preset,
+        methods_subdir,
+        config_file=config_file,
+    )
     if dataset_config is not None:
         dataset_rel = _normalize_config_rel_path(str(dataset_config or ""))
         if dataset_rel:
@@ -3459,7 +3485,7 @@ def _group_patterns_include_file(spec: dict[str, Any], rel_path: str) -> bool:
 
 
 def _normalize_config_rel_path(rel_path: str) -> str:
-    return str(rel_path or "").strip().replace("\\", "/").lstrip("/")
+    return _config_paths.normalize_config_rel_path(rel_path)
 
 
 def _normalize_dataset_preset_path(rel_path: str, *, must_exist: bool) -> str:
@@ -3785,13 +3811,7 @@ def _load(p: Path) -> dict:
 
 
 def _safe_resolve(rel_path: str) -> Path | None:
-    resolved = (ROOT / _normalize_config_rel_path(rel_path)).resolve()
-    configs_root = CONFIGS_DIR.resolve()
-    try:
-        resolved.relative_to(configs_root)
-    except ValueError:
-        return None
-    return resolved
+    return _config_paths.safe_resolve(rel_path, root=ROOT, configs_dir=CONFIGS_DIR)
 
 
 def _normalize_prompt_file_path(value: str) -> str:
@@ -3828,22 +3848,11 @@ def _sample_prompts_path_for_config(train_config_file: str) -> str:
 
 
 def _safe_config_subdir(subdir: str) -> Path | None:
-    clean = str(subdir or "").replace("\\", "/").strip("/")
-    if not clean or ".." in Path(clean).parts:
-        return None
-    resolved = (CONFIGS_DIR / clean).resolve()
-    try:
-        resolved.relative_to(CONFIGS_DIR.resolve())
-    except ValueError:
-        return None
-    return resolved
+    return _config_paths.safe_config_subdir(subdir, configs_dir=CONFIGS_DIR)
 
 
 def _resolve_project_path(value: str) -> Path:
-    path = Path(expand_env_vars(value))
-    if not path.is_absolute():
-        path = ROOT / path
-    return path.resolve()
+    return _config_paths.resolve_project_path(value, root=ROOT, expand_env_vars_fn=expand_env_vars)
 
 
 def _auto_data_dir_for_key(value: Any, source_path: Path, suffix: str) -> Path:
@@ -3868,10 +3877,7 @@ def _is_builtin_default_data_dir(value: str) -> bool:
 
 
 def _display_path(path: Path) -> str:
-    try:
-        return path.relative_to(ROOT).as_posix()
-    except (TypeError, ValueError):
-        return path.as_posix()
+    return _config_paths.display_path(path, root=ROOT)
 
 
 def _nl_tag_mix_available_count(

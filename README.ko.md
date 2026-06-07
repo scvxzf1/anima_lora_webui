@@ -189,7 +189,7 @@ make test                 # 최신 학습된 LoRA로 샘플 생성
 |------|------|
 | [guidelines/training.md](docs/guidelines/training.md) | 학습 플래그, LoRA 변형, 캡션 셔플, 마스크 로스, 데이터셋 설정 |
 | [guidelines/inference.md](docs/guidelines/inference.md) | 추론 플래그, P-GRAFT, 프롬프트 파일, LoRA 포맷 변환 |
-| [optimizations/](docs/optimizations/) | 컴파일 파이프라인, FA4 회고, CUDA 13.2 |
+| [optimizations/](docs/optimizations/) | 컴파일 파이프라인, FA4 회고, CUDA 13.0 / bitsandbytes |
 | [methods/](docs/methods/) | 각 방법별 전용 문서 — HydraLoRA, ReFT, Spectrum, 인버전, mod guidance, T-LoRA, OrthoLoRA |
 
 ---

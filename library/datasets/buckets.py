@@ -103,6 +103,34 @@ def make_bucket_resolutions(max_reso, min_size=256, max_size=1024, divisible=64)
     return resos
 
 
+def make_constant_token_bucket_resolutions(
+    max_reso,
+    min_size=256,
+    max_size=2048,
+    divisible=16,
+):
+    if max_reso is None or max_reso == (1024, 1024):
+        return list(CONSTANT_TOKEN_BUCKETS)
+
+    max_width, max_height = max_reso
+    scale = math.sqrt((max_width * max_height) / (1024 * 1024))
+    resos = set()
+    for width, height in CONSTANT_TOKEN_BUCKETS:
+        scaled_width = max(divisible, round(width * scale / divisible) * divisible)
+        scaled_height = max(divisible, round(height * scale / divisible) * divisible)
+        if (
+            min_size <= scaled_width <= max_size
+            and min_size <= scaled_height <= max_size
+        ):
+            resos.add((scaled_width, scaled_height))
+
+    if not resos:
+        fallback = max(divisible, round(min(max_reso) / divisible) * divisible)
+        resos.add((fallback, fallback))
+
+    return sorted(resos)
+
+
 class BucketManager:
     def __init__(
         self, max_reso=None, min_size=None, max_size=None, reso_steps=None
@@ -159,7 +187,9 @@ class BucketManager:
 
     def make_buckets(self, constant_token_buckets: bool = False):
         if constant_token_buckets:
-            resos = list(CONSTANT_TOKEN_BUCKETS)
+            resos = make_constant_token_bucket_resolutions(
+                self.max_reso, self.min_size, self.max_size
+            )
         else:
             resos = make_bucket_resolutions(
                 self.max_reso, self.min_size, self.max_size, self.reso_steps

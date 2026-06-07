@@ -15,6 +15,11 @@ import numpy as np
 import pytest
 from PIL import Image
 
+from library.datasets.buckets import (
+    CONSTANT_TOKEN_BUCKETS,
+    make_constant_token_bucket_resolutions,
+)
+
 
 def _write_image(path: Path, size: tuple[int, int]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -201,6 +206,30 @@ def test_resize_to_buckets_without_buckets_writes_square_resolution(tmp_path: Pa
     assert bucket_counts == {(768, 768): 1}
     with Image.open(dst / "wide.png") as image:
         assert image.size == (768, 768)
+
+
+def test_resize_to_buckets_uses_scaled_constant_buckets_for_768(tmp_path: Path) -> None:
+    from library.preprocess import resize_to_buckets
+
+    src = tmp_path / "src"
+    dst = tmp_path / "dst"
+    _write_image(src / "portrait.png", (900, 1400))
+
+    stats, bucket_counts = resize_to_buckets(
+        src,
+        dst,
+        resolution=768,
+        min_pixels=0,
+        workers=1,
+        verbose=False,
+    )
+
+    assert stats.written == 1
+    bucket = next(iter(bucket_counts))
+    assert bucket in set(make_constant_token_bucket_resolutions((768, 768)))
+    assert bucket not in set(CONSTANT_TOKEN_BUCKETS)
+    with Image.open(dst / "portrait.png") as image:
+        assert image.size == bucket
 
 
 def test_backup_caption_sidecars_mirrors_nested_layout(tmp_path: Path) -> None:

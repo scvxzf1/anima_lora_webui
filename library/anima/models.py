@@ -2,7 +2,7 @@
 # Original code: NVIDIA CORPORATION & AFFILIATES, licensed under Apache-2.0
 
 import math
-from typing import Any, Optional, Tuple
+from typing import Any, Optional, Sequence, Tuple
 
 import torch
 from einops import repeat
@@ -1575,7 +1575,12 @@ class Anima(nn.Module):
             elif mode == "peak_blocks_mlp_layer1" and idx in peak_block_indices:
                 block.enable_mlp_layer1_checkpointing()
 
-    def compile_blocks(self, backend: str = "inductor", mode: Optional[str] = None):
+    def compile_blocks(
+        self,
+        backend: str = "inductor",
+        mode: Optional[str] = None,
+        bucket_resolutions: Optional[Sequence[Tuple[int, int]]] = None,
+    ):
         """Enable native-shape flattening and torch.compile each block's _forward.
 
         Two coupled effects, both owned by this one call:
@@ -1601,8 +1606,9 @@ class Anima(nn.Module):
         specializations (the live path traces ~5 graphs, not 2). ``max()`` is
         load-bearing — a caller that knows it has *more* distinct shapes (e.g.
         the multi-resolution SPD distill) raises the limit higher beforehand and
-        this must not clobber it back down. This call's own budget only ever
-        covers the two full-res families.
+        this must not clobber it back down. ``bucket_resolutions`` lets training
+        pass the active dataset buckets when WebUI uses scaled resolutions such
+        as 768.
 
         ``mode`` maps to torch.compile's inductor preset (e.g. ``reduce-overhead``
         to enable per-block CUDAGraphs). ``None`` leaves it unset (inductor default).
@@ -1615,10 +1621,12 @@ class Anima(nn.Module):
 
         from library.datasets.buckets import CONSTANT_TOKEN_BUCKETS
 
+        resos = bucket_resolutions or CONSTANT_TOKEN_BUCKETS
+
         n = len(
             {
                 (h // self.patch_spatial) * (w // self.patch_spatial)
-                for h, w in CONSTANT_TOKEN_BUCKETS
+                for h, w in resos
             }
         )
         _dynamo.config.cache_size_limit = max(

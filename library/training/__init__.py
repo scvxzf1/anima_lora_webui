@@ -4,6 +4,7 @@
 from library.training.optimizers import (
     get_optimizer,
     get_optimizer_train_eval_fn,
+    is_self_managed_lr_optimizer,
     is_schedulefree_optimizer,
 )
 from library.training.schedulers import (
@@ -158,6 +159,7 @@ __all__ = [
     # optimizers
     "get_optimizer",
     "get_optimizer_train_eval_fn",
+    "is_self_managed_lr_optimizer",
     "is_schedulefree_optimizer",
     # schedulers
     "get_scheduler_fix",

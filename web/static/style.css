@@ -4136,6 +4136,28 @@ select.dataset-config-input {
     font-size: 0.84rem;
 }
 
+#tab-config .config-toolbar > #btn-load-config,
+#tab-config .config-toolbar > #btn-start-from-config,
+#tab-config .config-toolbar > #btn-queue-from-config {
+    align-self: end;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 72px;
+    min-height: 40px;
+    padding: 0 1.05rem;
+    border-radius: 5px;
+    font-size: 0.88rem;
+    font-weight: 700;
+    line-height: 1;
+    white-space: nowrap;
+}
+
+#tab-config .config-toolbar > #btn-start-from-config,
+#tab-config .config-toolbar > #btn-queue-from-config {
+    min-width: 96px;
+}
+
 #tab-config .gpu-picker-panel {
     border-color: var(--config-border-strong);
     border-radius: 6px;
@@ -4692,6 +4714,12 @@ select.dataset-config-input {
 
     #tab-config .config-toolbar {
         display: grid;
+    }
+
+    #tab-config .config-toolbar > #btn-load-config,
+    #tab-config .config-toolbar > #btn-start-from-config,
+    #tab-config .config-toolbar > #btn-queue-from-config {
+        width: 100%;
     }
 }
 
@@ -6924,21 +6952,48 @@ input[type="checkbox"].field-input {
     padding: 0.24rem 0.38rem;
 }
 .history-bulk-bar {
-    align-items: center;
+    align-items: stretch;
     background: var(--surface-tint-hover);
     border: 1px solid rgba(79, 195, 247, 0.35);
     border-radius: 6px;
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.35rem;
-    justify-content: flex-end;
+    display: grid;
+    gap: 0.42rem;
     padding: 0.45rem 0.55rem;
 }
-.history-bulk-bar span {
+.history-bulk-head {
+    align-items: start;
+    display: flex;
+    gap: 0.45rem;
+    justify-content: space-between;
+}
+.history-bulk-title {
+    display: grid;
+    gap: 0.08rem;
+    min-width: 0;
+}
+.history-bulk-title strong {
     color: var(--text);
-    flex: 1 1 auto;
+    font-size: 0.8rem;
+    line-height: 1.25;
+}
+.history-bulk-eyebrow {
+    color: var(--accent);
+    font-size: 0.58rem;
+    font-weight: 800;
+    line-height: 1.1;
+}
+.history-bulk-summary {
+    color: var(--text);
     font-size: 0.75rem;
     font-weight: 700;
+    line-height: 1.35;
+    text-align: right;
+}
+.history-bulk-primary-actions,
+.history-bulk-secondary-actions {
+    display: grid;
+    gap: 0.32rem;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 .history-manager-grid {
     align-items: start;
@@ -13176,10 +13231,10 @@ body.history-task-dialog-fallback-open::before {
         "head content"
         "stats content"
         "tools content"
-        ". content"
-        "bulk content";
+        "bulk content"
+        ". content";
     grid-template-columns: minmax(300px, 360px) minmax(0, 1fr);
-    grid-template-rows: auto auto auto minmax(0, 1fr) auto;
+    grid-template-rows: auto auto auto auto minmax(0, 1fr);
     align-content: start;
     gap: 0;
     min-height: calc(100vh - 142px);
@@ -13344,12 +13399,50 @@ body.history-task-dialog-fallback-open::before {
 #tab-training .history-bulk-bar {
     grid-area: bulk;
     margin: 0;
-    padding: 0.85rem 1.25rem;
+    padding: 0.95rem 1.25rem 1rem;
     border: 0;
     border-right: 1px solid var(--training-border-strong);
     border-bottom: 1px solid var(--training-border);
     border-radius: 0;
     background: var(--training-panel-soft);
+}
+
+#tab-training .history-bulk-head {
+    align-items: start;
+}
+
+#tab-training .history-bulk-title strong {
+    color: var(--training-text);
+    font-size: 0.78rem;
+}
+
+#tab-training .history-bulk-eyebrow {
+    color: var(--training-accent);
+    font-size: 0.62rem;
+    text-transform: uppercase;
+}
+
+#tab-training .history-bulk-summary {
+    color: var(--training-muted);
+    font-size: 0.68rem;
+    max-width: 150px;
+}
+
+#tab-training .history-bulk-primary-actions .btn {
+    min-height: 34px;
+    font-weight: 900;
+}
+
+#tab-training .history-bulk-primary-actions #btn-history-bulk-archive {
+    border-color: color-mix(in srgb, var(--training-accent) 52%, var(--training-border));
+    background: var(--training-accent-strong);
+    color: var(--training-accent-ink);
+}
+
+#tab-training .history-bulk-primary-actions #btn-history-bulk-archive:disabled {
+    border-color: var(--training-border);
+    background: var(--training-field-bg);
+    color: var(--training-muted);
 }
 
 #tab-training .history-manager-grid {

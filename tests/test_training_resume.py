@@ -22,6 +22,7 @@ from library.training.checkpoints import (
 )
 from web.routes import training as training_routes
 from web.services import config_service, settings_service, training_service
+from web.services.training import progress_parser
 from web.services.training_service import TrainingService
 
 
@@ -2325,6 +2326,45 @@ def test_training_service_rate_uses_recent_step_median(monkeypatch):
     assert svc._compute_rate(5, 100) == "8.00s/step"
     assert svc._compute_rate(6, 100) == "8.00s/step"
     assert svc._compute_rate(7, 100) == "8.00s/step"
+
+
+def test_progress_parser_handles_structured_step_and_val_events():
+    step_metric = progress_parser.metric_from_progress_jsonl_event(
+        {
+            "ev": "step",
+            "global_step": "12",
+            "epoch": "2",
+            "loss/average": "0.123",
+            "lr/group0": "1e-4",
+        },
+        1234.5,
+        rate="1.50s/step",
+    )
+    val_metric = progress_parser.metric_from_progress_jsonl_event(
+        {"ev": "val", "global_step": 12, "val_step": "3", "cmmd": "0.42"},
+        1236.0,
+    )
+
+    assert step_metric == {
+        "ts": 1234.5,
+        "step": 12,
+        "epoch": 2,
+        "rate": "1.50s/step",
+        "loss": 0.123,
+        "lr": 1e-4,
+    }
+    assert val_metric == {
+        "ts": 1236.0,
+        "step": 12,
+        "kind": "val",
+        "cmmd": 0.42,
+        "loss": 0.42,
+        "val_step": 3,
+    }
+    assert training_service._metric_from_progress_jsonl_event(
+        {"ev": "step", "global_step": "12", "loss/current": "0.2"},
+        1.0,
+    ) == {"ts": 1.0, "step": 12, "loss": 0.2}
 
 
 def test_progress_jsonl_metrics_derive_recent_step_rate(tmp_path, monkeypatch):

@@ -7,7 +7,12 @@ import pytorch_optimizer
 import torch
 from torch.optim.lr_scheduler import CosineAnnealingLR
 
-from library.training.optimizers import get_optimizer, is_schedulefree_optimizer
+from library.training.automagic import Automagic
+from library.training.optimizers import (
+    get_optimizer,
+    is_schedulefree_optimizer,
+    is_self_managed_lr_optimizer,
+)
 from library.training.schedulers import get_scheduler_fix
 
 try:
@@ -86,6 +91,40 @@ def test_came_optimizer_step_updates_matrix_parameter():
     optimizer.step()
 
     assert not torch.equal(param.detach(), before)
+
+
+def test_automagic_optimizer_builds_and_uses_dummy_scheduler_with_effective_lrs():
+    param = torch.nn.Parameter(torch.ones(2, 2))
+    args = _optimizer_args(
+        optimizer_type="Automagic",
+        learning_rate=1e-6,
+        optimizer_args=[
+            "min_lr=1e-7",
+            "max_lr=1e-5",
+            "lr_bump=1e-6",
+            "weight_decay=0.0",
+        ],
+    )
+
+    optimizer_name, optimizer_args, optimizer = get_optimizer(args, [param])
+    scheduler = get_scheduler_fix(args, optimizer, num_processes=1)
+
+    assert isinstance(optimizer, Automagic)
+    assert optimizer_name == "library.training.automagic.Automagic"
+    assert optimizer_args == "min_lr=1e-07,max_lr=1e-05,lr_bump=1e-06,weight_decay=0.0"
+    assert is_self_managed_lr_optimizer(optimizer, args)
+    assert not is_schedulefree_optimizer(optimizer, args)
+    assert scheduler.__class__.__name__ == "DummyScheduler"
+    assert scheduler.get_last_lr() == pytest.approx([1e-6])
+
+    before = param.detach().clone()
+    loss = -param.sum()
+    loss.backward()
+    optimizer.step()
+
+    assert not torch.equal(param.detach(), before)
+    assert optimizer.get_learning_rates()[0] > 1e-6
+    assert scheduler.get_last_lr() == pytest.approx(optimizer.get_learning_rates())
 
 
 @pytest.mark.skipif(

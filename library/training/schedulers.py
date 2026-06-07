@@ -7,7 +7,10 @@ from typing import Any, Optional
 import torch
 from torch.optim import Optimizer
 
-from library.training.optimizers import is_schedulefree_optimizer
+from library.training.optimizers import (
+    is_schedulefree_optimizer,
+    is_self_managed_lr_optimizer,
+)
 
 # transformers (~1.3s) and diffusers (~2s) are imported lazily inside
 # get_scheduler_fix so that merely importing this module (and, transitively,
@@ -34,6 +37,8 @@ def get_dummy_scheduler(optimizer: Optimizer) -> Any:
             pass
 
         def get_last_lr(self):
+            if hasattr(self.optimizer, "get_learning_rates"):
+                return list(self.optimizer.get_learning_rates())
             return [group["lr"] for group in self.optimizer.param_groups]
 
     return DummyScheduler(optimizer)
@@ -231,7 +236,9 @@ def get_scheduler_fix(args, optimizer: Optimizer, num_processes: int):
     """
     Unified API to get any scheduler from its name.
     """
-    if is_schedulefree_optimizer(optimizer, args):
+    if is_schedulefree_optimizer(optimizer, args) or is_self_managed_lr_optimizer(
+        optimizer, args
+    ):
         return get_dummy_scheduler(optimizer)
 
     name = args.lr_scheduler

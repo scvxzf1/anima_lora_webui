@@ -1,6 +1,6 @@
 # AdamW8bit → fused AdamW
 
-This doc records why `optimizer_type = "AdamW8bit"` was replaced with `"AdamW"` + `optimizer_args = ["fused=True"]` as the project default, and why `bitsandbytes` was dropped from `pyproject.toml`.
+This doc records why `optimizer_type = "AdamW8bit"` was replaced with `"AdamW"` + `optimizer_args = ["fused=True"]` as the project default, and when it still makes sense to choose the bitsandbytes-backed 8-bit optimizer.
 
 ## What was there
 
@@ -38,21 +38,19 @@ optimizer_args = ["fused=True"]
 - **Speed**: step time drops from ~1.17 s to ~0.86 s on the same RTX 5060 Ti / FA2 / static-token-pad setup that produced the numbers. GPU utilization sits flat at ~99 %.
 - **Numerics**: full-precision optimizer state. No quantization noise on the second moment, so anything sensitive to that (very small LR, long training runs accumulating error) will be slightly more stable. Not a measurable quality difference at our typical scales.
 
-## bitsandbytes is gone
+## bitsandbytes is optional, not the default
 
-`bitsandbytes` was removed from `[project.dependencies]` in `pyproject.toml`. The bnb-using optimizer branches in `library/training/optimizers.py` (`AdamW8bit`, `Lion8bit`, `SGDNesterov8bit`, `PagedAdamW`, `PagedAdamW8bit`, `PagedAdamW32bit`, `PagedLion8bit`) were left in place — every one of them lazy-imports `bitsandbytes` inside the branch and raises a clear `ImportError("No bitsandbytes")` if you select that optimizer without the package installed. So:
+`bitsandbytes` is kept in `[project.dependencies]` for Linux/Windows so the WebUI's `AdamW8bit` option works after a normal `uv sync`. It is not used unless you explicitly select a bnb-backed optimizer. The bnb optimizer branches in `library/training/optimizers.py` (`AdamW8bit`, `Lion8bit`, `SGDNesterov8bit`, `PagedAdamW`, `PagedAdamW8bit`, `PagedAdamW32bit`, `PagedLion8bit`) still lazy-import `bitsandbytes` inside the selected branch, so normal AdamW/CAME/Lion runs do not pay the import cost.
 
-- A leftover config with `optimizer_type = "AdamW8bit"` produces a friendly install hint, not a silent fallback.
-- If you need 8-bit state back (say, to free VRAM on a smaller card), `uv pip install bitsandbytes` and the existing branches just work — no code change required.
+Important dependency constraint: keep the PyTorch CUDA track on CUDA 13.0 (`cu130` / `cuda-toolkit 13.0.2`). bitsandbytes ships CUDA 13.0 binaries, but not CUDA 13.2 binaries, so resolving PyTorch/FA2 against `cu132` makes `AdamW8bit` unusable.
 
-## If you want to bring AdamW8bit back
+## If you want to use AdamW8bit
 
-1. `uv pip install bitsandbytes`
-2. In `configs/base.toml`, swap:
+1. In `configs/base.toml` or the WebUI config, set:
    ```toml
    optimizer_type = "AdamW8bit"
-   # remove optimizer_args = ["fused=True"]  — bnb doesn't accept it
+   # remove optimizer_args = ["fused=True"]  — bitsandbytes doesn't accept it
    ```
-3. Optionally re-add `"bitsandbytes"` to `pyproject.toml` if you want it as a hard dependency again.
+2. Run `uv sync` if you are on an older environment that was created before bitsandbytes was added back.
 
 Expect the GPU-utilization dip to come back. If 8-bit state is genuinely needed for VRAM (full-DiT train on 16 GB), the dip is worth the trade. For LoRA, fused AdamW is strictly better.

@@ -80,7 +80,7 @@ export const FORM_SECTION_DEFS = [
     },
     {
         title: '显存与速度优化',
-        description: 'OOM、训练速度、block swap、checkpoint、显存探针和编译相关；显存不足或速度异常时先看这里。',
+        description: 'OOM、训练速度、学习率预热、block swap、checkpoint、显存探针和编译相关；显存不足或开头收敛不稳时先看这里。',
         open: true,
         className: 'config-group-resource',
         keys: [
@@ -95,6 +95,7 @@ export const FORM_SECTION_DEFS = [
             'peak_probe_max_steps',
             'peak_probe_level',
             'gradient_checkpointing',
+            'lr_warmup_steps',
             'unsloth_offload_checkpointing',
             'disable_block_swap_for_eval',
             'mixed_precision',

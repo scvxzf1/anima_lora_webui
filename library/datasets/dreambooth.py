@@ -76,8 +76,24 @@ class DreamBoothDataset(BaseDataset):
         validation_seed: Optional[int],
         resize_interpolation: Optional[str],
         validation_split_num: int = 0,
+        resolution: int = 1024,
+        enable_bucket: bool = True,
+        min_bucket_reso: int = 256,
+        max_bucket_reso: int = 2048,
+        bucket_reso_steps: int = 64,
+        bucket_no_upscale: bool = False,
     ) -> None:
-        super().__init__(network_multiplier, debug_dataset, resize_interpolation)
+        super().__init__(
+            network_multiplier,
+            debug_dataset,
+            resize_interpolation,
+            resolution=resolution,
+            enable_bucket=enable_bucket,
+            min_bucket_reso=min_bucket_reso,
+            max_bucket_reso=max_bucket_reso,
+            bucket_reso_steps=bucket_reso_steps,
+            bucket_no_upscale=bucket_no_upscale,
+        )
 
         self.batch_size = batch_size
         self.prior_loss_weight = prior_loss_weight

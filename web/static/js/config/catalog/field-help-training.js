@@ -74,12 +74,14 @@ export const FIELD_HELP_TRAINING_ZH = {    learning_rate: help(
     ),
     optimizer_type: help(
         "优化器算法。",
-        "默认 AdamW；可选 CAME、AdamW8bit、Lion、Prodigy、ProdigyPlusScheduleFree 等。",
+        "默认 AdamW；可选 CAME、Automagic、AdamW8bit、Lion、Prodigy、ProdigyPlusScheduleFree 等。AdamW8bit 使用 bitsandbytes，适合显存特别紧张时降低优化器状态占用。",
         ["不同优化器适合不同内存和收敛偏好。"],
         ["CAME 是内存友好的自适应优化器，但通常需要重新确认学习率。"],
+        ["Automagic 属于实验优化器，会在优化器内部自适应调整实际学习率；建议从较小 learning_rate 开始。"],
+        ["AdamW8bit 会省显存，但通常比 fused AdamW 慢；切换到 AdamW8bit 时不要保留 optimizer_args 里的 fused=True。"],
         ["ProdigyPlusScheduleFree 属于实验优化器；推荐 learning_rate=1.0、lr_scheduler=constant、max_grad_norm=0。"],
         ["随意切换会让历史经验不再适用。"],
-        "先用 AdamW；想实验 ProdigyPlusScheduleFree 时，先用上游推荐的 constant scheduler。"
+        "先用 AdamW；只有显存不够时再试 AdamW8bit。"
     ),
     optimizer_args: help(
         "传给优化器的额外参数。",
@@ -91,11 +93,20 @@ export const FIELD_HELP_TRAINING_ZH = {    learning_rate: help(
     ),
     lr_scheduler: help(
         "学习率调度策略。",
-        "constant 表示固定学习率；也可用 cosine、lulu_loss_gated_cosine 等调度。",
+        "constant 表示固定学习率；constant_with_warmup 表示先线性热身再固定；也可用 cosine、lulu_loss_gated_cosine 等调度。",
         ["调度可以让训练后期更平滑。"],
         ["多一个超参维度，需要搭配总步数理解。"],
+        ["constant_with_warmup 只需要 lr_warmup_steps，热身结束后不会继续衰减。"],
         ["不合适的调度可能过早降低学习率；lulu 调度器的细调参数走 lr_scheduler_args。"],
         "默认 constant，先保持。"
+    ),
+    lr_warmup_steps: help(
+        "学习率预热步数。",
+        "可填整数步数，也可填 0 到 1 之间的比例；小于 1 时按总训练步数折算，例如 0.05 表示前 5% 的训练步数逐步升到目标学习率。",
+        ["配合 constant_with_warmup 时，训练开头会更平滑。"],
+        ["预热太短可能稳定效果不明显，太长会拖慢有效学习。"],
+        ["短跑实验总步数很少时，过长的预热会让你只看到热身阶段。"],
+        "先沿用当前配置；需要开头更稳时，再按总步数小幅调整。"
     ),
     timestep_sampling: help(
         "训练时如何采样去噪时间步。",

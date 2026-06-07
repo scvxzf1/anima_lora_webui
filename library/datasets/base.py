@@ -75,6 +75,12 @@ class BaseDataset(torch.utils.data.Dataset):
         network_multiplier: float,
         debug_dataset: bool,
         resize_interpolation: Optional[str] = None,
+        resolution: int = 1024,
+        enable_bucket: bool = True,
+        min_bucket_reso: int = 256,
+        max_bucket_reso: int = 2048,
+        bucket_reso_steps: int = 64,
+        bucket_no_upscale: bool = False,
     ) -> None:
         super().__init__()
 
@@ -90,6 +96,12 @@ class BaseDataset(torch.utils.data.Dataset):
 
         self.bucket_manager: BucketManager = None  # not initialized
         self.bucket_info = None  # for metadata
+        self.resolution = int(resolution or 1024)
+        self.enable_bucket = bool(enable_bucket)
+        self.min_bucket_reso = int(min_bucket_reso or 256)
+        self.max_bucket_reso = int(max_bucket_reso or 2048)
+        self.bucket_reso_steps = int(bucket_reso_steps or 64)
+        self.bucket_no_upscale = bool(bucket_no_upscale)
 
         self.current_epoch: int = 0
 
@@ -440,10 +452,11 @@ class BaseDataset(torch.utils.data.Dataset):
     def make_buckets(self, constant_token_buckets: bool = False):
         """Assign every image to its nearest bucket resolution.
 
-        With ``constant_token_buckets`` (the only training mode) buckets come
-        from the fixed ``CONSTANT_TOKEN_BUCKETS`` table — native shapes, no
-        padding.
+        With ``constant_token_buckets`` (the only training mode) buckets use
+        the canonical 1024 table or a resolution-scaled variant for WebUI
+        datasets such as 768 — native shapes, no padding.
         """
+        self._constant_token_buckets = constant_token_buckets
         logger.info("loading image sizes.")
         for info in tqdm(self.image_data.values()):
             if info.image_size is None:
@@ -452,17 +465,41 @@ class BaseDataset(torch.utils.data.Dataset):
         logger.info("make buckets")
 
         if self.bucket_manager is None:
-            self.bucket_manager = BucketManager()
-            self.bucket_manager.make_buckets(
-                constant_token_buckets=constant_token_buckets
+            self.bucket_manager = BucketManager(
+                max_reso=(self.resolution, self.resolution),
+                min_size=self.min_bucket_reso,
+                max_size=self.max_bucket_reso,
+                reso_steps=self.bucket_reso_steps,
             )
+            if self.enable_bucket and not self.bucket_no_upscale:
+                self.bucket_manager.make_buckets(
+                    constant_token_buckets=constant_token_buckets
+                )
+            else:
+                self.bucket_manager.set_predefined_resos([])
 
         img_ar_errors = []
         for image_info in self.image_data.values():
             image_width, image_height = image_info.image_size
-            image_info.bucket_reso, image_info.resized_size, ar_error = (
-                self.bucket_manager.select_bucket(image_width, image_height)
-            )
+            if not self.enable_bucket:
+                bucket_reso = (self.resolution, self.resolution)
+                resized_size = self._cover_resized_size(
+                    image_width, image_height, bucket_reso
+                )
+                ar_error = (bucket_reso[0] / bucket_reso[1]) - (image_width / image_height)
+                self.bucket_manager.add_if_new_reso(bucket_reso)
+                image_info.bucket_reso = bucket_reso
+                image_info.resized_size = resized_size
+            elif self.bucket_no_upscale:
+                bucket_reso = (image_width, image_height)
+                self.bucket_manager.add_if_new_reso(bucket_reso)
+                image_info.bucket_reso = bucket_reso
+                image_info.resized_size = bucket_reso
+                ar_error = 0
+            else:
+                image_info.bucket_reso, image_info.resized_size, ar_error = (
+                    self.bucket_manager.select_bucket(image_width, image_height)
+                )
 
             img_ar_errors.append(abs(ar_error))
 
@@ -513,6 +550,17 @@ class BaseDataset(torch.utils.data.Dataset):
         self._length = len(self.buckets_indices)
 
         self._preload_alpha_masks()
+
+    @staticmethod
+    def _cover_resized_size(
+        image_width: int,
+        image_height: int,
+        bucket_reso: Tuple[int, int],
+    ) -> Tuple[int, int]:
+        bucket_width, bucket_height = bucket_reso
+        if image_width / image_height > bucket_width / bucket_height:
+            return (round(bucket_height * image_width / image_height), bucket_height)
+        return (bucket_width, round(bucket_width * image_height / image_width))
 
     def _preload_alpha_masks(self):
         """Load mask PNGs into memory once as uint8 [H, W] tensors at

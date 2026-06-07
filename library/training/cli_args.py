@@ -70,7 +70,7 @@ def add_optimizer_arguments(parser: argparse.ArgumentParser):
         help="Optimizer to use: "
         "CAME, Lion8bit, PagedLion8bit, Lion, SGDNesterov, SGDNesterov8bit, "
         "DAdaptation(DAdaptAdamPreprint), DAdaptAdaGrad, DAdaptAdam, DAdaptAdan, DAdaptAdanIP, DAdaptLion, DAdaptSGD, "
-        "ProdigyPlusScheduleFree, AdaFactor.",
+        "ProdigyPlusScheduleFree, Automagic, AdaFactor.",
     )
 
     parser.add_argument(

@@ -162,6 +162,26 @@ def test_frontend_module_cache_tokens_match_entrypoint() -> None:
 
     assert not mismatches
 
+
+def test_legacy_app_is_transition_glue_not_new_feature_home() -> None:
+    legacy_path = STATIC_DIR / "js/features/legacy-app.js"
+    legacy_source = _frontend_module_text("js/features/legacy-app.js")
+    app_source = APP_JS_PATH.read_text(encoding="utf-8")
+    graph = _frontend_module_graph()
+    relative = {path.relative_to(STATIC_DIR).as_posix() for path in graph}
+    feature_dirs = {
+        path.parent.relative_to(STATIC_DIR).as_posix()
+        for path in (STATIC_DIR / "js/features").glob("*/index.js")
+    }
+
+    assert "过渡层" in legacy_source
+    assert "不要把这里当成新的长期上帝文件" in legacy_source
+    assert len(legacy_path.read_text(encoding="utf-8").splitlines()) <= 17882
+    assert all(token not in app_source for token in ("fetch(", "addEventListener(", "getElementById("))
+    assert feature_dirs
+    assert feature_dirs <= {str(Path(item).parent) for item in relative}
+
+
 def test_preview_feature_modules_are_loaded_from_production_entrypoint() -> None:
     legacy_source = _frontend_module_text("js/features/legacy-app.js")
     preview_index = _frontend_module_text("js/features/preview/index.js")
@@ -613,6 +633,7 @@ def test_config_form_uses_navigation_search_and_progressive_disclosure() -> None
     render_section = _section(source, "function renderConfigForm", "function shouldRenderConfigSection")
     order_section = _section(source, "function appendConfigGroupsByCategory", "function createGroup")
     collect_section = _section(source, "function collectChangedFormValues", "function networkArgInputChanged")
+    load_steps = _section(source, "async function loadStepEstimate", "async function loadDatasetEditor")
     defaults = _section(source, "const FORM_UI_DEFAULTS = {", "const OPTIONAL_EMPTY_FIELDS")
     options = _section(labels_options, "export const FIELD_OPTIONS = {", "\n};")
 
@@ -671,9 +692,11 @@ def test_config_form_uses_navigation_search_and_progressive_disclosure() -> None
     assert "field-row-changed" in source
     assert "config-modified-count" in source
     assert "if (selectedConfigDatasetFile !== (currentConfig.dataset_config || ''))" in source
-    assert "const params = new URLSearchParams({" in source
-    assert "params.set('dataset_config', selectedConfigDatasetFile);" in source
-    assert "const data = await api(`/api/config/steps?${params.toString()}`);" in source
+    assert "const params = new URLSearchParams({" in load_steps
+    assert "const configFile = currentTrainingConfigFile();" in load_steps
+    assert "params.set('config_file', configFile);" in load_steps
+    assert "params.set('dataset_config', selectedConfigDatasetFile);" in load_steps
+    assert "const data = await api(`/api/config/steps?${params.toString()}`);" in load_steps
     assert "setTomlStatus(\n            applied ? 'ok' : 'error'," in source
     assert ".config-form-shell" in css
     assert "createConfigNav" not in source
@@ -764,6 +787,7 @@ def test_config_form_uses_navigation_search_and_progressive_disclosure() -> None
     assert "'peak_probe_jsonl'," in optimization_section
     assert "'peak_probe_max_steps'," in optimization_section
     assert "'peak_probe_level'," in optimization_section
+    assert "'lr_warmup_steps'," in optimization_section
     assert "'lokr_factor_group_size'," in optimization_section
     assert "'lokr_project_chunk_bytes'," in optimization_section
     assert "sections: ['显存与速度优化', 'LoKr 专用优化', '数据加载与 VAE 资源', '实验性功能']" in category_defs
@@ -1146,6 +1170,8 @@ def test_history_manager_frontend_hooks_are_present() -> None:
     assert "style.css?v=" in html
     assert "app.js?v=" in html
     assert "history-bulk-bar" in html
+    assert "history-bulk-primary-actions" in html
+    assert "归档已选" in html
     assert "btn-history-bulk-delete" in html
     assert "设置集合" in html
     assert 'id="history-detail-panel"' not in html
@@ -1313,6 +1339,9 @@ def test_history_manager_frontend_hooks_are_present() -> None:
     assert "confirmText: '确认要删吗'" in source
     assert "输入“彻底删除”确认" not in source
     assert "彻底删除" in source
+    assert "runtime_cleanup_errors" in source
+    assert "历史记录已删除，部分文件未清理" in source
+    assert "detailLines: cleanupErrors" in source
     assert "/api/training/history/batch" in source
     assert "openHistoryDetailDialog" in source
     assert "closeHistoryDetailDialog" in source
@@ -1496,8 +1525,8 @@ def test_history_manager_frontend_hooks_are_present() -> None:
         "#tab-training .training-history-manager {",
         "#tab-training .history-forge-eyebrow {",
     )
-    assert '"head content"\n        "stats content"\n        "tools content"\n        ". content"\n        "bulk content"' in training_history_css
-    assert "grid-template-rows: auto auto auto minmax(0, 1fr) auto;" in training_history_css
+    assert '"head content"\n        "stats content"\n        "tools content"\n        "bulk content"\n        ". content"' in training_history_css
+    assert "grid-template-rows: auto auto auto auto minmax(0, 1fr);" in training_history_css
     assert "#tab-training .history-manager-head {\n    grid-area: head;\n    align-self: start;" in css
     assert "#tab-training .history-manager-stats {\n    grid-area: stats;\n    align-self: start;" in css
     assert "#tab-training .history-manager-tools {\n    grid-area: tools;\n    align-self: start;" in css
@@ -2043,6 +2072,18 @@ def test_config_form_auto_fixes_came_optimizer_args_frontend_hooks_are_present()
     assert "const nextValues = applyOptimizerCompatibilityPatch(values);" in prepare_section
 
 
+def test_config_catalog_exposes_automagic_and_constant_with_warmup_options() -> None:
+    labels_options = _frontend_module_text("js/config/catalog/labels-options.js")
+    field_help = _frontend_module_text("js/config/catalog/field-help-training.js")
+
+    assert "lr_scheduler: ['constant', 'constant_with_warmup', 'cosine'" in labels_options
+    assert "lr_warmup_steps: '预热步数'" in labels_options
+    assert "optimizer_type: ['AdamW', 'CAME', 'Automagic'" in labels_options
+    assert "Automagic 属于实验优化器" in field_help
+    assert "constant_with_warmup 表示先线性热身再固定" in field_help
+    assert "0.05 表示前 5% 的训练步数逐步升到目标学习率" in field_help
+
+
 def test_balanced_16g_block_swap_fields_are_visible() -> None:
     source = APP_JS.read_text(encoding="utf-8")
     form_layout = _frontend_module_text("js/config/catalog/form-layout.js")
@@ -2061,6 +2102,7 @@ def test_balanced_16g_block_swap_fields_are_visible() -> None:
         "peak_probe_jsonl",
         "peak_probe_max_steps",
         "peak_probe_level",
+        "lr_warmup_steps",
         "lokr_factor_group_size",
         "lokr_project_chunk_bytes",
         "disable_block_swap_for_eval",
@@ -2073,6 +2115,7 @@ def test_balanced_16g_block_swap_fields_are_visible() -> None:
     assert "peak_probe_jsonl: '峰值探针'" in labels_options
     assert "peak_probe_max_steps: '峰值探针步数'" in labels_options
     assert "peak_probe_level: '峰值探针粒度'" in labels_options
+    assert "lr_warmup_steps: '预热步数'" in labels_options
     assert "lokr_factor_group_size: 'LoKr 分组'" in labels_options
     assert "lokr_project_chunk_bytes: 'LoKr 张量切块阈值'" in labels_options
     assert "use_glora: '启用 GLoRA'" in labels_options
@@ -2296,6 +2339,7 @@ def test_dataset_preset_manager_is_isolated_from_config_page() -> None:
         "async function handleDatasetPresetImport(event)",
         "async function exportDatasetPreset()",
     )
+    load_editor = _section(source, "async function loadDatasetEditor", "function renderDatasetEditor")
     api_helpers = _section(source, "async function api(url, opts = {})", "function val(id)")
     listener_section = _section(source, "function setupEventListeners", "function installBeginnerTooltips")
 
@@ -2316,6 +2360,12 @@ def test_dataset_preset_manager_is_isolated_from_config_page() -> None:
     assert "btn-refresh-dataset-presets" in listener_section
     assert "btn-config-dataset-dialog-refresh" in listener_section
     assert "btn-config-dataset-dialog-refresh').addEventListener('click', () => loadDatasetPresets({ selectCurrent: false, manage: false }))" in listener_section
+    assert "const params = new URLSearchParams({" in load_editor
+    assert "const configFile = currentTrainingConfigFile();" in load_editor
+    assert "params.set('config_file', configFile);" in load_editor
+    assert "params.set('dataset_config', selectedConfigDatasetFile);" in load_editor
+    assert "datasetConfig = selectedConfigDatasetFile || currentConfig.dataset_config" not in load_editor
+    assert "api(`/api/config/datasets?${params.toString()}`)" in load_editor
 
 
 def test_config_toml_manager_excludes_dataset_groups() -> None:

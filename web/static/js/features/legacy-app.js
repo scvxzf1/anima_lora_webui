@@ -1321,14 +1321,10 @@ export function createLegacyApp(ctx) {
             return;
         }
         try {
-            const params = new URLSearchParams({
-                variant,
-                preset,
-                methods_subdir: methodsSubdir,
-            });
-            if (selectedConfigDatasetFile || currentConfig.dataset_config) {
-                params.set('dataset_config', selectedConfigDatasetFile);
-            }
+            const params = new URLSearchParams({ variant, preset, methods_subdir: methodsSubdir });
+            const configFile = currentTrainingConfigFile();
+            if (configFile) params.set('config_file', configFile);
+            if (selectedConfigDatasetFile || currentConfig.dataset_config) params.set('dataset_config', selectedConfigDatasetFile);
             const data = await api(`/api/config/steps?${params.toString()}`);
             if (parentSeq !== configLoadSeq || requestSeq !== stepEstimateSeq) return;
             currentStepEstimate = data?.ok === false ? null : data;
@@ -1359,7 +1355,11 @@ export function createLegacyApp(ctx) {
         datasetEditorState.error = '';
         renderDatasetEditor();
         try {
-            const data = await api(`/api/config/datasets?variant=${encodeURIComponent(variant)}&preset=${encodeURIComponent(preset)}&methods_subdir=${encodeURIComponent(methodsSubdir)}`);
+            const params = new URLSearchParams({ variant, preset, methods_subdir: methodsSubdir });
+            const configFile = currentTrainingConfigFile();
+            if (configFile) params.set('config_file', configFile);
+            if (selectedConfigDatasetFile || currentConfig.dataset_config) params.set('dataset_config', selectedConfigDatasetFile);
+            const data = await api(`/api/config/datasets?${params.toString()}`);
             if (parentSeq !== configLoadSeq || requestSeq !== datasetLoadSeq) return;
             if (!data.ok) {
                 throw new Error(data.error || '读取数据集配置失败');
@@ -4818,7 +4818,7 @@ export function createLegacyApp(ctx) {
             min_bucket_reso: '最小桶边长',
             max_bucket_reso: '最大桶边长',
             bucket_reso_steps: '桶尺寸步长',
-            bucket_no_upscale: '小图放大',
+            bucket_no_upscale: '禁止放大图片',
             validation_split: '验证集比例',
             validation_split_num: '固定验证数量',
             validation_seed: '验证随机种子',
@@ -16437,11 +16437,11 @@ export function createLegacyApp(ctx) {
                 });
                 return;
             }
+            const cleanupErrors = Object.entries({ ...(res.cleanup_errors || {}), ...(res.runtime_cleanup_errors || {}) }).map(([path, error]) => `${path}: ${error}`);
             selectedHistoryTaskIds.clear();
-            if (ids.includes(viewingHistoryTaskId)) {
-                clearHistoryManagerDetail();
-            }
+            if (ids.includes(viewingHistoryTaskId)) clearHistoryManagerDetail();
             await loadTrainingHistoryList();
+            if (cleanupErrors.length) await showHistoryTaskMessageDialog({ title: '历史记录已删除，部分文件未清理', message: '以下运行目录或历史记录残留需要手动检查。', detailLines: cleanupErrors, tone: 'warning' });
         } catch (e) {
             await showHistoryTaskMessageDialog({
                 title: '删除失败',

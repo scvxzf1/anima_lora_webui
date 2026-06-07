@@ -14,6 +14,7 @@ from PIL import Image
 
 from web.routes import config as config_routes
 from web.services import config_service
+from web.services.config import paths as config_paths
 
 
 def test_spd_cli_config_is_exposed_as_method_variant(tmp_path: Path, monkeypatch):
@@ -27,6 +28,30 @@ def test_spd_cli_config_is_exposed_as_method_variant(tmp_path: Path, monkeypatch
 
     assert "spd" in config_service.list_methods()
     assert config_service.list_variants("spd") == ["spd"]
+
+
+def test_config_path_helpers_reject_escaping_and_facade_stays_compatible(tmp_path: Path, monkeypatch):
+    root = tmp_path
+    configs = root / "configs"
+    configs.mkdir()
+    config_file = configs / "demo.toml"
+    config_file.write_text("output_name = 'demo'\n", encoding="utf-8")
+    monkeypatch.setattr(config_service, "ROOT", root)
+    monkeypatch.setattr(config_service, "CONFIGS_DIR", configs)
+
+    assert config_paths.normalize_config_rel_path("\\configs\\demo.toml") == "configs/demo.toml"
+    assert config_paths.safe_resolve("configs/demo.toml", root=root, configs_dir=configs) == config_file.resolve()
+    assert config_paths.safe_resolve("../outside.toml", root=root, configs_dir=configs) is None
+    assert config_paths.safe_config_subdir("gui-methods", configs_dir=configs) == (configs / "gui-methods").resolve()
+    assert config_paths.safe_config_subdir("../outside", configs_dir=configs) is None
+    assert config_paths.resolve_project_path(
+        "$ROOT/configs/demo.toml",
+        root=root,
+        expand_env_vars_fn=lambda value: value.replace("$ROOT", str(root)),
+    ) == config_file.resolve()
+    assert config_paths.display_path(config_file, root=root) == "configs/demo.toml"
+    assert config_service._safe_resolve("configs/demo.toml") == config_file.resolve()
+    assert config_service._safe_resolve("../outside.toml") is None
 
 
 def test_web_variants_follow_variant_family_metadata(tmp_path: Path, monkeypatch):
@@ -548,6 +573,86 @@ def test_save_dataset_editor_accepts_source_only_rows(tmp_path: Path, monkeypatc
     assert subset["custom_attributes"]["source_dir"] == "image_dataset/source_only"
     assert subset["image_dir"].endswith("source_only_resized")
     assert subset["cache_dir"].endswith("source_only_lora_cache")
+
+
+def test_load_dataset_editor_uses_selected_training_config_dataset(tmp_path: Path, monkeypatch):
+    configs, default_dataset_path = _write_minimal_config_tree(tmp_path)
+    default_dataset_path.write_text(
+        "\n".join(
+            [
+                "[[datasets]]",
+                "resolution = 1024",
+                "max_bucket_reso = 1024",
+                "",
+                "[[datasets.subsets]]",
+                'image_dir = "post_image_dataset/default_resized"',
+                'cache_dir = "post_image_dataset/default_cache"',
+                'custom_attributes = { source_dir = "image_dataset/default" }',
+            ]
+        ),
+        encoding="utf-8",
+    )
+    selected_dataset_path = configs / "datasets" / "selected.toml"
+    selected_dataset_path.write_text(
+        "\n".join(
+            [
+                "[[datasets]]",
+                "resolution = 768",
+                "max_bucket_reso = 768",
+                "bucket_reso_steps = 32",
+                "",
+                "[[datasets.subsets]]",
+                'image_dir = "post_image_dataset/selected_resized"',
+                'cache_dir = "post_image_dataset/selected_cache"',
+                'custom_attributes = { source_dir = "image_dataset/selected" }',
+            ]
+        ),
+        encoding="utf-8",
+    )
+    override_dataset_path = configs / "datasets" / "override.toml"
+    override_dataset_path.write_text(
+        "\n".join(
+            [
+                "[[datasets]]",
+                "resolution = 640",
+                "max_bucket_reso = 640",
+                "",
+                "[[datasets.subsets]]",
+                'image_dir = "post_image_dataset/override_resized"',
+                'custom_attributes = { source_dir = "image_dataset/override" }',
+            ]
+        ),
+        encoding="utf-8",
+    )
+    (configs / "imported" / "selected.toml").write_text(
+        'dataset_config = "configs/datasets/selected.toml"\n',
+        encoding="utf-8",
+    )
+    _patch_config_service_paths(monkeypatch, tmp_path)
+
+    selected = config_service.load_dataset_editor(
+        "lora",
+        "default",
+        "imported",
+        config_file="configs/imported/selected.toml",
+    )
+    overridden = config_service.load_dataset_editor(
+        "lora",
+        "default",
+        "imported",
+        config_file="configs/imported/selected.toml",
+        dataset_config="configs/datasets/override.toml",
+    )
+
+    assert selected["dataset_config"] == "configs/datasets/selected.toml"
+    assert selected["datasets"][0]["source_dir"] == "image_dataset/selected"
+    assert selected["datasets"][0]["settings"]["resolution"] == 768
+    assert selected["datasets"][0]["settings"]["max_bucket_reso"] == 768
+    assert selected["datasets"][0]["settings"]["bucket_reso_steps"] == 32
+
+    assert overridden["dataset_config"] == "configs/datasets/override.toml"
+    assert overridden["datasets"][0]["source_dir"] == "image_dataset/override"
+    assert overridden["datasets"][0]["settings"]["resolution"] == 640
 
 
 def test_preflight_uses_selected_config_file_dataset_paths(tmp_path: Path, monkeypatch):
@@ -2445,6 +2550,50 @@ def test_step_estimate_empty_dataset_config_override_clears_preset(tmp_path: Pat
     assert cleared["steps_per_epoch"] == 2
     assert cleared["dataset_num_repeats"] == 1
     assert cleared["resized_dir"].endswith("image_dataset_resized")
+
+
+def test_step_estimate_uses_selected_training_config_dataset(tmp_path: Path, monkeypatch):
+    configs, dataset_path = _write_minimal_config_tree(tmp_path)
+    _patch_config_service_paths(monkeypatch, tmp_path)
+    _write_step_estimate_dataset(tmp_path, dataset_path)
+    selected_image_dir = tmp_path / "post_image_dataset" / "selected_resized"
+    selected_image_dir.mkdir(parents=True)
+    for idx in range(4):
+        Image.new("RGB", (8, 8), color=(idx, 90, 120)).save(selected_image_dir / f"selected-{idx}.png")
+    selected_dataset_path = configs / "datasets" / "selected.toml"
+    selected_dataset_path.write_text(
+        "\n".join(
+            [
+                "[[datasets]]",
+                "",
+                "[[datasets.subsets]]",
+                'image_dir = "post_image_dataset/selected_resized"',
+                "num_repeats = 2",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    (configs / "imported" / "selected.toml").write_text(
+        'dataset_config = "configs/datasets/selected.toml"\n',
+        encoding="utf-8",
+    )
+
+    default_estimate = config_service.estimate_training_steps(
+        "lora",
+        "default",
+        "imported",
+    )
+    selected_estimate = config_service.estimate_training_steps(
+        "lora",
+        "default",
+        "imported",
+        config_file="configs/imported/selected.toml",
+    )
+
+    assert default_estimate["steps_per_epoch"] == 15
+    assert selected_estimate["steps_per_epoch"] == 8
+    assert selected_estimate["dataset_num_repeats"] == 2
+    assert selected_estimate["resized_dir"].endswith("post_image_dataset/selected_resized")
 
 
 def test_step_estimate_uses_explicit_max_train_steps_when_epoch_missing(tmp_path: Path, monkeypatch):
