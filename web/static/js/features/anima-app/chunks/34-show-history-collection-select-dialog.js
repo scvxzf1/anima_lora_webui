@@ -1,0 +1,502 @@
+/**
+ * Mechanical split from the former monolithic app closure.
+ * Keep this module focused; move newly edited behavior into domain modules.
+ */
+const ctx = globalThis.ctx;
+
+    globalThis.showHistoryCollectionSelectDialog = function showHistoryCollectionSelectDialog(options) {
+        const wrap = document.createElement('div');
+        wrap.className = 'history-collection-select-dialog';
+        let selectedValue = String(options.value || '').trim();
+        let query = selectedValue;
+
+        const field = document.createElement('label');
+        field.className = 'history-task-dialog-field';
+        const label = document.createElement('span');
+        label.textContent = '搜索或新建集合';
+        const input = document.createElement('input');
+        input.type = 'search';
+        input.value = query;
+        input.placeholder = '输入集合名，或从下方选择已有集合';
+        input.className = 'history-task-dialog-input';
+        field.append(label, input);
+
+        const hint = document.createElement('p');
+        hint.className = 'history-collection-select-hint';
+        hint.textContent = '下拉列表按手动顺序排列；输入不存在的集合名会在保存时新建集合。';
+
+        const orderActions = document.createElement('div');
+        orderActions.className = 'history-collection-select-order';
+        const list = document.createElement('div');
+        list.className = 'history-collection-select-list';
+
+        const renderOptions = () => {
+            const optionsList = historyCollectionSelectOptions();
+            const search = query.trim().toLowerCase();
+            const visible = optionsList.filter((item) => !search || historyCollectionOptionSearchText(item).includes(search));
+            list.innerHTML = '';
+            if (!visible.length) {
+                const empty = document.createElement('div');
+                empty.className = 'history-collection-select-empty';
+                empty.textContent = query.trim() ? `将新建集合: ${query.trim()}` : '暂无集合。';
+                list.appendChild(empty);
+            }
+            for (const item of visible) {
+                const btn = document.createElement('button');
+                btn.type = 'button';
+                btn.className = ['history-collection-select-option', selectedValue === item.value ? 'selected' : ''].filter(Boolean).join(' ');
+                btn.innerHTML = `<strong>${escapeHtml(item.label)}</strong><span>${item.task_count} 条任务 · ${item.group_count} 个配置分组</span>`;
+                btn.addEventListener('click', () => {
+                    selectedValue = item.value;
+                    query = item.value;
+                    input.value = item.value;
+                    renderOptions();
+                });
+                list.appendChild(btn);
+            }
+            orderActions.querySelectorAll('button').forEach((btn) => {
+                btn.disabled = !selectedValue;
+            });
+        };
+
+        ['置顶', '上移', '下移', '置底'].forEach((labelText) => {
+            const direction = { '置顶': 'top', '上移': 'up', '下移': 'down', '置底': 'bottom' }[labelText];
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'task-history-action';
+            btn.textContent = labelText;
+            btn.addEventListener('click', async (event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                await moveHistoryCollectionValue(selectedValue, direction);
+                renderOptions();
+            });
+            orderActions.appendChild(btn);
+        });
+
+        input.addEventListener('input', () => {
+            query = input.value || '';
+            selectedValue = query.trim();
+            renderOptions();
+        });
+
+        wrap.append(field, hint, orderActions, list);
+        renderOptions();
+
+        return showHistoryTaskDialog({
+            title: options.title,
+            description: options.description,
+            body: wrap,
+            confirmText: options.confirmText || '保存集合',
+            onOpen: () => {
+                input.focus();
+                input.select();
+            },
+            getValue: () => query.trim(),
+        });
+    }
+
+    globalThis.showHistoryTaskConfirmDialog = function showHistoryTaskConfirmDialog(options) {
+        const wrap = document.createElement('div');
+        wrap.className = 'history-task-dialog-message';
+        const strong = document.createElement('strong');
+        strong.textContent = options.description || '';
+        const p = document.createElement('p');
+        p.textContent = options.message || '';
+        wrap.append(strong, p);
+        return showHistoryTaskDialog({
+            title: options.title,
+            description: '',
+            body: wrap,
+            confirmText: options.confirmText || '确认',
+            cancelText: options.cancelText || '取消',
+            cancelPrimary: options.cancelPrimary,
+            danger: options.danger,
+            getValue: () => true,
+        });
+    }
+
+    globalThis.showHistoryTaskMessageDialog = function showHistoryTaskMessageDialog(options = {}) {
+        const wrap = document.createElement('div');
+        wrap.className = ['history-task-dialog-message', `tone-${options.tone || 'info'}`].filter(Boolean).join(' ');
+        const message = document.createElement('p');
+        message.textContent = options.message || '';
+        if (options.message) wrap.appendChild(message);
+
+        const detailLines = (options.detailLines || []).map((line) => String(line || '').trim()).filter(Boolean);
+        if (detailLines.length) {
+            const list = document.createElement('pre');
+            list.className = 'history-task-dialog-detail-list';
+            list.textContent = detailLines.join('\n');
+            wrap.appendChild(list);
+        }
+
+        return showHistoryTaskDialog({
+            title: options.title || '提示',
+            description: options.description || '',
+            body: wrap,
+            confirmText: options.confirmText || '知道了',
+            hideCancel: true,
+            getValue: () => true,
+        });
+    }
+
+    globalThis.showHistoryTaskDialog = function showHistoryTaskDialog(options) {
+        const parts = sharedHistoryTaskDialogParts();
+        if (!parts) {
+            return Promise.resolve(null);
+        }
+        const { dialog, title, desc, body, cancelBtn, confirmBtn, closeBtn, form } = parts;
+        if (sharedDialogBusy || sharedHistoryTaskDialogIsOpen(dialog)) {
+            return Promise.resolve(null);
+        }
+        sharedDialogBusy = true;
+
+        title.textContent = options.title || '任务操作';
+        desc.textContent = options.description || '';
+        body.innerHTML = '';
+        if (options.body) body.appendChild(options.body);
+        cancelBtn.textContent = options.cancelText || '取消';
+        cancelBtn.classList.toggle('btn-primary', Boolean(options.cancelPrimary));
+        cancelBtn.hidden = Boolean(options.hideCancel);
+        confirmBtn.textContent = options.confirmText || '确认';
+        confirmBtn.disabled = false;
+        confirmBtn.classList.toggle('btn-danger', Boolean(options.danger));
+        confirmBtn.classList.toggle('btn-primary', !options.danger);
+        dialog.returnValue = '';
+
+        return new Promise((resolve) => {
+            let settled = false;
+            const closeClick = (event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                closeSharedHistoryTaskDialog(dialog, event.currentTarget?.value || 'cancel', handleClose);
+            };
+            const submitDialog = (event) => {
+                event.preventDefault();
+                const value = event.submitter?.value || 'confirm';
+                if (value === 'confirm' && confirmBtn.disabled) return;
+                closeSharedHistoryTaskDialog(dialog, value, handleClose);
+            };
+            const keydownDialog = (event) => {
+                if (event.key !== 'Escape') return;
+                event.preventDefault();
+                closeSharedHistoryTaskDialog(dialog, 'cancel', handleClose);
+            };
+            const cleanup = () => {
+                dialog.removeEventListener('close', handleClose);
+                form?.removeEventListener('submit', submitDialog);
+                closeBtn?.removeEventListener('click', closeClick);
+                cancelBtn.removeEventListener('click', closeClick);
+                confirmBtn.removeEventListener('click', closeClick);
+                dialog.removeEventListener('keydown', keydownDialog);
+                document.body.classList.remove('history-task-dialog-fallback-open');
+                sharedDialogBusy = false;
+                cancelBtn.hidden = false;
+                cancelBtn.classList.remove('btn-primary');
+                confirmBtn.classList.remove('btn-danger');
+                confirmBtn.classList.add('btn-primary');
+            };
+            const handleClose = () => {
+                if (settled) return;
+                settled = true;
+                cleanup();
+                if (dialog.returnValue === 'confirm') {
+                    resolve(options.getValue ? options.getValue() : true);
+                } else {
+                    resolve(null);
+                }
+            };
+            dialog.addEventListener('close', handleClose);
+            form?.addEventListener('submit', submitDialog);
+            closeBtn?.addEventListener('click', closeClick);
+            cancelBtn.addEventListener('click', closeClick);
+            confirmBtn.addEventListener('click', closeClick);
+            dialog.addEventListener('keydown', keydownDialog);
+            try {
+                openSharedHistoryTaskDialog(dialog);
+            } catch (e) {
+                cleanup();
+                resolve(null);
+                return;
+            }
+            requestAnimationFrame(() => {
+                if (options.onOpen) {
+                    options.onOpen();
+                } else {
+                    confirmBtn.focus();
+                }
+            });
+        });
+    }
+
+    globalThis.normalizeHistoryDetailTab = function normalizeHistoryDetailTab(tab) {
+        return ensureHistoryDetailFeature().normalizeHistoryDetailTab(tab);
+    }
+
+    globalThis.renderHistoryManagerDetail = function renderHistoryManagerDetail(payload = ensureHistoryDetailFeature().getCurrentPayload(), options = {}) {
+        return ensureHistoryDetailFeature().renderHistoryManagerDetail(payload, options);
+    }
+
+    globalThis.renderHistoryDetailDialog = function renderHistoryDetailDialog(payload = ensureHistoryDetailFeature().getCurrentPayload(), options = {}) {
+        return ensureHistoryDetailFeature().renderHistoryDetailDialog(payload, options);
+    }
+
+    globalThis.closeHistoryDetailDialog = function closeHistoryDetailDialog() {
+        return ensureHistoryDetailFeature().closeHistoryDetailDialog();
+    }
+
+    globalThis.isHistoryDetailDialogOpen = function isHistoryDetailDialogOpen() {
+        return ensureHistoryDetailFeature().isHistoryDetailDialogOpen();
+    }
+
+    globalThis.shouldRenderInlineResumePanel = function shouldRenderInlineResumePanel() {
+        return historyViewMode !== 'live' && trainingViewMode === 'live';
+    }
+
+    globalThis.clearViewingHistoryTaskContext = function clearViewingHistoryTaskContext(payload = null) {
+        if (payload?.mode === 'config_group') return;
+        viewingHistoryTaskId = '';
+        currentHistoryTaskForResume = null;
+        if (historyViewMode !== 'config_group') {
+            historyViewMode = 'live';
+            currentHistoryConfigGroup = null;
+            currentHistoryTimelineSelection = [];
+        }
+        renderResumePanelState();
+    }
+
+    globalThis.handleHistoryDetailWindowKeydown = function handleHistoryDetailWindowKeydown(event) {
+        return ensureHistoryDetailFeature().handleHistoryDetailWindowKeydown(event);
+    }
+
+    globalThis.restorePreviewWorkspaceFromHistoryDetail = function restorePreviewWorkspaceFromHistoryDetail() {
+        return ensurePreviewFeature().restorePreviewWorkspaceFromHistoryDetail();
+    }
+
+    globalThis.activateHistoryDetailPreview = function activateHistoryDetailPreview(payload) {
+        return ensurePreviewFeature().activateHistoryDetailPreview(payload);
+    }
+
+    globalThis.clearHistoryManagerDetail = function clearHistoryManagerDetail() {
+        viewingHistoryTaskId = '';
+        historyViewMode = 'live';
+        currentHistoryTaskForResume = null;
+        currentHistoryConfigGroup = null;
+        currentHistoryTimelineSelection = [];
+        ensureHistoryDetailFeature().clearHistoryDetailState();
+        closeHistoryDetailDialog();
+        clearResumeOptions();
+        renderTrainingHistoryList();
+        renderHistoryManager();
+    }
+
+    globalThis.selectedHistoryManagerResumeCheckpoint = function selectedHistoryManagerResumeCheckpoint() {
+        return ensureHistoryDetailFeature().selectedHistoryManagerResumeCheckpoint();
+    }
+
+    globalThis.resumeTrainingFromHistoryDetail = async function resumeTrainingFromHistoryDetail(queueMode) {
+        return ensureHistoryDetailFeature().resumeTrainingFromHistoryDetail(queueMode);
+    }
+
+    globalThis.loadHistoryTask = async function loadHistoryTask(taskId, options = {}) {
+        return ensureHistoryDetailFeature().loadHistoryTask(taskId, options);
+    }
+
+    globalThis.refreshHistoryView = async function refreshHistoryView() {
+        if (historyViewMode === 'config_group' && currentHistoryConfigGroup) {
+            await loadConfigGroupTimeline(currentHistoryConfigGroup, {
+                taskIds: currentHistoryTimelineSelection,
+                skipSelectionDialog: true,
+            });
+            return;
+        }
+        if (!viewingHistoryTaskId) return;
+        await loadHistoryTask(viewingHistoryTaskId);
+    }
+
+    globalThis.loadConfigGroupTimeline = async function loadConfigGroupTimeline(group, options = {}) {
+        if (!group?.history_group_key && (!group?.methods_subdir || !group?.variant)) return;
+        const taskIds = Array.isArray(options.taskIds) ? options.taskIds.filter(Boolean) : [];
+        const query = new URLSearchParams({
+            methods_subdir: group.methods_subdir || '',
+            variant: group.variant || '',
+            preset: group.preset || 'default',
+            include_archived: showArchivedHistory ? '1' : '0',
+        });
+        if (!taskIds.length && group.history_group_key) {
+            query.set('group_key', group.history_group_key);
+        }
+        for (const taskId of taskIds) {
+            query.append('task_id', taskId);
+        }
+        try {
+            const payload = await api(`/api/training/history/config-group/timeline?${query.toString()}`);
+            if (!payload.ok) {
+                await showHistoryTaskMessageDialog({
+                    title: '读取配置分组失败',
+                    message: payload.error || '读取配置分组合并日志失败',
+                    tone: 'error',
+                });
+                return;
+            }
+            if (options.detailTab) {
+                ensureHistoryDetailFeature().setActiveTab(options.detailTab);
+            }
+            historyViewMode = 'config_group';
+            viewingHistoryTaskId = '';
+            showTrainingView('history');
+            currentHistoryConfigGroup = payload.group || group;
+            currentHistoryTimelineSelection = (payload.summary?.selected_task_ids || taskIds || []).filter(Boolean);
+            currentHistoryTaskForResume = null;
+            clearResumeOptions();
+            ensureHistoryDetailFeature().resetCurveHover();
+            renderTrainingHistoryList();
+            renderConfigGroupTimeline(payload);
+            renderHistoryManagerDetail(payload, { open: true });
+        } catch (e) {
+            await showHistoryTaskMessageDialog({
+                title: '读取配置分组失败',
+                message: e.message,
+                tone: 'error',
+            });
+        }
+    }
+
+    globalThis.historyTaskStepOffset = function historyTaskStepOffset(task) {
+        const resume = task?.resume_from || {};
+        const step = Number(resume.checkpoint_step || 0);
+        return Number.isFinite(step) && step > 0 ? step : 0;
+    }
+
+    globalThis.historyLossChartPoints = function historyLossChartPoints(lossPoints, task) {
+        const offset = historyTaskStepOffset(task);
+        const out = [];
+        let maxStep = null;
+        for (const item of lossPoints || []) {
+            const rawStep = Number(item.step);
+            if (!Number.isFinite(rawStep)) continue;
+            const step = rawStep + offset;
+            if (maxStep !== null && step < maxStep) continue;
+            if (maxStep === null || step > maxStep) maxStep = step;
+            out.push({
+                step,
+                loss: item.loss,
+                rawStep,
+                displayStepOffset: offset,
+                ts: item.ts,
+                rate: item.rate,
+                lr: item.lr,
+                sourceTaskLabel: task ? historyTaskDisplayName(task) : '',
+                sourceTaskId: task?.id || '',
+            });
+        }
+        return out;
+    }
+
+    globalThis.renderHistoryTask = function renderHistoryTask(payload) {
+        const task = payload.task || {};
+        currentHistoryTaskForResume = task;
+        const banner = document.getElementById('history-view-banner');
+        const bannerTitle = document.getElementById('history-view-title');
+        if (banner) banner.hidden = false;
+        if (bannerTitle) {
+            bannerTitle.textContent = `历史任务: ${historyTaskDisplayName(task) || `${task.methods_subdir || '-'} / ${task.variant || '-'}`} · ${historyStateLabel(task.state)}`;
+        }
+        setText('training-run-state', '历史');
+        const stateEl = document.getElementById('training-run-state');
+        if (stateEl) stateEl.className = 'training-run-state history';
+        updateTrainingToolbarState('history', '历史');
+        setText('training-run-title', historyTaskDisplayName(task) || '历史任务');
+        setText('training-run-meta', [
+            task.methods_subdir ? `方法目录 ${task.methods_subdir}` : '',
+            task.variant ? `配置 ${task.variant}` : '',
+            task.preset ? `预设 ${task.preset}` : '',
+        ].filter(Boolean).join(' · ') || '历史任务记录');
+        setText('training-run-summary', [
+            task.run_dir ? `运行目录: ${task.run_dir}` : '',
+            task.output_dir ? `输出: ${task.output_dir}` : '',
+            task.sample_dir ? `样张: ${task.sample_dir}` : '',
+        ].filter(Boolean).join(' · ') || '该任务没有记录运行目录。');
+        document.getElementById('train-variant').textContent = task.variant || '-';
+        document.getElementById('train-preset').textContent = task.preset || '-';
+        document.getElementById('progress-bar').style.width = task.state === 'idle' ? '100%' : '0%';
+        document.getElementById('progress-text').textContent = `${task.started_at_text || '-'} → ${task.finished_at_text || '未结束'}`;
+        setMetricText('metric-vram', 'N/A');
+        setMetricText('metric-vram-peak', 'N/A');
+        setMetricText('metric-gpu', 'N/A');
+        setMetricText('metric-gpu-peak', 'N/A');
+        setMetricText('metric-temp', 'N/A');
+        setMetricText('metric-temp-peak', 'N/A');
+        setMetricText('metric-log-age', task.finished_at_text ? '已结束' : '历史');
+        setMetricText('metric-rate', 'N/A');
+
+        const logs = payload.logs || [];
+        const metrics = metricsWithProgressFallback(payload.metrics || [], logs);
+        const lossPoints = metrics.filter((item) => item.loss !== undefined);
+        const chartPoints = historyLossChartPoints(lossPoints, task);
+        lossChart?.setXLabel?.('step');
+        lossChart?.setScaleMode?.('step', {
+            xRange: {
+                min: chartPoints[0]?.step,
+                max: chartPoints[chartPoints.length - 1]?.step,
+            },
+        });
+        lossChart?.setData(chartPoints, { keepAll: true });
+        syncLossChartEmptyState();
+        const lastMetric = metrics[metrics.length - 1] || {};
+        const lastLossMetric = lossPoints[lossPoints.length - 1] || {};
+        const lastChartPoint = chartPoints[chartPoints.length - 1] || {};
+        const configLr = readConfigNumber(payload.config_toml, 'learning_rate');
+        const system = payload.system || [];
+        const lastSystem = system[system.length - 1] || {};
+        const systemSummary = historySystemSummary(payload);
+        setMetricText('metric-loss', lastMetric.loss !== undefined ? Number(lastMetric.loss).toFixed(5) : 'N/A');
+        setMetricText('metric-lr', formatLr(lastValue(metrics, 'lr') ?? configLr));
+        setMetricText('metric-step', lastChartPoint.step ?? lastValue(metrics, 'step') ?? lastLossMetric.step ?? 'N/A');
+        setMetricText('metric-rate', lastValue(metrics, 'rate') || 'N/A');
+        setMetricText('metric-vram',
+            lastSystem.vram_used_gb !== undefined ? `${lastSystem.vram_used_gb}/${lastSystem.vram_total_gb} GB` : 'N/A');
+        setMetricText('metric-vram-peak',
+            systemSummary.hasSystem ? formatSystemVram(systemSummary.peakVramRecord) : 'N/A');
+        if (lastSystem.gpu_util !== undefined) {
+            setMetricText('metric-gpu', `${lastSystem.gpu_util}%${lastSystem.gpu_temp ? ` ${lastSystem.gpu_temp}°C` : ''}`);
+        } else {
+            setMetricText('metric-gpu', 'N/A');
+        }
+        setMetricText('metric-gpu-peak',
+            systemSummary.hasSystem ? formatSystemPercent(systemSummary.peakGpu) : 'N/A');
+        setMetricText('metric-temp',
+            lastSystem.gpu_temp !== undefined ? formatSystemTemperature(lastSystem.gpu_temp) : 'N/A');
+        setMetricText('metric-temp-peak',
+            systemSummary.hasSystem ? formatSystemTemperature(systemSummary.peakTemp) : 'N/A');
+        setEtaMetricText({
+            text: task.finished_at_text || '历史',
+            empty: !task.finished_at_text,
+            title: task.finished_at_text ? '历史任务完成时间。' : '历史任务未记录完成时间。',
+        });
+
+        const logEl = document.getElementById('log-output');
+        renderLogOutputLines(logs.map((record) => `${record.kind === 'progress' ? '[进度] ' : ''}${record.line || ''}`));
+        logEl.scrollTop = logEl.scrollHeight;
+        setLogStatus(`历史 · ${(payload.logs || []).length} 行`, 'warning');
+
+        const health = document.getElementById('training-health');
+        health.className = 'training-health';
+        health.textContent = [
+            task.message || '历史任务记录',
+            task.history_dir ? `历史目录: ${task.history_dir}` : '',
+            task.output_dir ? `输出目录: ${task.output_dir}` : '',
+            task.sample_dir ? `样张目录: ${task.sample_dir}` : '',
+        ].filter(Boolean).join(' · ');
+
+        const configPanel = document.getElementById('history-config-panel');
+        const configTitle = document.getElementById('history-config-title');
+        const configOutput = document.getElementById('history-config-output');
+        if (configPanel) configPanel.hidden = false;
+        if (configTitle) configTitle.textContent = '任务配置快照';
+        if (configOutput) configOutput.textContent = payload.config_toml || '# 无配置快照';
+        renderHistoryPaths(task);
+        renderResumePanelState();
+        if (trainingViewMode === 'history') renderHistoryManagerDetail(payload);
+    }

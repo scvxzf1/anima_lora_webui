@@ -11,7 +11,7 @@ CHART_JS = STATIC_DIR / "chart.js"
 INDEX_HTML = STATIC_DIR / "index.html"
 STYLE_CSS_PATH = STATIC_DIR / "style.css"
 MODULE_IMPORT_RE = re.compile(
-    r"""(?:import|export)\s+(?:[^'"]*?\s+from\s+)?['"]([^'"]+\.js(?:\?[^'"]*)?)['"]"""
+    r"""(?:(?:import|export)\s+(?:[^'"]*?\s+from\s+)?|import\(\s*)['"]([^'"]+\.js(?:\?[^'"]*)?)['"]"""
 )
 CSS_IMPORT_RE = re.compile(r"""@import\s+(?:url\()?['"]?([^'")]+\.css)['"]?\)?\s*;""")
 
@@ -64,6 +64,18 @@ def _frontend_module_text(relative_path: str) -> str:
 
 def _frontend_feature_text(*relative_paths: str) -> str:
     return "\n".join(_frontend_module_text(relative_path) for relative_path in relative_paths)
+
+
+def _anima_app_container_text() -> str:
+    graph = _frontend_module_graph()
+    paths = [
+        STATIC_DIR / "js/features/anima-app/index.js",
+        STATIC_DIR / "js/features/anima-app/imports.js",
+        *sorted((STATIC_DIR / "js/features/anima-app/chunks").glob("*.js")),
+    ]
+    for path in paths:
+        assert path.resolve() in graph, f"{path.relative_to(STATIC_DIR).as_posix()} is not reachable"
+    return "\n".join(path.read_text(encoding="utf-8") for path in paths)
 
 
 def _module_cache_token(specifier: str) -> str | None:
@@ -131,7 +143,10 @@ def test_frontend_module_graph_follows_production_entrypoint() -> None:
 
     assert relative[0] == "app.js"
     assert "chart.js" in relative
-    assert "js/features/legacy-app.js" in relative
+    assert "js/features/legacy-app.js" not in relative
+    assert "js/features/anima-app/index.js" in relative
+    assert "js/features/anima-app/imports.js" in relative
+    assert any(path.startswith("js/features/anima-app/chunks/") for path in relative)
     assert "js/features/preview/index.js" in relative
     assert "js/features/preview/state.js" in relative
     assert "js/features/preview/api.js" in relative
@@ -210,9 +225,8 @@ def test_frontend_module_cache_tokens_match_entrypoint() -> None:
     assert not mismatches
 
 
-def test_legacy_app_is_transition_glue_not_new_feature_home() -> None:
-    legacy_path = STATIC_DIR / "js/features/legacy-app.js"
-    legacy_source = _frontend_module_text("js/features/legacy-app.js")
+def test_anima_app_replaces_legacy_container_with_small_modules() -> None:
+    anima_source = _anima_app_container_text()
     app_source = APP_JS_PATH.read_text(encoding="utf-8")
     graph = _frontend_module_graph()
     relative = {path.relative_to(STATIC_DIR).as_posix() for path in graph}
@@ -220,17 +234,28 @@ def test_legacy_app_is_transition_glue_not_new_feature_home() -> None:
         path.parent.relative_to(STATIC_DIR).as_posix()
         for path in (STATIC_DIR / "js/features").glob("*/index.js")
     }
+    app_modules = [
+        path for path in graph
+        if path.relative_to(STATIC_DIR).as_posix().startswith("js/features/anima-app/")
+    ]
+    oversized = [
+        path.relative_to(STATIC_DIR).as_posix()
+        for path in app_modules
+        if len(path.read_text(encoding="utf-8").splitlines()) > 600
+    ]
 
-    assert "过渡层" in legacy_source
-    assert "不要把这里当成新的长期上帝文件" in legacy_source
-    assert len(legacy_path.read_text(encoding="utf-8").splitlines()) <= 17520
+    assert not (STATIC_DIR / "js/features/legacy-app.js").exists()
+    assert "createAnimaApp(ctx);" in app_source
+    assert "createLegacyApp" not in app_source
+    assert "globalThis.startAnimaApp" in anima_source
+    assert not oversized
     assert all(token not in app_source for token in ("fetch(", "addEventListener(", "getElementById("))
     assert feature_dirs
     assert feature_dirs <= {str(Path(item).parent) for item in relative}
 
 
 def test_preview_feature_modules_are_loaded_from_production_entrypoint() -> None:
-    legacy_source = _frontend_module_text("js/features/legacy-app.js")
+    legacy_source = _anima_app_container_text()
     preview_index = _frontend_module_text("js/features/preview/index.js")
     preview_state = _frontend_module_text("js/features/preview/state.js")
     preview_workspace = _frontend_module_text("js/features/preview/workspace.js")
@@ -275,7 +300,7 @@ def test_preview_feature_modules_are_loaded_from_production_entrypoint() -> None
 
 
 def test_weight_analysis_feature_modules_are_loaded_from_production_entrypoint() -> None:
-    legacy_source = _frontend_module_text("js/features/legacy-app.js")
+    legacy_source = _anima_app_container_text()
     weight_index = _frontend_module_text("js/features/weight-analysis/index.js")
     weight_api = _frontend_module_text("js/features/weight-analysis/api.js")
     weight_render = _frontend_module_text("js/features/weight-analysis/render.js")
@@ -423,7 +448,7 @@ def test_live_training_rest_fallbacks_are_wired() -> None:
     update_status = _section(source, "function updateStatus", "function resetLiveSystemPeaks")
     health_section = _section(source, "function refreshTrainingHealth", "function parseMetricsFromProgressLine")
     recovery_section = _section(source, "async function recoverLiveTrainingState", "function updateProgress")
-    ready_section = _section(source, "document.addEventListener('DOMContentLoaded'", "function currentTheme")
+    ready_section = _section(source, "function startAnimaApp", "function chartTheme")
 
     assert "function isLiveRunningState" in source
     assert "last_log_line: status.last_log_line" in poll_section
@@ -460,7 +485,7 @@ def test_live_training_rest_fallbacks_are_wired() -> None:
 
 def test_training_queue_frontend_hooks_are_present() -> None:
     source = APP_JS.read_text(encoding="utf-8")
-    legacy_source = _frontend_module_text("js/features/legacy-app.js")
+    legacy_source = _anima_app_container_text()
     queue_index = _frontend_module_text("js/features/queue/index.js")
     queue_state = _frontend_module_text("js/features/queue/state.js")
     queue_api = _frontend_module_text("js/features/queue/api.js")
@@ -594,7 +619,7 @@ def test_training_queue_frontend_hooks_are_present() -> None:
     assert "await pollStatus();" in stop_section
     assert "await loadTrainingQueue();" in stop_section
     assert "setTrainingHealthNotice(message, 'error')" in stop_section
-    assert "let trainingStatusPollFailures = 0" in legacy_source
+    assert "globalThis.trainingStatusPollFailures = 0" in legacy_source
     assert "if (status.ok === false) throw new Error(status.error || '读取训练状态失败')" in poll_section
     assert "trainingStatusPollFailures < 3" in poll_section
     assert "训练状态轮询连续失败" in poll_section
@@ -627,7 +652,7 @@ def test_launch_readiness_panel_is_removed() -> None:
     css = STYLE_CSS.read_text(encoding="utf-8")
 
     listener_section = _section(source, "function setupEventListeners", "function installBeginnerTooltips")
-    action_state = _section(source, "function updateTomlActionState", "function readTomlGroupState")
+    action_state = _section(source, "function updateTomlActionState", "function isTomlLocked")
 
     assert "launch-readiness" not in html
     assert "launch-readiness" not in css
@@ -778,9 +803,9 @@ def test_config_form_uses_navigation_search_and_progressive_disclosure() -> None
     assert "merge: {" in source
     assert "blocks_to_swap: 'max'" in source
     assert "selective_checkpoint: 'checkpoint_strength_max'" in source
-    quick_presets = _section(source, "const RESOURCE_QUICK_PRESETS = [", "const SELECTIVE_CHECKPOINT_STRENGTH")
+    quick_presets = _section(source, "globalThis.RESOURCE_QUICK_PRESETS = [", "globalThis.SELECTIVE_CHECKPOINT_STRENGTH")
     assert quick_presets.count("gradient_checkpointing: false") == 6
-    assert "const SELECTIVE_CHECKPOINT_STRENGTH = new Map([" in source
+    assert "globalThis.SELECTIVE_CHECKPOINT_STRENGTH = new Map([" in source
     assert "['mlp_only', 4]" in source
     assert "['every_other', 5]" in source
     assert "function resourceQuickPresetValue(preset, key, value)" in source
@@ -1067,7 +1092,7 @@ def test_config_actions_are_de_noised_and_sticky_controls_are_wired() -> None:
 
 
 def test_resume_queue_button_is_wired() -> None:
-    legacy_source = _frontend_module_text("js/features/legacy-app.js")
+    legacy_source = _anima_app_container_text()
     resume_source = _frontend_module_text("js/features/history-detail/resume/panel.js")
 
     resume_section = _section(resume_source, "function renderResumePanelState", "return { renderResumePanelState")
@@ -1129,7 +1154,7 @@ def test_history_list_marks_queue_tasks() -> None:
 
 def test_history_manager_frontend_hooks_are_present() -> None:
     source = APP_JS.read_text(encoding="utf-8")
-    legacy_source = _frontend_module_text("js/features/legacy-app.js")
+    legacy_source = _anima_app_container_text()
     chart_source = CHART_JS.read_text(encoding="utf-8")
     html = INDEX_HTML.read_text(encoding="utf-8")
     css = STYLE_CSS.read_text(encoding="utf-8")
@@ -1709,21 +1734,21 @@ def test_history_collection_drag_drop_frontend_hooks_are_present() -> None:
     collection_card = _section(source, "function createHistoryCollectionWorkbenchCard", "function createHistoryConfigGroupWorkbenchCard")
     config_card = _section(source, "function createHistoryConfigGroupWorkbenchCard", "function historyCollectionNamesForTasks")
 
-    assert "const HISTORY_TASK_DRAG_MIME = 'application/x-anima-history-task-ids';" in source
-    assert "const HISTORY_COLLECTION_DRAG_MIME = 'application/x-anima-history-collection';" in source
-    assert "const HISTORY_CONFIG_GROUP_DRAG_MIME = 'application/x-anima-history-config-group';" in source
-    assert "let historyDragState = {" in source
+    assert "globalThis.HISTORY_TASK_DRAG_MIME = 'application/x-anima-history-task-ids';" in source
+    assert "globalThis.HISTORY_COLLECTION_DRAG_MIME = 'application/x-anima-history-collection';" in source
+    assert "globalThis.HISTORY_CONFIG_GROUP_DRAG_MIME = 'application/x-anima-history-config-group';" in source
+    assert "globalThis.historyDragState = {" in source
     for key in ("active: false", "taskIds: []", "sourceGroupKey: ''", "activeDropTarget: ''", "pending: false", "popover: {"):
         assert key in source
-    assert "let historyCollectionDragState = {" in source
+    assert "globalThis.historyCollectionDragState = {" in source
     for key in ("sourceValue: ''", "dropPosition: 'after'", "pending: false"):
         assert key in source
-    assert "let historyConfigGroupSortState = {" in source
+    assert "globalThis.historyConfigGroupSortState = {" in source
     for key in ("sourceKey: ''", "collectionKey: ''", "activeDropTarget: ''", "dropPosition: 'after'"):
         assert key in source
-    assert "let historyConfigGroupPointerDrag = null;" in source
-    assert "let historyConfigGroupDropPreviewElement = null;" in source
-    assert "let historyCollectionPointerDrag = null;" in source
+    assert "globalThis.historyConfigGroupPointerDrag = null;" in source
+    assert "globalThis.historyConfigGroupDropPreviewElement = null;" in source
+    assert "globalThis.historyCollectionPointerDrag = null;" in source
     assert "application/x-anima-history-task-ids" in source
     assert "application/x-anima-history-collection" in source
     assert "application/x-anima-history-config-group" in source
@@ -1988,7 +2013,7 @@ def test_history_detail_overview_uses_full_copyable_paths_and_resume_weights() -
 
 
 def test_history_detail_config_files_are_tool_ready() -> None:
-    legacy_source = _frontend_module_text("js/features/legacy-app.js")
+    legacy_source = _anima_app_container_text()
     config_files_source = _frontend_module_text("js/features/history-detail/config-files.js")
     html = INDEX_HTML.read_text(encoding="utf-8")
     css = STYLE_CSS.read_text(encoding="utf-8")
@@ -2016,7 +2041,7 @@ def test_history_detail_config_files_are_tool_ready() -> None:
     assert "function makeHistoryArtifactUrl" in legacy_source
     assert "historyArtifactUrl: makeHistoryArtifactUrl" in legacy_source
     assert "choiceHelp, help" in _frontend_module_text("js/config/catalog.js")
-    assert "help," in legacy_source
+    assert "Object.assign(globalThis, ctx.catalog);" in legacy_source
 
     for artifact in (
         "'runtime-config'",

@@ -1,0 +1,511 @@
+/**
+ * Mechanical split from the former monolithic app closure.
+ * Keep this module focused; move newly edited behavior into domain modules.
+ */
+const ctx = globalThis.ctx;
+
+    globalThis.createStageResolutionSummary = function createStageResolutionSummary(metrics) {
+        const wrap = document.createElement('div');
+        wrap.className = 'stage-resolution-summary';
+        const rows = [
+            ['调度状态', metrics.enabled ? '已启用' : '未启用'],
+            ['阶段数', `${metrics.stages.length}`],
+            ['预计 steps', `${metrics.totalSteps}`],
+            ['配置检查', metrics.problemCount ? `${metrics.problemCount} 项错误` : (metrics.warningCount ? `${metrics.warningCount} 项提示` : '就绪')],
+            ['图片统计', '待接入'],
+        ];
+        wrap.appendChild(createStageResolutionEnableControl(metrics.enabled));
+        rows.forEach(([label, value]) => {
+            const item = document.createElement('div');
+            item.className = 'stage-resolution-summary-item';
+            const strong = document.createElement('strong');
+            strong.textContent = value;
+            const span = document.createElement('span');
+            span.textContent = label;
+            item.append(strong, span);
+            wrap.appendChild(item);
+        });
+        return wrap;
+    }
+
+    globalThis.createStageResolutionEnableControl = function createStageResolutionEnableControl(enabled) {
+        const item = document.createElement('label');
+        item.className = 'stage-resolution-summary-item stage-resolution-enable-control';
+        const input = document.createElement('input');
+        input.id = 'stage-resolution-enable-toggle';
+        input.type = 'checkbox';
+        input.checked = enabled;
+        input.addEventListener('change', (event) => {
+            setStageResolutionEnabled(event.target.checked);
+        });
+        const copy = document.createElement('span');
+        const strong = document.createElement('strong');
+        strong.textContent = '启用阶段调度';
+        const hint = document.createElement('span');
+        hint.textContent = enabled ? '将用于阶段方案' : '草稿，不影响训练';
+        copy.append(strong, hint);
+        item.append(input, copy);
+        return item;
+    }
+
+    globalThis.setStageResolutionEnabled = function setStageResolutionEnabled(enabled) {
+        stageResolutionState.enabled = Boolean(enabled);
+        renderStageResolutionDialog();
+    }
+
+    globalThis.createStageResolutionChartPanel = function createStageResolutionChartPanel() {
+        const panel = document.createElement('section');
+        panel.className = 'stage-resolution-chart-panel';
+        const header = document.createElement('div');
+        header.className = 'stage-resolution-panel-head';
+        const title = document.createElement('div');
+        title.innerHTML = '<strong>阶段折线</strong><span>点表示阶段，阴影表示该阶段的单边范围。</span>';
+        const addBtn = document.createElement('button');
+        addBtn.type = 'button';
+        addBtn.className = 'btn btn-small';
+        addBtn.textContent = '新增阶段';
+        addBtn.addEventListener('click', addStageResolutionPoint);
+        header.append(title, addBtn);
+        const canvas = document.createElement('canvas');
+        canvas.id = 'stage-resolution-chart';
+        canvas.width = 720;
+        canvas.height = 280;
+        canvas.addEventListener('click', selectStageResolutionPointFromCanvas);
+        panel.append(header, canvas);
+        return panel;
+    }
+
+    globalThis.createStageResolutionEditor = function createStageResolutionEditor(stage) {
+        const aside = document.createElement('aside');
+        aside.className = 'stage-resolution-editor';
+        const head = document.createElement('div');
+        head.className = 'stage-resolution-panel-head';
+        const title = document.createElement('div');
+        title.innerHTML = '<strong>当前点编辑器</strong><span>修改后立即同步折线图和阶段表。</span>';
+        head.appendChild(title);
+        aside.appendChild(head);
+        if (!stage) return aside;
+
+        const fields = document.createElement('div');
+        fields.className = 'stage-resolution-fields';
+        fields.append(
+            createStageResolutionInput('阶段名', 'name', stage.name, 'text'),
+            createStageResolutionInput('epochs', 'epochs', stage.epochs, 'number'),
+            createStageResolutionInput('单边最大值', 'maxSide', stage.maxSide, 'number'),
+            createStageResolutionInput('向下波动', 'downRange', stage.downRange, 'number'),
+            createStageResolutionReadonly('单边最小值', `${Math.max(0, stage.minSide || 0)}`),
+            createStageResolutionReadonly('预计图片数', '待统计'),
+            createStageResolutionRepeats(stage)
+        );
+        aside.appendChild(fields);
+        return aside;
+    }
+
+    globalThis.createStageResolutionInput = function createStageResolutionInput(labelText, key, value, type) {
+        const label = document.createElement('label');
+        label.className = 'stage-resolution-field';
+        const span = document.createElement('span');
+        span.textContent = labelText;
+        const input = document.createElement('input');
+        input.type = type;
+        input.value = value;
+        input.dataset.stageField = key;
+        if (type === 'number') {
+            input.min = key === 'epochs' ? '1' : '0';
+            input.step = '1';
+        }
+        input.addEventListener('input', updateSelectedStageResolutionField);
+        label.append(span, input);
+        return label;
+    }
+
+    globalThis.createStageResolutionReadonly = function createStageResolutionReadonly(labelText, value) {
+        const label = document.createElement('label');
+        label.className = 'stage-resolution-field';
+        const span = document.createElement('span');
+        span.textContent = labelText;
+        const output = document.createElement('output');
+        output.textContent = value;
+        label.append(span, output);
+        return label;
+    }
+
+    globalThis.createStageResolutionRepeats = function createStageResolutionRepeats(stage) {
+        const wrap = document.createElement('div');
+        wrap.className = 'stage-resolution-field stage-resolution-repeat-field';
+        const label = document.createElement('label');
+        const check = document.createElement('input');
+        check.type = 'checkbox';
+        check.checked = stage.manualRepeats;
+        check.addEventListener('change', (event) => {
+            updateStageResolutionStage(stage.index, { manualRepeats: event.target.checked });
+        });
+        label.append(check, document.createTextNode('手动 repeats'));
+        const input = document.createElement('input');
+        input.type = 'number';
+        input.min = '1';
+        input.step = '1';
+        input.value = stage.autoRepeats;
+        input.disabled = !stage.manualRepeats;
+        input.addEventListener('input', (event) => {
+            updateStageResolutionStage(stage.index, { repeats: Math.max(1, Math.round(Number(event.target.value) || 1)) });
+        });
+        wrap.append(label, input);
+        return wrap;
+    }
+
+    globalThis.createStageResolutionTable = function createStageResolutionTable(stages) {
+        const section = document.createElement('section');
+        section.className = 'stage-resolution-table-panel';
+        const head = document.createElement('div');
+        head.className = 'stage-resolution-panel-head';
+        const title = document.createElement('div');
+        title.innerHTML = '<strong>阶段表</strong><span>每行对应一个阶段点。</span>';
+        head.appendChild(title);
+        const tableWrap = document.createElement('div');
+        tableWrap.className = 'stage-resolution-table-wrap';
+        const table = document.createElement('table');
+        table.className = 'stage-resolution-table';
+        table.innerHTML = '<thead><tr><th>阶段</th><th>epochs</th><th>单边最大</th><th>向下波动</th><th>step 范围</th><th>分辨率范围</th><th>图片</th><th>repeats</th><th>状态</th><th>操作</th></tr></thead>';
+        const tbody = document.createElement('tbody');
+        stages.forEach((stage) => tbody.appendChild(createStageResolutionTableRow(stage)));
+        table.appendChild(tbody);
+        tableWrap.appendChild(table);
+        section.append(head, tableWrap);
+        return section;
+    }
+
+    globalThis.createStageResolutionTableRow = function createStageResolutionTableRow(stage) {
+        const tr = document.createElement('tr');
+        const selected = stage.index === stageResolutionState.selectedIndex;
+        const status = stageResolutionStatus(stage);
+        tr.className = selected ? 'selected' : '';
+        tr.dataset.stageIndex = String(stage.index);
+        tr.append(
+            stageResolutionTableInputCell(stage, 'name', stage.name, 'text'),
+            stageResolutionTableInputCell(stage, 'epochs', stage.epochs, 'number'),
+            stageResolutionTableInputCell(stage, 'maxSide', stage.maxSide, 'number'),
+            stageResolutionTableInputCell(stage, 'downRange', stage.downRange, 'number'),
+            stageResolutionTableCell(`${stage.startStep}-${stage.endStep}`),
+            stageResolutionTableCell(`${Math.max(0, stage.minSide)}-${stage.maxSide}`),
+            stageResolutionTableCell('待统计'),
+            stageResolutionTableCell(`${stage.autoRepeats}`),
+            stageResolutionStatusCell(status),
+            stageResolutionActionCell(stage)
+        );
+        tr.addEventListener('click', (event) => {
+            if (event.target.closest('button')) return;
+            selectStageResolutionPoint(stage.index);
+        });
+        return tr;
+    }
+
+    globalThis.stageResolutionTableInputCell = function stageResolutionTableInputCell(stage, key, value, type) {
+        const td = document.createElement('td');
+        const input = document.createElement('input');
+        input.className = 'stage-resolution-table-input';
+        input.type = type;
+        input.value = value;
+        if (type === 'number') {
+            input.min = key === 'epochs' ? '1' : '0';
+            input.step = '1';
+        }
+        input.addEventListener('click', (event) => event.stopPropagation());
+        input.addEventListener('input', (event) => {
+            const next = key === 'name' ? event.target.value : Number(event.target.value);
+            updateStageResolutionStage(stage.index, { [key]: next });
+        });
+        td.appendChild(input);
+        return td;
+    }
+
+    globalThis.stageResolutionTableCell = function stageResolutionTableCell(text) {
+        const td = document.createElement('td');
+        td.textContent = text;
+        return td;
+    }
+
+    globalThis.stageResolutionStatusCell = function stageResolutionStatusCell(status) {
+        const td = document.createElement('td');
+        const badge = document.createElement('span');
+        badge.className = `stage-resolution-status ${status.tone}`;
+        badge.textContent = status.text;
+        td.appendChild(badge);
+        return td;
+    }
+
+    globalThis.stageResolutionActionCell = function stageResolutionActionCell(stage) {
+        const td = document.createElement('td');
+        td.className = 'stage-resolution-actions';
+        const up = stageResolutionActionButton('↑', '上移', () => moveStageResolutionPoint(stage.index, -1));
+        const down = stageResolutionActionButton('↓', '下移', () => moveStageResolutionPoint(stage.index, 1));
+        const del = stageResolutionActionButton('删', '删除', () => deleteStageResolutionPoint(stage.index));
+        up.disabled = stage.index <= 0;
+        down.disabled = stage.index >= stageResolutionState.stages.length - 1;
+        del.disabled = stageResolutionState.stages.length <= 1;
+        td.append(up, down, del);
+        return td;
+    }
+
+    globalThis.stageResolutionActionButton = function stageResolutionActionButton(text, title, handler) {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'btn btn-small';
+        btn.textContent = text;
+        btn.title = title;
+        btn.addEventListener('click', handler);
+        return btn;
+    }
+
+    globalThis.updateSelectedStageResolutionField = function updateSelectedStageResolutionField(event) {
+        const key = event.target.dataset.stageField;
+        const value = key === 'name' ? event.target.value : Number(event.target.value);
+        updateStageResolutionStage(stageResolutionState.selectedIndex, { [key]: value });
+    }
+
+    globalThis.updateStageResolutionStage = function updateStageResolutionStage(index, patch) {
+        const stages = normalizedStageResolutionStages();
+        if (!stages[index]) return;
+        stageResolutionState.stages[index] = { ...stages[index], ...patch };
+        renderStageResolutionDialog();
+    }
+
+    globalThis.addStageResolutionPoint = function addStageResolutionPoint() {
+        const stages = normalizedStageResolutionStages();
+        const last = stages[stages.length - 1] || { maxSide: 1024, downRange: 256 };
+        stages.push({
+            name: `EP${stages.length + 1}`,
+            epochs: 1,
+            maxSide: Math.max(256, Number(last.maxSide || 1024) + 512),
+            downRange: Math.max(64, Number(last.downRange || 256)),
+            manualRepeats: false,
+            repeats: 1,
+        });
+        stageResolutionState.selectedIndex = stages.length - 1;
+        renderStageResolutionDialog();
+    }
+
+    globalThis.deleteStageResolutionPoint = function deleteStageResolutionPoint(index) {
+        const stages = normalizedStageResolutionStages();
+        if (stages.length <= 1) return;
+        stages.splice(index, 1);
+        stageResolutionState.selectedIndex = Math.max(0, Math.min(index, stages.length - 1));
+        renderStageResolutionDialog();
+    }
+
+    globalThis.moveStageResolutionPoint = function moveStageResolutionPoint(index, direction) {
+        const stages = normalizedStageResolutionStages();
+        const nextIndex = index + direction;
+        if (nextIndex < 0 || nextIndex >= stages.length) return;
+        [stages[index], stages[nextIndex]] = [stages[nextIndex], stages[index]];
+        stageResolutionState.selectedIndex = nextIndex;
+        renderStageResolutionDialog();
+    }
+
+    globalThis.selectStageResolutionPoint = function selectStageResolutionPoint(index) {
+        stageResolutionState.selectedIndex = index;
+        renderStageResolutionDialog();
+    }
+
+    globalThis.selectStageResolutionPointFromCanvas = function selectStageResolutionPointFromCanvas(event) {
+        const canvas = event.currentTarget;
+        const points = canvas._stageResolutionPoints || [];
+        if (!points.length) return;
+        const rect = canvas.getBoundingClientRect();
+        const x = event.clientX - rect.left;
+        let nearest = points[0];
+        for (const point of points) {
+            if (Math.abs(point.x - x) < Math.abs(nearest.x - x)) nearest = point;
+        }
+        selectStageResolutionPoint(nearest.index);
+    }
+
+    globalThis.drawStageResolutionChart = function drawStageResolutionChart() {
+        const canvas = document.getElementById('stage-resolution-chart');
+        if (!canvas) return;
+        const ctx = canvas.getContext('2d');
+        const metrics = stageResolutionMetrics();
+        const stages = metrics.stages;
+        const rect = canvas.getBoundingClientRect();
+        const width = Math.max(320, Math.floor(rect.width || 720));
+        const height = Math.max(220, Math.floor(rect.height || 280));
+        const ratio = Math.max(1, Math.min(window.devicePixelRatio || 1, 2));
+        canvas.width = Math.round(width * ratio);
+        canvas.height = Math.round(height * ratio);
+        ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+        ctx.clearRect(0, 0, width, height);
+
+        const styles = getComputedStyle(document.documentElement);
+        const accent = styles.getPropertyValue('--accent').trim() || '#4fc3f7';
+        const warning = styles.getPropertyValue('--warning').trim() || '#f0c36a';
+        const danger = styles.getPropertyValue('--danger').trim() || '#ef5350';
+        const grid = styles.getPropertyValue('--chart-grid').trim() || '#2a3a5e';
+        const text = styles.getPropertyValue('--text-dim').trim() || '#8892a4';
+        const success = styles.getPropertyValue('--success').trim() || '#22c55e';
+        const pad = { top: 24, right: 38, bottom: 38, left: 46 };
+        const plotW = width - pad.left - pad.right;
+        const plotH = height - pad.top - pad.bottom;
+        if (!stages.length || plotW <= 0 || plotH <= 0) return;
+
+        const values = stages.flatMap((stage) => [stage.maxSide, Math.max(0, stage.minSide)]);
+        let minY = Math.min(...values);
+        let maxY = Math.max(...values);
+        if (minY === maxY) {
+            minY -= 128;
+            maxY += 128;
+        }
+        minY = Math.max(0, Math.floor(minY / 128) * 128);
+        maxY = Math.ceil(maxY / 128) * 128;
+        const yFor = (value) => pad.top + (1 - ((value - minY) / Math.max(1, maxY - minY))) * plotH;
+        const xFor = (index) => stages.length === 1
+            ? pad.left + plotW / 2
+            : pad.left + (plotW * index / (stages.length - 1));
+
+        ctx.strokeStyle = grid;
+        ctx.lineWidth = 0.5;
+        ctx.fillStyle = text;
+        ctx.font = '10px monospace';
+        ctx.textAlign = 'right';
+        for (let i = 0; i <= 4; i += 1) {
+            const y = pad.top + (plotH * i / 4);
+            const value = maxY - ((maxY - minY) * i / 4);
+            ctx.beginPath();
+            ctx.moveTo(pad.left, y);
+            ctx.lineTo(width - pad.right, y);
+            ctx.stroke();
+            ctx.fillText(String(Math.round(value)), pad.left - 8, y + 3);
+        }
+
+        const points = [];
+        stages.forEach((stage, index) => {
+            const x = xFor(index);
+            const yMax = yFor(stage.maxSide);
+            const yMin = yFor(Math.max(0, stage.minSide));
+            const status = stageResolutionStatus(stage);
+            const color = status.tone === 'error' ? danger : (status.tone === 'warning' ? warning : accent);
+            ctx.fillStyle = color;
+            ctx.globalAlpha = 0.16;
+            ctx.fillRect(x - 24, yMax, 48, Math.max(2, yMin - yMax));
+            ctx.globalAlpha = 1;
+            points.push({ x, y: yMax, index });
+        });
+
+        ctx.strokeStyle = accent;
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        points.forEach((point, index) => {
+            if (index === 0) ctx.moveTo(point.x, point.y);
+            else ctx.lineTo(point.x, point.y);
+        });
+        ctx.stroke();
+
+        points.forEach((point) => {
+            const stage = stages[point.index];
+            const status = stageResolutionStatus(stage);
+            const selected = point.index === stageResolutionState.selectedIndex;
+            const color = status.tone === 'error' ? danger : (status.tone === 'warning' ? warning : success);
+            ctx.fillStyle = color;
+            ctx.strokeStyle = selected ? warning : accent;
+            ctx.lineWidth = selected ? 3 : 1.5;
+            ctx.beginPath();
+            ctx.arc(point.x, point.y, selected ? 6 : 4.5, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.stroke();
+
+            ctx.fillStyle = text;
+            ctx.font = '10px monospace';
+            ctx.textAlign = 'center';
+            ctx.fillText(`${stage.startStep}-${stage.endStep}`, point.x, height - 18);
+        });
+        canvas._stageResolutionPoints = points;
+    }
+
+    globalThis.createFillGlobalModelPathsButton = function createFillGlobalModelPathsButton() {
+        const btn = document.createElement('button');
+        btn.id = 'btn-fill-global-model-paths';
+        btn.type = 'button';
+        btn.className = 'btn btn-small config-group-title-action';
+        btn.textContent = '填写全局路径配置';
+        btn.title = '用全局设置里的三项基础模型路径覆盖当前配置表单';
+        btn.addEventListener('click', () => {
+            fillGlobalModelPathsIntoConfigForm().catch((e) => {
+                setTomlStatus('error', '填写全局路径配置失败: ' + e.message);
+            });
+        });
+        return btn;
+    }
+
+    globalThis.createResourceQuickPresetsButton = function createResourceQuickPresetsButton(content, collapseBtn) {
+        const btn = document.createElement('button');
+        btn.id = 'btn-resource-quick-presets';
+        btn.type = 'button';
+        btn.className = 'btn btn-small config-group-title-action config-resource-quick-toggle';
+        btn.textContent = '快速填写';
+        btn.title = '显示显存与速度优化预设，一键填写当前表单';
+        btn.setAttribute('aria-expanded', 'false');
+        btn.addEventListener('click', () => {
+            const panel = content.querySelector('.config-resource-quick-presets');
+            if (!panel) return;
+            const nextVisible = panel.hidden;
+            panel.hidden = !nextVisible;
+            btn.classList.toggle('active', nextVisible);
+            btn.setAttribute('aria-expanded', String(nextVisible));
+            btn.title = nextVisible ? '收起显存与速度优化快速预设' : '显示显存与速度优化预设，一键填写当前表单';
+            if (nextVisible && content.hidden) {
+                content.hidden = false;
+                collapseBtn.textContent = '收起';
+                collapseBtn.setAttribute('aria-expanded', 'true');
+                collapseBtn.title = '收起这个配置区';
+                configFormState.expandedGroups.add('显存与速度优化');
+                configFormState.collapsedGroups.delete('显存与速度优化');
+            }
+        });
+        return btn;
+    }
+
+    globalThis.createResourceQuickPresetPanel = function createResourceQuickPresetPanel() {
+        const panel = document.createElement('div');
+        panel.className = 'config-resource-quick-presets';
+        panel.hidden = true;
+        panel.setAttribute('aria-label', '显存与速度优化快速预设');
+
+        const label = document.createElement('span');
+        label.className = 'config-resource-quick-label';
+        label.textContent = '快速预设';
+        panel.appendChild(label);
+
+        for (const preset of RESOURCE_QUICK_PRESETS) {
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'btn btn-small config-resource-preset-btn';
+            btn.dataset.resourcePreset = preset.id;
+            btn.textContent = preset.label;
+            btn.title = preset.note;
+            btn.addEventListener('click', () => applyResourceQuickPreset(preset));
+            panel.appendChild(btn);
+        }
+        return panel;
+    }
+
+    globalThis.applyResourceQuickPreset = function applyResourceQuickPreset(preset) {
+        for (const [key, value] of Object.entries(preset.values)) {
+            setFieldInputValue(key, resourceQuickPresetValue(preset, key, value));
+        }
+        handleFormFieldChange();
+        setTomlStatus('ok', `已填写显存与速度优化预设: ${preset.label}`);
+    }
+
+    globalThis.resourceQuickPresetValue = function resourceQuickPresetValue(preset, key, value) {
+        const strategy = preset?.merge?.[key] || '';
+        if (strategy === 'max') {
+            const current = Number(resourceQuickCurrentValue(key));
+            const next = Number(value);
+            if (Number.isFinite(current) && Number.isFinite(next)) {
+                return Math.max(current, next);
+            }
+        }
+        if (strategy === 'checkpoint_strength_max') {
+            return strongerSelectiveCheckpointValue(resourceQuickCurrentValue(key), value);
+        }
+        return value;
+    }
