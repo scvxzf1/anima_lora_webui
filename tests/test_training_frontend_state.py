@@ -9,10 +9,11 @@ STATIC_DIR = Path(__file__).resolve().parents[1] / "web" / "static"
 APP_JS_PATH = STATIC_DIR / "app.js"
 CHART_JS = STATIC_DIR / "chart.js"
 INDEX_HTML = STATIC_DIR / "index.html"
-STYLE_CSS = STATIC_DIR / "style.css"
+STYLE_CSS_PATH = STATIC_DIR / "style.css"
 MODULE_IMPORT_RE = re.compile(
     r"""(?:import|export)\s+(?:[^'"]*?\s+from\s+)?['"]([^'"]+\.js(?:\?[^'"]*)?)['"]"""
 )
+CSS_IMPORT_RE = re.compile(r"""@import\s+(?:url\()?['"]?([^'")]+\.css)['"]?\)?\s*;""")
 
 
 def _resolve_frontend_module(parent: Path, specifier: str) -> Path | None:
@@ -77,6 +78,47 @@ class _FrontendJsSource:
 APP_JS = _FrontendJsSource()
 
 
+def _resolve_frontend_css(parent: Path, specifier: str) -> Path:
+    parsed = urlparse(specifier)
+    if parsed.scheme or parsed.netloc:
+        raise AssertionError(f"external css import is not allowed: {parent} -> {specifier}")
+    path = unquote(parsed.path)
+    if path.startswith("/static/"):
+        resolved = (STATIC_DIR / path.removeprefix("/static/")).resolve()
+    else:
+        resolved = (parent.parent / path).resolve()
+    if resolved == STATIC_DIR.resolve() or STATIC_DIR.resolve() in resolved.parents:
+        assert resolved.is_file(), f"missing css import: {parent} -> {specifier}"
+        return resolved
+    raise AssertionError(f"css import escapes static dir: {parent} -> {specifier}")
+
+
+def _frontend_css_text(entry: Path = STYLE_CSS_PATH, encoding: str = "utf-8") -> str:
+    seen: set[Path] = set()
+    chunks: list[str] = []
+
+    def visit(path: Path) -> None:
+        resolved = path.resolve()
+        if resolved in seen:
+            return
+        seen.add(resolved)
+        source = resolved.read_text(encoding=encoding)
+        chunks.append(source)
+        for specifier in CSS_IMPORT_RE.findall(source):
+            visit(_resolve_frontend_css(resolved, specifier))
+
+    visit(entry)
+    return "\n".join(chunks)
+
+
+class _FrontendCssSource:
+    def read_text(self, encoding: str = "utf-8") -> str:
+        return _frontend_css_text(encoding=encoding)
+
+
+STYLE_CSS = _FrontendCssSource()
+
+
 def _section(source: str, start: str, end: str) -> str:
     start_index = source.index(start)
     end_index = source.index(end, start_index)
@@ -107,6 +149,11 @@ def test_frontend_module_graph_follows_production_entrypoint() -> None:
     assert "js/features/weight-analysis/state.js" in relative
     assert "js/features/weight-analysis/api.js" in relative
     assert "js/features/weight-analysis/render.js" in relative
+    assert "js/features/app-shell/theme.js" in relative
+    assert "js/features/app-shell/gpu-picker.js" in relative
+    assert "js/features/app-shell/tabs.js" in relative
+    assert "js/features/sample-prompts/model.js" in relative
+    assert "js/features/toml-manager/group-state.js" in relative
     assert "js/features/history-detail/index.js" in relative
     assert "js/features/history-detail/state.js" in relative
     assert "js/features/history-detail/api.js" in relative
@@ -176,7 +223,7 @@ def test_legacy_app_is_transition_glue_not_new_feature_home() -> None:
 
     assert "过渡层" in legacy_source
     assert "不要把这里当成新的长期上帝文件" in legacy_source
-    assert len(legacy_path.read_text(encoding="utf-8").splitlines()) <= 17882
+    assert len(legacy_path.read_text(encoding="utf-8").splitlines()) <= 17520
     assert all(token not in app_source for token in ("fetch(", "addEventListener(", "getElementById("))
     assert feature_dirs
     assert feature_dirs <= {str(Path(item).parent) for item in relative}
@@ -233,10 +280,11 @@ def test_weight_analysis_feature_modules_are_loaded_from_production_entrypoint()
     weight_api = _frontend_module_text("js/features/weight-analysis/api.js")
     weight_render = _frontend_module_text("js/features/weight-analysis/render.js")
     weight_state = _frontend_module_text("js/features/weight-analysis/state.js")
+    tabs_source = _frontend_module_text("js/features/app-shell/tabs.js")
     html = INDEX_HTML.read_text(encoding="utf-8")
     css = STYLE_CSS.read_text(encoding="utf-8")
     listener_section = _section(legacy_source, "function setupEventListeners", "function installBeginnerTooltips")
-    tab_setup = _section(legacy_source, "function setupTabs()", "// ── 加载初始数据 ──")
+    tab_setup = _section(tabs_source, "function setupTabs()", "return {")
     tooltip_section = _section(legacy_source, "function installBeginnerTooltips()", "// ── 工具函数 ──")
 
     assert "createWeightAnalysisFeature(ctx)" in legacy_source
@@ -334,8 +382,9 @@ def test_weight_analysis_feature_modules_are_loaded_from_production_entrypoint()
 
 def test_new_training_launch_enters_live_monitoring() -> None:
     source = APP_JS.read_text(encoding="utf-8")
+    tabs_source = _frontend_module_text("js/features/app-shell/tabs.js")
     helper = _section(source, "function enterLiveTrainingForNewRun()", "function showPreflightDialog")
-    tab_setup = _section(source, "function setupTabs()", "// ── 加载初始数据 ──")
+    tab_setup = _section(tabs_source, "function setupTabs()", "return {")
 
     assert "returnToLiveTraining({ refresh: false });" in helper
     assert 'document.querySelector(\'[data-tab="training"]\')?.click();' in helper
@@ -1114,13 +1163,14 @@ def test_history_manager_frontend_hooks_are_present() -> None:
         "js/features/history-detail/workspace.js",
         "js/features/history-detail/ui.js",
     )
+    tabs_source = _frontend_module_text("js/features/app-shell/tabs.js")
     history_curve_chart = _frontend_module_text("js/features/history-detail/curve/chart.js")
 
     history_section = _section(legacy_source, "async function loadTrainingHistoryList()", "function groupHistoryTasks")
     detail_section = history_detail_source
     listener_section = _section(legacy_source, "function setupEventListeners", "function installBeginnerTooltips")
     preview_open_section = _section(preview_index, "async function openTrainingPreview", "function openCurrentTrainingPreview")
-    tab_setup_section = _section(legacy_source, "function setupTabs()", "// ── 加载初始数据 ──")
+    tab_setup_section = _section(tabs_source, "function setupTabs()", "return {")
     sidebar_history_section = _section(legacy_source, "function renderTrainingHistoryList()", "function recentTrainingSidebarTasks")
     recent_sidebar_section = _section(legacy_source, "function recentTrainingSidebarTasks()", "function renderHistoryManager")
     log_append_section = _section(legacy_source, "function appendLogRecord", "async function replayTrainingLogs")

@@ -2,6 +2,16 @@ import { createPreviewFeature } from './preview/index.js?v=module-bootstrap-2026
 import { createQueueFeature } from './queue/index.js?v=module-bootstrap-20260604-11';
 import { createHistoryDetailFeature } from './history-detail/index.js?v=module-bootstrap-20260604-11';
 import { createWeightAnalysisFeature } from './weight-analysis/index.js?v=module-bootstrap-20260604-11';
+import { createGpuPicker } from './app-shell/gpu-picker.js?v=module-bootstrap-20260604-11';
+import { createTabController } from './app-shell/tabs.js?v=module-bootstrap-20260604-11';
+import { createThemeController } from './app-shell/theme.js?v=module-bootstrap-20260604-11';
+import {
+    blankSamplePromptRow,
+    parseSamplePromptRows,
+    samplePromptsContentNeedsTextMode,
+    serializeSamplePromptsEditor,
+} from './sample-prompts/model.js?v=module-bootstrap-20260604-11';
+import { readTomlGroupState, writeTomlGroupState } from './toml-manager/group-state.js?v=module-bootstrap-20260604-11';
 import {
     formatSystemPercent,
     formatSystemTemperature,
@@ -338,8 +348,6 @@ export function createLegacyApp(ctx) {
     let historyDropFeedbackTimer = null;
     const THEME_STORAGE_KEY = 'anima_lora_theme';
     const GPU_WHITELIST_STORAGE_KEY = 'anima_lora_gpu_whitelist';
-    let availableGpus = [];
-    let selectedGpuWhitelist = [];
     let currentTrainingSource = {
         method: 'lora',
         methods_subdir: 'gui-methods',
@@ -474,7 +482,7 @@ export function createLegacyApp(ctx) {
             continueTrainingRequestPayload,
             showPreflightDialog,
             showPreflightRequestError,
-            selectedGpuPayload,
+            selectedGpuPayload: () => gpuPicker.selectedGpuPayload(),
             showTrainingView,
             getTrainingRuntime: () => trainingRuntime,
             renderTrainingViewMode,
@@ -574,7 +582,7 @@ export function createLegacyApp(ctx) {
             historyArtifactUrl: makeHistoryArtifactUrl,
             copyText,
             downloadBlob,
-            selectedGpuPayload,
+            selectedGpuPayload: () => gpuPicker.selectedGpuPayload(),
             selectContinueLoraWeight,
             showHistoryTaskConfirmDialog,
             formatLr,
@@ -588,10 +596,27 @@ export function createLegacyApp(ctx) {
         });
         return historyDetailFeature;
     }
+
+    const themeController = createThemeController({
+        storageKey: THEME_STORAGE_KEY,
+        getLossChart: () => lossChart,
+        chartTheme,
+    });
+    const gpuPicker = createGpuPicker({
+        storageKey: GPU_WHITELIST_STORAGE_KEY,
+        api,
+    });
+    const tabController = createTabController({
+        loadDatasetPresets,
+        loadGlobalSettings,
+        ensureWeightAnalysisFeature,
+        resetTrainingExpandedStateOnLeave,
+        resizeLiveChart: () => lossChart?.resize?.(),
+    });
     // ── 初始化 ──
     document.addEventListener('DOMContentLoaded', async () => {
-        initThemeToggle();
-        setupTabs();
+        themeController.initThemeToggle();
+        tabController.setupTabs();
         lossChart = new MetricsChart(document.getElementById('loss-chart'), {
             emptyText: '',
             showLr: liveChartState.showLr,
@@ -603,7 +628,7 @@ export function createLegacyApp(ctx) {
         syncLiveChartControls();
         renderLiveChartPanel();
         setupEventListeners();
-        initGpuPickerEvents();
+        gpuPicker.initGpuPickerEvents();
         await loadInitialData();
         if (location.protocol !== 'file:') {
             connectWebSocket();
@@ -616,221 +641,6 @@ export function createLegacyApp(ctx) {
             window.addEventListener('online', recoverLiveTrainingState);
         }
     });
-
-    function currentTheme() {
-        return document.documentElement.dataset.theme === 'light' ? 'light' : 'dark';
-    }
-
-    function storedTheme() {
-        try {
-            return localStorage.getItem(THEME_STORAGE_KEY);
-        } catch (_) {
-            return null;
-        }
-    }
-
-    function saveTheme(theme) {
-        try {
-            localStorage.setItem(THEME_STORAGE_KEY, theme);
-        } catch (_) {
-            // 忽略浏览器禁用本地存储的情况，当前页面仍然可以完成切换。
-        }
-    }
-
-    function applyTheme(theme) {
-        const safeTheme = theme === 'light' ? 'light' : 'dark';
-        document.documentElement.dataset.theme = safeTheme;
-        const toggle = document.getElementById('theme-toggle');
-        const label = document.getElementById('theme-toggle-text');
-        if (toggle) {
-            const isLight = safeTheme === 'light';
-            toggle.setAttribute('aria-pressed', String(isLight));
-            toggle.title = isLight ? '切换到深色主题' : '切换到浅色主题';
-        }
-        if (label) label.textContent = safeTheme === 'light' ? '深色主题' : '浅色主题';
-        lossChart?.setTheme?.(chartTheme());
-    }
-
-    function initThemeToggle() {
-        applyTheme(storedTheme() || currentTheme());
-        const toggle = document.getElementById('theme-toggle');
-        if (!toggle) return;
-        toggle.addEventListener('click', () => {
-            const next = currentTheme() === 'light' ? 'dark' : 'light';
-            applyTheme(next);
-            saveTheme(next);
-        });
-    }
-
-    function loadStoredGpuWhitelist() {
-        try {
-            const parsed = JSON.parse(localStorage.getItem(GPU_WHITELIST_STORAGE_KEY) || '[]');
-            if (!Array.isArray(parsed)) return [];
-            return parsed
-                .map((item) => Number(item))
-                .filter((item, index, list) => Number.isInteger(item) && item >= 0 && list.indexOf(item) === index);
-        } catch (_) {
-            return [];
-        }
-    }
-
-    function saveGpuWhitelist() {
-        try {
-            localStorage.setItem(GPU_WHITELIST_STORAGE_KEY, JSON.stringify(selectedGpuWhitelist));
-        } catch (_) {
-            // 浏览器禁用 localStorage 时，本次页面内选择仍然有效。
-        }
-    }
-
-    async function loadGpuOptions() {
-        selectedGpuWhitelist = loadStoredGpuWhitelist();
-        renderGpuPicker();
-        if (location.protocol === 'file:') {
-            updateGpuPickerNote('静态打开无法读取本机 GPU；选择会在服务模式下生效。');
-            return;
-        }
-        try {
-            const payload = await api('/api/training/gpus');
-            availableGpus = Array.isArray(payload.gpus) ? payload.gpus : [];
-            selectedGpuWhitelist = sanitizeGpuWhitelist(selectedGpuWhitelist);
-            saveGpuWhitelist();
-            renderGpuPicker();
-        } catch (e) {
-            availableGpus = [];
-            renderGpuPicker();
-            updateGpuPickerNote('读取 GPU 列表失败，训练会使用默认可见 GPU。');
-        }
-    }
-
-    function sanitizeGpuWhitelist(list) {
-        const selected = Array.isArray(list) ? list : [];
-        if (!availableGpus.length) return selected.filter((item) => Number.isInteger(item) && item >= 0);
-        const known = new Set(availableGpus.map((gpu) => Number(gpu.index)));
-        return selected.filter((item) => known.has(item));
-    }
-
-    function renderGpuPicker() {
-        const toggle = document.getElementById('gpu-picker-toggle');
-        const list = document.getElementById('gpu-option-list');
-        const allCheckbox = document.getElementById('gpu-all-checkbox');
-        if (!toggle || !list || !allCheckbox) return;
-
-        const selected = new Set(selectedGpuWhitelist);
-        const allSelected = selectedGpuWhitelist.length === 0;
-        allCheckbox.checked = allSelected;
-        allCheckbox.indeterminate = false;
-        allCheckbox.disabled = allSelected;
-        toggle.textContent = gpuPickerSummary();
-        toggle.title = gpuPickerTitle();
-        list.innerHTML = '';
-
-        if (!availableGpus.length) {
-            const empty = document.createElement('div');
-            empty.className = 'gpu-picker-note';
-            empty.textContent = '未读取到 NVIDIA GPU；保持“全部 GPU”时会沿用系统默认可见设备。';
-            list.appendChild(empty);
-            updateGpuPickerNote('选择为空表示不限制 GPU，训练使用系统默认可见设备。');
-            return;
-        }
-
-        for (const gpu of availableGpus) {
-            const index = Number(gpu.index);
-            const option = document.createElement('label');
-            option.className = 'gpu-option';
-
-            const checkbox = document.createElement('input');
-            checkbox.type = 'checkbox';
-            checkbox.value = String(index);
-            checkbox.checked = selected.has(index);
-            checkbox.addEventListener('change', () => toggleGpuSelection(index, checkbox.checked));
-
-            const body = document.createElement('span');
-            const name = document.createElement('span');
-            name.className = 'gpu-option-name';
-            name.textContent = gpu.label || `GPU ${index} · ${gpu.name || '未命名显卡'}`;
-            body.appendChild(name);
-            const meta = document.createElement('span');
-            meta.className = 'gpu-option-meta';
-            meta.textContent = gpu.memory_total_gb
-                ? `显存 ${gpu.memory_total_gb} GB · 训练时写入 CUDA_VISIBLE_DEVICES=${index}`
-                : `训练时写入 CUDA_VISIBLE_DEVICES=${index}`;
-            body.appendChild(meta);
-            option.append(checkbox, body);
-            list.appendChild(option);
-        }
-
-        updateGpuPickerNote(allSelected
-            ? '当前不限制 GPU，训练会使用系统默认可见设备。'
-            : `当前训练白名单: ${selectedGpuWhitelist.join(', ')}`);
-    }
-
-    function gpuPickerSummary() {
-        if (!selectedGpuWhitelist.length) return '全部 GPU';
-        const names = selectedGpuWhitelist.map((index) => {
-            const gpu = availableGpus.find((item) => Number(item.index) === Number(index));
-            return gpu?.name ? `GPU ${index} · ${gpu.name}` : `GPU ${index}`;
-        });
-        if (names.length <= 2) return names.join(' / ');
-        return `${names.slice(0, 2).join(' / ')} 等 ${names.length} 张`;
-    }
-
-    function gpuPickerTitle() {
-        return [
-            '选择训练时允许使用的 GPU 白名单。',
-            '留空/全部 GPU 表示不覆盖系统默认可见设备。',
-            '选择会保存在本机浏览器，并在开始训练或自动预处理后训练时生效。',
-        ].join('\n');
-    }
-
-    function updateGpuPickerNote(text) {
-        const note = document.getElementById('gpu-picker-note');
-        if (note) note.textContent = text;
-    }
-
-    function setGpuWhitelist(next) {
-        selectedGpuWhitelist = sanitizeGpuWhitelist(next);
-        saveGpuWhitelist();
-        renderGpuPicker();
-    }
-
-    function toggleGpuSelection(index, checked) {
-        const selected = new Set(selectedGpuWhitelist);
-        if (checked) selected.add(index);
-        else selected.delete(index);
-        setGpuWhitelist([...selected].sort((a, b) => a - b));
-    }
-
-    function selectedGpuPayload() {
-        return selectedGpuWhitelist.slice().sort((a, b) => a - b);
-    }
-
-    function closeGpuPickerPanel() {
-        const panel = document.getElementById('gpu-picker-panel');
-        const toggle = document.getElementById('gpu-picker-toggle');
-        if (!panel || !toggle) return;
-        panel.hidden = true;
-        toggle.setAttribute('aria-expanded', 'false');
-    }
-
-    function initGpuPickerEvents() {
-        const picker = document.getElementById('gpu-picker');
-        const toggle = document.getElementById('gpu-picker-toggle');
-        const panel = document.getElementById('gpu-picker-panel');
-        const allCheckbox = document.getElementById('gpu-all-checkbox');
-        if (!picker || !toggle || !panel || !allCheckbox) return;
-        toggle.addEventListener('click', () => {
-            const nextOpen = panel.hidden;
-            panel.hidden = !nextOpen;
-            toggle.setAttribute('aria-expanded', String(nextOpen));
-        });
-        allCheckbox.addEventListener('change', () => setGpuWhitelist([]));
-        document.addEventListener('click', (event) => {
-            if (!picker.contains(event.target)) closeGpuPickerPanel();
-        });
-        document.addEventListener('keydown', (event) => {
-            if (event.key === 'Escape') closeGpuPickerPanel();
-        });
-    }
 
     function chartTheme() {
         const trainingRoot = document.getElementById('tab-training');
@@ -870,59 +680,10 @@ export function createLegacyApp(ctx) {
         }
     }
 
-    // ── Tab 切换 ──
-    function normalizeTopLevelTabState() {
-        const activeButton = document.querySelector('.tab-btn.active');
-        const activeName = activeButton?.dataset.tab || '';
-        const hasUsableActiveTab =
-            activeName &&
-            activeName !== 'preview' &&
-            document.getElementById(`tab-${activeName}`);
-        const fallbackButton = document.querySelector('[data-tab="training"]') || document.querySelector('[data-tab="config"]');
-        const nextButton = hasUsableActiveTab ? activeButton : fallbackButton;
-        const nextName = nextButton?.dataset.tab || '';
-        document.querySelectorAll('.tab-btn').forEach(btn => {
-            btn.classList.toggle('active', btn === nextButton);
-        });
-        document.querySelectorAll('.tab-content').forEach(tab => {
-            tab.classList.toggle('active', tab.id === `tab-${nextName}`);
-        });
-        document.getElementById('tab-preview')?.classList.remove('active');
-    }
-
-    function setupTabs() {
-        normalizeTopLevelTabState();
-        document.querySelectorAll('.tab-btn').forEach(btn => {
-            btn.addEventListener('click', () => {
-                const previousTab = document.querySelector('.tab-btn.active')?.dataset.tab || '';
-                const nextTab = btn.dataset.tab || '';
-                if (previousTab === 'training' && nextTab !== 'training') {
-                    resetTrainingExpandedStateOnLeave();
-                }
-                document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-                document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
-                btn.classList.add('active');
-                document.getElementById('tab-' + nextTab).classList.add('active');
-                if (nextTab === 'datasets') {
-                    loadDatasetPresets({ manage: true });
-                }
-                if (nextTab === 'training' && lossChart?.resize) {
-                    lossChart.resize();
-                }
-                if (nextTab === 'weight-analysis') {
-                    ensureWeightAnalysisFeature().loadAnalysisWeights();
-                }
-                if (nextTab === 'settings') {
-                    loadGlobalSettings();
-                }
-            });
-        });
-    }
-
     // ── 加载初始数据 ──
     async function loadInitialData() {
         if (location.protocol === 'file:') {
-            await loadGpuOptions();
+            await gpuPicker.loadGpuOptions();
             showStandaloneWarning();
             return;
         }
@@ -935,7 +696,7 @@ export function createLegacyApp(ctx) {
             fieldHelp = help;
             populateSelect('method-select', methods, 'lora');
             populateSelect('preset-select', presets, 'default');
-            await loadGpuOptions();
+            await gpuPicker.loadGpuOptions();
             const variants = await loadVariants();
             await loadDatasetPresets({ selectCurrent: false, manage: isDatasetTabActive() });
             if (variants.length) {
@@ -7202,117 +6963,6 @@ export function createLegacyApp(ctx) {
         });
     }
 
-    function blankSamplePromptRow() {
-        return { prompt: '', height: '', width: '', cfg: '', steps: '', seed: '', extra: '' };
-    }
-
-    function samplePromptsContentNeedsTextMode(content) {
-        const text = String(content || '');
-        if (!text) return false;
-        return text.split(/\r?\n/).some((line) => {
-            const trimmed = line.trim();
-            if (!trimmed || trimmed.startsWith('#')) return true;
-            return serializeSamplePromptRow(parseSamplePromptLine(line)) !== trimmed;
-        });
-    }
-
-    function parseSamplePromptRows(content) {
-        const rows = String(content || '')
-            .split(/\r?\n/)
-            .map((line) => line.trim())
-            .filter((line) => line && !line.startsWith('#'))
-            .map(parseSamplePromptLine);
-        return rows.length ? rows : [blankSamplePromptRow()];
-    }
-
-    function parseSamplePromptLine(line) {
-        const parts = String(line || '').trim().split(/\s+--/);
-        const row = blankSamplePromptRow();
-        row.prompt = (parts.shift() || '').trim();
-        const extras = [];
-
-        for (const rawPart of parts) {
-            const part = rawPart.trim();
-            let match = part.match(/^h\s+(\d+)$/i);
-            if (match) {
-                row.height = match[1];
-                continue;
-            }
-            match = part.match(/^w\s+(\d+)$/i);
-            if (match) {
-                row.width = match[1];
-                continue;
-            }
-            match = part.match(/^g\s+([\d.]+)$/i);
-            if (match) {
-                row.cfg = match[1];
-                continue;
-            }
-            match = part.match(/^s\s+(\d+)$/i);
-            if (match) {
-                row.steps = match[1];
-                continue;
-            }
-            match = part.match(/^d\s+(\d+)$/i);
-            if (match) {
-                row.seed = match[1];
-                continue;
-            }
-            if (part) extras.push(`--${part}`);
-        }
-        row.extra = extras.join(' ');
-        return row;
-    }
-
-    function serializeSamplePromptsEditor(editor) {
-        if (editor.dataset.mode === 'text') {
-            return editor.querySelector('.sample-prompts-textarea')?.value || '';
-        }
-        const rows = [];
-        for (const rowEl of editor.querySelectorAll('.sample-prompt-row')) {
-            const row = samplePromptRowFromElement(rowEl);
-            const line = serializeSamplePromptRow(row);
-            if (line) rows.push(line);
-        }
-        return rows.join('\n');
-    }
-
-    function samplePromptRowFromElement(rowEl) {
-        const value = (field) => rowEl.querySelector(`[data-sample-prompt-field="${field}"]`)?.value?.trim() || '';
-        return {
-            prompt: value('prompt'),
-            height: value('height'),
-            width: value('width'),
-            cfg: value('cfg'),
-            steps: value('steps'),
-            seed: value('seed'),
-            extra: value('extra'),
-        };
-    }
-
-    function serializeSamplePromptRow(row) {
-        if (!row.prompt) return '';
-        const args = [];
-        if (row.width) args.push(`--w ${positiveIntegerText(row.width)}`);
-        if (row.height) args.push(`--h ${positiveIntegerText(row.height)}`);
-        if (row.steps) args.push(`--s ${positiveIntegerText(row.steps)}`);
-        if (row.cfg) args.push(`--g ${positiveNumberText(row.cfg)}`);
-        if (row.seed) args.push(`--d ${positiveIntegerText(row.seed)}`);
-        if (row.extra) args.push(row.extra.trim());
-        return [row.prompt.trim(), ...args.filter(Boolean)].join(' ');
-    }
-
-    function positiveIntegerText(value) {
-        const n = Math.max(0, Math.floor(Number(value)));
-        return Number.isFinite(n) ? String(n) : '';
-    }
-
-    function positiveNumberText(value) {
-        const n = Number(value);
-        if (!Number.isFinite(n) || n < 0) return '';
-        return String(n);
-    }
-
     function isNumericField(key, value) {
         const networkArgSpec = NETWORK_ARG_FIELD_MAP.get(key);
         if (networkArgSpec) {
@@ -10742,18 +10392,6 @@ export function createLegacyApp(ctx) {
         }
     }
 
-    function readTomlGroupState() {
-        try {
-            return JSON.parse(localStorage.getItem('anima.tomlGroupOpen') || '{}') || {};
-        } catch {
-            return {};
-        }
-    }
-
-    function writeTomlGroupState(state) {
-        localStorage.setItem('anima.tomlGroupOpen', JSON.stringify(state));
-    }
-
     function isTomlLocked(filePath) {
         return Boolean(tomlFileMeta[filePath]?.locked);
     }
@@ -11613,7 +11251,7 @@ export function createLegacyApp(ctx) {
                     methods_subdir: methodsSubdir,
                     config_file: currentTrainingConfigFile(),
                     extra_args: [],
-                    gpu_whitelist: selectedGpuPayload(),
+                    gpu_whitelist: gpuPicker.selectedGpuPayload(),
                     confirmed: true,
                     confirm_preprocess: willAutoPreprocess,
                     ...continueTrainingRequestPayload(),
@@ -11914,7 +11552,7 @@ export function createLegacyApp(ctx) {
                     confirmed: true,
                     confirm_train_after: true,
                     confirm_preprocess: true,
-                    gpu_whitelist: selectedGpuPayload(),
+                    gpu_whitelist: gpuPicker.selectedGpuPayload(),
                     ...continueTrainingRequestPayload(),
                 }),
             });

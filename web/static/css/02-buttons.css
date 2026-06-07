@@ -1,0 +1,64 @@
+/* Shared button primitives. */
+/* Buttons */
+.btn {
+    background: var(--bg-input);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 0.4rem 0.8rem;
+    border-radius: var(--radius);
+    cursor: pointer;
+    font-size: 0.8rem;
+    transition: all 0.15s;
+}
+.btn:hover { border-color: var(--accent); color: var(--accent); background: var(--surface-tint-hover); }
+.btn:disabled {
+    opacity: 0.55;
+    cursor: wait;
+}
+.btn:disabled:hover {
+    border-color: var(--border);
+    color: var(--text);
+    background: var(--bg-input);
+}
+.btn-primary { background: var(--accent); color: var(--on-accent); border-color: var(--accent); font-weight: 600; }
+.btn-primary:hover { background: var(--accent-hover); border-color: var(--accent-hover); color: var(--on-accent); }
+.btn-primary:disabled:hover {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: var(--on-accent);
+}
+.btn-highlight {
+    border-color: var(--accent);
+    background: var(--surface-tint-strong);
+    color: var(--accent);
+    font-weight: 700;
+}
+.btn-highlight:hover,
+.btn-highlight.active {
+    border-color: var(--accent-hover);
+    background: var(--accent);
+    color: var(--on-accent);
+}
+.btn-danger { background: transparent; color: var(--danger); border-color: rgba(180, 35, 24, 0.42); }
+.btn-danger:hover { opacity: 0.85; }
+.btn-danger:disabled { opacity: 0.4; cursor: not-allowed; }
+.btn-subtle-danger {
+    border-color: rgba(239, 83, 80, 0.5);
+    color: var(--danger-subtle);
+}
+.btn-subtle-danger:hover {
+    border-color: var(--danger);
+    color: var(--danger-subtle-hover);
+}
+.btn-confirm-danger {
+    background: var(--danger) !important;
+    border-color: var(--danger) !important;
+    color: #fff !important;
+    font-weight: 700;
+}
+.btn-confirm-danger:hover {
+    color: #fff !important;
+    opacity: 0.9;
+}
+.btn-small { padding: 0.2rem 0.5rem; font-size: 0.7rem; }
+

@@ -1,0 +1,1200 @@
+/* Config forge layout and config page overrides. */
+#tab-config {
+    --config-page-bg: #111827;
+    --config-sidebar-bg: #141d2e;
+    --config-panel-bg: #182235;
+    --config-panel-soft: #202c40;
+    --config-field-bg: #111827;
+    --config-field-readonly: #172033;
+    --config-card-head: rgba(79, 70, 229, 0.16);
+    --config-accent: #818cf8;
+    --config-accent-strong: #6366f1;
+    --config-accent-ink: #ffffff;
+    --config-text: #e5e7eb;
+    --config-muted: #a7b0be;
+    --config-faint: #7b8798;
+    --config-border: rgba(148, 163, 184, 0.28);
+    --config-border-strong: rgba(165, 180, 252, 0.45);
+    --config-danger: #ff8a80;
+    --config-success: #86efac;
+    --config-shadow: 0 16px 34px rgba(0, 0, 0, 0.18);
+    margin: -1rem -1.5rem;
+    min-height: calc(100vh - 59px);
+    background: var(--config-page-bg);
+    color: var(--config-text);
+}
+
+:root[data-theme="light"] #tab-config {
+    --config-page-bg: #f6f7ff;
+    --config-sidebar-bg: #ffffff;
+    --config-panel-bg: #fbfbff;
+    --config-panel-soft: #eef1ff;
+    --config-field-bg: #ffffff;
+    --config-field-readonly: #f1f4ff;
+    --config-card-head: #e7e9ff;
+    --config-accent: #4547d9;
+    --config-accent-strong: #3336c9;
+    --config-accent-ink: #ffffff;
+    --config-text: #0f172a;
+    --config-muted: #616579;
+    --config-faint: #8b8fa3;
+    --config-border: #c6c9dc;
+    --config-border-strong: #b5b9d6;
+    --config-danger: #c91010;
+    --config-success: #16803c;
+    --config-shadow: 0 18px 42px rgba(64, 65, 130, 0.12);
+}
+
+#tab-config .config-forge-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) clamp(260px, 24vw, 360px);
+    gap: 0;
+    align-items: stretch;
+    min-height: calc(100vh - 59px);
+    background: var(--config-page-bg);
+}
+
+#tab-config .config-preset-manager,
+#tab-config .config-preset-editor {
+    min-width: 0;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+}
+
+#tab-config .config-preset-manager {
+    display: flex;
+    flex-direction: column;
+    grid-column: 2;
+    grid-row: 1;
+    isolation: isolate;
+    position: relative;
+    z-index: 60;
+    overflow: visible;
+    border-left: 1px solid var(--config-border-strong);
+    background: var(--config-sidebar-bg);
+}
+
+#tab-config .config-sidebar-project {
+    display: grid;
+    gap: 0.75rem;
+    margin: 0;
+    padding: 1.25rem 1.25rem 1rem;
+    border: 0;
+    border-bottom: 1px solid var(--config-border);
+    border-radius: 0;
+    background: var(--config-sidebar-bg);
+}
+
+#tab-config .config-workbench-title-block,
+#tab-config .config-preset-title-block {
+    min-width: 0;
+}
+
+#tab-config .config-forge-eyebrow,
+#tab-config .config-preset-breadcrumb {
+    display: block;
+    color: var(--config-accent);
+    font-size: 0.68rem;
+    font-weight: 800;
+    letter-spacing: 0;
+    line-height: 1.3;
+    text-transform: uppercase;
+}
+
+#tab-config .config-workbench-title-block strong {
+    display: block;
+    margin-top: 0.18rem;
+    color: var(--config-text);
+    font-size: 1rem;
+    line-height: 1.2;
+}
+
+#tab-config .config-workbench-title-block span:not(.config-forge-eyebrow) {
+    display: block;
+    margin-top: 0.16rem;
+    color: var(--config-muted);
+    font-size: 0.72rem;
+    line-height: 1.35;
+}
+
+#tab-config .config-page-summary {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.45rem;
+    max-width: none;
+    padding: 0;
+    border: 0;
+    background: transparent;
+}
+
+#tab-config .config-page-summary-stat {
+    display: grid;
+    gap: 0.08rem;
+    min-width: 0;
+    padding: 0.42rem 0.5rem;
+    border: 1px solid var(--config-border);
+    border-radius: 6px;
+    background: var(--config-panel-soft);
+}
+
+#tab-config .config-page-summary-stat strong {
+    color: var(--config-text);
+    font-size: 1rem;
+    line-height: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+#tab-config .config-page-summary-stat small {
+    color: var(--config-muted);
+    font-size: 0.64rem;
+}
+
+#tab-config .toml-mode-tabs {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    max-width: none;
+    margin: 0.9rem 1.25rem 0.7rem;
+    padding: 0.22rem;
+    border-color: var(--config-border);
+    border-radius: 6px;
+    background: var(--config-panel-soft);
+}
+
+#tab-config .toml-mode-btn {
+    min-height: 34px;
+    border-radius: 5px;
+    color: var(--config-muted);
+    font-size: 0.72rem;
+    font-weight: 800;
+}
+
+#tab-config .toml-mode-btn:hover,
+#tab-config .toml-mode-btn.active {
+    background: var(--config-accent-strong);
+    color: var(--config-accent-ink);
+}
+
+#tab-config .toml-file-row {
+    display: grid;
+    gap: 0.5rem;
+    position: relative;
+    z-index: 65;
+    overflow: visible;
+    padding: 0 1.25rem 0.8rem calc(1.25rem + 6px);
+}
+
+#tab-config .toml-current-file {
+    box-sizing: border-box;
+    display: grid;
+    gap: 0.15rem;
+    min-width: 0;
+    position: relative;
+    z-index: 1;
+    overflow: visible;
+    padding: 0.58rem 0.65rem 0.58rem 0.82rem;
+    border-color: var(--config-border);
+    border-left: 0;
+    border-radius: 6px;
+    background: var(--config-panel-soft);
+    box-shadow: inset 3px 0 0 var(--config-accent);
+}
+
+#tab-config .toml-current-file span {
+    color: var(--config-muted);
+    font-size: 0.64rem;
+    font-weight: 800;
+    text-transform: uppercase;
+}
+
+#tab-config .toml-current-file strong {
+    max-width: none;
+    color: var(--config-text);
+    font-size: 0.84rem;
+    overflow-wrap: anywhere;
+    white-space: normal;
+}
+
+#tab-config .toml-badges {
+    justify-content: flex-start;
+    gap: 0.32rem;
+}
+
+#tab-config .toml-badge {
+    border-color: var(--config-border);
+    border-radius: 5px;
+    background: var(--config-panel-bg);
+    color: var(--config-accent);
+}
+
+#tab-config .toml-badge-warning {
+    color: var(--warning);
+}
+
+#tab-config .toml-badge-danger {
+    color: var(--config-danger);
+}
+
+#tab-config .toml-file-actions {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
+    gap: 0.38rem;
+    position: relative;
+    z-index: 70;
+    overflow: visible;
+    padding: 0 1.25rem 0.75rem;
+}
+
+#tab-config .toml-primary-actions,
+#tab-config .output-run-actions {
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+}
+
+#tab-config .toml-file-actions .btn {
+    min-width: 0;
+    min-height: 32px;
+    justify-content: center;
+    border-radius: 5px;
+    font-weight: 800;
+    white-space: normal;
+}
+
+#tab-config .toml-more-actions {
+    min-width: 0;
+    position: relative;
+    z-index: 1;
+}
+
+#tab-config .toml-more-actions[open] {
+    z-index: 220;
+}
+
+#tab-config .toml-more-actions > summary {
+    min-height: 32px;
+    justify-content: center;
+    border-color: var(--config-border);
+    background: var(--config-field-bg);
+    color: var(--config-text);
+    font-weight: 800;
+}
+
+#tab-config .toml-more-actions[open] > summary,
+#tab-config .toml-more-actions > summary:hover {
+    border-color: var(--config-accent);
+    color: var(--config-accent);
+}
+
+#tab-config .toml-more-actions-popover {
+    right: 0;
+    z-index: 220;
+    width: min(360px, calc(100vw - 2rem));
+    border-color: var(--config-border-strong);
+    border-radius: 6px;
+    background: var(--config-panel-bg);
+    box-shadow: var(--config-shadow);
+}
+
+#tab-config #toml-status {
+    display: block;
+    min-height: 1.2rem;
+    padding: 0 1.25rem 0.75rem;
+    color: var(--config-muted);
+    font-size: 0.7rem;
+}
+
+#tab-config .toml-manager,
+#tab-config .output-run-manager {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    min-height: 0;
+    padding: 0.1rem 0.85rem 1rem;
+}
+
+#tab-config .toml-file-groups,
+#tab-config .output-run-sidebar {
+    flex: 1 1 auto;
+    max-height: none;
+    min-height: 0;
+    overflow-y: auto;
+    border-color: var(--config-border);
+    border-radius: 6px;
+    background: var(--config-sidebar-bg);
+}
+
+#tab-config .toml-group-toolbar {
+    padding: 0.42rem;
+    border-bottom-color: var(--config-border);
+}
+
+#tab-config .toml-file-group {
+    margin-bottom: 0.65rem;
+    overflow: hidden;
+    border: 1px solid var(--config-border);
+    border-radius: 6px;
+    background: var(--config-sidebar-bg);
+}
+
+#tab-config .toml-file-group:last-child {
+    margin-bottom: 0;
+}
+
+#tab-config .toml-file-group summary {
+    min-height: 42px;
+    padding: 0.55rem 0.65rem;
+    color: var(--config-text);
+    background: var(--config-panel-soft);
+}
+
+#tab-config .toml-group-title {
+    color: var(--config-muted);
+    font-size: 0.68rem;
+    letter-spacing: 0;
+    text-transform: uppercase;
+}
+
+#tab-config .toml-file-list {
+    gap: 0.32rem;
+    padding: 0.42rem;
+}
+
+#tab-config .toml-file-row-wrap {
+    grid-template-columns: 1.45rem minmax(0, 1fr);
+    gap: 0.28rem;
+}
+
+#tab-config .file-group-drag-handle {
+    border-color: rgba(79, 70, 229, 0.32);
+    background: rgba(79, 70, 229, 0.08);
+    color: var(--config-accent);
+}
+
+#tab-config .toml-file-item {
+    min-height: 58px;
+    padding: 0.54rem 0.62rem;
+    border-radius: 5px;
+    color: var(--config-text);
+}
+
+#tab-config .toml-file-item:hover,
+#tab-config .toml-file-item.active {
+    border-color: var(--config-accent);
+    background: var(--config-accent-strong);
+    color: var(--config-accent-ink);
+    box-shadow: none;
+}
+
+#tab-config .toml-file-item:hover .toml-file-meta,
+#tab-config .toml-file-item.active .toml-file-meta {
+    color: rgba(255, 255, 255, 0.78);
+}
+
+#tab-config .toml-file-name {
+    font-size: 0.82rem;
+}
+
+#tab-config .toml-file-meta {
+    color: var(--config-muted);
+}
+
+#tab-config .toml-group-action-btn,
+#tab-config .toml-group-lock-btn,
+#tab-config .output-run-kind-btn {
+    border-color: var(--config-border);
+    border-radius: 5px;
+    background: var(--config-field-bg);
+    color: var(--config-muted);
+}
+
+#tab-config .toml-group-action-btn:hover,
+#tab-config .toml-group-lock-btn:hover,
+#tab-config .output-run-kind-btn:hover,
+#tab-config .output-run-kind-btn.active {
+    border-color: var(--config-accent);
+    color: var(--config-accent);
+    background: var(--config-panel-soft);
+}
+
+#tab-config .toml-group-action-btn-queue:hover,
+#tab-config .toml-group-action-btn-export:hover {
+    background: var(--config-accent-strong);
+    color: var(--config-accent-ink);
+}
+
+#tab-config .config-preset-editor {
+    display: grid;
+    align-content: start;
+    grid-column: 1;
+    grid-row: 1;
+    background: var(--config-page-bg);
+}
+
+#tab-config .config-preset-header {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 1.1rem;
+    align-items: start;
+    padding: 1.35rem 1.65rem 1rem;
+    border-bottom: 0;
+    background: var(--config-page-bg);
+}
+
+#tab-config .config-preset-title-block {
+    min-width: 0;
+}
+
+#tab-config .config-preset-title-block strong {
+    display: block;
+    margin-top: 0.35rem;
+    color: var(--config-accent);
+    font-size: 2rem;
+    line-height: 1.08;
+    overflow-wrap: anywhere;
+}
+
+#tab-config .config-preset-title-block span:not(.config-preset-breadcrumb) {
+    display: block;
+    margin-top: 0.25rem;
+    color: var(--config-muted);
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.88rem;
+    overflow-wrap: anywhere;
+}
+
+#tab-config .config-form-workspace,
+#tab-config .config-output-detail {
+    --config-left-max-height: calc(100vh - 22rem);
+    --config-sticky-safe-space: clamp(8.5rem, 13vh, 11rem);
+    min-width: 0;
+    padding: 1rem 1.65rem 1.7rem;
+}
+
+#tab-config .config-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    margin: 0 0 1rem;
+    padding: 1rem 1.25rem;
+    border: 1px solid var(--config-border-strong);
+    border-radius: 6px;
+    background: var(--config-panel-bg);
+    box-shadow: var(--config-shadow);
+}
+
+#tab-config .config-toolbar label {
+    display: grid;
+    gap: 0.32rem;
+    color: var(--config-muted);
+    font-size: 0.68rem;
+    font-weight: 800;
+    text-transform: uppercase;
+}
+
+#tab-config .config-run-preset {
+    flex: 0 0 auto;
+    min-width: 156px;
+}
+
+#tab-config .config-toolbar select,
+#tab-config .toml-header select,
+#tab-config .output-run-search input,
+#tab-config .output-run-save-as input,
+#tab-config .output-run-save-as select,
+#tab-config .field-input,
+#tab-config .sample-prompt-field input,
+#tab-config .sample-prompts-textarea {
+    border-color: var(--config-border);
+    border-radius: 5px;
+    background: var(--config-field-bg);
+    color: var(--config-text);
+    box-shadow: none;
+}
+
+#tab-config .config-toolbar select {
+    min-width: 128px;
+    height: 38px;
+    font-size: 0.86rem;
+}
+
+#tab-config .gpu-picker {
+    align-self: end;
+}
+
+#tab-config .gpu-picker-caption {
+    color: var(--config-muted);
+    font-size: 0.68rem;
+    font-weight: 800;
+}
+
+#tab-config .gpu-picker-toggle {
+    min-height: 38px;
+    border-color: var(--config-border);
+    border-radius: 5px;
+    background: var(--config-field-bg);
+    color: var(--config-text);
+    font-size: 0.84rem;
+}
+
+#tab-config .config-toolbar > #btn-load-config,
+#tab-config .config-toolbar > #btn-start-from-config,
+#tab-config .config-toolbar > #btn-queue-from-config {
+    align-self: end;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 72px;
+    min-height: 40px;
+    padding: 0 1.05rem;
+    border-radius: 5px;
+    font-size: 0.88rem;
+    font-weight: 700;
+    line-height: 1;
+    white-space: nowrap;
+}
+
+#tab-config .config-toolbar > #btn-start-from-config,
+#tab-config .config-toolbar > #btn-queue-from-config {
+    min-width: 96px;
+}
+
+#tab-config .gpu-picker-panel {
+    border-color: var(--config-border-strong);
+    border-radius: 6px;
+    background: var(--config-panel-bg);
+}
+
+#tab-config .config-toolbar .gpu-option {
+    border-color: var(--config-border);
+    border-radius: 5px;
+    background: var(--config-field-bg);
+}
+
+#tab-config .continue-training-source,
+#tab-config .choice-card,
+#tab-config .config-group,
+#tab-config .step-estimate-panel {
+    border-color: var(--config-border-strong);
+    border-radius: 6px;
+    background: var(--config-panel-bg);
+}
+
+#tab-config .continue-training-source {
+    margin-bottom: 1rem;
+    box-shadow: var(--config-shadow);
+}
+
+#tab-config .choice-guide {
+    gap: 0.75rem;
+    margin-bottom: 1rem;
+}
+
+#tab-config #config-form {
+    gap: 1rem;
+}
+
+#tab-config .config-form-shell {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0.85rem;
+    align-items: start;
+}
+
+#tab-config .config-form-main {
+    display: grid;
+    gap: 0.85rem;
+    min-width: 0;
+}
+
+#tab-config .config-form-controls {
+    display: grid;
+    grid-template-columns: minmax(240px, 1fr) auto auto auto;
+    gap: 0.6rem;
+    align-items: end;
+    min-width: 0;
+    padding: 0.72rem;
+    border: 1px solid var(--config-border-strong);
+    border-radius: 6px;
+    background: var(--config-panel-bg);
+    box-shadow: var(--config-shadow);
+}
+
+#tab-config .config-search-box {
+    display: grid;
+    gap: 0.24rem;
+    min-width: 0;
+    color: var(--config-muted);
+    font-size: 0.68rem;
+    font-weight: 800;
+}
+
+#tab-config .config-search-box input {
+    width: 100%;
+    min-height: 38px;
+    border: 1px solid var(--config-border);
+    border-radius: 5px;
+    background: var(--config-field-bg);
+    color: var(--config-text);
+    padding: 0.38rem 0.58rem;
+}
+
+#tab-config .config-advanced-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.42rem;
+    min-height: 38px;
+    padding: 0 0.62rem;
+    border: 1px solid var(--config-border);
+    border-radius: 5px;
+    background: var(--config-field-bg);
+    color: var(--config-text);
+    cursor: pointer;
+    font-size: 0.76rem;
+    font-weight: 800;
+    white-space: nowrap;
+}
+
+#tab-config .config-form-summary {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+    justify-content: flex-end;
+    color: var(--config-muted);
+    font-size: 0.7rem;
+    white-space: nowrap;
+}
+
+#tab-config .config-form-summary strong {
+    color: var(--config-accent);
+}
+
+#tab-config .config-form-group-list {
+    display: grid;
+    gap: 0.85rem;
+}
+
+#tab-config .config-form-empty {
+    padding: 1rem;
+    border: 1px solid var(--config-border-strong);
+    border-radius: 6px;
+    background: var(--config-panel-bg);
+    color: var(--config-muted);
+    text-align: center;
+}
+
+#tab-config .config-group-hint,
+#tab-config .field-help,
+#tab-config .help-section p,
+#tab-config .help-section li {
+    color: var(--config-muted);
+}
+
+#tab-config .config-group {
+    overflow: hidden;
+    box-shadow: var(--config-shadow);
+}
+
+#tab-config .config-group-title {
+    min-height: 44px;
+    padding: 0.72rem 0.9rem;
+    border-bottom-color: var(--config-border);
+    background: var(--config-panel-soft);
+    color: var(--config-text);
+    font-size: 0.9rem;
+}
+
+#tab-config .config-group-collapse {
+    margin-left: auto;
+    min-width: 44px;
+    min-height: 26px;
+    border: 1px solid var(--config-border);
+    border-radius: 5px;
+    background: var(--config-field-bg);
+    color: var(--config-muted);
+    cursor: pointer;
+    font-size: 0.68rem;
+    font-weight: 800;
+}
+
+#tab-config .config-group-title-actions .config-group-collapse,
+#tab-config .config-group-title-actions .config-group-title-action {
+    margin-left: 0;
+}
+
+#tab-config .config-resource-quick-toggle.active,
+#tab-config .config-group-collapse:hover {
+    border-color: var(--config-accent);
+    color: var(--config-accent);
+}
+
+#tab-config .config-resource-quick-presets {
+    padding: 0.62rem 0.9rem;
+    border-bottom-color: var(--config-border);
+    background: var(--config-panel-bg);
+}
+
+#tab-config .config-resource-preset-btn {
+    min-height: 32px;
+    border-color: var(--config-border);
+    border-radius: 5px;
+    background: var(--config-field-bg);
+    color: var(--config-text);
+    font-weight: 800;
+}
+
+#tab-config .config-resource-preset-btn:hover {
+    border-color: var(--config-accent);
+    color: var(--config-accent);
+}
+
+#tab-config .config-group-body[hidden] {
+    display: none;
+}
+
+#tab-config .config-group-hint {
+    padding: 0.62rem 0.9rem;
+    border-bottom-color: var(--config-border);
+    background: var(--config-panel-soft);
+    font-size: 0.72rem;
+}
+
+#tab-config .config-group-notice {
+    padding: 0.62rem 0.9rem;
+    border-bottom-color: var(--config-border);
+    background: color-mix(in srgb, var(--config-accent) 6%, var(--config-panel-soft));
+}
+
+#tab-config .field-row {
+    padding: 0.58rem 0.9rem;
+    border-bottom-color: var(--config-border);
+}
+
+#tab-config .field-main {
+    gap: 0.65rem;
+}
+
+#tab-config .field-name {
+    color: var(--config-muted);
+    font-size: 0.76rem;
+    font-weight: 800;
+}
+
+#tab-config .field-input {
+    min-height: 38px;
+    padding: 0.38rem 0.58rem;
+    font-size: 0.86rem;
+}
+
+#tab-config input[type="checkbox"].field-input {
+    min-height: auto;
+    accent-color: var(--config-accent-strong);
+}
+
+#tab-config .field-input:focus,
+#tab-config .sample-prompt-field input:focus,
+#tab-config .sample-prompts-textarea:focus,
+#tab-config .output-run-search input:focus,
+#tab-config .output-run-save-as input:focus,
+#tab-config .output-run-save-as select:focus {
+    border-color: var(--config-accent);
+}
+
+#tab-config .config-field-grid {
+    gap: 1px;
+    border-bottom-color: var(--config-border);
+    background: var(--config-border);
+}
+
+#tab-config .config-field-grid .field-row {
+    background: var(--config-panel-bg);
+}
+
+#tab-config .sample-prompts-editor.field-input {
+    background: var(--config-panel-bg);
+}
+
+#tab-config .sample-prompt-row {
+    border-bottom-color: var(--config-border);
+}
+
+#tab-config .sample-prompt-field span {
+    color: var(--config-muted);
+    font-weight: 800;
+}
+
+#tab-config .info-toggle {
+    border-color: var(--config-border);
+    color: var(--config-muted);
+}
+
+#tab-config .info-toggle:hover,
+#tab-config .info-toggle.active {
+    border-color: var(--config-accent);
+    background: var(--config-panel-soft);
+    color: var(--config-accent);
+}
+
+#tab-config .field-help,
+#tab-config .help-section {
+    border-color: var(--config-border);
+    background: var(--config-field-bg);
+}
+
+#tab-config .help-heading {
+    color: var(--config-accent);
+}
+
+#tab-config .config-project-workspace {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 1rem;
+    align-items: start;
+    min-height: 0;
+    padding-bottom: 0.75rem;
+}
+
+#tab-config .config-project-workspace.toml-edit-open {
+    grid-template-columns: minmax(0, 1fr) minmax(340px, 0.52fr);
+}
+
+#tab-config .config-left {
+    min-width: 0;
+    max-height: var(--config-left-max-height);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding-bottom: var(--config-sticky-safe-space);
+    padding-right: 0;
+    scroll-behavior: smooth;
+    scroll-padding-bottom: var(--config-sticky-safe-space);
+    scrollbar-gutter: stable;
+}
+
+#tab-config .config-direct-editor {
+    min-width: 0;
+}
+
+#tab-config .config-sticky-actions {
+    position: fixed;
+    left: var(--config-sticky-left, 1rem);
+    right: auto;
+    bottom: calc(1.25rem + env(safe-area-inset-bottom, 0px));
+    z-index: 45;
+    display: grid;
+    grid-template-columns: auto repeat(5, minmax(118px, 1fr));
+    gap: 0.76rem;
+    align-items: center;
+    width: var(--config-sticky-width, min(1040px, calc(100vw - 2rem)));
+    margin: 0;
+    padding: 0.84rem;
+    border: 1px solid var(--config-border-strong);
+    border-radius: 8px;
+    background: color-mix(in srgb, var(--config-panel-bg) 94%, transparent);
+    box-shadow: 0 18px 42px rgba(0, 0, 0, 0.24);
+    backdrop-filter: blur(10px);
+}
+
+#tab-config .config-sticky-title {
+    padding: 0 0.7rem;
+    color: var(--config-muted);
+    font-size: 0.82rem;
+    font-weight: 900;
+    white-space: nowrap;
+}
+
+#tab-config .config-sticky-tab {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 0.42rem;
+    align-items: center;
+    min-width: 0;
+    min-height: 68px;
+    padding: 0.84rem 1.04rem;
+    border: 1px solid var(--config-border);
+    border-radius: 7px;
+    background: var(--config-field-bg);
+    color: var(--config-text);
+    cursor: pointer;
+    text-align: left;
+}
+
+#tab-config .config-sticky-tab:hover,
+#tab-config .config-sticky-tab.active {
+    border-color: var(--config-accent);
+    background: var(--config-accent-strong);
+    color: var(--config-accent-ink);
+}
+
+#tab-config .config-sticky-tab:disabled {
+    cursor: not-allowed;
+    opacity: 0.55;
+}
+
+#tab-config .config-sticky-tab strong,
+#tab-config .config-sticky-tab em {
+    min-width: 0;
+    overflow: hidden;
+    font-size: 0.95rem;
+    font-style: normal;
+    font-weight: 900;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+#tab-config .config-sticky-tab em {
+    color: inherit;
+    font-size: 0.76rem;
+}
+
+#tab-config .toml-edit-panel,
+#tab-config .output-run-detail {
+    min-width: 0;
+    min-height: 520px;
+    overflow: hidden;
+    border-color: var(--config-border-strong);
+    border-radius: 6px;
+    background: var(--config-panel-bg);
+    box-shadow: var(--config-shadow);
+}
+
+#tab-config .toml-edit-toolbar,
+#tab-config .output-run-detail-header {
+    padding: 0.85rem 1rem;
+    border-bottom-color: var(--config-border);
+    background: var(--config-card-head);
+}
+
+#tab-config #toml-editor,
+#tab-config #output-run-config-viewer {
+    min-height: 440px;
+    background: var(--config-field-bg);
+    color: var(--config-text);
+    font-size: 0.8rem;
+}
+
+#tab-config .output-run-manager {
+    padding-top: 0;
+}
+
+#tab-config .output-run-sidebar {
+    overflow: hidden;
+}
+
+#tab-config .output-run-search {
+    padding: 0.8rem;
+    border-bottom-color: var(--config-border);
+    color: var(--config-muted);
+    font-weight: 800;
+    text-transform: uppercase;
+}
+
+#tab-config .output-run-search input {
+    height: 38px;
+    margin-top: 0.28rem;
+    font-size: 0.8rem;
+    text-transform: none;
+}
+
+#tab-config .output-run-list {
+    flex: 1 1 auto;
+    min-height: 0;
+}
+
+#tab-config .output-run-item {
+    min-height: 66px;
+    border-radius: 5px;
+    color: var(--config-text);
+}
+
+#tab-config .output-run-item:hover,
+#tab-config .output-run-item.active {
+    border-color: var(--config-accent);
+    background: var(--config-accent-strong);
+    color: var(--config-accent-ink);
+    box-shadow: none;
+}
+
+#tab-config .output-run-item:hover span,
+#tab-config .output-run-item:hover small,
+#tab-config .output-run-item.active span,
+#tab-config .output-run-item.active small {
+    color: rgba(255, 255, 255, 0.78);
+}
+
+#tab-config .output-run-empty,
+#tab-config .output-run-item span,
+#tab-config .output-run-item small,
+#tab-config .output-run-detail-header span {
+    color: var(--config-muted);
+}
+
+#tab-config .output-run-detail-header strong {
+    color: var(--config-accent);
+    font-size: 1.05rem;
+}
+
+#tab-config .output-run-save-as {
+    border-bottom-color: var(--config-border);
+    background: var(--config-panel-soft);
+}
+
+@media (max-width: 1180px) {
+    #tab-config .config-forge-layout {
+        grid-template-columns: minmax(0, 1fr) minmax(260px, 320px);
+    }
+
+    #tab-config .config-project-workspace.toml-edit-open {
+        grid-template-columns: 1fr;
+    }
+
+    #tab-config .config-toolbar {
+        align-items: stretch;
+    }
+
+    #tab-config .config-run-preset {
+        width: 100%;
+    }
+}
+
+@media (max-width: 900px) {
+    #tab-config {
+        margin: -1rem -1.5rem;
+    }
+
+    #tab-config .config-forge-layout {
+        grid-template-columns: minmax(0, 1fr) minmax(260px, 300px);
+    }
+
+    #tab-config .toml-manager,
+    #tab-config .output-run-manager {
+        flex: none;
+    }
+
+    #tab-config .toml-file-groups,
+    #tab-config .output-run-list {
+        max-height: 320px;
+    }
+
+    #tab-config .config-form-shell {
+        grid-template-columns: 1fr;
+    }
+
+    #tab-config .config-form-controls {
+        grid-template-columns: 1fr 1fr;
+    }
+
+    #tab-config .config-search-box,
+    #tab-config .config-form-summary {
+        grid-column: 1 / -1;
+    }
+
+    #tab-config .config-sticky-actions {
+        grid-template-columns: 1fr;
+        bottom: calc(0.5rem + env(safe-area-inset-bottom, 0px));
+    }
+
+    #tab-config .config-sticky-title {
+        grid-column: 1 / -1;
+        text-align: center;
+    }
+
+    #tab-config .config-sticky-tab {
+        min-height: 48px;
+    }
+
+    #tab-config .config-preset-header,
+    #tab-config .config-form-workspace,
+    #tab-config .config-output-detail {
+        padding-inline: 1rem;
+    }
+
+    #tab-config .config-toolbar,
+    #tab-config .choice-guide {
+        grid-template-columns: 1fr;
+    }
+
+    #tab-config .config-toolbar {
+        display: grid;
+    }
+
+    #tab-config .config-toolbar > #btn-load-config,
+    #tab-config .config-toolbar > #btn-start-from-config,
+    #tab-config .config-toolbar > #btn-queue-from-config {
+        width: 100%;
+    }
+}
+
+@media (max-width: 520px) {
+    #tab-config .config-forge-layout {
+        grid-template-columns: 1fr;
+    }
+
+    #tab-config .config-preset-editor {
+        grid-column: 1;
+        grid-row: 1;
+    }
+
+    #tab-config .config-preset-manager {
+        grid-column: 1;
+        grid-row: 2;
+        border-left: 0;
+        border-top: 1px solid var(--config-border-strong);
+    }
+}
+
+@media (max-width: 640px) {
+    #tab-config {
+        margin: -1rem -1.5rem;
+    }
+
+    #tab-config .config-sidebar-project,
+    #tab-config .toml-mode-tabs,
+    #tab-config .toml-file-row,
+    #tab-config .toml-file-actions,
+    #tab-config #toml-status {
+        padding-inline: 0.9rem;
+    }
+
+    #tab-config .config-page-summary,
+    #tab-config .toml-file-actions,
+    #tab-config .config-field-grid,
+    #tab-config .output-run-save-as {
+        grid-template-columns: 1fr;
+    }
+
+    #tab-config .config-preset-title-block strong {
+        font-size: 1.45rem;
+    }
+
+    #tab-config .field-main,
+    #tab-config .field-row-sample-prompts .field-main {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 18px;
+    }
+
+    #tab-config .field-name,
+    #tab-config .field-row-sample-prompts .field-label-stack {
+        grid-column: 1;
+        min-width: 0;
+        max-width: none;
+    }
+
+    #tab-config .field-input,
+    #tab-config .sample-prompts-editor.field-input {
+        grid-column: 1 / -1;
+    }
+
+    #tab-config .info-toggle,
+    #tab-config .field-row-sample-prompts .info-toggle {
+        grid-column: 2;
+        grid-row: 1;
+        justify-self: end;
+    }
+
+    #tab-config .sample-prompt-row {
+        grid-template-columns: 1fr;
+    }
+}
+

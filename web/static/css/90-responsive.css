@@ -1,0 +1,472 @@
+/* Global responsive fallback rules. */
+/* Responsive */
+@media (max-width: 1000px) {
+    .config-split { grid-template-columns: 1fr; height: auto; }
+    .config-right { border-left: none; padding-left: 0; border-top: 1px solid var(--border); padding-top: 0.75rem; }
+    .toml-manager,
+    .toml-manager.toml-edit-open,
+    .output-run-manager { grid-template-columns: 1fr; }
+    .step-estimate-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .dataset-config-field { grid-template-columns: 1fr; align-items: stretch; }
+    .dataset-config-label .field-name { overflow-wrap: anywhere; white-space: normal; }
+    .dataset-editor-row { grid-template-columns: minmax(0, 1fr) 84px; }
+    .sample-prompt-row { grid-template-columns: 1fr 1fr; }
+    .sample-prompt-field-text { grid-column: 1 / -1; }
+    .sample-prompt-row-actions { justify-self: start; }
+    .dataset-row-paths,
+    .dataset-trigger-clone,
+    .dataset-nl-tag-mix,
+    .dataset-row-settings { grid-template-columns: 1fr 1fr; }
+    .dataset-experimental-body { grid-template-columns: minmax(0, 1fr); }
+    .dataset-trigger-clone-summary,
+    .dataset-nl-tag-summary { justify-self: start; }
+    .config-dataset-workspace { grid-template-columns: 1fr; }
+    .config-dataset-preset-list { max-height: 260px; }
+    .dataset-page-layout { grid-template-columns: 1fr; }
+    .dataset-preset-list { max-height: 260px; overflow-y: auto; }
+    .step-dataset-row { grid-template-columns: 1fr; }
+    .toml-file-groups { max-height: 220px; }
+    .output-run-list { max-height: 240px; }
+    .output-run-save-as { grid-template-columns: 1fr 1fr; }
+    #toml-editor { height: 300px; }
+    #output-run-config-viewer { height: 300px; }
+    .training-panels { grid-template-columns: 1fr; }
+    .chart-panel { grid-column: 1; }
+    .training-workspace { grid-template-columns: 1fr; }
+    .training-toolbar { align-items: stretch; flex-wrap: wrap; }
+    .training-view-tabs { order: 2; width: 100%; }
+    .training-view-tab { flex: 1 1 0; justify-content: center; }
+    .training-queue-manager-head,
+    .training-queue-manager-tools { align-items: stretch; flex-direction: column; }
+    .training-queue-manager-actions { justify-content: flex-start; }
+    .training-queue-stats { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .training-queue-manager-item-head { grid-template-columns: 1fr; }
+    .training-queue-manager-item-actions { justify-content: flex-start; }
+    .training-queue-detail-grid { grid-template-columns: 1fr; }
+    .history-manager-stats { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .history-manager-tools { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .history-manager-search { grid-column: 1 / -1; }
+    .history-manager-grid { grid-template-columns: 1fr; }
+    .history-collections-head,
+    .history-collections-body {
+        grid-template-columns: 1fr;
+    }
+    .history-single-task-title-row {
+        gap: 0.22rem;
+        grid-template-columns: minmax(0, 1fr) max-content;
+        min-height: 28px;
+    }
+    .history-single-task-title-row .history-compact-meta {
+        display: none;
+    }
+    .history-collections-workbench {
+        max-height: none;
+        min-height: 0;
+    }
+    #tab-training .history-manager-list[data-group-mode="collections"] {
+        overflow: visible;
+    }
+    #tab-training .history-collections-workbench {
+        height: auto;
+        max-height: none;
+        min-height: 0;
+        overflow: visible;
+    }
+    .history-collections-panel.collection-nav {
+        max-height: min(360px, 52vh);
+        position: static;
+    }
+    .history-collection-card-list,
+    .history-config-group-card-list {
+        max-height: min(420px, 60vh);
+    }
+    .history-collection-nav-head {
+        align-items: stretch;
+        grid-template-columns: 1fr;
+    }
+    .history-collection-create-btn {
+        justify-self: start;
+    }
+    .history-collections-stats {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+    .history-collection-card-head {
+        grid-template-columns: 1fr;
+    }
+    .history-drag-handle {
+        justify-self: start;
+        min-height: 30px;
+        width: 34px;
+    }
+    .history-collection-card-actions,
+    .history-config-group-card-actions {
+        justify-content: flex-start;
+    }
+    .history-detail-dialog {
+        height: 100dvh;
+        width: 100vw;
+    }
+    .history-detail-overview-dashboard { grid-template-columns: 1fr; }
+    .history-detail-overview-dashboard > .history-detail-section.metrics,
+    .history-detail-overview-dashboard > .history-detail-section.paths-summary {
+        grid-column: 1 / -1;
+    }
+    .history-detail-metrics-body {
+        grid-template-columns: 1fr;
+    }
+    .history-detail-info-block {
+        border-left: 0;
+        border-top: 1px solid var(--border-soft);
+        padding-left: 0;
+        padding-top: 0.6rem;
+    }
+    .history-detail-config-files {
+        grid-template-columns: 1fr;
+    }
+    .history-detail-config-files > .history-detail-section {
+        height: min(56vh, 620px);
+    }
+    .history-system-summary.history-detail-stat-grid,
+    .history-system-trends,
+    .history-curve-stat-grid,
+    .history-curve-inspector {
+        grid-template-columns: 1fr;
+    }
+    .history-curve-toolbar,
+    .history-curve-custom-range {
+        align-items: stretch;
+        flex-direction: column;
+    }
+    .history-curve-field select,
+    .history-curve-field input {
+        width: 100%;
+    }
+    .history-curve-hover-readout {
+        grid-template-columns: 1fr;
+    }
+    .history-curve-inspector-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+    .history-table-head,
+    .history-manager-row {
+        grid-template-columns: 42px minmax(0, 1fr);
+    }
+    .history-table-head span:nth-of-type(n+2),
+    .history-row-state,
+    .history-row-time,
+    .history-row-data {
+        grid-column: 2;
+    }
+    .history-row-actions {
+        grid-column: 2;
+        justify-content: flex-start;
+    }
+    .history-resume-controls { grid-template-columns: 1fr; }
+    .history-resume-control-row { grid-template-columns: 1fr; }
+    .history-resume-control-row .history-detail-action-row { flex-wrap: wrap; }
+    .history-resume-head {
+        align-items: stretch;
+        flex-direction: column;
+    }
+    .training-sidebar { position: static; }
+    .task-history-list { max-height: 260px; }
+    .training-queue-list { max-height: 220px; }
+    .preview-layout { grid-template-columns: 1fr; }
+    .history-detail-preview-mount .preview-sidebar {
+        position: static;
+    }
+    .preview-panel-dialog {
+        height: calc(100vh - 1rem);
+        max-height: calc(100vh - 1rem);
+        width: calc(100vw - 1rem);
+    }
+    .global-settings-layout { grid-template-columns: 1fr; }
+    .preview-source-tabs { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .preview-dialog-body { grid-template-columns: 1fr; }
+    .stage-resolution-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .stage-resolution-workspace { grid-template-columns: 1fr; }
+    .dataset-preview-dialog-body { grid-template-columns: 1fr; }
+    .dataset-preview-info { position: static; }
+    .preview-dialog-view img { max-height: 62vh; }
+    .config-switch-change-values { grid-template-columns: 1fr; }
+    .help-content { grid-template-columns: 1fr; }
+    .choice-guide { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 720px) {
+    header {
+        gap: 0.55rem;
+        padding: 0.65rem 0.9rem;
+        flex-wrap: wrap;
+    }
+    nav {
+        order: 3;
+        width: 100%;
+    }
+    .tab-btn {
+        flex: 1 1 0;
+        padding-inline: 0.4rem;
+    }
+    #status-indicator {
+        margin-left: auto;
+    }
+    .theme-toggle {
+        padding-inline: 0.48rem;
+    }
+    .tutorial-open-btn {
+        order: 2;
+    }
+    .tutorial-steps li,
+    .tutorial-grid {
+        grid-template-columns: 1fr;
+    }
+    .dataset-editor-header,
+    .dataset-editor-footer,
+    .dataset-page-toolbar,
+    .config-dataset-picker-header {
+        flex-direction: column;
+    }
+    .dataset-preset-header {
+        grid-template-columns: 1fr;
+    }
+    .dataset-preset-meta {
+        justify-content: flex-start;
+        max-width: 100%;
+        overflow-x: auto;
+    }
+    .dataset-editor-actions,
+    .dataset-page-actions,
+    .dataset-preset-manager-actions,
+    .config-dataset-picker-actions,
+    .config-dataset-dialog-actions {
+        justify-content: flex-start;
+    }
+    .dataset-page-summary {
+        max-width: 100%;
+    }
+    .dataset-preset-manager-actions {
+        grid-template-columns: 1fr 1fr;
+    }
+    .config-dataset-current {
+        grid-template-columns: 1fr;
+    }
+    .continue-training-source {
+        grid-template-columns: 1fr;
+    }
+    .continue-training-source-actions {
+        justify-content: flex-start;
+    }
+    .continue-lora-manual-row,
+    .continue-lora-history-toolbar,
+    .continue-lora-weight-item {
+        grid-template-columns: 1fr;
+    }
+    .config-dataset-current-meta {
+        justify-content: flex-start;
+        max-width: none;
+    }
+    .config-dataset-summary > div:not(.config-dataset-summary-empty) {
+        grid-template-columns: 1fr;
+    }
+    .config-field-grid {
+        grid-template-columns: 1fr;
+    }
+    .config-field-grid .field-name {
+        flex-basis: min(320px, 42%);
+        min-width: 200px;
+    }
+    .field-row-sample-prompts .field-main {
+        grid-template-columns: minmax(0, 1fr) 18px;
+    }
+    .field-row-sample-prompts .field-label-stack {
+        grid-column: 1;
+        grid-row: 1;
+    }
+    .field-row-sample-prompts .sample-prompts-editor.field-input {
+        grid-column: 1 / -1;
+        grid-row: 2;
+    }
+    .field-row-sample-prompts .info-toggle {
+        grid-column: 2;
+        grid-row: 1;
+        justify-self: end;
+    }
+    .sample-prompt-row {
+        grid-template-columns: 1fr;
+    }
+    .sample-prompt-field-text {
+        grid-column: auto;
+    }
+    .sample-prompt-row-actions {
+        justify-self: start;
+    }
+    .history-manager-stats,
+    .history-manager-tools,
+    .history-detail-stat-grid,
+    .history-detail-metrics-body,
+    .history-detail-kv > div,
+    .history-curve-stat-items,
+    .history-curve-inspector-grid {
+        grid-template-columns: 1fr;
+    }
+    .history-detail-kv > div.has-copy-action {
+        grid-template-columns: minmax(0, 1fr) 28px;
+    }
+    .history-detail-kv > div.has-file-actions,
+    .history-file-root {
+        grid-template-columns: minmax(0, 1fr) max-content;
+    }
+    .history-detail-kv > div.has-copy-action > span {
+        grid-column: 1 / -1;
+    }
+    .history-detail-kv > div.has-file-actions > span,
+    .history-file-root > span {
+        grid-column: 1 / -1;
+    }
+    .history-config-toolbar {
+        align-items: stretch;
+        flex-wrap: wrap;
+    }
+    .history-config-search {
+        flex-basis: 100%;
+    }
+    .history-config-match-status {
+        text-align: left;
+    }
+    .history-manager-head,
+    .history-detail-dialog-header,
+    .history-detail-section-title {
+        align-items: stretch;
+        flex-direction: column;
+    }
+    .history-bulk-bar,
+    .history-manager-actions,
+    .history-collection-card-actions,
+    .history-config-group-card-actions,
+    .history-detail-header-actions,
+    .history-detail-actions,
+    .history-detail-action-row {
+        justify-content: flex-start;
+    }
+    .history-command-row {
+        align-items: stretch;
+        flex-direction: column;
+    }
+    .history-command-copy {
+        align-self: flex-start;
+    }
+    .history-log-toolbar {
+        align-items: stretch;
+    }
+    .history-log-search {
+        flex-basis: 100%;
+    }
+    .history-log-match-status {
+        align-self: center;
+        text-align: left;
+    }
+    .history-log-level-filters {
+        max-width: 100%;
+        overflow-x: auto;
+    }
+    .history-log-download {
+        margin-left: 0;
+    }
+    .history-log-output.history-detail-pre {
+        min-height: 0;
+    }
+    .dataset-editor-row {
+        grid-template-columns: 1fr;
+    }
+    .dataset-row-paths,
+    .dataset-experimental-body,
+    .dataset-experimental-scope,
+    .dataset-path-filter-advanced,
+    .dataset-caption-extension-advanced,
+    .dataset-trigger-clone,
+    .dataset-nl-tag-mix,
+    .dataset-row-settings {
+        grid-template-columns: 1fr;
+    }
+    .dataset-caption-source-head {
+        display: grid;
+    }
+    .dataset-caption-source-state {
+        justify-self: start;
+    }
+    .dataset-caption-source-options {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+    .dataset-row-head {
+        align-items: flex-start;
+        flex-direction: column;
+    }
+    .dataset-row-head-actions {
+        justify-content: flex-start;
+        width: 100%;
+    }
+    .toml-file-row {
+        align-items: flex-start;
+        flex-direction: column;
+    }
+    .toml-badges {
+        justify-content: flex-start;
+    }
+    .toml-primary-actions .btn,
+    .toml-secondary-actions .btn {
+        flex: 1 1 140px;
+    }
+    .field-main {
+        display: grid;
+        grid-template-columns: 1fr auto;
+    }
+    .field-name {
+        grid-column: 1 / -1;
+        max-width: none;
+        min-width: 0;
+        padding-top: 0;
+    }
+    .preview-source-tabs { grid-template-columns: 1fr; }
+    .stage-resolution-summary { grid-template-columns: 1fr; }
+    .stage-resolution-field { grid-template-columns: 1fr; }
+    #stage-resolution-chart { height: 240px; }
+    .dataset-preview-dialog-actions {
+        justify-content: flex-start;
+    }
+    .dataset-preview-grid {
+        grid-template-columns: 1fr;
+    }
+    .preview-header-row {
+        align-items: flex-start;
+        flex-direction: column;
+    }
+    .metrics-grid {
+        grid-template-columns: 1fr;
+    }
+    .preview-grid { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
+    .preview-weight-item {
+        grid-template-columns: 1fr;
+    }
+    .preview-weight-stats {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+    .preview-weight-actions {
+        justify-self: start;
+        justify-content: flex-start;
+    }
+    .preview-panel-header {
+        align-items: stretch;
+        flex-direction: column;
+    }
+    .preview-panel-body {
+        padding: 0.55rem;
+    }
+    .preview-dialog {
+        width: calc(100vw - 1rem);
+    }
+    .preview-detail-row {
+        grid-template-columns: 1fr;
+        gap: 0.12rem;
+    }
+}
+
