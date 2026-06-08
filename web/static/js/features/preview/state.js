@@ -10,6 +10,7 @@ export function createPreviewState() {
         trainingSampleState: null,
         panel: {
             open: false,
+            mode: 'default',
             previousTab: '',
             restoreTrainingView: '',
         },

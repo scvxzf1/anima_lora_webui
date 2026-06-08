@@ -136,6 +136,7 @@ const ctx = globalThis.ctx;
         });
         document.getElementById('btn-refresh-history').addEventListener('click', loadTrainingHistoryList);
         document.getElementById('btn-preview-training-results').addEventListener('click', openCurrentTrainingPreview);
+        document.getElementById('btn-live-sampling-preview').addEventListener('click', openLiveSamplingPreview);
         document.getElementById('btn-history-manager-refresh').addEventListener('click', loadTrainingHistoryList);
         document.getElementById('btn-history-collections-workbench').addEventListener('click', openHistoryCollectionsWorkbench);
         document.getElementById('btn-history-manager-merge').addEventListener('click', mergeSelectedHistoryTasks);
@@ -281,6 +282,7 @@ const ctx = globalThis.ctx;
             'btn-live-training': '从历史任务视图回到当前正在监控的训练/预处理状态。',
             'btn-refresh-history': '重新读取训练任务历史列表，包括日志、loss、输出目录和样张目录记录。',
             'btn-preview-training-results': '打开当前训练或最新运行目录预览，查看样张和权重；历史列表中的“任务预览”和“分组预览”会进入详情里的样张与权重页。',
+            'btn-live-sampling-preview': '打开当前训练或最新运行目录的途中采样弹窗，只显示样张和权重列表。',
             'btn-history-manager-refresh': '重新读取历史任务管理台数据。',
             'btn-history-collections-workbench': '打开集合管理大界面，以配置分组为单位整理历史任务。',
             'btn-history-manager-merge': '合并查看选中的训练任务，预处理任务不会参与合并。',

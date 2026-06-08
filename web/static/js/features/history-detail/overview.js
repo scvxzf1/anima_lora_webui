@@ -1,4 +1,4 @@
-import { historySystemSummary, formatSystemPercent, formatSystemVram } from './system.js?v=module-bootstrap-20260604-11';
+import { historySystemSummary, formatSystemPercent, formatSystemVram } from './system.js?v=module-bootstrap-20260608-3';
 import {
     createHistoryDetailCopyButton,
     historyDetailEmptyText,
@@ -6,7 +6,7 @@ import {
     historyDetailRunRoot,
     historyDetailSection,
     normalizedHistoryDetailPath,
-} from './ui.js?v=module-bootstrap-20260604-11';
+} from './ui.js?v=module-bootstrap-20260608-3';
 
 export function createHistoryOverviewRenderer({ ctx, state, deps, renderHistoryDetailResume }) {
     const {
@@ -30,6 +30,9 @@ export function createHistoryOverviewRenderer({ ctx, state, deps, renderHistoryD
         box.className = 'history-detail-overview history-detail-overview-dashboard';
         box.classList.toggle('config-group', payload.mode === 'config_group');
         const task = payload.task || {};
+        if (task.job === 'preprocess') {
+            return renderPreprocessHistoryOverview(payload, box);
+        }
         const summary = payload.summary || {};
         const metrics = payload.metrics || [];
         const logs = payload.logs || [];
@@ -56,25 +59,9 @@ export function createHistoryOverviewRenderer({ ctx, state, deps, renderHistoryD
                 ['峰值 VRAM', systemSummary.hasSystem ? formatSystemVram(systemSummary.peakVramRecord) : '无系统采样记录', 'chip'],
                 ['峰值 GPU', systemSummary.hasSystem ? formatSystemPercent(systemSummary.peakGpu) : '无系统采样记录', 'gpu'],
                 ['平均速度', formatHistoryAverageSpeed(task), 'gauge'],
-                ['训练总时间', formatHistoryTrainingDuration(task), 'time'],
+                ['训练总时间', formatHistoryTaskDuration(task), 'time'],
             ];
-        for (const [label, value, iconName] of rows) {
-            const item = document.createElement('div');
-            item.className = 'history-detail-stat';
-            const strong = document.createElement('strong');
-            strong.textContent = value;
-            const caption = document.createElement('span');
-            caption.className = 'history-detail-stat-label';
-            if (iconName) {
-                const icon = document.createElement('span');
-                icon.className = `metric-icon metric-icon-${iconName}`;
-                icon.setAttribute('aria-hidden', 'true');
-                caption.appendChild(icon);
-            }
-            caption.appendChild(document.createTextNode(label));
-            item.append(strong, caption);
-            stats.appendChild(item);
-        }
+        for (const [label, value, iconName] of rows) stats.appendChild(renderHistoryStat(label, value, iconName));
 
         const info = document.createElement('div');
         info.className = 'history-detail-kv';
@@ -121,6 +108,74 @@ export function createHistoryOverviewRenderer({ ctx, state, deps, renderHistoryD
         return box;
     }
 
+    function renderPreprocessHistoryOverview(payload, box) {
+        const task = payload.task || {};
+        const logs = payload.logs || [];
+        const systemSummary = historySystemSummary(payload);
+        box.classList.add('preprocess-task');
+
+        const stats = document.createElement('div');
+        stats.className = 'history-detail-stat-grid history-preprocess-stat-grid';
+        [
+            ['状态', historyStateLabel(task.state), 'gauge'],
+            ['日志', task.log_count || logs.length || 0, 'log'],
+            ['峰值 VRAM', systemSummary.hasSystem ? formatSystemVram(systemSummary.peakVramRecord) : '无系统采样记录', 'chip'],
+            ['峰值 GPU', systemSummary.hasSystem ? formatSystemPercent(systemSummary.peakGpu) : '无系统采样记录', 'gpu'],
+            ['预处理用时', formatHistoryTaskDuration(task), 'time'],
+            ['缓存目录', compactHistoryPathName(task.dataset_cache_dir || task.run_dir), 'chip'],
+        ].forEach(([label, value, iconName]) => stats.appendChild(renderHistoryStat(label, value, iconName)));
+
+        const info = document.createElement('div');
+        info.className = 'history-detail-kv history-preprocess-info';
+        [
+            ['任务 ID', task.id],
+            ['来源配置', task.history_source_config_file || '-'],
+            ['运行标签', task.history_run_label || '-'],
+            ['时间', `${task.started_at_text || '-'} → ${task.finished_at_text || '未结束'}`],
+            ['源图目录', task.source_image_dir || '-'],
+            ['消息', task.message || '-'],
+            ['队列', historyQueueLabel(task) || '-'],
+        ].forEach(([label, value]) => {
+            info.appendChild(historyDetailRow(label, value, {
+                copyValue: label.endsWith('目录') && value !== '-' ? value : '',
+            }));
+        });
+
+        const infoBlock = document.createElement('div');
+        infoBlock.className = 'history-detail-info-block';
+        const infoTitle = document.createElement('h5');
+        infoTitle.textContent = '预处理信息';
+        infoBlock.append(infoTitle, info);
+
+        const summaryBody = document.createElement('div');
+        summaryBody.className = 'history-detail-metrics-body history-preprocess-summary-body';
+        summaryBody.append(stats, infoBlock);
+        box.append(
+            renderHistoryDetailProgress(payload),
+            historyDetailSection('预处理摘要', summaryBody, 'history-detail-section metrics preprocess-summary'),
+            historyDetailSection('预处理文件', renderHistoryDetailPathSummary(payload), 'history-detail-section paths-summary preprocess-paths'),
+        );
+        return box;
+    }
+
+    function renderHistoryStat(label, value, iconName) {
+        const item = document.createElement('div');
+        item.className = 'history-detail-stat';
+        const strong = document.createElement('strong');
+        strong.textContent = value;
+        const caption = document.createElement('span');
+        caption.className = 'history-detail-stat-label';
+        if (iconName) {
+            const icon = document.createElement('span');
+            icon.className = `metric-icon metric-icon-${iconName}`;
+            icon.setAttribute('aria-hidden', 'true');
+            caption.appendChild(icon);
+        }
+        caption.appendChild(document.createTextNode(label));
+        item.append(strong, caption);
+        return item;
+    }
+
     function renderHistoryDetailProgress(payload) {
         const task = payload.task || {};
         const summary = payload.summary || {};
@@ -152,7 +207,7 @@ export function createHistoryOverviewRenderer({ ctx, state, deps, renderHistoryD
         return section;
     }
 
-    function formatHistoryTrainingDuration(record) {
+    function formatHistoryTaskDuration(record) {
         const startedAt = Number(record?.started_at);
         if (!Number.isFinite(startedAt) || startedAt <= 0) return '-';
         const finishedAt = Number(record?.finished_at);
@@ -169,18 +224,38 @@ export function createHistoryOverviewRenderer({ ctx, state, deps, renderHistoryD
         return Number.isFinite(seconds) && seconds > 0 ? `${seconds.toFixed(2)}s/step` : '-';
     }
 
+    function compactHistoryPathName(value) {
+        const text = String(value || '').replace(/\\/g, '/').trim();
+        if (!text) return '-';
+        const parts = text.split('/').filter(Boolean);
+        if (!parts.length) return text;
+        const last = parts[parts.length - 1] || '';
+        const prev = parts[parts.length - 2] || '';
+        return prev ? `${prev}/${last}` : last;
+    }
+
     function renderHistoryDetailPathSummary(payload) {
         const box = document.createElement('div');
         box.className = 'history-detail-kv history-detail-path-summary';
         const task = payload.task || {};
         const rootPath = historyDetailRunRoot(task);
-        const preferredLabels = new Set([
-            '历史目录',
-            '本次运行目录',
-            '实际运行配置',
-            '训练结果目录',
-            '样张目录',
-        ]);
+        const preferredLabels = task.job === 'preprocess'
+            ? new Set([
+                '历史目录',
+                '本次运行目录',
+                '实际运行配置',
+                '运行时数据集配置',
+                '模型缓存目录',
+                '数据集缓存目录',
+                '日志目录',
+            ])
+            : new Set([
+                '历史目录',
+                '本次运行目录',
+                '实际运行配置',
+                '训练结果目录',
+                '样张目录',
+            ]);
         if (rootPath) {
             box.appendChild(historyDetailRow('运行根目录', rootPath, {
                 className: 'history-detail-path-root',

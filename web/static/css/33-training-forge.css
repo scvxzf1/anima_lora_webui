@@ -966,7 +966,8 @@
 }
 
 #tab-training .live-chart-toggle,
-#tab-training .live-chart-field {
+#tab-training .live-chart-field,
+#tab-training .live-chart-sample-btn {
     align-items: center;
     border: 1px solid var(--training-border);
     border-radius: 5px;
@@ -980,8 +981,22 @@
     font-weight: 800;
 }
 
-#tab-training .live-chart-toggle {
+#tab-training .live-chart-toggle,
+#tab-training .live-chart-sample-btn {
     cursor: pointer;
+}
+
+#tab-training .live-chart-sample-btn {
+    font: inherit;
+    font-size: 0.66rem;
+    font-weight: 800;
+}
+
+#tab-training .live-chart-sample-btn:hover,
+#tab-training .live-chart-sample-btn:focus-visible {
+    border-color: var(--training-accent);
+    color: var(--training-accent);
+    background: var(--training-panel-soft);
 }
 
 #tab-training .live-chart-toggle input {
@@ -1390,7 +1405,8 @@
     #tab-training .live-chart-head,
     #tab-training .live-chart-controls,
     #tab-training .live-chart-toggle,
-    #tab-training .live-chart-field {
+    #tab-training .live-chart-field,
+    #tab-training .live-chart-sample-btn {
         align-items: stretch;
         width: 100%;
     }

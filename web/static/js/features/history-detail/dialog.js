@@ -1,10 +1,11 @@
-import { createHistoryAnalysisRenderer } from './analysis.js?v=module-bootstrap-20260604-11';
-import { createHistoryConfigFilesRenderer } from './config-files.js?v=module-bootstrap-20260604-11';
-import { createHistoryLogsRenderer } from './logs.js?v=module-bootstrap-20260604-11';
-import { createHistoryOverviewRenderer } from './overview.js?v=module-bootstrap-20260604-11';
-import { createHistoryResumeFeature } from './resume/index.js?v=module-bootstrap-20260604-11';
-import { HISTORY_DETAIL_TABS, normalizeHistoryDetailTab, setHistoryDetailTab } from './state.js?v=module-bootstrap-20260604-11';
-import { createHistoryDetailWorkspace } from './workspace.js?v=module-bootstrap-20260604-11';
+import { fetchHistoryTask } from './api.js?v=module-bootstrap-20260608-3';
+import { createHistoryAnalysisRenderer } from './analysis.js?v=module-bootstrap-20260608-3';
+import { createHistoryConfigFilesRenderer } from './config-files.js?v=module-bootstrap-20260608-3';
+import { createHistoryLogsRenderer } from './logs.js?v=module-bootstrap-20260608-3';
+import { createHistoryOverviewRenderer } from './overview.js?v=module-bootstrap-20260608-3';
+import { createHistoryResumeFeature } from './resume/index.js?v=module-bootstrap-20260608-3';
+import { HISTORY_DETAIL_TABS, normalizeHistoryDetailTab, setHistoryDetailTab } from './state.js?v=module-bootstrap-20260608-3';
+import { createHistoryDetailWorkspace } from './workspace.js?v=module-bootstrap-20260608-3';
 
 export function createHistoryDetailDialog({ ctx, state, deps }) {
     const slots = {};
@@ -27,9 +28,10 @@ export function createHistoryDetailDialog({ ctx, state, deps }) {
     function renderHistoryDetailTabs() {
         const tabs = document.querySelector('#history-detail-dialog .history-detail-tabs');
         if (!tabs) return;
-        state.detailTab = normalizeHistoryDetailTab(state.detailTab);
+        const visibleTabs = historyDetailTabsForPayload(state.currentPayload);
+        state.detailTab = normalizeVisibleHistoryDetailTab(state.currentPayload, state.detailTab);
         tabs.innerHTML = '';
-        for (const item of HISTORY_DETAIL_TABS) {
+        for (const item of visibleTabs) {
             const btn = document.createElement('button');
             btn.type = 'button';
             btn.className = 'history-detail-tab';
@@ -38,6 +40,19 @@ export function createHistoryDetailDialog({ ctx, state, deps }) {
             btn.classList.toggle('active', item.key === state.detailTab);
             tabs.appendChild(btn);
         }
+    }
+
+    function historyDetailTabsForPayload(payload) {
+        const task = payload?.task || null;
+        if (task?.job === 'preprocess') {
+            return HISTORY_DETAIL_TABS.filter((item) => ['overview', 'logs', 'config_files'].includes(item.key));
+        }
+        return HISTORY_DETAIL_TABS;
+    }
+
+    function normalizeVisibleHistoryDetailTab(payload, tab) {
+        const normalized = normalizeHistoryDetailTab(tab);
+        return historyDetailTabsForPayload(payload).some((item) => item.key === normalized) ? normalized : 'overview';
     }
 
     function renderHistoryManagerDetail(payload = state.currentPayload, options = {}) {
@@ -55,6 +70,7 @@ export function createHistoryDetailDialog({ ctx, state, deps }) {
         if (!payload) {
             title.textContent = '历史任务';
             meta.textContent = '选择一条历史任务查看详情。';
+            state.mainTaskReturn = null;
             actions.innerHTML = '';
             content.innerHTML = '';
             renderHistoryDetailTabs();
@@ -80,9 +96,19 @@ export function createHistoryDetailDialog({ ctx, state, deps }) {
         actions.innerHTML = '';
         if (task) {
             if (task.job === 'training') {
+                const preprocessTask = task.linked_preprocess_task || null;
+                if (preprocessTask?.id) {
+                    const preprocessBtn = deps.createHistoryActionButton('查阅预处理', () => openLinkedPreprocessTask(task, preprocessTask));
+                    preprocessBtn.title = '在当前详情中查看这次训练对应的预处理任务';
+                    actions.append(preprocessBtn);
+                }
                 actions.append(
                     deps.createHistoryTaskPreviewButton(task),
                 );
+            } else if (task.job === 'preprocess' && state.mainTaskReturn?.taskId) {
+                const returnBtn = deps.createHistoryActionButton('返回主项目', () => returnToMainHistoryTask());
+                returnBtn.title = '返回进入预处理详情前查看的训练任务';
+                actions.append(returnBtn);
             }
             actions.append(
                 deps.createHistoryActionButton('重命名', () => deps.renameHistoryTask(task)),
@@ -100,6 +126,62 @@ export function createHistoryDetailDialog({ ctx, state, deps }) {
         renderHistoryDetailTabs();
         renderHistoryDetailContent();
         if (options.open) openHistoryDetailDialog();
+    }
+
+    async function openLinkedPreprocessTask(task, preprocessTask) {
+        const preprocessTaskId = String(preprocessTask?.id || '').trim();
+        const mainTaskId = String(task?.id || '').trim();
+        if (!preprocessTaskId || !mainTaskId) return;
+        state.mainTaskReturn = {
+            taskId: mainTaskId,
+            detailTab: state.detailTab,
+        };
+        await loadHistoryTaskInDetail(preprocessTaskId, { detailTab: 'overview' });
+    }
+
+    async function returnToMainHistoryTask() {
+        const target = state.mainTaskReturn;
+        if (!target?.taskId) return;
+        state.mainTaskReturn = null;
+        await loadHistoryTaskInDetail(target.taskId, { detailTab: target.detailTab || 'overview' });
+    }
+
+    async function loadHistoryTaskInDetail(taskId, options = {}) {
+        try {
+            const payload = await fetchHistoryTask(ctx, taskId);
+            if (!payload.ok) {
+                alert(payload.error || '读取历史任务失败');
+                return;
+            }
+            if (options.detailTab) {
+                state.detailTab = normalizeHistoryDetailTab(options.detailTab);
+            }
+            deps.setViewingHistoryTaskContext({
+                taskId,
+                viewMode: 'live',
+                task: payload.task || null,
+                configGroup: null,
+                timelineSelection: [],
+            });
+            if (payload.task?.job === 'training') {
+                dialogSetResumeLoadingForTask(taskId);
+            } else {
+                resume.clearResumeOptions();
+            }
+            state.curve.hoverStep = null;
+            renderHistoryManagerDetail(payload, { open: true });
+            deps.renderTrainingHistoryList();
+            deps.renderHistoryManager();
+            if (payload.task?.job === 'training') {
+                await resume.loadResumeOptionsForTask(taskId);
+            }
+        } catch (e) {
+            alert('读取历史任务失败: ' + e.message);
+        }
+    }
+
+    function dialogSetResumeLoadingForTask(taskId) {
+        resume.setResumeLoadingForTask(taskId);
     }
 
     function captureHistoryDetailReturnState() {
@@ -157,6 +239,7 @@ export function createHistoryDetailDialog({ ctx, state, deps }) {
         deps.restorePreviewWorkspaceFromHistoryDetail();
         setHistoryDetailWindowOpen(false);
         restoreHistoryDetailReturnState();
+        state.mainTaskReturn = null;
         deps.clearViewingHistoryTaskContext?.(state.currentPayload);
     }
 
@@ -199,7 +282,7 @@ export function createHistoryDetailDialog({ ctx, state, deps }) {
             delete content.dataset.historyDetailTab;
             return;
         }
-        state.detailTab = normalizeHistoryDetailTab(state.detailTab);
+        state.detailTab = normalizeVisibleHistoryDetailTab(payload, state.detailTab);
         content.dataset.historyDetailTab = state.detailTab;
         if (state.detailTab === 'overview') {
             content.appendChild(overview.renderHistoryDetailOverview(payload));

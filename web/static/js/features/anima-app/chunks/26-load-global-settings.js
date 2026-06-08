@@ -134,6 +134,10 @@ const ctx = globalThis.ctx;
         return ensurePreviewFeature().openCurrentTrainingPreview(event);
     }
 
+    globalThis.openLiveSamplingPreview = function openLiveSamplingPreview(event) {
+        return ensurePreviewFeature().openLiveSamplingPreview(event);
+    }
+
     globalThis.openHistoryConfigGroupPreview = async function openHistoryConfigGroupPreview(group) {
         return ensurePreviewFeature().openHistoryConfigGroupPreview(group);
     }

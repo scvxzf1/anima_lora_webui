@@ -114,6 +114,10 @@
     .history-detail-metrics-body {
         grid-template-columns: 1fr;
     }
+    .history-detail-overview-dashboard.preprocess-task .history-preprocess-summary-body,
+    .history-preprocess-stat-grid {
+        grid-template-columns: 1fr;
+    }
     .history-detail-info-block {
         border-left: 0;
         border-top: 1px solid var(--border-soft);

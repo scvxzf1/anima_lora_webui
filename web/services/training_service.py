@@ -1431,9 +1431,12 @@ def _load_history_task(task_id: str) -> dict[str, Any]:
         limit=MAX_HISTORY_DETAIL_SYSTEM_RECORDS,
     )
     metrics = _history_metrics_for_task(task_dir, logs=logs)
+    task = _history_summary(meta, task_dir)
+    if str(task.get("job") or "").strip() == "training":
+        task["linked_preprocess_task"] = _linked_preprocess_task_for_training(task)
     return {
         "ok": True,
-        "task": _history_summary(meta, task_dir),
+        "task": task,
         "logs": logs,
         "metrics": metrics,
         "system": system,
@@ -2005,11 +2008,34 @@ def _history_task_ids_for_delete(task_id: str) -> list[str]:
     if str(task.get("job") or "").strip() != "training":
         return task_ids
 
+    seen = {task_id}
+    for candidate in _linked_preprocess_tasks_for_training(task):
+        candidate_id = str(candidate.get("id") or "").strip()
+        if not candidate_id or candidate_id in seen:
+            continue
+        task_ids.append(candidate_id)
+        seen.add(candidate_id)
+    return task_ids
+
+
+def _linked_preprocess_task_for_training(task: dict[str, Any]) -> dict[str, Any] | None:
+    tasks = _linked_preprocess_tasks_for_training(task)
+    if not tasks:
+        return None
+    return _history_linked_task_brief(tasks[0])
+
+
+def _linked_preprocess_tasks_for_training(task: dict[str, Any]) -> list[dict[str, Any]]:
+    if str(task.get("job") or "").strip() != "training":
+        return []
     run_key = _history_delete_run_key(task)
     if not run_key:
-        return task_ids
-    seen = {task_id}
-    for candidate in _list_history_tasks(include_archived=True):
+        return []
+
+    current_id = str(task.get("id") or "").strip()
+    out: list[dict[str, Any]] = []
+    seen = {current_id} if current_id else set()
+    for candidate in _list_history_tasks(include_archived=True, limit=0):
         candidate_id = str(candidate.get("id") or "").strip()
         if not candidate_id or candidate_id in seen:
             continue
@@ -2017,9 +2043,32 @@ def _history_task_ids_for_delete(task_id: str) -> list[str]:
             continue
         if _history_delete_run_key(candidate) != run_key:
             continue
-        task_ids.append(candidate_id)
+        out.append(candidate)
         seen.add(candidate_id)
-    return task_ids
+    return out
+
+
+def _history_linked_task_brief(task: dict[str, Any]) -> dict[str, Any]:
+    keys = (
+        "id",
+        "name",
+        "job",
+        "state",
+        "archived",
+        "started_at",
+        "started_at_text",
+        "finished_at",
+        "finished_at_text",
+        "history_run_label",
+        "history_source_config_file",
+        "history_group_key",
+        "run_dir",
+        "output_dir",
+        "training_output_dir",
+        "log_count",
+        "metric_count",
+    )
+    return {key: task.get(key) for key in keys if key in task}
 
 
 def _history_delete_run_key(task: dict[str, Any]) -> str:

@@ -17,9 +17,10 @@ frozen-core distill) work on **montages, not loss**. This is a sharp instance of
 [[project_fm_val_loss_uninformative]].
 
 Method reference: Chen et al., *Unlocking Latent Potential for Pixel Generation*,
-arXiv:2605.12013. Proposal + module-swap table: `docs/proposal/l2p_pixel_anima.md`.
-Staged plan + full go/no-go history: `bench/l2p/plan.md`. Reference-code delta
-backlog: `bench/l2p/further_wiring.md`.
+arXiv:2605.12013. The earlier proposal and module-swap table lived under the
+historical path `docs/proposal/l2p_pixel_anima.md`, which is not present in the
+current tree. Staged plan + full go/no-go history: `bench/l2p/plan.md`.
+Reference-code delta backlog: `bench/l2p/further_wiring.md`.
 
 ## What L2P is (the part we tested)
 

@@ -3,13 +3,13 @@ import {
     fetchPreviewSettings,
     fetchPreviewWeights,
     savePreviewSettingsRequest,
-} from './api.js?v=module-bootstrap-20260604-11';
+} from './api.js?v=module-bootstrap-20260608-3';
 import {
     createPreviewDetailBlock,
     createPreviewDetailRow,
     createPreviewDialog,
-} from './dialog.js?v=module-bootstrap-20260604-11';
-import { createPreviewImages } from './images.js?v=module-bootstrap-20260604-11';
+} from './dialog.js?v=module-bootstrap-20260608-3';
+import { createPreviewImages } from './images.js?v=module-bootstrap-20260608-3';
 import {
     applyPreviewSelectionValue,
     createPreviewState,
@@ -18,9 +18,9 @@ import {
     normalizePreviewGroup,
     previewSourceLabel,
     selectedPreviewSelectValue,
-} from './state.js?v=module-bootstrap-20260604-11';
-import { createPreviewWeights } from './weights.js?v=module-bootstrap-20260604-11';
-import { createPreviewWorkspace } from './workspace.js?v=module-bootstrap-20260604-11';
+} from './state.js?v=module-bootstrap-20260608-3';
+import { createPreviewWeights } from './weights.js?v=module-bootstrap-20260608-3';
+import { createPreviewWorkspace } from './workspace.js?v=module-bootstrap-20260608-3';
 
 export function createPreviewFeature(ctx, deps) {
     const state = createPreviewState();
@@ -186,6 +186,28 @@ export function createPreviewFeature(ctx, deps) {
         event?.preventDefault?.();
         event?.stopPropagation?.();
         openTrainingPreview();
+    }
+
+    async function openLiveSamplingPreview(event) {
+        event?.preventDefault?.();
+        event?.stopPropagation?.();
+        const historyTaskId = deps.getTrainingViewMode() === 'live'
+            ? String(deps.getViewingHistoryTaskId?.() || '')
+            : '';
+        state.source = 'training';
+        state.selectedTaskId = historyTaskId;
+        state.selectedGroup = null;
+        state.settings = null;
+        state.weightRequestSeq += 1;
+        document.querySelectorAll('.preview-source-btn').forEach((btn) => {
+            btn.classList.toggle('active', btn.dataset.previewSource === 'training');
+        });
+        workspace.openPreviewPanel({ mode: 'sampling' });
+        updatePreviewTaskVisibility();
+        renderPreviewTaskSelect();
+        workspace.syncPreviewPanelSubtitle();
+        await loadPreviewSettings();
+        await loadPreviewImages();
     }
 
     async function openHistoryConfigGroupPreview(group) {
@@ -355,6 +377,7 @@ export function createPreviewFeature(ctx, deps) {
         changePreviewTask,
         openTrainingPreview,
         openCurrentTrainingPreview,
+        openLiveSamplingPreview,
         openHistoryConfigGroupPreview,
         openPreviewPanel: workspace.openPreviewPanel,
         closePreviewPanel: workspace.closePreviewPanel,

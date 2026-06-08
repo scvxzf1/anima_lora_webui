@@ -1,6 +1,6 @@
-import { fetchHistoryTask } from './api.js?v=module-bootstrap-20260604-11';
-import { createHistoryDetailDialog } from './dialog.js?v=module-bootstrap-20260604-11';
-import { createHistoryDetailState, normalizeHistoryDetailTab } from './state.js?v=module-bootstrap-20260604-11';
+import { fetchHistoryTask } from './api.js?v=module-bootstrap-20260608-3';
+import { createHistoryDetailDialog } from './dialog.js?v=module-bootstrap-20260608-3';
+import { createHistoryDetailState, normalizeHistoryDetailTab } from './state.js?v=module-bootstrap-20260608-3';
 
 export function createHistoryDetailFeature(ctx, deps) {
     const state = createHistoryDetailState();
@@ -16,6 +16,7 @@ export function createHistoryDetailFeature(ctx, deps) {
             if (options.detailTab) {
                 state.detailTab = normalizeHistoryDetailTab(options.detailTab);
             }
+            state.mainTaskReturn = null;
             deps.setViewingHistoryTaskContext({
                 taskId,
                 viewMode: 'live',
@@ -38,6 +39,7 @@ export function createHistoryDetailFeature(ctx, deps) {
         state.currentPayload = null;
         state.detailTab = 'overview';
         state.returnState = null;
+        state.mainTaskReturn = null;
         state.curve.hoverStep = null;
     }
 

@@ -1,4 +1,4 @@
-import { previewSourceLabel } from './state.js?v=module-bootstrap-20260604-11';
+import { previewSourceLabel } from './state.js?v=module-bootstrap-20260608-3';
 
 export function createPreviewWorkspace({ state, deps, closePreviewImageDialog }) {
     function previewWorkspace() {
@@ -17,6 +17,19 @@ export function createPreviewWorkspace({ state, deps, closePreviewImageDialog })
 
     function mountPreviewWorkspaceInDialog() {
         mountPreviewWorkspace(document.getElementById('preview-dialog-mount'));
+    }
+
+    function applyPreviewPanelMode(mode = 'default') {
+        const normalizedMode = mode === 'sampling' ? 'sampling' : 'default';
+        const dialog = document.getElementById('preview-panel-dialog');
+        const workspace = previewWorkspace();
+        state.panel.mode = normalizedMode;
+        dialog?.classList.toggle('preview-panel-dialog-sampling', normalizedMode === 'sampling');
+        workspace?.classList.toggle('preview-workspace-sampling', normalizedMode === 'sampling');
+    }
+
+    function resetPreviewPanelMode() {
+        applyPreviewPanelMode('default');
     }
 
     function mountPreviewWorkspaceInHistoryDetail() {
@@ -61,7 +74,7 @@ export function createPreviewWorkspace({ state, deps, closePreviewImageDialog })
         subtitle.textContent = parts.join(' · ') || '训练样张、权重文件和路径设置。';
     }
 
-    function openPreviewPanel() {
+    function openPreviewPanel(options = {}) {
         const dialog = document.getElementById('preview-panel-dialog');
         if (!dialog) return;
         if (!state.panel.open) {
@@ -69,6 +82,7 @@ export function createPreviewWorkspace({ state, deps, closePreviewImageDialog })
             state.panel.restoreTrainingView = deps.getTrainingViewMode();
         }
         mountPreviewWorkspaceInDialog();
+        applyPreviewPanelMode(options.mode);
         state.panel.open = true;
         syncPreviewPanelSubtitle();
         try {
@@ -92,6 +106,7 @@ export function createPreviewWorkspace({ state, deps, closePreviewImageDialog })
             deps.showTrainingView(state.panel.restoreTrainingView);
         }
         state.panel.open = false;
+        resetPreviewPanelMode();
         state.panel.previousTab = '';
         state.panel.restoreTrainingView = '';
     }

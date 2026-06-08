@@ -3158,6 +3158,57 @@ def test_delete_training_history_task_removes_linked_preprocess_task(tmp_path, m
     assert (history_dir / other_preprocess_id).exists()
 
 
+def test_history_detail_exposes_linked_preprocess_task(tmp_path, monkeypatch):
+    history_dir = tmp_path / "history"
+    run_dir = tmp_path / "runs" / "524-20260524-225059"
+    other_run_dir = tmp_path / "runs" / "524-20260524-230000"
+    training_id = "20260524-225152-training-imported-524"
+    preprocess_id = "20260524-225059-preprocess-imported-524"
+    other_preprocess_id = "20260524-230000-preprocess-imported-524"
+    history_meta = {
+        "run_dir": str(run_dir),
+        "training_output_dir": str(run_dir / "training_output"),
+        "history_group_key": "source:configs/imported/524.toml",
+        "history_group_label": "configs/imported/524.toml",
+        "history_source_config_file": "configs/imported/524.toml",
+        "history_run_label": run_dir.name,
+    }
+    _write_group_task(history_dir, training_id, job="training", started_at=1000.0, history_meta=history_meta)
+    _write_group_task(
+        history_dir,
+        preprocess_id,
+        job="preprocess",
+        started_at=990.0,
+        archived=True,
+        history_meta=history_meta,
+    )
+    _write_group_task(
+        history_dir,
+        other_preprocess_id,
+        job="preprocess",
+        started_at=1200.0,
+        archived=True,
+        history_meta={
+            **history_meta,
+            "run_dir": str(other_run_dir),
+            "training_output_dir": str(other_run_dir / "training_output"),
+            "history_run_label": other_run_dir.name,
+        },
+    )
+    monkeypatch.setattr(training_service, "HISTORY_DIR", history_dir)
+    svc = TrainingService(web.Application())
+
+    payload = svc.get_history_task(training_id)
+    linked = payload["task"]["linked_preprocess_task"]
+
+    assert linked["id"] == preprocess_id
+    assert linked["job"] == "preprocess"
+    assert linked["archived"] is True
+    assert linked["history_run_label"] == run_dir.name
+    assert linked["id"] != other_preprocess_id
+    assert "linked_preprocess_task" not in svc.get_history_task(preprocess_id)["task"]
+
+
 def test_delete_preprocess_history_task_does_not_remove_training_task(tmp_path, monkeypatch):
     history_dir = tmp_path / "history"
     run_dir = tmp_path / "runs" / "524-20260524-225059"

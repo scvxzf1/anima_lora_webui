@@ -1,4 +1,4 @@
-**🎯 Anima LoRA WebUI 前端可视化与操作逻辑调查报告**
+# Anima LoRA WebUI 前端可视化与操作逻辑调查报告
 
 调查日期：2026-05-30
 调查范围：`web/` aiohttp WebUI、`web/static/` 单页前端、相关配置/训练/预览服务

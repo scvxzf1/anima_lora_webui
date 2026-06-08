@@ -476,6 +476,51 @@ FP8 量化统计：`fp8_relative_l2_by_block` 最大约 `0.083`，未见 saturat
 
 结论：FP8 transfer 有工程价值：CPU pinned master 减半，H2D p95 从约 `14.5ms` 降到约 `11.1ms`，wait p95 也略降。但它不降低 GPU 上 active block 的 bf16 执行权重，也不解决最低 free；50-step 最低 free 仍只有约 `82MiB`。因此 FP8 transfer 可以作为速度/PCIe 优化开关，不应被宣传为 LoKr 16G OOM 根因修复。
 
+## 2026-06-05 next-goal 收口
+
+原 `anima_lokr_16g_next_goal.md` 的活跃目标已经由上述 allocator / blocks / FP8 追加消融收口。该目标的约束保持不变：
+
+- `torch_compile = true`
+- 不修改 attention backend，继续使用 `attn_mode = "flash"`
+- 不把 full `gradient_checkpointing` 作为默认方案
+- trainable LoKr / router / adapter 常驻 GPU
+- block swap 只处理 frozen base block
+
+目标曾设为把最低 forward free 从当前几十 MiB 拉到 `>= 300MiB`，同时把速度损失控制在 `<= 10%~12%`。追加消融结论是：现有安全路线已经接近极限，allocator、`blocks_to_swap=24` 和 FP8 transfer 都不能把最低 free 拉到目标区间。
+
+当前推荐用户配置保持：
+
+```toml
+blocks_to_swap = 23
+block_swap_transfer_dtype = "bf16"
+selective_checkpoint = "off"
+gradient_checkpointing = false
+unsloth_offload_checkpointing = false
+torch_compile = true
+attn_mode = "flash"
+lokr_factor_group_size = 8
+block_swap_profile_jsonl = "auto"
+memory_probe_jsonl = "auto"
+memory_probe_max_steps = 3
+```
+
+首选 fallback：
+
+```bash
+PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True,max_split_size_mb:256
+```
+
+暂停方向：
+
+- 盲目提高 `blocks_to_swap`
+- 把 full checkpoint 设为默认
+- 关闭 `torch_compile`
+- 更换 attention backend
+- 继续扩大粗粒度 `selective_checkpoint`
+- 未经 profiling 直接写 Triton 全量重构
+
+若强制要求 `300MiB+` 余量，下一阶段必须转向更深层 kernel/graph/autograd 生命周期重构，或接受 full checkpoint / 降 token 峰值的代价。
+
 ## 当前最终结论
 
 在当前约束下，已经验证过以下路线：

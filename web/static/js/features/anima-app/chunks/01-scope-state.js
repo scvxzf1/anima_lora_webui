@@ -430,6 +430,7 @@ const ctx = globalThis.ctx;
             loadConfigGroupTimeline,
             showTrainingView,
             getTrainingViewMode: () => trainingViewMode,
+            getViewingHistoryTaskId: () => viewingHistoryTaskId,
             getTrainingRuntime: () => trainingRuntime,
             setTrainingSampleState: (value) => {
                 if (value) trainingRuntime.sampleConfig = value;

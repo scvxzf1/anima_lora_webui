@@ -7,14 +7,14 @@ const ctx = globalThis.ctx;
     globalThis.createHistoryTaskItem = function createHistoryTaskItem(task) {
         const card = document.createElement('article');
         card.className = 'task-history-item';
-        if (task.id === viewingHistoryTaskId && isHistoryDetailDialogOpen()) card.classList.add('active');
+        if (task.id === viewingHistoryTaskId && isHistoryReviewMode()) card.classList.add('active');
         const archived = historyTaskIsArchived(task);
         if (archived) card.classList.add('archived');
 
         const main = document.createElement('button');
         main.type = 'button';
         main.className = 'task-history-main';
-        main.addEventListener('click', () => loadHistoryTask(task.id));
+        main.addEventListener('click', () => openSidebarHistoryTask(task.id));
 
         const title = document.createElement('strong');
         title.className = 'task-history-title';
@@ -61,7 +61,7 @@ const ctx = globalThis.ctx;
             );
         }
         actions.append(
-            createHistoryActionButton('查看', () => loadHistoryTask(task.id)),
+            createHistoryActionButton('查看', () => openSidebarHistoryTask(task.id)),
         );
 
         card.append(main, actions);

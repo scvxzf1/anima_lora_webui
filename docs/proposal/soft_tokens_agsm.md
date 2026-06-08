@@ -1,7 +1,7 @@
 # Soft Tokens — AGSM: bounded dual-token alignment guidance
 
-Status: **proposal** (2026-05-22). Builds on `docs/experimental/soft_tokens.md`
-and supersedes the InfoNCE direction in `docs/proposal/soft_tokens_contrastive.md`
+Status: **proposal** (2026-05-22). Builds on [soft_tokens.md](../experimental/soft_tokens.md)
+and supersedes the InfoNCE direction in [soft_tokens_contrastive.md](soft_tokens_contrastive.md)
 *conditionally* — see "Relationship to the contrastive proposal". Reuses the
 cached-TE negative plumbing already shipped for that proposal
 (`library/datasets/base.py::setup_contrastive_negatives`, `IdentityPairSampler`).
@@ -209,7 +209,7 @@ checked before any training:
 - Negative sourcing (reuse): `library/datasets/base.py::setup_contrastive_negatives`
   / `_load_te_for_stem`, `library/datasets/identity_pairs.py::IdentityPairSampler`
 - Reward-premise probe to add: `bench/soft_tokens_contrastive/negative_audit.py`
-- Sibling proposal (gates this one): `docs/proposal/soft_tokens_contrastive.md`
+- Sibling proposal (gates this one): [soft_tokens_contrastive.md](soft_tokens_contrastive.md)
 - Method doc: `docs/experimental/soft_tokens.md`
 - Quality-signal context: [[project_fm_val_loss_uninformative]],
   [[project_cmmd_val_signal]]

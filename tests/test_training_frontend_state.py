@@ -273,6 +273,7 @@ def test_preview_feature_modules_are_loaded_from_production_entrypoint() -> None
         "changePreviewTask",
         "openTrainingPreview",
         "openCurrentTrainingPreview",
+        "openLiveSamplingPreview",
         "openHistoryConfigGroupPreview",
         "openPreviewPanel",
         "closePreviewPanel",
@@ -284,8 +285,12 @@ def test_preview_feature_modules_are_loaded_from_production_entrypoint() -> None
         assert name in preview_index
     assert "let previewSettings" not in legacy_source
     assert "let currentPreviewSource" not in legacy_source
+    assert "mode: 'default'" in preview_state
     assert "state.selectedGroup = normalizePreviewGroup(options.group)" in preview_index
+    assert "workspace.openPreviewPanel({ mode: 'sampling' });" in preview_index
     assert "function mountPreviewWorkspace(target)" in preview_workspace
+    assert "function applyPreviewPanelMode" in preview_workspace
+    assert "preview-panel-dialog-sampling" in preview_workspace
     assert "target.appendChild(workspace);" in preview_workspace
     assert "document.getElementById('preview-workspace')" in preview_workspace
     assert "export function normalizePreviewGroup(group)" in preview_state
@@ -296,6 +301,8 @@ def test_preview_feature_modules_are_loaded_from_production_entrypoint() -> None
     assert "preview-card-error-message" in preview_images
     assert "图片加载失败" in preview_images
     assert ".preview-card-error-message" in css
+    assert ".preview-panel-dialog-sampling .preview-layout" in css
+    assert ".preview-panel-dialog-sampling .preview-sidebar" in css
 
 
 
@@ -1227,6 +1234,8 @@ def test_history_manager_frontend_hooks_are_present() -> None:
     collection_card_section = _section(legacy_source, "function createHistoryCollectionWorkbenchCard", "function createHistoryConfigGroupWorkbenchCard")
     config_card_section = _section(legacy_source, "function createHistoryConfigGroupWorkbenchCard", "function historyCollectionNamesForTasks")
     load_task_section = _section(history_detail_index, "async function loadHistoryTask", "function clearHistoryDetailState")
+    chart_controls_section = _section(html, '<div class="live-chart-controls"', '<label class="live-chart-field">')
+    monitor_view_section = _section(html, '<section id="training-monitor-view"', '<!-- 预览结果工作区')
 
     assert "training-history-manager" in html
     assert "history-manager-search" in html
@@ -1242,6 +1251,11 @@ def test_history_manager_frontend_hooks_are_present() -> None:
     assert "btn-history-collections-workbench" in html
     assert "btn-preview-training-results" in html
     assert "当前预览" in html
+    assert "btn-live-sampling-preview" in html
+    assert "途中采样" in html
+    assert chart_controls_section.index("btn-live-sampling-preview") < chart_controls_section.index("live-chart-toggle-lr")
+    assert monitor_view_section.index('id="history-config-panel"') < monitor_view_section.index('id="history-resume-panel"')
+    assert monitor_view_section.index('id="history-resume-panel"') < monitor_view_section.index('class="panel log-panel"')
     assert "预览结果" in html
     assert 'data-tab="preview"' not in html
     assert 'class="preview-workspace-host" hidden aria-hidden="true"' in html
@@ -1263,7 +1277,7 @@ def test_history_manager_frontend_hooks_are_present() -> None:
     assert "未归档 · 最新 6 个训练任务" in html
     assert "btn-open-history-manager" in html
     assert 'type="module" src="/static/app.js?v=' in html
-    assert "import { MetricsChart } from './chart.js?v=module-bootstrap-20260604-" in source
+    assert "import { MetricsChart } from './chart.js?v=module-bootstrap-20260608-" in source
     assert "style.css?v=" in html
     assert "app.js?v=" in html
     assert "history-bulk-bar" in html
@@ -1279,6 +1293,19 @@ def test_history_manager_frontend_hooks_are_present() -> None:
     assert "HISTORY FORGE" in html
     assert "function renderHistoryDetailTabs" in history_detail_dialog
     assert "btn.dataset.historyDetailTab = item.key" in history_detail_dialog
+    assert "function historyDetailTabsForPayload" in history_detail_dialog
+    assert "task?.job === 'preprocess'" in history_detail_dialog
+    assert "['overview', 'logs', 'config_files'].includes(item.key)" in history_detail_dialog
+    assert "normalizeVisibleHistoryDetailTab(payload, state.detailTab)" in history_detail_dialog
+    assert "mainTaskReturn: null" in history_detail_state
+    assert "linked_preprocess_task" in history_detail_dialog
+    assert "查阅预处理" in history_detail_dialog
+    assert "返回主项目" in history_detail_dialog
+    assert "openLinkedPreprocessTask(task, preprocessTask)" in history_detail_dialog
+    assert "loadHistoryTaskInDetail(preprocessTaskId, { detailTab: 'overview' })" in history_detail_dialog
+    assert "loadHistoryTaskInDetail(target.taskId, { detailTab: target.detailTab || 'overview' })" in history_detail_dialog
+    assert history_detail_dialog.index("查阅预处理") < history_detail_dialog.index("deps.createHistoryTaskPreviewButton(task)")
+    assert "state.mainTaskReturn = null;" in load_task_section
     assert "{ key: 'overview', label: '概览' }" in history_detail_state
     assert "{ key: 'analysis', label: '训练分析' }" in history_detail_state
     assert "{ key: 'preview', label: '样张与权重' }" in history_detail_state
@@ -1417,10 +1444,16 @@ def test_history_manager_frontend_hooks_are_present() -> None:
     assert "if (nextTab === 'preview')" not in tab_setup_section
     assert "mountPreviewWorkspaceInPage();" not in tab_setup_section
     assert "btn-preview-training-results" in listener_section
+    assert "btn-live-sampling-preview" in listener_section
     assert "openCurrentTrainingPreview" in source
+    assert "openLiveSamplingPreview" in source
+    assert "const historyTaskId = deps.getTrainingViewMode() === 'live'" in preview_index
+    assert "state.selectedTaskId = historyTaskId;" in preview_index
+    assert "getViewingHistoryTaskId: () => viewingHistoryTaskId" in source
     assert "event?.preventDefault?.()" in source
     assert "event?.stopPropagation?.()" in source
     assert "addEventListener('click', openCurrentTrainingPreview)" in listener_section
+    assert "addEventListener('click', openLiveSamplingPreview)" in listener_section
     assert "chooseTimelineTasksForMerge" not in source
     assert "showTimelineTaskSelectionDialog" not in source
     assert "选择要合并查看的训练分组" not in source
@@ -1471,14 +1504,18 @@ def test_history_manager_frontend_hooks_are_present() -> None:
     assert "/api/training/resume" in history_detail_api
     assert "return historyViewMode !== 'live';" in history_review_mode_section
     assert "Boolean(viewingHistoryTaskId)" not in history_review_mode_section
-    assert "main.addEventListener('click', () => loadHistoryTask(task.id))" in sidebar_task_item_section
+    assert "main.addEventListener('click', () => openSidebarHistoryTask(task.id))" in sidebar_task_item_section
     assert "createHistoryTaskPreviewButton(task)" in sidebar_task_item_section
-    assert "createHistoryActionButton('查看', () => loadHistoryTask(task.id))" in sidebar_task_item_section
+    assert "createHistoryActionButton('查看', () => openSidebarHistoryTask(task.id))" in sidebar_task_item_section
     assert "renameHistoryTask(task)" not in sidebar_task_item_section
     assert "archiveHistoryTask(task)" not in sidebar_task_item_section
     assert "deleteHistoryTask(task)" not in sidebar_task_item_section
     assert "main.addEventListener('click', () => loadHistoryTask(task.id))" in manager_row_section
     assert "createHistoryActionButton('查看', () => loadHistoryTask(task.id))" in manager_row_section
+    assert "function openSidebarHistoryTask" in source
+    assert "renderHistoryTask(payload);" in source
+    assert "historyViewMode = 'task';" in source
+    assert "await openSidebarHistoryTask(viewingHistoryTaskId);" in source
     assert "showTrainingView('history')" not in load_task_section
     assert "renderHistoryTask(payload)" not in load_task_section
     assert "deps.setViewingHistoryTaskContext({" in load_task_section
@@ -1569,6 +1606,15 @@ def test_history_manager_frontend_hooks_are_present() -> None:
     assert "无系统采样记录" in detail_section
     assert "system.jsonl" in detail_section
     assert "history-detail-metrics-body" in detail_section
+    assert "task.job === 'preprocess'" in detail_section
+    assert "renderPreprocessHistoryOverview(payload, box)" in detail_section
+    assert "预处理摘要" in detail_section
+    assert "预处理文件" in detail_section
+    assert "history-preprocess-summary-body" in detail_section
+    assert "history-preprocess-stat-grid" in detail_section
+    assert "compactHistoryPathName(task.dataset_cache_dir || task.run_dir)" in detail_section
+    assert "运行时数据集配置" in detail_section
+    assert "日志目录" in detail_section
     assert "task.job === 'training'" in detail_section
     assert "historyDetailSection('任务信息'" not in detail_section
     assert "history-detail-section info" not in detail_section
@@ -1711,6 +1757,10 @@ def test_history_manager_frontend_hooks_are_present() -> None:
     assert ".history-manager-stat.active" in css
     assert ".history-detail-dialog" in css
     assert ".history-detail-overview-dashboard" in css
+    assert ".history-detail-overview-dashboard.preprocess-task" in css
+    assert ".history-preprocess-stat-grid" in css
+    assert ".history-preprocess-summary-body" in css
+    assert "align-content: start;" in css
     assert ".history-detail-preview" in css
     assert ".history-detail-preview-mount" in css
     assert ".history-detail-progress" in css
@@ -1737,6 +1787,9 @@ def test_history_manager_frontend_hooks_are_present() -> None:
     assert ".history-detail-section.info" not in css
     assert ".preview-panel-dialog" in css
     assert ".preview-panel-body" in css
+    assert ".preview-panel-dialog-sampling .preview-layout" in css
+    assert ".preview-panel-dialog-sampling .preview-sidebar" in css
+    assert "#tab-training .live-chart-sample-btn" in css
 
     assert "this.lrColor" in chart_source
     assert "_drawLrLine" in chart_source
@@ -1995,9 +2048,9 @@ def test_history_detail_overview_uses_full_copyable_paths_and_resume_weights() -
 
     assert "icon.className = `metric-icon metric-icon-${iconName}`" in overview
     assert "['平均速度', formatHistoryAverageSpeed(task), 'gauge']" in overview
-    assert "['训练总时间', formatHistoryTrainingDuration(task), 'time']" in overview
+    assert "['训练总时间', formatHistoryTaskDuration(task), 'time']" in overview
     assert "function formatHistoryAverageSpeed(record)" in overview_source
-    assert "function formatHistoryTrainingDuration(record)" in overview_source
+    assert "function formatHistoryTaskDuration(record)" in overview_source
     assert "ctx.format.formatDuration" in overview_source
     assert "muted: taskFinished && ['队列', '续训'].includes(label) && value === '-'" in overview
     assert "section.classList.toggle('is-complete', finished);" in progress
@@ -2080,7 +2133,7 @@ def test_history_detail_config_files_are_tool_ready() -> None:
     assert "function historyProjectRoot(task = {})" in path_items
     assert "project_root_abs" in path_items
 
-    assert "module-bootstrap-20260604-" in html
+    assert "module-bootstrap-20260608-" in html
     for selector in (
         ".history-config-viewer",
         ".history-config-toolbar",

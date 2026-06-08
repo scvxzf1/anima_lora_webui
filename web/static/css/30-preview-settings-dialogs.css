@@ -1034,6 +1034,15 @@
 .preview-panel-body .preview-layout {
     min-height: 100%;
 }
+.preview-panel-dialog-sampling .preview-layout {
+    grid-template-columns: minmax(0, 1fr);
+}
+.preview-panel-dialog-sampling .preview-sidebar {
+    display: none;
+}
+.preview-panel-dialog-sampling .preview-main {
+    width: 100%;
+}
 .preview-dialog {
     position: fixed;
     inset: 0;
@@ -1579,4 +1588,3 @@ body.history-task-dialog-fallback-open::before {
     border-top: 1px solid var(--border);
     padding: 0.75rem 1rem;
 }
-

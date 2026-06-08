@@ -50,7 +50,7 @@
 | [methods/cns.md](methods/cns.md) | Colored Noise Sampling |
 | [methods/channel_scaling.md](methods/channel_scaling.md) | 通道缩放相关方法记录 |
 
-Postfix 当前入口在 [guidelines/training.md](guidelines/training.md) 的 “Other adapter families” 表中；历史独立 Postfix 提案不再作为主入口维护。
+Postfix 当前入口在 [guidelines/training.md#postfix](guidelines/training.md#postfix)；[experimental/postfix.md](experimental/postfix.md) 只保留兼容跳转，不再恢复旧的独立深文档。
 
 ## Experimental
 
@@ -65,6 +65,7 @@ Postfix 当前入口在 [guidelines/training.md](guidelines/training.md) 的 “
 | [experimental/easycontrol.md](experimental/easycontrol.md) | EasyControl 图像条件控制 |
 | [experimental/fera.md](experimental/fera.md) | FeRA / FEI 路由实验 |
 | [experimental/ip-adapter.md](experimental/ip-adapter.md) | IP-Adapter 图像 cross-attention 条件 |
+| [experimental/postfix.md](experimental/postfix.md) | Postfix 兼容入口，当前用户入口见训练参考 |
 | [experimental/soft_tokens.md](experimental/soft_tokens.md) | Soft Tokens / SoftREPA 风格 per-layer token bank |
 | [experimental/spd.md](experimental/spd.md) | SPD：Spectral Progressive Diffusion 推理实验 |
 | [experimental/vera_ablation.md](experimental/vera_ablation.md) | VeRA 短期消融计划 |
@@ -97,18 +98,17 @@ Postfix 当前入口在 [guidelines/training.md](guidelines/training.md) 的 “
 | 文档 | 说明 |
 |------|------|
 | [findings/webui_frontend_visual_audit_20260530.md](findings/webui_frontend_visual_audit_20260530.md) | WebUI 视觉和交互审计 |
+| [findings/webui_god_files_refactor_20260607.md](findings/webui_god_files_refactor_20260607.md) | WebUI 上帝文件治理合并记录 |
 | [findings/selfflow.md](findings/selfflow.md) | Self-Flow rep-loss 在冻结 Anima backbone 上的否定结果 |
 | [findings/mod_guidance_quality_tag_axis.md](findings/mod_guidance_quality_tag_axis.md) | Mod-guidance quality tag 轴分析 |
 | [findings/channel_stats_content_independence.md](findings/channel_stats_content_independence.md) | channel stats 与 content independence 分析 |
 | [findings/asymflow_parameterization.md](findings/asymflow_parameterization.md) | Anima velocity / sigma 参数化记录 |
 | [findings/l2p_pixel_transfer.md](findings/l2p_pixel_transfer.md) | L2P pixel transfer 调研 |
 | [findings/fasterdit_signal_densification_plan.md](findings/fasterdit_signal_densification_plan.md) | FasterDiT signal densification 计划 |
-| [findings/anima_lokr_blockswap_oom_report.md](findings/anima_lokr_blockswap_oom_report.md) | LoKr block swap OOM 报告 |
-| [findings/anima_lokr_16g_next_goal.md](findings/anima_lokr_16g_next_goal.md) | LoKr 16G 下一阶段目标 |
+| [findings/anima_lokr_blockswap_oom_report.md](findings/anima_lokr_blockswap_oom_report.md) | LoKr 16G block swap OOM 报告，含 next-goal 收口 |
 | [findings/lokr_anima_shaojianV1_run_report.md](findings/lokr_anima_shaojianV1_run_report.md) | lokr-anima-shaojianV1 运行报告 |
 | [findings/anima_balanced_16g_blockswap_ablation_plan.md](findings/anima_balanced_16g_blockswap_ablation_plan.md) | Balanced 16G block swap 消融 |
-| [findings/anima_fp8_blockswap_transfer_ablation_plan.md](findings/anima_fp8_blockswap_transfer_ablation_plan.md) | FP8 block swap transfer 消融计划 |
-| [findings/anima_fp8_blockswap_transfer_report.md](findings/anima_fp8_blockswap_transfer_report.md) | FP8 block swap transfer 报告 |
+| [findings/anima_fp8_blockswap_transfer_report.md](findings/anima_fp8_blockswap_transfer_report.md) | FP8 block swap transfer 最终报告，含原消融计划口径 |
 
 配套截图和图表在 [findings/assets/](findings/assets/)。
 
@@ -130,6 +130,8 @@ Postfix 当前入口在 [guidelines/training.md](guidelines/training.md) 的 “
 | 文档 | 说明 |
 |------|------|
 | [proposal/turbo_anima_dmd_lora.md](proposal/turbo_anima_dmd_lora.md) | Turbo Anima / DMD LoRA 蒸馏提案 |
+| [proposal/soft_tokens_contrastive.md](proposal/soft_tokens_contrastive.md) | Soft Tokens contrastive 兼容入口 |
+| [proposal/soft_tokens_softrank.md](proposal/soft_tokens_softrank.md) | Soft Tokens soft-rank 兼容入口 |
 | [proposal/soft_tokens_agsm.md](proposal/soft_tokens_agsm.md) | Soft Tokens AGSM 提案 |
 | [proposal/prior_preservation_from_synth_pool.md](proposal/prior_preservation_from_synth_pool.md) | synth pool prior preservation 提案 |
 | [proposal/postfix_residual_for_directedit.md](proposal/postfix_residual_for_directedit.md) | DirectEdit image-conditional postfix residual 提案 |

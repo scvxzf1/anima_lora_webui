@@ -303,6 +303,39 @@ const ctx = globalThis.ctx;
         return ensureHistoryDetailFeature().loadHistoryTask(taskId, options);
     }
 
+    globalThis.openSidebarHistoryTask = async function openSidebarHistoryTask(taskId) {
+        const id = String(taskId || '').trim();
+        if (!id) return;
+        try {
+            const payload = await api(`/api/training/history/${encodeURIComponent(id)}`);
+            if (!payload.ok) {
+                await showHistoryTaskMessageDialog({
+                    title: '读取历史任务失败',
+                    message: payload.error || '读取历史任务失败',
+                    tone: 'error',
+                });
+                return;
+            }
+            showTrainingView('live');
+            closeHistoryDetailDialog();
+            historyViewMode = 'task';
+            viewingHistoryTaskId = id;
+            currentHistoryConfigGroup = null;
+            currentHistoryTimelineSelection = [];
+            currentHistoryTaskForResume = payload.task || null;
+            ensureHistoryDetailFeature().clearHistoryDetailState();
+            ensureHistoryDetailFeature().resetCurveHover();
+            renderHistoryTask(payload);
+            renderTrainingHistoryList();
+        } catch (e) {
+            await showHistoryTaskMessageDialog({
+                title: '读取历史任务失败',
+                message: e.message,
+                tone: 'error',
+            });
+        }
+    }
+
     globalThis.refreshHistoryView = async function refreshHistoryView() {
         if (historyViewMode === 'config_group' && currentHistoryConfigGroup) {
             await loadConfigGroupTimeline(currentHistoryConfigGroup, {
@@ -312,7 +345,7 @@ const ctx = globalThis.ctx;
             return;
         }
         if (!viewingHistoryTaskId) return;
-        await loadHistoryTask(viewingHistoryTaskId);
+        await openSidebarHistoryTask(viewingHistoryTaskId);
     }
 
     globalThis.loadConfigGroupTimeline = async function loadConfigGroupTimeline(group, options = {}) {

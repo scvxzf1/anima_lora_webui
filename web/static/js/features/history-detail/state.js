@@ -26,6 +26,7 @@ export function createHistoryDetailState() {
         detailTab: 'overview',
         currentPayload: null,
         returnState: null,
+        mainTaskReturn: null,
         resumeOptions: createEmptyResumeOptions(),
         resumeWeights: createEmptyResumeWeights(),
         curve: {
@@ -81,6 +82,7 @@ export function resetHistoryDetailViewState(state) {
     state.currentPayload = null;
     state.detailTab = 'overview';
     state.returnState = null;
+    state.mainTaskReturn = null;
     state.curve.hoverStep = null;
 }
 

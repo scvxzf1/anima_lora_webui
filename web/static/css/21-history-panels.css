@@ -1023,6 +1023,7 @@ body.history-detail-window-open {
     color: var(--accent);
 }
 .history-detail-content {
+    align-content: start;
     display: grid;
     gap: 0.62rem;
     min-width: 0;
@@ -1037,6 +1038,7 @@ body.history-detail-window-open {
 }
 .history-detail-overview-dashboard {
     align-items: start;
+    align-content: start;
     display: grid;
     gap: 0.75rem;
     grid-template-columns: minmax(0, 1fr);
@@ -1059,6 +1061,21 @@ body.history-detail-window-open {
 .history-detail-overview-dashboard.config-group > .history-detail-section.metrics,
 .history-detail-overview-dashboard > .history-detail-resume {
     grid-column: 1 / -1;
+}
+.history-detail-overview-dashboard.preprocess-task {
+    grid-auto-rows: auto;
+}
+.history-detail-overview-dashboard.preprocess-task > .history-detail-section {
+    align-self: start;
+}
+.history-detail-overview-dashboard.preprocess-task .history-preprocess-summary-body {
+    grid-template-columns: minmax(0, 0.92fr) minmax(420px, 1.08fr);
+}
+.history-preprocess-stat-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.history-detail-overview-dashboard.preprocess-task .preprocess-paths {
+    margin-top: 0;
 }
 .history-detail-preview {
     display: grid;
@@ -2618,7 +2635,7 @@ body.history-detail-window-open {
 
 .history-resume-panel {
     grid-column: 1 / -1;
-    margin-bottom: 0.75rem;
+    margin-bottom: 0;
 }
 .history-resume-head {
     align-items: flex-start;

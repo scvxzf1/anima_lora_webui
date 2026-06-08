@@ -17,7 +17,7 @@
             }
         })();
     </script>
-    <link rel="stylesheet" href="/static/style.css?v=frontend-chain-20260608-1">
+    <link rel="stylesheet" href="/static/style.css?v=frontend-chain-20260608-3">
 </head>
 <body>
     <header>
@@ -485,27 +485,6 @@
                             <button id="btn-close-history" class="btn btn-small" type="button">回到当前</button>
                         </div>
                     </div>
-                    <div id="history-resume-panel" class="panel history-resume-panel" hidden>
-                        <div class="history-resume-head">
-                            <div>
-                                <h3>从检查点继续训练</h3>
-                                <p>恢复的是训练状态目录：优化器、学习率调度器、随机状态和步数都会一起接上；普通权重文件不等于完整续训点。</p>
-                            </div>
-                            <button id="btn-refresh-resume-options" class="btn btn-small" type="button">刷新检查点</button>
-                        </div>
-                        <div class="history-resume-controls">
-                            <label class="history-resume-field">
-                                <span>可续训状态目录</span>
-                                <select id="resume-checkpoint-select" class="history-resume-select" disabled>
-                                    <option value="">选择历史训练任务后读取</option>
-                                </select>
-                            </label>
-                            <button id="btn-resume-training" class="btn btn-primary" type="button" disabled>从检查点继续训练</button>
-                            <button id="btn-queue-resume-training" class="btn" type="button" disabled>加入队列</button>
-                        </div>
-                        <div id="resume-checkpoint-summary" class="resume-checkpoint-summary"></div>
-                        <div id="resume-training-status" class="resume-status"></div>
-                    </div>
                     <div class="training-panels training-dashboard">
                         <section class="panel training-dashboard-head">
                             <div class="training-dashboard-title">
@@ -581,6 +560,7 @@
                             <div class="live-chart-head">
                                 <h3>Loss / 学习率曲线</h3>
                                 <div class="live-chart-controls" aria-label="曲线显示设置">
+                                    <button id="btn-live-sampling-preview" class="live-chart-sample-btn" type="button">途中采样</button>
                                     <label class="live-chart-toggle">
                                         <input id="live-chart-toggle-lr" type="checkbox" checked>
                                         <span>学习率</span>
@@ -625,6 +605,27 @@
                             <h3 id="history-config-title">任务配置快照</h3>
                             <div id="history-paths" class="history-paths"></div>
                             <pre id="history-config-output"></pre>
+                        </div>
+                        <div id="history-resume-panel" class="panel history-resume-panel" hidden>
+                            <div class="history-resume-head">
+                                <div>
+                                    <h3>从检查点继续训练</h3>
+                                    <p>恢复的是训练状态目录：优化器、学习率调度器、随机状态和步数都会一起接上；普通权重文件不等于完整续训点。</p>
+                                </div>
+                                <button id="btn-refresh-resume-options" class="btn btn-small" type="button">刷新检查点</button>
+                            </div>
+                            <div class="history-resume-controls">
+                                <label class="history-resume-field">
+                                    <span>可续训状态目录</span>
+                                    <select id="resume-checkpoint-select" class="history-resume-select" disabled>
+                                        <option value="">选择历史训练任务后读取</option>
+                                    </select>
+                                </label>
+                                <button id="btn-resume-training" class="btn btn-primary" type="button" disabled>从检查点继续训练</button>
+                                <button id="btn-queue-resume-training" class="btn" type="button" disabled>加入队列</button>
+                            </div>
+                            <div id="resume-checkpoint-summary" class="resume-checkpoint-summary"></div>
+                            <div id="resume-training-status" class="resume-status"></div>
                         </div>
                         <div class="panel log-panel">
                             <h3>
@@ -1282,6 +1283,6 @@
 
     <div id="config-switch-toast" class="config-switch-toast" role="status" aria-live="polite" hidden></div>
 
-    <script type="module" src="/static/app.js?v=module-bootstrap-20260604-11"></script>
+    <script type="module" src="/static/app.js?v=module-bootstrap-20260608-3"></script>
 </body>
 </html>
