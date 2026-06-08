@@ -183,8 +183,6 @@
     .global-settings-layout { grid-template-columns: 1fr; }
     .preview-source-tabs { grid-template-columns: repeat(3, minmax(0, 1fr)); }
     .preview-dialog-body { grid-template-columns: 1fr; }
-    .stage-resolution-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-    .stage-resolution-workspace { grid-template-columns: 1fr; }
     .dataset-preview-dialog-body { grid-template-columns: 1fr; }
     .dataset-preview-info { position: static; }
     .preview-dialog-view img { max-height: 62vh; }
@@ -255,11 +253,6 @@
     }
     .continue-training-source-actions {
         justify-content: flex-start;
-    }
-    .continue-lora-manual-row,
-    .continue-lora-history-toolbar,
-    .continue-lora-weight-item {
-        grid-template-columns: 1fr;
     }
     .config-dataset-current-meta {
         justify-content: flex-start;
@@ -427,9 +420,6 @@
         padding-top: 0;
     }
     .preview-source-tabs { grid-template-columns: 1fr; }
-    .stage-resolution-summary { grid-template-columns: 1fr; }
-    .stage-resolution-field { grid-template-columns: 1fr; }
-    #stage-resolution-chart { height: 240px; }
     .dataset-preview-dialog-actions {
         justify-content: flex-start;
     }
@@ -469,4 +459,3 @@
         gap: 0.12rem;
     }
 }
-

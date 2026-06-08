@@ -9,7 +9,7 @@ import pytest
 import toml
 
 from web.routes import training as training_routes
-from web.services import training_service
+from web.services import config_service, training_service
 from web.services.training_service import TrainingService
 
 
@@ -68,6 +68,137 @@ def _runtime_payload(tmp_path: Path, name: str = "demo") -> dict:
         "sample_config": {},
         "data_dirs": {},
     }
+
+
+def _patch_runtime_config_paths(tmp_path: Path, monkeypatch):
+    configs = tmp_path / "configs"
+    output_root = tmp_path / "output" / "runs"
+    monkeypatch.setattr(config_service, "ROOT", tmp_path)
+    monkeypatch.setattr(config_service, "CONFIGS_DIR", configs)
+    monkeypatch.setattr(config_service, "DATASET_PRESETS_DIR", configs / "datasets")
+    monkeypatch.setattr(config_service, "GUI_METHODS_DIR", configs / "gui-methods")
+    monkeypatch.setattr(config_service, "IMPORTED_CONFIGS_DIR", configs / "imported")
+    monkeypatch.setattr(config_service, "PRESETS_FILE", configs / "presets.toml")
+    monkeypatch.setattr(training_service, "ROOT", tmp_path)
+    monkeypatch.setattr(training_service, "resolve_output_root", lambda: output_root.resolve())
+    monkeypatch.setattr(
+        training_service,
+        "_display_settings_path",
+        lambda path: _display_under_root(Path(path), tmp_path),
+    )
+    return configs, output_root
+
+
+def _display_under_root(path: Path, root: Path) -> str:
+    try:
+        return path.resolve().relative_to(root.resolve()).as_posix()
+    except ValueError:
+        return str(path.resolve())
+
+
+def test_prepare_web_runtime_config_freezes_frontend_editable_parameters(tmp_path, monkeypatch):
+    configs, output_root = _patch_runtime_config_paths(tmp_path, monkeypatch)
+    for rel in ("gui-methods", "imported", "datasets"):
+        (configs / rel).mkdir(parents=True)
+    (configs / "base.toml").write_text(
+        "\n".join([
+            'source_image_dir = "image_dataset/default"',
+            'resized_image_dir = "post_image_dataset/default_resized"',
+            'lora_cache_dir = "post_image_dataset/default_lora"',
+            'pretrained_model_name_or_path = "models/anima.safetensors"',
+            'qwen3 = "models/qwen.safetensors"',
+            'vae = "models/vae.safetensors"',
+        ]),
+        encoding="utf-8",
+    )
+    (configs / "presets.toml").write_text(
+        "[default]\nblocks_to_swap = 4\nblock_swap_transfer_dtype = \"bf16\"\n",
+        encoding="utf-8",
+    )
+    (configs / "gui-methods" / "lora.toml").write_text(
+        "\n".join([
+            'output_name = "base_lora"',
+            "learning_rate = 0.0001",
+            "train_batch_size = 1",
+            'network_args = ["lokr_factor_group_size=8"]',
+        ]),
+        encoding="utf-8",
+    )
+    (configs / "datasets" / "ui-selected.toml").write_text(
+        "\n".join([
+            "[[datasets]]",
+            "resolution = 768",
+            "bucket_reso_steps = 32",
+            "",
+            "[[datasets.subsets]]",
+            'image_dir = "post_image_dataset/selected_resized"',
+            'cache_dir = "post_image_dataset/selected_lora"',
+            "num_repeats = 3",
+            'custom_attributes = { source_dir = "image_dataset/selected" }',
+        ]),
+        encoding="utf-8",
+    )
+    source_config = configs / "imported" / "ui-selected.toml"
+    source_config.write_text(
+        "\n".join([
+            'output_name = "ui_selected"',
+            'dataset_config = "configs/datasets/ui-selected.toml"',
+            "train_batch_size = 3",
+            "gradient_accumulation_steps = 2",
+            "sample_every_n_epochs = 2",
+            'sample_prompts = "configs/sample-prompts/imported/ui-selected.txt"',
+            "use_lokr = true",
+            "lokr_factor = 16",
+            'network_args = ["lokr_factor_group_size=12", "lokr_project_chunk_bytes=1048576"]',
+            "blocks_to_swap = 23",
+            'block_swap_transfer_dtype = "fp8_e4m3"',
+            'memory_probe_jsonl = "auto"',
+            'block_swap_profile_jsonl = "auto"',
+        ]),
+        encoding="utf-8",
+    )
+
+    runtime = training_service._prepare_web_runtime_config(
+        "lora",
+        "default",
+        "gui-methods",
+        source_config_file="configs/imported/ui-selected.toml",
+    )
+
+    runtime_cfg = toml.loads((tmp_path / runtime["runtime_config_file"]).read_text(encoding="utf-8"))
+    dataset_cfg = toml.loads((tmp_path / runtime["dataset_config_file"]).read_text(encoding="utf-8"))
+    assert Path(runtime["runtime_config_file"]).name == "config.runtime.toml"
+    assert Path(runtime["original_config_file"]).name == "config.original.toml"
+    assert runtime["run_dir"].startswith(output_root.relative_to(tmp_path).as_posix())
+
+    assert runtime_cfg["output_name"] == "ui_selected"
+    assert runtime_cfg["train_batch_size"] == 3
+    assert runtime_cfg["gradient_accumulation_steps"] == 2
+    assert runtime_cfg["sample_every_n_epochs"] == 2
+    assert runtime_cfg["sample_prompts"] == "configs/sample-prompts/imported/ui-selected.txt"
+    assert runtime_cfg["use_lokr"] is True
+    assert runtime_cfg["lokr_factor"] == 16
+    assert runtime_cfg["network_args"] == [
+        "lokr_factor_group_size=12",
+        "lokr_project_chunk_bytes=1048576",
+    ]
+    assert runtime_cfg["blocks_to_swap"] == 23
+    assert runtime_cfg["block_swap_transfer_dtype"] == "fp8_e4m3"
+    assert runtime_cfg["memory_probe_jsonl"] == "auto"
+    assert runtime_cfg["block_swap_profile_jsonl"] == "auto"
+    assert runtime_cfg["dataset_config"] == runtime["dataset_config_file"]
+    assert runtime_cfg["output_dir"] == runtime["training_output_dir"]
+    assert runtime_cfg["logging_dir"] == runtime["logs_dir"]
+
+    dataset = dataset_cfg["datasets"][0]
+    subset = dataset["subsets"][0]
+    assert dataset["batch_size"] == 3
+    assert subset["num_repeats"] == 3
+    assert subset["image_dir"].endswith("/dataset_cache/dataset-01/resized")
+    assert subset["cache_dir"].endswith("/dataset_cache/dataset-01/lora")
+    assert subset["custom_attributes"]["source_dir"] == "image_dataset/selected"
+    assert subset["custom_attributes"]["preprocess"]["resolution"] == 768
+    assert subset["custom_attributes"]["preprocess"]["bucket_reso_steps"] == 32
 
 
 def test_enqueue_training_freezes_runtime_config_while_running(tmp_path, monkeypatch):

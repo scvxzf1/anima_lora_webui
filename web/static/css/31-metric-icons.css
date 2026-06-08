@@ -1,0 +1,181 @@
+/* Shared metric glyphs used by live training and history detail cards. */
+#tab-training .metric-icon,
+.history-detail-stat .metric-icon {
+    flex: 0 0 auto;
+    height: 16px;
+    width: 16px;
+    opacity: 0.72;
+    position: relative;
+}
+
+#tab-training .metric-icon::before,
+#tab-training .metric-icon::after,
+.history-detail-stat .metric-icon::before,
+.history-detail-stat .metric-icon::after {
+    content: "";
+    position: absolute;
+    box-sizing: border-box;
+}
+
+#tab-training .metric-icon-curve::before,
+.history-detail-stat .metric-icon-curve::before {
+    inset: 3px 2px 4px;
+    border-left: 2px solid currentColor;
+    border-bottom: 2px solid currentColor;
+    border-radius: 0 0 0 3px;
+}
+
+#tab-training .metric-icon-curve::after,
+.history-detail-stat .metric-icon-curve::after {
+    left: 4px;
+    right: 2px;
+    top: 5px;
+    height: 7px;
+    border-top: 2px solid currentColor;
+    border-right: 2px solid currentColor;
+    transform: skew(-26deg);
+}
+
+#tab-training .metric-icon-bolt::before,
+.history-detail-stat .metric-icon-bolt::before {
+    left: 5px;
+    top: 1px;
+    width: 7px;
+    height: 14px;
+    background: currentColor;
+    clip-path: polygon(58% 0, 15% 53%, 48% 53%, 34% 100%, 88% 39%, 55% 39%);
+}
+
+#tab-training .metric-icon-steps::before,
+.history-detail-stat .metric-icon-steps::before {
+    inset: 2px;
+    border: 2px solid currentColor;
+    border-radius: 3px;
+}
+
+#tab-training .metric-icon-steps::after,
+.history-detail-stat .metric-icon-steps::after {
+    left: 4px;
+    top: 4px;
+    width: 8px;
+    height: 8px;
+    border-left: 2px solid currentColor;
+    border-bottom: 2px solid currentColor;
+}
+
+#tab-training .metric-icon-gauge::before,
+.history-detail-stat .metric-icon-gauge::before {
+    left: 2px;
+    top: 4px;
+    width: 12px;
+    height: 8px;
+    border: 2px solid currentColor;
+    border-bottom: 0;
+    border-radius: 12px 12px 0 0;
+}
+
+#tab-training .metric-icon-gauge::after,
+.history-detail-stat .metric-icon-gauge::after {
+    left: 7px;
+    top: 8px;
+    width: 2px;
+    height: 6px;
+    background: currentColor;
+    border-radius: 2px;
+    transform: rotate(42deg);
+    transform-origin: bottom center;
+}
+
+#tab-training .metric-icon-time::before,
+.history-detail-stat .metric-icon-time::before {
+    inset: 2px;
+    border: 2px solid currentColor;
+    border-radius: 50%;
+}
+
+#tab-training .metric-icon-time::after,
+.history-detail-stat .metric-icon-time::after {
+    left: 7px;
+    top: 4px;
+    width: 5px;
+    height: 6px;
+    border-left: 2px solid currentColor;
+    border-bottom: 2px solid currentColor;
+    border-radius: 0 0 0 2px;
+}
+
+#tab-training .metric-icon-chip::before,
+#tab-training .metric-icon-gpu::before,
+.history-detail-stat .metric-icon-chip::before,
+.history-detail-stat .metric-icon-gpu::before {
+    inset: 3px;
+    border: 2px solid currentColor;
+    border-radius: 3px;
+}
+
+#tab-training .metric-icon-chip::after,
+#tab-training .metric-icon-gpu::after,
+.history-detail-stat .metric-icon-chip::after,
+.history-detail-stat .metric-icon-gpu::after {
+    inset: 0;
+    border-top: 2px dotted currentColor;
+    border-bottom: 2px dotted currentColor;
+}
+
+#tab-training .metric-icon-temp::before,
+.history-detail-stat .metric-icon-temp::before {
+    left: 6px;
+    top: 1px;
+    width: 4px;
+    height: 10px;
+    border: 2px solid currentColor;
+    border-bottom: 0;
+    border-radius: 4px 4px 0 0;
+}
+
+#tab-training .metric-icon-temp::after,
+.history-detail-stat .metric-icon-temp::after {
+    left: 4px;
+    bottom: 1px;
+    width: 8px;
+    height: 8px;
+    border: 2px solid currentColor;
+    border-radius: 50%;
+}
+
+#tab-training .metric-icon-log::before,
+.history-detail-stat .metric-icon-log::before {
+    left: 3px;
+    top: 2px;
+    width: 10px;
+    height: 12px;
+    border: 2px solid currentColor;
+    border-radius: 2px;
+}
+
+#tab-training .metric-icon-log::after,
+.history-detail-stat .metric-icon-log::after {
+    left: 6px;
+    top: 6px;
+    width: 6px;
+    height: 5px;
+    border-top: 2px solid currentColor;
+    border-bottom: 2px solid currentColor;
+}
+
+#tab-training .metric-icon-clock::before,
+.history-detail-stat .metric-icon-clock::before {
+    inset: 2px;
+    border: 2px solid currentColor;
+    border-radius: 50%;
+}
+
+#tab-training .metric-icon-clock::after,
+.history-detail-stat .metric-icon-clock::after {
+    left: 7px;
+    top: 4px;
+    width: 4px;
+    height: 5px;
+    border-left: 2px solid currentColor;
+    border-bottom: 2px solid currentColor;
+}

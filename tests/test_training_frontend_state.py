@@ -1118,6 +1118,28 @@ def test_sample_prompts_save_uses_current_training_config_context() -> None:
     assert "await saveSamplePrompts('');" not in prepare_body
 
 
+def test_config_form_save_reload_and_launch_share_training_config_file() -> None:
+    source = APP_JS.read_text(encoding="utf-8")
+    save_patch = _section(source, "async function saveFormPatchToToml", "function updateTomlActionState")
+    load_config = _section(source, "async function loadConfig", "async function reloadCurrentConfig")
+    load_steps = _section(source, "async function loadStepEstimate", "async function loadDatasetEditor")
+    run_preflight = _section(source, "async function runPreflight", "function isCliOnlySpdSource")
+    start_unchecked = _section(source, "async function startTrainingUnchecked", "async function enqueueTrainingFromConfig")
+    current_file = _section(source, "function currentTrainingConfigFile", "function preflightPlainText")
+
+    assert "body: JSON.stringify({ file, values: preparedValues, content })" in save_patch
+    assert "await loadConfig();" in save_patch
+    assert "currentConfig = data;" in load_config
+    assert "renderConfigForm(currentConfig);" in load_config
+    assert "const tomlFile = currentTrainingSource.file || `configs/${methodsSubdir}/${variant}.toml`;" in load_config
+    assert "const configFile = currentTrainingConfigFile();" in load_steps
+    assert "params.set('config_file', configFile);" in load_steps
+    assert "config_file: currentTrainingConfigFile()," in run_preflight
+    assert "config_file: currentTrainingConfigFile()," in start_unchecked
+    assert "return outputRunRuntimeFile();" in current_file
+    assert "return currentTrainingSource.file || currentTomlFile || val('toml-file-select') || '';" in current_file
+
+
 def test_optional_number_fields_can_be_cleared() -> None:
     source = APP_JS.read_text(encoding="utf-8")
     optional_numbers = _section(source, "const OPTIONAL_EMPTY_NUMBER_FIELDS = new Set([", "const FORM_UI_PERSIST_DEFAULT_FIELDS")
@@ -2219,8 +2241,12 @@ def test_balanced_16g_block_swap_fields_are_visible() -> None:
     numeric_field_section = _section(source, "function isNumericField", "function isIntegerNumericField")
     integer_field_section = _section(source, "function isIntegerNumericField", "function allowsNegativeNumberField")
     assert "'network_dim'," in numeric_field_section
+    assert "'sample_every_n_steps'," in numeric_field_section
+    assert "'blocks_to_swap'," in numeric_field_section
     assert "'network_alpha'," in numeric_field_section
     assert "'network_dim'," in integer_field_section
+    assert "'sample_every_n_steps'," in integer_field_section
+    assert "'blocks_to_swap'," in integer_field_section
     assert "'network_alpha'," not in integer_field_section
     assert "'max-autotune-no-cudagraphs'" in labels_options
     assert "balanced_16g" in guides

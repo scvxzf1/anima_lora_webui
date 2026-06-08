@@ -572,6 +572,51 @@ def test_web_runtime_config_creates_run_directory_and_overrides_paths(tmp_path, 
     assert env["TRITON_CACHE_DIR"].endswith("model_cache/triton")
 
 
+def test_saved_web_form_values_reach_runtime_config_and_train_loader(tmp_path, monkeypatch):
+    _write_runtime_config_tree(tmp_path)
+    _patch_runtime_service_paths(monkeypatch, tmp_path)
+    train_file = "configs/imported/522.toml"
+    train_path = tmp_path / train_file
+    saved_values = {
+        "learning_rate": 0.000321,
+        "sample_every_n_steps": 9,
+        "block_swap_transfer_dtype": "fp8_e4m3",
+        "memory_probe_jsonl": "auto",
+    }
+
+    ok, msg, _content, changed = config_service.patch_raw_file_values(
+        train_file,
+        saved_values,
+        content=train_path.read_text(encoding="utf-8"),
+    )
+    assert ok, msg
+    assert set(saved_values) <= set(changed)
+
+    runtime = training_service._prepare_web_runtime_config(
+        "522",
+        "default",
+        "imported",
+        source_config_file=train_file,
+    )
+    runtime_path = tmp_path / runtime["runtime_config_file"]
+    runtime_cfg = toml.loads(runtime_path.read_text(encoding="utf-8"))
+    for key, value in saved_values.items():
+        assert runtime_cfg[key] == value
+    assert runtime_cfg["output_dir"].endswith("/training_output")
+
+    import train
+    from library.config.io import read_config_from_file
+
+    parser = train.setup_parser()
+    argv = ["--config_file", str(runtime_path), "--no-config-snapshot"]
+    args = read_config_from_file(parser.parse_args(argv), parser, argv=argv)
+    assert args.learning_rate == saved_values["learning_rate"]
+    assert args.sample_every_n_steps == saved_values["sample_every_n_steps"]
+    assert args.block_swap_transfer_dtype == saved_values["block_swap_transfer_dtype"]
+    assert args.memory_probe_jsonl == saved_values["memory_probe_jsonl"]
+    assert args.output_dir == runtime_cfg["output_dir"]
+
+
 def test_training_sample_config_reports_effective_sampler() -> None:
     sample = training_service._sample_config_from_cfg(
         {
@@ -1970,6 +2015,67 @@ def test_handle_start_uses_runtime_config_for_direct_training(tmp_path, monkeypa
     assert args[:4] == ("522", "default", ["--foo"], "imported")
     assert kwargs["config_file"] == "output/runs/522-20260523-114514/config.runtime.toml"
     assert kwargs["use_runtime_dir"] is False
+
+
+def test_saved_form_values_are_frozen_into_runtime_config(tmp_path, monkeypatch):
+    _write_runtime_config_tree(tmp_path)
+    _patch_runtime_service_paths(monkeypatch, tmp_path)
+
+    prompts = config_service.save_sample_prompts_file(
+        "masterpiece, character test\n",
+        train_config_file="configs/imported/522.toml",
+    )
+    ok, msg, content, changed = config_service.patch_raw_file_values(
+        "configs/imported/522.toml",
+        {
+            "network_dim": 32,
+            "sample_every_n_steps": 50,
+            "blocks_to_swap": 12,
+            "sample_prompts": prompts["file"],
+        },
+    )
+
+    assert ok is True, msg
+    assert set(changed) == {
+        "blocks_to_swap",
+        "network_dim",
+        "sample_every_n_steps",
+        "sample_prompts",
+    }
+    saved_cfg = toml.loads(content)
+    assert saved_cfg["network_dim"] == 32
+    assert saved_cfg["sample_every_n_steps"] == 50
+    assert saved_cfg["blocks_to_swap"] == 12
+    assert saved_cfg["sample_prompts"] == "configs/sample-prompts/imported/522.txt"
+
+    reloaded_cfg = config_service.load_merged_config("522", "default", "imported")
+    assert reloaded_cfg["network_dim"] == 32
+    assert reloaded_cfg["sample_every_n_steps"] == 50
+    assert reloaded_cfg["blocks_to_swap"] == 12
+    assert reloaded_cfg["sample_prompts"] == "configs/sample-prompts/imported/522.txt"
+
+    runtime = training_service._prepare_web_runtime_config(
+        "522",
+        "default",
+        "imported",
+        source_config_file="configs/imported/522.toml",
+    )
+    runtime_cfg = toml.load(tmp_path / runtime["runtime_config_file"])
+    dataset_cfg = toml.load(tmp_path / runtime["dataset_config_file"])
+
+    assert runtime_cfg["network_dim"] == 32
+    assert runtime_cfg["sample_every_n_steps"] == 50
+    assert runtime_cfg["blocks_to_swap"] == 12
+    assert runtime_cfg["sample_prompts"] == "configs/sample-prompts/imported/522.txt"
+    assert runtime_cfg["dataset_config"].endswith("dataset.runtime.toml")
+    assert runtime_cfg["source_image_dir"] == "image_dataset/a"
+    assert runtime_cfg["resized_image_dir"].endswith("/dataset_cache/dataset-01/resized")
+    assert runtime_cfg["lora_cache_dir"].endswith("/dataset_cache/dataset-01/lora")
+
+    first_subset = dataset_cfg["datasets"][0]["subsets"][0]
+    assert first_subset["custom_attributes"]["source_dir"] == "image_dataset/a"
+    assert first_subset["image_dir"].endswith("/dataset_cache/dataset-01/resized")
+    assert first_subset["cache_dir"].endswith("/dataset_cache/dataset-01/lora")
 
 
 def test_handle_start_requires_explicit_confirmation_for_runtime_config(monkeypatch):

@@ -1,0 +1,104 @@
+/* Continue LoRA/LoKr weight picker dialog. */
+.continue-lora-dialog {
+    width: min(1120px, calc(100vw - 2rem));
+}
+.continue-lora-dialog-body {
+    display: grid;
+    gap: 0.75rem;
+    max-height: min(720px, calc(100vh - 9rem));
+    overflow: auto;
+    padding: 0.75rem;
+}
+.continue-lora-manual,
+.continue-lora-history {
+    background: var(--bg-input);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    display: grid;
+    gap: 0.55rem;
+    min-width: 0;
+    padding: 0.7rem;
+}
+.continue-lora-manual label,
+.continue-lora-history-toolbar label {
+    color: var(--text-dim);
+    display: grid;
+    gap: 0.3rem;
+    font-size: 0.72rem;
+}
+.continue-lora-manual-row {
+    display: grid;
+    gap: 0.45rem;
+    grid-template-columns: minmax(220px, 1fr) auto;
+}
+.continue-lora-status {
+    color: var(--text-dim);
+    font-size: 0.72rem;
+    line-height: 1.4;
+    margin: 0;
+    min-height: 1rem;
+    overflow-wrap: anywhere;
+}
+.continue-lora-status.ok {
+    color: var(--success);
+}
+.continue-lora-status.warning,
+.continue-lora-status.pending {
+    color: var(--warning);
+}
+.continue-lora-status.error {
+    color: var(--danger-subtle);
+}
+.continue-lora-history-toolbar {
+    align-items: end;
+    display: grid;
+    gap: 0.5rem;
+    grid-template-columns: minmax(240px, 1fr) auto;
+}
+.continue-lora-history-toolbar select {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    color: var(--text);
+    font-size: 0.76rem;
+    padding: 0.35rem 0.5rem;
+}
+.continue-lora-weight-list {
+    display: grid;
+    gap: 0.42rem;
+    min-height: 2rem;
+}
+.continue-lora-weight-item {
+    align-items: center;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    display: grid;
+    gap: 0.55rem;
+    grid-template-columns: minmax(0, 1fr) auto;
+    padding: 0.5rem 0.55rem;
+}
+.continue-lora-weight-item:hover {
+    border-color: var(--accent);
+}
+.continue-lora-weight-item strong {
+    color: var(--text);
+    display: block;
+    font-size: 0.75rem;
+    overflow-wrap: anywhere;
+}
+.continue-lora-weight-item code {
+    color: var(--text-dim);
+    display: block;
+    font-size: 0.66rem;
+    margin-top: 0.18rem;
+    overflow-wrap: anywhere;
+}
+
+@media (max-width: 720px) {
+    .continue-lora-manual-row,
+    .continue-lora-history-toolbar,
+    .continue-lora-weight-item {
+        grid-template-columns: 1fr;
+    }
+}
