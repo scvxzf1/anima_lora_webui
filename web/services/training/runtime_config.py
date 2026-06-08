@@ -29,6 +29,7 @@ if TYPE_CHECKING:
         _normalize_path_pattern,
         _normalize_trigger_clone,
         apply_auto_data_dirs,
+        apply_global_model_path_defaults,
         load_merged_config,
         training_sample_sampler_status,
     )
@@ -232,11 +233,13 @@ def _prepare_web_runtime_config(
     ):
         path.mkdir(parents=True, exist_ok=True)
 
-    cfg = load_merged_config(variant, preset, methods_subdir)
+    fallback_cfg = load_merged_config(variant, preset, methods_subdir)
+    cfg = dict(fallback_cfg)
     if source_path is not None:
         source_cfg = _load_config_file_config(_display_settings_path(source_path))
         if source_cfg:
             cfg.update(source_cfg)
+    cfg = apply_global_model_path_defaults(cfg, fallback=fallback_cfg)
     source_rows = _dataset_rows_for_estimate(cfg)
     if not source_rows:
         raise ValueError("请先配置至少一个数据集路径")

@@ -17,7 +17,7 @@
             }
         })();
     </script>
-    <link rel="stylesheet" href="/static/style.css?v=frontend-chain-20260608-3">
+    <link rel="stylesheet" href="/static/style.css?v=frontend-chain-20260608-10">
 </head>
 <body>
     <header>
@@ -337,6 +337,8 @@
                                 <details class="training-queue-more-menu">
                                     <summary class="btn btn-small">更多</summary>
                                     <div class="training-queue-more-menu-popover">
+                                        <button id="btn-abort-queue-after-current" class="btn btn-small btn-subtle-danger" type="button">中止后续队列</button>
+                                        <button id="btn-force-abort-queue" class="btn btn-small btn-subtle-danger" type="button">强制中止队列</button>
                                         <button id="btn-cancel-all-queue" class="btn btn-small btn-subtle-danger" type="button">取消全部队列</button>
                                         <button id="btn-cancel-waiting-queue" class="btn btn-small btn-subtle-danger" type="button">取消全部等待</button>
                                         <button id="btn-clear-completed-queue" class="btn btn-small" type="button">清理已完成</button>
@@ -345,6 +347,8 @@
                                 </details>
                             </div>
                         </div>
+                        <div id="training-queue-manager-overview" class="training-queue-manager-overview" aria-label="队列当前概览"></div>
+                        <div id="training-queue-feedback" class="training-queue-feedback" role="status" aria-live="polite" hidden></div>
                         <div id="training-queue-stats" class="training-queue-stats" aria-label="队列统计"></div>
                         <div class="training-queue-manager-tools">
                             <div id="training-queue-filters" class="training-queue-filters" role="group" aria-label="队列筛选">
@@ -486,25 +490,33 @@
                         </div>
                     </div>
                     <div class="training-panels training-dashboard">
-                        <section class="panel training-dashboard-head">
-                            <div class="training-dashboard-title">
-                                <span id="training-run-state" class="training-run-state">空闲</span>
-                                <div>
-                                    <h3 id="training-run-title">当前监控</h3>
-                                    <p id="training-run-meta">等待训练任务启动。</p>
+                        <section class="panel training-dashboard-head is-idle" aria-labelledby="training-run-title">
+                            <div class="training-dashboard-hero">
+                                <div class="training-dashboard-title">
+                                    <span id="training-run-state" class="training-run-state">空闲</span>
+                                    <div class="training-dashboard-copy">
+                                        <h3 id="training-run-title">当前监控</h3>
+                                        <p id="training-run-meta">等待训练任务启动。</p>
+                                    </div>
+                                </div>
+                                <div class="training-dashboard-progress is-idle" aria-label="训练进度">
+                                    <div class="progress-copy">
+                                        <span class="progress-label">进度</span>
+                                        <span id="progress-text">暂无正在运行的任务目录...</span>
+                                    </div>
+                                    <div class="progress-bar-container">
+                                        <div id="progress-bar" class="progress-bar"></div>
+                                    </div>
                                 </div>
                             </div>
-                            <div class="training-dashboard-progress is-idle">
-                                <div class="progress-bar-container">
-                                    <div id="progress-bar" class="progress-bar"></div>
-                                </div>
-                                <div id="progress-text">暂无正在运行的任务目录...</div>
-                            </div>
-                            <div id="training-run-summary" class="training-run-summary">运行目录和配置快照会在任务启动后显示。</div>
+                            <div id="training-run-summary" class="training-run-summary is-empty">运行目录和配置快照会在任务启动后显示。</div>
                         </section>
                         <div class="panel metrics-panel">
-                            <h3>实时指标</h3>
-                            <div class="metrics-grid">
+                            <div class="metrics-panel-head">
+                                <h3>实时指标</h3>
+                                <span>核心训练读数</span>
+                            </div>
+                            <div class="metrics-grid metrics-grid-primary">
                                 <div class="metric-item metric-item-primary">
                                     <span class="metric-label"><span class="metric-icon metric-icon-curve" aria-hidden="true"></span>Loss</span>
                                     <span id="metric-loss" class="metric-value metric-empty">N/A</span>
@@ -521,6 +533,16 @@
                                     <span class="metric-label"><span class="metric-icon metric-icon-gauge" aria-hidden="true"></span>速度</span>
                                     <span id="metric-rate" class="metric-value metric-empty">N/A</span>
                                 </div>
+                                <div class="metric-item metric-item-eta">
+                                    <span class="metric-label"><span class="metric-icon metric-icon-clock" aria-hidden="true"></span>预计完成</span>
+                                    <span id="metric-eta" class="metric-value metric-empty">待计算</span>
+                                </div>
+                            </div>
+                            <div class="metrics-resource-band">
+                                <div class="metrics-resource-title">
+                                    <span>资源与活动</span>
+                                </div>
+                                <div class="metrics-grid metrics-grid-secondary">
                                 <div class="metric-item">
                                     <span class="metric-label"><span class="metric-icon metric-icon-chip" aria-hidden="true"></span>最后 VRAM</span>
                                     <span id="metric-vram" class="metric-value metric-empty">N/A</span>
@@ -549,16 +571,16 @@
                                     <span class="metric-label"><span class="metric-icon metric-icon-log" aria-hidden="true"></span>日志活动</span>
                                     <span id="metric-log-age" class="metric-value metric-empty">N/A</span>
                                 </div>
-                                <div class="metric-item metric-item-eta">
-                                    <span class="metric-label"><span class="metric-icon metric-icon-clock" aria-hidden="true"></span>预计完成</span>
-                                    <span id="metric-eta" class="metric-value metric-empty">待计算</span>
                                 </div>
                             </div>
                             <div id="training-health" class="training-health">等待训练状态...</div>
                         </div>
                         <div class="panel chart-panel live-chart-panel">
                             <div class="live-chart-head">
-                                <h3>Loss / 学习率曲线</h3>
+                                <div>
+                                    <h3>Loss / 学习率曲线</h3>
+                                    <p class="live-chart-subtitle">训练收到指标后自动更新</p>
+                                </div>
                                 <div class="live-chart-controls" aria-label="曲线显示设置">
                                     <button id="btn-live-sampling-preview" class="live-chart-sample-btn" type="button">途中采样</button>
                                     <label class="live-chart-toggle">
@@ -1283,6 +1305,6 @@
 
     <div id="config-switch-toast" class="config-switch-toast" role="status" aria-live="polite" hidden></div>
 
-    <script type="module" src="/static/app.js?v=module-bootstrap-20260608-3"></script>
+    <script type="module" src="/static/app.js?v=module-bootstrap-20260608-10"></script>
 </body>
 </html>

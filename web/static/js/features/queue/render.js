@@ -1,4 +1,4 @@
-import { queueManagerSections, queueSummaryCounts } from './state.js?v=module-bootstrap-20260608-3';
+import { queueManagerSections, queueSummaryCounts } from './state.js?v=module-bootstrap-20260608-10';
 
 export function createQueueRenderer({ state, deps, actions }) {
     function renderTrainingQueue() {
@@ -12,14 +12,19 @@ export function createQueueRenderer({ state, deps, actions }) {
         const summary = document.getElementById('training-queue-summary');
         const pauseBtn = document.getElementById('btn-toggle-queue-pause');
         const managerPauseBtn = document.getElementById('btn-manager-toggle-queue-pause');
+        const refreshBtn = document.getElementById('btn-refresh-queue');
+        const managerRefreshBtn = document.getElementById('btn-manager-refresh-queue');
         const badge = document.getElementById('training-queue-tab-badge');
         const cancelAllBtn = document.getElementById('btn-cancel-all-queue');
+        const abortAfterCurrentBtn = document.getElementById('btn-abort-queue-after-current');
+        const forceAbortBtn = document.getElementById('btn-force-abort-queue');
         const cancelWaitingBtn = document.getElementById('btn-cancel-waiting-queue');
         const clearCompletedBtn = document.getElementById('btn-clear-completed-queue');
         const clearCanceledBtn = document.getElementById('btn-clear-canceled-queue');
         if (!list || !summary) return;
         list.innerHTML = '';
         const counts = queueSummaryCounts(state);
+        const activeWorkCount = counts.queued + counts.running + (queueBackendRunning() && !counts.running ? 1 : 0);
         const running = state.queue.items.find((item) => item.state === 'running');
         const nextQueued = state.queue.items.find((item) => item.state === 'queued');
         summary.className = [
@@ -47,11 +52,26 @@ export function createQueueRenderer({ state, deps, actions }) {
             if (!btn) continue;
             btn.textContent = state.queue.paused && counts.queued ? '继续队列' : (state.queue.paused ? '继续' : '暂停');
             btn.disabled = state.queue.loading;
+            updateQueueStaticActionButton(btn, 'settings-paused', btn.textContent, '处理中');
         }
+        updateQueueStaticActionButton(refreshBtn, 'refresh', '刷新', '刷新中');
+        updateQueueStaticActionButton(managerRefreshBtn, 'refresh', '刷新', '刷新中');
         if (cancelAllBtn) cancelAllBtn.disabled = state.queue.loading || (counts.queued + counts.running) <= 0;
+        if (abortAfterCurrentBtn) abortAfterCurrentBtn.disabled = state.queue.loading || counts.queued <= 0;
+        if (forceAbortBtn) forceAbortBtn.disabled = state.queue.loading || activeWorkCount <= 0;
         if (cancelWaitingBtn) cancelWaitingBtn.disabled = state.queue.loading || counts.queued <= 0;
         if (clearCompletedBtn) clearCompletedBtn.disabled = state.queue.loading || counts.done <= 0;
         if (clearCanceledBtn) clearCanceledBtn.disabled = state.queue.loading || counts.canceled <= 0;
+        updateQueueActionHints({
+            cancelAllBtn,
+            abortAfterCurrentBtn,
+            forceAbortBtn,
+            cancelWaitingBtn,
+            clearCompletedBtn,
+            clearCanceledBtn,
+            counts,
+            activeWorkCount,
+        });
         if (badge) {
             const active = counts.queued + counts.running;
             badge.hidden = active <= 0;
@@ -72,6 +92,8 @@ export function createQueueRenderer({ state, deps, actions }) {
 
     function renderTrainingQueueManager() {
         const status = document.getElementById('training-queue-manager-status');
+        const overview = document.getElementById('training-queue-manager-overview');
+        const feedback = document.getElementById('training-queue-feedback');
         const stats = document.getElementById('training-queue-stats');
         const list = document.getElementById('training-queue-manager-list');
         const policy = document.getElementById('training-queue-failure-policy');
@@ -82,8 +104,16 @@ export function createQueueRenderer({ state, deps, actions }) {
             : state.queue.error
                 ? state.queue.error
                 : queueManagerStatusText(counts);
+        renderQueueManagerOverview(overview, counts);
+        renderQueueFeedback(feedback);
         if (policy && policy.value !== state.queue.failurePolicy) {
             policy.value = state.queue.failurePolicy || 'pause';
+        }
+        if (policy) {
+            const policyBusy = queueFeedbackBusyAction('settings-policy');
+            policy.disabled = policyBusy;
+            policy.setAttribute('aria-busy', policyBusy ? 'true' : 'false');
+            policy.title = policyBusy ? '正在保存失败处理策略' : '设置队列失败后的处理方式';
         }
         stats.innerHTML = '';
         [
@@ -96,6 +126,8 @@ export function createQueueRenderer({ state, deps, actions }) {
         ].forEach(([label, value, itemState]) => {
             const item = document.createElement('div');
             item.className = ['training-queue-stat', itemState, itemState === 'error' && value > 0 ? 'active-alert' : ''].filter(Boolean).join(' ');
+            item.title = `${label}: ${value}`;
+            item.setAttribute('aria-label', `${label}: ${value}`);
             const valueEl = document.createElement('strong');
             valueEl.textContent = String(value);
             const labelEl = document.createElement('span');
@@ -104,7 +136,7 @@ export function createQueueRenderer({ state, deps, actions }) {
             stats.appendChild(item);
         });
         document.querySelectorAll('.training-queue-filter').forEach((btn) => {
-            btn.classList.toggle('active', btn.dataset.queueFilter === state.filter);
+            updateQueueFilterButton(btn, counts);
         });
         list.innerHTML = '';
         const sections = queueManagerSections(state);
@@ -112,7 +144,7 @@ export function createQueueRenderer({ state, deps, actions }) {
         if (!visibleCount) {
             const empty = document.createElement('div');
             empty.className = 'training-queue-manager-empty';
-            empty.textContent = state.filter === 'all' ? '队列为空。' : '当前视图没有任务。';
+            empty.textContent = queueEmptyStateText(state.filter, counts);
             list.appendChild(empty);
             return;
         }
@@ -122,12 +154,150 @@ export function createQueueRenderer({ state, deps, actions }) {
         }
     }
 
+    function updateQueueActionHints({ cancelAllBtn, abortAfterCurrentBtn, forceAbortBtn, cancelWaitingBtn, clearCompletedBtn, clearCanceledBtn, counts, activeWorkCount }) {
+        const pairs = [
+            [cancelAllBtn, counts.queued + counts.running, 'cancel-all', '取消所有等待和运行中的队列任务', '没有可取消的运行或等待任务'],
+            [abortAfterCurrentBtn, counts.queued, 'abort-after-current', '当前任务完成后不再继续，取消所有等待任务', '没有等待中的后续任务'],
+            [forceAbortBtn, activeWorkCount, 'force-abort', '立即停止运行中任务并取消所有等待任务', '没有可中止的运行或等待任务'],
+            [cancelWaitingBtn, counts.queued, 'cancel-waiting', '取消所有尚未启动的等待任务', '没有等待中的任务'],
+            [clearCompletedBtn, counts.done, 'clear-done', '清理已完成队列记录，不删除训练文件', '没有已完成记录可清理'],
+            [clearCanceledBtn, counts.canceled, 'clear-canceled', '清理已取消队列记录，不删除训练文件', '没有已取消记录可清理'],
+        ];
+        for (const [btn, count, action, enabledTitle, disabledTitle] of pairs) {
+            if (!btn) continue;
+            const busy = queueFeedbackBusyAction(action);
+            if (busy) btn.disabled = true;
+            btn.classList.toggle('queue-action-busy', busy);
+            btn.setAttribute('aria-busy', busy ? 'true' : 'false');
+            btn.title = busy ? '请求已发送，正在等待队列返回' : state.queue.loading ? '正在读取队列状态' : (count > 0 ? enabledTitle : disabledTitle);
+            btn.setAttribute('aria-disabled', btn.disabled ? 'true' : 'false');
+        }
+    }
+
+    function updateQueueStaticActionButton(btn, action, defaultLabel, busyLabel) {
+        if (!btn) return;
+        const busy = queueFeedbackBusyAction(action);
+        btn.textContent = busy ? busyLabel : defaultLabel;
+        if (busy) btn.disabled = true;
+        btn.classList.toggle('queue-action-busy', busy);
+        btn.setAttribute('aria-busy', busy ? 'true' : 'false');
+        btn.setAttribute('aria-disabled', btn.disabled ? 'true' : 'false');
+    }
+
+    function renderQueueFeedback(feedback) {
+        if (!feedback) return;
+        const current = state.feedback || {};
+        const message = current.message || '';
+        feedback.hidden = !message;
+        feedback.textContent = message;
+        feedback.dataset.feedbackTone = current.tone || '';
+        feedback.setAttribute('aria-busy', current.busyAction ? 'true' : 'false');
+    }
+
+    function queueFeedbackBusyAction(action) {
+        return Boolean(action && state.feedback?.busyAction === action);
+    }
+
+    function queueFeedbackItemState(item) {
+        if (!item?.id) return '';
+        if (state.feedback?.busyItemId === item.id) return 'pending';
+        if (state.feedback?.flashItemId === item.id) return state.feedback?.tone === 'error' ? 'failed' : 'updated';
+        return '';
+    }
+
+    function queueBackendRunning() {
+        return state.queue.status === 'running' || deps.getTrainingRuntime()?.state === 'running';
+    }
+
+    function updateQueueFilterButton(btn, counts) {
+        const key = btn.dataset.queueFilter || 'actionable';
+        const active = key === state.filter;
+        const count = queueFilterCount(key, counts);
+        btn.classList.toggle('active', active);
+        btn.setAttribute('aria-pressed', active ? 'true' : 'false');
+        btn.classList.toggle('queue-filter-feedback', state.feedback?.busyAction === `filter-${key}`);
+        btn.setAttribute('aria-busy', state.feedback?.busyAction === `filter-${key}` ? 'true' : 'false');
+        btn.title = `${queueFilterLabel(key)}：${count} 项`;
+        btn.innerHTML = '';
+        const label = document.createElement('span');
+        label.textContent = queueFilterLabel(key);
+        const badge = document.createElement('b');
+        badge.textContent = String(count);
+        btn.append(label, badge);
+    }
+
+    function queueFilterCount(value, counts) {
+        if (value === 'all') return counts.total;
+        if (value === 'actionable') return counts.running + counts.queued + counts.error;
+        return Number(counts[value] || 0);
+    }
+
+    function queueEmptyStateText(filter, counts) {
+        if (!counts.total) return '队列为空。可以回到配置页，用「加入队列」把训练任务排进来。';
+        if (filter === 'actionable') return '当前没有待处理任务。完成或取消记录可以切到「全部」「完成」「已取消」查看。';
+        return `「${queueFilterLabel(filter)}」视图暂无任务。可以切换筛选或刷新队列状态。`;
+    }
+
+    function renderQueueManagerOverview(overview, counts) {
+        if (!overview) return;
+        overview.innerHTML = '';
+        const running = state.queue.items.find((item) => item.state === 'running');
+        const nextQueued = state.queue.items.find((item) => item.state === 'queued');
+        const policy = queueFailurePolicyLabel(state.queue.failurePolicy);
+        const activeText = running
+            ? `正在运行：${queueItemTitle(running)}`
+            : nextQueued
+                ? `下一项：${queueItemTitle(nextQueued)}`
+                : counts.total
+                    ? '当前没有可执行任务'
+                    : '队列为空';
+        const filterText = `视图：${queueFilterLabel(state.filter)} · ${counts.total} 项`;
+        const riskText = counts.error
+            ? `${counts.error} 个异常 · 失败后${policy}`
+            : `无异常 · 失败后${policy}`;
+        [
+            [state.queue.paused ? '队列暂停' : running ? '自动执行中' : '调度就绪', activeText, running ? 'running' : state.queue.paused ? 'paused' : 'ready'],
+            ['筛选范围', filterText, 'filter'],
+            ['异常处理', riskText, counts.error ? 'error' : 'policy'],
+        ].forEach(([label, value, tone]) => {
+            const item = document.createElement('div');
+            item.className = ['training-queue-overview-item', tone].join(' ');
+            item.title = `${label}: ${value}`;
+            const labelEl = document.createElement('span');
+            labelEl.textContent = label;
+            const valueEl = document.createElement('strong');
+            valueEl.textContent = value;
+            valueEl.title = value;
+            item.append(labelEl, valueEl);
+            overview.appendChild(item);
+        });
+    }
+
     function queueManagerStatusText(counts) {
         const policy = queueFailurePolicyLabel(state.queue.failurePolicy);
         if (state.queue.paused) return `队列已暂停 · 等待 ${counts.queued} 个 · 异常 ${counts.error} 个 · 失败后${policy}`;
         if (counts.running) return `队列运行中 · 等待 ${counts.queued} 个 · 异常 ${counts.error} 个 · 失败后${policy}`;
         if (counts.queued) return `空闲时会自动启动 · 等待 ${counts.queued} 个 · 异常 ${counts.error} 个 · 失败后${policy}`;
         return counts.total ? `没有等待任务 · 异常 ${counts.error} 个 · 失败后${policy}` : `队列为空 · 失败后${policy}`;
+    }
+
+    function queueFilterLabel(value) {
+        return {
+            actionable: '待处理',
+            all: '全部',
+            queued: '等待',
+            running: '运行',
+            error: '异常',
+            done: '完成',
+            canceled: '已取消',
+        }[value] || '当前';
+    }
+
+    function queueDetailsSummaryText(item) {
+        if (item?.state === 'error') return '查看异常上下文和任务路径';
+        if (item?.state === 'running') return '查看运行配置和关联信息';
+        if (item?.state === 'queued') return '查看排队配置和创建时间';
+        return '查看任务记录和路径';
     }
 
     function queueFailurePolicyLabel(value) {
@@ -164,8 +334,10 @@ export function createQueueRenderer({ state, deps, actions }) {
 
     function createTrainingQueueItem(item) {
         const card = document.createElement('article');
-        card.className = ['training-queue-item', item.state || 'queued'].join(' ');
+        const feedbackState = queueFeedbackItemState(item);
+        card.className = ['training-queue-item', item.state || 'queued', feedbackState ? `queue-feedback-${feedbackState}` : ''].filter(Boolean).join(' ');
         card.dataset.queueItemId = item.id || '';
+        if (feedbackState) card.setAttribute('aria-busy', feedbackState === 'pending' ? 'true' : 'false');
         applyQueueProgressStyle(card, item);
         const itemState = document.createElement('span');
         itemState.className = ['training-queue-state', item.state || 'queued'].join(' ');
@@ -175,12 +347,14 @@ export function createQueueRenderer({ state, deps, actions }) {
         const title = document.createElement('strong');
         title.textContent = queueItemTitle(item);
         const meta = createQueueMetaTags(item, { compact: true });
+        const facts = createQueueFactRow(item, { compact: true });
         const message = document.createElement('em');
         message.textContent = [
             item.message || '',
             item.created_at_text ? `入队: ${item.created_at_text}` : '',
         ].filter(Boolean).join(' · ');
         main.append(title, meta);
+        if (facts) main.appendChild(facts);
         const progress = createQueueRunningProgress(item);
         if (progress) main.appendChild(progress);
         main.appendChild(message);
@@ -190,8 +364,10 @@ export function createQueueRenderer({ state, deps, actions }) {
 
     function createTrainingQueueManagerItem(item) {
         const card = document.createElement('article');
-        card.className = ['training-queue-manager-item', item.state || 'queued'].join(' ');
+        const feedbackState = queueFeedbackItemState(item);
+        card.className = ['training-queue-manager-item', item.state || 'queued', feedbackState ? `queue-feedback-${feedbackState}` : ''].filter(Boolean).join(' ');
         card.dataset.queueItemId = item.id || '';
+        if (feedbackState) card.setAttribute('aria-busy', feedbackState === 'pending' ? 'true' : 'false');
         applyQueueProgressStyle(card, item);
         const head = document.createElement('div');
         head.className = 'training-queue-manager-item-head';
@@ -203,27 +379,29 @@ export function createQueueRenderer({ state, deps, actions }) {
         const title = document.createElement('strong');
         title.textContent = queueItemTitle(item);
         const meta = createQueueMetaTags(item);
+        const facts = createQueueFactRow(item);
         titleWrap.append(title, meta);
+        if (facts) titleWrap.appendChild(facts);
         head.append(itemState, titleWrap);
 
         const actionsEl = document.createElement('div');
         actionsEl.className = 'training-queue-manager-item-actions';
         if (item.state === 'queued') {
             actionsEl.append(
-                createQueueIconActionButton('置顶', '⇈', () => actions.moveQueueItem(item.id, 'top')),
-                createQueueIconActionButton('上移', '↑', () => actions.moveQueueItem(item.id, 'up')),
-                createQueueIconActionButton('下移', '↓', () => actions.moveQueueItem(item.id, 'down')),
-                createQueueIconActionButton('置底', '⇊', () => actions.moveQueueItem(item.id, 'bottom')),
+                createQueueIconActionButton('置顶', '⇈', () => actions.moveQueueItem(item.id, 'top'), '', { action: `move-${item.id}-top`, itemId: item.id }),
+                createQueueIconActionButton('上移', '↑', () => actions.moveQueueItem(item.id, 'up'), '', { action: `move-${item.id}-up`, itemId: item.id }),
+                createQueueIconActionButton('下移', '↓', () => actions.moveQueueItem(item.id, 'down'), '', { action: `move-${item.id}-down`, itemId: item.id }),
+                createQueueIconActionButton('置底', '⇊', () => actions.moveQueueItem(item.id, 'bottom'), '', { action: `move-${item.id}-bottom`, itemId: item.id }),
             );
             actionsEl.appendChild(createQueueItemMoreMenu([
-                createQueueActionButton('取消等待', () => actions.cancelQueueItem(item.id), 'danger'),
+                createQueueActionButton('取消等待', () => actions.cancelQueueItem(item.id), 'danger', { action: `cancel-${item.id}`, itemId: item.id, busyLabel: '取消中' }),
             ]));
         } else if (item.state === 'running') {
-            actionsEl.append(createQueueActionButton('停止', () => actions.cancelQueueItem(item.id), 'danger queue-stop-action'));
+            actionsEl.append(createQueueActionButton('停止', () => actions.cancelQueueItem(item.id), 'danger queue-stop-action', { action: `cancel-${item.id}`, itemId: item.id, busyLabel: '停止中' }));
         } else {
             actionsEl.append(
-                createQueueActionButton('重新入队', () => actions.retryQueueItem(item.id)),
-                createQueueActionButton('移除列表', () => actions.removeQueueItemFromList(item.id), 'danger'),
+                createQueueActionButton('重新入队', () => actions.retryQueueItem(item.id), '', { action: `retry-${item.id}`, itemId: item.id, busyLabel: '入队中' }),
+                createQueueActionButton('移除列表', () => actions.removeQueueItemFromList(item.id), 'danger', { action: `remove-${item.id}`, itemId: item.id, busyLabel: '移除中' }),
             );
         }
         head.appendChild(actionsEl);
@@ -233,7 +411,7 @@ export function createQueueRenderer({ state, deps, actions }) {
         const details = document.createElement('details');
         details.className = 'training-queue-details';
         const summary = document.createElement('summary');
-        summary.textContent = item.message || '查看任务详情';
+        summary.textContent = item.message || queueDetailsSummaryText(item);
         details.appendChild(summary);
         const grid = document.createElement('div');
         grid.className = 'training-queue-detail-grid';
@@ -275,6 +453,34 @@ export function createQueueRenderer({ state, deps, actions }) {
             meta.appendChild(tag);
         }
         return meta;
+    }
+
+    function createQueueFactRow(item, options = {}) {
+        const facts = [
+            ['ID', queueShortId(item?.id)],
+            ['创建', item?.created_at_text],
+            ['开始', item?.started_at_text],
+            ['结束', item?.finished_at_text],
+            ['历史', queueHistoryLabel(item)],
+            ['来源', deps.runLabelFromPath(item?.source_config_file || '')],
+        ].filter(([, value]) => value);
+        const visibleFacts = options.compact
+            ? facts.filter(([label]) => !['ID', '历史', '来源'].includes(label)).slice(0, 2)
+            : facts.slice(0, 5);
+        if (!visibleFacts.length) return null;
+        const row = document.createElement('div');
+        row.className = ['training-queue-facts', options.compact ? 'compact' : ''].filter(Boolean).join(' ');
+        for (const [label, value] of visibleFacts) {
+            const fact = document.createElement('span');
+            fact.className = 'training-queue-fact';
+            const key = document.createElement('b');
+            key.textContent = label;
+            const val = document.createElement('span');
+            val.textContent = String(value);
+            fact.append(key, val);
+            row.appendChild(fact);
+        }
+        return row;
     }
 
     function queueRunningProgress() {
@@ -360,14 +566,21 @@ export function createQueueRenderer({ state, deps, actions }) {
         return row;
     }
 
-    function createQueueActionButton(label, handler, tone = '') {
+    function createQueueActionButton(label, handler, tone = '', options = {}) {
         const btn = document.createElement('button');
         btn.type = 'button';
         btn.className = ['task-history-action', tone].filter(Boolean).join(' ');
-        btn.textContent = label;
+        const actionBusy = queueFeedbackBusyAction(options.action);
+        const itemBusy = Boolean(options.itemId && state.feedback?.busyItemId === options.itemId);
+        btn.textContent = actionBusy ? (options.busyLabel || '处理中') : label;
+        btn.disabled = actionBusy || (itemBusy && !actionBusy);
+        btn.classList.toggle('queue-action-busy', actionBusy);
+        btn.setAttribute('aria-busy', actionBusy ? 'true' : 'false');
+        btn.setAttribute('aria-disabled', btn.disabled ? 'true' : 'false');
         btn.addEventListener('click', (event) => {
             event.preventDefault();
             event.stopPropagation();
+            if (btn.disabled) return;
             const menu = btn.closest('.training-queue-item-more, .training-queue-more-menu');
             if (menu instanceof HTMLDetailsElement) menu.open = false;
             handler(event);
@@ -375,10 +588,10 @@ export function createQueueRenderer({ state, deps, actions }) {
         return btn;
     }
 
-    function createQueueIconActionButton(label, icon, handler, tone = '') {
-        const btn = createQueueActionButton(label, handler, ['queue-icon-action', tone].filter(Boolean).join(' '));
-        btn.textContent = icon;
-        btn.title = label;
+    function createQueueIconActionButton(label, icon, handler, tone = '', options = {}) {
+        const btn = createQueueActionButton(label, handler, ['queue-icon-action', tone].filter(Boolean).join(' '), { ...options, busyLabel: '...' });
+        if (!queueFeedbackBusyAction(options.action)) btn.textContent = icon;
+        btn.title = queueFeedbackBusyAction(options.action) ? `${label}处理中` : label;
         btn.setAttribute('aria-label', label);
         return btn;
     }
@@ -420,6 +633,11 @@ export function createQueueRenderer({ state, deps, actions }) {
     function queueHistoryLabel(item) {
         const list = Array.isArray(item?.history_task_ids) ? item.history_task_ids : [];
         return list.join(', ');
+    }
+
+    function queueShortId(value) {
+        const text = String(value || '');
+        return text.length > 12 ? `${text.slice(0, 6)}…${text.slice(-4)}` : text;
     }
 
     function queueGpuLabel(value) {

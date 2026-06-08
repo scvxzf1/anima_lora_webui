@@ -8,6 +8,7 @@
     --text-dim: #a7b0be;
     --text-muted: #7b8798;
     --accent: #3b82f6;
+    --accent-strong: #60a5fa;
     --accent-hover: #2563eb;
     --on-accent: #ffffff;
     --danger: #ef5350;
@@ -50,6 +51,7 @@
     --text-dim: #475569;
     --text-muted: #64748b;
     --accent: #2563eb;
+    --accent-strong: #1d4ed8;
     --accent-hover: #1d4ed8;
     --on-accent: #ffffff;
     --danger: #b42318;

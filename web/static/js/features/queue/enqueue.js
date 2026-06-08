@@ -1,4 +1,10 @@
-import { enqueueTrainingQueue, resumeTrainingQueue } from './api.js?v=module-bootstrap-20260608-3';
+import {
+    enqueueTrainingQueue,
+    enqueueTrainingQueueBatch,
+    enqueueTrainingQueueBatchAlias,
+    enqueueTrainingQueueBatchRoot,
+    resumeTrainingQueue,
+} from './api.js?v=module-bootstrap-20260608-10';
 
 export function createQueueEnqueue({ ctx, deps, updateTrainingQueueFromPayload }) {
     async function queueCurrentTrainingFromConfig() {
@@ -83,6 +89,125 @@ export function createQueueEnqueue({ ctx, deps, updateTrainingQueueFromPayload }
         });
     }
 
+    async function enqueueTrainingQueueBatchRequest(options = {}) {
+        const requestOptions = {
+            ...options,
+            gpuWhitelist: deps.selectedGpuPayload(),
+        };
+        let res;
+        try {
+            res = await enqueueTrainingQueueBatch(ctx, requestOptions);
+        } catch (e) {
+            const unsupported = {
+                ok: false,
+                error: e?.message || String(e || ''),
+                status: e?.status,
+                status_code: e?.status_code,
+            };
+            if (!queueBatchApiUnsupported(unsupported)) throw e;
+            return enqueueTrainingQueueBatchCompat(requestOptions, unsupported);
+        }
+        if (!queueBatchApiUnsupported(res)) return res;
+        return enqueueTrainingQueueBatchCompat(requestOptions, res);
+    }
+
+    async function enqueueTrainingQueueBatchCompat(options = {}, unsupported = {}) {
+        let aliasRes;
+        try {
+            aliasRes = await enqueueTrainingQueueBatchAlias(ctx, options);
+        } catch (e) {
+            const aliasUnsupported = {
+                ok: false,
+                error: e?.message || String(e || ''),
+                status: e?.status,
+                status_code: e?.status_code,
+            };
+            if (!queueBatchApiUnsupported(aliasUnsupported)) throw e;
+            return enqueueTrainingQueueBatchRootCompat(options, aliasUnsupported);
+        }
+        if (!queueBatchApiUnsupported(aliasRes)) return aliasRes;
+        return enqueueTrainingQueueBatchRootCompat(options, aliasRes || unsupported);
+    }
+
+    async function enqueueTrainingQueueBatchRootCompat(options = {}, unsupported = {}) {
+        let rootRes;
+        try {
+            rootRes = await enqueueTrainingQueueBatchRoot(ctx, options);
+        } catch (e) {
+            const rootUnsupported = {
+                ok: false,
+                error: e?.message || String(e || ''),
+                status: e?.status,
+                status_code: e?.status_code,
+            };
+            if (!queueBatchApiUnsupported(rootUnsupported)) throw e;
+            return enqueueTrainingQueueBatchFallback(options, rootUnsupported);
+        }
+        if (!queueBatchApiUnsupported(rootRes)) return rootRes;
+        return enqueueTrainingQueueBatchFallback(options, rootRes || unsupported);
+    }
+
+    function queueBatchApiUnsupported(res = {}) {
+        if (res?.ok !== false) return false;
+        const status = Number(res.status || res.status_code || res.code || 0);
+        if (status === 404 || status === 405) return true;
+        const message = String(res.error || res.message || '').trim();
+        return /\b(404|405)\b|method not allowed|not found/i.test(message);
+    }
+
+    async function enqueueTrainingQueueBatchFallback(options = {}, unsupported = {}) {
+        const items = Array.isArray(options.items) ? options.items : [];
+        const queuedItems = [];
+        let latestPayload = null;
+        for (let index = 0; index < items.length; index += 1) {
+            const item = items[index] || {};
+            const res = await enqueueTrainingQueue(ctx, {
+                variant: item.variant,
+                preset: item.preset || options.preset || 'default',
+                methodsSubdir: item.methods_subdir || item.methodsSubdir || 'gui-methods',
+                configFile: item.config_file || item.configFile || '',
+                willAutoPreprocess: item.confirm_preprocess !== false,
+                startPaused: options.startPaused !== false,
+                continuePayload: item.continuePayload || item.continue_info || {},
+                gpuWhitelist: options.gpuWhitelist || [],
+            });
+            latestPayload = res;
+            if (!res.ok) {
+                return {
+                    ...res,
+                    ok: false,
+                    message: queuedItems.length
+                        ? `已加入 ${queuedItems.length} 个配置，批量加入在第 ${index + 1} 项停止`
+                        : (res.error || unsupported.error || '批量加入队列失败'),
+                    queued_count: queuedItems.length,
+                    requested_count: items.length,
+                    queued_items: queuedItems,
+                    failed_index: index,
+                    failed_item: item,
+                    failures: [{
+                        index,
+                        variant: item.variant || '',
+                        preset: item.preset || options.preset || 'default',
+                        methods_subdir: item.methods_subdir || item.methodsSubdir || '',
+                        config_file: item.config_file || item.configFile || '',
+                        label: item.label || item.filename || '',
+                        error: res.error || unsupported.error || '加入队列失败',
+                    }],
+                };
+            }
+            queuedItems.push(res.item || {});
+        }
+        return {
+            ...(latestPayload || unsupported || {}),
+            ok: true,
+            message: `已将 ${queuedItems.length} 个配置加入训练队列`,
+            queued_count: queuedItems.length,
+            requested_count: items.length,
+            queued_items: queuedItems,
+            items: Array.isArray(latestPayload?.items) ? latestPayload.items : queuedItems,
+        };
+    }
+
     async function queueResumeTrainingFromCheckpoint() {
         const taskId = deps.getViewingHistoryTaskId();
         if (!taskId) return;
@@ -124,6 +249,7 @@ export function createQueueEnqueue({ ctx, deps, updateTrainingQueueFromPayload }
         queueCurrentTrainingFromConfig,
         enqueueTrainingFromConfig,
         enqueueTrainingQueueRequest,
+        enqueueTrainingQueueBatchRequest,
         queueResumeTrainingFromCheckpoint,
     };
 }

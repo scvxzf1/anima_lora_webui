@@ -6,10 +6,19 @@ export function createQueueState() {
             failurePolicy: 'pause',
             items: [],
             error: '',
+            status: '',
             currentItemId: '',
             summary: {},
         },
         filter: 'actionable',
+        feedback: {
+            message: '',
+            tone: '',
+            busyAction: '',
+            busyItemId: '',
+            flashItemId: '',
+            updatedAt: 0,
+        },
     };
 }
 
@@ -32,6 +41,9 @@ export function updateQueueStateFromPayload(state, payload = {}) {
         failurePolicy: payload.failure_policy || previous.failurePolicy || 'pause',
         items: hasItems ? payload.items : (isErrorOnly ? (previous.items || []) : []),
         error: payload.ok === false ? (payload.error || '队列状态异常') : '',
+        status: payload.status === undefined
+            ? (isErrorOnly ? (previous.status || '') : '')
+            : String(payload.status || ''),
         currentItemId: payload.current_item_id === undefined
             ? (isErrorOnly ? (previous.currentItemId || '') : '')
             : String(payload.current_item_id || ''),
@@ -42,6 +54,18 @@ export function updateQueueStateFromPayload(state, payload = {}) {
 
 export function setQueueFilter(state, filter) {
     state.filter = filter || 'actionable';
+}
+
+export function setQueueFeedback(state, feedback = {}) {
+    state.feedback = {
+        message: '',
+        tone: '',
+        busyAction: '',
+        busyItemId: '',
+        flashItemId: '',
+        updatedAt: Date.now(),
+        ...feedback,
+    };
 }
 
 export function queueSummaryCounts(state) {

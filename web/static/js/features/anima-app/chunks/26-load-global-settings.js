@@ -245,6 +245,51 @@ const ctx = globalThis.ctx;
         renderTrainingViewMode();
     }
 
+    globalThis.trainingViewTabs = function trainingViewTabs() {
+        return Array.from(document.querySelectorAll('#tab-training .training-view-tab'));
+    }
+
+    globalThis.focusTrainingViewTab = function focusTrainingViewTab(mode = trainingViewMode) {
+        const target = trainingViewTabs().find((btn) => btn.dataset.trainingView === mode);
+        target?.focus({ preventScroll: true });
+    }
+
+    globalThis.activateTrainingViewTabButton = function activateTrainingViewTabButton(button) {
+        const nextMode = button?.dataset.trainingView || 'live';
+        if (nextMode === 'live' && typeof returnToLiveTraining === 'function') {
+            returnToLiveTraining({ refresh: false });
+        } else {
+            showTrainingView(nextMode);
+        }
+        focusTrainingViewTab(nextMode);
+    }
+
+    globalThis.moveTrainingViewTabFocus = function moveTrainingViewTabFocus(currentButton, offset = 0) {
+        const tabs = trainingViewTabs();
+        if (!tabs.length) return;
+        const currentIndex = Math.max(0, tabs.indexOf(currentButton));
+        const nextIndex = (currentIndex + offset + tabs.length) % tabs.length;
+        activateTrainingViewTabButton(tabs[nextIndex]);
+    }
+
+    globalThis.bindTrainingViewTabKeyboard = function bindTrainingViewTabKeyboard() {
+        renderTrainingViewMode();
+        trainingViewTabs().forEach((btn) => {
+            if (btn.dataset.trainingKeyboardBound === '1') return;
+            btn.dataset.trainingKeyboardBound = '1';
+            btn.addEventListener('keydown', (event) => {
+                const key = event.key;
+                if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(key)) return;
+                event.preventDefault();
+                const tabs = trainingViewTabs();
+                if (!tabs.length) return;
+                if (key === 'Home') return activateTrainingViewTabButton(tabs[0]);
+                if (key === 'End') return activateTrainingViewTabButton(tabs[tabs.length - 1]);
+                moveTrainingViewTabFocus(btn, key === 'ArrowRight' ? 1 : -1);
+            });
+        });
+    }
+
     globalThis.renderTrainingViewMode = function renderTrainingViewMode() {
         const queueView = document.getElementById('training-queue-manager');
         const monitorView = document.getElementById('training-monitor-view');
@@ -272,6 +317,7 @@ const ctx = globalThis.ctx;
             const active = btn.dataset.trainingView === trainingViewMode;
             btn.classList.toggle('active', active);
             btn.setAttribute('aria-selected', String(active));
+            btn.tabIndex = active ? 0 : -1;
         });
         if (isHistory) {
             renderHistoryManager();

@@ -8,6 +8,8 @@ from typing import Mapping
 
 ACCELERATE_NUM_PROCESSES_ENV = "ANIMA_ACCELERATE_NUM_PROCESSES"
 ACCELERATE_LAUNCH_ENV = "ANIMA_ACCELERATE_LAUNCH"
+ACCELERATE_MIXED_PRECISION_ENV = "ANIMA_ACCELERATE_MIXED_PRECISION"
+_ACCELERATE_MIXED_PRECISION_CHOICES = {"no", "fp16", "bf16"}
 
 
 def resolve_accelerate_num_processes(env: Mapping[str, str] | None = None) -> str:
@@ -26,6 +28,19 @@ def resolve_accelerate_num_processes(env: Mapping[str, str] | None = None) -> st
             f"{ACCELERATE_NUM_PROCESSES_ENV} must be a positive integer, got {raw!r}"
         )
     return str(count)
+
+
+def resolve_accelerate_mixed_precision(env: Mapping[str, str] | None = None) -> str:
+    values = os.environ if env is None else env
+    raw = values.get(ACCELERATE_MIXED_PRECISION_ENV, "").strip().lower()
+    if not raw:
+        return "bf16"
+    if raw not in _ACCELERATE_MIXED_PRECISION_CHOICES:
+        raise ValueError(
+            f"{ACCELERATE_MIXED_PRECISION_ENV} must be one of "
+            f"{sorted(_ACCELERATE_MIXED_PRECISION_CHOICES)}, got {raw!r}"
+        )
+    return raw
 
 
 def accelerate_training_command_prefix(
@@ -50,6 +65,6 @@ def accelerate_training_command_prefix(
         "--num_cpu_threads_per_process",
         "3",
         "--mixed_precision",
-        "bf16",
+        resolve_accelerate_mixed_precision(env),
         str(train_script),
     ]

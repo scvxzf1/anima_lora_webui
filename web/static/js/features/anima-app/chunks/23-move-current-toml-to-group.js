@@ -486,6 +486,10 @@ const ctx = globalThis.ctx;
         return ensureQueueFeature().enqueueTrainingQueueRequest(options);
     }
 
+    globalThis.enqueueTrainingQueueBatchRequest = async function enqueueTrainingQueueBatchRequest(options = {}) {
+        return ensureQueueFeature().enqueueTrainingQueueBatchRequest(options);
+    }
+
     globalThis.enterLiveTrainingForNewRun = function enterLiveTrainingForNewRun() {
         returnToLiveTraining({ refresh: false });
         document.querySelector('[data-tab="training"]')?.click();

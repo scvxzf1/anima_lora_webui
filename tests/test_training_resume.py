@@ -20,6 +20,10 @@ from library.training.checkpoints import (
     plan_resume_start,
     save_checkpoint_state,
 )
+from library.runtime.launch import (
+    ACCELERATE_LAUNCH_ENV,
+    ACCELERATE_MIXED_PRECISION_ENV,
+)
 from web.routes import training as training_routes
 from web.services import config_service, settings_service, training_service
 from web.services.training import progress_parser
@@ -1691,6 +1695,74 @@ def test_start_training_appends_network_weights_and_history_meta(tmp_path, monke
     snapshot = (tmp_path / "history" / "fake-task" / "config.snapshot.toml").read_text(encoding="utf-8")
     assert '# training_mode = "continue_lora"' in snapshot
     assert str(weight.resolve()) in snapshot
+
+
+def test_start_training_aligns_accelerate_mixed_precision_from_config(tmp_path, monkeypatch):
+    _write_runtime_config_tree(tmp_path)
+    _patch_runtime_service_paths(monkeypatch, tmp_path)
+    monkeypatch.setenv(ACCELERATE_LAUNCH_ENV, "1")
+    runtime_config = tmp_path / "configs" / "imported" / "522.toml"
+    runtime_config.write_text(
+        runtime_config.read_text(encoding="utf-8") + '\nmixed_precision = "fp16"\n',
+        encoding="utf-8",
+    )
+    captured = {}
+    svc = TrainingService(web.Application())
+
+    async def fake_launch(cmd, env, **kwargs):
+        captured["cmd"] = cmd
+        captured["env"] = env
+        captured["kwargs"] = kwargs
+
+    svc._launch_job = fake_launch
+
+    asyncio.run(
+        svc.start(
+            "522",
+            "default",
+            [],
+            "imported",
+            config_file="configs/imported/522.toml",
+            use_runtime_dir=False,
+        )
+    )
+
+    assert captured["env"][ACCELERATE_MIXED_PRECISION_ENV] == "fp16"
+    assert captured["cmd"][captured["cmd"].index("--mixed_precision") + 1] == "fp16"
+
+
+def test_start_training_extra_args_override_accelerate_mixed_precision(tmp_path, monkeypatch):
+    _write_runtime_config_tree(tmp_path)
+    _patch_runtime_service_paths(monkeypatch, tmp_path)
+    monkeypatch.setenv(ACCELERATE_LAUNCH_ENV, "1")
+    runtime_config = tmp_path / "configs" / "imported" / "522.toml"
+    runtime_config.write_text(
+        runtime_config.read_text(encoding="utf-8") + '\nmixed_precision = "bf16"\n',
+        encoding="utf-8",
+    )
+    captured = {}
+    svc = TrainingService(web.Application())
+
+    async def fake_launch(cmd, env, **kwargs):
+        captured["cmd"] = cmd
+        captured["env"] = env
+        captured["kwargs"] = kwargs
+
+    svc._launch_job = fake_launch
+
+    asyncio.run(
+        svc.start(
+            "522",
+            "default",
+            ["--mixed_precision", "no"],
+            "imported",
+            config_file="configs/imported/522.toml",
+            use_runtime_dir=False,
+        )
+    )
+
+    assert captured["env"][ACCELERATE_MIXED_PRECISION_ENV] == "no"
+    assert captured["cmd"][captured["cmd"].index("--mixed_precision") + 1] == "no"
 
 
 def test_start_preprocess_keeps_continue_info_for_pending_training(tmp_path, monkeypatch):

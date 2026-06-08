@@ -16,6 +16,7 @@ const ctx = globalThis.ctx;
         setText('training-run-state', '合并');
         const stateEl = document.getElementById('training-run-state');
         if (stateEl) stateEl.className = 'training-run-state history';
+        setTrainingDashboardHeadState('history');
         updateTrainingToolbarState('history', '合并');
         setText('training-run-title', `合并查看: ${configGroupLabel(group)}`);
         setText('training-run-meta', [
@@ -23,18 +24,19 @@ const ctx = globalThis.ctx;
             group.variant ? `配置 ${group.variant}` : '',
             group.preset ? `预设 ${group.preset}` : '',
         ].filter(Boolean).join(' · ') || '配置组训练结果');
-        setText('training-run-summary', [
-            `${summary.task_count || 0} 次训练`,
-            `${summary.loss_count || 0} 个 Loss 点`,
-            `${summary.log_count || 0} 行日志`,
-            `时间: ${summary.started_at_text || '-'} → ${summary.finished_at_text || '未结束'}`,
-        ].filter(Boolean).join(' · '));
+        renderTrainingRunSummary([
+            ['训练次数', `${summary.task_count || 0} 次`],
+            ['Loss 点', `${summary.loss_count || 0} 个`],
+            ['日志', `${summary.log_count || 0} 行`],
+            ['时间', `${summary.started_at_text || '-'} → ${summary.finished_at_text || '未结束'}`],
+        ], '配置组训练结果');
 
         document.getElementById('train-variant').textContent = group.variant || '-';
         document.getElementById('train-preset').textContent = group.preset || '-';
         document.getElementById('progress-bar').style.width = '100%';
         document.getElementById('progress-text').textContent =
             `${summary.started_at_text || '-'} → ${summary.finished_at_text || '持续/未结束'}`;
+        updateDashboardProgressIdleState(true);
         setMetricText('metric-vram', 'N/A');
         setMetricText('metric-vram-peak', 'N/A');
         setMetricText('metric-gpu', 'N/A');

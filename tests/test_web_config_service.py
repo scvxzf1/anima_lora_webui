@@ -289,6 +289,53 @@ def test_raw_patch_writes_non_blank_sample_schedule_fields_as_int(tmp_path: Path
     assert parsed["sample_every_n_steps"] == 500
 
 
+def test_raw_patch_clears_optional_max_train_epochs_field(tmp_path: Path, monkeypatch):
+    configs, _dataset_path = _write_minimal_config_tree(tmp_path)
+    _patch_config_service_paths(monkeypatch, tmp_path)
+    train_rel = "configs/imported/lora.toml"
+    (configs / "imported" / "lora.toml").write_text(
+        "\n".join(
+            [
+                'output_name = "anima"',
+                "max_train_epochs = 4",
+                "max_train_steps = 1200",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    ok, msg, content, changed = config_service.patch_raw_file_values(
+        train_rel,
+        {
+            "max_train_epochs": "",
+        },
+    )
+
+    assert ok is True, msg
+    assert changed == ["max_train_epochs"]
+    assert "max_train_epochs" not in content
+    saved = toml.loads((configs / "imported" / "lora.toml").read_text(encoding="utf-8"))
+    assert saved == {"output_name": "anima", "max_train_steps": 1200}
+
+
+def test_raw_patch_writes_non_blank_max_train_epochs_as_int(tmp_path: Path, monkeypatch):
+    _write_minimal_config_tree(tmp_path)
+    _patch_config_service_paths(monkeypatch, tmp_path)
+
+    ok, msg, content, changed = config_service.patch_raw_file_values(
+        "configs/imported/lora.toml",
+        {
+            "max_train_epochs": "6",
+        },
+    )
+
+    assert ok is True, msg
+    assert changed == ["max_train_epochs"]
+    parsed = toml.loads(content)
+    assert parsed["max_train_epochs"] == 6
+
+
 def test_raw_patch_writes_spd_fields_to_nested_tables(tmp_path: Path, monkeypatch):
     configs, _dataset_path = _write_minimal_config_tree(tmp_path)
     spd_path = configs / "imported" / "spd.toml"
@@ -575,6 +622,40 @@ def test_save_dataset_editor_accepts_source_only_rows(tmp_path: Path, monkeypatc
     assert subset["cache_dir"].endswith("source_only_lora_cache")
 
 
+def test_save_dataset_editor_uses_pending_form_config_values(tmp_path: Path, monkeypatch):
+    configs, dataset_path = _write_minimal_config_tree(tmp_path)
+    (configs / "imported" / "lora.toml").write_text(
+        "\n".join(
+            [
+                'dataset_config = "configs/datasets/lora.toml"',
+                "train_batch_size = 3",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    _patch_config_service_paths(monkeypatch, tmp_path)
+
+    result = config_service.save_dataset_editor(
+        "lora",
+        "default",
+        "imported",
+        [
+            {
+                "source_dir": "image_dataset/source_only",
+                "num_repeats": 1,
+                "settings": {"resolution": 768},
+            }
+        ],
+        config_values={"train_batch_size": 5},
+        train_file="configs/imported/lora.toml",
+    )
+
+    assert result["ok"] is True
+    data = toml.loads(dataset_path.read_text(encoding="utf-8"))
+    assert data["datasets"][0]["batch_size"] == 5
+
+
 def test_load_dataset_editor_uses_selected_training_config_dataset(tmp_path: Path, monkeypatch):
     configs, default_dataset_path = _write_minimal_config_tree(tmp_path)
     default_dataset_path.write_text(
@@ -700,6 +781,57 @@ def test_preflight_uses_selected_config_file_dataset_paths(tmp_path: Path, monke
     assert "output_dir" not in {item["key"] for item in result["checks"]}
     env_checks = [item for item in result["checks"] if item["key"] == "preprocess_environment"]
     assert env_checks[-1]["level"] == "ok"
+
+
+def test_preflight_fills_blank_model_paths_from_global_settings(tmp_path: Path, monkeypatch):
+    configs, _dataset_path = _write_minimal_config_tree(tmp_path)
+    _patch_config_service_paths(monkeypatch, tmp_path)
+    (configs / "web-ui-settings.toml").write_text(
+        "\n".join(
+            [
+                "[global]",
+                'pretrained_model_name_or_path = "models/global-anima.safetensors"',
+                'qwen3 = "models/global-qwen.safetensors"',
+                'vae = "models/global-vae.safetensors"',
+            ]
+        ),
+        encoding="utf-8",
+    )
+    source_dir = tmp_path / "image_dataset" / "selected"
+    source_dir.mkdir(parents=True)
+    Image.new("RGB", (8, 8), color=(20, 40, 60)).save(source_dir / "sample.png")
+    (tmp_path / "models").mkdir()
+    (tmp_path / "models" / "global-anima.safetensors").write_bytes(b"model")
+    (tmp_path / "models" / "global-qwen.safetensors").write_bytes(b"qwen")
+    (tmp_path / "models" / "global-vae.safetensors").write_bytes(b"vae")
+    selected_config = configs / "imported" / "selected.toml"
+    selected_config.write_text(
+        "\n".join(
+            [
+                'source_image_dir = "image_dataset/selected"',
+                'pretrained_model_name_or_path = ""',
+                'qwen3 = ""',
+                'vae = ""',
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    result = config_service.preflight_training_config(
+        "lora",
+        "default",
+        "imported",
+        config_file="configs/imported/selected.toml",
+    )
+
+    checks = {item["key"]: item for item in result["checks"]}
+    assert checks["pretrained_model_name_or_path"]["level"] == "ok"
+    assert checks["pretrained_model_name_or_path"]["path"] == "models/global-anima.safetensors"
+    assert checks["qwen3"]["level"] == "ok"
+    assert checks["qwen3"]["path"] == "models/global-qwen.safetensors"
+    assert checks["vae"]["level"] == "ok"
+    assert checks["vae"]["path"] == "models/global-vae.safetensors"
+    assert "pretrained_model_name_or_path" not in {item["key"] for item in result["errors"]}
 
 
 def test_preflight_rejects_blank_output_name(tmp_path: Path, monkeypatch):
@@ -1517,6 +1649,23 @@ def test_unlocked_default_group_can_be_deleted_without_hiding_files(tmp_path: Pa
     assert [group["id"] for group in groups] == ["unfiled_imported"]
     assert groups[0]["deletable"] is True
     assert [item["path"] for item in groups[0]["files"]] == ["configs/imported/demo.toml"]
+
+
+def test_config_file_meta_keeps_nested_variant_method_path(tmp_path: Path, monkeypatch):
+    configs = tmp_path / "configs"
+    (configs / "gui-methods" / "custom").mkdir(parents=True)
+    (configs / "imported" / "batch").mkdir(parents=True)
+    (configs / "gui-methods" / "custom" / "hero.toml").write_text('output_name = "hero"\n', encoding="utf-8")
+    (configs / "imported" / "batch" / "hero.toml").write_text('output_name = "imported_hero"\n', encoding="utf-8")
+    _patch_config_service_paths(monkeypatch, tmp_path)
+
+    gui_meta = config_service.get_config_file_meta("configs/gui-methods/custom/hero.toml")
+    imported_meta = config_service.get_config_file_meta("configs/imported/batch/hero.toml")
+
+    assert gui_meta["method"] == "custom/hero"
+    assert gui_meta["methods_subdir"] == "gui-methods"
+    assert imported_meta["method"] == "batch/hero"
+    assert imported_meta["methods_subdir"] == "imported"
 
 
 def test_unlocked_default_group_can_be_renamed(tmp_path: Path, monkeypatch):

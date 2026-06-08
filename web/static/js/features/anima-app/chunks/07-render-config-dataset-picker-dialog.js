@@ -210,6 +210,11 @@ const ctx = globalThis.ctx;
         await loadStepEstimate();
     }
 
+    globalThis.selectedDatasetConfigOverride = function selectedDatasetConfigOverride() {
+        const currentDataset = currentConfig?.dataset_config || '';
+        return selectedConfigDatasetFile === currentDataset ? null : (selectedConfigDatasetFile || '');
+    }
+
     globalThis.datasetPresetByFile = function datasetPresetByFile(file) {
         return (datasetPresetState.presets || []).find((item) => item.path === file) || null;
     }

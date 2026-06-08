@@ -62,7 +62,13 @@ def _exported(fn):
 
     return wrapper
 
-__all__ = ['preflight_training_config', '_load_training_config_for_web_run', '_config_file_path', 'is_web_runtime_config', 'training_sample_sampler_status', '_check_training_images', '_check_dataset_source_paths', '_check_dataset_paths', '_check_cache_sidecars']
+GLOBAL_MODEL_PATH_KEYS = (
+    "pretrained_model_name_or_path",
+    "qwen3",
+    "vae",
+)
+
+__all__ = ['preflight_training_config', '_load_training_config_for_web_run', '_config_file_path', 'is_web_runtime_config', 'training_sample_sampler_status', 'apply_global_model_path_defaults', '_check_training_images', '_check_dataset_source_paths', '_check_dataset_paths', '_check_cache_sidecars']
 
 def preflight_training_config(
     variant: str,
@@ -263,14 +269,57 @@ def _load_training_config_for_web_run(
     *,
     config_file: str | None = None,
 ) -> dict[str, Any]:
-    cfg = apply_auto_data_dirs(load_merged_config(variant, preset, methods_subdir))
+    fallback_cfg = apply_auto_data_dirs(load_merged_config(variant, preset, methods_subdir))
+    cfg = dict(fallback_cfg)
     source = _config_file_path(config_file)
     if source is not None:
         try:
             cfg.update(expand_env_vars_in_obj(toml.loads(source.read_text(encoding="utf-8"))))
         except toml.TomlDecodeError as exc:
             raise ValueError(f"训练配置 TOML 解析失败: {config_file}") from exc
+    cfg = apply_global_model_path_defaults(cfg, fallback=fallback_cfg)
     return apply_auto_data_dirs(cfg)
+
+
+def apply_global_model_path_defaults(
+    cfg: dict[str, Any],
+    *,
+    fallback: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Fill blank model path scalars from Web global settings, preserving explicit config values."""
+
+    defaults = _global_model_path_defaults(fallback or {})
+    if not defaults:
+        return cfg
+    next_cfg = dict(cfg)
+    for key in GLOBAL_MODEL_PATH_KEYS:
+        if _blank_model_path(next_cfg.get(key)) and not _blank_model_path(defaults.get(key)):
+            next_cfg[key] = defaults[key]
+    return next_cfg
+
+
+def _global_model_path_defaults(fallback: dict[str, Any]) -> dict[str, str]:
+    values: dict[str, str] = {}
+    settings_file = CONFIGS_DIR / "web-ui-settings.toml"
+    if settings_file.exists():
+        try:
+            raw = toml.loads(settings_file.read_text(encoding="utf-8"))
+        except toml.TomlDecodeError:
+            raw = {}
+        section = raw.get("global") if isinstance(raw, dict) else {}
+        if isinstance(section, dict):
+            for key in GLOBAL_MODEL_PATH_KEYS:
+                value = str(section.get(key) or "").strip()
+                if value:
+                    values[key] = expand_env_vars(value)
+    for key in GLOBAL_MODEL_PATH_KEYS:
+        if key not in values and not _blank_model_path(fallback.get(key)):
+            values[key] = expand_env_vars(str(fallback[key]).strip())
+    return values
+
+
+def _blank_model_path(value: Any) -> bool:
+    return str(value or "").strip() == ""
 
 
 def _config_file_path(config_file: str | None) -> Path | None:

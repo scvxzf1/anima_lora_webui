@@ -102,6 +102,7 @@ const ctx = globalThis.ctx;
                     prefer_existing_dataset_config: options.preferExistingDatasetConfig !== false,
                     datasets: payloadRows,
                     defaults: normalizeDatasetDefaults(datasetEditorState.defaults || {}),
+                    config_values: collectChangedFormValues({ persistDefaultFields: true }),
                 }),
             });
             if (!res.ok) {

@@ -910,7 +910,20 @@
     padding: 0.8rem;
 }
 .history-detail-dialog {
-    background: var(--training-page-bg);
+    --history-detail-bg: var(--training-page-bg, var(--bg));
+    --history-detail-panel: var(--training-panel-bg, var(--bg-card));
+    --history-detail-panel-soft: var(--training-panel-soft, var(--bg-input));
+    --history-detail-field: var(--training-field-bg, var(--bg-input));
+    --history-detail-accent: var(--training-accent, var(--accent));
+    --history-detail-accent-strong: var(--training-accent-strong, var(--accent-strong));
+    --history-detail-text: var(--training-text, var(--text));
+    --history-detail-muted: var(--training-muted, var(--text-dim));
+    --history-detail-faint: var(--training-faint, var(--text-muted));
+    --history-detail-border: var(--training-border, var(--border));
+    --history-detail-border-strong: var(--training-border-strong, var(--border-strong));
+    --history-detail-danger: var(--training-danger, var(--danger));
+    --history-detail-success: var(--training-success, var(--success));
+    background: var(--history-detail-bg);
     border: 0;
     border-radius: 0;
     box-sizing: border-box;
@@ -936,7 +949,7 @@ body.history-detail-window-open {
     overflow: hidden;
 }
 .history-detail-dialog-shell {
-    background: var(--bg-card);
+    background: var(--history-detail-bg);
     display: grid;
     grid-template-rows: auto auto minmax(0, 1fr);
     height: 100%;
@@ -946,24 +959,25 @@ body.history-detail-window-open {
 }
 .history-detail-dialog-header {
     align-items: center;
-    background: var(--surface-raised);
-    border-bottom: 1px solid var(--border);
-    padding: 0.86rem clamp(0.9rem, 2vw, 1.5rem);
+    background: var(--history-detail-panel);
+    border-bottom: 1px solid var(--history-detail-border-strong);
+    padding: 0.62rem clamp(0.82rem, 1.7vw, 1.25rem);
 }
 .history-detail-title-block {
     min-width: 0;
 }
 .history-detail-title-block h2 {
-    color: var(--accent);
-    font-size: 1rem;
+    color: var(--history-detail-text);
+    font-size: 0.98rem;
+    font-weight: 850;
     line-height: 1.25;
-    margin: 0 0 0.22rem;
+    margin: 0 0 0.14rem;
     overflow-wrap: anywhere;
 }
 .history-detail-title-block p {
-    color: var(--text-dim);
-    font-size: 0.74rem;
-    line-height: 1.42;
+    color: var(--history-detail-muted);
+    font-size: 0.68rem;
+    line-height: 1.34;
     margin: 0;
     overflow-wrap: anywhere;
 }
@@ -972,25 +986,25 @@ body.history-detail-window-open {
     align-self: stretch;
     display: flex;
     flex-wrap: wrap;
-    gap: 0.45rem;
+    gap: 0.32rem;
     justify-content: flex-end;
 }
 .history-detail-header-actions .history-detail-actions {
     align-items: center;
-    gap: 0.45rem;
+    gap: 0.32rem;
 }
 .history-detail-header-actions .task-history-action,
 .history-detail-header-actions .btn {
     align-items: center;
     border-radius: 7px;
     display: inline-flex;
-    font-size: 0.76rem;
+    font-size: 0.7rem;
     font-weight: 700;
     justify-content: center;
     line-height: 1.1;
-    min-height: 2.8rem;
-    min-width: 3.25rem;
-    padding: 0 0.72rem;
+    min-height: 2.25rem;
+    min-width: 2.9rem;
+    padding: 0 0.56rem;
     white-space: nowrap;
 }
 .history-detail-header-actions .task-history-action.danger {
@@ -1000,36 +1014,36 @@ body.history-detail-window-open {
     min-width: 5.4rem;
 }
 .history-detail-tabs {
-    background: var(--surface-raised);
-    border-bottom: 1px solid var(--border);
+    background: color-mix(in srgb, var(--history-detail-panel) 88%, var(--history-detail-bg));
+    border-bottom: 1px solid var(--history-detail-border);
     display: flex;
     flex-wrap: wrap;
-    gap: 0.25rem;
-    padding: 0.32rem clamp(0.9rem, 2vw, 1.5rem) 0;
+    gap: 0.18rem;
+    padding: 0.2rem clamp(0.82rem, 1.7vw, 1.25rem) 0;
 }
 .history-detail-tab {
     background: transparent;
     border: 0;
     border-bottom: 2px solid transparent;
-    color: var(--text-dim);
+    color: var(--history-detail-muted);
     cursor: pointer;
-    font-size: 0.72rem;
+    font-size: 0.68rem;
     font-weight: 700;
-    padding: 0.35rem 0.45rem;
+    padding: 0.28rem 0.4rem;
 }
 .history-detail-tab:hover,
 .history-detail-tab.active {
-    border-color: var(--accent);
-    color: var(--accent);
+    border-color: var(--history-detail-accent);
+    color: var(--history-detail-accent);
 }
 .history-detail-content {
     align-content: start;
     display: grid;
-    gap: 0.62rem;
+    gap: 0.48rem;
     min-width: 0;
     overflow: auto;
     overscroll-behavior: contain;
-    padding: 0.85rem clamp(0.9rem, 2vw, 1.5rem) 1.15rem;
+    padding: 0.56rem clamp(0.82rem, 1.7vw, 1.25rem) 0.8rem;
     scrollbar-gutter: stable;
 }
 .history-detail-content[data-history-detail-tab="logs"] {
@@ -1040,17 +1054,18 @@ body.history-detail-window-open {
     align-items: start;
     align-content: start;
     display: grid;
-    gap: 0.75rem;
+    gap: 0.5rem;
     grid-template-columns: minmax(0, 1fr);
 }
 .history-detail-section {
-    background: var(--bg-input);
-    border: 1px solid var(--border);
+    background: var(--history-detail-panel);
+    border: 1px solid var(--history-detail-border);
     border-radius: var(--radius);
     display: grid;
-    gap: 0.5rem;
+    gap: 0.42rem;
     min-width: 0;
-    padding: 0.62rem;
+    padding: 0.52rem;
+    box-shadow: 0 1px 0 color-mix(in srgb, var(--history-detail-border-strong) 30%, transparent);
 }
 .history-detail-overview-dashboard > .history-detail-section.metrics {
     grid-column: 1 / -1;
@@ -1096,138 +1111,333 @@ body.history-detail-window-open {
 }
 .history-detail-progress {
     grid-column: 1 / -1;
+    align-items: center;
+    column-gap: 0.5rem;
+    grid-template-columns: minmax(180px, 0.28fr) minmax(260px, 1fr) fit-content(360px);
+    overflow: hidden;
+    padding: 0.44rem 0.58rem 0.44rem 0.78rem;
+    position: relative;
+    row-gap: 0.28rem;
+}
+.history-detail-progress::before {
+    background: var(--history-detail-accent);
+    content: "";
+    inset: 0 auto 0 0;
+    position: absolute;
+    width: 4px;
+}
+.history-detail-progress.state-complete {
+    background: linear-gradient(135deg,
+        color-mix(in srgb, var(--history-detail-success) 10%, var(--history-detail-panel)),
+        var(--history-detail-panel) 58%);
+    border-color: color-mix(in srgb, var(--history-detail-success) 44%, var(--history-detail-border));
+}
+.history-detail-progress.state-complete::before {
+    background: var(--history-detail-success);
+}
+.history-detail-progress.state-running {
+    border-color: color-mix(in srgb, var(--history-detail-accent) 48%, var(--history-detail-border));
+}
+.history-detail-progress.state-running::before {
+    background: var(--history-detail-accent);
+}
+.history-detail-progress.state-error {
+    border-color: color-mix(in srgb, var(--history-detail-danger) 48%, var(--history-detail-border));
+}
+.history-detail-progress.state-error::before {
+    background: var(--history-detail-danger);
 }
 .history-detail-section-title {
     align-items: center;
     display: flex;
-    gap: 0.6rem;
+    gap: 0.42rem;
     justify-content: space-between;
     min-width: 0;
 }
 .history-detail-section-title h4 {
-    color: var(--accent);
-    font-size: 0.78rem;
+    color: var(--history-detail-accent);
+    font-size: 0.72rem;
+    font-weight: 850;
     margin: 0;
 }
 .history-detail-section-title span {
-    color: var(--text-dim);
-    font-size: 0.7rem;
+    color: var(--history-detail-muted);
+    font-size: 0.64rem;
     overflow-wrap: anywhere;
     text-align: right;
 }
+.history-detail-progress .history-detail-section-title {
+    align-items: start;
+    display: grid;
+    gap: 0.12rem;
+    justify-content: stretch;
+}
+.history-detail-progress .history-detail-section-title span {
+    line-height: 1.25;
+    text-align: left;
+}
+.history-detail-progress-meter {
+    align-items: center;
+    display: grid;
+    gap: 0.54rem;
+    grid-template-columns: minmax(150px, 1fr) max-content;
+    min-width: 0;
+}
 .history-detail-progress-bar {
-    background: var(--surface-raised);
-    border: 1px solid var(--border-soft);
+    background: linear-gradient(180deg,
+        color-mix(in srgb, var(--history-detail-field) 64%, var(--history-detail-muted)),
+        color-mix(in srgb, var(--history-detail-field) 88%, var(--history-detail-panel)));
+    border: 1px solid color-mix(in srgb, var(--history-detail-muted) 32%, var(--history-detail-border));
     border-radius: 999px;
-    height: 0.8rem;
+    box-shadow:
+        inset 0 0 0 1px color-mix(in srgb, white 7%, transparent),
+        inset 0 1px 2px color-mix(in srgb, black 34%, transparent);
+    cursor: default;
+    height: 0.54rem;
     overflow: hidden;
+    transition: border-color 160ms ease, box-shadow 160ms ease;
+}
+.history-detail-progress-bar:hover,
+.history-detail-progress-bar:focus-visible {
+    border-color: color-mix(in srgb, var(--history-detail-accent) 62%, var(--history-detail-border));
+    box-shadow:
+        0 0 0 2px color-mix(in srgb, var(--history-detail-accent) 14%, transparent),
+        inset 0 0 0 1px color-mix(in srgb, white 9%, transparent),
+        inset 0 1px 2px color-mix(in srgb, black 34%, transparent);
+    outline: none;
 }
 .history-detail-progress-bar span {
-    background: linear-gradient(90deg, var(--accent), var(--accent-strong));
+    background: linear-gradient(90deg, var(--history-detail-accent-strong), var(--history-detail-accent));
+    border-radius: inherit;
+    box-shadow: 0 0 0 1px color-mix(in srgb, white 12%, transparent);
     display: block;
     height: 100%;
 }
 .history-detail-progress.is-complete .history-detail-progress-bar span {
-    background: linear-gradient(90deg, var(--success), color-mix(in srgb, var(--success) 72%, white));
+    background: linear-gradient(90deg, var(--history-detail-success), color-mix(in srgb, var(--history-detail-success) 72%, white));
+}
+.history-detail-progress-stats {
+    align-items: center;
+    display: flex;
+    flex-wrap: nowrap;
+    gap: 0.28rem;
+    justify-content: flex-end;
+    min-width: 0;
+    white-space: nowrap;
+}
+.history-detail-progress-stat {
+    align-items: baseline;
+    background: color-mix(in srgb, var(--history-detail-field) 82%, var(--history-detail-panel));
+    border: 1px solid color-mix(in srgb, var(--history-detail-border) 82%, transparent);
+    border-radius: 999px;
+    color: var(--history-detail-muted);
+    display: inline-flex;
+    font-size: 0.58rem;
+    font-variant-numeric: tabular-nums;
+    font-weight: 750;
+    gap: 0.2rem;
+    line-height: 1;
+    min-height: 1.24rem;
+    padding: 0.1rem 0.34rem;
+}
+.history-detail-progress-stat b {
+    color: var(--history-detail-muted);
+    font-weight: 750;
+}
+.history-detail-progress-stat strong {
+    color: var(--history-detail-text);
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.66rem;
+    font-weight: 850;
+}
+.history-detail-progress-stat.complete strong {
+    color: var(--history-detail-accent);
+}
+.history-detail-progress-stat.remaining strong {
+    color: color-mix(in srgb, var(--history-detail-muted) 70%, white);
+}
+.history-detail-progress-copy {
+    background: color-mix(in srgb, var(--history-detail-field) 82%, var(--history-detail-panel));
+    border-color: color-mix(in srgb, var(--history-detail-border) 82%, transparent);
+    color: var(--history-detail-muted);
+    flex: 0 0 22px;
+    height: 22px;
+    width: 22px;
+}
+.history-detail-progress-copy svg {
+    height: 12px;
+    width: 12px;
+}
+.history-detail-progress-copy:hover,
+.history-detail-progress-copy:focus-visible {
+    background: color-mix(in srgb, var(--history-detail-accent) 13%, var(--history-detail-field));
+    border-color: color-mix(in srgb, var(--history-detail-accent) 54%, var(--history-detail-border));
+    color: var(--history-detail-accent);
 }
 .history-detail-progress p {
-    color: var(--text-dim);
-    font-size: 0.74rem;
-    line-height: 1.45;
+    color: var(--history-detail-muted);
+    font-size: 0.66rem;
+    justify-self: end;
+    line-height: 1.35;
     margin: 0;
+    max-width: min(360px, 32vw);
     overflow-wrap: anywhere;
+    text-align: left;
 }
 .history-detail-stat-grid {
+    align-content: start;
     display: grid;
-    gap: 0.45rem;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0.34rem;
+    grid-auto-rows: minmax(50px, auto);
+    grid-template-columns: repeat(5, minmax(116px, 1fr));
 }
 .history-detail-stat {
-    background: var(--surface-raised);
-    border: 1px solid var(--border-soft);
+    background: var(--history-detail-field);
+    border: 1px solid color-mix(in srgb, var(--history-detail-border) 80%, transparent);
     border-radius: 6px;
+    display: grid;
+    gap: 0.14rem;
+    grid-column: auto;
     min-width: 0;
-    padding: 0.45rem 0.5rem;
+    min-height: 50px;
+    padding: 0.34rem 0.42rem;
+}
+.history-detail-stat.is-primary {
+    background: linear-gradient(180deg,
+        color-mix(in srgb, var(--history-detail-accent) 10%, var(--history-detail-panel)),
+        var(--history-detail-field));
+    border-color: color-mix(in srgb, var(--history-detail-accent) 34%, var(--history-detail-border));
+    min-height: 54px;
+}
+.history-detail-stat.is-primary strong {
+    font-size: 0.98rem;
+}
+.history-detail-stat.stat-status {
+    border-color: color-mix(in srgb, var(--history-detail-faint) 50%, var(--history-detail-border));
+}
+.history-detail-stat.stat-status.state-complete {
+    background: linear-gradient(180deg,
+        color-mix(in srgb, var(--history-detail-success) 13%, var(--history-detail-panel)),
+        var(--history-detail-field));
+    border-color: color-mix(in srgb, var(--history-detail-success) 52%, var(--history-detail-border));
+}
+.history-detail-stat.stat-status.state-running,
+.history-detail-stat.stat-status.state-queued {
+    border-color: color-mix(in srgb, var(--history-detail-accent) 52%, var(--history-detail-border));
+}
+.history-detail-stat.stat-status.state-error {
+    background: color-mix(in srgb, var(--history-detail-danger) 10%, var(--history-detail-field));
+    border-color: color-mix(in srgb, var(--history-detail-danger) 56%, var(--history-detail-border));
+}
+.history-detail-stat.stat-status strong {
+    color: var(--history-detail-text);
+}
+.history-detail-stat.stat-status.state-complete strong {
+    color: var(--history-detail-success);
+}
+.history-detail-stat.stat-status.state-error strong {
+    color: var(--history-detail-danger);
+}
+.history-detail-stat.stat-status.state-running strong,
+.history-detail-stat.stat-status.state-queued strong {
+    color: var(--history-detail-accent);
+}
+.history-detail-stat.stat-loss strong,
+.history-detail-stat.stat-speed strong {
+    color: var(--history-detail-accent);
+}
+.history-detail-stat.stat-system,
+.history-detail-stat.stat-time,
+.history-detail-stat.is-secondary {
+    background: color-mix(in srgb, var(--history-detail-field) 82%, var(--history-detail-panel));
 }
 .history-detail-stat strong {
-    color: var(--text);
+    color: var(--history-detail-text);
     display: block;
     font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-    font-size: 1.08rem;
+    font-size: 0.9rem;
     font-variant-numeric: tabular-nums;
     font-weight: 800;
-    line-height: 1.08;
+    line-height: 1.05;
     overflow-wrap: anywhere;
 }
 .history-detail-stat > span {
     align-items: center;
-    color: var(--text-dim);
+    color: var(--history-detail-muted);
     display: flex;
-    font-size: 0.64rem;
+    font-size: 0.58rem;
     font-weight: 700;
-    gap: 0.26rem;
-    margin-top: 0.12rem;
+    gap: 0.2rem;
+    line-height: 1.18;
+    margin-top: 0.06rem;
 }
 .history-detail-metrics-body {
+    align-items: start;
     display: grid;
-    gap: 0.65rem;
-    grid-template-columns: minmax(0, 1.28fr) minmax(340px, 0.72fr);
+    gap: 0.48rem;
+    grid-template-columns: minmax(0, 1.28fr) minmax(330px, 0.72fr);
     min-width: 0;
 }
 .history-detail-info-block {
-    border-left: 1px solid var(--border-soft);
+    border-left: 1px solid color-mix(in srgb, var(--history-detail-border) 72%, transparent);
     display: grid;
-    gap: 0.45rem;
+    gap: 0.28rem;
     min-width: 0;
-    padding-left: 0.65rem;
+    padding-left: 0.48rem;
 }
 .history-detail-info-block h5 {
-    color: var(--text-dim);
-    font-size: 0.7rem;
+    color: var(--history-detail-muted);
+    font-size: 0.64rem;
+    line-height: 1.1;
     margin: 0;
 }
 .history-detail-kv {
     display: grid;
-    gap: 0.38rem;
+    gap: 0.24rem;
 }
 .history-detail-kv > div {
-    background: var(--surface-raised);
-    border: 1px solid var(--border-soft);
+    background: color-mix(in srgb, var(--history-detail-field) 86%, var(--history-detail-panel));
+    border: 1px solid color-mix(in srgb, var(--history-detail-border) 76%, transparent);
     border-radius: 4px;
     display: grid;
-    gap: 0.45rem;
-    grid-template-columns: 92px minmax(0, 1fr);
-    padding: 0.38rem 0.45rem;
+    gap: 0.32rem;
+    grid-template-columns: 76px minmax(0, 1fr);
+    min-height: 26px;
+    padding: 0.22rem 0.34rem;
 }
 .history-detail-kv > div.has-copy-action {
     align-items: center;
-    grid-template-columns: 92px minmax(0, 1fr) 28px;
+    grid-template-columns: 76px minmax(0, 1fr) 24px;
 }
 .history-detail-kv > div.has-file-actions {
     align-items: center;
-    grid-template-columns: 92px minmax(0, 1fr) max-content;
+    grid-template-columns: 76px minmax(0, 1fr) max-content;
 }
 .history-detail-kv > div.is-muted {
     opacity: 0.46;
 }
 .history-detail-kv span {
-    color: var(--text-dim);
-    font-size: 0.66rem;
+    color: var(--history-detail-muted);
+    font-size: 0.6rem;
+    line-height: 1.25;
 }
 .history-detail-kv code {
-    color: var(--text);
-    font-size: 0.68rem;
+    color: var(--history-detail-text);
+    font-size: 0.63rem;
+    line-height: 1.25;
     min-width: 0;
     overflow-wrap: anywhere;
     white-space: normal;
 }
 .history-detail-path-summary .history-detail-path-root {
-    background: color-mix(in srgb, var(--accent) 7%, var(--surface-raised));
-    border-color: color-mix(in srgb, var(--accent) 36%, var(--border-soft));
-    margin-bottom: 0.12rem;
+    background: linear-gradient(90deg,
+        color-mix(in srgb, var(--history-detail-accent) 13%, var(--history-detail-field)),
+        color-mix(in srgb, var(--history-detail-accent) 5%, var(--history-detail-field)));
+    border-color: color-mix(in srgb, var(--history-detail-accent) 42%, var(--history-detail-border));
+    margin-bottom: 0.04rem;
 }
 .history-detail-path-summary .history-detail-path-root > span {
-    color: var(--accent);
+    color: var(--history-detail-accent);
     font-weight: 800;
 }
 .history-detail-path-row code,
@@ -1236,6 +1446,23 @@ body.history-detail-window-open {
     overflow: hidden;
     text-overflow: clip;
     white-space: nowrap;
+}
+.history-detail-path-summary {
+    gap: 0.2rem;
+}
+.history-detail-path-summary > div {
+    grid-template-columns: 96px minmax(0, 1fr) 24px;
+}
+.history-detail-path-summary .history-detail-path-root {
+    min-height: 30px;
+}
+.history-detail-path-summary .history-detail-icon-btn {
+    height: 22px;
+    width: 22px;
+}
+.history-detail-path-summary .history-detail-icon-btn svg {
+    height: 12px;
+    width: 12px;
 }
 .history-detail-select-all {
     cursor: text;
@@ -1249,21 +1476,21 @@ body.history-detail-window-open {
     color: var(--text-dim);
     cursor: pointer;
     display: inline-flex;
-    height: 26px;
+    height: 24px;
     justify-content: center;
     padding: 0;
     transition: background 160ms ease, border-color 160ms ease, color 160ms ease;
-    width: 26px;
+    width: 24px;
 }
 .history-detail-icon-link {
     text-decoration: none;
 }
 .history-detail-copy-btn {
-    flex: 0 0 26px;
+    flex: 0 0 24px;
 }
 .history-detail-icon-btn svg {
-    height: 14px;
-    width: 14px;
+    height: 13px;
+    width: 13px;
 }
 .history-detail-icon-btn:hover,
 .history-detail-icon-btn:focus-visible {
@@ -1421,7 +1648,7 @@ body.history-detail-window-open {
 }
 .history-detail-file-browser {
     display: grid;
-    gap: 0.42rem;
+    gap: 0.28rem;
     grid-template-rows: auto minmax(0, 1fr);
     min-height: 0;
 }
@@ -1431,18 +1658,19 @@ body.history-detail-window-open {
     border: 1px solid color-mix(in srgb, var(--accent) 34%, var(--border-soft));
     border-radius: 5px;
     display: grid;
-    gap: 0.45rem;
-    grid-template-columns: 72px minmax(0, 1fr) 28px;
-    padding: 0.42rem 0.48rem;
+    gap: 0.32rem;
+    grid-template-columns: 68px minmax(0, 1fr) 24px;
+    min-height: 30px;
+    padding: 0.26rem 0.34rem;
 }
 .history-file-root span {
     color: var(--accent);
-    font-size: 0.66rem;
+    font-size: 0.6rem;
     font-weight: 800;
 }
 .history-file-root code {
     color: var(--text);
-    font-size: 0.68rem;
+    font-size: 0.63rem;
     overflow: hidden;
     text-overflow: clip;
     white-space: nowrap;
@@ -1456,9 +1684,9 @@ body.history-detail-window-open {
 }
 .history-file-row {
     background: color-mix(in srgb, var(--surface-raised) 74%, transparent);
-    min-height: 34px;
-    padding-bottom: 0.3rem;
-    padding-top: 0.3rem;
+    min-height: 28px;
+    padding-bottom: 0.2rem;
+    padding-top: 0.2rem;
     transition: background 160ms ease, border-color 160ms ease;
 }
 .history-file-row:hover,
@@ -1754,7 +1982,7 @@ body.history-detail-window-open {
 .history-detail-system,
 .history-detail-resume {
     display: grid;
-    gap: 0.62rem;
+    gap: 0.42rem;
     min-width: 0;
 }
 .history-detail-config-files {
@@ -1955,14 +2183,28 @@ body.history-detail-window-open {
 .history-resume-diagnostic-body,
 .history-resume-hotstart-body {
     display: grid;
-    gap: 0.55rem;
+    gap: 0.36rem;
     min-width: 0;
+}
+.history-detail-resume .history-detail-section {
+    background: color-mix(in srgb, var(--history-detail-panel) 86%, var(--history-detail-field));
+    gap: 0.34rem;
+    padding: 0.46rem 0.52rem;
+}
+.history-detail-section.resume-full {
+    border-color: color-mix(in srgb, var(--history-detail-accent) 36%, var(--history-detail-border));
+}
+.history-detail-section.resume-hotstart {
+    background: color-mix(in srgb, var(--history-detail-panel) 78%, var(--history-detail-field));
+}
+.history-detail-section.resume-diagnostic {
+    border-color: color-mix(in srgb, var(--history-detail-danger) 34%, var(--history-detail-border));
 }
 .history-resume-control-row {
     align-items: end;
     display: grid;
-    gap: 0.5rem;
-    grid-template-columns: minmax(260px, 720px) auto;
+    gap: 0.36rem;
+    grid-template-columns: minmax(260px, 640px) auto;
     justify-content: start;
     min-width: 0;
 }
@@ -1972,29 +2214,35 @@ body.history-detail-window-open {
 .history-resume-hint,
 .history-resume-diagnostic-body p,
 .history-resume-hotstart-body p {
-    color: var(--text-dim);
-    font-size: 0.72rem;
-    line-height: 1.5;
+    color: var(--history-detail-muted);
+    font-size: 0.66rem;
+    line-height: 1.36;
     margin: 0;
 }
 .history-resume-diagnostic-error {
-    color: var(--danger-soft) !important;
+    color: var(--history-detail-danger) !important;
 }
 .history-resume-weight-list {
     display: grid;
-    gap: 0.45rem;
+    gap: 0.24rem;
+}
+.history-resume-weight-item {
+    background: var(--history-detail-field);
+    border-color: color-mix(in srgb, var(--history-detail-border) 80%, transparent);
+    min-height: 32px;
+    padding: 0.28rem 0.36rem;
 }
 .history-resume-weight-item span {
-    color: var(--text-dim);
+    color: var(--history-detail-muted);
     display: block;
-    font-size: 0.66rem;
-    margin-top: 0.16rem;
+    font-size: 0.6rem;
+    margin-top: 0.08rem;
 }
 .history-resume-weight-actions {
     align-items: center;
     display: flex;
     flex-wrap: wrap;
-    gap: 0.35rem;
+    gap: 0.2rem;
     justify-content: flex-end;
 }
 .history-curve-workbench {
@@ -2640,43 +2888,43 @@ body.history-detail-window-open {
 .history-resume-head {
     align-items: flex-start;
     display: flex;
-    gap: 1rem;
+    gap: 0.55rem;
     justify-content: space-between;
-    margin-bottom: 0.65rem;
+    margin-bottom: 0.42rem;
 }
 .history-resume-head h3 {
     color: var(--accent);
-    font-size: 0.86rem;
-    margin: 0 0 0.22rem;
+    font-size: 0.78rem;
+    margin: 0 0 0.12rem;
 }
 .history-resume-head p {
     color: var(--text-dim);
-    font-size: 0.72rem;
-    line-height: 1.5;
+    font-size: 0.66rem;
+    line-height: 1.36;
     margin: 0;
 }
 .history-resume-controls {
     align-items: end;
     display: grid;
-    gap: 0.55rem;
+    gap: 0.36rem;
     grid-template-columns: minmax(260px, 1fr) auto;
 }
 .history-resume-field {
     display: grid;
-    gap: 0.25rem;
+    gap: 0.16rem;
 }
 .history-resume-field span {
     color: var(--text-dim);
-    font-size: 0.68rem;
+    font-size: 0.62rem;
 }
 .history-resume-select {
     background: var(--bg-input);
     border: 1px solid var(--border);
     border-radius: 4px;
     color: var(--text);
-    min-height: 34px;
+    min-height: 30px;
     min-width: 0;
-    padding: 0.4rem 0.5rem;
+    padding: 0.28rem 0.4rem;
     width: 100%;
 }
 .history-resume-select:disabled {
@@ -2685,16 +2933,16 @@ body.history-detail-window-open {
 }
 .resume-checkpoint-summary {
     display: grid;
-    gap: 0.32rem;
-    margin-top: 0.6rem;
+    gap: 0.22rem;
+    margin-top: 0.34rem;
 }
 .resume-checkpoint-summary div {
     align-items: start;
     display: grid;
-    gap: 0.45rem;
-    grid-template-columns: 84px minmax(0, 1fr);
+    gap: 0.32rem;
+    grid-template-columns: 72px minmax(0, 1fr);
     color: var(--text-dim);
-    font-size: 0.7rem;
+    font-size: 0.64rem;
 }
 .resume-checkpoint-summary span {
     color: var(--text-dim);

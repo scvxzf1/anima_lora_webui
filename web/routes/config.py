@@ -185,6 +185,7 @@ async def handle_datasets_put(request: web.Request) -> web.Response:
     methods_subdir = data.get("methods_subdir", "gui-methods")
     datasets = data.get("datasets", [])
     defaults = data.get("defaults", {})
+    config_values = data.get("config_values", {})
     train_file = data.get("train_file")
     train_content = data.get("train_content")
     prefer_existing_dataset_config = data.get("prefer_existing_dataset_config", True)
@@ -197,6 +198,7 @@ async def handle_datasets_put(request: web.Request) -> web.Response:
             methods_subdir,
             datasets,
             defaults=defaults if isinstance(defaults, dict) else {},
+            config_values=config_values if isinstance(config_values, dict) else {},
             train_file=train_file,
             train_content=train_content,
             prefer_existing_dataset_config=bool(prefer_existing_dataset_config),

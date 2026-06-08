@@ -1,24 +1,24 @@
-import { createPreviewFeature } from '../preview/index.js?v=module-bootstrap-20260608-3';
-import { createQueueFeature } from '../queue/index.js?v=module-bootstrap-20260608-3';
-import { createHistoryDetailFeature } from '../history-detail/index.js?v=module-bootstrap-20260608-3';
-import { createWeightAnalysisFeature } from '../weight-analysis/index.js?v=module-bootstrap-20260608-3';
-import { createGpuPicker } from '../app-shell/gpu-picker.js?v=module-bootstrap-20260608-3';
-import { createTabController } from '../app-shell/tabs.js?v=module-bootstrap-20260608-3';
-import { createThemeController } from '../app-shell/theme.js?v=module-bootstrap-20260608-3';
+import { createPreviewFeature } from '../preview/index.js?v=module-bootstrap-20260608-10';
+import { createQueueFeature } from '../queue/index.js?v=module-bootstrap-20260608-10';
+import { createHistoryDetailFeature } from '../history-detail/index.js?v=module-bootstrap-20260608-10';
+import { createWeightAnalysisFeature } from '../weight-analysis/index.js?v=module-bootstrap-20260608-10';
+import { createGpuPicker } from '../app-shell/gpu-picker.js?v=module-bootstrap-20260608-10';
+import { createTabController } from '../app-shell/tabs.js?v=module-bootstrap-20260608-10';
+import { createThemeController } from '../app-shell/theme.js?v=module-bootstrap-20260608-10';
 import {
     blankSamplePromptRow,
     parseSamplePromptRows,
     samplePromptsContentNeedsTextMode,
     serializeSamplePromptsEditor,
-} from '../sample-prompts/model.js?v=module-bootstrap-20260608-3';
-import { readTomlGroupState, writeTomlGroupState } from '../toml-manager/group-state.js?v=module-bootstrap-20260608-3';
+} from '../sample-prompts/model.js?v=module-bootstrap-20260608-10';
+import { readTomlGroupState, writeTomlGroupState } from '../toml-manager/group-state.js?v=module-bootstrap-20260608-10';
 import {
     formatSystemPercent,
     formatSystemTemperature,
     formatSystemVram,
     historySystemSummary,
-} from '../history-detail/system.js?v=module-bootstrap-20260608-3';
-import { formatCompactNumber, numberOrNull } from '../history-detail/ui.js?v=module-bootstrap-20260608-3';
+} from '../history-detail/system.js?v=module-bootstrap-20260608-10';
+import { formatCompactNumber, numberOrNull } from '../history-detail/ui.js?v=module-bootstrap-20260608-10';
 
 const ctx = globalThis.ctx;
 

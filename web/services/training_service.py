@@ -43,6 +43,7 @@ from web.services.config_service import (
     _normalize_path_pattern,
     _normalize_trigger_clone,
     apply_auto_data_dirs,
+    apply_global_model_path_defaults,
     load_merged_config,
     preflight_training_config,
     training_sample_sampler_status,
@@ -248,6 +249,10 @@ class TrainingService:
         from web.services.training import queue as _impl
         return await _impl.enqueue_training(self, *args, **kwargs)
 
+    async def enqueue_training_batch(self, *args, **kwargs):
+        from web.services.training import queue as _impl
+        return await _impl.enqueue_training_batch(self, *args, **kwargs)
+
     async def enqueue_resume_from_history_task(self, *args, **kwargs):
         from web.services.training import queue as _impl
         return await _impl.enqueue_resume_from_history_task(self, *args, **kwargs)
@@ -271,6 +276,14 @@ class TrainingService:
     async def cancel_all_queue_items(self, *args, **kwargs):
         from web.services.training import queue as _impl
         return await _impl.cancel_all_queue_items(self, *args, **kwargs)
+
+    async def abort_queue_after_current(self, *args, **kwargs):
+        from web.services.training import queue as _impl
+        return await _impl.abort_queue_after_current(self, *args, **kwargs)
+
+    async def force_abort_queue(self, *args, **kwargs):
+        from web.services.training import queue as _impl
+        return await _impl.force_abort_queue(self, *args, **kwargs)
 
     async def clear_finished_queue_items(self, *args, **kwargs):
         from web.services.training import queue as _impl

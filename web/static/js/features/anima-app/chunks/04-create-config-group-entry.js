@@ -164,6 +164,7 @@ const ctx = globalThis.ctx;
     globalThis.createConfigFormControls = function createConfigFormControls(allGroups, renderedGroups, searchText) {
         const controls = document.createElement('div');
         controls.className = 'config-form-controls';
+        controls.appendChild(createConfigScopeStatus(allGroups, renderedGroups, searchText));
 
         const searchLabel = document.createElement('label');
         searchLabel.className = 'config-search-box';
@@ -172,6 +173,9 @@ const ctx = globalThis.ctx;
         const search = document.createElement('input');
         search.id = 'config-search-input';
         search.type = 'search';
+        search.autocomplete = 'off';
+        search.spellcheck = false;
+        search.setAttribute('aria-label', '搜索配置项');
         search.placeholder = '输入学习率、caption、network_dim 或中文名称';
         search.value = configFormState.search;
         search.addEventListener('input', (event) => {
@@ -185,6 +189,20 @@ const ctx = globalThis.ctx;
                     const length = next.value.length;
                     next.setSelectionRange(length, length);
                 }
+            });
+        });
+        search.addEventListener('keydown', (event) => {
+            if (event.key !== 'Escape') return;
+            if (!search.value) {
+                search.blur();
+                return;
+            }
+            event.preventDefault();
+            syncConfigDraftFromForm();
+            configFormState.search = '';
+            renderConfigForm(currentConfig);
+            requestAnimationFrame(() => {
+                document.getElementById('config-search-input')?.focus();
             });
         });
         searchLabel.append(searchCaption, search);
@@ -225,6 +243,23 @@ const ctx = globalThis.ctx;
         ].join('');
         controls.appendChild(summary);
         return controls;
+    }
+
+    globalThis.createConfigScopeStatus = function createConfigScopeStatus(allGroups, renderedGroups, searchText) {
+        const active = FORM_CATEGORY_DEFS.find((category) => category.id === configFormState.activeCategory) || FORM_CATEGORY_DEFS[0];
+        const total = allGroups.reduce((sum, group) => sum + group.fields.length, 0);
+        const visible = renderedGroups.reduce((sum, group) => sum + group.fields.length, 0);
+        const scope = document.createElement('div');
+        scope.className = 'config-form-scope';
+
+        const caption = document.createElement('span');
+        caption.textContent = searchText ? '搜索结果' : '当前目录';
+        const title = document.createElement('strong');
+        title.textContent = searchText ? '筛选中' : active?.title || '配置';
+        const meta = document.createElement('em');
+        meta.textContent = searchText ? `${visible} / ${total} 项匹配` : active?.description || '';
+        scope.append(caption, title, meta);
+        return scope;
     }
 
     globalThis.filterConfigGroupEntry = function filterConfigGroupEntry(group, searchText) {
@@ -275,12 +310,20 @@ const ctx = globalThis.ctx;
         const section = document.createElement('section');
         section.className = ['config-group', extraClass].filter(Boolean).join(' ');
         section.dataset.groupName = name;
+        section.dataset.categoryId = FORM_CATEGORY_SECTION_MAP.get(name) || 'advanced';
 
         const header = document.createElement('div');
         header.className = 'config-group-title';
-        const title = document.createElement('span');
-        title.textContent = `${name} (${fields.length} 项)`;
-        header.appendChild(title);
+        const heading = document.createElement('span');
+        heading.className = 'config-group-heading';
+        const title = document.createElement('strong');
+        title.className = 'config-group-name';
+        title.textContent = name;
+        const count = document.createElement('em');
+        count.className = 'config-group-count';
+        count.textContent = `${fields.length} 项`;
+        heading.append(title, count);
+        header.appendChild(heading);
         if (extraClass === 'config-group-experimental') {
             const badge = document.createElement('span');
             badge.className = 'config-group-badge config-group-badge-experimental';

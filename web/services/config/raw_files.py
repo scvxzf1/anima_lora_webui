@@ -253,9 +253,9 @@ def _normalize_patch_value(key: str, value: Any) -> Any:
         if _is_blank_output_name(value):
             raise ValueError("output_name 不能为空")
         return str(value).strip()
-    if key in {"sample_every_n_epochs", "sample_every_n_steps"}:
+    if key in {"sample_every_n_epochs", "sample_every_n_steps", "max_train_epochs"}:
         if value in ("", None):
-            # TOML 没有 null。WebUI 留空表示禁用该采样频率，
+            # TOML 没有 null。WebUI 留空表示禁用该可选数值，
             # 因此删除顶层键，让训练端按缺省 None 处理。
             return _DELETE_TOML_KEY
         try:

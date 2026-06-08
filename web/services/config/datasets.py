@@ -453,6 +453,7 @@ def save_dataset_editor(
     methods_subdir: str,
     rows: list[dict[str, Any]],
     defaults: dict[str, Any] | None = None,
+    config_values: dict[str, Any] | None = None,
     train_file: str | None = None,
     train_content: str | None = None,
     prefer_existing_dataset_config: bool = True,
@@ -492,9 +493,26 @@ def save_dataset_editor(
         if not ok:
             raise ValueError(msg)
 
+    doc_cfg = dict(cfg)
+    if train_rel:
+        try:
+            doc_cfg.update(expand_env_vars_in_obj(toml.loads(next_content)))
+        except toml.TomlDecodeError as exc:
+            raise ValueError(f"训练配置 TOML 解析失败: {exc}") from exc
+    elif train_content is not None:
+        try:
+            doc_cfg.update(expand_env_vars_in_obj(toml.loads(str(train_content or ""))))
+        except toml.TomlDecodeError as exc:
+            raise ValueError(f"训练配置 TOML 解析失败: {exc}") from exc
+    if config_values:
+        doc_cfg.update(expand_env_vars_in_obj(dict(config_values)))
+    if defaults:
+        doc_cfg.update(_normalize_dataset_defaults(defaults))
+    doc_cfg = apply_auto_data_dirs(doc_cfg)
+
     dataset_doc = _build_dataset_config_doc(
         clean_rows,
-        cfg,
+        doc_cfg,
         prefer_train_batch_size=True,
     )
     dataset_existed = dataset_path.exists()

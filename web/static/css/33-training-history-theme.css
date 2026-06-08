@@ -44,9 +44,9 @@
     align-self: start;
     display: grid;
     grid-template-columns: minmax(0, 1fr);
-    gap: 0.75rem;
+    gap: 0.82rem;
     margin: 0;
-    padding: 1.25rem 1.25rem 1rem;
+    padding: 1.28rem 1.25rem 1.05rem;
     border-right: 1px solid var(--training-border-strong);
     border-bottom: 1px solid var(--training-border);
     background: var(--training-sidebar-bg);
@@ -55,7 +55,8 @@
 #tab-training .history-manager-head h3 {
     margin: 0.18rem 0 0;
     color: var(--training-text);
-    font-size: 1rem;
+    font-size: 1.16rem;
+    font-weight: 850;
     line-height: 1.2;
 }
 
@@ -92,21 +93,22 @@
 
 #tab-training .history-manager-stat {
     display: grid;
-    gap: 0.08rem;
-    min-height: 48px;
-    padding: 0.42rem 0.5rem;
+    gap: 0.12rem;
+    min-height: 58px;
+    padding: 0.5rem 0.56rem;
     border-color: var(--training-border);
     border-radius: 6px;
     background: var(--training-panel-soft);
     color: var(--training-text);
+    transition: border-color 0.16s ease, background 0.16s ease, box-shadow 0.16s ease, transform 0.16s ease;
 }
 
 #tab-training .history-manager-stat:hover,
 #tab-training .history-manager-stat.active {
-    border-color: var(--training-accent);
-    background: var(--training-accent-strong);
-    color: var(--training-accent-ink);
-    box-shadow: none;
+    border-color: color-mix(in srgb, var(--training-accent) 58%, var(--training-border));
+    background: color-mix(in srgb, var(--training-accent) 10%, var(--training-panel-soft));
+    color: var(--training-text);
+    box-shadow: inset 0 -2px 0 var(--training-accent);
 }
 
 #tab-training .history-manager-stat strong {
@@ -118,6 +120,8 @@
 #tab-training .history-manager-stat span {
     color: var(--training-muted);
     font-size: 0.64rem;
+    font-weight: 800;
+    text-transform: uppercase;
 }
 
 #tab-training .history-manager-stat.error {
@@ -132,7 +136,7 @@
 
 #tab-training .history-manager-stat:hover span,
 #tab-training .history-manager-stat.active span {
-    color: rgba(255, 255, 255, 0.78);
+    color: var(--training-muted);
 }
 
 #tab-training .history-manager-tools {
@@ -161,6 +165,7 @@
     color: var(--training-muted);
     font-size: 0.65rem;
     font-weight: 800;
+    gap: 0.24rem;
     text-transform: uppercase;
 }
 
@@ -266,11 +271,17 @@
     align-items: start;
     gap: 1.1rem;
     grid-template-columns: minmax(0, 1fr) auto;
+    padding: 0.95rem 1rem;
+    border: 1px solid var(--training-border);
+    border-radius: 6px;
+    background: linear-gradient(180deg, color-mix(in srgb, var(--training-panel-soft) 70%, transparent), var(--training-panel-bg));
+    box-shadow: var(--training-shadow-soft);
 }
 
 #tab-training .history-collections-title strong {
     color: var(--training-accent);
-    font-size: 2rem;
+    font-size: 2.08rem;
+    font-weight: 900;
     line-height: 1.08;
 }
 
@@ -296,7 +307,7 @@
     min-width: min(420px, 45vw);
     border: 1px solid var(--training-border-strong);
     border-radius: 5px;
-    background: var(--training-panel-bg);
+    background: color-mix(in srgb, var(--training-field-bg) 54%, var(--training-panel-bg));
 }
 
 #tab-training .history-collections-workbench.compact .history-collections-stats {
@@ -307,7 +318,8 @@
 #tab-training .history-collections-workbench.compact .history-collections-stats div {
     display: grid;
     gap: 0.08rem;
-    padding: 0.58rem 0.72rem;
+    min-height: 62px;
+    padding: 0.62rem 0.72rem;
     border: 0;
     border-right: 1px solid var(--training-border);
     border-radius: 0;
@@ -321,7 +333,8 @@
 #tab-training .history-collections-stats strong,
 #tab-training .history-collections-workbench.compact .history-collections-stats strong {
     color: var(--training-text);
-    font-size: 1.05rem;
+    font-size: 1.16rem;
+    font-weight: 850;
     line-height: 1.05;
 }
 
@@ -334,10 +347,10 @@
 }
 
 #tab-training .history-collections-toolbar {
-    padding: 0.65rem;
+    padding: 0.68rem 0.72rem;
     border-color: var(--training-border);
     border-radius: 6px;
-    background: var(--training-panel-bg);
+    background: color-mix(in srgb, var(--training-accent) 6%, var(--training-panel-bg));
 }
 
 #tab-training .history-collections-toolbar span {
@@ -356,9 +369,10 @@
 #tab-training .history-collections-panel {
     gap: 0;
     padding: 0;
-    border: 0;
+    border: 1px solid var(--training-border);
     border-radius: 6px;
-    background: transparent;
+    background: var(--training-panel-bg);
+    box-shadow: 0 1px 0 color-mix(in srgb, var(--training-border) 26%, transparent);
 }
 
 #tab-training .history-collections-panel-title {
@@ -368,7 +382,7 @@
     max-height: var(--history-training-panel-head-height);
     padding: 0 0.72rem;
     border-bottom: 1px solid var(--training-border);
-    background: var(--training-panel-soft);
+    background: color-mix(in srgb, var(--training-panel-soft) 86%, var(--training-field-bg));
 }
 
 #tab-training .history-collections-panel-title strong {
@@ -382,10 +396,10 @@
 
 #tab-training .history-config-group-card-list,
 #tab-training .history-collection-card-list {
-    gap: 0.28rem;
+    gap: 0.36rem;
     min-height: 0;
     overflow-y: auto;
-    padding: 0.32rem 0.48rem 0.48rem;
+    padding: 0.48rem;
 }
 
 #tab-training .history-collections-panel.collection-nav,
@@ -422,18 +436,63 @@
     border-radius: 5px;
     background: var(--training-field-bg);
     color: var(--training-text);
+    border: 1px solid color-mix(in srgb, var(--training-border) 74%, transparent);
 }
 
 #tab-training .history-config-group-card {
-    background: color-mix(in srgb, var(--training-accent) 6%, var(--training-panel-bg));
-    box-shadow: 0 1px 8px color-mix(in srgb, var(--training-border-strong) 34%, transparent);
-    padding: 0.42rem 0.56rem 0.4rem;
+    background: color-mix(in srgb, var(--training-accent) 7%, var(--training-panel-bg));
+    box-shadow: inset 4px 0 0 color-mix(in srgb, var(--training-accent) 68%, transparent), 0 1px 8px color-mix(in srgb, var(--training-border-strong) 34%, transparent);
+    padding: 0.52rem 0.64rem 0.5rem;
 }
 
 #tab-training .history-config-group-card.single-task {
     background: var(--training-field-bg);
-    box-shadow: 0 1px 3px color-mix(in srgb, var(--training-border-strong) 18%, transparent);
+    box-shadow: inset 3px 0 0 color-mix(in srgb, var(--training-muted) 36%, transparent), 0 1px 3px color-mix(in srgb, var(--training-border-strong) 18%, transparent);
     padding: 5px 8px;
+}
+
+#tab-training .history-collection-nav .history-collection-card {
+    min-height: 48px;
+    padding: 0.32rem 0.52rem 0.28rem;
+}
+
+#tab-training .history-collection-nav .history-collection-card-head {
+    align-items: start;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 0.28rem;
+}
+
+#tab-training .history-collection-nav .history-collection-card-title {
+    gap: 0.02rem;
+    padding-top: 0.02rem;
+}
+
+#tab-training .history-collection-nav .history-collection-card-title-row {
+    align-items: start;
+    gap: 0.28rem;
+    min-height: 1.18rem;
+}
+
+#tab-training .history-collection-nav .history-drag-handle {
+    align-self: start;
+    margin-top: 0.02rem;
+}
+
+#tab-training .history-collection-nav .history-collection-card-title strong {
+    color: var(--training-text);
+    font-size: 0.9rem;
+    font-weight: 900;
+    line-height: 1.08;
+}
+
+#tab-training .history-collection-nav .history-collection-card-title span {
+    font-size: 0.64rem;
+    font-weight: 750;
+    line-height: 1.08;
+}
+
+#tab-training .history-collection-nav .history-collection-card-actions {
+    align-self: start;
 }
 
 #tab-training .history-config-group-card.single-task .history-config-group-card-head > .history-config-group-card-actions {
@@ -445,7 +504,14 @@
 #tab-training .history-config-group-card.selected,
 #tab-training .history-manager-row:hover,
 #tab-training .history-manager-row.active {
+    border-color: color-mix(in srgb, var(--training-accent) 48%, var(--training-border));
     background: color-mix(in srgb, var(--training-accent) 8%, var(--training-field-bg));
+}
+
+#tab-training .history-collection-card.active,
+#tab-training .history-config-group-card.selected,
+#tab-training .history-manager-row.active {
+    box-shadow: inset 4px 0 0 var(--training-accent);
 }
 
 #tab-training .history-collection-card.drop-active,
@@ -463,6 +529,7 @@
 
 #tab-training .history-config-group-card-main strong {
     font-size: 1rem;
+    font-weight: 850;
 }
 
 #tab-training .history-config-group-card-main strong::before {
@@ -476,6 +543,7 @@
 
 #tab-training .history-config-group-card.single-task .history-config-group-card-main strong {
     font-size: 0.9rem;
+    font-weight: 800;
 }
 
 #tab-training .history-config-group-card.single-task .history-config-group-card-main span {
@@ -500,6 +568,7 @@
 
 #tab-training .history-config-group-task-list {
     border-top-color: color-mix(in srgb, var(--training-border) 62%, transparent);
+    margin-top: 0.34rem;
 }
 
 #tab-training .history-config-group-task-list::before,
@@ -510,6 +579,9 @@
 #tab-training .history-config-group-task-list .history-manager-row {
     background: transparent;
     border-bottom-color: color-mix(in srgb, var(--training-border) 50%, transparent);
+    border-left: 0;
+    border-right: 0;
+    border-top: 0;
 }
 
 #tab-training .history-drag-handle {

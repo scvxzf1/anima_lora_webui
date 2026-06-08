@@ -1,23 +1,59 @@
 import {
+    abortTrainingQueueAfterCurrent,
     cancelAllTrainingQueue,
     cancelWaitingTrainingQueue,
     clearCanceledTrainingQueue,
     clearCompletedTrainingQueue,
     deleteTrainingQueueItem,
+    forceAbortTrainingQueue,
     moveTrainingQueueItem,
     retryTrainingQueueItem,
     updateTrainingQueueSettingsRequest,
-} from './api.js?v=module-bootstrap-20260608-3';
-import { queueSummaryCounts, setQueueFilter } from './state.js?v=module-bootstrap-20260608-3';
+} from './api.js?v=module-bootstrap-20260608-10';
+import { queueSummaryCounts, setQueueFeedback, setQueueFilter } from './state.js?v=module-bootstrap-20260608-10';
 
 export function createQueueActions({ ctx, state, deps, updateTrainingQueueFromPayload, renderTrainingQueue, queueItemTitle }) {
+    function showQueueFeedback(feedback = {}) {
+        setQueueFeedback(state, feedback);
+        renderTrainingQueue();
+    }
+
+    function beginQueueFeedback(message, options = {}) {
+        showQueueFeedback({
+            message,
+            tone: 'busy',
+            busyAction: options.action || '',
+            busyItemId: options.itemId || '',
+        });
+    }
+
+    function finishQueueFeedback(message, tone = 'ok', options = {}) {
+        showQueueFeedback({
+            message,
+            tone,
+            flashItemId: options.itemId || '',
+        });
+    }
+
     async function moveQueueItem(itemId, direction) {
+        const item = state.queue.items.find((entry) => entry.id === itemId);
+        const action = `move-${itemId}-${direction}`;
+        const directionLabel = queueMoveDirectionLabel(direction);
+        beginQueueFeedback(`正在${directionLabel}：${queueItemTitle(item || {})}`, { action, itemId });
         try {
             const payload = await moveTrainingQueueItem(ctx, itemId, direction);
             updateTrainingQueueFromPayload(payload);
-            if (!payload.ok) deps.appendLog(`[状态] ${payload.error || '移动队列任务失败'}`);
+            if (payload.ok === false) {
+                const message = payload.error || '移动队列任务失败';
+                finishQueueFeedback(message, 'error', { itemId });
+                deps.appendLog(`[状态] ${message}`);
+                return;
+            }
+            finishQueueFeedback(`已${directionLabel}：${queueItemTitle(item || {})}`, 'ok', { itemId });
         } catch (e) {
-            deps.appendLog(`[状态] 移动队列任务失败: ${e.message}`);
+            const message = `移动队列任务失败: ${e.message}`;
+            finishQueueFeedback(message, 'error', { itemId });
+            deps.appendLog(`[状态] ${message}`);
         }
     }
 
@@ -34,12 +70,21 @@ export function createQueueActions({ ctx, state, deps, updateTrainingQueueFromPa
             danger: true,
         });
         if (!ok) return;
+        beginQueueFeedback(running ? `正在停止：${queueItemTitle(item || {})}` : `正在取消：${queueItemTitle(item || {})}`, { action: `cancel-${itemId}`, itemId });
         try {
             const payload = await deleteTrainingQueueItem(ctx, itemId);
             updateTrainingQueueFromPayload(payload);
-            if (!payload.ok) deps.appendLog(`[状态] ${payload.error || '取消队列任务失败'}`);
+            if (payload.ok === false) {
+                const message = payload.error || '取消队列任务失败';
+                finishQueueFeedback(message, 'error', { itemId });
+                deps.appendLog(`[状态] ${message}`);
+                return;
+            }
+            finishQueueFeedback(running ? '停止请求已发送，队列会暂停。' : '等待任务已取消。', 'ok', { itemId });
         } catch (e) {
-            deps.appendLog(`[状态] 取消队列任务失败: ${e.message}`);
+            const message = `取消队列任务失败: ${e.message}`;
+            finishQueueFeedback(message, 'error', { itemId });
+            deps.appendLog(`[状态] ${message}`);
         }
     }
 
@@ -53,17 +98,25 @@ export function createQueueActions({ ctx, state, deps, updateTrainingQueueFromPa
             danger: true,
         });
         if (!ok) return;
+        beginQueueFeedback(`正在移除列表记录：${queueItemTitle(item || {})}`, { action: `remove-${itemId}`, itemId });
         try {
             await removeQueueItemRecord(itemId);
+            finishQueueFeedback('队列列表记录已移除，运行文件保持不变。', 'ok', { itemId });
         } catch (e) {
-            deps.appendLog(`[状态] 移除队列列表记录失败: ${e.message}`);
+            const message = `移除队列列表记录失败: ${e.message}`;
+            finishQueueFeedback(message, 'error', { itemId });
+            deps.appendLog(`[状态] ${message}`);
         }
     }
 
     async function removeQueueItemRecord(itemId) {
         const payload = await deleteTrainingQueueItem(ctx, itemId);
         updateTrainingQueueFromPayload(payload);
-        if (!payload.ok) deps.appendLog(`[状态] ${payload.error || '移除队列列表记录失败'}`);
+        if (!payload.ok) {
+            const message = payload.error || '移除队列列表记录失败';
+            finishQueueFeedback(message, 'error', { itemId });
+            deps.appendLog(`[状态] ${message}`);
+        }
         return payload;
     }
 
@@ -76,10 +129,17 @@ export function createQueueActions({ ctx, state, deps, updateTrainingQueueFromPa
             confirmText: '重新入队',
         });
         if (!ok) return;
+        beginQueueFeedback(`正在重新入队：${queueItemTitle(item || {})}`, { action: `retry-${itemId}`, itemId });
         try {
             const payload = await retryTrainingQueueItem(ctx, itemId);
             updateTrainingQueueFromPayload(payload);
-            if (!payload.ok) deps.appendLog(`[状态] ${payload.error || '重新入队失败'}`);
+            if (payload.ok === false) {
+                const message = payload.error || '重新入队失败';
+                finishQueueFeedback(message, 'error', { itemId });
+                deps.appendLog(`[状态] ${message}`);
+                return;
+            }
+            finishQueueFeedback('新任务已加入队列。', 'ok', { itemId });
             if (payload.ok !== false && item?.state === 'error') {
                 const cleanup = await deps.showAppConfirmDialog({
                     title: '新任务已加入队列',
@@ -92,7 +152,9 @@ export function createQueueActions({ ctx, state, deps, updateTrainingQueueFromPa
                 if (cleanup) await removeQueueItemRecord(itemId);
             }
         } catch (e) {
-            deps.appendLog(`[状态] 重新入队失败: ${e.message}`);
+            const message = `重新入队失败: ${e.message}`;
+            finishQueueFeedback(message, 'error', { itemId });
+            deps.appendLog(`[状态] ${message}`);
         }
     }
 
@@ -107,10 +169,21 @@ export function createQueueActions({ ctx, state, deps, updateTrainingQueueFromPa
             danger: true,
         });
         if (!ok) return;
+        beginQueueFeedback(`正在取消 ${count} 个等待任务`, { action: 'cancel-waiting' });
         try {
-            updateTrainingQueueFromPayload(await cancelWaitingTrainingQueue(ctx));
+            const payload = await cancelWaitingTrainingQueue(ctx);
+            updateTrainingQueueFromPayload(payload);
+            if (payload.ok === false) {
+                const message = payload.error || '批量取消队列失败';
+                finishQueueFeedback(message, 'error');
+                deps.appendLog(`[状态] ${message}`);
+                return;
+            }
+            finishQueueFeedback(`已取消 ${count} 个等待任务。`);
         } catch (e) {
-            deps.appendLog(`[状态] 批量取消队列失败: ${e.message}`);
+            const message = `批量取消队列失败: ${e.message}`;
+            finishQueueFeedback(message, 'error');
+            deps.appendLog(`[状态] ${message}`);
         }
     }
 
@@ -128,10 +201,88 @@ export function createQueueActions({ ctx, state, deps, updateTrainingQueueFromPa
             danger: true,
         });
         if (!ok) return;
+        beginQueueFeedback(`正在取消 ${count} 个队列任务`, { action: 'cancel-all' });
         try {
-            updateTrainingQueueFromPayload(await cancelAllTrainingQueue(ctx));
+            const payload = await cancelAllTrainingQueue(ctx);
+            updateTrainingQueueFromPayload(payload);
+            if (payload.ok === false) {
+                const message = payload.error || '一键取消队列失败';
+                finishQueueFeedback(message, 'error');
+                deps.appendLog(`[状态] ${message}`);
+                return;
+            }
+            finishQueueFeedback(`已发送 ${count} 个队列任务的取消请求。`);
         } catch (e) {
-            deps.appendLog(`[状态] 一键取消队列失败: ${e.message}`);
+            const message = `一键取消队列失败: ${e.message}`;
+            finishQueueFeedback(message, 'error');
+            deps.appendLog(`[状态] ${message}`);
+        }
+    }
+
+    async function abortQueueAfterCurrent() {
+        const counts = queueSummaryCounts(state);
+        const count = counts.queued;
+        if (!count) return;
+        const ok = await deps.showAppConfirmDialog({
+            title: '中止后续队列',
+            description: `${count} 个等待任务`,
+            message: counts.running
+                ? '当前正在运行的任务会继续执行到完成；确认后会暂停队列并取消所有等待任务，当前任务完成后不会继续下一项。'
+                : '确认后会暂停队列并取消所有等待任务，不会影响已完成记录、历史、缓存、权重、日志或运行目录。',
+            confirmText: '中止后续队列',
+            danger: true,
+        });
+        if (!ok) return;
+        beginQueueFeedback(`正在中止 ${count} 个后续等待任务`, { action: 'abort-after-current' });
+        try {
+            const payload = await abortTrainingQueueAfterCurrent(ctx);
+            updateTrainingQueueFromPayload(payload);
+            if (payload.ok === false) {
+                const message = payload.error || '中止后续队列失败';
+                finishQueueFeedback(message, 'error');
+                deps.appendLog(`[状态] ${message}`);
+                return;
+            }
+            finishQueueFeedback(payload.message || '已中止后续队列。');
+            deps.appendLog(`[状态] ${payload.message || '已中止后续队列'}`);
+        } catch (e) {
+            const message = `中止后续队列失败: ${e.message}`;
+            finishQueueFeedback(message, 'error');
+            deps.appendLog(`[状态] ${message}`);
+        }
+    }
+
+    async function forceAbortQueue() {
+        const counts = queueSummaryCounts(state);
+        const hasActiveProcess = state.queue.status === 'running' || deps.getTrainingRuntime()?.state === 'running';
+        const count = counts.queued + counts.running + (hasActiveProcess && !counts.running ? 1 : 0);
+        if (!count) return;
+        const ok = await deps.showAppConfirmDialog({
+            title: '强制中止队列',
+            description: `${count} 个运行或等待任务`,
+            message: counts.running || hasActiveProcess
+                ? '会立即停止当前正在运行的训练/预处理进程，并取消所有等待任务；队列会保持暂停。不会删除训练历史、缓存、权重、日志或运行目录。'
+                : '会取消所有等待任务并暂停队列。不会删除训练历史、缓存、权重、日志或运行目录。',
+            confirmText: '强制中止',
+            danger: true,
+        });
+        if (!ok) return;
+        beginQueueFeedback(`正在强制中止 ${count} 个队列任务`, { action: 'force-abort' });
+        try {
+            const payload = await forceAbortTrainingQueue(ctx);
+            updateTrainingQueueFromPayload(payload);
+            if (payload.ok === false) {
+                const message = payload.error || '强制中止队列失败';
+                finishQueueFeedback(message, 'error');
+                deps.appendLog(`[状态] ${message}`);
+                return;
+            }
+            finishQueueFeedback(payload.message || '已强制中止队列。');
+            deps.appendLog(`[状态] ${payload.message || '已强制中止队列'}`);
+        } catch (e) {
+            const message = `强制中止队列失败: ${e.message}`;
+            finishQueueFeedback(message, 'error');
+            deps.appendLog(`[状态] ${message}`);
         }
     }
 
@@ -168,15 +319,26 @@ export function createQueueActions({ ctx, state, deps, updateTrainingQueueFromPa
             confirmText: option.confirmText,
         });
         if (!ok) return;
+        beginQueueFeedback(`正在${option.confirmText} ${count} 条记录`, { action: itemState === 'done' ? 'clear-done' : 'clear-canceled' });
         try {
             const payload = await option.request();
             updateTrainingQueueFromPayload(payload);
+            if (payload.ok === false) {
+                const message = payload.error || option.errorText;
+                finishQueueFeedback(message, 'error');
+                deps.appendLog(`[状态] ${message}`);
+                return;
+            }
             focusQueueFilterAfterTerminalClear(itemState);
             const kept = itemState === 'canceled' ? queueSummaryCounts(state).done : queueSummaryCounts(state).canceled;
             const keptText = itemState === 'canceled' ? '已完成记录已保留' : '已取消记录已保留';
-            deps.appendLog(`[状态] ${payload.message || option.confirmText}${kept ? `；${keptText} ${kept} 条` : ''}`);
+            const message = `${payload.message || option.confirmText}${kept ? `；${keptText} ${kept} 条` : ''}`;
+            finishQueueFeedback(message);
+            deps.appendLog(`[状态] ${message}`);
         } catch (e) {
-            deps.appendLog(`[状态] ${option.errorText}: ${e.message}`);
+            const message = `${option.errorText}: ${e.message}`;
+            finishQueueFeedback(message, 'error');
+            deps.appendLog(`[状态] ${message}`);
         }
     }
 
@@ -200,11 +362,24 @@ export function createQueueActions({ ctx, state, deps, updateTrainingQueueFromPa
     }
 
     async function updateTrainingQueueSettings(patch) {
+        const policyPatch = Object.prototype.hasOwnProperty.call(patch, 'failure_policy');
+        const pausedPatch = Object.prototype.hasOwnProperty.call(patch, 'paused');
+        const action = policyPatch ? 'settings-policy' : pausedPatch ? 'settings-paused' : 'settings';
+        beginQueueFeedback(policyPatch ? '正在保存失败处理策略' : patch.paused ? '正在暂停队列' : '正在继续队列', { action });
         try {
             const payload = await updateTrainingQueueSettingsRequest(ctx, patch);
             updateTrainingQueueFromPayload(payload);
+            if (payload.ok === false) {
+                const message = payload.error || '更新队列设置失败';
+                finishQueueFeedback(message, 'error');
+                deps.appendLog(`[状态] ${message}`);
+                return;
+            }
+            finishQueueFeedback(policyPatch ? '失败处理策略已保存。' : patch.paused ? '队列已暂停。' : '队列已继续。');
         } catch (e) {
-            deps.appendLog(`[状态] 更新队列设置失败: ${e.message}`);
+            const message = `更新队列设置失败: ${e.message}`;
+            finishQueueFeedback(message, 'error');
+            deps.appendLog(`[状态] ${message}`);
             deps.loadTrainingQueue();
         }
     }
@@ -217,17 +392,30 @@ export function createQueueActions({ ctx, state, deps, updateTrainingQueueFromPa
         const on = (id, eventName, handler) => {
             document.getElementById(id)?.addEventListener(eventName, handler);
         };
-        on('btn-refresh-queue', 'click', deps.loadTrainingQueue);
-        on('btn-manager-refresh-queue', 'click', deps.loadTrainingQueue);
+        const refreshQueue = async () => {
+            beginQueueFeedback('正在刷新队列状态', { action: 'refresh' });
+            await deps.loadTrainingQueue();
+            if (state.queue.error) {
+                finishQueueFeedback(state.queue.error, 'error');
+                return;
+            }
+            finishQueueFeedback('队列状态已刷新。');
+        };
+        on('btn-refresh-queue', 'click', refreshQueue);
+        on('btn-manager-refresh-queue', 'click', refreshQueue);
         on('btn-toggle-queue-pause', 'click', toggleTrainingQueuePause);
         on('btn-manager-toggle-queue-pause', 'click', toggleTrainingQueuePause);
         on('btn-cancel-all-queue', 'click', cancelAllQueueItems);
+        on('btn-abort-queue-after-current', 'click', abortQueueAfterCurrent);
+        on('btn-force-abort-queue', 'click', forceAbortQueue);
         on('btn-cancel-waiting-queue', 'click', cancelWaitingQueueItems);
         on('btn-clear-completed-queue', 'click', clearCompletedQueueItems);
         on('btn-clear-canceled-queue', 'click', clearCanceledQueueItems);
         document.querySelectorAll('.training-queue-filter').forEach((btn) => {
             btn.addEventListener('click', () => {
-                setQueueFilter(state, btn.dataset.queueFilter || 'actionable');
+                const nextFilter = btn.dataset.queueFilter || 'actionable';
+                setQueueFilter(state, nextFilter);
+                finishQueueFeedback(`已切换到「${queueFilterFeedbackLabel(nextFilter)}」视图`, 'info');
                 renderTrainingQueue();
             });
         });
@@ -243,10 +431,33 @@ export function createQueueActions({ ctx, state, deps, updateTrainingQueueFromPa
         retryQueueItem,
         cancelWaitingQueueItems,
         cancelAllQueueItems,
+        abortQueueAfterCurrent,
+        forceAbortQueue,
         clearCompletedQueueItems,
         clearCanceledQueueItems,
         updateTrainingQueueSettings,
         toggleTrainingQueuePause,
         bindQueueEvents,
     };
+
+    function queueMoveDirectionLabel(direction) {
+        return {
+            top: '置顶',
+            up: '上移',
+            down: '下移',
+            bottom: '置底',
+        }[direction] || '移动';
+    }
+
+    function queueFilterFeedbackLabel(value) {
+        return {
+            actionable: '待处理',
+            all: '全部',
+            queued: '等待',
+            running: '运行',
+            error: '异常',
+            done: '完成',
+            canceled: '已取消',
+        }[value] || '当前';
+    }
 }

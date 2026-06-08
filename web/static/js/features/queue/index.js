@@ -1,13 +1,13 @@
-import { fetchTrainingQueue } from './api.js?v=module-bootstrap-20260608-3';
-import { createQueueActions } from './actions.js?v=module-bootstrap-20260608-3';
-import { createQueueEnqueue } from './enqueue.js?v=module-bootstrap-20260608-3';
-import { createQueueRenderer } from './render.js?v=module-bootstrap-20260608-3';
+import { fetchTrainingQueue } from './api.js?v=module-bootstrap-20260608-10';
+import { createQueueActions } from './actions.js?v=module-bootstrap-20260608-10';
+import { createQueueEnqueue } from './enqueue.js?v=module-bootstrap-20260608-10';
+import { createQueueRenderer } from './render.js?v=module-bootstrap-20260608-10';
 import {
     createQueueState,
     setQueueError,
     setQueueLoading,
     updateQueueStateFromPayload,
-} from './state.js?v=module-bootstrap-20260608-3';
+} from './state.js?v=module-bootstrap-20260608-10';
 
 export function createQueueFeature(ctx, deps) {
     const state = createQueueState();
@@ -75,6 +75,7 @@ export function createQueueFeature(ctx, deps) {
         queueCurrentTrainingFromConfig: enqueue.queueCurrentTrainingFromConfig,
         enqueueTrainingFromConfig: enqueue.enqueueTrainingFromConfig,
         enqueueTrainingQueueRequest: enqueue.enqueueTrainingQueueRequest,
+        enqueueTrainingQueueBatchRequest: enqueue.enqueueTrainingQueueBatchRequest,
         queueResumeTrainingFromCheckpoint: enqueue.queueResumeTrainingFromCheckpoint,
         bindQueueEvents: queueActions.bindQueueEvents,
     };

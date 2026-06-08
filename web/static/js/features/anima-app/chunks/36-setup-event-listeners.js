@@ -178,6 +178,7 @@ const ctx = globalThis.ctx;
         });
         ensureHistoryDetailFeature().bindHistoryDetailEvents();
         document.getElementById('btn-live-training').addEventListener('click', returnToLiveTraining);
+        bindTrainingViewTabKeyboard();
         document.getElementById('btn-refresh-history-view').addEventListener('click', refreshHistoryView);
         document.getElementById('btn-close-history').addEventListener('click', returnToLiveTraining);
         document.getElementById('btn-refresh-resume-options').addEventListener('click', () => loadResumeOptionsForTask());

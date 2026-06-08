@@ -19,7 +19,11 @@ if TYPE_CHECKING:
 
     import psutil
 
-    from library.runtime.launch import accelerate_training_command_prefix
+    from library.runtime.launch import (
+        ACCELERATE_MIXED_PRECISION_ENV,
+        accelerate_training_command_prefix,
+        resolve_accelerate_mixed_precision,
+    )
     from web.services.config_service import preflight_training_config
 
     from web.services.training_service import (
@@ -47,9 +51,15 @@ if TYPE_CHECKING:
         _sample_config_from_cfg,
     )
 
+from library.runtime.launch import (
+    ACCELERATE_MIXED_PRECISION_ENV,
+    resolve_accelerate_mixed_precision,
+)
+
 
 _LOCAL_IMPL_NAMES = {
     "_bind_legacy",
+    "_accelerate_mixed_precision_for_training",
     "start",
     "_start_unlocked",
     "start_preprocess",
@@ -70,6 +80,23 @@ def _bind_legacy() -> None:
         if name.startswith("__") or name in _LOCAL_IMPL_NAMES:
             continue
         globals()[name] = value
+
+
+def _accelerate_mixed_precision_for_training(
+    config_file: str | None,
+    extra_args: list[str] | None = None,
+) -> str | None:
+    _bind_legacy()
+    value = _command_option_value(list(extra_args or []), "--mixed_precision")
+    if value is None and config_file:
+        raw = _load_config_file_config(config_file).get("mixed_precision")
+        value = str(raw).strip() if raw is not None else None
+    if value is None:
+        return None
+    normalized = str(value).strip().lower()
+    return resolve_accelerate_mixed_precision({
+        ACCELERATE_MIXED_PRECISION_ENV: normalized,
+    })
 
 
 async def start(
@@ -149,6 +176,9 @@ async def _start_unlocked(
     env = os.environ.copy()
     gpu_selection = _normalize_gpu_whitelist(gpu_whitelist)
     _apply_gpu_whitelist(env, gpu_selection)
+    mixed_precision = _accelerate_mixed_precision_for_training(config_file, extra_args)
+    if mixed_precision:
+        env[ACCELERATE_MIXED_PRECISION_ENV] = mixed_precision
     cmd = [
         *accelerate_training_command_prefix(venv_python, ROOT / "train.py", env),
         "--method", variant,

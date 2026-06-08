@@ -186,13 +186,14 @@ const ctx = globalThis.ctx;
         const nameSpan = document.createElement('span');
         nameSpan.className = 'field-name';
         nameSpan.textContent = formatFieldName(key);
-        nameSpan.title = key;
+        nameSpan.title = `${key}，点击聚焦输入项`;
 
         const input = createFieldInput(key, displayValue, { originalValue, hasDraftValue });
         input.dataset.key = key;
         input.dataset.valueType = fieldValueTypeForKey(key, originalValue);
         input.addEventListener('input', handleFormFieldChange);
         input.addEventListener('change', handleFormFieldChange);
+        nameSpan.addEventListener('click', () => focusConfigFieldInput(input));
 
         if (key === 'sample_prompts' && samplePromptsMode !== 'path') {
             const labelStack = document.createElement('div');
@@ -239,6 +240,26 @@ const ctx = globalThis.ctx;
         row.appendChild(helpDiv);
 
         return row;
+    }
+
+    globalThis.focusConfigFieldInput = function focusConfigFieldInput(input) {
+        if (!input) return;
+        const target = input.matches?.('input, textarea, select, button')
+            ? input
+            : input.querySelector?.('input, textarea, select, button');
+        if (!target || target.disabled) return;
+        target.focus();
+        const selectableTypes = new Set(['email', 'password', 'search', 'tel', 'text', 'url']);
+        if (
+            typeof target.select === 'function'
+            && (target.tagName === 'TEXTAREA' || selectableTypes.has(target.type || ''))
+        ) {
+            try {
+                target.select();
+            } catch {
+                // 少数输入类型可聚焦但不能选中文本，保留聚焦结果即可。
+            }
+        }
     }
 
     globalThis.handleFormFieldChange = function handleFormFieldChange() {

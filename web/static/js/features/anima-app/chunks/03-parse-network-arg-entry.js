@@ -64,7 +64,8 @@ const ctx = globalThis.ctx;
             const params = new URLSearchParams({ variant, preset, methods_subdir: methodsSubdir });
             const configFile = currentTrainingConfigFile();
             if (configFile) params.set('config_file', configFile);
-            if (selectedConfigDatasetFile || currentConfig.dataset_config) params.set('dataset_config', selectedConfigDatasetFile);
+            const datasetConfigOverride = selectedDatasetConfigOverride();
+            if (datasetConfigOverride !== null) params.set('dataset_config', datasetConfigOverride);
             const data = await api(`/api/config/steps?${params.toString()}`);
             if (parentSeq !== configLoadSeq || requestSeq !== stepEstimateSeq) return;
             currentStepEstimate = data?.ok === false ? null : data;
@@ -98,7 +99,8 @@ const ctx = globalThis.ctx;
             const params = new URLSearchParams({ variant, preset, methods_subdir: methodsSubdir });
             const configFile = currentTrainingConfigFile();
             if (configFile) params.set('config_file', configFile);
-            if (selectedConfigDatasetFile || currentConfig.dataset_config) params.set('dataset_config', selectedConfigDatasetFile);
+            const datasetConfigOverride = selectedDatasetConfigOverride();
+            if (datasetConfigOverride !== null) params.set('dataset_config', datasetConfigOverride);
             const data = await api(`/api/config/datasets?${params.toString()}`);
             if (parentSeq !== configLoadSeq || requestSeq !== datasetLoadSeq) return;
             if (!data.ok) {
@@ -380,6 +382,7 @@ const ctx = globalThis.ctx;
         if (el.classList.contains('metric-value')) {
             const empty = metricValueIsEmpty(text);
             el.classList.toggle('metric-empty', empty);
+            el.title = empty ? '' : String(text);
             el.closest('.metric-item')?.classList.toggle('is-empty', empty);
         }
     }
@@ -423,15 +426,24 @@ const ctx = globalThis.ctx;
 
     globalThis.updateDashboardProgressIdleState = function updateDashboardProgressIdleState(active = null) {
         const wrap = document.querySelector('#tab-training .training-dashboard-progress');
+        const head = document.querySelector('#tab-training .training-dashboard-head');
         const text = document.getElementById('progress-text');
         if (!wrap) return;
         const hasProgress = active !== null
             ? Boolean(active)
             : Number(trainingRuntime.progressTotal || 0) > 0;
         wrap.classList.toggle('is-idle', !hasProgress);
+        head?.classList.toggle('is-idle', !hasProgress);
         if (!hasProgress && text) {
             text.textContent = '暂无正在运行的任务目录...';
         }
+    }
+
+    globalThis.setTrainingDashboardHeadState = function setTrainingDashboardHeadState(state = 'idle') {
+        const head = document.querySelector('#tab-training .training-dashboard-head');
+        if (!head) return;
+        head.classList.remove('is-idle', 'is-running', 'is-compiling', 'is-error', 'is-history');
+        head.classList.add(`is-${state || 'idle'}`);
     }
 
     globalThis.syncLossChartEmptyState = function syncLossChartEmptyState() {

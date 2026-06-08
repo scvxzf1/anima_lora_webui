@@ -44,12 +44,15 @@ _LOCAL_IMPL_NAMES = {
     "start_queue_on_startup",
     "get_queue_snapshot",
     "enqueue_training",
+    "enqueue_training_batch",
     "enqueue_resume_from_history_task",
     "move_queue_item",
     "cancel_queue_item",
     "retry_queue_item",
     "cancel_waiting_queue_items",
     "cancel_all_queue_items",
+    "abort_queue_after_current",
+    "force_abort_queue",
     "clear_finished_queue_items",
     "clear_completed_queue_items",
     "clear_canceled_queue_items",
@@ -189,6 +192,95 @@ async def enqueue_training(
         self._schedule_queue_dispatch()
     message = "已加入训练队列，队列已暂停" if start_paused else "已加入训练队列"
     return {"ok": True, "message": message, "item": dict(item), **self.get_queue_snapshot()}
+
+async def enqueue_training_batch(
+    self,
+    entries: list[dict[str, Any]],
+    *,
+    default_preset: str = "default",
+    gpu_whitelist: list[Any] | None = None,
+    start_paused: bool = True,
+) -> dict[str, Any]:
+    _bind_legacy()
+    if not isinstance(entries, list) or not entries:
+        raise ValueError("items 必须是非空数组")
+
+    queued: list[dict[str, Any]] = []
+    failures: list[dict[str, Any]] = []
+    gpu_selection = _normalize_gpu_whitelist(gpu_whitelist)
+    if start_paused:
+        self._queue_paused = True
+        self._queue["paused"] = True
+
+    for index, raw in enumerate(entries):
+        if not isinstance(raw, dict):
+            failures.append({
+                "index": index,
+                "error": "队列项格式不合法",
+            })
+            break
+        variant = str(raw.get("variant") or "").strip()
+        preset = str(raw.get("preset") or default_preset or "default").strip() or "default"
+        methods_subdir = str(raw.get("methods_subdir") or "gui-methods").strip() or "gui-methods"
+        config_file = str(raw.get("config_file") or "").strip() or None
+        label = str(raw.get("label") or raw.get("filename") or raw.get("display_name") or "").strip()
+        requires_preprocess = bool(raw.get("requires_preprocess", True))
+        if not variant:
+            failure = {
+                "index": index,
+                "config_file": config_file or "",
+                "error": "缺少 variant",
+            }
+            if label:
+                failure["label"] = label
+            failures.append(failure)
+            break
+        try:
+            payload = await self.enqueue_training(
+                variant,
+                preset,
+                methods_subdir,
+                extra_args=list(raw.get("extra_args") or []),
+                config_file=config_file,
+                gpu_whitelist=gpu_selection,
+                continue_info=raw.get("continue_info") if isinstance(raw.get("continue_info"), dict) else None,
+                requires_preprocess=requires_preprocess,
+                start_paused=start_paused,
+            )
+        except Exception as exc:
+            failure = {
+                "index": index,
+                "variant": variant,
+                "preset": preset,
+                "methods_subdir": methods_subdir,
+                "config_file": config_file or "",
+                "error": str(exc),
+            }
+            if label:
+                failure["label"] = label
+            failures.append(failure)
+            break
+        queued.append(dict(payload.get("item") or {}))
+
+    snapshot = self.get_queue_snapshot()
+    queued_count = len(queued)
+    total = len(entries)
+    ok = not failures
+    if ok:
+        message = f"已将 {queued_count} 个配置加入训练队列"
+    elif queued_count:
+        message = f"已加入 {queued_count} 个配置，批量加入在第 {failures[0]['index'] + 1} 项停止"
+    else:
+        message = "批量加入队列失败"
+    return {
+        **snapshot,
+        "ok": ok,
+        "message": message,
+        "queued_count": queued_count,
+        "requested_count": total,
+        "queued_items": queued,
+        "failures": failures,
+    }
 
 async def enqueue_resume_from_history_task(
     self,
@@ -410,6 +502,97 @@ async def cancel_all_queue_items(self) -> dict[str, Any]:
         "canceled_waiting": waiting_count,
         "stopped_running": 1 if stop_running else 0,
         **self.get_queue_snapshot(),
+    }
+
+async def abort_queue_after_current(self) -> dict[str, Any]:
+    _bind_legacy()
+    async with self._launch_lock:
+        now = time.time()
+        canceled_waiting = 0
+        self._queue_paused = True
+        self._queue["paused"] = True
+        for item in self._queue_items():
+            if item.get("state") != "queued":
+                continue
+            item.update({
+                "state": "canceled",
+                "message": "已中止后续队列，当前运行任务完成后不会继续下一项",
+                "finished_at": now,
+                "finished_at_text": _format_ts(now),
+            })
+            canceled_waiting += 1
+        self._save_queue()
+        await self._broadcast_queue()
+        running_kept = sum(1 for item in self._queue_items() if item.get("state") == "running")
+    return {
+        "ok": True,
+        "message": (
+            f"已中止后续队列，取消 {canceled_waiting} 个等待任务"
+            if canceled_waiting
+            else "队列已暂停，没有等待任务需要中止"
+        ),
+        "canceled_waiting": canceled_waiting,
+        "running_kept": running_kept,
+        **self.get_queue_snapshot(),
+    }
+
+async def force_abort_queue(self) -> dict[str, Any]:
+    _bind_legacy()
+    async with self._launch_lock:
+        now = time.time()
+        canceled_waiting = 0
+        canceled_stale_running = 0
+        canceled_launching = 0
+        running_item_id = str(self._current_queue_item_id or "")
+        launching_item_id = str(self._queue_launching_item_id or "")
+        active_process = bool(self.process and self.process.returncode is None)
+
+        self._queue_paused = True
+        self._queue["paused"] = True
+        for item in self._queue_items():
+            state = item.get("state")
+            item_id = str(item.get("id") or "")
+            if state == "queued":
+                item.update({
+                    "state": "canceled",
+                    "message": "已强制中止队列后续任务",
+                    "finished_at": now,
+                    "finished_at_text": _format_ts(now),
+                })
+                canceled_waiting += 1
+                continue
+            if state != "running":
+                continue
+            if active_process and item_id == running_item_id:
+                continue
+            item.update({
+                "state": "canceled",
+                "message": "已强制中止队列任务",
+                "finished_at": now,
+                "finished_at_text": _format_ts(now),
+            })
+            if item_id == launching_item_id:
+                canceled_launching += 1
+            else:
+                canceled_stale_running += 1
+
+        self._save_queue()
+        await self._broadcast_queue()
+        if active_process:
+            await self.stop()
+            await self._broadcast_queue()
+        stopped_running = 1 if active_process else 0
+        canceled = canceled_waiting + canceled_stale_running + canceled_launching + stopped_running
+        snapshot = self.get_queue_snapshot()
+    return {
+        "ok": True,
+        "message": f"已强制中止队列，处理 {canceled} 个任务",
+        "canceled": canceled,
+        "canceled_waiting": canceled_waiting,
+        "stopped_running": stopped_running,
+        "canceled_launching": canceled_launching,
+        "canceled_stale_running": canceled_stale_running,
+        **snapshot,
     }
 
 async def clear_finished_queue_items(self) -> dict[str, Any]:
@@ -688,6 +871,8 @@ async def _dispatch_queue(self) -> None:
     if not failed and item is not None:
         try:
             async with self._launch_lock:
+                if item.get("state") != "running":
+                    return
                 await self._start_queue_item(item)
         except Exception as e:
             failed = True

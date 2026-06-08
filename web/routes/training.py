@@ -22,18 +22,23 @@ def setup_training_routes(app: web.Application) -> None:
     app.router.add_get("/api/training/logs", handle_logs)
     app.router.add_get("/api/training/gpus", handle_gpus)
     app.router.add_get("/api/training/queue", handle_queue_status)
+    app.router.add_post("/api/training/queue", handle_queue_post)
     app.router.add_post("/api/training/queue/start", handle_queue_start)
+    app.router.add_post("/api/training/queue/batch/start", handle_queue_batch_start)
+    app.router.add_post("/api/training/queue/batch-start", handle_queue_batch_start)
     app.router.add_post("/api/training/queue/resume", handle_queue_resume)
     app.router.add_post("/api/training/queue/settings", handle_queue_settings)
     app.router.add_post("/api/training/queue/cancel-all", handle_queue_cancel_all)
+    app.router.add_post("/api/training/queue/abort-after-current", handle_queue_abort_after_current)
+    app.router.add_post("/api/training/queue/force-abort", handle_queue_force_abort)
     app.router.add_post("/api/training/queue/cancel-waiting", handle_queue_cancel_waiting)
     app.router.add_post("/api/training/queue/clear", handle_queue_clear)
     app.router.add_post("/api/training/queue/clear-completed", handle_queue_clear_completed)
     app.router.add_post("/api/training/queue/clear-canceled", handle_queue_clear_canceled)
+    app.router.add_post("/api/training/queue/pause", handle_queue_pause)
     app.router.add_post("/api/training/queue/{item_id}/move", handle_queue_move)
     app.router.add_post("/api/training/queue/{item_id}/retry", handle_queue_retry)
     app.router.add_delete("/api/training/queue/{item_id}", handle_queue_cancel)
-    app.router.add_post("/api/training/queue/pause", handle_queue_pause)
     app.router.add_get("/api/training/history", handle_history_list)
     app.router.add_post("/api/training/history/batch", handle_history_batch)
     app.router.add_get("/api/training/history/collections/settings", handle_history_collection_settings_get)
@@ -346,9 +351,20 @@ async def handle_queue_status(request: web.Request) -> web.Response:
     return web.json_response(svc.get_queue_snapshot())
 
 
-async def handle_queue_start(request: web.Request) -> web.Response:
-    svc = request.app["training_service"]
+async def handle_queue_post(request: web.Request) -> web.Response:
     data = await request.json()
+    if isinstance(data.get("items"), list):
+        return await _handle_queue_batch_start_data(request, data)
+    return await _handle_queue_start_data(request, data)
+
+
+async def handle_queue_start(request: web.Request) -> web.Response:
+    data = await request.json()
+    return await _handle_queue_start_data(request, data)
+
+
+async def _handle_queue_start_data(request: web.Request, data: dict) -> web.Response:
+    svc = request.app["training_service"]
     variant = data.get("variant", "lora")
     preset = data.get("preset", "default")
     methods_subdir = data.get("methods_subdir", "gui-methods")
@@ -394,6 +410,89 @@ async def handle_queue_start(request: web.Request) -> web.Response:
             start_paused=start_paused,
         )
         return web.json_response(payload)
+    except (FileNotFoundError, ValueError) as e:
+        return web.json_response({"ok": False, "error": str(e)}, status=400)
+
+
+async def handle_queue_batch_start(request: web.Request) -> web.Response:
+    data = await request.json()
+    return await _handle_queue_batch_start_data(request, data)
+
+
+async def _handle_queue_batch_start_data(request: web.Request, data: dict) -> web.Response:
+    svc = request.app["training_service"]
+    items = data.get("items", [])
+    if not isinstance(items, list) or not items:
+        return web.json_response({"ok": False, "error": "items 必须是非空数组"}, status=400)
+    default_preset = str(data.get("preset") or "default").strip() or "default"
+    gpu_whitelist = data.get("gpu_whitelist")
+    start_paused = bool(data.get("start_paused", True))
+    prepared: list[dict] = []
+    for index, raw in enumerate(items):
+        if not isinstance(raw, dict):
+            return web.json_response({
+                "ok": False,
+                "error": "队列项格式不合法",
+                "failed_index": index,
+            }, status=400)
+        variant = str(raw.get("variant") or "").strip()
+        preset = str(raw.get("preset") or default_preset).strip() or "default"
+        methods_subdir = str(raw.get("methods_subdir") or "gui-methods").strip() or "gui-methods"
+        config_file = str(raw.get("config_file") or "").strip() or None
+        if not variant:
+            return web.json_response({
+                "ok": False,
+                "error": "缺少 variant",
+                "failed_index": index,
+                "failed_item": raw,
+            }, status=400)
+        if _is_cli_only_spd(variant, methods_subdir):
+            return web.json_response({
+                "ok": False,
+                "error": _cli_only_spd_message(),
+                "failed_index": index,
+                "failed_item": raw,
+            }, status=400)
+        try:
+            preflight = preflight_training_config(variant, preset, methods_subdir, config_file=config_file)
+        except Exception as e:
+            return web.json_response({
+                "ok": False,
+                "error": f"预检测失败: {e}",
+                "failed_index": index,
+                "failed_item": raw,
+            }, status=400)
+        requires_preprocess = not config_file or not is_web_runtime_config(config_file)
+        confirm_preprocess = bool(
+            raw.get("confirm_preprocess", True)
+            or raw.get("confirm_train_after", False)
+        )
+        if not preflight.get("ok", False):
+            if not (requires_preprocess and confirm_preprocess and _preflight_allows_preprocess(preflight)):
+                return web.json_response({
+                    "ok": False,
+                    "error": "预检测发现错误，已阻止批量加入队列",
+                    "failed_index": index,
+                    "failed_item": raw,
+                    "preflight": preflight,
+                }, status=400)
+        prepared.append({
+            "variant": variant,
+            "preset": preset,
+            "methods_subdir": methods_subdir,
+            "config_file": config_file,
+            "extra_args": raw.get("extra_args") if isinstance(raw.get("extra_args"), list) else [],
+            "requires_preprocess": requires_preprocess,
+            "continue_info": _continue_lora_info_from_request(raw),
+            "label": str(raw.get("label") or raw.get("filename") or "").strip(),
+        })
+    try:
+        return web.json_response(await svc.enqueue_training_batch(
+            prepared,
+            default_preset=default_preset,
+            gpu_whitelist=gpu_whitelist,
+            start_paused=start_paused,
+        ))
     except (FileNotFoundError, ValueError) as e:
         return web.json_response({"ok": False, "error": str(e)}, status=400)
 
@@ -448,6 +547,16 @@ async def handle_queue_cancel_waiting(request: web.Request) -> web.Response:
 async def handle_queue_cancel_all(request: web.Request) -> web.Response:
     svc = request.app["training_service"]
     return web.json_response(await svc.cancel_all_queue_items())
+
+
+async def handle_queue_abort_after_current(request: web.Request) -> web.Response:
+    svc = request.app["training_service"]
+    return web.json_response(await svc.abort_queue_after_current())
+
+
+async def handle_queue_force_abort(request: web.Request) -> web.Response:
+    svc = request.app["training_service"]
+    return web.json_response(await svc.force_abort_queue())
 
 
 async def handle_queue_clear(request: web.Request) -> web.Response:

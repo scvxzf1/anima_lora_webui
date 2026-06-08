@@ -528,6 +528,7 @@ def test_training_queue_frontend_hooks_are_present() -> None:
         "queueCurrentTrainingFromConfig",
         "enqueueTrainingFromConfig",
         "enqueueTrainingQueueRequest",
+        "enqueueTrainingQueueBatchRequest",
         "queueResumeTrainingFromCheckpoint",
         "bindQueueEvents",
     ):
@@ -536,6 +537,7 @@ def test_training_queue_frontend_hooks_are_present() -> None:
     assert "function renderTrainingQueueManager()" in queue_section
     assert "function queueManagerSections(state)" in queue_state
     assert "const isErrorOnly = payload.ok === false && !hasItems" in queue_state
+    assert "status: payload.status === undefined" in queue_state
     assert "isErrorOnly ? (previous.items || []) : []" in queue_state
     assert "isErrorOnly ? (previous.summary || {}) : {}" in queue_state
     assert "function createTrainingQueueSection" in queue_section
@@ -557,6 +559,12 @@ def test_training_queue_frontend_hooks_are_present() -> None:
     assert "queueRuntimeDirLabel" not in queue_section
     assert "新任务已加入队列" in queue_section
     assert "移除原记录" in queue_section
+    assert "feedback:" in queue_state
+    assert "setQueueFeedback" in queue_state
+    assert "beginQueueFeedback" in queue_actions
+    assert "finishQueueFeedback" in queue_actions
+    assert "queueMoveDirectionLabel" in queue_actions
+    assert "正在刷新队列状态" in queue_actions
     assert "清理已完成记录" in queue_section
     assert "清理已取消记录" in queue_section
     assert "retryQueueItem" in queue_section
@@ -573,14 +581,42 @@ def test_training_queue_frontend_hooks_are_present() -> None:
     assert ".training-queue-item-more[open]" in css
     assert "z-index: 130" in css
     assert "state.filter" in queue_section
+    assert "renderQueueManagerOverview" in queue_section
+    assert "queueFilterLabel" in queue_section
+    assert "createQueueFactRow" in queue_section
+    assert "queueShortId" in queue_section
+    assert "updateQueueFilterButton" in queue_section
+    assert "queueFilterCount" in queue_section
+    assert "queueEmptyStateText" in queue_section
+    assert "updateQueueActionHints" in queue_section
+    assert "renderQueueFeedback" in queue_section
+    assert "queueFeedbackBusyAction" in queue_section
+    assert "queueFeedbackItemState" in queue_section
+    assert "queue-action-busy" in queue_section
+    assert "aria-pressed" in queue_section
+    assert "aria-disabled" in queue_section
+    assert "aria-busy" in queue_section
+    assert "queueDetailsSummaryText" in queue_section
+    assert ".training-queue-overview-item" in css
+    assert ".training-queue-feedback" in css
+    assert ".training-queue-manager-item.queue-feedback-pending" in css
+    assert ".task-history-action.queue-action-busy" in css
+    assert ".training-queue-facts" in css
+    assert ".training-queue-filter b" in css
+    assert "grid-template-columns: repeat(5, minmax(0, 1fr))" in css
     assert "/api/training/queue" in queue_section
     assert "/api/training/queue/settings" in queue_section
     assert "/api/training/queue/cancel-all" in queue_section
+    assert "/api/training/queue/abort-after-current" in queue_section
+    assert "/api/training/queue/force-abort" in queue_section
     assert "/api/training/queue/cancel-waiting" in queue_section
     assert "/api/training/queue/clear-completed" in queue_section
     assert "/api/training/queue/clear-canceled" in queue_section
 
     assert "training-queue-manager" in html
+    assert "training-queue-manager-overview" in html
+    assert "training-queue-feedback" in html
+    assert 'role="status" aria-live="polite"' in html
     assert "btn-training-queue-view" in html
     assert "training-queue-failure-policy" in html
     assert 'data-queue-filter="actionable">待处理' in html
@@ -600,11 +636,17 @@ def test_training_queue_frontend_hooks_are_present() -> None:
     summary_panel = _section(html, '<section class="panel training-queue-panel"', '<section class="panel task-history-panel">')
     manager_panel = _section(html, '<section id="training-queue-manager"', '<section id="training-history-placeholder"')
     assert "btn-cancel-all-queue" not in summary_panel
+    assert "btn-abort-queue-after-current" not in summary_panel
+    assert "btn-force-abort-queue" not in summary_panel
     assert "btn-cancel-waiting-queue" not in summary_panel
     assert "btn-clear-finished-queue" not in summary_panel
     assert "btn-clear-completed-queue" not in summary_panel
     assert "btn-clear-canceled-queue" not in summary_panel
     assert "btn-cancel-all-queue" in manager_panel
+    assert "btn-abort-queue-after-current" in manager_panel
+    assert "btn-force-abort-queue" in manager_panel
+    assert "中止后续队列" in manager_panel
+    assert "强制中止队列" in manager_panel
     assert "btn-cancel-waiting-queue" in manager_panel
     assert "btn-clear-finished-queue" not in manager_panel
     assert "btn-clear-completed-queue" in manager_panel
@@ -632,13 +674,47 @@ def test_training_queue_frontend_hooks_are_present() -> None:
     assert "训练状态轮询连续失败" in poll_section
     assert "setTrainingHealthNotice(message, 'error')" in poll_section
     assert "async function enqueueTrainingQueueRequest" in queue_enqueue
+    assert "async function enqueueTrainingQueueBatchRequest" in queue_enqueue
+    assert "queueBatchApiUnsupported(res)" in queue_enqueue
+    assert "enqueueTrainingQueueBatchCompat(requestOptions, res)" in queue_enqueue
+    assert "enqueueTrainingQueueBatchRootCompat(options, aliasRes || unsupported)" in queue_enqueue
+    assert "enqueueTrainingQueueBatchFallback(options, rootRes || unsupported)" in queue_enqueue
+    assert "method not allowed" in queue_enqueue
+    assert "status_code" in queue_enqueue
+    assert "if (!queueBatchApiUnsupported(unsupported)) throw e;" in queue_enqueue
+    assert "async function abortQueueAfterCurrent" in queue_section
+    assert "async function forceAbortQueue" in queue_section
+    assert "showAppConfirmDialog" in queue_section
+    assert "当前正在运行的任务会继续执行到完成" in queue_section
+    assert "会立即停止当前正在运行的训练/预处理进程" in queue_section
+    assert "on('btn-abort-queue-after-current', 'click', abortQueueAfterCurrent)" in queue_section
+    assert "on('btn-force-abort-queue', 'click', forceAbortQueue)" in queue_section
+    assert "abortTrainingQueueAfterCurrent(ctx)" in queue_section
+    assert "forceAbortTrainingQueue(ctx)" in queue_section
+    assert "const abortAfterCurrentBtn = document.getElementById('btn-abort-queue-after-current')" in queue_section
+    assert "const forceAbortBtn = document.getElementById('btn-force-abort-queue')" in queue_section
+    assert "function queueBackendRunning()" in queue_section
+    assert "state.queue.status === 'running'" in queue_section
+    assert "deps.getTrainingRuntime()?.state === 'running'" in queue_section
+    assert "counts.queued <= 0" in queue_section
+    assert "counts.queued + counts.running" in queue_section
     assert "createTomlGroupActionButton('加入队列', () => enqueueTomlGroupToQueue(group)" in group_actions
     assert "queueableTomlGroupFiles(group)" in group_actions
     assert "async function enqueueTomlGroupToQueue" in source
+    assert "tomlItemQueueEntry(item, preset)" in source
+    assert "tomlGroupQueueFailureLabel(item, failure, failedIndex)" in source
+    assert "label: label === '未命名配置文件' ? '' : label" in source
+    assert "failure.label || failure.filename" in source
+    assert "第 ${fallbackIndex} 个配置" in source
     assert "showTomlGroupQueueConfirmDialog(group, files)" in source
     assert "队列会保持暂停，等待你手动继续" in group_actions
     assert "startPaused: true" in group_actions
+    assert "/api/training/queue/batch/start" in queue_api
+    assert "/api/training/queue/batch-start" in queue_api
+    assert "/api/training/queue', options" in queue_api
     assert "start_paused: Boolean(options.startPaused)" in queue_api
+    assert "if (!Object.prototype.hasOwnProperty.call(data, 'status_code')) data.status_code = res.status;" in source
+    assert "item?.config_file" in source
     assert ".toml-group-action-btn-queue" in css
     assert "导出单个" in html
     assert "createTomlGroupActionButton('导出分组', () => exportTomlGroup(group)" in group_actions
@@ -753,6 +829,9 @@ def test_config_form_uses_navigation_search_and_progressive_disclosure() -> None
     assert "filterConfigGroupEntry(group, searchText)" in order_section
     assert "configFormState.showAdvanced || !category.advanced" in source
     assert "configFormState.search = event.target.value || ''" in source
+    assert "search.addEventListener('keydown'" in source
+    assert "if (event.key !== 'Escape') return;" in source
+    assert "configFormState.search = '';" in source
     assert "configFormState.activeCategory = categoryId" in source
     assert "draftValues: new Map()" in source
     assert "syncConfigDraftFromForm();" in source
@@ -776,7 +855,8 @@ def test_config_form_uses_navigation_search_and_progressive_disclosure() -> None
     assert "const params = new URLSearchParams({" in load_steps
     assert "const configFile = currentTrainingConfigFile();" in load_steps
     assert "params.set('config_file', configFile);" in load_steps
-    assert "params.set('dataset_config', selectedConfigDatasetFile);" in load_steps
+    assert "const datasetConfigOverride = selectedDatasetConfigOverride();" in load_steps
+    assert "if (datasetConfigOverride !== null) params.set('dataset_config', datasetConfigOverride);" in load_steps
     assert "const data = await api(`/api/config/steps?${params.toString()}`);" in load_steps
     assert "setTomlStatus(\n            applied ? 'ok' : 'error'," in source
     assert ".config-form-shell" in css
@@ -786,6 +866,9 @@ def test_config_form_uses_navigation_search_and_progressive_disclosure() -> None
     assert ".config-search-box" in css
     assert ".config-advanced-toggle" in css
     assert ".field-row-changed" in css
+    assert ".field-row:focus-within" in css
+    assert ".field-row:focus-within::before" in css
+    assert ".field-name:hover" in css
     assert ".config-group" in css
     assert "content.className = 'config-group-body';" in source
     assert "titleActions.className = 'config-group-title-actions';" in source
@@ -1011,6 +1094,10 @@ def test_config_form_keeps_dora_as_lora_addon_and_merges_exclusive_adapters() ->
     assert "function updateDoRAFieldState" in state_section
     assert "input.checked = false" in state_section
     assert "DoRA 仅支持普通 LoRA；切到 LoHa/LoKr/GLoRA/VeRA 时会自动关闭" in source
+    assert "function focusConfigFieldInput" in source
+    assert "nameSpan.addEventListener('click', () => focusConfigFieldInput(input));" in source
+    assert "target.focus();" in source
+    assert "target.select();" in source
 
 
 def test_config_actions_are_de_noised_and_sticky_controls_are_wired() -> None:
@@ -1030,13 +1117,16 @@ def test_config_actions_are_de_noised_and_sticky_controls_are_wired() -> None:
     toml_current_file_css = _section(css, "#tab-config .toml-current-file {", "#tab-config .toml-current-file span")
     assert "overflow: visible;" in toml_current_row_css
     assert "z-index: 65;" in toml_current_row_css
-    assert "padding: 0 1.25rem 0.8rem calc(1.25rem + 6px);" in toml_current_row_css
+    assert "padding: 0 1rem 0.56rem calc(1rem + 4px);" in toml_current_row_css
     assert "position: relative;" in toml_current_file_css
     assert "overflow: visible;" in toml_current_file_css
     assert "box-sizing: border-box;" in toml_current_file_css
     assert "min-width: 0;" in toml_current_file_css
-    assert "padding: 0.58rem 0.65rem 0.58rem 0.82rem;" in toml_current_file_css
+    assert "padding: 0.42rem 0.54rem 0.42rem 0.68rem;" in toml_current_file_css
     assert "box-shadow: inset 3px 0 0 var(--config-accent);" in toml_current_file_css
+    assert "grid-template-columns: 1.42rem minmax(0, 1fr);" in css
+    assert "width: 1.32rem;" in _section(css, "#tab-config .file-group-drag-handle", "#tab-config .toml-file-group summary")
+    assert "min-height: 42px;" in _section(css, "#tab-config .toml-file-item", "#tab-config .toml-file-item:hover")
     toml_actions_css = _section(css, "#tab-config .toml-file-actions", "#tab-config .toml-primary-actions,")
     toml_more_css = _section(css, "#tab-config .toml-more-actions {", "#tab-config .toml-more-actions > summary")
     toml_more_open_css = _section(css, "#tab-config .toml-more-actions[open]", "#tab-config .toml-more-actions > summary")
@@ -1095,7 +1185,7 @@ def test_config_actions_are_de_noised_and_sticky_controls_are_wired() -> None:
     assert "overflow-y: auto;" in config_left_css
     assert "overscroll-behavior: contain;" in config_left_css
     assert "padding-bottom: var(--config-sticky-safe-space);" in config_left_css
-    assert "min-height: 68px;" in _section(css, "#tab-config .config-sticky-tab", "#tab-config .config-sticky-tab:hover")
+    assert "min-height: 52px;" in _section(css, "#tab-config .config-sticky-tab", "#tab-config .config-sticky-tab:hover")
 
 
 def test_resume_queue_button_is_wired() -> None:
@@ -2517,7 +2607,10 @@ def test_dataset_preset_manager_is_isolated_from_config_page() -> None:
     assert "const params = new URLSearchParams({" in load_editor
     assert "const configFile = currentTrainingConfigFile();" in load_editor
     assert "params.set('config_file', configFile);" in load_editor
-    assert "params.set('dataset_config', selectedConfigDatasetFile);" in load_editor
+    assert "function selectedDatasetConfigOverride" in source
+    assert "const datasetConfigOverride = selectedDatasetConfigOverride();" in load_editor
+    assert "if (datasetConfigOverride !== null) params.set('dataset_config', datasetConfigOverride);" in load_editor
+    assert "params.set('dataset_config', selectedConfigDatasetFile);" not in load_editor
     assert "datasetConfig = selectedConfigDatasetFile || currentConfig.dataset_config" not in load_editor
     assert "api(`/api/config/datasets?${params.toString()}`)" in load_editor
 
@@ -2662,6 +2755,14 @@ def test_dataset_json_caption_switch_ui_is_wired() -> None:
 
     assert "normalizeNlTagMix(row.nl_tag_mix)" in row_factory
     assert "nlTagMixSummary(mix)" in row_factory
+    assert "const bucketText = settings.enable_bucket" in row_factory
+    assert "const validationText = Number(settings.validation_split_num || 0) > 0" in row_factory
+    assert "['桶', bucketText]" in row_factory
+    assert "['验证', validationText]" in row_factory
+    assert "createDatasetRepeatSettingField(row, index)" in source
+    assert "panel.appendChild(createDatasetRepeatSettingField(row, index));" in source
+    assert "bottomActions.append(remove);" in row_factory
+    assert "num_repeats', input.value" not in row_factory
     assert "captions格式nl/tag权重调整" in mix_factory
     assert "自动识别 nl/tag" not in mix_factory
     assert "面向 DiffPipeForge captions.json 的多标注数据集优化" in mix_factory
@@ -2702,11 +2803,17 @@ def test_dataset_json_caption_switch_ui_is_wired() -> None:
     assert "function updateDatasetEditorRowTriggerClone" in source
     assert ".dataset-nl-tag-mix" in css
     assert ".dataset-nl-tag-summary" in css
-    assert "grid-template-columns: minmax(78px, 1fr) minmax(100px, 124px) minmax(78px, 1fr);" in css
-    assert "#tab-datasets .dataset-repeat-field {\n    grid-column: 2;" in css
-    assert "#tab-datasets .dataset-remove-btn {\n    grid-column: 3;" in css
-    assert "justify-items: center;" in css
-    assert "grid-template-columns: minmax(100px, 124px) auto;\n        justify-content: center;" in css
+    assert "grid-template-columns: minmax(230px, 1fr) minmax(170px, 0.85fr) 70px auto;" in css
+    assert "grid-template-columns: repeat(5, minmax(124px, 1fr));" in css
+    assert "grid-template-columns: repeat(4, minmax(118px, 1fr));" in css
+    assert ".dataset-repeat-setting-field" in css
+    assert "grid-column: auto;" in css
+    assert "width: 100%;" in css
+    assert ".dataset-repeat-input" in css
+    assert "max-width: 112px;" in css
+    assert "height: 38px;" in css
+    assert "#tab-datasets .dataset-row-bottom-actions" in css
+    assert "justify-content: flex-end;" in css
 
 
 def test_dataset_editor_preserves_subset_filters_and_rederives_hidden_paths() -> None:

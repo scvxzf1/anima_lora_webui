@@ -439,6 +439,7 @@ const ctx = globalThis.ctx;
         setText('training-run-state', '历史');
         const stateEl = document.getElementById('training-run-state');
         if (stateEl) stateEl.className = 'training-run-state history';
+        setTrainingDashboardHeadState('history');
         updateTrainingToolbarState('history', '历史');
         setText('training-run-title', historyTaskDisplayName(task) || '历史任务');
         setText('training-run-meta', [
@@ -446,15 +447,16 @@ const ctx = globalThis.ctx;
             task.variant ? `配置 ${task.variant}` : '',
             task.preset ? `预设 ${task.preset}` : '',
         ].filter(Boolean).join(' · ') || '历史任务记录');
-        setText('training-run-summary', [
-            task.run_dir ? `运行目录: ${task.run_dir}` : '',
-            task.output_dir ? `输出: ${task.output_dir}` : '',
-            task.sample_dir ? `样张: ${task.sample_dir}` : '',
-        ].filter(Boolean).join(' · ') || '该任务没有记录运行目录。');
+        renderTrainingRunSummary([
+            ['运行目录', task.run_dir],
+            ['输出', task.output_dir],
+            ['样张', task.sample_dir],
+        ], '该任务没有记录运行目录。');
         document.getElementById('train-variant').textContent = task.variant || '-';
         document.getElementById('train-preset').textContent = task.preset || '-';
         document.getElementById('progress-bar').style.width = task.state === 'idle' ? '100%' : '0%';
         document.getElementById('progress-text').textContent = `${task.started_at_text || '-'} → ${task.finished_at_text || '未结束'}`;
+        updateDashboardProgressIdleState(true);
         setMetricText('metric-vram', 'N/A');
         setMetricText('metric-vram-peak', 'N/A');
         setMetricText('metric-gpu', 'N/A');

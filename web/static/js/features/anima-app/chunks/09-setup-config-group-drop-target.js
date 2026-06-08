@@ -276,7 +276,7 @@ const ctx = globalThis.ctx;
         title.innerHTML = [
             '<span class="dataset-preset-breadcrumb">CONFIGS / DATASETS</span>',
             `<strong>${escapeHtml(preset?.label || preset?.filename || file || '新数据集预设')}</strong>`,
-            `<span>${escapeHtml(file || '尚未保存')}</span>`,
+            `<span class="dataset-preset-file-path">${escapeHtml(file || '尚未保存')}</span>`,
         ].join('');
         const meta = document.createElement('div');
         meta.className = 'dataset-preset-meta';

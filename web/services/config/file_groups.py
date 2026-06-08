@@ -547,7 +547,7 @@ def get_config_file_meta(
         if group_id and group_label and locked is not None and trainable is not None
         else _infer_config_file_group(normalized)
     )
-    stem = Path(normalized).stem
+    method = _config_method_name_for_path(normalized)
     group_locked = bool(inferred["locked"] if locked is None else locked)
     system_locked = _is_system_locked_path(normalized)
     user_locked = _is_user_locked(normalized)
@@ -578,9 +578,21 @@ def get_config_file_meta(
         "restorable": _is_system_preset_path(normalized),
         "open": inferred["open"],
         "trainable": inferred["trainable"] if trainable is None else trainable,
-        "method": stem,
+        "method": method,
         "methods_subdir": methods_subdir or inferred["methods_subdir"],
     }
+
+
+def _config_method_name_for_path(rel_path: str) -> str:
+    normalized = _normalize_config_rel_path(rel_path)
+    for prefix in ("configs/gui-methods/", "configs/methods/", "configs/imported/"):
+        if not normalized.startswith(prefix):
+            continue
+        relative = normalized.removeprefix(prefix)
+        if relative.lower().endswith(".toml"):
+            relative = relative[:-5]
+        return relative.strip("/")
+    return Path(normalized).stem
 
 
 def _infer_config_file_group(rel_path: str) -> dict[str, Any]:

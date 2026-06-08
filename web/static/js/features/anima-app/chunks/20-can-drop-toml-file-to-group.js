@@ -303,6 +303,32 @@ const ctx = globalThis.ctx;
         return filename.toLowerCase().endsWith('.toml') ? filename.slice(0, -5) : filename;
     }
 
+    globalThis.tomlItemQueueEntry = function tomlItemQueueEntry(item, preset = '') {
+        const path = String(item?.path || '').trim();
+        const methodsSubdir = String(item?.methods_subdir || '').trim() || 'imported';
+        const label = tomlFileDisplayName(item);
+        return {
+            variant: tomlItemQueueVariant(item),
+            preset: preset || val('preset-select') || 'default',
+            methods_subdir: methodsSubdir,
+            config_file: path,
+            filename: item?.filename || (path ? path.split('/').pop() : ''),
+            label: label === '未命名配置文件' ? '' : label,
+            confirm_preprocess: true,
+        };
+    }
+
+    globalThis.tomlGroupQueueFailureLabel = function tomlGroupQueueFailureLabel(item, failure = {}, index = -1) {
+        const path = String(item?.path || item?.config_file || failure.config_file || '').trim();
+        if (path) return path;
+        const failureLabel = String(failure.label || failure.filename || item?.label || item?.filename || '').trim();
+        if (failureLabel) return failureLabel;
+        const label = tomlFileDisplayName(item);
+        if (label && label !== '未命名配置文件') return label;
+        const fallbackIndex = Number.isFinite(index) && index >= 0 ? index + 1 : Number(failure.index || 0) + 1;
+        return fallbackIndex > 0 ? `第 ${fallbackIndex} 个配置` : '批量请求';
+    }
+
     globalThis.showTomlGroupQueueConfirmDialog = async function showTomlGroupQueueConfirmDialog(group, files) {
         const wrap = document.createElement('div');
         wrap.className = 'history-task-dialog-message toml-group-queue-dialog';
@@ -351,53 +377,53 @@ const ctx = globalThis.ctx;
         if (!confirmed) return;
 
         const preset = val('preset-select') || 'default';
-        let queued = 0;
-        let failure = null;
-        for (const item of files) {
-            const variant = tomlItemQueueVariant(item);
-            const methodsSubdir = item.methods_subdir || 'imported';
-            renderPreflightPending({
-                title: '批量加入训练队列',
-                message: `正在加入 ${queued + 1}/${files.length}: ${item.filename || item.label || item.path}`,
-                detail: '正在为这个配置创建独立运行配置；如果某个配置预检测失败，批量操作会停在该配置。',
-            });
-            if (!variant || isCliOnlySpdSource(variant, methodsSubdir)) {
-                failure = { item, error: variant ? 'SPD CLI 实验配置不能通过 Web 队列启动' : '配置缺少可训练变体名称' };
-                break;
-            }
-            try {
-                const res = await enqueueTrainingQueueRequest({
-                    variant,
-                    preset,
-                    methodsSubdir,
-                    configFile: item.path,
-                    willAutoPreprocess: true,
-                    startPaused: true,
-                    continuePayload: {},
-                });
-                if (!res.ok) {
-                    failure = { item, error: res.error || '加入队列失败', preflight: res.preflight };
-                    break;
-                }
-                queued += 1;
-                updateTrainingQueueFromPayload(res);
-            } catch (e) {
-                failure = { item, error: e.message || '请求失败' };
-                break;
-            }
+        const entries = files.map((item) => tomlItemQueueEntry(item, preset));
+        const invalidIndex = entries.findIndex((entry) => !entry.variant || isCliOnlySpdSource(entry.variant, entry.methods_subdir));
+        if (invalidIndex >= 0) {
+            const item = files[invalidIndex];
+            const entry = entries[invalidIndex];
+            const message = entry.variant ? 'SPD CLI 实验配置不能通过 Web 队列启动' : '配置缺少可训练变体名称';
+            setTomlStatus('error', `批量加入队列已停止：${item.path || tomlFileDisplayName(item)}，${message}`, { persist: true });
+            showPreflightRequestError(message);
+            return;
         }
+
+        renderPreflightPending({
+            title: '批量加入训练队列',
+            message: `正在冻结 ${files.length} 个配置并加入队列...`,
+            detail: '后端会逐个预检测并创建独立运行配置；如果某个配置失败，会返回停止位置和失败原因。',
+        });
+        let res;
+        try {
+            res = await enqueueTrainingQueueBatchRequest({
+                items: entries,
+                preset,
+                startPaused: true,
+            });
+        } catch (e) {
+            const message = `批量加入队列失败: ${e.message || e}`;
+            setTomlStatus('error', message, { persist: true });
+            showPreflightRequestError(message);
+            return;
+        }
+        const queued = Number(res.queued_count || 0);
+        updateTrainingQueueFromPayload(res);
 
         if (queued > 0) {
             document.querySelector('[data-tab="training"]')?.click();
             showTrainingView('queue');
             appendLog(`[状态] 已将分组“${group.label || group.id}”中的 ${queued} 个配置加入训练队列`);
         }
-        if (failure) {
-            const fileLabel = failure.item?.path || tomlFileDisplayName(failure.item);
-            const message = `批量加入队列已停止：${fileLabel}，${failure.error}`;
+        if (!res.ok) {
+            const failure = (res.failures || [])[0] || {};
+            const failedIndex = Number.isInteger(res.failed_index) ? res.failed_index : Number(failure.index ?? -1);
+            const item = files[failedIndex] || res.failed_item || {};
+            const fileLabel = tomlGroupQueueFailureLabel(item, failure, failedIndex);
+            const error = res.error || failure.error || '加入队列失败';
+            const message = `批量加入队列已停止：${fileLabel}，${error}`;
             setTomlStatus('error', queued ? `已加入 ${queued} 个配置；${message}` : message, { persist: true });
-            if (failure.preflight) {
-                showPreflightDialog(failure.preflight, false, { willAutoPreprocess: true });
+            if (res.preflight) {
+                showPreflightDialog(res.preflight, false, { willAutoPreprocess: true });
             } else {
                 showPreflightRequestError(message);
             }

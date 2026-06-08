@@ -9,8 +9,16 @@ export function createApiClient(fetchImpl = window.fetch.bind(window)) {
         } catch {
             data = { ok: false, error: text || `HTTP ${res.status}` };
         }
+        if (!data || typeof data !== 'object') {
+            data = { ok: res.ok, value: data };
+        }
         if (!res.ok && data && !Object.prototype.hasOwnProperty.call(data, 'ok')) {
             data.ok = false;
+        }
+        if (!res.ok) {
+            if (!Object.prototype.hasOwnProperty.call(data, 'status')) data.status = res.status;
+            if (!Object.prototype.hasOwnProperty.call(data, 'status_code')) data.status_code = res.status;
+            if (!data.error) data.error = text || `${res.status}: ${res.statusText || 'HTTP error'}`;
         }
         return data;
     };

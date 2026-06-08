@@ -302,6 +302,75 @@ const ctx = globalThis.ctx;
         return totalText === '-' ? `${usedText} GB` : `${usedText} / ${totalText} GB`;
     }
 
+    globalThis.renderTrainingRunSummary = function renderTrainingRunSummary(items, fallback) {
+        const el = document.getElementById('training-run-summary');
+        if (!el) return;
+        const entries = (Array.isArray(items) ? items : [])
+            .map((item) => {
+                if (Array.isArray(item)) {
+                    return {
+                        label: String(item[0] || '').trim(),
+                        value: String(item[1] || '').trim(),
+                    };
+                }
+                return {
+                    label: String(item?.label || '').trim(),
+                    value: String(item?.value || '').trim(),
+                };
+            })
+            .filter((item) => item.label && item.value);
+        el.innerHTML = '';
+        el.classList.toggle('is-empty', entries.length === 0);
+        el.classList.remove('has-copy-feedback');
+        el.removeAttribute('data-copy-feedback');
+        if (!entries.length) {
+            el.textContent = fallback || '运行目录和配置快照会在任务启动后显示。';
+            return;
+        }
+        for (const item of entries) {
+            const wrap = document.createElement('button');
+            wrap.type = 'button';
+            wrap.className = 'training-run-summary-item';
+            wrap.title = `复制${item.label}: ${item.value}`;
+            wrap.setAttribute('aria-label', `复制${item.label}: ${item.value}`);
+            const label = document.createElement('span');
+            label.className = 'training-run-summary-label';
+            label.textContent = item.label;
+            const value = document.createElement('code');
+            value.className = 'training-run-summary-value';
+            value.textContent = item.value;
+            value.title = item.value;
+            wrap.append(label, value);
+            wrap.addEventListener('click', async () => {
+                const copier = globalThis.copyText || ctx?.dom?.copyText;
+                if (!copier) return;
+                const feedback = el.querySelector('.training-run-summary-feedback');
+                let message = '';
+                try {
+                    await copier(item.value);
+                    wrap.classList.add('is-copied');
+                    message = `${item.label}已复制`;
+                } catch (_) {
+                    message = '复制失败，请手动选择';
+                }
+                if (feedback) feedback.textContent = message;
+                el.dataset.copyFeedback = message;
+                el.classList.add('has-copy-feedback');
+                window.setTimeout(() => {
+                    wrap.classList.remove('is-copied');
+                    el.classList.remove('has-copy-feedback');
+                    el.removeAttribute('data-copy-feedback');
+                    if (feedback) feedback.textContent = '';
+                }, 1600);
+            });
+            el.appendChild(wrap);
+        }
+        const feedback = document.createElement('span');
+        feedback.className = 'training-run-summary-feedback';
+        feedback.setAttribute('aria-live', 'polite');
+        el.appendChild(feedback);
+    }
+
     globalThis.renderLiveTrainingDashboard = function renderLiveTrainingDashboard() {
         if (isHistoryReviewMode()) return;
         const stateMap = { idle: '空闲', running: '运行中', error: '错误', compiling: '编译中' };
@@ -312,6 +381,7 @@ const ctx = globalThis.ctx;
         setText('training-run-state', stateText);
         const stateEl = document.getElementById('training-run-state');
         if (stateEl) stateEl.className = `training-run-state ${trainingRuntime.state || 'idle'}`;
+        setTrainingDashboardHeadState(trainingRuntime.state || 'idle');
         updateTrainingToolbarState(trainingRuntime.state || 'idle', stateText);
         updateDashboardProgressIdleState(isLiveRunningState());
         setText('training-run-title', isLiveRunningState() ? `当前${jobLabel}` : '当前监控');
@@ -320,12 +390,12 @@ const ctx = globalThis.ctx;
             trainingRuntime.variant ? `配置 ${trainingRuntime.variant}` : '',
             trainingRuntime.preset ? `预设 ${trainingRuntime.preset}` : '',
         ].filter(Boolean).join(' · ') || '等待训练任务启动。');
-        setText('training-run-summary', [
-            trainingRuntime.runDir ? `运行目录: ${trainingRuntime.runDir}` : '',
-            trainingRuntime.runtimeConfigFile ? `实际配置: ${trainingRuntime.runtimeConfigFile}` : '',
-            trainingRuntime.outputDir ? `输出: ${trainingRuntime.outputDir}` : '',
-            trainingRuntime.sampleDir ? `样张: ${trainingRuntime.sampleDir}` : '',
-        ].filter(Boolean).join(' · ') || '运行目录和配置快照会在任务启动后显示。');
+        renderTrainingRunSummary([
+            ['运行目录', trainingRuntime.runDir],
+            ['实际配置', trainingRuntime.runtimeConfigFile],
+            ['输出', trainingRuntime.outputDir],
+            ['样张', trainingRuntime.sampleDir],
+        ], '运行目录和配置快照会在任务启动后显示。');
         setEtaMetricText(trainingEtaMetricInfo());
     }
 

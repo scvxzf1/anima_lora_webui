@@ -41,10 +41,21 @@ const ctx = globalThis.ctx;
         headActions.className = 'dataset-row-head-actions';
         const badges = document.createElement('div');
         badges.className = 'dataset-row-badges';
+        const bucketText = settings.enable_bucket
+            ? `${settings.min_bucket_reso}-${settings.max_bucket_reso}/${settings.bucket_reso_steps}`
+            : '关闭';
+        const validationText = Number(settings.validation_split_num || 0) > 0
+            ? `${settings.validation_split_num}张`
+            : `${settings.validation_split ?? 0}`;
+        const captionModeLabel = CAPTION_SOURCE_MODE_OPTIONS.find((option) => (
+            option.value === normalizeCaptionSourceMode(settings.caption_source_mode)
+        ))?.label || 'Auto';
         [
             ['分辨率', `${settings.resolution}px`],
+            ['桶', bucketText],
             ['重复', row.num_repeats || 1],
-            ['标注', CAPTION_SOURCE_MODE_OPTIONS.find((option) => option.value === normalizeCaptionSourceMode(settings.caption_source_mode))?.label || 'Auto'],
+            ['验证', validationText],
+            ['标注', captionModeLabel],
         ].forEach(([label, value]) => {
             const badge = document.createElement('span');
             badge.className = 'dataset-row-badge';
@@ -69,26 +80,13 @@ const ctx = globalThis.ctx;
 
         const paths = document.createElement('div');
         paths.className = 'dataset-row-paths';
+        paths.setAttribute('aria-label', `第 ${index + 1} 组数据集主路径`);
         paths.appendChild(createDatasetPathField(index, 'source_dir', '原始数据集路径', row.source_dir, 'image_dataset'));
         wrap.appendChild(paths);
 
         wrap.appendChild(createDatasetRowCaptionSourceModeEditor(settings, index));
         wrap.appendChild(createDatasetNlTagMixEditor(row, index));
         wrap.appendChild(createDatasetRowSettingsEditor(row, index));
-
-        const repeat = document.createElement('label');
-        repeat.className = 'dataset-repeat-field';
-        const repeatText = document.createElement('span');
-        repeatText.textContent = '重复次数';
-        repeatText.title = '这一组图片在每轮里重复使用几次。小数据集或重点角色可以适当提高，但过高会更容易过拟合。';
-        const repeatInput = document.createElement('input');
-        repeatInput.type = 'number';
-        repeatInput.min = '1';
-        repeatInput.step = '1';
-        repeatInput.value = String(row.num_repeats || 1);
-        repeatInput.title = '每轮训练中这组数据的重复倍率。1 表示正常使用一次，2 表示等效看两遍。';
-        repeatInput.addEventListener('input', () => updateDatasetEditorRow(index, 'num_repeats', repeatInput.value));
-        repeat.append(repeatText, repeatInput);
 
         const remove = document.createElement('button');
         remove.type = 'button';
@@ -99,7 +97,7 @@ const ctx = globalThis.ctx;
         remove.addEventListener('click', () => removeDatasetEditorRow(index));
         const bottomActions = document.createElement('div');
         bottomActions.className = 'dataset-row-bottom-actions';
-        bottomActions.append(repeat, remove);
+        bottomActions.append(remove);
         wrap.appendChild(bottomActions);
         return wrap;
     }
@@ -174,6 +172,31 @@ const ctx = globalThis.ctx;
         return panel;
     }
 
+    globalThis.createDatasetRepeatSettingField = function createDatasetRepeatSettingField(row, index) {
+        const field = document.createElement('label');
+        field.className = 'dataset-row-setting-field dataset-repeat-field dataset-repeat-setting-field';
+
+        const labelRow = document.createElement('div');
+        labelRow.className = 'dataset-row-setting-label';
+        const label = document.createElement('span');
+        label.className = 'field-name';
+        label.textContent = '重复次数 / NUM_REPEATS';
+        label.title = '这一组图片在每轮里重复使用几次。小数据集或重点角色可以适当提高，但过高会更容易过拟合。';
+        labelRow.appendChild(label);
+
+        const input = document.createElement('input');
+        input.type = 'number';
+        input.min = '1';
+        input.step = '1';
+        input.value = String(row.num_repeats || 1);
+        input.className = 'field-input dataset-row-setting-input dataset-repeat-input';
+        input.title = '每轮训练中这组数据的重复倍率。1 表示正常使用一次，2 表示等效看两遍。';
+        input.addEventListener('input', () => updateDatasetEditorRow(index, 'num_repeats', input.value));
+
+        field.append(labelRow, input);
+        return field;
+    }
+
     globalThis.createDatasetRowSettingsEditor = function createDatasetRowSettingsEditor(row, index) {
         const settings = normalizeDatasetDefaults(row.settings || datasetEditorStateForActivePanel().defaults || {});
         const panel = document.createElement('div');
@@ -226,6 +249,7 @@ const ctx = globalThis.ctx;
             field.appendChild(createDatasetRowSettingInput(index, key, type, settings));
             panel.appendChild(field);
         }
+        panel.appendChild(createDatasetRepeatSettingField(row, index));
         panel.appendChild(helpDiv);
         return panel;
     }

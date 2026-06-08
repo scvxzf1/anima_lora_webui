@@ -163,6 +163,7 @@ from web.services.config.preflight import (  # noqa: E402,F401
     _check_training_images,
     _config_file_path,
     _load_training_config_for_web_run,
+    apply_global_model_path_defaults,
     is_web_runtime_config,
     preflight_training_config,
     training_sample_sampler_status,

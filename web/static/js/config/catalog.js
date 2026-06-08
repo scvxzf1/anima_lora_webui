@@ -1,18 +1,18 @@
-import * as defaults from './catalog/defaults.js?v=module-bootstrap-20260608-3';
-import * as extraFieldHelp from './catalog/extra-field-help.js?v=module-bootstrap-20260608-3';
-import * as formLayout from './catalog/form-layout.js?v=module-bootstrap-20260608-3';
-import { FIELD_HELP_ZH } from './catalog/field-help.js?v=module-bootstrap-20260608-3';
-import * as guides from './catalog/guides.js?v=module-bootstrap-20260608-3';
-import { choiceHelp, help } from './catalog/help-builder.js?v=module-bootstrap-20260608-3';
-import * as labelsOptions from './catalog/labels-options.js?v=module-bootstrap-20260608-3';
+import * as defaults from './catalog/defaults.js?v=module-bootstrap-20260608-10';
+import * as extraFieldHelp from './catalog/extra-field-help.js?v=module-bootstrap-20260608-10';
+import * as formLayout from './catalog/form-layout.js?v=module-bootstrap-20260608-10';
+import { FIELD_HELP_ZH } from './catalog/field-help.js?v=module-bootstrap-20260608-10';
+import * as guides from './catalog/guides.js?v=module-bootstrap-20260608-10';
+import { choiceHelp, help } from './catalog/help-builder.js?v=module-bootstrap-20260608-10';
+import * as labelsOptions from './catalog/labels-options.js?v=module-bootstrap-20260608-10';
 
-export * from './catalog/defaults.js?v=module-bootstrap-20260608-3';
-export * from './catalog/extra-field-help.js?v=module-bootstrap-20260608-3';
-export * from './catalog/form-layout.js?v=module-bootstrap-20260608-3';
-export { FIELD_HELP_ZH } from './catalog/field-help.js?v=module-bootstrap-20260608-3';
-export * from './catalog/guides.js?v=module-bootstrap-20260608-3';
-export { choiceHelp, help } from './catalog/help-builder.js?v=module-bootstrap-20260608-3';
-export * from './catalog/labels-options.js?v=module-bootstrap-20260608-3';
+export * from './catalog/defaults.js?v=module-bootstrap-20260608-10';
+export * from './catalog/extra-field-help.js?v=module-bootstrap-20260608-10';
+export * from './catalog/form-layout.js?v=module-bootstrap-20260608-10';
+export { FIELD_HELP_ZH } from './catalog/field-help.js?v=module-bootstrap-20260608-10';
+export * from './catalog/guides.js?v=module-bootstrap-20260608-10';
+export { choiceHelp, help } from './catalog/help-builder.js?v=module-bootstrap-20260608-10';
+export * from './catalog/labels-options.js?v=module-bootstrap-20260608-10';
 
 export function createCatalog() {
     return Object.freeze({

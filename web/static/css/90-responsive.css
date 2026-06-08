@@ -111,6 +111,20 @@
     .history-detail-overview-dashboard > .history-detail-section.paths-summary {
         grid-column: 1 / -1;
     }
+    .history-detail-progress {
+        grid-template-columns: minmax(0, 1fr);
+    }
+    .history-detail-progress-meter {
+        grid-template-columns: minmax(180px, 1fr) auto;
+    }
+    .history-detail-progress-stats {
+        flex-wrap: wrap;
+        justify-content: flex-start;
+        white-space: normal;
+    }
+    .history-detail-progress p {
+        text-align: left;
+    }
     .history-detail-metrics-body {
         grid-template-columns: 1fr;
     }
@@ -122,7 +136,7 @@
         border-left: 0;
         border-top: 1px solid var(--border-soft);
         padding-left: 0;
-        padding-top: 0.6rem;
+        padding-top: 0.42rem;
     }
     .history-detail-config-files {
         grid-template-columns: 1fr;
@@ -306,8 +320,18 @@
     .history-curve-inspector-grid {
         grid-template-columns: 1fr;
     }
+    .history-detail-stat,
+    .history-detail-stat.is-primary {
+        grid-column: 1 / -1;
+    }
+    .history-detail-progress-meter {
+        grid-template-columns: 1fr;
+    }
+    .history-detail-progress-stats {
+        gap: 0.22rem;
+    }
     .history-detail-kv > div.has-copy-action {
-        grid-template-columns: minmax(0, 1fr) 28px;
+        grid-template-columns: minmax(0, 1fr) 24px;
     }
     .history-detail-kv > div.has-file-actions,
     .history-file-root {
@@ -318,6 +342,24 @@
     }
     .history-detail-kv > div.has-file-actions > span,
     .history-file-root > span {
+        grid-column: 1 / -1;
+    }
+    .history-detail-path-summary > div,
+    .history-resume-control-row,
+    .history-resume-controls,
+    .resume-checkpoint-summary div {
+        grid-template-columns: 1fr;
+    }
+    .history-detail-path-summary > div > span,
+    .history-detail-path-summary > div > code {
+        grid-column: auto;
+    }
+    .history-detail-path-summary > div.has-copy-action,
+    .history-detail-path-summary > div.has-file-actions {
+        grid-template-columns: minmax(0, 1fr) 24px;
+    }
+    .history-detail-path-summary > div.has-copy-action > span,
+    .history-detail-path-summary > div.has-file-actions > span {
         grid-column: 1 / -1;
     }
     .history-config-toolbar {
