@@ -36,6 +36,9 @@ logs
 .claude
 .env
 .anima-update-backups
+configs/datasets/
+configs/web-training-history/
+configs/web-training-queue/
 node.zip
 _archive/
 !_archive/
