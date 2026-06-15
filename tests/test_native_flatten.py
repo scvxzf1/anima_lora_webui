@@ -82,7 +82,7 @@ def test_compile_blocks_dynamic_seq_marks_range_and_runs():
     model.compile_blocks(
         backend="eager",
         dynamic_seq=True,
-        bucket_resolutions=[(126, 128), (120, 140)],
+        bucket_resolutions=[(1008, 1024), (960, 1120)],
     )
 
     assert model._native_flatten is True

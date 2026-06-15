@@ -460,6 +460,13 @@ def test_resume_options_mark_completed_checkpoint_unavailable(tmp_path, monkeypa
 
 def test_resume_from_history_allows_remaining_steps_and_clones_runtime(tmp_path, monkeypatch):
     history_dir, task_id, state_dir = _write_resume_history(tmp_path)
+    snapshot_path = history_dir / task_id / "config.snapshot.toml"
+    snapshot_path.write_text(
+        snapshot_path.read_text(encoding="utf-8")
+        + 'network_weights = "weights/old-hotstart.safetensors"\n'
+        + "dim_from_weights = true\n",
+        encoding="utf-8",
+    )
     monkeypatch.setattr(training_service, "HISTORY_DIR", history_dir)
     output_root = _patch_resume_runtime_output_root(monkeypatch, tmp_path)
     monkeypatch.setattr(
@@ -496,6 +503,8 @@ def test_resume_from_history_allows_remaining_steps_and_clones_runtime(tmp_path,
     assert runtime_cfg["output_dir"].startswith(str(output_root))
     assert runtime_cfg["output_dir"].endswith("/training_output")
     assert runtime_cfg["output_dir"] != str(state_dir.parent)
+    assert "network_weights" not in runtime_cfg
+    assert "dim_from_weights" not in runtime_cfg
 
 
 def test_resume_options_find_numbered_checkpoint_states(tmp_path, monkeypatch):

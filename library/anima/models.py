@@ -15,6 +15,10 @@ from torch.utils.checkpoint import checkpoint as torch_checkpoint
 from library.runtime import offloading as custom_offloading_utils
 from library.runtime.device import weighs_to_device
 from library.runtime.peak_probe import record_peak_probe_event
+from library.runtime.token_counts import (
+    ANIMA_VAE_SPATIAL_COMPRESSION,
+    pixel_bucket_token_counts,
+)
 from networks import attention_dispatch
 
 
@@ -148,8 +152,21 @@ def _make_dynamic_seq_forward(compiled_inner, lo: int, hi: int):
         adaln_lora_B_T_3D=None,
     ):
         # native_flatten shape is (B, 1, seq_len, 1, D), so seq_len is dim 2.
-        torch._dynamo.mark_dynamic(x_B_T_H_W_D, 2, min=lo, max=hi)
-        if rope_cos_sin is not None:
+        marked_seq = False
+        if (
+            x_B_T_H_W_D.ndim == 5
+            and int(x_B_T_H_W_D.shape[1]) == 1
+            and int(x_B_T_H_W_D.shape[3]) == 1
+        ):
+            seq_len = int(x_B_T_H_W_D.shape[2])
+            if not lo <= seq_len <= hi:
+                raise RuntimeError(
+                    f"compile_dynamic_seq seq_len {seq_len} is outside "
+                    f"derived range [{lo}, {hi}]"
+                )
+            torch._dynamo.mark_dynamic(x_B_T_H_W_D, 2, min=lo, max=hi)
+            marked_seq = True
+        if marked_seq and rope_cos_sin is not None:
             torch._dynamo.mark_dynamic(rope_cos_sin[0], 0, min=lo, max=hi)
             torch._dynamo.mark_dynamic(rope_cos_sin[1], 0, min=lo, max=hi)
         return compiled_inner(
@@ -1342,6 +1359,7 @@ class Anima(nn.Module):
     """
 
     LATENT_CHANNELS = 16
+    VAE_SPATIAL_COMPRESSION = ANIMA_VAE_SPATIAL_COMPRESSION
 
     def __init__(
         self,
@@ -1379,6 +1397,7 @@ class Anima(nn.Module):
         self.out_channels = out_channels
         self.patch_spatial = patch_spatial
         self.patch_temporal = patch_temporal
+        self.vae_spatial_compression = self.VAE_SPATIAL_COMPRESSION
         self.num_heads = num_heads
         self.num_blocks = num_blocks
         self.model_channels = model_channels
@@ -1661,10 +1680,11 @@ class Anima(nn.Module):
 
         resos = bucket_resolutions or CONSTANT_TOKEN_BUCKETS
 
-        counts = {
-            (h // self.patch_spatial) * (w // self.patch_spatial)
-            for h, w in resos
-        }
+        counts = pixel_bucket_token_counts(
+            resos,
+            patch_spatial=self.patch_spatial,
+            vae_spatial_compression=self.vae_spatial_compression,
+        )
         n = int(n_token_families) if n_token_families is not None else len(counts)
         limit = pin_dynamo_limit("recompile_limit", 2 * n + 8)
 

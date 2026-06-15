@@ -66,6 +66,7 @@ _LOCAL_IMPL_NAMES = {
     "_read_runtime_run_meta",
     "_runtime_from_config_file",
     "_clone_frozen_runtime_config",
+    "_drop_resume_hotstart_overrides",
     "_clone_runtime_dataset_rows",
     "_runtime_dataset_child_name",
     "_bool_value_for_row",
@@ -523,6 +524,7 @@ def _clone_frozen_runtime_config(
     cfg = _load_config_file_config(_display_settings_path(config_path))
     if not cfg:
         raise ValueError("冻结运行配置为空或无法解析")
+    cfg = _drop_resume_hotstart_overrides(cfg)
 
     previous_run_dir = config_path.parent
     run_stem = _safe_run_stem(f"{previous_run_dir.name or config_path.stem}-retry")
@@ -618,6 +620,12 @@ def _clone_frozen_runtime_config(
         "data_dirs": data_dirs,
         "sample_config": _sample_config_from_cfg(runtime_cfg, []),
     }
+
+def _drop_resume_hotstart_overrides(cfg: dict[str, Any]) -> dict[str, Any]:
+    cleaned = dict(cfg)
+    cleaned.pop("network_weights", None)
+    cleaned.pop("dim_from_weights", None)
+    return cleaned
 
 def _clone_runtime_dataset_rows(
     runtime_rows: list[dict[str, Any]],

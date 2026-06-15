@@ -46,7 +46,7 @@ def test_compile_blocks_for_training_derives_budget_and_isolates_cache(
     captured: dict[str, object] = {}
 
     class FakeUnet:
-        patch_spatial = 16
+        patch_spatial = 2
 
         def compile_blocks(self, backend, **kwargs):
             captured["backend"] = backend
@@ -78,6 +78,35 @@ def test_compile_blocks_for_training_derives_budget_and_isolates_cache(
         "activation_memory_budget ignored" in rec.getMessage()
         for rec in caplog.records
     )
+
+
+def test_compile_blocks_for_training_uses_latent_tokens_for_web_buckets(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    from library.runtime import harness
+
+    captured: dict[str, object] = {}
+
+    class FakeUnet:
+        patch_spatial = 2
+
+        def compile_blocks(self, backend, **kwargs):
+            captured["backend"] = backend
+            captured.update(kwargs)
+
+    monkeypatch.setenv("TORCHINDUCTOR_CACHE_DIR", str(tmp_path))
+    monkeypatch.setattr(harness, "_compile_cache_base", None)
+
+    harness.compile_blocks_for_training(
+        FakeUnet(),
+        object(),
+        backend="eager",
+        bucket_resolutions=[(784, 1056), (704, 1184)],
+        dynamic_seq=True,
+    )
+
+    assert captured["seq_range"] == (3234, 3256)
 
 
 def test_add_device_args_defaults() -> None:

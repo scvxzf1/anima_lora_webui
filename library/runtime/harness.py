@@ -36,6 +36,11 @@ from typing import Optional
 
 import torch
 
+from library.runtime.token_counts import (
+    ANIMA_VAE_SPATIAL_COMPRESSION,
+    pixel_bucket_token_counts,
+)
+
 log = logging.getLogger("library.runtime.harness")
 
 
@@ -374,11 +379,13 @@ def compile_blocks_for_training(
     """
 
     if n_token_families is None and bucket_resolutions:
-        counts = {
-            (int(h) // getattr(unet, "patch_spatial", 16))
-            * (int(w) // getattr(unet, "patch_spatial", 16))
-            for w, h in bucket_resolutions
-        }
+        counts = pixel_bucket_token_counts(
+            bucket_resolutions,
+            patch_spatial=getattr(unet, "patch_spatial", 16),
+            vae_spatial_compression=getattr(
+                unet, "vae_spatial_compression", ANIMA_VAE_SPATIAL_COMPRESSION
+            ),
+        )
         if counts:
             n_token_families = len(counts)
             seq_range = (min(counts), max(counts)) if seq_range is None else seq_range
