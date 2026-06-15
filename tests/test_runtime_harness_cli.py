@@ -9,6 +9,8 @@ flag helpers themselves never touch the encoder weights.
 from __future__ import annotations
 
 import argparse
+import logging
+import os
 from pathlib import Path
 
 import numpy as np
@@ -32,6 +34,50 @@ def test_build_anima_requires_dit_path() -> None:
     args = argparse.Namespace(device="cpu", dtype="bf16")
     with pytest.raises(SystemExit, match="no DiT path"):
         build_anima(args)  # no dit_path, no args.dit -> guard fires before load
+
+
+def test_compile_blocks_for_training_derives_budget_and_isolates_cache(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    from library.runtime import harness
+
+    captured: dict[str, object] = {}
+
+    class FakeUnet:
+        patch_spatial = 16
+
+        def compile_blocks(self, backend, **kwargs):
+            captured["backend"] = backend
+            captured.update(kwargs)
+
+    class FakeNetwork:
+        pass
+
+    monkeypatch.setenv("TORCHINDUCTOR_CACHE_DIR", str(tmp_path))
+    monkeypatch.setattr(harness, "_compile_cache_base", None)
+
+    with caplog.at_level(logging.INFO):
+        harness.compile_blocks_for_training(
+            FakeUnet(),
+            FakeNetwork(),
+            backend="eager",
+            bucket_resolutions=[(1024, 1024), (768, 896)],
+            dynamic_seq=True,
+            activation_memory_budget=0.99,
+            grad_ckpt=True,
+        )
+
+    assert captured["backend"] == "eager"
+    assert captured["n_token_families"] == 2
+    assert captured["seq_range"] == (2688, 4096)
+    assert captured["dynamic_seq"] is True
+    assert "anima-sig-" in os.environ["TORCHINDUCTOR_CACHE_DIR"]
+    assert any(
+        "activation_memory_budget ignored" in rec.getMessage()
+        for rec in caplog.records
+    )
 
 
 def test_add_device_args_defaults() -> None:

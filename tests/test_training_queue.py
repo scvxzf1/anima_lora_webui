@@ -193,12 +193,85 @@ def test_prepare_web_runtime_config_freezes_frontend_editable_parameters(tmp_pat
     dataset = dataset_cfg["datasets"][0]
     subset = dataset["subsets"][0]
     assert dataset["batch_size"] == 3
+    assert dataset["validation_split"] == 0
+    assert "validation_split_num" not in dataset
     assert subset["num_repeats"] == 3
     assert subset["image_dir"].endswith("/dataset_cache/dataset-01/resized")
     assert subset["cache_dir"].endswith("/dataset_cache/dataset-01/lora")
     assert subset["custom_attributes"]["source_dir"] == "image_dataset/selected"
     assert subset["custom_attributes"]["preprocess"]["resolution"] == 768
     assert subset["custom_attributes"]["preprocess"]["bucket_reso_steps"] == 32
+
+
+def test_prepare_web_runtime_config_preserves_validation_split_controls(tmp_path, monkeypatch):
+    configs, _output_root = _patch_runtime_config_paths(tmp_path, monkeypatch)
+    for rel in ("gui-methods", "imported", "datasets"):
+        (configs / rel).mkdir(parents=True)
+    (configs / "base.toml").write_text(
+        "\n".join([
+            'source_image_dir = "image_dataset/default"',
+            'resized_image_dir = "post_image_dataset/default_resized"',
+            'lora_cache_dir = "post_image_dataset/default_lora"',
+            'pretrained_model_name_or_path = "models/anima.safetensors"',
+            'qwen3 = "models/qwen.safetensors"',
+            'vae = "models/vae.safetensors"',
+        ]),
+        encoding="utf-8",
+    )
+    (configs / "presets.toml").write_text("[default]\n", encoding="utf-8")
+    (configs / "gui-methods" / "lora.toml").write_text(
+        'output_name = "base_lora"\ntrain_batch_size = 1\n',
+        encoding="utf-8",
+    )
+    (configs / "datasets" / "validation-controls.toml").write_text(
+        "\n".join([
+            "[[datasets]]",
+            "validation_split = 0.125",
+            "validation_seed = 11",
+            "",
+            "[[datasets.subsets]]",
+            'image_dir = "post_image_dataset/ratio_resized"',
+            'cache_dir = "post_image_dataset/ratio_lora"',
+            "num_repeats = 1",
+            'custom_attributes = { source_dir = "image_dataset/ratio" }',
+            "",
+            "[[datasets]]",
+            "validation_split = 0.5",
+            "validation_split_num = 3",
+            "validation_seed = 22",
+            "",
+            "[[datasets.subsets]]",
+            'image_dir = "post_image_dataset/fixed_resized"',
+            'cache_dir = "post_image_dataset/fixed_lora"',
+            "num_repeats = 1",
+            'custom_attributes = { source_dir = "image_dataset/fixed" }',
+        ]),
+        encoding="utf-8",
+    )
+    (configs / "imported" / "validation-controls.toml").write_text(
+        "\n".join([
+            'output_name = "validation_controls"',
+            'dataset_config = "configs/datasets/validation-controls.toml"',
+        ]),
+        encoding="utf-8",
+    )
+
+    runtime = training_service._prepare_web_runtime_config(
+        "lora",
+        "default",
+        "gui-methods",
+        source_config_file="configs/imported/validation-controls.toml",
+    )
+
+    dataset_cfg = toml.loads((tmp_path / runtime["dataset_config_file"]).read_text(encoding="utf-8"))
+    ratio_dataset = dataset_cfg["datasets"][0]
+    fixed_dataset = dataset_cfg["datasets"][1]
+    assert ratio_dataset["validation_split"] == 0.125
+    assert "validation_split_num" not in ratio_dataset
+    assert ratio_dataset["validation_seed"] == 11
+    assert fixed_dataset["validation_split"] == 0.5
+    assert fixed_dataset["validation_split_num"] == 3
+    assert fixed_dataset["validation_seed"] == 22
 
 
 def test_prepare_web_runtime_config_fills_blank_model_paths_from_global_settings(tmp_path, monkeypatch):

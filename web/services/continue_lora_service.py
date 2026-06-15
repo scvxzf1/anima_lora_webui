@@ -202,21 +202,21 @@ def _continue_lora_compatibility(
     current_kind = _continue_lora_config_kind(variant, methods_subdir, dict(cfg or {}))
     if current_kind == "LoHa":
         if kind == "LoHa":
-            return True, "兼容：当前变体为 LoHa，会基于该 LoHa 权重继续训练"
+            return True, "兼容：当前变体为 LoHa，会基于该 LoHa 权重热启动训练"
         return (
             False,
             f"{kind} 权重不能直接用于 LoHa 变体；请切换到匹配的训练变体",
         )
     if current_kind == "LoKr":
         if kind == "LoKr":
-            return True, "兼容：当前变体为 LoKr，会基于该 LoKr 权重继续训练"
+            return True, "兼容：当前变体为 LoKr，会基于该 LoKr 权重热启动训练"
         return (
             False,
             f"{kind} 权重不能直接用于 LoKr 变体；请切换到匹配的训练变体",
         )
     if current_kind == "GLoRA":
         if kind == "GLoRA":
-            return True, "兼容：当前变体为 GLoRA，会基于该 GLoRA 权重继续训练"
+            return True, "兼容：当前变体为 GLoRA，会基于该 GLoRA 权重热启动训练"
         return (
             False,
             f"{kind} 权重不能直接用于 GLoRA 变体；请切换到匹配的训练变体",
@@ -225,7 +225,7 @@ def _continue_lora_compatibility(
         if kind == "DoRA":
             return (
                 True,
-                "兼容：当前配置已启用 DoRA，会基于该 DoRA 权重继续训练",
+                "兼容：当前配置已启用 DoRA，会基于该 DoRA 权重热启动训练",
             )
         return (
             False,
@@ -235,7 +235,7 @@ def _continue_lora_compatibility(
         if kind == "LoRA":
             return (
                 True,
-                "兼容：当前配置属于 LoRA 家族，会基于该 LoRA 权重继续训练",
+                "兼容：当前配置属于 LoRA 家族，会基于该 LoRA 权重热启动训练",
             )
         if kind == "DoRA":
             return (
@@ -247,7 +247,7 @@ def _continue_lora_compatibility(
         if kind == "LoKr":
             return False, "LoKr 权重需要当前变体为 lokr，请先切换到 LoKr 变体"
         return False, "GLoRA 权重需要当前变体为 glora，请先切换到 GLoRA 变体"
-    return False, "当前只支持 LoRA / DoRA / LoHa / LoKr / GLoRA 家族配置继续训练"
+    return False, "当前只支持 LoRA / DoRA / LoHa / LoKr / GLoRA 家族配置权重热启动"
 
 
 def _continue_lora_config_kind(

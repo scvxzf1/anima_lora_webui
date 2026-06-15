@@ -78,19 +78,47 @@ const ctx = globalThis.ctx;
         }
         const startBtn = document.getElementById('btn-start-from-config');
         const trainingConfigFile = currentTrainingConfigFile();
-        const canStart = Boolean(trainingConfigFile) && !dirty;
+        const sourceMode = typeof configTrainingSourceMode === 'function' ? configTrainingSourceMode() : 'fresh';
+        const sourceReady = typeof trainingSourceLaunchReadiness === 'function'
+            ? trainingSourceLaunchReadiness()
+            : { ready: true, checking: false, reason: '' };
+        const sourceBlockedTitle = sourceReady.checking ? '正在审查续接来源，审查完成前不能启动。' : (sourceReady.reason || '训练来源审查未通过');
+        const canStart = sourceMode === 'full_resume'
+            ? sourceReady.ready && !isLiveRunningState()
+            : Boolean(trainingConfigFile) && !dirty && sourceReady.ready;
         if (startBtn) {
             startBtn.disabled = !canStart;
-            startBtn.textContent = '开始训练';
-            startBtn.title = dirty
+            startBtn.textContent = sourceMode === 'full_resume'
+                ? '开始完整续训'
+                : sourceMode === 'weight_hotstart'
+                    ? '开始热启动训练'
+                    : '开始训练';
+            startBtn.title = !sourceReady.ready
+                ? sourceBlockedTitle
+                : sourceMode === 'full_resume' && isLiveRunningState()
+                    ? '当前已有任务在运行，请改用加入队列。'
+                    : sourceMode === 'full_resume'
+                        ? '使用历史任务冻结配置快照启动完整续训，当前表单不会覆盖历史配置。'
+                    : dirty
                 ? '当前配置尚未保存，请先保存更新当前选中配置或另存新配置'
                 : (canStart ? '运行训练前预检测，通过后选择立即启动或加入队列。' : '请先选择可训练配置文件');
         }
         const queueBtn = document.getElementById('btn-queue-from-config');
-        const canQueue = Boolean(trainingConfigFile) && !dirty;
+        const canQueue = sourceMode === 'full_resume'
+            ? sourceReady.ready
+            : Boolean(trainingConfigFile) && !dirty && sourceReady.ready;
         if (queueBtn) {
             queueBtn.disabled = !canQueue;
-            queueBtn.title = dirty
+            queueBtn.textContent = sourceMode === 'full_resume'
+                ? '完整续训入队'
+                : sourceMode === 'weight_hotstart'
+                    ? '热启动入队'
+                    : '加入队列';
+            queueBtn.title = !sourceReady.ready
+                ? sourceBlockedTitle
+                : sourceMode === 'full_resume'
+                    ? '使用历史任务冻结配置快照加入完整续训队列，启动前会再次检查 checkpoint-state。'
+                : dirty
                 ? '当前配置尚未保存，请先保存更新当前选中配置或另存新配置'
                 : (canQueue ? '把当前训练配置直接冻结并加入训练队列。' : '请先选择可训练配置文件');
         }

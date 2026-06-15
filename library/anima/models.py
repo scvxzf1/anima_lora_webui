@@ -129,6 +129,41 @@ def unsloth_checkpoint(function, *args):
     return UnslothOffloadedGradientCheckpointer.apply(function, *args)
 
 
+def _make_dynamic_seq_forward(compiled_inner, lo: int, hi: int):
+    """Wrap a compiled ``Block._forward`` with recompute-safe dynamic marks.
+
+    Under gradient checkpointing, backward recompute detaches tensor inputs into
+    fresh tensors. Any ``mark_dynamic`` done once before ``Block.forward`` is
+    therefore lost on recompute, while non-tensor inputs such as the RoPE tuple
+    keep their previous dynamic metadata. Marking inside the checkpointed
+    callable makes forward and recompute see the same symbolic seq axis.
+    """
+
+    def marked_forward(
+        x_B_T_H_W_D,
+        emb_B_T_D,
+        crossattn_emb,
+        attn_params,
+        rope_cos_sin=None,
+        adaln_lora_B_T_3D=None,
+    ):
+        # native_flatten shape is (B, 1, seq_len, 1, D), so seq_len is dim 2.
+        torch._dynamo.mark_dynamic(x_B_T_H_W_D, 2, min=lo, max=hi)
+        if rope_cos_sin is not None:
+            torch._dynamo.mark_dynamic(rope_cos_sin[0], 0, min=lo, max=hi)
+            torch._dynamo.mark_dynamic(rope_cos_sin[1], 0, min=lo, max=hi)
+        return compiled_inner(
+            x_B_T_H_W_D,
+            emb_B_T_D,
+            crossattn_emb,
+            attn_params,
+            rope_cos_sin,
+            adaln_lora_B_T_3D,
+        )
+
+    return marked_forward
+
+
 @torch.compiler.disable(recursive=True)
 def _unflatten_native_shape(x, flatten_info):
     """Restore the fake-5D flattened sequence back to (B, T, H, W, D).
@@ -174,16 +209,14 @@ def apply_rotary_pos_emb_qk(
     rope_cos_sin: tuple[torch.Tensor, torch.Tensor],
     tensor_format: str = "sbhd",
 ) -> tuple[torch.Tensor, torch.Tensor]:
-    """Apply RoPE to q and k using precomputed (cos, sin) tensors."""
-    cos_, sin_ = rope_cos_sin
-    max_seq_len = cos_.shape[0]
-    cur_seq_len = q.shape[1] if tensor_format == "bshd" else q.shape[0]
+    """Apply RoPE to q and k using precomputed (cos, sin) tensors.
 
-    assert cur_seq_len <= max_seq_len, (
-        f"Rotary Embeddings only supported up to {max_seq_len} sequence length!"
-    )
-    cos_ = cos_[:cur_seq_len]
-    sin_ = sin_[:cur_seq_len]
+    RoPE is generated for the same sequence length as the current q/k. Avoid
+    slicing by a symbolic ``cur_seq_len`` here: under ``compile_dynamic_seq`` the
+    seq axis is already marked dynamic, and an extra symbolic slice can create a
+    different graph between forward and checkpoint recompute.
+    """
+    cos_, sin_ = rope_cos_sin
 
     if tensor_format == "bshd":
         cos_ = cos_.transpose(0, 1)
@@ -1242,7 +1275,7 @@ class Block(nn.Module):
         rope_cos_sin: Optional[tuple[torch.Tensor, torch.Tensor]] = None,
         adaln_lora_B_T_3D: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
-        if self.training and self.gradient_checkpointing:
+        if torch.is_grad_enabled() and self.training and self.gradient_checkpointing:
             if self.unsloth_offload_checkpointing:
                 # Unsloth: async non-blocking CPU RAM offload (fastest offload method)
                 return unsloth_checkpoint(
@@ -1580,6 +1613,9 @@ class Anima(nn.Module):
         backend: str = "inductor",
         mode: Optional[str] = None,
         bucket_resolutions: Optional[Sequence[Tuple[int, int]]] = None,
+        n_token_families: Optional[int] = None,
+        dynamic_seq: bool = False,
+        seq_range: Optional[tuple[int, int]] = None,
     ):
         """Enable native-shape flattening and torch.compile each block's _forward.
 
@@ -1600,47 +1636,63 @@ class Anima(nn.Module):
            immediate graph break if forward itself is compiled — dynamo compiles
            nothing useful but still checks shape guards, causing recompile storms.
 
-        Also raises the dynamo cache-size budget to fit those token-count
+        Also raises the dynamo recompile budget to fit those token-count
         families. ``2 * n + 8``: the ``2 *`` covers fwd+bwd sharing the one
-        ``_forward`` bytecode, the ``+ 8`` covers requires_grad / stride
-        specializations (the live path traces ~5 graphs, not 2). ``max()`` is
-        load-bearing — a caller that knows it has *more* distinct shapes (e.g.
-        the multi-resolution SPD distill) raises the limit higher beforehand and
-        this must not clobber it back down. ``bucket_resolutions`` lets training
-        pass the active dataset buckets when WebUI uses scaled resolutions such
-        as 768.
+        ``_forward`` bytecode, the ``+ 8`` covers requires_grad / stride /
+        num_threads specializations. The raise is pinned across compile contexts
+        so checkpoint backward recompute does not fall back to Dynamo's default
+        limit of 8. ``bucket_resolutions`` is kept for existing callers;
+        ``n_token_families`` lets training pass a pre-derived budget directly.
 
         ``mode`` maps to torch.compile's inductor preset (e.g. ``reduce-overhead``
         to enable per-block CUDAGraphs). ``None`` leaves it unset (inductor default).
+
+        ``dynamic_seq`` keeps ``torch.compile(dynamic=False)`` but marks only the
+        native-flattened sequence axis dynamic via an eager wrapper around the
+        compiled inner. The wrapper is the checkpointed callable, so marks are
+        re-applied during backward recompute as well as the original forward.
         """
         self._native_flatten = True
 
         # Local import: library.datasets.buckets does not import models, so
         # importing it here (rather than at module top) avoids a circular import.
-        import torch._dynamo as _dynamo
-
         from library.datasets.buckets import CONSTANT_TOKEN_BUCKETS
+        from library.runtime.dynamo import pin_dynamo_limit
 
         resos = bucket_resolutions or CONSTANT_TOKEN_BUCKETS
 
-        n = len(
-            {
-                (h // self.patch_spatial) * (w // self.patch_spatial)
-                for h, w in resos
-            }
-        )
-        _dynamo.config.cache_size_limit = max(
-            _dynamo.config.cache_size_limit, 2 * n + 8
-        )
+        counts = {
+            (h // self.patch_spatial) * (w // self.patch_spatial)
+            for h, w in resos
+        }
+        n = int(n_token_families) if n_token_families is not None else len(counts)
+        limit = pin_dynamo_limit("recompile_limit", 2 * n + 8)
+
+        self._dynamic_seq = bool(dynamic_seq)
+        if self._dynamic_seq:
+            if seq_range is not None:
+                self._dynamic_seq_range = (int(seq_range[0]), int(seq_range[1]))
+            else:
+                self._dynamic_seq_range = (min(counts), max(counts))
 
         compile_kwargs = {"backend": backend, "dynamic": False}
         if mode is not None:
             compile_kwargs["mode"] = mode
         for block in self.blocks:
-            block._forward = torch.compile(block._forward, **compile_kwargs)
+            compiled_inner = torch.compile(block._forward, **compile_kwargs)
+            if self._dynamic_seq:
+                lo, hi = self._dynamic_seq_range
+                block._forward = _make_dynamic_seq_forward(compiled_inner, lo, hi)
+            else:
+                block._forward = compiled_inner
+        graph_mode = (
+            f"dynamic-seq mark_dynamic seq∈{self._dynamic_seq_range} (1 graph)"
+            if self._dynamic_seq
+            else f"static ({n} graphs)"
+        )
         print(
-            f"Anima: native_flatten on, {n} token-count families "
-            f"(cache_size_limit={_dynamo.config.cache_size_limit}); compiled "
+            f"Anima: native_flatten on, {n} token-count families, {graph_mode} "
+            f"(recompile_limit={limit}); compiled "
             f"{len(self.blocks)} block._forward with backend={backend}, mode={mode}"
         )
 

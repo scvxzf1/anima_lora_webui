@@ -2222,6 +2222,9 @@ body.history-detail-window-open {
 .history-resume-diagnostic-error {
     color: var(--history-detail-danger) !important;
 }
+.history-resume-hint.warning {
+    color: var(--warning);
+}
 .history-resume-weight-list {
     display: grid;
     gap: 0.24rem;

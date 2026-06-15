@@ -1,6 +1,6 @@
-import { fetchHistoryTask } from './api.js?v=module-bootstrap-20260608-10';
-import { createHistoryDetailDialog } from './dialog.js?v=module-bootstrap-20260608-10';
-import { createHistoryDetailState, normalizeHistoryDetailTab } from './state.js?v=module-bootstrap-20260608-10';
+import { fetchHistoryTask } from './api.js?v=module-bootstrap-20260608-11';
+import { createHistoryDetailDialog } from './dialog.js?v=module-bootstrap-20260608-11';
+import { createHistoryDetailState, normalizeHistoryDetailTab } from './state.js?v=module-bootstrap-20260608-11';
 
 export function createHistoryDetailFeature(ctx, deps) {
     const state = createHistoryDetailState();

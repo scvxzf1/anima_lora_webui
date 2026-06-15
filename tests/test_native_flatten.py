@@ -75,6 +75,25 @@ def test_compile_blocks_does_not_lower_a_higher_budget():
 
 
 @torch.no_grad()
+def test_compile_blocks_dynamic_seq_marks_range_and_runs():
+    """dynamic_seq wraps the compiled inner, so eager backend still executes."""
+
+    model = _tiny_anima()
+    model.compile_blocks(
+        backend="eager",
+        dynamic_seq=True,
+        bucket_resolutions=[(126, 128), (120, 140)],
+    )
+
+    assert model._native_flatten is True
+    assert model._dynamic_seq is True
+    assert model._dynamic_seq_range == (4032, 4200)
+
+    out = model.forward_mini_train_dit(*_inputs(126, 128))
+    assert out.shape == (1, 16, 1, 126, 128)
+
+
+@torch.no_grad()
 def _run(model: Anima, inp, *, native_flatten: bool) -> torch.Tensor:
     model._native_flatten = native_flatten
     x, timesteps, crossattn_emb = inp

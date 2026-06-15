@@ -246,6 +246,33 @@ const ctx = globalThis.ctx;
         rangeMode: 'all',
     };
     globalThis.continueTrainingSource = null;
+    globalThis.trainingSourceState = {
+        mode: 'fresh',
+        audit_status: 'ok',
+        full_resume: {
+            task_id: '',
+            checkpoint: '',
+            checkpoints: [],
+            default_checkpoint: '',
+            current_step: null,
+            target_total_steps: null,
+            remaining_steps: null,
+            resume_available: false,
+            audit_status: 'idle',
+            unavailable_reason: '',
+            estimate_error: '',
+            message: '',
+            diagnostic: {},
+        },
+        weight_hotstart: {
+            abs_path: '',
+            name: '',
+            kind: '',
+            compatible: false,
+            audit_status: 'idle',
+            unavailable_reason: '',
+        },
+    };
     globalThis.continueLoraDialogState = {
         loading: false,
         taskId: '',
@@ -401,6 +428,10 @@ const ctx = globalThis.ctx;
             hasContinueTrainingSource: () => Boolean(continueTrainingSource),
             continueTrainingSourceMessage: () => continueTrainingSource?.message || '',
             refreshContinueTrainingSourceCompatibility,
+            getTrainingSourceMode: () => trainingSourceState.mode,
+            ensureTrainingSourceReadyForLaunch,
+            trainingSourceLaunchBlockReason,
+            queueConfigFullResumeSource: () => startConfigFullResumeSource(true),
             currentTrainingConfigIsRuntime,
             renderPreflightPending,
             continueTrainingRequestPayload,

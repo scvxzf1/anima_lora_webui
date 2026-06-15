@@ -850,25 +850,11 @@ class AnimaTrainer:
                 blocks=selective_checkpoint_blocks,
             )
 
-        # Native-shape flattening + per-block torch.compile. compile_blocks turns
-        # on the flatten (one block graph per token-count family: 4032/4200) and
-        # raises the dynamo cache-size budget itself. Selective checkpoint flags
-        # must be installed first, otherwise compiled _forward can specialize on
-        # the non-checkpointed MLP branch.
-        if args.torch_compile:
-            model.compile_blocks(
-                args.dynamo_backend,
-                mode=getattr(args, "compile_inductor_mode", None),
-                bucket_resolutions=getattr(args, "bucket_resolutions", None),
-            )
-            _maybe_probe(
-                self,
-                "dit_compiled",
-                device=accelerator.device,
-                phase="setup",
-                dynamo_backend=args.dynamo_backend,
-                compile_inductor_mode=getattr(args, "compile_inductor_mode", None),
-            )
+        # torch.compile is intentionally delayed until after
+        # network.apply_to/load_weights and gradient-checkpoint setup. Otherwise
+        # Dynamo can trace the bare DiT path instead of the adapter-patched
+        # Linear forwards, and checkpoint recompute may not match the original
+        # forward graph. See library.runtime.harness.compile_blocks_for_training.
 
         # Block swap
         self.is_swapping_blocks = (

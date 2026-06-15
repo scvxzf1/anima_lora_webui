@@ -5,13 +5,12 @@ import {
     historyDetailRow,
     historyDetailSection,
     optionNode,
-} from '../ui.js?v=module-bootstrap-20260608-10';
+} from '../ui.js?v=module-bootstrap-20260608-11';
 import {
     resumeCheckpointOptionLabel,
-    resumeCheckpointProgressText,
+    resumeCheckpointRemainingText,
     resumeSummaryLine,
-    selectedHistoryManagerResumeCheckpointFromState,
-} from './state.js?v=module-bootstrap-20260608-10';
+} from './state.js?v=module-bootstrap-20260608-11';
 
 export function createHistoryResumeDetailRenderer({ ctx, state, deps, slots, actions }) {
     const historyDetailCopyButton = (value, label) => createHistoryDetailCopyButton(ctx.dom.copyText, value, label);
@@ -55,13 +54,11 @@ export function createHistoryResumeDetailRenderer({ ctx, state, deps, slots, act
         start.type = 'button';
         start.className = 'btn btn-primary';
         start.textContent = '从检查点继续训练';
-        start.disabled = !state.resumeOptions.checkpoints.length || deps.getTrainingRuntime().state === 'running' || deps.getTrainingRuntime().state === 'compiling';
         start.addEventListener('click', () => actions.resumeTrainingFromHistoryDetail(false));
         const queue = document.createElement('button');
         queue.type = 'button';
         queue.className = 'btn';
         queue.textContent = '加入队列';
-        queue.disabled = !state.resumeOptions.checkpoints.length;
         queue.addEventListener('click', () => actions.resumeTrainingFromHistoryDetail(true));
         actionsRow.append(refresh, start, queue);
         const controls = document.createElement('div');
@@ -70,9 +67,14 @@ export function createHistoryResumeDetailRenderer({ ctx, state, deps, slots, act
 
         const summary = document.createElement('div');
         summary.className = 'resume-checkpoint-summary';
+        const selectedCheckpoint = () => {
+            const value = select.value || '';
+            if (!value) return null;
+            return state.resumeOptions.checkpoints.find((item) => item.path === value) || null;
+        };
         const fillSummary = () => {
             summary.innerHTML = '';
-            const selected = selectedHistoryManagerResumeCheckpointFromState(state);
+            const selected = selectedCheckpoint();
             if (!selected) {
                 const p = document.createElement('p');
                 p.textContent = state.resumeOptions.error || state.resumeOptions.message || '该任务没有可续训状态目录。';
@@ -81,14 +83,31 @@ export function createHistoryResumeDetailRenderer({ ctx, state, deps, slots, act
             }
             summary.append(
                 resumeSummaryLine('状态目录', selected.path),
-                resumeSummaryLine('已训练到', resumeCheckpointProgressText(selected)),
+                resumeSummaryLine('续训进度', resumeCheckpointRemainingText(selected)),
                 resumeSummaryLine('保存时间', selected.mtime_text || '-'),
                 resumeSummaryLine('关联权重', selected.paired_weight || '无或未找到'),
             );
+            if (selected.unavailable_reason) {
+                summary.appendChild(resumeSummaryLine('不可用原因', selected.unavailable_reason));
+            } else if (selected.estimate_error) {
+                summary.appendChild(resumeSummaryLine('步数估算', `无法确认剩余步数: ${selected.estimate_error}`));
+            }
         };
-        select.addEventListener('change', fillSummary);
+        const updateActionState = () => {
+            const selected = selectedCheckpoint();
+            const selectedAvailable = Boolean(selected && selected.resume_available !== false);
+            const isRunning = deps.getTrainingRuntime().state === 'running' || deps.getTrainingRuntime().state === 'compiling';
+            select.disabled = state.resumeOptions.loading || !state.resumeOptions.checkpoints.length || isRunning;
+            start.disabled = state.resumeOptions.loading || !selectedAvailable || isRunning;
+            queue.disabled = state.resumeOptions.loading || !selectedAvailable;
+        };
+        select.addEventListener('change', () => {
+            fillSummary();
+            updateActionState();
+        });
         fullResume.append(controls, summary);
         fillSummary();
+        updateActionState();
         box.appendChild(historyDetailSection('完整续训', fullResume, 'history-detail-section resume-full'));
 
         if (!state.resumeOptions.checkpoints.length || state.resumeOptions.error) {
@@ -143,6 +162,18 @@ export function createHistoryResumeDetailRenderer({ ctx, state, deps, slots, act
             box.appendChild(historyDetailEmptyText(state.resumeWeights.error));
         }
         if (state.resumeWeights.weights.length) {
+            const checkpointWeightPaths = new Set(
+                state.resumeOptions.checkpoints
+                    .filter((item) => item.resume_available !== false)
+                    .map((item) => String(item.paired_weight || '').trim())
+                    .filter(Boolean),
+            );
+            if (!checkpointWeightPaths.size) {
+                const note = document.createElement('p');
+                note.className = 'history-resume-hint warning';
+                note.textContent = '这些权重没有对应的完整续训状态，不能从这里一键续训；可复制路径后到配置页做权重热启动。';
+                box.appendChild(note);
+            }
             const list = document.createElement('div');
             list.className = 'history-resume-weight-list';
             for (const item of state.resumeWeights.weights) {
@@ -158,6 +189,7 @@ export function createHistoryResumeDetailRenderer({ ctx, state, deps, slots, act
                     item.scope_label || '',
                     item.epoch != null ? `Epoch ${item.epoch}` : '',
                     item.steps != null ? `Step ${item.steps}` : '',
+                    item.inspect_status === 'ok' ? '审查通过' : (item.inspect_message || '等待审查'),
                     item.mtime_text || '',
                 ].filter(Boolean).join(' · ');
                 info.append(name, meta);
@@ -169,8 +201,20 @@ export function createHistoryResumeDetailRenderer({ ctx, state, deps, slots, act
                 const useBtn = document.createElement('button');
                 useBtn.type = 'button';
                 useBtn.className = 'btn btn-small btn-primary';
-                useBtn.textContent = '用权重热启动';
+                const hasPairedCheckpoint = checkpointWeightPaths.has(String(weightPath || '').trim());
+                const inspected = item.inspect_status === 'ok';
+                const canUseWeightDirectly = hasPairedCheckpoint && inspected && item.inspect_compatible !== false;
+                useBtn.textContent = canUseWeightDirectly
+                    ? '用权重热启动'
+                    : (hasPairedCheckpoint ? '审查未通过' : '缺少检查点');
+                useBtn.disabled = !canUseWeightDirectly;
+                if (!canUseWeightDirectly) {
+                    useBtn.title = hasPairedCheckpoint
+                        ? (item.inspect_message || '权重审查未通过，不能从历史详情一键续训。')
+                        : '缺少对应的 checkpoint-state/train_state.json，不能从历史详情一键续训。';
+                }
                 useBtn.addEventListener('click', async () => {
+                    if (useBtn.disabled) return;
                     const ok = await deps.selectContinueLoraWeight(item.abs_path || item.file || '');
                     if (ok) slots.closeHistoryDetailDialog();
                 });

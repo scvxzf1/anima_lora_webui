@@ -260,7 +260,7 @@ const ctx = globalThis.ctx;
             return;
         }
         const title = document.createElement('strong');
-        title.textContent = `继续训练 ${continueTrainingSource.kind || 'LoRA'} · ${continueTrainingSource.name || '未命名权重'}`;
+        title.textContent = `权重热启动 ${continueTrainingSource.kind || 'LoRA'} · ${continueTrainingSource.name || '未命名权重'}`;
         const path = document.createElement('code');
         path.textContent = continueTrainingSource.abs_path || '';
         const state = document.createElement('span');
@@ -273,7 +273,7 @@ const ctx = globalThis.ctx;
             'continue-training-source-summary',
             continueTrainingSource.compatible === false ? 'incompatible' : 'selected',
         ].join(' ');
-        chooseBtn.textContent = '更换';
+        chooseBtn.textContent = '更换权重';
         clearBtn.hidden = false;
         updateTomlActionState(currentTomlFile);
     }
@@ -290,7 +290,7 @@ const ctx = globalThis.ctx;
     globalThis.clearContinueTrainingSource = function clearContinueTrainingSource() {
         continueTrainingSource = null;
         renderContinueTrainingSource();
-        setTomlStatus('ok', '已恢复为从零开始训练');
+        setTomlStatus('ok', '已恢复为从零训练');
     }
 
     globalThis.openContinueLoraDialog = async function openContinueLoraDialog() {
@@ -396,7 +396,7 @@ const ctx = globalThis.ctx;
             const useBtn = document.createElement('button');
             useBtn.type = 'button';
             useBtn.className = 'btn btn-small btn-primary';
-            useBtn.textContent = '继续训练';
+            useBtn.textContent = '热启动';
             useBtn.addEventListener('click', () => selectContinueLoraWeight(item.abs_path || item.file || ''));
             row.append(info, useBtn);
             list.appendChild(row);
@@ -451,8 +451,8 @@ const ctx = globalThis.ctx;
             }
             continueTrainingSource = payload;
             renderContinueTrainingSource();
-            setContinueLoraStatus(payload.message || '已选择继续训练权重。', 'ok');
-            setTomlStatus('ok', `训练来源已设置为继续训练 ${payload.kind} · ${payload.name}`);
+            setContinueLoraStatus(payload.message || '已选择权重热启动来源。', 'ok');
+            setTomlStatus('ok', `训练来源已设置为权重热启动 ${payload.kind} · ${payload.name}`);
             if (options.switchToConfig !== false) {
                 document.querySelector('[data-tab="config"]')?.click();
             }
@@ -480,7 +480,7 @@ const ctx = globalThis.ctx;
             continueTrainingSource = {
                 ...continueTrainingSource,
                 compatible: false,
-                message: '无法重新检查继续训练权重: ' + e.message,
+                message: '无法重新检查权重热启动来源: ' + e.message,
             };
             renderContinueTrainingSource();
             return false;
@@ -489,7 +489,7 @@ const ctx = globalThis.ctx;
             continueTrainingSource = {
                 ...continueTrainingSource,
                 compatible: false,
-                message: payload.error || '无法重新检查继续训练权重。',
+                message: payload.error || '无法重新检查权重热启动来源。',
             };
             renderContinueTrainingSource();
             return false;

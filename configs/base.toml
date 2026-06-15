@@ -70,6 +70,11 @@ vae_disable_cache = true
 masked_loss = true
 torch_compile = true
 attn_mode = "flash"
+compile_dynamic_seq = true
+# Optional AOT partitioner cap for torch.compile. It is auto-ignored when
+# gradient_checkpointing=true because repartitioning can break checkpoint
+# forward/recompute graph matching.
+activation_memory_budget = 1.0
 save_precision= "bf16"
 use_custom_down_autograd = true
 log_every_n_steps=2

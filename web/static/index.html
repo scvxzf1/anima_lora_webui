@@ -144,19 +144,42 @@
                             <button id="btn-start-from-config" class="btn btn-primary">开始训练</button>
                             <button id="btn-queue-from-config" class="btn btn-highlight" type="button">加入队列</button>
                         </div>
-                        <section id="continue-training-source" class="continue-training-source" aria-label="训练来源">
+                        <section id="continue-training-source" class="continue-training-source" aria-label="训练来源 / 续接方案">
                             <div class="continue-training-source-title">
-                                <strong>训练来源</strong>
-                                <span>选择已完成的 LoRA / LoKr 权重会创建新的补充训练任务。</span>
+                                <strong>训练来源 / 续接方案</strong>
+                                <span>完整续训恢复训练状态；权重热启动只加载网络权重。</span>
+                            </div>
+                            <div class="training-source-mode-switch" role="group" aria-label="训练来源模式">
+                                <button class="training-source-mode-btn active" type="button" data-training-source-mode="fresh" aria-pressed="true">从零训练</button>
+                                <button class="training-source-mode-btn" type="button" data-training-source-mode="full_resume" aria-pressed="false">完整续训</button>
+                                <button class="training-source-mode-btn" type="button" data-training-source-mode="weight_hotstart" aria-pressed="false">权重热启动</button>
                             </div>
                             <div id="continue-training-source-summary" class="continue-training-source-summary">
-                                <strong>从零开始</strong>
-                                <span>不加载已有权重</span>
+                                <strong>从零训练</strong>
+                                <span>不加载历史权重，不恢复训练状态。</span>
                             </div>
-                            <div class="continue-training-source-actions">
-                                <button id="btn-open-continue-lora-dialog" class="btn btn-small" type="button">选择 LoRA/LoKr</button>
-                                <button id="btn-clear-continue-lora-source" class="btn btn-small" type="button" hidden>清除</button>
+                            <div id="config-full-resume-panel" class="config-source-panel config-full-resume-panel" hidden>
+                                <div class="config-source-panel-controls">
+                                    <label>
+                                        <span>历史训练任务</span>
+                                        <select id="config-full-resume-task-select"></select>
+                                    </label>
+                                    <label>
+                                        <span>checkpoint-state</span>
+                                        <select id="config-full-resume-checkpoint-select"></select>
+                                    </label>
+                                    <button id="btn-refresh-config-full-resume" class="btn btn-small" type="button">重新审查</button>
+                                </div>
+                                <div id="config-full-resume-summary" class="resume-checkpoint-summary"></div>
                             </div>
+                            <div id="config-weight-hotstart-panel" class="config-source-panel config-weight-hotstart-panel" hidden>
+                                <div class="continue-training-source-actions">
+                                    <button id="btn-open-continue-lora-dialog" class="btn btn-small" type="button">选择权重</button>
+                                    <button id="btn-clear-continue-lora-source" class="btn btn-small" type="button" hidden>清除</button>
+                                </div>
+                                <div id="config-weight-hotstart-detail" class="resume-checkpoint-summary"></div>
+                            </div>
+                            <p id="config-training-source-status" class="config-training-source-status" role="status" aria-live="polite">当前方案：从零训练。</p>
                         </section>
                         <div id="config-project-workspace" class="config-project-workspace">
                             <div class="config-left">
@@ -429,7 +452,7 @@
                                     <option value="all">全部</option>
                                     <option value="queue">来自队列</option>
                                     <option value="resume">续训</option>
-                                    <option value="continue">继续训练</option>
+                                    <option value="continue">权重热启动</option>
                                 </select>
                             </label>
                             <label>
@@ -1093,7 +1116,7 @@
             <div class="preflight-actions">
                 <button id="btn-preflight-cancel" class="btn" value="cancel">取消</button>
                 <button id="btn-preflight-preprocess" class="btn btn-primary" value="preprocess" hidden>开始预处理</button>
-                <button id="btn-preflight-continue" class="btn btn-primary" value="continue">继续训练</button>
+                <button id="btn-preflight-continue" class="btn btn-primary" value="continue">下一步</button>
             </div>
         </form>
     </dialog>
@@ -1242,7 +1265,7 @@
         <form method="dialog">
             <div class="preview-dialog-header">
                 <div>
-                    <h2>选择 LoRA/LoKr 继续训练</h2>
+                    <h2>选择 LoRA/LoHa/LoKr/GLoRA 权重热启动</h2>
                     <p>载入已有权重后会启动新任务，不恢复旧优化器、调度器或训练步数。</p>
                 </div>
                 <button class="btn btn-small" value="close" type="submit">关闭</button>
@@ -1305,6 +1328,6 @@
 
     <div id="config-switch-toast" class="config-switch-toast" role="status" aria-live="polite" hidden></div>
 
-    <script type="module" src="/static/app.js?v=module-bootstrap-20260608-10"></script>
+    <script type="module" src="/static/app.js?v=module-bootstrap-20260608-11"></script>
 </body>
 </html>

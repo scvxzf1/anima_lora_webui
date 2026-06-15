@@ -1,14 +1,15 @@
 import {
     fetchHistoryResumeWeights,
     fetchResumeOptions,
+    inspectContinueLoraWeight,
     postResumeTraining,
-} from '../api.js?v=module-bootstrap-20260608-10';
+} from '../api.js?v=module-bootstrap-20260608-11';
 import {
     clearResumeState,
     selectedHistoryManagerResumeCheckpointFromState,
     selectedResumeCheckpointFromState,
     setResumeLoadingForTask as setResumeLoadingForTaskState,
-} from './state.js?v=module-bootstrap-20260608-10';
+} from './state.js?v=module-bootstrap-20260608-11';
 
 export function createHistoryResumeActions({ ctx, state, deps, slots, renderResumePanelState }) {
     function setResumeLoadingForTask(taskId) {
@@ -102,10 +103,21 @@ export function createHistoryResumeActions({ ctx, state, deps, slots, renderResu
         try {
             const payload = await fetchHistoryResumeWeights(ctx, taskId);
             if (taskId !== deps.getViewingHistoryTaskId()) return;
+            const rawWeights = Array.isArray(payload.weights) ? payload.weights : [];
+            state.resumeWeights = {
+                loading: true,
+                taskId,
+                weights: rawWeights,
+                error: payload.ok ? '' : (payload.error || '读取历史权重失败'),
+                message: rawWeights.length ? '正在审查可热启动权重...' : (payload.message || ''),
+            };
+            renderResumePanelState();
+            const weights = await reviewHistoryResumeWeights(rawWeights);
+            if (taskId !== deps.getViewingHistoryTaskId()) return;
             state.resumeWeights = {
                 loading: false,
                 taskId,
-                weights: Array.isArray(payload.weights) ? payload.weights : [],
+                weights,
                 error: payload.ok ? '' : (payload.error || '读取历史权重失败'),
                 message: payload.message || '',
             };
@@ -119,6 +131,52 @@ export function createHistoryResumeActions({ ctx, state, deps, slots, renderResu
                 message: '',
             };
         }
+    }
+
+    async function reviewHistoryResumeWeights(weights) {
+        return Promise.all((weights || []).map(async (item) => {
+            const weightPath = item.abs_path || item.file || '';
+            if (!weightPath) {
+                return {
+                    ...item,
+                    inspect_status: 'error',
+                    inspect_compatible: false,
+                    inspect_message: '权重路径为空',
+                };
+            }
+            try {
+                const payload = await inspectHistoryResumeWeight(weightPath);
+                const compatible = Boolean(payload.ok && payload.compatible);
+                return {
+                    ...item,
+                    inspect_status: compatible ? 'ok' : 'error',
+                    inspect_compatible: compatible,
+                    inspect_kind: payload.kind || '',
+                    inspect_message: payload.message || payload.error || (compatible ? '审查通过' : '权重审查未通过'),
+                };
+            } catch (e) {
+                return {
+                    ...item,
+                    inspect_status: 'error',
+                    inspect_compatible: false,
+                    inspect_message: '权重审查失败: ' + e.message,
+                };
+            }
+        }));
+    }
+
+    async function inspectHistoryResumeWeight(path) {
+        if (typeof deps.inspectContinueLoraWeight === 'function') {
+            return deps.inspectContinueLoraWeight(path);
+        }
+        const task = deps.getCurrentHistoryTaskForResume?.() || {};
+        return inspectContinueLoraWeight(ctx, {
+            path,
+            variant: task.variant || '',
+            preset: task.preset || 'default',
+            methodsSubdir: task.methods_subdir || 'gui-methods',
+            configFile: task.history_source_config_file || task.runtime_config_file || '',
+        });
     }
 
     function clearResumeOptions() {

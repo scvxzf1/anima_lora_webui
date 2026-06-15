@@ -1,0 +1,576 @@
+/** Config-page training source modes. */
+const ctx = globalThis.ctx;
+
+const BASE_REFRESH_CONTINUE_SOURCE = globalThis.refreshContinueTrainingSourceCompatibility?.bind(globalThis);
+const BASE_SELECT_CONTINUE_WEIGHT = globalThis.selectContinueLoraWeight?.bind(globalThis);
+const BASE_CLEAR_CONTINUE_SOURCE = globalThis.clearContinueTrainingSource?.bind(globalThis);
+function ensureTrainingSourceState() {
+    if (!globalThis.trainingSourceState) {
+        globalThis.trainingSourceState = { mode: 'fresh', audit_status: 'ok' };
+    }
+    const state = globalThis.trainingSourceState;
+    state.mode = normalizeConfigTrainingSourceMode(state.mode);
+    state.full_resume = {
+        task_id: '',
+        checkpoint: '',
+        checkpoints: [],
+        default_checkpoint: '',
+        current_step: null,
+        target_total_steps: null,
+        remaining_steps: null,
+        resume_available: false,
+        audit_status: 'idle',
+        unavailable_reason: '',
+        estimate_error: '',
+        message: '',
+        diagnostic: {},
+        ...(state.full_resume || {}),
+    };
+    state.weight_hotstart = {
+        abs_path: '',
+        name: '',
+        kind: '',
+        compatible: false,
+        audit_status: 'idle',
+        unavailable_reason: '',
+        ...(state.weight_hotstart || {}),
+    };
+    return state;
+}
+function normalizeConfigTrainingSourceMode(mode) {
+    return ['fresh', 'full_resume', 'weight_hotstart'].includes(mode) ? mode : 'fresh';
+}
+
+globalThis.configTrainingSourceMode = function configTrainingSourceMode() {
+    return ensureTrainingSourceState().mode;
+};
+globalThis.setConfigTrainingSourceMode = async function setConfigTrainingSourceMode(mode, options = {}) {
+    const state = ensureTrainingSourceState();
+    state.mode = normalizeConfigTrainingSourceMode(mode);
+    renderContinueTrainingSource();
+    if (options.audit === false) return;
+    if (state.mode === 'full_resume') {
+        await auditConfigFullResumeSource({ force: true });
+    } else if (state.mode === 'weight_hotstart') {
+        await auditConfigWeightHotstartSource();
+    } else {
+        state.audit_status = 'ok';
+        renderContinueTrainingSource();
+    }
+};
+globalThis.auditConfigTrainingSourceOnEnter = async function auditConfigTrainingSourceOnEnter() {
+    renderContinueTrainingSource();
+    const mode = configTrainingSourceMode();
+    if (mode === 'full_resume') return auditConfigFullResumeSource({ force: true });
+    if (mode === 'weight_hotstart') return auditConfigWeightHotstartSource();
+    return true;
+};
+globalThis.renderContinueTrainingSource = function renderContinueTrainingSource() {
+    const state = ensureTrainingSourceState();
+    const section = document.getElementById('continue-training-source');
+    const summary = document.getElementById('continue-training-source-summary');
+    if (!section || !summary) return;
+    section.dataset.mode = state.mode;
+    renderTrainingSourceModeButtons(state.mode);
+    renderTrainingSourceSummary(summary, state);
+    renderConfigFullResumePanel(state);
+    renderConfigWeightHotstartPanel(state);
+    renderConfigTrainingSourceStatus(state);
+    globalThis.updateTomlActionState?.(currentTomlFile);
+};
+function renderTrainingSourceModeButtons(mode) {
+    document.querySelectorAll('[data-training-source-mode]').forEach((btn) => {
+        const active = btn.dataset.trainingSourceMode === mode;
+        btn.classList.toggle('active', active);
+        btn.setAttribute('aria-pressed', active ? 'true' : 'false');
+    });
+}
+function renderTrainingSourceSummary(summary, state) {
+    summary.innerHTML = '';
+    summary.className = ['continue-training-source-summary', state.mode].join(' ');
+    if (state.mode === 'full_resume') {
+        const selected = selectedConfigFullResumeCheckpointFromState();
+        const task = configFullResumeTaskById(state.full_resume.task_id);
+        summary.classList.toggle('selected', Boolean(selected && selected.resume_available !== false));
+        summary.classList.toggle('incompatible', Boolean(!selected || selected.resume_available === false));
+        summary.append(
+            textNode('strong', `完整续训${task ? ` · ${configFullResumeTaskLabel(task)}` : ''}`),
+            textNode('span', selected ? configResumeRemainingText(selected) : (state.full_resume.message || '请选择历史训练任务和 checkpoint-state')),
+        );
+        if (selected?.path) summary.appendChild(textNode('code', selected.path));
+        return;
+    }
+    if (state.mode === 'weight_hotstart') {
+        syncWeightHotstartAuditFromContinue();
+        const source = globalThis.continueTrainingSource;
+        summary.classList.toggle('selected', Boolean(source?.abs_path && source.compatible !== false));
+        summary.classList.toggle('incompatible', Boolean(!source?.abs_path || source.compatible === false));
+        summary.append(
+            textNode('strong', source?.abs_path ? `权重热启动 ${source.kind || 'LoRA'} · ${source.name || '未命名权重'}` : '权重热启动未选择'),
+            textNode('span', source?.abs_path ? '只加载网络权重，从 Step 0 按当前配置训练。' : '请选择并审查 .safetensors 权重。'),
+        );
+        if (source?.abs_path) summary.appendChild(textNode('code', source.abs_path));
+        const audit = state.weight_hotstart.audit_status;
+        const stateLine = textNode('span', trainingSourceWeightStateText(state));
+        stateLine.className = audit === 'ok' ? 'ok' : audit === 'checking' ? 'warning' : 'warning';
+        summary.appendChild(stateLine);
+        return;
+    }
+    summary.append(
+        textNode('strong', '从零训练'),
+        textNode('span', '不加载历史权重，不恢复 optimizer、scheduler 或已完成步数。'),
+    );
+}
+function renderConfigFullResumePanel(state) {
+    const panel = document.getElementById('config-full-resume-panel');
+    const taskSelect = document.getElementById('config-full-resume-task-select');
+    const checkpointSelect = document.getElementById('config-full-resume-checkpoint-select');
+    const summary = document.getElementById('config-full-resume-summary');
+    const refresh = document.getElementById('btn-refresh-config-full-resume');
+    if (!panel || !taskSelect || !checkpointSelect || !summary) return;
+    const active = state.mode === 'full_resume';
+    panel.hidden = !active;
+    const full = state.full_resume;
+    const loading = full.audit_status === 'checking';
+
+    const tasks = configResumeTaskCandidates();
+    taskSelect.innerHTML = '';
+    if (!tasks.length) {
+        taskSelect.appendChild(optionNodeLocal('', '没有训练历史任务'));
+    } else {
+        taskSelect.appendChild(optionNodeLocal('', '选择历史训练任务'));
+        for (const task of tasks) {
+            taskSelect.appendChild(optionNodeLocal(task.id || '', configFullResumeTaskLabel(task)));
+        }
+    }
+    taskSelect.value = full.task_id || '';
+    taskSelect.disabled = loading;
+
+    checkpointSelect.innerHTML = '';
+    if (loading) {
+        checkpointSelect.appendChild(optionNodeLocal('', '正在审查 checkpoint-state...'));
+    } else if (full.checkpoints.length) {
+        for (const item of full.checkpoints) {
+            checkpointSelect.appendChild(optionNodeLocal(item.path, configResumeCheckpointLabel(item)));
+        }
+        checkpointSelect.value = full.checkpoint || full.default_checkpoint || full.checkpoints[0]?.path || '';
+    } else {
+        checkpointSelect.appendChild(optionNodeLocal('', '未找到完整续训状态目录'));
+    }
+    checkpointSelect.disabled = loading || !full.checkpoints.length;
+    if (refresh) refresh.disabled = loading;
+
+    summary.innerHTML = '';
+    const selected = selectedConfigFullResumeCheckpointFromState();
+    if (selected) {
+        summary.append(
+            summaryLine('状态目录', selected.path),
+            summaryLine('已训练到', selected.step != null ? `Step ${selected.step}` : '步数未知'),
+            summaryLine('目标 Step', selected.target_total_steps != null ? `Step ${selected.target_total_steps}` : '无法确认'),
+            summaryLine('剩余步数', selected.remaining_steps != null ? String(selected.remaining_steps) : '无法确认'),
+            summaryLine('检查点路径状态', selected.resume_available !== false ? 'train_state.json 可读取' : '不可用'),
+        );
+        if (selected.unavailable_reason) summary.appendChild(summaryLine('不可用原因', selected.unavailable_reason));
+        if (selected.estimate_error) summary.appendChild(summaryLine('步数估算', `无法确认剩余步数: ${selected.estimate_error}`));
+    } else {
+        const p = document.createElement('p');
+        p.textContent = full.message || full.unavailable_reason || '请选择一个历史任务，审查完成后才允许完整续训。';
+        summary.appendChild(p);
+    }
+}
+function renderConfigWeightHotstartPanel(state) {
+    const panel = document.getElementById('config-weight-hotstart-panel');
+    const chooseBtn = document.getElementById('btn-open-continue-lora-dialog');
+    const clearBtn = document.getElementById('btn-clear-continue-lora-source');
+    const detail = document.getElementById('config-weight-hotstart-detail');
+    if (!panel || !chooseBtn || !clearBtn || !detail) return;
+    panel.hidden = state.mode !== 'weight_hotstart';
+    const source = globalThis.continueTrainingSource;
+    chooseBtn.textContent = source?.abs_path ? '更换权重' : '选择权重';
+    clearBtn.hidden = !source?.abs_path;
+    detail.innerHTML = '';
+    if (!source?.abs_path) {
+        detail.textContent = '权重热启动需要先选择 .safetensors，并通过类型、格式和当前变体兼容性检查。';
+        return;
+    }
+    detail.append(
+        summaryLine('权重文件', source.name || source.abs_path),
+        summaryLine('权重类型', source.kind || '-'),
+        summaryLine('权重路径', source.abs_path),
+        summaryLine('恢复范围', '不恢复 optimizer / scheduler / 已完成步数'),
+    );
+}
+function renderConfigTrainingSourceStatus(state) {
+    const status = document.getElementById('config-training-source-status');
+    if (!status) return;
+    const readiness = trainingSourceLaunchReadiness();
+    status.className = [
+        'config-training-source-status',
+        readiness.checking ? 'pending' : readiness.ready ? 'ok' : 'error',
+    ].join(' ');
+    if (state.mode === 'fresh') {
+        status.textContent = '当前方案：从零训练。';
+    } else if (readiness.checking) {
+        status.textContent = '正在审查续接来源，审查完成前不能启动训练或加入队列。';
+    } else {
+        status.textContent = readiness.ready ? trainingSourceReadyText(state) : readiness.reason;
+    }
+}
+function trainingSourceReadyText(state) {
+    if (state.mode === 'full_resume') return '完整续训审查通过，将使用历史任务冻结配置快照。';
+    if (state.mode === 'weight_hotstart') return '权重热启动审查通过，将按当前配置从 Step 0 训练。';
+    return '从零训练可启动。';
+}
+globalThis.trainingSourceLaunchReadiness = function trainingSourceLaunchReadiness() {
+    const state = ensureTrainingSourceState();
+    if (state.mode === 'fresh') return { ready: true, checking: false, reason: '' };
+    if (state.mode === 'full_resume') {
+        const full = state.full_resume;
+        const selected = selectedConfigFullResumeCheckpointFromState();
+        if (full.audit_status === 'checking') return { ready: false, checking: true, reason: '正在审查续接来源' };
+        if (!full.task_id) return { ready: false, checking: false, reason: '请选择要完整续训的历史训练任务。' };
+        if (!selected) return { ready: false, checking: false, reason: full.unavailable_reason || '未找到可用 checkpoint-state/train_state.json。' };
+        if (selected.resume_available === false) return { ready: false, checking: false, reason: selected.unavailable_reason || '这个检查点不可用于完整续训。' };
+        if (full.audit_status !== 'ok') return { ready: false, checking: false, reason: full.unavailable_reason || '完整续训来源审查未通过。' };
+        return { ready: true, checking: false, reason: '' };
+    }
+    const source = globalThis.continueTrainingSource;
+    const weight = state.weight_hotstart;
+    if (weight.audit_status === 'checking') return { ready: false, checking: true, reason: '正在审查续接来源' };
+    if (!source?.abs_path) return { ready: false, checking: false, reason: '请选择可加载的 .safetensors 权重后再启动权重热启动。' };
+    if (source.compatible === false || weight.audit_status !== 'ok') {
+        return { ready: false, checking: false, reason: weight.unavailable_reason || source.message || '权重热启动审查未通过。' };
+    }
+    return { ready: true, checking: false, reason: '' };
+};
+globalThis.trainingSourceLaunchBlockReason = function trainingSourceLaunchBlockReason() {
+    return trainingSourceLaunchReadiness().reason || '训练来源审查未通过。';
+};
+globalThis.ensureTrainingSourceReadyForLaunch = async function ensureTrainingSourceReadyForLaunch() {
+    const mode = configTrainingSourceMode();
+    if (mode === 'full_resume') return auditConfigFullResumeSource({ force: true });
+    if (mode === 'weight_hotstart') return auditConfigWeightHotstartSource();
+    ensureTrainingSourceState().audit_status = 'ok';
+    renderContinueTrainingSource();
+    return true;
+};
+globalThis.continueTrainingRequestPayload = function continueTrainingRequestPayload() {
+    if (configTrainingSourceMode() !== 'weight_hotstart' || !globalThis.continueTrainingSource) return {};
+    return {
+        continue_from_weight_abs_path: globalThis.continueTrainingSource.abs_path || '',
+        continue_from_weight_name: globalThis.continueTrainingSource.name || '',
+        continue_from_weight_kind: globalThis.continueTrainingSource.kind || '',
+    };
+};
+globalThis.auditConfigFullResumeSource = async function auditConfigFullResumeSource(options = {}) {
+    const state = ensureTrainingSourceState();
+    const full = state.full_resume;
+    if (!historyTasks.length && typeof loadTrainingHistoryList === 'function') {
+        await loadTrainingHistoryList();
+    }
+    ensureFullResumeTaskSelection();
+    if (!full.task_id) {
+        setFullResumeAudit('error', '没有可用于完整续训的历史训练任务。');
+        renderContinueTrainingSource();
+        return false;
+    }
+    full.audit_status = 'checking';
+    full.unavailable_reason = '';
+    state.audit_status = 'checking';
+    renderContinueTrainingSource();
+    const seq = (state.fullResumeAuditSeq || 0) + 1;
+    state.fullResumeAuditSeq = seq;
+    try {
+        const payload = await api(`/api/training/history/${encodeURIComponent(full.task_id)}/resume-options`);
+        if (seq !== state.fullResumeAuditSeq) return false;
+        const checkpoints = Array.isArray(payload.checkpoints) ? payload.checkpoints : [];
+        full.checkpoints = checkpoints;
+        full.default_checkpoint = payload.default_checkpoint || '';
+        full.message = payload.message || '';
+        full.diagnostic = payload.diagnostic || {};
+        const selectedPath = chooseFullResumeCheckpointPath(full);
+        full.checkpoint = selectedPath;
+        const selected = selectedConfigFullResumeCheckpointFromState();
+        syncFullResumeCheckpointFields(selected);
+        if (payload.ok === false) {
+            setFullResumeAudit('error', payload.error || '读取完整续训检查点失败。');
+        } else if (!selected) {
+            setFullResumeAudit('error', payload.message || '未找到 checkpoint-state/train_state.json，完整续训不可用。');
+        } else if (selected.resume_available === false) {
+            setFullResumeAudit('error', selected.unavailable_reason || '这个检查点不可用于完整续训。');
+        } else {
+            setFullResumeAudit('ok', '');
+        }
+    } catch (e) {
+        if (seq !== state.fullResumeAuditSeq) return false;
+        full.checkpoints = [];
+        full.checkpoint = '';
+        setFullResumeAudit('error', '完整续训审查失败: ' + e.message);
+    }
+    renderContinueTrainingSource();
+    return trainingSourceLaunchReadiness().ready;
+};
+function setFullResumeAudit(status, reason) {
+    const state = ensureTrainingSourceState();
+    state.full_resume.audit_status = status;
+    state.full_resume.unavailable_reason = reason || '';
+    state.audit_status = status;
+}
+globalThis.auditConfigWeightHotstartSource = async function auditConfigWeightHotstartSource() {
+    const state = ensureTrainingSourceState();
+    if (!globalThis.continueTrainingSource?.abs_path) {
+        syncWeightHotstartAuditFromContinue(false, '请选择可加载的 .safetensors 权重后再启动权重热启动。');
+        renderContinueTrainingSource();
+        return false;
+    }
+    state.weight_hotstart.audit_status = 'checking';
+    state.audit_status = 'checking';
+    renderContinueTrainingSource();
+    if (!BASE_REFRESH_CONTINUE_SOURCE) {
+        syncWeightHotstartAuditFromContinue(false, '权重审查入口未初始化。');
+        renderContinueTrainingSource();
+        return false;
+    }
+    const ok = await BASE_REFRESH_CONTINUE_SOURCE();
+    syncWeightHotstartAuditFromContinue(ok);
+    renderContinueTrainingSource();
+    return trainingSourceLaunchReadiness().ready;
+};
+function syncWeightHotstartAuditFromContinue(ok = null, reason = '') {
+    const state = ensureTrainingSourceState();
+    const source = globalThis.continueTrainingSource || {};
+    const weight = state.weight_hotstart;
+    weight.abs_path = source.abs_path || '';
+    weight.name = source.name || '';
+    weight.kind = source.kind || '';
+    weight.compatible = Boolean(source.abs_path && source.compatible !== false);
+    if (!source.abs_path) {
+        weight.audit_status = state.mode === 'weight_hotstart' ? 'error' : 'idle';
+        weight.unavailable_reason = reason || '请选择可加载的 .safetensors 权重后再启动权重热启动。';
+    } else if (ok === false || source.compatible === false) {
+        weight.audit_status = 'error';
+        weight.unavailable_reason = reason || source.message || '权重热启动审查未通过。';
+    } else {
+        weight.audit_status = 'ok';
+        weight.unavailable_reason = '';
+    }
+    if (state.mode === 'weight_hotstart') state.audit_status = weight.audit_status;
+}
+globalThis.startConfigFullResumeSource = async function startConfigFullResumeSource(queueMode = false) {
+    if (!queueMode && isLiveRunningState()) {
+        setTomlStatus('error', '当前已有训练或预处理在运行，请改用“加入队列”。', { persist: true });
+        return;
+    }
+    if (!(await ensureTrainingSourceReadyForLaunch())) {
+        setTomlStatus('error', trainingSourceLaunchBlockReason(), { persist: true });
+        return;
+    }
+    const state = ensureTrainingSourceState();
+    const selected = selectedConfigFullResumeCheckpointFromState();
+    const task = configFullResumeTaskById(state.full_resume.task_id);
+    if (!selected || !task) return;
+    const ok = await showAppConfirmDialog({
+        title: queueMode ? '完整续训加入队列' : '开始完整续训',
+        description: configFullResumeTaskLabel(task),
+        message: `将使用历史任务冻结配置快照，并从 ${selected.name || selected.path} 恢复 optimizer、scheduler 和已完成步数。当前配置页表单不会覆盖这次完整续训。`,
+        confirmText: queueMode ? '加入队列' : '开始完整续训',
+    });
+    if (!ok) return;
+    renderPreflightPending({
+        title: queueMode ? '完整续训加入队列' : '启动完整续训',
+        message: '正在提交完整续训请求...',
+        detail: '后端会再次检查 checkpoint-state/train_state.json 和剩余步数。',
+    });
+    try {
+        const res = await api(queueMode ? '/api/training/queue/resume' : '/api/training/resume', {
+            method: 'POST',
+            body: JSON.stringify({
+                task_id: task.id,
+                checkpoint: selected.path,
+                gpu_whitelist: gpuPicker.selectedGpuPayload(),
+            }),
+        });
+        if (!res.ok) {
+            showPreflightRequestError(res.error || '完整续训启动失败');
+            return;
+        }
+        document.getElementById('preflight-dialog')?.close(queueMode ? 'queued' : 'training-started');
+        if (queueMode) {
+            updateTrainingQueueFromPayload(res);
+            document.querySelector('[data-tab="training"]')?.click();
+            showTrainingView('queue');
+        } else {
+            enterLiveTrainingForNewRun();
+            await loadTrainingHistoryList();
+        }
+        appendLog(`[状态] ${res.message || (queueMode ? '完整续训已加入队列' : '完整续训已启动')}: ${selected.name || selected.path}`);
+    } catch (e) {
+        showPreflightRequestError('完整续训请求失败: ' + e.message);
+    }
+};
+function ensureFullResumeTaskSelection() {
+    const full = ensureTrainingSourceState().full_resume;
+    const tasks = configResumeTaskCandidates();
+    if (!tasks.some((task) => task.id === full.task_id)) {
+        full.task_id = tasks[0]?.id || '';
+        full.checkpoint = '';
+        full.checkpoints = [];
+    }
+}
+function chooseFullResumeCheckpointPath(full) {
+    const exists = full.checkpoints.some((item) => item.path === full.checkpoint);
+    if (exists) return full.checkpoint;
+    const available = full.checkpoints.find((item) => item.resume_available !== false);
+    return full.default_checkpoint || available?.path || full.checkpoints[0]?.path || '';
+}
+function selectedConfigFullResumeCheckpointFromState() {
+    const full = ensureTrainingSourceState().full_resume;
+    return full.checkpoints.find((item) => item.path === full.checkpoint) || null;
+}
+function syncFullResumeCheckpointFields(selected) {
+    const full = ensureTrainingSourceState().full_resume;
+    full.current_step = selected?.step ?? null;
+    full.target_total_steps = selected?.target_total_steps ?? null;
+    full.remaining_steps = selected?.remaining_steps ?? null;
+    full.resume_available = Boolean(selected && selected.resume_available !== false);
+    full.estimate_error = selected?.estimate_error || '';
+}
+globalThis.handleConfigFullResumeTaskChange = async function handleConfigFullResumeTaskChange(value) {
+    const full = ensureTrainingSourceState().full_resume;
+    full.task_id = value || '';
+    full.checkpoint = '';
+    full.checkpoints = [];
+    await auditConfigFullResumeSource({ force: true });
+};
+globalThis.handleConfigFullResumeCheckpointChange = function handleConfigFullResumeCheckpointChange(value) {
+    const full = ensureTrainingSourceState().full_resume;
+    full.checkpoint = value || '';
+    const selected = selectedConfigFullResumeCheckpointFromState();
+    syncFullResumeCheckpointFields(selected);
+    setFullResumeAudit(
+        selected && selected.resume_available !== false ? 'ok' : 'error',
+        selected?.unavailable_reason || (!selected ? '请选择可用的 checkpoint-state。' : ''),
+    );
+    renderContinueTrainingSource();
+};
+function configResumeTaskCandidates() {
+    return (historyTasks || [])
+        .filter((task) => task?.job === 'training' && task.id)
+        .sort((a, b) => (Number(b.started_at || b.updated_at || 0) - Number(a.started_at || a.updated_at || 0)));
+}
+function configFullResumeTaskById(taskId) {
+    return configResumeTaskCandidates().find((task) => task.id === taskId) || null;
+}
+function configFullResumeTaskLabel(task) {
+    return (typeof historyTaskDisplayName === 'function' ? historyTaskDisplayName(task) : '') || task.label || task.name || task.id || '训练任务';
+}
+function configResumeCheckpointLabel(item) {
+    const unavailable = item.resume_available === false ? '不可用' : '';
+    return [
+        item.kind_label || '训练状态',
+        configResumeProgressText(item),
+        item.scope_label || '',
+        unavailable,
+        item.name || '',
+    ].filter(Boolean).join(' · ');
+}
+function configResumeProgressText(item) {
+    const parts = [];
+    if (item?.epoch != null) parts.push(`Epoch ${item.epoch}`);
+    if (item?.step != null) parts.push(`Step ${item.step}`);
+    return parts.join(' / ') || '步数未知';
+}
+function configResumeRemainingText(item) {
+    if (item?.step != null && item?.target_total_steps != null) {
+        const remaining = item.remaining_steps != null ? item.remaining_steps : Math.max(0, Number(item.target_total_steps) - Number(item.step));
+        return `已训练到 Step ${item.step} / 目标 Step ${item.target_total_steps} / 剩余 ${remaining}`;
+    }
+    if (item?.estimate_error) return `${configResumeProgressText(item)} / 无法确认剩余步数`;
+    return configResumeProgressText(item);
+}
+function trainingSourceWeightStateText(state) {
+    const weight = state.weight_hotstart;
+    if (weight.audit_status === 'checking') return '正在审查续接来源';
+    if (weight.audit_status === 'ok') return '审查通过 · 不恢复 optimizer / scheduler / 已完成步数';
+    return weight.unavailable_reason || '等待权重审查';
+}
+globalThis.trainingSourceLaunchSummary = function trainingSourceLaunchSummary() {
+    const state = ensureTrainingSourceState();
+    if (state.mode === 'full_resume') {
+        const selected = selectedConfigFullResumeCheckpointFromState();
+        const task = configFullResumeTaskById(state.full_resume.task_id);
+        return `\n\n训练来源: 完整续训\n历史任务: ${task ? configFullResumeTaskLabel(task) : '-'}\n状态目录: ${selected?.path || '-'}\n${selected ? configResumeRemainingText(selected) : ''}`;
+    }
+    if (state.mode === 'weight_hotstart' && globalThis.continueTrainingSource?.abs_path) {
+        const source = globalThis.continueTrainingSource;
+        return `\n\n训练来源: 权重热启动 ${source.kind || 'LoRA'} · ${source.name || ''}\n基于权重: ${source.abs_path}\n说明: 不恢复 optimizer、scheduler 和已完成步数`;
+    }
+    return '\n\n训练来源: 从零训练';
+};
+if (BASE_REFRESH_CONTINUE_SOURCE) {
+    globalThis.refreshContinueTrainingSourceCompatibility = async function refreshContinueTrainingSourceCompatibility() {
+        if (!globalThis.continueTrainingSource?.abs_path) {
+            syncWeightHotstartAuditFromContinue(configTrainingSourceMode() !== 'weight_hotstart');
+            renderContinueTrainingSource();
+            return configTrainingSourceMode() !== 'weight_hotstart';
+        }
+        if (configTrainingSourceMode() === 'weight_hotstart') {
+            ensureTrainingSourceState().weight_hotstart.audit_status = 'checking';
+            renderContinueTrainingSource();
+        }
+        const ok = await BASE_REFRESH_CONTINUE_SOURCE();
+        syncWeightHotstartAuditFromContinue(ok);
+        renderContinueTrainingSource();
+        return ok;
+    };
+}
+if (BASE_SELECT_CONTINUE_WEIGHT) {
+    globalThis.selectContinueLoraWeight = async function selectContinueLoraWeight(path, options = {}) {
+        const ok = await BASE_SELECT_CONTINUE_WEIGHT(path, options);
+        if (ok) {
+            ensureTrainingSourceState().mode = 'weight_hotstart';
+            syncWeightHotstartAuditFromContinue(true);
+            renderContinueTrainingSource();
+        }
+        return ok;
+    };
+}
+if (BASE_CLEAR_CONTINUE_SOURCE) {
+    globalThis.clearContinueTrainingSource = function clearContinueTrainingSource() {
+        BASE_CLEAR_CONTINUE_SOURCE();
+        const state = ensureTrainingSourceState();
+        state.mode = 'fresh';
+        state.weight_hotstart = {
+            abs_path: '',
+            name: '',
+            kind: '',
+            compatible: false,
+            audit_status: 'idle',
+            unavailable_reason: '',
+        };
+        renderContinueTrainingSource();
+        setTomlStatus('ok', '已恢复为从零训练');
+    };
+}
+function textNode(tag, text) {
+    const node = document.createElement(tag);
+    node.textContent = text || '';
+    return node;
+}
+
+function optionNodeLocal(value, label) {
+    const option = document.createElement('option');
+    option.value = value || '';
+    option.textContent = label || value || '';
+    return option;
+}
+
+function summaryLine(label, value) {
+    const row = document.createElement('div');
+    const key = document.createElement('span');
+    key.textContent = label;
+    const val = document.createElement('code');
+    val.textContent = value || '-';
+    row.append(key, val);
+    return row;
+}

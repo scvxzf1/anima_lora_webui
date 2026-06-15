@@ -56,6 +56,10 @@ const ctx = globalThis.ctx;
             copyText,
             downloadBlob,
             selectedGpuPayload: () => gpuPicker.selectedGpuPayload(),
+            inspectContinueLoraWeight: (path) => (
+                globalThis.requestContinueLoraInspection?.(path)
+                || Promise.resolve({ ok: false, error: '权重审查入口未初始化' })
+            ),
             selectContinueLoraWeight,
             showHistoryTaskConfirmDialog,
             formatLr,
@@ -91,6 +95,7 @@ const ctx = globalThis.ctx;
             ensureWeightAnalysisFeature,
             resetTrainingExpandedStateOnLeave,
             resizeLiveChart: () => lossChart?.resize?.(),
+            auditConfigTrainingSourceOnEnter,
         });
 
         const boot = async () => {

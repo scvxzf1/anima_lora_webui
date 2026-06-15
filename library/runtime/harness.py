@@ -238,6 +238,9 @@ def compile_dit_blocks(
     cache_size_limit: int = 64,
     backend: str = "inductor",
     mode: Optional[str] = None,
+    dynamic_seq: bool = False,
+    n_token_families: Optional[int] = None,
+    seq_range: Optional[tuple[int, int]] = None,
 ) -> None:
     """``torch.compile`` each ``Block._forward`` for a distillation/training run.
 
@@ -255,12 +258,159 @@ def compile_dit_blocks(
     """
     if not enabled:
         return
-    import torch._dynamo as _dynamo
+    from library.runtime.dynamo import pin_dynamo_limit
 
-    _dynamo.config.cache_size_limit = max(
-        _dynamo.config.cache_size_limit, cache_size_limit
+    pin_dynamo_limit("recompile_limit", cache_size_limit)
+    anima.compile_blocks(
+        backend,
+        mode=mode,
+        n_token_families=n_token_families,
+        dynamic_seq=dynamic_seq,
+        seq_range=seq_range,
     )
-    anima.compile_blocks(backend, mode=mode)
+
+
+def compile_signature(
+    *,
+    n_token_families: Optional[int],
+    seq_range: Optional[tuple[int, int]],
+    dynamic_seq: bool,
+    backend: str = "inductor",
+    mode: Optional[str] = None,
+) -> str:
+    """Stable signature for per-run torch.compile cache isolation."""
+
+    return (
+        f"families={n_token_families};seq_range={seq_range};"
+        f"dynamic_seq={dynamic_seq};backend={backend};mode={mode or None}"
+    )
+
+
+_compile_cache_base: Optional[str] = None
+
+
+def isolate_compile_cache(signature: str) -> str:
+    """Route persistent torch.compile caches to a per-signature directory.
+
+    FxGraphCache / AOTAutogradCache do not encode our mark_dynamic bounds in a
+    way that safely separates runs. Reusing a stale cache compiled with narrower
+    seq bounds can poison a later checkpoint recompute. Isolating by signature
+    keeps same-config warm cache reuse while preventing cross-config guard drift.
+    """
+
+    global _compile_cache_base
+    import hashlib
+    import os
+
+    if _compile_cache_base is None:
+        base = os.environ.get("TORCHINDUCTOR_CACHE_DIR")
+        if not base:
+            try:
+                from torch._inductor.runtime.cache_dir_utils import default_cache_dir
+
+                base = default_cache_dir()
+            except Exception:  # noqa: BLE001 - torch internals vary by version
+                import getpass
+                import tempfile
+
+                base = os.path.join(
+                    tempfile.gettempdir(), f"torchinductor_{getpass.getuser()}"
+                )
+        _compile_cache_base = base
+
+    digest = hashlib.sha1(signature.encode("utf-8")).hexdigest()[:16]
+    target = os.path.join(_compile_cache_base, f"anima-sig-{digest}")
+    os.environ["TORCHINDUCTOR_CACHE_DIR"] = target
+    log.info("torch.compile cache isolated per compile signature: %s", target)
+    log.info("compile signature: %s", signature)
+    return target
+
+
+def _apply_activation_memory_budget(
+    budget: float, *, grad_ckpt: bool, logger: logging.Logger = log
+) -> None:
+    """Apply AOT partitioner memory cap when it is safe.
+
+    Under gradient checkpointing this is intentionally skipped: repartitioning
+    the compiled joint graph can make checkpoint recompute select a different
+    graph than the original forward, producing saved-vs-recomputed metadata
+    mismatches.
+    """
+
+    if budget < 1.0 and not grad_ckpt:
+        import torch._functorch.config as _functorch_config
+
+        _functorch_config.activation_memory_budget = budget
+        logger.info(
+            "torch.compile activation_memory_budget = %.3g "
+            "(partitioner recomputes cheap intermediates in backward)",
+            budget,
+        )
+    elif budget < 1.0:
+        logger.info(
+            "activation_memory_budget ignored: incompatible with "
+            "gradient_checkpointing (and redundant under it)"
+        )
+
+
+def compile_blocks_for_training(
+    unet: object,
+    network: object,
+    *,
+    backend: str,
+    mode: Optional[str] = None,
+    bucket_resolutions: Optional[list[tuple[int, int]]] = None,
+    n_token_families: Optional[int] = None,
+    seq_range: Optional[tuple[int, int]] = None,
+    dynamic_seq: bool = False,
+    activation_memory_budget: float = 1.0,
+    grad_ckpt: bool = False,
+    logger: logging.Logger = log,
+) -> None:
+    """Training compile sequence; call after adapter apply/load/grad-ckpt.
+
+    The ordering matters: Dynamo must trace adapter monkey-patched Linear
+    forwards and the same callable checkpoint will recompute in backward.
+    """
+
+    if n_token_families is None and bucket_resolutions:
+        counts = {
+            (int(h) // getattr(unet, "patch_spatial", 16))
+            * (int(w) // getattr(unet, "patch_spatial", 16))
+            for w, h in bucket_resolutions
+        }
+        if counts:
+            n_token_families = len(counts)
+            seq_range = (min(counts), max(counts)) if seq_range is None else seq_range
+
+    _apply_activation_memory_budget(
+        activation_memory_budget, grad_ckpt=grad_ckpt, logger=logger
+    )
+    isolate_compile_cache(
+        compile_signature(
+            n_token_families=n_token_families,
+            seq_range=seq_range,
+            dynamic_seq=dynamic_seq,
+            backend=backend,
+            mode=mode,
+        )
+    )
+    unet.compile_blocks(
+        backend,
+        mode=mode,
+        bucket_resolutions=bucket_resolutions,
+        n_token_families=n_token_families,
+        dynamic_seq=dynamic_seq,
+        seq_range=seq_range,
+    )
+    if hasattr(network, "compile_cond_stream"):
+        network.compile_cond_stream(
+            backend,
+            mode=mode,
+            n_token_families=n_token_families,
+            dynamic_seq=dynamic_seq,
+            seq_range=seq_range,
+        )
 
 
 def enable_training_grad_ckpt(anima: object, *, enabled: bool) -> None:

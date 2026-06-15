@@ -105,6 +105,7 @@ const ctx = globalThis.ctx;
             'sample_every_n_steps',
             'blocks_to_swap',
             'save_every_n_epochs',
+            'save_last_n_epochs',
             'checkpointing_epochs',
             'network_dim',
             'network_alpha',
@@ -124,13 +125,14 @@ const ctx = globalThis.ctx;
             'sample_every_n_steps',
             'blocks_to_swap',
             'save_every_n_epochs',
+            'save_last_n_epochs',
             'checkpointing_epochs',
             'network_dim',
         ].includes(key) || Number.isInteger(value);
     }
 
     globalThis.allowsNegativeNumberField = function allowsNegativeNumberField(key) {
-        return ['b_cond_init', 'pe_lora_layer_from'].includes(key);
+        return ['b_cond_init', 'pe_lora_layer_from', 'save_last_n_epochs'].includes(key);
     }
 
     globalThis.createSelectInput = function createSelectInput(key, value, options) {

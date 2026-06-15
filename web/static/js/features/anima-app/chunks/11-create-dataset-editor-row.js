@@ -44,9 +44,7 @@ const ctx = globalThis.ctx;
         const bucketText = settings.enable_bucket
             ? `${settings.min_bucket_reso}-${settings.max_bucket_reso}/${settings.bucket_reso_steps}`
             : '关闭';
-        const validationText = Number(settings.validation_split_num || 0) > 0
-            ? `${settings.validation_split_num}张`
-            : `${settings.validation_split ?? 0}`;
+        const validationText = datasetPreviewValidationText(settings);
         const captionModeLabel = CAPTION_SOURCE_MODE_OPTIONS.find((option) => (
             option.value === normalizeCaptionSourceMode(settings.caption_source_mode)
         ))?.label || 'Auto';

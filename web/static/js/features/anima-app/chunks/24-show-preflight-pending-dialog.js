@@ -216,8 +216,8 @@ const ctx = globalThis.ctx;
         const variant = result.variant || currentTrainingSource.method || val('variant-select');
         const preset = result.preset || val('preset-select');
         const methodsSubdir = result.methods_subdir || currentTrainingSource.methods_subdir || 'gui-methods';
-        if (continueTrainingSource && !(await refreshContinueTrainingSourceCompatibility())) {
-            showPreflightRequestError(continueTrainingSource.message || '继续训练权重与当前配置不兼容');
+        if (!(await ensureTrainingSourceReadyForLaunch())) {
+            showPreflightRequestError(trainingSourceLaunchBlockReason());
             return;
         }
         const mode = await chooseTrainingLaunchMode({ willAutoPreprocess: true });

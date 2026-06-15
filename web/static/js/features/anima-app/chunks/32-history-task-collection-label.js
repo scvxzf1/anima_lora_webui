@@ -400,7 +400,7 @@ const ctx = globalThis.ctx;
         if (task.training_mode === 'continue_lora') {
             const kind = String(task.continue_from_weight_kind || 'LoRA').trim() || 'LoRA';
             const name = String(task.continue_from_weight_name || '').trim();
-            const continueName = `继续训练 ${kind}${name ? ` · ${name}` : ''}`;
+            const continueName = `权重热启动 ${kind}${name ? ` · ${name}` : ''}`;
             return customName && customName !== continueName ? customName : continueName;
         }
         if (customName) return customName;
@@ -446,7 +446,7 @@ const ctx = globalThis.ctx;
         if (task?.training_mode !== 'continue_lora') return '';
         const kind = String(task.continue_from_weight_kind || 'LoRA').trim() || 'LoRA';
         const name = String(task.continue_from_weight_name || '').trim();
-        return `继续训练 ${kind}${name ? `: ${name}` : ''}`;
+        return `权重热启动 ${kind}${name ? `: ${name}` : ''}`;
     }
 
     globalThis.historyContinuePathLabel = function historyContinuePathLabel(task) {

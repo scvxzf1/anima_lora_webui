@@ -4,10 +4,14 @@ import {
     enqueueTrainingQueueBatchAlias,
     enqueueTrainingQueueBatchRoot,
     resumeTrainingQueue,
-} from './api.js?v=module-bootstrap-20260608-10';
+} from './api.js?v=module-bootstrap-20260608-11';
 
 export function createQueueEnqueue({ ctx, deps, updateTrainingQueueFromPayload }) {
     async function queueCurrentTrainingFromConfig() {
+        if (deps.getTrainingSourceMode?.() === 'full_resume') {
+            await deps.queueConfigFullResumeSource?.();
+            return;
+        }
         const selectedTrainingConfigFile = deps.currentTrainingConfigFile();
         if (deps.getTomlManagerMode() !== 'output' || !deps.getOutputRunFile()) {
             if (deps.hasPendingConfigChanges(deps.getCurrentTomlFile())) {
@@ -35,8 +39,8 @@ export function createQueueEnqueue({ ctx, deps, updateTrainingQueueFromPayload }
             alert(message);
             return;
         }
-        if (deps.hasContinueTrainingSource() && !(await deps.refreshContinueTrainingSourceCompatibility())) {
-            deps.setTomlStatus('error', deps.continueTrainingSourceMessage() || '继续训练权重与当前配置不兼容', { persist: true });
+        if (deps.ensureTrainingSourceReadyForLaunch && !(await deps.ensureTrainingSourceReadyForLaunch())) {
+            deps.setTomlStatus('error', deps.trainingSourceLaunchBlockReason?.() || '训练来源审查未通过', { persist: true });
             return;
         }
         await enqueueTrainingFromConfig(variant, preset, methodsSubdir, {

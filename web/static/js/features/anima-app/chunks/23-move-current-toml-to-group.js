@@ -281,6 +281,10 @@ const ctx = globalThis.ctx;
 
     // ── 训练控制 ──
     globalThis.startTraining = async function startTraining() {
+        if (configTrainingSourceMode() === 'full_resume') {
+            await startConfigFullResumeSource(false);
+            return;
+        }
         const selectedTrainingConfigFile = currentTrainingConfigFile();
         if (tomlManagerMode !== 'output' || !outputRunState.file) {
             if (hasPendingConfigChanges(currentTomlFile)) {
@@ -307,8 +311,8 @@ const ctx = globalThis.ctx;
             alert(message);
             return;
         }
-        if (continueTrainingSource && !(await refreshContinueTrainingSourceCompatibility())) {
-            setTomlStatus('error', continueTrainingSource.message || '继续训练权重与当前配置不兼容', { persist: true });
+        if (!(await ensureTrainingSourceReadyForLaunch())) {
+            setTomlStatus('error', trainingSourceLaunchBlockReason(), { persist: true });
             return;
         }
         const preflight = await runPreflight(variant, preset, methodsSubdir);
@@ -334,6 +338,10 @@ const ctx = globalThis.ctx;
     }
 
     globalThis.queueCurrentTrainingFromConfig = async function queueCurrentTrainingFromConfig() {
+        if (configTrainingSourceMode() === 'full_resume') {
+            await startConfigFullResumeSource(true);
+            return;
+        }
         return ensureQueueFeature().queueCurrentTrainingFromConfig();
     }
 
@@ -377,9 +385,7 @@ const ctx = globalThis.ctx;
     globalThis.chooseTrainingLaunchMode = async function chooseTrainingLaunchMode(options = {}) {
         const willAutoPreprocess = Boolean(options.willAutoPreprocess);
         const isRunning = isLiveRunningState();
-        const sourceDetail = continueTrainingSource
-            ? `\n\n训练来源: 继续训练 ${continueTrainingSource.kind} · ${continueTrainingSource.name}\n基于权重: ${continueTrainingSource.abs_path}`
-            : '\n\n训练来源: 从零开始';
+        const sourceDetail = trainingSourceLaunchSummary();
         if (isRunning) {
             const ok = await showAppConfirmDialog({
                 title: '加入训练队列',
@@ -412,9 +418,7 @@ const ctx = globalThis.ctx;
 
     globalThis.confirmTrainingLaunch = async function confirmTrainingLaunch(options = {}) {
         const willAutoPreprocess = Boolean(options.willAutoPreprocess);
-        const sourceDetail = continueTrainingSource
-            ? `\n\n训练来源: 继续训练 ${continueTrainingSource.kind} · ${continueTrainingSource.name}\n基于权重: ${continueTrainingSource.abs_path}`
-            : '\n\n训练来源: 从零开始';
+        const sourceDetail = trainingSourceLaunchSummary();
         return showAppConfirmDialog({
             title: willAutoPreprocess ? '最终确认：预处理并训练' : '最终确认：开始训练',
             description: '训练启动前的最后一步',
@@ -504,7 +508,7 @@ const ctx = globalThis.ctx;
             return showAppConfirmDialog({
                 title: '训练前预检测',
                 description: '检测到训练前提示',
-                message: `${preflightPlainText(result)}\n\n是否继续训练？`,
+                message: `${preflightPlainText(result)}\n\n是否继续下一步？`,
                 confirmText,
             }).then((ok) => ok ? 'continue' : 'cancel');
         }

@@ -20,7 +20,9 @@ export const FORM_SECTION_DEFS = [
             'max_train_epochs',
             'learning_rate',
             'save_every_n_epochs',
+            'save_last_n_epochs',
             'checkpointing_epochs',
+            'checkpointing_last_n_epochs',
             'network_train_unet_only',
             'network_dim',
             'network_alpha',
@@ -362,7 +364,7 @@ export const CONFIG_COMPACT_FIELD_GROUPS = {
     'config-group-primary': [
         {
             className: 'config-field-grid-4col',
-            keys: ['max_train_epochs', 'learning_rate', 'save_every_n_epochs', 'checkpointing_epochs'],
+            keys: ['max_train_epochs', 'learning_rate', 'save_every_n_epochs', 'save_last_n_epochs', 'checkpointing_epochs', 'checkpointing_last_n_epochs'],
         },
         {
             className: 'config-field-grid-4col',

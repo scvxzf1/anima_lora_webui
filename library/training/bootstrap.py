@@ -351,6 +351,39 @@ class TrainingBootstrap:
                     t_enc.gradient_checkpointing_enable()
             network.enable_gradient_checkpointing()
 
+        # Native-shape flattening + per-block torch.compile. COMPILE LAST:
+        # after adapter monkey-patches, optional weight load, and checkpoint
+        # setup, so checkpoint recompute and original forward call the same
+        # compiled inner graph.
+        if args.torch_compile:
+            from library.runtime.harness import compile_blocks_for_training
+
+            compile_blocks_for_training(
+                unet,
+                network,
+                backend=args.dynamo_backend,
+                mode=getattr(args, "compile_inductor_mode", None),
+                bucket_resolutions=getattr(args, "bucket_resolutions", None),
+                dynamic_seq=bool(getattr(args, "compile_dynamic_seq", False)),
+                activation_memory_budget=float(
+                    getattr(args, "activation_memory_budget", 1.0) or 1.0
+                ),
+                grad_ckpt=bool(getattr(args, "gradient_checkpointing", False)),
+                logger=logger,
+            )
+            probe = getattr(trainer, "memory_probe", None)
+            if probe is not None:
+                probe.snapshot(
+                    "dit_compiled",
+                    device=accelerator.device,
+                    phase="setup",
+                    dynamo_backend=args.dynamo_backend,
+                    compile_inductor_mode=getattr(args, "compile_inductor_mode", None),
+                    compile_dynamic_seq=bool(
+                        getattr(args, "compile_dynamic_seq", False)
+                    ),
+                )
+
         return NetworkBuildResult(
             network=network,
             net_kwargs=net_kwargs,

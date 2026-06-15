@@ -401,6 +401,7 @@ const ctx = globalThis.ctx;
             renderTrainingHistoryList();
             renderHistoryManager();
             renderPreviewTaskSelect();
+            globalThis.renderContinueTrainingSource?.();
             setPreviewStatus('', '');
         } catch (e) {
             const list = document.getElementById('task-history-list');

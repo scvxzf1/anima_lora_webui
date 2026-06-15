@@ -38,6 +38,8 @@ if TYPE_CHECKING:
         _history_runtime_delete_dirs_for_tasks,
         _history_snapshot_path,
         _history_task_ids_for_delete,
+        _clone_frozen_runtime_config,
+        _int_or_none,
         _list_history_tasks,
         _list_resume_checkpoints,
         _load_history_collection_settings,
@@ -62,6 +64,11 @@ _LOCAL_IMPL_NAMES = {
     "_bind_legacy",
     "resume_from_history_task",
     "_build_resume_payload",
+    "_annotate_resume_checkpoints",
+    "_clone_resume_runtime",
+    "_ensure_resume_checkpoint_available",
+    "_resume_checkpoint_estimate",
+    "_resume_unavailable_reason",
     "list_history_tasks",
     "get_history_task",
     "get_history_log_path",
@@ -101,7 +108,9 @@ async def resume_from_history_task(
 ) -> dict[str, Any]:
     _bind_legacy()
     task, selected, snapshot_path, resume_info = self._build_resume_payload(task_id, checkpoint)
-    config_file = _display_project_path(str(snapshot_path))
+    runtime = _clone_resume_runtime(task, snapshot_path)
+    config_file = str(runtime.get("runtime_config_file") or _display_project_path(str(snapshot_path)))
+    source_config_file = str(runtime.get("history_source_config_file") or task.get("history_source_config_file") or "")
 
     await self.start(
         str(task.get("variant") or ""),
@@ -113,6 +122,7 @@ async def resume_from_history_task(
         command_label="续训命令",
         resume_info=resume_info,
         gpu_whitelist=gpu_whitelist,
+        source_config_file=source_config_file,
         use_runtime_dir=False,
     )
 
@@ -136,17 +146,31 @@ def _build_resume_payload(
     if task.get("job") != "training":
         raise ValueError("只能从训练任务继续训练")
 
+    snapshot_path = _history_snapshot_path(task_id)
+    if snapshot_path is None:
+        raise ValueError("历史任务缺少配置快照，无法安全续训")
+
     checkpoints = _list_resume_checkpoints(task)
     if not checkpoints:
         raise ValueError("这个训练任务没有可续训的检查点")
 
-    selected = _select_resume_checkpoint(checkpoints, checkpoint)
+    checkpoints = _annotate_resume_checkpoints(task, checkpoints, snapshot_path)
+    selected = (
+        _select_resume_checkpoint(checkpoints, checkpoint)
+        if checkpoint
+        else next((item for item in checkpoints if item.get("resume_available") is not False), None)
+    )
     if selected is None:
+        if not checkpoint:
+            first_reason = next(
+                (str(item.get("unavailable_reason") or "") for item in checkpoints if item.get("unavailable_reason")),
+                "",
+            )
+            if first_reason:
+                raise ValueError(first_reason)
         raise ValueError("未找到指定的检查点")
+    _ensure_resume_checkpoint_available(selected)
 
-    snapshot_path = _history_snapshot_path(task_id)
-    if snapshot_path is None:
-        raise ValueError("历史任务缺少配置快照，无法安全续训")
     resume_info = {
         "source_task_id": task_id,
         "source_task_name": str(task.get("name") or ""),
@@ -158,8 +182,79 @@ def _build_resume_payload(
         "checkpoint_kind": selected["kind"],
         "checkpoint_epoch": selected.get("epoch"),
         "checkpoint_step": selected.get("step"),
+        "target_total_steps": selected.get("target_total_steps"),
+        "remaining_steps": selected.get("remaining_steps"),
     }
     return task, selected, snapshot_path, resume_info
+
+def _annotate_resume_checkpoints(
+    task: dict[str, Any],
+    checkpoints: list[dict[str, Any]],
+    snapshot_path: Path | None,
+) -> list[dict[str, Any]]:
+    estimate = _resume_checkpoint_estimate(task, snapshot_path)
+    target_total_steps = estimate.get("target_total_steps")
+    estimate_error = str(estimate.get("estimate_error") or "")
+    out: list[dict[str, Any]] = []
+    for raw in checkpoints:
+        item = dict(raw)
+        step = _int_or_none(item.get("step"))
+        item["target_total_steps"] = target_total_steps
+        item["estimate_error"] = estimate_error
+        if isinstance(target_total_steps, int) and step is not None:
+            item["remaining_steps"] = max(0, target_total_steps - step)
+        else:
+            item["remaining_steps"] = None
+        reason = _resume_unavailable_reason(step, target_total_steps)
+        item["resume_available"] = not reason
+        item["unavailable_reason"] = reason
+        out.append(item)
+    return out
+
+def _resume_checkpoint_estimate(
+    task: dict[str, Any],
+    snapshot_path: Path | None,
+) -> dict[str, Any]:
+    if snapshot_path is None:
+        return {"target_total_steps": None, "estimate_error": "历史任务缺少配置快照"}
+    try:
+        from web.services import config_service
+
+        estimate = config_service.estimate_training_steps(
+            str(task.get("variant") or ""),
+            str(task.get("preset") or "default"),
+            str(task.get("methods_subdir") or "gui-methods"),
+            config_file=_display_project_path(str(snapshot_path)),
+        )
+        total_steps = _int_or_none(estimate.get("total_steps"))
+        return {
+            "target_total_steps": total_steps if total_steps and total_steps > 0 else None,
+            "estimate_error": "",
+        }
+    except Exception as exc:
+        return {"target_total_steps": None, "estimate_error": str(exc)}
+
+def _resume_unavailable_reason(step: int | None, target_total_steps: int | None) -> str:
+    if step is None or target_total_steps is None:
+        return ""
+    if step >= target_total_steps:
+        return (
+            f"这个检查点已训练到 step {step}，当前配置目标是 {target_total_steps}，"
+            "继续训练不会产生新步数。请先增加 max_train_steps / max_train_epochs，或改用权重热启动。"
+        )
+    return ""
+
+def _ensure_resume_checkpoint_available(selected: dict[str, Any]) -> None:
+    reason = str(selected.get("unavailable_reason") or "")
+    if reason:
+        raise ValueError(reason)
+
+def _clone_resume_runtime(task: dict[str, Any], snapshot_path: Path) -> dict[str, Any]:
+    return _clone_frozen_runtime_config(
+        _display_project_path(str(snapshot_path)),
+        source_config_file=str(task.get("history_source_config_file") or ""),
+        reset_data_dirs=False,
+    )
 
 def list_history_tasks(self, *, include_archived: bool = False, limit: int | None = None) -> list[dict[str, Any]]:
     _bind_legacy()
@@ -217,12 +312,16 @@ def get_resume_options(self, task_id: str) -> dict[str, Any]:
         raise FileNotFoundError("任务不存在")
     if task.get("job") != "training":
         raise ValueError("只能从训练任务读取续训检查点")
-    checkpoints = _list_resume_checkpoints(task)
+    snapshot_path = _history_snapshot_path(task_id)
+    checkpoints = _annotate_resume_checkpoints(task, _list_resume_checkpoints(task), snapshot_path)
     diagnostic = _resume_checkpoint_diagnostic(task, checkpoints)
-    default_checkpoint = checkpoints[0]["path"] if checkpoints else ""
+    default = next((item for item in checkpoints if item.get("resume_available") is not False), None)
+    default_checkpoint = default["path"] if default else ""
     message = "选择一个保存了训练状态的目录继续训练。普通权重文件不能恢复优化器和步数。"
     if not checkpoints:
         message = diagnostic.get("reason") or "这个任务没有找到可续训的状态目录。只有保存了 train_state.json 的目录才能继续训练。"
+    elif not default_checkpoint:
+        message = str(checkpoints[0].get("unavailable_reason") or "") or message
     return {
         "ok": True,
         "task": {

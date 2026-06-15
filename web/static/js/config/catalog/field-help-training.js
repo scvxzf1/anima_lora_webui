@@ -1,4 +1,4 @@
-import { help } from './help-builder.js?v=module-bootstrap-20260608-10';
+import { help } from './help-builder.js?v=module-bootstrap-20260608-11';
 
 export const FIELD_HELP_TRAINING_ZH = {    learning_rate: help(
         "学习率，决定每一步参数改动有多大。",
@@ -40,13 +40,29 @@ export const FIELD_HELP_TRAINING_ZH = {    learning_rate: help(
         ["只有普通权重时，不能完整恢复 optimizer、scheduler、随机状态等训练现场。"],
         "新手建议先设 1；训练稳定后可调到 2-5 省磁盘。"
     ),
+    save_last_n_epochs: help(
+        "普通模型权重最多保留多少份。",
+        "默认 -1 表示不清理旧权重，保存所有按“模型保存间隔”生成的 .safetensors。设置为 2、3 等正数时，只保留最近 N 个轮次权重；最终权重仍会单独保存。",
+        ["可以保留多个阶段的 LoRA 权重，方便回看效果或挑选不过拟合的版本。"],
+        ["数值越大，磁盘占用越多；-1 会一直累积权重文件。"],
+        ["只影响普通权重文件，不影响完整续训点；续训点数量由“续训点保留数量”控制。"],
+        "想省磁盘就填 2-5；想保留所有中间权重就保持 -1。"
+    ),
     checkpointing_epochs: help(
         "每隔多少轮保存一次可恢复训练状态。",
-        "它会成对写入 <output_name>-checkpoint.safetensors 和 <output_name>-checkpoint-state/；重新开始同一配置时会自动从这里续训。",
+        "它会写出完整续训点；重新开始同一配置时会自动从最新可用续训点继续。",
         ["中断后可恢复 adapter 权重、当前 step/epoch、optimizer、scheduler、随机状态等。"],
-        ["只保留最近一份续训点并覆盖更新，但 checkpoint-state/ 体积可能比普通权重大。"],
+        ["续训点保留数量由下一个字段控制；checkpoint-state/ 体积可能比普通权重大。"],
         ["如果设得太大，中断时只能回到上一次续训点；如果只剩普通 .safetensors 而没有 checkpoint-state/，不能完整续训。"],
         "新手建议设 1。想减少中断损失时，让它小于或等于 save_every_n_epochs。"
+    ),
+    checkpointing_last_n_epochs: help(
+        "自动续训点最多保留多少份。",
+        "默认 1 表示只保留最近 1 个完整续训点；设置为 2、3 等正数会保留最近 N 个续训点。设置为 -1 表示不清理旧续训点，配合保存间隔 1 时每轮都可恢复。",
+        ["保留多个续训点后，历史任务里可以选择不同轮数的 checkpoint-state 继续训练。"],
+        ["数值越大，optimizer、scheduler 和随机状态文件占用的磁盘越多。"],
+        ["设为 0 或其他非法值时，训练端会按 1 处理。"],
+        "新手保持 1；想保留每轮完整现场时，把训练状态保存间隔设 1，并把这里设 -1。"
     ),
     gradient_accumulation_steps: help(
         "累积多少个小批次后，再真正更新一次参数。",

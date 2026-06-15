@@ -4,6 +4,7 @@ export function createTabController({
     ensureWeightAnalysisFeature,
     resetTrainingExpandedStateOnLeave,
     resizeLiveChart,
+    auditConfigTrainingSourceOnEnter,
 } = {}) {
     function normalizeTopLevelTabState() {
         const activeButton = document.querySelector('.tab-btn.active');
@@ -42,6 +43,9 @@ export function createTabController({
                 }
                 if (nextTab === 'training') {
                     resizeLiveChart?.();
+                }
+                if (nextTab === 'config') {
+                    auditConfigTrainingSourceOnEnter?.();
                 }
                 if (nextTab === 'weight-analysis') {
                     ensureWeightAnalysisFeature().loadAnalysisWeights();

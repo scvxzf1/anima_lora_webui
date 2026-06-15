@@ -261,8 +261,11 @@ const ctx = globalThis.ctx;
     }
 
     globalThis.datasetPreviewValidationText = function datasetPreviewValidationText(settings) {
-        if (Number(settings.validation_split_num || 0) > 0) return `固定 ${settings.validation_split_num} 张`;
-        return `${settings.validation_split ?? 0}`;
+        const validationNum = Number(settings.validation_split_num || 0);
+        if (validationNum > 0) return `固定 ${validationNum} 张`;
+        const validationSplit = Number(settings.validation_split ?? 0);
+        if (validationSplit > 0) return `比例 ${validationSplit}`;
+        return '关闭';
     }
 
     globalThis.createDatasetPreviewCard = function createDatasetPreviewCard(image) {
@@ -424,7 +427,7 @@ const ctx = globalThis.ctx;
             max_bucket_reso: Math.max(1, Number.parseInt(raw.max_bucket_reso || 1024, 10) || 1024),
             bucket_reso_steps: Math.max(1, Number.parseInt(raw.bucket_reso_steps || 64, 10) || 64),
             bucket_no_upscale: raw.bucket_no_upscale === true || raw.bucket_no_upscale === 'true',
-            validation_split: Math.max(0, Number(raw.validation_split ?? 0.025) || 0),
+            validation_split: Math.max(0, Number(raw.validation_split ?? 0) || 0),
             validation_split_num: Math.max(0, Number.parseInt(raw.validation_split_num || 0, 10) || 0),
             validation_seed: Number.isFinite(validationSeed) ? Math.max(0, validationSeed) : 42,
             caption_extension: String(raw.caption_extension || '.txt'),

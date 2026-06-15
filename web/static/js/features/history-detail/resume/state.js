@@ -66,6 +66,17 @@ export function resumeCheckpointProgressText(item) {
     return parts.join(' / ') || '步数未知';
 }
 
+export function resumeCheckpointRemainingText(item) {
+    if (item?.step != null && item?.target_total_steps != null) {
+        const remaining = item.remaining_steps != null ? item.remaining_steps : Math.max(0, Number(item.target_total_steps) - Number(item.step));
+        return `已训练到 Step ${item.step} / 目标 Step ${item.target_total_steps} / 剩余 ${remaining}`;
+    }
+    if (item?.estimate_error) {
+        return `${resumeCheckpointProgressText(item)} / 无法确认剩余步数`;
+    }
+    return resumeCheckpointProgressText(item);
+}
+
 export function resumeSummaryLine(label, value) {
     const row = document.createElement('div');
     const key = document.createElement('span');

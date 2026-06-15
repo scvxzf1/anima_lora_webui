@@ -749,7 +749,10 @@ def test_launch_readiness_panel_is_removed() -> None:
     assert "btn-queue-from-config').addEventListener('click', queueCurrentTrainingFromConfig)" in listener_section
     assert "handleLaunchReadinessPrimaryAction" not in source
     assert "btn-start-from-config" in action_state
-    assert "startBtn.textContent = '开始训练';" in action_state
+    assert "startBtn.textContent = sourceMode === 'full_resume'" in action_state
+    assert "开始完整续训" in action_state
+    assert "开始热启动训练" in action_state
+    assert "开始训练" in action_state
 
 
 def test_config_toolbar_is_first_visible_config_row() -> None:
@@ -943,6 +946,13 @@ def test_config_form_uses_navigation_search_and_progressive_disclosure() -> None
     resource_compact = _section(source, "'config-group-resource': [", "'config-group-data-resource': [")
     data_resource_compact = _section(source, "'config-group-data-resource': [", "const VARIANT_METHOD_FAMILY")
     assert "'gradient_checkpointing'," not in primary_section
+    assert "'save_last_n_epochs'," in primary_section
+    assert "'checkpointing_last_n_epochs'," in primary_section
+    assert primary_section.index("'save_every_n_epochs',") < primary_section.index("'save_last_n_epochs',")
+    assert primary_section.index("'save_last_n_epochs',") < primary_section.index("'checkpointing_epochs',")
+    assert primary_section.index("'checkpointing_epochs',") < primary_section.index("'checkpointing_last_n_epochs',")
+    assert "save_last_n_epochs: -1" in defaults
+    assert "checkpointing_last_n_epochs: 1" in defaults
     assert "open: true," in resource_section
     assert "'gradient_checkpointing'," in optimization_section
     assert "'block_swap_transfer_dtype'," in optimization_section
@@ -1196,6 +1206,8 @@ def test_resume_queue_button_is_wired() -> None:
     history_detail_deps = _section(legacy_source, "function ensureHistoryDetailFeature", "// ── 初始化 ──")
     assert "btn-queue-resume-training" in resume_section
     assert "queueBtn.disabled" in resume_section
+    assert "selected.resume_available !== false" in resume_section
+    assert "resumeCheckpointRemainingText(selected)" in resume_section
     assert "deps.shouldRenderInlineResumePanel?.() !== true" in resume_section
     assert "resetInlineResumePanel(panel, select, btn, queueBtn, summary, status);" in resume_section
     assert "syncHistoryDetailResumeContent();" in resume_section
@@ -1235,6 +1247,65 @@ def test_config_form_save_reload_and_launch_share_training_config_file() -> None
     assert "config_file: currentTrainingConfigFile()," in start_unchecked
     assert "return outputRunRuntimeFile();" in current_file
     assert "return currentTrainingSource.file || currentTomlFile || val('toml-file-select') || '';" in current_file
+
+
+def test_config_training_source_modes_are_audited_before_launch() -> None:
+    html = INDEX_HTML.read_text(encoding="utf-8")
+    legacy_source = _anima_app_container_text()
+    config_source = _frontend_module_text("js/features/anima-app/chunks/37-config-training-source.js")
+    action_state = _frontend_module_text("js/features/anima-app/chunks/22-update-toml-action-state.js")
+    launch_source = _frontend_module_text("js/features/anima-app/chunks/23-move-current-toml-to-group.js")
+    queue_enqueue = _frontend_module_text("js/features/queue/enqueue.js")
+    tabs_source = _frontend_module_text("js/features/app-shell/tabs.js")
+    history_labels = _frontend_module_text("js/features/anima-app/chunks/32-history-task-collection-label.js")
+    listener_section = _section(legacy_source, "function setupEventListeners", "function installBeginnerTooltips")
+
+    for snippet in (
+        'data-training-source-mode="fresh"',
+        'data-training-source-mode="full_resume"',
+        'data-training-source-mode="weight_hotstart"',
+        'config-full-resume-task-select',
+        'config-full-resume-checkpoint-select',
+        'config-weight-hotstart-panel',
+        'config-training-source-status',
+        '选择 LoRA/LoHa/LoKr/GLoRA 权重热启动',
+    ):
+        assert snippet in html
+    assert "选择 LoRA/LoKr 继续训练" not in html
+    assert "权重热启动 ${kind}" in history_labels
+
+    assert "auditConfigTrainingSourceOnEnter?.();" in tabs_source
+    assert "setConfigTrainingSourceMode" in listener_section
+    assert "handleConfigFullResumeTaskChange" in listener_section
+    assert "handleConfigFullResumeCheckpointChange" in listener_section
+    assert "btn-refresh-config-full-resume" in listener_section
+
+    for snippet in (
+        "mode: 'fresh'",
+        "mode === 'full_resume'",
+        "mode === 'weight_hotstart'",
+        "auditConfigFullResumeSource",
+        "auditConfigWeightHotstartSource",
+        "resume_available === false",
+        "remaining_steps",
+        "/api/training/history/${encodeURIComponent(full.task_id)}/resume-options",
+        "queueMode ? '/api/training/queue/resume' : '/api/training/resume'",
+        "configTrainingSourceMode() !== 'weight_hotstart'",
+        "continue_from_weight_abs_path",
+    ):
+        assert snippet in config_source
+
+    assert "configTrainingSourceMode() === 'full_resume'" in launch_source
+    assert "startConfigFullResumeSource(false)" in launch_source
+    assert "startConfigFullResumeSource(true)" in launch_source
+    assert "ensureTrainingSourceReadyForLaunch()" in launch_source
+    assert "trainingSourceLaunchBlockReason()" in launch_source
+    assert "sourceReady.checking" in action_state
+    assert "sourceReady.ready" in action_state
+    assert "开始完整续训" in action_state
+    assert "开始热启动训练" in action_state
+    assert "getTrainingSourceMode?.() === 'full_resume'" in queue_enqueue
+    assert "ensureTrainingSourceReadyForLaunch" in queue_enqueue
 
 
 def test_optional_number_fields_can_be_cleared() -> None:
@@ -1590,8 +1661,13 @@ def test_history_manager_frontend_hooks_are_present() -> None:
     assert "/api/training/history/${encodeURIComponent(taskId)}" in history_detail_api
     assert "/api/training/history/${encodeURIComponent(taskId)}/resume-options" in history_detail_api
     assert "/api/preview/weights?task_id=" in history_detail_api
+    assert "/api/training/continue-lora/inspect" in history_detail_api
     assert "/api/training/queue/resume" in history_detail_api
     assert "/api/training/resume" in history_detail_api
+    assert "inspectContinueLoraWeight: (path) => (" in legacy_source
+    assert "正在审查可热启动权重..." in history_detail_source
+    assert "reviewHistoryResumeWeights(rawWeights)" in history_detail_source
+    assert "inspectHistoryResumeWeight(weightPath)" in history_detail_source
     assert "return historyViewMode !== 'live';" in history_review_mode_section
     assert "Boolean(viewingHistoryTaskId)" not in history_review_mode_section
     assert "main.addEventListener('click', () => openSidebarHistoryTask(task.id))" in sidebar_task_item_section
@@ -2161,6 +2237,16 @@ def test_history_detail_overview_uses_full_copyable_paths_and_resume_weights() -
 
     assert "controls.className = 'history-resume-control-row';" in resume
     assert "fullResume.append(controls, summary);" in resume
+    assert "resumeCheckpointRemainingText(selected)" in resume
+    assert "selected.resume_available !== false" in resume
+    assert "resumeSummaryLine('不可用原因', selected.unavailable_reason)" in resume
+    assert "resumeSummaryLine('步数估算', `无法确认剩余步数: ${selected.estimate_error}`)" in resume
+    assert "checkpointWeightPaths.has(String(weightPath || '').trim())" in weights
+    assert "item.inspect_status === 'ok'" in weights
+    assert "item.inspect_compatible !== false" in weights
+    assert "审查未通过" in weights
+    assert "useBtn.disabled = !canUseWeightDirectly;" in weights
+    assert "缺少对应的 checkpoint-state/train_state.json" in weights
     assert "name.textContent = fileNameFromPath(item.name || weightPath)" in weights
     assert "info.append(name, meta);" in weights
     assert "info.append(name, path, meta);" not in weights
@@ -2174,6 +2260,7 @@ def test_history_detail_overview_uses_full_copyable_paths_and_resume_weights() -
     assert ".history-detail-select-all" in css
     assert ".history-detail-copy-btn" in css
     assert ".history-resume-control-row" in css
+    assert ".history-resume-hint.warning" in css
     assert ".history-resume-weight-actions" in css
 
 
@@ -2383,13 +2470,17 @@ def test_balanced_16g_block_swap_fields_are_visible() -> None:
     assert "network_alpha: [" not in labels_options
     numeric_field_section = _section(source, "function isNumericField", "function isIntegerNumericField")
     integer_field_section = _section(source, "function isIntegerNumericField", "function allowsNegativeNumberField")
+    negative_field_section = _section(source, "function allowsNegativeNumberField", "function createSelectInput")
     assert "'network_dim'," in numeric_field_section
     assert "'sample_every_n_steps'," in numeric_field_section
     assert "'blocks_to_swap'," in numeric_field_section
+    assert "'save_last_n_epochs'," in numeric_field_section
     assert "'network_alpha'," in numeric_field_section
     assert "'network_dim'," in integer_field_section
     assert "'sample_every_n_steps'," in integer_field_section
     assert "'blocks_to_swap'," in integer_field_section
+    assert "'save_last_n_epochs'," in integer_field_section
+    assert "'save_last_n_epochs'" in negative_field_section
     assert "'network_alpha'," not in integer_field_section
     assert "'max-autotune-no-cudagraphs'" in labels_options
     assert "balanced_16g" in guides
@@ -2756,7 +2847,7 @@ def test_dataset_json_caption_switch_ui_is_wired() -> None:
     assert "normalizeNlTagMix(row.nl_tag_mix)" in row_factory
     assert "nlTagMixSummary(mix)" in row_factory
     assert "const bucketText = settings.enable_bucket" in row_factory
-    assert "const validationText = Number(settings.validation_split_num || 0) > 0" in row_factory
+    assert "const validationText = datasetPreviewValidationText(settings)" in row_factory
     assert "['桶', bucketText]" in row_factory
     assert "['验证', validationText]" in row_factory
     assert "createDatasetRepeatSettingField(row, index)" in source
@@ -2835,6 +2926,7 @@ def test_dataset_editor_preserves_subset_filters_and_rederives_hidden_paths() ->
     assert "rows[index].image_dir = '';" in row_update_factory
     assert "rows[index].cache_dir = '';" in row_update_factory
     assert "raw.validation_seed ?? 42" in defaults_factory
+    assert "raw.validation_split ?? 0" in defaults_factory
     assert ".dataset-path-filter-advanced" in css
 
 

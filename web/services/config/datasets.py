@@ -616,7 +616,7 @@ def _single_dataset_config_from_cfg(cfg: dict[str, Any]) -> dict[str, Any]:
                 "max_bucket_reso": 1024,
                 "bucket_reso_steps": 64,
                 "bucket_no_upscale": False,
-                "validation_split": 0.025,
+                "validation_split": 0.0,
                 "validation_seed": 42,
                 "subsets": [
                     {
@@ -640,7 +640,7 @@ def _dataset_defaults_from_config(data: dict[str, Any]) -> dict[str, Any]:
         "max_bucket_reso": _positive_int(_first_dataset_value(data, "max_bucket_reso"), 1024),
         "bucket_reso_steps": _positive_int(_first_dataset_value(data, "bucket_reso_steps"), 64),
         "bucket_no_upscale": bool(_first_dataset_value(data, "bucket_no_upscale", False)),
-        "validation_split": _nonnegative_float(_first_dataset_value(data, "validation_split", 0.025), 0.025),
+        "validation_split": _nonnegative_float(_first_dataset_value(data, "validation_split", 0.0), 0.0),
         "validation_split_num": _nonnegative_int(_first_dataset_value(data, "validation_split_num", 0), 0),
         "validation_seed": _nonnegative_int(_first_dataset_value(data, "validation_seed", 42), 42),
         "caption_extension": str(_first_dataset_value(
@@ -883,7 +883,7 @@ def _normalize_dataset_defaults(raw: dict[str, Any]) -> dict[str, Any]:
     out["bucket_no_upscale"] = str(raw.get("bucket_no_upscale", False)).lower() in {"1", "true", "yes", "on"}
     if raw.get("validation_split_num") not in (None, ""):
         out["validation_split_num"] = _nonnegative_int(raw.get("validation_split_num"), 0)
-    out["validation_split"] = _nonnegative_float(raw.get("validation_split"), 0.025)
+    out["validation_split"] = _nonnegative_float(raw.get("validation_split"), 0.0)
     out["validation_seed"] = _nonnegative_int(raw.get("validation_seed"), 42)
     out["caption_extension"] = str(raw.get("caption_extension") or ".txt").strip() or ".txt"
     out["keep_tokens"] = _positive_int(raw.get("keep_tokens"), 3)
@@ -1009,7 +1009,7 @@ def _build_dataset_config_doc(
         validation_split_num = _nonnegative_int(row_cfg.get("validation_split_num"), 0)
         if validation_split_num > 0:
             dataset.add("validation_split_num", validation_split_num)
-        dataset.add("validation_split", _nonnegative_float(row_cfg.get("validation_split"), 0.025))
+        dataset.add("validation_split", _nonnegative_float(row_cfg.get("validation_split"), 0.0))
         dataset.add("validation_seed", _nonnegative_int(row_cfg.get("validation_seed"), 42))
 
         subsets = tomlkit.aot()

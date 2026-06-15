@@ -69,7 +69,6 @@ RUN_META_FILE = "run.meta.json"
 OUTPUT_READ_SIZE = 4096
 MAX_LOG_RECORDS = 3000
 MAX_HISTORY_ITEMS = 100
-MAX_RESUME_CHECKPOINTS = 100
 MAX_TIMELINE_LOG_RECORDS = 20000
 MAX_TIMELINE_METRIC_RECORDS = 20000
 MAX_HISTORY_DETAIL_LOG_RECORDS = 5000
@@ -630,7 +629,7 @@ def _normalize_continue_lora_info(
         config_file=config_file,
     )
     if not inspected.get("compatible"):
-        raise ValueError(inspected.get("message") or "当前训练配置与继续训练权重不兼容")
+        raise ValueError(inspected.get("message") or "当前训练配置与权重热启动来源不兼容")
     return {
         "continue_from_weight_abs_path": inspected["abs_path"],
         "continue_from_weight_name": inspected["name"],
@@ -693,7 +692,7 @@ def _append_continue_lora_snapshot_note(text: str, continue_info: dict[str, Any]
     lines = [
         "",
         "",
-        "# WebUI 继续训练来源",
+        "# WebUI 权重热启动来源",
         '# training_mode = "continue_lora"',
         f'# continue_from_weight_kind = "{_toml_comment_string(continue_info.get("continue_from_weight_kind"))}"',
         f'# continue_from_weight_name = "{_toml_comment_string(continue_info.get("continue_from_weight_name"))}"',
@@ -2319,7 +2318,7 @@ def _default_preprocess_history_name(task: dict[str, Any]) -> str:
         kind = str(task.get("continue_from_weight_kind") or "LoRA").strip() or "LoRA"
         name = str(task.get("continue_from_weight_name") or "").strip()
         suffix = f" · {name}" if name else ""
-        return f"继续训练 {kind}{suffix}"
+        return f"权重热启动 {kind}{suffix}"
     if str(task.get("job") or "").strip() != "preprocess":
         return ""
     label = str(task.get("history_run_label") or "").strip()
@@ -2424,7 +2423,7 @@ def _list_resume_checkpoints(task: dict[str, Any]) -> list[dict[str, Any]]:
         })
 
     items.sort(key=_resume_state_sort_key)
-    return items[:MAX_RESUME_CHECKPOINTS]
+    return items
 
 
 def _resume_checkpoint_diagnostic(task: dict[str, Any], checkpoints: list[dict[str, Any]] | None = None) -> dict[str, Any]:
@@ -2436,11 +2435,12 @@ def _resume_checkpoint_diagnostic(task: dict[str, Any], checkpoints: list[dict[s
         "output_dir_valid": output_dir is not None,
         "output_dir_exists": bool(output_dir is not None and _path_exists(output_dir)),
         "output_dir_is_dir": bool(output_dir is not None and _path_exists(output_dir) and output_dir.is_dir()),
+        "all_subdir_count": 0,
         "state_dir_count": 0,
         "train_state_count": 0,
         "checkpoint_count": len(checkpoints or []),
         "reason": "",
-        "recommendation": "如需继续训练，可回到配置页选择这个任务导出的 LoRA/LoHa/LoKr/GLoRA 权重做热启动；热启动不会恢复 optimizer、scheduler 和已完成步数。",
+        "recommendation": "如需权重热启动，可回到配置页选择这个任务导出的 LoRA/LoHa/LoKr/GLoRA 权重；热启动不会恢复 optimizer、scheduler 和已完成步数。",
     }
     if output_dir is None:
         diagnostic["reason"] = "这个历史任务记录的输出目录不合法，无法扫描完整续训状态。"
@@ -2452,21 +2452,33 @@ def _resume_checkpoint_diagnostic(task: dict[str, Any], checkpoints: list[dict[s
         diagnostic["reason"] = "这个历史任务记录的输出路径不是目录，无法扫描完整续训状态。"
         return diagnostic
 
-    state_dirs = [
+    all_subdirs = [
         child
         for child in output_dir.iterdir()
         if child.is_dir() and not _is_transient_resume_state_dir(child.name)
     ]
+    state_dirs = [child for child in all_subdirs if child.name.endswith("-state")]
+    diagnostic["all_subdir_count"] = len(all_subdirs)
     diagnostic["state_dir_count"] = len(state_dirs)
     diagnostic["train_state_count"] = sum(1 for child in state_dirs if _path_exists(child / "train_state.json"))
+    resume_from = task.get("resume_from") if isinstance(task.get("resume_from"), dict) else {}
+    resume_checkpoint = str(resume_from.get("checkpoint") or "").strip()
+    resume_checkpoint_path = _resolve_display_path(resume_checkpoint) if resume_checkpoint else None
+    resume_train_state_exists = bool(
+        resume_checkpoint_path is not None and _path_exists(resume_checkpoint_path / "train_state.json")
+    )
+    diagnostic["resume_source_checkpoint"] = resume_checkpoint
+    diagnostic["resume_source_train_state_exists"] = resume_train_state_exists
     if checkpoints:
         diagnostic["reason"] = "已找到可完整续训的状态目录。"
+    elif resume_checkpoint and not resume_train_state_exists and int(task.get("metric_count") or 0) == 0:
+        diagnostic["reason"] = "这次续训没有产生训练步，且完整续训状态目录已不存在；可用缓存/权重仍可能存在，但 optimizer/scheduler 状态无法恢复。"
     elif diagnostic["train_state_count"]:
         diagnostic["reason"] = "输出目录里存在 train_state.json 状态目录，但不属于当前历史任务时间范围。"
     elif diagnostic["state_dir_count"]:
         diagnostic["reason"] = "输出目录里有子目录，但没有包含 train_state.json 的完整续训状态目录。"
     else:
-        diagnostic["reason"] = "输出目录里没有完整续训状态目录；训练完成时 checkpoint-state 可能已被清理，或该配置未写出训练状态。"
+        diagnostic["reason"] = "输出目录里没有完整续训状态目录；旧版本训练完成时 checkpoint-state 可能已被清理，或该配置未写出训练状态。"
     return diagnostic
 
 
@@ -2494,6 +2506,8 @@ def _select_resume_checkpoint(
 
 
 def _resume_state_kind(name: str) -> str:
+    if re.search(r"-checkpoint-\d{6}-state$", name):
+        return "checkpoint"
     if name.endswith("-checkpoint-state"):
         return "checkpoint"
     if re.search(r"-step\d+-state$", name):

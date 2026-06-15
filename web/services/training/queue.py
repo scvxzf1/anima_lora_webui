@@ -30,8 +30,10 @@ if TYPE_CHECKING:
         _normalize_queue_failure_policy,
         _positive_int_or_none,
         _prepare_web_runtime_config,
+        _path_exists,
         _queue_clearable_state_label,
         _queue_item_runtime_dir_label,
+        _resolve_display_path,
         _runtime_from_config_file,
         _runtime_meta,
         _sample_config_from_cfg,
@@ -46,6 +48,8 @@ _LOCAL_IMPL_NAMES = {
     "enqueue_training",
     "enqueue_training_batch",
     "enqueue_resume_from_history_task",
+    "_ensure_queue_resume_checkpoint_exists",
+    "_queue_resume_runtime_config_file",
     "move_queue_item",
     "cancel_queue_item",
     "retry_queue_item",
@@ -291,6 +295,11 @@ async def enqueue_resume_from_history_task(
 ) -> dict[str, Any]:
     _bind_legacy()
     task, selected, snapshot_path, resume_info = self._build_resume_payload(task_id, checkpoint)
+    runtime = _clone_frozen_runtime_config(
+        _display_project_path(str(snapshot_path)),
+        source_config_file=str(task.get("history_source_config_file") or ""),
+        reset_data_dirs=False,
+    )
     now = time.time()
     item = {
         "id": _new_queue_item_id("resume", str(task.get("methods_subdir") or "gui-methods"), str(task.get("variant") or "training")),
@@ -300,8 +309,8 @@ async def enqueue_resume_from_history_task(
         "variant": str(task.get("variant") or ""),
         "preset": str(task.get("preset") or "default"),
         "methods_subdir": str(task.get("methods_subdir") or "gui-methods"),
-        "runtime_config_file": _display_project_path(str(snapshot_path)),
-        "source_config_file": str(task.get("history_source_config_file") or ""),
+        "runtime_config_file": str(runtime.get("runtime_config_file") or _display_project_path(str(snapshot_path))),
+        "source_config_file": str(runtime.get("history_source_config_file") or task.get("history_source_config_file") or ""),
         "extra_args": ["--resume", selected["path"], "--skip_until_initial_step"],
         "gpu_whitelist": _normalize_gpu_whitelist(gpu_whitelist),
         "continue_info": {},
@@ -316,7 +325,7 @@ async def enqueue_resume_from_history_task(
         "started_at_text": "",
         "finished_at": None,
         "finished_at_text": "",
-        "runtime_info": {},
+        "runtime_info": _runtime_meta(runtime),
     }
     self._queue_items().append(item)
     self._compact_queue()
@@ -910,6 +919,7 @@ async def _start_queue_item(self, item: dict[str, Any]) -> None:
     methods_subdir = str(item.get("methods_subdir") or "gui-methods")
     extra_args = list(item.get("extra_args") or [])
     queue_item_id = str(item.get("id") or "")
+    _ensure_queue_resume_checkpoint_exists(item)
     if item.get("requires_preprocess"):
         runtime = self._queue_item_runtime(item)
         await self._start_preprocess_unlocked(
@@ -926,12 +936,13 @@ async def _start_queue_item(self, item: dict[str, Any]) -> None:
         )
         return
 
+    runtime_config_file = _queue_resume_runtime_config_file(self, item)
     await self._start_unlocked(
         variant,
         preset,
         extra_args,
         methods_subdir,
-        config_file=str(item.get("runtime_config_file") or ""),
+        config_file=runtime_config_file,
         start_message=(
             f"从队列启动续训: {item.get('resume_info', {}).get('checkpoint_name')}"
             if item.get("kind") == "resume"
@@ -945,6 +956,35 @@ async def _start_queue_item(self, item: dict[str, Any]) -> None:
         use_runtime_dir=False,
         queue_item_id=queue_item_id,
     )
+
+def _ensure_queue_resume_checkpoint_exists(item: dict[str, Any]) -> None:
+    if item.get("kind") != "resume":
+        return
+    resume_info = item.get("resume_info") if isinstance(item.get("resume_info"), dict) else {}
+    checkpoint = str(resume_info.get("checkpoint") or "").strip()
+    path = _resolve_display_path(checkpoint)
+    if path is None or not _path_exists(path / "train_state.json"):
+        raise FileNotFoundError("续训检查点状态已不存在，请重新选择包含 train_state.json 的状态目录")
+
+def _queue_resume_runtime_config_file(self, item: dict[str, Any]) -> str:
+    runtime_config_file = str(item.get("runtime_config_file") or "")
+    if item.get("kind") != "resume":
+        return runtime_config_file
+    runtime = _runtime_from_config_file(
+        runtime_config_file,
+        source_config_file=str(item.get("source_config_file") or "") or None,
+    )
+    if runtime is None:
+        runtime = _clone_frozen_runtime_config(
+            runtime_config_file,
+            source_config_file=str(item.get("source_config_file") or ""),
+            reset_data_dirs=False,
+        )
+        item["runtime_config_file"] = str(runtime.get("runtime_config_file") or runtime_config_file)
+        item["source_config_file"] = str(runtime.get("history_source_config_file") or item.get("source_config_file") or "")
+        item["runtime_info"] = _runtime_meta(runtime)
+        self._save_queue()
+    return str(item.get("runtime_config_file") or runtime_config_file)
 
 def _queue_item_runtime(self, item: dict[str, Any]) -> dict[str, Any]:
     _bind_legacy()

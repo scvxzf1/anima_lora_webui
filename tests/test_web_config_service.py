@@ -2503,6 +2503,38 @@ def test_dataset_preset_save_read_preserves_subset_filter_and_zero_validation_sp
     assert loaded["datasets"][0]["settings"]["validation_seed"] == 0
 
 
+def test_dataset_preset_fixed_validation_zero_defaults_to_validation_off(
+    tmp_path: Path,
+    monkeypatch,
+):
+    _write_minimal_config_tree(tmp_path)
+    _patch_config_service_paths(monkeypatch, tmp_path)
+
+    saved = config_service.save_dataset_preset(
+        "configs/datasets/no-validation.toml",
+        [{
+            "source_dir": "image_dataset/no-validation",
+            "image_dir": "post_image_dataset/no-validation-resized",
+            "cache_dir": "post_image_dataset/no-validation-cache",
+            "num_repeats": 1,
+            "settings": {
+                "validation_split_num": 0,
+            },
+        }],
+        {},
+    )
+
+    data = toml.loads(saved["content"])
+    dataset = data["datasets"][0]
+    assert dataset["validation_split"] == 0
+    assert "validation_split_num" not in dataset
+
+    loaded = config_service.load_dataset_preset("configs/datasets/no-validation.toml")
+    settings = loaded["datasets"][0]["settings"]
+    assert settings["validation_split"] == 0
+    assert settings["validation_split_num"] == 0
+
+
 def test_dataset_rows_for_estimate_inherits_top_level_path_pattern(
     tmp_path: Path,
     monkeypatch,

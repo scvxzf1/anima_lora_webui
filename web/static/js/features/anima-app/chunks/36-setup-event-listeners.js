@@ -54,6 +54,16 @@ const ctx = globalThis.ctx;
         window.addEventListener('resize', () => requestAnimationFrame(updateConfigStickyPlacement));
         on('btn-open-continue-lora-dialog', 'click', openContinueLoraDialog);
         on('btn-clear-continue-lora-source', 'click', clearContinueTrainingSource);
+        document.querySelectorAll('[data-training-source-mode]').forEach((btn) => {
+            btn.addEventListener('click', () => setConfigTrainingSourceMode(btn.dataset.trainingSourceMode || 'fresh'));
+        });
+        on('config-full-resume-task-select', 'change', (event) => {
+            handleConfigFullResumeTaskChange(event.target.value || '');
+        });
+        on('config-full-resume-checkpoint-select', 'change', (event) => {
+            handleConfigFullResumeCheckpointChange(event.target.value || '');
+        });
+        on('btn-refresh-config-full-resume', 'click', () => auditConfigFullResumeSource({ force: true }));
         on('btn-inspect-continue-lora-path', 'click', () => {
             selectContinueLoraWeight(document.getElementById('continue-lora-path-input')?.value || '');
         });
@@ -219,15 +229,18 @@ const ctx = globalThis.ctx;
             'preset-select': '选择预设覆盖项。default 最稳；低显存或快速试跑时再选择其他预设。',
             'gpu-picker-toggle': '选择训练时允许使用的 GPU 白名单。默认“全部 GPU”表示不限制；选择会保存在本机浏览器。',
             'btn-load-config': '重新读取当前方法、变体和预设合并后的配置；不会启动训练，也不会保存当前未保存修改。',
-            'btn-start-from-config': '进入训练前预检测。预检测通过后可选择立即启动或加入队列。',
-            'btn-queue-from-config': '跳过立即启动选择，把当前左侧表单对应的训练配置冻结后直接加入队列。',
+            'btn-start-from-config': '按当前训练来源方案启动。完整续训会使用历史任务冻结配置，权重热启动会先审查权重。',
+            'btn-queue-from-config': '按当前训练来源方案加入队列。完整续训会在真正启动前再次检查 checkpoint-state。',
             'btn-sticky-config-required': '底部配置目录快捷入口，切换到模型路径和数据集必填项。',
             'btn-sticky-config-common': '底部配置目录快捷入口，切换到训练轮数、学习率和输出等常用项。',
             'btn-sticky-config-preview': '底部配置目录快捷入口，切换到训练中样张设置。',
             'btn-sticky-config-optimization': '底部配置目录快捷入口，切换到显存、速度、block swap 和 LoKr 专用优化项。',
-            'btn-open-continue-lora-dialog': '选择已有 LoRA、LoHa、LoKr 或 GLoRA safetensors 权重作为新训练任务的初始化来源。',
-            'btn-clear-continue-lora-source': '清除继续训练来源，下一次启动会按从零开始训练。',
+            'btn-open-continue-lora-dialog': '选择已有 LoRA、LoHa、LoKr 或 GLoRA safetensors 权重作为权重热启动来源。',
+            'btn-clear-continue-lora-source': '清除权重热启动来源，下一次启动会按从零训练。',
             'btn-inspect-continue-lora-path': '检查这个 safetensors 是否为 LoRA/LoHa/LoKr/GLoRA，并确认是否兼容当前变体。',
+            'config-full-resume-task-select': '选择一个历史训练任务作为完整续训来源；完整续训只使用它的冻结配置快照。',
+            'config-full-resume-checkpoint-select': '选择包含 train_state.json 的 checkpoint-state；已达到目标步数的检查点不能启动。',
+            'btn-refresh-config-full-resume': '重新审查历史任务的 checkpoint-state、train_state.json 和剩余步数。',
             'continue-lora-history-task': '从历史训练任务中选择一个输出目录，读取其中保存的权重文件。',
             'btn-refresh-continue-lora-weights': '重新扫描所选历史训练任务的 safetensors 权重。',
             'btn-open-tutorial': '打开基础教程，按顺序了解全局设置、数据集、配置保存、预处理和训练启动。',
@@ -295,7 +308,7 @@ const ctx = globalThis.ctx;
             'history-filter-kind': '按训练或预处理任务筛选。',
             'history-filter-state': '按完成、异常、中断或运行状态筛选。',
             'history-filter-archived': '筛选未归档、已归档或全部历史任务。',
-            'history-filter-source': '按队列、续训或继续训练来源筛选。',
+            'history-filter-source': '按队列、完整续训或权重热启动来源筛选。',
             'history-sort-mode': '调整历史任务排序方式。',
             'btn-refresh-history-view': '重新读取当前正在查看的历史日志和 Loss；适合训练仍在写日志时手动更新。',
             'btn-merge-config-group-history': '按同一个配置文件分组合并查看训练日志和 Loss 曲线；预处理任务不会参与合并。',

@@ -36,8 +36,14 @@ def _write_resume_history(tmp_path):
     task_dir = history_dir / task_id
     output_dir = tmp_path / "output"
     state_dir = output_dir / "demo-checkpoint-state"
+    source_dir = tmp_path / "image_dataset" / "demo"
+    resized_dir = tmp_path / "post_image_dataset" / "resized"
+    cache_dir = tmp_path / "post_image_dataset" / "lora"
     task_dir.mkdir(parents=True)
     state_dir.mkdir(parents=True)
+    source_dir.mkdir(parents=True)
+    resized_dir.mkdir(parents=True)
+    cache_dir.mkdir(parents=True)
 
     started_at = 1000.0
     finished_at = 2000.0
@@ -57,7 +63,18 @@ def _write_resume_history(tmp_path):
     }
     (task_dir / "meta.json").write_text(json.dumps(meta), encoding="utf-8")
     (task_dir / "config.snapshot.toml").write_text(
-        f'output_dir = "{output_dir.as_posix()}"\noutput_name = "demo"\n',
+        "\n".join(
+            [
+                f'output_dir = "{output_dir.as_posix()}"',
+                'output_name = "demo"',
+                f'source_image_dir = "{source_dir.as_posix()}"',
+                f'resized_image_dir = "{resized_dir.as_posix()}"',
+                f'lora_cache_dir = "{cache_dir.as_posix()}"',
+                "train_batch_size = 1",
+                "max_train_steps = 100",
+            ]
+        )
+        + "\n",
         encoding="utf-8",
     )
     (state_dir / "train_state.json").write_text(
@@ -67,6 +84,19 @@ def _write_resume_history(tmp_path):
     (output_dir / "demo-checkpoint.safetensors").write_bytes(b"stub")
     os.utime(state_dir / "train_state.json", (1500.0, 1500.0))
     return history_dir, task_id, state_dir
+
+
+def _patch_resume_runtime_output_root(monkeypatch, tmp_path):
+    output_root = tmp_path / "runtime-runs"
+    monkeypatch.setattr(training_service, "resolve_output_root", lambda: output_root)
+    return output_root
+
+
+def _patch_queue_storage(monkeypatch, tmp_path):
+    queue_dir = tmp_path / "queue"
+    monkeypatch.setattr(training_service, "QUEUE_DIR", queue_dir)
+    monkeypatch.setattr(training_service, "QUEUE_FILE", queue_dir / "queue.json")
+    return queue_dir
 
 
 def _write_group_task(
@@ -366,6 +396,98 @@ def test_resume_options_find_checkpoint_state(tmp_path, monkeypatch):
     assert payload["checkpoints"][0]["scope"] == "task"
 
 
+def test_resume_options_mark_completed_checkpoint_unavailable(tmp_path, monkeypatch):
+    history_dir, task_id, state_dir = _write_resume_history(tmp_path)
+    monkeypatch.setattr(training_service, "HISTORY_DIR", history_dir)
+    monkeypatch.setattr(
+        config_service,
+        "estimate_training_steps",
+        lambda *_args, **_kwargs: {"total_steps": 42},
+    )
+
+    svc = TrainingService(web.Application())
+    payload = svc.get_resume_options(task_id)
+
+    checkpoint = payload["checkpoints"][0]
+    assert payload["default_checkpoint"] == ""
+    assert checkpoint["path"] == str(state_dir)
+    assert checkpoint["target_total_steps"] == 42
+    assert checkpoint["remaining_steps"] == 0
+    assert checkpoint["resume_available"] is False
+    assert checkpoint["unavailable_reason"] == (
+        "这个检查点已训练到 step 42，当前配置目标是 42，"
+        "继续训练不会产生新步数。请先增加 max_train_steps / max_train_epochs，或改用权重热启动。"
+    )
+
+    with pytest.raises(ValueError, match="继续训练不会产生新步数"):
+        asyncio.run(svc.resume_from_history_task(task_id, str(state_dir)))
+    with pytest.raises(ValueError, match="继续训练不会产生新步数"):
+        asyncio.run(svc.resume_from_history_task(task_id))
+
+
+def test_resume_from_history_allows_remaining_steps_and_clones_runtime(tmp_path, monkeypatch):
+    history_dir, task_id, state_dir = _write_resume_history(tmp_path)
+    monkeypatch.setattr(training_service, "HISTORY_DIR", history_dir)
+    output_root = _patch_resume_runtime_output_root(monkeypatch, tmp_path)
+    monkeypatch.setattr(
+        config_service,
+        "estimate_training_steps",
+        lambda *_args, **_kwargs: {"total_steps": 100},
+    )
+
+    svc = TrainingService(web.Application())
+    captured = {}
+
+    async def fake_start(variant, preset, extra_args, methods_subdir, **kwargs):
+        captured.update({
+            "variant": variant,
+            "preset": preset,
+            "extra_args": extra_args,
+            "methods_subdir": methods_subdir,
+            **kwargs,
+        })
+
+    svc.start = fake_start
+
+    result = asyncio.run(svc.resume_from_history_task(task_id))
+
+    assert result["ok"] is True
+    runtime_config = Path(captured["config_file"])
+    assert runtime_config.name == "config.runtime.toml"
+    assert output_root in runtime_config.parents
+    assert runtime_config.exists()
+    assert captured["extra_args"][:2] == ["--resume", str(state_dir)]
+    assert captured["resume_info"]["target_total_steps"] == 100
+    assert captured["resume_info"]["remaining_steps"] == 58
+    runtime_cfg = toml.loads(runtime_config.read_text(encoding="utf-8"))
+    assert runtime_cfg["output_dir"].startswith(str(output_root))
+    assert runtime_cfg["output_dir"].endswith("/training_output")
+    assert runtime_cfg["output_dir"] != str(state_dir.parent)
+
+
+def test_resume_options_find_numbered_checkpoint_states(tmp_path, monkeypatch):
+    history_dir, task_id, state_dir = _write_resume_history(tmp_path)
+    output_dir = state_dir.parent
+    numbered_state = output_dir / "demo-checkpoint-000002-state"
+    numbered_state.mkdir()
+    (numbered_state / "train_state.json").write_text(
+        json.dumps({"current_epoch": 2, "current_step": 60}),
+        encoding="utf-8",
+    )
+    (output_dir / "demo-checkpoint-000002.safetensors").write_bytes(b"numbered")
+    os.utime(numbered_state / "train_state.json", (1501.0, 1501.0))
+    monkeypatch.setattr(training_service, "HISTORY_DIR", history_dir)
+
+    svc = TrainingService(web.Application())
+    payload = svc.get_resume_options(task_id)
+
+    assert payload["default_checkpoint"] == str(numbered_state)
+    selected = payload["checkpoints"][0]
+    assert selected["name"] == "demo-checkpoint-000002-state"
+    assert selected["kind"] == "checkpoint"
+    assert selected["paired_weight"] == str(output_dir / "demo-checkpoint-000002.safetensors")
+
+
 def test_resume_options_hide_other_directory_states(tmp_path, monkeypatch):
     history_dir, task_id, state_dir = _write_resume_history(tmp_path)
     output_dir = state_dir.parent
@@ -477,6 +599,7 @@ def test_resume_from_history_rejects_other_directory_state(tmp_path, monkeypatch
 def test_resume_from_history_uses_snapshot_and_resume_args(tmp_path, monkeypatch):
     history_dir, task_id, state_dir = _write_resume_history(tmp_path)
     monkeypatch.setattr(training_service, "HISTORY_DIR", history_dir)
+    output_root = _patch_resume_runtime_output_root(monkeypatch, tmp_path)
 
     svc = TrainingService(web.Application())
     captured = {}
@@ -502,7 +625,14 @@ def test_resume_from_history_uses_snapshot_and_resume_args(tmp_path, monkeypatch
         str(state_dir),
         "--skip_until_initial_step",
     ]
-    assert captured["config_file"].endswith(f"{task_id}/config.snapshot.toml")
+    runtime_config = Path(captured["config_file"])
+    assert runtime_config.name == "config.runtime.toml"
+    assert output_root in runtime_config.parents
+    assert runtime_config.exists()
+    assert not captured["config_file"].endswith(f"{task_id}/config.snapshot.toml")
+    runtime_cfg = toml.loads(runtime_config.read_text(encoding="utf-8"))
+    assert runtime_cfg["output_dir"].endswith("/training_output")
+    assert runtime_cfg["output_dir"] != str(state_dir.parent)
     assert captured["use_runtime_dir"] is False
     assert captured["resume_info"]["checkpoint"] == str(state_dir)
     assert captured["resume_info"]["history_group_key"] == "legacy:imported\u0001demo\u0001default"
@@ -584,6 +714,8 @@ def test_saved_web_form_values_reach_runtime_config_and_train_loader(tmp_path, m
     saved_values = {
         "learning_rate": 0.000321,
         "sample_every_n_steps": 9,
+        "save_last_n_epochs": 4,
+        "checkpointing_last_n_epochs": 3,
         "block_swap_transfer_dtype": "fp8_e4m3",
         "memory_probe_jsonl": "auto",
     }
@@ -616,6 +748,8 @@ def test_saved_web_form_values_reach_runtime_config_and_train_loader(tmp_path, m
     args = read_config_from_file(parser.parse_args(argv), parser, argv=argv)
     assert args.learning_rate == saved_values["learning_rate"]
     assert args.sample_every_n_steps == saved_values["sample_every_n_steps"]
+    assert args.save_last_n_epochs == saved_values["save_last_n_epochs"]
+    assert args.checkpointing_last_n_epochs == saved_values["checkpointing_last_n_epochs"]
     assert args.block_swap_transfer_dtype == saved_values["block_swap_transfer_dtype"]
     assert args.memory_probe_jsonl == saved_values["memory_probe_jsonl"]
     assert args.output_dir == runtime_cfg["output_dir"]
@@ -2271,6 +2405,7 @@ def test_handle_start_uses_runtime_config_from_absolute_output_root(tmp_path, mo
 def test_resume_from_history_forwards_gpu_whitelist(tmp_path, monkeypatch):
     history_dir, task_id, state_dir = _write_resume_history(tmp_path)
     monkeypatch.setattr(training_service, "HISTORY_DIR", history_dir)
+    _patch_resume_runtime_output_root(monkeypatch, tmp_path)
 
     svc = TrainingService(web.Application())
     captured = {}
@@ -2286,6 +2421,58 @@ def test_resume_from_history_forwards_gpu_whitelist(tmp_path, monkeypatch):
 
     assert result["ok"] is True
     assert captured["gpu_whitelist"] == ["1", "bad", 2, 2]
+
+
+def test_queue_resume_clones_runtime_when_enqueued(tmp_path, monkeypatch):
+    history_dir, task_id, state_dir = _write_resume_history(tmp_path)
+    monkeypatch.setattr(training_service, "HISTORY_DIR", history_dir)
+    output_root = _patch_resume_runtime_output_root(monkeypatch, tmp_path)
+    _patch_queue_storage(monkeypatch, tmp_path)
+
+    svc = TrainingService(web.Application())
+    svc._schedule_queue_dispatch = lambda: None
+
+    result = asyncio.run(svc.enqueue_resume_from_history_task(task_id, str(state_dir)))
+
+    assert result["ok"] is True
+    item = result["item"]
+    runtime_config = Path(item["runtime_config_file"])
+    assert runtime_config.name == "config.runtime.toml"
+    assert output_root in runtime_config.parents
+    assert runtime_config.exists()
+    assert not item["runtime_config_file"].endswith(f"{task_id}/config.snapshot.toml")
+    assert item["runtime_info"]["runtime_config_file"] == item["runtime_config_file"]
+    assert item["runtime_info"]["training_output_dir"].startswith(str(output_root))
+    assert item["extra_args"] == ["--resume", str(state_dir), "--skip_until_initial_step"]
+    assert item["resume_info"]["checkpoint"] == str(state_dir)
+
+
+def test_queue_resume_missing_train_state_marks_item_error(tmp_path, monkeypatch):
+    history_dir, task_id, state_dir = _write_resume_history(tmp_path)
+    monkeypatch.setattr(training_service, "HISTORY_DIR", history_dir)
+    _patch_resume_runtime_output_root(monkeypatch, tmp_path)
+    _patch_queue_storage(monkeypatch, tmp_path)
+
+    svc = TrainingService(web.Application())
+    svc._schedule_queue_dispatch = lambda: None
+    asyncio.run(svc.enqueue_resume_from_history_task(task_id, str(state_dir)))
+    item = svc._queue_items()[0]
+    (state_dir / "train_state.json").unlink()
+
+    called = False
+
+    async def fake_start_unlocked(*_args, **_kwargs):
+        nonlocal called
+        called = True
+
+    svc._start_unlocked = fake_start_unlocked
+
+    asyncio.run(svc._dispatch_queue())
+
+    assert called is False
+    assert item["state"] == "error"
+    assert "续训检查点状态已不存在" in item["message"]
+    assert svc._queue_paused is True
 
 
 def test_start_after_preprocess_uses_runtime_config_for_preflight(tmp_path, monkeypatch):
@@ -3527,6 +3714,13 @@ class _FakeAccelerator:
     def __init__(self, *, step=2, fail=False):
         self.step = step
         self.fail = fail
+        self.is_main_process = True
+
+    def print(self, *_args, **_kwargs):
+        return None
+
+    def wait_for_everyone(self):
+        return None
 
     def save_state(self, output_dir):
         os.makedirs(output_dir, exist_ok=True)
@@ -3545,6 +3739,11 @@ class _TinyResumeNetwork(torch.nn.Module):
         self.weight = torch.nn.Parameter(torch.zeros(1))
 
 
+class _TinySaveNetwork(_TinyResumeNetwork):
+    def save_weights(self, path, _save_dtype, _metadata):
+        Path(path).write_bytes(b"weights")
+
+
 def _resume_saver(args):
     return CheckpointSaver(
         args=args,
@@ -3560,6 +3759,75 @@ def _resume_saver(args):
 
 def _checkpoint_args(tmp_path):
     return SimpleNamespace(output_dir=str(tmp_path), output_name="demo")
+
+
+def _checkpointing_args(tmp_path, *, keep_last=2):
+    return SimpleNamespace(
+        output_dir=str(tmp_path),
+        output_name="demo",
+        save_model_as="safetensors",
+        no_metadata=False,
+        checkpointing_epochs=1,
+        checkpointing_last_n_epochs=keep_last,
+        resume=None,
+        max_train_steps=100,
+        skip_until_initial_step=False,
+    )
+
+
+def _weight_checkpoint_args(tmp_path, *, keep_last):
+    return SimpleNamespace(
+        output_dir=str(tmp_path),
+        output_name="demo",
+        save_model_as="safetensors",
+        no_metadata=False,
+        save_every_n_epochs=1,
+        save_last_n_epochs=keep_last,
+        save_state=False,
+    )
+
+
+def _weight_checkpoint_saver(args):
+    return CheckpointSaver(
+        args=args,
+        accelerator=_FakeAccelerator(),
+        save_dtype=None,
+        metadata={},
+        minimum_metadata={},
+        get_sai_model_spec_fn=lambda _args: {},
+        current_epoch=SimpleNamespace(value=0),
+        current_step=SimpleNamespace(value=0),
+    )
+
+
+def test_save_last_n_epochs_keeps_recent_weight_files(tmp_path):
+    args = _weight_checkpoint_args(tmp_path, keep_last=2)
+    saver = _weight_checkpoint_saver(args)
+    network = _TinySaveNetwork()
+
+    for epoch_no, step in ((1, 10), (2, 20), (3, 30)):
+        saver.maybe_save_epoch(
+            network, global_step=step, epoch=epoch_no - 1, num_train_epochs=5
+        )
+
+    assert not (tmp_path / "demo-000001.safetensors").exists()
+    assert (tmp_path / "demo-000002.safetensors").exists()
+    assert (tmp_path / "demo-000003.safetensors").exists()
+
+
+def test_save_last_n_epochs_minus_one_keeps_all_weight_files(tmp_path):
+    args = _weight_checkpoint_args(tmp_path, keep_last=-1)
+    saver = _weight_checkpoint_saver(args)
+    network = _TinySaveNetwork()
+
+    for epoch_no, step in ((1, 10), (2, 20), (3, 30)):
+        saver.maybe_save_epoch(
+            network, global_step=step, epoch=epoch_no - 1, num_train_epochs=5
+        )
+
+    assert (tmp_path / "demo-000001.safetensors").exists()
+    assert (tmp_path / "demo-000002.safetensors").exists()
+    assert (tmp_path / "demo-000003.safetensors").exists()
 
 
 def test_save_checkpoint_state_replaces_state_after_success(tmp_path):
@@ -3619,6 +3887,74 @@ def test_save_checkpoint_state_recovers_leftover_backup(tmp_path):
     assert not tmp_dir.exists()
 
 
+def test_checkpointing_last_n_epochs_keeps_recent_resumable_states(tmp_path):
+    args = _checkpointing_args(tmp_path, keep_last=2)
+    accelerator = _FakeAccelerator()
+    saver = CheckpointSaver(
+        args=args,
+        accelerator=accelerator,
+        save_dtype=None,
+        metadata={},
+        minimum_metadata={},
+        get_sai_model_spec_fn=lambda _args: {},
+        current_epoch=SimpleNamespace(value=0),
+        current_step=SimpleNamespace(value=0),
+    )
+    network = _TinySaveNetwork()
+
+    for epoch_no, step in ((1, 10), (2, 20), (3, 30)):
+        accelerator.step = step
+        saver.maybe_save_resumable(
+            network, global_step=step, epoch=epoch_no - 1, num_train_epochs=5
+        )
+
+    assert not (tmp_path / "demo-checkpoint-000001-state").exists()
+    assert not (tmp_path / "demo-checkpoint-000001.safetensors").exists()
+    assert (tmp_path / "demo-checkpoint-000002-state" / "train_state.json").exists()
+    assert (tmp_path / "demo-checkpoint-000002.safetensors").exists()
+    latest_state = tmp_path / "demo-checkpoint-000003-state"
+    assert latest_state.exists()
+    assert json.loads((latest_state / "train_state.json").read_text(encoding="utf-8"))["current_step"] == 30
+
+    resume_args = _checkpointing_args(tmp_path, keep_last=2)
+    _resume_saver(resume_args).auto_resume()
+
+    assert resume_args.resume == str(latest_state.resolve())
+    assert resume_args.skip_until_initial_step is True
+
+    saver.cleanup_resumable()
+    completed_args = _checkpointing_args(tmp_path, keep_last=2)
+    _resume_saver(completed_args).auto_resume()
+    assert completed_args.resume is None
+    assert latest_state.exists()
+
+
+def test_checkpointing_last_n_epochs_minus_one_keeps_all_resumable_states(tmp_path):
+    args = _checkpointing_args(tmp_path, keep_last=-1)
+    accelerator = _FakeAccelerator()
+    saver = CheckpointSaver(
+        args=args,
+        accelerator=accelerator,
+        save_dtype=None,
+        metadata={},
+        minimum_metadata={},
+        get_sai_model_spec_fn=lambda _args: {},
+        current_epoch=SimpleNamespace(value=0),
+        current_step=SimpleNamespace(value=0),
+    )
+    network = _TinySaveNetwork()
+
+    for epoch_no, step in ((1, 10), (2, 20), (3, 30)):
+        accelerator.step = step
+        saver.maybe_save_resumable(
+            network, global_step=step, epoch=epoch_no - 1, num_train_epochs=5
+        )
+
+    assert (tmp_path / "demo-checkpoint-000001-state").exists()
+    assert (tmp_path / "demo-checkpoint-000002-state").exists()
+    assert (tmp_path / "demo-checkpoint-000003-state").exists()
+
+
 def test_auto_resume_skips_incompatible_network_state(tmp_path):
     state_dir = tmp_path / "demo-checkpoint-state"
     state_dir.mkdir()
@@ -3665,6 +4001,27 @@ def test_auto_resume_uses_compatible_network_state(tmp_path):
     assert args.skip_until_initial_step is True
 
 
+def test_cleanup_resumable_keeps_explicit_resume_state(tmp_path):
+    state_dir = tmp_path / "demo-checkpoint-state"
+    state_dir.mkdir()
+    (state_dir / "train_state.json").write_text(
+        json.dumps({"current_epoch": 1, "current_step": 3}),
+        encoding="utf-8",
+    )
+    latest_marker = tmp_path / "demo-checkpoint-latest.json"
+    latest_marker.write_text(json.dumps({"state_dir": str(state_dir)}), encoding="utf-8")
+    checkpoint_weight = tmp_path / "demo-checkpoint.safetensors"
+    checkpoint_weight.write_bytes(b"checkpoint")
+    args = _checkpointing_args(tmp_path, keep_last=2)
+    args.resume = str(state_dir)
+
+    _resume_saver(args).cleanup_resumable()
+
+    assert (state_dir / "train_state.json").exists()
+    assert latest_marker.exists()
+    assert checkpoint_weight.exists()
+
+
 def test_plan_resume_start_uses_steps_from_state():
     args = SimpleNamespace(
         initial_epoch=None,
@@ -3685,6 +4042,25 @@ def test_plan_resume_start_uses_steps_from_state():
     assert plan.initial_step == 16
     assert plan.epoch_to_start == 3
     assert plan.steps_from_state is None
+
+
+def test_plan_resume_start_rejects_completed_resume_step():
+    args = SimpleNamespace(
+        initial_epoch=None,
+        initial_step=None,
+        gradient_accumulation_steps=1,
+        max_train_steps=8,
+        skip_until_initial_step=True,
+        resume="state-dir",
+    )
+
+    with pytest.raises(ValueError, match="恢复点已训练到 step 8"):
+        plan_resume_start(
+            args,
+            steps_from_state=8,
+            batches_per_epoch=10,
+            num_processes=1,
+        )
 
 
 def test_plan_resume_start_initial_step_overrides_state():

@@ -348,7 +348,13 @@ def add_training_arguments(parser: argparse.ArgumentParser, support_dreambooth: 
         "--checkpointing_epochs",
         type=int,
         default=None,
-        help="save resumable checkpoint every N epochs (overwrites previous, auto-resumes on next run)",
+        help="save resumable checkpoint every N epochs (auto-resumes on next run)",
+    )
+    parser.add_argument(
+        "--checkpointing_last_n_epochs",
+        type=int,
+        default=1,
+        help="keep last N resumable checkpoint states saved by --checkpointing_epochs; -1 keeps all",
     )
 
     parser.add_argument(
@@ -419,6 +425,27 @@ def add_training_arguments(parser: argparse.ArgumentParser, support_dreambooth: 
         help="Inductor preset forwarded as torch.compile(..., mode=...). "
         "'reduce-overhead' enables CUDAGraphs — requires stable tensor addresses "
         "across steps and is incompatible with block swap.",
+    )
+    parser.add_argument(
+        "--compile_dynamic_seq",
+        action="store_true",
+        help=(
+            "Mark only the native-flattened sequence axis dynamic before the "
+            "compiled DiT block. The mark is applied inside the checkpointed "
+            "callable so gradient-checkpoint recompute sees the same symbolic "
+            "bounds as the original forward."
+        ),
+    )
+    parser.add_argument(
+        "--activation_memory_budget",
+        type=float,
+        default=1.0,
+        help=(
+            "torch.compile AOT partitioner activation-memory budget. Values "
+            "<1.0 ask the partitioner to recompute cheap intermediates, but the "
+            "setting is ignored when gradient_checkpointing is enabled because "
+            "repartitioning can make checkpoint recompute pick a different graph."
+        ),
     )
     parser.add_argument(
         "--xformers", action="store_true", help="use xformers for CrossAttention"

@@ -272,6 +272,18 @@
     .continue-training-source-actions {
         justify-content: flex-start;
     }
+    .training-source-mode-switch {
+        align-items: stretch;
+        display: grid;
+        grid-template-columns: 1fr;
+    }
+    .training-source-mode-btn {
+        justify-content: center;
+        white-space: normal;
+    }
+    .config-source-panel-controls {
+        grid-template-columns: 1fr;
+    }
     .config-dataset-current-meta {
         justify-content: flex-start;
         max-width: none;

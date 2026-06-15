@@ -1,4 +1,4 @@
-import { previewSourceLabel } from './state.js?v=module-bootstrap-20260608-10';
+import { previewSourceLabel } from './state.js?v=module-bootstrap-20260608-11';
 
 export function createPreviewImages({ ctx, state, deps, openPreviewDialog, syncPreviewPanelSubtitle }) {
     const { formatBytes } = ctx.format;

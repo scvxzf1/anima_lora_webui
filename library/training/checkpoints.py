@@ -25,6 +25,9 @@ STEP_DIFFUSERS_DIR_NAME = "{}-step{:08d}"
 
 CHECKPOINT_STATE_NAME = "{}-checkpoint-state"
 CHECKPOINT_FILE_NAME = "{}-checkpoint"
+CHECKPOINT_EPOCH_STATE_NAME = "{}-checkpoint-{:06d}-state"
+CHECKPOINT_EPOCH_FILE_NAME = "{}-checkpoint-{:06d}"
+CHECKPOINT_LATEST_STATE_FILE_NAME = "{}-checkpoint-latest.json"
 
 
 @dataclass(frozen=True)
@@ -36,6 +39,20 @@ class ResumeStartPlan:
 
 def default_if_none(value, default):
     return default if value is None else value
+
+
+def _save_last_keep_count(value) -> Optional[int]:
+    if value is None:
+        return None
+    try:
+        keep_count = int(value)
+    except (TypeError, ValueError):
+        return None
+    if keep_count < 0:
+        return None
+    if keep_count == 0:
+        return 1
+    return keep_count
 
 
 def get_epoch_ckpt_name(args: argparse.Namespace, ext: str, epoch_no: int):
@@ -54,20 +71,31 @@ def get_last_ckpt_name(args: argparse.Namespace, ext: str):
 
 
 def get_remove_epoch_no(args: argparse.Namespace, epoch_no: int):
-    if args.save_last_n_epochs is None:
+    keep_count = _save_last_keep_count(getattr(args, "save_last_n_epochs", None))
+    if keep_count is None:
         return None
 
-    remove_epoch_no = epoch_no - args.save_every_n_epochs * args.save_last_n_epochs
-    if remove_epoch_no < 0:
+    save_every_n_epochs = getattr(args, "save_every_n_epochs", None)
+    if not save_every_n_epochs:
+        return None
+    remove_epoch_no = epoch_no - save_every_n_epochs * keep_count
+    if remove_epoch_no <= 0:
         return None
     return remove_epoch_no
 
 
 def get_remove_step_no(args: argparse.Namespace, step_no: int):
-    if args.save_last_n_steps is None:
+    last_n_steps = getattr(args, "save_last_n_steps", None)
+    if last_n_steps is None:
+        return None
+    try:
+        last_n_steps = int(last_n_steps)
+    except (TypeError, ValueError):
+        return None
+    if last_n_steps < 0:
         return None
 
-    remove_step_no = step_no - args.save_last_n_steps - 1
+    remove_step_no = step_no - last_n_steps - 1
     remove_step_no = remove_step_no - (remove_step_no % args.save_every_n_steps)
     if remove_step_no < 0:
         return None
@@ -179,11 +207,14 @@ def save_and_remove_state_on_epoch_end(args: argparse.Namespace, accelerator, ep
 
     last_n_epochs = (
         args.save_last_n_epochs_state
-        if args.save_last_n_epochs_state
+        if args.save_last_n_epochs_state is not None
         else args.save_last_n_epochs
     )
-    if last_n_epochs is not None:
-        remove_epoch_no = epoch_no - args.save_every_n_epochs * last_n_epochs
+    keep_count = _save_last_keep_count(last_n_epochs)
+    if keep_count is not None:
+        remove_epoch_no = epoch_no - args.save_every_n_epochs * keep_count
+        if remove_epoch_no <= 0:
+            return
         state_dir_old = os.path.join(
             args.output_dir, EPOCH_STATE_NAME.format(model_name, remove_epoch_no)
         )
@@ -222,14 +253,150 @@ def save_and_remove_state_stepwise(args: argparse.Namespace, accelerator, step_n
                 shutil.rmtree(state_dir_old)
 
 
-def get_checkpoint_state_dir(args: argparse.Namespace):
+def get_checkpoint_state_dir(args: argparse.Namespace, epoch_no: Optional[int] = None):
     model_name = default_if_none(args.output_name, DEFAULT_LAST_OUTPUT_NAME)
+    if epoch_no is not None:
+        return os.path.join(
+            args.output_dir, CHECKPOINT_EPOCH_STATE_NAME.format(model_name, epoch_no)
+        )
     return os.path.join(args.output_dir, CHECKPOINT_STATE_NAME.format(model_name))
 
 
-def get_checkpoint_ckpt_name(args: argparse.Namespace, ext: str):
+def get_checkpoint_ckpt_name(
+    args: argparse.Namespace, ext: str, epoch_no: Optional[int] = None
+):
     model_name = default_if_none(args.output_name, DEFAULT_LAST_OUTPUT_NAME)
+    if epoch_no is not None:
+        return CHECKPOINT_EPOCH_FILE_NAME.format(model_name, epoch_no) + ext
     return CHECKPOINT_FILE_NAME.format(model_name) + ext
+
+
+def get_checkpoint_latest_state_file(args: argparse.Namespace):
+    model_name = default_if_none(args.output_name, DEFAULT_LAST_OUTPUT_NAME)
+    return os.path.join(
+        args.output_dir, CHECKPOINT_LATEST_STATE_FILE_NAME.format(model_name)
+    )
+
+
+def _checkpoint_epoch_no_from_state_name(
+    args: argparse.Namespace, name: str
+) -> Optional[int]:
+    model_name = default_if_none(args.output_name, DEFAULT_LAST_OUTPUT_NAME)
+    prefix = f"{model_name}-checkpoint-"
+    suffix = "-state"
+    if not (name.startswith(prefix) and name.endswith(suffix)):
+        return None
+    raw = name[len(prefix) : -len(suffix)]
+    if len(raw) != 6 or not raw.isdigit():
+        return None
+    return int(raw)
+
+
+def _checkpointing_last_n_epochs(args: argparse.Namespace) -> int:
+    value = getattr(args, "checkpointing_last_n_epochs", 1)
+    try:
+        keep_last = int(value)
+    except (TypeError, ValueError):
+        return 1
+    if keep_last == -1:
+        return -1
+    return keep_last if keep_last > 0 else 1
+
+
+def _checkpoint_epoch_state_entries(args: argparse.Namespace) -> list[tuple[int, str]]:
+    output_dir = getattr(args, "output_dir", "")
+    if not output_dir or not os.path.isdir(output_dir):
+        return []
+    entries: list[tuple[int, str]] = []
+    for name in os.listdir(output_dir):
+        epoch_no = _checkpoint_epoch_no_from_state_name(args, name)
+        if epoch_no is None:
+            continue
+        path = os.path.join(output_dir, name)
+        if os.path.isdir(path):
+            entries.append((epoch_no, path))
+    entries.sort(key=lambda item: (item[0], item[1]))
+    return entries
+
+
+def _read_checkpoint_train_state(state_dir: str) -> dict[str, Any]:
+    train_state_file = os.path.join(state_dir, "train_state.json")
+    if not os.path.exists(train_state_file):
+        return {}
+    try:
+        with open(train_state_file, "r", encoding="utf-8") as f:
+            data = json.load(f)
+    except Exception as e:  # noqa: BLE001 - bad state means this candidate is skipped
+        logger.info(f"skip checkpoint state because train_state.json is unreadable: {e}")
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def _write_checkpoint_latest_state_marker(
+    args: argparse.Namespace, state_dir: str, epoch_no: int
+) -> None:
+    marker_file = get_checkpoint_latest_state_file(args)
+    tmp_file = marker_file + ".tmp"
+    with open(tmp_file, "w", encoding="utf-8") as f:
+        json.dump(
+            {
+                "state_dir": os.path.abspath(state_dir),
+                "epoch": epoch_no,
+            },
+            f,
+        )
+    os.replace(tmp_file, marker_file)
+
+
+def _checkpoint_latest_marker_state_dir(args: argparse.Namespace) -> Optional[str]:
+    marker_file = get_checkpoint_latest_state_file(args)
+    if not os.path.exists(marker_file):
+        return None
+    try:
+        with open(marker_file, "r", encoding="utf-8") as f:
+            data = json.load(f)
+    except Exception as e:  # noqa: BLE001 - stale marker should not block fresh runs
+        logger.info(f"skip checkpoint marker because it is unreadable: {e}")
+        return None
+    state_dir = str(data.get("state_dir") or "").strip()
+    if not state_dir:
+        return None
+    state_dir = os.path.abspath(state_dir)
+    output_dir = os.path.abspath(args.output_dir)
+    try:
+        if os.path.commonpath([output_dir, state_dir]) != output_dir:
+            return None
+    except ValueError:
+        return None
+    return state_dir if os.path.isdir(state_dir) else None
+
+
+def _checkpoint_state_candidates(args: argparse.Namespace) -> list[tuple[int, float, str]]:
+    candidates: list[tuple[int, float, str]] = []
+    marker_state_dir = _checkpoint_latest_marker_state_dir(args)
+    legacy_state_dir = get_checkpoint_state_dir(args)
+    state_dirs = [marker_state_dir] if marker_state_dir else []
+    if os.path.isdir(legacy_state_dir):
+        state_dirs.append(legacy_state_dir)
+
+    seen: set[str] = set()
+    for state_dir in state_dirs:
+        state_dir = os.path.abspath(state_dir)
+        if state_dir in seen:
+            continue
+        seen.add(state_dir)
+        data = _read_checkpoint_train_state(state_dir)
+        try:
+            step = int(data.get("current_step"))
+        except (TypeError, ValueError):
+            continue
+        try:
+            mtime = os.path.getmtime(os.path.join(state_dir, "train_state.json"))
+        except OSError:
+            mtime = 0.0
+        candidates.append((step, mtime, state_dir))
+    candidates.sort(key=lambda item: (item[0], item[1], item[2]), reverse=True)
+    return candidates
 
 
 def plan_resume_start(
@@ -263,9 +430,10 @@ def plan_resume_start(
             initial_step = steps_from_state
             steps_from_state_out = None
 
-    if initial_step > 0:
-        assert args.max_train_steps > initial_step, (
-            "max_train_steps should be greater than initial step"
+    if initial_step > 0 and args.max_train_steps <= initial_step:
+        raise ValueError(
+            f"恢复点已训练到 step {initial_step}，当前配置目标是 {args.max_train_steps}，"
+            "继续训练不会产生新步数。请增加 max_train_steps / max_train_epochs 后再续训。"
         )
 
     epoch_to_start = 0
@@ -343,13 +511,15 @@ def _checkpoint_network_state_compatible(state_dir: str, network: Any) -> bool:
     return False
 
 
-def save_checkpoint_state(args: argparse.Namespace, accelerator):
-    state_dir = get_checkpoint_state_dir(args)
+def save_checkpoint_state(
+    args: argparse.Namespace, accelerator, epoch_no: Optional[int] = None
+):
+    state_dir = get_checkpoint_state_dir(args, epoch_no)
     tmp_dir = state_dir + ".tmp"
     backup_dir = state_dir + ".backup"
 
     logger.info("")
-    logger.info(f"saving checkpoint state to {state_dir} (overwriting)")
+    logger.info(f"saving checkpoint state to {state_dir}")
     os.makedirs(args.output_dir, exist_ok=True)
 
     _recover_checkpoint_state_dirs(state_dir, tmp_dir, backup_dir)
@@ -358,6 +528,8 @@ def save_checkpoint_state(args: argparse.Namespace, accelerator):
         if os.path.exists(state_dir):
             os.replace(state_dir, backup_dir)
         os.replace(tmp_dir, state_dir)
+        if epoch_no is not None:
+            _write_checkpoint_latest_state_marker(args, state_dir, epoch_no)
         if os.path.exists(backup_dir):
             _remove_path(backup_dir)
     except Exception:
@@ -510,19 +682,14 @@ class CheckpointSaver:
         args = self.args
         if not getattr(args, "checkpointing_epochs", None) or args.resume:
             return
-        checkpoint_state_dir = get_checkpoint_state_dir(args)
-        if not os.path.exists(checkpoint_state_dir):
+        candidates = _checkpoint_state_candidates(args)
+        if not candidates:
             return
-        train_state_file = os.path.join(checkpoint_state_dir, "train_state.json")
-        if not os.path.exists(train_state_file):
-            return
+        ckpt_step, _, checkpoint_state_dir = candidates[0]
         if network is not None and not _checkpoint_network_state_compatible(
             checkpoint_state_dir, network
         ):
             return
-        with open(train_state_file, "r", encoding="utf-8") as f:
-            ckpt_data = json.load(f)
-        ckpt_step = ckpt_data.get("current_step", 0)
         if ckpt_step < args.max_train_steps:
             args.resume = checkpoint_state_dir
             args.skip_until_initial_step = True
@@ -622,8 +789,7 @@ class CheckpointSaver:
     def maybe_save_resumable(
         self, network: Any, global_step: int, epoch: int, num_train_epochs: int
     ) -> None:
-        """``checkpointing_epochs``-cadence resumable save. Overwrites the
-        same ``<output_name>-checkpoint`` file each time. ``epoch`` is 0-indexed."""
+        """``checkpointing_epochs``-cadence resumable save. ``epoch`` is 0-indexed."""
         args = self.args
         accelerator = self.accelerator
         if not (
@@ -636,29 +802,67 @@ class CheckpointSaver:
         ):
             return
         if accelerator.is_main_process:
-            ckpt_name = get_checkpoint_ckpt_name(args, "." + args.save_model_as)
+            ckpt_name = get_checkpoint_ckpt_name(
+                args, "." + args.save_model_as, epoch_no
+            )
             self.save(ckpt_name, network, global_step, epoch_no)
-        save_checkpoint_state(args, accelerator)
+        save_checkpoint_state(args, accelerator, epoch_no)
+        if accelerator.is_main_process:
+            self._cleanup_old_resumable_checkpoints()
+
+    def _cleanup_old_resumable_checkpoints(self) -> None:
+        """Keep only the configured number of numbered resumable checkpoints."""
+        args = self.args
+        keep_last = _checkpointing_last_n_epochs(args)
+        if keep_last == -1:
+            return
+        entries = _checkpoint_epoch_state_entries(args)
+        if len(entries) <= keep_last:
+            return
+        for epoch_no, state_dir in entries[: len(entries) - keep_last]:
+            if os.path.exists(state_dir):
+                logger.info(f"removing old checkpoint state: {state_dir}")
+                shutil.rmtree(state_dir)
+            ckpt_name = get_checkpoint_ckpt_name(
+                args, "." + args.save_model_as, epoch_no
+            )
+            self.remove(ckpt_name)
 
     def cleanup_resumable(self) -> None:
-        """At training end, remove the resumable checkpoint state dir + ckpt
-        file. Main-process only; no-op when ``checkpointing_epochs`` is unset."""
+        """At training end, remove the legacy single resumable checkpoint.
+
+        Numbered checkpoint states are intentionally kept according to
+        ``checkpointing_last_n_epochs`` so history can resume any retained point.
+        """
         args = self.args
         if not getattr(args, "checkpointing_epochs", None):
             return
         if not self.accelerator.is_main_process:
             return
         checkpoint_state_dir = get_checkpoint_state_dir(args)
-        if os.path.exists(checkpoint_state_dir):
+        explicit_resume = os.path.abspath(str(getattr(args, "resume", "") or ""))
+        keep_explicit_resume_state = (
+            explicit_resume
+            and explicit_resume == os.path.abspath(checkpoint_state_dir)
+        )
+        if keep_explicit_resume_state:
+            logger.info(
+                f"training complete, keeping explicit resume checkpoint state: {checkpoint_state_dir}"
+            )
+        elif os.path.exists(checkpoint_state_dir):
             logger.info(
                 f"training complete, removing checkpoint state: {checkpoint_state_dir}"
             )
             shutil.rmtree(checkpoint_state_dir)
+        latest_marker = get_checkpoint_latest_state_file(args)
+        if os.path.exists(latest_marker) and not keep_explicit_resume_state:
+            logger.info(f"training complete, removing checkpoint marker: {latest_marker}")
+            os.remove(latest_marker)
         checkpoint_ckpt = os.path.join(
             args.output_dir,
             get_checkpoint_ckpt_name(args, "." + args.save_model_as),
         )
-        if os.path.exists(checkpoint_ckpt):
+        if os.path.exists(checkpoint_ckpt) and not keep_explicit_resume_state:
             logger.info(f"removing checkpoint weights: {checkpoint_ckpt}")
             os.remove(checkpoint_ckpt)
 
