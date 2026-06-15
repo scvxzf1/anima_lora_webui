@@ -91,8 +91,9 @@ function renderTrainingSourceSummary(summary, state) {
     if (state.mode === 'full_resume') {
         const selected = selectedConfigFullResumeCheckpointFromState();
         const task = configFullResumeTaskById(state.full_resume.task_id);
-        summary.classList.toggle('selected', Boolean(selected && selected.resume_available !== false));
-        summary.classList.toggle('incompatible', Boolean(!selected || selected.resume_available === false));
+        const usable = configFullResumeCheckpointUsable(selected);
+        summary.classList.toggle('selected', usable);
+        summary.classList.toggle('incompatible', Boolean(!usable));
         summary.append(
             textNode('strong', `完整续训${task ? ` · ${configFullResumeTaskLabel(task)}` : ''}`),
             textNode('span', selected ? configResumeRemainingText(selected) : (state.full_resume.message || '请选择历史训练任务和 checkpoint-state')),
@@ -168,7 +169,7 @@ function renderConfigFullResumePanel(state) {
             summaryLine('已训练到', selected.step != null ? `Step ${selected.step}` : '步数未知'),
             summaryLine('目标 Step', selected.target_total_steps != null ? `Step ${selected.target_total_steps}` : '无法确认'),
             summaryLine('剩余步数', selected.remaining_steps != null ? String(selected.remaining_steps) : '无法确认'),
-            summaryLine('检查点路径状态', selected.resume_available !== false ? 'train_state.json 可读取' : '不可用'),
+            summaryLine('检查点路径状态', configFullResumeCheckpointUsable(selected) ? 'train_state.json 可读取' : '不可用'),
         );
         if (selected.unavailable_reason) summary.appendChild(summaryLine('不可用原因', selected.unavailable_reason));
         if (selected.estimate_error) summary.appendChild(summaryLine('步数估算', `无法确认剩余步数: ${selected.estimate_error}`));
@@ -227,11 +228,12 @@ globalThis.trainingSourceLaunchReadiness = function trainingSourceLaunchReadines
     if (state.mode === 'full_resume') {
         const full = state.full_resume;
         const selected = selectedConfigFullResumeCheckpointFromState();
+        const appendCompleted = configFullResumeCanAppendCompletedCheckpoint(selected);
         if (full.audit_status === 'checking') return { ready: false, checking: true, reason: '正在审查续接来源' };
         if (!full.task_id) return { ready: false, checking: false, reason: '请选择要完整续训的历史训练任务。' };
         if (!selected) return { ready: false, checking: false, reason: full.unavailable_reason || '未找到可用 checkpoint-state/train_state.json。' };
-        if (selected.resume_available === false) return { ready: false, checking: false, reason: selected.unavailable_reason || '这个检查点不可用于完整续训。' };
-        if (full.audit_status !== 'ok') return { ready: false, checking: false, reason: full.unavailable_reason || '完整续训来源审查未通过。' };
+        if (selected.resume_available === false && !appendCompleted) return { ready: false, checking: false, reason: selected.unavailable_reason || '这个检查点不可用于完整续训。' };
+        if (full.audit_status !== 'ok' && !appendCompleted) return { ready: false, checking: false, reason: full.unavailable_reason || '完整续训来源审查未通过。' };
         return { ready: true, checking: false, reason: '' };
     }
     const source = globalThis.continueTrainingSource;
@@ -296,7 +298,7 @@ globalThis.auditConfigFullResumeSource = async function auditConfigFullResumeSou
             setFullResumeAudit('error', payload.error || '读取完整续训检查点失败。');
         } else if (!selected) {
             setFullResumeAudit('error', payload.message || '未找到 checkpoint-state/train_state.json，完整续训不可用。');
-        } else if (selected.resume_available === false) {
+        } else if (selected.resume_available === false && !configFullResumeCanAppendCompletedCheckpoint(selected)) {
             setFullResumeAudit('error', selected.unavailable_reason || '这个检查点不可用于完整续训。');
         } else {
             setFullResumeAudit('ok', '');
@@ -356,6 +358,24 @@ function syncWeightHotstartAuditFromContinue(ok = null, reason = '') {
     }
     if (state.mode === 'weight_hotstart') state.audit_status = weight.audit_status;
 }
+function configFullResumeDurationOverrides() {
+    const epochs = readOptionalLiveNumber?.('max_train_epochs');
+    if (epochs) return { max_train_epochs: epochs };
+    const steps = readNonnegativeLiveNumber?.('max_train_steps', 0) || 0;
+    return steps > 0 ? { max_train_steps: steps } : {};
+}
+function configFullResumeDurationText(duration) {
+    if (duration?.max_train_epochs) return `从所选检查点再追加 ${duration.max_train_epochs} 轮。`;
+    if (duration?.max_train_steps) return `从所选检查点再追加 ${duration.max_train_steps} 步。`;
+    return '未填写当前训练时长时，将沿用历史冻结配置的剩余步数。';
+}
+function configFullResumeCanAppendCompletedCheckpoint(item) {
+    const duration = configFullResumeDurationOverrides();
+    const step = Number(item?.step), target = Number(item?.target_total_steps);
+    const integrity = item?.state_integrity || {};
+    return Boolean((duration.max_train_epochs || duration.max_train_steps) && Number.isFinite(step) && Number.isFinite(target) && step >= target && integrity.complete !== false);
+}
+function configFullResumeCheckpointUsable(item) { return Boolean(item && (item.resume_available !== false || configFullResumeCanAppendCompletedCheckpoint(item))); }
 globalThis.startConfigFullResumeSource = async function startConfigFullResumeSource(queueMode = false) {
     if (!queueMode && isLiveRunningState()) {
         setTomlStatus('error', '当前已有训练或预处理在运行，请改用“加入队列”。', { persist: true });
@@ -369,10 +389,11 @@ globalThis.startConfigFullResumeSource = async function startConfigFullResumeSou
     const selected = selectedConfigFullResumeCheckpointFromState();
     const task = configFullResumeTaskById(state.full_resume.task_id);
     if (!selected || !task) return;
+    const durationOverrides = configFullResumeDurationOverrides();
     const ok = await showAppConfirmDialog({
         title: queueMode ? '完整续训加入队列' : '开始完整续训',
         description: configFullResumeTaskLabel(task),
-        message: `将使用历史任务冻结配置快照，并从 ${selected.name || selected.path} 恢复 optimizer、scheduler 和已完成步数。当前配置页表单不会覆盖这次完整续训。`,
+        message: `将使用历史任务冻结配置快照，并从 ${selected.name || selected.path} 恢复 optimizer、scheduler 和已完成步数。${configFullResumeDurationText(durationOverrides)}其它配置页表单不会覆盖这次完整续训。`,
         confirmText: queueMode ? '加入队列' : '开始完整续训',
     });
     if (!ok) return;
@@ -387,6 +408,7 @@ globalThis.startConfigFullResumeSource = async function startConfigFullResumeSou
             body: JSON.stringify({
                 task_id: task.id,
                 checkpoint: selected.path,
+                duration_overrides: durationOverrides,
                 gpu_whitelist: gpuPicker.selectedGpuPayload(),
             }),
         });
@@ -432,7 +454,7 @@ function syncFullResumeCheckpointFields(selected) {
     full.current_step = selected?.step ?? null;
     full.target_total_steps = selected?.target_total_steps ?? null;
     full.remaining_steps = selected?.remaining_steps ?? null;
-    full.resume_available = Boolean(selected && selected.resume_available !== false);
+    full.resume_available = configFullResumeCheckpointUsable(selected);
     full.estimate_error = selected?.estimate_error || '';
 }
 globalThis.handleConfigFullResumeTaskChange = async function handleConfigFullResumeTaskChange(value) {
@@ -447,9 +469,10 @@ globalThis.handleConfigFullResumeCheckpointChange = function handleConfigFullRes
     full.checkpoint = value || '';
     const selected = selectedConfigFullResumeCheckpointFromState();
     syncFullResumeCheckpointFields(selected);
+    const usable = configFullResumeCheckpointUsable(selected);
     setFullResumeAudit(
-        selected && selected.resume_available !== false ? 'ok' : 'error',
-        selected?.unavailable_reason || (!selected ? '请选择可用的 checkpoint-state。' : ''),
+        usable ? 'ok' : 'error',
+        usable ? '' : (selected?.unavailable_reason || (!selected ? '请选择可用的 checkpoint-state。' : '')),
     );
     renderContinueTrainingSource();
 };

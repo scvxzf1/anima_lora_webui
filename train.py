@@ -119,6 +119,15 @@ def _collect_bucket_resolutions(*dataset_groups) -> list[tuple[int, int]]:
     return sorted(resos)
 
 
+def _collect_compile_resolutions(
+    *dataset_groups,
+    sample_prompts: str | None = None,
+) -> list[tuple[int, int]]:
+    resos = set(_collect_bucket_resolutions(*dataset_groups))
+    resos.update(train_util.sample_prompt_resolutions(sample_prompts))
+    return sorted(resos)
+
+
 def _install_stop_signal_handlers() -> None:
     """Make SIGTERM follow the same cleanup path as Ctrl-C."""
 
@@ -1934,8 +1943,13 @@ class AnimaTrainer:
             use_user_config,
             use_dreambooth_method,
         ) = self._prepare_dataset(args)
-        args.bucket_resolutions = _collect_bucket_resolutions(
-            train_dataset_group, val_dataset_group
+        # Preview images use the same compiled DiT blocks as training, so the
+        # compile shape set must cover both dataset buckets and sample prompt
+        # preview resolutions.
+        args.bucket_resolutions = _collect_compile_resolutions(
+            train_dataset_group,
+            val_dataset_group,
+            sample_prompts=getattr(args, "sample_prompts", None),
         )
 
         if args.debug_dataset:

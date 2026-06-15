@@ -66,6 +66,12 @@ _LOCAL_IMPL_NAMES = {
     "_read_runtime_run_meta",
     "_runtime_from_config_file",
     "_clone_frozen_runtime_config",
+    "_apply_resume_duration_overrides",
+    "_normalize_resume_duration_overrides",
+    "_estimate_resume_steps_per_epoch",
+    "_count_resume_images",
+    "_positive_int_value",
+    "_positive_float_value",
     "_drop_resume_hotstart_overrides",
     "_clone_runtime_dataset_rows",
     "_runtime_dataset_child_name",
@@ -515,6 +521,8 @@ def _clone_frozen_runtime_config(
     *,
     source_config_file: str = "",
     reset_data_dirs: bool = False,
+    resume_step: int | None = None,
+    duration_overrides: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     _bind_legacy()
     config_path = _resolve_display_path(config_file)
@@ -583,6 +591,12 @@ def _clone_frozen_runtime_config(
         "dataset_config": _display_settings_path(dataset_config_path),
     })
     runtime_cfg.update({key: value for key, value in data_dirs.items() if value})
+    resume_duration = _apply_resume_duration_overrides(
+        runtime_cfg,
+        cloned_rows,
+        resume_step=resume_step,
+        duration_overrides=duration_overrides,
+    )
 
     runtime_config_path = run_dir / "config.runtime.toml"
     runtime_config_path.write_text(toml_dumps_sorted(runtime_cfg), encoding="utf-8")
@@ -601,6 +615,7 @@ def _clone_frozen_runtime_config(
             "runtime_config_file": _display_settings_path(runtime_config_path),
             "original_config_file": _display_settings_path(original_config_path),
             "dataset_config_file": _display_settings_path(dataset_config_path),
+            "resume_duration": resume_duration,
         },
     )
     return {
@@ -619,7 +634,117 @@ def _clone_frozen_runtime_config(
         "history_source_config_file": history_source_config_file,
         "data_dirs": data_dirs,
         "sample_config": _sample_config_from_cfg(runtime_cfg, []),
+        "resume_duration": resume_duration,
     }
+
+def _apply_resume_duration_overrides(
+    runtime_cfg: dict[str, Any],
+    runtime_rows: list[dict[str, Any]],
+    *,
+    resume_step: int | None,
+    duration_overrides: dict[str, Any] | None,
+) -> dict[str, Any]:
+    overrides = _normalize_resume_duration_overrides(duration_overrides)
+    if not overrides:
+        return {}
+    if resume_step is None or resume_step < 0:
+        raise ValueError("无法读取检查点已完成步数，不能按当前配置页训练时长追加续训")
+
+    current_step = int(resume_step)
+    if "max_train_epochs" in overrides:
+        epochs = int(overrides["max_train_epochs"])
+        steps_per_epoch = _estimate_resume_steps_per_epoch(runtime_cfg, runtime_rows)
+        if steps_per_epoch <= 0:
+            raise ValueError("无法根据历史数据集估算每轮步数，不能按 max_train_epochs 追加续训")
+        append_steps = steps_per_epoch * epochs
+        info = {
+            "mode": "epochs",
+            "max_train_epochs": epochs,
+            "steps_per_epoch": steps_per_epoch,
+        }
+    else:
+        append_steps = int(overrides["max_train_steps"])
+        info = {
+            "mode": "steps",
+            "max_train_steps": append_steps,
+            "steps_per_epoch": None,
+        }
+
+    target_total_steps = current_step + append_steps
+    runtime_cfg["max_train_steps"] = target_total_steps
+    runtime_cfg.pop("max_train_epochs", None)
+    info.update({
+        "resume_step": current_step,
+        "append_steps": append_steps,
+        "target_total_steps": target_total_steps,
+    })
+    return info
+
+def _normalize_resume_duration_overrides(duration_overrides: dict[str, Any] | None) -> dict[str, int]:
+    if not isinstance(duration_overrides, dict):
+        return {}
+    epochs = _positive_int_value(duration_overrides.get("max_train_epochs"))
+    if epochs is not None:
+        return {"max_train_epochs": epochs}
+    steps = _positive_int_value(duration_overrides.get("max_train_steps"))
+    if steps is not None:
+        return {"max_train_steps": steps}
+    return {}
+
+def _estimate_resume_steps_per_epoch(
+    runtime_cfg: dict[str, Any],
+    runtime_rows: list[dict[str, Any]],
+) -> int:
+    weighted_images = 0
+    for row in runtime_rows:
+        recursive = _bool_value_for_row(row.get("recursive"), True)
+        path_pattern = _normalize_path_pattern(row.get("path_pattern"))
+        resized_count = _count_resume_images(row.get("image_dir"), recursive=recursive, path_pattern=path_pattern)
+        source_count = _count_resume_images(row.get("source_dir"), recursive=recursive, path_pattern=path_pattern)
+        used_count = resized_count or source_count
+        repeats = _positive_int_value(row.get("num_repeats")) or 1
+        weighted_images += used_count * repeats
+
+    sample_ratio = _positive_float_value(runtime_cfg.get("sample_ratio"), 1.0)
+    repeated_images = int(weighted_images * sample_ratio)
+    batch_size = _positive_int_value(runtime_cfg.get("train_batch_size")) or 1
+    grad_accum = _positive_int_value(runtime_cfg.get("gradient_accumulation_steps")) or 1
+    effective_batch = max(1, batch_size * grad_accum)
+    return (repeated_images + effective_batch - 1) // effective_batch if repeated_images else 0
+
+def _count_resume_images(value: Any, *, recursive: bool, path_pattern: str) -> int:
+    path = _resolve_display_path(str(value or ""))
+    if path is None or not path.is_dir():
+        return 0
+    try:
+        return len(
+            _nl_tag_mix_image_files(
+                path,
+                DATASET_IMAGE_EXTS,
+                recursive=recursive,
+                path_pattern=path_pattern,
+            )
+        )
+    except OSError:
+        return 0
+
+def _positive_int_value(value: Any) -> int | None:
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, float) and not value.is_integer():
+        return None
+    try:
+        n = int(str(value).strip())
+    except (TypeError, ValueError):
+        return None
+    return n if n > 0 else None
+
+def _positive_float_value(value: Any, fallback: float) -> float:
+    try:
+        n = float(value)
+    except (TypeError, ValueError):
+        return fallback
+    return n if n > 0 else fallback
 
 def _drop_resume_hotstart_overrides(cfg: dict[str, Any]) -> dict[str, Any]:
     cleaned = dict(cfg)

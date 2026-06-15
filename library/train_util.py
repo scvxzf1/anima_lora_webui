@@ -273,6 +273,30 @@ def load_prompts(prompt_file: str) -> List[Dict]:
     return prompts
 
 
+def sample_prompt_resolutions(prompt_file: str | None) -> list[tuple[int, int]]:
+    """Collect normalized preview resolutions from a sample prompt file."""
+    if not prompt_file or not os.path.isfile(prompt_file):
+        return []
+    try:
+        prompts = load_prompts(prompt_file)
+    except Exception:
+        return []
+
+    resos: set[tuple[int, int]] = set()
+    for prompt in prompts:
+        if not isinstance(prompt, dict):
+            continue
+        try:
+            width = int(prompt.get("width", 512) or 512)
+            height = int(prompt.get("height", 512) or 512)
+        except (TypeError, ValueError):
+            continue
+        width = max(64, width - width % 16)
+        height = max(64, height - height % 16)
+        resos.add((width, height))
+    return sorted(resos)
+
+
 def init_trackers(
     accelerator: Accelerator, args: argparse.Namespace, default_tracker_name: str
 ):

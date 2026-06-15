@@ -176,11 +176,17 @@ async def handle_resume(request: web.Request) -> web.Response:
     data = await request.json()
     task_id = str(data.get("task_id") or "").strip()
     checkpoint = str(data.get("checkpoint") or "").strip()
+    duration_overrides = data.get("duration_overrides")
     gpu_whitelist = data.get("gpu_whitelist")
     if not task_id:
         return web.json_response({"ok": False, "error": "缺少 task_id"}, status=400)
     try:
-        payload = await svc.resume_from_history_task(task_id, checkpoint or None, gpu_whitelist=gpu_whitelist)
+        payload = await svc.resume_from_history_task(
+            task_id,
+            checkpoint or None,
+            duration_overrides=duration_overrides,
+            gpu_whitelist=gpu_whitelist,
+        )
         return web.json_response(payload)
     except FileNotFoundError as e:
         return web.json_response({"ok": False, "error": str(e)}, status=404)
@@ -502,6 +508,7 @@ async def handle_queue_resume(request: web.Request) -> web.Response:
     data = await request.json()
     task_id = str(data.get("task_id") or "").strip()
     checkpoint = str(data.get("checkpoint") or "").strip()
+    duration_overrides = data.get("duration_overrides")
     gpu_whitelist = data.get("gpu_whitelist")
     if not task_id:
         return web.json_response({"ok": False, "error": "缺少 task_id"}, status=400)
@@ -509,6 +516,7 @@ async def handle_queue_resume(request: web.Request) -> web.Response:
         return web.json_response(await svc.enqueue_resume_from_history_task(
             task_id,
             checkpoint or None,
+            duration_overrides=duration_overrides,
             gpu_whitelist=gpu_whitelist,
         ))
     except FileNotFoundError as e:

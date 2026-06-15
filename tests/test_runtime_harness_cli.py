@@ -109,6 +109,63 @@ def test_compile_blocks_for_training_uses_latent_tokens_for_web_buckets(
     assert captured["seq_range"] == (3234, 3256)
 
 
+def test_compile_blocks_for_training_includes_sample_prompt_resolutions(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    import train
+    from library.runtime import harness
+
+    captured: dict[str, object] = {}
+
+    class FakeUnet:
+        patch_spatial = 2
+
+        def compile_blocks(self, backend, **kwargs):
+            captured["backend"] = backend
+            captured.update(kwargs)
+
+    class FakeNetwork:
+        pass
+
+    prompt_file = tmp_path / "sample_prompts.txt"
+    prompt_file.write_text(
+        "masterpiece --w 768 --h 1152 --d 42\n",
+        encoding="utf-8",
+    )
+
+    class BucketManager:
+        resos = [(784, 1056)]
+
+    class Dataset:
+        bucket_manager = BucketManager()
+        image_data = {}
+
+    class Group:
+        datasets = [Dataset()]
+
+    merged = train._collect_compile_resolutions(
+        Group(),
+        sample_prompts=str(prompt_file),
+    )
+
+    assert merged == [(768, 1152), (784, 1056)]
+
+    monkeypatch.setenv("TORCHINDUCTOR_CACHE_DIR", str(tmp_path))
+    monkeypatch.setattr(harness, "_compile_cache_base", None)
+
+    harness.compile_blocks_for_training(
+        FakeUnet(),
+        FakeNetwork(),
+        backend="eager",
+        bucket_resolutions=merged,
+        dynamic_seq=True,
+    )
+
+    assert captured["bucket_resolutions"] == merged
+    assert captured["seq_range"] == (3234, 3456)
+
+
 def test_add_device_args_defaults() -> None:
     from library.runtime.cli import add_device_args
 

@@ -458,6 +458,44 @@ def test_resume_options_mark_completed_checkpoint_unavailable(tmp_path, monkeypa
         asyncio.run(svc.resume_from_history_task(task_id))
 
 
+def test_handle_resume_passes_duration_overrides():
+    class FakeService:
+        async def resume_from_history_task(
+            self,
+            task_id,
+            checkpoint=None,
+            *,
+            duration_overrides=None,
+            gpu_whitelist=None,
+        ):
+            return {
+                "ok": True,
+                "task_id": task_id,
+                "checkpoint": checkpoint,
+                "duration_overrides": duration_overrides,
+                "gpu_whitelist": gpu_whitelist,
+            }
+
+    req = _FakeJsonRequest(
+        {
+            "task_id": "task-a",
+            "checkpoint": "state-dir",
+            "duration_overrides": {"max_train_epochs": 1},
+            "gpu_whitelist": [0],
+        },
+        {"training_service": FakeService()},
+    )
+
+    response = asyncio.run(training_routes.handle_resume(req))
+    payload = json.loads(response.text)
+
+    assert response.status == 200
+    assert payload["task_id"] == "task-a"
+    assert payload["checkpoint"] == "state-dir"
+    assert payload["duration_overrides"] == {"max_train_epochs": 1}
+    assert payload["gpu_whitelist"] == [0]
+
+
 def test_resume_from_history_allows_remaining_steps_and_clones_runtime(tmp_path, monkeypatch):
     history_dir, task_id, state_dir = _write_resume_history(tmp_path)
     snapshot_path = history_dir / task_id / "config.snapshot.toml"
@@ -505,6 +543,63 @@ def test_resume_from_history_allows_remaining_steps_and_clones_runtime(tmp_path,
     assert runtime_cfg["output_dir"] != str(state_dir.parent)
     assert "network_weights" not in runtime_cfg
     assert "dim_from_weights" not in runtime_cfg
+
+
+def test_resume_from_history_duration_epoch_override_appends_steps(tmp_path, monkeypatch):
+    history_dir, task_id, state_dir = _write_resume_history(tmp_path)
+    resized_dir = tmp_path / "post_image_dataset" / "resized"
+    for index in range(3):
+        (resized_dir / f"image-{index}.png").write_bytes(b"png")
+    snapshot_path = history_dir / task_id / "config.snapshot.toml"
+    snapshot_path.write_text(
+        snapshot_path.read_text(encoding="utf-8") + "max_train_epochs = 5\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(training_service, "HISTORY_DIR", history_dir)
+    output_root = _patch_resume_runtime_output_root(monkeypatch, tmp_path)
+    monkeypatch.setattr(
+        config_service,
+        "estimate_training_steps",
+        lambda *_args, **_kwargs: {"total_steps": 42},
+    )
+
+    svc = TrainingService(web.Application())
+    captured = {}
+
+    async def fake_start(variant, preset, extra_args, methods_subdir, **kwargs):
+        captured.update({
+            "variant": variant,
+            "preset": preset,
+            "extra_args": extra_args,
+            "methods_subdir": methods_subdir,
+            **kwargs,
+        })
+
+    svc.start = fake_start
+
+    result = asyncio.run(
+        svc.resume_from_history_task(
+            task_id,
+            str(state_dir),
+            duration_overrides={"max_train_epochs": 1},
+        )
+    )
+
+    assert result["ok"] is True
+    runtime_config = Path(captured["config_file"])
+    assert output_root in runtime_config.parents
+    runtime_cfg = toml.loads(runtime_config.read_text(encoding="utf-8"))
+    assert "max_train_epochs" not in runtime_cfg
+    assert runtime_cfg["max_train_steps"] == 45
+    assert captured["resume_info"]["duration_overrides"] == {
+        "mode": "epochs",
+        "max_train_epochs": 1,
+        "steps_per_epoch": 3,
+        "resume_step": 42,
+        "append_steps": 3,
+        "target_total_steps": 45,
+    }
+    assert captured["resume_info"]["remaining_steps"] == 3
 
 
 def test_resume_options_find_numbered_checkpoint_states(tmp_path, monkeypatch):
@@ -2488,6 +2583,39 @@ def test_queue_resume_clones_runtime_when_enqueued(tmp_path, monkeypatch):
     assert item["runtime_info"]["training_output_dir"].startswith(str(output_root))
     assert item["extra_args"] == ["--resume", str(state_dir), "--skip_until_initial_step"]
     assert item["resume_info"]["checkpoint"] == str(state_dir)
+
+
+def test_queue_resume_duration_step_override_appends_steps(tmp_path, monkeypatch):
+    history_dir, task_id, state_dir = _write_resume_history(tmp_path)
+    monkeypatch.setattr(training_service, "HISTORY_DIR", history_dir)
+    _patch_resume_runtime_output_root(monkeypatch, tmp_path)
+    _patch_queue_storage(monkeypatch, tmp_path)
+
+    svc = TrainingService(web.Application())
+    svc._schedule_queue_dispatch = lambda: None
+
+    result = asyncio.run(
+        svc.enqueue_resume_from_history_task(
+            task_id,
+            str(state_dir),
+            duration_overrides={"max_train_steps": 7},
+        )
+    )
+
+    assert result["ok"] is True
+    item = result["item"]
+    runtime_cfg = toml.loads(Path(item["runtime_config_file"]).read_text(encoding="utf-8"))
+    assert "max_train_epochs" not in runtime_cfg
+    assert runtime_cfg["max_train_steps"] == 49
+    assert item["resume_info"]["duration_overrides"] == {
+        "mode": "steps",
+        "max_train_steps": 7,
+        "steps_per_epoch": None,
+        "resume_step": 42,
+        "append_steps": 7,
+        "target_total_steps": 49,
+    }
+    assert item["resume_info"]["remaining_steps"] == 7
 
 
 def test_queue_resume_missing_train_state_marks_item_error(tmp_path, monkeypatch):

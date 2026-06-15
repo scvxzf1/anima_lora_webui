@@ -67,6 +67,8 @@ _LOCAL_IMPL_NAMES = {
     "_build_resume_payload",
     "_annotate_resume_checkpoints",
     "_clone_resume_runtime",
+    "_resume_duration_override_requested",
+    "_positive_resume_duration_int",
     "_ensure_resume_checkpoint_available",
     "_resume_checkpoint_estimate",
     "_resume_unavailable_reason",
@@ -105,11 +107,25 @@ async def resume_from_history_task(
     task_id: str,
     checkpoint: str | None = None,
     *,
+    duration_overrides: dict[str, Any] | None = None,
     gpu_whitelist: list[Any] | None = None,
 ) -> dict[str, Any]:
     _bind_legacy()
-    task, selected, snapshot_path, resume_info = self._build_resume_payload(task_id, checkpoint)
-    runtime = _clone_resume_runtime(task, snapshot_path)
+    task, selected, snapshot_path, resume_info = self._build_resume_payload(
+        task_id,
+        checkpoint,
+        duration_overrides=duration_overrides,
+    )
+    runtime = _clone_resume_runtime(
+        task,
+        snapshot_path,
+        resume_step=_int_or_none(selected.get("step")),
+        duration_overrides=duration_overrides,
+    )
+    if isinstance(runtime.get("resume_duration"), dict) and runtime["resume_duration"]:
+        resume_info["duration_overrides"] = runtime["resume_duration"]
+        resume_info["target_total_steps"] = runtime["resume_duration"].get("target_total_steps")
+        resume_info["remaining_steps"] = runtime["resume_duration"].get("append_steps")
     config_file = str(runtime.get("runtime_config_file") or _display_project_path(str(snapshot_path)))
     source_config_file = str(runtime.get("history_source_config_file") or task.get("history_source_config_file") or "")
 
@@ -138,6 +154,8 @@ def _build_resume_payload(
     self,
     task_id: str,
     checkpoint: str | None = None,
+    *,
+    duration_overrides: dict[str, Any] | None = None,
 ) -> tuple[dict[str, Any], dict[str, Any], Path, dict[str, Any]]:
     _bind_legacy()
     payload = _load_history_task(task_id)
@@ -170,7 +188,10 @@ def _build_resume_payload(
             if first_reason:
                 raise ValueError(first_reason)
         raise ValueError("未找到指定的检查点")
-    _ensure_resume_checkpoint_available(selected)
+    _ensure_resume_checkpoint_available(
+        selected,
+        allow_completed_by_duration_override=_resume_duration_override_requested(duration_overrides),
+    )
 
     resume_info = {
         "source_task_id": task_id,
@@ -247,16 +268,58 @@ def _resume_unavailable_reason(step: int | None, target_total_steps: int | None)
         )
     return ""
 
-def _ensure_resume_checkpoint_available(selected: dict[str, Any]) -> None:
+def _ensure_resume_checkpoint_available(
+    selected: dict[str, Any],
+    *,
+    allow_completed_by_duration_override: bool = False,
+) -> None:
     reason = str(selected.get("unavailable_reason") or "")
+    if (
+        reason
+        and allow_completed_by_duration_override
+        and _int_or_none(selected.get("step")) is not None
+    ):
+        integrity = selected.get("state_integrity") if isinstance(selected.get("state_integrity"), dict) else {}
+        if integrity.get("complete") is False:
+            raise ValueError(reason)
+        target_total_steps = _int_or_none(selected.get("target_total_steps"))
+        if target_total_steps is not None and _int_or_none(selected.get("step")) >= target_total_steps:
+            return
     if reason:
         raise ValueError(reason)
 
-def _clone_resume_runtime(task: dict[str, Any], snapshot_path: Path) -> dict[str, Any]:
+def _resume_duration_override_requested(duration_overrides: dict[str, Any] | None) -> bool:
+    if not isinstance(duration_overrides, dict):
+        return False
+    for key in ("max_train_epochs", "max_train_steps"):
+        if _positive_resume_duration_int(duration_overrides.get(key)) is not None:
+            return True
+    return False
+
+def _positive_resume_duration_int(value: Any) -> int | None:
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, float) and not value.is_integer():
+        return None
+    try:
+        n = int(str(value).strip())
+    except (TypeError, ValueError):
+        return None
+    return n if n > 0 else None
+
+def _clone_resume_runtime(
+    task: dict[str, Any],
+    snapshot_path: Path,
+    *,
+    resume_step: int | None = None,
+    duration_overrides: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     return _clone_frozen_runtime_config(
         _display_project_path(str(snapshot_path)),
         source_config_file=str(task.get("history_source_config_file") or ""),
         reset_data_dirs=False,
+        resume_step=resume_step,
+        duration_overrides=duration_overrides,
     )
 
 def list_history_tasks(self, *, include_archived: bool = False, limit: int | None = None) -> list[dict[str, Any]]:

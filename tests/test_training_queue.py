@@ -1497,18 +1497,31 @@ def test_handle_queue_abort_controls_call_service_methods():
 
 def test_handle_queue_resume_uses_history_checkpoint_service():
     class FakeService:
-        async def enqueue_resume_from_history_task(self, task_id, checkpoint=None, *, gpu_whitelist=None):
+        async def enqueue_resume_from_history_task(
+            self,
+            task_id,
+            checkpoint=None,
+            *,
+            duration_overrides=None,
+            gpu_whitelist=None,
+        ):
             return {
                 "ok": True,
                 "task_id": task_id,
                 "checkpoint": checkpoint,
+                "duration_overrides": duration_overrides,
                 "gpu_whitelist": gpu_whitelist,
                 "items": [],
                 "paused": False,
             }
 
     req = _FakeJsonRequest(
-        {"task_id": "task-a", "checkpoint": "state-dir", "gpu_whitelist": [1]},
+        {
+            "task_id": "task-a",
+            "checkpoint": "state-dir",
+            "duration_overrides": {"max_train_epochs": 1},
+            "gpu_whitelist": [1],
+        },
         {"training_service": FakeService()},
     )
 
@@ -1518,6 +1531,7 @@ def test_handle_queue_resume_uses_history_checkpoint_service():
     payload = json.loads(response.text)
     assert payload["task_id"] == "task-a"
     assert payload["checkpoint"] == "state-dir"
+    assert payload["duration_overrides"] == {"max_train_epochs": 1}
     assert payload["gpu_whitelist"] == [1]
 
 

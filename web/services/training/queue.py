@@ -293,15 +293,26 @@ async def enqueue_resume_from_history_task(
     task_id: str,
     checkpoint: str | None = None,
     *,
+    duration_overrides: dict[str, Any] | None = None,
     gpu_whitelist: list[Any] | None = None,
 ) -> dict[str, Any]:
     _bind_legacy()
-    task, selected, snapshot_path, resume_info = self._build_resume_payload(task_id, checkpoint)
+    task, selected, snapshot_path, resume_info = self._build_resume_payload(
+        task_id,
+        checkpoint,
+        duration_overrides=duration_overrides,
+    )
     runtime = _clone_frozen_runtime_config(
         _display_project_path(str(snapshot_path)),
         source_config_file=str(task.get("history_source_config_file") or ""),
         reset_data_dirs=False,
+        resume_step=_int_or_none(selected.get("step")),
+        duration_overrides=duration_overrides,
     )
+    if isinstance(runtime.get("resume_duration"), dict) and runtime["resume_duration"]:
+        resume_info["duration_overrides"] = runtime["resume_duration"]
+        resume_info["target_total_steps"] = runtime["resume_duration"].get("target_total_steps")
+        resume_info["remaining_steps"] = runtime["resume_duration"].get("append_steps")
     now = time.time()
     item = {
         "id": _new_queue_item_id("resume", str(task.get("methods_subdir") or "gui-methods"), str(task.get("variant") or "training")),

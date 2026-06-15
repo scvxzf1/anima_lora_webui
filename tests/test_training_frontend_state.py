@@ -1290,6 +1290,12 @@ def test_config_training_source_modes_are_audited_before_launch() -> None:
         "remaining_steps",
         "/api/training/history/${encodeURIComponent(full.task_id)}/resume-options",
         "queueMode ? '/api/training/queue/resume' : '/api/training/resume'",
+        "configFullResumeDurationOverrides()",
+        "configFullResumeCanAppendCompletedCheckpoint",
+        "configFullResumeCheckpointUsable",
+        "duration_overrides: durationOverrides",
+        "max_train_epochs",
+        "max_train_steps",
         "configTrainingSourceMode() !== 'weight_hotstart'",
         "continue_from_weight_abs_path",
     ):
