@@ -193,7 +193,12 @@ def save_sd_model_on_epoch_end_or_stepwise_common(
             save_and_remove_state_stepwise(args, accelerator, global_step)
 
 
-def save_and_remove_state_on_epoch_end(args: argparse.Namespace, accelerator, epoch_no):
+def save_and_remove_state_on_epoch_end(
+    args: argparse.Namespace,
+    accelerator,
+    epoch_no,
+    created_state_dirs: set[str] | None = None,
+):
     model_name = default_if_none(args.output_name, DEFAULT_EPOCH_NAME)
 
     logger.info("")
@@ -203,7 +208,14 @@ def save_and_remove_state_on_epoch_end(args: argparse.Namespace, accelerator, ep
     state_dir = os.path.join(
         args.output_dir, EPOCH_STATE_NAME.format(model_name, epoch_no)
     )
+    state_preexisting = (
+        created_state_dirs is not None
+        and os.path.exists(state_dir)
+        and not _path_created_in_current_run(created_state_dirs, state_dir)
+    )
     accelerator.save_state(state_dir)
+    if not state_preexisting:
+        _record_created_path(created_state_dirs, state_dir)
 
     last_n_epochs = (
         args.save_last_n_epochs_state
@@ -219,11 +231,21 @@ def save_and_remove_state_on_epoch_end(args: argparse.Namespace, accelerator, ep
             args.output_dir, EPOCH_STATE_NAME.format(model_name, remove_epoch_no)
         )
         if os.path.exists(state_dir_old):
+            if not _path_created_in_current_run(created_state_dirs, state_dir_old):
+                logger.info(
+                    f"skip removing pre-existing state not created by this run: {state_dir_old}"
+                )
+                return
             logger.info(f"removing old state: {state_dir_old}")
             shutil.rmtree(state_dir_old)
 
 
-def save_and_remove_state_stepwise(args: argparse.Namespace, accelerator, step_no):
+def save_and_remove_state_stepwise(
+    args: argparse.Namespace,
+    accelerator,
+    step_no,
+    created_state_dirs: set[str] | None = None,
+):
     model_name = default_if_none(args.output_name, DEFAULT_STEP_NAME)
 
     logger.info("")
@@ -233,7 +255,14 @@ def save_and_remove_state_stepwise(args: argparse.Namespace, accelerator, step_n
     state_dir = os.path.join(
         args.output_dir, STEP_STATE_NAME.format(model_name, step_no)
     )
+    state_preexisting = (
+        created_state_dirs is not None
+        and os.path.exists(state_dir)
+        and not _path_created_in_current_run(created_state_dirs, state_dir)
+    )
     accelerator.save_state(state_dir)
+    if not state_preexisting:
+        _record_created_path(created_state_dirs, state_dir)
 
     last_n_steps = (
         args.save_last_n_steps_state
@@ -249,6 +278,11 @@ def save_and_remove_state_stepwise(args: argparse.Namespace, accelerator, step_n
                 args.output_dir, STEP_STATE_NAME.format(model_name, remove_step_no)
             )
             if os.path.exists(state_dir_old):
+                if not _path_created_in_current_run(created_state_dirs, state_dir_old):
+                    logger.info(
+                        f"skip removing pre-existing state not created by this run: {state_dir_old}"
+                    )
+                    return
                 logger.info(f"removing old state: {state_dir_old}")
                 shutil.rmtree(state_dir_old)
 
@@ -430,6 +464,19 @@ def plan_resume_start(
             initial_step = steps_from_state
             steps_from_state_out = None
 
+    if (
+        args.resume
+        and steps_from_state is not None
+        and args.initial_epoch is None
+        and args.initial_step is None
+        and not args.skip_until_initial_step
+    ):
+        logger.warning(
+            "--resume loaded train_state.json but --skip_until_initial_step was not set; "
+            "enabling it so global_step, dataloader skip, and scheduler progress stay aligned"
+        )
+        args.skip_until_initial_step = True
+
     if initial_step > 0 and args.max_train_steps <= initial_step:
         raise ValueError(
             f"恢复点已训练到 step {initial_step}，当前配置目标是 {args.max_train_steps}，"
@@ -462,6 +509,21 @@ def _remove_path(path: str) -> None:
         shutil.rmtree(path)
     elif os.path.exists(path):
         os.remove(path)
+
+
+def _abs_path_key(path: str) -> str:
+    return os.path.abspath(str(path))
+
+
+def _record_created_path(paths: set[str] | None, path: str) -> None:
+    if paths is not None:
+        paths.add(_abs_path_key(path))
+
+
+def _path_created_in_current_run(paths: set[str] | None, path: str) -> bool:
+    # None preserves the legacy behavior for old helper callers.  CheckpointSaver
+    # passes a set so cleanup only touches files/directories written by this run.
+    return paths is None or _abs_path_key(path) in paths
 
 
 def _recover_checkpoint_state_dirs(state_dir: str, tmp_dir: str, backup_dir: str) -> None:
@@ -528,10 +590,11 @@ def save_checkpoint_state(
         if os.path.exists(state_dir):
             os.replace(state_dir, backup_dir)
         os.replace(tmp_dir, state_dir)
-        if epoch_no is not None:
+        if epoch_no is not None and getattr(accelerator, "is_main_process", True):
             _write_checkpoint_latest_state_marker(args, state_dir, epoch_no)
         if os.path.exists(backup_dir):
             _remove_path(backup_dir)
+        return state_dir
     except Exception:
         if os.path.exists(tmp_dir):
             _remove_path(tmp_dir)
@@ -617,6 +680,9 @@ class CheckpointSaver:
         # Optional structured-progress sink (Phase 0). When set, every
         # checkpoint write emits a ``ckpt`` event.
         self.progress_sink = progress_sink
+        self._created_checkpoint_paths: set[str] = set()
+        self._created_state_dirs: set[str] = set()
+        self._created_marker_paths: set[str] = set()
         # Set by the load_state pre-hook when resuming. Read by train() to
         # decide initial_step.
         self.steps_from_state: Optional[int] = None
@@ -710,6 +776,17 @@ class CheckpointSaver:
 
         os.makedirs(args.output_dir, exist_ok=True)
         ckpt_file = os.path.join(args.output_dir, ckpt_name)
+        ckpt_preexisting = (
+            os.path.exists(ckpt_file)
+            and not _path_created_in_current_run(
+                self._created_checkpoint_paths, ckpt_file
+            )
+        )
+        moe_file = os.path.splitext(ckpt_file)[0] + "_moe.safetensors"
+        moe_preexisting = (
+            os.path.exists(moe_file)
+            and not _path_created_in_current_run(self._created_checkpoint_paths, moe_file)
+        )
 
         accelerator.print(f"\nsaving checkpoint: {ckpt_file}")
         self.metadata["ss_training_finished_at"] = str(time.time())
@@ -721,6 +798,11 @@ class CheckpointSaver:
         metadata_to_save.update(sai_metadata)
 
         unwrapped_nw.save_weights(ckpt_file, self.save_dtype, metadata_to_save)
+        if not ckpt_preexisting:
+            _record_created_path(self._created_checkpoint_paths, ckpt_file)
+        if os.path.exists(moe_file):
+            if not moe_preexisting:
+                _record_created_path(self._created_checkpoint_paths, moe_file)
 
         if self.progress_sink is not None:
             self.progress_sink.ckpt(global_step=steps, path=ckpt_file)
@@ -731,10 +813,22 @@ class CheckpointSaver:
         accelerator = self.accelerator
         old_ckpt_file = os.path.join(args.output_dir, old_ckpt_name)
         if os.path.exists(old_ckpt_file):
-            accelerator.print(f"removing old checkpoint: {old_ckpt_file}")
-            os.remove(old_ckpt_file)
+            if not _path_created_in_current_run(
+                self._created_checkpoint_paths, old_ckpt_file
+            ):
+                accelerator.print(
+                    f"skip removing pre-existing checkpoint not created by this run: {old_ckpt_file}"
+                )
+            else:
+                accelerator.print(f"removing old checkpoint: {old_ckpt_file}")
+                os.remove(old_ckpt_file)
         moe_file = os.path.splitext(old_ckpt_file)[0] + "_moe.safetensors"
         if os.path.exists(moe_file):
+            if not _path_created_in_current_run(self._created_checkpoint_paths, moe_file):
+                accelerator.print(
+                    f"skip removing pre-existing checkpoint not created by this run: {moe_file}"
+                )
+                return
             accelerator.print(f"removing old checkpoint: {moe_file}")
             os.remove(moe_file)
 
@@ -753,7 +847,9 @@ class CheckpointSaver:
         ckpt_name = get_step_ckpt_name(args, "." + args.save_model_as, global_step)
         self.save(ckpt_name, network, global_step, epoch)
         if args.save_state:
-            save_and_remove_state_stepwise(args, accelerator, global_step)
+            save_and_remove_state_stepwise(
+                args, accelerator, global_step, self._created_state_dirs
+            )
         remove_step_no = get_remove_step_no(args, global_step)
         if remove_step_no is not None:
             remove_ckpt_name = get_step_ckpt_name(
@@ -784,7 +880,9 @@ class CheckpointSaver:
             )
             self.remove(remove_ckpt_name)
         if args.save_state:
-            save_and_remove_state_on_epoch_end(args, accelerator, epoch_no)
+            save_and_remove_state_on_epoch_end(
+                args, accelerator, epoch_no, self._created_state_dirs
+            )
 
     def maybe_save_resumable(
         self, network: Any, global_step: int, epoch: int, num_train_epochs: int
@@ -806,7 +904,27 @@ class CheckpointSaver:
                 args, "." + args.save_model_as, epoch_no
             )
             self.save(ckpt_name, network, global_step, epoch_no)
-        save_checkpoint_state(args, accelerator, epoch_no)
+        expected_state_dir = get_checkpoint_state_dir(args, epoch_no)
+        state_preexisting = (
+            os.path.exists(expected_state_dir)
+            and not _path_created_in_current_run(
+                self._created_state_dirs, expected_state_dir
+            )
+        )
+        latest_marker = get_checkpoint_latest_state_file(args)
+        marker_preexisting = (
+            accelerator.is_main_process
+            and os.path.exists(latest_marker)
+            and not _path_created_in_current_run(
+                self._created_marker_paths, latest_marker
+            )
+        )
+        state_dir = save_checkpoint_state(args, accelerator, epoch_no)
+        if state_dir and not state_preexisting:
+            _record_created_path(self._created_state_dirs, state_dir)
+        if accelerator.is_main_process:
+            if os.path.exists(latest_marker) and not marker_preexisting:
+                _record_created_path(self._created_marker_paths, latest_marker)
         if accelerator.is_main_process:
             self._cleanup_old_resumable_checkpoints()
 
@@ -821,8 +939,13 @@ class CheckpointSaver:
             return
         for epoch_no, state_dir in entries[: len(entries) - keep_last]:
             if os.path.exists(state_dir):
-                logger.info(f"removing old checkpoint state: {state_dir}")
-                shutil.rmtree(state_dir)
+                if not _path_created_in_current_run(self._created_state_dirs, state_dir):
+                    logger.info(
+                        f"skip removing pre-existing checkpoint state not created by this run: {state_dir}"
+                    )
+                else:
+                    logger.info(f"removing old checkpoint state: {state_dir}")
+                    shutil.rmtree(state_dir)
             ckpt_name = get_checkpoint_ckpt_name(
                 args, "." + args.save_model_as, epoch_no
             )
@@ -850,21 +973,40 @@ class CheckpointSaver:
                 f"training complete, keeping explicit resume checkpoint state: {checkpoint_state_dir}"
             )
         elif os.path.exists(checkpoint_state_dir):
-            logger.info(
-                f"training complete, removing checkpoint state: {checkpoint_state_dir}"
-            )
-            shutil.rmtree(checkpoint_state_dir)
+            if _path_created_in_current_run(
+                self._created_state_dirs, checkpoint_state_dir
+            ):
+                logger.info(
+                    f"training complete, removing checkpoint state: {checkpoint_state_dir}"
+                )
+                shutil.rmtree(checkpoint_state_dir)
+            else:
+                logger.info(
+                    f"training complete, keeping pre-existing checkpoint state: {checkpoint_state_dir}"
+                )
         latest_marker = get_checkpoint_latest_state_file(args)
         if os.path.exists(latest_marker) and not keep_explicit_resume_state:
-            logger.info(f"training complete, removing checkpoint marker: {latest_marker}")
-            os.remove(latest_marker)
+            if _path_created_in_current_run(self._created_marker_paths, latest_marker):
+                logger.info(f"training complete, removing checkpoint marker: {latest_marker}")
+                os.remove(latest_marker)
+            else:
+                logger.info(
+                    f"training complete, keeping pre-existing checkpoint marker: {latest_marker}"
+                )
         checkpoint_ckpt = os.path.join(
             args.output_dir,
             get_checkpoint_ckpt_name(args, "." + args.save_model_as),
         )
         if os.path.exists(checkpoint_ckpt) and not keep_explicit_resume_state:
-            logger.info(f"removing checkpoint weights: {checkpoint_ckpt}")
-            os.remove(checkpoint_ckpt)
+            if _path_created_in_current_run(
+                self._created_checkpoint_paths, checkpoint_ckpt
+            ):
+                logger.info(f"removing checkpoint weights: {checkpoint_ckpt}")
+                os.remove(checkpoint_ckpt)
+            else:
+                logger.info(
+                    f"training complete, keeping pre-existing checkpoint weights: {checkpoint_ckpt}"
+                )
 
     def save_final(self, network: Any, global_step: int, num_train_epochs: int) -> None:
         """Write the final ``<output_name>.<ext>`` checkpoint. Main-process only."""

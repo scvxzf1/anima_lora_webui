@@ -30,6 +30,14 @@ from web.services.training import progress_parser
 from web.services.training_service import TrainingService
 
 
+def _write_fake_accelerate_state_files(state_dir: Path) -> None:
+    state_dir.mkdir(parents=True, exist_ok=True)
+    (state_dir / "model.safetensors").write_bytes(b"model")
+    (state_dir / "optimizer.bin").write_bytes(b"optimizer")
+    (state_dir / "scheduler.bin").write_bytes(b"scheduler")
+    (state_dir / "random_states_0.pkl").write_bytes(b"rng")
+
+
 def _write_resume_history(tmp_path):
     task_id = "20260517-000000-training-imported-demo"
     history_dir = tmp_path / "history"
@@ -81,6 +89,7 @@ def _write_resume_history(tmp_path):
         json.dumps({"current_epoch": 3, "current_step": 42}),
         encoding="utf-8",
     )
+    _write_fake_accelerate_state_files(state_dir)
     (output_dir / "demo-checkpoint.safetensors").write_bytes(b"stub")
     os.utime(state_dir / "train_state.json", (1500.0, 1500.0))
     return history_dir, task_id, state_dir
@@ -394,6 +403,30 @@ def test_resume_options_find_checkpoint_state(tmp_path, monkeypatch):
     assert payload["checkpoints"][0]["kind"] == "checkpoint"
     assert payload["checkpoints"][0]["step"] == 42
     assert payload["checkpoints"][0]["scope"] == "task"
+    assert payload["checkpoints"][0]["state_complete"] is True
+    assert payload["checkpoints"][0]["state_integrity"]["optimizer"] is True
+    assert payload["checkpoints"][0]["state_integrity"]["scheduler"] is True
+    assert payload["diagnostic"]["complete_state_count"] == 1
+
+
+def test_resume_options_mark_incomplete_state_unavailable(tmp_path, monkeypatch):
+    history_dir, task_id, state_dir = _write_resume_history(tmp_path)
+    (state_dir / "optimizer.bin").unlink()
+    monkeypatch.setattr(training_service, "HISTORY_DIR", history_dir)
+
+    svc = TrainingService(web.Application())
+    payload = svc.get_resume_options(task_id)
+
+    checkpoint = payload["checkpoints"][0]
+    assert payload["default_checkpoint"] == ""
+    assert checkpoint["state_complete"] is False
+    assert checkpoint["missing_state_files"] == ["optimizer.bin"]
+    assert checkpoint["resume_available"] is False
+    assert "缺少 optimizer.bin" in checkpoint["unavailable_reason"]
+    assert payload["diagnostic"]["incomplete_state_count"] == 1
+    assert payload["diagnostic"]["missing_state_files"] == ["optimizer.bin"]
+    with pytest.raises(ValueError, match="缺少 optimizer.bin"):
+        asyncio.run(svc.resume_from_history_task(task_id, str(state_dir)))
 
 
 def test_resume_options_mark_completed_checkpoint_unavailable(tmp_path, monkeypatch):
@@ -474,6 +507,7 @@ def test_resume_options_find_numbered_checkpoint_states(tmp_path, monkeypatch):
         json.dumps({"current_epoch": 2, "current_step": 60}),
         encoding="utf-8",
     )
+    _write_fake_accelerate_state_files(numbered_state)
     (output_dir / "demo-checkpoint-000002.safetensors").write_bytes(b"numbered")
     os.utime(numbered_state / "train_state.json", (1501.0, 1501.0))
     monkeypatch.setattr(training_service, "HISTORY_DIR", history_dir)
@@ -2475,6 +2509,34 @@ def test_queue_resume_missing_train_state_marks_item_error(tmp_path, monkeypatch
     assert svc._queue_paused is True
 
 
+def test_queue_resume_incomplete_state_marks_item_error(tmp_path, monkeypatch):
+    history_dir, task_id, state_dir = _write_resume_history(tmp_path)
+    monkeypatch.setattr(training_service, "HISTORY_DIR", history_dir)
+    _patch_resume_runtime_output_root(monkeypatch, tmp_path)
+    _patch_queue_storage(monkeypatch, tmp_path)
+
+    svc = TrainingService(web.Application())
+    svc._schedule_queue_dispatch = lambda: None
+    asyncio.run(svc.enqueue_resume_from_history_task(task_id, str(state_dir)))
+    item = svc._queue_items()[0]
+    (state_dir / "scheduler.bin").unlink()
+
+    called = False
+
+    async def fake_start_unlocked(*_args, **_kwargs):
+        nonlocal called
+        called = True
+
+    svc._start_unlocked = fake_start_unlocked
+
+    asyncio.run(svc._dispatch_queue())
+
+    assert called is False
+    assert item["state"] == "error"
+    assert "缺少 scheduler.bin" in item["message"]
+    assert svc._queue_paused is True
+
+
 def test_start_after_preprocess_uses_runtime_config_for_preflight(tmp_path, monkeypatch):
     _write_runtime_config_tree(tmp_path)
     _patch_runtime_service_paths(monkeypatch, tmp_path)
@@ -3711,10 +3773,10 @@ def test_resume_from_history_requires_config_snapshot(tmp_path, monkeypatch):
 
 
 class _FakeAccelerator:
-    def __init__(self, *, step=2, fail=False):
+    def __init__(self, *, step=2, fail=False, is_main_process=True):
         self.step = step
         self.fail = fail
-        self.is_main_process = True
+        self.is_main_process = is_main_process
 
     def print(self, *_args, **_kwargs):
         return None
@@ -3815,6 +3877,20 @@ def test_save_last_n_epochs_keeps_recent_weight_files(tmp_path):
     assert (tmp_path / "demo-000003.safetensors").exists()
 
 
+def test_save_last_n_epochs_does_not_remove_preexisting_weight_files(tmp_path):
+    old_weight = tmp_path / "demo-000001.safetensors"
+    old_weight.write_bytes(b"old")
+    args = _weight_checkpoint_args(tmp_path, keep_last=1)
+    saver = _weight_checkpoint_saver(args)
+
+    saver.maybe_save_epoch(
+        _TinySaveNetwork(), global_step=20, epoch=1, num_train_epochs=4
+    )
+
+    assert old_weight.read_bytes() == b"old"
+    assert (tmp_path / "demo-000002.safetensors").exists()
+
+
 def test_save_last_n_epochs_minus_one_keeps_all_weight_files(tmp_path):
     args = _weight_checkpoint_args(tmp_path, keep_last=-1)
     saver = _weight_checkpoint_saver(args)
@@ -3887,6 +3963,25 @@ def test_save_checkpoint_state_recovers_leftover_backup(tmp_path):
     assert not tmp_dir.exists()
 
 
+def test_save_checkpoint_state_writes_latest_marker_on_main_process_only(tmp_path):
+    args = _checkpoint_args(tmp_path)
+
+    save_checkpoint_state(
+        args, _FakeAccelerator(step=5, is_main_process=False), epoch_no=1
+    )
+    assert (tmp_path / "demo-checkpoint-000001-state" / "train_state.json").exists()
+    assert not (tmp_path / "demo-checkpoint-latest.json").exists()
+
+    save_checkpoint_state(
+        args, _FakeAccelerator(step=6, is_main_process=True), epoch_no=2
+    )
+    marker = json.loads(
+        (tmp_path / "demo-checkpoint-latest.json").read_text(encoding="utf-8")
+    )
+    assert marker["state_dir"] == str((tmp_path / "demo-checkpoint-000002-state").resolve())
+    assert marker["epoch"] == 2
+
+
 def test_checkpointing_last_n_epochs_keeps_recent_resumable_states(tmp_path):
     args = _checkpointing_args(tmp_path, keep_last=2)
     accelerator = _FakeAccelerator()
@@ -3927,6 +4022,38 @@ def test_checkpointing_last_n_epochs_keeps_recent_resumable_states(tmp_path):
     _resume_saver(completed_args).auto_resume()
     assert completed_args.resume is None
     assert latest_state.exists()
+
+
+def test_checkpointing_cleanup_does_not_remove_preexisting_resume_points(tmp_path):
+    old_state = tmp_path / "demo-checkpoint-000001-state"
+    old_state.mkdir()
+    (old_state / "train_state.json").write_text(
+        json.dumps({"current_epoch": 1, "current_step": 10}),
+        encoding="utf-8",
+    )
+    old_weight = tmp_path / "demo-checkpoint-000001.safetensors"
+    old_weight.write_bytes(b"old")
+    args = _checkpointing_args(tmp_path, keep_last=1)
+    accelerator = _FakeAccelerator(step=20)
+    saver = CheckpointSaver(
+        args=args,
+        accelerator=accelerator,
+        save_dtype=None,
+        metadata={},
+        minimum_metadata={},
+        get_sai_model_spec_fn=lambda _args: {},
+        current_epoch=SimpleNamespace(value=0),
+        current_step=SimpleNamespace(value=0),
+    )
+
+    saver.maybe_save_resumable(
+        _TinySaveNetwork(), global_step=20, epoch=1, num_train_epochs=4
+    )
+
+    assert (old_state / "train_state.json").exists()
+    assert old_weight.read_bytes() == b"old"
+    assert (tmp_path / "demo-checkpoint-000002-state" / "train_state.json").exists()
+    assert (tmp_path / "demo-checkpoint-000002.safetensors").exists()
 
 
 def test_checkpointing_last_n_epochs_minus_one_keeps_all_resumable_states(tmp_path):
@@ -4022,6 +4149,26 @@ def test_cleanup_resumable_keeps_explicit_resume_state(tmp_path):
     assert checkpoint_weight.exists()
 
 
+def test_cleanup_resumable_keeps_preexisting_legacy_checkpoint_files(tmp_path):
+    state_dir = tmp_path / "demo-checkpoint-state"
+    state_dir.mkdir()
+    (state_dir / "train_state.json").write_text(
+        json.dumps({"current_epoch": 1, "current_step": 3}),
+        encoding="utf-8",
+    )
+    latest_marker = tmp_path / "demo-checkpoint-latest.json"
+    latest_marker.write_text(json.dumps({"state_dir": str(state_dir)}), encoding="utf-8")
+    checkpoint_weight = tmp_path / "demo-checkpoint.safetensors"
+    checkpoint_weight.write_bytes(b"checkpoint")
+    args = _checkpointing_args(tmp_path, keep_last=2)
+
+    _resume_saver(args).cleanup_resumable()
+
+    assert (state_dir / "train_state.json").exists()
+    assert latest_marker.exists()
+    assert checkpoint_weight.exists()
+
+
 def test_plan_resume_start_uses_steps_from_state():
     args = SimpleNamespace(
         initial_epoch=None,
@@ -4039,6 +4186,29 @@ def test_plan_resume_start_uses_steps_from_state():
         num_processes=1,
     )
 
+    assert plan.initial_step == 16
+    assert plan.epoch_to_start == 3
+    assert plan.steps_from_state is None
+
+
+def test_plan_resume_start_auto_enables_skip_for_resume_state():
+    args = SimpleNamespace(
+        initial_epoch=None,
+        initial_step=None,
+        gradient_accumulation_steps=2,
+        max_train_steps=100,
+        skip_until_initial_step=False,
+        resume="state-dir",
+    )
+
+    plan = plan_resume_start(
+        args,
+        steps_from_state=8,
+        batches_per_epoch=10,
+        num_processes=1,
+    )
+
+    assert args.skip_until_initial_step is True
     assert plan.initial_step == 16
     assert plan.epoch_to_start == 3
     assert plan.steps_from_state is None

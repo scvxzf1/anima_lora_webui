@@ -870,6 +870,89 @@ def test_preflight_rejects_blank_output_name(tmp_path: Path, monkeypatch):
     assert output_checks[-1]["message"] == "输出名称未填写"
 
 
+def test_preflight_blocks_runtime_config_reusing_history_training_output_dir(
+    tmp_path: Path, monkeypatch
+):
+    configs, dataset_path = _write_minimal_config_tree(tmp_path)
+    _patch_config_service_paths(monkeypatch, tmp_path)
+    models = tmp_path / "models"
+    models.mkdir()
+    (models / "anima.safetensors").write_bytes(b"model")
+    (models / "qwen.safetensors").write_bytes(b"qwen")
+    (models / "vae.safetensors").write_bytes(b"vae")
+    source_dir = tmp_path / "image_dataset" / "selected"
+    resized_dir = tmp_path / "output" / "web-runs" / "old-run" / "dataset_cache" / "dataset-01" / "resized"
+    cache_dir = tmp_path / "output" / "web-runs" / "old-run" / "dataset_cache" / "dataset-01" / "lora"
+    source_dir.mkdir(parents=True)
+    resized_dir.mkdir(parents=True)
+    cache_dir.mkdir(parents=True)
+    Image.new("RGB", (8, 8), color=(20, 40, 60)).save(source_dir / "sample.png")
+    Image.new("RGB", (8, 8), color=(20, 40, 60)).save(resized_dir / "sample.png")
+    (source_dir / "sample.txt").write_text("1girl, solo\n", encoding="utf-8")
+    dataset_path.write_text(
+        "\n".join(
+            [
+                "[[datasets]]",
+                "",
+                "[[datasets.subsets]]",
+                'source_dir = "image_dataset/selected"',
+                'image_dir = "output/web-runs/old-run/dataset_cache/dataset-01/resized"',
+                'cache_dir = "output/web-runs/old-run/dataset_cache/dataset-01/lora"',
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    run_dir = tmp_path / "output" / "web-runs" / "old-run"
+    (run_dir / "model_cache" / "logs").mkdir(parents=True)
+    (run_dir / "training_output").mkdir(parents=True)
+    runtime_config = run_dir / "config.runtime.toml"
+    runtime_config.write_text(
+        "\n".join(
+            [
+                'output_name = "demo"',
+                'output_dir = "output/web-runs/old-run/training_output"',
+                'logging_dir = "output/web-runs/old-run/model_cache/logs"',
+                'dataset_config = "configs/datasets/lora.toml"',
+                'pretrained_model_name_or_path = "models/anima.safetensors"',
+                'qwen3 = "models/qwen.safetensors"',
+                'vae = "models/vae.safetensors"',
+            ]
+        ),
+        encoding="utf-8",
+    )
+    history_task = configs / "web-training-history" / "20260615-120000-training-demo"
+    history_task.mkdir(parents=True)
+    (history_task / "meta.json").write_text(
+        json.dumps(
+            {
+                "id": history_task.name,
+                "name": "旧训练",
+                "job": "training",
+                "state": "done",
+                "run_dir": "output/web-runs/old-run",
+                "output_dir": "output/web-runs/old-run/training_output",
+                "training_output_dir": "output/web-runs/old-run/training_output",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    result = config_service.preflight_training_config(
+        "lora",
+        "default",
+        "imported",
+        config_file="output/web-runs/old-run/config.runtime.toml",
+    )
+
+    output_checks = [item for item in result["errors"] if item["key"] == "output_dir"]
+    assert result["ok"] is False
+    assert output_checks
+    assert output_checks[-1]["path"] == "output/web-runs/old-run/training_output"
+    assert "已有历史训练输出目录" in output_checks[-1]["message"]
+    assert "完整续训" in output_checks[-1]["message"]
+
+
 def test_preflight_warns_when_sample_prompts_have_no_schedule(tmp_path: Path, monkeypatch):
     configs, _dataset_path = _write_minimal_config_tree(tmp_path)
     _patch_config_service_paths(monkeypatch, tmp_path)

@@ -51,6 +51,7 @@ if TYPE_CHECKING:
         _read_json,
         _resolve_display_path,
         _resume_checkpoint_diagnostic,
+        _resume_state_integrity_unavailable_reason,
         _runtime_meta,
         _safe_task_id,
         _select_resume_checkpoint,
@@ -205,7 +206,9 @@ def _annotate_resume_checkpoints(
             item["remaining_steps"] = max(0, target_total_steps - step)
         else:
             item["remaining_steps"] = None
-        reason = _resume_unavailable_reason(step, target_total_steps)
+        reason = _resume_state_integrity_unavailable_reason(item.get("state_integrity"))
+        if not reason:
+            reason = _resume_unavailable_reason(step, target_total_steps)
         item["resume_available"] = not reason
         item["unavailable_reason"] = reason
         out.append(item)

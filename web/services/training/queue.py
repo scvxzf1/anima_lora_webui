@@ -34,6 +34,8 @@ if TYPE_CHECKING:
         _queue_clearable_state_label,
         _queue_item_runtime_dir_label,
         _resolve_display_path,
+        _resume_state_integrity,
+        _resume_state_integrity_unavailable_reason,
         _runtime_from_config_file,
         _runtime_meta,
         _sample_config_from_cfg,
@@ -965,6 +967,9 @@ def _ensure_queue_resume_checkpoint_exists(item: dict[str, Any]) -> None:
     path = _resolve_display_path(checkpoint)
     if path is None or not _path_exists(path / "train_state.json"):
         raise FileNotFoundError("续训检查点状态已不存在，请重新选择包含 train_state.json 的状态目录")
+    reason = _resume_state_integrity_unavailable_reason(_resume_state_integrity(path))
+    if reason:
+        raise FileNotFoundError(reason)
 
 def _queue_resume_runtime_config_file(self, item: dict[str, Any]) -> str:
     runtime_config_file = str(item.get("runtime_config_file") or "")

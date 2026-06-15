@@ -2404,6 +2404,7 @@ def _list_resume_checkpoints(task: dict[str, Any]) -> list[dict[str, Any]]:
             continue
         kind = _resume_state_kind(child.name)
         paired_weight = _paired_resume_weight(child, output_dir)
+        integrity = _resume_state_integrity(child)
         items.append({
             "id": _display_project_path(str(child)),
             "path": _display_project_path(str(child)),
@@ -2420,6 +2421,9 @@ def _list_resume_checkpoints(task: dict[str, Any]) -> list[dict[str, Any]]:
             "mtime_text": _format_ts(mtime),
             "train_state_file": _display_project_path(str(state_file)),
             "paired_weight": paired_weight,
+            "state_integrity": integrity,
+            "state_complete": bool(integrity.get("ok")),
+            "missing_state_files": list(integrity.get("missing") or []),
         })
 
     items.sort(key=_resume_state_sort_key)
@@ -2438,6 +2442,9 @@ def _resume_checkpoint_diagnostic(task: dict[str, Any], checkpoints: list[dict[s
         "all_subdir_count": 0,
         "state_dir_count": 0,
         "train_state_count": 0,
+        "complete_state_count": 0,
+        "incomplete_state_count": 0,
+        "missing_state_files": [],
         "checkpoint_count": len(checkpoints or []),
         "reason": "",
         "recommendation": "如需权重热启动，可回到配置页选择这个任务导出的 LoRA/LoHa/LoKr/GLoRA 权重；热启动不会恢复 optimizer、scheduler 和已完成步数。",
@@ -2461,6 +2468,17 @@ def _resume_checkpoint_diagnostic(task: dict[str, Any], checkpoints: list[dict[s
     diagnostic["all_subdir_count"] = len(all_subdirs)
     diagnostic["state_dir_count"] = len(state_dirs)
     diagnostic["train_state_count"] = sum(1 for child in state_dirs if _path_exists(child / "train_state.json"))
+    integrity_items = [
+        item.get("state_integrity")
+        for item in (checkpoints or [])
+        if isinstance(item.get("state_integrity"), dict)
+    ]
+    diagnostic["complete_state_count"] = sum(1 for item in integrity_items if item.get("ok"))
+    diagnostic["incomplete_state_count"] = sum(1 for item in integrity_items if not item.get("ok"))
+    missing_files: list[str] = []
+    for item in integrity_items:
+        missing_files.extend(str(name) for name in (item.get("missing") or []))
+    diagnostic["missing_state_files"] = sorted(set(missing_files))
     resume_from = task.get("resume_from") if isinstance(task.get("resume_from"), dict) else {}
     resume_checkpoint = str(resume_from.get("checkpoint") or "").strip()
     resume_checkpoint_path = _resolve_display_path(resume_checkpoint) if resume_checkpoint else None
@@ -2469,8 +2487,13 @@ def _resume_checkpoint_diagnostic(task: dict[str, Any], checkpoints: list[dict[s
     )
     diagnostic["resume_source_checkpoint"] = resume_checkpoint
     diagnostic["resume_source_train_state_exists"] = resume_train_state_exists
-    if checkpoints:
+    if diagnostic["complete_state_count"]:
         diagnostic["reason"] = "已找到可完整续训的状态目录。"
+    elif checkpoints and diagnostic["incomplete_state_count"]:
+        diagnostic["reason"] = (
+            "找到包含 train_state.json 的状态目录，但缺少完整续训必需的 "
+            f"{'、'.join(diagnostic['missing_state_files'])}，无法恢复 optimizer/scheduler 状态。"
+        )
     elif resume_checkpoint and not resume_train_state_exists and int(task.get("metric_count") or 0) == 0:
         diagnostic["reason"] = "这次续训没有产生训练步，且完整续训状态目录已不存在；可用缓存/权重仍可能存在，但 optimizer/scheduler 状态无法恢复。"
     elif diagnostic["train_state_count"]:
@@ -2484,6 +2507,48 @@ def _resume_checkpoint_diagnostic(task: dict[str, Any], checkpoints: list[dict[s
 
 def _is_transient_resume_state_dir(name: str) -> bool:
     return name.endswith((".tmp", ".backup"))
+
+
+def _resume_state_integrity(state_dir: Path) -> dict[str, Any]:
+    """Check the minimum Accelerate files needed for a real full resume."""
+    checks = {
+        "train_state": _path_exists(state_dir / "train_state.json"),
+        "model": _state_has_any_file(state_dir, ("model.safetensors", "model_*.safetensors", "pytorch_model*.bin")),
+        "optimizer": _state_has_any_file(state_dir, ("optimizer.bin", "optimizer_*.bin", "optimizer*.bin")),
+        "scheduler": _state_has_any_file(state_dir, ("scheduler.bin", "scheduler_*.bin", "scheduler*.bin")),
+        "random_state": _state_has_any_file(state_dir, ("random_states_*.pkl", "random_state*.pkl")),
+    }
+    labels = {
+        "train_state": "train_state.json",
+        "model": "model.safetensors",
+        "optimizer": "optimizer.bin",
+        "scheduler": "scheduler.bin",
+    }
+    missing = [label for key, label in labels.items() if not checks.get(key)]
+    return {
+        "ok": not missing,
+        "missing": missing,
+        **checks,
+    }
+
+
+def _state_has_any_file(state_dir: Path, patterns: tuple[str, ...]) -> bool:
+    for pattern in patterns:
+        if any(state_dir.glob(pattern)):
+            return True
+    return False
+
+
+def _resume_state_integrity_unavailable_reason(integrity: dict[str, Any] | None) -> str:
+    if not isinstance(integrity, dict) or integrity.get("ok"):
+        return ""
+    missing = [str(name) for name in (integrity.get("missing") or []) if str(name)]
+    if not missing:
+        return ""
+    return (
+        "这个状态目录不完整，缺少 "
+        f"{'、'.join(missing)}，无法完整恢复 optimizer、scheduler 和步数。"
+    )
 
 
 def _select_resume_checkpoint(
