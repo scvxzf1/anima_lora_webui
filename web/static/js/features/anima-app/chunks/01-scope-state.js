@@ -12,6 +12,9 @@ const ctx = globalThis.ctx;
     globalThis.lossChart = null;
     globalThis.stepCounter = 0;
     globalThis.trainingStatusPollFailures = 0;
+    globalThis.trainingStatusPollTimer = null;
+    globalThis.trainingStatusPollPromise = null;
+    globalThis.trainingStatusPollForceReplayMetrics = false;
     globalThis.tomlStatusTimer = null;
     globalThis.tomlFiles = [];
     globalThis.tomlFileGroups = [];
@@ -404,10 +407,16 @@ const ctx = globalThis.ctx;
     globalThis.queueFeature = null;
     globalThis.historyDetailFeature = null;
     globalThis.weightAnalysisFeature = null;
+    globalThis.environmentCheckFeature = null;
     globalThis.ensureWeightAnalysisFeature = function ensureWeightAnalysisFeature() {
         if (weightAnalysisFeature) return weightAnalysisFeature;
         weightAnalysisFeature = createWeightAnalysisFeature(ctx);
         return weightAnalysisFeature;
+    }
+    globalThis.ensureEnvironmentCheckFeature = function ensureEnvironmentCheckFeature() {
+        if (environmentCheckFeature) return environmentCheckFeature;
+        environmentCheckFeature = createEnvironmentCheckFeature(ctx);
+        return environmentCheckFeature;
     }
 
     globalThis.ensureQueueFeature = function ensureQueueFeature() {

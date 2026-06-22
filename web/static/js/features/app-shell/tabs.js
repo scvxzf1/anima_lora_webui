@@ -2,6 +2,7 @@ export function createTabController({
     loadDatasetPresets,
     loadGlobalSettings,
     ensureWeightAnalysisFeature,
+    ensureEnvironmentCheckFeature,
     resetTrainingExpandedStateOnLeave,
     resizeLiveChart,
     auditConfigTrainingSourceOnEnter,
@@ -52,6 +53,9 @@ export function createTabController({
                 }
                 if (nextTab === 'settings') {
                     loadGlobalSettings();
+                }
+                if (nextTab === 'environment') {
+                    ensureEnvironmentCheckFeature?.().loadEnvironmentCheck();
                 }
             });
         });

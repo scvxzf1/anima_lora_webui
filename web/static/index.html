@@ -17,7 +17,7 @@
             }
         })();
     </script>
-    <link rel="stylesheet" href="/static/style.css?v=frontend-chain-20260608-10">
+    <link rel="stylesheet" href="/static/style.css?v=frontend-chain-20260622-1">
 </head>
 <body>
     <header>
@@ -28,6 +28,7 @@
             <button class="tab-btn" data-tab="training">训练</button>
             <button class="tab-btn" data-tab="weight-analysis">ΔW 分析</button>
             <button class="tab-btn" data-tab="settings">全局设置</button>
+            <button class="tab-btn" data-tab="environment">环境检测</button>
         </nav>
         <div id="status-indicator">
             <span class="dot idle"></span>
@@ -1101,6 +1102,76 @@
                         </div>
                     </div>
                 </section>
+            </div>
+        </section>
+
+        <!-- 环境检测 Tab：检查项目文件、依赖、系统工具和 GPU/CUDA 可用性。 -->
+        <section id="tab-environment" class="tab-content">
+            <div class="environment-check-layout environment-forge-layout">
+                <section class="environment-check-editor" aria-label="环境检测结果">
+                    <div class="environment-check-header">
+                        <div class="environment-check-title-block">
+                            <span class="environment-check-breadcrumb">ENVIRONMENT CHECK</span>
+                            <strong>环境完整性检测</strong>
+                            <span>Windows / Linux 通用前置验证。</span>
+                        </div>
+                    </div>
+
+                    <div class="environment-check-toolbar" aria-label="环境检测操作">
+                        <div class="environment-check-toolbar-copy">
+                            <strong>运行前置</strong>
+                            <span>项目文件、Python 依赖、系统工具、CUDA 与输出目录。</span>
+                        </div>
+                        <div class="environment-check-actions">
+                            <button id="btn-refresh-environment-check" class="btn btn-primary" type="button">重新检测</button>
+                            <button id="btn-copy-environment-report" class="btn" type="button">复制报告</button>
+                        </div>
+                    </div>
+
+                    <div class="environment-check-platform-card">
+                        <div>
+                            <span class="environment-check-card-label">PLATFORM</span>
+                            <strong>当前运行环境</strong>
+                        </div>
+                        <div id="environment-check-platform-meta" class="environment-check-platform-meta">尚未检测</div>
+                    </div>
+
+                    <div id="environment-check-status" class="environment-check-status" aria-live="polite">打开本页后会自动读取检测结果。</div>
+                    <div id="environment-check-groups" class="environment-check-groups" aria-live="polite">
+                        <section class="environment-check-group">
+                            <div class="environment-check-group-head">检测结果</div>
+                            <div class="environment-check-results">
+                                <div class="environment-check-empty">等待检测。</div>
+                            </div>
+                        </section>
+                    </div>
+                </section>
+
+                <aside class="environment-check-sidebar" aria-label="环境检测概览">
+                    <div class="environment-check-project">
+                        <span class="environment-check-eyebrow">ENVIRONMENT</span>
+                        <strong>环境检测</strong>
+                        <span>对齐训练和预处理启动前置。</span>
+                    </div>
+                    <div id="environment-check-summary-panel" class="environment-check-summary" aria-label="环境检测统计">
+                        <div class="environment-check-summary-stat">
+                            <strong>-</strong>
+                            <small>错误</small>
+                        </div>
+                        <div class="environment-check-summary-stat">
+                            <strong>-</strong>
+                            <small>警告</small>
+                        </div>
+                        <div class="environment-check-summary-stat">
+                            <strong>-</strong>
+                            <small>检查项</small>
+                        </div>
+                    </div>
+                    <div class="environment-check-scope">
+                        <span>覆盖范围</span>
+                        <strong>Runtime / Files / Packages / CUDA</strong>
+                    </div>
+                </aside>
             </div>
         </section>
     </main>

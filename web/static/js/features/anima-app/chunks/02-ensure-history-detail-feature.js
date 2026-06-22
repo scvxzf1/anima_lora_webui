@@ -93,6 +93,7 @@ const ctx = globalThis.ctx;
             loadDatasetPresets,
             loadGlobalSettings,
             ensureWeightAnalysisFeature,
+            ensureEnvironmentCheckFeature,
             resetTrainingExpandedStateOnLeave,
             resizeLiveChart: () => lossChart?.resize?.(),
             auditConfigTrainingSourceOnEnter,
@@ -117,12 +118,16 @@ const ctx = globalThis.ctx;
             if (location.protocol !== 'file:') {
                 connectWebSocket();
                 recoverLiveTrainingState();
-                setInterval(pollStatus, 10000);
+                scheduleStatusPoll();
                 setInterval(refreshTrainingHealth, 1000);
                 document.addEventListener('visibilitychange', () => {
+                    scheduleStatusPoll({ immediate: !document.hidden });
                     if (!document.hidden) recoverLiveTrainingState();
                 });
-                window.addEventListener('online', recoverLiveTrainingState);
+                window.addEventListener('online', () => {
+                    scheduleStatusPoll({ immediate: true });
+                    recoverLiveTrainingState();
+                });
             }
         };
 

@@ -2,6 +2,7 @@ import { createPreviewFeature } from '../preview/index.js?v=module-bootstrap-202
 import { createQueueFeature } from '../queue/index.js?v=module-bootstrap-20260608-11';
 import { createHistoryDetailFeature } from '../history-detail/index.js?v=module-bootstrap-20260608-11';
 import { createWeightAnalysisFeature } from '../weight-analysis/index.js?v=module-bootstrap-20260608-11';
+import { createEnvironmentCheckFeature } from '../environment-check/index.js?v=module-bootstrap-20260608-11';
 import { createGpuPicker } from '../app-shell/gpu-picker.js?v=module-bootstrap-20260608-11';
 import { createTabController } from '../app-shell/tabs.js?v=module-bootstrap-20260608-11';
 import { createThemeController } from '../app-shell/theme.js?v=module-bootstrap-20260608-11';
@@ -27,6 +28,7 @@ Object.assign(globalThis, {
     createQueueFeature,
     createHistoryDetailFeature,
     createWeightAnalysisFeature,
+    createEnvironmentCheckFeature,
     createGpuPicker,
     createTabController,
     createThemeController,

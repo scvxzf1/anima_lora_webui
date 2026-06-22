@@ -80,6 +80,7 @@ const ctx = globalThis.ctx;
         document.getElementById('btn-open-history-manager').addEventListener('click', () => showTrainingView('history'));
         ensureQueueFeature().bindQueueEvents();
         ensureWeightAnalysisFeature().bindWeightAnalysisEvents();
+        ensureEnvironmentCheckFeature().bindEnvironmentCheckEvents();
         document.getElementById('btn-apply-toml').addEventListener('click', applyTomlToConfig);
         document.getElementById('btn-move-toml-group').addEventListener('click', moveCurrentTomlToGroup);
         document.getElementById('btn-create-blank-preset').addEventListener('click', createBlankPresetFromLoraTemplate);
@@ -253,6 +254,8 @@ const ctx = globalThis.ctx;
             'btn-export-weight-analysis': '打开浏览器打印导出，可在系统对话框中保存为 PDF 报告。',
             'btn-refresh-analysis-weights': '重新扫描当前可读取的训练权重列表，不会加载模型。',
             'btn-run-weight-analysis': '在 CPU 上读取 safetensors 并计算 ΔW 范数，不跑图、不占 GPU。',
+            'btn-refresh-environment-check': '重新检测项目文件、Python 依赖、系统工具、CUDA 和 Web 运行目录。',
+            'btn-copy-environment-report': '把当前环境检测报告复制为纯文本，方便排查依赖或安装问题。',
             'btn-stop-training': '停止当前正在运行的训练或预处理任务；已经写出的日志、样张和权重文件会保留。',
             'btn-open-queue-manager': '打开完整队列管理视图，可筛选、调序、重试、批量取消和清理记录。',
             'btn-training-queue-view': '打开训练队列管理视图，查看等待、运行、异常、完成和已取消任务。',
@@ -354,6 +357,7 @@ const ctx = globalThis.ctx;
                 training: '训练页：查看当前任务、历史任务、loss 曲线、日志和显存状态。',
                 'weight-analysis': 'ΔW 分析页：读取 safetensors 静态权重能量，不跑图、不占 GPU。',
                 settings: '全局设置页：设置 Web 训练输出根目录和新建预设默认模型路径。',
+                environment: '环境检测页：检查 Windows/Linux 运行前置、Python 依赖、CUDA 和项目文件。',
             };
             const key = btn.dataset.tab;
             if (labels[key]) btn.title = labels[key];

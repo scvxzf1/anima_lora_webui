@@ -164,6 +164,10 @@ def test_frontend_module_graph_follows_production_entrypoint() -> None:
     assert "js/features/weight-analysis/state.js" in relative
     assert "js/features/weight-analysis/api.js" in relative
     assert "js/features/weight-analysis/render.js" in relative
+    assert "js/features/environment-check/index.js" in relative
+    assert "js/features/environment-check/state.js" in relative
+    assert "js/features/environment-check/api.js" in relative
+    assert "js/features/environment-check/render.js" in relative
     assert "js/features/app-shell/theme.js" in relative
     assert "js/features/app-shell/gpu-picker.js" in relative
     assert "js/features/app-shell/tabs.js" in relative
@@ -412,6 +416,67 @@ def test_weight_analysis_feature_modules_are_loaded_from_production_entrypoint()
         assert tooltip_id in tooltip_section
 
 
+def test_environment_check_feature_modules_are_loaded_from_production_entrypoint() -> None:
+    legacy_source = _anima_app_container_text()
+    environment_index = _frontend_module_text("js/features/environment-check/index.js")
+    environment_api = _frontend_module_text("js/features/environment-check/api.js")
+    environment_render = _frontend_module_text("js/features/environment-check/render.js")
+    environment_state = _frontend_module_text("js/features/environment-check/state.js")
+    tabs_source = _frontend_module_text("js/features/app-shell/tabs.js")
+    html = INDEX_HTML.read_text(encoding="utf-8")
+    css = STYLE_CSS.read_text(encoding="utf-8")
+    listener_section = _section(legacy_source, "function setupEventListeners", "function installBeginnerTooltips")
+    tab_setup = _section(tabs_source, "function setupTabs()", "return {")
+    tooltip_section = _section(legacy_source, "function installBeginnerTooltips()", "// ── 工具函数 ──")
+    routes_source = (STATIC_DIR.parents[0] / "routes" / "__init__.py").read_text(encoding="utf-8")
+
+    assert "createEnvironmentCheckFeature(ctx)" in legacy_source
+    assert "ensureEnvironmentCheckFeature().bindEnvironmentCheckEvents();" in listener_section
+    assert "if (nextTab === 'environment')" in tab_setup
+    assert "ensureEnvironmentCheckFeature?.().loadEnvironmentCheck();" in tab_setup
+    assert "bindEnvironmentCheckEvents" in environment_index
+    assert "loadEnvironmentCheck" in environment_index
+    assert "copyReport" in environment_index
+    assert "fetchEnvironmentCheck" in environment_api
+    assert "'/api/environment/check'" in environment_api
+    assert "createEnvironmentCheckRenderer" in environment_render
+    assert "renderSummary" in environment_render
+    assert "renderGroups" in environment_render
+    assert "createEnvironmentCheckState" in environment_state
+    assert "setup_environment_routes(app)" in routes_source
+
+    assert 'data-tab="environment"' in html
+    assert 'id="tab-environment"' in html
+    assert '环境完整性检测' in html
+    assert 'environment-check-summary-panel' in html
+    assert 'environment-check-platform-meta' in html
+    assert 'environment-check-status' in html
+    assert 'environment-check-groups' in html
+    assert 'btn-refresh-environment-check' in html
+    assert 'btn-copy-environment-report' in html
+
+    for selector in (
+        "#tab-environment",
+        ".environment-forge-layout",
+        ".environment-check-editor",
+        ".environment-check-sidebar",
+        ".environment-check-toolbar",
+        ".environment-check-platform-card",
+        ".environment-check-summary-stat",
+        ".environment-check-group",
+        ".environment-check-item",
+        ".environment-check-badge",
+    ):
+        assert selector in css
+
+    for tooltip_id in (
+        "btn-refresh-environment-check",
+        "btn-copy-environment-report",
+        "environment",
+    ):
+        assert tooltip_id in tooltip_section
+
+
 def test_new_training_launch_enters_live_monitoring() -> None:
     source = APP_JS.read_text(encoding="utf-8")
     tabs_source = _frontend_module_text("js/features/app-shell/tabs.js")
@@ -451,23 +516,38 @@ def test_return_to_live_training_clears_runtime_cursor() -> None:
 
 def test_live_training_rest_fallbacks_are_wired() -> None:
     source = APP_JS.read_text(encoding="utf-8")
-    poll_section = _section(source, "async function pollStatus", "async function loadTrainingHistoryList")
+    poll_delay_section = _section(source, "function trainingStatusPollDelayMs", "async function pollStatus")
+    poll_section = _section(source, "async function pollStatus", "function applyStatusSnapshotFallbacks")
     update_status = _section(source, "function updateStatus", "function resetLiveSystemPeaks")
     health_section = _section(source, "function refreshTrainingHealth", "function parseMetricsFromProgressLine")
     recovery_section = _section(source, "async function recoverLiveTrainingState", "function updateProgress")
     ready_section = _section(source, "function startAnimaApp", "function chartTheme")
 
     assert "function isLiveRunningState" in source
+    assert "function trainingStatusPollDelayMs" in source
+    assert "function scheduleStatusPoll(options = {})" in source
+    assert "trainingStatusPollTimer = window.setTimeout" in source
+    assert "window.clearTimeout(trainingStatusPollTimer);" in source
+    assert "if (!visible) return wsOpen ? (running ? 30000 : 120000) : 60000;" in poll_delay_section
+    assert "if (!wsOpen) return running ? 5000 : 15000;" in poll_delay_section
+    assert "return running ? 10000 : 60000;" in poll_delay_section
     assert "last_log_line: status.last_log_line" in poll_section
     assert "error_hint: status.error_hint" in poll_section
+    assert "if (options.forceReplayMetrics) {" in poll_section
+    assert "trainingStatusPollForceReplayMetrics = true;" in poll_section
+    assert "if (trainingStatusPollPromise) return trainingStatusPollPromise;" in poll_section
+    assert "const forceReplayMetrics = trainingStatusPollForceReplayMetrics;" in poll_section
+    assert "trainingStatusPollForceReplayMetrics = false;" in poll_section
+    assert "trainingStatusPollPromise = null;" in poll_section
+    assert "scheduleStatusPoll();" in poll_section
     assert "applyStatusSnapshotFallbacks(status);" in poll_section
-    assert "options.forceReplayMetrics || isLiveRunningState()" in poll_section
-    assert "options.forceReplayMetrics || isLiveRunningState() || hasStatusPayload(status.latest_metric)" not in poll_section
-    assert "function applyStatusSnapshotFallbacks(status = {})" in poll_section
-    assert "updateProgress(status.latest_progress, { replay: true });" in poll_section
-    assert "updateMetrics(status.latest_metric, { replay: true });" in poll_section
-    assert "updateSystem(status.latest_system, { replay: true });" in poll_section
-    assert "function hasStatusPayload(value)" in poll_section
+    assert "forceReplayMetrics || isLiveRunningState()" in poll_section
+    assert "forceReplayMetrics || isLiveRunningState() || hasStatusPayload(status.latest_metric)" not in poll_section
+    assert "function applyStatusSnapshotFallbacks(status = {})" in source
+    assert "updateProgress(status.latest_progress, { replay: true });" in source
+    assert "updateMetrics(status.latest_metric, { replay: true });" in source
+    assert "updateSystem(status.latest_system, { replay: true });" in source
+    assert "function hasStatusPayload(value)" in source
 
     assert "const state = liveStatusState(msg);" in update_status
     assert "const terminalMessage = terminalStatusMessage(msg);" in update_status
@@ -486,8 +566,12 @@ def test_live_training_rest_fallbacks_are_wired() -> None:
     assert "最近任务异常" in health_section
     assert "pollStatus({ forceReplayMetrics: true });" in recovery_section
     assert "replayTrainingLogs({ includeMetrics: false });" in recovery_section
+    assert "scheduleStatusPoll();" in ready_section
     assert "document.addEventListener('visibilitychange'" in ready_section
-    assert "window.addEventListener('online', recoverLiveTrainingState);" in ready_section
+    assert "scheduleStatusPoll({ immediate: !document.hidden });" in ready_section
+    assert "scheduleStatusPoll({ immediate: true });" in ready_section
+    assert "window.addEventListener('online', () => {" in ready_section
+    assert "recoverLiveTrainingState();" in ready_section
 
 
 def test_training_queue_frontend_hooks_are_present() -> None:
@@ -517,7 +601,7 @@ def test_training_queue_frontend_hooks_are_present() -> None:
     enqueue_section = _section(queue_enqueue, "async function enqueueTrainingFromConfig", "async function enqueueTrainingQueueRequest")
     view_section = _section(legacy_source, "function renderTrainingViewMode", "// ── 状态轮询 ──")
     stop_section = _section(legacy_source, "async function stopTraining()", "    // ── WebSocket ──")
-    poll_section = _section(legacy_source, "async function pollStatus", "async function loadTrainingHistoryList")
+    poll_section = _section(legacy_source, "async function pollStatus", "function applyStatusSnapshotFallbacks")
     assert "createQueueFeature(ctx, {" in legacy_source
     assert "ensureQueueFeature().bindQueueEvents();" in listener_section
     for name in (
@@ -669,7 +753,11 @@ def test_training_queue_frontend_hooks_are_present() -> None:
     assert "await loadTrainingQueue();" in stop_section
     assert "setTrainingHealthNotice(message, 'error')" in stop_section
     assert "globalThis.trainingStatusPollFailures = 0" in legacy_source
+    assert "globalThis.trainingStatusPollTimer = null" in legacy_source
+    assert "globalThis.trainingStatusPollPromise = null" in legacy_source
+    assert "globalThis.trainingStatusPollForceReplayMetrics = false" in legacy_source
     assert "if (status.ok === false) throw new Error(status.error || '读取训练状态失败')" in poll_section
+    assert "if (trainingStatusPollPromise) return trainingStatusPollPromise;" in poll_section
     assert "trainingStatusPollFailures < 3" in poll_section
     assert "训练状态轮询连续失败" in poll_section
     assert "setTrainingHealthNotice(message, 'error')" in poll_section

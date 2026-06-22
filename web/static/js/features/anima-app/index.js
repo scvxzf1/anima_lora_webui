@@ -31,6 +31,7 @@ export async function createAnimaApp(ctx) {
     await import('./chunks/24-show-preflight-pending-dialog.js?v=module-bootstrap-20260608-11');
     await import('./chunks/25-update-progress.js?v=module-bootstrap-20260608-11');
     await import('./chunks/26-load-global-settings.js?v=module-bootstrap-20260608-11');
+    await import('./chunks/26a-status-polling.js?v=module-bootstrap-20260608-11');
     await import('./chunks/27-render-history-collections-workbench.js?v=module-bootstrap-20260608-11');
     await import('./chunks/28-history-collection-search-text.js?v=module-bootstrap-20260608-11');
     await import('./chunks/29-start-history-config-group-pointer-drag.js?v=module-bootstrap-20260608-11');

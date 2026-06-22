@@ -537,10 +537,9 @@ def _check_web_preprocess_environment(add) -> None:
 
 
 def _web_python_executable() -> str:
-    venv_python = ROOT / ".venv" / "bin" / "python"
-    if venv_python.exists():
-        return str(venv_python)
-    return sys.executable
+    from web.services.project_python import resolve_web_python_executable
+
+    return resolve_web_python_executable(ROOT)
 
 
 def training_sample_sampler_status(value: Any) -> tuple[str, str]:

@@ -323,6 +323,7 @@ const ctx = globalThis.ctx;
         };
         ws.onclose = () => {
             setLogStatus('已断开，准备重连', 'warning');
+            scheduleStatusPoll({ immediate: true });
             setTimeout(connectWebSocket, 3000);
         };
         ws.onerror = () => {
