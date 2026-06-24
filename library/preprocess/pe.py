@@ -18,6 +18,7 @@ from PIL import Image
 from torch.utils.data import DataLoader, Dataset
 
 from library.io.cache import resolve_cache_path
+from library.io.cache_names import pe_cache_suffix
 from library.datasets.image_utils import IMAGE_TRANSFORMS
 from library.preprocess._dataset import (
     PreprocessStats,
@@ -43,7 +44,7 @@ def cache_path_for(
     source subpath when ``image_dir`` is given); otherwise it lives next to
     the image (legacy layout).
     """
-    suffix = f"_anima_{encoder}.safetensors"
+    suffix = pe_cache_suffix(encoder)
     if cache_dir is None:
         return image_path.with_name(image_path.stem + suffix)
     return Path(
@@ -54,6 +55,27 @@ def cache_path_for(
             image_dir=str(image_dir) if image_dir is not None else None,
         )
     )
+
+
+def count_pending_pe(
+    data_dir: Path,
+    encoder: str,
+    *,
+    cache_dir: Path | None = None,
+    recursive: bool = False,
+) -> tuple[int, int]:
+    """Return ``(pending, total)`` PE sidecars **without loading the encoder**.
+
+    ``pending`` is the number of images whose ``{stem}_anima_{encoder}``
+    sidecar isn't on disk; ``total`` is every enumerated image. Mirrors the
+    pre-skip in :func:`cache_pe_features` (pure existence), so the entry point
+    can skip the (slow) vision-encoder load when ``pending == 0``."""
+    image_files = walk_images(data_dir, recursive=recursive)
+    pending, _ = partition_cached(
+        image_files,
+        lambda p: cache_path_for(p, encoder, cache_dir=cache_dir, image_dir=data_dir),
+    )
+    return len(pending), len(image_files)
 
 
 class _PEImageGroup(Dataset):
@@ -92,7 +114,6 @@ def cache_pe_features(
     *,
     cache_dir: Path | None = None,
     recursive: bool = False,
-    path_pattern: str | None = None,
     batch_size: int = 8,
     num_workers: int = 4,
     save_dtype: torch.dtype = torch.bfloat16,
@@ -105,10 +126,9 @@ def cache_pe_features(
     The encoder is supplied loaded (``load_pe_encoder``) so model setup stays in
     the caller. Returns counts; pass ``progress`` for a per-image bar.
     """
-    image_files = walk_images(data_dir, recursive=recursive, pattern=path_pattern)
+    image_files = walk_images(data_dir, recursive=recursive)
     stats = PreprocessStats(seen=len(image_files))
 
-    # Pre-skip cached files so workers never decode them.
     pending, skipped = partition_cached(
         image_files,
         lambda p: cache_path_for(
@@ -119,7 +139,7 @@ def cache_pe_features(
 
     reso_groups = group_by_shape(pending)
 
-    metadata = {
+    base_metadata = {
         "encoder": bundle.name,
         "d_enc": str(bundle.d_enc),
         "patch": str(bundle.bucket_spec.patch),
@@ -131,34 +151,55 @@ def cache_pe_features(
 
     from safetensors.torch import save_file
 
+    from library.vision.buckets import pick_bucket
+
+    # Flatten every shape-group into ONE dataset + homogeneous-shape batch plan so the
+    # worker pool spawns once (Windows spawn() re-imports torch+library per worker, and
+    # per-group DataLoaders paid that for every (W,H) bucket). ``batch_sampler`` keeps
+    # each batch within one shape group, preserving one-bucket-per-forward.
+    all_paths: list[Path] = []
+    all_out_paths: list[Path] = []
+    batches: list[list[int]] = []
     for paths in reso_groups.values():
-        out_paths = [
+        start = len(all_paths)
+        all_paths.extend(paths)
+        all_out_paths.extend(
             cache_path_for(p, bundle.name, cache_dir=cache_dir, image_dir=data_dir)
             for p in paths
-        ]
-        ds = _PEImageGroup(paths, out_paths)
-        loader = DataLoader(
-            ds,
-            batch_size=batch_size,
-            shuffle=False,
-            num_workers=num_workers,
-            collate_fn=_collate,
-            pin_memory=pin_memory,
-            persistent_workers=(num_workers > 0 and len(paths) > batch_size),
         )
-        for batch_paths, batch_out_paths, img_batch in loader:
-            with torch.no_grad():
-                feats_list = encode_pe_from_imageminus1to1(
-                    bundle, img_batch, same_bucket=True
-                )
-            for src, dst, feats in zip(batch_paths, batch_out_paths, feats_list):
-                save_dict = {
-                    "image_features": feats.detach().to(save_dtype).cpu().contiguous()
-                }
-                save_file(save_dict, dst, metadata=metadata)
-                stats.written += 1
-                if progress is not None:
-                    progress(1, detail=f"{Path(src).name} → T={feats.shape[0]}")
+        idxs = range(start, len(all_paths))
+        batches.extend(
+            list(idxs[i : i + batch_size]) for i in range(0, len(paths), batch_size)
+        )
+
+    ds = _PEImageGroup(all_paths, all_out_paths)
+    loader = DataLoader(
+        ds,
+        batch_sampler=batches,
+        num_workers=num_workers,
+        collate_fn=_collate,
+        pin_memory=pin_memory,
+        persistent_workers=(num_workers > 0),
+    )
+    for batch_paths, batch_out_paths, img_batch in loader:
+        # Batch is shape-homogeneous → one patch grid. Derive it from the tensor shape
+        # (IMAGE_TRANSFORMS doesn't resize) and stamp grid_h/grid_w so consumers (REPA v2)
+        # can unflatten tokens without re-deriving the aspect bucket.
+        _h, _w = img_batch.shape[-2:]
+        _gh, _gw = pick_bucket(_h, _w, bundle.bucket_spec)
+        metadata = {**base_metadata, "grid_h": str(_gh), "grid_w": str(_gw)}
+        with torch.no_grad():
+            feats_list = encode_pe_from_imageminus1to1(
+                bundle, img_batch, same_bucket=True
+            )
+        for src, dst, feats in zip(batch_paths, batch_out_paths, feats_list):
+            save_dict = {
+                "image_features": feats.detach().to(save_dtype).cpu().contiguous()
+            }
+            save_file(save_dict, dst, metadata=metadata)
+            stats.written += 1
+            if progress is not None:
+                progress(1, detail=f"{Path(src).name} → T={feats.shape[0]}")
 
     if torch.cuda.is_available():
         torch.cuda.empty_cache()
@@ -184,7 +225,7 @@ def compute_pe_centroid(
     """
     from safetensors.torch import load_file
 
-    suffix = f"_anima_{encoder}.safetensors"
+    suffix = pe_cache_suffix(encoder)
     files = sorted(p for p in cache_dir.rglob(f"*{suffix}") if p.is_file())
     files = [p for p in files if not p.name.startswith("anima_pe_centroid")]
     if not files:
