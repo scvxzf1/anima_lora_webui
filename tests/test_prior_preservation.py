@@ -84,6 +84,49 @@ def test_prior_preservation_forward_zeros_and_restores_multiplier():
     assert net.history == [0.0, 1.25]
 
 
+def test_prior_preservation_forward_prepares_block_swap_reference_forward():
+    net = _FakeNetwork()
+
+    class _BlockSwapAnima:
+        blocks_to_swap = 2
+
+        def __init__(self) -> None:
+            self.prepare_calls: list[bool] = []
+            self.call_saw_prepare = False
+
+        def prepare_block_swap_before_forward(self, free_cache: bool = True) -> None:
+            self.prepare_calls.append(free_cache)
+
+        def __call__(self, x, timesteps, crossattn_emb, padding_mask=None, **kwargs):
+            self.call_saw_prepare = bool(self.prepare_calls)
+            return x + 3
+
+    class _WrappedAnima:
+        def __init__(self, module) -> None:
+            self.module = module
+
+        def __call__(self, *args, **kwargs):
+            return self.module(*args, **kwargs)
+
+    anima = _BlockSwapAnima()
+    noisy = torch.ones(1, 4, 1, 2, 2)
+
+    out = run_prior_preservation_forward(
+        anima_call=_WrappedAnima(anima),
+        network=net,
+        noisy_model_input=noisy,
+        timesteps=torch.tensor([0.2]),
+        crossattn_emb=torch.randn(1, 8, 16),
+        padding_mask=torch.zeros(1, 1, 2, 2),
+        forward_kwargs={},
+    )
+
+    assert torch.equal(out, noisy + 3)
+    assert anima.prepare_calls == [False]
+    assert anima.call_saw_prepare is True
+    assert net.history == [0.0, 1.25]
+
+
 def test_prior_preservation_loss_matches_weighted_mse_per_sample():
     pred = torch.tensor(
         [
