@@ -5,24 +5,30 @@
 const ctx = globalThis.ctx;
 
     globalThis.updateTomlActionState = function updateTomlActionState(filePath) {
-        const meta = tomlFileMeta[filePath];
+        const selectedFile = filePath || currentTomlFile || val('toml-file-select') || '';
+        const meta = tomlFileMeta[selectedFile];
         const editorDirty = isTomlDirty();
-        const formDirty = hasUnsavedFormChanges(filePath);
+        const formFile = currentFormConfigFile();
+        const formDirty = hasUnsavedFormChanges(formFile);
         const dirty = editorDirty || formDirty;
+        const saveFile = formDirty ? formFile : selectedFile;
+        const saveMeta = tomlFileMeta[saveFile] || (saveFile === selectedFile ? meta : undefined);
         const saveBtn = document.getElementById('btn-save-toml');
         if (saveBtn) {
-            saveBtn.disabled = Boolean(meta?.locked) || !filePath || !dirty;
-            saveBtn.textContent = '保存更新当前选中配置';
+            saveBtn.disabled = Boolean(saveMeta?.locked) || !saveFile || !dirty;
+            saveBtn.textContent = formDirty && saveFile !== selectedFile
+                ? '保存更新当前表单配置'
+                : '保存更新当前选中配置';
             saveBtn.classList.remove('btn-confirm-danger');
-            saveBtn.title = meta?.locked
+            saveBtn.title = saveMeta?.locked
                 ? '该配置文件已锁定，请使用新名称另存新配置后编辑'
                 : (dirty
                     ? (formDirty
-                        ? '把左侧表单、数据集预设选择和采样提示词等修改写回当前选中的 TOML；保存后训练会使用这些新值。'
+                        ? `把左侧表单、数据集预设选择和采样提示词等修改写回 ${saveFile}；保存后训练会使用这些新值。`
                         : '把直接编辑器里的 TOML 文本写回当前文件。')
                     : '当前配置没有未保存修改，不需要保存。');
         }
-        updateTomlEditorPanelState(filePath);
+        updateTomlEditorPanelState(selectedFile);
         const applyBtn = document.getElementById('btn-apply-toml');
         if (applyBtn) {
             applyBtn.disabled = !meta?.trainable || dirty;
@@ -34,7 +40,7 @@ const ctx = globalThis.ctx;
         }
         const moveBtn = document.getElementById('btn-move-toml-group');
         if (moveBtn) {
-            const canMove = Boolean(filePath && meta && !meta.locked && !dirty && getMovableTomlGroups(meta.group).length > 0);
+            const canMove = Boolean(selectedFile && meta && !meta.locked && !dirty && getMovableTomlGroups(meta.group).length > 0);
             moveBtn.disabled = !canMove;
             moveBtn.title = dirty
                 ? '当前配置尚未保存，请先保存或放弃修改后再移动分组位置'
@@ -44,12 +50,12 @@ const ctx = globalThis.ctx;
         }
         const reloadBtn = document.getElementById('btn-reload-toml');
         if (reloadBtn) {
-            reloadBtn.disabled = !filePath;
+            reloadBtn.disabled = !selectedFile;
             reloadBtn.title = '从磁盘重新读取当前配置文件；未保存的编辑会被丢弃，但不会切换训练入口。';
         }
         const lockBtn = document.getElementById('btn-lock-toml');
         if (lockBtn) {
-            const hasFile = Boolean(filePath && meta);
+            const hasFile = Boolean(selectedFile && meta);
             const isSystemOrGroupLocked = Boolean(meta?.system_locked || meta?.group_locked);
             lockBtn.disabled = !hasFile || isSystemOrGroupLocked || dirty;
             lockBtn.textContent = meta?.user_locked ? '解除锁定' : '锁定当前文件';
@@ -59,9 +65,9 @@ const ctx = globalThis.ctx;
         }
         const deleteBtn = document.getElementById('btn-delete-toml');
         if (deleteBtn) {
-            const canDelete = Boolean(filePath && meta && !meta.locked && !dirty);
+            const canDelete = Boolean(selectedFile && meta && !meta.locked && !dirty);
             if (!canDelete) resetTomlDeleteConfirm({ update: false });
-            const confirming = canDelete && tomlDeleteConfirmFile === filePath;
+            const confirming = canDelete && tomlDeleteConfirmFile === selectedFile;
             deleteBtn.disabled = !canDelete;
             deleteBtn.textContent = confirming ? '确认删除配置' : '删除当前配置';
             deleteBtn.classList.toggle('btn-confirm-danger', confirming);
@@ -149,7 +155,8 @@ const ctx = globalThis.ctx;
         const copyBtn = document.getElementById('btn-copy-toml');
         const meta = tomlFileMeta[filePath];
         const editorDirty = isTomlDirty();
-        const formDirty = hasUnsavedFormChanges(filePath);
+        const formFile = currentFormConfigFile();
+        const formDirty = hasUnsavedFormChanges(formFile);
         const dirty = editorDirty || formDirty;
         const locked = Boolean(meta?.locked);
         const confirming = Boolean(filePath && tomlSaveConfirmFile === filePath);

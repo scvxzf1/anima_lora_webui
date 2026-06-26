@@ -516,11 +516,34 @@ const ctx = globalThis.ctx;
     }
 
     globalThis.applyResourceQuickPreset = function applyResourceQuickPreset(preset) {
-        for (const [key, value] of Object.entries(preset.values)) {
-            setFieldInputValue(key, resourceQuickPresetValue(preset, key, value));
+        for (const [key, value] of Object.entries(resourceQuickPresetPatch(preset))) {
+            setFieldInputValue(key, value);
         }
         handleFormFieldChange();
         setTomlStatus('ok', `已填写显存与速度优化预设: ${preset.label}`);
+    }
+
+    globalThis.resourceQuickPresetPatch = function resourceQuickPresetPatch(preset) {
+        const patch = {};
+        for (const [key, value] of Object.entries(preset?.values || {})) {
+            patch[key] = resourceQuickPresetValue(preset, key, value);
+        }
+
+        const selectiveCheckpoint = String(
+            patch.selective_checkpoint ?? resourceQuickCurrentValue('selective_checkpoint') ?? 'off'
+        ).trim();
+        if (selectiveCheckpoint && selectiveCheckpoint !== 'off') {
+            patch.gradient_checkpointing = false;
+            patch.cpu_offload_checkpointing = false;
+            patch.unsloth_offload_checkpointing = false;
+        }
+
+        const blocksToSwap = Number(patch.blocks_to_swap ?? resourceQuickCurrentValue('blocks_to_swap'));
+        if (Number.isFinite(blocksToSwap) && blocksToSwap > 0) {
+            patch.cpu_offload_checkpointing = false;
+            patch.unsloth_offload_checkpointing = false;
+        }
+        return patch;
     }
 
     globalThis.resourceQuickPresetValue = function resourceQuickPresetValue(preset, key, value) {
@@ -566,6 +589,6 @@ const ctx = globalThis.ctx;
             setFieldInputValue(key, value);
         }
         handleFormFieldChange();
-        const extra = preset.id === 'dop_roles' ? '，还需要填写 DOP 类提示并重新生成文本缓存' : '';
+        const extra = preset.id === 'dop_roles' ? '，还需要填写泛化类别作为 DOP 类提示，例如 woman / character，并重新生成文本缓存' : '';
         setTomlStatus('ok', `已填写无数据集正则化预设: ${preset.label}${extra}`);
     }

@@ -1,4 +1,4 @@
-import { formatHistorySystemTime } from '../system.js?v=module-bootstrap-20260625-9';
+import { formatHistorySystemTime } from '../system.js?v=module-bootstrap-20260627-2';
 import {
     clampNumber,
     historyDetailEmptyText,
@@ -7,8 +7,8 @@ import {
     svgGroup,
     svgRect,
     svgText,
-} from '../ui.js?v=module-bootstrap-20260625-9';
-import { formatLossValue } from './data.js?v=module-bootstrap-20260625-9';
+} from '../ui.js?v=module-bootstrap-20260627-2';
+import { formatLossValue } from './data.js?v=module-bootstrap-20260627-2';
 
 export function createHistoryCurveHover({ historyCurveState, metrics, formatLr }) {
     function renderHistoryCurveHoverReadout(stats) {

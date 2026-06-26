@@ -192,7 +192,7 @@ const ctx = globalThis.ctx;
     globalThis.NO_DATASET_REGULARIZATION_ADVANCED_SUMMARY = '显示底层参数';
     globalThis.NO_DATASET_REGULARIZATION_ADVANCED_SUMMARY_OPEN = '收起底层参数';
     globalThis.NO_DATASET_REGULARIZATION_CONFLICT_MESSAGE = '配置冲突：请只保留空提示、DOP/class prompt、反转遮罩保护中的一种。';
-    globalThis.NO_DATASET_REGULARIZATION_DOP_CLASS_REQUIRED = 'DOP 模式需要填写类提示，例如 woman / character / style。';
+    globalThis.NO_DATASET_REGULARIZATION_DOP_CLASS_REQUIRED = 'DOP 类提示要填训练目标的泛化类别，而不是触发词。人物/角色填 woman / man / character；物体填 object / outfit / weapon；风格填 anime style / illustration style。';
     globalThis.NO_DATASET_REGULARIZATION_QUICK_PRESETS = [
         {
             id: 'prior_baseline',

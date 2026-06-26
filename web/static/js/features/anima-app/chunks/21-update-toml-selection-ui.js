@@ -28,7 +28,11 @@ const ctx = globalThis.ctx;
         return editor.value !== tomlSavedContent;
     }
 
-    globalThis.hasUnsavedFormChanges = function hasUnsavedFormChanges(filePath = currentTomlFile) {
+    globalThis.currentFormConfigFile = function currentFormConfigFile() {
+        return currentTrainingSource.file || '';
+    }
+
+    globalThis.hasUnsavedFormChanges = function hasUnsavedFormChanges(filePath = currentFormConfigFile() || currentTomlFile) {
         if (!filePath || currentTrainingSource.file !== filePath) return false;
         if (!currentConfig || Object.keys(currentConfig).length === 0) return false;
         return datasetEditorState.dirty
@@ -37,7 +41,16 @@ const ctx = globalThis.ctx;
     }
 
     globalThis.hasPendingConfigChanges = function hasPendingConfigChanges(filePath = currentTomlFile) {
-        return isTomlDirty() || hasUnsavedFormChanges(filePath);
+        const formFile = currentFormConfigFile();
+        return isTomlDirty()
+            || hasUnsavedFormChanges(filePath)
+            || Boolean(formFile && formFile !== filePath && hasUnsavedFormChanges(formFile));
+    }
+
+    globalThis.currentTomlEditorContentForFile = function currentTomlEditorContentForFile(filePath) {
+        const selectedFile = currentTomlFile || val('toml-file-select') || '';
+        if (!filePath || filePath !== selectedFile) return undefined;
+        return document.getElementById('toml-editor')?.value || '';
     }
 
     globalThis.confirmDiscardTomlChanges = async function confirmDiscardTomlChanges(message) {

@@ -381,7 +381,12 @@ const ctx = globalThis.ctx;
     }
 
     globalThis.saveTomlFile = async function saveTomlFile(options = {}) {
-        const file = currentTomlFile || val('toml-file-select');
+        const selectedFile = currentTomlFile || val('toml-file-select');
+        const formFile = currentFormConfigFile();
+        const editorDirty = isTomlDirty();
+        const formDirty = hasUnsavedFormChanges(formFile);
+        const directEditorSave = options.mode === 'editor';
+        const file = !directEditorSave && formDirty ? formFile : selectedFile;
         if (!file) {
             setTomlStatus('error', '请先选择一个配置文件，或使用“另存新配置”保存导入内容');
             return false;
@@ -390,9 +395,6 @@ const ctx = globalThis.ctx;
             setTomlStatus('error', '该配置文件已锁定，请使用“另存新配置”创建可编辑配置');
             return false;
         }
-        const editorDirty = isTomlDirty();
-        const formDirty = hasUnsavedFormChanges(file);
-        const directEditorSave = options.mode === 'editor';
         if (directEditorSave) {
             if (formDirty) {
                 setTomlStatus('error', '左侧表单或数据集预设选择有未保存修改，请先使用“保存更新当前选中配置”处理后再直接保存 TOML');
@@ -410,12 +412,17 @@ const ctx = globalThis.ctx;
             resetTomlSaveConfirm({ update: false });
             return await saveRawTomlContent(file, document.getElementById('toml-editor').value, { reloadConfig: currentTrainingSource.file === file });
         }
+        if (editorDirty && formDirty && selectedFile !== formFile) {
+            setTomlStatus('error', '右侧直接编辑器和左侧表单分别有未保存修改；请先保存或放弃直接编辑器内容，再保存表单配置。');
+            updateTomlActionState(selectedFile);
+            return false;
+        }
         if (editorDirty && !formDirty && !options.skipConfirm && tomlSaveConfirmFile !== file) {
             armTomlSaveConfirm(file);
             return false;
         }
         resetTomlSaveConfirm({ update: false });
-        if (currentTrainingSource.file === file) {
+        if (formDirty || currentTrainingSource.file === file) {
             const datasetApplied = await applySelectedDatasetPresetToCurrentConfig(file);
             if (!datasetApplied) return false;
             const datasetWasDirty = datasetEditorState.dirty;
@@ -467,18 +474,20 @@ const ctx = globalThis.ctx;
 
     globalThis.saveFormPatchToToml = async function saveFormPatchToToml(file, values) {
         try {
-            const content = document.getElementById('toml-editor').value;
+            const content = currentTomlEditorContentForFile(file);
             const preparedValues = await prepareFormPatchValues(values);
+            const payload = { file, values: preparedValues };
+            if (content !== undefined) payload.content = content;
             const res = await api('/api/config/raw', {
                 method: 'PATCH',
-                body: JSON.stringify({ file, values: preparedValues, content }),
+                body: JSON.stringify(payload),
             });
             if (!res.ok) {
                 setTomlStatus('error', res.error || '保存失败');
                 return false;
             }
 
-            if (typeof res.content === 'string') {
+            if (typeof res.content === 'string' && file === (currentTomlFile || val('toml-file-select'))) {
                 document.getElementById('toml-editor').value = res.content;
                 tomlSavedContent = res.content;
             }

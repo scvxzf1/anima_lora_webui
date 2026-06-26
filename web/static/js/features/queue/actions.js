@@ -9,8 +9,8 @@ import {
     moveTrainingQueueItem,
     retryTrainingQueueItem,
     updateTrainingQueueSettingsRequest,
-} from './api.js?v=module-bootstrap-20260625-9';
-import { queueSummaryCounts, setQueueFeedback, setQueueFilter } from './state.js?v=module-bootstrap-20260625-9';
+} from './api.js?v=module-bootstrap-20260627-2';
+import { queueSummaryCounts, setQueueFeedback, setQueueFilter } from './state.js?v=module-bootstrap-20260627-2';
 
 export function createQueueActions({ ctx, state, deps, updateTrainingQueueFromPayload, renderTrainingQueue, queueItemTitle }) {
     function showQueueFeedback(feedback = {}) {

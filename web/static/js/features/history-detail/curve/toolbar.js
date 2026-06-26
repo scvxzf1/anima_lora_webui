@@ -1,4 +1,4 @@
-import { optionNode } from '../ui.js?v=module-bootstrap-20260625-9';
+import { optionNode } from '../ui.js?v=module-bootstrap-20260627-2';
 
 export function createHistoryCurveToolbar({ historyCurveState, renderHistoryDetailContent }) {
     function renderHistoryCurveToolbar(allPoints) {

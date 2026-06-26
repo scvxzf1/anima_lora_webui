@@ -1015,7 +1015,12 @@ def test_config_form_uses_navigation_search_and_progressive_disclosure() -> None
     assert "['mlp_only', 4]" in source
     assert "['every_other', 5]" in source
     assert "function resourceQuickPresetValue(preset, key, value)" in source
+    assert "function resourceQuickPresetPatch(preset)" in source
     assert "function strongerSelectiveCheckpointValue(current, fallback)" in source
+    assert "Object.entries(resourceQuickPresetPatch(preset))" in source
+    assert "patch.gradient_checkpointing = false;" in source
+    assert "patch.cpu_offload_checkpointing = false;" in source
+    assert "patch.unsloth_offload_checkpointing = false;" in source
     assert "return Math.max(current, next);" in source
     assert "return currentStrength >= fallbackStrength ? currentKey : fallbackKey;" in source
     assert "NO_DATASET_REGULARIZATION_QUICK_PRESETS" in source
@@ -1030,7 +1035,7 @@ def test_config_form_uses_navigation_search_and_progressive_disclosure() -> None
     assert no_dataset_quick_presets.count("use_text_cache: true") == 3
     assert no_dataset_quick_presets.count("cache_llm_adapter_outputs: true") == 3
     assert "function applyNoDatasetRegularizationQuickPreset" in source
-    assert "还需要填写 DOP 类提示并重新生成文本缓存" in source
+    assert "还需要填写泛化类别作为 DOP 类提示，例如 woman / character，并重新生成文本缓存" in source
     assert "NO_DATASET_REGULARIZATION_MODE_SPECS" in source
     for label in ["空提示先验", "DOP / class prompt", "反转遮罩保护"]:
         assert label in source
@@ -1047,6 +1052,9 @@ def test_config_form_uses_navigation_search_and_progressive_disclosure() -> None
     assert "dataset.noDatasetRegularizationMode = spec.id" in no_dataset_mode_panel
     assert "input.dataset.noDatasetRegularizationMirror = options.key" in no_dataset_number_control
     assert "input.dataset.noDatasetRegularizationMirror = options.key" in no_dataset_text_control
+    assert "填 caption 中代表训练目标的词" in no_dataset_mode_panel
+    assert "人物/角色用 woman、man、character" in no_dataset_mode_panel
+    assert "label.appendChild(hint);" in no_dataset_text_control
     assert "NO_DATASET_REGULARIZATION_ADVANCED_SUMMARY" in no_dataset_advanced
     assert "appendFieldRows(body, fields, groupClass);" in no_dataset_advanced
     assert "blank_prompt_preservation: true" in no_dataset_patch
@@ -1057,6 +1065,7 @@ def test_config_form_uses_navigation_search_and_progressive_disclosure() -> None
     assert "prior_preservation_weight: 0.0" in no_dataset_patch
     assert "active.length > 1 || orphanPrior || (blankEnabled && dopEnabled)" in no_dataset_infer
     assert "NO_DATASET_REGULARIZATION_CONFLICT_MESSAGE" in no_dataset_status
+    assert "NO_DATASET_REGULARIZATION_DOP_CLASS_REQUIRED" in no_dataset_status
     assert "advanced.open = true;" in no_dataset_update
     assert "updateNoDatasetRegularizationModePanel();" in source
     for value in [
@@ -1169,6 +1178,9 @@ def test_config_form_uses_navigation_search_and_progressive_disclosure() -> None
     assert "作为先验保留条件" in catalog_help_training
     assert "prior_crossattn_emb" in catalog_help_training
     assert "不能和 blank_prompt_preservation 同时使用" in catalog_help_training
+    assert "真正必填的是 DOP 类提示" in catalog_help_training
+    assert "如果去掉专名，这批图大体属于什么类别" in catalog_help_training
+    assert "class prompt 是 prior caption 的目标文本" in catalog_help_training
     assert "只在遮罩外区域做先验保留" in catalog_help_training
     assert "block_swap_transfer_dtype: '块交换传输精度'" in source
     assert "block_swap_transfer_dtype: ['bf16', 'fp8_e4m3']" in source
@@ -1414,14 +1426,32 @@ def test_sample_prompts_save_uses_current_training_config_context() -> None:
 def test_config_form_save_reload_and_launch_share_training_config_file() -> None:
     source = APP_JS.read_text(encoding="utf-8")
     save_patch = _section(source, "async function saveFormPatchToToml", "function updateTomlActionState")
+    dataset_apply = _frontend_module_text("js/features/anima-app/chunks/17-apply-selected-dataset-preset-to-current-config.js")
+    action_state = _section(source, "function updateTomlActionState", "function isTomlLocked")
+    save_toml = _section(source, "async function saveTomlFile", "async function saveRawTomlContent")
+    pending_changes = _section(source, "function hasUnsavedFormChanges", "function collectPendingConfigChangeDetails")
     load_config = _section(source, "async function loadConfig", "async function reloadCurrentConfig")
     load_steps = _section(source, "async function loadStepEstimate", "async function loadDatasetEditor")
     run_preflight = _section(source, "async function runPreflight", "function isCliOnlySpdSource")
     start_unchecked = _section(source, "async function startTrainingUnchecked", "async function enqueueTrainingFromConfig")
     current_file = _section(source, "function currentTrainingConfigFile", "function preflightPlainText")
 
-    assert "body: JSON.stringify({ file, values: preparedValues, content })" in save_patch
+    assert "const content = currentTomlEditorContentForFile(file);" in save_patch
+    assert "if (content !== undefined) payload.content = content;" in save_patch
+    assert "body: JSON.stringify(payload)" in save_patch
+    assert "file === (currentTomlFile || val('toml-file-select'))" in save_patch
+    assert "currentTomlEditorContentForFile(file)" in dataset_apply
+    assert "currentTomlEditorContentForFile(targetFile)" in source
     assert "await loadConfig();" in save_patch
+    assert "function currentFormConfigFile" in source
+    assert "return currentTrainingSource.file || '';" in source
+    assert "currentTomlEditorContentForFile" in pending_changes
+    assert "const formFile = currentFormConfigFile();" in action_state
+    assert "const saveFile = formDirty ? formFile : selectedFile;" in action_state
+    assert "saveBtn.disabled = Boolean(saveMeta?.locked) || !saveFile || !dirty;" in action_state
+    assert "保存更新当前表单配置" in action_state
+    assert "const file = !directEditorSave && formDirty ? formFile : selectedFile;" in save_toml
+    assert "editorDirty && formDirty && selectedFile !== formFile" in save_toml
     assert "currentConfig = data;" in load_config
     assert "renderConfigForm(currentConfig);" in load_config
     assert "const params = new URLSearchParams({ variant, preset, methods_subdir: methodsSubdir });" in load_config
@@ -1636,7 +1666,7 @@ def test_history_manager_frontend_hooks_are_present() -> None:
     assert "未归档 · 最新 6 个训练任务" in html
     assert "btn-open-history-manager" in html
     assert 'type="module" src="/static/app.js?v=' in html
-    assert "import { MetricsChart } from './chart.js?v=module-bootstrap-20260625-" in source
+    assert "import { MetricsChart } from './chart.js?v=module-bootstrap-" in source
     assert "style.css?v=" in html
     assert "app.js?v=" in html
     assert "history-bulk-bar" in html
@@ -2508,7 +2538,7 @@ def test_history_detail_config_files_are_tool_ready() -> None:
     assert "function historyProjectRoot(task = {})" in path_items
     assert "project_root_abs" in path_items
 
-    assert "module-bootstrap-20260625-" in html
+    assert "module-bootstrap-" in html
     for selector in (
         ".history-config-viewer",
         ".history-config-toolbar",

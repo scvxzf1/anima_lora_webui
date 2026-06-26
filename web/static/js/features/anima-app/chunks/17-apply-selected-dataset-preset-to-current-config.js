@@ -14,14 +14,14 @@ const ctx = globalThis.ctx;
                     body: JSON.stringify({
                         file,
                         values: { dataset_config: '' },
-                        content: document.getElementById('toml-editor')?.value || '',
+                        content: currentTomlEditorContentForFile(file),
                     }),
                 });
                 if (!res.ok) {
                     setTomlStatus('error', res.error || '清除数据集预设失败');
                     return null;
                 }
-                if (typeof res.content === 'string') {
+                if (typeof res.content === 'string' && file === (currentTomlFile || val('toml-file-select'))) {
                     const editor = document.getElementById('toml-editor');
                     if (editor) {
                         editor.value = res.content;
@@ -39,14 +39,14 @@ const ctx = globalThis.ctx;
                 body: JSON.stringify({
                     dataset_file: nextDataset,
                     train_file: file,
-                    train_content: document.getElementById('toml-editor')?.value || '',
+                    train_content: currentTomlEditorContentForFile(file),
                 }),
             });
             if (!res.ok) {
                 setTomlStatus('error', res.error || '应用数据集预设失败');
                 return null;
             }
-            if (typeof res.train_content === 'string') {
+            if (typeof res.train_content === 'string' && file === (currentTomlFile || val('toml-file-select'))) {
                 const editor = document.getElementById('toml-editor');
                 if (editor) {
                     editor.value = res.train_content;

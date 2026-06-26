@@ -137,6 +137,8 @@ def preflight_training_config(
 
     if "output_name" in cfg and _is_blank_output_name(cfg.get("output_name")):
         add("error", "output_name", "输出名称未填写")
+    _check_checkpointing_config(cfg, add)
+    _check_no_dataset_regularization_config(cfg, add)
     _check_output_dir_history_reuse(cfg, add)
     check_file("pretrained_model_name_or_path", "基础 DiT 模型", (".safetensors", ".pt", ".pth", ".ckpt"))
     check_file("qwen3", "Qwen3 文本编码器", (".safetensors", ".pt", ".pth", ".bin"))
@@ -189,6 +191,108 @@ def _inspect_network_weight(
         cfg=cfg,
         root=ROOT,
     )
+
+
+def _check_checkpointing_config(cfg: dict[str, Any], add) -> None:
+    selective_checkpoint = str(cfg.get("selective_checkpoint") or "off").strip().lower()
+    gradient_checkpointing = _bool_value(cfg.get("gradient_checkpointing"), False)
+    cpu_offload_checkpointing = _bool_value(cfg.get("cpu_offload_checkpointing"), False)
+    unsloth_offload_checkpointing = _bool_value(cfg.get("unsloth_offload_checkpointing"), False)
+    blocks_to_swap = _nonnegative_int_value(cfg.get("blocks_to_swap"), 0)
+
+    if selective_checkpoint != "off" and gradient_checkpointing:
+        add(
+            "error",
+            "gradient_checkpointing",
+            (
+                "selective_checkpoint 是 DiT 选择性检查点模式，不能同时开启完整 "
+                "gradient_checkpointing；请关闭完整检查点，保留 selective_checkpoint。"
+            ),
+        )
+    if selective_checkpoint != "off" and cpu_offload_checkpointing:
+        add(
+            "error",
+            "cpu_offload_checkpointing",
+            "selective_checkpoint 不支持 CPU activation offload；请关闭 cpu_offload_checkpointing。",
+        )
+    if selective_checkpoint != "off" and unsloth_offload_checkpointing:
+        add(
+            "error",
+            "unsloth_offload_checkpointing",
+            "selective_checkpoint 不能和 unsloth_offload_checkpointing 同时开启。",
+        )
+    if blocks_to_swap > 0 and cpu_offload_checkpointing:
+        add(
+            "error",
+            "cpu_offload_checkpointing",
+            "blocks_to_swap 不能和 cpu_offload_checkpointing 同时开启。",
+        )
+    if blocks_to_swap > 0 and unsloth_offload_checkpointing:
+        add(
+            "error",
+            "unsloth_offload_checkpointing",
+            "blocks_to_swap 不能和 unsloth_offload_checkpointing 同时开启。",
+        )
+
+
+def _check_no_dataset_regularization_config(cfg: dict[str, Any], add) -> None:
+    prior_weight = _nonnegative_float_value(cfg.get("prior_preservation_weight"), 0.0)
+    mask_weight = _nonnegative_float_value(cfg.get("inverted_mask_prior_weight"), 0.0)
+    blank_enabled = _bool_value(cfg.get("blank_prompt_preservation"), False)
+    dop_trigger = str(cfg.get("diff_output_preservation_trigger") or "").strip()
+    dop_class = str(cfg.get("diff_output_preservation_class") or "").strip()
+    use_text_cache = _bool_value(cfg.get("use_text_cache"), False)
+    cache_llm_adapter_outputs = _bool_value(cfg.get("cache_llm_adapter_outputs"), False)
+
+    if prior_weight > 0.0 and dop_trigger and not dop_class and not blank_enabled:
+        add(
+            "error",
+            "diff_output_preservation_class",
+            "DOP 已填写触发词，但未填写类提示；请填写 woman / character / style 等类提示，或关闭 prior_preservation_weight。",
+        )
+    elif prior_weight > 0.0 and not (blank_enabled or dop_class):
+        add(
+            "error",
+            "prior_preservation_weight",
+            "prior_preservation_weight 大于 0 时，需要开启 blank_prompt_preservation 或填写 DOP 类提示。",
+        )
+
+    if prior_weight > 0.0 and blank_enabled and dop_class:
+        add(
+            "error",
+            "blank_prompt_preservation",
+            "blank_prompt_preservation 不能和 DOP 类提示同时使用。",
+        )
+
+    if (prior_weight > 0.0 or mask_weight > 0.0) and not use_text_cache:
+        add(
+            "error",
+            "use_text_cache",
+            "无数据集正则化需要 use_text_cache=true；请开启文本缓存后重新预处理。",
+        )
+    prior_needs_adapter_cache = prior_weight > 0.0 and (blank_enabled or dop_class)
+    if (prior_needs_adapter_cache or mask_weight > 0.0) and not cache_llm_adapter_outputs:
+        add(
+            "error",
+            "cache_llm_adapter_outputs",
+            "无数据集正则化需要 cache_llm_adapter_outputs=true；请开启 LLM adapter 输出缓存后重新预处理。",
+        )
+
+
+def _nonnegative_int_value(value: Any, fallback: int = 0) -> int:
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return fallback
+    return parsed if parsed >= 0 else fallback
+
+
+def _nonnegative_float_value(value: Any, fallback: float = 0.0) -> float:
+    try:
+        parsed = float(value)
+    except (TypeError, ValueError):
+        return fallback
+    return parsed if parsed >= 0.0 else fallback
 
 
 def _check_network_weights(

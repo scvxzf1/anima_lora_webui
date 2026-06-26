@@ -1033,6 +1033,88 @@ def test_preflight_rejects_blank_output_name(tmp_path: Path, monkeypatch):
     assert output_checks[-1]["message"] == "输出名称未填写"
 
 
+def test_preflight_rejects_selective_checkpoint_with_full_checkpointing(
+    tmp_path: Path, monkeypatch
+):
+    configs, _dataset_path = _write_minimal_config_tree(tmp_path)
+    _patch_config_service_paths(monkeypatch, tmp_path)
+    source_dir = tmp_path / "image_dataset" / "selected"
+    source_dir.mkdir(parents=True)
+    Image.new("RGB", (8, 8), color=(20, 40, 60)).save(source_dir / "sample.png")
+    (tmp_path / "models").mkdir()
+    (tmp_path / "models" / "anima.safetensors").write_bytes(b"model")
+    (tmp_path / "models" / "qwen.safetensors").write_bytes(b"qwen")
+    (tmp_path / "models" / "vae.safetensors").write_bytes(b"vae")
+    selected_config = configs / "imported" / "selected.toml"
+    selected_config.write_text(
+        "\n".join(
+            [
+                'source_image_dir = "image_dataset/selected"',
+                'pretrained_model_name_or_path = "models/anima.safetensors"',
+                'qwen3 = "models/qwen.safetensors"',
+                'vae = "models/vae.safetensors"',
+                "blocks_to_swap = 24",
+                'selective_checkpoint = "mlp_only"',
+                "gradient_checkpointing = true",
+                "unsloth_offload_checkpointing = false",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    result = config_service.preflight_training_config(
+        "lora",
+        "default",
+        "imported",
+        config_file="configs/imported/selected.toml",
+    )
+
+    errors = [item for item in result["errors"] if item["key"] == "gradient_checkpointing"]
+    assert result["ok"] is False
+    assert "selective_checkpoint" in errors[-1]["message"]
+
+
+def test_preflight_rejects_dop_without_class_prompt(tmp_path: Path, monkeypatch):
+    configs, _dataset_path = _write_minimal_config_tree(tmp_path)
+    _patch_config_service_paths(monkeypatch, tmp_path)
+    source_dir = tmp_path / "image_dataset" / "selected"
+    source_dir.mkdir(parents=True)
+    Image.new("RGB", (8, 8), color=(20, 40, 60)).save(source_dir / "sample.png")
+    (tmp_path / "models").mkdir()
+    (tmp_path / "models" / "anima.safetensors").write_bytes(b"model")
+    (tmp_path / "models" / "qwen.safetensors").write_bytes(b"qwen")
+    (tmp_path / "models" / "vae.safetensors").write_bytes(b"vae")
+    selected_config = configs / "imported" / "selected.toml"
+    selected_config.write_text(
+        "\n".join(
+            [
+                'source_image_dir = "image_dataset/selected"',
+                'pretrained_model_name_or_path = "models/anima.safetensors"',
+                'qwen3 = "models/qwen.safetensors"',
+                'vae = "models/vae.safetensors"',
+                "prior_preservation_weight = 0.1",
+                'diff_output_preservation_trigger = "sks"',
+                'diff_output_preservation_class = ""',
+                "blank_prompt_preservation = false",
+                "use_text_cache = true",
+                "cache_llm_adapter_outputs = true",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    result = config_service.preflight_training_config(
+        "lora",
+        "default",
+        "imported",
+        config_file="configs/imported/selected.toml",
+    )
+
+    errors = [item for item in result["errors"] if item["key"] == "diff_output_preservation_class"]
+    assert result["ok"] is False
+    assert "DOP" in errors[-1]["message"]
+
+
 def test_preflight_blocks_runtime_config_reusing_history_training_output_dir(
     tmp_path: Path, monkeypatch
 ):

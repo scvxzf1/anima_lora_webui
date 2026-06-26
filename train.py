@@ -265,6 +265,7 @@ class AnimaTrainer:
     def __init__(self, bootstrap: TrainingBootstrap | None = None):
         self.bootstrap = bootstrap or TrainingBootstrap()
         self.sample_prompts_te_outputs = None
+        self.sample_prompts_snapshot = None
         self.memory_probe = None
         self.peak_probe = None
         self._padding_mask_cache = {}
@@ -1397,6 +1398,7 @@ class AnimaTrainer:
             tokenize_strategy,
             text_encoding_strategy,
             self.sample_prompts_te_outputs,
+            sample_prompts_snapshot=self.sample_prompts_snapshot,
             network=network,
         )
 
@@ -1820,6 +1822,7 @@ class AnimaTrainer:
             text_encoding_strategy = text_strategies.TextEncodingStrategy.get_strategy()
 
             prompts = train_util.load_prompts(args.sample_prompts)
+            self.sample_prompts_snapshot = [dict(prompt) for prompt in prompts]
             sample_prompts_te_outputs = {}
             with accelerator.autocast(), torch.no_grad():
                 for prompt_dict in prompts:

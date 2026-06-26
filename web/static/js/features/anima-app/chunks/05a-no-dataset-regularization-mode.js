@@ -55,13 +55,15 @@ const ctx = globalThis.ctx;
             key: 'diff_output_preservation_trigger',
             modeClass: 'no-dataset-control-dop',
             label: 'DOP 触发词',
-            placeholder: '例如 sks，可留空',
+            placeholder: '例如 sks / 角色名，可留空',
+            hint: '可选。填 caption 中代表训练目标的词，例如 sks、角色名、产品名；DOP 会把它替换成下面的类提示。',
         }));
         controls.appendChild(createNoDatasetRegularizationTextControl({
             key: 'diff_output_preservation_class',
             modeClass: 'no-dataset-control-dop no-dataset-control-dop-class',
             label: 'DOP 类提示',
-            placeholder: '例如 woman / character / style',
+            placeholder: '角色: woman / character；风格: anime style',
+            hint: '必填。填比触发词更泛化的类别：人物/角色用 woman、man、character；物体用 object、outfit、weapon；风格用 anime style、illustration style。',
         }));
         panel.appendChild(controls);
 
@@ -122,6 +124,11 @@ const ctx = globalThis.ctx;
         input.addEventListener('input', () => updateNoDatasetRegularizationFieldFromMirror(input));
         input.addEventListener('change', () => updateNoDatasetRegularizationFieldFromMirror(input));
         label.append(title, input);
+        if (options.hint) {
+            const hint = document.createElement('em');
+            hint.textContent = options.hint;
+            label.appendChild(hint);
+        }
         return label;
     }
 
@@ -261,7 +268,17 @@ const ctx = globalThis.ctx;
     }
 
     globalThis.noDatasetRegularizationStatusMessage = function noDatasetRegularizationStatusMessage(modeState, values) {
-        if (modeState.conflict) return NO_DATASET_REGULARIZATION_CONFLICT_MESSAGE;
+        if (modeState.conflict) {
+            const priorEnabled = noDatasetRegularizationNumber(values.prior_preservation_weight) > 0;
+            const blankEnabled = Boolean(values.blank_prompt_preservation === true || values.blank_prompt_preservation === 'true');
+            const dopClass = String(values.diff_output_preservation_class || '').trim();
+            if (priorEnabled && !blankEnabled && !dopClass) {
+                return String(values.diff_output_preservation_trigger || '').trim()
+                    ? NO_DATASET_REGULARIZATION_DOP_CLASS_REQUIRED
+                    : '先验保留权重大于 0 时，请选择空提示先验，或填写 DOP 类提示。类提示应是泛化类别，例如 woman / character / anime style。';
+            }
+            return NO_DATASET_REGULARIZATION_CONFLICT_MESSAGE;
+        }
         if (modeState.mode === 'blank') return '将使用空提示先验；训练前请确认文本缓存和 LLM 适配器输出缓存已生成。';
         if (modeState.mode === 'dop') {
             return String(values.diff_output_preservation_class || '').trim()

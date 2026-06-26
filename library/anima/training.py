@@ -910,6 +910,7 @@ def sample_images(
     sample_prompts_te_outputs=None,
     prompt_replacement=None,
     network=None,
+    sample_prompts_snapshot=None,
 ):
     """Generate sample images during training.
 
@@ -935,7 +936,12 @@ def sample_images(
             return
 
     logger.info(f"Generating sample images at step {steps}")
-    if not os.path.isfile(args.sample_prompts) and sample_prompts_te_outputs is None:
+    use_cached_prompt_snapshot = (
+        sample_prompts_snapshot is not None
+        and sample_prompts_te_outputs is not None
+        and text_encoder is None
+    )
+    if not use_cached_prompt_snapshot and not os.path.isfile(args.sample_prompts):
         logger.error(f"No prompt file: {args.sample_prompts}")
         return
 
@@ -959,7 +965,10 @@ def sample_images(
     else:
         dit.switch_block_swap_for_inference()
 
-    prompts = train_util.load_prompts(args.sample_prompts)
+    if use_cached_prompt_snapshot:
+        prompts = [dict(prompt) for prompt in sample_prompts_snapshot]
+    else:
+        prompts = train_util.load_prompts(args.sample_prompts)
     save_dir = os.path.join(args.output_dir, "sample")
     os.makedirs(save_dir, exist_ok=True)
 

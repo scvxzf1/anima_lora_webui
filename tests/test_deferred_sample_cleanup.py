@@ -104,3 +104,18 @@ def test_sample_prompts_without_schedule_do_not_trigger_qwen3_or_te_cache() -> N
     assert "sampling_enabled = _sample_preview_enabled(args)" in encoder_decision
     assert "or sampling_enabled" in encoder_decision
     assert 'getattr(args, "sample_prompts", None)' not in encoder_decision
+
+
+def test_cached_sample_prompt_snapshot_survives_prompt_file_edits() -> None:
+    train_source = TRAIN_PY.read_text(encoding="utf-8")
+    anima_source = ANIMA_TRAINING.read_text(encoding="utf-8")
+    cache_fn = _section(train_source, "def cache_text_encoder_outputs_if_needed(", "    # endregion")
+    sample_images_fn = _section(anima_source, "def sample_images(", "def _sample_image_inference(")
+
+    assert "self.sample_prompts_snapshot = None" in train_source
+    assert "self.sample_prompts_snapshot = [dict(prompt) for prompt in prompts]" in cache_fn
+    assert "sample_prompts_snapshot=self.sample_prompts_snapshot" in train_source
+    assert "sample_prompts_snapshot=None" in sample_images_fn
+    assert "use_cached_prompt_snapshot = (" in sample_images_fn
+    assert "and text_encoder is None" in sample_images_fn
+    assert "prompts = [dict(prompt) for prompt in sample_prompts_snapshot]" in sample_images_fn
