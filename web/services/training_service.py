@@ -10,6 +10,7 @@ import asyncio
 from collections import deque
 from datetime import datetime
 import json
+import math
 import os
 import re
 import shutil
@@ -22,7 +23,7 @@ import psutil
 from aiohttp import web
 import toml
 
-from library.env import load_dotenv
+from library.env import load_dotenv, get_training_history_root, get_training_queue_root
 from library.preprocess.captions import (
     CAPTION_SOURCE_CAPTIONS_JSON,
     CAPTIONS_JSON_FILE,
@@ -61,9 +62,9 @@ from web.services.training.gpu import (
 )
 
 ROOT = Path(__file__).resolve().parents[2]
-HISTORY_DIR = ROOT / "configs" / "web-training-history"
+HISTORY_DIR = get_training_history_root()
 HISTORY_COLLECTIONS_FILE = HISTORY_DIR / "collections.json"
-QUEUE_DIR = ROOT / "configs" / "web-training-queue"
+QUEUE_DIR = get_training_queue_root()
 QUEUE_FILE = QUEUE_DIR / "queue.json"
 RUN_META_FILE = "run.meta.json"
 OUTPUT_READ_SIZE = 4096
@@ -230,7 +231,7 @@ class TrainingService:
         self._ws_clients.discard(ws)
 
     def get_metrics_history(self) -> list[dict]:
-        return self._metrics_history[-500:]
+        return [_json_safe_training_payload(item) for item in self._metrics_history[-500:]]
 
     def get_log_records(self, after: int = 0, limit: int = 1000) -> list[dict[str, Any]]:
         limit = max(1, min(limit, MAX_LOG_RECORDS))
@@ -1099,23 +1100,17 @@ def _new_queue_item_id(kind: str, methods_subdir: str, variant: str) -> str:
 
 def _list_history_tasks(*, include_archived: bool = False, limit: int | None = None) -> list[dict[str, Any]]:
     meta_paths = _history_meta_paths()
-    for meta_path in meta_paths:
-        meta = _read_json(meta_path)
-        if meta:
-            _repair_history_meta(meta_path, meta)
-    _sync_bound_history_collection_groups(meta_paths)
+    records = _history_meta_records(meta_paths, repair=True)
+    _sync_bound_history_collection_groups(records=records)
 
     tasks = []
-    for meta_path in meta_paths:
-        if _is_deleting_history_dir(meta_path.parent):
+    for record in records:
+        meta_path = record["path"]
+        task = _safe_history_summary(record["meta"], meta_path.parent)
+        if task is None:
             continue
-        meta = _read_json(meta_path)
-        if meta:
-            task = _safe_history_summary(meta, meta_path.parent)
-            if task is None:
-                continue
-            if include_archived or not task.get("archived"):
-                tasks.append(task)
+        if include_archived or not task.get("archived"):
+            tasks.append(task)
     tasks.sort(key=lambda item: item.get("started_at") or 0, reverse=True)
     if limit is None:
         limit = MAX_HISTORY_ITEMS
@@ -1181,7 +1176,11 @@ def _batch_set_history_group(task_ids: list[str], group: Any) -> dict[str, Any]:
     }
 
 
-def _history_meta_records(meta_paths: list[Path] | None = None) -> list[dict[str, Any]]:
+def _history_meta_records(
+    meta_paths: list[Path] | None = None,
+    *,
+    repair: bool = False,
+) -> list[dict[str, Any]]:
     paths = meta_paths if meta_paths is not None else _history_meta_paths()
     records: list[dict[str, Any]] = []
     for meta_path in paths:
@@ -1190,21 +1189,27 @@ def _history_meta_records(meta_paths: list[Path] | None = None) -> list[dict[str
         meta = _read_json(meta_path)
         if not meta:
             continue
-        task_id = str(meta.get("id") or meta_path.parent.name).strip()
-        work = dict(meta)
-        _fill_history_runtime_meta(work)
-        _fill_history_group_meta(work)
-        records.append({
-            "id": task_id,
-            "path": meta_path,
-            "meta": meta,
-            "group_key": str(work.get("history_group_key") or "").strip(),
-            "job": str(meta.get("job") or "").strip(),
-            "group": _clean_history_text(meta.get("group"), max_len=48),
-            "updated_at": float(meta.get("updated_at") or 0),
-            "started_at": float(meta.get("started_at") or 0),
-        })
+        if repair:
+            _repair_history_meta(meta_path, meta)
+        records.append(_history_meta_record(meta_path, meta))
     return records
+
+
+def _history_meta_record(meta_path: Path, meta: dict[str, Any]) -> dict[str, Any]:
+    task_id = str(meta.get("id") or meta_path.parent.name).strip()
+    work = dict(meta)
+    _fill_history_runtime_meta(work)
+    _fill_history_group_meta(work)
+    return {
+        "id": task_id,
+        "path": meta_path,
+        "meta": meta,
+        "group_key": str(work.get("history_group_key") or "").strip(),
+        "job": str(meta.get("job") or "").strip(),
+        "group": _clean_history_text(meta.get("group"), max_len=48),
+        "updated_at": float(meta.get("updated_at") or 0),
+        "started_at": float(meta.get("started_at") or 0),
+    }
 
 
 def _bound_history_task_ids(task_ids: list[str]) -> list[str]:
@@ -1232,8 +1237,12 @@ def _bound_history_task_ids(task_ids: list[str]) -> list[str]:
     return ordered
 
 
-def _sync_bound_history_collection_groups(meta_paths: list[Path] | None = None) -> int:
-    records = _history_meta_records(meta_paths)
+def _sync_bound_history_collection_groups(
+    meta_paths: list[Path] | None = None,
+    *,
+    records: list[dict[str, Any]] | None = None,
+) -> int:
+    records = records if records is not None else _history_meta_records(meta_paths)
     grouped: dict[str, list[dict[str, Any]]] = {}
     for record in records:
         key = str(record.get("group_key") or "")
@@ -1256,6 +1265,9 @@ def _sync_bound_history_collection_groups(meta_paths: list[Path] | None = None) 
             meta["updated_at_text"] = _format_ts(now)
             try:
                 _write_json_atomic(record["path"], meta)
+                record["meta"] = meta
+                record["group"] = target_group
+                record["updated_at"] = now
                 changed += 1
             except OSError:
                 continue
@@ -2254,9 +2266,17 @@ def _history_summary(meta: dict[str, Any], task_dir: Path) -> dict[str, Any]:
     _fill_history_group_meta(out)
     if not out["name"]:
         out["name"] = _default_preprocess_history_name(out)
-    out["log_count"] = int(out.get("log_count") or _count_jsonl(task_dir / "logs.jsonl"))
-    out["metric_count"] = int(out.get("metric_count") or _count_jsonl(task_dir / "metrics.jsonl"))
+    out["log_count"] = _history_jsonl_count(out, "log_count", task_dir / "logs.jsonl")
+    out["metric_count"] = _history_jsonl_count(out, "metric_count", task_dir / "metrics.jsonl")
     return out
+
+
+def _history_jsonl_count(meta: dict[str, Any], key: str, path: Path) -> int:
+    if key in meta:
+        count = _int_or_none(meta.get(key))
+        if count is not None and count >= 0:
+            return count
+    return _count_jsonl(path)
 
 
 def _safe_history_summary(meta: dict[str, Any], task_dir: Path) -> dict[str, Any] | None:
@@ -2963,6 +2983,132 @@ def classify_training_error(text: str) -> str:
     if text and CUDA_OOM_RE.search(text):
         return OOM_HINT
     return ""
+
+
+def format_training_anomaly(status_data: dict[str, Any]) -> str | None:
+    """检测训练异常状态并生成可读的错误提示。
+
+    Args:
+        status_data: get_status_snapshot() 返回的完整状态字典
+
+    Returns:
+        格式化的错误提示文本，如果没有检测到异常则返回 None
+    """
+    latest_metric = status_data.get("latest_metric", {}) if isinstance(status_data, dict) else {}
+    if not isinstance(latest_metric, dict) or not latest_metric:
+        return None
+
+    loss = latest_metric.get("loss")
+    lr = latest_metric.get("lr")
+    step = latest_metric.get("step")
+    rate = str(latest_metric.get("rate") or "").strip() or "未知"
+
+    anomaly_kind = _loss_anomaly_kind(loss)
+
+    if anomaly_kind is None:
+        return None
+
+    title = {
+        "nan": "损失值变为 NaN",
+        "inf": "损失值变为无穷大",
+    }.get(anomaly_kind, "损失值异常")
+
+    lines = [
+        f"⚠️ 训练异常：{title}",
+        f"  • 发生步数：第 {step} 步" if step is not None else "  • 发生步数：未知",
+        f"  • 当前学习率：{_format_anomaly_value(lr)}",
+        f"  • 训练速度：{rate}",
+    ]
+
+    latest_system = status_data.get("latest_system", {})
+    if isinstance(latest_system, dict) and latest_system:
+        vram_used = _float_or_none(latest_system.get("vram_used_gb"))
+        vram_total = _float_or_none(latest_system.get("vram_total_gb"))
+        if (
+            vram_used is not None
+            and vram_total is not None
+            and math.isfinite(vram_used)
+            and math.isfinite(vram_total)
+        ):
+            vram_pct = (vram_used / vram_total * 100) if vram_total > 0 else 0
+            lines.append(f"  • 显存占用：{vram_used:.2f}GB / {vram_total:.2f}GB ({vram_pct:.1f}%)")
+
+    lines.extend([
+        "",
+        "常见原因（按可能性排序）：",
+        "  1. 学习率过高",
+        "     → 建议降至 5e-5 或更低，并添加 warmup_steps = 50",
+        "  2. 混合精度数值溢出",
+        "     → 尝试改用 bf16 或临时关闭混合精度 (mixed_precision = \"no\")",
+        "  3. 缓存文件损坏",
+        "     → 删除 *_anima*.npz 和 *_anima_te.safetensors 后重新运行预处理",
+        "  4. 图片或 caption 异常",
+        "     → 检查是否有全黑/全白图片或空 caption 文件",
+    ])
+
+    config_file = str(status_data.get("history_source_config_file") or "").strip()
+    if config_file:
+        config_name = Path(config_file).name
+        lines.extend([
+            "",
+            f"配置文件：{config_name}",
+            f"完整路径：{config_file}",
+        ])
+
+    lines.extend([
+        "",
+        "详细排查步骤请参考项目文档或查看训练日志。",
+    ])
+
+    return "\n".join(lines)
+
+
+def _loss_anomaly_kind(value: Any) -> str | None:
+    if value is None:
+        return None
+    if isinstance(value, str):
+        text = value.strip().lower()
+        if text in {"nan", "+nan", "-nan"}:
+            return "nan"
+        if text in {"inf", "+inf", "infinity", "+infinity"}:
+            return "inf"
+        if text in {"-inf", "-infinity"}:
+            return "inf"
+    number = _float_or_none(value)
+    if number is None:
+        return None
+    if math.isnan(number):
+        return "nan"
+    if math.isinf(number):
+        return "inf"
+    return None
+
+
+def _format_anomaly_value(value: Any) -> str:
+    if value is None or value == "":
+        return "未知"
+    number = _float_or_none(value)
+    if number is None:
+        return str(value)
+    if math.isnan(number):
+        return "NaN"
+    if math.isinf(number):
+        return "Infinity" if number > 0 else "-Infinity"
+    return str(value)
+
+
+def _json_safe_training_payload(value: Any) -> Any:
+    if isinstance(value, float) and not math.isfinite(value):
+        if math.isnan(value):
+            return "NaN"
+        return "Infinity" if value > 0 else "-Infinity"
+    if isinstance(value, dict):
+        return {key: _json_safe_training_payload(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_json_safe_training_payload(item) for item in value]
+    if isinstance(value, tuple):
+        return [_json_safe_training_payload(item) for item in value]
+    return value
 
 
 def _message_with_error_hint(message: str, hint: str) -> str:

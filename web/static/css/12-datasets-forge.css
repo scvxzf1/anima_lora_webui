@@ -795,8 +795,10 @@
 #tab-datasets .dataset-caption-source,
 #tab-datasets .dataset-nl-tag-mix,
 #tab-datasets .dataset-row-settings,
+#tab-datasets .dataset-advanced-section,
 #tab-datasets .dataset-experimental-scope,
 #tab-datasets .dataset-path-filter-advanced,
+#tab-datasets .dataset-is-reg-advanced,
 #tab-datasets .dataset-trigger-clone,
 #tab-datasets .dataset-caption-extension-advanced {
     border-color: var(--dataset-border);
@@ -816,12 +818,16 @@
 
 #tab-datasets .dataset-caption-source-title-row strong,
 #tab-datasets .dataset-nl-tag-toggle strong,
+#tab-datasets .dataset-inline-title-row strong,
 #tab-datasets .dataset-path-filter-recursive strong,
 #tab-datasets .dataset-path-filter-pattern span,
 #tab-datasets .dataset-trigger-clone-toggle strong,
 #tab-datasets .dataset-experimental-head strong,
+#tab-datasets .dataset-experimental-title-row strong,
 #tab-datasets .dataset-caption-extension-title-row strong,
-#tab-datasets .dataset-experimental-scope-copy strong {
+#tab-datasets .dataset-advanced-section-head strong,
+#tab-datasets .dataset-experimental-scope-copy strong,
+#tab-datasets .dataset-is-reg-copy strong {
     color: var(--dataset-text);
     font-size: 0.84rem;
     line-height: 1.25;
@@ -833,11 +839,51 @@
 #tab-datasets .dataset-trigger-clone-toggle small,
 #tab-datasets .dataset-experimental-head span,
 #tab-datasets .dataset-caption-extension-copy small,
-#tab-datasets .dataset-experimental-scope-copy span {
+#tab-datasets .dataset-experimental-notice,
+#tab-datasets .dataset-advanced-section-head span,
+#tab-datasets .dataset-experimental-scope-copy span,
+#tab-datasets .dataset-is-reg-copy span {
     color: var(--dataset-muted);
     font-size: 0.74rem;
     line-height: 1.4;
     text-wrap: pretty;
+}
+
+#tab-datasets .dataset-inline-help-toggle {
+    width: 19px;
+    height: 19px;
+    border-color: var(--dataset-border-strong);
+    color: var(--dataset-accent);
+    background: var(--dataset-field-bg);
+    font-size: 0.72rem;
+}
+
+#tab-datasets .dataset-inline-help-toggle:hover,
+#tab-datasets .dataset-inline-help-toggle.active {
+    border-color: var(--dataset-accent);
+    color: var(--dataset-accent-ink);
+    background: var(--dataset-accent);
+}
+
+#tab-datasets .dataset-experimental-notice {
+    border-color: color-mix(in srgb, var(--dataset-accent) 26%, var(--dataset-border));
+    background: color-mix(in srgb, var(--dataset-accent) 6%, var(--dataset-panel-soft));
+}
+
+#tab-datasets .dataset-inline-help-action {
+    min-height: 30px;
+    border-color: var(--dataset-border);
+    background: var(--dataset-field-bg);
+    color: var(--dataset-accent);
+    font-size: 0.72rem;
+    font-weight: 800;
+}
+
+#tab-datasets .dataset-inline-help-action:hover,
+#tab-datasets .dataset-inline-help-action.active {
+    border-color: var(--dataset-accent);
+    background: color-mix(in srgb, var(--dataset-accent) 12%, var(--dataset-field-bg));
+    color: var(--dataset-text);
 }
 
 #tab-datasets .dataset-caption-source-state,
@@ -905,7 +951,7 @@
 }
 
 #tab-datasets .dataset-nl-tag-mix {
-    grid-template-columns: minmax(230px, 1fr) minmax(170px, 0.85fr) 70px auto;
+    grid-template-columns: minmax(210px, 0.72fr) minmax(320px, 1.65fr) 86px auto;
     padding: 0.58rem;
 }
 
@@ -920,13 +966,13 @@
 }
 
 #tab-datasets .dataset-row-settings {
-    grid-template-columns: repeat(5, minmax(124px, 1fr));
-    gap: 0.5rem;
+    grid-template-columns: repeat(auto-fit, minmax(154px, 1fr));
+    gap: 0.58rem;
     padding: 0.62rem;
 }
 
 #tab-datasets .dataset-row-setting-field {
-    padding: 0.52rem;
+    padding: 0.58rem;
     border: 1px solid var(--dataset-border);
     border-radius: 5px;
     background: color-mix(in srgb, var(--dataset-field-bg) 64%, var(--dataset-panel-soft));
@@ -942,13 +988,107 @@
 #tab-datasets .dataset-row-setting-input,
 #tab-datasets .dataset-nl-tag-number {
     height: 38px;
+    font-size: 0.88rem;
 }
 
 #tab-datasets .dataset-path-filter-pattern input,
 #tab-datasets .dataset-caption-extension-input,
 #tab-datasets .dataset-trigger-clone-prompt input,
-#tab-datasets .dataset-trigger-clone-repeats input {
+#tab-datasets .dataset-trigger-clone-repeats input,
+#tab-datasets .dataset-is-reg-weight-input {
     height: 38px;
+    font-size: 0.88rem;
+}
+
+#tab-datasets .dataset-advanced-section {
+    gap: 0.54rem;
+    padding: 0.62rem;
+    border-color: var(--dataset-border);
+    background: color-mix(in srgb, var(--dataset-panel-soft) 76%, transparent);
+    box-shadow: inset 0 1px 0 var(--dataset-inner-line);
+}
+
+#tab-datasets .dataset-advanced-section-head {
+    padding-bottom: 0.44rem;
+    border-bottom-color: var(--dataset-border);
+}
+
+#tab-datasets .dataset-advanced-grid {
+    gap: 0.52rem;
+}
+
+#tab-datasets .dataset-advanced-data-rules .dataset-advanced-grid {
+    grid-template-columns: minmax(520px, 1.68fr) minmax(220px, 0.58fr);
+}
+
+#tab-datasets .dataset-advanced-training-rules .dataset-advanced-grid {
+    grid-template-columns: minmax(360px, 0.86fr) minmax(520px, 1.14fr);
+}
+
+#tab-datasets .dataset-advanced-section .dataset-experimental-scope,
+#tab-datasets .dataset-advanced-section .dataset-path-filter-advanced,
+#tab-datasets .dataset-advanced-section .dataset-is-reg-advanced,
+#tab-datasets .dataset-advanced-section .dataset-trigger-clone,
+#tab-datasets .dataset-advanced-section .dataset-caption-extension-advanced {
+    border-color: var(--dataset-border);
+    background: color-mix(in srgb, var(--dataset-field-bg) 46%, var(--dataset-panel-soft));
+    box-shadow: none;
+}
+
+#tab-datasets .dataset-path-filter-advanced {
+    grid-template-columns: minmax(190px, 0.62fr) minmax(300px, 1.38fr);
+    padding: 0.62rem;
+}
+
+#tab-datasets .dataset-is-reg-advanced {
+    grid-template-columns: minmax(190px, 0.78fr) minmax(260px, 1.05fr);
+    padding: 0.62rem;
+}
+
+#tab-datasets .dataset-is-reg-actions {
+    justify-content: end;
+}
+
+#tab-datasets .dataset-is-reg-toggle {
+    min-height: 34px;
+    padding-inline: 0.68rem;
+    font-size: 0.82rem;
+}
+
+#tab-datasets .dataset-is-reg-weight-field {
+    min-width: 120px;
+}
+
+#tab-datasets .dataset-is-reg-weight-label,
+#tab-datasets .dataset-trigger-clone-prompt span,
+#tab-datasets .dataset-trigger-clone-repeats span,
+#tab-datasets .dataset-nl-tag-ratio span {
+    color: var(--dataset-text);
+    font-size: 0.78rem;
+}
+
+#tab-datasets .dataset-is-reg-weight-input {
+    width: 118px;
+}
+
+#tab-datasets .dataset-trigger-clone {
+    grid-template-columns: minmax(190px, 0.64fr) minmax(360px, 1.45fr) minmax(118px, 0.34fr) auto;
+    padding: 0.62rem;
+}
+
+#tab-datasets .dataset-caption-extension-advanced {
+    align-items: center;
+    grid-template-columns: minmax(0, 1fr) minmax(88px, 140px);
+    padding: 0.62rem;
+}
+
+#tab-datasets .dataset-caption-extension-input {
+    width: min(140px, 100%);
+}
+
+#tab-datasets .dataset-trigger-clone:not(.enabled) .dataset-trigger-clone-prompt,
+#tab-datasets .dataset-trigger-clone:not(.enabled) .dataset-trigger-clone-repeats {
+    opacity: 0.62;
 }
 
 #tab-datasets .dataset-row-bottom-actions {
@@ -1046,6 +1186,35 @@
     color: var(--dataset-muted);
 }
 
+#tab-datasets .dataset-inline-help {
+    grid-column: 1 / -1;
+    padding: 0;
+}
+
+#tab-datasets .field-help.visible {
+    padding: 0.58rem;
+    border: 1px solid var(--dataset-border);
+    border-radius: 6px;
+    background: color-mix(in srgb, var(--dataset-field-bg) 82%, var(--dataset-panel-soft));
+    box-shadow: inset 0 1px 0 var(--dataset-inner-line);
+}
+
+#tab-datasets .field-help .help-content {
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 0.48rem;
+}
+
+#tab-datasets .field-help .help-section {
+    border-color: var(--dataset-border);
+    background: var(--dataset-panel-raised);
+}
+
+#tab-datasets .field-help .help-section p,
+#tab-datasets .field-help .help-section li {
+    font-size: 0.8rem;
+    line-height: 1.45;
+}
+
 @media (max-width: 1180px) {
     #tab-datasets .dataset-forge-layout {
         grid-template-columns: minmax(280px, 320px) minmax(0, 1fr);
@@ -1061,6 +1230,11 @@
 
     #tab-datasets .dataset-row-settings {
         grid-template-columns: repeat(4, minmax(118px, 1fr));
+    }
+
+    #tab-datasets .dataset-advanced-data-rules .dataset-advanced-grid,
+    #tab-datasets .dataset-advanced-training-rules .dataset-advanced-grid {
+        grid-template-columns: minmax(0, 1fr);
     }
 }
 
@@ -1113,7 +1287,9 @@
     #tab-datasets .dataset-caption-source-options,
     #tab-datasets .dataset-row-settings,
     #tab-datasets .dataset-nl-tag-mix,
+    #tab-datasets .dataset-advanced-grid,
     #tab-datasets .dataset-path-filter-advanced,
+    #tab-datasets .dataset-is-reg-advanced,
     #tab-datasets .dataset-trigger-clone,
     #tab-datasets .dataset-caption-extension-advanced {
         grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1122,6 +1298,16 @@
     #tab-datasets .dataset-path-field[data-key="source_dir"] {
         width: 100%;
         max-width: none;
+    }
+
+    #tab-datasets .dataset-experimental-notice,
+    #tab-datasets .dataset-advanced-section-head {
+        align-items: flex-start;
+        flex-direction: column;
+    }
+
+    #tab-datasets .dataset-advanced-section-head span {
+        text-align: left;
     }
 }
 
@@ -1144,7 +1330,9 @@
     #tab-datasets .dataset-caption-source-options,
     #tab-datasets .dataset-row-settings,
     #tab-datasets .dataset-nl-tag-mix,
+    #tab-datasets .dataset-advanced-grid,
     #tab-datasets .dataset-path-filter-advanced,
+    #tab-datasets .dataset-is-reg-advanced,
     #tab-datasets .dataset-trigger-clone,
     #tab-datasets .dataset-caption-extension-advanced,
     #tab-datasets .dataset-experimental-scope {

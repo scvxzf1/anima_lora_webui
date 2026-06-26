@@ -17,7 +17,7 @@
             }
         })();
     </script>
-    <link rel="stylesheet" href="/static/style.css?v=frontend-chain-20260622-1">
+    <link rel="stylesheet" href="/static/style.css?v=frontend-chain-20260625-5">
 </head>
 <body>
     <header>
@@ -929,6 +929,10 @@
                             <small>输出根目录</small>
                         </div>
                         <div class="global-settings-summary-stat">
+                            <strong>1</strong>
+                            <small>界面设置</small>
+                        </div>
+                        <div class="global-settings-summary-stat">
                             <strong>3</strong>
                             <small>模型默认路径</small>
                         </div>
@@ -946,6 +950,10 @@
                         <div class="global-settings-meta" aria-label="全局设置字段概览">
                             <div class="global-settings-meta-item">
                                 <small>ROOT</small>
+                                <strong>1 项</strong>
+                            </div>
+                            <div class="global-settings-meta-item">
+                                <small>UI</small>
                                 <strong>1 项</strong>
                             </div>
                             <div class="global-settings-meta-item">
@@ -997,10 +1005,51 @@
                             </div>
                         </section>
 
-                        <section class="global-settings-card" aria-labelledby="global-model-settings-title">
+                        <section class="global-settings-card" aria-labelledby="global-ui-settings-title">
                             <div class="global-settings-card-head">
                                 <div class="global-settings-card-title">
                                     <span class="global-settings-card-mark">02</span>
+                                    <div>
+                                        <strong id="global-ui-settings-title">界面设置</strong>
+                                        <span>调整 Web 界面的显示效果。</span>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="global-setting-grid">
+                                <div class="preview-setting-field global-setting-field">
+                                    <div class="global-setting-label-row">
+                                        <label for="global-ui-scale">缩放比例 (%)</label>
+                                        <button
+                                            id="btn-global-ui-scale-help"
+                                            class="info-toggle global-setting-help-toggle"
+                                            type="button"
+                                            title="查看作用和为什么"
+                                            aria-expanded="false"
+                                            aria-controls="global-ui-scale-help"
+                                        >?</button>
+                                    </div>
+                                    <input id="global-ui-scale" type="number" min="25" max="400" step="5" placeholder="100">
+                                    <div id="global-ui-scale-help" class="field-help global-setting-help">
+                                        <div class="help-content">
+                                            <section class="help-section help-summary">
+                                                <div class="help-heading">作用</div>
+                                                <p>控制整个 WebUI 界面的缩放比例，默认为 100%。可以根据屏幕分辨率和个人偏好调整大小。</p>
+                                            </section>
+                                            <section class="help-section">
+                                                <div class="help-heading">为什么</div>
+                                                <p>在高分辨率显示器上，默认尺寸可能过小；在低分辨率显示器上，可能需要更紧凑的布局。通过统一的缩放比例，可以让界面适配不同的显示环境。</p>
+                                                <p>取值范围：25% - 400%。推荐范围：75% - 150%。</p>
+                                            </section>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </section>
+
+                        <section class="global-settings-card" aria-labelledby="global-model-settings-title">
+                            <div class="global-settings-card-head">
+                                <div class="global-settings-card-title">
+                                    <span class="global-settings-card-mark">03</span>
                                     <div>
                                         <strong id="global-model-settings-title">基础模型路径</strong>
                                         <span>新建空白预设写入的默认模型组件。</span>
@@ -1082,6 +1131,46 @@
                                             <section class="help-section">
                                                 <div class="help-heading">为什么</div>
                                                 <p>VAE 会影响预处理缓存和采样结果，集中设置默认路径能降低新配置漏改模型组件的概率。</p>
+                                            </section>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </section>
+
+                        <section class="global-settings-card" aria-labelledby="global-config-paths-title">
+                            <div class="global-settings-card-head">
+                                <div class="global-settings-card-title">
+                                    <span class="global-settings-card-mark">03</span>
+                                    <div>
+                                        <strong id="global-config-paths-title">配置目录路径</strong>
+                                        <span>配置根目录，可外置到独立位置。</span>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="global-setting-grid">
+                                <div class="preview-setting-field global-setting-field">
+                                    <div class="global-setting-label-row">
+                                        <label for="global-configs-root">配置根目录</label>
+                                        <button
+                                            id="btn-global-configs-root-help"
+                                            class="info-toggle global-setting-help-toggle"
+                                            type="button"
+                                            title="查看作用和为什么"
+                                            aria-expanded="false"
+                                            aria-controls="global-configs-root-help"
+                                        >?</button>
+                                    </div>
+                                    <input id="global-configs-root" type="text" placeholder="configs">
+                                    <div id="global-configs-root-help" class="field-help global-setting-help">
+                                        <div class="help-content">
+                                            <section class="help-section help-summary">
+                                                <div class="help-heading">作用</div>
+                                                <p>配置根目录位置，包含 base.toml、presets.toml、methods/、datasets/、web-training-history/、web-training-queue/ 等所有配置内容。支持相对路径（相对项目根）或绝对路径。</p>
+                                            </section>
+                                            <section class="help-section">
+                                                <div class="help-heading">为什么</div>
+                                                <p>配置目录外置后，可以将所有配置、训练历史、队列等数据统一管理到独立磁盘或共享目录，便于多实例部署、容器化环境和数据备份。</p>
                                             </section>
                                         </div>
                                     </div>
@@ -1207,7 +1296,7 @@
                     <ol class="tutorial-steps">
                         <li>
                             <strong>全局设置</strong>
-                            <span>设置“输出文件夹”，再填写基础 DiT、Qwen3、VAE 路径。之后每次 Web 训练都会在这里创建独立运行目录。</span>
+                            <span>设置”输出文件夹”和”配置根目录”（如需外置配置），再填写基础 DiT、Qwen3、VAE 路径。之后每次 Web 训练都会在输出文件夹创建独立运行目录。</span>
                         </li>
                         <li>
                             <strong>数据集</strong>
@@ -1399,6 +1488,6 @@
 
     <div id="config-switch-toast" class="config-switch-toast" role="status" aria-live="polite" hidden></div>
 
-    <script type="module" src="/static/app.js?v=module-bootstrap-20260608-11"></script>
+    <script type="module" src="/static/app.js?v=module-bootstrap-20260625-9"></script>
 </body>
 </html>

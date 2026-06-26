@@ -21,6 +21,11 @@ export const FORM_UI_DEFAULTS = {
     p2_gamma: 1.0,
     p2_k: 1.0,
     velocity_direction_loss_weight: 0.0,
+    prior_preservation_weight: 0.0,
+    blank_prompt_preservation: false,
+    diff_output_preservation_trigger: '',
+    diff_output_preservation_class: '',
+    inverted_mask_prior_weight: 0.0,
     lora_adapter_kind: 'lora',
     dora_wd: false,
     use_glora: false,
@@ -181,6 +186,7 @@ export const DATASET_SETTING_KEYS = new Set([
     'validation_split',
     'validation_split_num',
     'validation_seed',
+    'prior_loss_weight',
     'caption_extension',
     'caption_source_mode',
 ]);
@@ -256,7 +262,15 @@ export const GLOBAL_MODEL_PATH_FIELDS = [
     ['qwen3', 'global-qwen3-path'],
     ['vae', 'global-vae-path'],
 ];
+export const GLOBAL_CONFIG_PATH_FIELDS = [
+    ['configs_root', 'global-configs-root'],
+];
+export const GLOBAL_UI_FIELDS = [
+    ['ui_scale', 'global-ui-scale'],
+];
 export const GLOBAL_SETTING_INPUTS = [
     ['output_root', 'global-output-root'],
     ...GLOBAL_MODEL_PATH_FIELDS,
+    ...GLOBAL_CONFIG_PATH_FIELDS,
+    ...GLOBAL_UI_FIELDS,
 ];

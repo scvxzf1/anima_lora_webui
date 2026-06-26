@@ -102,7 +102,7 @@ validation_split_num = 8
 # "independent_A" and route_per_layer=true -> fera
 
 # use_moe_style = "independent_A"
-# route_per_layer = false 
+# route_per_layer = false
 # router_source = "fei"
 # ortho_init_std = 0.05
 

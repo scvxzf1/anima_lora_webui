@@ -34,8 +34,12 @@ output_temp/
 results
 logs
 .claude
+.repowise/
+.mcp.json
 .env
 .anima-update-backups
+.anima-webui-settings.toml
+configs.backup/
 configs/datasets/
 configs/imported/
 configs/web-file-groups.toml

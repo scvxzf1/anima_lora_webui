@@ -3222,6 +3222,29 @@ def test_history_list_skips_single_unreadable_summary(tmp_path, monkeypatch):
     assert [task["id"] for task in tasks] == [good_dir.name]
 
 
+def test_history_list_keeps_explicit_zero_jsonl_counts(tmp_path, monkeypatch):
+    history_dir = tmp_path / "history"
+    task_id = "20260524-131153-training-imported-522"
+    _write_group_task(
+        history_dir,
+        task_id,
+        job="training",
+        started_at=1000.0,
+        history_meta={"log_count": 0, "metric_count": 0},
+    )
+    monkeypatch.setattr(training_service, "HISTORY_DIR", history_dir)
+
+    def fail_count_jsonl(path: Path) -> int:
+        raise AssertionError(f"explicit zero count should not read {path.name}")
+
+    monkeypatch.setattr(training_service, "_count_jsonl", fail_count_jsonl)
+
+    task = TrainingService(web.Application()).list_history_tasks(include_archived=True)[0]
+
+    assert task["log_count"] == 0
+    assert task["metric_count"] == 0
+
+
 def test_history_list_binds_preprocess_collection_to_training_group(tmp_path, monkeypatch):
     history_dir = tmp_path / "history"
     history_meta = {
@@ -4802,3 +4825,29 @@ def test_progress_jsonl_oom_event_records_hint():
         for line in lines
     )
     assert svc.get_status_snapshot()["error_hint"] == "大概率爆显存"
+
+
+def test_extract_metrics_from_log_accepts_nan_and_infinity_loss():
+    svc = TrainingService(web.Application())
+
+    metric = svc._extract_metrics_from_log("step=0 loss=NaN learning_rate=Infinity")
+
+    assert metric is not None
+    assert metric["step"] == 0
+    assert metric["loss"] != metric["loss"]
+    assert metric["lr"] == float("inf")
+
+
+def test_status_snapshot_anomaly_payload_is_json_safe():
+    svc = TrainingService(web.Application())
+    svc.status = "running"
+    svc._metrics_history = [{"step": 0, "loss": float("nan"), "lr": float("inf"), "rate": "1.00s/step"}]
+    svc._latest_system_stats = {"vram_used_gb": 7.2, "vram_total_gb": 8.0}
+
+    snapshot = svc.get_status_snapshot()
+
+    assert snapshot["latest_metric"]["loss"] == "NaN"
+    assert snapshot["latest_metric"]["lr"] == "Infinity"
+    assert "损失值变为 NaN" in snapshot["anomaly_message"]
+    assert "第 0 步" in snapshot["anomaly_message"]
+    json.dumps(snapshot, allow_nan=False)

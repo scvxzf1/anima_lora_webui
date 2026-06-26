@@ -216,6 +216,7 @@ class ConfigSanitizer:
         "resize_interpolation": str,
         "prefer_json_caption": bool,
         "caption_source_mode": str,
+        "prior_loss_weight": Any(float, int),
     }
     PREPROCESS_ONLY_DATASET_KEYS = frozenset(
         {
@@ -232,7 +233,6 @@ class ConfigSanitizer:
     ARGPARSE_SPECIFIC_SCHEMA = {
         "debug_dataset": bool,
         "max_token_length": Any(None, int),
-        "prior_loss_weight": Any(float, int),
     }
     # for handling default None value of argparse
     ARGPARSE_NULLABLE_OPTNAMES = [

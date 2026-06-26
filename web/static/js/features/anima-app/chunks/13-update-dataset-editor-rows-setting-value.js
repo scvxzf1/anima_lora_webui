@@ -20,16 +20,18 @@ const ctx = globalThis.ctx;
             datasetEditorState.datasets = rows;
         }
         markDatasetEditorDirty();
-        if (options.render) {
+        if (options.render === 'item') {
+            refreshDatasetEditorItems(targets) || renderDatasetEditor();
+        } else if (options.render) {
             renderDatasetEditor();
         }
     }
 
-    globalThis.updateDatasetEditorRowNlTagMix = function updateDatasetEditorRowNlTagMix(index, nextMix) {
-        updateDatasetEditorRowsNlTagMix([index], nextMix);
+    globalThis.updateDatasetEditorRowNlTagMix = function updateDatasetEditorRowNlTagMix(index, nextMix, options = {}) {
+        updateDatasetEditorRowsNlTagMix([index], nextMix, options);
     }
 
-    globalThis.updateDatasetEditorRowsNlTagMix = function updateDatasetEditorRowsNlTagMix(indices, nextMix) {
+    globalThis.updateDatasetEditorRowsNlTagMix = function updateDatasetEditorRowsNlTagMix(indices, nextMix, options = {}) {
         const state = datasetEditorStateForActivePanel();
         const rows = normalizeDatasetEditorRows(state.datasets);
         const targets = datasetValidTargetIndices(indices, rows.length);
@@ -44,7 +46,10 @@ const ctx = globalThis.ctx;
             datasetEditorState.datasets = rows;
         }
         markDatasetEditorDirty();
-        renderDatasetEditor();
+        if (options.render === false) {
+            return;
+        }
+        refreshDatasetEditorItems(targets) || renderDatasetEditor();
     }
 
     globalThis.updateDatasetEditorRowTriggerClone = function updateDatasetEditorRowTriggerClone(index, nextClone, options = {}) {
@@ -209,8 +214,11 @@ const ctx = globalThis.ctx;
     globalThis.setFieldInputValue = function setFieldInputValue(key, value) {
         const input = document.querySelector(`#config-form .field-input[data-key="${CSS.escape(key)}"]`);
         if (!input) {
-            if (NETWORK_ARG_FIELD_MAP.has(key)) {
+            const original = originalConfigFieldValue(key);
+            if (configDraftValueChanged(key, value, original)) {
                 configFormState.draftValues.set(key, value);
+            } else {
+                configFormState.draftValues.delete(key);
             }
             return;
         }

@@ -55,7 +55,7 @@ network_args = [
     # a strong shared-aesthetic background. Build the sidecar once via
     # `python preprocess/cache_pe_encoder.py --centroid_only`. Comment out to disable (buffer
     # stays zero ⇒ no-op; equivalent to the pre-centroid behavior).
-    
+
     "ip_centroid_path=post_image_dataset/ip_adapter/anima_pe_centroid_pe.safetensors",
 
     # PE-Core LoRA (experimental prototype — see docs/proposal/ip-adapter_plan.md).

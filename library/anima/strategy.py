@@ -222,12 +222,20 @@ class AnimaTextEncoderOutputsCachingStrategy(TextEncoderOutputsCachingStrategy):
         is_partial: bool = False,
         cache_llm_adapter_outputs: bool = False,
         use_shuffled_caption_variants: bool = False,
+        diff_output_preservation_trigger: str | None = None,
+        diff_output_preservation_class: str | None = None,
     ) -> None:
         super().__init__(
             cache_to_disk, batch_size, skip_disk_cache_validity_check, is_partial
         )
         self.cache_llm_adapter_outputs = cache_llm_adapter_outputs
         self.use_shuffled_caption_variants = use_shuffled_caption_variants
+        self.diff_output_preservation_trigger = diff_output_preservation_trigger
+        self.diff_output_preservation_class = diff_output_preservation_class
+        self.cache_prior_crossattn = bool(
+            cache_llm_adapter_outputs
+            and str(diff_output_preservation_class or "").strip()
+        )
 
     def get_outputs_npz_path(
         self,
@@ -270,11 +278,15 @@ class AnimaTextEncoderOutputsCachingStrategy(TextEncoderOutputsCachingStrategy):
                         and f"crossattn_emb_v{vi}" not in keys
                     ):
                         return False
+                    if self.cache_prior_crossattn and f"prior_crossattn_emb_v{vi}" not in keys:
+                        return False
             else:
                 for k in ("prompt_embeds", "attn_mask", "t5_input_ids", "t5_attn_mask"):
                     if k not in keys:
                         return False
                 if self.cache_llm_adapter_outputs and "crossattn_emb" not in keys:
+                    return False
+                if self.cache_prior_crossattn and "prior_crossattn_emb" not in keys:
                     return False
             if "caption_dropout_rate" not in keys:
                 return False
@@ -304,6 +316,12 @@ class AnimaTextEncoderOutputsCachingStrategy(TextEncoderOutputsCachingStrategy):
                 crossattn_emb = (
                     f.get_tensor(crossattn_key)
                     if self.cache_llm_adapter_outputs and crossattn_key in keys
+                    else None
+                )
+                prior_key = f"prior_crossattn_emb_v{vi}"
+                prior_crossattn_emb = (
+                    f.get_tensor(prior_key)
+                    if self.cache_prior_crossattn and prior_key in keys
                     else None
                 )
             elif has_variants and self.use_shuffled_caption_variants:
@@ -345,6 +363,12 @@ class AnimaTextEncoderOutputsCachingStrategy(TextEncoderOutputsCachingStrategy):
                     if self.cache_llm_adapter_outputs and crossattn_key in keys
                     else None
                 )
+                prior_key = f"prior_crossattn_emb_v{vi}"
+                prior_crossattn_emb = (
+                    f.get_tensor(prior_key)
+                    if self.cache_prior_crossattn and prior_key in keys
+                    else None
+                )
             elif has_variants:
                 # Variants on disk but the user opted out — pin to v0 deterministically.
                 prompt_embeds = f.get_tensor("prompt_embeds_v0")
@@ -354,6 +378,11 @@ class AnimaTextEncoderOutputsCachingStrategy(TextEncoderOutputsCachingStrategy):
                 crossattn_emb = (
                     f.get_tensor("crossattn_emb_v0")
                     if self.cache_llm_adapter_outputs and "crossattn_emb_v0" in keys
+                    else None
+                )
+                prior_crossattn_emb = (
+                    f.get_tensor("prior_crossattn_emb_v0")
+                    if self.cache_prior_crossattn and "prior_crossattn_emb_v0" in keys
                     else None
                 )
             else:
@@ -367,6 +396,11 @@ class AnimaTextEncoderOutputsCachingStrategy(TextEncoderOutputsCachingStrategy):
                 crossattn_emb = (
                     f.get_tensor("crossattn_emb")
                     if self.cache_llm_adapter_outputs and "crossattn_emb" in keys
+                    else None
+                )
+                prior_crossattn_emb = (
+                    f.get_tensor("prior_crossattn_emb")
+                    if self.cache_prior_crossattn and "prior_crossattn_emb" in keys
                     else None
                 )
 
@@ -385,6 +419,7 @@ class AnimaTextEncoderOutputsCachingStrategy(TextEncoderOutputsCachingStrategy):
             t5_input_ids,
             t5_attn_mask,
             crossattn_emb,
+            prior_crossattn_emb,
             caption_dropout_rate,
         ]
 
@@ -486,6 +521,21 @@ class AnimaTextEncoderOutputsCachingStrategy(TextEncoderOutputsCachingStrategy):
                 tokenize_strategy, models, text_encoding_strategy, captions
             )
         )
+        prior_crossattn_emb = None
+        if self.cache_prior_crossattn:
+            from library.training.prior_preservation import build_diff_output_prior_caption
+
+            prior_captions = [
+                build_diff_output_prior_caption(
+                    caption,
+                    trigger=self.diff_output_preservation_trigger,
+                    class_prompt=self.diff_output_preservation_class,
+                )
+                for caption in captions
+            ]
+            *_, prior_crossattn_emb = self._encode_to_tensors(
+                tokenize_strategy, models, text_encoding_strategy, prior_captions
+            )
 
         for i, info in enumerate(infos):
             pe_i, am_i, t5_i, t5m_i, ce_i = self._trim_outputs(
@@ -494,6 +544,9 @@ class AnimaTextEncoderOutputsCachingStrategy(TextEncoderOutputsCachingStrategy):
                 t5_input_ids[i],
                 t5_attn_mask[i],
                 crossattn_emb[i] if crossattn_emb is not None else None,
+            )
+            prior_ce_i = (
+                prior_crossattn_emb[i] if prior_crossattn_emb is not None else None
             )
             caption_dropout_rate = torch.tensor(
                 info.caption_dropout_rate, dtype=torch.float32
@@ -509,6 +562,8 @@ class AnimaTextEncoderOutputsCachingStrategy(TextEncoderOutputsCachingStrategy):
                 }
                 if ce_i is not None:
                     save_dict["crossattn_emb"] = ce_i
+                if prior_ce_i is not None:
+                    save_dict["prior_crossattn_emb"] = prior_ce_i
                 _save_safetensors(save_dict, info.text_encoder_outputs_npz)
             else:
                 if ce_i is None:
@@ -520,14 +575,17 @@ class AnimaTextEncoderOutputsCachingStrategy(TextEncoderOutputsCachingStrategy):
                         caption_dropout_rate,
                     )
                 else:
-                    info.text_encoder_outputs = (
+                    outputs = [
                         pe_i,
                         am_i,
                         t5_i,
                         t5m_i,
                         ce_i,
-                        caption_dropout_rate,
-                    )
+                    ]
+                    if prior_ce_i is not None:
+                        outputs.append(prior_ce_i)
+                    outputs.append(caption_dropout_rate)
+                    info.text_encoder_outputs = tuple(outputs)
 
 class AnimaLatentsCachingStrategy(LatentsCachingStrategy):
     """Latent caching strategy for Anima using WanVAE.

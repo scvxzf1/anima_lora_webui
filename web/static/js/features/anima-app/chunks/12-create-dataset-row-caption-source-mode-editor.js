@@ -53,7 +53,7 @@ const ctx = globalThis.ctx;
                     [index],
                     'caption_source_mode',
                     option.value,
-                    { render: true },
+                    { render: 'item' },
                 );
             });
             const labelText = document.createElement('span');
@@ -385,6 +385,7 @@ const ctx = globalThis.ctx;
                 num_repeats: Math.max(1, Number.parseInt(row.num_repeats || 1, 10) || 1),
                 recursive: row.recursive !== false && row.recursive !== 'false',
                 path_pattern: String(row.path_pattern || '*').trim() || '*',
+                is_reg: row.is_reg === true,
                 nl_tag_mix: normalizeNlTagMix(row.nl_tag_mix),
                 trigger_clone: normalizeTriggerClone(row.trigger_clone),
                 settings: normalizeDatasetRowSettings(row),
@@ -399,6 +400,7 @@ const ctx = globalThis.ctx;
             num_repeats: row.num_repeats,
             recursive: row.recursive,
             path_pattern: row.path_pattern,
+            is_reg: row.is_reg,
             nl_tag_mix: normalizeNlTagMix(row.nl_tag_mix),
             trigger_clone: normalizeTriggerClone(row.trigger_clone),
             settings: normalizeDatasetDefaults(row.settings || {}),
@@ -420,8 +422,10 @@ const ctx = globalThis.ctx;
         const preferJson = raw.prefer_json_caption === true || raw.prefer_json_caption === 'true';
         const captionSourceMode = normalizeCaptionSourceMode(raw.caption_source_mode, preferJson);
         const validationSeed = Number.parseInt(raw.validation_seed ?? 42, 10);
+        const priorLossWeight = Number(raw.prior_loss_weight ?? 1.0);
         return {
             resolution: Math.max(1, Number.parseInt(raw.resolution || 1024, 10) || 1024),
+            prior_loss_weight: Number.isFinite(priorLossWeight) ? Math.max(0, priorLossWeight) : 1.0,
             enable_bucket: raw.enable_bucket !== false && raw.enable_bucket !== 'false',
             min_bucket_reso: Math.max(1, Number.parseInt(raw.min_bucket_reso || 256, 10) || 256),
             max_bucket_reso: Math.max(1, Number.parseInt(raw.max_bucket_reso || 1024, 10) || 1024),
@@ -445,7 +449,9 @@ const ctx = globalThis.ctx;
         } else if (input.tagName === 'SELECT') {
             defaults[key] = input.value === 'true';
         } else if (input.type === 'number') {
-            defaults[key] = key === 'validation_split' ? Math.max(0, Number(input.value) || 0) : Math.max(0, Number.parseInt(input.value || '0', 10) || 0);
+            defaults[key] = key === 'validation_split' || key === 'prior_loss_weight'
+                ? Math.max(0, Number(input.value) || 0)
+                : Math.max(0, Number.parseInt(input.value || '0', 10) || 0);
         } else {
             defaults[key] = input.value;
         }
@@ -489,7 +495,9 @@ const ctx = globalThis.ctx;
         } else if (input.tagName === 'SELECT') {
             value = input.value === 'true';
         } else if (input.type === 'number') {
-            value = key === 'validation_split' ? Math.max(0, Number(input.value) || 0) : Math.max(0, Number.parseInt(input.value || '0', 10) || 0);
+            value = key === 'validation_split' || key === 'prior_loss_weight'
+                ? Math.max(0, Number(input.value) || 0)
+                : Math.max(0, Number.parseInt(input.value || '0', 10) || 0);
         } else {
             value = input.value;
         }

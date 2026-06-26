@@ -49,9 +49,58 @@ def test_config_path_helpers_reject_escaping_and_facade_stays_compatible(tmp_pat
         root=root,
         expand_env_vars_fn=lambda value: value.replace("$ROOT", str(root)),
     ) == config_file.resolve()
+    assert config_paths.resolve_display_path(
+        "configs/demo.toml",
+        root=root,
+        configs_dir=configs,
+        expand_env_vars_fn=lambda value: value,
+    ) == config_file.resolve()
     assert config_paths.display_path(config_file, root=root) == "configs/demo.toml"
     assert config_service._safe_resolve("configs/demo.toml") == config_file.resolve()
     assert config_service._safe_resolve("../outside.toml") is None
+
+
+def test_config_path_helpers_support_external_configs_root(tmp_path: Path):
+    root = tmp_path / "repo"
+    configs = tmp_path / "external-configs"
+    root.mkdir()
+    configs.mkdir()
+    config_file = configs / "gui-methods" / "demo.toml"
+    config_file.parent.mkdir()
+    config_file.write_text("output_name = 'demo'\n", encoding="utf-8")
+
+    assert config_paths.safe_resolve("configs/gui-methods/demo.toml", root=root, configs_dir=configs) == config_file.resolve()
+    assert config_paths.safe_resolve("gui-methods/demo.toml", root=root, configs_dir=configs) == config_file.resolve()
+    assert config_paths.safe_resolve(str(config_file), root=root, configs_dir=configs) == config_file.resolve()
+    assert config_paths.safe_resolve("configs/../outside.toml", root=root, configs_dir=configs) is None
+    assert config_paths.resolve_display_path(
+        "configs/gui-methods/demo.toml",
+        root=root,
+        configs_dir=configs,
+        expand_env_vars_fn=lambda value: value,
+    ) == config_file.resolve()
+    assert config_paths.resolve_display_path(
+        "post_image_dataset/demo",
+        root=root,
+        configs_dir=configs,
+        expand_env_vars_fn=lambda value: value,
+    ) == (root / "post_image_dataset/demo").resolve()
+    assert config_paths.display_path(config_file, root=root, configs_dir=configs) == "configs/gui-methods/demo.toml"
+
+
+def test_preflight_resolves_display_config_path_under_external_configs_root(tmp_path: Path, monkeypatch):
+    root = tmp_path / "repo"
+    configs = tmp_path / "external-configs"
+    root.mkdir()
+    _write_minimal_config_tree(root)
+    _patch_external_config_service_paths(monkeypatch, root, configs)
+    (configs / "imported").mkdir(parents=True, exist_ok=True)
+    external_config = configs / "imported" / "rokkotsu_goddess_528_tag.toml"
+    external_config.write_text('output_name = "rokkotsu_goddess_528_tag"\n', encoding="utf-8")
+
+    path = config_service._config_file_path("configs/imported/rokkotsu_goddess_528_tag.toml")
+
+    assert path == external_config.resolve()
 
 
 def test_web_variants_follow_variant_family_metadata(tmp_path: Path, monkeypatch):
@@ -654,6 +703,120 @@ def test_save_dataset_editor_uses_pending_form_config_values(tmp_path: Path, mon
     assert result["ok"] is True
     data = toml.loads(dataset_path.read_text(encoding="utf-8"))
     assert data["datasets"][0]["batch_size"] == 5
+
+
+def test_save_dataset_editor_preserves_regularization_fields_to_training_config(tmp_path: Path, monkeypatch):
+    configs, dataset_path = _write_minimal_config_tree(tmp_path)
+    train_path = configs / "imported" / "lora.toml"
+    train_path.write_text(
+        "\n".join(
+            [
+                'dataset_config = "configs/datasets/lora.toml"',
+                "prior_loss_weight = 1.0",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    _patch_config_service_paths(monkeypatch, tmp_path)
+
+    result = config_service.save_dataset_editor(
+        "lora",
+        "default",
+        "imported",
+        [
+            {
+                "source_dir": "image_dataset/train",
+                "image_dir": "post_image_dataset/train_resized",
+                "cache_dir": "post_image_dataset/train_cache",
+                "num_repeats": 2,
+            },
+            {
+                "source_dir": "image_dataset/reg",
+                "image_dir": "post_image_dataset/reg_resized",
+                "cache_dir": "post_image_dataset/reg_cache",
+                "num_repeats": 1,
+                "is_reg": True,
+                "settings": {"prior_loss_weight": 2.5},
+            },
+        ],
+        train_file="configs/imported/lora.toml",
+    )
+
+    assert result["ok"] is True
+    data = toml.loads(dataset_path.read_text(encoding="utf-8"))
+    assert data["datasets"][1]["subsets"][0]["is_reg"] is True
+    assert data["datasets"][1]["prior_loss_weight"] == 2.5
+
+    train_data = toml.loads(train_path.read_text(encoding="utf-8"))
+    assert train_data["source_image_dir"] == "image_dataset/train"
+    assert train_data["prior_loss_weight"] == 2.5
+
+
+def test_save_dataset_editor_merges_partial_regularization_settings(tmp_path: Path, monkeypatch):
+    configs, dataset_path = _write_minimal_config_tree(tmp_path)
+    _patch_config_service_paths(monkeypatch, tmp_path)
+
+    result = config_service.save_dataset_editor(
+        "lora",
+        "default",
+        "imported",
+        [
+            {
+                "source_dir": "image_dataset/train",
+                "image_dir": "post_image_dataset/train_resized",
+                "cache_dir": "post_image_dataset/train_cache",
+                "num_repeats": 2,
+            },
+            {
+                "source_dir": "image_dataset/reg",
+                "image_dir": "post_image_dataset/reg_resized",
+                "cache_dir": "post_image_dataset/reg_cache",
+                "num_repeats": 1,
+                "is_reg": True,
+                "settings": {"prior_loss_weight": 2.5},
+            },
+        ],
+        defaults={"resolution": 768, "batch_size": 1, "prior_loss_weight": 1.0},
+        train_file="configs/imported/lora.toml",
+    )
+
+    assert result["ok"] is True
+    data = toml.loads(dataset_path.read_text(encoding="utf-8"))
+    assert data["datasets"][1]["resolution"] == 768
+    assert data["datasets"][1]["prior_loss_weight"] == 2.5
+
+
+def test_save_dataset_editor_accepts_top_level_regularization_weight(tmp_path: Path, monkeypatch):
+    configs, dataset_path = _write_minimal_config_tree(tmp_path)
+    _patch_config_service_paths(monkeypatch, tmp_path)
+
+    result = config_service.save_dataset_editor(
+        "lora",
+        "default",
+        "imported",
+        [
+            {
+                "source_dir": "image_dataset/train",
+                "image_dir": "post_image_dataset/train_resized",
+                "cache_dir": "post_image_dataset/train_cache",
+            },
+            {
+                "source_dir": "image_dataset/reg",
+                "image_dir": "post_image_dataset/reg_resized",
+                "cache_dir": "post_image_dataset/reg_cache",
+                "is_reg": True,
+                "prior_loss_weight": 2.5,
+            },
+        ],
+        defaults={"resolution": 768, "batch_size": 1, "prior_loss_weight": 1.0},
+        train_file="configs/imported/lora.toml",
+    )
+
+    assert result["ok"] is True
+    data = toml.loads(dataset_path.read_text(encoding="utf-8"))
+    assert data["datasets"][1]["resolution"] == 768
+    assert data["datasets"][1]["prior_loss_weight"] == 2.5
 
 
 def test_load_dataset_editor_uses_selected_training_config_dataset(tmp_path: Path, monkeypatch):
@@ -1881,6 +2044,95 @@ def test_dataset_groups_are_dataset_only_and_presets_list_returns_groups(tmp_pat
     assert dataset_group["files"][0]["path"] == "configs/datasets/character_a.toml"
 
 
+def test_external_configs_root_keeps_stable_config_paths_and_groups(tmp_path: Path, monkeypatch):
+    root = tmp_path / "repo"
+    root.mkdir()
+    configs = tmp_path / "external-configs"
+    for subdir in ("gui-methods", "imported", "datasets", "methods"):
+        (configs / subdir).mkdir(parents=True, exist_ok=True)
+    (configs / "base.toml").write_text('pretrained_model_name_or_path = "model.safetensors"\n', encoding="utf-8")
+    (configs / "presets.toml").write_text("[default]\ntrain_batch_size = 1\n", encoding="utf-8")
+    (configs / "gui-methods" / "lora.toml").write_text(
+        '[variant]\nfamily = "lora"\norder = 1\noutput_name = "lora"\n',
+        encoding="utf-8",
+    )
+    (configs / "imported" / "alpha.toml").write_text('output_name = "alpha"\n', encoding="utf-8")
+    (configs / "datasets" / "character.toml").write_text(
+        "\n".join(
+            [
+                "[[datasets]]",
+                "",
+                "[[datasets.subsets]]",
+                'image_dir = "post/character"',
+                'custom_attributes = { source_dir = "image_dataset/character" }',
+                "num_repeats = 2",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    (configs / "web-file-groups.toml").write_text(
+        "\n".join(
+            [
+                "[[groups]]",
+                'id = "gui_methods"',
+                'label = "可训练方法变体"',
+                "open = true",
+                "locked = false",
+                "trainable = true",
+                'methods_subdir = "gui-methods"',
+                'patterns = ["configs/gui-methods/*.toml"]',
+                "",
+                "[[groups]]",
+                'id = "imported"',
+                'label = "导入配置"',
+                "open = true",
+                "locked = false",
+                "trainable = true",
+                'methods_subdir = "imported"',
+                'patterns = ["configs/imported/*.toml"]',
+                "",
+                "[[groups]]",
+                'id = "datasets"',
+                'label = "数据集配置"',
+                "open = true",
+                "locked = false",
+                "trainable = false",
+                'kind = "dataset"',
+                'patterns = ["configs/datasets/*.toml"]',
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(config_service, "ROOT", root)
+    monkeypatch.setattr(config_service, "CONFIGS_DIR", configs)
+    monkeypatch.setattr(config_service, "DATASET_PRESETS_DIR", configs / "datasets")
+    monkeypatch.setattr(config_service, "GUI_METHODS_DIR", configs / "gui-methods")
+    monkeypatch.setattr(config_service, "IMPORTED_CONFIGS_DIR", configs / "imported")
+    monkeypatch.setattr(config_service, "PRESETS_FILE", configs / "presets.toml")
+    monkeypatch.setattr(config_service, "WEB_FILE_GROUPS_FILE", configs / "web-file-groups.toml")
+    monkeypatch.setattr(config_service, "WEB_USER_LOCKS_FILE", configs / "web-user-locks.toml")
+
+    training_groups = config_service.list_config_file_groups(kind="training")
+    assert any(
+        item["path"] == "configs/gui-methods/lora.toml"
+        for group in training_groups
+        for item in group["files"]
+    )
+    assert any(
+        item["path"] == "configs/imported/alpha.toml"
+        for group in training_groups
+        for item in group["files"]
+    )
+
+    dataset_presets = config_service.list_dataset_presets()
+    assert dataset_presets["ok"] is True
+    assert [preset["path"] for preset in dataset_presets["presets"]] == ["configs/datasets/character.toml"]
+    datasets_group = next(group for group in dataset_presets["groups"] if group["id"] == "datasets")
+    assert datasets_group["files"][0]["path"] == "configs/datasets/character.toml"
+    assert datasets_group["files"][0]["summary"]["dataset_count"] == 1
+
+
 def test_dataset_group_specs_accept_windows_slashes(tmp_path: Path, monkeypatch):
     configs, _dataset_path = _write_minimal_config_tree(tmp_path)
     (configs / "datasets" / "character_a.toml").write_text(
@@ -2307,6 +2559,99 @@ def test_dataset_preset_save_read_list_and_apply(tmp_path: Path, monkeypatch):
     assert 'source_image_dir = "image_dataset/a"' in train_text
     assert 'resized_image_dir = "post_image_dataset/a_resized"' in train_text
     assert 'lora_cache_dir = "post_image_dataset/a_cache"' in train_text
+    assert "prior_loss_weight = 1.0" in train_text
+
+
+def test_dataset_preset_save_read_apply_preserves_regularization_fields(tmp_path: Path, monkeypatch):
+    configs, _dataset_path = _write_minimal_config_tree(tmp_path)
+    _patch_config_service_paths(monkeypatch, tmp_path)
+
+    saved = config_service.save_dataset_preset(
+        "configs/datasets/regularized.toml",
+        [
+            {
+                "source_dir": "image_dataset/train",
+                "image_dir": "post_image_dataset/train_resized",
+                "cache_dir": "post_image_dataset/train_cache",
+                "num_repeats": 2,
+            },
+            {
+                "source_dir": "image_dataset/reg",
+                "image_dir": "post_image_dataset/reg_resized",
+                "cache_dir": "post_image_dataset/reg_cache",
+                "num_repeats": 1,
+                "is_reg": True,
+                "settings": {"prior_loss_weight": 2.5},
+            },
+        ],
+        {"resolution": 768, "batch_size": 1, "prior_loss_weight": 2.5},
+    )
+
+    data = toml.loads(saved["content"])
+    assert data["datasets"][0]["prior_loss_weight"] == 2.5
+    assert data["datasets"][1]["prior_loss_weight"] == 2.5
+    assert "is_reg" not in data["datasets"][0]["subsets"][0]
+    assert data["datasets"][1]["subsets"][0]["is_reg"] is True
+
+    loaded = config_service.load_dataset_preset("configs/datasets/regularized.toml")
+    assert loaded["defaults"]["prior_loss_weight"] == 2.5
+    assert loaded["datasets"][0]["is_reg"] is False
+    assert loaded["datasets"][1]["is_reg"] is True
+    assert loaded["datasets"][1]["settings"]["prior_loss_weight"] == 2.5
+    assert loaded["summary"]["train_dataset_count"] == 1
+    assert loaded["summary"]["reg_dataset_count"] == 1
+
+    applied = config_service.apply_dataset_preset_to_training_config(
+        "configs/datasets/regularized.toml",
+        "configs/imported/lora.toml",
+    )
+    assert applied["ok"] is True
+    assert applied["values"]["source_image_dir"] == "image_dataset/train"
+    assert applied["values"]["prior_loss_weight"] == 2.5
+    train_text = (configs / "imported" / "lora.toml").read_text(encoding="utf-8")
+    assert 'dataset_config = "configs/datasets/regularized.toml"' in train_text
+    assert 'source_image_dir = "image_dataset/train"' in train_text
+    assert 'resized_image_dir = "post_image_dataset/train_resized"' in train_text
+    assert 'lora_cache_dir = "post_image_dataset/train_cache"' in train_text
+    assert "prior_loss_weight = 2.5" in train_text
+
+
+def test_dataset_preset_apply_uses_regularization_row_weight(tmp_path: Path, monkeypatch):
+    configs, _dataset_path = _write_minimal_config_tree(tmp_path)
+    _patch_config_service_paths(monkeypatch, tmp_path)
+
+    config_service.save_dataset_preset(
+        "configs/datasets/regularized-row-weight.toml",
+        [
+            {
+                "source_dir": "image_dataset/train",
+                "image_dir": "post_image_dataset/train_resized",
+                "cache_dir": "post_image_dataset/train_cache",
+                "num_repeats": 2,
+                "settings": {"prior_loss_weight": 1.0},
+            },
+            {
+                "source_dir": "image_dataset/reg",
+                "image_dir": "post_image_dataset/reg_resized",
+                "cache_dir": "post_image_dataset/reg_cache",
+                "num_repeats": 1,
+                "is_reg": True,
+                "settings": {"prior_loss_weight": 2.5},
+            },
+        ],
+        {"resolution": 768, "batch_size": 1, "prior_loss_weight": 1.0},
+    )
+
+    applied = config_service.apply_dataset_preset_to_training_config(
+        "configs/datasets/regularized-row-weight.toml",
+        "configs/imported/lora.toml",
+    )
+
+    assert applied["ok"] is True
+    assert applied["defaults"]["prior_loss_weight"] == 1.0
+    assert applied["values"]["prior_loss_weight"] == 2.5
+    train_text = (configs / "imported" / "lora.toml").read_text(encoding="utf-8")
+    assert "prior_loss_weight = 2.5" in train_text
 
 
 def test_dataset_preset_diagnose_reports_scan_context(tmp_path: Path, monkeypatch):
@@ -2366,6 +2711,86 @@ def test_dataset_preset_listing_normalizes_windows_display_paths(tmp_path: Path,
     assert report["listed_count"] == 1
     assert report["files"][0]["path"] == "configs/datasets/hikarucs.toml"
     assert report["files"][0]["selected"] is True
+
+
+def test_list_dataset_presets_reuses_dataset_group_meta(tmp_path: Path, monkeypatch):
+    configs, _dataset_path = _write_minimal_config_tree(tmp_path)
+    _patch_config_service_paths(monkeypatch, tmp_path)
+    preset_path = configs / "datasets" / "character.toml"
+    preset_path.write_text(
+        "\n".join(
+            [
+                "[[datasets]]",
+                "resolution = 1024",
+                "batch_size = 1",
+                "",
+                "[[datasets.subsets]]",
+                'image_dir = "post/character"',
+                'cache_dir = "cache/character"',
+                'custom_attributes = { source_dir = "image_dataset/character" }',
+                "num_repeats = 3",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    calls = {"groups": 0, "meta": 0}
+
+    def fake_list_config_file_groups(kind=None):
+        calls["groups"] += 1
+        assert kind == "dataset"
+        return [{
+            "id": "datasets",
+            "label": "数据集配置",
+            "open": True,
+            "locked": False,
+            "group_locked": False,
+            "user_group_locked": False,
+            "system_locked": False,
+            "lockable": False,
+            "user_managed": False,
+            "kind": "dataset",
+            "renamable": False,
+            "deletable": False,
+            "movable": False,
+            "trainable": False,
+            "methods_subdir": "",
+            "files": [{
+                "path": "configs/datasets/character.toml",
+                "label": "character.toml",
+                "filename": "character.toml",
+                "group": "datasets",
+                "group_label": "数据集配置",
+                "locked": False,
+                "group_locked": False,
+                "user_group_locked": False,
+                "system_locked": False,
+                "user_locked": False,
+                "lock_reason": "",
+                "lock_reason_label": "",
+                "restorable": False,
+                "open": True,
+                "trainable": False,
+                "method": "character",
+                "methods_subdir": "",
+            }],
+        }]
+
+    def fake_get_config_file_meta(rel_path, *args, **kwargs):
+        calls["meta"] += 1
+        raise AssertionError(f"unexpected meta lookup for {rel_path}")
+
+    monkeypatch.setattr(config_service, "list_config_file_groups", fake_list_config_file_groups)
+    monkeypatch.setattr(config_service, "get_config_file_meta", fake_get_config_file_meta)
+
+    listed = config_service.list_dataset_presets()
+
+    assert listed["ok"] is True
+    assert calls == {"groups": 1, "meta": 0}
+    assert [item["path"] for item in listed["presets"]] == ["configs/datasets/character.toml"]
+    assert listed["presets"][0]["readonly"] is False
+    assert listed["groups"][0]["files"][0]["path"] == "configs/datasets/character.toml"
+    assert listed["groups"][0]["files"][0]["summary"]["repeat_total"] == 3
 
 
 def test_import_dataset_preset_parses_and_normalizes_uploaded_toml(tmp_path: Path, monkeypatch):
@@ -2858,6 +3283,89 @@ def test_step_estimate_uses_selected_training_config_dataset(tmp_path: Path, mon
     assert selected_estimate["steps_per_epoch"] == 8
     assert selected_estimate["dataset_num_repeats"] == 2
     assert selected_estimate["resized_dir"].endswith("post_image_dataset/selected_resized")
+
+
+def test_handle_merged_uses_selected_training_config_file(tmp_path: Path, monkeypatch):
+    configs, _dataset_path = _write_minimal_config_tree(tmp_path)
+    _patch_config_service_paths(monkeypatch, tmp_path)
+    (configs / "imported" / "selected.toml").write_text(
+        "\n".join(
+            [
+                'output_name = "selected_form"',
+                "max_train_epochs = 9",
+                "max_train_steps = 0",
+                "train_batch_size = 3",
+                "gradient_accumulation_steps = 2",
+                "sample_ratio = 0.5",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    response = asyncio.run(config_routes.handle_merged(_QueryRequest({
+        "variant": "lora",
+        "preset": "default",
+        "methods_subdir": "imported",
+        "config_file": "configs/imported/selected.toml",
+    })))
+    body = json.loads(response.text)
+
+    assert response.status == 200
+    assert body["output_name"] == "selected_form"
+    assert body["max_train_epochs"] == 9
+    assert body["max_train_steps"] == 0
+    assert body["train_batch_size"] == 3
+    assert body["gradient_accumulation_steps"] == 2
+    assert body["sample_ratio"] == 0.5
+
+
+def test_step_estimate_resolves_training_dataset_under_external_configs_root(
+    tmp_path: Path,
+    monkeypatch,
+):
+    root = tmp_path / "repo"
+    configs = tmp_path / "external-configs"
+    root.mkdir()
+    _write_minimal_config_tree(root)
+    _patch_external_config_service_paths(monkeypatch, root, configs)
+
+    image_dir = root / "post_image_dataset" / "selected_resized"
+    image_dir.mkdir(parents=True)
+    for idx in range(4):
+        Image.new("RGB", (8, 8), color=(idx, 90, 120)).save(image_dir / f"selected-{idx}.png")
+    (configs / "datasets" / "selected.toml").write_text(
+        "\n".join(
+            [
+                "[[datasets]]",
+                "",
+                "[[datasets.subsets]]",
+                'image_dir = "post_image_dataset/selected_resized"',
+                "num_repeats = 5",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    (configs / "imported" / "selected.toml").write_text(
+        "\n".join(
+            [
+                'dataset_config = "configs/datasets/selected.toml"',
+                "max_train_epochs = 2",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    estimate = config_service.estimate_training_steps(
+        "lora",
+        "default",
+        "imported",
+        config_file="configs/imported/selected.toml",
+    )
+
+    assert estimate["dataset_num_repeats"] == 5
+    assert estimate["weighted_image_count"] == 20
+    assert estimate["steps_per_epoch"] == 20
+    assert estimate["total_steps"] == 40
 
 
 def test_step_estimate_uses_explicit_max_train_steps_when_epoch_missing(tmp_path: Path, monkeypatch):
@@ -3419,6 +3927,20 @@ def _write_step_estimate_dataset(root: Path, dataset_path: Path) -> None:
 
 def _patch_config_service_paths(monkeypatch, root: Path) -> None:
     configs = root / "configs"
+    monkeypatch.setattr(config_service, "ROOT", root)
+    monkeypatch.setattr(config_service, "CONFIGS_DIR", configs)
+    monkeypatch.setattr(config_service, "DATASET_PRESETS_DIR", configs / "datasets")
+    monkeypatch.setattr(config_service, "GUI_METHODS_DIR", configs / "gui-methods")
+    monkeypatch.setattr(config_service, "IMPORTED_CONFIGS_DIR", configs / "imported")
+    monkeypatch.setattr(config_service, "PRESETS_FILE", configs / "presets.toml")
+    monkeypatch.setattr(config_service, "WEB_FILE_GROUPS_FILE", configs / "web-file-groups.toml")
+    monkeypatch.setattr(config_service, "WEB_USER_LOCKS_FILE", configs / "web-user-locks.toml")
+
+
+def _patch_external_config_service_paths(monkeypatch, root: Path, configs: Path) -> None:
+    project_configs = root / "configs"
+    if project_configs.exists():
+        project_configs.rename(configs)
     monkeypatch.setattr(config_service, "ROOT", root)
     monkeypatch.setattr(config_service, "CONFIGS_DIR", configs)
     monkeypatch.setattr(config_service, "DATASET_PRESETS_DIR", configs / "datasets")

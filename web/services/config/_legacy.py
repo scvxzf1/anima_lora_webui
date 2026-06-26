@@ -19,7 +19,7 @@ import toml
 import tomlkit
 from PIL import Image, UnidentifiedImageError
 
-from library.env import expand_env_vars, expand_env_vars_in_obj, load_dotenv
+from library.env import expand_env_vars, expand_env_vars_in_obj, load_dotenv, get_configs_root
 from library.preprocess.captions import (
     CAPTION_SOURCE_AUTO,
     CAPTION_SOURCE_CAPTIONS_JSON,
@@ -38,13 +38,13 @@ from web.services.settings_service import display_path as _display_settings_path
 from web.services.settings_service import resolve_output_root
 
 ROOT = Path(__file__).resolve().parents[3]
-CONFIGS_DIR = ROOT / "configs"
+CONFIGS_DIR = get_configs_root()
 GUI_METHODS_DIR = CONFIGS_DIR / "gui-methods"
 IMPORTED_CONFIGS_DIR = CONFIGS_DIR / "imported"
 PRESETS_FILE = CONFIGS_DIR / "presets.toml"
 WEB_FILE_GROUPS_FILE = CONFIGS_DIR / "web-file-groups.toml"
 WEB_USER_LOCKS_FILE = CONFIGS_DIR / "web-user-locks.toml"
-DEFAULT_SAMPLE_PROMPTS_FILE = "configs/sample_prompts.txt"
+DEFAULT_SAMPLE_PROMPTS_FILE = str(CONFIGS_DIR / "sample_prompts.txt")
 DEFAULT_RESIZED_IMAGE_DIR = "post_image_dataset/resized"
 DEFAULT_LORA_CACHE_DIR = "post_image_dataset/lora"
 DEFAULT_MAX_TRAIN_STEPS = 0
@@ -117,6 +117,7 @@ DATASET_SETTING_KEYS = frozenset({
     "validation_split",
     "validation_split_num",
     "validation_seed",
+    "prior_loss_weight",
     "prefer_json_caption",
     "caption_extension",
     "caption_source_mode",
@@ -1044,7 +1045,9 @@ def _config_file_path(config_file: str | None) -> Path | None:
         resolved = path.resolve()
     else:
         normalized = _normalize_config_rel_path(raw)
-        resolved = (ROOT / normalized).resolve()
+        resolved = _config_path_from_display_path(normalized)
+        if resolved is None:
+            resolved = (ROOT / normalized).resolve()
     if _is_output_run_snapshot_config(resolved) and resolved.name != OUTPUT_RUN_CONFIG_FILES["runtime"][0]:
         raise ValueError("训练输出目录只能使用 config.runtime.toml 作为训练配置")
     if not _is_allowed_training_config_path(resolved):
@@ -1056,10 +1059,21 @@ def _config_file_path(config_file: str | None) -> Path | None:
     return resolved
 
 
+def _config_path_from_display_path(normalized: str) -> Path | None:
+    if normalized == "configs" or normalized.startswith("configs/"):
+        return _safe_resolve(normalized)
+    return None
+
+
 def _is_allowed_training_config_path(path: Path) -> bool:
     resolved = path.resolve()
     try:
         resolved.relative_to(ROOT.resolve())
+        return True
+    except ValueError:
+        pass
+    try:
+        resolved.relative_to(CONFIGS_DIR.resolve())
         return True
     except ValueError:
         pass
@@ -3019,7 +3033,7 @@ def _config_group_kind(raw: dict[str, Any]) -> str:
     paths = [*_string_list(raw.get("files")), *_string_list(raw.get("patterns"))]
     if group_id in {"datasets", "unfiled_datasets"}:
         return "dataset"
-    if any(str(item).replace("\\", "/").startswith("configs/datasets/") for item in paths):
+    if any(_strip_configs_prefix(str(item).replace("\\", "/")).startswith("datasets/") for item in paths):
         return "dataset"
     return "training"
 
@@ -3045,7 +3059,7 @@ def get_config_file_meta(
         if group_id and group_label and locked is not None and trainable is not None
         else _infer_config_file_group(normalized)
     )
-    stem = Path(normalized).stem
+    method = _config_method_name_for_path(normalized)
     group_locked = bool(inferred["locked"] if locked is None else locked)
     system_locked = _is_system_locked_path(normalized)
     user_locked = _is_user_locked(normalized)
@@ -3076,9 +3090,21 @@ def get_config_file_meta(
         "restorable": _is_system_preset_path(normalized),
         "open": inferred["open"],
         "trainable": inferred["trainable"] if trainable is None else trainable,
-        "method": stem,
+        "method": method,
         "methods_subdir": methods_subdir or inferred["methods_subdir"],
     }
+
+
+def _config_method_name_for_path(rel_path: str) -> str:
+    normalized = _normalize_config_rel_path(rel_path)
+    for prefix in ("configs/gui-methods/", "configs/methods/", "configs/imported/"):
+        if not normalized.startswith(prefix):
+            continue
+        relative = normalized.removeprefix(prefix)
+        if relative.lower().endswith(".toml"):
+            relative = relative[:-5]
+        return relative.strip("/")
+    return Path(normalized).stem
 
 
 def _infer_config_file_group(rel_path: str) -> dict[str, Any]:
@@ -3093,17 +3119,22 @@ def _infer_config_file_group(rel_path: str) -> dict[str, Any]:
                     "trainable": group["trainable"],
                     "methods_subdir": group["methods_subdir"],
                 }
-    if rel_path.startswith("configs/gui-methods/"):
+    normalized = _strip_configs_prefix(rel_path)
+    if normalized.startswith("gui-methods/"):
         return _group_defaults("gui_methods", "可训练方法变体", False, True, "gui-methods", True)
-    if rel_path.startswith("configs/methods/"):
+    if normalized.startswith("methods/"):
         return _group_defaults("methods", "系统内置方法配置（锁定只读）", True, True, "methods", False)
-    if rel_path.startswith("configs/imported/"):
+    if normalized.startswith("imported/"):
         return _group_defaults("imported", "导入配置", False, True, "imported", True)
-    if rel_path.startswith("configs/datasets/"):
+    if normalized.startswith("datasets/"):
         return _group_defaults("datasets", "数据集配置", False, False, "", False)
-    if rel_path in {"configs/base.toml", "configs/presets.toml"}:
+    if normalized in {"base.toml", "presets.toml"}:
         return _group_defaults("presets", "系统预设配置（锁定只读）", True, False, "", False)
     return _group_defaults("custom", "自定义配置", False, False, "", True)
+
+
+def _strip_configs_prefix(rel_path: str) -> str:
+    return _normalize_config_rel_path(rel_path).removeprefix("configs/")
 
 
 def _load_config_file_group_specs() -> list[dict[str, Any]]:
@@ -3239,9 +3270,10 @@ def _glob_config_files(pattern: str) -> list[str]:
     normalized_pattern = _normalize_config_rel_path(pattern)
     if not normalized_pattern.startswith("configs/") or ".." in Path(normalized_pattern).parts:
         return []
+    rel_pattern = normalized_pattern.removeprefix("configs/")
     return [
         _display_path(path)
-        for path in sorted(ROOT.glob(normalized_pattern))
+        for path in sorted(CONFIGS_DIR.glob(rel_pattern))
         if path.is_file()
         and path.suffix == ".toml"
         and _safe_resolve(_display_path(path))
@@ -3852,7 +3884,12 @@ def _safe_config_subdir(subdir: str) -> Path | None:
 
 
 def _resolve_project_path(value: str) -> Path:
-    return _config_paths.resolve_project_path(value, root=ROOT, expand_env_vars_fn=expand_env_vars)
+    return _config_paths.resolve_display_path(
+        value,
+        root=ROOT,
+        configs_dir=CONFIGS_DIR,
+        expand_env_vars_fn=expand_env_vars,
+    )
 
 
 def _auto_data_dir_for_key(value: Any, source_path: Path, suffix: str) -> Path:
@@ -3877,7 +3914,7 @@ def _is_builtin_default_data_dir(value: str) -> bool:
 
 
 def _display_path(path: Path) -> str:
-    return _config_paths.display_path(path, root=ROOT)
+    return _config_paths.display_path(path, root=ROOT, configs_dir=CONFIGS_DIR)
 
 
 def _nl_tag_mix_available_count(

@@ -1,25 +1,26 @@
-import { createPreviewFeature } from '../preview/index.js?v=module-bootstrap-20260608-11';
-import { createQueueFeature } from '../queue/index.js?v=module-bootstrap-20260608-11';
-import { createHistoryDetailFeature } from '../history-detail/index.js?v=module-bootstrap-20260608-11';
-import { createWeightAnalysisFeature } from '../weight-analysis/index.js?v=module-bootstrap-20260608-11';
-import { createEnvironmentCheckFeature } from '../environment-check/index.js?v=module-bootstrap-20260608-11';
-import { createGpuPicker } from '../app-shell/gpu-picker.js?v=module-bootstrap-20260608-11';
-import { createTabController } from '../app-shell/tabs.js?v=module-bootstrap-20260608-11';
-import { createThemeController } from '../app-shell/theme.js?v=module-bootstrap-20260608-11';
+import { createPreviewFeature } from '../preview/index.js?v=module-bootstrap-20260625-9';
+import { createQueueFeature } from '../queue/index.js?v=module-bootstrap-20260625-9';
+import { createHistoryDetailFeature } from '../history-detail/index.js?v=module-bootstrap-20260625-9';
+import { createWeightAnalysisFeature } from '../weight-analysis/index.js?v=module-bootstrap-20260625-9';
+import { createEnvironmentCheckFeature } from '../environment-check/index.js?v=module-bootstrap-20260625-9';
+import { createGpuPicker } from '../app-shell/gpu-picker.js?v=module-bootstrap-20260625-9';
+import { createTabController } from '../app-shell/tabs.js?v=module-bootstrap-20260625-9';
+import { createThemeController } from '../app-shell/theme.js?v=module-bootstrap-20260625-9';
+import { createUIScaleController } from '../app-shell/ui-scale.js?v=module-bootstrap-20260625-9';
 import {
     blankSamplePromptRow,
     parseSamplePromptRows,
     samplePromptsContentNeedsTextMode,
     serializeSamplePromptsEditor,
-} from '../sample-prompts/model.js?v=module-bootstrap-20260608-11';
-import { readTomlGroupState, writeTomlGroupState } from '../toml-manager/group-state.js?v=module-bootstrap-20260608-11';
+} from '../sample-prompts/model.js?v=module-bootstrap-20260625-9';
+import { readTomlGroupState, writeTomlGroupState } from '../toml-manager/group-state.js?v=module-bootstrap-20260625-9';
 import {
     formatSystemPercent,
     formatSystemTemperature,
     formatSystemVram,
     historySystemSummary,
-} from '../history-detail/system.js?v=module-bootstrap-20260608-11';
-import { formatCompactNumber, numberOrNull } from '../history-detail/ui.js?v=module-bootstrap-20260608-11';
+} from '../history-detail/system.js?v=module-bootstrap-20260625-9';
+import { formatCompactNumber, numberOrNull } from '../history-detail/ui.js?v=module-bootstrap-20260625-9';
 
 const ctx = globalThis.ctx;
 
@@ -32,6 +33,7 @@ Object.assign(globalThis, {
     createGpuPicker,
     createTabController,
     createThemeController,
+    createUIScaleController,
     blankSamplePromptRow,
     parseSamplePromptRows,
     samplePromptsContentNeedsTextMode,
@@ -48,6 +50,9 @@ Object.assign(globalThis, {
 
 globalThis.MetricsChart = ctx.MetricsChart;
 globalThis.formatLossValue = function formatLossValue(value) {
+    const text = String(value ?? '').trim();
+    if (/^[+\-]?nan$/i.test(text)) return 'NaN';
+    if (/^[+\-]?inf(?:inity)?$/i.test(text)) return text.startsWith('-') ? '-Infinity' : 'Infinity';
     const n = Number(value);
     return Number.isFinite(n) ? n.toFixed(5) : '-';
 };

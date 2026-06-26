@@ -73,6 +73,58 @@ def add_custom_train_arguments(
         help="Numerical epsilon for velocity direction cosine similarity.",
     )
     parser.add_argument(
+        "--prior_preservation_weight",
+        type=float,
+        default=0.0,
+        help=(
+            "Weight for no-extra-dataset prior-preservation MSE. "
+            "0 disables it. The trainer supplies a no-grad base-model prediction "
+            "with the adapter temporarily zeroed."
+        ),
+    )
+    parser.add_argument(
+        "--blank_prompt_preservation",
+        action="store_true",
+        default=False,
+        help=(
+            "Use T5('') as the prior-preservation text condition. Requires "
+            "--prior_preservation_weight > 0 and reuses the staged max-padded "
+            "unconditional cross-attention sidecar instead of running the text "
+            "encoder in the training loop."
+        ),
+    )
+    parser.add_argument(
+        "--diff_output_preservation_trigger",
+        type=str,
+        default=None,
+        help=(
+            "Trigger text to replace when building DOP/class-prompt prior captions. "
+            "Requires --diff_output_preservation_class and "
+            "--prior_preservation_weight > 0."
+        ),
+    )
+    parser.add_argument(
+        "--diff_output_preservation_class",
+        type=str,
+        default=None,
+        help=(
+            "Class prompt used for DOP/class-prompt prior preservation, e.g. "
+            "'woman' or 'character'. Text caches store its max-padded "
+            "cross-attention embedding per image."
+        ),
+    )
+    parser.add_argument(
+        "--inverted_mask_prior_weight",
+        type=float,
+        default=0.0,
+        help=(
+            "Weight for no-extra-dataset inverted-mask prior preservation. "
+            "When alpha masks are present, the trainer compares the current "
+            "prediction to an adapter-disabled base prediction only outside "
+            "the mask."
+        ),
+    )
+    parser.add_argument(
         "--p2_gamma",
         type=float,
         default=1.0,
@@ -111,6 +163,17 @@ def apply_masked_loss(loss, batch) -> torch.FloatTensor:
     )
     loss = loss * mask_image
     return loss
+
+
+def apply_inverted_masked_loss(loss, batch) -> torch.FloatTensor:
+    if "alpha_masks" not in batch or batch["alpha_masks"] is None:
+        return loss.new_zeros(loss.shape)
+
+    mask_image = batch["alpha_masks"].to(dtype=loss.dtype).unsqueeze(1)
+    mask_image = torch.nn.functional.interpolate(
+        mask_image, size=loss.shape[2:], mode="area"
+    )
+    return loss * (1.0 - mask_image)
 
 
 def get_huber_threshold_if_needed(
@@ -343,6 +406,49 @@ def _velocity_direction_loss(ctx: LossContext) -> torch.Tensor:
     return weight * loss
 
 
+def _prior_preservation_loss(ctx: LossContext) -> torch.Tensor:
+    """No-extra-dataset prior preservation against a base-model prediction."""
+    if not ctx.is_train:
+        return ctx.model_pred.new_zeros(ctx.model_pred.shape[0])
+    weight = float(getattr(ctx.args, "prior_preservation_weight", 0.0) or 0.0)
+    if weight <= 0.0:
+        return ctx.model_pred.new_zeros(ctx.model_pred.shape[0])
+
+    aux = ctx.aux.get("prior_preservation") or {}
+    prior_pred = aux.get("prior_pred")
+    if prior_pred is None:
+        return ctx.model_pred.new_zeros(ctx.model_pred.shape[0])
+    if prior_pred.dim() == 5:
+        prior_pred = prior_pred.squeeze(2)
+
+    loss = F.mse_loss(ctx.model_pred.float(), prior_pred.float(), reduction="none")
+    loss = loss.mean(dim=list(range(1, loss.ndim)))
+    loss = loss * ctx.loss_weights
+    return weight * loss
+
+
+def _inverted_mask_prior_loss(ctx: LossContext) -> torch.Tensor:
+    """Preserve base-model behavior outside user-provided alpha masks."""
+    if not ctx.is_train:
+        return ctx.model_pred.new_zeros(ctx.model_pred.shape[0])
+    weight = float(getattr(ctx.args, "inverted_mask_prior_weight", 0.0) or 0.0)
+    if weight <= 0.0:
+        return ctx.model_pred.new_zeros(ctx.model_pred.shape[0])
+
+    aux = ctx.aux.get("inverted_mask_prior") or {}
+    prior_pred = aux.get("prior_pred")
+    if prior_pred is None or ctx.batch.get("alpha_masks") is None:
+        return ctx.model_pred.new_zeros(ctx.model_pred.shape[0])
+    if prior_pred.dim() == 5:
+        prior_pred = prior_pred.squeeze(2)
+
+    loss = F.mse_loss(ctx.model_pred.float(), prior_pred.float(), reduction="none")
+    loss = apply_inverted_masked_loss(loss, ctx.batch)
+    loss = loss.mean(dim=list(range(1, loss.ndim)))
+    loss = loss * ctx.loss_weights
+    return weight * loss
+
+
 # ---------------------------------------------------------------------------
 # Scalar-broadcast regularizers (added to the per-sample [B] tensor)
 # ---------------------------------------------------------------------------
@@ -526,6 +632,8 @@ LOSS_REGISTRY: dict[str, LossFn] = {
     "flow_match": _flow_match_loss,
     "flow_matching_vr": _flow_matching_vr_loss,
     "velocity_direction": _velocity_direction_loss,
+    "prior_preservation": _prior_preservation_loss,
+    "inverted_mask_prior": _inverted_mask_prior_loss,
     "ortho_reg": _ortho_reg_loss,
     "hydra_balance": _hydra_balance_loss,
     "functional": _functional_loss,
@@ -539,7 +647,13 @@ LOSS_REGISTRY: dict[str, LossFn] = {
 # `flow_match` and `flow_matching_vr` are mutually exclusive — both produce
 # the primary per-sample [B] tensor. `velocity_direction` is an optional
 # FasterDiT-style auxiliary per-sample term.
-_STAGE_PER_SAMPLE = ("flow_match", "flow_matching_vr", "velocity_direction")
+_STAGE_PER_SAMPLE = (
+    "flow_match",
+    "flow_matching_vr",
+    "velocity_direction",
+    "prior_preservation",
+    "inverted_mask_prior",
+)
 _STAGE_SCALAR_BROADCAST = (
     "ortho_reg",
     "hydra_balance",
@@ -633,6 +747,8 @@ def build_loss_composer(args: argparse.Namespace, network: object) -> LossCompos
         args.vr_loss_weight > 0 (the trainer is responsible for running the
         adapter-bypass no-grad forward and stashing ctx.aux['vr']).
       - velocity_direction active iff args.velocity_direction_loss_weight > 0.
+      - prior_preservation active iff args.prior_preservation_weight > 0.
+      - inverted_mask_prior active iff args.inverted_mask_prior_weight > 0.
       - ortho_reg active iff network._ortho_reg_weight > 0.
       - hydra_balance active iff network._balance_loss_weight > 0.
       - functional active iff args.functional_loss_weight > 0.
@@ -650,6 +766,10 @@ def build_loss_composer(args: argparse.Namespace, network: object) -> LossCompos
 
     if float(getattr(args, "velocity_direction_loss_weight", 0.0) or 0.0) > 0.0:
         active.append("velocity_direction")
+    if float(getattr(args, "prior_preservation_weight", 0.0) or 0.0) > 0.0:
+        active.append("prior_preservation")
+    if float(getattr(args, "inverted_mask_prior_weight", 0.0) or 0.0) > 0.0:
+        active.append("inverted_mask_prior")
 
     if float(getattr(network, "_ortho_reg_weight", 0.0) or 0.0) > 0.0:
         active.append("ortho_reg")

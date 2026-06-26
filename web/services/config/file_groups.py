@@ -221,7 +221,12 @@ def move_config_file_to_group(rel_path: str, group_id: str) -> tuple[bool, str, 
         return False, "配置文件不存在或路径不合法", None
     if _is_system_locked_path(normalized_file):
         return False, "系统预设和 Web 管理配置不能移动分组", None
-    if not normalized_file.startswith(("configs/imported/", "configs/datasets/")):
+
+    # 支持外部 configs root：归一化后可能仍然保留 configs/ 前缀（默认行为），
+    # 也可能不包含该前缀（外部 configs root 时从 display_path 得到的相对路径）
+    # 检查时需要同时支持两种情况
+    path_without_configs_prefix = normalized_file.removeprefix("configs/")
+    if not (path_without_configs_prefix.startswith("imported/") or path_without_configs_prefix.startswith("datasets/")):
         return False, "当前仅支持移动导入配置和数据集配置", None
 
     specs = _load_config_file_group_specs()
@@ -229,7 +234,7 @@ def move_config_file_to_group(rel_path: str, group_id: str) -> tuple[bool, str, 
     if target is None:
         return False, "目标分组不存在", None
     if not _is_move_target_group(target, normalized_file):
-        message = "数据集预设只能移动到数据集分组" if normalized_file.startswith("configs/datasets/") else "只能移动到导入配置、数据集配置或用户自定义分组"
+        message = "数据集预设只能移动到数据集分组" if path_without_configs_prefix.startswith("datasets/") else "只能移动到导入配置、数据集配置或用户自定义分组"
         return False, message, _build_config_file_group(target)
     if target.get("locked") or _is_user_group_locked(target_group_id):
         return False, "目标分组已锁定，不能移入配置", _build_config_file_group(target)
@@ -266,7 +271,9 @@ def place_config_file_in_group(
         return False, "配置文件不存在或路径不合法", None
     if _is_system_locked_path(normalized_file):
         return False, "系统预设和 Web 管理配置不能移动分组", None
-    if not normalized_file.startswith(("configs/imported/", "configs/datasets/")):
+
+    path_without_configs_prefix = normalized_file.removeprefix("configs/")
+    if not (path_without_configs_prefix.startswith("imported/") or path_without_configs_prefix.startswith("datasets/")):
         return False, "当前仅支持移动导入配置和数据集配置", None
 
     specs = _load_config_file_group_specs()
@@ -274,7 +281,7 @@ def place_config_file_in_group(
     if target is None:
         return False, "目标分组不存在", None
     if not _is_move_target_group(target, normalized_file):
-        message = "数据集预设只能移动到数据集分组" if normalized_file.startswith("configs/datasets/") else "只能移动到导入配置、数据集配置或用户自定义分组"
+        message = "数据集预设只能移动到数据集分组" if path_without_configs_prefix.startswith("datasets/") else "只能移动到导入配置、数据集配置或用户自定义分组"
         return False, message, _build_config_file_group(target)
     if target.get("locked") or _is_user_group_locked(target_group_id):
         return False, "目标分组已锁定，不能移入配置", _build_config_file_group(target)
@@ -521,7 +528,7 @@ def _config_group_kind(raw: dict[str, Any]) -> str:
     paths = [*_string_list(raw.get("files")), *_string_list(raw.get("patterns"))]
     if group_id in {"datasets", "unfiled_datasets"}:
         return "dataset"
-    if any(str(item).replace("\\", "/").startswith("configs/datasets/") for item in paths):
+    if any(_strip_configs_prefix(str(item).replace("\\", "/")).startswith("datasets/") for item in paths):
         return "dataset"
     return "training"
 
@@ -607,17 +614,22 @@ def _infer_config_file_group(rel_path: str) -> dict[str, Any]:
                     "trainable": group["trainable"],
                     "methods_subdir": group["methods_subdir"],
                 }
-    if rel_path.startswith("configs/gui-methods/"):
+    normalized = _strip_configs_prefix(rel_path)
+    if normalized.startswith("gui-methods/"):
         return _group_defaults("gui_methods", "可训练方法变体", False, True, "gui-methods", True)
-    if rel_path.startswith("configs/methods/"):
+    if normalized.startswith("methods/"):
         return _group_defaults("methods", "系统内置方法配置（锁定只读）", True, True, "methods", False)
-    if rel_path.startswith("configs/imported/"):
+    if normalized.startswith("imported/"):
         return _group_defaults("imported", "导入配置", False, True, "imported", True)
-    if rel_path.startswith("configs/datasets/"):
+    if normalized.startswith("datasets/"):
         return _group_defaults("datasets", "数据集配置", False, False, "", False)
-    if rel_path in {"configs/base.toml", "configs/presets.toml"}:
+    if normalized in {"base.toml", "presets.toml"}:
         return _group_defaults("presets", "系统预设配置（锁定只读）", True, False, "", False)
     return _group_defaults("custom", "自定义配置", False, False, "", True)
+
+
+def _strip_configs_prefix(rel_path: str) -> str:
+    return _normalize_config_rel_path(rel_path).removeprefix("configs/")
 
 
 def _load_config_file_group_specs() -> list[dict[str, Any]]:
@@ -719,26 +731,40 @@ def _build_config_file_group(spec: dict[str, Any]) -> dict[str, Any]:
         rank = {file_path: idx for idx, file_path in enumerate(order)}
         unique_files.sort(key=lambda item: (0, rank[item]) if item in rank else (1, 0))
 
+    group_kind = spec.get("kind") or "training"
+    group_id = spec["id"]
+    is_locked = spec["locked"] or _is_user_group_locked(group_id)
+
+    # movable 表示该分组是否可以接收文件拖放
+    # 对于数据集分组，只要 kind 是 dataset，就应该可以接收数据集文件
+    # 对于训练配置分组，依赖 _is_move_target_group 的判断
+    if group_kind == "dataset":
+        # 数据集分组始终可接收数据集配置文件（除非锁定）
+        movable = not is_locked and group_id != "unfiled_datasets"
+    else:
+        # 训练配置分组的判断保持原逻辑
+        movable = _is_move_target_group(spec)
+
     return {
-        "id": spec["id"],
+        "id": group_id,
         "label": spec["label"],
         "open": spec["open"],
-        "locked": spec["locked"] or _is_user_group_locked(spec["id"]),
+        "locked": is_locked,
         "group_locked": spec["locked"],
-        "user_group_locked": _is_user_group_locked(spec["id"]),
-        "system_locked": spec["id"] not in USER_LOCKABLE_GROUPS and spec["locked"],
-        "lockable": spec["id"] in USER_LOCKABLE_GROUPS or _is_user_managed_group(spec),
+        "user_group_locked": _is_user_group_locked(group_id),
+        "system_locked": group_id not in USER_LOCKABLE_GROUPS and spec["locked"],
+        "lockable": group_id in USER_LOCKABLE_GROUPS or _is_user_managed_group(spec),
         "user_managed": _is_user_managed_group(spec),
-        "kind": spec.get("kind") or "training",
+        "kind": group_kind,
         "renamable": _is_renamable_config_group(spec),
         "deletable": _is_deletable_config_group(spec),
-        "movable": _is_move_target_group(spec),
+        "movable": movable,
         "trainable": spec["trainable"],
         "methods_subdir": spec["methods_subdir"],
         "files": [
             get_config_file_meta(
                 file_path,
-                spec["id"],
+                group_id,
                 spec["label"],
                 spec["locked"],
                 spec["trainable"],
@@ -753,9 +779,10 @@ def _glob_config_files(pattern: str) -> list[str]:
     normalized_pattern = _normalize_config_rel_path(pattern)
     if not normalized_pattern.startswith("configs/") or ".." in Path(normalized_pattern).parts:
         return []
+    rel_pattern = normalized_pattern.removeprefix("configs/")
     return [
         _display_path(path)
-        for path in sorted(ROOT.glob(normalized_pattern))
+        for path in sorted(CONFIGS_DIR.glob(rel_pattern))
         if path.is_file()
         and path.suffix == ".toml"
         and _safe_resolve(_display_path(path))
@@ -864,7 +891,8 @@ def _config_file_is_covered_by_specs(specs: list[dict[str, Any]], rel_path: str)
 
 
 def _fallback_config_group_spec(rel_path: str) -> dict[str, Any]:
-    if rel_path.startswith("configs/datasets/"):
+    # 支持外部 configs root：归一化后的路径不再包含 configs/ 前缀
+    if rel_path.startswith("datasets/"):
         group_id = "unfiled_datasets"
         label = "未分组数据集配置"
         trainable = False
@@ -919,7 +947,9 @@ def _is_renamable_config_group(spec: dict[str, Any]) -> bool:
 def _is_move_target_group(spec: dict[str, Any], rel_path: str = "") -> bool:
     group_id = str(spec.get("id") or "")
     normalized = _normalize_config_rel_path(rel_path)
-    if normalized.startswith("configs/datasets/"):
+    # 支持外部 configs root：归一化后可能包含或不包含 configs/ 前缀
+    path_without_configs_prefix = normalized.removeprefix("configs/")
+    if path_without_configs_prefix.startswith("datasets/"):
         return spec.get("kind") == "dataset" or group_id in {"datasets", "unfiled_datasets"}
     return _is_user_managed_group(spec) or group_id in FILE_MOVE_TARGET_GROUPS
 
@@ -1018,10 +1048,11 @@ def _normalize_dataset_preset_path(rel_path: str, *, must_exist: bool) -> str:
     if path.suffix.lower() != ".toml":
         path = path.with_suffix(".toml")
     if len(path.parts) == 1:
-        path = Path("configs") / "datasets" / path
+        path = Path("datasets") / path
     normalized = path.as_posix().lstrip("/")
-    if not normalized.startswith("configs/datasets/"):
-        raise ValueError("数据集预设必须保存在 configs/datasets/ 下")
+    # 支持外部 configs root：归一化后只保留相对于 configs root 的路径
+    if not normalized.startswith("datasets/"):
+        raise ValueError("数据集预设必须保存在 datasets/ 下")
     safe_path = _safe_resolve(normalized)
     if safe_path is None:
         raise ValueError("数据集预设路径不合法")

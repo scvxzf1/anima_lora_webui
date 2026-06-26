@@ -1,4 +1,4 @@
-import { help } from './help-builder.js?v=module-bootstrap-20260608-11';
+import { help } from './help-builder.js?v=module-bootstrap-20260625-9';
 
 export const FIELD_HELP_TRAINING_ZH = {    learning_rate: help(
         "学习率，决定每一步参数改动有多大。",
@@ -188,6 +188,46 @@ export const FIELD_HELP_TRAINING_ZH = {    learning_rate: help(
         ["属于实验项，不建议和多个 SNR/时间步改动一起开。"],
         "短跑先试 0.01 / 0.03 / 0.05；正式训练默认 0。"
     ),
+    prior_preservation_weight: help(
+        "无额外数据集的先验保留辅助损失权重。",
+        "训练时用同一批 latent/noise/timestep，临时关闭 adapter 得到 base 预测，再让当前预测靠近这个先验。",
+        ["当前支持 blank_prompt_preservation 或 DOP/class prompt 二选一。"],
+        ["每步会多一次 DiT no-grad forward，训练会变慢并增加峰值显存压力。"],
+        ["和有数据集正则化的 prior_loss_weight 是两条不同路线。"],
+        "默认 0；短跑可先试 0.05 / 0.1。"
+    ),
+    blank_prompt_preservation: help(
+        "使用空提示 T5(\"\") 作为先验保留条件。",
+        "开启后复用预处理阶段生成的 max-padded unconditional crossattn sidecar，不在训练 loop 里重新跑 text encoder。",
+        ["适合先验证“无额外正则化数据集”的基线方案。"],
+        ["必须同时设置 prior_preservation_weight > 0 才会生效。"],
+        ["不能和 DOP 类提示同时开启。"],
+        "需要无数据集先验保留时开启；否则保持关闭。"
+    ),
+    diff_output_preservation_trigger: help(
+        "DOP/class prompt 先验保留的触发词。",
+        "预处理文本缓存时，会把 caption 里的触发词替换成 DOP 类提示并额外写入 prior_crossattn_emb。",
+        ["适合角色/物体 LoRA：例如 trigger=sks，class=woman。"],
+        ["留空时 prior caption 直接使用 DOP 类提示本身。"],
+        ["修改后需要重新运行文本缓存/预处理，否则训练会找不到 prior_crossattn_emb。"],
+        "有明确触发词时填写；否则留空。"
+    ),
+    diff_output_preservation_class: help(
+        "DOP/class prompt 先验保留的类提示。",
+        "填写后启用 DOP 模式：训练用原 caption 跑带 adapter 的预测，用类提示 prior caption 跑关闭 adapter 的 base 预测。",
+        ["必须同时设置 prior_preservation_weight > 0、use_text_cache=true、cache_llm_adapter_outputs=true。"],
+        ["不能和 blank_prompt_preservation 同时使用。"],
+        ["每次修改该值后都要重新生成文本缓存。"],
+        "常见值如 woman / man / character / style；不用 DOP 时留空。"
+    ),
+    inverted_mask_prior_weight: help(
+        "只在遮罩外区域做先验保留的辅助损失权重。",
+        "有 alpha mask 时，训练会用相同 prompt/latent/noise/timestep 临时关闭 adapter 跑 base 预测，并只约束 1-mask 区域。",
+        ["适合局部编辑或带遮罩训练：目标区域继续学习，非目标区域尽量别被 LoRA 带偏。"],
+        ["每步会多一次 DiT no-grad forward，训练会变慢。"],
+        ["需要 use_text_cache=true、cache_llm_adapter_outputs=true；没有 mask 的 batch 此项为 0。"],
+        "默认 0；局部训练短跑可先试 0.05 / 0.1。"
+    ),
     discrete_flow_shift: help(
         "flow matching 噪声调度偏移参数。",
         "默认 1.0。",
@@ -286,18 +326,18 @@ export const FIELD_HELP_TRAINING_ZH = {    learning_rate: help(
     ),
     selective_checkpoint: help(
         "只对部分 DiT 计算做 activation 重算。",
-        "off 是最快默认；mlp_layer1_only 只重算每个 block 的 MLP 第一层；peak_blocks_* 只对指定高峰 block 生效。",
+        "off 是最快默认；adapter_aware 整块重算大激活但缓存 LoRA/router 小中间值；peak_blocks_* 只对指定高峰 block 生效。",
         ["能在 block swap 仍然接近 OOM 时补出一些显存余量。"],
         ["会增加 backward 重算成本，速度会下降。"],
         ["不要和 full gradient_checkpointing 或 Unsloth offload 叠加。"],
-        "LoKr 16G 优先试 mlp_layer1_only 或 peak_blocks_mlp_layer1；普通 LoRA 保持 off。"
+        "LoKr/高 rank LoRA 可先试 adapter_aware 或 peak_blocks_adapter_aware；显存充足保持 off。"
     ),
     selective_checkpoint_blocks: help(
         "定点重算的 DiT block 编号列表。",
-        "只在 peak_blocks_mlp_layer1 / peak_blocks_mlp 模式下使用。支持 25-27 或 24,25,26,27；留空/auto 表示最后 3 个 block。",
+        "只在 peak_blocks_adapter_aware / peak_blocks_mlp_layer1 / peak_blocks_mlp 模式下使用。支持 25-27 或 24,25,26,27；留空/auto 表示最后 3 个 block。",
         ["可以只重算峰值最高的后段 block，减少速度损失。"],
         ["填错范围会启动失败，Anima 当前有效 block 是 0-27。"],
-        ["对 off、mlp_layer1_only、mlp_only、every_other 没有效果。"],
+        ["对 off、adapter_aware、mlp_layer1_only、mlp_only、every_other 没有效果。"],
         "当前 LoKr 16G 消融优先填 25-27。"
     ),
     block_swap_profile_jsonl: help(

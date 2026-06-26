@@ -53,6 +53,7 @@ const ctx = globalThis.ctx;
                     last_log_id: status.last_log_id,
                     last_log_line: status.last_log_line,
                     error_hint: status.error_hint,
+                    anomaly_message: status.anomaly_message || '',
                     output_dir: status.output_dir,
                     sample_dir: status.sample_dir,
                     sample_config: status.sample_config,

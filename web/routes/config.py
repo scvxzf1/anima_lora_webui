@@ -30,6 +30,7 @@ from web.services.config_service import (
     list_presets,
     list_variants,
     load_merged_config,
+    _load_training_config_for_web_run,
     load_dataset_preset,
     load_output_run_config,
     load_raw_file,
@@ -121,8 +122,18 @@ async def handle_merged(request: web.Request) -> web.Response:
     variant = request.query.get("variant", "lora")
     preset = request.query.get("preset", "default")
     methods_subdir = request.query.get("methods_subdir", "gui-methods")
+    config_file = request.query.get("config_file")
     try:
-        config = load_merged_config(variant, preset, methods_subdir)
+        config = (
+            _load_training_config_for_web_run(
+                variant,
+                preset,
+                methods_subdir,
+                config_file=config_file,
+            )
+            if config_file
+            else load_merged_config(variant, preset, methods_subdir)
+        )
         return web.json_response(config)
     except Exception as e:
         return web.json_response({"error": str(e)}, status=400)

@@ -9,8 +9,6 @@ flag helpers themselves never touch the encoder weights.
 from __future__ import annotations
 
 import argparse
-import logging
-import os
 from pathlib import Path
 
 import numpy as np
@@ -36,138 +34,8 @@ def test_build_anima_requires_dit_path() -> None:
         build_anima(args)  # no dit_path, no args.dit -> guard fires before load
 
 
-def test_compile_blocks_for_training_derives_budget_and_isolates_cache(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-    caplog: pytest.LogCaptureFixture,
-) -> None:
-    from library.runtime import harness
-
-    captured: dict[str, object] = {}
-
-    class FakeUnet:
-        patch_spatial = 2
-
-        def compile_blocks(self, backend, **kwargs):
-            captured["backend"] = backend
-            captured.update(kwargs)
-
-    class FakeNetwork:
-        pass
-
-    monkeypatch.setenv("TORCHINDUCTOR_CACHE_DIR", str(tmp_path))
-    monkeypatch.setattr(harness, "_compile_cache_base", None)
-
-    with caplog.at_level(logging.INFO):
-        harness.compile_blocks_for_training(
-            FakeUnet(),
-            FakeNetwork(),
-            backend="eager",
-            bucket_resolutions=[(1024, 1024), (768, 896)],
-            dynamic_seq=True,
-            activation_memory_budget=0.99,
-            grad_ckpt=True,
-        )
-
-    assert captured["backend"] == "eager"
-    assert captured["n_token_families"] == 2
-    assert captured["seq_range"] == (2688, 4096)
-    assert captured["dynamic_seq"] is True
-    assert "anima-sig-" in os.environ["TORCHINDUCTOR_CACHE_DIR"]
-    assert any(
-        "activation_memory_budget ignored" in rec.getMessage()
-        for rec in caplog.records
-    )
-
-
-def test_compile_blocks_for_training_uses_latent_tokens_for_web_buckets(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    from library.runtime import harness
-
-    captured: dict[str, object] = {}
-
-    class FakeUnet:
-        patch_spatial = 2
-
-        def compile_blocks(self, backend, **kwargs):
-            captured["backend"] = backend
-            captured.update(kwargs)
-
-    monkeypatch.setenv("TORCHINDUCTOR_CACHE_DIR", str(tmp_path))
-    monkeypatch.setattr(harness, "_compile_cache_base", None)
-
-    harness.compile_blocks_for_training(
-        FakeUnet(),
-        object(),
-        backend="eager",
-        bucket_resolutions=[(784, 1056), (704, 1184)],
-        dynamic_seq=True,
-    )
-
-    assert captured["seq_range"] == (3234, 3256)
-
-
-def test_compile_blocks_for_training_includes_sample_prompt_resolutions(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    import train
-    from library.runtime import harness
-
-    captured: dict[str, object] = {}
-
-    class FakeUnet:
-        patch_spatial = 2
-
-        def compile_blocks(self, backend, **kwargs):
-            captured["backend"] = backend
-            captured.update(kwargs)
-
-    class FakeNetwork:
-        pass
-
-    prompt_file = tmp_path / "sample_prompts.txt"
-    prompt_file.write_text(
-        "masterpiece --w 768 --h 1152 --d 42\n",
-        encoding="utf-8",
-    )
-
-    class BucketManager:
-        resos = [(784, 1056)]
-
-    class Dataset:
-        bucket_manager = BucketManager()
-        image_data = {}
-
-    class Group:
-        datasets = [Dataset()]
-
-    merged = train._collect_compile_resolutions(
-        Group(),
-        sample_prompts=str(prompt_file),
-    )
-
-    assert merged == [(768, 1152), (784, 1056)]
-
-    monkeypatch.setenv("TORCHINDUCTOR_CACHE_DIR", str(tmp_path))
-    monkeypatch.setattr(harness, "_compile_cache_base", None)
-
-    harness.compile_blocks_for_training(
-        FakeUnet(),
-        FakeNetwork(),
-        backend="eager",
-        bucket_resolutions=merged,
-        dynamic_seq=True,
-    )
-
-    assert captured["bucket_resolutions"] == merged
-    assert captured["seq_range"] == (3234, 3456)
-
-
 def test_add_device_args_defaults() -> None:
-    from library.runtime.cli import add_device_args
+    from library.runtime.argparse_groups import add_device_args
 
     p = argparse.ArgumentParser()
     add_device_args(p)
@@ -177,7 +45,9 @@ def test_add_device_args_defaults() -> None:
     # narrowed choices + custom default are honored
     p2 = argparse.ArgumentParser()
     add_device_args(
-        p2, include_device=False, dtype_default="bfloat16",
+        p2,
+        include_device=False,
+        dtype_default="bfloat16",
         dtype_choices=("bfloat16", "float16", "float32"),
     )
     a2 = p2.parse_args([])
@@ -188,7 +58,7 @@ def test_add_device_args_defaults() -> None:
 
 
 def test_add_io_args_required_and_optional() -> None:
-    from library.runtime.cli import add_io_args
+    from library.runtime.argparse_groups import add_io_args
 
     p = argparse.ArgumentParser()
     add_io_args(p, include_batch_size=True, batch_size_default=4)
@@ -196,10 +66,7 @@ def test_add_io_args_required_and_optional() -> None:
     assert args.dir == "/tmp/x"
     assert args.cache_dir is None
     assert args.recursive is False
-    assert args.path_pattern == "*"
     assert args.batch_size == 4
-    filtered = p.parse_args(["--dir", "/tmp/x", "--path_pattern", "charA/*"])
-    assert filtered.path_pattern == "charA/*"
     with pytest.raises(SystemExit):
         p.parse_args([])  # --dir required by default
 
@@ -227,11 +94,87 @@ def test_add_common_args_delegates_device_dtype() -> None:
     assert not hasattr(a2, "dtype")
 
 
+def test_compile_signature_normalizes_mode() -> None:
+    """train.py (mode=None) and distill_turbo (mode="") must serialize the same.
+
+    A formatting drift between the two entry points would thrash-wipe the
+    shared inductor cache on every lora <-> turbo switch.
+    """
+    from library.runtime.harness import compile_signature
+
+    kw = dict(n_token_families=4, seq_range=(3000, 4200), dynamic_seq=True)
+    assert compile_signature(**kw, mode="") == compile_signature(**kw, mode=None)
+    # and the pre-promotion train.py marker format is preserved verbatim, so
+    # markers written by older runs still compare equal (no spurious wipe)
+    assert compile_signature(**kw, mode=None) == (
+        "families=4;seq_range=(3000, 4200);dynamic_seq=True;backend=inductor;mode=None"
+    )
+
+
+def test_isolate_compile_cache(tmp_path: Path, monkeypatch) -> None:
+    """Per-signature TORCHINDUCTOR_CACHE_DIR subdirs off a stable base."""
+    import os
+
+    import library.runtime.harness as harness
+
+    monkeypatch.setattr(harness, "_compile_cache_base", None)
+    monkeypatch.setenv("TORCHINDUCTOR_CACHE_DIR", str(tmp_path))
+
+    dir_a = harness.isolate_compile_cache("sig-a")
+    assert os.environ["TORCHINDUCTOR_CACHE_DIR"] == dir_a
+    assert Path(dir_a).parent == tmp_path  # nested under the original base
+
+    # deterministic: same signature -> same dir (warm cache reuse across runs)
+    assert harness.isolate_compile_cache("sig-a") == dir_a
+
+    # different signature -> sibling dir off the SAME base (no nesting under
+    # the previous per-signature dir, even though the env var now points there)
+    dir_b = harness.isolate_compile_cache("sig-b")
+    assert dir_b != dir_a
+    assert Path(dir_b).parent == tmp_path
+
+
+def test_compile_blocks_for_training_accepts_bucket_resolutions(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from library.runtime import harness
+
+    captured: dict[str, object] = {}
+
+    class FakeUnet:
+        patch_spatial = 2
+        vae_spatial_compression = 8
+
+        def compile_blocks(self, backend, **kwargs):
+            captured["backend"] = backend
+            captured.update(kwargs)
+
+    monkeypatch.setenv("TORCHINDUCTOR_CACHE_DIR", str(tmp_path))
+    monkeypatch.setattr(harness, "_compile_cache_base", None)
+
+    bucket_resolutions = [(896, 1152), (960, 1120)]
+    harness.compile_blocks_for_training(
+        FakeUnet(),
+        object(),
+        backend="eager",
+        bucket_resolutions=bucket_resolutions,
+        dynamic_seq=True,
+    )
+
+    assert captured["backend"] == "eager"
+    assert captured["bucket_resolutions"] == bucket_resolutions
+    assert captured["n_token_families"] == 2
+    assert captured["seq_range"] == (4032, 4200)
+    assert captured["dynamic_seq"] is True
+
+
 def _make_sample(data_dir: Path, stem: str, bucket: str, *, with_te: bool) -> None:
     """Write a {stem}_{bucket}_anima.npz (+ optional TE sidecar) fixture."""
     w, h = bucket.split("x")
     npz = data_dir / f"{stem}_{int(w) * 8}x{int(h) * 8}_anima.npz"
-    np.savez(npz, **{f"latents_{bucket}": np.zeros((4, int(h), int(w)), dtype=np.float32)})
+    np.savez(
+        npz, **{f"latents_{bucket}": np.zeros((4, int(h), int(w)), dtype=np.float32)}
+    )
     if with_te:
         (data_dir / f"{stem}_anima_te.safetensors").write_bytes(b"")
 

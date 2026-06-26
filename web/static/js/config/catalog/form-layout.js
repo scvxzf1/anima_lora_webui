@@ -147,6 +147,20 @@ export const FORM_SECTION_DEFS = [
         ],
     },
     {
+        title: '无数据集正则化',
+        description: '不额外准备正则化图片时使用的先验保留方案；和数据集页的 is_reg / prior_loss_weight 是两条独立路线。',
+        notice: '需要先开启文本缓存；DOP 和反转遮罩先验还需要缓存 LLM 适配器输出。',
+        open: false,
+        className: 'config-group-no-dataset-regularization',
+        keys: [
+            'prior_preservation_weight',
+            'blank_prompt_preservation',
+            'diff_output_preservation_trigger',
+            'diff_output_preservation_class',
+            'inverted_mask_prior_weight',
+        ],
+    },
+    {
         title: '缓存与预处理',
         description: '控制 latent、文本编码器和方法特征缓存；换图片、caption、分桶参数后通常需要重建。',
         open: false,
@@ -333,7 +347,7 @@ export const FORM_CATEGORY_DEFS = [
         id: 'optimization',
         title: '优化',
         description: '显存、速度、诊断和编译。',
-        sections: ['显存与速度优化', 'LoKr 专用优化', '数据加载与 VAE 资源', '实验性功能'],
+        sections: ['显存与速度优化', 'LoKr 专用优化', '数据加载与 VAE 资源', '实验性功能', '无数据集正则化'],
     },
     {
         id: 'advanced',
@@ -433,6 +447,20 @@ export const CONFIG_COMPACT_FIELD_GROUPS = {
         {
             className: 'config-field-grid-4col',
             keys: ['min_snr_gamma', 'p2_gamma', 'p2_k', 'velocity_direction_loss_weight'],
+        },
+    ],
+    'config-group-no-dataset-regularization': [
+        {
+            className: 'config-field-grid-2col',
+            keys: ['prior_preservation_weight', 'blank_prompt_preservation'],
+        },
+        {
+            className: 'config-field-grid-2col',
+            keys: ['diff_output_preservation_trigger', 'diff_output_preservation_class'],
+        },
+        {
+            className: 'config-field-grid-2col',
+            keys: ['inverted_mask_prior_weight'],
         },
     ],
 };

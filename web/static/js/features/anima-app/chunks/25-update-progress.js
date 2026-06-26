@@ -46,19 +46,24 @@ const ctx = globalThis.ctx;
         markTrainingActivity(msg.ts, { resetQuietHint: options.replay !== true });
         const lrText = msg.lr !== undefined ? formatLr(msg.lr) : '';
         const lrNumber = msg.lr !== undefined ? Number(msg.lr) : null;
+        const lossNumber = msg.loss !== undefined ? Number(msg.loss) : null;
         if (msg.loss !== undefined) {
-            const loss = Number(msg.loss);
-            if (!Number.isFinite(loss)) return;
-            setMetricText('metric-loss', loss.toFixed(5));
+            if (Number.isFinite(lossNumber)) {
+                setMetricText('metric-loss', lossNumber.toFixed(5));
+            } else {
+                setMetricText('metric-loss', formatLossValue(msg.loss));
+            }
+        }
+        if (msg.loss !== undefined && Number.isFinite(lossNumber)) {
             const step = msg.step || ++stepCounter;
             const metadata = { rawStep: msg.step ?? step };
             if (Number.isFinite(lrNumber)) metadata.lr = lrNumber;
-            lossChart?.push(step, loss, metadata);
+            lossChart?.push(step, lossNumber, metadata);
             syncLossChartEmptyState();
         }
         if (msg.lr !== undefined) {
             setMetricText('metric-lr', lrText);
-            if (msg.loss === undefined && Number.isFinite(lrNumber)) {
+            if ((msg.loss === undefined || !Number.isFinite(lossNumber)) && Number.isFinite(lrNumber)) {
                 lossChart?.updatePointMetadata?.(msg.step, { lr: lrNumber });
             }
         }
@@ -95,6 +100,11 @@ const ctx = globalThis.ctx;
         trainingRuntime.methodsSubdir = msg.methods_subdir || trainingRuntime.methodsSubdir || '';
         trainingRuntime.lastTerminalMessage = state === 'error' ? terminalMessage : '';
         trainingRuntime.lastTerminalHint = state === 'error' ? String(msg.error_hint || '').trim() : '';
+        if (Object.prototype.hasOwnProperty.call(msg, 'anomaly_message')) {
+            trainingRuntime.lastAnomalyMessage = String(msg.anomaly_message || '').trim();
+        } else if (state === 'running' || (state === 'idle' && !terminalMessage)) {
+            trainingRuntime.lastAnomalyMessage = '';
+        }
         if (msg.last_output_at) {
             markTrainingActivity(msg.last_output_at);
         }
@@ -481,10 +491,24 @@ const ctx = globalThis.ctx;
 
         if (isHistoryReviewMode()) {
             el.className = 'training-health';
+            el.removeAttribute('title');
             return;
         }
 
         const isRunning = isLiveRunningState();
+        if (trainingRuntime.lastAnomalyMessage) {
+            if (!isRunning) {
+                setMetricText('metric-log-age', 'N/A');
+                setEtaMetricText({ text: '待计算', empty: true, title: '训练开始并收到进度后显示预计完成时间。' });
+            }
+            const headline = trainingRuntime.lastAnomalyMessage.split('\n', 1)[0].trim();
+            el.className = 'training-health error';
+            el.textContent = headline || '训练异常：Loss 数值异常';
+            el.title = trainingRuntime.lastAnomalyMessage;
+            return;
+        }
+        el.removeAttribute('title');
+
         if (!isRunning) {
             setMetricText('metric-log-age', 'N/A');
             setEtaMetricText({ text: '待计算', empty: true, title: '训练开始并收到进度后显示预计完成时间。' });
@@ -540,18 +564,18 @@ const ctx = globalThis.ctx;
 
     globalThis.parseMetricsFromProgressLine = function parseMetricsFromProgressLine(line) {
         const text = String(line || '');
+        const metricNumberToken = '([+\\-]?(?:\\d+(?:\\.\\d*)?|\\.\\d+)(?:[eE][+\\-]?\\d+)?|[+\\-]?nan|[+\\-]?inf(?:inity)?)';
         const stepMatch = text.match(/\|\s*(\d+)\/\d+\s*\[/) || text.match(/step[=:/\s]+(\d+)/i);
-        const lossMatch = text.match(/(?:avr_)?loss[=:/\s]+([\d.eE\-+]+)/i);
-        const lrMatch = text.match(/(?:^|[\s,])(?:lr|learning_rate)[=:/\s]+([\d.eE\-+]+)/i);
+        const lossMatch = text.match(new RegExp(`(?:avr_)?loss[=:/\\s]+${metricNumberToken}`, 'i'));
+        const lrMatch = text.match(new RegExp(`(?:^|[\\s,])(?:lr|learning_rate)[=:/\\s]+${metricNumberToken}`, 'i'));
         const rateMatch = text.match(/([\d.]+\s*(?:s\/it|it\/s|s\/step))/i);
         const out = {};
         if (stepMatch) out.step = Number(stepMatch[1]);
-        if (lossMatch) out.loss = Number(lossMatch[1]);
+        if (lossMatch) out.loss = lossMatch[1];
         if (lrMatch) out.lr = Number(lrMatch[1]);
         if (rateMatch) out.rate = rateMatch[1].replace(/\s+/g, '');
         if (Object.keys(out).length === 0) return null;
         if (out.step !== undefined && !Number.isFinite(out.step)) delete out.step;
-        if (out.loss !== undefined && !Number.isFinite(out.loss)) delete out.loss;
         if (out.lr !== undefined && !Number.isFinite(out.lr)) delete out.lr;
         return Object.keys(out).length ? out : null;
     }

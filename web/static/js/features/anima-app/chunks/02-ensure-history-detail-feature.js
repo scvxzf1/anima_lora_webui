@@ -76,6 +76,7 @@ const ctx = globalThis.ctx;
 
     // ── 初始化 ──
     globalThis.themeController = null;
+    globalThis.uiScaleController = null;
     globalThis.gpuPicker = null;
     globalThis.tabController = null;
 
@@ -85,6 +86,7 @@ const ctx = globalThis.ctx;
             getLossChart: () => lossChart,
             chartTheme,
         });
+        uiScaleController = createUIScaleController();
         gpuPicker = createGpuPicker({
             storageKey: GPU_WHITELIST_STORAGE_KEY,
             api,
@@ -101,6 +103,7 @@ const ctx = globalThis.ctx;
 
         const boot = async () => {
             themeController.initThemeToggle();
+            uiScaleController.initUIScale();
             tabController.setupTabs();
             lossChart = new MetricsChart(document.getElementById('loss-chart'), {
                 emptyText: '',
@@ -246,7 +249,10 @@ const ctx = globalThis.ctx;
         const preset = val('preset-select');
         if (!variant) return;
         const methodsSubdir = currentTrainingSource.methods_subdir || 'gui-methods';
-        const data = await api(`/api/config/merged?variant=${encodeURIComponent(variant)}&preset=${encodeURIComponent(preset)}&methods_subdir=${encodeURIComponent(methodsSubdir)}`);
+        const params = new URLSearchParams({ variant, preset, methods_subdir: methodsSubdir });
+        const configFile = currentTrainingConfigFile();
+        if (configFile) params.set('config_file', configFile);
+        const data = await api(`/api/config/merged?${params.toString()}`);
         if (requestSeq !== configLoadSeq) return;
         if (data?.ok === false) {
             setTomlStatus('error', data.error || '读取配置失败');
@@ -257,6 +263,7 @@ const ctx = globalThis.ctx;
         selectedConfigDatasetFile = currentConfig.dataset_config || '';
         selectedConfigDatasetSummary = datasetPresetSummaryByFile(selectedConfigDatasetFile);
         renderConfigForm(currentConfig);
+        scheduleStepEstimatePanelRefresh();
         const compatibilityPatch = applyConfigCompatibilityDrafts();
         renderContinueTrainingSource();
         if (continueTrainingSource?.abs_path) {

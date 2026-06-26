@@ -55,9 +55,13 @@ const ctx = globalThis.ctx;
         const preset = val('preset-select');
         const methodsSubdir = currentTrainingSource.methods_subdir || 'gui-methods';
         if (!variant || location.protocol === 'file:') return;
+        stepEstimateStatus = { loading: true, error: '' };
+        currentStepEstimate = null;
+        scheduleStepEstimatePanelRefresh();
         if (isCliOnlySpdSource(variant, methodsSubdir)) {
+            stepEstimateStatus = { loading: false, error: 'SPD CLI 实验配置不使用 Web 步数估算。' };
             currentStepEstimate = null;
-            updateStepEstimatePanel();
+            scheduleStepEstimatePanelRefresh();
             return;
         }
         try {
@@ -68,12 +72,14 @@ const ctx = globalThis.ctx;
             if (datasetConfigOverride !== null) params.set('dataset_config', datasetConfigOverride);
             const data = await api(`/api/config/steps?${params.toString()}`);
             if (parentSeq !== configLoadSeq || requestSeq !== stepEstimateSeq) return;
+            stepEstimateStatus = { loading: false, error: data?.ok === false ? (data.error || '步数估算失败') : '' };
             currentStepEstimate = data?.ok === false ? null : data;
-        } catch {
+        } catch (error) {
             if (parentSeq !== configLoadSeq || requestSeq !== stepEstimateSeq) return;
+            stepEstimateStatus = { loading: false, error: error?.message || '步数估算失败' };
             currentStepEstimate = null;
         }
-        updateStepEstimatePanel();
+        scheduleStepEstimatePanelRefresh();
     }
 
     globalThis.loadDatasetEditor = async function loadDatasetEditor(parentSeq = configLoadSeq) {
@@ -266,9 +272,33 @@ const ctx = globalThis.ctx;
         return panel;
     }
 
+    globalThis.scheduleStepEstimatePanelRefresh = function scheduleStepEstimatePanelRefresh() {
+        updateStepEstimatePanel();
+        if (typeof requestAnimationFrame === 'function') {
+            requestAnimationFrame(updateStepEstimatePanel);
+            return;
+        }
+        setTimeout(updateStepEstimatePanel, 0);
+    }
+
     globalThis.updateStepEstimatePanel = function updateStepEstimatePanel() {
         const panel = document.getElementById('step-estimate-panel');
-        if (!panel || !currentStepEstimate) return;
+        if (!panel) return;
+        if (!currentStepEstimate) {
+            setText('step-dataset-count', stepEstimateStatus?.loading ? '计算中' : '-');
+            setText('step-train-images', '-');
+            setText('step-repeated-images', '-');
+            setText('step-effective-batch', '-');
+            setText('step-per-epoch', '-');
+            setText('step-max-train-epochs', '-');
+            setText('step-total', '-');
+            renderStepDatasetBreakdown([]);
+            const note = stepEstimateStatus?.loading
+                ? '正在重新读取训练配置、数据集配置和图片数量。'
+                : (stepEstimateStatus?.error || '选择训练配置后会自动估算步数。');
+            setText('step-estimate-note', note);
+            return;
+        }
 
         const epochs = readOptionalLiveNumber('max_train_epochs');
         const batchSize = readLiveNumber('train_batch_size', currentStepEstimate.train_batch_size || 1);

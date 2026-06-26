@@ -26,6 +26,8 @@ def _make_args(**overrides) -> argparse.Namespace:
         multiscale_loss_weight=0.0,
         functional_loss_weight=0.0,
         velocity_direction_loss_weight=0.0,
+        prior_preservation_weight=0.0,
+        inverted_mask_prior_weight=0.0,
     )
     base.update(overrides)
     return argparse.Namespace(**base)
@@ -79,3 +81,15 @@ def test_velocity_direction_activates_when_weight_set():
     args = _make_args(method="lora", velocity_direction_loss_weight=0.05)
     composer = build_loss_composer(args, _net())
     assert composer.active_losses == ["flow_match", "velocity_direction"]
+
+
+def test_prior_preservation_activates_when_weight_set():
+    args = _make_args(method="lora", prior_preservation_weight=0.2)
+    composer = build_loss_composer(args, _net())
+    assert composer.active_losses == ["flow_match", "prior_preservation"]
+
+
+def test_inverted_mask_prior_activates_when_weight_set():
+    args = _make_args(method="lora", inverted_mask_prior_weight=0.2)
+    composer = build_loss_composer(args, _net())
+    assert composer.active_losses == ["flow_match", "inverted_mask_prior"]

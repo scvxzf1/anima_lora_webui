@@ -73,7 +73,12 @@ def _bind_legacy() -> None:
 
 def get_status_snapshot(self) -> dict[str, Any]:
     _bind_legacy()
-    return {
+    from web.services.training_service import (
+        _json_safe_training_payload,
+        format_training_anomaly,
+    )
+
+    snapshot = {
         "status": self.status,
         "variant": self.current_variant,
         "preset": self.current_preset,
@@ -96,6 +101,13 @@ def get_status_snapshot(self) -> dict[str, Any]:
         "queue_item_id": self._current_queue_item_id,
         "gpu_whitelist": self.current_gpu_whitelist,
     }
+
+    # 检测并附加格式化的训练异常提示
+    anomaly_message = format_training_anomaly(snapshot)
+    if anomaly_message:
+        snapshot["anomaly_message"] = anomaly_message
+
+    return _json_safe_training_payload(snapshot)
 
 async def _read_output(self):
     _bind_legacy()
@@ -467,12 +479,13 @@ def _extract_metrics_from_log(self, line: str) -> dict | None:
     found = False
     lower = line.lower()
     if "loss" in lower:
-        for m in re.finditer(r"(?:avr_)?loss[=:/\s]+([\d.eE\-+]+)", line, re.IGNORECASE):
-            metrics["loss"] = float(m.group(1))
+        loss = _extract_float_metric(line, ("avr_loss", "loss"))
+        if loss is not None:
+            metrics["loss"] = loss
             found = True
-            break
     if "cmmd" in lower or "val_" in lower:
-        for m in re.finditer(r"(?:cmmd|val_[\w/]+)[=:/\s]+([\d.eE\-+]+)", line, re.IGNORECASE):
+        metric_number = r"([+\-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+\-]?\d+)?|[+\-]?nan|[+\-]?inf(?:inity)?)"
+        for m in re.finditer(rf"(?:cmmd|val_[\w/]+)[=:/\s]+{metric_number}", line, re.IGNORECASE):
             try:
                 metrics["cmmd"] = float(m.group(1))
                 metrics["kind"] = "val"
@@ -480,14 +493,11 @@ def _extract_metrics_from_log(self, line: str) -> dict | None:
             except ValueError:
                 pass
             break
-    if "lr" in lower:
-        for m in re.finditer(r"lr[=:/\s]+([\d.eE\-+]+)", line, re.IGNORECASE):
-            try:
-                metrics["lr"] = float(m.group(1))
-                found = True
-            except ValueError:
-                pass
-            break
+    if "lr" in lower or "learning_rate" in lower:
+        lr = _extract_float_metric(line, ("lr", "learning_rate"))
+        if lr is not None:
+            metrics["lr"] = lr
+            found = True
     if "step" in lower:
         for m in re.finditer(r"step[=:/\s]+(\d+)", line, re.IGNORECASE):
             metrics["step"] = int(m.group(1))
@@ -515,7 +525,8 @@ async def _broadcast_progress(self, msg: dict[str, Any]) -> None:
 async def _broadcast(self, msg: dict):
     _bind_legacy()
     import json
-    data = json.dumps(msg, ensure_ascii=False)
+    from web.services.training_service import _json_safe_training_payload
+    data = json.dumps(_json_safe_training_payload(msg), ensure_ascii=False)
     dead = set()
     for ws in self._ws_clients:
         try:

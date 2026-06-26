@@ -1,4 +1,4 @@
-import { help } from './help-builder.js?v=module-bootstrap-20260608-11';
+import { help } from './help-builder.js?v=module-bootstrap-20260625-9';
 
 export const FIELD_HELP_DATASET_ZH = {    source_image_dir: help(
         "旧配置里的原始数据集路径字段。",
@@ -112,6 +112,14 @@ export const FIELD_HELP_DATASET_ZH = {    source_image_dir: help(
         ["想重新抽一批验证图时才需要改它。"],
         ["对比实验时如果 seed 变了，效果差异可能只是验证图片换了。"],
         "默认 42；做参数对比时保持不变。"
+    ),
+    prior_loss_weight: help(
+        "正则化图像的损失权重系数。",
+        "当数据集中某些图片被标记为正则化图像时，它们的损失值会乘以这个系数。正则化图像通常是用来防止过拟合、保持模型原始生成能力的额外训练样本。",
+        ["系数大于 1.0 会增强正则化图像的影响，让模型更多保留原始概念理解。"],
+        ["系数小于 1.0 会减弱正则化图像影响，更专注于主要训练图片。"],
+        ["配合数据集配置中的 is_reg 标记使用；未标记 is_reg 的图片不受此参数影响。"],
+        "默认 1.0，即正则化图像和普通训练图像权重相同；需要更强正则化时可调高到 1.5-2.0。"
     ),
     caption_extension: help(
         "文本 sidecar 标注文件扩展名。",

@@ -1069,6 +1069,28 @@ def _sample_image_inference(
     height = max(64, height - height % 16)
     width = max(64, width - width % 16)
 
+    # Train-time sampling runs through the same compiled blocks as training. The
+    # compile token budget already covers the prompts present at startup
+    # (train.py::_sample_prompt_token_counts), but prompts are re-read from disk
+    # at every sample event — a resolution added mid-run can fall outside the
+    # dynamic-seq mark_dynamic range and would crash the run with a
+    # ConstraintViolationError (#42). Skip it instead.
+    seq_len = (width // 16) * (height // 16)
+    seq_range = getattr(dit, "_dynamic_seq_range", None)
+    if (
+        getattr(dit, "_dynamic_seq", False)
+        and seq_range is not None
+        and not (seq_range[0] <= seq_len <= seq_range[1])
+    ):
+        logger.warning(
+            f"Skipping sample prompt at {width}x{height} ({seq_len} tokens): outside "
+            f"the compiled dynamic-seq token range {seq_range}. The compile budget "
+            "covers the training buckets plus the sample prompts present at startup; "
+            "to sample at this resolution, restart training with it in the prompt "
+            "file, lower --w/--h, or disable torch_compile."
+        )
+        return
+
     logger.info(
         f"  prompt: {prompt}, size: {width}x{height}, steps: {sample_steps}, scale: {scale}, flow_shift: {flow_shift}, sampler: {sample_sampler}, seed: {seed}"
     )

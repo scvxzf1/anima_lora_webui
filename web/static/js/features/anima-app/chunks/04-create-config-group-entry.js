@@ -396,6 +396,9 @@ const ctx = globalThis.ctx;
         if (extraClass === 'config-group-resource') {
             titleActions.appendChild(createResourceQuickPresetsButton(content, collapseBtn));
         }
+        if (extraClass === 'config-group-no-dataset-regularization') {
+            titleActions.appendChild(createNoDatasetRegularizationQuickPresetsButton(content, collapseBtn));
+        }
         titleActions.appendChild(collapseBtn);
         header.appendChild(titleActions);
         section.appendChild(header);
@@ -405,10 +408,16 @@ const ctx = globalThis.ctx;
         if (extraClass === 'config-group-resource') {
             content.appendChild(createResourceQuickPresetPanel());
         }
-        appendFieldRows(content, fields, extraClass);
+        if (extraClass === 'config-group-no-dataset-regularization') {
+            content.appendChild(createNoDatasetRegularizationQuickPresetPanel());
+            content.appendChild(createNoDatasetRegularizationModePanel());
+            content.appendChild(createNoDatasetRegularizationAdvancedFields(fields, extraClass));
+        } else {
+            appendFieldRows(content, fields, extraClass);
+        }
         if (extraClass === 'config-group-steps') {
             content.appendChild(createStepEstimatePanel());
-            updateStepEstimatePanel();
+            scheduleStepEstimatePanelRefresh();
         }
         section.appendChild(content);
         return section;

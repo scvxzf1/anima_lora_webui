@@ -89,6 +89,27 @@ def _patch_runtime_config_paths(tmp_path: Path, monkeypatch):
     return configs, output_root
 
 
+def _patch_external_runtime_config_paths(tmp_path: Path, monkeypatch):
+    root = tmp_path / "repo"
+    configs = tmp_path / "external-configs"
+    output_root = root / "output" / "runs"
+    root.mkdir()
+    monkeypatch.setattr(config_service, "ROOT", root)
+    monkeypatch.setattr(config_service, "CONFIGS_DIR", configs)
+    monkeypatch.setattr(config_service, "DATASET_PRESETS_DIR", configs / "datasets")
+    monkeypatch.setattr(config_service, "GUI_METHODS_DIR", configs / "gui-methods")
+    monkeypatch.setattr(config_service, "IMPORTED_CONFIGS_DIR", configs / "imported")
+    monkeypatch.setattr(config_service, "PRESETS_FILE", configs / "presets.toml")
+    monkeypatch.setattr(training_service, "ROOT", root)
+    monkeypatch.setattr(training_service, "resolve_output_root", lambda: output_root.resolve())
+    monkeypatch.setattr(
+        training_service,
+        "_display_settings_path",
+        lambda path: _display_under_root(Path(path), root),
+    )
+    return root, configs, output_root
+
+
 def _display_under_root(path: Path, root: Path) -> str:
     try:
         return path.resolve().relative_to(root.resolve()).as_posix()
@@ -201,6 +222,32 @@ def test_prepare_web_runtime_config_freezes_frontend_editable_parameters(tmp_pat
     assert subset["custom_attributes"]["source_dir"] == "image_dataset/selected"
     assert subset["custom_attributes"]["preprocess"]["resolution"] == 768
     assert subset["custom_attributes"]["preprocess"]["bucket_reso_steps"] == 32
+
+
+def test_prepare_web_runtime_config_resolves_external_configs_root_source(tmp_path, monkeypatch):
+    root, configs, output_root = _patch_external_runtime_config_paths(tmp_path, monkeypatch)
+    for rel in ("gui-methods", "imported", "datasets"):
+        (configs / rel).mkdir(parents=True)
+    (configs / "base.toml").write_text('source_image_dir = "image_dataset/default"\n', encoding="utf-8")
+    (configs / "presets.toml").write_text("[default]\n", encoding="utf-8")
+    (configs / "gui-methods" / "lora.toml").write_text('output_name = "base_lora"\n', encoding="utf-8")
+    (configs / "imported" / "rokkotsu_goddess_528_tag.toml").write_text(
+        'output_name = "rokkotsu_goddess_528_tag"\n',
+        encoding="utf-8",
+    )
+
+    runtime = training_service._prepare_web_runtime_config(
+        "lora",
+        "default",
+        "gui-methods",
+        source_config_file="configs/imported/rokkotsu_goddess_528_tag.toml",
+    )
+
+    runtime_cfg_path = root / runtime["runtime_config_file"]
+    runtime_cfg = toml.loads(runtime_cfg_path.read_text(encoding="utf-8"))
+    assert runtime["run_dir"].startswith(output_root.relative_to(root).as_posix())
+    assert runtime["history_source_config_file"] == "configs/imported/rokkotsu_goddess_528_tag.toml"
+    assert runtime_cfg["output_name"] == "rokkotsu_goddess_528_tag"
 
 
 def test_prepare_web_runtime_config_preserves_validation_split_controls(tmp_path, monkeypatch):

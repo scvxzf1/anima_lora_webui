@@ -191,6 +191,48 @@ def _has_extra_path_override(extra: list[str], *flags: str) -> bool:
     return any(arg in flags or arg.startswith(prefixes) for arg in extra)
 
 
+_DIFF_OUTPUT_PRESERVATION_FLAGS = (
+    "--diff_output_preservation_trigger",
+    "--diff_output_preservation_class",
+)
+
+
+def _split_diff_output_preservation_args(extra: list[str]) -> tuple[list[str], list[str]]:
+    cleaned: list[str] = []
+    dop_args: list[str] = []
+    i = 0
+    while i < len(extra):
+        arg = extra[i]
+        if arg in _DIFF_OUTPUT_PRESERVATION_FLAGS and i + 1 < len(extra):
+            dop_args.extend([arg, extra[i + 1]])
+            i += 2
+        elif any(arg.startswith(f"{flag}=") for flag in _DIFF_OUTPUT_PRESERVATION_FLAGS):
+            dop_args.append(arg)
+            i += 1
+        else:
+            cleaned.append(arg)
+            i += 1
+    return cleaned, dop_args
+
+
+def _diff_output_preservation_args(explicit_args: list[str]) -> list[str]:
+    if explicit_args:
+        return explicit_args
+
+    from ._common import _path_overrides  # local import: avoids unused circular
+
+    overrides = _path_overrides()
+    out: list[str] = []
+    for key, flag in (
+        ("diff_output_preservation_trigger", "--diff_output_preservation_trigger"),
+        ("diff_output_preservation_class", "--diff_output_preservation_class"),
+    ):
+        value = str(overrides.get(key) or "").strip()
+        if value:
+            out.extend([flag, value])
+    return out
+
+
 def _dataset_rows(dataset_config: Any, overrides: dict[str, Any] | None = None) -> list[dict[str, Any]]:
     overrides = overrides or {}
     path = _resolve_project_path(dataset_config)
@@ -514,6 +556,7 @@ def _run_preprocess_te(
             *source_args,
             *_caption_extension_args_for_row(row),
             *json_args,
+            *_diff_output_preservation_args(extra),
             *_recursive_args(row),
             *_path_pattern_args(row),
             *mp_args,
@@ -627,12 +670,13 @@ def cmd_preprocess(extra):
     # DCW v4 need them, and those paths chain `preprocess-pe` explicitly (see
     # `exp-ip-adapter-preprocess`). Leaving PE out keeps the default LoRA
     # preprocess fast on machines that won't ever use the vision tower.
-    _, vae_extra = _resolve_lowres_filter(extra)
+    non_te_extra, explicit_dop_args = _split_diff_output_preservation_args(list(extra))
+    _, vae_extra = _resolve_lowres_filter(non_te_extra)
     for row in _preprocess_rows():
         _run_caption_backup(row)
-        _run_preprocess_resize(row, extra)
+        _run_preprocess_resize(row, non_te_extra)
         _run_preprocess_vae(row, vae_extra)
-        _run_preprocess_te(row, extra, backup_captions=False)
+        _run_preprocess_te(row, explicit_dop_args, backup_captions=False)
     _build_caption_index_best_effort()
 
 
@@ -649,6 +693,7 @@ def cmd_preprocess_config(extra):
         "pretrained_model_name_or_path",
         "models/diffusion_models/anima-base-v1.0.safetensors",
     )
+    explicit_dop_args: list[str] = []
     rest: list[str] = []
     i = 0
     while i < len(args):
@@ -667,6 +712,15 @@ def cmd_preprocess_config(extra):
         elif args[i] == "--dit" and i + 1 < len(args):
             dit_path = args[i + 1]
             i += 2
+        elif args[i] in (
+            "--diff_output_preservation_trigger",
+            "--diff_output_preservation_class",
+        ) and i + 1 < len(args):
+            explicit_dop_args.extend([args[i], args[i + 1]])
+            i += 2
+        elif any(args[i].startswith(f"{flag}=") for flag in _DIFF_OUTPUT_PRESERVATION_FLAGS):
+            explicit_dop_args.append(args[i])
+            i += 1
         else:
             rest.append(args[i])
             i += 1
@@ -789,6 +843,7 @@ def cmd_preprocess_config(extra):
                 *source_args,
                 *caption_extension_args,
                 *json_args,
+                *_diff_output_preservation_args(explicit_dop_args),
                 "--recursive",
             ]
         )

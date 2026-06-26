@@ -135,6 +135,7 @@ def _sync_config_facade_paths() -> None:
         if not hasattr(facade, name):
             continue
         value = getattr(facade, name)
+        globals()[name] = value
         setattr(config_legacy, name, value)
         setattr(config_datasets, name, value)
 
@@ -327,7 +328,7 @@ def _prepare_web_runtime_config(
         "resized_image_dir": first_row["image_dir"],
         "lora_cache_dir": first_row["cache_dir"],
     }
-    history_source_config_file = _display_settings_path(source_path) if source_path is not None else ""
+    history_source_config_file = _display_project_path(str(source_path)) if source_path is not None else ""
     _write_runtime_run_meta(
         run_dir,
         {
@@ -1336,6 +1337,11 @@ def _resolve_display_path(value: str) -> Path | None:
     path = Path(raw)
     if path.is_absolute():
         return path.resolve()
+    normalized = path.as_posix().strip("/")
+    if normalized == "configs":
+        return CONFIGS_DIR.resolve()
+    if normalized.startswith("configs/"):
+        return (CONFIGS_DIR / normalized.removeprefix("configs/")).resolve()
     return (ROOT / path).resolve()
 
 def _display_project_path(value: str) -> str:
@@ -1345,7 +1351,15 @@ def _display_project_path(value: str) -> str:
         return ""
     path = Path(raw)
     if not path.is_absolute():
-        return path.as_posix().strip("/")
+        normalized = path.as_posix().strip("/")
+        if normalized == "configs" or normalized.startswith("configs/"):
+            return normalized
+        path = (ROOT / path).resolve()
+    try:
+        rel_to_configs = path.resolve().relative_to(CONFIGS_DIR.resolve()).as_posix()
+        return "configs" if rel_to_configs == "." else f"configs/{rel_to_configs}"
+    except ValueError:
+        pass
     try:
         return path.resolve().relative_to(ROOT.resolve()).as_posix()
     except ValueError:

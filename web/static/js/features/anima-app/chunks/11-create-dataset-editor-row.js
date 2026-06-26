@@ -3,6 +3,16 @@
  * Keep this module focused; move newly edited behavior into domain modules.
  */
 const ctx = globalThis.ctx;
+const {
+    attachDatasetInlineHelp,
+    bindDatasetExperimentalOpenState,
+    createDatasetExperimentalAdvancedBody,
+    createDatasetIsRegEditor,
+    createDatasetInlineHelp,
+    createDatasetInlineHelpButton,
+    datasetExperimentalOpenState,
+    datasetLocalHelpSpec,
+} = globalThis;
 
 	    globalThis.createDatasetEditorRow = function createDatasetEditorRow(row, index, item = null) {
 	        const wrap = document.createElement('div');
@@ -107,26 +117,41 @@ const ctx = globalThis.ctx;
         const settings = normalizeDatasetDefaults(row.settings || datasetEditorStateForActivePanel().defaults || {});
         const clone = normalizeTriggerClone(row.trigger_clone);
         const pathPattern = String(row.path_pattern || '*').trim() || '*';
-        panel.open = clone.enabled
+        const defaultOpen = clone.enabled
             || row.recursive === false
             || pathPattern !== '*'
-            || (settings.caption_extension && settings.caption_extension !== '.txt');
+            || (settings.caption_extension && settings.caption_extension !== '.txt')
+            || row.is_reg === true;
+        panel.open = datasetExperimentalOpenState(index, defaultOpen);
+        bindDatasetExperimentalOpenState(panel, index);
 
         const head = document.createElement('summary');
         head.className = 'dataset-experimental-head';
+        const titleRow = document.createElement('div');
+        titleRow.className = 'dataset-experimental-title-row';
         const title = document.createElement('strong');
         title.textContent = '实验性/高级/旧功能';
+        const overviewHelp = createDatasetInlineHelp('dataset-inline-help dataset-experimental-overview-help');
+        const overviewHelpBtn = createDatasetInlineHelpButton(overviewHelp, '查看高级功能说明');
+        titleRow.append(title, overviewHelpBtn);
         const note = document.createElement('span');
-        note.textContent = `对应第 ${index + 1} 组数据集；这些选项按当前这组数据集单独保存，收纳高级兼容项、旧格式入口和需要先小范围验证的功能。`;
-        head.append(title, note);
+        note.textContent = `对应第 ${index + 1} 组数据集`;
+        head.append(titleRow, note);
 
-        const body = document.createElement('div');
-        body.className = 'dataset-experimental-body';
-        body.append(
-            createDatasetExperimentalScopePicker(index),
-            createDatasetPathFilterEditor(row, index),
-            createDatasetTriggerCloneEditor(row, index),
-            createDatasetCaptionExtensionEditor(row, index),
+        const { body, detailBtn } = createDatasetExperimentalAdvancedBody(row, index, overviewHelp);
+        attachDatasetInlineHelp(
+            overviewHelpBtn,
+            overviewHelp,
+            datasetLocalHelpSpec('experimental'),
+            panel,
+            { openDetails: true },
+        );
+        attachDatasetInlineHelp(
+            detailBtn,
+            overviewHelp,
+            datasetLocalHelpSpec('experimental'),
+            panel,
+            { openDetails: true },
         );
 
         panel.append(head, body);
@@ -137,6 +162,7 @@ const ctx = globalThis.ctx;
         const panel = document.createElement('div');
         panel.className = 'dataset-path-filter-advanced';
         panel.dataset.index = String(index);
+        const helpDiv = createDatasetInlineHelp('dataset-inline-help dataset-path-filter-help');
 
         const recursive = document.createElement('label');
         recursive.className = 'dataset-path-filter-recursive';
@@ -148,13 +174,23 @@ const ctx = globalThis.ctx;
             updateDatasetEditorRow(index, 'recursive', checkbox.checked);
         });
         const recursiveCopy = document.createElement('span');
-        recursiveCopy.innerHTML = '<strong>递归扫描子目录 / recursive</strong><small>默认开启；关闭后只读取原始路径第一层的图片。</small>';
+        const recursiveTitleRow = document.createElement('div');
+        recursiveTitleRow.className = 'dataset-inline-title-row';
+        const recursiveTitle = document.createElement('strong');
+        recursiveTitle.textContent = '递归扫描子目录 / recursive';
+        const recursiveHelpBtn = createDatasetInlineHelpButton(helpDiv, '查看递归扫描说明');
+        recursiveTitleRow.append(recursiveTitle, recursiveHelpBtn);
+        recursiveCopy.appendChild(recursiveTitleRow);
         recursive.append(checkbox, recursiveCopy);
 
         const pattern = document.createElement('label');
         pattern.className = 'dataset-path-filter-pattern';
-        const patternText = document.createElement('span');
-        patternText.textContent = '路径筛选 / path_pattern';
+        const patternText = document.createElement('div');
+        patternText.className = 'dataset-inline-title-row';
+        const patternTitle = document.createElement('span');
+        patternTitle.textContent = '路径筛选 / path_pattern';
+        const patternHelpBtn = createDatasetInlineHelpButton(helpDiv, '查看路径筛选说明');
+        patternText.append(patternTitle, patternHelpBtn);
         const patternInput = document.createElement('input');
         patternInput.type = 'text';
         patternInput.className = 'field-input';
@@ -166,7 +202,15 @@ const ctx = globalThis.ctx;
         });
         pattern.append(patternText, patternInput);
 
-        panel.append(recursive, pattern);
+        attachDatasetInlineHelp(recursiveHelpBtn, helpDiv, datasetLocalHelpSpec('recursive'), panel);
+        attachDatasetInlineHelp(
+            patternHelpBtn,
+            helpDiv,
+            () => createHelpContent('path_pattern', patternInput.value),
+            panel,
+        );
+
+        panel.append(recursive, pattern, helpDiv);
         return panel;
     }
 
@@ -264,15 +308,11 @@ const ctx = globalThis.ctx;
         titleRow.className = 'dataset-caption-extension-title-row';
         const title = document.createElement('strong');
         title.textContent = '文本标注扩展名 / caption_extension';
-        const helpBtn = document.createElement('button');
-        helpBtn.className = 'info-toggle dataset-caption-extension-help-toggle';
-        helpBtn.textContent = '?';
-        helpBtn.type = 'button';
-        helpBtn.title = '查看填写建议、好处、代价、风险和推荐';
+        const helpDiv = createDatasetInlineHelp('dataset-caption-extension-help');
+        const helpBtn = createDatasetInlineHelpButton(helpDiv, '查看文本标注扩展名说明');
+        helpBtn.classList.add('dataset-caption-extension-help-toggle');
         titleRow.append(title, helpBtn);
-        const desc = document.createElement('small');
-        desc.textContent = '高级兼容项：仅在 txt 来源或 auto 回退到文本 sidecar 时使用。';
-        copy.append(titleRow, desc);
+        copy.appendChild(titleRow);
 
         const input = document.createElement('input');
         input.type = 'text';
@@ -296,13 +336,12 @@ const ctx = globalThis.ctx;
             );
         });
 
-        const helpDiv = document.createElement('div');
-        helpDiv.className = 'field-help dataset-caption-extension-help';
-        helpDiv.appendChild(createHelpContent('caption_extension', settings.caption_extension || '.txt'));
-        helpBtn.addEventListener('click', () => {
-            helpBtn.classList.toggle('active');
-            helpDiv.classList.toggle('visible');
-        });
+        attachDatasetInlineHelp(
+            helpBtn,
+            helpDiv,
+            () => createHelpContent('caption_extension', settings.caption_extension || '.txt'),
+            panel,
+        );
 
         panel.append(copy, input, helpDiv);
         return panel;
@@ -313,6 +352,7 @@ const ctx = globalThis.ctx;
         const panel = document.createElement('div');
         panel.className = ['dataset-nl-tag-mix', mix.enabled ? 'enabled' : ''].filter(Boolean).join(' ');
         panel.dataset.index = String(index);
+        const helpDiv = createDatasetInlineHelp('dataset-inline-help dataset-nl-tag-help');
 
         const toggle = document.createElement('label');
         toggle.className = 'dataset-nl-tag-toggle';
@@ -324,10 +364,16 @@ const ctx = globalThis.ctx;
             updateDatasetEditorRowNlTagMix(index, {
                 enabled: checkbox.checked,
                 tag_ratio: mix.tag_ratio,
-            });
+            }, { render: 'item' });
         });
         const toggleText = document.createElement('span');
-        toggleText.innerHTML = '<strong>captions格式nl/tag权重调整</strong><small>面向 DiffPipeForge captions.json 的多标注数据集优化；按短标签串和自然语言句子判断 tag/nl，按比例抽样重建运行时 captions.json，并写入 results.json。</small>';
+        const toggleTitleRow = document.createElement('div');
+        toggleTitleRow.className = 'dataset-inline-title-row';
+        const toggleTitle = document.createElement('strong');
+        toggleTitle.textContent = 'captions格式nl/tag权重调整';
+        const helpBtn = createDatasetInlineHelpButton(helpDiv, '查看 nl/tag 权重说明');
+        toggleTitleRow.append(toggleTitle, helpBtn);
+        toggleText.appendChild(toggleTitleRow);
         toggle.append(checkbox, toggleText);
 
         const ratio = document.createElement('label');
@@ -342,10 +388,16 @@ const ctx = globalThis.ctx;
         ratioInput.value = String(Math.round(mix.tag_ratio * 100));
         ratioInput.disabled = !mix.enabled;
         ratioInput.addEventListener('input', () => {
-            updateDatasetEditorRowNlTagMix(index, {
+            ratioNumber.value = ratioInput.value;
+            const nextMix = {
                 enabled: true,
                 tag_ratio: Number(ratioInput.value) / 100,
-            });
+            };
+            summary.value = nlTagMixSummary(nextMix);
+            summary.textContent = summary.value;
+            updateDatasetEditorRowNlTagMix(index, {
+                ...nextMix,
+            }, { render: false });
         });
         ratio.append(ratioHead, ratioInput);
 
@@ -359,10 +411,16 @@ const ctx = globalThis.ctx;
         ratioNumber.className = 'dataset-nl-tag-number';
         ratioNumber.setAttribute('aria-label', 'tag 占比百分比');
         ratioNumber.addEventListener('input', () => {
-            updateDatasetEditorRowNlTagMix(index, {
+            ratioInput.value = ratioNumber.value;
+            const nextMix = {
                 enabled: true,
                 tag_ratio: Number(ratioNumber.value) / 100,
-            });
+            };
+            summary.value = nlTagMixSummary(nextMix);
+            summary.textContent = summary.value;
+            updateDatasetEditorRowNlTagMix(index, {
+                ...nextMix,
+            }, { render: false });
         });
 
         const summary = document.createElement('output');
@@ -370,7 +428,9 @@ const ctx = globalThis.ctx;
         summary.value = nlTagMixSummary(mix);
         summary.textContent = nlTagMixSummary(mix);
 
-        panel.append(toggle, ratio, ratioNumber, summary);
+        attachDatasetInlineHelp(helpBtn, helpDiv, datasetLocalHelpSpec('nlTagMix'), panel);
+
+        panel.append(toggle, ratio, ratioNumber, summary, helpDiv);
         return panel;
     }
 
@@ -383,11 +443,14 @@ const ctx = globalThis.ctx;
 
         const copy = document.createElement('div');
         copy.className = 'dataset-experimental-scope-copy';
+        const titleRow = document.createElement('div');
+        titleRow.className = 'dataset-inline-title-row';
         const title = document.createElement('strong');
         title.textContent = '生效范围 / 对多数据集负责';
-        const desc = document.createElement('span');
-        desc.textContent = '选择这个实验框要同步写入的数据集组；保存时仍按每组独立配置落盘。';
-        copy.append(title, desc);
+        const helpDiv = createDatasetInlineHelp('dataset-inline-help dataset-experimental-scope-help');
+        const helpBtn = createDatasetInlineHelpButton(helpDiv, '查看生效范围说明');
+        titleRow.append(title, helpBtn);
+        copy.appendChild(titleRow);
 
         const actions = document.createElement('div');
         actions.className = 'dataset-experimental-scope-actions';
@@ -401,7 +464,7 @@ const ctx = globalThis.ctx;
             : '让这个实验框同时负责所有数据集组。';
         selectAll.addEventListener('click', () => {
             setDatasetExperimentalScopeIndices(index, rows.map((_row, rowIndex) => rowIndex));
-            renderDatasetEditor();
+            refreshDatasetEditorItem(index) || renderDatasetEditor();
         });
         actions.appendChild(selectAll);
 
@@ -425,7 +488,7 @@ const ctx = globalThis.ctx;
                     next.add(index);
                 }
                 setDatasetExperimentalScopeIndices(index, [...next]);
-                renderDatasetEditor();
+                refreshDatasetEditorItem(index) || renderDatasetEditor();
             });
             const text = document.createElement('span');
             text.textContent = `第 ${rowIndex + 1} 组`;
@@ -433,7 +496,9 @@ const ctx = globalThis.ctx;
             chips.appendChild(chip);
         });
 
-        scope.append(copy, actions, chips);
+        attachDatasetInlineHelp(helpBtn, helpDiv, datasetLocalHelpSpec('scope'), scope);
+
+        scope.append(copy, actions, chips, helpDiv);
         return scope;
     }
 
@@ -442,6 +507,7 @@ const ctx = globalThis.ctx;
         const panel = document.createElement('div');
         panel.className = ['dataset-trigger-clone', clone.enabled ? 'enabled' : ''].filter(Boolean).join(' ');
         panel.dataset.index = String(index);
+        const helpDiv = createDatasetInlineHelp('dataset-inline-help dataset-trigger-clone-help');
 
         const toggle = document.createElement('label');
         toggle.className = 'dataset-trigger-clone-toggle';
@@ -450,7 +516,13 @@ const ctx = globalThis.ctx;
         checkbox.checked = clone.enabled;
         checkbox.setAttribute('aria-label', '触发提示词图像克隆');
         const toggleText = document.createElement('span');
-        toggleText.innerHTML = '<strong>触发提示词图像克隆</strong><small>开启后，本次运行目录会生成额外训练子集；原始数据集不会被修改。</small>';
+        const toggleTitleRow = document.createElement('div');
+        toggleTitleRow.className = 'dataset-inline-title-row';
+        const toggleTitle = document.createElement('strong');
+        toggleTitle.textContent = '触发提示词图像克隆';
+        const helpBtn = createDatasetInlineHelpButton(helpDiv, '查看触发提示词图像克隆说明');
+        toggleTitleRow.append(toggleTitle, helpBtn);
+        toggleText.appendChild(toggleTitleRow);
         checkbox.addEventListener('change', () => {
             updateDatasetEditorRowTriggerClone(index, {
                 enabled: checkbox.checked,
@@ -500,7 +572,9 @@ const ctx = globalThis.ctx;
             ? `额外训练权重 x${clone.num_repeats}`
             : '默认关闭';
 
-        panel.append(toggle, prompt, repeats, summary);
+        attachDatasetInlineHelp(helpBtn, helpDiv, datasetLocalHelpSpec('triggerClone'), panel);
+
+        panel.append(toggle, prompt, repeats, summary, helpDiv);
         return panel;
     }
 

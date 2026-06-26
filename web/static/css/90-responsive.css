@@ -14,9 +14,12 @@
     .sample-prompt-field-text { grid-column: 1 / -1; }
     .sample-prompt-row-actions { justify-self: start; }
     .dataset-row-paths,
+    .dataset-advanced-grid,
     .dataset-trigger-clone,
     .dataset-nl-tag-mix,
     .dataset-row-settings { grid-template-columns: 1fr 1fr; }
+    .dataset-advanced-data-rules .dataset-advanced-grid,
+    .dataset-advanced-training-rules .dataset-advanced-grid { grid-template-columns: minmax(0, 1fr); }
     .dataset-experimental-body { grid-template-columns: minmax(0, 1fr); }
     .dataset-trigger-clone-summary,
     .dataset-nl-tag-summary { justify-self: start; }
@@ -250,6 +253,10 @@
         max-width: 100%;
         overflow-x: auto;
     }
+    .no-dataset-regularization-modes,
+    .no-dataset-regularization-controls {
+        grid-template-columns: 1fr;
+    }
     .dataset-editor-actions,
     .dataset-page-actions,
     .dataset-preset-manager-actions,
@@ -287,6 +294,10 @@
     .config-dataset-current-meta {
         justify-content: flex-start;
         max-width: none;
+    }
+    .no-dataset-regularization-modes,
+    .no-dataset-regularization-controls {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
     }
     .config-dataset-summary > div:not(.config-dataset-summary-empty) {
         grid-template-columns: 1fr;
@@ -431,13 +442,23 @@
     }
     .dataset-row-paths,
     .dataset-experimental-body,
+    .dataset-advanced-grid,
     .dataset-experimental-scope,
     .dataset-path-filter-advanced,
+    .dataset-is-reg-advanced,
     .dataset-caption-extension-advanced,
     .dataset-trigger-clone,
     .dataset-nl-tag-mix,
     .dataset-row-settings {
         grid-template-columns: 1fr;
+    }
+    .dataset-experimental-notice,
+    .dataset-advanced-section-head {
+        align-items: flex-start;
+        flex-direction: column;
+    }
+    .dataset-advanced-section-head span {
+        text-align: left;
     }
     .dataset-caption-source-head {
         display: grid;

@@ -66,21 +66,29 @@ __all__ = ['list_dataset_presets', 'diagnose_dataset_presets', 'load_dataset_pre
 
 def list_dataset_presets() -> dict[str, Any]:
     DATASET_PRESETS_DIR.mkdir(parents=True, exist_ok=True)
+    dataset_groups = list_config_file_groups(kind="dataset")
+    grouped_meta_by_path: dict[str, dict[str, Any]] = {}
+    for group in dataset_groups:
+        for item in group.get("files", []):
+            rel_path = _normalize_config_rel_path(str(item.get("path") or ""))
+            if rel_path and rel_path not in grouped_meta_by_path:
+                grouped_meta_by_path[rel_path] = item
     presets_by_path: dict[str, dict[str, Any]] = {}
     for path in sorted(DATASET_PRESETS_DIR.glob("*.toml")):
         rel_path = _normalize_config_rel_path(_display_path(path))
         if rel_path in HIDDEN_DATASET_PRESET_FILES:
             continue
-        meta = get_config_file_meta(rel_path)
+        meta = grouped_meta_by_path.get(rel_path) or get_config_file_meta(rel_path)
         summary = _dataset_preset_summary(rel_path)
+        readonly = bool(meta.get("locked")) or rel_path in SYSTEM_DATASET_PRESET_FILES
         presets_by_path[rel_path] = {
             **meta,
-            "readonly": _is_dataset_preset_readonly(rel_path),
+            "readonly": readonly,
             "system_preset": rel_path in SYSTEM_DATASET_PRESET_FILES,
             "summary": summary,
         }
 
-    groups = _dataset_preset_groups_for_ui(presets_by_path)
+    groups = _dataset_preset_groups_for_ui(presets_by_path, dataset_groups=dataset_groups)
     ordered_paths: list[str] = []
     for group in groups:
         for item in group.get("files", []):
@@ -163,10 +171,7 @@ def load_dataset_preset(rel_path: str) -> dict[str, Any]:
     path = _safe_resolve(normalized)
     if path is None or not path.exists():
         raise ValueError("数据集预设不存在")
-    content = path.read_text(encoding="utf-8")
-    data = toml.loads(content)
-    rows = _dataset_rows_from_config(data, {})
-    defaults = _dataset_defaults_from_config(data)
+    content, rows, defaults = _load_dataset_preset_content_rows_defaults(path)
     return {
         "ok": True,
         "file": normalized,
@@ -178,6 +183,14 @@ def load_dataset_preset(rel_path: str) -> dict[str, Any]:
         "meta": get_config_file_meta(normalized),
         "summary": _dataset_summary_from_rows(rows, defaults),
     }
+
+
+def _load_dataset_preset_content_rows_defaults(path: Path) -> tuple[str, list[dict[str, Any]], dict[str, Any]]:
+    content = path.read_text(encoding="utf-8")
+    data = toml.loads(content)
+    rows = _dataset_rows_from_config(data, {})
+    defaults = _dataset_defaults_from_config(data)
+    return content, rows, defaults
 
 
 def save_dataset_preset(
@@ -199,6 +212,7 @@ def save_dataset_preset(
     clean_rows = _fill_missing_dataset_row_settings(_normalize_dataset_rows(rows), _normalize_dataset_defaults(defaults or {}))
     if not clean_rows:
         raise ValueError("请至少填写一个数据集路径")
+    _ensure_training_dataset_rows(clean_rows)
     cfg = _normalize_dataset_defaults(defaults or {})
     content = _build_dataset_config_doc(clean_rows, cfg)
     ok, msg = save_raw_file(normalized, content, overwrite=overwrite)
@@ -280,12 +294,16 @@ def apply_dataset_preset_to_training_config(
     rows = _normalize_dataset_rows(preset.get("datasets", []))
     if not rows:
         raise ValueError("数据集预设里没有可用路径")
-    first = rows[0]
+    _ensure_training_dataset_rows(rows)
+    first = _first_training_dataset_row(rows)
+    defaults = _normalize_dataset_defaults(preset.get("defaults") or {})
+    compatibility_defaults = _dataset_training_defaults(rows, defaults)
     values = {
         "dataset_config": dataset_rel,
         "source_image_dir": first["source_dir"],
         "resized_image_dir": first["image_dir"],
         "lora_cache_dir": first["cache_dir"],
+        "prior_loss_weight": compatibility_defaults["prior_loss_weight"],
     }
     ok, msg, _path, next_content, changed = _prepare_raw_file_patch(train_rel, values, content=train_content)
     if not ok:
@@ -298,11 +316,11 @@ def apply_dataset_preset_to_training_config(
         "message": "已应用数据集预设",
         "dataset_config": dataset_rel,
         "datasets": rows,
-        "defaults": preset.get("defaults") or {},
+        "defaults": defaults,
         "train_content": next_content,
         "changed": changed,
         "values": values,
-        "summary": preset.get("summary") or _dataset_summary_from_rows(rows, preset.get("defaults") or {}),
+        "summary": preset.get("summary") or _dataset_summary_from_rows(rows, defaults),
     }
 
 
@@ -464,6 +482,7 @@ def save_dataset_editor(
     clean_rows = _fill_missing_dataset_row_settings(_normalize_dataset_rows(rows), _normalize_dataset_defaults(cfg))
     if not clean_rows:
         raise ValueError("请至少填写一个数据集路径")
+    _ensure_training_dataset_rows(clean_rows)
 
     train_rel = _normalize_config_rel_path(train_file) if train_file else _training_config_rel_path(variant, methods_subdir)
     dataset_variant = Path(train_rel).stem if train_rel else variant
@@ -482,12 +501,14 @@ def save_dataset_editor(
 
     next_content = ""
     if train_rel:
-        first = clean_rows[0]
+        first = _first_training_dataset_row(clean_rows)
+        compatibility_defaults = _dataset_training_defaults(clean_rows, cfg)
         values = {
             "dataset_config": dataset_rel,
             "source_image_dir": first["source_dir"],
             "resized_image_dir": first["image_dir"],
             "lora_cache_dir": first["cache_dir"],
+            "prior_loss_weight": compatibility_defaults["prior_loss_weight"],
         }
         ok, msg, _train_path, next_content, _changed = _prepare_raw_file_patch(train_rel, values, content=train_content)
         if not ok:
@@ -550,7 +571,7 @@ def _dataset_config_path_from_cfg(cfg: dict[str, Any]) -> Path | None:
 
 def _is_allowed_dataset_config_path(path: Path) -> bool:
     resolved = path.resolve()
-    for root in (ROOT.resolve(), resolve_output_root().resolve()):
+    for root in (ROOT.resolve(), CONFIGS_DIR.resolve(), resolve_output_root().resolve()):
         try:
             resolved.relative_to(root)
             return True
@@ -635,6 +656,7 @@ def _dataset_defaults_from_config(data: dict[str, Any]) -> dict[str, Any]:
     return {
         "resolution": _positive_int(_first_dataset_value(data, "resolution"), 1024),
         "batch_size": _positive_int(_first_dataset_value(data, "batch_size"), 1),
+        "prior_loss_weight": _nonnegative_float(_first_dataset_value(data, "prior_loss_weight", 1.0), 1.0),
         "enable_bucket": bool(_first_dataset_value(data, "enable_bucket", True)),
         "min_bucket_reso": _positive_int(_first_dataset_value(data, "min_bucket_reso"), 256),
         "max_bucket_reso": _positive_int(_first_dataset_value(data, "max_bucket_reso"), 1024),
@@ -666,16 +688,24 @@ def _dataset_defaults_from_dataset(dataset: dict[str, Any], data: dict[str, Any]
 
 def _dataset_preset_summary(rel_path: str) -> dict[str, Any]:
     try:
-        preset = load_dataset_preset(rel_path)
+        normalized = _normalize_dataset_preset_path(rel_path, must_exist=True)
+        path = _safe_resolve(normalized)
+        if path is None or not path.exists():
+            raise ValueError("数据集预设不存在")
+        _content, rows, defaults = _load_dataset_preset_content_rows_defaults(path)
     except Exception as e:
         return {"ok": False, "error": str(e), "dataset_count": 0}
-    return preset.get("summary") or {}
+    return _dataset_summary_from_rows(rows, defaults)
 
 
-def _dataset_preset_groups_for_ui(presets_by_path: dict[str, dict[str, Any]]) -> list[dict[str, Any]]:
+def _dataset_preset_groups_for_ui(
+    presets_by_path: dict[str, dict[str, Any]],
+    *,
+    dataset_groups: list[dict[str, Any]] | None = None,
+) -> list[dict[str, Any]]:
     groups: list[dict[str, Any]] = []
     covered: set[str] = set()
-    for group in list_config_file_groups():
+    for group in dataset_groups or list_config_file_groups(kind="dataset"):
         group_id = str(group.get("id") or "")
         files = [
             presets_by_path[item["path"]]
@@ -739,19 +769,37 @@ def _is_dataset_group_for_ui(group: dict[str, Any], files: list[dict[str, Any]])
 def _dataset_summary_from_rows(rows: list[dict[str, Any]], defaults: dict[str, Any] | None = None) -> dict[str, Any]:
     clean_rows = _normalize_dataset_rows(rows)
     clean_defaults = _normalize_dataset_defaults(defaults or _first_dataset_settings(clean_rows))
-    first = clean_rows[0] if clean_rows else {}
+    first = _first_training_dataset_row(clean_rows) if clean_rows else {}
     repeats = sum(_positive_int(row.get("num_repeats"), 1) for row in clean_rows) if clean_rows else 0
+    reg_rows = [row for row in clean_rows if _bool_value(row.get("is_reg"), False)]
+    train_rows = [row for row in clean_rows if not _bool_value(row.get("is_reg"), False)]
     return {
         "ok": True,
         "dataset_count": len(clean_rows),
+        "train_dataset_count": len(train_rows),
+        "reg_dataset_count": len(reg_rows),
         "repeat_total": repeats,
+        "reg_repeat_total": sum(_positive_int(row.get("num_repeats"), 1) for row in reg_rows),
         "source_dir": first.get("source_dir", ""),
         "image_dir": first.get("image_dir", ""),
         "cache_dir": first.get("cache_dir", ""),
         "resolution": clean_defaults.get("resolution", 1024),
         "batch_size": clean_defaults.get("batch_size", 1),
         "enable_bucket": clean_defaults.get("enable_bucket", True),
+        "prior_loss_weight": clean_defaults.get("prior_loss_weight", 1.0),
     }
+
+
+def _first_training_dataset_row(rows: list[dict[str, Any]]) -> dict[str, Any]:
+    for row in rows:
+        if not _bool_value(row.get("is_reg"), False):
+            return row
+    return rows[0] if rows else {}
+
+
+def _ensure_training_dataset_rows(rows: list[dict[str, Any]]) -> None:
+    if rows and not any(not _bool_value(row.get("is_reg"), False) for row in rows):
+        raise ValueError("至少需要一组普通训练数据集，正则化数据集只能作为辅助保留集")
 
 
 def _dataset_rows_for_estimate(cfg: dict[str, Any]) -> list[dict[str, Any]]:
@@ -799,6 +847,7 @@ def _dataset_rows_from_config(data: dict[str, Any], cfg: dict[str, Any]) -> list
                 "image_dir": image_dir,
                 "cache_dir": cache_dir,
                 "num_repeats": _positive_int(subset.get("num_repeats"), 1),
+                "is_reg": _bool_value(subset.get("is_reg"), False),
                 "recursive": _bool_value(subset.get("recursive", dataset.get("recursive")), True),
                 "path_pattern": _normalize_path_pattern(
                     subset.get("path_pattern", dataset.get("path_pattern", fallback_path_pattern))
@@ -840,6 +889,7 @@ def _normalize_dataset_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
             "image_dir": _display_path(image_path),
             "cache_dir": _display_path(cache_path),
             "num_repeats": _positive_int(raw.get("num_repeats"), 1),
+            "is_reg": _bool_value(raw.get("is_reg"), False),
             "recursive": _bool_value(raw.get("recursive"), True),
             "path_pattern": _normalize_path_pattern(raw.get("path_pattern")),
             "nl_tag_mix": _normalize_nl_tag_mix(raw.get(NL_TAG_MIX_ATTR_KEY) or raw.get("nl_tag_mix")),
@@ -853,9 +903,13 @@ def _normalize_dataset_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
 def _normalize_dataset_row_settings(raw: dict[str, Any]) -> dict[str, Any]:
     if isinstance(raw.get("settings"), dict):
-        return _normalize_dataset_defaults(raw["settings"])
+        settings = dict(raw["settings"])
+        for key in DATASET_SETTING_KEYS:
+            if key in raw and key not in settings:
+                settings[key] = raw[key]
+        return settings
     if any(key in raw for key in DATASET_SETTING_KEYS):
-        return _normalize_dataset_defaults(raw)
+        return {key: raw[key] for key in DATASET_SETTING_KEYS if key in raw}
     return {}
 
 
@@ -865,7 +919,12 @@ def _fill_missing_dataset_row_settings(rows: list[dict[str, Any]], defaults: dic
     for row in rows:
         next_row = dict(row)
         settings = next_row.get("settings")
-        next_row["settings"] = _normalize_dataset_defaults(settings) if isinstance(settings, dict) and settings else fallback
+        if isinstance(settings, dict) and settings:
+            merged = dict(fallback)
+            merged.update(settings)
+            next_row["settings"] = _normalize_dataset_defaults(merged)
+        else:
+            next_row["settings"] = fallback
         next_rows.append(next_row)
     return next_rows
 
@@ -876,6 +935,7 @@ def _normalize_dataset_defaults(raw: dict[str, Any]) -> dict[str, Any]:
     out: dict[str, Any] = {}
     out["resolution"] = _positive_int(raw.get("resolution"), 1024)
     out["batch_size"] = _positive_int(raw.get("batch_size"), 1)
+    out["prior_loss_weight"] = _nonnegative_float(raw.get("prior_loss_weight"), 1.0)
     out["enable_bucket"] = str(raw.get("enable_bucket", True)).lower() not in {"0", "false", "no", "off"}
     out["min_bucket_reso"] = _positive_int(raw.get("min_bucket_reso"), 256)
     out["max_bucket_reso"] = _positive_int(raw.get("max_bucket_reso"), 1024)
@@ -989,6 +1049,7 @@ def _build_dataset_config_doc(
         if prefer_train_batch_size and cfg.get("train_batch_size") not in (None, ""):
             batch_size = cfg.get("train_batch_size")
         dataset.add("batch_size", _positive_int(batch_size, 1))
+        dataset.add("prior_loss_weight", _nonnegative_float(row_cfg.get("prior_loss_weight"), 1.0))
         caption_source_mode = normalize_caption_source_mode(
             row_cfg.get("caption_source_mode"),
             _bool_value(row_cfg.get("prefer_json_caption"), False),
@@ -1017,6 +1078,8 @@ def _build_dataset_config_doc(
         subset.add("image_dir", row["image_dir"])
         subset.add("cache_dir", row["cache_dir"])
         subset.add("num_repeats", _positive_int(row.get("num_repeats"), 1))
+        if _bool_value(row.get("is_reg"), False):
+            subset.add("is_reg", True)
         if not _bool_value(row.get("recursive"), True):
             subset.add("recursive", False)
         path_pattern = _normalize_path_pattern(row.get("path_pattern"))
@@ -1055,6 +1118,18 @@ def _dataset_row_settings(row: dict[str, Any], fallback: dict[str, Any]) -> dict
     if isinstance(raw, dict):
         return _normalize_dataset_defaults(raw)
     return _normalize_dataset_defaults(fallback)
+
+
+def _dataset_training_defaults(rows: list[dict[str, Any]], fallback: dict[str, Any]) -> dict[str, Any]:
+    defaults = _normalize_dataset_defaults(fallback)
+    for row in rows:
+        if not _bool_value(row.get("is_reg"), False):
+            continue
+        settings = row.get("settings")
+        if isinstance(settings, dict) and "prior_loss_weight" in settings:
+            defaults["prior_loss_weight"] = _nonnegative_float(settings.get("prior_loss_weight"), defaults["prior_loss_weight"])
+            break
+    return defaults
 
 
 def _first_dataset_settings(rows: list[dict[str, Any]]) -> dict[str, Any]:

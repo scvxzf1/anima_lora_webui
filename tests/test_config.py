@@ -22,6 +22,7 @@ import toml
 
 from library.config import schema as config_schema
 from library.config.io import _flatten_toml, _render_merged_toml, load_method_preset
+from library.env import get_configs_root
 from tests.conftest import iter_method_names
 
 
@@ -73,6 +74,9 @@ def test_choices_preserved(populated_parser):
     transfer_dtype = config_schema.get_schema()["block_swap_transfer_dtype"]
     assert "bf16" in transfer_dtype.choices
     assert "fp8_e4m3" in transfer_dtype.choices
+    selective_checkpoint = config_schema.get_schema()["selective_checkpoint"]
+    assert "adapter_aware" in selective_checkpoint.choices
+    assert "peak_blocks_adapter_aware" in selective_checkpoint.choices
     sample_sampler = config_schema.get_schema()["sample_sampler"]
     assert sample_sampler.default == "euler"
     for option in ("euler", "er_sde", "lcm", "ddim", "dpmsolver++"):
@@ -243,6 +247,43 @@ def test_dataset_preprocess_resolution_drives_training_bucket_params():
     assert params.bucket_no_upscale is True
 
 
+def test_regularization_dataset_flags_reach_training_blueprint():
+    from library.config.loader import BlueprintGenerator, ConfigSanitizer
+
+    user_config = {
+        "general": {"caption_extension": ".txt"},
+        "datasets": [
+            {
+                "batch_size": 1,
+                "prior_loss_weight": 2.5,
+                "subsets": [
+                    {
+                        "image_dir": "post_image_dataset/reg",
+                        "cache_dir": "post_image_dataset/reg_cache",
+                        "num_repeats": 1,
+                        "is_reg": True,
+                    }
+                ],
+            }
+        ],
+    }
+    args = argparse.Namespace(
+        train_batch_size=None,
+        debug_dataset=False,
+        max_token_length=None,
+        prior_loss_weight=1.0,
+    )
+
+    blueprint = BlueprintGenerator(ConfigSanitizer(support_dropout=True)).generate(
+        user_config,
+        args,
+    )
+    dataset = blueprint.dataset_group.datasets[0]
+
+    assert dataset.params.prior_loss_weight == 2.5
+    assert dataset.subsets[0].params.is_reg is True
+
+
 def test_training_dataset_uses_square_bucket_when_preprocess_bucket_disabled(tmp_path):
     from library.config.loader import (
         BlueprintGenerator,
@@ -378,7 +419,8 @@ METHODS = list(iter_method_names())
 
 
 def _load_preset_names() -> list[str]:
-    return list(toml.load("configs/presets.toml").keys())
+    configs_root = get_configs_root()
+    return list(toml.load(configs_root / "presets.toml").keys())
 
 
 @pytest.mark.parametrize("method", METHODS)
@@ -397,19 +439,21 @@ def test_method_configs_clean(populated_parser, method: str, caplog):
 
 
 def test_low_vram_blockswap_preset_is_available(populated_parser):
-    preset = toml.load("configs/presets.toml")["low_vram_blockswap"]
+    configs_root = get_configs_root()
+    preset = toml.load(configs_root / "presets.toml")["low_vram_blockswap"]
     assert preset["blocks_to_swap"] == 8
     assert preset["gradient_checkpointing"] is True
     assert preset["unsloth_offload_checkpointing"] is False
     assert preset["torch_compile"] is False
 
-    merged = load_method_preset("lora", "low_vram_blockswap")
+    merged = load_method_preset("lora", "low_vram_blockswap", configs_dir=str(configs_root))
     assert merged["blocks_to_swap"] == 8
     assert merged["disable_block_swap_for_eval"] is False
 
 
 def test_balanced_16g_preset_is_block_swap_first(populated_parser):
-    preset = toml.load("configs/presets.toml")["balanced_16g"]
+    configs_root = get_configs_root()
+    preset = toml.load(configs_root / "presets.toml")["balanced_16g"]
     assert preset["blocks_to_swap"] == 12
     assert preset["gradient_checkpointing"] is False
     assert preset["unsloth_offload_checkpointing"] is False
@@ -418,7 +462,7 @@ def test_balanced_16g_preset_is_block_swap_first(populated_parser):
     assert preset["selective_checkpoint"] == "off"
     assert preset["block_swap_profile_jsonl"] == "auto"
 
-    merged = load_method_preset("lora", "balanced_16g")
+    merged = load_method_preset("lora", "balanced_16g", configs_dir=str(configs_root))
     assert merged["blocks_to_swap"] == 12
     assert merged["gradient_checkpointing"] is False
     assert merged["unsloth_offload_checkpointing"] is False
@@ -428,9 +472,11 @@ def test_balanced_16g_preset_is_block_swap_first(populated_parser):
 
 
 def test_gui_lora_respects_balanced_16g_blockswap(populated_parser):
+    configs_root = get_configs_root()
     merged = load_method_preset(
         "lora",
         "balanced_16g",
+        configs_dir=str(configs_root),
         methods_subdir="gui-methods",
     )
     assert merged["blocks_to_swap"] == 12
@@ -443,10 +489,11 @@ def test_gui_lora_respects_balanced_16g_blockswap(populated_parser):
 
 
 def test_provenance_returned():
+    configs_root = get_configs_root()
     merged, provenance = load_method_preset(
-        "lora", "default", return_provenance=True
+        "lora", "default", configs_dir=str(configs_root), return_provenance=True
     )
-    # base key
+    # base key - provenance 使用标准化的 configs/... 格式
     assert provenance["network_module"] == "configs/base.toml"
     # method key
     assert provenance["network_dim"] == "configs/methods/lora.toml"
@@ -462,11 +509,12 @@ def _reparse_without_comments(text: str) -> dict:
 def test_render_roundtrips_to_valid_toml(populated_parser):
     import train
 
+    configs_root = get_configs_root()
     parser = train.setup_parser()
     config_schema.populate_schema(parser, extras=train.build_network_extras())
 
     merged, provenance = load_method_preset(
-        "lora", "default", return_provenance=True
+        "lora", "default", configs_dir=str(configs_root), return_provenance=True
     )
     ns = argparse.Namespace(**merged)
     args = parser.parse_args(["--method", "lora", "--preset", "default"], namespace=ns)
@@ -482,11 +530,12 @@ def test_render_roundtrips_to_valid_toml(populated_parser):
 def test_render_header_includes_method_and_preset(populated_parser):
     import train
 
+    configs_root = get_configs_root()
     parser = train.setup_parser()
     config_schema.populate_schema(parser, extras=train.build_network_extras())
 
     merged, provenance = load_method_preset(
-        "lora", "low_vram", return_provenance=True
+        "lora", "low_vram", configs_dir=str(configs_root), return_provenance=True
     )
     ns = argparse.Namespace(**merged)
     args = parser.parse_args(
@@ -496,6 +545,7 @@ def test_render_header_includes_method_and_preset(populated_parser):
     assert "Method: lora" in rendered
     assert "Preset: low_vram" in rendered
     # section ordering: base → preset → method
+    # provenance 使用标准化的 configs/... 格式
     base_idx = rendered.index("configs/base.toml")
     preset_idx = rendered.index("configs/presets.toml[low_vram]")
     method_idx = rendered.index("configs/methods/lora.toml")

@@ -102,3 +102,83 @@ def expand_env_vars_in_obj(value: Any) -> Any:
     if isinstance(value, tuple):
         return tuple(expand_env_vars_in_obj(v) for v in value)
     return value
+
+
+def get_configs_root() -> Path:
+    """获取配置根目录，支持 WebUI 设置和环境变量覆盖。
+
+    优先级：
+    1. WebUI .claude/webui-settings.toml [paths].configs_root（项目根目录下的固定配置文件）
+    2. ANIMA_CONFIGS_ROOT 环境变量
+    3. 默认 project_root()/configs
+
+    相对路径相对于项目根目录解析，绝对路径直接使用。
+    """
+    # 确保 .env 已加载
+    load_dotenv()
+
+    # 1. 优先读取项目根目录下的 WebUI 路径配置文件（不跟随 configs/ 移动）
+    webui_paths_file = project_root() / ".anima-webui-settings.toml"
+    if webui_paths_file.exists():
+        try:
+            import toml
+            raw = toml.loads(webui_paths_file.read_text(encoding="utf-8"))
+            section = raw.get("paths", {})
+            if isinstance(section, dict):
+                webui_value = str(section.get("configs_root") or "").strip()
+                if webui_value:
+                    path = Path(expand_env_vars(webui_value))
+                    if not path.is_absolute():
+                        path = project_root() / path
+                    return path.resolve()
+        except Exception:
+            pass
+
+    # 2. 读取环境变量
+    env_value = os.environ.get("ANIMA_CONFIGS_ROOT")
+    if env_value:
+        path = Path(expand_env_vars(env_value))
+        if not path.is_absolute():
+            path = project_root() / path
+        return path.resolve()
+
+    # 3. 默认值
+    return project_root() / "configs"
+
+
+def get_training_history_root() -> Path:
+    """获取训练历史根目录。
+
+    优先级：
+    1. ANIMA_TRAINING_HISTORY_ROOT 环境变量
+    2. 默认 configs_root/web-training-history
+    """
+    # 确保 .env 已加载
+    load_dotenv()
+
+    env_value = os.environ.get("ANIMA_TRAINING_HISTORY_ROOT")
+    if env_value:
+        path = Path(expand_env_vars(env_value))
+        if not path.is_absolute():
+            path = project_root() / path
+        return path.resolve()
+    return get_configs_root() / "web-training-history"
+
+
+def get_training_queue_root() -> Path:
+    """获取训练队列根目录。
+
+    优先级：
+    1. ANIMA_TRAINING_QUEUE_ROOT 环境变量
+    2. 默认 configs_root/web-training-queue
+    """
+    # 确保 .env 已加载
+    load_dotenv()
+
+    env_value = os.environ.get("ANIMA_TRAINING_QUEUE_ROOT")
+    if env_value:
+        path = Path(expand_env_vars(env_value))
+        if not path.is_absolute():
+            path = project_root() / path
+        return path.resolve()
+    return get_configs_root() / "web-training-queue"

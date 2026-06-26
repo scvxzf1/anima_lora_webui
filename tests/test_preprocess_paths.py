@@ -483,6 +483,94 @@ def test_preprocess_config_uses_dataset_level_caption_sources(tmp_path, monkeypa
     assert te_b[te_b.index("--caption_extension") + 1] == ".txt"
 
 
+def test_preprocess_te_auto_forwards_diff_output_preservation_from_runtime_config(tmp_path, monkeypatch):
+    dataset_path = tmp_path / "runs" / "demo" / "dataset.runtime.toml"
+    dataset_path.parent.mkdir(parents=True)
+    dataset_path.write_text(
+        "\n".join(
+            [
+                "[[datasets]]",
+                "batch_size = 1",
+                "",
+                "[[datasets.subsets]]",
+                'image_dir = "post_image_dataset/a_resized"',
+                'cache_dir = "post_image_dataset/a_cache"',
+                'custom_attributes = {source_dir = "image_dataset/a"}',
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    commands: list[list[str]] = []
+    monkeypatch.setattr(preprocess, "ROOT", tmp_path)
+    monkeypatch.setattr(
+        _common,
+        "_PATH_OVERRIDES_CACHE",
+        {
+            "dataset_config": "runs/demo/dataset.runtime.toml",
+            "qwen3": "D:/models/qwen3.safetensors",
+            "pretrained_model_name_or_path": "D:/models/anima.safetensors",
+            "diff_output_preservation_trigger": "sks",
+            "diff_output_preservation_class": "woman",
+        },
+    )
+    monkeypatch.setattr(preprocess, "run", commands.append)
+    monkeypatch.setattr(preprocess, "_run_caption_backup", lambda row: None)
+
+    preprocess.cmd_preprocess_te([])
+
+    cmd = commands[0]
+    assert cmd[cmd.index("--diff_output_preservation_trigger") + 1] == "sks"
+    assert cmd[cmd.index("--diff_output_preservation_class") + 1] == "woman"
+
+
+def test_preprocess_config_keeps_diff_output_preservation_out_of_resize(tmp_path, monkeypatch):
+    dataset_path = tmp_path / "configs" / "datasets" / "dop.toml"
+    dataset_path.parent.mkdir(parents=True)
+    dataset_path.write_text(
+        "\n".join(
+            [
+                "[[datasets]]",
+                "resolution = 768",
+                "",
+                "[[datasets.subsets]]",
+                'image_dir = "post_image_dataset/a_resized"',
+                'cache_dir = "post_image_dataset/a_cache"',
+                'custom_attributes = {source_dir = "image_dataset/a"}',
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    commands: list[list[str]] = []
+    monkeypatch.setattr(preprocess, "ROOT", tmp_path)
+    monkeypatch.setattr(preprocess, "run", commands.append)
+
+    preprocess.cmd_preprocess_config([
+        "--dataset_config",
+        str(dataset_path),
+        "--src",
+        "image_dataset/source",
+        "--vae",
+        "D:/models/vae.safetensors",
+        "--qwen3",
+        "D:/models/qwen3.safetensors",
+        "--dit",
+        "D:/models/anima.safetensors",
+        "--diff_output_preservation_trigger",
+        "sks",
+        "--diff_output_preservation_class",
+        "woman",
+    ])
+
+    assert len(commands) == 3
+    resize_cmd, vae_cmd, te_cmd = commands
+    assert "--diff_output_preservation_trigger" not in resize_cmd
+    assert "--diff_output_preservation_class" not in resize_cmd
+    assert te_cmd[te_cmd.index("--diff_output_preservation_trigger") + 1] == "sks"
+    assert te_cmd[te_cmd.index("--diff_output_preservation_class") + 1] == "woman"
+
+
 def test_caption_backup_dir_uses_cache_parent_and_stays_out_of_training_dirs(tmp_path, monkeypatch):
     monkeypatch.setattr(preprocess, "ROOT", tmp_path)
     row = {
@@ -629,6 +717,59 @@ def test_cache_text_embeddings_writes_captions_json_as_multi_source_variants(tmp
     assert seen_captions == ["caption one", "caption two"]
     assert int(cache["num_variants"]) == 2
     assert int(cache["caption_multi_source"]) == 1
+
+
+def test_cache_text_embeddings_writes_diff_output_prior_crossattn(tmp_path, monkeypatch):
+    image = tmp_path / "hero.png"
+    Image.new("RGB", (800, 800), color=(128, 128, 128)).save(image)
+    image.with_suffix(".txt").write_text("sks woman, portrait\n", encoding="utf-8")
+
+    seen_captions: list[list[str]] = []
+
+    def fake_encode_batch(
+        captions,
+        _tokenize_strategy,
+        _encoding_strategy,
+        _text_encoder,
+        _llm_adapter,
+        _device,
+    ):
+        seen_captions.append(list(captions))
+        n = len(captions)
+        marker = 7 if captions == ["sks woman, portrait"] else 11
+        return (
+            torch.zeros((n, 2, 3), dtype=torch.bfloat16),
+            torch.ones((n, 2), dtype=torch.int32),
+            torch.zeros((n, 2), dtype=torch.long),
+            torch.ones((n, 2), dtype=torch.int32),
+            torch.full((n, 2, 4), marker, dtype=torch.bfloat16),
+        )
+
+    monkeypatch.setattr(preprocess_text, "_encode_batch", fake_encode_batch)
+
+    stats = preprocess_text.cache_text_embeddings(
+        tmp_path,
+        object(),
+        object(),
+        object(),
+        llm_adapter=object(),
+        device=torch.device("cpu"),
+        cache_dir=tmp_path / "cache",
+        batch_size=8,
+        min_pixels=500_000,
+        verbose=False,
+        diff_output_preservation_trigger="sks",
+        diff_output_preservation_class="woman",
+    )
+
+    cache = load_file(str(tmp_path / "cache" / "hero_anima_te.safetensors"))
+    assert stats.written == 1
+    assert seen_captions == [
+        ["sks woman, portrait"],
+        ["woman woman, portrait"],
+    ]
+    assert torch.equal(cache["crossattn_emb"], torch.full((2, 4), 7, dtype=torch.bfloat16))
+    assert torch.equal(cache["prior_crossattn_emb"], torch.full((2, 4), 11, dtype=torch.bfloat16))
 
 
 def test_preprocess_runs_all_dataset_config_rows(tmp_path, monkeypatch):

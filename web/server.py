@@ -64,6 +64,10 @@ async def _on_shutdown(app: web.Application) -> None:
 
 
 def main():
+    # 最早加载环境变量，确保在任何模块导入前生效
+    from library.env import load_dotenv
+    load_dotenv()
+
     parser = argparse.ArgumentParser(description="Anima LoRA Web UI")
     parser.add_argument("--port", type=int, default=20102)
     parser.add_argument("--host", default="0.0.0.0")

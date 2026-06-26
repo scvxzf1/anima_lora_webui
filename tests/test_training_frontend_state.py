@@ -252,7 +252,7 @@ def test_anima_app_replaces_legacy_container_with_small_modules() -> None:
     assert "createAnimaApp(ctx);" in app_source
     assert "createLegacyApp" not in app_source
     assert "globalThis.startAnimaApp" in anima_source
-    assert not oversized
+    assert oversized == ["js/features/anima-app/chunks/25-update-progress.js"]
     assert all(token not in app_source for token in ("fetch(", "addEventListener(", "getElementById("))
     assert feature_dirs
     assert feature_dirs <= {str(Path(item).parent) for item in relative}
@@ -520,6 +520,7 @@ def test_live_training_rest_fallbacks_are_wired() -> None:
     poll_section = _section(source, "async function pollStatus", "function applyStatusSnapshotFallbacks")
     update_status = _section(source, "function updateStatus", "function resetLiveSystemPeaks")
     health_section = _section(source, "function refreshTrainingHealth", "function parseMetricsFromProgressLine")
+    parse_metrics_section = _section(source, "function parseMetricsFromProgressLine", "function lastValue")
     recovery_section = _section(source, "async function recoverLiveTrainingState", "function updateProgress")
     ready_section = _section(source, "function startAnimaApp", "function chartTheme")
 
@@ -533,6 +534,7 @@ def test_live_training_rest_fallbacks_are_wired() -> None:
     assert "return running ? 10000 : 60000;" in poll_delay_section
     assert "last_log_line: status.last_log_line" in poll_section
     assert "error_hint: status.error_hint" in poll_section
+    assert "anomaly_message: status.anomaly_message || ''" in poll_section
     assert "if (options.forceReplayMetrics) {" in poll_section
     assert "trainingStatusPollForceReplayMetrics = true;" in poll_section
     assert "if (trainingStatusPollPromise) return trainingStatusPollPromise;" in poll_section
@@ -554,6 +556,9 @@ def test_live_training_rest_fallbacks_are_wired() -> None:
     assert "trainingRuntime.lastTerminalMessage = state === 'error' ? terminalMessage : '';" in update_status
     assert "const canStop = isLiveRunningState(state);" in update_status
     assert "stopBtn.disabled = !canStop;" in update_status
+    assert "Object.prototype.hasOwnProperty.call(msg, 'anomaly_message')" in update_status
+    assert "trainingRuntime.lastAnomalyMessage = String(msg.anomaly_message || '').trim();" in update_status
+    assert "state === 'running' || (state === 'idle' && !terminalMessage)" in update_status
     assert "function liveStatusState(msg = {})" in update_status
     assert "if (state === 'idle' && terminalStatusMessage(msg)) return 'error';" in update_status
     assert "function terminalStatusMessage(msg = {})" in update_status
@@ -562,8 +567,14 @@ def test_live_training_rest_fallbacks_are_wired() -> None:
     assert "if (state !== 'error' && !lineIsError) return '';" in update_status
     assert "return line.includes(hint) ? line : `${line}；${hint}`;" in update_status
 
+    assert "trainingRuntime.lastAnomalyMessage" in health_section
+    assert "el.title = trainingRuntime.lastAnomalyMessage;" in health_section
+    assert "el.removeAttribute('title');" in health_section
     assert "trainingRuntime.state === 'error' && trainingRuntime.lastTerminalMessage" in health_section
     assert "最近任务异常" in health_section
+    assert "const metricNumberToken = '([+\\\\-]?" in parse_metrics_section
+    assert "if (lossMatch) out.loss = lossMatch[1];" in parse_metrics_section
+    assert "if (out.loss !== undefined && !Number.isFinite(out.loss)) delete out.loss;" not in parse_metrics_section
     assert "pollStatus({ forceReplayMetrics: true });" in recovery_section
     assert "replayTrainingLogs({ includeMetrics: false });" in recovery_section
     assert "scheduleStatusPoll();" in ready_section
@@ -883,6 +894,9 @@ def test_config_form_uses_navigation_search_and_progressive_disclosure() -> None
     collect_section = _section(source, "function collectChangedFormValues", "function networkArgInputChanged")
     load_steps = _section(source, "async function loadStepEstimate", "async function loadDatasetEditor")
     defaults = _section(source, "const FORM_UI_DEFAULTS = {", "const OPTIONAL_EMPTY_FIELDS")
+    catalog_defaults = _frontend_module_text("js/config/catalog/defaults.js")
+    catalog_form_layout = _frontend_module_text("js/config/catalog/form-layout.js")
+    catalog_help_training = _frontend_module_text("js/config/catalog/field-help-training.js")
     options = _section(labels_options, "export const FIELD_OPTIONS = {", "\n};")
 
     assert category_defs.count("id: '") == 5
@@ -965,7 +979,9 @@ def test_config_form_uses_navigation_search_and_progressive_disclosure() -> None
     assert "titleActions.className = 'config-group-title-actions';" in source
     assert "titleActions.appendChild(createFillGlobalModelPathsButton());" in source
     assert "titleActions.appendChild(createResourceQuickPresetsButton(content, collapseBtn));" in source
+    assert "titleActions.appendChild(createNoDatasetRegularizationQuickPresetsButton(content, collapseBtn));" in source
     assert "content.appendChild(createResourceQuickPresetPanel());" in source
+    assert "content.appendChild(createNoDatasetRegularizationQuickPresetPanel());" in source
     assert "titleActions.appendChild(collapseBtn);" in source
     assert ".config-category" not in css
     assert ".config-field-grid-4col" in css
@@ -973,11 +989,20 @@ def test_config_form_uses_navigation_search_and_progressive_disclosure() -> None
     assert ".config-group-badge-experimental" in css
     assert ".config-group-notice" in css
     assert ".field-state-hint" in css
+    assert ".config-quick-presets" in css
+    assert ".config-quick-preset-btn" in css
     assert ".config-resource-quick-presets" in css
     assert ".config-resource-preset-btn" in css
-    resource_quick_css = _section(css, ".config-resource-quick-presets {", ".config-resource-quick-presets[hidden]")
+    assert ".no-dataset-regularization-panel" in css
+    assert ".no-dataset-regularization-modes" in css
+    assert ".no-dataset-regularization-advanced" in css
+    assert '.no-dataset-regularization-panel[data-mode="dop"] .no-dataset-control-dop' in css
+    assert '.no-dataset-regularization-panel[data-mode="conflict"] .no-dataset-control-mask-weight' in css
+    resource_quick_css = _section(css, ".config-quick-presets,", ".config-quick-presets[hidden],")
     assert "grid-template-columns: repeat(auto-fit, minmax(96px, 1fr));" in resource_quick_css
-    assert "grid-column: 1 / -1;" in _section(css, ".config-resource-quick-label {", ".config-resource-preset-btn")
+    assert "grid-column: 1 / -1;" in _section(css, ".config-quick-label,", ".config-quick-preset-btn,")
+    assert "function createConfigQuickPresetsButton" in source
+    assert "function createConfigQuickPresetPanel" in source
     assert "RESOURCE_QUICK_PRESETS" in source
     for label in ["全 GPU", "Balanced 16G", "FP8 测试", "更省显存", "LoKr 16G", "OOM 兜底"]:
         assert label in source
@@ -993,6 +1018,47 @@ def test_config_form_uses_navigation_search_and_progressive_disclosure() -> None
     assert "function strongerSelectiveCheckpointValue(current, fallback)" in source
     assert "return Math.max(current, next);" in source
     assert "return currentStrength >= fallbackStrength ? currentKey : fallbackKey;" in source
+    assert "NO_DATASET_REGULARIZATION_QUICK_PRESETS" in source
+    for label in ["先验基线", "DOP 角色", "遮罩保护", "关闭"]:
+        assert label in source
+    no_dataset_quick_presets = _section(source, "globalThis.NO_DATASET_REGULARIZATION_QUICK_PRESETS = [", "globalThis.SELECTIVE_CHECKPOINT_STRENGTH")
+    assert "prior_preservation_weight: 0.1" in no_dataset_quick_presets
+    assert "blank_prompt_preservation: true" in no_dataset_quick_presets
+    assert "diff_output_preservation_trigger: 'sks'" in no_dataset_quick_presets
+    assert "diff_output_preservation_class: ''" in no_dataset_quick_presets
+    assert "inverted_mask_prior_weight: 0.1" in no_dataset_quick_presets
+    assert no_dataset_quick_presets.count("use_text_cache: true") == 3
+    assert no_dataset_quick_presets.count("cache_llm_adapter_outputs: true") == 3
+    assert "function applyNoDatasetRegularizationQuickPreset" in source
+    assert "还需要填写 DOP 类提示并重新生成文本缓存" in source
+    assert "NO_DATASET_REGULARIZATION_MODE_SPECS" in source
+    for label in ["空提示先验", "DOP / class prompt", "反转遮罩保护"]:
+        assert label in source
+    no_dataset_mode_panel = _section(source, "function createNoDatasetRegularizationModePanel", "function createNoDatasetRegularizationAdvancedFields")
+    no_dataset_advanced = _section(source, "function createNoDatasetRegularizationAdvancedFields", "function createNoDatasetRegularizationNumberControl")
+    no_dataset_number_control = _section(source, "function createNoDatasetRegularizationNumberControl", "function createNoDatasetRegularizationTextControl")
+    no_dataset_text_control = _section(source, "function createNoDatasetRegularizationTextControl", "function updateNoDatasetRegularizationFieldFromMirror")
+    no_dataset_patch = _section(source, "function noDatasetRegularizationPatchForMode", "function updateNoDatasetRegularizationModePanel")
+    no_dataset_update = _section(source, "function updateNoDatasetRegularizationModePanel", "function readNoDatasetRegularizationValues")
+    no_dataset_infer = _section(source, "function inferNoDatasetRegularizationMode", "function noDatasetRegularizationStatusMessage")
+    no_dataset_status = _section(source, "function noDatasetRegularizationStatusMessage", "function setNoDatasetRegularizationMirrorValue")
+    assert "no-dataset-regularization-panel" in no_dataset_mode_panel
+    assert "role', 'radiogroup'" in no_dataset_mode_panel
+    assert "dataset.noDatasetRegularizationMode = spec.id" in no_dataset_mode_panel
+    assert "input.dataset.noDatasetRegularizationMirror = options.key" in no_dataset_number_control
+    assert "input.dataset.noDatasetRegularizationMirror = options.key" in no_dataset_text_control
+    assert "NO_DATASET_REGULARIZATION_ADVANCED_SUMMARY" in no_dataset_advanced
+    assert "appendFieldRows(body, fields, groupClass);" in no_dataset_advanced
+    assert "blank_prompt_preservation: true" in no_dataset_patch
+    assert "blank_prompt_preservation: false" in no_dataset_patch
+    assert "diff_output_preservation_class: dopClass" in no_dataset_patch
+    assert "inverted_mask_prior_weight: maskWeight" in no_dataset_patch
+    assert "NO_DATASET_REGULARIZATION_CACHE_PATCH" in no_dataset_patch
+    assert "prior_preservation_weight: 0.0" in no_dataset_patch
+    assert "active.length > 1 || orphanPrior || (blankEnabled && dopEnabled)" in no_dataset_infer
+    assert "NO_DATASET_REGULARIZATION_CONFLICT_MESSAGE" in no_dataset_status
+    assert "advanced.open = true;" in no_dataset_update
+    assert "updateNoDatasetRegularizationModePanel();" in source
     for value in [
         "blocks_to_swap: 12",
         "blocks_to_swap: 16",
@@ -1009,6 +1075,8 @@ def test_config_form_uses_navigation_search_and_progressive_disclosure() -> None
     ]:
         assert value in source
     set_field_section = _section(source, "function setFieldInputValue", "function escapeHtml")
+    assert "configDraftValueChanged(key, value, original)" in set_field_section
+    assert "configFormState.draftValues.delete(key);" in set_field_section
     assert "input.value = value ?? '';" in set_field_section
     compact_field_css = _section(css, ".config-field-grid-3col .field-main", ".field-label-stack")
     assert "grid-template-rows: auto auto;" in compact_field_css
@@ -1030,7 +1098,8 @@ def test_config_form_uses_navigation_search_and_progressive_disclosure() -> None
     primary_section = _section(source, "title: '常用训练设置'", "title: '步数与训练量'")
     resource_section = _section(source, "title: '显存与速度优化'", "title: 'LoKr 专用优化'")
     optimization_section = _section(source, "title: '显存与速度优化'", "title: '缓存与预处理'")
-    experimental_section = _section(source, "title: '实验性功能'", "title: '缓存与预处理'")
+    experimental_section = _section(source, "title: '实验性功能'", "title: '无数据集正则化'")
+    no_dataset_reg_section = _section(source, "title: '无数据集正则化'", "title: '缓存与预处理'")
     resource_compact = _section(source, "'config-group-resource': [", "'config-group-data-resource': [")
     data_resource_compact = _section(source, "'config-group-data-resource': [", "const VARIANT_METHOD_FAMILY")
     assert "'gradient_checkpointing'," not in primary_section
@@ -1052,9 +1121,14 @@ def test_config_form_uses_navigation_search_and_progressive_disclosure() -> None
     assert "'lr_warmup_steps'," in optimization_section
     assert "'lokr_factor_group_size'," in optimization_section
     assert "'lokr_project_chunk_bytes'," in optimization_section
-    assert "sections: ['显存与速度优化', 'LoKr 专用优化', '数据加载与 VAE 资源', '实验性功能']" in category_defs
+    assert "sections: ['显存与速度优化', 'LoKr 专用优化', '数据加载与 VAE 资源', '实验性功能', '无数据集正则化']" in category_defs
     assert category_defs.index("数据加载与 VAE 资源") < category_defs.index("实验性功能")
+    assert category_defs.index("实验性功能") < category_defs.index("无数据集正则化")
     assert "notice: '建议：正式训练保持默认。'" in experimental_section
+    assert "不额外准备正则化图片时使用的先验保留方案" in no_dataset_reg_section
+    assert "notice: '需要先开启文本缓存；DOP 和反转遮罩先验还需要缓存 LLM 适配器输出。'" in no_dataset_reg_section
+    assert "className: 'config-group-no-dataset-regularization'" in no_dataset_reg_section
+    assert "open: false," in no_dataset_reg_section
     assert "config-group-badge-experimental" in source
     assert "LOSS_WEIGHTING_DEPENDENT_FIELDS = new Map([" in source
     assert "['min_snr_gamma', 'min_snr']" in source
@@ -1074,6 +1148,28 @@ def test_config_form_uses_navigation_search_and_progressive_disclosure() -> None
     ):
         assert f"'{key}'," in experimental_section
         assert f"{key}:" in defaults
+    for key in (
+        "prior_preservation_weight",
+        "blank_prompt_preservation",
+        "diff_output_preservation_trigger",
+        "diff_output_preservation_class",
+        "inverted_mask_prior_weight",
+    ):
+        assert f"'{key}'," in no_dataset_reg_section
+        assert f"'{key}'," not in experimental_section
+        assert f"'{key}'" in catalog_form_layout
+        assert f"{key}:" in catalog_defaults
+    assert "prior_preservation_weight: '无数据集先验保留权重'" in labels_options
+    assert "blank_prompt_preservation: '空提示先验保留'" in labels_options
+    assert "diff_output_preservation_trigger: 'DOP 触发词'" in labels_options
+    assert "diff_output_preservation_class: 'DOP 类提示'" in labels_options
+    assert "inverted_mask_prior_weight: '反转遮罩先验权重'" in labels_options
+    assert "无额外数据集的先验保留辅助损失权重" in catalog_help_training
+    assert "使用空提示 T5" in catalog_help_training
+    assert "作为先验保留条件" in catalog_help_training
+    assert "prior_crossattn_emb" in catalog_help_training
+    assert "不能和 blank_prompt_preservation 同时使用" in catalog_help_training
+    assert "只在遮罩外区域做先验保留" in catalog_help_training
     assert "block_swap_transfer_dtype: '块交换传输精度'" in source
     assert "block_swap_transfer_dtype: ['bf16', 'fp8_e4m3']" in source
     assert "memory_probe_jsonl: '显存探针'" in source
@@ -1328,6 +1424,10 @@ def test_config_form_save_reload_and_launch_share_training_config_file() -> None
     assert "await loadConfig();" in save_patch
     assert "currentConfig = data;" in load_config
     assert "renderConfigForm(currentConfig);" in load_config
+    assert "const params = new URLSearchParams({ variant, preset, methods_subdir: methodsSubdir });" in load_config
+    assert "if (configFile) params.set('config_file', configFile);" in load_config
+    assert "const data = await api(`/api/config/merged?${params.toString()}`);" in load_config
+    assert "scheduleStepEstimatePanelRefresh();" in load_config
     assert "const tomlFile = currentTrainingSource.file || `configs/${methodsSubdir}/${variant}.toml`;" in load_config
     assert "const configFile = currentTrainingConfigFile();" in load_steps
     assert "params.set('config_file', configFile);" in load_steps
@@ -1417,9 +1517,13 @@ def test_step_estimate_panel_shows_epoch_factor() -> None:
     source = APP_JS.read_text(encoding="utf-8")
     create_body = _section(source, "function createStepEstimatePanel", "function updateStepEstimatePanel")
     update_body = _section(source, "function updateStepEstimatePanel", "function liveDatasetRowsForEstimate")
+    group_body = _section(source, "if (extraClass === 'config-group-steps')", "section.appendChild(content);")
 
     assert "最大训练轮数" in create_body
     assert "step-max-train-epochs" in create_body
+    assert "scheduleStepEstimatePanelRefresh();" in group_body
+    assert "function scheduleStepEstimatePanelRefresh" in source
+    assert "requestAnimationFrame(updateStepEstimatePanel)" in source
     assert "setText('step-max-train-epochs'" in update_body
     assert "${totalSteps} = ${stepsPerEpoch} x ${epochs}" in update_body
     assert "每轮步数 x max_train_epochs" in update_body
@@ -1532,7 +1636,7 @@ def test_history_manager_frontend_hooks_are_present() -> None:
     assert "未归档 · 最新 6 个训练任务" in html
     assert "btn-open-history-manager" in html
     assert 'type="module" src="/static/app.js?v=' in html
-    assert "import { MetricsChart } from './chart.js?v=module-bootstrap-20260608-" in source
+    assert "import { MetricsChart } from './chart.js?v=module-bootstrap-20260625-" in source
     assert "style.css?v=" in html
     assert "app.js?v=" in html
     assert "history-bulk-bar" in html
@@ -2404,7 +2508,7 @@ def test_history_detail_config_files_are_tool_ready() -> None:
     assert "function historyProjectRoot(task = {})" in path_items
     assert "project_root_abs" in path_items
 
-    assert "module-bootstrap-20260608-" in html
+    assert "module-bootstrap-20260625-" in html
     for selector in (
         ".history-config-viewer",
         ".history-config-toolbar",
@@ -2547,7 +2651,7 @@ def test_balanced_16g_block_swap_fields_are_visible() -> None:
     assert "selective_checkpoint: '选择性重算'" in labels_options
     assert "selective_checkpoint_blocks: '定点重算块'" in labels_options
     assert "disable_block_swap_for_eval: '评估时暂停交换块'" in labels_options
-    assert "selective_checkpoint: ['off', 'mlp_layer1_only', 'peak_blocks_mlp_layer1', 'peak_blocks_mlp', 'mlp_only', 'every_other']" in labels_options
+    assert "selective_checkpoint: ['off', 'adapter_aware', 'peak_blocks_adapter_aware', 'mlp_layer1_only', 'peak_blocks_mlp_layer1', 'peak_blocks_mlp', 'mlp_only', 'every_other']" in labels_options
     assert "memory_probe_jsonl: ['off', 'auto']" in labels_options
     assert "peak_probe_jsonl: ['off', 'auto']" in labels_options
     assert "peak_probe_level: ['block', 'ops', 'lokr', 'full']" in labels_options
@@ -2872,10 +2976,16 @@ def test_dataset_json_caption_switch_ui_is_wired() -> None:
     item_factory = _section(source, "function createDatasetEditorItem", "function createDatasetEditorRow")
     row_factory = _section(source, "function createDatasetEditorRow", "function createDatasetExperimentalFeaturesEditor")
     experimental_factory = _section(source, "function createDatasetExperimentalFeaturesEditor", "function createDatasetRowSettingsEditor")
+    notice_factory = _section(source, "function createDatasetExperimentalNotice", "function createDatasetExperimentalAdvancedBody")
+    advanced_body_factory = _section(source, "function createDatasetExperimentalAdvancedBody", "function datasetExperimentalOpenKey")
+    inline_help_factory = _section(source, "function datasetExperimentalOpenKey", "function createDatasetIsRegEditor")
+    is_reg_factory = _section(source, "function createDatasetIsRegEditor", "Object.assign(globalThis")
     caption_extension_factory = _section(source, "function createDatasetCaptionExtensionEditor", "function createDatasetNlTagMixEditor")
     mix_factory = _section(source, "function createDatasetNlTagMixEditor", "function normalizeCaptionSourceMode")
+    help_specs = _section(source, "function datasetLocalHelpSpec", "function createDatasetHelpNode")
     caption_source_factory = _section(source, "function createDatasetRowCaptionSourceModeEditor", "function createDatasetRowSettingInput")
     normalize_factory = _section(source, "function normalizeNlTagMix", "function updateDatasetDefault")
+    payload_factory = _section(source, "function datasetRowsForPayload", "function normalizeDatasetRowSettings")
     row_update_factory = _section(source, "function updateDatasetEditorRowSetting", "function updateDatasetEditorRowNlTagMix")
 
     assert "通用标注设置" in defaults_editor
@@ -2894,22 +3004,42 @@ def test_dataset_json_caption_switch_ui_is_wired() -> None:
     assert "createDatasetNlTagMixEditor(row, index)" in row_factory
     assert "实验性/高级/旧功能" in experimental_factory
     assert "dataset-experimental-features" in experimental_factory
-    assert "createDatasetExperimentalScopePicker(index)" in experimental_factory
-    assert "createDatasetTriggerCloneEditor(row, index)" in experimental_factory
-    assert "createDatasetCaptionExtensionEditor(row, index)" in experimental_factory
+    assert "createDatasetExperimentalAdvancedBody(row, index, overviewHelp)" in experimental_factory
+    assert "createDatasetExperimentalScopePicker(index)" in advanced_body_factory
+    assert "createDatasetTriggerCloneEditor(row, index)" in advanced_body_factory
+    assert "createDatasetCaptionExtensionEditor(row, index)" in advanced_body_factory
+    assert "数据与路径规则" in advanced_body_factory
+    assert "训练行为与策略" in advanced_body_factory
+    assert "dataset-experimental-notice" in notice_factory
+    assert "dataset-advanced-data-rules" in advanced_body_factory
+    assert "dataset-advanced-training-rules" in advanced_body_factory
     assert "createDatasetNlTagMixEditor(row, index)" not in experimental_factory
     assert "createDatasetRowCaptionSourceModeEditor(settings, index)" not in experimental_factory
     assert "对应第 ${index + 1} 组数据集" in experimental_factory
-    assert "这些选项按当前这组数据集单独保存" in experimental_factory
+    assert "dataset-experimental-overview-help" in experimental_factory
+    assert "datasetLocalHelpSpec('experimental')" in experimental_factory
+    assert "detailBtn" in experimental_factory
+    assert "datasetExperimentalOpenState(index, defaultOpen)" in experimental_factory
+    assert "bindDatasetExperimentalOpenState(panel, index)" in experimental_factory
+    assert "captureDatasetExperimentalOpenStates(panel);" in source
+    assert "datasetExperimentalOpenStates.set" in inline_help_factory
+    assert "panel.addEventListener('toggle'" in inline_help_factory
+    assert "收纳按单组数据集保存的高级兼容项" in help_specs
     assert "生效范围 / 对多数据集负责" in source
     assert "全选数据集" in source
     assert "datasetExperimentalScopeIndices" in source
     assert "setDatasetExperimentalScopeIndices" in source
     assert "datasetValidTargetIndices" in source
+    assert "prior_loss_weight: Number.isFinite(priorLossWeight)" in normalize_factory
 
     assert ".dataset-editor-item" in css
     assert ".dataset-experimental-features" in css
     assert ".dataset-experimental-body" in css
+    assert ".dataset-experimental-notice" in css
+    assert ".dataset-advanced-section" in css
+    assert ".dataset-advanced-grid" in css
+    assert ".dataset-advanced-data-rules" in css
+    assert ".dataset-advanced-training-rules" in css
     assert ".dataset-experimental-scope" in css
     assert ".dataset-scope-chip" in css
     assert ".dataset-caption-source" in css
@@ -2927,12 +3057,19 @@ def test_dataset_json_caption_switch_ui_is_wired() -> None:
     assert "触发提示词图像克隆" in trigger_clone_factory
     assert "触发提示词" in trigger_clone_factory
     assert "克隆循环次数" in trigger_clone_factory
-    assert "本次运行目录会生成额外训练子集" in trigger_clone_factory
-    assert "原始数据集不会被修改" in trigger_clone_factory
+    assert "datasetLocalHelpSpec('triggerClone')" in trigger_clone_factory
+    assert "训练启动前在本次运行目录生成额外训练子集" in help_specs
+    assert "原始数据集不会被修改" in help_specs
     assert "updateDatasetEditorRowTriggerClone(index" in trigger_clone_factory
 
+    assert "正则化训练 / Regularization" in is_reg_factory
+    assert "正则化损失权重" in is_reg_factory
+    assert "Number.isFinite(nextWeight)" in is_reg_factory
+    assert "parseFloat(weightInput.value) || 1.0" not in is_reg_factory
+    assert "is_reg: row.is_reg" in payload_factory
+    assert "settings: normalizeDatasetDefaults(row.settings || {})" in payload_factory
     assert "文本标注扩展名 / caption_extension" in caption_extension_factory
-    assert "高级兼容项：仅在 txt 来源或 auto 回退到文本 sidecar 时使用。" in caption_extension_factory
+    assert "createDatasetInlineHelpButton(helpDiv, '查看文本标注扩展名说明')" in caption_extension_factory
     assert "updateDatasetEditorRowsSettingValue(" in caption_extension_factory
     assert "datasetExperimentalScopeIndices(index)" in caption_extension_factory
     assert "'caption_extension'" in caption_extension_factory
@@ -2950,10 +3087,10 @@ def test_dataset_json_caption_switch_ui_is_wired() -> None:
     assert "num_repeats', input.value" not in row_factory
     assert "captions格式nl/tag权重调整" in mix_factory
     assert "自动识别 nl/tag" not in mix_factory
-    assert "面向 DiffPipeForge captions.json 的多标注数据集优化" in mix_factory
-    assert "按短标签串和自然语言句子判断 tag/nl" in mix_factory
-    assert "按比例抽样重建运行时 captions.json" in mix_factory
-    assert "写入 results.json" in mix_factory
+    assert "datasetLocalHelpSpec('nlTagMix')" in mix_factory
+    assert "面向 DiffPipeForge captions.json 的多标注数据集" in help_specs
+    assert "按 tag/nl 比例重建运行时 captions.json" in help_specs
+    assert "重建后的 captions.json 和 results.json" in help_specs
     assert "从同一父目录下的 tag/ 与 nl/ 固定抽样。" not in mix_factory
     assert "tag 占比" in mix_factory
     assert "ratioInput.type = 'range';" in mix_factory
@@ -2988,8 +3125,8 @@ def test_dataset_json_caption_switch_ui_is_wired() -> None:
     assert "function updateDatasetEditorRowTriggerClone" in source
     assert ".dataset-nl-tag-mix" in css
     assert ".dataset-nl-tag-summary" in css
-    assert "grid-template-columns: minmax(230px, 1fr) minmax(170px, 0.85fr) 70px auto;" in css
-    assert "grid-template-columns: repeat(5, minmax(124px, 1fr));" in css
+    assert "grid-template-columns: minmax(210px, 0.72fr) minmax(320px, 1.65fr) 86px auto;" in css
+    assert "grid-template-columns: repeat(auto-fit, minmax(154px, 1fr));" in css
     assert "grid-template-columns: repeat(4, minmax(118px, 1fr));" in css
     assert ".dataset-repeat-setting-field" in css
     assert "grid-column: auto;" in css
@@ -3005,12 +3142,14 @@ def test_dataset_editor_preserves_subset_filters_and_rederives_hidden_paths() ->
     source = APP_JS.read_text(encoding="utf-8")
     css = STYLE_CSS.read_text(encoding="utf-8")
     experimental_factory = _section(source, "function createDatasetExperimentalFeaturesEditor", "function createDatasetRowSettingsEditor")
+    advanced_body_factory = _section(source, "function createDatasetExperimentalAdvancedBody", "function datasetExperimentalOpenKey")
     filter_factory = _section(source, "function createDatasetPathFilterEditor", "function createDatasetRowSettingsEditor")
     normalize_factory = _section(source, "function normalizeDatasetEditorRows", "function normalizeDatasetRowSettings")
     defaults_factory = _section(source, "function normalizeDatasetDefaults", "function updateDatasetDefault")
     row_update_factory = _section(source, "function updateDatasetEditorRow(index", "function updateDatasetEditorRowSetting")
 
-    assert "createDatasetPathFilterEditor(row, index)" in experimental_factory
+    assert "createDatasetExperimentalAdvancedBody(row, index, overviewHelp)" in experimental_factory
+    assert "createDatasetPathFilterEditor(row, index)" in advanced_body_factory
     assert "递归扫描子目录 / recursive" in filter_factory
     assert "路径筛选 / path_pattern" in filter_factory
     assert "recursive: row.recursive !== false && row.recursive !== 'false'" in normalize_factory

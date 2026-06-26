@@ -11,6 +11,7 @@ const ctx = globalThis.ctx;
             if (!data.ok) throw new Error(data.error || '读取全局设置失败');
             globalSettings = data;
             applyGlobalSettingsToInputs(data);
+            uiScaleController?.applyScaleFromSettings?.(data);
             updateChoiceGuide();
             setGlobalSettingsStatus('', '');
             if (tomlManagerMode === 'output') {
@@ -37,6 +38,7 @@ const ctx = globalThis.ctx;
                 ...res,
             };
             applyGlobalSettingsToInputs(globalSettings);
+            uiScaleController?.applyScaleFromSettings?.(globalSettings);
             updateChoiceGuide();
             setGlobalSettingsStatus(res.message || '全局设置已保存', 'ok');
         } catch (e) {

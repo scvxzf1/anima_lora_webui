@@ -643,7 +643,8 @@ def _append_history_jsonl(self, filename: str, payload: dict[str, Any]) -> None:
     if not self.current_task_dir:
         return
     try:
+        from web.services.training_service import _json_safe_training_payload
         with (self.current_task_dir / filename).open("a", encoding="utf-8") as f:
-            f.write(json.dumps(payload, ensure_ascii=False) + "\n")
+            f.write(json.dumps(_json_safe_training_payload(payload), ensure_ascii=False) + "\n")
     except Exception:
         pass

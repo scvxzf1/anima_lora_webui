@@ -10,7 +10,11 @@ from einops.layers.torch import Rearrange
 from torch import nn
 import torch.nn.functional as F
 
-from torch.utils.checkpoint import checkpoint as torch_checkpoint
+from torch.utils.checkpoint import (
+    CheckpointPolicy,
+    checkpoint as torch_checkpoint,
+    create_selective_checkpoint_contexts,
+)
 
 from library.runtime import offloading as custom_offloading_utils
 from library.runtime.device import weighs_to_device
@@ -179,6 +183,208 @@ def _make_dynamic_seq_forward(compiled_inner, lo: int, hi: int):
         )
 
     return marked_forward
+
+
+ADAPTER_AWARE_CHECKPOINT_MAX_SAVE_NUMEL = 1_048_576
+
+
+def _iter_tensors(obj):
+    if isinstance(obj, torch.Tensor):
+        yield obj
+    elif isinstance(obj, (list, tuple)):
+        for item in obj:
+            yield from _iter_tensors(item)
+    elif isinstance(obj, dict):
+        for item in obj.values():
+            yield from _iter_tensors(item)
+
+
+def _safe_numel_from_shape(shape) -> Optional[int]:
+    try:
+        total = 1
+        for dim in shape:
+            total *= int(dim)
+        return int(total)
+    except Exception:
+        return None
+
+
+def _tensor_numel(tensor: torch.Tensor) -> Optional[int]:
+    try:
+        return int(tensor.numel())
+    except Exception:
+        return _safe_numel_from_shape(getattr(tensor, "shape", ()))
+
+
+def _broadcast_shape_numel(*shapes) -> Optional[int]:
+    try:
+        shape = torch.broadcast_shapes(*[torch.Size(s) for s in shapes])
+    except Exception:
+        return None
+    return _safe_numel_from_shape(shape)
+
+
+def _matmul_output_numel(lhs: torch.Tensor, rhs: torch.Tensor) -> Optional[int]:
+    """Best-effort matmul output size inference for checkpoint policy.
+
+    The policy must make the same decision during forward and recompute.  For
+    common projection ops we infer output sizes from input shapes instead of
+    looking at ``ctx.op_output`` (which is unavailable during recompute).
+    """
+    try:
+        a = tuple(lhs.shape)
+        b = tuple(rhs.shape)
+        if len(a) == 1 and len(b) == 1:
+            return 1
+        if len(a) == 1:
+            batch = b[:-2]
+            out_shape = (*batch, b[-1])
+        elif len(b) == 1:
+            batch = a[:-2]
+            out_shape = (*batch, a[-2])
+        else:
+            batch = torch.broadcast_shapes(torch.Size(a[:-2]), torch.Size(b[:-2]))
+            out_shape = (*batch, a[-2], b[-1])
+        return _safe_numel_from_shape(out_shape)
+    except Exception:
+        return None
+
+
+def _einsum_output_numel(equation: str, operands) -> Optional[int]:
+    """Infer the few adapter einsums used by LoRA-family expert modules."""
+    try:
+        tensors = list(operands)
+        if equation == "...i,eri->...er":
+            x, w = tensors
+            return _safe_numel_from_shape(
+                (*tuple(x.shape[:-1]), w.shape[0], w.shape[1])
+            )
+        if equation == "...er,eor->...o":
+            x, w = tensors
+            return _safe_numel_from_shape((*tuple(x.shape[:-2]), w.shape[1]))
+        if equation == "...j,eij->...ei":
+            x, w = tensors
+            return _safe_numel_from_shape(
+                (*tuple(x.shape[:-1]), w.shape[0], w.shape[1])
+            )
+        if equation == "ejr,...er->...j":
+            w, x = tensors
+            return _safe_numel_from_shape((*tuple(x.shape[:-2]), w.shape[1]))
+        if equation == "be,eor->bor":
+            gate, w = tensors
+            return _safe_numel_from_shape((gate.shape[0], w.shape[1], w.shape[2]))
+    except Exception:
+        return None
+    return None
+
+
+def _adapter_aware_estimated_output_numel(op, args, kwargs) -> Optional[int]:
+    name = str(op)
+    try:
+        if name == "aten.mm.default":
+            return _safe_numel_from_shape((args[0].shape[0], args[1].shape[1]))
+        if name == "aten.addmm.default":
+            return _safe_numel_from_shape((args[1].shape[0], args[2].shape[1]))
+        if name == "aten.bmm.default":
+            return _safe_numel_from_shape(
+                (args[0].shape[0], args[0].shape[1], args[1].shape[2])
+            )
+        if name == "aten.matmul.default":
+            return _matmul_output_numel(args[0], args[1])
+        if name == "aten.linear.default":
+            inp, weight = args[0], args[1]
+            return _safe_numel_from_shape((*tuple(inp.shape[:-1]), weight.shape[0]))
+        if name == "aten.linalg_solve.default":
+            return _tensor_numel(args[1])
+        if name in {"aten.linalg_solve_ex.default", "aten._linalg_solve_ex.default"}:
+            return _tensor_numel(args[1])
+        if name == "aten.einsum.default":
+            operands = args[1] if len(args) > 1 else kwargs.get("operands")
+            return _einsum_output_numel(str(args[0]), operands)
+        if name == "aten.cat.default":
+            return sum((_tensor_numel(t) or 0) for t in args[0])
+        if name == "aten.stack.default":
+            return sum((_tensor_numel(t) or 0) for t in args[0])
+        if name == "aten.expand.default":
+            return _safe_numel_from_shape(args[1])
+    except Exception:
+        return None
+
+    # Unary / elementwise / view-like ops: output is no larger than the first
+    # tensor input.  Saving small rank/router tensors here lets LoRA custom
+    # autograd boundaries keep their cheap intermediates while large DiT
+    # activations still recompute.
+    first_tensor = next(_iter_tensors(args), None)
+    if first_tensor is None:
+        return None
+    same_shape_prefixes = (
+        "aten._to_copy.",
+        "aten.clone.",
+        "aten.contiguous.",
+        "aten.detach.",
+        "aten.view.",
+        "aten.reshape.",
+        "aten.permute.",
+        "aten.transpose.",
+        "aten.t.",
+        "aten.unsqueeze.",
+        "aten.squeeze.",
+        "aten.slice.",
+        "aten.select.",
+        "aten.add.",
+        "aten.sub.",
+        "aten.mul.",
+        "aten.div.",
+        "aten.neg.",
+        "aten.pow.",
+        "aten.sqrt.",
+        "aten.rsqrt.",
+        "aten.gelu.",
+        "aten.silu.",
+        "aten.relu.",
+        "aten._softmax.",
+        "aten.softmax.",
+        "aten.dropout.",
+        "aten.native_dropout.",
+        "aten.mean.",
+        "aten.sum.",
+    )
+    if name.startswith(same_shape_prefixes):
+        if name.startswith(("aten.add.", "aten.sub.", "aten.mul.", "aten.div.")):
+            tensor_args = [t for t in _iter_tensors(args)]
+            return _broadcast_shape_numel(*[tuple(t.shape) for t in tensor_args])
+        return _tensor_numel(first_tensor)
+    return None
+
+
+def _adapter_aware_checkpoint_policy(max_save_numel: int):
+    max_save_numel = int(max(0, max_save_numel))
+
+    def policy(ctx, op, *args, **kwargs):
+        if max_save_numel <= 0:
+            return CheckpointPolicy.PREFER_RECOMPUTE
+        if not any(getattr(t, "requires_grad", False) for t in _iter_tensors(args)):
+            return CheckpointPolicy.PREFER_RECOMPUTE
+        numel = _adapter_aware_estimated_output_numel(op, args, kwargs)
+        if numel is not None and 0 < numel <= max_save_numel:
+            return CheckpointPolicy.MUST_SAVE
+        return CheckpointPolicy.PREFER_RECOMPUTE
+
+    return policy
+
+
+def _adapter_aware_checkpoint_context(
+    max_save_numel: int = ADAPTER_AWARE_CHECKPOINT_MAX_SAVE_NUMEL,
+):
+    """Selective activation-checkpoint context for adapter training.
+
+    Large DiT activations (attention Q/K/V, attention outputs, MLP hidden
+    states) are recomputed.  Small trainable intermediates are cached: LoRA
+    rank activations, router logits/weights, and Ortho/FeRA small matrices.
+    """
+    return create_selective_checkpoint_contexts(
+        _adapter_aware_checkpoint_policy(max_save_numel)
+    )
 
 
 @torch.compiler.disable(recursive=True)
@@ -1022,6 +1228,10 @@ class Block(nn.Module):
         self.gradient_checkpointing = False
         self.cpu_offload_checkpointing = False
         self.unsloth_offload_checkpointing = False
+        self.adapter_aware_checkpointing = False
+        self.adapter_aware_checkpoint_max_save_numel = (
+            ADAPTER_AWARE_CHECKPOINT_MAX_SAVE_NUMEL
+        )
         self.mlp_checkpointing = False
         self.mlp.layer1_checkpointing = False
         self._peak_probe = None
@@ -1033,6 +1243,7 @@ class Block(nn.Module):
         self.gradient_checkpointing = True
         self.cpu_offload_checkpointing = cpu_offload if not unsloth_offload else False
         self.unsloth_offload_checkpointing = unsloth_offload
+        self.adapter_aware_checkpointing = False
         self.mlp_checkpointing = False
         self.mlp.layer1_checkpointing = False
 
@@ -1040,6 +1251,7 @@ class Block(nn.Module):
         self.gradient_checkpointing = False
         self.cpu_offload_checkpointing = False
         self.unsloth_offload_checkpointing = False
+        self.adapter_aware_checkpointing = False
         self.mlp_checkpointing = False
         self.mlp.layer1_checkpointing = False
 
@@ -1047,6 +1259,7 @@ class Block(nn.Module):
         self.gradient_checkpointing = False
         self.cpu_offload_checkpointing = False
         self.unsloth_offload_checkpointing = False
+        self.adapter_aware_checkpointing = False
         self.mlp_checkpointing = True
         self.mlp.layer1_checkpointing = False
 
@@ -1054,8 +1267,22 @@ class Block(nn.Module):
         self.gradient_checkpointing = False
         self.cpu_offload_checkpointing = False
         self.unsloth_offload_checkpointing = False
+        self.adapter_aware_checkpointing = False
         self.mlp_checkpointing = False
         self.mlp.layer1_checkpointing = True
+
+    def enable_adapter_aware_checkpointing(
+        self,
+        *,
+        max_save_numel: int = ADAPTER_AWARE_CHECKPOINT_MAX_SAVE_NUMEL,
+    ) -> None:
+        self.gradient_checkpointing = False
+        self.cpu_offload_checkpointing = False
+        self.unsloth_offload_checkpointing = False
+        self.adapter_aware_checkpointing = True
+        self.adapter_aware_checkpoint_max_save_numel = int(max_save_numel)
+        self.mlp_checkpointing = False
+        self.mlp.layer1_checkpointing = False
 
     def reset_parameters(self) -> None:
         self.layer_norm_self_attn.reset_parameters()
@@ -1292,6 +1519,24 @@ class Block(nn.Module):
         rope_cos_sin: Optional[tuple[torch.Tensor, torch.Tensor]] = None,
         adaln_lora_B_T_3D: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
+        if (
+            torch.is_grad_enabled()
+            and self.training
+            and self.adapter_aware_checkpointing
+        ):
+            return torch_checkpoint(
+                self._forward,
+                x_B_T_H_W_D,
+                emb_B_T_D,
+                crossattn_emb,
+                attn_params,
+                rope_cos_sin,
+                adaln_lora_B_T_3D,
+                use_reentrant=False,
+                context_fn=lambda: _adapter_aware_checkpoint_context(
+                    self.adapter_aware_checkpoint_max_save_numel
+                ),
+            )
         if torch.is_grad_enabled() and self.training and self.gradient_checkpointing:
             if self.unsloth_offload_checkpointing:
                 # Unsloth: async non-blocking CPU RAM offload (fastest offload method)
@@ -1596,9 +1841,11 @@ class Anima(nn.Module):
         mode = str(mode or "off").strip().lower()
         valid_modes = {
             "off",
+            "adapter_aware",
             "every_other",
             "mlp_only",
             "mlp_layer1_only",
+            "peak_blocks_adapter_aware",
             "peak_blocks_mlp",
             "peak_blocks_mlp_layer1",
         }
@@ -1616,12 +1863,18 @@ class Anima(nn.Module):
             )
         for idx, block in enumerate(self.blocks):
             block.disable_gradient_checkpointing()
-            if mode == "every_other" and idx % 2 == 0:
-                block.enable_gradient_checkpointing(cpu_offload=False, unsloth_offload=False)
+            if mode == "adapter_aware":
+                block.enable_adapter_aware_checkpointing()
+            elif mode == "every_other" and idx % 2 == 0:
+                block.enable_gradient_checkpointing(
+                    cpu_offload=False, unsloth_offload=False
+                )
             elif mode == "mlp_only":
                 block.enable_mlp_checkpointing()
             elif mode == "mlp_layer1_only":
                 block.enable_mlp_layer1_checkpointing()
+            elif mode == "peak_blocks_adapter_aware" and idx in peak_block_indices:
+                block.enable_adapter_aware_checkpointing()
             elif mode == "peak_blocks_mlp" and idx in peak_block_indices:
                 block.enable_mlp_checkpointing()
             elif mode == "peak_blocks_mlp_layer1" and idx in peak_block_indices:

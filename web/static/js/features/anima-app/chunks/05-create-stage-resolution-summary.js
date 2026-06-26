@@ -435,56 +435,84 @@ const ctx = globalThis.ctx;
         return btn;
     }
 
-    globalThis.createResourceQuickPresetsButton = function createResourceQuickPresetsButton(content, collapseBtn) {
+    globalThis.createConfigQuickPresetsButton = function createConfigQuickPresetsButton(options, content, collapseBtn) {
+        const groupName = options.groupName || '';
         const btn = document.createElement('button');
-        btn.id = 'btn-resource-quick-presets';
+        if (options.id) btn.id = options.id;
         btn.type = 'button';
-        btn.className = 'btn btn-small config-group-title-action config-resource-quick-toggle';
-        btn.textContent = '快速填写';
-        btn.title = '显示显存与速度优化预设，一键填写当前表单';
+        btn.className = ['btn btn-small config-group-title-action config-quick-preset-toggle', options.className || ''].filter(Boolean).join(' ');
+        btn.textContent = options.text || '快速填写';
+        btn.title = options.showTitle || `显示${groupName}预设，一键填写当前表单`;
         btn.setAttribute('aria-expanded', 'false');
         btn.addEventListener('click', () => {
-            const panel = content.querySelector('.config-resource-quick-presets');
+            const panel = content.querySelector(`.${options.panelClass}`);
             if (!panel) return;
             const nextVisible = panel.hidden;
             panel.hidden = !nextVisible;
             btn.classList.toggle('active', nextVisible);
             btn.setAttribute('aria-expanded', String(nextVisible));
-            btn.title = nextVisible ? '收起显存与速度优化快速预设' : '显示显存与速度优化预设，一键填写当前表单';
+            btn.title = nextVisible
+                ? (options.hideTitle || `收起${groupName}快速预设`)
+                : (options.showTitle || `显示${groupName}预设，一键填写当前表单`);
             if (nextVisible && content.hidden) {
                 content.hidden = false;
                 collapseBtn.textContent = '收起';
                 collapseBtn.setAttribute('aria-expanded', 'true');
                 collapseBtn.title = '收起这个配置区';
-                configFormState.expandedGroups.add('显存与速度优化');
-                configFormState.collapsedGroups.delete('显存与速度优化');
+                if (groupName) {
+                    configFormState.expandedGroups.add(groupName);
+                    configFormState.collapsedGroups.delete(groupName);
+                }
             }
         });
         return btn;
     }
 
-    globalThis.createResourceQuickPresetPanel = function createResourceQuickPresetPanel() {
+    globalThis.createConfigQuickPresetPanel = function createConfigQuickPresetPanel(options) {
         const panel = document.createElement('div');
-        panel.className = 'config-resource-quick-presets';
+        panel.className = ['config-quick-presets', options.panelClass || ''].filter(Boolean).join(' ');
         panel.hidden = true;
-        panel.setAttribute('aria-label', '显存与速度优化快速预设');
+        panel.setAttribute('aria-label', options.ariaLabel || `${options.groupName || '配置'}快速预设`);
 
         const label = document.createElement('span');
-        label.className = 'config-resource-quick-label';
-        label.textContent = '快速预设';
+        label.className = 'config-quick-label';
+        label.textContent = options.label || '快速预设';
         panel.appendChild(label);
 
-        for (const preset of RESOURCE_QUICK_PRESETS) {
+        for (const preset of options.presets || []) {
             const btn = document.createElement('button');
             btn.type = 'button';
-            btn.className = 'btn btn-small config-resource-preset-btn';
-            btn.dataset.resourcePreset = preset.id;
+            btn.className = 'btn btn-small config-quick-preset-btn';
+            if (options.datasetKey) btn.dataset[options.datasetKey] = preset.id;
             btn.textContent = preset.label;
             btn.title = preset.note;
-            btn.addEventListener('click', () => applyResourceQuickPreset(preset));
+            btn.addEventListener('click', () => options.applyPreset(preset));
             panel.appendChild(btn);
         }
         return panel;
+    }
+
+    globalThis.createResourceQuickPresetsButton = function createResourceQuickPresetsButton(content, collapseBtn) {
+        return createConfigQuickPresetsButton({
+            id: 'btn-resource-quick-presets',
+            className: 'config-resource-quick-toggle',
+            panelClass: 'config-resource-quick-presets',
+            groupName: '显存与速度优化',
+            showTitle: '显示显存与速度优化预设，一键填写当前表单',
+            hideTitle: '收起显存与速度优化快速预设',
+        }, content, collapseBtn);
+    }
+
+    globalThis.createResourceQuickPresetPanel = function createResourceQuickPresetPanel() {
+        return createConfigQuickPresetPanel({
+            panelClass: 'config-resource-quick-presets',
+            groupName: '显存与速度优化',
+            ariaLabel: '显存与速度优化快速预设',
+            label: '快速预设',
+            presets: RESOURCE_QUICK_PRESETS,
+            datasetKey: 'resourcePreset',
+            applyPreset: applyResourceQuickPreset,
+        });
     }
 
     globalThis.applyResourceQuickPreset = function applyResourceQuickPreset(preset) {
@@ -508,4 +536,36 @@ const ctx = globalThis.ctx;
             return strongerSelectiveCheckpointValue(resourceQuickCurrentValue(key), value);
         }
         return value;
+    }
+
+    globalThis.createNoDatasetRegularizationQuickPresetsButton = function createNoDatasetRegularizationQuickPresetsButton(content, collapseBtn) {
+        return createConfigQuickPresetsButton({
+            id: 'btn-no-dataset-regularization-quick-presets',
+            className: 'config-no-dataset-regularization-quick-toggle',
+            panelClass: 'config-no-dataset-regularization-quick-presets',
+            groupName: '无数据集正则化',
+            showTitle: '显示无数据集正则化预设，一键填写当前表单',
+            hideTitle: '收起无数据集正则化快速预设',
+        }, content, collapseBtn);
+    }
+
+    globalThis.createNoDatasetRegularizationQuickPresetPanel = function createNoDatasetRegularizationQuickPresetPanel() {
+        return createConfigQuickPresetPanel({
+            panelClass: 'config-no-dataset-regularization-quick-presets',
+            groupName: '无数据集正则化',
+            ariaLabel: '无数据集正则化快速预设',
+            label: '快速填写',
+            presets: NO_DATASET_REGULARIZATION_QUICK_PRESETS,
+            datasetKey: 'noDatasetRegularizationPreset',
+            applyPreset: applyNoDatasetRegularizationQuickPreset,
+        });
+    }
+
+    globalThis.applyNoDatasetRegularizationQuickPreset = function applyNoDatasetRegularizationQuickPreset(preset) {
+        for (const [key, value] of Object.entries(preset.values || {})) {
+            setFieldInputValue(key, value);
+        }
+        handleFormFieldChange();
+        const extra = preset.id === 'dop_roles' ? '，还需要填写 DOP 类提示并重新生成文本缓存' : '';
+        setTomlStatus('ok', `已填写无数据集正则化预设: ${preset.label}${extra}`);
     }

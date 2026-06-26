@@ -299,12 +299,32 @@ def _posix(path: str) -> str:
 
 
 def _display_path(path: str) -> str:
-    """Return repo-relative provenance when the path lives under ANIMA_HOME."""
+    """Return repo-relative provenance when the path lives under ANIMA_HOME.
+
+    When the path is under an externalized configs root, returns 'configs/...'
+    format for consistency with the default in-repo layout.
+    """
+    from library.env import get_configs_root
+
+    resolved = pathlib.Path(path).resolve()
+
+    # 先尝试相对于项目根目录
     try:
-        rel = pathlib.Path(path).resolve().relative_to(anima_home())
+        rel = resolved.relative_to(anima_home())
         return _posix(str(rel))
     except ValueError:
-        return _posix(path)
+        pass
+
+    # 如果在外置配置目录下，返回 configs/... 格式
+    try:
+        configs_root = get_configs_root().resolve()
+        rel_to_configs = resolved.relative_to(configs_root)
+        return _posix(f"configs/{rel_to_configs}")
+    except ValueError:
+        pass
+
+    # 其他情况返回绝对路径
+    return _posix(str(resolved))
 
 
 def _resolve_preset(preset: str, configs_dir: str = "configs") -> tuple[dict, str, str]:

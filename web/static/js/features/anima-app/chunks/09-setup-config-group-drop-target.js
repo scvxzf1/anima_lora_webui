@@ -327,6 +327,7 @@ const ctx = globalThis.ctx;
     globalThis.renderDatasetEditor = function renderDatasetEditor(existingPanel = null) {
         const panel = existingPanel || document.getElementById('dataset-editor');
         if (!panel) return;
+        captureDatasetExperimentalOpenStates(panel);
         panel.innerHTML = '';
         const state = datasetEditorStateForActivePanel();
 
@@ -394,6 +395,32 @@ const ctx = globalThis.ctx;
         if (isDatasetTabActive()) {
             renderDatasetPresetHeader();
         }
+    }
+
+    globalThis.refreshDatasetEditorItem = function refreshDatasetEditorItem(index) {
+        const panel = document.getElementById('dataset-editor');
+        if (!panel) return false;
+        const state = datasetEditorStateForActivePanel();
+        if (state.loading || state.error) return false;
+        const rows = normalizeDatasetEditorRows(state.datasets);
+        const row = rows[index];
+        if (!row) return false;
+        const list = panel.querySelector('.dataset-editor-list');
+        const currentItem = list?.querySelector(`.dataset-editor-item[data-index="${index}"]`);
+        if (!list || !currentItem) return false;
+        const nextItem = createDatasetEditorItem(row, index);
+        list.replaceChild(nextItem, currentItem);
+        return true;
+    }
+
+    globalThis.refreshDatasetEditorItems = function refreshDatasetEditorItems(indices) {
+        const targets = datasetValidTargetIndices(indices, normalizeDatasetEditorRows(datasetEditorStateForActivePanel().datasets).length);
+        if (!targets.length) return false;
+        let updated = false;
+        for (const index of targets) {
+            updated = refreshDatasetEditorItem(index) || updated;
+        }
+        return updated;
     }
 
     globalThis.datasetEditorStateForActivePanel = function datasetEditorStateForActivePanel() {

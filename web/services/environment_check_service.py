@@ -18,7 +18,7 @@ from web.services import config_service as _config_service
 ROOT = _config_service.ROOT
 
 PREPROCESS_ENV_CHECK_KEY = "preprocess_environment"
-PROJECT_FILE_CHECKS = ("pyproject.toml", "uv.lock", "tasks.py", *PREPROCESS_ENV_REQUIRED_FILES)
+PROJECT_FILE_CHECKS = tuple(dict.fromkeys(("pyproject.toml", "uv.lock", *PREPROCESS_ENV_REQUIRED_FILES)))
 CORE_IMPORT_MODULES = ("torch", "aiohttp", "toml", "accelerate", "safetensors", "transformers", "diffusers", "PIL")
 MODEL_PATH_CHECKS = (
     ("pretrained_model_name_or_path", "基础 DiT 模型", (".safetensors", ".pt", ".pth", ".ckpt")),
@@ -48,7 +48,7 @@ def run_environment_check() -> dict[str, Any]:
         "project_python": resolve_web_python_executable(),
         "venv_python": str(venv_python_path() or ""),
         "project_root": str(ROOT),
-        "cuda_track": "cu130",
+        "cuda_track": "unknown",
     }
     pv = info["python_version"].split(".")[:2]
     if tuple(int(x) for x in pv) != (3, 13):
@@ -91,6 +91,7 @@ def run_environment_check() -> dict[str, Any]:
             else:
                 add("error", f"pkg_{name}", f"{name}: {mod.get('error','')}", group="python_packages", hint="uv sync")
         tc = probe.get("torch_cuda", {})
+        info["cuda_track"] = _cuda_track_from_probe(tc)
         if tc.get("available"):
             add("ok", "cuda_available", "PyTorch CUDA 可用", group="gpu_stack", detail=str(tc.get("devices")))
         else:
@@ -186,10 +187,34 @@ def _check_model_paths(add: Callable[..., None]) -> None:
 
 def _load_model_path_settings() -> dict[str, str]:
     settings: dict[str, str] = {}
-    base = _read_toml(ROOT / "configs" / "base.toml")
+    try:
+        from web.services.settings_service import get_global_settings
+
+        global_settings = get_global_settings()
+    except Exception:
+        global_settings = {}
+    defaults = global_settings.get("defaults") if isinstance(global_settings.get("defaults"), dict) else {}
+    for key, _, _ in MODEL_PATH_CHECKS:
+        settings[key] = str(defaults.get(key) or "").strip()
+    for key, _, _ in MODEL_PATH_CHECKS:
+        if key in global_settings:
+            value = str(global_settings.get(key) or "").strip()
+            if value:
+                settings[key] = value
+    for root in _model_path_config_roots():
+        root_settings = _load_model_path_settings_from_config_root(root)
+        for key, _, _ in MODEL_PATH_CHECKS:
+            if not settings.get(key) and root_settings.get(key):
+                settings[key] = root_settings[key]
+    return settings
+
+
+def _load_model_path_settings_from_config_root(configs_root: Path) -> dict[str, str]:
+    settings: dict[str, str] = {}
+    base = _read_toml(configs_root / "base.toml")
     for key, _, _ in MODEL_PATH_CHECKS:
         settings[key] = str(base.get(key) or "").strip()
-    web_settings = _read_toml(ROOT / "configs" / "web-ui-settings.toml")
+    web_settings = _read_toml(configs_root / "web-ui-settings.toml")
     section = web_settings.get("global") if isinstance(web_settings.get("global"), dict) else {}
     for key, _, _ in MODEL_PATH_CHECKS:
         if key in section:
@@ -197,6 +222,35 @@ def _load_model_path_settings() -> dict[str, str]:
             if value:
                 settings[key] = value
     return settings
+
+
+def _model_path_config_roots() -> list[Path]:
+    roots: list[Path] = []
+    try:
+        from library.env import get_configs_root
+
+        roots.append(get_configs_root())
+    except Exception:
+        pass
+    try:
+        from web.services import settings_service
+
+        roots.append(settings_service.SETTINGS_FILE.parent)
+    except Exception:
+        pass
+    roots.append(ROOT / "configs")
+    unique: list[Path] = []
+    seen: set[str] = set()
+    for root in roots:
+        try:
+            marker = str(root.resolve())
+        except OSError:
+            marker = str(root)
+        if marker in seen:
+            continue
+        seen.add(marker)
+        unique.append(root)
+    return unique
 
 
 def _read_toml(path: Path) -> dict[str, Any]:
@@ -214,6 +268,16 @@ def _resolve_project_path(value: str) -> Path:
     if expanded.is_absolute():
         return expanded.resolve()
     return (ROOT / expanded).resolve()
+
+
+def _cuda_track_from_probe(torch_cuda: dict[str, Any]) -> str:
+    version = str(torch_cuda.get("runtime_version") or "").strip()
+    if not version:
+        return "unknown"
+    parts = version.split(".")
+    if len(parts) < 2 or not parts[0].isdigit() or not parts[1].isdigit():
+        return "unknown"
+    return f"cu{int(parts[0])}{int(parts[1])}"
 
 
 
@@ -238,9 +302,10 @@ try:
     out['torch_cuda'] = {{
         'available': bool(torch.cuda.is_available()),
         'devices': [torch.cuda.get_device_name(i) for i in range(torch.cuda.device_count())] if torch.cuda.is_available() else [],
+        'runtime_version': torch.version.cuda or '',
     }}
 except Exception as e:
-    out['torch_cuda'] = {{'error': str(e), 'available': False, 'devices': []}}
+    out['torch_cuda'] = {{'error': str(e), 'available': False, 'devices': [], 'runtime_version': ''}}
 print(json.dumps(out))
 """
     try:

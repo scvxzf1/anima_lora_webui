@@ -242,9 +242,15 @@ def first_float_field(record: dict[str, Any], keys: tuple[str, ...]) -> float | 
 
 def extract_float_metric(text: str, names: tuple[str, ...]) -> float | None:
     for name in names:
-        match = re.search(rf"{re.escape(name)}[=:/\s]+([\d.eE\-+]+)", text, re.IGNORECASE)
+        match = re.search(
+            rf"{re.escape(name)}[=:/\s]+([+\-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+\-]?\d+)?|[+\-]?nan|[+\-]?inf(?:inity)?)",
+            text,
+            re.IGNORECASE,
+        )
         if match:
-            return float(match.group(1))
+            raw = match.group(1)
+            value = float(raw)
+            return value
     return None
 
 

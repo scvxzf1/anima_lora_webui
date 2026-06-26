@@ -294,6 +294,7 @@ class _FakeCheckpointBlock:
         self.gradient_checkpointing = True
         self.cpu_offload_checkpointing = cpu_offload
         self.unsloth_offload_checkpointing = unsloth_offload
+        self.adapter_aware_checkpointing = False
         self.mlp_checkpointing = False
         self.mlp_layer1_checkpointing = False
 
@@ -301,6 +302,7 @@ class _FakeCheckpointBlock:
         self.gradient_checkpointing = False
         self.cpu_offload_checkpointing = False
         self.unsloth_offload_checkpointing = False
+        self.adapter_aware_checkpointing = False
         self.mlp_checkpointing = False
         self.mlp_layer1_checkpointing = False
 
@@ -308,6 +310,7 @@ class _FakeCheckpointBlock:
         self.gradient_checkpointing = False
         self.cpu_offload_checkpointing = False
         self.unsloth_offload_checkpointing = False
+        self.adapter_aware_checkpointing = False
         self.mlp_checkpointing = True
         self.mlp_layer1_checkpointing = False
 
@@ -315,8 +318,17 @@ class _FakeCheckpointBlock:
         self.gradient_checkpointing = False
         self.cpu_offload_checkpointing = False
         self.unsloth_offload_checkpointing = False
+        self.adapter_aware_checkpointing = False
         self.mlp_checkpointing = False
         self.mlp_layer1_checkpointing = True
+
+    def enable_adapter_aware_checkpointing(self) -> None:
+        self.gradient_checkpointing = False
+        self.cpu_offload_checkpointing = False
+        self.unsloth_offload_checkpointing = False
+        self.adapter_aware_checkpointing = True
+        self.mlp_checkpointing = False
+        self.mlp_layer1_checkpointing = False
 
 
 def test_selective_checkpoint_modes_set_block_flags() -> None:
@@ -336,6 +348,14 @@ def test_selective_checkpoint_modes_set_block_flags() -> None:
     assert not any(block.mlp_checkpointing for block in model.blocks)
     assert not any(block.cpu_offload_checkpointing for block in model.blocks)
     assert not any(block.unsloth_offload_checkpointing for block in model.blocks)
+    assert not any(block.adapter_aware_checkpointing for block in model.blocks)
+
+    Anima.enable_selective_checkpointing(model, "adapter_aware")
+    assert model.selective_checkpoint == "adapter_aware"
+    assert not any(block.gradient_checkpointing for block in model.blocks)
+    assert all(block.adapter_aware_checkpointing for block in model.blocks)
+    assert not any(block.mlp_checkpointing for block in model.blocks)
+    assert not any(block.mlp_layer1_checkpointing for block in model.blocks)
 
     Anima.enable_selective_checkpointing(model, "mlp_only")
     assert model.selective_checkpoint == "mlp_only"
@@ -373,11 +393,26 @@ def test_selective_checkpoint_modes_set_block_flags() -> None:
     ]
     assert not any(block.mlp_layer1_checkpointing for block in model.blocks)
 
+    Anima.enable_selective_checkpointing(
+        model,
+        "peak_blocks_adapter_aware",
+        blocks="0,3",
+    )
+    assert model.selective_checkpoint == "peak_blocks_adapter_aware"
+    assert [block.adapter_aware_checkpointing for block in model.blocks] == [
+        True,
+        False,
+        False,
+        True,
+    ]
+    assert not any(block.gradient_checkpointing for block in model.blocks)
+
     Anima.enable_selective_checkpointing(model, "off")
     assert model.selective_checkpoint == "off"
     assert not any(block.gradient_checkpointing for block in model.blocks)
     assert not any(block.mlp_checkpointing for block in model.blocks)
     assert not any(block.mlp_layer1_checkpointing for block in model.blocks)
+    assert not any(block.adapter_aware_checkpointing for block in model.blocks)
 
 
 def test_peak_probe_attachment_sets_block_indices() -> None:
@@ -392,6 +427,90 @@ def test_peak_probe_attachment_sets_block_indices() -> None:
     assert model._peak_probe is probe
     assert [block._peak_probe for block in model.blocks] == [probe, probe, probe]
     assert [block._block_idx for block in model.blocks] == [0, 1, 2]
+
+
+def test_adapter_aware_checkpoint_policy_saves_only_small_trainable_ops() -> None:
+    import torch
+    from torch.utils.checkpoint import CheckpointPolicy
+
+    from library.anima.models import _adapter_aware_checkpoint_policy
+
+    class _Ctx:
+        is_recompute = True
+        op_output = None
+
+    policy = _adapter_aware_checkpoint_policy(max_save_numel=128)
+    small_x = torch.randn(4, 32, requires_grad=True)
+    small_w = torch.randn(32, 8, requires_grad=True)
+    large_w = torch.randn(32, 1024, requires_grad=True)
+    frozen_x = torch.randn(4, 32)
+    frozen_w = torch.randn(32, 8)
+
+    assert (
+        policy(_Ctx(), torch.ops.aten.mm.default, small_x, small_w)
+        is CheckpointPolicy.MUST_SAVE
+    )
+    assert (
+        policy(_Ctx(), torch.ops.aten.mm.default, small_x, large_w)
+        is CheckpointPolicy.PREFER_RECOMPUTE
+    )
+    assert (
+        policy(_Ctx(), torch.ops.aten.mm.default, frozen_x, frozen_w)
+        is CheckpointPolicy.PREFER_RECOMPUTE
+    )
+
+
+def test_adapter_aware_checkpoint_matches_eager_block_forward_backward() -> None:
+    import copy
+
+    import torch
+
+    from library.anima.models import Block
+    from networks.attention_dispatch import AttentionParams
+    from networks.lora_modules.lora import LoRAModule
+
+    def attach_loras(block: Block) -> None:
+        for name, linear in [
+            ("self_qkv", block.self_attn.qkv_proj),
+            ("cross_q", block.cross_attn.q_proj),
+            ("mlp1", block.mlp.layer1),
+        ]:
+            module = LoRAModule(name, linear, lora_dim=2, alpha=2)
+            module.apply_to()
+            block.add_module(f"_test_lora_{name}", module)
+
+    torch.manual_seed(0)
+    eager = Block(x_dim=8, context_dim=8, num_heads=2, mlp_ratio=2.0)
+    attach_loras(eager)
+    eager.train()
+    checkpointed = copy.deepcopy(eager)
+    checkpointed.enable_adapter_aware_checkpointing()
+
+    x = torch.randn(2, 1, 3, 1, 8, requires_grad=True)
+    emb = torch.randn(2, 1, 8, requires_grad=True)
+    context = torch.randn(2, 5, 8, requires_grad=True)
+    x_ckpt = x.detach().clone().requires_grad_(True)
+    emb_ckpt = emb.detach().clone().requires_grad_(True)
+    context_ckpt = context.detach().clone().requires_grad_(True)
+    attn_params = AttentionParams.create_attention_params("torch")
+
+    eager_out = eager(x, emb, context, attn_params)
+    ckpt_out = checkpointed(x_ckpt, emb_ckpt, context_ckpt, attn_params)
+    torch.testing.assert_close(ckpt_out, eager_out)
+
+    eager_out.square().mean().backward()
+    ckpt_out.square().mean().backward()
+
+    torch.testing.assert_close(x_ckpt.grad, x.grad)
+    torch.testing.assert_close(emb_ckpt.grad, emb.grad)
+    torch.testing.assert_close(context_ckpt.grad, context.grad)
+    for (name, eager_param), (ckpt_name, ckpt_param) in zip(
+        eager.named_parameters(), checkpointed.named_parameters()
+    ):
+        assert ckpt_name == name
+        if eager_param.grad is None and ckpt_param.grad is None:
+            continue
+        torch.testing.assert_close(ckpt_param.grad, eager_param.grad)
 
 
 def test_block_swap_compile_mode_is_downgraded_for_cudagraph_modes(caplog) -> None:

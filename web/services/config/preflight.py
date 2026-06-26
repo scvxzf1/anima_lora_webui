@@ -426,7 +426,9 @@ def _config_file_path(config_file: str | None) -> Path | None:
         resolved = path.resolve()
     else:
         normalized = _normalize_config_rel_path(raw)
-        resolved = (ROOT / normalized).resolve()
+        resolved = _config_path_from_display_path(normalized)
+        if resolved is None:
+            resolved = (ROOT / normalized).resolve()
     if _is_output_run_snapshot_config(resolved) and resolved.name != OUTPUT_RUN_CONFIG_FILES["runtime"][0]:
         raise ValueError("训练输出目录只能使用 config.runtime.toml 作为训练配置")
     if not _is_allowed_training_config_path(resolved):
@@ -438,13 +440,34 @@ def _config_file_path(config_file: str | None) -> Path | None:
     return resolved
 
 
+def _config_path_from_display_path(normalized: str) -> Path | None:
+    if normalized == "configs" or normalized.startswith("configs/"):
+        return _safe_resolve(normalized)
+    return None
+
+
 def _is_allowed_training_config_path(path: Path) -> bool:
     resolved = path.resolve()
+
+    # 1. 检查是否在项目根目录下
     try:
         resolved.relative_to(ROOT.resolve())
         return True
     except ValueError:
         pass
+
+    # 2. 检查是否在配置目录下（支持外置配置）
+    # 使用同步后的 CONFIGS_DIR，它会在 _exported 装饰器中更新
+    # 注意：即使 configs/ 是指向外部目录的符号链接，resolve() 也会返回相同的真实路径
+    # 因此这个检查能覆盖符号链接和真实外部目录两种情况
+    try:
+        configs_root = CONFIGS_DIR.resolve()
+        resolved.relative_to(configs_root)
+        return True
+    except (ValueError, AttributeError):
+        pass
+
+    # 3. 检查是否在全局输出目录下
     try:
         rel_to_output = resolved.relative_to(resolve_output_root().resolve())
     except ValueError:

@@ -90,6 +90,7 @@ from library.training.router_conditioning import apply_router_conditioning
 from library.training.text_conds import prepare_text_conds
 from library.training.forward_kwargs import build_forward_kwargs
 from library.training.inversion_forward import compute_inversion_func_loss
+from library.training.prior_preservation_forward import run_prior_preservation_forward
 from library.training.vr_forward import run_vr_reference_forward
 from library.log import setup_logging, add_logging_arguments
 
@@ -308,6 +309,10 @@ class AnimaTrainer:
                 logs["vr/lambda_ema"] = lambda_ema
             if isinstance(lambda_batch, float):
                 logs["vr/lambda_batch"] = lambda_batch
+        if float(getattr(args, "prior_preservation_weight", 0.0) or 0.0) > 0.0:
+            logs["prior_preservation/weight"] = float(args.prior_preservation_weight)
+        if float(getattr(args, "inverted_mask_prior_weight", 0.0) or 0.0) > 0.0:
+            logs["inverted_mask_prior/weight"] = float(args.inverted_mask_prior_weight)
 
         def prodigy_plus_effective_lr(group):
             d = group.get("d")
@@ -461,9 +466,11 @@ class AnimaTrainer:
         ).strip().lower()
         valid_selective_checkpoints = {
             "off",
+            "adapter_aware",
             "every_other",
             "mlp_only",
             "mlp_layer1_only",
+            "peak_blocks_adapter_aware",
             "peak_blocks_mlp",
             "peak_blocks_mlp_layer1",
         }
@@ -940,6 +947,12 @@ class AnimaTrainer:
                 use_shuffled_caption_variants=getattr(
                     args, "use_shuffled_caption_variants", False
                 ),
+                diff_output_preservation_trigger=getattr(
+                    args, "diff_output_preservation_trigger", None
+                ),
+                diff_output_preservation_class=getattr(
+                    args, "diff_output_preservation_class", None
+                ),
             )
         return None
 
@@ -988,8 +1001,30 @@ class AnimaTrainer:
             str(sidecar), device=accelerator.device, dtype=weight_dtype
         )
         logger.info(
-            f"caption dropout uncond loaded: {sidecar} "
+            f"T5('') uncond loaded: {sidecar} "
             f"shape={tuple(self._state.uncond_crossattn_1.shape)}"
+        )
+
+    @staticmethod
+    def _prior_preservation_enabled(args: argparse.Namespace) -> bool:
+        return float(getattr(args, "prior_preservation_weight", 0.0) or 0.0) > 0.0
+
+    @staticmethod
+    def _blank_prompt_preservation_enabled(args: argparse.Namespace) -> bool:
+        return bool(getattr(args, "blank_prompt_preservation", False)) and AnimaTrainer._prior_preservation_enabled(args)
+
+    @staticmethod
+    def _diff_output_preservation_enabled(args: argparse.Namespace) -> bool:
+        return (
+            AnimaTrainer._prior_preservation_enabled(args)
+            and bool(str(getattr(args, "diff_output_preservation_class", "") or "").strip())
+        )
+
+    @staticmethod
+    def _inverted_mask_prior_enabled(args: argparse.Namespace, batch: dict) -> bool:
+        return (
+            float(getattr(args, "inverted_mask_prior_weight", 0.0) or 0.0) > 0.0
+            and batch.get("alpha_masks") is not None
         )
 
     def get_noise_scheduler(
@@ -1204,6 +1239,71 @@ class AnimaTrainer:
                         if out:
                             self._state.extras_for_step.update(out)
 
+                if is_train and self._blank_prompt_preservation_enabled(args):
+                    from library.inference.uncond import uncond_for_batch
+
+                    if self._state.uncond_crossattn_1 is None:
+                        raise RuntimeError(
+                            "blank_prompt_preservation requires the T5('') sidecar "
+                            "to be staged before training starts"
+                        )
+                    blank_crossattn_emb = uncond_for_batch(
+                        self._state.uncond_crossattn_1, crossattn_emb
+                    ).to(device=accelerator.device, dtype=weight_dtype)
+                    prior_pred = run_prior_preservation_forward(
+                        anima_call=anima,
+                        network=network,
+                        noisy_model_input=noisy_model_input,
+                        timesteps=timesteps,
+                        crossattn_emb=blank_crossattn_emb,
+                        padding_mask=padding_mask,
+                        forward_kwargs={},
+                    )
+                    self._state.extras_for_step["prior_preservation"] = {
+                        "prior_pred": prior_pred.detach(),
+                        "mode": "blank_prompt",
+                    }
+                elif is_train and self._diff_output_preservation_enabled(args):
+                    prior_crossattn_emb = batch.get("prior_crossattn_emb")
+                    if prior_crossattn_emb is None:
+                        raise RuntimeError(
+                            "diff_output_preservation requires TE caches with "
+                            "prior_crossattn_emb; re-run text caching/preprocess "
+                            "after setting diff_output_preservation_class."
+                        )
+                    prior_crossattn_emb = prior_crossattn_emb.to(
+                        device=accelerator.device,
+                        dtype=weight_dtype,
+                        non_blocking=True,
+                    )
+                    prior_pred = run_prior_preservation_forward(
+                        anima_call=anima,
+                        network=network,
+                        noisy_model_input=noisy_model_input,
+                        timesteps=timesteps,
+                        crossattn_emb=prior_crossattn_emb,
+                        padding_mask=padding_mask,
+                        forward_kwargs={},
+                    )
+                    self._state.extras_for_step["prior_preservation"] = {
+                        "prior_pred": prior_pred.detach(),
+                        "mode": "diff_output",
+                    }
+
+                if is_train and self._inverted_mask_prior_enabled(args, batch):
+                    prior_pred = run_prior_preservation_forward(
+                        anima_call=anima,
+                        network=network,
+                        noisy_model_input=noisy_model_input,
+                        timesteps=timesteps,
+                        crossattn_emb=crossattn_emb,
+                        padding_mask=padding_mask,
+                        forward_kwargs=kw,
+                    )
+                    self._state.extras_for_step["inverted_mask_prior"] = {
+                        "prior_pred": prior_pred.detach(),
+                    }
+
                 # Functional MSE loss against a sampled stochastic inversion run.
                 # The captures dict is populated by trainer-owned forward hooks
                 # on cross_attn.output_proj at ``self._func_blocks``.
@@ -1336,17 +1436,19 @@ class AnimaTrainer:
         """Override base process_batch to surface caption_dropout_rates for on-device dropout."""
 
         # The cached text-encoder outputs list arrives as
-        # [..., caption_dropout_rates] from the dataset (see strategy.py
-        # cache layout). Split the trailing rates tensor off so the inner
-        # path sees the canonical 4- or 5-element conds list, and stash the
-        # rates on the batch -- get_noise_pred_and_target applies the dropout
-        # in-place after the H2D transfer. Doing it here on CPU would clone
-        # prompt_embeds / crossattn_emb on the critical path before the H2D
-        # copy, blocking the main thread.
+        # [..., optional prior_crossattn_emb, caption_dropout_rates] from the
+        # dataset (see strategy.py cache layout). Split the trailing aux tensors
+        # off so the inner path sees the canonical 4- or 5-element conds list.
+        # Doing it here on CPU avoids cloning prompt_embeds / crossattn_emb on
+        # the critical path before the H2D copy.
         text_encoder_outputs_list = batch.get("text_encoder_outputs_list", None)
         if text_encoder_outputs_list is not None:
             caption_dropout_rates = text_encoder_outputs_list[-1]
             encoder_outputs = text_encoder_outputs_list[:-1]
+            prior_crossattn_emb = None
+            if len(encoder_outputs) == 6:
+                prior_crossattn_emb = encoder_outputs[-1]
+                encoder_outputs = encoder_outputs[:-1]
             # Shallow copy so the original list (with rates appended) stays
             # intact for validation's per-sigma loop that reuses the batch.
             batch = {
@@ -1354,6 +1456,8 @@ class AnimaTrainer:
                 "text_encoder_outputs_list": encoder_outputs,
                 "caption_dropout_rates": caption_dropout_rates,
             }
+            if prior_crossattn_emb is not None:
+                batch["prior_crossattn_emb"] = prior_crossattn_emb
 
         return self._process_batch_inner(ctx, batch, is_train=is_train)
 
@@ -1595,6 +1699,21 @@ class AnimaTrainer:
         metadata["ss_p2_k"] = str(getattr(args, "p2_k", None))
         metadata["ss_velocity_direction_loss_weight"] = str(
             getattr(args, "velocity_direction_loss_weight", 0.0)
+        )
+        metadata["ss_prior_preservation_weight"] = str(
+            getattr(args, "prior_preservation_weight", 0.0)
+        )
+        metadata["ss_blank_prompt_preservation"] = str(
+            getattr(args, "blank_prompt_preservation", False)
+        )
+        metadata["ss_diff_output_preservation_trigger"] = str(
+            getattr(args, "diff_output_preservation_trigger", None)
+        )
+        metadata["ss_diff_output_preservation_class"] = str(
+            getattr(args, "diff_output_preservation_class", None)
+        )
+        metadata["ss_inverted_mask_prior_weight"] = str(
+            getattr(args, "inverted_mask_prior_weight", 0.0)
         )
         metadata["ss_timestep_sampling"] = args.timestep_sampling
         metadata["ss_sigmoid_scale"] = args.sigmoid_scale
@@ -2180,7 +2299,7 @@ class AnimaTrainer:
         # Stage the T5("") sidecar once if caption dropout is on — dropped
         # rows then get the same crossattn embedding Anima feeds at
         # CFG-uncond inference instead of all-zeros (which is out-of-dist).
-        if self._state.caption_dropout_enabled:
+        if self._state.caption_dropout_enabled or self._blank_prompt_preservation_enabled(args):
             self._ensure_uncond_crossattn(args, accelerator, weight_dtype)
 
         network_result = self._create_and_apply_network(

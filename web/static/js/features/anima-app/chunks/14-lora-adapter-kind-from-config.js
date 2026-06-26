@@ -270,6 +270,7 @@ const ctx = globalThis.ctx;
         updateVeRAFieldState();
         updateDoRAFieldState();
         updateLossWeightingFieldState();
+        updateNoDatasetRegularizationModePanel();
         updateChoiceGuideFromLiveForm();
     }
 

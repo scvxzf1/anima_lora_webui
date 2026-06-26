@@ -178,6 +178,18 @@ def main() -> None:
         help="Text caption sidecar extension used for txt mode (default: .txt).",
     )
     parser.add_argument(
+        "--diff_output_preservation_trigger",
+        type=str,
+        default=None,
+        help="Trigger text to replace when writing DOP prior_crossattn_emb caches.",
+    )
+    parser.add_argument(
+        "--diff_output_preservation_class",
+        type=str,
+        default=None,
+        help="Class prompt used when writing DOP prior_crossattn_emb caches.",
+    )
+    parser.add_argument(
         "--min_pixels",
         type=int,
         default=500_000,
@@ -282,6 +294,8 @@ def main() -> None:
         prefer_json_caption=args.prefer_json_caption,
         caption_source_mode=args.caption_source_mode,
         caption_extension=args.caption_extension,
+        diff_output_preservation_trigger=args.diff_output_preservation_trigger,
+        diff_output_preservation_class=args.diff_output_preservation_class,
         min_pixels=args.min_pixels,
         progress=tqdm_progress("Caching text embeddings"),
     )

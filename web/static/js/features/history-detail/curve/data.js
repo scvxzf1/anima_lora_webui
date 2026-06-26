@@ -1,4 +1,4 @@
-import { numberOrNull } from '../ui.js?v=module-bootstrap-20260608-11';
+import { numberOrNull } from '../ui.js?v=module-bootstrap-20260625-9';
 
 export const HISTORY_CURVE_RENDER_POINT_LIMIT = 1600;
 
@@ -328,6 +328,9 @@ export function formatHistoryCurveAxisValue(value, metric, formatLr) {
 }
 
 export function formatLossValue(value) {
+    const text = String(value ?? '').trim();
+    if (/^[+\-]?nan$/i.test(text)) return 'NaN';
+    if (/^[+\-]?inf(?:inity)?$/i.test(text)) return text.startsWith('-') ? '-Infinity' : 'Infinity';
     const n = Number(value);
     return Number.isFinite(n) ? n.toFixed(5) : '-';
 }

@@ -20,6 +20,7 @@ from library.io.cache import POOLED_CACHE_SUFFIX, TE_CACHE_SUFFIX, resolve_cache
 from library.preprocess.captions import CaptionSource, read_caption_source
 from library.preprocess._dataset import PreprocessStats, walk_images
 from library.preprocess._progress import ProgressFn
+from library.training.prior_preservation import build_diff_output_prior_caption
 
 logger = logging.getLogger(__name__)
 
@@ -151,6 +152,8 @@ def cache_text_embeddings(
     prefer_json_caption: bool = False,
     caption_source_mode: str | None = None,
     caption_extension: str = ".txt",
+    diff_output_preservation_trigger: str | None = None,
+    diff_output_preservation_class: str | None = None,
     min_pixels: int = 500_000,
     verbose: bool = True,
     progress: ProgressFn | None = None,
@@ -204,6 +207,9 @@ def cache_text_embeddings(
     caption_dropout_rate = torch.tensor(0.0, dtype=torch.float32)
     n_variants = caption_shuffle_variants
     tag_dropout_rate = float(caption_tag_dropout_rate)
+    cache_prior_crossattn = bool(
+        llm_adapter is not None and str(diff_output_preservation_class or "").strip()
+    )
 
     from safetensors.torch import save_file
 
@@ -245,6 +251,24 @@ def cache_text_embeddings(
                     device,
                 )
             )
+            prior_crossattn_emb = None
+            if cache_prior_crossattn:
+                prior_captions = [
+                    build_diff_output_prior_caption(
+                        caption,
+                        trigger=diff_output_preservation_trigger,
+                        class_prompt=diff_output_preservation_class,
+                    )
+                    for caption in captions
+                ]
+                *_, prior_crossattn_emb = _encode_batch(
+                    prior_captions,
+                    tokenize_strategy,
+                    encoding_strategy,
+                    text_encoder,
+                    llm_adapter,
+                    device,
+                )
 
             for i, (img_path, _, cache_path) in enumerate(to_encode):
                 save_dict = {
@@ -256,6 +280,8 @@ def cache_text_embeddings(
                 }
                 if crossattn_emb is not None:
                     save_dict["crossattn_emb"] = crossattn_emb[i]
+                if prior_crossattn_emb is not None:
+                    save_dict["prior_crossattn_emb"] = prior_crossattn_emb[i]
                 save_file(save_dict, str(cache_path))
                 stats.written += 1
                 if progress is not None:
@@ -275,6 +301,24 @@ def cache_text_embeddings(
                     device,
                 )
             )
+            prior_crossattn_emb = None
+            if cache_prior_crossattn:
+                prior_captions = [
+                    build_diff_output_prior_caption(
+                        caption,
+                        trigger=diff_output_preservation_trigger,
+                        class_prompt=diff_output_preservation_class,
+                    )
+                    for caption in all_captions
+                ]
+                *_, prior_crossattn_emb = _encode_batch(
+                    prior_captions,
+                    tokenize_strategy,
+                    encoding_strategy,
+                    text_encoder,
+                    llm_adapter,
+                    device,
+                )
 
             offset = 0
             for img_path, caption, cache_path in to_encode:
@@ -298,6 +342,8 @@ def cache_text_embeddings(
                     save_dict[f"t5_attn_mask_v{vi}"] = t5_attn_mask[flat_idx]
                     if crossattn_emb is not None:
                         save_dict[f"crossattn_emb_v{vi}"] = crossattn_emb[flat_idx]
+                    if prior_crossattn_emb is not None:
+                        save_dict[f"prior_crossattn_emb_v{vi}"] = prior_crossattn_emb[flat_idx]
                 save_file(save_dict, str(cache_path))
                 offset += variant_count
                 stats.written += 1

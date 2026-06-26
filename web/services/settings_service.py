@@ -7,15 +7,24 @@ from typing import Any
 
 import toml
 
+from library.env import get_configs_root
+
 ROOT = Path(__file__).resolve().parents[2]
-CONFIGS_DIR = ROOT / "configs"
+CONFIGS_DIR = get_configs_root()
 SETTINGS_FILE = CONFIGS_DIR / "web-ui-settings.toml"
 
 DEFAULT_OUTPUT_ROOT = "output/runs"
+DEFAULT_UI_SCALE = 100
 GLOBAL_MODEL_PATH_KEYS = (
     "pretrained_model_name_or_path",
     "qwen3",
     "vae",
+)
+GLOBAL_CONFIG_PATH_KEYS = (
+    "configs_root",
+)
+GLOBAL_UI_KEYS = (
+    "ui_scale",
 )
 
 
@@ -45,11 +54,28 @@ def save_global_settings(data: dict[str, Any]) -> dict[str, Any]:
             next_global[key] = value or current.get(key) or defaults.get(key, "")
         elif key not in next_global:
             next_global[key] = current.get(key, "") or defaults.get(key, "")
+    for key in GLOBAL_CONFIG_PATH_KEYS:
+        if key in data:
+            value = _normalize_config_path(data.get(key))
+            next_global[key] = value or current.get(key) or defaults.get(key, "")
+        elif key not in next_global:
+            next_global[key] = current.get(key, "") or defaults.get(key, "")
+    for key in GLOBAL_UI_KEYS:
+        if key in data:
+            value = _normalize_ui_setting(key, data.get(key))
+            next_global[key] = value if value is not None else current.get(key, defaults.get(key))
+        elif key not in next_global:
+            next_global[key] = current.get(key, defaults.get(key))
     raw["global"] = {
         **next_global,
     }
     SETTINGS_FILE.parent.mkdir(parents=True, exist_ok=True)
     SETTINGS_FILE.write_text(toml.dumps(raw), encoding="utf-8")
+
+    # 如果设置了 configs_root，同时保存到项目根目录的专用配置文件
+    if "configs_root" in data:
+        _save_configs_root_override(data["configs_root"])
+
     saved = _load_settings()
     return {
         "ok": True,
@@ -88,6 +114,21 @@ def _load_settings() -> dict[str, str]:
     for key in GLOBAL_MODEL_PATH_KEYS:
         if key in section:
             settings[key] = _normalize_global_model_path(section.get(key)) or defaults.get(key, "")
+    for key in GLOBAL_CONFIG_PATH_KEYS:
+        if key in section:
+            settings[key] = _normalize_config_path(section.get(key)) or defaults.get(key, "")
+    for key in GLOBAL_UI_KEYS:
+        if key in section:
+            value = _normalize_ui_setting(key, section.get(key))
+            settings[key] = value if value is not None else defaults.get(key)
+
+    # 显示当前实际使用的配置根目录（包括环境变量）
+    actual_configs_root = CONFIGS_DIR
+    try:
+        settings["configs_root"] = actual_configs_root.relative_to(ROOT).as_posix()
+    except ValueError:
+        settings["configs_root"] = actual_configs_root.as_posix()
+
     return settings
 
 
@@ -104,6 +145,8 @@ def _load_raw_settings() -> dict[str, Any]:
 def _default_global_settings() -> dict[str, str]:
     return {
         "output_root": DEFAULT_OUTPUT_ROOT,
+        "configs_root": "configs",
+        "ui_scale": DEFAULT_UI_SCALE,
         **_load_base_model_path_defaults(),
     }
 
@@ -149,3 +192,74 @@ def _resolve_output_root(value: str) -> Path:
     if path.is_absolute():
         return path.resolve()
     return (ROOT / normalized).resolve()
+
+
+def _normalize_ui_setting(key: str, value: Any) -> int | str | None:
+    """Normalize UI settings."""
+    if key == "ui_scale":
+        try:
+            scale = int(value) if value is not None else DEFAULT_UI_SCALE
+            # 限制在 25% - 400% 之间
+            if scale < 25:
+                return 25
+            if scale > 400:
+                return 400
+            return scale
+        except (ValueError, TypeError):
+            return DEFAULT_UI_SCALE
+    return None
+
+
+def _normalize_config_path(value: Any) -> str:
+    """规范化配置路径（类似 _normalize_output_root）。"""
+    clean = str(value or "").replace("\\", "/").strip()
+    if not clean:
+        return ""
+    path = Path(clean)
+    if path.is_absolute():
+        return path.resolve().as_posix()
+    if ".." in path.parts:
+        raise ValueError("配置路径不能包含 ..")
+    return path.as_posix().lstrip("/").rstrip("/")
+
+
+def resolve_config_path(key: str, value: str | None = None) -> Path:
+    """解析配置路径（类似 resolve_output_root）。"""
+    if value is None:
+        value = _load_settings().get(key, "")
+    normalized = _normalize_config_path(value)
+    if not normalized:
+        # 返回默认值
+        defaults = _default_global_settings()
+        normalized = defaults.get(key, "")
+    path = Path(normalized)
+    if path.is_absolute():
+        return path.resolve()
+    return (ROOT / normalized).resolve()
+
+
+def _save_configs_root_override(configs_root: str) -> None:
+    """保存 configs_root 到项目根目录的专用配置文件。"""
+    webui_paths_file = ROOT / ".anima-webui-settings.toml"
+
+    # 读取现有配置
+    raw = {}
+    if webui_paths_file.exists():
+        try:
+            raw = toml.loads(webui_paths_file.read_text(encoding="utf-8"))
+        except toml.TomlDecodeError:
+            raw = {}
+
+    # 更新 paths.configs_root
+    if "paths" not in raw or not isinstance(raw["paths"], dict):
+        raw["paths"] = {}
+
+    normalized = _normalize_config_path(configs_root)
+    if normalized:
+        raw["paths"]["configs_root"] = normalized
+    else:
+        # 空值表示使用默认，从配置中删除
+        raw["paths"].pop("configs_root", None)
+
+    # 保存
+    webui_paths_file.write_text(toml.dumps(raw), encoding="utf-8")

@@ -1,5 +1,5 @@
-import { createHistoryCurveRenderer } from './curve/index.js?v=module-bootstrap-20260608-11';
-import { createHistorySystemRenderer } from './system.js?v=module-bootstrap-20260608-11';
+import { createHistoryCurveRenderer } from './curve/index.js?v=module-bootstrap-20260625-9';
+import { createHistorySystemRenderer } from './system.js?v=module-bootstrap-20260625-9';
 
 export function createHistoryAnalysisRenderer({ state, deps, renderHistoryDetailContent }) {
     const system = createHistorySystemRenderer();

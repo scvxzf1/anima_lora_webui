@@ -1,0 +1,9 @@
+# Anima LoRA WebUI 路径配置示例
+# 复制此文件为 .anima-webui-settings.toml 并根据需要修改
+# 或直接在 WebUI 的"全局设置"面板中配置
+
+[paths]
+# 配置根目录路径
+# 可以是相对路径（相对于项目根目录）或绝对路径
+# 留空则使用默认值 "configs"
+# configs_root = "/path/to/your/external/configs"
