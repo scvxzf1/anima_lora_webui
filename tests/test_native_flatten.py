@@ -15,6 +15,7 @@ from __future__ import annotations
 import torch
 
 from library.anima.models import Anima
+from library.runtime.peak_probe import PeakProbe
 
 
 def _tiny_anima() -> Anima:
@@ -91,6 +92,27 @@ def test_compile_blocks_dynamic_seq_marks_range_and_runs():
 
     out = model.forward_mini_train_dit(*_inputs(126, 128))
     assert out.shape == (1, 16, 1, 126, 128)
+
+
+@torch.no_grad()
+def test_compile_blocks_dynamic_seq_allows_ops_peak_probe(tmp_path):
+    """op 级峰值探针会读取 shape，dynamic-seq 必须允许 Dynamo 退回静态 guard。"""
+
+    model = _tiny_anima()
+    probe = PeakProbe(str(tmp_path / "peak_probe.jsonl"), level="ops", max_steps=1)
+    model.enable_peak_probe(probe)
+    model.compile_blocks(
+        backend="eager",
+        dynamic_seq=True,
+        bucket_resolutions=[(1008, 1024), (960, 1120)],
+    )
+
+    probe.begin_step(0, device=torch.device("cpu"))
+    out = model.forward_mini_train_dit(*_inputs(126, 128))
+    probe.end_step(device=torch.device("cpu"))
+
+    assert out.shape == (1, 16, 1, 126, 128)
+    assert (tmp_path / "peak_probe.jsonl").exists()
 
 
 @torch.no_grad()

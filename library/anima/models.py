@@ -137,6 +137,17 @@ def unsloth_checkpoint(function, *args):
     return UnslothOffloadedGradientCheckpointer.apply(function, *args)
 
 
+def _mark_seq_axis_dynamic(tensor: torch.Tensor, axis: int, lo: int, hi: int) -> None:
+    # op 级峰值探针会在 compiled block 内制造 graph break，并读取 tensor.shape。
+    # 强制 mark_dynamic 遇到这种“可被专门化”的轴会触发 ConstraintViolationError；
+    # maybe_mark_dynamic 允许 Dynamo 在必要时退回静态 guard，同时保留普通路径的动态收益。
+    maybe_mark_dynamic = getattr(torch._dynamo, "maybe_mark_dynamic", None)
+    if callable(maybe_mark_dynamic):
+        maybe_mark_dynamic(tensor, axis)
+    else:
+        torch._dynamo.mark_dynamic(tensor, axis, min=lo, max=hi)
+
+
 def _make_dynamic_seq_forward(compiled_inner, lo: int, hi: int):
     """Wrap a compiled ``Block._forward`` with recompute-safe dynamic marks.
 
@@ -168,11 +179,11 @@ def _make_dynamic_seq_forward(compiled_inner, lo: int, hi: int):
                     f"compile_dynamic_seq seq_len {seq_len} is outside "
                     f"derived range [{lo}, {hi}]"
                 )
-            torch._dynamo.mark_dynamic(x_B_T_H_W_D, 2, min=lo, max=hi)
+            _mark_seq_axis_dynamic(x_B_T_H_W_D, 2, lo, hi)
             marked_seq = True
         if marked_seq and rope_cos_sin is not None:
-            torch._dynamo.mark_dynamic(rope_cos_sin[0], 0, min=lo, max=hi)
-            torch._dynamo.mark_dynamic(rope_cos_sin[1], 0, min=lo, max=hi)
+            _mark_seq_axis_dynamic(rope_cos_sin[0], 0, lo, hi)
+            _mark_seq_axis_dynamic(rope_cos_sin[1], 0, lo, hi)
         return compiled_inner(
             x_B_T_H_W_D,
             emb_B_T_D,
@@ -1959,7 +1970,7 @@ class Anima(nn.Module):
             else:
                 block._forward = compiled_inner
         graph_mode = (
-            f"dynamic-seq mark_dynamic seq∈{self._dynamic_seq_range} (1 graph)"
+            f"dynamic-seq maybe-dynamic seq∈{self._dynamic_seq_range} (1 graph)"
             if self._dynamic_seq
             else f"static ({n} graphs)"
         )
