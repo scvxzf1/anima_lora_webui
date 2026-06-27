@@ -25,7 +25,10 @@
 - 项目运行环境是 Python 3.13，依赖管理优先使用 `uv`。
 - `tasks.py` 是命令入口真相；`Makefile` 只是薄转发。查命令实现时读
   `tasks.py`、`scripts/tasks/` 和 `scripts/experimental_tasks/`。
-- 跨平台命令优先写成 `python tasks.py <command>` 或 `.venv/bin/python tasks.py <command>`。
+- 维护和验证命令优先使用 `.venv/bin/python`；只有确认无需项目虚拟环境，或 `.venv/`
+  不存在时，才回退到系统 `python`。
+- 跨平台用户文档可写成 `python tasks.py <command>`，本仓维护执行优先写成
+  `.venv/bin/python tasks.py <command>`。
   用户文档里常见 `make <target>`，但维护时不要只看 `Makefile`。
 - `python tasks.py <command> KEY=value` 支持 Make 风格尾随环境变量，例如：
   `python tasks.py print-config METHOD=lora PRESET=default`。
@@ -34,9 +37,9 @@
 - 常用启动：
   - WebUI：`.venv/bin/python tasks.py web --host 127.0.0.1 --port 20102`
   - GUI：`.venv/bin/python tasks.py gui`
-  - 单元测试：`timeout 60 python -m pytest tests/<test_file>.py`
-  - 全量单测入口：`timeout 60 python tasks.py test-unit`
-  - 合并配置查看：`python tasks.py print-config METHOD=<name> PRESET=<name>`
+  - 单元测试：`timeout 60 .venv/bin/python -m pytest tests/<test_file>.py`
+  - 全量单测入口：`timeout 60 .venv/bin/python tasks.py test-unit`
+  - 合并配置查看：`.venv/bin/python tasks.py print-config METHOD=<name> PRESET=<name>`
 - 从旧 `CLAUDE.md` 继承且仍然有效的最小初始化：
   - `uv sync`
   - `hf auth login`
@@ -400,15 +403,15 @@ T-LoRA mask 是共享 buffer，每个 denoising step 更新一次。
 常用 WebUI 验证：
 
 - 前端模块图、DOM、事件钩子、CSS import：
-  `timeout 60 python -m pytest tests/test_training_frontend_state.py`
+  `timeout 60 .venv/bin/python -m pytest tests/test_training_frontend_state.py`
 - sample prompts/config：
-  `timeout 60 python -m pytest tests/test_web_config_service.py`
+  `timeout 60 .venv/bin/python -m pytest tests/test_web_config_service.py`
 - preview/global settings/output root：
-  `timeout 60 python -m pytest tests/test_preview_service.py`
+  `timeout 60 .venv/bin/python -m pytest tests/test_preview_service.py`
 - 队列/runtime 安全：
-  `timeout 60 python -m pytest tests/test_training_queue.py`
+  `timeout 60 .venv/bin/python -m pytest tests/test_training_queue.py`
 - 权重分析：
-  `timeout 60 python -m pytest tests/test_weight_analysis_service.py`
+  `timeout 60 .venv/bin/python -m pytest tests/test_weight_analysis_service.py`
 
 ## Adapter 和 Network 维护
 
@@ -509,6 +512,8 @@ T-LoRA mask 是共享 buffer，每个 denoising step 更新一次。
 ## 验证策略
 
 - 后台测试默认加 `timeout 60`。
+- 需要项目 Python 依赖的验证命令，默认使用 `.venv/bin/python`，避免系统 Python
+  缺少 torch、pytest 插件或本仓依赖导致误判。
 - 优先跑和改动直接相关的 pytest 文件或测试名。
 - 大模型、真实训练、下载类验证不要默认执行。
 - lint/format 会改文件时，只在范围明确时运行。

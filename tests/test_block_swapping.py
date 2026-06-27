@@ -438,12 +438,38 @@ def test_selective_checkpoint_modes_set_block_flags() -> None:
     ]
     assert not any(block.gradient_checkpointing for block in model.blocks)
 
+    Anima.enable_selective_checkpointing(
+        model,
+        "peak_blocks_adapter_aware",
+        blocks="",
+    )
+    assert [block.adapter_aware_checkpointing for block in model.blocks] == [
+        False,
+        True,
+        True,
+        True,
+    ]
+
     Anima.enable_selective_checkpointing(model, "off")
     assert model.selective_checkpoint == "off"
     assert not any(block.gradient_checkpointing for block in model.blocks)
     assert not any(block.mlp_checkpointing for block in model.blocks)
     assert not any(block.mlp_layer1_checkpointing for block in model.blocks)
     assert not any(block.adapter_aware_checkpointing for block in model.blocks)
+
+
+def test_selective_checkpoint_rejects_invalid_peak_block_index() -> None:
+    from library.anima.models import Anima
+
+    model = object.__new__(Anima)
+    model.blocks = [_FakeCheckpointBlock() for _ in range(4)]
+
+    with pytest.raises(ValueError, match="invalid block index"):
+        Anima.enable_selective_checkpointing(
+            model,
+            "peak_blocks_adapter_aware",
+            blocks="4",
+        )
 
 
 def test_peak_probe_attachment_sets_block_indices() -> None:
@@ -489,6 +515,19 @@ def test_adapter_aware_checkpoint_policy_saves_only_small_trainable_ops() -> Non
         policy(_Ctx(), torch.ops.aten.mm.default, frozen_x, frozen_w)
         is CheckpointPolicy.PREFER_RECOMPUTE
     )
+
+    gate = torch.randn(2, 4, requires_grad=True)
+    routed_weight = torch.randn(4, 8, 3, requires_grad=True)
+    for equation in (
+        "be,eor->bor",
+        "be,eod->bod",
+        "bc,cor->bor",
+        "bf,for->bor",
+    ):
+        assert (
+            policy(_Ctx(), torch.ops.aten.einsum.default, equation, [gate, routed_weight])
+            is CheckpointPolicy.MUST_SAVE
+        )
 
 
 def test_adapter_aware_checkpoint_matches_eager_block_forward_backward() -> None:
@@ -542,6 +581,54 @@ def test_adapter_aware_checkpoint_matches_eager_block_forward_backward() -> None
         if eager_param.grad is None and ckpt_param.grad is None:
             continue
         torch.testing.assert_close(ckpt_param.grad, eager_param.grad)
+
+
+def test_adapter_aware_checkpoint_invokes_selective_policy(monkeypatch) -> None:
+    import torch
+    from torch.utils.checkpoint import CheckpointPolicy
+
+    import library.anima.models as anima_models
+    from library.anima.models import Block
+    from networks.attention_dispatch import AttentionParams
+    from networks.lora_modules.lora import LoRAModule
+
+    seen: list[tuple[str, CheckpointPolicy, bool]] = []
+
+    def recording_context(max_save_numel: int = 16):
+        base_policy = anima_models._adapter_aware_checkpoint_policy(max_save_numel)
+
+        def policy(ctx, op, *args, **kwargs):
+            result = base_policy(ctx, op, *args, **kwargs)
+            seen.append((str(op), result, bool(getattr(ctx, "is_recompute", False))))
+            return result
+
+        return anima_models.create_selective_checkpoint_contexts(policy)
+
+    monkeypatch.setattr(
+        anima_models,
+        "_adapter_aware_checkpoint_context",
+        recording_context,
+    )
+
+    torch.manual_seed(0)
+    block = Block(x_dim=8, context_dim=8, num_heads=2, mlp_ratio=2.0)
+    module = LoRAModule("mlp1", block.mlp.layer1, lora_dim=2, alpha=2)
+    module.apply_to()
+    block.add_module("_test_lora_mlp1", module)
+    block.train()
+    block.enable_adapter_aware_checkpointing(max_save_numel=16)
+
+    x = torch.randn(2, 1, 3, 1, 8, requires_grad=True)
+    emb = torch.randn(2, 1, 8, requires_grad=True)
+    context = torch.randn(2, 5, 8, requires_grad=True)
+    attn_params = AttentionParams.create_attention_params("torch")
+
+    out = block(x, emb, context, attn_params)
+    out.square().mean().backward()
+
+    assert any(result is CheckpointPolicy.MUST_SAVE for _, result, _ in seen)
+    assert any(result is CheckpointPolicy.PREFER_RECOMPUTE for _, result, _ in seen)
+    assert any(is_recompute for _, _, is_recompute in seen)
 
 
 def test_block_swap_compile_mode_is_downgraded_for_cudagraph_modes(caplog) -> None:

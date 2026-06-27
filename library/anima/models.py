@@ -281,7 +281,12 @@ def _einsum_output_numel(equation: str, operands) -> Optional[int]:
         if equation == "ejr,...er->...j":
             w, x = tensors
             return _safe_numel_from_shape((*tuple(x.shape[:-2]), w.shape[1]))
-        if equation == "be,eor->bor":
+        if equation in {
+            "be,eor->bor",
+            "be,eod->bod",
+            "bc,cor->bor",
+            "bf,for->bor",
+        }:
             gate, w = tensors
             return _safe_numel_from_shape((gate.shape[0], w.shape[1], w.shape[2]))
     except Exception:
