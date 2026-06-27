@@ -6,6 +6,7 @@ import json
 import pytest
 import torch
 from torch import nn
+from torch.utils.checkpoint import checkpoint as torch_checkpoint
 
 from library.runtime.device import should_move_weight_to_device
 from library.runtime.offloading import (
@@ -244,6 +245,36 @@ def test_block_swap_backward_next_use_wait_is_profiled(tmp_path) -> None:
     assert backward_waits
     assert backward_waits[0]["submit_phase"] == "backward_prefetch"
     assert backward_waits[0]["block_idx"] == 0
+
+
+def test_block_swap_backward_hooks_work_with_standard_checkpointing(tmp_path) -> None:
+    blocks = nn.ModuleList([_TinyBlock() for _ in range(6)])
+    profile_path = tmp_path / "block_swap_profile.jsonl"
+    offloader = ModelOffloader(
+        blocks,
+        blocks_to_swap=2,
+        device=torch.device("cpu"),
+        supports_backward=True,
+        profile_jsonl=str(profile_path),
+    )
+
+    offloader.prepare_block_devices_before_forward(blocks, free_cache=False)
+    x = torch.ones(1, 2, requires_grad=True)
+    y = x
+    for block_idx, block in enumerate(blocks):
+        offloader.wait_for_block(block_idx)
+        y = torch_checkpoint(block, y, use_reentrant=False)
+        offloader.submit_move_blocks(blocks, block_idx)
+    y.sum().backward()
+
+    assert x.grad is not None
+    events = [json.loads(line) for line in profile_path.read_text().splitlines()]
+    assert any(
+        event["ev"] == "block_swap"
+        and event["phase"] == "backward_wait"
+        and event["submit_phase"] == "backward_prefetch"
+        for event in events
+    )
 
 
 def test_backward_hooks_prefetch_from_completed_tail_block() -> None:
@@ -589,6 +620,31 @@ def test_block_swap_rejects_unsloth_activation_offload() -> None:
 
     with pytest.raises(ValueError, match="unsloth_offload_checkpointing"):
         train.AnimaTrainer().assert_extra_args(args, _CacheableDataset(), None)
+
+
+def test_block_swap_allows_standard_gradient_checkpointing() -> None:
+    import train
+
+    args = _args_for_assert_extra(
+        blocks_to_swap=8,
+        gradient_checkpointing=True,
+        cpu_offload_checkpointing=False,
+        unsloth_offload_checkpointing=False,
+    )
+
+    train.AnimaTrainer().assert_extra_args(args, _CacheableDataset(), None)
+
+
+def test_block_swap_allows_selective_mlp_checkpointing() -> None:
+    import train
+
+    args = _args_for_assert_extra(
+        blocks_to_swap=12,
+        gradient_checkpointing=False,
+        selective_checkpoint="mlp_only",
+    )
+
+    train.AnimaTrainer().assert_extra_args(args, _CacheableDataset(), None)
 
 
 def test_training_args_reject_negative_blocks_to_swap() -> None:

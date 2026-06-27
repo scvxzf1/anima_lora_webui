@@ -502,7 +502,8 @@ class AnimaTrainer:
             and args.cpu_offload_checkpointing
         ):
             raise ValueError(
-                "blocks_to_swap is not supported with cpu_offload_checkpointing"
+                "blocks_to_swap supports standard gradient_checkpointing, but is "
+                "not supported with cpu_offload_checkpointing"
             )
 
         if args.unsloth_offload_checkpointing:
@@ -522,7 +523,8 @@ class AnimaTrainer:
                 )
             if args.blocks_to_swap is not None and args.blocks_to_swap > 0:
                 raise ValueError(
-                    "blocks_to_swap is not supported with unsloth_offload_checkpointing"
+                    "blocks_to_swap supports standard gradient_checkpointing, but is "
+                    "not supported with unsloth_offload_checkpointing"
                 )
 
         if args.blocks_to_swap is not None and args.blocks_to_swap > 0:

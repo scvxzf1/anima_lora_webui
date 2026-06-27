@@ -225,13 +225,19 @@ def _check_checkpointing_config(cfg: dict[str, Any], add) -> None:
         add(
             "error",
             "cpu_offload_checkpointing",
-            "blocks_to_swap 不能和 cpu_offload_checkpointing 同时开启。",
+            (
+                "blocks_to_swap 可以和普通 gradient_checkpointing 同用，但不能和 "
+                "cpu_offload_checkpointing 同时开启。"
+            ),
         )
     if blocks_to_swap > 0 and unsloth_offload_checkpointing:
         add(
             "error",
             "unsloth_offload_checkpointing",
-            "blocks_to_swap 不能和 unsloth_offload_checkpointing 同时开启。",
+            (
+                "blocks_to_swap 可以和普通 gradient_checkpointing 同用，但不能和 "
+                "unsloth_offload_checkpointing 同时开启。"
+            ),
         )
 
 

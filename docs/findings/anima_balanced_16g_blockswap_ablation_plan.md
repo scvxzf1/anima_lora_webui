@@ -263,8 +263,8 @@ selective_checkpoint = "mlp_only"
 不建议默认：
 
 - `blocks_to_swap = 20`: allocated 更低，但 reserved 波动和调度压力更高。
-- `gradient_checkpointing = true`: 全量 checkpoint 会重算过多，违背 Balanced 的速度目标。
-- `unsloth_offload_checkpointing = true`: 这是 `low_vram` 保命线，不是 Balanced 主方案。
+- `gradient_checkpointing = true`: 普通 gradient checkpoint 可以和 block swap 叠加，但全量 checkpoint 会重算过多，违背 Balanced 的速度目标。
+- `unsloth_offload_checkpointing = true`: 这是 activation CPU offload 路线，当前和 block swap 互斥；它是 `low_vram` 保命线，不是 Balanced 主方案。
 - `compile_inductor_mode = "reduce-overhead"` 或 CUDAGraph 模式：block swap 会移动权重，不适合 CUDAGraph。
 
 ## 后续消融实验
