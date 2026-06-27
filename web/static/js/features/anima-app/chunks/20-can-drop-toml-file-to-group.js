@@ -123,6 +123,7 @@ const ctx = globalThis.ctx;
         if (!container) return;
         container.innerHTML = '';
         const stored = readTomlGroupState();
+        const fragment = document.createDocumentFragment();
 
         const toolbar = document.createElement('div');
         toolbar.className = 'toml-group-toolbar';
@@ -137,14 +138,14 @@ const ctx = globalThis.ctx;
             runTomlGroupAction(createTomlGroup, createBtn);
         });
         toolbar.appendChild(createBtn);
-        container.appendChild(toolbar);
+        fragment.appendChild(toolbar);
 
         const visibleGroups = (groups || []).filter(shouldShowTomlGroup);
         if (visibleGroups.length === 0) {
             const empty = document.createElement('div');
             empty.className = 'toml-file-group-empty';
             empty.textContent = '系统分组已隐藏。可点击“新建分组”创建自己的配置分组。';
-            container.appendChild(empty);
+            fragment.appendChild(empty);
         }
 
         for (const group of visibleGroups) {
@@ -153,11 +154,6 @@ const ctx = globalThis.ctx;
             if (group.locked) details.classList.add('readonly');
             details.dataset.groupId = group.id;
             details.open = stored[group.id] ?? Boolean(group.open);
-            details.addEventListener('toggle', () => {
-                const next = readTomlGroupState();
-                next[group.id] = details.open;
-                writeTomlGroupState(next);
-            });
 
             const summary = document.createElement('summary');
             const groupHandle = createTomlGroupDragHandle(group, details);
@@ -196,20 +192,39 @@ const ctx = globalThis.ctx;
             list.className = 'toml-file-list';
             setupFileGroupListDropTarget(list, group, tomlFileDragOptions());
             const files = group.files || [];
-            if (!files.length) {
-                const empty = document.createElement('div');
-                empty.className = 'toml-file-group-empty';
-                empty.textContent = group.user_managed ? '空分组，可使用“移动”放入当前配置。' : '暂无配置文件。';
-                list.appendChild(empty);
-            }
-            files.forEach((item, index) => {
-                list.appendChild(createTomlFileButton(item, group, index, files.length));
+            const renderGroupFiles = () => renderTomlFileGroupList(list, group, files);
+            if (details.open) renderGroupFiles();
+            details.addEventListener('toggle', () => {
+                const next = readTomlGroupState();
+                next[group.id] = details.open;
+                writeTomlGroupState(next);
+                if (details.open) {
+                    renderGroupFiles();
+                    updateTomlSelectionUI(currentTomlFile);
+                }
             });
             details.appendChild(list);
             setupConfigGroupDropTarget(details, group, tomlGroupDragOptions());
-            container.appendChild(details);
+            fragment.appendChild(details);
         }
+        container.appendChild(fragment);
         updateTomlSelectionUI(currentTomlFile);
+    }
+
+    globalThis.renderTomlFileGroupList = function renderTomlFileGroupList(list, group, files = group?.files || []) {
+        if (!list || list.dataset.rendered === '1') return;
+        list.dataset.rendered = '1';
+        const fragment = document.createDocumentFragment();
+        if (!files.length) {
+            const empty = document.createElement('div');
+            empty.className = 'toml-file-group-empty';
+            empty.textContent = group?.user_managed ? '空分组，可使用“移动”放入当前配置。' : '暂无配置文件。';
+            fragment.appendChild(empty);
+        }
+        files.forEach((item, index) => {
+            fragment.appendChild(createTomlFileButton(item, group, index, files.length));
+        });
+        list.appendChild(fragment);
     }
 
     globalThis.createTomlGroupActions = function createTomlGroupActions(group) {

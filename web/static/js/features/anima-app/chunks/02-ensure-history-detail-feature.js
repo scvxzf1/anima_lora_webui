@@ -196,11 +196,18 @@ const ctx = globalThis.ctx;
             populateSelect('preset-select', presets, 'default');
             await gpuPicker.loadGpuOptions();
             const variants = await loadVariants();
+            const tomlListPromise = loadTomlFileList('', { deferDefaultLoad: true })
+                .then(() => ({ ok: true }))
+                .catch((error) => ({ ok: false, error }));
             await loadDatasetPresets({ selectCurrent: false, manage: isDatasetTabActive() });
             if (variants.length) {
                 await loadConfig();
             }
-            await loadTomlFileList();
+            const tomlListResult = await tomlListPromise;
+            if (!tomlListResult.ok) throw tomlListResult.error;
+            if (!currentTomlFile) {
+                await loadDefaultTomlFile();
+            }
             rememberSelectionSnapshot();
             await loadTrainingQueue();
             await loadTrainingHistoryList();

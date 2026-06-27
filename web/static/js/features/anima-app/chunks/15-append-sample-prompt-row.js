@@ -444,14 +444,19 @@ const ctx = globalThis.ctx;
             updateTomlDirtyState();
             return;
         }
-        // 默认加载当前变体对应的文件
+        if (!options.deferDefaultLoad) {
+            await loadDefaultTomlFile({ force: options.force === true });
+        }
+    }
+
+    globalThis.loadDefaultTomlFile = async function loadDefaultTomlFile(options = {}) {
         const variant = currentTrainingSource.method || val('variant-select');
         const methodsSubdir = currentTrainingSource.methods_subdir || 'gui-methods';
         const target = currentTrainingSource.file || `configs/${methodsSubdir}/${variant}.toml`;
         if (tomlFiles.includes(target)) {
-            await loadTomlFile(target);
+            await loadTomlFile(target, { force: options.force === true });
         } else if (tomlFiles.length > 0) {
-            await loadTomlFile(tomlFiles[0]);
+            await loadTomlFile(tomlFiles[0], { force: options.force === true });
         }
     }
 

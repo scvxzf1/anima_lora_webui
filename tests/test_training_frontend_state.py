@@ -2948,6 +2948,8 @@ def test_config_toml_manager_excludes_dataset_groups() -> None:
 
     assert "/api/config/file-groups?kind=training" in load_toml
     assert "tomlFileGroups = filterTrainingTomlGroups(groups);" in load_toml
+    assert "deferDefaultLoad" in load_toml
+    assert "function loadDefaultTomlFile" in load_toml
     assert "function isTrainingTomlGroup" in helper_section
     assert "function filterTrainingTomlGroups" in helper_section
     assert "configs/datasets/" in helper_section
@@ -2962,6 +2964,7 @@ def test_config_toml_manager_excludes_dataset_groups() -> None:
     assert "setupFileGroupListDropTarget(list, group, tomlFileDragOptions())" in toml_render
     assert "setupFileGroupHeaderDropTarget(summary, group, tomlFileDragOptions())" in toml_render
     assert "setupConfigGroupDropTarget(details, group, tomlGroupDragOptions())" in toml_render
+    assert "function renderTomlFileGroupList" in toml_render
     assert "createFileGroupDragHandle" in file_button
     assert "placeTomlFile" in source
     assert "placeTomlGroup" in source

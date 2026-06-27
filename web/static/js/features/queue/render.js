@@ -1,4 +1,4 @@
-import { queueManagerSections, queueSummaryCounts } from './state.js?v=module-bootstrap-20260627-2';
+import { queueManagerSections, queueSummaryCounts } from './state.js?v=module-bootstrap-20260627-3';
 
 export function createQueueRenderer({ state, deps, actions }) {
     function renderTrainingQueue() {
