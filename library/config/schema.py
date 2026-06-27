@@ -216,6 +216,33 @@ def populate_schema(
             source="manual",
         ),
     )
+    for _key, _default, _help in (
+        (
+            "preprocess_memory_profile",
+            "auto",
+            "Preprocess cache memory profile. auto keeps legacy VAE/text cache batch sizes; low_vram, balanced and speed tune them for WebUI preprocess.",
+        ),
+        (
+            "preprocess_vae_cache_batch_size",
+            "auto",
+            "Batch size forwarded to scripts/preprocess/cache_latents.py. auto keeps the legacy default.",
+        ),
+        (
+            "preprocess_text_cache_batch_size",
+            "auto",
+            "Batch size forwarded to scripts/preprocess/cache_text_embeddings.py. auto keeps the legacy default.",
+        ),
+    ):
+        CONFIG_SCHEMA.setdefault(
+            _key,
+            ConfigKey(
+                name=_key,
+                type="str",
+                default=_default,
+                help=_help,
+                source="manual",
+            ),
+        )
 
     if extras:
         for k, v in extras.items():

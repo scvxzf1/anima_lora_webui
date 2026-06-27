@@ -168,6 +168,78 @@ def test_compile_blocks_for_training_accepts_bucket_resolutions(
     assert captured["dynamic_seq"] is True
 
 
+def test_compile_blocks_for_training_pins_lokr_checkpoint_budget(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    import torch
+    import torch.nn as nn
+
+    from library.runtime import dynamo, harness
+
+    captured: dict[str, object] = {}
+    pinned: list[tuple[str, int]] = []
+    lru_calls: list[bool] = []
+
+    class FakeUnet:
+        patch_spatial = 2
+        vae_spatial_compression = 8
+
+        def compile_blocks(self, backend, **kwargs):
+            captured["backend"] = backend
+            captured.update(kwargs)
+
+    class FakeLoKr(nn.Module):
+        def __init__(self, out_dim: int, in_dim: int) -> None:
+            super().__init__()
+            self.lokr_w1 = nn.Parameter(torch.empty(8, 8))
+            self.lokr_w2 = nn.Parameter(torch.empty(out_dim, in_dim))
+            self.factor = 8
+            self.in_dim = in_dim
+            self.out_dim = out_dim
+            self.lokr_factor_group_size = 8
+
+    class FakeNetwork(nn.Module):
+        def __init__(self) -> None:
+            super().__init__()
+            self.mods = nn.ModuleList(
+                [
+                    FakeLoKr(256, 256),
+                    FakeLoKr(256, 256),
+                    FakeLoKr(768, 256),
+                ]
+            )
+
+    def fake_pin(name: str, value: int) -> int:
+        pinned.append((name, value))
+        return value
+
+    monkeypatch.setenv("TORCHINDUCTOR_CACHE_DIR", str(tmp_path))
+    monkeypatch.setattr(harness, "_compile_cache_base", None)
+    monkeypatch.setattr(dynamo, "pin_dynamo_limit", fake_pin)
+    monkeypatch.setattr(
+        harness,
+        "_disable_dynamo_lru_cache",
+        lambda *, logger: lru_calls.append(True) or True,
+    )
+
+    harness.compile_blocks_for_training(
+        FakeUnet(),
+        FakeNetwork(),
+        backend="eager",
+        bucket_resolutions=[(896, 1152), (960, 1120)],
+        dynamic_seq=True,
+        grad_ckpt=True,
+    )
+
+    assert captured["backend"] == "eager"
+    assert pinned == [
+        ("recompile_limit", 64),
+        ("accumulated_recompile_limit", 1024),
+    ]
+    assert lru_calls == [True]
+    assert "LoKr + full gradient_checkpointing + torch_compile" in caplog.text
+
+
 def _make_sample(data_dir: Path, stem: str, bucket: str, *, with_te: bool) -> None:
     """Write a {stem}_{bucket}_anima.npz (+ optional TE sidecar) fixture."""
     w, h = bucket.split("x")

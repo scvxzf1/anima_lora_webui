@@ -399,6 +399,30 @@ export const FIELD_HELP_TRAINING_ZH = {    learning_rate: help(
         ["不要把 full 粒度的速度当成真实性能。"],
         "默认 block；只有确认 LoKr/MLP 峰值时再临时提高粒度。"
     ),
+    preprocess_memory_profile: help(
+        "预处理阶段的显存/速度预设。",
+        "只影响 WebUI/任务链触发的 VAE latent cache 和文本缓存批大小；不改变训练 batch size。",
+        ["low_vram 会降低预处理峰值显存。"],
+        ["batch 越小，预处理越慢。"],
+        ["手动填写 VAE 或文本缓存批大小时，会覆盖这个预设对应的值。"],
+        "显存峰值卡在预处理时选 low_vram；正常机器保持 auto。"
+    ),
+    preprocess_vae_cache_batch_size: help(
+        "VAE latent cache 的批大小。",
+        "auto 保持历史默认 4；填 1 会逐张过 VAE，通常能明显压低预处理峰值显存。",
+        ["直接针对 Caching latents 阶段的显存峰值。"],
+        ["值越小越慢，尤其是图片数量多时。"],
+        ["这不是训练 batch size，不影响训练 step 的有效批量。"],
+        "低显存优先填 1；显存够用保持 auto。"
+    ),
+    preprocess_text_cache_batch_size: help(
+        "文本编码缓存的批大小。",
+        "auto 保持历史默认 16；降低它可以减少 Qwen3 文本缓存阶段的显存峰值。",
+        ["文本缓存阶段 OOM 时可单独调低。"],
+        ["值越小，文本缓存越慢。"],
+        ["不会改变 caption 内容或训练时的文本缓存读取方式。"],
+        "只有文本缓存阶段显存高或 OOM 时再改；通常保持 auto。"
+    ),
     torch_compile: help(
         "是否让 PyTorch 先编译模型计算图再训练。",
         "开启后会使用上游新的 native flatten + compile_blocks 路径。第一次启动会花时间编译；编译完成后通常更快。遇到 torch.compile/inductor 报错时可以关闭。",

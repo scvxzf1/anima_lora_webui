@@ -60,6 +60,31 @@ def test_preprocess_te_uses_configured_model_paths(monkeypatch):
     assert cmd[cmd.index("--dit") + 1] == "D:/models/anima/anima_base.safetensors"
 
 
+def test_preprocess_cache_batch_sizes_follow_memory_profile(monkeypatch):
+    commands: list[list[str]] = []
+    monkeypatch.delenv("ANIMA_RUNTIME_CONFIG", raising=False)
+    monkeypatch.setattr(
+        _common,
+        "_PATH_OVERRIDES_CACHE",
+        {
+            "preprocess_memory_profile": "low_vram",
+            "preprocess_text_cache_batch_size": "2",
+            "vae": "D:/models/vae.safetensors",
+            "qwen3": "D:/models/qwen3.safetensors",
+            "pretrained_model_name_or_path": "D:/models/anima.safetensors",
+        },
+    )
+    monkeypatch.setattr(preprocess, "run", commands.append)
+    monkeypatch.setattr(preprocess, "_run_caption_backup", lambda row: None)
+    monkeypatch.setattr(preprocess, "_build_caption_index_best_effort", lambda: None)
+
+    preprocess.cmd_preprocess([])
+
+    _, vae_cmd, te_cmd = commands
+    assert vae_cmd[vae_cmd.index("--batch_size") + 1] == "1"
+    assert te_cmd[te_cmd.index("--batch_size") + 1] == "2"
+
+
 def test_easycontrol_preprocess_uses_configured_model_paths(monkeypatch):
     commands: list[list[str]] = []
 

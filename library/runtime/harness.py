@@ -562,6 +562,113 @@ def _apply_cudagraph_skip_dynamic(
     )
 
 
+def _lokr_compile_signature(module: object) -> Optional[tuple[object, ...]]:
+    w1 = getattr(module, "lokr_w1", None)
+    w2 = getattr(module, "lokr_w2", None)
+    if w1 is None or w2 is None:
+        return None
+    return (
+        tuple(getattr(w1, "shape", ())),
+        tuple(getattr(w2, "shape", ())),
+        int(getattr(module, "factor", 0) or 0),
+        int(getattr(module, "in_dim", 0) or 0),
+        int(getattr(module, "out_dim", 0) or 0),
+        int(getattr(module, "lokr_factor_group_size", 0) or 0),
+    )
+
+
+def _estimate_lokr_recompile_limit(
+    network: object,
+    *,
+    n_token_families: Optional[int],
+) -> Optional[tuple[int, int, int]]:
+    modules_fn = getattr(network, "modules", None)
+    if not callable(modules_fn):
+        return None
+
+    module_count = 0
+    signatures: set[tuple[object, ...]] = set()
+    for module in modules_fn():
+        signature = _lokr_compile_signature(module)
+        if signature is None:
+            continue
+        module_count += 1
+        signatures.add(signature)
+
+    if module_count == 0:
+        return None
+
+    family_count = int(n_token_families or 2)
+    base_limit = 2 * family_count + 8
+    # LoKrModule.forward is one bytecode shared by many patched Linear modules.
+    # Full checkpoint recompute needs those module/dtype specializations to
+    # stay resident instead of selecting a sibling Kronecker graph.
+    limit = max(base_limit, 64, 2 * module_count + 8 * len(signatures) + 32)
+    return limit, module_count, len(signatures)
+
+
+def _disable_dynamo_lru_cache(*, logger: logging.Logger) -> bool:
+    """Disable Dynamo graph LRU ordering for checkpoint recompute stability."""
+    try:
+        eval_frame = torch._C._dynamo.eval_frame
+        setter = getattr(eval_frame, "_set_lru_cache", None)
+        if not callable(setter):
+            logger.warning(
+                "Dynamo LRU cache ordering workaround unavailable: "
+                "torch._C._dynamo.eval_frame._set_lru_cache is missing"
+            )
+            return False
+        setter(False)
+        logger.warning(
+            "LoKr + full gradient_checkpointing + torch_compile: disabled "
+            "Dynamo LRU graph ordering for checkpoint recompute stability"
+        )
+        return True
+    except Exception as e:  # noqa: BLE001 - private torch API guard
+        logger.warning(
+            "Dynamo LRU cache ordering workaround failed (%s); checkpoint "
+            "recompute may still select a sibling LoKr graph",
+            e,
+        )
+        return False
+
+
+def _pin_lokr_checkpoint_compile_budget(
+    network: object,
+    *,
+    n_token_families: Optional[int],
+    grad_ckpt: bool,
+    logger: logging.Logger,
+) -> None:
+    if not grad_ckpt:
+        return
+    estimate = _estimate_lokr_recompile_limit(
+        network,
+        n_token_families=n_token_families,
+    )
+    if estimate is None:
+        return
+    limit, module_count, signature_count = estimate
+    from library.runtime.dynamo import pin_dynamo_limit
+
+    effective_recompile = pin_dynamo_limit("recompile_limit", limit)
+    accumulated_limit = max(1024, 4 * limit)
+    effective_accumulated = pin_dynamo_limit(
+        "accumulated_recompile_limit", accumulated_limit
+    )
+    lru_disabled = _disable_dynamo_lru_cache(logger=logger)
+    logger.warning(
+        "LoKr + full gradient_checkpointing + torch_compile: pinned Dynamo "
+        "recompile_limit=%s and accumulated_recompile_limit=%s for %s LoKr "
+        "modules across %s compile signatures (lru_cache_disabled=%s)",
+        effective_recompile,
+        effective_accumulated,
+        module_count,
+        signature_count,
+        lru_disabled,
+    )
+
+
 def compile_blocks_for_training(
     unet: object,
     network: object,
@@ -582,9 +689,9 @@ def compile_blocks_for_training(
     after ``network.apply_to`` + ``load_weights`` so dynamo traces the
     adapter's monkey-patched Linear forwards, not the bare DiT (the invariant
     ``build_anima`` encodes). ``compile_blocks`` turns on the flatten (one
-    block graph per token-count family) and raises the dynamo cache-size
-    budget itself, so unlike :func:`compile_dit_blocks_for_pool` no explicit
-    ``recompile_limit`` pin is needed here.
+    block graph per token-count family) and raises the base dynamo cache-size
+    budget; LoKr + full checkpointing adds an adapter-aware budget before
+    compile so recompute does not evict LoKr forward specializations.
 
     Sequence:
       1. :func:`_apply_activation_memory_budget` — partitioner cap, skipped
@@ -622,6 +729,12 @@ def compile_blocks_for_training(
             if dynamic_seq and seq_range is None:
                 seq_range = (min(counts), max(counts))
 
+    _pin_lokr_checkpoint_compile_budget(
+        network,
+        n_token_families=n_token_families,
+        grad_ckpt=grad_ckpt,
+        logger=logger,
+    )
     _apply_activation_memory_budget(
         activation_memory_budget, grad_ckpt=grad_ckpt, logger=logger
     )

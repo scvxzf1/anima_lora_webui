@@ -199,6 +199,8 @@ def _check_checkpointing_config(cfg: dict[str, Any], add) -> None:
     cpu_offload_checkpointing = _bool_value(cfg.get("cpu_offload_checkpointing"), False)
     unsloth_offload_checkpointing = _bool_value(cfg.get("unsloth_offload_checkpointing"), False)
     blocks_to_swap = _nonnegative_int_value(cfg.get("blocks_to_swap"), 0)
+    torch_compile = _bool_value(cfg.get("torch_compile"), False)
+    use_lokr = _bool_value(cfg.get("use_lokr"), False)
 
     if selective_checkpoint != "off" and gradient_checkpointing:
         add(
@@ -237,6 +239,16 @@ def _check_checkpointing_config(cfg: dict[str, Any], add) -> None:
             (
                 "blocks_to_swap 可以和普通 gradient_checkpointing 同用，但不能和 "
                 "unsloth_offload_checkpointing 同时开启。"
+            ),
+        )
+    if use_lokr and gradient_checkpointing and torch_compile:
+        add(
+            "warning",
+            "torch_compile",
+            (
+                "LoKr + 完整 gradient_checkpointing + torch_compile 属于实验性叠加；"
+                "启动编译时会提高 Dynamo graph/accumulated 预算并稳定 graph 查找顺序，"
+                "blocks_to_swap 可继续保留。"
             ),
         )
 

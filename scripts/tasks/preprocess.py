@@ -19,6 +19,12 @@ from ._common import PY, ROOT, _path, run
 RUNTIME_PREPROCESS_ATTR_KEY = "preprocess"
 CAPTION_SOURCE_MODES = {"auto", "txt", "json", "captions_json"}
 _CAPTION_INDEX_VOCAB = "models/captioners/anima-tagger-v2/vocab.json"
+_PREPROCESS_MEMORY_PROFILES = {
+    "auto": (4, 16),
+    "low_vram": (1, 4),
+    "balanced": (2, 8),
+    "speed": (4, 16),
+}
 
 
 # Subfolders under the source dir are walked by default — matches the
@@ -136,6 +142,21 @@ def _positive_int(value: Any) -> int | None:
     except (TypeError, ValueError):
         return None
     return n if n > 0 else None
+
+
+def _preprocess_cache_batch_sizes() -> tuple[int, int]:
+    from ._common import _path_overrides  # local import: avoids unused circular
+
+    overrides = _path_overrides()
+    profile = str(overrides.get("preprocess_memory_profile") or "auto").strip().lower()
+    profile = profile.replace("-", "_")
+    vae_batch, text_batch = _PREPROCESS_MEMORY_PROFILES.get(
+        profile,
+        _PREPROCESS_MEMORY_PROFILES["auto"],
+    )
+    explicit_vae = _positive_int(overrides.get("preprocess_vae_cache_batch_size"))
+    explicit_text = _positive_int(overrides.get("preprocess_text_cache_batch_size"))
+    return explicit_vae or vae_batch, explicit_text or text_batch
 
 
 def _preprocess_settings_from_custom_attributes(attrs: dict[str, Any]) -> dict[str, Any]:
@@ -478,6 +499,7 @@ def _run_preprocess_resize(row: dict[str, Any], extra: list[str]) -> None:
 
 
 def _run_preprocess_vae(row: dict[str, Any], extra: list[str]) -> None:
+    vae_batch_size, _ = _preprocess_cache_batch_sizes()
     run(
         [
             PY,
@@ -490,7 +512,7 @@ def _run_preprocess_vae(row: dict[str, Any], extra: list[str]) -> None:
             "--vae",
             _path("vae", "models/vae/qwen_image_vae.safetensors"),
             "--batch_size",
-            "4",
+            str(vae_batch_size),
             "--chunk_size",
             "64",
             *_recursive_args(row),
@@ -533,6 +555,7 @@ def _run_preprocess_te(
     caption_source_value = source_mode_env if source_mode_env is not None else row.get("caption_source_mode")
     json_args = ["--prefer_json_caption"] if prefer_json else []
     source_args = _caption_source_args(caption_source_value, prefer_json)
+    _, text_batch_size = _preprocess_cache_batch_sizes()
     run(
         [
             PY,
@@ -553,6 +576,8 @@ def _run_preprocess_te(
             shuffle_variants,
             "--caption_tag_dropout_rate",
             tag_dropout_rate,
+            "--batch_size",
+            str(text_batch_size),
             *source_args,
             *_caption_extension_args_for_row(row),
             *json_args,
@@ -726,6 +751,7 @@ def cmd_preprocess_config(extra):
             i += 1
     if not cfg_path or not src_dir:
         raise SystemExit("preprocess-config requires --dataset_config <path> and --src <dir>")
+    vae_batch_size, text_batch_size = _preprocess_cache_batch_sizes()
 
     last_err: OSError | None = None
     for attempt in range(10):
@@ -821,7 +847,7 @@ def cmd_preprocess_config(extra):
                 "--vae",
                 vae_path,
                 "--batch_size",
-                "4",
+                str(vae_batch_size),
                 "--chunk_size",
                 "64",
                 "--recursive",
@@ -840,6 +866,8 @@ def cmd_preprocess_config(extra):
                 qwen3_path,
                 "--dit",
                 dit_path,
+                "--batch_size",
+                str(text_batch_size),
                 *source_args,
                 *caption_extension_args,
                 *json_args,

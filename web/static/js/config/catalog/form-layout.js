@@ -96,6 +96,9 @@ export const FORM_SECTION_DEFS = [
             'peak_probe_jsonl',
             'peak_probe_max_steps',
             'peak_probe_level',
+            'preprocess_vae_cache_batch_size',
+            'preprocess_text_cache_batch_size',
+            'preprocess_memory_profile',
             'gradient_checkpointing',
             'lr_warmup_steps',
             'unsloth_offload_checkpointing',
@@ -415,6 +418,10 @@ export const CONFIG_COMPACT_FIELD_GROUPS = {
         {
             className: 'config-field-grid-3col',
             keys: ['peak_probe_jsonl', 'peak_probe_max_steps', 'peak_probe_level'],
+        },
+        {
+            className: 'config-field-grid-3col',
+            keys: ['preprocess_vae_cache_batch_size', 'preprocess_text_cache_batch_size', 'preprocess_memory_profile'],
         },
         {
             className: 'config-field-grid-3col config-field-grid-inline-flags',

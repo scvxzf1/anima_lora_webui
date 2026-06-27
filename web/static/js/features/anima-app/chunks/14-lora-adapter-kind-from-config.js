@@ -4,6 +4,38 @@
  */
 const ctx = globalThis.ctx;
 
+    const PREPROCESS_MEMORY_PROFILE_VALUES = {
+        auto: { preprocess_vae_cache_batch_size: 'auto', preprocess_text_cache_batch_size: 'auto' },
+        low_vram: { preprocess_vae_cache_batch_size: 1, preprocess_text_cache_batch_size: 4 },
+        balanced: { preprocess_vae_cache_batch_size: 2, preprocess_text_cache_batch_size: 8 },
+        speed: { preprocess_vae_cache_batch_size: 4, preprocess_text_cache_batch_size: 16 },
+    };
+
+    function configFieldInputByKey(key) {
+        return [...document.querySelectorAll('#config-form .field-input[data-key]')]
+            .find((input) => input.dataset.key === key);
+    }
+
+    function setConfigFieldInputValue(key, value) {
+        const input = configFieldInputByKey(key);
+        if (!input) return;
+        if (input.type === 'checkbox') {
+            input.checked = value === true || value === 'true';
+            return;
+        }
+        input.value = value ?? '';
+    }
+
+    function applyPreprocessMemoryProfileSelection(event) {
+        const target = event?.target;
+        if (target?.dataset?.key !== 'preprocess_memory_profile') return;
+        const profile = String(target.value || 'auto').trim().replace(/-/g, '_');
+        const values = PREPROCESS_MEMORY_PROFILE_VALUES[profile] || PREPROCESS_MEMORY_PROFILE_VALUES.auto;
+        for (const [key, value] of Object.entries(values)) {
+            setConfigFieldInputValue(key, value);
+        }
+    }
+
     globalThis.loraAdapterKindFromConfig = function loraAdapterKindFromConfig(config = currentConfig) {
         if (isTruthy(config?.use_glora)) return 'glora';
         if (isTruthy(config?.use_vera)) return 'vera';
@@ -262,7 +294,8 @@ const ctx = globalThis.ctx;
         }
     }
 
-    globalThis.handleFormFieldChange = function handleFormFieldChange() {
+    globalThis.handleFormFieldChange = function handleFormFieldChange(event) {
+        applyPreprocessMemoryProfileSelection(event);
         syncConfigDraftFromForm();
         updateTomlDirtyState();
         updateStepEstimatePanel();

@@ -58,6 +58,9 @@ def test_schema_has_known_keys(populated_parser):
         "peak_probe_jsonl",
         "peak_probe_max_steps",
         "peak_probe_level",
+        "preprocess_memory_profile",
+        "preprocess_vae_cache_batch_size",
+        "preprocess_text_cache_batch_size",
         "base_config",  # manual extra
         "use_moe_style",  # network-module allowlist (three-axis routing)
         "use_glora",  # GLoRA plugin selector

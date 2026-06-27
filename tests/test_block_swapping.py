@@ -584,6 +584,28 @@ def test_block_swap_max_autotune_uses_no_cudagraph_compile_mode(caplog) -> None:
     assert any("CUDAGraph" in rec.getMessage() for rec in caplog.records)
 
 
+def test_lokr_full_checkpoint_keeps_torch_compile(caplog) -> None:
+    import train
+
+    args = _args_for_assert_extra(
+        blocks_to_swap=8,
+        gradient_checkpointing=True,
+        cpu_offload_checkpointing=False,
+        unsloth_offload_checkpointing=False,
+        use_lokr=True,
+        torch_compile=True,
+        compile_dynamic_seq=True,
+    )
+
+    train.AnimaTrainer().assert_extra_args(args, _CacheableDataset(), None)
+
+    assert args.torch_compile is True
+    assert any(
+        "LoKr" in rec.getMessage() and "Dynamo graph budget" in rec.getMessage()
+        for rec in caplog.records
+    )
+
+
 def test_block_swap_rejects_soft_tokens_multi_forward_override() -> None:
     import train
 

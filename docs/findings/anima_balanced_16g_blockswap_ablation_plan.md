@@ -19,6 +19,45 @@
 
 这不是 Spectrum 式预测 block 输出。当前方案只做执行调度预测，不改变模型数学路径。
 
+## 2026-06-27 LoKr + full checkpoint 补充观测
+
+一次 WebUI LoKr 任务使用了：
+
+- `use_lokr = true`
+- `blocks_to_swap = 26`
+- `gradient_checkpointing = true`
+- `selective_checkpoint = "off"`
+- `torch_compile = true`
+- `compile_dynamic_seq = true`
+
+失败点不是 OOM，也不是 block swap 交换路径失效。`progress.jsonl` 记录的真实错误是
+`torch.utils.checkpoint.CheckpointError`：checkpoint forward 保存的 LoKr 相关张量
+metadata 是 `[6144, 2048] bf16 cuda:0`，recompute 时变成 `[2048, 6144] bf16
+cuda:0`。同一日志里 Dynamo 还在 `networks/plugins/lokr/module.py:100 forward`
+命中 `recompile_limit`，并报告 LoKr forward 的 dtype guard 从 `BFloat16` 变成
+`Float`。
+
+`block_swap_profile.jsonl` 同时显示本次运行已经进入 `block_swap_config`、forward
+wait 和 backward wait，H2D 单次搬运约 `13ms~16ms`。因此这次不能归因为
+`blocks_to_swap` 和完整 checkpoint 普遍不兼容；block swap 本身在该运行中已经正常
+调度。
+
+当前结论：
+
+- `selective_checkpoint = "mlp_only"` 是选择性 DiT block checkpoint，和完整
+  `gradient_checkpointing = true` 不能同时开启，配置检查会拒绝。
+- `blocks_to_swap` 可以和普通完整 `gradient_checkpointing = true` 叠加。
+- 本次 LoKr 失败更准确是 `LoKr + full gradient_checkpointing + torch_compile` 的
+  checkpoint recompute compiled graph 不稳定。
+- 修复方向不是关闭 `torch_compile`，而是在 `LoKr + full checkpoint + compile`
+  路径下根据 LoKr 模块数量和 Kronecker 形状提高 Dynamo `recompile_limit` 和
+  `accumulated_recompile_limit`，避免 `LoKrModule.forward` 的多个 specialization
+  被默认预算挤出缓存。
+- 同时按 PyTorch checkpoint 错误提示，在该组合下关闭 Dynamo LRU graph 重排，避免
+  recompute 查到和 forward 不同的 LoKr Kronecker 形状 graph。
+- 如果实卡仍复现同类 `CheckpointError`，下一层再考虑重写 LoKr forward 的
+  dtype/shape 路径。
+
 ## 原始问题复现
 
 历史现象：

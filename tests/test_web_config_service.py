@@ -1074,6 +1074,144 @@ def test_preflight_rejects_selective_checkpoint_with_full_checkpointing(
     assert "selective_checkpoint" in errors[-1]["message"]
 
 
+def _write_selected_checkpoint_preflight_config(
+    tmp_path: Path, monkeypatch, extra_lines: list[str]
+) -> None:
+    configs, _dataset_path = _write_minimal_config_tree(tmp_path)
+    _patch_config_service_paths(monkeypatch, tmp_path)
+    source_dir = tmp_path / "image_dataset" / "selected"
+    source_dir.mkdir(parents=True)
+    Image.new("RGB", (8, 8), color=(20, 40, 60)).save(source_dir / "sample.png")
+    (tmp_path / "models").mkdir()
+    (tmp_path / "models" / "anima.safetensors").write_bytes(b"model")
+    (tmp_path / "models" / "qwen.safetensors").write_bytes(b"qwen")
+    (tmp_path / "models" / "vae.safetensors").write_bytes(b"vae")
+    selected_config = configs / "imported" / "selected.toml"
+    selected_config.write_text(
+        "\n".join(
+            [
+                'source_image_dir = "image_dataset/selected"',
+                'pretrained_model_name_or_path = "models/anima.safetensors"',
+                'qwen3 = "models/qwen.safetensors"',
+                'vae = "models/vae.safetensors"',
+                *extra_lines,
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+
+def test_preflight_allows_block_swap_with_standard_gradient_checkpointing(
+    tmp_path: Path, monkeypatch
+):
+    _write_selected_checkpoint_preflight_config(
+        tmp_path,
+        monkeypatch,
+        [
+            "blocks_to_swap = 8",
+            "gradient_checkpointing = true",
+            "cpu_offload_checkpointing = false",
+            "unsloth_offload_checkpointing = false",
+            'selective_checkpoint = "off"',
+        ],
+    )
+
+    result = config_service.preflight_training_config(
+        "lora",
+        "default",
+        "imported",
+        config_file="configs/imported/selected.toml",
+    )
+
+    checkpoint_errors = [
+        item
+        for item in result["errors"]
+        if item["key"]
+        in {
+            "blocks_to_swap",
+            "gradient_checkpointing",
+            "cpu_offload_checkpointing",
+            "unsloth_offload_checkpointing",
+        }
+    ]
+    assert result["ok"] is True
+    assert checkpoint_errors == []
+
+
+def test_preflight_warns_lokr_full_checkpoint_pins_torch_compile_budget(
+    tmp_path: Path, monkeypatch
+):
+    _write_selected_checkpoint_preflight_config(
+        tmp_path,
+        monkeypatch,
+        [
+            "use_lokr = true",
+            "blocks_to_swap = 26",
+            "gradient_checkpointing = true",
+            "torch_compile = true",
+            "cpu_offload_checkpointing = false",
+            "unsloth_offload_checkpointing = false",
+            'selective_checkpoint = "off"',
+        ],
+    )
+
+    result = config_service.preflight_training_config(
+        "lora",
+        "default",
+        "imported",
+        config_file="configs/imported/selected.toml",
+    )
+
+    checkpoint_errors = [
+        item
+        for item in result["errors"]
+        if item["key"]
+        in {
+            "blocks_to_swap",
+            "gradient_checkpointing",
+            "torch_compile",
+            "cpu_offload_checkpointing",
+            "unsloth_offload_checkpointing",
+        }
+    ]
+    warnings = {item["key"]: item["message"] for item in result["warnings"]}
+    assert result["ok"] is True
+    assert checkpoint_errors == []
+    assert "LoKr" in warnings["torch_compile"]
+    assert "Dynamo graph/accumulated 预算" in warnings["torch_compile"]
+    assert "稳定 graph 查找顺序" in warnings["torch_compile"]
+
+
+def test_preflight_rejects_block_swap_with_unsloth_offload_checkpointing(
+    tmp_path: Path, monkeypatch
+):
+    _write_selected_checkpoint_preflight_config(
+        tmp_path,
+        monkeypatch,
+        [
+            "blocks_to_swap = 8",
+            "gradient_checkpointing = true",
+            "unsloth_offload_checkpointing = true",
+            'selective_checkpoint = "off"',
+        ],
+    )
+
+    result = config_service.preflight_training_config(
+        "lora",
+        "default",
+        "imported",
+        config_file="configs/imported/selected.toml",
+    )
+
+    errors = [
+        item
+        for item in result["errors"]
+        if item["key"] == "unsloth_offload_checkpointing"
+    ]
+    assert result["ok"] is False
+    assert "普通 gradient_checkpointing" in errors[-1]["message"]
+
+
 def test_preflight_rejects_dop_without_class_prompt(tmp_path: Path, monkeypatch):
     configs, _dataset_path = _write_minimal_config_tree(tmp_path)
     _patch_config_service_paths(monkeypatch, tmp_path)

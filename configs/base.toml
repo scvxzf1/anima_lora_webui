@@ -60,6 +60,9 @@ memory_probe_max_steps = 2
 peak_probe_jsonl = "off"
 peak_probe_max_steps = 2
 peak_probe_level = "block"
+preprocess_memory_profile = "auto"
+preprocess_vae_cache_batch_size = "auto"
+preprocess_text_cache_batch_size = "auto"
 disable_block_swap_for_eval = false
 
 use_vae_cache = true

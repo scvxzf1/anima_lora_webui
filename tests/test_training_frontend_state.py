@@ -1197,13 +1197,31 @@ def test_config_form_uses_navigation_search_and_progressive_disclosure() -> None
     assert "keys: ['blocks_to_swap', 'block_swap_transfer_dtype', 'selective_checkpoint', 'selective_checkpoint_blocks']" in resource_compact
     assert "keys: ['block_swap_profile_jsonl', 'memory_probe_jsonl', 'memory_probe_max_steps']" in resource_compact
     assert "keys: ['peak_probe_jsonl', 'peak_probe_max_steps', 'peak_probe_level']" in resource_compact
+    assert "keys: ['preprocess_vae_cache_batch_size', 'preprocess_text_cache_batch_size', 'preprocess_memory_profile']" in resource_compact
     assert "keys: ['gradient_checkpointing', 'unsloth_offload_checkpointing', 'disable_block_swap_for_eval']" in resource_compact
     assert "keys: ['max_data_loader_n_workers', 'vae_chunk_size', 'vae_disable_cache']" in data_resource_compact
     assert "keys: ['dataloader_pin_memory', 'persistent_data_loader_workers']" in data_resource_compact
     assert "config-field-grid-3col config-field-grid-inline-flags" in resource_compact
     assert "config-field-grid-2col config-field-grid-inline-flags" in data_resource_compact
+    assert "preprocess_memory_profile: 'auto'" in defaults
+    assert "preprocess_vae_cache_batch_size: 'auto'" in defaults
+    assert "preprocess_text_cache_batch_size: 'auto'" in defaults
     assert "sample_sampler: 'euler'" in defaults
     assert "sample_sampler: ['euler', 'er_sde', 'lcm']" in options
+
+
+def test_preprocess_memory_profile_updates_cache_batch_inputs() -> None:
+    source = _frontend_module_text("js/features/anima-app/chunks/14-lora-adapter-kind-from-config.js")
+
+    assert "const PREPROCESS_MEMORY_PROFILE_VALUES = {" in source
+    assert "auto: { preprocess_vae_cache_batch_size: 'auto', preprocess_text_cache_batch_size: 'auto' }" in source
+    assert "low_vram: { preprocess_vae_cache_batch_size: 1, preprocess_text_cache_batch_size: 4 }" in source
+    assert "balanced: { preprocess_vae_cache_batch_size: 2, preprocess_text_cache_batch_size: 8 }" in source
+    assert "speed: { preprocess_vae_cache_batch_size: 4, preprocess_text_cache_batch_size: 16 }" in source
+    assert "function applyPreprocessMemoryProfileSelection(event)" in source
+    assert "target?.dataset?.key !== 'preprocess_memory_profile'" in source
+    assert "setConfigFieldInputValue(key, value)" in source
+    assert "applyPreprocessMemoryProfileSelection(event);" in source
 
 
 def test_soft_tokens_advanced_fields_match_training_defaults() -> None:
@@ -2657,6 +2675,9 @@ def test_balanced_16g_block_swap_fields_are_visible() -> None:
         "peak_probe_jsonl",
         "peak_probe_max_steps",
         "peak_probe_level",
+        "preprocess_memory_profile",
+        "preprocess_vae_cache_batch_size",
+        "preprocess_text_cache_batch_size",
         "lr_warmup_steps",
         "lokr_factor_group_size",
         "lokr_project_chunk_bytes",
@@ -2670,6 +2691,9 @@ def test_balanced_16g_block_swap_fields_are_visible() -> None:
     assert "peak_probe_jsonl: '峰值探针'" in labels_options
     assert "peak_probe_max_steps: '峰值探针步数'" in labels_options
     assert "peak_probe_level: '峰值探针粒度'" in labels_options
+    assert "preprocess_memory_profile: '预处理显存模式'" in labels_options
+    assert "preprocess_vae_cache_batch_size: 'VAE 预处理批大小'" in labels_options
+    assert "preprocess_text_cache_batch_size: '文本缓存批大小'" in labels_options
     assert "lr_warmup_steps: '预热步数'" in labels_options
     assert "lokr_factor_group_size: 'LoKr 分组'" in labels_options
     assert "lokr_project_chunk_bytes: 'LoKr 张量切块阈值'" in labels_options
@@ -2685,6 +2709,9 @@ def test_balanced_16g_block_swap_fields_are_visible() -> None:
     assert "memory_probe_jsonl: ['off', 'auto']" in labels_options
     assert "peak_probe_jsonl: ['off', 'auto']" in labels_options
     assert "peak_probe_level: ['block', 'ops', 'lokr', 'full']" in labels_options
+    assert "preprocess_memory_profile: ['auto', 'low_vram', 'balanced', 'speed']" in labels_options
+    assert "preprocess_vae_cache_batch_size: ['auto', 1, 2, 4, 8]" in labels_options
+    assert "preprocess_text_cache_batch_size: ['auto', 1, 2, 4, 8, 16]" in labels_options
     assert "lokr_factor_group_size: [1, 2, 4, 8]" in labels_options
     assert "lokr_project_chunk_bytes: [1048576, 2097152, 4194304, 8388608, 16777216]" in labels_options
     assert "lora_adapter_kind: ['lora', 'loha', 'lokr', 'glora', 'vera']" in labels_options

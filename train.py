@@ -527,6 +527,24 @@ class AnimaTrainer:
                     "not supported with unsloth_offload_checkpointing"
                 )
 
+        use_lokr = str(getattr(args, "use_lokr", False)).strip().lower() in {
+            "1",
+            "true",
+            "yes",
+            "on",
+        }
+        if (
+            use_lokr
+            and getattr(args, "gradient_checkpointing", False)
+            and getattr(args, "torch_compile", False)
+        ):
+            logger.warning(
+                "LoKr with full gradient_checkpointing under torch_compile is "
+                "experimental. Training keeps torch_compile enabled, pins larger "
+                "Dynamo graph budgets, and stabilizes Dynamo graph lookup during "
+                "compile; blocks_to_swap remains independent."
+            )
+
         if args.blocks_to_swap is not None and args.blocks_to_swap > 0:
             if getattr(args, "torch_compile", False) and getattr(
                 args, "dynamo_backend", None
