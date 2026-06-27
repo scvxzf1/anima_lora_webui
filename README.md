@@ -2,28 +2,81 @@
 
 这是一个面向 Anima 模型的 训练的 WebUI 项目，基于 [sorryhyun/anima_lora](https://github.com/sorryhyun/anima_lora#) 的 WebUI 前端扩展项目
 
-感谢你选择我们的全绊屎山项目。它一定不优雅，但目标也不一定明确，项目尽量还能跑同，每天都折腾，天天都是大更新每天都在debug。
+感谢你选择我们的全绊屎山项目。它一定不优雅，但目标也不一定明确，项目尽量还能跑通，喜欢折腾，每天都在debug。
 
-后端会和欧巴的有些变动不完全对齐，作者偶尔会发挥主观能动性加点小巧思进来
+源码部署目前还没发行版，最近一个稳态锚点是“4ea68b3”，谨慎pull，随时做好回滚的准备。
+
+后端会和欧巴的有些变动不完全对齐，作者偶尔会发挥主观能动性加点小巧思进来。
+
+## 项目内容物预览：锚点 `4ea68b3`
+
+以下截图来自该稳态锚点附近的 WebUI 状态，用于快速确认主要页面和功能入口。
+
+<table>
+  <tr>
+    <td width="33%">
+      <img src="image/README/project-preview/preview-01.png" alt="环境完整性检测" width="100%">
+      <br><sub>环境完整性检测</sub>
+    </td>
+    <td width="33%">
+      <img src="image/README/project-preview/preview-02.png" alt="路径与模型配置" width="100%">
+      <br><sub>路径与模型配置</sub>
+    </td>
+    <td width="33%">
+      <img src="image/README/project-preview/preview-03.png" alt="训练结果预览" width="100%">
+      <br><sub>训练结果预览</sub>
+    </td>
+  </tr>
+  <tr>
+    <td width="33%">
+      <img src="image/README/project-preview/preview-04.png" alt="运行监控面板" width="100%">
+      <br><sub>运行监控面板</sub>
+    </td>
+    <td width="33%">
+      <img src="image/README/project-preview/preview-05.png" alt="Loss 与学习率曲线" width="100%">
+      <br><sub>Loss 与学习率曲线</sub>
+    </td>
+    <td width="33%">
+      <img src="image/README/project-preview/preview-06.png" alt="历史任务分组" width="100%">
+      <br><sub>历史任务分组</sub>
+    </td>
+  </tr>
+  <tr>
+    <td width="33%">
+      <img src="image/README/project-preview/preview-07.png" alt="数据集配置" width="100%">
+      <br><sub>数据集配置</sub>
+    </td>
+    <td width="33%">
+      <img src="image/README/project-preview/preview-08.png" alt="训练任务详情" width="100%">
+      <br><sub>训练任务详情</sub>
+    </td>
+    <td width="33%">
+      <img src="image/README/project-preview/preview-09.png" alt="训练方法配置" width="100%">
+      <br><sub>训练方法配置</sub>
+    </td>
+  </tr>
+</table>
 
 ## 大概有哪些能力
 
-- 训练 LoRA、LoHa、LoKr、OrthoLoRA、T-LoRA、HydraLoRA、FeRA、ReFT、ChimeraHydra、 等适配器方法。
-- 在 WebUI 里管理训练方法、硬件预设、数据集配置、模型路径和 sample prompts。
-- 支持图片 resize、VAE latent 缓存、文本编码缓存、PE 特征缓存和 caption index 构建。
-- 支持训练队列、任务日志、历史任务分组、失败/中断任务续训和运行状态查看。
-- 支持训练结果预览、权重选择、prompt 预览和基础推理测试。
-- 保留命令行入口，适合自动化训练、实验方法验证和批处理。
-- 附带 ComfyUI custom nodes、实验 bench、结构文档和 pytest 测试。
+1. 训练 LoRA、LoKr、 这两个主要在维护的。“也不一定就是好的”
+1. “LoHa、OrthoLoRA、T-LoRA、HydraLoRA、FeRA、ReFT、ChimeraHydra、”这一窝没啥精力维护给我正义切割了，后端没删前端大部分没给配置项给了的也不一定可用。
+1. 在 WebUI 里管理训练方法、硬件预设、数据集配置、模型路径和 sample prompts。
+1. 支持图片 resize、VAE latent 缓存、文本编码缓存、PE 特征缓存和 caption index 构建。
+1. 支持训练队列、任务日志、历史任务分组、失败/中断任务续训和运行状态查看。
+1. 支持训练结果预览、权重选择、prompt 预览和基础推理测试。
+1. 保留命令行入口，适合自动化训练、实验方法验证和批处理。
+1. 附带 ComfyUI custom nodes、实验 bench、结构文档和 pytest 测试。
 
 ## 致谢 / “抄袭”列表
 
 不会做还不会抄吗？问题不大的啦：
 
 - [sorryhyun/anima_lora](https://github.com/sorryhyun/anima_lora#)：当前项目的主要基础，WebUI 前端和 Anima LoRA 训练管线都基于它继续扩展。
-- https://github.com/WhitecrowAurora：本项目的10086个算法优化来源，多出来的优化都这么来的。
+  [WhitecrowAurora](https://github.com/WhitecrowAurora) ：本项目的大部分的算法优化来源，多出来的优化都是这么来的。
 - [Moeblack/AnimaLoraToolkit](https://github.com/Moeblack/AnimaLoraToolkit)：参考了 Anima LoRA 训练工具链、lokr支持，配置组织和使用体验。
-- https://github.com/huggingface/peft：loha兼容支持。
+- [huggingface/peft](https://github.com/huggingface/peft)：loha兼容支持。
+  [DNPMBHC/DiffPipeForge](https://github.com/DNPMBHC/DiffPipeForge) :dpf的一个分支,从中抄袭了块交换缓存和环境检测
 - [TianDongL/DiffPipeForge](https://github.com/TianDongL/DiffPipeForge)：参考了数据处理、训练流程和部分工程组织思路。
 - [LoganBooker/prodigy-plus-schedule-free](https://github.com/LoganBooker/prodigy-plus-schedule-free)：用于 Prodigy Plus Schedule-Free 优化器支持。
 - [kozistr/pytorch_optimizer](https://github.com/kozistr/pytorch_optimizer)：用于 CAME 等 `pytorch-optimizer` 优化器支持。
