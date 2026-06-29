@@ -374,6 +374,7 @@ def _patch_runtime_service_paths(monkeypatch, root):
     monkeypatch.setattr(config_service, "GUI_METHODS_DIR", configs / "gui-methods")
     monkeypatch.setattr(config_service, "IMPORTED_CONFIGS_DIR", configs / "imported")
     monkeypatch.setattr(config_service, "PRESETS_FILE", configs / "presets.toml")
+    monkeypatch.setattr(config_service, "DEFAULT_SAMPLE_PROMPTS_FILE", str(configs / "sample_prompts.txt"))
     monkeypatch.setattr(config_service, "DATASET_PRESETS_DIR", configs / "datasets")
     monkeypatch.setattr(training_service, "ROOT", root)
     monkeypatch.setattr(settings_service, "ROOT", root)
@@ -856,6 +857,7 @@ def test_saved_web_form_values_reach_runtime_config_and_train_loader(tmp_path, m
         "checkpointing_last_n_epochs": 3,
         "block_swap_transfer_dtype": "fp8_e4m3",
         "memory_probe_jsonl": "auto",
+        "preprocess_precision_preference": "fp16",
     }
 
     ok, msg, _content, changed = config_service.patch_raw_file_values(
@@ -891,6 +893,28 @@ def test_saved_web_form_values_reach_runtime_config_and_train_loader(tmp_path, m
     assert args.block_swap_transfer_dtype == saved_values["block_swap_transfer_dtype"]
     assert args.memory_probe_jsonl == saved_values["memory_probe_jsonl"]
     assert args.output_dir == runtime_cfg["output_dir"]
+
+
+def test_runtime_config_defaults_preprocess_precision_from_mixed_precision(tmp_path, monkeypatch):
+    _write_runtime_config_tree(tmp_path)
+    _patch_runtime_service_paths(monkeypatch, tmp_path)
+    train_file = "configs/imported/522.toml"
+    train_path = tmp_path / train_file
+    train_path.write_text(
+        train_path.read_text(encoding="utf-8") + '\nmixed_precision = "fp16"\n',
+        encoding="utf-8",
+    )
+
+    runtime = training_service._prepare_web_runtime_config(
+        "522",
+        "default",
+        "imported",
+        source_config_file=train_file,
+    )
+    runtime_path = tmp_path / runtime["runtime_config_file"]
+    runtime_cfg = toml.loads(runtime_path.read_text(encoding="utf-8"))
+    assert runtime_cfg["mixed_precision"] == "fp16"
+    assert runtime_cfg["preprocess_precision_preference"] == "fp16"
 
 
 def test_training_sample_config_reports_effective_sampler() -> None:

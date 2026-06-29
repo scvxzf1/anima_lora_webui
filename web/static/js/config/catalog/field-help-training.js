@@ -321,10 +321,11 @@ export const FIELD_HELP_TRAINING_ZH = {    learning_rate: help(
     ),
     block_swap_transfer_dtype: help(
         "块交换 frozen base 权重在 CPU 侧保存和传输时使用的精度。",
-        "bf16 是当前稳定路径；fp8_e4m3 会压缩 PCIe 传输，再在 GPU 上还原为执行精度。",
+        "这里不是显卡训练精度开关。bf16 表示当前默认传输路径；即使显卡本身不支持 bf16 训练，也可以继续使用这个默认值。fp8_e4m3 会压缩 PCIe 传输，再在 GPU 上还原为执行精度。",
         ["可能降低 H2D 等待时间。"],
         ["fp8_e4m3 会引入 frozen base 权重量化误差。"],
         ["只影响 frozen base block，不会量化 LoRA、router 或优化器状态。"],
+        ["旧卡没有 bf16 训练支持时，不需要因为这个字段改成 fp16；训练精度请看上面的“精度倾向”。"],
         "保持 bf16；只有做 FP8 交换传输消融时再改为 fp8_e4m3。"
     ),
     selective_checkpoint: help(
@@ -423,6 +424,14 @@ export const FIELD_HELP_TRAINING_ZH = {    learning_rate: help(
         ["不会改变 caption 内容或训练时的文本缓存读取方式。"],
         "只有文本缓存阶段显存高或 OOM 时再改；通常保持 auto。"
     ),
+    preprocess_precision_preference: help(
+        "预处理阶段优先采用哪种计算精度。",
+        "只影响 WebUI/任务链触发的 VAE latent cache 和文本缓存计算精度；不会改训练时的 mixed_precision。",
+        ["bf16 适合支持 bf16 的新卡，通常兼顾速度、显存和稳定性。"],
+        ["fp16 适合旧卡无 bf16 支持时继续跑预处理，但数值稳定性通常不如 bf16。"],
+        ["fp32 最稳，但更慢、也更占显存。"],
+        "默认先用 bf16；旧卡不支持 bf16 时改成 fp16；只有排查精度问题时再考虑 fp32。"
+    ),
     torch_compile: help(
         "是否让 PyTorch 先编译模型计算图再训练。",
         "开启后会使用上游新的 native flatten + compile_blocks 路径。第一次启动会花时间编译；编译完成后通常更快。遇到 torch.compile/inductor 报错时可以关闭。",
@@ -462,6 +471,14 @@ export const FIELD_HELP_TRAINING_ZH = {    learning_rate: help(
         ["依赖显卡和 PyTorch 支持。"],
         ["fp16 更容易数值不稳定；bf16 在旧卡上可能不可用。"],
         "新手优先用 bf16；启动时报不支持再换 fp16。"
+    ),
+    precision_preference: help(
+        "训练时优先采用哪种数值精度方案。",
+        "bf16 是默认推荐；fp16 表示 fp16/32 混合精度；fp32 表示关闭混合精度、全程使用 fp32。",
+        ["bf16 通常兼顾显存、速度和稳定性，适合大多数新卡。"],
+        ["fp16 会进一步压显存，但数值稳定性通常不如 bf16。"],
+        ["fp32 最稳、最直观，但显存占用最高，速度也往往更慢。"],
+        "默认先用 bf16；旧卡不支持 bf16 时试 fp16；只有排查数值问题或显存充足时再考虑 fp32。"
     ),
     vae_chunk_size: help(
         "VAE 解码/编码时的分块大小。",

@@ -92,6 +92,7 @@ def _encode_batch(
     text_encoder,
     llm_adapter,
     device: torch.device,
+    cache_dtype: torch.dtype,
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor | None]:
     """Tokenize, encode through Qwen3, optionally run the LLM adapter. CPU tensors out."""
     tokens_and_masks = tokenize_strategy.tokenize(captions)
@@ -111,10 +112,10 @@ def _encode_batch(
                 source_attention_mask=attn_mask,
             )
             crossattn_emb[~t5_attn_mask.to(device).bool()] = 0
-            crossattn_emb = crossattn_emb.to(dtype=torch.bfloat16).cpu()
+            crossattn_emb = crossattn_emb.to(dtype=cache_dtype).cpu()
 
     return (
-        prompt_embeds.to(dtype=torch.bfloat16).cpu(),
+        prompt_embeds.to(dtype=cache_dtype).cpu(),
         attn_mask.to(dtype=torch.int32).cpu(),
         t5_input_ids.to(dtype=torch.long).cpu(),
         t5_attn_mask.to(dtype=torch.int32).cpu(),
@@ -210,6 +211,7 @@ def cache_text_embeddings(
     cache_prior_crossattn = bool(
         llm_adapter is not None and str(diff_output_preservation_class or "").strip()
     )
+    cache_dtype = getattr(text_encoder, "dtype", None) or torch.bfloat16
 
     from safetensors.torch import save_file
 
@@ -249,6 +251,7 @@ def cache_text_embeddings(
                     text_encoder,
                     llm_adapter,
                     device,
+                    cache_dtype,
                 )
             )
             prior_crossattn_emb = None
@@ -268,6 +271,7 @@ def cache_text_embeddings(
                     text_encoder,
                     llm_adapter,
                     device,
+                    cache_dtype,
                 )
 
             for i, (img_path, _, cache_path) in enumerate(to_encode):
@@ -299,6 +303,7 @@ def cache_text_embeddings(
                     text_encoder,
                     llm_adapter,
                     device,
+                    cache_dtype,
                 )
             )
             prior_crossattn_emb = None
@@ -318,6 +323,7 @@ def cache_text_embeddings(
                     text_encoder,
                     llm_adapter,
                     device,
+                    cache_dtype,
                 )
 
             offset = 0

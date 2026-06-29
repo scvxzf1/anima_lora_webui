@@ -897,6 +897,7 @@ def test_config_form_uses_navigation_search_and_progressive_disclosure() -> None
     catalog_defaults = _frontend_module_text("js/config/catalog/defaults.js")
     catalog_form_layout = _frontend_module_text("js/config/catalog/form-layout.js")
     catalog_help_training = _frontend_module_text("js/config/catalog/field-help-training.js")
+    persist_defaults = _section(catalog_defaults, "export const FORM_UI_PERSIST_DEFAULT_FIELDS = new Set([", "]);")
     options = _section(labels_options, "export const FIELD_OPTIONS = {", "\n};")
 
     assert category_defs.count("id: '") == 5
@@ -1184,6 +1185,11 @@ def test_config_form_uses_navigation_search_and_progressive_disclosure() -> None
     assert "只在遮罩外区域做先验保留" in catalog_help_training
     assert "block_swap_transfer_dtype: '块交换传输精度'" in source
     assert "block_swap_transfer_dtype: ['bf16', 'fp8_e4m3']" in source
+    assert "这里不是显卡训练精度开关" in catalog_help_training
+    assert "即使显卡本身不支持 bf16 训练，也可以继续使用这个默认值" in catalog_help_training
+    assert "训练精度请看上面的“精度倾向”" in catalog_help_training
+    assert "precision_preference: '精度倾向'" in source
+    assert "precision_preference: ['bf16', 'fp16', 'fp32']" in source
     assert "memory_probe_jsonl: '显存探针'" in source
     assert "memory_probe_jsonl: ['off', 'auto']" in source
     assert "memory_probe_max_steps: [1, 2, 3, 5, 0]" in source
@@ -1198,16 +1204,30 @@ def test_config_form_uses_navigation_search_and_progressive_disclosure() -> None
     assert "keys: ['block_swap_profile_jsonl', 'memory_probe_jsonl', 'memory_probe_max_steps']" in resource_compact
     assert "keys: ['peak_probe_jsonl', 'peak_probe_max_steps', 'peak_probe_level']" in resource_compact
     assert "keys: ['preprocess_vae_cache_batch_size', 'preprocess_text_cache_batch_size', 'preprocess_memory_profile']" in resource_compact
-    assert "keys: ['gradient_checkpointing', 'unsloth_offload_checkpointing', 'disable_block_swap_for_eval']" in resource_compact
+    assert "'preprocess_precision_preference'," in optimization_section
+    assert "'precision_preference'," in optimization_section
+    assert "'mixed_precision'," not in optimization_section
+    assert "keys: ['gradient_checkpointing', 'precision_preference']" in resource_compact
+    assert "keys: ['unsloth_offload_checkpointing', 'disable_block_swap_for_eval']" in resource_compact
     assert "keys: ['max_data_loader_n_workers', 'vae_chunk_size', 'vae_disable_cache']" in data_resource_compact
     assert "keys: ['dataloader_pin_memory', 'persistent_data_loader_workers']" in data_resource_compact
-    assert "config-field-grid-3col config-field-grid-inline-flags" in resource_compact
+    assert "config-field-grid-2col config-field-grid-inline-flags" in resource_compact
     assert "config-field-grid-2col config-field-grid-inline-flags" in data_resource_compact
     assert "preprocess_memory_profile: 'auto'" in defaults
     assert "preprocess_vae_cache_batch_size: 'auto'" in defaults
     assert "preprocess_text_cache_batch_size: 'auto'" in defaults
+    assert "preprocess_precision_preference: 'bf16'" in defaults
+    assert "precision_preference: 'bf16'" in defaults
     assert "sample_sampler: 'euler'" in defaults
     assert "sample_sampler: ['euler', 'er_sde', 'lcm']" in options
+    assert "训练时优先采用哪种数值精度方案" in catalog_help_training
+    assert "fp16/32 混合精度" in catalog_help_training
+    assert "全程使用 fp32" in catalog_help_training
+    assert "preprocess_precision_preference: '预处理精度'" in source
+    assert "preprocess_precision_preference: ['bf16', 'fp16', 'fp32']" in source
+    assert "只影响 WebUI/任务链触发的 VAE latent cache 和文本缓存计算精度" in catalog_help_training
+    assert "'precision_preference'," in persist_defaults
+    assert "'preprocess_precision_preference'," in persist_defaults
 
 
 def test_preprocess_memory_profile_updates_cache_batch_inputs() -> None:
@@ -1222,6 +1242,69 @@ def test_preprocess_memory_profile_updates_cache_batch_inputs() -> None:
     assert "target?.dataset?.key !== 'preprocess_memory_profile'" in source
     assert "setConfigFieldInputValue(key, value)" in source
     assert "applyPreprocessMemoryProfileSelection(event);" in source
+
+
+def test_precision_preference_ui_maps_to_training_precision_fields() -> None:
+    form_source = _frontend_module_text("js/features/anima-app/chunks/02-ensure-history-detail-feature.js")
+    helper_source = _frontend_module_text("js/features/anima-app/chunks/14-lora-adapter-kind-from-config.js")
+    option_source = _frontend_module_text("js/features/anima-app/chunks/15-append-sample-prompt-row.js")
+    patch_source = _frontend_module_text("js/features/anima-app/chunks/18-delete-dataset-preset-group.js")
+    guide_source = _frontend_module_text("js/features/anima-app/chunks/13-update-dataset-editor-rows-setting-value.js")
+
+    assert "function normalizePrecisionPreference" in helper_source
+    assert "function precisionPreferenceFromConfig" in helper_source
+    assert "function precisionPreferencePatch" in helper_source
+    assert "mixedPrecision === 'no'" in helper_source
+    assert "patch.full_fp16 = false;" in helper_source
+    assert "patch.full_bf16 = false;" in helper_source
+    assert "if (key === 'precision_preference')" in form_source
+    assert "return precisionPreferenceFromConfig(currentConfig);" in form_source
+    assert "return configFormState.draftValues.has(key)" in form_source
+    assert ": precisionPreferenceFromConfig(currentConfig);" in form_source
+    assert "key === 'mixed_precision' || key === 'full_fp16' || key === 'full_bf16'" in form_source
+    assert "Object.assign(liveConfig, precisionPreferencePatch(next, currentConfig));" in helper_source
+    assert "混合精度 / fp16/32" in option_source
+    assert "全程 fp32 / full fp32" in option_source
+    assert "'precision_preference' in nextValues" in patch_source
+    assert "delete nextValues.precision_preference;" in patch_source
+    assert "Object.assign(nextValues, precisionPreferencePatch(nextValues.precision_preference, currentConfig));" in patch_source
+    assert "const original = precisionPreferenceFromConfig(currentConfig);" in patch_source
+    assert "const normalized = normalizePrecisionPreference(next);" in patch_source
+    assert "if (!valuesEqual(normalized, original)) {" in patch_source
+    assert "values[key] = normalized;" in patch_source
+    assert "valueDetail('precision_preference', precisionPreferenceFromConfig(config))" in guide_source
+
+
+def test_precision_preference_dirty_state_uses_derived_config_value() -> None:
+    form_source = _frontend_module_text("js/features/anima-app/chunks/02-ensure-history-detail-feature.js")
+
+    assert "if (key === 'precision_preference')" in form_source
+    assert "return normalizePrecisionPreference(next) !== precisionPreferenceFromConfig(currentConfig);" in form_source
+
+
+def test_precision_preference_display_value_uses_derived_config_value() -> None:
+    form_source = _frontend_module_text("js/features/anima-app/chunks/02-ensure-history-detail-feature.js")
+
+    assert "if (key === 'precision_preference')" in form_source
+    assert "? normalizePrecisionPreference(configFormState.draftValues.get(key))" in form_source
+    assert ": precisionPreferenceFromConfig(currentConfig);" in form_source
+
+
+def test_precision_preference_persists_even_when_matching_ui_default() -> None:
+    defaults_source = _frontend_module_text("js/config/catalog/defaults.js")
+    persist_defaults = _section(defaults_source, "export const FORM_UI_PERSIST_DEFAULT_FIELDS = new Set([", "]);")
+
+    assert "'precision_preference'," in persist_defaults
+
+
+def test_preprocess_precision_preference_is_persisted_when_missing_from_current_config() -> None:
+    source = _frontend_module_text("js/features/anima-app/chunks/18-delete-dataset-preset-group.js")
+    collect_section = _section(source, "function collectChangedFormValues", "function networkArgInputChanged")
+
+    assert "options.persistDefaultFields" in collect_section
+    assert "!('preprocess_precision_preference' in values)" in collect_section
+    assert "!Object.prototype.hasOwnProperty.call(currentConfig || {}, 'preprocess_precision_preference')" in collect_section
+    assert "values.preprocess_precision_preference = normalizePrecisionPreference(" in collect_section
 
 
 def test_soft_tokens_advanced_fields_match_training_defaults() -> None:

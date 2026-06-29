@@ -77,6 +77,8 @@ class _TinyBlockStack(nn.Module):
         emb: torch.Tensor,
         crossattn_emb: torch.Tensor,
         offloader: ModelOffloader | None = None,
+        *,
+        use_fp32: bool = False,
     ) -> torch.Tensor:
         attn_params = AttentionParams.create_attention_params("torch")
         if offloader is not None:
@@ -87,7 +89,7 @@ class _TinyBlockStack(nn.Module):
         for block_idx, block in enumerate(self.blocks):
             if offloader is not None:
                 offloader.wait_for_block(block_idx)
-            x = block(x, emb, crossattn_emb, attn_params)
+            x = block(x, emb, crossattn_emb, attn_params, use_fp32=use_fp32)
             if offloader is not None:
                 offloader.submit_move_blocks(self.blocks, block_idx)
         return x
@@ -275,3 +277,57 @@ def test_compile_full_checkpoint_block_swap_hot_matrix(
         _assert_block_swap_profile(actual.profile_events)
     else:
         assert actual.profile_events == []
+
+
+@pytest.mark.skipif(not hasattr(torch, "compile"), reason="torch.compile unavailable")
+@pytest.mark.parametrize(
+    "scenario",
+    [
+        _HotScenario("use_fp32_compile", compile_blocks=True),
+        _HotScenario("use_fp32_checkpoint", full_checkpoint=True),
+        _HotScenario("use_fp32_swap", block_swap=True),
+        _HotScenario(
+            "use_fp32_compile_checkpoint_swap",
+            compile_blocks=True,
+            full_checkpoint=True,
+            block_swap=True,
+        ),
+    ],
+    ids=lambda scenario: scenario.name,
+)
+def test_hot_stack_accepts_use_fp32_flag(
+    tmp_path: Path,
+    scenario: _HotScenario,
+) -> None:
+    compile_backend = os.environ.get("ANIMA_HOT_COMPILE_BACKEND", "eager")
+    stack = _make_base_stack()
+    if scenario.full_checkpoint:
+        stack.enable_full_checkpointing()
+    if scenario.compile_blocks:
+        stack.compile_block_forwards(compile_backend)
+
+    offloader = (
+        ModelOffloader(
+            stack.blocks,
+            blocks_to_swap=2,
+            device=torch.device("cpu"),
+            supports_backward=True,
+            profile_jsonl=str(tmp_path / f"{scenario.name}.jsonl"),
+        )
+        if scenario.block_swap
+        else None
+    )
+    try:
+        x, emb, crossattn_emb = _make_step_inputs(0)
+        out = stack(
+            x,
+            emb,
+            crossattn_emb,
+            offloader,
+            use_fp32=True,
+        )
+        loss = out.square().mean()
+        loss.backward()
+        assert torch.isfinite(loss)
+    finally:
+        _shutdown_offloader(offloader)

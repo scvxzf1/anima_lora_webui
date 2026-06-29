@@ -206,6 +206,18 @@ def toml_dumps_sorted(data: dict[str, Any]) -> str:
     except Exception:
         return json.dumps(data, ensure_ascii=False, indent=2)
 
+
+def _default_preprocess_precision_preference(cfg: dict[str, Any]) -> str:
+    raw = str(cfg.get("preprocess_precision_preference") or "").strip().lower()
+    if raw in {"bf16", "fp16", "fp32"}:
+        return raw
+    mixed_precision = str(cfg.get("mixed_precision") or "").strip().lower()
+    if mixed_precision == "fp16":
+        return "fp16"
+    if mixed_precision == "no":
+        return "fp32"
+    return "bf16"
+
 def _prepare_web_runtime_config(
     variant: str,
     preset: str,
@@ -320,6 +332,7 @@ def _prepare_web_runtime_config(
         "resized_image_dir": first_row["image_dir"],
         "lora_cache_dir": first_row["cache_dir"],
     })
+    runtime_cfg["preprocess_precision_preference"] = _default_preprocess_precision_preference(runtime_cfg)
     runtime_config_path = run_dir / "config.runtime.toml"
     runtime_config_path.write_text(toml_dumps_sorted(runtime_cfg), encoding="utf-8")
 

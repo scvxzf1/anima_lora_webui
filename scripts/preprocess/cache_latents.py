@@ -17,6 +17,7 @@ import torch
 
 from library.preprocess import cache_latents, tqdm_progress
 from library.runtime.cli import add_io_args
+from library.runtime.device import str_to_dtype
 
 
 def main() -> None:
@@ -40,6 +41,13 @@ def main() -> None:
         default=True,
         help="Disable VAE internal cache (default: True)",
     )
+    parser.add_argument(
+        "--dtype",
+        type=str,
+        choices=["bfloat16", "float16", "float32"],
+        default="bfloat16",
+        help="VAE compute dtype (default: bfloat16).",
+    )
     args = parser.parse_args()
 
     from library.models import qwen_vae as qwen_image_autoencoder_kl
@@ -47,7 +55,7 @@ def main() -> None:
     data_dir = Path(args.dir)
     cache_dir = Path(args.cache_dir) if args.cache_dir else None
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    dtype = torch.bfloat16
+    dtype = str_to_dtype(args.dtype)
 
     print(f"Loading VAE from {args.vae} ...")
     vae = qwen_image_autoencoder_kl.load_vae(

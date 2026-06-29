@@ -80,6 +80,7 @@ PREPROCESS_ENV_REQUIRED_FILES = (
 )
 UI_ONLY_CONFIG_FIELDS = {
     "dataset_config_picker",
+    "precision_preference",
 }
 SPD_NESTED_PATCH_FIELDS = {
     "channel_scaling_alpha": ("network", "channel_scaling_alpha"),

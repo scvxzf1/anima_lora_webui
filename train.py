@@ -955,7 +955,7 @@ class AnimaTrainer:
     def get_text_encoding_strategy(self, args):
         return strategy_anima.AnimaTextEncodingStrategy()
 
-    def get_text_encoder_outputs_caching_strategy(self, args):
+    def get_text_encoder_outputs_caching_strategy(self, args, weight_dtype: torch.dtype):
         if args.cache_text_encoder_outputs:
             return strategy_anima.AnimaTextEncoderOutputsCachingStrategy(
                 args.cache_text_encoder_outputs_to_disk,
@@ -974,6 +974,7 @@ class AnimaTrainer:
                 diff_output_preservation_class=getattr(
                     args, "diff_output_preservation_class", None
                 ),
+                cache_dtype=weight_dtype,
             )
         return None
 
@@ -2124,8 +2125,9 @@ class AnimaTrainer:
         # Set the text-encoder-outputs caching strategy now (before the model
         # load) so the cache-completeness probe below can use it to decide
         # whether the Qwen3 text encoder needs loading at all.
+        weight_dtype, _save_dtype = prepare_dtype(args)
         text_encoder_outputs_caching_strategy = (
-            self.get_text_encoder_outputs_caching_strategy(args)
+            self.get_text_encoder_outputs_caching_strategy(args, weight_dtype)
         )
         if text_encoder_outputs_caching_strategy is not None:
             text_strategies.TextEncoderOutputsCachingStrategy.set_strategy(

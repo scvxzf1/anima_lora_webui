@@ -69,6 +69,7 @@ def test_preprocess_cache_batch_sizes_follow_memory_profile(monkeypatch):
         {
             "preprocess_memory_profile": "low_vram",
             "preprocess_text_cache_batch_size": "2",
+            "preprocess_precision_preference": "fp16",
             "vae": "D:/models/vae.safetensors",
             "qwen3": "D:/models/qwen3.safetensors",
             "pretrained_model_name_or_path": "D:/models/anima.safetensors",
@@ -82,7 +83,56 @@ def test_preprocess_cache_batch_sizes_follow_memory_profile(monkeypatch):
 
     _, vae_cmd, te_cmd = commands
     assert vae_cmd[vae_cmd.index("--batch_size") + 1] == "1"
+    assert vae_cmd[vae_cmd.index("--dtype") + 1] == "float16"
     assert te_cmd[te_cmd.index("--batch_size") + 1] == "2"
+    assert te_cmd[te_cmd.index("--dtype") + 1] == "float16"
+
+
+def test_preprocess_dtype_defaults_to_bfloat16(monkeypatch):
+    commands: list[list[str]] = []
+    monkeypatch.delenv("ANIMA_RUNTIME_CONFIG", raising=False)
+    monkeypatch.setattr(
+        _common,
+        "_PATH_OVERRIDES_CACHE",
+        {
+            "vae": "D:/models/vae.safetensors",
+            "qwen3": "D:/models/qwen3.safetensors",
+            "pretrained_model_name_or_path": "D:/models/anima.safetensors",
+        },
+    )
+    monkeypatch.setattr(preprocess, "run", commands.append)
+    monkeypatch.setattr(preprocess, "_run_caption_backup", lambda row: None)
+    monkeypatch.setattr(preprocess, "_build_caption_index_best_effort", lambda: None)
+
+    preprocess.cmd_preprocess([])
+
+    _, vae_cmd, te_cmd = commands
+    assert vae_cmd[vae_cmd.index("--dtype") + 1] == "bfloat16"
+    assert te_cmd[te_cmd.index("--dtype") + 1] == "bfloat16"
+
+
+def test_preprocess_dtype_falls_back_to_training_mixed_precision(monkeypatch):
+    commands: list[list[str]] = []
+    monkeypatch.delenv("ANIMA_RUNTIME_CONFIG", raising=False)
+    monkeypatch.setattr(
+        _common,
+        "_PATH_OVERRIDES_CACHE",
+        {
+            "mixed_precision": "fp16",
+            "vae": "D:/models/vae.safetensors",
+            "qwen3": "D:/models/qwen3.safetensors",
+            "pretrained_model_name_or_path": "D:/models/anima.safetensors",
+        },
+    )
+    monkeypatch.setattr(preprocess, "run", commands.append)
+    monkeypatch.setattr(preprocess, "_run_caption_backup", lambda row: None)
+    monkeypatch.setattr(preprocess, "_build_caption_index_best_effort", lambda: None)
+
+    preprocess.cmd_preprocess([])
+
+    _, vae_cmd, te_cmd = commands
+    assert vae_cmd[vae_cmd.index("--dtype") + 1] == "float16"
+    assert te_cmd[te_cmd.index("--dtype") + 1] == "float16"
 
 
 def test_easycontrol_preprocess_uses_configured_model_paths(monkeypatch):
@@ -662,6 +712,7 @@ def test_cache_text_embeddings_writes_missing_caption_caches(tmp_path, monkeypat
         _text_encoder,
         _llm_adapter,
         _device,
+        _cache_dtype,
     ):
         seen_captions.extend(captions)
         n = len(captions)
@@ -710,6 +761,7 @@ def test_cache_text_embeddings_writes_captions_json_as_multi_source_variants(tmp
         _text_encoder,
         _llm_adapter,
         _device,
+        _cache_dtype,
     ):
         seen_captions.extend(captions)
         n = len(captions)
@@ -758,6 +810,7 @@ def test_cache_text_embeddings_writes_diff_output_prior_crossattn(tmp_path, monk
         _text_encoder,
         _llm_adapter,
         _device,
+        _cache_dtype,
     ):
         seen_captions.append(list(captions))
         n = len(captions)
@@ -795,6 +848,53 @@ def test_cache_text_embeddings_writes_diff_output_prior_crossattn(tmp_path, monk
     ]
     assert torch.equal(cache["crossattn_emb"], torch.full((2, 4), 7, dtype=torch.bfloat16))
     assert torch.equal(cache["prior_crossattn_emb"], torch.full((2, 4), 11, dtype=torch.bfloat16))
+
+
+def test_cache_text_embeddings_uses_text_encoder_dtype_for_saved_tensors(tmp_path, monkeypatch):
+    image = tmp_path / "hero.png"
+    Image.new("RGB", (800, 800), color=(128, 128, 128)).save(image)
+    image.with_suffix(".txt").write_text("tag one\n", encoding="utf-8")
+
+    def fake_encode_batch(
+        captions,
+        _tokenize_strategy,
+        _encoding_strategy,
+        _text_encoder,
+        _llm_adapter,
+        _device,
+        cache_dtype,
+    ):
+        n = len(captions)
+        return (
+            torch.zeros((n, 2, 3), dtype=cache_dtype),
+            torch.ones((n, 2), dtype=torch.int32),
+            torch.zeros((n, 2), dtype=torch.long),
+            torch.ones((n, 2), dtype=torch.int32),
+            torch.full((n, 2, 4), 7, dtype=cache_dtype),
+        )
+
+    monkeypatch.setattr(preprocess_text, "_encode_batch", fake_encode_batch)
+
+    class DummyTextEncoder:
+        dtype = torch.float16
+
+    stats = preprocess_text.cache_text_embeddings(
+        tmp_path,
+        object(),
+        object(),
+        DummyTextEncoder(),
+        llm_adapter=object(),
+        device=torch.device("cpu"),
+        cache_dir=tmp_path / "cache",
+        batch_size=8,
+        min_pixels=500_000,
+        verbose=False,
+    )
+
+    cache = load_file(str(tmp_path / "cache" / "hero_anima_te.safetensors"))
+    assert stats.written == 1
+    assert cache["prompt_embeds"].dtype == torch.float16
+    assert cache["crossattn_emb"].dtype == torch.float16
 
 
 def test_preprocess_runs_all_dataset_config_rows(tmp_path, monkeypatch):

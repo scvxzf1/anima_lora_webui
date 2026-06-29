@@ -61,6 +61,7 @@ def test_schema_has_known_keys(populated_parser):
         "preprocess_memory_profile",
         "preprocess_vae_cache_batch_size",
         "preprocess_text_cache_batch_size",
+        "preprocess_precision_preference",
         "base_config",  # manual extra
         "use_moe_style",  # network-module allowlist (three-axis routing)
         "use_glora",  # GLoRA plugin selector
@@ -77,6 +78,10 @@ def test_choices_preserved(populated_parser):
     transfer_dtype = config_schema.get_schema()["block_swap_transfer_dtype"]
     assert "bf16" in transfer_dtype.choices
     assert "fp8_e4m3" in transfer_dtype.choices
+    preprocess_precision = config_schema.get_schema()["preprocess_precision_preference"]
+    assert "bf16" in preprocess_precision.choices
+    assert "fp16" in preprocess_precision.choices
+    assert "fp32" in preprocess_precision.choices
     selective_checkpoint = config_schema.get_schema()["selective_checkpoint"]
     assert "adapter_aware" in selective_checkpoint.choices
     assert "peak_blocks_adapter_aware" in selective_checkpoint.choices

@@ -255,6 +255,7 @@ def test_raw_patch_ignores_dataset_picker_ui_field(tmp_path: Path, monkeypatch):
         train_rel,
         {
             "dataset_config_picker": "configs/datasets/character_a.toml",
+            "precision_preference": "fp32",
             "output_name": "clean",
         },
     )
@@ -263,7 +264,32 @@ def test_raw_patch_ignores_dataset_picker_ui_field(tmp_path: Path, monkeypatch):
     assert changed == ["output_name"]
     assert 'output_name = "clean"' in content
     assert "dataset_config_picker" not in content
+    assert "precision_preference" not in content
     assert "dataset_config_picker" not in (configs / "imported" / "lora.toml").read_text(encoding="utf-8")
+    assert "precision_preference" not in (configs / "imported" / "lora.toml").read_text(encoding="utf-8")
+
+
+@pytest.mark.parametrize("value", ["bf16", "fp16", "fp32"])
+def test_raw_patch_persists_preprocess_precision_preference(
+    tmp_path: Path, monkeypatch, value: str
+):
+    configs, _dataset_path = _write_minimal_config_tree(tmp_path)
+    _patch_config_service_paths(monkeypatch, tmp_path)
+    train_rel = "configs/imported/lora.toml"
+
+    ok, msg, content, changed = config_service.patch_raw_file_values(
+        train_rel,
+        {
+            "preprocess_precision_preference": value,
+        },
+    )
+
+    assert ok is True, msg
+    assert changed == ["preprocess_precision_preference"]
+    assert f'preprocess_precision_preference = "{value}"' in content
+    assert f'preprocess_precision_preference = "{value}"' in (
+        configs / "imported" / "lora.toml"
+    ).read_text(encoding="utf-8")
 
 
 def test_raw_patch_rejects_blank_output_name(tmp_path: Path, monkeypatch):

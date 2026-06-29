@@ -232,6 +232,11 @@ def populate_schema(
             "auto",
             "Batch size forwarded to scripts/preprocess/cache_text_embeddings.py. auto keeps the legacy default.",
         ),
+        (
+            "preprocess_precision_preference",
+            "bf16",
+            "Preprocess compute precision preference. Controls the dtype forwarded to scripts/preprocess/cache_latents.py and cache_text_embeddings.py.",
+        ),
     ):
         CONFIG_SCHEMA.setdefault(
             _key,
@@ -239,6 +244,9 @@ def populate_schema(
                 name=_key,
                 type="str",
                 default=_default,
+                choices=("bf16", "fp16", "fp32")
+                if _key == "preprocess_precision_preference"
+                else (),
                 help=_help,
                 source="manual",
             ),

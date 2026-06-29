@@ -36,6 +36,33 @@ const ctx = globalThis.ctx;
         }
     }
 
+    globalThis.normalizePrecisionPreference = function normalizePrecisionPreference(value) {
+        const normalized = String(value || '').trim().toLowerCase();
+        if (normalized === 'fp16' || normalized === 'fp32') return normalized;
+        return 'bf16';
+    }
+
+    globalThis.precisionPreferenceFromConfig = function precisionPreferenceFromConfig(config = currentConfig) {
+        const mixedPrecision = String(config?.mixed_precision || '').trim().toLowerCase();
+        if (mixedPrecision === 'no') return 'fp32';
+        if (mixedPrecision === 'fp16' || isTruthy(config?.full_fp16)) return 'fp16';
+        return 'bf16';
+    }
+
+    globalThis.precisionPreferencePatch = function precisionPreferencePatch(preference, baseConfig = currentConfig) {
+        const normalized = normalizePrecisionPreference(preference);
+        const patch = {
+            mixed_precision: normalized === 'fp32' ? 'no' : normalized,
+        };
+        if (Object.prototype.hasOwnProperty.call(baseConfig || {}, 'full_fp16') || isTruthy(baseConfig?.full_fp16)) {
+            patch.full_fp16 = false;
+        }
+        if (Object.prototype.hasOwnProperty.call(baseConfig || {}, 'full_bf16') || isTruthy(baseConfig?.full_bf16)) {
+            patch.full_bf16 = false;
+        }
+        return patch;
+    }
+
     globalThis.loraAdapterKindFromConfig = function loraAdapterKindFromConfig(config = currentConfig) {
         if (isTruthy(config?.use_glora)) return 'glora';
         if (isTruthy(config?.use_vera)) return 'vera';
@@ -324,6 +351,10 @@ const ctx = globalThis.ctx;
                 const nextKind = normalizeLoraAdapterKind(next);
                 Object.assign(liveConfig, loraAdapterFlagsForKind(nextKind));
                 if (nextKind !== 'lora') liveConfig.dora_wd = false;
+                continue;
+            }
+            if (key === 'precision_preference') {
+                Object.assign(liveConfig, precisionPreferencePatch(next, currentConfig));
                 continue;
             }
             liveConfig[key] = next;

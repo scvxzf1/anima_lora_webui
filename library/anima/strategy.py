@@ -224,6 +224,7 @@ class AnimaTextEncoderOutputsCachingStrategy(TextEncoderOutputsCachingStrategy):
         use_shuffled_caption_variants: bool = False,
         diff_output_preservation_trigger: str | None = None,
         diff_output_preservation_class: str | None = None,
+        cache_dtype: torch.dtype = torch.bfloat16,
     ) -> None:
         super().__init__(
             cache_to_disk, batch_size, skip_disk_cache_validity_check, is_partial
@@ -232,6 +233,7 @@ class AnimaTextEncoderOutputsCachingStrategy(TextEncoderOutputsCachingStrategy):
         self.use_shuffled_caption_variants = use_shuffled_caption_variants
         self.diff_output_preservation_trigger = diff_output_preservation_trigger
         self.diff_output_preservation_class = diff_output_preservation_class
+        self.cache_dtype = cache_dtype
         self.cache_prior_crossattn = bool(
             cache_llm_adapter_outputs
             and str(diff_output_preservation_class or "").strip()
@@ -464,13 +466,13 @@ class AnimaTextEncoderOutputsCachingStrategy(TextEncoderOutputsCachingStrategy):
                 )
                 crossattn_emb[~t5_attn_mask_for_adapter.bool()] = 0
 
-        # Convert to typed CPU tensors: bf16 for embeddings, int for IDs/masks
-        prompt_embeds = prompt_embeds.to(dtype=torch.bfloat16).cpu()
+        # Convert to typed CPU tensors: configured float dtype for embeddings, int for IDs/masks
+        prompt_embeds = prompt_embeds.to(dtype=self.cache_dtype).cpu()
         attn_mask = attn_mask.to(dtype=torch.int32).cpu()
         t5_input_ids = t5_input_ids.to(dtype=torch.long).cpu()
         t5_attn_mask = t5_attn_mask.to(dtype=torch.int32).cpu()
         if crossattn_emb is not None:
-            crossattn_emb = crossattn_emb.to(dtype=torch.bfloat16).cpu()
+            crossattn_emb = crossattn_emb.to(dtype=self.cache_dtype).cpu()
 
         return prompt_embeds, attn_mask, t5_input_ids, t5_attn_mask, crossattn_emb
 

@@ -492,7 +492,7 @@ const ctx = globalThis.ctx;
     globalThis.presetGuideFromConfig = function presetGuideFromConfig(presetKey, config = currentConfig) {
         const base = PRESET_GUIDE_ZH[presetKey] || defaultPresetGuide();
         const details = compactList([
-            valueDetail('mixed_precision', config.mixed_precision),
+            valueDetail('precision_preference', precisionPreferenceFromConfig(config)),
             valueDetail('optimizer_type', config.optimizer_type),
             valueDetail('lr_scheduler', config.lr_scheduler),
             valueDetail('train_batch_size', config.train_batch_size),

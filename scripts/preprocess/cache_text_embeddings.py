@@ -30,6 +30,7 @@ import torch
 
 from library.preprocess import cache_text_embeddings, tqdm_progress
 from library.runtime.cli import add_io_args
+from library.runtime.device import str_to_dtype
 
 
 def _collect_image_caption_entries(
@@ -200,6 +201,13 @@ def main() -> None:
             "resize time. Set to 0 to disable."
         ),
     )
+    parser.add_argument(
+        "--dtype",
+        type=str,
+        choices=["bfloat16", "float16", "float32"],
+        default="bfloat16",
+        help="Text encoder / LLM adapter compute dtype (default: bfloat16).",
+    )
     args = parser.parse_args()
 
     from library.anima import weights as anima_utils
@@ -210,12 +218,13 @@ def main() -> None:
     if cache_dir is not None:
         cache_dir.mkdir(parents=True, exist_ok=True)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    dtype = str_to_dtype(args.dtype)
     N = args.caption_shuffle_variants
 
     # Load text encoder + tokenizers
     print(f"Loading Qwen3 text encoder from {args.qwen3} ...")
     text_encoder, qwen3_tokenizer = anima_utils.load_qwen3_text_encoder(
-        args.qwen3, dtype=torch.bfloat16, device=str(device)
+        args.qwen3, dtype=dtype, device=str(device)
     )
     t5_tokenizer = anima_utils.load_t5_tokenizer(args.t5_tokenizer_path)
 
@@ -224,7 +233,7 @@ def main() -> None:
     if args.dit:
         print(f"Loading LLM adapter from {args.dit} ...")
         llm_adapter = anima_utils.load_llm_adapter(
-            args.dit, dtype=torch.bfloat16, device=str(device)
+            args.dit, dtype=dtype, device=str(device)
         )
 
     tokenize_strategy = AnimaTokenizeStrategy(

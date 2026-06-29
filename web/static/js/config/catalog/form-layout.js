@@ -99,11 +99,12 @@ export const FORM_SECTION_DEFS = [
             'preprocess_vae_cache_batch_size',
             'preprocess_text_cache_batch_size',
             'preprocess_memory_profile',
+            'preprocess_precision_preference',
             'gradient_checkpointing',
+            'precision_preference',
             'lr_warmup_steps',
             'unsloth_offload_checkpointing',
             'disable_block_swap_for_eval',
-            'mixed_precision',
             'attn_mode',
             'torch_compile',
             'compile_inductor_mode',
@@ -424,8 +425,12 @@ export const CONFIG_COMPACT_FIELD_GROUPS = {
             keys: ['preprocess_vae_cache_batch_size', 'preprocess_text_cache_batch_size', 'preprocess_memory_profile'],
         },
         {
-            className: 'config-field-grid-3col config-field-grid-inline-flags',
-            keys: ['gradient_checkpointing', 'unsloth_offload_checkpointing', 'disable_block_swap_for_eval'],
+            className: 'config-field-grid-2col config-field-grid-inline-flags',
+            keys: ['gradient_checkpointing', 'precision_preference'],
+        },
+        {
+            className: 'config-field-grid-2col config-field-grid-inline-flags',
+            keys: ['unsloth_offload_checkpointing', 'disable_block_swap_for_eval'],
         },
         {
             className: 'config-field-grid-3col',

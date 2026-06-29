@@ -25,6 +25,7 @@ _SYNC_NAMES = (
     "PRESETS_FILE",
     "WEB_FILE_GROUPS_FILE",
     "WEB_USER_LOCKS_FILE",
+    "DEFAULT_SAMPLE_PROMPTS_FILE",
     "DATASET_PRESETS_DIR",
     "resolve_output_root",
     "_display_settings_path",

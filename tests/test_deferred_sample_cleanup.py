@@ -106,6 +106,17 @@ def test_sample_prompts_without_schedule_do_not_trigger_qwen3_or_te_cache() -> N
     assert 'getattr(args, "sample_prompts", None)' not in encoder_decision
 
 
+def test_text_encoder_outputs_caching_strategy_receives_weight_dtype() -> None:
+    source = TRAIN_PY.read_text(encoding="utf-8")
+    strategy_fn = _section(source, "def get_text_encoder_outputs_caching_strategy(", "    def get_models_for_text_encoding")
+    encoder_decision = _section(source, "whether the Qwen3 text encoder needs loading at all.", "# Prepare accelerator")
+
+    assert "def get_text_encoder_outputs_caching_strategy(self, args, weight_dtype: torch.dtype):" in strategy_fn
+    assert "cache_dtype=weight_dtype" in strategy_fn
+    assert "weight_dtype, _save_dtype = prepare_dtype(args)" in encoder_decision
+    assert "self.get_text_encoder_outputs_caching_strategy(args, weight_dtype)" in encoder_decision
+
+
 def test_cached_sample_prompt_snapshot_survives_prompt_file_edits() -> None:
     train_source = TRAIN_PY.read_text(encoding="utf-8")
     anima_source = ANIMA_TRAINING.read_text(encoding="utf-8")

@@ -350,6 +350,9 @@ const ctx = globalThis.ctx;
         if (key === 'sample_prompts' && samplePromptsMode !== 'path') {
             return samplePromptsContent || '';
         }
+        if (key === 'precision_preference') {
+            return precisionPreferenceFromConfig(currentConfig);
+        }
         if (isActiveNetworkArgFieldKey(key)) {
             return networkArgFieldValueFromConfig(NETWORK_ARG_FIELD_MAP.get(key), currentConfig);
         }
@@ -366,6 +369,11 @@ const ctx = globalThis.ctx;
                 ? configFormState.draftValues.get(key)
                 : loraAdapterKindFromConfig(currentConfig);
         }
+        if (key === 'precision_preference') {
+            return configFormState.draftValues.has(key)
+                ? normalizePrecisionPreference(configFormState.draftValues.get(key))
+                : precisionPreferenceFromConfig(currentConfig);
+        }
         return configFormState.draftValues.has(key)
             ? configFormState.draftValues.get(key)
             : value;
@@ -374,6 +382,9 @@ const ctx = globalThis.ctx;
     globalThis.configDraftValueChanged = function configDraftValueChanged(key, next, original = originalConfigFieldValue(key), options = {}) {
         if (key === 'sample_prompts' && samplePromptsMode !== 'path') {
             return String(next || '') !== String(samplePromptsContent || '');
+        }
+        if (key === 'precision_preference') {
+            return normalizePrecisionPreference(next) !== precisionPreferenceFromConfig(currentConfig);
         }
         if (isActiveNetworkArgFieldKey(key)) {
             return !valuesEqual(next, original);
@@ -456,6 +467,7 @@ const ctx = globalThis.ctx;
         if (CONFIG_FORM_MERGED_FIELDS?.has?.(key)) return true;
         if (DEPRECATED_CONFIG_FORM_FIELDS.has(key)) return true;
         if (RETIRED_CONFIG_FORM_FIELDS.has(key)) return true;
+        if (key === 'mixed_precision' || key === 'full_fp16' || key === 'full_bf16') return true;
         const scopedFamilies = METHOD_SCOPED_CONFIG_FORM_FIELDS.get(key);
         if (!scopedFamilies) return false;
         return !scopedFamilies.has(activeMethodKey(config));

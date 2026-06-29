@@ -631,6 +631,75 @@ def test_adapter_aware_checkpoint_invokes_selective_policy(monkeypatch) -> None:
     assert any(is_recompute for _, _, is_recompute in seen)
 
 
+@pytest.mark.parametrize(
+    ("checkpoint_mode", "enable_fn"),
+    [
+        ("eager", None),
+        ("adapter_aware", lambda block: block.enable_adapter_aware_checkpointing()),
+        ("grad_ckpt", lambda block: block.enable_gradient_checkpointing()),
+        (
+            "cpu_offload_ckpt",
+            lambda block: block.enable_gradient_checkpointing(cpu_offload=True),
+        ),
+        (
+            "unsloth_ckpt",
+            lambda block: block.enable_gradient_checkpointing(unsloth_offload=True),
+        ),
+    ],
+)
+def test_block_forward_preserves_use_fp32_across_wrappers(
+    monkeypatch,
+    checkpoint_mode: str,
+    enable_fn,
+) -> None:
+    import library.anima.models as anima_models
+    from library.anima.models import Block
+    from networks.attention_dispatch import AttentionParams
+
+    seen: list[bool] = []
+
+    def fake_forward(
+        self,
+        x_B_T_H_W_D,
+        emb_B_T_D,
+        crossattn_emb,
+        attn_params,
+        rope_cos_sin=None,
+        adaln_lora_B_T_3D=None,
+        use_fp32: bool = False,
+    ):
+        seen.append(use_fp32)
+        return x_B_T_H_W_D
+
+    monkeypatch.setattr(Block, "_forward", fake_forward)
+    monkeypatch.setattr(
+        anima_models,
+        "torch_checkpoint",
+        lambda func, *args, **kwargs: func(*args),
+    )
+    monkeypatch.setattr(
+        anima_models,
+        "unsloth_checkpoint",
+        lambda func, *args, **kwargs: func(*args),
+    )
+
+    block = Block(x_dim=8, context_dim=8, num_heads=2, mlp_ratio=2.0)
+    block.train()
+    if enable_fn is not None:
+        enable_fn(block)
+
+    x = torch.randn(2, 1, 3, 1, 8, requires_grad=True)
+    emb = torch.randn(2, 1, 8, requires_grad=True)
+    context = torch.randn(2, 5, 8, requires_grad=True)
+    attn_params = AttentionParams.create_attention_params("torch")
+
+    out = block(x, emb, context, attn_params, use_fp32=True)
+
+    assert seen
+    assert all(flag is True for flag in seen)
+    assert out is x
+
+
 def test_block_swap_compile_mode_is_downgraded_for_cudagraph_modes(caplog) -> None:
     import train
 

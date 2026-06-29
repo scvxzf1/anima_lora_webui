@@ -154,6 +154,14 @@ const ctx = globalThis.ctx;
             if (isActiveNetworkArgFieldKey(key)) {
                 continue;
             }
+            if (key === 'precision_preference') {
+                const original = precisionPreferenceFromConfig(currentConfig);
+                const normalized = normalizePrecisionPreference(next);
+                if (!valuesEqual(normalized, original)) {
+                    values[key] = normalized;
+                }
+                continue;
+            }
             if (key === 'sample_prompts') {
                 if (samplePromptsMode === 'path') {
                     const original = typeof currentConfig.sample_prompts === 'string' ? currentConfig.sample_prompts : '';
@@ -199,6 +207,18 @@ const ctx = globalThis.ctx;
         }
         if (values.use_lokr === true && !('lokr_project_chunk_bytes' in values) && !('lokr_project_chunk_bytes' in currentConfig)) {
             values.lokr_project_chunk_bytes = FORM_UI_DEFAULTS.lokr_project_chunk_bytes;
+        }
+        if (
+            options.persistDefaultFields
+            && !('preprocess_precision_preference' in values)
+            && !Object.prototype.hasOwnProperty.call(currentConfig || {}, 'preprocess_precision_preference')
+        ) {
+            values.preprocess_precision_preference = normalizePrecisionPreference(
+                displayConfigFieldValue(
+                    'preprocess_precision_preference',
+                    originalConfigFieldValue('preprocess_precision_preference'),
+                ),
+            );
         }
         return applyLoraAdapterPatch(values);
     }
@@ -289,6 +309,10 @@ const ctx = globalThis.ctx;
 
     globalThis.prepareFormPatchValues = async function prepareFormPatchValues(values) {
         const nextValues = applyOptimizerCompatibilityPatch(values);
+        if ('precision_preference' in nextValues) {
+            Object.assign(nextValues, precisionPreferencePatch(nextValues.precision_preference, currentConfig));
+            delete nextValues.precision_preference;
+        }
         if ('sample_prompts' in nextValues && samplePromptsMode !== 'path') {
             const promptText = String(nextValues.sample_prompts || '');
             if (promptText.trim()) {

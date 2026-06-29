@@ -7,10 +7,12 @@ export const FORM_UI_DEFAULTS = {
     sample_every_n_epochs: '',
     sample_every_n_steps: '',
     gradient_checkpointing: true,
+    precision_preference: 'bf16',
     block_swap_transfer_dtype: 'bf16',
     preprocess_memory_profile: 'auto',
     preprocess_vae_cache_batch_size: 'auto',
     preprocess_text_cache_batch_size: 'auto',
+    preprocess_precision_preference: 'bf16',
     save_last_n_epochs: -1,
     checkpointing_last_n_epochs: 1,
     max_train_epochs: '',
@@ -125,6 +127,8 @@ export const OPTIONAL_EMPTY_NUMBER_FIELDS = new Set([
 ]);
 export const FORM_UI_PERSIST_DEFAULT_FIELDS = new Set([
     'gradient_checkpointing',
+    'precision_preference',
+    'preprocess_precision_preference',
 ]);
 export const CONFIG_FORM_INTERNAL_KEYS = new Set([
     'dataset_config_picker',

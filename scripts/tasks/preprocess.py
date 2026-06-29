@@ -25,6 +25,15 @@ _PREPROCESS_MEMORY_PROFILES = {
     "balanced": (2, 8),
     "speed": (4, 16),
 }
+_PREPROCESS_PRECISION_ALIASES = {
+    "bf16": "bfloat16",
+    "bfloat16": "bfloat16",
+    "fp16": "float16",
+    "float16": "float16",
+    "fp32": "float32",
+    "float32": "float32",
+    "float": "float32",
+}
 
 
 # Subfolders under the source dir are walked by default — matches the
@@ -157,6 +166,22 @@ def _preprocess_cache_batch_sizes() -> tuple[int, int]:
     explicit_vae = _positive_int(overrides.get("preprocess_vae_cache_batch_size"))
     explicit_text = _positive_int(overrides.get("preprocess_text_cache_batch_size"))
     return explicit_vae or vae_batch, explicit_text or text_batch
+
+
+def _preprocess_precision_dtype() -> str:
+    from ._common import _path_overrides  # local import: avoids unused circular
+
+    overrides = _path_overrides()
+    raw = str(overrides.get("preprocess_precision_preference") or "").strip().lower()
+    if not raw:
+        mixed_precision = str(overrides.get("mixed_precision") or "").strip().lower()
+        if mixed_precision == "fp16":
+            raw = "fp16"
+        elif mixed_precision == "no":
+            raw = "fp32"
+        else:
+            raw = "bf16"
+    return _PREPROCESS_PRECISION_ALIASES.get(raw, "bfloat16")
 
 
 def _preprocess_settings_from_custom_attributes(attrs: dict[str, Any]) -> dict[str, Any]:
@@ -500,6 +525,7 @@ def _run_preprocess_resize(row: dict[str, Any], extra: list[str]) -> None:
 
 def _run_preprocess_vae(row: dict[str, Any], extra: list[str]) -> None:
     vae_batch_size, _ = _preprocess_cache_batch_sizes()
+    dtype = _preprocess_precision_dtype()
     run(
         [
             PY,
@@ -513,6 +539,8 @@ def _run_preprocess_vae(row: dict[str, Any], extra: list[str]) -> None:
             _path("vae", "models/vae/qwen_image_vae.safetensors"),
             "--batch_size",
             str(vae_batch_size),
+            "--dtype",
+            dtype,
             "--chunk_size",
             "64",
             *_recursive_args(row),
@@ -556,6 +584,7 @@ def _run_preprocess_te(
     json_args = ["--prefer_json_caption"] if prefer_json else []
     source_args = _caption_source_args(caption_source_value, prefer_json)
     _, text_batch_size = _preprocess_cache_batch_sizes()
+    dtype = _preprocess_precision_dtype()
     run(
         [
             PY,
@@ -578,6 +607,8 @@ def _run_preprocess_te(
             tag_dropout_rate,
             "--batch_size",
             str(text_batch_size),
+            "--dtype",
+            dtype,
             *source_args,
             *_caption_extension_args_for_row(row),
             *json_args,
@@ -752,6 +783,7 @@ def cmd_preprocess_config(extra):
     if not cfg_path or not src_dir:
         raise SystemExit("preprocess-config requires --dataset_config <path> and --src <dir>")
     vae_batch_size, text_batch_size = _preprocess_cache_batch_sizes()
+    dtype = _preprocess_precision_dtype()
 
     last_err: OSError | None = None
     for attempt in range(10):
@@ -848,6 +880,8 @@ def cmd_preprocess_config(extra):
                 vae_path,
                 "--batch_size",
                 str(vae_batch_size),
+                "--dtype",
+                dtype,
                 "--chunk_size",
                 "64",
                 "--recursive",
@@ -868,6 +902,8 @@ def cmd_preprocess_config(extra):
                 dit_path,
                 "--batch_size",
                 str(text_batch_size),
+                "--dtype",
+                dtype,
                 *source_args,
                 *caption_extension_args,
                 *json_args,

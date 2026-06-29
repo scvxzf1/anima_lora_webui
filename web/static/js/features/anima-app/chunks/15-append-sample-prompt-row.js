@@ -211,6 +211,13 @@ const ctx = globalThis.ctx;
         if (key === 'use_moe_style' && (value === false || value === 'false')) {
             return '关闭专家路由 / false';
         }
+        if (key === 'precision_preference') {
+            return {
+                bf16: '默认推荐 / bf16',
+                fp16: '混合精度 / fp16/32',
+                fp32: '全程 fp32 / full fp32',
+            }[normalizePrecisionPreference(value)] || String(value);
+        }
         if (key === 'splice_position') {
             return value === 'front_of_padding' ? 'Padding 前沿 / front_of_padding' : '序列末尾 / end_of_sequence';
         }

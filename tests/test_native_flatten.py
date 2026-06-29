@@ -12,6 +12,8 @@ families: 4032 (= 63·64) and 4200 (= 60·70).
 
 from __future__ import annotations
 
+import types
+
 import torch
 
 from library.anima.models import Anima
@@ -141,3 +143,58 @@ def test_flatten_is_bit_exact_4200_family():
     out_eager = _run(model, inp, native_flatten=False)
     out_flat = _run(model, inp, native_flatten=True)
     assert torch.equal(out_eager, out_flat)
+
+
+@torch.no_grad()
+def test_forward_mini_train_dit_derives_and_threads_use_fp32(monkeypatch):
+    model = _tiny_anima()
+    x, timesteps, crossattn_emb = _inputs(126, 128)
+    captured: dict[str, object] = {}
+    prepared_x = torch.randn(1, 1, 63, 64, 64, dtype=torch.float16)
+    prepared_rope = (
+        torch.randn(4032, 1, 1, 16, dtype=torch.float32),
+        torch.randn(4032, 1, 1, 16, dtype=torch.float32),
+    )
+
+    def fake_run_blocks(self, x_padded, t_embedding_B_T_D, crossattn_emb, attn_params, **block_kwargs):
+        captured["run_blocks_use_fp32"] = block_kwargs["use_fp32"]
+        captured["rope_dtype"] = (
+            None
+            if block_kwargs["rope_cos_sin"] is None
+            else block_kwargs["rope_cos_sin"][0].dtype
+        )
+        return x_padded.float() if block_kwargs["use_fp32"] else x_padded
+
+    def fake_final_layer(
+        x_B_T_H_W_D,
+        emb_B_T_D,
+        adaln_lora_B_T_3D=None,
+        use_fp32: bool = False,
+    ):
+        captured["final_layer_use_fp32"] = use_fp32
+        return model.final_layer.linear(x_B_T_H_W_D)
+
+    def fake_prepare_embedded_sequence(
+        self,
+        x_B_C_T_H_W,
+        fps=None,
+        padding_mask=None,
+        h_offset=0,
+        w_offset=0,
+    ):
+        return prepared_x, prepared_rope
+
+    monkeypatch.setattr(
+        model,
+        "prepare_embedded_sequence",
+        types.MethodType(fake_prepare_embedded_sequence, model),
+    )
+    monkeypatch.setattr(model, "_run_blocks", types.MethodType(fake_run_blocks, model))
+    monkeypatch.setattr(model.final_layer, "forward", fake_final_layer)
+
+    out = model.forward_mini_train_dit(x, timesteps, crossattn_emb)
+
+    assert captured["run_blocks_use_fp32"] is True
+    assert captured["final_layer_use_fp32"] is True
+    assert captured["rope_dtype"] == torch.float32
+    assert out.dtype == torch.float32
