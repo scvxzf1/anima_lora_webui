@@ -94,18 +94,86 @@ nsys profile \
         --profile_steps "${PROFILE_START}-${PROFILE_END}" \
         --max_train_steps "$((PROFILE_END + 2))"
 
+REP="${OUT}.nsys-rep"
+QDSTRM="${OUT}.qdstrm"
+
+find_qdstrm_importers() {
+    local seen=""
+    emit_importer() {
+        local candidate="$1"
+        [[ -x "$candidate" ]] || return 0
+        local resolved
+        resolved="$(readlink -f "$candidate")"
+        case $'\n'"$seen" in
+            *$'\n'"$resolved"$'\n'*) return 0 ;;
+        esac
+        seen+="${resolved}"$'\n'
+        printf '%s\n' "$candidate"
+    }
+
+    if [[ -n "${NSYS_QDSTRM_IMPORTER:-}" && -x "${NSYS_QDSTRM_IMPORTER}" ]]; then
+        emit_importer "${NSYS_QDSTRM_IMPORTER}"
+    fi
+    if command -v QdstrmImporter >/dev/null 2>&1; then
+        emit_importer "$(command -v QdstrmImporter)"
+    fi
+    emit_importer /usr/lib/nsight-systems/host-linux-x64/QdstrmImporter
+    emit_importer /opt/nvidia/nsight-systems/host-linux-x64/QdstrmImporter
+}
+
+if [[ ! -f "$REP" && -f "$QDSTRM" ]]; then
+    mapfile -t IMPORTERS < <(find_qdstrm_importers)
+    if [[ "${#IMPORTERS[@]}" -gt 0 ]]; then
+        IMPORT_STATUS=1
+        IMPORT_LOG=""
+        for IMPORTER in "${IMPORTERS[@]}"; do
+            echo "[nsys] import qdstrm -> ${REP}"
+            set +e
+            IMPORT_LOG="$("$IMPORTER" -i "$QDSTRM" -o "$REP" -f 2>&1)"
+            IMPORT_STATUS=$?
+            set -e
+            if [[ -f "$REP" ]]; then
+                break
+            fi
+            if [[ "$IMPORT_STATUS" -ne 0 && "${#IMPORTERS[@]}" -gt 1 ]]; then
+                echo "[nsys] importer ${IMPORTER} failed with ${IMPORT_STATUS}; trying next importer candidate." >&2
+            fi
+        done
+
+        if [[ "$IMPORT_STATUS" -ne 0 && -f "$REP" ]]; then
+            echo "[nsys] importer exited with ${IMPORT_STATUS} but produced ${REP}; continuing with stats." >&2
+            printf '%s\n' "$IMPORT_LOG" | tail -n 8 >&2
+        elif [[ "$IMPORT_STATUS" -ne 0 ]]; then
+            echo "[nsys] importer failed with ${IMPORT_STATUS}; stats may be unavailable." >&2
+            printf '%s\n' "$IMPORT_LOG" | tail -n 8 >&2
+        fi
+    else
+        echo "[nsys] ${QDSTRM} exists but QdstrmImporter was not found; set NSYS_QDSTRM_IMPORTER=/path/to/QdstrmImporter." >&2
+    fi
+fi
+
 echo
 echo "[nsys] === summary (nsys stats) ==="
-echo "[nsys] open ${OUT}.nsys-rep in the Nsight Systems GUI for the full timeline."
+echo "[nsys] open ${REP} in the Nsight Systems GUI for the full timeline."
 echo
+
+if nsys stats --help-reports 2>&1 | grep -q "cuda_gpu_kern_sum"; then
+    NSYS_REPORT_KERNEL="cuda_gpu_kern_sum"
+    NSYS_REPORT_MEM_TIME="cuda_gpu_mem_time_sum"
+    NSYS_REPORT_NVTX="nvtx_sum"
+else
+    NSYS_REPORT_KERNEL="gpukernsum"
+    NSYS_REPORT_MEM_TIME="gpumemtimesum"
+    NSYS_REPORT_NVTX="nvtxsum"
+fi
 
 # Terminal-friendly rankings: which kernels and which NVTX ranges
 # dominate. Skips the per-call detail you'd get in the GUI — that's the
 # point: if a kernel doesn't appear in the top of these, it's not worth
 # drilling into.
 nsys stats \
-    --report cuda_gpu_kern_sum \
-    --report cuda_gpu_mem_time_sum \
-    --report nvtx_sum \
+    --report "$NSYS_REPORT_KERNEL" \
+    --report "$NSYS_REPORT_MEM_TIME" \
+    --report "$NSYS_REPORT_NVTX" \
     --format column \
-    "${OUT}.nsys-rep" || echo "[nsys] stats failed (open the .nsys-rep in the GUI instead)"
+    "$REP" || echo "[nsys] stats failed (open the .nsys-rep in the GUI instead)"

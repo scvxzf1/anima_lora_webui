@@ -856,6 +856,7 @@ def test_saved_web_form_values_reach_runtime_config_and_train_loader(tmp_path, m
         "save_last_n_epochs": 4,
         "checkpointing_last_n_epochs": 3,
         "block_swap_transfer_dtype": "fp8_e4m3",
+        "block_swap_restore_mode": "slab",
         "memory_probe_jsonl": "auto",
         "preprocess_precision_preference": "fp16",
     }
@@ -891,6 +892,7 @@ def test_saved_web_form_values_reach_runtime_config_and_train_loader(tmp_path, m
     assert args.save_last_n_epochs == saved_values["save_last_n_epochs"]
     assert args.checkpointing_last_n_epochs == saved_values["checkpointing_last_n_epochs"]
     assert args.block_swap_transfer_dtype == saved_values["block_swap_transfer_dtype"]
+    assert args.block_swap_restore_mode == saved_values["block_swap_restore_mode"]
     assert args.memory_probe_jsonl == saved_values["memory_probe_jsonl"]
     assert args.output_dir == runtime_cfg["output_dir"]
 
@@ -2399,6 +2401,7 @@ def test_saved_form_values_are_frozen_into_runtime_config(tmp_path, monkeypatch)
             "network_dim": 32,
             "sample_every_n_steps": 50,
             "blocks_to_swap": 12,
+            "block_swap_restore_mode": "slab",
             "sample_prompts": prompts["file"],
         },
     )
@@ -2406,6 +2409,7 @@ def test_saved_form_values_are_frozen_into_runtime_config(tmp_path, monkeypatch)
     assert ok is True, msg
     assert set(changed) == {
         "blocks_to_swap",
+        "block_swap_restore_mode",
         "network_dim",
         "sample_every_n_steps",
         "sample_prompts",
@@ -2414,12 +2418,14 @@ def test_saved_form_values_are_frozen_into_runtime_config(tmp_path, monkeypatch)
     assert saved_cfg["network_dim"] == 32
     assert saved_cfg["sample_every_n_steps"] == 50
     assert saved_cfg["blocks_to_swap"] == 12
+    assert saved_cfg["block_swap_restore_mode"] == "slab"
     assert saved_cfg["sample_prompts"] == "configs/sample-prompts/imported/522.txt"
 
     reloaded_cfg = config_service.load_merged_config("522", "default", "imported")
     assert reloaded_cfg["network_dim"] == 32
     assert reloaded_cfg["sample_every_n_steps"] == 50
     assert reloaded_cfg["blocks_to_swap"] == 12
+    assert reloaded_cfg["block_swap_restore_mode"] == "slab"
     assert reloaded_cfg["sample_prompts"] == "configs/sample-prompts/imported/522.txt"
 
     runtime = training_service._prepare_web_runtime_config(
@@ -2434,6 +2440,7 @@ def test_saved_form_values_are_frozen_into_runtime_config(tmp_path, monkeypatch)
     assert runtime_cfg["network_dim"] == 32
     assert runtime_cfg["sample_every_n_steps"] == 50
     assert runtime_cfg["blocks_to_swap"] == 12
+    assert runtime_cfg["block_swap_restore_mode"] == "slab"
     assert runtime_cfg["sample_prompts"] == "configs/sample-prompts/imported/522.txt"
     assert runtime_cfg["dataset_config"].endswith("dataset.runtime.toml")
     assert runtime_cfg["source_image_dir"] == "image_dataset/a"

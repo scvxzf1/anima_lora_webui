@@ -3,8 +3,6 @@
  * Keep this module focused; move newly edited behavior into domain modules.
  */
 const ctx = globalThis.ctx;
-
-
     // ── 状态 ──
     globalThis.fieldHelp = {};
     globalThis.currentConfig = {};
@@ -62,6 +60,7 @@ const ctx = globalThis.ctx;
             values: {
                 blocks_to_swap: 0,
                 block_swap_transfer_dtype: 'bf16',
+                block_swap_restore_mode: 'foreach',
                 selective_checkpoint: 'off',
                 block_swap_profile_jsonl: 'off',
                 memory_probe_jsonl: 'off',
@@ -78,6 +77,7 @@ const ctx = globalThis.ctx;
             values: {
                 blocks_to_swap: 12,
                 block_swap_transfer_dtype: 'bf16',
+                block_swap_restore_mode: 'foreach',
                 selective_checkpoint: 'off',
                 block_swap_profile_jsonl: 'auto',
                 memory_probe_jsonl: 'off',
@@ -94,6 +94,7 @@ const ctx = globalThis.ctx;
             values: {
                 blocks_to_swap: 12,
                 block_swap_transfer_dtype: 'fp8_e4m3',
+                block_swap_restore_mode: 'foreach',
                 selective_checkpoint: 'off',
                 block_swap_profile_jsonl: 'auto',
                 memory_probe_jsonl: 'auto',
@@ -110,6 +111,7 @@ const ctx = globalThis.ctx;
             values: {
                 blocks_to_swap: 16,
                 block_swap_transfer_dtype: 'bf16',
+                block_swap_restore_mode: 'foreach',
                 selective_checkpoint: 'off',
                 block_swap_profile_jsonl: 'auto',
                 gradient_checkpointing: false,
@@ -124,6 +126,7 @@ const ctx = globalThis.ctx;
             values: {
                 blocks_to_swap: 23,
                 block_swap_transfer_dtype: 'bf16',
+                block_swap_restore_mode: 'foreach',
                 selective_checkpoint: 'off',
                 block_swap_profile_jsonl: 'auto',
                 memory_probe_jsonl: 'auto',
@@ -142,6 +145,7 @@ const ctx = globalThis.ctx;
             values: {
                 blocks_to_swap: 12,
                 block_swap_transfer_dtype: 'bf16',
+                block_swap_restore_mode: 'foreach',
                 selective_checkpoint: 'mlp_only',
                 block_swap_profile_jsonl: 'auto',
                 gradient_checkpointing: false,
@@ -585,7 +589,6 @@ const ctx = globalThis.ctx;
         });
         return previewFeature;
     }
-
     globalThis.makeHistoryArtifactUrl = function makeHistoryArtifactUrl(task, artifactKey, options = {}) {
         const taskId = String(task?.id || '').trim();
         const key = String(artifactKey || '').trim();

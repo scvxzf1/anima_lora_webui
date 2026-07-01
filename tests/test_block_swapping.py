@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import time
 
 import pytest
 import torch
@@ -11,6 +12,7 @@ from torch.utils.checkpoint import checkpoint as torch_checkpoint
 from library.runtime.device import should_move_weight_to_device
 from library.runtime.offloading import (
     ModelOffloader,
+    normalize_block_swap_restore_mode,
     normalize_block_swap_transfer_dtype,
     swap_weight_devices_no_cuda,
 )
@@ -152,6 +154,15 @@ def test_block_swap_transfer_dtype_aliases_and_rejects_invalid() -> None:
         normalize_block_swap_transfer_dtype("int8")
 
 
+def test_block_swap_restore_mode_aliases_and_rejects_invalid() -> None:
+    assert normalize_block_swap_restore_mode(None) == "foreach"
+    assert normalize_block_swap_restore_mode("default") == "foreach"
+    assert normalize_block_swap_restore_mode("loop") == "foreach"
+    assert normalize_block_swap_restore_mode("slab") == "slab"
+    with pytest.raises(ValueError):
+        normalize_block_swap_restore_mode("ring")
+
+
 @pytest.mark.skipif(
     not hasattr(torch, "float8_e4m3fn"),
     reason="torch build does not expose float8_e4m3fn",
@@ -245,6 +256,617 @@ def test_block_swap_backward_next_use_wait_is_profiled(tmp_path) -> None:
     assert backward_waits
     assert backward_waits[0]["submit_phase"] == "backward_prefetch"
     assert backward_waits[0]["block_idx"] == 0
+
+
+def test_cuda_block_swap_wait_uses_stream_event_without_host_sync(monkeypatch) -> None:
+    class _FakeEvent:
+        def __init__(self) -> None:
+            self.synchronized = False
+
+        def synchronize(self) -> None:
+            self.synchronized = True
+            raise AssertionError("production wait path must not host-synchronize")
+
+    class _FakeStream:
+        def __init__(self) -> None:
+            self.waited_events = []
+
+        def wait_event(self, event) -> None:
+            self.waited_events.append(event)
+
+    class _DoneFuture:
+        def __init__(self, event: _FakeEvent) -> None:
+            self.event = event
+
+        def result(self):
+            timings = {
+                "d2h_ms": 0.0,
+                "h2d_ms": 0.0,
+                "event_wait_ms": 0.0,
+                "_h2d_end_event": self.event,
+            }
+            return None, 0, timings, time.time()
+
+    event = _FakeEvent()
+    stream = _FakeStream()
+    monkeypatch.setattr(torch.cuda, "current_stream", lambda device=None: stream)
+
+    blocks = nn.ModuleList([_TinyBlock(), _TinyBlock(), _TinyBlock()])
+    offloader = ModelOffloader(
+        blocks,
+        blocks_to_swap=1,
+        device=torch.device("cuda"),
+        supports_backward=False,
+        profile_jsonl=None,
+    )
+    try:
+        offloader.futures[0] = (
+            _DoneFuture(event),
+            {"phase": "forward_prefetch", "block_idx": 0, "queued_at": time.time()},
+        )
+
+        offloader._wait_blocks_move(0, phase="forward_wait")
+
+        assert stream.waited_events == [event]
+        assert event.synchronized is False
+        assert offloader.futures == {}
+    finally:
+        offloader.thread_pool.shutdown(wait=False)
+
+
+def test_block_swap_plan_is_cached(monkeypatch) -> None:
+    blocks = nn.ModuleList([_TinyBlock(), _TinyBlock(), _TinyBlock()])
+    offloader = ModelOffloader(
+        blocks,
+        blocks_to_swap=1,
+        device=torch.device("cpu"),
+        supports_backward=False,
+    )
+    build_calls: list[tuple[int, int]] = []
+    original = offloader._build_swap_plan
+
+    def wrapped_build_swap_plan(*args, **kwargs):
+        build_calls.append((args[0], args[2]))
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(offloader, "_build_swap_plan", wrapped_build_swap_plan)
+    try:
+        offloader.prepare_block_devices_before_forward(blocks, free_cache=False)
+        offloader.swap_weight_devices(0, blocks[0], 2, blocks[2])
+        offloader.swap_weight_devices(0, blocks[0], 2, blocks[2])
+
+        assert build_calls == [(0, 2)]
+    finally:
+        offloader.thread_pool.shutdown(wait=False)
+
+
+def test_block_swap_slab_plan_tracks_offsets_and_total_numel() -> None:
+    class _FakeWeight:
+        def __init__(self, data):
+            self.data = data
+            self.shape = tuple(data.shape)
+
+    class _FakeModule:
+        def __init__(self, data) -> None:
+            self.weight = _FakeWeight(data)
+
+    class _FakeBlock:
+        def __init__(self) -> None:
+            self._module0 = _FakeModule(torch.empty(2, 3))
+            self._module1 = _FakeModule(torch.empty(4, 1))
+
+        def named_modules(self):
+            return [
+                ("", self),
+                ("base0", self._module0),
+                ("base1", self._module1),
+            ]
+
+    blocks = nn.ModuleList([_TinyBlock(), _TinyBlock(), _TinyBlock()])
+    offloader = ModelOffloader(
+        blocks,
+        blocks_to_swap=1,
+        device=torch.device("cpu"),
+        supports_backward=False,
+    )
+    swap_plan = (
+        (
+            ("base0", torch.randn(2, 3), torch.randn(2, 3), torch.float32, torch.float32),
+            ("base1", torch.randn(4, 1), torch.randn(4, 1), torch.float32, torch.float32),
+        ),
+        (),
+    )
+    try:
+        slab_plan = offloader._get_swap_slab_plan(0, 2, swap_plan)
+        slab_entries, slab_numel = slab_plan
+
+        assert slab_numel == 10
+        assert slab_entries == (
+            ("base0", (0, 6, (2, 3), torch.float32)),
+            ("base1", (6, 4, (4, 1), torch.float32)),
+        )
+        assert offloader._get_swap_slab_plan(0, 2, swap_plan) is slab_plan
+    finally:
+        offloader.thread_pool.shutdown(wait=False)
+
+
+def test_block_swap_copy_stream_is_reused(monkeypatch) -> None:
+    class _FakeTensorView:
+        def __init__(self) -> None:
+            self.copied_from = []
+            self.recorded_streams = []
+
+        def record_stream(self, stream) -> None:
+            self.recorded_streams.append(stream)
+
+        def copy_(self, source, non_blocking: bool = False):
+            self.copied_from.append((source, non_blocking))
+            return self
+
+    class _FakeWeight:
+        def __init__(self, data):
+            self.data = data
+            self.shape = (2, 2)
+
+    class _FakeModule:
+        def __init__(self, weight) -> None:
+            self.weight = _FakeWeight(weight)
+
+    class _FakeBlock:
+        def __init__(self, weight) -> None:
+            self._module = _FakeModule(weight)
+
+        def named_modules(self):
+            return [("", self), ("base", self._module)]
+
+    class _FakeEvent:
+        def __init__(self, enable_timing: bool = False) -> None:
+            self.enable_timing = enable_timing
+            self.recorded_on = []
+
+        def record(self, stream) -> None:
+            self.recorded_on.append(stream)
+
+    class _FakeStream:
+        def __init__(self, device=None) -> None:
+            self.device = device
+            self.waited_events = []
+
+        def wait_event(self, event) -> None:
+            self.waited_events.append(event)
+
+    class _FakeStreamContext:
+        def __init__(self, stream) -> None:
+            self.stream = stream
+
+        def __enter__(self):
+            return self.stream
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+    stream_creations: list[_FakeStream] = []
+
+    def fake_stream(device=None):
+        stream = _FakeStream(device=device)
+        stream_creations.append(stream)
+        return stream
+
+    monkeypatch.setattr(torch.cuda, "Stream", fake_stream)
+    monkeypatch.setattr(torch.cuda, "Event", _FakeEvent)
+    monkeypatch.setattr(torch.cuda, "stream", lambda stream: _FakeStreamContext(stream))
+
+    blocks = nn.ModuleList([_TinyBlock(), _TinyBlock(), _TinyBlock()])
+    offloader = ModelOffloader(
+        blocks,
+        blocks_to_swap=1,
+        device=torch.device("cuda"),
+        supports_backward=False,
+    )
+    offloader._cpu_weight_masters = [{"base": torch.randn(2, 2)} for _ in range(3)]
+    offloader._cpu_weight_master_dtypes = [{"base": torch.float32} for _ in range(3)]
+    offloader._block_module_maps = [None for _ in range(3)]
+    source_views = [_FakeTensorView(), _FakeTensorView()]
+    block_to_cpu_a = _FakeBlock(source_views[0])
+    block_to_cpu_b = _FakeBlock(source_views[1])
+    block_to_cuda = _FakeBlock(_FakeTensorView())
+    try:
+        offloader.swap_weight_devices(0, block_to_cpu_a, 2, block_to_cuda)
+        offloader.swap_weight_devices(1, block_to_cpu_b, 2, block_to_cuda)
+
+        assert len(stream_creations) == 1
+        assert source_views[0].recorded_streams == [stream_creations[0]]
+        assert source_views[1].recorded_streams == [stream_creations[0]]
+    finally:
+        offloader.thread_pool.shutdown(wait=False)
+
+
+def test_block_swap_event_pool_reuses_events() -> None:
+    class _FakeEvent:
+        def __init__(self, enable_timing: bool = False) -> None:
+            self.enable_timing = enable_timing
+
+    blocks = nn.ModuleList([_TinyBlock(), _TinyBlock(), _TinyBlock()])
+    offloader = ModelOffloader(
+        blocks,
+        blocks_to_swap=1,
+        device=torch.device("cuda"),
+        supports_backward=False,
+    )
+    try:
+        marker = _FakeEvent(enable_timing=False)
+        timing = _FakeEvent(enable_timing=True)
+
+        offloader._release_cuda_event(marker, enable_timing=False)
+        offloader._release_cuda_event(timing, enable_timing=True)
+
+        assert offloader._acquire_cuda_event(enable_timing=False) is marker
+        assert offloader._acquire_cuda_event(enable_timing=True) is timing
+    finally:
+        offloader.thread_pool.shutdown(wait=False)
+
+
+def test_block_swap_cached_cuda_prefers_foreach_copy(monkeypatch) -> None:
+    class _FakeWeight:
+        def __init__(self, data):
+            self.data = data
+            self.shape = (2, 2)
+
+    class _FakeModule:
+        def __init__(self, weight) -> None:
+            self.weight = _FakeWeight(weight)
+
+    class _FakeBlock:
+        def __init__(self, weight0, weight1) -> None:
+            self._module0 = _FakeModule(weight0)
+            self._module1 = _FakeModule(weight1)
+
+        def named_modules(self):
+            return [
+                ("", self),
+                ("base0", self._module0),
+                ("base1", self._module1),
+            ]
+
+    class _FakeEvent:
+        def __init__(self, enable_timing: bool = False) -> None:
+            self.enable_timing = enable_timing
+
+        def record(self, stream) -> None:
+            pass
+
+    class _FakeStream:
+        def __init__(self, device=None) -> None:
+            self.device = device
+            self.waited_events = []
+
+        def wait_event(self, event) -> None:
+            self.waited_events.append(event)
+
+    class _FakeStreamContext:
+        def __init__(self, stream) -> None:
+            self.stream = stream
+
+        def __enter__(self):
+            return self.stream
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+    foreach_calls = []
+
+    def fake_foreach_copy(dsts, srcs, non_blocking=True):
+        foreach_calls.append((list(dsts), list(srcs), non_blocking))
+        return dsts
+
+    monkeypatch.setattr(torch.cuda, "Stream", lambda device=None: _FakeStream(device=device))
+    monkeypatch.setattr(torch.cuda, "Event", _FakeEvent)
+    monkeypatch.setattr(torch.cuda, "stream", lambda stream: _FakeStreamContext(stream))
+    monkeypatch.setattr(torch, "_foreach_copy_", fake_foreach_copy)
+    record_calls = []
+
+    def fake_record_stream(tensor, stream) -> None:
+        record_calls.append((tensor, stream))
+
+    monkeypatch.setattr(torch.Tensor, "record_stream", fake_record_stream)
+
+    blocks = nn.ModuleList([_TinyBlock(), _TinyBlock(), _TinyBlock()])
+    offloader = ModelOffloader(
+        blocks,
+        blocks_to_swap=1,
+        device=torch.device("cuda"),
+        supports_backward=False,
+    )
+    offloader._cpu_weight_masters = [
+        {"base0": torch.randn(2, 2), "base1": torch.randn(2, 2)}
+        for _ in range(3)
+    ]
+    offloader._cpu_weight_master_dtypes = [
+        {"base0": torch.float32, "base1": torch.float32}
+        for _ in range(3)
+    ]
+    block_to_cpu = _FakeBlock(
+        torch.empty(2, 2, device="cuda", dtype=torch.float32),
+        torch.empty(2, 2, device="cuda", dtype=torch.float32),
+    )
+    block_to_cuda = _FakeBlock(
+        torch.empty(2, 2, device="cuda", dtype=torch.float32),
+        torch.empty(2, 2, device="cuda", dtype=torch.float32),
+    )
+    try:
+        offloader.swap_weight_devices(0, block_to_cpu, 2, block_to_cuda)
+
+        assert len(foreach_calls) == 1
+        dsts, srcs, non_blocking = foreach_calls[0]
+        assert len(dsts) == 2
+        assert len(srcs) == 2
+        assert non_blocking is True
+        assert len(record_calls) == 2
+    finally:
+        offloader.thread_pool.shutdown(wait=False)
+
+
+def test_block_swap_cached_cuda_falls_back_when_foreach_copy_is_incompatible(
+    monkeypatch,
+) -> None:
+    class _FakeWeight:
+        def __init__(self, data):
+            self.data = data
+            self.shape = (2, 2)
+
+    class _FakeModule:
+        def __init__(self, weight) -> None:
+            self.weight = _FakeWeight(weight)
+
+    class _FakeBlock:
+        def __init__(self, weight0, weight1) -> None:
+            self._module0 = _FakeModule(weight0)
+            self._module1 = _FakeModule(weight1)
+
+        def named_modules(self):
+            return [
+                ("", self),
+                ("base0", self._module0),
+                ("base1", self._module1),
+            ]
+
+    class _FakeEvent:
+        def __init__(self, enable_timing: bool = False) -> None:
+            self.enable_timing = enable_timing
+
+        def record(self, stream) -> None:
+            pass
+
+    class _FakeStream:
+        def __init__(self, device=None) -> None:
+            self.device = device
+
+        def wait_event(self, event) -> None:
+            pass
+
+    class _FakeStreamContext:
+        def __init__(self, stream) -> None:
+            self.stream = stream
+
+        def __enter__(self):
+            return self.stream
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+    foreach_calls = []
+
+    def fake_foreach_copy(dsts, srcs, non_blocking=True):
+        foreach_calls.append((list(dsts), list(srcs), non_blocking))
+        raise RuntimeError("force fallback")
+
+    monkeypatch.setattr(torch.cuda, "Stream", lambda device=None: _FakeStream(device=device))
+    monkeypatch.setattr(torch.cuda, "Event", _FakeEvent)
+    monkeypatch.setattr(torch.cuda, "stream", lambda stream: _FakeStreamContext(stream))
+    monkeypatch.setattr(torch, "_foreach_copy_", fake_foreach_copy)
+    monkeypatch.setattr(torch.Tensor, "record_stream", lambda tensor, stream: None)
+
+    blocks = nn.ModuleList([_TinyBlock(), _TinyBlock(), _TinyBlock()])
+    offloader = ModelOffloader(
+        blocks,
+        blocks_to_swap=1,
+        device=torch.device("cuda"),
+        supports_backward=False,
+    )
+    offloader._cpu_weight_masters = [
+        {"base0": torch.randn(2, 2, dtype=torch.float32), "base1": torch.randn(2, 2, dtype=torch.float32)}
+        for _ in range(3)
+    ]
+    offloader._cpu_weight_master_dtypes = [
+        {"base0": torch.float32, "base1": torch.float32}
+        for _ in range(3)
+    ]
+    copy_calls = []
+    original_copy = torch.Tensor.copy_
+
+    def wrapped_copy(tensor, source, non_blocking: bool = False):
+        copy_calls.append((tensor, source, non_blocking))
+        return original_copy(tensor, source, non_blocking=non_blocking)
+
+    monkeypatch.setattr(torch.Tensor, "copy_", wrapped_copy)
+    block_to_cpu = _FakeBlock(
+        torch.empty(2, 2, device="cuda", dtype=torch.float32),
+        torch.empty(2, 2, device="cuda", dtype=torch.float32),
+    )
+    block_to_cuda = _FakeBlock(
+        torch.empty(2, 2, device="cuda", dtype=torch.float32),
+        torch.empty(2, 2, device="cuda", dtype=torch.float32),
+    )
+    try:
+        offloader.swap_weight_devices(0, block_to_cpu, 2, block_to_cuda)
+
+        assert len(foreach_calls) == 1
+        assert len(copy_calls) == 2
+        _, source0, non_blocking0 = copy_calls[0]
+        _, source1, non_blocking1 = copy_calls[1]
+        assert source0 is offloader._cpu_weight_masters[2]["base0"]
+        assert source1 is offloader._cpu_weight_masters[2]["base1"]
+        assert non_blocking0 is True
+        assert non_blocking1 is True
+    finally:
+        offloader.thread_pool.shutdown(wait=False)
+
+
+def test_block_swap_cached_cuda_slab_restore_uses_single_gpu_slab(monkeypatch) -> None:
+    class _FakeWeight:
+        def __init__(self, data):
+            self.data = data
+            self.shape = tuple(data.shape)
+
+    class _FakeModule:
+        def __init__(self, weight) -> None:
+            self.weight = _FakeWeight(weight)
+
+    class _FakeBlock:
+        def __init__(self, weight0, weight1) -> None:
+            self._module0 = _FakeModule(weight0)
+            self._module1 = _FakeModule(weight1)
+
+        def named_modules(self):
+            return [
+                ("", self),
+                ("base0", self._module0),
+                ("base1", self._module1),
+            ]
+
+    class _FakeEvent:
+        def __init__(self, enable_timing: bool = False) -> None:
+            self.enable_timing = enable_timing
+
+        def record(self, stream) -> None:
+            pass
+
+    class _FakeStream:
+        def __init__(self, device=None) -> None:
+            self.device = device
+
+        def wait_event(self, event) -> None:
+            pass
+
+    class _FakeStreamContext:
+        def __init__(self, stream) -> None:
+            self.stream = stream
+
+        def __enter__(self):
+            return self.stream
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+    monkeypatch.setattr(torch.cuda, "Stream", lambda device=None: _FakeStream(device=device))
+    monkeypatch.setattr(torch.cuda, "Event", _FakeEvent)
+    monkeypatch.setattr(torch.cuda, "stream", lambda stream: _FakeStreamContext(stream))
+
+    foreach_calls = []
+
+    def fake_foreach_copy(dsts, srcs, non_blocking=True):
+        foreach_calls.append((list(dsts), list(srcs), non_blocking))
+        return dsts
+
+    monkeypatch.setattr(torch, "_foreach_copy_", fake_foreach_copy)
+
+    copy_calls = []
+    original_copy = torch.Tensor.copy_
+
+    def wrapped_copy(tensor, source, non_blocking: bool = False):
+        copy_calls.append((tensor, source, non_blocking))
+        return original_copy(tensor, source, non_blocking=non_blocking)
+
+    monkeypatch.setattr(torch.Tensor, "copy_", wrapped_copy)
+    monkeypatch.setattr(torch.Tensor, "record_stream", lambda tensor, stream: None)
+
+    blocks = nn.ModuleList([_TinyBlock(), _TinyBlock(), _TinyBlock()])
+    offloader = ModelOffloader(
+        blocks,
+        blocks_to_swap=1,
+        device=torch.device("cuda"),
+        supports_backward=False,
+        restore_mode="slab",
+    )
+    offloader._cpu_weight_masters = [
+        {
+            "base0": torch.randn(2, 2).pin_memory(),
+            "base1": torch.randn(2, 2).pin_memory(),
+        }
+        for _ in range(3)
+    ]
+    offloader._cpu_weight_master_dtypes = [
+        {"base0": torch.float32, "base1": torch.float32}
+        for _ in range(3)
+    ]
+    monkeypatch.setattr(torch.Tensor, "copy_", original_copy)
+    offloader._cpu_weight_master_slabs = []
+    offloader._cpu_weight_master_slab_plans = []
+    for masters in offloader._cpu_weight_masters:
+        slab_views, slab, slab_plan = offloader._pack_cpu_master_block(masters, pin_memory=True)
+        offloader._cpu_weight_masters[offloader._cpu_weight_master_slabs.__len__()] = slab_views
+        offloader._cpu_weight_master_slabs.append(slab)
+        offloader._cpu_weight_master_slab_plans.append(slab_plan)
+    monkeypatch.setattr(torch.Tensor, "copy_", wrapped_copy)
+
+    block_to_cpu = _FakeBlock(
+        torch.empty(2, 2, device="cuda", dtype=torch.float32),
+        torch.empty(2, 2, device="cuda", dtype=torch.float32),
+    )
+    block_to_cuda = _FakeBlock(
+        torch.empty(2, 2, device="cuda", dtype=torch.float32),
+        torch.empty(2, 2, device="cuda", dtype=torch.float32),
+    )
+    try:
+        offloader.swap_weight_devices(0, block_to_cpu, 2, block_to_cuda)
+
+        assert len(foreach_calls) == 0
+        assert len(copy_calls) == 1
+        copied_tensor, copied_source, non_blocking = copy_calls[0]
+        assert copied_tensor.ndim == 1
+        assert copied_source.ndim == 1
+        assert copied_tensor.numel() == 8
+        assert copied_source.numel() == 8
+        assert non_blocking is True
+        assert (
+            block_to_cuda._module0.weight.data.untyped_storage().data_ptr()
+            == block_to_cuda._module1.weight.data.untyped_storage().data_ptr()
+        )
+    finally:
+        offloader.thread_pool.shutdown(wait=False)
+
+
+def test_block_swap_slab_gpu_cache_reuses_physical_slot() -> None:
+    blocks = nn.ModuleList([_TinyBlock() for _ in range(6)])
+    offloader = ModelOffloader(
+        blocks,
+        blocks_to_swap=4,
+        device=torch.device("cpu"),
+        supports_backward=False,
+        restore_mode="slab",
+    )
+    swap_plan = (
+        (("base", torch.randn(2, 2), torch.randn(2, 2), torch.float32, torch.float32),),
+        (),
+    )
+    try:
+        offloader._cpu_weight_master_slabs = [None for _ in range(6)]
+        offloader._cpu_weight_master_slab_plans = [None for _ in range(6)]
+        for block_idx in range(6):
+            masters = {"base": torch.randn(2, 2)}
+            slab_views, slab, slab_plan = offloader._pack_cpu_master_block(masters, pin_memory=False)
+            offloader._cpu_weight_master_slabs[block_idx] = slab
+            offloader._cpu_weight_master_slab_plans[block_idx] = slab_plan
+        bundle_a = offloader._get_cached_restore_slab(0, 2, swap_plan)
+        bundle_b = offloader._get_cached_restore_slab(2, 4, swap_plan)
+        assert bundle_a is not None
+        assert bundle_b is not None
+        _, gpu_slab_a, _ = bundle_a
+        _, gpu_slab_b, _ = bundle_b
+        assert gpu_slab_a is gpu_slab_b
+        assert len(offloader._swap_gpu_slab_cache) == 1
+    finally:
+        offloader.thread_pool.shutdown(wait=False)
 
 
 def test_block_swap_backward_hooks_work_with_standard_checkpointing(tmp_path) -> None:
@@ -867,6 +1489,7 @@ def _args_for_assert_extra(**overrides) -> argparse.Namespace:
         "functional_loss_weight": 0.0,
         "selective_checkpoint": "off",
         "block_swap_profile_jsonl": None,
+        "block_swap_restore_mode": "foreach",
     }
     values.update(overrides)
     return argparse.Namespace(**values)

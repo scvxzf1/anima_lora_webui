@@ -9,6 +9,7 @@ export const FORM_UI_DEFAULTS = {
     gradient_checkpointing: true,
     precision_preference: 'bf16',
     block_swap_transfer_dtype: 'bf16',
+    block_swap_restore_mode: 'foreach',
     preprocess_memory_profile: 'auto',
     preprocess_vae_cache_batch_size: 'auto',
     preprocess_text_cache_batch_size: 'auto',

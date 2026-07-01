@@ -29,7 +29,10 @@ from library.anima import (
 from library.models import qwen_vae as qwen_image_autoencoder_kl
 from library.models import sai_spec as sai_model_spec
 from library.runtime import noise as noise_utils
-from library.runtime.offloading import normalize_block_swap_transfer_dtype
+from library.runtime.offloading import (
+    normalize_block_swap_restore_mode,
+    normalize_block_swap_transfer_dtype,
+)
 from library.runtime.peak_probe import PeakProbe
 from library.config import loader as config_util
 from library.training.method_adapter import (
@@ -495,6 +498,9 @@ class AnimaTrainer:
         args.block_swap_transfer_dtype = normalize_block_swap_transfer_dtype(
             getattr(args, "block_swap_transfer_dtype", "bf16")
         )
+        args.block_swap_restore_mode = normalize_block_swap_restore_mode(
+            getattr(args, "block_swap_restore_mode", "foreach")
+        )
 
         if (
             args.blocks_to_swap is not None
@@ -903,6 +909,7 @@ class AnimaTrainer:
                 "enable block swap: "
                 f"blocks_to_swap={args.blocks_to_swap}, "
                 f"transfer_dtype={args.block_swap_transfer_dtype}, "
+                f"restore_mode={args.block_swap_restore_mode}, "
                 f"profile_jsonl={profile_jsonl or 'off'}"
             )
             model.enable_block_swap(
@@ -910,6 +917,7 @@ class AnimaTrainer:
                 accelerator.device,
                 profile_jsonl=profile_jsonl,
                 transfer_dtype=args.block_swap_transfer_dtype,
+                restore_mode=args.block_swap_restore_mode,
             )
             _maybe_probe_components(
                 self,
@@ -920,6 +928,7 @@ class AnimaTrainer:
                 blocks_to_swap=args.blocks_to_swap,
                 block_swap_profile_jsonl=profile_jsonl or "off",
                 block_swap_transfer_dtype=args.block_swap_transfer_dtype,
+                block_swap_restore_mode=args.block_swap_restore_mode,
             )
 
         # Variance-reduced FM loss: the "frozen reference" is the trainable

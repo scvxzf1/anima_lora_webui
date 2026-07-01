@@ -45,6 +45,7 @@ def _can_swap_frozen_weight_to_cpu(module: nn.Module) -> bool:
 
 
 _BLOCK_SWAP_TRANSFER_DTYPES = {"bf16", "fp8_e4m3"}
+_BLOCK_SWAP_RESTORE_MODES = {"foreach", "slab"}
 
 
 def normalize_block_swap_transfer_dtype(value: Optional[str]) -> str:
@@ -64,6 +65,21 @@ def normalize_block_swap_transfer_dtype(value: Optional[str]) -> str:
     if dtype == "fp8_e4m3" and not hasattr(torch, "float8_e4m3fn"):
         raise ValueError("block_swap_transfer_dtype=fp8_e4m3 requires torch.float8_e4m3fn")
     return dtype
+
+
+def normalize_block_swap_restore_mode(value: Optional[str]) -> str:
+    mode = str(value or "foreach").strip().lower()
+    aliases = {
+        "default": "foreach",
+        "loop": "foreach",
+    }
+    mode = aliases.get(mode, mode)
+    if mode not in _BLOCK_SWAP_RESTORE_MODES:
+        raise ValueError(
+            "block_swap_restore_mode must be one of: "
+            f"{', '.join(sorted(_BLOCK_SWAP_RESTORE_MODES))}"
+        )
+    return mode
 
 
 def _capture_cpu_master(
@@ -103,25 +119,65 @@ def _capture_cpu_master(
     return master, stats
 
 
-def _finalize_async_cuda_timings(timings: dict[str, Any]) -> None:
+def _try_foreach_h2d_copy(
+    dst_tensors: list[torch.Tensor], src_tensors: list[torch.Tensor]
+) -> bool:
+    """Issue one foreach copy when the swap job list is dtype/device compatible."""
+
+    foreach_copy = getattr(torch, "_foreach_copy_", None)
+    if foreach_copy is None or len(dst_tensors) < 2 or len(dst_tensors) != len(src_tensors):
+        return False
+    for dst, src in zip(dst_tensors, src_tensors):
+        if dst.device.type != "cuda" or src.device.type != "cpu":
+            return False
+        if dst.dtype != src.dtype or dst.numel() != src.numel():
+            return False
+    try:
+        foreach_copy(dst_tensors, src_tensors, non_blocking=True)
+        return True
+    except Exception:
+        return False
+
+
+def _wait_for_async_cuda_copy_on_current_stream(
+    device: torch.device, timings: dict[str, Any]
+) -> None:
+    """Order current-stream work after an async block-swap H2D copy.
+
+    The offloader enqueues H2D copies on a side stream. The training block that
+    consumes the restored weights runs on the current stream, so it only needs a
+    CUDA stream dependency. Host-side ``Event.synchronize()`` is required for
+    profiling timings but is pure overhead in production.
+    """
+
+    end_event = timings.get("_h2d_end_event")
+    if end_event is None:
+        return
+    torch.cuda.current_stream(device).wait_event(end_event)
+
+
+def _finalize_async_cuda_timings(
+    timings: dict[str, Any], *, synchronize: bool
+) -> tuple[Optional[Any], Optional[Any], Optional[Any], bool]:
     end_event = timings.pop("_h2d_end_event", None)
     start_event = timings.pop("_h2d_start_event", None)
     ready_event = timings.pop("_ready_event", None)
-    if end_event is None:
-        return
-    end_event.synchronize()
-    if start_event is not None:
-        try:
-            timings["h2d_ms"] = float(start_event.elapsed_time(end_event))
-        except Exception:
-            pass
-    if ready_event is not None and start_event is not None:
-        try:
-            timings["event_wait_ms"] = max(
-                0.0, float(ready_event.elapsed_time(start_event))
-            )
-        except Exception:
-            pass
+    event_timing = bool(timings.pop("_event_timing", False))
+    if end_event is not None and synchronize:
+        end_event.synchronize()
+        if start_event is not None:
+            try:
+                timings["h2d_ms"] = float(start_event.elapsed_time(end_event))
+            except Exception:
+                pass
+        if ready_event is not None and start_event is not None:
+            try:
+                timings["event_wait_ms"] = max(
+                    0.0, float(ready_event.elapsed_time(start_event))
+                )
+            except Exception:
+                pass
+    return ready_event, start_event, end_event, event_timing
 
 
 def swap_weight_devices_cuda(
@@ -282,6 +338,12 @@ def _resolve_profiler(profile_jsonl: Optional[Union[str, BlockSwapProfiler]]):
     return BlockSwapProfiler(path)
 
 
+_SwapPlanEntry = Tuple[str, torch.Tensor, torch.Tensor, torch.dtype, torch.dtype]
+_SwapPlan = tuple[tuple[_SwapPlanEntry, ...], tuple[str, ...]]
+_SwapSlabView = Tuple[int, int, Tuple[int, ...], torch.dtype]
+_SwapSlabPlan = tuple[tuple[tuple[str, _SwapSlabView], ...], int]
+
+
 class Offloader:
     """
     common offloading class
@@ -295,12 +357,15 @@ class Offloader:
         debug: bool = False,
         profile_jsonl: Optional[Union[str, BlockSwapProfiler]] = None,
         transfer_dtype: Optional[str] = None,
+        restore_mode: Optional[str] = None,
     ):
         self.num_blocks = num_blocks
         self.blocks_to_swap = blocks_to_swap
         self.device = device
         self.debug = debug
         self.transfer_dtype = normalize_block_swap_transfer_dtype(transfer_dtype)
+        restore_mode = restore_mode or os.getenv("ANIMA_BLOCK_SWAP_RESTORE_MODE", "foreach")
+        self.restore_mode = normalize_block_swap_restore_mode(restore_mode)
 
         self.thread_pool = ThreadPoolExecutor(max_workers=1)
         self.futures = {}
@@ -309,6 +374,21 @@ class Offloader:
         self.profile_step = 0
         self._cpu_weight_masters: Optional[list[dict[str, torch.Tensor]]] = None
         self._cpu_weight_master_dtypes: Optional[list[dict[str, torch.dtype]]] = None
+        self._cpu_weight_master_slabs: Optional[list[Optional[torch.Tensor]]] = None
+        self._cpu_weight_master_slab_plans: Optional[
+            list[Optional[dict[str, _SwapSlabView]]]
+        ] = None
+        self._block_module_maps: list[Optional[dict[str, nn.Module]]] = [
+            None for _ in range(num_blocks)
+        ]
+        self._swap_plan_cache: dict[tuple[int, int], _SwapPlan] = {}
+        self._swap_slab_plan_cache: dict[tuple[int, int], _SwapSlabPlan] = {}
+        self._swap_gpu_slab_cache: dict[
+            int, tuple[torch.Tensor, tuple[tuple[str, torch.Tensor], ...]]
+        ] = {}
+        self._copy_stream: Optional[Any] = None
+        self._timing_event_pool: list[Any] = []
+        self._marker_event_pool: list[Any] = []
         self._frozen_weight_bytes_by_block: list[int] = [0 for _ in range(num_blocks)]
         self._bf16_weight_bytes_by_block: list[int] = [0 for _ in range(num_blocks)]
         self._fp8_weight_bytes_by_block: list[int] = [0 for _ in range(num_blocks)]
@@ -331,6 +411,8 @@ class Offloader:
         pin_memory = self.cuda_available
         masters: list[dict[str, torch.Tensor]] = []
         master_dtypes: list[dict[str, torch.dtype]] = []
+        master_slabs: list[Optional[torch.Tensor]] = []
+        master_slab_plans: list[Optional[dict[str, _SwapSlabView]]] = []
         bytes_by_block: list[int] = []
         bf16_bytes_by_block: list[int] = []
         fp8_bytes_by_block: list[int] = []
@@ -376,8 +458,14 @@ class Offloader:
                 block_mean_abs_errors.append(float(stats["mean_abs_error"]))
                 block_relative_l2s.append(float(stats["relative_l2"]))
                 saturated_tensors += int(stats["saturated"])
+            block_masters, block_master_slab, block_master_slab_plan = self._pack_cpu_master_block(
+                block_masters,
+                pin_memory=pin_memory,
+            )
             masters.append(block_masters)
             master_dtypes.append(block_dtypes)
+            master_slabs.append(block_master_slab)
+            master_slab_plans.append(block_master_slab_plan)
             bytes_by_block.append(block_bytes)
             bf16_bytes_by_block.append(block_bf16_bytes)
             fp8_bytes_by_block.append(block_fp8_bytes)
@@ -399,6 +487,9 @@ class Offloader:
 
         self._cpu_weight_masters = masters
         self._cpu_weight_master_dtypes = master_dtypes
+        self._cpu_weight_master_slabs = master_slabs
+        self._cpu_weight_master_slab_plans = master_slab_plans
+        self._ensure_block_module_maps(blocks)
         self._frozen_weight_bytes_by_block = bytes_by_block
         self._bf16_weight_bytes_by_block = bf16_bytes_by_block
         self._fp8_weight_bytes_by_block = fp8_bytes_by_block
@@ -425,6 +516,7 @@ class Offloader:
                     "num_blocks": self.num_blocks,
                     "blocks_to_swap": self.blocks_to_swap,
                     "transfer_dtype": self.transfer_dtype,
+                    "restore_mode": self.restore_mode,
                     "frozen_weight_master_bytes": total_bytes,
                     "frozen_weight_bytes_by_block": bytes_by_block,
                     "bf16_master_bytes": total_bf16_bytes,
@@ -439,6 +531,253 @@ class Offloader:
                     "h2d_only": True,
                 }
             )
+
+    def _get_block_module_map(
+        self, block_idx: int, block: nn.Module
+    ) -> dict[str, nn.Module]:
+        modules = self._block_module_maps[block_idx]
+        if modules is None:
+            modules = {name: module for name, module in block.named_modules()}
+            self._block_module_maps[block_idx] = modules
+        return modules
+
+    def _ensure_block_module_maps(
+        self, blocks: Union[list[nn.Module], nn.ModuleList]
+    ) -> None:
+        for block_idx, block in enumerate(blocks):
+            self._get_block_module_map(block_idx, block)
+
+    def _pack_cpu_master_block(
+        self,
+        block_masters: dict[str, torch.Tensor],
+        *,
+        pin_memory: bool,
+    ) -> tuple[
+        dict[str, torch.Tensor],
+        Optional[torch.Tensor],
+        Optional[dict[str, _SwapSlabView]],
+    ]:
+        if not block_masters:
+            return block_masters, None, None
+        dtypes = {tensor.dtype for tensor in block_masters.values()}
+        if len(dtypes) != 1:
+            return block_masters, None, None
+        slab_dtype = next(iter(dtypes))
+        ordered = tuple(block_masters.items())
+        slab_numel = sum(int(tensor.numel()) for _, tensor in ordered)
+        slab = torch.empty(slab_numel, dtype=slab_dtype, pin_memory=pin_memory)
+        slab_plan: dict[str, _SwapSlabView] = {}
+        slab_views: dict[str, torch.Tensor] = {}
+        offset = 0
+        for name, tensor in ordered:
+            flat_numel = int(tensor.numel())
+            slab[offset : offset + flat_numel].copy_(tensor.view(-1), non_blocking=False)
+            slab_plan[name] = (
+                offset,
+                flat_numel,
+                tuple(int(dim) for dim in tensor.shape),
+                tensor.dtype,
+            )
+            slab_views[name] = slab.narrow(0, offset, flat_numel).view(tensor.shape)
+            offset += flat_numel
+        return slab_views, slab, slab_plan
+
+    def _warm_swap_plan_cache(
+        self, blocks: Union[list[nn.Module], nn.ModuleList]
+    ) -> None:
+        if self._cpu_weight_masters is None or self._cpu_weight_master_dtypes is None:
+            return
+        first_swapped_block = self.num_blocks - self.blocks_to_swap
+        if first_swapped_block <= 0:
+            return
+        for block_idx_to_cpu in range(first_swapped_block):
+            block_idx_to_cuda = first_swapped_block + block_idx_to_cpu
+            if block_idx_to_cuda >= self.num_blocks:
+                break
+            self._get_swap_plan(
+                block_idx_to_cpu,
+                blocks[block_idx_to_cpu],
+                block_idx_to_cuda,
+                blocks[block_idx_to_cuda],
+                self._cpu_weight_masters[block_idx_to_cpu],
+                self._cpu_weight_masters[block_idx_to_cuda],
+                self._cpu_weight_master_dtypes[block_idx_to_cpu],
+                self._cpu_weight_master_dtypes[block_idx_to_cuda],
+            )
+
+    def _build_swap_plan(
+        self,
+        block_idx_to_cpu: int,
+        block_to_cpu: nn.Module,
+        block_idx_to_cuda: int,
+        block_to_cuda: nn.Module,
+        source_masters: dict[str, torch.Tensor],
+        target_masters: dict[str, torch.Tensor],
+        source_dtypes: dict[str, torch.dtype],
+        target_dtypes: dict[str, torch.dtype],
+    ) -> _SwapPlan:
+        modules_to_cpu = self._get_block_module_map(block_idx_to_cpu, block_to_cpu)
+        modules_to_cuda = self._get_block_module_map(block_idx_to_cuda, block_to_cuda)
+        swap_jobs: list[_SwapPlanEntry] = []
+        fallback_names: list[str] = []
+        for module_name, module_to_cuda in modules_to_cuda.items():
+            weight = getattr(module_to_cuda, "weight", None)
+            if weight is None:
+                continue
+            module_to_cpu = modules_to_cpu.get(module_name)
+            source_master = source_masters.get(module_name)
+            target_master = target_masters.get(module_name)
+            source_dtype = source_dtypes.get(module_name)
+            target_dtype = target_dtypes.get(module_name)
+            if (
+                module_to_cpu is not None
+                and source_master is not None
+                and target_master is not None
+                and source_dtype is not None
+                and target_dtype is not None
+                and module_to_cpu.weight.shape == module_to_cuda.weight.shape
+            ):
+                swap_jobs.append(
+                    (
+                        module_name,
+                        source_master,
+                        target_master,
+                        source_dtype,
+                        target_dtype,
+                    )
+                )
+            else:
+                fallback_names.append(module_name)
+        return tuple(swap_jobs), tuple(fallback_names)
+
+    def _get_swap_plan(
+        self,
+        block_idx_to_cpu: int,
+        block_to_cpu: nn.Module,
+        block_idx_to_cuda: int,
+        block_to_cuda: nn.Module,
+        source_masters: dict[str, torch.Tensor],
+        target_masters: dict[str, torch.Tensor],
+        source_dtypes: dict[str, torch.dtype],
+        target_dtypes: dict[str, torch.dtype],
+    ) -> _SwapPlan:
+        key = (block_idx_to_cpu, block_idx_to_cuda)
+        plan = self._swap_plan_cache.get(key)
+        if plan is None:
+            plan = self._build_swap_plan(
+                block_idx_to_cpu,
+                block_to_cpu,
+                block_idx_to_cuda,
+                block_to_cuda,
+                source_masters,
+                target_masters,
+                source_dtypes,
+                target_dtypes,
+            )
+            self._swap_plan_cache[key] = plan
+        return plan
+
+    def _build_swap_slab_plan(self, swap_plan: _SwapPlan) -> _SwapSlabPlan:
+        weight_swap_jobs, _ = swap_plan
+        slab_entries: list[tuple[str, _SwapSlabView]] = []
+        slab_numel = 0
+        for module_name, _, target_master, _, target_dtype in weight_swap_jobs:
+            flat_numel = int(target_master.numel())
+            slab_entries.append(
+                (
+                    module_name,
+                    (
+                        slab_numel,
+                        flat_numel,
+                        tuple(int(dim) for dim in target_master.shape),
+                        target_dtype,
+                    ),
+                )
+            )
+            slab_numel += flat_numel
+        return tuple(slab_entries), slab_numel
+
+    def _get_swap_slab_plan(
+        self,
+        block_idx_to_cpu: int,
+        block_idx_to_cuda: int,
+        swap_plan: _SwapPlan,
+    ) -> _SwapSlabPlan:
+        key = (block_idx_to_cpu, block_idx_to_cuda)
+        plan = self._swap_slab_plan_cache.get(key)
+        if plan is None:
+            plan = self._build_swap_slab_plan(swap_plan)
+            self._swap_slab_plan_cache[key] = plan
+        return plan
+
+    def _get_cached_restore_slab(
+        self,
+        block_idx_to_cpu: int,
+        block_idx_to_cuda: int,
+        swap_plan: _SwapPlan,
+    ) -> Optional[tuple[torch.Tensor, torch.Tensor, tuple[tuple[str, torch.Tensor], ...]]]:
+        if self.restore_mode != "slab":
+            return None
+        if self._cpu_weight_master_slabs is None or self._cpu_weight_master_slab_plans is None:
+            return None
+        cpu_slab = self._cpu_weight_master_slabs[block_idx_to_cuda]
+        cpu_slab_plan = self._cpu_weight_master_slab_plans[block_idx_to_cuda]
+        if cpu_slab is None or cpu_slab_plan is None:
+            return None
+        slot_count = self.num_blocks - self.blocks_to_swap
+        if slot_count <= 0:
+            return None
+        slot_id = block_idx_to_cpu % slot_count
+        slab_entries, slab_numel = self._get_swap_slab_plan(
+            block_idx_to_cpu,
+            block_idx_to_cuda,
+            swap_plan,
+        )
+        if slab_numel <= 0:
+            return None
+        target_dtypes = {dtype for _, (_, _, _, dtype) in slab_entries}
+        if len(target_dtypes) != 1:
+            return None
+        for module_name, (offset, numel, shape, _) in slab_entries:
+            cpu_view = cpu_slab_plan.get(module_name)
+            if cpu_view is None:
+                return None
+            cpu_offset, cpu_numel, cpu_shape, _cpu_dtype = cpu_view
+            if cpu_offset != offset or cpu_numel != numel or cpu_shape != shape:
+                return None
+        cached = self._swap_gpu_slab_cache.get(slot_id)
+        slab_dtype = next(iter(target_dtypes))
+        if cached is not None:
+            gpu_slab, gpu_views = cached
+            if gpu_slab.dtype == slab_dtype and int(gpu_slab.numel()) == slab_numel:
+                return cpu_slab, gpu_slab, gpu_views
+        gpu_slab = torch.empty(slab_numel, dtype=slab_dtype, device=self.device)
+        gpu_views = tuple(
+            (
+                module_name,
+                gpu_slab.narrow(0, offset, numel).view(shape),
+            )
+            for module_name, (offset, numel, shape, _dtype) in slab_entries
+        )
+        self._swap_gpu_slab_cache[slot_id] = (gpu_slab, gpu_views)
+        return cpu_slab, gpu_slab, gpu_views
+
+    def _get_copy_stream(self) -> Any:
+        if self._copy_stream is None:
+            self._copy_stream = torch.cuda.Stream(device=self.device)
+        return self._copy_stream
+
+    def _acquire_cuda_event(self, *, enable_timing: bool) -> Any:
+        pool = self._timing_event_pool if enable_timing else self._marker_event_pool
+        if pool:
+            return pool.pop()
+        return torch.cuda.Event(enable_timing=enable_timing)
+
+    def _release_cuda_event(self, event: Optional[Any], *, enable_timing: bool) -> None:
+        if event is None:
+            return
+        pool = self._timing_event_pool if enable_timing else self._marker_event_pool
+        pool.append(event)
 
     def swap_weight_devices(
         self,
@@ -463,92 +802,73 @@ class Offloader:
         target_masters = self._cpu_weight_masters[block_idx_to_cuda]
         source_dtypes = (self._cpu_weight_master_dtypes or [])[block_idx_to_cpu]
         target_dtypes = (self._cpu_weight_master_dtypes or [])[block_idx_to_cuda]
-        if self.cuda_available:
-            return self._swap_weight_devices_cached_cuda(
-                block_to_cpu,
-                block_to_cuda,
-                source_masters,
-                target_masters,
-                source_dtypes,
-                target_dtypes,
-                ready_event=ready_event,
-            )
-        return self._swap_weight_devices_cached_no_cuda(
+        swap_plan = self._get_swap_plan(
+            block_idx_to_cpu,
             block_to_cpu,
+            block_idx_to_cuda,
             block_to_cuda,
             source_masters,
             target_masters,
             source_dtypes,
             target_dtypes,
         )
+        if self.cuda_available:
+            return self._swap_weight_devices_cached_cuda(
+                block_idx_to_cpu,
+                block_to_cpu,
+                block_idx_to_cuda,
+                block_to_cuda,
+                swap_plan,
+                ready_event=ready_event,
+            )
+        return self._swap_weight_devices_cached_no_cuda(
+            block_idx_to_cpu,
+            block_to_cpu,
+            block_idx_to_cuda,
+            block_to_cuda,
+            swap_plan,
+        )
 
     def _swap_weight_devices_cached_cuda(
         self,
+        block_idx_to_cpu: int,
         layer_to_cpu: nn.Module,
+        block_idx_to_cuda: int,
         layer_to_cuda: nn.Module,
-        source_masters: dict[str, torch.Tensor],
-        target_masters: dict[str, torch.Tensor],
-        source_dtypes: dict[str, torch.dtype],
-        target_dtypes: dict[str, torch.dtype],
+        swap_plan: _SwapPlan,
         *,
         ready_event: Optional[Any] = None,
     ) -> dict[str, float]:
         assert layer_to_cpu.__class__ == layer_to_cuda.__class__
-
-        weight_swap_jobs: list[
-            Tuple[
-                nn.Module,
-                nn.Module,
-                torch.Tensor,
-                torch.Tensor,
-                torch.Tensor,
-                torch.dtype,
-                torch.dtype,
-            ]
-        ] = []
-        modules_to_cpu = {k: v for k, v in layer_to_cpu.named_modules()}
-        for module_to_cuda_name, module_to_cuda in layer_to_cuda.named_modules():
-            weight = getattr(module_to_cuda, "weight", None)
-            if weight is None:
-                continue
-            module_to_cpu = modules_to_cpu.get(module_to_cuda_name, None)
-            source_master = source_masters.get(module_to_cuda_name)
-            target_master = target_masters.get(module_to_cuda_name)
-            source_dtype = source_dtypes.get(module_to_cuda_name)
-            target_dtype = target_dtypes.get(module_to_cuda_name)
-            if (
-                module_to_cpu is not None
-                and source_master is not None
-                and target_master is not None
-                and source_dtype is not None
-                and target_dtype is not None
-                and module_to_cpu.weight.shape == module_to_cuda.weight.shape
-            ):
-                weight_swap_jobs.append(
-                    (
-                        module_to_cpu,
-                        module_to_cuda,
-                        module_to_cpu.weight.data,
-                        source_master,
-                        target_master,
-                        source_dtype,
-                        target_dtype,
-                    )
-                )
-            else:
+        modules_to_cpu = self._get_block_module_map(block_idx_to_cpu, layer_to_cpu)
+        modules_to_cuda = self._get_block_module_map(block_idx_to_cuda, layer_to_cuda)
+        weight_swap_jobs, fallback_names = swap_plan
+        for module_name in fallback_names:
+            module_to_cuda = modules_to_cuda.get(module_name)
+            module_to_cpu = modules_to_cpu.get(module_name)
+            if module_to_cuda is not None:
                 _ensure_weight_on_device(module_to_cuda, self.device)
-                if module_to_cpu is not None:
-                    _ensure_weight_on_device(module_to_cpu, self.device)
+            if module_to_cpu is not None:
+                _ensure_weight_on_device(module_to_cpu, self.device)
 
+        profile_timings = self.profiler is not None
         timings: dict[str, Any] = {
             "d2h_ms": 0.0,
             "h2d_ms": 0.0,
             "event_wait_ms": 0.0,
+            "_event_timing": profile_timings,
         }
+        if ready_event is not None:
+            timings["_ready_event"] = ready_event
         if not weight_swap_jobs:
             return timings
 
-        stream = torch.cuda.Stream(device=self.device)
+        stream = self._get_copy_stream()
+        slab_bundle = self._get_cached_restore_slab(
+            block_idx_to_cpu,
+            block_idx_to_cuda,
+            swap_plan,
+        )
         with torch.cuda.stream(stream):
             if ready_event is not None:
                 stream.wait_event(ready_event)
@@ -557,67 +877,89 @@ class Offloader:
             # CPU master for every swappable weight and only restore the next
             # block into the retired block's GPU storage. This removes the
             # per-swap D2H copy that made next-use prefetch miss its window.
-            h2d_start = torch.cuda.Event(enable_timing=True)
-            h2d_end = torch.cuda.Event(enable_timing=True)
+            h2d_start = self._acquire_cuda_event(enable_timing=profile_timings)
+            h2d_end = self._acquire_cuda_event(enable_timing=profile_timings)
             h2d_start.record(stream)
-            for (
-                module_to_cpu,
-                module_to_cuda,
-                cuda_data_view,
-                source_master,
-                target_master,
-                source_dtype,
-                target_dtype,
-            ) in weight_swap_jobs:
-                module_to_cpu.weight.data = source_master
-                cuda_data_view.record_stream(stream)
-                cuda_data_view.copy_(target_master, non_blocking=True)
+            cuda_bindings: list[tuple[nn.Module, torch.Tensor]] = []
+            if slab_bundle is not None:
+                cpu_slab, gpu_slab, gpu_view_items = slab_bundle
+                gpu_views = dict(gpu_view_items)
+                for (
+                    module_name,
+                    source_master,
+                    target_master,
+                    source_dtype,
+                    target_dtype,
+                ) in weight_swap_jobs:
+                    module_to_cpu = modules_to_cpu[module_name]
+                    module_to_cuda = modules_to_cuda[module_name]
+                    module_to_cpu.weight.data = source_master
+                    cuda_bindings.append((module_to_cuda, gpu_views[module_name]))
+                gpu_slab.record_stream(stream)
+                gpu_slab.copy_(cpu_slab, non_blocking=True)
+            else:
+                cuda_dsts: list[torch.Tensor] = []
+                cpu_srcs: list[torch.Tensor] = []
+                for (
+                    module_name,
+                    source_master,
+                    target_master,
+                    source_dtype,
+                    target_dtype,
+                ) in weight_swap_jobs:
+                    module_to_cpu = modules_to_cpu[module_name]
+                    module_to_cuda = modules_to_cuda[module_name]
+                    cuda_data_view = module_to_cpu.weight.data
+                    module_to_cpu.weight.data = source_master
+                    cuda_data_view.record_stream(stream)
+                    cuda_dsts.append(cuda_data_view)
+                    cpu_srcs.append(target_master)
+                    cuda_bindings.append((module_to_cuda, cuda_data_view))
+                if not _try_foreach_h2d_copy(cuda_dsts, cpu_srcs):
+                    for cuda_data_view, target_master in zip(cuda_dsts, cpu_srcs):
+                        cuda_data_view.copy_(target_master, non_blocking=True)
+            for module_to_cuda, cuda_data_view in cuda_bindings:
                 module_to_cuda.weight.data = cuda_data_view
             h2d_end.record(stream)
 
-        timings["_ready_event"] = ready_event
         timings["_h2d_start_event"] = h2d_start
         timings["_h2d_end_event"] = h2d_end
         return timings
 
     def _swap_weight_devices_cached_no_cuda(
         self,
+        block_idx_to_cpu: int,
         layer_to_cpu: nn.Module,
+        block_idx_to_cuda: int,
         layer_to_cuda: nn.Module,
-        source_masters: dict[str, torch.Tensor],
-        target_masters: dict[str, torch.Tensor],
-        source_dtypes: dict[str, torch.dtype],
-        target_dtypes: dict[str, torch.dtype],
+        swap_plan: _SwapPlan,
     ) -> dict[str, float]:
         assert layer_to_cpu.__class__ == layer_to_cuda.__class__
 
         t0 = time.perf_counter()
-        modules_to_cpu = {k: v for k, v in layer_to_cpu.named_modules()}
-        for module_to_cuda_name, module_to_cuda in layer_to_cuda.named_modules():
-            weight = getattr(module_to_cuda, "weight", None)
-            if weight is None:
-                continue
-            module_to_cpu = modules_to_cpu.get(module_to_cuda_name, None)
-            source_master = source_masters.get(module_to_cuda_name)
-            target_master = target_masters.get(module_to_cuda_name)
-            source_dtype = source_dtypes.get(module_to_cuda_name)
-            target_dtype = target_dtypes.get(module_to_cuda_name)
-            if (
-                module_to_cpu is not None
-                and source_master is not None
-                and target_master is not None
-                and source_dtype is not None
-                and target_dtype is not None
-                and module_to_cpu.weight.shape == module_to_cuda.weight.shape
-            ):
-                module_to_cpu.weight.data = source_master
-                module_to_cuda.weight.data = target_master.to(
-                    self.device, dtype=target_dtype, non_blocking=True
-                )
-            else:
+        modules_to_cpu = self._get_block_module_map(block_idx_to_cpu, layer_to_cpu)
+        modules_to_cuda = self._get_block_module_map(block_idx_to_cuda, layer_to_cuda)
+        weight_swap_jobs, fallback_names = swap_plan
+        for module_name in fallback_names:
+            module_to_cuda = modules_to_cuda.get(module_name)
+            module_to_cpu = modules_to_cpu.get(module_name)
+            if module_to_cuda is not None:
                 _ensure_weight_on_device(module_to_cuda, self.device)
-                if module_to_cpu is not None:
-                    _ensure_weight_on_device(module_to_cpu, self.device)
+            if module_to_cpu is not None:
+                _ensure_weight_on_device(module_to_cpu, self.device)
+        for (
+            module_name,
+            source_master,
+            target_master,
+            source_dtype,
+            target_dtype,
+        ) in weight_swap_jobs:
+            module_to_cpu = modules_to_cpu[module_name]
+            module_to_cuda = modules_to_cuda[module_name]
+            module_to_cpu.weight.data = source_master
+            module_to_cuda.weight.data = target_master.to(
+                self.device, dtype=target_dtype, non_blocking=True
+            )
         synchronize_device(self.device)
         return {"d2h_ms": 0.0, "h2d_ms": (time.perf_counter() - t0) * 1000.0}
 
@@ -630,10 +972,11 @@ class Offloader:
                 weighs_to_device(b, device)
             return
 
-        for block, masters, dtypes in zip(
-            blocks, self._cpu_weight_masters, self._cpu_weight_master_dtypes
+        self._ensure_block_module_maps(blocks)
+        for block_idx, (block, masters, dtypes) in enumerate(
+            zip(blocks, self._cpu_weight_masters, self._cpu_weight_master_dtypes)
         ):
-            modules = {name: module for name, module in block.named_modules()}
+            modules = self._get_block_module_map(block_idx, block)
             for name, master in masters.items():
                 module = modules.get(name)
                 weight = getattr(module, "weight", None) if module is not None else None
@@ -656,8 +999,9 @@ class Offloader:
             return
 
         ready_event = None
-        if self.cuda_available:
-            ready_event = torch.cuda.Event(enable_timing=self.profiler is not None)
+        profile_timings = self.profiler is not None
+        if self.cuda_available and self._cpu_weight_masters is not None:
+            ready_event = self._acquire_cuda_event(enable_timing=profile_timings)
             ready_event.record(torch.cuda.current_stream(self.device))
 
         def move_blocks(
@@ -725,7 +1069,14 @@ class Offloader:
         future, meta = self.futures.pop(block_idx)
         wait_t0 = time.perf_counter()
         _, bidx_to_cuda, timings, enqueued_at = future.result()
-        _finalize_async_cuda_timings(timings)
+        if self.cuda_available:
+            _wait_for_async_cuda_copy_on_current_stream(self.device, timings)
+        ready_event, start_event, end_event, event_timing = _finalize_async_cuda_timings(
+            timings, synchronize=self.profiler is not None
+        )
+        self._release_cuda_event(ready_event, enable_timing=event_timing)
+        self._release_cuda_event(start_event, enable_timing=event_timing)
+        self._release_cuda_event(end_event, enable_timing=event_timing)
         ready_at = time.time()
         wait_ms = (time.perf_counter() - wait_t0) * 1000.0
         timings["transfer_ms"] = float(timings.get("event_wait_ms", 0.0)) + float(
@@ -786,6 +1137,7 @@ class ModelOffloader(Offloader):
         debug: bool = False,
         profile_jsonl: Optional[Union[str, BlockSwapProfiler]] = None,
         transfer_dtype: Optional[str] = None,
+        restore_mode: Optional[str] = None,
     ):
         super().__init__(
             len(blocks),
@@ -794,6 +1146,7 @@ class ModelOffloader(Offloader):
             debug,
             profile_jsonl,
             transfer_dtype=transfer_dtype,
+            restore_mode=restore_mode,
         )
 
         self.supports_backward = supports_backward
@@ -879,6 +1232,7 @@ class ModelOffloader(Offloader):
             self._wait_blocks_move(block_idx, phase="prepare")
         self.profile_step += 1
         self._ensure_cpu_weight_masters(blocks)
+        self._warm_swap_plan_cache(blocks)
 
         for b in blocks[0 : self.num_blocks - self.blocks_to_swap]:
             b.to(self.device)

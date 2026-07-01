@@ -2116,6 +2116,7 @@ class Anima(nn.Module):
         *,
         profile_jsonl: Optional[str] = None,
         transfer_dtype: Optional[str] = None,
+        restore_mode: Optional[str] = None,
     ):
         self.blocks_to_swap = num_blocks
 
@@ -2129,11 +2130,13 @@ class Anima(nn.Module):
             device,
             profile_jsonl=profile_jsonl,
             transfer_dtype=transfer_dtype,
+            restore_mode=restore_mode,
         )
         logger.info(
             "Anima: Block swap enabled. "
             f"Swapping {num_blocks} blocks, total blocks: {self.num_blocks}, "
-            f"device: {device}, transfer_dtype: {self.offloader.transfer_dtype}."
+            f"device: {device}, transfer_dtype: {self.offloader.transfer_dtype}, "
+            f"restore_mode: {self.offloader.restore_mode}."
         )
 
     def move_to_device_except_swap_blocks(self, device: torch.device):

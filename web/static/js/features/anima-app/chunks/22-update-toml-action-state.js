@@ -13,14 +13,15 @@ const ctx = globalThis.ctx;
         const dirty = editorDirty || formDirty;
         const saveFile = formDirty ? formFile : selectedFile;
         const saveMeta = tomlFileMeta[saveFile] || (saveFile === selectedFile ? meta : undefined);
+        const saveLocked = formDirty ? isTomlLocked(saveFile) : Boolean(saveMeta?.locked);
         const saveBtn = document.getElementById('btn-save-toml');
         if (saveBtn) {
-            saveBtn.disabled = Boolean(saveMeta?.locked) || !saveFile || !dirty;
+            saveBtn.disabled = saveLocked || !saveFile || !dirty;
             saveBtn.textContent = formDirty && saveFile !== selectedFile
                 ? '保存更新当前表单配置'
                 : '保存更新当前选中配置';
             saveBtn.classList.remove('btn-confirm-danger');
-            saveBtn.title = saveMeta?.locked
+            saveBtn.title = saveLocked
                 ? '该配置文件已锁定，请使用新名称另存新配置后编辑'
                 : (dirty
                     ? (formDirty

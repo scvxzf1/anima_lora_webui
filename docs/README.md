@@ -109,6 +109,7 @@ Postfix 当前入口在 [guidelines/training.md#postfix](guidelines/training.md#
 | [findings/lokr_anima_shaojianV1_run_report.md](findings/lokr_anima_shaojianV1_run_report.md) | lokr-anima-shaojianV1 运行报告 |
 | [findings/anima_balanced_16g_blockswap_ablation_plan.md](findings/anima_balanced_16g_blockswap_ablation_plan.md) | Balanced 16G block swap 消融 |
 | [findings/anima_fp8_blockswap_transfer_report.md](findings/anima_fp8_blockswap_transfer_report.md) | FP8 block swap transfer 最终报告，含原消融计划口径 |
+| [findings/training_profiling_hot_test_20260629.md](findings/training_profiling_hot_test_20260629.md) | 训练 profiling 热测：Plain LoRA、LoKr block swap、JSONL 与 nsys 环境记录 |
 
 配套截图和图表在 [findings/assets/](findings/assets/)。
 
@@ -122,6 +123,7 @@ Postfix 当前入口在 [guidelines/training.md#postfix](guidelines/training.md#
 | [optimizations/fa4.md](optimizations/fa4.md) | Flash Attention 4 评估和移除原因 |
 | [optimizations/adamw_fused.md](optimizations/adamw_fused.md) | AdamW8bit 切换到 fused AdamW 的原因 |
 | [optimizations/hydra_analysis.md](optimizations/hydra_analysis.md) | HydraLoRA + ReFT nsys 优化记录 |
+| [optimizations/training_profiling.md](optimizations/training_profiling.md) | 训练性能 profiling 落地流程：MFU、JSONL 探针和 Nsight Systems |
 
 ## Proposals
 

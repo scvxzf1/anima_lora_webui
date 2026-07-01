@@ -55,6 +55,7 @@ selective_checkpoint = "off"
 selective_checkpoint_blocks = ""
 block_swap_profile_jsonl = "off"
 block_swap_transfer_dtype = "bf16"
+block_swap_restore_mode = "foreach"
 memory_probe_jsonl = "off"
 memory_probe_max_steps = 2
 peak_probe_jsonl = "off"

@@ -328,6 +328,14 @@ export const FIELD_HELP_TRAINING_ZH = {    learning_rate: help(
         ["旧卡没有 bf16 训练支持时，不需要因为这个字段改成 fp16；训练精度请看上面的“精度倾向”。"],
         "保持 bf16；只有做 FP8 交换传输消融时再改为 fp8_e4m3。"
     ),
+    block_swap_restore_mode: help(
+        "块交换 restore 阶段如何把 frozen base 权重恢复回 GPU。",
+        "foreach 是当前默认正式路径；slab 会把同一 slot 的多个小 weight 恢复合并成更少的大 H2D，减少小 kernel / 小 copy 调度。",
+        ["slab 在当前 LoKr 热测里能进一步降低 enqueue 和 H2D restore 开销。"],
+        ["slab 会额外引入少量 GPU slab storage，占用一点显存余量。"],
+        ["这仍属于更激进的 block swap 存储布局优化，推荐先在热测或对照实验中启用。"],
+        "默认 foreach；做 block swap 性能验证时再试 slab。"
+    ),
     selective_checkpoint: help(
         "只对部分 DiT 计算做 activation 重算。",
         "off 是最快默认；adapter_aware 整块重算大激活但缓存 LoRA/router 小中间值；peak_blocks_* 只对指定高峰 block 生效。",

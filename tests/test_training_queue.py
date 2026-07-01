@@ -133,7 +133,7 @@ def test_prepare_web_runtime_config_freezes_frontend_editable_parameters(tmp_pat
         encoding="utf-8",
     )
     (configs / "presets.toml").write_text(
-        "[default]\nblocks_to_swap = 4\nblock_swap_transfer_dtype = \"bf16\"\n",
+        "[default]\nblocks_to_swap = 4\nblock_swap_transfer_dtype = \"bf16\"\nblock_swap_restore_mode = \"foreach\"\n",
         encoding="utf-8",
     )
     (configs / "gui-methods" / "lora.toml").write_text(
@@ -173,6 +173,7 @@ def test_prepare_web_runtime_config_freezes_frontend_editable_parameters(tmp_pat
             'network_args = ["lokr_factor_group_size=12", "lokr_project_chunk_bytes=1048576"]',
             "blocks_to_swap = 23",
             'block_swap_transfer_dtype = "fp8_e4m3"',
+            'block_swap_restore_mode = "slab"',
             'memory_probe_jsonl = "auto"',
             'block_swap_profile_jsonl = "auto"',
         ]),
@@ -205,6 +206,7 @@ def test_prepare_web_runtime_config_freezes_frontend_editable_parameters(tmp_pat
     ]
     assert runtime_cfg["blocks_to_swap"] == 23
     assert runtime_cfg["block_swap_transfer_dtype"] == "fp8_e4m3"
+    assert runtime_cfg["block_swap_restore_mode"] == "slab"
     assert runtime_cfg["memory_probe_jsonl"] == "auto"
     assert runtime_cfg["block_swap_profile_jsonl"] == "auto"
     assert runtime_cfg["dataset_config"] == runtime["dataset_config_file"]

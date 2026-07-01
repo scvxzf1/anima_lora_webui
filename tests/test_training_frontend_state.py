@@ -1075,6 +1075,7 @@ def test_config_form_uses_navigation_search_and_progressive_disclosure() -> None
         "blocks_to_swap: 23",
         "block_swap_transfer_dtype: 'bf16'",
         "block_swap_transfer_dtype: 'fp8_e4m3'",
+        "block_swap_restore_mode: 'foreach'",
         "selective_checkpoint: 'mlp_only'",
         "block_swap_profile_jsonl: 'auto'",
         "memory_probe_jsonl: 'auto'",
@@ -1123,6 +1124,7 @@ def test_config_form_uses_navigation_search_and_progressive_disclosure() -> None
     assert "open: true," in resource_section
     assert "'gradient_checkpointing'," in optimization_section
     assert "'block_swap_transfer_dtype'," in optimization_section
+    assert "'block_swap_restore_mode'," in optimization_section
     assert "'memory_probe_jsonl'," in optimization_section
     assert "'memory_probe_max_steps'," in optimization_section
     assert "'peak_probe_jsonl'," in optimization_section
@@ -1185,9 +1187,12 @@ def test_config_form_uses_navigation_search_and_progressive_disclosure() -> None
     assert "只在遮罩外区域做先验保留" in catalog_help_training
     assert "block_swap_transfer_dtype: '块交换传输精度'" in source
     assert "block_swap_transfer_dtype: ['bf16', 'fp8_e4m3']" in source
+    assert "block_swap_restore_mode: '块交换恢复路径'" in source
+    assert "block_swap_restore_mode: ['foreach', 'slab']" in source
     assert "这里不是显卡训练精度开关" in catalog_help_training
     assert "即使显卡本身不支持 bf16 训练，也可以继续使用这个默认值" in catalog_help_training
     assert "训练精度请看上面的“精度倾向”" in catalog_help_training
+    assert "同一 slot 的多个小 weight 恢复合并成更少的大 H2D" in catalog_help_training
     assert "precision_preference: '精度倾向'" in source
     assert "precision_preference: ['bf16', 'fp16', 'fp32']" in source
     assert "memory_probe_jsonl: '显存探针'" in source
@@ -1200,7 +1205,7 @@ def test_config_form_uses_navigation_search_and_progressive_disclosure() -> None
     assert "lokr_factor_group_size: [1, 2, 4, 8]" in source
     assert "lokr_project_chunk_bytes: 'LoKr 张量切块阈值'" in source
     assert "lokr_project_chunk_bytes: [1048576, 2097152, 4194304, 8388608, 16777216]" in source
-    assert "keys: ['blocks_to_swap', 'block_swap_transfer_dtype', 'selective_checkpoint', 'selective_checkpoint_blocks']" in resource_compact
+    assert "keys: ['blocks_to_swap', 'block_swap_transfer_dtype', 'block_swap_restore_mode', 'selective_checkpoint', 'selective_checkpoint_blocks']" in resource_compact
     assert "keys: ['block_swap_profile_jsonl', 'memory_probe_jsonl', 'memory_probe_max_steps']" in resource_compact
     assert "keys: ['peak_probe_jsonl', 'peak_probe_max_steps', 'peak_probe_level']" in resource_compact
     assert "keys: ['preprocess_vae_cache_batch_size', 'preprocess_text_cache_batch_size', 'preprocess_memory_profile']" in resource_compact
@@ -1549,7 +1554,8 @@ def test_config_form_save_reload_and_launch_share_training_config_file() -> None
     assert "currentTomlEditorContentForFile" in pending_changes
     assert "const formFile = currentFormConfigFile();" in action_state
     assert "const saveFile = formDirty ? formFile : selectedFile;" in action_state
-    assert "saveBtn.disabled = Boolean(saveMeta?.locked) || !saveFile || !dirty;" in action_state
+    assert "const saveLocked = formDirty ? isTomlLocked(saveFile) : Boolean(saveMeta?.locked);" in action_state
+    assert "saveBtn.disabled = saveLocked || !saveFile || !dirty;" in action_state
     assert "保存更新当前表单配置" in action_state
     assert "const file = !directEditorSave && formDirty ? formFile : selectedFile;" in save_toml
     assert "editorDirty && formDirty && selectedFile !== formFile" in save_toml
@@ -2769,6 +2775,7 @@ def test_balanced_16g_block_swap_fields_are_visible() -> None:
         assert f"'{key}'," in optimization_section
 
     assert "block_swap_profile_jsonl: '块交换 Profile'" in labels_options
+    assert "block_swap_restore_mode: '块交换恢复路径'" in labels_options
     assert "memory_probe_jsonl: '显存探针'" in labels_options
     assert "memory_probe_max_steps: '探针步数'" in labels_options
     assert "peak_probe_jsonl: '峰值探针'" in labels_options
@@ -2788,6 +2795,7 @@ def test_balanced_16g_block_swap_fields_are_visible() -> None:
     assert "selective_checkpoint: '选择性重算'" in labels_options
     assert "selective_checkpoint_blocks: '定点重算块'" in labels_options
     assert "disable_block_swap_for_eval: '评估时暂停交换块'" in labels_options
+    assert "block_swap_restore_mode: ['foreach', 'slab']" in labels_options
     assert "selective_checkpoint: ['off', 'adapter_aware', 'peak_blocks_adapter_aware', 'mlp_layer1_only', 'peak_blocks_mlp_layer1', 'peak_blocks_mlp', 'mlp_only', 'every_other']" in labels_options
     assert "memory_probe_jsonl: ['off', 'auto']" in labels_options
     assert "peak_probe_jsonl: ['off', 'auto']" in labels_options

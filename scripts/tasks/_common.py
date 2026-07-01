@@ -357,6 +357,112 @@ def run(cmd: list[str], **kwargs):
         sys.exit(result.returncode)
 
 
+def _nsys_profile_help(nsys: str) -> str:
+    try:
+        out = subprocess.run(
+            [nsys, "profile", "--help"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return ""
+    return (out.stdout or "") + (out.stderr or "")
+
+
+def _nsys_stats_help(nsys: str) -> str:
+    try:
+        out = subprocess.run(
+            [nsys, "stats", "--help-reports"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return ""
+    return (out.stdout or "") + (out.stderr or "")
+
+
+def _nsys_has_option(help_text: str, option: str) -> bool:
+    return option in help_text
+
+
+def _env_truthy(name: str, default: bool = True) -> bool:
+    raw = os.environ.get(name)
+    if raw is None:
+        return default
+    return raw.strip().lower() not in {"0", "false", "no", "off", ""}
+
+
+def _nsys_probe_option(nsys: str, option: str) -> str:
+    try:
+        out = subprocess.run(
+            [nsys, "profile", f"{option}=help"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return ""
+    return (out.stdout or "") + (out.stderr or "")
+
+
+def _nsys_supported_gpu_metrics_device(help_blob: str) -> str | None:
+    explicit = os.environ.get("NSYS_GPU_METRICS_DEVICE")
+    if explicit:
+        return explicit
+    explicit_devices = os.environ.get("NSYS_GPU_METRICS_DEVICES")
+    if explicit_devices:
+        first_explicit = explicit_devices.split(",", 1)[0].strip()
+        if first_explicit:
+            return first_explicit
+
+    visible = os.environ.get("CUDA_VISIBLE_DEVICES")
+    if visible:
+        first = visible.split(",", 1)[0].strip()
+        if first and first.isdigit() and f"\t{first}:" in help_blob:
+            line = next((ln for ln in help_blob.splitlines() if ln.strip().startswith(f"{first}:")), "")
+            if "not supported" not in line.lower():
+                return first
+
+    for line in help_blob.splitlines():
+        stripped = line.strip()
+        if not stripped or not stripped[0].isdigit() or ":" not in stripped:
+            continue
+        if "not supported" in stripped.lower():
+            continue
+        return stripped.split(":", 1)[0]
+    return None
+
+
+def _nsys_gpu_metrics_args(nsys: str, profile_help: str) -> list[str]:
+    """Return compatible GPU metrics flags for new and old nsys CLIs."""
+    frequency = os.environ.get("NSYS_GPU_METRICS_FREQUENCY", "10000")
+
+    if _nsys_has_option(profile_help, "--gpu-metrics-devices"):
+        blob = _nsys_probe_option(nsys, "--gpu-metrics-devices")
+        if "Insufficient privilege" not in blob and "None of the installed GPUs" not in blob:
+            devices = os.environ.get("NSYS_GPU_METRICS_DEVICES") or os.environ.get(
+                "NSYS_GPU_METRICS_DEVICE"
+            )
+            if not devices:
+                devices = "cuda-visible"
+            return [f"--gpu-metrics-devices={devices}", f"--gpu-metrics-frequency={frequency}"]
+        return []
+
+    if _nsys_has_option(profile_help, "--gpu-metrics-device"):
+        blob = _nsys_probe_option(nsys, "--gpu-metrics-device")
+        if "Insufficient privilege" in blob or "None of the installed GPUs" in blob:
+            return []
+        device = _nsys_supported_gpu_metrics_device(blob)
+        if device:
+            return [f"--gpu-metrics-device={device}", f"--gpu-metrics-frequency={frequency}"]
+    return []
+
+
 def _nsys_wrapper() -> tuple[list[str], Path] | tuple[None, None]:
     """Build an ``nsys profile`` prefix when PROFILE_STEPS is set.
 
@@ -401,7 +507,9 @@ def _nsys_wrapper() -> tuple[list[str], Path] | tuple[None, None]:
     #       nsys auto-picks the metric set (gb20x for Blackwell, ad10x for Ada,
     #       etc.); override with NSYS_GPU_METRICS_SET if needed.
     #   --gpu-metrics-frequency=10000       10 kHz sampling — fine enough to
-    #       see per-step variation in a 3-step capture window.
+    #       see per-step variation in a 3-step capture window. Override with
+    #       NSYS_GPU_METRICS_FREQUENCY for smoke tests or overhead-sensitive
+    #       runs.
     #   --cuda-graph-trace=node             per-node timing inside CUDA graphs
     #       (torch.compile emits these). Without it you only see the whole
     #       graph as one opaque blob.
@@ -423,6 +531,7 @@ def _nsys_wrapper() -> tuple[list[str], Path] | tuple[None, None]:
     # The additions above are perf-counter and Python-frame data; none of
     # them need C++/CUDA-API symbol resolution.
     metrics_set = os.environ.get("NSYS_GPU_METRICS_SET")
+    profile_help = _nsys_profile_help(nsys)
     cmd = [
         nsys,
         "profile",
@@ -433,22 +542,39 @@ def _nsys_wrapper() -> tuple[list[str], Path] | tuple[None, None]:
         "--capture-range-end=stop",
         "--wait=primary",
         "--trace=cuda,nvtx,cudnn,cublas",
-        "--cuda-graph-trace=node",
-        "--cuda-memory-usage=true",
-        "--python-sampling=true",
-        "--python-sampling-frequency=1000",
-        "--stats=true",
-        "--sample=none",
-        "--cpuctxsw=none",
-        "--cudabacktrace=none",
-        "--resolve-symbols=false",
     ]
-    if _nsys_gpu_metrics_available(nsys):
-        cmd += [
-            "--gpu-metrics-devices=cuda-visible",
-            "--gpu-metrics-frequency=10000",
-        ]
-        if metrics_set:
+
+    optional_flags = [
+        ("--cuda-graph-trace", "--cuda-graph-trace=node"),
+        ("--cuda-memory-usage", "--cuda-memory-usage=true"),
+        ("--stats", "--stats=true"),
+        ("--sample", "--sample=none"),
+        ("--cpuctxsw", "--cpuctxsw=none"),
+        ("--cudabacktrace", "--cudabacktrace=none"),
+        ("--resolve-symbols", "--resolve-symbols=false"),
+    ]
+    for option, flag in optional_flags:
+        if _nsys_has_option(profile_help, option):
+            cmd.append(flag)
+
+    if _nsys_has_option(profile_help, "--python-sampling") and _env_truthy("NSYS_PYTHON_SAMPLING"):
+        cmd += ["--python-sampling=true", "--python-sampling-frequency=1000"]
+    elif not _nsys_has_option(profile_help, "--python-sampling"):
+        print(
+            "  > nsys: Python sampling disabled (this nsys does not support "
+            "--python-sampling)",
+            file=sys.stderr,
+        )
+    else:
+        print(
+            "  > nsys: Python sampling disabled by NSYS_PYTHON_SAMPLING=0",
+            file=sys.stderr,
+        )
+
+    gpu_metric_args = _nsys_gpu_metrics_args(nsys, profile_help)
+    if gpu_metric_args:
+        cmd += gpu_metric_args
+        if metrics_set and _nsys_has_option(profile_help, "--gpu-metrics-set"):
             cmd.append(f"--gpu-metrics-set={metrics_set}")
     else:
         print(
@@ -461,28 +587,6 @@ def _nsys_wrapper() -> tuple[list[str], Path] | tuple[None, None]:
             file=sys.stderr,
         )
     return cmd, out_path
-
-
-def _nsys_gpu_metrics_available(nsys: str) -> bool:
-    """Probe whether nsys can collect GPU metrics on this host.
-
-    nsys validates ``--gpu-metrics-devices`` at argv-parse time and aborts the
-    whole run if the perf-counter ioctl is restricted to root (the default on
-    most distros — see ERR_NVGPUCTRPERM). Probing first lets us silently skip
-    the flag instead of crashing the training task.
-    """
-    try:
-        out = subprocess.run(
-            [nsys, "profile", "--gpu-metrics-devices=help"],
-            capture_output=True,
-            text=True,
-            timeout=10,
-            check=False,
-        )
-    except (OSError, subprocess.TimeoutExpired):
-        return False
-    blob = (out.stdout or "") + (out.stderr or "")
-    return "Insufficient privilege" not in blob and "None of the installed GPUs" not in blob
 
 
 # nsys stats reports auto-generated after profiling. Tuned for kernel
@@ -509,6 +613,136 @@ _NSYS_STATS_REPORTS = (
     "cuda_kern_exec_sum",
 )
 
+_NSYS_STATS_REPORTS_LEGACY = (
+    "gpukernsum",
+    "nvtxkernsum",
+    "gpumemtimesum",
+    "gpumemsizesum",
+    "cudaapisum",
+    "kernexecsum",
+)
+
+
+def _nsys_stats_reports(nsys: str) -> tuple[str, ...]:
+    help_text = _nsys_stats_help(nsys)
+    if all(report in help_text for report in _NSYS_STATS_REPORTS):
+        return _NSYS_STATS_REPORTS
+    if all(report in help_text for report in _NSYS_STATS_REPORTS_LEGACY):
+        return _NSYS_STATS_REPORTS_LEGACY
+    return _NSYS_STATS_REPORTS
+
+
+def _nsys_qdstrm_importers() -> tuple[str, ...]:
+    explicit = os.environ.get("NSYS_QDSTRM_IMPORTER")
+    if explicit:
+        return (explicit,) if Path(explicit).exists() else ()
+
+    candidates: list[str] = []
+    found = shutil.which("QdstrmImporter")
+    if found:
+        candidates.append(found)
+
+    fixed_candidates = (
+        Path("/usr/lib/nsight-systems/host-linux-x64/QdstrmImporter"),
+        Path("/opt/nvidia/nsight-systems/host-linux-x64/QdstrmImporter"),
+    )
+    for candidate in fixed_candidates:
+        if candidate.exists():
+            candidates.append(str(candidate))
+
+    unique: list[str] = []
+    seen: set[str] = set()
+    for candidate in candidates:
+        resolved = str(Path(candidate).resolve())
+        if resolved in seen:
+            continue
+        seen.add(resolved)
+        unique.append(candidate)
+    return tuple(unique)
+
+
+def _nsys_qdstrm_importer() -> str | None:
+    importers = _nsys_qdstrm_importers()
+    return importers[0] if importers else None
+
+
+def _last_nonempty_lines(text: str, limit: int = 8) -> str:
+    lines = [line.rstrip() for line in text.splitlines() if line.strip()]
+    return "\n".join(lines[-limit:])
+
+
+def _nsys_import_qdstrm(rep_path: Path) -> bool:
+    """Best-effort import for Ubuntu/NVIDIA installs that leave only .qdstrm.
+
+    Some distro packages run the target-side collector as ``nsys`` but do not
+    automatically invoke the host importer at finalize time.  ``QdstrmImporter``
+    may return non-zero for CUDA runtime enums newer than the importer version
+    while still writing a usable .nsys-rep, so report existence is the success
+    criterion here.
+    """
+    if rep_path.exists():
+        return True
+
+    qdstrm = rep_path.with_suffix(".qdstrm")
+    if not qdstrm.exists():
+        return False
+
+    importers = _nsys_qdstrm_importers()
+    if not importers:
+        print(
+            f"warn: nsys report not found at {rep_path}; found {qdstrm} "
+            "instead, but QdstrmImporter was not found. Set "
+            "NSYS_QDSTRM_IMPORTER=/path/to/QdstrmImporter or install the "
+            "Nsight Systems host tools.",
+            file=sys.stderr,
+        )
+        return False
+
+    timeout = int(os.environ.get("NSYS_IMPORT_TIMEOUT", "300"))
+    diagnostic = ""
+    for importer in importers:
+        print(f"  > nsys import -> {rep_path}")
+        try:
+            result = subprocess.run(
+                [importer, "-i", str(qdstrm), "-o", str(rep_path), "-f"],
+                cwd=ROOT,
+                capture_output=True,
+                text=True,
+                timeout=timeout,
+                check=False,
+            )
+        except (OSError, subprocess.TimeoutExpired) as e:
+            diagnostic = str(e)
+            continue
+
+        diagnostic = _last_nonempty_lines((result.stdout or "") + "\n" + (result.stderr or ""))
+        if rep_path.exists():
+            if result.returncode != 0:
+                print(
+                    f"warn: QdstrmImporter exited with {result.returncode} but "
+                    f"produced {rep_path}; continuing with nsys stats."
+                    + (f"\n{diagnostic}" if diagnostic else ""),
+                    file=sys.stderr,
+                )
+            return True
+        if result.returncode != 0 and len(importers) > 1:
+            print(
+                f"warn: QdstrmImporter at {importer} exited with "
+                f"{result.returncode}; trying next importer candidate.",
+                file=sys.stderr,
+            )
+
+    if rep_path.exists():
+        return True
+
+    print(
+        f"warn: nsys report not found at {rep_path}; found {qdstrm} but failed "
+        "to import it into a .nsys-rep."
+        + (f"\n{diagnostic}" if diagnostic else ""),
+        file=sys.stderr,
+    )
+    return False
+
 
 def _nsys_run_stats(rep_path: Path) -> None:
     """Generate textual ``nsys stats`` reports next to the .nsys-rep.
@@ -518,7 +752,7 @@ def _nsys_run_stats(rep_path: Path) -> None:
     aborted before finalizing) or stats fails, prints a warning and returns —
     a missing summary shouldn't fail the training task itself.
     """
-    if not rep_path.exists():
+    if not _nsys_import_qdstrm(rep_path):
         print(
             f"warn: nsys report not found at {rep_path}; skipping stats",
             file=sys.stderr,
@@ -537,7 +771,7 @@ def _nsys_run_stats(rep_path: Path) -> None:
         "--output",
         str(out_prefix),
     ]
-    for report in _NSYS_STATS_REPORTS:
+    for report in _nsys_stats_reports(nsys):
         cmd += ["--report", report]
     cmd.append(str(rep_path))
     print(f"  > nsys stats -> {out_prefix.parent}/")
@@ -577,7 +811,11 @@ def accelerate_launch(*args: str):
     cmd = build_launch_cmd(*args)
     nsys_prefix, nsys_out = _nsys_wrapper()
     if nsys_prefix is not None:
-        cmd = nsys_prefix + ["--"] + cmd
+        # Some older Nsight Systems builds (e.g. 2022.4) treat a standalone
+        # "--" as an ambiguous option instead of an application separator.
+        # The target command starts with the Python executable, so a separator
+        # is not required for either old or new nsys CLIs.
+        cmd = nsys_prefix + cmd
     run(cmd)
     if nsys_out is not None:
         _nsys_run_stats(nsys_out)

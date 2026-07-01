@@ -875,6 +875,17 @@ def add_dit_training_arguments(parser: argparse.ArgumentParser):
         ),
     )
     parser.add_argument(
+        "--block_swap_restore_mode",
+        type=str,
+        default="foreach",
+        choices=["foreach", "slab"],
+        help=(
+            "Restore path for cached CUDA block swap. foreach keeps the default "
+            "per-weight restore path; slab experiments with slot-slab restore "
+            "to collapse many small H2D copies into a larger copy."
+        ),
+    )
+    parser.add_argument(
         "--selective_checkpoint",
         type=str,
         default="off",
