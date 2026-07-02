@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 
+import pytest
 import torch
 import torch.nn.functional as F
 
@@ -12,8 +13,63 @@ from networks.plugins.lokr.autograd import (
     lokr_project,
     lokr_project_factor,
     lokr_project_factor_group,
+    normalize_lokr_grouped_delta_backward_backend,
+    normalize_lokr_grouped_delta_backend,
 )
 from networks.plugins.lokr.module import LoKrModule
+
+
+def _find_lokr_triton_test_device():
+    if lokr_autograd.triton is None or not torch.cuda.is_available():
+        return None
+    for idx in range(torch.cuda.device_count()):
+        device = torch.device(f"cuda:{idx}")
+        if lokr_autograd._device_supports_lokr_triton(device):
+            return device
+    return None
+
+
+_LOKR_TRITON_TEST_DEVICE = _find_lokr_triton_test_device()
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        (None, "eager"),
+        ("", "eager"),
+        ("EAGER", "eager"),
+        ("triton", "triton"),
+    ],
+)
+def test_normalize_lokr_grouped_delta_backend(value, expected):
+    assert normalize_lokr_grouped_delta_backend(value) == expected
+
+
+def test_normalize_lokr_grouped_delta_backend_rejects_unknown_value():
+    with pytest.raises(ValueError, match="unsupported LoKr grouped-delta backend"):
+        normalize_lokr_grouped_delta_backend("cuda")
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        (None, "eager"),
+        ("", "eager"),
+        ("EAGER", "eager"),
+        ("triton_grad_x", "triton_grad_x"),
+        ("triton_grad_w2_partial", "triton_grad_w2_partial"),
+        ("triton_grad_w2_grad_x", "triton_grad_w2_grad_x"),
+    ],
+)
+def test_normalize_lokr_grouped_delta_backward_backend(value, expected):
+    assert normalize_lokr_grouped_delta_backward_backend(value) == expected
+
+
+def test_normalize_lokr_grouped_delta_backward_backend_rejects_unknown_value():
+    with pytest.raises(
+        ValueError, match="unsupported LoKr grouped-delta backward backend"
+    ):
+        normalize_lokr_grouped_delta_backward_backend("triton")
 
 
 def test_lokr_eval_forward_ignores_stale_timestep_mask():
@@ -201,6 +257,150 @@ def test_lokr_add_grouped_delta_matches_kron_forward_and_backward(monkeypatch):
     torch.testing.assert_close(grads[3], w2_ref.grad)
 
 
+def test_lokr_add_grouped_delta_backward_emits_phase_ranges_when_enabled(monkeypatch):
+    torch.manual_seed(8)
+    factor = 2
+    in_dim = 3
+    out_dim = 4
+    x = torch.randn(2, 5, factor * in_dim)
+    w1 = torch.randn(factor, factor)
+    w2 = torch.randn(out_dim, in_dim)
+    gate = torch.tensor([[0.75]], dtype=torch.float32)
+    grad = torch.randn(2, 5, factor * out_dim)
+    seen: list[str] = []
+
+    class _CaptureRange:
+        def __init__(self, name: str):
+            self.name = name
+
+        def __enter__(self):
+            seen.append(self.name)
+            return None
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+    monkeypatch.setattr(lokr_autograd, "_LOKR_ENABLE_BACKWARD_PHASE_RANGES", True)
+    monkeypatch.setattr(
+        lokr_autograd,
+        "_lokr_record_function",
+        lambda name: _CaptureRange(name),
+    )
+
+    grad_x, grad_w1, grad_w2 = lokr_autograd._lokr_add_grouped_delta_backward(
+        grad,
+        x,
+        w1,
+        w2,
+        gate,
+        factor,
+        in_dim,
+        out_dim,
+        2,
+        1024,
+        x.shape[:-1],
+    )
+
+    assert grad_x.shape == x.shape
+    assert grad_w1.shape == w1.shape
+    assert grad_w2.shape == w2.shape
+    assert set(lokr_autograd._LOKR_BACKWARD_PHASE_NAMES).issubset(set(seen))
+
+
+def test_lokr_add_grouped_delta_triton_backend_falls_back_to_eager(monkeypatch):
+    base = torch.zeros(1, 8)
+    x = torch.zeros(1, 6)
+    w1 = torch.zeros(2, 2)
+    w2 = torch.zeros(4, 3)
+    gate = torch.ones(1, 1)
+    calls = []
+
+    monkeypatch.setattr(
+        lokr_autograd,
+        "_can_use_lokr_grouped_delta_triton",
+        lambda *_args, **_kwargs: False,
+    )
+
+    def _fake_eager(*args):
+        calls.append("eager")
+        return args[0]
+
+    def _fail_triton(*_args):
+        raise AssertionError("unexpected Triton dispatch")
+
+    monkeypatch.setattr(
+        lokr_autograd.LoKrAddGroupedDeltaFn, "apply", staticmethod(_fake_eager)
+    )
+    monkeypatch.setattr(
+        lokr_autograd.LoKrAddGroupedDeltaTritonFn,
+        "apply",
+        staticmethod(_fail_triton),
+    )
+
+    out = lokr_add_grouped_delta_(
+        base,
+        x,
+        w1,
+        w2,
+        gate,
+        2,
+        3,
+        4,
+        2,
+        backend="triton",
+    )
+
+    assert out is base
+    assert calls == ["eager"]
+
+
+def test_lokr_add_grouped_delta_triton_backend_dispatches_when_available(monkeypatch):
+    base = torch.zeros(1, 8)
+    x = torch.zeros(1, 6)
+    w1 = torch.zeros(2, 2)
+    w2 = torch.zeros(4, 3)
+    gate = torch.ones(1, 1)
+    calls = []
+
+    monkeypatch.setattr(
+        lokr_autograd,
+        "_can_use_lokr_grouped_delta_triton",
+        lambda *_args, **_kwargs: True,
+    )
+
+    def _fail_eager(*_args):
+        raise AssertionError("unexpected eager fallback")
+
+    def _fake_triton(*args):
+        calls.append("triton")
+        return args[0]
+
+    monkeypatch.setattr(
+        lokr_autograd.LoKrAddGroupedDeltaFn, "apply", staticmethod(_fail_eager)
+    )
+    monkeypatch.setattr(
+        lokr_autograd.LoKrAddGroupedDeltaTritonFn,
+        "apply",
+        staticmethod(_fake_triton),
+    )
+
+    out = lokr_add_grouped_delta_(
+        base,
+        x,
+        w1,
+        w2,
+        gate,
+        2,
+        3,
+        4,
+        2,
+        backend="triton",
+    )
+
+    assert out is base
+    assert calls == ["triton"]
+
+
 def test_lokr_module_custom_forward_matches_kron_path():
     torch.manual_seed(2)
     x = torch.randn(3, 6, requires_grad=True)
@@ -285,6 +485,8 @@ def test_lokr_module_custom_forward_uses_configured_factor_group(monkeypatch):
         factor=4,
         lokr_factor_group_size=2,
         lokr_project_chunk_bytes=1234,
+        lokr_grouped_delta_backend="triton",
+        lokr_grouped_delta_backward_backend="triton_grad_x",
     )
     lokr.apply_to()
     lokr.train()
@@ -294,7 +496,14 @@ def test_lokr_module_custom_forward_uses_configured_factor_group(monkeypatch):
     original = lokr_autograd.lokr_add_grouped_delta_
 
     def _tracking_project(*args, **kwargs):
-        calls.append((args[8], args[9]))
+        calls.append(
+            (
+                args[8],
+                args[9],
+                kwargs.get("backend"),
+                kwargs.get("backward_backend"),
+            )
+        )
         return original(*args, **kwargs)
 
     monkeypatch.setattr(
@@ -305,7 +514,352 @@ def test_lokr_module_custom_forward_uses_configured_factor_group(monkeypatch):
     y = lokr.org_module_ref[0](x)
     y.sum().backward()
 
-    assert calls == [(2, 1234)]
+    assert calls == [(2, 1234, "triton", "triton_grad_x")]
+
+
+def test_lokr_module_custom_forward_accepts_triton_grad_w2_partial(monkeypatch):
+    torch.manual_seed(9)
+    x = torch.randn(3, 16, requires_grad=True)
+
+    base = torch.nn.Linear(16, 16, bias=False)
+    lokr = LoKrModule(
+        "lora_unet_test",
+        base,
+        multiplier=1.0,
+        lora_dim=2,
+        alpha=2,
+        factor=4,
+        lokr_factor_group_size=2,
+        lokr_project_chunk_bytes=2048,
+        lokr_grouped_delta_backend="triton",
+        lokr_grouped_delta_backward_backend="triton_grad_w2_partial",
+    )
+    lokr.apply_to()
+    lokr.train()
+    lokr.use_custom_lokr_autograd = True
+
+    calls = []
+    original = lokr_autograd.lokr_add_grouped_delta_
+
+    def _tracking_project(*args, **kwargs):
+        calls.append(
+            (
+                args[8],
+                args[9],
+                kwargs.get("backend"),
+                kwargs.get("backward_backend"),
+            )
+        )
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(
+        "networks.plugins.lokr.module.lokr_add_grouped_delta_",
+        _tracking_project,
+    )
+
+    y = lokr.org_module_ref[0](x)
+    y.sum().backward()
+
+    assert calls == [(2, 2048, "triton", "triton_grad_w2_partial")]
+
+
+def test_lokr_module_custom_forward_accepts_triton_grad_w2_grad_x(monkeypatch):
+    torch.manual_seed(10)
+    x = torch.randn(3, 16, requires_grad=True)
+
+    base = torch.nn.Linear(16, 16, bias=False)
+    lokr = LoKrModule(
+        "lora_unet_test",
+        base,
+        multiplier=1.0,
+        lora_dim=2,
+        alpha=2,
+        factor=4,
+        lokr_factor_group_size=2,
+        lokr_project_chunk_bytes=2048,
+        lokr_grouped_delta_backend="triton",
+        lokr_grouped_delta_backward_backend="triton_grad_w2_grad_x",
+    )
+    lokr.apply_to()
+    lokr.train()
+    lokr.use_custom_lokr_autograd = True
+
+    calls = []
+    original = lokr_autograd.lokr_add_grouped_delta_
+
+    def _tracking_project(*args, **kwargs):
+        calls.append(
+            (
+                args[8],
+                args[9],
+                kwargs.get("backend"),
+                kwargs.get("backward_backend"),
+            )
+        )
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(
+        "networks.plugins.lokr.module.lokr_add_grouped_delta_",
+        _tracking_project,
+    )
+
+    y = lokr.org_module_ref[0](x)
+    y.sum().backward()
+
+    assert calls == [(2, 2048, "triton", "triton_grad_w2_grad_x")]
+
+
+@pytest.mark.skipif(
+    _LOKR_TRITON_TEST_DEVICE is None,
+    reason="No CUDA device with Triton support available",
+)
+def test_lokr_add_grouped_delta_triton_matches_eager_cuda():
+    torch.manual_seed(11)
+    device = _LOKR_TRITON_TEST_DEVICE
+    factor = 4
+    in_dim = 8
+    out_dim = 16
+    x = torch.randn(3, 2, factor * in_dim, device=device, dtype=torch.float16, requires_grad=True)
+    base_leaf = torch.randn(
+        3, 2, factor * out_dim, device=device, dtype=torch.float16, requires_grad=True
+    )
+    w1 = torch.randn(factor, factor, device=device, dtype=torch.float32, requires_grad=True)
+    w2 = torch.randn(out_dim, in_dim, device=device, dtype=torch.float32, requires_grad=True)
+    gate = torch.tensor([[0.75]], device=device, dtype=torch.float32)
+    grad = torch.randn_like(base_leaf)
+
+    y = lokr_add_grouped_delta_(
+        base_leaf + 0,
+        x,
+        w1,
+        w2,
+        gate,
+        factor,
+        in_dim,
+        out_dim,
+        2,
+        backend="triton",
+    )
+    y.backward(grad)
+    grads = [base_leaf.grad.clone(), x.grad.clone(), w1.grad.clone(), w2.grad.clone()]
+
+    base_ref = base_leaf.detach().clone().requires_grad_()
+    x_ref = x.detach().clone().requires_grad_()
+    w1_ref = w1.detach().clone().requires_grad_()
+    w2_ref = w2.detach().clone().requires_grad_()
+    y_ref = lokr_add_grouped_delta_(
+        base_ref + 0,
+        x_ref,
+        w1_ref,
+        w2_ref,
+        gate,
+        factor,
+        in_dim,
+        out_dim,
+        2,
+        backend="eager",
+    )
+    y_ref.backward(grad)
+
+    torch.testing.assert_close(y, y_ref, atol=2e-2, rtol=2e-2)
+    torch.testing.assert_close(grads[0], base_ref.grad)
+    torch.testing.assert_close(grads[1], x_ref.grad)
+    torch.testing.assert_close(grads[2], w1_ref.grad)
+    torch.testing.assert_close(grads[3], w2_ref.grad)
+
+
+@pytest.mark.skipif(
+    _LOKR_TRITON_TEST_DEVICE is None,
+    reason="No CUDA device with Triton support available",
+)
+def test_lokr_add_grouped_delta_triton_grad_x_backward_matches_eager_cuda():
+    torch.manual_seed(17)
+    device = _LOKR_TRITON_TEST_DEVICE
+    factor = 4
+    in_dim = 8
+    out_dim = 16
+    x = torch.randn(3, 2, factor * in_dim, device=device, dtype=torch.float16, requires_grad=True)
+    base_leaf = torch.randn(
+        3, 2, factor * out_dim, device=device, dtype=torch.float16, requires_grad=True
+    )
+    w1 = torch.randn(factor, factor, device=device, dtype=torch.float32, requires_grad=True)
+    w2 = torch.randn(out_dim, in_dim, device=device, dtype=torch.float32, requires_grad=True)
+    gate = torch.tensor([[0.75]], device=device, dtype=torch.float32)
+    grad = torch.randn_like(base_leaf)
+
+    y = lokr_add_grouped_delta_(
+        base_leaf + 0,
+        x,
+        w1,
+        w2,
+        gate,
+        factor,
+        in_dim,
+        out_dim,
+        2,
+        backend="triton",
+        backward_backend="triton_grad_x",
+    )
+    y.backward(grad)
+    grads = [base_leaf.grad.clone(), x.grad.clone(), w1.grad.clone(), w2.grad.clone()]
+
+    base_ref = base_leaf.detach().clone().requires_grad_()
+    x_ref = x.detach().clone().requires_grad_()
+    w1_ref = w1.detach().clone().requires_grad_()
+    w2_ref = w2.detach().clone().requires_grad_()
+    y_ref = lokr_add_grouped_delta_(
+        base_ref + 0,
+        x_ref,
+        w1_ref,
+        w2_ref,
+        gate,
+        factor,
+        in_dim,
+        out_dim,
+        2,
+        backend="triton",
+        backward_backend="eager",
+    )
+    y_ref.backward(grad)
+
+    torch.testing.assert_close(y, y_ref, atol=2e-2, rtol=2e-2)
+    torch.testing.assert_close(grads[0], base_ref.grad)
+    torch.testing.assert_close(grads[1], x_ref.grad, atol=2e-2, rtol=2e-2)
+    torch.testing.assert_close(grads[2], w1_ref.grad, atol=2e-2, rtol=2e-2)
+    torch.testing.assert_close(grads[3], w2_ref.grad, atol=2e-2, rtol=2e-2)
+
+
+@pytest.mark.skipif(
+    _LOKR_TRITON_TEST_DEVICE is None,
+    reason="No CUDA device with Triton support available",
+)
+def test_lokr_add_grouped_delta_triton_grad_w2_partial_backward_matches_eager_cuda():
+    torch.manual_seed(19)
+    device = _LOKR_TRITON_TEST_DEVICE
+    factor = 4
+    in_dim = 8
+    out_dim = 16
+    x = torch.randn(3, 2, factor * in_dim, device=device, dtype=torch.float16, requires_grad=True)
+    base_leaf = torch.randn(
+        3, 2, factor * out_dim, device=device, dtype=torch.float16, requires_grad=True
+    )
+    w1 = torch.randn(factor, factor, device=device, dtype=torch.float32, requires_grad=True)
+    w2 = torch.randn(out_dim, in_dim, device=device, dtype=torch.float32, requires_grad=True)
+    gate = torch.tensor([[0.75]], device=device, dtype=torch.float32)
+    grad = torch.randn_like(base_leaf)
+
+    y = lokr_add_grouped_delta_(
+        base_leaf + 0,
+        x,
+        w1,
+        w2,
+        gate,
+        factor,
+        in_dim,
+        out_dim,
+        2,
+        backend="triton",
+        backward_backend="triton_grad_w2_partial",
+    )
+    y.backward(grad)
+    grads = [base_leaf.grad.clone(), x.grad.clone(), w1.grad.clone(), w2.grad.clone()]
+
+    base_ref = base_leaf.detach().clone().requires_grad_()
+    x_ref = x.detach().clone().requires_grad_()
+    w1_ref = w1.detach().clone().requires_grad_()
+    w2_ref = w2.detach().clone().requires_grad_()
+    y_ref = lokr_add_grouped_delta_(
+        base_ref + 0,
+        x_ref,
+        w1_ref,
+        w2_ref,
+        gate,
+        factor,
+        in_dim,
+        out_dim,
+        2,
+        backend="triton",
+        backward_backend="eager",
+    )
+    y_ref.backward(grad)
+
+    torch.testing.assert_close(y, y_ref, atol=2e-2, rtol=2e-2)
+    torch.testing.assert_close(grads[0], base_ref.grad)
+    torch.testing.assert_close(grads[1], x_ref.grad, atol=2e-2, rtol=2e-2)
+    torch.testing.assert_close(grads[2], w1_ref.grad, atol=2e-2, rtol=2e-2)
+    torch.testing.assert_close(grads[3], w2_ref.grad, atol=2e-2, rtol=2e-2)
+
+
+@pytest.mark.skipif(
+    _LOKR_TRITON_TEST_DEVICE is None,
+    reason="No CUDA device with Triton support available",
+)
+def test_lokr_add_grouped_delta_triton_grad_w2_grad_x_backward_matches_eager_cuda():
+    torch.manual_seed(23)
+    device = _LOKR_TRITON_TEST_DEVICE
+    factor = 4
+    in_dim = 8
+    out_dim = 16
+    x = torch.randn(
+        3,
+        2,
+        factor * in_dim,
+        device=device,
+        dtype=torch.float16,
+        requires_grad=True,
+    )
+    base_leaf = torch.randn(
+        3, 2, factor * out_dim, device=device, dtype=torch.float16, requires_grad=True
+    )
+    w1 = torch.randn(
+        factor, factor, device=device, dtype=torch.float32, requires_grad=True
+    )
+    w2 = torch.randn(
+        out_dim, in_dim, device=device, dtype=torch.float32, requires_grad=True
+    )
+    gate = torch.tensor([[0.75]], device=device, dtype=torch.float32)
+    grad = torch.randn_like(base_leaf)
+
+    y = lokr_add_grouped_delta_(
+        base_leaf + 0,
+        x,
+        w1,
+        w2,
+        gate,
+        factor,
+        in_dim,
+        out_dim,
+        2,
+        backend="triton",
+        backward_backend="triton_grad_w2_grad_x",
+    )
+    y.backward(grad)
+    grads = [base_leaf.grad.clone(), x.grad.clone(), w1.grad.clone(), w2.grad.clone()]
+
+    base_ref = base_leaf.detach().clone().requires_grad_()
+    x_ref = x.detach().clone().requires_grad_()
+    w1_ref = w1.detach().clone().requires_grad_()
+    w2_ref = w2.detach().clone().requires_grad_()
+    y_ref = lokr_add_grouped_delta_(
+        base_ref + 0,
+        x_ref,
+        w1_ref,
+        w2_ref,
+        gate,
+        factor,
+        in_dim,
+        out_dim,
+        2,
+        backend="triton",
+        backward_backend="eager",
+    )
+    y_ref.backward(grad)
+
+    torch.testing.assert_close(y, y_ref, atol=2e-2, rtol=2e-2)
+    torch.testing.assert_close(grads[0], base_ref.grad)
+    torch.testing.assert_close(grads[1], x_ref.grad, atol=2e-2, rtol=2e-2)
+    torch.testing.assert_close(grads[2], w1_ref.grad, atol=2e-2, rtol=2e-2)
+    torch.testing.assert_close(grads[3], w2_ref.grad, atol=2e-2, rtol=2e-2)
 
 
 def test_lokr_peak_probe_records_delta_events(tmp_path):

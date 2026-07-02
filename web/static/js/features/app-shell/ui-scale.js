@@ -1,58 +1,95 @@
 /**
- * UI缩放控制器
- * 管理整个WebUI的缩放比例
+ * UI 缩放控制器
+ * 默认比例仍作用于 root；局部覆盖通过容器 zoom 做相对缩放。
  */
 
 export function createUIScaleController({
     root = document.documentElement,
+    topLevelFields = [],
+    historyDetailFields = [],
 } = {}) {
     const DEFAULT_SCALE = 100;
     const MIN_SCALE = 25;
     const MAX_SCALE = 400;
 
-    /**
-     * 应用UI缩放
-     * @param {number} scale - 缩放百分比 (25-400)
-     */
+    function clampScale(value) {
+        const num = Number(value);
+        if (!Number.isFinite(num)) return DEFAULT_SCALE;
+        return Math.min(MAX_SCALE, Math.max(MIN_SCALE, Math.round(num)));
+    }
+
+    function resolveBaseScale(settings) {
+        return clampScale(settings?.ui_scale ?? settings?.defaults?.ui_scale ?? DEFAULT_SCALE);
+    }
+
+    function resolveOverrideScale(settings, key, baseScale) {
+        const raw = settings?.[key] ?? settings?.defaults?.[key] ?? '';
+        return String(raw ?? '').trim() ? clampScale(raw) : clampScale(baseScale);
+    }
+
     function applyUIScale(scale) {
         const safeScale = clampScale(scale);
         root.style.setProperty('--ui-scale', safeScale / 100);
         root.style.fontSize = `${safeScale}%`;
+        return safeScale;
     }
 
-    /**
-     * 限制缩放值在有效范围内
-     * @param {any} value - 输入值
-     * @returns {number} 限制后的缩放值
-     */
-    function clampScale(value) {
-        const num = Number(value);
-        if (!Number.isFinite(num) || num < MIN_SCALE) return DEFAULT_SCALE;
-        return Math.min(MAX_SCALE, Math.max(MIN_SCALE, Math.round(num)));
+    function applyScopedZoom(element, effectiveScale, baseScale) {
+        if (!element) return;
+        const base = clampScale(baseScale);
+        const effective = clampScale(effectiveScale);
+        const zoom = effective / base;
+        element.dataset.uiScale = String(effective);
+        if (Math.abs(zoom - 1) < 0.001) {
+            element.style.removeProperty('zoom');
+            element.style.removeProperty('--ui-scope-zoom');
+            return;
+        }
+        element.style.setProperty('zoom', String(zoom));
+        element.style.setProperty('--ui-scope-zoom', String(zoom));
     }
 
-    /**
-     * 从全局设置中读取并应用UI缩放
-     * @param {object} settings - 全局设置对象
-     */
-    function applyScaleFromSettings(settings) {
+    function applyTopLevelScales(settings, baseScale = resolveBaseScale(settings)) {
+        for (const field of topLevelFields) {
+            const target = document.getElementById(`tab-${field.tab}`);
+            const effectiveScale = resolveOverrideScale(settings, field.key, baseScale);
+            applyScopedZoom(target, effectiveScale, baseScale);
+        }
+        return baseScale;
+    }
+
+    function applyHistoryDetailScale(settings, activeHistoryDetailTab = 'overview', baseScale = resolveBaseScale(settings)) {
+        const field = historyDetailFields.find((item) => item.detailTab === activeHistoryDetailTab);
+        const target = document.getElementById('history-detail-content');
+        const effectiveScale = field
+            ? resolveOverrideScale(settings, field.key, baseScale)
+            : baseScale;
+        applyScopedZoom(target, effectiveScale, baseScale);
+        if (target) target.dataset.historyDetailTab = activeHistoryDetailTab || 'overview';
+        return effectiveScale;
+    }
+
+    function applyScaleFromSettings(settings, { activeHistoryDetailTab = 'overview' } = {}) {
         if (!settings) return;
-        const scale = settings.ui_scale ?? settings.defaults?.ui_scale ?? DEFAULT_SCALE;
-        applyUIScale(scale);
+        const baseScale = resolveBaseScale(settings);
+        applyUIScale(baseScale);
+        applyTopLevelScales(settings, baseScale);
+        applyHistoryDetailScale(settings, activeHistoryDetailTab, baseScale);
     }
 
-    /**
-     * 初始化UI缩放（在页面加载时调用）
-     */
     function initUIScale() {
-        // 初始应用默认缩放
-        applyUIScale(DEFAULT_SCALE);
+        applyScaleFromSettings({ ui_scale: DEFAULT_SCALE });
     }
 
     return {
         applyUIScale,
+        applyScopedZoom,
+        applyTopLevelScales,
+        applyHistoryDetailScale,
         applyScaleFromSettings,
         initUIScale,
+        resolveBaseScale,
+        resolveOverrideScale,
         clampScale,
         DEFAULT_SCALE,
         MIN_SCALE,

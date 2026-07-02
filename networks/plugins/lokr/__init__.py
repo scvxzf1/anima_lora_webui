@@ -6,7 +6,13 @@ from typing import Any, Mapping
 
 import torch
 
-from networks.plugins.lokr.autograd import DEFAULT_LOKR_PROJECT_CHUNK_BYTES
+from networks.plugins.lokr.autograd import (
+    DEFAULT_LOKR_GROUPED_DELTA_BACKEND,
+    DEFAULT_LOKR_GROUPED_DELTA_BACKWARD_BACKEND,
+    DEFAULT_LOKR_PROJECT_CHUNK_BYTES,
+    normalize_lokr_grouped_delta_backward_backend,
+    normalize_lokr_grouped_delta_backend,
+)
 from networks.plugins.lokr.module import LoKrModule
 from networks.plugins.lokr.save import save_lokr_weights
 from networks.registry import (
@@ -56,6 +62,17 @@ def _module_kwargs(ctx: ModuleCreationContext) -> dict[str, Any]:
         "lokr_project_chunk_bytes": int(
             ctx.cfg.plugin_args.get(
                 "lokr_project_chunk_bytes", DEFAULT_LOKR_PROJECT_CHUNK_BYTES
+            )
+        ),
+        "lokr_grouped_delta_backend": normalize_lokr_grouped_delta_backend(
+            ctx.cfg.plugin_args.get(
+                "lokr_grouped_delta_backend", DEFAULT_LOKR_GROUPED_DELTA_BACKEND
+            )
+        ),
+        "lokr_grouped_delta_backward_backend": normalize_lokr_grouped_delta_backward_backend(
+            ctx.cfg.plugin_args.get(
+                "lokr_grouped_delta_backward_backend",
+                DEFAULT_LOKR_GROUPED_DELTA_BACKWARD_BACKEND,
             )
         ),
     }
@@ -134,6 +151,8 @@ register_network_spec(
             "lokr_factor",
             "lokr_factor_group_size",
             "lokr_project_chunk_bytes",
+            "lokr_grouped_delta_backend",
+            "lokr_grouped_delta_backward_backend",
         ),
         selector=_selector,
         validate=_validate,

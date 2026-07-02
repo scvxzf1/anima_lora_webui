@@ -522,7 +522,6 @@ const ctx = globalThis.ctx;
         environmentCheckFeature = createEnvironmentCheckFeature(ctx);
         return environmentCheckFeature;
     }
-
     globalThis.ensureQueueFeature = function ensureQueueFeature() {
         if (queueFeature) return queueFeature;
         queueFeature = createQueueFeature(ctx, {

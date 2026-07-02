@@ -4,6 +4,78 @@
  */
 const ctx = globalThis.ctx;
 
+    globalThis.resolveGlobalUIScaleDefaultValue = function resolveGlobalUIScaleDefaultValue(snapshot = globalSettings || {}) {
+        const fallback = uiScaleController?.DEFAULT_SCALE || 100;
+        const raw = snapshot?.ui_scale ?? snapshot?.defaults?.ui_scale ?? document.getElementById('global-ui-scale')?.value;
+        const scale = Number.parseInt(String(raw ?? '').trim(), 10);
+        if (!Number.isFinite(scale)) return fallback;
+        return uiScaleController?.clampScale?.(scale) ?? fallback;
+    }
+
+    globalThis.syncGlobalUIScaleOverrideField = function syncGlobalUIScaleOverrideField(field, options = {}) {
+        if (!field?.inputId || !field?.followDefaultId) return;
+        const input = document.getElementById(field.inputId);
+        const followToggle = document.getElementById(field.followDefaultId);
+        if (!input || !followToggle) return;
+        const snapshot = options.snapshot ?? null;
+        const defaultScale = resolveGlobalUIScaleDefaultValue(snapshot || globalSettings || {});
+        const row = input.closest('.global-ui-scale-row');
+        let followDefault = Boolean(followToggle.checked);
+        let nextValue = input.value;
+
+        if (snapshot) {
+            const raw = snapshot?.[field.key] ?? snapshot?.defaults?.[field.key] ?? '';
+            followDefault = String(raw ?? '').trim() === '';
+            nextValue = followDefault
+                ? defaultScale
+                : (uiScaleController?.clampScale?.(raw) ?? defaultScale);
+        } else if (followDefault || !options.preserveCustom || !String(nextValue || '').trim()) {
+            nextValue = defaultScale;
+        } else {
+            nextValue = uiScaleController?.clampScale?.(nextValue) ?? defaultScale;
+        }
+
+        followToggle.checked = followDefault;
+        input.disabled = followDefault;
+        input.placeholder = String(defaultScale);
+        input.value = String(nextValue);
+        row?.classList.toggle('is-follow-default', followDefault);
+    }
+
+    globalThis.syncAllGlobalUIScaleOverrideFields = function syncAllGlobalUIScaleOverrideFields(options = {}) {
+        const snapshot = options.snapshot ?? null;
+        const defaultScale = resolveGlobalUIScaleDefaultValue(snapshot || globalSettings || {});
+        for (const field of GLOBAL_UI_OVERRIDE_FIELDS) {
+            syncGlobalUIScaleOverrideField(field, {
+                ...options,
+                snapshot,
+                defaultScale,
+            });
+        }
+    }
+
+    globalThis.applyGlobalUIScaleOverrideInputs = function applyGlobalUIScaleOverrideInputs(snapshot = globalSettings || {}) {
+        syncAllGlobalUIScaleOverrideFields({ snapshot });
+    }
+
+    globalThis.collectGlobalUIScaleOverridePayload = function collectGlobalUIScaleOverridePayload(payload) {
+        const defaultScale = resolveGlobalUIScaleDefaultValue();
+        for (const field of GLOBAL_UI_OVERRIDE_FIELDS) {
+            const input = document.getElementById(field.inputId);
+            const followToggle = document.getElementById(field.followDefaultId);
+            if (!input || !followToggle) {
+                payload[field.key] = globalSettings?.[field.key] ?? '';
+                continue;
+            }
+            if (followToggle.checked) {
+                payload[field.key] = '';
+                continue;
+            }
+            payload[field.key] = String(uiScaleController?.clampScale?.(input.value) ?? defaultScale);
+        }
+        return payload;
+    }
+
     globalThis.loadGlobalSettings = async function loadGlobalSettings() {
         if (location.protocol === 'file:') return;
         try {
@@ -11,7 +83,9 @@ const ctx = globalThis.ctx;
             if (!data.ok) throw new Error(data.error || '读取全局设置失败');
             globalSettings = data;
             applyGlobalSettingsToInputs(data);
-            uiScaleController?.applyScaleFromSettings?.(data);
+            uiScaleController?.applyScaleFromSettings?.(data, {
+                activeHistoryDetailTab: historyDetailFeature?.getActiveTab?.(),
+            });
             updateChoiceGuide();
             setGlobalSettingsStatus('', '');
             if (tomlManagerMode === 'output') {
@@ -38,7 +112,9 @@ const ctx = globalThis.ctx;
                 ...res,
             };
             applyGlobalSettingsToInputs(globalSettings);
-            uiScaleController?.applyScaleFromSettings?.(globalSettings);
+            uiScaleController?.applyScaleFromSettings?.(globalSettings, {
+                activeHistoryDetailTab: historyDetailFeature?.getActiveTab?.(),
+            });
             updateChoiceGuide();
             setGlobalSettingsStatus(res.message || '全局设置已保存', 'ok');
         } catch (e) {
@@ -47,10 +123,11 @@ const ctx = globalThis.ctx;
     }
 
     globalThis.resetGlobalSettings = async function resetGlobalSettings() {
+        const defaults = globalSettings?.defaults || {};
         applyGlobalSettingsToInputs({
-            defaults: globalSettings?.defaults || {},
-            output_root: globalSettings?.defaults?.output_root || 'output/runs',
-            ...Object.fromEntries(GLOBAL_MODEL_PATH_FIELDS.map(([key]) => [key, globalSettings?.defaults?.[key] || ''])),
+            defaults,
+            ...Object.fromEntries(GLOBAL_SETTING_INPUTS.map(([key]) => [key, defaults[key] ?? ''])),
+            ...Object.fromEntries(GLOBAL_UI_OVERRIDE_FIELDS.map(({ key }) => [key, defaults[key] ?? ''])),
         });
         await saveGlobalSettings();
     }
@@ -70,6 +147,7 @@ const ctx = globalThis.ctx;
             const fallback = snapshot?.defaults?.[key] || '';
             input.value = snapshot?.[key] ?? fallback;
         }
+        applyGlobalUIScaleOverrideInputs(snapshot);
     }
 
     globalThis.collectGlobalSettingsPayload = function collectGlobalSettingsPayload() {
@@ -78,7 +156,7 @@ const ctx = globalThis.ctx;
             const input = document.getElementById(id);
             payload[key] = input ? input.value : (globalSettings?.[key] || '');
         }
-        return payload;
+        return collectGlobalUIScaleOverridePayload(payload);
     }
 
     globalThis.getGlobalModelPathOverrides = function getGlobalModelPathOverrides() {

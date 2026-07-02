@@ -321,6 +321,10 @@ class TrainingService:
         from web.services.training import history as _impl
         return _impl.get_history_task(self, *args, **kwargs)
 
+    def get_history_task_summary(self, *args, **kwargs):
+        from web.services.training import history as _impl
+        return _impl.get_history_task_summary(self, *args, **kwargs)
+
     def get_history_log_path(self, *args, **kwargs):
         from web.services.training import history as _impl
         return _impl.get_history_log_path(self, *args, **kwargs)
@@ -1476,6 +1480,21 @@ def _load_history_task(task_id: str) -> dict[str, Any]:
             "metrics_truncated": False,
         },
         "config_toml": _read_text_file(snapshot_path),
+    }
+
+
+def _load_history_task_summary(task_id: str) -> dict[str, Any]:
+    task_dir = _history_task_dir(task_id)
+    if not _path_exists(task_dir):
+        raise FileNotFoundError("任务不存在")
+    meta_path = task_dir / "meta.json"
+    meta = _read_json(meta_path)
+    if not meta:
+        raise FileNotFoundError("任务元信息不存在")
+    _repair_history_meta(meta_path, meta)
+    return {
+        "ok": True,
+        "task": _history_summary(meta, task_dir),
     }
 
 

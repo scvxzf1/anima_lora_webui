@@ -11,9 +11,13 @@ import torch.nn.functional as F
 from library.runtime.peak_probe import record_peak_probe_event
 from networks.lora_modules.base import BaseLoRAModule
 from networks.plugins.lokr.autograd import (
+    DEFAULT_LOKR_GROUPED_DELTA_BACKEND,
+    DEFAULT_LOKR_GROUPED_DELTA_BACKWARD_BACKEND,
     DEFAULT_LOKR_PROJECT_CHUNK_BYTES,
     lokr_add_grouped_delta_,
+    normalize_lokr_grouped_delta_backward_backend,
     lokr_project_factor_group,
+    normalize_lokr_grouped_delta_backend,
 )
 
 logger = logging.getLogger(__name__)
@@ -38,6 +42,8 @@ class LoKrModule(BaseLoRAModule):
         factor=8,
         lokr_factor_group_size=8,
         lokr_project_chunk_bytes=DEFAULT_LOKR_PROJECT_CHUNK_BYTES,
+        lokr_grouped_delta_backend=DEFAULT_LOKR_GROUPED_DELTA_BACKEND,
+        lokr_grouped_delta_backward_backend=DEFAULT_LOKR_GROUPED_DELTA_BACKWARD_BACKEND,
     ):
         if not isinstance(org_module, torch.nn.Linear):
             raise ValueError("LoKrModule only supports torch.nn.Linear modules")
@@ -82,6 +88,14 @@ class LoKrModule(BaseLoRAModule):
         self.use_custom_lokr_autograd = False
         self.lokr_factor_group_size = max(1, int(lokr_factor_group_size))
         self.lokr_project_chunk_bytes = max(1, int(lokr_project_chunk_bytes))
+        self.lokr_grouped_delta_backend = normalize_lokr_grouped_delta_backend(
+            lokr_grouped_delta_backend
+        )
+        self.lokr_grouped_delta_backward_backend = (
+            normalize_lokr_grouped_delta_backward_backend(
+                lokr_grouped_delta_backward_backend
+            )
+        )
         self._peak_probe = None
 
     @staticmethod
@@ -149,6 +163,8 @@ class LoKrModule(BaseLoRAModule):
                         self.out_dim,
                         group_size,
                         self.lokr_project_chunk_bytes,
+                        backend=self.lokr_grouped_delta_backend,
+                        backward_backend=self.lokr_grouped_delta_backward_backend,
                     )
                 else:
                     # Preserve the existing broadcast semantics for rare

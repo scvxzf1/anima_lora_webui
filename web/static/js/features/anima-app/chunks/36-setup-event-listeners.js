@@ -81,6 +81,7 @@ const ctx = globalThis.ctx;
         ensureQueueFeature().bindQueueEvents();
         ensureWeightAnalysisFeature().bindWeightAnalysisEvents();
         ensureEnvironmentCheckFeature().bindEnvironmentCheckEvents();
+        ensureImageTestFeature().bindImageTestEvents();
         document.getElementById('btn-apply-toml').addEventListener('click', applyTomlToConfig);
         document.getElementById('btn-move-toml-group').addEventListener('click', moveCurrentTomlToGroup);
         document.getElementById('btn-create-blank-preset').addEventListener('click', createBlankPresetFromLoraTemplate);
@@ -139,7 +140,7 @@ const ctx = globalThis.ctx;
         document.getElementById('toml-editor').addEventListener('input', updateTomlDirtyState);
         document.getElementById('btn-clear-log').addEventListener('click', () => {
             if (isHistoryReviewMode()) return;
-            document.getElementById('log-output').textContent = '';
+            resetLogOutputLines();
             trainingRuntime.logBuffer = [];
             trainingRuntime.logFlushPending = false;
             trainingRuntime.logLineCount = 0;
@@ -218,6 +219,17 @@ const ctx = globalThis.ctx;
         document.querySelectorAll('.global-setting-help-toggle').forEach((btn) => {
             btn.addEventListener('click', () => toggleGlobalSettingHelp(btn));
         });
+        document.getElementById('global-ui-scale')?.addEventListener('input', () => {
+            syncAllGlobalUIScaleOverrideFields({ preserveCustom: true });
+        });
+        document.getElementById('global-ui-scale')?.addEventListener('change', () => {
+            syncAllGlobalUIScaleOverrideFields({ preserveCustom: true });
+        });
+        GLOBAL_UI_OVERRIDE_FIELDS.forEach((field) => {
+            document.getElementById(field.followDefaultId)?.addEventListener('change', () => {
+                syncGlobalUIScaleOverrideField(field);
+            });
+        });
         document.getElementById('preview-training-task').addEventListener('change', (e) => changePreviewTask(e.target.value));
 
         setTomlManagerMode('project');
@@ -254,6 +266,14 @@ const ctx = globalThis.ctx;
             'btn-export-weight-analysis': '打开浏览器打印导出，可在系统对话框中保存为 PDF 报告。',
             'btn-refresh-analysis-weights': '重新扫描当前可读取的训练权重列表，不会加载模型。',
             'btn-run-weight-analysis': '在 CPU 上读取 safetensors 并计算 ΔW 范数，不跑图、不占 GPU。',
+            'btn-refresh-image-test-status': '重新读取生图测试状态、最新日志以及 output/tests 的图片结果。',
+            'btn-refresh-image-test-weights': '重新扫描训练输出目录中的 .safetensors，方便选当前 LoRA 直接试图。',
+            'image-test-weight-select': '从训练输出目录中挑一个权重；也可以不选，直接跑基础模型。',
+            'image-test-weight-path': '手填权重路径时，会走和 ΔW 分析相同的安全路径校验。',
+            'image-test-runtime-dtype': '切换 DiT、latent 和 VAE 的运行精度；默认跟随“优化”里的精度倾向。',
+            'image-test-text-encoder-dtype': '切换 Qwen3 文本编码器精度；“跟随推理精度”表示与上方保持一致。',
+            'btn-start-image-test': '按左侧当前参数启动一次轻量推理，结果固定写到 output/tests。',
+            'btn-stop-image-test': '停止当前生图测试子进程；不会删除已经生成的图片。',
             'btn-refresh-environment-check': '重新检测项目文件、Python 依赖、系统工具、CUDA 和 Web 运行目录。',
             'btn-copy-environment-report': '把当前环境检测报告复制为纯文本，方便排查依赖或安装问题。',
             'btn-stop-training': '停止当前正在运行的训练或预处理任务；已经写出的日志、样张和权重文件会保留。',
@@ -358,6 +378,7 @@ const ctx = globalThis.ctx;
                 'weight-analysis': 'ΔW 分析页：读取 safetensors 静态权重能量，不跑图、不占 GPU。',
                 settings: '全局设置页：设置 Web 训练输出根目录和新建预设默认模型路径。',
                 environment: '环境检测页：检查 Windows/Linux 运行前置、Python 依赖、CUDA 和项目文件。',
+                'image-test': '生图测试页：复用当前配置和 preview 目录，快速做单次推理试图。',
             };
             const key = btn.dataset.tab;
             if (labels[key]) btn.title = labels[key];

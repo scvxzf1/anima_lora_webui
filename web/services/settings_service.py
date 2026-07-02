@@ -15,6 +15,7 @@ SETTINGS_FILE = CONFIGS_DIR / "web-ui-settings.toml"
 
 DEFAULT_OUTPUT_ROOT = "output/runs"
 DEFAULT_UI_SCALE = 100
+DEFAULT_UI_SCALE_OVERRIDE = ""
 GLOBAL_MODEL_PATH_KEYS = (
     "pretrained_model_name_or_path",
     "qwen3",
@@ -23,8 +24,23 @@ GLOBAL_MODEL_PATH_KEYS = (
 GLOBAL_CONFIG_PATH_KEYS = (
     "configs_root",
 )
+GLOBAL_UI_OVERRIDE_KEYS = (
+    "ui_scale_config",
+    "ui_scale_datasets",
+    "ui_scale_training",
+    "ui_scale_weight_analysis",
+    "ui_scale_image_test",
+    "ui_scale_settings",
+    "ui_scale_environment",
+    "ui_scale_history_overview",
+    "ui_scale_history_analysis",
+    "ui_scale_history_preview",
+    "ui_scale_history_logs",
+    "ui_scale_history_config_files",
+)
 GLOBAL_UI_KEYS = (
     "ui_scale",
+    *GLOBAL_UI_OVERRIDE_KEYS,
 )
 
 
@@ -60,12 +76,19 @@ def save_global_settings(data: dict[str, Any]) -> dict[str, Any]:
             next_global[key] = value or current.get(key) or defaults.get(key, "")
         elif key not in next_global:
             next_global[key] = current.get(key, "") or defaults.get(key, "")
-    for key in GLOBAL_UI_KEYS:
-        if key in data:
-            value = _normalize_ui_setting(key, data.get(key))
-            next_global[key] = value if value is not None else current.get(key, defaults.get(key))
-        elif key not in next_global:
-            next_global[key] = current.get(key, defaults.get(key))
+    if "ui_scale" in data:
+        value = _normalize_ui_setting("ui_scale", data.get("ui_scale"))
+        next_global["ui_scale"] = value if value is not None else current.get("ui_scale", defaults.get("ui_scale"))
+    elif "ui_scale" not in next_global:
+        next_global["ui_scale"] = current.get("ui_scale", defaults.get("ui_scale"))
+    for key in GLOBAL_UI_OVERRIDE_KEYS:
+        if key not in data:
+            continue
+        value = _normalize_ui_setting(key, data.get(key))
+        if value is None:
+            next_global.pop(key, None)
+        else:
+            next_global[key] = value
     raw["global"] = {
         **next_global,
     }
@@ -97,7 +120,7 @@ def display_path(path: Path) -> str:
         return str(path.resolve())
 
 
-def _load_settings() -> dict[str, str]:
+def _load_settings() -> dict[str, Any]:
     defaults = _default_global_settings()
     raw = _load_raw_settings()
     section = raw.get("global", {}) if isinstance(raw, dict) else {}
@@ -142,11 +165,12 @@ def _load_raw_settings() -> dict[str, Any]:
     return raw if isinstance(raw, dict) else {}
 
 
-def _default_global_settings() -> dict[str, str]:
+def _default_global_settings() -> dict[str, Any]:
     return {
         "output_root": DEFAULT_OUTPUT_ROOT,
         "configs_root": "configs",
         "ui_scale": DEFAULT_UI_SCALE,
+        **{key: DEFAULT_UI_SCALE_OVERRIDE for key in GLOBAL_UI_OVERRIDE_KEYS},
         **_load_base_model_path_defaults(),
     }
 
@@ -197,17 +221,38 @@ def _resolve_output_root(value: str) -> Path:
 def _normalize_ui_setting(key: str, value: Any) -> int | str | None:
     """Normalize UI settings."""
     if key == "ui_scale":
-        try:
-            scale = int(value) if value is not None else DEFAULT_UI_SCALE
-            # 限制在 25% - 400% 之间
-            if scale < 25:
-                return 25
-            if scale > 400:
-                return 400
-            return scale
-        except (ValueError, TypeError):
-            return DEFAULT_UI_SCALE
+        return _normalize_required_ui_scale(value)
+    if key in GLOBAL_UI_OVERRIDE_KEYS:
+        return _normalize_optional_ui_scale(value)
     return None
+
+
+def _normalize_required_ui_scale(value: Any) -> int:
+    try:
+        scale = int(value) if value is not None else DEFAULT_UI_SCALE
+    except (ValueError, TypeError):
+        return DEFAULT_UI_SCALE
+    return _clamp_ui_scale(scale)
+
+
+def _normalize_optional_ui_scale(value: Any) -> int | None:
+    clean = str(value or "").strip()
+    if not clean:
+        return None
+    try:
+        scale = int(clean)
+    except (ValueError, TypeError):
+        return DEFAULT_UI_SCALE
+    return _clamp_ui_scale(scale)
+
+
+def _clamp_ui_scale(value: int) -> int:
+    # 限制在 25% - 400% 之间
+    if value < 25:
+        return 25
+    if value > 400:
+        return 400
+    return value
 
 
 def _normalize_config_path(value: Any) -> str:

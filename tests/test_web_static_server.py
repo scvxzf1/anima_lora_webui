@@ -31,6 +31,7 @@ def test_web_index_serves_versioned_frontend_entrypoint() -> None:
         "style.css",
         "css/00-tokens.css",
         "css/40-weight-analysis.css",
+        "css/42-image-test.css",
         "app.js",
         "js/features/app-shell/tabs.js",
         "js/features/sample-prompts/model.js",

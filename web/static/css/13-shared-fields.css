@@ -32,6 +32,15 @@
     background: var(--bg-card);
 }
 
+.config-field-grid .field-row-filler {
+    background: color-mix(in srgb, var(--bg-card) 76%, var(--surface-raised));
+    pointer-events: none;
+}
+
+.config-field-grid .field-row-filler::before {
+    display: none;
+}
+
 .config-field-grid .field-main {
     align-items: center;
 }
@@ -520,4 +529,3 @@ input[type="checkbox"].field-input {
 .help-ps .help-heading {
     color: var(--accent);
 }
-

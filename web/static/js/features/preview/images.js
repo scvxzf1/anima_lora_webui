@@ -1,4 +1,6 @@
-import { previewSourceLabel } from './state.js?v=module-bootstrap-20260627-3';
+import { previewSourceLabel } from './state.js?v=module-bootstrap-20260702-1';
+
+const HISTORY_PREVIEW_EAGER_IMAGE_LIMIT = 16;
 
 export function createPreviewImages({ ctx, state, deps, openPreviewDialog, syncPreviewPanelSubtitle }) {
     const { formatBytes } = ctx.format;
@@ -130,7 +132,7 @@ export function createPreviewImages({ ctx, state, deps, openPreviewDialog, syncP
 
     function previewImageLoadingMode(index) {
         const isHistorySelection = Boolean(state.selectedTaskId || state.selectedGroup);
-        return isHistorySelection && index < 80 ? 'eager' : 'lazy';
+        return isHistorySelection && index < HISTORY_PREVIEW_EAGER_IMAGE_LIMIT ? 'eager' : 'lazy';
     }
 
     function previewCardTitle(image) {

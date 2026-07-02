@@ -368,6 +368,16 @@ class TrainingBootstrap:
                 activation_memory_budget=float(
                     getattr(args, "activation_memory_budget", 1.0) or 1.0
                 ),
+                partitioner_recompute_views=bool(
+                    getattr(args, "partitioner_recompute_views", False)
+                ),
+                partitioner_aggressive_recomputation=bool(
+                    getattr(
+                        args,
+                        "partitioner_aggressive_recomputation",
+                        False,
+                    )
+                ),
                 grad_ckpt=bool(getattr(args, "gradient_checkpointing", False)),
                 logger=logger,
             )

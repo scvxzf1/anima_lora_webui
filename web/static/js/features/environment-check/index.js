@@ -1,6 +1,6 @@
-import { fetchEnvironmentCheck } from './api.js?v=module-bootstrap-20260627-3';
-import { createEnvironmentCheckRenderer } from './render.js?v=module-bootstrap-20260627-3';
-import { createEnvironmentCheckState } from './state.js?v=module-bootstrap-20260627-3';
+import { fetchEnvironmentCheck } from './api.js?v=module-bootstrap-20260702-1';
+import { createEnvironmentCheckRenderer } from './render.js?v=module-bootstrap-20260702-1';
+import { createEnvironmentCheckState } from './state.js?v=module-bootstrap-20260702-1';
 
 export function createEnvironmentCheckFeature(ctx) {
     const state = createEnvironmentCheckState();

@@ -169,7 +169,7 @@ def _selected_history_task(request: web.Request) -> dict:
     if not svc:
         raise ValueError("训练服务未初始化")
     try:
-        payload = svc.get_history_task(task_id)
+        payload = _history_task_summary_payload(svc, task_id)
     except FileNotFoundError as exc:
         raise FileNotFoundError(str(exc)) from exc
     except ValueError as exc:
@@ -202,7 +202,7 @@ def _selected_config_group_tasks(request: web.Request) -> list[dict]:
         "preset": preset,
     }
     summaries = [
-        task for task in svc.list_history_tasks()
+        task for task in svc.list_history_tasks(include_archived=include_archived)
         if task.get("job") == "training"
         and _task_config_group_matches(task, group)
         and (include_archived or not task.get("archived"))
@@ -210,16 +210,8 @@ def _selected_config_group_tasks(request: web.Request) -> list[dict]:
     summaries.sort(key=lambda item: (float(item.get("started_at") or 0), str(item.get("id") or "")))
     tasks = []
     for summary in summaries:
-        task_id = str(summary.get("id") or "")
-        if not task_id:
-            continue
-        try:
-            payload = svc.get_history_task(task_id)
-        except (FileNotFoundError, ValueError):
-            continue
-        task = payload.get("task") if isinstance(payload, dict) else {}
-        if isinstance(task, dict) and task.get("job") == "training":
-            tasks.append(task)
+        if isinstance(summary, dict) and summary.get("job") == "training":
+            tasks.append(summary)
     if not tasks:
         raise FileNotFoundError("这个训练分组没有可读取的训练任务")
     return tasks
@@ -234,6 +226,12 @@ def _task_config_group_matches(task: dict, group: dict[str, str]) -> bool:
         and str(task.get("variant") or "").strip() == group["variant"]
         and (str(task.get("preset") or "default").strip() or "default") == group["preset"]
     )
+
+
+def _history_task_summary_payload(svc, task_id: str) -> dict:
+    if hasattr(svc, "get_history_task_summary"):
+        return svc.get_history_task_summary(task_id)
+    return svc.get_history_task(task_id)
 
 
 def _selected_sample_dir(request: web.Request, *, task: dict | None = None) -> str:

@@ -27,6 +27,7 @@ from library.inference.output import check_inputs
 from library.inference.text import prepare_text_inputs
 from library.inference.models import load_dit_model
 from library.inference.corrections.mod_guidance import setup_mod_guidance
+from library.inference.precision import resolve_runtime_dtype
 from library.inference.corrections.smc_cfg import SMCCFGState
 from library.inference.sampler_context import SamplerSideChannels
 
@@ -88,7 +89,7 @@ def _setup_soft_tokens(args, anima, device):
         for_inference=True,
     )
     net.load_weights(soft_weight)
-    net.to(device, dtype=torch.bfloat16)
+    net.to(device, dtype=resolve_runtime_dtype(args))
     net.apply_to(
         text_encoders=None, unet=anima, apply_text_encoder=False, apply_unet=True
     )
@@ -161,17 +162,20 @@ def _resolve_spd_schedule(args) -> Tuple[List[float], List[float]]:
 
 
 class GenerationSettings:
-    # ``dit_weight_dtype`` was dropped 2026-05-24: it was vestigial — the model
-    # is forced to bf16 in ``load_dit_model`` regardless, so the field never
-    # influenced anything. The DiT runs in bf16 for inference.
-    def __init__(self, device: torch.device):
+    def __init__(self, device: torch.device, runtime_dtype: torch.dtype):
         self.device = device
+        self.runtime_dtype = runtime_dtype
 
 
 def get_generation_settings(args: argparse.Namespace) -> GenerationSettings:
     device = torch.device(args.device)
-    logger.info(f"Using device: {device}, DiT weight precision: bfloat16")
-    return GenerationSettings(device=device)
+    runtime_dtype = resolve_runtime_dtype(args)
+    logger.info(
+        "Using device: %s, DiT/VAE runtime precision: %s",
+        device,
+        getattr(args, "runtime_dtype", "bf16"),
+    )
+    return GenerationSettings(device=device, runtime_dtype=runtime_dtype)
 
 
 def resolve_seed(args: argparse.Namespace) -> int:
@@ -263,6 +267,7 @@ def generate_body_tiled(
     seed: int,
 ) -> torch.Tensor:
     """MultiDiffusion-style tiled denoising for high-resolution generation."""
+    runtime_dtype = resolve_runtime_dtype(args)
     seed_g = torch.Generator(device="cpu")
     seed_g.manual_seed(seed)
 
@@ -275,10 +280,10 @@ def generate_body_tiled(
     overlap = args.tile_overlap
     patch_spatial = anima.patch_spatial
 
-    embed = context["embed"][0].to(device, dtype=torch.bfloat16)
+    embed = context["embed"][0].to(device, dtype=runtime_dtype)
     if context_null is None:
         context_null = context
-    negative_embed = context_null["embed"][0].to(device, dtype=torch.bfloat16)
+    negative_embed = context_null["embed"][0].to(device, dtype=runtime_dtype)
 
     # Soft tokens — see generate_body() for the long-form comment.
     soft_tokens_net = _setup_soft_tokens(args, anima, device)
@@ -295,7 +300,7 @@ def generate_body_tiled(
     h_latent = height // 8
     w_latent = width // 8
     shape = (1, num_channels_latents, 1, h_latent, w_latent)
-    latents = randn_tensor(shape, generator=seed_g, device=device, dtype=torch.bfloat16)
+    latents = randn_tensor(shape, generator=seed_g, device=device, dtype=runtime_dtype)
 
     # Compute tile positions and precompute blend weights
     positions = compute_tile_positions(h_latent, w_latent, tile_size, overlap)
@@ -308,16 +313,16 @@ def generate_body_tiled(
         tile_h = min(tile_size, h_latent - y)
         tile_w = min(tile_size, w_latent - x)
         blend_weights[(y, x)] = create_tile_blend_weight(
-            tile_h, tile_w, overlap, y, x, h_latent, w_latent, device, torch.bfloat16
+            tile_h, tile_w, overlap, y, x, h_latent, w_latent, device, runtime_dtype
         )
 
-    embed = embed.to(torch.bfloat16)
-    negative_embed = negative_embed.to(torch.bfloat16)
+    embed = embed.to(runtime_dtype)
+    negative_embed = negative_embed.to(runtime_dtype)
 
     timesteps, sigmas = inference_utils.get_timesteps_sigmas(
         args.infer_steps, args.flow_shift, device
     )
-    timesteps = timesteps.to(device, dtype=torch.bfloat16)  # σ∈[0,1] — DiT time arg
+    timesteps = timesteps.to(device, dtype=runtime_dtype)  # σ∈[0,1] — DiT time arg
 
     cns = _build_cns_recolorer(args)
 
@@ -369,13 +374,13 @@ def generate_body_tiled(
 
                 noise_acc = torch.zeros_like(latents)
                 weight_acc = torch.zeros(
-                    1, 1, 1, h_latent, w_latent, device=device, dtype=torch.bfloat16
+                    1, 1, 1, h_latent, w_latent, device=device, dtype=runtime_dtype
                 )
 
                 if do_cfg:
                     uncond_noise_acc = torch.zeros_like(latents)
                     uncond_weight_acc = torch.zeros(
-                        1, 1, 1, h_latent, w_latent, device=device, dtype=torch.bfloat16
+                        1, 1, 1, h_latent, w_latent, device=device, dtype=runtime_dtype
                     )
 
                 for y, x in positions:
@@ -383,7 +388,7 @@ def generate_body_tiled(
                     tile_w = min(tile_size, w_latent - x)
                     tile_latent = latents[:, :, :, y : y + tile_h, x : x + tile_w]
                     tile_padding_mask = torch.zeros(
-                        1, 1, tile_h, tile_w, dtype=torch.bfloat16, device=device
+                        1, 1, tile_h, tile_w, dtype=runtime_dtype, device=device
                     )
 
                     h_off = y // patch_spatial
@@ -515,6 +520,7 @@ def generate_body(
     Returns:
         Denoised latent tensor (batch dimension preserved).
     """
+    runtime_dtype = resolve_runtime_dtype(args)
 
     height, width = check_inputs(args)
 
@@ -540,7 +546,7 @@ def generate_body(
         num_channels_latents = anima_models.Anima.LATENT_CHANNELS
         shape = (1, num_channels_latents, 1, height // 8, width // 8)
         latents = randn_tensor(
-            shape, generator=seed_g, device=device, dtype=torch.bfloat16
+            shape, generator=seed_g, device=device, dtype=runtime_dtype
         )
 
     bs = latents.shape[0]
@@ -555,10 +561,10 @@ def generate_body(
 
     logger.info(f"Prompt: {context['prompt']}")
 
-    embed = context["embed"][0].to(device, dtype=torch.bfloat16)
+    embed = context["embed"][0].to(device, dtype=runtime_dtype)
     if context_null is None:
         context_null = context  # dummy for unconditional
-    negative_embed = context_null["embed"][0].to(device, dtype=torch.bfloat16)
+    negative_embed = context_null["embed"][0].to(device, dtype=runtime_dtype)
 
     # Optional pooled-text override for modulation guidance (left unset here;
     # downstream guards on ``is not None``).
@@ -580,7 +586,7 @@ def generate_body(
 
     # Create padding mask
     padding_mask = torch.zeros(
-        bs, 1, h_latent, w_latent, dtype=torch.bfloat16, device=device
+        bs, 1, h_latent, w_latent, dtype=runtime_dtype, device=device
     )
 
     logger.info(
@@ -593,14 +599,14 @@ def generate_body(
     if negative_embed.shape[0] < bs:
         negative_embed = negative_embed.expand(bs, -1, -1)
 
-    embed = embed.to(torch.bfloat16)
-    negative_embed = negative_embed.to(torch.bfloat16)
+    embed = embed.to(runtime_dtype)
+    negative_embed = negative_embed.to(runtime_dtype)
 
     # Prepare timesteps
     timesteps, sigmas = inference_utils.get_timesteps_sigmas(
         args.infer_steps, args.flow_shift, device
     )
-    timesteps = timesteps.to(device, dtype=torch.bfloat16)  # σ∈[0,1] — DiT time arg
+    timesteps = timesteps.to(device, dtype=runtime_dtype)  # σ∈[0,1] — DiT time arg
 
     # DCW: load + setup the learnable calibrator if requested.
     dcw_calibrator = None
@@ -907,8 +913,7 @@ def generate(
     seed = resolve_seed(args)
 
     if shared_models is None or "model" not in shared_models:
-        # load DiT model (bf16 — see GenerationSettings note)
-        anima = load_dit_model(args, device, torch.bfloat16)
+        anima = load_dit_model(args, device, gen_settings.runtime_dtype)
 
         if shared_models is not None:
             shared_models["model"] = anima
@@ -965,6 +970,7 @@ def _setup_ip_adapter(args, anima, device):
 
     from networks.methods.ip_adapter import create_network_from_weights
     from library.vision import encode_pe_from_imageminus1to1, load_pe_encoder
+    runtime_dtype = resolve_runtime_dtype(args)
 
     # Aspect-match: snap --image_size to the CONSTANT_TOKEN_BUCKETS entry whose
     # aspect is closest to the reference. Done BEFORE encoding so the same
@@ -998,7 +1004,7 @@ def _setup_ip_adapter(args, anima, device):
         **create_kwargs,
     )
     network.load_weights(ip_weight)
-    network.to(device, dtype=torch.bfloat16)
+    network.to(device, dtype=runtime_dtype)
     network.apply_to(text_encoders=None, unet=anima)
 
     img = Image.open(ip_image).convert("RGB")
@@ -1006,7 +1012,7 @@ def _setup_ip_adapter(args, anima, device):
         [transforms.ToTensor(), transforms.Normalize([0.5], [0.5])]
     )
     img_t = (
-        tfm(img).unsqueeze(0).to(device, dtype=torch.bfloat16)
+        tfm(img).unsqueeze(0).to(device, dtype=runtime_dtype)
     )  # [1, 3, H, W] in [-1, 1]
 
     with torch.no_grad():
@@ -1015,14 +1021,14 @@ def _setup_ip_adapter(args, anima, device):
             ip_features = network.encode_images(img_t)  # [1, T_pe, d_enc]
         else:
             bundle = load_pe_encoder(
-                device, name=network.encoder_name, dtype=torch.bfloat16
+                device, name=network.encoder_name, dtype=runtime_dtype
             )
             feats_list = encode_pe_from_imageminus1to1(bundle, img_t, same_bucket=True)
             ip_features = torch.stack(feats_list, dim=0)  # [1, T_pe, d_enc]
             # Drop the local encoder before set_ip_tokens — the resampler is
             # the only thing left that reads ip_features.
             del bundle, feats_list
-        ip_tokens = network.encode_ip_tokens(ip_features.to(torch.bfloat16))
+        ip_tokens = network.encode_ip_tokens(ip_features.to(runtime_dtype))
 
     network.set_ip_tokens(ip_tokens)
     # K/V are now cached per-block on the cross-attn modules — the PE encoder
@@ -1066,6 +1072,7 @@ def _setup_easycontrol(args, anima, device, shared_models):
 
     from networks.methods.easycontrol import create_network_from_weights
     from library.models import qwen_vae as qwen_image_autoencoder_kl
+    runtime_dtype = resolve_runtime_dtype(args)
 
     if getattr(args, "easycontrol_image_match_size", False):
         from library.datasets.buckets import CONSTANT_TOKEN_BUCKETS
@@ -1095,7 +1102,7 @@ def _setup_easycontrol(args, anima, device, shared_models):
         **create_kwargs,
     )
     network.load_weights(ec_weight)
-    network.to(device, dtype=torch.bfloat16)
+    network.to(device, dtype=runtime_dtype)
     network.apply_to(text_encoders=None, unet=anima)
 
     # VAE-encode the reference image -> 4D latent.
@@ -1106,7 +1113,7 @@ def _setup_easycontrol(args, anima, device, shared_models):
         [transforms.ToTensor(), transforms.Normalize([0.5], [0.5])]
     )
     img_t = (
-        tfm(img).unsqueeze(0).to(device, dtype=torch.bfloat16)
+        tfm(img).unsqueeze(0).to(device, dtype=runtime_dtype)
     )  # [1,3,H,W] in [-1,1]
 
     vae = (shared_models or {}).get("vae")
@@ -1119,7 +1126,7 @@ def _setup_easycontrol(args, anima, device, shared_models):
             spatial_chunk_size=getattr(args, "vae_chunk_size", None),
             disable_cache=getattr(args, "vae_disable_cache", False),
         )
-        vae.to(torch.bfloat16)
+        vae.to(dtype=runtime_dtype)
         vae.eval()
         vae.to(device)
 
@@ -1132,7 +1139,7 @@ def _setup_easycontrol(args, anima, device, shared_models):
         del vae
         torch.cuda.empty_cache()
 
-    network.set_cond(cond_latent.to(device, dtype=torch.bfloat16))
+    network.set_cond(cond_latent.to(device, dtype=runtime_dtype))
     # KV cache: walk the cond stream once and pin per-block (K_c, V_c). Every
     # subsequent denoising step (and CFG branch) feeds these into target's
     # extended self-attention without re-running the cond stream.

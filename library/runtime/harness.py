@@ -528,6 +528,38 @@ def _apply_activation_memory_budget(
         )
 
 
+def _apply_partitioner_tuning(
+    *,
+    recompute_views: bool,
+    aggressive_recomputation: bool,
+    grad_ckpt: bool,
+    logger: logging.Logger = log,
+) -> None:
+    """Tune AOT partitioner save/recompute heuristics for compiled training."""
+    if not (recompute_views or aggressive_recomputation):
+        return
+    if grad_ckpt:
+        logger.info(
+            "partitioner tuning (recompute_views=%s, aggressive_recomputation=%s) "
+            "ignored: incompatible with gradient_checkpointing (and redundant "
+            "under it)",
+            recompute_views,
+            aggressive_recomputation,
+        )
+        return
+    import torch._functorch.config as _functorch_config
+
+    if recompute_views:
+        _functorch_config.recompute_views = True
+    if aggressive_recomputation:
+        _functorch_config.aggressive_recomputation = True
+    logger.info(
+        "partitioner tuning: recompute_views=%s aggressive_recomputation=%s",
+        recompute_views,
+        aggressive_recomputation,
+    )
+
+
 def _apply_cudagraph_skip_dynamic(
     mode: Optional[str], *, logger: logging.Logger = log
 ) -> None:
@@ -680,6 +712,8 @@ def compile_blocks_for_training(
     seq_range: Optional[tuple] = None,
     dynamic_seq: bool = False,
     activation_memory_budget: float = 1.0,
+    partitioner_recompute_views: bool = False,
+    partitioner_aggressive_recomputation: bool = False,
     grad_ckpt: bool = False,
     logger: logging.Logger = log,
 ) -> None:
@@ -697,16 +731,18 @@ def compile_blocks_for_training(
       1. :func:`_apply_activation_memory_budget` — partitioner cap, skipped
          under grad-ckpt (see its docstring for the history + CheckpointError
          interaction).
-      2. ``isolate_compile_cache(compile_signature(...))`` — per-signature
+      2. :func:`_apply_partitioner_tuning` — optional min-cut heuristic knobs,
+         also skipped under grad-ckpt for the same recompute-graph hazard.
+      3. ``isolate_compile_cache(compile_signature(...))`` — per-signature
          persistent-cache dir so a stale seq-range guard (e.g. an inference
          run's canonical 4032-floored range) can't poison this run's wider
          dynamic-seq marks with a ConstraintViolationError. Same signature →
          warm cache reuse.
-      3. ``unet.compile_blocks(...)`` with the caller-derived token budget
+      4. ``unet.compile_blocks(...)`` with the caller-derived token budget
          (``train.py::_collect_compile_resolutions`` — the buckets the dataset
          actually populated plus startup sample prompt resolutions, not
          ``args.target_res``).
-      4. ``network.compile_cond_stream(...)`` when the adapter exposes it:
+      5. ``network.compile_cond_stream(...)`` when the adapter exposes it:
          EasyControl's patched ``Block.forward`` routes the active cond path
          through ``_two_stream_inner``, bypassing the just-compiled
          ``block._forward`` — so step 3 never reaches the cond stream (incl.
@@ -737,6 +773,12 @@ def compile_blocks_for_training(
     )
     _apply_activation_memory_budget(
         activation_memory_budget, grad_ckpt=grad_ckpt, logger=logger
+    )
+    _apply_partitioner_tuning(
+        recompute_views=partitioner_recompute_views,
+        aggressive_recomputation=partitioner_aggressive_recomputation,
+        grad_ckpt=grad_ckpt,
+        logger=logger,
     )
     _apply_cudagraph_skip_dynamic(mode, logger=logger)
     isolate_compile_cache(

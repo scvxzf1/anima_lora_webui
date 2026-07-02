@@ -3,6 +3,7 @@ export function createTabController({
     loadGlobalSettings,
     ensureWeightAnalysisFeature,
     ensureEnvironmentCheckFeature,
+    ensureImageTestFeature,
     resetTrainingExpandedStateOnLeave,
     resizeLiveChart,
     auditConfigTrainingSourceOnEnter,
@@ -56,6 +57,9 @@ export function createTabController({
                 }
                 if (nextTab === 'environment') {
                     ensureEnvironmentCheckFeature?.().loadEnvironmentCheck();
+                }
+                if (nextTab === 'image-test') {
+                    ensureImageTestFeature?.().loadImageTestPage();
                 }
             });
         });

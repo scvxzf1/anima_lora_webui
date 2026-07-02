@@ -8,6 +8,7 @@ import torch
 from safetensors.torch import load_file
 
 from library.anima import models as anima_models, weights as anima_utils
+from library.inference.precision import resolve_runtime_dtype, resolve_text_encoder_dtype
 from library.runtime.device import clean_memory_on_device
 
 logger = logging.getLogger(__name__)
@@ -120,6 +121,8 @@ def attach_adapters(
     ``pgraft_mode`` / ``hydra_mode`` are passed in (not recomputed) because the
     caller already derives them to decide whether to skip the static merge.
     """
+    runtime_dtype = resolve_runtime_dtype(args)
+
     # P-GRAFT: attach LoRA as dynamic hooks (can be toggled mid-denoising)
     if pgraft_mode and not hydra_mode and not step_expert_mode:
         from networks import lora_anima
@@ -149,7 +152,7 @@ def attach_adapters(
                 logger.debug(
                     f"P-GRAFT: unexpected keys in LoRA state dict: {info.unexpected_keys[:5]}..."
                 )
-            network.to(device, dtype=torch.bfloat16)
+            network.to(device, dtype=runtime_dtype)
             network.eval()
             model._pgraft_network = network
             logger.info(
@@ -210,7 +213,7 @@ def attach_adapters(
                 logger.warning(
                     f"HydraLoRA: missing keys in state dict: {info.missing_keys[:5]}..."
                 )
-            network.to(device, dtype=torch.bfloat16)
+            network.to(device, dtype=runtime_dtype)
             network.eval().requires_grad_(False)
             hydra_networks = list(getattr(model, "_hydra_networks", []))
             hydra_networks.append(network)
@@ -247,7 +250,7 @@ def attach_adapters(
             network = load_step_expert_student(
                 model, lora_sd, se_metadata, multiplier=multiplier
             )
-            network.to(device, dtype=torch.bfloat16)
+            network.to(device, dtype=runtime_dtype)
             network.eval().requires_grad_(False)
             step_nets = list(getattr(model, "_step_expert_networks", []))
             step_nets.append(network)
@@ -348,11 +351,11 @@ def load_dit_model(
     target_dtype = dit_weight_dtype
     if target_dtype is not None:
         logger.info(f"Convert model to {target_dtype}")
-    logger.info(f"Move model to device: {device}")
-    model.to(device, target_dtype)
-
-    # model.to(device)
-    model.to(device, dtype=torch.bfloat16)  # ensure model is in bfloat16 for inference
+        logger.info(f"Move model to device: {device}")
+        model.to(device, dtype=target_dtype)
+    else:
+        logger.info(f"Move model to device: {device}")
+        model.to(device)
 
     model.eval().requires_grad_(False)
 
@@ -420,7 +423,7 @@ def load_shared_models(args: argparse.Namespace) -> Dict:
     DiT model is also NOT loaded here, handled by process_batch_prompts or generate.
     """
     shared_models = {}
-    text_encoder_dtype = torch.bfloat16
+    text_encoder_dtype = resolve_text_encoder_dtype(args)
     text_encoder = load_text_encoder(
         args, dtype=text_encoder_dtype, device=torch.device("cpu")
     )

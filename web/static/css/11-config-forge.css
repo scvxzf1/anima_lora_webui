@@ -1015,6 +1015,10 @@
     padding: 0.38rem 0.58rem;
 }
 
+#tab-config .config-field-grid .field-row-filler {
+    background: color-mix(in srgb, var(--config-panel-bg) 72%, var(--config-panel-soft));
+}
+
 #tab-config .config-field-grid .field-row:focus-within {
     background: color-mix(in srgb, var(--config-accent) 7%, var(--config-panel-bg));
 }

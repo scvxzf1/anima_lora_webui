@@ -32,6 +32,12 @@ from library.inference import (
     save_latent,
     save_output,
 )
+from library.inference.precision import (
+    RUNTIME_DTYPE_CHOICES,
+    TEXT_ENCODER_DTYPE_CHOICES,
+    resolve_runtime_dtype,
+    resolve_text_encoder_dtype,
+)
 from library.inference.text import MAX_CROSSATTN_TOKENS
 
 # Side-effect import: registers spectrum_denoise with library.inference.generation
@@ -217,6 +223,20 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default="euler",
         choices=["euler", "er_sde", "lcm"],
         help="Sampler to use: 'euler' (deterministic ODE), 'er_sde' (Extended Reverse-Time SDE), or 'lcm' (x0 re-noise — for distilled few-step models). Default is euler.",
+    )
+    parser.add_argument(
+        "--runtime_dtype",
+        type=str,
+        default="bf16",
+        choices=list(RUNTIME_DTYPE_CHOICES),
+        help="Runtime precision for DiT, latents, and VAE. Default is bf16.",
+    )
+    parser.add_argument(
+        "--text_encoder_dtype",
+        type=str,
+        default="same",
+        choices=list(TEXT_ENCODER_DTYPE_CHOICES),
+        help="Text Encoder precision. Use 'same' to follow --runtime_dtype.",
     )
 
     parser.add_argument(
@@ -700,7 +720,7 @@ def process_batch_prompts(prompts_data: List[Dict], args: argparse.Namespace) ->
         return
 
     gen_settings = get_generation_settings(args)
-    dit_weight_dtype = torch.bfloat16
+    runtime_dtype = gen_settings.runtime_dtype
     device = gen_settings.device
 
     # 1. Prepare VAE
@@ -712,7 +732,7 @@ def process_batch_prompts(prompts_data: List[Dict], args: argparse.Namespace) ->
         spatial_chunk_size=args.vae_chunk_size,
         disable_cache=args.vae_disable_cache,
     )
-    vae_for_batch.to(device, dtype=torch.bfloat16)
+    vae_for_batch.to(device, dtype=runtime_dtype)
     vae_for_batch.eval()
 
     all_prompt_args_list = [apply_overrides(args, pd) for pd in prompts_data]
@@ -722,12 +742,12 @@ def process_batch_prompts(prompts_data: List[Dict], args: argparse.Namespace) ->
     # 2. Load DiT Model once
     logger.info("Loading DiT model for batch generation...")
     first_prompt_args = all_prompt_args_list[0]
-    anima = load_dit_model(first_prompt_args, device, dit_weight_dtype)
+    anima = load_dit_model(first_prompt_args, device, runtime_dtype)
 
     # 3. Precompute Text Data (Text Encoder)
     logger.info("Loading Text Encoder for batch text preprocessing...")
 
-    text_encoder_dtype = torch.bfloat16
+    text_encoder_dtype = resolve_text_encoder_dtype(args)
     text_encoder_batch = load_text_encoder(
         args, dtype=text_encoder_dtype, device=torch.device("cpu")
     )
@@ -815,7 +835,7 @@ def process_batch_prompts(prompts_data: List[Dict], args: argparse.Namespace) ->
                             single_shape,
                             generator=g,
                             device=device,
-                            dtype=torch.bfloat16,
+                            dtype=runtime_dtype,
                         )
                     )
 
@@ -872,6 +892,7 @@ def process_interactive(args: argparse.Namespace) -> None:
     """Process prompts in interactive mode."""
     gen_settings = get_generation_settings(args)
     device = gen_settings.device
+    runtime_dtype = gen_settings.runtime_dtype
     shared_models = load_shared_models(args)
     shared_models["conds_cache"] = {}
 
@@ -882,7 +903,7 @@ def process_interactive(args: argparse.Namespace) -> None:
         spatial_chunk_size=args.vae_chunk_size,
         disable_cache=args.vae_disable_cache,
     )
-    vae.to(torch.bfloat16)
+    vae.to(dtype=runtime_dtype)
     vae.eval()
 
     print("Interactive mode. Enter prompts (Ctrl+D or Ctrl+Z (Windows) to exit):")
@@ -1002,7 +1023,7 @@ def main():
             spatial_chunk_size=args.vae_chunk_size,
             disable_cache=args.vae_disable_cache,
         )
-        vae.to(torch.bfloat16)
+        vae.to(dtype=resolve_runtime_dtype(args))
         vae.eval()
 
         for i, latent in enumerate(latents_list):
@@ -1049,7 +1070,7 @@ def main():
                 spatial_chunk_size=args.vae_chunk_size,
                 disable_cache=args.vae_disable_cache,
             )
-            vae.to(torch.bfloat16)
+            vae.to(dtype=gen_settings.runtime_dtype)
             vae.eval()
             save_output(args, vae, latent, device)
 

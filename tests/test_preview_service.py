@@ -584,6 +584,58 @@ def test_preview_route_config_group_prefers_history_group_key():
     assert [task["id"] for task in selected] == ["task-a"]
 
 
+def test_preview_route_uses_lightweight_history_summary_for_task_selection():
+    tasks = [
+        {
+            "id": "task-a",
+            "job": "training",
+            "sample_dir": "output/runs/task-a/training_output/sample",
+            "output_dir": "output/runs/task-a/training_output",
+        }
+    ]
+    service = _PreviewHistoryService(tasks)
+    request = _PreviewRequest({"task_id": "task-a"}, service)
+
+    selected = preview_routes._selected_history_task(request)
+
+    assert selected["id"] == "task-a"
+    assert service.summary_calls == ["task-a"]
+    assert service.detail_calls == []
+
+
+def test_preview_route_config_group_uses_history_summaries_without_detail_expansion():
+    tasks = [
+        {
+            "id": "task-a",
+            "job": "training",
+            "methods_subdir": "imported",
+            "variant": "demo",
+            "preset": "default",
+            "history_group_key": "source:configs/imported/a.toml",
+            "sample_dir": "output/runs/task-a/training_output/sample",
+            "output_dir": "output/runs/task-a/training_output",
+        }
+    ]
+    service = _PreviewHistoryService(tasks)
+    request = _PreviewRequest(
+        {
+            "mode": "config_group",
+            "methods_subdir": "imported",
+            "variant": "demo",
+            "preset": "default",
+            "group_key": "source:configs/imported/a.toml",
+        },
+        service,
+    )
+
+    selected = preview_routes._selected_config_group_tasks(request)
+
+    assert [task["id"] for task in selected] == ["task-a"]
+    assert service.list_calls == [False]
+    assert service.summary_calls == []
+    assert service.detail_calls == []
+
+
 class _PreviewRequest:
     def __init__(self, query: dict[str, str], service: object) -> None:
         self.query = query
@@ -593,11 +645,23 @@ class _PreviewRequest:
 class _PreviewHistoryService:
     def __init__(self, tasks: list[dict]) -> None:
         self._tasks = tasks
+        self.list_calls: list[bool] = []
+        self.summary_calls: list[str] = []
+        self.detail_calls: list[str] = []
 
-    def list_history_tasks(self) -> list[dict]:
+    def list_history_tasks(self, *, include_archived: bool = False) -> list[dict]:
+        self.list_calls.append(include_archived)
         return list(self._tasks)
 
+    def get_history_task_summary(self, task_id: str) -> dict:
+        self.summary_calls.append(task_id)
+        for task in self._tasks:
+            if task.get("id") == task_id:
+                return {"ok": True, "task": task}
+        raise FileNotFoundError(task_id)
+
     def get_history_task(self, task_id: str) -> dict:
+        self.detail_calls.append(task_id)
         for task in self._tasks:
             if task.get("id") == task_id:
                 return {"ok": True, "task": task}

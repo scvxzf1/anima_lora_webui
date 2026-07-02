@@ -3,6 +3,7 @@
  * Keep this module focused; move newly edited behavior into domain modules.
  */
 const ctx = globalThis.ctx;
+const LOG_RENDER_BATCH_SIZE = 250;
 
     globalThis.showPreflightPendingDialog = function showPreflightPendingDialog(options = {}) {
         const dialog = document.getElementById('preflight-dialog');
@@ -383,26 +384,58 @@ const ctx = globalThis.ctx;
         scheduleLogFlush();
     }
 
-    globalThis.renderLogOutputLines = function renderLogOutputLines(lines) {
+    globalThis.renderLogOutputLines = function renderLogOutputLines(lines, options = {}) {
         const el = document.getElementById('log-output');
         if (!el) return;
         const normalized = (lines || [])
             .map((line) => String(line || ''))
             .filter((line) => line.length);
-        const fragment = document.createDocumentFragment();
-        for (const line of normalized) {
-            const span = document.createElement('span');
-            span.className = `log-line ${logLineTone(line)}`;
-            span.textContent = line;
-            fragment.append(span, document.createTextNode('\n'));
-        }
-        el.replaceChildren(fragment);
+        trainingRuntime.logOutputLines = normalized;
+        trainingRuntime.logRenderToken = (trainingRuntime.logRenderToken || 0) + 1;
+        const token = trainingRuntime.logRenderToken;
+        const stickToBottom = Boolean(options.stickToBottom);
+        el.textContent = '';
+
+        const appendBatch = (start = 0) => {
+            if (token !== trainingRuntime.logRenderToken) return;
+            const end = Math.min(start + LOG_RENDER_BATCH_SIZE, normalized.length);
+            const fragment = document.createDocumentFragment();
+            for (let index = start; index < end; index += 1) {
+                const line = normalized[index];
+                const span = document.createElement('span');
+                span.className = `log-line ${logLineTone(line)}`;
+                span.textContent = line;
+                fragment.append(span, document.createTextNode('\n'));
+            }
+            el.appendChild(fragment);
+            if (stickToBottom) el.scrollTop = el.scrollHeight;
+            if (end < normalized.length) {
+                scheduleLogRenderBatch(() => appendBatch(end));
+            }
+        };
+
+        appendBatch();
     }
 
     globalThis.currentLogOutputLines = function currentLogOutputLines() {
+        if (Array.isArray(trainingRuntime.logOutputLines)) return [...trainingRuntime.logOutputLines];
         const el = document.getElementById('log-output');
         if (!el) return [];
         return el.textContent.split('\n').filter(Boolean);
+    }
+
+    globalThis.resetLogOutputLines = function resetLogOutputLines() {
+        trainingRuntime.logOutputLines = [];
+        trainingRuntime.logRenderToken = (trainingRuntime.logRenderToken || 0) + 1;
+        const el = document.getElementById('log-output');
+        if (el) el.textContent = '';
+    }
+
+    globalThis.scheduleLogRenderBatch = function scheduleLogRenderBatch(callback) {
+        const schedule = window.requestAnimationFrame
+            ? (fn) => window.requestAnimationFrame(fn)
+            : (fn) => window.setTimeout(fn, 16);
+        schedule(callback);
     }
 
     globalThis.logLineTone = function logLineTone(line) {
@@ -438,7 +471,7 @@ const ctx = globalThis.ctx;
         const nextLines = [...currentLogOutputLines(), ...trainingRuntime.logBuffer];
         trainingRuntime.logBuffer = [];
         const lines = nextLines.filter(Boolean).slice(-MAX_LOG_LINES);
-        renderLogOutputLines(lines);
+        renderLogOutputLines(lines, { stickToBottom: true });
         trainingRuntime.logLineCount = lines.length;
         el.scrollTop = el.scrollHeight;
         updateLogStatusText();

@@ -1,0 +1,23 @@
+# Tiny cached benchmark dataset for short MFU / backend smoke runs.
+# Keeps the same 896x1152 cached sample shape as the main rokkotsu cached bench,
+# but restricts training to one cached image repeated enough times to cover
+# multi-step smoke windows.
+
+[general]
+caption_extension = ".txt"
+keep_tokens = 3
+
+[[datasets]]
+batch_size = 1
+prior_loss_weight = 1.0
+caption_source_mode = "auto"
+caption_extension = ".txt"
+prefer_json_caption = false
+validation_split = 0.0
+validation_seed = 42
+
+  [[datasets.subsets]]
+  image_dir = "bench/mfu/assets/rokkotsu_goddess_528_tag/dataset_cache/dataset-01/resized"
+  cache_dir = "bench/mfu/assets/rokkotsu_goddess_528_tag/dataset_cache/dataset-01/lora"
+  path_pattern = "Floating_in_a_202604200120.png"
+  num_repeats = 64

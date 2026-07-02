@@ -217,7 +217,7 @@ const ctx = globalThis.ctx;
         if (configOutput) configOutput.textContent = '';
         const paths = document.getElementById('history-paths');
         if (paths) paths.innerHTML = '';
-        document.getElementById('log-output').textContent = '';
+        resetLogOutputLines();
         trainingRuntime.logBuffer = [];
         trainingRuntime.logFlushPending = false;
         trainingRuntime.lastLogId = 0;

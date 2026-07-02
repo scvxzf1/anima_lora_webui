@@ -1,14 +1,18 @@
-import { fetchHistoryTask } from './api.js?v=module-bootstrap-20260627-3';
-import { createHistoryAnalysisRenderer } from './analysis.js?v=module-bootstrap-20260627-3';
-import { createHistoryConfigFilesRenderer } from './config-files.js?v=module-bootstrap-20260627-3';
-import { createHistoryLogsRenderer } from './logs.js?v=module-bootstrap-20260627-3';
-import { createHistoryOverviewRenderer } from './overview.js?v=module-bootstrap-20260627-3';
-import { createHistoryResumeFeature } from './resume/index.js?v=module-bootstrap-20260627-3';
-import { HISTORY_DETAIL_TABS, normalizeHistoryDetailTab, setHistoryDetailTab } from './state.js?v=module-bootstrap-20260627-3';
-import { createHistoryDetailWorkspace } from './workspace.js?v=module-bootstrap-20260627-3';
+import { fetchHistoryTask } from './api.js?v=module-bootstrap-20260702-1';
+import { createHistoryAnalysisRenderer } from './analysis.js?v=module-bootstrap-20260702-1';
+import { createHistoryConfigFilesRenderer } from './config-files.js?v=module-bootstrap-20260702-1';
+import { createHistoryLogsRenderer } from './logs.js?v=module-bootstrap-20260702-1';
+import { createHistoryOverviewRenderer } from './overview.js?v=module-bootstrap-20260702-1';
+import { createHistoryResumeFeature } from './resume/index.js?v=module-bootstrap-20260702-1';
+import { HISTORY_DETAIL_TABS, normalizeHistoryDetailTab, setHistoryDetailTab } from './state.js?v=module-bootstrap-20260702-1';
+import { createHistoryDetailWorkspace } from './workspace.js?v=module-bootstrap-20260702-1';
 
 export function createHistoryDetailDialog({ ctx, state, deps }) {
     const slots = {};
+    const contentCache = {
+        payloadKey: '',
+        nodes: new Map(),
+    };
     const workspace = createHistoryDetailWorkspace({ deps });
     const resume = createHistoryResumeFeature({ ctx, state, deps, slots });
     const overview = createHistoryOverviewRenderer({
@@ -59,6 +63,36 @@ export function createHistoryDetailDialog({ ctx, state, deps }) {
         renderHistoryDetailDialog(payload, options);
     }
 
+    function historyDetailContentCacheKey(payload) {
+        const task = payload?.task || null;
+        if (task?.id) return `${task.job || 'task'}:${task.id}`;
+        const group = payload?.group || null;
+        if (payload?.mode === 'config_group') {
+            return `config_group:${group?.key || group?.history_group_key || ''}:${payload.summary?.task_count || 0}`;
+        }
+        return payload ? String(payload.mode || 'history') : '';
+    }
+
+    function syncHistoryDetailContentCache(payload) {
+        const key = historyDetailContentCacheKey(payload);
+        if (contentCache.payloadKey === key) return;
+        deps.restorePreviewWorkspaceFromHistoryDetail();
+        contentCache.payloadKey = key;
+        contentCache.nodes.clear();
+    }
+
+    function clearHistoryDetailContentCache() {
+        deps.restorePreviewWorkspaceFromHistoryDetail();
+        contentCache.payloadKey = '';
+        contentCache.nodes.clear();
+    }
+
+    function selectHistoryDetailTab(tab) {
+        setHistoryDetailTab(state, tab);
+        renderHistoryDetailTabs();
+        renderHistoryDetailContent({ reuseCached: true });
+    }
+
     function renderHistoryDetailDialog(payload = state.currentPayload, options = {}) {
         const dialog = document.getElementById('history-detail-dialog');
         const title = document.getElementById('history-detail-title');
@@ -67,12 +101,13 @@ export function createHistoryDetailDialog({ ctx, state, deps }) {
         const content = document.getElementById('history-detail-content');
         if (!dialog || !title || !meta || !actions || !content) return;
         state.currentPayload = payload;
+        syncHistoryDetailContentCache(payload);
         if (!payload) {
             title.textContent = '历史任务';
             meta.textContent = '选择一条历史任务查看详情。';
             state.mainTaskReturn = null;
             actions.innerHTML = '';
-            content.innerHTML = '';
+            content.replaceChildren();
             renderHistoryDetailTabs();
             return;
         }
@@ -117,8 +152,7 @@ export function createHistoryDetailDialog({ ctx, state, deps }) {
             );
         } else if (payload.mode === 'config_group' && deps.canPreviewHistoryConfigGroup(group)) {
             const previewBtn = deps.createHistoryActionButton('分组预览', () => {
-                state.detailTab = 'preview';
-                renderHistoryManagerDetail(state.currentPayload, { open: true });
+                selectHistoryDetailTab('preview');
             });
             previewBtn.title = '汇总查看这个配置分组下所有训练任务的样张和权重';
             actions.append(previewBtn);
@@ -236,7 +270,7 @@ export function createHistoryDetailDialog({ ctx, state, deps }) {
     function closeHistoryDetailDialog() {
         const dialog = document.getElementById('history-detail-dialog');
         if (!dialog || !isHistoryDetailDialogOpen()) return;
-        deps.restorePreviewWorkspaceFromHistoryDetail();
+        clearHistoryDetailContentCache();
         setHistoryDetailWindowOpen(false);
         restoreHistoryDetailReturnState();
         state.mainTaskReturn = null;
@@ -272,29 +306,45 @@ export function createHistoryDetailDialog({ ctx, state, deps }) {
         closeHistoryDetailDialog();
     }
 
-    function renderHistoryDetailContent() {
+    function renderHistoryDetailContent(options = {}) {
         const content = document.getElementById('history-detail-content');
         if (!content) return;
-        deps.restorePreviewWorkspaceFromHistoryDetail();
-        content.innerHTML = '';
         const payload = state.currentPayload;
+        syncHistoryDetailContentCache(payload);
+        deps.restorePreviewWorkspaceFromHistoryDetail();
+        content.replaceChildren();
         if (!payload) {
             delete content.dataset.historyDetailTab;
+            deps.applyHistoryDetailUIScale?.('overview');
             return;
         }
         state.detailTab = normalizeVisibleHistoryDetailTab(payload, state.detailTab);
         content.dataset.historyDetailTab = state.detailTab;
+        deps.applyHistoryDetailUIScale?.(state.detailTab);
+        const cached = options.reuseCached ? contentCache.nodes.get(state.detailTab) : null;
+        if (cached) {
+            content.appendChild(cached);
+            if (state.detailTab === 'preview') deps.activateHistoryDetailPreview(payload);
+            return;
+        }
+
+        let node = null;
         if (state.detailTab === 'overview') {
-            content.appendChild(overview.renderHistoryDetailOverview(payload));
+            node = overview.renderHistoryDetailOverview(payload);
         } else if (state.detailTab === 'analysis') {
-            content.appendChild(analysis.renderHistoryDetailAnalysis(payload));
+            node = analysis.renderHistoryDetailAnalysis(payload);
         } else if (state.detailTab === 'preview') {
-            content.appendChild(workspace.renderHistoryDetailPreview(payload));
-            deps.activateHistoryDetailPreview(payload);
+            node = workspace.renderHistoryDetailPreview(payload);
         } else if (state.detailTab === 'logs') {
-            content.appendChild(logs.renderHistoryDetailLogs(payload));
+            node = logs.renderHistoryDetailLogs(payload);
         } else if (state.detailTab === 'config_files') {
-            content.appendChild(configFiles.renderHistoryDetailConfigFiles(payload));
+            node = configFiles.renderHistoryDetailConfigFiles(payload);
+        }
+        if (!node) return;
+        contentCache.nodes.set(state.detailTab, node);
+        content.appendChild(node);
+        if (state.detailTab === 'preview') {
+            deps.activateHistoryDetailPreview(payload);
         }
     }
 
@@ -302,8 +352,7 @@ export function createHistoryDetailDialog({ ctx, state, deps }) {
         document.querySelector('#history-detail-dialog .history-detail-tabs')?.addEventListener('click', (event) => {
             const btn = event.target.closest('.history-detail-tab');
             if (!btn) return;
-            setHistoryDetailTab(state, btn.dataset.historyDetailTab);
-            renderHistoryManagerDetail(state.currentPayload);
+            selectHistoryDetailTab(btn.dataset.historyDetailTab);
         });
         document.getElementById('btn-close-history-detail')?.addEventListener('click', closeHistoryDetailDialog);
         document.getElementById('history-detail-dialog')?.addEventListener('click', (event) => {
@@ -328,6 +377,7 @@ export function createHistoryDetailDialog({ ctx, state, deps }) {
         renderHistoryDetailContent,
         renderHistoryDetailTabs,
         bindHistoryDetailEvents,
+        clearHistoryDetailContentCache,
         getCurrentPayload: () => state.currentPayload,
         getActiveTab: () => state.detailTab,
         setActiveTab: (tab) => setHistoryDetailTab(state, tab),

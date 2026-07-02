@@ -29,6 +29,7 @@
             <button class="tab-btn" data-tab="weight-analysis">ΔW 分析</button>
             <button class="tab-btn" data-tab="settings">全局设置</button>
             <button class="tab-btn" data-tab="environment">环境检测</button>
+            <button class="tab-btn" data-tab="image-test">生图测试</button>
         </nav>
         <div id="status-indicator">
             <span class="dot idle"></span>
@@ -929,12 +930,16 @@
                             <small>输出根目录</small>
                         </div>
                         <div class="global-settings-summary-stat">
-                            <strong>1</strong>
-                            <small>界面设置</small>
+                            <strong>3</strong>
+                            <small>基础模型路径</small>
                         </div>
                         <div class="global-settings-summary-stat">
-                            <strong>3</strong>
-                            <small>模型默认路径</small>
+                            <strong>1</strong>
+                            <small>配置目录路径</small>
+                        </div>
+                        <div class="global-settings-summary-stat">
+                            <strong>1</strong>
+                            <small>界面设置</small>
                         </div>
                         <div class="global-settings-summary-note">单个训练配置里的同名字段仍会优先使用自己的值。</div>
                     </div>
@@ -953,12 +958,16 @@
                                 <strong>1 项</strong>
                             </div>
                             <div class="global-settings-meta-item">
-                                <small>UI</small>
+                                <small>MODELS</small>
+                                <strong>3 项</strong>
+                            </div>
+                            <div class="global-settings-meta-item">
+                                <small>CONFIGS</small>
                                 <strong>1 项</strong>
                             </div>
                             <div class="global-settings-meta-item">
-                                <small>MODELS</small>
-                                <strong>3 项</strong>
+                                <small>UI</small>
+                                <strong>1 项</strong>
                             </div>
                         </div>
                     </div>
@@ -1005,51 +1014,10 @@
                             </div>
                         </section>
 
-                        <section class="global-settings-card" aria-labelledby="global-ui-settings-title">
-                            <div class="global-settings-card-head">
-                                <div class="global-settings-card-title">
-                                    <span class="global-settings-card-mark">02</span>
-                                    <div>
-                                        <strong id="global-ui-settings-title">界面设置</strong>
-                                        <span>调整 Web 界面的显示效果。</span>
-                                    </div>
-                                </div>
-                            </div>
-                            <div class="global-setting-grid">
-                                <div class="preview-setting-field global-setting-field">
-                                    <div class="global-setting-label-row">
-                                        <label for="global-ui-scale">缩放比例 (%)</label>
-                                        <button
-                                            id="btn-global-ui-scale-help"
-                                            class="info-toggle global-setting-help-toggle"
-                                            type="button"
-                                            title="查看作用和为什么"
-                                            aria-expanded="false"
-                                            aria-controls="global-ui-scale-help"
-                                        >?</button>
-                                    </div>
-                                    <input id="global-ui-scale" type="number" min="25" max="400" step="5" placeholder="100">
-                                    <div id="global-ui-scale-help" class="field-help global-setting-help">
-                                        <div class="help-content">
-                                            <section class="help-section help-summary">
-                                                <div class="help-heading">作用</div>
-                                                <p>控制整个 WebUI 界面的缩放比例，默认为 100%。可以根据屏幕分辨率和个人偏好调整大小。</p>
-                                            </section>
-                                            <section class="help-section">
-                                                <div class="help-heading">为什么</div>
-                                                <p>在高分辨率显示器上，默认尺寸可能过小；在低分辨率显示器上，可能需要更紧凑的布局。通过统一的缩放比例，可以让界面适配不同的显示环境。</p>
-                                                <p>取值范围：25% - 400%。推荐范围：75% - 150%。</p>
-                                            </section>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        </section>
-
                         <section class="global-settings-card" aria-labelledby="global-model-settings-title">
                             <div class="global-settings-card-head">
                                 <div class="global-settings-card-title">
-                                    <span class="global-settings-card-mark">03</span>
+                                    <span class="global-settings-card-mark">02</span>
                                     <div>
                                         <strong id="global-model-settings-title">基础模型路径</strong>
                                         <span>新建空白预设写入的默认模型组件。</span>
@@ -1178,6 +1146,195 @@
                             </div>
                         </section>
 
+                        <section class="global-settings-card" aria-labelledby="global-ui-settings-title">
+                            <div class="global-settings-card-head">
+                                <div class="global-settings-card-title">
+                                    <span class="global-settings-card-mark">04</span>
+                                    <div>
+                                        <strong id="global-ui-settings-title">界面设置</strong>
+                                        <span>调整 Web 界面的显示效果。</span>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="global-setting-grid">
+                                <div class="preview-setting-field global-setting-field">
+                                    <div class="global-setting-label-row">
+                                        <label for="global-ui-scale">缩放比例 (%)</label>
+                                        <button
+                                            id="btn-global-ui-scale-help"
+                                            class="info-toggle global-setting-help-toggle"
+                                            type="button"
+                                            title="查看作用和为什么"
+                                            aria-expanded="false"
+                                            aria-controls="global-ui-scale-help"
+                                        >?</button>
+                                    </div>
+                                    <input id="global-ui-scale" type="number" min="25" max="400" step="5" placeholder="100">
+                                    <div id="global-ui-scale-help" class="field-help global-setting-help">
+                                        <div class="help-content">
+                                            <section class="help-section help-summary">
+                                                <div class="help-heading">作用</div>
+                                                <p>控制整个 WebUI 界面的缩放比例，默认为 100%。可以根据屏幕分辨率和个人偏好调整大小。</p>
+                                            </section>
+                                            <section class="help-section">
+                                                <div class="help-heading">为什么</div>
+                                                <p>在高分辨率显示器上，默认尺寸可能过小；在低分辨率显示器上，可能需要更紧凑的布局。通过统一的缩放比例，可以让界面适配不同的显示环境。</p>
+                                                <p>取值范围：25% - 400%。推荐范围：75% - 150%。</p>
+                                            </section>
+                                        </div>
+                                    </div>
+                                </div>
+                                <section class="global-ui-scale-group" aria-labelledby="global-ui-scale-pages-title">
+                                    <div class="global-ui-scale-group-head">
+                                        <strong id="global-ui-scale-pages-title">主页面独立比例</strong>
+                                        <span>勾选“跟随默认”时使用上方默认比例；取消后这一页会单独保存自己的比例。</span>
+                                    </div>
+                                    <div class="global-ui-scale-rows">
+                                        <div class="global-ui-scale-row">
+                                            <div class="global-ui-scale-copy">
+                                                <strong>配置</strong>
+                                                <span>主配置工作台与配置表单。</span>
+                                            </div>
+                                            <label class="global-ui-scale-follow-default" for="global-ui-scale-config-follow-default">
+                                                <input id="global-ui-scale-config-follow-default" type="checkbox">
+                                                <span>跟随默认</span>
+                                            </label>
+                                            <input id="global-ui-scale-config" type="number" min="25" max="400" step="5" placeholder="100">
+                                        </div>
+                                        <div class="global-ui-scale-row">
+                                            <div class="global-ui-scale-copy">
+                                                <strong>数据集</strong>
+                                                <span>数据集蓝图和数据集编辑器。</span>
+                                            </div>
+                                            <label class="global-ui-scale-follow-default" for="global-ui-scale-datasets-follow-default">
+                                                <input id="global-ui-scale-datasets-follow-default" type="checkbox">
+                                                <span>跟随默认</span>
+                                            </label>
+                                            <input id="global-ui-scale-datasets" type="number" min="25" max="400" step="5" placeholder="100">
+                                        </div>
+                                        <div class="global-ui-scale-row">
+                                            <div class="global-ui-scale-copy">
+                                                <strong>训练</strong>
+                                                <span>实时训练、队列和历史管理主界面。</span>
+                                            </div>
+                                            <label class="global-ui-scale-follow-default" for="global-ui-scale-training-follow-default">
+                                                <input id="global-ui-scale-training-follow-default" type="checkbox">
+                                                <span>跟随默认</span>
+                                            </label>
+                                            <input id="global-ui-scale-training" type="number" min="25" max="400" step="5" placeholder="100">
+                                        </div>
+                                        <div class="global-ui-scale-row">
+                                            <div class="global-ui-scale-copy">
+                                                <strong>ΔW 分析</strong>
+                                                <span>权重分析工作区、排行和热力图。</span>
+                                            </div>
+                                            <label class="global-ui-scale-follow-default" for="global-ui-scale-weight-analysis-follow-default">
+                                                <input id="global-ui-scale-weight-analysis-follow-default" type="checkbox">
+                                                <span>跟随默认</span>
+                                            </label>
+                                            <input id="global-ui-scale-weight-analysis" type="number" min="25" max="400" step="5" placeholder="100">
+                                        </div>
+                                        <div class="global-ui-scale-row">
+                                            <div class="global-ui-scale-copy">
+                                                <strong>生图测试</strong>
+                                                <span>单次推理表单、运行状态和 output/tests 结果区。</span>
+                                            </div>
+                                            <label class="global-ui-scale-follow-default" for="global-ui-scale-image-test-follow-default">
+                                                <input id="global-ui-scale-image-test-follow-default" type="checkbox">
+                                                <span>跟随默认</span>
+                                            </label>
+                                            <input id="global-ui-scale-image-test" type="number" min="25" max="400" step="5" placeholder="100">
+                                        </div>
+                                        <div class="global-ui-scale-row">
+                                            <div class="global-ui-scale-copy">
+                                                <strong>全局设置</strong>
+                                                <span>全局路径、界面设置和保存按钮区域。</span>
+                                            </div>
+                                            <label class="global-ui-scale-follow-default" for="global-ui-scale-settings-follow-default">
+                                                <input id="global-ui-scale-settings-follow-default" type="checkbox">
+                                                <span>跟随默认</span>
+                                            </label>
+                                            <input id="global-ui-scale-settings" type="number" min="25" max="400" step="5" placeholder="100">
+                                        </div>
+                                        <div class="global-ui-scale-row">
+                                            <div class="global-ui-scale-copy">
+                                                <strong>环境检测</strong>
+                                                <span>环境检测页的结果面板和侧边摘要。</span>
+                                            </div>
+                                            <label class="global-ui-scale-follow-default" for="global-ui-scale-environment-follow-default">
+                                                <input id="global-ui-scale-environment-follow-default" type="checkbox">
+                                                <span>跟随默认</span>
+                                            </label>
+                                            <input id="global-ui-scale-environment" type="number" min="25" max="400" step="5" placeholder="100">
+                                        </div>
+                                    </div>
+                                </section>
+                                <section class="global-ui-scale-group" aria-labelledby="global-ui-scale-history-title">
+                                    <div class="global-ui-scale-group-head">
+                                        <strong id="global-ui-scale-history-title">历史详情独立比例</strong>
+                                        <span>只作用在历史详情弹窗内容区，不改顶部标题栏和关闭按钮。</span>
+                                    </div>
+                                    <div class="global-ui-scale-rows">
+                                        <div class="global-ui-scale-row">
+                                            <div class="global-ui-scale-copy">
+                                                <strong>概览</strong>
+                                                <span>历史摘要、统计卡片和路径信息。</span>
+                                            </div>
+                                            <label class="global-ui-scale-follow-default" for="global-ui-scale-history-overview-follow-default">
+                                                <input id="global-ui-scale-history-overview-follow-default" type="checkbox">
+                                                <span>跟随默认</span>
+                                            </label>
+                                            <input id="global-ui-scale-history-overview" type="number" min="25" max="400" step="5" placeholder="100">
+                                        </div>
+                                        <div class="global-ui-scale-row">
+                                            <div class="global-ui-scale-copy">
+                                                <strong>训练分析</strong>
+                                                <span>Loss、学习率、系统采样和分析视图。</span>
+                                            </div>
+                                            <label class="global-ui-scale-follow-default" for="global-ui-scale-history-analysis-follow-default">
+                                                <input id="global-ui-scale-history-analysis-follow-default" type="checkbox">
+                                                <span>跟随默认</span>
+                                            </label>
+                                            <input id="global-ui-scale-history-analysis" type="number" min="25" max="400" step="5" placeholder="100">
+                                        </div>
+                                        <div class="global-ui-scale-row">
+                                            <div class="global-ui-scale-copy">
+                                                <strong>样张与权重</strong>
+                                                <span>历史样张缩略图、权重列表和预览工作区。</span>
+                                            </div>
+                                            <label class="global-ui-scale-follow-default" for="global-ui-scale-history-preview-follow-default">
+                                                <input id="global-ui-scale-history-preview-follow-default" type="checkbox">
+                                                <span>跟随默认</span>
+                                            </label>
+                                            <input id="global-ui-scale-history-preview" type="number" min="25" max="400" step="5" placeholder="100">
+                                        </div>
+                                        <div class="global-ui-scale-row">
+                                            <div class="global-ui-scale-copy">
+                                                <strong>日志</strong>
+                                                <span>日志过滤器、搜索和日志内容区。</span>
+                                            </div>
+                                            <label class="global-ui-scale-follow-default" for="global-ui-scale-history-logs-follow-default">
+                                                <input id="global-ui-scale-history-logs-follow-default" type="checkbox">
+                                                <span>跟随默认</span>
+                                            </label>
+                                            <input id="global-ui-scale-history-logs" type="number" min="25" max="400" step="5" placeholder="100">
+                                        </div>
+                                        <div class="global-ui-scale-row">
+                                            <div class="global-ui-scale-copy">
+                                                <strong>配置与文件</strong>
+                                                <span>配置快照、运行文件和路径列表。</span>
+                                            </div>
+                                            <label class="global-ui-scale-follow-default" for="global-ui-scale-history-config-files-follow-default">
+                                                <input id="global-ui-scale-history-config-files-follow-default" type="checkbox">
+                                                <span>跟随默认</span>
+                                            </label>
+                                            <input id="global-ui-scale-history-config-files" type="number" min="25" max="400" step="5" placeholder="100">
+                                        </div>
+                                    </div>
+                                </section>
+                            </div>
+                        </section>
+
                         <div class="global-settings-action-card">
                             <div class="global-settings-action-copy">
                                 <strong>写入全局设置</strong>
@@ -1261,6 +1418,146 @@
                         <strong>Runtime / Files / Packages / CUDA</strong>
                     </div>
                 </aside>
+            </div>
+        </section>
+
+        <section id="tab-image-test" class="tab-content">
+            <div class="image-test-layout">
+                <aside class="image-test-sidebar" aria-label="生图测试设置">
+                    <section class="panel">
+                        <label class="preview-setting-field image-test-field-wide">
+                            <span>正向提示词</span>
+                            <textarea id="image-test-prompt" rows="5" placeholder="例如：masterpiece, 1girl, cinematic light"></textarea>
+                        </label>
+                        <label class="preview-setting-field image-test-field-wide">
+                            <span>负面提示词</span>
+                            <textarea id="image-test-negative-prompt" rows="3" placeholder="可选"></textarea>
+                        </label>
+                        <div class="image-test-grid-2">
+                            <label class="preview-setting-field">
+                                <span>宽度</span>
+                                <input id="image-test-width" type="number" min="64" step="64" value="1024">
+                            </label>
+                            <label class="preview-setting-field">
+                                <span>高度</span>
+                                <input id="image-test-height" type="number" min="64" step="64" value="1024">
+                            </label>
+                            <label class="preview-setting-field">
+                                <span>采样步数</span>
+                                <input id="image-test-infer-steps" type="number" min="1" step="1" value="28">
+                            </label>
+                            <label class="preview-setting-field">
+                                <span>CFG</span>
+                                <input id="image-test-guidance-scale" type="number" min="0" step="0.1" value="4.0">
+                            </label>
+                            <label class="preview-setting-field">
+                                <span>Flow Shift</span>
+                                <input id="image-test-flow-shift" type="number" step="0.1" value="1.0">
+                            </label>
+                            <label class="preview-setting-field">
+                                <span>随机种子</span>
+                                <input id="image-test-seed" type="number" step="1" placeholder="留空则随机">
+                            </label>
+                            <label class="preview-setting-field">
+                                <span>采样器</span>
+                                <select id="image-test-sampler"></select>
+                            </label>
+                            <label class="preview-setting-field">
+                                <span>注意力后端</span>
+                                <select id="image-test-attn-mode"></select>
+                            </label>
+                            <label class="preview-setting-field">
+                                <span>推理精度</span>
+                                <select id="image-test-runtime-dtype"></select>
+                            </label>
+                            <label class="preview-setting-field">
+                                <span>文本编码器精度</span>
+                                <select id="image-test-text-encoder-dtype"></select>
+                            </label>
+                        </div>
+                    </section>
+
+                    <section class="panel">
+                        <div class="image-test-panel-head">
+                            <div>
+                                <strong>LoRA 权重</strong>
+                            </div>
+                            <button id="btn-refresh-image-test-weights" class="btn btn-small" type="button">刷新候选</button>
+                        </div>
+                        <div class="image-test-grid-2">
+                            <label class="preview-setting-field image-test-field-wide">
+                                <span>权重候选</span>
+                                <select id="image-test-weight-select"></select>
+                            </label>
+                            <label class="preview-setting-field image-test-field-wide">
+                                <span>权重路径</span>
+                                <input id="image-test-weight-path" type="text" placeholder="output/runs/.../anima.safetensors">
+                            </label>
+                            <label class="preview-setting-field">
+                                <span>LoRA 强度</span>
+                                <input id="image-test-lora-multiplier" type="number" step="0.05" value="1.0">
+                            </label>
+                        </div>
+                        <div class="preview-actions">
+                            <button id="btn-start-image-test" class="btn btn-primary" type="button">开始生图测试</button>
+                            <button id="btn-stop-image-test" class="btn" type="button">停止</button>
+                            <button id="btn-refresh-image-test-status" class="btn" type="button">刷新状态</button>
+                        </div>
+                        <div id="image-test-status" class="preview-status">打开本页后会读取当前状态。</div>
+                    </section>
+
+                    <section class="panel">
+                        <div class="image-test-panel-head">
+                            <div>
+                                <strong>运行状态</strong>
+                                <span>这里展示当前子进程状态、最近一次请求摘要和输出目录。</span>
+                            </div>
+                            <span id="image-test-run-badge" class="image-test-run-badge">空闲</span>
+                        </div>
+                        <div id="image-test-run-summary" class="image-test-run-summary"></div>
+                        <div class="image-test-summary-list">
+                            <div class="image-test-summary-item">
+                                <span>输出目录</span>
+                                <strong id="image-test-output-dir">output/tests</strong>
+                            </div>
+                        </div>
+                        <div id="image-test-last-request" class="image-test-request-list"></div>
+                    </section>
+
+                    <section class="panel">
+                        <div class="image-test-panel-head">
+                            <div>
+                                <strong>运行日志</strong>
+                                <span>直接读取后端保留的最近若干行输出，便于判断卡在哪一步。</span>
+                            </div>
+                        </div>
+                        <pre id="image-test-log" class="image-test-log">暂无运行日志。</pre>
+                    </section>
+
+                    <section class="panel">
+                        <div class="image-test-panel-head">
+                            <div>
+                                <strong>调试命令</strong>
+                                <span>用于确认后台实际启动的 inference 参数。</span>
+                            </div>
+                        </div>
+                        <pre id="image-test-command" class="image-test-command">当前没有可展示的推理命令。</pre>
+                    </section>
+                </aside>
+
+                <section class="image-test-main image-test-gallery" aria-label="生图测试结果">
+                    <div class="panel">
+                        <div class="image-test-main-head">
+                            <div>
+                                <strong id="image-test-title">推理预览</strong>
+                                <span id="image-test-subtitle">读取 output/tests 里的最新结果。</span>
+                            </div>
+                            <div id="image-test-count" class="image-test-count">0 张</div>
+                        </div>
+                        <div id="image-test-empty" class="image-test-empty">打开本页后会读取 output/tests 中的结果图。</div>
+                        <div id="image-test-grid" class="preview-grid" aria-live="polite"></div>
+                    </div>
+                </section>
             </div>
         </section>
     </main>
@@ -1488,6 +1785,6 @@
 
     <div id="config-switch-toast" class="config-switch-toast" role="status" aria-live="polite" hidden></div>
 
-    <script type="module" src="/static/app.js?v=module-bootstrap-20260627-3"></script>
+    <script type="module" src="/static/app.js?v=module-bootstrap-20260702-1"></script>
 </body>
 </html>

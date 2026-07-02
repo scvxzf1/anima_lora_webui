@@ -10,6 +10,14 @@ import random
 import time
 import signal
 
+from library.runtime.allocator import default_expandable_segments
+
+if default_expandable_segments():
+    print(
+        "Anima: PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True "
+        "(default; set ANIMA_EXPANDABLE_SEGMENTS=0 to disable)"
+    )
+
 import torch
 import torch.nn as nn
 from library.runtime.device import clean_memory_on_device

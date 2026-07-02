@@ -168,6 +168,10 @@ def test_frontend_module_graph_follows_production_entrypoint() -> None:
     assert "js/features/environment-check/state.js" in relative
     assert "js/features/environment-check/api.js" in relative
     assert "js/features/environment-check/render.js" in relative
+    assert "js/features/image-test/index.js" in relative
+    assert "js/features/image-test/state.js" in relative
+    assert "js/features/image-test/api.js" in relative
+    assert "js/features/image-test/render.js" in relative
     assert "js/features/app-shell/theme.js" in relative
     assert "js/features/app-shell/gpu-picker.js" in relative
     assert "js/features/app-shell/tabs.js" in relative
@@ -301,7 +305,8 @@ def test_preview_feature_modules_are_loaded_from_production_entrypoint() -> None
     assert "grid.appendChild(createPreviewCard(image, index));" in preview_images
     assert "img.loading = previewImageLoadingMode(index);" in preview_images
     assert "const isHistorySelection = Boolean(state.selectedTaskId || state.selectedGroup);" in preview_images
-    assert "return isHistorySelection && index < 80 ? 'eager' : 'lazy';" in preview_images
+    assert "HISTORY_PREVIEW_EAGER_IMAGE_LIMIT = 16" in preview_images
+    assert "return isHistorySelection && index < HISTORY_PREVIEW_EAGER_IMAGE_LIMIT ? 'eager' : 'lazy';" in preview_images
     assert "preview-card-error-message" in preview_images
     assert "图片加载失败" in preview_images
     assert ".preview-card-error-message" in css
@@ -475,6 +480,233 @@ def test_environment_check_feature_modules_are_loaded_from_production_entrypoint
         "environment",
     ):
         assert tooltip_id in tooltip_section
+
+
+def test_image_test_feature_modules_are_loaded_from_production_entrypoint() -> None:
+    legacy_source = _anima_app_container_text()
+    image_test_index = _frontend_module_text("js/features/image-test/index.js")
+    image_test_api = _frontend_module_text("js/features/image-test/api.js")
+    image_test_render = _frontend_module_text("js/features/image-test/render.js")
+    image_test_state = _frontend_module_text("js/features/image-test/state.js")
+    tabs_source = _frontend_module_text("js/features/app-shell/tabs.js")
+    html = INDEX_HTML.read_text(encoding="utf-8")
+    css = STYLE_CSS.read_text(encoding="utf-8")
+    listener_section = _section(legacy_source, "function setupEventListeners", "function installBeginnerTooltips")
+    tab_setup = _section(tabs_source, "function setupTabs()", "return {")
+    tooltip_section = _section(legacy_source, "function installBeginnerTooltips()", "// ── 工具函数 ──")
+    routes_source = (STATIC_DIR.parents[0] / "routes" / "__init__.py").read_text(encoding="utf-8")
+    server_source = (STATIC_DIR.parents[0] / "server.py").read_text(encoding="utf-8")
+
+    assert "createImageTestFeature(ctx, {" in legacy_source
+    assert "ensureImageTestFeature().bindImageTestEvents();" in listener_section
+    assert "if (nextTab === 'image-test')" in tab_setup
+    assert "ensureImageTestFeature?.().loadImageTestPage();" in tab_setup
+    assert "bindImageTestEvents" in image_test_index
+    assert "loadImageTestPage" in image_test_index
+    assert "syncFromCurrentConfig" in image_test_index
+    assert "fetchImageTestStatus" in image_test_api
+    assert "startImageTestRequest" in image_test_api
+    assert "stopImageTestRequest" in image_test_api
+    assert "fetchImageTestWeights" in image_test_api
+    assert "fetchImageTestImages" in image_test_api
+    assert "'/api/image-test/status'" in image_test_api
+    assert "'/api/image-test/start'" in image_test_api
+    assert "'/api/image-test/stop'" in image_test_api
+    assert "'/api/analysis/weights'" in image_test_api
+    assert "/api/preview/images?" in image_test_api
+    assert "createImageTestRenderer" in image_test_render
+    assert "renderRuntime" in image_test_render
+    assert "renderWeightOptions" in image_test_render
+    assert "renderImages" in image_test_render
+    assert "createImageTestState" in image_test_state
+    assert "IMAGE_TEST_DEFAULTS" in image_test_state
+    assert "IMAGE_TEST_SAMPLER_OPTIONS" in image_test_state
+    assert "IMAGE_TEST_ATTN_MODE_OPTIONS" in image_test_state
+    assert "IMAGE_TEST_RUNTIME_DTYPE_OPTIONS" in image_test_state
+    assert "IMAGE_TEST_TEXT_ENCODER_DTYPE_OPTIONS" in image_test_state
+    assert "image-test-runtime-dtype" in image_test_render
+    assert "image-test-text-encoder-dtype" in image_test_render
+    assert "runtime_dtype: readValue('image-test-runtime-dtype')" in image_test_index
+    assert "text_encoder_dtype: readValue('image-test-text-encoder-dtype')" in image_test_index
+    assert "setup_image_test_routes(app)" in routes_source
+    assert 'app["image_test_service"] = None' in server_source
+    assert "ImageTestService(app)" in server_source
+
+    assert 'data-tab="image-test"' in html
+    assert 'id="tab-image-test"' in html
+    assert 'image-test-prompt' in html
+    assert 'image-test-negative-prompt' in html
+    assert 'image-test-width' in html
+    assert 'image-test-height' in html
+    assert 'image-test-infer-steps' in html
+    assert 'image-test-guidance-scale' in html
+    assert 'image-test-flow-shift' in html
+    assert 'image-test-seed' in html
+    assert 'image-test-sampler' in html
+    assert 'image-test-attn-mode' in html
+    assert 'image-test-runtime-dtype' in html
+    assert 'image-test-text-encoder-dtype' in html
+    assert 'image-test-weight-select' in html
+    assert 'image-test-weight-path' in html
+    assert 'image-test-lora-multiplier' in html
+    assert 'btn-start-image-test' in html
+    assert 'btn-stop-image-test' in html
+    assert 'btn-refresh-image-test-status' in html
+    assert 'image-test-run-badge' in html
+    assert 'image-test-run-summary' in html
+    assert 'image-test-log' in html
+    assert 'image-test-command' in html
+    assert 'image-test-grid' in html
+    assert 'image-test-empty' in html
+
+    for selector in (
+        "#tab-image-test",
+        ".image-test-layout",
+        ".image-test-summary-item",
+        ".image-test-grid-2",
+        ".image-test-run-badge",
+        ".image-test-run-summary",
+        ".image-test-request-list",
+        ".image-test-log",
+        ".image-test-command",
+        ".image-test-gallery",
+        ".image-test-empty",
+        ".image-test-card",
+    ):
+        assert selector in css
+
+    for tooltip_id in (
+        "btn-refresh-image-test-status",
+        "btn-refresh-image-test-weights",
+        "image-test-weight-select",
+        "image-test-weight-path",
+        "image-test-runtime-dtype",
+        "image-test-text-encoder-dtype",
+        "btn-start-image-test",
+        "btn-stop-image-test",
+        "image-test",
+    ):
+        assert tooltip_id in tooltip_section
+
+
+def test_global_ui_scale_override_controls_and_runtime_hooks_are_present() -> None:
+    html = INDEX_HTML.read_text(encoding="utf-8")
+    defaults_source = _frontend_module_text("js/config/catalog/defaults.js")
+    settings_source = _frontend_module_text("js/features/anima-app/chunks/26-load-global-settings.js")
+    listeners_source = _frontend_module_text("js/features/anima-app/chunks/36-setup-event-listeners.js")
+    ensure_history_source = _frontend_module_text("js/features/anima-app/chunks/02-ensure-history-detail-feature.js")
+    ui_scale_source = _frontend_module_text("js/features/app-shell/ui-scale.js")
+    history_dialog_source = _frontend_module_text("js/features/history-detail/dialog.js")
+    css = STYLE_CSS.read_text(encoding="utf-8")
+
+    assert "GLOBAL_UI_TOP_LEVEL_OVERRIDE_FIELDS" in defaults_source
+    assert "GLOBAL_UI_HISTORY_DETAIL_OVERRIDE_FIELDS" in defaults_source
+    assert "GLOBAL_UI_OVERRIDE_FIELDS" in defaults_source
+    assert "GLOBAL_UI_FIELDS" in defaults_source
+    assert "followDefaultId" in defaults_source
+    assert "detailTab: 'config_files'" in defaults_source
+    assert "tab: 'weight-analysis'" in defaults_source
+    assert "tab: 'image-test'" in defaults_source
+
+    for snippet in (
+        "global-ui-scale-pages-title",
+        "global-ui-scale-history-title",
+        "主页面独立比例",
+        "历史详情独立比例",
+        "global-ui-scale-config-follow-default",
+        "global-ui-scale-datasets-follow-default",
+        "global-ui-scale-training-follow-default",
+        "global-ui-scale-weight-analysis-follow-default",
+        "global-ui-scale-image-test-follow-default",
+        "global-ui-scale-settings-follow-default",
+        "global-ui-scale-environment-follow-default",
+        "global-ui-scale-history-overview-follow-default",
+        "global-ui-scale-history-analysis-follow-default",
+        "global-ui-scale-history-preview-follow-default",
+        "global-ui-scale-history-logs-follow-default",
+        "global-ui-scale-history-config-files-follow-default",
+    ):
+        assert snippet in html
+
+    for selector in (
+        ".global-ui-scale-group",
+        ".global-ui-scale-group-head",
+        ".global-ui-scale-rows",
+        ".global-ui-scale-row",
+        ".global-ui-scale-copy",
+        ".global-ui-scale-follow-default",
+        ".global-ui-scale-row.is-follow-default > input[type=\"number\"]",
+    ):
+        assert selector in css
+
+    for snippet in (
+        "function resolveGlobalUIScaleDefaultValue",
+        "function syncGlobalUIScaleOverrideField",
+        "function syncAllGlobalUIScaleOverrideFields",
+        "function applyGlobalUIScaleOverrideInputs",
+        "function collectGlobalUIScaleOverridePayload",
+        "applyGlobalUIScaleOverrideInputs(snapshot);",
+        "return collectGlobalUIScaleOverridePayload(payload);",
+        "GLOBAL_UI_OVERRIDE_FIELDS.map(({ key }) => [key, defaults[key] ?? ''])",
+        "activeHistoryDetailTab: historyDetailFeature?.getActiveTab?.(),",
+    ):
+        assert snippet in settings_source
+
+    for snippet in (
+        "document.getElementById('global-ui-scale')?.addEventListener('input'",
+        "document.getElementById('global-ui-scale')?.addEventListener('change'",
+        "GLOBAL_UI_OVERRIDE_FIELDS.forEach((field) => {",
+        "document.getElementById(field.followDefaultId)?.addEventListener('change'",
+        "syncGlobalUIScaleOverrideField(field);",
+    ):
+        assert snippet in listeners_source
+
+    for snippet in (
+        "topLevelFields: GLOBAL_UI_TOP_LEVEL_OVERRIDE_FIELDS",
+        "historyDetailFields: GLOBAL_UI_HISTORY_DETAIL_OVERRIDE_FIELDS",
+        "applyHistoryDetailUIScale: (detailTab) => {",
+        "uiScaleController?.applyHistoryDetailScale?.(globalSettings || {}, detailTab || 'overview');",
+    ):
+        assert snippet in ensure_history_source
+
+    for snippet in (
+        "function resolveBaseScale(settings)",
+        "function resolveOverrideScale(settings, key, baseScale)",
+        "function applyScopedZoom(element, effectiveScale, baseScale)",
+        "function applyTopLevelScales(settings, baseScale = resolveBaseScale(settings))",
+        "function applyHistoryDetailScale(settings, activeHistoryDetailTab = 'overview', baseScale = resolveBaseScale(settings))",
+        "function applyScaleFromSettings(settings, { activeHistoryDetailTab = 'overview' } = {})",
+        "document.getElementById(`tab-${field.tab}`)",
+        "document.getElementById('history-detail-content')",
+        "element.style.setProperty('zoom', String(zoom));",
+    ):
+        assert snippet in ui_scale_source
+
+    for snippet in (
+        "deps.applyHistoryDetailUIScale?.('overview');",
+        "deps.applyHistoryDetailUIScale?.(state.detailTab);",
+    ):
+        assert snippet in history_dialog_source
+
+
+def test_global_settings_cards_follow_requested_numbering_order() -> None:
+    html = INDEX_HTML.read_text(encoding="utf-8")
+
+    output_index = html.index('id="global-output-settings-title"')
+    model_index = html.index('id="global-model-settings-title"')
+    config_index = html.index('id="global-config-paths-title"')
+    ui_index = html.index('id="global-ui-settings-title"')
+
+    assert output_index < model_index < config_index < ui_index
+    assert '<span class="global-settings-card-mark">01</span>' in html
+    assert '<span class="global-settings-card-mark">02</span>' in html
+    assert '<span class="global-settings-card-mark">03</span>' in html
+    assert '<span class="global-settings-card-mark">04</span>' in html
+
+    summary_section = _section(html, '<div class="global-settings-summary" aria-label="全局设置范围">', '<div class="global-settings-summary-note">')
+    assert summary_section.index("输出根目录") < summary_section.index("基础模型路径")
+    assert summary_section.index("基础模型路径") < summary_section.index("配置目录路径")
+    assert summary_section.index("配置目录路径") < summary_section.index("界面设置")
 
 
 def test_new_training_launch_enters_live_monitoring() -> None:
@@ -1089,11 +1321,21 @@ def test_config_form_uses_navigation_search_and_progressive_disclosure() -> None
     assert "configDraftValueChanged(key, value, original)" in set_field_section
     assert "configFormState.draftValues.delete(key);" in set_field_section
     assert "input.value = value ?? '';" in set_field_section
+    compact_grid_section = _section(source, "function appendFieldRows", "function createConfigDatasetPicker")
     compact_field_css = _section(css, ".config-field-grid-3col .field-main", ".field-label-stack")
+    filler_css = _section(css, ".config-field-grid .field-row-filler", ".config-field-grid .field-row-filler::before")
+    config_filler_css = _section(css, "#tab-config .config-field-grid .field-row-filler", "#tab-config .config-field-grid .field-row:focus-within")
+    assert "appendCompactGridFillers(grid);" in compact_grid_section
+    assert "querySelectorAll('.field-row-filler').forEach((node) => node.remove());" in compact_grid_section
+    assert "grid.appendChild(createCompactGridFiller());" in compact_grid_section
+    assert "filler.className = 'field-row field-row-compact field-row-filler';" in compact_grid_section
+    assert "grid.classList.remove('config-field-grid-2col', 'config-field-grid-3col', 'config-field-grid-4col', 'config-field-grid-5col');" in compact_grid_section
     assert "grid-template-rows: auto auto;" in compact_field_css
     assert "row-gap: 0.24rem;" in compact_field_css
     assert "grid-row: 1;" in compact_field_css
     assert "grid-row: 2;" in compact_field_css
+    assert "pointer-events: none;" in filler_css
+    assert "color-mix(in srgb, var(--config-panel-bg) 72%, var(--config-panel-soft))" in config_filler_css
     data_section = _section(source, "title: '数据集设置'", "title: '训练中预览图'")
     data_compact = _section(source, "'config-group-data': [", "'config-group-sampling': [")
     inline_flag_css = _section(css, ".config-field-grid-inline-flags .field-main", ".field-label-stack")
@@ -1790,6 +2032,11 @@ def test_history_manager_frontend_hooks_are_present() -> None:
     assert "function renderHistoryDetailTabs" in history_detail_dialog
     assert "btn.dataset.historyDetailTab = item.key" in history_detail_dialog
     assert "function historyDetailTabsForPayload" in history_detail_dialog
+    assert "const contentCache = {" in history_detail_dialog
+    assert "function syncHistoryDetailContentCache(payload)" in history_detail_dialog
+    assert "function selectHistoryDetailTab(tab)" in history_detail_dialog
+    assert "renderHistoryDetailContent({ reuseCached: true })" in history_detail_dialog
+    assert "contentCache.nodes.get(state.detailTab)" in history_detail_dialog
     assert "task?.job === 'preprocess'" in history_detail_dialog
     assert "['overview', 'logs', 'config_files'].includes(item.key)" in history_detail_dialog
     assert "normalizeVisibleHistoryDetailTab(payload, state.detailTab)" in history_detail_dialog
@@ -1990,6 +2237,7 @@ def test_history_manager_frontend_hooks_are_present() -> None:
         "getCurrentPayload",
         "getActiveTab",
         "setActiveTab",
+        "clearHistoryDetailContentCache",
     ):
         assert name in history_detail_index
     assert "fetchHistoryTask(ctx, taskId)" in history_detail_index
@@ -2094,6 +2342,11 @@ def test_history_manager_frontend_hooks_are_present() -> None:
     assert "historyDetailLimitNotice" in detail_section
     assert "仅显示最近" in detail_section
     assert "syncHistoryLogConsoleState" in detail_section
+    assert "HISTORY_LOG_RENDER_BATCH_SIZE" in detail_section
+    assert "consoleRenderToken" in detail_section
+    assert "scheduleHistoryLogRenderBatch(() => appendBatch(end))" in detail_section
+    assert "pre.dataset.rendering = 'true'" in detail_section
+    assert "if (pre.dataset.rendering === 'true') return;" in detail_section
     assert "renderHistoryLogCommandCard" in detail_section
     assert "复制完整命令" in detail_section
     assert "搜索 Error、Epoch..." in detail_section
@@ -2135,9 +2388,15 @@ def test_history_manager_frontend_hooks_are_present() -> None:
     assert "groupMode" not in listener_section
     assert "ensureHistoryDetailFeature().bindHistoryDetailEvents();" in listener_section
     assert "history-detail-tab" in history_detail_dialog
-    assert "setHistoryDetailTab(state, btn.dataset.historyDetailTab)" in history_detail_dialog
+    assert "selectHistoryDetailTab(btn.dataset.historyDetailTab)" in history_detail_dialog
+    assert "dialog.clearHistoryDetailContentCache();" in history_detail_index
     assert "btn-close-history-detail" in history_detail_dialog
     assert "logBuffer" in source
+    assert "logOutputLines" in source
+    assert "logRenderToken" in source
+    assert "LOG_RENDER_BATCH_SIZE" in source
+    assert "scheduleLogRenderBatch(() => appendBatch(end))" in source
+    assert "renderLogOutputLines(lines, { stickToBottom: true })" in log_append_section
     assert "scheduleLogFlush" in log_append_section
     assert "requestAnimationFrame" in log_append_section
     assert "MAX_LOG_LINES" in log_append_section

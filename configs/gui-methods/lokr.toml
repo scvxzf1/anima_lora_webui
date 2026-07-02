@@ -23,6 +23,9 @@ lokr_factor = 8
 lokr_factor_group_size = 8
 # Row-chunk byte threshold for custom LoKr projection. Default 4MiB.
 lokr_project_chunk_bytes = 4194304
+# Experimental fused grouped-delta forward. "triton" only affects the forward
+# path; backward still reuses the eager recompute formula.
+lokr_grouped_delta_backend = "eager"
 
 output_name = "anima_lokr"
 

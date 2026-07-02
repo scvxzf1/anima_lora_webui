@@ -11,6 +11,7 @@ Covers:
 from __future__ import annotations
 
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 import torch
@@ -19,6 +20,7 @@ from safetensors.torch import load_file
 from networks import (
     NETWORK_REGISTRY,
     SHARED_KWARG_FLAGS,
+    ModuleCreationContext,
     NetworkSpec,
     all_network_kwargs,
     resolve_network_spec,
@@ -106,11 +108,36 @@ def test_lokr_kwargs_registered():
         "lokr_factor",
         "lokr_factor_group_size",
         "lokr_project_chunk_bytes",
+        "lokr_grouped_delta_backend",
     }
     assert must_have.issubset(set(all_network_kwargs()))
     assert "lokr_factor" in set(NETWORK_REGISTRY["lokr"].kwarg_flags)
     assert "lokr_factor_group_size" in set(NETWORK_REGISTRY["lokr"].kwarg_flags)
     assert "lokr_project_chunk_bytes" in set(NETWORK_REGISTRY["lokr"].kwarg_flags)
+    assert "lokr_grouped_delta_backend" in set(NETWORK_REGISTRY["lokr"].kwarg_flags)
+
+
+def test_lokr_module_kwargs_forward_grouped_delta_backend():
+    ctx = ModuleCreationContext(
+        cfg=SimpleNamespace(
+            plugin_args={
+                "lokr_factor": 4,
+                "lokr_factor_group_size": 2,
+                "lokr_project_chunk_bytes": 2048,
+                "lokr_grouped_delta_backend": "triton",
+            }
+        ),
+        is_unet=True,
+        lora_name="lora_unet_test",
+        original_name="blocks.0.mlp.layer1",
+        child_module=torch.nn.Linear(8, 8, bias=False),
+        module_class=LoKrModule,
+    )
+    kwargs = NETWORK_REGISTRY["lokr"].module_kwargs(ctx)
+    assert kwargs["factor"] == 4
+    assert kwargs["lokr_factor_group_size"] == 2
+    assert kwargs["lokr_project_chunk_bytes"] == 2048
+    assert kwargs["lokr_grouped_delta_backend"] == "triton"
 
 
 def test_dora_kwargs_registered():

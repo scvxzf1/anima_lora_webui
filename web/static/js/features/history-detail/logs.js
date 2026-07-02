@@ -1,6 +1,9 @@
-import { historyDetailLimitNotice } from './system.js?v=module-bootstrap-20260627-3';
+import { historyDetailLimitNotice } from './system.js?v=module-bootstrap-20260702-1';
+
+const HISTORY_LOG_RENDER_BATCH_SIZE = 200;
 
 export function createHistoryLogsRenderer({ state, deps }) {
+    let consoleRenderToken = 0;
 
     function renderHistoryDetailLogs(payload) {
         const box = document.createElement('div');
@@ -83,24 +86,50 @@ export function createHistoryLogsRenderer({ state, deps }) {
             });
 
         function renderConsole(options = {}) {
+            const token = ++consoleRenderToken;
             const query = state.logs.query.trim();
             const matches = [];
             const filtered = visibleLogs.filter((item) => historyLogMatchesLevel(item.tone, state.logs.level));
-            const fragment = document.createDocumentFragment();
-            for (const item of filtered) {
-                const line = document.createElement('span');
-                line.className = `history-log-line ${item.tone}`;
-                appendAnsiLogText(line, item.text, query, matches);
-                fragment.appendChild(line);
-            }
+            pre.dataset.rendering = 'true';
+            pre.textContent = '';
+            previous.disabled = true;
+            next.disabled = true;
+            matchStatus.textContent = query ? '搜索中...' : '';
+            summary.textContent = `显示 ${filtered.length} / ${visibleLogs.length} 行`;
             if (!filtered.length) {
                 const empty = document.createElement('span');
                 empty.className = 'history-log-empty';
                 empty.textContent = visibleLogs.length ? '当前筛选条件下没有日志。' : '无日志。';
-                fragment.appendChild(empty);
+                pre.appendChild(empty);
+                finishConsoleRender(token, matches, query, options);
+                return;
             }
-            pre.replaceChildren(fragment);
 
+            const appendBatch = (start = 0) => {
+                if (token !== consoleRenderToken) return;
+                const end = Math.min(start + HISTORY_LOG_RENDER_BATCH_SIZE, filtered.length);
+                const fragment = document.createDocumentFragment();
+                for (let index = start; index < end; index += 1) {
+                    const item = filtered[index];
+                    const line = document.createElement('span');
+                    line.className = `history-log-line ${item.tone}`;
+                    appendAnsiLogText(line, item.text, query, matches);
+                    fragment.appendChild(line);
+                }
+                pre.appendChild(fragment);
+                if (end < filtered.length) {
+                    scheduleHistoryLogRenderBatch(() => appendBatch(end));
+                    return;
+                }
+                finishConsoleRender(token, matches, query, options);
+            };
+
+            appendBatch();
+        }
+
+        function finishConsoleRender(token, matches, query, options = {}) {
+            if (token !== consoleRenderToken) return;
+            delete pre.dataset.rendering;
             if (!matches.length) {
                 state.logs.matchIndex = 0;
             } else {
@@ -112,13 +141,13 @@ export function createHistoryLogsRenderer({ state, deps }) {
                 : '';
             previous.disabled = !matches.length;
             next.disabled = !matches.length;
-            summary.textContent = `显示 ${filtered.length} / ${visibleLogs.length} 行`;
             if (options.focusMatch && matches.length) {
                 matches[state.logs.matchIndex].scrollIntoView({ block: 'center' });
             }
         }
 
         function moveMatch(offset) {
+            if (pre.dataset.rendering === 'true') return;
             const count = pre.querySelectorAll('.history-log-match').length;
             if (!count) return;
             state.logs.matchIndex = (state.logs.matchIndex + offset + count) % count;
@@ -169,6 +198,13 @@ export function createHistoryLogsRenderer({ state, deps }) {
         btn.title = title;
         btn.setAttribute('aria-label', title);
         return btn;
+    }
+
+    function scheduleHistoryLogRenderBatch(callback) {
+        const schedule = window.requestAnimationFrame
+            ? (fn) => window.requestAnimationFrame(fn)
+            : (fn) => window.setTimeout(fn, 16);
+        schedule(callback);
     }
 
     function historyLogMatchesLevel(tone, level) {

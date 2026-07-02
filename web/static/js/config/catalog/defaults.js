@@ -273,12 +273,36 @@ export const GLOBAL_MODEL_PATH_FIELDS = [
 export const GLOBAL_CONFIG_PATH_FIELDS = [
     ['configs_root', 'global-configs-root'],
 ];
-export const GLOBAL_UI_FIELDS = [
+export const GLOBAL_UI_BASE_FIELDS = [
     ['ui_scale', 'global-ui-scale'],
+];
+export const GLOBAL_UI_TOP_LEVEL_OVERRIDE_FIELDS = Object.freeze([
+    { key: 'ui_scale_config', inputId: 'global-ui-scale-config', followDefaultId: 'global-ui-scale-config-follow-default', tab: 'config' },
+    { key: 'ui_scale_datasets', inputId: 'global-ui-scale-datasets', followDefaultId: 'global-ui-scale-datasets-follow-default', tab: 'datasets' },
+    { key: 'ui_scale_training', inputId: 'global-ui-scale-training', followDefaultId: 'global-ui-scale-training-follow-default', tab: 'training' },
+    { key: 'ui_scale_weight_analysis', inputId: 'global-ui-scale-weight-analysis', followDefaultId: 'global-ui-scale-weight-analysis-follow-default', tab: 'weight-analysis' },
+    { key: 'ui_scale_image_test', inputId: 'global-ui-scale-image-test', followDefaultId: 'global-ui-scale-image-test-follow-default', tab: 'image-test' },
+    { key: 'ui_scale_settings', inputId: 'global-ui-scale-settings', followDefaultId: 'global-ui-scale-settings-follow-default', tab: 'settings' },
+    { key: 'ui_scale_environment', inputId: 'global-ui-scale-environment', followDefaultId: 'global-ui-scale-environment-follow-default', tab: 'environment' },
+]);
+export const GLOBAL_UI_HISTORY_DETAIL_OVERRIDE_FIELDS = Object.freeze([
+    { key: 'ui_scale_history_overview', inputId: 'global-ui-scale-history-overview', followDefaultId: 'global-ui-scale-history-overview-follow-default', detailTab: 'overview' },
+    { key: 'ui_scale_history_analysis', inputId: 'global-ui-scale-history-analysis', followDefaultId: 'global-ui-scale-history-analysis-follow-default', detailTab: 'analysis' },
+    { key: 'ui_scale_history_preview', inputId: 'global-ui-scale-history-preview', followDefaultId: 'global-ui-scale-history-preview-follow-default', detailTab: 'preview' },
+    { key: 'ui_scale_history_logs', inputId: 'global-ui-scale-history-logs', followDefaultId: 'global-ui-scale-history-logs-follow-default', detailTab: 'logs' },
+    { key: 'ui_scale_history_config_files', inputId: 'global-ui-scale-history-config-files', followDefaultId: 'global-ui-scale-history-config-files-follow-default', detailTab: 'config_files' },
+]);
+export const GLOBAL_UI_OVERRIDE_FIELDS = Object.freeze([
+    ...GLOBAL_UI_TOP_LEVEL_OVERRIDE_FIELDS,
+    ...GLOBAL_UI_HISTORY_DETAIL_OVERRIDE_FIELDS,
+]);
+export const GLOBAL_UI_FIELDS = [
+    ...GLOBAL_UI_BASE_FIELDS,
+    ...GLOBAL_UI_OVERRIDE_FIELDS.map(({ key, inputId }) => [key, inputId]),
 ];
 export const GLOBAL_SETTING_INPUTS = [
     ['output_root', 'global-output-root'],
     ...GLOBAL_MODEL_PATH_FIELDS,
     ...GLOBAL_CONFIG_PATH_FIELDS,
-    ...GLOBAL_UI_FIELDS,
+    ...GLOBAL_UI_BASE_FIELDS,
 ];

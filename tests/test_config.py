@@ -68,6 +68,7 @@ def test_schema_has_known_keys(populated_parser):
         "use_glora",  # GLoRA plugin selector
         "lokr_factor_group_size",  # LoKr grouped projection tuning
         "lokr_project_chunk_bytes",  # LoKr projection row-chunk threshold
+        "lokr_grouped_delta_backend",  # LoKr grouped-delta backend selector
     ):
         assert k in schema, f"expected {k!r} in populated schema"
 

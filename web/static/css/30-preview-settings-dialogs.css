@@ -513,6 +513,93 @@
     color: var(--settings-accent);
 }
 
+#tab-settings .global-ui-scale-group {
+    display: grid;
+    gap: 0.72rem;
+    padding: 0.9rem 1rem 1rem;
+    border: 1px solid var(--settings-border);
+    border-radius: 6px;
+    background: var(--settings-field-bg);
+}
+
+#tab-settings .global-ui-scale-group-head {
+    display: grid;
+    gap: 0.18rem;
+}
+
+#tab-settings .global-ui-scale-group-head strong {
+    color: var(--settings-text);
+    font-size: 0.84rem;
+    line-height: 1.2;
+}
+
+#tab-settings .global-ui-scale-group-head span {
+    color: var(--settings-muted);
+    font-size: 0.7rem;
+    line-height: 1.4;
+}
+
+#tab-settings .global-ui-scale-rows {
+    display: grid;
+    gap: 0.55rem;
+}
+
+#tab-settings .global-ui-scale-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto minmax(88px, 112px);
+    gap: 0.75rem;
+    align-items: center;
+    padding: 0.72rem 0.8rem;
+    border: 1px solid var(--settings-border);
+    border-radius: 6px;
+    background: var(--settings-panel-soft);
+}
+
+#tab-settings .global-ui-scale-copy {
+    display: grid;
+    gap: 0.12rem;
+    min-width: 0;
+}
+
+#tab-settings .global-ui-scale-copy strong {
+    color: var(--settings-text);
+    font-size: 0.8rem;
+    line-height: 1.2;
+}
+
+#tab-settings .global-ui-scale-copy span {
+    color: var(--settings-muted);
+    font-size: 0.68rem;
+    line-height: 1.35;
+}
+
+#tab-settings .global-ui-scale-follow-default {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.42rem;
+    color: var(--settings-muted);
+    font-size: 0.72rem;
+    font-weight: 800;
+    white-space: nowrap;
+}
+
+#tab-settings .global-ui-scale-follow-default input {
+    width: 16px;
+    height: 16px;
+    margin: 0;
+    accent-color: var(--settings-accent);
+}
+
+#tab-settings .global-ui-scale-row > input[type="number"] {
+    width: 100%;
+    min-width: 0;
+}
+
+#tab-settings .global-ui-scale-row.is-follow-default > input[type="number"] {
+    color: var(--settings-faint);
+    background: color-mix(in srgb, var(--settings-field-bg) 68%, var(--settings-panel-soft));
+}
+
 #tab-settings .global-settings-action-card {
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto;
@@ -630,6 +717,15 @@
 
     #tab-settings .global-settings-actions {
         justify-content: flex-start;
+    }
+
+    #tab-settings .global-ui-scale-row {
+        grid-template-columns: 1fr;
+        align-items: start;
+    }
+
+    #tab-settings .global-ui-scale-follow-default {
+        justify-self: start;
     }
 }
 .preview-main {

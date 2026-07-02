@@ -44,6 +44,7 @@ if TYPE_CHECKING:
         _list_resume_checkpoints,
         _load_history_collection_settings,
         _load_history_task,
+        _load_history_task_summary,
         _normalize_history_collection_settings,
         _normalize_history_task_ids,
         _path_exists,
@@ -74,6 +75,7 @@ _LOCAL_IMPL_NAMES = {
     "_resume_unavailable_reason",
     "list_history_tasks",
     "get_history_task",
+    "get_history_task_summary",
     "get_history_log_path",
     "get_history_artifact_path",
     "get_config_group_timeline",
@@ -329,6 +331,10 @@ def list_history_tasks(self, *, include_archived: bool = False, limit: int | Non
 def get_history_task(self, task_id: str) -> dict[str, Any]:
     _bind_legacy()
     return _load_history_task(task_id)
+
+def get_history_task_summary(self, task_id: str) -> dict[str, Any]:
+    _bind_legacy()
+    return _load_history_task_summary(task_id)
 
 def get_history_log_path(self, task_id: str) -> Path:
     _bind_legacy()

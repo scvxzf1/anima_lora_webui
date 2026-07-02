@@ -97,18 +97,48 @@ const ctx = globalThis.ctx;
                 if (onlyRow) content.appendChild(onlyRow);
             } else {
                 normalizeCompactGridColumns(grid);
+                appendCompactGridFillers(grid);
                 content.appendChild(grid);
             }
         }
     }
 
+    globalThis.appendCompactGridFillers = function appendCompactGridFillers(grid) {
+        grid.querySelectorAll('.field-row-filler').forEach((node) => node.remove());
+        const columnCount = compactGridColumnCount(grid);
+        if (columnCount <= 1) return;
+        const remainder = grid.childElementCount % columnCount;
+        if (remainder === 0) return;
+        const fillerCount = columnCount - remainder;
+        for (let index = 0; index < fillerCount; index += 1) {
+            grid.appendChild(createCompactGridFiller());
+        }
+    }
+
+    globalThis.createCompactGridFiller = function createCompactGridFiller() {
+        const filler = document.createElement('div');
+        filler.className = 'field-row field-row-compact field-row-filler';
+        filler.setAttribute('aria-hidden', 'true');
+        filler.setAttribute('role', 'presentation');
+        return filler;
+    }
+
+    globalThis.compactGridColumnCount = function compactGridColumnCount(grid) {
+        if (!grid) return 0;
+        if (grid.classList.contains('config-field-grid-4col')) return 4;
+        if (grid.classList.contains('config-field-grid-3col')) return 3;
+        return 2;
+    }
+
     globalThis.normalizeCompactGridColumns = function normalizeCompactGridColumns(grid) {
         const count = grid.childElementCount;
-        grid.classList.remove('config-field-grid-3col', 'config-field-grid-4col');
+        grid.classList.remove('config-field-grid-2col', 'config-field-grid-3col', 'config-field-grid-4col', 'config-field-grid-5col');
         if (count >= 4) {
             grid.classList.add('config-field-grid-4col');
         } else if (count === 3) {
             grid.classList.add('config-field-grid-3col');
+        } else if (count === 2) {
+            grid.classList.add('config-field-grid-2col');
         }
     }
 

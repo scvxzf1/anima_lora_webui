@@ -38,6 +38,7 @@ def create_app() -> web.Application:
 
     app["root"] = ROOT
     app["training_service"] = None  # lazy init on first import
+    app["image_test_service"] = None
 
     from web.routes import setup_routes
     setup_routes(app)
@@ -51,13 +52,19 @@ def create_app() -> web.Application:
 
 
 async def _on_startup(app: web.Application) -> None:
+    from web.services.image_test_service import ImageTestService
     from web.services.training_service import TrainingService
+
     svc = TrainingService(app)
+    app["image_test_service"] = ImageTestService(app)
     app["training_service"] = svc
     await svc.start_queue_on_startup()
 
 
 async def _on_shutdown(app: web.Application) -> None:
+    image_test_svc = app["image_test_service"]
+    if image_test_svc:
+        await image_test_svc.shutdown()
     svc = app["training_service"]
     if svc and svc.status == "running":
         await svc.stop()

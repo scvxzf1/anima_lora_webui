@@ -8,6 +8,7 @@ from typing import Optional, Dict, List
 import torch
 
 from library.anima import models as anima_models, text_strategies
+from library.inference.precision import resolve_text_encoder_dtype
 from library.runtime.device import clean_memory_on_device
 from library.inference.models import load_text_encoder
 from library.inference.text import process_escape
@@ -96,7 +97,7 @@ def setup_mod_guidance(
         text_encoder.to(device)
         loaded_locally = False
     else:
-        text_encoder_dtype = torch.bfloat16
+        text_encoder_dtype = resolve_text_encoder_dtype(args)
         text_encoder = load_text_encoder(args, dtype=text_encoder_dtype, device=device)
         text_encoder.eval()
         loaded_locally = True

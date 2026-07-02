@@ -448,6 +448,25 @@ def add_training_arguments(parser: argparse.ArgumentParser, support_dreambooth: 
         ),
     )
     parser.add_argument(
+        "--partitioner_recompute_views",
+        action="store_true",
+        help=(
+            "torch._functorch.config.recompute_views: let the AOT partitioner "
+            "recompute view ops in backward instead of saving them. Ignored "
+            "when gradient_checkpointing is enabled for the same repartitioning "
+            "hazard as activation_memory_budget."
+        ),
+    )
+    parser.add_argument(
+        "--partitioner_aggressive_recomputation",
+        action="store_true",
+        help=(
+            "torch._functorch.config.aggressive_recomputation: allow the AOT "
+            "partitioner to recompute more op classes when the min-cut is "
+            "cheap. Ignored when gradient_checkpointing is enabled."
+        ),
+    )
+    parser.add_argument(
         "--xformers", action="store_true", help="use xformers for CrossAttention"
     )
     parser.add_argument(

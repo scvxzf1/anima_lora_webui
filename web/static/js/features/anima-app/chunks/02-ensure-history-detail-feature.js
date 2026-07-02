@@ -70,6 +70,9 @@ const ctx = globalThis.ctx;
             configGroupTimelineSummary,
             formatGroupTimelineLogRecord,
             logLineTone,
+            applyHistoryDetailUIScale: (detailTab) => {
+                uiScaleController?.applyHistoryDetailScale?.(globalSettings || {}, detailTab || 'overview');
+            },
         });
         return historyDetailFeature;
     }
@@ -86,7 +89,10 @@ const ctx = globalThis.ctx;
             getLossChart: () => lossChart,
             chartTheme,
         });
-        uiScaleController = createUIScaleController();
+        uiScaleController = createUIScaleController({
+            topLevelFields: GLOBAL_UI_TOP_LEVEL_OVERRIDE_FIELDS,
+            historyDetailFields: GLOBAL_UI_HISTORY_DETAIL_OVERRIDE_FIELDS,
+        });
         gpuPicker = createGpuPicker({
             storageKey: GPU_WHITELIST_STORAGE_KEY,
             api,
@@ -96,6 +102,7 @@ const ctx = globalThis.ctx;
             loadGlobalSettings,
             ensureWeightAnalysisFeature,
             ensureEnvironmentCheckFeature,
+            ensureImageTestFeature,
             resetTrainingExpandedStateOnLeave,
             resizeLiveChart: () => lossChart?.resize?.(),
             auditConfigTrainingSourceOnEnter,

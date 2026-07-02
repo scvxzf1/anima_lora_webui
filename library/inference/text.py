@@ -7,6 +7,7 @@ from typing import Optional, Tuple, Any, Dict
 import torch
 
 from library.anima import models as anima_models, text_strategies
+from library.inference.precision import resolve_text_encoder_dtype
 from library.runtime.device import clean_memory_on_device
 from library.inference.models import load_text_encoder
 
@@ -100,7 +101,7 @@ def prepare_text_inputs(
 
         # text_encoder is on device (batched inference) or CPU (interactive inference)
     else:  # Load if not in shared_models
-        text_encoder_dtype = torch.bfloat16  # Default dtype for Text Encoder
+        text_encoder_dtype = resolve_text_encoder_dtype(args)
         text_encoder = load_text_encoder(
             args, dtype=text_encoder_dtype, device=text_encoder_device
         )
