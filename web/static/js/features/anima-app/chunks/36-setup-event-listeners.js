@@ -264,6 +264,7 @@ const ctx = globalThis.ctx;
             'weight-analysis-compare-dropzone': '拖入第二个 .safetensors 权重作为 B，不写入权重目录。',
             'btn-toggle-weight-compare': '开启后可分析两个 LoRA 权重的层类型和 block 静态能量差异。',
             'btn-export-weight-analysis': '打开浏览器打印导出，可在系统对话框中保存为 PDF 报告。',
+            'btn-export-weight-analysis-json': '把当前 ΔW 分析结果导出为机器易读 JSON 报告；对比模式会额外包含 B - A 差异摘要。',
             'btn-refresh-analysis-weights': '重新扫描当前可读取的训练权重列表，不会加载模型。',
             'btn-run-weight-analysis': '在 CPU 上读取 safetensors 并计算 ΔW 范数，不跑图、不占 GPU。',
             'btn-refresh-image-test-status': '重新读取生图测试状态、最新日志以及 output/tests 的图片结果。',

@@ -1,6 +1,6 @@
-import { fetchAnalysisWeights, inspectAnalysisWeight, inspectAnalysisWeightFile } from './api.js?v=module-bootstrap-20260703-7';
-import { createWeightAnalysisRenderer } from './render.js?v=module-bootstrap-20260703-7';
-import { createWeightAnalysisState } from './state.js?v=module-bootstrap-20260703-7';
+import { fetchAnalysisWeights, inspectAnalysisWeight, inspectAnalysisWeightFile } from './api.js?v=module-bootstrap-20260703-8';
+import { createWeightAnalysisRenderer } from './render.js?v=module-bootstrap-20260703-8';
+import { createWeightAnalysisState } from './state.js?v=module-bootstrap-20260703-8';
 
 export function createWeightAnalysisFeature(ctx) {
     const state = createWeightAnalysisState();
@@ -11,6 +11,7 @@ export function createWeightAnalysisFeature(ctx) {
         document.getElementById('btn-run-weight-analysis')?.addEventListener('click', runWeightAnalysis);
         document.getElementById('btn-toggle-weight-compare')?.addEventListener('click', toggleCompareMode);
         document.getElementById('btn-export-weight-analysis')?.addEventListener('click', exportWeightAnalysisReport);
+        document.getElementById('btn-export-weight-analysis-json')?.addEventListener('click', exportWeightAnalysisJsonReport);
         document.getElementById('btn-weight-analysis-toggle-candidates')?.addEventListener('click', renderer.toggleCandidateExpanded);
         document.querySelectorAll('.weight-analysis-candidate-tab').forEach((button) => {
             button.addEventListener('click', () => renderer.showCandidateKind(button.dataset.candidateKind || 'style'));
@@ -292,8 +293,8 @@ export function createWeightAnalysisFeature(ctx) {
     }
 
     function exportWeightAnalysisReport() {
-        if (!state.result || state.result.ok === false) {
-            setAnalysisStatus('请先完成一次权重分析，再导出报告。', 'error');
+        if (!hasExportableAnalysis()) {
+            setAnalysisStatus('请先完成一次权重分析，再导出 PDF 或 JSON 报告。', 'error');
             return;
         }
         const originalTitle = document.title;
@@ -308,6 +309,98 @@ export function createWeightAnalysisFeature(ctx) {
                 document.title = originalTitle;
             }, 300);
         }, 50);
+    }
+
+    function exportWeightAnalysisJsonReport() {
+        if (!hasExportableAnalysis()) {
+            setAnalysisStatus('请先完成一次权重分析，再导出 PDF 或 JSON 报告。', 'error');
+            return;
+        }
+        const report = buildWeightAnalysisJsonReport();
+        const filename = buildWeightAnalysisJsonFilename(report);
+        ctx.download.downloadText(
+            `${JSON.stringify(report, null, 2)}\n`,
+            filename,
+            'application/json;charset=utf-8',
+        );
+        setAnalysisStatus(`已导出机器可读 JSON 报告：${filename}`, 'ok');
+    }
+
+    function hasExportableAnalysis() {
+        return Boolean(state.result && state.result.ok !== false);
+    }
+
+    function buildWeightAnalysisJsonReport() {
+        const primary = state.compareResult?.primary || state.result;
+        const secondary = state.compareResult?.secondary || null;
+        const generatedAt = new Date().toISOString();
+        return {
+            report_kind: 'weight_analysis_report',
+            report_format: 'json',
+            report_version: 1,
+            generated_at: generatedAt,
+            mode: secondary ? 'compare' : 'single',
+            analysis_kind: primary?.analysis_kind || 'static_delta_weight_norm',
+            primary,
+            secondary,
+            comparison: secondary ? {
+                basis: 'secondary_minus_primary',
+                component_diffs: diffSummaryRows(primary?.component_summary || [], secondary?.component_summary || []),
+                block_diffs: diffSummaryRows(primary?.block_summary || [], secondary?.block_summary || []),
+            } : null,
+        };
+    }
+
+    function diffSummaryRows(primaryRows, secondaryRows) {
+        const primaryMap = new Map(primaryRows.map((item) => [String(item.label ?? item.component ?? item.block ?? ''), item]));
+        const secondaryMap = new Map(secondaryRows.map((item) => [String(item.label ?? item.component ?? item.block ?? ''), item]));
+        const labels = new Set([...primaryMap.keys(), ...secondaryMap.keys()].filter(Boolean));
+        return Array.from(labels).map((label) => {
+            const a = primaryMap.get(label) || {};
+            const b = secondaryMap.get(label) || {};
+            return {
+                label,
+                primary_fro_norm: Number(a.fro_norm || 0),
+                secondary_fro_norm: Number(b.fro_norm || 0),
+                delta_fro_norm: Number(b.fro_norm || 0) - Number(a.fro_norm || 0),
+                primary_contribution: Number(a.contribution || 0),
+                secondary_contribution: Number(b.contribution || 0),
+                delta_contribution: Number(b.contribution || 0) - Number(a.contribution || 0),
+            };
+        }).sort((a, b) => Math.abs(b.delta_fro_norm) - Math.abs(a.delta_fro_norm));
+    }
+
+    function buildWeightAnalysisJsonFilename(report) {
+        const timestamp = fileTimestamp(report.generated_at);
+        const primaryName = sanitizeReportToken(report.primary?.file?.name || report.primary?.summary?.file_name || 'weight-analysis');
+        if (report.secondary) {
+            const secondaryName = sanitizeReportToken(report.secondary.file?.name || report.secondary.summary?.file_name || 'compare');
+            return `dw-analysis-report-${primaryName}-vs-${secondaryName}-${timestamp}.json`;
+        }
+        return `dw-analysis-report-${primaryName}-${timestamp}.json`;
+    }
+
+    function fileTimestamp(value) {
+        const date = value ? new Date(value) : new Date();
+        if (Number.isNaN(date.getTime())) return 'unknown-time';
+        const pad = (n) => String(n).padStart(2, '0');
+        return [
+            date.getFullYear(),
+            pad(date.getMonth() + 1),
+            pad(date.getDate()),
+            '-',
+            pad(date.getHours()),
+            pad(date.getMinutes()),
+            pad(date.getSeconds()),
+        ].join('');
+    }
+
+    function sanitizeReportToken(value) {
+        return String(value || '')
+            .replace(/\.[^.]+$/, '')
+            .replace(/[^0-9A-Za-z._-]+/g, '-')
+            .replace(/^-+|-+$/g, '')
+            .slice(0, 80) || 'weight-analysis';
     }
 
     function syncSelectedWeightPath(event) {

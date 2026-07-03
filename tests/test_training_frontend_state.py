@@ -361,6 +361,9 @@ def test_weight_analysis_feature_modules_are_loaded_from_production_entrypoint()
     assert "toggleCompareMode" in weight_index
     assert "runWeightComparison" in weight_index
     assert "exportWeightAnalysisReport" in weight_index
+    assert "exportWeightAnalysisJsonReport" in weight_index
+    assert "buildWeightAnalysisJsonReport" in weight_index
+    assert "ctx.download.downloadText" in weight_index
     assert "renderer.showCandidateKind" in weight_index
     assert "event.key === 'Enter'" in weight_index
 
@@ -376,6 +379,7 @@ def test_weight_analysis_feature_modules_are_loaded_from_production_entrypoint()
     assert 'weight-analysis-compare-file' in html
     assert 'btn-toggle-weight-compare' in html
     assert 'btn-export-weight-analysis' in html
+    assert 'btn-export-weight-analysis-json' in html
     assert 'btn-refresh-analysis-weights' in html
     assert 'btn-run-weight-analysis' in html
     assert 'weight-analysis-summary' in html
@@ -416,6 +420,7 @@ def test_weight_analysis_feature_modules_are_loaded_from_production_entrypoint()
         "weight-analysis-compare-dropzone",
         "btn-toggle-weight-compare",
         "btn-export-weight-analysis",
+        "btn-export-weight-analysis-json",
         "btn-refresh-analysis-weights",
         "btn-run-weight-analysis",
         "weight-analysis",
@@ -1554,6 +1559,10 @@ def test_config_form_uses_navigation_search_and_progressive_disclosure() -> None
         "lokr_project_chunk_bytes: 4194304",
     ]:
         assert value in source
+    balanced_preset = _section(source, "id: 'balanced_16g'", "id: 'fp8_swap_test'")
+    fp8_preset = _section(source, "id: 'fp8_swap_test'", "id: 'vram_saver'")
+    assert "block_swap_profile_jsonl: 'off'" in balanced_preset
+    assert "block_swap_profile_jsonl: 'auto'" in fp8_preset
     set_field_section = _section(source, "function setFieldInputValue", "function escapeHtml")
     assert "configDraftValueChanged(key, value, original)" in set_field_section
     assert "configFormState.draftValues.delete(key);" in set_field_section
@@ -1668,6 +1677,7 @@ def test_config_form_uses_navigation_search_and_progressive_disclosure() -> None
     assert "block_swap_transfer_dtype: ['bf16', 'fp8_e4m3']" in source
     assert "block_swap_restore_mode: '块交换恢复路径'" in source
     assert "block_swap_restore_mode: ['foreach', 'slab']" in source
+    assert "block_swap_profile_jsonl: ['off', 'auto']" in source
     assert "这里不是显卡训练精度开关" in catalog_help_training
     assert "即使显卡本身不支持 bf16 训练，也可以继续使用这个默认值" in catalog_help_training
     assert "训练精度请看上面的“精度倾向”" in catalog_help_training

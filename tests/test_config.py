@@ -473,14 +473,14 @@ def test_balanced_16g_preset_is_block_swap_first(populated_parser):
     assert preset["torch_compile"] is True
     assert "compile_inductor_mode" not in preset
     assert preset["selective_checkpoint"] == "off"
-    assert preset["block_swap_profile_jsonl"] == "auto"
+    assert preset["block_swap_profile_jsonl"] == "off"
 
     merged = load_method_preset("lora", "balanced_16g", configs_dir=str(configs_root))
     assert merged["blocks_to_swap"] == 12
     assert merged["gradient_checkpointing"] is False
     assert merged["unsloth_offload_checkpointing"] is False
     assert merged["selective_checkpoint"] == "off"
-    assert merged["block_swap_profile_jsonl"] == "auto"
+    assert merged["block_swap_profile_jsonl"] == "off"
     assert merged["block_swap_transfer_dtype"] == "bf16"
     assert merged.get("block_swap_restore_mode", "foreach") == "foreach"
 

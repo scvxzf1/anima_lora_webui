@@ -622,6 +622,12 @@ def _profiler_step_end(state: LoopState) -> None:
     if state.profile_started and state.global_step >= state.profile_range[1]:
         torch.cuda.synchronize()
         torch.cuda.profiler.stop()
+        flush_block_swap_profile = getattr(state.unet, "flush_block_swap_profile", None)
+        if callable(flush_block_swap_profile):
+            try:
+                flush_block_swap_profile(blocking=True)
+            except Exception:
+                pass
         state.accelerator.print(f"\n[profiler] stopped at step {state.global_step}")
         state.accelerator.print(
             "[profiler] open the .nsys-rep with the Nsight Systems GUI\n"

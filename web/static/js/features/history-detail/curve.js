@@ -1,1 +1,1 @@
-export { createHistoryCurveRenderer } from './curve/index.js?v=module-bootstrap-20260703-7';
+export { createHistoryCurveRenderer } from './curve/index.js?v=module-bootstrap-20260703-8';

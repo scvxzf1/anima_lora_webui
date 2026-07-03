@@ -17,7 +17,7 @@ gradient_checkpointing = false
 unsloth_offload_checkpointing = false
 torch_compile = true
 selective_checkpoint = "off"
-block_swap_profile_jsonl = "auto"
+block_swap_profile_jsonl = "off"
 
 [graft]
 blocks_to_swap = 20

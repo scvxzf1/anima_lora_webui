@@ -2200,6 +2200,13 @@ class Anima(nn.Module):
             self.blocks, free_cache=free_cache
         )
 
+    def flush_block_swap_profile(self, blocking: bool = False) -> None:
+        if self.blocks_to_swap is None or self.blocks_to_swap == 0:
+            return
+        if self.offloader is None:
+            return
+        self.offloader.flush_profile_events(blocking=blocking)
+
     def _run_blocks(
         self,
         x_padded: torch.Tensor,

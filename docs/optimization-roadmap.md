@@ -19,7 +19,7 @@
 | 补齐关键 CLI-only 开关说明 | 让只在 CLI 存在的性能开关可被发现 | `dataloader_prefetch_factor`、`profile_steps`、`cpu_offload_checkpointing` 等未进入常用 UI | 文档列出 CLI-only；只把低风险字段加入高级区，危险/诊断字段留 CLI | 文档、WebUI advanced form | 低到中 | `timeout 60 python -m pytest tests/test_config.py`；手动检查 `train.py --help` | P1 |
 | 建立“事实记录”模板 | 后续新增优化项能按同一格式记录 | 当前配置字段多，新增实验容易只写 findings 不回填清单 | 在 docs 中固定字段：名称、位置、作用、默认/候选、场景、风险、UI 暴露 | 文档维护流程 | 低 | 文档 review checklist | P0 |
 | 强化 WebUI 快捷按钮提示 | 减少把实验按钮当默认训练方案 | `FP8 测试`、`OOM 兜底`、`LoKr 16G` 都是特定上下文按钮 | 快捷按钮 tooltip 加“适用方法/显存/是否实验”；应用按钮时显示将修改的字段 | WebUI config form | 中 | frontend state 测试；Playwright/手工截图 | P1 |
-| 最小化 profile 默认开销 | 让正式训练默认少写诊断日志 | `balanced_16g` 默认 profile auto，LoKr 快捷还开 memory probe | 将 profile/probe 分为“首次诊断”和“长期训练”两组快捷动作 | WebUI 快捷按钮、历史 artifact | 低 | 短跑检查 artifact 是否按预期生成 | P1 |
+| 最小化 profile 默认开销 | 让正式训练默认少写诊断日志 | 已将 `balanced_16g` 和正式训练快捷按钮的 block swap profile 改为 `off`；LoKr 快捷仍保留 memory probe 用于首跑显存确认 | 后续可再拆“诊断短跑”和“长期训练”两组快捷动作 | WebUI 快捷按钮、历史 artifact | 低 | 短跑检查 artifact 是否按预期生成 | P1 |
 
 ## 中期方向：显存档位矩阵
 

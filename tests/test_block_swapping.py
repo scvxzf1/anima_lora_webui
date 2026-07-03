@@ -114,8 +114,51 @@ def test_block_swap_profile_jsonl_records_forward_wait(tmp_path) -> None:
     assert event["d2h_ms"] >= 0
     assert event["transfer_ms"] >= 0
     assert event["enqueue_ms"] >= 0
+    assert event["submit_trigger_block_idx"] == 0
+    assert event["wait_trigger_block_idx"] == 2
+    assert event["prefetch_lead_blocks"] == 2
+    assert event["slot_id"] == 0
+    assert event["slot_count"] == 2
+    assert event["slot_current_age_ms"] >= 0
+    assert event["prefetch_runway_ms"] >= 0
+    assert event["enqueue_to_wait_ms"] >= 0
+    assert event["estimated_ready_slack_ms"] >= 0
     assert event["queued_at"] <= event["ready_at"]
     assert event["enqueued_at"] <= event["ready_at"]
+
+
+def test_block_swap_profile_records_slot_reuse_age(tmp_path) -> None:
+    blocks = nn.ModuleList([_TinyBlock() for _ in range(4)])
+    profile_path = tmp_path / "block_swap_profile.jsonl"
+    offloader = ModelOffloader(
+        blocks,
+        blocks_to_swap=2,
+        device=torch.device("cpu"),
+        supports_backward=False,
+        profile_jsonl=str(profile_path),
+    )
+
+    offloader.prepare_block_devices_before_forward(blocks, free_cache=False)
+    offloader.submit_move_blocks(blocks, 0)
+    offloader.wait_for_block(2)
+    offloader.submit_move_blocks(blocks, 2)
+    offloader.wait_for_block(0)
+
+    events = [
+        event
+        for event in (json.loads(line) for line in profile_path.read_text().splitlines())
+        if event["ev"] == "block_swap"
+    ]
+    assert len(events) == 2
+    first, second = events
+    assert first["block_idx"] == 2
+    assert first["slot_id"] == 0
+    assert first["slot_previous_block_idx"] is None
+    assert second["block_idx"] == 0
+    assert second["slot_id"] == 0
+    assert second["slot_previous_block_idx"] == 2
+    assert second["slot_previous_phase"] == "forward_prefetch"
+    assert second["slot_reuse_age_ms"] >= first["slot_current_age_ms"]
 
 
 def test_block_swap_profile_records_h2d_only_cpu_masters(tmp_path) -> None:
@@ -311,6 +354,122 @@ def test_cuda_block_swap_wait_uses_stream_event_without_host_sync(monkeypatch) -
         assert event.synchronized is False
         assert offloader.futures == {}
     finally:
+        offloader._stop_profile_poller()
+        offloader.thread_pool.shutdown(wait=False)
+
+
+def test_cuda_block_swap_profile_flush_avoids_inline_event_synchronize(
+    monkeypatch, tmp_path
+) -> None:
+    monkeypatch.setenv("ANIMA_BLOCK_SWAP_PROFILE_GPU_WAIT", "1")
+
+    class _FakeEvent:
+        def __init__(self, *, t_ms: float, ready: bool) -> None:
+            self.t_ms = t_ms
+            self.ready = ready
+            self.synchronize_calls = 0
+            self.recorded_streams = []
+
+        def query(self) -> bool:
+            return self.ready
+
+        def synchronize(self) -> None:
+            self.synchronize_calls += 1
+            self.ready = True
+
+        def record(self, stream) -> None:
+            self.recorded_streams.append(stream)
+
+        def elapsed_time(self, other) -> float:
+            return float(other.t_ms - self.t_ms)
+
+    class _FakeStream:
+        def __init__(self) -> None:
+            self.waited_events = []
+
+        def wait_event(self, event) -> None:
+            self.waited_events.append(event)
+
+    class _DoneFuture:
+        def __init__(self, ready_event, start_event, end_event) -> None:
+            self.ready_event = ready_event
+            self.start_event = start_event
+            self.end_event = end_event
+
+        def result(self):
+            timings = {
+                "d2h_ms": 0.0,
+                "h2d_ms": 0.0,
+                "event_wait_ms": 0.0,
+                "enqueue_ms": 2.0,
+                "_ready_event": self.ready_event,
+                "_h2d_start_event": self.start_event,
+                "_h2d_end_event": self.end_event,
+                "_event_timing": True,
+            }
+            return None, 0, timings, time.time()
+
+    stream = _FakeStream()
+    monkeypatch.setattr(torch.cuda, "current_stream", lambda device=None: stream)
+
+    profile_path = tmp_path / "block_swap_profile.jsonl"
+    blocks = nn.ModuleList([_TinyBlock(), _TinyBlock(), _TinyBlock()])
+    offloader = ModelOffloader(
+        blocks,
+        blocks_to_swap=1,
+        device=torch.device("cuda"),
+        supports_backward=False,
+        profile_jsonl=str(profile_path),
+    )
+    try:
+        ready_event = _FakeEvent(t_ms=0.0, ready=False)
+        start_event = _FakeEvent(t_ms=1.5, ready=False)
+        end_event = _FakeEvent(t_ms=14.0, ready=False)
+        wait_start_event = _FakeEvent(t_ms=20.0, ready=False)
+        wait_end_event = _FakeEvent(t_ms=24.0, ready=False)
+        acquired_events = [wait_start_event, wait_end_event]
+        monkeypatch.setattr(
+            offloader,
+            "_acquire_cuda_event",
+            lambda *, enable_timing: acquired_events.pop(0),
+        )
+        monkeypatch.setattr(offloader, "_ensure_profile_poller", lambda: None)
+        offloader.futures[0] = (
+            _DoneFuture(ready_event, start_event, end_event),
+            {"phase": "forward_prefetch", "block_idx": 0, "queued_at": time.time()},
+        )
+
+        offloader._wait_blocks_move(0, phase="forward_wait")
+
+        assert stream.waited_events == [end_event]
+        assert end_event.synchronize_calls == 0
+        assert profile_path.exists() is False or profile_path.read_text() == ""
+
+        ready_event.ready = True
+        start_event.ready = True
+        end_event.ready = True
+        wait_start_event.ready = True
+        wait_end_event.ready = True
+        time.sleep(0.02)
+        offloader.flush_profile_events(blocking=False)
+
+        events = [json.loads(line) for line in profile_path.read_text().splitlines()]
+        assert len(events) == 1
+        event = events[0]
+        assert event["phase"] == "forward_wait"
+        assert event["submit_phase"] == "forward_prefetch"
+        assert event["h2d_ms"] == pytest.approx(12.5)
+        assert event["event_wait_ms"] == pytest.approx(1.5)
+        assert event["gpu_wait_ms"] == pytest.approx(4.0)
+        assert event["wait_ms"] == pytest.approx(
+            event["host_wait_ms"] + event["gpu_wait_ms"]
+        )
+        assert event["host_queue_ms"] >= 0
+        assert event["enqueue_to_ready_ms"] >= 0
+        assert event["wait_requested_at"] <= event["ready_at"]
+        assert event["waited_at"] > event["ready_at"]
+        assert end_event.synchronize_calls == 0
+    finally:
         offloader.thread_pool.shutdown(wait=False)
 
 
@@ -337,6 +496,90 @@ def test_block_swap_plan_is_cached(monkeypatch) -> None:
 
         assert build_calls == [(0, 2)]
     finally:
+        offloader.thread_pool.shutdown(wait=False)
+
+
+def test_cuda_block_swap_profile_gpu_wait_timing_is_opt_in(
+    monkeypatch, tmp_path
+) -> None:
+    class _FakeEvent:
+        def __init__(self, *, t_ms: float, ready: bool) -> None:
+            self.t_ms = t_ms
+            self.ready = ready
+            self.recorded_streams = []
+
+        def query(self) -> bool:
+            return self.ready
+
+        def record(self, stream) -> None:
+            self.recorded_streams.append(stream)
+
+        def elapsed_time(self, other) -> float:
+            return float(other.t_ms - self.t_ms)
+
+    class _FakeStream:
+        def __init__(self) -> None:
+            self.waited_events = []
+
+        def wait_event(self, event) -> None:
+            self.waited_events.append(event)
+
+    class _DoneFuture:
+        def __init__(self, ready_event, start_event, end_event) -> None:
+            self.ready_event = ready_event
+            self.start_event = start_event
+            self.end_event = end_event
+
+        def result(self):
+            timings = {
+                "d2h_ms": 0.0,
+                "h2d_ms": 0.0,
+                "event_wait_ms": 0.0,
+                "enqueue_ms": 2.0,
+                "_ready_event": self.ready_event,
+                "_h2d_start_event": self.start_event,
+                "_h2d_end_event": self.end_event,
+                "_event_timing": True,
+            }
+            return None, 0, timings, time.time()
+
+    stream = _FakeStream()
+    monkeypatch.setattr(torch.cuda, "current_stream", lambda device=None: stream)
+
+    profile_path = tmp_path / "block_swap_profile.jsonl"
+    blocks = nn.ModuleList([_TinyBlock(), _TinyBlock(), _TinyBlock()])
+    offloader = ModelOffloader(
+        blocks,
+        blocks_to_swap=1,
+        device=torch.device("cuda"),
+        supports_backward=False,
+        profile_jsonl=str(profile_path),
+    )
+    try:
+        monkeypatch.setattr(offloader, "_ensure_profile_poller", lambda: None)
+
+        def fail_acquire(*, enable_timing):
+            raise AssertionError("GPU wait timing events should be opt-in")
+
+        monkeypatch.setattr(offloader, "_acquire_cuda_event", fail_acquire)
+        ready_event = _FakeEvent(t_ms=0.0, ready=True)
+        start_event = _FakeEvent(t_ms=1.5, ready=True)
+        end_event = _FakeEvent(t_ms=14.0, ready=True)
+        offloader.futures[0] = (
+            _DoneFuture(ready_event, start_event, end_event),
+            {"phase": "forward_prefetch", "block_idx": 0, "queued_at": time.time()},
+        )
+
+        offloader._wait_blocks_move(0, phase="forward_wait")
+        offloader.flush_profile_events(blocking=False)
+
+        events = [json.loads(line) for line in profile_path.read_text().splitlines()]
+        assert len(events) == 1
+        assert stream.waited_events == [end_event]
+        assert events[0]["gpu_wait_ms"] == 0.0
+        assert events[0]["h2d_ms"] == pytest.approx(12.5)
+    finally:
+        offloader._stop_profile_poller()
         offloader.thread_pool.shutdown(wait=False)
 
 

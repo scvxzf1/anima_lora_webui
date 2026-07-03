@@ -37,7 +37,7 @@ configs/base.toml
 | --- | --- | --- | --- | --- | --- | --- |
 | `blocks_to_swap` | `configs/base.toml`、`configs/presets.toml`、方法/GUI 变体、`train.py` | 把 DiT frozen block 在 CPU/GPU 间交换，降低 GPU 驻留显存 | base 未设显式值；`default=0`；`low_vram_blockswap=8`；`balanced_16g=12`；`graft=20`；LoKr 快捷为 `23` | 16GB/低显存训练、block swap 实验 | 训练变慢；不能与 `cpu_offload_checkpointing`、`unsloth_offload_checkpointing`、Soft Tokens、`functional_loss_weight>0` 同用 | 是，含快捷按钮 |
 | `block_swap_transfer_dtype` | `configs/base.toml`、`train.py`、WebUI catalog | block swap frozen base 权重的 CPU master/传输精度 | 默认 `bf16`；候选 `bf16`、`fp8_e4m3` | block swap 传输带宽实验 | `fp8_e4m3` 会量化 frozen base 权重；现有报告不建议作为默认训练方案 | 是 |
-| `block_swap_profile_jsonl` | `configs/base.toml`、`balanced_16g`、Web runtime | 记录 block swap transfer/wait profile | 默认 `off`；候选 `off`、`auto`、显式路径；`balanced_16g=auto` | 判断 H2D/D2H 和等待时间 | 长训会增加少量 I/O；显式路径错误会影响落盘 | 是 |
+| `block_swap_profile_jsonl` | `configs/base.toml`、`balanced_16g`、Web runtime | 记录 block swap transfer/wait profile | 默认 `off`；候选 `off`、`auto`、显式路径；`balanced_16g=off` | 判断 H2D/D2H、prefetch runway 和 slot reuse | 诊断探针会扰动吞吐；正式长训/热测对比应关闭；完整 GPU wait timing 需显式 `ANIMA_BLOCK_SWAP_PROFILE_GPU_WAIT=1` | 是 |
 | `disable_block_swap_for_eval` | `configs/base.toml`、`train.py` | sample/validation 阶段临时暂停 block swap | 默认 `false` | 训练需要 swap，但评估完整 DiT 能放进显存 | 评估阶段可能 OOM | 是 |
 | `gradient_checkpointing` | `configs/base.toml`、`presets.toml`、8GB GUI 变体、`train.py` | 反向传播重算中间激活以降显存 | base `false`；`low_vram=true`；`lora-8gb/tlora-8gb/hydralora-8gb=true` | 8GB/低显存、LoKr 兜底 | 训练变慢；不能与 `selective_checkpoint` 同时开 | 是 |
 | `unsloth_offload_checkpointing` | `configs/base.toml`、`low_vram`、8GB GUI 变体、`train.py` | 将 checkpoint 激活卸载到 CPU RAM | base `false`；`low_vram=true`；8GB GUI 变体 `true` | 极低显存保命 | 需要 `gradient_checkpointing=true`；不能与 block swap 或 CPU offload 同用；CPU/PCIe 压力上升 | 是 |
@@ -139,11 +139,11 @@ configs/base.toml
 | GUI 变体文件 | `configs/gui-methods/*.toml` | 每个变体一个自包含训练配置 | 当前有 `lora`、`lora-8gb`、`tlora`、`tlora-8gb`、`ortholora`、`hydralora`、`hydralora-8gb`、`reft`、`lokr`、`loha`、`glora`、`vera`、`chimera_hydra`、`ip_adapter`、`easycontrol`、`soft_tokens`、`lora_signal_probe` | WebUI/GUI 选择训练方法 | 变体文件会覆盖 preset 同名键 | 是 |
 | 表单分类 `optimization` | `web/static/js/config/catalog/form-layout.js` | 将优化字段集中到“优化”页签 | 包含显存与速度、LoKr 专用、数据加载与 VAE、实验性功能 | 用户查找关键开关 | 表单默认值与最终 merge 值需要看当前配置 | 是 |
 | 资源快捷按钮 `全 GPU` | `01-scope-state.js` | 关闭 block swap/probe/offload，保持 compile | `blocks_to_swap=0`、`torch_compile=true` | 显存充足、最快路径 | 显存不足会 OOM | 是 |
-| 资源快捷按钮 `Balanced 16G` | `01-scope-state.js`、`configs/presets.toml[balanced_16g]` | 普通 LoRA 16GB block swap 档 | `blocks_to_swap=12`、`bf16`、`profile=auto`、`gradient_checkpointing=false` | 16GB 普通 LoRA 优先档 | 不等同 LoKr 稳定档 | 是 |
+| 资源快捷按钮 `Balanced 16G` | `01-scope-state.js`、`configs/presets.toml[balanced_16g]` | 普通 LoRA 16GB block swap 档 | `blocks_to_swap=12`、`bf16`、`profile=off`、`gradient_checkpointing=false` | 16GB 普通 LoRA 优先档 | 不等同 LoKr 稳定档；需要诊断时手动打开 profile | 是 |
 | 资源快捷按钮 `FP8 测试` | `01-scope-state.js` | FP8 block swap 传输消融 | `blocks_to_swap=12`、`block_swap_transfer_dtype=fp8_e4m3`、probe auto | 传输实验 | 不建议默认训练，存在量化误差 | 是 |
-| 资源快捷按钮 `更省显存` | `01-scope-state.js` | 增加 block swap 数 | `blocks_to_swap=16` | 16GB 普通 LoRA 更省显存 | 比 Balanced 更慢 | 是 |
-| 资源快捷按钮 `LoKr 16G` | `01-scope-state.js`、LoKr playbook | LoKr 专用救场 | `blocks_to_swap=23`、`lokr_factor_group_size=8`、`memory_probe=auto` | LoKr 16GB 首次试跑 | 余量很薄；仍可能需 allocator 环境变量 | 是 |
-| 资源快捷按钮 `OOM 兜底` | `01-scope-state.js` | block swap + selective checkpoint | `blocks_to_swap=12`、`selective_checkpoint=mlp_only` | 普通路径仍 OOM | 会变慢；不适合作为 LoKr 首选 fallback | 是 |
+| 资源快捷按钮 `更省显存` | `01-scope-state.js` | 增加 block swap 数 | `blocks_to_swap=16`、`profile=off` | 16GB 普通 LoRA 更省显存 | 比 Balanced 更慢 | 是 |
+| 资源快捷按钮 `LoKr 16G` | `01-scope-state.js`、LoKr playbook | LoKr 专用救场 | `blocks_to_swap=23`、`lokr_factor_group_size=8`、`memory_probe=auto`、`profile=off` | LoKr 16GB 首次试跑 | 余量很薄；仍可能需 allocator 环境变量；需要 block swap 归因时手动开 profile | 是 |
+| 资源快捷按钮 `OOM 兜底` | `01-scope-state.js` | block swap + selective checkpoint | `blocks_to_swap=12`、`selective_checkpoint=mlp_only`、`profile=off` | 普通路径仍 OOM | 会变慢；不适合作为 LoKr 首选 fallback | 是 |
 | PySide6 GUI 配置页 | `gui/tabs/config_tab.py`、`gui/__init__.py` | 读取 `gui-methods` 变体并隐式合并 preset | 隐式 preset 为 `default` | 桌面 GUI 编辑变体 | 保存会写回变体文件，不再区分 preset/variant | 是 |
 | Web 全局设置 | `configs/web-ui-settings.toml`、`web/services/settings_service.py` | 输出根目录和全局模型路径 | `output_root=output/runs`；模型路径键为 DiT/Qwen3/VAE | WebUI runtime 输出和路径复用 | 文档不应固化本机绝对路径 | 是 |
 
@@ -162,8 +162,9 @@ configs/base.toml
 
 ## 当前事实性注意点
 
-- `balanced_16g` 当前是普通 LoRA 的 16GB block swap 优先档：`blocks_to_swap=12`、`torch_compile=true`、`selective_checkpoint=off`、`block_swap_profile_jsonl=auto`。
+- `balanced_16g` 当前是普通 LoRA 的 16GB block swap 优先档：`blocks_to_swap=12`、`torch_compile=true`、`selective_checkpoint=off`、`block_swap_profile_jsonl=off`。
 - LoKr 16GB 路径单独维护：当前快捷按钮使用 `blocks_to_swap=23`、`lokr_factor_group_size=8`、`memory_probe_jsonl=auto`，不是 `balanced_16g` 的简单延伸。
 - `block_swap_transfer_dtype=fp8_e4m3` 已在 WebUI 暴露为实验项，但维护报告结论是保留实验开关、默认仍用 `bf16`。
+- `block_swap_profile_jsonl=auto` 用于定位问题，不是速度基线；要比较版本吞吐时应改为 `off`，否则 observer 线程、JSONL 写入和可选 GPU timing event 都会进入测量口径。
 - `selective_checkpoint`、full `gradient_checkpointing`、Unsloth offload、block swap 之间有硬兼容边界，配置矩阵需要显式标注。
 - `configs/methods/` 是 family 配置；`configs/gui-methods/` 是用户可见自包含变体。整理 UI 暴露状态时应优先看 `gui-methods` 和 WebUI catalog。

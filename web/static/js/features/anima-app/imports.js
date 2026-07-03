@@ -1,27 +1,27 @@
-import { createPreviewFeature } from '../preview/index.js?v=module-bootstrap-20260703-7';
-import { createQueueFeature } from '../queue/index.js?v=module-bootstrap-20260703-7';
-import { createHistoryDetailFeature } from '../history-detail/index.js?v=module-bootstrap-20260703-7';
-import { createWeightAnalysisFeature } from '../weight-analysis/index.js?v=module-bootstrap-20260703-7';
-import { createEnvironmentCheckFeature } from '../environment-check/index.js?v=module-bootstrap-20260703-7';
-import { createImageTestFeature } from '../image-test/index.js?v=module-bootstrap-20260703-7';
-import { createGpuPicker } from '../app-shell/gpu-picker.js?v=module-bootstrap-20260703-7';
-import { createTabController } from '../app-shell/tabs.js?v=module-bootstrap-20260703-7';
-import { createThemeController } from '../app-shell/theme.js?v=module-bootstrap-20260703-7';
-import { createUIScaleController } from '../app-shell/ui-scale.js?v=module-bootstrap-20260703-7';
+import { createPreviewFeature } from '../preview/index.js?v=module-bootstrap-20260703-8';
+import { createQueueFeature } from '../queue/index.js?v=module-bootstrap-20260703-8';
+import { createHistoryDetailFeature } from '../history-detail/index.js?v=module-bootstrap-20260703-8';
+import { createWeightAnalysisFeature } from '../weight-analysis/index.js?v=module-bootstrap-20260703-8';
+import { createEnvironmentCheckFeature } from '../environment-check/index.js?v=module-bootstrap-20260703-8';
+import { createImageTestFeature } from '../image-test/index.js?v=module-bootstrap-20260703-8';
+import { createGpuPicker } from '../app-shell/gpu-picker.js?v=module-bootstrap-20260703-8';
+import { createTabController } from '../app-shell/tabs.js?v=module-bootstrap-20260703-8';
+import { createThemeController } from '../app-shell/theme.js?v=module-bootstrap-20260703-8';
+import { createUIScaleController } from '../app-shell/ui-scale.js?v=module-bootstrap-20260703-8';
 import {
     blankSamplePromptRow,
     parseSamplePromptRows,
     samplePromptsContentNeedsTextMode,
     serializeSamplePromptsEditor,
-} from '../sample-prompts/model.js?v=module-bootstrap-20260703-7';
-import { readTomlGroupState, writeTomlGroupState } from '../toml-manager/group-state.js?v=module-bootstrap-20260703-7';
+} from '../sample-prompts/model.js?v=module-bootstrap-20260703-8';
+import { readTomlGroupState, writeTomlGroupState } from '../toml-manager/group-state.js?v=module-bootstrap-20260703-8';
 import {
     formatSystemPercent,
     formatSystemTemperature,
     formatSystemVram,
     historySystemSummary,
-} from '../history-detail/system.js?v=module-bootstrap-20260703-7';
-import { formatCompactNumber, numberOrNull } from '../history-detail/ui.js?v=module-bootstrap-20260703-7';
+} from '../history-detail/system.js?v=module-bootstrap-20260703-8';
+import { formatCompactNumber, numberOrNull } from '../history-detail/ui.js?v=module-bootstrap-20260703-8';
 
 const ctx = globalThis.ctx;
 

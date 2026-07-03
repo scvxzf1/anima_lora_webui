@@ -46,6 +46,27 @@ def _can_swap_frozen_weight_to_cpu(module: nn.Module) -> bool:
 
 _BLOCK_SWAP_TRANSFER_DTYPES = {"bf16", "fp8_e4m3"}
 _BLOCK_SWAP_RESTORE_MODES = {"foreach", "slab"}
+_DEFAULT_BLOCK_SWAP_PROFILE_POLL_INTERVAL_S = 0.05
+
+
+def _env_flag(name: str, *, default: bool = False) -> bool:
+    value = os.getenv(name)
+    if value is None:
+        return default
+    return str(value).strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _block_swap_profile_poll_interval_s() -> float:
+    raw = os.getenv("ANIMA_BLOCK_SWAP_PROFILE_POLL_MS")
+    if raw is None or not str(raw).strip():
+        return _DEFAULT_BLOCK_SWAP_PROFILE_POLL_INTERVAL_S
+    try:
+        value = float(str(raw).strip())
+    except ValueError:
+        return _DEFAULT_BLOCK_SWAP_PROFILE_POLL_INTERVAL_S
+    if value <= 0:
+        return _DEFAULT_BLOCK_SWAP_PROFILE_POLL_INTERVAL_S
+    return max(0.001, value / 1000.0)
 
 
 def normalize_block_swap_transfer_dtype(value: Optional[str]) -> str:
@@ -140,7 +161,11 @@ def _try_foreach_h2d_copy(
 
 
 def _wait_for_async_cuda_copy_on_current_stream(
-    device: torch.device, timings: dict[str, Any]
+    device: torch.device,
+    timings: dict[str, Any],
+    *,
+    wait_start_event: Optional[Any] = None,
+    wait_end_event: Optional[Any] = None,
 ) -> None:
     """Order current-stream work after an async block-swap H2D copy.
 
@@ -153,18 +178,28 @@ def _wait_for_async_cuda_copy_on_current_stream(
     end_event = timings.get("_h2d_end_event")
     if end_event is None:
         return
-    torch.cuda.current_stream(device).wait_event(end_event)
+    current_stream = torch.cuda.current_stream(device)
+    if wait_start_event is not None:
+        wait_start_event.record(current_stream)
+        timings["_wait_start_event"] = wait_start_event
+    current_stream.wait_event(end_event)
+    if wait_end_event is not None:
+        wait_end_event.record(current_stream)
+        timings["_wait_end_event"] = wait_end_event
 
 
 def _finalize_async_cuda_timings(
-    timings: dict[str, Any], *, synchronize: bool
-) -> tuple[Optional[Any], Optional[Any], Optional[Any], bool]:
+    timings: dict[str, Any], *, synchronize: bool, events_ready: bool = False
+) -> tuple[Optional[Any], Optional[Any], Optional[Any], Optional[Any], Optional[Any], bool]:
     end_event = timings.pop("_h2d_end_event", None)
     start_event = timings.pop("_h2d_start_event", None)
     ready_event = timings.pop("_ready_event", None)
+    wait_start_event = timings.pop("_wait_start_event", None)
+    wait_end_event = timings.pop("_wait_end_event", None)
     event_timing = bool(timings.pop("_event_timing", False))
-    if end_event is not None and synchronize:
-        end_event.synchronize()
+    if end_event is not None and (synchronize or events_ready):
+        if synchronize:
+            end_event.synchronize()
         if start_event is not None:
             try:
                 timings["h2d_ms"] = float(start_event.elapsed_time(end_event))
@@ -177,7 +212,16 @@ def _finalize_async_cuda_timings(
                 )
             except Exception:
                 pass
-    return ready_event, start_event, end_event, event_timing
+    if wait_start_event is not None and wait_end_event is not None and (synchronize or events_ready):
+        if synchronize:
+            wait_end_event.synchronize()
+        try:
+            timings["gpu_wait_ms"] = max(
+                0.0, float(wait_start_event.elapsed_time(wait_end_event))
+            )
+        except Exception:
+            pass
+    return ready_event, start_event, end_event, wait_start_event, wait_end_event, event_timing
 
 
 def swap_weight_devices_cuda(
@@ -317,12 +361,18 @@ class BlockSwapProfiler:
         os.makedirs(os.path.dirname(os.path.abspath(self.path)), exist_ok=True)
 
     def write(self, event: dict[str, Any]) -> None:
+        self.write_many([event])
+
+    def write_many(self, events: list[dict[str, Any]]) -> None:
+        if not events:
+            return
         try:
             with self._lock:
-                self._seq += 1
-                payload = {"seq": self._seq, **event}
                 with open(self.path, "a", encoding="utf-8") as f:
-                    f.write(json.dumps(payload, ensure_ascii=False) + "\n")
+                    for event in events:
+                        self._seq += 1
+                        payload = {"seq": self._seq, **event}
+                        f.write(json.dumps(payload, ensure_ascii=False) + "\n")
         except Exception:
             return
 
@@ -389,6 +439,16 @@ class Offloader:
         self._copy_stream: Optional[Any] = None
         self._timing_event_pool: list[Any] = []
         self._marker_event_pool: list[Any] = []
+        self._event_pool_lock = threading.Lock()
+        self._pending_profile_events: list[dict[str, Any]] = []
+        self._pending_profile_lock = threading.Lock()
+        self._profile_poller_stop = threading.Event()
+        self._profile_poller: Optional[threading.Thread] = None
+        self._profile_poll_interval_s = _block_swap_profile_poll_interval_s()
+        self._profile_gpu_wait_timing = _env_flag(
+            "ANIMA_BLOCK_SWAP_PROFILE_GPU_WAIT", default=False
+        )
+        self._slot_assignments: dict[int, dict[str, Any]] = {}
         self._frozen_weight_bytes_by_block: list[int] = [0 for _ in range(num_blocks)]
         self._bf16_weight_bytes_by_block: list[int] = [0 for _ in range(num_blocks)]
         self._fp8_weight_bytes_by_block: list[int] = [0 for _ in range(num_blocks)]
@@ -768,16 +828,283 @@ class Offloader:
         return self._copy_stream
 
     def _acquire_cuda_event(self, *, enable_timing: bool) -> Any:
-        pool = self._timing_event_pool if enable_timing else self._marker_event_pool
-        if pool:
-            return pool.pop()
+        with self._event_pool_lock:
+            pool = self._timing_event_pool if enable_timing else self._marker_event_pool
+            if pool:
+                return pool.pop()
         return torch.cuda.Event(enable_timing=enable_timing)
 
     def _release_cuda_event(self, event: Optional[Any], *, enable_timing: bool) -> None:
         if event is None:
             return
-        pool = self._timing_event_pool if enable_timing else self._marker_event_pool
-        pool.append(event)
+        with self._event_pool_lock:
+            pool = self._timing_event_pool if enable_timing else self._marker_event_pool
+            pool.append(event)
+
+    def _event_is_ready(self, event: Optional[Any]) -> bool:
+        if event is None:
+            return True
+        query = getattr(event, "query", None)
+        if callable(query):
+            try:
+                return bool(query())
+            except Exception:
+                return False
+        return False
+
+    def _swap_slot_count(self) -> int:
+        if self.blocks_to_swap is None:
+            return 0
+        return max(0, int(self.num_blocks) - int(self.blocks_to_swap))
+
+    def _swap_slot_id(self, block_idx_to_cpu: int) -> Optional[int]:
+        slot_count = self._swap_slot_count()
+        if slot_count <= 0:
+            return None
+        return int(block_idx_to_cpu) % slot_count
+
+    def _prefetch_lead_blocks(
+        self,
+        *,
+        phase: str,
+        block_idx_to_cpu: int,
+        block_idx_to_cuda: int,
+    ) -> Optional[int]:
+        if self.num_blocks <= 0:
+            return None
+        if str(phase or "").startswith("backward"):
+            return max(0, int(block_idx_to_cpu) - int(block_idx_to_cuda))
+        return (int(block_idx_to_cuda) - int(block_idx_to_cpu)) % int(self.num_blocks)
+
+    def _ensure_profile_poller(self) -> None:
+        if self.profiler is None or not self.cuda_available:
+            return
+        if self._profile_poller is not None and self._profile_poller.is_alive():
+            return
+        self._profile_poller_stop.clear()
+
+        def _poll() -> None:
+            while not self._profile_poller_stop.is_set():
+                try:
+                    self.flush_profile_events(blocking=False)
+                except Exception:
+                    pass
+                self._profile_poller_stop.wait(self._profile_poll_interval_s)
+
+        self._profile_poller = threading.Thread(
+            target=_poll,
+            name="anima-block-swap-profile",
+            daemon=True,
+        )
+        self._profile_poller.start()
+
+    def _stop_profile_poller(self) -> None:
+        thread = self._profile_poller
+        if thread is None:
+            return
+        self._profile_poller_stop.set()
+        thread.join(timeout=0.2)
+        self._profile_poller = None
+
+    def _build_profile_wait_event(
+        self,
+        *,
+        phase: str,
+        meta: dict[str, Any],
+        timings: dict[str, Any],
+        enqueued_at: Optional[float],
+        wait_requested_at: float,
+        wait_returned_at: float,
+    ) -> dict[str, Any]:
+        host_wait_ms = max(0.0, (wait_returned_at - wait_requested_at) * 1000.0)
+        gpu_wait_ms = float(timings.get("gpu_wait_ms", 0.0))
+        wait_ms = host_wait_ms + gpu_wait_ms
+        ready_at = wait_requested_at + (wait_ms / 1000.0)
+        timings["transfer_ms"] = float(timings.get("event_wait_ms", 0.0)) + float(
+            timings.get("h2d_ms", 0.0)
+        )
+        queued_at = meta.get("queued_at")
+        submit_lag_ms = (
+            max(0.0, (ready_at - queued_at) * 1000.0) if queued_at is not None else 0.0
+        )
+        host_queue_ms = 0.0
+        enqueue_to_ready_ms = 0.0
+        submit_to_enqueue_ms = 0.0
+        prefetch_runway_ms = 0.0
+        enqueue_to_wait_ms = 0.0
+        estimated_ready_slack_ms = 0.0
+        if queued_at is not None and enqueued_at is not None:
+            submit_to_enqueue_ms = max(0.0, (enqueued_at - queued_at) * 1000.0)
+            host_queue_ms = max(
+                0.0,
+                submit_to_enqueue_ms - float(timings.get("enqueue_ms", 0.0)),
+            )
+            enqueue_to_ready_ms = max(0.0, (ready_at - enqueued_at) * 1000.0)
+            enqueue_to_wait_ms = max(0.0, (wait_requested_at - enqueued_at) * 1000.0)
+            estimated_ready_slack_ms = max(
+                0.0,
+                enqueue_to_wait_ms - float(timings.get("transfer_ms", 0.0)),
+            )
+        if queued_at is not None:
+            prefetch_runway_ms = max(0.0, (wait_requested_at - queued_at) * 1000.0)
+        return {
+            "ev": "block_swap",
+            "phase": phase or meta.get("phase") or "",
+            "submit_phase": meta.get("phase") or "",
+            "step": meta.get("step"),
+            "block_idx": meta.get("block_idx"),
+            "block_idx_to_cpu": meta.get("block_idx_to_cpu"),
+            "slot_id": meta.get("slot_id"),
+            "slot_count": meta.get("slot_count"),
+            "submit_trigger_block_idx": meta.get("submit_trigger_block_idx"),
+            "wait_trigger_block_idx": meta.get("wait_trigger_block_idx"),
+            "prefetch_lead_blocks": meta.get("prefetch_lead_blocks"),
+            "slot_previous_block_idx": meta.get("slot_previous_block_idx"),
+            "slot_previous_step": meta.get("slot_previous_step"),
+            "slot_previous_phase": meta.get("slot_previous_phase"),
+            "slot_reuse_age_ms": float(meta.get("slot_reuse_age_ms") or 0.0),
+            "slot_current_age_ms": prefetch_runway_ms,
+            "transfer_dtype": self.transfer_dtype,
+            "wait_ms": wait_ms,
+            "host_wait_ms": host_wait_ms,
+            "gpu_wait_ms": gpu_wait_ms,
+            "h2d_ms": float(timings.get("h2d_ms", 0.0)),
+            "d2h_ms": float(timings.get("d2h_ms", 0.0)),
+            "event_wait_ms": float(timings.get("event_wait_ms", 0.0)),
+            "transfer_ms": float(timings.get("transfer_ms", 0.0)),
+            "enqueue_ms": float(timings.get("enqueue_ms", 0.0)),
+            "host_queue_ms": host_queue_ms,
+            "submit_to_enqueue_ms": submit_to_enqueue_ms,
+            "prefetch_runway_ms": prefetch_runway_ms,
+            "enqueue_to_wait_ms": enqueue_to_wait_ms,
+            "estimated_ready_slack_ms": estimated_ready_slack_ms,
+            "enqueue_to_ready_ms": enqueue_to_ready_ms,
+            "submit_lag_ms": submit_lag_ms,
+            "queued_at": queued_at,
+            "enqueued_at": enqueued_at,
+            "wait_requested_at": wait_requested_at,
+            "wait_returned_at": wait_returned_at,
+            "ready_at": ready_at,
+            "waited_at": time.time(),
+        }
+
+    def _queue_profile_wait_event(
+        self,
+        *,
+        phase: str,
+        meta: dict[str, Any],
+        timings: dict[str, Any],
+        enqueued_at: Optional[float],
+        wait_requested_at: float,
+        wait_returned_at: float,
+    ) -> None:
+        ready_event = timings.get("_ready_event")
+        start_event = timings.get("_h2d_start_event")
+        end_event = timings.get("_h2d_end_event")
+        wait_start_event = timings.get("_wait_start_event")
+        wait_end_event = timings.get("_wait_end_event")
+        if end_event is None:
+            self.profiler.write(
+                self._build_profile_wait_event(
+                    phase=phase,
+                    meta=meta,
+                    timings=timings,
+                    enqueued_at=enqueued_at,
+                    wait_requested_at=wait_requested_at,
+                    wait_returned_at=wait_returned_at,
+                )
+            )
+            return
+        self._ensure_profile_poller()
+        with self._pending_profile_lock:
+            self._pending_profile_events.append(
+                {
+                    "phase": phase,
+                    "meta": dict(meta),
+                    "timings": timings,
+                    "enqueued_at": enqueued_at,
+                    "wait_requested_at": wait_requested_at,
+                    "wait_returned_at": wait_returned_at,
+                    "ready_event": ready_event,
+                    "start_event": start_event,
+                    "end_event": end_event,
+                    "wait_start_event": wait_start_event,
+                    "wait_end_event": wait_end_event,
+                }
+            )
+
+    def flush_profile_events(self, *, blocking: bool = False) -> None:
+        if self.profiler is None:
+            return
+        sleep_s = 0.001
+        while True:
+            with self._pending_profile_lock:
+                pending = self._pending_profile_events
+                self._pending_profile_events = []
+            if not pending:
+                return
+
+            still_pending: list[dict[str, Any]] = []
+            ready_samples: list[dict[str, Any]] = []
+            for sample in pending:
+                end_event = sample.get("end_event")
+                completion_event = sample.get("wait_end_event") or end_event
+                if self._event_is_ready(completion_event):
+                    ready_samples.append(sample)
+                    continue
+                if blocking:
+                    synchronize = getattr(completion_event, "synchronize", None)
+                    if callable(synchronize):
+                        try:
+                            synchronize()
+                            ready_samples.append(sample)
+                            continue
+                        except Exception:
+                            pass
+                still_pending.append(sample)
+
+            events_to_write: list[dict[str, Any]] = []
+            for sample in ready_samples:
+                timings = sample["timings"]
+                (
+                    ready_event,
+                    start_event,
+                    end_event,
+                    wait_start_event,
+                    wait_end_event,
+                    event_timing,
+                ) = _finalize_async_cuda_timings(
+                    timings,
+                    synchronize=False,
+                    events_ready=True,
+                )
+                events_to_write.append(
+                    self._build_profile_wait_event(
+                        phase=sample["phase"],
+                        meta=sample["meta"],
+                        timings=timings,
+                        enqueued_at=sample["enqueued_at"],
+                        wait_requested_at=float(sample["wait_requested_at"]),
+                        wait_returned_at=float(sample["wait_returned_at"]),
+                    )
+                )
+                self._release_cuda_event(ready_event, enable_timing=event_timing)
+                self._release_cuda_event(start_event, enable_timing=event_timing)
+                self._release_cuda_event(end_event, enable_timing=event_timing)
+                self._release_cuda_event(wait_start_event, enable_timing=event_timing)
+                self._release_cuda_event(wait_end_event, enable_timing=event_timing)
+            self.profiler.write_many(events_to_write)
+
+            if not still_pending:
+                if not blocking:
+                    return
+                continue
+
+            with self._pending_profile_lock:
+                self._pending_profile_events = still_pending + self._pending_profile_events
+            if not blocking:
+                return
+            time.sleep(sleep_s)
 
     def swap_weight_devices(
         self,
@@ -1038,6 +1365,24 @@ class Offloader:
         block_to_cpu = blocks[block_idx_to_cpu]
         block_to_cuda = blocks[block_idx_to_cuda]
         queued_at = time.time()
+        slot_count = self._swap_slot_count()
+        slot_id = self._swap_slot_id(block_idx_to_cpu)
+        previous_slot = (
+            self._slot_assignments.get(slot_id) if slot_id is not None else None
+        )
+        slot_reuse_age_ms = 0.0
+        if previous_slot is not None and previous_slot.get("queued_at") is not None:
+            slot_reuse_age_ms = max(
+                0.0,
+                (queued_at - float(previous_slot["queued_at"])) * 1000.0,
+            )
+        if slot_id is not None:
+            self._slot_assignments[slot_id] = {
+                "block_idx": block_idx_to_cuda,
+                "queued_at": queued_at,
+                "step": self.profile_step,
+                "phase": phase,
+            }
 
         self.futures[block_idx_to_cuda] = (
             self.thread_pool.submit(
@@ -1055,6 +1400,26 @@ class Offloader:
                 "block_idx_to_cpu": block_idx_to_cpu,
                 "queued_at": queued_at,
                 "step": self.profile_step,
+                "slot_id": slot_id,
+                "slot_count": slot_count,
+                "submit_trigger_block_idx": block_idx_to_cpu,
+                "prefetch_lead_blocks": self._prefetch_lead_blocks(
+                    phase=phase,
+                    block_idx_to_cpu=block_idx_to_cpu,
+                    block_idx_to_cuda=block_idx_to_cuda,
+                ),
+                "slot_previous_block_idx": (
+                    previous_slot.get("block_idx")
+                    if previous_slot is not None
+                    else None
+                ),
+                "slot_previous_step": (
+                    previous_slot.get("step") if previous_slot is not None else None
+                ),
+                "slot_previous_phase": (
+                    previous_slot.get("phase") if previous_slot is not None else None
+                ),
+                "slot_reuse_age_ms": slot_reuse_age_ms,
             },
         )
 
@@ -1068,50 +1433,60 @@ class Offloader:
 
         future, meta = self.futures.pop(block_idx)
         wait_t0 = time.perf_counter()
+        wait_requested_at = time.time()
+        if "wait_trigger_block_idx" not in meta:
+            meta["wait_trigger_block_idx"] = (
+                int(block_idx) + 1 if str(phase or "").startswith("backward") else block_idx
+            )
         _, bidx_to_cuda, timings, enqueued_at = future.result()
         if self.cuda_available:
-            _wait_for_async_cuda_copy_on_current_stream(self.device, timings)
-        ready_event, start_event, end_event, event_timing = _finalize_async_cuda_timings(
-            timings, synchronize=self.profiler is not None
-        )
-        self._release_cuda_event(ready_event, enable_timing=event_timing)
-        self._release_cuda_event(start_event, enable_timing=event_timing)
-        self._release_cuda_event(end_event, enable_timing=event_timing)
-        ready_at = time.time()
-        wait_ms = (time.perf_counter() - wait_t0) * 1000.0
-        timings["transfer_ms"] = float(timings.get("event_wait_ms", 0.0)) + float(
-            timings.get("h2d_ms", 0.0)
-        )
-        queued_at = meta.get("queued_at")
-        if queued_at is not None:
-            timings["submit_lag_ms"] = max(0.0, (ready_at - queued_at) * 1000.0)
+            wait_start_event = None
+            wait_end_event = None
+            if (
+                self.profiler is not None
+                and self._profile_gpu_wait_timing
+                and timings.get("_h2d_end_event") is not None
+            ):
+                wait_start_event = self._acquire_cuda_event(enable_timing=True)
+                wait_end_event = self._acquire_cuda_event(enable_timing=True)
+            _wait_for_async_cuda_copy_on_current_stream(
+                self.device,
+                timings,
+                wait_start_event=wait_start_event,
+                wait_end_event=wait_end_event,
+            )
+        wait_returned_at = time.time()
 
         assert block_idx == bidx_to_cuda, (
             f"Block index mismatch: {block_idx} != {bidx_to_cuda}"
         )
         if self.profiler is not None:
-            self.profiler.write(
-                {
-                    "ev": "block_swap",
-                    "phase": phase or meta.get("phase") or "",
-                    "submit_phase": meta.get("phase") or "",
-                    "step": meta.get("step"),
-                    "block_idx": block_idx,
-                    "block_idx_to_cpu": meta.get("block_idx_to_cpu"),
-                    "transfer_dtype": self.transfer_dtype,
-                    "wait_ms": wait_ms,
-                    "h2d_ms": float(timings.get("h2d_ms", 0.0)),
-                    "d2h_ms": float(timings.get("d2h_ms", 0.0)),
-                    "event_wait_ms": float(timings.get("event_wait_ms", 0.0)),
-                    "transfer_ms": float(timings.get("transfer_ms", 0.0)),
-                    "enqueue_ms": float(timings.get("enqueue_ms", 0.0)),
-                    "submit_lag_ms": float(timings.get("submit_lag_ms", 0.0)),
-                    "queued_at": meta.get("queued_at"),
-                    "enqueued_at": enqueued_at,
-                    "ready_at": ready_at,
-                    "waited_at": time.time(),
-                }
+            self._queue_profile_wait_event(
+                phase=phase,
+                meta=meta,
+                timings=timings,
+                enqueued_at=enqueued_at,
+                wait_requested_at=wait_requested_at,
+                wait_returned_at=wait_returned_at,
             )
+        else:
+            (
+                ready_event,
+                start_event,
+                end_event,
+                wait_start_event,
+                wait_end_event,
+                event_timing,
+            ) = _finalize_async_cuda_timings(
+                timings,
+                synchronize=False,
+                events_ready=self._event_is_ready(timings.get("_h2d_end_event")),
+            )
+            self._release_cuda_event(ready_event, enable_timing=event_timing)
+            self._release_cuda_event(start_event, enable_timing=event_timing)
+            self._release_cuda_event(end_event, enable_timing=event_timing)
+            self._release_cuda_event(wait_start_event, enable_timing=event_timing)
+            self._release_cuda_event(wait_end_event, enable_timing=event_timing)
 
         if self.debug:
             print(
@@ -1167,9 +1542,18 @@ class ModelOffloader(Offloader):
         # switching must wait for all pending transfers
         for block_idx in list(self.futures.keys()):
             self._wait_blocks_move(block_idx, phase="mode_switch")
+        self.flush_profile_events(blocking=True)
         self.forward_only = forward_only
 
     def __del__(self):
+        try:
+            self.flush_profile_events(blocking=True)
+        except Exception:
+            pass
+        try:
+            self._stop_profile_poller()
+        except Exception:
+            pass
         if self.supports_backward:
             for handle in self.remove_handles:
                 handle.remove()
@@ -1230,6 +1614,7 @@ class ModelOffloader(Offloader):
         # wait for all pending transfers
         for block_idx in list(self.futures.keys()):
             self._wait_blocks_move(block_idx, phase="prepare")
+        self._slot_assignments = {}
         self.profile_step += 1
         self._ensure_cpu_weight_masters(blocks)
         self._warm_swap_plan_cache(blocks)

@@ -77,6 +77,18 @@ GPU kernel、H2D/D2H 或 CUDA 同步，应该优先处理训练图、融合、co
 - `--memory_probe_max_steps 5`：只记录前 5 个训练 step 的细粒度显存快照。
 - `--block_swap_profile_jsonl auto`：写 block swap 传输和等待观测。
 
+`block_swap_profile_jsonl` 是诊断探针，不应作为正式吞吐对比的默认条件。长训或热测要比较
+`avg_step_sec` 时，优先关闭它；需要定位 block swap 时再打开。CUDA 路径下 profile observer
+默认使用轻量模式：
+
+- `ANIMA_BLOCK_SWAP_PROFILE_POLL_MS`：后台 profile event poll 间隔，默认 `50`。
+- `ANIMA_BLOCK_SWAP_PROFILE_GPU_WAIT=1`：开启完整 GPU wait timing，会在训练主 stream 上额外记录
+  timing event，只适合短诊断窗口。
+
+轻量模式下，`gpu_wait_ms` 默认为 `0`，`wait_ms` 主要代表 host 侧等待；判断 copy 是否提前完成
+优先看 `prefetch_runway_ms`、`estimated_ready_slack_ms`、`h2d_ms` 和 `enqueue_ms`。需要精确拆分
+GPU stream 等待时，再打开 `ANIMA_BLOCK_SWAP_PROFILE_GPU_WAIT=1` 做短窗口复测。
+
 WebUI 队列会把 `auto` 解析到当前任务目录：
 
 - `memory_probe.jsonl`

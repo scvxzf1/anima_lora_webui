@@ -214,6 +214,7 @@ export const FIELD_OPTIONS = {
     compile_inductor_mode: ['default', 'reduce-overhead', 'max-autotune', 'max-autotune-no-cudagraphs'],
     block_swap_restore_mode: ['foreach', 'slab'],
     block_swap_transfer_dtype: ['bf16', 'fp8_e4m3'],
+    block_swap_profile_jsonl: ['off', 'auto'],
     memory_probe_jsonl: ['off', 'auto'],
     memory_probe_max_steps: [1, 2, 3, 5, 0],
     peak_probe_jsonl: ['off', 'auto'],

@@ -1516,6 +1516,311 @@ RuntimeError: [enforce fail at inline_container.cc:672] . unexpected pos ...
 因此，后续如果要继续推进 block swap 调度层，或者继续评估 LoKr fused kernel 的收益，
 更建议把这两条 clean rerun 当作新的训练侧基线，而不是继续引用那条带跨盘 tail 的旧 eager 长窗。
 
+#### combo clean timeline：剩余热点进一步收缩到 H2D / submit_lag / host sync（2026-07-03）
+
+在上面的 clean rerun 基线补齐后，又补了一版新的 no-metrics timeline，目标不是再看
+`forward fused` 是否成立，而是判断 `triton_grad_w2_grad_x` 落地后，剩余热点是否已经更集中到：
+
+- block swap H2D
+- `submit_lag`
+- host launch / sync 排队
+
+这次产物：
+
+- timeline：
+  - `output/nsys/hot_profile_20260703_lokr_blockswap_combo_cleanrerun_nsys2026_nopy.nsys-rep`
+  - `output/nsys/hot_profile_20260703_lokr_blockswap_combo_cleanrerun_nsys2026_nopy.sqlite`
+- 日志：
+  - `output/bench/hot_profile/hot_profile_20260703_lokr_blockswap_combo_cleanrerun_nsys2026_nopy/baseline_s42_8step/logs/`
+
+运行口径：
+
+- `PROFILE_STEPS=3-5`
+- `trace=cuda,nvtx,cudnn,cublas`
+- `--sample=none`
+- `--cuda-memory-usage=true`
+- LoKr backend：
+  - `lokr_grouped_delta_backend=triton`
+  - `lokr_grouped_delta_backward_backend=triton_grad_w2_grad_x`
+
+环境前提也记一下：这轮 3080 不是绝对空卡，仍有两个 resident compute context，显存占用约
+`216 MiB + 2622 MiB`，但 `GPU util=0`。由于前面 `2026-07-02` 已经证明空卡与非空卡的
+**结构统计几乎重合**，所以这轮仍可用于热点归因；只是**不把它当成绝对吞吐 gold baseline**。
+
+先看训练侧 summary：
+
+| 指标 | `2026-07-02 triton` | `2026-07-03 combo` | 变化 |
+| --- | ---: | ---: | ---: |
+| first-step latency | `137.439 s` | `170.881 s` | 不作为主结论 |
+| `step 2-5 avg_step_sec` | `5.90550 s` | `4.67725 s` | `-20.80%` |
+| peak allocated | `1.8720 GB` | `1.8591 GB` | `-0.0129 GB` |
+| peak reserved | `2.0586 GB` | `2.0313 GB` | `-0.0273 GB` |
+
+这里 first-step 更慢，说明这轮 startup / compile 噪声更重；但 steady-state `2-5` 窗口反而更快，
+所以真正该看的还是 profile window 里的 NVTX / CUDA API / block-swap 归因。
+
+##### NVTX：forward 基本不动，收益几乎全部来自 backward
+
+| 指标 | `2026-07-02 triton` | `2026-07-03 combo` | 变化 |
+| --- | ---: | ---: | ---: |
+| `step=3~5` 总时长 | `19033.056 ms` | `13702.946 ms` | `-28.00%` |
+| `forward` 总时长 | `4341.994 ms` | `4309.396 ms` | `-0.75%` |
+| `backward` 总时长 | `14634.941 ms` | `9291.678 ms` | `-36.51%` |
+
+这点很干净：`forward` 基本没动，真正变化的是 `backward`。也就是说，这次 hidden combo backend
+带来的时间收益，主体不是 startup、更不是 block swap H2D 自己突然变快，而是 backward 本体被压短了。
+
+##### backward 形态：launch / 小 kernel 继续下降，但还没被“清空”
+
+| 指标 | `2026-07-02 triton backward` | `2026-07-03 combo backward` | 变化 |
+| --- | ---: | ---: | ---: |
+| backward launch 总数 | `209376` | `103536` | `-50.55%` |
+| backward kernel 总数 | `209592` | `102751` | `-50.98%` |
+| backward launch 密度 | `14306.6 / s` | `11142.9 / s` | `-22.11%` |
+| backward `<50us` 小 kernel | `188984` | `82114` | `-56.55%` |
+| backward `<100us` 小 kernel | `206421` | `95006` | `-53.97%` |
+
+所以结论不是“backward 已经没事了”，而是：
+
+1. hidden combo backend 确实继续压掉了大量 backward 小 kernel 和 host launch。
+2. 但 backward 里仍然还有 `10` 万级 kernel / `8` 万级 `<50us` 小 kernel，说明这条链还没有被彻底做平。
+
+##### forward 形态：已经稳定，几乎没有再变化
+
+| 指标 | `2026-07-02 triton forward` | `2026-07-03 combo forward` | 变化 |
+| --- | ---: | ---: | ---: |
+| forward launch 总数 | `3807` | `3807` | `0` |
+| forward kernel 总数 | `3594` | `3594` | `0` |
+| forward launch 密度 | `876.8 / s` | `883.4 / s` | 近似持平 |
+| forward `<50us` 小 kernel | `1578` | `1578` | `0` |
+| forward H2D count | `1170` | `1170` | `0` |
+| forward H2D size | `10.055 GB` | `10.055 GB` | `0` |
+| forward H2D total time | `1063.066 ms` | `1053.473 ms` | `-0.90%` |
+
+这和前面的判断完全一致：`forward` 这边早就被 `triton` 基本做完了，这次 combo 并没有改变
+forward 的执行形态，也没有改变 block swap 在 forward 窗口里的 H2D 体量。
+
+##### block-swap JSONL：H2D 略降，但 `submit_lag` 反而更显眼了
+
+这轮 JSONL 仍然是：
+
+- `312` 行 block-swap event
+- `156` 行 `forward_wait`
+- `156` 行 `backward_wait`
+
+聚合均值对比：
+
+| 指标 | `2026-07-02 triton` | `2026-07-03 combo` | 变化 |
+| --- | ---: | ---: | ---: |
+| `wait_ms avg` | `16.2618` | `15.9339` | `-2.02%` |
+| `h2d_ms avg` | `14.0214` | `13.5293` | `-3.51%` |
+| `transfer_ms avg` | `14.0438` | `13.5525` | `-3.50%` |
+| `enqueue_ms avg` | `1.9994` | `1.9003` | `-4.95%` |
+| `submit_lag_ms avg` | `370.0277` | `389.4028` | `+5.24%` |
+| `submit_lag_ms p90` | `1519.5684` | `1825.5529` | `+20.13%` |
+
+这张表很关键，因为它说明：
+
+- block swap 真实 H2D 和 enqueue 本身是略有改善的；
+- 但 `submit_lag` 不降反升，而且 tail 更长。
+
+换句话说，LoKr backward 自己更快以后，**H2D 提交之后到真正 ready 的那段排队时间**反而更容易被看见了。
+
+##### CUDA API：现在最重的不是 GEMM，而是 `cudaEventSynchronize`
+
+`cuda_api_sum` 的头部已经非常说明问题：
+
+| API | Calls | Total ms |
+| --- | ---: | ---: |
+| `cudaEventSynchronize` | `156` | `2895.058` |
+| `cudaLaunchKernel` | `97548` | `1650.251` |
+| `cudaLaunchKernelExC` | `14703` | `294.298` |
+| `cuLaunchKernel` | `6903` | `133.929` |
+| `cuLaunchKernelEx` | `2940` | `58.078` |
+| `cudaMemcpyAsync` | `2462` | `49.224` |
+| `cudaStreamSynchronize` | `29` | `32.068` |
+
+只看 `step=3~5` profile window 的 share：
+
+| 口径 | `2026-07-02 triton` | `2026-07-03 combo` |
+| --- | ---: | ---: |
+| launch API share | `16.1%` | `13.4%` |
+| sync API share | `15.6%` | `21.4%` |
+| H2D memcpy share | `11.2%` | `15.4%` |
+| launch + sync + H2D 合计 | `42.9%` | `50.2%` |
+
+所以这轮最重要的结构变化不是“launch 已经不重要了”，而是：
+
+- launch 绝对值还在降；
+- 但 sync 和 H2D 这些**不随 backward fused 同步下降**的成本，现在已经占到 profile window 的一半左右。
+
+特别是 `cudaEventSynchronize`，它仍然是当前单个最重的 host API，说明剩余瓶颈并不是纯 GPU 算力，
+而是 block swap 提交/等待路径在 host 侧继续卡住了节奏。
+
+不过这条判断后来被新的 profiling 纠偏了：旧版 `cudaEventSynchronize` 主要是观测链路自己在
+`_wait_blocks_move()` 里内联 `Event.synchronize()` 打出来的 observer overhead，不是训练热路径
+天然必须支付的 host sync。下面的异步 profile 小节是更新后的结论。
+
+##### 本轮结论
+
+这轮可以把问题收得很具体：
+
+1. `triton_grad_w2_grad_x` 已经继续压掉了大量 backward launch 和小 kernel，收益真实，且 profile
+   window 总时长下降约 `28%`。
+2. 但 `forward` 形态和 H2D 体量几乎完全没变，所以剩余热点没有神奇消失，而是更明确地暴露到
+   block swap 调度层。
+3. `submit_lag_ms avg` 从 `370.0` 升到 `389.4`，`p90` 也变差；这说明当前 tail 更像
+   “prefetch 已经提早发出，但真正 ready 仍然排队太久”。
+4. 旧 instrumentation 下 `cudaEventSynchronize` 仍然独占约 `2.9s`，看起来已经比单类
+   launch API 更重；后续异步 profile 纠偏证明，这个大头主要是 profiling 自己的
+   observer overhead。
+5. 因此，LoKr fused kernel 做到这一步后，剩余瓶颈**确实已经进一步收缩到**
+   `H2D + submit_lag + launch/调度链`，只是其中的 “host sync” 需要再区分
+   “真实 stall” 和 “profile 观测开销”。
+
+这也直接决定后续优先级：
+
+- 如果目标是继续拿端到端 step time，主线应先回到 block swap 调度层；后续异步 profile
+  进一步说明，真正该盯的是 `submit_lag` 背后的 prefetch / slot residency 语义，而不是
+  `cudaEventSynchronize` 这个旧观测值本身；
+- backward 再继续 fused 仍然有价值，但它的边际收益会越来越受 block swap 调度路径限制。
+
+##### 异步 profile 纠偏：`cudaEventSynchronize` 已从热路径掉下去，真实 wait 几乎为零（2026-07-03）
+
+为把“真实 stall”和“profiling 自己造成的 observer overhead”拆开，block swap profile 又补做了
+一轮 instrumentation 修正：
+
+- profiling path 不再在 `_wait_blocks_move()` 内联 `end_event.synchronize()`；
+  主路径只保留 `current_stream.wait_event(end_event)`。
+- H2D timing 改成异步归档：pending sample 先入队，后台 poller 用 `event.query()` 轮询 ready 后再落 JSONL。
+- `wait_ms` 不再用“后台线程观察到 ready 的墙钟时间”结算，而是拆成：
+  - `host_wait_ms`：`future.result()` + host 侧 wait 调用本身
+  - `gpu_wait_ms`：current stream 上 `wait_start -> wait_end` 的真实 GPU stall
+  - 兼容字段 `wait_ms = host_wait_ms + gpu_wait_ms`
+
+对应产物：
+
+- 旧 clean timeline：
+  - `output/nsys/hot_profile_20260703_lokr_blockswap_combo_cleanrerun_nsys2026_nopy.nsys-rep`
+- 修正前中间态（v2，指标被 finalize 时刻污染，不作为最终结论）：
+  - `output/nsys/hot_profile_20260703_lokr_blockswap_combo_asyncprofile_v2_nsys2026_nopy.nsys-rep`
+- 修正后干净异步版（v3）：
+  - `output/nsys/hot_profile_20260703_lokr_blockswap_combo_asyncprofile_v3_nsys2026_nopy.nsys-rep`
+  - `output/bench/hot_profile/hot_profile_20260703_lokr_blockswap_combo_asyncprofile_v3_nsys2026_nopy/baseline_s42_8step/logs/`
+
+关键对比如下：
+
+| 指标 | clean | async v2 | async v3 |
+| --- | ---: | ---: | ---: |
+| `cudaEventSynchronize` | `156 calls / 2895.1 ms` | `0` | `0` |
+| `cudaEventQuery` | `624 calls / 1.66 ms` | `28755 calls / 128.8 ms` | `32949 calls / 121.1 ms` |
+| `forward_wait host_queue_ms avg` | - | `0.197` | `0.165` |
+| `forward_wait wait_ms avg` | `31.580` | `377.250` | `0.309` |
+| `forward_wait enqueue_to_ready_ms avg` | - | `652.807` | `288.352` |
+| `forward_wait submit_lag_ms avg` | `348.384` | `656.043` | `291.464` |
+| `backward_wait wait_ms avg` | `0.287` | `0.219` | `0.292` |
+
+v3 再把 `wait_ms` 拆开看，会更清楚：
+
+| phase | `host_wait_ms avg` | `gpu_wait_ms avg` | `host_queue_ms avg` |
+| --- | ---: | ---: | ---: |
+| `forward_wait` | `0.308` | `0.001` | `0.165` |
+| `backward_wait` | `0.291` | `0.001` | `0.123` |
+
+这几组数把语义基本钉死了：
+
+1. `cudaEventSynchronize` 的大头确实来自旧 profiling 观测链路，而不是训练热路径自身。
+2. 线程池 / host queue 不是问题，`host_queue_ms` 只有 `0.1~0.2ms` 量级。
+3. 修正后 `forward_wait` 和 `backward_wait` 的真实 current-stream stall 都几乎为零；
+   `gpu_wait_ms avg` 只有 `0.001ms`，说明 block 大多在真正消费前就已经 ready。
+4. 仍然偏大的 `enqueue_to_ready_ms` / `submit_lag_ms`，更接近“prefetch 提前量 +
+   slot 占用窗口”的复合指标，而不是“consumer 在 wait site 真被卡住了多久”。
+5. `cudaEventQuery` 的新增成本是存在的，但总量只有 `~121ms / profile window`，
+   远小于旧版 `cudaEventSynchronize ~2895ms` 的 observer overhead。
+
+所以，block swap 调度层接下来的主线要换一个表述：
+
+- 不再优先盯 `cudaEventSynchronize` 本身；
+- 不再把 `submit_lag` 直接读成“host queue 太长”或“真实 wait 太久”；
+- 应该转向看：
+  - prefetch 发得是否过早；
+  - slot reuse / block residency window 是否过长；
+  - 这些长 runway 是否在放大后续 swap 排布和 H2D 复用压力。
+
+##### slot/runway 打点：long runway 是结构性 residency，不是 host queue（2026-07-03）
+
+为了继续拆上面三个问题，又给 block-swap JSONL 加了一组 lifecycle 字段：
+
+- `prefetch_runway_ms`：submit 进入队列到 wait site 被请求之间的墙钟时间。
+- `enqueue_to_wait_ms`：H2D API enqueue 完成到 wait site 之间的墙钟时间。
+- `estimated_ready_slack_ms`：`enqueue_to_wait_ms - transfer_ms`，估算 copy 完成后到消费之间的 slack。
+- `slot_id / slot_count`：当前 restore 使用的 resident slot。
+- `slot_reuse_age_ms`：同一 slot 上一个 block assignment 到当前 assignment 的年龄。
+- `prefetch_lead_blocks`：submit 触发 block 到 restore target block 的 block 距离。
+
+同时补了一个汇总脚本：
+
+```bash
+timeout 60 .venv/bin/python scripts/experiments/blockswap_profile_summary.py \
+  output/bench/hot_profile/hot_profile_20260703_lokr_blockswap_combo_asyncprofile_v4_slotrunway_nsys2026_nopy/baseline_s42_8step/logs/baseline_s42_8step.block_swap_profile.jsonl \
+  --top-field estimated_ready_slack_ms --top 12
+```
+
+这轮 v4 产物：
+
+- `output/nsys/hot_profile_20260703_lokr_blockswap_combo_asyncprofile_v4_slotrunway_nsys2026_nopy.nsys-rep`
+- `output/nsys/hot_profile_20260703_lokr_blockswap_combo_asyncprofile_v4_slotrunway_nsys2026_nopy.sqlite`
+- `output/bench/hot_profile/hot_profile_20260703_lokr_blockswap_combo_asyncprofile_v4_slotrunway_nsys2026_nopy/baseline_s42_8step/logs/`
+
+v4 的 CUDA API 仍然没有回到旧版 `cudaEventSynchronize` 形态：
+
+| API | Calls | Total ms |
+| --- | ---: | ---: |
+| `cudaLaunchKernel` | `82845` | `3452.408` |
+| `cudaLaunchKernelExC` | `14703` | `575.296` |
+| `cuLaunchKernel` | `6903` | `185.873` |
+| `cudaEventQuery` | `33718` | `135.939` |
+| `cudaMemcpyAsync` | `2462` | `49.405` |
+
+新的 runway / slot 字段给出的结论更直接：
+
+| phase | `wait_ms avg` | `prefetch_runway_ms avg` | `estimated_ready_slack_ms p90` | `slot_reuse_age_ms p90` |
+| --- | ---: | ---: | ---: | ---: |
+| `forward_wait` | `0.290` | `294.342` | `1603.163` | `3296.289` |
+| `backward_wait` | `0.336` | `412.801` | `1837.963` | `3750.136` |
+
+Top slack 样本里，`prefetch_lead_blocks` 全部是 `2`。这不是一个随意调大的预取距离，
+而是 `blocks_to_swap=26` 时只剩 `2` 个 resident slot 的结构结果：当前 block 用完后，
+只能把同 slot 的 block 提前两个 block restore 回来。
+
+Top slot reuse 也很说明问题：
+
+| phase | previous phase | block | previous block | slot | `slot_reuse_age_ms` | `estimated_ready_slack_ms` |
+| --- | --- | ---: | ---: | ---: | ---: | ---: |
+| `backward_wait` | `forward_prefetch` | `24` | `26` | `0` | `20623.254` | `1737.589` |
+| `backward_wait` | `forward_prefetch` | `25` | `27` | `1` | `17077.751` | `1673.059` |
+| `forward_wait` | `backward_prefetch` | `3` | `1` | `1` | `6522.776` | `2.764` |
+| `backward_wait` | `backward_prefetch` | `2` | `4` | `0` | `4638.064` | `1988.089` |
+| `backward_wait` | `backward_prefetch` | `3` | `5` | `1` | `4557.846` | `1981.934` |
+
+所以三件事可以先定下来：
+
+1. **prefetch 看起来“早”，但不是全局可简单推迟。**
+   `forward_wait estimated_ready_slack_ms p50=1.787ms`，已经接近 just-in-time；
+   同时 p90 又到 `1603ms`，说明不同 block 的中间 compute 差异很大。全局延迟 submit
+   会把 p50 这些样本直接打成 H2D stall。
+2. **slot residency 真正长的是 phase 边界。**
+   block `26/27` 从 forward tail 占住 slot 到 backward 首批复用，窗口达到 `17~20s`。
+   这不是 host queue，而是 “2 个 resident slot + backward 反向顺序” 的结构性占用。
+3. **当前 block swap 调度不再是第一顺位 step-time 瓶颈。**
+   真实 wait 仍只有 `~0.3ms`，大部分 H2D 都在消费前完成。继续做调度层优化，除非能拆 block
+   内部 submit 点、改变 slot 生命周期，或接受增加 resident slot / staging buffer 的显存成本；
+   否则很难从这里拿到端到端几个点的收益。
+
+这把后续优先级又收窄了一步：不增加显存峰值时，block swap 侧保留观测和小修；
+真正想继续拿 step time，更应该回到 LoKr kernel / checkpoint recompute 小 kernel 密度，
+或者探索更细粒度但不增峰值的 block 内 prefetch hook。
+
 ## 不改 blocks_to_swap 的优化方向
 
 当前瓶颈拆成三类：block swap H2D、LoKr elementwise/copy 小 kernel、host launch/sync
@@ -1550,11 +1855,16 @@ FP8 可以保留为复核项，但不应排在主线前面；已知收益是 PCI
 
 ### 2. block swap 调度层优化
 
-当前 offloader 已经是 CPU master + H2D-only，但还有明显 host/sync 成本：
+当前 offloader 已经是 CPU master + H2D-only。异步 profile 纠偏后可以确认：
+
+- 真实 wait site stall 很小；
+- 真正值得继续盯的是 prefetch 提前量和 slot 占用窗口，而不是 thread-pool queue。
 
 - `_wait_blocks_move()` 原先会对 H2D end event 做 host synchronize。已改成生产路径使用
-  `current_stream.wait_event(end_event)`，让依赖留在 CUDA stream 上，减少 host 阻塞；
-  profiling 模式仍同步取精确 `h2d_ms`。
+  `current_stream.wait_event(end_event)`，让依赖留在 CUDA stream 上，减少 host 阻塞。
+- profiling 也不再内联 `Event.synchronize()`；现在改成异步归档，并额外写
+  `host_queue_ms / host_wait_ms / gpu_wait_ms / enqueue_to_ready_ms`，避免 observer overhead
+  污染 `wait_ms / submit_lag_ms`。
 - `_swap_weight_devices_cached_cuda()` 每次 swap 都重新 `named_modules()`、构造
   `weight_swap_jobs`、新建 CUDA stream/events。可以在 CPU master 建好后预计算每个
   `(block_to_cpu, block_to_cuda)` 的 swap plan，并复用 copy stream / event 池。
@@ -1597,16 +1907,26 @@ LoKr 当前热点来自 `LoKrAddGroupedDeltaFn` / grouped projection 的 Python 
 - no-metrics run：`avg_step_sec`、MFU、峰值显存、loss。
 - nsys stats：`cudaLaunchKernel*` 调用数、top elementwise/copy kernel 占比、H2D count/MB。
 - GPU metrics：`GPU Active`、`SM Issue`、`Tensor Active`、DRAM read/write。
-- block-swap JSONL：`h2d_ms`、`enqueue_ms`、`wait_ms`、`transfer_ms`。
+- block-swap JSONL：`h2d_ms`、`enqueue_ms`、`host_queue_ms`、`host_wait_ms`、
+  `gpu_wait_ms`、`wait_ms`、`enqueue_to_ready_ms`、`submit_lag_ms`。
 
 ### 5. 已落地变更
 
 - `library/runtime/offloading.py`：非 profiling block-swap wait path 改为 CUDA
   `current_stream.wait_event(end_event)`，不再为了等待 H2D 完成而 host synchronize。
-- profiling path 仍保留 `Event.synchronize()`，保证 `block_swap_profile_jsonl` 里的
-  `h2d_ms / transfer_ms` 可读。
+- `library/runtime/offloading.py`：profiling path 改成异步归档 + `event.query()` poller，
+  不再在热路径内联 `Event.synchronize()`；同时新增 `host_queue_ms`、
+  `host_wait_ms`、`gpu_wait_ms`、`enqueue_to_ready_ms` 字段，保留兼容 `wait_ms` /
+  `submit_lag_ms`。
+- `library/runtime/offloading.py`：新增 slot/runway lifecycle 字段：
+  `prefetch_runway_ms`、`enqueue_to_wait_ms`、`estimated_ready_slack_ms`、
+  `slot_id`、`slot_count`、`slot_current_age_ms`、`slot_reuse_age_ms`、
+  `prefetch_lead_blocks`、`submit_trigger_block_idx`、`wait_trigger_block_idx`，
+  用于判断 prefetch 是否过早、slot residency 是否过长。
 - `tests/test_block_swapping.py` 增加 fake CUDA stream/event 单测，防止生产路径退回
-  host sync。
+  host sync，并覆盖“延迟 flush 不应再污染 `wait_ms`”和 slot reuse 年龄记录的语义。
+- `scripts/experiments/blockswap_profile_summary.py`：新增 block-swap JSONL 汇总脚本，
+  按 phase 输出 runway / slack / slot reuse 分布，并按指定字段打印 top 样本。
 - `library/runtime/offloading.py`：新增 block module map 缓存、swap plan cache、copy
   stream 复用、event pool 复用，并在 `prepare_block_devices_before_forward()` 预热主路径
   swap plan。
@@ -1896,6 +2216,168 @@ timeout -s INT 240 .venv/bin/python -m bench.mfu.run_training \
 ```
 
 验证结果：`plain_lora_ckpt_s42_2step OK elapsed=60.4s avg_step=1.212s tflops=43.523501 mfu=0.365526`。
+
+## 2026-07-03 长训回归复盘：profile observer 热路径扰动
+
+用户用同一组 LoKr/block swap 参数对比：
+
+- `rokkotsu_goddess_627_tag-20260703-183228`
+- `rokkotsu_goddess_528_tag-20260629-154555`
+
+tqdm 在 step 50 的累计口径分别是 `9.44s/it` 与 `8.93s/it`。对 WebUI history 的
+`progress.jsonl` 拆分后，确认这不是单纯冷启动/compile 均值问题：
+
+| 口径 | `627` 新 run | `528` 旧 run | 变化 |
+| --- | ---: | ---: | ---: |
+| step interval 31-50 mean | `6.815s` | `6.218s` | 慢 `9.6%` |
+| Web metrics rate 31-50 avg | `6.656s/step` | `6.207s/step` | 慢 `7.2%` |
+| GPU util 31-50 avg | `66.5%` | `71.3%` | 下降 `4.8pp` |
+
+配置 diff 显示训练关键参数基本相同：
+
+- `blocks_to_swap=12`
+- `block_swap_transfer_dtype="bf16"`
+- `block_swap_restore_mode="foreach"`
+- 两边都开启 `block_swap_profile_jsonl`
+- 差异主要是 run/cache/history 路径
+
+block swap profile 反而没有显示 H2D 或 restore issue 变差：
+
+| phase | 指标 | `627` 新 run | `528` 旧 run |
+| --- | --- | ---: | ---: |
+| forward_wait | `h2d_ms avg` | `14.108` | `14.556` |
+| backward_wait | `h2d_ms avg` | `13.844` | `14.698` |
+| forward_wait | `enqueue_ms avg` | `2.206` | `5.375` |
+| backward_wait | `enqueue_ms avg` | `2.603` | `6.409` |
+| forward_wait | `wait_ms avg` | `0.135` | `0.050` |
+| backward_wait | `wait_ms avg` | `0.114` | `0.049` |
+
+所以这次回退不应归因到 slab/foreach restore 本身，也不说明 H2D copy 变慢。更合理的解释是：
+新一轮 slot/runway profile observer 把观测成本带进了训练热路径：
+
+1. profile poller 以 `1ms` 周期轮询 pending CUDA event；
+2. `_submit_move_blocks()` / `_wait_blocks_move()` 每个 block 主动 `flush_profile_events()`；
+3. 为拆 `host_wait_ms/gpu_wait_ms`，每个 wait 在训练主 stream 上额外记录 timing event；
+4. JSONL 字段变多，旧 run `1769` 行约 `0.88 MiB`，新 run `2581` 行约 `3.04 MiB`。
+
+已落地修复：
+
+- `BlockSwapProfiler.write_many()`：ready samples 批量写，减少每 event open/write/close。
+- `ANIMA_BLOCK_SWAP_PROFILE_POLL_MS`：后台 poll 间隔可调，默认从 `1ms` 放宽到 `50ms`。
+- submit/wait 热路径不再主动 flush；由后台 poller、显式 flush、析构和 nsys stop 时的 blocking flush
+  负责落盘。
+- `ANIMA_BLOCK_SWAP_PROFILE_GPU_WAIT=1` 才开启完整 GPU wait timing；默认保留
+  `host_wait_ms/prefetch_runway_ms/slot_reuse_age_ms` 等归因字段，但不再给主 stream 增加额外
+  wait timing event。
+- `configs/presets.toml[balanced_16g]` 和 WebUI 正式训练快捷档（Balanced 16G / 更省显存 /
+  LoKr 16G / OOM 兜底）的 `block_swap_profile_jsonl` 改为 `off`；`FP8 测试` 仍保留 `auto`
+  作为诊断/消融按钮。
+
+结论：
+
+1. `block_swap_profile_jsonl=auto` 是诊断口径，不是正式吞吐基线。
+2. 要比较版本速度，必须关闭 `block_swap_profile_jsonl` 和 nsys GPU metrics；只在归因窗口打开。
+3. 这次 627 vs 528 的回退优先按 observer overhead 修复验证，不应立刻解释为 slab/foreach 或
+   LoKr fused kernel 方向失败。
+
+### 2026-07-03 19:03 复测补充：imported 配置覆盖了 preset 修复
+
+随后又跑了一次：
+
+- `/home/scv/nvme0n1p1/训练器相关/anima缓存/rokkotsu_goddess_627_tag-20260703-190219`
+- history：`20260703-190341-training-imported-rokkotsu_goddess_627_tag`
+
+这次速度相对 18:33 有改善，但仍未回到 6/29 旧基线：
+
+| 口径 | `528` 旧 run | `627` 18:33 | `627` 19:03 |
+| --- | ---: | ---: | ---: |
+| step interval 31-50 mean | `6.218s` | `6.815s` | `6.567s` |
+| Web metrics rate 31-50 avg | `6.207s/step` | `6.656s/step` | `6.498s/step` |
+
+原因不是轻量 observer 完全无效，而是这次 runtime config 仍然包含：
+
+```toml
+block_swap_profile_jsonl = "/home/scv/nvme0n1p1/训练器相关/anima-配置/web-training-history/20260703-190341-training-imported-rokkotsu_goddess_627_tag/block_swap_profile.jsonl"
+```
+
+继续追配置链后确认，外置配置根里的 imported 配置：
+
+```text
+/home/scv/nvme0n1p1/训练器相关/anima-配置/imported/rokkotsu_goddess_627_tag.toml
+```
+
+自己显式写了：
+
+```toml
+block_swap_profile_jsonl = "auto"
+```
+
+它位于 merge 链的 method/imported 层，会覆盖 `configs/presets.toml[balanced_16g]` 和 WebUI
+快捷按钮里的默认值。因此 19:03 复测仍然带着 block-swap profile 跑。已把这份实际生效的
+imported 配置改为：
+
+```toml
+block_swap_profile_jsonl = "off"
+```
+
+下一轮重跑才是关闭 block-swap profile 的干净吞吐口径。
+
+### 2026-07-03 19:38 复测：干净口径已回升，tqdm 累计均值会误导
+
+再次重跑：
+
+- `/home/scv/nvme0n1p1/训练器相关/anima缓存/rokkotsu_goddess_627_tag-20260703-193821`
+- history：`20260703-193944-training-imported-rokkotsu_goddess_627_tag`
+
+这次 runtime config 已确认：
+
+```toml
+block_swap_profile_jsonl = "off"
+```
+
+history 目录也没有 `block_swap_profile.jsonl`。按 `progress.jsonl` 的逐步 interval 看，真实
+steady-state 已经比 6/29 旧基线更快：
+
+| 口径 | `528` 旧 run | `627` 18:33 profile full | `627` 19:03 profile lite | `627` 19:38 profile off |
+| --- | ---: | ---: | ---: | ---: |
+| step interval 31-50 mean | `6.218s` | `6.815s` | `6.567s` | `6.050s` |
+| step interval 51-100 mean | `6.175s` | `6.513s` | `6.446s` | `5.883s` |
+| step interval 101-160 mean | - | `6.563s` | - | `5.868s` |
+
+用户看到的“仍然不对”来自 tqdm 的累计 `s/it`：
+
+| 口径 | 旧 run | 19:38 新 run |
+| --- | ---: | ---: |
+| step 1 tqdm | `142.74s/it` | `150.22s/it` |
+| step 50 tqdm | `8.93s/it` | `9.14s/it` |
+| step 73 tqdm | `8.06s/it` | `8.10s/it` |
+
+tqdm 的 `s/it` 是从 step 0 开始累计的平均值，会把首步 compile / graph warmup 的 2 分多钟摊到
+前几百步里。19:38 新 run 首步比旧 run 多约 `7.5s`，所以 step 50/73 的累计值仍可能看起来
+略差；但从逐步 interval 看，step 31 以后已经更快，step 100 以后稳定在约 `5.85~5.90s/step`。
+
+因此当前判断更新为：
+
+1. block-swap profile 默认开销问题已通过关闭 profile 和轻量 observer 修复。
+2. 19:38 干净复测的真实 steady-state 已经不是回退，而是相对 6/29 旧基线提升约 `4%~5%`。
+3. 后续速度判断不能用前 50/73 步的 tqdm 累计 `s/it`，要看 `progress.jsonl` interval 或
+   Web metrics 的滚动/窗口 rate。
+
+补充说明：6/29 `528` 旧 run 也开着 `block_swap_profile_jsonl`，因此它不是“无 profile 基线”。
+更准确的对比是：
+
+- `528`：旧版 profile-on，schema 简单，主要记录 transfer/wait，内联 `Event.synchronize()`
+  在 H2D 已提前 ready 时成本很小。
+- `627` 19:03：新版 lightweight profile-on，关闭了最重的 GPU wait timing，但仍保留
+  slot/runway lifecycle、pending event queue、后台 `event.query()`、更大的 JSONL payload 和
+  多字段 meta dict。
+- `627` 19:38：profile-off，才是当前正式训练热路径。
+
+所以 19:03 没回到 6/29 旧 profile-on 水平，不是因为 H2D/restore 本体仍慢，而是新版 lightweight
+observer 仍比旧版 observer 重。它已经把 18:33 full profile 的回退从 `6.815s` 收到 `6.567s`，
+但因为还在做 slot/runway 归因和异步落盘，仍比旧版简单 profile 多一层 Python/GIL/I/O 开销。若后续
+需要“profile-on 也接近旧速度”的诊断口径，应新增 basic/full profile mode：basic 只保留旧式
+transfer/wait 字段，full 才打开 slot/runway 和 GPU wait 细分。
 
 ## 解读
 
