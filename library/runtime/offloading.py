@@ -1,4 +1,5 @@
 from concurrent.futures import ThreadPoolExecutor
+from dataclasses import dataclass
 import json
 import logging
 import os
@@ -13,6 +14,11 @@ from library.runtime.device import (
     should_move_weight_to_device,
     synchronize_device,
     weighs_to_device,
+)
+from library.runtime.int8_linear import (
+    INT8_MAX,
+    classify_frozen_linear_module,
+    quantize_weight_per_channel,
 )
 
 logger = logging.getLogger(__name__)
@@ -44,9 +50,45 @@ def _can_swap_frozen_weight_to_cpu(module: nn.Module) -> bool:
     )
 
 
-_BLOCK_SWAP_TRANSFER_DTYPES = {"bf16", "fp8_e4m3"}
+_BLOCK_SWAP_TRANSFER_DTYPES = {"bf16", "fp8_e4m3", "int8"}
 _BLOCK_SWAP_RESTORE_MODES = {"foreach", "slab"}
 _DEFAULT_BLOCK_SWAP_PROFILE_POLL_INTERVAL_S = 0.05
+
+
+@dataclass(frozen=True)
+class Int8BlockSwapCpuMaster:
+    """CPU master for a frozen Linear weight stored as int8 + per-row scale."""
+
+    quantized: torch.Tensor
+    scale: torch.Tensor
+    shape: tuple[int, ...]
+
+    @property
+    def dtype(self) -> torch.dtype:
+        return self.quantized.dtype
+
+    @property
+    def numel(self) -> int:
+        return int(self.quantized.numel())
+
+    def stored_nbytes(self) -> int:
+        return _tensor_nbytes(self.quantized) + _tensor_nbytes(self.scale)
+
+    def to_tensor(
+        self,
+        *,
+        device: torch.device,
+        dtype: torch.dtype,
+        non_blocking: bool = True,
+    ) -> torch.Tensor:
+        quantized = self.quantized.to(device=device, non_blocking=non_blocking)
+        scale = self.scale.to(device=device, non_blocking=non_blocking)
+        rows = quantized.reshape(self.shape[0], -1).to(torch.float32)
+        restored = rows * scale.to(torch.float32)[:, None]
+        return restored.reshape(self.shape).to(dtype=dtype)
+
+
+_CpuMaster = Union[torch.Tensor, Int8BlockSwapCpuMaster]
 
 
 def _env_flag(name: str, *, default: bool = False) -> bool:
@@ -76,6 +118,8 @@ def normalize_block_swap_transfer_dtype(value: Optional[str]) -> str:
         "float8_e4m3": "fp8_e4m3",
         "float8_e4m3fn": "fp8_e4m3",
         "e4m3": "fp8_e4m3",
+        "int8_linear": "int8",
+        "i8": "int8",
     }
     dtype = aliases.get(dtype, dtype)
     if dtype not in _BLOCK_SWAP_TRANSFER_DTYPES:
@@ -103,9 +147,22 @@ def normalize_block_swap_restore_mode(value: Optional[str]) -> str:
     return mode
 
 
+def _int8_block_swap_candidate(module_name: str, weight: torch.Tensor) -> bool:
+    if weight.dim() != 2:
+        return False
+    return classify_frozen_linear_module(
+        f"blocks.0.{module_name}",
+        scope="all",
+    ) is not None
+
+
 def _capture_cpu_master(
-    weight: torch.Tensor, *, pin_memory: bool, transfer_dtype: str
-) -> tuple[torch.Tensor, dict[str, float]]:
+    weight: torch.Tensor,
+    *,
+    module_name: str = "",
+    pin_memory: bool,
+    transfer_dtype: str,
+) -> tuple[_CpuMaster, dict[str, float]]:
     master = weight.detach()
     if master.device.type != "cpu":
         master = master.to("cpu", non_blocking=False)
@@ -117,6 +174,7 @@ def _capture_cpu_master(
         "mean_abs_error": 0.0,
         "relative_l2": 0.0,
         "saturated": 0.0,
+        "int8_quantized": 0.0,
     }
     if transfer_dtype == "fp8_e4m3":
         source = master
@@ -132,12 +190,56 @@ def _capture_cpu_master(
         stats["mean_abs_error"] = float(diff.abs().mean().item()) if source.numel() else 0.0
         denom = float(source_float.norm().item())
         stats["relative_l2"] = float(diff.norm().item()) / denom if denom > 0.0 else 0.0
+    elif transfer_dtype == "int8" and _int8_block_swap_candidate(module_name, master):
+        source = master
+        source_float = source.float()
+        quantized, scale = quantize_weight_per_channel(source)
+        restored = (quantized.float() * scale.float()[:, None]).reshape(source.shape)
+        diff = source_float - restored
+        master = Int8BlockSwapCpuMaster(
+            quantized=quantized.contiguous(),
+            scale=scale.to(torch.float32).contiguous(),
+            shape=tuple(int(dim) for dim in source.shape),
+        )
+        stats["max_abs"] = float(source_float.abs().max().item()) if source.numel() else 0.0
+        stats["saturated"] = float((quantized.abs().to(torch.int16) == int(INT8_MAX)).any().item())
+        stats["stored_bytes"] = float(master.stored_nbytes())
+        stats["max_abs_error"] = float(diff.abs().max().item()) if source.numel() else 0.0
+        stats["mean_abs_error"] = float(diff.abs().mean().item()) if source.numel() else 0.0
+        denom = float(source_float.norm().item())
+        stats["relative_l2"] = float(diff.norm().item()) / denom if denom > 0.0 else 0.0
+        stats["int8_quantized"] = 1.0
     if pin_memory:
         try:
-            master = master.pin_memory()
+            if isinstance(master, Int8BlockSwapCpuMaster):
+                master = Int8BlockSwapCpuMaster(
+                    quantized=master.quantized.pin_memory(),
+                    scale=master.scale.pin_memory(),
+                    shape=master.shape,
+                )
+            else:
+                master = master.pin_memory()
         except Exception:
             pass
     return master, stats
+
+
+def _parked_cpu_master_tensor(master: _CpuMaster) -> torch.Tensor:
+    if isinstance(master, Int8BlockSwapCpuMaster):
+        return master.quantized
+    return master
+
+
+def _restore_cpu_master_tensor(
+    master: _CpuMaster,
+    *,
+    device: torch.device,
+    dtype: torch.dtype,
+    non_blocking: bool = True,
+) -> torch.Tensor:
+    if isinstance(master, Int8BlockSwapCpuMaster):
+        return master.to_tensor(device=device, dtype=dtype, non_blocking=non_blocking)
+    return master.to(device=device, dtype=dtype, non_blocking=non_blocking)
 
 
 def _try_foreach_h2d_copy(
@@ -388,7 +490,7 @@ def _resolve_profiler(profile_jsonl: Optional[Union[str, BlockSwapProfiler]]):
     return BlockSwapProfiler(path)
 
 
-_SwapPlanEntry = Tuple[str, torch.Tensor, torch.Tensor, torch.dtype, torch.dtype]
+_SwapPlanEntry = Tuple[str, _CpuMaster, _CpuMaster, torch.dtype, torch.dtype]
 _SwapPlan = tuple[tuple[_SwapPlanEntry, ...], tuple[str, ...]]
 _SwapSlabView = Tuple[int, int, Tuple[int, ...], torch.dtype]
 _SwapSlabPlan = tuple[tuple[tuple[str, _SwapSlabView], ...], int]
@@ -422,7 +524,7 @@ class Offloader:
         self.cuda_available = device.type == "cuda"
         self.profiler = _resolve_profiler(profile_jsonl)
         self.profile_step = 0
-        self._cpu_weight_masters: Optional[list[dict[str, torch.Tensor]]] = None
+        self._cpu_weight_masters: Optional[list[dict[str, _CpuMaster]]] = None
         self._cpu_weight_master_dtypes: Optional[list[dict[str, torch.dtype]]] = None
         self._cpu_weight_master_slabs: Optional[list[Optional[torch.Tensor]]] = None
         self._cpu_weight_master_slab_plans: Optional[
@@ -457,9 +559,17 @@ class Offloader:
         self._fp8_mean_abs_error_by_block: list[float] = [0.0 for _ in range(num_blocks)]
         self._fp8_relative_l2_by_block: list[float] = [0.0 for _ in range(num_blocks)]
         self._fp8_saturated_tensors = 0
+        self._int8_weight_bytes_by_block: list[int] = [0 for _ in range(num_blocks)]
+        self._int8_max_abs_by_block: list[float] = [0.0 for _ in range(num_blocks)]
+        self._int8_max_abs_error_by_block: list[float] = [0.0 for _ in range(num_blocks)]
+        self._int8_mean_abs_error_by_block: list[float] = [0.0 for _ in range(num_blocks)]
+        self._int8_relative_l2_by_block: list[float] = [0.0 for _ in range(num_blocks)]
+        self._int8_saturated_tensors = 0
+        self._int8_quantized_tensors = 0
         self._frozen_weight_master_bytes = 0
         self._bf16_master_bytes = 0
         self._fp8_master_bytes = 0
+        self._int8_master_bytes = 0
         self._reported_weight_masters = False
 
     def _ensure_cpu_weight_masters(
@@ -469,37 +579,51 @@ class Offloader:
             return
 
         pin_memory = self.cuda_available
-        masters: list[dict[str, torch.Tensor]] = []
+        masters: list[dict[str, _CpuMaster]] = []
         master_dtypes: list[dict[str, torch.dtype]] = []
         master_slabs: list[Optional[torch.Tensor]] = []
         master_slab_plans: list[Optional[dict[str, _SwapSlabView]]] = []
         bytes_by_block: list[int] = []
         bf16_bytes_by_block: list[int] = []
         fp8_bytes_by_block: list[int] = []
+        int8_bytes_by_block: list[int] = []
         fp8_max_abs_by_block: list[float] = []
         fp8_max_abs_error_by_block: list[float] = []
         fp8_mean_abs_error_by_block: list[float] = []
         fp8_relative_l2_by_block: list[float] = []
+        int8_max_abs_by_block: list[float] = []
+        int8_max_abs_error_by_block: list[float] = []
+        int8_mean_abs_error_by_block: list[float] = []
+        int8_relative_l2_by_block: list[float] = []
         total_bytes = 0
         total_bf16_bytes = 0
         total_fp8_bytes = 0
-        saturated_tensors = 0
+        total_int8_bytes = 0
+        fp8_saturated_tensors = 0
+        int8_saturated_tensors = 0
+        int8_quantized_tensors = 0
         for block in blocks:
-            block_masters: dict[str, torch.Tensor] = {}
+            block_masters: dict[str, _CpuMaster] = {}
             block_dtypes: dict[str, torch.dtype] = {}
             block_bytes = 0
             block_bf16_bytes = 0
             block_fp8_bytes = 0
+            block_int8_bytes = 0
             block_max_abs = 0.0
             block_max_abs_error = 0.0
             block_mean_abs_errors: list[float] = []
             block_relative_l2s: list[float] = []
+            block_int8_max_abs = 0.0
+            block_int8_max_abs_error = 0.0
+            block_int8_mean_abs_errors: list[float] = []
+            block_int8_relative_l2s: list[float] = []
             for name, module in block.named_modules():
                 weight = getattr(module, "weight", None)
                 if weight is None or not _can_swap_frozen_weight_to_cpu(module):
                     continue
                 master, stats = _capture_cpu_master(
                     weight.data,
+                    module_name=name,
                     pin_memory=pin_memory,
                     transfer_dtype=self.transfer_dtype,
                 )
@@ -508,16 +632,29 @@ class Offloader:
                 stored_bytes = int(stats["stored_bytes"])
                 source_bytes = int(stats["source_bytes"])
                 fp8_bytes = stored_bytes if self.transfer_dtype == "fp8_e4m3" else 0
+                is_int8_quantized = bool(stats["int8_quantized"])
+                int8_bytes = stored_bytes if is_int8_quantized else 0
                 block_bytes += stored_bytes
                 block_bf16_bytes += source_bytes
                 block_fp8_bytes += fp8_bytes
-                block_max_abs = max(block_max_abs, float(stats["max_abs"]))
-                block_max_abs_error = max(
-                    block_max_abs_error, float(stats["max_abs_error"])
-                )
-                block_mean_abs_errors.append(float(stats["mean_abs_error"]))
-                block_relative_l2s.append(float(stats["relative_l2"]))
-                saturated_tensors += int(stats["saturated"])
+                block_int8_bytes += int8_bytes
+                if self.transfer_dtype == "fp8_e4m3":
+                    block_max_abs = max(block_max_abs, float(stats["max_abs"]))
+                    block_max_abs_error = max(
+                        block_max_abs_error, float(stats["max_abs_error"])
+                    )
+                    block_mean_abs_errors.append(float(stats["mean_abs_error"]))
+                    block_relative_l2s.append(float(stats["relative_l2"]))
+                    fp8_saturated_tensors += int(stats["saturated"])
+                if is_int8_quantized:
+                    block_int8_max_abs = max(block_int8_max_abs, float(stats["max_abs"]))
+                    block_int8_max_abs_error = max(
+                        block_int8_max_abs_error, float(stats["max_abs_error"])
+                    )
+                    block_int8_mean_abs_errors.append(float(stats["mean_abs_error"]))
+                    block_int8_relative_l2s.append(float(stats["relative_l2"]))
+                    int8_saturated_tensors += int(stats["saturated"])
+                    int8_quantized_tensors += 1
             block_masters, block_master_slab, block_master_slab_plan = self._pack_cpu_master_block(
                 block_masters,
                 pin_memory=pin_memory,
@@ -529,6 +666,7 @@ class Offloader:
             bytes_by_block.append(block_bytes)
             bf16_bytes_by_block.append(block_bf16_bytes)
             fp8_bytes_by_block.append(block_fp8_bytes)
+            int8_bytes_by_block.append(block_int8_bytes)
             fp8_max_abs_by_block.append(block_max_abs)
             fp8_max_abs_error_by_block.append(block_max_abs_error)
             fp8_mean_abs_error_by_block.append(
@@ -541,9 +679,22 @@ class Offloader:
                 if block_relative_l2s
                 else 0.0
             )
+            int8_max_abs_by_block.append(block_int8_max_abs)
+            int8_max_abs_error_by_block.append(block_int8_max_abs_error)
+            int8_mean_abs_error_by_block.append(
+                sum(block_int8_mean_abs_errors) / len(block_int8_mean_abs_errors)
+                if block_int8_mean_abs_errors
+                else 0.0
+            )
+            int8_relative_l2_by_block.append(
+                sum(block_int8_relative_l2s) / len(block_int8_relative_l2s)
+                if block_int8_relative_l2s
+                else 0.0
+            )
             total_bytes += block_bytes
             total_bf16_bytes += block_bf16_bytes
             total_fp8_bytes += block_fp8_bytes
+            total_int8_bytes += block_int8_bytes
 
         self._cpu_weight_masters = masters
         self._cpu_weight_master_dtypes = master_dtypes
@@ -557,10 +708,18 @@ class Offloader:
         self._fp8_max_abs_error_by_block = fp8_max_abs_error_by_block
         self._fp8_mean_abs_error_by_block = fp8_mean_abs_error_by_block
         self._fp8_relative_l2_by_block = fp8_relative_l2_by_block
-        self._fp8_saturated_tensors = saturated_tensors
+        self._fp8_saturated_tensors = fp8_saturated_tensors
+        self._int8_weight_bytes_by_block = int8_bytes_by_block
+        self._int8_max_abs_by_block = int8_max_abs_by_block
+        self._int8_max_abs_error_by_block = int8_max_abs_error_by_block
+        self._int8_mean_abs_error_by_block = int8_mean_abs_error_by_block
+        self._int8_relative_l2_by_block = int8_relative_l2_by_block
+        self._int8_saturated_tensors = int8_saturated_tensors
+        self._int8_quantized_tensors = int8_quantized_tensors
         self._frozen_weight_master_bytes = total_bytes
         self._bf16_master_bytes = total_bf16_bytes
         self._fp8_master_bytes = total_fp8_bytes
+        self._int8_master_bytes = total_int8_bytes
         if not self._reported_weight_masters:
             logger.info(
                 "Block swap frozen CPU masters prepared: "
@@ -583,11 +742,19 @@ class Offloader:
                     "bf16_weight_bytes_by_block": bf16_bytes_by_block,
                     "fp8_master_bytes": total_fp8_bytes,
                     "fp8_weight_bytes_by_block": fp8_bytes_by_block,
-                    "fp8_saturated_tensors": saturated_tensors,
+                    "fp8_saturated_tensors": fp8_saturated_tensors,
                     "fp8_max_abs_by_block": fp8_max_abs_by_block,
                     "fp8_max_abs_error_by_block": fp8_max_abs_error_by_block,
                     "fp8_mean_abs_error_by_block": fp8_mean_abs_error_by_block,
                     "fp8_relative_l2_by_block": fp8_relative_l2_by_block,
+                    "int8_master_bytes": total_int8_bytes,
+                    "int8_weight_bytes_by_block": int8_bytes_by_block,
+                    "int8_quantized_tensors": int8_quantized_tensors,
+                    "int8_saturated_tensors": int8_saturated_tensors,
+                    "int8_max_abs_by_block": int8_max_abs_by_block,
+                    "int8_max_abs_error_by_block": int8_max_abs_error_by_block,
+                    "int8_mean_abs_error_by_block": int8_mean_abs_error_by_block,
+                    "int8_relative_l2_by_block": int8_relative_l2_by_block,
                     "h2d_only": True,
                 }
             )
@@ -609,15 +776,17 @@ class Offloader:
 
     def _pack_cpu_master_block(
         self,
-        block_masters: dict[str, torch.Tensor],
+        block_masters: dict[str, _CpuMaster],
         *,
         pin_memory: bool,
     ) -> tuple[
-        dict[str, torch.Tensor],
+        dict[str, _CpuMaster],
         Optional[torch.Tensor],
         Optional[dict[str, _SwapSlabView]],
     ]:
         if not block_masters:
+            return block_masters, None, None
+        if any(isinstance(master, Int8BlockSwapCpuMaster) for master in block_masters.values()):
             return block_masters, None, None
         dtypes = {tensor.dtype for tensor in block_masters.values()}
         if len(dtypes) != 1:
@@ -671,8 +840,8 @@ class Offloader:
         block_to_cpu: nn.Module,
         block_idx_to_cuda: int,
         block_to_cuda: nn.Module,
-        source_masters: dict[str, torch.Tensor],
-        target_masters: dict[str, torch.Tensor],
+        source_masters: dict[str, _CpuMaster],
+        target_masters: dict[str, _CpuMaster],
         source_dtypes: dict[str, torch.dtype],
         target_dtypes: dict[str, torch.dtype],
     ) -> _SwapPlan:
@@ -716,8 +885,8 @@ class Offloader:
         block_to_cpu: nn.Module,
         block_idx_to_cuda: int,
         block_to_cuda: nn.Module,
-        source_masters: dict[str, torch.Tensor],
-        target_masters: dict[str, torch.Tensor],
+        source_masters: dict[str, _CpuMaster],
+        target_masters: dict[str, _CpuMaster],
         source_dtypes: dict[str, torch.dtype],
         target_dtypes: dict[str, torch.dtype],
     ) -> _SwapPlan:
@@ -742,6 +911,8 @@ class Offloader:
         slab_entries: list[tuple[str, _SwapSlabView]] = []
         slab_numel = 0
         for module_name, _, target_master, _, target_dtype in weight_swap_jobs:
+            if isinstance(target_master, Int8BlockSwapCpuMaster):
+                return (), 0
             flat_numel = int(target_master.numel())
             slab_entries.append(
                 (
@@ -777,6 +948,13 @@ class Offloader:
         swap_plan: _SwapPlan,
     ) -> Optional[tuple[torch.Tensor, torch.Tensor, tuple[tuple[str, torch.Tensor], ...]]]:
         if self.restore_mode != "slab":
+            return None
+        weight_swap_jobs, _ = swap_plan
+        if any(
+            isinstance(source_master, Int8BlockSwapCpuMaster)
+            or isinstance(target_master, Int8BlockSwapCpuMaster)
+            for _, source_master, target_master, _, _ in weight_swap_jobs
+        ):
             return None
         if self._cpu_weight_master_slabs is None or self._cpu_weight_master_slab_plans is None:
             return None
@@ -1220,13 +1398,18 @@ class Offloader:
                 ) in weight_swap_jobs:
                     module_to_cpu = modules_to_cpu[module_name]
                     module_to_cuda = modules_to_cuda[module_name]
-                    module_to_cpu.weight.data = source_master
+                    module_to_cpu.weight.data = _parked_cpu_master_tensor(source_master)
                     cuda_bindings.append((module_to_cuda, gpu_views[module_name]))
                 gpu_slab.record_stream(stream)
                 gpu_slab.copy_(cpu_slab, non_blocking=True)
             else:
                 cuda_dsts: list[torch.Tensor] = []
                 cpu_srcs: list[torch.Tensor] = []
+                has_int8_master = any(
+                    isinstance(source_master, Int8BlockSwapCpuMaster)
+                    or isinstance(target_master, Int8BlockSwapCpuMaster)
+                    for _, source_master, target_master, _, _ in weight_swap_jobs
+                )
                 for (
                     module_name,
                     source_master,
@@ -1237,12 +1420,28 @@ class Offloader:
                     module_to_cpu = modules_to_cpu[module_name]
                     module_to_cuda = modules_to_cuda[module_name]
                     cuda_data_view = module_to_cpu.weight.data
-                    module_to_cpu.weight.data = source_master
+                    module_to_cpu.weight.data = _parked_cpu_master_tensor(source_master)
                     cuda_data_view.record_stream(stream)
                     cuda_dsts.append(cuda_data_view)
-                    cpu_srcs.append(target_master)
                     cuda_bindings.append((module_to_cuda, cuda_data_view))
-                if not _try_foreach_h2d_copy(cuda_dsts, cpu_srcs):
+                    if not has_int8_master and isinstance(target_master, torch.Tensor):
+                        cpu_srcs.append(target_master)
+                if has_int8_master:
+                    for cuda_data_view, (
+                        _module_name,
+                        _source_master,
+                        target_master,
+                        _source_dtype,
+                        target_dtype,
+                    ) in zip(cuda_dsts, weight_swap_jobs):
+                        restored = _restore_cpu_master_tensor(
+                            target_master,
+                            device=self.device,
+                            dtype=target_dtype,
+                            non_blocking=True,
+                        )
+                        cuda_data_view.copy_(restored, non_blocking=True)
+                elif not _try_foreach_h2d_copy(cuda_dsts, cpu_srcs):
                     for cuda_data_view, target_master in zip(cuda_dsts, cpu_srcs):
                         cuda_data_view.copy_(target_master, non_blocking=True)
             for module_to_cuda, cuda_data_view in cuda_bindings:
@@ -1283,9 +1482,12 @@ class Offloader:
         ) in weight_swap_jobs:
             module_to_cpu = modules_to_cpu[module_name]
             module_to_cuda = modules_to_cuda[module_name]
-            module_to_cpu.weight.data = source_master
-            module_to_cuda.weight.data = target_master.to(
-                self.device, dtype=target_dtype, non_blocking=True
+            module_to_cpu.weight.data = _parked_cpu_master_tensor(source_master)
+            module_to_cuda.weight.data = _restore_cpu_master_tensor(
+                target_master,
+                device=self.device,
+                dtype=target_dtype,
+                non_blocking=True,
             )
         synchronize_device(self.device)
         return {"d2h_ms": 0.0, "h2d_ms": (time.perf_counter() - t0) * 1000.0}
@@ -1310,7 +1512,12 @@ class Offloader:
                 if weight is None:
                     continue
                 dtype = dtypes.get(name, weight.data.dtype)
-                weight.data = master.to(device=device, dtype=dtype, non_blocking=True)
+                weight.data = _restore_cpu_master_tensor(
+                    master,
+                    device=device,
+                    dtype=dtype,
+                    non_blocking=True,
+                )
             weighs_to_device(block, device, include_trainable=True)
         synchronize_device(device)
 

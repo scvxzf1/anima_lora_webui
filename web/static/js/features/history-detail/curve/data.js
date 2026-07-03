@@ -1,4 +1,4 @@
-import { numberOrNull } from '../ui.js?v=module-bootstrap-20260703-8';
+import { numberOrNull } from '../ui.js?v=module-bootstrap-20260703-9';
 
 export const HISTORY_CURVE_RENDER_POINT_LIMIT = 1600;
 

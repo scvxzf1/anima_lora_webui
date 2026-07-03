@@ -139,10 +139,13 @@ const ctx = globalThis.ctx;
         const select = document.createElement('select');
         select.className = 'field-input field-select';
         select.dataset.valueType = fieldValueTypeForKey(key, value);
+        const strictOptions = selectUsesStrictOptions(key);
+        if (strictOptions) select.dataset.strictOptions = '1';
         const normalizedValue = optionValue(value);
         const normalizedOptions = options.map(optionValue);
         const displayOptions = [...options];
-        if (!normalizedOptions.includes(normalizedValue)) {
+        const hasCustomCurrentValue = !normalizedOptions.includes(normalizedValue);
+        if (hasCustomCurrentValue) {
             displayOptions.unshift(value);
         }
 
@@ -151,9 +154,25 @@ const ctx = globalThis.ctx;
             opt.value = optionValue(option);
             opt.textContent = optionLabel(key, option);
             if (opt.value === normalizedValue) opt.selected = true;
+            if (strictOptions && hasCustomCurrentValue && opt.value === normalizedValue) {
+                opt.disabled = true;
+                opt.textContent = strictSelectCurrentValueLabel(key, option);
+                opt.title = '旧配置里的自定义值；重新选择后会写回固定选项。';
+            }
             select.appendChild(opt);
         }
         return select;
+    }
+
+    globalThis.selectUsesStrictOptions = function selectUsesStrictOptions(key) {
+        return Boolean(FIELD_STRICT_SELECT_OPTIONS?.has?.(key));
+    }
+
+    globalThis.strictSelectCurrentValueLabel = function strictSelectCurrentValueLabel(key, value) {
+        if (key === 'block_swap_profile_jsonl') {
+            return `自定义路径（旧值） / ${String(value ?? '')}`;
+        }
+        return `当前值 / ${String(value ?? '')}`;
     }
 
     Object.assign(FIELD_HELP_ZH, EXTRA_FIELD_HELP_ZH);
@@ -234,6 +253,12 @@ const ctx = globalThis.ctx;
                 ops: 'Block 内算子 / ops',
                 lokr: 'LoKr delta / lokr',
                 full: '全量事件 / full',
+            }[value] || String(value);
+        }
+        if (key === 'block_swap_profile_jsonl') {
+            return {
+                off: '关闭 / off',
+                auto: '自动写入任务目录 / auto',
             }[value] || String(value);
         }
         if (key === 'contrastive_negative_mode') {

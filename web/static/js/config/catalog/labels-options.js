@@ -288,3 +288,7 @@ export const FIELD_OPTIONS = {
     use_moe_style: ['false', 'shared_A', 'independent_A'],
     vae_chunk_size: [16, 32, 64, 128],
 };
+
+export const FIELD_STRICT_SELECT_OPTIONS = new Set([
+    'block_swap_profile_jsonl',
+]);

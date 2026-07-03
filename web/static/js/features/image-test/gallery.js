@@ -2,8 +2,8 @@ import {
     IMAGE_TEST_HISTORY_RANGE_OPTIONS,
     daysForImageTestHistoryRange,
     normalizeImageTestHistoryRange,
-} from './state.js?v=module-bootstrap-20260703-8';
-import { createZipDataBlob, downloadBlob as triggerBlobDownload } from '../../shared/download.js?v=module-bootstrap-20260703-8';
+} from './state.js?v=module-bootstrap-20260703-9';
+import { createZipDataBlob, downloadBlob as triggerBlobDownload } from '../../shared/download.js?v=module-bootstrap-20260703-9';
 
 const DEFAULT_FILTER_VALUE = '7';
 const DEFAULT_SELECTION_NOTE = 'Shift 连选仅覆盖当前已展开且当前可见的图片；Ctrl/⌘ 可增量点选。';

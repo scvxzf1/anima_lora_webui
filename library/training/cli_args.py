@@ -886,11 +886,12 @@ def add_dit_training_arguments(parser: argparse.ArgumentParser):
         "--block_swap_transfer_dtype",
         type=str,
         default="bf16",
-        choices=["bf16", "fp8_e4m3"],
+        choices=["bf16", "fp8_e4m3", "int8"],
         help=(
             "Transfer/storage dtype for frozen DiT block-swap CPU masters. "
             "bf16 keeps the current path; fp8_e4m3 is experimental and only "
-            "quantizes frozen base weights while restoring them to the execution dtype."
+            "quantizes frozen base weights while restoring them to the execution dtype. "
+            "int8 is a narrower experiment for selected frozen MLP/attention Linear weights."
         ),
     )
     parser.add_argument(

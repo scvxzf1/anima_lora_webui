@@ -3,13 +3,13 @@ import {
     fetchPreviewSettings,
     fetchPreviewWeights,
     savePreviewSettingsRequest,
-} from './api.js?v=module-bootstrap-20260703-8';
+} from './api.js?v=module-bootstrap-20260703-9';
 import {
     createPreviewDetailBlock,
     createPreviewDetailRow,
     createPreviewDialog,
-} from './dialog.js?v=module-bootstrap-20260703-8';
-import { createPreviewImages } from './images.js?v=module-bootstrap-20260703-8';
+} from './dialog.js?v=module-bootstrap-20260703-9';
+import { createPreviewImages } from './images.js?v=module-bootstrap-20260703-9';
 import {
     applyPreviewSelectionValue,
     createPreviewState,
@@ -18,9 +18,9 @@ import {
     normalizePreviewGroup,
     previewSourceLabel,
     selectedPreviewSelectValue,
-} from './state.js?v=module-bootstrap-20260703-8';
-import { createPreviewWeights } from './weights.js?v=module-bootstrap-20260703-8';
-import { createPreviewWorkspace } from './workspace.js?v=module-bootstrap-20260703-8';
+} from './state.js?v=module-bootstrap-20260703-9';
+import { createPreviewWeights } from './weights.js?v=module-bootstrap-20260703-9';
+import { createPreviewWorkspace } from './workspace.js?v=module-bootstrap-20260703-9';
 
 export function createPreviewFeature(ctx, deps) {
     const state = createPreviewState();

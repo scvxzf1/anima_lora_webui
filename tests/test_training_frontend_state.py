@@ -3302,6 +3302,8 @@ def test_balanced_16g_block_swap_fields_are_visible() -> None:
     assert "selective_checkpoint_blocks: '定点重算块'" in labels_options
     assert "disable_block_swap_for_eval: '评估时暂停交换块'" in labels_options
     assert "block_swap_restore_mode: ['foreach', 'slab']" in labels_options
+    assert "FIELD_STRICT_SELECT_OPTIONS = new Set([" in labels_options
+    assert "'block_swap_profile_jsonl'," in labels_options
     assert "selective_checkpoint: ['off', 'adapter_aware', 'peak_blocks_adapter_aware', 'mlp_layer1_only', 'peak_blocks_mlp_layer1', 'peak_blocks_mlp', 'mlp_only', 'every_other']" in labels_options
     assert "memory_probe_jsonl: ['off', 'auto']" in labels_options
     assert "peak_probe_jsonl: ['off', 'auto']" in labels_options
@@ -3337,6 +3339,20 @@ def test_balanced_16g_block_swap_fields_are_visible() -> None:
     assert "'max-autotune-no-cudagraphs'" in labels_options
     assert "balanced_16g" in guides
     assert "预测式 DiT block swap" in guides
+
+
+def test_block_swap_profile_uses_strict_select_options() -> None:
+    defaults_source = _frontend_module_text("js/config/catalog/defaults.js")
+    option_source = _frontend_module_text("js/features/anima-app/chunks/15-append-sample-prompt-row.js")
+
+    assert "block_swap_profile_jsonl: 'off'" in defaults_source
+    assert "function selectUsesStrictOptions(key)" in option_source
+    assert "FIELD_STRICT_SELECT_OPTIONS?.has?.(key)" in option_source
+    assert "select.dataset.strictOptions = '1';" in option_source
+    assert "opt.disabled = true;" in option_source
+    assert "旧配置里的自定义值" in option_source
+    assert "自定义路径（旧值）" in option_source
+    assert "自动写入任务目录 / auto" in option_source
 
 
 def test_config_form_options_cover_backend_choices() -> None:

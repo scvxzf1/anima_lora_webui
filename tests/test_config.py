@@ -80,6 +80,7 @@ def test_choices_preserved(populated_parser):
     transfer_dtype = config_schema.get_schema()["block_swap_transfer_dtype"]
     assert "bf16" in transfer_dtype.choices
     assert "fp8_e4m3" in transfer_dtype.choices
+    assert "int8" in transfer_dtype.choices
     restore_mode = config_schema.get_schema()["block_swap_restore_mode"]
     assert "foreach" in restore_mode.choices
     assert "slab" in restore_mode.choices

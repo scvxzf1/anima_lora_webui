@@ -10,6 +10,7 @@ export const FORM_UI_DEFAULTS = {
     precision_preference: 'bf16',
     block_swap_transfer_dtype: 'bf16',
     block_swap_restore_mode: 'foreach',
+    block_swap_profile_jsonl: 'off',
     preprocess_memory_profile: 'auto',
     preprocess_vae_cache_batch_size: 'auto',
     preprocess_text_cache_batch_size: 'auto',
