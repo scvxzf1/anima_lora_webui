@@ -17,7 +17,7 @@
             }
         })();
     </script>
-    <link rel="stylesheet" href="/static/style.css?v=frontend-chain-20260625-5">
+    <link rel="stylesheet" href="/static/style.css?v=frontend-chain-20260703-4">
 </head>
 <body>
     <header>
@@ -1474,6 +1474,10 @@
                                 <span>文本编码器精度</span>
                                 <select id="image-test-text-encoder-dtype"></select>
                             </label>
+                            <label class="preview-setting-field">
+                                <span>GPU</span>
+                                <select id="image-test-gpu-index"></select>
+                            </label>
                         </div>
                     </section>
 
@@ -1485,7 +1489,7 @@
                             <button id="btn-refresh-image-test-weights" class="btn btn-small" type="button">刷新候选</button>
                         </div>
                         <div class="image-test-grid-2">
-                            <label class="preview-setting-field image-test-field-wide">
+                            <label id="image-test-weight-drop-target" class="preview-setting-field image-test-field-wide image-test-weight-drop-target">
                                 <span>权重候选</span>
                                 <select id="image-test-weight-select"></select>
                             </label>
@@ -1497,6 +1501,17 @@
                                 <span>LoRA 强度</span>
                                 <input id="image-test-lora-multiplier" type="number" step="0.05" value="1.0">
                             </label>
+                        </div>
+                        <div class="image-test-layer-launch">
+                            <div class="image-test-layer-launch-copy">
+                                <strong>Anima 分层加载</strong>
+                                <span id="image-test-layer-inline-summary">当前没有启用任何层位。</span>
+                            </div>
+                            <button id="btn-open-image-test-layer-dialog" class="btn btn-small" type="button">打开层编辑器</button>
+                        </div>
+                        <div class="image-test-layer-launch-meta">
+                            <span id="image-test-layer-status" class="image-test-layer-status">分层未启用</span>
+                            <span id="image-test-layer-count" class="image-test-layer-count">0/39</span>
                         </div>
                         <div class="preview-actions">
                             <button id="btn-start-image-test" class="btn btn-primary" type="button">开始生图测试</button>
@@ -1552,10 +1567,29 @@
                                 <strong id="image-test-title">推理预览</strong>
                                 <span id="image-test-subtitle">读取 output/tests 里的最新结果。</span>
                             </div>
-                            <div id="image-test-count" class="image-test-count">0 张</div>
+                            <div class="image-test-main-head-side">
+                                <div id="image-test-history-filter" class="image-test-history-filter" role="toolbar" aria-label="历史记录筛选">
+                                    <button class="btn btn-small image-test-history-filter-btn is-active" type="button" data-range="7" aria-pressed="true">近 7 天</button>
+                                    <button class="btn btn-small image-test-history-filter-btn" type="button" data-range="14" aria-pressed="false">近 14 天</button>
+                                    <button class="btn btn-small image-test-history-filter-btn" type="button" data-range="30" aria-pressed="false">近 30 天</button>
+                                    <button class="btn btn-small image-test-history-filter-btn" type="button" data-range="all" aria-pressed="false">全部</button>
+                                </div>
+                                <div id="image-test-count" class="image-test-count">0 张</div>
+                            </div>
+                        </div>
+                        <div id="image-test-selection-toolbar" class="image-test-selection-toolbar" hidden>
+                            <div class="image-test-selection-summary-wrap">
+                                <strong id="image-test-selection-summary">已选 0 张</strong>
+                                <span id="image-test-selection-note">Shift 连选仅覆盖当前已展开分组中的可见图片。</span>
+                            </div>
+                            <div class="image-test-selection-actions">
+                                <button id="btn-image-test-export-merged" class="btn btn-small" type="button">导出合并图</button>
+                                <button id="btn-image-test-export-originals" class="btn btn-small" type="button">打包原图</button>
+                                <button id="btn-image-test-clear-selection" class="btn btn-small" type="button">清空选择</button>
+                            </div>
                         </div>
                         <div id="image-test-empty" class="image-test-empty">打开本页后会读取 output/tests 中的结果图。</div>
-                        <div id="image-test-grid" class="preview-grid" aria-live="polite"></div>
+                        <div id="image-test-grid" class="image-test-history-groups" aria-live="polite"></div>
                     </div>
                 </section>
             </div>
@@ -1637,6 +1671,92 @@
                         <li>数据集页只管理原始图片路径；缩放图和 LoRA 缓存会自动放进本次运行目录。</li>
                         <li>直接点训练也会先保证预处理链路；不要手动把旧缓存目录写回配置里。</li>
                     </ul>
+                </section>
+            </div>
+        </form>
+    </dialog>
+
+    <dialog id="image-test-layer-dialog" class="preview-dialog image-test-layer-dialog" aria-labelledby="image-test-layer-dialog-title" aria-describedby="image-test-layer-dialog-desc" data-enabled="false">
+        <form method="dialog">
+            <div class="preview-dialog-header image-test-layer-dialog-header">
+                <div>
+                    <h2 id="image-test-layer-dialog-title">Anima 分层加载</h2>
+                    <p id="image-test-layer-dialog-desc">为 39 个 anima 层位分别设置启用状态和倍率，滑条与手输都按 0.05 颗粒度工作。</p>
+                </div>
+                <button id="btn-close-image-test-layer-dialog" class="btn btn-small" value="close" type="submit">关闭</button>
+            </div>
+            <div id="image-test-layer-dialog-tools" class="image-test-layer-dialog-tools">
+                <div class="image-test-layer-dialog-toolbar">
+                    <label class="preview-setting-field image-test-layer-master-toggle">
+                        <span>启用 LoRA 分层加载</span>
+                        <input id="image-test-layer-enable" type="checkbox">
+                    </label>
+                    <div class="image-test-layer-layout-slot">
+                        <button
+                            id="btn-image-test-layer-layout-toggle"
+                            class="btn btn-small image-test-layer-layout-toggle"
+                            type="button"
+                            data-layout="single"
+                            aria-pressed="false">
+                            <span class="image-test-layer-layout-icon" aria-hidden="true">
+                                <span></span>
+                                <span></span>
+                                <span></span>
+                                <span></span>
+                            </span>
+                            <span id="image-test-layer-layout-label">一行一列</span>
+                        </button>
+                    </div>
+                    <label class="preview-setting-field image-test-layer-preset-field">
+                        <span>预设</span>
+                        <select id="image-test-layer-preset"></select>
+                    </label>
+                    <div class="image-test-layer-dialog-actions">
+                        <button id="btn-image-test-layer-enable-all" class="btn btn-small" type="button">全部 1.00</button>
+                        <button id="btn-image-test-layer-disable-all" class="btn btn-small" type="button">全部禁用</button>
+                        <button id="btn-image-test-layer-reset-default" class="btn btn-small" type="button">恢复默认</button>
+                    </div>
+                </div>
+                <div class="image-test-layer-dialog-summary-row">
+                    <span id="image-test-layer-dialog-summary">已关闭 · 保留 0 层配置</span>
+                    <span id="image-test-layer-dialog-count" class="image-test-layer-count">0/39</span>
+                </div>
+                <div class="image-test-layer-io">
+                    <label class="preview-setting-field image-test-layer-io-field">
+                        <span>参数导入 / 导出</span>
+                        <textarea
+                            id="image-test-layer-io-text"
+                            spellcheck="false"
+                            placeholder='{"enabled": true, "preset": "custom", "block_strengths": {"block_0": 1.0}}'></textarea>
+                    </label>
+                    <div class="image-test-layer-io-actions">
+                        <button id="btn-image-test-layer-export" class="btn btn-small" type="button">导出到剪切板</button>
+                        <button id="btn-image-test-layer-import" class="btn btn-small" type="button">应用导入</button>
+                        <span id="image-test-layer-io-status" class="image-test-layer-io-status">导出会同时写入这里，方便手动微调后再导入。</span>
+                    </div>
+                </div>
+            </div>
+            <div id="image-test-layer-selection" class="image-test-layer-dialog-body">
+                <section class="image-test-layer-group">
+                    <div class="image-test-layer-group-head">
+                        <strong>Main Blocks</strong>
+                        <span>DiT 主干 0-27</span>
+                    </div>
+                    <div id="image-test-layer-blocks-main" class="image-test-layer-rows"></div>
+                </section>
+                <section class="image-test-layer-group">
+                    <div class="image-test-layer-group-head">
+                        <strong>LLM Adapter</strong>
+                        <span>Adapter 0-5 与 IO</span>
+                    </div>
+                    <div id="image-test-layer-blocks-adapter" class="image-test-layer-rows"></div>
+                </section>
+                <section class="image-test-layer-group">
+                    <div class="image-test-layer-group-head">
+                        <strong>Special</strong>
+                        <span>最终层、嵌入与剩余权重</span>
+                    </div>
+                    <div id="image-test-layer-blocks-special" class="image-test-layer-rows"></div>
                 </section>
             </div>
         </form>
@@ -1785,6 +1905,6 @@
 
     <div id="config-switch-toast" class="config-switch-toast" role="status" aria-live="polite" hidden></div>
 
-    <script type="module" src="/static/app.js?v=module-bootstrap-20260702-1"></script>
+    <script type="module" src="/static/app.js?v=module-bootstrap-20260703-7"></script>
 </body>
 </html>

@@ -846,6 +846,20 @@ def create_network_from_weights(
         if chimera_fei_sigma_low_div is not None:
             fei_sigma_low_div_meta = chimera_fei_sigma_low_div
 
+    num_registers = 0
+    register_insert_block = 8
+    reg_tokens = weights_sd.get("register_tokens")
+    if isinstance(reg_tokens, torch.Tensor):
+        num_registers = int(reg_tokens.shape[0])
+        register_insert_block = int(
+            file_metadata.get("ss_register_insert_block", 8)
+        )
+        logger.info(
+            f"Detected register tokens in checkpoint: K={num_registers}, "
+            f"insert_block={register_insert_block} — network stays kept-live "
+            "at inference (non-mergeable)."
+        )
+
     cfg = LoRANetworkCfg.from_weights(
         modules_dim=modules_dim,
         modules_alpha=modules_alpha,
@@ -880,6 +894,8 @@ def create_network_from_weights(
         chimera_centered_gate=chimera_centered_gate,
         plugin_args=plugin_detection.get("plugin_args"),
         is_dora=has_dora,
+        num_registers=num_registers,
+        register_insert_block=register_insert_block,
     )
 
     network = LoRANetwork(text_encoders, unet, cfg, multiplier=multiplier)

@@ -22,6 +22,7 @@ from networks.lora_anima.loading import (
     _rename_dora_scale_for_load,
     _stack_lora_ups,
 )
+from networks.register_injection import RegisterInjector
 from networks.lora_modules import (
     ChimeraHydraInferenceModule,
     ChimeraHydraLoRAModule,
@@ -1171,6 +1172,32 @@ class LoRANetwork(torch.nn.Module):
                 f"LN={cfg.content_router_layer_norm}, "
                 f"chimera modules={len(self._chimera_aware_loras)} "
                 "— per-Linear content router disabled"
+            )
+
+        self.register_injector: Optional[RegisterInjector] = None
+        self.extra_seq_tokens = int(cfg.num_registers)
+        if cfg.num_registers > 0:
+            n_blocks = len(unet.blocks)
+            if not (0 <= cfg.register_insert_block < n_blocks):
+                raise ValueError(
+                    f"register_insert_block must be in [0, {n_blocks}), "
+                    f"got {cfg.register_insert_block}"
+                )
+            self.register_tokens = torch.nn.Parameter(
+                torch.randn(cfg.num_registers, int(unet.model_channels))
+                * cfg.register_init_std
+            )
+            self.register_injector = RegisterInjector(
+                num_registers=cfg.num_registers,
+                insert_block=cfg.register_insert_block,
+                get_scaled_tokens=lambda: self.register_tokens * self.multiplier,
+            )
+            logger.info(
+                f"Register tokens: K={cfg.num_registers}, "
+                f"insert_block={cfg.register_insert_block}, "
+                f"lr scale x{cfg.register_lr_scale:g}, "
+                f"init_std={cfg.register_init_std:g}. "
+                "Checkpoint stays kept-live at inference."
             )
 
     def _wire_shared_sigma_buffers(self) -> None:
@@ -2774,8 +2801,11 @@ class LoRANetwork(torch.nn.Module):
             reft.apply_to()
             self.add_module(reft.lora_name, reft)
 
+        if apply_unet and self.register_injector is not None:
+            self.register_injector.apply(unet)
+
     def is_mergeable(self):
-        return True
+        return self.cfg.num_registers == 0
 
     def merge_to(self, text_encoders, unet, weights_sd, dtype=None, device=None):
         apply_text_encoder = apply_unet = False
@@ -3097,6 +3127,19 @@ class LoRANetwork(torch.nn.Module):
                         f"content_router_lr_scale of unet_lr={base_lr})"
                     )
 
+        if self.register_injector is not None:
+            base_lr = unet_lr if unet_lr is not None else default_lr
+            if base_lr is None or base_lr == 0:
+                logger.info("Register tokens: no base LR, skipping param group")
+            else:
+                reg_lr = float(base_lr) * float(self.cfg.register_lr_scale)
+                all_params.append({"params": [self.register_tokens], "lr": reg_lr})
+                lr_descriptions.append("register tokens")
+                logger.info(
+                    f"Register-token param group: lr={reg_lr:.2e} "
+                    f"({self.cfg.register_lr_scale:g}x of unet_lr={base_lr})"
+                )
+
         return all_params, lr_descriptions
 
     def enable_gradient_checkpointing(self):
@@ -3175,6 +3218,12 @@ class LoRANetwork(torch.nn.Module):
             metadata["ss_network_spec"] = "dora"
             metadata["ss_adapter_variant"] = "dora"
             metadata["ss_dora_compatible_export"] = "true"
+
+        if self.cfg.num_registers > 0:
+            metadata["ss_num_registers"] = str(int(self.cfg.num_registers))
+            metadata["ss_register_insert_block"] = str(
+                int(self.cfg.register_insert_block)
+            )
 
         # FEI router params (router-source-specific scalars the loader needs
         # to size the router input). Stamped for both per-Linear and global

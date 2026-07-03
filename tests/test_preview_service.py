@@ -4,6 +4,7 @@ from pathlib import Path
 import os
 
 from PIL import Image
+import pytest
 import toml
 
 from web.routes import preview as preview_routes
@@ -196,6 +197,30 @@ def test_selected_history_task_without_sample_dir_does_not_fallback_to_latest_ru
     assert payload["directory"] == ""
     assert payload["message"] == "这个历史训练任务没有记录样张目录"
     assert payload["preview_settings"]["effective_training_source"] == "selected_task_missing"
+
+
+def test_inference_preview_images_support_days_filter(tmp_path, monkeypatch):
+    settings_file = tmp_path / "configs" / "web-ui-settings.toml"
+    settings_file.parent.mkdir(parents=True)
+    settings_file.write_text("", encoding="utf-8")
+    _patch_preview_settings_file(monkeypatch, settings_file, root=tmp_path)
+
+    preview_dir = tmp_path / "output" / "tests"
+    preview_dir.mkdir(parents=True)
+    recent_image = preview_dir / "recent.png"
+    old_image = preview_dir / "old.png"
+    Image.new("RGB", (8, 8), color=(12, 34, 56)).save(recent_image)
+    Image.new("RGB", (8, 8), color=(56, 34, 12)).save(old_image)
+
+    now = int(Path(recent_image).stat().st_mtime)
+    os.utime(recent_image, (now, now))
+    os.utime(old_image, (now - 10 * 24 * 60 * 60, now - 10 * 24 * 60 * 60))
+
+    payload = preview_service.list_preview_images("inference", days=7)
+
+    assert payload["total"] == 1
+    assert payload["count"] == 1
+    assert [item["name"] for item in payload["images"]] == ["recent.png"]
 
 
 def test_preview_image_absolute_file_must_be_under_saved_preview_dir(tmp_path, monkeypatch):
@@ -601,6 +626,16 @@ def test_preview_route_uses_lightweight_history_summary_for_task_selection():
     assert selected["id"] == "task-a"
     assert service.summary_calls == ["task-a"]
     assert service.detail_calls == []
+
+
+def test_preview_route_days_filter_accepts_all_and_positive_ints():
+    assert preview_routes._preview_days_filter(_PreviewRequest({"days": "14"}, object())) == 14
+    assert preview_routes._preview_days_filter(_PreviewRequest({"days": "all"}, object())) is None
+    assert preview_routes._preview_days_filter(_PreviewRequest({}, object())) is None
+    with pytest.raises(ValueError):
+        preview_routes._preview_days_filter(_PreviewRequest({"days": "0"}, object()))
+    with pytest.raises(ValueError):
+        preview_routes._preview_days_filter(_PreviewRequest({"days": "bad"}, object()))
 
 
 def test_preview_route_config_group_uses_history_summaries_without_detail_expansion():

@@ -45,6 +45,10 @@ COMMANDS = {
         training.cmd_lora,
         "LoRA family (lora|tlora|tlora_rf|hydralora via configs/methods/lora.toml)",
     ),
+    "register": (
+        training.cmd_register,
+        "Register-token adapter on a frozen DiT (configs/methods/register.toml).",
+    ),
     "lora-gui": (
         training.cmd_lora_gui,
         "Train from a self-contained configs/gui-methods/<variant>.toml "

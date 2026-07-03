@@ -19,6 +19,10 @@ def cmd_lora(extra):
     train("lora", extra)
 
 
+def cmd_register(extra):
+    train("register", extra)
+
+
 def cmd_lora_gui(extra):
     """Train from configs/gui-methods/<variant>.toml.
 

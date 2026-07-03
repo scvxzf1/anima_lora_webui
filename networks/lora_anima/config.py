@@ -358,6 +358,14 @@ class LoRANetworkCfg:
     # SmoothQuant-style per-channel input pre-scaling
     channel_scales_dict: Optional[Dict[str, torch.Tensor]] = None
 
+    # Register tokens trained jointly with the LoRA family. They ride the
+    # self-attention sequence from ``register_insert_block`` onward and are
+    # stripped before unpatchify, so they remain a kept-live adapter feature.
+    num_registers: int = 0
+    register_insert_block: int = 8
+    register_lr_scale: float = 100.0
+    register_init_std: float = 0.02
+
     # logging
     verbose: bool = False
 
@@ -414,6 +422,10 @@ class LoRANetworkCfg:
                 "reft_dim",
                 "reft_alpha",
                 "reft_layers",
+                "num_registers",
+                "register_insert_block",
+                "register_lr_scale",
+                "register_init_std",
             }
         }
 
@@ -693,6 +705,13 @@ class LoRANetworkCfg:
         reg_lrs_str = kwargs.get("network_reg_lrs")
         reg_lrs = _parse_kv_pairs(reg_lrs_str, is_int=False) if reg_lrs_str else None
 
+        num_registers = int(kwargs.get("num_registers", 0) or 0)
+        if num_registers < 0:
+            raise ValueError(f"num_registers must be >= 0, got {num_registers}")
+        register_insert_block = int(kwargs.get("register_insert_block", 8))
+        register_lr_scale = float(kwargs.get("register_lr_scale", 100.0))
+        register_init_std = float(kwargs.get("register_init_std", 0.02))
+
         verbose = _as_bool(kwargs.get("verbose"))
 
         return cls(
@@ -755,6 +774,10 @@ class LoRANetworkCfg:
             chimera_centered_gate=chimera_centered_gate,
             chimera_lambda_init=chimera_lambda_init,
             channel_scales_dict=channel_scales_dict,
+            num_registers=num_registers,
+            register_insert_block=register_insert_block,
+            register_lr_scale=register_lr_scale,
+            register_init_std=register_init_std,
             verbose=verbose,
         )
 
@@ -800,6 +823,8 @@ class LoRANetworkCfg:
         chimera_centered_gate: bool = False,
         plugin_args: Optional[Dict[str, Any]] = None,
         is_dora: bool = False,
+        num_registers: int = 0,
+        register_insert_block: int = 8,
     ) -> "LoRANetworkCfg":
         """Build cfg from a checkpoint key-sniff (warm-start / inference path).
 
@@ -915,4 +940,6 @@ class LoRANetworkCfg:
             ),
             content_router_layer_norm=bool(content_router_layer_norm),
             chimera_centered_gate=bool(chimera_centered_gate),
+            num_registers=int(num_registers),
+            register_insert_block=int(register_insert_block),
         )

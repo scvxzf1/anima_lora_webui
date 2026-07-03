@@ -20,7 +20,7 @@ RUNTIME_PREPROCESS_ATTR_KEY = "preprocess"
 CAPTION_SOURCE_MODES = {"auto", "txt", "json", "captions_json"}
 _CAPTION_INDEX_VOCAB = "models/captioners/anima-tagger-v2/vocab.json"
 _PREPROCESS_MEMORY_PROFILES = {
-    "auto": (4, 16),
+    "auto": (2, 16),
     "low_vram": (1, 4),
     "balanced": (2, 8),
     "speed": (4, 16),

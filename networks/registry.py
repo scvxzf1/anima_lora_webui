@@ -123,6 +123,10 @@ SHARED_KWARG_FLAGS: Tuple[str, ...] = (
     "reft_dim",
     "reft_alpha",
     "reft_layers",
+    "num_registers",
+    "register_insert_block",
+    "register_lr_scale",
+    "register_init_std",
 )
 
 

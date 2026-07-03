@@ -100,6 +100,7 @@ def list_preview_images(
     task_label: str | None = None,
     allow_latest_fallback: bool = True,
     limit: int = 200,
+    days: int | None = None,
 ) -> dict[str, Any]:
     source = (source or "training").strip().lower()
     if source not in {"training", "inference", "custom"}:
@@ -154,12 +155,14 @@ def list_preview_images(
         return _empty_listing(source, label, display_dir, exists=False, message="路径不是目录")
 
     limit = max(1, min(int(limit or 200), MAX_IMAGE_LIMIT))
+    days = _normalize_preview_days(days)
     candidates = [
         p
         for p in resolved.iterdir()
         if p.is_file() and p.suffix.lower() in IMAGE_EXTS
     ]
     candidates.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+    candidates = _filter_preview_candidates_by_days(candidates, days)
     prompt_entries = _load_sample_prompt_entries(sample_config) if source == "training" else []
     step_index = _training_step_index(task) if source == "training" else {}
 
@@ -187,6 +190,22 @@ def list_preview_images(
         "task_label": task_label or "",
         "preview_settings": _preview_settings_meta(settings),
     }
+
+
+def _normalize_preview_days(value: int | None) -> int | None:
+    if value in (None, ""):
+        return None
+    days = int(value)
+    if days <= 0:
+        raise ValueError("days 必须是正整数")
+    return days
+
+
+def _filter_preview_candidates_by_days(candidates: list[Path], days: int | None) -> list[Path]:
+    if days is None:
+        return candidates
+    cutoff = datetime.now().timestamp() - days * 24 * 60 * 60
+    return [path for path in candidates if path.stat().st_mtime >= cutoff]
 
 
 def list_config_group_preview_images(

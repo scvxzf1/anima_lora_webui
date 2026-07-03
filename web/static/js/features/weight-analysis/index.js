@@ -1,6 +1,6 @@
-import { fetchAnalysisWeights, inspectAnalysisWeight, inspectAnalysisWeightFile } from './api.js?v=module-bootstrap-20260702-1';
-import { createWeightAnalysisRenderer } from './render.js?v=module-bootstrap-20260702-1';
-import { createWeightAnalysisState } from './state.js?v=module-bootstrap-20260702-1';
+import { fetchAnalysisWeights, inspectAnalysisWeight, inspectAnalysisWeightFile } from './api.js?v=module-bootstrap-20260703-7';
+import { createWeightAnalysisRenderer } from './render.js?v=module-bootstrap-20260703-7';
+import { createWeightAnalysisState } from './state.js?v=module-bootstrap-20260703-7';
 
 export function createWeightAnalysisFeature(ctx) {
     const state = createWeightAnalysisState();

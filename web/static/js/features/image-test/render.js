@@ -4,17 +4,32 @@ import {
     IMAGE_TEST_RUNTIME_DTYPE_OPTIONS,
     IMAGE_TEST_SAMPLER_OPTIONS,
     IMAGE_TEST_TEXT_ENCODER_DTYPE_OPTIONS,
-} from './state.js?v=module-bootstrap-20260702-1';
+} from './state.js?v=module-bootstrap-20260703-7';
+import { createImageTestGallery } from './gallery.js?v=module-bootstrap-20260703-7';
 
-export function createImageTestRenderer({ ctx, state, openPreviewDialog }) {
+export function createImageTestRenderer({
+    ctx,
+    state,
+    openPreviewDialog,
+    requestHistoryReload,
+    initialHistoryFilter,
+}) {
     const { formatBytes } = ctx.format;
+    const gallery = createImageTestGallery({
+        formatBytes,
+        openPreviewDialog,
+        requestHistoryReload,
+        initialFilterValue: initialHistoryFilter,
+    });
 
     function initStaticUI() {
         populateSelect('image-test-sampler', IMAGE_TEST_SAMPLER_OPTIONS, IMAGE_TEST_DEFAULTS.sampler);
         populateSelect('image-test-attn-mode', IMAGE_TEST_ATTN_MODE_OPTIONS, IMAGE_TEST_DEFAULTS.attnMode);
         populateSelect('image-test-runtime-dtype', IMAGE_TEST_RUNTIME_DTYPE_OPTIONS, IMAGE_TEST_DEFAULTS.runtimeDtype);
         populateSelect('image-test-text-encoder-dtype', IMAGE_TEST_TEXT_ENCODER_DTYPE_OPTIONS, IMAGE_TEST_DEFAULTS.textEncoderDtype);
+        renderGpuOptions({ ok: true, gpus: [] });
         setReadonlyText('image-test-output-dir', 'output/tests');
+        gallery.init();
         renderRuntime(null);
         setImageEmpty('打开本页后会读取 output/tests 中的结果图。');
         renderWeightOptions({ ok: true, weights: [], message: '点击刷新后读取可选权重。' });
@@ -96,13 +111,21 @@ export function createImageTestRenderer({ ctx, state, openPreviewDialog }) {
             ['注意力后端', request.attn_mode || '-'],
             ['推理精度', request.runtime_dtype || '-'],
             ['文本编码器精度', request.text_encoder_dtype || '-'],
+            ['GPU', request.gpu_label || request.device || '自动'],
             ['尺寸', request.width && request.height ? `${request.width}x${request.height}` : '-'],
             ['步数', request.infer_steps ?? '-'],
             ['CFG', request.guidance_scale ?? '-'],
             ['Flow Shift', request.flow_shift ?? '-'],
             ['种子', request.seed ?? '随机'],
             ['LoRA 强度', request.lora_multiplier ?? '-'],
+            ['分层加载', request.anima_selective_lora ? '开' : '关'],
         ];
+        if (request.anima_selective_lora) {
+            rows.push(
+                ['分层预设', request.anima_selective_preset || '-'],
+                ['启用层数', request.anima_selective_block_count ?? '-'],
+            );
+        }
         box.innerHTML = '';
         rows.forEach(([label, value]) => {
             const row = document.createElement('div');
@@ -119,6 +142,12 @@ export function createImageTestRenderer({ ctx, state, openPreviewDialog }) {
         if (request.weight_path) {
             box.appendChild(createBlock('LoRA 权重', request.weight_path));
         }
+        if (request.anima_selective_lora && Array.isArray(request.anima_selective_blocks) && request.anima_selective_blocks.length) {
+            box.appendChild(createBlock(
+                '分层层位',
+                summarizeSelectiveBlocks(request.anima_selective_blocks, request.anima_selective_block_strengths || {}),
+            ));
+        }
     }
 
     function renderCommand(command = []) {
@@ -133,6 +162,7 @@ export function createImageTestRenderer({ ctx, state, openPreviewDialog }) {
         const select = document.getElementById('image-test-weight-select');
         if (!select) return;
         const previous = select.value;
+        const preferredWeightPath = String(document.getElementById('image-test-weight-path')?.value || '').trim();
         const weights = Array.isArray(payload.weights) ? payload.weights : [];
         state.lastWeightsPayload = payload;
         select.innerHTML = '';
@@ -153,103 +183,58 @@ export function createImageTestRenderer({ ctx, state, openPreviewDialog }) {
             select.appendChild(option);
         }
         select.disabled = !weights.length;
-        if (previous && Array.from(select.options).some((option) => option.value === previous)) {
-            select.value = previous;
+        const preferred = previous || preferredWeightPath;
+        if (preferred && Array.from(select.options).some((option) => option.value === preferred)) {
+            select.value = preferred;
         }
+    }
+
+    function renderGpuOptions(payload = {}) {
+        const select = document.getElementById('image-test-gpu-index');
+        if (!select) return;
+        const previous = String(select.value || '').trim();
+        const preferredGpuIndex = String(document.getElementById('image-test-gpu-index')?.value || '').trim();
+        const gpus = Array.isArray(payload.gpus) ? payload.gpus : [];
+        state.lastGpusPayload = payload;
+        select.innerHTML = '';
+
+        const auto = document.createElement('option');
+        auto.value = '';
+        auto.textContent = gpus.length
+            ? '自动（默认可见 GPU）'
+            : (location.protocol === 'file:' ? '自动（静态模式不读取 GPU）' : '自动（未读取到 GPU 列表）');
+        select.appendChild(auto);
+
+        for (const gpu of gpus) {
+            const option = document.createElement('option');
+            const index = Number(gpu?.index);
+            option.value = Number.isInteger(index) && index >= 0 ? String(index) : '';
+            option.textContent = gpu?.label || (Number.isInteger(index) ? `GPU ${index}` : '未命名 GPU');
+            option.title = gpu?.memory_total_gb
+                ? `${option.textContent} · 显存 ${gpu.memory_total_gb} GB`
+                : option.textContent;
+            if (option.value) {
+                select.appendChild(option);
+            }
+        }
+
+        const preferred = previous || preferredGpuIndex || IMAGE_TEST_DEFAULTS.gpuIndex;
+        select.value = Array.from(select.options).some((option) => option.value === preferred)
+            ? preferred
+            : '';
     }
 
     function renderImages(payload = {}) {
-        const title = document.getElementById('image-test-title');
-        const subtitle = document.getElementById('image-test-subtitle');
-        const count = document.getElementById('image-test-count');
-        const grid = document.getElementById('image-test-grid');
-        const empty = document.getElementById('image-test-empty');
-        if (!title || !subtitle || !count || !grid || !empty) return;
-
         state.lastImagesPayload = payload;
-        title.textContent = payload.label || '推理预览';
-        subtitle.textContent = payload.directory
-            ? `目录: ${payload.directory}`
-            : '尚未找到 output/tests 结果目录。';
-        count.textContent = `${payload.count || 0} 张`;
-        grid.innerHTML = '';
-
-        if (!payload.images?.length) {
-            setImageEmpty(payload.message || '还没有生图结果。');
-            return;
-        }
-
-        empty.hidden = true;
-        payload.images.forEach((image, index) => {
-            grid.appendChild(createImageCard(image, index));
-        });
-    }
-
-    function createImageCard(image, index = 0) {
-        const button = document.createElement('button');
-        button.type = 'button';
-        button.className = 'preview-card image-test-card';
-        button.title = `原图预览: ${image.name || image.file || '预览图'}`;
-        button.addEventListener('click', () => openPreviewDialog(image));
-
-        const imageWrap = document.createElement('div');
-        imageWrap.className = 'preview-card-image';
-        const img = document.createElement('img');
-        img.src = image.url;
-        img.alt = image.name || '生图结果';
-        img.loading = index < 8 ? 'eager' : 'lazy';
-        const errorMessage = document.createElement('span');
-        errorMessage.className = 'preview-card-error-message';
-        errorMessage.textContent = '图片加载失败';
-        errorMessage.hidden = true;
-        img.addEventListener('load', () => {
-            button.classList.remove('preview-card-error');
-            errorMessage.hidden = true;
-        });
-        img.addEventListener('error', () => {
-            button.classList.add('preview-card-error');
-            errorMessage.hidden = false;
-        });
-        imageWrap.append(img, errorMessage);
-
-        const meta = document.createElement('div');
-        meta.className = 'preview-card-meta';
-        const head = document.createElement('strong');
-        head.textContent = image.name || '未命名结果';
-        head.title = image.file || image.name || '';
-        const file = document.createElement('span');
-        file.className = 'preview-card-filename';
-        file.textContent = image.file || image.name || '';
-        file.title = image.file || image.name || '';
-        const dims = image.width && image.height ? `${image.width}x${image.height}` : '尺寸未知';
-        const sub = document.createElement('span');
-        sub.textContent = [
-            dims,
-            image.sample?.parameters?.sample_steps ? `${image.sample.parameters.sample_steps} steps` : '',
-            image.sample?.sampler || image.sample?.parameters?.sample_sampler || '',
-            formatBytes(image.size_bytes || 0),
-        ].filter(Boolean).join(' · ');
-        meta.append(head, file, sub);
-
-        button.append(imageWrap, meta);
-        return button;
+        gallery.render(payload);
     }
 
     function setImageLoading() {
-        const count = document.getElementById('image-test-count');
-        const grid = document.getElementById('image-test-grid');
-        if (count) count.textContent = '读取中';
-        if (grid) grid.innerHTML = '';
-        setImageEmpty('正在读取 output/tests 中的结果图...');
+        gallery.setLoading();
     }
 
     function setImageEmpty(message) {
-        const empty = document.getElementById('image-test-empty');
-        const grid = document.getElementById('image-test-grid');
-        if (!empty || !grid) return;
-        empty.textContent = message;
-        empty.hidden = false;
-        grid.innerHTML = '';
+        gallery.setEmpty(message);
     }
 
     function setImageTestStatus(text, tone = '') {
@@ -309,6 +294,22 @@ export function createImageTestRenderer({ ctx, state, openPreviewDialog }) {
         return clean.split('/').filter(Boolean).pop() || clean || '-';
     }
 
+    function summarizeSelectiveBlocks(blocks = [], blockStrengths = {}) {
+        if (!Array.isArray(blocks) || !blocks.length) {
+            return '未选择层位';
+        }
+        const lines = blocks.map((blockId) => {
+            const strength = Number(blockStrengths?.[blockId]);
+            return Number.isFinite(strength)
+                ? `${blockId} ${strength.toFixed(2).replace(/\.00$/, '')}x`
+                : blockId;
+        });
+        if (lines.length <= 12) {
+            return lines.join(', ');
+        }
+        return `${lines.slice(0, 12).join(', ')} ... 共 ${lines.length} 项`;
+    }
+
     function escapeText(value) {
         return String(value || '')
             .replace(/&/g, '&amp;')
@@ -319,8 +320,10 @@ export function createImageTestRenderer({ ctx, state, openPreviewDialog }) {
     }
 
     return {
+        currentHistoryFilter: () => gallery.currentFilter(),
         initStaticUI,
         renderRuntime,
+        renderGpuOptions,
         renderWeightOptions,
         renderImages,
         setImageLoading,

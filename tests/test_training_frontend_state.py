@@ -13,7 +13,7 @@ STYLE_CSS_PATH = STATIC_DIR / "style.css"
 MODULE_IMPORT_RE = re.compile(
     r"""(?:(?:import|export)\s+(?:[^'"]*?\s+from\s+)?|import\(\s*)['"]([^'"]+\.js(?:\?[^'"]*)?)['"]"""
 )
-CSS_IMPORT_RE = re.compile(r"""@import\s+(?:url\()?['"]?([^'")]+\.css)['"]?\)?\s*;""")
+CSS_IMPORT_RE = re.compile(r"""@import\s+(?:url\()?['"]?([^'")]+\.css(?:\?[^'")]+)?)['"]?\)?\s*;""")
 
 
 def _resolve_frontend_module(parent: Path, specifier: str) -> Path | None:
@@ -171,7 +171,9 @@ def test_frontend_module_graph_follows_production_entrypoint() -> None:
     assert "js/features/image-test/index.js" in relative
     assert "js/features/image-test/state.js" in relative
     assert "js/features/image-test/api.js" in relative
+    assert "js/features/image-test/gallery.js" in relative
     assert "js/features/image-test/render.js" in relative
+    assert "js/features/image-test/selective-lora.js" in relative
     assert "js/features/app-shell/theme.js" in relative
     assert "js/features/app-shell/gpu-picker.js" in relative
     assert "js/features/app-shell/tabs.js" in relative
@@ -486,8 +488,11 @@ def test_image_test_feature_modules_are_loaded_from_production_entrypoint() -> N
     legacy_source = _anima_app_container_text()
     image_test_index = _frontend_module_text("js/features/image-test/index.js")
     image_test_api = _frontend_module_text("js/features/image-test/api.js")
+    image_test_gallery = _frontend_module_text("js/features/image-test/gallery.js")
     image_test_render = _frontend_module_text("js/features/image-test/render.js")
     image_test_state = _frontend_module_text("js/features/image-test/state.js")
+    image_test_selective = _frontend_module_text("js/features/image-test/selective-lora.js")
+    image_test_storage = _frontend_module_text("js/features/image-test/storage.js")
     tabs_source = _frontend_module_text("js/features/app-shell/tabs.js")
     html = INDEX_HTML.read_text(encoding="utf-8")
     css = STYLE_CSS.read_text(encoding="utf-8")
@@ -505,29 +510,111 @@ def test_image_test_feature_modules_are_loaded_from_production_entrypoint() -> N
     assert "loadImageTestPage" in image_test_index
     assert "syncFromCurrentConfig" in image_test_index
     assert "fetchImageTestStatus" in image_test_api
+    assert "resolveImageTestWeightPathRequest" in image_test_api
     assert "startImageTestRequest" in image_test_api
     assert "stopImageTestRequest" in image_test_api
     assert "fetchImageTestWeights" in image_test_api
+    assert "fetchImageTestGpus" in image_test_api
     assert "fetchImageTestImages" in image_test_api
     assert "'/api/image-test/status'" in image_test_api
+    assert "'/api/image-test/resolve-weight'" in image_test_api
     assert "'/api/image-test/start'" in image_test_api
     assert "'/api/image-test/stop'" in image_test_api
     assert "'/api/analysis/weights'" in image_test_api
+    assert "'/api/training/gpus'" in image_test_api
     assert "/api/preview/images?" in image_test_api
     assert "createImageTestRenderer" in image_test_render
     assert "renderRuntime" in image_test_render
+    assert "renderGpuOptions" in image_test_render
     assert "renderWeightOptions" in image_test_render
     assert "renderImages" in image_test_render
     assert "createImageTestState" in image_test_state
+    assert "createImageTestGallery" in image_test_gallery
+    assert "createImageTestSelectiveLoraController" in image_test_selective
+    assert "createImageTestUiStorage" in image_test_storage
+    assert "IMAGE_TEST_LAYER_DIALOG_STORAGE_KEY = 'anima.imageTest.layerDialog'" in image_test_selective
+    assert "IMAGE_TEST_LAYER_DIALOG_STORAGE_VERSION = 1" in image_test_selective
+    assert "IMAGE_TEST_UI_STORAGE_KEY = 'anima.imageTest.ui'" in image_test_storage
+    assert "IMAGE_TEST_UI_STORAGE_VERSION = 1" in image_test_storage
     assert "IMAGE_TEST_DEFAULTS" in image_test_state
+    assert "IMAGE_TEST_HISTORY_RANGE_OPTIONS" in image_test_state
     assert "IMAGE_TEST_SAMPLER_OPTIONS" in image_test_state
     assert "IMAGE_TEST_ATTN_MODE_OPTIONS" in image_test_state
     assert "IMAGE_TEST_RUNTIME_DTYPE_OPTIONS" in image_test_state
     assert "IMAGE_TEST_TEXT_ENCODER_DTYPE_OPTIONS" in image_test_state
+    assert "normalizeImageTestHistoryRange" in image_test_state
+    assert "daysForImageTestHistoryRange" in image_test_state
+    assert "IMAGE_TEST_SELECTIVE_LORA_PRESET_OPTIONS" in image_test_state
+    assert "IMAGE_TEST_SELECTIVE_LORA_GROUPS" in image_test_state
+    assert "IMAGE_TEST_SELECTIVE_LORA_STRENGTH_STEP" in image_test_state
+    assert "normalizeImageTestSelectiveLoraBlockStrengths" in image_test_state
+    assert "enabledBlocksForImageTestSelectiveLoraStrengths" in image_test_state
     assert "image-test-runtime-dtype" in image_test_render
     assert "image-test-text-encoder-dtype" in image_test_render
+    assert "image-test-gpu-index" in image_test_render
     assert "runtime_dtype: readValue('image-test-runtime-dtype')" in image_test_index
     assert "text_encoder_dtype: readValue('image-test-text-encoder-dtype')" in image_test_index
+    assert "gpu_index: readValue('image-test-gpu-index')" in image_test_index
+    assert "...selectiveLora.collectPayload()," in image_test_index
+    assert "const selectiveError = selectiveLora.validate(payload);" in image_test_index
+    assert "IMAGE_TEST_IMAGE_LIMIT = 500" in image_test_index
+    assert "createImageTestGallery" in image_test_render
+    assert "gallery.render(payload);" in image_test_render
+    assert "toggleImageSelection" in image_test_gallery
+    assert "visibleSelectionRange" in image_test_gallery
+    assert "createMergedImageBlob" in image_test_gallery
+    assert "GROUP_INITIAL_RENDER_COUNT = 24" in image_test_gallery
+    assert "createLoadMoreFooter" in image_test_gallery
+    assert "createZipDataBlob" in image_test_gallery
+    assert "exportOriginalZipSelection" in image_test_gallery
+    assert "syncFreshGroupCounts" in image_test_gallery
+    assert "createFreshBadge" in image_test_gallery
+    assert "normalizeZipEntryName" in image_test_gallery
+    assert "virtualWindowByGroup" in image_test_gallery
+    assert "scheduleVirtualWindowRefresh" in image_test_gallery
+    assert "requestAnimationFrame" in image_test_gallery
+    assert "renderGroupBody" in image_test_gallery
+    assert "createVirtualSpacer" in image_test_gallery
+    assert "GROUP_VIRTUALIZE_THRESHOLD = 48" in image_test_gallery
+    assert "const startIndex = windowState.virtualized ? windowState.startIndex : 0;" in image_test_gallery
+    assert "const endIndex = windowState.virtualized ? windowState.endIndex : visibleCount;" in image_test_gallery
+    assert "if (changed) {" in image_test_gallery
+    assert "refreshVisibleOrderedKeys();" in image_test_gallery
+    assert "additive: event.ctrlKey || event.metaKey" in image_test_gallery
+    assert "Shift 连选仅覆盖当前已展开且当前可见的图片；Ctrl/⌘ 可增量点选。" in image_test_gallery
+    assert "if (options.additive) {" in image_test_gallery
+    assert "btn-image-test-export-merged" in image_test_gallery
+    assert "btn-image-test-export-originals" in image_test_gallery
+    assert "image-test-history-filter" in image_test_gallery
+    assert "state.visibleOrderedKeys" in image_test_gallery
+    assert "btn-open-image-test-layer-dialog" in image_test_selective
+    assert "image-test-layer-dialog" in image_test_selective
+    assert "storage = window.localStorage" in image_test_selective
+    assert "storage = window.localStorage" in image_test_storage
+    assert "restorePersistedDialogState" in image_test_selective
+    assert "readStoredDialogState" in image_test_selective
+    assert "persistDialogState" in image_test_selective
+    assert "storage.getItem(storageKey)" in image_test_selective
+    assert "storage.setItem(storageKey, JSON.stringify({" in image_test_selective
+    assert "persistFromDom" in image_test_storage
+    assert "restoreToDom" in image_test_storage
+    assert "restoreDeferredField" in image_test_storage
+    assert "storedHistoryRange" in image_test_storage
+    assert "history_range" in image_test_storage
+    assert "image-test-prompt" in image_test_storage
+    assert "image-test-weight-select" in image_test_storage
+    assert "image-test-weight-path" in image_test_storage
+    assert "layout: currentLayoutMode()," in image_test_selective
+    assert "io_text: currentIoText()," in image_test_selective
+    assert "toggleLayoutMode" in image_test_selective
+    assert "body.dataset.layout = normalized;" in image_test_selective
+    assert "range.type = 'range';" in image_test_selective
+    assert "number.type = 'number';" in image_test_selective
+    assert re.search(
+        r"restoring = true;.*restorePersistedDialogState\(\);.*restoring = false;.*persistDialogState\(\);",
+        image_test_selective,
+        re.S,
+    )
     assert "setup_image_test_routes(app)" in routes_source
     assert 'app["image_test_service"] = None' in server_source
     assert "ImageTestService(app)" in server_source
@@ -546,9 +633,29 @@ def test_image_test_feature_modules_are_loaded_from_production_entrypoint() -> N
     assert 'image-test-attn-mode' in html
     assert 'image-test-runtime-dtype' in html
     assert 'image-test-text-encoder-dtype' in html
+    assert 'image-test-gpu-index' in html
+    assert 'image-test-weight-drop-target' in html
     assert 'image-test-weight-select' in html
     assert 'image-test-weight-path' in html
     assert 'image-test-lora-multiplier' in html
+    assert 'btn-open-image-test-layer-dialog' in html
+    assert 'image-test-layer-dialog' in html
+    assert 'image-test-layer-enable' in html
+    assert 'btn-image-test-layer-layout-toggle' in html
+    assert 'image-test-layer-layout-label' in html
+    assert 'image-test-layer-preset' in html
+    assert 'image-test-layer-dialog-summary' in html
+    assert 'image-test-layer-inline-summary' in html
+    assert 'image-test-layer-selection' in html
+    assert 'image-test-layer-count' in html
+    assert 'image-test-layer-dialog-count' in html
+    assert 'image-test-layer-io-text' in html
+    assert 'image-test-layer-io-status' in html
+    assert 'btn-image-test-layer-export' in html
+    assert 'btn-image-test-layer-import' in html
+    assert 'image-test-layer-blocks-main' in html
+    assert 'image-test-layer-blocks-adapter' in html
+    assert 'image-test-layer-blocks-special' in html
     assert 'btn-start-image-test' in html
     assert 'btn-stop-image-test' in html
     assert 'btn-refresh-image-test-status' in html
@@ -556,6 +663,16 @@ def test_image_test_feature_modules_are_loaded_from_production_entrypoint() -> N
     assert 'image-test-run-summary' in html
     assert 'image-test-log' in html
     assert 'image-test-command' in html
+    assert 'image-test-history-filter' in html
+    assert 'data-range="7"' in html
+    assert 'data-range="14"' in html
+    assert 'data-range="30"' in html
+    assert 'data-range="all"' in html
+    assert 'image-test-selection-toolbar' in html
+    assert 'image-test-selection-summary' in html
+    assert 'btn-image-test-export-merged' in html
+    assert 'btn-image-test-export-originals' in html
+    assert 'btn-image-test-clear-selection' in html
     assert 'image-test-grid' in html
     assert 'image-test-empty' in html
 
@@ -564,6 +681,39 @@ def test_image_test_feature_modules_are_loaded_from_production_entrypoint() -> N
         ".image-test-layout",
         ".image-test-summary-item",
         ".image-test-grid-2",
+        ".image-test-weight-drop-target",
+        ".image-test-main-head-side",
+        ".image-test-history-filter",
+        ".image-test-history-filter-btn",
+        ".image-test-selection-toolbar",
+        ".image-test-selection-actions",
+        ".image-test-history-groups",
+        ".image-test-history-group",
+        ".image-test-history-group-fresh-badge",
+        ".image-test-history-group-toggle",
+        ".image-test-history-group-grid",
+        ".image-test-history-virtual-spacer",
+        ".image-test-history-card",
+        ".image-test-history-card-selection",
+        ".image-test-history-card-fresh",
+        ".image-test-history-load-more",
+        ".image-test-history-load-more-btn",
+        ".image-test-layer-launch",
+        ".image-test-layer-dialog",
+        ".image-test-layer-dialog-toolbar",
+        ".image-test-layer-layout-toggle",
+        ".image-test-layer-layout-icon",
+        ".image-test-layer-dialog-summary-row",
+        ".image-test-layer-io",
+        ".image-test-layer-io-actions",
+        ".image-test-layer-io-status",
+        ".image-test-layer-count",
+        ".image-test-layer-dialog-body",
+        ".image-test-layer-group",
+        ".image-test-layer-rows",
+        ".image-test-layer-row",
+        ".image-test-layer-row-slider",
+        ".image-test-layer-row-number",
         ".image-test-run-badge",
         ".image-test-run-summary",
         ".image-test-request-list",
@@ -575,6 +725,14 @@ def test_image_test_feature_modules_are_loaded_from_production_entrypoint() -> N
     ):
         assert selector in css
 
+    assert "position: sticky;" in _section(css, ".image-test-selection-toolbar {", ".image-test-selection-toolbar[hidden] {")
+    assert "backdrop-filter: blur(10px);" in _section(css, ".image-test-selection-toolbar {", ".image-test-selection-toolbar[hidden] {")
+    assert ".image-test-weight-drop-target.dragover select" in css
+    assert "#image-test-weight-path.dragover" in css
+
+    assert '.image-test-layer-dialog-body[data-layout="double"] .image-test-layer-rows' in css
+    assert '.image-test-layer-dialog-body[data-layout="double"] .image-test-layer-row' in css
+
     for tooltip_id in (
         "btn-refresh-image-test-status",
         "btn-refresh-image-test-weights",
@@ -582,11 +740,90 @@ def test_image_test_feature_modules_are_loaded_from_production_entrypoint() -> N
         "image-test-weight-path",
         "image-test-runtime-dtype",
         "image-test-text-encoder-dtype",
+        "image-test-gpu-index",
+        "image-test-history-filter",
+        "btn-image-test-export-merged",
+        "btn-image-test-export-originals",
+        "btn-image-test-clear-selection",
+        "btn-open-image-test-layer-dialog",
+        "image-test-layer-dialog",
+        "image-test-layer-enable",
+        "btn-image-test-layer-layout-toggle",
+        "image-test-layer-preset",
+        "image-test-layer-selection",
+        "image-test-layer-io-text",
+        "btn-image-test-layer-export",
+        "btn-image-test-layer-import",
         "btn-start-image-test",
         "btn-stop-image-test",
         "image-test",
     ):
         assert tooltip_id in tooltip_section
+
+
+def test_image_test_ui_draft_persistence_and_history_reload_hooks_exist() -> None:
+    image_test_index = _frontend_module_text("js/features/image-test/index.js")
+    image_test_render = _frontend_module_text("js/features/image-test/render.js")
+    image_test_gallery = _frontend_module_text("js/features/image-test/gallery.js")
+    image_test_storage = _frontend_module_text("js/features/image-test/storage.js")
+    image_test_api = _frontend_module_text("js/features/image-test/api.js")
+
+    assert "const draftStore = createImageTestUiStorage();" in image_test_index
+    assert "initialHistoryFilter: draftStore.storedHistoryRange()" in image_test_index
+    assert "state.restoredDraftFieldIds = draftStore.restoreToDom();" in image_test_index
+    assert "draftStore.bind((fieldId) => {" in image_test_index
+    assert "state.restoredDraftFieldIds.add(fieldId);" in image_test_index
+    assert "draftStore.persistFromDom({ history_range: nextRange });" in image_test_index
+    assert "void loadImageTestImages({ force: true, historyRange: nextRange });" in image_test_index
+    assert "draftStore.restoreDeferredField('image-test-gpu-index');" in image_test_index
+    assert "draftStore.restoreDeferredField('image-test-weight-select');" in image_test_index
+    assert "draftStore.persistFromDom({ history_range: renderer.currentHistoryFilter() });" in image_test_index
+    assert "const historyRange = options.historyRange || renderer.currentHistoryFilter();" in image_test_index
+    assert "loadImageTestGpus({ force: options.force })" in image_test_index
+    assert "fetchImageTestGpus(ctx)" in image_test_index
+    assert "fetchImageTestImages(ctx, IMAGE_TEST_IMAGE_LIMIT, historyRange)" in image_test_index
+    assert "if (state.restoredDraftFieldIds.has(id)) return;" in image_test_index
+    assert "bindWeightDropTargetEvents" in image_test_index
+    assert "resolveWeightPathFromCandidates();" in image_test_index
+    assert "bindSingleWeightDropTarget" in image_test_index
+    assert "clearWeightDropTargetState" in image_test_index
+    assert "handleWeightDrop" in image_test_index
+    assert "applyDroppedWeightPath" in image_test_index
+    assert "resolveDroppedWeightPath" in image_test_index
+    assert "if (payload?.ok === false) {" in image_test_index
+    assert "resolveWeightPathFromCandidates" in image_test_index
+    assert "resolvePreferredWeightOptionByName" in image_test_index
+    assert "comparePreferredWeightCandidate" in image_test_index
+    assert "weightCandidatePriority" in image_test_index
+    assert "droppedSafetensorsPath" in image_test_index
+    assert "firstDroppedSafetensorsFileInfo" in image_test_index
+    assert "resolveDroppedPathCandidate" in image_test_index
+    assert "joinDroppedPath" in image_test_index
+    assert "isBareSafetensorsFileName" in image_test_index
+    assert "stripSafetensorsExt" in image_test_index
+    assert "normalizeDroppedWeightPath" in image_test_index
+    assert "image-test-gpu-index" in image_test_index
+    assert "image-test-weight-drop-target" in image_test_index
+    assert "image-test-weight-path" in image_test_index
+    assert "event.dataTransfer.dropEffect = 'copy';" in image_test_index
+    assert "renderer.setImageTestStatus(`已读取拖入权重：" in image_test_index
+    assert "renderer.setImageTestStatus(`拖入权重解析失败：" in image_test_index
+    assert "currentHistoryFilter: () => gallery.currentFilter()" in image_test_render
+    assert "initialFilterValue: initialHistoryFilter" in image_test_render
+    assert "requestHistoryReload" in image_test_render
+    assert "initialFilterValue = DEFAULT_FILTER_VALUE" in image_test_gallery
+    assert "filterValue: normalizeImageTestHistoryRange(initialFilterValue, DEFAULT_FILTER_VALUE)" in image_test_gallery
+    assert "params.set('days', normalizedRange);" in image_test_api
+    assert "IMAGE_TEST_PERSISTED_FIELD_IDS = Object.freeze([" in image_test_storage
+    assert "image-test-gpu-index" in image_test_storage
+
+
+def test_image_test_theme_variables_are_root_scoped_for_dialogs() -> None:
+    css = (STATIC_DIR / "css" / "42-image-test.css").read_text(encoding="utf-8")
+
+    assert re.search(r":root\s*\{[^}]*--image-test-page-bg:\s*#111827;", css, re.S)
+    assert re.search(r':root\[data-theme="light"\]\s*\{[^}]*--image-test-page-bg:\s*#f6f7ff;', css, re.S)
+    assert re.search(r"#tab-image-test\s*\{[^}]*background:\s*var\(--image-test-page-bg\);", css, re.S)
 
 
 def test_global_ui_scale_override_controls_and_runtime_hooks_are_present() -> None:

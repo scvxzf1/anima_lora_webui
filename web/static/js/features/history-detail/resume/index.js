@@ -1,6 +1,6 @@
-import { createHistoryResumeActions } from './actions.js?v=module-bootstrap-20260702-1';
-import { createHistoryResumeDetailRenderer } from './detail.js?v=module-bootstrap-20260702-1';
-import { createHistoryResumePanelRenderer } from './panel.js?v=module-bootstrap-20260702-1';
+import { createHistoryResumeActions } from './actions.js?v=module-bootstrap-20260703-7';
+import { createHistoryResumeDetailRenderer } from './detail.js?v=module-bootstrap-20260703-7';
+import { createHistoryResumePanelRenderer } from './panel.js?v=module-bootstrap-20260703-7';
 
 export function createHistoryResumeFeature({ ctx, state, deps, slots }) {
     const panel = createHistoryResumePanelRenderer({ state, deps, slots });

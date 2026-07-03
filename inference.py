@@ -175,6 +175,37 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default=None,
         help="LoRA module exclude patterns",
     )
+    parser.add_argument(
+        "--anima_selective_lora",
+        action="store_true",
+        help="Enable Anima selective LoRA loading by preset or per-block selection.",
+    )
+    parser.add_argument(
+        "--anima_selective_preset",
+        type=str,
+        default="default",
+        help="Preset for Anima selective LoRA loading.",
+    )
+    parser.add_argument(
+        "--anima_selective_strength",
+        type=float,
+        default=1.0,
+        help="Additional multiplier for Anima selective LoRA loading.",
+    )
+    parser.add_argument(
+        "--anima_selective_blocks",
+        type=str,
+        nargs="*",
+        default=None,
+        help="Selected Anima LoRA block ids when using custom selective loading.",
+    )
+    parser.add_argument(
+        "--anima_selective_block_strengths",
+        type=str,
+        nargs="*",
+        default=None,
+        help="Per-block Anima LoRA strengths, e.g. block_0=1.0 llm_adapter_0=0.5.",
+    )
 
     # inference
     parser.add_argument(

@@ -14,6 +14,7 @@ Not supported (refuse by default; --allow-partial to drop and proceed):
   - HydraLoRA moe     (layer-local router can't be baked under static weights)
   - step-expert turbo (per-step heads can't be baked into one DiT weight)
   - postfix / prefix  (cross-attn KV splice, not a weight delta)
+  - register tokens   (ride the self-attn sequence, not a weight delta)
 
 Same merge path as train.py:1499's --base_weights warm-start.
 """
@@ -43,6 +44,7 @@ _NON_BAKEABLE_MARKERS: dict[str, str] = {
     ".lora_ups.": "HydraLoRA split (per-layer router) / step-expert turbo (per-step heads)",
     "postfix_": "postfix (cross-attn KV splice)",
     "prefix_": "prefix (cross-attn KV splice)",
+    "register_tokens": "register tokens (ride the self-attn sequence, not a weight delta)",
 }
 
 _DTYPE_MAP: dict[str, torch.dtype] = {

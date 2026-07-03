@@ -9,7 +9,7 @@ import {
     paramBenchmark,
     ratioBenchmark,
     shortComponent,
-} from './render-utils.js?v=module-bootstrap-20260702-1';
+} from './render-utils.js?v=module-bootstrap-20260703-7';
 
 export function createWeightAnalysisRenderer({ ctx, state }) {
     const { formatBytes } = ctx.format;

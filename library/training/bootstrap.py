@@ -327,6 +327,17 @@ class TrainingBootstrap:
 
         trainer.post_process_network(args, accelerator, network, text_encoders, unet)
 
+        if (
+            int(getattr(network, "extra_seq_tokens", 0) or 0) > 0
+            and getattr(args, "blocks_to_swap", 0)
+            and getattr(args, "blocks_to_swap", 0) > 0
+        ):
+            logger.warning(
+                "Register tokens + blocks_to_swap>0 is unaudited — the "
+                "mid-stack token insertion pre-hooks have not been validated "
+                "against the block-swap offloader."
+            )
+
         train_unet = not args.network_train_text_encoder_only
         train_text_encoder = trainer.is_train_text_encoder(args)
         network.apply_to(text_encoder, unet, train_text_encoder, train_unet)
@@ -356,15 +367,37 @@ class TrainingBootstrap:
         # setup, so checkpoint recompute and original forward call the same
         # compiled inner graph.
         if args.torch_compile:
-            from library.runtime.harness import compile_blocks_for_training
+            from library.runtime.harness import (
+                compile_blocks_for_training,
+                pixel_bucket_token_counts,
+            )
+
+            bucket_resolutions = getattr(args, "bucket_resolutions", None)
+            dynamic_seq = bool(getattr(args, "compile_dynamic_seq", False))
+            compile_n_token_families = None
+            compile_seq_range = None
+            extra_seq = int(getattr(network, "extra_seq_tokens", 0) or 0)
+            if bucket_resolutions and dynamic_seq and extra_seq > 0:
+                counts = pixel_bucket_token_counts(
+                    bucket_resolutions,
+                    patch_spatial=getattr(unet, "patch_spatial", 16),
+                    vae_spatial_compression=getattr(
+                        unet, "vae_spatial_compression", 8
+                    ),
+                )
+                if counts:
+                    compile_n_token_families = len(counts)
+                    compile_seq_range = (min(counts), max(counts) + extra_seq)
 
             compile_blocks_for_training(
                 unet,
                 network,
                 backend=args.dynamo_backend,
                 mode=getattr(args, "compile_inductor_mode", None),
-                bucket_resolutions=getattr(args, "bucket_resolutions", None),
-                dynamic_seq=bool(getattr(args, "compile_dynamic_seq", False)),
+                bucket_resolutions=bucket_resolutions,
+                n_token_families=compile_n_token_families,
+                seq_range=compile_seq_range,
+                dynamic_seq=dynamic_seq,
                 activation_memory_budget=float(
                     getattr(args, "activation_memory_budget", 1.0) or 1.0
                 ),

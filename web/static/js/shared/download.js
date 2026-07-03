@@ -58,6 +58,16 @@ export function zipDosTimestamp(date = new Date()) {
 }
 
 export function createZipBlob(entries, normalizeName) {
+    return createZipDataBlob(
+        entries.map((entry) => ({
+            name: entry.name,
+            data: new TextEncoder().encode(entry.content || ''),
+        })),
+        normalizeName,
+    );
+}
+
+export function createZipDataBlob(entries, normalizeName) {
     const encoder = new TextEncoder();
     const localParts = [];
     const centralParts = [];
@@ -68,7 +78,7 @@ export function createZipBlob(entries, normalizeName) {
     for (const entry of entries) {
         const name = normalizeName(entry.name, usedNames);
         const nameBytes = encoder.encode(name);
-        const dataBytes = encoder.encode(entry.content || '');
+        const dataBytes = zipEntryBytes(entry);
         const checksum = crc32(dataBytes);
 
         const localHeader = new Uint8Array(30 + nameBytes.length);
@@ -120,4 +130,20 @@ export function createZipBlob(entries, normalizeName) {
     writeZipUint32(end, 16, offset);
     writeZipUint16(end, 20, 0);
     return new Blob([...localParts, ...centralParts, end], { type: 'application/zip' });
+}
+
+export function zipEntryBytes(entry = {}) {
+    if (entry.data instanceof Uint8Array) {
+        return entry.data;
+    }
+    if (entry.data instanceof ArrayBuffer) {
+        return new Uint8Array(entry.data);
+    }
+    if (ArrayBuffer.isView(entry.data)) {
+        return new Uint8Array(entry.data.buffer, entry.data.byteOffset, entry.data.byteLength);
+    }
+    if (typeof entry.content === 'string') {
+        return new TextEncoder().encode(entry.content);
+    }
+    return new Uint8Array();
 }

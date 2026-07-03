@@ -53,6 +53,7 @@ async def handle_preview_images(request: web.Request) -> web.Response:
     source = request.query.get("source", "training")
     try:
         limit = int(request.query.get("limit", "200") or 200)
+        days = _preview_days_filter(request)
         if source == "training" and request.query.get("mode") == "config_group":
             tasks = _selected_config_group_tasks(request)
             payload = list_config_group_preview_images(
@@ -75,6 +76,7 @@ async def handle_preview_images(request: web.Request) -> web.Response:
             task_label=_history_task_label(task) if task else "",
             allow_latest_fallback=not task_selected,
             limit=limit,
+            days=days,
         )
         return web.json_response(payload)
     except ValueError as e:
@@ -159,6 +161,19 @@ def _current_sample_config(request: web.Request) -> dict:
 
 def _has_task_selection(request: web.Request) -> bool:
     return bool((request.query.get("task_id") or "").strip())
+
+
+def _preview_days_filter(request: web.Request) -> int | None:
+    raw = str(request.query.get("days", "") or "").strip().lower()
+    if not raw or raw == "all":
+        return None
+    try:
+        value = int(raw)
+    except ValueError as exc:
+        raise ValueError("days 必须是正整数或 all") from exc
+    if value <= 0:
+        raise ValueError("days 必须是正整数或 all")
+    return value
 
 
 def _selected_history_task(request: web.Request) -> dict:

@@ -107,6 +107,8 @@ def test_preprocess_dtype_defaults_to_bfloat16(monkeypatch):
     preprocess.cmd_preprocess([])
 
     _, vae_cmd, te_cmd = commands
+    assert vae_cmd[vae_cmd.index("--batch_size") + 1] == "2"
+    assert te_cmd[te_cmd.index("--batch_size") + 1] == "16"
     assert vae_cmd[vae_cmd.index("--dtype") + 1] == "bfloat16"
     assert te_cmd[te_cmd.index("--dtype") + 1] == "bfloat16"
 

@@ -102,6 +102,17 @@ def test_hydra_router_kwargs_registered():
     assert must_have.issubset(set(all_network_kwargs()))
 
 
+def test_register_token_kwargs_registered():
+    must_have = {
+        "num_registers",
+        "register_insert_block",
+        "register_lr_scale",
+        "register_init_std",
+    }
+    assert must_have.issubset(set(SHARED_KWARG_FLAGS))
+    assert must_have.issubset(set(all_network_kwargs()))
+
+
 def test_lokr_kwargs_registered():
     must_have = {
         "use_lokr",

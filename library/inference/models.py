@@ -9,6 +9,15 @@ from safetensors.torch import load_file
 
 from library.anima import models as anima_models, weights as anima_utils
 from library.inference.precision import resolve_runtime_dtype, resolve_text_encoder_dtype
+from library.inference.selective_lora import (
+    ANIMA_SELECTIVE_BLOCKS,
+    apply_anima_selective_lora,
+    enabled_blocks_from_anima_selective_strengths,
+    normalize_anima_selective_block_strengths,
+    normalize_anima_selective_blocks,
+    normalize_anima_selective_preset,
+    preset_strength_for_anima_selective,
+)
 from library.runtime.device import clean_memory_on_device
 
 logger = logging.getLogger(__name__)
@@ -99,6 +108,76 @@ def _is_step_expert_turbo(path: str) -> bool:
         return False
 
 
+def _resolve_lora_multiplier_for_index(
+    lora_multiplier: float | list[float] | None, index: int
+) -> float:
+    if isinstance(lora_multiplier, (int, float)):
+        return float(lora_multiplier)
+    if not lora_multiplier:
+        return 1.0
+    if len(lora_multiplier) == 1:
+        return float(lora_multiplier[0])
+    if index < len(lora_multiplier):
+        return float(lora_multiplier[index])
+    return float(lora_multiplier[-1])
+
+
+def _apply_selective_lora_controls(
+    args: argparse.Namespace, lora_sd: Dict[str, torch.Tensor], *, path: str
+) -> Dict[str, torch.Tensor]:
+    if not getattr(args, "anima_selective_lora", False):
+        return lora_sd
+
+    preset = normalize_anima_selective_preset(
+        getattr(args, "anima_selective_preset", "default")
+    )
+    raw_block_strengths = getattr(args, "anima_selective_block_strengths", None)
+    block_strengths = normalize_anima_selective_block_strengths(
+        raw_block_strengths,
+        preset=preset,
+    )
+    selected_blocks = enabled_blocks_from_anima_selective_strengths(
+        block_strengths,
+        preset=preset,
+    )
+    if not selected_blocks:
+        selected_blocks = normalize_anima_selective_blocks(
+            getattr(args, "anima_selective_blocks", None),
+            preset=preset,
+        )
+    strength = float(getattr(args, "anima_selective_strength", 1.0) or 1.0)
+    effective_strength = (
+        strength
+        if raw_block_strengths is not None
+        else strength * preset_strength_for_anima_selective(preset)
+    )
+    filtered = apply_anima_selective_lora(
+        lora_sd,
+        selected_blocks,
+        strength=effective_strength,
+        preset=preset,
+        block_strengths=block_strengths,
+    )
+    logger.info(
+        "Anima selective LoRA enabled for %s: preset=%s, blocks=%s/%s, strength=%.3f, tensors=%s/%s",
+        path,
+        preset,
+        len(selected_blocks),
+        len(ANIMA_SELECTIVE_BLOCKS),
+        effective_strength,
+        len(filtered),
+        len(lora_sd),
+    )
+    return filtered
+
+
+def _load_lora_state_dict_for_inference(
+    args: argparse.Namespace, path: str
+) -> Dict[str, torch.Tensor]:
+    lora_sd = load_file(path)
+    return _apply_selective_lora_controls(args, lora_sd, path=path)
+
+
 def attach_adapters(
     model: anima_models.Anima,
     args: argparse.Namespace,
@@ -128,14 +207,18 @@ def attach_adapters(
         from networks import lora_anima
 
         logger.info("P-GRAFT: Loading LoRA as dynamic hooks (not static merge)")
-        for lora_weight_path in args.lora_weight:
-            lora_sd = load_file(lora_weight_path)
+        for index, lora_weight_path in enumerate(args.lora_weight):
+            lora_sd = _load_lora_state_dict_for_inference(args, lora_weight_path)
             lora_sd = {k: v for k, v in lora_sd.items() if k.startswith("lora_unet_")}
+            if not lora_sd:
+                logger.warning(
+                    "P-GRAFT: no DiT LoRA tensors left after filtering, skip %s",
+                    lora_weight_path,
+                )
+                continue
 
-            multiplier = (
-                args.lora_multiplier
-                if isinstance(args.lora_multiplier, (int, float))
-                else args.lora_multiplier[0]
+            multiplier = _resolve_lora_multiplier_for_index(
+                args.lora_multiplier, index
             )
             network, weights_sd = lora_anima.create_network_from_weights(
                 multiplier=multiplier,
@@ -169,7 +252,7 @@ def attach_adapters(
         logger.info("HydraLoRA: loading moe file as router-live dynamic hooks")
         from safetensors import safe_open
 
-        for lora_weight_path in args.lora_weight:
+        for index, lora_weight_path in enumerate(args.lora_weight):
             # Read the three-axis routing stamps (and chimera stamps) from
             # on-disk __metadata__ — load_file() drops it. Chimera files
             # (dual-pool) carry top-level ``freq_router.*`` keys outside the
@@ -180,18 +263,22 @@ def attach_adapters(
             with safe_open(lora_weight_path, framework="pt") as f:
                 lora_metadata = dict(f.metadata() or {})
             is_chimera = _is_chimera_moe(lora_weight_path)
-            lora_sd = load_file(lora_weight_path)
+            lora_sd = _load_lora_state_dict_for_inference(args, lora_weight_path)
             if is_chimera:
                 logger.info("HydraLoRA: chimera file — dual-pool routing wired")
             else:
                 lora_sd = {
                     k: v for k, v in lora_sd.items() if k.startswith("lora_unet_")
                 }
+            if not lora_sd:
+                logger.warning(
+                    "HydraLoRA: no tensors left after filtering, skip %s",
+                    lora_weight_path,
+                )
+                continue
 
-            multiplier = (
-                args.lora_multiplier
-                if isinstance(args.lora_multiplier, (int, float))
-                else args.lora_multiplier[0]
+            multiplier = _resolve_lora_multiplier_for_index(
+                args.lora_multiplier, index
             )
             network, weights_sd = lora_anima.create_network_from_weights(
                 multiplier=multiplier,
@@ -237,15 +324,19 @@ def attach_adapters(
         from networks.methods.turbo_dmd import load_step_expert_student
 
         logger.info("step-expert turbo: loading as router-free kept-live hooks")
-        for lora_weight_path in args.lora_weight:
+        for index, lora_weight_path in enumerate(args.lora_weight):
             with safe_open(lora_weight_path, framework="pt") as f:
                 se_metadata = dict(f.metadata() or {})
-            lora_sd = load_file(lora_weight_path)
+            lora_sd = _load_lora_state_dict_for_inference(args, lora_weight_path)
             lora_sd = {k: v for k, v in lora_sd.items() if k.startswith("lora_unet_")}
-            multiplier = (
-                args.lora_multiplier
-                if isinstance(args.lora_multiplier, (int, float))
-                else args.lora_multiplier[0]
+            if not lora_sd:
+                logger.warning(
+                    "step-expert turbo: no DiT LoRA tensors left after filtering, skip %s",
+                    lora_weight_path,
+                )
+                continue
+            multiplier = _resolve_lora_multiplier_for_index(
+                args.lora_multiplier, index
             )
             network = load_step_expert_student(
                 model, lora_sd, se_metadata, multiplier=multiplier
@@ -322,15 +413,31 @@ def load_dit_model(
         and len(args.lora_weight) > 0
     ):
         lora_weights_list = []
-        for lora_weight in args.lora_weight:
+        lora_multipliers = []
+        for index, lora_weight in enumerate(args.lora_weight):
             logger.info(f"Loading LoRA weight from: {lora_weight}")
-            lora_sd = load_file(lora_weight)  # load on CPU, dtype is as is
+            lora_sd = _load_lora_state_dict_for_inference(
+                args, lora_weight
+            )  # load on CPU, dtype is as is
             lora_sd = {
                 k: v for k, v in lora_sd.items() if k.startswith("lora_unet_")
             }  # only keep unet lora weights
+            if not lora_sd:
+                logger.warning(
+                    "No DiT LoRA tensors left after filtering, skip static merge: %s",
+                    lora_weight,
+                )
+                continue
             lora_weights_list.append(lora_sd)
+            lora_multipliers.append(
+                _resolve_lora_multiplier_for_index(args.lora_multiplier, index)
+            )
+        if not lora_weights_list:
+            lora_weights_list = None
+            lora_multipliers = None
     else:
         lora_weights_list = None
+        lora_multipliers = None
 
     model = anima_utils.load_anima_model(
         device,
@@ -339,7 +446,7 @@ def load_dit_model(
         loading_device,
         dit_weight_dtype,
         lora_weights_list=lora_weights_list,
-        lora_multipliers=args.lora_multiplier,
+        lora_multipliers=lora_multipliers,
     )
 
     # Modulation guidance: load trained pooled_text_proj weights before .to()
@@ -387,25 +494,37 @@ def load_text_encoder(
     device: torch.device = torch.device("cpu"),
 ) -> torch.nn.Module:
     lora_weights_list = None
+    lora_multipliers = None
     if (
         args.lora_weight is not None
         and len(args.lora_weight) > 0
         and any(_has_te_keys(p) for p in args.lora_weight)
     ):
         lora_weights_list = []
-        for lora_weight in args.lora_weight:
+        lora_multipliers = []
+        for index, lora_weight in enumerate(args.lora_weight):
             logger.info(f"Loading LoRA weight from: {lora_weight}")
-            lora_sd = load_file(lora_weight)  # load on CPU, dtype is as is
+            lora_sd = _load_lora_state_dict_for_inference(
+                args, lora_weight
+            )  # load on CPU, dtype is as is
             lora_sd = {
                 "model_" + k[len("lora_te_") :]: v
                 for k, v in lora_sd.items()
                 if k.startswith("lora_te_")
             }  # only keep Text Encoder lora weights, remove prefix "lora_te_" and add "model_" prefix
+            if not lora_sd:
+                logger.warning(
+                    "No Text Encoder LoRA tensors left after filtering, skip merge: %s",
+                    lora_weight,
+                )
+                continue
             lora_weights_list.append(lora_sd)
-
-    lora_multipliers = args.lora_multiplier
-    if lora_multipliers is not None and not isinstance(lora_multipliers, list):
-        lora_multipliers = [lora_multipliers]
+            lora_multipliers.append(
+                _resolve_lora_multiplier_for_index(args.lora_multiplier, index)
+            )
+        if not lora_weights_list:
+            lora_weights_list = None
+            lora_multipliers = None
     text_encoder, _ = anima_utils.load_qwen3_text_encoder(
         args.text_encoder,
         dtype=dtype,
