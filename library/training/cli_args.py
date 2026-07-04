@@ -427,6 +427,19 @@ def add_training_arguments(parser: argparse.ArgumentParser, support_dreambooth: 
         "across steps and is incompatible with block swap.",
     )
     parser.add_argument(
+        "--compile_block_scope",
+        type=str,
+        default="resident",
+        choices=["resident", "all"],
+        help=(
+            "Which DiT blocks torch.compile should wrap when block swap is enabled. "
+            "resident compiles only GPU-resident head blocks and leaves swapped "
+            "tail blocks eager for speed stability; all also compiles swapped "
+            "blocks, which can lower activation memory on tight VRAM runs but "
+            "may recompile more often."
+        ),
+    )
+    parser.add_argument(
         "--compile_dynamic_seq",
         action="store_true",
         help=(

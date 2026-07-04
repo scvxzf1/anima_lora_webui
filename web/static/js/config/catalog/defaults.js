@@ -11,6 +11,7 @@ export const FORM_UI_DEFAULTS = {
     block_swap_transfer_dtype: 'bf16',
     block_swap_restore_mode: 'foreach',
     block_swap_profile_jsonl: 'off',
+    compile_block_scope: 'resident',
     preprocess_memory_profile: 'auto',
     preprocess_vae_cache_batch_size: 'auto',
     preprocess_text_cache_batch_size: 'auto',

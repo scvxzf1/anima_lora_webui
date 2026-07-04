@@ -26,6 +26,7 @@ export const FIELD_LABEL_ZH = {
     channel_scaling_alpha: '通道缩放 Alpha',
     checkpointing_epochs: '训练状态保存间隔',
     checkpointing_last_n_epochs: '续训点保留数量',
+    compile_block_scope: '编译块范围',
     compile_inductor_mode: 'Inductor 编译模式',
     cond_scale: 'EasyControl 条件强度',
     cond_token_count: 'EasyControl 条件 Token 数',
@@ -211,6 +212,7 @@ export const FIELD_LABEL_ZH = {
 
 export const FIELD_OPTIONS = {
     attn_mode: ['torch', 'xformers', 'flash', 'sageattn', 'flex', 'sdpa'],
+    compile_block_scope: ['resident', 'all'],
     compile_inductor_mode: ['default', 'reduce-overhead', 'max-autotune', 'max-autotune-no-cudagraphs'],
     block_swap_restore_mode: ['foreach', 'slab'],
     block_swap_transfer_dtype: ['bf16', 'fp8_e4m3'],

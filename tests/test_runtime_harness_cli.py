@@ -166,6 +166,36 @@ def test_compile_blocks_for_training_accepts_bucket_resolutions(
     assert captured["n_token_families"] == 2
     assert captured["seq_range"] == (4032, 4200)
     assert captured["dynamic_seq"] is True
+    assert captured["compile_block_scope"] == "resident"
+
+
+def test_compile_blocks_for_training_forwards_compile_block_scope(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from library.runtime import harness
+
+    captured: dict[str, object] = {}
+
+    class FakeUnet:
+        patch_spatial = 2
+        vae_spatial_compression = 8
+
+        def compile_blocks(self, backend, **kwargs):
+            captured["backend"] = backend
+            captured.update(kwargs)
+
+    monkeypatch.setenv("TORCHINDUCTOR_CACHE_DIR", str(tmp_path))
+    monkeypatch.setattr(harness, "_compile_cache_base", None)
+
+    harness.compile_blocks_for_training(
+        FakeUnet(),
+        object(),
+        backend="eager",
+        compile_block_scope="all",
+    )
+
+    assert captured["backend"] == "eager"
+    assert captured["compile_block_scope"] == "all"
 
 
 def test_compile_blocks_for_training_pins_lokr_checkpoint_budget(

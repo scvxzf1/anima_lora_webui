@@ -108,6 +108,7 @@ export const FORM_SECTION_DEFS = [
             'disable_block_swap_for_eval',
             'attn_mode',
             'torch_compile',
+            'compile_block_scope',
             'compile_inductor_mode',
             'use_custom_down_autograd',
         ],
@@ -434,8 +435,8 @@ export const CONFIG_COMPACT_FIELD_GROUPS = {
             keys: ['unsloth_offload_checkpointing', 'disable_block_swap_for_eval'],
         },
         {
-            className: 'config-field-grid-3col',
-            keys: ['attn_mode', 'torch_compile', 'compile_inductor_mode'],
+            className: 'config-field-grid-4col',
+            keys: ['attn_mode', 'torch_compile', 'compile_block_scope', 'compile_inductor_mode'],
         },
         {
             className: 'config-field-grid-3col',

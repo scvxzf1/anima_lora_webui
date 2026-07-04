@@ -718,6 +718,7 @@ def compile_blocks_for_training(
     activation_memory_budget: float = 1.0,
     partitioner_recompute_views: bool = False,
     partitioner_aggressive_recomputation: bool = False,
+    compile_block_scope: str = "resident",
     grad_ckpt: bool = False,
     logger: logging.Logger = log,
 ) -> None:
@@ -801,6 +802,7 @@ def compile_blocks_for_training(
         n_token_families=n_token_families,
         dynamic_seq=dynamic_seq,
         seq_range=seq_range,
+        compile_block_scope=compile_block_scope,
     )
     if hasattr(network, "compile_cond_stream"):
         network.compile_cond_stream(
