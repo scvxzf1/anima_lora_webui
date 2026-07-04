@@ -1,5 +1,4 @@
 from concurrent.futures import ThreadPoolExecutor
-import json
 import logging
 import os
 import threading
@@ -39,6 +38,7 @@ from library.runtime.block_swap_masters import (
     _tensor_nbytes,
     _weight_device_type,
 )
+from library.runtime.block_swap_profiler import BlockSwapProfiler, _resolve_profiler
 
 logger = logging.getLogger(__name__)
 
@@ -252,43 +252,6 @@ def swap_weight_devices_no_cuda(
     synchronize_device(device)
     h2d_ms = (time.perf_counter() - h2d_t0) * 1000.0
     return {"d2h_ms": d2h_ms, "h2d_ms": h2d_ms}
-
-
-class BlockSwapProfiler:
-    """Append-only JSONL writer for block-swap transfer/wait observations."""
-
-    def __init__(self, path: str):
-        self.path = str(path)
-        self._lock = threading.Lock()
-        self._seq = 0
-        os.makedirs(os.path.dirname(os.path.abspath(self.path)), exist_ok=True)
-
-    def write(self, event: dict[str, Any]) -> None:
-        self.write_many([event])
-
-    def write_many(self, events: list[dict[str, Any]]) -> None:
-        if not events:
-            return
-        try:
-            with self._lock:
-                with open(self.path, "a", encoding="utf-8") as f:
-                    for event in events:
-                        self._seq += 1
-                        payload = {"seq": self._seq, **event}
-                        f.write(json.dumps(payload, ensure_ascii=False) + "\n")
-        except Exception:
-            return
-
-
-def _resolve_profiler(profile_jsonl: Optional[Union[str, BlockSwapProfiler]]):
-    if isinstance(profile_jsonl, BlockSwapProfiler):
-        return profile_jsonl
-    if profile_jsonl is None:
-        return None
-    path = str(profile_jsonl).strip()
-    if not path or path.lower() in {"off", "none", "false", "0"}:
-        return None
-    return BlockSwapProfiler(path)
 
 
 _SwapPlanEntry = Tuple[str, _CpuMaster, _CpuMaster, torch.dtype, torch.dtype]
