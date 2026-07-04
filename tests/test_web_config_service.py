@@ -9,6 +9,7 @@ import subprocess
 import sys
 import zipfile
 from pathlib import Path
+from typing import Any
 
 import pytest
 import toml
@@ -167,10 +168,13 @@ def test_config_module_facade_sync_preserves_legacy_raw_file_shims(module_name: 
     module = importlib.import_module(module_name)
     legacy_config._restore_raw_files_shims()
     raw_file_shims = legacy_config._RAW_FILES_SHIMS
+    file_group_shims = legacy_config._FILE_GROUPS_SHIMS
 
     module._sync_from_facade()
 
     for name, shim in raw_file_shims.items():
+        assert getattr(legacy_config, name) is shim
+    for name, shim in file_group_shims.items():
         assert getattr(legacy_config, name) is shim
     for name in (
         "load_raw_file",
@@ -579,6 +583,37 @@ def test_merge_helpers_remain_available_from_legacy_module(tmp_path: Path, monke
     assert auto_dirs["lora_cache_dir"] == "image_dataset/hero_lora_cache"
     for name in expected_shims:
         assert getattr(legacy_config, name) is legacy_config._MERGE_SHIMS[name]
+
+
+def test_legacy_merge_private_helpers_forward_to_split_module(monkeypatch):
+    from web.services.config import merge as merge_impl
+
+    sentinel_path = Path("configs/gui-methods/lora.toml")
+    monkeypatch.setattr(
+        merge_impl,
+        "_builtin_variants_by_family",
+        lambda: {"lora": [(7, "sentinel")]},
+    )
+    monkeypatch.setattr(
+        merge_impl,
+        "_read_variant_metadata",
+        lambda path: {"path": str(path)},
+    )
+    monkeypatch.setattr(
+        merge_impl,
+        "_legacy_exact_variant_for_method",
+        lambda method: [f"legacy-{method}"],
+    )
+    monkeypatch.setattr(
+        merge_impl,
+        "_custom_gui_variants",
+        lambda: ["custom/sentinel"],
+    )
+
+    assert legacy_config._builtin_variants_by_family() == {"lora": [(7, "sentinel")]}
+    assert legacy_config._read_variant_metadata(sentinel_path) == {"path": str(sentinel_path)}
+    assert legacy_config._legacy_exact_variant_for_method("lora") == ["legacy-lora"]
+    assert legacy_config._custom_gui_variants() == ["custom/sentinel"]
 
 
 def test_save_dataset_editor_does_not_overwrite_dataset_when_train_patch_fails(tmp_path: Path, monkeypatch):
@@ -1604,6 +1639,195 @@ def test_preflight_remains_available_from_legacy_module(tmp_path: Path, monkeypa
     assert env_checks[-1]["level"] == "ok"
 
 
+def test_legacy_preflight_exports_forward_to_split_preflight_module():
+    from web.services.config import preflight as preflight_impl
+
+    missing = []
+    not_forwarded = []
+    for name in preflight_impl.__all__:
+        exported = getattr(legacy_config, name, None)
+        if exported is None:
+            missing.append(name)
+            continue
+        doc = str(getattr(exported, "__doc__", "") or "")
+        if "web.services.config.preflight" not in doc:
+            not_forwarded.append(name)
+
+    assert missing == []
+    assert not_forwarded == []
+    for name in (
+        "set_user_file_lock",
+        "set_user_group_lock",
+        "create_config_file_group",
+        "rename_config_file_group",
+        "delete_config_file_group",
+        "reorder_config_file_group",
+        "move_config_file_to_group",
+        "place_config_file_in_group",
+        "place_config_file_group",
+        "reorder_config_file_in_group",
+        "restore_system_presets",
+        "list_config_files",
+        "list_config_file_groups",
+        "export_config_file_group_archive",
+        "get_config_file_meta",
+    ):
+        assert getattr(legacy_config, name) is legacy_config._FILE_GROUPS_SHIMS[name]
+
+
+def test_preflight_helpers_remain_available_from_legacy_module():
+    expected_shims = (
+        "preflight_training_config",
+        "_load_training_config_for_web_run",
+        "_config_file_path",
+        "is_web_runtime_config",
+        "training_sample_sampler_status",
+        "apply_global_model_path_defaults",
+        "_check_training_images",
+        "_check_dataset_source_paths",
+        "_check_dataset_paths",
+        "_check_cache_sidecars",
+    )
+    assert tuple(legacy_config._PREFLIGHT_SHIM_NAMES) == expected_shims
+    assert tuple(legacy_config._PREFLIGHT_SHIMS) == expected_shims
+    for name in expected_shims:
+        assert getattr(legacy_config, name) is legacy_config._PREFLIGHT_SHIMS[name]
+        assert (
+            getattr(legacy_config, name).__doc__
+            == f"Compatibility shim forwarding to web.services.config.preflight.{name}."
+        )
+
+    assert legacy_config.training_sample_sampler_status("ddim") == ("euler", "legacy")
+    for name in expected_shims:
+        assert getattr(legacy_config, name) is legacy_config._PREFLIGHT_SHIMS[name]
+
+
+def test_legacy_preflight_private_helpers_forward_to_split_module(monkeypatch):
+    from web.services.config import preflight as preflight_impl
+
+    calls: dict[str, tuple[tuple[Any, ...], dict[str, Any]]] = {}
+
+    def sentinel(name: str):
+        def impl(*args, **kwargs):
+            calls[name] = (args, kwargs)
+            return {"name": name, "args": args, "kwargs": kwargs}
+
+        return impl
+
+    def add(*args):
+        return args
+
+    cfg = {"sample_prompts": "configs/sample_prompts.txt"}
+    config_path = Path("configs/imported/config.runtime.toml")
+    cache_dirs = [(1, Path("post_image_dataset/lora"), False)]
+    helper_args = {
+        "_inspect_network_weight": ("weights/demo.safetensors",),
+        "_check_network_weights": (cfg, add, "lora", "default", "gui-methods", None),
+        "_check_training_sample_config": (cfg, add),
+        "_config_path_from_display_path": ("configs/imported/lora.toml",),
+        "_is_allowed_training_config_path": (config_path,),
+        "_is_web_runtime_config_tree": (config_path,),
+        "_is_output_run_snapshot_config": (config_path,),
+        "_has_web_runtime_dirs": (config_path.parent,),
+        "_looks_like_web_runtime_config": (cfg,),
+        "_check_web_preprocess_environment": (add,),
+        "_web_python_executable": (),
+        "_check_cache_sidecar_pattern": (
+            add,
+            cache_dirs,
+            "*.npz",
+            "latent_cache",
+            "VAE latent 缓存",
+            "未找到 .npz latent 缓存",
+        ),
+    }
+    for name in helper_args:
+        impl_name = "_inspect_network_weight_impl" if name == "_inspect_network_weight" else name
+        monkeypatch.setattr(preflight_impl, impl_name, sentinel(name))
+
+    for name, args in helper_args.items():
+        kwargs = {}
+        if name == "_inspect_network_weight":
+            kwargs = {
+                "variant": "lora",
+                "preset": "default",
+                "methods_subdir": "gui-methods",
+                "config_file": None,
+                "cfg": cfg,
+            }
+        result = getattr(legacy_config, name)(*args, **kwargs)
+        assert result["name"] == name
+        assert calls[name] == (args, kwargs)
+
+
+def test_common_config_helpers_import_without_facade_cycle():
+    env = {**os.environ, "PYTHONDONTWRITEBYTECODE": "1"}
+    script = (
+        "import sys; "
+        "import web.services.config.common as common; "
+        "assert 'web.services.config_service' not in sys.modules; "
+        "assert 'web.services.config._legacy' not in sys.modules; "
+        "assert common._positive_int('3', 1) == 3; "
+        "assert common._positive_int('0', 1) == 1; "
+        "assert common._positive_int_or_none('2') == 2; "
+        "assert common._positive_int_or_none('0') is None; "
+        "assert common._nonnegative_int('-1', 5) == 5; "
+        "assert common._nonnegative_float('0.5', 1.0) == 0.5; "
+        "assert common._positive_float('0', 1.0) == 1.0; "
+        "assert common._bool_value('yes') is True; "
+        "assert 'web.services.config_service' not in sys.modules; "
+        "assert 'web.services.config._legacy' not in sys.modules"
+    )
+
+    result = subprocess.run(
+        [sys.executable, "-c", script],
+        check=False,
+        env=env,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0, result.stderr
+
+
+def test_legacy_common_private_helpers_forward_to_common_module(monkeypatch):
+    from web.services.config import common as common_impl
+
+    calls: dict[str, tuple[tuple[Any, ...], dict[str, Any]]] = {}
+
+    def sentinel(name: str):
+        def impl(*args, **kwargs):
+            calls[name] = (args, kwargs)
+            return {"name": name, "args": args, "kwargs": kwargs}
+
+        return impl
+
+    source_path = Path("image_dataset/hero")
+    helper_args = {
+        "_load": (Path("configs/base.toml"),),
+        "_safe_resolve": ("configs/imported/lora.toml",),
+        "_safe_config_subdir": ("imported",),
+        "_resolve_project_path": ("image_dataset/hero",),
+        "_auto_data_dir_for_key": ("", source_path, "resized"),
+        "_derived_data_dir": (source_path, "resized"),
+        "_is_builtin_default_data_dir": ("post_image_dataset/resized",),
+        "_display_path": (source_path,),
+        "_positive_int": ("3", 1),
+        "_positive_int_or_none": ("3",),
+        "_nonnegative_int": ("0", 1),
+        "_nonnegative_float": ("0.5", 1.0),
+        "_positive_float": ("0.5", 1.0),
+        "_bool_value": ("yes", False),
+    }
+    for name in helper_args:
+        monkeypatch.setattr(common_impl, name, sentinel(name))
+
+    for name, args in helper_args.items():
+        result = getattr(legacy_config, name)(*args)
+        assert result["name"] == name
+        assert calls[name] == (args, {})
+
+
 def test_raw_file_helpers_remain_available_from_legacy_module(tmp_path: Path, monkeypatch):
     import importlib
 
@@ -1770,6 +1994,16 @@ def test_raw_file_helpers_remain_available_from_legacy_module(tmp_path: Path, mo
     assert legacy_config.load_raw_file(rel_path) == ""
     for name in expected_shims:
         assert getattr(legacy_config, name) is raw_file_shims[name]
+
+
+def test_legacy_raw_file_shim_restores_facade_file_group_export(monkeypatch):
+    def sentinel_list_config_file_groups(kind=None):
+        return [{"id": "sentinel", "kind": kind}]
+
+    monkeypatch.setattr(config_service, "list_config_file_groups", sentinel_list_config_file_groups)
+
+    assert legacy_config.load_raw_file("../outside.toml") == ""
+    assert config_service.list_config_file_groups is sentinel_list_config_file_groups
 
 
 def test_preflight_allows_block_swap_with_standard_gradient_checkpointing(
@@ -3508,6 +3742,296 @@ def test_dataset_preset_remains_available_from_legacy_module(tmp_path: Path, mon
     assert applied["values"]["prior_loss_weight"] == 1.5
 
 
+def test_legacy_dataset_exports_forward_to_split_dataset_module():
+    from web.services.config import datasets as dataset_impl
+
+    missing = []
+    not_forwarded = []
+    for name in dataset_impl.__all__:
+        exported = getattr(legacy_config, name, None)
+        if exported is None:
+            missing.append(name)
+            continue
+        doc = str(getattr(exported, "__doc__", "") or "")
+        if "web.services.config.datasets" not in doc:
+            not_forwarded.append(name)
+
+    assert missing == []
+    assert not_forwarded == []
+
+
+def test_legacy_dataset_private_helpers_stay_explicit_legacy_shims():
+    from web.services.config import datasets as dataset_impl
+
+    expected_private_shims = (
+        "_dataset_preset_summary",
+        "_dataset_preset_groups_for_ui",
+        "_is_dataset_group_for_ui",
+        "_dataset_summary_from_rows",
+    )
+    for name in expected_private_shims:
+        exported = getattr(legacy_config, name)
+        assert name not in dataset_impl.__all__
+        assert name in legacy_config._DATASET_SHIM_NAMES
+        assert (
+            exported.__doc__
+            == f"Compatibility shim forwarding to web.services.config.datasets.{name}."
+        )
+
+    summary = legacy_config._dataset_summary_from_rows(
+        [{"source_dir": "image_dataset/a", "num_repeats": 2}],
+        {"resolution": 512, "batch_size": 1},
+    )
+    assert summary["dataset_count"] == 1
+    assert summary["repeat_total"] == 2
+
+
+def test_legacy_dataset_shim_restores_facade_file_group_export(monkeypatch):
+    def sentinel_list_config_file_groups(kind=None):
+        return [{"id": "sentinel", "kind": kind}]
+
+    monkeypatch.setattr(config_service, "list_config_file_groups", sentinel_list_config_file_groups)
+
+    summary = legacy_config._dataset_summary_from_rows(
+        [{"source_dir": "image_dataset/a", "num_repeats": 2}],
+        {"resolution": 512, "batch_size": 1},
+    )
+
+    assert summary["dataset_count"] == 1
+    assert config_service.list_config_file_groups is sentinel_list_config_file_groups
+
+
+def test_legacy_dataset_path_and_row_helpers_forward_to_split_module(monkeypatch):
+    from web.services.config import datasets as dataset_impl
+
+    def sentinel(name: str):
+        def impl(*args, **kwargs):
+            return {"name": name, "args": args, "kwargs": kwargs}
+
+        return impl
+
+    helper_args = {
+        "_is_allowed_dataset_config_path": (Path("configs/datasets/a.toml"),),
+        "_dataset_config_rel_path": ({}, "lora", "gui-methods"),
+        "_training_config_rel_path": ("lora", "gui-methods"),
+        "_single_dataset_config_from_cfg": ({"source_image_dir": "image_dataset/a"},),
+        "_dataset_defaults_from_config": ({"datasets": []},),
+        "_dataset_defaults_from_dataset": ({"subsets": []}, {}),
+        "_normalize_dataset_row_settings": ({"resolution": 512},),
+        "_fill_missing_dataset_row_settings": ([{"source_dir": "image_dataset/a"}], {"resolution": 512}),
+        "_normalize_preprocess_dataset_settings": ({"resolution": 512},),
+        "_trigger_clone_should_persist": ({"enabled": True},),
+        "_nl_tag_mix_enabled": ({"nl_tag_mix": {"enabled": True}},),
+        "_preprocess_settings_from_custom_attributes": ({"preprocess": {"resolution": 512}},),
+        "_preprocess_settings_for_runtime_attrs": ({"resolution": 512},),
+        "_dataset_row_settings": ({"settings": {"resolution": 512}}, {"resolution": 768}),
+        "_first_dataset_settings": ([{"settings": {"resolution": 512}}],),
+        "_first_dataset_value": ({"datasets": [{"resolution": 512}]}, "resolution", 1024),
+        "_dataset_path_value": ("{source_image_dir}/a", {"source_image_dir": "image_dataset"}),
+    }
+    for name in helper_args:
+        monkeypatch.setattr(dataset_impl, name, sentinel(name))
+
+    for name, args in helper_args.items():
+        result = getattr(legacy_config, name)(*args)
+        assert result["name"] == name
+
+
+def test_legacy_dataset_preview_and_caption_helpers_forward_to_split_module(monkeypatch):
+    from web.services.config import datasets as dataset_impl
+
+    def sentinel(name: str):
+        def impl(*args, **kwargs):
+            return {"name": name, "args": args, "kwargs": kwargs}
+
+        return impl
+
+    source_dir = Path("image_dataset/a")
+    image_file = source_dir / "hero.png"
+    helper_args = {
+        "_list_dataset_image_files": (source_dir, 8),
+        "_dataset_image_preview_meta": (image_file,),
+        "_dataset_image_dimensions": (image_file,),
+        "_dataset_caption_meta": (image_file, ".txt", source_dir, source_dir),
+        "_caption_source_mode_label": ("auto",),
+        "_caption_extension_for_detected_mode": ("auto", ".txt"),
+        "_format_caption_preview_text": (["a", "b"],),
+        "_dataset_caption_detection_summary": ([{"caption": {"ok": True, "detected_mode": "txt"}}],),
+        "_caption_detection_counts_text": ({"txt": 1}, 1),
+        "_dataset_preview_empty_message": (source_dir, "source"),
+        "_safe_file_stem": ("my dataset.toml",),
+        "_dataset_image_files": (source_dir, {".png"}),
+        "_count_images": (source_dir, {".png"}),
+        "_count_source_images": (source_dir, {".png"}),
+        "_dataset_num_repeats": ({"dataset_config": "configs/datasets/a.toml"},),
+        "_nl_tag_mix_available_count": (source_dir, {".png"}),
+        "_nl_tag_mix_caption_path_and_text": (image_file,),
+        "_nl_tag_mix_caption_counts": (source_dir,),
+    }
+    for name in helper_args:
+        monkeypatch.setattr(dataset_impl, name, sentinel(name))
+
+    kwargs_by_name = {
+        "_dataset_image_preview_meta": {
+            "preset_file": "configs/datasets/a.toml",
+            "dataset_index": 0,
+            "source": "training",
+            "caption_extension": ".txt",
+            "prefer_json_caption": False,
+            "caption_source_mode": "auto",
+            "source_dir": source_dir,
+            "train_dir": source_dir,
+        }
+    }
+    for name, args in helper_args.items():
+        result = getattr(legacy_config, name)(*args, **kwargs_by_name.get(name, {}))
+        assert result["name"] == name
+
+
+def test_legacy_sample_prompts_exports_forward_to_split_module():
+    from web.services.config import sample_prompts as sample_prompts_impl
+
+    assert tuple(legacy_config._SAMPLE_PROMPTS_SHIM_NAMES) == tuple(sample_prompts_impl.__all__)
+    for name in sample_prompts_impl.__all__:
+        exported = getattr(legacy_config, name)
+        assert exported is legacy_config._SAMPLE_PROMPTS_SHIMS[name]
+        assert (
+            exported.__doc__
+            == f"Compatibility shim forwarding to web.services.config.sample_prompts.{name}."
+        )
+
+
+def test_legacy_file_group_exports_forward_to_split_file_group_module():
+    from web.services.config import file_groups as file_group_impl
+
+    missing = []
+    not_forwarded = []
+    for name in file_group_impl.__all__:
+        exported = getattr(legacy_config, name, None)
+        if exported is None:
+            missing.append(name)
+            continue
+        doc = str(getattr(exported, "__doc__", "") or "")
+        if "web.services.config.file_groups" not in doc:
+            not_forwarded.append(name)
+
+    assert missing == []
+    assert not_forwarded == []
+
+
+def test_legacy_file_group_private_helpers_forward_to_split_module(monkeypatch):
+    from web.services.config import file_groups as file_group_impl
+
+    monkeypatch.setattr(file_group_impl, "_get_config_file_group", lambda group_id: {"id": group_id})
+    monkeypatch.setattr(file_group_impl, "_config_group_kind", lambda raw: f"kind:{raw['id']}")
+    monkeypatch.setattr(file_group_impl, "_normalize_group_id", lambda group_id: f"norm:{group_id}")
+    monkeypatch.setattr(file_group_impl, "_safe_archive_name", lambda name: f"safe:{name}")
+    monkeypatch.setattr(
+        file_group_impl,
+        "_unique_archive_member_name",
+        lambda name, used_names: used_names.add(f"unique:{name}") or f"unique:{name}",
+    )
+
+    used_names: set[str] = set()
+    assert legacy_config._get_config_file_group("abc") == {"id": "abc"}
+    assert legacy_config._config_group_kind({"id": "datasets"}) == "kind:datasets"
+    assert legacy_config._normalize_group_id(" group ") == "norm: group "
+    assert legacy_config._safe_archive_name("bad/name") == "safe:bad/name"
+    assert legacy_config._unique_archive_member_name("member", used_names) == "unique:member"
+    assert used_names == {"unique:member"}
+
+
+def test_legacy_file_group_group_model_helpers_forward_to_split_module(monkeypatch):
+    from web.services.config import file_groups as file_group_impl
+
+    def sentinel(name: str):
+        def impl(*args, **kwargs):
+            return {"name": name, "args": args, "kwargs": kwargs}
+
+        return impl
+
+    helper_args = {
+        "_config_method_name_for_path": ("configs/imported/lora.toml",),
+        "_infer_config_file_group": ("configs/imported/lora.toml",),
+        "_strip_configs_prefix": ("configs/imported/lora.toml",),
+        "_sort_config_file_group_specs_for_display": ([{"id": "a"}],),
+        "_build_config_file_group": ({"id": "a"},),
+        "_glob_config_files": ("configs/imported/*.toml",),
+        "_default_config_file_group_specs": (),
+        "_group_defaults": ("a", "A", False, True, "imported", True),
+        "_find_config_group_spec": ([{"id": "a"}], "a"),
+        "_new_user_config_group_spec": ("a", "A", "training"),
+        "_move_orphaned_config_files_to_fallback_groups": ([], ["configs/imported/lora.toml"]),
+        "_config_file_is_covered_by_specs": ([], "configs/imported/lora.toml"),
+        "_fallback_config_group_spec": ("configs/imported/lora.toml",),
+        "_is_user_managed_group": ({"id": "a", "user_managed": True},),
+        "_is_fixed_config_group": ({"id": "a"},),
+        "_is_deletable_config_group": ({"id": "a"},),
+        "_is_renamable_config_group": ({"id": "a"},),
+        "_is_move_target_group": ({"id": "a"}, "configs/imported/lora.toml"),
+        "_is_sortable_config_group_for_place": ({"id": "a"}, "training"),
+        "_place_index": (2, 5),
+        "_lockable_group_ids": (),
+    }
+    for name in helper_args:
+        monkeypatch.setattr(file_group_impl, name, sentinel(name))
+
+    for name, args in helper_args.items():
+        result = getattr(legacy_config, name)(*args)
+        assert result["name"] == name
+
+
+def test_legacy_file_group_leaf_helpers_forward_to_split_module(monkeypatch):
+    from web.services.config import file_groups as file_group_impl
+
+    def sentinel(name: str):
+        def impl(*args, **kwargs):
+            return {"name": name, "args": args, "kwargs": kwargs}
+
+        return impl
+
+    helper_args = {
+        "_unique_group_id": ("custom", [{"id": "custom"}]),
+        "_slugify_group_label": ("My Group",),
+        "_normalize_group_label": ("  My   Group  ",),
+        "_group_patterns_include_file": ({"patterns": ["configs/imported/*.toml"]}, "configs/imported/a.toml"),
+        "_is_system_preset_path": ("configs/base.toml",),
+        "_is_system_locked_path": ("configs/base.toml",),
+        "_list_system_preset_files": (),
+        "_read_git_head_file": ("configs/base.toml",),
+        "_backup_relative_path": ("configs/imported/a.toml",),
+        "_string_list": (["a", "b"],),
+        "_config_group_path_list": (["configs/imported/a.toml"],),
+    }
+    for name in helper_args:
+        monkeypatch.setattr(file_group_impl, name, sentinel(name))
+
+    for name, args in helper_args.items():
+        result = getattr(legacy_config, name)(*args)
+        assert result["name"] == name
+
+
+def test_legacy_file_group_helpers_use_split_file_group_module(tmp_path: Path, monkeypatch):
+    configs, _dataset_path = _write_minimal_config_tree(tmp_path)
+    _patch_config_service_paths(monkeypatch, tmp_path)
+    monkeypatch.setattr(legacy_config, "ROOT", tmp_path)
+    monkeypatch.setattr(legacy_config, "CONFIGS_DIR", configs)
+    monkeypatch.setattr(legacy_config, "DATASET_PRESETS_DIR", configs / "datasets")
+    monkeypatch.setattr(legacy_config, "GUI_METHODS_DIR", configs / "gui-methods")
+    monkeypatch.setattr(legacy_config, "IMPORTED_CONFIGS_DIR", configs / "imported")
+    monkeypatch.setattr(legacy_config, "PRESETS_FILE", configs / "presets.toml")
+    monkeypatch.setattr(legacy_config, "WEB_FILE_GROUPS_FILE", configs / "web-file-groups.toml")
+    monkeypatch.setattr(legacy_config, "WEB_USER_LOCKS_FILE", configs / "web-user-locks.toml")
+
+    groups = legacy_config.list_config_file_groups(kind="dataset")
+    meta = legacy_config.get_config_file_meta("configs/datasets/lora.toml")
+
+    assert [group["id"] for group in groups] == ["datasets"]
+    assert meta["path"] == "configs/datasets/lora.toml"
+    assert meta["group"] == "datasets"
+    assert meta["group_label"] == "数据集配置"
+
+
 def test_dataset_preset_save_read_apply_preserves_regularization_fields(tmp_path: Path, monkeypatch):
     configs, _dataset_path = _write_minimal_config_tree(tmp_path)
     _patch_config_service_paths(monkeypatch, tmp_path)
@@ -4933,6 +5457,31 @@ def test_output_run_helpers_remain_available_from_legacy_module(tmp_path: Path, 
         legacy_config.save_output_run_config_as("legacy-20260523-114514", "copied_from_legacy", "imported")
     for name in expected_shims:
         assert getattr(legacy_config, name) is legacy_config._OUTPUT_RUNS_SHIMS[name]
+
+
+def test_legacy_output_run_private_helpers_forward_to_split_module(monkeypatch):
+    from web.services.config import output_runs as output_runs_impl
+
+    run_dir = Path("output/runs/sentinel")
+    config_path = run_dir / "config.original.toml"
+    monkeypatch.setattr(output_runs_impl, "_output_run_summary", lambda path: {"path": str(path)})
+    monkeypatch.setattr(output_runs_impl, "_output_run_config_path", lambda path, kind: path / f"config.{kind}.toml")
+    monkeypatch.setattr(
+        output_runs_impl,
+        "_normalize_output_run_save_as_path",
+        lambda value, *, fallback_stem: f"configs/imported/{value or fallback_stem}.toml",
+    )
+    monkeypatch.setattr(output_runs_impl, "_safe_mtime", lambda path: 123.0)
+    monkeypatch.setattr(output_runs_impl, "_format_file_time", lambda value: f"formatted:{value}")
+
+    assert legacy_config._output_run_summary(run_dir) == {"path": str(run_dir)}
+    assert legacy_config._output_run_config_path(run_dir, "original") == config_path
+    assert (
+        legacy_config._normalize_output_run_save_as_path("", fallback_stem="fallback")
+        == "configs/imported/fallback.toml"
+    )
+    assert legacy_config._safe_mtime(config_path) == 123.0
+    assert legacy_config._format_file_time(123.0) == "formatted:123.0"
 
 
 def _write_minimal_config_tree(root: Path) -> tuple[Path, Path]:

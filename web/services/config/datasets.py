@@ -228,9 +228,15 @@ _LEGACY_RAW_FILE_SHIM_NAMES = {
     "patch_raw_file_values",
     "preview_raw_file_patch",
 }
+_LEGACY_FILE_GROUP_SHIM_NAMES = {
+    "get_config_file_meta",
+    "list_config_file_groups",
+    "move_config_file_to_group",
+}
 _LEGACY_SYNC_NAMES = tuple(
     _name for _name in _SYNC_NAMES
     if _name not in _LEGACY_RAW_FILE_SHIM_NAMES
+    and _name not in _LEGACY_FILE_GROUP_SHIM_NAMES
 )
 
 
@@ -682,6 +688,7 @@ def save_dataset_editor(
     train_content: str | None = None,
     prefer_existing_dataset_config: bool = True,
 ) -> dict[str, Any]:
+    raw_file_saver = save_raw_file
     cfg = apply_auto_data_dirs(load_merged_config(variant, preset, methods_subdir))
     if defaults:
         cfg.update(_normalize_dataset_defaults(defaults))
@@ -744,11 +751,11 @@ def save_dataset_editor(
     )
     dataset_existed = dataset_path.exists()
     previous_dataset_doc = dataset_path.read_text(encoding="utf-8") if dataset_existed else ""
-    ok, msg = save_raw_file(dataset_rel, dataset_doc, overwrite=True)
+    ok, msg = raw_file_saver(dataset_rel, dataset_doc, overwrite=True)
     if not ok:
         raise ValueError(msg)
     if train_rel:
-        ok, msg = save_raw_file(train_rel, next_content, overwrite=True)
+        ok, msg = raw_file_saver(train_rel, next_content, overwrite=True)
         if not ok:
             _restore_dataset_config_after_failed_train_patch(dataset_path, dataset_existed, previous_dataset_doc)
             raise ValueError(msg)

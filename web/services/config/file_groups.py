@@ -76,9 +76,15 @@ _LEGACY_RAW_FILE_SHIM_NAMES = {
     "patch_raw_file_values",
     "preview_raw_file_patch",
 }
+_LEGACY_FILE_GROUP_SHIM_NAMES = {
+    "get_config_file_meta",
+    "list_config_file_groups",
+    "move_config_file_to_group",
+}
 _LEGACY_SYNC_NAMES = tuple(
     _name for _name in _SYNC_NAMES
     if _name not in _LEGACY_RAW_FILE_SHIM_NAMES
+    and _name not in _LEGACY_FILE_GROUP_SHIM_NAMES
 )
 
 

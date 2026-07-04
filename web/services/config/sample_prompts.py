@@ -11,6 +11,22 @@ from functools import wraps
 from pathlib import Path
 from typing import Any
 
+from library.env import get_configs_root
+from web.services.config import paths as _config_paths
+
+ROOT = Path(__file__).resolve().parents[3]
+CONFIGS_DIR = get_configs_root()
+DEFAULT_SAMPLE_PROMPTS_FILE = str(CONFIGS_DIR / "sample_prompts.txt")
+
+
+def _safe_resolve(rel_path: str) -> Path | None:
+    return _config_paths.safe_resolve(rel_path, root=ROOT, configs_dir=CONFIGS_DIR)
+
+
+def _normalize_config_rel_path(rel_path: str) -> str:
+    return _config_paths.normalize_config_rel_path(rel_path)
+
+
 _SYNC_NAMES = (
     "ROOT",
     "CONFIGS_DIR",

@@ -12,6 +12,13 @@ from pathlib import Path
 from typing import Any
 
 from web.services.config import paths as _config_paths
+from web.services.config.file_groups import (
+    _load_user_locks,
+    _lock_reason_message,
+    _safe_resolve,
+    _save_user_locks,
+    get_config_file_meta,
+)
 
 _DELETE_TOML_KEY = object()
 
@@ -45,6 +52,11 @@ _LEGACY_HELPER_NAMES = (
     "_save_user_locks",
     "_lock_reason_message",
 )
+_LEGACY_FILE_GROUP_SHIM_NAMES = {
+    "get_config_file_meta",
+    "list_config_file_groups",
+    "move_config_file_to_group",
+}
 
 
 def _sync_from_facade() -> None:
@@ -58,7 +70,11 @@ def _sync_from_facade() -> None:
         _value = getattr(_facade, _name)
         if _name not in _exported_names:
             globals()[_name] = _value
-        if _legacy_module is not None and _name not in _exported_names:
+        if (
+            _legacy_module is not None
+            and _name not in _exported_names
+            and _name not in _LEGACY_FILE_GROUP_SHIM_NAMES
+        ):
             setattr(_legacy_module, _name, _value)
     for _name in _LEGACY_HELPER_NAMES:
         if _legacy_module is not None and hasattr(_legacy_module, _name):

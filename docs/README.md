@@ -25,6 +25,7 @@
 |------|------|
 | [guidelines/指南书.md](guidelines/指南书.md) | 中文综合指南，覆盖安装、数据集、WebUI、训练、推理和 ComfyUI 部署 |
 | [guidelines/linux-deployment.zh.md](guidelines/linux-deployment.zh.md) | Linux 部署与启动指南 |
+| [guidelines/git-sync-policy.md](guidelines/git-sync-policy.md) | 本地 `main` 与线上 `webui/main` 的唯一同步规则 |
 | [guidelines/guidebook.md](guidelines/guidebook.md) | 英文综合指南 |
 | [guidelines/ガイドブック.md](guidelines/ガイドブック.md) | 日文综合指南 |
 | [guidelines/가이드북.md](guidelines/가이드북.md) | 韩文综合指南 |

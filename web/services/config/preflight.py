@@ -263,6 +263,25 @@ def _inspect_network_weight(
     config_file: str | None = None,
     cfg: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
+    return _inspect_network_weight_impl(
+        path,
+        variant=variant,
+        preset=preset,
+        methods_subdir=methods_subdir,
+        config_file=config_file,
+        cfg=cfg,
+    )
+
+
+def _inspect_network_weight_impl(
+    path: str,
+    *,
+    variant: str,
+    preset: str,
+    methods_subdir: str,
+    config_file: str | None = None,
+    cfg: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     del config_file
     return _inspect_continue_lora_weight(
         path,

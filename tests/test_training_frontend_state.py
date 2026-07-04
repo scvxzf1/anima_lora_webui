@@ -442,6 +442,196 @@ console.log(JSON.stringify(results));
     }
 
 
+def test_live_training_status_and_progress_update_dom_fixture() -> None:
+    if not shutil.which("node"):
+        pytest.skip("node is required for live-training DOM fixture checks")
+    script = r"""
+const nodes = new Map();
+
+function makeClassList(node) {
+    const values = new Set();
+    return {
+        add: (...names) => names.forEach((name) => values.add(name)),
+        remove: (...names) => names.forEach((name) => values.delete(name)),
+        toggle: (name, force) => {
+            const enabled = force === undefined ? !values.has(name) : Boolean(force);
+            if (enabled) values.add(name);
+            else values.delete(name);
+            return enabled;
+        },
+        contains: (name) => values.has(name),
+        values: () => [...values].sort(),
+    };
+}
+
+function node(id) {
+    if (!nodes.has(id)) {
+        const item = {
+            id,
+            style: {},
+            dataset: {},
+            hidden: false,
+            disabled: false,
+            className: '',
+            textContent: '',
+            innerHTML: '',
+            title: '',
+            children: [],
+            setAttribute(name, value) { this[name] = String(value); },
+            removeAttribute(name) { delete this[name]; },
+            append(...children) { this.children.push(...children); },
+            appendChild(child) { this.children.push(child); return child; },
+            addEventListener() {},
+            querySelector() { return null; },
+        };
+        item.classList = makeClassList(item);
+        nodes.set(id, item);
+    }
+    return nodes.get(id);
+}
+
+globalThis.window = { setTimeout: () => 0 };
+globalThis.ctx = {
+    format: {
+        formatDuration: (seconds) => `${seconds}s`,
+    },
+};
+globalThis.document = {
+    getElementById: (id) => node(id),
+    querySelector: (selector) => selector === '.dot' ? node('dot') : node(selector),
+    createElement: (tag) => node(`created-${tag}-${nodes.size}`),
+};
+
+globalThis.trainingRuntime = {
+    state: 'idle',
+    job: '',
+    variant: '',
+    preset: '',
+    methodsSubdir: '',
+    progressCurrent: 0,
+    progressTotal: 0,
+    progressLabel: '',
+    progressRate: '',
+    progressSecondsPerStep: null,
+    progressUpdatedAt: 0,
+    lastOutputAt: 0,
+    lastUiActivityAt: 0,
+    quietHintShown: false,
+    lastTerminalMessage: '',
+    lastTerminalHint: '',
+    lastAnomalyMessage: '',
+    runDir: '',
+    runtimeConfigFile: '',
+    originalConfigFile: '',
+    datasetConfigFile: '',
+    modelCacheDir: '',
+    datasetCacheDir: '',
+    trainingOutputDir: '',
+    logsDir: '',
+    outputDir: '',
+    sampleDir: '',
+    sampleConfig: null,
+};
+
+const logLines = [];
+const previewUpdates = [];
+globalThis.isHistoryReviewMode = () => false;
+globalThis.isLiveRunningState = (state = trainingRuntime.state) => ['running', 'compiling'].includes(String(state || ''));
+globalThis.logLineTone = (line) => String(line || '').includes('ERROR') ? 'error' : 'info';
+globalThis.setMetricText = (id, value) => { node(id).textContent = String(value); };
+globalThis.setText = (id, value) => { node(id).textContent = String(value); };
+globalThis.setEtaMetricText = (info) => { node('metric-eta').textContent = info.text; };
+globalThis.updateDashboardProgressIdleState = (active) => { node('dashboard-progress').dataset.active = String(active); };
+globalThis.updateTrainingToolbarState = (state, text) => {
+    node('toolbar-state').dataset.state = state;
+    node('toolbar-state').textContent = text;
+};
+globalThis.setTrainingDashboardHeadState = (state) => { node('dashboard-head').dataset.state = state; };
+globalThis.runtimePathItems = (task) => Object.entries(task).filter(([, value]) => value);
+globalThis.renderHistoryPaths = (task) => { node('history-paths').dataset.rendered = String(Boolean(task.output_dir)); };
+globalThis.refreshQueueRunningProgressViews = () => { node('queue-progress').dataset.refreshed = 'true'; };
+globalThis.appendLog = (line) => logLines.push(line);
+globalThis.ensurePreviewFeature = () => ({
+    updateRuntimeSampleState: (payload) => previewUpdates.push(payload),
+});
+globalThis.formatDuration = (seconds) => `${seconds}s`;
+globalThis.copyText = async () => {};
+
+await import('./web/static/js/features/anima-app/chunks/25-update-progress.js?dom-fixture');
+
+globalThis.updateStatus({
+    state: 'running',
+    job: 'train',
+    variant: 'lora',
+    preset: 'default',
+    methods_subdir: 'gui-methods',
+    output_dir: 'output/runs/job',
+    sample_dir: 'output/runs/job/sample',
+    sample_config: { prompt: 'demo' },
+    run_dir: 'output/runs/job',
+    runtime_config_file: 'output/runs/job/config.runtime.toml',
+});
+globalThis.updateProgress({
+    label: 'train',
+    current: 4,
+    total: 10,
+    rate: '2it/s',
+    ts: 1,
+});
+
+console.log(JSON.stringify({
+    statusClass: node('dot').className,
+    statusText: node('status-text').textContent,
+    stopDisabled: node('btn-stop-training').disabled,
+    stopClasses: node('btn-stop-training').classList.values(),
+    progressWidth: node('progress-bar').style.width,
+    progressText: node('progress-text').textContent,
+    metricStep: node('metric-step').textContent,
+    metricRate: node('metric-rate').textContent,
+    trainVariant: node('train-variant').textContent,
+    trainPreset: node('train-preset').textContent,
+    runtimeState: trainingRuntime.state,
+    runtimeProgressCurrent: trainingRuntime.progressCurrent,
+    runtimeSecondsPerStep: trainingRuntime.progressSecondsPerStep,
+    dashboardState: node('training-run-state').textContent,
+    runMeta: node('training-run-meta').textContent,
+    previewUpdates,
+    logLines,
+}));
+"""
+    result = subprocess.run(
+        ["node", "--input-type=module", "-e", script],
+        cwd=Path(__file__).resolve().parents[1],
+        text=True,
+        capture_output=True,
+        timeout=20,
+    )
+
+    assert result.returncode == 0, result.stderr or result.stdout
+    assert json.loads(result.stdout) == {
+        "statusClass": "dot running",
+        "statusText": "训练中",
+        "stopDisabled": False,
+        "stopClasses": ["is-emergency"],
+        "progressWidth": "40.0%",
+        "progressText": "train: 4/10 (40.0%) — 2it/s",
+        "metricStep": "4",
+        "metricRate": "2it/s",
+        "trainVariant": "lora",
+        "trainPreset": "default",
+        "runtimeState": "running",
+        "runtimeProgressCurrent": 4,
+        "runtimeSecondsPerStep": 0.5,
+        "dashboardState": "训练中",
+        "runMeta": "方法目录 gui-methods · 配置 lora · 预设 default",
+        "previewUpdates": [
+            {"sampleDir": "output/runs/job/sample"},
+            {"sampleConfig": {"prompt": "demo"}},
+        ],
+        "logLines": [],
+    }
+
+
 def test_preview_feature_modules_are_loaded_from_production_entrypoint() -> None:
     legacy_source = _anima_app_container_text()
     preview_index = _frontend_module_text("js/features/preview/index.js")
