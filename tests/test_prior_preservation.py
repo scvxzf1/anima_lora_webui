@@ -7,6 +7,9 @@ import pytest
 import torch
 
 from library.training.cli_args import verify_training_args
+from library.training.forward import (
+    run_prior_preservation_forward as canonical_run_prior_preservation_forward,
+)
 from library.training.losses import LOSS_REGISTRY, LossContext
 from library.training.prior_preservation import build_diff_output_prior_caption
 from library.training.prior_preservation_forward import run_prior_preservation_forward
@@ -82,6 +85,10 @@ def test_prior_preservation_forward_zeros_and_restores_multiplier():
     assert seen["kwargs"] == {"foo": "bar"}
     assert net.multiplier == pytest.approx(1.25)
     assert net.history == [0.0, 1.25]
+
+
+def test_prior_preservation_forward_root_import_is_canonical_forward_home():
+    assert run_prior_preservation_forward is canonical_run_prior_preservation_forward
 
 
 def test_prior_preservation_forward_prepares_block_swap_reference_forward():

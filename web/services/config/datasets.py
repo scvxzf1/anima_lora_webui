@@ -1,16 +1,32 @@
 """Dataset presets, dataset editor, and dataset runtime document helpers.
 
 This module is loaded by ``web.services.config_service`` as part of the
-compatibility facade.  It snapshots legacy globals at import time and syncs
-mutable path settings from the facade before exported calls so existing tests
-and callers that monkeypatch ``config_service.ROOT`` continue to work.
+compatibility facade.  It keeps facade access lazy so the module can also be
+imported directly without pulling in the legacy facade.
 """
 
 from __future__ import annotations
 
+import logging
+import re
+from datetime import datetime
 from functools import wraps
+from pathlib import Path
+from typing import Any
+from urllib.parse import quote
 
-from web.services import config_service as _facade
+import toml
+import tomlkit
+from PIL import Image, UnidentifiedImageError
+
+from library.env import expand_env_vars, expand_env_vars_in_obj, get_configs_root, load_dotenv
+from library.preprocess._dataset import walk_images
+from library.preprocess.captions import (
+    normalize_caption_source_mode,
+    read_caption_source,
+    read_caption_source_from_dirs,
+)
+from web.services.config import paths as _config_paths
 from web.services.config.metadata import (
     CAPTION_SOURCE_AUTO,
     CAPTION_SOURCE_CAPTIONS_JSON,
@@ -32,11 +48,155 @@ from web.services.config.metadata import (
     SYSTEM_DATASET_PRESET_FILES,
     TRIGGER_CLONE_ATTR_KEY,
 )
+from web.services.settings_service import resolve_output_root
 
-for _name, _value in _facade.__dict__.items():
-    if _name.startswith("__") and _name.endswith("__"):
-        continue
-    globals().setdefault(_name, _value)
+ROOT = Path(__file__).resolve().parents[3]
+CONFIGS_DIR = get_configs_root()
+GUI_METHODS_DIR = CONFIGS_DIR / "gui-methods"
+IMPORTED_CONFIGS_DIR = CONFIGS_DIR / "imported"
+PRESETS_FILE = CONFIGS_DIR / "presets.toml"
+WEB_FILE_GROUPS_FILE = CONFIGS_DIR / "web-file-groups.toml"
+WEB_USER_LOCKS_FILE = CONFIGS_DIR / "web-user-locks.toml"
+DATASET_PRESETS_DIR = CONFIGS_DIR / "datasets"
+
+load_dotenv()
+
+LOGGER = logging.getLogger(__name__)
+
+
+def _missing_facade_dependency(*args, **kwargs):
+    raise RuntimeError("config facade dependency has not been synchronized")
+
+
+save_raw_file = _missing_facade_dependency
+load_raw_file = _missing_facade_dependency
+delete_raw_file = _missing_facade_dependency
+patch_raw_file_values = _missing_facade_dependency
+preview_raw_file_patch = _missing_facade_dependency
+get_config_file_meta = _missing_facade_dependency
+list_config_file_groups = _missing_facade_dependency
+move_config_file_to_group = _missing_facade_dependency
+_inspect_network_weight = _missing_facade_dependency
+load_merged_config = _missing_facade_dependency
+apply_auto_data_dirs = _missing_facade_dependency
+_prepare_raw_file_patch = _missing_facade_dependency
+_load_training_config_for_web_run = _missing_facade_dependency
+
+
+def _restore_dataset_config_after_failed_train_patch(path: Path, existed: bool, previous_content: str) -> None:
+    if existed:
+        path.write_text(previous_content, encoding="utf-8")
+        return
+    try:
+        path.unlink()
+    except FileNotFoundError:
+        return
+
+
+def _normalize_config_rel_path(rel_path: str) -> str:
+    return _config_paths.normalize_config_rel_path(rel_path)
+
+
+def _safe_resolve(rel_path: str) -> Path | None:
+    return _config_paths.safe_resolve(rel_path, root=ROOT, configs_dir=CONFIGS_DIR)
+
+
+def _safe_config_subdir(subdir: str) -> Path | None:
+    return _config_paths.safe_config_subdir(subdir, configs_dir=CONFIGS_DIR)
+
+
+def _resolve_project_path(value: str) -> Path:
+    return _config_paths.resolve_display_path(
+        value,
+        root=ROOT,
+        configs_dir=CONFIGS_DIR,
+        expand_env_vars_fn=expand_env_vars,
+    )
+
+
+def _display_path(path: Path) -> str:
+    return _config_paths.display_path(path, root=ROOT, configs_dir=CONFIGS_DIR)
+
+
+def _derived_data_dir(source_path: Path, suffix: str) -> Path:
+    parent = source_path.parent if source_path.name else source_path
+    name = source_path.name or "dataset"
+    return (parent / f"{name}_{suffix}").resolve()
+
+
+def _positive_int(value: Any, fallback: int) -> int:
+    try:
+        n = int(value)
+    except (TypeError, ValueError):
+        return fallback
+    return n if n > 0 else fallback
+
+
+def _nonnegative_int(value: Any, fallback: int) -> int:
+    try:
+        n = int(value)
+    except (TypeError, ValueError):
+        return fallback
+    return n if n >= 0 else fallback
+
+
+def _nonnegative_float(value: Any, fallback: float) -> float:
+    try:
+        n = float(value)
+    except (TypeError, ValueError):
+        return fallback
+    return n if n >= 0 else fallback
+
+
+def _bool_value(value: Any, fallback: bool = False) -> bool:
+    if value is None:
+        return fallback
+    if isinstance(value, bool):
+        return value
+    return str(value).strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _normalize_dataset_preset_path(rel_path: str, *, must_exist: bool) -> str:
+    raw = str(rel_path or "").replace("\\", "/").strip()
+    if not raw:
+        raise ValueError("缺少数据集预设路径")
+    path = Path(raw)
+    if path.is_absolute():
+        try:
+            raw = path.resolve().relative_to(ROOT.resolve()).as_posix()
+        except ValueError as exc:
+            raise ValueError("数据集预设必须在项目目录内") from exc
+        path = Path(raw)
+    if ".." in path.parts:
+        raise ValueError("数据集预设路径不能包含 ..")
+    if path.suffix.lower() != ".toml":
+        path = path.with_suffix(".toml")
+    if len(path.parts) == 1:
+        path = Path("configs") / "datasets" / path
+    normalized = path.as_posix().lstrip("/")
+    if not normalized.startswith("configs/datasets/"):
+        raise ValueError("数据集预设必须保存在 configs/datasets/ 下")
+    safe_path = _safe_resolve(normalized)
+    if safe_path is None:
+        raise ValueError("数据集预设路径不合法")
+    if must_exist and not safe_path.exists():
+        raise ValueError("数据集预设不存在")
+    return normalized
+
+
+def _is_dataset_preset_readonly(rel_path: str) -> bool:
+    normalized = _normalize_config_rel_path(rel_path)
+    if normalized in SYSTEM_DATASET_PRESET_FILES:
+        return True
+    try:
+        return bool(get_config_file_meta(normalized).get("locked", False))
+    except RuntimeError:
+        return False
+
+
+def _lock_reason_message(meta: dict[str, Any]) -> str:
+    reason = str(meta.get("lock_reason") or meta.get("readonly_reason") or "").strip()
+    return reason or "该配置由系统管理"
 
 _SYNC_NAMES = (
     "ROOT",
@@ -61,8 +221,22 @@ _SYNC_NAMES = (
     "LOGGER",
 )
 
+_LEGACY_RAW_FILE_SHIM_NAMES = {
+    "save_raw_file",
+    "load_raw_file",
+    "delete_raw_file",
+    "patch_raw_file_values",
+    "preview_raw_file_patch",
+}
+_LEGACY_SYNC_NAMES = tuple(
+    _name for _name in _SYNC_NAMES
+    if _name not in _LEGACY_RAW_FILE_SHIM_NAMES
+)
+
 
 def _sync_from_facade() -> None:
+    from web.services import config_service as _facade
+
     _exported_names = set(globals().get("__all__", ()))
     _legacy_module = getattr(_facade, "_legacy", None)
     for _name in _SYNC_NAMES:
@@ -71,8 +245,19 @@ def _sync_from_facade() -> None:
         _value = getattr(_facade, _name)
         if _name not in _exported_names:
             globals()[_name] = _value
-        if _legacy_module is not None:
+        if _legacy_module is not None and _name in _LEGACY_SYNC_NAMES:
             setattr(_legacy_module, _name, _value)
+    for _name in (
+        "load_merged_config",
+        "apply_auto_data_dirs",
+        "_load_training_config_for_web_run",
+        "_prepare_raw_file_patch",
+        "_restore_dataset_config_after_failed_train_patch",
+        "_is_dataset_preset_readonly",
+        "_lock_reason_message",
+    ):
+        if hasattr(_facade, _name):
+            globals()[_name] = getattr(_facade, _name)
 
 
 def _exported(fn):

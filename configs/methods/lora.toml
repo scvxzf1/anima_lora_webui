@@ -1,6 +1,6 @@
 # LoRA family — method selection via toggle blocks.
 #
-# Default (uncommented) = LoRA + OrthoLoRA + T-LoRA + Hydra (σ-routed) + ReFT.
+# Default (uncommented) = LoRA + OrthoLoRA + T-LoRA + Hydra (input-routed).
 # Routing config is on the three-axis surface (plan2.md §three-axis-config):
 #
 #     use_moe_style    = False | "shared_A" | "independent_A"
@@ -11,7 +11,7 @@
 #   - Plain LoRA stack (no MoE): set `use_moe_style = false` and drop every
 #     `*router*` / `num_experts` / `balance_*` / `sigma_*` / `fei_*` key.
 #   - FEI-on-Hydra (Phase 1, FeRA-style content-aware on the shared-A stack):
-#     comment out the σ-router block and uncomment the FEI block near the
+#     comment out the current input-router block and uncomment the FEI block near the
 #     bottom of this file.
 #   - Author-faithful FeRA (independent-A + global FEI router): set
 #     `use_moe_style = "independent_A"` + `route_per_layer = false` +
@@ -99,7 +99,7 @@ ortho_centered_gate = true
 validation_split_num = 8
 
 # -------------
-# "independent_A" and route_per_layer=true -> fera
+# "independent_A" and route_per_layer=false -> fera
 
 # use_moe_style = "independent_A"
 # route_per_layer = false

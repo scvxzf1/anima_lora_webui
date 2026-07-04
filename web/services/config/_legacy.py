@@ -37,7 +37,7 @@ from web.services.config import paths as _config_paths
 from web.services.config.metadata import (
     CAPTION_SOURCE_MODE_LABELS,
     CONFIG_FILE_LABELS_ZH,
-    DATASET_CAPTION_EXTS,
+    DATASET_CAPTION_EXTS,  # noqa: F401 - re-exported for legacy facade compatibility
     DATASET_CAPTION_MAX_CHARS,
     DATASET_IMAGE_EXTS,
     DATASET_PREVIEW_LIMIT,
@@ -53,7 +53,7 @@ from web.services.config.metadata import (
     NL_TAG_MIX_ATTR_KEY,
     NL_TAG_MIX_CLASSIFICATION_METHOD,
     OUTPUT_RUN_CONFIG_FILES,
-    PREPROCESS_DATASET_SETTING_KEYS,
+    PREPROCESS_DATASET_SETTING_KEYS,  # noqa: F401 - re-exported for legacy facade compatibility
     PREPROCESS_DATASET_SETTING_ORDER,
     PREPROCESS_ENV_CHECK_KEY,
     PREPROCESS_ENV_REQUIRED_FILES,
@@ -69,8 +69,8 @@ from web.services.config.metadata import (
     TRIGGER_CLONE_ATTR_KEY,
     UI_ONLY_CONFIG_FIELDS,
     USER_LOCKABLE_GROUPS,
-    get_field_help,
-    get_groups,
+    get_field_help,  # noqa: F401 - re-exported for legacy facade compatibility
+    get_groups,  # noqa: F401 - re-exported for legacy facade compatibility
 )
 from web.services.settings_service import display_path as _display_settings_path
 from web.services.settings_service import resolve_output_root
@@ -4137,6 +4137,223 @@ def _check_cache_sidecar_pattern(
             add("warning", item_key, f"第 {idx} 组{missing_message}", cache_dir)
 
 
+_MERGE_SHIM_SYNC_NAMES = (
+    "ROOT",
+    "CONFIGS_DIR",
+    "GUI_METHODS_DIR",
+    "IMPORTED_CONFIGS_DIR",
+    "PRESETS_FILE",
+    "WEB_FILE_GROUPS_FILE",
+    "WEB_USER_LOCKS_FILE",
+    "DATASET_PRESETS_DIR",
+    "DEFAULT_MAX_TRAIN_STEPS",
+    "resolve_output_root",
+    "_display_settings_path",
+    "LOGGER",
+)
+
+
+def _call_merge_impl(name: str, *args, **kwargs):
+    from web.services import config_service as _facade
+    from web.services.config import merge as _merge
+
+    sync_state = {
+        sync_name: globals()[sync_name]
+        for sync_name in _MERGE_SHIM_SYNC_NAMES
+        if sync_name in globals()
+    }
+    for sync_name, value in sync_state.items():
+        setattr(_facade, sync_name, value)
+    _merge._sync_from_facade()
+    _restore_raw_files_shims()
+    for sync_name, value in sync_state.items():
+        setattr(_merge, sync_name, value)
+    exported = getattr(_merge, name)
+    impl = getattr(exported, "__wrapped__", exported)
+    try:
+        return impl(*args, **kwargs)
+    finally:
+        _restore_raw_files_shims()
+
+
+def _make_merge_shim(name: str):
+    def shim(*args, **kwargs):
+        return _call_merge_impl(name, *args, **kwargs)
+
+    shim.__name__ = name
+    shim.__qualname__ = name
+    shim.__doc__ = f"Compatibility shim forwarding to web.services.config.merge.{name}."
+    return shim
+
+
+_MERGE_SHIM_NAMES = (
+    "list_methods",
+    "list_variants",
+    "list_all_variants",
+    "list_presets",
+    "load_merged_config",
+    "suggest_data_dirs",
+    "suggest_dataset_dirs",
+    "apply_auto_data_dirs",
+)
+
+_MERGE_SHIMS = {
+    _merge_name: _make_merge_shim(_merge_name)
+    for _merge_name in _MERGE_SHIM_NAMES
+}
+
+for _merge_name, _merge_shim in _MERGE_SHIMS.items():
+    globals()[_merge_name] = _merge_shim
+
+
+_OUTPUT_RUNS_SHIM_SYNC_NAMES = (
+    "ROOT",
+    "CONFIGS_DIR",
+    "GUI_METHODS_DIR",
+    "IMPORTED_CONFIGS_DIR",
+    "PRESETS_FILE",
+    "WEB_FILE_GROUPS_FILE",
+    "WEB_USER_LOCKS_FILE",
+    "DATASET_PRESETS_DIR",
+    "resolve_output_root",
+    "_display_settings_path",
+    "save_raw_file",
+    "get_config_file_meta",
+    "list_config_file_groups",
+    "move_config_file_to_group",
+    "LOGGER",
+)
+
+_OUTPUT_RUNS_LEGACY_HELPER_NAMES = (
+    "_safe_resolve",
+    "_normalize_group_id",
+)
+
+
+def _call_output_runs_impl(name: str, *args, **kwargs):
+    from web.services import config_service as _facade
+    from web.services.config import output_runs as _output_runs
+
+    sync_state = {
+        sync_name: globals()[sync_name]
+        for sync_name in _OUTPUT_RUNS_SHIM_SYNC_NAMES
+        if sync_name in globals()
+    }
+    for sync_name, value in sync_state.items():
+        setattr(_facade, sync_name, value)
+    _output_runs._sync_from_facade()
+    for sync_name, value in sync_state.items():
+        setattr(_output_runs, sync_name, value)
+    for helper_name in _OUTPUT_RUNS_LEGACY_HELPER_NAMES:
+        if helper_name in globals():
+            setattr(_output_runs, helper_name, globals()[helper_name])
+    _restore_raw_files_shims()
+    exported = getattr(_output_runs, name)
+    impl = getattr(exported, "__wrapped__", exported)
+    try:
+        return impl(*args, **kwargs)
+    finally:
+        _restore_raw_files_shims()
+
+
+def _make_output_runs_shim(name: str):
+    def shim(*args, **kwargs):
+        return _call_output_runs_impl(name, *args, **kwargs)
+
+    shim.__name__ = name
+    shim.__qualname__ = name
+    shim.__doc__ = f"Compatibility shim forwarding to web.services.config.output_runs.{name}."
+    return shim
+
+
+_OUTPUT_RUNS_SHIM_NAMES = (
+    "list_output_runs",
+    "load_output_run_config",
+    "save_output_run_config_as",
+    "_resolve_output_run_dir",
+    "_normalize_output_run_name",
+)
+
+_OUTPUT_RUNS_SHIMS = {
+    _output_name: _make_output_runs_shim(_output_name)
+    for _output_name in _OUTPUT_RUNS_SHIM_NAMES
+}
+
+for _output_name, _output_shim in _OUTPUT_RUNS_SHIMS.items():
+    globals()[_output_name] = _output_shim
+
+
+_ESTIMATION_SHIM_SYNC_NAMES = (
+    "ROOT",
+    "CONFIGS_DIR",
+    "GUI_METHODS_DIR",
+    "IMPORTED_CONFIGS_DIR",
+    "PRESETS_FILE",
+    "WEB_FILE_GROUPS_FILE",
+    "WEB_USER_LOCKS_FILE",
+    "DATASET_PRESETS_DIR",
+    "DEFAULT_MAX_TRAIN_STEPS",
+    "resolve_output_root",
+    "_display_settings_path",
+    "LOGGER",
+    "_load_training_config_for_web_run",
+    "_normalize_config_rel_path",
+    "_dataset_rows_for_estimate",
+    "_resolve_project_path",
+    "_display_path",
+    "_positive_int",
+    "_positive_float",
+    "_nonnegative_int",
+    "_bool_value",
+    "_normalize_nl_tag_mix",
+    "_normalize_trigger_clone",
+    "_normalize_path_pattern",
+    "_nl_tag_mix_available_count",
+    "_count_source_images",
+    "_count_images",
+)
+
+
+def _call_estimation_impl(name: str, *args, **kwargs):
+    from web.services import config_service as _facade
+    from web.services.config import estimation as _estimation
+
+    sync_state = {
+        sync_name: globals()[sync_name]
+        for sync_name in _ESTIMATION_SHIM_SYNC_NAMES
+        if sync_name in globals()
+    }
+    for sync_name, value in sync_state.items():
+        setattr(_facade, sync_name, value)
+    _estimation._sync_from_facade()
+    for sync_name, value in sync_state.items():
+        setattr(_estimation, sync_name, value)
+    exported = getattr(_estimation, name)
+    impl = getattr(exported, "__wrapped__", exported)
+    return impl(*args, **kwargs)
+
+
+def _make_estimation_shim(name: str):
+    def shim(*args, **kwargs):
+        return _call_estimation_impl(name, *args, **kwargs)
+
+    shim.__name__ = name
+    shim.__qualname__ = name
+    shim.__doc__ = f"Compatibility shim forwarding to web.services.config.estimation.{name}."
+    return shim
+
+
+_ESTIMATION_SHIM_NAMES = ("estimate_training_steps",)
+
+_ESTIMATION_SHIMS = {
+    _estimation_name: _make_estimation_shim(_estimation_name)
+    for _estimation_name in _ESTIMATION_SHIM_NAMES
+}
+
+for _estimation_name, _estimation_shim in _ESTIMATION_SHIMS.items():
+    globals()[_estimation_name] = _estimation_shim
+
+
 _DATASET_SHIM_SYNC_NAMES = (
     "ROOT",
     "CONFIGS_DIR",
@@ -4283,7 +4500,10 @@ def _call_raw_files_impl(name: str, *args, **kwargs):
     _restore_raw_files_shims()
     exported = getattr(_raw_files, name)
     impl = getattr(exported, "__wrapped__", exported)
-    return impl(*args, **kwargs)
+    try:
+        return impl(*args, **kwargs)
+    finally:
+        _restore_raw_files_shims()
 
 
 def _make_raw_files_shim(name: str):

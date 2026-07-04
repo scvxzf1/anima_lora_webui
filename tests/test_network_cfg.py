@@ -171,6 +171,32 @@ def test_legacy_router_kwargs_raise():
             )
 
 
+def test_router_targets_parses_and_legacy_router_layer_keys_raise():
+    cfg = LoRANetworkCfg.from_kwargs(
+        {
+            "use_moe_style": "shared_A",
+            "route_per_layer": "true",
+            "router_source": "sigma",
+            "router_targets": "q_proj|k_proj",
+        },
+        network_dim=4,
+        network_alpha=1.0,
+        neuron_dropout=None,
+        module_class=LoRAModule,
+    )
+    assert cfg.router_targets == "q_proj|k_proj"
+
+    for legacy_key in ("hydra_router_layers", "sigma_router_layers", "fei_router_layers"):
+        with pytest.raises(ValueError, match="router layer filters"):
+            LoRANetworkCfg.from_kwargs(
+                {legacy_key: "q_proj"},
+                network_dim=4,
+                network_alpha=1.0,
+                neuron_dropout=None,
+                module_class=LoRAModule,
+            )
+
+
 def test_numeric_string_parsing():
     kwargs = {
         "min_rank": "2",

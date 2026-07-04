@@ -25,7 +25,7 @@ def _write_config_tree(root: Path) -> None:
     (root / "methods" / "demo.toml").write_text("network_dim = 32\n", encoding="utf-8")
 
 
-def _args(**overrides):
+def _args(**overrides: object) -> argparse.Namespace:
     base = dict(
         config_file=None,
         method="demo",
@@ -92,3 +92,23 @@ def test_build_payload_accepts_direct_config_file(tmp_path: Path) -> None:
     assert payload["ok"] is False
     assert payload["source"] == str(config)
     assert "block_swap_soft_tokens" in _codes(payload["errors"])
+
+
+def test_build_payload_applies_overrides_to_direct_config_file(tmp_path: Path) -> None:
+    config = tmp_path / "config.runtime.toml"
+    config.write_text(
+        "\n".join(
+            [
+                'network_module = "networks.methods.soft_tokens"',
+                "blocks_to_swap = 8",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    payload = build_payload(_args(config_file=str(config), override=[("blocks_to_swap", 0)]))
+
+    assert payload["ok"] is True
+    assert payload["effective"]["blocks_to_swap"] == 0
+    assert "block_swap_soft_tokens" not in _codes(payload["errors"])

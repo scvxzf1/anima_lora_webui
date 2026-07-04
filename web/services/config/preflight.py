@@ -1,18 +1,23 @@
 """Training preflight checks and runtime config path validation.
 
 This module is loaded by ``web.services.config_service`` as part of the
-compatibility facade.  It snapshots legacy globals at import time and syncs
-mutable path settings from the facade before exported calls so existing tests
-and callers that monkeypatch ``config_service.ROOT`` continue to work.
+compatibility facade.  It keeps facade access lazy so the module can also be
+imported directly without pulling in the facade cycle.
 """
 
 from __future__ import annotations
 
 import json
 from functools import wraps
+from pathlib import Path
+from typing import Any
 
+import toml
+
+from library.env import expand_env_vars, expand_env_vars_in_obj
+from library.preprocess.captions import normalize_caption_source_mode, read_caption_source_from_dirs
 from library.training.compat_matrix import check_training_compat
-from web.services import config_service as _facade
+from web.services.continue_lora_service import inspect_continue_lora_weight as _inspect_continue_lora_weight
 from web.services.config.metadata import (
     DATASET_IMAGE_EXTS,
     LEGACY_TRAINING_SAMPLE_SAMPLERS,
@@ -21,11 +26,33 @@ from web.services.config.metadata import (
     PREPROCESS_ENV_REQUIRED_FILES,
     SUPPORTED_TRAINING_SAMPLE_SAMPLERS,
 )
+from web.services.settings_service import resolve_output_root
 
-for _name, _value in _facade.__dict__.items():
-    if _name.startswith("__") and _name.endswith("__"):
-        continue
-    globals().setdefault(_name, _value)
+
+def _missing_facade_dependency(*args, **kwargs):
+    raise RuntimeError("preflight config helper was called before facade sync")
+
+
+ROOT = Path(__file__).resolve().parents[3]
+CONFIGS_DIR = ROOT / "configs"
+_display_path = _missing_facade_dependency
+_resolve_project_path = _missing_facade_dependency
+_is_blank_output_name = _missing_facade_dependency
+_dataset_config_path_from_cfg = _missing_facade_dependency
+_bool_value = _missing_facade_dependency
+_positive_int_or_none = _missing_facade_dependency
+_safe_resolve = _missing_facade_dependency
+_normalize_config_rel_path = _missing_facade_dependency
+apply_auto_data_dirs = _missing_facade_dependency
+load_merged_config = _missing_facade_dependency
+_dataset_rows_for_estimate = _missing_facade_dependency
+_normalize_path_pattern = _missing_facade_dependency
+_dataset_image_files = _missing_facade_dependency
+_caption_detection_counts_text = _missing_facade_dependency
+_normalize_trigger_clone = _missing_facade_dependency
+_count_source_images = _missing_facade_dependency
+_nl_tag_mix_enabled = _missing_facade_dependency
+_nl_tag_mix_caption_counts = _missing_facade_dependency
 
 _SYNC_NAMES = (
     "ROOT",
@@ -48,20 +75,65 @@ _SYNC_NAMES = (
     "move_config_file_to_group",
     "_inspect_network_weight",
     "LOGGER",
+    "_display_path",
+    "_resolve_project_path",
+    "_is_blank_output_name",
+    "_dataset_config_path_from_cfg",
+    "_bool_value",
+    "_positive_int_or_none",
+    "_safe_resolve",
+    "_normalize_config_rel_path",
+    "apply_auto_data_dirs",
+    "load_merged_config",
+    "_dataset_rows_for_estimate",
+    "_normalize_path_pattern",
+    "_dataset_image_files",
+    "_caption_detection_counts_text",
+    "_normalize_trigger_clone",
+    "_count_source_images",
+    "_nl_tag_mix_enabled",
+    "_nl_tag_mix_caption_counts",
+)
+
+_LEGACY_HELPER_NAMES = (
+    "_safe_resolve",
+    "_resolve_project_path",
+    "_display_path",
+)
+
+_LEGACY_STATE_NAMES = (
+    "ROOT",
+    "CONFIGS_DIR",
+    "GUI_METHODS_DIR",
+    "IMPORTED_CONFIGS_DIR",
+    "PRESETS_FILE",
+    "WEB_FILE_GROUPS_FILE",
+    "WEB_USER_LOCKS_FILE",
+    "DATASET_PRESETS_DIR",
+    "resolve_output_root",
+    "_display_settings_path",
+    "LOGGER",
 )
 
 
 def _sync_from_facade() -> None:
+    from web.services import config_service as _facade
+
     _exported_names = set(globals().get("__all__", ()))
     _legacy_module = getattr(_facade, "_legacy", None)
     for _name in _SYNC_NAMES:
         if not hasattr(_facade, _name):
             continue
         _value = getattr(_facade, _name)
-        if _name not in _exported_names:
+        if _name not in _exported_names and _name not in _LEGACY_HELPER_NAMES:
             globals()[_name] = _value
-        if _legacy_module is not None:
+        if _legacy_module is not None and _name in _LEGACY_STATE_NAMES:
             setattr(_legacy_module, _name, _value)
+    for _name in _LEGACY_HELPER_NAMES:
+        if _legacy_module is not None and hasattr(_legacy_module, _name):
+            globals()[_name] = getattr(_legacy_module, _name)
+        elif hasattr(_facade, _name):
+            globals()[_name] = getattr(_facade, _name)
 
 
 def _exported(fn):

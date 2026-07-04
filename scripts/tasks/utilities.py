@@ -15,6 +15,7 @@ FAST_TEST_TARGETS = [
     "tests/test_plain_lora_speed_runner.py",
     "tests/test_signal_probe_runner.py",
     "tests/test_mfu_bench.py",
+    "tests/test_mfu_gpu_theoretical.py",
 ]
 
 

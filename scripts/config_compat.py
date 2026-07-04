@@ -20,7 +20,11 @@ import toml
 from library.config.io import _load_toml_with_base
 from library.config.provenance import trace_method_config
 from library.env import resolve_under_home
-from library.training.compat_matrix import check_training_compat
+from library.training.compat_matrix import (
+    TrainingCompatIssue,
+    TrainingCompatMutation,
+    check_training_compat,
+)
 
 
 def _parse_override(text: str) -> tuple[str, Any]:
@@ -46,11 +50,11 @@ def _config_file_path(path: str) -> Path:
     return p
 
 
-def _issue_dict(item) -> dict[str, Any]:
+def _issue_dict(item: TrainingCompatIssue) -> dict[str, Any]:
     return {"code": item.code, "key": item.key, "message": item.message}
 
 
-def _mutation_dict(item) -> dict[str, Any]:
+def _mutation_dict(item: TrainingCompatMutation) -> dict[str, Any]:
     return {
         "code": item.code,
         "key": item.key,
@@ -60,7 +64,9 @@ def _mutation_dict(item) -> dict[str, Any]:
 
 
 def build_payload(args: argparse.Namespace) -> dict[str, Any]:
-    overrides = dict(args.override)
+    overrides: dict[str, Any] = dict(args.override)
+    values: dict[str, Any]
+    layers: list[dict[str, Any]]
     if args.config_file:
         config_path = _config_file_path(args.config_file)
         if not config_path.exists():

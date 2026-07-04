@@ -59,6 +59,23 @@ def _render_text(payload: dict[str, Any], *, keys: list[str] | None) -> str:
     return "\n".join(lines) + "\n"
 
 
+def build_payload(args: argparse.Namespace) -> dict[str, Any]:
+    trace = trace_method_config(
+        args.method,
+        args.preset,
+        configs_dir=args.configs_dir,
+        methods_subdir=args.methods_subdir,
+        runtime_config=args.runtime_config,
+        overrides=dict(args.override),
+        strict=args.strict,
+    )
+    if args.key:
+        missing = [key for key in args.key if key not in trace["values"]]
+        if missing:
+            raise KeyError(", ".join(missing))
+    return trace
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--method", required=True)
@@ -72,19 +89,11 @@ def main() -> None:
     parser.add_argument("--strict", action="store_true")
     args = parser.parse_args()
 
-    trace = trace_method_config(
-        args.method,
-        args.preset,
-        configs_dir=args.configs_dir,
-        methods_subdir=args.methods_subdir,
-        runtime_config=args.runtime_config,
-        overrides=dict(args.override),
-        strict=args.strict,
-    )
+    try:
+        trace = build_payload(args)
+    except KeyError as exc:
+        raise SystemExit(f"unknown config key(s): {exc.args[0]}") from exc
     if args.key:
-        missing = [key for key in args.key if key not in trace["values"]]
-        if missing:
-            raise SystemExit(f"unknown config key(s): {', '.join(missing)}")
         if args.json:
             print(json.dumps({key: explain_key(trace, key) for key in args.key}, indent=2, ensure_ascii=False))
             return

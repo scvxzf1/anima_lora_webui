@@ -1,21 +1,35 @@
 """Training step estimation for WebUI config forms.
 
 This module is loaded by ``web.services.config_service`` as part of the
-compatibility facade.  It snapshots legacy globals at import time and syncs
-mutable path settings from the facade before exported calls so existing tests
-and callers that monkeypatch ``config_service.ROOT`` continue to work.
+compatibility facade.  It keeps facade access lazy so the module can also be
+imported directly without pulling in the legacy facade.
 """
 
 from __future__ import annotations
 
 from functools import wraps
+from typing import Any
 
-from web.services import config_service as _facade
+def _missing_facade_dependency(*args, **kwargs):
+    raise RuntimeError("config estimation helper was called before facade sync")
 
-for _name, _value in _facade.__dict__.items():
-    if _name.startswith("__") and _name.endswith("__"):
-        continue
-    globals().setdefault(_name, _value)
+
+DEFAULT_MAX_TRAIN_STEPS = 0
+_load_training_config_for_web_run = _missing_facade_dependency
+_normalize_config_rel_path = _missing_facade_dependency
+_dataset_rows_for_estimate = _missing_facade_dependency
+_resolve_project_path = _missing_facade_dependency
+_display_path = _missing_facade_dependency
+_positive_int = _missing_facade_dependency
+_positive_float = _missing_facade_dependency
+_nonnegative_int = _missing_facade_dependency
+_bool_value = _missing_facade_dependency
+_normalize_nl_tag_mix = _missing_facade_dependency
+_normalize_trigger_clone = _missing_facade_dependency
+_normalize_path_pattern = _missing_facade_dependency
+_nl_tag_mix_available_count = _missing_facade_dependency
+_count_source_images = _missing_facade_dependency
+_count_images = _missing_facade_dependency
 
 _SYNC_NAMES = (
     "ROOT",
@@ -26,6 +40,7 @@ _SYNC_NAMES = (
     "WEB_FILE_GROUPS_FILE",
     "WEB_USER_LOCKS_FILE",
     "DATASET_PRESETS_DIR",
+    "DEFAULT_MAX_TRAIN_STEPS",
     "resolve_output_root",
     "_display_settings_path",
     "save_raw_file",
@@ -38,10 +53,42 @@ _SYNC_NAMES = (
     "move_config_file_to_group",
     "_inspect_network_weight",
     "LOGGER",
+    "_load_training_config_for_web_run",
+    "_normalize_config_rel_path",
+    "_dataset_rows_for_estimate",
+    "_resolve_project_path",
+    "_display_path",
+    "_positive_int",
+    "_positive_float",
+    "_nonnegative_int",
+    "_bool_value",
+    "_normalize_nl_tag_mix",
+    "_normalize_trigger_clone",
+    "_normalize_path_pattern",
+    "_nl_tag_mix_available_count",
+    "_count_source_images",
+    "_count_images",
+)
+
+_LEGACY_STATE_NAMES = (
+    "ROOT",
+    "CONFIGS_DIR",
+    "GUI_METHODS_DIR",
+    "IMPORTED_CONFIGS_DIR",
+    "PRESETS_FILE",
+    "WEB_FILE_GROUPS_FILE",
+    "WEB_USER_LOCKS_FILE",
+    "DATASET_PRESETS_DIR",
+    "DEFAULT_MAX_TRAIN_STEPS",
+    "resolve_output_root",
+    "_display_settings_path",
+    "LOGGER",
 )
 
 
 def _sync_from_facade() -> None:
+    from web.services import config_service as _facade
+
     _exported_names = set(globals().get("__all__", ()))
     _legacy_module = getattr(_facade, "_legacy", None)
     for _name in _SYNC_NAMES:
@@ -50,7 +97,7 @@ def _sync_from_facade() -> None:
         _value = getattr(_facade, _name)
         if _name not in _exported_names:
             globals()[_name] = _value
-        if _legacy_module is not None:
+        if _legacy_module is not None and _name in _LEGACY_STATE_NAMES:
             setattr(_legacy_module, _name, _value)
 
 

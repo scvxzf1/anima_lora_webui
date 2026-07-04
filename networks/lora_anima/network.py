@@ -22,6 +22,10 @@ from networks.lora_anima.loading import (
     _rename_dora_scale_for_load,
     _stack_lora_ups,
 )
+from networks.lora_anima.targeting import (
+    collect_lora_target_candidates,
+    compile_lora_target_patterns,
+)
 from networks.register_injection import RegisterInjector
 from networks.lora_modules import (
     ChimeraHydraInferenceModule,
@@ -37,8 +41,6 @@ from networks.lora_modules import (
 
 setup_logging()
 logger = logging.getLogger(__name__)
-
-_BLOCK_IDX_RE = re.compile(r"blocks\.(\d+)\.")
 
 # Post-LLM-adapter crossattn_emb width. Fixed by the Anima DiT
 # (``crossattn_emb_channels = 1024`` in ``library/anima/models.py``) — the
@@ -517,21 +519,14 @@ class LoRANetwork(torch.nn.Module):
                 f"neuron dropout: p={dropout}, rank dropout: p={rank_dropout}, module dropout: p={module_dropout}"
             )
 
-        # compile regular expression if specified
-        def str_to_re_patterns(patterns: Optional[List[str]]) -> List[re.Pattern]:
-            re_patterns = []
-            if patterns is not None:
-                for pattern in patterns:
-                    try:
-                        re_pattern = re.compile(pattern)
-                    except re.error as e:
-                        logger.error(f"Invalid pattern '{pattern}': {e}")
-                        continue
-                    re_patterns.append(re_pattern)
-            return re_patterns
-
-        exclude_re_patterns = str_to_re_patterns(cfg.exclude_patterns)
-        include_re_patterns = str_to_re_patterns(cfg.include_patterns)
+        exclude_re_patterns = compile_lora_target_patterns(
+            cfg.exclude_patterns,
+            logger=logger,
+        )
+        include_re_patterns = compile_lora_target_patterns(
+            cfg.include_patterns,
+            logger=logger,
+        )
 
         # create module instances
         def create_modules(
@@ -545,120 +540,26 @@ class LoRANetwork(torch.nn.Module):
                 self.LORA_PREFIX_ANIMA if is_unet else self.LORA_PREFIX_TEXT_ENCODER
             )
 
-            # First pass: collect candidate modules
-            candidates = []
-            for name, module in root_module.named_modules():
-                if (
-                    target_replace_modules is None
-                    or module.__class__.__name__ in target_replace_modules
-                ):
-                    if target_replace_modules is None:
-                        module = root_module
-
-                    for child_name, child_module in module.named_modules():
-                        is_linear = isinstance(child_module, torch.nn.Linear)
-                        is_conv2d = isinstance(child_module, torch.nn.Conv2d)
-                        is_conv2d_1x1 = is_conv2d and child_module.kernel_size == (1, 1)
-
-                        if is_linear or is_conv2d:
-                            original_name = (name + "." if name else "") + child_name
-                            # Strip torch.compile wrapper from module path
-                            original_name = original_name.replace("_orig_mod.", "")
-                            lora_name = f"{prefix}.{original_name}".replace(".", "_")
-
-                            # exclude/include filter
-                            excluded = any(
-                                pattern.fullmatch(original_name)
-                                for pattern in exclude_re_patterns
-                            )
-                            included = any(
-                                pattern.fullmatch(original_name)
-                                for pattern in include_re_patterns
-                            )
-                            if excluded and not included:
-                                if verbose:
-                                    logger.info(f"exclude: {original_name}")
-                                continue
-
-                            # layer range filter: skip blocks outside [layer_start, layer_end)
-                            if is_unet and (
-                                cfg.layer_start is not None or cfg.layer_end is not None
-                            ):
-                                block_match = _BLOCK_IDX_RE.match(original_name)
-                                if block_match:
-                                    block_idx = int(block_match.group(1))
-                                    if (
-                                        cfg.layer_start is not None
-                                        and block_idx < cfg.layer_start
-                                    ):
-                                        if verbose:
-                                            logger.info(
-                                                f"layer_range exclude: {original_name} (block {block_idx} < {cfg.layer_start})"
-                                            )
-                                        continue
-                                    if (
-                                        cfg.layer_end is not None
-                                        and block_idx >= cfg.layer_end
-                                    ):
-                                        if verbose:
-                                            logger.info(
-                                                f"layer_range exclude: {original_name} (block {block_idx} >= {cfg.layer_end})"
-                                            )
-                                        continue
-
-                            dim = None
-                            alpha_val = None
-
-                            if modules_dim is not None:
-                                if lora_name in modules_dim:
-                                    dim = modules_dim[lora_name]
-                                    alpha_val = modules_alpha[lora_name]
-                            else:
-                                if cfg.reg_dims is not None:
-                                    for reg, d in cfg.reg_dims.items():
-                                        if re.fullmatch(reg, original_name):
-                                            dim = d
-                                            alpha_val = alpha
-                                            logger.info(
-                                                f"Module {original_name} matched with regex '{reg}' -> dim: {dim}"
-                                            )
-                                            break
-                                if dim is None:
-                                    if is_linear or is_conv2d_1x1:
-                                        dim = (
-                                            default_dim
-                                            if default_dim is not None
-                                            else lora_dim
-                                        )
-                                        alpha_val = alpha
-
-                            if dim is None or dim == 0:
-                                if is_linear or is_conv2d_1x1:
-                                    candidates.append(
-                                        (
-                                            lora_name,
-                                            None,
-                                            None,
-                                            None,
-                                            original_name,
-                                            True,
-                                        )
-                                    )  # skipped
-                                continue
-
-                            candidates.append(
-                                (
-                                    lora_name,
-                                    child_module,
-                                    dim,
-                                    alpha_val,
-                                    original_name,
-                                    False,
-                                )
-                            )
-
-                    if target_replace_modules is None:
-                        break
+            # First pass: collect candidate modules. Class selection, router
+            # counters, and constructor kwargs stay below in the second pass.
+            candidates = collect_lora_target_candidates(
+                root_module=root_module,
+                prefix=prefix,
+                target_replace_modules=target_replace_modules,
+                exclude_patterns=exclude_re_patterns,
+                include_patterns=include_re_patterns,
+                is_unet=is_unet,
+                layer_start=cfg.layer_start,
+                layer_end=cfg.layer_end,
+                modules_dim=modules_dim,
+                modules_alpha=modules_alpha,
+                reg_dims=cfg.reg_dims,
+                default_dim=default_dim,
+                lora_dim=lora_dim,
+                alpha=alpha,
+                verbose=verbose,
+                logger=logger,
+            )
 
             # Second pass: create LoRA modules with progress bar
             from tqdm import tqdm
@@ -666,9 +567,11 @@ class LoRANetwork(torch.nn.Module):
             loras = []
             skipped = []
             non_skipped = [
-                (ln, cm, d, a, on) for ln, cm, d, a, on, skip in candidates if not skip
+                (item.lora_name, item.child_module, item.dim, item.alpha, item.original_name)
+                for item in candidates
+                if not item.skipped
             ]
-            skipped = [ln for ln, cm, d, a, on, skip in candidates if skip]
+            skipped = [item.lora_name for item in candidates if item.skipped]
 
             # VeRA uses one frozen random projection bank (A/B) and slices it
             # per adapted Linear.  The plugin owns the module implementation;

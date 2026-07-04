@@ -2,7 +2,28 @@
  * Mechanical split from the former monolithic app closure.
  * Keep this module focused; move newly edited behavior into domain modules.
  */
+import {
+    calculateTrainingEtaMetricInfo,
+    formatEtaClock,
+    formatLr,
+    isSameDate,
+    lastValue,
+    parseMetricsFromProgressLine,
+    parseProgressRateSeconds,
+    readConfigNumber,
+} from '../../live-training/index.js?v=module-bootstrap-20260704-1';
+
 const ctx = globalThis.ctx;
+
+Object.assign(globalThis, {
+    formatEtaClock,
+    formatLr,
+    isSameDate,
+    lastValue,
+    parseMetricsFromProgressLine,
+    parseProgressRateSeconds,
+    readConfigNumber,
+});
 
     globalThis.updateProgress = function updateProgress(msg, options = {}) {
         if (isHistoryReviewMode()) return;
@@ -410,64 +431,15 @@ const ctx = globalThis.ctx;
     }
 
     globalThis.trainingEtaMetricInfo = function trainingEtaMetricInfo() {
-        const isRunning = isLiveRunningState();
-        if (!isRunning) {
-            return { text: '待计算', empty: true, title: '训练开始并收到进度后显示预计完成时间。' };
-        }
-        const current = Number(trainingRuntime.progressCurrent || 0);
-        const total = Number(trainingRuntime.progressTotal || 0);
-        if (!Number.isFinite(current) || !Number.isFinite(total) || total <= 0) {
-            return { text: '待计算', empty: true, title: '等待进度总数。' };
-        }
-        const remaining = Math.max(0, total - current);
-        if (remaining <= 0) {
-            return { text: '即将完成', empty: false, title: '当前进度已到达总步数。' };
-        }
-        const secondsPerStep = trainingRuntime.progressSecondsPerStep ?? parseProgressRateSeconds(trainingRuntime.progressRate);
-        if (!Number.isFinite(secondsPerStep) || secondsPerStep <= 0) {
-            return { text: '待计算', empty: true, title: '等待速度数据后计算预计完成时间。' };
-        }
-        const remainingSeconds = Math.ceil(remaining * secondsPerStep);
-        if (!Number.isFinite(remainingSeconds) || remainingSeconds <= 0) {
-            return { text: '即将完成', empty: false, title: '按当前速度估算，剩余不足 1 秒。' };
-        }
-        const eta = new Date(Date.now() + remainingSeconds * 1000);
-        return {
-            text: formatEtaClock(eta),
-            empty: false,
-            title: `按当前速度估算，剩余约 ${formatDuration(remainingSeconds)}。`,
-        };
-    }
-
-    globalThis.parseProgressRateSeconds = function parseProgressRateSeconds(value) {
-        const text = String(value || '').trim().toLowerCase();
-        if (!text) return null;
-        const compact = text.replace(/\s+/g, '');
-        const match = compact.match(/([\d.]+)(ms\/it|s\/it|s\/step|it\/s)/);
-        if (!match) return null;
-        const amount = Number(match[1]);
-        if (!Number.isFinite(amount) || amount <= 0) return null;
-        const unit = match[2];
-        if (unit === 'it/s') return 1 / amount;
-        if (unit === 'ms/it') return amount / 1000;
-        return amount;
-    }
-
-    globalThis.formatEtaClock = function formatEtaClock(date) {
-        const pad = (value) => String(value).padStart(2, '0');
-        const time = `${pad(date.getHours())}:${pad(date.getMinutes())}`;
-        const now = new Date();
-        if (isSameDate(date, now)) return time;
-        const tomorrow = new Date(now);
-        tomorrow.setDate(now.getDate() + 1);
-        if (isSameDate(date, tomorrow)) return `明日 ${time}`;
-        return `${date.getMonth() + 1}/${date.getDate()} ${time}`;
-    }
-
-    globalThis.isSameDate = function isSameDate(a, b) {
-        return a.getFullYear() === b.getFullYear()
-            && a.getMonth() === b.getMonth()
-            && a.getDate() === b.getDate();
+        return calculateTrainingEtaMetricInfo({
+            isRunning: isLiveRunningState(),
+            current: trainingRuntime.progressCurrent,
+            total: trainingRuntime.progressTotal,
+            progressSecondsPerStep: trainingRuntime.progressSecondsPerStep,
+            progressRate: trainingRuntime.progressRate,
+            nowMs: Date.now(),
+            formatDuration,
+        });
     }
 
     globalThis.markTrainingActivity = function markTrainingActivity(ts, options = {}) {
@@ -560,46 +532,6 @@ const ctx = globalThis.ctx;
         el.textContent = gpu == null
             ? `${jobName}运行中，最近 ${formatDuration(ageSeconds)} 前收到输出。`
             : `${jobName}运行中，最近 ${formatDuration(ageSeconds)} 前收到输出，GPU ${gpu}%。`;
-    }
-
-    globalThis.parseMetricsFromProgressLine = function parseMetricsFromProgressLine(line) {
-        const text = String(line || '');
-        const metricNumberToken = '([+\\-]?(?:\\d+(?:\\.\\d*)?|\\.\\d+)(?:[eE][+\\-]?\\d+)?|[+\\-]?nan|[+\\-]?inf(?:inity)?)';
-        const stepMatch = text.match(/\|\s*(\d+)\/\d+\s*\[/) || text.match(/step[=:/\s]+(\d+)/i);
-        const lossMatch = text.match(new RegExp(`(?:avr_)?loss[=:/\\s]+${metricNumberToken}`, 'i'));
-        const lrMatch = text.match(new RegExp(`(?:^|[\\s,])(?:lr|learning_rate)[=:/\\s]+${metricNumberToken}`, 'i'));
-        const rateMatch = text.match(/([\d.]+\s*(?:s\/it|it\/s|s\/step))/i);
-        const out = {};
-        if (stepMatch) out.step = Number(stepMatch[1]);
-        if (lossMatch) out.loss = lossMatch[1];
-        if (lrMatch) out.lr = Number(lrMatch[1]);
-        if (rateMatch) out.rate = rateMatch[1].replace(/\s+/g, '');
-        if (Object.keys(out).length === 0) return null;
-        if (out.step !== undefined && !Number.isFinite(out.step)) delete out.step;
-        if (out.lr !== undefined && !Number.isFinite(out.lr)) delete out.lr;
-        return Object.keys(out).length ? out : null;
-    }
-
-    globalThis.lastValue = function lastValue(records, key) {
-        for (let i = records.length - 1; i >= 0; i -= 1) {
-            const value = records[i]?.[key];
-            if (value !== undefined && value !== null && value !== '') return value;
-        }
-        return undefined;
-    }
-
-    globalThis.readConfigNumber = function readConfigNumber(configText, key) {
-        const escapedKey = key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-        const match = String(configText || '').match(new RegExp(`^\\s*${escapedKey}\\s*=\\s*([^\\n#]+)`, 'm'));
-        if (!match) return undefined;
-        const value = Number(match[1].trim().replace(/^["']|["']$/g, ''));
-        return Number.isFinite(value) ? value : undefined;
-    }
-
-    globalThis.formatLr = function formatLr(value) {
-        if (value === undefined || value === null || value === '') return '-';
-        const n = Number(value);
-        return Number.isFinite(n) ? n.toExponential(2) : '-';
     }
 
     globalThis.formatDuration = function formatDuration(totalSeconds) {

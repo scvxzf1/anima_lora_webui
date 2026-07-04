@@ -1,21 +1,50 @@
 """Config file grouping, locking, ordering, export, and restore helpers.
 
 This module is loaded by ``web.services.config_service`` as part of the
-compatibility facade.  It snapshots legacy globals at import time and syncs
-mutable path settings from the facade before exported calls so existing tests
-and callers that monkeypatch ``config_service.ROOT`` continue to work.
+compatibility facade.  It keeps facade access lazy so the module can also be
+imported directly without pulling in the legacy facade.
 """
 
 from __future__ import annotations
 
+import io
+import re
+import shutil
+import subprocess
+import zipfile
+from datetime import datetime
 from functools import wraps
+from pathlib import Path
+from typing import Any
 
-from web.services import config_service as _facade
+import toml
+import tomlkit
 
-for _name, _value in _facade.__dict__.items():
-    if _name.startswith("__") and _name.endswith("__"):
-        continue
-    globals().setdefault(_name, _value)
+from library.env import expand_env_vars_in_obj, get_configs_root, load_dotenv
+from web.services.config import paths as _config_paths
+from web.services.config.metadata import (
+    CONFIG_FILE_LABELS_ZH,
+    FILE_MOVE_TARGET_GROUPS,
+    FIXED_SYSTEM_CONFIG_GROUP_IDS,
+    HIDDEN_CONFIG_FILES,
+    SYSTEM_CONFIG_GROUP_IDS,
+    SYSTEM_DATASET_PRESET_FILES,
+    SYSTEM_MANAGED_FILES,
+    SYSTEM_PRESET_FILES,
+    SYSTEM_PRESET_PREFIXES,
+    USER_LOCKABLE_GROUPS,
+)
+
+ROOT = Path(__file__).resolve().parents[3]
+CONFIGS_DIR = get_configs_root()
+GUI_METHODS_DIR = CONFIGS_DIR / "gui-methods"
+IMPORTED_CONFIGS_DIR = CONFIGS_DIR / "imported"
+PRESETS_FILE = CONFIGS_DIR / "presets.toml"
+WEB_FILE_GROUPS_FILE = CONFIGS_DIR / "web-file-groups.toml"
+WEB_USER_LOCKS_FILE = CONFIGS_DIR / "web-user-locks.toml"
+DATASET_PRESETS_DIR = CONFIGS_DIR / "datasets"
+
+load_dotenv()
 
 _SYNC_NAMES = (
     "ROOT",
@@ -40,8 +69,22 @@ _SYNC_NAMES = (
     "LOGGER",
 )
 
+_LEGACY_RAW_FILE_SHIM_NAMES = {
+    "save_raw_file",
+    "load_raw_file",
+    "delete_raw_file",
+    "patch_raw_file_values",
+    "preview_raw_file_patch",
+}
+_LEGACY_SYNC_NAMES = tuple(
+    _name for _name in _SYNC_NAMES
+    if _name not in _LEGACY_RAW_FILE_SHIM_NAMES
+)
+
 
 def _sync_from_facade() -> None:
+    from web.services import config_service as _facade
+
     _exported_names = set(globals().get("__all__", ()))
     _legacy_module = getattr(_facade, "_legacy", None)
     for _name in _SYNC_NAMES:
@@ -50,7 +93,7 @@ def _sync_from_facade() -> None:
         _value = getattr(_facade, _name)
         if _name not in _exported_names:
             globals()[_name] = _value
-        if _legacy_module is not None:
+        if _legacy_module is not None and _name in _LEGACY_SYNC_NAMES:
             setattr(_legacy_module, _name, _value)
 
 
@@ -61,6 +104,20 @@ def _exported(fn):
         return fn(*args, **kwargs)
 
     return wrapper
+
+
+def _load(p: Path) -> dict:
+    if not p.exists():
+        return {}
+    return expand_env_vars_in_obj(toml.loads(p.read_text(encoding="utf-8")))
+
+
+def _safe_resolve(rel_path: str) -> Path | None:
+    return _config_paths.safe_resolve(rel_path, root=ROOT, configs_dir=CONFIGS_DIR)
+
+
+def _display_path(path: Path) -> str:
+    return _config_paths.display_path(path, root=ROOT, configs_dir=CONFIGS_DIR)
 
 __all__ = ['set_user_file_lock', 'set_user_group_lock', 'create_config_file_group', 'rename_config_file_group', 'delete_config_file_group', 'reorder_config_file_group', 'move_config_file_to_group', 'place_config_file_in_group', 'place_config_file_group', 'reorder_config_file_in_group', 'restore_system_presets', 'list_config_files', 'list_config_file_groups', 'export_config_file_group_archive', 'get_config_file_meta', '_load_config_file_group_specs', '_save_config_file_group_specs', '_normalize_config_file_group_kind_filter', '_normalize_config_rel_path', '_normalize_dataset_preset_path', '_is_dataset_preset_readonly', '_is_user_locked', '_is_user_group_locked', '_load_user_locks', '_save_user_locks', '_lock_reason_message', '_lock_reason_label']
 

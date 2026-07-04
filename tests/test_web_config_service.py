@@ -108,6 +108,268 @@ def test_sample_prompts_module_imports_without_facade_cycle():
     assert result.returncode == 0, result.stderr or result.stdout
 
 
+def test_merge_module_imports_without_facade_cycle():
+    env = {**os.environ, "PYTHONDONTWRITEBYTECODE": "1"}
+    script = (
+        "import sys; "
+        "import web.services.config.merge as merge; "
+        "assert callable(merge.list_methods); "
+        "assert 'web.services.config_service' not in sys.modules; "
+        "assert 'web.services.config._legacy' not in sys.modules"
+    )
+
+    result = subprocess.run(
+        [sys.executable, "-c", script],
+        cwd=Path(__file__).resolve().parents[1],
+        env=env,
+        text=True,
+        capture_output=True,
+        timeout=20,
+    )
+
+    assert result.returncode == 0, result.stderr or result.stdout
+
+
+def test_output_runs_module_imports_without_facade_cycle():
+    env = {**os.environ, "PYTHONDONTWRITEBYTECODE": "1"}
+    script = (
+        "import sys; "
+        "import web.services.config.output_runs as output_runs; "
+        "assert callable(output_runs.list_output_runs); "
+        "assert 'web.services.config_service' not in sys.modules; "
+        "assert 'web.services.config._legacy' not in sys.modules"
+    )
+
+    result = subprocess.run(
+        [sys.executable, "-c", script],
+        cwd=Path(__file__).resolve().parents[1],
+        env=env,
+        text=True,
+        capture_output=True,
+        timeout=20,
+    )
+
+    assert result.returncode == 0, result.stderr or result.stdout
+
+
+@pytest.mark.parametrize(
+    "module_name",
+    [
+        "web.services.config.datasets",
+        "web.services.config.file_groups",
+        "web.services.config.merge",
+        "web.services.config.output_runs",
+    ],
+)
+def test_config_module_facade_sync_preserves_legacy_raw_file_shims(module_name: str):
+    import importlib
+
+    module = importlib.import_module(module_name)
+    legacy_config._restore_raw_files_shims()
+    raw_file_shims = legacy_config._RAW_FILES_SHIMS
+
+    module._sync_from_facade()
+
+    for name, shim in raw_file_shims.items():
+        assert getattr(legacy_config, name) is shim
+    for name in (
+        "load_raw_file",
+        "save_raw_file",
+        "delete_raw_file",
+        "patch_raw_file_values",
+        "preview_raw_file_patch",
+    ):
+        assert getattr(module, name) is getattr(config_service, name)
+
+
+def test_estimation_module_imports_without_facade_cycle():
+    env = {**os.environ, "PYTHONDONTWRITEBYTECODE": "1"}
+    script = (
+        "import sys; "
+        "import web.services.config.estimation as estimation; "
+        "assert callable(estimation.estimate_training_steps); "
+        "assert 'web.services.config_service' not in sys.modules; "
+        "assert 'web.services.config._legacy' not in sys.modules"
+    )
+
+    result = subprocess.run(
+        [sys.executable, "-c", script],
+        cwd=Path(__file__).resolve().parents[1],
+        env=env,
+        text=True,
+        capture_output=True,
+        timeout=20,
+    )
+
+    assert result.returncode == 0, result.stderr or result.stdout
+
+
+def test_preflight_module_imports_without_facade_cycle():
+    env = {**os.environ, "PYTHONDONTWRITEBYTECODE": "1"}
+    script = (
+        "import sys; "
+        "import web.services.config.preflight as preflight; "
+        "assert callable(preflight.preflight_training_config); "
+        "assert callable(preflight.training_sample_sampler_status); "
+        "assert 'web.services.config_service' not in sys.modules; "
+        "assert 'web.services.config._legacy' not in sys.modules"
+    )
+
+    result = subprocess.run(
+        [sys.executable, "-c", script],
+        cwd=Path(__file__).resolve().parents[1],
+        env=env,
+        text=True,
+        capture_output=True,
+        timeout=20,
+    )
+
+    assert result.returncode == 0, result.stderr or result.stdout
+
+
+@pytest.mark.parametrize(
+    ("module_name", "expected_callable"),
+    [
+        ("web.services.config.datasets", "_build_dataset_config_doc"),
+        ("web.services.config.file_groups", "_is_dataset_preset_readonly"),
+    ],
+)
+def test_high_coupling_config_modules_import_without_facade_cycle(
+    module_name: str,
+    expected_callable: str,
+):
+    env = {**os.environ, "PYTHONDONTWRITEBYTECODE": "1"}
+    script = (
+        "import importlib, sys; "
+        f"module = importlib.import_module({module_name!r}); "
+        f"assert callable(getattr(module, {expected_callable!r})); "
+        "assert 'web.services.config_service' not in sys.modules; "
+        "assert 'web.services.config._legacy' not in sys.modules"
+    )
+
+    result = subprocess.run(
+        [sys.executable, "-c", script],
+        cwd=Path(__file__).resolve().parents[1],
+        env=env,
+        text=True,
+        capture_output=True,
+        timeout=20,
+    )
+
+    assert result.returncode == 0, result.stderr or result.stdout
+
+
+def test_file_groups_direct_helpers_work_without_facade_cycle():
+    env = {**os.environ, "PYTHONDONTWRITEBYTECODE": "1"}
+    script = (
+        "import sys; "
+        "import web.services.config.file_groups as file_groups; "
+        "assert file_groups._safe_archive_name('我的配置/分组') == '我的配置_分组'; "
+        "assert file_groups._place_index('2', 5) == 2; "
+        "assert 'web.services.config_service' not in sys.modules; "
+        "assert 'web.services.config._legacy' not in sys.modules"
+    )
+
+    result = subprocess.run(
+        [sys.executable, "-c", script],
+        cwd=Path(__file__).resolve().parents[1],
+        env=env,
+        text=True,
+        capture_output=True,
+        timeout=20,
+    )
+
+    assert result.returncode == 0, result.stderr or result.stdout
+
+
+def test_file_groups_direct_path_helpers_work_without_facade_snapshot(tmp_path: Path):
+    env = {**os.environ, "PYTHONDONTWRITEBYTECODE": "1"}
+    script = f"""
+import sys
+from pathlib import Path
+
+import web.services.config.file_groups as file_groups
+
+root = Path({str(tmp_path)!r})
+configs = root / "configs"
+(configs / "imported").mkdir(parents=True)
+(configs / "imported" / "lora.toml").write_text('output_name = "lora"\\n', encoding="utf-8")
+(configs / "gui-methods").mkdir()
+(configs / "datasets").mkdir()
+
+file_groups.ROOT = root
+file_groups.CONFIGS_DIR = configs
+file_groups.GUI_METHODS_DIR = configs / "gui-methods"
+file_groups.IMPORTED_CONFIGS_DIR = configs / "imported"
+file_groups.PRESETS_FILE = configs / "presets.toml"
+file_groups.WEB_FILE_GROUPS_FILE = configs / "web-file-groups.toml"
+file_groups.WEB_USER_LOCKS_FILE = configs / "web-user-locks.toml"
+file_groups.DATASET_PRESETS_DIR = configs / "datasets"
+
+assert file_groups._load(configs / "imported" / "lora.toml") == dict(output_name="lora")
+assert file_groups._safe_resolve("configs/imported/lora.toml") == (configs / "imported" / "lora.toml").resolve()
+assert file_groups._display_path(configs / "imported" / "lora.toml") == "configs/imported/lora.toml"
+assert "web.services.config_service" not in sys.modules
+assert "web.services.config._legacy" not in sys.modules
+"""
+
+    result = subprocess.run(
+        [sys.executable, "-c", script],
+        cwd=Path(__file__).resolve().parents[1],
+        env=env,
+        text=True,
+        capture_output=True,
+        timeout=20,
+    )
+
+    assert result.returncode == 0, result.stderr or result.stdout
+
+
+def test_datasets_direct_path_and_text_helpers_work_without_facade_snapshot(tmp_path: Path):
+    env = {**os.environ, "PYTHONDONTWRITEBYTECODE": "1"}
+    script = f"""
+import sys
+from pathlib import Path
+
+import web.services.config.datasets as datasets
+
+root = Path({str(tmp_path)!r})
+configs = root / "configs"
+(configs / "datasets").mkdir(parents=True)
+dataset_path = configs / "datasets" / "direct.toml"
+dataset_path.write_text("[[datasets]]\\n", encoding="utf-8")
+
+datasets.ROOT = root
+datasets.CONFIGS_DIR = configs
+datasets.GUI_METHODS_DIR = configs / "gui-methods"
+datasets.IMPORTED_CONFIGS_DIR = configs / "imported"
+datasets.PRESETS_FILE = configs / "presets.toml"
+datasets.WEB_FILE_GROUPS_FILE = configs / "web-file-groups.toml"
+datasets.WEB_USER_LOCKS_FILE = configs / "web-user-locks.toml"
+datasets.DATASET_PRESETS_DIR = configs / "datasets"
+
+resolved = datasets._dataset_config_path_from_cfg.__wrapped__({{"dataset_config": "configs/datasets/direct.toml"}})
+classified = datasets._classify_nl_tag_caption_text.__wrapped__("1girl, blue hair, smile, looking at viewer")
+
+assert resolved == dataset_path.resolve()
+assert datasets._dataset_path_value("image_dataset/hero", {{}}) == "image_dataset/hero"
+assert classified["kind"] == "tag"
+assert "web.services.config_service" not in sys.modules
+assert "web.services.config._legacy" not in sys.modules
+"""
+
+    result = subprocess.run(
+        [sys.executable, "-c", script],
+        cwd=Path(__file__).resolve().parents[1],
+        env=env,
+        text=True,
+        capture_output=True,
+        timeout=20,
+    )
+
+    assert result.returncode == 0, result.stderr or result.stdout
+
+
 def test_spd_cli_config_is_exposed_as_method_variant(tmp_path: Path, monkeypatch):
     configs, _dataset_path = _write_minimal_config_tree(tmp_path)
     (configs / "methods").mkdir()
@@ -233,6 +495,90 @@ def test_web_variants_follow_variant_family_metadata(tmp_path: Path, monkeypatch
     ]
     assert config_service.CONFIG_FILE_LABELS_ZH["configs/gui-methods/glora.toml"] == "GLoRA 训练变体"
     assert config_service.CONFIG_FILE_LABELS_ZH["configs/gui-methods/vera.toml"] == "VeRA 训练变体"
+
+
+def test_merge_helpers_remain_available_from_legacy_module(tmp_path: Path, monkeypatch):
+    configs, _dataset_path = _write_minimal_config_tree(tmp_path)
+    methods = configs / "methods"
+    methods.mkdir()
+    (methods / "spd.toml").write_text('output_name = "spd"\n', encoding="utf-8")
+    gui_methods = configs / "gui-methods"
+    gui_methods.mkdir()
+    (gui_methods / "lora.toml").write_text(
+        "\n".join([
+            'output_name = "lora"',
+            "[variant]",
+            'family = "lora"',
+            "order = 1",
+            "",
+        ]),
+        encoding="utf-8",
+    )
+    _patch_config_service_paths(monkeypatch, tmp_path)
+    monkeypatch.setattr(legacy_config, "ROOT", tmp_path)
+    monkeypatch.setattr(legacy_config, "CONFIGS_DIR", configs)
+    monkeypatch.setattr(legacy_config, "DATASET_PRESETS_DIR", configs / "datasets")
+    monkeypatch.setattr(legacy_config, "GUI_METHODS_DIR", gui_methods)
+    monkeypatch.setattr(legacy_config, "IMPORTED_CONFIGS_DIR", configs / "imported")
+    monkeypatch.setattr(legacy_config, "PRESETS_FILE", configs / "presets.toml")
+    monkeypatch.setattr(legacy_config, "WEB_FILE_GROUPS_FILE", configs / "web-file-groups.toml")
+    monkeypatch.setattr(legacy_config, "WEB_USER_LOCKS_FILE", configs / "web-user-locks.toml")
+
+    expected_shims = (
+        "list_methods",
+        "list_variants",
+        "list_all_variants",
+        "list_presets",
+        "load_merged_config",
+        "suggest_data_dirs",
+        "suggest_dataset_dirs",
+        "apply_auto_data_dirs",
+    )
+    assert tuple(legacy_config._MERGE_SHIM_NAMES) == expected_shims
+    for name in expected_shims:
+        assert getattr(legacy_config, name) is legacy_config._MERGE_SHIMS[name]
+        assert (
+            getattr(legacy_config, name).__doc__
+            == f"Compatibility shim forwarding to web.services.config.merge.{name}."
+        )
+    legacy_config._restore_raw_files_shims()
+    raw_file_shims = legacy_config._RAW_FILES_SHIMS
+    assert legacy_config.load_raw_file is raw_file_shims["load_raw_file"]
+
+    assert config_service.list_variants("spd") == ["spd"]
+    for name, shim in raw_file_shims.items():
+        assert getattr(legacy_config, name) is shim
+
+    assert "spd" in legacy_config.list_methods()
+    assert legacy_config.list_variants("spd") == ["spd"]
+    assert legacy_config.list_variants("lora") == ["lora"]
+    assert legacy_config.list_all_variants() == ["lora"]
+    assert legacy_config.list_presets() == ["default"]
+
+    merged = legacy_config.load_merged_config("lora", "default")
+    assert merged["max_train_steps"] == 0
+    assert merged["source_image_dir"] == "image_dataset"
+    assert legacy_config.suggest_data_dirs("image_dataset/hero") == {
+        "ok": True,
+        "source_image_dir": "image_dataset/hero",
+        "resized_image_dir": "image_dataset/hero_resized",
+        "lora_cache_dir": "image_dataset/hero_lora_cache",
+    }
+    assert legacy_config.suggest_dataset_dirs(["image_dataset/hero"]) == {
+        "ok": True,
+        "datasets": [{
+            "index": 0,
+            "source_dir": "image_dataset/hero",
+            "image_dir": "image_dataset/hero_resized",
+            "cache_dir": "image_dataset/hero_lora_cache",
+        }],
+    }
+
+    auto_dirs = legacy_config.apply_auto_data_dirs({"source_image_dir": "image_dataset/hero"})
+    assert auto_dirs["resized_image_dir"] == "image_dataset/hero_resized"
+    assert auto_dirs["lora_cache_dir"] == "image_dataset/hero_lora_cache"
+    for name in expected_shims:
+        assert getattr(legacy_config, name) is legacy_config._MERGE_SHIMS[name]
 
 
 def test_save_dataset_editor_does_not_overwrite_dataset_when_train_patch_fails(tmp_path: Path, monkeypatch):
@@ -4081,6 +4427,38 @@ def test_step_estimate_counts_trigger_clone_weight(tmp_path: Path, monkeypatch):
     assert row["trigger_clone_weighted_image_count"] == 8
 
 
+def test_estimation_helpers_remain_available_from_legacy_module(tmp_path: Path, monkeypatch):
+    configs, dataset_path = _write_minimal_config_tree(tmp_path)
+    _patch_config_service_paths(monkeypatch, tmp_path)
+    _write_step_estimate_dataset(tmp_path, dataset_path)
+    monkeypatch.setattr(legacy_config, "ROOT", tmp_path)
+    monkeypatch.setattr(legacy_config, "CONFIGS_DIR", configs)
+    monkeypatch.setattr(legacy_config, "DATASET_PRESETS_DIR", configs / "datasets")
+    monkeypatch.setattr(legacy_config, "GUI_METHODS_DIR", configs / "gui-methods")
+    monkeypatch.setattr(legacy_config, "IMPORTED_CONFIGS_DIR", configs / "imported")
+    monkeypatch.setattr(legacy_config, "PRESETS_FILE", configs / "presets.toml")
+    monkeypatch.setattr(legacy_config, "WEB_FILE_GROUPS_FILE", configs / "web-file-groups.toml")
+    monkeypatch.setattr(legacy_config, "WEB_USER_LOCKS_FILE", configs / "web-user-locks.toml")
+
+    expected_shims = ("estimate_training_steps",)
+    assert tuple(legacy_config._ESTIMATION_SHIM_NAMES) == expected_shims
+    for name in expected_shims:
+        assert getattr(legacy_config, name) is legacy_config._ESTIMATION_SHIMS[name]
+        assert (
+            getattr(legacy_config, name).__doc__
+            == f"Compatibility shim forwarding to web.services.config.estimation.{name}."
+        )
+
+    estimate = legacy_config.estimate_training_steps("lora", "default", "imported")
+
+    assert estimate["steps_per_epoch"] == 15
+    assert estimate["max_train_steps"] == 0
+    assert estimate["duration_mode"] == "unset"
+    assert estimate["dataset_num_repeats"] == 5
+    assert estimate["weighted_image_count"] == 15
+    assert legacy_config.estimate_training_steps is legacy_config._ESTIMATION_SHIMS["estimate_training_steps"]
+
+
 def test_imported_config_can_move_to_rokkotsu_group(tmp_path: Path, monkeypatch):
     configs, _dataset_path = _write_minimal_config_tree(tmp_path)
     _patch_config_service_paths(monkeypatch, tmp_path)
@@ -4484,6 +4862,77 @@ def test_output_run_save_as_rejects_missing_or_invalid_original(tmp_path: Path, 
         config_service.save_output_run_config_as("legacy-20260523-114514", "legacy_copy", "imported")
     with pytest.raises(ValueError, match="TOML 语法错误"):
         config_service.save_output_run_config_as("bad-20260523-114514", "bad_copy", "imported")
+
+
+def test_output_run_helpers_remain_available_from_legacy_module(tmp_path: Path, monkeypatch):
+    _write_minimal_config_tree(tmp_path)
+    _patch_config_service_paths(monkeypatch, tmp_path)
+    output_root = tmp_path / "output" / "runs"
+    _patch_output_root(monkeypatch, output_root)
+    monkeypatch.setattr(legacy_config, "ROOT", tmp_path)
+    monkeypatch.setattr(legacy_config, "CONFIGS_DIR", tmp_path / "configs")
+    monkeypatch.setattr(legacy_config, "DATASET_PRESETS_DIR", tmp_path / "configs" / "datasets")
+    monkeypatch.setattr(legacy_config, "GUI_METHODS_DIR", tmp_path / "configs" / "gui-methods")
+    monkeypatch.setattr(legacy_config, "IMPORTED_CONFIGS_DIR", tmp_path / "configs" / "imported")
+    monkeypatch.setattr(legacy_config, "PRESETS_FILE", tmp_path / "configs" / "presets.toml")
+    monkeypatch.setattr(legacy_config, "WEB_FILE_GROUPS_FILE", tmp_path / "configs" / "web-file-groups.toml")
+    monkeypatch.setattr(legacy_config, "WEB_USER_LOCKS_FILE", tmp_path / "configs" / "web-user-locks.toml")
+    monkeypatch.setattr(legacy_config, "resolve_output_root", lambda: output_root.resolve())
+    monkeypatch.setattr(
+        legacy_config,
+        "_display_settings_path",
+        lambda path: _display_test_path(Path(path), output_root.parents[1]),
+    )
+    run = output_root / "legacy-20260523-114514"
+    run.mkdir(parents=True)
+    (run / "config.original.toml").write_text('output_name = "legacy_original"\n', encoding="utf-8")
+    (run / "config.runtime.toml").write_text('output_name = "legacy_runtime"\n', encoding="utf-8")
+
+    expected_shims = (
+        "list_output_runs",
+        "load_output_run_config",
+        "save_output_run_config_as",
+        "_resolve_output_run_dir",
+        "_normalize_output_run_name",
+    )
+    assert tuple(legacy_config._OUTPUT_RUNS_SHIM_NAMES) == expected_shims
+    for name in expected_shims:
+        assert getattr(legacy_config, name) is legacy_config._OUTPUT_RUNS_SHIMS[name]
+        assert (
+            getattr(legacy_config, name).__doc__
+            == f"Compatibility shim forwarding to web.services.config.output_runs.{name}."
+        )
+    legacy_config._restore_raw_files_shims()
+    raw_file_shims = legacy_config._RAW_FILES_SHIMS
+    assert legacy_config.load_raw_file is raw_file_shims["load_raw_file"]
+
+    assert config_service.list_output_runs()["ok"] is True
+    for name, shim in raw_file_shims.items():
+        assert getattr(legacy_config, name) is shim
+
+    listed = legacy_config.list_output_runs()
+    assert listed["ok"] is True
+    assert listed["output_root"] == "output/runs"
+    assert [item["name"] for item in listed["runs"]] == ["legacy-20260523-114514"]
+
+    original = legacy_config.load_output_run_config("legacy-20260523-114514", "original")
+    assert original["content"] == 'output_name = "legacy_original"\n'
+    assert legacy_config._normalize_output_run_name("legacy-20260523-114514") == "legacy-20260523-114514"
+    assert legacy_config._resolve_output_run_dir("legacy-20260523-114514") == run.resolve()
+
+    saved = legacy_config.save_output_run_config_as(
+        "legacy-20260523-114514",
+        "copied_from_legacy",
+        "imported",
+    )
+    assert saved["ok"] is True
+    assert saved["file"] == "configs/imported/copied_from_legacy.toml"
+    copied_path = tmp_path / "configs" / "imported" / "copied_from_legacy.toml"
+    assert copied_path.read_text(encoding="utf-8") == 'output_name = "legacy_original"\n'
+    with pytest.raises(ValueError, match="已存在"):
+        legacy_config.save_output_run_config_as("legacy-20260523-114514", "copied_from_legacy", "imported")
+    for name in expected_shims:
+        assert getattr(legacy_config, name) is legacy_config._OUTPUT_RUNS_SHIMS[name]
 
 
 def _write_minimal_config_tree(root: Path) -> tuple[Path, Path]:

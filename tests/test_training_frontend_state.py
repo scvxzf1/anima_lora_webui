@@ -1,8 +1,14 @@
 from __future__ import annotations
 
+import json
+import os
 import re
+import shutil
+import subprocess
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlparse
+
+import pytest
 
 
 STATIC_DIR = Path(__file__).resolve().parents[1] / "web" / "static"
@@ -299,10 +305,141 @@ def test_anima_app_replaces_legacy_container_with_small_modules() -> None:
     assert "createAnimaApp(ctx);" in app_source
     assert "createLegacyApp" not in app_source
     assert "globalThis.startAnimaApp" in anima_source
-    assert oversized == ["js/features/anima-app/chunks/25-update-progress.js"]
+    assert "js/features/live-training/index.js" in relative
+    assert oversized == []
     assert all(token not in app_source for token in ("fetch(", "addEventListener(", "getElementById("))
     assert feature_dirs
     assert feature_dirs <= {str(Path(item).parent) for item in relative}
+
+
+def test_live_training_eta_metric_helper_computes_display_states() -> None:
+    if not shutil.which("node"):
+        pytest.skip("node is required for live-training ES module behavior checks")
+    script = r"""
+import { calculateTrainingEtaMetricInfo } from './web/static/js/features/live-training/index.js';
+
+const nowMs = Date.UTC(2026, 0, 1, 12, 0, 0);
+const formatDuration = (seconds) => `${seconds}s`;
+const cases = [
+    calculateTrainingEtaMetricInfo({ isRunning: false }),
+    calculateTrainingEtaMetricInfo({ isRunning: true, current: 1, total: 0 }),
+    calculateTrainingEtaMetricInfo({
+        isRunning: true,
+        current: 5,
+        total: 5,
+        progressSecondsPerStep: 2,
+        nowMs,
+        formatDuration,
+    }),
+    calculateTrainingEtaMetricInfo({
+        isRunning: true,
+        current: 1,
+        total: 5,
+        progressRate: '',
+        nowMs,
+        formatDuration,
+    }),
+    calculateTrainingEtaMetricInfo({
+        isRunning: true,
+        current: 5,
+        total: 10,
+        progressSecondsPerStep: 2,
+        nowMs,
+        formatDuration,
+    }),
+    calculateTrainingEtaMetricInfo({
+        isRunning: true,
+        current: 5,
+        total: 10,
+        progressRate: '2it/s',
+        nowMs,
+        formatDuration,
+    }),
+];
+console.log(JSON.stringify(cases));
+"""
+    env = {**os.environ, "TZ": "UTC"}
+    result = subprocess.run(
+        ["node", "--input-type=module", "-e", script],
+        cwd=Path(__file__).resolve().parents[1],
+        env=env,
+        text=True,
+        capture_output=True,
+        timeout=20,
+    )
+
+    assert result.returncode == 0, result.stderr or result.stdout
+    cases = json.loads(result.stdout)
+    assert cases == [
+        {"text": "待计算", "empty": True, "title": "训练开始并收到进度后显示预计完成时间。"},
+        {"text": "待计算", "empty": True, "title": "等待进度总数。"},
+        {"text": "即将完成", "empty": False, "title": "当前进度已到达总步数。"},
+        {"text": "待计算", "empty": True, "title": "等待速度数据后计算预计完成时间。"},
+        {"text": "1/1 12:00", "empty": False, "title": "按当前速度估算，剩余约 10s。"},
+        {"text": "1/1 12:00", "empty": False, "title": "按当前速度估算，剩余约 3s。"},
+    ]
+
+
+def test_live_training_progress_helpers_parse_runtime_text() -> None:
+    if not shutil.which("node"):
+        pytest.skip("node is required for live-training ES module behavior checks")
+    script = r"""
+import {
+    formatLr,
+    lastValue,
+    parseMetricsFromProgressLine,
+    parseProgressRateSeconds,
+    readConfigNumber,
+} from './web/static/js/features/live-training/index.js';
+
+const results = {
+    rates: [
+        parseProgressRateSeconds('1.5s/it'),
+        parseProgressRateSeconds('500ms/it'),
+        parseProgressRateSeconds('2it/s'),
+        parseProgressRateSeconds('bad'),
+    ],
+    metrics: [
+        parseMetricsFromProgressLine('| 12/100 [00:10<01:00, 1.25s/it, loss=0.1234, lr=1e-4]'),
+        parseMetricsFromProgressLine('step: 7 avr_loss: nan learning_rate: inf'),
+        parseMetricsFromProgressLine('nothing useful here'),
+    ],
+    lastValue: lastValue([{ loss: '' }, { loss: null }, { loss: 0 }], 'loss'),
+    configNumbers: [
+        readConfigNumber('max_train_steps = 1200\nlr = "0.0001"\nx.y = 5\n', 'max_train_steps'),
+        readConfigNumber('max_train_steps = 1200\nlr = "0.0001"\nx.y = 5\n', 'lr'),
+        readConfigNumber('max_train_steps = 1200\nlr = "0.0001"\nx.y = 5\n', 'x.y'),
+        readConfigNumber('max_train_steps = 1200\n', 'missing'),
+    ],
+    learningRates: [
+        formatLr(0.0001),
+        formatLr('bad'),
+        formatLr(null),
+    ],
+};
+console.log(JSON.stringify(results));
+"""
+    result = subprocess.run(
+        ["node", "--input-type=module", "-e", script],
+        cwd=Path(__file__).resolve().parents[1],
+        text=True,
+        capture_output=True,
+        timeout=20,
+    )
+
+    assert result.returncode == 0, result.stderr or result.stdout
+    results = json.loads(result.stdout)
+    assert results == {
+        "rates": [1.5, 0.5, 0.5, None],
+        "metrics": [
+            {"step": 12, "loss": "0.1234", "lr": 0.0001, "rate": "1.25s/it"},
+            {"step": 7, "loss": "nan"},
+            None,
+        ],
+        "lastValue": 0,
+        "configNumbers": [1200, 0.0001, 5, None],
+        "learningRates": ["1.00e-4", "-", "-"],
+    }
 
 
 def test_preview_feature_modules_are_loaded_from_production_entrypoint() -> None:
@@ -2702,6 +2839,7 @@ def test_history_manager_frontend_hooks_are_present() -> None:
     assert "peakGpuTemp" in source
     assert "renderLiveTrainingDashboard" in source
     assert "function trainingEtaMetricInfo" in source
+    assert "calculateTrainingEtaMetricInfo({" in source
     assert "parseProgressRateSeconds(msg.rate)" in source
     assert "setEtaMetricText(trainingEtaMetricInfo());" in source
     assert "progressSecondsPerStep" in source

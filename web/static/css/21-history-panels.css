@@ -1,4 +1,4 @@
-/* History manager/detail surfaces, panels and dashboard helpers. */
+/* History collections workbench shell, header, stats and panels. */
 .history-collections-workbench {
     display: grid;
     gap: 0.65rem;
@@ -228,6 +228,8 @@
     padding: 1rem;
     text-align: center;
 }
+
+/* Collection cards, config-group cards, drag handles and nested task rows. */
 .history-collection-card,
 .history-config-group-card {
     background: var(--history-row-bg);
@@ -689,6 +691,8 @@
     transform: translateY(-50%);
     z-index: 2;
 }
+
+/* Collection drop popover and collection-selection dialog. */
 .history-drop-popover {
     background: var(--surface-raised);
     border: 1px solid var(--history-collection-accent);
@@ -790,6 +794,8 @@
 .history-manager-group-action {
     white-space: nowrap;
 }
+
+/* History manager rows, state pills, empty states and action affordances. */
 .history-manager-row {
     align-items: start;
     background: var(--history-row-bg);
@@ -909,6 +915,8 @@
     line-height: 1.5;
     padding: 0.8rem;
 }
+
+/* Full-screen history detail dialog shell, tabs and overview panels. */
 .history-detail-dialog {
     --history-detail-bg: var(--training-page-bg, var(--bg));
     --history-detail-panel: var(--training-panel-bg, var(--bg-card));
@@ -1507,6 +1515,8 @@ body.history-detail-window-open {
     border-color: color-mix(in srgb, var(--success) 62%, transparent);
     color: var(--success);
 }
+
+/* Detail tab viewers: config, files, logs, system metrics, resume and curves. */
 .history-config-viewer {
     display: grid;
     grid-template-rows: auto minmax(0, 1fr);
@@ -2671,6 +2681,8 @@ body.history-detail-window-open {
     display: grid;
     gap: 0.65rem;
 }
+
+/* Legacy task-history list and training dashboard helpers. */
 .task-history-empty {
     color: var(--text-dim);
     font-size: 0.76rem;
