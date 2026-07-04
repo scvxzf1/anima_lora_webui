@@ -1,4 +1,4 @@
-import { help } from './help-builder.js?v=module-bootstrap-20260704-1';
+import { help } from './help-builder.js?v=module-bootstrap-20260704-2';
 
 export const FIELD_HELP_TRAINING_ZH = {    learning_rate: help(
         "学习率，决定每一步参数改动有多大。",
@@ -447,6 +447,14 @@ export const FIELD_HELP_TRAINING_ZH = {    learning_rate: help(
         ["首次启动更慢，还会在缓存目录写入编译缓存。"],
         ["block swap、梯度检查点和不同显卡驱动组合仍可能触发编译问题。"],
         "新手保持默认；如果报 torch.compile/inductor/triton 相关错误，再关闭排查。"
+    ),
+    compile_block_scope: help(
+        "block swap 开启时，哪些 DiT block 参与 torch.compile。",
+        "resident 只编译常驻 GPU 的头部 block，交换到 CPU 的尾部 block 走 eager；all 会把交换 block 也编译，接近旧版全量编译行为。",
+        ["all 有时能借助 Inductor 降低第一步前向激活峰值，适合 10GB 这类极限显存排查。"],
+        ["all 可能让交换 block 因 CPU/GPU 权重迁移触发更多重编译，速度可能变慢或启动更久。"],
+        ["只在 torch_compile=true 且 blocks_to_swap>0 时有明显意义。"],
+        "默认 resident；遇到 block swap 后第一步仍 OOM，可临时改 all 做对照。"
     ),
     compile_inductor_mode: help(
         "Inductor 编译器优化模式。",

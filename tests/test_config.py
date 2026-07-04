@@ -51,6 +51,7 @@ def test_schema_has_known_keys(populated_parser):
         "max_train_epochs",
         "mixed_precision",
         "attn_mode",
+        "compile_block_scope",
         "block_swap_transfer_dtype",
         "block_swap_restore_mode",
         "selective_checkpoint_blocks",
@@ -88,6 +89,9 @@ def test_choices_preserved(populated_parser):
     restore_mode = config_schema.get_schema()["block_swap_restore_mode"]
     assert "foreach" in restore_mode.choices
     assert "slab" in restore_mode.choices
+    compile_block_scope = config_schema.get_schema()["compile_block_scope"]
+    assert "resident" in compile_block_scope.choices
+    assert "all" in compile_block_scope.choices
     preprocess_precision = config_schema.get_schema()["preprocess_precision_preference"]
     assert "bf16" in preprocess_precision.choices
     assert "fp16" in preprocess_precision.choices
@@ -488,6 +492,7 @@ def test_balanced_16g_preset_is_block_swap_first(populated_parser):
     assert merged["block_swap_profile_jsonl"] == "off"
     assert merged["block_swap_transfer_dtype"] == "bf16"
     assert merged.get("block_swap_restore_mode", "foreach") == "foreach"
+    assert merged["compile_block_scope"] == "resident"
 
 
 def test_gui_lora_respects_balanced_16g_blockswap(populated_parser):

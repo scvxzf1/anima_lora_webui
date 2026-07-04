@@ -98,6 +98,27 @@ def test_compile_blocks_keeps_swapped_tail_eager(monkeypatch, capsys):
     assert "2 resident compiled / 2 swapped (eager)" in capsys.readouterr().out
 
 
+def test_compile_blocks_can_compile_swapped_tail(monkeypatch, capsys):
+    compiled: list[object] = []
+
+    def fake_compile(fn, **_kwargs):
+        compiled.append(fn)
+        return fn
+
+    monkeypatch.setattr(torch, "compile", fake_compile)
+    model = _tiny_anima(num_blocks=4)
+    model.blocks_to_swap = 2
+
+    model.compile_blocks(backend="eager", compile_block_scope="all")
+
+    assert len(compiled) == 4
+    assert "_forward" in model.blocks[0].__dict__
+    assert "_forward" in model.blocks[1].__dict__
+    assert "_forward" in model.blocks[2].__dict__
+    assert "_forward" in model.blocks[3].__dict__
+    assert "2 resident + 2 swapped compiled" in capsys.readouterr().out
+
+
 @torch.no_grad()
 def test_compile_blocks_dynamic_seq_marks_range_and_runs():
     """dynamic_seq wraps the compiled inner, so eager backend still executes."""

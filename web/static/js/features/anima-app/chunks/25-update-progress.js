@@ -11,7 +11,7 @@ import {
     parseMetricsFromProgressLine,
     parseProgressRateSeconds,
     readConfigNumber,
-} from '../../live-training/index.js?v=module-bootstrap-20260704-1';
+} from '../../live-training/index.js?v=module-bootstrap-20260704-2';
 
 const ctx = globalThis.ctx;
 

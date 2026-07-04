@@ -17,7 +17,6 @@ from torch.utils.checkpoint import (
 )
 
 from library.runtime import offloading as custom_offloading_utils
-from library.runtime.device import weighs_to_device
 from library.runtime.peak_probe import record_peak_probe_event
 from library.runtime.token_counts import (
     ANIMA_VAE_SPATIAL_COMPRESSION,
@@ -1937,6 +1936,7 @@ class Anima(nn.Module):
         n_token_families: Optional[int] = None,
         dynamic_seq: bool = False,
         seq_range: Optional[tuple[int, int]] = None,
+        compile_block_scope: str = "resident",
     ):
         """Enable native-shape flattening and torch.compile each block's _forward.
 
@@ -1957,11 +1957,14 @@ class Anima(nn.Module):
            immediate graph break if forward itself is compiled — dynamo compiles
            nothing useful but still checks shape guards, causing recompile storms.
 
-        **Block-swap coexistence**: when ``self.blocks_to_swap > 0`` only the
-        resident head blocks are compiled; the tail swap blocks keep their eager
-        ``_forward``. The offloader swaps weights via ``.weight.data``
-        reassignment, and Dynamo guards each Parameter on its dispatch key
-        (device), so compiling swapped blocks can recompile every step.
+        **Block-swap coexistence**: by default, when ``self.blocks_to_swap > 0``
+        only the resident head blocks are compiled; the tail swap blocks keep
+        their eager ``_forward``. The offloader swaps weights via
+        ``.weight.data`` reassignment, and Dynamo guards each Parameter on its
+        dispatch key (device), so compiling swapped blocks can recompile every
+        step. ``compile_block_scope="all"`` restores the older all-block compile
+        path for tight-VRAM runs where Inductor's activation planning is worth
+        the possible recompilation overhead.
 
         Also raises the dynamo recompile budget to fit those token-count
         families. ``2 * n + 8``: the ``2 *`` covers fwd+bwd sharing the one
@@ -2013,9 +2016,13 @@ class Anima(nn.Module):
                 f"Invalid blocks_to_swap={n_swap}; expected 0 <= blocks_to_swap <= "
                 f"{max_swappable} for {self.num_blocks} blocks."
             )
+        compile_scope = str(compile_block_scope or "resident").strip().lower()
+        if compile_scope not in {"resident", "all"}:
+            raise ValueError("compile_block_scope must be one of: resident, all")
         n_resident = self.num_blocks - n_swap
+        n_compile = self.num_blocks if compile_scope == "all" else n_resident
         for block_idx, block in enumerate(self.blocks):
-            if block_idx >= n_resident:
+            if block_idx >= n_compile:
                 continue
             compiled_inner = torch.compile(block._forward, **compile_kwargs)
             if self._dynamic_seq:
@@ -2028,11 +2035,12 @@ class Anima(nn.Module):
             if self._dynamic_seq
             else f"static ({n} graphs)"
         )
-        swap_note = (
-            f"{n_resident} resident compiled / {n_swap} swapped (eager)"
-            if n_swap
-            else f"{len(self.blocks)} block._forward"
-        )
+        if n_swap and compile_scope == "all":
+            swap_note = f"{n_resident} resident + {n_swap} swapped compiled"
+        elif n_swap:
+            swap_note = f"{n_resident} resident compiled / {n_swap} swapped (eager)"
+        else:
+            swap_note = f"{len(self.blocks)} block._forward"
         print(
             f"Anima: native_flatten on, {n} token-count families, {graph_mode} "
             f"(recompile_limit={limit}); compiled {swap_note} "

@@ -441,6 +441,9 @@ class TrainingBootstrap:
                         False,
                     )
                 ),
+                compile_block_scope=str(
+                    getattr(args, "compile_block_scope", "resident") or "resident"
+                ),
                 grad_ckpt=bool(getattr(args, "gradient_checkpointing", False)),
                 logger=logger,
             )
