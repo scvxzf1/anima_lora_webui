@@ -13,6 +13,14 @@ from functools import wraps
 
 from library.training.compat_matrix import check_training_compat
 from web.services import config_service as _facade
+from web.services.config.metadata import (
+    DATASET_IMAGE_EXTS,
+    LEGACY_TRAINING_SAMPLE_SAMPLERS,
+    OUTPUT_RUN_CONFIG_FILES,
+    PREPROCESS_ENV_CHECK_KEY,
+    PREPROCESS_ENV_REQUIRED_FILES,
+    SUPPORTED_TRAINING_SAMPLE_SAMPLERS,
+)
 
 for _name, _value in _facade.__dict__.items():
     if _name.startswith("__") and _name.endswith("__"):

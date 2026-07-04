@@ -170,7 +170,7 @@ def build_argparser() -> argparse.ArgumentParser:
         "≈ τ·mean|v_real|, the τ CANCELS across the bulk → ≈ no-τ, magnitude-"
         "normalized. This REPLACES the default τ-damping (policy 'a'); it does NOT "
         "stack with it (that would be policy 'c'). A/B lever — see "
-        "docs/proposal/dmd2_decoupled_improvements.md §2B.",
+        "docs/experimental/dpdmd.md for the current CA-era decision summary.",
     )
     parser.add_argument(
         "--norm_floor",

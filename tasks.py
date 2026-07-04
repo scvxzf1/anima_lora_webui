@@ -185,6 +185,10 @@ COMMANDS = {
         downloads.cmd_download_pe_spatial,
         "Download PE-Spatial-B16-512 (Anima Tagger aux encoder)",
     ),
+    "download-tagger": (
+        downloads.cmd_download_tagger,
+        "Download Anima Tagger v2 vocab.json for caption-index/preprocess metadata.",
+    ),
     # ── Masking ───────────────────────────────────────────────────────
     "mask": (
         masking.cmd_mask,
@@ -218,6 +222,18 @@ COMMANDS = {
         "Distill pooled_text_proj MLP for modulation guidance",
     ),
     "test-unit": (utilities.cmd_test_unit, "Run smoke/unit tests (pytest tests/)"),
+    "test-fast": (
+        utilities.cmd_test_fast,
+        "Run the fast smoke layer (pytest fast markers over runner/bench guards).",
+    ),
+    "test-focused": (
+        utilities.cmd_test_focused,
+        "Run an explicit pytest target or selector; refuses empty target lists.",
+    ),
+    "test-slow": (
+        utilities.cmd_test_slow,
+        "Run pytest tests marked slow.",
+    ),
     "export-logs": (
         utilities.cmd_export_logs,
         "Dump TB scalar logs to JSON (RUN=<dir>, ALL=1 for every subrun, JSONL=1 for line-delimited)",

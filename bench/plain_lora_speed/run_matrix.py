@@ -30,6 +30,7 @@ import os
 import shlex
 import statistics
 import subprocess
+import sys
 import time
 import tomllib
 from dataclasses import dataclass, field
@@ -40,10 +41,12 @@ from bench._common import REPO_ROOT, write_result
 
 DEFAULT_GPU_INDEX = "1"
 DEFAULT_ROOT = "output/bench/plain_lora_speed"
+DEFAULT_DRY_RUN_ROOT = "tmp/bench-dry-runs/plain_lora_speed"
 DEFAULT_DATASET_CONFIG = "configs/bench/signal_probe_dataset.toml"
 DEFAULT_PROMPTS = "configs/bench/signal_probe_prompts.txt"
 DEFAULT_PYTHON = REPO_ROOT / ".venv" / "bin" / "python"
 DEFAULT_MIN_VRAM_MB = 12000
+DEFAULT_TRAIN_TIMEOUT_SEC = 3600
 
 _IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".webp", ".bmp"}
 
@@ -131,6 +134,17 @@ class CacheSubsetSummary:
     @property
     def ready(self) -> bool:
         return self.image_count > 0 and self.vae_cache_count >= self.image_count and self.text_cache_count >= self.image_count
+
+
+def _has_cli_option(argv: list[str], option: str) -> bool:
+    prefix = option + "="
+    return any(item == option or item.startswith(prefix) for item in argv)
+
+
+def _resolve_output_root(output_root: str, *, dry_run: bool, output_root_explicit: bool) -> str:
+    if dry_run and not output_root_explicit:
+        return DEFAULT_DRY_RUN_ROOT
+    return output_root
 
 
 def _parse_csv_ints(text: str) -> list[int]:
@@ -515,14 +529,27 @@ def _run_one(args: argparse.Namespace, arm: Arm, seed: int, gpu_rows: list[dict[
     print(f"\n>>> {run_name}\n{printable}", flush=True)
 
     started = time.time()
+    timed_out = False
     if args.dry_run:
         rc = 0
     else:
         with stdout_path.open("w", encoding="utf-8") as fh:
             fh.write(f"# {printable}\n")
             fh.flush()
-            cp = subprocess.run(cmd, cwd=REPO_ROOT, env=env, stdout=fh, stderr=subprocess.STDOUT)
-            rc = cp.returncode
+            try:
+                cp = subprocess.run(
+                    cmd,
+                    cwd=REPO_ROOT,
+                    env=env,
+                    stdout=fh,
+                    stderr=subprocess.STDOUT,
+                    timeout=args.train_timeout_sec,
+                )
+                rc = cp.returncode
+            except subprocess.TimeoutExpired:
+                timed_out = True
+                rc = 124
+                fh.write(f"\n# timeout after {args.train_timeout_sec}s\n")
     elapsed = time.time() - started
 
     progress_metrics = _summarize_progress(
@@ -535,6 +562,8 @@ def _run_one(args: argparse.Namespace, arm: Arm, seed: int, gpu_rows: list[dict[
         "elapsed_sec": round(elapsed, 3),
         "steps_requested": args.steps,
         "gpu_index_physical": args.gpu_index,
+        "timed_out": timed_out,
+        "train_timeout_sec": args.train_timeout_sec,
         **progress_metrics,
     }
     record = {
@@ -582,6 +611,8 @@ def _write_index(output_root: str, records: list[dict], args: argparse.Namespace
         "network_dim",
         "workers",
         "returncode",
+        "timed_out",
+        "train_timeout_sec",
         "elapsed_sec",
         "steps_completed",
         "avg_step_sec",
@@ -614,6 +645,8 @@ def _write_index(output_root: str, records: list[dict], args: argparse.Namespace
                     "network_dim": rec["network_dim"],
                     "workers": rec["workers"],
                     "returncode": metrics["returncode"],
+                    "timed_out": metrics["timed_out"],
+                    "train_timeout_sec": metrics["train_timeout_sec"],
                     "elapsed_sec": metrics["elapsed_sec"],
                     "steps_completed": metrics["steps_completed"],
                     "avg_step_sec": metrics["avg_step_sec"],
@@ -658,12 +691,17 @@ def main() -> None:
     p.add_argument("--allow-low-vram", action="store_true")
     p.add_argument("--python", type=Path, default=DEFAULT_PYTHON)
     p.add_argument("--output-root", default=DEFAULT_ROOT)
+    p.add_argument("--train-timeout-sec", type=int, default=DEFAULT_TRAIN_TIMEOUT_SEC)
     p.add_argument("--dataset-config", default=DEFAULT_DATASET_CONFIG)
     p.add_argument("--sample-prompts", default=DEFAULT_PROMPTS)
     p.add_argument("--allow-missing-cache", action="store_true", help="Do not refuse if VAE/TE cache files are missing. Use only when intentionally measuring live/cache-miss overhead.")
+    p.add_argument("--skip-preflight", action="store_true", help="Skip cache/GPU checks. Useful for command generation only.")
+    p.add_argument("--preflight-on-dry-run", action="store_true", help="Run cache/GPU checks even with --dry-run.")
     p.add_argument("--dry-run", action="store_true")
     p.add_argument("--stop-on-fail", action=argparse.BooleanOptionalAction, default=True)
     p.add_argument("extra", nargs=argparse.REMAINDER, help="Extra train.py args after --, forwarded to every run.")
+    raw_argv = sys.argv[1:]
+    output_root_explicit = _has_cli_option(raw_argv, "--output-root")
     args = p.parse_args()
     if args.extra and args.extra[0] == "--":
         args.extra = args.extra[1:]
@@ -673,20 +711,36 @@ def main() -> None:
         raise SystemExit("--steps must be positive")
     if args.images_per_step <= 0:
         raise SystemExit("--images-per-step must be positive")
+    if args.train_timeout_sec <= 0:
+        raise SystemExit("--train-timeout-sec must be positive")
+    args.output_root = _resolve_output_root(
+        args.output_root,
+        dry_run=args.dry_run,
+        output_root_explicit=output_root_explicit,
+    )
     args.arms = _parse_arms(args.arms, args.suite)
 
-    cache_rows = _check_dataset_cache(args)
-    gpu_rows = _check_gpu(args)
-    torch_gpu = _verify_torch_mapping(args)
-    args._torch_child_visible_gpu = torch_gpu
+    run_preflight = not args.skip_preflight and (not args.dry_run or args.preflight_on_dry_run)
+    if run_preflight:
+        cache_rows = _check_dataset_cache(args)
+        gpu_rows = _check_gpu(args)
+        torch_gpu = _verify_torch_mapping(args)
+        args._torch_child_visible_gpu = torch_gpu
+    else:
+        cache_rows = []
+        gpu_rows = []
+        torch_gpu = None
+        args._torch_child_visible_gpu = None
 
-    print("Cache preflight:", json.dumps(cache_rows, ensure_ascii=False), flush=True)
-    print("GPU check:", json.dumps(gpu_rows, ensure_ascii=False), flush=True)
-    print("Torch child visible GPU:", json.dumps(torch_gpu, ensure_ascii=False), flush=True)
-    print(
-        f"Using physical GPU {args.gpu_index} via CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES={args.gpu_index}",
-        flush=True,
-    )
+    if cache_rows:
+        print("Cache preflight:", json.dumps(cache_rows, ensure_ascii=False), flush=True)
+    if gpu_rows:
+        print("GPU check:", json.dumps(gpu_rows, ensure_ascii=False), flush=True)
+        print("Torch child visible GPU:", json.dumps(torch_gpu, ensure_ascii=False), flush=True)
+        print(
+            f"Using physical GPU {args.gpu_index} via CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES={args.gpu_index}",
+            flush=True,
+        )
     if args.profile_steps:
         print(
             "Profiling mode enabled: train.py exits after PROFILE_STEPS ends, so use this for timing traces, not final loss.",

@@ -2,6 +2,30 @@ export function byId(id) {
     return document.getElementById(id);
 }
 
+export function optionalById(id) {
+    return byId(id);
+}
+
+export function requireById(id, options = {}) {
+    const el = byId(id);
+    if (el) return el;
+    const contract = options.contract ? ` (${options.contract})` : '';
+    throw new Error(`[webui-dom-contract] missing required DOM node: #${id}${contract}`);
+}
+
+export function bindEvent(id, eventName, handler, options = {}) {
+    const required = Boolean(options.required);
+    const el = required ? requireById(id, options) : optionalById(id);
+    if (!el) {
+        if (options.warn !== false) {
+            globalThis.console?.warn?.(`[webui-dom-contract] optional DOM node not found: #${id}`);
+        }
+        return false;
+    }
+    el.addEventListener(eventName, handler, options.listenerOptions);
+    return true;
+}
+
 export function val(id) {
     return byId(id)?.value || '';
 }

@@ -159,8 +159,8 @@ What makes FEI specifically right here:
    `Im(I − P)` residual carries the win against `Im(P)` deviation in
    AsymFlow.
 
-Default `vr_fei_sigma_low_div = 4.0` matches the live training default in
-`configs/gui-methods/fera.toml` and `configs/gui-methods/hydralora_fei.toml`.
+Default `vr_fei_sigma_low_div = 4.0` matches the historical FeRA/Hydra-FEI
+bench setting. Those GUI preset files are not shipped in the current tree.
 
 ### λ estimation
 

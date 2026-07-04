@@ -9,6 +9,8 @@ import pytest
 
 from bench.signal_probe import run_training
 
+pytestmark = pytest.mark.fast
+
 
 GPU_ROWS = [
     {

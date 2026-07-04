@@ -1,12 +1,21 @@
 """Misc utility entry-points: merge, comfy-batch, distill-prep, distill-mod,
-test-unit, update, export-logs, print-config, explain-config, config-compat,
-training-hot."""
+test-unit, test-fast, test-focused, test-slow, update, export-logs,
+print-config, explain-config, config-compat, training-hot."""
 
 from __future__ import annotations
 
 import os
+import sys
 
 from ._common import PY, _path, _preset, bespoke_preset_flags, run
+
+
+FAST_TEST_TARGETS = [
+    "tests/test_training_hot_runner.py",
+    "tests/test_plain_lora_speed_runner.py",
+    "tests/test_signal_probe_runner.py",
+    "tests/test_mfu_bench.py",
+]
 
 
 def cmd_merge(extra):
@@ -90,6 +99,32 @@ def cmd_distill_mod(extra):
 
 def cmd_test_unit(extra):
     run([PY, "-m", "pytest", "-q", "tests/", *extra])
+
+
+def cmd_test_fast(extra):
+    """Run the fast smoke layer for task runners and bench safety guards."""
+    run([PY, "-m", "pytest", "-q", "-m", "fast and not slow", *FAST_TEST_TARGETS, *extra])
+
+
+def cmd_test_focused(extra):
+    """Run a caller-selected pytest slice.
+
+    Pass an explicit file, node id, marker, or ``-k`` expression after the
+    command. This guard prevents accidentally turning a focused run into a
+    full-repo test run.
+    """
+    if not extra:
+        print(
+            "Usage: python tasks.py test-focused -- <pytest target, -k expr, or -m marker>",
+            file=sys.stderr,
+        )
+        raise SystemExit(2)
+    run([PY, "-m", "pytest", "-q", *extra])
+
+
+def cmd_test_slow(extra):
+    """Run tests explicitly marked as slow."""
+    run([PY, "-m", "pytest", "-q", "-m", "slow", "tests/", *extra])
 
 
 def cmd_update(extra):

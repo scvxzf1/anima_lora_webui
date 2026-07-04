@@ -21,8 +21,8 @@ inference-side code, you just run it at `--infer_steps 2 --cfg 1.0`.
 > The CA branch never reached a fixed point — the whole turbo program had been
 > spent managing its standing CFG bias — and every CA-side lever came back inert or
 > harmful. DP-DMD removes the CA branch entirely and recovers diversity with an
-> explicit anchor instead. The CA-era decision log survives at
-> `docs/proposal/dmd2_decoupled_improvements.md`; the migration proposal at
+> explicit anchor instead. The CA-era decision log is summarized in
+> `docs/experimental/dpdmd.md`; the migration proposal is archived at
 > `_archive/proposals/dpdmd.md`.
 
 ---

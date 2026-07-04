@@ -436,7 +436,7 @@ How it works:
 | **T-LoRA + Ortho + ReFT** | `make lora-gui GUI_PRESETS=tlora_ortho_reft` | Adds representation editing (ReFT) to the recommended combination for fine-grained control with fewer extra parameters |
 | **HydraLoRA** | `make lora-gui GUI_PRESETS=hydralora` (8 GB: `hydralora-8gb`) | MoE multi-head routing; fit multiple concepts in one adapter |
 | **ReFT only** | `make lora-gui GUI_PRESETS=reft` or set `add_reft = true` in `methods/lora.toml` | Representation Fine-Tuning — very few parameters |
-| **Postfix Tuning** *(experimental)* | `make exp-postfix` or `make lora-gui GUI_PRESETS=postfix_ortho_cond` | Learnable N-vector appendix on cross-attention (caption-conditional + orthogonal) |
+| **Postfix tail probe** *(historical)* | `python tasks.py exp-invert-directedit` | The old Postfix training/test targets are removed; only the DirectEdit postfix-tail probe remains |
 | **ChimeraHydra** *(experimental)* | `make exp-chimera` or `make lora-gui GUI_PRESETS=chimera_hydra` | Content/frequency dual-pool MoE — for research |
 
 For detailed options per variant, see [`docs/guidelines/training.md`](training.md) and the individual docs under `docs/methods/`.
@@ -463,9 +463,7 @@ make test-merge                  # Inference with baked standalone DiT (*_merged
 make test-dcw                    # LoRA + DCW scalar correction (sampler-level SNR-t bias correction)
 make test-dcw-v4                 # LoRA + DCW v4 learnable calibrator
 # Experimental inference
-make exp-test-postfix            # Postfix tuning (vanilla)
-make exp-test-postfix-exp        # postfix_exp variant
-make exp-test-postfix-func       # postfix_func variant
+python tasks.py exp-invert-directedit  # DirectEdit postfix-tail inversion probe
 ```
 
 ### 10.2 Manual Inference

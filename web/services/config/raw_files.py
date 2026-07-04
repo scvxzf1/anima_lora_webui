@@ -11,6 +11,11 @@ from __future__ import annotations
 from functools import wraps
 
 from web.services import config_service as _facade
+from web.services.config.metadata import (
+    RETIRED_TOP_LEVEL_CONFIG_FIELDS,
+    SPD_NESTED_PATCH_FIELDS,
+    UI_ONLY_CONFIG_FIELDS,
+)
 
 for _name, _value in _facade.__dict__.items():
     if _name.startswith("__") and _name.endswith("__"):

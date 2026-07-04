@@ -25,7 +25,7 @@ prev      += λ_i · diff_LL                            # DCW correction
 
 What differs is how `λ_i` is produced. In scalar mode, `λ_i = λ · sched(σ_i)`. In v4, `λ_i = base + bucket_corr + α_eff · μ_g[i] / Σ_tail(μ_g·S_pop)` with the controller observing the first `k=7` step's LL gap before firing.
 
-See `docs/proposal/dcw-learnable-calibrator-v4.md` for the full v4 derivation, gates, and fallback ladder.
+This page contains the current v4 derivation, gates, and fallback ladder.
 
 ## Quick start
 
@@ -204,4 +204,4 @@ Closes 83% of the LL gap at the worst step (σ=0.04) and leaves headroom for per
 | `scripts/dcw/measure_bias.py` | offline trajectory dump + S_pop sweep — produces `gaps_per_sample.npz` consumed by the trainer |
 | `scripts/dcw/train_fusion_head.py` | offline head training — produces `fusion_head.safetensors` |
 | `scripts/tasks/dcw.py` | `make dcw` / `make dcw-train` task wrappers |
-| `docs/proposal/dcw-learnable-calibrator-v4.md` | v4 derivation, gates, fallback ladder, evidence appendix |
+| `docs/methods/dcw.md` | Current v4 derivation, gates, fallback ladder, evidence appendix |

@@ -14,9 +14,9 @@ inference-side turbo code; you load it through the normal LoRA path and run
 > ([[project_turbo_fei_gap_phase0]], `ca_band`). DP-DMD removes the CA branch
 > entirely. The structural walkthrough (diversity-anchor / DMD gradient split,
 > flow-matching velocity↔x0 math, the per-step schedule) lives at
-> `docs/structure/dpdmd.md`; the CA-era decision log survives at
-> `docs/proposal/dmd2_decoupled_improvements.md`. The original migration proposal
-> is archived at `_archive/proposals/dpdmd.md`.
+> `docs/structure/dpdmd.md`; the CA-era decision log is summarized in this page
+> and the structure doc. The original migration proposal is archived at
+> `_archive/proposals/dpdmd.md`.
 
 - **Training:** `scripts/distill_turbo/distill.py` — bespoke single-GPU loop
   (bypasses `train.py`/accelerate, like `distill-mod` / `distill-spd`).
@@ -197,7 +197,7 @@ the teacher anchor. The live TB scalars:
   pose-vs-pooled-cosine metric caveat, the depth-m fallback).
 - `docs/structure/dpdmd.md` — structural walkthrough: the diversity-anchor / DMD
   gradient split, the flow-matching velocity↔x0 conversion, and the sign convention.
-- `docs/proposal/dmd2_decoupled_improvements.md` — CA-era decision log; the record
-  of why the CA branch was abandoned.
+- CA-era decision log — summarized above; the old standalone proposal file is
+  not present in the current tree.
 - `docs/findings/asymflow_parameterization.md` — Anima's `u = ε − x0` velocity path
   (the conversion the renoise/grad-assembly relies on).

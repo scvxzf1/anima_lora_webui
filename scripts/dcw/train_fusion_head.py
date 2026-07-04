@@ -15,8 +15,7 @@ trains a single aggregate head; per-aspect bucket tensors and the σ̂² head
 weights are no longer serialised — the artifact ships only the α̂ MLP plus
 standardisation stats (schema ``dcw_v5_lambda_scalar``).
 
-See docs/proposal/dcw-cleanup-plan.md and the archived
-docs/proposal/archive/dcw-learnable-calibrator-v4.md §A7 / §I2.
+See docs/methods/dcw.md for the current v4 cleanup state and derivation notes.
 """
 
 from __future__ import annotations

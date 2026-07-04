@@ -137,6 +137,16 @@ def _section(source: str, start: str, end: str) -> str:
     return source[start_index:end_index]
 
 
+def _setup_event_dom_contract() -> dict[str, set[str]]:
+    source = _frontend_module_text("js/features/anima-app/chunks/36-setup-event-listeners.js")
+    contract: dict[str, set[str]] = {}
+    for key in ("required", "optional"):
+        match = re.search(rf"{key}:\s*Object\.freeze\(\[(.*?)\]\)", source, re.S)
+        assert match, f"missing setup event DOM contract bucket: {key}"
+        contract[key] = set(re.findall(r"'([^']+)'", match.group(1)))
+    return contract
+
+
 def test_frontend_module_graph_follows_production_entrypoint() -> None:
     graph = _frontend_module_graph()
     relative = [path.relative_to(STATIC_DIR).as_posix() for path in graph]
@@ -233,6 +243,37 @@ def test_frontend_module_cache_tokens_match_entrypoint() -> None:
                 mismatches.append(f"{relative}: {specifier} uses {token!r}, expected {entry_token!r}")
 
     assert not mismatches
+
+
+def test_setup_event_dom_contract_matches_index_html() -> None:
+    source = _frontend_module_text("js/features/anima-app/chunks/36-setup-event-listeners.js")
+    dom_source = _frontend_module_text("js/shared/dom.js")
+    html = INDEX_HTML.read_text(encoding="utf-8")
+    listener_section = _section(source, "function setupEventListeners", "function installBeginnerTooltips")
+    contract = _setup_event_dom_contract()
+
+    assert contract["required"] == {
+        "method-select",
+        "variant-select",
+        "preset-select",
+        "btn-load-config",
+        "btn-start-from-config",
+        "btn-queue-from-config",
+        "btn-save-toml",
+        "toml-file-select",
+        "toml-editor",
+    }
+    assert contract["optional"]
+    missing = [
+        dom_id
+        for dom_id in sorted(contract["required"] | contract["optional"])
+        if f'id="{dom_id}"' not in html
+    ]
+    assert not missing
+    assert "globalThis.SETUP_EVENT_DOM_CONTRACT = SETUP_EVENT_DOM_CONTRACT;" in source
+    assert "ctx.dom.bindEvent(id, eventName, handler" in listener_section
+    assert "[webui-dom-contract] missing required DOM node" in dom_source
+    assert not re.search(r"document\.getElementById\([^\n]+?\)\??\.addEventListener", listener_section)
 
 
 def test_anima_app_replaces_legacy_container_with_small_modules() -> None:
@@ -895,10 +936,10 @@ def test_global_ui_scale_override_controls_and_runtime_hooks_are_present() -> No
         assert snippet in settings_source
 
     for snippet in (
-        "document.getElementById('global-ui-scale')?.addEventListener('input'",
-        "document.getElementById('global-ui-scale')?.addEventListener('change'",
+        "on('global-ui-scale', 'input'",
+        "on('global-ui-scale', 'change'",
         "GLOBAL_UI_OVERRIDE_FIELDS.forEach((field) => {",
-        "document.getElementById(field.followDefaultId)?.addEventListener('change'",
+        "on(field.followDefaultId, 'change'",
         "syncGlobalUIScaleOverrideField(field);",
     ):
         assert snippet in listeners_source
@@ -1194,7 +1235,7 @@ def test_training_queue_frontend_hooks_are_present() -> None:
     assert "btn-open-history-manager" in html
     assert "未归档 · 最新 6 个训练任务" in html
     assert "queueCurrentTrainingFromConfig" in listener_section
-    assert "btn-open-history-manager').addEventListener('click', () => showTrainingView('history'))" in listener_section
+    assert "on('btn-open-history-manager', 'click', () => showTrainingView('history'))" in listener_section
     assert "const mainWide = isQueue || isHistory;" in view_section
     assert "workspace.classList.toggle('main-wide', mainWide)" in view_section
     assert "trainingRoot.classList.toggle('history-mode', isHistory)" in view_section
@@ -1318,8 +1359,8 @@ def test_launch_readiness_panel_is_removed() -> None:
 
     assert "btn-start-from-config" in html
     assert "btn-queue-from-config" in html
-    assert "btn-start-from-config').addEventListener('click', startTraining)" in listener_section
-    assert "btn-queue-from-config').addEventListener('click', queueCurrentTrainingFromConfig)" in listener_section
+    assert "on('btn-start-from-config', 'click', startTraining)" in listener_section
+    assert "on('btn-queue-from-config', 'click', queueCurrentTrainingFromConfig)" in listener_section
     assert "handleLaunchReadinessPrimaryAction" not in source
     assert "btn-start-from-config" in action_state
     assert "startBtn.textContent = sourceMode === 'full_resume'" in action_state
@@ -2355,8 +2396,8 @@ def test_history_manager_frontend_hooks_are_present() -> None:
     assert "collectionSearchTerms.length ? candidates[0] : null" in source
     assert "createHistoryCollectionSearchEmptyCollection" in source
     assert "historySearchTextMatches(historyConfigGroupSearchText(group), configSearchTerms)" in source
-    assert "document.getElementById('history-collection-search').addEventListener('input'" in source
-    assert "document.getElementById('history-config-group-search').addEventListener('input'" in source
+    assert "on('history-collection-search', 'input'" in source
+    assert "on('history-config-group-search', 'input'" in source
     assert "selectedHistoryCollectionKey" in source
     assert "/api/training/history/collections/settings" in source
     assert "loadHistoryCollectionSettings" in source
@@ -2442,8 +2483,8 @@ def test_history_manager_frontend_hooks_are_present() -> None:
     assert "getViewingHistoryTaskId: () => viewingHistoryTaskId" in source
     assert "event?.preventDefault?.()" in source
     assert "event?.stopPropagation?.()" in source
-    assert "addEventListener('click', openCurrentTrainingPreview)" in listener_section
-    assert "addEventListener('click', openLiveSamplingPreview)" in listener_section
+    assert "on('btn-preview-training-results', 'click', openCurrentTrainingPreview)" in listener_section
+    assert "on('btn-live-sampling-preview', 'click', openLiveSamplingPreview)" in listener_section
     assert "chooseTimelineTasksForMerge" not in source
     assert "showTimelineTaskSelectionDialog" not in source
     assert "选择要合并查看的训练分组" not in source
@@ -3571,7 +3612,7 @@ def test_dataset_preset_manager_is_isolated_from_config_page() -> None:
     assert "loadDatasetPresets({ manage: true })" in source
     assert "btn-refresh-dataset-presets" in listener_section
     assert "btn-config-dataset-dialog-refresh" in listener_section
-    assert "btn-config-dataset-dialog-refresh').addEventListener('click', () => loadDatasetPresets({ selectCurrent: false, manage: false }))" in listener_section
+    assert "on('btn-config-dataset-dialog-refresh', 'click', () => loadDatasetPresets({ selectCurrent: false, manage: false }))" in listener_section
     assert "const params = new URLSearchParams({" in load_editor
     assert "const configFile = currentTrainingConfigFile();" in load_editor
     assert "params.set('config_file', configFile);" in load_editor

@@ -32,7 +32,7 @@ re-roll on the same prompts).
 
 `make dcw-train` skips the sampling phase and trains on the existing pool.
 
-See `docs/proposal/dcw-learnable-calibrator-v4.md` §I1.
+See `docs/methods/dcw.md` for the current v4 calibration flow.
 """
 
 from __future__ import annotations

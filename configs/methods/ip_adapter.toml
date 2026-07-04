@@ -20,7 +20,7 @@
 # pe_lora_enabled=true) to fall back to the live-encoding / PE-LoRA path.
 #
 # Phase 1 — distinct-pair (identity) training (Phase 1 of
-# docs/proposal/ip-adapter-identity-pairs.md). `ip_pair_mode = "identity"`
+# docs/experimental/ip-adapter.md). `ip_pair_mode = "identity"`
 # decouples the IP-path reference from the VAE target: each step draws the PE
 # features of a *different* image of the target's identity (character →
 # franchise → artist back-off via post_image_dataset/captions/caption_index.json,
@@ -58,7 +58,7 @@ network_args = [
 
     "ip_centroid_path=post_image_dataset/ip_adapter/anima_pe_centroid_pe.safetensors",
 
-    # PE-Core LoRA (experimental prototype — see docs/proposal/ip-adapter_plan.md).
+    # PE-Core LoRA (experimental prototype; historical proposal not in tree).
     # When enabled, the network owns PE-Core and trains LoRA on every
     # transformer.resblock (qkv + attn_out + mlp). FM gradient flows back
     # through PE so the encoder can adapt to the manga/anime distribution

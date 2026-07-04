@@ -1,6 +1,6 @@
 # gui-methods/chimera_hydra.toml — ChimeraHydra (dual-pool additive routing).
 #
-# Proposal: docs/proposal/chimera_hydra.md
+# Reference: docs/experimental/chimera-hydra.md
 #
 # Two pools of B-heads share one A per adapted Linear:
 #   • content pool (K_c=3) routed by the per-layer rank-R router on pooled lx
@@ -18,7 +18,7 @@
 #
 # Per-pool balance loss: w_c and w_f are independent. A single combined
 # term would let one pool flatten while the other concentrates — see
-# proposal §"Balance loss". Both default to balance_loss_weight; set
+# the ChimeraHydra doc's "Balance loss" section. Both default to balance_loss_weight; set
 # balance_w_content / balance_w_freq to tune independently.
 
 network_dim = 32

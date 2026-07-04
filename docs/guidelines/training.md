@@ -2,7 +2,7 @@
 
 Every training run resolves a method + hardware preset via the merge chain
 `configs/base.toml → configs/presets.toml[<preset>] → configs/methods/<method>.toml → CLI args`
-(method beats preset on overlap — so e.g. postfix forces `blocks_to_swap = 0`).
+(method beats preset on overlap; CLI args still win last).
 Method TOMLs in `configs/methods/` are toggle-block files that hold several
 variants behind comments; the clean per-variant tree lives in
 `configs/gui-methods/` and is wrapped by `make lora-gui GUI_PRESETS=<variant>`.
@@ -27,11 +27,11 @@ route_per_layer  = true | false
 router_source    = "none" | "input" | "sigma" | "fei"
 ```
 
-The shipped default is `use_moe_style = false` (plain LoRA stack) with
-`use_ortho = true` + `use_timestep_mask = true`. Uncomment a routing block to
-get HydraLoRA (σ-routed shared-A experts), FeRA-on-Hydra (FEI-routed
-shared-A), or author-faithful FeRA (`independent_A` + global FEI router —
-already pre-baked in `configs/gui-methods/fera.toml`).
+The shipped `configs/methods/lora.toml` default is not plain LoRA: it enables
+OrthoLoRA + T-LoRA on a Hydra shared-A stack with `router_source = "input"`.
+For a plain baseline, use `configs/gui-methods/lora.toml` via `lora-gui`.
+FEI-on-Hydra and author-faithful FeRA remain manual three-axis experiments; no
+FeRA GUI preset TOML is shipped right now.
 
 Pre-three-axis checkpoints carrying `ss_use_hydra` / `ss_use_fei_router`
 metadata no longer load — the legacy fallback was removed.
@@ -82,7 +82,6 @@ Each has its own method TOML and `make` entrypoint:
 | Family | Config | Train target |
 |--------|--------|--------------|
 | ChimeraHydra (dual-pool MoE) | `methods/chimera.toml` | `make exp-chimera` |
-| Postfix (free + cond+ortho) | `methods/postfix.toml` | `make exp-postfix` |
 | IP-Adapter | `methods/ip_adapter.toml` | `make exp-ip-adapter` |
 | EasyControl | `methods/easycontrol.toml` | `make exp-easycontrol` |
 | Soft Tokens (SoftREPA) | `methods/soft_tokens.toml` | `make exp-soft-tokens` |
@@ -91,11 +90,11 @@ Deep dives in `docs/methods/` (shipped) and `docs/experimental/`.
 
 ### Postfix
 
-Postfix is still treated as an experimental entry. The current user-facing
-start points are:
+Postfix training/config entries are historical and are not registered in the
+current task table. The remaining postfix-related user-facing command is the
+DirectEdit postfix-tail probe:
 
-- `make exp-postfix`
-- `make lora-gui GUI_PRESETS=postfix_ortho_cond`
+- `python tasks.py exp-invert-directedit`
 
 The compatibility note that used to live under `docs/experimental/postfix.md`
 now points back here so older links still have a landing page.

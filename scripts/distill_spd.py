@@ -4,7 +4,7 @@ Trains a *plain* LoRA on one frozen Anima DiT to follow the stage-specific
 straight-line velocity targets of the Spectral Progressive Diffusion (SPD)
 multi-resolution trajectory (Xiao et al., arXiv:2605.18736, §4.3, Eq. 11–14).
 This is "Case B" of the SPD investigation — see
-``docs/proposal/spd_finetune_lora.md``. Output ``output/ckpt/anima_spd.safetensors``
+``docs/experimental/spd.md``. Output ``output/ckpt/anima_spd.safetensors``
 is a normal LoRA: load it through the standard inference path and run it with
 the SPD sampler (``--spd``) at the *same* schedule it was trained on.
 

@@ -39,7 +39,7 @@ representative starting point.
 | `make test-dcw-v4` | Latest LoRA + DCW v4 learnable calibrator (auto-resolves head) |
 | `make test-spectrum-dcw` | Spectrum + DCW scalar |
 | `make test-dcw-v4-spectrum` | Spectrum + DCW v4 |
-| `make exp-test-postfix` | Postfix tuning (also `-exp`, `-func` variants) |
+| `python tasks.py exp-invert-directedit` | DirectEdit postfix-tail inversion probe |
 | `make exp-test-ip REF_IMAGE=...` | IP-Adapter (image-conditioned) |
 | `make exp-test-easycontrol REF_IMAGE=...` | EasyControl |
 | `make exp-test-directedit PROMPT='...'` | DirectEdit on a random source image |

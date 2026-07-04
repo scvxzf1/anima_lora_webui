@@ -14,7 +14,43 @@ from PIL import Image
 
 from web.routes import config as config_routes
 from web.services import config_service
+from web.services.config import _legacy as legacy_config
+from web.services.config import metadata as config_metadata
 from web.services.config import paths as config_paths
+
+
+def test_config_metadata_exports_remain_available_from_legacy_facade():
+    names = [
+        "CONFIG_FILE_LABELS_ZH",
+        "SYSTEM_CONFIG_GROUP_IDS",
+        "FIXED_SYSTEM_CONFIG_GROUP_IDS",
+        "FILE_MOVE_TARGET_GROUPS",
+        "USER_LOCKABLE_GROUPS",
+        "HIDDEN_CONFIG_FILES",
+        "SYSTEM_PRESET_FILES",
+        "SYSTEM_DATASET_PRESET_FILES",
+        "HIDDEN_DATASET_PRESET_FILES",
+        "OUTPUT_RUN_CONFIG_FILES",
+        "SUPPORTED_TRAINING_SAMPLE_SAMPLERS",
+        "LEGACY_TRAINING_SAMPLE_SAMPLERS",
+        "PREPROCESS_ENV_CHECK_KEY",
+        "PREPROCESS_ENV_REQUIRED_FILES",
+        "UI_ONLY_CONFIG_FIELDS",
+        "SPD_NESTED_PATCH_FIELDS",
+        "RETIRED_TOP_LEVEL_CONFIG_FIELDS",
+        "DATASET_IMAGE_EXTS",
+        "DATASET_PREVIEW_LIMIT",
+        "DATASET_CAPTION_MAX_CHARS",
+        "PREPROCESS_DATASET_SETTING_KEYS",
+        "CAPTION_SOURCE_MODE_LABELS",
+    ]
+
+    for name in names:
+        assert getattr(config_service, name) is getattr(config_metadata, name)
+        assert getattr(legacy_config, name) is getattr(config_metadata, name)
+
+    assert config_service.get_field_help is config_metadata.get_field_help
+    assert legacy_config.get_groups is config_metadata.get_groups
 
 
 def test_spd_cli_config_is_exposed_as_method_variant(tmp_path: Path, monkeypatch):
@@ -1125,6 +1161,38 @@ def _write_selected_checkpoint_preflight_config(
         ),
         encoding="utf-8",
     )
+
+
+def test_preflight_remains_available_from_legacy_module(tmp_path: Path, monkeypatch):
+    _write_selected_checkpoint_preflight_config(
+        tmp_path,
+        monkeypatch,
+        [
+            "gradient_checkpointing = true",
+            "cpu_offload_checkpointing = false",
+            "unsloth_offload_checkpointing = false",
+        ],
+    )
+    configs = tmp_path / "configs"
+    monkeypatch.setattr(legacy_config, "ROOT", tmp_path)
+    monkeypatch.setattr(legacy_config, "CONFIGS_DIR", configs)
+    monkeypatch.setattr(legacy_config, "DATASET_PRESETS_DIR", configs / "datasets")
+    monkeypatch.setattr(legacy_config, "GUI_METHODS_DIR", configs / "gui-methods")
+    monkeypatch.setattr(legacy_config, "IMPORTED_CONFIGS_DIR", configs / "imported")
+    monkeypatch.setattr(legacy_config, "PRESETS_FILE", configs / "presets.toml")
+    monkeypatch.setattr(legacy_config, "WEB_FILE_GROUPS_FILE", configs / "web-file-groups.toml")
+    monkeypatch.setattr(legacy_config, "WEB_USER_LOCKS_FILE", configs / "web-user-locks.toml")
+
+    result = legacy_config.preflight_training_config(
+        "lora",
+        "default",
+        "imported",
+        config_file="configs/imported/selected.toml",
+    )
+
+    assert result["ok"] is True
+    env_checks = [item for item in result["checks"] if item["key"] == "preprocess_environment"]
+    assert env_checks[-1]["level"] == "ok"
 
 
 def test_preflight_allows_block_swap_with_standard_gradient_checkpointing(

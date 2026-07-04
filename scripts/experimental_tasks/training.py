@@ -53,7 +53,7 @@ def cmd_turbo_prep(extra):
 
 
 def cmd_spd(extra):
-    """SPD fine-tuning LoRA — §4.3 trajectory adapter (proposal: docs/proposal/spd_finetune_lora.md).
+    """SPD fine-tuning LoRA — §4.3 trajectory adapter (docs/experimental/spd.md).
 
     "Case B" of the SPD investigation. Bypasses train.py / accelerate (single-GPU
     bespoke loop, like distill-mod / turbo). Reads ``configs/methods/spd.toml``;
@@ -82,7 +82,7 @@ def cmd_soft_tokens(extra):
 
 
 def cmd_chimera(extra):
-    """ChimeraHydra (dual-pool additive routing — docs/proposal/chimera_hydra.md).
+    """ChimeraHydra (dual-pool additive routing — docs/experimental/chimera-hydra.md).
 
     Drives ``configs/methods/chimera.toml``: OrthoHydra split into a content
     pool (K_c=3, per-layer rank-R router on pooled lx) and a freq pool

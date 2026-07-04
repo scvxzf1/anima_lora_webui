@@ -3,9 +3,16 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+import subprocess
+import sys
 from pathlib import Path
+from types import SimpleNamespace
+
+import pytest
 
 from bench.training_hot import run_matrix
+
+pytestmark = pytest.mark.fast
 
 
 def _args(**overrides):
@@ -25,6 +32,7 @@ def _args(**overrides):
         output_root="output/bench/training_hot",
         dry_run=True,
         stop_on_fail=True,
+        train_timeout_sec=3600,
     )
     base.update(overrides)
     return argparse.Namespace(**base)
@@ -141,3 +149,82 @@ def test_run_one_dry_run_writes_summary_and_index(tmp_path: Path) -> None:
     assert rows[0]["mode"] == "variant"
     assert rows[0]["checkpoint_bytes"] == "0"
     assert rows[0]["checkpoint_file_count"] == "0"
+
+
+def test_dry_run_default_output_root_is_isolated() -> None:
+    assert (
+        run_matrix._resolve_output_root(
+            run_matrix.DEFAULT_ROOT,
+            dry_run=True,
+            output_root_explicit=False,
+        )
+        == run_matrix.DEFAULT_DRY_RUN_ROOT
+    )
+    assert (
+        run_matrix._resolve_output_root(
+            run_matrix.DEFAULT_ROOT,
+            dry_run=True,
+            output_root_explicit=True,
+        )
+        == run_matrix.DEFAULT_ROOT
+    )
+    assert (
+        run_matrix._resolve_output_root(
+            run_matrix.DEFAULT_ROOT,
+            dry_run=False,
+            output_root_explicit=False,
+        )
+        == run_matrix.DEFAULT_ROOT
+    )
+
+
+def test_run_one_passes_train_timeout_to_subprocess(monkeypatch, tmp_path: Path) -> None:
+    seen = {}
+
+    def fake_run(cmd, cwd, env, stdout, stderr, timeout):
+        seen["timeout"] = timeout
+        return SimpleNamespace(returncode=0)
+
+    monkeypatch.setattr(run_matrix.subprocess, "run", fake_run)
+    args = _args(output_root=str(tmp_path / "out"), dry_run=False, train_timeout_sec=7)
+
+    record = run_matrix._run_one(args, run_matrix.CASES["gui_lora"], 42, gpu_rows=[], cache_rows=[])
+
+    assert seen["timeout"] == 7
+    assert record["metrics"]["returncode"] == 0
+    assert record["metrics"]["timed_out"] is False
+    assert record["metrics"]["train_timeout_sec"] == 7
+
+
+def test_run_one_records_train_timeout(monkeypatch, tmp_path: Path) -> None:
+    def fake_run(cmd, cwd, env, stdout, stderr, timeout):
+        raise run_matrix.subprocess.TimeoutExpired(cmd, timeout)
+
+    monkeypatch.setattr(run_matrix.subprocess, "run", fake_run)
+    args = _args(
+        output_root=str(tmp_path / "out"),
+        dry_run=False,
+        stop_on_fail=False,
+        train_timeout_sec=3,
+    )
+
+    record = run_matrix._run_one(args, run_matrix.CASES["gui_lora"], 42, gpu_rows=[], cache_rows=[])
+
+    assert record["metrics"]["returncode"] == 124
+    assert record["metrics"]["timed_out"] is True
+    assert record["metrics"]["train_timeout_sec"] == 3
+    assert "timeout after 3s" in Path(record["paths"]["stdout"]).read_text(encoding="utf-8")
+
+
+def test_tasks_test_fast_help_is_lightweight() -> None:
+    cp = subprocess.run(
+        [sys.executable, "tasks.py", "test-fast", "--help"],
+        cwd=run_matrix.REPO_ROOT,
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+
+    assert cp.returncode == 0
+    assert "test-fast" in cp.stdout
+    assert "fast smoke" in cp.stdout

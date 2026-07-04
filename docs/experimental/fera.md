@@ -14,21 +14,22 @@ As of plan2 (commit `1dca212`), FeRA is no longer a standalone `network_module`.
 
 Same three knobs also cover the earlier FEI-on-Hydra variant (shared-A + per-Linear router on FEI features) — see "Variants in the three-axis matrix" below.
 
-## Quick start
+## Current status
 
-```bash
-make lora-gui GUI_PRESETS=fera                # configs/gui-methods/fera.toml + preset default
-python tasks.py lora-gui fera                 # cross-platform
-make lora-gui GUI_PRESETS=fera PRESET=low_vram
+There is no shipped FeRA GUI preset TOML and no FeRA `lora-gui` entry right
+now. Treat this page as the implementation map for the FeRA cell in
+the LoRA-family three-axis surface. To revive author-faithful FeRA, create a
+local TOML from `configs/methods/lora.toml` and set:
 
-make test-hydra                               # router-live inference against the latest
-                                              # output/anima_fera*.safetensors — the
-                                              # stacked-experts checkpoint flows through
-                                              # the same `_is_hydra_moe` safetensors sniff
-                                              # because both layouts ship `lora_ups.{i}.weight`
+```toml
+use_moe_style = "independent_A"
+route_per_layer = false
+router_source = "fei"
 ```
 
-There is **no** `make fera` toggle on `configs/methods/lora.toml` directly — the LoRA-family methods file ships the FEI-on-Hydra shared-A cell uncommented as the default LoRA stack. The author-faithful FeRA cell (`independent_A`) lives in `configs/gui-methods/fera.toml` so the `lora-gui` path is the canonical entry.
+There is **no** `make fera` toggle on `configs/methods/lora.toml` directly. The
+current LoRA-family default is the shared-A input-routed Hydra stack, not
+FEI-on-Hydra and not author-faithful FeRA.
 
 ## What it actually does
 
@@ -73,7 +74,8 @@ The three-axis surface (plan2.md §three-axis-config) covers both points in the 
 | Plain LoRA / OrthoLoRA / T-LoRA / ReFT | `False` | — | `"none"` |
 | HydraLoRA (paper) | `"shared_A"` | `True` | `"input"` |
 | σ-router on Hydra | `"shared_A"` | `True` | `"sigma"` |
-| FEI-on-Hydra (lora.toml default) | `"shared_A"` | `True` | `"fei"` |
+| Current `lora.toml` default | `"shared_A"` | `True` | `"input"` |
+| FEI-on-Hydra (manual) | `"shared_A"` | `True` | `"fei"` |
 | **FeRA (this doc)** | `"independent_A"` | `False` | `"fei"` |
 
 `LoRANetworkCfg.from_kwargs` rejects `use_moe_style=False` combined with any router knob, and `route_per_layer=False, router_source="input"` (no "global input" per DiT forward). `ortho` stays a per-module bool — set `use_ortho=true` to get the PSOFT-style Cayley-rotated SVD parameterization on each expert.
@@ -92,8 +94,8 @@ The three-axis surface (plan2.md §three-axis-config) covers both points in the 
 | `library/inference/models.py` | `_is_hydra_moe` matches the `lora_ups.{i}.weight` key pattern, which now also catches plan2 stacked-experts checkpoints. Both layouts go through the same router-live dynamic-hook inference path (no static merge). |
 | `library/training/losses.py` | `_fera_fecl_loss` reads either a pre-computed scalar from `ctx.aux['fecl_loss']` (legacy) or a `ctx.aux['fera']['z_base']` payload (current); composer auto-activates on `LoRANetwork` with `use_moe_style="independent_A"`. |
 | `train.py` | At the per-step σ/FEI hook block: computes FEI features from `noisy_model_input` and calls `network.set_fei(_fei)` when the cfg has `route_per_layer=False, router_source="fei"`. |
-| `configs/gui-methods/fera.toml` | Default config for the author-faithful cell. |
-| `configs/methods/lora.toml` | Default LoRA-family stack — ships the shared-A FEI-on-Hydra cell uncommented (LoRA + OrthoLoRA + T-LoRA + Hydra(shared_A, FEI)). |
+| FeRA GUI preset TOML | Historical entry; this file is not shipped right now. |
+| `configs/methods/lora.toml` | Current LoRA-family stack — ships OrthoLoRA + T-LoRA + Hydra shared-A with `router_source="input"`. |
 | `bench/fera/` | Diagnostic probes: `probe_fei.py` (3-bucket inference probe), `probe_fei_dataset.py` (training-distribution σ_low sweep), `probe_fei_3band_dataset.py`, `probe_closed_loop.py`, `refactor_lowdim_forward.py`, `expressivity_analysis.py`. Pre-network-module work that settled the 2-band collapse and σ_low rule. |
 
 ## Parameter count
@@ -108,7 +110,7 @@ Per adapted Linear: `E · r · (D_in + D_out)`. Default `E=4, r=32` on Anima's 2
 
 Far heavier than vanilla LoRA at the same rank because the per-expert `(down, up)` pair is independent — switching to `use_ortho=true` drops the trainable surface by ~3 OOM via shared SVD bases + per-expert `(S_q, S_p, λ)` (see [`docs/methods/psoft-integrated-ortholora.md`](../methods/psoft-integrated-ortholora.md)).
 
-## Knobs (`configs/gui-methods/fera.toml`)
+## Knobs for a local FeRA TOML
 
 | Param | Default | Notes |
 |---|---|---|
@@ -145,7 +147,9 @@ Aspect invariance held across 1024², 832×1248, 1248×832 at the inference prob
 
 Author paper picks `num_bands = 3` (low / mid / high). On Anima flow-matching latents the mid band is structurally near-empty (`e_mid ≤ 8%` at `σ_mid = 4`, `≤ 1.5%` at `σ_mid = 8`) — see [[project_fera_probe_2band_decision]]. Anima's velocity target `(image − noise)` is bimodal by construction (concentrated at very-low image structure + very-high noise), so the third band carries no routing-useful signal.
 
-The shipped `configs/methods/lora.toml` default (FEI-on-Hydra) sets `fera_num_bands = 2` directly. `configs/gui-methods/fera.toml` keeps `num_bands = 3` for paper fidelity; if held-out gate-entropy + per-expert utilization shows expert collapse, drop to 2.
+A local FeRA TOML can keep `num_bands = 3` for paper fidelity; if held-out
+gate-entropy + per-expert utilization shows expert collapse, drop to 2. The
+current shipped `configs/methods/lora.toml` default does not enable FEI.
 
 ## FECL
 
@@ -238,8 +242,8 @@ The bet is that the global router on latent spectral state captures *per-prompt*
 1. **Router gate entropy across training.** Should stabilize above zero, with consistent per-prompt-type variation (scenery vs portrait vs flat-style routes to different gate distributions). Collapse → one expert always wins → FeRA reduces to a plain LoRA with extra unused params. Logged via `fera/router_entropy`, `fera/router_margin`, `fera/expert_usage/*` (added in plan2 task #4).
 2. **Per-expert utilization on a held-out prompt set.** Histogram of `argmax_k w_k` (or weighted utilization) across prompts. Useful answer: experts specialize by *content type*, not by σ-stage (that's what Hydra does).
 3. **Per-prompt routing stability across seeds.** Two seeds of the same prompt should produce similar gate distributions (gate is a function of `z_t`, which differs by seed but converges to similar spectral shape). If gates drift wildly seed-to-seed, the router is noise-sensitive — tighten `router_tau` or grow `router_hidden_dim`.
-4. **A/B vs FEI-on-Hydra (`configs/methods/lora.toml` default).** Same dataset, matched epochs/lr. The author-faithful path is heavier (independent A) and globally-routed; FEI-on-Hydra is lighter and locally-routed. Whichever wins tells us which axis matters more on Anima.
-5. **Sample quality vs `make lora`.** The hard test — is FeRA better than the plain LoRA-family default? Use the same prompt set used for `make test` and look at structural quality + prompt following + style coherence. FM val-MSE is uninformative on Anima (see [[project_fm_val_loss_uninformative]]).
+4. **A/B vs FEI-on-Hydra.** Same dataset, matched epochs/lr. The author-faithful path is heavier (independent A) and globally-routed; FEI-on-Hydra is lighter and locally-routed. Whichever wins tells us which axis matters more on Anima.
+5. **Sample quality vs `make lora`.** The hard test — is FeRA better than the current LoRA-family default? Use the same prompt set used for `make test` and look at structural quality + prompt following + style coherence. FM val-MSE is uninformative on Anima (see [[project_fm_val_loss_uninformative]]).
 
 ## Hyperparameters worth sweeping
 
@@ -263,8 +267,7 @@ The bet is that the global router on latent spectral state captures *per-prompt*
 - `networks/attn_fuse.py` — `AttnFuseSpec`, the qkv/kv fuse↔split spec.
 - `networks/lora_save.py` — `stacked_experts_global_fei` save handler.
 - `networks/__init__.py` — `resolve_network_spec` + `NETWORK_REGISTRY`.
-- `configs/gui-methods/fera.toml` — author-faithful FeRA cell config.
-- `configs/methods/lora.toml` — default LoRA-family stack (ships shared-A FEI-on-Hydra uncommented).
+- `configs/methods/lora.toml` — current LoRA-family stack and the template to copy for a local FeRA config.
 - `library/runtime/fei.py` — DoG kernels + FEI computation, shared across both cells.
 - `library/training/losses.py::_fera_fecl_loss` — FECL handler.
 - `bench/fera/` — diagnostic probes; see [[project_fera_probe_2band_decision]] for the σ_low / num_bands findings.

@@ -1,5 +1,5 @@
 # SPD fine-tuning LoRA — trajectory adapter for progressive-resolution inference
-# (proposal: docs/proposal/spd_finetune_lora.md, "Case B").
+# See docs/experimental/spd.md, "Case B".
 #
 # Read by scripts/distill_spd.py — NOT by train.py. Schema is bespoke
 # (sections, like turbo.toml). Don't `python tasks.py print-config METHOD=spd`.

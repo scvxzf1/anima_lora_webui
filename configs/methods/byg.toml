@@ -9,8 +9,8 @@
 # BYG behaviour lives in BYGMethodAdapter (networks/methods/byg.py), which owns
 # the whole training step and installs the source-concat conditioning patch.
 # Output is a plain LoRA, loadable by the standard loader (inference installs the
-# same concat patch). See docs/proposal/byg_unpaired_editing.md and the paper
-# (arXiv 2606.03911, Alg. 1).
+# same concat patch). The old in-repo BYG proposal is not present in this tree;
+# use this config plus the paper (arXiv 2606.03911, Alg. 1) as the live reference.
 #
 # Data: run scripts/byg/build_edit_tuples.py first to emit per-image
 #   post_image_dataset/byg/<stem>_byg.safetensors (4 encoded role conditionings).

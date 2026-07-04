@@ -1,6 +1,6 @@
 # ChimeraHydra — dual-pool additive routing for timestep-aware MoE.
 #
-# Proposal: docs/proposal/chimera_hydra.md
+# Reference: docs/experimental/chimera-hydra.md
 # Module:   networks/lora_modules/chimera.py
 # Spec:     networks/__init__.py::NETWORK_REGISTRY["chimera_hydra"]
 #

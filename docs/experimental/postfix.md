@@ -2,11 +2,10 @@
 
 这是 Postfix 的兼容入口页。
 
-当前可用的用户入口在 [guidelines/training.md](../guidelines/training.md) 的
-Postfix 小节，或者直接走：
+旧版 Postfix 训练和推理命令已经不在当前 `tasks.py` 命令表里。现在还保留的
+postfix 相关用户入口是 DirectEdit 的 postfix-tail 反演探针：
 
-- `make exp-postfix`
-- `make lora-gui GUI_PRESETS=postfix_ortho_cond`
+- `python tasks.py exp-invert-directedit`
 
 如果你在看的是图像条件的 postfix residual 方向，请转到：
 

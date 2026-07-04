@@ -3,10 +3,123 @@
  * Keep this module focused; move newly edited behavior into domain modules.
  */
 const ctx = globalThis.ctx;
+const SETUP_EVENT_DOM_CONTRACT = Object.freeze({
+    required: Object.freeze([
+        'method-select',
+        'variant-select',
+        'preset-select',
+        'btn-load-config',
+        'btn-start-from-config',
+        'btn-queue-from-config',
+        'btn-save-toml',
+        'toml-file-select',
+        'toml-editor',
+    ]),
+    optional: Object.freeze([
+        'live-chart-toggle-lr',
+        'live-chart-range',
+        'btn-open-continue-lora-dialog',
+        'btn-clear-continue-lora-source',
+        'config-full-resume-task-select',
+        'config-full-resume-checkpoint-select',
+        'btn-refresh-config-full-resume',
+        'btn-inspect-continue-lora-path',
+        'continue-lora-history-task',
+        'btn-refresh-continue-lora-weights',
+        'btn-open-tutorial',
+        'btn-stop-training',
+        'btn-open-queue-manager',
+        'btn-training-queue-view',
+        'btn-training-history-view',
+        'btn-open-history-manager',
+        'btn-apply-toml',
+        'btn-move-toml-group',
+        'btn-create-blank-preset',
+        'btn-toggle-toml-editor',
+        'btn-copy-toml',
+        'btn-save-toml-direct',
+        'btn-import-toml',
+        'btn-export-toml',
+        'btn-save-as-toml',
+        'btn-lock-toml',
+        'btn-delete-toml',
+        'btn-restore-system-toml',
+        'toml-import-input',
+        'btn-toml-mode-project',
+        'btn-toml-mode-output',
+        'btn-refresh-output-runs',
+        'btn-copy-output-config',
+        'btn-export-output-config',
+        'btn-save-output-config-as',
+        'btn-confirm-output-config-save-as',
+        'btn-cancel-output-config-save-as',
+        'output-run-search',
+        'btn-new-dataset-preset',
+        'btn-copy-dataset-preset',
+        'btn-rename-dataset-preset',
+        'btn-import-dataset-preset',
+        'dataset-import-input',
+        'btn-export-dataset-preset',
+        'btn-delete-dataset-preset',
+        'btn-save-dataset-preset',
+        'btn-create-dataset-preset-group',
+        'btn-refresh-dataset-presets',
+        'dataset-preset-search',
+        'btn-refresh-dataset-preview',
+        'btn-config-dataset-dialog-refresh',
+        'btn-config-dataset-dialog-manage',
+        'btn-reload-toml',
+        'btn-clear-log',
+        'btn-refresh-history',
+        'btn-preview-training-results',
+        'btn-live-sampling-preview',
+        'btn-history-manager-refresh',
+        'btn-history-collections-workbench',
+        'btn-history-manager-merge',
+        'btn-history-bulk-archive',
+        'btn-history-bulk-unarchive',
+        'btn-history-bulk-group',
+        'btn-history-bulk-delete',
+        'history-select-all',
+        'history-manager-search',
+        'history-filter-kind',
+        'history-filter-state',
+        'history-filter-archived',
+        'history-filter-source',
+        'history-sort-mode',
+        'history-collection-search',
+        'history-config-group-search',
+        'btn-live-training',
+        'btn-refresh-history-view',
+        'btn-close-history',
+        'btn-refresh-resume-options',
+        'btn-resume-training',
+        'btn-queue-resume-training',
+        'resume-checkpoint-select',
+        'history-show-archived',
+        'btn-refresh-preview',
+        'btn-refresh-weights',
+        'btn-sort-weights',
+        'btn-save-preview-settings',
+        'btn-reset-preview-settings',
+        'btn-close-preview-panel',
+        'preview-panel-dialog',
+        'btn-save-global-settings',
+        'btn-reset-global-settings',
+        'global-ui-scale',
+        'preview-training-task',
+    ]),
+});
+const REQUIRED_SETUP_EVENT_DOM_IDS = new Set(SETUP_EVENT_DOM_CONTRACT.required);
+globalThis.SETUP_EVENT_DOM_CONTRACT = SETUP_EVENT_DOM_CONTRACT;
 
     globalThis.setupEventListeners = function setupEventListeners() {
-        const on = (id, eventName, handler) => {
-            document.getElementById(id)?.addEventListener(eventName, handler);
+        const on = (id, eventName, handler, listenerOptions) => {
+            return ctx.dom.bindEvent(id, eventName, handler, {
+                contract: 'setupEventListeners',
+                listenerOptions,
+                required: REQUIRED_SETUP_EVENT_DOM_IDS.has(id),
+            });
         };
         installBeginnerTooltips();
         on('method-select', 'change', async () => {
@@ -38,8 +151,8 @@ const ctx = globalThis.ctx;
             rememberSelectionSnapshot();
         });
         on('btn-load-config', 'click', reloadCurrentConfig);
-        document.getElementById('btn-start-from-config').addEventListener('click', startTraining);
-        document.getElementById('btn-queue-from-config').addEventListener('click', queueCurrentTrainingFromConfig);
+        on('btn-start-from-config', 'click', startTraining);
+        on('btn-queue-from-config', 'click', queueCurrentTrainingFromConfig);
         on('live-chart-toggle-lr', 'change', (event) => {
             liveChartState.showLr = Boolean(event.target.checked);
             renderLiveChartPanel();
@@ -77,68 +190,68 @@ const ctx = globalThis.ctx;
         on('btn-open-queue-manager', 'click', () => showTrainingView('queue'));
         on('btn-training-queue-view', 'click', () => showTrainingView('queue'));
         on('btn-training-history-view', 'click', () => showTrainingView('history'));
-        document.getElementById('btn-open-history-manager').addEventListener('click', () => showTrainingView('history'));
+        on('btn-open-history-manager', 'click', () => showTrainingView('history'));
         ensureQueueFeature().bindQueueEvents();
         ensureWeightAnalysisFeature().bindWeightAnalysisEvents();
         ensureEnvironmentCheckFeature().bindEnvironmentCheckEvents();
         ensureImageTestFeature().bindImageTestEvents();
-        document.getElementById('btn-apply-toml').addEventListener('click', applyTomlToConfig);
-        document.getElementById('btn-move-toml-group').addEventListener('click', moveCurrentTomlToGroup);
-        document.getElementById('btn-create-blank-preset').addEventListener('click', createBlankPresetFromLoraTemplate);
-        document.getElementById('btn-save-toml').addEventListener('click', saveTomlFile);
-        document.getElementById('btn-toggle-toml-editor').addEventListener('click', toggleTomlEditorPanel);
-        document.getElementById('btn-copy-toml').addEventListener('click', copyTomlEditorContent);
-        document.getElementById('btn-save-toml-direct').addEventListener('click', () => saveTomlFile({ mode: 'editor' }));
-        document.getElementById('btn-import-toml').addEventListener('click', importTomlFile);
-        document.getElementById('btn-export-toml').addEventListener('click', exportTomlFile);
-        document.getElementById('btn-save-as-toml').addEventListener('click', saveTomlAs);
-        document.getElementById('btn-lock-toml').addEventListener('click', toggleTomlUserLock);
-        document.getElementById('btn-delete-toml').addEventListener('click', deleteTomlFile);
-        document.getElementById('btn-restore-system-toml').addEventListener('click', restoreSystemTomlPresets);
-        document.getElementById('toml-import-input').addEventListener('change', handleTomlImport);
-        document.getElementById('btn-toml-mode-project').addEventListener('click', () => switchTomlManagerMode('project'));
-        document.getElementById('btn-toml-mode-output').addEventListener('click', () => switchTomlManagerMode('output'));
-        document.getElementById('btn-refresh-output-runs').addEventListener('click', () => loadOutputRuns({ keepSelection: true }));
-        document.getElementById('btn-copy-output-config').addEventListener('click', copyOutputRunConfigContent);
-        document.getElementById('btn-export-output-config').addEventListener('click', exportOutputRunConfig);
-        document.getElementById('btn-save-output-config-as').addEventListener('click', openOutputRunSaveAs);
-        document.getElementById('btn-confirm-output-config-save-as').addEventListener('click', confirmOutputRunSaveAs);
-        document.getElementById('btn-cancel-output-config-save-as').addEventListener('click', closeOutputRunSaveAs);
-        document.getElementById('output-run-search').addEventListener('input', (event) => {
+        on('btn-apply-toml', 'click', applyTomlToConfig);
+        on('btn-move-toml-group', 'click', moveCurrentTomlToGroup);
+        on('btn-create-blank-preset', 'click', createBlankPresetFromLoraTemplate);
+        on('btn-save-toml', 'click', saveTomlFile);
+        on('btn-toggle-toml-editor', 'click', toggleTomlEditorPanel);
+        on('btn-copy-toml', 'click', copyTomlEditorContent);
+        on('btn-save-toml-direct', 'click', () => saveTomlFile({ mode: 'editor' }));
+        on('btn-import-toml', 'click', importTomlFile);
+        on('btn-export-toml', 'click', exportTomlFile);
+        on('btn-save-as-toml', 'click', saveTomlAs);
+        on('btn-lock-toml', 'click', toggleTomlUserLock);
+        on('btn-delete-toml', 'click', deleteTomlFile);
+        on('btn-restore-system-toml', 'click', restoreSystemTomlPresets);
+        on('toml-import-input', 'change', handleTomlImport);
+        on('btn-toml-mode-project', 'click', () => switchTomlManagerMode('project'));
+        on('btn-toml-mode-output', 'click', () => switchTomlManagerMode('output'));
+        on('btn-refresh-output-runs', 'click', () => loadOutputRuns({ keepSelection: true }));
+        on('btn-copy-output-config', 'click', copyOutputRunConfigContent);
+        on('btn-export-output-config', 'click', exportOutputRunConfig);
+        on('btn-save-output-config-as', 'click', openOutputRunSaveAs);
+        on('btn-confirm-output-config-save-as', 'click', confirmOutputRunSaveAs);
+        on('btn-cancel-output-config-save-as', 'click', closeOutputRunSaveAs);
+        on('output-run-search', 'input', (event) => {
             outputRunState = { ...outputRunState, search: event.target.value || '' };
             renderOutputRunList();
         });
-        document.getElementById('btn-new-dataset-preset').addEventListener('click', createNewDatasetPreset);
-        document.getElementById('btn-copy-dataset-preset').addEventListener('click', copyDatasetPreset);
-        document.getElementById('btn-rename-dataset-preset').addEventListener('click', renameDatasetPreset);
-        document.getElementById('btn-import-dataset-preset').addEventListener('click', importDatasetPreset);
-        document.getElementById('dataset-import-input').addEventListener('change', handleDatasetPresetImport);
-        document.getElementById('btn-export-dataset-preset').addEventListener('click', exportDatasetPreset);
-        document.getElementById('btn-delete-dataset-preset').addEventListener('click', deleteDatasetPreset);
-        document.getElementById('btn-save-dataset-preset').addEventListener('click', saveDatasetPresetEditor);
-        document.getElementById('btn-create-dataset-preset-group').addEventListener('click', createDatasetPresetGroup);
-        document.getElementById('btn-refresh-dataset-presets').addEventListener('click', () => loadDatasetPresets({ selectCurrent: false, manage: true }));
-        document.getElementById('dataset-preset-search').addEventListener('input', (event) => {
+        on('btn-new-dataset-preset', 'click', createNewDatasetPreset);
+        on('btn-copy-dataset-preset', 'click', copyDatasetPreset);
+        on('btn-rename-dataset-preset', 'click', renameDatasetPreset);
+        on('btn-import-dataset-preset', 'click', importDatasetPreset);
+        on('dataset-import-input', 'change', handleDatasetPresetImport);
+        on('btn-export-dataset-preset', 'click', exportDatasetPreset);
+        on('btn-delete-dataset-preset', 'click', deleteDatasetPreset);
+        on('btn-save-dataset-preset', 'click', saveDatasetPresetEditor);
+        on('btn-create-dataset-preset-group', 'click', createDatasetPresetGroup);
+        on('btn-refresh-dataset-presets', 'click', () => loadDatasetPresets({ selectCurrent: false, manage: true }));
+        on('dataset-preset-search', 'input', (event) => {
             datasetPresetState.search = event.target.value || '';
             renderDatasetPresetList();
         });
-        document.getElementById('btn-refresh-dataset-preview').addEventListener('click', loadDatasetPreviewImages);
-        document.getElementById('btn-config-dataset-dialog-refresh').addEventListener('click', () => loadDatasetPresets({ selectCurrent: false, manage: false }));
-        document.getElementById('btn-config-dataset-dialog-manage').addEventListener('click', () => {
+        on('btn-refresh-dataset-preview', 'click', loadDatasetPreviewImages);
+        on('btn-config-dataset-dialog-refresh', 'click', () => loadDatasetPresets({ selectCurrent: false, manage: false }));
+        on('btn-config-dataset-dialog-manage', 'click', () => {
             closeConfigDatasetPickerDialog();
             document.querySelector('[data-tab="datasets"]')?.click();
         });
-        document.getElementById('btn-reload-toml').addEventListener('click', async () => {
+        on('btn-reload-toml', 'click', async () => {
             const file = currentTomlFile || val('toml-file-select');
             if (file && (await confirmDiscardTomlChanges('当前 TOML 有未保存修改，重新读取文件会丢失这些修改。是否继续？'))) {
                 loadTomlFile(file, { force: true });
             }
         });
-        document.getElementById('toml-file-select').addEventListener('change', (e) => {
+        on('toml-file-select', 'change', (e) => {
             selectAndApplyTomlFile(e.target.value);
         });
-        document.getElementById('toml-editor').addEventListener('input', updateTomlDirtyState);
-        document.getElementById('btn-clear-log').addEventListener('click', () => {
+        on('toml-editor', 'input', updateTomlDirtyState);
+        on('btn-clear-log', 'click', () => {
             if (isHistoryReviewMode()) return;
             resetLogOutputLines();
             trainingRuntime.logBuffer = [];
@@ -146,17 +259,17 @@ const ctx = globalThis.ctx;
             trainingRuntime.logLineCount = 0;
             updateLogStatusText();
         });
-        document.getElementById('btn-refresh-history').addEventListener('click', loadTrainingHistoryList);
-        document.getElementById('btn-preview-training-results').addEventListener('click', openCurrentTrainingPreview);
-        document.getElementById('btn-live-sampling-preview').addEventListener('click', openLiveSamplingPreview);
-        document.getElementById('btn-history-manager-refresh').addEventListener('click', loadTrainingHistoryList);
-        document.getElementById('btn-history-collections-workbench').addEventListener('click', openHistoryCollectionsWorkbench);
-        document.getElementById('btn-history-manager-merge').addEventListener('click', mergeSelectedHistoryTasks);
-        document.getElementById('btn-history-bulk-archive').addEventListener('click', () => archiveSelectedHistoryTasks(true));
-        document.getElementById('btn-history-bulk-unarchive').addEventListener('click', () => archiveSelectedHistoryTasks(false));
-        document.getElementById('btn-history-bulk-group').addEventListener('click', groupSelectedHistoryTasks);
-        document.getElementById('btn-history-bulk-delete').addEventListener('click', deleteSelectedHistoryTasks);
-        document.getElementById('history-select-all').addEventListener('change', (event) => {
+        on('btn-refresh-history', 'click', loadTrainingHistoryList);
+        on('btn-preview-training-results', 'click', openCurrentTrainingPreview);
+        on('btn-live-sampling-preview', 'click', openLiveSamplingPreview);
+        on('btn-history-manager-refresh', 'click', loadTrainingHistoryList);
+        on('btn-history-collections-workbench', 'click', openHistoryCollectionsWorkbench);
+        on('btn-history-manager-merge', 'click', mergeSelectedHistoryTasks);
+        on('btn-history-bulk-archive', 'click', () => archiveSelectedHistoryTasks(true));
+        on('btn-history-bulk-unarchive', 'click', () => archiveSelectedHistoryTasks(false));
+        on('btn-history-bulk-group', 'click', groupSelectedHistoryTasks);
+        on('btn-history-bulk-delete', 'click', deleteSelectedHistoryTasks);
+        on('history-select-all', 'change', (event) => {
             const visible = historyCurrentVisibleTaskIds;
             if (event.target.checked) {
                 visible.forEach((id) => selectedHistoryTaskIds.add(id));
@@ -174,63 +287,63 @@ const ctx = globalThis.ctx;
             'history-sort-mode': 'sort',
         };
         for (const [id, key] of Object.entries(historyFilterMap)) {
-            document.getElementById(id).addEventListener(id === 'history-manager-search' ? 'input' : 'change', (event) => {
+            on(id, id === 'history-manager-search' ? 'input' : 'change', (event) => {
                 const value = event.target.value || historyManagerFilterDefault(key);
                 historyManagerFilters[key] = value;
                 renderHistoryManager();
             });
         }
-        document.getElementById('history-collection-search').addEventListener('input', (event) => {
+        on('history-collection-search', 'input', (event) => {
             historyCollectionSearch = event.target.value || '';
             renderHistoryManager();
         });
-        document.getElementById('history-config-group-search').addEventListener('input', (event) => {
+        on('history-config-group-search', 'input', (event) => {
             historyConfigGroupSearch = event.target.value || '';
             renderHistoryManager();
         });
         ensureHistoryDetailFeature().bindHistoryDetailEvents();
-        document.getElementById('btn-live-training').addEventListener('click', returnToLiveTraining);
+        on('btn-live-training', 'click', returnToLiveTraining);
         bindTrainingViewTabKeyboard();
-        document.getElementById('btn-refresh-history-view').addEventListener('click', refreshHistoryView);
-        document.getElementById('btn-close-history').addEventListener('click', returnToLiveTraining);
-        document.getElementById('btn-refresh-resume-options').addEventListener('click', () => loadResumeOptionsForTask());
-        document.getElementById('btn-resume-training').addEventListener('click', resumeTrainingFromCheckpoint);
-        document.getElementById('btn-queue-resume-training').addEventListener('click', queueResumeTrainingFromCheckpoint);
-        document.getElementById('resume-checkpoint-select').addEventListener('change', renderResumePanelState);
-        document.getElementById('history-show-archived').addEventListener('change', (e) => {
+        on('btn-refresh-history-view', 'click', refreshHistoryView);
+        on('btn-close-history', 'click', returnToLiveTraining);
+        on('btn-refresh-resume-options', 'click', () => loadResumeOptionsForTask());
+        on('btn-resume-training', 'click', resumeTrainingFromCheckpoint);
+        on('btn-queue-resume-training', 'click', queueResumeTrainingFromCheckpoint);
+        on('resume-checkpoint-select', 'change', renderResumePanelState);
+        on('history-show-archived', 'change', (e) => {
             showArchivedHistory = e.target.checked;
             loadTrainingHistoryList();
         });
         document.querySelectorAll('.preview-source-btn').forEach((btn) => {
             btn.addEventListener('click', () => setPreviewSource(btn.dataset.previewSource));
         });
-        document.getElementById('btn-refresh-preview').addEventListener('click', loadPreviewImages);
-        document.getElementById('btn-refresh-weights').addEventListener('click', loadPreviewWeights);
-        document.getElementById('btn-sort-weights').addEventListener('click', togglePreviewWeightSort);
-        document.getElementById('btn-save-preview-settings').addEventListener('click', savePreviewSettings);
-        document.getElementById('btn-reset-preview-settings').addEventListener('click', resetPreviewSettings);
-        document.getElementById('btn-close-preview-panel').addEventListener('click', closePreviewPanel);
-        document.getElementById('preview-panel-dialog').addEventListener('click', (event) => {
+        on('btn-refresh-preview', 'click', loadPreviewImages);
+        on('btn-refresh-weights', 'click', loadPreviewWeights);
+        on('btn-sort-weights', 'click', togglePreviewWeightSort);
+        on('btn-save-preview-settings', 'click', savePreviewSettings);
+        on('btn-reset-preview-settings', 'click', resetPreviewSettings);
+        on('btn-close-preview-panel', 'click', closePreviewPanel);
+        on('preview-panel-dialog', 'click', (event) => {
             if (event.target === event.currentTarget) closePreviewPanel();
         });
-        document.getElementById('preview-panel-dialog').addEventListener('close', restorePreviewWorkspaceAfterPanelClose);
-        document.getElementById('btn-save-global-settings').addEventListener('click', saveGlobalSettings);
-        document.getElementById('btn-reset-global-settings').addEventListener('click', resetGlobalSettings);
+        on('preview-panel-dialog', 'close', restorePreviewWorkspaceAfterPanelClose);
+        on('btn-save-global-settings', 'click', saveGlobalSettings);
+        on('btn-reset-global-settings', 'click', resetGlobalSettings);
         document.querySelectorAll('.global-setting-help-toggle').forEach((btn) => {
             btn.addEventListener('click', () => toggleGlobalSettingHelp(btn));
         });
-        document.getElementById('global-ui-scale')?.addEventListener('input', () => {
+        on('global-ui-scale', 'input', () => {
             syncAllGlobalUIScaleOverrideFields({ preserveCustom: true });
         });
-        document.getElementById('global-ui-scale')?.addEventListener('change', () => {
+        on('global-ui-scale', 'change', () => {
             syncAllGlobalUIScaleOverrideFields({ preserveCustom: true });
         });
         GLOBAL_UI_OVERRIDE_FIELDS.forEach((field) => {
-            document.getElementById(field.followDefaultId)?.addEventListener('change', () => {
+            on(field.followDefaultId, 'change', () => {
                 syncGlobalUIScaleOverrideField(field);
             });
         });
-        document.getElementById('preview-training-task').addEventListener('change', (e) => changePreviewTask(e.target.value));
+        on('preview-training-task', 'change', (e) => changePreviewTask(e.target.value));
 
         setTomlManagerMode('project');
     }
