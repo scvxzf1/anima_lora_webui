@@ -1,21 +1,15 @@
 """Sample prompt file loading and per-config prompt forks.
 
 This module is loaded by ``web.services.config_service`` as part of the
-compatibility facade.  It snapshots legacy globals at import time and syncs
-mutable path settings from the facade before exported calls so existing tests
-and callers that monkeypatch ``config_service.ROOT`` continue to work.
+compatibility facade.  It keeps facade access lazy so the module can also be
+imported directly without pulling in the legacy facade.
 """
 
 from __future__ import annotations
 
 from functools import wraps
-
-from web.services import config_service as _facade
-
-for _name, _value in _facade.__dict__.items():
-    if _name.startswith("__") and _name.endswith("__"):
-        continue
-    globals().setdefault(_name, _value)
+from pathlib import Path
+from typing import Any
 
 _SYNC_NAMES = (
     "ROOT",
@@ -41,8 +35,30 @@ _SYNC_NAMES = (
     "LOGGER",
 )
 
+_LEGACY_STATE_NAMES = (
+    "ROOT",
+    "CONFIGS_DIR",
+    "GUI_METHODS_DIR",
+    "IMPORTED_CONFIGS_DIR",
+    "PRESETS_FILE",
+    "WEB_FILE_GROUPS_FILE",
+    "WEB_USER_LOCKS_FILE",
+    "DEFAULT_SAMPLE_PROMPTS_FILE",
+    "DATASET_PRESETS_DIR",
+    "resolve_output_root",
+    "_display_settings_path",
+    "LOGGER",
+)
+
+_LEGACY_HELPER_NAMES = (
+    "_safe_resolve",
+    "_normalize_config_rel_path",
+)
+
 
 def _sync_from_facade() -> None:
+    from web.services import config_service as _facade
+
     _exported_names = set(globals().get("__all__", ()))
     _legacy_module = getattr(_facade, "_legacy", None)
     for _name in _SYNC_NAMES:
@@ -51,8 +67,13 @@ def _sync_from_facade() -> None:
         _value = getattr(_facade, _name)
         if _name not in _exported_names:
             globals()[_name] = _value
-        if _legacy_module is not None:
+        if _legacy_module is not None and _name in _LEGACY_STATE_NAMES:
             setattr(_legacy_module, _name, _value)
+    for _name in _LEGACY_HELPER_NAMES:
+        if _legacy_module is not None and hasattr(_legacy_module, _name):
+            globals()[_name] = getattr(_legacy_module, _name)
+        elif hasattr(_facade, _name):
+            globals()[_name] = getattr(_facade, _name)
 
 
 def _exported(fn):

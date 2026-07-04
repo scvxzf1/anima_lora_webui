@@ -1,26 +1,19 @@
 """Raw TOML read, write, patch, and delete helpers.
 
 This module is loaded by ``web.services.config_service`` as part of the
-compatibility facade.  It snapshots legacy globals at import time and syncs
-mutable path settings from the facade before exported calls so existing tests
-and callers that monkeypatch ``config_service.ROOT`` continue to work.
+compatibility facade.  It keeps facade access lazy so the module can also be
+imported directly without pulling in the legacy facade.
 """
 
 from __future__ import annotations
 
 from functools import wraps
+from pathlib import Path
+from typing import Any
 
-from web.services import config_service as _facade
-from web.services.config.metadata import (
-    RETIRED_TOP_LEVEL_CONFIG_FIELDS,
-    SPD_NESTED_PATCH_FIELDS,
-    UI_ONLY_CONFIG_FIELDS,
-)
+from web.services.config import paths as _config_paths
 
-for _name, _value in _facade.__dict__.items():
-    if _name.startswith("__") and _name.endswith("__"):
-        continue
-    globals().setdefault(_name, _value)
+_DELETE_TOML_KEY = object()
 
 _SYNC_NAMES = (
     "ROOT",
@@ -45,8 +38,18 @@ _SYNC_NAMES = (
     "LOGGER",
 )
 
+_LEGACY_HELPER_NAMES = (
+    "_safe_resolve",
+    "_normalize_config_rel_path",
+    "_load_user_locks",
+    "_save_user_locks",
+    "_lock_reason_message",
+)
+
 
 def _sync_from_facade() -> None:
+    from web.services import config_service as _facade
+
     _exported_names = set(globals().get("__all__", ()))
     _legacy_module = getattr(_facade, "_legacy", None)
     for _name in _SYNC_NAMES:
@@ -55,8 +58,13 @@ def _sync_from_facade() -> None:
         _value = getattr(_facade, _name)
         if _name not in _exported_names:
             globals()[_name] = _value
-        if _legacy_module is not None:
+        if _legacy_module is not None and _name not in _exported_names:
             setattr(_legacy_module, _name, _value)
+    for _name in _LEGACY_HELPER_NAMES:
+        if _legacy_module is not None and hasattr(_legacy_module, _name):
+            globals()[_name] = getattr(_legacy_module, _name)
+        elif hasattr(_facade, _name):
+            globals()[_name] = getattr(_facade, _name)
 
 
 def _exported(fn):
@@ -66,6 +74,29 @@ def _exported(fn):
         return fn(*args, **kwargs)
 
     return wrapper
+
+
+def _toml_module():
+    import toml
+
+    return toml
+
+
+def _tomlkit_module():
+    import tomlkit
+
+    return tomlkit
+
+
+def _metadata_value(name: str):
+    from web.services.config import metadata as _metadata
+
+    return getattr(_metadata, name)
+
+
+def _normalize_config_rel_path(rel_path: str) -> str:
+    return _config_paths.normalize_config_rel_path(rel_path)
+
 
 __all__ = ['load_raw_file', 'save_raw_file', 'delete_raw_file', 'patch_raw_file_values', 'preview_raw_file_patch', '_prepare_raw_file_patch', '_restore_dataset_config_after_failed_train_patch', '_patch_toml_top_level', '_normalize_patch_value', '_normalize_saved_raw_config_content', '_normalize_saved_raw_config_content_with_changed_keys', '_is_blank_output_name']
 
@@ -92,6 +123,8 @@ def save_raw_file(
     meta = get_config_file_meta(normalized)
     if meta.get("locked") and not allow_locked:
         return False, f"{_lock_reason_message(meta)}，请使用新名称保存新配置后编辑"
+    toml = _toml_module()
+    tomlkit = _tomlkit_module()
     try:
         toml.loads(content)
         content = _normalize_saved_raw_config_content(content)
@@ -172,10 +205,12 @@ def _prepare_raw_file_patch(
         return False, f"{_lock_reason_message(meta)}，请使用新名称保存新配置后编辑", None, "", []
     if not isinstance(values, dict):
         return False, "字段补丁格式不合法", None, "", []
+    ui_only_fields = _metadata_value("UI_ONLY_CONFIG_FIELDS")
+    retired_fields = _metadata_value("RETIRED_TOP_LEVEL_CONFIG_FIELDS")
     values = {
         key: value
         for key, value in values.items()
-        if key not in UI_ONLY_CONFIG_FIELDS and key not in RETIRED_TOP_LEVEL_CONFIG_FIELDS
+        if key not in ui_only_fields and key not in retired_fields
     }
 
     source = content if content is not None else load_raw_file(rel_path)
@@ -183,7 +218,7 @@ def _prepare_raw_file_patch(
         next_content = _patch_toml_top_level(source, values, rel_path=normalized)
         next_content, removed_keys = _remove_retired_top_level_fields(next_content)
         next_content, compatibility_keys = _normalize_saved_raw_config_content_with_changed_keys(next_content)
-        toml.loads(next_content)
+        _toml_module().loads(next_content)
     except Exception as e:
         return False, f"TOML 更新失败: {e}", None, "", []
 
@@ -202,8 +237,9 @@ def _restore_dataset_config_after_failed_train_patch(path: Path, existed: bool, 
 
 
 def _patch_toml_top_level(content: str, values: dict[str, Any], *, rel_path: str = "") -> str:
+    tomlkit = _tomlkit_module()
     doc = tomlkit.parse(content or "")
-    nested_patch_fields = SPD_NESTED_PATCH_FIELDS if _is_spd_patch_target(rel_path, doc) else {}
+    nested_patch_fields = _metadata_value("SPD_NESTED_PATCH_FIELDS") if _is_spd_patch_target(rel_path, doc) else {}
     for key, value in values.items():
         if not isinstance(key, str) or not key:
             continue
@@ -242,9 +278,10 @@ def _is_spd_patch_target(rel_path: str, doc: dict[str, Any]) -> bool:
 
 
 def _remove_retired_top_level_fields(content: str) -> tuple[str, list[str]]:
+    tomlkit = _tomlkit_module()
     doc = tomlkit.parse(content or "")
     removed: list[str] = []
-    for key in sorted(RETIRED_TOP_LEVEL_CONFIG_FIELDS):
+    for key in sorted(_metadata_value("RETIRED_TOP_LEVEL_CONFIG_FIELDS")):
         if key in doc:
             del doc[key]
             removed.append(key)
@@ -284,6 +321,7 @@ def _normalize_saved_raw_config_content(content: str) -> str:
 
 
 def _normalize_saved_raw_config_content_with_changed_keys(content: str) -> tuple[str, list[str]]:
+    tomlkit = _tomlkit_module()
     doc = tomlkit.parse(content or "")
     if "output_name" in doc and _is_blank_output_name(doc["output_name"]):
         raise ValueError("output_name 不能为空")

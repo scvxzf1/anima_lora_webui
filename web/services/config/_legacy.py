@@ -4135,3 +4135,188 @@ def _check_cache_sidecar_pattern(
             add("ok", item_key, f"第 {idx} 组找到 {count} 个{label}", cache_dir)
         else:
             add("warning", item_key, f"第 {idx} 组{missing_message}", cache_dir)
+
+
+_DATASET_SHIM_SYNC_NAMES = (
+    "ROOT",
+    "CONFIGS_DIR",
+    "GUI_METHODS_DIR",
+    "IMPORTED_CONFIGS_DIR",
+    "PRESETS_FILE",
+    "WEB_FILE_GROUPS_FILE",
+    "WEB_USER_LOCKS_FILE",
+    "DATASET_PRESETS_DIR",
+    "resolve_output_root",
+    "_display_settings_path",
+    "save_raw_file",
+    "load_raw_file",
+    "delete_raw_file",
+    "patch_raw_file_values",
+    "preview_raw_file_patch",
+    "get_config_file_meta",
+    "list_config_file_groups",
+    "move_config_file_to_group",
+    "_inspect_network_weight",
+    "LOGGER",
+)
+
+
+def _restore_raw_files_shims() -> None:
+    for shim_name, shim in globals().get("_RAW_FILES_SHIMS", {}).items():
+        globals()[shim_name] = shim
+
+
+def _call_dataset_impl(name: str, *args, **kwargs):
+    from web.services import config_service as _facade
+    from web.services.config import datasets as _datasets
+
+    for sync_name in _DATASET_SHIM_SYNC_NAMES:
+        if sync_name in globals():
+            setattr(_facade, sync_name, globals()[sync_name])
+    _datasets._sync_from_facade()
+    _restore_raw_files_shims()
+    try:
+        return getattr(_datasets, name)(*args, **kwargs)
+    finally:
+        _restore_raw_files_shims()
+
+
+def _make_dataset_shim(name: str):
+    def shim(*args, **kwargs):
+        return _call_dataset_impl(name, *args, **kwargs)
+
+    shim.__name__ = name
+    shim.__qualname__ = name
+    shim.__doc__ = f"Compatibility shim forwarding to web.services.config.datasets.{name}."
+    return shim
+
+
+_DATASET_SHIM_NAMES = (
+    "list_dataset_presets",
+    "diagnose_dataset_presets",
+    "load_dataset_preset",
+    "save_dataset_preset",
+    "save_dataset_preset_as",
+    "import_dataset_preset",
+    "delete_dataset_preset",
+    "apply_dataset_preset_to_training_config",
+    "list_dataset_preset_images",
+    "resolve_dataset_preview_image",
+    "load_dataset_editor",
+    "save_dataset_editor",
+    "_dataset_preset_summary",
+    "_dataset_preset_groups_for_ui",
+    "_is_dataset_group_for_ui",
+    "_dataset_summary_from_rows",
+    "_normalize_nl_tag_mix",
+    "_normalize_trigger_clone",
+    "_normalize_path_pattern",
+    "_build_dataset_config_doc",
+    "_nl_tag_mix_caption_source",
+    "_nl_tag_mix_image_files",
+    "_classify_nl_tag_caption_text",
+)
+
+for _dataset_name in _DATASET_SHIM_NAMES:
+    globals()[_dataset_name] = _make_dataset_shim(_dataset_name)
+
+
+_RAW_FILES_SHIM_SYNC_NAMES = (
+    "ROOT",
+    "CONFIGS_DIR",
+    "GUI_METHODS_DIR",
+    "IMPORTED_CONFIGS_DIR",
+    "PRESETS_FILE",
+    "WEB_FILE_GROUPS_FILE",
+    "WEB_USER_LOCKS_FILE",
+    "DATASET_PRESETS_DIR",
+    "resolve_output_root",
+    "_display_settings_path",
+    "get_config_file_meta",
+    "list_config_file_groups",
+    "move_config_file_to_group",
+    "_inspect_network_weight",
+    "LOGGER",
+)
+
+_RAW_FILES_LEGACY_HELPER_NAMES = (
+    "_safe_resolve",
+    "_normalize_config_rel_path",
+    "_load_user_locks",
+    "_save_user_locks",
+    "_lock_reason_message",
+)
+
+_RAW_FILES_FACADE_HELPER_NAMES = (
+    "get_config_file_meta",
+    "list_config_file_groups",
+    "move_config_file_to_group",
+)
+
+
+def _call_raw_files_impl(name: str, *args, **kwargs):
+    from web.services import config_service as _facade
+    from web.services.config import raw_files as _raw_files
+
+    sync_state = {
+        sync_name: globals()[sync_name]
+        for sync_name in _RAW_FILES_SHIM_SYNC_NAMES
+        if sync_name in globals()
+    }
+    for sync_name, value in sync_state.items():
+        setattr(_facade, sync_name, value)
+    _raw_files._sync_from_facade()
+    for sync_name, value in sync_state.items():
+        setattr(_raw_files, sync_name, value)
+    for helper_name in _RAW_FILES_LEGACY_HELPER_NAMES:
+        if helper_name in globals():
+            setattr(_raw_files, helper_name, globals()[helper_name])
+    for helper_name in _RAW_FILES_FACADE_HELPER_NAMES:
+        if hasattr(_facade, helper_name):
+            setattr(_raw_files, helper_name, getattr(_facade, helper_name))
+        elif helper_name in globals():
+            setattr(_raw_files, helper_name, globals()[helper_name])
+    for sync_name, value in sync_state.items():
+        globals()[sync_name] = value
+    # raw_files 同步时会把 _legacy 里的同名导出回填成 facade 版本，
+    # 这里立刻恢复 shim，保证旧模块后续调用仍然走 lazy forwarding。
+    _restore_raw_files_shims()
+    exported = getattr(_raw_files, name)
+    impl = getattr(exported, "__wrapped__", exported)
+    return impl(*args, **kwargs)
+
+
+def _make_raw_files_shim(name: str):
+    def shim(*args, **kwargs):
+        return _call_raw_files_impl(name, *args, **kwargs)
+
+    shim.__name__ = name
+    shim.__qualname__ = name
+    shim.__doc__ = f"Compatibility shim forwarding to web.services.config.raw_files.{name}."
+    return shim
+
+
+_RAW_FILES_SHIM_NAMES = (
+    "load_raw_file",
+    "save_raw_file",
+    "delete_raw_file",
+    "patch_raw_file_values",
+    "preview_raw_file_patch",
+    "_prepare_raw_file_patch",
+    "_restore_dataset_config_after_failed_train_patch",
+    "_patch_toml_top_level",
+    "_is_spd_patch_target",
+    "_remove_retired_top_level_fields",
+    "_normalize_patch_value",
+    "_normalize_saved_raw_config_content",
+    "_normalize_saved_raw_config_content_with_changed_keys",
+    "_is_blank_output_name",
+)
+
+_RAW_FILES_SHIMS = {
+    _raw_name: _make_raw_files_shim(_raw_name)
+    for _raw_name in _RAW_FILES_SHIM_NAMES
+}
+
+for _raw_name, _raw_shim in _RAW_FILES_SHIMS.items():
+    globals()[_raw_name] = _raw_shim

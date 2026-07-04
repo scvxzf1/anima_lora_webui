@@ -5,6 +5,8 @@ import io
 import json
 import logging
 import os
+import subprocess
+import sys
 import zipfile
 from pathlib import Path
 
@@ -15,6 +17,7 @@ from PIL import Image
 from web.routes import config as config_routes
 from web.services import config_service
 from web.services.config import _legacy as legacy_config
+from web.services.config import datasets as config_datasets
 from web.services.config import metadata as config_metadata
 from web.services.config import paths as config_paths
 
@@ -57,6 +60,52 @@ def test_config_metadata_exports_remain_available_from_legacy_facade():
 
     assert config_service.get_field_help is config_metadata.get_field_help
     assert legacy_config.get_groups is config_metadata.get_groups
+
+
+def test_raw_files_module_imports_without_facade_cycle():
+    env = {**os.environ, "PYTHONDONTWRITEBYTECODE": "1"}
+    script = (
+        "import sys; "
+        "import web.services.config.raw_files as raw; "
+        "assert 'web.services.config_service' not in sys.modules; "
+        "assert 'web.services.config._legacy' not in sys.modules; "
+        "assert raw._is_spd_patch_target('configs/methods/spd.toml', {}) is True; "
+        "assert raw._is_spd_patch_target('', {'dit_path': 'm', 'data_dir': 'd', 'iterations': 1, 'schedule': {}}) is True; "
+        "assert raw._is_spd_patch_target('configs/gui-methods/lora.toml', {}) is False; "
+        "assert 'web.services.config_service' not in sys.modules; "
+        "assert 'web.services.config._legacy' not in sys.modules"
+    )
+
+    result = subprocess.run(
+        [sys.executable, "-c", script],
+        cwd=Path(__file__).resolve().parents[1],
+        env=env,
+        text=True,
+        capture_output=True,
+        timeout=20,
+    )
+
+    assert result.returncode == 0, result.stderr or result.stdout
+
+
+def test_sample_prompts_module_imports_without_facade_cycle():
+    env = {**os.environ, "PYTHONDONTWRITEBYTECODE": "1"}
+    script = (
+        "import sys; "
+        "import web.services.config.sample_prompts; "
+        "assert 'web.services.config_service' not in sys.modules"
+    )
+
+    result = subprocess.run(
+        [sys.executable, "-c", script],
+        cwd=Path(__file__).resolve().parents[1],
+        env=env,
+        text=True,
+        capture_output=True,
+        timeout=20,
+    )
+
+    assert result.returncode == 0, result.stderr or result.stdout
 
 
 def test_spd_cli_config_is_exposed_as_method_variant(tmp_path: Path, monkeypatch):
@@ -259,6 +308,14 @@ def test_sample_prompts_roundtrip_preserves_comments_blank_lines_and_spacing(tmp
     assert saved["content"] == original
     assert loaded["content"] == original
     assert loaded["prompts"] == ["masterpiece, best quality", "solo, 1girl"]
+
+    legacy_text = "# legacy\nsolo\n"
+    monkeypatch.setattr(legacy_config, "ROOT", root)
+    legacy_saved = legacy_config.save_sample_prompts_file(legacy_text, "configs/legacy_sample_prompts.txt")
+    legacy_loaded = legacy_config.load_sample_prompts_file("configs/legacy_sample_prompts.txt")
+
+    assert legacy_saved["content"] == legacy_text
+    assert legacy_loaded["prompts"] == ["solo"]
 
 
 def test_sample_prompts_save_can_fork_to_training_config_specific_file(tmp_path: Path, monkeypatch):
@@ -1199,6 +1256,174 @@ def test_preflight_remains_available_from_legacy_module(tmp_path: Path, monkeypa
     assert result["ok"] is True
     env_checks = [item for item in result["checks"] if item["key"] == "preprocess_environment"]
     assert env_checks[-1]["level"] == "ok"
+
+
+def test_raw_file_helpers_remain_available_from_legacy_module(tmp_path: Path, monkeypatch):
+    import importlib
+
+    raw_files_module = importlib.import_module("web.services.config.raw_files")
+    raw_file_shims = legacy_config._RAW_FILES_SHIMS
+    assert legacy_config._safe_resolve is not config_service._safe_resolve
+    expected_shims = (
+        "load_raw_file",
+        "save_raw_file",
+        "delete_raw_file",
+        "patch_raw_file_values",
+        "preview_raw_file_patch",
+        "_prepare_raw_file_patch",
+        "_restore_dataset_config_after_failed_train_patch",
+        "_patch_toml_top_level",
+        "_is_spd_patch_target",
+        "_remove_retired_top_level_fields",
+        "_normalize_patch_value",
+        "_normalize_saved_raw_config_content",
+        "_normalize_saved_raw_config_content_with_changed_keys",
+        "_is_blank_output_name",
+    )
+    assert tuple(legacy_config._RAW_FILES_SHIM_NAMES) == expected_shims
+    assert tuple(raw_file_shims) == expected_shims
+    for name in expected_shims:
+        assert callable(getattr(raw_files_module, name))
+        assert name in raw_file_shims
+        assert (
+            raw_file_shims[name].__doc__
+            == f"Compatibility shim forwarding to web.services.config.raw_files.{name}."
+        )
+        assert getattr(legacy_config, name) is raw_file_shims[name]
+
+    _write_minimal_config_tree(tmp_path)
+    configs = tmp_path / "configs"
+    _patch_config_service_paths(monkeypatch, tmp_path)
+    monkeypatch.setattr(legacy_config, "ROOT", tmp_path)
+    monkeypatch.setattr(legacy_config, "CONFIGS_DIR", configs)
+    monkeypatch.setattr(legacy_config, "DATASET_PRESETS_DIR", configs / "datasets")
+    monkeypatch.setattr(legacy_config, "GUI_METHODS_DIR", configs / "gui-methods")
+    monkeypatch.setattr(legacy_config, "IMPORTED_CONFIGS_DIR", configs / "imported")
+    monkeypatch.setattr(legacy_config, "PRESETS_FILE", configs / "presets.toml")
+    monkeypatch.setattr(legacy_config, "WEB_FILE_GROUPS_FILE", configs / "web-file-groups.toml")
+    monkeypatch.setattr(legacy_config, "WEB_USER_LOCKS_FILE", configs / "web-user-locks.toml")
+
+    assert legacy_config.load_raw_file("../outside.toml") == ""
+    outside_ok, outside_msg = legacy_config.save_raw_file(
+        "../outside.toml",
+        'output_name = "outside"\n',
+    )
+    assert outside_ok is False
+    assert "路径不合法" in outside_msg
+
+    outside_patch_ok, outside_patch_msg, outside_path, outside_content, outside_changed = (
+        legacy_config._prepare_raw_file_patch(
+            "../outside.toml",
+            {"output_name": "outside"},
+        )
+    )
+    assert outside_patch_ok is False
+    assert "路径不合法" in outside_patch_msg
+    assert outside_path is None
+    assert outside_content == ""
+    assert outside_changed == []
+
+    outside_delete_ok, outside_delete_msg = legacy_config.delete_raw_file("../outside.toml")
+    assert outside_delete_ok is False
+    assert "路径不合法" in outside_delete_msg
+
+    rel_path = "configs/imported/legacy_raw.toml"
+    ok, msg = legacy_config.save_raw_file(
+        rel_path,
+        "\n".join(
+            [
+                'output_name = "legacy_raw"',
+                'optimizer_type = "CAME"',
+                'optimizer_args = ["betas=0.9,0.999"]',
+                "use_hydra = true",
+                "",
+            ]
+        ),
+    )
+
+    assert ok is True, msg
+    for name in expected_shims:
+        assert getattr(legacy_config, name) is raw_file_shims[name]
+    loaded = legacy_config.load_raw_file(rel_path)
+    assert 'output_name = "legacy_raw"' in loaded
+    assert 'betas=0.9,0.999,0.9999' in loaded
+
+    preview_ok, preview_msg, path, preview_content, preview_changed = legacy_config._prepare_raw_file_patch(
+        rel_path,
+        {
+            "output_name": "legacy_next",
+            "precision_preference": "fp16",
+            "use_hydra": False,
+        },
+    )
+
+    assert preview_ok is True, preview_msg
+    assert path is not None
+    assert preview_changed == ["output_name", "use_hydra"]
+    assert 'output_name = "legacy_next"' in preview_content
+    assert "precision_preference" not in preview_content
+    assert "use_hydra" not in preview_content
+
+    patched_ok, patched_msg, patched_content, changed = legacy_config.patch_raw_file_values(
+        rel_path,
+        {
+            "output_name": "legacy_next",
+            "precision_preference": "fp16",
+            "use_hydra": False,
+        },
+    )
+
+    assert patched_ok is True, patched_msg
+    assert changed == ["output_name", "use_hydra"]
+    assert patched_content == preview_content
+    saved = (configs / "imported" / "legacy_raw.toml").read_text(encoding="utf-8")
+    assert saved == patched_content
+    assert "precision_preference" not in saved
+    assert "use_hydra" not in saved
+
+    public_preview_ok, public_preview_msg, public_preview_content, public_preview_changed = (
+        legacy_config.preview_raw_file_patch(
+            rel_path,
+            {"output_name": "legacy_preview"},
+            content=patched_content,
+        )
+    )
+
+    assert public_preview_ok is True, public_preview_msg
+    assert public_preview_changed == ["output_name"]
+    assert 'output_name = "legacy_preview"' in public_preview_content
+    assert (configs / "imported" / "legacy_raw.toml").read_text(encoding="utf-8") == patched_content
+
+    spd_content = legacy_config._patch_toml_top_level(
+        "\n".join(
+            [
+                'dit_path = "model.safetensors"',
+                'data_dir = "image_dataset"',
+                "iterations = 1",
+                "weight_decay = 0.1",
+                "[schedule]",
+                "",
+            ]
+        ),
+        {"weight_decay": 0.2},
+        rel_path="configs/methods/spd.toml",
+    )
+    spd_data = toml.loads(spd_content)
+    assert "weight_decay" not in spd_data
+    assert spd_data["optim"]["weight_decay"] == 0.2
+
+    cleaned_content, removed_keys = legacy_config._remove_retired_top_level_fields(
+        'output_name = "legacy_next"\nuse_hydra = true\n'
+    )
+    assert removed_keys == ["use_hydra"]
+    assert "use_hydra" not in cleaned_content
+
+    delete_ok, delete_msg = legacy_config.delete_raw_file(rel_path)
+    assert delete_ok is True, delete_msg
+    assert not (configs / "imported" / "legacy_raw.toml").exists()
+    assert legacy_config.load_raw_file(rel_path) == ""
+    for name in expected_shims:
+        assert getattr(legacy_config, name) is raw_file_shims[name]
 
 
 def test_preflight_allows_block_swap_with_standard_gradient_checkpointing(
@@ -2882,6 +3107,61 @@ def test_dataset_preset_save_read_list_and_apply(tmp_path: Path, monkeypatch):
     assert "prior_loss_weight = 1.0" in train_text
 
 
+def test_dataset_preset_remains_available_from_legacy_module(tmp_path: Path, monkeypatch):
+    _write_minimal_config_tree(tmp_path)
+    configs = tmp_path / "configs"
+    monkeypatch.setattr(legacy_config, "ROOT", tmp_path)
+    monkeypatch.setattr(legacy_config, "CONFIGS_DIR", configs)
+    monkeypatch.setattr(legacy_config, "DATASET_PRESETS_DIR", configs / "datasets")
+    monkeypatch.setattr(legacy_config, "GUI_METHODS_DIR", configs / "gui-methods")
+    monkeypatch.setattr(legacy_config, "IMPORTED_CONFIGS_DIR", configs / "imported")
+    monkeypatch.setattr(legacy_config, "PRESETS_FILE", configs / "presets.toml")
+    monkeypatch.setattr(legacy_config, "WEB_FILE_GROUPS_FILE", configs / "web-file-groups.toml")
+    monkeypatch.setattr(legacy_config, "WEB_USER_LOCKS_FILE", configs / "web-user-locks.toml")
+
+    saved = legacy_config.save_dataset_preset(
+        "configs/datasets/legacy_direct.toml",
+        [
+            {
+                "source_dir": "image_dataset/legacy",
+                "image_dir": "post_image_dataset/legacy_resized",
+                "cache_dir": "post_image_dataset/legacy_cache",
+                "num_repeats": 2,
+            },
+            {
+                "source_dir": "image_dataset/legacy_reg",
+                "image_dir": "post_image_dataset/legacy_reg_resized",
+                "cache_dir": "post_image_dataset/legacy_reg_cache",
+                "num_repeats": 1,
+                "is_reg": True,
+                "settings": {"prior_loss_weight": 1.5},
+            },
+        ],
+        {"resolution": 640, "batch_size": 1, "prior_loss_weight": 1.5},
+    )
+    loaded = legacy_config.load_dataset_preset("configs/datasets/legacy_direct.toml")
+    listed = legacy_config.list_dataset_presets()
+    applied = legacy_config.apply_dataset_preset_to_training_config(
+        "configs/datasets/legacy_direct.toml",
+        "configs/imported/lora.toml",
+    )
+
+    assert saved["ok"] is True
+    assert "configs/datasets/legacy_direct.toml" in [item["path"] for item in listed["presets"]]
+    group_file = listed["groups"][0]["files"][0]
+    assert group_file["summary"]["repeat_total"] == 3
+    assert group_file["summary"]["train_dataset_count"] == 1
+    assert group_file["summary"]["reg_dataset_count"] == 1
+    assert loaded["summary"]["dataset_count"] == 2
+    assert loaded["summary"]["train_dataset_count"] == 1
+    assert loaded["summary"]["reg_dataset_count"] == 1
+    assert loaded["summary"]["repeat_total"] == 3
+    assert loaded["defaults"]["resolution"] == 640
+    assert loaded["datasets"][1]["is_reg"] is True
+    assert applied["values"]["source_image_dir"] == "image_dataset/legacy"
+    assert applied["values"]["prior_loss_weight"] == 1.5
+
+
 def test_dataset_preset_save_read_apply_preserves_regularization_fields(tmp_path: Path, monkeypatch):
     configs, _dataset_path = _write_minimal_config_tree(tmp_path)
     _patch_config_service_paths(monkeypatch, tmp_path)
@@ -3491,6 +3771,8 @@ def test_system_dataset_preset_is_readonly_but_can_be_saved_as(tmp_path: Path, m
     _write_minimal_config_tree(tmp_path)
     _patch_config_service_paths(monkeypatch, tmp_path)
     system_preset = tmp_path / "configs" / "datasets" / "ip_adapter.toml"
+    hidden_preset = tmp_path / "configs" / "datasets" / "easycontrol.toml"
+    visible_system_preset = tmp_path / "configs" / "datasets" / "visible_system.toml"
     system_preset.write_text(
         "\n".join(
             [
@@ -3506,6 +3788,13 @@ def test_system_dataset_preset_is_readonly_but_can_be_saved_as(tmp_path: Path, m
             ]
         ),
         encoding="utf-8",
+    )
+    hidden_preset.write_text(system_preset.read_text(encoding="utf-8"), encoding="utf-8")
+    visible_system_preset.write_text(system_preset.read_text(encoding="utf-8"), encoding="utf-8")
+    monkeypatch.setattr(
+        config_datasets,
+        "SYSTEM_DATASET_PRESET_FILES",
+        frozenset({"configs/datasets/visible_system.toml"}),
     )
 
     with pytest.raises(ValueError, match="只读"):
@@ -3524,6 +3813,19 @@ def test_system_dataset_preset_is_readonly_but_can_be_saved_as(tmp_path: Path, m
         {},
     )
     assert copied["file"] == "configs/datasets/ip_adapter_copy.toml"
+
+    listed = config_service.list_dataset_presets()
+    paths = [item["path"] for item in listed["presets"]]
+    assert "configs/datasets/ip_adapter.toml" not in paths
+    assert "configs/datasets/easycontrol.toml" not in paths
+    system_item = next(item for item in listed["presets"] if item["path"] == "configs/datasets/visible_system.toml")
+    assert system_item["readonly"] is True
+    assert system_item["system_preset"] is True
+    assert system_item["summary"]["dataset_count"] == 1
+    assert listed["groups"][0]["files"][0]["summary"]["dataset_count"] == 1
+
+    report = config_service.diagnose_dataset_presets()
+    assert report["hidden_count"] == 2
 
 
 def test_step_estimate_defaults_max_train_steps_to_disabled_when_epoch_missing(tmp_path: Path, monkeypatch):
