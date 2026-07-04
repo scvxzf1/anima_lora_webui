@@ -65,6 +65,8 @@ DATASET_IMAGE_EXTS = frozenset({".png", ".jpg", ".jpeg", ".webp", ".bmp"})
 DATASET_CAPTION_EXTS = (".txt", ".json", ".caption")
 DATASET_PREVIEW_LIMIT = 120
 DATASET_CAPTION_MAX_CHARS = 20000
+DEFAULT_RESIZED_IMAGE_DIR = "post_image_dataset/resized"
+DEFAULT_LORA_CACHE_DIR = "post_image_dataset/lora"
 DATASET_SETTING_KEYS = frozenset({
     "resolution",
     "enable_bucket",
@@ -206,14 +208,20 @@ def get_groups() -> dict[str, list[str]]:
 
 
 __all__ = [
+    "CAPTION_SOURCE_AUTO",
+    "CAPTION_SOURCE_CAPTIONS_JSON",
+    "CAPTION_SOURCE_JSON",
     "CAPTION_SOURCE_MODE_LABELS",
+    "CAPTION_SOURCE_TXT",
     "CONFIG_FILE_LABELS_ZH",
     "DATASET_CAPTION_EXTS",
     "DATASET_CAPTION_MAX_CHARS",
     "DATASET_IMAGE_EXTS",
     "DATASET_PREVIEW_LIMIT",
     "DATASET_SETTING_KEYS",
+    "DEFAULT_LORA_CACHE_DIR",
     "DEFAULT_NL_TAG_MIX_TAG_RATIO",
+    "DEFAULT_RESIZED_IMAGE_DIR",
     "FILE_MOVE_TARGET_GROUPS",
     "FIXED_SYSTEM_CONFIG_GROUP_IDS",
     "HIDDEN_CONFIG_FILES",

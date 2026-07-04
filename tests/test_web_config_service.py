@@ -21,6 +21,10 @@ from web.services.config import paths as config_paths
 
 def test_config_metadata_exports_remain_available_from_legacy_facade():
     names = [
+        "CAPTION_SOURCE_AUTO",
+        "CAPTION_SOURCE_TXT",
+        "CAPTION_SOURCE_JSON",
+        "CAPTION_SOURCE_CAPTIONS_JSON",
         "CONFIG_FILE_LABELS_ZH",
         "SYSTEM_CONFIG_GROUP_IDS",
         "FIXED_SYSTEM_CONFIG_GROUP_IDS",
@@ -41,6 +45,8 @@ def test_config_metadata_exports_remain_available_from_legacy_facade():
         "DATASET_IMAGE_EXTS",
         "DATASET_PREVIEW_LIMIT",
         "DATASET_CAPTION_MAX_CHARS",
+        "DEFAULT_RESIZED_IMAGE_DIR",
+        "DEFAULT_LORA_CACHE_DIR",
         "PREPROCESS_DATASET_SETTING_KEYS",
         "CAPTION_SOURCE_MODE_LABELS",
     ]

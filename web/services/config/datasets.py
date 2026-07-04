@@ -11,6 +11,27 @@ from __future__ import annotations
 from functools import wraps
 
 from web.services import config_service as _facade
+from web.services.config.metadata import (
+    CAPTION_SOURCE_AUTO,
+    CAPTION_SOURCE_CAPTIONS_JSON,
+    CAPTION_SOURCE_JSON,
+    CAPTION_SOURCE_MODE_LABELS,
+    CAPTION_SOURCE_TXT,
+    DATASET_CAPTION_MAX_CHARS,
+    DATASET_IMAGE_EXTS,
+    DATASET_PREVIEW_LIMIT,
+    DATASET_SETTING_KEYS,
+    DEFAULT_LORA_CACHE_DIR,
+    DEFAULT_NL_TAG_MIX_TAG_RATIO,
+    DEFAULT_RESIZED_IMAGE_DIR,
+    HIDDEN_DATASET_PRESET_FILES,
+    NL_TAG_MIX_ATTR_KEY,
+    NL_TAG_MIX_CLASSIFICATION_METHOD,
+    PREPROCESS_DATASET_SETTING_ORDER,
+    RUNTIME_PREPROCESS_ATTR_KEY,
+    SYSTEM_DATASET_PRESET_FILES,
+    TRIGGER_CLONE_ATTR_KEY,
+)
 
 for _name, _value in _facade.__dict__.items():
     if _name.startswith("__") and _name.endswith("__"):
