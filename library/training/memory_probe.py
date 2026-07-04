@@ -87,10 +87,18 @@ def _summarize_module_list(modules: list[Any]) -> dict[str, Any]:
         params.extend(list(module.parameters(recurse=True)))
         if hasattr(module, "factor"):
             lokr_factors[str(getattr(module, "factor"))] += 1
-        if hasattr(module, "lokr_w1") and hasattr(module, "lokr_w2"):
+        if hasattr(module, "lokr_w1") and (
+            hasattr(module, "lokr_w2")
+            or (hasattr(module, "lokr_w2_a") and hasattr(module, "lokr_w2_b"))
+        ):
             w1 = getattr(module, "lokr_w1")
-            w2 = getattr(module, "lokr_w2")
-            lokr_shapes[f"{tuple(w1.shape)}x{tuple(w2.shape)}"] += 1
+            if hasattr(module, "lokr_w2"):
+                w2_shape = tuple(getattr(module, "lokr_w2").shape)
+            else:
+                w2a = getattr(module, "lokr_w2_a")
+                w2b = getattr(module, "lokr_w2_b")
+                w2_shape = (tuple(w2a.shape), tuple(w2b.shape))
+            lokr_shapes[f"{tuple(w1.shape)}x{w2_shape}"] += 1
     out = {
         "module_count": len(modules),
         "module_types": _counter_to_dict(type_counts),

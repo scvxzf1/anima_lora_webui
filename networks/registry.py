@@ -109,6 +109,8 @@ SHARED_KWARG_FLAGS: Tuple[str, ...] = (
     "min_rank",
     "alpha_rank_scale",
     "channel_scaling_alpha",
+    "lora_fp32_compute",
+    "down_init",
     "use_custom_down_autograd",
     "use_ortho",
     "ortho_init_std",

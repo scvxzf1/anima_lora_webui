@@ -102,10 +102,16 @@ def _device_from_name(name: str) -> torch.device:
     normalized = name.strip().lower()
     if normalized == "cpu":
         return torch.device("cpu")
-    if normalized == "cuda":
+    if normalized == "cuda" or normalized.startswith("cuda:"):
         if not torch.cuda.is_available():
             raise RuntimeError("--device cuda requested but torch.cuda.is_available() is false")
-        return torch.device("cuda")
+        device = torch.device(normalized)
+        if device.index is not None and device.index >= torch.cuda.device_count():
+            raise RuntimeError(
+                f"--device {normalized} requested but only "
+                f"{torch.cuda.device_count()} CUDA device(s) are visible"
+            )
+        return device
     raise ValueError(f"unsupported device: {name}")
 
 
@@ -204,11 +210,70 @@ def _profile_path(profile_dir: Path | None, transfer_dtype: str) -> Path | None:
     return path
 
 
+def _safe_ratio(numerator: float, denominator: float) -> float:
+    if abs(denominator) <= 1e-12:
+        return 0.0 if abs(numerator) <= 1e-12 else math.inf
+    return float(numerator) / float(denominator)
+
+
+def _profile_ratios(
+    baseline_profile: dict[str, Any] | None,
+    int8_profile: dict[str, Any] | None,
+) -> dict[str, float] | None:
+    if baseline_profile is None or int8_profile is None:
+        return None
+    keys = (
+        "h2d_ms_mean",
+        "h2d_ms_p95",
+        "h2d_ms_max",
+        "wait_ms_mean",
+        "wait_ms_p95",
+        "wait_ms_max",
+    )
+    return {
+        key: _safe_ratio(float(int8_profile.get(key, 0.0)), float(baseline_profile.get(key, 0.0)))
+        for key in keys
+    }
+
+
+def _reset_peak_memory(device: torch.device) -> None:
+    if device.type != "cuda":
+        return
+    torch.cuda.synchronize(device)
+    torch.cuda.reset_peak_memory_stats(device)
+
+
+def _memory_summary(device: torch.device) -> dict[str, int] | None:
+    if device.type != "cuda":
+        return None
+    torch.cuda.synchronize(device)
+    return {
+        "max_allocated_bytes": int(torch.cuda.max_memory_allocated(device)),
+        "max_reserved_bytes": int(torch.cuda.max_memory_reserved(device)),
+    }
+
+
+def _memory_ratios(
+    baseline_memory: dict[str, int] | None,
+    int8_memory: dict[str, int] | None,
+) -> dict[str, float] | None:
+    if baseline_memory is None or int8_memory is None:
+        return None
+    return {
+        key: _safe_ratio(float(int8_memory.get(key, 0)), float(baseline_memory.get(key, 0)))
+        for key in ("max_allocated_bytes", "max_reserved_bytes")
+    }
+
+
 def _run_offloaded_step(
     model: BlockSwapProbeModel,
     *,
     transfer_dtype: str,
     blocks_to_swap: int,
+    repeat_steps: int,
+    int8_restore_mode: str,
+    int8_restore_chunk_rows: int,
+    int8_scope: str,
     device: torch.device,
     profile_jsonl: Path | None,
     x: torch.Tensor,
@@ -222,6 +287,9 @@ def _run_offloaded_step(
         supports_backward=True,
         profile_jsonl=str(profile_jsonl) if profile_jsonl is not None else None,
         transfer_dtype=transfer_dtype,
+        int8_restore_mode=int8_restore_mode,
+        int8_restore_chunk_rows=int8_restore_chunk_rows,
+        int8_scope=int8_scope,
     )
     captured: dict[str, torch.Tensor] = {}
     hooks = [
@@ -233,21 +301,31 @@ def _run_offloaded_step(
         )
         for idx, block in enumerate(model.blocks)
     ]
+    if repeat_steps <= 0:
+        raise ValueError("repeat_steps must be positive")
     model.zero_grad(set_to_none=True)
     try:
-        offloader.prepare_block_devices_before_forward(model.blocks, free_cache=False)
-        output = model(x, context, offloader=offloader)
-        loss = F.mse_loss(output.float(), target.float())
-        loss.backward()
+        _reset_peak_memory(device)
+        output = None
+        loss = None
+        for _ in range(repeat_steps):
+            model.zero_grad(set_to_none=True)
+            offloader.prepare_block_devices_before_forward(model.blocks, free_cache=False)
+            output = model(x, context, offloader=offloader)
+            loss = F.mse_loss(output.float(), target.float())
+            loss.backward()
         offloader.set_forward_only(True)
         offloader.restore_blocks_to_device(model.blocks, device)
         offloader.flush_profile_events(blocking=True)
+        assert output is not None
+        assert loss is not None
         return {
             "output": output.detach().float(),
             "loss": float(loss.detach().item()),
             "grad_norm": _grad_norm(model),
             "block_outputs": captured,
             "profile": _profile_summary(profile_jsonl),
+            "memory": _memory_summary(device),
             "frozen_weight_master_bytes": offloader._frozen_weight_master_bytes,
             "bf16_master_bytes": offloader._bf16_master_bytes,
             "fp8_master_bytes": offloader._fp8_master_bytes,
@@ -271,6 +349,10 @@ def run_probe(
     hidden_dim: int = 64,
     num_blocks: int = 4,
     blocks_to_swap: int = 2,
+    repeat_steps: int = 1,
+    int8_restore_mode: str = "copy",
+    int8_restore_chunk_rows: int = 0,
+    int8_scope: str = "all",
     device: torch.device | None = None,
     profile_dir: Path | None = None,
     max_output_rel_l2: float = 0.03,
@@ -279,6 +361,8 @@ def run_probe(
 ) -> dict[str, Any]:
     if not 0 < blocks_to_swap < num_blocks:
         raise ValueError("blocks_to_swap must be between 1 and num_blocks - 1")
+    if repeat_steps <= 0:
+        raise ValueError("repeat_steps must be positive")
 
     device = device or torch.device("cpu")
     torch.manual_seed(seed)
@@ -300,6 +384,10 @@ def run_probe(
         baseline,
         transfer_dtype="bf16",
         blocks_to_swap=blocks_to_swap,
+        repeat_steps=repeat_steps,
+        int8_restore_mode="copy",
+        int8_restore_chunk_rows=0,
+        int8_scope="all",
         device=device,
         profile_jsonl=bf16_profile_jsonl,
         x=x,
@@ -310,6 +398,10 @@ def run_probe(
         int8_model,
         transfer_dtype="int8",
         blocks_to_swap=blocks_to_swap,
+        repeat_steps=repeat_steps,
+        int8_restore_mode=int8_restore_mode,
+        int8_restore_chunk_rows=int8_restore_chunk_rows,
+        int8_scope=int8_scope,
         device=device,
         profile_jsonl=int8_profile_jsonl,
         x=x,
@@ -339,6 +431,10 @@ def run_probe(
         and loss_rel_delta <= max_loss_rel_delta
         and grad_norm_rel_delta <= max_grad_norm_rel_delta
     )
+    baseline_profile = baseline_step["profile"]
+    int8_profile = int8_step["profile"]
+    baseline_memory = baseline_step["memory"]
+    int8_memory = int8_step["memory"]
     return {
         "model_kind": "blockswap_toy",
         "seed": seed,
@@ -349,8 +445,12 @@ def run_probe(
         "hidden_dim": hidden_dim,
         "num_blocks": num_blocks,
         "blocks_to_swap": blocks_to_swap,
+        "repeat_steps": repeat_steps,
         "baseline_transfer_dtype": "bf16",
         "candidate_transfer_dtype": "int8",
+        "candidate_int8_restore_mode": int8_restore_mode,
+        "candidate_int8_restore_chunk_rows": int8_restore_chunk_rows,
+        "candidate_int8_scope": int8_scope,
         "baseline_loss": baseline_step["loss"],
         "int8_loss": int8_step["loss"],
         "loss_rel_delta": loss_rel_delta,
@@ -371,8 +471,12 @@ def run_probe(
         "int8_quantized_tensors": int8_step["int8_quantized_tensors"],
         "int8_weight_bytes_by_block": int8_step["int8_weight_bytes_by_block"],
         "int8_relative_l2_by_block": int8_step["int8_relative_l2_by_block"],
-        "baseline_profile": baseline_step["profile"],
-        "int8_profile": int8_step["profile"],
+        "baseline_profile": baseline_profile,
+        "int8_profile": int8_profile,
+        "profile_ratios": _profile_ratios(baseline_profile, int8_profile),
+        "baseline_memory": baseline_memory,
+        "int8_memory": int8_memory,
+        "memory_ratios": _memory_ratios(baseline_memory, int8_memory),
         "thresholds": {
             "max_output_rel_l2": max_output_rel_l2,
             "max_loss_rel_delta": max_loss_rel_delta,
@@ -386,12 +490,27 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--dtype", choices=["bf16", "fp32"], default="bf16")
-    parser.add_argument("--device", choices=["cpu", "cuda"], default="cpu")
+    parser.add_argument("--device", default="cpu", help="cpu, cuda, or cuda:<index>")
     parser.add_argument("--batch-size", type=int, default=4)
     parser.add_argument("--dim", type=int, default=16)
     parser.add_argument("--hidden-dim", type=int, default=64)
     parser.add_argument("--num-blocks", type=int, default=4)
     parser.add_argument("--blocks-to-swap", type=int, default=2)
+    parser.add_argument("--repeat-steps", type=int, default=1)
+    parser.add_argument(
+        "--int8-restore-mode",
+        choices=["copy", "direct_bind", "reuse_storage"],
+        default="copy",
+    )
+    parser.add_argument("--int8-restore-chunk-rows", type=int, default=0)
+    parser.add_argument(
+        "--int8-scope",
+        default="all",
+        help=(
+            "Comma-separated int8 CPU master scope for the candidate path, "
+            "for example all, mlp, or mlp,cross_attn_q."
+        ),
+    )
     parser.add_argument("--max-output-rel-l2", type=float, default=0.03)
     parser.add_argument("--max-loss-rel-delta", type=float, default=0.05)
     parser.add_argument("--max-grad-norm-rel-delta", type=float, default=0.05)
@@ -413,6 +532,10 @@ def main() -> int:
         hidden_dim=args.hidden_dim,
         num_blocks=args.num_blocks,
         blocks_to_swap=args.blocks_to_swap,
+        repeat_steps=args.repeat_steps,
+        int8_restore_mode=args.int8_restore_mode,
+        int8_restore_chunk_rows=args.int8_restore_chunk_rows,
+        int8_scope=args.int8_scope,
         profile_dir=args.profile_dir,
         max_output_rel_l2=args.max_output_rel_l2,
         max_loss_rel_delta=args.max_loss_rel_delta,

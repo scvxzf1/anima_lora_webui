@@ -65,10 +65,14 @@ def test_schema_has_known_keys(populated_parser):
         "preprocess_precision_preference",
         "base_config",  # manual extra
         "use_moe_style",  # network-module allowlist (three-axis routing)
+        "lora_fp32_compute",  # LoRA family rank-path fp32 fallback
+        "down_init",  # plain LoRA down-projection init policy
         "use_glora",  # GLoRA plugin selector
         "lokr_factor_group_size",  # LoKr grouped projection tuning
         "lokr_project_chunk_bytes",  # LoKr projection row-chunk threshold
         "lokr_grouped_delta_backend",  # LoKr grouped-delta backend selector
+        "lokr_use_einsum",  # LoKr decomposed einsum runtime path toggle
+        "lokr_decompose_w2",  # LoKr w2 decomposition compatibility override
     ):
         assert k in schema, f"expected {k!r} in populated schema"
 

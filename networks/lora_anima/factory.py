@@ -93,14 +93,17 @@ def create_network(
 ):
     spec = resolve_network_spec(kwargs)
 
-    # Memory-saving down-projection autograd (classic LoRA only). Saves the
-    # low-precision x instead of the fp32-cast input; fp32 bottleneck matmul
-    # and gradients are preserved bitwise. See `networks/lora_modules/custom_autograd.py`.
-    use_custom_down_autograd = kwargs.get("use_custom_down_autograd", "false")
-    if isinstance(use_custom_down_autograd, str):
-        use_custom_down_autograd = use_custom_down_autograd.lower() == "true"
-    else:
-        use_custom_down_autograd = bool(use_custom_down_autograd)
+    if str(kwargs.get("use_custom_down_autograd", "false")).strip().lower() in (
+        "true",
+        "1",
+        "yes",
+        "on",
+    ):
+        logger.info(
+            "use_custom_down_autograd is deprecated and ignored "
+            "(LoRA-family rank GEMMs now run in the model compute dtype; "
+            "set lora_fp32_compute=true only for fp16/V100 quality fallback)"
+        )
 
     channel_scales_dict = _load_channel_scales(kwargs)
 
@@ -128,31 +131,6 @@ def create_network(
     network._network_spec = spec
     if spec.post_init is not None:
         spec.post_init(network, kwargs)
-
-    if use_custom_down_autograd:
-        _hits = 0
-        _lokr_hits = 0
-        _skipped = 0
-        for mod in network.text_encoder_loras + network.unet_loras:
-            if hasattr(mod, "use_custom_down_autograd"):
-                mod.use_custom_down_autograd = True
-                _hits += 1
-            elif hasattr(mod, "use_custom_lokr_autograd"):
-                mod.use_custom_lokr_autograd = True
-                _lokr_hits += 1
-            else:
-                _skipped += 1
-        hit_parts = []
-        if _hits:
-            hit_parts.append(f"{_hits} LoRA-family modules")
-        if _lokr_hits:
-            hit_parts.append(f"{_lokr_hits} LoKr modules")
-        hit_text = " and ".join(hit_parts) if hit_parts else "0 LoRA-family modules"
-        logger.info(
-            f"use_custom_down_autograd: enabled on {hit_text}"
-            + (f" ({_skipped} unsupported skipped)" if _skipped else "")
-            + " (saves ~32-128 MiB/Linear of fp32 activation per step)"
-        )
 
     if cfg.use_timestep_mask:
         logger.info(

@@ -144,6 +144,28 @@ class TrainingBootstrap:
                 net_kwargs[key] = str(getattr(args, key))
         return net_kwargs
 
+    @staticmethod
+    def should_auto_enable_lora_fp32_compute(args, accelerator, net_kwargs: dict) -> bool:
+        if "lora_fp32_compute" in net_kwargs:
+            return False
+        if getattr(args, "mixed_precision", None) != "fp16":
+            return False
+        if not torch.cuda.is_available():
+            return False
+        device = getattr(accelerator, "device", None)
+        try:
+            if device is not None and getattr(device, "type", None) == "cuda":
+                capability = torch.cuda.get_device_capability(device)
+            else:
+                capability = torch.cuda.get_device_capability()
+        except Exception:
+            logger.warning(
+                "could not read GPU compute capability; not auto-enabling "
+                "lora_fp32_compute."
+            )
+            return False
+        return capability == (7, 0)
+
     def prepare_dataset(self, trainer, args) -> DatasetBuildResult:
         """Build train/val dataset groups and the collator shared by loaders."""
         use_dreambooth_method = args.in_json is None
@@ -293,6 +315,14 @@ class TrainingBootstrap:
             accelerator.print(f"all weights merged: {', '.join(args.base_weights)}")
 
         net_kwargs = self.build_net_kwargs(args)
+        if self.should_auto_enable_lora_fp32_compute(args, accelerator, net_kwargs):
+            net_kwargs["lora_fp32_compute"] = "true"
+            logger.warning(
+                "V100/sm70 fp16 training detected: auto-enabling "
+                "lora_fp32_compute so LoRA-family rank GEMMs run in fp32 while "
+                "the frozen base remains fp16. Set lora_fp32_compute=false to "
+                "disable for A/B testing."
+            )
 
         if args.dim_from_weights:
             network, _ = network_module.create_network_from_weights(

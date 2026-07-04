@@ -226,6 +226,18 @@ COMMANDS = {
         utilities.cmd_print_config,
         "Dump merged config (METHOD=<name> PRESET=<name>) with provenance",
     ),
+    "explain-config": (
+        utilities.cmd_explain_config,
+        "Explain config value history (METHOD=<name> PRESET=<name>, pass -- --key name)",
+    ),
+    "config-compat": (
+        utilities.cmd_config_compat,
+        "Print compile/checkpoint/block-swap compatibility diagnostics",
+    ),
+    "training-hot": (
+        utilities.cmd_training_hot,
+        "Run short training hot-test matrix (pass -- --dry-run, --case gui:loha, etc.)",
+    ),
     "update": (
         utilities.cmd_update,
         "Update from GitHub release (preserves datasets/output/models, prompts on "

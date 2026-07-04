@@ -23,6 +23,33 @@ from networks.plugins.lokr.autograd import (
 logger = logging.getLogger(__name__)
 
 
+def _factorization(dimension: int, factor: int = -1) -> tuple[int, int]:
+    """Split a dimension into a near-square ``(outer, inner)`` factor pair."""
+
+    if factor > 0 and dimension % factor == 0:
+        outer = factor
+        inner = dimension // factor
+        if outer > inner:
+            inner, outer = outer, inner
+        return outer, inner
+    if factor < 0:
+        factor = dimension
+    outer, inner = 1, dimension
+    best_sum = outer + inner
+    while outer < inner:
+        candidate = outer + 1
+        while dimension % candidate != 0:
+            candidate += 1
+        other = dimension // candidate
+        if candidate + other > best_sum or candidate > factor:
+            break
+        outer, inner = candidate, other
+        best_sum = outer + inner
+    if outer > inner:
+        inner, outer = outer, inner
+    return outer, inner
+
+
 class LoKrModule(BaseLoRAModule):
     """LyCORIS-style LoKr adapter for Linear layers."""
 
@@ -44,6 +71,8 @@ class LoKrModule(BaseLoRAModule):
         lokr_project_chunk_bytes=DEFAULT_LOKR_PROJECT_CHUNK_BYTES,
         lokr_grouped_delta_backend=DEFAULT_LOKR_GROUPED_DELTA_BACKEND,
         lokr_grouped_delta_backward_backend=DEFAULT_LOKR_GROUPED_DELTA_BACKWARD_BACKEND,
+        lokr_use_einsum=True,
+        lokr_decompose_w2=None,
     ):
         if not isinstance(org_module, torch.nn.Linear):
             raise ValueError("LoKrModule only supports torch.nn.Linear modules")
@@ -60,15 +89,49 @@ class LoKrModule(BaseLoRAModule):
 
         in_features = int(org_module.in_features)
         out_features = int(org_module.out_features)
-        self.factor = self._find_factor(in_features, out_features, int(factor))
-        self.in_dim = in_features // self.factor
-        self.out_dim = out_features // self.factor
+        self.lokr_use_einsum = bool(lokr_use_einsum)
 
-        self.lokr_w1 = torch.nn.Parameter(torch.empty(self.factor, self.factor))
-        self.lokr_w2 = torch.nn.Parameter(torch.empty(self.out_dim, self.in_dim))
+        if self.lokr_use_einsum:
+            self.out_a, self.out_b = _factorization(out_features, int(factor))
+            self.in_a, self.in_b = _factorization(in_features, int(factor))
+            self.factor = self.out_a
+            self.in_dim = self.in_b
+            self.out_dim = self.out_b
 
-        torch.nn.init.kaiming_uniform_(self.lokr_w1, a=math.sqrt(5))
-        torch.nn.init.zeros_(self.lokr_w2)
+            self.lokr_w1 = torch.nn.Parameter(torch.empty(self.out_a, self.in_a))
+            if lokr_decompose_w2 is None:
+                decompose_w2 = lora_dim < min(self.out_b, self.in_b)
+            else:
+                decompose_w2 = bool(lokr_decompose_w2)
+            if decompose_w2:
+                self.lokr_w2_a = torch.nn.Parameter(torch.empty(self.out_b, lora_dim))
+                self.lokr_w2_b = torch.nn.Parameter(torch.empty(lora_dim, self.in_b))
+                self._use_decomposed_w2 = True
+            else:
+                self.lokr_w2 = torch.nn.Parameter(torch.empty(self.out_b, self.in_b))
+                self._use_decomposed_w2 = False
+
+            torch.nn.init.kaiming_uniform_(self.lokr_w1, a=math.sqrt(5))
+            if self._use_decomposed_w2:
+                torch.nn.init.kaiming_uniform_(self.lokr_w2_a, a=math.sqrt(5))
+                torch.nn.init.zeros_(self.lokr_w2_b)
+            else:
+                torch.nn.init.zeros_(self.lokr_w2)
+        else:
+            self.factor = self._find_factor(in_features, out_features, int(factor))
+            self.in_dim = in_features // self.factor
+            self.out_dim = out_features // self.factor
+            self.in_a = self.factor
+            self.out_a = self.factor
+            self.in_b = self.in_dim
+            self.out_b = self.out_dim
+
+            self.lokr_w1 = torch.nn.Parameter(torch.empty(self.factor, self.factor))
+            self.lokr_w2 = torch.nn.Parameter(torch.empty(self.out_dim, self.in_dim))
+            self._use_decomposed_w2 = False
+
+            torch.nn.init.kaiming_uniform_(self.lokr_w1, a=math.sqrt(5))
+            torch.nn.init.zeros_(self.lokr_w2)
 
         if channel_scale is not None:
             logger.warning(
@@ -109,7 +172,27 @@ class LoKrModule(BaseLoRAModule):
         return 1
 
     def _compute_weight(self) -> torch.Tensor:
-        return torch.kron(self.lokr_w1, self.lokr_w2)
+        return torch.kron(self.lokr_w1, self._get_w2())
+
+    def _get_w2(self) -> torch.Tensor:
+        if self._use_decomposed_w2:
+            return self.lokr_w2_a @ self.lokr_w2_b
+        return self.lokr_w2
+
+    def _einsum_delta(self, x: torch.Tensor, dtype: torch.dtype) -> torch.Tensor:
+        x_lokr = x.to(dtype)
+        w1 = self.lokr_w1.to(dtype)
+        w2 = self._get_w2().to(dtype)
+        out_a, in_a = w1.shape
+        out_b, in_b = w2.shape
+        x_mat = x_lokr.reshape(-1, in_a, in_b)
+        delta = torch.einsum("oi,nij,bj->nob", w1.to(x_mat), x_mat, w2.to(x_mat))
+        out_features = out_a * out_b
+        if x_lokr.dim() == 2:
+            return delta.reshape(x_lokr.shape[0], out_features)
+        if x_lokr.dim() == 3:
+            return delta.reshape(x_lokr.shape[0], x_lokr.shape[1], out_features)
+        return delta.reshape(x_lokr.shape[:-1] + (out_features,))
 
     def forward(self, x):
         if not self.enabled or self._fused:
@@ -147,6 +230,34 @@ class LoKrModule(BaseLoRAModule):
                 group_size=self.lokr_factor_group_size,
                 chunk_bytes=self.lokr_project_chunk_bytes,
             )
+        if self.lokr_use_einsum:
+            if self.training:
+                work = self._rank_compute_dtype(org_forwarded)
+                with self._rank_autocast_context(x, work):
+                    x_r = self._rebalance(x.to(work))
+                    lx = self._einsum_delta(x_r, work)
+                    lx = lx * self._timestep_mask[:, :1].to(lx)
+                    if self.dropout is not None:
+                        lx = F.dropout(lx, p=self.dropout)
+            else:
+                lx = self._einsum_delta(self._rebalance(x), x.dtype)
+            result = org_forwarded + (lx * self.multiplier * self.scale).to(
+                org_forwarded.dtype
+            )
+            if record_lokr:
+                record_peak_probe_event(
+                    peak_probe,
+                    "lokr_after_delta_apply",
+                    tensor=result,
+                    module_type="lokr",
+                    lora_name=self.lora_name,
+                    original_name=original_name,
+                    factor=self.factor,
+                    group_size=self.lokr_factor_group_size,
+                    chunk_bytes=self.lokr_project_chunk_bytes,
+                )
+            return result
+
         if self.training:
             if self.use_custom_lokr_autograd:
                 gate_scale = self._timestep_mask[:, :1] * self.multiplier * self.scale
@@ -241,7 +352,12 @@ class LoKrModule(BaseLoRAModule):
                 device = weight.device
 
             w1 = sd["lokr_w1"].to(torch.float).to(device)
-            w2 = sd["lokr_w2"].to(torch.float).to(device)
+            if "lokr_w2" in sd:
+                w2 = sd["lokr_w2"].to(torch.float).to(device)
+            else:
+                w2a = sd["lokr_w2_a"].to(torch.float).to(device)
+                w2b = sd["lokr_w2_b"].to(torch.float).to(device)
+                w2 = w2a @ w2b
             delta = torch.kron(w1, w2)
             weight.data.add_((delta * self.multiplier * self.scale).to(dtype))
 

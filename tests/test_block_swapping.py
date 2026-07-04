@@ -13,6 +13,8 @@ from library.runtime.device import should_move_weight_to_device
 from library.runtime.offloading import (
     Int8BlockSwapCpuMaster,
     ModelOffloader,
+    normalize_block_swap_int8_scope,
+    normalize_block_swap_int8_restore_mode,
     normalize_block_swap_restore_mode,
     normalize_block_swap_transfer_dtype,
     swap_weight_devices_no_cuda,
@@ -231,6 +233,28 @@ def test_block_swap_restore_mode_aliases_and_rejects_invalid() -> None:
         normalize_block_swap_restore_mode("ring")
 
 
+def test_block_swap_int8_restore_mode_aliases_and_rejects_invalid() -> None:
+    assert normalize_block_swap_int8_restore_mode(None) == "copy"
+    assert normalize_block_swap_int8_restore_mode("default") == "copy"
+    assert normalize_block_swap_int8_restore_mode("reuse") == "reuse_storage"
+    assert normalize_block_swap_int8_restore_mode("into") == "reuse_storage"
+    assert normalize_block_swap_int8_restore_mode("inplace") == "reuse_storage"
+    assert normalize_block_swap_int8_restore_mode("direct") == "direct_bind"
+    assert normalize_block_swap_int8_restore_mode("bind") == "direct_bind"
+    assert normalize_block_swap_int8_restore_mode("direct_bind") == "direct_bind"
+    with pytest.raises(ValueError):
+        normalize_block_swap_int8_restore_mode("slab")
+
+
+def test_block_swap_int8_scope_normalizes_and_rejects_invalid() -> None:
+    assert normalize_block_swap_int8_scope(None) == "all"
+    assert normalize_block_swap_int8_scope("") == "all"
+    assert normalize_block_swap_int8_scope(" MLP , cross_q , mlp ") == "mlp,cross_q"
+    assert normalize_block_swap_int8_scope("all,mlp") == "all"
+    with pytest.raises(ValueError):
+        normalize_block_swap_int8_scope("mlp,adaln")
+
+
 @pytest.mark.skipif(
     not hasattr(torch, "float8_e4m3fn"),
     reason="torch build does not expose float8_e4m3fn",
@@ -351,6 +375,68 @@ def test_int8_block_swap_cpu_master_quantizes_only_candidate_frozen_linears(
     assert len(config["int8_relative_l2_by_block"]) == 3
     assert max(config["int8_relative_l2_by_block"]) < 0.03
     assert config["fp8_master_bytes"] == 0
+
+
+def test_int8_block_swap_cpu_master_respects_scope(tmp_path) -> None:
+    blocks = nn.ModuleList([_Int8CandidateBlock() for _ in range(3)])
+    profile_path = tmp_path / "block_swap_profile.jsonl"
+    offloader = ModelOffloader(
+        blocks,
+        blocks_to_swap=1,
+        device=torch.device("cpu"),
+        supports_backward=False,
+        profile_jsonl=str(profile_path),
+        transfer_dtype="int8",
+        int8_scope="mlp",
+    )
+
+    offloader.prepare_block_devices_before_forward(blocks, free_cache=False)
+
+    assert offloader._cpu_weight_masters is not None
+    masters = offloader._cpu_weight_masters[0]
+    assert isinstance(masters["mlp.layer1"], Int8BlockSwapCpuMaster)
+    assert isinstance(masters["mlp.layer2"], Int8BlockSwapCpuMaster)
+    assert isinstance(masters["self_attn.qkv_proj"], torch.Tensor)
+    assert isinstance(masters["self_attn.output_proj"], torch.Tensor)
+    assert isinstance(masters["adaln_up_mlp"], torch.Tensor)
+    assert offloader._int8_quantized_tensors == 6
+
+    events = [json.loads(line) for line in profile_path.read_text().splitlines()]
+    config = [event for event in events if event["ev"] == "block_swap_config"][0]
+    assert config["transfer_dtype"] == "int8"
+    assert config["int8_scope"] == "mlp"
+    assert config["int8_quantized_tensors"] == 6
+    assert config["int8_master_bytes"] > 0
+    assert config["int8_master_bytes"] < config["bf16_master_bytes"]
+
+
+def test_int8_block_swap_scope_can_come_from_env(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("ANIMA_BLOCK_SWAP_INT8_SCOPE", "self_attn_out")
+    blocks = nn.ModuleList([_Int8CandidateBlock() for _ in range(3)])
+    profile_path = tmp_path / "block_swap_profile.jsonl"
+    offloader = ModelOffloader(
+        blocks,
+        blocks_to_swap=1,
+        device=torch.device("cpu"),
+        supports_backward=False,
+        profile_jsonl=str(profile_path),
+        transfer_dtype="int8",
+    )
+
+    offloader.prepare_block_devices_before_forward(blocks, free_cache=False)
+
+    assert offloader._cpu_weight_masters is not None
+    masters = offloader._cpu_weight_masters[0]
+    assert isinstance(masters["mlp.layer1"], torch.Tensor)
+    assert isinstance(masters["mlp.layer2"], torch.Tensor)
+    assert isinstance(masters["self_attn.qkv_proj"], torch.Tensor)
+    assert isinstance(masters["self_attn.output_proj"], Int8BlockSwapCpuMaster)
+    assert offloader._int8_quantized_tensors == 3
+
+    events = [json.loads(line) for line in profile_path.read_text().splitlines()]
+    config = [event for event in events if event["ev"] == "block_swap_config"][0]
+    assert config["int8_scope"] == "self_attn_out"
+    assert config["int8_quantized_tensors"] == 3
 
 
 def test_int8_block_swap_restore_all_blocks_to_execution_dtype() -> None:
@@ -1179,6 +1265,260 @@ def test_block_swap_cached_cuda_int8_master_uses_dequant_restore(monkeypatch) ->
             (int8_master, torch.device("cuda"), torch.float32, True)
         ]
         assert source_view.copy_calls == [(restored_marker, True)]
+        assert block_to_cpu._module.weight.data is int8_master.quantized
+        assert block_to_cuda._module.weight.data is source_view
+    finally:
+        offloader.thread_pool.shutdown(wait=False)
+
+
+def test_block_swap_cached_cuda_int8_direct_bind_skips_extra_copy(monkeypatch) -> None:
+    import library.runtime.offloading as offloading_module
+
+    class _FakeTensorView:
+        def __init__(self) -> None:
+            self.shape = (2, 2)
+            self.recorded_streams = []
+            self.copy_calls = []
+
+        def record_stream(self, stream) -> None:
+            self.recorded_streams.append(stream)
+
+        def copy_(self, source, non_blocking: bool = False):
+            self.copy_calls.append((source, non_blocking))
+            return self
+
+    class _FakeWeight:
+        def __init__(self, data):
+            self.data = data
+            self.shape = (2, 2)
+
+    class _FakeModule:
+        def __init__(self, weight) -> None:
+            self.weight = _FakeWeight(weight)
+
+    class _FakeBlock:
+        def __init__(self, weight) -> None:
+            self._module = _FakeModule(weight)
+
+        def named_modules(self):
+            return [("", self), ("mlp.layer1", self._module)]
+
+    class _FakeEvent:
+        def __init__(self, enable_timing: bool = False) -> None:
+            self.enable_timing = enable_timing
+
+        def record(self, stream) -> None:
+            pass
+
+    class _FakeStream:
+        def __init__(self, device=None) -> None:
+            self.device = device
+
+        def wait_event(self, event) -> None:
+            pass
+
+    class _FakeStreamContext:
+        def __init__(self, stream) -> None:
+            self.stream = stream
+
+        def __enter__(self):
+            return self.stream
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+    monkeypatch.setattr(torch.cuda, "Stream", lambda device=None: _FakeStream(device=device))
+    monkeypatch.setattr(torch.cuda, "Event", _FakeEvent)
+    monkeypatch.setattr(torch.cuda, "stream", lambda stream: _FakeStreamContext(stream))
+    monkeypatch.setattr(
+        torch,
+        "_foreach_copy_",
+        lambda *args, **kwargs: (_ for _ in ()).throw(
+            AssertionError("int8 master must not use foreach copy")
+        ),
+    )
+    restored_marker = object()
+    restore_calls = []
+
+    def fake_restore_cpu_master_tensor(master, *, device, dtype, non_blocking=True):
+        restore_calls.append((master, device, dtype, non_blocking))
+        return restored_marker
+
+    monkeypatch.setattr(
+        offloading_module,
+        "_restore_cpu_master_tensor",
+        fake_restore_cpu_master_tensor,
+    )
+
+    int8_master = Int8BlockSwapCpuMaster(
+        quantized=torch.ones(2, 2, dtype=torch.int8),
+        scale=torch.ones(2, dtype=torch.float32),
+        shape=(2, 2),
+    )
+    source_view = _FakeTensorView()
+    target_view = _FakeTensorView()
+    blocks = nn.ModuleList([_TinyBlock(), _TinyBlock(), _TinyBlock()])
+    offloader = ModelOffloader(
+        blocks,
+        blocks_to_swap=1,
+        device=torch.device("cuda"),
+        supports_backward=False,
+        restore_mode="slab",
+        int8_restore_mode="direct_bind",
+    )
+    offloader._cpu_weight_masters = [
+        {"mlp.layer1": int8_master},
+        {"mlp.layer1": int8_master},
+        {"mlp.layer1": int8_master},
+    ]
+    offloader._cpu_weight_master_dtypes = [
+        {"mlp.layer1": torch.float32},
+        {"mlp.layer1": torch.float32},
+        {"mlp.layer1": torch.float32},
+    ]
+    offloader._cpu_weight_master_slabs = [None, None, None]
+    offloader._cpu_weight_master_slab_plans = [None, None, None]
+    block_to_cpu = _FakeBlock(source_view)
+    block_to_cuda = _FakeBlock(target_view)
+    try:
+        offloader.swap_weight_devices(0, block_to_cpu, 2, block_to_cuda)
+
+        assert restore_calls == [
+            (int8_master, torch.device("cuda"), torch.float32, True)
+        ]
+        assert source_view.copy_calls == []
+        assert block_to_cpu._module.weight.data is int8_master.quantized
+        assert block_to_cuda._module.weight.data is restored_marker
+    finally:
+        offloader.thread_pool.shutdown(wait=False)
+
+
+def test_block_swap_cached_cuda_int8_reuse_storage_restores_into_old_view(
+    monkeypatch,
+) -> None:
+    import library.runtime.offloading as offloading_module
+
+    class _FakeTensorView:
+        def __init__(self) -> None:
+            self.shape = (2, 2)
+            self.recorded_streams = []
+            self.copy_calls = []
+
+        def record_stream(self, stream) -> None:
+            self.recorded_streams.append(stream)
+
+        def copy_(self, source, non_blocking: bool = False):
+            self.copy_calls.append((source, non_blocking))
+            return self
+
+    class _FakeWeight:
+        def __init__(self, data):
+            self.data = data
+            self.shape = (2, 2)
+
+    class _FakeModule:
+        def __init__(self, weight) -> None:
+            self.weight = _FakeWeight(weight)
+
+    class _FakeBlock:
+        def __init__(self, weight) -> None:
+            self._module = _FakeModule(weight)
+
+        def named_modules(self):
+            return [("", self), ("mlp.layer1", self._module)]
+
+    class _FakeEvent:
+        def __init__(self, enable_timing: bool = False) -> None:
+            self.enable_timing = enable_timing
+
+        def record(self, stream) -> None:
+            pass
+
+    class _FakeStream:
+        def __init__(self, device=None) -> None:
+            self.device = device
+
+        def wait_event(self, event) -> None:
+            pass
+
+    class _FakeStreamContext:
+        def __init__(self, stream) -> None:
+            self.stream = stream
+
+        def __enter__(self):
+            return self.stream
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+    monkeypatch.setattr(torch.cuda, "Stream", lambda device=None: _FakeStream(device=device))
+    monkeypatch.setattr(torch.cuda, "Event", _FakeEvent)
+    monkeypatch.setattr(torch.cuda, "stream", lambda stream: _FakeStreamContext(stream))
+    monkeypatch.setattr(
+        torch,
+        "_foreach_copy_",
+        lambda *args, **kwargs: (_ for _ in ()).throw(
+            AssertionError("int8 master must not use foreach copy")
+        ),
+    )
+    restore_into_calls = []
+
+    def fake_restore_int8_cpu_master_into_tensor(
+        master,
+        dst,
+        *,
+        device,
+        dtype,
+        non_blocking=True,
+        chunk_rows=0,
+    ):
+        restore_into_calls.append((master, dst, device, dtype, non_blocking, chunk_rows))
+        return dst
+
+    monkeypatch.setattr(
+        offloading_module,
+        "_restore_int8_cpu_master_into_tensor",
+        fake_restore_int8_cpu_master_into_tensor,
+    )
+
+    int8_master = Int8BlockSwapCpuMaster(
+        quantized=torch.ones(2, 2, dtype=torch.int8),
+        scale=torch.ones(2, dtype=torch.float32),
+        shape=(2, 2),
+    )
+    source_view = _FakeTensorView()
+    target_view = _FakeTensorView()
+    blocks = nn.ModuleList([_TinyBlock(), _TinyBlock(), _TinyBlock()])
+    offloader = ModelOffloader(
+        blocks,
+        blocks_to_swap=1,
+        device=torch.device("cuda"),
+        supports_backward=False,
+        restore_mode="slab",
+        int8_restore_mode="reuse_storage",
+        int8_restore_chunk_rows=2,
+    )
+    offloader._cpu_weight_masters = [
+        {"mlp.layer1": int8_master},
+        {"mlp.layer1": int8_master},
+        {"mlp.layer1": int8_master},
+    ]
+    offloader._cpu_weight_master_dtypes = [
+        {"mlp.layer1": torch.float32},
+        {"mlp.layer1": torch.float32},
+        {"mlp.layer1": torch.float32},
+    ]
+    offloader._cpu_weight_master_slabs = [None, None, None]
+    offloader._cpu_weight_master_slab_plans = [None, None, None]
+    block_to_cpu = _FakeBlock(source_view)
+    block_to_cuda = _FakeBlock(target_view)
+    try:
+        offloader.swap_weight_devices(0, block_to_cpu, 2, block_to_cuda)
+
+        assert restore_into_calls == [
+            (int8_master, source_view, torch.device("cuda"), torch.float32, True, 2)
+        ]
+        assert source_view.copy_calls == []
         assert block_to_cpu._module.weight.data is int8_master.quantized
         assert block_to_cuda._module.weight.data is source_view
     finally:

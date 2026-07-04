@@ -368,6 +368,10 @@ const ctx = globalThis.ctx;
         return label ? `${label} / ${key}` : key;
     }
 
+    globalThis.shouldRenderSelectInput = function shouldRenderSelectInput(key, value) {
+        return Boolean(FIELD_OPTIONS[key]) && !Array.isArray(value);
+    }
+
     globalThis.createFieldInput = function createFieldInput(key, value, options = {}) {
         if (key === 'sample_prompts') {
             if (samplePromptsMode === 'path') {
@@ -376,7 +380,7 @@ const ctx = globalThis.ctx;
             return createSamplePromptsEditor(value, options.originalValue, options.hasDraftValue);
         }
         const fieldOptions = FIELD_OPTIONS[key];
-        if (fieldOptions && !Array.isArray(value)) {
+        if (shouldRenderSelectInput(key, value)) {
             return createSelectInput(key, value, fieldOptions);
         }
 

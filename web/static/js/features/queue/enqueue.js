@@ -4,7 +4,7 @@ import {
     enqueueTrainingQueueBatchAlias,
     enqueueTrainingQueueBatchRoot,
     resumeTrainingQueue,
-} from './api.js?v=module-bootstrap-20260703-9';
+} from './api.js?v=module-bootstrap-20260704-1';
 
 export function createQueueEnqueue({ ctx, deps, updateTrainingQueueFromPayload }) {
     async function queueCurrentTrainingFromConfig() {

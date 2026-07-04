@@ -11,6 +11,7 @@ from __future__ import annotations
 import json
 from functools import wraps
 
+from library.training.compat_matrix import check_training_compat
 from web.services import config_service as _facade
 
 for _name, _value in _facade.__dict__.items():
@@ -193,64 +194,81 @@ def _inspect_network_weight(
     )
 
 
-def _check_checkpointing_config(cfg: dict[str, Any], add) -> None:
-    selective_checkpoint = str(cfg.get("selective_checkpoint") or "off").strip().lower()
-    gradient_checkpointing = _bool_value(cfg.get("gradient_checkpointing"), False)
-    cpu_offload_checkpointing = _bool_value(cfg.get("cpu_offload_checkpointing"), False)
-    unsloth_offload_checkpointing = _bool_value(cfg.get("unsloth_offload_checkpointing"), False)
-    blocks_to_swap = _nonnegative_int_value(cfg.get("blocks_to_swap"), 0)
-    torch_compile = _bool_value(cfg.get("torch_compile"), False)
-    use_lokr = _bool_value(cfg.get("use_lokr"), False)
+def _compat_web_message(item) -> str:
+    messages = {
+        "invalid_selective_checkpoint": (
+            "selective_checkpoint 取值不受支持；请改为 off、adapter_aware、"
+            "mlp_only、peak_blocks_mlp 等已知模式。"
+        ),
+        "negative_blocks_to_swap": "blocks_to_swap 不能小于 0。",
+        "selective_full_gradient_checkpointing": (
+            "selective_checkpoint 是 DiT 选择性检查点模式，不能同时开启完整 "
+            "gradient_checkpointing；请关闭完整检查点，保留 selective_checkpoint。"
+        ),
+        "selective_cpu_offload": (
+            "selective_checkpoint 不支持 CPU activation offload；请关闭 cpu_offload_checkpointing。"
+        ),
+        "selective_unsloth_offload": (
+            "selective_checkpoint 不能和 unsloth_offload_checkpointing 同时开启。"
+        ),
+        "block_swap_cpu_offload": (
+            "blocks_to_swap 可以和普通 gradient_checkpointing 同用，但不能和 "
+            "cpu_offload_checkpointing 同时开启。"
+        ),
+        "block_swap_unsloth_offload": (
+            "blocks_to_swap 可以和普通 gradient_checkpointing 同用，但不能和 "
+            "unsloth_offload_checkpointing 同时开启。"
+        ),
+        "unsloth_cpu_offload": (
+            "unsloth_offload_checkpointing 不能和 cpu_offload_checkpointing 同时开启。"
+        ),
+        "unsloth_enables_gradient_checkpointing": (
+            "unsloth_offload_checkpointing 已开启，训练启动时会自动开启 gradient_checkpointing。"
+        ),
+        "cpu_offload_without_gradient_checkpointing": (
+            "cpu_offload_checkpointing 只有配合 gradient_checkpointing 才会生效；"
+            "请开启 gradient_checkpointing 或关闭 cpu_offload_checkpointing。"
+        ),
+        "lokr_full_checkpoint_compile": (
+            "LoKr + 完整 gradient_checkpointing + torch_compile 属于实验性叠加；"
+            "启动编译时会提高 Dynamo graph/accumulated 预算并稳定 graph 查找顺序，"
+            "blocks_to_swap 可继续保留。"
+        ),
+        "block_swap_cudagraphs_disable_compile": (
+            "blocks_to_swap 会在 CPU/GPU 间移动 DiT block 权重，"
+            "dynamo_backend='cudagraphs' 不安全；训练启动时会关闭 torch_compile。"
+        ),
+        "block_swap_soft_tokens": (
+            "blocks_to_swap 不支持 Soft Tokens 这类 multi-forward 方法；请保持 blocks_to_swap=0。"
+        ),
+        "block_swap_functional_loss": (
+            "blocks_to_swap 不支持 functional_loss_weight > 0 的 multi-forward 训练；"
+            "请关闭 block swap。"
+        ),
+    }
+    if item.code == "block_swap_compile_mode_cudagraphs":
+        value = getattr(item, "value", None)
+        target = value or "默认 Inductor mode"
+        return f"blocks_to_swap 不兼容 Inductor CUDAGraph mode；训练启动时会改用 {target}。"
+    return messages.get(item.code, item.message)
 
-    if selective_checkpoint != "off" and gradient_checkpointing:
-        add(
-            "error",
-            "gradient_checkpointing",
-            (
-                "selective_checkpoint 是 DiT 选择性检查点模式，不能同时开启完整 "
-                "gradient_checkpointing；请关闭完整检查点，保留 selective_checkpoint。"
-            ),
-        )
-    if selective_checkpoint != "off" and cpu_offload_checkpointing:
-        add(
-            "error",
-            "cpu_offload_checkpointing",
-            "selective_checkpoint 不支持 CPU activation offload；请关闭 cpu_offload_checkpointing。",
-        )
-    if selective_checkpoint != "off" and unsloth_offload_checkpointing:
-        add(
-            "error",
-            "unsloth_offload_checkpointing",
-            "selective_checkpoint 不能和 unsloth_offload_checkpointing 同时开启。",
-        )
-    if blocks_to_swap > 0 and cpu_offload_checkpointing:
-        add(
-            "error",
-            "cpu_offload_checkpointing",
-            (
-                "blocks_to_swap 可以和普通 gradient_checkpointing 同用，但不能和 "
-                "cpu_offload_checkpointing 同时开启。"
-            ),
-        )
-    if blocks_to_swap > 0 and unsloth_offload_checkpointing:
-        add(
-            "error",
-            "unsloth_offload_checkpointing",
-            (
-                "blocks_to_swap 可以和普通 gradient_checkpointing 同用，但不能和 "
-                "unsloth_offload_checkpointing 同时开启。"
-            ),
-        )
-    if use_lokr and gradient_checkpointing and torch_compile:
-        add(
-            "warning",
-            "torch_compile",
-            (
-                "LoKr + 完整 gradient_checkpointing + torch_compile 属于实验性叠加；"
-                "启动编译时会提高 Dynamo graph/accumulated 预算并稳定 graph 查找顺序，"
-                "blocks_to_swap 可继续保留。"
-            ),
-        )
+
+def _check_checkpointing_config(cfg: dict[str, Any], add) -> None:
+    compat = check_training_compat(cfg)
+    for item in compat.errors:
+        add("error", item.key, _compat_web_message(item))
+
+    mutation_codes = {item.code for item in compat.mutations}
+    seen_warning_codes: set[str] = set()
+    for item in compat.warnings:
+        if item.code == "block_swap_compile_mode_cudagraphs" and item.code in mutation_codes:
+            continue
+        seen_warning_codes.add(item.code)
+        add("warning", item.key, _compat_web_message(item))
+    for item in compat.mutations:
+        if item.code in seen_warning_codes:
+            continue
+        add("warning", item.key, _compat_web_message(item))
 
 
 def _check_no_dataset_regularization_config(cfg: dict[str, Any], add) -> None:

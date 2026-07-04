@@ -52,6 +52,7 @@ def _lokr_model() -> TinyPatchedModel:
         lora_dim=2,
         alpha=2,
         factor=2,
+        lokr_use_einsum=False,
     )
     lokr.apply_to()
     with torch.no_grad():

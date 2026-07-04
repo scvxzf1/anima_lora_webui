@@ -1957,6 +1957,12 @@ class Anima(nn.Module):
            immediate graph break if forward itself is compiled — dynamo compiles
            nothing useful but still checks shape guards, causing recompile storms.
 
+        **Block-swap coexistence**: when ``self.blocks_to_swap > 0`` only the
+        resident head blocks are compiled; the tail swap blocks keep their eager
+        ``_forward``. The offloader swaps weights via ``.weight.data``
+        reassignment, and Dynamo guards each Parameter on its dispatch key
+        (device), so compiling swapped blocks can recompile every step.
+
         Also raises the dynamo recompile budget to fit those token-count
         families. ``2 * n + 8``: the ``2 *`` covers fwd+bwd sharing the one
         ``_forward`` bytecode, the ``+ 8`` covers requires_grad / stride /
@@ -2000,7 +2006,17 @@ class Anima(nn.Module):
         compile_kwargs = {"backend": backend, "dynamic": False}
         if mode is not None:
             compile_kwargs["mode"] = mode
-        for block in self.blocks:
+        n_swap = int(self.blocks_to_swap or 0)
+        max_swappable = self.num_blocks - 2
+        if n_swap < 0 or n_swap > max_swappable:
+            raise ValueError(
+                f"Invalid blocks_to_swap={n_swap}; expected 0 <= blocks_to_swap <= "
+                f"{max_swappable} for {self.num_blocks} blocks."
+            )
+        n_resident = self.num_blocks - n_swap
+        for block_idx, block in enumerate(self.blocks):
+            if block_idx >= n_resident:
+                continue
             compiled_inner = torch.compile(block._forward, **compile_kwargs)
             if self._dynamic_seq:
                 lo, hi = self._dynamic_seq_range
@@ -2012,10 +2028,15 @@ class Anima(nn.Module):
             if self._dynamic_seq
             else f"static ({n} graphs)"
         )
+        swap_note = (
+            f"{n_resident} resident compiled / {n_swap} swapped (eager)"
+            if n_swap
+            else f"{len(self.blocks)} block._forward"
+        )
         print(
             f"Anima: native_flatten on, {n} token-count families, {graph_mode} "
-            f"(recompile_limit={limit}); compiled "
-            f"{len(self.blocks)} block._forward with backend={backend}, mode={mode}"
+            f"(recompile_limit={limit}); compiled {swap_note} "
+            f"with backend={backend}, mode={mode}"
         )
 
     @property

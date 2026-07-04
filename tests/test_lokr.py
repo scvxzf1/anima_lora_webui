@@ -81,6 +81,7 @@ def test_lokr_eval_forward_ignores_stale_timestep_mask():
         lora_dim=2,
         alpha=2,
         factor=2,
+        lokr_use_einsum=False,
     )
     lokr.apply_to()
 
@@ -100,6 +101,57 @@ def test_lokr_eval_forward_ignores_stale_timestep_mask():
 
     torch.testing.assert_close(train_out, torch.zeros_like(train_out))
     assert torch.count_nonzero(eval_out).item() == eval_out.numel()
+
+
+def test_lokr_default_einsum_forward_matches_kron_path():
+    torch.manual_seed(12)
+    x = torch.randn(3, 6, requires_grad=True)
+    grad = torch.randn(3, 8)
+
+    base = torch.nn.Linear(6, 8, bias=False)
+    lokr = LoKrModule(
+        "lora_unet_test",
+        base,
+        multiplier=1.0,
+        lora_dim=2,
+        alpha=2,
+        factor=2,
+    )
+    lokr.apply_to()
+    lokr.train()
+    with torch.no_grad():
+        lokr.org_module_ref[0].weight.copy_(torch.randn_like(lokr.org_module_ref[0].weight))
+        lokr.lokr_w1.copy_(torch.randn_like(lokr.lokr_w1))
+        lokr.lokr_w2_a.copy_(torch.randn_like(lokr.lokr_w2_a))
+        lokr.lokr_w2_b.copy_(torch.randn_like(lokr.lokr_w2_b))
+
+    y = lokr.org_module_ref[0](x)
+    y.backward(grad)
+    grads = [
+        x.grad.clone(),
+        lokr.lokr_w1.grad.clone(),
+        lokr.lokr_w2_a.grad.clone(),
+        lokr.lokr_w2_b.grad.clone(),
+    ]
+
+    x_ref = x.detach().clone().requires_grad_()
+    w1_ref = lokr.lokr_w1.detach().clone().requires_grad_()
+    w2a_ref = lokr.lokr_w2_a.detach().clone().requires_grad_()
+    w2b_ref = lokr.lokr_w2_b.detach().clone().requires_grad_()
+    org_weight = lokr.org_module_ref[0].weight.detach()
+    w2_ref = w2a_ref @ w2b_ref
+    y_ref = F.linear(x_ref, org_weight) + F.linear(
+        x_ref.to(y.dtype), torch.kron(w1_ref, w2_ref).to(y.dtype)
+    ).to(y.dtype)
+    y_ref.backward(grad)
+
+    assert lokr.lokr_use_einsum is True
+    assert not hasattr(lokr, "lokr_w2")
+    torch.testing.assert_close(y, y_ref)
+    torch.testing.assert_close(grads[0], x_ref.grad)
+    torch.testing.assert_close(grads[1], w1_ref.grad)
+    torch.testing.assert_close(grads[2], w2a_ref.grad)
+    torch.testing.assert_close(grads[3], w2b_ref.grad)
 
 
 def test_lokr_project_matches_kron_linear_forward_and_backward():
@@ -414,6 +466,7 @@ def test_lokr_module_custom_forward_matches_kron_path():
         lora_dim=2,
         alpha=2,
         factor=2,
+        lokr_use_einsum=False,
     )
     lokr.apply_to()
     lokr.train()
@@ -452,6 +505,7 @@ def test_lokr_module_custom_forward_reuses_base_output(monkeypatch):
         lora_dim=2,
         alpha=2,
         factor=2,
+        lokr_use_einsum=False,
     )
     lokr.apply_to()
     lokr.train()
@@ -487,6 +541,7 @@ def test_lokr_module_custom_forward_uses_configured_factor_group(monkeypatch):
         lokr_project_chunk_bytes=1234,
         lokr_grouped_delta_backend="triton",
         lokr_grouped_delta_backward_backend="triton_grad_x",
+        lokr_use_einsum=False,
     )
     lokr.apply_to()
     lokr.train()
@@ -533,6 +588,7 @@ def test_lokr_module_custom_forward_accepts_triton_grad_w2_partial(monkeypatch):
         lokr_project_chunk_bytes=2048,
         lokr_grouped_delta_backend="triton",
         lokr_grouped_delta_backward_backend="triton_grad_w2_partial",
+        lokr_use_einsum=False,
     )
     lokr.apply_to()
     lokr.train()
@@ -579,6 +635,7 @@ def test_lokr_module_custom_forward_accepts_triton_grad_w2_grad_x(monkeypatch):
         lokr_project_chunk_bytes=2048,
         lokr_grouped_delta_backend="triton",
         lokr_grouped_delta_backward_backend="triton_grad_w2_grad_x",
+        lokr_use_einsum=False,
     )
     lokr.apply_to()
     lokr.train()

@@ -184,6 +184,8 @@ class LoRANetworkCfg:
     alpha: float = 1.0
     module_class: Type = LoRAModule
     use_dora: bool = False
+    lora_fp32_compute: bool = False
+    down_init: str = "kaiming"
     plugin_args: Dict[str, Any] = field(default_factory=dict)
     # warm-start path supplies these from the checkpoint; fresh path leaves None
     modules_dim: Optional[Dict[str, int]] = None
@@ -465,6 +467,13 @@ class LoRANetworkCfg:
         num_experts = int(num_experts) if num_experts is not None else 4
         expert_init_std = float(kwargs.get("expert_init_std", 0.0))
 
+        lora_fp32_compute = _as_bool(kwargs.get("lora_fp32_compute"))
+        down_init = str(kwargs.get("down_init", "kaiming"))
+        if down_init not in ("kaiming", "weight_svd"):
+            raise ValueError(
+                f"down_init={down_init!r}: expected 'kaiming' or 'weight_svd'."
+            )
+
         router_lr_scale = kwargs.get("network_router_lr_scale")
         router_lr_scale = float(router_lr_scale) if router_lr_scale is not None else 1.0
 
@@ -719,6 +728,8 @@ class LoRANetworkCfg:
             alpha=network_alpha,
             module_class=module_class,
             use_dora=use_dora,
+            lora_fp32_compute=lora_fp32_compute,
+            down_init=down_init,
             plugin_args=plugin_args,
             train_llm_adapter=train_llm_adapter,
             exclude_patterns=exclude_patterns,

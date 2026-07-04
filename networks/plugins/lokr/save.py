@@ -23,14 +23,34 @@ def defuse_lokr_qkv(state_dict: Dict[str, torch.Tensor]) -> None:
 
     for prefix, spec in fused_groups:
         w1 = state_dict.pop(f"{prefix}.lokr_w1")
-        w2 = state_dict.pop(f"{prefix}.lokr_w2")
         alpha = state_dict.pop(f"{prefix}.alpha", None)
-        w2_chunks = w2.chunk(len(spec.component_letters), dim=0)
         base_prefix = prefix.removesuffix(spec.fused_frag)
-        for letter, w2_chunk in zip(spec.component_letters, w2_chunks):
+        if f"{prefix}.lokr_w2" in state_dict:
+            w2 = state_dict.pop(f"{prefix}.lokr_w2")
+            w2_chunks = w2.chunk(len(spec.component_letters), dim=0)
+            for letter, w2_chunk in zip(spec.component_letters, w2_chunks):
+                new_prefix = base_prefix + spec.component_frag(letter)
+                state_dict[f"{new_prefix}.lokr_w1"] = w1.clone()
+                state_dict[f"{new_prefix}.lokr_w2"] = w2_chunk
+                if alpha is not None:
+                    state_dict[f"{new_prefix}.alpha"] = alpha.clone()
+            continue
+
+        w2a_key = f"{prefix}.lokr_w2_a"
+        w2b_key = f"{prefix}.lokr_w2_b"
+        if w2a_key not in state_dict or w2b_key not in state_dict:
+            state_dict[f"{prefix}.lokr_w1"] = w1
+            if alpha is not None:
+                state_dict[f"{prefix}.alpha"] = alpha
+            continue
+        w2a = state_dict.pop(w2a_key)
+        w2b = state_dict.pop(w2b_key)
+        w2a_chunks = w2a.chunk(len(spec.component_letters), dim=0)
+        for letter, w2a_chunk in zip(spec.component_letters, w2a_chunks):
             new_prefix = base_prefix + spec.component_frag(letter)
             state_dict[f"{new_prefix}.lokr_w1"] = w1.clone()
-            state_dict[f"{new_prefix}.lokr_w2"] = w2_chunk
+            state_dict[f"{new_prefix}.lokr_w2_a"] = w2a_chunk
+            state_dict[f"{new_prefix}.lokr_w2_b"] = w2b.clone()
             if alpha is not None:
                 state_dict[f"{new_prefix}.alpha"] = alpha.clone()
 

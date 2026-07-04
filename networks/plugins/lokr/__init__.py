@@ -33,6 +33,12 @@ def _truthy(value: Any) -> bool:
     return str(value).strip().lower() in {"1", "true", "yes", "on"}
 
 
+def _bool_arg(value: Any, *, default: bool = False) -> bool:
+    if value is None:
+        return default
+    return _truthy(value)
+
+
 def _selector(kwargs: Mapping[str, Any]) -> bool:
     return _truthy(kwargs.get("use_lokr"))
 
@@ -75,6 +81,14 @@ def _module_kwargs(ctx: ModuleCreationContext) -> dict[str, Any]:
                 DEFAULT_LOKR_GROUPED_DELTA_BACKWARD_BACKEND,
             )
         ),
+        "lokr_use_einsum": _bool_arg(
+            ctx.cfg.plugin_args.get("lokr_use_einsum"), default=True
+        ),
+        "lokr_decompose_w2": (
+            None
+            if ctx.cfg.plugin_args.get("lokr_decompose_w2") is None
+            else _truthy(ctx.cfg.plugin_args.get("lokr_decompose_w2"))
+        ),
     }
 
 
@@ -101,6 +115,19 @@ def _detect_from_weights(ctx: WeightDetectionContext) -> bool:
         return True
     if key.endswith(".lokr_w2"):
         ctx.state["has_lokr"] = True
+        ctx.state["lokr_has_full_w2"] = True
+        ctx.state.setdefault("lokr_module_names", set()).add(ctx.lora_name)
+        ctx.modules_dim.setdefault(
+            ctx.lora_name, ctx.state.get("lokr_network_dim_meta") or 1
+        )
+        ctx.modules_alpha.setdefault(
+            ctx.lora_name, torch.tensor(float(ctx.modules_dim[ctx.lora_name]))
+        )
+        ctx.plain_module_names.add(ctx.lora_name)
+        return True
+    if key.endswith(".lokr_w2_a") or key.endswith(".lokr_w2_b"):
+        ctx.state["has_lokr"] = True
+        ctx.state["lokr_has_decomposed_w2"] = True
         ctx.state.setdefault("lokr_module_names", set()).add(ctx.lora_name)
         ctx.modules_dim.setdefault(
             ctx.lora_name, ctx.state.get("lokr_network_dim_meta") or 1
@@ -129,7 +156,16 @@ def _finish_weight_detection(
                     int(float(alpha_value.detach().float().cpu().item())),
                 )
     factor = next(iter(sorted(state.get("lokr_factors", set()))), 8)
-    return {"detected_spec": "lokr", "plugin_args": {"lokr_factor": factor}}
+    use_einsum = bool(state.get("lokr_has_decomposed_w2")) or not bool(
+        state.get("lokr_has_full_w2")
+    )
+    plugin_args = {"lokr_factor": factor, "lokr_use_einsum": use_einsum}
+    if state.get("lokr_has_decomposed_w2"):
+        plugin_args["lokr_decompose_w2"] = True
+    return {
+        "detected_spec": "lokr",
+        "plugin_args": plugin_args,
+    }
 
 
 def _continue_weight_kind(ctx: ContinueWeightDetectionContext) -> str | None:
@@ -153,6 +189,8 @@ register_network_spec(
             "lokr_project_chunk_bytes",
             "lokr_grouped_delta_backend",
             "lokr_grouped_delta_backward_backend",
+            "lokr_use_einsum",
+            "lokr_decompose_w2",
         ),
         selector=_selector,
         validate=_validate,

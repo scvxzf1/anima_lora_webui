@@ -34,6 +34,26 @@ def test_candidate_filter_defaults_to_mlp_and_skips_sensitive_paths() -> None:
         audit.classify_candidate_key("net.blocks.0.self_attn.qkv_proj.weight", scope="attention").family
         == "attention"
     )
+    assert (
+        audit.classify_candidate_key("net.blocks.0.self_attn.qkv_proj.weight", scope="self_attn_qkv").family
+        == "attention"
+    )
+    assert audit.classify_candidate_key(
+        "net.blocks.0.self_attn.output_proj.weight",
+        scope="self_attn_qkv",
+    ) is None
+    assert (
+        audit.classify_candidate_key("net.blocks.0.self_attn.output_proj.weight", scope="self_attn_out").family
+        == "attention"
+    )
+    assert (
+        audit.classify_candidate_key("net.blocks.0.cross_attn.kv_proj.weight", scope="cross_attn_kv").family
+        == "attention"
+    )
+    assert audit.classify_candidate_key(
+        "net.blocks.0.cross_attn.q_proj.weight",
+        scope="cross_attn_kv",
+    ) is None
 
     skipped = [
         "net.blocks.0.adaln_fused_down.1.weight",
@@ -122,3 +142,48 @@ def test_cli_audits_safetensors_and_writes_summary(tmp_path: Path) -> None:
     assert summary["families"]["attention"]["tensor_count"] == 1
     assert all("adaln" not in item["key"] for item in details)
     assert all("final_layer" not in item["key"] for item in details)
+
+
+def test_cli_audits_projection_subset_scope(tmp_path: Path) -> None:
+    model = tmp_path / "tiny.safetensors"
+    save_file(
+        {
+            "net.blocks.0.mlp.layer1.weight": torch.randn(4, 3, dtype=torch.bfloat16),
+            "net.blocks.0.self_attn.qkv_proj.weight": torch.randn(6, 3, dtype=torch.bfloat16),
+            "net.blocks.0.self_attn.output_proj.weight": torch.randn(3, 3, dtype=torch.bfloat16),
+            "net.blocks.0.cross_attn.kv_proj.weight": torch.randn(6, 3, dtype=torch.bfloat16),
+            "net.blocks.0.cross_attn.output_proj.weight": torch.randn(3, 3, dtype=torch.bfloat16),
+        },
+        str(model),
+    )
+    out_dir = tmp_path / "audit"
+
+    subprocess.run(
+        [
+            sys.executable,
+            str(SCRIPT_PATH),
+            "--model",
+            str(model),
+            "--out-dir",
+            str(out_dir),
+            "--scope",
+            "mlp,self_attn_out,cross_attn_kv",
+        ],
+        check=True,
+        text=True,
+        capture_output=True,
+        timeout=60,
+    )
+
+    summary = json.loads((out_dir / "int8_base_linear_audit_summary.json").read_text(encoding="utf-8"))
+    details = [
+        json.loads(line)
+        for line in (out_dir / "int8_base_linear_audit.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+
+    assert summary["tensor_count"] == 3
+    assert {item["module_name"] for item in details} == {
+        "mlp.layer1",
+        "self_attn.output_proj",
+        "cross_attn.kv_proj",
+    }

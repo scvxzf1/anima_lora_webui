@@ -1,5 +1,6 @@
 """Misc utility entry-points: merge, comfy-batch, distill-prep, distill-mod,
-test-unit, update, export-logs, print-config."""
+test-unit, update, export-logs, print-config, explain-config, config-compat,
+training-hot."""
 
 from __future__ import annotations
 
@@ -134,3 +135,84 @@ def cmd_print_config(extra):
             *extra,
         ]
     )
+
+
+def cmd_explain_config(extra):
+    """Trace config layer history without launching the trainer.
+
+    Env:
+      METHOD=<name> (default lora)
+      PRESET=<name> (default default)
+      METHODS_SUBDIR=<dir> (default methods)
+      CONFIGS_DIR=<dir> (default configs)
+      ANIMA_RUNTIME_CONFIG=<path> (optional runtime TOML layer)
+    """
+    if extra and extra[0] == "--":
+        extra = extra[1:]
+    method = os.environ.get("METHOD", "lora")
+    preset = _preset()
+    methods_subdir = os.environ.get("METHODS_SUBDIR", "methods")
+    configs_dir = os.environ.get("CONFIGS_DIR", "configs")
+    cmd = [
+        PY,
+        "scripts/config_explain.py",
+        "--method",
+        method,
+        "--preset",
+        preset,
+        "--methods-subdir",
+        methods_subdir,
+        "--configs-dir",
+        configs_dir,
+    ]
+    runtime_config = os.environ.get("ANIMA_RUNTIME_CONFIG")
+    if runtime_config:
+        cmd += ["--runtime-config", runtime_config]
+    run([*cmd, *extra])
+
+
+def cmd_config_compat(extra):
+    """Print compile/checkpoint/block-swap compatibility diagnostics.
+
+    Env:
+      METHOD=<name> (default lora)
+      PRESET=<name> (default default)
+      METHODS_SUBDIR=<dir> (default methods)
+      CONFIGS_DIR=<dir> (default configs)
+      ANIMA_RUNTIME_CONFIG=<path> (optional runtime TOML layer)
+    """
+    if extra and extra[0] == "--":
+        extra = extra[1:]
+    method = os.environ.get("METHOD", "lora")
+    preset = _preset()
+    methods_subdir = os.environ.get("METHODS_SUBDIR", "methods")
+    configs_dir = os.environ.get("CONFIGS_DIR", "configs")
+    cmd = [
+        PY,
+        "scripts/config_compat.py",
+        "--method",
+        method,
+        "--preset",
+        preset,
+        "--methods-subdir",
+        methods_subdir,
+        "--configs-dir",
+        configs_dir,
+    ]
+    runtime_config = os.environ.get("ANIMA_RUNTIME_CONFIG")
+    if runtime_config:
+        cmd += ["--runtime-config", runtime_config]
+    run([*cmd, *extra])
+
+
+def cmd_training_hot(extra):
+    """Run generic short training hot tests.
+
+    Examples:
+      python tasks.py training-hot -- --dry-run --suite plugins_nonlokr
+      python tasks.py training-hot -- --steps 12 --case gui:loha
+      python tasks.py training-hot -- --steps 12 --case config:output/runs/x/config.runtime.toml
+    """
+    if extra and extra[0] == "--":
+        extra = extra[1:]
+    run([PY, "-m", "bench.training_hot.run_matrix", *extra])

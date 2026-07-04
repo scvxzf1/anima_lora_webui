@@ -597,11 +597,15 @@ def _apply_cudagraph_skip_dynamic(
 def _lokr_compile_signature(module: object) -> Optional[tuple[object, ...]]:
     w1 = getattr(module, "lokr_w1", None)
     w2 = getattr(module, "lokr_w2", None)
-    if w1 is None or w2 is None:
+    w2a = getattr(module, "lokr_w2_a", None)
+    w2b = getattr(module, "lokr_w2_b", None)
+    if w1 is None or (w2 is None and (w2a is None or w2b is None)):
         return None
     return (
         tuple(getattr(w1, "shape", ())),
         tuple(getattr(w2, "shape", ())),
+        tuple(getattr(w2a, "shape", ())),
+        tuple(getattr(w2b, "shape", ())),
         int(getattr(module, "factor", 0) or 0),
         int(getattr(module, "in_dim", 0) or 0),
         int(getattr(module, "out_dim", 0) or 0),

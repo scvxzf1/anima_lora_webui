@@ -17,6 +17,7 @@ from library.runtime.device import (
 )
 from library.runtime.int8_linear import (
     INT8_MAX,
+    INT8_LINEAR_SCOPE_MODULES,
     classify_frozen_linear_module,
     quantize_weight_per_channel,
 )
@@ -52,6 +53,8 @@ def _can_swap_frozen_weight_to_cpu(module: nn.Module) -> bool:
 
 _BLOCK_SWAP_TRANSFER_DTYPES = {"bf16", "fp8_e4m3", "int8"}
 _BLOCK_SWAP_RESTORE_MODES = {"foreach", "slab"}
+_BLOCK_SWAP_INT8_RESTORE_MODES = {"copy", "direct_bind", "reuse_storage"}
+_BLOCK_SWAP_INT8_SCOPES = {"all", *INT8_LINEAR_SCOPE_MODULES}
 _DEFAULT_BLOCK_SWAP_PROFILE_POLL_INTERVAL_S = 0.05
 
 
@@ -111,6 +114,17 @@ def _block_swap_profile_poll_interval_s() -> float:
     return max(0.001, value / 1000.0)
 
 
+def _env_int(name: str, *, default: int = 0) -> int:
+    value = os.getenv(name)
+    if value is None or not str(value).strip():
+        return default
+    try:
+        parsed = int(str(value).strip())
+    except ValueError:
+        return default
+    return max(0, parsed)
+
+
 def normalize_block_swap_transfer_dtype(value: Optional[str]) -> str:
     dtype = str(value or "bf16").strip().lower()
     aliases = {
@@ -147,12 +161,54 @@ def normalize_block_swap_restore_mode(value: Optional[str]) -> str:
     return mode
 
 
-def _int8_block_swap_candidate(module_name: str, weight: torch.Tensor) -> bool:
+def normalize_block_swap_int8_restore_mode(value: Optional[str]) -> str:
+    mode = str(value or "copy").strip().lower()
+    aliases = {
+        "default": "copy",
+        "reuse": "reuse_storage",
+        "inplace": "reuse_storage",
+        "into": "reuse_storage",
+        "bind": "direct_bind",
+        "direct": "direct_bind",
+    }
+    mode = aliases.get(mode, mode)
+    if mode not in _BLOCK_SWAP_INT8_RESTORE_MODES:
+        raise ValueError(
+            "block_swap_int8_restore_mode must be one of: "
+            f"{', '.join(sorted(_BLOCK_SWAP_INT8_RESTORE_MODES))}"
+        )
+    return mode
+
+
+def normalize_block_swap_int8_scope(value: Optional[str]) -> str:
+    scope = str(value or "all").strip().lower()
+    if not scope:
+        return "all"
+    parts = [item.strip() for item in scope.split(",") if item.strip()]
+    if not parts:
+        return "all"
+    unknown = set(parts) - _BLOCK_SWAP_INT8_SCOPES
+    if unknown:
+        raise ValueError(
+            "block_swap_int8_scope must be a comma-separated subset of: "
+            f"{', '.join(sorted(_BLOCK_SWAP_INT8_SCOPES))}"
+        )
+    if "all" in parts:
+        return "all"
+    return ",".join(dict.fromkeys(parts))
+
+
+def _int8_block_swap_candidate(
+    module_name: str,
+    weight: torch.Tensor,
+    *,
+    scope: str,
+) -> bool:
     if weight.dim() != 2:
         return False
     return classify_frozen_linear_module(
         f"blocks.0.{module_name}",
-        scope="all",
+        scope=scope,
     ) is not None
 
 
@@ -162,6 +218,7 @@ def _capture_cpu_master(
     module_name: str = "",
     pin_memory: bool,
     transfer_dtype: str,
+    int8_scope: str = "all",
 ) -> tuple[_CpuMaster, dict[str, float]]:
     master = weight.detach()
     if master.device.type != "cpu":
@@ -190,7 +247,10 @@ def _capture_cpu_master(
         stats["mean_abs_error"] = float(diff.abs().mean().item()) if source.numel() else 0.0
         denom = float(source_float.norm().item())
         stats["relative_l2"] = float(diff.norm().item()) / denom if denom > 0.0 else 0.0
-    elif transfer_dtype == "int8" and _int8_block_swap_candidate(module_name, master):
+    elif (
+        transfer_dtype == "int8"
+        and _int8_block_swap_candidate(module_name, master, scope=int8_scope)
+    ):
         source = master
         source_float = source.float()
         quantized, scale = quantize_weight_per_channel(source)
@@ -240,6 +300,48 @@ def _restore_cpu_master_tensor(
     if isinstance(master, Int8BlockSwapCpuMaster):
         return master.to_tensor(device=device, dtype=dtype, non_blocking=non_blocking)
     return master.to(device=device, dtype=dtype, non_blocking=non_blocking)
+
+
+def _restore_int8_cpu_master_into_tensor(
+    master: Int8BlockSwapCpuMaster,
+    dst: torch.Tensor,
+    *,
+    device: torch.device,
+    dtype: torch.dtype,
+    non_blocking: bool = True,
+    chunk_rows: int = 0,
+) -> torch.Tensor:
+    if tuple(dst.shape) != master.shape:
+        raise ValueError(
+            f"int8 restore target shape mismatch: {tuple(dst.shape)} != {master.shape}"
+        )
+    if dst.device.type != device.type:
+        raise ValueError(f"int8 restore target must be on {device}, got {dst.device}")
+    if dst.dtype != dtype:
+        raise ValueError(f"int8 restore target dtype mismatch: {dst.dtype} != {dtype}")
+    dst_rows = dst.reshape(master.shape[0], -1)
+    if chunk_rows <= 0 or chunk_rows >= master.shape[0]:
+        quantized = master.quantized.to(device=device, non_blocking=non_blocking)
+        scale = master.scale.to(device=device, dtype=dtype, non_blocking=non_blocking)
+        rows = quantized.reshape(master.shape[0], -1).to(dtype=dtype)
+        torch.mul(rows, scale[:, None], out=dst_rows)
+        return dst
+
+    source_rows = master.quantized.reshape(master.shape[0], -1)
+    for row_start in range(0, master.shape[0], chunk_rows):
+        row_end = min(master.shape[0], row_start + chunk_rows)
+        quantized = source_rows[row_start:row_end].to(
+            device=device,
+            non_blocking=non_blocking,
+        )
+        scale = master.scale[row_start:row_end].to(
+            device=device,
+            dtype=dtype,
+            non_blocking=non_blocking,
+        )
+        rows = quantized.to(dtype=dtype)
+        torch.mul(rows, scale[:, None], out=dst_rows[row_start:row_end])
+    return dst
 
 
 def _try_foreach_h2d_copy(
@@ -510,6 +612,9 @@ class Offloader:
         profile_jsonl: Optional[Union[str, BlockSwapProfiler]] = None,
         transfer_dtype: Optional[str] = None,
         restore_mode: Optional[str] = None,
+        int8_restore_mode: Optional[str] = None,
+        int8_restore_chunk_rows: Optional[int] = None,
+        int8_scope: Optional[str] = None,
     ):
         self.num_blocks = num_blocks
         self.blocks_to_swap = blocks_to_swap
@@ -518,6 +623,21 @@ class Offloader:
         self.transfer_dtype = normalize_block_swap_transfer_dtype(transfer_dtype)
         restore_mode = restore_mode or os.getenv("ANIMA_BLOCK_SWAP_RESTORE_MODE", "foreach")
         self.restore_mode = normalize_block_swap_restore_mode(restore_mode)
+        int8_restore_mode = int8_restore_mode or os.getenv(
+            "ANIMA_BLOCK_SWAP_INT8_RESTORE_MODE",
+            "copy",
+        )
+        self.int8_restore_mode = normalize_block_swap_int8_restore_mode(
+            int8_restore_mode
+        )
+        int8_scope = int8_scope or os.getenv("ANIMA_BLOCK_SWAP_INT8_SCOPE", "all")
+        self.int8_scope = normalize_block_swap_int8_scope(int8_scope)
+        if int8_restore_chunk_rows is None:
+            int8_restore_chunk_rows = _env_int(
+                "ANIMA_BLOCK_SWAP_INT8_RESTORE_CHUNK_ROWS",
+                default=0,
+            )
+        self.int8_restore_chunk_rows = max(0, int(int8_restore_chunk_rows))
 
         self.thread_pool = ThreadPoolExecutor(max_workers=1)
         self.futures = {}
@@ -626,6 +746,7 @@ class Offloader:
                     module_name=name,
                     pin_memory=pin_memory,
                     transfer_dtype=self.transfer_dtype,
+                    int8_scope=self.int8_scope,
                 )
                 block_masters[name] = master
                 block_dtypes[name] = weight.data.dtype
@@ -736,6 +857,9 @@ class Offloader:
                     "blocks_to_swap": self.blocks_to_swap,
                     "transfer_dtype": self.transfer_dtype,
                     "restore_mode": self.restore_mode,
+                    "int8_restore_mode": self.int8_restore_mode,
+                    "int8_restore_chunk_rows": self.int8_restore_chunk_rows,
+                    "int8_scope": self.int8_scope,
                     "frozen_weight_master_bytes": total_bytes,
                     "frozen_weight_bytes_by_block": bytes_by_block,
                     "bf16_master_bytes": total_bf16_bytes,
@@ -1143,6 +1267,7 @@ class Offloader:
             "slot_reuse_age_ms": float(meta.get("slot_reuse_age_ms") or 0.0),
             "slot_current_age_ms": prefetch_runway_ms,
             "transfer_dtype": self.transfer_dtype,
+            "int8_scope": self.int8_scope,
             "wait_ms": wait_ms,
             "host_wait_ms": host_wait_ms,
             "gpu_wait_ms": gpu_wait_ms,
@@ -1423,10 +1548,65 @@ class Offloader:
                     module_to_cpu.weight.data = _parked_cpu_master_tensor(source_master)
                     cuda_data_view.record_stream(stream)
                     cuda_dsts.append(cuda_data_view)
-                    cuda_bindings.append((module_to_cuda, cuda_data_view))
+                    if (
+                        has_int8_master
+                        and self.int8_restore_mode == "direct_bind"
+                        and isinstance(target_master, Int8BlockSwapCpuMaster)
+                    ):
+                        restored = _restore_cpu_master_tensor(
+                            target_master,
+                            device=self.device,
+                            dtype=target_dtype,
+                            non_blocking=True,
+                        )
+                        cuda_bindings.append((module_to_cuda, restored))
+                    else:
+                        cuda_bindings.append((module_to_cuda, cuda_data_view))
                     if not has_int8_master and isinstance(target_master, torch.Tensor):
                         cpu_srcs.append(target_master)
-                if has_int8_master:
+                if has_int8_master and self.int8_restore_mode == "direct_bind":
+                    for cuda_data_view, (
+                        _module_name,
+                        _source_master,
+                        target_master,
+                        _source_dtype,
+                        target_dtype,
+                    ) in zip(cuda_dsts, weight_swap_jobs):
+                        if isinstance(target_master, Int8BlockSwapCpuMaster):
+                            continue
+                        restored = _restore_cpu_master_tensor(
+                            target_master,
+                            device=self.device,
+                            dtype=target_dtype,
+                            non_blocking=True,
+                        )
+                        cuda_data_view.copy_(restored, non_blocking=True)
+                elif has_int8_master and self.int8_restore_mode == "reuse_storage":
+                    for cuda_data_view, (
+                        _module_name,
+                        _source_master,
+                        target_master,
+                        _source_dtype,
+                        target_dtype,
+                    ) in zip(cuda_dsts, weight_swap_jobs):
+                        if isinstance(target_master, Int8BlockSwapCpuMaster):
+                            _restore_int8_cpu_master_into_tensor(
+                                target_master,
+                                cuda_data_view,
+                                device=self.device,
+                                dtype=target_dtype,
+                                non_blocking=True,
+                                chunk_rows=self.int8_restore_chunk_rows,
+                            )
+                            continue
+                        restored = _restore_cpu_master_tensor(
+                            target_master,
+                            device=self.device,
+                            dtype=target_dtype,
+                            non_blocking=True,
+                        )
+                        cuda_data_view.copy_(restored, non_blocking=True)
+                elif has_int8_master:
                     for cuda_data_view, (
                         _module_name,
                         _source_master,
@@ -1720,6 +1900,9 @@ class ModelOffloader(Offloader):
         profile_jsonl: Optional[Union[str, BlockSwapProfiler]] = None,
         transfer_dtype: Optional[str] = None,
         restore_mode: Optional[str] = None,
+        int8_restore_mode: Optional[str] = None,
+        int8_restore_chunk_rows: Optional[int] = None,
+        int8_scope: Optional[str] = None,
     ):
         super().__init__(
             len(blocks),
@@ -1729,6 +1912,9 @@ class ModelOffloader(Offloader):
             profile_jsonl,
             transfer_dtype=transfer_dtype,
             restore_mode=restore_mode,
+            int8_restore_mode=int8_restore_mode,
+            int8_restore_chunk_rows=int8_restore_chunk_rows,
+            int8_scope=int8_scope,
         )
 
         self.supports_backward = supports_backward

@@ -800,6 +800,9 @@ class LoRANetwork(torch.nn.Module):
                     if cfg.use_ortho:
                         extra_kwargs["ortho_init_std"] = cfg.ortho_init_std
 
+                if cfg.down_init != "kaiming" and effective_module_class is LoRAModule:
+                    extra_kwargs["down_init"] = cfg.down_init
+
                 effective_spec = (
                     nominal_spec
                     if nominal_spec is not None
@@ -904,9 +907,16 @@ class LoRANetwork(torch.nn.Module):
                         extra_kwargs["fei_feature_dim"] = cfg.fei_feature_dim
                         self._fei_router_hits += 1
 
-                # Per-channel scaling is DiT-only: the bench script hooks DiT
-                # linears, text encoder activations are never calibrated.
-                if cfg.channel_scales_dict is not None and is_unet:
+                # Per-channel scaling is DiT-only. LoKr is excluded because a
+                # full input-channel scale cannot be represented by its
+                # Kronecker factors or native LoKr checkpoint format.
+                if (
+                    cfg.channel_scales_dict is not None
+                    and is_unet
+                    and not (
+                        effective_spec is not None and effective_spec.name == "lokr"
+                    )
+                ):
                     _cs = cfg.channel_scales_dict.get(lora_name)
                     if _cs is not None:
                         extra_kwargs["channel_scale"] = _cs
@@ -925,6 +935,7 @@ class LoRANetwork(torch.nn.Module):
                     module_dropout=module_dropout,
                     **extra_kwargs,
                 )
+                lora.fp32_compute = bool(cfg.lora_fp32_compute)
                 lora.original_name = original_name
                 loras.append(lora)
 

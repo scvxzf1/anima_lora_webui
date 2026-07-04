@@ -17,6 +17,11 @@ caption_dropout_rate = 0.1
 
 use_lokr = true
 lokr_factor = 8
+# Default fast path: factorize the large Kronecker factor as lokr_w2_a/b and
+# apply it with the structured einsum forward from MonadForge. Set false only
+# for legacy full-lokr_w2 compatibility probes.
+lokr_use_einsum = true
+lokr_decompose_w2 = true
 # LoKr custom autograd computes output factors in small groups. Larger values
 # reduce repeated projection work but increase temporary activation memory.
 # 8 is the current speed recommendation; lower to 4/2 if VRAM is unstable.

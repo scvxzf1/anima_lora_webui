@@ -80,7 +80,7 @@ compile_dynamic_seq = true
 # forward/recompute graph matching.
 activation_memory_budget = 1.0
 save_precision= "bf16"
-use_custom_down_autograd = true
+use_custom_down_autograd = false
 log_every_n_steps=2
 dataloader_pin_memory = true
 persistent_data_loader_workers= true

@@ -110,6 +110,8 @@ Postfix 当前入口在 [guidelines/training.md#postfix](guidelines/training.md#
 | [findings/anima_balanced_16g_blockswap_ablation_plan.md](findings/anima_balanced_16g_blockswap_ablation_plan.md) | Balanced 16G block swap 消融 |
 | [findings/anima_fp8_blockswap_transfer_report.md](findings/anima_fp8_blockswap_transfer_report.md) | FP8 block swap transfer 最终报告，含原消融计划口径 |
 | [findings/training_profiling_hot_test_20260629.md](findings/training_profiling_hot_test_20260629.md) | 训练 profiling 热测：Plain LoRA、LoKr block swap、JSONL 与 nsys 环境记录 |
+| [findings/runtime_support_matrix_20260704.md](findings/runtime_support_matrix_20260704.md) | compile / checkpoint / block swap 组合矩阵审计 |
+| [findings/adapter_registry_capabilities_audit_20260704.md](findings/adapter_registry_capabilities_audit_20260704.md) | Adapter registry、merge、推理加载和续训能力边界审计 |
 
 配套截图和图表在 [findings/assets/](findings/assets/)。
 

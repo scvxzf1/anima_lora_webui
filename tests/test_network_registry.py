@@ -113,6 +113,12 @@ def test_register_token_kwargs_registered():
     assert must_have.issubset(set(all_network_kwargs()))
 
 
+def test_lora_dtype_policy_kwargs_registered():
+    must_have = {"lora_fp32_compute", "down_init"}
+    assert must_have.issubset(set(SHARED_KWARG_FLAGS))
+    assert must_have.issubset(set(all_network_kwargs()))
+
+
 def test_lokr_kwargs_registered():
     must_have = {
         "use_lokr",
@@ -120,12 +126,16 @@ def test_lokr_kwargs_registered():
         "lokr_factor_group_size",
         "lokr_project_chunk_bytes",
         "lokr_grouped_delta_backend",
+        "lokr_use_einsum",
+        "lokr_decompose_w2",
     }
     assert must_have.issubset(set(all_network_kwargs()))
     assert "lokr_factor" in set(NETWORK_REGISTRY["lokr"].kwarg_flags)
     assert "lokr_factor_group_size" in set(NETWORK_REGISTRY["lokr"].kwarg_flags)
     assert "lokr_project_chunk_bytes" in set(NETWORK_REGISTRY["lokr"].kwarg_flags)
     assert "lokr_grouped_delta_backend" in set(NETWORK_REGISTRY["lokr"].kwarg_flags)
+    assert "lokr_use_einsum" in set(NETWORK_REGISTRY["lokr"].kwarg_flags)
+    assert "lokr_decompose_w2" in set(NETWORK_REGISTRY["lokr"].kwarg_flags)
 
 
 def test_lokr_module_kwargs_forward_grouped_delta_backend():
@@ -136,6 +146,8 @@ def test_lokr_module_kwargs_forward_grouped_delta_backend():
                 "lokr_factor_group_size": 2,
                 "lokr_project_chunk_bytes": 2048,
                 "lokr_grouped_delta_backend": "triton",
+                "lokr_use_einsum": "false",
+                "lokr_decompose_w2": "true",
             }
         ),
         is_unet=True,
@@ -149,6 +161,8 @@ def test_lokr_module_kwargs_forward_grouped_delta_backend():
     assert kwargs["lokr_factor_group_size"] == 2
     assert kwargs["lokr_project_chunk_bytes"] == 2048
     assert kwargs["lokr_grouped_delta_backend"] == "triton"
+    assert kwargs["lokr_use_einsum"] is False
+    assert kwargs["lokr_decompose_w2"] is True
 
 
 def test_dora_kwargs_registered():
@@ -409,6 +423,32 @@ def test_save_lokr_roundtrip(tmp_path: Path):
     assert f"{prefix}.lokr_w2" not in loaded
 
 
+def test_save_lokr_decomposed_w2_roundtrip(tmp_path: Path):
+    factor, rank, in_dim, out_dim = 2, 3, 8, 12
+    prefix = "lora_unet_blocks_0_self_attn_qkv_proj"
+    sd = {
+        f"{prefix}.lokr_w1": torch.randn(factor, factor),
+        f"{prefix}.lokr_w2_a": torch.randn((3 * out_dim) // factor, rank),
+        f"{prefix}.lokr_w2_b": torch.randn(rank, in_dim // factor),
+        f"{prefix}.alpha": _alpha(32),
+    }
+
+    loaded = _save_and_reload(sd, tmp_path, save_variant="lokr")
+
+    base = "lora_unet_blocks_0_self_attn"
+    for suffix in ("q_proj", "k_proj", "v_proj"):
+        assert loaded[f"{base}_{suffix}.lokr_w1"].shape == (factor, factor)
+        assert loaded[f"{base}_{suffix}.lokr_w2_a"].shape == (
+            out_dim // factor,
+            rank,
+        )
+        assert loaded[f"{base}_{suffix}.lokr_w2_b"].shape == (rank, in_dim // factor)
+        assert f"{base}_{suffix}.alpha" in loaded
+    assert f"{prefix}.lokr_w1" not in loaded
+    assert f"{prefix}.lokr_w2_a" not in loaded
+    assert f"{prefix}.lokr_w2_b" not in loaded
+
+
 def test_save_loha_roundtrip(tmp_path: Path):
     r, in_dim, out_dim = 4, 8, 12
     prefix = "lora_unet_blocks_0_self_attn_qkv_proj"
@@ -510,6 +550,46 @@ def test_create_network_from_lokr_weights_uses_lokr_module():
     assert isinstance(lokr, LoKrModule)
     assert lokr.lora_dim == 32
     assert lokr.factor == 2
+    network.apply_to([], unet, False, True)
+    info = network.load_state_dict(weights, strict=False)
+    assert info.missing_keys == []
+    assert info.unexpected_keys == []
+
+
+def test_create_network_from_decomposed_lokr_weights_uses_default_einsum():
+    class Block(torch.nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.q_proj = torch.nn.Linear(4, 6, bias=False)
+
+    class TinyUnet(torch.nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.blocks = torch.nn.ModuleList([Block()])
+
+    weights_sd = {
+        "lora_unet_blocks_0_q_proj.lokr_w1": torch.randn(2, 2),
+        "lora_unet_blocks_0_q_proj.lokr_w2_a": torch.randn(3, 2),
+        "lora_unet_blocks_0_q_proj.lokr_w2_b": torch.randn(2, 2),
+        "lora_unet_blocks_0_q_proj.alpha": _alpha(2),
+    }
+
+    unet = TinyUnet()
+    network, weights = create_network_from_weights(
+        multiplier=1.0,
+        file="",
+        ae=None,
+        text_encoders=[],
+        unet=unet,
+        weights_sd=weights_sd,
+        metadata={"ss_network_spec": "lokr", "ss_network_dim": "2"},
+    )
+
+    assert len(network.unet_loras) == 1
+    lokr = network.unet_loras[0]
+    assert isinstance(lokr, LoKrModule)
+    assert lokr.lokr_use_einsum is True
+    assert hasattr(lokr, "lokr_w2_a")
     network.apply_to([], unet, False, True)
     info = network.load_state_dict(weights, strict=False)
     assert info.missing_keys == []

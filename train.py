@@ -93,6 +93,10 @@ from library.training import (
 from library.training.optimizers import is_prodigy_plus_schedulefree_type
 from library.training.bootstrap import TrainingBootstrap
 from library.training.checkpoints import plan_resume_start
+from library.training.compat_matrix import (
+    apply_training_compat_mutations,
+    check_training_compat,
+)
 from library.training.loop import build_loop_state, run_training_loop
 from library.training.log_dispatch import dispatch_logs
 from library.training.memory_probe import MemoryProbe
@@ -476,33 +480,9 @@ class AnimaTrainer:
         args.selective_checkpoint = str(
             getattr(args, "selective_checkpoint", "off") or "off"
         ).strip().lower()
-        valid_selective_checkpoints = {
-            "off",
-            "adapter_aware",
-            "every_other",
-            "mlp_only",
-            "mlp_layer1_only",
-            "peak_blocks_adapter_aware",
-            "peak_blocks_mlp",
-            "peak_blocks_mlp_layer1",
-        }
-        if args.selective_checkpoint not in valid_selective_checkpoints:
-            raise ValueError(
-                "--selective_checkpoint must be one of: "
-                + ", ".join(sorted(valid_selective_checkpoints))
-            )
         args.selective_checkpoint_blocks = str(
             getattr(args, "selective_checkpoint_blocks", "") or ""
         ).strip()
-        if args.selective_checkpoint != "off" and args.gradient_checkpointing:
-            raise ValueError(
-                "--selective_checkpoint is a selective DiT checkpoint mode; "
-                "do not combine it with full --gradient_checkpointing."
-            )
-        if args.selective_checkpoint != "off" and args.cpu_offload_checkpointing:
-            raise ValueError(
-                "--selective_checkpoint does not support CPU activation offload."
-            )
         args.block_swap_transfer_dtype = normalize_block_swap_transfer_dtype(
             getattr(args, "block_swap_transfer_dtype", "bf16")
         )
@@ -510,92 +490,16 @@ class AnimaTrainer:
             getattr(args, "block_swap_restore_mode", "foreach")
         )
 
-        if (
-            args.blocks_to_swap is not None
-            and args.blocks_to_swap > 0
-            and args.cpu_offload_checkpointing
-        ):
-            raise ValueError(
-                "blocks_to_swap supports standard gradient_checkpointing, but is "
-                "not supported with cpu_offload_checkpointing"
-            )
-
-        if args.unsloth_offload_checkpointing:
-            if args.selective_checkpoint != "off":
-                raise ValueError(
-                    "--selective_checkpoint cannot be combined with "
-                    "--unsloth_offload_checkpointing."
-                )
-            if not args.gradient_checkpointing:
-                logger.warning(
-                    "unsloth_offload_checkpointing is enabled, so gradient_checkpointing is also enabled"
-                )
-                args.gradient_checkpointing = True
-            if args.cpu_offload_checkpointing:
-                raise ValueError(
-                    "Cannot use both --unsloth_offload_checkpointing and --cpu_offload_checkpointing"
-                )
-            if args.blocks_to_swap is not None and args.blocks_to_swap > 0:
-                raise ValueError(
-                    "blocks_to_swap supports standard gradient_checkpointing, but is "
-                    "not supported with unsloth_offload_checkpointing"
-                )
-
-        use_lokr = str(getattr(args, "use_lokr", False)).strip().lower() in {
-            "1",
-            "true",
-            "yes",
-            "on",
-        }
-        if (
-            use_lokr
-            and getattr(args, "gradient_checkpointing", False)
-            and getattr(args, "torch_compile", False)
-        ):
-            logger.warning(
-                "LoKr with full gradient_checkpointing under torch_compile is "
-                "experimental. Training keeps torch_compile enabled, pins larger "
-                "Dynamo graph budgets, and stabilizes Dynamo graph lookup during "
-                "compile; blocks_to_swap remains independent."
-            )
-
-        if args.blocks_to_swap is not None and args.blocks_to_swap > 0:
-            if getattr(args, "torch_compile", False) and getattr(
-                args, "dynamo_backend", None
-            ) == "cudagraphs":
-                logger.warning(
-                    "blocks_to_swap moves DiT block weights between CPU/GPU, "
-                    "so dynamo_backend='cudagraphs' is unsafe. Disabling torch_compile."
-                )
-                args.torch_compile = False
-
-            compile_mode = getattr(args, "compile_inductor_mode", None)
-            if getattr(args, "torch_compile", False) and compile_mode in {
-                "reduce-overhead",
-                "max-autotune",
-            }:
-                safe_mode = (
-                    "max-autotune-no-cudagraphs"
-                    if compile_mode == "max-autotune"
-                    else None
-                )
-                logger.warning(
-                    "blocks_to_swap is incompatible with Inductor CUDAGraph modes "
-                    f"({compile_mode!r}); using {safe_mode or 'default'} mode instead."
-                )
-                args.compile_inductor_mode = safe_mode
-
-            network_module = str(getattr(args, "network_module", "") or "")
-            if network_module == "networks.methods.soft_tokens":
-                raise ValueError(
-                    "blocks_to_swap is not supported with soft_tokens. "
-                    "Keep blocks_to_swap=0 for this multi-forward method."
-                )
-            if float(getattr(args, "functional_loss_weight", 0.0) or 0.0) > 0.0:
-                raise ValueError(
-                    "blocks_to_swap is not supported with functional_loss_weight > 0. "
-                    "Disable block swap for postfix/functional multi-forward training."
-                )
+        compat = check_training_compat(args)
+        warning_codes = {warning.code for warning in compat.warnings}
+        for warning in compat.warnings:
+            logger.warning(warning.message)
+        for mutation in compat.mutations:
+            if mutation.code not in warning_codes:
+                logger.warning(mutation.message)
+        apply_training_compat_mutations(args, compat)
+        if compat.errors:
+            raise ValueError("\n".join(issue.message for issue in compat.errors))
 
         # Propagate inversion_dir to datasets for functional-loss supervision (postfix-func).
         inversion_dir = getattr(args, "inversion_dir", None)

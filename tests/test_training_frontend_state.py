@@ -3343,9 +3343,18 @@ def test_balanced_16g_block_swap_fields_are_visible() -> None:
 
 def test_block_swap_profile_uses_strict_select_options() -> None:
     defaults_source = _frontend_module_text("js/config/catalog/defaults.js")
+    input_source = _frontend_module_text("js/features/anima-app/chunks/14-lora-adapter-kind-from-config.js")
     option_source = _frontend_module_text("js/features/anima-app/chunks/15-append-sample-prompt-row.js")
+    labels_options = _frontend_module_text("js/config/catalog/labels-options.js")
+    select_gate = _section(input_source, "function shouldRenderSelectInput", "function createFieldInput")
+    input_factory = _section(input_source, "function createFieldInput", "function createSamplePromptsPathInput")
 
     assert "block_swap_profile_jsonl: 'off'" in defaults_source
+    assert "block_swap_profile_jsonl: ['off', 'auto']" in labels_options
+    assert "Boolean(FIELD_OPTIONS[key])" in select_gate
+    assert "!Array.isArray(value)" in select_gate
+    assert "if (shouldRenderSelectInput(key, value))" in input_factory
+    assert "return createSelectInput(key, value, fieldOptions);" in input_factory
     assert "function selectUsesStrictOptions(key)" in option_source
     assert "FIELD_STRICT_SELECT_OPTIONS?.has?.(key)" in option_source
     assert "select.dataset.strictOptions = '1';" in option_source

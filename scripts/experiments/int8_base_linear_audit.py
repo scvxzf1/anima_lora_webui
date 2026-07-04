@@ -50,6 +50,56 @@ ATTENTION_LINEAR_SUFFIXES = {
     "cross_attn.output_proj",
 }
 
+SELF_ATTENTION_QKV_SUFFIXES = {
+    "self_attn.qkv_proj",
+    "self_attn.q_proj",
+    "self_attn.k_proj",
+    "self_attn.v_proj",
+    "self_attn.kv_proj",
+}
+
+CROSS_ATTENTION_KV_SUFFIXES = {
+    "cross_attn.k_proj",
+    "cross_attn.v_proj",
+    "cross_attn.kv_proj",
+}
+
+AUDIT_SCOPE_MODULES = {
+    "mlp": MLP_LINEAR_NAMES,
+    "attention": ATTENTION_LINEAR_SUFFIXES,
+    "attn": ATTENTION_LINEAR_SUFFIXES,
+    "self_attn": {
+        *SELF_ATTENTION_QKV_SUFFIXES,
+        "self_attn.output_proj",
+    },
+    "self": {
+        *SELF_ATTENTION_QKV_SUFFIXES,
+        "self_attn.output_proj",
+    },
+    "self_attn_qkv": SELF_ATTENTION_QKV_SUFFIXES,
+    "self_qkv": SELF_ATTENTION_QKV_SUFFIXES,
+    "self_attn_out": {"self_attn.output_proj"},
+    "self_out": {"self_attn.output_proj"},
+    "cross_attn": {
+        "cross_attn.q_proj",
+        *CROSS_ATTENTION_KV_SUFFIXES,
+        "cross_attn.output_proj",
+    },
+    "cross": {
+        "cross_attn.q_proj",
+        *CROSS_ATTENTION_KV_SUFFIXES,
+        "cross_attn.output_proj",
+    },
+    "cross_attn_q": {"cross_attn.q_proj"},
+    "cross_q": {"cross_attn.q_proj"},
+    "cross_attn_kv": CROSS_ATTENTION_KV_SUFFIXES,
+    "cross_kv": CROSS_ATTENTION_KV_SUFFIXES,
+    "cross_attn_out": {"cross_attn.output_proj"},
+    "cross_out": {"cross_attn.output_proj"},
+    "attention_out": {"self_attn.output_proj", "cross_attn.output_proj"},
+    "attn_out": {"self_attn.output_proj", "cross_attn.output_proj"},
+}
+
 SENSITIVE_NAME_FRAGMENTS = (
     "adaln",
     "final_layer",
@@ -99,21 +149,19 @@ class TensorAudit:
     saturated_values: int
 
 
-def _canonical_scope(scope: str) -> set[str]:
+def _selected_modules_for_scope(scope: str) -> set[str]:
     normalized = {item.strip().lower() for item in scope.split(",") if item.strip()}
     if not normalized:
-        return {"mlp"}
+        return set(MLP_LINEAR_NAMES)
     if "all" in normalized:
-        return {"mlp", "attention"}
-    aliases = {
-        "attn": "attention",
-        "attention": "attention",
-        "mlp": "mlp",
-    }
-    unknown = normalized - set(aliases)
+        return set(MLP_LINEAR_NAMES) | set(ATTENTION_LINEAR_SUFFIXES)
+    unknown = normalized - set(AUDIT_SCOPE_MODULES)
     if unknown:
         raise ValueError(f"unknown audit scope: {', '.join(sorted(unknown))}")
-    return {aliases[item] for item in normalized}
+    selected: set[str] = set()
+    for item in normalized:
+        selected.update(AUDIT_SCOPE_MODULES[item])
+    return selected
 
 
 def classify_candidate_key(key: str, *, scope: str = "mlp") -> Candidate | None:
@@ -129,15 +177,15 @@ def classify_candidate_key(key: str, *, scope: str = "mlp") -> Candidate | None:
         return None
 
     module_name = match.group("name")
-    selected = _canonical_scope(scope)
-    if module_name in MLP_LINEAR_NAMES and "mlp" in selected:
+    selected = _selected_modules_for_scope(scope)
+    if module_name in MLP_LINEAR_NAMES and module_name in selected:
         return Candidate(
             key=key,
             block_idx=int(match.group("block")),
             module_name=module_name,
             family="mlp",
         )
-    if module_name in ATTENTION_LINEAR_SUFFIXES and "attention" in selected:
+    if module_name in ATTENTION_LINEAR_SUFFIXES and module_name in selected:
         return Candidate(
             key=key,
             block_idx=int(match.group("block")),
@@ -344,7 +392,11 @@ def main() -> None:
     parser.add_argument(
         "--scope",
         default="mlp",
-        help="Comma-separated scopes: mlp, attention, all. Default: mlp.",
+        help=(
+            "Comma-separated scopes: mlp, attention, all, self_attn_qkv, "
+            "self_attn_out, cross_attn_q, cross_attn_kv, cross_attn_out, "
+            "attention_out. Default: mlp."
+        ),
     )
     parser.add_argument("--gate-pct", type=float, default=2.0)
     parser.add_argument("--max-tensors", type=int, default=None)

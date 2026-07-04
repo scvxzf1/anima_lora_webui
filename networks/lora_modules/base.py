@@ -2,6 +2,7 @@
 #   https://github.com/microsoft/LoRA/blob/main/loralib/layers.py
 #   https://github.com/cloneofsimo/lora/blob/master/lora_diffusion/lora.py
 
+import contextlib
 import random
 
 import torch
@@ -71,6 +72,7 @@ class BaseLoRAModule(torch.nn.Module):
         self.dropout = dropout
         self.rank_dropout = rank_dropout
         self.module_dropout = module_dropout
+        self.fp32_compute = False
 
         if isinstance(alpha, torch.Tensor):
             alpha = alpha.detach().float().numpy()  # without casting, bf16 causes error
@@ -141,6 +143,63 @@ class BaseLoRAModule(torch.nn.Module):
             lx = lx * mask
             return lx, self.scale * (1.0 / (1.0 - self.rank_dropout))
         return lx, self.scale
+
+    def _rank_compute_dtype(
+        self, org_forwarded: torch.Tensor, default_dtype: torch.dtype | None = None
+    ) -> torch.dtype:
+        base_dtype = default_dtype or org_forwarded.dtype
+        if self.training and self.fp32_compute and org_forwarded.dtype == torch.float16:
+            return torch.float32
+        return base_dtype
+
+    def _rank_autocast_context(self, x: torch.Tensor, work: torch.dtype):
+        if work == torch.float32 and self.training and self.fp32_compute:
+            return torch.autocast(device_type=x.device.type, enabled=False)
+        return contextlib.nullcontext()
+
+    def forward(self, x):
+        if not self.enabled or getattr(self, "_fused", False):
+            return self.org_forward(x)
+
+        org_forwarded = self.org_forward(x)
+
+        if not self.training:
+            return org_forwarded + self._eval_delta(x, org_forwarded)
+
+        if self._skip_module():
+            return org_forwarded
+
+        work = self._rank_compute_dtype(org_forwarded)
+        with self._rank_autocast_context(x, work):
+            x_lora = self._rebalance(x.to(work))
+            lx = self._down(x_lora, work)
+            lx = self._gate(lx, work)
+            if self.dropout is not None:
+                lx = torch.nn.functional.dropout(lx, p=self.dropout)
+            lx, scale = self._apply_rank_dropout(lx)
+            lx = self._up(lx.to(work), work)
+        return org_forwarded + (lx * self.multiplier * scale).to(org_forwarded.dtype)
+
+    def _gate(self, lx: torch.Tensor, work: torch.dtype) -> torch.Tensor:
+        return lx * self._timestep_mask
+
+    def _down(self, x_lora: torch.Tensor, work: torch.dtype) -> torch.Tensor:
+        raise NotImplementedError(
+            f"{type(self).__name__} uses the forward scaffold but does not "
+            "implement _down"
+        )
+
+    def _up(self, lx: torch.Tensor, work: torch.dtype) -> torch.Tensor:
+        raise NotImplementedError(
+            f"{type(self).__name__} uses the forward scaffold but does not "
+            "implement _up"
+        )
+
+    def _eval_delta(self, x: torch.Tensor, org_forwarded: torch.Tensor) -> torch.Tensor:
+        raise NotImplementedError(
+            f"{type(self).__name__} uses the forward scaffold but does not "
+            "implement _eval_delta"
+        )
 
     @property
     def device(self):

@@ -20,7 +20,7 @@ from library.anima.models import Anima
 from library.runtime.peak_probe import PeakProbe
 
 
-def _tiny_anima() -> Anima:
+def _tiny_anima(num_blocks: int = 2) -> Anima:
     """A small but real Anima DiT runnable on CPU."""
     model = Anima(
         max_img_h=256,
@@ -32,7 +32,7 @@ def _tiny_anima() -> Anima:
         patch_temporal=1,
         concat_padding_mask=False,
         model_channels=64,
-        num_blocks=2,
+        num_blocks=num_blocks,
         num_heads=4,
         mlp_ratio=2.0,
         crossattn_emb_channels=64,
@@ -75,6 +75,27 @@ def test_compile_blocks_does_not_lower_a_higher_budget():
     _dynamo.config.cache_size_limit = 64  # a caller asked for more headroom
     model.compile_blocks(backend="eager")
     assert _dynamo.config.cache_size_limit == 64
+
+
+def test_compile_blocks_keeps_swapped_tail_eager(monkeypatch, capsys):
+    compiled: list[object] = []
+
+    def fake_compile(fn, **_kwargs):
+        compiled.append(fn)
+        return fn
+
+    monkeypatch.setattr(torch, "compile", fake_compile)
+    model = _tiny_anima(num_blocks=4)
+    model.blocks_to_swap = 2
+
+    model.compile_blocks(backend="eager")
+
+    assert len(compiled) == 2
+    assert "_forward" in model.blocks[0].__dict__
+    assert "_forward" in model.blocks[1].__dict__
+    assert "_forward" not in model.blocks[2].__dict__
+    assert "_forward" not in model.blocks[3].__dict__
+    assert "2 resident compiled / 2 swapped (eager)" in capsys.readouterr().out
 
 
 @torch.no_grad()
