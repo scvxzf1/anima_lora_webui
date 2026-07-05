@@ -123,6 +123,12 @@ const ctx = globalThis.ctx;
         if (flags.use_lokr && !('lokr_factor' in values) && !('lokr_factor' in currentConfig)) {
             values.lokr_factor = FORM_UI_DEFAULTS.lokr_factor;
         }
+        if (flags.use_lokr && !('lokr_use_einsum' in values) && !('lokr_use_einsum' in currentConfig)) {
+            values.lokr_use_einsum = FORM_UI_DEFAULTS.lokr_use_einsum;
+        }
+        if (flags.use_lokr && !('lokr_decompose_w2' in values) && !('lokr_decompose_w2' in currentConfig)) {
+            values.lokr_decompose_w2 = FORM_UI_DEFAULTS.lokr_decompose_w2;
+        }
         if (flags.use_lokr && !('lokr_factor_group_size' in values) && !('lokr_factor_group_size' in currentConfig)) {
             values.lokr_factor_group_size = FORM_UI_DEFAULTS.lokr_factor_group_size;
         }
@@ -406,7 +412,7 @@ const ctx = globalThis.ctx;
             input.title = enabled ? '' : 'DoRA 仅支持普通 LoRA；切到 LoHa/LoKr/GLoRA/VeRA 时会自动关闭';
             if (!enabled) input.checked = false;
         }
-        if (key === 'lokr_factor' || key === 'lokr_factor_group_size' || key === 'lokr_project_chunk_bytes') {
+        if (key === 'lokr_factor' || key === 'lokr_use_einsum' || key === 'lokr_decompose_w2' || key === 'lokr_factor_group_size' || key === 'lokr_project_chunk_bytes') {
             input.disabled = !readLoKrEnabled();
             input.title = input.disabled ? '启用 LoKr 后生效' : '';
         }

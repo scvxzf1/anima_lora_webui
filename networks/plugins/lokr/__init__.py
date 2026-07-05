@@ -85,7 +85,7 @@ def _module_kwargs(ctx: ModuleCreationContext) -> dict[str, Any]:
             ctx.cfg.plugin_args.get("lokr_use_einsum"), default=True
         ),
         "lokr_decompose_w2": (
-            None
+            False
             if ctx.cfg.plugin_args.get("lokr_decompose_w2") is None
             else _truthy(ctx.cfg.plugin_args.get("lokr_decompose_w2"))
         ),

@@ -119,6 +119,8 @@ export const FORM_SECTION_DEFS = [
         open: false,
         className: 'config-group-lokr-optimization',
         keys: [
+            'lokr_use_einsum',
+            'lokr_decompose_w2',
             'lokr_factor_group_size',
             'lokr_project_chunk_bytes',
         ],
@@ -441,6 +443,16 @@ export const CONFIG_COMPACT_FIELD_GROUPS = {
         {
             className: 'config-field-grid-3col',
             keys: ['max_data_loader_n_workers', 'vae_chunk_size', 'vae_disable_cache'],
+        },
+    ],
+    'config-group-lokr-optimization': [
+        {
+            className: 'config-field-grid-2col config-field-grid-inline-flags',
+            keys: ['lokr_use_einsum', 'lokr_decompose_w2'],
+        },
+        {
+            className: 'config-field-grid-2col',
+            keys: ['lokr_factor_group_size', 'lokr_project_chunk_bytes'],
         },
     ],
     'config-group-data-resource': [

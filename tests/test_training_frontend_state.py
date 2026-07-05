@@ -2341,6 +2341,8 @@ def test_config_form_keeps_dora_as_lora_addon_and_merges_exclusive_adapters() ->
     assert "vera_projection_prng_key: 0" in defaults
     assert "vera_d_initial: 0.1" in defaults
     assert "vera_save_projection: false" in defaults
+    assert "lokr_use_einsum: true" in defaults
+    assert "lokr_decompose_w2: false" in defaults
     assert "'lora_adapter_kind'" in layout
     assert "'dora_wd'" in layout
     assert "'use_loha'" not in layout
@@ -2350,12 +2352,18 @@ def test_config_form_keeps_dora_as_lora_addon_and_merges_exclusive_adapters() ->
     assert "keys: ['network_dim', 'network_alpha', 'lora_adapter_kind', 'dora_wd', 'lokr_factor', 'vera_projection_prng_key', 'vera_d_initial', 'vera_save_projection']" in source
     assert "{ family: 'lokr', key: 'lokr_factor_group_size', arg: 'lokr_factor_group_size', default: 8, valueType: 'integer' }" in network_arg_specs
     assert "{ family: 'lokr', key: 'lokr_project_chunk_bytes', arg: 'lokr_project_chunk_bytes', default: 4194304, valueType: 'integer' }" in network_arg_specs
+    assert "{ family: 'lokr', key: 'lokr_use_einsum', arg: 'lokr_use_einsum', default: true, valueType: 'boolean' }" in network_arg_specs
+    assert "{ family: 'lokr', key: 'lokr_decompose_w2', arg: 'lokr_decompose_w2', default: false, valueType: 'boolean' }" in network_arg_specs
     assert "'dora_wd'" not in merged_fields
     assert "'use_glora'" in merged_fields
     assert "'use_loha'" in merged_fields
     assert "'use_lokr'" in merged_fields
     assert "'use_vera'" in merged_fields
     assert "CONFIG_FORM_MERGED_FIELDS?.has?.(key)" in render_section
+    assert "ALWAYS_VISIBLE_NETWORK_ARG_FIELDS = new Set([" in source
+    assert "'lokr_use_einsum'," in source
+    assert "'lokr_decompose_w2'," in source
+    assert "if (NETWORK_ARG_FIELD_MAP.has(key)) return ALWAYS_VISIBLE_NETWORK_ARG_FIELDS.has(key);" in source
     assert "function loraAdapterFlagsForKind" in source
     assert "values.use_glora = flags.use_glora" in source
     assert "values.use_loha = flags.use_loha" in source
@@ -3755,6 +3763,8 @@ def test_balanced_16g_block_swap_fields_are_visible() -> None:
         "lr_warmup_steps",
         "lokr_factor_group_size",
         "lokr_project_chunk_bytes",
+        "lokr_use_einsum",
+        "lokr_decompose_w2",
         "disable_block_swap_for_eval",
     ):
         assert f"'{key}'," in optimization_section
@@ -3773,6 +3783,8 @@ def test_balanced_16g_block_swap_fields_are_visible() -> None:
     assert "lr_warmup_steps: '预热步数'" in labels_options
     assert "lokr_factor_group_size: 'LoKr 分组'" in labels_options
     assert "lokr_project_chunk_bytes: 'LoKr 张量切块阈值'" in labels_options
+    assert "lokr_use_einsum: 'LoKr 结构化 einsum'" in labels_options
+    assert "lokr_decompose_w2: 'LoKr 轻量分解 W2'" in labels_options
     assert "use_glora: '启用 GLoRA'" in labels_options
     assert "use_vera: '启用 VeRA'" in labels_options
     assert "vera_projection_prng_key: 'VeRA 投影随机种子'" in labels_options

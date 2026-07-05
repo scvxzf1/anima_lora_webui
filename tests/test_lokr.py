@@ -122,6 +122,53 @@ def test_lokr_default_einsum_forward_matches_kron_path():
     with torch.no_grad():
         lokr.org_module_ref[0].weight.copy_(torch.randn_like(lokr.org_module_ref[0].weight))
         lokr.lokr_w1.copy_(torch.randn_like(lokr.lokr_w1))
+        lokr.lokr_w2.copy_(torch.randn_like(lokr.lokr_w2))
+
+    y = lokr.org_module_ref[0](x)
+    y.backward(grad)
+    grads = [
+        x.grad.clone(),
+        lokr.lokr_w1.grad.clone(),
+        lokr.lokr_w2.grad.clone(),
+    ]
+
+    x_ref = x.detach().clone().requires_grad_()
+    w1_ref = lokr.lokr_w1.detach().clone().requires_grad_()
+    w2_ref = lokr.lokr_w2.detach().clone().requires_grad_()
+    org_weight = lokr.org_module_ref[0].weight.detach()
+    y_ref = F.linear(x_ref, org_weight) + F.linear(
+        x_ref.to(y.dtype), torch.kron(w1_ref, w2_ref).to(y.dtype)
+    ).to(y.dtype)
+    y_ref.backward(grad)
+
+    assert lokr.lokr_use_einsum is True
+    assert hasattr(lokr, "lokr_w2")
+    torch.testing.assert_close(y, y_ref)
+    torch.testing.assert_close(grads[0], x_ref.grad)
+    torch.testing.assert_close(grads[1], w1_ref.grad)
+    torch.testing.assert_close(grads[2], w2_ref.grad)
+
+
+def test_lokr_decomposed_w2_einsum_forward_matches_kron_path():
+    torch.manual_seed(12)
+    x = torch.randn(3, 6, requires_grad=True)
+    grad = torch.randn(3, 8)
+
+    base = torch.nn.Linear(6, 8, bias=False)
+    lokr = LoKrModule(
+        "lora_unet_test",
+        base,
+        multiplier=1.0,
+        lora_dim=2,
+        alpha=2,
+        factor=2,
+        lokr_decompose_w2=True,
+    )
+    lokr.apply_to()
+    lokr.train()
+    with torch.no_grad():
+        lokr.org_module_ref[0].weight.copy_(torch.randn_like(lokr.org_module_ref[0].weight))
+        lokr.lokr_w1.copy_(torch.randn_like(lokr.lokr_w1))
         lokr.lokr_w2_a.copy_(torch.randn_like(lokr.lokr_w2_a))
         lokr.lokr_w2_b.copy_(torch.randn_like(lokr.lokr_w2_b))
 

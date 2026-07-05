@@ -247,6 +247,12 @@ const ctx = globalThis.ctx;
             }
             return String(value);
         }
+        if (key === 'lokr_decompose_w2') {
+            return value === true || value === 'true' ? '轻量分解 / true' : '完整 W2 / false';
+        }
+        if (key === 'lokr_use_einsum') {
+            return value === false || value === 'false' ? '兼容旧路径 / false' : '结构化路径 / true';
+        }
         if (key === 'peak_probe_level') {
             return {
                 block: 'Block 边界 / block',

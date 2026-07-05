@@ -72,7 +72,7 @@ class LoKrModule(BaseLoRAModule):
         lokr_grouped_delta_backend=DEFAULT_LOKR_GROUPED_DELTA_BACKEND,
         lokr_grouped_delta_backward_backend=DEFAULT_LOKR_GROUPED_DELTA_BACKWARD_BACKEND,
         lokr_use_einsum=True,
-        lokr_decompose_w2=None,
+        lokr_decompose_w2=False,
     ):
         if not isinstance(org_module, torch.nn.Linear):
             raise ValueError("LoKrModule only supports torch.nn.Linear modules")
@@ -99,10 +99,7 @@ class LoKrModule(BaseLoRAModule):
             self.out_dim = self.out_b
 
             self.lokr_w1 = torch.nn.Parameter(torch.empty(self.out_a, self.in_a))
-            if lokr_decompose_w2 is None:
-                decompose_w2 = lora_dim < min(self.out_b, self.in_b)
-            else:
-                decompose_w2 = bool(lokr_decompose_w2)
+            decompose_w2 = bool(lokr_decompose_w2)
             if decompose_w2:
                 self.lokr_w2_a = torch.nn.Parameter(torch.empty(self.out_b, lora_dim))
                 self.lokr_w2_b = torch.nn.Parameter(torch.empty(lora_dim, self.in_b))

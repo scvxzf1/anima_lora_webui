@@ -165,6 +165,20 @@ def test_lokr_module_kwargs_forward_grouped_delta_backend():
     assert kwargs["lokr_decompose_w2"] is True
 
 
+def test_lokr_module_kwargs_default_keeps_full_w2():
+    ctx = ModuleCreationContext(
+        cfg=SimpleNamespace(plugin_args={}),
+        is_unet=True,
+        lora_name="lora_unet_test",
+        original_name="blocks.0.mlp.layer1",
+        child_module=torch.nn.Linear(8, 8, bias=False),
+        module_class=LoKrModule,
+    )
+    kwargs = NETWORK_REGISTRY["lokr"].module_kwargs(ctx)
+    assert kwargs["lokr_use_einsum"] is True
+    assert kwargs["lokr_decompose_w2"] is False
+
+
 def test_dora_kwargs_registered():
     assert "dora_wd" in set(all_network_kwargs())
     assert "dora_wd" in set(SHARED_KWARG_FLAGS)

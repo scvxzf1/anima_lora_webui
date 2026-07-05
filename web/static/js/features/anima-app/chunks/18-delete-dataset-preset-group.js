@@ -202,6 +202,12 @@ const ctx = globalThis.ctx;
         if (values.use_lokr === true && !('lokr_factor' in values) && !('lokr_factor' in currentConfig)) {
             values.lokr_factor = FORM_UI_DEFAULTS.lokr_factor;
         }
+        if (values.use_lokr === true && !('lokr_use_einsum' in values) && !('lokr_use_einsum' in currentConfig)) {
+            values.lokr_use_einsum = FORM_UI_DEFAULTS.lokr_use_einsum;
+        }
+        if (values.use_lokr === true && !('lokr_decompose_w2' in values) && !('lokr_decompose_w2' in currentConfig)) {
+            values.lokr_decompose_w2 = FORM_UI_DEFAULTS.lokr_decompose_w2;
+        }
         if (values.use_lokr === true && !('lokr_factor_group_size' in values) && !('lokr_factor_group_size' in currentConfig)) {
             values.lokr_factor_group_size = FORM_UI_DEFAULTS.lokr_factor_group_size;
         }
@@ -361,6 +367,8 @@ const ctx = globalThis.ctx;
         const enabled = readLoKrEnabled();
         const inputs = [
             document.querySelector('#config-form .field-input[data-key="lokr_factor"]'),
+            document.querySelector('#config-form .field-input[data-key="lokr_use_einsum"]'),
+            document.querySelector('#config-form .field-input[data-key="lokr_decompose_w2"]'),
             document.querySelector('#config-form .field-input[data-key="lokr_factor_group_size"]'),
             document.querySelector('#config-form .field-input[data-key="lokr_project_chunk_bytes"]'),
         ].filter(Boolean);

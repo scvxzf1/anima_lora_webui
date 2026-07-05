@@ -1,4 +1,4 @@
-import { help } from './help-builder.js?v=module-bootstrap-20260705-1';
+import { help } from './help-builder.js?v=module-bootstrap-20260705-3';
 
 export const FIELD_HELP_METHOD_ZH = {
     network_dim: help(
@@ -136,6 +136,22 @@ export const FIELD_HELP_METHOD_ZH = {
         ["它会一次计算完整 LoKr delta 输出，显存不稳或 OOM 时先退回 4，再退 2/1。"],
         ["只影响训练时 custom LoKr apply，不改变保存权重格式。"],
         "当前推荐 8；追求更稳时使用 4。"
+    ),
+    lokr_use_einsum: help(
+        "LoKr 是否使用结构化 einsum 计算路径。",
+        "开启后仍然可以使用完整 lokr_w2，只是不再显式构造完整 Kronecker 大矩阵。",
+        ["默认开启，保持老 LoKr 容量，同时走更省临时张量的 no-kron 路径。"],
+        ["关闭后回到更传统的 custom LoKr 路径，主要用于兼容性排查。"],
+        ["这个开关本身不决定权重大小；权重大小由“LoKr 轻量分解 W2”决定。"],
+        "正式训练保持开启。"
+    ),
+    lokr_decompose_w2: help(
+        "是否把大的 lokr_w2 再拆成 lokr_w2_a/lokr_w2_b。",
+        "关闭时保存完整 lokr_w2，容量和旧版 LoKr 一致；开启后文件更小，但表达能力也会下降。",
+        ["默认关闭，用来复现老 LoKr 文件大小和训练效果。"],
+        ["开启适合低容量、低体积实验，不应和旧 full LoKr 效果直接对比。"],
+        ["如果开启后权重从约 55MB 变成约 11MB，这是预期的容量变化。"],
+        "想要老效果保持关闭。"
     ),
     lokr_project_chunk_bytes: help(
         "LoKr 投影内部 row chunk 的字节阈值。",

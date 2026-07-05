@@ -107,6 +107,8 @@ export const FIELD_LABEL_ZH = {
     num_experts: '专家数量',
     num_sigma_buckets: 'Sigma 桶数量',
     lokr_factor: 'LoKr Factor',
+    lokr_use_einsum: 'LoKr 结构化 einsum',
+    lokr_decompose_w2: 'LoKr 轻量分解 W2',
     lokr_factor_group_size: 'LoKr 分组',
     lokr_project_chunk_bytes: 'LoKr 张量切块阈值',
     use_glora: '启用 GLoRA',

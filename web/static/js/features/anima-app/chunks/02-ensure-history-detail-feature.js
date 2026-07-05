@@ -3,6 +3,12 @@
  * Keep this module focused; move newly edited behavior into domain modules.
  */
 const ctx = globalThis.ctx;
+const ALWAYS_VISIBLE_NETWORK_ARG_FIELDS = new Set([
+    'lokr_use_einsum',
+    'lokr_decompose_w2',
+    'lokr_factor_group_size',
+    'lokr_project_chunk_bytes',
+]);
 
     globalThis.ensureHistoryDetailFeature = function ensureHistoryDetailFeature() {
         if (historyDetailFeature) return historyDetailFeature;
@@ -482,7 +488,7 @@ const ctx = globalThis.ctx;
 
     globalThis.shouldExposeUiDefaultField = function shouldExposeUiDefaultField(key, config, fieldsByKey = {}) {
         if (key in fieldsByKey) return true;
-        if (NETWORK_ARG_FIELD_MAP.has(key)) return false;
+        if (NETWORK_ARG_FIELD_MAP.has(key)) return ALWAYS_VISIBLE_NETWORK_ARG_FIELDS.has(key);
         const family = activeMethodKey(config);
         if (SPD_UI_DEFAULT_FIELDS.has(key)) return family === 'spd';
         if (CHIMERA_UI_DEFAULT_FIELDS.has(key)) return family === 'chimera';
