@@ -33,7 +33,7 @@ Git 同步口径：本地 `main` 只和 `webui/main` 沟通；`private/main` 不
 | `TASK-04` WebUI 真 feature 拆分 | 阶段收口 | `live-training/index.js` 纯 helper 已抽出；Node 行为测试、前端结构测试、Chrome headless 模块 smoke 通过；2026-07-05 已补 `updateStatus()` / `updateProgress()` DOM fixture | 还不是启动 WebUI 后的真实浏览器全页面交互；当前剩余风险不阻塞继续整理 |
 | `TASK-05` CSS 功能收口 | 阶段收口 | `21-history-panels.css` 已做维护分区注释；CSS diff check 通过 | 未继续拆 CSS 文件；不改变视觉 |
 | `TASK-06` Runtime offloading 纯工具拆分 | 完成当前边界 | block swap config / CPU master / profiler helper 已拆出并合并；runtime 测试链通过 | CUDA stream / Event、swap plan、thread pool、hook 调度继续留在 `offloading.py`，除缺陷外不扩大 |
-| `TASK-07` LoRA targeting / builder 拆分 | 阶段收口 | `targeting.py` 已抽出候选发现；LoRA construction / network cfg 测试通过 | builder / router / load / save 仍在 `network.py`；继续前必须只读评估和 characterization test |
+| `TASK-07` LoRA targeting / builder 拆分 | 阶段收口 | `targeting.py` 已抽出候选发现；已补 mixed Hydra/plain from-weights 恢复和 global-router save metadata characterization tests；checkpoint key 扫描已抽成私有 helper；LoRA/router 相关测试通过 | builder / router / load / save 主流程仍未深拆；后续只适合继续小步拆纯检测、metadata 组装或保存分流，不要改 checkpoint key 格式 |
 | `TASK-08` Training forward canonical home | 阶段收口 | prior-preservation forward canonical home 已落地，旧 shim 保留；prior-preservation 测试通过 | `train.py` 其它方法 hook 化未继续推进 |
 | `TASK-09` Config service 去 legacy | 完成当前边界 | `merge`、`output_runs`、`estimation`、`preflight`、`datasets`、`file_groups` 已多轮 direct-import-safe / shim / 显式依赖推进；2026-07-05 已补齐 `_legacy.py` dataset、file group、preflight 公开入口 shim，覆盖对应 split module 的 `__all__`；preflight shim 已补 facade 状态恢复，raw_files 同步后会恢复 file group shim；datasets / raw_files legacy-private 额外 shim 已有测试保护；preflight、merge、output_runs、estimation、raw_files 公开入口旧函数体已收薄为转发桩；dataset user-facing 入口旧函数体已收薄为转发桩；`save_dataset_editor` 已稳定捕获 facade 注入的 raw writer，避免嵌套 helper 同步覆盖测试/运行时写入器；sample_prompts 4 个入口旧函数体已收薄为转发桩，split module 已补 ruff 友好的默认路径依赖；file_groups 全部 `__all__` 入口旧函数体已收薄为转发桩；dataset helper 入口旧函数体已收薄为转发桩；split module 同步规则已避免覆盖 legacy raw_files / file_groups shim；当前 8 个已拆 config split module 的 `__all__` 在 `_legacy.py` 内已无旧函数体残留；merge 私有 helper（variant metadata / custom variants）已改为转发 `merge.py`；output run 私有 helper（summary / config path / save-as path / mtime / time format）已改为转发 `output_runs.py`；file group 分组识别 / 归一化 / 归档命名 helper 首批 5 个已改为转发 `file_groups.py`；file group 分组构建 / fallback / 排序 / 权限判断 helper 21 个已改为转发 `file_groups.py`；file group id / label / 系统预设 / 备份路径 / 列表解析 helper 11 个已改为转发 `file_groups.py`；dataset summary/grouping helper 4 个旧函数体已改为转发 `datasets.py`；dataset 路径/default/row settings helper 17 个已改为转发 `datasets.py`；dataset 图片预览 / caption / nl-tag-mix helper 18 个已改为转发 `datasets.py`；dataset/raw legacy shim 已补 facade 状态恢复，避免污染 `config_service.list_config_file_groups`；preflight 私有 helper 12 个旧函数体已改为转发 `preflight.py`；公共 path / coercion / `_load` helper 已抽到 `common.py`，legacy 只保留转发；当前 `_legacy.py` 非转发函数降到 10 个且均为 shim 调度 / 恢复函数 | `_legacy.py` 仍作为兼容 facade 存在；若未来要彻底删除文件，需要先迁移所有外部 import surface 和第三方兼容入口 |
 | `TASK-10` 类型检查分目录收紧 | 试点门禁建立 | `pyright` 已加入 dev 依赖；`python tasks.py type-check` 默认检查 `scripts/config_compat.py` / `scripts/config_explain.py` 并通过；ruff / py_compile / pytest 已有阶段验证 | 这不是全仓类型门禁；后续扩大范围前要按目录逐步收紧 |
@@ -97,7 +97,7 @@ Git 同步口径：本地 `main` 只和 `webui/main` 沟通；`private/main` 不
 
 1. 当前检查点已提交并推送到 `webui/main`；不建议继续扩大重构。
 2. 若未来继续 `TASK-09`，下一步是让 split modules 逐步复用 `common.py`，或制定删除 `_legacy.py` facade 的外部 import 迁移计划。
-3. 暂缓继续扩大 `TASK-07`：LoRA builder / router / load / save 深拆前，先补 characterization test。
+3. 若继续 `TASK-07`，只做小步拆分：优先拆纯检测、metadata 组装或保存分流；不要改 public API、checkpoint key 格式或三轴路由语义。
 4. 暂缓继续扩大 `TASK-06`：runtime block swap 当前边界已收口，除缺陷外不拆 CUDA stream / swap plan / hook 调度。
 5. `TASK-10` 已选择 `pyright` 并建立 config 脚本试点门禁；若继续，只按目录逐步扩大范围，不要一次性切全仓。
 6. 如果要补更强 UI 证据，再单独启动 WebUI 做真实浏览器全页面交互，不和代码拆分混在同轮。
@@ -268,7 +268,7 @@ Git 同步口径：本地 `main` 只和 `webui/main` 沟通；`private/main` 不
 
 - 不能说已经建立全仓类型检查门禁；当时只是 pyright 入口和缺依赖提示。
 - 不能说 `_legacy.py` 已经可以删除；它仍是兼容 facade。
-- 不能说 LoRA builder/router/load/save 已经完成深拆；目前只是补了拆分前 characterization test。
+- 不能说 LoRA builder/router/load/save 已经完成深拆；目前只是补了保护测试和一个只读扫描 helper。
 
 ---
 
@@ -293,3 +293,29 @@ Git 同步口径：本地 `main` 只和 `webui/main` 沟通；`private/main` 不
 
 - 不能说已经建立全仓类型检查门禁。
 - 不能说所有目录都已类型友好；当前只覆盖 config 脚本试点范围。
+
+---
+
+## 📌 10. 2026-07-05 TASK-07 二阶段小步推进
+
+一句话：这轮给 LoRA builder/router/load/save 继续拆分前补了保护测试，并只拆了一个只读检测 helper。
+
+已推进：
+
+- 新增 `test_create_network_from_weights_restores_mixed_hydra_plain_router_names`，覆盖 `create_network_from_weights(...)` 从混合 Hydra/plain checkpoint 恢复 `hydra_router_names`，确认 routed leg 建成 `HydraLoRAModule`，plain fallback leg 建成 `LoRAModule`。
+- 新增 `test_save_weights_stamps_three_axis_metadata_for_shared_a_global_fei`，覆盖 `shared_A + route_per_layer=false + router_source=fei` 的保存行为，确认 `*_moe.safetensors` 写入 three-axis metadata、FEI metadata 和顶层 `global_router.*` key，且不写 `_routing_weights`。
+- `networks/lora_anima/factory.py` 新增私有 `_CheckpointKeyScan` / `_scan_lora_checkpoint_keys()`，只抽离 checkpoint key 只读扫描和 dim / alpha / flag / name-set 收集逻辑。
+
+本轮已验证：
+
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m pytest -p no:cacheprovider -q tests/test_lora_network_construction.py::test_create_network_from_weights_restores_mixed_hydra_plain_router_names tests/test_lora_network_construction.py::test_save_weights_stamps_three_axis_metadata_for_shared_a_global_fei`：`2 passed`。
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m pytest -p no:cacheprovider -q tests/test_factory_metadata_flow.py`：`4 passed`。
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m pytest -p no:cacheprovider -q tests/test_lora_network_construction.py tests/test_factory_metadata_flow.py tests/test_global_router.py tests/test_network_cfg.py tests/test_router_compute.py`：`62 passed`。
+- `timeout 60 .venv/bin/python tasks.py type-check`：`0 errors, 0 warnings, 0 informations`。
+- `git diff --check`：通过。
+
+仍不能对外说：
+
+- 不能说 LoRA builder/router/load/save 已经完成深拆；这轮只做了拆分前保护和一个低风险只读扫描 helper。
+- 不能说保存格式有变化；本轮没有改 public API、checkpoint key 格式或三轴路由语义。
+- 不能说跑过真实训练、模型下载或真实 MFU benchmark。

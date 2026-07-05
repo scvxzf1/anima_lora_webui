@@ -7,6 +7,7 @@ import json
 import logging
 import os
 import re
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, List, Optional
 
@@ -79,6 +80,122 @@ def _load_channel_scales(
         f"stats={_CHANNEL_STATS_PATH.name} ({len(out)} calibrated modules)"
     )
     return out
+
+
+@dataclass
+class _CheckpointKeyScan:
+    modules_dim: Dict[str, int] = field(default_factory=dict)
+    modules_alpha: Dict[str, torch.Tensor] = field(default_factory=dict)
+    train_llm_adapter: bool = False
+    has_ortho: bool = False
+    has_ortho_hydra: bool = False
+    has_stacked_experts: bool = False
+    hydra_num_experts: int = 0
+    has_reft: bool = False
+    has_dora: bool = False
+    reft_dim: Optional[int] = None
+    reft_block_indices: set[int] = field(default_factory=set)
+    hydra_module_names: set[str] = field(default_factory=set)
+    plain_module_names: set[str] = field(default_factory=set)
+    chimera_dual_a_modules: set[str] = field(default_factory=set)
+
+
+def _scan_lora_checkpoint_keys(
+    weights_sd: Dict[str, torch.Tensor],
+) -> _CheckpointKeyScan:
+    scan = _CheckpointKeyScan()
+    # Block-level ReFT key pattern: reft_unet_blocks_<idx>.<...>
+    reft_block_re = re.compile(r"^reft_unet_blocks_(\d+)$")
+
+    for key, value in weights_sd.items():
+        if "." not in key:
+            continue
+
+        lora_name = key.split(".")[0]
+
+        # Old-format global HydraLoRA router — incompatible with per-module routing.
+        if key.startswith("_hydra_router"):
+            raise RuntimeError(
+                "This checkpoint uses the old global HydraLoRA router "
+                "(_hydra_router.*). The router is now per-module and layer-local; "
+                "the old format cannot be loaded. Retrain the LoRA to get the new "
+                "per-module router weights."
+            )
+
+        # ReFT keys use "reft_" prefix (block-level: reft_unet_blocks_<idx>.*)
+        if lora_name.startswith("reft_"):
+            scan.has_reft = True
+            match = reft_block_re.match(lora_name)
+            if match is None:
+                raise RuntimeError(
+                    f"ReFT key {key!r} does not match the block-level scheme "
+                    "'reft_unet_blocks_<idx>.*'. This checkpoint was likely trained "
+                    "with the old per-Linear ReFT wiring and cannot be loaded by the "
+                    "current block-level implementation."
+                )
+            scan.reft_block_indices.add(int(match.group(1)))
+            if "rotate_layer" in key and "weight" in key:
+                scan.reft_dim = value.size()[0]
+            continue
+
+        if "alpha" in key:
+            scan.modules_alpha[lora_name] = value
+        elif key.endswith(".magnitude"):
+            scan.has_dora = True
+        elif key.endswith(".lora_up_c_weight") or key.endswith(".lora_up_f_weight"):
+            # Chimera dual-A per-pool stacked ups (post-stack form). r is
+            # the last dim; out_dim of this side is dim 1; pool size is
+            # dim 0. Track for the post-loop chimera detection — modules_dim
+            # is filled by the matching ``.lora_down_{c,f}.weight`` branch
+            # below (same r, same prefix).
+            scan.chimera_dual_a_modules.add(lora_name)
+        elif (
+            key.endswith(".lora_down_c.weight")
+            or key.endswith(".lora_down_f.weight")
+        ):
+            # Chimera dual-A per-pool down. Same r as the matching ups; the
+            # pair (down_c, down_f) lives under one prefix. Both keys hit
+            # this branch and overwrite modules_dim with the same r → safe.
+            scan.chimera_dual_a_modules.add(lora_name)
+            scan.modules_dim[lora_name] = value.size(0)
+        elif key.endswith(".lora_down_weight") and value.dim() == 3:
+            # StackedExperts (independent-A) per-expert lora_down.
+            # Shape: (E, r, in). Discriminator vs Hydra (whose down is the
+            # 2-D shared ``lora_down.weight``) — flips the spec resolver
+            # below to ``stacked_experts_global_fei``.
+            scan.has_stacked_experts = True
+            scan.hydra_num_experts = max(scan.hydra_num_experts, value.size(0))
+            scan.modules_dim[lora_name] = value.size(1)
+            scan.hydra_module_names.add(lora_name)
+        elif "lora_up_weight" in key:
+            # Stacked-3-D in both Hydra and StackedExperts; the
+            # discriminator is the down (handled above for SE, below for
+            # Hydra). Defer the has_hydra decision until after the loop.
+            scan.hydra_num_experts = max(scan.hydra_num_experts, value.size(0))
+            scan.hydra_module_names.add(lora_name)
+        elif key.endswith(".lora_up.weight"):
+            # Plain (non-stacked) LoRA up — either vanilla LoRA or the
+            # plain-fallback leg of a mixed router_targets checkpoint.
+            scan.plain_module_names.add(lora_name)
+        elif "lora_down" in key:
+            scan.modules_dim[lora_name] = value.size()[0]
+        elif key.endswith(".S_p"):
+            if value.dim() == 3:
+                # OrthoHydraLoRA: S_p is (num_experts, r, r)
+                scan.has_ortho_hydra = True
+                scan.hydra_num_experts = max(scan.hydra_num_experts, value.size(0))
+                scan.modules_dim[lora_name] = value.size(1)
+                scan.hydra_module_names.add(lora_name)
+            else:
+                # OrthoLoRA: S_p is (r, r) — either pure ortho or the
+                # plain-fallback leg of a mixed ortho_hydra checkpoint.
+                scan.has_ortho = True
+                scan.modules_dim[lora_name] = value.size(0)
+                scan.plain_module_names.add(lora_name)
+        if "llm_adapter" in lora_name:
+            scan.train_llm_adapter = True
+
+    return scan
 
 
 def create_network(
@@ -330,123 +447,29 @@ def create_network_from_weights(
     weights_sd = _rename_dora_scale_for_load(weights_sd)
     weights_sd = preprocess_weights_from_plugins(weights_sd)
 
-    modules_dim = {}
-    modules_alpha = {}
-    train_llm_adapter = False
-    has_ortho = False
-    has_ortho_hydra = False
+    scan = _scan_lora_checkpoint_keys(weights_sd)
+    modules_dim = scan.modules_dim
+    modules_alpha = scan.modules_alpha
+    train_llm_adapter = scan.train_llm_adapter
+    has_ortho = scan.has_ortho
+    has_ortho_hydra = scan.has_ortho_hydra
     has_hydra = False
-    # StackedExperts (independent-A): per-expert ``lora_down_weight`` (E, r, in)
-    # AND per-expert ``lora_up_weight`` (E, out, r) — discriminated from Hydra
-    # by the 3-D ``lora_down_weight`` (Hydra's down is the 2-D shared
-    # ``lora_down.weight``). Note that the plan-2 metadata stamps
-    # (ss_use_moe_style etc.) are the canonical discriminator; the key-sniff
-    # here is a fallback for unstamped or legacy artifacts.
-    has_stacked_experts = False
-    hydra_num_experts = 0
-    has_reft = False
-    has_dora = False
-    reft_dim = None
-    reft_block_indices: set[int] = set()
+    has_stacked_experts = scan.has_stacked_experts
+    hydra_num_experts = scan.hydra_num_experts
+    has_reft = scan.has_reft
+    has_dora = scan.has_dora
+    reft_dim = scan.reft_dim
+    reft_block_indices = scan.reft_block_indices
     # Per-module hydra flag: which lora_names were trained as MoE (Hydra) vs
-    # plain LoRA / OrthoLoRA. Populated below by key sniff, then passed
-    # through as `hydra_router_names` so create_modules can pick the right
-    # class per module in mixed checkpoints (result of router_targets).
-    hydra_module_names: set[str] = set()
-    plain_module_names: set[str] = set()
-    # Block-level ReFT key pattern: reft_unet_blocks_<idx>.<...>
-    _reft_block_re = re.compile(r"^reft_unet_blocks_(\d+)$")
+    # plain LoRA / OrthoLoRA. Populated by key sniff, then passed through as
+    # `hydra_router_names` so create_modules can pick the right class per
+    # module in mixed checkpoints (result of router_targets).
+    hydra_module_names = scan.hydra_module_names
+    plain_module_names = scan.plain_module_names
     # Discriminator for chimera dual-A keys: any module with a
-    # ``.lora_up_c_weight`` (post-stack form) is a chimera Linear and
-    # should NOT be classified as plain Hydra. Collected in the loop below.
-    chimera_dual_a_modules: set[str] = set()
-    for key, value in weights_sd.items():
-        if "." not in key:
-            continue
-
-        lora_name = key.split(".")[0]
-
-        # Old-format global HydraLoRA router — incompatible with per-module routing.
-        if key.startswith("_hydra_router"):
-            raise RuntimeError(
-                "This checkpoint uses the old global HydraLoRA router "
-                "(_hydra_router.*). The router is now per-module and layer-local; "
-                "the old format cannot be loaded. Retrain the LoRA to get the new "
-                "per-module router weights."
-            )
-
-        # ReFT keys use "reft_" prefix (block-level: reft_unet_blocks_<idx>.*)
-        if lora_name.startswith("reft_"):
-            has_reft = True
-            m = _reft_block_re.match(lora_name)
-            if m is None:
-                raise RuntimeError(
-                    f"ReFT key {key!r} does not match the block-level scheme "
-                    "'reft_unet_blocks_<idx>.*'. This checkpoint was likely trained "
-                    "with the old per-Linear ReFT wiring and cannot be loaded by the "
-                    "current block-level implementation."
-                )
-            reft_block_indices.add(int(m.group(1)))
-            if "rotate_layer" in key and "weight" in key:
-                reft_dim = value.size()[0]
-            continue
-
-        if "alpha" in key:
-            modules_alpha[lora_name] = value
-        elif key.endswith(".magnitude"):
-            has_dora = True
-        elif key.endswith(".lora_up_c_weight") or key.endswith(".lora_up_f_weight"):
-            # Chimera dual-A per-pool stacked ups (post-stack form). r is
-            # the last dim; out_dim of this side is dim 1; pool size is
-            # dim 0. Track for the post-loop chimera detection — modules_dim
-            # is filled by the matching ``.lora_down_{c,f}.weight`` branch
-            # below (same r, same prefix).
-            chimera_dual_a_modules.add(lora_name)
-        elif (
-            key.endswith(".lora_down_c.weight") or key.endswith(".lora_down_f.weight")
-        ):
-            # Chimera dual-A per-pool down. Same r as the matching ups; the
-            # pair (down_c, down_f) lives under one prefix. Both keys hit
-            # this branch and overwrite modules_dim with the same r → safe.
-            chimera_dual_a_modules.add(lora_name)
-            modules_dim[lora_name] = value.size(0)
-        elif key.endswith(".lora_down_weight") and value.dim() == 3:
-            # StackedExperts (independent-A) per-expert lora_down.
-            # Shape: (E, r, in). Discriminator vs Hydra (whose down is the
-            # 2-D shared ``lora_down.weight``) — flips the spec resolver
-            # below to ``stacked_experts_global_fei``.
-            has_stacked_experts = True
-            hydra_num_experts = max(hydra_num_experts, value.size(0))
-            modules_dim[lora_name] = value.size(1)
-            hydra_module_names.add(lora_name)
-        elif "lora_up_weight" in key:
-            # Stacked-3-D in both Hydra and StackedExperts; the
-            # discriminator is the down (handled above for SE, below for
-            # Hydra). Defer the has_hydra decision until after the loop.
-            hydra_num_experts = max(hydra_num_experts, value.size(0))
-            hydra_module_names.add(lora_name)
-        elif key.endswith(".lora_up.weight"):
-            # Plain (non-stacked) LoRA up — either vanilla LoRA or the
-            # plain-fallback leg of a mixed router_targets checkpoint.
-            plain_module_names.add(lora_name)
-        elif "lora_down" in key:
-            dim = value.size()[0]
-            modules_dim[lora_name] = dim
-        elif key.endswith(".S_p"):
-            if value.dim() == 3:
-                # OrthoHydraLoRA: S_p is (num_experts, r, r)
-                has_ortho_hydra = True
-                hydra_num_experts = max(hydra_num_experts, value.size(0))
-                modules_dim[lora_name] = value.size(1)
-                hydra_module_names.add(lora_name)
-            else:
-                # OrthoLoRA: S_p is (r, r) — either pure ortho or the
-                # plain-fallback leg of a mixed ortho_hydra checkpoint.
-                has_ortho = True
-                modules_dim[lora_name] = value.size(0)
-                plain_module_names.add(lora_name)
-        if "llm_adapter" in lora_name:
-            train_llm_adapter = True
+    # ``.lora_up_c_weight`` (post-stack form) is a chimera Linear and should
+    # NOT be classified as plain Hydra.
+    chimera_dual_a_modules = scan.chimera_dual_a_modules
 
     plugin_detection = detect_network_spec_from_weights(
         weights_sd,

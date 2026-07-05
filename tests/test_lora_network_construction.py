@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 import torch
+from safetensors import safe_open
 
 from networks.lora_anima.config import LoRANetworkCfg
-from networks.lora_anima.factory import create_network
+from networks.lora_anima.factory import create_network, create_network_from_weights
 from networks.lora_anima.network import GlobalRouter, LoRANetwork
 from networks.lora_anima.targeting import (
     collect_lora_target_candidates,
@@ -157,6 +158,48 @@ def test_router_targets_mix_hydra_and_plain_lora_modules() -> None:
     assert net.global_router is None
 
 
+def test_create_network_from_weights_restores_mixed_hydra_plain_router_names() -> None:
+    hydra_name = "lora_unet_blocks_0_q_proj"
+    plain_name = "lora_unet_blocks_0_k_proj"
+    weights_sd = {
+        f"{hydra_name}.lora_down.weight": torch.randn(2, 8),
+        f"{hydra_name}.lora_up_weight": torch.randn(3, 8, 2),
+        f"{hydra_name}.router.weight": torch.randn(3, 2),
+        f"{hydra_name}.alpha": torch.tensor(2.0),
+        f"{plain_name}.lora_down.weight": torch.randn(2, 8),
+        f"{plain_name}.lora_up.weight": torch.randn(8, 2),
+        f"{plain_name}.alpha": torch.tensor(2.0),
+    }
+
+    net, _ = create_network_from_weights(
+        multiplier=1.0,
+        file=None,
+        ae=None,
+        text_encoders=[],
+        unet=TinyDiT(),
+        weights_sd=weights_sd,
+        for_inference=True,
+        metadata={
+            "ss_use_moe_style": "shared_A",
+            "ss_route_per_layer": "True",
+            "ss_router_source": "input",
+        },
+    )
+    modules = {lora.original_name: lora for lora in net.unet_loras}
+
+    assert net.cfg.use_moe_style == "shared_A"
+    assert net.cfg.route_per_layer is True
+    assert net.cfg.router_source == "input"
+    assert list(net.cfg.hydra_router_names or []) == [hydra_name]
+    assert net._hydra_router_names == {hydra_name}
+    assert type(modules["blocks.0.q_proj"]) is HydraLoRAModule
+    assert type(modules["blocks.0.k_proj"]) is LoRAModule
+    assert net._hydra_router_hits == 1
+    assert net._hydra_router_misses == 1
+    assert net._network_spec.name == "hydra"
+    assert net._use_hydra is True
+
+
 def test_create_network_global_fei_shared_a_cell_uses_real_builder_path() -> None:
     net = create_network(
         multiplier=1.0,
@@ -194,6 +237,54 @@ def test_create_network_global_fei_shared_a_cell_uses_real_builder_path() -> Non
     assert net._balance_loss_target_weight == 0.2
     assert net._balance_loss_warmup_ratio == 0.25
     assert net._balance_loss_weight == 0.0
+
+
+def test_save_weights_stamps_three_axis_metadata_for_shared_a_global_fei(
+    tmp_path,
+) -> None:
+    unet = TinyDiT()
+    net = create_network(
+        multiplier=1.0,
+        network_dim=2,
+        network_alpha=2.0,
+        vae=None,
+        text_encoders=[],
+        unet=unet,
+        use_moe_style="shared_A",
+        route_per_layer=False,
+        router_source="fei",
+        router_targets="q_proj",
+        num_experts=3,
+        fei_feature_dim=2,
+        fei_sigma_low_div=4.0,
+        router_hidden_dim=8,
+    )
+    net.apply_to([], unet)
+    out = tmp_path / "shared_a.safetensors"
+
+    net.save_weights(str(out), dtype=torch.float32, metadata={})
+
+    moe_out = tmp_path / "shared_a_moe.safetensors"
+    assert moe_out.exists()
+    with safe_open(str(moe_out), framework="pt", device="cpu") as handle:
+        metadata = handle.metadata()
+        keys = set(handle.keys())
+
+    assert metadata["ss_use_moe_style"] == "shared_A"
+    assert metadata["ss_route_per_layer"] == "false"
+    assert metadata["ss_router_source"] == "fei"
+    assert metadata["ss_fei_feature_dim"] == "2"
+    assert metadata["ss_fei_sigma_low_div"] == "4.0"
+    assert "global_router.net.0.weight" in keys
+    assert "global_router.net.2.bias" in keys
+    assert "lora_unet_blocks_0_q_proj.lora_ups.0.weight" in keys
+    assert "lora_unet_blocks_0_k_proj.lora_up.weight" in keys
+    assert not any("_routing_weights" in key for key in keys)
+    assert not any(
+        ".router." in key
+        for key in keys
+        if key.startswith("lora_unet_blocks_0_q_proj")
+    )
 
 
 def test_global_fei_cell_builds_network_router_from_real_init() -> None:
