@@ -17,7 +17,8 @@ Git 同步口径：本地 `main` 只和 `webui/main` 沟通；`private/main` 不
 - 先看 **第 2 节当前状态总表**，不要重复做已经阶段收口的任务。
 - 再看 **第 3 节隔离和禁止事项**，确认哪些目录不能碰。
 - 如果继续写代码，优先按 **第 5 节下一步建议** 小步推进。
-- 当前活跃强制长跑目标入口是 `docs/findings/project_cleanup_sustained_goal_20260705.md`。
+- 当前活跃强制长跑目标入口是 `docs/findings/project_cleanup_sustained_goal_20260706.md`。
+- `docs/findings/project_cleanup_sustained_goal_20260705.md` 已完成归档，提交 `bd591b83`，不要再作为活跃目标重复执行。
 - 本轮收口目标入口 `docs/findings/project_cleanup_next_stage_goal_20260705.md` 已完成归档，完成记录见第 13 节。
 - `docs/findings/project_cleanup_long_running_goal_20260705.md` 已完成归档，不要再作为活跃目标重复执行。
 - 不能把 `TASK-01` 到 `TASK-10` 统一说成“全部完成”。
@@ -105,7 +106,7 @@ Git 同步口径：本地 `main` 只和 `webui/main` 沟通；`private/main` 不
 
 推荐顺序：
 
-1. 下一轮优先按 `docs/findings/project_cleanup_sustained_goal_20260705.md` 执行强制长跑目标，不要重复执行已完成的 `project_cleanup_next_stage_goal_20260705.md`。
+1. 下一轮优先按 `docs/findings/project_cleanup_sustained_goal_20260706.md` 执行跨子系统强制长跑目标，不要重复执行已完成的 `project_cleanup_sustained_goal_20260705.md`。
 2. 当前检查点已提交并推送到 `webui/main`；不建议继续扩大重构。
 3. 若未来继续 `TASK-09`，下一步优先迁移低风险内部 import surface，例如 `ROOT`、`_resolve_project_path`、`estimate_training_steps`。
 4. 若继续 `TASK-07`，下一步只适合继续加 characterization tests 或拆更小的纯 helper；不要改保存/加载格式。
@@ -395,7 +396,7 @@ Git 同步口径：本地 `main` 只和 `webui/main` 沟通；`private/main` 不
 使用方式：
 
 ```text
-请按 docs/findings/project_cleanup_sustained_goal_20260705.md 执行强制长跑项目清理目标。
+请按 docs/findings/project_cleanup_sustained_goal_20260706.md 执行跨子系统强制长跑项目清理目标。
 ```
 
 仍不能对外说：
@@ -481,7 +482,7 @@ Git 同步口径：本地 `main` 只和 `webui/main` 沟通；`private/main` 不
 建议启动语：
 
 ```text
-请按 docs/findings/project_cleanup_sustained_goal_20260705.md 执行强制长跑项目清理目标。
+请按 docs/findings/project_cleanup_sustained_goal_20260706.md 执行跨子系统强制长跑项目清理目标。
 ```
 
 仍不能对外说：
@@ -1226,6 +1227,39 @@ Git 同步口径：本地 `main` 只和 `webui/main` 沟通；`private/main` 不
 - 不能 `update_goal complete`。
 - 不能说 R4 总验证已完成。
 
+---
+
+## 🔚 16. 2026-07-06 最新入口与下一阶段目标书
+
+一句话：`20260705` 的 sustained 长跑目标已经完成，当前新的活跃入口是 `20260706` 跨子系统长跑目标书。
+
+当前最终事实：
+
+- `project_cleanup_sustained_goal_20260705.md` 已完成归档，最终提交为 `bd591b83 test: extend sustained cleanup coverage`。
+- 用户验收记录显示该目标 `goal.timeUsedSeconds = 7889`，约 `2 小时 11 分钟`，并已推送到 `webui/main`。
+- 历史 EXT 小节中的“未满 7200 秒 / 不能 commit / 不能 push”是执行中间快照，不再代表当前状态。
+- 当前活跃目标书是 `docs/findings/project_cleanup_sustained_goal_20260706.md`。
+
+本轮文档维护完成：
+
+- 新增 `project_cleanup_sustained_goal_20260706.md`，把硬门槛提高为 `10800` 秒、`20` 个阶段、`5` 个推进轮和至少 `4` 个子系统覆盖。
+- 旧 `project_cleanup_sustained_goal_20260705.md` 改为已完成归档。
+- `project_cleanup_long_running_goal_20260705.md` 和 `project_cleanup_next_stage_goal_20260705.md` 的后续入口改为 `20260706` 新目标书。
+- 修正 blocked/complete 文案漏洞：阻塞只能标记 `blocked`，不能作为提前 `complete` 的例外。
+- 修正 checkpoint 旧尾部状态冲突：R4 正式收尾和 `bd591b83` 推送事实优先于执行中间快照。
+
+下一轮可直接复制：
+
+```text
+请按 docs/findings/project_cleanup_sustained_goal_20260706.md 执行跨子系统强制长跑项目清理目标。
+```
+
+不能夸大的边界：
+
+- 不能说全仓技术债已清完；这是下一阶段长跑任务书，不是最终清债证明。
+- 不能说 `20260706` 目标已经执行；本节只记录目标书创建和入口切换。
+- 不能说旧目标文档被删除；它们只是归档并改为历史入口。
+
 ### R4 正式收尾验证
 
 一句话：R4 已满足长跑目标的时间、阶段、轮次和验证门槛，可以进入提交推送。
@@ -1267,17 +1301,17 @@ R4 修复补记：
 
 当前最新事实：
 
-- 最新实时 `get_goal` 显示 `goal.timeUsedSeconds = 6867`，仍小于 `7200`。
-- 已完成阶段数远超最低要求，验证数量也已满足，但还不能越过耗时硬门槛。
-- 已完成最终前核心验证：LoRA/config/tasks 组合 `137 passed`，Web config 拆分为 `8 passed` / `5 passed` / `6 passed`，`tasks.py type-check` 为 `0 errors`，`git diff --check` 通过。
-- 当前仍未执行正式 R4，总验证、显式 stage、commit、push、`update_goal complete` 都还没做。
+- `project_cleanup_sustained_goal_20260705.md` 已完成归档，并已提交推送到 `webui/main`。
+- 最终提交：`bd591b83 test: extend sustained cleanup coverage`。
+- 用户验收记录显示 `goal.timeUsedSeconds = 7889`，约 `2 小时 11 分钟`，已超过该目标书要求的 `7200` 秒。
+- 该目标已完成正式 R4、显式 stage、commit、push 和 `update_goal complete`。
+- 本节后面的旧 EXT 硬门槛盘点是历史补写记录，不能覆盖这里的已完成事实。
 
-下一步准入条件：
+下一步入口：
 
-- 等实时 `goal.timeUsedSeconds >= 7200`。
-- 重新执行正式 R4 总验证并把结果写入本尾部索引。
-- 显式 stage 16 个目标相关文件，不能用 `git add -A`。
-- commit 后推送 `git push webui main:main`。
+- 下一轮请执行 `docs/findings/project_cleanup_sustained_goal_20260706.md`。
+- 旧 `20260705` 三份目标书都只作为历史记录保留，不要重复执行。
+- 新目标要求至少 `10800` 秒、`20` 个阶段、`5` 个推进轮、覆盖至少 `4` 个子系统。
 
 ### 尾部预审补充
 
@@ -2023,7 +2057,7 @@ R4 修复补记：
 当前纠偏：
 
 - 本文前面的 EXT 段落存在补写错位，尤其是第二十九到第三十七组的文件位置不等于真实推进顺序。
-- 判断能否收口时，以本文尾部最新硬门槛盘点和实时 `get_goal` 为准。
+- 判断 `20260705` sustained 目标是否完成时，以 R4 正式收尾验证、`bd591b83` 推送事实和尾部最新状态索引为准；旧 EXT 硬门槛盘点都是历史快照。
 - 阶段数量已经满足最低要求；推进轮数量按记录看已满足最低要求，但不替代耗时、R4 总验证、显式 stage、提交和推送门槛。
 - S15/S16 总验证尚未执行；EXT 中宽验证不等同于 R4 总验证。
 - 当前仍不能 `commit`、不能 `push webui main:main`、不能 `update_goal complete`，也不能说强制长跑目标已完成。
@@ -2340,20 +2374,52 @@ R4 修复补记：
 
 - 不能说 Web config type-check 会继续扩大；当前决定是暂停继续扩 Web config 默认白名单。
 
-### EXT 当前硬门槛盘点 3
+### EXT 当前硬门槛盘点 3（历史快照）
 
-一句话：当前已继续产出测试和边界文档，但还没到 7200 秒硬门槛。
+一句话：这是 `20260705` sustained 目标执行中的历史快照，不代表当前最终状态。
 
-当前事实：
+当时事实：
 
 - `goal.timeUsedSeconds = 3991`，仍小于 `7200`。
 - `git diff --check`：tracked diff 通过；未跟踪文件仍需在最终显式 stage 后纳入提交前检查。
 - `git status --short --branch`：仍在 `main...webui/main`，存在当前目标相关未提交改动和未跟踪目标书 / 新测试文件。
 - `git diff --stat` 不包含未跟踪文件，最终 stage 前不能只看 stat 估算完整改动。
 
-当前禁止收口：
+当时禁止收口：
 
 - 不能 `commit`。
 - 不能 `push webui main:main`。
 - 不能 `update_goal complete`。
 - 不能说 R4 总验证已完成。
+
+当前说明：
+
+- 后续 R4 已正式完成，并已在 `bd591b83` 提交推送。
+- 判断当前状态时，以本文最后的 `2026-07-06 文件末尾最新状态` 为准。
+
+---
+
+## 🔚 17. 2026-07-06 文件末尾最新状态
+
+一句话：这是当前文件的最终阅读入口，优先级高于上面所有执行中间快照。
+
+当前状态：
+
+- `project_cleanup_sustained_goal_20260705.md` 已完成归档，最终提交为 `bd591b83 test: extend sustained cleanup coverage`。
+- 用户验收记录显示该目标 `goal.timeUsedSeconds = 7889`，约 `2 小时 11 分钟`，并已推送到 `webui/main`。
+- 当前新的活跃目标书是 `docs/findings/project_cleanup_sustained_goal_20260706.md`。
+- 下一轮不要重复执行 `20260705` 的 long_running、next_stage 或 sustained 目标书。
+
+新目标书强度：
+
+- 最低耗时：`10800` 秒。
+- 最低阶段：`20` 个。
+- 最低推进轮：`5` 个。
+- 最低子系统覆盖：`4` 类。
+- 阻塞只能标记 `blocked`，不能作为提前 `complete` 的例外。
+
+下一轮可直接复制：
+
+```text
+请按 docs/findings/project_cleanup_sustained_goal_20260706.md 执行跨子系统强制长跑项目清理目标。
+```

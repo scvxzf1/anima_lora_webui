@@ -3,7 +3,10 @@
 一句话：这份任务书专门解决“二十分钟就收口”的问题，把长时间持续推进写成硬性完成条件，而不是建议。
 
 日期：2026-07-05
-状态：活跃长跑目标入口
+状态：已完成归档
+完成提交：`bd591b83 test: extend sustained cleanup coverage`
+完成记录：见 `docs/findings/project_cleanup_checkpoint_20260705.md` 第 15 节和 R4 正式收尾验证
+后续入口：`docs/findings/project_cleanup_sustained_goal_20260706.md`
 前置已完成：
 
 - `project_cleanup_long_running_goal_20260705.md`：已完成归档，提交 `f74b8255`
@@ -12,6 +15,9 @@
 默认发布目标：本地 `main` -> `webui/main`
 目标强度：强制长跑，不允许完成一个小闭环就停。
 建议运行窗口：至少 2 小时，理想 3 到 5 小时。
+
+> ⚠️ 这份文档现在只作为历史目标记录保留，不再作为新的活跃目标重复执行。
+> 下一次要跑长目标时，请使用 `project_cleanup_sustained_goal_20260706.md`。
 
 ---
 
@@ -222,7 +228,7 @@ date +%s
 命令：
 
 ```bash
-rg -n "状态：已完成归档|状态：活跃长跑目标入口|完成阶段" docs/findings/project_cleanup_*goal_20260705.md
+rg -n "状态：已完成归档|完成阶段|后续入口" docs/findings/project_cleanup_*goal_20260705.md
 ```
 
 验收：
@@ -577,31 +583,12 @@ EXT 规则：
 
 ---
 
-## 🧾 12. 可直接复制给 Codex 的强制长跑 Prompt
+## 🧾 12. 已完成目标 Prompt 历史记录
 
-一句话：下面这段是下一次真正要跑几个小时的目标 prompt。
+一句话：原 prompt 已在提交 `bd591b83` 收口，后续不要复制旧目标重复施工。
 
 ```text
-请按 docs/findings/project_cleanup_sustained_goal_20260705.md 执行强制长跑项目清理目标。
-
-硬性要求：
-1. 先读 AGENTS.md、docs/findings/project_cleanup_checkpoint_20260705.md、docs/findings/project_cleanup_sustained_goal_20260705.md。
-2. 不允许在 goal.timeUsedSeconds < 7200 时标记 complete，除非连续 3 轮同一阻塞且无法安全推进。
-3. 不允许只完成一个小闭环就停；必须至少完成 12 个可验收小阶段、至少 3 个推进轮。
-4. 如果 R0-R4 提前完成但未满 2 小时或未满 12 阶段，必须进入 EXT 扩展阶段池继续推进。
-5. 不允许靠 sleep、空等、无意义轮询凑时间；必须持续做低风险审计、测试、helper 小拆分、文档检查点。
-6. 禁止真实训练、模型下载、删除/移动用户数据、删除 _legacy.py、改 checkpoint key、改 LoRA public API、改三轴路由语义。
-7. 每轮都要更新 checkpoint，记录阶段编号、修改文件、验证命令和不能夸大的边界。
-8. 最后显式 stage 实际修改文件，不要 git add -A。
-9. 满足硬完成条件后，提交并推送到 webui/main。
-
-最终完成条件：
-- goal.timeUsedSeconds >= 7200。
-- 已完成至少 12 个小阶段。
-- 已完成至少 3 个推进轮。
-- 总验证通过，或 60 秒超时项已拆分验证并记录。
-- checkpoint 文档已更新。
-- 本地 main 已推送到 webui/main。
+请按 docs/findings/project_cleanup_sustained_goal_20260706.md 执行跨子系统强制长跑项目清理目标。
 ```
 
 ---

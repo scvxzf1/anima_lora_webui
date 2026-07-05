@@ -6,14 +6,14 @@
 状态：已完成归档
 完成阶段：`N0`、`N1`、`N2`、`N3`、`N4`、`N5`、`N6`
 完成记录：见 `docs/findings/project_cleanup_checkpoint_20260705.md` 第 13 节
-后续入口：`docs/findings/project_cleanup_sustained_goal_20260705.md`
+后续入口：`docs/findings/project_cleanup_sustained_goal_20260706.md`
 前置完成提交：`f74b8255 refactor: continue staged project cleanup`
 前置完成阶段：`P0`、`P1`、`P2`、`P5`、`P6`、`P7`
 默认发布目标：本地 `main` -> `webui/main`
 建议总时长：3 到 5 小时
 
 > ⚠️ 这份文档现在只作为历史目标记录保留，不再作为新的活跃目标重复执行。
-> 下一次要跑长目标时，请使用 `project_cleanup_sustained_goal_20260705.md`。
+> 下一次要跑长目标时，请使用 `project_cleanup_sustained_goal_20260706.md`。
 
 ---
 
@@ -135,20 +135,20 @@ git diff --check
 
 ## ✅ 5. N0：基线复核和已完成文档确认
 
-一句话：先确认上轮文档已经归档，当前活跃入口是本文件。
+一句话：历史执行时曾确认上轮文档已归档，并确认本文件是当时的活跃入口。
 
 目标：
 
 - 确认当前 `main` 与 `webui/main` 对齐。
 - 确认 `project_cleanup_long_running_goal_20260705.md` 已标记为完成归档。
-- 确认本文件是新的活跃目标入口。
+- 确认本文件在当时是新的活跃目标入口；当前已完成归档。
 
 建议命令：
 
 ```bash
 git status --short --branch
 git log -1 --oneline --decorate
-rg -n "状态：已完成归档|后续入口|活跃目标入口" docs/findings/project_cleanup_long_running_goal_20260705.md docs/findings/project_cleanup_next_stage_goal_20260705.md
+rg -n "状态：已完成归档|后续入口|完成阶段" docs/findings/project_cleanup_long_running_goal_20260705.md docs/findings/project_cleanup_next_stage_goal_20260705.md
 ```
 
 验收标准：
@@ -399,7 +399,7 @@ git rev-parse HEAD webui/main
 一句话：这份目标书已经完成归档，后续不要再复制旧 N 阶段目标重复执行。
 
 ```text
-请按 docs/findings/project_cleanup_sustained_goal_20260705.md 执行强制长跑项目清理目标。
+请按 docs/findings/project_cleanup_sustained_goal_20260706.md 执行跨子系统强制长跑项目清理目标。
 ```
 
 ---
