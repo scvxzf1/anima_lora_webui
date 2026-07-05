@@ -5,7 +5,7 @@
 日期：2026-07-05
 范围：`anima_lora` 主仓工程整理，不包含真实训练、模型下载、队列清理或用户数据清理。
 来源：由上一版超长施工日志的最终状态表和阶段记录整理而来。
-线上基线：本检查点推送后以 `webui/main` 最新 HEAD 为准。
+线上基线：本检查点已推送到 `webui/main`，以远端最新 HEAD 为准。
 Git 同步口径：本地 `main` 只和 `webui/main` 沟通；`private/main` 不再作为默认同步或发布目标。
 
 ---
@@ -95,7 +95,7 @@ Git 同步口径：本地 `main` 只和 `webui/main` 沟通；`private/main` 不
 
 推荐顺序：
 
-1. 当前检查点不建议继续扩大重构；先提交 / 推送已完成的文档、WebUI 和 config-service 清理结果。
+1. 当前检查点已提交并推送到 `webui/main`；不建议继续扩大重构。
 2. 若未来继续 `TASK-09`，下一步是让 split modules 逐步复用 `common.py`，或制定删除 `_legacy.py` facade 的外部 import 迁移计划。
 3. 暂缓继续扩大 `TASK-07`：LoRA builder / router / load / save 深拆前，先补 characterization test。
 4. 暂缓继续扩大 `TASK-06`：runtime block swap 当前边界已收口，除缺陷外不拆 CUDA stream / swap plan / hook 调度。
@@ -206,6 +206,7 @@ Git 同步口径：本地 `main` 只和 `webui/main` 沟通；`private/main` 不
 - `common.py` 公共 helper 抽出后，preflight / common / legacy 定向验证：`38 passed`
 - `common.py` 公共 helper 抽出后，`_legacy.py` / `common.py` / `preflight.py` / `tests/test_web_config_service.py` ruff：`All checks passed!`
 - `common.py` 公共 helper 抽出后，AST 检查：`_legacy.py` 剩余 10 个非转发函数均为 shim 调度 / 恢复函数
+- 当前检查点提交 / 推送后，`HEAD...webui/main` 核验为 `0 0`
 - 相关路径空白检查：通过
 - `tests/test_web_config_service.py` 全文件验证：60 秒上限内未跑完，未计为完整通过
 
