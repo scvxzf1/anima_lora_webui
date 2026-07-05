@@ -200,6 +200,45 @@ def test_create_network_from_weights_restores_mixed_hydra_plain_router_names() -
     assert net._use_hydra is True
 
 
+def test_create_network_from_weights_recovers_fei_router_names_from_metadata_widths() -> None:
+    hydra_name = "lora_unet_blocks_0_q_proj"
+    rank = 2
+    fei_dim = 3
+    weights_sd = {
+        f"{hydra_name}.lora_down.weight": torch.randn(rank, 8),
+        f"{hydra_name}.lora_up_weight": torch.randn(3, 8, rank),
+        f"{hydra_name}.router.weight": torch.randn(3, rank + fei_dim),
+        f"{hydra_name}.alpha": torch.tensor(float(rank)),
+    }
+
+    net, _ = create_network_from_weights(
+        multiplier=1.0,
+        file=None,
+        ae=None,
+        text_encoders=[],
+        unet=TinyDiT(),
+        weights_sd=weights_sd,
+        for_inference=True,
+        metadata={
+            "ss_use_moe_style": "shared_A",
+            "ss_route_per_layer": "True",
+            "ss_router_source": "fei",
+            "ss_fei_feature_dim": str(fei_dim),
+            "ss_fei_sigma_low_div": "5.0",
+        },
+    )
+
+    assert net.cfg.use_moe_style == "shared_A"
+    assert net.cfg.route_per_layer is True
+    assert net.cfg.router_source == "fei"
+    assert net.cfg.fei_feature_dim == fei_dim
+    assert net.cfg.fei_sigma_low_div == 5.0
+    assert net.cfg.fei_router_names == [hydra_name]
+    assert net.cfg.sigma_router_names is None
+    assert net.cfg.hydra_router_names is None
+    assert net._network_spec.name == "hydra"
+
+
 def test_create_network_global_fei_shared_a_cell_uses_real_builder_path() -> None:
     net = create_network(
         multiplier=1.0,

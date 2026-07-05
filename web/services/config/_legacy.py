@@ -7,11 +7,13 @@ from pathlib import Path
 from typing import Any
 
 from library.env import load_dotenv, get_configs_root
-from library.preprocess.captions import (
-    CAPTION_SOURCE_AUTO,
-)
 from web.services.config.metadata import (
+    CAPTION_SOURCE_AUTO,  # noqa: F401 - re-exported for legacy facade compatibility
+    CAPTION_SOURCE_CAPTIONS_JSON,  # noqa: F401 - re-exported for legacy facade compatibility
+    CAPTION_SOURCE_JSON,  # noqa: F401 - re-exported for legacy facade compatibility
     CAPTION_SOURCE_MODE_LABELS,  # noqa: F401 - re-exported for legacy facade compatibility
+    CAPTION_SOURCE_TXT,  # noqa: F401 - re-exported for legacy facade compatibility
+    CONFIG_FILE_LABELS_ZH,  # noqa: F401 - re-exported for legacy facade compatibility
     DATASET_CAPTION_EXTS,  # noqa: F401 - re-exported for legacy facade compatibility
     DATASET_CAPTION_MAX_CHARS,  # noqa: F401 - re-exported for legacy facade compatibility
     DATASET_IMAGE_EXTS,  # noqa: F401 - re-exported for legacy facade compatibility

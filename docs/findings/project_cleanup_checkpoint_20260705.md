@@ -319,3 +319,42 @@ Git 同步口径：本地 `main` 只和 `webui/main` 沟通；`private/main` 不
 - 不能说 LoRA builder/router/load/save 已经完成深拆；这轮只做了拆分前保护和一个低风险只读扫描 helper。
 - 不能说保存格式有变化；本轮没有改 public API、checkpoint key 格式或三轴路由语义。
 - 不能说跑过真实训练、模型下载或真实 MFU benchmark。
+
+---
+
+## 📌 11. 2026-07-05 长目标继续推进：TASK-07 / TASK-09 小阶段
+
+一句话：本轮按长目标执行书继续小步推进，完成了 LoRA from-weights 保护、router feature helper 拆分、Web config legacy 审计和 merge/common helper 复用。
+
+阶段完成：
+
+- `P0` 基线确认：当前在 `main`，跟踪 `webui/main`；执行前 `HEAD` 与 `webui/main` 一致；工作区只有本轮目标执行书未跟踪。
+- `P1` TASK-07 保护测试：新增 `test_create_network_from_weights_recovers_fei_router_names_from_metadata_widths`，覆盖 `ss_router_source="fei"`、`ss_fei_feature_dim` 和 `router.weight` 宽度推断。
+- `P2` TASK-07 helper 拆分：`factory.py` 新增私有 `_RouterFeatureScan` / `_scan_router_feature_metadata_and_names()`，只抽出 router feature dim 与 `sigma_router_names` 推断，不改 public API、checkpoint key 或三轴路由语义。
+- `P5` TASK-09 只读审计：`_legacy.py` 当前未发现业务旧函数体，剩余真函数体属于 `_call_*_impl`、`_make_*_shim`、`_restore_raw_files_shims` 等兼容调度 / 恢复壳。
+- `P6` TASK-09 split module 复用：`merge.py` 的路径 / 数据目录 helper 改为同步 `common.py` 状态后复用公共 helper，保留同名 wrapper，避免 direct import 和 monkeypatch 场景绕回真实配置根。
+- Web config facade 补缺：`_legacy.py` 统一从 `metadata.py` 重导出 caption source 和配置标签常量，修复 `config_service` 兼容表面缺 `CAPTION_SOURCE_TXT` 等 metadata 常量的问题。
+- `P7` 文档收口：本检查点记录本轮改动；长目标执行书 `project_cleanup_long_running_goal_20260705.md` 作为可追踪目标文档纳入本轮提交。
+
+本轮已验证：
+
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m pytest -p no:cacheprovider -q tests/test_lora_network_construction.py::test_create_network_from_weights_recovers_fei_router_names_from_metadata_widths tests/test_lora_network_construction.py::test_create_network_from_weights_restores_mixed_hydra_plain_router_names`：`2 passed`。
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m pytest -p no:cacheprovider -q tests/test_lora_network_construction.py::test_create_network_from_weights_recovers_fei_router_names_from_metadata_widths tests/test_lora_network_construction.py::test_create_network_from_weights_restores_mixed_hydra_plain_router_names tests/test_factory_metadata_flow.py`：`6 passed`。
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m pytest -p no:cacheprovider -q tests/test_web_config_service.py -k "merge_common_path_helpers_forward_to_common_module or merge_helpers_remain_available_from_legacy_module or legacy_merge_private_helpers_forward_to_split_module or merge_module_imports_without_facade_cycle or common_config_helpers"`：`5 passed, 150 deselected`。
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m py_compile web/services/config/merge.py tests/test_web_config_service.py networks/lora_anima/factory.py tests/test_lora_network_construction.py`：通过。
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m pytest -p no:cacheprovider -q tests/test_lora_network_construction.py tests/test_factory_metadata_flow.py tests/test_global_router.py tests/test_network_cfg.py tests/test_router_compute.py`：`63 passed, 2 warnings`。warning 来自本机 GTX 960 与当前 PyTorch CUDA 架构不匹配，不影响本轮 CPU 侧测试结论。
+- `tests/test_web_config_service.py -k "legacy or dataset or file_group or preflight or merge or output_run"`：单次 60 秒内未完整跑完；修复 metadata facade 失败后，已拆块验证覆盖同一方向。
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m pytest -p no:cacheprovider -q tests/test_web_config_service.py::test_config_metadata_exports_remain_available_from_legacy_facade`：`1 passed`。
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m pytest -p no:cacheprovider -q tests/test_web_config_service.py -k "metadata_exports or merge or common_config_helpers"`：`9 passed, 146 deselected`。
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m pytest -p no:cacheprovider -q tests/test_web_config_service.py -k "dataset and not runtime_preflight"`：`54 passed, 101 deselected`。
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m pytest -p no:cacheprovider -q tests/test_web_config_service.py -k "file_group or output_run"`：`23 passed, 132 deselected`。
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m pytest -p no:cacheprovider -q tests/test_web_config_service.py -k "preflight"`：`31 passed, 124 deselected`。
+- `timeout 60 .venv/bin/python tasks.py type-check`：`0 errors, 0 warnings, 0 informations`。
+- `git diff --check`：通过。
+
+仍不能对外说：
+
+- 不能说 LoRA builder/router/load/save 已经完成深拆；本轮只是继续拆出一个低风险只读检测 helper。
+- 不能说 `_legacy.py` 可以删除；它仍是兼容 facade。
+- 不能说全仓类型检查门禁已经建立；当前仍是既有试点范围。
+- 不能说跑过真实训练、模型下载、真实 MFU benchmark 或全量 WebUI 浏览器交互。

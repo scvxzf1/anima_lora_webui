@@ -616,6 +616,42 @@ def test_legacy_merge_private_helpers_forward_to_split_module(monkeypatch):
     assert legacy_config._custom_gui_variants() == ["custom/sentinel"]
 
 
+def test_merge_common_path_helpers_forward_to_common_module(monkeypatch):
+    from web.services.config import common as common_impl
+    from web.services.config import merge as merge_impl
+
+    root = Path("/tmp/anima-test-root")
+    configs = root / "configs"
+    monkeypatch.setattr(merge_impl, "ROOT", root)
+    monkeypatch.setattr(merge_impl, "CONFIGS_DIR", configs)
+    calls: dict[str, tuple[tuple[Any, ...], Path, Path]] = {}
+
+    def sentinel(name: str, result):
+        def impl(*args):
+            calls[name] = (args, common_impl.ROOT, common_impl.CONFIGS_DIR)
+            return result
+
+        return impl
+
+    source_path = Path("image_dataset/hero")
+    expected_path = Path("sentinel")
+    helper_args = {
+        "_load": ((Path("configs/base.toml"),), {"loaded": True}),
+        "_safe_config_subdir": (("gui-methods",), expected_path),
+        "_resolve_project_path": (("image_dataset/hero",), expected_path),
+        "_auto_data_dir_for_key": (("", source_path, "resized"), expected_path),
+        "_derived_data_dir": ((source_path, "resized"), expected_path),
+        "_is_builtin_default_data_dir": (("post_image_dataset/resized",), True),
+        "_display_path": ((source_path,), "image_dataset/hero"),
+    }
+    for name, (_args, result) in helper_args.items():
+        monkeypatch.setattr(common_impl, name, sentinel(name, result))
+
+    for name, (args, result) in helper_args.items():
+        assert getattr(merge_impl, name)(*args) == result
+        assert calls[name] == (args, root, configs)
+
+
 def test_save_dataset_editor_does_not_overwrite_dataset_when_train_patch_fails(tmp_path: Path, monkeypatch):
     configs, dataset_path = _write_minimal_config_tree(tmp_path)
     original_dataset = "# keep me\n[[datasets]]\nresolution = 512\n"

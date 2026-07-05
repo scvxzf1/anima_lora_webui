@@ -13,11 +13,9 @@ from typing import Any
 
 import toml
 
-from library.env import expand_env_vars, expand_env_vars_in_obj, get_configs_root, load_dotenv
-from web.services.config import paths as _config_paths
+from library.env import expand_env_vars_in_obj, get_configs_root, load_dotenv
+from web.services.config import common as _config_common
 from web.services.config.metadata import (
-    DEFAULT_LORA_CACHE_DIR,
-    DEFAULT_RESIZED_IMAGE_DIR,
     HIDDEN_CONFIG_FILES,
 )
 
@@ -100,48 +98,44 @@ def _exported(fn):
     return wrapper
 
 
+def _sync_common_config_state() -> None:
+    _config_common.ROOT = ROOT
+    _config_common.CONFIGS_DIR = CONFIGS_DIR
+
+
 def _load(p: Path) -> dict:
-    if not p.exists():
-        return {}
-    return expand_env_vars_in_obj(toml.loads(p.read_text(encoding="utf-8")))
+    _sync_common_config_state()
+    return _config_common._load(p)
 
 
 def _safe_config_subdir(subdir: str) -> Path | None:
-    return _config_paths.safe_config_subdir(subdir, configs_dir=CONFIGS_DIR)
+    _sync_common_config_state()
+    return _config_common._safe_config_subdir(subdir)
 
 
 def _resolve_project_path(value: str) -> Path:
-    return _config_paths.resolve_display_path(
-        value,
-        root=ROOT,
-        configs_dir=CONFIGS_DIR,
-        expand_env_vars_fn=expand_env_vars,
-    )
+    _sync_common_config_state()
+    return _config_common._resolve_project_path(value)
 
 
 def _auto_data_dir_for_key(value: Any, source_path: Path, suffix: str) -> Path:
-    raw = str(value or "").strip()
-    if not raw:
-        return _derived_data_dir(source_path, suffix)
-    path = _resolve_project_path(raw)
-    if _is_builtin_default_data_dir(raw) or not path.exists():
-        return _derived_data_dir(source_path, suffix)
-    return path
+    _sync_common_config_state()
+    return _config_common._auto_data_dir_for_key(value, source_path, suffix)
 
 
 def _derived_data_dir(source_path: Path, suffix: str) -> Path:
-    parent = source_path.parent if source_path.name else source_path
-    name = source_path.name or "dataset"
-    return (parent / f"{name}_{suffix}").resolve()
+    _sync_common_config_state()
+    return _config_common._derived_data_dir(source_path, suffix)
 
 
 def _is_builtin_default_data_dir(value: str) -> bool:
-    clean = str(value or "").replace("\\", "/").strip().strip("/")
-    return clean in {DEFAULT_RESIZED_IMAGE_DIR, DEFAULT_LORA_CACHE_DIR}
+    _sync_common_config_state()
+    return _config_common._is_builtin_default_data_dir(value)
 
 
 def _display_path(path: Path) -> str:
-    return _config_paths.display_path(path, root=ROOT, configs_dir=CONFIGS_DIR)
+    _sync_common_config_state()
+    return _config_common._display_path(path)
 
 
 __all__ = ['list_methods', 'list_variants', 'list_all_variants', 'list_presets', 'load_merged_config', 'suggest_data_dirs', 'suggest_dataset_dirs', 'apply_auto_data_dirs']

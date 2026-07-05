@@ -100,6 +100,16 @@ class _CheckpointKeyScan:
     chimera_dual_a_modules: set[str] = field(default_factory=set)
 
 
+@dataclass
+class _RouterFeatureScan:
+    new_router_source: str = ""
+    use_fei_router_meta: bool = False
+    fei_feature_dim_detected: Optional[int] = None
+    fei_sigma_low_div_meta: Optional[float] = None
+    sigma_feature_dim_detected: Optional[int] = None
+    sigma_router_names: List[str] = field(default_factory=list)
+
+
 def _scan_lora_checkpoint_keys(
     weights_sd: Dict[str, torch.Tensor],
 ) -> _CheckpointKeyScan:
@@ -196,6 +206,93 @@ def _scan_lora_checkpoint_keys(
             scan.train_llm_adapter = True
 
     return scan
+
+
+def _scan_router_feature_metadata_and_names(
+    weights_sd: Dict[str, torch.Tensor],
+    modules_dim: Dict[str, int],
+    file_metadata: Dict[str, str],
+    *,
+    has_hydra_or_ortho_hydra: bool,
+) -> _RouterFeatureScan:
+    """Recover router feature dims and routed module names from checkpoint keys."""
+    new_router_source = str(file_metadata.get("ss_router_source", "")).strip()
+    use_fei_router_meta = new_router_source == "fei"
+    fei_feature_dim_detected: Optional[int] = (
+        int(file_metadata["ss_fei_feature_dim"])
+        if use_fei_router_meta and "ss_fei_feature_dim" in file_metadata
+        else None
+    )
+    fei_sigma_low_div_meta: Optional[float] = (
+        float(file_metadata["ss_fei_sigma_low_div"])
+        if use_fei_router_meta and "ss_fei_sigma_low_div" in file_metadata
+        else None
+    )
+    sigma_feature_dim_detected: Optional[int] = None
+
+    if has_hydra_or_ortho_hydra:
+        _SIGMA_FEATURE_CAP = 1024
+        fei_slice = int(fei_feature_dim_detected or 0)
+        for key, value in weights_sd.items():
+            if not key.endswith(".router.weight"):
+                continue
+            lora_name = key[: -len(".router.weight")]
+            expected_rank = modules_dim.get(lora_name)
+            if expected_rank is None or value.ndim != 2:
+                continue
+            width = value.size(1)
+            if width < expected_rank:
+                raise RuntimeError(
+                    f"router.weight at {key!r} has width {width} < expected "
+                    f"rank {expected_rank}; checkpoint is malformed."
+                )
+            extra = width - expected_rank - fei_slice
+            if extra < 0:
+                raise RuntimeError(
+                    f"router.weight at {key!r} has width {width}; expected "
+                    f"rank {expected_rank} + fei_feature_dim {fei_slice}. "
+                    "Metadata fei_feature_dim does not match the saved router "
+                    "shape — checkpoint is malformed."
+                )
+            if extra == 0:
+                continue
+            if extra > _SIGMA_FEATURE_CAP:
+                raise RuntimeError(
+                    f"router.weight at {key!r} has shape {tuple(value.shape)}; "
+                    f"expected rank {expected_rank} with optional σ features "
+                    f"appended (≤ {_SIGMA_FEATURE_CAP}). The excess width "
+                    f"{extra} is most likely an old-format router trained "
+                    "on raw layer input (see docs/methods/hydra-lora.md "
+                    "§Fixes). There is no salvage path — retrain the LoRA."
+                )
+            if sigma_feature_dim_detected is None:
+                sigma_feature_dim_detected = extra
+            elif sigma_feature_dim_detected != extra:
+                raise RuntimeError(
+                    f"Inconsistent σ-feature dims across modules: expected "
+                    f"{sigma_feature_dim_detected}, found {extra} at {key!r}."
+                )
+
+    sigma_router_names: List[str] = []
+    if has_hydra_or_ortho_hydra and sigma_feature_dim_detected is not None:
+        for key, value in weights_sd.items():
+            if not key.endswith(".router.weight") or value.ndim != 2:
+                continue
+            lora_name = key[: -len(".router.weight")]
+            expected_rank = modules_dim.get(lora_name)
+            if expected_rank is None:
+                continue
+            if value.size(1) - expected_rank == sigma_feature_dim_detected:
+                sigma_router_names.append(lora_name)
+
+    return _RouterFeatureScan(
+        new_router_source=new_router_source,
+        use_fei_router_meta=use_fei_router_meta,
+        fei_feature_dim_detected=fei_feature_dim_detected,
+        fei_sigma_low_div_meta=fei_sigma_low_div_meta,
+        sigma_feature_dim_detected=sigma_feature_dim_detected,
+        sigma_router_names=sigma_router_names,
+    )
 
 
 def create_network(
@@ -538,79 +635,38 @@ def create_network_from_weights(
     #
     # plan2 task #6 retired the legacy ``ss_use_fei_router`` fallback;
     # ``ss_router_source`` is now the sole discriminator.
-    new_router_source = str(file_metadata.get("ss_router_source", "")).strip()
-    use_fei_router_meta = new_router_source == "fei"
-    fei_feature_dim_detected: Optional[int] = (
-        int(file_metadata["ss_fei_feature_dim"])
-        if use_fei_router_meta and "ss_fei_feature_dim" in file_metadata
-        else None
+    router_feature_scan = _scan_router_feature_metadata_and_names(
+        weights_sd,
+        modules_dim,
+        file_metadata,
+        has_hydra_or_ortho_hydra=has_hydra or has_ortho_hydra,
     )
-    fei_sigma_low_div_meta: Optional[float] = (
-        float(file_metadata["ss_fei_sigma_low_div"])
-        if use_fei_router_meta and "ss_fei_sigma_low_div" in file_metadata
-        else None
-    )
-    sigma_feature_dim_detected: Optional[int] = None
-    if has_hydra or has_ortho_hydra:
-        _SIGMA_FEATURE_CAP = 1024
-        fei_slice = int(fei_feature_dim_detected or 0)
-        for k, v in weights_sd.items():
-            if not k.endswith(".router.weight"):
-                continue
-            lora_name = k[: -len(".router.weight")]
-            expected_rank = modules_dim.get(lora_name)
-            if expected_rank is None or v.ndim != 2:
-                continue
-            width = v.size(1)
-            if width < expected_rank:
-                raise RuntimeError(
-                    f"router.weight at {k!r} has width {width} < expected "
-                    f"rank {expected_rank}; checkpoint is malformed."
-                )
-            extra = width - expected_rank - fei_slice
-            if extra < 0:
-                raise RuntimeError(
-                    f"router.weight at {k!r} has width {width}; expected "
-                    f"rank {expected_rank} + fei_feature_dim {fei_slice}. "
-                    "Metadata fei_feature_dim does not match the saved router "
-                    "shape — checkpoint is malformed."
-                )
-            if extra == 0:
-                continue
-            if extra > _SIGMA_FEATURE_CAP:
-                raise RuntimeError(
-                    f"router.weight at {k!r} has shape {tuple(v.shape)}; "
-                    f"expected rank {expected_rank} with optional σ features "
-                    f"appended (≤ {_SIGMA_FEATURE_CAP}). The excess width "
-                    f"{extra} is most likely an old-format router trained "
-                    "on raw layer input (see docs/methods/hydra-lora.md "
-                    "§Fixes). There is no salvage path — retrain the LoRA."
-                )
-            if sigma_feature_dim_detected is None:
-                sigma_feature_dim_detected = extra
-            elif sigma_feature_dim_detected != extra:
-                raise RuntimeError(
-                    f"Inconsistent σ-feature dims across modules: expected "
-                    f"{sigma_feature_dim_detected}, found {extra} at {k!r}."
-                )
-    elif plugin_detection.get("detected_spec"):
-        spec = NETWORK_REGISTRY[str(plugin_detection["detected_spec"])]
-        module_class = spec.module_class
-    elif has_dora:
-        spec = NETWORK_REGISTRY["dora"]
-        module_class = spec.module_class
-    elif for_inference:
-        # Force the plain LoRA spec even for ortho checkpoints — the
-        # merge_to / fuse_weight path expects flat down/up weights, and
-        # ortho checkpoints are distilled to LoRA shape at save time.
-        spec = NETWORK_REGISTRY["lora"]
-        module_class = spec.module_class
-    elif has_ortho:
-        spec = NETWORK_REGISTRY["ortho"]
-        module_class = spec.module_class
-    else:
-        spec = NETWORK_REGISTRY["lora"]
-        module_class = spec.module_class
+    new_router_source = router_feature_scan.new_router_source
+    use_fei_router_meta = router_feature_scan.use_fei_router_meta
+    fei_feature_dim_detected = router_feature_scan.fei_feature_dim_detected
+    fei_sigma_low_div_meta = router_feature_scan.fei_sigma_low_div_meta
+    sigma_feature_dim_detected = router_feature_scan.sigma_feature_dim_detected
+    sigma_router_names = router_feature_scan.sigma_router_names
+
+    if not (has_hydra or has_ortho_hydra):
+        if plugin_detection.get("detected_spec"):
+            spec = NETWORK_REGISTRY[str(plugin_detection["detected_spec"])]
+            module_class = spec.module_class
+        elif has_dora:
+            spec = NETWORK_REGISTRY["dora"]
+            module_class = spec.module_class
+        elif for_inference:
+            # Force the plain LoRA spec even for ortho checkpoints — the
+            # merge_to / fuse_weight path expects flat down/up weights, and
+            # ortho checkpoints are distilled to LoRA shape at save time.
+            spec = NETWORK_REGISTRY["lora"]
+            module_class = spec.module_class
+        elif has_ortho:
+            spec = NETWORK_REGISTRY["ortho"]
+            module_class = spec.module_class
+        else:
+            spec = NETWORK_REGISTRY["lora"]
+            module_class = spec.module_class
 
     # Detect baked-in per-channel input scaling. We pass a placeholder ones
     # tensor so each affected module registers the `inv_scale` buffer at init;
@@ -628,22 +684,6 @@ def create_network_from_weights(
             f"Detected per-channel input scaling in checkpoint: "
             f"{len(channel_scales_dict)} modules with baked-in inv_scale"
         )
-
-    # σ-conditional router names: derived from router.weight widths above.
-    # A module has σ routing iff its router.weight width > expected rank —
-    # the excess columns are the sinusoidal(σ) feature slice. List is empty
-    # when sigma_feature_dim_detected is None (no σ routing in this ckpt).
-    sigma_router_names: List[str] = []
-    if (has_hydra or has_ortho_hydra) and sigma_feature_dim_detected is not None:
-        for k, v in weights_sd.items():
-            if not k.endswith(".router.weight") or v.ndim != 2:
-                continue
-            lora_name = k[: -len(".router.weight")]
-            expected_rank = modules_dim.get(lora_name)
-            if expected_rank is None:
-                continue
-            if v.size(1) - expected_rank == sigma_feature_dim_detected:
-                sigma_router_names.append(lora_name)
 
     # Per-module Hydra selection from the checkpoint: if the file contains
     # *both* hydra-style and plain-LoRA-style leaves, we're reloading a mixed
