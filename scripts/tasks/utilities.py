@@ -20,8 +20,21 @@ FAST_TEST_TARGETS = [
 ]
 
 TYPE_CHECK_TARGETS = [
+    "library/config",
     "scripts/config_compat.py",
     "scripts/config_explain.py",
+    "scripts/tasks/_common.py",
+    "scripts/tasks/utilities.py",
+    "web/services/config/common.py",
+    "web/services/config/estimation.py",
+    "web/services/config/file_groups.py",
+    "web/services/config/merge.py",
+    "web/services/config/metadata.py",
+    "web/services/config/output_runs.py",
+    "web/services/config/paths.py",
+    "web/services/config/preflight.py",
+    "web/services/config/raw_files.py",
+    "web/services/config/sample_prompts.py",
 ]
 
 
@@ -137,7 +150,7 @@ def cmd_test_slow(extra):
 def cmd_type_check(extra):
     """Run the configured pyright pilot gate.
 
-    Defaults to the current typed config-script pilot. Pass explicit paths or
+    Defaults to the current config/WebUI pilot surface. Pass explicit paths or
     pyright flags after the command to expand/narrow the checked surface.
     """
     if extra and extra[0] == "--":

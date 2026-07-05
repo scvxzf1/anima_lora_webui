@@ -911,7 +911,11 @@ class LoRANetworkCfg:
             add_reft=has_reft,
             reft_dim=reft_dim if reft_dim is not None else 4,
             reft_layers=sorted(reft_block_indices) if has_reft else "all",
-            num_experts=hydra_num_experts if is_hydra_or_ortho_hydra else 4,
+            num_experts=(
+                hydra_num_experts
+                if (is_hydra_or_ortho_hydra or is_stacked_experts)
+                else 4
+            ),
             channel_scales_dict=channel_scales_dict,
             ortho_centered_gate=bool(ortho_centered_gate),
             use_moe_style=use_moe_style,

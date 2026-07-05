@@ -20,7 +20,8 @@ from typing import Any
 import toml
 import tomlkit
 
-from library.env import expand_env_vars_in_obj, get_configs_root, load_dotenv
+from library.env import get_configs_root, load_dotenv
+from web.services.config import common as _config_common
 from web.services.config import paths as _config_paths
 from web.services.config.metadata import (
     CONFIG_FILE_LABELS_ZH,
@@ -112,18 +113,24 @@ def _exported(fn):
     return wrapper
 
 
+def _sync_common_paths() -> None:
+    _config_common.ROOT = ROOT
+    _config_common.CONFIGS_DIR = CONFIGS_DIR
+
+
 def _load(p: Path) -> dict:
-    if not p.exists():
-        return {}
-    return expand_env_vars_in_obj(toml.loads(p.read_text(encoding="utf-8")))
+    _sync_common_paths()
+    return _config_common._load(p)
 
 
 def _safe_resolve(rel_path: str) -> Path | None:
-    return _config_paths.safe_resolve(rel_path, root=ROOT, configs_dir=CONFIGS_DIR)
+    _sync_common_paths()
+    return _config_common._safe_resolve(rel_path)
 
 
 def _display_path(path: Path) -> str:
-    return _config_paths.display_path(path, root=ROOT, configs_dir=CONFIGS_DIR)
+    _sync_common_paths()
+    return _config_common._display_path(path)
 
 __all__ = ['set_user_file_lock', 'set_user_group_lock', 'create_config_file_group', 'rename_config_file_group', 'delete_config_file_group', 'reorder_config_file_group', 'move_config_file_to_group', 'place_config_file_in_group', 'place_config_file_group', 'reorder_config_file_in_group', 'restore_system_presets', 'list_config_files', 'list_config_file_groups', 'export_config_file_group_archive', 'get_config_file_meta', '_load_config_file_group_specs', '_save_config_file_group_specs', '_normalize_config_file_group_kind_filter', '_normalize_config_rel_path', '_normalize_dataset_preset_path', '_is_dataset_preset_readonly', '_is_user_locked', '_is_user_group_locked', '_load_user_locks', '_save_user_locks', '_lock_reason_message', '_lock_reason_label']
 

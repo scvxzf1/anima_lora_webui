@@ -236,7 +236,7 @@ COMMANDS = {
     ),
     "type-check": (
         utilities.cmd_type_check,
-        "Run the configured pyright pilot gate over typed config scripts.",
+        "Run the configured pyright pilot gate.",
     ),
     "export-logs": (
         utilities.cmd_export_logs,

@@ -42,6 +42,12 @@ _MOE_META = {
     "ss_route_per_layer": "True",
     "ss_router_source": "input",
 }
+_INDEPENDENT_A_META = {
+    "ss_use_moe_style": "independent_A",
+    "ss_route_per_layer": "False",
+    "ss_router_source": "fei",
+    "ss_fei_feature_dim": "2",
+}
 
 
 def _moe_state_dict() -> dict[str, torch.Tensor]:
@@ -57,6 +63,31 @@ def _moe_state_dict() -> dict[str, torch.Tensor]:
         f"{_LORA}.router.weight": torch.randn(_NUM_EXPERTS, _RANK),
         f"{_LORA}.alpha": torch.tensor(float(_RANK)),
     }
+
+
+def _stacked_experts_state_dict() -> dict[str, torch.Tensor]:
+    """Synthetic StackedExperts / FeRA-form state dict with independent-A keys."""
+    return {
+        f"{_LORA}.lora_down_weight": torch.randn(_NUM_EXPERTS, _RANK, 8),
+        f"{_LORA}.lora_up_weight": torch.randn(_NUM_EXPERTS, 8, _RANK),
+        f"{_LORA}.alpha": torch.tensor(float(_RANK)),
+        "global_router.net.0.weight": torch.randn(4, 2),
+    }
+
+
+def _split_hydra_sigma_mlp_state_dict() -> dict[str, torch.Tensor]:
+    """Synthetic split q/k/v Hydra dict carrying old sigma_mlp keys."""
+    shared = "lora_unet_blocks_0_self_attn_"
+    state_dict: dict[str, torch.Tensor] = {}
+    for letter in ("q", "k", "v"):
+        prefix = f"{shared}{letter}_proj"
+        state_dict[f"{prefix}.lora_down.weight"] = torch.randn(_RANK, 8)
+        state_dict[f"{prefix}.lora_up_weight"] = torch.randn(_NUM_EXPERTS, 4, _RANK)
+        state_dict[f"{prefix}.router.weight"] = torch.randn(_NUM_EXPERTS, _RANK)
+        state_dict[f"{prefix}.router.bias"] = torch.randn(_NUM_EXPERTS)
+        state_dict[f"{prefix}.sigma_mlp.0.weight"] = torch.randn(_RANK, _RANK)
+        state_dict[f"{prefix}.alpha"] = torch.tensor(float(_RANK))
+    return state_dict
 
 
 def _build(**kwargs):
@@ -103,6 +134,43 @@ def test_file_recovers_metadata_when_weights_supplied(tmp_path):
     _assert_axes(net)
 
 
+def test_explicit_metadata_overrides_file_metadata(tmp_path):
+    """Explicit ``metadata=`` wins when the safetensors file has stale stamps."""
+    path = tmp_path / "moe_stale.safetensors"
+    stale_meta = {
+        "ss_use_moe_style": "shared_A",
+        "ss_route_per_layer": "False",
+        "ss_router_source": "fei",
+        "ss_fei_feature_dim": "2",
+    }
+    save_file(_moe_state_dict(), str(path), metadata=stale_meta)
+
+    net = _build(
+        file=str(path),
+        weights_sd=_moe_state_dict(),
+        metadata=dict(_MOE_META),
+    )
+
+    _assert_axes(net)
+
+
+def test_independent_a_metadata_kwarg_lands_three_axes_and_expert_count():
+    """Independent-A metadata must preserve the checkpoint expert count."""
+    net = _build(
+        file=None,
+        weights_sd=_stacked_experts_state_dict(),
+        metadata=dict(_INDEPENDENT_A_META),
+    )
+
+    assert net.cfg.use_moe_style == "independent_A"
+    assert net.cfg.route_per_layer is False
+    assert net.cfg.router_source == "fei"
+    assert net.cfg.fei_feature_dim == 2
+    assert net.cfg.num_experts == _NUM_EXPERTS
+    assert net.global_router is not None
+    assert net.global_router.num_experts == _NUM_EXPERTS
+
+
 def test_bare_weights_sd_raises_actionable_error():
     """No metadata, no file → loud error naming load_file / metadata=."""
     import pytest
@@ -113,3 +181,40 @@ def test_bare_weights_sd_raises_actionable_error():
     assert "three-axis" in msg
     assert "load_file" in msg
     assert "metadata=" in msg
+
+
+def test_bare_stacked_experts_weights_sd_raises_actionable_error():
+    """Independent-A MoE keys also need safetensors metadata."""
+    import pytest
+
+    with pytest.raises(RuntimeError) as exc:
+        _build(file=None, weights_sd=_stacked_experts_state_dict())
+    msg = str(exc.value)
+    assert "three-axis" in msg
+    assert "load_file" in msg
+    assert "metadata=" in msg
+
+
+def test_split_hydra_sigma_mlp_keys_are_rejected_after_refuse():
+    """Split legacy sigma_mlp keys must not silently survive load refusion."""
+    import pytest
+
+    with pytest.raises(RuntimeError, match="legacy σ-router") as exc:
+        _build(
+            file=None,
+            weights_sd=_split_hydra_sigma_mlp_state_dict(),
+            metadata=dict(_MOE_META),
+        )
+    assert "sigma_mlp" in str(exc.value)
+
+
+def test_old_global_hydra_router_keys_are_rejected() -> None:
+    """Old global Hydra router checkpoints must fail before cfg inference."""
+    import pytest
+
+    state_dict = _moe_state_dict()
+    state_dict["_hydra_router.net.0.weight"] = torch.randn(4, _RANK)
+
+    with pytest.raises(RuntimeError, match="old global HydraLoRA router") as exc:
+        _build(file=None, weights_sd=state_dict, metadata=dict(_MOE_META))
+    assert "_hydra_router" in str(exc.value)

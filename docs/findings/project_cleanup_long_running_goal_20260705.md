@@ -5,10 +5,10 @@
 状态：已完成归档。
 完成提交：`f74b8255 refactor: continue staged project cleanup`
 完成阶段：`P0`、`P1`、`P2`、`P5`、`P6`、`P7`
-后续入口：`docs/findings/project_cleanup_next_stage_goal_20260705.md`
+后续入口：`docs/findings/project_cleanup_sustained_goal_20260705.md`
 
 > ⚠️ 这份文档现在只作为历史记录保留，不再作为新的活跃目标执行。
-> 下一阶段请使用 `project_cleanup_next_stage_goal_20260705.md`。
+> 下一阶段请使用 `project_cleanup_sustained_goal_20260705.md`。
 
 日期：2026-07-05
 适用仓库：`/home/scv/nvme0n1p1/训练器相关/anima_lora`
@@ -481,7 +481,7 @@ git rev-parse HEAD webui/main
 新的可复制目标请使用：
 
 ```text
-请按 docs/findings/project_cleanup_next_stage_goal_20260705.md 连续推进下一阶段项目清理目标。
+请按 docs/findings/project_cleanup_sustained_goal_20260705.md 执行强制长跑项目清理目标。
 ```
 
 ---

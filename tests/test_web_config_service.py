@@ -23,43 +23,30 @@ from web.services.config import metadata as config_metadata
 from web.services.config import paths as config_paths
 
 
-def test_config_metadata_exports_remain_available_from_legacy_facade():
-    names = [
-        "CAPTION_SOURCE_AUTO",
-        "CAPTION_SOURCE_TXT",
-        "CAPTION_SOURCE_JSON",
-        "CAPTION_SOURCE_CAPTIONS_JSON",
-        "CONFIG_FILE_LABELS_ZH",
-        "SYSTEM_CONFIG_GROUP_IDS",
-        "FIXED_SYSTEM_CONFIG_GROUP_IDS",
-        "FILE_MOVE_TARGET_GROUPS",
-        "USER_LOCKABLE_GROUPS",
-        "HIDDEN_CONFIG_FILES",
-        "SYSTEM_PRESET_FILES",
-        "SYSTEM_DATASET_PRESET_FILES",
-        "HIDDEN_DATASET_PRESET_FILES",
-        "OUTPUT_RUN_CONFIG_FILES",
-        "SUPPORTED_TRAINING_SAMPLE_SAMPLERS",
-        "LEGACY_TRAINING_SAMPLE_SAMPLERS",
-        "PREPROCESS_ENV_CHECK_KEY",
-        "PREPROCESS_ENV_REQUIRED_FILES",
-        "UI_ONLY_CONFIG_FIELDS",
-        "SPD_NESTED_PATCH_FIELDS",
-        "RETIRED_TOP_LEVEL_CONFIG_FIELDS",
-        "DATASET_IMAGE_EXTS",
-        "DATASET_PREVIEW_LIMIT",
-        "DATASET_CAPTION_MAX_CHARS",
-        "DEFAULT_RESIZED_IMAGE_DIR",
-        "DEFAULT_LORA_CACHE_DIR",
-        "PREPROCESS_DATASET_SETTING_KEYS",
-        "CAPTION_SOURCE_MODE_LABELS",
-    ]
+def _json_response_payload(response) -> dict[str, Any]:
+    return json.loads(response.text or "{}")
 
-    for name in names:
+
+class _QueryRequest:
+    def __init__(self, query: dict[str, str]):
+        self.query = query
+
+
+class _JsonRequest:
+    def __init__(self, payload: dict[str, Any]):
+        self._payload = payload
+
+    async def json(self) -> dict[str, Any]:
+        return self._payload
+
+
+def test_config_metadata_exports_remain_available_from_legacy_facade():
+    for name in config_metadata.__all__:
         assert getattr(config_service, name) is getattr(config_metadata, name)
         assert getattr(legacy_config, name) is getattr(config_metadata, name)
 
     assert config_service.get_field_help is config_metadata.get_field_help
+    assert config_service.get_groups is config_metadata.get_groups
     assert legacy_config.get_groups is config_metadata.get_groups
 
 
@@ -93,8 +80,34 @@ def test_sample_prompts_module_imports_without_facade_cycle():
     env = {**os.environ, "PYTHONDONTWRITEBYTECODE": "1"}
     script = (
         "import sys; "
-        "import web.services.config.sample_prompts; "
-        "assert 'web.services.config_service' not in sys.modules"
+        "import web.services.config.sample_prompts as sample_prompts; "
+        "assert callable(sample_prompts._normalize_prompt_file_path); "
+        "assert sample_prompts._normalize_config_rel_path('configs/sample_prompts.txt') == 'configs/sample_prompts.txt'; "
+        "assert 'web.services.config_service' not in sys.modules; "
+        "assert 'web.services.config._legacy' not in sys.modules"
+    )
+
+    result = subprocess.run(
+        [sys.executable, "-c", script],
+        cwd=Path(__file__).resolve().parents[1],
+        env=env,
+        text=True,
+        capture_output=True,
+        timeout=20,
+    )
+
+    assert result.returncode == 0, result.stderr or result.stdout
+
+
+def test_metadata_module_imports_without_facade_cycle():
+    env = {**os.environ, "PYTHONDONTWRITEBYTECODE": "1"}
+    script = (
+        "import sys; "
+        "import web.services.config.metadata as metadata; "
+        "assert callable(metadata.get_field_help); "
+        "assert 'configs/base.toml' in metadata.SYSTEM_PRESET_FILES; "
+        "assert 'web.services.config_service' not in sys.modules; "
+        "assert 'web.services.config._legacy' not in sys.modules"
     )
 
     result = subprocess.run(
@@ -115,6 +128,7 @@ def test_merge_module_imports_without_facade_cycle():
         "import sys; "
         "import web.services.config.merge as merge; "
         "assert callable(merge.list_methods); "
+        "assert 'lora' in merge.list_methods.__wrapped__(); "
         "assert 'web.services.config_service' not in sys.modules; "
         "assert 'web.services.config._legacy' not in sys.modules"
     )
@@ -231,6 +245,72 @@ def test_preflight_module_imports_without_facade_cycle():
     assert result.returncode == 0, result.stderr or result.stdout
 
 
+def test_output_runs_direct_private_helpers_work_without_facade_cycle():
+    env = {**os.environ, "PYTHONDONTWRITEBYTECODE": "1"}
+    script = """
+import sys
+import tempfile
+from pathlib import Path
+
+import web.services.config.output_runs as output_runs
+
+with tempfile.TemporaryDirectory() as tmp:
+    root = Path(tmp)
+    output_runs.ROOT = root
+    output_runs.CONFIGS_DIR = root / "configs"
+    assert output_runs._normalize_output_run_name.__wrapped__("run-1") == "run-1"
+    assert (
+        output_runs._output_run_config_path(
+            root / "output" / "runs" / "run-1", "original"
+        ).name
+        == "config.original.toml"
+    )
+    assert (
+        output_runs._normalize_output_run_save_as_path("copy", fallback_stem="run-1")
+        == "configs/imported/copy.toml"
+    )
+    assert "web.services.config_service" not in sys.modules
+    assert "web.services.config._legacy" not in sys.modules
+"""
+
+    result = subprocess.run(
+        [sys.executable, "-c", script],
+        cwd=Path(__file__).resolve().parents[1],
+        env=env,
+        text=True,
+        capture_output=True,
+        timeout=20,
+    )
+
+    assert result.returncode == 0, result.stderr or result.stdout
+
+
+def test_paths_module_imports_without_facade_cycle():
+    env = {**os.environ, "PYTHONDONTWRITEBYTECODE": "1"}
+    script = (
+        "import sys; "
+        "from pathlib import Path; "
+        "import web.services.config.paths as paths; "
+        "root = Path('/tmp/anima-root'); "
+        "configs = root / 'configs'; "
+        "assert paths.normalize_config_rel_path('/configs/base.toml') == 'configs/base.toml'; "
+        "assert paths.safe_resolve('configs/base.toml', root=root, configs_dir=configs) == configs / 'base.toml'; "
+        "assert 'web.services.config_service' not in sys.modules; "
+        "assert 'web.services.config._legacy' not in sys.modules"
+    )
+
+    result = subprocess.run(
+        [sys.executable, "-c", script],
+        cwd=Path(__file__).resolve().parents[1],
+        env=env,
+        text=True,
+        capture_output=True,
+        timeout=20,
+    )
+
+    assert result.returncode == 0, result.stderr or result.stdout
+
+
 @pytest.mark.parametrize(
     ("module_name", "expected_callable"),
     [
@@ -315,6 +395,100 @@ assert file_groups._safe_resolve("configs/imported/lora.toml") == (configs / "im
 assert file_groups._display_path(configs / "imported" / "lora.toml") == "configs/imported/lora.toml"
 assert "web.services.config_service" not in sys.modules
 assert "web.services.config._legacy" not in sys.modules
+"""
+
+    result = subprocess.run(
+        [sys.executable, "-c", script],
+        cwd=Path(__file__).resolve().parents[1],
+        env=env,
+        text=True,
+        capture_output=True,
+        timeout=20,
+    )
+
+    assert result.returncode == 0, result.stderr or result.stdout
+
+
+def test_file_groups_direct_path_helpers_support_external_configs_root_without_facade_snapshot(
+    tmp_path: Path,
+):
+    env = {**os.environ, "PYTHONDONTWRITEBYTECODE": "1"}
+    script = f"""
+import sys
+from pathlib import Path
+
+import web.services.config.file_groups as file_groups
+
+root = Path({str(tmp_path / "project")!r})
+configs = Path({str(tmp_path / "external-configs")!r})
+(configs / "imported").mkdir(parents=True)
+(configs / "imported" / "external.toml").write_text('output_name = "external"\\n', encoding="utf-8")
+(configs / "gui-methods").mkdir()
+(configs / "datasets").mkdir()
+
+file_groups.ROOT = root
+file_groups.CONFIGS_DIR = configs
+file_groups.GUI_METHODS_DIR = configs / "gui-methods"
+file_groups.IMPORTED_CONFIGS_DIR = configs / "imported"
+file_groups.PRESETS_FILE = configs / "presets.toml"
+file_groups.WEB_FILE_GROUPS_FILE = configs / "web-file-groups.toml"
+file_groups.WEB_USER_LOCKS_FILE = configs / "web-user-locks.toml"
+file_groups.DATASET_PRESETS_DIR = configs / "datasets"
+
+external = configs / "imported" / "external.toml"
+assert file_groups._load(external) == dict(output_name="external")
+assert file_groups._safe_resolve("configs/imported/external.toml") == external.resolve()
+assert file_groups._safe_resolve("../outside.toml") is None
+assert file_groups._display_path(external) == "configs/imported/external.toml"
+assert "web.services.config_service" not in sys.modules
+assert "web.services.config._legacy" not in sys.modules
+"""
+
+    result = subprocess.run(
+        [sys.executable, "-c", script],
+        cwd=Path(__file__).resolve().parents[1],
+        env=env,
+        text=True,
+        capture_output=True,
+        timeout=20,
+    )
+
+    assert result.returncode == 0, result.stderr or result.stdout
+
+
+def test_file_groups_glob_uses_synced_common_paths_under_external_configs_root(
+    tmp_path: Path,
+):
+    env = {**os.environ, "PYTHONDONTWRITEBYTECODE": "1"}
+    script = f"""
+import sys
+from pathlib import Path
+
+from web.services import config_service
+import web.services.config.file_groups as file_groups
+
+root = Path({str(tmp_path / "project")!r})
+configs = Path({str(tmp_path / "external-configs")!r})
+(configs / "imported").mkdir(parents=True)
+(configs / "imported" / "external.toml").write_text('output_name = "external"\\n', encoding="utf-8")
+(configs / "imported" / "skip.txt").write_text("nope\\n", encoding="utf-8")
+(configs / "gui-methods").mkdir()
+(configs / "datasets").mkdir()
+
+for module in (config_service, file_groups):
+    module.ROOT = root
+    module.CONFIGS_DIR = configs
+    module.GUI_METHODS_DIR = configs / "gui-methods"
+    module.IMPORTED_CONFIGS_DIR = configs / "imported"
+    module.PRESETS_FILE = configs / "presets.toml"
+    module.WEB_FILE_GROUPS_FILE = configs / "web-file-groups.toml"
+    module.WEB_USER_LOCKS_FILE = configs / "web-user-locks.toml"
+    module.DATASET_PRESETS_DIR = configs / "datasets"
+
+assert file_groups._glob_config_files("configs/imported/*.toml") == [
+    "configs/imported/external.toml"
+]
+assert file_groups._glob_config_files("../*.toml") == []
 """
 
     result = subprocess.run(
@@ -652,6 +826,43 @@ def test_merge_common_path_helpers_forward_to_common_module(monkeypatch):
         assert calls[name] == (args, root, configs)
 
 
+def test_config_service_common_private_wrappers_sync_facade_state_to_legacy(
+    monkeypatch,
+):
+    root = Path("/tmp/facade-root")
+    configs = root / "configs"
+    monkeypatch.setattr(config_service, "ROOT", root)
+    monkeypatch.setattr(config_service, "CONFIGS_DIR", configs)
+
+    def assert_synced() -> None:
+        assert legacy_config.ROOT == root
+        assert legacy_config.CONFIGS_DIR == configs
+
+    def fake_load(path: Path) -> dict[str, str]:
+        assert_synced()
+        return {"path": path.as_posix()}
+
+    def fake_safe_config_subdir(subdir: str) -> Path:
+        assert_synced()
+        return configs / subdir
+
+    def fake_display_path(path: Path) -> str:
+        assert_synced()
+        return f"display:{path.as_posix()}"
+
+    monkeypatch.setattr(legacy_config, "_load", fake_load)
+    monkeypatch.setattr(legacy_config, "_safe_config_subdir", fake_safe_config_subdir)
+    monkeypatch.setattr(legacy_config, "_display_path", fake_display_path)
+
+    assert config_service._load(Path("configs/base.toml")) == {
+        "path": "configs/base.toml"
+    }
+    assert config_service._safe_config_subdir("imported") == configs / "imported"
+    assert config_service._display_path(root / "configs/base.toml") == (
+        "display:/tmp/facade-root/configs/base.toml"
+    )
+
+
 def test_save_dataset_editor_does_not_overwrite_dataset_when_train_patch_fails(tmp_path: Path, monkeypatch):
     configs, dataset_path = _write_minimal_config_tree(tmp_path)
     original_dataset = "# keep me\n[[datasets]]\nresolution = 512\n"
@@ -760,6 +971,154 @@ def test_sample_prompts_save_rejects_training_config_outside_configs(tmp_path: P
             "configs/sample_prompts.txt",
             train_config_file="../outside.toml",
         )
+
+
+def test_sample_prompts_route_rejects_prompt_file_outside_configs(tmp_path: Path, monkeypatch):
+    _write_minimal_config_tree(tmp_path)
+    _patch_config_service_paths(monkeypatch, tmp_path)
+
+    response = asyncio.run(
+        config_routes.handle_sample_prompts_get(
+            _QueryRequest({"file": "../outside.txt"}),  # type: ignore[arg-type]
+        )
+    )
+
+    assert response.status == 400
+    assert _json_response_payload(response)["error"] == "提示词文件路径不能包含 .."
+
+
+def test_sample_prompts_put_route_forks_to_training_config_specific_file(
+    tmp_path: Path,
+    monkeypatch,
+):
+    configs, _dataset_path = _write_minimal_config_tree(tmp_path)
+    _patch_config_service_paths(monkeypatch, tmp_path)
+
+    response = asyncio.run(
+        config_routes.handle_sample_prompts_put(
+            _JsonRequest(
+                {
+                    "file": "configs/sample_prompts.txt",
+                    "train_config_file": "configs/imported/lora.toml",
+                    "content": "# keep comment\n\nsolo, character a\n",
+                }
+            ),  # type: ignore[arg-type]
+        )
+    )
+    payload = _json_response_payload(response)
+
+    assert response.status == 200
+    assert payload["file"] == "configs/sample-prompts/imported/lora.txt"
+    assert payload["prompts"] == ["solo, character a"]
+    assert (configs / "sample_prompts.txt").exists() is False
+    assert (
+        configs / "sample-prompts" / "imported" / "lora.txt"
+    ).read_text(encoding="utf-8") == "# keep comment\n\nsolo, character a\n"
+
+
+def test_raw_patch_preview_route_does_not_write_config_file(tmp_path: Path, monkeypatch):
+    configs, _dataset_path = _write_minimal_config_tree(tmp_path)
+    _patch_config_service_paths(monkeypatch, tmp_path)
+    config_path = configs / "imported" / "lora.toml"
+    original = config_path.read_text(encoding="utf-8")
+
+    response = asyncio.run(
+        config_routes.handle_raw_patch_preview(
+            _JsonRequest(
+                {
+                    "file": "configs/imported/lora.toml",
+                    "values": {"output_name": "preview-only"},
+                }
+            ),  # type: ignore[arg-type]
+        )
+    )
+    payload = _json_response_payload(response)
+
+    assert response.status == 200
+    assert payload["ok"] is True
+    assert payload["changed"] == ["output_name"]
+    assert 'output_name = "preview-only"' in payload["content"]
+    assert config_path.read_text(encoding="utf-8") == original
+
+
+def test_raw_save_as_route_never_overwrites_existing_config(
+    tmp_path: Path,
+    monkeypatch,
+):
+    configs, _dataset_path = _write_minimal_config_tree(tmp_path)
+    _patch_config_service_paths(monkeypatch, tmp_path)
+    config_path = configs / "imported" / "lora.toml"
+    original = config_path.read_text(encoding="utf-8")
+
+    response = asyncio.run(
+        config_routes.handle_raw_save_as(
+            _JsonRequest(
+                {
+                    "file": "configs/imported/lora.toml",
+                    "content": 'output_name = "should-not-overwrite"\n',
+                }
+            ),  # type: ignore[arg-type]
+        )
+    )
+    payload = _json_response_payload(response)
+
+    assert response.status == 400
+    assert payload["ok"] is False
+    assert "配置文件已存在" in payload["error"]
+    assert config_path.read_text(encoding="utf-8") == original
+
+
+def test_raw_put_route_rejects_invalid_toml_without_creating_file(
+    tmp_path: Path,
+    monkeypatch,
+):
+    configs, _dataset_path = _write_minimal_config_tree(tmp_path)
+    _patch_config_service_paths(monkeypatch, tmp_path)
+    target = configs / "imported" / "broken.toml"
+
+    response = asyncio.run(
+        config_routes.handle_raw_put(
+            _JsonRequest(
+                {
+                    "file": "configs/imported/broken.toml",
+                    "content": "output_name = [broken\n",
+                }
+            ),  # type: ignore[arg-type]
+        )
+    )
+    payload = _json_response_payload(response)
+
+    assert response.status == 400
+    assert payload["ok"] is False
+    assert "TOML 语法错误" in payload["error"]
+    assert target.exists() is False
+
+
+def test_raw_patch_route_rejects_non_object_values(
+    tmp_path: Path,
+    monkeypatch,
+):
+    configs, _dataset_path = _write_minimal_config_tree(tmp_path)
+    _patch_config_service_paths(monkeypatch, tmp_path)
+    config_path = configs / "imported" / "lora.toml"
+    original = config_path.read_text(encoding="utf-8")
+
+    response = asyncio.run(
+        config_routes.handle_raw_patch(
+            _JsonRequest(
+                {
+                    "file": "configs/imported/lora.toml",
+                    "values": ["output_name", "bad"],
+                }
+            ),  # type: ignore[arg-type]
+        )
+    )
+    payload = _json_response_payload(response)
+
+    assert response.status == 400
+    assert payload["ok"] is False
+    assert "字段补丁格式不合法" in payload["error"]
+    assert config_path.read_text(encoding="utf-8") == original
 
 
 def test_raw_patch_ignores_dataset_picker_ui_field(tmp_path: Path, monkeypatch):
@@ -1826,6 +2185,31 @@ def test_common_config_helpers_import_without_facade_cycle():
     assert result.returncode == 0, result.stderr
 
 
+def test_common_config_path_helpers_work_without_facade_snapshot(tmp_path: Path, monkeypatch):
+    from web.services.config import common as common_impl
+
+    configs = tmp_path / "configs"
+    configs.mkdir()
+    imported = configs / "imported"
+    imported.mkdir()
+    config_file = imported / "demo.toml"
+    config_file.write_text('path = "$HOME/demo"\ncount = 2\n', encoding="utf-8")
+
+    monkeypatch.setattr(common_impl, "ROOT", tmp_path)
+    monkeypatch.setattr(common_impl, "CONFIGS_DIR", configs)
+
+    loaded = common_impl._load(config_file)
+
+    assert loaded["count"] == 2
+    assert loaded["path"].endswith("/demo")
+    assert common_impl._safe_resolve("configs/imported/demo.toml") == config_file.resolve()
+    assert common_impl._safe_config_subdir("imported") == imported.resolve()
+    assert common_impl._resolve_project_path("image_dataset/hero") == (
+        tmp_path / "image_dataset" / "hero"
+    ).resolve()
+    assert common_impl._display_path(config_file) == "configs/imported/demo.toml"
+
+
 def test_legacy_common_private_helpers_forward_to_common_module(monkeypatch):
     from web.services.config import common as common_impl
 
@@ -1862,6 +2246,46 @@ def test_legacy_common_private_helpers_forward_to_common_module(monkeypatch):
         result = getattr(legacy_config, name)(*args)
         assert result["name"] == name
         assert calls[name] == (args, {})
+
+
+def test_file_group_common_path_helpers_forward_to_common_module(monkeypatch):
+    from web.services.config import common as common_impl
+    from web.services.config import file_groups as file_group_impl
+
+    root = Path("/tmp/anima-root")
+    configs_dir = Path("/tmp/anima-configs")
+    monkeypatch.setattr(file_group_impl, "ROOT", root)
+    monkeypatch.setattr(file_group_impl, "CONFIGS_DIR", configs_dir)
+
+    def assert_synced() -> None:
+        assert common_impl.ROOT == root
+        assert common_impl.CONFIGS_DIR == configs_dir
+
+    def fake_load(path: Path) -> dict[str, Any]:
+        assert_synced()
+        return {"loaded": path.as_posix()}
+
+    def fake_safe_resolve(rel_path: str) -> Path:
+        assert_synced()
+        return configs_dir / rel_path
+
+    def fake_display_path(path: Path) -> str:
+        assert_synced()
+        return f"display:{path.as_posix()}"
+
+    monkeypatch.setattr(common_impl, "_load", fake_load)
+    monkeypatch.setattr(common_impl, "_safe_resolve", fake_safe_resolve)
+    monkeypatch.setattr(common_impl, "_display_path", fake_display_path)
+
+    assert file_group_impl._load(Path("configs/base.toml")) == {
+        "loaded": "configs/base.toml"
+    }
+    assert file_group_impl._safe_resolve("configs/base.toml") == (
+        configs_dir / "configs/base.toml"
+    )
+    assert file_group_impl._display_path(root / "configs/base.toml") == (
+        "display:/tmp/anima-root/configs/base.toml"
+    )
 
 
 def test_raw_file_helpers_remain_available_from_legacy_module(tmp_path: Path, monkeypatch):
@@ -5582,29 +6006,43 @@ def _write_step_estimate_dataset(root: Path, dataset_path: Path) -> None:
 
 
 def _patch_config_service_paths(monkeypatch, root: Path) -> None:
+    from web.services.config import raw_files as raw_files_impl
+
     configs = root / "configs"
-    monkeypatch.setattr(config_service, "ROOT", root)
-    monkeypatch.setattr(config_service, "CONFIGS_DIR", configs)
-    monkeypatch.setattr(config_service, "DATASET_PRESETS_DIR", configs / "datasets")
-    monkeypatch.setattr(config_service, "GUI_METHODS_DIR", configs / "gui-methods")
-    monkeypatch.setattr(config_service, "IMPORTED_CONFIGS_DIR", configs / "imported")
-    monkeypatch.setattr(config_service, "PRESETS_FILE", configs / "presets.toml")
-    monkeypatch.setattr(config_service, "WEB_FILE_GROUPS_FILE", configs / "web-file-groups.toml")
-    monkeypatch.setattr(config_service, "WEB_USER_LOCKS_FILE", configs / "web-user-locks.toml")
+    for name, value in (
+        ("ROOT", root),
+        ("CONFIGS_DIR", configs),
+        ("DATASET_PRESETS_DIR", configs / "datasets"),
+        ("GUI_METHODS_DIR", configs / "gui-methods"),
+        ("IMPORTED_CONFIGS_DIR", configs / "imported"),
+        ("PRESETS_FILE", configs / "presets.toml"),
+        ("WEB_FILE_GROUPS_FILE", configs / "web-file-groups.toml"),
+        ("WEB_USER_LOCKS_FILE", configs / "web-user-locks.toml"),
+    ):
+        for module in (config_service, legacy_config):
+            monkeypatch.setattr(module, name, value)
+        monkeypatch.setattr(raw_files_impl, name, value, raising=False)
 
 
 def _patch_external_config_service_paths(monkeypatch, root: Path, configs: Path) -> None:
+    from web.services.config import raw_files as raw_files_impl
+
     project_configs = root / "configs"
     if project_configs.exists():
         project_configs.rename(configs)
-    monkeypatch.setattr(config_service, "ROOT", root)
-    monkeypatch.setattr(config_service, "CONFIGS_DIR", configs)
-    monkeypatch.setattr(config_service, "DATASET_PRESETS_DIR", configs / "datasets")
-    monkeypatch.setattr(config_service, "GUI_METHODS_DIR", configs / "gui-methods")
-    monkeypatch.setattr(config_service, "IMPORTED_CONFIGS_DIR", configs / "imported")
-    monkeypatch.setattr(config_service, "PRESETS_FILE", configs / "presets.toml")
-    monkeypatch.setattr(config_service, "WEB_FILE_GROUPS_FILE", configs / "web-file-groups.toml")
-    monkeypatch.setattr(config_service, "WEB_USER_LOCKS_FILE", configs / "web-user-locks.toml")
+    for name, value in (
+        ("ROOT", root),
+        ("CONFIGS_DIR", configs),
+        ("DATASET_PRESETS_DIR", configs / "datasets"),
+        ("GUI_METHODS_DIR", configs / "gui-methods"),
+        ("IMPORTED_CONFIGS_DIR", configs / "imported"),
+        ("PRESETS_FILE", configs / "presets.toml"),
+        ("WEB_FILE_GROUPS_FILE", configs / "web-file-groups.toml"),
+        ("WEB_USER_LOCKS_FILE", configs / "web-user-locks.toml"),
+    ):
+        for module in (config_service, legacy_config):
+            monkeypatch.setattr(module, name, value)
+        monkeypatch.setattr(raw_files_impl, name, value, raising=False)
 
 
 def _patch_output_root(monkeypatch, output_root: Path) -> None:

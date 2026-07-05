@@ -327,6 +327,42 @@ def test_save_weights_stamps_three_axis_metadata_for_shared_a_global_fei(
     )
 
 
+def test_save_weights_preserves_non_empty_metadata_and_stamps_network_spec(
+    tmp_path,
+) -> None:
+    unet = TinyDiT()
+    net = create_network(
+        multiplier=1.0,
+        network_dim=2,
+        network_alpha=2.0,
+        vae=None,
+        text_encoders=[],
+        unet=unet,
+        use_moe_style="shared_A",
+        route_per_layer=False,
+        router_source="fei",
+        router_targets="q_proj",
+        num_experts=3,
+        fei_feature_dim=2,
+        router_hidden_dim=8,
+    )
+    net.apply_to([], unet)
+    out = tmp_path / "shared_a_marker.safetensors"
+
+    net.save_weights(str(out), dtype=torch.float32, metadata={"marker": "kept"})
+
+    moe_out = tmp_path / "shared_a_marker_moe.safetensors"
+    assert moe_out.exists()
+    with safe_open(str(moe_out), framework="pt", device="cpu") as handle:
+        metadata = handle.metadata()
+
+    assert metadata["marker"] == "kept"
+    assert metadata["ss_network_spec"] == "hydra"
+    assert metadata["ss_use_moe_style"] == "shared_A"
+    assert metadata["ss_route_per_layer"] == "false"
+    assert metadata["ss_router_source"] == "fei"
+
+
 def test_global_fei_cell_builds_network_router_from_real_init() -> None:
     cfg = LoRANetworkCfg(
         module_class=StackedExpertsLoRAModule,

@@ -73,6 +73,19 @@ def _parse_reft_layers(spec, num_blocks: int) -> List[int]:
     return sorted(set(indices))
 
 
+def _stack_contiguous_experts(
+    experts: Dict[int, torch.Tensor], *, prefix: str, key_family: str
+) -> torch.Tensor:
+    indices = sorted(experts)
+    expected = list(range(len(indices)))
+    if indices != expected:
+        raise ValueError(
+            f"{key_family} expert indices for {prefix!r} must be contiguous "
+            f"from 0; got {indices}"
+        )
+    return torch.stack([experts[i] for i in indices])
+
+
 def _stack_lora_ups(state_dict: Dict[str, torch.Tensor]) -> Dict[str, torch.Tensor]:
     """Stack per-expert ``.lora_ups.N.weight`` / ``.lora_downs.N.weight`` keys
     into fused ``.lora_up_weight`` / ``.lora_down_weight`` parameters
@@ -98,11 +111,13 @@ def _stack_lora_ups(state_dict: Dict[str, torch.Tensor]) -> Dict[str, torch.Tens
             idx = int(key.split("lora_downs.")[1].split(".")[0])
             downs_prefixes.setdefault(prefix, {})[idx] = state_dict.pop(key)
     for prefix, experts in ups_prefixes.items():
-        stacked = torch.stack([experts[i] for i in sorted(experts.keys())])
-        state_dict[f"{prefix}.lora_up_weight"] = stacked
+        state_dict[f"{prefix}.lora_up_weight"] = _stack_contiguous_experts(
+            experts, prefix=prefix, key_family="lora_ups"
+        )
     for prefix, experts in downs_prefixes.items():
-        stacked = torch.stack([experts[i] for i in sorted(experts.keys())])
-        state_dict[f"{prefix}.lora_down_weight"] = stacked
+        state_dict[f"{prefix}.lora_down_weight"] = _stack_contiguous_experts(
+            experts, prefix=prefix, key_family="lora_downs"
+        )
     return state_dict
 
 
@@ -130,11 +145,13 @@ def _stack_chimera_lora_ups(
             idx = int(key.split("lora_ups_f.")[1].split(".")[0])
             ups_f_prefixes.setdefault(prefix, {})[idx] = state_dict.pop(key)
     for prefix, experts in ups_c_prefixes.items():
-        stacked = torch.stack([experts[i] for i in sorted(experts.keys())])
-        state_dict[f"{prefix}.lora_up_c_weight"] = stacked
+        state_dict[f"{prefix}.lora_up_c_weight"] = _stack_contiguous_experts(
+            experts, prefix=prefix, key_family="lora_ups_c"
+        )
     for prefix, experts in ups_f_prefixes.items():
-        stacked = torch.stack([experts[i] for i in sorted(experts.keys())])
-        state_dict[f"{prefix}.lora_up_f_weight"] = stacked
+        state_dict[f"{prefix}.lora_up_f_weight"] = _stack_contiguous_experts(
+            experts, prefix=prefix, key_family="lora_ups_f"
+        )
     return state_dict
 
 
