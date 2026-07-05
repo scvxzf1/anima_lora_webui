@@ -51,6 +51,118 @@ logger = logging.getLogger(__name__)
 CROSSATTN_EMB_DIM: int = 1024
 
 
+def _stamp_lora_save_metadata(
+    metadata: Dict[str, str], cfg: LoRANetworkCfg, spec: NetworkSpec
+) -> None:
+    if metadata:
+        metadata["ss_network_spec"] = spec.name
+
+    # Hard σ-band partition lives in non-persistent buffers (`_expert_band`)
+    # and a Python attr (`_sigma_band_partition`); nothing of it survives
+    # the state_dict write. Emit the two scalars needed to re-register the
+    # partition at load time so inference (`make test`) and the ComfyUI
+    # node can reconstruct the per-sample band mask. Only stamped when the
+    # partition is on, so older non-band checkpoints stay byte-identical.
+    if cfg.specialize_experts_by_sigma_buckets:
+        metadata["ss_specialize_experts_by_sigma_buckets"] = "true"
+        metadata["ss_num_sigma_buckets"] = str(int(cfg.num_sigma_buckets))
+        if cfg.sigma_bucket_boundaries is not None:
+            import json as _json
+
+            metadata["ss_sigma_bucket_boundaries"] = _json.dumps(
+                list(cfg.sigma_bucket_boundaries)
+            )
+
+    # Three-axis routing config (plan2 §three-axis-config). Stamped on
+    # every save so the loader can reconstruct the exact router layout
+    # without key-sniffing — particularly important for distinguishing
+    # ``stacked_experts_global_fei`` (independent-A) from ``hydra``
+    # (shared-A) at a glance.
+    if cfg.use_moe_style is not False:
+        metadata["ss_use_moe_style"] = str(cfg.use_moe_style)
+        metadata["ss_route_per_layer"] = (
+            "true" if cfg.route_per_layer else "false"
+        )
+        metadata["ss_router_source"] = str(cfg.router_source)
+
+    if spec.name == "vera":
+        plugin_args = getattr(cfg, "plugin_args", {}) or {}
+        projection_key = plugin_args.get(
+            "vera_projection_prng_key",
+            plugin_args.get("projection_prng_key", 0),
+        )
+        d_initial = plugin_args.get(
+            "vera_d_initial",
+            plugin_args.get("d_initial", 0.1),
+        )
+        save_projection = plugin_args.get(
+            "vera_save_projection",
+            plugin_args.get("save_projection", False),
+        )
+        metadata["ss_vera_projection_prng_key"] = str(int(projection_key))
+        metadata["ss_vera_d_initial"] = str(float(d_initial))
+        metadata["ss_vera_save_projection"] = (
+            "true"
+            if str(save_projection).strip().lower() in {"1", "true", "yes", "on"}
+            else "false"
+        )
+
+    if getattr(cfg, "ortho_centered_gate", False):
+        metadata["ss_ortho_centered_gate"] = "true"
+
+    if getattr(cfg, "use_dora", False):
+        metadata["ss_network_spec"] = "dora"
+        metadata["ss_adapter_variant"] = "dora"
+        metadata["ss_dora_compatible_export"] = "true"
+
+    if cfg.num_registers > 0:
+        metadata["ss_num_registers"] = str(int(cfg.num_registers))
+        metadata["ss_register_insert_block"] = str(int(cfg.register_insert_block))
+
+    # FEI router params (router-source-specific scalars the loader needs
+    # to size the router input). Stamped for both per-Linear and global
+    # FEI routers.
+    if cfg.router_source == "fei" and cfg.fei_feature_dim > 0:
+        metadata["ss_fei_feature_dim"] = str(int(cfg.fei_feature_dim))
+        metadata["ss_fei_sigma_low_div"] = str(float(cfg.fei_sigma_low_div))
+
+    # ChimeraHydra: the pool split is the only non-key info the loader
+    # cannot reconstruct from state_dict (P_bases shape encodes E = K_c +
+    # K_f but not the split point). FreqRouter weights survive as plain
+    # ``freq_router.*`` keys without dedicated handling. FEI/σ feature
+    # dims are also stamped so the loader can re-size the freq router
+    # input — they live outside the standard ``router_source`` flow
+    # (chimera uses BOTH simultaneously).
+    if cfg.use_chimera_hydra:
+        metadata["ss_use_chimera_hydra"] = "true"
+        metadata["ss_num_experts_content"] = str(int(cfg.num_experts_content))
+        metadata["ss_num_experts_freq"] = str(int(cfg.num_experts_freq))
+        metadata["ss_chimera_fei_feature_dim"] = str(int(cfg.fei_feature_dim))
+        metadata["ss_chimera_sigma_feature_dim"] = str(int(cfg.sigma_feature_dim))
+        metadata["ss_chimera_fei_sigma_low_div"] = str(float(cfg.fei_sigma_low_div))
+        # FreqRouter input LN flag. Parameterless LN leaves no tensor
+        # footprint in the state_dict, so the loader can't sniff it from
+        # weights — has to come from metadata. Default-off on rebuild
+        # when absent preserves pre-LN checkpoint inference.
+        metadata["ss_chimera_freq_router_layer_norm"] = (
+            "true" if cfg.freq_router_layer_norm else "false"
+        )
+        # ContentRouter source. Default ``"input"`` matches pre-router
+        # checkpoints (per-Linear softmax over pooled lx_c lives on
+        # every chimera module as ``router.weight`` / ``router.bias``).
+        # ``"crossattn_emb"`` flips to the network-level ContentRouter; the
+        # per-Linear router is then absent from state_dict and the
+        # loader must rebuild a ContentRouter from the stamped input dim
+        # + LN flag (parameterless LN leaves no tensor footprint).
+        metadata["ss_chimera_content_router_source"] = str(cfg.content_router_source)
+        if cfg.content_router_source == "crossattn_emb":
+            metadata["ss_chimera_content_router_layer_norm"] = (
+                "true" if cfg.content_router_layer_norm else "false"
+            )
+        if getattr(cfg, "chimera_centered_gate", False):
+            metadata["ss_chimera_centered_gate"] = "true"
+
+
 class GlobalRouter(torch.nn.Module):
     """Single network-level router feeding every routing-aware module.
 
@@ -3072,121 +3184,7 @@ class LoRANetwork(torch.nn.Module):
         spec: NetworkSpec = getattr(self, "_network_spec", NETWORK_REGISTRY["lora"])
         if metadata is None:
             metadata = {}
-        if metadata:
-            metadata["ss_network_spec"] = spec.name
-
-        # Hard σ-band partition lives in non-persistent buffers (`_expert_band`)
-        # and a Python attr (`_sigma_band_partition`); nothing of it survives
-        # the state_dict write. Emit the two scalars needed to re-register the
-        # partition at load time so inference (`make test`) and the ComfyUI
-        # node can reconstruct the per-sample band mask. Only stamped when the
-        # partition is on, so older non-band checkpoints stay byte-identical.
-        if self.cfg.specialize_experts_by_sigma_buckets:
-            metadata["ss_specialize_experts_by_sigma_buckets"] = "true"
-            metadata["ss_num_sigma_buckets"] = str(int(self.cfg.num_sigma_buckets))
-            if self.cfg.sigma_bucket_boundaries is not None:
-                import json as _json
-
-                metadata["ss_sigma_bucket_boundaries"] = _json.dumps(
-                    list(self.cfg.sigma_bucket_boundaries)
-                )
-
-        # Three-axis routing config (plan2 §three-axis-config). Stamped on
-        # every save so the loader can reconstruct the exact router layout
-        # without key-sniffing — particularly important for distinguishing
-        # ``stacked_experts_global_fei`` (independent-A) from ``hydra``
-        # (shared-A) at a glance.
-        if self.cfg.use_moe_style is not False:
-            metadata["ss_use_moe_style"] = str(self.cfg.use_moe_style)
-            metadata["ss_route_per_layer"] = (
-                "true" if self.cfg.route_per_layer else "false"
-            )
-            metadata["ss_router_source"] = str(self.cfg.router_source)
-
-        if spec.name == "vera":
-            plugin_args = getattr(self.cfg, "plugin_args", {}) or {}
-            projection_key = plugin_args.get(
-                "vera_projection_prng_key",
-                plugin_args.get("projection_prng_key", 0),
-            )
-            d_initial = plugin_args.get(
-                "vera_d_initial",
-                plugin_args.get("d_initial", 0.1),
-            )
-            save_projection = plugin_args.get(
-                "vera_save_projection",
-                plugin_args.get("save_projection", False),
-            )
-            metadata["ss_vera_projection_prng_key"] = str(int(projection_key))
-            metadata["ss_vera_d_initial"] = str(float(d_initial))
-            metadata["ss_vera_save_projection"] = (
-                "true"
-                if str(save_projection).strip().lower() in {"1", "true", "yes", "on"}
-                else "false"
-            )
-
-        if getattr(self.cfg, "ortho_centered_gate", False):
-            metadata["ss_ortho_centered_gate"] = "true"
-
-        if getattr(self.cfg, "use_dora", False):
-            metadata["ss_network_spec"] = "dora"
-            metadata["ss_adapter_variant"] = "dora"
-            metadata["ss_dora_compatible_export"] = "true"
-
-        if self.cfg.num_registers > 0:
-            metadata["ss_num_registers"] = str(int(self.cfg.num_registers))
-            metadata["ss_register_insert_block"] = str(
-                int(self.cfg.register_insert_block)
-            )
-
-        # FEI router params (router-source-specific scalars the loader needs
-        # to size the router input). Stamped for both per-Linear and global
-        # FEI routers.
-        if self.cfg.router_source == "fei" and self.cfg.fei_feature_dim > 0:
-            metadata["ss_fei_feature_dim"] = str(int(self.cfg.fei_feature_dim))
-            metadata["ss_fei_sigma_low_div"] = str(float(self.cfg.fei_sigma_low_div))
-
-        # ChimeraHydra: the pool split is the only non-key info the loader
-        # cannot reconstruct from state_dict (P_bases shape encodes E = K_c +
-        # K_f but not the split point). FreqRouter weights survive as plain
-        # ``freq_router.*`` keys without dedicated handling. FEI/σ feature
-        # dims are also stamped so the loader can re-size the freq router
-        # input — they live outside the standard ``router_source`` flow
-        # (chimera uses BOTH simultaneously).
-        if self.cfg.use_chimera_hydra:
-            metadata["ss_use_chimera_hydra"] = "true"
-            metadata["ss_num_experts_content"] = str(int(self.cfg.num_experts_content))
-            metadata["ss_num_experts_freq"] = str(int(self.cfg.num_experts_freq))
-            metadata["ss_chimera_fei_feature_dim"] = str(int(self.cfg.fei_feature_dim))
-            metadata["ss_chimera_sigma_feature_dim"] = str(
-                int(self.cfg.sigma_feature_dim)
-            )
-            metadata["ss_chimera_fei_sigma_low_div"] = str(
-                float(self.cfg.fei_sigma_low_div)
-            )
-            # FreqRouter input LN flag. Parameterless LN leaves no tensor
-            # footprint in the state_dict, so the loader can't sniff it from
-            # weights — has to come from metadata. Default-off on rebuild
-            # when absent preserves pre-LN checkpoint inference.
-            metadata["ss_chimera_freq_router_layer_norm"] = (
-                "true" if self.cfg.freq_router_layer_norm else "false"
-            )
-            # ContentRouter source. Default ``"input"`` matches pre-router
-            # checkpoints (per-Linear softmax over pooled lx_c lives on
-            # every chimera module as ``router.weight`` / ``router.bias``).
-            # ``"crossattn_emb"`` flips to the network-level ContentRouter; the
-            # per-Linear router is then absent from state_dict and the
-            # loader must rebuild a ContentRouter from the stamped input dim
-            # + LN flag (parameterless LN leaves no tensor footprint).
-            metadata["ss_chimera_content_router_source"] = str(
-                self.cfg.content_router_source
-            )
-            if self.cfg.content_router_source == "crossattn_emb":
-                metadata["ss_chimera_content_router_layer_norm"] = (
-                    "true" if self.cfg.content_router_layer_norm else "false"
-                )
-            if getattr(self.cfg, "chimera_centered_gate", False):
-                metadata["ss_chimera_centered_gate"] = "true"
+        _stamp_lora_save_metadata(metadata, self.cfg, spec)
 
         state_dict = self.state_dict()
         lora_save.save_network_weights(

@@ -17,6 +17,8 @@ Git 同步口径：本地 `main` 只和 `webui/main` 沟通；`private/main` 不
 - 先看 **第 2 节当前状态总表**，不要重复做已经阶段收口的任务。
 - 再看 **第 3 节隔离和禁止事项**，确认哪些目录不能碰。
 - 如果继续写代码，优先按 **第 5 节下一步建议** 小步推进。
+- 本轮收口目标入口是 `docs/findings/project_cleanup_next_stage_goal_20260705.md`，完成记录见第 13 节。
+- `docs/findings/project_cleanup_long_running_goal_20260705.md` 已完成归档，不要再作为活跃目标重复执行。
 - 不能把 `TASK-01` 到 `TASK-10` 统一说成“全部完成”。
 
 ---
@@ -95,12 +97,13 @@ Git 同步口径：本地 `main` 只和 `webui/main` 沟通；`private/main` 不
 
 推荐顺序：
 
-1. 当前检查点已提交并推送到 `webui/main`；不建议继续扩大重构。
-2. 若未来继续 `TASK-09`，下一步是让 split modules 逐步复用 `common.py`，或制定删除 `_legacy.py` facade 的外部 import 迁移计划。
-3. 若继续 `TASK-07`，只做小步拆分：优先拆纯检测、metadata 组装或保存分流；不要改 public API、checkpoint key 格式或三轴路由语义。
-4. 暂缓继续扩大 `TASK-06`：runtime block swap 当前边界已收口，除缺陷外不拆 CUDA stream / swap plan / hook 调度。
-5. `TASK-10` 已选择 `pyright` 并建立 config 脚本试点门禁；若继续，只按目录逐步扩大范围，不要一次性切全仓。
-6. 如果要补更强 UI 证据，再单独启动 WebUI 做真实浏览器全页面交互，不和代码拆分混在同轮。
+1. 本轮已按 `docs/findings/project_cleanup_next_stage_goal_20260705.md` 完成 `N0` 到 `N6`，不要重复执行同一目标书。
+2. 当前检查点已提交并推送到 `webui/main`；不建议继续扩大重构。
+3. 若未来继续 `TASK-09`，下一步优先迁移低风险内部 import surface，例如 `ROOT`、`_resolve_project_path`、`estimate_training_steps`。
+4. 若继续 `TASK-07`，下一步只适合继续加 characterization tests 或拆更小的纯 helper；不要改保存/加载格式。
+5. 暂缓继续扩大 `TASK-06`：runtime block swap 当前边界已收口，除缺陷外不拆 CUDA stream / swap plan / hook 调度。
+6. `TASK-10` 已选择 `pyright` 并建立 config 脚本试点门禁；若继续，只按目录逐步扩大范围，不要一次性切全仓。
+7. 如果要补更强 UI 证据，再单独启动 WebUI 做真实浏览器全页面交互，不和代码拆分混在同轮。
 
 ---
 
@@ -357,4 +360,90 @@ Git 同步口径：本地 `main` 只和 `webui/main` 沟通；`private/main` 不
 - 不能说 LoRA builder/router/load/save 已经完成深拆；本轮只是继续拆出一个低风险只读检测 helper。
 - 不能说 `_legacy.py` 可以删除；它仍是兼容 facade。
 - 不能说全仓类型检查门禁已经建立；当前仍是既有试点范围。
+- 不能说跑过真实训练、模型下载、真实 MFU benchmark 或全量 WebUI 浏览器交互。
+
+---
+
+## 📌 12. 2026-07-05 文档清理与下一阶段入口
+
+一句话：已完成的长目标文档已降级为历史记录，当时新的下一阶段目标文档也已经创建。
+
+已清理：
+
+- `docs/findings/project_cleanup_long_running_goal_20260705.md` 已标记为“已完成归档”。
+- 旧文档中的可复制 Prompt 已改为历史记录，避免后续重复执行 `P0/P1/P2/P5/P6/P7`。
+- 旧文档保留为审计材料，没有删除历史证据。
+
+新入口：
+
+- `docs/findings/project_cleanup_next_stage_goal_20260705.md`
+- 下一阶段从 `N0` 到 `N6`，主线是：
+  - `TASK-07` save variant characterization。
+  - `TASK-07` save metadata helper 小拆分。
+  - `TASK-07` loading split/refuse helper 边界测试。
+  - `TASK-09` config import surface 审计。
+  - `TASK-09` facade 保留清单和风险文档。
+
+使用方式：
+
+```text
+请按 docs/findings/project_cleanup_next_stage_goal_20260705.md 连续推进下一阶段项目清理目标。
+```
+
+仍不能对外说：
+
+- 不能说已完成文档被删除；只是完成归档。
+- 不能说第 12 节写入时下一阶段已经执行；当时只是创建了入口，当前完成记录见第 13 节。
+
+---
+
+## 📌 13. 2026-07-05 下一阶段目标执行收口
+
+一句话：本轮按下一阶段目标书完成了 `N0` 到 `N6`，重点是 LoRA save/load 边界保护和 Web config facade 保留清单。
+
+阶段完成：
+
+- `N0` 基线复核：当前在普通 `main` checkout，跟踪 `webui/main`；旧目标 `project_cleanup_long_running_goal_20260705.md` 已标记完成归档；本目标书已作为本轮入口并在收口时改为完成归档。
+- `N1` save variant characterization：新增 `tests/test_lora_save_pipeline.py`，覆盖 `lora_save.save_network_weights()` 的 Hydra、StackedExperts、Chimera 保存分流，确认 `*_moe.safetensors` / `*_chimera.safetensors`、metadata 透传和关键 key 形态不变。
+- `N2` save metadata helper 小拆分：`networks/lora_anima/network.py` 新增私有 `_stamp_lora_save_metadata(...)`，只移动 `LoRANetwork.save_weights()` 的 metadata 组装；`metadata={}` 时仍不回填 `ss_network_spec`，由测试继续保护。
+- `N3` loading split/refuse helper 边界测试：新增 `tests/test_lora_loading_keys.py`，覆盖 `_stack_lora_ups` 排序 stack、malformed expert index 报错、Hydra q/k/v refuse 且不误收 plain LoRA leg、Chimera content/freq 双池 q/k/v refuse。
+- `N4` config import surface 审计：只读确认 `_legacy.py` 仍是 `config_service` 兼容 facade 的源头，`config_service.py` 仍通过 `_legacy.__dict__` 初始化历史导入面。
+- `N5` facade 保留清单：明确 `_legacy.py` 当前不能删除；删除前必须先迁移外部 import surface 并补 facade 兼容测试。
+- `N6` 文档和验证收口：本检查点、旧目标书、新目标书、LoRA helper 和新增测试已准备显式提交推送；未使用 `git add -A`。
+
+`TASK-09` facade 保留清单：
+
+| 类别 | 当前必须保留 |
+|---|---|
+| facade 文件 | `web.services.config_service` |
+| legacy 文件 | `web.services.config._legacy` |
+| 路由 API | `list_methods`、`list_variants`、`list_presets`、`load_merged_config`、`estimate_training_steps`、`preflight_training_config`、raw file、dataset preset、file group、output run、sample prompts 等入口 |
+| 路径 / 运行时 | `ROOT`、`CONFIGS_DIR`、`DATASET_PRESETS_DIR`、`_resolve_project_path`、`_config_file_path`、`is_web_runtime_config` |
+| metadata facade | `CAPTION_SOURCE_*`、`CONFIG_FILE_LABELS_ZH`、`PREPROCESS_ENV_REQUIRED_FILES`、`SUPPORTED_TRAINING_SAMPLE_SAMPLERS`、`get_field_help`、`get_groups` |
+| legacy shim | `_call_*_impl`、`_make_*_shim`、`_restore_raw_files_shims` |
+
+后续可迁移候选：
+
+- `environment_check_service.py` 和 `project_python.py` 可考虑从轻量 project root helper 读取 `ROOT`。
+- `image_test_service.py` 可考虑从 `web.services.config.common` 读取 `_resolve_project_path`，但要先确认 monkeypatch 同步场景。
+- `training/history.py` 可考虑改走 `web.services.config.estimation.estimate_training_steps`。
+- `web/routes/config.py` 依赖面最宽，建议最后迁。
+
+本轮已验证：
+
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m pytest -p no:cacheprovider -q tests/test_lora_save_pipeline.py tests/test_lora_loading_keys.py tests/test_lora_network_construction.py tests/test_factory_metadata_flow.py tests/test_global_router.py tests/test_network_cfg.py tests/test_router_compute.py`：`70 passed, 2 warnings`。warning 来自本机 GTX 960 与当前 PyTorch CUDA 架构不匹配，不影响本轮 CPU 侧测试结论。
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m pytest -p no:cacheprovider -q tests/test_web_config_service.py -k "metadata_exports or legacy or dataset or file_group or preflight or merge or output_run or common_config_helpers"`：60 秒内未完整跑完，已拆块验证。
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m pytest -p no:cacheprovider -q tests/test_web_config_service.py -k "metadata_exports or legacy or merge or common_config_helpers"`：`38 passed, 117 deselected`。
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m pytest -p no:cacheprovider -q tests/test_web_config_service.py -k "dataset and not runtime_preflight"`：`54 passed, 101 deselected`。
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m pytest -p no:cacheprovider -q tests/test_web_config_service.py -k "file_group or output_run"`：`23 passed, 132 deselected`。
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m pytest -p no:cacheprovider -q tests/test_web_config_service.py -k "preflight"`：`31 passed, 124 deselected`。
+- `timeout 60 .venv/bin/python tasks.py type-check`：`0 errors, 0 warnings, 0 informations`。
+- `git diff --check`：通过。
+
+仍不能对外说：
+
+- 不能说 `_legacy.py` 可以删除；它仍是兼容 facade。
+- 不能说 LoRA save/load 已经完成深拆；本轮只是补保护测试并抽一个 metadata helper。
+- 不能说改过 checkpoint key、public API 或三轴路由语义；本轮刻意没有改。
+- 不能说已经建立全仓类型检查门禁；当前仍是既有试点范围。
 - 不能说跑过真实训练、模型下载、真实 MFU benchmark 或全量 WebUI 浏览器交互。

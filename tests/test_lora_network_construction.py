@@ -314,6 +314,7 @@ def test_save_weights_stamps_three_axis_metadata_for_shared_a_global_fei(
     assert metadata["ss_router_source"] == "fei"
     assert metadata["ss_fei_feature_dim"] == "2"
     assert metadata["ss_fei_sigma_low_div"] == "4.0"
+    assert "ss_network_spec" not in metadata
     assert "global_router.net.0.weight" in keys
     assert "global_router.net.2.bias" in keys
     assert "lora_unet_blocks_0_q_proj.lora_ups.0.weight" in keys

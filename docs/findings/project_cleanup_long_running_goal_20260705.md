@@ -2,6 +2,14 @@
 
 一句话：这份文档给后续 Agent 一个可以连续跑几个小时的目标包，要求一轮接一轮小步推进，而不是完成一个小闭环就停。
 
+状态：已完成归档。
+完成提交：`f74b8255 refactor: continue staged project cleanup`
+完成阶段：`P0`、`P1`、`P2`、`P5`、`P6`、`P7`
+后续入口：`docs/findings/project_cleanup_next_stage_goal_20260705.md`
+
+> ⚠️ 这份文档现在只作为历史记录保留，不再作为新的活跃目标执行。
+> 下一阶段请使用 `project_cleanup_next_stage_goal_20260705.md`。
+
 日期：2026-07-05
 适用仓库：`/home/scv/nvme0n1p1/训练器相关/anima_lora`
 默认发布目标：本地 `main` -> `webui/main`
@@ -463,32 +471,17 @@ git rev-parse HEAD webui/main
 
 ---
 
-## 🧾 14. 可直接复制给 Codex 的长目标 Prompt
+## 🧾 14. 已完成目标 Prompt 历史记录
 
-一句话：下面这段可以直接作为下一次长时间执行目标。
+一句话：原可执行 prompt 已完成，避免后续误用同一目标重复施工。
+
+原目标已在提交 `f74b8255` 收口，完成记录见
+`docs/findings/project_cleanup_checkpoint_20260705.md` 第 11 节。
+
+新的可复制目标请使用：
 
 ```text
-请按 docs/findings/project_cleanup_long_running_goal_20260705.md 连续推进项目清理长目标。
-
-要求：
-1. 先读 AGENTS.md、docs/findings/project_cleanup_checkpoint_20260705.md、docs/findings/project_cleanup_long_running_goal_20260705.md。
-2. 从 P0 开始，按 P1 到 P7 连续推进；每完成一个小阶段，更新检查点，然后继续下一阶段，不要只做一个阶段就停。
-3. 至少完成 4 个小阶段，除非遇到明确阻塞。
-4. 每阶段先只读审计，再补测试，再改代码。
-5. 禁止真实训练、模型下载、删除/移动用户数据、改 checkpoint key、改 LoRA public API、改三轴路由语义。
-6. 每阶段跑对应验证；最后跑总验证：
-   - PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m pytest -p no:cacheprovider -q tests/test_lora_network_construction.py tests/test_factory_metadata_flow.py tests/test_global_router.py tests/test_network_cfg.py tests/test_router_compute.py
-   - PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m pytest -p no:cacheprovider -q tests/test_web_config_service.py -k "legacy or dataset or file_group or preflight or merge or output_run"
-   - timeout 60 .venv/bin/python tasks.py type-check
-   - git diff --check
-7. 最后显式 stage 实际修改文件，不要 git add -A。
-8. 提交并推送到 webui/main。
-
-完成定义：
-- 至少 4 个小阶段完成，或明确写出阻塞。
-- 所有本轮相关测试通过。
-- checkpoint 文档已更新。
-- 本地 main 已推送到 webui/main。
+请按 docs/findings/project_cleanup_next_stage_goal_20260705.md 连续推进下一阶段项目清理目标。
 ```
 
 ---
