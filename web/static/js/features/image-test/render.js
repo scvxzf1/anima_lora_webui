@@ -4,8 +4,8 @@ import {
     IMAGE_TEST_RUNTIME_DTYPE_OPTIONS,
     IMAGE_TEST_SAMPLER_OPTIONS,
     IMAGE_TEST_TEXT_ENCODER_DTYPE_OPTIONS,
-} from './state.js?v=module-bootstrap-20260704-2';
-import { createImageTestGallery } from './gallery.js?v=module-bootstrap-20260704-2';
+} from './state.js?v=module-bootstrap-20260705-1';
+import { createImageTestGallery } from './gallery.js?v=module-bootstrap-20260705-1';
 
 export function createImageTestRenderer({
     ctx,

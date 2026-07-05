@@ -59,6 +59,22 @@ def test_walk_images_path_pattern_filters_relative_paths(tmp_path: Path) -> None
     assert [path.relative_to(tmp_path).as_posix() for path in paths] == ["charA/cover.png"]
 
 
+def test_count_pending_pe_respects_path_pattern(tmp_path: Path) -> None:
+    from library.preprocess.pe import count_pending_pe
+
+    _write_image(tmp_path / "charA" / "cover.png", (8, 8))
+    _write_image(tmp_path / "charB" / "cover.png", (8, 8))
+
+    pending, total = count_pending_pe(
+        tmp_path,
+        "pe",
+        recursive=True,
+        path_pattern="charA/*",
+    )
+
+    assert (pending, total) == (1, 1)
+
+
 def test_walk_images_collision_within_folder_raises(tmp_path: Path) -> None:
     from library.preprocess import walk_images
 

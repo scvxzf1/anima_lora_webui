@@ -1,6 +1,7 @@
 """Model loading for Anima inference: DiT, text encoder, shared model management."""
 
 import argparse
+from dataclasses import dataclass
 import logging
 from typing import Optional, Dict
 
@@ -23,6 +24,16 @@ from library.runtime.device import clean_memory_on_device
 logger = logging.getLogger(__name__)
 
 _TRUE_METADATA_VALUES = {"1", "true", "True"}
+_NETWORK_MERGE_KINDS = {"DoRA", "GLoRA", "LoHa", "LoKr", "VeRA"}
+
+
+@dataclass(frozen=True)
+class AdapterCapability:
+    path: str
+    kind: str
+    supports_static_merge: bool
+    requires_dynamic_hook: bool
+    exclusive: bool = False
 
 
 def _metadata_flag_enabled(
@@ -34,28 +45,116 @@ def _metadata_flag_enabled(
     return value in _TRUE_METADATA_VALUES
 
 
-def _is_hydra_moe(path: str) -> bool:
-    """Cheap check: peek at the safetensors header for a per-expert ups key.
-
-    HydraLoRA moe files carry per-expert ``.lora_ups.N.weight`` keys;
-    chimera files carry the dual-pool variants ``.lora_ups_c.N.weight`` /
-    ``.lora_ups_f.N.weight``. Either signal means router-live: skip static
-    merge. Regular LoRA files have none of these. Uses ``safe_open`` so
-    only the header is read.
-
-    Callers that need to disambiguate chimera from plain Hydra should also
-    consult ``_is_chimera_moe``.
-    """
+def _read_lora_header(path: str) -> tuple[list[str], dict[str, str]]:
     from safetensors import safe_open
 
+    with safe_open(path, framework="pt") as f:
+        return list(f.keys()), dict(f.metadata() or {})
+
+
+def _read_lora_metadata(path: str) -> dict[str, str]:
     try:
-        with safe_open(path, framework="pt") as f:
-            return any(
-                ".lora_ups." in k or ".lora_ups_c." in k or ".lora_ups_f." in k
-                for k in f.keys()
-            )
+        _, metadata = _read_lora_header(path)
     except Exception:
-        return False
+        return {}
+    return metadata
+
+
+def _classify_adapter_capability(path: str) -> AdapterCapability:
+    try:
+        keys, metadata = _read_lora_header(path)
+    except Exception:
+        return AdapterCapability(
+            path=path,
+            kind="LoRA",
+            supports_static_merge=True,
+            requires_dynamic_hook=False,
+        )
+
+    lowered_keys = [key.lower() for key in keys]
+    spec_name = str(metadata.get("ss_network_spec") or "").strip().lower()
+    if _metadata_flag_enabled(metadata, "ss_turbo_per_step_expert") or spec_name == "step_expert":
+        return AdapterCapability(
+            path=path,
+            kind="StepExpert LoRA",
+            supports_static_merge=False,
+            requires_dynamic_hook=True,
+            exclusive=True,
+        )
+
+    if any(
+        ".lora_ups." in key or ".lora_ups_c." in key or ".lora_ups_f." in key
+        for key in lowered_keys
+    ):
+        return AdapterCapability(
+            path=path,
+            kind="HydraLoRA",
+            supports_static_merge=False,
+            requires_dynamic_hook=True,
+        )
+
+    from networks import continue_weight_kind_from_plugins
+
+    if spec_name == "dora" or any(
+        key.endswith((".magnitude", ".dora_scale", ".dora_magnitude"))
+        for key in lowered_keys
+    ):
+        return AdapterCapability(
+            path=path,
+            kind="DoRA",
+            supports_static_merge=True,
+            requires_dynamic_hook=False,
+        )
+
+    plugin_kind = continue_weight_kind_from_plugins(keys, metadata)
+    if plugin_kind in _NETWORK_MERGE_KINDS:
+        return AdapterCapability(
+            path=path,
+            kind=plugin_kind,
+            supports_static_merge=True,
+            requires_dynamic_hook=False,
+        )
+
+    return AdapterCapability(
+        path=path,
+        kind="LoRA",
+        supports_static_merge=True,
+        requires_dynamic_hook=False,
+    )
+
+
+def _classify_adapter_capabilities(paths: list[str] | None) -> list[AdapterCapability]:
+    if not paths:
+        return []
+    return [_classify_adapter_capability(str(path)) for path in paths]
+
+
+def _validate_adapter_capabilities(capabilities: list[AdapterCapability]) -> None:
+    exclusive = [cap for cap in capabilities if cap.exclusive]
+    if exclusive and (len(capabilities) > 1 or len(exclusive) > 1):
+        raise ValueError(
+            "Per-step-expert turbo must be loaded alone. Composing it "
+            "with other LoRAs or static merge is unsupported."
+        )
+
+    hydra = [cap for cap in capabilities if cap.kind == "HydraLoRA"]
+    if hydra and len(hydra) != len(capabilities):
+        raise ValueError(
+            "Mixing HydraLoRA moe files with regular LoRA files in a "
+            "single --lora_weight list is not supported. The static "
+            "merge + dynamic hook interaction is untested. Pass them "
+            "in separate invocations."
+        )
+
+
+def _network_merge_capabilities(
+    capabilities: list[AdapterCapability],
+) -> list[AdapterCapability]:
+    return [
+        cap
+        for cap in capabilities
+        if cap.supports_static_merge and cap.kind in _NETWORK_MERGE_KINDS
+    ]
 
 
 def _has_te_keys(path: str) -> bool:
@@ -78,8 +177,8 @@ def _has_te_keys(path: str) -> bool:
 def _is_chimera_moe(path: str) -> bool:
     """Peek at safetensors metadata for ``ss_use_chimera_hydra="true"``.
 
-    Chimera files share the Hydra-MoE on-disk shape (so ``_is_hydra_moe``
-    also returns True) but carry the dual-pool runtime contract — they
+    Chimera files share the Hydra-MoE on-disk shape but carry the dual-pool
+    runtime contract — they
     additionally hold a top-level ``freq_router.*`` block and need the
     per-Linear router narrowed to K_c outputs. Inference / load paths
     must read this flag to wire the network correctly.
@@ -92,18 +191,6 @@ def _is_chimera_moe(path: str) -> bool:
             return _metadata_flag_enabled(
                 md, "ss_use_chimera_hydra", case_insensitive_true=True
             )
-    except Exception:
-        return False
-
-
-def _is_step_expert_turbo(path: str) -> bool:
-    """Peek at safetensors metadata for per-step-expert turbo checkpoints."""
-    from safetensors import safe_open
-
-    try:
-        with safe_open(path, framework="pt") as f:
-            md = f.metadata() or {}
-            return _metadata_flag_enabled(md, "ss_turbo_per_step_expert")
     except Exception:
         return False
 
@@ -222,11 +309,12 @@ def attach_adapters(
             )
             network, weights_sd = lora_anima.create_network_from_weights(
                 multiplier=multiplier,
-                file=None,
+                file=lora_weight_path,
                 ae=None,
                 text_encoders=[],
                 unet=model,
                 weights_sd=lora_sd,
+                metadata=_read_lora_metadata(lora_weight_path),
                 for_inference=True,
             )
             network.apply_to([], model, apply_text_encoder=False, apply_unet=True)
@@ -348,6 +436,52 @@ def attach_adapters(
             model._step_expert_networks = step_nets
 
 
+def _merge_network_adapters_into_model(
+    model: anima_models.Anima,
+    args: argparse.Namespace,
+    capabilities: list[AdapterCapability],
+    *,
+    device: torch.device,
+    dtype: Optional[torch.dtype],
+) -> None:
+    merge_caps = _network_merge_capabilities(capabilities)
+    if not merge_caps:
+        return
+
+    from networks import lora_anima
+
+    for index, capability in enumerate(capabilities):
+        if capability not in merge_caps:
+            continue
+        lora_weight_path = capability.path
+        logger.info(
+            "Merging %s adapter through network merge path: %s",
+            capability.kind,
+            lora_weight_path,
+        )
+        lora_sd = _load_lora_state_dict_for_inference(args, lora_weight_path)
+        lora_sd = {k: v for k, v in lora_sd.items() if k.startswith("lora_unet_")}
+        if not lora_sd:
+            logger.warning(
+                "%s: no DiT adapter tensors left after filtering, skip %s",
+                capability.kind,
+                lora_weight_path,
+            )
+            continue
+        multiplier = _resolve_lora_multiplier_for_index(args.lora_multiplier, index)
+        network, weights_sd = lora_anima.create_network_from_weights(
+            multiplier=multiplier,
+            file=lora_weight_path,
+            ae=None,
+            text_encoders=[],
+            unet=model,
+            weights_sd=lora_sd,
+            metadata=_read_lora_metadata(lora_weight_path),
+            for_inference=True,
+        )
+        network.merge_to(None, model, weights_sd, dtype=dtype, device=device)
+
+
 def load_dit_model(
     args: argparse.Namespace,
     device: torch.device,
@@ -364,37 +498,10 @@ def load_dit_model(
 
     loading_device = device
 
-    # HydraLoRA moe (incl. FeRA-style stacked-experts global FEI): router-live
-    # inference can't go through static merge. Detect early so we can skip the
-    # baked-down path and take the dynamic hook route regardless of whether
-    # --pgraft is set. ``_is_hydra_moe`` matches the ``lora_ups.{i}.weight``
-    # key pattern shared by both shared-A Hydra and the plan2 stacked-experts
-    # save format.
-    step_expert_mode = False
-    if args.lora_weight is not None and len(args.lora_weight) > 0:
-        se_flags = [_is_step_expert_turbo(p) for p in args.lora_weight]
-        if any(se_flags):
-            if not all(se_flags) or len(args.lora_weight) > 1:
-                raise ValueError(
-                    "Per-step-expert turbo must be loaded alone. Composing it "
-                    "with other LoRAs or static merge is unsupported."
-                )
-            step_expert_mode = True
-
-    hydra_mode = False
-    if args.lora_weight is not None and len(args.lora_weight) > 0:
-        hydra_flags = [
-            _is_hydra_moe(p) for p in args.lora_weight
-        ] if not step_expert_mode else []
-        if any(hydra_flags):
-            if not all(hydra_flags):
-                raise ValueError(
-                    "Mixing HydraLoRA moe files with regular LoRA files in a "
-                    "single --lora_weight list is not supported. The static "
-                    "merge + dynamic hook interaction is untested. Pass them "
-                    "in separate invocations."
-                )
-            hydra_mode = True
+    capabilities = _classify_adapter_capabilities(args.lora_weight)
+    _validate_adapter_capabilities(capabilities)
+    step_expert_mode = any(cap.kind == "StepExpert LoRA" for cap in capabilities)
+    hydra_mode = any(cap.kind == "HydraLoRA" for cap in capabilities)
 
     # P-GRAFT: load without LoRA merge, attach dynamic hooks instead
     pgraft_mode = (
@@ -403,18 +510,26 @@ def load_dit_model(
         and len(args.lora_weight) > 0
     )
 
-    # load LoRA weights (skip static merge for P-GRAFT, HydraLoRA moe, and
-    # per-step-expert turbo)
+    # Plain LoRA keeps the memory-efficient base-load merge. Richer static
+    # variants (DoRA / LoHa / LoKr / VeRA / GLoRA) need their module-owned
+    # merge_to implementation, so they are merged after the base DiT is loaded.
     if (
         not pgraft_mode
         and not hydra_mode
         and not step_expert_mode
-        and args.lora_weight is not None
-        and len(args.lora_weight) > 0
+        and capabilities
     ):
         lora_weights_list = []
         lora_multipliers = []
         for index, lora_weight in enumerate(args.lora_weight):
+            capability = capabilities[index]
+            if capability.kind != "LoRA":
+                logger.info(
+                    "Skip legacy static LoRA merge for %s adapter: %s",
+                    capability.kind,
+                    lora_weight,
+                )
+                continue
             logger.info(f"Loading LoRA weight from: {lora_weight}")
             lora_sd = _load_lora_state_dict_for_inference(
                 args, lora_weight
@@ -463,6 +578,15 @@ def load_dit_model(
     else:
         logger.info(f"Move model to device: {device}")
         model.to(device)
+
+    if not pgraft_mode:
+        _merge_network_adapters_into_model(
+            model,
+            args,
+            capabilities,
+            device=device,
+            dtype=target_dtype,
+        )
 
     model.eval().requires_grad_(False)
 

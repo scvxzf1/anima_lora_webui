@@ -5,6 +5,13 @@
 const ctx = globalThis.ctx;
 
     // ── 状态轮询 ──
+    Object.assign(globalThis, {
+        trainingSidebarSummaryLastRefreshAt: 0,
+        trainingSidebarSummaryLastTaskId: '',
+        trainingSidebarSummaryLastStatus: '',
+        trainingSidebarSummaryRefreshPromise: null,
+    });
+
     globalThis.trainingStatusPollDelayMs = function trainingStatusPollDelayMs() {
         const visible = !document.hidden;
         const wsOpen = ws?.readyState === WebSocket.OPEN;
@@ -67,6 +74,7 @@ const ctx = globalThis.ctx;
                     logs_dir: status.logs_dir,
                 });
                 applyStatusSnapshotFallbacks(status);
+                refreshTrainingSidebarSummariesFromPoll(status);
                 if ((status.last_log_id || 0) > trainingRuntime.lastLogId) {
                     await replayTrainingLogs();
                 } else if (forceReplayMetrics || isLiveRunningState()) {
@@ -87,6 +95,34 @@ const ctx = globalThis.ctx;
             trainingStatusPollPromise = null;
             scheduleStatusPoll();
         }
+    }
+
+    globalThis.refreshTrainingSidebarSummariesFromPoll = function refreshTrainingSidebarSummariesFromPoll(status = {}) {
+        if (location.protocol === 'file:') return null;
+        const taskId = String(status.task_id || '').trim();
+        const state = String(status.status || '').trim();
+        const live = isLiveRunningState(state);
+        const knownTask = taskId && Array.isArray(historyTasks)
+            && historyTasks.some((task) => String(task.id || '') === taskId);
+        const taskChanged = taskId && taskId !== trainingSidebarSummaryLastTaskId;
+        const statusChanged = taskId && state && state !== trainingSidebarSummaryLastStatus;
+        const now = Date.now();
+        const stale = now - trainingSidebarSummaryLastRefreshAt >= 15000;
+        const shouldRefresh = taskChanged || statusChanged || (taskId && !knownTask) || (live && stale);
+        if (!shouldRefresh) return trainingSidebarSummaryRefreshPromise;
+        if (trainingSidebarSummaryRefreshPromise) return trainingSidebarSummaryRefreshPromise;
+        trainingSidebarSummaryLastTaskId = taskId || trainingSidebarSummaryLastTaskId;
+        trainingSidebarSummaryLastStatus = state || trainingSidebarSummaryLastStatus;
+        trainingSidebarSummaryLastRefreshAt = now;
+        trainingSidebarSummaryRefreshPromise = Promise.all([
+            loadTrainingQueue(),
+            loadTrainingHistoryList(),
+        ]).catch((e) => {
+            appendLog(`[状态] 刷新训练侧栏失败: ${e.message}`);
+        }).finally(() => {
+            trainingSidebarSummaryRefreshPromise = null;
+        });
+        return trainingSidebarSummaryRefreshPromise;
     }
 
     globalThis.applyStatusSnapshotFallbacks = function applyStatusSnapshotFallbacks(status = {}) {

@@ -11,14 +11,10 @@ The trainer is bucket-agnostic (single population μ_g, aspect_emb pinned
 to zero) — see `project_dcw_bucket_prior_cosmetic` memory. Per-bucket
 sampling is kept only to balance the prompt pool across aspect buckets.
 
-Reverse trajectories are collected with `--baseline_lambda 0.01`
-(one_minus_sigma) baked in, matching `make test-dcw`'s scalar default.
-The head therefore learns the residual α̂ on top of that scalar; at
-inference the calibrator applies `0.01·(1−σ)` on every step plus
-`α̂·gain·(1−σ)` once the head has fired. No dead-zone mismatch — g_obs
-is observed on the same trajectory inference will use, and warmup steps
-get the same correction as the rest. Override with `--baseline_lambda 0`
-to fall back to the legacy no-DCW baseline.
+Reverse trajectories are collected with `--baseline_lambda 0.0` by
+default, so the head learns from a no-DCW baseline pool. Pass
+`--baseline_lambda 0.01` when you deliberately want to calibrate residual
+α̂ on top of `make test-dcw`'s scalar smoke-run default.
 
 Incremental gathers: each measure_bias run drops a `manifest.json` listing
 the (stem, seed) pairs it collected. On every subsequent `make dcw`,
@@ -161,18 +157,14 @@ def cmd_dcw(extra):
     """Sample baseline trajectories per bucket, then train fusion head.
 
     Generates ``--n_images`` × ``--n_seeds`` baseline trajectories per
-    bucket (default 130×1) into ``output/dcw/``, then trains the head on
+    bucket (default 8×2) into ``output/dcw/``, then trains the head on
     the pooled rows. Buckets only stratify the prompt pool — the trainer
     aggregates them.
 
-    Defaults reflect the 2026-05-05 findings: prompt breadth dominates
-    seed multiplicity for r_α (single-seed labels carry only ~13% noise
-    floor at production target_window 7:; seed-mean averaging is
-    net-harmful at this data scale — see project_dcw_seed_variance_dominates).
-    n_images=130 is capped at the rarest top-5 bucket so all buckets stay
-    aspect-balanced (132 stems available for 1248×832). ``--shuffle_seed=0``
-    deterministically randomizes selection across the cache's 14×
-    headroom (2477 stems vs 175 previously sampled).
+    The wrapper keeps the default calibration small enough for routine
+    maintenance; pass ``--n_images`` / ``--n_seeds`` through ``make dcw
+    ARGS="..."`` when you want the larger production pool. ``--shuffle_seed=0``
+    deterministically randomizes selection across the available cache.
 
     Other extra args pass through to every measure_bias invocation
     (--dit, --lora_weight, --pooled_text_proj '', --guidance_scale, etc.).
@@ -181,9 +173,8 @@ def cmd_dcw(extra):
     n_seeds, extra = _pop_kv(extra, "--n_seeds", "2")
     shuffle_seed, extra = _pop_kv(extra, "--shuffle_seed", "0")
     label, extra = _pop_kv(extra, "--label", "make-dcw")
-    # Match make-test-dcw's default scalar so the trained head learns
-    # the residual α̂ on top — kills the v4 dead-zone mismatch (head
-    # observes / acts on the same trajectory inference will).
+    # Default to the clean no-DCW baseline pool. Pass --baseline_lambda 0.01
+    # to collect residual data on top of make-test-dcw's scalar smoke default.
     baseline_lambda, extra = _pop_kv(extra, "--baseline_lambda", "0.0")
 
     allow_repeats, extra = _pop_flag(extra, "--allow_repeats")
@@ -277,5 +268,5 @@ def cmd_dcw(extra):
 
 
 def cmd_dcw_train(extra):
-    """Train-only on existing pool (no sampling, ~30s)."""
+    """Train-only on the existing output/dcw pool (no sampling, ~30s)."""
     run([sys.executable, "scripts/dcw/train_fusion_head.py", *extra])

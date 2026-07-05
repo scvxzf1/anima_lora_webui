@@ -1,4 +1,16 @@
-# Embedding Inversion
+# Embedding Inversion (historical)
+
+> Current status: the old `make invert`, `make invert-ref`, `exp-test-ref`,
+> `archive/inversion/invert_embedding.py`, and inference `--prefix_weight`
+> paths are not active commands in this tree. The runnable inversion-related
+> probe is now:
+>
+> ```bash
+> python tasks.py exp-invert-directedit
+> ```
+>
+> It runs `scripts/inversion/invert_postfix_tail.py`, then compares DirectEdit
+> dry-mode output with and without the learned postfix tail.
 
 Finds the optimal text embedding (`crossattn_emb`) for a target image by optimizing in the post-T5, pre-DiT embedding space. The frozen DiT acts as a fixed decoder — only the embedding is updated via gradient descent on the flow-matching loss.
 
@@ -7,22 +19,11 @@ This reveals "how the DiT interprets the image" in embedding space, producing a 
 ## Quick start
 
 ```bash
-# Preprocess images first (caches latents + text encoder outputs)
-make preprocess
-
-# Run inversion on 1 random image (INVERT_N=10 for 10)
-make invert
+python tasks.py exp-invert-directedit
 ```
 
-Or with a single image:
-
-```bash
-python archive/inversion/invert_embedding.py \
-    --image path/to/image.png \
-    --dit models/diffusion_models/anima-base-v1.0.safetensors \
-    --vae models/vae/qwen_image_vae.safetensors \
-    --output_dir inversions
-```
+Optional environment overrides include `REF_IMAGE`, `N_IMAGES`, and `K`; see
+`python tasks.py --help` for the live command summary.
 
 ## How it works
 
@@ -41,22 +42,15 @@ Each step samples `timesteps_per_step × grad_accum` random timesteps. The embed
 
 Encodes the image via VAE on the fly. Requires `--vae`. The VAE is loaded, used, and freed before the DiT loads.
 
-```bash
-python archive/inversion/invert_embedding.py --image photo.png \
-    --dit models/diffusion_models/anima-base-v1.0.safetensors \
-    --vae models/vae/qwen_image_vae.safetensors \
-    --init_prompt "a photo of a cat" --text_encoder models/text_encoders/qwen_3_06b_base.safetensors
-```
+Historical script path: `archive/inversion/invert_embedding.py --image ...`
+is not a current task entry.
 
 ### Batch from preprocessed directory (`--image_dir`)
 
 Uses cached latents (`.npz`) and optionally cached text encoder outputs (`_anima_te.safetensors`) from `make preprocess`. No VAE needed at runtime. Skips images that already have an output file.
 
-```bash
-python archive/inversion/invert_embedding.py --image_dir post_image_dataset \
-    --dit models/diffusion_models/anima-base-v1.0.safetensors \
-    --num_images 10 --shuffle
-```
+Historical script path: `archive/inversion/invert_embedding.py --image_dir ...`
+is not a current task entry.
 
 ## VRAM modes
 
@@ -68,7 +62,8 @@ python archive/inversion/invert_embedding.py --image_dir post_image_dataset \
 
 `torch.compile` provides significant memory savings through operator fusion, often outweighing block swap for small swap counts. Block swap is useful when the model doesn't fit on GPU at all.
 
-Override in the Makefile: `make invert INVERT_SWAP=12` or `make invert INVERT_SWAP=-1`.
+Historical Make overrides such as `make invert INVERT_SWAP=12` are no longer
+registered.
 
 ## Embedding initialization
 
@@ -85,12 +80,8 @@ Priority order (first match wins):
 
 Add `--verify` to generate an image from the inverted embedding after optimization (requires `--vae`):
 
-```bash
-python archive/inversion/invert_embedding.py --image photo.png \
-    --dit models/diffusion_models/anima-base-v1.0.safetensors \
-    --vae models/vae/qwen_image_vae.safetensors \
-    --verify --verify_steps 50 --verify_seed 42
-```
+Historical script path: `archive/inversion/invert_embedding.py --verify ...`
+is not a current task entry.
 
 ## Block gradient logging
 
@@ -139,22 +130,14 @@ inversions/
 
 A "referencer" variant of embedding inversion: instead of optimizing all 512 token positions of the crossattn embedding, freeze a user-supplied text template and optimize **only K consecutive token vectors** against a single reference image. The resulting K vectors capture the image's subject/style in T5-compatible space; at inference they're spliced into a fresh user prompt, letting the subject travel into new scenes.
 
-This is the original Textual Inversion recipe (Gal et al. 2022) ported to Anima. Because Anima already has a `prefix` tuning network (`networks/methods/postfix.py`, prefix mode) with inference-side splicing via `inference.py --prefix_weight`, reference inversion reuses that entire runtime — **no inference changes required**. It's training-free in the meaningful sense: no dataset, just a single reference image, single-GPU optim, seconds-to-minutes per image.
+This is the original Textual Inversion recipe (Gal et al. 2022) ported to Anima. This section is kept as historical design context only: the old inference-side splicing flag `--prefix_weight` was removed, and the old reference-inversion Make targets are not registered in `tasks.py`.
 
 ## Quick start
 
-```bash
-# Pick a random image from post_image_dataset/, invert with K=8 slots
-make invert-ref
-
-# Or use a specific reference
-make invert-ref REF_IMAGE=path/to/ref.png
-
-# Render a test image using the inverted prefix
-make exp-test-ref
-```
-
-Both commands also work via `python tasks.py invert-ref` / `exp-test-ref` on Windows.
+The old quick-start commands (`make invert-ref`, `make exp-test-ref`,
+`python tasks.py invert-ref`, `python tasks.py exp-test-ref`) are no longer
+registered. Use `python tasks.py exp-invert-directedit` for the current
+postfix-tail inversion probe.
 
 ## How it differs from full inversion
 
@@ -162,7 +145,7 @@ Both commands also work via `python tasks.py invert-ref` / `exp-test-ref` on Win
 |---|---|---|
 | Variables optimized | All 512 crossattn positions | K consecutive positions (default K=8) |
 | Output key | `crossattn_emb` (512×D) | `prefix_embeds` (K×D) |
-| Conditioning at inference | Replaces full crossattn | Spliced into front of user's prompt (via `--prefix_weight`) |
+| Conditioning at inference | Replaces full crossattn | Historically spliced into front of user's prompt via removed `--prefix_weight` |
 | Composes with user prompt | No (full embed is subject-specific) | Yes (user controls 512-K positions) |
 | Compose with other LoRAs | Not designed for it | Yes — doesn't touch DiT weights |
 | Typical use | Analysis / reconstruction | Subject/style reference for new scenes |
@@ -177,9 +160,12 @@ Both commands also work via `python tasks.py invert-ref` / `exp-test-ref` on Win
 
 The assembly in step 4 byte-for-byte matches what `PostfixNetwork.prepend_prefix` does at inference — trains exactly what runtime splices.
 
-## Commands
+## Historical commands
 
 ### `make invert-ref`
+
+This target is no longer registered. The variables below are kept only to
+explain the old design.
 
 | Env var | Default | Description |
 |---|---|---|
@@ -193,22 +179,18 @@ The assembly in step 4 byte-for-byte matches what `PostfixNetwork.prepend_prefix
 | `REF_SAVE_PATH` | — | Overrides `REF_NAME` with an explicit path |
 | `REF_SWAP` | `0` | `blocks_to_swap` (same semantics as `invert`) |
 
-When `REF_IMAGE` is unset, a random image is picked from `REF_IMAGE_DIR` and **frozen for the whole target run** (one image, not a different pick per shell expansion). Re-running `make invert-ref` picks a new random image. Explicit `REF_IMAGE=...` always wins.
+Historically, when `REF_IMAGE` was unset, a random image was picked from
+`REF_IMAGE_DIR` and frozen for the whole target run.
 
 ### `make exp-test-ref`
 
-Runs inference using the most recently modified `output/anima_ref*.safetensors` via `--prefix_weight`. Inherits the `TEST_COMMON` prompt and flags from the Makefile, so you test the prefix against your usual reference prompt.
-
-Pin a specific reference instead of the latest:
-
-```bash
-python inference.py --prefix_weight output/anima_ref_cat.safetensors \
-    --prompt "..." [rest of TEST_COMMON flags]
-```
+This target is no longer registered. It used the removed `--prefix_weight`
+runtime path and should not be used as current guidance.
 
 ## Direct script usage
 
-```bash
+```text
+# Historical only; archive/inversion/invert_reference.py is not a current task entry.
 python archive/inversion/invert_reference.py \
     --image path/to/ref.png \
     --dit models/diffusion_models/anima-base-v1.0.safetensors \
@@ -249,7 +231,8 @@ Single `.safetensors` holding one tensor:
 
 Metadata includes `ss_network_module`, `ss_mode=prefix`, `ss_num_postfix_tokens=K`, `ss_embed_dim=D`, plus inversion-specific fields (`ss_reference_image`, `ss_template`, `ss_placeholder_char_offset`, `ss_best_loss`, `ss_steps`, `ss_lr`, `ss_seed`).
 
-This makes the file interchangeable with any prefix-mode checkpoint: the existing `inference.py --prefix_weight` loader reads it with no branching.
+Historically this made the file interchangeable with prefix-mode checkpoints;
+the `inference.py --prefix_weight` loader no longer exists.
 
 ## Caveats and future work
 

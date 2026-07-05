@@ -4,6 +4,26 @@ const ctx = globalThis.ctx;
 const BASE_REFRESH_CONTINUE_SOURCE = globalThis.refreshContinueTrainingSourceCompatibility?.bind(globalThis);
 const BASE_SELECT_CONTINUE_WEIGHT = globalThis.selectContinueLoraWeight?.bind(globalThis);
 const BASE_CLEAR_CONTINUE_SOURCE = globalThis.clearContinueTrainingSource?.bind(globalThis);
+const CONFIG_TRAINING_SOURCE_DOM_CONTRACT = Object.freeze({
+    required: Object.freeze([
+        'continue-training-source',
+        'continue-training-source-summary',
+        'config-full-resume-panel',
+        'config-full-resume-task-select',
+        'config-full-resume-checkpoint-select',
+        'config-full-resume-summary',
+        'config-weight-hotstart-panel',
+        'config-weight-hotstart-detail',
+        'config-training-source-status',
+    ]),
+    optional: Object.freeze([
+        'btn-refresh-config-full-resume',
+        'btn-open-continue-lora-dialog',
+        'btn-clear-continue-lora-source',
+        'preflight-dialog',
+    ]),
+});
+globalThis.CONFIG_TRAINING_SOURCE_DOM_CONTRACT = CONFIG_TRAINING_SOURCE_DOM_CONTRACT;
 function ensureTrainingSourceState() {
     if (!globalThis.trainingSourceState) {
         globalThis.trainingSourceState = { mode: 'fresh', audit_status: 'ok' };

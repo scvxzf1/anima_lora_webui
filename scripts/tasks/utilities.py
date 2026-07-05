@@ -140,6 +140,7 @@ def cmd_vendor_sync(extra):
     Run before bumping a custom-node version / publishing — the bundled
     vendor copies (tagger + directedit) are how the ComfyUI nodes import
     their inference subset when not running inside the anima_lora repo.
+    Pass --check to compare in a temporary directory without touching _vendor/.
     """
     run([PY, "scripts/sync_vendor.py", *extra])
 

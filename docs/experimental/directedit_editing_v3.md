@@ -9,7 +9,7 @@ The Anima Tagger arm ("phase v3.0") is documented separately in
 
 | Component | State |
 |---|---|
-| `library/inference/directedit.py` — invert + edit_forward primitive | **wired** |
+| `library/inference/editing/directedit.py` — invert + edit_forward primitive | **wired** |
 | V-injection (paper Eq. 13) | **wired** in both CLI and ComfyUI node |
 | ψ_src tagger (Anima Tagger), CLI side | **wired** |
 | `scripts/edit.py` — standalone CLI | **wired** |
@@ -45,7 +45,7 @@ Anima conventions used:
   `anima(latents, t_expand, embed, padding_mask=...)` where `embed` is
   already-preprocessed crossattn (post-T5, 512-padded).
 
-## The primitive — `library/inference/directedit.py`
+## The primitive — `library/inference/editing/directedit.py`
 
 Self-contained module (~414 LoC). Two public entry points consumed by
 all three call sites (CLI, make-target driver, ComfyUI node):
@@ -118,9 +118,9 @@ Notable flags:
 |---|---|---|
 | `--infer_steps` | 28 | Both inversion and edit step count. |
 | `--flow_shift` | 1.0 | Anima base-v1.0 standard. |
-| `--guidance_scale` | 2.0 | CFG on the edit (target) pass. |
+| `--guidance_scale` | 4.0 | CFG on the edit (target) pass. |
 | `--invert_guidance` | 1.0 | CFG during inversion. Raise only if you need the inverted noise to match a high-CFG generation seed. |
-| `--t_inj` | 12 | First N steps inject src self-attn V into tar (paper Eq. 13). 0 = pure ΔZ-anchored edit. Typical paper setting `T/10..T/3`. Higher = stronger source-feature preservation, weaker edit leverage. |
+| `--t_inj` | 2 | First N steps inject src self-attn V into tar (paper Eq. 13). 0 = pure ΔZ-anchored edit. Typical paper setting `T/10..T/3`. Higher = stronger source-feature preservation, weaker edit leverage. |
 | `--t_inj_blocks` | `all_but_last` | `all`, `all_but_last`, or comma/range string (`8-22`, `8,9,12,14-18`). |
 | `--image_size` | bucket-snap | Defaults to closest `CONSTANT_TOKEN_BUCKETS` entry by aspect ratio. |
 | `--cached_embed` | unset | Sanity-check mode: load preprocessed `_anima_te.safetensors` cache and run one invert + edit pass per stored variant with ψ_tar == ψ_src. Skips the text encoder entirely. |

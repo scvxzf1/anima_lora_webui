@@ -44,7 +44,7 @@
 | [methods/timestep_mask.md](methods/timestep_mask.md) | T-LoRA 时间步 rank mask，配合 [structure/timestep-mask.md](structure/timestep-mask.md) 阅读 |
 | [methods/reft.md](methods/reft.md) | ReFT 残差流表示编辑，配合 [structure/reft.md](structure/reft.md) 阅读 |
 | [methods/mod-guidance.md](methods/mod-guidance.md) | Modulation guidance，基于 pooled-text AdaLN steering |
-| [methods/invert.md](methods/invert.md) | Embedding inversion 与 K-slot reference inversion |
+| [methods/invert.md](methods/invert.md) | 历史 inversion 说明；当前可运行入口是 `exp-invert-directedit` 探针 |
 | [methods/spectrum.md](methods/spectrum.md) | Spectrum 推理加速，配合 [structure/spectrum.md](structure/spectrum.md) 阅读 |
 | [methods/dcw.md](methods/dcw.md) | DCW：post-step SNR-t bias correction |
 | [methods/smc_cfg.md](methods/smc_cfg.md) | SMC-CFG / CFG-Ctrl 风格控制器 |
@@ -60,6 +60,7 @@ Postfix 当前入口在 [guidelines/training.md#postfix](guidelines/training.md#
 | 文档 | 说明 |
 |------|------|
 | [experimental/anima_tagger.md](experimental/anima_tagger.md) | Anima Tagger，多标签 tagger 与 DirectEdit 文本入口 |
+| [experimental/byg.md](experimental/byg.md) | BYG unpaired instruction-editing：训练可用，专用推理仍是占位 |
 | [experimental/chimera-hydra.md](experimental/chimera-hydra.md) | ChimeraHydra 双池 MoE，配合 [structure/chimera-hydra.md](structure/chimera-hydra.md) 阅读 |
 | [experimental/directedit_editing_v3.md](experimental/directedit_editing_v3.md) | DirectEdit v3，flow-inversion 图像编辑 |
 | [experimental/dpdmd.md](experimental/dpdmd.md) | DP-DMD / Turbo Anima 少步蒸馏，配合 [structure/dpdmd.md](structure/dpdmd.md) 阅读 |

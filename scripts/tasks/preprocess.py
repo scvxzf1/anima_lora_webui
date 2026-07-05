@@ -837,6 +837,8 @@ def cmd_preprocess_config(extra):
                 "prefer_json": prefer_json,
                 "caption_source_mode": caption_source_mode,
                 "caption_extension": caption_extension,
+                "recursive": subset.get("recursive", dataset.get("recursive", True)),
+                "path_pattern": subset.get("path_pattern", dataset.get("path_pattern", "*")),
             })
     if not subset_entries:
         raise SystemExit(f"no [[datasets.subsets]] with image_dir in {cfg_path}")
@@ -849,6 +851,10 @@ def cmd_preprocess_config(extra):
         json_args = ["--prefer_json_caption"] if prefer_json else []
         source_args = _caption_source_args(entry.get("caption_source_mode"), prefer_json)
         caption_extension_args = ["--caption_extension", str(entry.get("caption_extension") or ".txt")]
+        filter_row = {
+            "recursive": entry.get("recursive", True),
+            "path_pattern": entry.get("path_pattern", "*"),
+        }
         run(
             [
                 PY,
@@ -863,7 +869,8 @@ def cmd_preprocess_config(extra):
                 "0",
                 "--bucket_reso_steps",
                 "64",
-                "--recursive",
+                *_recursive_args(filter_row),
+                *_path_pattern_args(filter_row),
                 *rest,
             ]
         )
@@ -884,7 +891,8 @@ def cmd_preprocess_config(extra):
                 dtype,
                 "--chunk_size",
                 "64",
-                "--recursive",
+                *_recursive_args(filter_row),
+                *_path_pattern_args(filter_row),
             ]
         )
         run(
@@ -908,6 +916,7 @@ def cmd_preprocess_config(extra):
                 *caption_extension_args,
                 *json_args,
                 *_diff_output_preservation_args(explicit_dop_args),
-                "--recursive",
+                *_recursive_args(filter_row),
+                *_path_pattern_args(filter_row),
             ]
         )

@@ -3276,6 +3276,27 @@ def test_history_list_keeps_explicit_zero_jsonl_counts(tmp_path, monkeypatch):
     assert task["metric_count"] == 0
 
 
+def test_history_list_counts_running_jsonl_even_when_meta_has_zero(tmp_path, monkeypatch):
+    history_dir = tmp_path / "history"
+    task_id = "20260524-131154-training-imported-running"
+    task_dir = _write_group_task(
+        history_dir,
+        task_id,
+        job="training",
+        state="running",
+        started_at=1000.0,
+        history_meta={"log_count": 0, "metric_count": 0},
+    )
+    (task_dir / "logs.jsonl").write_text('{"line":"one"}\n{"line":"two"}\n', encoding="utf-8")
+    (task_dir / "metrics.jsonl").write_text('{"loss":0.2}\n', encoding="utf-8")
+    monkeypatch.setattr(training_service, "HISTORY_DIR", history_dir)
+
+    task = TrainingService(web.Application()).list_history_tasks(include_archived=True)[0]
+
+    assert task["log_count"] == 2
+    assert task["metric_count"] == 1
+
+
 def test_history_list_binds_preprocess_collection_to_training_group(tmp_path, monkeypatch):
     history_dir = tmp_path / "history"
     history_meta = {

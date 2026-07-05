@@ -109,12 +109,12 @@ COMMANDS = {
     ),
     "dcw": (
         dcw.cmd_dcw,
-        "Calibrate DCW v4: sample 5 aspect buckets (default 130×1 seeds, "
+        "Calibrate DCW v4: sample 5 aspect buckets (default 8×2 seeds, "
         "shuffle_seed=0) + train fusion head",
     ),
     "dcw-train": (
         dcw.cmd_dcw_train,
-        "Train-only on existing bench/dcw/results/ pool (~30s, no sampling)",
+        "Train-only on existing output/dcw/ pool (~30s, no sampling)",
     ),
     "test-spectrum-dcw": (
         inference.cmd_test_spectrum_dcw,
@@ -261,7 +261,7 @@ COMMANDS = {
     ),
     "vendor-sync": (
         utilities.cmd_vendor_sync,
-        "Refresh custom_nodes/*/_vendor/ from live library/* (run before publishing nodes)",
+        "Refresh custom_nodes/*/_vendor/ from live library/*; pass --check for read-only drift detection",
     ),
     # ── Experimental ──────────────────────────────────────────────────
     # Unstable methods kept under exp-* so they don't pollute the main command

@@ -7,7 +7,7 @@ import logging
 import torch
 from safetensors.torch import load_file
 
-from library.inference.models import _is_chimera_moe, _is_hydra_moe
+from library.inference.models import _classify_adapter_capability, _is_chimera_moe
 
 log = logging.getLogger("dcw-bench")
 
@@ -21,7 +21,9 @@ def attach_loras(
 ) -> None:
     from networks import lora_anima
 
-    hydra_flags = [_is_hydra_moe(p) for p in paths]
+    hydra_flags = [
+        _classify_adapter_capability(p).kind == "HydraLoRA" for p in paths
+    ]
     if any(hydra_flags) and not all(hydra_flags):
         raise SystemExit(
             "Mixing HydraLoRA moe files with regular LoRA files in --lora_weight "

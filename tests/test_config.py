@@ -22,8 +22,12 @@ import toml
 
 from library.config import schema as config_schema
 from library.config.io import _flatten_toml, _render_merged_toml, load_method_preset
-from library.env import get_configs_root
+from library.env import project_root
 from tests.conftest import iter_method_names
+
+
+def _repo_configs_root() -> Path:
+    return project_root() / "configs"
 
 
 # ---------------------------------------------------------------------------
@@ -441,17 +445,18 @@ METHODS = list(iter_method_names())
 
 
 def _load_preset_names() -> list[str]:
-    configs_root = get_configs_root()
+    configs_root = _repo_configs_root()
     return list(toml.load(configs_root / "presets.toml").keys())
 
 
 @pytest.mark.parametrize("method", METHODS)
 def test_method_configs_clean(populated_parser, method: str, caplog):
     presets = _load_preset_names()
+    configs_root = _repo_configs_root()
     for preset in presets:
         caplog.clear()
         with caplog.at_level(logging.WARNING):
-            load_method_preset(method, preset)
+            load_method_preset(method, preset, configs_dir=str(configs_root))
         offenders = [
             rec.getMessage()
             for rec in caplog.records
@@ -461,7 +466,7 @@ def test_method_configs_clean(populated_parser, method: str, caplog):
 
 
 def test_low_vram_blockswap_preset_is_available(populated_parser):
-    configs_root = get_configs_root()
+    configs_root = _repo_configs_root()
     preset = toml.load(configs_root / "presets.toml")["low_vram_blockswap"]
     assert preset["blocks_to_swap"] == 8
     assert preset["gradient_checkpointing"] is True
@@ -474,7 +479,7 @@ def test_low_vram_blockswap_preset_is_available(populated_parser):
 
 
 def test_balanced_16g_preset_is_block_swap_first(populated_parser):
-    configs_root = get_configs_root()
+    configs_root = _repo_configs_root()
     preset = toml.load(configs_root / "presets.toml")["balanced_16g"]
     assert preset["blocks_to_swap"] == 12
     assert preset["gradient_checkpointing"] is False
@@ -496,7 +501,7 @@ def test_balanced_16g_preset_is_block_swap_first(populated_parser):
 
 
 def test_gui_lora_respects_balanced_16g_blockswap(populated_parser):
-    configs_root = get_configs_root()
+    configs_root = _repo_configs_root()
     merged = load_method_preset(
         "lora",
         "balanced_16g",
@@ -513,7 +518,7 @@ def test_gui_lora_respects_balanced_16g_blockswap(populated_parser):
 
 
 def test_provenance_returned():
-    configs_root = get_configs_root()
+    configs_root = _repo_configs_root()
     merged, provenance = load_method_preset(
         "lora", "default", configs_dir=str(configs_root), return_provenance=True
     )
@@ -533,7 +538,7 @@ def _reparse_without_comments(text: str) -> dict:
 def test_render_roundtrips_to_valid_toml(populated_parser):
     import train
 
-    configs_root = get_configs_root()
+    configs_root = _repo_configs_root()
     parser = train.setup_parser()
     config_schema.populate_schema(parser, extras=train.build_network_extras())
 
@@ -554,7 +559,7 @@ def test_render_roundtrips_to_valid_toml(populated_parser):
 def test_render_header_includes_method_and_preset(populated_parser):
     import train
 
-    configs_root = get_configs_root()
+    configs_root = _repo_configs_root()
     parser = train.setup_parser()
     config_schema.populate_schema(parser, extras=train.build_network_extras())
 

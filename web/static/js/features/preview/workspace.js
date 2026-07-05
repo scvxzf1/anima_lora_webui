@@ -1,4 +1,4 @@
-import { previewSourceLabel } from './state.js?v=module-bootstrap-20260704-2';
+import { previewSourceLabel } from './state.js?v=module-bootstrap-20260705-1';
 
 export function createPreviewWorkspace({ state, deps, closePreviewImageDialog }) {
     function previewWorkspace() {

@@ -510,7 +510,10 @@ const LOG_RENDER_BATCH_SIZE = 250;
         const line = record?.line || '';
         const parsed = parseMetricsFromProgressLine(line);
         if (!parsed || parsed.loss === undefined) return;
-        updateMetrics({ ...parsed, ts: record.ts });
+        // tqdm 日志里的 s/it 是累计均速，会被前期编译/慢步骤拖高；实时监控速度只信结构化 metrics。
+        const metrics = { ...parsed };
+        delete metrics.rate;
+        updateMetrics({ ...metrics, ts: record.ts });
     }
 
     globalThis.setLogStatus = function setLogStatus(text, state = '') {

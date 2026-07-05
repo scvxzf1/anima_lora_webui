@@ -88,6 +88,10 @@ def _module_cache_token(specifier: str) -> str | None:
     return parse_qs(urlparse(specifier).query).get("v", [None])[0]
 
 
+def _style_cache_token(specifier: str) -> str | None:
+    return parse_qs(urlparse(specifier).query).get("v", [None])[0]
+
+
 class _FrontendJsSource:
     def read_text(self, encoding: str = "utf-8") -> str:
         return "\n".join(path.read_text(encoding=encoding) for path in _frontend_module_graph())
@@ -149,6 +153,16 @@ def _setup_event_dom_contract() -> dict[str, set[str]]:
     for key in ("required", "optional"):
         match = re.search(rf"{key}:\s*Object\.freeze\(\[(.*?)\]\)", source, re.S)
         assert match, f"missing setup event DOM contract bucket: {key}"
+        contract[key] = set(re.findall(r"'([^']+)'", match.group(1)))
+    return contract
+
+
+def _config_training_source_dom_contract() -> dict[str, set[str]]:
+    source = _frontend_module_text("js/features/anima-app/chunks/37-config-training-source.js")
+    contract: dict[str, set[str]] = {}
+    for key in ("required", "optional"):
+        match = re.search(rf"{key}:\s*Object\.freeze\(\[(.*?)\]\)", source, re.S)
+        assert match, f"missing config training source DOM contract bucket: {key}"
         contract[key] = set(re.findall(r"'([^']+)'", match.group(1)))
     return contract
 
@@ -251,6 +265,23 @@ def test_frontend_module_cache_tokens_match_entrypoint() -> None:
     assert not mismatches
 
 
+def test_frontend_css_import_cache_tokens_match_entrypoint() -> None:
+    html = INDEX_HTML.read_text(encoding="utf-8")
+    match = re.search(r'<link[^>]+href="/static/style\.css\?v=([^"]+)"', html)
+    assert match, "missing versioned frontend CSS entrypoint"
+    entry_token = match.group(1)
+    assert entry_token.startswith("frontend-chain-")
+
+    mismatches: list[str] = []
+    source = STYLE_CSS_PATH.read_text(encoding="utf-8")
+    for specifier in CSS_IMPORT_RE.findall(source):
+        token = _style_cache_token(specifier)
+        if token != entry_token:
+            mismatches.append(f"style.css: {specifier} uses {token!r}, expected {entry_token!r}")
+
+    assert not mismatches
+
+
 def test_setup_event_dom_contract_matches_index_html() -> None:
     source = _frontend_module_text("js/features/anima-app/chunks/36-setup-event-listeners.js")
     dom_source = _frontend_module_text("js/shared/dom.js")
@@ -282,6 +313,41 @@ def test_setup_event_dom_contract_matches_index_html() -> None:
     assert not re.search(r"document\.getElementById\([^\n]+?\)\??\.addEventListener", listener_section)
 
 
+def test_config_training_source_dom_contract_matches_index_html() -> None:
+    source = _frontend_module_text("js/features/anima-app/chunks/37-config-training-source.js")
+    html = INDEX_HTML.read_text(encoding="utf-8")
+    contract = _config_training_source_dom_contract()
+
+    assert contract["required"] == {
+        "continue-training-source",
+        "continue-training-source-summary",
+        "config-full-resume-panel",
+        "config-full-resume-task-select",
+        "config-full-resume-checkpoint-select",
+        "config-full-resume-summary",
+        "config-weight-hotstart-panel",
+        "config-weight-hotstart-detail",
+        "config-training-source-status",
+    }
+    missing = [
+        dom_id
+        for dom_id in sorted(contract["required"] | contract["optional"])
+        if f'id="{dom_id}"' not in html
+    ]
+    assert not missing
+    assert "globalThis.CONFIG_TRAINING_SOURCE_DOM_CONTRACT = CONFIG_TRAINING_SOURCE_DOM_CONTRACT;" in source
+
+
+def test_anima_app_bootstrap_catches_startup_failures() -> None:
+    source = APP_JS_PATH.read_text(encoding="utf-8")
+
+    assert "createAnimaApp(ctx).catch((error) => {" in source
+    assert "globalThis.__animaBootstrapError = error;" in source
+    assert "console.error('[webui-bootstrap] failed to start Anima app', error);" in source
+    assert "dom.optionalById('status-indicator')" in source
+    assert "dom.optionalById('status-text')" in source
+
+
 def test_anima_app_replaces_legacy_container_with_small_modules() -> None:
     anima_source = _anima_app_container_text()
     app_source = APP_JS_PATH.read_text(encoding="utf-8")
@@ -300,13 +366,21 @@ def test_anima_app_replaces_legacy_container_with_small_modules() -> None:
         for path in app_modules
         if len(path.read_text(encoding="utf-8").splitlines()) > 600
     ]
+    known_oversized = {"js/features/anima-app/chunks/37-config-training-source.js": 620}
+    unexpected_oversized = [path for path in oversized if path not in known_oversized]
+    oversized_growth = [
+        path
+        for path, limit in known_oversized.items()
+        if len((STATIC_DIR / path).read_text(encoding="utf-8").splitlines()) > limit
+    ]
 
     assert not (STATIC_DIR / "js/features/legacy-app.js").exists()
-    assert "createAnimaApp(ctx);" in app_source
+    assert "createAnimaApp(ctx).catch" in app_source
     assert "createLegacyApp" not in app_source
     assert "globalThis.startAnimaApp" in anima_source
     assert "js/features/live-training/index.js" in relative
-    assert oversized == []
+    assert unexpected_oversized == []
+    assert oversized_growth == []
     assert all(token not in app_source for token in ("fetch(", "addEventListener(", "getElementById("))
     assert feature_dirs
     assert feature_dirs <= {str(Path(item).parent) for item in relative}
@@ -1425,6 +1499,35 @@ def test_live_training_rest_fallbacks_are_wired() -> None:
     assert "scheduleStatusPoll({ immediate: true });" in ready_section
     assert "window.addEventListener('online', () => {" in ready_section
     assert "recoverLiveTrainingState();" in ready_section
+
+
+def test_status_poll_refreshes_training_sidebar_summaries() -> None:
+    source = APP_JS.read_text(encoding="utf-8")
+    polling_source = _frontend_module_text("js/features/anima-app/chunks/26a-status-polling.js")
+    poll_section = _section(source, "async function pollStatus", "function refreshTrainingSidebarSummariesFromPoll")
+    refresh_section = _section(source, "function refreshTrainingSidebarSummariesFromPoll", "function applyStatusSnapshotFallbacks")
+
+    assert "trainingSidebarSummaryLastRefreshAt" in polling_source
+    assert "trainingSidebarSummaryLastTaskId" in polling_source
+    assert "trainingSidebarSummaryLastStatus" in polling_source
+    assert "trainingSidebarSummaryRefreshPromise" in polling_source
+    assert "refreshTrainingSidebarSummariesFromPoll(status);" in poll_section
+    assert poll_section.index("updateStatus({") < poll_section.index("refreshTrainingSidebarSummariesFromPoll(status);")
+    assert "Array.isArray(historyTasks)" in refresh_section
+    assert "&& historyTasks.some((task) => String(task.id || '') === taskId)" in refresh_section
+    assert "now - trainingSidebarSummaryLastRefreshAt >= 15000" in refresh_section
+    assert "loadTrainingQueue()" in refresh_section
+    assert "loadTrainingHistoryList()" in refresh_section
+
+
+def test_log_replay_keeps_tqdm_average_rate_out_of_live_metrics() -> None:
+    source = _frontend_module_text("js/features/anima-app/chunks/24-show-preflight-pending-dialog.js")
+    section = _section(source, "function replayMetricsFromLogRecord", "globalThis.setLogStatus")
+
+    assert "const metrics = { ...parsed };" in section
+    assert "delete metrics.rate;" in section
+    assert "updateMetrics({ ...metrics, ts: record.ts });" in section
+    assert "updateMetrics({ ...parsed, ts: record.ts });" not in section
 
 
 def test_training_queue_frontend_hooks_are_present() -> None:

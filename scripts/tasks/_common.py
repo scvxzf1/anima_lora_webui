@@ -128,9 +128,8 @@ def _path_overrides() -> dict:
         os.environ.get("METHOD") or "",
         os.environ.get("METHODS_SUBDIR") or "methods",
     )
-    if _PATH_OVERRIDES_CACHE is not None:
-        if not runtime_config or _PATH_OVERRIDES_CACHE_KEY is None or _PATH_OVERRIDES_CACHE_KEY == cache_key:
-            return _PATH_OVERRIDES_CACHE
+    if _PATH_OVERRIDES_CACHE is not None and _PATH_OVERRIDES_CACHE_KEY == cache_key:
+        return _PATH_OVERRIDES_CACHE
     if runtime_config:
         runtime_path = Path(runtime_config)
         if not runtime_path.is_absolute():

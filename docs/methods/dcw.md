@@ -10,8 +10,8 @@ Paper: [Elucidating the SNR-t Bias of Diffusion Probabilistic Models](https://ar
 
 | Mode | What `λ` is | When to use |
 |---|---|---|
-| **scalar** (v0/v1) — `--dcw` | a single global constant tuned offline (default `−0.015`) | minimal/safe default; one-line ablation; fallback when v4 isn't calibrated |
-| **v4 learnable** — `--dcw_v4 <artifact>` | a function of `(aspect, prompt, observed prefix gap)` produced at runtime by a small MLP | per-prompt amplitude + per-trajectory steering; trained per checkpoint via `make dcw` |
+| **scalar** (v0/v1) — `--dcw` | a single global constant tuned offline (`inference.py` argparse default `−0.015`; canned `make test-dcw` overrides to `0.01`) | minimal/safe default; one-line ablation; fallback when v4 isn't calibrated |
+| **v4 learnable** — `--dcw_calibrator <artifact>` | a function of `(aspect, prompt, observed prefix gap)` produced at runtime by a small MLP | per-prompt amplitude + per-trajectory steering; trained per checkpoint via `make dcw` |
 
 The math at the apply site is identical:
 
@@ -30,7 +30,7 @@ This page contains the current v4 derivation, gates, and fallback ladder.
 ## Quick start
 
 ```bash
-make test-dcw                           # latest LoRA + scalar λ=−0.015 (defaults baked in)
+make test-dcw                           # latest LoRA + scalar λ=0.01 (task target override)
 make test-dcw-v4                        # latest LoRA + v4 controller (auto-resolves latest fusion_head)
 make test-spectrum-dcw                  # Spectrum + scalar DCW composed
 ```
@@ -44,10 +44,10 @@ python inference.py --dcw                                      \
     ...  # other inference args
 ```
 
-v4 mode (auto-resolves the most-recent `fusion_head.safetensors` under `post_image_dataset/dcw/` first, then `bench/dcw/results/`):
+v4 mode (auto-resolves the most-recent `fusion_head.safetensors` under `output/dcw/` first, then `bench/dcw/results/`; `--dcw_v4` is still accepted as a legacy alias):
 
 ```bash
-python inference.py --dcw_v4 auto --dcw_v4_disable_shrinkage   \
+python inference.py --dcw_calibrator auto --dcw_v4_disable_shrinkage   \
     ...
 ```
 
@@ -60,24 +60,24 @@ Three input channels feed one shared MLP. (1) **Aspect prior** — per-bucket pr
 ## Calibration: `make dcw`
 
 ```bash
-make dcw                                # full calibration: ~3-5h on a 5060 Ti
-make dcw --n_images 32 --n_seeds 2      # smaller pool, ~1h, lower σ̂² fidelity
+make dcw                                # default calibration: 8 prompts × 2 seeds × 5 aspect buckets
+make dcw ARGS="--n_images 32 --n_seeds 2"  # larger pool; pass args through Make's ARGS=
 make dcw-train                          # train-only on existing pool (~30s)
 ```
 
-`make dcw` runs `scripts/dcw/measure_bias.py --dump_per_sample_gaps` against three aspect buckets (1024², 832×1248, 1248×832) at the production env (CFG=4, mod_w=3.0), then chains `scripts/dcw/train_fusion_head.py` on the pooled output. Defaults: 80 prompts × 3 seeds × 3 buckets. All outputs land in `post_image_dataset/dcw/<timestamp>-<label>/`; the trainer also reads from `bench/dcw/results/` so the legacy A2 calibration runs (S_pop, λ_scalar per bucket) and prototype trajectories continue to count.
+`make dcw` runs `scripts/dcw/measure_bias.py --dump_per_sample_gaps` against the five `DCW_ASPECT_BUCKETS` at the production env (CFG=4, mod_w=3.0), then chains `scripts/dcw/train_fusion_head.py` on the pooled output. Current defaults: 8 prompts × 2 seeds × 5 buckets, collected with `--baseline_lambda 0.0`. All new outputs land in `output/dcw/<timestamp>-<label>/`; `train_fusion_head.py` reads `output/dcw/` by default. Legacy roots such as `post_image_dataset/dcw/` and `bench/dcw/results/` only participate when passed explicitly via `--results_root`.
 
-End artifact: `<run>/fusion_head.safetensors` — single file, ~285k params + per-aspect bucket profile + standardization stats + metadata. `make test-dcw-v4` auto-resolves the newest by mtime across both roots.
+End artifact: `<run>/fusion_head.safetensors` — single file, ~285k params + per-aspect bucket profile + standardization stats + metadata. `make test-dcw-v4` auto-resolves the newest by mtime across `output/dcw/`, legacy `post_image_dataset/dcw/`, and `bench/dcw/results/`.
 
 ## CLI
 
 | Flag | Mode | Default | Notes |
 |------|------|---------|-------|
 | `--dcw` | scalar | off | Enable post-step correction with a constant `λ`. |
-| `--dcw_lambda` | scalar | `-0.015` | Negative on Anima — see findings. Tuned for `--dcw_band_mask LL`; use `-0.010` if you switch to `all`. |
+| `--dcw_lambda` | scalar | `-0.015` in `inference.py`; `make test-dcw` passes `0.01` | Historical negative scalar came from CFG=1/no-LoRA findings; the canned task target now overrides it for current smoke runs. |
 | `--dcw_schedule` | scalar | `one_minus_sigma` | One of `one_minus_sigma`, `sigma_i`, `const`, `none`. |
 | `--dcw_band_mask` | scalar | `LL` | Haar subband mask: `LL`, `HH`, `LH+HL+HH`, `all`. LL-only is strictly better than `all` on Anima — see §LL-only correction. |
-| `--dcw_v4` | v4 | unset | Path to `fusion_head.safetensors` (or directory containing one). When set, overrides scalar `--dcw_lambda` with per-step controller output. |
+| `--dcw_calibrator` / legacy `--dcw_v4` | v4 | unset | Path to `fusion_head.safetensors` (or directory containing one). When set, overrides scalar `--dcw_lambda` with per-step controller output. |
 | `--dcw_v4_warmup_k` | v4 | (from artifact) | Override the warmup-k baked into the artifact metadata. |
 | `--dcw_v4_disable_shrinkage` | v4 | off | Skip σ̂²-based shrinkage on `α̂`. **Recommended** while the prototype's σ̂² channel doesn't pass Gate B. |
 | `--dcw_v4_disable_backstop` | v4 | off | Skip the caption-length backstop. Currently a no-op (`tau_short` not yet shipped in the artifact). |
@@ -199,7 +199,7 @@ Closes 83% of the LL gap at the worst step (σ=0.04) and leaves headroom for per
 | File | Role |
 |---|---|
 | `networks/dcw.py` | `apply_dcw` (the apply site, shared by both modes) + `FusionHead` (shared by trainer + inference) + `haar_LL_norm` |
-| `library/inference/dcw_v4.py` | `OnlineFusionDCWController` — loads artifact, observes warmup, fires head at step `k`, emits per-step `λ_i` |
+| `library/inference/corrections/dcw_calibrator.py` | `OnlineDCWCalibrator` — loads artifact, observes warmup, fires head at step `k`, emits per-step `λ_i` |
 | `library/inference/generation.py` | controller setup pre-loop + per-step apply at the DCW call site (non-tiled path) |
 | `scripts/dcw/measure_bias.py` | offline trajectory dump + S_pop sweep — produces `gaps_per_sample.npz` consumed by the trainer |
 | `scripts/dcw/train_fusion_head.py` | offline head training — produces `fusion_head.safetensors` |

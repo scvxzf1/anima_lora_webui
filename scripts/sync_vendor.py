@@ -41,7 +41,9 @@ so the copied files' internal imports keep working unchanged.
 
 from __future__ import annotations
 
+import argparse
 import shutil
+import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -49,6 +51,12 @@ TAGGER_VENDOR = ROOT / "custom_nodes" / "comfyui-anima-tagger" / "_vendor"
 DIRECTEDIT_VENDOR = ROOT / "custom_nodes" / "comfyui-anima-directedit" / "_vendor"
 HYDRALORA_VENDOR = ROOT / "custom_nodes" / "comfyui-hydralora" / "_vendor"
 TRAINER_VENDOR = ROOT / "custom_nodes" / "comfyui-anima-trainer" / "_vendor"
+VENDOR_ROOT_NAMES = {
+    "tagger": "comfyui-anima-tagger",
+    "directedit": "comfyui-anima-directedit",
+    "hydralora": "comfyui-hydralora",
+    "trainer": "comfyui-anima-trainer",
+}
 
 # ---------------------------------------------------------------------------
 # Tagger-only captioning + vision subset. After the directedit node was
@@ -280,6 +288,13 @@ def _write_trimmed(vendor_root: Path, files: list[tuple[str, str]]) -> None:
         print(f"  trimmed {dst_rel}")
 
 
+def _display_path(path: Path) -> str:
+    try:
+        return path.relative_to(ROOT).as_posix()
+    except ValueError:
+        return str(path)
+
+
 def _resolve_directedit_trimmed() -> list[tuple[str, str]]:
     """Substitute live constants into trimmed templates."""
     out: list[tuple[str, str]] = []
@@ -291,7 +306,7 @@ def _resolve_directedit_trimmed() -> list[tuple[str, str]]:
 
 
 def build_tagger_vendor() -> None:
-    print(f"\n[tagger] -> {TAGGER_VENDOR.relative_to(ROOT)}")
+    print(f"\n[tagger] -> {_display_path(TAGGER_VENDOR)}")
     if TAGGER_VENDOR.exists():
         shutil.rmtree(TAGGER_VENDOR)
     TAGGER_VENDOR.mkdir(parents=True)
@@ -306,7 +321,7 @@ def build_tagger_vendor() -> None:
 
 
 def build_directedit_vendor() -> None:
-    print(f"\n[directedit] -> {DIRECTEDIT_VENDOR.relative_to(ROOT)}")
+    print(f"\n[directedit] -> {_display_path(DIRECTEDIT_VENDOR)}")
     if DIRECTEDIT_VENDOR.exists():
         shutil.rmtree(DIRECTEDIT_VENDOR)
     DIRECTEDIT_VENDOR.mkdir(parents=True)
@@ -343,7 +358,7 @@ HYDRALORA_PACKAGE_DIRS: list[str] = [
 
 
 def build_hydralora_vendor() -> None:
-    print(f"\n[hydralora] -> {HYDRALORA_VENDOR.relative_to(ROOT)}")
+    print(f"\n[hydralora] -> {_display_path(HYDRALORA_VENDOR)}")
     if HYDRALORA_VENDOR.exists():
         shutil.rmtree(HYDRALORA_VENDOR)
     HYDRALORA_VENDOR.mkdir(parents=True)
@@ -408,7 +423,7 @@ TRAINER_TRIMMED: list[tuple[str, str]] = [
 
 
 def build_trainer_vendor() -> None:
-    print(f"\n[trainer] -> {TRAINER_VENDOR.relative_to(ROOT)}")
+    print(f"\n[trainer] -> {_display_path(TRAINER_VENDOR)}")
     if TRAINER_VENDOR.exists():
         shutil.rmtree(TRAINER_VENDOR)
     TRAINER_VENDOR.mkdir(parents=True)
@@ -422,13 +437,111 @@ def build_trainer_vendor() -> None:
     _write_trimmed(TRAINER_VENDOR, TRAINER_TRIMMED)
 
 
-def main() -> None:
+def _build_all_vendor_trees() -> None:
     build_tagger_vendor()
     build_directedit_vendor()
     build_hydralora_vendor()
     build_trainer_vendor()
+
+
+def _vendor_tree_files(root: Path) -> dict[str, bytes]:
+    if not root.exists():
+        return {}
+    files: dict[str, bytes] = {}
+    for path in root.rglob("*"):
+        if "__pycache__" in path.parts or path.suffix == ".pyc":
+            continue
+        if path.is_file():
+            files[path.relative_to(root).as_posix()] = path.read_bytes()
+    return files
+
+
+def _compare_vendor_tree(expected: Path, actual: Path, label: str) -> list[str]:
+    expected_files = _vendor_tree_files(expected)
+    actual_files = _vendor_tree_files(actual)
+    issues: list[str] = []
+
+    missing = sorted(set(expected_files) - set(actual_files))
+    extra = sorted(set(actual_files) - set(expected_files))
+    changed = sorted(
+        path
+        for path in set(expected_files) & set(actual_files)
+        if expected_files[path] != actual_files[path]
+    )
+
+    issues.extend(f"{label}: missing {path}" for path in missing)
+    issues.extend(f"{label}: extra {path}" for path in extra)
+    issues.extend(f"{label}: changed {path}" for path in changed)
+    return issues
+
+
+def check_vendor_trees() -> int:
+    global TAGGER_VENDOR, DIRECTEDIT_VENDOR, HYDRALORA_VENDOR, TRAINER_VENDOR
+
+    actual_roots = {
+        "tagger": TAGGER_VENDOR,
+        "directedit": DIRECTEDIT_VENDOR,
+        "hydralora": HYDRALORA_VENDOR,
+        "trainer": TRAINER_VENDOR,
+    }
+    original_roots = actual_roots.copy()
+
+    with tempfile.TemporaryDirectory(prefix="anima-vendor-check-") as tmp:
+        tmp_root = Path(tmp)
+        TAGGER_VENDOR = tmp_root / VENDOR_ROOT_NAMES["tagger"] / "_vendor"
+        DIRECTEDIT_VENDOR = tmp_root / VENDOR_ROOT_NAMES["directedit"] / "_vendor"
+        HYDRALORA_VENDOR = tmp_root / VENDOR_ROOT_NAMES["hydralora"] / "_vendor"
+        TRAINER_VENDOR = tmp_root / VENDOR_ROOT_NAMES["trainer"] / "_vendor"
+        try:
+            _build_all_vendor_trees()
+            expected_roots = {
+                "tagger": TAGGER_VENDOR,
+                "directedit": DIRECTEDIT_VENDOR,
+                "hydralora": HYDRALORA_VENDOR,
+                "trainer": TRAINER_VENDOR,
+            }
+            issues: list[str] = []
+            for label in ("tagger", "directedit", "hydralora", "trainer"):
+                issues.extend(
+                    _compare_vendor_tree(
+                        expected_roots[label],
+                        actual_roots[label],
+                        label,
+                    )
+                )
+        finally:
+            TAGGER_VENDOR = original_roots["tagger"]
+            DIRECTEDIT_VENDOR = original_roots["directedit"]
+            HYDRALORA_VENDOR = original_roots["hydralora"]
+            TRAINER_VENDOR = original_roots["trainer"]
+
+    if issues:
+        print("\nvendor trees are stale:")
+        for issue in issues:
+            print(f"  {issue}")
+        print("\nRun: python scripts/sync_vendor.py")
+        return 1
+
     print("\nvendor trees fresh.")
+    return 0
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--check",
+        action="store_true",
+        help="Generate expected vendor trees in a temporary directory and fail if the in-repo _vendor copies differ.",
+    )
+    args = parser.parse_args(argv)
+
+    if args.check:
+        return check_vendor_trees()
+
+    _build_all_vendor_trees()
+    print("\nvendor trees fresh.")
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

@@ -2291,6 +2291,8 @@ def _history_summary(meta: dict[str, Any], task_dir: Path) -> dict[str, Any]:
 
 
 def _history_jsonl_count(meta: dict[str, Any], key: str, path: Path) -> int:
+    if str(meta.get("state") or "") in {"running", "compiling"}:
+        return _count_jsonl(path)
     if key in meta:
         count = _int_or_none(meta.get(key))
         if count is not None and count >= 0:

@@ -13,6 +13,23 @@ from scripts.tasks import _common, utilities
 from scripts.experimental_tasks import training as experimental_training
 
 
+def _set_path_overrides_cache(
+    monkeypatch,
+    overrides: dict,
+    *,
+    runtime_config: str = "",
+    preset: str = "default",
+    method: str = "",
+    methods_subdir: str = "methods",
+) -> None:
+    monkeypatch.setattr(_common, "_PATH_OVERRIDES_CACHE", overrides)
+    monkeypatch.setattr(
+        _common,
+        "_PATH_OVERRIDES_CACHE_KEY",
+        (runtime_config, preset, method, methods_subdir),
+    )
+
+
 def test_preprocess_vae_uses_configured_vae_path(monkeypatch):
     commands: list[list[str]] = []
 
@@ -63,9 +80,8 @@ def test_preprocess_te_uses_configured_model_paths(monkeypatch):
 def test_preprocess_cache_batch_sizes_follow_memory_profile(monkeypatch):
     commands: list[list[str]] = []
     monkeypatch.delenv("ANIMA_RUNTIME_CONFIG", raising=False)
-    monkeypatch.setattr(
-        _common,
-        "_PATH_OVERRIDES_CACHE",
+    _set_path_overrides_cache(
+        monkeypatch,
         {
             "preprocess_memory_profile": "low_vram",
             "preprocess_text_cache_batch_size": "2",
@@ -91,9 +107,8 @@ def test_preprocess_cache_batch_sizes_follow_memory_profile(monkeypatch):
 def test_preprocess_dtype_defaults_to_bfloat16(monkeypatch):
     commands: list[list[str]] = []
     monkeypatch.delenv("ANIMA_RUNTIME_CONFIG", raising=False)
-    monkeypatch.setattr(
-        _common,
-        "_PATH_OVERRIDES_CACHE",
+    _set_path_overrides_cache(
+        monkeypatch,
         {
             "vae": "D:/models/vae.safetensors",
             "qwen3": "D:/models/qwen3.safetensors",
@@ -116,9 +131,8 @@ def test_preprocess_dtype_defaults_to_bfloat16(monkeypatch):
 def test_preprocess_dtype_falls_back_to_training_mixed_precision(monkeypatch):
     commands: list[list[str]] = []
     monkeypatch.delenv("ANIMA_RUNTIME_CONFIG", raising=False)
-    monkeypatch.setattr(
-        _common,
-        "_PATH_OVERRIDES_CACHE",
+    _set_path_overrides_cache(
+        monkeypatch,
         {
             "mixed_precision": "fp16",
             "vae": "D:/models/vae.safetensors",
@@ -168,9 +182,8 @@ def test_easycontrol_preprocess_uses_configured_model_paths(monkeypatch):
 
 
 def test_inference_base_uses_configured_model_paths(monkeypatch):
-    monkeypatch.setattr(
-        _common,
-        "_PATH_OVERRIDES_CACHE",
+    _set_path_overrides_cache(
+        monkeypatch,
         {
             "pretrained_model_name_or_path": "D:/models/anima/anima_base.safetensors",
             "qwen3": "D:/models/text_encoder/qwen_3_06b_base.safetensors",
@@ -215,6 +228,32 @@ def test_path_overrides_use_anima_runtime_config(tmp_path, monkeypatch):
     assert overrides["output_dir"].endswith("training_output")
     assert overrides["resized_image_dir"].endswith("dataset-01/resized")
     assert "general" not in overrides
+
+
+def test_path_overrides_cache_is_keyed_by_preset(monkeypatch):
+    from library.config import io as config_io
+
+    calls: list[str] = []
+
+    def fake_load_path_overrides(*, preset: str, method=None, methods_subdir: str = "methods"):
+        calls.append(preset)
+        return {"preset_marker": preset}
+
+    monkeypatch.delenv("ANIMA_RUNTIME_CONFIG", raising=False)
+    monkeypatch.delenv("METHOD", raising=False)
+    monkeypatch.delenv("METHODS_SUBDIR", raising=False)
+    monkeypatch.setattr(config_io, "load_path_overrides", fake_load_path_overrides)
+    monkeypatch.setattr(_common, "_PATH_OVERRIDES_CACHE", None)
+    monkeypatch.setattr(_common, "_PATH_OVERRIDES_CACHE_KEY", None)
+
+    monkeypatch.setenv("PRESET", "default")
+    first = _common._path_overrides()
+    monkeypatch.setenv("PRESET", "low_vram_blockswap")
+    second = _common._path_overrides()
+
+    assert first["preset_marker"] == "default"
+    assert second["preset_marker"] == "low_vram_blockswap"
+    assert calls == ["default", "low_vram_blockswap"]
 
 
 def test_task_run_adds_project_root_to_pythonpath(monkeypatch):
@@ -279,9 +318,8 @@ def test_resize_bucket_args_use_dataset_no_upscale(tmp_path, monkeypatch):
         encoding="utf-8",
     )
     monkeypatch.setattr(preprocess, "ROOT", tmp_path)
-    monkeypatch.setattr(
-        _common,
-        "_PATH_OVERRIDES_CACHE",
+    _set_path_overrides_cache(
+        monkeypatch,
         {"dataset_config": "configs/datasets/no_upscale.toml"},
     )
 
@@ -324,9 +362,8 @@ def test_resize_bucket_args_use_runtime_preprocess_attrs(tmp_path, monkeypatch):
         encoding="utf-8",
     )
     monkeypatch.setattr(preprocess, "ROOT", tmp_path)
-    monkeypatch.setattr(
-        _common,
-        "_PATH_OVERRIDES_CACHE",
+    _set_path_overrides_cache(
+        monkeypatch,
         {"dataset_config": "runs/demo/dataset.runtime.toml"},
     )
 
@@ -361,9 +398,8 @@ def test_resize_bucket_args_disable_bucket_when_dataset_requests_square_resize(t
         encoding="utf-8",
     )
     monkeypatch.setattr(preprocess, "ROOT", tmp_path)
-    monkeypatch.setattr(
-        _common,
-        "_PATH_OVERRIDES_CACHE",
+    _set_path_overrides_cache(
+        monkeypatch,
         {"dataset_config": "configs/datasets/square.toml"},
     )
 
@@ -393,9 +429,8 @@ def test_preprocess_forwards_path_pattern_to_resize_and_cache_steps(tmp_path, mo
     commands: list[list[str]] = []
     backups: list[tuple[str, str]] = []
     monkeypatch.setattr(preprocess, "ROOT", tmp_path)
-    monkeypatch.setattr(
-        _common,
-        "_PATH_OVERRIDES_CACHE",
+    _set_path_overrides_cache(
+        monkeypatch,
         {
             "dataset_config": "configs/datasets/filtered.toml",
             "vae": "D:/models/vae.safetensors",
@@ -444,9 +479,8 @@ def test_runtime_dataset_config_supplies_json_caption_flag(tmp_path, monkeypatch
     commands: list[list[str]] = []
     backups: list[str] = []
     monkeypatch.setattr(preprocess, "ROOT", tmp_path)
-    monkeypatch.setattr(
-        _common,
-        "_PATH_OVERRIDES_CACHE",
+    _set_path_overrides_cache(
+        monkeypatch,
         {
             "dataset_config": "runs/demo/dataset.runtime.toml",
             "qwen3": "D:/models/qwen3.safetensors",
@@ -488,9 +522,8 @@ def test_runtime_dataset_config_supplies_caption_source_mode(tmp_path, monkeypat
     )
     commands: list[list[str]] = []
     monkeypatch.setattr(preprocess, "ROOT", tmp_path)
-    monkeypatch.setattr(
-        _common,
-        "_PATH_OVERRIDES_CACHE",
+    _set_path_overrides_cache(
+        monkeypatch,
         {
             "dataset_config": "runs/demo/dataset.runtime.toml",
             "qwen3": "D:/models/qwen3.safetensors",
@@ -580,9 +613,8 @@ def test_preprocess_te_auto_forwards_diff_output_preservation_from_runtime_confi
     )
     commands: list[list[str]] = []
     monkeypatch.setattr(preprocess, "ROOT", tmp_path)
-    monkeypatch.setattr(
-        _common,
-        "_PATH_OVERRIDES_CACHE",
+    _set_path_overrides_cache(
+        monkeypatch,
         {
             "dataset_config": "runs/demo/dataset.runtime.toml",
             "qwen3": "D:/models/qwen3.safetensors",
@@ -646,6 +678,46 @@ def test_preprocess_config_keeps_diff_output_preservation_out_of_resize(tmp_path
     assert "--diff_output_preservation_class" not in resize_cmd
     assert te_cmd[te_cmd.index("--diff_output_preservation_trigger") + 1] == "sks"
     assert te_cmd[te_cmd.index("--diff_output_preservation_class") + 1] == "woman"
+
+
+def test_preprocess_config_forwards_subset_filter_scope(tmp_path, monkeypatch):
+    dataset_path = tmp_path / "configs" / "datasets" / "filtered.toml"
+    dataset_path.parent.mkdir(parents=True)
+    dataset_path.write_text(
+        "\n".join(
+            [
+                "[[datasets]]",
+                "recursive = true",
+                "",
+                "[[datasets.subsets]]",
+                'image_dir = "post_image_dataset/a_resized"',
+                'cache_dir = "post_image_dataset/a_cache"',
+                "recursive = false",
+                'path_pattern = "char_a/*"',
+            ]
+        ),
+        encoding="utf-8",
+    )
+    commands: list[list[str]] = []
+    monkeypatch.setattr(preprocess, "run", commands.append)
+
+    preprocess.cmd_preprocess_config([
+        "--dataset_config",
+        str(dataset_path),
+        "--src",
+        "image_dataset/source",
+        "--vae",
+        "D:/models/vae.safetensors",
+        "--qwen3",
+        "D:/models/qwen3.safetensors",
+        "--dit",
+        "D:/models/anima.safetensors",
+    ])
+
+    assert len(commands) == 3
+    for cmd in commands:
+        assert "--recursive" not in cmd
+        assert cmd[cmd.index("--path_pattern") + 1] == "char_a/*"
 
 
 def test_caption_backup_dir_uses_cache_parent_and_stays_out_of_training_dirs(tmp_path, monkeypatch):
@@ -935,9 +1007,8 @@ def test_preprocess_runs_all_dataset_config_rows(tmp_path, monkeypatch):
     commands: list[list[str]] = []
     backups: list[str] = []
     monkeypatch.setattr(preprocess, "ROOT", tmp_path)
-    monkeypatch.setattr(
-        _common,
-        "_PATH_OVERRIDES_CACHE",
+    _set_path_overrides_cache(
+        monkeypatch,
         {
             "dataset_config": "configs/datasets/multi.toml",
             "vae": "D:/models/vae.safetensors",

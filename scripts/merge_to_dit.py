@@ -31,6 +31,7 @@ import torch
 
 
 from library.anima import weights as anima_weights  # noqa: E402
+from library.inference.models import _classify_adapter_capability  # noqa: E402
 from library.log import setup_logging  # noqa: E402
 
 setup_logging()
@@ -46,6 +47,20 @@ _NON_BAKEABLE_MARKERS: dict[str, str] = {
     "prefix_": "prefix (cross-attn KV splice)",
     "register_tokens": "register tokens (ride the self-attn sequence, not a weight delta)",
 }
+
+_NON_BAKEABLE_METADATA_SPECS: dict[str, str] = {
+    "reft": "ReFT (block-level hook)",
+    "hydra": "HydraLoRA moe (per-layer router)",
+    "ortho_hydra": "OrthoHydraLoRA moe (per-layer router)",
+    "chimera_hydra": "ChimeraHydra (dual-pool router)",
+    "stacked_experts_global_fei": "HydraLoRA stacked experts (global FEI router)",
+    "step_expert": "step-expert turbo (per-step heads)",
+    "ip_adapter": "IP-Adapter (side network, not a Linear delta)",
+    "easycontrol": "EasyControl (side network, not a Linear delta)",
+    "soft_tokens": "Soft Tokens (prompt-side state, not a Linear delta)",
+    "register": "register tokens (ride the self-attn sequence, not a weight delta)",
+}
+_BAKEABLE_METADATA_SPECS = {"", "lora", "ortho", "dora", "loha", "lokr", "glora", "vera"}
 
 _DTYPE_MAP: dict[str, torch.dtype] = {
     "fp32": torch.float32,
@@ -89,6 +104,42 @@ def scan_non_bakeable_keys(weights_sd: dict) -> dict[str, int]:
             if marker in key:
                 found[kind] = found.get(kind, 0) + 1
                 break
+    return found
+
+
+def read_safetensors_metadata(path: Path) -> dict[str, str]:
+    """Read safetensors metadata without loading tensors."""
+    if path.suffix != ".safetensors":
+        return {}
+    from safetensors import safe_open
+
+    with safe_open(str(path), framework="pt") as f:
+        return dict(f.metadata() or {})
+
+
+def scan_non_bakeable_metadata(metadata: dict[str, str]) -> dict[str, int]:
+    """Return non-bakeable adapter kinds proven by metadata stamps."""
+    spec = str(metadata.get("ss_network_spec") or "").strip().lower()
+    if spec in _NON_BAKEABLE_METADATA_SPECS:
+        return {_NON_BAKEABLE_METADATA_SPECS[spec]: 1}
+    if spec not in _BAKEABLE_METADATA_SPECS:
+        module = str(metadata.get("ss_network_module") or "").strip()
+        if module.startswith("networks.methods."):
+            label = spec or module
+            return {f"{label} (non-LoRA method adapter)": 1}
+    return {}
+
+
+def scan_non_bakeable_adapter(adapter: Path, weights_sd: dict) -> dict[str, int]:
+    """Combine key, metadata, and capability checks for static bake refusal."""
+    found = scan_non_bakeable_keys(weights_sd)
+    metadata = read_safetensors_metadata(adapter)
+    for kind, count in scan_non_bakeable_metadata(metadata).items():
+        found[kind] = found.get(kind, 0) + count
+    capability = _classify_adapter_capability(str(adapter))
+    if not capability.supports_static_merge:
+        kind = f"{capability.kind} (dynamic-only adapter)"
+        found[kind] = found.get(kind, 0) + 1
     return found
 
 
@@ -152,7 +203,7 @@ def main() -> int:
     from safetensors.torch import load_file
 
     weights_sd = load_file(str(adapter))
-    non_bakeable = scan_non_bakeable_keys(weights_sd)
+    non_bakeable = scan_non_bakeable_adapter(adapter, weights_sd)
     if non_bakeable:
         parts = [f"{count} {kind}" for kind, count in non_bakeable.items()]
         msg = "Non-bakeable keys detected: " + ", ".join(parts) + "."

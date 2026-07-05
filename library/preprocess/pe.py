@@ -63,6 +63,7 @@ def count_pending_pe(
     *,
     cache_dir: Path | None = None,
     recursive: bool = False,
+    path_pattern: str = "*",
 ) -> tuple[int, int]:
     """Return ``(pending, total)`` PE sidecars **without loading the encoder**.
 
@@ -70,7 +71,7 @@ def count_pending_pe(
     sidecar isn't on disk; ``total`` is every enumerated image. Mirrors the
     pre-skip in :func:`cache_pe_features` (pure existence), so the entry point
     can skip the (slow) vision-encoder load when ``pending == 0``."""
-    image_files = walk_images(data_dir, recursive=recursive)
+    image_files = walk_images(data_dir, recursive=recursive, pattern=path_pattern)
     pending, _ = partition_cached(
         image_files,
         lambda p: cache_path_for(p, encoder, cache_dir=cache_dir, image_dir=data_dir),
@@ -114,6 +115,7 @@ def cache_pe_features(
     *,
     cache_dir: Path | None = None,
     recursive: bool = False,
+    path_pattern: str = "*",
     batch_size: int = 8,
     num_workers: int = 4,
     save_dtype: torch.dtype = torch.bfloat16,
@@ -126,7 +128,7 @@ def cache_pe_features(
     The encoder is supplied loaded (``load_pe_encoder``) so model setup stays in
     the caller. Returns counts; pass ``progress`` for a per-image bar.
     """
-    image_files = walk_images(data_dir, recursive=recursive)
+    image_files = walk_images(data_dir, recursive=recursive, pattern=path_pattern)
     stats = PreprocessStats(seen=len(image_files))
 
     pending, skipped = partition_cached(

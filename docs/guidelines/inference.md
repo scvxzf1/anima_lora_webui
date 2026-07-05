@@ -35,7 +35,7 @@ representative starting point.
 | `make test NOLORA=1` | Bare DiT (skips `--lora_weight`). Compose with `MOD=1` for a mod-only sample. |
 | `make test-hydra` | Latest HydraLoRA / FeRA `*_moe.safetensors` (router-live) |
 | `make test-merge` | Inference against a baked DiT under `MODEL_DIR=` |
-| `make test-dcw` | Latest LoRA + DCW scalar bias correction (λ = -0.015) |
+| `make test-dcw` | Latest LoRA + DCW scalar bias correction (task target passes λ = 0.01) |
 | `make test-dcw-v4` | Latest LoRA + DCW v4 learnable calibrator (auto-resolves head) |
 | `make test-spectrum-dcw` | Spectrum + DCW scalar |
 | `make test-dcw-v4-spectrum` | Spectrum + DCW v4 |
@@ -112,7 +112,7 @@ Composes with every adapter and with Spectrum. Two modes — see
 | Flag | Description |
 |------|-------------|
 | `--dcw` | Scalar mode (one global λ) |
-| `--dcw_lambda` | λ value (`make test-dcw` default: -0.015) |
+| `--dcw_lambda` | λ value (`inference.py` default: -0.015; `make test-dcw` passes 0.01) |
 | `--dcw_band_mask` | Where to apply: `LL` (default) / `HF` / `all` |
 | `--dcw_schedule` | Per-step shaping (e.g. flat / cosine) |
 | `--dcw_calibrator` | Path to a v4 fusion-head safetensors (replaces scalar) |
