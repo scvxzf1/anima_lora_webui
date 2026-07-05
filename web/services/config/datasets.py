@@ -27,6 +27,12 @@ from library.preprocess.captions import (
     read_caption_source_from_dirs,
 )
 from web.services.config import paths as _config_paths
+from web.services.config.common import (
+    _bool_value,
+    _nonnegative_float,
+    _nonnegative_int,
+    _positive_int,
+)
 from web.services.config.metadata import (
     CAPTION_SOURCE_AUTO,
     CAPTION_SOURCE_CAPTIONS_JSON,
@@ -122,38 +128,6 @@ def _derived_data_dir(source_path: Path, suffix: str) -> Path:
     parent = source_path.parent if source_path.name else source_path
     name = source_path.name or "dataset"
     return (parent / f"{name}_{suffix}").resolve()
-
-
-def _positive_int(value: Any, fallback: int) -> int:
-    try:
-        n = int(value)
-    except (TypeError, ValueError):
-        return fallback
-    return n if n > 0 else fallback
-
-
-def _nonnegative_int(value: Any, fallback: int) -> int:
-    try:
-        n = int(value)
-    except (TypeError, ValueError):
-        return fallback
-    return n if n >= 0 else fallback
-
-
-def _nonnegative_float(value: Any, fallback: float) -> float:
-    try:
-        n = float(value)
-    except (TypeError, ValueError):
-        return fallback
-    return n if n >= 0 else fallback
-
-
-def _bool_value(value: Any, fallback: bool = False) -> bool:
-    if value is None:
-        return fallback
-    if isinstance(value, bool):
-        return value
-    return str(value).strip().lower() in {"1", "true", "yes", "on"}
 
 
 def _normalize_dataset_preset_path(rel_path: str, *, must_exist: bool) -> str:

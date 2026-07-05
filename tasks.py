@@ -234,6 +234,10 @@ COMMANDS = {
         utilities.cmd_test_slow,
         "Run pytest tests marked slow.",
     ),
+    "type-check": (
+        utilities.cmd_type_check,
+        "Run the configured pyright type-check trial gate; requires pyright in the active venv.",
+    ),
     "export-logs": (
         utilities.cmd_export_logs,
         "Dump TB scalar logs to JSON (RUN=<dir>, ALL=1 for every subrun, JSONL=1 for line-delimited)",

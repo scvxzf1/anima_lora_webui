@@ -5,7 +5,7 @@ from pathlib import Path
 
 from web.services import environment_check_service as env_service
 from web.services import project_python
-from web.services.config._legacy import PREPROCESS_ENV_REQUIRED_FILES
+from web.services.config.metadata import PREPROCESS_ENV_REQUIRED_FILES
 from web.services.environment_check_service import (
     check_preprocess_environment_for_preflight,
     run_environment_check,

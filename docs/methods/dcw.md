@@ -31,7 +31,7 @@ This page contains the current v4 derivation, gates, and fallback ladder.
 
 ```bash
 make test-dcw                           # latest LoRA + scalar λ=0.01 (task target override)
-make test-dcw-v4                        # latest LoRA + v4 controller (auto-resolves latest fusion_head)
+make test-dcw-v4                        # bare DiT + v4 controller by default; set NOLORA=0 for latest LoRA
 make test-spectrum-dcw                  # Spectrum + scalar DCW composed
 ```
 

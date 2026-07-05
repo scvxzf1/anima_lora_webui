@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from web.services.project_python import resolve_web_python_executable, venv_bin_dir, venv_python_path
-from web.services.config._legacy import PREPROCESS_ENV_REQUIRED_FILES
+from web.services.config.metadata import PREPROCESS_ENV_REQUIRED_FILES
 from web.services import config_service as _config_service
 
 ROOT = _config_service.ROOT

@@ -1,9 +1,10 @@
 """Misc utility entry-points: merge, comfy-batch, distill-prep, distill-mod,
-test-unit, test-fast, test-focused, test-slow, update, export-logs,
+test-unit, test-fast, test-focused, test-slow, type-check, update, export-logs,
 print-config, explain-config, config-compat, training-hot."""
 
 from __future__ import annotations
 
+import importlib.util
 import os
 import sys
 
@@ -126,6 +127,24 @@ def cmd_test_focused(extra):
 def cmd_test_slow(extra):
     """Run tests explicitly marked as slow."""
     run([PY, "-m", "pytest", "-q", "-m", "slow", "tests/", *extra])
+
+
+def cmd_type_check(extra):
+    """Run the configured pyright trial gate.
+
+    The repo already carries ``[tool.pyright]`` in ``pyproject.toml``.  This
+    command intentionally does not install dependencies; add pyright to the
+    active environment before using it as a required CI gate.
+    """
+    if importlib.util.find_spec("pyright") is None:
+        print(
+            "pyright is not installed in this Python environment. "
+            "Install the repo dev type-check dependency first, then rerun: "
+            "python tasks.py type-check",
+            file=sys.stderr,
+        )
+        raise SystemExit(2)
+    run([PY, "-m", "pyright", *extra])
 
 
 def cmd_update(extra):

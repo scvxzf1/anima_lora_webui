@@ -3,6 +3,7 @@ from __future__ import annotations
 import torch
 
 from networks.lora_anima.config import LoRANetworkCfg
+from networks.lora_anima.factory import create_network
 from networks.lora_anima.network import GlobalRouter, LoRANetwork
 from networks.lora_anima.targeting import (
     collect_lora_target_candidates,
@@ -154,6 +155,45 @@ def test_router_targets_mix_hydra_and_plain_lora_modules() -> None:
     assert net._hydra_router_misses == 1
     assert net._sigma_router_hits == 1
     assert net.global_router is None
+
+
+def test_create_network_global_fei_shared_a_cell_uses_real_builder_path() -> None:
+    net = create_network(
+        multiplier=1.0,
+        network_dim=2,
+        network_alpha=2.0,
+        vae=None,
+        text_encoders=[],
+        unet=TinyDiT(),
+        use_moe_style="shared_A",
+        route_per_layer=False,
+        router_source="fei",
+        router_targets="q_proj",
+        num_experts=3,
+        fei_feature_dim=2,
+        router_hidden_dim=8,
+        router_tau=0.7,
+        balance_loss_weight=0.2,
+        balance_loss_warmup_ratio=0.25,
+    )
+    modules = {lora.original_name: lora for lora in net.unet_loras}
+
+    assert type(modules["blocks.0.q_proj"]) is HydraLoRAModule
+    assert modules["blocks.0.q_proj"].use_global_router is True
+    assert type(modules["blocks.0.k_proj"]) is LoRAModule
+    assert isinstance(net.global_router, GlobalRouter)
+    assert len(net._routing_aware_loras) == 1
+    assert net._hydra_router_hits == 1
+    assert net._hydra_router_misses == 1
+    assert net._global_router_hits == 1
+    assert net._fei_router_hits == 0
+    assert net.use_fei_router is True
+    assert net.use_sigma_router is False
+    assert net._network_spec.name == "hydra"
+    assert net._use_hydra is True
+    assert net._balance_loss_target_weight == 0.2
+    assert net._balance_loss_warmup_ratio == 0.25
+    assert net._balance_loss_weight == 0.0
 
 
 def test_global_fei_cell_builds_network_router_from_real_init() -> None:

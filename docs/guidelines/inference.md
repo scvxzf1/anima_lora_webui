@@ -36,7 +36,7 @@ representative starting point.
 | `make test-hydra` | Latest HydraLoRA / FeRA `*_moe.safetensors` (router-live) |
 | `make test-merge` | Inference against a baked DiT under `MODEL_DIR=` |
 | `make test-dcw` | Latest LoRA + DCW scalar bias correction (task target passes λ = 0.01) |
-| `make test-dcw-v4` | Latest LoRA + DCW v4 learnable calibrator (auto-resolves head) |
+| `make test-dcw-v4` | Bare DiT + DCW v4 learnable calibrator by default; set `NOLORA=0` for latest LoRA |
 | `make test-spectrum-dcw` | Spectrum + DCW scalar |
 | `make test-dcw-v4-spectrum` | Spectrum + DCW v4 |
 | `python tasks.py exp-invert-directedit` | DirectEdit postfix-tail inversion probe |
@@ -51,7 +51,6 @@ representative starting point.
 |------|---------|-------------|
 | `--lora_weight` | — | Adapter path(s); space-separated for stacking |
 | `--lora_multiplier` | 1.0 | Scalar (one per weight or one for all) |
-| `--postfix_weight` | — | Postfix-tuning vectors |
 | `--ip_adapter_weight` | — | IP-Adapter checkpoint |
 | `--ip_image` | — | Reference image for IP-Adapter |
 | `--ip_scale` | 1.0 | IP-Adapter image-CFG scale |

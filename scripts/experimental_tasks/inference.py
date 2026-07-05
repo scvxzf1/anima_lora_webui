@@ -258,13 +258,13 @@ def cmd_test_ip(extra):
 
 
 def cmd_test_directedit(extra):
-    """DirectEdit on a random source image, seeded by wd-swinv2-tagger-v3.
+    """DirectEdit on a random source image, seeded by Anima Tagger v1.
 
     Pipeline:
       1. Pick source image (REF_IMAGE env, first positional arg, or random
          from ``post_image_dataset/resized/``).
-      2. Run wd-swinv2-tagger-v3 on the source -> ``src_tags`` caption
-         (downloaded on first use to ``models/captioners/wd-swinv2-tagger-v3/``).
+      2. Run Anima Tagger v1 on the source -> ``src_tags`` caption
+         (requires ``models/captioners/anima-tagger-v1/model.safetensors``).
       3. Build edit prompts:
             prompt_src = src_tags
             prompt_tar = src_tags + ", " + PROMPT

@@ -239,3 +239,33 @@ Git 同步口径：本地 `main` 只和 `webui/main` 沟通；`private/main` 不
 - 不能说 `_legacy.py` 文件已经删除，或 config_service 兼容 facade 已经不需要保留。
 - 不能说已经建立正式类型检查门禁。
 - 不能说已经跑过真实 MFU benchmark 或真实训练。
+
+---
+
+## 📌 8. 2026-07-05 五项补缺推进记录
+
+一句话：这轮补的是前一版 checkpoint 明确留下的证据缺口，不扩大高风险重构。
+
+已推进：
+
+- WebUI 真实浏览器 smoke：当前仓库服务启动在 `127.0.0.1:20104`，Chrome headless 通过 CDP 打开页面，7 个主 Tab 和训练页 3 个子视图均可切换；未发现 console、运行时异常或资源加载失败。
+- `TASK-09` 最小收口：`environment_check_service.py` 不再直接 import `_legacy.PREPROCESS_ENV_REQUIRED_FILES`，改从 `metadata.py` 读取；`datasets.py` 复用 `common.py` 的纯标量 helper，不碰路径同步和 shim 调度。
+- `TASK-07` 拆分前保护：新增 `test_create_network_global_fei_shared_a_cell_uses_real_builder_path`，用真实 `create_network(...)` 覆盖 `shared_A + route_per_layer=false + router_source=fei + router_targets` 的混合 Hydra/plain LoRA builder 路径。
+- `TASK-10` 类型检查入口：新增 `python tasks.py type-check`，选择现有 `[tool.pyright]` 作为试点入口；当前 `.venv` 未安装 pyright，因此命令会明确提示并返回 `2`，没有改依赖锁文件。
+- 文档 / CLI 漂移：修正 `test-dcw-v4` 默认 No-LoRA 语义，移除当前 `inference.py` 不存在的 `--postfix_weight` 入口说明，并把 DirectEdit help 从旧 `wd-swinv2-tagger-v3` 改为 Anima Tagger v1。
+
+本轮已验证：
+
+- WebUI Chrome CDP smoke：通过。
+- `tests/test_web_config_service.py -k "common_config_helpers_import_without_facade_cycle or legacy_common_private_helpers_forward_to_common_module or config_module_facade_sync_preserves_legacy_raw_file_shims"`：`6 passed`。
+- `tests/test_environment_check_service.py`：`8 passed`。
+- `tests/test_lora_network_construction.py::test_create_network_global_fei_shared_a_cell_uses_real_builder_path`：`1 passed`。
+- `tests/test_lora_network_construction.py tests/test_factory_metadata_flow.py tests/test_global_router.py tests/test_network_cfg.py tests/test_router_compute.py`：`60 passed`。
+- `python tasks.py type-check`：按预期提示 pyright 未安装并返回 `2`。
+- `python tasks.py exp-test-directedit --help` 和 `python tasks.py test-dcw-v4 --help`：文字与当前行为一致。
+
+仍不能对外说：
+
+- 不能说已经建立正式类型检查门禁；当前只是 pyright 入口和缺依赖提示。
+- 不能说 `_legacy.py` 已经可以删除；它仍是兼容 facade。
+- 不能说 LoRA builder/router/load/save 已经完成深拆；目前只是补了拆分前 characterization test。
