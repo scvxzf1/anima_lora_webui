@@ -475,6 +475,8 @@ const results = {
     ],
     metrics: [
         parseMetricsFromProgressLine('| 12/100 [00:10<01:00, 1.25s/it, loss=0.1234, lr=1e-4]'),
+        parseMetricsFromProgressLine('| 7/100 [00:10<01:00, 19.83s/it, recent_s_per_step=1.92, avr_loss=0.151]'),
+        parseMetricsFromProgressLine('step: 8 recent_s_per_step=1.92 avr_loss=0.150'),
         parseMetricsFromProgressLine('step: 7 avr_loss: nan learning_rate: inf'),
         parseMetricsFromProgressLine('nothing useful here'),
     ],
@@ -507,6 +509,8 @@ console.log(JSON.stringify(results));
         "rates": [1.5, 0.5, 0.5, None],
         "metrics": [
             {"step": 12, "loss": "0.1234", "lr": 0.0001, "rate": "1.25s/it"},
+            {"step": 7, "loss": "0.151", "rate": "19.83s/it"},
+            {"step": 8, "loss": "0.150"},
             {"step": 7, "loss": "nan"},
             None,
         ],

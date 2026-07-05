@@ -17,10 +17,12 @@ from __future__ import annotations
 
 import gc
 import logging
+import math
 import os
 import sys
 import time
-from dataclasses import dataclass
+from collections import deque
+from dataclasses import dataclass, field
 from typing import Any, Callable, Optional
 
 import torch
@@ -131,6 +133,50 @@ class LoopState:
 
     global_step: int = 0
     profile_started: bool = False
+    recent_step_rate_last: Optional[tuple[float, int]] = None
+    recent_step_seconds: deque[float] = field(default_factory=lambda: deque(maxlen=9))
+
+
+def _median_positive_finite(values: deque[float]) -> float | None:
+    finite = sorted(value for value in values if math.isfinite(value) and value > 0)
+    if not finite:
+        return None
+    mid = len(finite) // 2
+    if len(finite) % 2:
+        return finite[mid]
+    return (finite[mid - 1] + finite[mid]) / 2
+
+
+def _record_recent_step_seconds(
+    state: LoopState, step: int, now: float | None = None
+) -> None:
+    current_step = int(step)
+    current_ts = time.monotonic() if now is None else float(now)
+    if current_step <= 0 or not math.isfinite(current_ts):
+        return
+
+    last = state.recent_step_rate_last
+    if last is None:
+        state.recent_step_rate_last = (current_ts, current_step)
+        return
+
+    last_ts, last_step = last
+    if current_step == last_step:
+        return
+    if current_step < last_step or current_ts <= last_ts:
+        state.recent_step_seconds.clear()
+        state.recent_step_rate_last = (current_ts, current_step)
+        return
+
+    step_delta = current_step - last_step
+    seconds_per_step = (current_ts - last_ts) / step_delta
+    if math.isfinite(seconds_per_step) and seconds_per_step > 0:
+        state.recent_step_seconds.append(seconds_per_step)
+    state.recent_step_rate_last = (current_ts, current_step)
+
+
+def _recent_step_seconds(state: LoopState) -> float | None:
+    return _median_positive_finite(state.recent_step_seconds)
 
 
 def build_loop_state(
@@ -433,6 +479,7 @@ def _run_epoch_steps(trainer, state: LoopState, epoch: int) -> None:
         if accelerator.sync_gradients:
             state.progress_bar.update(1)
             state.global_step += 1
+            _record_recent_step_seconds(state, state.global_step)
             _sample_at_step(trainer, state)
             state.saver.maybe_save_step(state.network, state.global_step, epoch)
             state.optimizer_train_fn()
@@ -732,7 +779,11 @@ def _log_step(
     state.loss_recorder.add(epoch=epoch, step=step, loss=current_loss)
     avr_loss: float = state.loss_recorder.moving_average
     memory_logs = _cuda_memory_logs(state.accelerator.device) if should_log_step else {}
-    logs = {"avr_loss": avr_loss}
+    recent_step_seconds = _recent_step_seconds(state)
+    logs = {}
+    if recent_step_seconds is not None:
+        logs["recent_s_per_step"] = f"{recent_step_seconds:.2f}"
+    logs["avr_loss"] = avr_loss
     logs.update(memory_logs)
     _unwrapped_net = state.accelerator.unwrap_model(state.network)
     # Refresh router_H only on log cadence — get_router_entropy → full
@@ -771,6 +822,8 @@ def _log_step(
             None,  # mean_grad_norm — not tracked here
             None,  # mean_combined_norm — not tracked here
         )
+        if recent_step_seconds is not None:
+            logs["recent_s_per_step"] = recent_step_seconds
         logs.update(memory_logs)
         producers = [_unwrapped_net, *trainer._adapters]
         logs.update(
