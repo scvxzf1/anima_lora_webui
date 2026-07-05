@@ -36,7 +36,7 @@ Git 同步口径：本地 `main` 只和 `webui/main` 沟通；`private/main` 不
 | `TASK-07` LoRA targeting / builder 拆分 | 阶段收口 | `targeting.py` 已抽出候选发现；LoRA construction / network cfg 测试通过 | builder / router / load / save 仍在 `network.py`；继续前必须只读评估和 characterization test |
 | `TASK-08` Training forward canonical home | 阶段收口 | prior-preservation forward canonical home 已落地，旧 shim 保留；prior-preservation 测试通过 | `train.py` 其它方法 hook 化未继续推进 |
 | `TASK-09` Config service 去 legacy | 完成当前边界 | `merge`、`output_runs`、`estimation`、`preflight`、`datasets`、`file_groups` 已多轮 direct-import-safe / shim / 显式依赖推进；2026-07-05 已补齐 `_legacy.py` dataset、file group、preflight 公开入口 shim，覆盖对应 split module 的 `__all__`；preflight shim 已补 facade 状态恢复，raw_files 同步后会恢复 file group shim；datasets / raw_files legacy-private 额外 shim 已有测试保护；preflight、merge、output_runs、estimation、raw_files 公开入口旧函数体已收薄为转发桩；dataset user-facing 入口旧函数体已收薄为转发桩；`save_dataset_editor` 已稳定捕获 facade 注入的 raw writer，避免嵌套 helper 同步覆盖测试/运行时写入器；sample_prompts 4 个入口旧函数体已收薄为转发桩，split module 已补 ruff 友好的默认路径依赖；file_groups 全部 `__all__` 入口旧函数体已收薄为转发桩；dataset helper 入口旧函数体已收薄为转发桩；split module 同步规则已避免覆盖 legacy raw_files / file_groups shim；当前 8 个已拆 config split module 的 `__all__` 在 `_legacy.py` 内已无旧函数体残留；merge 私有 helper（variant metadata / custom variants）已改为转发 `merge.py`；output run 私有 helper（summary / config path / save-as path / mtime / time format）已改为转发 `output_runs.py`；file group 分组识别 / 归一化 / 归档命名 helper 首批 5 个已改为转发 `file_groups.py`；file group 分组构建 / fallback / 排序 / 权限判断 helper 21 个已改为转发 `file_groups.py`；file group id / label / 系统预设 / 备份路径 / 列表解析 helper 11 个已改为转发 `file_groups.py`；dataset summary/grouping helper 4 个旧函数体已改为转发 `datasets.py`；dataset 路径/default/row settings helper 17 个已改为转发 `datasets.py`；dataset 图片预览 / caption / nl-tag-mix helper 18 个已改为转发 `datasets.py`；dataset/raw legacy shim 已补 facade 状态恢复，避免污染 `config_service.list_config_file_groups`；preflight 私有 helper 12 个旧函数体已改为转发 `preflight.py`；公共 path / coercion / `_load` helper 已抽到 `common.py`，legacy 只保留转发；当前 `_legacy.py` 非转发函数降到 10 个且均为 shim 调度 / 恢复函数 | `_legacy.py` 仍作为兼容 facade 存在；若未来要彻底删除文件，需要先迁移所有外部 import surface 和第三方兼容入口 |
-| `TASK-10` 类型检查分目录收紧 | 试点完成 | `config_compat.py` / `config_explain.py` 类型友好试点和测试已落地；ruff / py_compile / pytest 通过 | `.venv` 内无 `pyright` / `basedpyright` / `mypy`；正式类型门禁未建立 |
+| `TASK-10` 类型检查分目录收紧 | 试点门禁建立 | `pyright` 已加入 dev 依赖；`python tasks.py type-check` 默认检查 `scripts/config_compat.py` / `scripts/config_explain.py` 并通过；ruff / py_compile / pytest 已有阶段验证 | 这不是全仓类型门禁；后续扩大范围前要按目录逐步收紧 |
 
 ---
 
@@ -99,7 +99,7 @@ Git 同步口径：本地 `main` 只和 `webui/main` 沟通；`private/main` 不
 2. 若未来继续 `TASK-09`，下一步是让 split modules 逐步复用 `common.py`，或制定删除 `_legacy.py` facade 的外部 import 迁移计划。
 3. 暂缓继续扩大 `TASK-07`：LoRA builder / router / load / save 深拆前，先补 characterization test。
 4. 暂缓继续扩大 `TASK-06`：runtime block swap 当前边界已收口，除缺陷外不拆 CUDA stream / swap plan / hook 调度。
-5. `TASK-10` 若要继续，需要先决定是否引入 `pyright` 或 `basedpyright`，否则只保持脚本级试点。
+5. `TASK-10` 已选择 `pyright` 并建立 config 脚本试点门禁；若继续，只按目录逐步扩大范围，不要一次性切全仓。
 6. 如果要补更强 UI 证据，再单独启动 WebUI 做真实浏览器全页面交互，不和代码拆分混在同轮。
 
 ---
@@ -237,7 +237,7 @@ Git 同步口径：本地 `main` 只和 `webui/main` 沟通；`private/main` 不
 
 - 不能说 `TASK-01` 到 `TASK-10` 全部完全完成。
 - 不能说 `_legacy.py` 文件已经删除，或 config_service 兼容 facade 已经不需要保留。
-- 不能说已经建立正式类型检查门禁。
+- 不能说已经建立全仓类型检查门禁。
 - 不能说已经跑过真实 MFU benchmark 或真实训练。
 
 ---
@@ -251,7 +251,7 @@ Git 同步口径：本地 `main` 只和 `webui/main` 沟通；`private/main` 不
 - WebUI 真实浏览器 smoke：当前仓库服务启动在 `127.0.0.1:20104`，Chrome headless 通过 CDP 打开页面，7 个主 Tab 和训练页 3 个子视图均可切换；未发现 console、运行时异常或资源加载失败。
 - `TASK-09` 最小收口：`environment_check_service.py` 不再直接 import `_legacy.PREPROCESS_ENV_REQUIRED_FILES`，改从 `metadata.py` 读取；`datasets.py` 复用 `common.py` 的纯标量 helper，不碰路径同步和 shim 调度。
 - `TASK-07` 拆分前保护：新增 `test_create_network_global_fei_shared_a_cell_uses_real_builder_path`，用真实 `create_network(...)` 覆盖 `shared_A + route_per_layer=false + router_source=fei + router_targets` 的混合 Hydra/plain LoRA builder 路径。
-- `TASK-10` 类型检查入口：新增 `python tasks.py type-check`，选择现有 `[tool.pyright]` 作为试点入口；当前 `.venv` 未安装 pyright，因此命令会明确提示并返回 `2`，没有改依赖锁文件。
+- `TASK-10` 类型检查入口：新增 `python tasks.py type-check`，选择现有 `[tool.pyright]` 作为试点入口；当时 `.venv` 未安装 pyright，因此命令会明确提示并返回 `2`，没有改依赖锁文件。
 - 文档 / CLI 漂移：修正 `test-dcw-v4` 默认 No-LoRA 语义，移除当前 `inference.py` 不存在的 `--postfix_weight` 入口说明，并把 DirectEdit help 从旧 `wd-swinv2-tagger-v3` 改为 Anima Tagger v1。
 
 本轮已验证：
@@ -261,11 +261,35 @@ Git 同步口径：本地 `main` 只和 `webui/main` 沟通；`private/main` 不
 - `tests/test_environment_check_service.py`：`8 passed`。
 - `tests/test_lora_network_construction.py::test_create_network_global_fei_shared_a_cell_uses_real_builder_path`：`1 passed`。
 - `tests/test_lora_network_construction.py tests/test_factory_metadata_flow.py tests/test_global_router.py tests/test_network_cfg.py tests/test_router_compute.py`：`60 passed`。
-- `python tasks.py type-check`：按预期提示 pyright 未安装并返回 `2`。
+- `python tasks.py type-check`：当时按预期提示 pyright 未安装并返回 `2`。
 - `python tasks.py exp-test-directedit --help` 和 `python tasks.py test-dcw-v4 --help`：文字与当前行为一致。
 
 仍不能对外说：
 
-- 不能说已经建立正式类型检查门禁；当前只是 pyright 入口和缺依赖提示。
+- 不能说已经建立全仓类型检查门禁；当时只是 pyright 入口和缺依赖提示。
 - 不能说 `_legacy.py` 已经可以删除；它仍是兼容 facade。
 - 不能说 LoRA builder/router/load/save 已经完成深拆；目前只是补了拆分前 characterization test。
+
+---
+
+## 📌 9. 2026-07-05 TASK-10 正式试点门禁
+
+一句话：`TASK-10` 已从“入口存在但缺工具”推进到“pyright 试点门禁可执行并通过”。
+
+已推进：
+
+- `pyright>=1.1.411` 已加入 `[dependency-groups].dev`，`uv.lock` 已记录 `pyright` 和 `nodeenv`。
+- `python tasks.py type-check` 默认检查 `scripts/config_compat.py` 和 `scripts/config_explain.py`。
+- 仍支持显式传参扩大或缩小范围，例如 `python tasks.py type-check scripts/config_compat.py`。
+- `[tool.pyright]` 增加 `reportMissingModuleSource = "none"`，避免第三方无源码包产生非行动性噪声。
+
+当前验证：
+
+- `uv add --dev pyright`：完成，安装 `pyright 1.1.411`。
+- `.venv/bin/python -m pyright --version`：`pyright 1.1.411`。
+- `timeout 60 .venv/bin/python tasks.py type-check`：`0 errors, 0 warnings, 0 informations`。
+
+仍不能对外说：
+
+- 不能说已经建立全仓类型检查门禁。
+- 不能说所有目录都已类型友好；当前只覆盖 config 脚本试点范围。

@@ -19,6 +19,11 @@ FAST_TEST_TARGETS = [
     "tests/test_mfu_gpu_theoretical.py",
 ]
 
+TYPE_CHECK_TARGETS = [
+    "scripts/config_compat.py",
+    "scripts/config_explain.py",
+]
+
 
 def cmd_merge(extra):
     """Bake latest LoRA in ADAPTER_DIR (env, default 'output/ckpt') into the base DiT."""
@@ -130,12 +135,13 @@ def cmd_test_slow(extra):
 
 
 def cmd_type_check(extra):
-    """Run the configured pyright trial gate.
+    """Run the configured pyright pilot gate.
 
-    The repo already carries ``[tool.pyright]`` in ``pyproject.toml``.  This
-    command intentionally does not install dependencies; add pyright to the
-    active environment before using it as a required CI gate.
+    Defaults to the current typed config-script pilot. Pass explicit paths or
+    pyright flags after the command to expand/narrow the checked surface.
     """
+    if extra and extra[0] == "--":
+        extra = extra[1:]
     if importlib.util.find_spec("pyright") is None:
         print(
             "pyright is not installed in this Python environment. "
@@ -144,7 +150,8 @@ def cmd_type_check(extra):
             file=sys.stderr,
         )
         raise SystemExit(2)
-    run([PY, "-m", "pyright", *extra])
+    targets = extra or TYPE_CHECK_TARGETS
+    run([PY, "-m", "pyright", *targets])
 
 
 def cmd_update(extra):

@@ -95,6 +95,7 @@ markers = [
 extraPaths = ["."]
 exclude = ["archive", "**/__pycache__"]
 reportMissingImports = "none"
+reportMissingModuleSource = "none"
 reportPrivateImportUsage = "none"
 reportAttributeAccessIssue = "none"
 reportArgumentType = "none"
@@ -134,4 +135,5 @@ build-backend = "setuptools.build_meta"
 [dependency-groups]
 dev = [
     "markdownify",
+    "pyright>=1.1.411",
 ]

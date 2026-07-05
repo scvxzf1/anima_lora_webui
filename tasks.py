@@ -236,7 +236,7 @@ COMMANDS = {
     ),
     "type-check": (
         utilities.cmd_type_check,
-        "Run the configured pyright type-check trial gate; requires pyright in the active venv.",
+        "Run the configured pyright pilot gate over typed config scripts.",
     ),
     "export-logs": (
         utilities.cmd_export_logs,
