@@ -2,7 +2,7 @@
  * Mechanical split from the former monolithic app closure.
  * Keep this module focused; move newly edited behavior into domain modules.
  */
-import { updateNoDatasetRegularizationModePanel } from './05a-no-dataset-regularization-mode.js?v=module-bootstrap-20260705-3';
+import { updateNoDatasetRegularizationModePanel } from './05a-no-dataset-regularization-mode.js?v=module-bootstrap-20260706-1';
 
 const ctx = globalThis.ctx;
 

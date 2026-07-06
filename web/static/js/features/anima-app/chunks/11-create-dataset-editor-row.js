@@ -10,7 +10,7 @@ import {
     createDatasetInlineHelpButton,
     datasetExperimentalOpenState,
     datasetLocalHelpSpec,
-} from './10a-dataset-inline-help.js?v=module-bootstrap-20260705-3';
+} from './10a-dataset-inline-help.js?v=module-bootstrap-20260706-1';
 
 const ctx = globalThis.ctx;
 

@@ -11,7 +11,7 @@ import {
     svgLine,
     svgRect,
     svgText,
-} from './ui.js?v=module-bootstrap-20260705-3';
+} from './ui.js?v=module-bootstrap-20260706-1';
 
 const HISTORY_SYSTEM_TABLE_RENDER_LIMIT = 500;
 

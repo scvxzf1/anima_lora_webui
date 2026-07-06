@@ -5,7 +5,7 @@
 import {
     createNoDatasetRegularizationAdvancedFields,
     createNoDatasetRegularizationModePanel,
-} from './05a-no-dataset-regularization-mode.js?v=module-bootstrap-20260705-3';
+} from './05a-no-dataset-regularization-mode.js?v=module-bootstrap-20260706-1';
 
 const ctx = globalThis.ctx;
 

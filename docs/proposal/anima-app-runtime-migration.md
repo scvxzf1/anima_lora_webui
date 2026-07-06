@@ -316,8 +316,8 @@ export async function createAnimaApp(ctx) {
     const runtime = createAnimaRuntime(ctx);
     installLegacyGlobals(runtime);
 
-    await import('./imports.js?v=module-bootstrap-20260705-3');
-    await import('./chunks/01-scope-state.js?v=module-bootstrap-20260705-3');
+    await import('./imports.js?v=module-bootstrap-20260706-1');
+    await import('./chunks/01-scope-state.js?v=module-bootstrap-20260706-1');
     // 其他 chunk 先保持原顺序
 
     return globalThis.startAnimaApp();

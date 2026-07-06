@@ -1,9 +1,9 @@
-import { createAppShellState } from './state/app-shell-state.js?v=module-bootstrap-20260705-3';
-import { createConfigState } from './state/config-state.js?v=module-bootstrap-20260705-3';
-import { createDatasetState } from './state/dataset-state.js?v=module-bootstrap-20260705-3';
-import { createHistoryState } from './state/history-state.js?v=module-bootstrap-20260705-3';
-import { createTomlState } from './state/toml-state.js?v=module-bootstrap-20260705-3';
-import { createTrainingState } from './state/training-state.js?v=module-bootstrap-20260705-3';
+import { createAppShellState } from './state/app-shell-state.js?v=module-bootstrap-20260706-1';
+import { createConfigState } from './state/config-state.js?v=module-bootstrap-20260706-1';
+import { createDatasetState } from './state/dataset-state.js?v=module-bootstrap-20260706-1';
+import { createHistoryState } from './state/history-state.js?v=module-bootstrap-20260706-1';
+import { createTomlState } from './state/toml-state.js?v=module-bootstrap-20260706-1';
+import { createTrainingState } from './state/training-state.js?v=module-bootstrap-20260706-1';
 
 export function createAnimaRuntime(ctx) {
     return {
