@@ -6,6 +6,7 @@
 
 | 文档 | 状态 | 说明 |
 | --- | --- | --- |
+| [anima-app-runtime-migration.md](anima-app-runtime-migration.md) | 活跃 | WebUI `anima-app` 从 `globalThis` 迁到显式 runtime / state / feature 的可执行分阶段迁移计划 |
 | [adapter-aware-checkpoint.md](adapter-aware-checkpoint.md) | 半活跃 | Adapter-aware activation checkpoint 可行性探索 |
 | [turbo_anima_dmd_lora.md](turbo_anima_dmd_lora.md) | 半活跃 | Turbo Anima / DMD LoRA 蒸馏提案 |
 | [prior_preservation_from_synth_pool.md](prior_preservation_from_synth_pool.md) | 半活跃 | synth pool prior preservation 提案 |
