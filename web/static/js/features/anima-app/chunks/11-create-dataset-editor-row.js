@@ -2,17 +2,17 @@
  * Mechanical split from the former monolithic app closure.
  * Keep this module focused; move newly edited behavior into domain modules.
  */
-const ctx = globalThis.ctx;
-const {
+import {
     attachDatasetInlineHelp,
     bindDatasetExperimentalOpenState,
     createDatasetExperimentalAdvancedBody,
-    createDatasetIsRegEditor,
     createDatasetInlineHelp,
     createDatasetInlineHelpButton,
     datasetExperimentalOpenState,
     datasetLocalHelpSpec,
-} = globalThis;
+} from './10a-dataset-inline-help.js?v=module-bootstrap-20260705-3';
+
+const ctx = globalThis.ctx;
 
 	    globalThis.createDatasetEditorRow = function createDatasetEditorRow(row, index, item = null) {
 	        const wrap = document.createElement('div');

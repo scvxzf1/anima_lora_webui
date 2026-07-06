@@ -30,18 +30,18 @@ ANIMA_APP_GLOBAL_THIS_BASELINE = {
     "js/features/anima-app/imports.js": (2, 1),
     "js/features/anima-app/runtime.js": (0, 0),
     "js/features/anima-app/chunks/01-scope-state.js": (129, 1),
-    "js/features/anima-app/chunks/01a-image-test-feature.js": (2, 0),
+    "js/features/anima-app/chunks/01a-image-test-feature.js": (0, 0),
     "js/features/anima-app/chunks/02-ensure-history-detail-feature.js": (32, 0),
     "js/features/anima-app/chunks/03-parse-network-arg-entry.js": (31, 0),
     "js/features/anima-app/chunks/04-create-config-group-entry.js": (24, 0),
     "js/features/anima-app/chunks/05-create-stage-resolution-summary.js": (34, 0),
-    "js/features/anima-app/chunks/05a-no-dataset-regularization-mode.js": (16, 0),
+    "js/features/anima-app/chunks/05a-no-dataset-regularization-mode.js": (0, 0),
     "js/features/anima-app/chunks/06-stronger-selective-checkpoint-value.js": (26, 0),
     "js/features/anima-app/chunks/07-render-config-dataset-picker-dialog.js": (32, 0),
     "js/features/anima-app/chunks/08-origin-closest.js": (24, 0),
     "js/features/anima-app/chunks/09-setup-config-group-drop-target.js": (25, 0),
     "js/features/anima-app/chunks/10-create-dataset-config-input.js": (25, 0),
-    "js/features/anima-app/chunks/10a-dataset-inline-help.js": (0, 1),
+    "js/features/anima-app/chunks/10a-dataset-inline-help.js": (0, 0),
     "js/features/anima-app/chunks/11-create-dataset-editor-row.js": (11, 0),
     "js/features/anima-app/chunks/12-create-dataset-row-caption-source-mode-editor.js": (22, 0),
     "js/features/anima-app/chunks/13-update-dataset-editor-rows-setting-value.js": (36, 0),
@@ -58,7 +58,7 @@ ANIMA_APP_GLOBAL_THIS_BASELINE = {
     "js/features/anima-app/chunks/24-show-preflight-pending-dialog.js": (29, 0),
     "js/features/anima-app/chunks/25-update-progress.js": (18, 1),
     "js/features/anima-app/chunks/26-load-global-settings.js": (61, 0),
-    "js/features/anima-app/chunks/26a-status-polling.js": (6, 1),
+    "js/features/anima-app/chunks/26a-status-polling.js": (0, 0),
     "js/features/anima-app/chunks/27-render-history-collections-workbench.js": (25, 0),
     "js/features/anima-app/chunks/28-history-collection-search-text.js": (35, 0),
     "js/features/anima-app/chunks/29-start-history-config-group-pointer-drag.js": (28, 0),
@@ -1793,7 +1793,8 @@ globalThis.updateProgress = (payload, options) => calls.push({ kind: 'progress',
 globalThis.updateMetrics = (payload, options) => calls.push({ kind: 'metric', payload, options });
 globalThis.updateSystem = (payload, options) => calls.push({ kind: 'system', payload, options });
 
-await import('./web/static/js/features/anima-app/chunks/26a-status-polling.js?snapshot-fixture');
+const statusPollingModule = await import('./web/static/js/features/anima-app/chunks/26a-status-polling.js?snapshot-fixture');
+Object.assign(globalThis, statusPollingModule.createStatusPollingBridge(globalThis));
 
 globalThis.applyStatusSnapshotFallbacks({
     status: 'running',
@@ -4992,7 +4993,7 @@ def test_dataset_json_caption_switch_ui_is_wired() -> None:
     notice_factory = _section(source, "function createDatasetExperimentalNotice", "function createDatasetExperimentalAdvancedBody")
     advanced_body_factory = _section(source, "function createDatasetExperimentalAdvancedBody", "function datasetExperimentalOpenKey")
     inline_help_factory = _section(source, "function datasetExperimentalOpenKey", "function createDatasetIsRegEditor")
-    is_reg_factory = _section(source, "function createDatasetIsRegEditor", "Object.assign(globalThis")
+    is_reg_factory = _section(source, "function createDatasetIsRegEditor", "export {")
     caption_extension_factory = _section(source, "function createDatasetCaptionExtensionEditor", "function createDatasetNlTagMixEditor")
     mix_factory = _section(source, "function createDatasetNlTagMixEditor", "function normalizeCaptionSourceMode")
     help_specs = _section(source, "function datasetLocalHelpSpec", "function createDatasetHelpNode")

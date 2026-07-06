@@ -1,9 +1,7 @@
 /**
  * No-dataset regularization intent layer for the config form.
  */
-const ctx = globalThis.ctx;
-
-    globalThis.createNoDatasetRegularizationModePanel = function createNoDatasetRegularizationModePanel() {
+    function createNoDatasetRegularizationModePanel() {
         const panel = document.createElement('div');
         panel.className = 'no-dataset-regularization-panel';
 
@@ -76,7 +74,7 @@ const ctx = globalThis.ctx;
         return panel;
     }
 
-    globalThis.createNoDatasetRegularizationAdvancedFields = function createNoDatasetRegularizationAdvancedFields(fields, groupClass) {
+    function createNoDatasetRegularizationAdvancedFields(fields, groupClass) {
         const details = document.createElement('details');
         details.className = 'no-dataset-regularization-advanced';
         const summary = document.createElement('summary');
@@ -94,7 +92,7 @@ const ctx = globalThis.ctx;
         return details;
     }
 
-    globalThis.createNoDatasetRegularizationNumberControl = function createNoDatasetRegularizationNumberControl(options) {
+    function createNoDatasetRegularizationNumberControl(options) {
         const label = document.createElement('label');
         label.className = ['no-dataset-regularization-control', options.modeClass || ''].filter(Boolean).join(' ');
         const title = document.createElement('span');
@@ -112,7 +110,7 @@ const ctx = globalThis.ctx;
         return label;
     }
 
-    globalThis.createNoDatasetRegularizationTextControl = function createNoDatasetRegularizationTextControl(options) {
+    function createNoDatasetRegularizationTextControl(options) {
         const label = document.createElement('label');
         label.className = ['no-dataset-regularization-control', options.modeClass || ''].filter(Boolean).join(' ');
         const title = document.createElement('span');
@@ -132,7 +130,7 @@ const ctx = globalThis.ctx;
         return label;
     }
 
-    globalThis.updateNoDatasetRegularizationFieldFromMirror = function updateNoDatasetRegularizationFieldFromMirror(input) {
+    function updateNoDatasetRegularizationFieldFromMirror(input) {
         const key = input?.dataset?.noDatasetRegularizationMirror;
         if (!key) return;
         const value = input.type === 'number' ? noDatasetRegularizationPositiveNumber(input.value) : input.value;
@@ -140,7 +138,7 @@ const ctx = globalThis.ctx;
         handleFormFieldChange();
     }
 
-    globalThis.applyNoDatasetRegularizationMode = function applyNoDatasetRegularizationMode(mode) {
+    function applyNoDatasetRegularizationMode(mode) {
         const current = readNoDatasetRegularizationValues();
         const priorWeight = noDatasetRegularizationPreferredWeight(current.prior_preservation_weight);
         const maskWeight = noDatasetRegularizationPreferredWeight(current.inverted_mask_prior_weight);
@@ -155,7 +153,7 @@ const ctx = globalThis.ctx;
         setTomlStatus('ok', `已切换无数据集正则化方案: ${spec?.label || mode}`);
     }
 
-    globalThis.noDatasetRegularizationPatchForMode = function noDatasetRegularizationPatchForMode(mode, context = {}) {
+    function noDatasetRegularizationPatchForMode(mode, context = {}) {
         const priorWeight = context.priorWeight ?? NO_DATASET_REGULARIZATION_DEFAULT_WEIGHT;
         const maskWeight = context.maskWeight ?? NO_DATASET_REGULARIZATION_DEFAULT_WEIGHT;
         const dopClass = context.dopClass ?? '';
@@ -199,7 +197,7 @@ const ctx = globalThis.ctx;
         };
     }
 
-    globalThis.updateNoDatasetRegularizationModePanel = function updateNoDatasetRegularizationModePanel() {
+    function updateNoDatasetRegularizationModePanel() {
         const panel = document.querySelector('#config-form .no-dataset-regularization-panel');
         if (!panel) return;
         const values = readNoDatasetRegularizationValues();
@@ -232,7 +230,7 @@ const ctx = globalThis.ctx;
         }
     }
 
-    globalThis.readNoDatasetRegularizationValues = function readNoDatasetRegularizationValues() {
+    function readNoDatasetRegularizationValues() {
         return {
             prior_preservation_weight: noDatasetRegularizationFieldValue('prior_preservation_weight'),
             blank_prompt_preservation: noDatasetRegularizationFieldValue('blank_prompt_preservation'),
@@ -242,14 +240,14 @@ const ctx = globalThis.ctx;
         };
     }
 
-    globalThis.noDatasetRegularizationFieldValue = function noDatasetRegularizationFieldValue(key) {
+    function noDatasetRegularizationFieldValue(key) {
         const input = document.querySelector(`#config-form .field-input[data-key="${CSS.escape(key)}"]`);
         if (input) return readFieldInputValue(input, originalConfigFieldValue(key));
         if (configFormState.draftValues.has(key)) return configFormState.draftValues.get(key);
         return originalConfigFieldValue(key);
     }
 
-    globalThis.inferNoDatasetRegularizationMode = function inferNoDatasetRegularizationMode(values = readNoDatasetRegularizationValues()) {
+    function inferNoDatasetRegularizationMode(values = readNoDatasetRegularizationValues()) {
         const priorEnabled = noDatasetRegularizationNumber(values.prior_preservation_weight) > 0;
         const maskEnabled = noDatasetRegularizationNumber(values.inverted_mask_prior_weight) > 0;
         const blankEnabled = Boolean(values.blank_prompt_preservation === true || values.blank_prompt_preservation === 'true');
@@ -267,7 +265,7 @@ const ctx = globalThis.ctx;
         return { mode: 'off', conflict: false };
     }
 
-    globalThis.noDatasetRegularizationStatusMessage = function noDatasetRegularizationStatusMessage(modeState, values) {
+    function noDatasetRegularizationStatusMessage(modeState, values) {
         if (modeState.conflict) {
             const priorEnabled = noDatasetRegularizationNumber(values.prior_preservation_weight) > 0;
             const blankEnabled = Boolean(values.blank_prompt_preservation === true || values.blank_prompt_preservation === 'true');
@@ -289,7 +287,7 @@ const ctx = globalThis.ctx;
         return '当前关闭；不会写入额外无数据集正则化损失。';
     }
 
-    globalThis.setNoDatasetRegularizationMirrorValue = function setNoDatasetRegularizationMirrorValue(panel, key, value) {
+    function setNoDatasetRegularizationMirrorValue(panel, key, value) {
         const input = panel.querySelector(`[data-no-dataset-regularization-mirror="${CSS.escape(key)}"]`);
         if (!input) return;
         const next = input.type === 'number'
@@ -298,17 +296,23 @@ const ctx = globalThis.ctx;
         if (input.value !== next) input.value = next;
     }
 
-    globalThis.noDatasetRegularizationPreferredWeight = function noDatasetRegularizationPreferredWeight(value) {
+    function noDatasetRegularizationPreferredWeight(value) {
         const n = noDatasetRegularizationNumber(value);
         return n > 0 ? n : NO_DATASET_REGULARIZATION_DEFAULT_WEIGHT;
     }
 
-    globalThis.noDatasetRegularizationPositiveNumber = function noDatasetRegularizationPositiveNumber(value) {
+    function noDatasetRegularizationPositiveNumber(value) {
         const n = noDatasetRegularizationNumber(value);
         return n > 0 ? n : 0.0;
     }
 
-    globalThis.noDatasetRegularizationNumber = function noDatasetRegularizationNumber(value) {
+    function noDatasetRegularizationNumber(value) {
         const n = Number(value);
         return Number.isFinite(n) ? n : 0;
     }
+
+export {
+    createNoDatasetRegularizationAdvancedFields,
+    createNoDatasetRegularizationModePanel,
+    updateNoDatasetRegularizationModePanel,
+};

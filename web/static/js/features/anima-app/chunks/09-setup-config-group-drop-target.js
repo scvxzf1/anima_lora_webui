@@ -2,6 +2,8 @@
  * Mechanical split from the former monolithic app closure.
  * Keep this module focused; move newly edited behavior into domain modules.
  */
+import { captureDatasetExperimentalOpenStates } from './10a-dataset-inline-help.js?v=module-bootstrap-20260705-3';
+
 const ctx = globalThis.ctx;
 
     globalThis.setupConfigGroupDropTarget = function setupConfigGroupDropTarget(node, group, options) {

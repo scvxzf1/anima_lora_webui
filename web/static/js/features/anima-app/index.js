@@ -1,7 +1,11 @@
 /**
  * Anima LoRA Web UI — modular application entry.
  */
-import { installLegacyGlobals } from './legacy-globals.js?v=module-bootstrap-20260705-3';
+import {
+    installLegacyGlobals,
+    installLegacyImageTestFeature,
+    installLegacyStatusPolling,
+} from './legacy-globals.js?v=module-bootstrap-20260705-3';
 import { createAnimaRuntime } from './runtime.js?v=module-bootstrap-20260705-3';
 
 export async function createAnimaApp(ctx) {
@@ -9,7 +13,9 @@ export async function createAnimaApp(ctx) {
     installLegacyGlobals(runtime);
     await import('./imports.js?v=module-bootstrap-20260705-3');
     await import('./chunks/01-scope-state.js?v=module-bootstrap-20260705-3');
-    await import('./chunks/01a-image-test-feature.js?v=module-bootstrap-20260705-3');
+    const imageTestFeatureModule = await import('./chunks/01a-image-test-feature.js?v=module-bootstrap-20260705-3');
+    const imageTestFeatureBridge = imageTestFeatureModule.createImageTestFeatureBridge(runtime);
+    installLegacyImageTestFeature(runtime, imageTestFeatureBridge);
     await import('./chunks/02-ensure-history-detail-feature.js?v=module-bootstrap-20260705-3');
     await import('./chunks/03-parse-network-arg-entry.js?v=module-bootstrap-20260705-3');
     await import('./chunks/04-create-config-group-entry.js?v=module-bootstrap-20260705-3');
@@ -37,7 +43,9 @@ export async function createAnimaApp(ctx) {
     await import('./chunks/24-show-preflight-pending-dialog.js?v=module-bootstrap-20260705-3');
     await import('./chunks/25-update-progress.js?v=module-bootstrap-20260705-3');
     await import('./chunks/26-load-global-settings.js?v=module-bootstrap-20260705-3');
-    await import('./chunks/26a-status-polling.js?v=module-bootstrap-20260705-3');
+    const statusPollingModule = await import('./chunks/26a-status-polling.js?v=module-bootstrap-20260705-3');
+    const statusPollingBridge = statusPollingModule.createStatusPollingBridge(globalThis);
+    installLegacyStatusPolling(runtime, statusPollingBridge);
     await import('./chunks/27-render-history-collections-workbench.js?v=module-bootstrap-20260705-3');
     await import('./chunks/28-history-collection-search-text.js?v=module-bootstrap-20260705-3');
     await import('./chunks/29-start-history-config-group-pointer-drag.js?v=module-bootstrap-20260705-3');

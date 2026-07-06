@@ -312,14 +312,14 @@ function createDatasetIsRegEditor(row, index) {
     return panel;
 }
 
-Object.assign(globalThis, {
-    createDatasetInlineHelp,
-    createDatasetInlineHelpButton,
-    createDatasetExperimentalAdvancedBody,
+export {
     attachDatasetInlineHelp,
-    datasetLocalHelpSpec,
     bindDatasetExperimentalOpenState,
     captureDatasetExperimentalOpenStates,
+    createDatasetExperimentalAdvancedBody,
+    createDatasetInlineHelp,
+    createDatasetInlineHelpButton,
     createDatasetIsRegEditor,
     datasetExperimentalOpenState,
-});
+    datasetLocalHelpSpec,
+};

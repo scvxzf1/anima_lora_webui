@@ -2,6 +2,11 @@
  * Mechanical split from the former monolithic app closure.
  * Keep this module focused; move newly edited behavior into domain modules.
  */
+import {
+    createNoDatasetRegularizationAdvancedFields,
+    createNoDatasetRegularizationModePanel,
+} from './05a-no-dataset-regularization-mode.js?v=module-bootstrap-20260705-3';
+
 const ctx = globalThis.ctx;
 
     globalThis.createConfigGroupEntry = function createConfigGroupEntry(name, fields, extraClass = '', description = '', defaultOpen = undefined, notice = '') {

@@ -2,17 +2,19 @@
  * Mechanical split from the former monolithic app closure.
  * Keep this module focused; move newly edited behavior into domain modules.
  */
-const ctx = globalThis.ctx;
+export function createStatusPollingBridge(target = globalThis) {
+    // Keep polling bookkeeping inside the bridge while old callers still use global function names.
+    let trainingSidebarSummaryLastRefreshAt = 0;
+    let trainingSidebarSummaryLastTaskId = '';
+    let trainingSidebarSummaryLastStatus = '';
+    let trainingSidebarSummaryRefreshPromise = null;
+    let trainingStatusPollFailures = Number(target.trainingStatusPollFailures || 0);
+    let trainingStatusPollTimer = target.trainingStatusPollTimer || null;
+    let trainingStatusPollPromise = target.trainingStatusPollPromise || null;
+    let trainingStatusPollForceReplayMetrics = Boolean(target.trainingStatusPollForceReplayMetrics);
 
     // ── 状态轮询 ──
-    Object.assign(globalThis, {
-        trainingSidebarSummaryLastRefreshAt: 0,
-        trainingSidebarSummaryLastTaskId: '',
-        trainingSidebarSummaryLastStatus: '',
-        trainingSidebarSummaryRefreshPromise: null,
-    });
-
-    globalThis.trainingStatusPollDelayMs = function trainingStatusPollDelayMs() {
+    function trainingStatusPollDelayMs() {
         const visible = !document.hidden;
         const wsOpen = ws?.readyState === WebSocket.OPEN;
         const running = isLiveRunningState();
@@ -21,7 +23,7 @@ const ctx = globalThis.ctx;
         return running ? 10000 : 60000;
     }
 
-    globalThis.scheduleStatusPoll = function scheduleStatusPoll(options = {}) {
+    function scheduleStatusPoll(options = {}) {
         if (location.protocol === 'file:') return;
         if (trainingStatusPollTimer) {
             window.clearTimeout(trainingStatusPollTimer);
@@ -34,7 +36,7 @@ const ctx = globalThis.ctx;
         }, delay);
     }
 
-    globalThis.pollStatus = async function pollStatus(options = {}) {
+    async function pollStatus(options = {}) {
         if (options.forceReplayMetrics) {
             trainingStatusPollForceReplayMetrics = true;
         }
@@ -97,7 +99,7 @@ const ctx = globalThis.ctx;
         }
     }
 
-    globalThis.refreshTrainingSidebarSummariesFromPoll = function refreshTrainingSidebarSummariesFromPoll(status = {}) {
+    function refreshTrainingSidebarSummariesFromPoll(status = {}) {
         if (location.protocol === 'file:') return null;
         const taskId = String(status.task_id || '').trim();
         const state = String(status.status || '').trim();
@@ -125,7 +127,7 @@ const ctx = globalThis.ctx;
         return trainingSidebarSummaryRefreshPromise;
     }
 
-    globalThis.applyStatusSnapshotFallbacks = function applyStatusSnapshotFallbacks(status = {}) {
+    function applyStatusSnapshotFallbacks(status = {}) {
         if (!isLiveRunningState(status.status)) return;
         if (hasStatusPayload(status.latest_progress)) {
             updateProgress(status.latest_progress, { replay: true });
@@ -138,6 +140,16 @@ const ctx = globalThis.ctx;
         }
     }
 
-    globalThis.hasStatusPayload = function hasStatusPayload(value) {
+    function hasStatusPayload(value) {
         return value && typeof value === 'object' && Object.keys(value).length > 0;
     }
+
+    return {
+        trainingStatusPollDelayMs,
+        scheduleStatusPoll,
+        pollStatus,
+        refreshTrainingSidebarSummariesFromPoll,
+        applyStatusSnapshotFallbacks,
+        hasStatusPayload,
+    };
+}
