@@ -92,7 +92,8 @@ networks/lora_anima/
   factory.py              # 已有：网络创建入口
   loading.py              # 已有：checkpoint key 兼容和拒绝逻辑
   targeting.py            # 已有：目标模块收集
-  builders.py             # 新增：模块构建和 class/kwargs 选择
+  builders.py             # 新增：网络组件构建编排
+  module_builders.py      # 新增：单个 LoRA module 创建和 class/kwargs 选择
   routing_state.py        # 新增：sigma/FEI/routing buffer wire/set/clear
   router_stats.py         # 新增：router stats、balance loss、grad stats
   routers.py              # 新增：GlobalRouter / FreqRouter / ContentRouter
@@ -129,7 +130,8 @@ class LoRANetwork(torch.nn.Module):
 
 | 职责 | 归属模块 |
 | --- | --- |
-| 构建编排、module class/kwargs、ReFT/register/router 创建 | `builders.py` |
+| 构建编排、ReFT/register/router 创建 | `builders.py` |
+| 单个 LoRA module 创建、module class 选择、per-variant constructor kwargs 组装 | `module_builders.py` |
 | sigma / FEI / routing buffer wire、set、clear | `routing_state.py` |
 | router stats、balance loss、grad stats、metrics | `router_stats.py` |
 | metadata、load/save、key cleanup | `persistence.py` |
