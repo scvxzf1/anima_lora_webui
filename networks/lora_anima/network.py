@@ -10,7 +10,6 @@ import torch
 
 from library.log import setup_logging
 from library.training.metrics import MetricContext
-from networks import ModuleCreationContext, NETWORK_REGISTRY
 from networks.lora_anima.config import LoRANetworkCfg
 from networks.lora_anima.loading import _parse_reft_layers
 from networks.lora_anima.persistence import (
@@ -19,11 +18,8 @@ from networks.lora_anima.persistence import (
     save_lora_network_weights,
     strip_orig_mod_keys,
 )
-from networks.lora_anima import optimizer_groups, router_stats, routing_state
-from networks.lora_anima.targeting import (
-    collect_lora_target_candidates,
-    compile_lora_target_patterns,
-)
+from networks.lora_anima import builders, optimizer_groups, router_stats, routing_state
+from networks.lora_anima.targeting import compile_lora_target_patterns
 from networks.register_injection import RegisterInjector
 from networks.lora_modules import (
     ChimeraHydraInferenceModule,
@@ -414,16 +410,7 @@ class LoRANetwork(torch.nn.Module):
         # Local aliases for the closure body and the post-closure ReFT block.
         # Reading via `cfg.foo` works too; aliases just keep the diff small.
         module_class = cfg.module_class
-        nominal_spec = next(
-            (
-                spec
-                for spec in NETWORK_REGISTRY.values()
-                if spec.module_class is module_class
-            ),
-            None,
-        )
         modules_dim = cfg.modules_dim
-        modules_alpha = cfg.modules_alpha
         dropout = cfg.dropout
         rank_dropout = cfg.rank_dropout
         module_dropout = cfg.module_dropout
@@ -533,313 +520,17 @@ class LoRANetwork(torch.nn.Module):
             target_replace_modules: List[str],
             default_dim: Optional[int] = None,
         ) -> Tuple[List[LoRAModule], List[str]]:
-            prefix = (
-                self.LORA_PREFIX_ANIMA if is_unet else self.LORA_PREFIX_TEXT_ENCODER
-            )
-
-            # First pass: collect candidate modules. Class selection, router
-            # counters, and constructor kwargs stay below in the second pass.
-            candidates = collect_lora_target_candidates(
+            return builders.create_lora_modules(
+                self,
+                is_unet=is_unet,
+                text_encoder_idx=text_encoder_idx,
                 root_module=root_module,
-                prefix=prefix,
                 target_replace_modules=target_replace_modules,
+                default_dim=default_dim,
                 exclude_patterns=exclude_re_patterns,
                 include_patterns=include_re_patterns,
-                is_unet=is_unet,
-                layer_start=cfg.layer_start,
-                layer_end=cfg.layer_end,
-                modules_dim=modules_dim,
-                modules_alpha=modules_alpha,
-                reg_dims=cfg.reg_dims,
-                default_dim=default_dim,
-                lora_dim=lora_dim,
-                alpha=alpha,
-                verbose=verbose,
                 logger=logger,
             )
-
-            # Second pass: create LoRA modules with progress bar
-            from tqdm import tqdm
-
-            loras = []
-            skipped = []
-            non_skipped = [
-                (item.lora_name, item.child_module, item.dim, item.alpha, item.original_name)
-                for item in candidates
-                if not item.skipped
-            ]
-            skipped = [item.lora_name for item in candidates if item.skipped]
-
-            # VeRA uses one frozen random projection bank (A/B) and slices it
-            # per adapted Linear.  The plugin owns the module implementation;
-            # the network builder only supplies the largest shape visible in
-            # this create scope so all VeRA leaves share one deterministic
-            # bank instead of allocating layer-local random matrices.
-            if nominal_spec is not None and nominal_spec.name == "vera":
-                linear_candidates = [
-                    cm for _ln, cm, _d, _a, _on in non_skipped
-                    if isinstance(cm, torch.nn.Linear)
-                ]
-                if linear_candidates:
-                    cfg.plugin_args["_vera_max_in_features"] = max(
-                        int(m.in_features) for m in linear_candidates
-                    )
-                    cfg.plugin_args["_vera_max_out_features"] = max(
-                        int(m.out_features) for m in linear_candidates
-                    )
-
-            label = (
-                "DiT"
-                if is_unet
-                else f"TE{text_encoder_idx + 1}"
-                if text_encoder_idx is not None
-                else "model"
-            )
-            for lora_name, child_module, dim, alpha_val, original_name in tqdm(
-                non_skipped, desc=f"Creating {label} LoRA", leave=False
-            ):
-                # Per-module class resolution: when the network's nominal class
-                # is Hydra (MoE), narrow it to only the layers in the hydra
-                # filter. Non-matching layers fall back to plain LoRA /
-                # OrthoLoRA so router overhead + balance-loss pressure are
-                # concentrated on sites where specialization is learnable.
-                effective_module_class = module_class
-                if (
-                    module_class
-                    in (
-                        HydraLoRAModule,
-                        OrthoHydraLoRAModule,
-                        ChimeraHydraLoRAModule,
-                        ChimeraHydraInferenceModule,
-                    )
-                    and is_unet
-                ):
-                    if self._hydra_router_names is not None:
-                        hydra_on = lora_name in self._hydra_router_names
-                    elif self._hydra_router_re is not None:
-                        hydra_on = bool(self._hydra_router_re.search(original_name))
-                    else:
-                        hydra_on = True
-                    if hydra_on:
-                        self._hydra_router_hits += 1
-                    else:
-                        self._hydra_router_misses += 1
-                        if module_class is HydraLoRAModule:
-                            effective_module_class = LoRAModule
-                        elif module_class is ChimeraHydraInferenceModule:
-                            # Load path. Unrouted leg was saved as plain LoRA
-                            # (OrthoLoRA distilled to ``.lora_down.weight`` +
-                            # ``.lora_up.weight`` at save time — see
-                            # ``_convert_ortho_to_lora``).
-                            effective_module_class = LoRAModule
-                        else:
-                            # Train path (ChimeraHydraLoRAModule) and
-                            # OrthoHydra: unrouted leg uses the OrthoLoRA
-                            # Cayley parameterization.
-                            effective_module_class = OrthoLoRAModule
-
-                extra_kwargs = {}
-                if effective_module_class == OrthoLoRAModule:
-                    pass  # no extra kwargs — SVD init reads from org_module directly
-                elif effective_module_class == ChimeraHydraLoRAModule:
-                    # Pool split is the chimera's only constructor surface;
-                    # σ/FEI feature dims are 0 by design (the network-level
-                    # FreqRouter owns those axes — see chimera.py module
-                    # docstring). The pool sum must equal cfg.num_experts
-                    # by ``LoRANetworkCfg.from_kwargs`` invariant.
-                    extra_kwargs["num_experts_content"] = cfg.num_experts_content
-                    extra_kwargs["num_experts_freq"] = cfg.num_experts_freq
-                    extra_kwargs["centered_gate"] = cfg.chimera_centered_gate
-                    extra_kwargs["lambda_init"] = cfg.chimera_lambda_init
-                    if cfg.content_router_source == "crossattn_emb":
-                        extra_kwargs["use_global_content_router"] = True
-                elif effective_module_class == ChimeraHydraInferenceModule:
-                    # Inference (free-form) twin of the chimera training
-                    # class. Same constructor surface — both pool sizes
-                    # arrive from the chimera-stamped metadata via
-                    # ``cfg.from_weights``.
-                    extra_kwargs["num_experts_content"] = cfg.num_experts_content
-                    extra_kwargs["num_experts_freq"] = cfg.num_experts_freq
-                    extra_kwargs["centered_gate"] = cfg.chimera_centered_gate
-                    if cfg.content_router_source == "crossattn_emb":
-                        extra_kwargs["use_global_content_router"] = True
-                elif effective_module_class == OrthoHydraLoRAModule:
-                    extra_kwargs["num_experts"] = cfg.num_experts
-                    extra_kwargs["centered_gate"] = cfg.ortho_centered_gate
-                    extra_kwargs["lambda_init"] = cfg.ortho_lambda_init
-                    if self._use_global_router_for_hydra:
-                        extra_kwargs["use_global_router"] = True
-                        self._global_router_hits += 1
-                elif effective_module_class == HydraLoRAModule:
-                    extra_kwargs["num_experts"] = cfg.num_experts
-                    extra_kwargs["centered_gate"] = cfg.ortho_centered_gate
-                    if cfg.expert_init_std > 0.0:
-                        extra_kwargs["expert_init_std"] = cfg.expert_init_std
-                    if self._use_global_router_for_hydra:
-                        extra_kwargs["use_global_router"] = True
-                        self._global_router_hits += 1
-                    if cfg.use_chimera_hydra:
-                        # Dual-pool runtime form (load path from a distilled
-                        # chimera checkpoint — see factory.py is_chimera_hydra
-                        # branch). HydraLoRAModule narrows its router to K_c
-                        # outputs and registers _freq_routing_weights for the
-                        # network-level FreqRouter broadcast. σ/FEI feature
-                        # dims must stay 0 here — FreqRouter owns those axes.
-                        extra_kwargs["num_experts_content"] = cfg.num_experts_content
-                        if cfg.content_router_source == "crossattn_emb":
-                            extra_kwargs["use_global_content_router"] = True
-                elif effective_module_class == StackedExpertsLoRAModule:
-                    # Independent-A (FeRA). Gates arrive via the network-level
-                    # ``GlobalRouter`` through the shared ``_routing_weights``
-                    # buffer — no per-Linear router knob to set. ``num_experts``
-                    # must match ``cfg.num_experts`` (and therefore the
-                    # GlobalRouter's output width) or the routing-weight
-                    # broadcast inside ``forward`` shape-mismatches.
-                    extra_kwargs["num_experts"] = cfg.num_experts
-                    extra_kwargs["ortho"] = cfg.use_ortho
-                    if cfg.use_ortho:
-                        extra_kwargs["ortho_init_std"] = cfg.ortho_init_std
-
-                if cfg.down_init != "kaiming" and effective_module_class is LoRAModule:
-                    extra_kwargs["down_init"] = cfg.down_init
-
-                effective_spec = (
-                    nominal_spec
-                    if nominal_spec is not None
-                    and effective_module_class is nominal_spec.module_class
-                    else next(
-                        (
-                            spec
-                            for spec in NETWORK_REGISTRY.values()
-                            if spec.module_class is effective_module_class
-                        ),
-                        None,
-                    )
-                )
-                if (
-                    effective_spec is not None
-                    and effective_spec.module_kwargs is not None
-                ):
-                    extra_kwargs.update(
-                        effective_spec.module_kwargs(
-                            ModuleCreationContext(
-                                cfg=cfg,
-                                is_unet=is_unet,
-                                lora_name=lora_name,
-                                original_name=original_name,
-                                child_module=child_module,
-                                module_class=effective_module_class,
-                            )
-                        )
-                    )
-
-                # Hard σ-band expert partition: applied to every Hydra/
-                # OrthoHydra module (independent of the σ-feature router
-                # regex). Each module owns the partition; the network-level
-                # ``set_sigma`` propagates ``_sigma`` to enable per-step band
-                # selection. Validation (E % N == 0) lives in cfg parsing.
-                if (
-                    cfg.specialize_experts_by_sigma_buckets
-                    and effective_module_class
-                    in (HydraLoRAModule, OrthoHydraLoRAModule)
-                    and is_unet
-                ):
-                    extra_kwargs["specialize_experts_by_sigma_buckets"] = True
-                    extra_kwargs["num_sigma_buckets"] = cfg.num_sigma_buckets
-                    if cfg.sigma_bucket_boundaries is not None:
-                        extra_kwargs["sigma_bucket_boundaries"] = (
-                            cfg.sigma_bucket_boundaries
-                        )
-
-                # σ-conditional router: only widen the router input with
-                # sinusoidal(σ) features on modules whose name matches the
-                # layer filter (cross_attn.q / self_attn.qkv by default — see
-                # B0 pre-analysis in timestep-hydra.md). From-weights path uses
-                # an explicit name set; fresh-from-kwargs path uses a regex
-                # over original_name. Gated on the effective class so a
-                # hydra-excluded module can't pick up σ either. Skipped under
-                # ``use_global_router`` — the network-level router consumes
-                # the routing signal once and the per-Linear cat is dead.
-                if (
-                    cfg.router_source == "sigma"
-                    and effective_module_class
-                    in (
-                        HydraLoRAModule,
-                        OrthoHydraLoRAModule,
-                    )
-                    and is_unet
-                    and not self._use_global_router_for_hydra
-                ):
-                    if self._sigma_router_names is not None:
-                        enable = lora_name in self._sigma_router_names
-                    elif self._sigma_router_re is not None:
-                        enable = bool(self._sigma_router_re.search(original_name))
-                    else:
-                        enable = True
-                    if enable:
-                        extra_kwargs["sigma_feature_dim"] = cfg.sigma_feature_dim
-                        self._sigma_router_hits += 1
-
-                # FEI-conditional router (FeRA-style). Same gating as σ —
-                # widen the router input with the per-sample FEI simplex on
-                # modules whose name matches the layer filter. The FEI tensor
-                # itself is computed once per step in the train/inference loop
-                # and propagated via ``LoRANetwork.set_fei``. Skipped under
-                # ``use_global_router`` — the GlobalRouter reads FEI directly
-                # at the network level and per-Linear cat is dead.
-                if (
-                    cfg.router_source == "fei"
-                    and effective_module_class
-                    in (
-                        HydraLoRAModule,
-                        OrthoHydraLoRAModule,
-                    )
-                    and is_unet
-                    and not self._use_global_router_for_hydra
-                ):
-                    if self._fei_router_names is not None:
-                        enable_fei = lora_name in self._fei_router_names
-                    elif self._fei_router_re is not None:
-                        enable_fei = bool(self._fei_router_re.search(original_name))
-                    else:
-                        enable_fei = True
-                    if enable_fei:
-                        extra_kwargs["fei_feature_dim"] = cfg.fei_feature_dim
-                        self._fei_router_hits += 1
-
-                # Per-channel scaling is DiT-only. LoKr is excluded because a
-                # full input-channel scale cannot be represented by its
-                # Kronecker factors or native LoKr checkpoint format.
-                if (
-                    cfg.channel_scales_dict is not None
-                    and is_unet
-                    and not (
-                        effective_spec is not None and effective_spec.name == "lokr"
-                    )
-                ):
-                    _cs = cfg.channel_scales_dict.get(lora_name)
-                    if _cs is not None:
-                        extra_kwargs["channel_scale"] = _cs
-                        self._channel_scale_hits += 1
-                    else:
-                        self._channel_scale_misses.append(lora_name)
-
-                lora = effective_module_class(
-                    lora_name,
-                    child_module,
-                    self.multiplier,
-                    dim,
-                    alpha_val,
-                    dropout=dropout,
-                    rank_dropout=rank_dropout,
-                    module_dropout=module_dropout,
-                    **extra_kwargs,
-                )
-                lora.fp32_compute = bool(cfg.lora_fp32_compute)
-                lora.original_name = original_name
-                loras.append(lora)
-
-            return loras, skipped
 
         # Create LoRA for text encoders (Qwen3 - typically not trained for Anima)
         # Skip for OrthoLoRA since SVD init is expensive and TE modules are discarded in apply_to anyway

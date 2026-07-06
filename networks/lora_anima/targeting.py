@@ -1,8 +1,8 @@
 """LoRA target discovery helpers.
 
-Keep this module limited to pure candidate collection.  Module-class selection,
-router counters, plugin kwargs, and runtime buffer wiring stay in
-``network.py``.
+Keep this module limited to pure candidate collection. Module-class selection,
+router counters, and plugin kwargs live in ``builders.py``; runtime buffer
+wiring lives in ``routing_state.py``.
 """
 
 from __future__ import annotations

@@ -13,7 +13,13 @@ from networks.lora_anima.targeting import (
     collect_lora_target_candidates,
     compile_lora_target_patterns,
 )
-from networks.lora_modules import HydraLoRAModule, LoRAModule, StackedExpertsLoRAModule
+from networks.lora_modules import (
+    ChimeraHydraLoRAModule,
+    HydraLoRAModule,
+    LoRAModule,
+    OrthoLoRAModule,
+    StackedExpertsLoRAModule,
+)
 
 
 class Block(torch.nn.Module):
@@ -358,6 +364,66 @@ def test_create_network_global_fei_shared_a_cell_uses_real_builder_path() -> Non
     assert net._balance_loss_target_weight == 0.2
     assert net._balance_loss_warmup_ratio == 0.25
     assert net._balance_loss_weight == 0.0
+
+
+def test_create_network_crossattn_global_router_uses_real_builder_path() -> None:
+    net = create_network(
+        multiplier=1.0,
+        network_dim=2,
+        network_alpha=2.0,
+        vae=None,
+        text_encoders=[],
+        unet=TinyDiT(),
+        use_moe_style="shared_A",
+        route_per_layer=False,
+        router_source="crossattn_emb",
+        router_targets="q_proj",
+        num_experts=3,
+        router_hidden_dim=8,
+        router_tau=0.7,
+    )
+    modules = {lora.original_name: lora for lora in net.unet_loras}
+
+    assert type(modules["blocks.0.q_proj"]) is HydraLoRAModule
+    assert modules["blocks.0.q_proj"].use_global_router is True
+    assert type(modules["blocks.0.k_proj"]) is LoRAModule
+    assert isinstance(net.global_router, GlobalRouter)
+    assert net.global_router.apply_layer_norm is True
+    assert net.use_crossattn_router is True
+    assert len(net._routing_aware_loras) == 1
+    assert net._hydra_router_hits == 1
+    assert net._hydra_router_misses == 1
+    assert net._global_router_hits == 1
+
+
+def test_create_network_chimera_router_targets_use_real_builder_path() -> None:
+    net = create_network(
+        multiplier=1.0,
+        network_dim=2,
+        network_alpha=2.0,
+        vae=None,
+        text_encoders=[],
+        unet=TinyDiT(),
+        use_chimera_hydra=True,
+        router_targets="q_proj",
+        num_experts_content=2,
+        num_experts_freq=2,
+        fei_feature_dim=2,
+        sigma_feature_dim=4,
+        router_hidden_dim=8,
+        router_tau=1.0,
+    )
+    modules = {lora.original_name: lora for lora in net.unet_loras}
+
+    assert type(modules["blocks.0.q_proj"]) is ChimeraHydraLoRAModule
+    assert type(modules["blocks.0.k_proj"]) is OrthoLoRAModule
+    assert net._hydra_router_hits == 1
+    assert net._hydra_router_misses == 1
+    assert net._use_chimera_hydra is True
+    assert net.freq_router is not None
+    assert net.content_router is None
+    assert net.use_fei_router is True
+    assert len(net._chimera_aware_loras) == 1
 
 
 def test_save_weights_stamps_three_axis_metadata_for_shared_a_global_fei(
