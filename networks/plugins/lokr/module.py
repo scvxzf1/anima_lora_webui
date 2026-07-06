@@ -11,6 +11,7 @@ import torch.nn.functional as F
 from library.runtime.peak_probe import record_peak_probe_event
 from networks.lora_modules.base import BaseLoRAModule
 from networks.plugins.lokr.autograd import (
+    DEFAULT_LOKR_GROUPED_DELTA_BACKEND,
     DEFAULT_LOKR_GROUPED_DELTA_BACKWARD_BACKEND,
     DEFAULT_LOKR_PROJECT_CHUNK_BYTES,
     lokr_add_grouped_delta_,
@@ -68,7 +69,7 @@ class LoKrModule(BaseLoRAModule):
         factor=8,
         lokr_factor_group_size=8,
         lokr_project_chunk_bytes=DEFAULT_LOKR_PROJECT_CHUNK_BYTES,
-        lokr_grouped_delta_backend="triton",
+        lokr_grouped_delta_backend=DEFAULT_LOKR_GROUPED_DELTA_BACKEND,
         lokr_grouped_delta_backward_backend=DEFAULT_LOKR_GROUPED_DELTA_BACKWARD_BACKEND,
         lokr_use_einsum=True,
         lokr_decompose_w2=False,
@@ -276,8 +277,12 @@ class LoKrModule(BaseLoRAModule):
                         * self.multiplier
                         * self.scale
                     )
-                    if self._can_use_fused_grouped_delta(
-                        x_r, org_forwarded, gate_scale
+                    if (
+                        self.lokr_grouped_delta_backend
+                        != DEFAULT_LOKR_GROUPED_DELTA_BACKEND
+                        and self._can_use_fused_grouped_delta(
+                            x_r, org_forwarded, gate_scale
+                        )
                     ):
                         result = self._apply_fused_grouped_delta(
                             org_forwarded,

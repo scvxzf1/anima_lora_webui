@@ -249,6 +249,43 @@ def test_lokr_default_training_uses_grouped_delta_fast_path(monkeypatch):
     assert lokr.lokr_w2.grad is not None
 
 
+def test_lokr_default_training_keeps_einsum_path(monkeypatch):
+    torch.manual_seed(15)
+    x = torch.randn(3, 6, requires_grad=True)
+
+    base = torch.nn.Linear(6, 8, bias=False)
+    lokr = LoKrModule(
+        "lora_unet_test",
+        base,
+        multiplier=1.0,
+        lora_dim=2,
+        alpha=2,
+        factor=2,
+    )
+    lokr.apply_to()
+    lokr.train()
+
+    calls = []
+
+    def _unexpected_grouped_delta(*_args, **_kwargs):
+        calls.append(True)
+        raise AssertionError("default LoKr training should not use grouped-delta")
+
+    monkeypatch.setattr(
+        "networks.plugins.lokr.module.lokr_add_grouped_delta_",
+        _unexpected_grouped_delta,
+    )
+
+    y = lokr.org_module_ref[0](x)
+    y.sum().backward()
+
+    assert lokr.lokr_grouped_delta_backend == "eager"
+    assert calls == []
+    assert x.grad is not None
+    assert lokr.lokr_w1.grad is not None
+    assert lokr.lokr_w2.grad is not None
+
+
 def test_lokr_project_matches_kron_linear_forward_and_backward():
     torch.manual_seed(1)
     factor = 2

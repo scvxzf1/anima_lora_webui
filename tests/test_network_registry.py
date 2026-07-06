@@ -179,7 +179,7 @@ def test_lokr_module_kwargs_default_keeps_full_w2():
         module_class=LoKrModule,
     )
     kwargs = NETWORK_REGISTRY["lokr"].module_kwargs(ctx)
-    assert kwargs["lokr_grouped_delta_backend"] == "triton"
+    assert kwargs["lokr_grouped_delta_backend"] == "eager"
     assert kwargs["lokr_grouped_delta_backward_backend"] == "eager"
     assert kwargs["lokr_use_einsum"] is True
     assert kwargs["lokr_decompose_w2"] is False

@@ -7,6 +7,7 @@ from typing import Any, Mapping
 import torch
 
 from networks.plugins.lokr.autograd import (
+    DEFAULT_LOKR_GROUPED_DELTA_BACKEND,
     DEFAULT_LOKR_GROUPED_DELTA_BACKWARD_BACKEND,
     DEFAULT_LOKR_PROJECT_CHUNK_BYTES,
     normalize_lokr_grouped_delta_backward_backend,
@@ -23,7 +24,7 @@ from networks.registry import (
     register_save_handler,
 )
 
-DEFAULT_LOKR_RUNTIME_BACKEND = "triton"
+DEFAULT_LOKR_RUNTIME_BACKEND = DEFAULT_LOKR_GROUPED_DELTA_BACKEND
 
 
 def _truthy(value: Any) -> bool:
