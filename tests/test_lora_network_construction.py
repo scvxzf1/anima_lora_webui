@@ -150,6 +150,29 @@ def test_pre_calculation_facade_restores_backed_up_base_weight() -> None:
     assert torch.equal(org_module.weight, base_weight)
 
 
+def test_max_norm_regularization_facade_scales_large_lora_weights() -> None:
+    unet = TinyDiT()
+    net = LoRANetwork([], unet, _plain_cfg())
+    net.apply_to([], unet)
+    with torch.no_grad():
+        for lora in net.unet_loras:
+            lora.lora_down.weight.fill_(1.0)
+            lora.lora_up.weight.fill_(1.0)
+    before = [
+        (lora.lora_down.weight.detach().clone(), lora.lora_up.weight.detach().clone())
+        for lora in net.unet_loras
+    ]
+
+    keys_scaled, avg_norm, max_norm = net.apply_max_norm_regularization(1.0, "cpu")
+
+    assert keys_scaled == len(net.unet_loras)
+    assert 0.0 < avg_norm <= 1.0
+    assert 0.0 < max_norm <= 1.0
+    for lora, (before_down, before_up) in zip(net.unet_loras, before):
+        assert lora.lora_down.weight.norm() < before_down.norm()
+        assert lora.lora_up.weight.norm() < before_up.norm()
+
+
 def test_lora_network_builds_plain_modules_with_stable_names() -> None:
     net = LoRANetwork([], TinyDiT(), _plain_cfg())
 

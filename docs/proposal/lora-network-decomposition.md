@@ -99,6 +99,7 @@ networks/lora_anima/
   persistence.py          # 新增：metadata stamp、load/save 辅助
   optimizer_groups.py     # 新增：optimizer param groups 和 LR 描述
   merge.py                # 新增：merge_to / fuse / unfuse / pre_calculation
+  regularization.py       # 新增：max-norm regularization
 ```
 
 目标调用形态：
