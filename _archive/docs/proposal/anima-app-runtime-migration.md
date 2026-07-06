@@ -1,9 +1,10 @@
 # Anima App Runtime / Context 迁移提案
 
-状态：活跃提案
+状态：已归档
 适用版本：当前 main
 入口命令：无，本文是 WebUI 前端重构计划
 基线日期：2026-07-06
+归档原因：阶段计划已执行，当前仅保留历史上下文。
 相关代码：
 - `web/static/js/features/anima-app/index.js`
 - `web/static/js/features/anima-app/imports.js`

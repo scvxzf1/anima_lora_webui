@@ -15,3 +15,4 @@
 | [upstream_preprocess_robustness_analysis.md](upstream_preprocess_robustness_analysis.md) | 上游预处理健壮性分析，服务旧合并工作 |
 | [configs_external_data_root_plan_2026-06-24.md](configs_external_data_root_plan_2026-06-24.md) | 配置外置已落地，当前说明由 `docs/configuration/` 承接 |
 | [compile_safety_patches_analysis.md](compile_safety_patches_analysis.md) | Compile safety 分析已转为实现和测试事实 |
+| [anima-app-runtime-migration.md](anima-app-runtime-migration.md) | WebUI `anima-app` runtime 迁移阶段计划已执行 |
