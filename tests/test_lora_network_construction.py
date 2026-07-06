@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+from inspect import signature
+
 import torch
 from safetensors import safe_open
+from safetensors.torch import save_file
 
 from networks.lora_anima.config import LoRANetworkCfg
 from networks.lora_anima.factory import create_network, create_network_from_weights
@@ -32,6 +35,85 @@ def _plain_cfg() -> LoRANetworkCfg:
         lora_dim=2,
         alpha=2.0,
     )
+
+
+def test_lora_network_public_api_surface_stays_compatible() -> None:
+    expected_methods = {
+        "apply_to",
+        "load_weights",
+        "save_weights",
+        "merge_to",
+        "is_mergeable",
+        "prepare_optimizer_params_with_multiple_te_lrs",
+        "set_multiplier",
+        "set_timestep_mask",
+        "clear_timestep_mask",
+        "set_sigma",
+        "clear_sigma",
+        "set_fei",
+        "clear_fei",
+        "set_routing_weights",
+        "clear_routing_weights",
+        "set_crossattn_routing",
+        "set_content",
+        "clear_step_caches",
+        "get_balance_loss",
+        "get_router_stats",
+        "get_chimera_router_stats",
+        "metrics",
+    }
+
+    missing = [
+        name for name in sorted(expected_methods)
+        if not callable(getattr(LoRANetwork, name, None))
+    ]
+
+    assert missing == []
+    assert list(signature(LoRANetwork.apply_to).parameters) == [
+        "self",
+        "text_encoders",
+        "unet",
+        "apply_text_encoder",
+        "apply_unet",
+    ]
+    assert list(signature(LoRANetwork.load_weights).parameters) == ["self", "file"]
+    assert list(signature(LoRANetwork.save_weights).parameters) == [
+        "self",
+        "file",
+        "dtype",
+        "metadata",
+    ]
+    optimizer_signature = signature(
+        LoRANetwork.prepare_optimizer_params_with_multiple_te_lrs
+    )
+    assert list(optimizer_signature.parameters) == [
+        "self",
+        "text_encoder_lr",
+        "unet_lr",
+        "default_lr",
+    ]
+    assert list(signature(LoRANetwork.set_sigma).parameters) == ["self", "sigmas"]
+    assert list(signature(LoRANetwork.set_fei).parameters) == ["self", "fei"]
+
+
+def test_load_weights_facade_strips_orig_mod_keys(tmp_path) -> None:
+    unet = TinyDiT()
+    net = LoRANetwork([], unet, _plain_cfg())
+    net.apply_to([], unet)
+    target_key = "lora_unet_blocks_0_q_proj.lora_down.weight"
+    compiled_key = target_key.replace(
+        "lora_unet_blocks",
+        "lora_unet__orig_mod_blocks",
+        1,
+    )
+    expected = torch.full_like(net.state_dict()[target_key], 0.25)
+    out = tmp_path / "compiled_keys.safetensors"
+    save_file({compiled_key: expected}, str(out))
+
+    info = net.load_weights(str(out))
+
+    assert info.unexpected_keys == []
+    assert torch.equal(net.state_dict()[target_key], expected)
 
 
 def test_lora_network_builds_plain_modules_with_stable_names() -> None:
