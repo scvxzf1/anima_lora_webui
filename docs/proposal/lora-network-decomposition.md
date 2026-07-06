@@ -96,6 +96,7 @@ networks/lora_anima/
   routing_state.py        # 新增：sigma/FEI/routing buffer wire/set/clear
   router_stats.py         # 新增：router stats、balance loss、grad stats
   routers.py              # 新增：GlobalRouter / FreqRouter / ContentRouter
+  application.py          # 新增：apply_to / set_multiplier / lifecycle helper
   persistence.py          # 新增：metadata stamp、load/save 辅助
   optimizer_groups.py     # 新增：optimizer param groups 和 LR 描述
   merge.py                # 新增：merge_to / fuse / unfuse / pre_calculation

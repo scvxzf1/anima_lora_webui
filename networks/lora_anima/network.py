@@ -18,6 +18,7 @@ from networks.lora_anima.persistence import (
     strip_orig_mod_keys,
 )
 from networks.lora_anima import (
+    application,
     builders,
     merge as merge_ops,
     optimizer_groups,
@@ -395,23 +396,13 @@ class LoRANetwork(torch.nn.Module):
         return routing_state.wire_shared_freq_routing_buffers(self)
 
     def prepare_network(self, args):
-        if getattr(args, "lora_fp32_accumulation", False):
-            logger.warning(
-                "--lora_fp32_accumulation is deprecated and has no effect; "
-                "fp32 accumulation is now unconditional in LoRA/Hydra/ReFT "
-                "bottleneck matmuls. Remove the flag from your config."
-            )
+        return application.prepare_network(self, args, logger=logger)
 
     def set_multiplier(self, multiplier):
-        self.multiplier = multiplier
-        for lora in self.text_encoder_loras + self.unet_loras:
-            lora.multiplier = self.multiplier
-        for reft in self.text_encoder_refts + self.unet_refts:
-            reft.multiplier = self.multiplier
+        return application.set_multiplier(self, multiplier)
 
     def set_enabled(self, is_enabled):
-        for lora in self.text_encoder_loras + self.unet_loras:
-            lora.enabled = is_enabled
+        return application.set_enabled(self, is_enabled)
 
     def fuse_weights(self):
         return merge_ops.fuse_weights(self)
@@ -423,12 +414,7 @@ class LoRANetwork(torch.nn.Module):
         return routing_state.set_timestep_mask(self, timesteps, max_timestep)
 
     def set_step_index(self, step_index: int) -> None:
-        """Broadcast a hard denoising-step index to step-expert modules."""
-        k = int(step_index)
-        for lora in self.text_encoder_loras + self.unet_loras:
-            set_step = getattr(lora, "set_step", None)
-            if set_step is not None:
-                set_step(k)
+        return application.set_step_index(self, step_index)
 
     def set_reft_timestep_mask(
         self, timesteps: torch.Tensor, max_timestep: float = 1.0
@@ -530,33 +516,14 @@ class LoRANetwork(torch.nn.Module):
         return reabsorb_baked_inv_scale(self, weights_sd)
 
     def apply_to(self, text_encoders, unet, apply_text_encoder=True, apply_unet=True):
-        if apply_text_encoder:
-            logger.info(
-                f"enable LoRA for text encoder: {len(self.text_encoder_loras)} modules"
-            )
-        else:
-            self.text_encoder_loras = []
-            self.text_encoder_refts = []
-
-        if apply_unet:
-            logger.info(f"enable LoRA for DiT: {len(self.unet_loras)} modules")
-        else:
-            self.unet_loras = []
-            self.unet_refts = []
-
-        for lora in self.text_encoder_loras + self.unet_loras:
-            lora.apply_to()
-            self.add_module(lora.lora_name, lora)
-
-        # ReFT wraps each selected DiT Block's forward, so the chain is:
-        #   Block.__call__ -> ReFT.forward -> original Block.forward
-        #   (inside which LoRA-wrapped Linears still fire normally).
-        for reft in self.text_encoder_refts + self.unet_refts:
-            reft.apply_to()
-            self.add_module(reft.lora_name, reft)
-
-        if apply_unet and self.register_injector is not None:
-            self.register_injector.apply(unet)
+        return application.apply_to(
+            self,
+            text_encoders,
+            unet,
+            apply_text_encoder=apply_text_encoder,
+            apply_unet=apply_unet,
+            logger=logger,
+        )
 
     def is_mergeable(self):
         return merge_ops.is_mergeable(self)
