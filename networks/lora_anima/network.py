@@ -17,7 +17,13 @@ from networks.lora_anima.persistence import (
     save_lora_network_weights,
     strip_orig_mod_keys,
 )
-from networks.lora_anima import builders, optimizer_groups, router_stats, routing_state
+from networks.lora_anima import (
+    builders,
+    merge as merge_ops,
+    optimizer_groups,
+    router_stats,
+    routing_state,
+)
 from networks.lora_anima.targeting import compile_lora_target_patterns
 from networks.lora_modules import (
     ChimeraHydraInferenceModule,
@@ -711,14 +717,10 @@ class LoRANetwork(torch.nn.Module):
             lora.enabled = is_enabled
 
     def fuse_weights(self):
-        """Merge all LoRA deltas into base model weights for zero-overhead inference."""
-        for lora in self.text_encoder_loras + self.unet_loras:
-            lora.fuse_weight()
+        return merge_ops.fuse_weights(self)
 
     def unfuse_weights(self):
-        """Remove all LoRA deltas from base model weights."""
-        for lora in self.text_encoder_loras + self.unet_loras:
-            lora.unfuse_weight()
+        return merge_ops.unfuse_weights(self)
 
     def set_timestep_mask(self, timesteps: torch.Tensor, max_timestep: float = 1.0):
         return routing_state.set_timestep_mask(self, timesteps, max_timestep)
@@ -860,43 +862,17 @@ class LoRANetwork(torch.nn.Module):
             self.register_injector.apply(unet)
 
     def is_mergeable(self):
-        return self.cfg.num_registers == 0
+        return merge_ops.is_mergeable(self)
 
     def merge_to(self, text_encoders, unet, weights_sd, dtype=None, device=None):
-        apply_text_encoder = apply_unet = False
-        for key in weights_sd.keys():
-            if key.startswith(LoRANetwork.LORA_PREFIX_TEXT_ENCODER):
-                apply_text_encoder = True
-            elif key.startswith(LoRANetwork.LORA_PREFIX_ANIMA):
-                apply_unet = True
-
-        if apply_text_encoder:
-            logger.info("enable LoRA for text encoder")
-        else:
-            self.text_encoder_loras = []
-
-        if apply_unet:
-            logger.info("enable LoRA for DiT")
-        else:
-            self.unet_loras = []
-
-        # Pre-group checkpoint keys by LoRA module prefix (avoid O(modules * keys) scan)
-        # Keys are "{module_name}.{param}" where module_name has no dots (dots → underscores)
-        grouped_sd: dict[str, dict[str, torch.Tensor]] = {}
-        for key, value in weights_sd.items():
-            prefix, dot, suffix = key.partition(".")
-            if not dot:
-                continue
-            if prefix not in grouped_sd:
-                grouped_sd[prefix] = {}
-            grouped_sd[prefix][suffix] = value
-
-        for lora in self.text_encoder_loras + self.unet_loras:
-            sd_for_lora = grouped_sd.get(lora.lora_name, {})
-            if sd_for_lora:
-                lora.merge_to(sd_for_lora, dtype, device)
-
-        logger.info("weights are merged")
+        return merge_ops.merge_lora_weights(
+            self,
+            text_encoders,
+            unet,
+            weights_sd,
+            dtype=dtype,
+            device=device,
+        )
 
     def set_loraplus_lr_ratio(
         self, loraplus_lr_ratio, loraplus_unet_lr_ratio, loraplus_text_encoder_lr_ratio
@@ -931,34 +907,13 @@ class LoRANetwork(torch.nn.Module):
         return save_lora_network_weights(self, file, dtype, metadata)
 
     def backup_weights(self):
-        loras: List[LoRAModule] = self.text_encoder_loras + self.unet_loras
-        for lora in loras:
-            org_module = lora.org_module_ref[0]
-            if not hasattr(org_module, "_lora_org_weight"):
-                org_module._lora_org_weight = org_module.weight.detach().clone()
-                org_module._lora_restored = True
+        return merge_ops.backup_weights(self)
 
     def restore_weights(self):
-        loras: List[LoRAModule] = self.text_encoder_loras + self.unet_loras
-        with torch.no_grad():
-            for lora in loras:
-                org_module = lora.org_module_ref[0]
-                if not org_module._lora_restored:
-                    org_module.weight.data.copy_(org_module._lora_org_weight)
-                    org_module._lora_restored = True
+        return merge_ops.restore_weights(self)
 
     def pre_calculation(self):
-        loras: List[LoRAModule] = self.text_encoder_loras + self.unet_loras
-        with torch.no_grad():
-            for lora in loras:
-                org_module = lora.org_module_ref[0]
-                lora_weight = lora.get_weight().to(
-                    org_module.weight.device, dtype=org_module.weight.dtype
-                )
-                org_module.weight.data.add_(lora_weight)
-
-                org_module._lora_restored = False
-                lora.enabled = False
+        return merge_ops.pre_calculation(self)
 
     def apply_max_norm_regularization(self, max_norm_value, device):
         if getattr(self.cfg, "use_dora", False):

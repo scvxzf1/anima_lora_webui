@@ -122,6 +122,34 @@ def test_load_weights_facade_strips_orig_mod_keys(tmp_path) -> None:
     assert torch.equal(net.state_dict()[target_key], expected)
 
 
+def test_pre_calculation_facade_restores_backed_up_base_weight() -> None:
+    unet = TinyDiT()
+    net = LoRANetwork([], unet, _plain_cfg())
+    net.apply_to([], unet)
+
+    lora = net.unet_loras[0]
+    org_module = lora.org_module_ref[0]
+    base_weight = org_module.weight.detach().clone()
+
+    with torch.no_grad():
+        lora.lora_down.weight.fill_(0.25)
+        lora.lora_up.weight.fill_(0.5)
+    expected_baked = base_weight + lora.get_weight().to(base_weight)
+
+    net.backup_weights()
+    assert torch.equal(org_module._lora_org_weight, base_weight)
+    assert org_module._lora_restored is True
+
+    net.pre_calculation()
+    assert org_module._lora_restored is False
+    assert lora.enabled is False
+    assert torch.allclose(org_module.weight, expected_baked)
+
+    net.restore_weights()
+    assert org_module._lora_restored is True
+    assert torch.equal(org_module.weight, base_weight)
+
+
 def test_lora_network_builds_plain_modules_with_stable_names() -> None:
     net = LoRANetwork([], TinyDiT(), _plain_cfg())
 
