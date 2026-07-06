@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import re
 from typing import Optional, Pattern, Sequence
 
 import torch
@@ -10,7 +11,10 @@ import torch
 from networks import ModuleCreationContext, NETWORK_REGISTRY
 from networks.lora_anima.config import LoRANetworkCfg
 from networks.lora_anima.loading import _parse_reft_layers
-from networks.lora_anima.targeting import collect_lora_target_candidates
+from networks.lora_anima.targeting import (
+    collect_lora_target_candidates,
+    compile_lora_target_patterns,
+)
 from networks.register_injection import RegisterInjector
 from networks.lora_modules import (
     ChimeraHydraInferenceModule,
@@ -333,6 +337,255 @@ def create_lora_modules(
         loras.append(lora)
 
     return loras, skipped
+
+
+def initialize_network_components(
+    network,
+    text_encoders: list,
+    unet,
+    *,
+    cfg: LoRANetworkCfg,
+    multiplier: float,
+    unet_target_replace_modules: Sequence[str],
+    adapter_target_replace_modules: Sequence[str],
+    text_encoder_target_replace_modules: Sequence[str],
+    router_class,
+    freq_router_class,
+    content_router_class,
+    crossattn_emb_dim: int,
+    logger: logging.Logger,
+) -> None:
+    module_class = cfg.module_class
+    modules_dim = cfg.modules_dim
+    dropout = cfg.dropout
+    rank_dropout = cfg.rank_dropout
+    module_dropout = cfg.module_dropout
+    verbose = cfg.verbose
+    alpha = cfg.alpha
+    lora_dim = cfg.lora_dim
+    train_llm_adapter = cfg.train_llm_adapter
+
+    # Unified routing scope. ``cfg.router_targets`` is the single regex
+    # that governs which Linears participate in routed adaptation (Hydra
+    # MoE leaves + sigma-feature concat + FEI-feature concat all share it).
+    # From-weights path supplies an explicit name set per router family
+    # (different families may have different module memberships in older
+    # checkpoints); when present, the explicit set wins over the regex.
+    router_re = re.compile(cfg.router_targets) if cfg.router_targets else None
+
+    network._sigma_router_names = (
+        set(cfg.sigma_router_names) if cfg.sigma_router_names else None
+    )
+    network._sigma_router_re = (
+        router_re
+        if (
+            cfg.router_source == "sigma"
+            and router_re is not None
+            and network._sigma_router_names is None
+        )
+        else None
+    )
+
+    network._fei_router_names = (
+        set(cfg.fei_router_names) if cfg.fei_router_names else None
+    )
+    network._fei_router_re = (
+        router_re
+        if (
+            cfg.router_source == "fei"
+            and router_re is not None
+            and network._fei_router_names is None
+        )
+        else None
+    )
+    network._fei_router_hits = 0
+    # Modules built with ``use_global_router=True`` (shared_A +
+    # ``route_per_layer=False``): the per-layer router is skipped and gates
+    # arrive via the network-level ``GlobalRouter``. Counted separately
+    # from ``_fei_router_hits`` because the per-layer FEI cat is bypassed.
+    network._global_router_hits = 0
+    # Retained as a network attr (library/inference/adapters.py reads it
+    # via getattr); derived from cfg.router_source.
+    network.use_fei_router = cfg.router_source == "fei"
+    network.use_sigma_router = cfg.router_source == "sigma"
+    # Shared-A Hydra layout + network-level router (FEI-on-Hydra global).
+    # Toggle for the per-module construction loop below; lets Hydra /
+    # OrthoHydra modules skip ``self.router`` and consume gates from the
+    # ``GlobalRouter`` instead. Mirrors the FeRA (independent_A) routing
+    # location without changing the underlying Hydra parameter layout.
+    network._use_global_router_for_hydra = (
+        cfg.use_moe_style == "shared_A"
+        and not cfg.route_per_layer
+        and cfg.router_source != "none"
+    )
+
+    # Per-module HydraLoRA gating. Matching modules get the Hydra class;
+    # non-matching modules fall back to plain LoRA / OrthoLoRA so MoE
+    # capacity is concentrated where specialization is actually learnable.
+    # Fresh path: regex over `original_name`. From-weights path: explicit
+    # name set detected from checkpoint keys. Explicit set wins. None on
+    # both = apply MoE everywhere (legacy).
+    network._hydra_router_names = (
+        set(cfg.hydra_router_names) if cfg.hydra_router_names else None
+    )
+    network._hydra_router_re = (
+        router_re if (router_re is not None and network._hydra_router_names is None)
+        else None
+    )
+
+    if modules_dim is not None:
+        logger.info("create LoRA network from weights")
+    else:
+        logger.info(
+            f"create LoRA network. base dim (rank): {lora_dim}, alpha: {alpha}"
+        )
+        logger.info(
+            f"neuron dropout: p={dropout}, rank dropout: p={rank_dropout}, "
+            f"module dropout: p={module_dropout}"
+        )
+
+    exclude_re_patterns = compile_lora_target_patterns(
+        cfg.exclude_patterns,
+        logger=logger,
+    )
+    include_re_patterns = compile_lora_target_patterns(
+        cfg.include_patterns,
+        logger=logger,
+    )
+
+    def create_modules(
+        is_unet: bool,
+        text_encoder_idx: Optional[int],
+        root_module: torch.nn.Module,
+        target_replace_modules: Sequence[str],
+        default_dim: Optional[int] = None,
+    ):
+        return create_lora_modules(
+            network,
+            is_unet=is_unet,
+            text_encoder_idx=text_encoder_idx,
+            root_module=root_module,
+            target_replace_modules=target_replace_modules,
+            default_dim=default_dim,
+            exclude_patterns=exclude_re_patterns,
+            include_patterns=include_re_patterns,
+            logger=logger,
+        )
+
+    # Create LoRA for text encoders (Qwen3 - typically not trained for Anima).
+    # Skip for OrthoLoRA since SVD init is expensive and TE modules are
+    # discarded in apply_to anyway.
+    network.text_encoder_loras = []
+    skipped_te = []
+    if text_encoders is not None and module_class not in (
+        OrthoLoRAModule,
+        OrthoHydraLoRAModule,
+        ChimeraHydraLoRAModule,
+        ChimeraHydraInferenceModule,
+    ):
+        for i, text_encoder in enumerate(text_encoders):
+            if text_encoder is None:
+                continue
+            logger.info(f"create LoRA for Text Encoder {i + 1}:")
+            te_loras, te_skipped = create_modules(
+                False,
+                i,
+                text_encoder,
+                text_encoder_target_replace_modules,
+            )
+            logger.info(
+                f"create LoRA for Text Encoder {i + 1}: {len(te_loras)} modules."
+            )
+            network.text_encoder_loras.extend(te_loras)
+            skipped_te += te_skipped
+
+    # Create LoRA for DiT blocks.
+    target_modules = list(unet_target_replace_modules)
+    if train_llm_adapter:
+        target_modules.extend(adapter_target_replace_modules)
+
+    network.unet_loras, skipped_un = create_modules(True, None, unet, target_modules)
+
+    logger.info(f"create LoRA for Anima DiT: {len(network.unet_loras)} modules.")
+    if verbose:
+        for lora in network.unet_loras:
+            logger.info(f"\t{lora.lora_name:60} {lora.lora_dim}, {lora.alpha}")
+
+    skipped = skipped_te + skipped_un
+    if verbose and len(skipped) > 0:
+        logger.warning(f"dim (rank) is 0, {len(skipped)} LoRA modules are skipped:")
+        for name in skipped:
+            logger.info(f"\t{name}")
+
+    if cfg.channel_scales_dict is not None:
+        logger.info(
+            f"channel_scaling: {network._channel_scale_hits} DiT modules "
+            f"received calibration-based input scaling"
+        )
+        if network._channel_scale_misses:
+            logger.warning(
+                f"channel_scaling: {len(network._channel_scale_misses)} DiT modules "
+                f"have no calibration stats (first: {network._channel_scale_misses[:3]}). "
+                f"These will train without input rebalancing -- regenerate the vendored "
+                f"calibration with `python bench/channel_stats/analyze_lora_input_channels.py "
+                f"--per_artist --dump_channel_stats networks/calibration/channel_stats.safetensors` "
+                f"if this is unexpected."
+            )
+
+    # Create ReFT modules on the DiT residual stream (block outputs), following
+    # Wu et al. (2024) §3.3 -- one intervention per selected block, not per
+    # internal Linear. Selection is controlled by ``reft_layers``.
+    network.text_encoder_refts, network.unet_refts = create_reft_modules(
+        unet,
+        cfg=cfg,
+        multiplier=multiplier,
+        logger=logger,
+    )
+
+    names = set()
+    for lora in (
+        network.text_encoder_loras
+        + network.unet_loras
+        + network.text_encoder_refts
+        + network.unet_refts
+    ):
+        assert lora.lora_name not in names, f"duplicated lora name: {lora.lora_name}"
+        names.add(lora.lora_name)
+
+    network._wire_shared_sigma_buffers()
+    network._wire_shared_fei_buffers()
+    network._wire_shared_routing_buffers()
+    network._wire_shared_freq_routing_buffers()
+    network._wire_shared_content_routing_buffers()
+
+    network.global_router, network.use_crossattn_router = create_global_router(
+        cfg,
+        router_class=router_class,
+        crossattn_emb_dim=crossattn_emb_dim,
+        routing_aware_count=len(network._routing_aware_loras),
+        logger=logger,
+    )
+
+    (
+        network.freq_router,
+        network.content_router,
+        chimera_uses_fei_router,
+        network.use_content_router,
+    ) = create_chimera_routers(
+        cfg,
+        freq_router_class=freq_router_class,
+        content_router_class=content_router_class,
+        crossattn_emb_dim=crossattn_emb_dim,
+        chimera_count=len(network._chimera_aware_loras),
+        logger=logger,
+    )
+    if chimera_uses_fei_router:
+        # Force the per-step conditioning hook to fire set_fei every step.
+        network.use_fei_router = True
+
+    network.register_tokens, network.register_injector, network.extra_seq_tokens = (
+        create_register_injector(network, unet, logger=logger)
+    )
 
 
 def create_reft_modules(
