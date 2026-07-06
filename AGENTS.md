@@ -20,6 +20,33 @@
   谨慎合并，不要 revert。
 - 代码事实优先于文档。若本文件、旧说明和源码不一致，先读源码和测试，再更新文档。
 
+## 反上帝代码守则
+
+本节用于防止后续维护继续把复杂逻辑堆回少数大文件。
+
+- 热点文件默认只做 facade、编排、兼容 shim 或小范围修复，不新增大块业务逻辑：
+  - `train.py`
+  - `inference.py`
+  - `library/inference/generation.py`
+  - `library/datasets/base.py`
+  - `networks/lora_anima/network.py`
+  - `networks/lora_anima/config.py`
+  - `web/services/training_service.py`
+  - `web/services/config/_legacy.py`
+  - `web/static/js/features/anima-app/chunks/*`
+- 修改热点文件超过约 50 行时，优先拆到现有子模块或新模块；若确实不能拆，最终回复要说明：
+  - 为什么必须改热点文件。
+  - 为什么不能放到新模块。
+  - 后续如何继续瘦身。
+  - 跑了哪些定向测试。
+- 单个新增 Python 函数建议不超过 100 行；超过时优先拆成 helper、pipeline step 或策略对象。
+- 单个新增 Python 类建议不超过 400 行；超过时优先按状态、IO、策略、验证、保存/加载拆分。
+- 单个新增 JS 函数建议不超过 80 行；新增 UI 逻辑必须按 feature、store、api、renderer 拆分。
+- 单个新增测试文件建议不超过 1200 行；超过时按领域拆成多个测试文件，不要继续加大现有超大测试。
+- 已超过 1000 行的源码或测试文件，除搬迁、兼容 shim、删除旧逻辑外，默认不继续承载新业务。
+- 重构优先采用“搬家型重构”：先保持行为不变地抽模块，再补测试和清理旧 facade；不要一轮同时改架构和改行为。
+- 新增配置、CLI、adapter、WebUI 表单或队列/历史行为时，必须同步考虑文档入口、测试入口和旧兼容面，避免逻辑散落。
+
 ## 环境和命令入口
 
 - 项目运行环境是 Python 3.13，依赖管理优先使用 `uv`。
@@ -391,6 +418,12 @@ T-LoRA mask 是共享 buffer，每个 denoising step 更新一次。
 
 - `web/static/app.js` 只做 ES module bootstrap；业务放入 feature 模块。
 - 当前主容器是 `web/static/js/features/anima-app/`；不要恢复 `js/features/legacy-app.js`。
+- `globalThis` 只允许作为旧代码迁移桥或第三方库兼容桥；新 WebUI 业务默认使用 `export/import`
+  和显式 `ctx` / store，不要新增隐式全局状态总线。
+- `web/static/js/features/anima-app/chunks/` 是历史机械拆分过渡层；新功能优先放入独立 feature
+  目录，修改 chunk 时优先把相关状态和函数迁出。
+- 事件绑定、拖拽、筛选、弹窗、状态渲染等重复前端逻辑应抽到 shared helper 或 feature-local
+  helper，不要复制一套近似 DOM 操作。
 - 更新前端 import 时，同步 cache token，避免浏览器读旧模块。
 - DOM id 是跨模块契约；改 `index.html` 前先搜索 selector 和相关测试。
 - CSS 新文件必须从 `style.css` 可达，并遵守 import 顺序。
