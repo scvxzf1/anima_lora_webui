@@ -28,9 +28,9 @@ lokr_decompose_w2 = false
 lokr_factor_group_size = 8
 # Row-chunk byte threshold for custom LoKr projection. Default 4MiB.
 lokr_project_chunk_bytes = 4194304
-# Experimental fused grouped-delta forward. "triton" only affects the forward
-# path; backward still reuses the eager recompute formula.
-lokr_grouped_delta_backend = "eager"
+# Fused grouped-delta forward. "triton" is the default fast path and falls
+# back to eager when the device/layout cannot use the custom kernel.
+lokr_grouped_delta_backend = "triton"
 
 output_name = "anima_lokr"
 

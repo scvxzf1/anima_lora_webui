@@ -201,6 +201,54 @@ def test_lokr_decomposed_w2_einsum_forward_matches_kron_path():
     torch.testing.assert_close(grads[3], w2b_ref.grad)
 
 
+def test_lokr_default_training_uses_grouped_delta_fast_path(monkeypatch):
+    torch.manual_seed(14)
+    x = torch.randn(3, 6, requires_grad=True)
+
+    base = torch.nn.Linear(6, 8, bias=False)
+    lokr = LoKrModule(
+        "lora_unet_test",
+        base,
+        multiplier=1.0,
+        lora_dim=2,
+        alpha=2,
+        factor=2,
+        lokr_grouped_delta_backend="triton",
+    )
+    lokr.apply_to()
+    lokr.train()
+
+    calls = []
+    original = lokr_autograd.lokr_add_grouped_delta_
+
+    def _tracking_project(*args, **kwargs):
+        calls.append(
+            (
+                args[5],
+                args[6],
+                args[7],
+                args[8],
+                kwargs.get("backend"),
+                kwargs.get("backward_backend"),
+            )
+        )
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(
+        "networks.plugins.lokr.module.lokr_add_grouped_delta_",
+        _tracking_project,
+    )
+
+    y = lokr.org_module_ref[0](x)
+    y.sum().backward()
+
+    assert lokr.lokr_use_einsum is True
+    assert calls == [(2, 3, 4, 2, "triton", "eager")]
+    assert x.grad is not None
+    assert lokr.lokr_w1.grad is not None
+    assert lokr.lokr_w2.grad is not None
+
+
 def test_lokr_project_matches_kron_linear_forward_and_backward():
     torch.manual_seed(1)
     factor = 2

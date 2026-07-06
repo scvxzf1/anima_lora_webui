@@ -11,7 +11,6 @@ import torch.nn.functional as F
 from library.runtime.peak_probe import record_peak_probe_event
 from networks.lora_modules.base import BaseLoRAModule
 from networks.plugins.lokr.autograd import (
-    DEFAULT_LOKR_GROUPED_DELTA_BACKEND,
     DEFAULT_LOKR_GROUPED_DELTA_BACKWARD_BACKEND,
     DEFAULT_LOKR_PROJECT_CHUNK_BYTES,
     lokr_add_grouped_delta_,
@@ -69,7 +68,7 @@ class LoKrModule(BaseLoRAModule):
         factor=8,
         lokr_factor_group_size=8,
         lokr_project_chunk_bytes=DEFAULT_LOKR_PROJECT_CHUNK_BYTES,
-        lokr_grouped_delta_backend=DEFAULT_LOKR_GROUPED_DELTA_BACKEND,
+        lokr_grouped_delta_backend="triton",
         lokr_grouped_delta_backward_backend=DEFAULT_LOKR_GROUPED_DELTA_BACKWARD_BACKEND,
         lokr_use_einsum=True,
         lokr_decompose_w2=False,
@@ -176,6 +175,46 @@ class LoKrModule(BaseLoRAModule):
             return self.lokr_w2_a @ self.lokr_w2_b
         return self.lokr_w2
 
+    def _can_use_fused_grouped_delta(
+        self,
+        x: torch.Tensor,
+        base: torch.Tensor,
+        gate_scale: torch.Tensor,
+    ) -> bool:
+        if self._use_decomposed_w2 or self.dropout is not None:
+            return False
+        if gate_scale.numel() != 1:
+            return False
+        if self.out_a != self.in_a:
+            return False
+        if self.lokr_w1.shape != (self.out_a, self.in_a):
+            return False
+        if self.lokr_w2.shape != (self.out_b, self.in_b):
+            return False
+        return x.is_contiguous() and base.is_contiguous()
+
+    def _apply_fused_grouped_delta(
+        self,
+        base: torch.Tensor,
+        x: torch.Tensor,
+        gate_scale: torch.Tensor,
+    ) -> torch.Tensor:
+        group_size = max(1, min(int(self.lokr_factor_group_size), self.out_a))
+        return lokr_add_grouped_delta_(
+            base,
+            x,
+            self.lokr_w1,
+            self.lokr_w2,
+            gate_scale,
+            self.out_a,
+            self.in_b,
+            self.out_b,
+            group_size,
+            self.lokr_project_chunk_bytes,
+            backend=self.lokr_grouped_delta_backend,
+            backward_backend=self.lokr_grouped_delta_backward_backend,
+        )
+
     def _einsum_delta(self, x: torch.Tensor, dtype: torch.dtype) -> torch.Tensor:
         x_lokr = x.to(dtype)
         w1 = self.lokr_w1.to(dtype)
@@ -232,6 +271,32 @@ class LoKrModule(BaseLoRAModule):
                 work = self._rank_compute_dtype(org_forwarded)
                 with self._rank_autocast_context(x, work):
                     x_r = self._rebalance(x.to(work))
+                    gate_scale = (
+                        self._timestep_mask[:, :1].float()
+                        * self.multiplier
+                        * self.scale
+                    )
+                    if self._can_use_fused_grouped_delta(
+                        x_r, org_forwarded, gate_scale
+                    ):
+                        result = self._apply_fused_grouped_delta(
+                            org_forwarded,
+                            x_r,
+                            gate_scale,
+                        )
+                        if record_lokr:
+                            record_peak_probe_event(
+                                peak_probe,
+                                "lokr_after_delta_apply",
+                                tensor=result,
+                                module_type="lokr",
+                                lora_name=self.lora_name,
+                                original_name=original_name,
+                                factor=self.factor,
+                                group_size=self.lokr_factor_group_size,
+                                chunk_bytes=self.lokr_project_chunk_bytes,
+                            )
+                        return result
                     lx = self._einsum_delta(x_r, work)
                     lx = lx * self._timestep_mask[:, :1].to(lx)
                     if self.dropout is not None:

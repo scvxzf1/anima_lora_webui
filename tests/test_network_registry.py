@@ -126,6 +126,7 @@ def test_lokr_kwargs_registered():
         "lokr_factor_group_size",
         "lokr_project_chunk_bytes",
         "lokr_grouped_delta_backend",
+        "lokr_grouped_delta_backward_backend",
         "lokr_use_einsum",
         "lokr_decompose_w2",
     }
@@ -134,6 +135,9 @@ def test_lokr_kwargs_registered():
     assert "lokr_factor_group_size" in set(NETWORK_REGISTRY["lokr"].kwarg_flags)
     assert "lokr_project_chunk_bytes" in set(NETWORK_REGISTRY["lokr"].kwarg_flags)
     assert "lokr_grouped_delta_backend" in set(NETWORK_REGISTRY["lokr"].kwarg_flags)
+    assert "lokr_grouped_delta_backward_backend" in set(
+        NETWORK_REGISTRY["lokr"].kwarg_flags
+    )
     assert "lokr_use_einsum" in set(NETWORK_REGISTRY["lokr"].kwarg_flags)
     assert "lokr_decompose_w2" in set(NETWORK_REGISTRY["lokr"].kwarg_flags)
 
@@ -175,6 +179,8 @@ def test_lokr_module_kwargs_default_keeps_full_w2():
         module_class=LoKrModule,
     )
     kwargs = NETWORK_REGISTRY["lokr"].module_kwargs(ctx)
+    assert kwargs["lokr_grouped_delta_backend"] == "triton"
+    assert kwargs["lokr_grouped_delta_backward_backend"] == "eager"
     assert kwargs["lokr_use_einsum"] is True
     assert kwargs["lokr_decompose_w2"] is False
 
