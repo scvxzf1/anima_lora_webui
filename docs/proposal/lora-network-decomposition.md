@@ -1,6 +1,6 @@
 # LoRANetwork 分层拆分迁移提案
 
-状态：活跃提案
+状态：活跃提案（核心代码拆分已落地）
 适用版本：当前 main
 入口命令：无，本文是 `networks/lora_anima/network.py` 的重构计划
 基线日期：2026-07-06
@@ -23,7 +23,7 @@
 
 一句话：先把 `LoRANetwork` 降级成 facade，构建、路由状态、统计、持久化和优化器分组逐步搬到小模块。
 
-`networks/lora_anima/network.py` 现在同时承担这些职责：
+迁移前的 `networks/lora_anima/network.py` 同时承担这些职责：
 
 - 构建 LoRA / Hydra / Chimera / ReFT / register token 模块。
 - 维护 timestep、sigma、FEI、global routing、chimera content/freq routing 等运行时状态。
@@ -31,7 +31,7 @@
 - 负责 load、save metadata、merge、optimizer param groups。
 - 直接维护训练和推理都依赖的公共 API。
 
-目标不是一口气重写网络层，而是像 `anima-app` runtime 迁移一样：先立边界和护栏，再搬低风险逻辑，最后缩小 `LoRANetwork` 本体。
+本轮已按这个方向落地：先立边界和护栏，再搬低风险逻辑，最后把 `LoRANetwork` 本体缩成 facade。
 
 ## 实施边界
 
@@ -120,6 +120,31 @@ class LoRANetwork(torch.nn.Module):
 ```
 
 第一阶段不追求马上达到完整目录，只先抽低风险模块，保持行为完全一致。
+
+## 落地结果
+
+一句话：2026-07-06 已完成核心拆分，`network.py` 从 3278 行降到 320 行。
+
+当前职责归属：
+
+| 职责 | 归属模块 |
+| --- | --- |
+| 构建编排、module class/kwargs、ReFT/register/router 创建 | `builders.py` |
+| sigma / FEI / routing buffer wire、set、clear | `routing_state.py` |
+| router stats、balance loss、grad stats、metrics | `router_stats.py` |
+| metadata、load/save、key cleanup | `persistence.py` |
+| optimizer param groups 和 LR 描述 | `optimizer_groups.py` |
+| merge、fuse/unfuse、backup/restore、pre_calculation | `merge.py` |
+| GlobalRouter / FreqRouter / ContentRouter | `routers.py` |
+| apply_to、set_multiplier、set_enabled、set_step_index | `application.py` |
+| max-norm regularization | `regularization.py` |
+
+最终验证：
+
+```bash
+timeout 60 .venv/bin/python -m pytest tests/test_lora_network_construction.py tests/test_lora_save_pipeline.py tests/test_lora_loading_keys.py tests/test_lora_optimizer_groups.py tests/test_global_router.py tests/test_chimera_router_stats.py tests/test_hydra_sigma_band.py tests/test_routing_state.py tests/test_method_network_lifecycle.py tests/test_step_expert.py tests/test_lora_register_tokens.py tests/test_merge_to_dit.py
+timeout 60 .venv/bin/python -m ruff check --no-cache networks/lora_anima tests/test_lora_network_construction.py tests/test_lora_optimizer_groups.py tests/test_routing_state.py
+```
 
 ## 当前基线
 

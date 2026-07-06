@@ -6,7 +6,7 @@
 
 | 文档 | 状态 | 说明 |
 | --- | --- | --- |
-| [lora-network-decomposition.md](lora-network-decomposition.md) | 活跃 | `LoRANetwork` 上帝类按持久化、路由状态、统计、优化器分组和构建逻辑拆分的可执行计划 |
+| [lora-network-decomposition.md](lora-network-decomposition.md) | 活跃（已落地） | `LoRANetwork` 上帝类按持久化、路由状态、统计、优化器分组和构建逻辑拆分的可执行计划 |
 | [adapter-aware-checkpoint.md](adapter-aware-checkpoint.md) | 半活跃 | Adapter-aware activation checkpoint 可行性探索 |
 | [turbo_anima_dmd_lora.md](turbo_anima_dmd_lora.md) | 半活跃 | Turbo Anima / DMD LoRA 蒸馏提案 |
 | [prior_preservation_from_synth_pool.md](prior_preservation_from_synth_pool.md) | 半活跃 | synth pool prior preservation 提案 |
