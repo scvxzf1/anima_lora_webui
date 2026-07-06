@@ -13,6 +13,40 @@ def _read_safetensors(path: Path) -> tuple[set[str], dict[str, str]]:
         return set(handle.keys()), dict(handle.metadata() or {})
 
 
+def test_convert_legacy_ortho_to_lora_replaces_sig_layout_with_standard_keys(
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(torch.cuda, "is_available", lambda: False)
+    prefix = "lora_unet_blocks_0_mlp"
+    rank = 2
+    state_dict = {
+        f"{prefix}.p_layer.weight": torch.randn(4, rank),
+        f"{prefix}.q_layer.weight": torch.randn(rank, 5),
+        f"{prefix}.lambda_layer": torch.tensor([[1.0, 0.5]]),
+        f"{prefix}.base_p_weight": torch.randn(4, rank),
+        f"{prefix}.base_q_weight": torch.randn(rank, 5),
+        f"{prefix}.base_lambda": torch.tensor([[0.25, 0.75]]),
+        f"{prefix}.alpha": torch.tensor(float(rank)),
+    }
+
+    lora_save._convert_legacy_ortho_to_lora(state_dict, dtype=torch.float16)
+
+    for suffix in (
+        "p_layer.weight",
+        "q_layer.weight",
+        "lambda_layer",
+        "base_p_weight",
+        "base_q_weight",
+        "base_lambda",
+    ):
+        assert f"{prefix}.{suffix}" not in state_dict
+    assert state_dict[f"{prefix}.lora_up.weight"].shape == (4, rank)
+    assert state_dict[f"{prefix}.lora_down.weight"].shape == (rank, 5)
+    assert state_dict[f"{prefix}.lora_up.weight"].dtype == torch.float16
+    assert state_dict[f"{prefix}.lora_down.weight"].dtype == torch.float16
+    assert state_dict[f"{prefix}.alpha"].item() == float(rank)
+
+
 def test_save_network_weights_hydra_writes_moe_sibling_with_metadata(tmp_path: Path) -> None:
     prefix = "lora_unet_blocks_0_self_attn_qkv_proj"
     rank = 2

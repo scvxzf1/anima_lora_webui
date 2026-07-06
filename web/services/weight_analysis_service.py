@@ -274,11 +274,11 @@ def resolve_analysis_weight(value: str, *, task: dict[str, Any] | None = None) -
     if not clean:
         raise ValueError("请填写权重路径")
     path = Path(clean)
+    if ".." in path.parts:
+        raise ValueError("权重路径不能包含 ..")
     if path.is_absolute():
         resolved = path.resolve()
     else:
-        if ".." in path.parts:
-            raise ValueError("权重路径不能包含 ..")
         resolved = (ROOT / clean.lstrip("/")).resolve()
         try:
             resolved.relative_to(ROOT.resolve())

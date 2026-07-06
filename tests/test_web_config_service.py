@@ -5784,6 +5784,41 @@ def test_output_runs_list_reads_direct_run_dirs_sorted(tmp_path: Path, monkeypat
     ]
     assert [item["kind"] for item in result["runs"][0]["files"]] == ["original", "runtime"]
 
+    assert [item["name"] for item in config_service.list_output_runs(limit=1)["runs"]] == [
+        "newer-20260523-120000",
+    ]
+    assert [item["name"] for item in config_service.list_output_runs(limit=0)["runs"]] == [
+        "newer-20260523-120000",
+        "older-20260523-110000",
+    ]
+
+
+def test_output_runs_list_handles_missing_or_file_output_root(
+    tmp_path: Path,
+    monkeypatch,
+):
+    _write_minimal_config_tree(tmp_path)
+    _patch_config_service_paths(monkeypatch, tmp_path)
+    missing_root = tmp_path / "output" / "runs"
+    _patch_output_root(monkeypatch, missing_root)
+
+    result = config_service.list_output_runs()
+
+    assert result == {
+        "ok": True,
+        "output_root": "output/runs",
+        "output_root_abs": str(missing_root.resolve()),
+        "runs": [],
+    }
+
+    file_root = tmp_path / "output" / "file-root"
+    file_root.parent.mkdir(parents=True)
+    file_root.write_text("not a directory\n", encoding="utf-8")
+    _patch_output_root(monkeypatch, file_root)
+
+    with pytest.raises(ValueError, match="输出文件夹不是目录"):
+        config_service.list_output_runs()
+
 
 def test_output_run_read_allows_only_fixed_files_under_run(tmp_path: Path, monkeypatch):
     _write_minimal_config_tree(tmp_path)
@@ -5809,6 +5844,23 @@ def test_output_run_read_allows_only_fixed_files_under_run(tmp_path: Path, monke
         config_service.load_output_run_config("522-20260523-114514", "../config")
 
 
+def test_output_run_read_reports_missing_fixed_config_file(
+    tmp_path: Path,
+    monkeypatch,
+):
+    _write_minimal_config_tree(tmp_path)
+    _patch_config_service_paths(monkeypatch, tmp_path)
+    _patch_output_root(monkeypatch, tmp_path / "output" / "runs")
+    run = tmp_path / "output" / "runs" / "522-20260523-114514"
+    run.mkdir(parents=True)
+    (run / "config.original.toml").write_text('output_name = "original"\n', encoding="utf-8")
+
+    with pytest.raises(FileNotFoundError, match="运行配置不存在"):
+        config_service.load_output_run_config("522-20260523-114514", "runtime")
+    with pytest.raises(FileNotFoundError, match="运行配置不存在"):
+        config_service.load_output_run_config("522-20260523-114514", "dataset")
+
+
 def test_output_run_save_as_copies_original_only_and_never_overwrites(tmp_path: Path, monkeypatch):
     _write_minimal_config_tree(tmp_path)
     _patch_config_service_paths(monkeypatch, tmp_path)
@@ -5830,6 +5882,35 @@ def test_output_run_save_as_copies_original_only_and_never_overwrites(tmp_path: 
     assert copied_path.read_text(encoding="utf-8") == 'output_name = "original"\n'
     with pytest.raises(ValueError, match="已存在"):
         config_service.save_output_run_config_as("522-20260523-114514", "copied_from_run", "imported")
+
+
+def test_output_run_save_as_rejects_paths_outside_imported_configs(tmp_path: Path, monkeypatch):
+    _write_minimal_config_tree(tmp_path)
+    _patch_config_service_paths(monkeypatch, tmp_path)
+    _patch_output_root(monkeypatch, tmp_path / "output" / "runs")
+    run = tmp_path / "output" / "runs" / "522-20260523-114514"
+    run.mkdir(parents=True)
+    (run / "config.original.toml").write_text('output_name = "original"\n', encoding="utf-8")
+
+    unsafe_names = [
+        "../escape",
+        "configs/imported/../escape",
+        "configs/other/escape",
+        (tmp_path / "configs" / "other" / "escape.toml").as_posix(),
+        (tmp_path.parent / "escape.toml").as_posix(),
+    ]
+
+    for unsafe_name in unsafe_names:
+        with pytest.raises(ValueError, match="新项目预设"):
+            config_service.save_output_run_config_as(
+                "522-20260523-114514",
+                unsafe_name,
+                "imported",
+            )
+
+    assert not (tmp_path / "configs" / "imported" / "escape.toml").exists()
+    assert not (tmp_path / "configs" / "other" / "escape.toml").exists()
+    assert not (tmp_path.parent / "escape.toml").exists()
 
 
 def test_output_run_save_as_rejects_missing_or_invalid_original(tmp_path: Path, monkeypatch):

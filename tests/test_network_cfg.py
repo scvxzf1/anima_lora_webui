@@ -121,6 +121,42 @@ def test_crossattn_emb_router_source_rejects_per_layer():
         )
 
 
+def test_from_kwargs_parses_register_and_router_scalar_knobs():
+    cfg = LoRANetworkCfg.from_kwargs(
+        {
+            "lora_fp32_compute": "true",
+            "down_init": "weight_svd",
+            "use_moe_style": "shared_A",
+            "route_per_layer": "false",
+            "router_source": "fei",
+            "router_hidden": "96",
+            "router_tau": "0.42",
+            "fei_feature_dim": "7",
+            "num_registers": "3",
+            "register_insert_block": "5",
+            "register_lr_scale": "77.5",
+            "register_init_std": "0.015",
+        },
+        network_dim=8,
+        network_alpha=4.0,
+        neuron_dropout=None,
+        module_class=HydraLoRAModule,
+    )
+
+    assert cfg.lora_fp32_compute is True
+    assert cfg.down_init == "weight_svd"
+    assert cfg.use_moe_style == "shared_A"
+    assert cfg.route_per_layer is False
+    assert cfg.router_source == "fei"
+    assert cfg.router_hidden_dim == 96
+    assert cfg.router_tau == 0.42
+    assert cfg.fei_feature_dim == 7
+    assert cfg.num_registers == 3
+    assert cfg.register_insert_block == 5
+    assert cfg.register_lr_scale == 77.5
+    assert cfg.register_init_std == 0.015
+
+
 def test_content_router_source_accepts_legacy_crossattn_alias():
     """The chimera ``content_router_source`` was renamed ``crossattn`` →
     ``crossattn_emb``; the old spelling parses as a deprecated alias and
@@ -139,6 +175,54 @@ def test_content_router_source_accepts_legacy_crossattn_alias():
         module_class=HydraLoRAModule,
     )
     assert cfg.content_router_source == "crossattn_emb"
+
+
+def test_chimera_from_kwargs_derives_total_num_experts_from_pool_split():
+    cfg = LoRANetworkCfg.from_kwargs(
+        {
+            "use_chimera_hydra": "true",
+            "num_experts_content": "2",
+            "num_experts_freq": "5",
+        },
+        network_dim=8,
+        network_alpha=4.0,
+        neuron_dropout=None,
+        module_class=HydraLoRAModule,
+    )
+
+    assert cfg.num_experts == 7
+    assert cfg.num_experts_content == 2
+    assert cfg.num_experts_freq == 5
+    assert cfg.use_moe_style == "shared_A"
+    assert cfg.route_per_layer is True
+    assert cfg.router_source == "input"
+
+
+@pytest.mark.parametrize(
+    ("content", "freq"),
+    [
+        ("0", "3"),
+        ("3", "0"),
+        ("-1", "3"),
+        ("3", "-1"),
+    ],
+)
+def test_chimera_from_kwargs_rejects_non_positive_pool_sizes(
+    content: str,
+    freq: str,
+):
+    with pytest.raises(ValueError, match="num_experts_content > 0"):
+        LoRANetworkCfg.from_kwargs(
+            {
+                "use_chimera_hydra": "true",
+                "num_experts_content": content,
+                "num_experts_freq": freq,
+            },
+            network_dim=8,
+            network_alpha=4.0,
+            neuron_dropout=None,
+            module_class=HydraLoRAModule,
+        )
 
 
 def test_content_router_source_crossattn_emb_requires_chimera():
@@ -347,6 +431,146 @@ def test_from_weights_no_reft_no_sigma():
     assert cfg.router_source == "none"
 
 
+def test_from_weights_copies_plugin_args_without_top_level_aliasing():
+    plugin_args = {"plugin_mode": "demo", "scale": 2}
+
+    cfg = LoRANetworkCfg.from_weights(
+        modules_dim={"foo": 4},
+        modules_alpha={"foo": 1.0},
+        module_class=LoRAModule,
+        train_llm_adapter=False,
+        has_reft=False,
+        reft_dim=None,
+        reft_block_indices=set(),
+        is_hydra_or_ortho_hydra=False,
+        hydra_num_experts=0,
+        sigma_feature_dim_detected=None,
+        sigma_router_names=None,
+        hydra_router_names=None,
+        channel_scales_dict=None,
+        plugin_args=plugin_args,
+    )
+
+    assert cfg.plugin_args == {"plugin_mode": "demo", "scale": 2}
+    assert cfg.plugin_args is not plugin_args
+    plugin_args["scale"] = 9
+    assert cfg.plugin_args["scale"] == 2
+
+
+def test_chimera_from_weights_derives_total_num_experts_from_stamped_pool_split():
+    cfg = LoRANetworkCfg.from_weights(
+        modules_dim={"foo": 4},
+        modules_alpha={"foo": 1.0},
+        module_class=HydraLoRAModule,
+        train_llm_adapter=False,
+        has_reft=False,
+        reft_dim=None,
+        reft_block_indices=set(),
+        is_hydra_or_ortho_hydra=False,
+        hydra_num_experts=0,
+        sigma_feature_dim_detected=None,
+        sigma_router_names=None,
+        hydra_router_names=None,
+        channel_scales_dict=None,
+        is_chimera_hydra=True,
+        num_experts_content=2,
+        num_experts_freq=5,
+        **_moe_stamps("input"),
+    )
+
+    assert cfg.num_experts == 7
+    assert cfg.num_experts_content == 2
+    assert cfg.num_experts_freq == 5
+    assert cfg.use_chimera_hydra is True
+    assert cfg.use_moe_style == "shared_A"
+    assert cfg.route_per_layer is True
+    assert cfg.router_source == "input"
+
+
+def test_chimera_from_weights_accepts_string_pool_size_metadata():
+    cfg = LoRANetworkCfg.from_weights(
+        modules_dim={"foo": 4},
+        modules_alpha={"foo": 1.0},
+        module_class=HydraLoRAModule,
+        train_llm_adapter=False,
+        has_reft=False,
+        reft_dim=None,
+        reft_block_indices=set(),
+        is_hydra_or_ortho_hydra=False,
+        hydra_num_experts=7,
+        sigma_feature_dim_detected=None,
+        sigma_router_names=None,
+        hydra_router_names=None,
+        channel_scales_dict=None,
+        is_chimera_hydra=True,
+        num_experts_content="2",
+        num_experts_freq="5",
+        **_moe_stamps("input"),
+    )
+
+    assert cfg.num_experts == 7
+    assert cfg.num_experts_content == 2
+    assert cfg.num_experts_freq == 5
+
+
+def test_chimera_from_weights_rejects_missing_or_mismatched_pool_metadata():
+    base = dict(
+        modules_dim={"foo": 4},
+        modules_alpha={"foo": 1.0},
+        module_class=HydraLoRAModule,
+        train_llm_adapter=False,
+        has_reft=False,
+        reft_dim=None,
+        reft_block_indices=set(),
+        is_hydra_or_ortho_hydra=False,
+        hydra_num_experts=7,
+        sigma_feature_dim_detected=None,
+        sigma_router_names=None,
+        hydra_router_names=None,
+        channel_scales_dict=None,
+        is_chimera_hydra=True,
+        **_moe_stamps("input"),
+    )
+
+    with pytest.raises(RuntimeError, match="missing ss_num_experts_content"):
+        LoRANetworkCfg.from_weights(
+            **base,
+            num_experts_content=None,
+            num_experts_freq=5,
+        )
+
+    with pytest.raises(RuntimeError, match=r"K_c \+ K_f mismatch"):
+        LoRANetworkCfg.from_weights(
+            **base,
+            num_experts_content=2,
+            num_experts_freq=4,
+        )
+
+
+@pytest.mark.parametrize(("content", "freq"), [(0, 3), (3, 0), (-1, 3), (3, -1)])
+def test_chimera_from_weights_rejects_non_positive_pool_sizes(content: int, freq: int):
+    with pytest.raises(RuntimeError, match="requires positive"):
+        LoRANetworkCfg.from_weights(
+            modules_dim={"foo": 4},
+            modules_alpha={"foo": 1.0},
+            module_class=HydraLoRAModule,
+            train_llm_adapter=False,
+            has_reft=False,
+            reft_dim=None,
+            reft_block_indices=set(),
+            is_hydra_or_ortho_hydra=False,
+            hydra_num_experts=0,
+            sigma_feature_dim_detected=None,
+            sigma_router_names=None,
+            hydra_router_names=None,
+            channel_scales_dict=None,
+            is_chimera_hydra=True,
+            num_experts_content=content,
+            num_experts_freq=freq,
+            **_moe_stamps("input"),
+        )
+
+
 def test_from_weights_marks_dora_checkpoints():
     cfg = LoRANetworkCfg.from_weights(
         modules_dim={"foo": 4},
@@ -386,6 +610,99 @@ def test_from_weights_moe_without_stamps_raises():
             hydra_router_names=None,
             channel_scales_dict=None,
         )
+
+
+@pytest.mark.parametrize(
+    ("route_per_layer", "router_source", "message"),
+    [
+        (False, "input", "router_source='input' requires route_per_layer=True"),
+        (True, "crossattn_emb", "requires route_per_layer=False"),
+    ],
+)
+def test_from_weights_rejects_invalid_three_axis_stamp_combinations(
+    route_per_layer: bool,
+    router_source: str,
+    message: str,
+):
+    with pytest.raises(ValueError, match=message):
+        LoRANetworkCfg.from_weights(
+            modules_dim={"foo": 4},
+            modules_alpha={"foo": 1.0},
+            module_class=HydraLoRAModule,
+            train_llm_adapter=False,
+            has_reft=False,
+            reft_dim=None,
+            reft_block_indices=set(),
+            is_hydra_or_ortho_hydra=True,
+            hydra_num_experts=4,
+            sigma_feature_dim_detected=None,
+            sigma_router_names=None,
+            hydra_router_names=None,
+            channel_scales_dict=None,
+            new_use_moe_style="shared_A",
+            new_route_per_layer=route_per_layer,
+            new_router_source=router_source,
+        )
+
+
+@pytest.mark.parametrize(
+    ("stamp_patch", "message"),
+    [
+        ({"new_use_moe_style": "true"}, "use_moe_style"),
+        ({"new_router_source": "crossattn"}, "router_source"),
+    ],
+)
+def test_from_weights_rejects_unknown_three_axis_stamp_values(
+    stamp_patch: dict,
+    message: str,
+):
+    stamps = {
+        "new_use_moe_style": "shared_A",
+        "new_route_per_layer": True,
+        "new_router_source": "sigma",
+        **stamp_patch,
+    }
+    with pytest.raises(ValueError, match=message):
+        LoRANetworkCfg.from_weights(
+            modules_dim={"foo": 4},
+            modules_alpha={"foo": 1.0},
+            module_class=HydraLoRAModule,
+            train_llm_adapter=False,
+            has_reft=False,
+            reft_dim=None,
+            reft_block_indices=set(),
+            is_hydra_or_ortho_hydra=True,
+            hydra_num_experts=4,
+            sigma_feature_dim_detected=None,
+            sigma_router_names=None,
+            hydra_router_names=None,
+            channel_scales_dict=None,
+            **stamps,
+        )
+
+
+def test_from_weights_parses_string_route_per_layer_stamp():
+    cfg = LoRANetworkCfg.from_weights(
+        modules_dim={"foo": 4},
+        modules_alpha={"foo": 1.0},
+        module_class=HydraLoRAModule,
+        train_llm_adapter=False,
+        has_reft=False,
+        reft_dim=None,
+        reft_block_indices=set(),
+        is_hydra_or_ortho_hydra=True,
+        hydra_num_experts=4,
+        sigma_feature_dim_detected=None,
+        sigma_router_names=None,
+        hydra_router_names=None,
+        channel_scales_dict=None,
+        new_use_moe_style="shared_A",
+        new_route_per_layer="false",
+        new_router_source="crossattn_emb",
+    )
+
+    assert cfg.route_per_layer is False
+    assert cfg.router_source == "crossattn_emb"
 
 
 def test_from_weights_sigma_band_partition_off_by_default():

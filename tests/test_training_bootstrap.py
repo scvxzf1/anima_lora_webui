@@ -4,6 +4,7 @@ import argparse
 from types import ModuleType
 from types import SimpleNamespace
 
+import library.training.bootstrap as bootstrap_mod
 import train
 from library.training.bootstrap import TrainingBootstrap
 
@@ -88,6 +89,75 @@ def test_bootstrap_forwards_register_token_kwargs():
     assert net_kwargs["register_insert_block"] == "6"
     assert net_kwargs["register_lr_scale"] == "42"
     assert net_kwargs["register_init_std"] == "0.11"
+
+
+def test_bootstrap_auto_enables_lora_fp32_compute_on_v100_fp16(monkeypatch):
+    seen = {}
+    monkeypatch.setattr(bootstrap_mod.torch.cuda, "is_available", lambda: True)
+
+    def fake_get_device_capability(device=None):
+        seen["device"] = device
+        return (7, 0)
+
+    monkeypatch.setattr(
+        bootstrap_mod.torch.cuda,
+        "get_device_capability",
+        fake_get_device_capability,
+    )
+    accelerator = SimpleNamespace(device=SimpleNamespace(type="cuda"))
+    args = SimpleNamespace(mixed_precision="fp16")
+
+    enabled = TrainingBootstrap.should_auto_enable_lora_fp32_compute(
+        args,
+        accelerator,
+        {},
+    )
+
+    assert enabled is True
+    assert seen["device"] is accelerator.device
+
+
+def test_bootstrap_does_not_auto_enable_lora_fp32_compute_when_user_set(monkeypatch):
+    def fail_if_cuda_checked():
+        raise AssertionError("explicit lora_fp32_compute should skip CUDA probing")
+
+    monkeypatch.setattr(bootstrap_mod.torch.cuda, "is_available", fail_if_cuda_checked)
+    args = SimpleNamespace(mixed_precision="fp16")
+
+    enabled = TrainingBootstrap.should_auto_enable_lora_fp32_compute(
+        args,
+        SimpleNamespace(device=SimpleNamespace(type="cuda")),
+        {"lora_fp32_compute": "false"},
+    )
+
+    assert enabled is False
+
+
+def test_bootstrap_auto_lora_fp32_compute_fails_closed_on_capability_error(
+    monkeypatch,
+    caplog,
+):
+    monkeypatch.setattr(bootstrap_mod.torch.cuda, "is_available", lambda: True)
+
+    def raise_capability_error(device=None):
+        del device
+        raise RuntimeError("cuda probe failed")
+
+    monkeypatch.setattr(
+        bootstrap_mod.torch.cuda,
+        "get_device_capability",
+        raise_capability_error,
+    )
+    args = SimpleNamespace(mixed_precision="fp16")
+
+    enabled = TrainingBootstrap.should_auto_enable_lora_fp32_compute(
+        args,
+        SimpleNamespace(device=SimpleNamespace(type="cuda")),
+        {},
+    )
+
+    assert enabled is False
+    assert "could not read GPU compute capability" in caplog.text
 
 
 def test_bootstrap_warns_register_tokens_with_block_swap(monkeypatch, caplog):
@@ -246,3 +316,98 @@ def test_bootstrap_widens_compile_seq_range_for_register_tokens(monkeypatch):
     assert result is not None
     assert captured["n_token_families"] == 2
     assert captured["seq_range"] == (4032, 4204)
+
+
+def test_bootstrap_compiles_after_apply_load_and_gradient_checkpointing(monkeypatch):
+    events: list[str] = []
+
+    class FakeNetwork:
+        extra_seq_tokens = 0
+
+        def apply_to(self, *args, **kwargs):
+            del args, kwargs
+            events.append("apply_to")
+
+        def load_weights(self, path):
+            events.append("load_weights")
+            return {"path": path}
+
+        def enable_gradient_checkpointing(self):
+            events.append("network_grad_ckpt")
+
+    fake_module = ModuleType("fake_compile_order_network")
+    fake_module.create_network = lambda *args, **kwargs: FakeNetwork()
+
+    class FakeTrainer:
+        def post_process_network(self, *args, **kwargs):
+            return None
+
+        def is_train_text_encoder(self, args):
+            return False
+
+        def get_text_encoders_train_flags(self, args, text_encoders):
+            return []
+
+    class FakeAccelerator:
+        device = "cpu"
+
+        def print(self, *args, **kwargs):
+            return None
+
+    class FakeUnet:
+        def enable_gradient_checkpointing(self, cpu_offload=False):
+            del cpu_offload
+            events.append("unet_grad_ckpt")
+
+    def fake_compile_blocks_for_training(unet, network, **kwargs):
+        del unet, network, kwargs
+        events.append("compile")
+
+    import library.runtime.harness as harness
+
+    args = SimpleNamespace(
+        network_module="fake_compile_order_network",
+        base_weights=None,
+        base_weights_multiplier=None,
+        dim_from_weights=False,
+        network_weights="fake-network.safetensors",
+        network_dropout=None,
+        network_dim=4,
+        network_alpha=4.0,
+        scale_weight_norms=False,
+        network_train_text_encoder_only=False,
+        gradient_checkpointing=True,
+        cpu_offload_checkpointing=False,
+        torch_compile=True,
+        blocks_to_swap=0,
+        network_args=None,
+        dynamo_backend="eager",
+        compile_inductor_mode=None,
+        bucket_resolutions=None,
+        compile_dynamic_seq=False,
+        activation_memory_budget=1.0,
+        partitioner_recompute_views=False,
+        partitioner_aggressive_recomputation=False,
+    )
+
+    monkeypatch.setattr("importlib.import_module", lambda name: fake_module)
+    monkeypatch.setattr(
+        harness, "compile_blocks_for_training", fake_compile_blocks_for_training
+    )
+    result = TrainingBootstrap().create_and_apply_network(
+        FakeTrainer(),
+        args,
+        FakeAccelerator(),
+        vae=None,
+        text_encoder=[],
+        unet=FakeUnet(),
+        text_encoders=[],
+        weight_dtype=None,
+    )
+
+    assert result is not None
+    compile_idx = events.index("compile")
+    assert compile_idx > events.index("apply_to")
+    assert compile_idx > events.index("load_weights")
+    assert compile_idx > events.index("unet_grad_ckpt")
+    assert compile_idx > events.index("network_grad_ckpt")

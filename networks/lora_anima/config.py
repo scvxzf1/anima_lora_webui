@@ -78,6 +78,34 @@ def _as_router_source(value: Any) -> RouterSource:
     )
 
 
+def _validate_three_axis_routing(
+    *,
+    use_moe_style: MoEStyle,
+    route_per_layer: bool,
+    router_source: RouterSource,
+) -> None:
+    if use_moe_style is False and (
+        route_per_layer or router_source != "none"
+    ):
+        raise ValueError(
+            "Routing config requires use_moe_style != False; got "
+            f"use_moe_style={use_moe_style!r}, route_per_layer={route_per_layer}, "
+            f"router_source={router_source!r}."
+        )
+    if not route_per_layer and router_source == "input":
+        raise ValueError(
+            "router_source='input' requires route_per_layer=True — no "
+            "network-level 'input' signal exists per DiT forward."
+        )
+    if route_per_layer and router_source == "crossattn_emb":
+        raise ValueError(
+            "router_source='crossattn_emb' requires route_per_layer=False — "
+            "the pooled cross-attention text feature is a single per-sample "
+            "vector routed by one network-level GlobalRouter, with no "
+            "per-Linear variant."
+        )
+
+
 def _as_str_list(value: Any) -> Optional[List[str]]:
     """Parse a kwarg that's either a python-literal list, single string, or None."""
     if value is None:
@@ -608,6 +636,10 @@ class LoRANetworkCfg:
                     f"and num_experts_freq > 0 (got K_c={num_experts_content}, "
                     f"K_f={num_experts_freq})."
                 )
+            # Derive total E from the pool split so the rest of the
+            # cfg machinery (warmup masks, balance loss accumulators, etc.)
+            # sees a consistent num_experts.
+            num_experts = num_experts_content + num_experts_freq
         if content_router_source == "crossattn_emb" and not use_chimera_hydra:
             raise ValueError(
                 "content_router_source='crossattn_emb' requires use_chimera_hydra=True "
@@ -615,10 +647,6 @@ class LoRANetworkCfg:
                 "For a non-chimera Hydra/FeRA pool routed on text, use "
                 "router_source='crossattn_emb' instead."
             )
-            # Derive total E from the pool split so the rest of the
-            # cfg machinery (warmup masks, balance loss accumulators, etc.)
-            # sees a consistent num_experts.
-            num_experts = num_experts_content + num_experts_freq
 
         # Three-axis routing resolution (plan2.md §three-axis-config). The
         # legacy ``use_hydra`` / ``use_sigma_router`` / ``use_fei_router``
@@ -687,27 +715,11 @@ class LoRANetworkCfg:
             route_per_layer = True
             router_source = "input"
 
-        # Validate impossible combos.
-        if use_moe_style is False and (
-            route_per_layer or router_source != "none"
-        ):
-            raise ValueError(
-                "Routing config requires use_moe_style != False; got "
-                f"use_moe_style={use_moe_style!r}, route_per_layer={route_per_layer}, "
-                f"router_source={router_source!r}."
-            )
-        if not route_per_layer and router_source == "input":
-            raise ValueError(
-                "router_source='input' requires route_per_layer=True — no "
-                "network-level 'input' signal exists per DiT forward."
-            )
-        if route_per_layer and router_source == "crossattn_emb":
-            raise ValueError(
-                "router_source='crossattn_emb' requires route_per_layer=False — "
-                "the pooled cross-attention text feature is a single per-sample "
-                "vector routed by one network-level GlobalRouter, with no "
-                "per-Linear variant."
-            )
+        _validate_three_axis_routing(
+            use_moe_style=use_moe_style,
+            route_per_layer=route_per_layer,
+            router_source=router_source,
+        )
 
         reg_dims_str = kwargs.get("network_reg_dims")
         reg_dims = _parse_kv_pairs(reg_dims_str, is_int=True) if reg_dims_str else None
@@ -863,7 +875,7 @@ class LoRANetworkCfg:
             and new_router_source is not None
         ):
             use_moe_style: MoEStyle = _as_moe_style(new_use_moe_style)
-            route_per_layer = bool(new_route_per_layer)
+            route_per_layer = _as_bool(new_route_per_layer)
             router_source: RouterSource = _as_router_source(new_router_source)
         elif is_hydra_or_ortho_hydra or is_stacked_experts:
             raise RuntimeError(
@@ -880,6 +892,11 @@ class LoRANetworkCfg:
             use_moe_style = False
             route_per_layer = False
             router_source = "none"
+        _validate_three_axis_routing(
+            use_moe_style=use_moe_style,
+            route_per_layer=route_per_layer,
+            router_source=router_source,
+        )
 
         # ChimeraHydra requires both pool sizes to be stamped at save time;
         # absence on a flagged checkpoint indicates malformed metadata.
@@ -889,15 +906,28 @@ class LoRANetworkCfg:
                     "ChimeraHydra checkpoint missing ss_num_experts_content / "
                     "ss_num_experts_freq metadata — checkpoint is malformed."
                 )
+            content_count = int(num_experts_content)
+            freq_count = int(num_experts_freq)
+            if content_count <= 0 or freq_count <= 0:
+                raise RuntimeError(
+                    "ChimeraHydra checkpoint requires positive "
+                    "ss_num_experts_content / ss_num_experts_freq metadata; "
+                    f"got K_c={num_experts_content}, K_f={num_experts_freq}."
+                )
             if (
                 hydra_num_experts
-                and hydra_num_experts != num_experts_content + num_experts_freq
+                and hydra_num_experts != content_count + freq_count
             ):
                 raise RuntimeError(
                     "ChimeraHydra checkpoint K_c + K_f mismatch: stamped "
                     f"K_c={num_experts_content}, K_f={num_experts_freq}, "
                     f"detected num_experts={hydra_num_experts}."
                 )
+            resolved_num_experts = content_count + freq_count
+        elif is_hydra_or_ortho_hydra or is_stacked_experts:
+            resolved_num_experts = hydra_num_experts
+        else:
+            resolved_num_experts = 4
 
         return cls(
             lora_dim=4,
@@ -911,11 +941,7 @@ class LoRANetworkCfg:
             add_reft=has_reft,
             reft_dim=reft_dim if reft_dim is not None else 4,
             reft_layers=sorted(reft_block_indices) if has_reft else "all",
-            num_experts=(
-                hydra_num_experts
-                if (is_hydra_or_ortho_hydra or is_stacked_experts)
-                else 4
-            ),
+            num_experts=resolved_num_experts,
             channel_scales_dict=channel_scales_dict,
             ortho_centered_gate=bool(ortho_centered_gate),
             use_moe_style=use_moe_style,

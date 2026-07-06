@@ -198,6 +198,49 @@ def test_compile_blocks_for_training_forwards_compile_block_scope(
     assert captured["compile_block_scope"] == "all"
 
 
+def test_compile_blocks_for_training_compiles_adapter_cond_stream(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from library.runtime import harness
+
+    captured: dict[str, object] = {}
+
+    class FakeUnet:
+        patch_spatial = 2
+        vae_spatial_compression = 8
+
+        def compile_blocks(self, backend, **kwargs):
+            captured["block_backend"] = backend
+            captured["block_kwargs"] = kwargs
+
+    class FakeNetwork:
+        def compile_cond_stream(self, backend, **kwargs):
+            captured["cond_backend"] = backend
+            captured["cond_kwargs"] = kwargs
+
+    monkeypatch.setenv("TORCHINDUCTOR_CACHE_DIR", str(tmp_path))
+    monkeypatch.setattr(harness, "_compile_cache_base", None)
+
+    harness.compile_blocks_for_training(
+        FakeUnet(),
+        FakeNetwork(),
+        backend="eager",
+        mode="max-autotune",
+        n_token_families=2,
+        seq_range=(4032, 4200),
+        dynamic_seq=True,
+    )
+
+    assert captured["block_backend"] == "eager"
+    assert captured["cond_backend"] == "eager"
+    assert captured["cond_kwargs"] == {
+        "mode": "max-autotune",
+        "n_token_families": 2,
+        "dynamic_seq": True,
+        "seq_range": (4032, 4200),
+    }
+
+
 def test_compile_blocks_for_training_pins_lokr_checkpoint_budget(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
 ) -> None:

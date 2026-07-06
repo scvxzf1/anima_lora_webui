@@ -426,6 +426,38 @@ def test_enqueue_training_can_pause_queue_for_manual_start(tmp_path, monkeypatch
     assert called["dispatch"] is False
 
 
+def test_set_queue_settings_unpauses_and_dispatches_waiting_item(tmp_path, monkeypatch):
+    queue_dir = _patch_queue_paths(tmp_path, monkeypatch)
+    svc = TrainingService(web.Application())
+    svc._queue = {
+        "paused": True,
+        "failure_policy": "pause",
+        "items": [{"id": "q1", "state": "queued"}],
+    }
+    svc._queue_paused = True
+    called = {"broadcast": 0, "dispatch": 0}
+
+    async def fake_broadcast_queue():
+        called["broadcast"] += 1
+
+    monkeypatch.setattr(svc, "_broadcast_queue", fake_broadcast_queue)
+    monkeypatch.setattr(
+        svc,
+        "_schedule_queue_dispatch",
+        lambda: called.update(dispatch=called["dispatch"] + 1),
+    )
+
+    snapshot = asyncio.run(svc.set_queue_settings(paused=False, failure_policy="continue"))
+
+    assert snapshot["paused"] is False
+    assert snapshot["failure_policy"] == "continue"
+    assert snapshot["summary"]["queued"] == 1
+    assert called == {"broadcast": 1, "dispatch": 1}
+    saved = json.loads((queue_dir / "queue.json").read_text(encoding="utf-8"))
+    assert saved["paused"] is False
+    assert saved["failure_policy"] == "continue"
+
+
 def test_enqueue_training_batch_stops_on_first_failed_runtime_freeze(tmp_path, monkeypatch):
     _patch_queue_paths(tmp_path, monkeypatch)
     first_runtime = _runtime_payload(tmp_path, "first")
@@ -516,6 +548,92 @@ def test_queue_startup_repairs_stale_running_item(tmp_path, monkeypatch):
     assert items[0]["state"] == "error"
     assert items[1]["state"] == "queued"
     assert svc.get_queue_snapshot()["paused"] is True
+
+
+def test_get_queue_snapshot_normalizes_dirty_queue_state(tmp_path, monkeypatch):
+    _patch_queue_paths(tmp_path, monkeypatch)
+    svc = TrainingService(web.Application())
+    svc._queue_paused = True
+    svc._queue_failure_policy = "continue"
+    svc._queue = {
+        "paused": "",
+        "failure_policy": "invalid",
+        "items": [
+            {"id": "q1", "state": "queued", "attempt": 0},
+            "not-a-dict",
+            {"id": "done", "state": "done", "attempt": "3"},
+        ],
+    }
+
+    snapshot = svc.get_queue_snapshot()
+
+    assert snapshot["paused"] is False
+    assert snapshot["failure_policy"] == "pause"
+    assert snapshot["summary"] == {
+        "total": 2,
+        "queued": 1,
+        "running": 0,
+        "done": 1,
+        "error": 0,
+        "canceled": 0,
+    }
+    assert [(item["id"], item["attempt"], item["retry_of"]) for item in snapshot["items"]] == [
+        ("q1", 1, ""),
+        ("done", 3, ""),
+    ]
+    assert svc._queue["items"] == snapshot["items"]
+
+
+def test_compact_queue_preserves_waiting_and_running_over_limit(tmp_path, monkeypatch):
+    _patch_queue_paths(tmp_path, monkeypatch)
+    monkeypatch.setattr(training_service, "MAX_QUEUE_ITEMS", 2)
+    svc = TrainingService(web.Application())
+    svc._queue = {
+        "paused": False,
+        "items": [
+            {"id": "done-old", "state": "done"},
+            {"id": "q1", "state": "queued"},
+            {"id": "error-old", "state": "error"},
+            {"id": "running", "state": "running"},
+            {"id": "q2", "state": "queued"},
+            {"id": "done-new", "state": "done"},
+        ],
+    }
+
+    svc._compact_queue()
+
+    assert [(item["id"], item["state"]) for item in svc._queue["items"]] == [
+        ("q1", "queued"),
+        ("running", "running"),
+        ("q2", "queued"),
+    ]
+
+
+def test_attach_history_task_to_queue_item_deduplicates_and_normalizes_ids(
+    tmp_path,
+    monkeypatch,
+):
+    _patch_queue_paths(tmp_path, monkeypatch)
+    svc = TrainingService(web.Application())
+    svc._queue = {
+        "paused": False,
+        "items": [
+            {"id": "q1", "state": "running", "history_task_ids": "bad"},
+            {"id": "q2", "state": "queued", "history_task_ids": ["hist-a"]},
+        ],
+    }
+
+    svc._attach_history_task_to_queue_item("q1", "hist-a")
+    svc._attach_history_task_to_queue_item("q1", "hist-a")
+    svc._attach_history_task_to_queue_item("q2", "hist-a")
+    svc._attach_history_task_to_queue_item("missing", "hist-b")
+    svc._attach_history_task_to_queue_item("q2", "")
+
+    items = {item["id"]: item for item in svc._queue["items"]}
+    assert items["q1"]["history_task_ids"] == ["hist-a"]
+    assert items["q1"]["message"] == "正在运行"
+    assert items["q2"]["history_task_ids"] == ["hist-a"]
+    assert items["q2"]["message"] == "正在运行"
 
 
 def test_queue_startup_dispatches_when_unpaused_and_clean(tmp_path, monkeypatch):
@@ -739,6 +857,48 @@ def test_queue_process_error_pauses_and_keeps_next_waiting(tmp_path, monkeypatch
     assert items["q2"]["state"] == "queued"
 
 
+def test_queue_process_error_continues_when_failure_policy_continue(tmp_path, monkeypatch):
+    _patch_queue_paths(tmp_path, monkeypatch)
+    svc = TrainingService(web.Application())
+    svc._queue = {
+        "paused": False,
+        "failure_policy": "continue",
+        "items": [
+            {"id": "q1", "state": "running"},
+            {"id": "q2", "state": "queued"},
+        ],
+    }
+    svc._queue_paused = False
+    svc._queue_failure_policy = "continue"
+    svc._current_queue_item_id = "q1"
+    svc.status = "running"
+    svc.current_job = "training"
+    dispatch_calls: list[bool] = []
+    monkeypatch.setattr(svc, "_schedule_queue_dispatch", lambda: dispatch_calls.append(True))
+
+    class FakeStdout:
+        async def read(self, _size):
+            return b""
+
+    class FakeProcess:
+        stdout = FakeStdout()
+
+        async def wait(self):
+            return 7
+
+    svc.process = FakeProcess()
+
+    asyncio.run(svc._read_output())
+
+    snapshot = svc.get_queue_snapshot()
+    assert svc.status == "idle"
+    assert snapshot["paused"] is False
+    assert dispatch_calls == [True]
+    items = {item["id"]: item for item in snapshot["items"]}
+    assert items["q1"]["state"] == "error"
+    assert items["q2"]["state"] == "queued"
+
+
 def test_queue_retry_clones_frozen_runtime_config(tmp_path, monkeypatch):
     _patch_queue_paths(tmp_path, monkeypatch)
     retry_root = tmp_path / "retry-runs"
@@ -907,6 +1067,27 @@ def test_queue_top_bottom_cancel_waiting_and_clear_terminal_states_separately(tm
     assert cleared_done["removed_by_state"] == {"done": 1}
     remaining = svc.get_queue_snapshot()["items"]
     assert [(item["id"], item["state"]) for item in remaining] == [("e", "error")]
+
+
+def test_clear_queue_items_by_state_rejects_invalid_states_without_saving(
+    tmp_path,
+    monkeypatch,
+):
+    queue_dir = _patch_queue_paths(tmp_path, monkeypatch)
+    svc = TrainingService(web.Application())
+    items = [
+        {"id": "done", "state": "done"},
+        {"id": "error", "state": "error"},
+    ]
+    svc._queue = {"paused": False, "items": list(items)}
+
+    with pytest.raises(ValueError, match="只能清理已完成或已取消"):
+        asyncio.run(svc.clear_queue_items_by_state({"error"}))
+    with pytest.raises(ValueError, match="只能清理已完成或已取消"):
+        asyncio.run(svc.clear_queue_items_by_state(set()))
+
+    assert svc._queue["items"] == items
+    assert not (queue_dir / "queue.json").exists()
 
 
 def test_clear_finished_queue_items_keeps_compatibility_and_runtime_files(tmp_path, monkeypatch):

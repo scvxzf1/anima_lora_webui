@@ -200,3 +200,32 @@ def test_tasks_main_forwards_invalid_inline_env_tokens(monkeypatch) -> None:
 
     assert "BAD-NAME" not in os.environ
     assert calls == [["BAD-NAME=value"]]
+
+
+def test_tasks_main_forwards_non_uppercase_inline_env_tokens(monkeypatch) -> None:
+    calls: list[list[str]] = []
+
+    def fake_command(extra: list[str]) -> None:
+        calls.append(extra)
+
+    for key in ("method", "Mixed_KEY", "1BAD"):
+        monkeypatch.delenv(key, raising=False)
+    monkeypatch.setattr(tasks, "COMMANDS", {"fake": (fake_command, "Fake command")})
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "tasks.py",
+            "fake",
+            "method=lora",
+            "Mixed_KEY=value",
+            "1BAD=value",
+        ],
+    )
+
+    tasks.main()
+
+    assert "method" not in os.environ
+    assert "Mixed_KEY" not in os.environ
+    assert "1BAD" not in os.environ
+    assert calls == [["method=lora", "Mixed_KEY=value", "1BAD=value"]]

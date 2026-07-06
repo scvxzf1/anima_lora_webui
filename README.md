@@ -4,11 +4,23 @@
 
 感谢你选择我们的全绊屎山项目。它一定不优雅，但目标也不一定明确，项目尽量还能跑通，喜欢折腾，每天都在debug。
 
-源码部署目前还没发行版，最近一个稳态锚点是“4ea68b3”，谨慎更新pull，随时做好回滚的准备。
+源码部署目前还没发行版，下面截图使用的预览锚点是“4ea68b3”。当前代码会继续向前维护，谨慎更新 pull，随时做好回滚的准备。
 
 交流QQ群:1104879801
 
 后端会和欧巴的有些变动不完全对齐，作者偶尔会发挥主观能动性加点小巧思进来。
+
+## 文档入口
+
+完整文档从 [docs/README.md](docs/README.md) 进入；这里会按“安装使用、训练推理、方法说明、实验记录、配置、归档”分好路。
+
+常用入口：
+
+- 新手部署和 WebUI 使用：[docs/guidelines/指南书.md](docs/guidelines/指南书.md)
+- Linux 部署：[docs/guidelines/linux-deployment.zh.md](docs/guidelines/linux-deployment.zh.md)
+- 训练参考：[docs/guidelines/training.md](docs/guidelines/training.md)
+- 推理参考：[docs/guidelines/inference.md](docs/guidelines/inference.md)
+- 文档归档：[docs/archive-index.md](docs/archive-index.md)
 
 ## 项目内容物预览：锚点 `4ea68b3`
 

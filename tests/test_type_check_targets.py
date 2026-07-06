@@ -1,14 +1,28 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 from scripts.tasks import utilities
 from scripts.tasks.utilities import TYPE_CHECK_TARGETS
 
 
+def test_type_check_targets_are_unique_existing_relative_paths() -> None:
+    repo_root = Path(__file__).resolve().parents[1]
+
+    assert len(TYPE_CHECK_TARGETS) == len(set(TYPE_CHECK_TARGETS))
+    for target in TYPE_CHECK_TARGETS:
+        target_path = Path(target)
+        assert not target_path.is_absolute()
+        assert ".." not in target_path.parts
+        assert (repo_root / target_path).exists(), target
+
+
 def test_type_check_targets_stay_scoped_to_pilot_surface() -> None:
     assert set(TYPE_CHECK_TARGETS) == {
         "library/config",
+        "tasks.py",
         "scripts/config_compat.py",
         "scripts/config_explain.py",
         "scripts/tasks/_common.py",
@@ -49,6 +63,35 @@ def test_cmd_type_check_strips_separator_for_explicit_targets(monkeypatch) -> No
     utilities.cmd_type_check(["--", "library/config"])
 
     assert commands == [[utilities.PY, "-m", "pyright", "library/config"]]
+
+
+def test_cmd_type_check_accepts_explicit_targets_without_separator(monkeypatch) -> None:
+    commands: list[list[str]] = []
+    monkeypatch.setattr(utilities.importlib.util, "find_spec", lambda name: object())
+    monkeypatch.setattr(utilities, "run", lambda command: commands.append(command))
+
+    utilities.cmd_type_check(["library/runtime/launch.py"])
+
+    assert commands == [[utilities.PY, "-m", "pyright", "library/runtime/launch.py"]]
+
+
+def test_cmd_type_check_accepts_explicit_flags_without_separator(monkeypatch) -> None:
+    commands: list[list[str]] = []
+    monkeypatch.setattr(utilities.importlib.util, "find_spec", lambda name: object())
+    monkeypatch.setattr(utilities, "run", lambda command: commands.append(command))
+
+    utilities.cmd_type_check(["--warnings", "library/runtime/launch.py", "library/env.py"])
+
+    assert commands == [
+        [
+            utilities.PY,
+            "-m",
+            "pyright",
+            "--warnings",
+            "library/runtime/launch.py",
+            "library/env.py",
+        ]
+    ]
 
 
 def test_cmd_type_check_empty_separator_uses_default_targets(monkeypatch) -> None:

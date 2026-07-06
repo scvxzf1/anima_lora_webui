@@ -167,6 +167,10 @@ def _config_training_source_dom_contract() -> dict[str, set[str]]:
     return contract
 
 
+def _literal_get_element_by_id_targets(source: str) -> set[str]:
+    return set(re.findall(r"document\.getElementById\('([^']+)'\)", source))
+
+
 def test_frontend_module_graph_follows_production_entrypoint() -> None:
     graph = _frontend_module_graph()
     relative = [path.relative_to(STATIC_DIR).as_posix() for path in graph]
@@ -338,6 +342,110 @@ def test_config_training_source_dom_contract_matches_index_html() -> None:
     assert "globalThis.CONFIG_TRAINING_SOURCE_DOM_CONTRACT = CONFIG_TRAINING_SOURCE_DOM_CONTRACT;" in source
 
 
+def test_queue_and_history_detail_literal_dom_ids_match_index_html() -> None:
+    html = INDEX_HTML.read_text(encoding="utf-8")
+    ids_by_module = {
+        "queue/render.js": _literal_get_element_by_id_targets(
+            _frontend_module_text("js/features/queue/render.js")
+        ),
+        "queue/actions.js": _literal_get_element_by_id_targets(
+            _frontend_module_text("js/features/queue/actions.js")
+        ),
+        "history-detail/dialog.js": _literal_get_element_by_id_targets(
+            _frontend_module_text("js/features/history-detail/dialog.js")
+        ),
+    }
+
+    assert "training-queue-manager-list" in ids_by_module["queue/render.js"]
+    assert "training-queue-failure-policy" in ids_by_module["queue/actions.js"]
+    assert "history-detail-dialog" in ids_by_module["history-detail/dialog.js"]
+
+    missing = {
+        name: sorted(
+            dom_id
+            for dom_id in ids
+            if f'id="{dom_id}"' not in html
+        )
+        for name, ids in ids_by_module.items()
+    }
+    assert not any(missing.values()), missing
+
+
+def test_app_shell_theme_toggle_contract_matches_index_html() -> None:
+    html = INDEX_HTML.read_text(encoding="utf-8")
+    source = _frontend_module_text("js/features/app-shell/theme.js")
+
+    toggle_match = re.search(r'<button id="theme-toggle"(?P<attrs>[^>]*)>', html)
+    assert toggle_match is not None
+    toggle_attrs = toggle_match.group("attrs")
+    assert 'type="button"' in toggle_attrs
+    assert 'aria-pressed="false"' in toggle_attrs
+    assert 'id="theme-toggle-text"' in html
+
+    assert "root.dataset.theme = safeTheme;" in source
+    assert "document.getElementById('theme-toggle')" in source
+    assert "document.getElementById('theme-toggle-text')" in source
+    assert "toggle.setAttribute('aria-pressed', String(isLight));" in source
+    assert "toggle.title = isLight ? '切换到深色主题' : '切换到浅色主题';" in source
+    assert "label.textContent = safeTheme === 'light' ? '深色主题' : '浅色主题';" in source
+    assert "toggle.addEventListener('click', () => {" in source
+    assert "storage.getItem(storageKey)" in source
+    assert "storage.setItem(storageKey, theme)" in source
+    assert "getLossChart?.()?.setTheme?.(chartTheme());" in source
+
+
+def test_app_shell_gpu_picker_contract_matches_index_html() -> None:
+    html = INDEX_HTML.read_text(encoding="utf-8")
+    source = _frontend_module_text("js/features/app-shell/gpu-picker.js")
+    css = STYLE_CSS.read_text(encoding="utf-8")
+
+    toggle_match = re.search(r'<button id="gpu-picker-toggle"(?P<attrs>[^>]*)>', html)
+    assert toggle_match is not None
+    toggle_attrs = toggle_match.group("attrs")
+    assert 'type="button"' in toggle_attrs
+    assert 'aria-expanded="false"' in toggle_attrs
+    for dom_id in (
+        "gpu-picker",
+        "gpu-picker-panel",
+        "gpu-all-checkbox",
+        "gpu-option-list",
+        "gpu-picker-note",
+    ):
+        assert f'id="{dom_id}"' in html
+        assert f"document.getElementById('{dom_id}')" in source
+
+    assert "api('/api/training/gpus')" in source
+    assert "location.protocol === 'file:'" in source
+    assert "selectedGpuPayload" in source
+    assert "toggle.setAttribute('aria-expanded', String(nextOpen));" in source
+    assert "toggle.setAttribute('aria-expanded', 'false');" in source
+    assert ".gpu-picker-toggle[aria-expanded=\"true\"]" in css
+
+
+def test_top_level_tab_buttons_have_matching_content_sections() -> None:
+    html = INDEX_HTML.read_text(encoding="utf-8")
+    source = _frontend_module_text("js/features/app-shell/tabs.js")
+    button_tabs = re.findall(r'<button class="tab-btn[^"]*" data-tab="([^"]+)"', html)
+
+    assert button_tabs == [
+        "config",
+        "datasets",
+        "training",
+        "weight-analysis",
+        "settings",
+        "environment",
+        "image-test",
+    ]
+    assert "preview" not in button_tabs
+    for tab_name in button_tabs:
+        assert f'id="tab-{tab_name}"' in html
+
+    assert 'document.querySelector(\'[data-tab="training"]\')' in source
+    assert 'document.querySelector(\'[data-tab="config"]\')' in source
+    assert "activeName !== 'preview'" in source
+    assert "document.getElementById('tab-preview')?.classList.remove('active');" in source
+
+
 def test_anima_app_bootstrap_catches_startup_failures() -> None:
     source = APP_JS_PATH.read_text(encoding="utf-8")
 
@@ -471,6 +579,8 @@ const results = {
         parseProgressRateSeconds('1.5s/it'),
         parseProgressRateSeconds('500ms/it'),
         parseProgressRateSeconds('2it/s'),
+        parseProgressRateSeconds('3s/step'),
+        parseProgressRateSeconds('4 IT/S'),
         parseProgressRateSeconds('bad'),
     ],
     metrics: [
@@ -506,7 +616,7 @@ console.log(JSON.stringify(results));
     assert result.returncode == 0, result.stderr or result.stdout
     results = json.loads(result.stdout)
     assert results == {
-        "rates": [1.5, 0.5, 0.5, None],
+        "rates": [1.5, 0.5, 0.5, 3, 0.25, None],
         "metrics": [
             {"step": 12, "loss": "0.1234", "lr": 0.0001, "rate": "1.25s/it"},
             {"step": 7, "loss": "0.151", "rate": "19.83s/it"},
@@ -1503,6 +1613,88 @@ def test_live_training_rest_fallbacks_are_wired() -> None:
     assert "scheduleStatusPoll({ immediate: true });" in ready_section
     assert "window.addEventListener('online', () => {" in ready_section
     assert "recoverLiveTrainingState();" in ready_section
+
+
+def test_live_training_status_snapshot_fallbacks_replay_latest_payloads() -> None:
+    if not shutil.which("node"):
+        pytest.skip("node is required for live-training status snapshot checks")
+    script = r"""
+const calls = [];
+
+globalThis.ctx = {};
+globalThis.document = { hidden: false };
+globalThis.window = { setTimeout: () => 0, clearTimeout: () => {} };
+globalThis.location = { protocol: 'http:' };
+globalThis.ws = { readyState: 0 };
+globalThis.WebSocket = { OPEN: 1 };
+globalThis.trainingStatusPollTimer = null;
+globalThis.trainingStatusPollPromise = null;
+globalThis.trainingStatusPollForceReplayMetrics = false;
+globalThis.trainingStatusPollFailures = 0;
+globalThis.historyTasks = [];
+globalThis.trainingRuntime = {};
+globalThis.isLiveRunningState = (state = '') => ['running', 'compiling'].includes(String(state || ''));
+globalThis.updateProgress = (payload, options) => calls.push({ kind: 'progress', payload, options });
+globalThis.updateMetrics = (payload, options) => calls.push({ kind: 'metric', payload, options });
+globalThis.updateSystem = (payload, options) => calls.push({ kind: 'system', payload, options });
+
+await import('./web/static/js/features/anima-app/chunks/26a-status-polling.js?snapshot-fixture');
+
+globalThis.applyStatusSnapshotFallbacks({
+    status: 'running',
+    latest_progress: { current: 4, total: 10 },
+    latest_metric: { loss: 0.12 },
+    latest_system: { gpu_util: 80 },
+});
+globalThis.applyStatusSnapshotFallbacks({
+    status: 'idle',
+    latest_progress: { current: 9, total: 10 },
+    latest_metric: { loss: 0.01 },
+    latest_system: { gpu_util: 10 },
+});
+globalThis.applyStatusSnapshotFallbacks({
+    status: 'running',
+    latest_progress: {},
+    latest_metric: null,
+    latest_system: undefined,
+});
+
+console.log(JSON.stringify({
+    calls,
+    hasEmptyPayload: globalThis.hasStatusPayload({}),
+    hasProgressPayload: globalThis.hasStatusPayload({ current: 1 }),
+}));
+"""
+    result = subprocess.run(
+        ["node", "--input-type=module", "-e", script],
+        cwd=Path(__file__).resolve().parents[1],
+        text=True,
+        capture_output=True,
+        timeout=20,
+    )
+
+    assert result.returncode == 0, result.stderr or result.stdout
+    assert json.loads(result.stdout) == {
+        "calls": [
+            {
+                "kind": "progress",
+                "payload": {"current": 4, "total": 10},
+                "options": {"replay": True},
+            },
+            {
+                "kind": "metric",
+                "payload": {"loss": 0.12},
+                "options": {"replay": True},
+            },
+            {
+                "kind": "system",
+                "payload": {"gpu_util": 80},
+                "options": {"replay": True},
+            },
+        ],
+        "hasEmptyPayload": False,
+        "hasProgressPayload": True,
+    }
 
 
 def test_status_poll_refreshes_training_sidebar_summaries() -> None:
@@ -3527,6 +3719,493 @@ def test_history_collection_drag_drop_frontend_hooks_are_present() -> None:
         "\n.history-drag-handle {",
     )
     assert "min-width: 0;" in single_task_handle_css
+
+
+def test_training_queue_renderer_updates_dom_fixture() -> None:
+    if not shutil.which("node"):
+        pytest.skip("node is required for queue DOM fixture checks")
+    script = r"""
+import { createQueueRenderer } from './web/static/js/features/queue/render.js';
+import { createQueueState, updateQueueStateFromPayload } from './web/static/js/features/queue/state.js';
+
+const nodes = new Map();
+let createdSeq = 0;
+
+function makeStyle() {
+    const values = {};
+    return {
+        values,
+        setProperty(name, value) { values[name] = String(value); },
+        removeProperty(name) { delete values[name]; },
+    };
+}
+
+function makeClassList(node) {
+    const values = new Set(String(node.className || '').split(/\s+/).filter(Boolean));
+    return {
+        add: (...names) => names.forEach((name) => values.add(name)),
+        remove: (...names) => names.forEach((name) => values.delete(name)),
+        toggle: (name, force) => {
+            const enabled = force === undefined ? !values.has(name) : Boolean(force);
+            if (enabled) values.add(name);
+            else values.delete(name);
+            return enabled;
+        },
+        contains: (name) => values.has(name),
+        values: () => [...values].sort(),
+    };
+}
+
+function matches(node, selector) {
+    if (selector.startsWith('.')) return String(node.className || '').split(/\s+/).includes(selector.slice(1));
+    return node.tagName === selector.toUpperCase();
+}
+
+function findFirst(node, selector) {
+    for (const child of node.children || []) {
+        if (matches(child, selector)) return child;
+        const nested = findFirst(child, selector);
+        if (nested) return nested;
+    }
+    return null;
+}
+
+function makeNode(id, tagName = 'div') {
+    const item = {
+        id,
+        tagName: tagName.toUpperCase(),
+        style: makeStyle(),
+        dataset: {},
+        hidden: false,
+        disabled: false,
+        className: '',
+        textContent: '',
+        title: '',
+        value: '',
+        type: '',
+        children: [],
+        parentNode: null,
+        attrs: {},
+        set innerHTML(value) {
+            this._innerHTML = String(value);
+            this.children = [];
+        },
+        get innerHTML() {
+            return this._innerHTML || '';
+        },
+        setAttribute(name, value) { this.attrs[name] = String(value); this[name] = String(value); },
+        removeAttribute(name) { delete this.attrs[name]; delete this[name]; },
+        append(...children) { children.forEach((child) => this.appendChild(child)); },
+        appendChild(child) { child.parentNode = this; this.children.push(child); return child; },
+        insertBefore(child, before) {
+            child.parentNode = this;
+            const index = this.children.indexOf(before);
+            if (index < 0) this.children.push(child);
+            else this.children.splice(index, 0, child);
+            return child;
+        },
+        replaceChildren(...children) {
+            this.children = [];
+            children.forEach((child) => this.appendChild(child));
+        },
+        addEventListener() {},
+        querySelector(selector) { return findFirst(this, selector); },
+        closest() { return null; },
+    };
+    item.classList = makeClassList(item);
+    return item;
+}
+
+function node(id) {
+    if (!nodes.has(id)) nodes.set(id, makeNode(id));
+    return nodes.get(id);
+}
+
+function createElement(tag) {
+    return makeNode(`created-${tag}-${createdSeq++}`, tag);
+}
+
+const filterKeys = ['actionable', 'all', 'queued', 'running', 'error', 'done', 'canceled'];
+const filterNodes = filterKeys.map((key) => {
+    const item = makeNode(`filter-${key}`, 'button');
+    item.className = 'training-queue-filter';
+    item.classList = makeClassList(item);
+    item.dataset.queueFilter = key;
+    return item;
+});
+
+globalThis.document = {
+    getElementById: (id) => node(id),
+    createElement,
+    querySelectorAll: (selector) => selector === '.training-queue-filter' ? filterNodes : [],
+};
+
+const state = createQueueState();
+const runtime = {
+    state: 'running',
+    progressCurrent: 4,
+    progressTotal: 10,
+    progressLabel: 'train',
+    progressRate: '2it/s',
+};
+const renderer = createQueueRenderer({
+    state,
+    deps: {
+        renderTrainingViewMode: () => { node('view-mode').dataset.rendered = 'true'; },
+        getTrainingRuntime: () => runtime,
+        runLabelFromPath: (value) => String(value || '').split('/').pop() || '',
+    },
+    actions: {
+        moveQueueItem() {},
+        cancelQueueItem() {},
+        retryQueueItem() {},
+        removeQueueItemFromList() {},
+    },
+});
+
+updateQueueStateFromPayload(state, {
+    ok: true,
+    paused: false,
+    failure_policy: 'pause',
+    status: 'running',
+    items: [
+        {
+            id: 'run-1',
+            state: 'running',
+            runtime_config_file: 'output/runs/run-1/config.runtime.toml',
+            source_config_file: 'configs/imported/lora.toml',
+            variant: 'lora',
+            preset: 'default',
+            methods_subdir: 'gui-methods',
+            created_at_text: '10:00',
+            started_at_text: '10:01',
+        },
+        { id: 'queue-2', state: 'queued', variant: 'loha', preset: 'low_vram', created_at_text: '10:02' },
+        { id: 'error-3', state: 'error', variant: 'lokr', message: 'boom', created_at_text: '10:03' },
+        { id: 'done-4', state: 'done', variant: 'vera', created_at_text: '10:04', finished_at_text: '10:05' },
+    ],
+});
+renderer.renderTrainingQueue();
+
+const summary = node('training-queue-summary');
+const badge = node('training-queue-tab-badge');
+const managerStatus = node('training-queue-manager-status');
+const stats = node('training-queue-stats');
+const managerList = node('training-queue-manager-list');
+const firstManagerCard = managerList.querySelector('.training-queue-manager-item');
+const progress = firstManagerCard?.querySelector('.training-queue-running-progress');
+const runningFilter = filterNodes.find((item) => item.dataset.queueFilter === 'running');
+const allFilter = filterNodes.find((item) => item.dataset.queueFilter === 'all');
+
+console.log(JSON.stringify({
+    summaryText: summary.textContent,
+    summaryClass: summary.className,
+    badgeHidden: badge.hidden,
+    badgeText: badge.textContent,
+    managerStatus: managerStatus.textContent,
+    statsCount: stats.children.length,
+    managerSections: managerList.children.length,
+    progressText: progress?.querySelector('span')?.textContent || '',
+    progressStyle: firstManagerCard?.style.values['--queue-progress'] || '',
+    runningFilterPressed: runningFilter?.attrs['aria-pressed'],
+    runningFilterTitle: runningFilter?.title,
+    allFilterTitle: allFilter?.title,
+    abortDisabled: node('btn-abort-queue-after-current').disabled,
+    forceAbortDisabled: node('btn-force-abort-queue').disabled,
+    clearCompletedDisabled: node('btn-clear-completed-queue').disabled,
+    viewRendered: node('view-mode').dataset.rendered,
+}));
+"""
+    result = subprocess.run(
+        ["node", "--input-type=module", "-e", script],
+        cwd=Path(__file__).resolve().parents[1],
+        text=True,
+        capture_output=True,
+        timeout=20,
+    )
+
+    assert result.returncode == 0, result.stderr or result.stdout
+    payload = json.loads(result.stdout)
+    assert payload == {
+        "summaryText": "正在运行：lora.toml · 等待 1 个",
+        "summaryClass": "training-queue-summary running error",
+        "badgeHidden": False,
+        "badgeText": "2",
+        "managerStatus": "队列运行中 · 等待 1 个 · 异常 1 个 · 失败后暂停队列",
+        "statsCount": 6,
+        "managerSections": 3,
+        "progressText": "train: 4/10 · 40.0% · 2it/s",
+        "progressStyle": "40.0%",
+        "runningFilterPressed": "false",
+        "runningFilterTitle": "运行：1 项",
+        "allFilterTitle": "全部：4 项",
+        "abortDisabled": False,
+        "forceAbortDisabled": False,
+        "clearCompletedDisabled": False,
+        "viewRendered": "true",
+    }
+
+
+def test_queue_state_preserves_snapshot_on_error_payloads() -> None:
+    if not shutil.which("node"):
+        pytest.skip("node is required for queue state checks")
+    script = r"""
+import {
+    createQueueState,
+    queueManagerSections,
+    queueSummaryCounts,
+    setQueueFilter,
+    updateQueueStateFromPayload,
+} from './web/static/js/features/queue/state.js';
+
+const state = createQueueState();
+updateQueueStateFromPayload(state, {
+    ok: true,
+    paused: true,
+    failure_policy: 'continue',
+    status: 'running',
+    current_item_id: 'run-1',
+    items: [
+        { id: 'run-1', state: 'running' },
+        { id: 'queue-2', state: 'queued' },
+        { id: 'done-3', state: 'done' },
+        { id: 'cancel-4', state: 'canceled' },
+    ],
+});
+
+const fallbackCounts = queueSummaryCounts(state);
+updateQueueStateFromPayload(state, { ok: false, error: 'backend offline' });
+const errorSnapshot = {
+    paused: state.queue.paused,
+    failurePolicy: state.queue.failurePolicy,
+    status: state.queue.status,
+    currentItemId: state.queue.currentItemId,
+    error: state.queue.error,
+    itemIds: state.queue.items.map((item) => item.id),
+    summary: state.queue.summary,
+};
+setQueueFilter(state, 'done');
+const doneSections = queueManagerSections(state).map((section) => ({
+    key: section.key,
+    collapsed: Boolean(section.collapsed),
+    itemIds: section.items.map((item) => item.id),
+}));
+setQueueFilter(state, 'canceled');
+const canceledSections = queueManagerSections(state).map((section) => ({
+    key: section.key,
+    collapsed: Boolean(section.collapsed),
+    itemIds: section.items.map((item) => item.id),
+}));
+
+console.log(JSON.stringify({ fallbackCounts, errorSnapshot, doneSections, canceledSections }));
+"""
+    result = subprocess.run(
+        ["node", "--input-type=module", "-e", script],
+        cwd=Path(__file__).resolve().parents[1],
+        text=True,
+        capture_output=True,
+        timeout=20,
+    )
+
+    assert result.returncode == 0, result.stderr or result.stdout
+    payload = json.loads(result.stdout)
+    assert payload == {
+        "fallbackCounts": {
+            "total": 4,
+            "queued": 1,
+            "running": 1,
+            "done": 1,
+            "error": 0,
+            "canceled": 1,
+        },
+        "errorSnapshot": {
+            "paused": True,
+            "failurePolicy": "continue",
+            "status": "running",
+            "currentItemId": "run-1",
+            "error": "backend offline",
+            "itemIds": ["run-1", "queue-2", "done-3", "cancel-4"],
+            "summary": {},
+        },
+        "doneSections": [
+            {"key": "done", "collapsed": False, "itemIds": ["done-3"]},
+        ],
+        "canceledSections": [
+            {"key": "canceled", "collapsed": False, "itemIds": ["cancel-4"]},
+        ],
+    }
+
+
+def test_history_curve_data_helpers_normalize_filter_and_downsample() -> None:
+    if not shutil.which("node"):
+        pytest.skip("node is required for history curve data checks")
+    script = r"""
+import {
+    HISTORY_CURVE_RENDER_POINT_LIMIT,
+    createHistoryCurveMetrics,
+    historyCurveDisplayPoints,
+    historyCurveFilteredPoints,
+    historyCurveNormalizePoint,
+    historyCurveNormalizeRawMetricPoint,
+    historyCurveSmoothPoints,
+} from './web/static/js/features/history-detail/curve/data.js';
+
+const metrics = createHistoryCurveMetrics((value) => `lr:${value}`);
+const normalized = [
+    historyCurveNormalizePoint({ step: 3, loss: '0.9', learningRate: '0.0003' }, 0, false),
+    historyCurveNormalizePoint({ step: 1, learning_rate: '0.0001' }, 1, false),
+    historyCurveNormalizePoint({ step: 2, loss: 'bad', lr: 'bad' }, 2, false),
+].filter(Boolean);
+const raw = [
+    historyCurveNormalizeRawMetricPoint({ step: 1, learningRate: '0.0001' }),
+    historyCurveNormalizeRawMetricPoint({ step: 2, learning_rate: '0.0002' }),
+    historyCurveNormalizeRawMetricPoint({ step: 3, lr: '0.0003' }),
+];
+const filtered = historyCurveFilteredPoints(normalized, {
+    rangeMode: 'custom',
+    customStart: '2',
+    customEnd: '3',
+});
+const smooth = historyCurveSmoothPoints(filtered, 2, metrics);
+const many = Array.from(
+    { length: HISTORY_CURVE_RENDER_POINT_LIMIT + 25 },
+    (_, index) => ({ step: index, index }),
+);
+const display = historyCurveDisplayPoints(many);
+
+console.log(JSON.stringify({
+    normalized: normalized.map((point) => ({
+        step: point.step,
+        loss: point.loss,
+        lr: point.lr,
+        index: point.index,
+    })),
+    raw: raw.map((point) => point.lr),
+    filteredSteps: filtered.map((point) => point.step),
+    smooth: smooth.map((point) => ({
+        step: point.step,
+        smoothLoss: point.smoothLoss ?? null,
+        smoothLr: point.smoothLr ?? null,
+    })),
+    display: {
+        limit: HISTORY_CURVE_RENDER_POINT_LIMIT,
+        count: display.length,
+        first: display[0].step,
+        last: display[display.length - 1].step,
+        unique: new Set(display.map((point) => point.index)).size,
+    },
+}));
+"""
+    result = subprocess.run(
+        ["node", "--input-type=module", "-e", script],
+        cwd=Path(__file__).resolve().parents[1],
+        text=True,
+        capture_output=True,
+        timeout=20,
+    )
+
+    assert result.returncode == 0, result.stderr or result.stdout
+    payload = json.loads(result.stdout)
+    assert payload == {
+        "normalized": [
+            {"step": 3, "loss": 0.9, "lr": 0.0003, "index": 0},
+            {"step": 1, "loss": None, "lr": 0.0001, "index": 1},
+        ],
+        "raw": [0.0001, 0.0002, 0.0003],
+        "filteredSteps": [3],
+        "smooth": [
+            {"step": 3, "smoothLoss": 0.9, "smoothLr": 0.0003},
+        ],
+        "display": {
+            "limit": 1600,
+            "count": 1600,
+            "first": 0,
+            "last": 1624,
+            "unique": 1600,
+        },
+    }
+
+
+def test_history_detail_state_aliases_and_resume_labels() -> None:
+    if not shutil.which("node"):
+        pytest.skip("node is required for history detail state checks")
+    script = r"""
+import {
+    createHistoryDetailState,
+    normalizeHistoryDetailTab,
+    resetHistoryDetailViewState,
+    setHistoryDetailTab,
+} from './web/static/js/features/history-detail/state.js';
+import {
+    resumeCheckpointRemainingText,
+    resumeCheckpointProgressText,
+} from './web/static/js/features/history-detail/resume/state.js';
+
+const state = createHistoryDetailState();
+state.currentPayload = { task: { id: 'task-1' } };
+state.returnState = { mode: 'history' };
+state.mainTaskReturn = { group: 'main' };
+state.curve.hoverStep = 42;
+
+const aliases = [
+    normalizeHistoryDetailTab('resume'),
+    normalizeHistoryDetailTab('chart'),
+    normalizeHistoryDetailTab('samples'),
+    normalizeHistoryDetailTab('paths'),
+    normalizeHistoryDetailTab('missing'),
+];
+const selected = setHistoryDetailTab(state, 'config');
+resetHistoryDetailViewState(state);
+
+console.log(JSON.stringify({
+    aliases,
+    selected,
+    reset: {
+        detailTab: state.detailTab,
+        currentPayload: state.currentPayload,
+        returnState: state.returnState,
+        mainTaskReturn: state.mainTaskReturn,
+        hoverStep: state.curve.hoverStep,
+    },
+    labels: [
+        resumeCheckpointProgressText({ epoch: 2, step: 30 }),
+        resumeCheckpointProgressText({}),
+        resumeCheckpointRemainingText({ step: 30, target_total_steps: 100 }),
+        resumeCheckpointRemainingText({
+            epoch: 1,
+            step: 30,
+            estimate_error: 'missing runtime',
+        }),
+    ],
+}));
+"""
+    result = subprocess.run(
+        ["node", "--input-type=module", "-e", script],
+        cwd=Path(__file__).resolve().parents[1],
+        text=True,
+        capture_output=True,
+        timeout=20,
+    )
+
+    assert result.returncode == 0, result.stderr or result.stdout
+    payload = json.loads(result.stdout)
+    assert payload == {
+        "aliases": ["overview", "analysis", "preview", "config_files", "overview"],
+        "selected": "config_files",
+        "reset": {
+            "detailTab": "overview",
+            "currentPayload": None,
+            "returnState": None,
+            "mainTaskReturn": None,
+            "hoverStep": None,
+        },
+        "labels": [
+            "Epoch 2 / Step 30",
+            "步数未知",
+            "已训练到 Step 30 / 目标 Step 100 / 剩余 70",
+            "Epoch 1 / Step 30 / 无法确认剩余步数",
+        ],
+    }
 
 
 def test_history_detail_overview_uses_full_copyable_paths_and_resume_weights() -> None:

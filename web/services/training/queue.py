@@ -23,6 +23,7 @@ if TYPE_CHECKING:
         _delete_queue_item_runtime_dir,
         _display_project_path,
         _format_ts,
+        _int_or_none,
         _load_config_file_config,
         _new_queue_item_id,
         _normalize_continue_lora_info,

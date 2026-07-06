@@ -499,18 +499,34 @@ T-LoRA mask 是共享 buffer，每个 denoising step 更新一次。
 ## 文档维护
 
 - 文档入口是 `docs/README.md`。
+- 根 `README.md` 只做项目介绍、部署快照和最高频入口；完整文档必须从根 README 明确链接到
+  `docs/README.md`。
 - 用户安装、WebUI 流程和启动命令变更：更新根 `README.md`。
-- 文档索引、方法入口、坏链整理：更新 `docs/README.md`。
+- 文档索引、方法入口、坏链整理：更新 `docs/README.md`；如果分区有独立索引，也要同步更新
+  对应 `README.md`。
+- 新增 `docs/**/*.md` 时，必须让它从 `docs/README.md` 或一个分区索引可达。超过 5 篇文档、
+  或长期增长的分区应维护自己的 `README.md`。
+- 历史计划、完成报告、一次性上游合并材料、过期提案默认归档到 `_archive/docs/`，不要继续放在
+  活跃 `docs/proposal/` 里。
+- 活跃或半活跃提案放 `docs/proposal/`，归档时同步更新 `docs/proposal/README.md`、
+  `docs/archive-index.md` 和 `_archive/docs/<subdir>/README.md`。
+- 文档顶部可用状态块标注适用范围，特别是实验、历史、占位和归档文档：
+  `状态：稳定 / 实验 / 历史 / 已归档 / 占位`、`适用版本：当前 main / 指定提交`、
+  `入口命令：python tasks.py ...`、`相关代码：path/to/file.py`。
 - 稳定能力使用说明：`docs/methods/`。
 - 可运行但实验中的能力：`docs/experimental/`。
 - 原理、数学、架构图解：`docs/structure/`。
+- 配置、路径、环境变量和外置配置：`docs/configuration/`。
+- WebUI / GUI 独立功能说明：`docs/features/`。
 - 实验结论、失败路径、审计报告：`docs/findings/`。
 - compile、kernel、显存和性能优化记录：`docs/optimizations/`。
 - 活跃或半活跃提案：`docs/proposal/`。
 - 过期或缺失上下文材料：`_archive/docs/`，并标注历史状态。
 - bench 说明：对应 `bench/<method>/README.md`。
-- 纯文档改动至少跑：`git diff --check -- docs _archive/docs`。如果只改根说明文件，
-  跑 `git diff --check -- AGENTS.md` 即可。
+- 纯文档改动至少跑：`git diff --check -- README.md AGENTS.md docs _archive/docs`。
+- 大规模文档整理还要跑本地 Markdown 链接检查，确认真实坏链为 0；外部链接只在需要时人工抽查。
+- 用户可见命令优先写 `python tasks.py <command>` 或 `.venv/bin/python tasks.py <command>`；
+  `make <target>` 可作为兼容说明，但不要作为唯一入口。
 
 ## 验证策略
 

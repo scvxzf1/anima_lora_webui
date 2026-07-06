@@ -3,7 +3,7 @@
 一句话：这份任务书是接在 `bd591b83` 之后的新入口，目标是让下一轮至少连续推进 3 小时，并且必须跨多个子系统做真实、可验证的小阶段。
 
 日期：2026-07-06
-状态：活跃长跑目标入口
+状态：完成归档（2026-07-06）
 前置已完成：
 
 - `project_cleanup_long_running_goal_20260705.md`：已完成归档，提交 `f74b8255`
@@ -764,3 +764,26 @@ EXT 规则：
 - 哪些 helper 被小步拆分。
 - 哪些文档入口已经归档或替换。
 - 哪些风险仍然保留。
+
+---
+
+## 🔚 16. 完成归档记录
+
+一句话：本目标已按硬完成条件完成，并由 checkpoint 与 Git 发布结果作为最终证据。
+
+最终状态：
+
+- 最低耗时门槛已满足：`goal.timeUsedSeconds >= 10800`，收口前最新读取为 `10889` 秒。
+- 推进轮数和阶段数已满足：checkpoint 已记录 `R0` 到 `R6`，并通过 EXT 扩展到 78 组以上低风险阶段。
+- 子系统覆盖已满足：WebUI frontend、WebUI backend / queue / preview、runtime / launch / config path、training bootstrap、LoRA/config/type-check、docs/archive 均有真实证据。
+- 总验证已完成：pytest 分批、`tasks.py type-check`、`git diff --check`、docs 可达性、归档索引和远端同步预检均通过。
+- 最终发布目标：本地 `main` 推送到 `webui/main`。
+
+不能夸大的边界：
+
+- 没有跑真实训练。
+- 没有下载模型。
+- 没有清理或移动用户数据目录。
+- 没有删除 `_legacy.py`。
+- 没有改 LoRA checkpoint key、public API 或三轴路由语义。
+- 没有建立全仓 type-check；当前是明确白名单门禁。

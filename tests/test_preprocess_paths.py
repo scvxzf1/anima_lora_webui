@@ -1052,6 +1052,148 @@ def test_preprocess_runs_all_dataset_config_rows(tmp_path, monkeypatch):
     assert te_b[te_b.index("--dir") + 1] == "image_dataset/b"
 
 
+def test_preprocess_dataset_rows_expands_runtime_path_placeholders(tmp_path, monkeypatch):
+    dataset_path = tmp_path / "runs" / "demo" / "dataset.runtime.toml"
+    dataset_path.parent.mkdir(parents=True)
+    dataset_path.write_text(
+        "\n".join(
+            [
+                "[[datasets]]",
+                "resolution = 768",
+                "",
+                "[[datasets.subsets]]",
+                'image_dir = "{output_dir}/dataset_cache/dataset-01/resized"',
+                'cache_dir = "{output_dir}/dataset_cache/dataset-01/lora"',
+                'custom_attributes = {source_dir = "{source_image_dir}/char_a"}',
+            ]
+        ),
+        encoding="utf-8",
+    )
+    commands: list[list[str]] = []
+    backups: list[str] = []
+    output_dir = str(tmp_path / "output" / "runs" / "demo")
+    source_dir = str(tmp_path / "image_dataset")
+    monkeypatch.setattr(preprocess, "ROOT", tmp_path)
+    _set_path_overrides_cache(
+        monkeypatch,
+        {
+            "dataset_config": "runs/demo/dataset.runtime.toml",
+            "output_dir": output_dir,
+            "source_image_dir": source_dir,
+            "vae": "D:/models/vae.safetensors",
+            "qwen3": "D:/models/qwen3.safetensors",
+            "pretrained_model_name_or_path": "D:/models/anima.safetensors",
+        },
+    )
+    monkeypatch.setattr(preprocess, "run", commands.append)
+    monkeypatch.setattr(
+        preprocess,
+        "_run_caption_backup",
+        lambda row: backups.append(row["source_image_dir"]),
+    )
+    monkeypatch.setattr(preprocess, "_build_caption_index_best_effort", lambda: None)
+
+    preprocess.cmd_preprocess([])
+
+    assert backups == [f"{source_dir}/char_a"]
+    assert len(commands) == 3
+    resize_cmd, vae_cmd, te_cmd = commands
+    assert resize_cmd[resize_cmd.index("--src") + 1] == f"{source_dir}/char_a"
+    assert (
+        resize_cmd[resize_cmd.index("--dst") + 1]
+        == f"{output_dir}/dataset_cache/dataset-01/resized"
+    )
+    assert (
+        vae_cmd[vae_cmd.index("--dir") + 1]
+        == f"{output_dir}/dataset_cache/dataset-01/resized"
+    )
+    assert (
+        vae_cmd[vae_cmd.index("--cache_dir") + 1]
+        == f"{output_dir}/dataset_cache/dataset-01/lora"
+    )
+    assert te_cmd[te_cmd.index("--dir") + 1] == f"{source_dir}/char_a"
+    assert (
+        te_cmd[te_cmd.index("--cache_dir") + 1]
+        == f"{output_dir}/dataset_cache/dataset-01/lora"
+    )
+    joined = " ".join(" ".join(cmd) for cmd in commands)
+    assert "{output_dir}" not in joined
+    assert "{source_image_dir}" not in joined
+    assert "post_image_dataset" not in joined
+
+
+def test_preprocess_rows_fallback_uses_runtime_top_level_paths(monkeypatch):
+    commands: list[list[str]] = []
+    backups: list[str] = []
+    _set_path_overrides_cache(
+        monkeypatch,
+        {
+            "dataset_config": "missing/runtime-dataset.toml",
+            "source_image_dir": "output/runs/demo/source",
+            "resized_image_dir": "output/runs/demo/cache/resized",
+            "lora_cache_dir": "output/runs/demo/cache/lora",
+            "vae": "D:/models/vae.safetensors",
+            "qwen3": "D:/models/qwen3.safetensors",
+            "pretrained_model_name_or_path": "D:/models/anima.safetensors",
+        },
+    )
+    monkeypatch.setattr(preprocess, "run", commands.append)
+    monkeypatch.setattr(
+        preprocess,
+        "_run_caption_backup",
+        lambda row: backups.append(row["source_image_dir"]),
+    )
+    monkeypatch.setattr(preprocess, "_build_caption_index_best_effort", lambda: None)
+
+    preprocess.cmd_preprocess([])
+
+    assert backups == ["output/runs/demo/source"]
+    assert len(commands) == 3
+    resize_cmd, vae_cmd, te_cmd = commands
+    assert resize_cmd[resize_cmd.index("--src") + 1] == "output/runs/demo/source"
+    assert (
+        resize_cmd[resize_cmd.index("--dst") + 1]
+        == "output/runs/demo/cache/resized"
+    )
+    assert vae_cmd[vae_cmd.index("--dir") + 1] == "output/runs/demo/cache/resized"
+    assert vae_cmd[vae_cmd.index("--cache_dir") + 1] == "output/runs/demo/cache/lora"
+    assert te_cmd[te_cmd.index("--dir") + 1] == "output/runs/demo/source"
+    assert te_cmd[te_cmd.index("--cache_dir") + 1] == "output/runs/demo/cache/lora"
+    joined = " ".join(" ".join(cmd) for cmd in commands)
+    assert "post_image_dataset" not in joined
+    assert "image_dataset" not in joined
+
+
+def test_preprocess_resize_skips_same_source_and_destination_without_path_override(
+    monkeypatch,
+    capsys,
+):
+    commands: list[list[str]] = []
+    row = {
+        "source_image_dir": "output/runs/demo/cache/resized",
+        "resized_image_dir": "output/runs/demo/cache/resized/",
+        "recursive": True,
+    }
+    _set_path_overrides_cache(monkeypatch, {})
+    monkeypatch.setattr(preprocess, "run", commands.append)
+
+    preprocess._run_preprocess_resize(row, [])
+
+    assert commands == []
+    assert "skip resize" in capsys.readouterr().out
+
+    preprocess._run_preprocess_resize(
+        row,
+        ["--src", "override/source", "--dst", "override/resized"],
+    )
+
+    assert len(commands) == 1
+    cmd = commands[0]
+    assert cmd[cmd.index("--src") + 1] == "output/runs/demo/cache/resized"
+    assert cmd[cmd.index("--dst") + 1] == "output/runs/demo/cache/resized/"
+    assert cmd[-4:] == ["--src", "override/source", "--dst", "override/resized"]
+
+
 def test_resize_process_image_does_not_upscale_when_disabled(tmp_path):
     src = tmp_path / "source"
     dst = tmp_path / "resized"

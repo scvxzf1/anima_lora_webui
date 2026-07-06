@@ -12,6 +12,10 @@ ACCELERATE_MIXED_PRECISION_ENV = "ANIMA_ACCELERATE_MIXED_PRECISION"
 _ACCELERATE_MIXED_PRECISION_CHOICES = {"no", "fp16", "bf16"}
 
 
+def _env_flag_enabled(value: str | None) -> bool:
+    return str(value or "").strip().lower() in {"1", "true", "yes", "on"}
+
+
 def resolve_accelerate_num_processes(env: Mapping[str, str] | None = None) -> str:
     values = os.environ if env is None else env
     raw = values.get(ACCELERATE_NUM_PROCESSES_ENV, "").strip()
@@ -49,7 +53,7 @@ def accelerate_training_command_prefix(
     env: Mapping[str, str] | None = None,
 ) -> list[str]:
     values = os.environ if env is None else env
-    if not values.get(ACCELERATE_LAUNCH_ENV):
+    if not _env_flag_enabled(values.get(ACCELERATE_LAUNCH_ENV)):
         return [python_exe, str(train_script)]
     return [
         python_exe,

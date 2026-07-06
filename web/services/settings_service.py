@@ -203,10 +203,10 @@ def _normalize_output_root(value: str, *, allow_empty: bool) -> str:
             return ""
         raise ValueError("输出文件夹不能为空")
     path = Path(clean)
-    if path.is_absolute():
-        return path.resolve().as_posix()
     if ".." in path.parts:
         raise ValueError("输出文件夹不能包含 ..")
+    if path.is_absolute():
+        return path.resolve().as_posix()
     return path.as_posix().lstrip("/").rstrip("/") or DEFAULT_OUTPUT_ROOT
 
 

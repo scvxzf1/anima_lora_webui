@@ -104,6 +104,18 @@ def expand_env_vars_in_obj(value: Any) -> Any:
     return value
 
 
+def _resolve_project_relative_override(value: str, *, label: str) -> Path:
+    clean = expand_env_vars(value).strip()
+    if not clean:
+        raise ValueError(f"{label} cannot be empty")
+    path = Path(clean)
+    if ".." in path.parts:
+        raise ValueError(f"{label} cannot contain '..'")
+    if not path.is_absolute():
+        path = project_root() / path
+    return path.resolve()
+
+
 def get_configs_root() -> Path:
     """获取配置根目录，支持 WebUI 设置和环境变量覆盖。
 
@@ -123,24 +135,25 @@ def get_configs_root() -> Path:
         try:
             import toml
             raw = toml.loads(webui_paths_file.read_text(encoding="utf-8"))
+        except Exception:
+            pass
+        else:
             section = raw.get("paths", {})
             if isinstance(section, dict):
                 webui_value = str(section.get("configs_root") or "").strip()
                 if webui_value:
-                    path = Path(expand_env_vars(webui_value))
-                    if not path.is_absolute():
-                        path = project_root() / path
-                    return path.resolve()
-        except Exception:
-            pass
+                    return _resolve_project_relative_override(
+                        webui_value,
+                        label="configs_root",
+                    )
 
     # 2. 读取环境变量
     env_value = os.environ.get("ANIMA_CONFIGS_ROOT")
     if env_value:
-        path = Path(expand_env_vars(env_value))
-        if not path.is_absolute():
-            path = project_root() / path
-        return path.resolve()
+        return _resolve_project_relative_override(
+            env_value,
+            label="ANIMA_CONFIGS_ROOT",
+        )
 
     # 3. 默认值
     return project_root() / "configs"
@@ -158,10 +171,10 @@ def get_training_history_root() -> Path:
 
     env_value = os.environ.get("ANIMA_TRAINING_HISTORY_ROOT")
     if env_value:
-        path = Path(expand_env_vars(env_value))
-        if not path.is_absolute():
-            path = project_root() / path
-        return path.resolve()
+        return _resolve_project_relative_override(
+            env_value,
+            label="ANIMA_TRAINING_HISTORY_ROOT",
+        )
     return get_configs_root() / "web-training-history"
 
 
@@ -177,8 +190,8 @@ def get_training_queue_root() -> Path:
 
     env_value = os.environ.get("ANIMA_TRAINING_QUEUE_ROOT")
     if env_value:
-        path = Path(expand_env_vars(env_value))
-        if not path.is_absolute():
-            path = project_root() / path
-        return path.resolve()
+        return _resolve_project_relative_override(
+            env_value,
+            label="ANIMA_TRAINING_QUEUE_ROOT",
+        )
     return get_configs_root() / "web-training-queue"

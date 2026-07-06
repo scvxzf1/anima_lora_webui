@@ -144,6 +144,13 @@ def test_invalid_missing_and_escaped_paths_are_rejected(tmp_path, monkeypatch):
     with pytest.raises(ValueError, match="不能包含"):
         weight_analysis_service.inspect_weight("../outside.safetensors")
 
+    safe = out / "safe.safetensors"
+    save_file({"x": torch.zeros(1)}, str(safe))
+    with pytest.raises(ValueError, match="不能包含"):
+        weight_analysis_service.inspect_weight(
+            str(out / "nested" / ".." / "safe.safetensors")
+        )
+
 
 def test_unsupported_adapter_returns_stable_json_shape(tmp_path, monkeypatch):
     root = _patch_weight_analysis_root(tmp_path, monkeypatch)

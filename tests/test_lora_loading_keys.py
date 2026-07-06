@@ -4,6 +4,7 @@ import pytest
 import torch
 
 from networks.lora_anima.loading import (
+    _parse_reft_layers,
     _refuse_split_chimera_keys,
     _refuse_split_hydra_keys,
     _refuse_split_stacked_experts_keys,
@@ -12,6 +13,33 @@ from networks.lora_anima.loading import (
     _stack_chimera_lora_ups,
     _stack_lora_ups,
 )
+
+
+@pytest.mark.parametrize(
+    ("spec", "expected"),
+    [
+        (None, [0, 1, 2, 3, 4, 5]),
+        ("all", [0, 1, 2, 3, 4, 5]),
+        ("", [0, 1, 2, 3, 4, 5]),
+        ("last_2", [4, 5]),
+        ("first_2", [0, 1]),
+        ("stride_2", [0, 2, 4]),
+        ("3,1,3", [1, 3]),
+        ([2, 0], [0, 2]),
+    ],
+)
+def test_parse_reft_layers_supported_specs(spec, expected) -> None:
+    assert _parse_reft_layers(spec, num_blocks=6) == expected
+
+
+def test_parse_reft_layers_rejects_invalid_stride() -> None:
+    with pytest.raises(ValueError, match="stride must be positive"):
+        _parse_reft_layers("stride_0", num_blocks=6)
+
+
+def test_parse_reft_layers_rejects_out_of_range_indices() -> None:
+    with pytest.raises(ValueError, match="out of range"):
+        _parse_reft_layers("1,6", num_blocks=6)
 
 
 def test_stack_lora_ups_stacks_sorted_experts_and_keeps_shared_down() -> None:

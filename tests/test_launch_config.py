@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 from library.runtime.launch import (
@@ -17,6 +19,110 @@ def test_training_command_defaults_to_direct_train_script(monkeypatch):
     monkeypatch.delenv(ACCELERATE_NUM_PROCESSES_ENV, raising=False)
     cmd = accelerate_training_command_prefix("python", "train.py")
     assert cmd == ["python", "train.py"]
+
+
+def test_explicit_env_mapping_isolated_from_process_env(monkeypatch):
+    monkeypatch.setenv(ACCELERATE_LAUNCH_ENV, "1")
+    monkeypatch.setenv(ACCELERATE_NUM_PROCESSES_ENV, "8")
+    monkeypatch.setenv(ACCELERATE_MIXED_PRECISION_ENV, "fp16")
+
+    cmd = accelerate_training_command_prefix("python", "train.py", {})
+
+    assert cmd == ["python", "train.py"]
+
+
+def test_direct_training_command_ignores_accelerate_detail_env_when_launch_disabled():
+    env = {
+        ACCELERATE_NUM_PROCESSES_ENV: "8",
+        ACCELERATE_MIXED_PRECISION_ENV: "fp16",
+    }
+    cmd = accelerate_training_command_prefix("python", "train.py", env)
+    assert cmd == ["python", "train.py"]
+
+
+def test_direct_training_command_ignores_invalid_accelerate_detail_env_when_launch_disabled():
+    env = {
+        ACCELERATE_LAUNCH_ENV: "0",
+        ACCELERATE_NUM_PROCESSES_ENV: "many",
+        ACCELERATE_MIXED_PRECISION_ENV: "fp4",
+    }
+    cmd = accelerate_training_command_prefix("python", "train.py", env)
+    assert cmd == ["python", "train.py"]
+
+
+@pytest.mark.parametrize("value", ["0", "false", "False", "no", "off", ""])
+def test_falsey_accelerate_launch_env_keeps_direct_training_command(value: str):
+    env = {
+        ACCELERATE_LAUNCH_ENV: value,
+        ACCELERATE_NUM_PROCESSES_ENV: "8",
+        ACCELERATE_MIXED_PRECISION_ENV: "fp16",
+    }
+    cmd = accelerate_training_command_prefix("python", "train.py", env)
+    assert cmd == ["python", "train.py"]
+
+
+@pytest.mark.parametrize("value", ["1", "true", "TRUE", "yes", "on"])
+def test_truthy_accelerate_launch_env_enables_launch_command(value: str):
+    env = {ACCELERATE_LAUNCH_ENV: value}
+    cmd = accelerate_training_command_prefix("python", "train.py", env)
+    assert cmd[:4] == ["python", "-m", "accelerate.commands.accelerate_cli", "launch"]
+    assert cmd[-1] == "train.py"
+
+
+def test_accelerate_launch_command_wraps_train_script_with_safe_defaults():
+    env = {
+        ACCELERATE_LAUNCH_ENV: "1",
+        ACCELERATE_NUM_PROCESSES_ENV: "2",
+        ACCELERATE_MIXED_PRECISION_ENV: "fp16",
+    }
+
+    cmd = accelerate_training_command_prefix("python", "train.py", env)
+
+    assert cmd == [
+        "python",
+        "-m",
+        "accelerate.commands.accelerate_cli",
+        "launch",
+        "--num_processes",
+        "2",
+        "--num_machines",
+        "1",
+        "--dynamo_backend",
+        "no",
+        "--num_cpu_threads_per_process",
+        "3",
+        "--mixed_precision",
+        "fp16",
+        "train.py",
+    ]
+
+
+def test_accelerate_command_stringifies_path_train_script():
+    train_script = Path("train.py")
+
+    assert accelerate_training_command_prefix("python", train_script, {}) == [
+        "python",
+        "train.py",
+    ]
+
+    cmd = accelerate_training_command_prefix(
+        "python",
+        train_script,
+        {ACCELERATE_LAUNCH_ENV: "1"},
+    )
+
+    assert cmd[-1] == "train.py"
+
+
+def test_accelerate_launch_env_values_are_stripped_before_parsing():
+    env = {
+        ACCELERATE_LAUNCH_ENV: " true ",
+        ACCELERATE_NUM_PROCESSES_ENV: " 3 ",
+        ACCELERATE_MIXED_PRECISION_ENV: " FP16 ",
+    }
+    cmd = accelerate_training_command_prefix("python", "train.py", env)
+    assert cmd[cmd.index("--num_processes") + 1] == "3"
+    assert cmd[cmd.index("--mixed_precision") + 1] == "fp16"
 
 
 def test_accelerate_num_processes_defaults_to_single_process(monkeypatch):

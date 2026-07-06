@@ -21,6 +21,7 @@ FAST_TEST_TARGETS = [
 
 TYPE_CHECK_TARGETS = [
     "library/config",
+    "tasks.py",
     "scripts/config_compat.py",
     "scripts/config_explain.py",
     "scripts/tasks/_common.py",

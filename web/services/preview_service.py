@@ -850,7 +850,6 @@ def _weight_sort_key(item: dict[str, Any]) -> tuple[int, int, float, str]:
     scope_rank = {"task": 0, "other": 1}
     kind_rank = {"epoch": 0, "step": 1, "resume": 2, "final": 3, "weight": 4}
     primary = item.get("steps") if item.get("steps") is not None else -1
-    epoch = item.get("epoch") if item.get("epoch") is not None else -1
     return (
         int(scope_rank.get(str(item.get("scope")), 9)),
         int(kind_rank.get(str(item.get("kind")), 9)),
@@ -905,6 +904,8 @@ def _normalize_preview_dir(value: str, *, allow_empty: bool) -> str:
             return ""
         raise ValueError("路径不能为空")
     path = Path(clean)
+    if ".." in path.parts:
+        raise ValueError("路径不能包含 ..")
     if path.is_absolute():
         return path.resolve().as_posix()
     return _normalize_project_dir(clean, allow_empty=allow_empty)
@@ -925,14 +926,14 @@ def _normalize_project_file(value: str) -> str:
     if not clean:
         raise ValueError("路径不能为空")
     path = Path(clean)
+    if ".." in path.parts:
+        raise ValueError("路径不能包含 ..")
     if path.is_absolute():
         resolved = path.resolve()
         try:
             return resolved.relative_to(ROOT.resolve()).as_posix()
         except ValueError as exc:
             raise ValueError("路径必须在项目目录内") from exc
-    if ".." in path.parts:
-        raise ValueError("路径不能包含 ..")
     return path.as_posix().lstrip("/")
 
 

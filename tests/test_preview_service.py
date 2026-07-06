@@ -54,6 +54,40 @@ def test_global_settings_default_save_and_resolve(tmp_path, monkeypatch):
     assert data["global"]["vae"] == "models/custom_vae.safetensors"
 
 
+def test_global_settings_reject_output_root_parent_traversal(tmp_path, monkeypatch):
+    settings_file = tmp_path / "configs" / "web-ui-settings.toml"
+    settings_file.parent.mkdir(parents=True)
+    settings_file.write_text('[global]\noutput_root = "safe/runs"\n', encoding="utf-8")
+    monkeypatch.setattr(settings_service, "ROOT", tmp_path)
+    monkeypatch.setattr(settings_service, "SETTINGS_FILE", settings_file)
+
+    with pytest.raises(ValueError, match="输出文件夹不能包含"):
+        settings_service.save_global_settings({"output_root": "../outside"})
+
+    data = toml.loads(settings_file.read_text(encoding="utf-8"))
+    assert data["global"]["output_root"] == "safe/runs"
+    assert settings_service.resolve_output_root() == (tmp_path / "safe" / "runs").resolve()
+
+
+def test_global_settings_reject_absolute_output_root_parent_traversal(
+    tmp_path,
+    monkeypatch,
+):
+    settings_file = tmp_path / "configs" / "web-ui-settings.toml"
+    settings_file.parent.mkdir(parents=True)
+    settings_file.write_text('[global]\noutput_root = "safe/runs"\n', encoding="utf-8")
+    monkeypatch.setattr(settings_service, "ROOT", tmp_path)
+    monkeypatch.setattr(settings_service, "SETTINGS_FILE", settings_file)
+
+    with pytest.raises(ValueError, match="输出文件夹不能包含"):
+        settings_service.save_global_settings(
+            {"output_root": str(tmp_path / "safe" / ".." / "outside")}
+        )
+
+    data = toml.loads(settings_file.read_text(encoding="utf-8"))
+    assert data["global"]["output_root"] == "safe/runs"
+
+
 def _write_base_model_defaults(configs: Path) -> None:
     configs.mkdir(parents=True, exist_ok=True)
     (configs / "base.toml").write_text(
@@ -92,6 +126,71 @@ def test_preview_settings_preserve_global_section(tmp_path, monkeypatch):
 
     data = toml.loads(settings_file.read_text(encoding="utf-8"))
     assert data["global"]["output_root"] == "custom/runs"
+
+
+def test_preview_settings_reject_training_dir_outside_project(tmp_path, monkeypatch):
+    settings_file = tmp_path / "configs" / "web-ui-settings.toml"
+    settings_file.parent.mkdir(parents=True)
+    settings_file.write_text(
+        '[preview]\ntraining_dir = "output/ckpt/sample"\n',
+        encoding="utf-8",
+    )
+    outside_dir = tmp_path.parent / "outside-preview"
+    _patch_preview_settings_file(monkeypatch, settings_file, root=tmp_path)
+
+    with pytest.raises(ValueError, match="项目目录内"):
+        preview_service.save_preview_settings(
+            {
+                "training_dir": str(outside_dir),
+                "inference_dir": "output/tests",
+                "custom_dir": "",
+            }
+        )
+
+    data = toml.loads(settings_file.read_text(encoding="utf-8"))
+    assert data["preview"]["training_dir"] == "output/ckpt/sample"
+
+
+def test_preview_settings_reject_absolute_preview_dir_parent_traversal(
+    tmp_path,
+    monkeypatch,
+):
+    settings_file = tmp_path / "configs" / "web-ui-settings.toml"
+    settings_file.parent.mkdir(parents=True)
+    settings_file.write_text(
+        "\n".join(
+            [
+                "[preview]",
+                'training_dir = "output/ckpt/sample"',
+                'inference_dir = "output/tests"',
+                'custom_dir = ""',
+            ]
+        ),
+        encoding="utf-8",
+    )
+    _patch_preview_settings_file(monkeypatch, settings_file, root=tmp_path)
+
+    with pytest.raises(ValueError, match="路径不能包含"):
+        preview_service.save_preview_settings(
+            {
+                "training_dir": "output/ckpt/sample",
+                "inference_dir": str(tmp_path / "inference" / ".." / "outside"),
+                "custom_dir": "",
+            }
+        )
+
+    with pytest.raises(ValueError, match="路径不能包含"):
+        preview_service.save_preview_settings(
+            {
+                "training_dir": "output/ckpt/sample",
+                "inference_dir": "output/tests",
+                "custom_dir": str(tmp_path / "custom" / ".." / "outside"),
+            }
+        )
+
+    data = toml.loads(settings_file.read_text(encoding="utf-8"))
+    assert data["preview"]["inference_dir"] == "output/tests"
+    assert data["preview"]["custom_dir"] == ""
 
 
 def test_preview_settings_allow_absolute_inference_and_custom_dirs(tmp_path, monkeypatch):

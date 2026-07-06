@@ -399,6 +399,2784 @@ Git 同步口径：本地 `main` 只和 `webui/main` 沟通；`private/main` 不
 请按 docs/findings/project_cleanup_sustained_goal_20260706.md 执行跨子系统强制长跑项目清理目标。
 ```
 
+---
+
+## 🔚 19. 20260706 跨子系统长跑目标最终收口
+
+一句话：这是 `project_cleanup_sustained_goal_20260706.md` 的最终收口摘要，真正的文件末尾入口见尾部第 17 节。
+
+最终完成事实：
+
+- 活跃目标：`docs/findings/project_cleanup_sustained_goal_20260706.md`。
+- 收口前最新 `get_goal`：`goal.timeUsedSeconds = 10889`，已满足 `>=10800` 秒硬门槛。
+- 推进轮数：已完成 `R0` 到 `R6`，并在 EXT 池持续推进到第七十八组以上。
+- 阶段数：远超 20 个可验收小阶段，每组均绑定测试、源码护栏、只读审计、文档索引或验证证据。
+- 子系统覆盖：WebUI frontend、WebUI backend / queue / preview、runtime / launch / config path、training bootstrap、LoRA/config/type-check、docs/archive。
+- 远端口径：本地 `main` 发布到 `webui/main`。
+
+R6 最终验证：
+
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m pytest -p no:cacheprovider -q tests/test_training_frontend_state.py`：`74 passed`。
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m pytest -p no:cacheprovider -q tests/test_web_config_service.py -k "output_runs"`：`5 passed, 167 deselected`。
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m pytest -p no:cacheprovider -q tests/test_web_config_service.py -k "file_groups or raw_files or sample_prompts or direct_import"`：`15 passed, 157 deselected`。
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m pytest -p no:cacheprovider -q tests/test_training_queue.py tests/test_preview_service.py tests/test_weight_analysis_service.py`：`80 passed`。
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m pytest -p no:cacheprovider -q tests/test_env_config_paths.py tests/test_launch_config.py tests/test_training_bootstrap.py tests/test_runtime_harness_cli.py`：`68 passed`。
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m pytest -p no:cacheprovider -q tests/test_lora_loading_keys.py tests/test_lora_save_pipeline.py tests/test_network_cfg.py tests/test_type_check_targets.py tests/test_tasks_runner.py tests/test_docs_archive_indexes.py`：`111 passed`。
+- `timeout 60 .venv/bin/python tasks.py type-check`：`0 errors, 0 warnings, 0 informations`。
+- `git diff --check`：通过。
+- docs 可达性复扫：`docs_md=104 reachable_from_docs_readme=104 missing=0`。
+- docs 本地链接复扫：`scanned=112 local_links=194 external_links=27 skipped_non_path=59 broken=0`。
+- `git fetch webui --prune && git rev-list --left-right --count HEAD...webui/main`：`0 0`。
+
+中断和拆分说明：
+
+- 一条并行 Web config 切片曾因用户中断未计为通过；之后已重新运行更明确的 `file_groups or raw_files or sample_prompts or direct_import` 切片，并得到 `15 passed, 157 deselected`。
+- 早前较宽 Web config 命令若接近或超过 60 秒，均按目标书要求拆成较窄切片记录，不把超时或中断命令当成通过。
+
+最终修改范围：
+
+- docs：整理 `docs/README.md`、分区 README、归档索引、proposal 归档副本和目标/checkpoint 记录。
+- WebUI frontend：补 DOM、主题、GPU picker、tab、queue renderer 等静态/Node fixture 测试。
+- WebUI backend：补 output root、preview、queue、history、weight analysis 相关边界测试和小护栏。
+- runtime / config path / launch：补 `.env`、外置 configs root、显式 env、launch command builder、type-check 目标护栏。
+- training：补 bootstrap / compile-after-apply 顺序相关 monkeypatch 测试。
+- LoRA/config：补 loading/save/config characterization tests，继续保护 checkpoint key、public API 和三轴路由语义。
+
+明确未做事项：
+
+- 没有跑真实训练。
+- 没有下载模型。
+- 没有删除、移动或清理用户数据目录。
+- 没有删除 `_legacy.py`。
+- 没有改 LoRA checkpoint key、public API 或三轴路由语义。
+- 没有建立全仓 type-check；当前仍是明确白名单门禁。
+
+最终 stage 风险处理：
+
+- 归档 proposal 文件在 Git 中表现为 `docs/proposal/*.md` 删除 + `_archive/docs/proposal/*.md` 新增，最终必须两边一起显式 stage。
+- 不使用 `git add -A`。
+- stage 后必须再跑 `git diff --cached --check`。
+
+---
+
+## 🧭 18. 20260706 跨子系统长跑目标执行记录
+
+一句话：本节开始记录 `project_cleanup_sustained_goal_20260706.md` 的真实推进，不再重复执行 20260705 旧目标。
+
+### R0 启动和旧目标归档确认
+
+一句话：R0 已确认本地远端同步、旧目标归档关系和当前工作区风险。
+
+启动事实：
+
+- 当前活跃目标：`docs/findings/project_cleanup_sustained_goal_20260706.md`。
+- `goal.timeUsedSeconds = 74` 时启动读取；本轮后续盘点为 `532`，仍远小于 `10800` 秒硬门槛。
+- `git log -1 --oneline --decorate`：`cbad09af (HEAD -> main, webui/main, webui/HEAD) docs: add cross-system sustained cleanup goal`。
+- `git rev-list --left-right --count HEAD...webui/main`：`0 0`，本地 `main` 与 `webui/main` 同步。
+- `date +%s`：`1783312354`。
+
+旧目标归档扫描：
+
+- `rg -n "状态：活跃|project_cleanup_sustained_goal_20260705.md|project_cleanup_sustained_goal_20260706.md" docs/findings/project_cleanup_*20260705.md docs/findings/project_cleanup_checkpoint_20260705.md docs/findings/project_cleanup_sustained_goal_20260706.md` 已执行。
+- 旧目标文件顶部已指向 `project_cleanup_sustained_goal_20260706.md` 作为后续入口。
+- `project_cleanup_sustained_goal_20260705.md` 在 checkpoint 末尾记录为已完成归档，最终提交 `bd591b83`。
+- checkpoint 内部仍有历史执行段提到 `20260705` 活跃入口，这是历史记录，不作为当前入口。
+
+当前工作区风险：
+
+- 启动时已有未提交文档整理改动：`README.md`、`AGENTS.md`、`docs/README.md`、分区索引、7 个 proposal 从 `docs/proposal/` 移到 `_archive/docs/proposal/`。
+- 子代理只读审计确认：这些改动与 20260706 长跑目标中的 docs / CLI / type-check 门禁方向一致；未发现用户数据风险。
+- 提交前必须显式 stage 原 `D` 文件和 `_archive/docs/proposal/` 新文件，不能只看 `git diff --stat`，否则会把“搬家”误当成删除。
+
+已完成阶段：
+
+- `A00` 基线确认：完成。
+- `A01` 旧目标归档扫描：完成。
+- `DOC-R0` 文档整理现状审计：完成，作为 docs 子系统证据计入。
+
+### R1 WebUI 前端 / DOM / 静态模块证据
+
+一句话：R1 已补两个不启动服务的 WebUI 前端测试，一个守 DOM id 契约，一个跑队列渲染 DOM fixture。
+
+只读审计：
+
+- 主线运行了 `rg -n "from './|from \"./|globalThis|querySelector|getElementById|addEventListener" web/static/js/features/anima-app web/static/js/features/live-training web/static/js/features/queue web/static/js/features/history-detail`。
+- 子代理 `A02-FE-AUDIT` 只读建议：队列管理渲染缺少真实 DOM fixture，推荐在 `tests/test_training_frontend_state.py` 补 `createQueueRenderer` + `updateQueueStateFromPayload` 的 Node fixture。
+
+新增测试：
+
+- `test_queue_and_history_detail_literal_dom_ids_match_index_html`
+  - 扫描 `queue/render.js`、`queue/actions.js`、`history-detail/dialog.js` 中 literal `document.getElementById('...')`。
+  - 对照 `web/static/index.html`，防止 JS 引用已不存在的 DOM id。
+- `test_training_queue_renderer_updates_dom_fixture`
+  - 通过 Node 直接 import `createQueueRenderer`、`createQueueState`、`updateQueueStateFromPayload`。
+  - 用 fake DOM 渲染 running / queued / error / done 队列。
+  - 验证 summary、badge、manager status、stats、filter title、running progress、危险操作按钮 disabled / aria 状态。
+
+本轮验证：
+
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m pytest -p no:cacheprovider -q tests/test_training_frontend_state.py -k "queue_renderer_updates_dom_fixture"`：`1 passed, 66 deselected`。
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m pytest -p no:cacheprovider -q tests/test_training_frontend_state.py -k "dom or selector or queue or history"`：`13 passed, 54 deselected`。
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m py_compile tests/test_training_frontend_state.py`：通过。
+- `timeout 60 .venv/bin/python -m ruff check tests/test_training_frontend_state.py`：`All checks passed!`。
+- `timeout 60 git diff --check -- README.md AGENTS.md docs _archive/docs tests/test_training_frontend_state.py`：通过。
+- `timeout 60 .venv/bin/python tasks.py --help >/tmp/anima_tasks_help_check.txt && wc -c /tmp/anima_tasks_help_check.txt`：通过，输出大小 `10534`。
+
+已完成阶段：
+
+- `A02` 前端模块依赖图审计：完成。
+- `A03` DOM id 契约补测：完成。
+- `A05` queue/history 前端入口保护：完成一部分，新增 queue renderer DOM fixture；history-detail 本轮只覆盖 literal id 契约。
+- `A06` CSS / 文档空白守门：本轮跑了相关 `git diff --check`，未做 CSS 结构变更。
+
+当前覆盖和门槛盘点：
+
+- 已推进轮次：`R0` 完成，`R1` 已完成部分可验收阶段；距离最低 `5` 轮还不足。
+- 已完成阶段：当前可计 `7` 个左右，距离最低 `20` 个还不足。
+- 已覆盖子系统：docs / CLI 文档门禁、WebUI frontend，当前约 `2` 类，距离最低 `4` 类还不足。
+- 非纯文档验证：已有前端 pytest、py_compile、ruff、diff check、tasks help；最终仍需按目标书跑至少 `6` 组并覆盖实际改动。
+- `goal.timeUsedSeconds = 532`，远小于 `10800`，禁止提交推送和禁止 `update_goal complete`。
+
+仍不能对外说：
+
+- 不能说 20260706 长跑目标已完成。
+- 不能说 WebUI 做过真实浏览器全链路验证；本轮只做静态测试和 Node fake DOM fixture。
+- 不能说训练、队列或 daemon 被真实启动；本轮没有启动真实训练。
+- 不能说文档整理已提交；当前仍是未提交工作区状态。
+- 不能说 proposal 文件已删除；当前意图是归档搬家，提交前必须同时 stage 删除和新增归档文件。
+
+### R2 WebUI 后端 / output root / preview / queue 安全
+
+一句话：R2 已补两条路径边界测试，并复跑 preview/env 与 queue runtime 窄验证。
+
+只读审计：
+
+- 主线运行 `rg -n "resolve_output_root|output_root|HISTORY_DIR|QUEUE_DIR|training-history|training-queue|runtime_config|metadata" web/services tests/test_preview_service.py tests/test_training_queue.py tests/test_env_config_paths.py`。
+- 审计发现 `tests/test_preview_service.py` 已覆盖全局 output root 正常保存、绝对路径、preview 图片越界、training queue runtime 删除边界等大量场景。
+- 子代理 `R2-BACKEND-AUDIT` 建议补 `save_preview_settings()` 的 `training_dir` 项目内限制测试；主线另补 `save_global_settings()` 的 `output_root` 禁止 `..` 测试。
+
+新增测试：
+
+- `test_global_settings_reject_output_root_parent_traversal`
+  - 覆盖 `settings_service.save_global_settings({"output_root": "../outside"})`。
+  - 确认抛出 `ValueError`，且原 `web-ui-settings.toml` 的安全 `output_root` 不被污染。
+- `test_preview_settings_reject_training_dir_outside_project`
+  - 覆盖 `preview_service.save_preview_settings()` 保存项目外绝对 `training_dir`。
+  - 确认训练预览目录必须在项目目录内，且失败后原 preview 设置不被覆盖。
+
+本轮验证：
+
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m pytest -p no:cacheprovider -q tests/test_preview_service.py -k "global_settings"`：`2 passed, 22 deselected`。
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m pytest -p no:cacheprovider -q tests/test_preview_service.py tests/test_env_config_paths.py`：`31 passed`。
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m pytest -p no:cacheprovider -q tests/test_training_queue.py -k "runtime or metadata or output_root or launch"`：`18 passed, 22 deselected`。
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m pytest -p no:cacheprovider -q tests/test_preview_service.py -k "preview_settings_reject_training_dir_outside_project"`：`1 passed, 24 deselected`。
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m pytest -p no:cacheprovider -q tests/test_preview_service.py -k "global_settings or preview_settings"`：`5 passed, 20 deselected`。
+- `timeout 60 .venv/bin/python -m ruff check tests/test_preview_service.py && PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m py_compile tests/test_preview_service.py`：通过，ruff 为 `All checks passed!`。
+
+已完成阶段：
+
+- `A07` output root 边界审计：完成。
+- `A08` preview / settings 路径测试：完成，两条新测试覆盖 settings output root 与 preview training_dir。
+- `A09` training queue runtime config 保护：本轮跑了 queue runtime / metadata / output_root / launch 窄验证，未新增 queue 测试。
+- `A11` service 层不能越界清单：部分完成，已记录本轮未启动训练、未碰真实队列、未清理用户数据。
+
+当前覆盖和门槛盘点：
+
+- 已推进轮次：`R0`、`R1`、`R2` 已有产物，距离最低 `5` 轮仍不足。
+- 已完成阶段：当前约 `11` 个，距离最低 `20` 个仍不足。
+- 已覆盖子系统：docs / CLI 文档门禁、WebUI frontend、WebUI backend / preview / queue，当前约 `3` 类，距离最低 `4` 类仍不足。
+- 非纯文档验证：已超过 `6` 组，但最终仍需按实际改动做 R6 总验证。
+- 当前仍未满足 `goal.timeUsedSeconds >= 10800`，禁止提交推送和禁止 `update_goal complete`。
+
+仍不能对外说：
+
+- 不能说队列真实启动或真实训练已验证；本轮只有单元测试和 monkeypatch / tmp_path 验证。
+- 不能说 output root 全链路都无风险；本轮只补了两个窄边界并跑相关测试。
+- 不能说 WebUI 后端清理完成；下一轮仍需 runtime / launch / training bootstrap 等子系统覆盖。
+
+### R3 runtime / launch / config path 护栏
+
+一句话：R3 已补一个 launch command builder 行为测试，并跑 config path 与 runtime harness 轻量验证。
+
+只读审计：
+
+- 主线运行 `rg -n "build_launch_cmd|accelerate_training_command_prefix|ANIMA_ACCELERATE_LAUNCH|PROFILE_STEPS|python_exe|runtime_config|compile_blocks_for_training" scripts/tasks/_common.py library/runtime/launch.py web/services/training/runtime_config.py tests/test_launch_config.py tests/test_tasks_runner.py tests/test_env_config_paths.py tests/test_runtime_harness_cli.py`。
+- 审计确认 `library/runtime/launch.py` 的 command prefix 可独立测试，不需要启动训练或子进程。
+- `scripts/tasks/_common.py::build_launch_cmd` 仍通过 `accelerate_training_command_prefix()` 组合命令，本轮只补底层 runtime launch helper 测试，不拆 task runner。
+
+新增测试：
+
+- `test_direct_training_command_ignores_accelerate_detail_env_when_launch_disabled`
+  - 覆盖 `ANIMA_ACCELERATE_NUM_PROCESSES` / `ANIMA_ACCELERATE_MIXED_PRECISION` 已设置，但 `ANIMA_ACCELERATE_LAUNCH` 未启用时，命令仍保持直接 `python train.py`。
+  - 保护默认单进程入口，不让细节 env 意外改变普通训练命令构造。
+
+本轮验证：
+
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m pytest -p no:cacheprovider -q tests/test_launch_config.py`：`12 passed`。
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m pytest -p no:cacheprovider -q tests/test_launch_config.py tests/test_tasks_runner.py`：`23 passed`。
+- `timeout 60 .venv/bin/python -m ruff check tests/test_launch_config.py && PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m py_compile tests/test_launch_config.py`：通过，ruff 为 `All checks passed!`。
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m pytest -p no:cacheprovider -q tests/test_env_config_paths.py tests/test_config.py -k "configs_root or env or path"`：`7 passed, 30 deselected`。
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m pytest -p no:cacheprovider -q tests/test_runtime_harness_cli.py tests/test_native_flatten.py`：`20 passed, 2 warnings`；警告为本机 GTX 960 CUDA capability 与当前 PyTorch 构建不匹配。
+
+已完成阶段：
+
+- `A12` launch command builder 审计：完成。
+- `A13` launch helper 补测：完成。
+- `A14` config root 外置路径护栏：本轮跑了现有 path/env/configs_root 窄验证，未新增 config path 测试。
+- `A15` runtime harness 低风险验证：完成现有测试验证。
+- `A16` block swap 不扩大审计：尚未完成；未拆 CUDA stream / Event / thread pool / hook 调度。
+
+当前覆盖和门槛盘点：
+
+- 已推进轮次：`R0`、`R1`、`R2`、`R3` 已有产物，距离最低 `5` 轮还差至少 `1` 轮。
+- 已完成阶段：当前约 `15` 个，距离最低 `20` 个仍不足。
+- 已覆盖子系统：docs / CLI 文档门禁、WebUI frontend、WebUI backend / preview / queue、runtime / launch / config path，当前约 `4` 类，已达到子系统覆盖最低数量，但仍需完成时间、阶段和轮次门槛。
+- 当前仍未满足 `goal.timeUsedSeconds >= 10800`，禁止提交推送和禁止 `update_goal complete`。
+
+仍不能对外说：
+
+- 不能说训练启动全链路被验证；本轮只测 command builder 和 runtime/config path 单元测试。
+- 不能说 block swap 复杂调度已拆清；本轮未碰 offloading CUDA stream / Event / thread pool / hook 调度。
+- 不能说 runtime harness 覆盖真实大模型；本轮是模型无关测试。
+
+### R3 追加补记：config root 父级跳转护栏
+
+一句话：R3 后续补上了 config root 相对路径 `..` 拒绝逻辑，避免外置配置根目录静默跳出项目。
+
+追加源码护栏：
+
+- `library/env.py` 新增 `_resolve_project_relative_override()`：
+  - 统一处理 WebUI 本机设置文件和环境变量里的相对路径。
+  - 相对路径中只要包含 `..` 就抛出 `ValueError`。
+  - 绝对路径保持原行为，普通相对路径仍相对项目根解析。
+- `get_configs_root()`：
+  - WebUI `.anima-webui-settings.toml` 读取分支不再用宽 `except Exception` 吞掉路径校验错误。
+  - `ANIMA_CONFIGS_ROOT="../outside"` 会明确失败。
+- `get_training_history_root()` 和 `get_training_queue_root()`：
+  - 同步复用 helper，防止 history / queue root 通过相对 `..` 跳出项目根。
+
+追加测试：
+
+- `test_get_configs_root_rejects_parent_traversal`
+  - 覆盖 `ANIMA_CONFIGS_ROOT="../outside"`。
+  - 验证抛错信息包含 `ANIMA_CONFIGS_ROOT`。
+- `test_get_configs_root_settings_file_rejects_parent_traversal`
+  - 覆盖 `.anima-webui-settings.toml [paths].configs_root = "../outside"`。
+  - 验证 WebUI 本机配置文件里的越界路径不会被吞掉。
+
+追加验证：
+
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m pytest -p no:cacheprovider -q tests/test_env_config_paths.py`：`9 passed`。
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m pytest -p no:cacheprovider -q tests/test_env_config_paths.py tests/test_config.py -k "configs_root or env or path"`：`9 passed, 30 deselected`。
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m pytest -p no:cacheprovider -q tests/test_runtime_harness_cli.py tests/test_native_flatten.py`：`20 passed, 2 warnings`；警告为本机 GTX 960 与 PyTorch CUDA 构建不匹配。
+- `timeout 60 .venv/bin/python -m ruff check library/env.py tests/test_env_config_paths.py`：`All checks passed!`。
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m py_compile library/env.py tests/test_env_config_paths.py`：通过。
+
+仍不能对外说：
+
+- 不能说所有项目路径入口都已统一用这个 helper；本阶段只覆盖 config root、training history root 和 training queue root。
+- 不能说绝对路径被禁止；绝对路径仍按项目既有外置配置约定允许。
+
+### R4 training bootstrap / compile order 保护
+
+一句话：R4 补上训练启动路径里“compile 必须最后”的顺序测试，不加载真实模型、不启动训练。
+
+只读审计：
+
+- 子代理 `R4-TRAINING-AUDIT` 已回收，建议优先保护 `TrainingBootstrap.create_and_apply_network()` 的调用顺序。
+- 审计确认关键顺序是 `apply_to -> load_weights -> gradient_checkpointing -> compile_blocks_for_training`。
+- 风险点：如果以后把 `torch.compile` 提前，可能 trace 到还没被 adapter monkey-patch 的 forward。
+
+新增测试：
+
+- `test_bootstrap_compiles_after_apply_load_and_gradient_checkpointing`
+  - 使用 fake `network_module.create_network()`，不加载真实权重。
+  - fake network 记录 `apply_to`、`load_weights`、`enable_gradient_checkpointing`。
+  - fake unet 记录 `enable_gradient_checkpointing`。
+  - monkeypatch `library.runtime.harness.compile_blocks_for_training()` 记录 `compile`。
+  - 只断言相对顺序：`compile` 晚于 `apply_to`、`load_weights`、`unet_grad_ckpt`、`network_grad_ckpt`，不锁死完整事件列表。
+
+R4 验证：
+
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m pytest -p no:cacheprovider -q tests/test_training_bootstrap.py::test_bootstrap_compiles_after_apply_load_and_gradient_checkpointing`：`1 passed`。
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m pytest -p no:cacheprovider -q tests/test_training_bootstrap.py tests/test_runtime_harness_cli.py -k "compile or adapter or apply"`：`7 passed, 12 deselected`。
+- `timeout 60 .venv/bin/python -m ruff check tests/test_training_bootstrap.py`：`All checks passed!`。
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m py_compile tests/test_training_bootstrap.py library/training/bootstrap.py`：通过。
+- `git diff --check -- tests/test_training_bootstrap.py library/env.py tests/test_env_config_paths.py tests/test_launch_config.py tests/test_preview_service.py tests/test_training_frontend_state.py docs/findings/project_cleanup_checkpoint_20260705.md`：通过。
+
+当前覆盖和门槛盘点：
+
+- 已推进轮次：`R0`、`R1`、`R2`、`R3`、`R4` 均已有真实产物，达到最低 `5` 轮。
+- 已覆盖子系统：docs / CLI 文档门禁、WebUI frontend、WebUI backend / preview / queue、runtime / launch / config path、training bootstrap / compile order，已超过最低 `4` 类。
+- 已完成阶段：按 checkpoint 可验收产物粗略可计 `20+`，但最终仍需继续用后续 EXT / R5 / R6 做收口验证。
+- `goal.timeUsedSeconds = 1317`，仍远小于 `10800` 秒硬门槛。
+
+仍不能对外说：
+
+- 不能说训练启动全链路已验证；本轮是 monkeypatch 顺序测试，没有真实训练、没有真实模型加载。
+- 不能说可以提交或推送；耗时硬门槛、R5/R6 和最终总验证都未满足。
+- 不能 `update_goal complete`；当前目标仍必须继续推进。
+
+### R5 LoRA / config / type-check 残余保护
+
+一句话：R5 补了 ChimeraHydra 配置层专家数派生保护，并把 `tasks.py` 纳入默认 type-check 试点。
+
+只读审计：
+
+- 子代理 `R5-LORA-AUDIT` 只读确认：LoRA 三轴 metadata、FEI 保存、MoE metadata flow、split key refusion 已有较多覆盖；最小缺口是 ChimeraHydra 的 `num_experts` 是否由 `num_experts_content + num_experts_freq` 派生。
+- 子代理 `R5-TYPECHECK-DOCS-AUDIT` 只读确认：`tasks.py` 已有 CLI helper 行为测试，但还没进入默认 `TYPE_CHECK_TARGETS`；本轮只建议加 `tasks.py`，不建议把整个 `scripts/tasks/` 目录塞进默认门禁。
+
+源码修复：
+
+- `networks/lora_anima/config.py`
+  - `from_kwargs()`：把 `num_experts = num_experts_content + num_experts_freq` 从不可达的 `raise` 后面移回 `use_chimera_hydra` 分支。
+  - `from_weights()`：新增 `resolved_num_experts`，ChimeraHydra 用 `K_c + K_f`，普通 Hydra / StackedExperts 仍使用原来的 `hydra_num_experts`，非 MoE 仍回落默认 `4`。
+- `scripts/tasks/utilities.py`
+  - `TYPE_CHECK_TARGETS` 增加 `tasks.py`。
+  - 不扩大到全仓，也不扩大到整个 `scripts/tasks/` 目录。
+
+新增测试：
+
+- `test_chimera_from_kwargs_derives_total_num_experts_from_pool_split`
+  - 先失败后修复，失败表现为 `cfg.num_experts == 4`，预期为 `2 + 5 = 7`。
+  - 同时确认 Chimera 三轴仍固定为 `shared_A / True / input`。
+- `test_chimera_from_weights_derives_total_num_experts_from_stamped_pool_split`
+  - 先失败后修复，覆盖 checkpoint/config load 直调路径不应回落默认 `4`。
+  - 不改 checkpoint key，不改 public API，不改三轴语义。
+- `tests/test_type_check_targets.py`
+  - 精确白名单同步增加 `tasks.py`，继续禁止 `.`、`tests`、整个 `web/services/config`、`datasets.py`、`_legacy.py` 误入默认目标。
+
+R5 验证：
+
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m pytest -p no:cacheprovider -q tests/test_network_cfg.py -k "chimera_from_kwargs_derives_total_num_experts or chimera_from_weights_derives_total_num_experts"`：`2 passed, 21 deselected`。
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m pytest -p no:cacheprovider -q tests/test_network_cfg.py`：`23 passed`。
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m pytest -p no:cacheprovider -q tests/test_lora_loading_keys.py tests/test_factory_metadata_flow.py tests/test_lora_save_pipeline.py tests/test_network_cfg.py`：`70 passed`。
+- `timeout 60 .venv/bin/python tasks.py type-check tasks.py`：`0 errors, 0 warnings, 0 informations`。
+- `timeout 60 .venv/bin/python tasks.py type-check`：`0 errors, 0 warnings, 0 informations`，当前默认目标为 `library/config tasks.py scripts/config_compat.py scripts/config_explain.py scripts/tasks/_common.py scripts/tasks/utilities.py` 和 10 个选定 Web config split module。
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m pytest -p no:cacheprovider -q tests/test_type_check_targets.py`：`6 passed`。
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m pytest -p no:cacheprovider -q tests/test_tasks_runner.py tests/test_type_check_targets.py`：`17 passed`。
+- `timeout 60 .venv/bin/python -m ruff check networks/lora_anima/config.py tests/test_network_cfg.py scripts/tasks/utilities.py tests/test_type_check_targets.py tasks.py`：`All checks passed!`。
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m py_compile networks/lora_anima/config.py tests/test_network_cfg.py scripts/tasks/utilities.py tests/test_type_check_targets.py tasks.py`：通过。
+- `git diff --check -- networks/lora_anima/config.py tests/test_network_cfg.py scripts/tasks/utilities.py tests/test_type_check_targets.py`：通过。
+
+当前覆盖和门槛盘点：
+
+- 已推进轮次：`R0` 到 `R5` 均已有真实产物。
+- 已覆盖子系统：docs / CLI 文档门禁、WebUI frontend、WebUI backend / preview / queue、runtime / launch / config path、training bootstrap / compile order、LoRA/config/type-check，当前约 `6` 类。
+- 已完成阶段：已达到并超过最低 `20` 个可验收阶段。
+- `goal.timeUsedSeconds = 1765`，仍远小于 `10800` 秒硬门槛。
+
+仍不能对外说：
+
+- 不能说 LoRA save/load/builder/router 已彻底拆完；本轮只修 ChimeraHydra 配置层专家数派生。
+- 不能说建立了全仓 type-check；本轮只是把 `tasks.py` 加入默认 pyright pilot gate。
+- 不能提交、不能 push、不能 `update_goal complete`；耗时和最终 R6 收口仍未满足。
+
+### EXT 第一组：docs 优化索引 + WebUI live fallback 行为测试
+
+一句话：因为耗时硬门槛仍未满足，本组继续做两个低风险扩展阶段，一个补文档可达性，一个补 WebUI live fallback 行为证据。
+
+docs 扩展：
+
+- 新增 `docs/optimizations/README.md`：
+  - 索引 `for_compile.md`、`fa4.md`、`adamw_fused.md`、`hydra_analysis.md`、`training_profiling.md`。
+  - 写明本目录用于 compile、kernel、显存和训练性能优化说明。
+- 更新 `docs/README.md`：
+  - Optimizations 分区新增 `optimizations/README.md` 入口。
+  - 确保新增分区 README 从总索引可达。
+
+WebUI frontend 扩展：
+
+- 子代理 `EXT-WEB-LIVE-AUDIT` 只读建议：现有 `test_live_training_rest_fallbacks_are_wired` 主要是字符串连线检查，缺少 `applyStatusSnapshotFallbacks()` 的行为级断言。
+- 新增 `test_live_training_status_snapshot_fallbacks_replay_latest_payloads`：
+  - Node 小夹具只 import `web/static/js/features/anima-app/chunks/26a-status-polling.js`。
+  - running 状态下，非空 `latest_progress` / `latest_metric` / `latest_system` 分别调用 `updateProgress` / `updateMetrics` / `updateSystem`，且参数带 `{ replay: true }`。
+  - idle 状态不回放。
+  - 空对象、`null`、`undefined` 不回放。
+
+本组验证：
+
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m pytest -p no:cacheprovider -q tests/test_training_frontend_state.py::test_live_training_status_snapshot_fallbacks_replay_latest_payloads`：`1 passed`。
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m pytest -p no:cacheprovider -q tests/test_training_frontend_state.py -k "live or progress or status"`：`10 passed, 58 deselected`。
+- `timeout 60 .venv/bin/python -m ruff check tests/test_training_frontend_state.py`：`All checks passed!`。
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m py_compile tests/test_training_frontend_state.py`：通过。
+- `git diff --check -- docs/README.md docs/optimizations/README.md tests/test_training_frontend_state.py`：通过。
+- `rg -n "optimizations/README.md|Optimizations 文档索引|for_compile.md|training_profiling.md" docs/README.md docs/optimizations/README.md`：确认新索引和上级入口存在。
+
+仍不能对外说：
+
+- 不能说做过真实浏览器或真实 WebSocket 断线验证；本阶段是 Node 小夹具行为测试。
+- 不能说文档链接全仓检查已完成；本阶段只确认新增优化索引可达和 diff 空白干净。
+- 当前仍不能提交、push 或标记目标完成。
+
+### EXT 第二组：history / queue root 越界护栏补测
+
+一句话：本组把 R3 新 helper 的剩余两个调用点补上直接测试，避免只测 configs root 而漏掉 history / queue。
+
+新增测试：
+
+- `test_get_training_history_root_rejects_parent_traversal`
+  - 覆盖 `ANIMA_TRAINING_HISTORY_ROOT="../outside-history"`。
+  - 验证 `get_training_history_root()` 抛出 `ValueError`，错误信息包含环境变量名。
+- `test_get_training_queue_root_rejects_parent_traversal`
+  - 覆盖 `ANIMA_TRAINING_QUEUE_ROOT="../outside-queue"`。
+  - 验证 `get_training_queue_root()` 抛出 `ValueError`，错误信息包含环境变量名。
+
+本组验证：
+
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m pytest -p no:cacheprovider -q tests/test_env_config_paths.py -k "parent_traversal or training_history_root or training_queue_root"`：`7 passed, 4 deselected`。
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m pytest -p no:cacheprovider -q tests/test_env_config_paths.py`：`11 passed`。
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m pytest -p no:cacheprovider -q tests/test_preview_service.py tests/test_env_config_paths.py`：`36 passed`。
+- `timeout 60 .venv/bin/python -m ruff check library/env.py tests/test_env_config_paths.py`：`All checks passed!`。
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m py_compile library/env.py tests/test_env_config_paths.py`：通过。
+- `git diff --check -- tests/test_env_config_paths.py library/env.py`：通过。
+
+仍不能对外说：
+
+- 不能说所有路径入口都已经统一越界拒绝；本组只覆盖 config root、history root、queue root。
+- 不能说真实队列目录或真实历史目录被读写；全部测试都在 `tmp_path` 和 monkeypatch 环境中完成。
+
+### EXT 第三组：accelerate launch command 形态保护
+
+一句话：本组给训练 launch helper 补完整命令形态测试，仍然不启动训练、不起子进程。
+
+新增测试：
+
+- `test_accelerate_launch_command_wraps_train_script_with_safe_defaults`
+  - 覆盖 `ANIMA_ACCELERATE_LAUNCH=1`、`ANIMA_ACCELERATE_NUM_PROCESSES=2`、`ANIMA_ACCELERATE_MIXED_PRECISION=fp16`。
+  - 断言返回命令完整形态为 `python -m accelerate.commands.accelerate_cli launch ... train.py`。
+  - 同时锁住安全默认项：`--num_machines 1`、`--dynamo_backend no`、`--num_cpu_threads_per_process 3`。
+
+本组验证：
+
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m pytest -p no:cacheprovider -q tests/test_launch_config.py`：`13 passed`。
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m pytest -p no:cacheprovider -q tests/test_launch_config.py tests/test_tasks_runner.py`：`24 passed`。
+- `timeout 60 .venv/bin/python -m ruff check tests/test_launch_config.py library/runtime/launch.py`：`All checks passed!`。
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m py_compile tests/test_launch_config.py library/runtime/launch.py`：通过。
+- `git diff --check -- tests/test_launch_config.py library/runtime/launch.py docs/findings/project_cleanup_checkpoint_20260705.md`：通过。
+
+仍不能对外说：
+
+- 不能说 accelerate 真实分布式训练启动过；本阶段只测试命令列表构造。
+- 不能说 launch/runtime 全链路完成；仍未触碰真实训练、GPU 或 accelerate 子进程。
+
+### EXT 第四组：config facade 与 training resume 窄验证
+
+一句话：本组不新增代码，只补目标书 A10 / A23 要求的低风险验证证据。
+
+验证范围：
+
+- Web config facade / `_legacy`：
+  - 确认 metadata re-export、split module direct import、facade cycle 相关测试仍通过。
+  - 继续确认 `_legacy.py` 仍是兼容 facade 的一部分，不能在本目标里删除。
+- Training resume / history：
+  - 只跑 `history`、`meta`、`output_root`、`runtime` 相关筛选。
+  - 不启动真实训练，不写真实历史目录。
+
+本组验证：
+
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m pytest -p no:cacheprovider -q tests/test_web_config_service.py -k "legacy or module_imports_without_facade_cycle or metadata"`：`43 passed, 126 deselected`。
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m pytest -p no:cacheprovider -q tests/test_training_resume.py -k "history or meta or output_root or runtime"`：`62 passed, 64 deselected`。
+- `git diff --check -- docs/findings/project_cleanup_checkpoint_20260705.md tests/test_launch_config.py tests/test_env_config_paths.py`：通过。
+
+仍不能对外说：
+
+- 不能说 `_legacy.py` 已能删除；当前验证结果反而支持继续保留 facade 兼容入口。
+- 不能说 training resume 做过真实训练恢复；本阶段只是现有单元测试窄验证。
+
+### EXT 第五组：runtime harness cond-stream compile 保护
+
+一句话：本组给 `compile_blocks_for_training()` 的 adapter cond-stream 分支补模型无关测试。
+
+新增测试：
+
+- `test_compile_blocks_for_training_compiles_adapter_cond_stream`
+  - 使用 fake `unet.compile_blocks()` 和 fake `network.compile_cond_stream()`。
+  - 确认 `compile_cond_stream()` 会收到同一组关键 compile 参数：`backend`、`mode`、`n_token_families`、`dynamic_seq`、`seq_range`。
+  - 不加载 DiT，不加载 adapter，不触发真实 `torch.compile`。
+
+本组验证：
+
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m pytest -p no:cacheprovider -q tests/test_runtime_harness_cli.py::test_compile_blocks_for_training_compiles_adapter_cond_stream`：`1 passed`。
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m pytest -p no:cacheprovider -q tests/test_runtime_harness_cli.py tests/test_native_flatten.py`：`21 passed, 2 warnings`；warning 仍是本机 GTX 960 与当前 PyTorch CUDA 构建不匹配。
+- `timeout 60 .venv/bin/python -m ruff check tests/test_runtime_harness_cli.py library/runtime/harness.py`：`All checks passed!`。
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m py_compile tests/test_runtime_harness_cli.py library/runtime/harness.py`：通过。
+- `git diff --check -- tests/test_runtime_harness_cli.py library/runtime/harness.py docs/findings/project_cleanup_checkpoint_20260705.md`：通过。
+
+仍不能对外说：
+
+- 不能说 EasyControl 真实模型或真实 cond stream 编译跑过；本阶段只验证 harness 调用契约。
+- 不能说 GPU compile 全链路验证完成；本阶段完全模型无关。
+
+### EXT 第六组：live-training rate parser 边界补测
+
+一句话：本组给 live-training 进度速度解析 helper 补两个小边界，避免日志速度格式轻微变化就丢 ETA。
+
+新增断言：
+
+- `parseProgressRateSeconds('3s/step') == 3`
+- `parseProgressRateSeconds('4 IT/S') == 0.25`
+
+本组验证：
+
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m pytest -p no:cacheprovider -q tests/test_training_frontend_state.py::test_live_training_progress_helpers_parse_runtime_text`：`1 passed`。
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m pytest -p no:cacheprovider -q tests/test_training_frontend_state.py -k "live or progress or status"`：`10 passed, 58 deselected`。
+- `timeout 60 .venv/bin/python -m ruff check tests/test_training_frontend_state.py && PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m py_compile tests/test_training_frontend_state.py`：通过，ruff 为 `All checks passed!`。
+
+仍不能对外说：
+
+- 不能说前端所有日志格式都覆盖了；本阶段只补 `s/step` 和大小写/空格 `it/s` 两个边界。
+
+### EXT 第七组：ChimeraHydra 非正池大小拒绝测试
+
+一句话：本组继续收紧 R5 的 ChimeraHydra 配置层保护，确保 content / freq 任一池大小非正时直接失败。
+
+新增测试：
+
+- `test_chimera_from_kwargs_rejects_non_positive_pool_sizes`
+  - 覆盖 `num_experts_content` 或 `num_experts_freq` 为 `0` / `-1`。
+  - 验证 `LoRANetworkCfg.from_kwargs()` 抛出 `ValueError`，错误信息指向 `num_experts_content > 0` / `num_experts_freq > 0`。
+
+本组验证：
+
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m pytest -p no:cacheprovider -q tests/test_network_cfg.py -k "chimera_from_kwargs"`：`5 passed, 22 deselected`。
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m pytest -p no:cacheprovider -q tests/test_network_cfg.py`：`27 passed`。
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m pytest -p no:cacheprovider -q tests/test_lora_loading_keys.py tests/test_factory_metadata_flow.py tests/test_lora_save_pipeline.py tests/test_network_cfg.py`：`74 passed`。
+- `timeout 60 .venv/bin/python -m ruff check tests/test_network_cfg.py networks/lora_anima/config.py && PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m py_compile tests/test_network_cfg.py networks/lora_anima/config.py`：通过，ruff 为 `All checks passed!`。
+- `git diff --check -- tests/test_network_cfg.py networks/lora_anima/config.py docs/findings/project_cleanup_checkpoint_20260705.md`：通过。
+
+仍不能对外说：
+
+- 不能说 ChimeraHydra 训练或推理全链路已覆盖；本阶段仍是配置层 characterization test。
+- 不能说改了 checkpoint key、public API 或三轴路由语义；这些都没有改。
+
+### EXT 第八组：preprocess runtime placeholder + archive-index 小修
+
+一句话：本组补一个 preprocess runtime 路径占位符测试，并修正归档索引对当前文档分区范围的描述。
+
+preprocess 新增测试：
+
+- `test_preprocess_dataset_rows_expands_runtime_path_placeholders`
+  - 构造 `tmp_path/runs/demo/dataset.runtime.toml`。
+  - 在 `image_dir`、`cache_dir`、`custom_attributes.source_dir` 中使用 `{output_dir}` 和 `{source_image_dir}`。
+  - monkeypatch `preprocess.run` 只收集命令，不执行真实 resize / VAE cache / TE cache。
+  - 断言 resize / vae / te 命令里路径都已展开，且不残留 `{output_dir}`、`{source_image_dir}` 或默认 `post_image_dataset`。
+
+docs 小修：
+
+- `docs/archive-index.md` 的归档原则补齐当前实现说明范围：
+  - 原来只列 `guidelines/`、`methods/`、`experimental/`、`structure/`、`configuration/`、`findings/`。
+  - 现在同步补入 `features/` 和 `optimizations/`，与 `docs/README.md` 当前分区一致。
+
+本组验证：
+
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m pytest -p no:cacheprovider -q tests/test_preprocess_paths.py -k "preprocess_dataset_rows_expands_runtime_path_placeholders"`：`1 passed, 29 deselected`。
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m pytest -p no:cacheprovider -q tests/test_preprocess_paths.py -k "dataset_config or runtime or caption or cache_dir or path"`：`30 passed`。
+- `timeout 60 .venv/bin/python -m ruff check tests/test_preprocess_paths.py scripts/tasks/preprocess.py && PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m py_compile tests/test_preprocess_paths.py scripts/tasks/preprocess.py`：通过，ruff 为 `All checks passed!`。
+- `git diff --check -- docs/archive-index.md tests/test_preprocess_paths.py scripts/tasks/preprocess.py`：通过。
+
+仍不能对外说：
+
+- 不能说真实 preprocess 已执行；本阶段只收集命令列表。
+- 不能说真实 `post_image_dataset/`、`output/` 或 `models/` 被读写；本阶段没有碰这些用户数据目录。
+- 不能说文档链接全量检查已完成；本阶段只修归档索引描述并做 diff 空白检查。
+
+### EXT 第九组：env root 空白值拒绝护栏
+
+一句话：本组补齐路径 root 环境变量的空白值拒绝，避免纯空白被误解析成项目根。
+
+源码护栏：
+
+- `library/env.py::_resolve_project_relative_override()`：
+  - `expand_env_vars(value).strip()` 后如果为空，直接抛出 `ValueError`。
+  - 覆盖 `ANIMA_CONFIGS_ROOT`、`ANIMA_TRAINING_HISTORY_ROOT`、`ANIMA_TRAINING_QUEUE_ROOT` 三条复用路径。
+
+新增测试：
+
+- `test_path_root_overrides_reject_blank_values`
+  - 用 `tmp_path/project` 隔离项目根。
+  - 分别设置三个 root env 为纯空白。
+  - 确认对应 getter 都抛出带 env 名的 `ValueError`。
+
+本组验证：
+
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m pytest -p no:cacheprovider -q tests/test_env_config_paths.py -k "blank_values or parent_traversal or training_history_root or training_queue_root"`：`8 passed, 4 deselected`。
+- `timeout 60 .venv/bin/python -m ruff check library/env.py tests/test_env_config_paths.py`：`All checks passed!`。
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m py_compile library/env.py tests/test_env_config_paths.py`：通过。
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m pytest -p no:cacheprovider -q tests/test_env_config_paths.py tests/test_preview_service.py`：`37 passed`。
+
+仍不能对外说：
+
+- 不能说所有路径入口都已有空白值拒绝；本组只覆盖复用 `_resolve_project_relative_override()` 的 root 类入口。
+- 不能说绝对路径被禁止；绝对路径外置配置仍按当前项目约定允许。
+
+### EXT 第十组：LoRA from_weights 三轴 stamp 拒绝护栏
+
+一句话：本组让 checkpoint metadata 路径复用训练配置的三轴路由不变量，坏 stamp 会明确失败。
+
+源码护栏：
+
+- `networks/lora_anima/config.py` 新增 `_validate_three_axis_routing()`：
+  - `use_moe_style=False` 时不能开启任何 router。
+  - `router_source="input"` 必须是 per-layer router。
+  - `router_source="crossattn_emb"` 必须是 network-level router。
+- `from_kwargs()` 和 `from_weights()` 共同调用该 helper。
+- `from_weights()` 的 `new_route_per_layer` 改走 `_as_bool()`，让字符串 stamp 不会被 `bool("false")` 误判。
+
+新增测试：
+
+- `test_from_weights_rejects_invalid_three_axis_stamp_combinations`
+  - 覆盖 `route_per_layer=False + router_source="input"`。
+  - 覆盖 `route_per_layer=True + router_source="crossattn_emb"`。
+  - 只拒绝 malformed metadata，不改 checkpoint key、不改 public API、不改三轴语义。
+
+本组验证：
+
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m pytest -p no:cacheprovider -q tests/test_network_cfg.py -k "invalid_three_axis_stamp or chimera_from_weights or warm_start_shape"`：`4 passed, 25 deselected`。
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m pytest -p no:cacheprovider -q tests/test_network_cfg.py`：`29 passed`。
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m pytest -p no:cacheprovider -q tests/test_lora_loading_keys.py tests/test_factory_metadata_flow.py tests/test_lora_save_pipeline.py tests/test_network_cfg.py`：`76 passed`。
+- `timeout 60 .venv/bin/python -m ruff check networks/lora_anima/config.py tests/test_network_cfg.py`：`All checks passed!`。
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m py_compile networks/lora_anima/config.py tests/test_network_cfg.py`：通过。
+
+仍不能对外说：
+
+- 不能说兼容加载非法 three-axis checkpoint；当前行为是明确拒绝。
+- 不能说 LoRA checkpoint key 或 public API 有改动；本组只加校验和测试。
+
+### EXT 第十一组：queue state 错误快照保留测试
+
+一句话：本组用纯 Node 小夹具保护队列状态层，后端错误 payload 不应清空上一份有效快照。
+
+只读审计：
+
+- 子代理 `EXT09-FE-AUDIT` 建议优先补 `updateQueueStateFromPayload()` 的错误快照保留行为。
+- 主线采用该建议，避免重复已完成的 DOM id、queue renderer、live fallback、rate parser 测试。
+
+新增测试：
+
+- `test_queue_state_preserves_snapshot_on_error_payloads`
+  - import `createQueueState()`、`updateQueueStateFromPayload()`、`queueSummaryCounts()`、`queueManagerSections()`。
+  - 先写入 running / queued / done / canceled 的有效 payload。
+  - 再写入 `ok:false` 且无 `items` 的错误 payload。
+  - 确认旧 items、paused、failure policy、status、current item 都保留，只更新 error。
+  - 确认没有 summary 时 `queueSummaryCounts()` 能从 items 回退统计。
+  - 确认 `done` / `canceled` 筛选会展开终态分组。
+
+本组验证：
+
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m pytest -p no:cacheprovider -q tests/test_training_frontend_state.py::test_queue_state_preserves_snapshot_on_error_payloads`：`1 passed`。
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m pytest -p no:cacheprovider -q tests/test_training_frontend_state.py -k "queue_state or queue_renderer or queue_and_history"`：`3 passed, 66 deselected`。
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m pytest -p no:cacheprovider -q tests/test_training_frontend_state.py -k "queue or live or progress or status"`：`16 passed, 53 deselected`。
+- `timeout 60 .venv/bin/python -m ruff check tests/test_training_frontend_state.py`：`All checks passed!`。
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m py_compile tests/test_training_frontend_state.py`：通过。
+- `git diff --check -- library/env.py tests/test_env_config_paths.py networks/lora_anima/config.py tests/test_network_cfg.py tests/test_training_frontend_state.py`：通过。
+
+仍不能对外说：
+
+- 不能说启动过 WebUI、队列 daemon 或真实训练；本组只是 ES module 小夹具。
+- 不能说覆盖了所有队列错误恢复路径；本组只保护错误状态保留旧快照这一条。
+
+### EXT 当前硬门槛盘点 1
+
+一句话：阶段数、轮次和子系统覆盖已经超过最低线，但 3 小时时间门槛还远没到，必须继续 EXT。
+
+当前事实：
+
+- 实时 `get_goal` 显示 `goal.timeUsedSeconds = 3257`，仍小于 `10800`。
+- 已完成 `R0` 到 `R5`，并继续完成 EXT 1 到 EXT 11。
+- 子系统覆盖包括 docs / WebUI frontend / WebUI backend / runtime path / launch / training bootstrap / LoRA config / preprocess。
+- 非纯文档验证已经远超 `6` 组，但最终仍要在 R6 重新跑总验证。
+
+当前禁止收口：
+
+- 不能 `git add` / `commit` / `push`。
+- 不能 `update_goal complete`。
+- 不能说 R6 总验证已经完成。
+
+### EXT 第十二组：preprocess runtime 顶层路径 fallback 测试
+
+一句话：本组确认没有可用 dataset_config 时，preprocess 仍使用 runtime/top-level 路径，不回退到真实默认用户目录。
+
+只读审计：
+
+- 子代理 `EXT09-PREPROCESS-RUNTIME-AUDIT` 建议补 `_preprocess_rows()` 的 fallback 命令构造测试。
+- 主线采用该建议，只捕获命令列表，不执行真实 resize、VAE cache 或 TE cache。
+
+新增测试：
+
+- `test_preprocess_rows_fallback_uses_runtime_top_level_paths`
+  - `_PATH_OVERRIDES_CACHE` 中提供缺失的 `dataset_config` 和 runtime 顶层路径。
+  - monkeypatch `preprocess.run` 收集三条命令。
+  - monkeypatch caption backup 和 caption index，避免读写真实数据。
+  - 断言 resize / vae / te 命令使用 `output/runs/demo/...` 路径。
+  - 断言命令里不包含默认 `post_image_dataset` 或 `image_dataset`。
+
+本组验证：
+
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m pytest -p no:cacheprovider -q tests/test_preprocess_paths.py::test_preprocess_rows_fallback_uses_runtime_top_level_paths`：`1 passed`。
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m pytest -p no:cacheprovider -q tests/test_preprocess_paths.py -k "preprocess_rows or runtime_path_placeholders or dataset_config"`：`5 passed, 26 deselected`。
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m pytest -p no:cacheprovider -q tests/test_preprocess_paths.py -k "dataset_config or runtime or caption or cache_dir or path"`：`31 passed`。
+- `timeout 60 .venv/bin/python -m ruff check tests/test_preprocess_paths.py scripts/tasks/preprocess.py`：`All checks passed!`。
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m py_compile tests/test_preprocess_paths.py scripts/tasks/preprocess.py`：通过。
+
+仍不能对外说：
+
+- 不能说真实 preprocess 已执行；本组只验证命令构造。
+- 不能说真实 `post_image_dataset/`、`output/` 或 `models/` 被读写；本组没有碰这些目录。
+
+### EXT 第十三组：history curve data 纯函数测试
+
+一句话：本组用 Node 小夹具保护 history 曲线数据 helper，避免学习率别名、过滤、平滑和降采样行为悄悄变。
+
+新增测试：
+
+- `test_history_curve_data_helpers_normalize_filter_and_downsample`
+  - import `historyCurveNormalizePoint()` / `historyCurveNormalizeRawMetricPoint()` / `historyCurveFilteredPoints()` / `historyCurveSmoothPoints()` / `historyCurveDisplayPoints()`。
+  - 覆盖 `lr`、`learningRate`、`learning_rate` 三种学习率字段归一。
+  - 覆盖无效 metric 点过滤。
+  - 覆盖 custom step 范围过滤。
+  - 覆盖平滑窗口输出。
+  - 覆盖 `HISTORY_CURVE_RENDER_POINT_LIMIT = 1600` 下的降采样数量、首尾和唯一索引。
+
+本组验证：
+
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m pytest -p no:cacheprovider -q tests/test_training_frontend_state.py::test_history_curve_data_helpers_normalize_filter_and_downsample`：`1 passed`。
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m pytest -p no:cacheprovider -q tests/test_training_frontend_state.py -k "history_curve_data_helpers or queue_state or queue_renderer or live or progress or status"`：`13 passed, 57 deselected`。
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m pytest -p no:cacheprovider -q tests/test_training_frontend_state.py -k "history_curve or queue or live or progress or status"`：`17 passed, 53 deselected`。
+- `timeout 60 .venv/bin/python -m ruff check tests/test_training_frontend_state.py`：`All checks passed!`。
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m py_compile tests/test_training_frontend_state.py`：通过。
+- `git diff --check -- tests/test_preprocess_paths.py tests/test_training_frontend_state.py docs/findings/project_cleanup_checkpoint_20260705.md`：通过。
+
+仍不能对外说：
+
+- 不能说真实历史任务文件被读取；本组只跑前端 ES module 纯函数。
+- 不能说浏览器图表渲染全链路已验证；本组不涉及 DOM / SVG 渲染。
+
+### EXT 当前硬门槛盘点 2
+
+一句话：本轮继续增加 preprocess 和 WebUI 前端证据，但耗时仍没到 3 小时，所以继续 EXT。
+
+当前事实：
+
+- 实时 `get_goal` 显示 `goal.timeUsedSeconds = 3471`，仍小于 `10800`。
+- 已完成 EXT 1 到 EXT 13；所有新增阶段都有测试、源码护栏或文档索引证据。
+- 最近组合验证包括 preprocess 路径切片 `31 passed`、前端 history/queue/live 切片 `17 passed`。
+
+当前禁止收口：
+
+- 不能 `git add` / `commit` / `push`。
+- 不能 `update_goal complete`。
+- 不能说 R6 总验证已经完成。
+
+### EXT 第十四组：preprocess resize 同源同目标跳过测试
+
+一句话：本组保护 resize 步骤的自读自写边界，同一 source/destination 时默认跳过。
+
+新增测试：
+
+- `test_preprocess_resize_skips_same_source_and_destination_without_path_override`
+  - 直接调用 `_run_preprocess_resize()`，不执行真实 resize。
+  - 当 `source_image_dir` 与 `resized_image_dir` 规范化后相同时，确认不调用 `run()`。
+  - 确认输出包含 `skip resize`。
+  - 当用户显式传入 `--src` / `--dst` override 时，确认命令仍被转交。
+
+本组验证：
+
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m pytest -p no:cacheprovider -q tests/test_preprocess_paths.py::test_preprocess_resize_skips_same_source_and_destination_without_path_override`：`1 passed`。
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m pytest -p no:cacheprovider -q tests/test_preprocess_paths.py -k "preprocess_resize_skips or preprocess_rows or runtime_path_placeholders or dataset_config"`：`6 passed, 26 deselected`。
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m pytest -p no:cacheprovider -q tests/test_preprocess_paths.py -k "preprocess_resize_skips or preprocess_rows or runtime_path_placeholders or dataset_config or path"`：`32 passed`。
+- `timeout 60 .venv/bin/python -m ruff check tests/test_preprocess_paths.py scripts/tasks/preprocess.py`：`All checks passed!`。
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m py_compile tests/test_preprocess_paths.py scripts/tasks/preprocess.py`：通过。
+
+仍不能对外说：
+
+- 不能说真实 resize 已执行；本组只验证 helper 分支和命令转交。
+- 不能说所有 preprocess 写路径都已统一做同源跳过；本组只覆盖 resize 步骤。
+
+### EXT 第十五组：LoRA register/router scalar 解析测试
+
+一句话：本组给 LoRA 配置层补字符串 scalar 解析测试，锁住现状但不改生产逻辑。
+
+新增测试：
+
+- `test_from_kwargs_parses_register_and_router_scalar_knobs`
+  - 覆盖 `lora_fp32_compute` 字符串布尔值。
+  - 覆盖 `down_init="weight_svd"`。
+  - 覆盖 network-level FEI router 的 `router_hidden` alias、`router_tau`、`fei_feature_dim`。
+  - 覆盖 `num_registers`、`register_insert_block`、`register_lr_scale`、`register_init_std`。
+
+本组验证：
+
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m pytest -p no:cacheprovider -q tests/test_network_cfg.py -k "register_and_router_scalar or invalid_three_axis_stamp"`：`3 passed, 27 deselected`。
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m pytest -p no:cacheprovider -q tests/test_network_cfg.py`：`30 passed`。
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m pytest -p no:cacheprovider -q tests/test_lora_loading_keys.py tests/test_factory_metadata_flow.py tests/test_lora_save_pipeline.py tests/test_network_cfg.py`：`77 passed`。
+- `timeout 60 .venv/bin/python -m ruff check tests/test_network_cfg.py networks/lora_anima/config.py`：`All checks passed!`。
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m py_compile tests/test_network_cfg.py networks/lora_anima/config.py`：通过。
+- `git diff --check -- tests/test_preprocess_paths.py tests/test_network_cfg.py networks/lora_anima/config.py docs/findings/project_cleanup_checkpoint_20260705.md`：通过。
+
+仍不能对外说：
+
+- 不能说 LoRA 配置层所有字段都完成 characterization；本组只覆盖 register/router scalar 和 down init 等小字段。
+- 不能说改动了 LoRA public API、checkpoint key 或三轴语义；本组没有改这些。
+
+### EXT 当前硬门槛盘点 3
+
+一句话：阶段继续增加，验证仍干净，但耗时只有约一小时，必须继续 EXT。
+
+当前事实：
+
+- 实时 `get_goal` 显示 `goal.timeUsedSeconds = 3641`，仍小于 `10800`。
+- 最近组合验证包括 preprocess 路径切片 `32 passed`、LoRA 组合 `77 passed`。
+- 当前仍没有 stage、commit 或 push。
+
+当前禁止收口：
+
+- 不能 `git add` / `commit` / `push`。
+- 不能 `update_goal complete`。
+- 不能说 R6 总验证已经完成。
+
+### EXT 第十六组：WebUI configs_root settings 优先级测试
+
+一句话：本组确认 WebUI 本机 settings 文件里的 `configs_root` 优先于环境变量，并且 history/queue 默认跟随它。
+
+新增测试：
+
+- `test_training_roots_follow_webui_configs_root_settings`
+  - 在 `tmp_path/project` 写入 `.anima-webui-settings.toml [paths].configs_root = "local-configs"`。
+  - 同时设置 `ANIMA_CONFIGS_ROOT` 指向另一个目录。
+  - 清空 `ANIMA_TRAINING_HISTORY_ROOT` 和 `ANIMA_TRAINING_QUEUE_ROOT`。
+  - 确认 `get_configs_root()` 使用 settings 文件路径。
+  - 确认 history / queue 默认分别落到该 configs root 下的 `web-training-history` / `web-training-queue`。
+
+本组验证：
+
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m pytest -p no:cacheprovider -q tests/test_env_config_paths.py -k "training_roots_follow_webui_configs_root_settings or blank_values or parent_traversal"`：`6 passed, 7 deselected`。
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m pytest -p no:cacheprovider -q tests/test_env_config_paths.py tests/test_preview_service.py`：`38 passed`。
+- `timeout 60 .venv/bin/python -m ruff check tests/test_env_config_paths.py tests/test_training_frontend_state.py`：`All checks passed!`。
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m py_compile tests/test_env_config_paths.py tests/test_training_frontend_state.py`：通过。
+
+仍不能对外说：
+
+- 不能说 WebUI settings UI 实际保存链路被浏览器验证；本组只测 env/helper 层。
+- 不能说 history/queue 专用 env 被禁止；专用 env 仍高于 fallback。
+
+### EXT 第十七组：history detail state alias / resume 文案测试
+
+一句话：本组用纯 Node 小夹具保护 history detail 状态别名、reset 行为和续训剩余步数文案。
+
+新增测试：
+
+- `test_history_detail_state_aliases_and_resume_labels`
+  - 覆盖 `resume -> overview`、`chart -> analysis`、`samples -> preview`、`paths -> config_files`。
+  - 覆盖未知 tab 回 `overview`。
+  - 覆盖 `setHistoryDetailTab()` 的别名结果。
+  - 覆盖 `resetHistoryDetailViewState()` 清掉 payload、return state、main task return 和 hover step。
+  - 覆盖 `resumeCheckpointProgressText()` 和 `resumeCheckpointRemainingText()` 的正常剩余步数与估算失败文案。
+
+本组验证：
+
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m pytest -p no:cacheprovider -q tests/test_training_frontend_state.py::test_history_detail_state_aliases_and_resume_labels`：`1 passed`。
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m pytest -p no:cacheprovider -q tests/test_training_frontend_state.py -k "history_detail_state_aliases or history_curve or queue or live or progress or status"`：`18 passed, 53 deselected`。
+- `git diff --check -- tests/test_env_config_paths.py tests/test_training_frontend_state.py docs/findings/project_cleanup_checkpoint_20260705.md`：通过。
+
+仍不能对外说：
+
+- 不能说真实 history detail 弹窗或浏览器交互已验证；本组只测前端纯状态 helper。
+- 不能说 resume 真实训练恢复已验证；本组只验证显示文案和状态清理。
+
+### EXT 当前硬门槛盘点 4
+
+一句话：当前推进已经很宽，但 3 小时时间门槛仍未达到。
+
+当前事实：
+
+- 实时 `get_goal` 显示 `goal.timeUsedSeconds = 3775`，仍小于 `10800`。
+- 最近组合验证包括 env/preview `38 passed`、前端 history/queue/live 切片 `18 passed`。
+- 当前仍没有 stage、commit 或 push。
+
+当前禁止收口：
+
+- 不能 `git add` / `commit` / `push`。
+- 不能 `update_goal complete`。
+- 不能说 R6 总验证已经完成。
+
+### EXT 第十八组：accelerate launch falsey env 修复
+
+一句话：本组修复 `ANIMA_ACCELERATE_LAUNCH="0"` 仍会启用 accelerate 的小 bug，让常见 falsey env 保持直启训练命令。
+
+源码修复：
+
+- `library/runtime/launch.py`
+  - 新增 `_env_flag_enabled()`。
+  - `accelerate_training_command_prefix()` 只在 `1/true/yes/on` 时启用 accelerate launch。
+  - `0/false/no/off/空字符串` 都保持 `[python, train.py]` 直启命令。
+
+新增测试：
+
+- `test_falsey_accelerate_launch_env_keeps_direct_training_command`
+  - 覆盖 `0`、`false`、`False`、`no`、`off`、空字符串。
+  - 即使同时设置 num processes 和 mixed precision，也不启用 accelerate。
+
+本组验证：
+
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m pytest -p no:cacheprovider -q tests/test_launch_config.py -k "falsey_accelerate or accelerate_launch_command or direct_training"`：`8 passed, 11 deselected`。
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m pytest -p no:cacheprovider -q tests/test_launch_config.py tests/test_tasks_runner.py`：`30 passed`。
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m pytest -p no:cacheprovider -q tests/test_launch_config.py tests/test_runtime_harness_cli.py -k "launch or compile or adapter or apply"`：`25 passed, 6 deselected`。
+- `timeout 60 .venv/bin/python -m ruff check library/runtime/launch.py tests/test_launch_config.py`：`All checks passed!`。
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m py_compile library/runtime/launch.py tests/test_launch_config.py`：通过。
+- `git diff --check -- library/runtime/launch.py tests/test_launch_config.py docs/findings/project_cleanup_checkpoint_20260705.md`：通过。
+
+仍不能对外说：
+
+- 不能说真实训练或 accelerate 子进程已启动；本组只验证命令列表构造。
+- 不能说 launch/runtime 全链路已完成；本组只修 falsey env 语义。
+
+### EXT 当前硬门槛盘点 5
+
+一句话：launch 小 bug 已修，但当前耗时仍远不到 10800 秒。
+
+当前事实：
+
+- 实时 `get_goal` 显示 `goal.timeUsedSeconds = 3873`，仍小于 `10800`。
+- 最近 launch/runtime 组合验证 `25 passed, 6 deselected`。
+- 当前仍没有 stage、commit 或 push。
+
+当前禁止收口：
+
+- 不能 `git add` / `commit` / `push`。
+- 不能 `update_goal complete`。
+- 不能说 R6 总验证已经完成。
+
+### EXT 第十九组：accelerate launch truthy env 回归测试
+
+一句话：本组补齐 launch env 修复的另一半，确认常见 truthy 值仍会启用 accelerate。
+
+新增测试：
+
+- `test_truthy_accelerate_launch_env_enables_launch_command`
+  - 覆盖 `1`、`true`、`TRUE`、`yes`、`on`。
+  - 确认命令前缀仍是 `python -m accelerate.commands.accelerate_cli launch`。
+  - 确认 train script 仍在命令末尾。
+
+本组验证：
+
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m pytest -p no:cacheprovider -q tests/test_launch_config.py -k "truthy_accelerate or falsey_accelerate or accelerate_launch_command"`：`12 passed, 12 deselected`。
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m pytest -p no:cacheprovider -q tests/test_launch_config.py`：`24 passed`。
+- `timeout 60 .venv/bin/python -m ruff check library/runtime/launch.py tests/test_launch_config.py && PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m py_compile library/runtime/launch.py tests/test_launch_config.py`：通过，ruff 为 `All checks passed!`。
+
+仍不能对外说：
+
+- 不能说 accelerate 真实启动过；本组仍是 command builder 单元测试。
+
+### EXT 第二十组：LoRA from_weights 字符串 route_per_layer stamp 测试
+
+一句话：本组保护 checkpoint metadata 字符串解析，`"false"` 不能被 Python `bool("false")` 误当成 true。
+
+新增测试：
+
+- `test_from_weights_parses_string_route_per_layer_stamp`
+  - 使用 `new_route_per_layer="false"` 和 `new_router_source="crossattn_emb"`。
+  - 确认 `cfg.route_per_layer is False`。
+  - 确认合法 network-level `crossattn_emb` metadata 不被三轴校验误拒绝。
+
+本组验证：
+
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m pytest -p no:cacheprovider -q tests/test_network_cfg.py -k "string_route_per_layer or invalid_three_axis_stamp or crossattn_emb"`：`6 passed, 25 deselected`。
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m pytest -p no:cacheprovider -q tests/test_network_cfg.py`：`31 passed`。
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m pytest -p no:cacheprovider -q tests/test_lora_loading_keys.py tests/test_factory_metadata_flow.py tests/test_lora_save_pipeline.py tests/test_network_cfg.py`：`78 passed`。
+- `timeout 60 .venv/bin/python -m ruff check tests/test_network_cfg.py networks/lora_anima/config.py && PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m py_compile tests/test_network_cfg.py networks/lora_anima/config.py`：通过，ruff 为 `All checks passed!`。
+- `timeout 60 .venv/bin/python tasks.py type-check`：`0 errors, 0 warnings, 0 informations`。
+- `git diff --check -- library/runtime/launch.py tests/test_launch_config.py networks/lora_anima/config.py tests/test_network_cfg.py docs/findings/project_cleanup_checkpoint_20260705.md`：通过。
+
+仍不能对外说：
+
+- 不能说支持 legacy metadata fallback；本组只保护新三轴 stamp 的字符串解析。
+- 不能说 LoRA checkpoint key 或 public API 有变化；本组没有改。
+
+### EXT 当前硬门槛盘点 6
+
+一句话：阶段数继续增加，但当前耗时仍只有约 3978 秒，不能进入 R6。
+
+当前事实：
+
+- 实时 `get_goal` 显示 `goal.timeUsedSeconds = 3978`，仍小于 `10800`。
+- `timeout 60 .venv/bin/python tasks.py type-check` 通过，输出 `0 errors, 0 warnings, 0 informations`。
+- 当前仍没有 stage、commit 或 push。
+
+当前禁止收口：
+
+- 不能 `git add` / `commit` / `push`。
+- 不能 `update_goal complete`。
+- 不能说 R6 总验证已经完成。
+
+### EXT 第二十一组：accelerate launch env trim 测试
+
+一句话：本组确认 launch 相关 env 值会先 trim / normalize，再参与命令构造。
+
+新增测试：
+
+- `test_accelerate_launch_env_values_are_stripped_before_parsing`
+  - 覆盖 `ANIMA_ACCELERATE_LAUNCH=" true "`。
+  - 覆盖 `ANIMA_ACCELERATE_NUM_PROCESSES=" 3 "`。
+  - 覆盖 `ANIMA_ACCELERATE_MIXED_PRECISION=" FP16 "`。
+  - 确认命令里 `--num_processes 3`、`--mixed_precision fp16`。
+
+本组验证：
+
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m pytest -p no:cacheprovider -q tests/test_launch_config.py -k "stripped_before_parsing or truthy_accelerate or falsey_accelerate"`：`12 passed, 13 deselected`。
+- `timeout 60 .venv/bin/python -m ruff check tests/test_launch_config.py tests/test_type_check_targets.py library/runtime/launch.py scripts/tasks/utilities.py`：`All checks passed!`。
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m py_compile tests/test_launch_config.py tests/test_type_check_targets.py library/runtime/launch.py scripts/tasks/utilities.py`：通过。
+
+仍不能对外说：
+
+- 不能说真实 accelerate 已执行；仍是 launch helper 命令构造测试。
+
+### EXT 第二十二组：type-check 显式目标命令壳测试
+
+一句话：本组确认 `tasks.py type-check` 不加 `--` 也能接显式目标，避免用户文档和维护命令不一致。
+
+新增测试：
+
+- `test_cmd_type_check_accepts_explicit_targets_without_separator`
+  - monkeypatch `find_spec("pyright")` 和 `run()`。
+  - 调用 `utilities.cmd_type_check(["library/runtime/launch.py"])`。
+  - 确认命令为 `python -m pyright library/runtime/launch.py`。
+
+本组验证：
+
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m pytest -p no:cacheprovider -q tests/test_type_check_targets.py -k "explicit_targets_without_separator or separator or default_targets"`：`4 passed, 3 deselected`。
+- `timeout 60 .venv/bin/python tasks.py type-check library/runtime/launch.py scripts/tasks/utilities.py`：`0 errors, 0 warnings, 0 informations`。
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m pytest -p no:cacheprovider -q tests/test_launch_config.py tests/test_tasks_runner.py tests/test_type_check_targets.py`：`43 passed`。
+- `git diff --check -- library/runtime/launch.py tests/test_launch_config.py scripts/tasks/utilities.py tests/test_type_check_targets.py docs/findings/project_cleanup_checkpoint_20260705.md`：通过。
+
+仍不能对外说：
+
+- 不能说全仓 pyright 已开启；仍是显式目标和默认 pilot gate。
+- 不能说所有 task 命令模块都纳入默认 type-check；默认范围仍是小白名单。
+
+### EXT 当前硬门槛盘点 7
+
+一句话：CLI/launch 门禁继续加宽，但耗时仍没到硬门槛。
+
+当前事实：
+
+- 实时 `get_goal` 显示 `goal.timeUsedSeconds = 4069`，仍小于 `10800`。
+- 最近验证包括显式 type-check `0 errors, 0 warnings, 0 informations` 和 CLI 组合 `43 passed`。
+- 当前仍没有 stage、commit 或 push。
+
+当前禁止收口：
+
+- 不能 `git add` / `commit` / `push`。
+- 不能 `update_goal complete`。
+- 不能说 R6 总验证已经完成。
+
+### EXT 第二十三组：training bootstrap V100 fp32 compute 判断测试
+
+一句话：本组用 monkeypatch 保护 V100 fp16 下自动启用 `lora_fp32_compute` 的判断逻辑，不碰真实 GPU。
+
+新增测试：
+
+- `test_bootstrap_auto_enables_lora_fp32_compute_on_v100_fp16`
+  - monkeypatch `torch.cuda.is_available()` 返回 true。
+  - monkeypatch `torch.cuda.get_device_capability()` 返回 `(7, 0)`。
+  - 确认 `mixed_precision="fp16"` 且未显式设置 `lora_fp32_compute` 时返回 true。
+  - 确认 CUDA capability 查询接收 accelerator device。
+- `test_bootstrap_does_not_auto_enable_lora_fp32_compute_when_user_set`
+  - 显式传入 `{"lora_fp32_compute": "false"}`。
+  - 确认不探测 CUDA，并返回 false。
+
+本组验证：
+
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m pytest -p no:cacheprovider -q tests/test_training_bootstrap.py -k "auto_enables_lora_fp32_compute or does_not_auto_enable_lora_fp32"`：`2 passed, 8 deselected`。
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m pytest -p no:cacheprovider -q tests/test_training_bootstrap.py -k "lora_fp32 or register or compile"`：`6 passed, 4 deselected`。
+- `timeout 60 .venv/bin/python -m ruff check tests/test_training_bootstrap.py library/training/bootstrap.py`：`All checks passed!`。
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m py_compile tests/test_training_bootstrap.py library/training/bootstrap.py`：通过。
+
+仍不能对外说：
+
+- 不能说真实 GPU 或真实训练已验证；本组只 monkeypatch CUDA capability。
+- 不能说自动 fp32 compute 在所有 GPU 上都覆盖；本组只保护 V100/sm70 分支和显式用户设置优先级。
+
+### EXT 第二十四组：training bootstrap/resume/optimizer 窄组合验证
+
+一句话：本组不新增代码，只确认刚补的 bootstrap 判断没有误伤训练基础测试面。
+
+本组验证：
+
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m pytest -p no:cacheprovider -q tests/test_training_bootstrap.py tests/test_training_optimizers.py tests/test_training_resume.py -k "lora_fp32 or register or compile or bootstrap or resume or optimizer"`：`140 passed, 3 skipped`。
+- `git diff --check -- tests/test_training_bootstrap.py library/training/bootstrap.py docs/findings/project_cleanup_checkpoint_20260705.md`：通过。
+
+仍不能对外说：
+
+- 不能说真实训练启动或恢复已执行；本组仍是单元测试和 monkeypatch 验证。
+- 不能说训练子系统全量测试完成；这里只是和本轮改动相关的窄组合。
+
+### EXT 当前硬门槛盘点 8
+
+一句话：训练 bootstrap 继续有新证据，但 3 小时硬门槛仍未达到。
+
+当前事实：
+
+- 实时 `get_goal` 显示 `goal.timeUsedSeconds = 4203`，仍小于 `10800`。
+- 最近训练组合验证 `140 passed, 3 skipped`。
+- 当前仍没有 stage、commit 或 push。
+
+当前禁止收口：
+
+- 不能 `git add` / `commit` / `push`。
+- 不能 `update_goal complete`。
+- 不能说 R6 总验证已经完成。
+
+### EXT 第二十五组：training bootstrap CUDA capability 失败兜底测试
+
+一句话：本组确认 V100 fp32 compute 自动判断在 CUDA capability 读取失败时保守关闭，并记录 warning。
+
+新增测试：
+
+- `test_bootstrap_auto_lora_fp32_compute_fails_closed_on_capability_error`
+  - monkeypatch `torch.cuda.is_available()` 返回 true。
+  - monkeypatch `torch.cuda.get_device_capability()` 抛出 `RuntimeError`。
+  - 确认 `should_auto_enable_lora_fp32_compute()` 返回 false。
+  - 确认日志包含 `could not read GPU compute capability`。
+
+本组验证：
+
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m pytest -p no:cacheprovider -q tests/test_training_bootstrap.py -k "lora_fp32_compute"`：`3 passed, 8 deselected`。
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m pytest -p no:cacheprovider -q tests/test_training_bootstrap.py`：`11 passed`。
+- `timeout 60 .venv/bin/python -m ruff check tests/test_training_bootstrap.py library/training/bootstrap.py`：`All checks passed!`。
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m py_compile tests/test_training_bootstrap.py library/training/bootstrap.py`：通过。
+
+仍不能对外说：
+
+- 不能说真实 CUDA capability 探测已执行；本组是 monkeypatch 兜底测试。
+
+### EXT 第二十六组：前端状态全文件 + training/runtime 切片验证
+
+一句话：本组不新增代码，只跑较宽验证，确认新增前端 Node 小夹具和 training bootstrap 测试没有破坏既有测试面。
+
+本组验证：
+
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m pytest -p no:cacheprovider -q tests/test_training_frontend_state.py`：`71 passed`。
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m pytest -p no:cacheprovider -q tests/test_training_bootstrap.py tests/test_runtime_harness_cli.py -k "lora_fp32 or register or compile or launch"`：`13 passed, 10 deselected`。
+- `git diff --check -- tests/test_training_bootstrap.py tests/test_training_frontend_state.py library/training/bootstrap.py docs/findings/project_cleanup_checkpoint_20260705.md`：通过。
+
+仍不能对外说：
+
+- 不能说做过浏览器端真实交互；前端验证仍是静态/Node/pytest。
+- 不能说 runtime harness 覆盖真实大模型；本组仍是模型无关测试。
+
+### EXT 当前硬门槛盘点 9
+
+一句话：宽验证继续通过，但耗时还不到硬门槛的一半。
+
+当前事实：
+
+- 实时 `get_goal` 显示 `goal.timeUsedSeconds = 4306`，仍小于 `10800`。
+- 最近验证包括前端状态全文件 `71 passed`、training/runtime 切片 `13 passed, 10 deselected`。
+- 当前仍没有 stage、commit 或 push。
+
+当前禁止收口：
+
+- 不能 `git add` / `commit` / `push`。
+- 不能 `update_goal complete`。
+- 不能说 R6 总验证已经完成。
+
+### EXT 第二十七组：proposal 归档搬家内容一致性验证
+
+一句话：本组验证 7 个 proposal 归档搬家不是内容删除，归档副本与 HEAD 旧文件内容一致。
+
+验证内容：
+
+- 用 `git show HEAD:docs/proposal/<file>` 读取旧版本内容。
+- 与 `_archive/docs/proposal/<file>` 当前未跟踪归档副本逐字节比较。
+- 覆盖 7 个文件：
+  - `compile_safety_patches_analysis.md`
+  - `configs_external_data_root_plan_2026-06-24.md`
+  - `upstream_high_value_merge_roadmap_2026-06-24.md`
+  - `upstream_merge_completion_report_2026-06-24.md`
+  - `upstream_merge_completion_report_2026-06-24_audit.md`
+  - `upstream_merge_completion_report_fixes_summary.md`
+  - `upstream_preprocess_robustness_analysis.md`
+
+本组验证：
+
+- Python 内容比较脚本输出：`archive proposal content matches HEAD for 7 files`。
+- `git diff --check -- README.md AGENTS.md docs _archive/docs`：通过。
+- `rg -n "archive-index.md|configuration/README.md|features/README.md|findings/README.md|optimizations/README.md|proposal/README.md|documentation_consolidation_20260706.md" README.md docs/README.md docs/archive-index.md docs/findings/README.md docs/proposal/README.md _archive/docs/proposal/README.md`：确认上级入口和分区索引引用存在。
+- `find docs -maxdepth 2 -type f -name 'README.md' | sort`：确认当前 docs 分区 README 包括 `configuration`、`features`、`findings`、`optimizations`、`proposal`。
+
+仍不能对外说：
+
+- 不能说这些 proposal 被简单删除；当前目标是归档搬家。
+- 不能说最终 stage 已完成；归档新增和原路径删除仍需最后显式 stage。
+
+### EXT 当前硬门槛盘点 10
+
+一句话：文档归档验证已补，但时间门槛仍远未达到。
+
+当前事实：
+
+- 实时 `get_goal` 显示 `goal.timeUsedSeconds = 4357`，仍小于 `10800`。
+- proposal 归档内容一致性已验证，文档 diff 空白检查通过。
+- 当前仍没有 stage、commit 或 push。
+
+当前禁止收口：
+
+- 不能 `git add` / `commit` / `push`。
+- 不能 `update_goal complete`。
+- 不能说 R6 总验证已经完成。
+
+### EXT 第二十八组：ChimeraHydra from_weights 非正池大小拒绝
+
+一句话：本组让 ChimeraHydra checkpoint metadata 路径和训练配置路径保持一致，content/freq 池大小必须是正数。
+
+源码护栏：
+
+- `networks/lora_anima/config.py::LoRANetworkCfg.from_weights()`
+  - `is_chimera_hydra=True` 时，`num_experts_content` / `num_experts_freq` 不仅必须存在，还必须都大于 0。
+  - 非正值直接抛出 `RuntimeError`，提示 checkpoint metadata malformed。
+
+新增测试：
+
+- `test_chimera_from_weights_rejects_non_positive_pool_sizes`
+  - 覆盖 `(0, 3)`、`(3, 0)`、`(-1, 3)`、`(3, -1)`。
+  - 确认错误信息包含 `requires positive`。
+
+本组验证：
+
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m pytest -p no:cacheprovider -q tests/test_network_cfg.py -k "chimera_from_weights"`：`5 passed, 30 deselected`。
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m pytest -p no:cacheprovider -q tests/test_network_cfg.py`：`35 passed`。
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m pytest -p no:cacheprovider -q tests/test_lora_loading_keys.py tests/test_factory_metadata_flow.py tests/test_lora_save_pipeline.py tests/test_network_cfg.py`：`82 passed`。
+- `timeout 60 .venv/bin/python -m ruff check networks/lora_anima/config.py tests/test_network_cfg.py`：`All checks passed!`。
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m py_compile networks/lora_anima/config.py tests/test_network_cfg.py`：通过。
+- `git diff --check -- networks/lora_anima/config.py tests/test_network_cfg.py docs/findings/project_cleanup_checkpoint_20260705.md`：通过。
+
+仍不能对外说：
+
+- 不能说会迁移 malformed Chimera checkpoint；当前行为是明确拒绝坏 metadata。
+- 不能说 checkpoint key 或 public API 有变化；本组只加校验。
+
+### EXT 当前硬门槛盘点 11
+
+一句话：LoRA metadata 护栏继续加固，但耗时仍不到 10800 秒。
+
+当前事实：
+
+- 实时 `get_goal` 显示 `goal.timeUsedSeconds = 4445`，仍小于 `10800`。
+- 最近 LoRA 组合验证 `82 passed`。
+- 当前仍没有 stage、commit 或 push。
+
+当前禁止收口：
+
+- 不能 `git add` / `commit` / `push`。
+- 不能 `update_goal complete`。
+- 不能说 R6 总验证已经完成。
+
+### EXT 第二十九组：ChimeraHydra from_weights 字符串 pool size metadata 测试
+
+一句话：本组让 `from_weights()` 自己能稳妥处理字符串形式的 Chimera pool size metadata，避免直接调用时字符串拼接误伤 mismatch 检查。
+
+源码护栏：
+
+- `networks/lora_anima/config.py::LoRANetworkCfg.from_weights()`
+  - 在 ChimeraHydra 分支先把 `num_experts_content` / `num_experts_freq` 转为 `int`。
+  - 后续正数检查、`K_c + K_f` mismatch 检查和 `resolved_num_experts` 都使用 int 值。
+
+新增测试：
+
+- `test_chimera_from_weights_accepts_string_pool_size_metadata`
+  - 传入 `num_experts_content="2"`、`num_experts_freq="5"` 和 `hydra_num_experts=7`。
+  - 确认 `cfg.num_experts == 7`，两个 pool size 在 cfg 中是 int。
+
+本组验证：
+
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m pytest -p no:cacheprovider -q tests/test_network_cfg.py -k "chimera_from_weights"`：`6 passed, 30 deselected`。
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m pytest -p no:cacheprovider -q tests/test_network_cfg.py`：`36 passed`。
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m pytest -p no:cacheprovider -q tests/test_lora_loading_keys.py tests/test_factory_metadata_flow.py tests/test_lora_save_pipeline.py tests/test_network_cfg.py`：`83 passed`。
+- `timeout 60 .venv/bin/python -m ruff check networks/lora_anima/config.py tests/test_network_cfg.py && PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m py_compile networks/lora_anima/config.py tests/test_network_cfg.py`：通过，ruff 为 `All checks passed!`。
+- `git diff --check -- networks/lora_anima/config.py tests/test_network_cfg.py docs/findings/project_cleanup_checkpoint_20260705.md`：通过。
+
+仍不能对外说：
+
+- 不能说 factory metadata parser 有问题；factory 入口本来通常已转 int，本组是加固 `from_weights()` 自身边界。
+- 不能说 checkpoint key 或 public API 有变化；本组没有改。
+
+### EXT 当前硬门槛盘点 12
+
+一句话：工作区仍未 stage，耗时仍未达到 3 小时。
+
+当前事实：
+
+- 实时 `get_goal` 显示 `goal.timeUsedSeconds = 4540`，仍小于 `10800`。
+- `git status --short --branch` 确认当前仍未 stage，未跟踪文件包括目标相关新索引和 proposal 归档副本。
+- 当前仍不能进入 R6。
+
+当前禁止收口：
+
+- 不能 `git add` / `commit` / `push`。
+- 不能 `update_goal complete`。
+- 不能说 R6 总验证已经完成。
+
+### EXT 第三十组：path root 绝对路径 `..` 拒绝护栏
+
+一句话：本组把 root 路径覆盖规则收紧为“任何路径中包含 `..` 都拒绝”，和项目路径协议保持一致。
+
+源码护栏：
+
+- `library/env.py::_resolve_project_relative_override()`
+  - 以前只拒绝相对路径中的 `..`。
+  - 现在绝对路径和相对路径只要 `Path.parts` 中包含 `..` 都抛出 `ValueError`。
+  - 普通绝对路径仍允许。
+
+新增测试：
+
+- `test_get_configs_root_rejects_absolute_parent_traversal`
+  - 设置 `ANIMA_CONFIGS_ROOT` 为绝对路径形式的 `safe/../outside`。
+  - 确认 `get_configs_root()` 抛出带环境变量名的 `ValueError`。
+
+本组验证：
+
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m pytest -p no:cacheprovider -q tests/test_env_config_paths.py -k "absolute_parent_traversal or env_absolute or parent_traversal or blank_values or training_roots"`：`8 passed, 6 deselected`。
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m pytest -p no:cacheprovider -q tests/test_env_config_paths.py tests/test_preview_service.py`：`39 passed`。
+- `timeout 60 .venv/bin/python -m ruff check library/env.py tests/test_env_config_paths.py && PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m py_compile library/env.py tests/test_env_config_paths.py`：通过，ruff 为 `All checks passed!`。
+- `git diff --check -- library/env.py tests/test_env_config_paths.py docs/findings/project_cleanup_checkpoint_20260705.md`：通过。
+
+仍不能对外说：
+
+- 不能说绝对外置配置路径被禁止；普通绝对路径仍允许。
+- 不能说所有项目路径入口都已统一；本组只覆盖使用 `_resolve_project_relative_override()` 的 root 覆盖入口。
+
+### EXT 第三十一组：preprocess paths 全文件验证
+
+一句话：本组不新增代码，只跑 preprocess 路径测试全文件，确认本轮 placeholder、fallback 和 resize skip 补测整体稳定。
+
+本组验证：
+
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m pytest -p no:cacheprovider -q tests/test_preprocess_paths.py`：`32 passed`。
+
+仍不能对外说：
+
+- 不能说真实 preprocess 被执行；测试仍通过 monkeypatch、小图片 fixture 或 helper 层验证。
+
+### EXT 当前硬门槛盘点 13
+
+一句话：path/preprocess 验证继续通过，但耗时仍不足 3 小时。
+
+当前事实：
+
+- 实时 `get_goal` 显示 `goal.timeUsedSeconds = 4605`，仍小于 `10800`。
+- 最近验证包括 env/preview `39 passed` 和 preprocess paths 全文件 `32 passed`。
+- 当前仍没有 stage、commit 或 push。
+
+当前禁止收口：
+
+- 不能 `git add` / `commit` / `push`。
+- 不能 `update_goal complete`。
+- 不能说 R6 总验证已经完成。
+
+### EXT 第三十二组：WebUI output_root 绝对路径 `..` 拒绝护栏
+
+一句话：本组把 WebUI 全局 `output_root` 的 `..` 拒绝规则从相对路径扩展到绝对路径。
+
+源码护栏：
+
+- `web/services/settings_service.py::_normalize_output_root()`
+  - 先检查 `Path(clean).parts` 是否包含 `..`。
+  - 绝对路径和相对路径只要包含 `..` 都抛出 `ValueError("输出文件夹不能包含 ..")`。
+  - 普通绝对路径仍允许保存和解析。
+
+新增测试：
+
+- `test_global_settings_reject_absolute_output_root_parent_traversal`
+  - 设置已有安全 `output_root = "safe/runs"`。
+  - 尝试保存绝对路径形式的 `safe/../outside`。
+  - 确认抛错，并且原配置不被污染。
+
+本组验证：
+
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m pytest -p no:cacheprovider -q tests/test_preview_service.py -k "absolute_output_root_parent_traversal or output_root_parent_traversal or global_settings"`：`3 passed, 23 deselected`。
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m pytest -p no:cacheprovider -q tests/test_preview_service.py tests/test_env_config_paths.py`：`40 passed`。
+- `timeout 60 .venv/bin/python -m ruff check web/services/settings_service.py tests/test_preview_service.py library/env.py tests/test_env_config_paths.py && PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m py_compile web/services/settings_service.py tests/test_preview_service.py library/env.py tests/test_env_config_paths.py`：通过，ruff 为 `All checks passed!`。
+- `git diff --check -- web/services/settings_service.py tests/test_preview_service.py library/env.py tests/test_env_config_paths.py docs/findings/project_cleanup_checkpoint_20260705.md`：通过。
+
+仍不能对外说：
+
+- 不能说普通绝对 output_root 被禁止；仍允许不含 `..` 的绝对路径。
+- 不能说真实 WebUI 设置页面被浏览器验证；本组是服务层单元测试。
+
+### EXT 当前硬门槛盘点 14
+
+一句话：WebUI 路径安全继续收紧，但当前耗时仍只有约 4738 秒。
+
+当前事实：
+
+- 实时 `get_goal` 显示 `goal.timeUsedSeconds = 4738`，仍小于 `10800`。
+- 最近 preview/env 组合验证 `40 passed`。
+- 当前仍没有 stage、commit 或 push。
+
+当前禁止收口：
+
+- 不能 `git add` / `commit` / `push`。
+- 不能 `update_goal complete`。
+- 不能说 R6 总验证已经完成。
+
+### EXT 第三十三组：preview 目录绝对路径 `..` 拒绝护栏
+
+一句话：本组把 preview 的 training/inference/custom 目录规范化也收紧为路径文本包含 `..` 就拒绝。
+
+源码护栏：
+
+- `web/services/preview_service.py`
+  - `_normalize_preview_dir()` 在绝对路径分支前检查 `..`。
+  - `_normalize_project_file()` 在绝对路径和相对路径分支前统一检查 `..`。
+  - 普通绝对 inference/custom 目录仍允许。
+
+新增测试：
+
+- `test_preview_settings_reject_absolute_preview_dir_parent_traversal`
+  - 已有 preview settings 包含安全 training/inference/custom。
+  - 保存绝对 inference 路径 `inference/../outside` 时抛错。
+  - 保存绝对 custom 路径 `custom/../outside` 时抛错。
+  - 失败后确认旧 settings 没被污染。
+
+本组验证：
+
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m pytest -p no:cacheprovider -q tests/test_preview_service.py -k "absolute_preview_dir_parent_traversal or preview_settings_reject or allow_absolute"`：`3 passed, 24 deselected`。
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m pytest -p no:cacheprovider -q tests/test_preview_service.py tests/test_env_config_paths.py`：第一次 `41 passed`，修正 ruff 后复跑仍为 `41 passed`。
+
+仍不能对外说：
+
+- 不能说普通绝对 inference/custom 目录被禁止；仍允许不含 `..` 的绝对路径。
+- 不能说浏览器设置页已验证；本组是服务层测试。
+
+### EXT 第三十四组：preview_service ruff 暴露无用变量清理
+
+一句话：本组在对 touched 文件跑 ruff 时发现并清理 `_weight_sort_key()` 里未使用的 `epoch` 变量。
+
+源码清理：
+
+- `web/services/preview_service.py::_weight_sort_key()`
+  - 删除未使用局部变量 `epoch`。
+  - 排序 tuple 不变，行为不变。
+
+本组验证：
+
+- `timeout 60 .venv/bin/python -m ruff check web/services/preview_service.py tests/test_preview_service.py web/services/settings_service.py library/env.py tests/test_env_config_paths.py`：修复后 `All checks passed!`。
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m py_compile web/services/preview_service.py tests/test_preview_service.py web/services/settings_service.py library/env.py tests/test_env_config_paths.py`：通过。
+- `git diff --check -- web/services/preview_service.py tests/test_preview_service.py web/services/settings_service.py library/env.py tests/test_env_config_paths.py docs/findings/project_cleanup_checkpoint_20260705.md`：通过。
+
+仍不能对外说：
+
+- 不能说 preview_service 做了行为重构；这里只是删除未使用变量。
+
+### EXT 当前硬门槛盘点 15
+
+一句话：WebUI preview 路径安全继续加固，但耗时仍不到 10800 秒。
+
+当前事实：
+
+- 实时 `get_goal` 显示 `goal.timeUsedSeconds = 4923`，仍小于 `10800`。
+- 最近 preview/env 组合验证 `41 passed`，ruff 和 py_compile 通过。
+- 当前仍没有 stage、commit 或 push。
+
+当前禁止收口：
+
+- 不能 `git add` / `commit` / `push`。
+- 不能 `update_goal complete`。
+- 不能说 R6 总验证已经完成。
+
+### EXT 第三十五组：weight analysis 权重路径 `..` 拒绝护栏
+
+一句话：本组把权重分析服务的路径解析收紧为绝对/相对路径只要包含 `..` 都拒绝。
+
+源码护栏：
+
+- `web/services/weight_analysis_service.py::resolve_analysis_weight()`
+  - 在绝对路径和相对路径分支前统一检查 `Path(clean).parts`。
+  - 即使 `resolve()` 后会落到允许目录，只要用户输入路径文本含 `..` 就抛出 `ValueError("权重路径不能包含 ..")`。
+
+新增测试：
+
+- `test_invalid_missing_and_escaped_paths_are_rejected`
+  - 追加一个真实合法 output root 下的 `safe.safetensors`。
+  - 使用 `nested/../safe.safetensors` 形式调用 `inspect_weight()`。
+  - 确认因为输入路径包含 `..` 被拒绝。
+
+本组验证：
+
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m pytest -p no:cacheprovider -q tests/test_weight_analysis_service.py -k "invalid_missing_and_escaped_paths"`：`1 passed, 6 deselected`。
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m pytest -p no:cacheprovider -q tests/test_weight_analysis_service.py`：`7 passed`。
+- `timeout 60 .venv/bin/python -m ruff check web/services/weight_analysis_service.py tests/test_weight_analysis_service.py && PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m py_compile web/services/weight_analysis_service.py tests/test_weight_analysis_service.py`：通过，ruff 为 `All checks passed!`。
+- `git diff --check -- web/services/weight_analysis_service.py tests/test_weight_analysis_service.py docs/findings/project_cleanup_checkpoint_20260705.md`：通过。
+
+仍不能对外说：
+
+- 不能说真实模型或推理已执行；weight analysis 仍只读 safetensors 静态权重。
+- 不能说所有上传路径边界都变更；拖入上传字节流仍走独立 `uploaded://` 临时分析路径。
+
+### EXT 第三十六组：WebUI 后端路径组合验证
+
+一句话：本组不新增代码，只把 preview/env/weight-analysis 路径安全相关测试合起来验证，并跑显式 type-check。
+
+本组验证：
+
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m pytest -p no:cacheprovider -q tests/test_preview_service.py tests/test_env_config_paths.py tests/test_weight_analysis_service.py`：`48 passed`。
+- `timeout 60 .venv/bin/python tasks.py type-check web/services/weight_analysis_service.py web/services/preview_service.py web/services/settings_service.py library/env.py`：`0 errors, 0 warnings, 0 informations`。
+- `git diff --check -- web/services/weight_analysis_service.py tests/test_weight_analysis_service.py web/services/preview_service.py tests/test_preview_service.py web/services/settings_service.py library/env.py tests/test_env_config_paths.py docs/findings/project_cleanup_checkpoint_20260705.md`：通过。
+
+仍不能对外说：
+
+- 不能说 WebUI 后端全量测试完成；本组是路径安全相关组合。
+
+### EXT 第三十七组：WebUI output-runs 保存路径护栏
+
+一句话：本组只补 `output-runs/save-as` 的路径逃逸 characterization test，不改业务行为。
+
+本组新增：
+
+- 在 `tests/test_web_config_service.py` 新增
+  `test_output_run_save_as_rejects_paths_outside_imported_configs`。
+- 覆盖 `../escape`、`configs/imported/../escape`、`configs/other/escape`、
+  项目内非 imported 绝对路径、项目外绝对路径。
+- 验证这些输入不会写入 `configs/imported/escape.toml`、`configs/other/escape.toml`
+  或项目外 `escape.toml`。
+
+本组验证：
+
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m pytest -p no:cacheprovider -q tests/test_web_config_service.py::test_output_run_save_as_rejects_paths_outside_imported_configs`：`1 passed`。
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m pytest -p no:cacheprovider -q tests/test_web_config_service.py -k "output_run_save_as"`：`3 passed, 167 deselected`。
+- `git diff --check -- tests/test_web_config_service.py`：通过。
+
+当前硬门槛：
+
+- 实时 `get_goal` 显示 `goal.timeUsedSeconds = 5339`，仍小于 `10800`。
+- 当前仍不能 `git add`、不能 commit、不能 push、不能 `update_goal complete`。
+
+仍不能对外说：
+
+- 不能说 output-runs 全量行为完成；本组只保护 save-as 目标路径边界。
+
+### EXT 第三十八组：WebUI 队列设置恢复调度保护
+
+一句话：本组只补队列从暂停恢复到继续时的内存级行为测试，不启动训练进程。
+
+本组新增：
+
+- 在 `tests/test_training_queue.py` 新增
+  `test_set_queue_settings_unpauses_and_dispatches_waiting_item`。
+- 覆盖 `set_queue_settings(paused=False, failure_policy="continue")` 会：
+  - 更新 snapshot 的 `paused=False`。
+  - 归一化并保存 `failure_policy="continue"`。
+  - 对已有 queued item 触发一次 `_schedule_queue_dispatch()`。
+  - 写入 `queue.json`，保留队列设置。
+
+本组验证：
+
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m pytest -p no:cacheprovider -q tests/test_training_queue.py::test_set_queue_settings_unpauses_and_dispatches_waiting_item`：`1 passed`。
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m pytest -p no:cacheprovider -q tests/test_training_queue.py -k "set_queue_settings"`：`1 passed, 40 deselected`。
+- `git diff --check -- tests/test_training_queue.py`：通过。
+
+当前硬门槛：
+
+- 实时 `get_goal` 显示 `goal.timeUsedSeconds = 5467`，仍小于 `10800`。
+- 当前仍不能 `git add`、不能 commit、不能 push、不能 `update_goal complete`。
+
+仍不能对外说：
+
+- 不能说真实训练调度已执行；本组只 monkeypatch 观察调度钩子调用。
+
+### EXT 第三十九组：WebUI 队列脏状态归一化保护
+
+一句话：本组补 `get_queue_snapshot()` 对脏队列状态的 characterization test，不改队列实现。
+
+本组新增：
+
+- 在 `tests/test_training_queue.py` 新增
+  `test_get_queue_snapshot_normalizes_dirty_queue_state`。
+- 覆盖内存队列里存在：
+  - 非法 `failure_policy`。
+  - 非 dict item。
+  - `attempt = 0`。
+  - `attempt = "3"`。
+  - 缺失 `retry_of`。
+- 验证 snapshot 会过滤非 dict item，summary 只统计有效 item，
+  `failure_policy` 回退为 `pause`，`attempt` 拉正为正整数，并回写归一化后的
+  `svc._queue["items"]`。
+
+本组验证：
+
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m pytest -p no:cacheprovider -q tests/test_training_queue.py::test_get_queue_snapshot_normalizes_dirty_queue_state`：`1 passed`。
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m pytest -p no:cacheprovider -q tests/test_training_queue.py -k "normalize_queue or get_queue_snapshot"`：`1 passed, 41 deselected`。
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m pytest -p no:cacheprovider -q tests/test_training_queue.py -k "set_queue_settings or get_queue_snapshot_normalizes_dirty_queue_state"`：`2 passed, 40 deselected`。
+- `git diff --check -- tests/test_training_queue.py docs/findings/project_cleanup_checkpoint_20260705.md`：通过。
+
+当前硬门槛：
+
+- 实时 `get_goal` 显示 `goal.timeUsedSeconds = 5608`，仍小于 `10800`。
+- 当前仍不能 `git add`、不能 commit、不能 push、不能 `update_goal complete`。
+
+仍不能对外说：
+
+- 不能说队列全量回放或真实调度已覆盖；本组只覆盖 snapshot 归一化边界。
+
+### EXT 第四十组：文档归档口径一致性小修
+
+一句话：本组按只读审计结果修正文档归档口径，不移动文件、不改归档内容。
+
+本组修改：
+
+- `docs/README.md` 的 `proposal/` 维护规则从 `_archive/docs/` 精确改为
+  `_archive/docs/proposal/`。
+- `_archive/docs/proposal/README.md` 的当前实现说明补齐 `features/` 和
+  `optimizations/`，与 `docs/archive-index.md` 口径一致。
+
+本组验证：
+
+- `git diff --check -- README.md docs _archive/docs`：通过。
+- 逐个比较 7 个归档 proposal 与 `HEAD:docs/proposal/<file>`：无 `DIFF` 输出。
+- `rg -n '_archive/docs/proposal/' docs/README.md _archive/docs/proposal/README.md docs/archive-index.md`：
+  命中 `docs/README.md` 和 `docs/archive-index.md` 的归档路径。
+- `rg -n 'features|optimizations' _archive/docs/proposal/README.md docs/archive-index.md`：
+  两处当前实现口径均包含 `features` 和 `optimizations`。
+
+过程说明：
+
+- 本组有一条最初的 `rg` 命令因 shell 反引号转义错误失败，之后已改用上面两条简单
+  `rg` 查询复核；失败原因是命令写法，不是文档内容问题。
+
+当前硬门槛：
+
+- 实时 `get_goal` 显示 `goal.timeUsedSeconds = 5646`，仍小于 `10800`。
+- 当前仍不能 `git add`、不能 commit、不能 push、不能 `update_goal complete`。
+
+仍不能对外说：
+
+- 不能说文档全量链接检查由本组重新完成；本组只做归档口径和内容一致性验证。
+
+### EXT 第四十一组：WebUI output-runs limit 语义保护
+
+一句话：本组补 `list_output_runs(limit=...)` 的当前排序和截断行为断言，不改实现。
+
+本组新增：
+
+- 在 `tests/test_web_config_service.py::test_output_runs_list_reads_direct_run_dirs_sorted`
+  中补充：
+  - `limit=1` 只返回 mtime 最新的 run。
+  - `limit=0` 按当前实现走默认上限，仍返回本测试里的两个 run。
+
+过程说明：
+
+- 初版误以为 `limit=0` 会被 `max(1, limit)` 归为 1，导致断言失败。
+- 复读实现后确认 `limit=0` 会先被 `limit or 200` 当成默认值，测试已改成记录当前真实行为。
+
+本组验证：
+
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m pytest -p no:cacheprovider -q tests/test_web_config_service.py::test_output_runs_list_reads_direct_run_dirs_sorted`：
+  初版失败 1 次，修正后 `1 passed`。
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m pytest -p no:cacheprovider -q tests/test_web_config_service.py -k "output_runs_list or output_run_save_as"`：
+  初版失败 1 次，修正后 `4 passed, 166 deselected`。
+- `git diff --check -- tests/test_web_config_service.py docs/findings/project_cleanup_checkpoint_20260705.md`：通过。
+
+当前硬门槛：
+
+- 实时 `get_goal` 显示 `goal.timeUsedSeconds = 5737`，仍小于 `10800`。
+- 当前仍不能 `git add`、不能 commit、不能 push、不能 `update_goal complete`。
+
+仍不能对外说：
+
+- 不能说 output-runs API 行为已重新设计；本组只锁定现有 limit 行为。
+
+### EXT 第四十二组：launch 禁用 accelerate 时忽略坏细节环境变量
+
+一句话：本组补 `ANIMA_ACCELERATE_LAUNCH=0` 时的直接训练命令护栏，不启动训练。
+
+本组新增：
+
+- 在 `tests/test_launch_config.py` 新增
+  `test_direct_training_command_ignores_invalid_accelerate_detail_env_when_launch_disabled`。
+- 覆盖当 `ANIMA_ACCELERATE_LAUNCH="0"` 且
+  `ANIMA_ACCELERATE_NUM_PROCESSES="many"`、`ANIMA_ACCELERATE_MIXED_PRECISION="fp4"` 时，
+  `accelerate_training_command_prefix()` 仍返回 `["python", "train.py"]`。
+- 这个测试锁定当前语义：只有显式 truthy 的 `ANIMA_ACCELERATE_LAUNCH` 才会解析 accelerate
+  细节参数。
+
+本组验证：
+
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m pytest -p no:cacheprovider -q tests/test_launch_config.py::test_direct_training_command_ignores_invalid_accelerate_detail_env_when_launch_disabled`：`1 passed`。
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m pytest -p no:cacheprovider -q tests/test_launch_config.py -k "direct_training_command or falsey_accelerate_launch"`：`8 passed, 18 deselected`。
+- `git diff --check -- tests/test_launch_config.py`：通过。
+
+当前硬门槛：
+
+- 实时 `get_goal` 显示 `goal.timeUsedSeconds = 5737`，仍小于 `10800`。
+- 当前仍不能 `git add`、不能 commit、不能 push、不能 `update_goal complete`。
+
+仍不能对外说：
+
+- 不能说训练已启动或 accelerate 可用性已验证；本组只验证命令前缀构造。
+
+### EXT 第四十三组：runtime home 相对路径锚点保护
+
+一句话：本组补 `resolve_under_home()` 的相对路径锚点测试，保护从任意 cwd 调用时的路径语义。
+
+本组新增：
+
+- 在 `tests/test_env_config_paths.py` 新增
+  `test_resolve_under_home_uses_anima_home_for_relative_paths`。
+- 覆盖 `ANIMA_HOME` 指向临时 repo home、当前 cwd 指向另一个目录时：
+  - `resolve_under_home("output/runs")` 解析到 `ANIMA_HOME/output/runs`。
+  - 绝对路径输入保持绝对路径不被重新锚定。
+
+本组验证：
+
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m pytest -p no:cacheprovider -q tests/test_env_config_paths.py::test_resolve_under_home_uses_anima_home_for_relative_paths`：`1 passed`。
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m pytest -p no:cacheprovider -q tests/test_env_config_paths.py -k "resolve_under_home or configs_root or training_queue_root"`：`12 passed, 3 deselected`。
+- `git diff --check -- tests/test_env_config_paths.py docs/findings/project_cleanup_checkpoint_20260705.md`：通过。
+
+当前硬门槛：
+
+- 实时 `get_goal` 显示 `goal.timeUsedSeconds = 6055`，仍小于 `10800`。
+- 当前仍不能 `git add`、不能 commit、不能 push、不能 `update_goal complete`。
+
+仍不能对外说：
+
+- 不能说所有运行时路径都重新验证；本组只覆盖 `resolve_under_home()` 相对/绝对边界。
+
+### EXT 第四十四组：ChimeraHydra from_weights metadata 报错保护
+
+一句话：本组补 ChimeraHydra checkpoint metadata 缺失和 K_c/K_f 不一致的报错测试。
+
+本组新增：
+
+- 在 `tests/test_network_cfg.py` 新增
+  `test_chimera_from_weights_rejects_missing_or_mismatched_pool_metadata`。
+- 覆盖 `is_chimera_hydra=True` 时：
+  - 缺 `num_experts_content` 会报 `missing ss_num_experts_content`。
+  - `num_experts_content + num_experts_freq` 与 `hydra_num_experts` 不一致会报
+    `K_c + K_f mismatch`。
+
+本组验证：
+
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m pytest -p no:cacheprovider -q tests/test_network_cfg.py::test_chimera_from_weights_rejects_missing_or_mismatched_pool_metadata`：`1 passed`。
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m pytest -p no:cacheprovider -q tests/test_network_cfg.py -k "chimera_from_weights"`：`7 passed, 30 deselected`。
+- `git diff --check -- tests/test_network_cfg.py docs/findings/project_cleanup_checkpoint_20260705.md`：通过。
+
+当前硬门槛：
+
+- 实时 `get_goal` 显示 `goal.timeUsedSeconds = 6139`，仍小于 `10800`。
+- 当前仍不能 `git add`、不能 commit、不能 push、不能 `update_goal complete`。
+
+仍不能对外说：
+
+- 不能说改了 LoRA checkpoint key 或加载语义；本组只锁定已有 metadata 报错边界。
+
+### EXT 第四十五组：LoRA 三轴 stamp 未知值拒绝保护
+
+一句话：本组补 MoE checkpoint 三轴 metadata 的未知值拒绝测试，不改变三轴语义。
+
+本组新增：
+
+- 在 `tests/test_network_cfg.py` 新增
+  `test_from_weights_rejects_unknown_three_axis_stamp_values`。
+- 覆盖：
+  - `new_use_moe_style="true"` 会因未知 `use_moe_style` 报错。
+  - `new_router_source="crossattn"` 会因未知 `router_source` 报错。
+
+本组验证：
+
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m pytest -p no:cacheprovider -q tests/test_network_cfg.py::test_from_weights_rejects_unknown_three_axis_stamp_values`：`2 passed`。
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m pytest -p no:cacheprovider -q tests/test_network_cfg.py -k "three_axis"`：`4 passed, 35 deselected`。
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m pytest -p no:cacheprovider -q tests/test_network_cfg.py -k "chimera_from_weights or three_axis"`：`11 passed, 28 deselected`。
+- `git diff --check -- tests/test_network_cfg.py docs/findings/project_cleanup_checkpoint_20260705.md`：通过。
+
+当前硬门槛：
+
+- 实时 `get_goal` 显示 `goal.timeUsedSeconds = 6216`，仍小于 `10800`。
+- 当前仍不能 `git add`、不能 commit、不能 push、不能 `update_goal complete`。
+
+仍不能对外说：
+
+- 不能说旧 checkpoint 兼容面扩大；本组只确认坏 metadata 不会静默改语义。
+
+### EXT 第四十六组：docs 本地链接和可达性门禁复跑
+
+一句话：本组不改代码，只复跑 docs 本地链接、可达性和归档索引门禁。
+
+本组验证：
+
+- `timeout 60 .venv/bin/python - <<'PY' ...` 本地 Markdown 链接扫描：
+  `scanned=113 local_links=280 external_links=41 broken=0`。
+- `timeout 60 .venv/bin/python - <<'PY' ...` docs 可达性和归档索引检查：
+  `docs_md=104 reachable_from_docs_readme=104 missing=0`，
+  `archive_proposals=7 missing_in_docs_archive_index=0 missing_in_archive_readme=0`。
+- `timeout 60 git diff --check -- README.md docs _archive/docs`：通过。
+
+当前硬门槛：
+
+- 实时 `get_goal` 显示 `goal.timeUsedSeconds = 6291`，仍小于 `10800`。
+- 当前仍不能 `git add`、不能 commit、不能 push、不能 `update_goal complete`。
+
+仍不能对外说：
+
+- 不能说外部链接已验证；本组只检查本地 Markdown 链接和可达性。
+
+### EXT 第四十七组：type-check 显式 flag 无分隔符转发保护
+
+一句话：本组补 `tasks.py type-check` 命令壳对无 `--` 显式 pyright flag 和多目标的转发测试。
+
+本组新增：
+
+- 在 `tests/test_type_check_targets.py` 新增
+  `test_cmd_type_check_accepts_explicit_flags_without_separator`。
+- 覆盖 `cmd_type_check(["--warnings", "library/runtime/launch.py", "library/env.py"])`
+  会转成 `python -m pyright --warnings library/runtime/launch.py library/env.py`，
+  不混入默认白名单。
+
+本组验证：
+
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m pytest -p no:cacheprovider -q tests/test_type_check_targets.py::test_cmd_type_check_accepts_explicit_flags_without_separator`：`1 passed`。
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m pytest -p no:cacheprovider -q tests/test_type_check_targets.py`：`8 passed`。
+- `timeout 60 .venv/bin/python tasks.py type-check -- --warnings library/runtime/launch.py library/env.py`：
+  `0 errors, 0 warnings, 0 informations`。
+- `git diff --check -- tests/test_type_check_targets.py docs/findings/project_cleanup_checkpoint_20260705.md`：通过。
+
+当前硬门槛：
+
+- 实时 `get_goal` 显示 `goal.timeUsedSeconds = 6408`，仍小于 `10800`。
+- 当前仍不能 `git add`、不能 commit、不能 push、不能 `update_goal complete`。
+
+仍不能对外说：
+
+- 不能说默认 type-check 扩到全仓；本组只验证显式参数转发。
+
+### EXT 第四十八组：launch train_script Path 字符串化保护
+
+一句话：本组补 `accelerate_training_command_prefix()` 对 `Path` 类型训练脚本参数的行为测试。
+
+本组新增：
+
+- 在 `tests/test_launch_config.py` 新增
+  `test_accelerate_command_stringifies_path_train_script`。
+- 覆盖：
+  - direct 模式下 `Path("train.py")` 输出为 `"train.py"`。
+  - accelerate launch 模式下命令最后一项也是 `"train.py"`。
+
+本组验证：
+
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m pytest -p no:cacheprovider -q tests/test_launch_config.py::test_accelerate_command_stringifies_path_train_script`：`1 passed`。
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m pytest -p no:cacheprovider -q tests/test_launch_config.py`：`27 passed`。
+- `timeout 60 .venv/bin/python tasks.py type-check library/runtime/launch.py`：
+  `0 errors, 0 warnings, 0 informations`。
+- `git diff --check -- tests/test_launch_config.py docs/findings/project_cleanup_checkpoint_20260705.md`：通过。
+
+当前硬门槛：
+
+- 实时 `get_goal` 显示 `goal.timeUsedSeconds = 6477`，仍小于 `10800`。
+- 当前仍不能 `git add`、不能 commit、不能 push、不能 `update_goal complete`。
+
+仍不能对外说：
+
+- 不能说真实训练启动已覆盖；本组只验证命令列表构造。
+
+### EXT 第四十九组：runtime / LoRA / type-check 中宽验证
+
+一句话：本组不新增代码，只复跑 runtime、launch、LoRA config 和 type-check 相关中宽验证。
+
+本组验证：
+
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m pytest -p no:cacheprovider -q tests/test_env_config_paths.py tests/test_launch_config.py tests/test_network_cfg.py tests/test_type_check_targets.py`：`90 passed`。
+- `timeout 60 .venv/bin/python tasks.py type-check library/env.py library/runtime/launch.py networks/lora_anima/config.py scripts/tasks/utilities.py`：`0 errors, 0 warnings, 0 informations`。
+
+当前硬门槛：
+
+- 实时 `get_goal` 显示 `goal.timeUsedSeconds = 6887`，仍小于 `10800`。
+- 当前仍不能 `git add`、不能 commit、不能 push、不能 `update_goal complete`。
+
+仍不能对外说：
+
+- 不能说这是 R6 最终总验证；本组只是 EXT 中宽验证。
+- 不能说目标已完成；耗时硬门槛仍未满足。
+
+### EXT 第五十组：`.env` loader 基础解析保护
+
+一句话：本组给项目最底层 `.env` loader 补 characterization test，确认已有环境变量不会被文件覆盖。
+
+本组新增：
+
+- 在 `tests/test_env_config_paths.py` 新增
+  `test_load_dotenv_preserves_existing_env_and_parses_simple_file`。
+- 覆盖：
+  - 注释、空行、无 `=` 的坏行会被忽略。
+  - 单引号和双引号包裹的值会去掉外层引号。
+  - `KEY = value` 会 trim 空白。
+  - 已在 `os.environ` 里的 key 不会被 `.env` 覆盖。
+  - `load_dotenv()` 返回值只包含本次真正新增的 key。
+
+本组验证：
+
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m pytest -p no:cacheprovider -q tests/test_env_config_paths.py::test_load_dotenv_preserves_existing_env_and_parses_simple_file`：`1 passed`。
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m pytest -p no:cacheprovider -q tests/test_env_config_paths.py -k "load_dotenv or resolve_under_home or configs_root or training_queue_root"`：`13 passed, 3 deselected`。
+- `timeout 60 .venv/bin/python -m ruff check tests/test_env_config_paths.py tests/test_web_config_service.py`：`All checks passed!`。
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m py_compile tests/test_env_config_paths.py tests/test_web_config_service.py`：通过。
+- `git diff --check -- tests/test_env_config_paths.py tests/test_web_config_service.py`：通过。
+
+当前硬门槛：
+
+- 实时 `get_goal` 显示 `goal.timeUsedSeconds = 6887`，仍小于 `10800`。
+- 当前仍不能 `git add`、不能 commit、不能 push、不能 `update_goal complete`。
+
+仍不能对外说：
+
+- 不能说 `.env` 支持 shell 插值；当前 loader 明确是字面值解析。
+- 不能说所有环境变量入口都已全量覆盖；本组只保护 `.env` 基础读取行为。
+
+### EXT 第五十一组：WebUI output-runs 输出根目录边界保护
+
+一句话：本组补 `list_output_runs()` 在输出根目录缺失或是文件时的当前行为测试。
+
+本组新增：
+
+- 在 `tests/test_web_config_service.py` 新增
+  `test_output_runs_list_handles_missing_or_file_output_root`。
+- 覆盖：
+  - `output_root` 不存在时返回 `ok=True`、`runs=[]`，并保留稳定的 `output_root` 和
+    `output_root_abs`。
+  - `output_root` 是普通文件时抛出 `ValueError("输出文件夹不是目录")`。
+
+本组验证：
+
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m pytest -p no:cacheprovider -q tests/test_web_config_service.py::test_output_runs_list_handles_missing_or_file_output_root`：`1 passed`。
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m pytest -p no:cacheprovider -q tests/test_web_config_service.py -k "output_runs_list or output_run_save_as"`：`5 passed, 166 deselected`。
+- `timeout 60 .venv/bin/python -m ruff check tests/test_env_config_paths.py tests/test_web_config_service.py`：`All checks passed!`。
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m py_compile tests/test_env_config_paths.py tests/test_web_config_service.py`：通过。
+- `git diff --check -- tests/test_env_config_paths.py tests/test_web_config_service.py`：通过。
+
+当前硬门槛：
+
+- 实时 `get_goal` 显示 `goal.timeUsedSeconds = 6887`，仍小于 `10800`。
+- 当前仍不能 `git add`、不能 commit、不能 push、不能 `update_goal complete`。
+
+仍不能对外说：
+
+- 不能说 output-runs API 行为已重新设计；本组只锁定现有列表边界。
+- 不能说真实输出目录或用户运行结果被读写；本组只使用 `tmp_path`。
+
+### EXT 第五十二组：WebUI 主题切换 DOM 契约保护
+
+一句话：本组给 WebUI app shell 的主题切换按钮补静态契约测试，不启动浏览器。
+
+本组新增：
+
+- 在 `tests/test_training_frontend_state.py` 新增
+  `test_app_shell_theme_toggle_contract_matches_index_html`。
+- 覆盖：
+  - `index.html` 里存在 `theme-toggle` 和 `theme-toggle-text`。
+  - 主题按钮初始 `type="button"`、`aria-pressed="false"`。
+  - `theme.js` 会设置 `root.dataset.theme`、按钮 `aria-pressed`、按钮 `title`、label 文案。
+  - `initThemeToggle()` 绑定 click，并继续调用 localStorage 和 loss chart `setTheme` 回调。
+
+本组验证：
+
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m pytest -p no:cacheprovider -q tests/test_training_frontend_state.py::test_app_shell_theme_toggle_contract_matches_index_html`：`1 passed`。
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m pytest -p no:cacheprovider -q tests/test_training_frontend_state.py -k "theme or dom or selector or queue or history"`：`18 passed, 54 deselected`。
+- `timeout 60 .venv/bin/python -m ruff check tests/test_training_frontend_state.py`：`All checks passed!`。
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m py_compile tests/test_training_frontend_state.py`：通过。
+- `git diff --check -- tests/test_training_frontend_state.py docs/findings/project_cleanup_checkpoint_20260705.md`：通过。
+
+当前硬门槛：
+
+- 实时 `get_goal` 显示 `goal.timeUsedSeconds = 7046`，仍小于 `10800`。
+- 当前仍不能 `git add`、不能 commit、不能 push、不能 `update_goal complete`。
+
+仍不能对外说：
+
+- 不能说真实浏览器主题切换已验证；本组是静态源码/DOM 契约测试。
+- 不能说 WebUI 前端全量完成；这里只保护 app shell 主题按钮契约。
+
+### EXT 第五十三组：launch 显式 env 映射隔离保护
+
+一句话：本组补训练 launch helper 的显式 env 隔离测试，确认不会误读真实进程环境。
+
+本组新增：
+
+- 在 `tests/test_launch_config.py` 新增
+  `test_explicit_env_mapping_isolated_from_process_env`。
+- 覆盖真实 `os.environ` 已设置：
+  - `ANIMA_ACCELERATE_LAUNCH=1`
+  - `ANIMA_ACCELERATE_NUM_PROCESSES=8`
+  - `ANIMA_ACCELERATE_MIXED_PRECISION=fp16`
+- 当调用方显式传入 `env={}` 时，`accelerate_training_command_prefix()` 仍返回
+  `["python", "train.py"]`，不读取外部进程环境。
+
+本组验证：
+
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m pytest -p no:cacheprovider -q tests/test_launch_config.py::test_explicit_env_mapping_isolated_from_process_env`：`1 passed`。
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m pytest -p no:cacheprovider -q tests/test_launch_config.py`：`28 passed`。
+- `timeout 60 .venv/bin/python -m ruff check tests/test_launch_config.py library/runtime/launch.py`：`All checks passed!`。
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m py_compile tests/test_launch_config.py library/runtime/launch.py`：通过。
+- `timeout 60 .venv/bin/python tasks.py type-check library/runtime/launch.py`：`0 errors, 0 warnings, 0 informations`。
+- `git diff --check -- tests/test_launch_config.py library/runtime/launch.py docs/findings/project_cleanup_checkpoint_20260705.md`：通过。
+
+当前硬门槛：
+
+- 实时 `get_goal` 显示 `goal.timeUsedSeconds = 7187`，仍小于 `10800`。
+- 当前仍不能 `git add`、不能 commit、不能 push、不能 `update_goal complete`。
+
+仍不能对外说：
+
+- 不能说真实 accelerate 或训练进程启动过；本组只测试命令列表构造。
+- 不能说 launch 全链路覆盖真实 GPU；本组完全不碰 GPU 和子进程。
+
+### EXT 第五十四组：WebUI 队列失败 continue 策略保护
+
+一句话：本组补队列运行项失败时 `failure_policy="continue"` 不暂停队列的测试。
+
+本组新增：
+
+- 在 `tests/test_training_queue.py` 新增
+  `test_queue_process_error_continues_when_failure_policy_continue`。
+- 复用 fake process，不启动真实训练。
+- 覆盖：
+  - 当前运行项 `q1` 的 fake process 返回 `7`。
+  - `q1` 进入 `error`。
+  - 等待项 `q2` 仍保持 `queued`。
+  - 队列 `paused` 保持 `False`。
+  - 服务状态回到 `idle`。
+  - `_schedule_queue_dispatch()` 被调用一次，允许后续调度继续推进。
+
+本组验证：
+
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m pytest -p no:cacheprovider -q tests/test_training_queue.py::test_queue_process_error_continues_when_failure_policy_continue`：`1 passed`。
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m pytest -p no:cacheprovider -q tests/test_training_queue.py -k "queue_process_error or set_queue_settings or get_queue_snapshot_normalizes_dirty_queue_state"`：`4 passed, 39 deselected`。
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m pytest -p no:cacheprovider -q tests/test_training_queue.py`：`43 passed`。
+- `timeout 60 .venv/bin/python -m ruff check tests/test_training_queue.py`：`All checks passed!`。
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m py_compile tests/test_training_queue.py web/services/training/live_monitor.py web/services/training/queue.py`：通过。
+- `git diff --check -- tests/test_training_queue.py docs/findings/project_cleanup_checkpoint_20260705.md`：通过。
+
+当前硬门槛：
+
+- 实时 `get_goal` 显示 `goal.timeUsedSeconds = 7400`，仍小于 `10800`。
+- 当前仍不能 `git add`、不能 commit、不能 push、不能 `update_goal complete`。
+
+仍不能对外说：
+
+- 不能说真实训练调度已执行；本组只用 fake process 和 monkeypatch。
+- 不能说所有队列失败策略都全链路覆盖；本组只锁定 continue 分支的失败后行为。
+
+### EXT 第五十五组：LoRA ReFT layer spec 解析保护
+
+一句话：本组给 LoRA loading helper 的 `_parse_reft_layers()` 补纯函数测试。
+
+本组新增：
+
+- 在 `tests/test_lora_loading_keys.py` 新增：
+  - `test_parse_reft_layers_supported_specs`
+  - `test_parse_reft_layers_rejects_invalid_stride`
+  - `test_parse_reft_layers_rejects_out_of_range_indices`
+- 覆盖：
+  - `None` / `"all"` / `""` 返回全部 block。
+  - `"last_2"` / `"first_2"` / `"stride_2"` 返回对应 block 列表。
+  - `"3,1,3"` 和 `[2, 0]` 会去重并排序。
+  - `"stride_0"` 和越界索引会明确抛 `ValueError`。
+
+本组验证：
+
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m pytest -p no:cacheprovider -q tests/test_lora_loading_keys.py -k parse_reft_layers`：`10 passed, 28 deselected`。
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m pytest -p no:cacheprovider -q tests/test_lora_loading_keys.py`：`38 passed`。
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m pytest -p no:cacheprovider -q tests/test_lora_loading_keys.py tests/test_network_cfg.py -k "parse_reft_layers or three_axis or chimera_from_weights"`：`21 passed, 56 deselected`。
+- `timeout 60 .venv/bin/python -m ruff check tests/test_lora_loading_keys.py networks/lora_anima/loading.py`：`All checks passed!`。
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m py_compile tests/test_lora_loading_keys.py networks/lora_anima/loading.py`：通过。
+- `git diff --check -- tests/test_lora_loading_keys.py networks/lora_anima/loading.py docs/findings/project_cleanup_checkpoint_20260705.md`：通过。
+
+当前硬门槛：
+
+- 实时 `get_goal` 显示 `goal.timeUsedSeconds = 7530`，仍小于 `10800`。
+- 当前仍不能 `git add`、不能 commit、不能 push、不能 `update_goal complete`。
+
+仍不能对外说：
+
+- 不能说 ReFT 训练或推理全链路已验证；本组只测 loading helper 纯函数。
+- 不能说 LoRA checkpoint key 或 public API 有变更；本组只新增测试。
+
+### EXT 第五十六组：type-check 目标清单完整性保护
+
+一句话：本组给默认 pyright pilot gate 的目标列表补清单完整性测试。
+
+本组新增：
+
+- 在 `tests/test_type_check_targets.py` 新增
+  `test_type_check_targets_are_unique_existing_relative_paths`。
+- 覆盖：
+  - `TYPE_CHECK_TARGETS` 没有重复项。
+  - 每个目标都是仓库相对路径。
+  - 目标路径不包含 `..`。
+  - 每个目标在当前仓库真实存在。
+
+过程说明：
+
+- 初版错误假定 `scripts.tasks.utilities` 暴露 `ROOT`，测试失败 1 次，已改为从
+  `tests/test_type_check_targets.py` 的 `__file__` 计算仓库根。
+- 第二版把拼接后的绝对路径拿去断言“不是绝对路径”，测试失败 1 次，已改为检查
+  `Path(target).is_absolute()`。
+- 两次失败都是新增测试写法问题，不是 `TYPE_CHECK_TARGETS` 行为问题。
+
+本组验证：
+
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m pytest -p no:cacheprovider -q tests/test_type_check_targets.py::test_type_check_targets_are_unique_existing_relative_paths`：修正后 `1 passed`。
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m pytest -p no:cacheprovider -q tests/test_type_check_targets.py`：修正后 `9 passed`。
+- `timeout 60 .venv/bin/python -m ruff check tests/test_type_check_targets.py scripts/tasks/utilities.py`：`All checks passed!`。
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m py_compile tests/test_type_check_targets.py scripts/tasks/utilities.py`：通过。
+- `timeout 60 .venv/bin/python tasks.py type-check scripts/tasks/utilities.py`：`0 errors, 0 warnings, 0 informations`。
+- `git diff --check -- tests/test_type_check_targets.py scripts/tasks/utilities.py docs/findings/project_cleanup_checkpoint_20260705.md`：通过。
+
+当前硬门槛：
+
+- 实时 `get_goal` 显示 `goal.timeUsedSeconds = 7639`，仍小于 `10800`。
+- 当前仍不能 `git add`、不能 commit、不能 push、不能 `update_goal complete`。
+
+仍不能对外说：
+
+- 不能说默认 type-check 已扩大到全仓；本组只保护现有白名单质量。
+- 不能说这等同于全项目静态类型验证；本组只跑了目标清单测试和 `scripts/tasks/utilities.py`。
+
+### EXT 第五十七组：跨子系统中宽验证
+
+一句话：本组不新增代码，只把最近新增的 runtime/env、LoRA loading、queue、前端和 type-check 切片合起来验证。
+
+本组验证：
+
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m pytest -p no:cacheprovider -q tests/test_launch_config.py tests/test_env_config_paths.py tests/test_type_check_targets.py tests/test_lora_loading_keys.py`：`91 passed`。
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m pytest -p no:cacheprovider -q tests/test_training_queue.py tests/test_training_frontend_state.py -k "queue_process_error or set_queue_settings or get_queue_snapshot_normalizes_dirty_queue_state or theme or dom or selector or queue or history"`：`61 passed, 54 deselected`。
+- `timeout 60 .venv/bin/python tasks.py type-check library/env.py library/runtime/launch.py networks/lora_anima/config.py networks/lora_anima/loading.py scripts/tasks/utilities.py`：`0 errors, 0 warnings, 0 informations`。
+- `git diff --check -- tests/test_launch_config.py tests/test_env_config_paths.py tests/test_type_check_targets.py tests/test_lora_loading_keys.py tests/test_training_queue.py tests/test_training_frontend_state.py tests/test_web_config_service.py docs/findings/project_cleanup_checkpoint_20260705.md`：通过。
+- `git status --short --branch`：仍在 `main...webui/main`，有目标相关未提交改动，未 stage。
+
+当前硬门槛：
+
+- 实时 `get_goal` 显示 `goal.timeUsedSeconds = 7709`，仍小于 `10800`。
+- 当前仍不能 `git add`、不能 commit、不能 push、不能 `update_goal complete`。
+
+仍不能对外说：
+
+- 不能说这是 R6 最终总验证；本组只是 EXT 中宽验证。
+- 不能说全仓测试已跑；这里只跑了目标相关切片。
+
+### EXT 第五十八组：WebUI GPU picker DOM 契约保护
+
+一句话：本组给 WebUI app shell 的 GPU 选择器补静态 DOM / aria / API 契约测试。
+
+本组新增：
+
+- 在 `tests/test_training_frontend_state.py` 新增
+  `test_app_shell_gpu_picker_contract_matches_index_html`。
+- 覆盖：
+  - `index.html` 里存在 `gpu-picker`、`gpu-picker-toggle`、`gpu-picker-panel`、
+    `gpu-all-checkbox`、`gpu-option-list`、`gpu-picker-note`。
+  - toggle 初始 `type="button"`、`aria-expanded="false"`。
+  - `gpu-picker.js` 读取这些 DOM id。
+  - `gpu-picker.js` 仍调用 `/api/training/gpus`，并保留 `file:` 静态打开兜底。
+  - 打开/关闭 panel 时会维护 `aria-expanded`。
+  - CSS 仍包含 `.gpu-picker-toggle[aria-expanded="true"]` 样式入口。
+
+本组验证：
+
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m pytest -p no:cacheprovider -q tests/test_training_frontend_state.py::test_app_shell_gpu_picker_contract_matches_index_html`：`1 passed`。
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m pytest -p no:cacheprovider -q tests/test_training_frontend_state.py -k "gpu_picker or theme or dom or selector or queue or history"`：`19 passed, 54 deselected`。
+- `timeout 60 .venv/bin/python -m ruff check tests/test_training_frontend_state.py`：`All checks passed!`。
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m py_compile tests/test_training_frontend_state.py`：通过。
+- `git diff --check -- tests/test_training_frontend_state.py docs/findings/project_cleanup_checkpoint_20260705.md`：通过。
+
+当前硬门槛：
+
+- 实时 `get_goal` 显示 `goal.timeUsedSeconds = 7979`，仍小于 `10800`。
+- 当前仍不能 `git add`、不能 commit、不能 push、不能 `update_goal complete`。
+
+仍不能对外说：
+
+- 不能说真实浏览器 GPU picker 已交互验证；本组是静态契约测试。
+- 不能说真实训练 GPU 白名单已执行；本组不启动训练。
+
+### EXT 第五十九组：WebUI 队列 compact 保护和静态声明补齐
+
+一句话：本组补队列裁剪保护测试，并修复 ruff 暴露的 `_int_or_none` 静态绑定漏项。
+
+本组新增测试：
+
+- 在 `tests/test_training_queue.py` 新增
+  `test_compact_queue_preserves_waiting_and_running_over_limit`。
+- 覆盖：
+  - 临时把 `MAX_QUEUE_ITEMS` 调小到 `2`。
+  - 队列里有 3 个受保护项：`queued` / `running` / `queued`。
+  - `_compact_queue()` 不会为了满足上限丢掉 waiting/running 项。
+  - 终态 `done` / `error` 项会被裁掉。
+
+本组源码小修：
+
+- `web/services/training/queue.py` 的 `TYPE_CHECKING` import 列表补入 `_int_or_none`。
+- 这是静态声明补齐；运行时仍由 `_bind_legacy()` 绑定 facade helper，不改运行逻辑。
+
+过程说明：
+
+- 初次运行 `ruff check tests/test_training_queue.py web/services/training/queue.py` 时发现
+  `web/services/training/queue.py:309` 的 `_int_or_none` 静态未定义。
+- 该问题不是本组测试引入，但属于当前队列/type-check 清理范围，已用最小改动修复。
+
+本组验证：
+
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m pytest -p no:cacheprovider -q tests/test_training_queue.py::test_compact_queue_preserves_waiting_and_running_over_limit`：`1 passed`。
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m pytest -p no:cacheprovider -q tests/test_training_queue.py -k "compact_queue or queue_process_error or get_queue_snapshot_normalizes_dirty_queue_state"`：`4 passed, 40 deselected`。
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m pytest -p no:cacheprovider -q tests/test_training_queue.py`：`44 passed`。
+- `timeout 60 .venv/bin/python -m ruff check tests/test_training_queue.py web/services/training/queue.py`：修复后 `All checks passed!`。
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m py_compile tests/test_training_queue.py web/services/training/queue.py`：通过。
+- `timeout 60 .venv/bin/python tasks.py type-check web/services/training/queue.py`：`0 errors, 0 warnings, 0 informations`。
+- `git diff --check -- tests/test_training_queue.py web/services/training/queue.py docs/findings/project_cleanup_checkpoint_20260705.md`：通过。
+
+当前硬门槛：
+
+- 实时 `get_goal` 显示 `goal.timeUsedSeconds = 8451`，仍小于 `10800`。
+- 当前仍不能 `git add`、不能 commit、不能 push、不能 `update_goal complete`。
+
+仍不能对外说：
+
+- 不能说真实队列文件或真实训练任务被清理；本组只用内存队列和 `tmp_path`。
+- 不能说队列系统全量行为已完成；本组只保护 compact 边界和一个静态声明漏项。
+
+### EXT 第六十组：tasks.py inline env 非法形态转发保护
+
+一句话：本组补 CLI 命令壳对非大写内联环境变量 token 的转发测试。
+
+本组新增：
+
+- 在 `tests/test_tasks_runner.py` 新增
+  `test_tasks_main_forwards_non_uppercase_inline_env_tokens`。
+- 覆盖：
+  - `method=lora` 小写 key 不写入 `os.environ`。
+  - `Mixed_KEY=value` 混合大小写 key 不写入 `os.environ`。
+  - `1BAD=value` 数字开头 key 不写入 `os.environ`。
+  - 以上 token 都原样转发给子命令。
+
+本组验证：
+
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m pytest -p no:cacheprovider -q tests/test_tasks_runner.py::test_tasks_main_forwards_non_uppercase_inline_env_tokens`：`1 passed`。
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m pytest -p no:cacheprovider -q tests/test_tasks_runner.py tests/test_type_check_targets.py`：`21 passed`。
+- `timeout 60 .venv/bin/python -m ruff check tests/test_tasks_runner.py tests/test_type_check_targets.py tasks.py scripts/tasks/utilities.py`：`All checks passed!`。
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m py_compile tests/test_tasks_runner.py tests/test_type_check_targets.py tasks.py scripts/tasks/utilities.py`：通过。
+- `timeout 60 .venv/bin/python tasks.py --help >/tmp/anima_tasks_help_check_ext60.txt && wc -c /tmp/anima_tasks_help_check_ext60.txt`：通过，输出大小 `10534`。
+- `git diff --check -- tests/test_tasks_runner.py tests/test_type_check_targets.py tasks.py scripts/tasks/utilities.py docs/findings/project_cleanup_checkpoint_20260705.md`：通过。
+
+当前硬门槛：
+
+- 实时 `get_goal` 显示 `goal.timeUsedSeconds = 8546`，仍小于 `10800`。
+- 当前仍不能 `git add`、不能 commit、不能 push、不能 `update_goal complete`。
+
+仍不能对外说：
+
+- 不能说 CLI inline env 规则改了；本组只锁定现有规则。
+- 不能说所有任务命令都执行过；本组只跑命令壳测试和 help smoke。
+
+### EXT 第六十一组：LoRA from_weights plugin_args 顶层复制保护
+
+一句话：本组给 `LoRANetworkCfg.from_weights()` 的 `plugin_args` 顶层复制行为补测试。
+
+本组新增：
+
+- 在 `tests/test_network_cfg.py` 新增
+  `test_from_weights_copies_plugin_args_without_top_level_aliasing`。
+- 覆盖：
+  - `from_weights(..., plugin_args=plugin_args)` 会保留传入键值。
+  - `cfg.plugin_args` 不是原始 dict 对象。
+  - 调用后修改原始 dict 的顶层值，不会污染 `cfg.plugin_args`。
+
+本组验证：
+
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m pytest -p no:cacheprovider -q tests/test_network_cfg.py::test_from_weights_copies_plugin_args_without_top_level_aliasing`：`1 passed`。
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m pytest -p no:cacheprovider -q tests/test_network_cfg.py`：`40 passed`。
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m pytest -p no:cacheprovider -q tests/test_network_cfg.py tests/test_lora_loading_keys.py -k "plugin_args or parse_reft_layers or three_axis or chimera_from_weights"`：`22 passed, 56 deselected`。
+- `timeout 60 .venv/bin/python -m ruff check tests/test_network_cfg.py networks/lora_anima/config.py`：`All checks passed!`。
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m py_compile tests/test_network_cfg.py networks/lora_anima/config.py`：通过。
+- `git diff --check -- tests/test_network_cfg.py networks/lora_anima/config.py docs/findings/project_cleanup_checkpoint_20260705.md`：通过。
+
+当前硬门槛：
+
+- 实时 `get_goal` 显示 `goal.timeUsedSeconds = 8702`，仍小于 `10800`。
+- 当前仍不能 `git add`、不能 commit、不能 push、不能 `update_goal complete`。
+
+仍不能对外说：
+
+- 不能说 `plugin_args` 做了深拷贝；本组只确认顶层 dict 不共用对象。
+- 不能说 LoRA checkpoint key 或 public API 有变更；本组只新增测试。
+
+### EXT 第六十二组：queue / LoRA / CLI 相关组合验证
+
+一句话：本组不新增代码，只把队列、LoRA loading/config、CLI/type-check 相关测试组合起来验证。
+
+本组验证：
+
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m pytest -p no:cacheprovider -q tests/test_training_queue.py tests/test_network_cfg.py tests/test_lora_loading_keys.py tests/test_tasks_runner.py tests/test_type_check_targets.py`：`143 passed`。
+- `timeout 60 .venv/bin/python tasks.py type-check web/services/training/queue.py networks/lora_anima/config.py networks/lora_anima/loading.py scripts/tasks/utilities.py`：`0 errors, 0 warnings, 0 informations`。
+- `git diff --check -- docs/findings/project_cleanup_checkpoint_20260705.md tests/test_training_queue.py web/services/training/queue.py tests/test_network_cfg.py tests/test_lora_loading_keys.py tests/test_tasks_runner.py tests/test_type_check_targets.py`：通过。
+
+当前硬门槛：
+
+- 实时 `get_goal` 显示 `goal.timeUsedSeconds = 8788`，仍小于 `10800`。
+- 当前仍不能 `git add`、不能 commit、不能 push、不能 `update_goal complete`。
+
+仍不能对外说：
+
+- 不能说这是 R6 最终总验证；本组只是 EXT 相关组合验证。
+- 不能说全仓 pytest 已完成；本组只跑了当前改动相关测试文件。
+
+### EXT 第六十三组：归档 proposal 索引不漏项测试
+
+一句话：本组给归档 proposal 文档补索引完整性测试，防止归档文件只搬家但不进索引。
+
+本组新增：
+
+- 新增 `tests/test_docs_archive_indexes.py`。
+- 新增测试 `test_archived_proposals_are_listed_in_archive_indexes`。
+- 覆盖：
+  - `_archive/docs/proposal/*.md` 中除 `README.md` 外的归档文档列表非空。
+  - 每个归档 proposal 文件名都出现在 `docs/archive-index.md`。
+  - 每个归档 proposal 文件名都出现在 `_archive/docs/proposal/README.md`。
+
+本组验证：
+
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m pytest -p no:cacheprovider -q tests/test_docs_archive_indexes.py`：`1 passed`。
+- `timeout 60 .venv/bin/python -m ruff check tests/test_docs_archive_indexes.py`：`All checks passed!`。
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m py_compile tests/test_docs_archive_indexes.py`：通过。
+- `git diff --check -- README.md docs _archive/docs tests/test_docs_archive_indexes.py`：通过。
+
+当前硬门槛：
+
+- 实时 `get_goal` 显示 `goal.timeUsedSeconds = 8864`，仍小于 `10800`。
+- 当前仍不能 `git add`、不能 commit、不能 push、不能 `update_goal complete`。
+
+仍不能对外说：
+
+- 不能说外部链接已验证；本组只测本地归档索引完整性。
+- 不能说活跃 `docs/proposal/` 已清空；该目录仍保留半活跃提案。
+
+### EXT 第六十四组：env 嵌套结构变量展开保护
+
+一句话：本组给 `expand_env_vars_in_obj()` 补嵌套 dict/list/tuple 递归展开测试。
+
+本组新增：
+
+- 在 `tests/test_env_config_paths.py` 新增
+  `test_expand_env_vars_in_obj_recurses_nested_structures`。
+- 覆盖：
+  - dict 内 `$ANIMA_NESTED_ROOT/data` 会展开。
+  - list 内 `~/cache` 会按 `HOME` 展开。
+  - tuple 内 `$ANIMA_NESTED_ROOT/a` 会展开。
+  - 普通字符串和非字符串值保持不变。
+  - tuple 递归后仍保持 tuple 类型。
+
+本组验证：
+
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m pytest -p no:cacheprovider -q tests/test_env_config_paths.py::test_expand_env_vars_in_obj_recurses_nested_structures`：`1 passed`。
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m pytest -p no:cacheprovider -q tests/test_env_config_paths.py`：`17 passed`。
+- `timeout 60 .venv/bin/python -m ruff check tests/test_env_config_paths.py library/env.py`：`All checks passed!`。
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m py_compile tests/test_env_config_paths.py library/env.py`：通过。
+- `timeout 60 .venv/bin/python tasks.py type-check library/env.py`：`0 errors, 0 warnings, 0 informations`。
+- `git diff --check -- tests/test_env_config_paths.py library/env.py docs/findings/project_cleanup_checkpoint_20260705.md`：通过。
+
+当前硬门槛：
+
+- 实时 `get_goal` 显示 `goal.timeUsedSeconds = 8955`，仍小于 `10800`。
+- 当前仍不能 `git add`、不能 commit、不能 push、不能 `update_goal complete`。
+
+仍不能对外说：
+
+- 不能说所有配置对象路径语义都已全量覆盖；本组只测试 env expansion helper。
+- 不能说 `.env` 支持 shell 插值；当前仍是字面值 env 展开。
+
+### EXT 第六十五组：WebUI output-run 缺失固定配置错误路径
+
+一句话：本组给 output-run 读取 runtime/dataset 固定文件缺失时的错误路径补测试。
+
+本组新增：
+
+- 在 `tests/test_web_config_service.py` 新增
+  `test_output_run_read_reports_missing_fixed_config_file`。
+- 覆盖：
+  - 运行目录存在且有 `config.original.toml`。
+  - 缺少 `config.runtime.toml` 时，读取 `runtime` 抛 `FileNotFoundError("运行配置不存在")`。
+  - 缺少 `dataset.runtime.toml` 时，读取 `dataset` 抛同类错误。
+
+本组验证：
+
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m pytest -p no:cacheprovider -q tests/test_web_config_service.py::test_output_run_read_reports_missing_fixed_config_file`：`1 passed`。
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m pytest -p no:cacheprovider -q tests/test_web_config_service.py -k "output_run_read or output_runs_list or output_run_save_as"`：`7 passed, 165 deselected`。
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m pytest -p no:cacheprovider -q tests/test_web_config_service.py -k "output_run or file_groups_direct_path_helpers or file_groups_glob"`：`16 passed, 156 deselected`。
+- `timeout 60 .venv/bin/python -m ruff check tests/test_web_config_service.py web/services/config/output_runs.py`：`All checks passed!`。
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m py_compile tests/test_web_config_service.py web/services/config/output_runs.py`：通过。
+- `git diff --check -- tests/test_web_config_service.py web/services/config/output_runs.py docs/findings/project_cleanup_checkpoint_20260705.md`：通过。
+
+当前硬门槛：
+
+- 实时 `get_goal` 显示 `goal.timeUsedSeconds = 9118`，仍小于 `10800`。
+- 当前仍不能 `git add`、不能 commit、不能 push、不能 `update_goal complete`。
+
+仍不能对外说：
+
+- 不能说 output-runs API 行为已重设计；本组只锁定当前缺失文件错误路径。
+- 不能说真实 output/runs 用户目录被读取；本组只用 `tmp_path`。
+
+### EXT 第六十六组：WebUI 队列非法清理状态拒绝保护
+
+一句话：本组补队列批量清理接口对非法状态集合的拒绝测试。
+
+本组新增：
+
+- 在 `tests/test_training_queue.py` 新增
+  `test_clear_queue_items_by_state_rejects_invalid_states_without_saving`。
+- 覆盖：
+  - `clear_queue_items_by_state({"error"})` 抛 `ValueError("只能清理已完成或已取消")`。
+  - `clear_queue_items_by_state(set())` 同样抛错。
+  - 失败后内存队列列表不变。
+  - 失败后不会写入临时 `queue.json`。
+
+本组验证：
+
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m pytest -p no:cacheprovider -q tests/test_training_queue.py::test_clear_queue_items_by_state_rejects_invalid_states_without_saving`：`1 passed`。
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m pytest -p no:cacheprovider -q tests/test_training_queue.py -k "clear_queue_items_by_state or clear_finished or clear_completed or clear_canceled"`：`2 passed, 43 deselected`。
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m pytest -p no:cacheprovider -q tests/test_training_queue.py`：`45 passed`。
+- `timeout 60 .venv/bin/python -m ruff check tests/test_training_queue.py web/services/training/queue.py`：`All checks passed!`。
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m py_compile tests/test_training_queue.py web/services/training/queue.py`：通过。
+- `timeout 60 .venv/bin/python tasks.py type-check web/services/training/queue.py`：`0 errors, 0 warnings, 0 informations`。
+- `git diff --check -- tests/test_training_queue.py web/services/training/queue.py docs/findings/project_cleanup_checkpoint_20260705.md`：通过。
+
+当前硬门槛：
+
+- 实时 `get_goal` 显示 `goal.timeUsedSeconds = 9225`，仍小于 `10800`。
+- 当前仍不能 `git add`、不能 commit、不能 push、不能 `update_goal complete`。
+
+仍不能对外说：
+
+- 不能说真实队列目录被修改；本组只在 `tmp_path` 下确认失败不落盘。
+- 不能说 error 队列项现在可清理；当前规则仍只允许 done/canceled。
+
+### EXT 第六十七组：WebUI 队列 history task id 规范化保护
+
+一句话：本组补 `_attach_history_task_to_queue_item()` 对 history task id 的去重和 list 规范化测试。
+
+本组新增：
+
+- 在 `tests/test_training_queue.py` 新增
+  `test_attach_history_task_to_queue_item_deduplicates_and_normalizes_ids`。
+- 覆盖：
+  - 非 list 的 `history_task_ids` 会被规范成 list。
+  - 同一 history task id 连续 attach 不会重复追加。
+  - 已包含该 history task id 的队列项不重复追加。
+  - 缺失 item id 或空 task id 不会产生额外记录。
+  - 成功 attach 后 `message` 更新为 `正在运行`。
+
+本组验证：
+
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m pytest -p no:cacheprovider -q tests/test_training_queue.py::test_attach_history_task_to_queue_item_deduplicates_and_normalizes_ids`：`1 passed`。
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m pytest -p no:cacheprovider -q tests/test_training_queue.py -k "attach_history_task or compact_queue or clear_queue_items_by_state"`：`3 passed, 43 deselected`。
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m pytest -p no:cacheprovider -q tests/test_training_queue.py`：`46 passed`。
+- `timeout 60 .venv/bin/python -m ruff check tests/test_training_queue.py web/services/training/queue.py`：`All checks passed!`。
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m py_compile tests/test_training_queue.py web/services/training/queue.py`：通过。
+- `timeout 60 .venv/bin/python tasks.py type-check web/services/training/queue.py`：`0 errors, 0 warnings, 0 informations`。
+- `git diff --check -- tests/test_training_queue.py web/services/training/queue.py docs/findings/project_cleanup_checkpoint_20260705.md`：通过。
+
+当前硬门槛：
+
+- 实时 `get_goal` 显示 `goal.timeUsedSeconds = 9337`，仍小于 `10800`。
+- 当前仍不能 `git add`、不能 commit、不能 push、不能 `update_goal complete`。
+
+仍不能对外说：
+
+- 不能说 `_attach_history_task_to_queue_item()` 自己会落盘；当前实现只改内存，保存发生在外层流程。
+- 不能说真实 history 任务被创建或修改；本组只操作内存队列。
+
+### EXT 第六十八组：LoRA legacy Ortho save key 转换保护
+
+一句话：本组给 legacy sig-type OrthoLoRA 到标准 LoRA key 的转换 helper 补形态测试。
+
+本组新增：
+
+- 在 `tests/test_lora_save_pipeline.py` 新增
+  `test_convert_legacy_ortho_to_lora_replaces_sig_layout_with_standard_keys`。
+- 覆盖：
+  - legacy `p_layer.weight` / `q_layer.weight` / `lambda_layer` / `base_*` key 被移除。
+  - 新增标准 `lora_up.weight` 和 `lora_down.weight`。
+  - 输出 shape 分别为 `(out, rank)` 和 `(rank, in)`。
+  - 指定 `dtype=torch.float16` 时输出 tensor dtype 为 `torch.float16`。
+  - `alpha` 被保留。
+- 测试中 monkeypatch `torch.cuda.is_available()` 为 `False`，避免本机 CUDA 能力差异影响 SVD 路径。
+
+本组验证：
+
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m pytest -p no:cacheprovider -q tests/test_lora_save_pipeline.py::test_convert_legacy_ortho_to_lora_replaces_sig_layout_with_standard_keys`：`1 passed`。
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m pytest -p no:cacheprovider -q tests/test_lora_save_pipeline.py`：`11 passed`。
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m pytest -p no:cacheprovider -q tests/test_lora_save_pipeline.py tests/test_lora_loading_keys.py tests/test_network_cfg.py -k "legacy_ortho or stacked_experts or chimera or parse_reft_layers or plugin_args"`：`38 passed, 51 deselected`。
+- `timeout 60 .venv/bin/python -m ruff check tests/test_lora_save_pipeline.py networks/lora_save.py`：`All checks passed!`。
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m py_compile tests/test_lora_save_pipeline.py networks/lora_save.py`：通过。
+- `git diff --check -- tests/test_lora_save_pipeline.py networks/lora_save.py docs/findings/project_cleanup_checkpoint_20260705.md`：通过。
+
+当前硬门槛：
+
+- 实时 `get_goal` 显示 `goal.timeUsedSeconds = 9467`，仍小于 `10800`。
+- 当前仍不能 `git add`、不能 commit、不能 push、不能 `update_goal complete`。
+
+仍不能对外说：
+
+- 不能说 legacy Ortho 数值重建精度已验证；本组只测 key/shape/dtype/alpha 形态。
+- 不能说真实 checkpoint 文件被转换；本组只直接调用 helper 操作内存 state_dict。
+
+### EXT 第六十九组：跨 WebUI / LoRA / CLI / docs 宽组合验证
+
+一句话：本组不新增代码，只把近期新增测试面做一次更宽的组合验证。
+
+本组验证：
+
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m pytest -p no:cacheprovider -q tests/test_lora_save_pipeline.py tests/test_lora_loading_keys.py tests/test_network_cfg.py tests/test_training_queue.py tests/test_env_config_paths.py tests/test_tasks_runner.py tests/test_type_check_targets.py tests/test_docs_archive_indexes.py`：`174 passed`。
+- `timeout 60 .venv/bin/python tasks.py type-check library/env.py web/services/training/queue.py networks/lora_save.py networks/lora_anima/config.py networks/lora_anima/loading.py scripts/tasks/utilities.py`：`0 errors, 0 warnings, 0 informations`。
+- `git diff --check -- docs/findings/project_cleanup_checkpoint_20260705.md tests/test_lora_save_pipeline.py tests/test_lora_loading_keys.py tests/test_network_cfg.py tests/test_training_queue.py tests/test_env_config_paths.py tests/test_tasks_runner.py tests/test_type_check_targets.py tests/test_docs_archive_indexes.py web/services/training/queue.py`：通过。
+
+当前硬门槛：
+
+- 实时 `get_goal` 显示 `goal.timeUsedSeconds = 9524`，仍小于 `10800`。
+- 当前仍不能 `git add`、不能 commit、不能 push、不能 `update_goal complete`。
+
+仍不能对外说：
+
+- 不能说这是 R6 最终总验证；本组仍是 EXT 中宽/宽组合验证。
+- 不能说全仓 pytest 已完成；本组只覆盖当前新增和相关子系统测试。
+
+### EXT 第七十组：WebUI 顶层 tab 按钮和内容区契约保护
+
+一句话：本组给 WebUI 顶层 tab 的 `data-tab` 按钮和对应 `tab-*` 内容区补静态测试。
+
+本组新增：
+
+- 在 `tests/test_training_frontend_state.py` 新增
+  `test_top_level_tab_buttons_have_matching_content_sections`。
+- 覆盖：
+  - 顶层 tab 按钮仍是 `config`、`datasets`、`training`、`weight-analysis`、
+    `settings`、`environment`、`image-test`。
+  - 每个顶层 `data-tab` 都有对应 `id="tab-..."` section。
+  - `preview` 不作为顶层按钮出现。
+  - `tabs.js` 仍保留 training/config fallback，并会把隐藏 `tab-preview` 移出 active 状态。
+
+本组验证：
+
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m pytest -p no:cacheprovider -q tests/test_training_frontend_state.py::test_top_level_tab_buttons_have_matching_content_sections`：`1 passed`。
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m pytest -p no:cacheprovider -q tests/test_training_frontend_state.py -k "top_level_tab or gpu_picker or theme or dom or selector or queue or history"`：`20 passed, 54 deselected`。
+- `timeout 60 .venv/bin/python -m ruff check tests/test_training_frontend_state.py`：`All checks passed!`。
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m py_compile tests/test_training_frontend_state.py`：通过。
+- `git diff --check -- tests/test_training_frontend_state.py docs/findings/project_cleanup_checkpoint_20260705.md`：通过。
+
+当前硬门槛：
+
+- 实时 `get_goal` 显示 `goal.timeUsedSeconds = 9618`，仍小于 `10800`。
+- 当前仍不能 `git add`、不能 commit、不能 push、不能 `update_goal complete`。
+
+仍不能对外说：
+
+- 不能说真实浏览器 tab 交互已验证；本组是静态 DOM/source 契约测试。
+- 不能说前端全量页面都做了视觉验证；本组只锁顶层 tab 对应关系。
+
+### EXT 第七十一组：WebUI 前端 / output-runs / docs 组合验证
+
+一句话：本组不新增代码，只把 WebUI 前端静态全文件、output-runs 切片和 docs 归档索引组合验证。
+
+本组验证：
+
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m pytest -p no:cacheprovider -q tests/test_training_frontend_state.py`：`74 passed`。
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m pytest -p no:cacheprovider -q tests/test_web_config_service.py -k "output_run or file_groups_direct_path_helpers or file_groups_glob"`：`16 passed, 156 deselected`。
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m pytest -p no:cacheprovider -q tests/test_docs_archive_indexes.py`：`1 passed`。
+- `timeout 60 .venv/bin/python -m ruff check tests/test_training_frontend_state.py tests/test_web_config_service.py tests/test_docs_archive_indexes.py`：`All checks passed!`。
+- `git diff --check -- README.md docs _archive/docs tests/test_docs_archive_indexes.py tests/test_web_config_service.py tests/test_training_frontend_state.py`：通过。
+
+当前硬门槛：
+
+- 实时 `get_goal` 显示 `goal.timeUsedSeconds = 9723`，仍小于 `10800`。
+- 当前仍不能 `git add`、不能 commit、不能 push、不能 `update_goal complete`。
+
+仍不能对外说：
+
+- 不能说真实浏览器自动化已跑；前端验证仍是静态/Node 夹具。
+- 不能说全量 Web config 测试已跑；本组只跑 output-runs/file-groups 切片。
+
+### EXT 第七十二组：docs 本地链接和可达性复跑
+
+一句话：本组不新增代码，只复跑 docs 本地链接、docs 可达性和归档 proposal 索引检查。
+
+过程说明：
+
+- 第一版临时链接脚本误把 `docs/guidelines/difference_between_comfy.md` 中的代码片段
+  `self.t_embedder[0](timesteps_B_T` 当成 Markdown 链接，出现 1 个误报。
+- 随后改用更保守的路径式链接规则复跑，确认真实本地链接无坏链。
+
+本组验证：
+
+- 保守版本地 Markdown 链接扫描：
+  `scanned=114 local_links=262 external_links=41 skipped_non_path=1 broken=0`。
+- docs 可达性和归档 proposal 索引检查：
+  `docs_md=104 reachable_from_docs_readme=104 missing=0`；
+  `archive_proposals=7 missing_in_docs_archive_index=0 missing_in_archive_readme=0`。
+
+当前硬门槛：
+
+- 实时 `get_goal` 显示 `goal.timeUsedSeconds = 9821`，仍小于 `10800`。
+- 当前仍不能 `git add`、不能 commit、不能 push、不能 `update_goal complete`。
+
+仍不能对外说：
+
+- 不能说外部链接已检查；本组只检查本地 Markdown 链接。
+- 不能说这是 R6 最终总验证；本组仍是 EXT docs 验证。
+
+### EXT 第七十三组：当前改动相关测试分批宽验证
+
+一句话：本组不新增代码，只把当前改动相关测试按 60 秒限制拆成两批验证，并跑相关 type-check。
+
+本组验证：
+
+- 后端 / LoRA / CLI / docs 批次：
+  `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m pytest -p no:cacheprovider -q tests/test_env_config_paths.py tests/test_launch_config.py tests/test_network_cfg.py tests/test_lora_loading_keys.py tests/test_lora_save_pipeline.py tests/test_training_queue.py tests/test_type_check_targets.py tests/test_tasks_runner.py tests/test_docs_archive_indexes.py`：`202 passed`。
+- 前端 / Web config 批次：
+  `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m pytest -p no:cacheprovider -q tests/test_training_frontend_state.py tests/test_web_config_service.py -k "output_run or file_groups_direct_path_helpers or file_groups_glob or top_level_tab or gpu_picker or theme or dom or selector or queue or history"`：`37 passed, 209 deselected`。
+- `timeout 60 .venv/bin/python tasks.py type-check library/env.py library/runtime/launch.py web/services/training/queue.py networks/lora_save.py networks/lora_anima/config.py networks/lora_anima/loading.py scripts/tasks/utilities.py web/services/config/output_runs.py`：`0 errors, 0 warnings, 0 informations`。
+- `git diff --check -- docs/findings/project_cleanup_checkpoint_20260705.md tests/test_env_config_paths.py tests/test_launch_config.py tests/test_network_cfg.py tests/test_lora_loading_keys.py tests/test_lora_save_pipeline.py tests/test_training_queue.py tests/test_training_frontend_state.py tests/test_type_check_targets.py tests/test_tasks_runner.py tests/test_docs_archive_indexes.py tests/test_web_config_service.py web/services/training/queue.py`：通过。
+- `git status --short --branch`：仍在 `main...webui/main`，有目标相关未提交改动，未 stage。
+
+当前硬门槛：
+
+- 实时 `get_goal` 显示 `goal.timeUsedSeconds = 9940`，仍小于 `10800`。
+- 当前仍不能 `git add`、不能 commit、不能 push、不能 `update_goal complete`。
+
+仍不能对外说：
+
+- 不能说全仓 pytest 已完成；本组只跑当前改动相关批次。
+- 不能说可以进入 R6；耗时硬门槛仍未满足。
+
+### EXT 第七十四组：路径服务 / preprocess / runtime 相关切片验证
+
+一句话：本组不新增代码，只复跑本轮已改过或关联较强的路径、preview、weight-analysis、preprocess、runtime 和 bootstrap 切片。
+
+本组验证：
+
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m pytest -p no:cacheprovider -q tests/test_preview_service.py tests/test_weight_analysis_service.py tests/test_env_config_paths.py`：`51 passed`。
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m pytest -p no:cacheprovider -q tests/test_preprocess_paths.py tests/test_runtime_harness_cli.py tests/test_training_bootstrap.py -k "runtime or path or placeholder or compile or adapter or apply or preprocess_dataset_rows_expands"`：`46 passed, 9 deselected`。
+- `timeout 60 .venv/bin/python -m ruff check tests/test_preview_service.py tests/test_weight_analysis_service.py tests/test_preprocess_paths.py tests/test_runtime_harness_cli.py tests/test_training_bootstrap.py web/services/preview_service.py web/services/weight_analysis_service.py library/env.py`：`All checks passed!`。
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m py_compile tests/test_preview_service.py tests/test_weight_analysis_service.py tests/test_preprocess_paths.py tests/test_runtime_harness_cli.py tests/test_training_bootstrap.py web/services/preview_service.py web/services/weight_analysis_service.py library/env.py`：通过。
+- `timeout 60 .venv/bin/python tasks.py type-check web/services/preview_service.py web/services/weight_analysis_service.py library/env.py`：`0 errors, 0 warnings, 0 informations`。
+- `git diff --check -- docs/findings/project_cleanup_checkpoint_20260705.md tests/test_preview_service.py tests/test_weight_analysis_service.py tests/test_preprocess_paths.py tests/test_runtime_harness_cli.py tests/test_training_bootstrap.py web/services/preview_service.py web/services/weight_analysis_service.py`：通过。
+
+当前硬门槛：
+
+- 实时 `get_goal` 显示 `goal.timeUsedSeconds = 10021`，仍小于 `10800`。
+- 当前仍不能 `git add`、不能 commit、不能 push、不能 `update_goal complete`。
+
+仍不能对外说：
+
+- 不能说真实 preprocess 或真实训练被执行；本组仍是测试夹具和 monkeypatch。
+- 不能说路径服务全量边界都已证明；本组只覆盖已改路径相关切片。
+
+### EXT 第七十五组：未收口 type-check / diff / 工作区预检
+
+一句话：本组不新增代码，只在未达到耗时门槛前做一次默认 type-check、全量 diff check 和工作区清单预检。
+
+本组验证：
+
+- `timeout 60 .venv/bin/python tasks.py type-check`：`0 errors, 0 warnings, 0 informations`。
+- `git diff --check`：通过。
+- `git diff --name-only`：输出目标相关改动清单，包括 docs 归档、path/runtime/LoRA/queue/frontend/type-check/tests 等文件。
+- `git status --short --branch`：仍在 `main...webui/main`，有目标相关未提交改动，未 stage。
+
+当前硬门槛：
+
+- 实时 `get_goal` 显示 `goal.timeUsedSeconds = 10079`，仍小于 `10800`。
+- 当前仍不能 `git add`、不能 commit、不能 push、不能 `update_goal complete`。
+
+仍不能对外说：
+
+- 不能说已经 stage；本组只是预检。
+- 不能说已经进入 R6；耗时门槛仍未满足。
+
+### EXT 第七十六组：Web config / 前端最终前分块复跑
+
+一句话：本组不新增代码，只复跑 Web config route/output-runs/file-groups 切片和前端静态全文件。
+
+本组验证：
+
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m pytest -p no:cacheprovider -q tests/test_training_frontend_state.py`：`74 passed`。
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m pytest -p no:cacheprovider -q tests/test_web_config_service.py -k "output_run or raw_put_route_rejects_invalid_toml_without_creating_file or raw_patch_route_rejects_non_object_values or sample_prompts or file_groups"`：`29 passed, 143 deselected`。
+- `git diff --check -- docs/findings/project_cleanup_checkpoint_20260705.md tests/test_web_config_service.py tests/test_training_frontend_state.py`：通过。
+
+当前硬门槛：
+
+- 实时 `get_goal` 显示 `goal.timeUsedSeconds = 10198`，仍小于 `10800`。
+- 当前仍不能 `git add`、不能 commit、不能 push、不能 `update_goal complete`。
+
+仍不能对外说：
+
+- 不能说全量 Web config 测试已完成；本组仍是切片。
+- 不能说浏览器端交互已跑；前端仍是静态/Node 夹具。
+
+### EXT 第七十七组：LoRA / queue / runtime / preprocess 分批验证
+
+一句话：本组不新增代码，只复跑 LoRA、queue、runtime、preprocess、preview、weight-analysis 和 training bootstrap 相关验证。
+
+本组验证：
+
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m pytest -p no:cacheprovider -q tests/test_training_queue.py tests/test_lora_save_pipeline.py tests/test_lora_loading_keys.py tests/test_network_cfg.py`：`135 passed`。
+- `PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python -m pytest -p no:cacheprovider -q tests/test_preview_service.py tests/test_weight_analysis_service.py tests/test_preprocess_paths.py tests/test_runtime_harness_cli.py tests/test_training_bootstrap.py -k "runtime or path or placeholder or compile or adapter or apply or preview or invalid_missing_and_escaped_paths"`：`76 passed, 13 deselected`。
+- `timeout 60 .venv/bin/python tasks.py type-check library/env.py library/runtime/launch.py web/services/training/queue.py web/services/preview_service.py web/services/weight_analysis_service.py networks/lora_save.py networks/lora_anima/config.py networks/lora_anima/loading.py scripts/tasks/utilities.py`：`0 errors, 0 warnings, 0 informations`。
+- `timeout 60 .venv/bin/python -m ruff check tests/test_training_queue.py tests/test_lora_save_pipeline.py tests/test_lora_loading_keys.py tests/test_network_cfg.py tests/test_preview_service.py tests/test_weight_analysis_service.py tests/test_preprocess_paths.py tests/test_runtime_harness_cli.py tests/test_training_bootstrap.py`：`All checks passed!`。
+- `git diff --check -- docs/findings/project_cleanup_checkpoint_20260705.md tests/test_training_queue.py tests/test_lora_save_pipeline.py tests/test_lora_loading_keys.py tests/test_network_cfg.py tests/test_preview_service.py tests/test_weight_analysis_service.py tests/test_preprocess_paths.py tests/test_runtime_harness_cli.py tests/test_training_bootstrap.py`：通过。
+
+当前硬门槛：
+
+- 实时 `get_goal` 显示 `goal.timeUsedSeconds = 10295`，仍小于 `10800`。
+- 当前仍不能 `git add`、不能 commit、不能 push、不能 `update_goal complete`。
+
+仍不能对外说：
+
+- 不能说真实训练、真实 preprocess 或真实 checkpoint 转换已执行；本组仍是测试夹具。
+- 不能说 R6 总验证已经完成；本组仍是 EXT 验证。
+
+### EXT 第七十八组：远端同步和 diff 空白预检
+
+一句话：本组不新增代码，只做发布前的只读远端预检和 diff 空白检查。
+
+本组验证：
+
+- `git fetch webui --prune`：通过。
+- `git log --oneline --decorate --max-count=5 webui/main..HEAD`：无输出，本地没有领先 `webui/main` 的已提交内容。
+- `git rev-list --left-right --count HEAD...webui/main`：`0 0`，本地 `HEAD` 与 `webui/main` 提交同步。
+- `git diff --check`：通过。
+
+当前硬门槛：
+
+- 实时 `get_goal` 显示 `goal.timeUsedSeconds = 10350`，仍小于 `10800`。
+- 当前仍不能 `git add`、不能 commit、不能 push、不能 `update_goal complete`。
+
+仍不能对外说：
+
+- 不能说已经发布；本组没有 stage、commit 或 push。
+- 不能说可以进入 R6；耗时硬门槛仍未满足。
+
+### EXT 历史硬门槛盘点 16（goal paused 快照）
+
+一句话：这一段是 EXT36 后的历史快照，后续最新状态以上方 EXT37 和之后记录为准。
+
+当前事实：
+
+- 实时 `get_goal` 显示 `goal.status = paused`。
+- 实时 `get_goal` 显示 `goal.timeUsedSeconds = 4976`，仍小于 `10800`。
+- 最近 WebUI 后端路径组合验证 `48 passed`，显式 type-check `0 errors, 0 warnings, 0 informations`。
+- 当前仍没有 stage、commit 或 push。
+
+当前禁止收口：
+
+- 不能 `git add` / `commit` / `push`。
+- 不能 `update_goal complete`。
+- 不能说 R6 总验证已经完成。
+
 仍不能对外说：
 
 - 不能说已完成文档被删除；只是完成归档。
@@ -484,6 +3262,25 @@ Git 同步口径：本地 `main` 只和 `webui/main` 沟通；`private/main` 不
 ```text
 请按 docs/findings/project_cleanup_sustained_goal_20260706.md 执行跨子系统强制长跑项目清理目标。
 ```
+
+---
+
+## 🔚 20. 20260706 目标完成状态补记
+
+一句话：这是 20260706 执行记录中的完成状态补记，真正的最终阅读入口以后续文件末尾状态为准。
+
+当前最终状态：
+
+- `docs/findings/project_cleanup_sustained_goal_20260706.md` 已改为完成归档。
+- 本目标的详细阶段、验证和边界记录见第 18 节和第 19 节。
+- R6 总验证已通过；其中一次被中断的 Web config 切片已重跑通过，未计入失败/中断结果。
+- 最终 Git 收口按本节之后的显式 stage、commit、push 执行，目标远端仍是 `webui/main`。
+
+不要重复执行：
+
+- 不要再把 `project_cleanup_sustained_goal_20260706.md` 当成活跃目标入口。
+- 不要重新执行 20260705 的 long-running / next-stage / sustained 旧目标书。
+- 后续如果继续清理，应另开新的目标书或使用新的用户指令。
 
 仍不能对外说：
 
@@ -2399,27 +5196,21 @@ R4 修复补记：
 
 ---
 
-## 🔚 17. 2026-07-06 文件末尾最新状态
+## 🔚 17. 2026-07-06 文件末尾最终状态
 
-一句话：这是当前文件的最终阅读入口，优先级高于上面所有执行中间快照。
+一句话：这是当前文件真正的最后阅读入口，20260706 跨子系统长跑目标已完成，不要再重复执行旧目标书。
 
-当前状态：
+当前最终状态：
 
 - `project_cleanup_sustained_goal_20260705.md` 已完成归档，最终提交为 `bd591b83 test: extend sustained cleanup coverage`。
-- 用户验收记录显示该目标 `goal.timeUsedSeconds = 7889`，约 `2 小时 11 分钟`，并已推送到 `webui/main`。
-- 当前新的活跃目标书是 `docs/findings/project_cleanup_sustained_goal_20260706.md`。
-- 下一轮不要重复执行 `20260705` 的 long_running、next_stage 或 sustained 目标书。
+- `project_cleanup_sustained_goal_20260706.md` 已完成归档，收口前最新 `goal.timeUsedSeconds = 10889`，已满足 `>=10800` 秒硬门槛。
+- 20260706 目标已完成 `R0` 到 `R6`，并通过 EXT 扩展到第七十八组以上；阶段数、推进轮数、子系统覆盖和验证密度均满足目标书硬条件。
+- R6 总验证、docs 可达性、本地链接、归档索引、type-check、`git diff --check` 和远端同步预检均已通过；详细命令见第 19 节。
+- 本目标没有跑真实训练，没有下载模型，没有删除或移动用户数据目录，没有删除 `_legacy.py`，没有改 LoRA checkpoint key、public API 或三轴路由语义。
+- 最终 Git 收口按本节后的显式 stage、commit、push 执行，目标远端仍是 `webui/main`。
 
-新目标书强度：
+后续提醒：
 
-- 最低耗时：`10800` 秒。
-- 最低阶段：`20` 个。
-- 最低推进轮：`5` 个。
-- 最低子系统覆盖：`4` 类。
-- 阻塞只能标记 `blocked`，不能作为提前 `complete` 的例外。
-
-下一轮可直接复制：
-
-```text
-请按 docs/findings/project_cleanup_sustained_goal_20260706.md 执行跨子系统强制长跑项目清理目标。
-```
+- 不要再把 `project_cleanup_sustained_goal_20260706.md` 当成活跃目标入口。
+- 不要重新执行 20260705 的 long-running / next-stage / sustained 旧目标书。
+- 后续若继续项目清理，应另开新的目标书或等待新的用户指令。
