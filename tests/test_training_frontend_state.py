@@ -402,6 +402,29 @@ def test_legacy_globals_is_the_only_new_global_bridge() -> None:
     assert not failures
 
 
+def test_legacy_globals_bridge_surface_stays_small() -> None:
+    source = _frontend_module_text("js/features/anima-app/legacy-globals.js")
+
+    for snippet in (
+        "globalThis.ctx = runtime.ctx;",
+        "globalThis.ensureImageTestFeature = bridge.ensureImageTestFeature;",
+        "globalThis.scheduleStatusPoll = bridge.scheduleStatusPoll;",
+        "globalThis.pollStatus = bridge.pollStatus;",
+    ):
+        assert snippet in source
+
+    for snippet in (
+        "__animaRuntime",
+        "__animaAppContext",
+        "Object.defineProperty(globalThis, 'imageTestFeature'",
+        "globalThis.trainingStatusPollDelayMs",
+        "globalThis.refreshTrainingSidebarSummariesFromPoll",
+        "globalThis.applyStatusSnapshotFallbacks",
+        "globalThis.hasStatusPayload",
+    ):
+        assert snippet not in source
+
+
 def test_legacy_state_globals_proxy_runtime_state() -> None:
     if not shutil.which("node"):
         pytest.skip("node is required for anima-app runtime state bridge checks")
