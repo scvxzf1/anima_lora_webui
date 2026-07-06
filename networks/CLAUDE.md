@@ -6,7 +6,7 @@ Pluggable adapter implementations selected at runtime via the `network_module` c
 
 | Path | Role |
 |------|------|
-| `lora_anima/` | LoRA network creation, module targeting, persistence, router diagnostics, timestep-masking orchestration, global routing. Split into `network.py`, `factory.py`, `loading.py`, `config.py`, `persistence.py`, and `router_stats.py`. |
+| `lora_anima/` | LoRA network creation, module targeting, persistence, router diagnostics, optimizer param groups, timestep-masking orchestration, global routing. Split into `network.py`, `factory.py`, `loading.py`, `config.py`, `persistence.py`, `router_stats.py`, and `optimizer_groups.py`. |
 | `lora_modules/` | Per-variant module implementations: `lora.py`, `ortho.py`, `hydra.py`, `reft.py`, `stacked_experts.py`, `chimera.py`, plus `base.py` and `custom_autograd.py`. Each module class owns its own save-pipeline hook (`distill_save_state_dict` / `build_moe_state_dict`) — the Cayley/SVD math and per-pool MoE layout live next to the variant that defined them. |
 | `attn_fuse.py` | `AttnFuseSpec` + `iter_split_groups` + `match_fused_spec` — single source of truth for the runtime-fused `qkv_proj`/`kv_proj` ↔ on-disk split `q/k/v_proj` layout. Sits at the `networks/` top level so save (`lora_save.py`) and load (`lora_anima/loading.py`) both reach it without a cross-package import. |
 | `lora_save.py`, `lora_utils.py` | Thin save-pipeline orchestrator + shared helpers. `lora_save.save_network_weights` calls each variant's `distill_save_state_dict` in fixed order, then dispatches to the matching `build_moe_state_dict`. Owns only the legacy sig-type OrthoLoRA distill (no live module class for it) and the variant-write sibling-file naming. |
