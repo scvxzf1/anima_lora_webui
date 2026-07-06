@@ -20,6 +20,70 @@ MODULE_IMPORT_RE = re.compile(
     r"""(?:(?:import|export)\s+(?:[^'"]*?\s+from\s+)?|import\(\s*)['"]([^'"]+\.js(?:\?[^'"]*)?)['"]"""
 )
 CSS_IMPORT_RE = re.compile(r"""@import\s+(?:url\()?['"]?([^'")]+\.css(?:\?[^'")]+)?)['"]?\)?\s*;""")
+GLOBAL_THIS_ASSIGN_RE = re.compile(
+    r"(?<![\w$])globalThis\.([A-Za-z_$][\w$]*)\s*(?:\|\|=|&&=|\?\?=|=)(?!=)"
+)
+GLOBAL_THIS_OBJECT_ASSIGN_RE = re.compile(r"Object\.assign\(\s*globalThis\s*,")
+
+ANIMA_APP_GLOBAL_THIS_BASELINE = {
+    "js/features/anima-app/index.js": (0, 0),
+    "js/features/anima-app/imports.js": (2, 1),
+    "js/features/anima-app/runtime.js": (0, 0),
+    "js/features/anima-app/chunks/01-scope-state.js": (129, 1),
+    "js/features/anima-app/chunks/01a-image-test-feature.js": (2, 0),
+    "js/features/anima-app/chunks/02-ensure-history-detail-feature.js": (32, 0),
+    "js/features/anima-app/chunks/03-parse-network-arg-entry.js": (31, 0),
+    "js/features/anima-app/chunks/04-create-config-group-entry.js": (24, 0),
+    "js/features/anima-app/chunks/05-create-stage-resolution-summary.js": (34, 0),
+    "js/features/anima-app/chunks/05a-no-dataset-regularization-mode.js": (16, 0),
+    "js/features/anima-app/chunks/06-stronger-selective-checkpoint-value.js": (26, 0),
+    "js/features/anima-app/chunks/07-render-config-dataset-picker-dialog.js": (32, 0),
+    "js/features/anima-app/chunks/08-origin-closest.js": (24, 0),
+    "js/features/anima-app/chunks/09-setup-config-group-drop-target.js": (25, 0),
+    "js/features/anima-app/chunks/10-create-dataset-config-input.js": (25, 0),
+    "js/features/anima-app/chunks/10a-dataset-inline-help.js": (0, 1),
+    "js/features/anima-app/chunks/11-create-dataset-editor-row.js": (11, 0),
+    "js/features/anima-app/chunks/12-create-dataset-row-caption-source-mode-editor.js": (22, 0),
+    "js/features/anima-app/chunks/13-update-dataset-editor-rows-setting-value.js": (36, 0),
+    "js/features/anima-app/chunks/14-lora-adapter-kind-from-config.js": (38, 0),
+    "js/features/anima-app/chunks/15-append-sample-prompt-row.js": (26, 0),
+    "js/features/anima-app/chunks/16-load-output-run-config.js": (22, 0),
+    "js/features/anima-app/chunks/17-apply-selected-dataset-preset-to-current-config.js": (15, 0),
+    "js/features/anima-app/chunks/18-delete-dataset-preset-group.js": (32, 0),
+    "js/features/anima-app/chunks/19-current-sample-prompt-text.js": (30, 0),
+    "js/features/anima-app/chunks/20-can-drop-toml-file-to-group.js": (23, 0),
+    "js/features/anima-app/chunks/21-update-toml-selection-ui.js": (31, 0),
+    "js/features/anima-app/chunks/22-update-toml-action-state.js": (22, 0),
+    "js/features/anima-app/chunks/23-move-current-toml-to-group.js": (24, 0),
+    "js/features/anima-app/chunks/24-show-preflight-pending-dialog.js": (29, 0),
+    "js/features/anima-app/chunks/25-update-progress.js": (18, 1),
+    "js/features/anima-app/chunks/26-load-global-settings.js": (61, 0),
+    "js/features/anima-app/chunks/26a-status-polling.js": (6, 1),
+    "js/features/anima-app/chunks/27-render-history-collections-workbench.js": (25, 0),
+    "js/features/anima-app/chunks/28-history-collection-search-text.js": (35, 0),
+    "js/features/anima-app/chunks/29-start-history-config-group-pointer-drag.js": (28, 0),
+    "js/features/anima-app/chunks/30-start-history-collection-pointer-drag.js": (20, 0),
+    "js/features/anima-app/chunks/31-create-history-collection-workbench-card.js": (18, 0),
+    "js/features/anima-app/chunks/32-history-task-collection-label.js": (46, 0),
+    "js/features/anima-app/chunks/33-create-history-task-item.js": (22, 0),
+    "js/features/anima-app/chunks/34-show-history-collection-select-dialog.js": (24, 0),
+    "js/features/anima-app/chunks/35-render-config-group-timeline.js": (29, 0),
+    "js/features/anima-app/chunks/36-setup-event-listeners.js": (7, 0),
+    "js/features/anima-app/chunks/37-config-training-source.js": (19, 0),
+}
+GLOBAL_THIS_BRIDGE_PATH = "js/features/anima-app/legacy-globals.js"
+GLOBAL_THIS_ALLOWED_OUTSIDE_ANIMA_APP = {
+    "app.js": (1, 0),
+}
+GLOBAL_THIS_ZERO_WRITE_PREFIXES = (
+    "js/features/app-shell/",
+    "js/features/history-detail/",
+    "js/features/image-test/",
+    "js/features/preview/",
+    "js/features/queue/",
+    "js/features/weight-analysis/",
+    "js/shared/",
+)
 
 
 def _resolve_frontend_module(parent: Path, specifier: str) -> Path | None:
@@ -171,6 +235,23 @@ def _literal_get_element_by_id_targets(source: str) -> set[str]:
     return set(re.findall(r"document\.getElementById\('([^']+)'\)", source))
 
 
+def _global_this_write_counts(path: Path) -> tuple[int, int]:
+    source = path.read_text(encoding="utf-8")
+    return (
+        len(GLOBAL_THIS_ASSIGN_RE.findall(source)),
+        len(GLOBAL_THIS_OBJECT_ASSIGN_RE.findall(source)),
+    )
+
+
+def _global_this_write_lines(path: Path) -> list[str]:
+    lines: list[str] = []
+    for lineno, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
+        if GLOBAL_THIS_ASSIGN_RE.search(line) or GLOBAL_THIS_OBJECT_ASSIGN_RE.search(line):
+            relative = path.relative_to(STATIC_DIR).as_posix()
+            lines.append(f"{relative}:{lineno}: {line.strip()}")
+    return lines
+
+
 def test_frontend_module_graph_follows_production_entrypoint() -> None:
     graph = _frontend_module_graph()
     relative = [path.relative_to(STATIC_DIR).as_posix() for path in graph]
@@ -180,6 +261,8 @@ def test_frontend_module_graph_follows_production_entrypoint() -> None:
     assert "js/features/legacy-app.js" not in relative
     assert "js/features/anima-app/index.js" in relative
     assert "js/features/anima-app/imports.js" in relative
+    assert "js/features/anima-app/runtime.js" in relative
+    assert "js/features/anima-app/legacy-globals.js" in relative
     assert any(path.startswith("js/features/anima-app/chunks/") for path in relative)
     assert "js/features/preview/index.js" in relative
     assert "js/features/preview/state.js" in relative
@@ -245,6 +328,78 @@ def test_frontend_module_graph_follows_production_entrypoint() -> None:
         STATIC_DIR / "js/features/history-detail/curve.js"
     ).read_text(encoding="utf-8")
     assert all(path.startswith(("app.js", "chart.js", "js/")) for path in relative)
+
+
+def test_anima_app_global_this_writes_do_not_grow() -> None:
+    graph = _frontend_module_graph()
+    relative_paths = {path.relative_to(STATIC_DIR).as_posix(): path for path in graph}
+    failures: list[str] = []
+
+    for relative, baseline in ANIMA_APP_GLOBAL_THIS_BASELINE.items():
+        path = relative_paths.get(relative)
+        assert path is not None, f"{relative} is no longer reachable from app.js"
+        actual = _global_this_write_counts(path)
+        if actual[0] > baseline[0] or actual[1] > baseline[1]:
+            failures.append(
+                f"{relative}: globalThis writes grew from {baseline} to {actual}\n"
+                + "\n".join(_global_this_write_lines(path))
+            )
+
+    for relative, path in sorted(relative_paths.items()):
+        if not relative.startswith("js/features/anima-app/"):
+            continue
+        if relative in ANIMA_APP_GLOBAL_THIS_BASELINE or relative == GLOBAL_THIS_BRIDGE_PATH:
+            continue
+        actual = _global_this_write_counts(path)
+        if actual != (0, 0):
+            failures.append(
+                f"{relative}: new anima-app module writes globalThis without baseline: {actual}\n"
+                + "\n".join(_global_this_write_lines(path))
+            )
+
+    assert not failures
+
+
+def test_split_frontend_features_do_not_write_global_this() -> None:
+    failures: list[str] = []
+    for path in _frontend_module_graph():
+        relative = path.relative_to(STATIC_DIR).as_posix()
+        if not relative.startswith(GLOBAL_THIS_ZERO_WRITE_PREFIXES):
+            continue
+        actual = _global_this_write_counts(path)
+        if actual != (0, 0):
+            failures.append(
+                f"{relative}: split frontend modules must not write globalThis: {actual}\n"
+                + "\n".join(_global_this_write_lines(path))
+            )
+
+    assert not failures
+
+
+def test_legacy_globals_is_the_only_new_global_bridge() -> None:
+    graph = _frontend_module_graph()
+    failures: list[str] = []
+
+    for path in graph:
+        relative = path.relative_to(STATIC_DIR).as_posix()
+        actual = _global_this_write_counts(path)
+        if actual == (0, 0):
+            continue
+        if relative == GLOBAL_THIS_BRIDGE_PATH:
+            if actual[1] != 0:
+                failures.append(f"{relative}: legacy bridge must not use Object.assign(globalThis, ...)")
+            continue
+        if relative in ANIMA_APP_GLOBAL_THIS_BASELINE:
+            continue
+        allowed = GLOBAL_THIS_ALLOWED_OUTSIDE_ANIMA_APP.get(relative)
+        if allowed is not None and actual[0] <= allowed[0] and actual[1] <= allowed[1]:
+            continue
+        failures.append(
+            f"{relative}: only {GLOBAL_THIS_BRIDGE_PATH} may add new globalThis bridge writes: {actual}\n"
+            + "\n".join(_global_this_write_lines(path))
+        )
+
+    assert not failures
 
 
 def test_frontend_module_cache_tokens_match_entrypoint() -> None:
