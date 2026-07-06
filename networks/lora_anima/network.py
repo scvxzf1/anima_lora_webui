@@ -19,7 +19,7 @@ from networks.lora_anima.persistence import (
     save_lora_network_weights,
     strip_orig_mod_keys,
 )
-from networks.lora_anima import optimizer_groups, router_stats
+from networks.lora_anima import optimizer_groups, router_stats, routing_state
 from networks.lora_anima.targeting import (
     collect_lora_target_candidates,
     compile_lora_target_patterns,
@@ -34,7 +34,6 @@ from networks.lora_modules import (
     OrthoLoRAModule,
     ReFTModule,
     StackedExpertsLoRAModule,
-    _sigma_sinusoidal_features,
 )
 
 setup_logging()
@@ -1113,171 +1112,19 @@ class LoRANetwork(torch.nn.Module):
             )
 
     def _wire_shared_sigma_buffers(self) -> None:
-        """Replace each HydraLoRA / OrthoHydraLoRA module's ``_sigma`` and
-        ``_sigma_features`` buffers with references to a single network-level
-        tensor (per sigma_feature_dim for the features). Modules then read the
-        same tensor object as their own attribute, so an in-place ``copy_`` on
-        the network's shared buffer flows to every module without a Python
-        propagation loop.
-
-        Run once at the end of ``__init__`` — before any forward fires, so
-        Dynamo / cudagraphs capture the aliased data pointer on first compile
-        and never see a per-module pointer-mismatch event.
-        """
-        sigma_loras: List[torch.nn.Module] = []
-        by_dim: Dict[int, List[torch.nn.Module]] = {}
-        for lora in self.unet_loras + self.text_encoder_loras:
-            if "_sigma" not in lora._buffers:
-                continue
-            sigma_loras.append(lora)
-            d = int(getattr(lora, "sigma_feature_dim", 0))
-            if d > 0 and "_sigma_features" in lora._buffers:
-                by_dim.setdefault(d, []).append(lora)
-        self._sigma_aware_loras = sigma_loras
-        self._sigma_aware_loras_by_dim = by_dim
-        if not sigma_loras:
-            self._shared_sigma = None
-            self._shared_sigma_features: Dict[int, torch.Tensor] = {}
-            return
-
-        # Pick the first module's placeholder buffer as the canonical shared
-        # tensor; rebind every other module's buffer to the same object. The
-        # placeholder is shape (1,) / (1, dim) — set_sigma replaces it with a
-        # full-shape tensor on the first call (and re-aliases at the same time).
-        shared_sigma = sigma_loras[0]._buffers["_sigma"]
-        for lora in sigma_loras:
-            lora._buffers["_sigma"] = shared_sigma
-        self._shared_sigma = shared_sigma
-
-        self._shared_sigma_features = {}
-        for dim, loras in by_dim.items():
-            shared_feat = loras[0]._buffers["_sigma_features"]
-            for lora in loras:
-                lora._buffers["_sigma_features"] = shared_feat
-            self._shared_sigma_features[dim] = shared_feat
+        return routing_state.wire_shared_sigma_buffers(self)
 
     def _wire_shared_fei_buffers(self) -> None:
-        """Replace each FEI-aware module's ``_fei`` buffer with a single
-        network-level shared tensor (per FEI feature dim).
-
-        Mirrors ``_wire_shared_sigma_buffers``. ``set_fei`` writes to one
-        shared buffer per dim; aliased module ``_fei`` buffers see the
-        update through shared storage. The aliasing-recovery dance from
-        ``set_sigma`` (rebind whenever shape or device drift breaks the
-        identity) applies here too — ``Module._apply`` (``.to(device)``)
-        independently reallocates buffers and silently breaks the link if
-        we don't identity-check. See ``[[project_set_sigma_aliasing_bug]]``.
-        """
-        fei_loras: List[torch.nn.Module] = []
-        by_dim: Dict[int, List[torch.nn.Module]] = {}
-        for lora in self.unet_loras + self.text_encoder_loras:
-            d = int(getattr(lora, "fei_feature_dim", 0))
-            if d <= 0:
-                continue
-            if "_fei" not in lora._buffers:
-                continue
-            fei_loras.append(lora)
-            by_dim.setdefault(d, []).append(lora)
-        self._fei_aware_loras = fei_loras
-        self._fei_aware_loras_by_dim = by_dim
-        if not fei_loras:
-            self._shared_fei: Dict[int, torch.Tensor] = {}
-            return
-
-        # One shared placeholder per dim — ``set_fei`` rebinds to full-shape
-        # ``(B, dim)`` on first call.
-        self._shared_fei = {}
-        for dim, loras in by_dim.items():
-            shared_feat = loras[0]._buffers["_fei"]
-            for lora in loras:
-                lora._buffers["_fei"] = shared_feat
-            self._shared_fei[dim] = shared_feat
+        return routing_state.wire_shared_fei_buffers(self)
 
     def _wire_shared_routing_buffers(self) -> None:
-        """Alias every routing-aware module's ``_routing_weights`` buffer to
-        one network-level shared tensor.
-
-        Mirrors ``_wire_shared_sigma_buffers`` / ``_wire_shared_fei_buffers``.
-        ``StackedExpertsLoRAModule.__init__`` registers a ``(1, E)`` uniform
-        placeholder; this pass picks the first module's buffer as canonical
-        and rebinds every other module to the same object. ``set_routing_weights``
-        then updates one shared tensor per step; aliased module buffers
-        see the new gates through shared storage.
-
-        All routing-aware modules in our build share the same ``num_experts``
-        by construction (driven by ``cfg.num_experts``), so a single shared
-        tensor is enough — no per-dim split like ``_shared_fei``.
-        """
-        routing_loras: List[torch.nn.Module] = []
-        for lora in self.unet_loras + self.text_encoder_loras:
-            if "_routing_weights" not in lora._buffers:
-                continue
-            routing_loras.append(lora)
-        self._routing_aware_loras = routing_loras
-        if not routing_loras:
-            self._shared_routing_weights: Optional[torch.Tensor] = None
-            return
-
-        canonical = routing_loras[0]._buffers["_routing_weights"]
-        for lora in routing_loras:
-            lora._buffers["_routing_weights"] = canonical
-        self._shared_routing_weights = canonical
+        return routing_state.wire_shared_routing_buffers(self)
 
     def _wire_shared_content_routing_buffers(self) -> None:
-        """Alias every chimera module's ``_content_routing_weights`` buffer to
-        one shared tensor.
-
-        Parallel to :meth:`_wire_shared_freq_routing_buffers`. ContentRouter
-        broadcasts ``π_c`` once per step via direct slot assignment; aliased
-        buffers on every chimera module see the new gates through shared
-        storage. The buffer must carry the router's grad_fn (NO .detach(),
-        NO .copy_()) so ``∂L_denoise/∂π_c`` reaches the ContentRouter.
-
-        Identifies chimera modules by buffer presence (every chimera module
-        registers ``_content_routing_weights`` in ``__init__``, regardless
-        of router_source — the buffer is just dead under per-Linear mode).
-        """
-        content_loras: List[torch.nn.Module] = []
-        for lora in self.unet_loras + self.text_encoder_loras:
-            if "_content_routing_weights" not in lora._buffers:
-                continue
-            content_loras.append(lora)
-        self._content_aware_loras = content_loras
-        if not content_loras:
-            self._shared_content_routing_weights: Optional[torch.Tensor] = None
-            return
-
-        canonical = content_loras[0]._buffers["_content_routing_weights"]
-        for lora in content_loras:
-            lora._buffers["_content_routing_weights"] = canonical
-        self._shared_content_routing_weights = canonical
+        return routing_state.wire_shared_content_routing_buffers(self)
 
     def _wire_shared_freq_routing_buffers(self) -> None:
-        """Alias every chimera module's ``_freq_routing_weights`` buffer to one
-        shared tensor.
-
-        Parallel to ``_wire_shared_routing_buffers`` but on the chimera-
-        specific buffer name. FreqRouter broadcasts ``π_f`` once per step via
-        direct slot assignment; aliased buffers on every chimera module see
-        the new gates through shared storage. The buffer must carry the
-        router's grad_fn (NO .detach(), NO .copy_()) so ``∂L_denoise/∂π_f``
-        reaches the FreqRouter — same contract as
-        ``router_state._set_routing_weights``.
-        """
-        freq_loras: List[torch.nn.Module] = []
-        for lora in self.unet_loras + self.text_encoder_loras:
-            if "_freq_routing_weights" not in lora._buffers:
-                continue
-            freq_loras.append(lora)
-        self._chimera_aware_loras = freq_loras
-        if not freq_loras:
-            self._shared_freq_routing_weights: Optional[torch.Tensor] = None
-            return
-
-        canonical = freq_loras[0]._buffers["_freq_routing_weights"]
-        for lora in freq_loras:
-            lora._buffers["_freq_routing_weights"] = canonical
-        self._shared_freq_routing_weights = canonical
+        return routing_state.wire_shared_freq_routing_buffers(self)
 
     def prepare_network(self, args):
         if getattr(args, "lora_fp32_accumulation", False):
@@ -1309,30 +1156,7 @@ class LoRANetwork(torch.nn.Module):
             lora.unfuse_weight()
 
     def set_timestep_mask(self, timesteps: torch.Tensor, max_timestep: float = 1.0):
-        """Compute and set timestep-dependent rank mask on all modules."""
-        if not self.cfg.use_timestep_mask:
-            return
-
-        max_rank = self.cfg.lora_dim
-        # Reuse a single GPU-resident mask to avoid ~200 CPU→GPU transfers per step
-        mask = getattr(self, "_shared_timestep_mask", None)
-        if mask is None or mask.device != timesteps.device:
-            mask = torch.zeros(1, max_rank, device=timesteps.device)
-            self._shared_timestep_mask = mask
-            self._timestep_mask_arange = torch.arange(max_rank, device=timesteps.device)
-            for lora in self.text_encoder_loras + self.unet_loras:
-                lora._timestep_mask = mask
-
-        # Compute threshold r entirely on device — avoids GPU→CPU .item() sync and
-        # keeps the effective rank as a tensor so the mask build stays static-shape.
-        t = timesteps.float().mean()
-        frac = ((max_timestep - t) / max_timestep).clamp(min=0.0, max=1.0)
-        r = (
-            frac.pow(self.cfg.alpha_rank_scale) * (max_rank - self.cfg.min_rank)
-            + self.cfg.min_rank
-        )
-        r = r.clamp(max=float(max_rank))
-        mask.copy_((self._timestep_mask_arange < r).to(mask.dtype).unsqueeze(0))
+        return routing_state.set_timestep_mask(self, timesteps, max_timestep)
 
     def set_step_index(self, step_index: int) -> None:
         """Broadcast a hard denoising-step index to step-expert modules."""
@@ -1345,528 +1169,49 @@ class LoRANetwork(torch.nn.Module):
     def set_reft_timestep_mask(
         self, timesteps: torch.Tensor, max_timestep: float = 1.0
     ):
-        """Compute and set timestep-dependent mask on ReFT modules."""
-        if not self.cfg.use_timestep_mask:
-            return
-        refts = self.text_encoder_refts + self.unet_refts
-        if not refts:
-            return
-        reft_dim = self.cfg.reft_dim
-
-        mask = getattr(self, "_shared_reft_mask", None)
-        if mask is None or mask.device != timesteps.device:
-            mask = torch.zeros(1, reft_dim, device=timesteps.device)
-            self._shared_reft_mask = mask
-            self._reft_mask_arange = torch.arange(reft_dim, device=timesteps.device)
-            for reft in refts:
-                reft._timestep_mask = mask
-
-        t = timesteps.float().mean()
-        frac = ((max_timestep - t) / max_timestep).clamp(min=0.0, max=1.0)
-        r = frac.pow(self.cfg.alpha_rank_scale) * (reft_dim - 1) + 1
-        r = r.clamp(max=float(reft_dim))
-        mask.copy_((self._reft_mask_arange < r).to(mask.dtype).unsqueeze(0))
+        return routing_state.set_reft_timestep_mask(self, timesteps, max_timestep)
 
     def clear_timestep_mask(self):
-        """Restore full-rank masks on every LoRA / ReFT module.
-
-        Each module's ``_timestep_mask`` is a Tensor by construction (default
-        all-ones buffer at init, rebound to the shared live-updated mask when
-        ``set_timestep_mask`` runs). Clearing fills the shared masks with ones
-        in place — modules that were rebound immediately see the neutral mask
-        via the shared reference; modules with local defaults are already
-        neutral. Never set to None: the always-a-Tensor invariant is what
-        keeps the adapter forward free of a None-vs-Tensor guard under
-        ``torch.compile``.
-        """
-        shared = getattr(self, "_shared_timestep_mask", None)
-        if shared is not None:
-            shared.fill_(1.0)
-        shared_reft = getattr(self, "_shared_reft_mask", None)
-        if shared_reft is not None:
-            shared_reft.fill_(1.0)
+        return routing_state.clear_timestep_mask(self)
 
     def set_sigma(self, sigmas: torch.Tensor) -> None:
-        """Stash per-sample σ on every HydraLoRA module whose router accepts σ.
-
-        Mirrors ``set_timestep_mask`` — one call per training step. σ and the
-        sinusoidal-features tensor are stored in network-level shared buffers
-        whose storage is aliased into every sigma-aware module's ``_sigma`` /
-        ``_sigma_features`` (see ``_wire_shared_sigma_buffers``), so the
-        update is one in-place ``copy_`` per shared tensor instead of a
-        per-module Python loop.
-
-        IMPORTANT: write in place rather than rebinding. Inductor captures
-        the buffers as static cudagraph inputs and re-records the whole graph
-        if the data pointer changes — rebinding every step caused per-step
-        re-record under ``compile_inductor_mode=reduce-overhead``
-        (cudagraph_trees log: "static input data pointer changed"). Pointer
-        only changes on the first call (placeholder → full-shape) and on a
-        rare batch-shape change; both re-alias every module to the new tensor.
-
-        Aliasing-recovery: ``Module._apply`` (i.e. ``network.to(device)``)
-        reallocates each registered buffer independently, breaking the
-        identity established by ``_wire_shared_sigma_buffers``. The
-        ``self._shared_sigma`` Python attribute is *not* touched by
-        ``Module._apply`` (it isn't a registered buffer), so post-``.to(...)``
-        we may have a stale CPU shared tensor while the modules' ``_sigma``
-        buffers all live on GPU and are no longer aliased to anything. Detect
-        this on every call (cheap identity check against the canonical module's
-        live buffer) and force the rebind path to re-establish aliasing —
-        otherwise the in-place ``copy_`` writes to the orphaned CPU tensor
-        and every module silently keeps reading its own zero-initialized
-        ``_sigma``. This bug only manifests at B=1 (placeholder shape (1,)
-        matches runtime shape so the historical rebind path was skipped),
-        which is why σ-band partition and σ-feature router were both dead at
-        ``batch_size=1`` despite the unit tests passing in eager mode.
-        """
-        sigmas = sigmas.detach()
-        self._last_sigma = sigmas
-        # Either path needs per-module ``_sigma``: σ-feature concat router
-        # (sigma_feature_dim>0) and hard σ-band expert partition. Skip the
-        # propagation entirely when neither is configured.
-        if not (
-            self.cfg.router_source == "sigma"
-            or self.cfg.specialize_experts_by_sigma_buckets
-        ):
-            return
-        sigma_loras = self._sigma_aware_loras
-        if not sigma_loras:
-            return
-
-        # Canonical = the live buffer on the first sigma-aware module. After
-        # ``network.to(device)`` this is the GPU-allocated tensor; before any
-        # device move it's still the CPU placeholder from
-        # ``_wire_shared_sigma_buffers``.
-        canonical = sigma_loras[0]._buffers["_sigma"]
-        cast = sigmas.to(dtype=canonical.dtype, device=canonical.device)
-        # Rebind whenever (a) the shared attribute lost identity with the
-        # canonical (e.g. ``.to()`` rebinding broke aliasing) or (b) the
-        # shape changed (placeholder → full batch). Both branches need to
-        # re-alias every module so the next call's fast path actually
-        # propagates.
-        needs_rebind = (
-            self._shared_sigma is not canonical
-            or canonical.shape != cast.shape
-        )
-        if needs_rebind:
-            new_sigma = cast.detach().clone()
-            for lora in sigma_loras:
-                lora._buffers["_sigma"] = new_sigma
-            self._shared_sigma = new_sigma
-            shared_sigma = new_sigma
-        else:
-            canonical.copy_(cast)
-            shared_sigma = canonical
-
-        for dim, loras in self._sigma_aware_loras_by_dim.items():
-            canonical_feat = loras[0]._buffers["_sigma_features"]
-            feat = _sigma_sinusoidal_features(shared_sigma, dim).detach()
-            cast_feat = feat.to(
-                dtype=canonical_feat.dtype, device=canonical_feat.device
-            )
-            feat_needs_rebind = (
-                self._shared_sigma_features.get(dim) is not canonical_feat
-                or canonical_feat.shape != cast_feat.shape
-            )
-            if feat_needs_rebind:
-                new_feat = cast_feat.clone()
-                for lora in loras:
-                    lora._buffers["_sigma_features"] = new_feat
-                self._shared_sigma_features[dim] = new_feat
-            else:
-                canonical_feat.copy_(cast_feat)
+        return routing_state.set_sigma(self, sigmas)
 
     def clear_sigma(self) -> None:
-        """Reset cached σ to zeros.
-
-        Never set to None: ``_sigma`` stays a Tensor so the unconditional
-        sinusoidal path in ``_compute_gate`` has no None-vs-Tensor guard to
-        recompile on under ``torch.compile``. Used in eval / validation
-        and by inference teardown (``clear_hydra_sigma``). Zero in place to
-        keep the cudagraph data pointer stable (see ``set_sigma`` note).
-
-        Like ``set_sigma``, must operate on the *live* per-module buffer —
-        ``Module._apply`` (``.to(device)``) breaks the init-time aliasing,
-        and ``self._shared_sigma`` may then point at an orphaned CPU tensor
-        whose zeroing wouldn't reach any module. Zero the canonical module
-        buffer instead and re-establish aliasing if it was broken.
-        """
-        self._last_sigma = None
-        if not self._sigma_aware_loras:
-            return
-        sigma_loras = self._sigma_aware_loras
-        canonical = sigma_loras[0]._buffers["_sigma"]
-        if self._shared_sigma is not canonical:
-            for lora in sigma_loras:
-                lora._buffers["_sigma"] = canonical
-            self._shared_sigma = canonical
-        canonical.zero_()
-        for dim, loras in self._sigma_aware_loras_by_dim.items():
-            canonical_feat = loras[0]._buffers["_sigma_features"]
-            if self._shared_sigma_features.get(dim) is not canonical_feat:
-                for lora in loras:
-                    lora._buffers["_sigma_features"] = canonical_feat
-                self._shared_sigma_features[dim] = canonical_feat
-            zero_feat = _sigma_sinusoidal_features(canonical, dim)
-            cast_feat = zero_feat.to(
-                dtype=canonical_feat.dtype, device=canonical_feat.device
-            )
-            if canonical_feat.shape == cast_feat.shape:
-                canonical_feat.copy_(cast_feat)
-            else:
-                new_feat = cast_feat.detach().clone()
-                for lora in loras:
-                    lora._buffers["_sigma_features"] = new_feat
-                self._shared_sigma_features[dim] = new_feat
+        return routing_state.clear_sigma(self)
 
     def set_fei(self, fei: torch.Tensor) -> None:
-        """Stash per-sample FEI ``[B, fei_dim]`` on every FEI-aware module.
-
-        Parallel to ``set_sigma`` — one call per training/inference step.
-        Same shared-buffer aliasing recovery: identity-check ``self._shared_fei``
-        against the canonical module's live buffer, rebind on shape change
-        or after ``Module._apply`` orphans the link
-        (``[[project_set_sigma_aliasing_bug]]``).
-
-        ``fei`` must be ``(B, fei_feature_dim)`` matching
-        ``cfg.fei_feature_dim`` (default 2 for the simplex). Caller is the
-        train/inference loop running ``library.runtime.fei.compute_fei_2band``
-        on ``z_t`` once per step.
-
-        When ``cfg.route_per_layer=False`` and a ``GlobalRouter`` is wired,
-        the router fires on the fresh FEI and its gates are broadcast to
-        every routing-aware module via ``set_routing_weights`` in the same
-        call — one entry point for the FeRA-style global-router path.
-        """
-        fei = fei.detach()
-        # Fast-path: if there are no per-Linear FEI consumers, no global
-        # router, and no chimera FreqRouter needing FEI, nothing to do.
-        has_per_layer_fei = bool(getattr(self, "_fei_aware_loras", None))
-        global_fei_router = (
-            self.global_router
-            if (
-                self.global_router is not None
-                and self.cfg.router_source == "fei"
-                and not self.cfg.route_per_layer
-            )
-            else None
-        )
-        chimera_freq_router = (
-            self.freq_router
-            if (
-                getattr(self, "freq_router", None) is not None
-                and getattr(self, "_chimera_aware_loras", None)
-            )
-            else None
-        )
-        if not (
-            has_per_layer_fei
-            or global_fei_router is not None
-            or chimera_freq_router is not None
-        ):
-            return
-        if not (
-            self.use_fei_router
-            or global_fei_router is not None
-            or chimera_freq_router is not None
-        ):
-            return
-
-        # Per-layer FEI broadcast (legacy path — FEI-on-Hydra Phase 1).
-        if has_per_layer_fei:
-            # Group loras by their feature dim — every fei-aware module
-            # currently in our network shares the same dim (cfg-level), but
-            # the loop is robust to a future per-layer dim override.
-            for dim, loras in self._fei_aware_loras_by_dim.items():
-                canonical = loras[0]._buffers["_fei"]
-                cast = fei.to(dtype=canonical.dtype, device=canonical.device)
-                if cast.dim() == 1:
-                    cast = cast.unsqueeze(0)
-                if cast.shape[-1] != dim:
-                    raise ValueError(
-                        f"set_fei: fei.shape[-1]={cast.shape[-1]} != fei_feature_dim={dim}"
-                    )
-                current_shared = self._shared_fei.get(dim)
-                needs_rebind = (
-                    current_shared is not canonical
-                    or canonical.shape != cast.shape
-                )
-                if needs_rebind:
-                    new_fei = cast.detach().clone()
-                    for lora in loras:
-                        lora._buffers["_fei"] = new_fei
-                    self._shared_fei[dim] = new_fei
-                else:
-                    canonical.copy_(cast)
-
-        # Global router (FeRA-style): fire on fresh FEI and broadcast gates.
-        # Router runs WITH grad so the autograd path ``L_denoise → y_t →
-        # α_{t,m} → g_φ`` (FeRA eq. 6-7, 11) reaches the GlobalRouter params.
-        # ``set_routing_weights`` reassigns each expert module's buffer slot
-        # to the live ``gates`` tensor (no detach, no in-place copy).
-        if global_fei_router is not None:
-            gates = global_fei_router(fei)
-            self.set_routing_weights(gates)
-
-        # ChimeraHydra FreqRouter: input is concat(FEI, sinusoidal-σ-features).
-        # σ already arrived through ``set_sigma`` (which fires before
-        # ``set_fei`` in ``apply_router_conditioning``); the freq router lives
-        # at network level and computes its features fresh each step rather
-        # than relying on per-module shared σ-feature buffers (chimera modules
-        # are built with ``sigma_feature_dim=0`` since the freq router owns
-        # the σ axis exclusively).
-        if chimera_freq_router is not None:
-            sigma = self._last_sigma
-            if sigma is None:
-                raise RuntimeError(
-                    "ChimeraHydra FreqRouter requires set_sigma to fire before "
-                    "set_fei within the same step (apply_router_conditioning "
-                    "preserves this order — check custom call sites)."
-                )
-            sigma_dim = int(self.cfg.sigma_feature_dim)
-            sigma_feat = _sigma_sinusoidal_features(sigma, sigma_dim)
-            # Match the FEI tensor's device/dtype and batch axis. Both should
-            # share the same B by construction (one σ per sample, one FEI per
-            # sample), so a straight cat is correct.
-            fei_cast = fei.to(device=sigma_feat.device, dtype=sigma_feat.dtype)
-            if fei_cast.dim() == 1:
-                fei_cast = fei_cast.unsqueeze(0)
-            router_in = torch.cat([fei_cast, sigma_feat], dim=-1)
-            freq_gates = chimera_freq_router(router_in)
-            self.set_freq_routing_weights(freq_gates)
+        return routing_state.set_fei(self, fei)
 
     def clear_fei(self) -> None:
-        """Reset cached FEI to zeros without rebinding pointers.
-
-        Same in-place-zero pattern as ``clear_sigma`` — keeps cudagraph
-        data pointers stable. Re-establishes aliasing if ``Module._apply``
-        broke it since the last call.
-        """
-        if not getattr(self, "_fei_aware_loras", None):
-            return
-        for dim, loras in self._fei_aware_loras_by_dim.items():
-            canonical = loras[0]._buffers["_fei"]
-            current_shared = self._shared_fei.get(dim)
-            if current_shared is not canonical:
-                for lora in loras:
-                    lora._buffers["_fei"] = canonical
-                self._shared_fei[dim] = canonical
-            canonical.zero_()
+        return routing_state.clear_fei(self)
 
     def set_routing_weights(self, weights: torch.Tensor) -> None:
-        """Broadcast a ``(B, E)`` gate tensor to every routing-aware module.
-
-        Called either:
-          * Internally by ``set_fei`` when ``cfg.route_per_layer=False`` and
-            ``cfg.router_source="fei"`` — the GlobalRouter fires on the
-            fresh FEI and its output is broadcast here.
-          * Externally by future ``"sigma"`` global-router paths /
-            inference callers needing to push pre-computed gates.
-
-        Assigns the SAME live ``weights`` tensor reference to every routing-
-        aware module's ``_routing_weights`` buffer slot (no detach, no in-
-        place copy). This is what gives the GlobalRouter its gradient path:
-        ``L_denoise`` backprop flows through ``y_t = Σ α_{t,m} E_m(z_t)``
-        (FeRA eq. 7) into ``α``, then through the assigned buffer reads
-        into ``g_φ``'s parameters. The cudagraph-pointer-stability story is
-        intentionally traded away here — gates are a tiny ``(B, E)`` tensor
-        and the autograd path is what makes the router train at all.
-        """
-        if not getattr(self, "_routing_aware_loras", None):
-            return
-        routing_loras = self._routing_aware_loras
-        canonical_buf = routing_loras[0]._buffers["_routing_weights"]
-        w = weights.to(dtype=canonical_buf.dtype, device=canonical_buf.device)
-        if w.dim() == 1:
-            w = w.unsqueeze(0)
-        for lora in routing_loras:
-            lora._routing_weights = w
-        self._shared_routing_weights = w
+        return routing_state.set_routing_weights(self, weights)
 
     def clear_routing_weights(self) -> None:
-        """Reset gates to uniform ``1/E`` in place.
-
-        Called between training steps (or by inference teardown). Pointer
-        stays stable for cudagraph capture; re-aliases if ``Module._apply``
-        broke the link.
-        """
-        if not getattr(self, "_routing_aware_loras", None):
-            return
-        routing_loras = self._routing_aware_loras
-        canonical = routing_loras[0]._buffers["_routing_weights"]
-        if self._shared_routing_weights is not canonical:
-            for lora in routing_loras:
-                lora._buffers["_routing_weights"] = canonical
-            self._shared_routing_weights = canonical
-        E = int(canonical.shape[-1])
-        canonical.fill_(1.0 / max(E, 1))
+        return routing_state.clear_routing_weights(self)
 
     def set_crossattn_routing(self, crossattn_emb: torch.Tensor) -> None:
-        """Fire the network-level GlobalRouter on a pooled text vector.
-
-        Used when ``cfg.router_source="crossattn_emb"`` (route_per_layer=False).
-        ``crossattn_emb`` is the post-LLM-adapter text feature tensor — either
-        ``(B, L, D)`` (raw, the GlobalRouter pools) or ``(B, D)`` (pre-pooled).
-        No-op when no crossattn GlobalRouter is wired.
-
-        Router runs WITH grad so ``L_denoise → y_t → α → GlobalRouter params``
-        is intact; broadcast through :meth:`set_routing_weights` (the same
-        ``_routing_weights`` slot the σ/FEI global router writes — the Hydra /
-        stacked-experts modules need no crossattn-specific buffer).
-
-        Call BEFORE each forward, separately for cond / uncond branches at
-        inference — gates depend on the caption, so the two branches route
-        differently (parallel to chimera's ``set_content``).
-        """
-        if self.global_router is None or not getattr(
-            self, "use_crossattn_router", False
-        ):
-            return
-        gates = self.global_router(crossattn_emb)
-        self.set_routing_weights(gates)
+        return routing_state.set_crossattn_routing(self, crossattn_emb)
 
     def set_freq_routing_weights(self, weights: torch.Tensor) -> None:
-        """Broadcast ``π_f`` from the FreqRouter to every chimera module.
-
-        Direct slot assignment (NO .detach(), NO .copy_()) so the buffer
-        carries the router's grad_fn — same contract as
-        ``set_routing_weights`` for the GlobalRouter. The chimera module's
-        ``_compute_gate`` reads ``_freq_routing_weights`` to build the
-        ``[π_c | π_f]`` concatenation, so the autograd path
-        ``L_denoise → out_f → π_f → FreqRouter params`` is intact.
-        """
-        if not getattr(self, "_chimera_aware_loras", None):
-            return
-        freq_loras = self._chimera_aware_loras
-        canonical_buf = freq_loras[0]._buffers["_freq_routing_weights"]
-        w = weights.to(dtype=canonical_buf.dtype, device=canonical_buf.device)
-        if w.dim() == 1:
-            w = w.unsqueeze(0)
-        for lora in freq_loras:
-            lora._freq_routing_weights = w
-        self._shared_freq_routing_weights = w
+        return routing_state.set_freq_routing_weights(self, weights)
 
     def clear_freq_routing_weights(self) -> None:
-        """Reset chimera freq gates to uniform ``1/K_f`` in place."""
-        if not getattr(self, "_chimera_aware_loras", None):
-            return
-        freq_loras = self._chimera_aware_loras
-        canonical = freq_loras[0]._buffers["_freq_routing_weights"]
-        if self._shared_freq_routing_weights is not canonical:
-            for lora in freq_loras:
-                lora._buffers["_freq_routing_weights"] = canonical
-            self._shared_freq_routing_weights = canonical
-        K_f = int(canonical.shape[-1])
-        canonical.fill_(1.0 / max(K_f, 1))
+        return routing_state.clear_freq_routing_weights(self)
 
     def set_content(self, crossattn_emb: torch.Tensor) -> None:
-        """Fire the network-level ContentRouter on a pooled text vector.
-
-        ``crossattn_emb`` is the post-LLM-adapter text feature tensor —
-        either ``(B, L, D)`` (raw, this method pools) or ``(B, D)``
-        (pre-pooled by the caller). No-op when the network has no
-        ContentRouter (chimera off, or ``content_router_source="input"``).
-
-        Router runs WITH grad so ``L_denoise → out_c → π_c → ContentRouter
-        params`` is intact. Slot-assigned through
-        :meth:`set_content_routing_weights`, same broadcast contract as
-        ``set_freq_routing_weights`` / ``set_routing_weights``.
-        """
-        if self.content_router is None:
-            return
-        if not getattr(self, "_content_aware_loras", None):
-            return
-        gates = self.content_router(crossattn_emb)
-        self.set_content_routing_weights(gates)
+        return routing_state.set_content(self, crossattn_emb)
 
     def set_content_routing_weights(self, weights: torch.Tensor) -> None:
-        """Broadcast ``π_c`` from the ContentRouter to every chimera module.
-
-        Direct slot assignment (NO .detach(), NO .copy_()) so the buffer
-        carries the router's grad_fn — same contract as
-        :meth:`set_freq_routing_weights`. Externally callable for inference
-        paths that pre-compute gates (e.g. fixed per-prompt content slot
-        debugging) without firing the MLP every step.
-        """
-        if not getattr(self, "_content_aware_loras", None):
-            return
-        content_loras = self._content_aware_loras
-        canonical_buf = content_loras[0]._buffers["_content_routing_weights"]
-        w = weights.to(dtype=canonical_buf.dtype, device=canonical_buf.device)
-        if w.dim() == 1:
-            w = w.unsqueeze(0)
-        for lora in content_loras:
-            lora._content_routing_weights = w
-        self._shared_content_routing_weights = w
+        return routing_state.set_content_routing_weights(self, weights)
 
     def clear_content_routing_weights(self) -> None:
-        """Reset chimera content gates to uniform ``1/K_c`` in place."""
-        if not getattr(self, "_content_aware_loras", None):
-            return
-        content_loras = self._content_aware_loras
-        canonical = content_loras[0]._buffers["_content_routing_weights"]
-        if self._shared_content_routing_weights is not canonical:
-            for lora in content_loras:
-                lora._buffers["_content_routing_weights"] = canonical
-            self._shared_content_routing_weights = canonical
-        K_c = int(canonical.shape[-1])
-        canonical.fill_(1.0 / max(K_c, 1))
+        return routing_state.clear_content_routing_weights(self)
 
     def clear_step_caches(self) -> None:
-        """Drop per-step tensor references (``_last_gate``) and invalidate
-        memoized router-stats caches between training steps.
-
-        Called unconditionally from the training loop before each forward,
-        for two reasons:
-
-        (1) ``_last_gate`` caches a tensor produced inside the compiled
-        forward — under ``torch.compile(mode='reduce-overhead')`` that tensor
-        lives in the inductor cudagraph memory pool. Holding a Python
-        reference across the step boundary prevents ``cudagraph_trees`` from
-        reclaiming pool memory and silently demotes the run to the eager
-        fallback path. Call must precede ``cudagraph_mark_step_begin()``.
-
-        (2) ``_router_stats_cache`` / ``_chimera_router_stats_cache`` memoize
-        per-step router diagnostics so the progress-bar postfix and the TB
-        logging layer share one D2H sync. Without per-step invalidation
-        these freeze at their first computed values — and on runs without
-        cudagraph mode (``_cudagraph_mark_step=False``) the invalidation has
-        no other trigger, so TB shows the same usage/entropy on every log
-        step.
-
-        ``_sigma`` is intentionally *not* cleared: it's rebound by
-        ``set_sigma`` before every forward, the caller passes a tensor from
-        outside the compiled region (the flow-matching sampler's ``timesteps``,
-        not a pool-allocated intermediate), and keeping it a Tensor at all
-        times is what lets the adapter ``_compute_gate`` drop the None-vs-
-        Tensor guard under ``torch.compile``.
-
-        Safe to call unconditionally — consumers (balance loss, router stats)
-        read ``_last_gate`` only within the step that wrote it.
-        """
-        self._last_sigma = None
-        self._router_stats_cache = None
-        self._chimera_router_stats_cache = None
-        for lora in self.unet_loras + self.text_encoder_loras:
-            if hasattr(lora, "_last_gate"):
-                lora._last_gate = None
-        # Drop the GlobalRouter's per-step transients for the same reason —
-        # ``_last_gates`` / ``_last_input`` are detached tensors that may live
-        # in the inductor cudagraph memory pool; holding a Python reference
-        # across the step boundary blocks pool reclamation.
-        if self.global_router is not None:
-            self.global_router._last_gates = None
-            self.global_router._last_input = None
-            self.global_router._last_fei = None
-        # Same treatment for the chimera FreqRouter.
-        if getattr(self, "freq_router", None) is not None:
-            self.freq_router._last_gates = None
-            self.freq_router._last_input = None
-        # …and the chimera ContentRouter (network-level content-pool variant).
-        if getattr(self, "content_router", None) is not None:
-            self.content_router._last_gates = None
-            self.content_router._last_input = None
+        return routing_state.clear_step_caches(self)
 
     def step_balance_loss_warmup(self, global_step: int, max_train_steps: int) -> None:
         return router_stats.step_balance_loss_warmup(self, global_step, max_train_steps)
