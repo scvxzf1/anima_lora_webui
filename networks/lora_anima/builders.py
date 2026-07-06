@@ -9,7 +9,9 @@ import torch
 
 from networks import ModuleCreationContext, NETWORK_REGISTRY
 from networks.lora_anima.config import LoRANetworkCfg
+from networks.lora_anima.loading import _parse_reft_layers
 from networks.lora_anima.targeting import collect_lora_target_candidates
+from networks.register_injection import RegisterInjector
 from networks.lora_modules import (
     ChimeraHydraInferenceModule,
     ChimeraHydraLoRAModule,
@@ -17,6 +19,7 @@ from networks.lora_modules import (
     LoRAModule,
     OrthoHydraLoRAModule,
     OrthoLoRAModule,
+    ReFTModule,
     StackedExpertsLoRAModule,
 )
 
@@ -330,3 +333,195 @@ def create_lora_modules(
         loras.append(lora)
 
     return loras, skipped
+
+
+def create_reft_modules(
+    unet,
+    *,
+    cfg: LoRANetworkCfg,
+    multiplier: float,
+    logger: logging.Logger,
+):
+    unet_refts = []
+    if not cfg.add_reft:
+        return [], unet_refts
+
+    dit_blocks = getattr(unet, "blocks", None)
+    if dit_blocks is None or len(dit_blocks) == 0:
+        raise ValueError(
+            "add_reft=True but DiT has no .blocks attribute to wrap. "
+            "Block-level ReFT requires a transformer with a `blocks` ModuleList."
+        )
+    num_blocks = len(dit_blocks)
+    selected_indices = _parse_reft_layers(cfg.reft_layers, num_blocks)
+
+    reft_alpha_value = cfg.reft_alpha if cfg.reft_alpha is not None else cfg.alpha
+    for idx in selected_indices:
+        block = dit_blocks[idx]
+        block_embed_dim = getattr(block, "x_dim", None)
+        if block_embed_dim is None:
+            raise ValueError(
+                f"Block {idx} ({type(block).__name__}) has no `x_dim`; "
+                "cannot infer embed_dim for ReFT."
+            )
+        reft_name = f"reft_unet_blocks_{idx}"
+        reft = ReFTModule(
+            reft_name,
+            block,
+            embed_dim=block_embed_dim,
+            multiplier=multiplier,
+            reft_dim=cfg.reft_dim,
+            alpha=reft_alpha_value,
+            dropout=cfg.dropout,
+            module_dropout=cfg.module_dropout,
+        )
+        reft.original_name = f"blocks.{idx}"
+        unet_refts.append(reft)
+    logger.info(
+        f"create ReFT for Anima DiT: {len(unet_refts)}/{num_blocks} "
+        f"blocks (reft_dim={cfg.reft_dim}, layers={cfg.reft_layers!r})"
+    )
+    return [], unet_refts
+
+
+def create_global_router(
+    cfg: LoRANetworkCfg,
+    *,
+    router_class,
+    crossattn_emb_dim: int,
+    routing_aware_count: int,
+    logger: logging.Logger,
+):
+    if cfg.use_moe_style is False or cfg.route_per_layer:
+        return None, False
+
+    router_layer_norm = False
+    if cfg.router_source == "fei":
+        router_input_dim = int(cfg.fei_feature_dim)
+    elif cfg.router_source == "sigma":
+        router_input_dim = int(cfg.sigma_feature_dim)
+    elif cfg.router_source == "crossattn_emb":
+        router_input_dim = int(crossattn_emb_dim)
+        router_layer_norm = True
+    else:
+        router_input_dim = 0
+    if router_input_dim <= 0 or cfg.num_experts <= 1:
+        return None, False
+
+    global_router = router_class(
+        input_dim=router_input_dim,
+        num_experts=int(cfg.num_experts),
+        hidden_dim=int(cfg.router_hidden_dim),
+        tau=float(cfg.router_tau),
+        apply_layer_norm=router_layer_norm,
+    )
+    use_crossattn_router = cfg.router_source == "crossattn_emb"
+    logger.info(
+        f"GlobalRouter: source={cfg.router_source!r}, "
+        f"input_dim={router_input_dim}, "
+        f"num_experts={cfg.num_experts}, "
+        f"hidden={cfg.router_hidden_dim}, tau={cfg.router_tau:.2f}, "
+        f"LN={router_layer_norm}, "
+        f"routing-aware modules={routing_aware_count}"
+    )
+    return global_router, use_crossattn_router
+
+
+def create_chimera_routers(
+    cfg: LoRANetworkCfg,
+    *,
+    freq_router_class,
+    content_router_class,
+    crossattn_emb_dim: int,
+    chimera_count: int,
+    logger: logging.Logger,
+):
+    freq_router = None
+    content_router = None
+    use_fei_router = False
+    use_content_router = False
+
+    if cfg.use_chimera_hydra and chimera_count:
+        freq_input_dim = int(cfg.fei_feature_dim) + int(cfg.sigma_feature_dim)
+        if freq_input_dim <= 0:
+            raise ValueError(
+                "use_chimera_hydra=True requires fei_feature_dim + "
+                f"sigma_feature_dim > 0 for the FreqRouter input (got "
+                f"FEI={cfg.fei_feature_dim}, sigma={cfg.sigma_feature_dim})."
+            )
+        freq_router = freq_router_class(
+            input_dim=freq_input_dim,
+            num_freq_experts=int(cfg.num_experts_freq),
+            hidden_dim=int(cfg.router_hidden_dim),
+            tau=float(cfg.router_tau),
+            init_std=float(cfg.freq_router_init_std),
+            fei_dim=int(cfg.fei_feature_dim),
+            sigma_dim=int(cfg.sigma_feature_dim),
+            apply_layer_norm=bool(cfg.freq_router_layer_norm),
+        )
+        use_fei_router = True
+        logger.info(
+            f"ChimeraHydra FreqRouter: input_dim={freq_input_dim} "
+            f"(FEI={cfg.fei_feature_dim} + sigma={cfg.sigma_feature_dim}), "
+            f"K_f={cfg.num_experts_freq}, hidden={cfg.router_hidden_dim}, "
+            f"tau={cfg.router_tau:.2f}, init_std={cfg.freq_router_init_std}, "
+            f"LN={freq_router.apply_layer_norm}, "
+            f"chimera modules={chimera_count}"
+        )
+
+    if (
+        cfg.use_chimera_hydra
+        and cfg.content_router_source == "crossattn_emb"
+        and chimera_count
+    ):
+        content_router = content_router_class(
+            input_dim=int(crossattn_emb_dim),
+            num_content_experts=int(cfg.num_experts_content),
+            hidden_dim=int(cfg.router_hidden_dim),
+            tau=float(cfg.router_tau),
+            init_std=float(cfg.content_router_init_std),
+            apply_layer_norm=bool(cfg.content_router_layer_norm),
+        )
+        use_content_router = True
+        logger.info(
+            f"ChimeraHydra ContentRouter: input_dim={crossattn_emb_dim} "
+            f"(pooled crossattn_emb), K_c={cfg.num_experts_content}, "
+            f"hidden={cfg.router_hidden_dim}, tau={cfg.router_tau:.2f}, "
+            f"init_std={cfg.content_router_init_std}, "
+            f"LN={cfg.content_router_layer_norm}, "
+            f"chimera modules={chimera_count} "
+            "-- per-Linear content router disabled"
+        )
+
+    return freq_router, content_router, use_fei_router, use_content_router
+
+
+def create_register_injector(network, unet, *, logger: logging.Logger):
+    cfg = network.cfg
+    extra_seq_tokens = int(cfg.num_registers)
+    if cfg.num_registers <= 0:
+        return None, None, extra_seq_tokens
+
+    n_blocks = len(unet.blocks)
+    if not (0 <= cfg.register_insert_block < n_blocks):
+        raise ValueError(
+            f"register_insert_block must be in [0, {n_blocks}), "
+            f"got {cfg.register_insert_block}"
+        )
+    register_tokens = torch.nn.Parameter(
+        torch.randn(cfg.num_registers, int(unet.model_channels))
+        * cfg.register_init_std
+    )
+    register_injector = RegisterInjector(
+        num_registers=cfg.num_registers,
+        insert_block=cfg.register_insert_block,
+        get_scaled_tokens=lambda: register_tokens * network.multiplier,
+    )
+    logger.info(
+        f"Register tokens: K={cfg.num_registers}, "
+        f"insert_block={cfg.register_insert_block}, "
+        f"lr scale x{cfg.register_lr_scale:g}, "
+        f"init_std={cfg.register_init_std:g}. "
+        "Checkpoint stays kept-live at inference."
+    )
+    return register_tokens, register_injector, extra_seq_tokens

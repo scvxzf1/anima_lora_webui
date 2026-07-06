@@ -11,7 +11,6 @@ import torch
 from library.log import setup_logging
 from library.training.metrics import MetricContext
 from networks.lora_anima.config import LoRANetworkCfg
-from networks.lora_anima.loading import _parse_reft_layers
 from networks.lora_anima.persistence import (
     load_lora_network_weights,
     reabsorb_baked_inv_scale,
@@ -20,16 +19,12 @@ from networks.lora_anima.persistence import (
 )
 from networks.lora_anima import builders, optimizer_groups, router_stats, routing_state
 from networks.lora_anima.targeting import compile_lora_target_patterns
-from networks.register_injection import RegisterInjector
 from networks.lora_modules import (
     ChimeraHydraInferenceModule,
     ChimeraHydraLoRAModule,
-    HydraLoRAModule,
     LoRAModule,
     OrthoHydraLoRAModule,
     OrthoLoRAModule,
-    ReFTModule,
-    StackedExpertsLoRAModule,
 )
 
 setup_logging()
@@ -418,10 +413,6 @@ class LoRANetwork(torch.nn.Module):
         alpha = cfg.alpha
         lora_dim = cfg.lora_dim
         train_llm_adapter = cfg.train_llm_adapter
-        add_reft = cfg.add_reft
-        reft_dim = cfg.reft_dim
-        reft_alpha = cfg.reft_alpha
-        reft_layers = cfg.reft_layers
 
         # Unified routing scope. ``cfg.router_targets`` is the single regex
         # that governs which Linears participate in routed adaptation (Hydra
@@ -595,44 +586,12 @@ class LoRANetwork(torch.nn.Module):
         # Create ReFT modules on the DiT residual stream (block outputs), following
         # Wu et al. (2024) §3.3 — one intervention per selected block, not per
         # internal Linear. Selection is controlled by ``reft_layers``.
-        self.unet_refts: List[ReFTModule] = []
-        self.text_encoder_refts: List[ReFTModule] = []
-        if add_reft:
-            dit_blocks = getattr(unet, "blocks", None)
-            if dit_blocks is None or len(dit_blocks) == 0:
-                raise ValueError(
-                    "add_reft=True but DiT has no .blocks attribute to wrap. "
-                    "Block-level ReFT requires a transformer with a `blocks` ModuleList."
-                )
-            num_blocks = len(dit_blocks)
-            selected_indices = _parse_reft_layers(reft_layers, num_blocks)
-
-            reft_alpha_value = reft_alpha if reft_alpha is not None else alpha
-            for idx in selected_indices:
-                block = dit_blocks[idx]
-                block_embed_dim = getattr(block, "x_dim", None)
-                if block_embed_dim is None:
-                    raise ValueError(
-                        f"Block {idx} ({type(block).__name__}) has no `x_dim`; "
-                        "cannot infer embed_dim for ReFT."
-                    )
-                reft_name = f"reft_unet_blocks_{idx}"
-                reft = ReFTModule(
-                    reft_name,
-                    block,
-                    embed_dim=block_embed_dim,
-                    multiplier=multiplier,
-                    reft_dim=reft_dim,
-                    alpha=reft_alpha_value,
-                    dropout=dropout,
-                    module_dropout=module_dropout,
-                )
-                reft.original_name = f"blocks.{idx}"
-                self.unet_refts.append(reft)
-            logger.info(
-                f"create ReFT for Anima DiT: {len(self.unet_refts)}/{num_blocks} "
-                f"blocks (reft_dim={reft_dim}, layers={reft_layers!r})"
-            )
+        self.text_encoder_refts, self.unet_refts = builders.create_reft_modules(
+            unet,
+            cfg=cfg,
+            multiplier=multiplier,
+            logger=logger,
+        )
 
         # assertion: no duplicate names
         names = set()
@@ -665,42 +624,18 @@ class LoRANetwork(torch.nn.Module):
         # Routing-aware modules: ``independent_A`` (StackedExperts) always
         # consume the broadcast gates; ``shared_A`` (Hydra / OrthoHydra)
         # consumes them when built with ``use_global_router=True``.
-        self.global_router: Optional[GlobalRouter] = None
+        self.global_router: Optional[GlobalRouter]
         # ``use_crossattn_router`` advertises to the train / inference call
         # sites that they must fire ``set_crossattn_routing`` with the pooled
         # text tensor each forward (parallel to chimera's ``use_content_router``
         # but broadcasting to the standard ``_routing_weights`` slot).
-        self.use_crossattn_router: bool = False
-        if cfg.use_moe_style is not False and not cfg.route_per_layer:
-            router_layer_norm = False
-            if cfg.router_source == "fei":
-                router_input_dim = int(cfg.fei_feature_dim)
-            elif cfg.router_source == "sigma":
-                router_input_dim = int(cfg.sigma_feature_dim)
-            elif cfg.router_source == "crossattn_emb":
-                # Pooled post-LLM-adapter text feature (the DiT's cross-attn
-                # K/V). LN on by default — wide T5-space variance budget.
-                router_input_dim = CROSSATTN_EMB_DIM
-                router_layer_norm = True
-            else:
-                router_input_dim = 0
-            if router_input_dim > 0 and cfg.num_experts > 1:
-                self.global_router = GlobalRouter(
-                    input_dim=router_input_dim,
-                    num_experts=int(cfg.num_experts),
-                    hidden_dim=int(cfg.router_hidden_dim),
-                    tau=float(cfg.router_tau),
-                    apply_layer_norm=router_layer_norm,
-                )
-                self.use_crossattn_router = cfg.router_source == "crossattn_emb"
-                logger.info(
-                    f"GlobalRouter: source={cfg.router_source!r}, "
-                    f"input_dim={router_input_dim}, "
-                    f"num_experts={cfg.num_experts}, "
-                    f"hidden={cfg.router_hidden_dim}, τ={cfg.router_tau:.2f}, "
-                    f"LN={router_layer_norm}, "
-                    f"routing-aware modules={len(self._routing_aware_loras)}"
-                )
+        self.global_router, self.use_crossattn_router = builders.create_global_router(
+            cfg,
+            router_class=GlobalRouter,
+            crossattn_emb_dim=CROSSATTN_EMB_DIM,
+            routing_aware_count=len(self._routing_aware_loras),
+            logger=logger,
+        )
 
         # ChimeraHydra FreqRouter: one per network, broadcasts ``π_f`` over
         # the freq pool of every chimera module. Input is
@@ -709,38 +644,7 @@ class LoRANetwork(torch.nn.Module):
         # only when at least one chimera module was actually constructed; the
         # router_targets regex can narrow the chimera class to a subset of
         # layers (others fall back to OrthoLoRA).
-        self.freq_router: Optional[FreqRouter] = None
-        if cfg.use_chimera_hydra and self._chimera_aware_loras:
-            freq_input_dim = int(cfg.fei_feature_dim) + int(cfg.sigma_feature_dim)
-            if freq_input_dim <= 0:
-                raise ValueError(
-                    "use_chimera_hydra=True requires fei_feature_dim + "
-                    f"sigma_feature_dim > 0 for the FreqRouter input (got "
-                    f"FEI={cfg.fei_feature_dim}, σ={cfg.sigma_feature_dim})."
-                )
-            self.freq_router = FreqRouter(
-                input_dim=freq_input_dim,
-                num_freq_experts=int(cfg.num_experts_freq),
-                hidden_dim=int(cfg.router_hidden_dim),
-                tau=float(cfg.router_tau),
-                init_std=float(cfg.freq_router_init_std),
-                fei_dim=int(cfg.fei_feature_dim),
-                sigma_dim=int(cfg.sigma_feature_dim),
-                apply_layer_norm=bool(cfg.freq_router_layer_norm),
-            )
-            # Force the per-step conditioning hook to fire set_fei every
-            # step (router_conditioning.py reads this flag). Chimera ties
-            # σ + FEI together for the freq router input, so the set_fei
-            # path is where we re-fire FreqRouter.
-            self.use_fei_router = True
-            logger.info(
-                f"ChimeraHydra FreqRouter: input_dim={freq_input_dim} "
-                f"(FEI={cfg.fei_feature_dim} + σ={cfg.sigma_feature_dim}), "
-                f"K_f={cfg.num_experts_freq}, hidden={cfg.router_hidden_dim}, "
-                f"τ={cfg.router_tau:.2f}, init_std={cfg.freq_router_init_std}, "
-                f"LN={self.freq_router.apply_layer_norm}, "
-                f"chimera modules={len(self._chimera_aware_loras)}"
-            )
+        self.freq_router: Optional[FreqRouter]
 
         # ChimeraHydra ContentRouter: network-level twin of FreqRouter for
         # the content pool. Built only when ``content_router_source ==
@@ -750,57 +654,27 @@ class LoRANetwork(torch.nn.Module):
         # slot. ``use_content_router=True`` advertises to the train /
         # inference call sites that they must thread ``crossattn_emb``
         # through ``set_content`` (no-op otherwise).
-        self.content_router: Optional[ContentRouter] = None
-        self.use_content_router: bool = False
-        if (
-            cfg.use_chimera_hydra
-            and cfg.content_router_source == "crossattn_emb"
-            and self._chimera_aware_loras
-        ):
-            self.content_router = ContentRouter(
-                input_dim=CROSSATTN_EMB_DIM,
-                num_content_experts=int(cfg.num_experts_content),
-                hidden_dim=int(cfg.router_hidden_dim),
-                tau=float(cfg.router_tau),
-                init_std=float(cfg.content_router_init_std),
-                apply_layer_norm=bool(cfg.content_router_layer_norm),
-            )
-            self.use_content_router = True
-            logger.info(
-                f"ChimeraHydra ContentRouter: input_dim={CROSSATTN_EMB_DIM} "
-                f"(pooled crossattn_emb), K_c={cfg.num_experts_content}, "
-                f"hidden={cfg.router_hidden_dim}, τ={cfg.router_tau:.2f}, "
-                f"init_std={cfg.content_router_init_std}, "
-                f"LN={cfg.content_router_layer_norm}, "
-                f"chimera modules={len(self._chimera_aware_loras)} "
-                "— per-Linear content router disabled"
-            )
+        self.content_router: Optional[ContentRouter]
+        (
+            self.freq_router,
+            self.content_router,
+            chimera_uses_fei_router,
+            self.use_content_router,
+        ) = builders.create_chimera_routers(
+            cfg,
+            freq_router_class=FreqRouter,
+            content_router_class=ContentRouter,
+            crossattn_emb_dim=CROSSATTN_EMB_DIM,
+            chimera_count=len(self._chimera_aware_loras),
+            logger=logger,
+        )
+        if chimera_uses_fei_router:
+            # Force the per-step conditioning hook to fire set_fei every step.
+            self.use_fei_router = True
 
-        self.register_injector: Optional[RegisterInjector] = None
-        self.extra_seq_tokens = int(cfg.num_registers)
-        if cfg.num_registers > 0:
-            n_blocks = len(unet.blocks)
-            if not (0 <= cfg.register_insert_block < n_blocks):
-                raise ValueError(
-                    f"register_insert_block must be in [0, {n_blocks}), "
-                    f"got {cfg.register_insert_block}"
-                )
-            self.register_tokens = torch.nn.Parameter(
-                torch.randn(cfg.num_registers, int(unet.model_channels))
-                * cfg.register_init_std
-            )
-            self.register_injector = RegisterInjector(
-                num_registers=cfg.num_registers,
-                insert_block=cfg.register_insert_block,
-                get_scaled_tokens=lambda: self.register_tokens * self.multiplier,
-            )
-            logger.info(
-                f"Register tokens: K={cfg.num_registers}, "
-                f"insert_block={cfg.register_insert_block}, "
-                f"lr scale x{cfg.register_lr_scale:g}, "
-                f"init_std={cfg.register_init_std:g}. "
-                "Checkpoint stays kept-live at inference."
-            )
+        self.register_tokens, self.register_injector, self.extra_seq_tokens = (
+            builders.create_register_injector(self, unet, logger=logger)
+        )
 
     def _wire_shared_sigma_buffers(self) -> None:
         return routing_state.wire_shared_sigma_buffers(self)
