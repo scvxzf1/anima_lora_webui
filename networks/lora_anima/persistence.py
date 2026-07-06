@@ -1,0 +1,181 @@
+"""Persistence helpers for the LoRA-family network facade."""
+
+import json
+import os
+import re
+from typing import Dict
+
+import torch
+
+from networks import lora_save
+from networks.registry import NETWORK_REGISTRY, NetworkSpec
+from networks.lora_anima.config import LoRANetworkCfg
+from networks.lora_anima.loading import (
+    _refuse_split_hydra_keys,
+    _refuse_split_stacked_experts_keys,
+    _refuse_unfused_attn_lora_keys,
+    _rename_dora_scale_for_load,
+    _stack_lora_ups,
+)
+
+
+def stamp_lora_save_metadata(
+    metadata: Dict[str, str], cfg: LoRANetworkCfg, spec: NetworkSpec
+) -> None:
+    if metadata:
+        metadata["ss_network_spec"] = spec.name
+
+    # Hard sigma-band partition lives in non-persistent buffers (`_expert_band`)
+    # and a Python attr (`_sigma_band_partition`); nothing of it survives
+    # the state_dict write. Emit the two scalars needed to re-register the
+    # partition at load time so inference and the ComfyUI node can reconstruct
+    # the per-sample band mask. Only stamped when the partition is on, so
+    # older non-band checkpoints stay byte-identical.
+    if cfg.specialize_experts_by_sigma_buckets:
+        metadata["ss_specialize_experts_by_sigma_buckets"] = "true"
+        metadata["ss_num_sigma_buckets"] = str(int(cfg.num_sigma_buckets))
+        if cfg.sigma_bucket_boundaries is not None:
+            metadata["ss_sigma_bucket_boundaries"] = json.dumps(
+                list(cfg.sigma_bucket_boundaries)
+            )
+
+    # Three-axis routing config (plan2 three-axis config). Stamped on every
+    # save so the loader can reconstruct the exact router layout without
+    # key-sniffing.
+    if cfg.use_moe_style is not False:
+        metadata["ss_use_moe_style"] = str(cfg.use_moe_style)
+        metadata["ss_route_per_layer"] = (
+            "true" if cfg.route_per_layer else "false"
+        )
+        metadata["ss_router_source"] = str(cfg.router_source)
+
+    if spec.name == "vera":
+        plugin_args = getattr(cfg, "plugin_args", {}) or {}
+        projection_key = plugin_args.get(
+            "vera_projection_prng_key",
+            plugin_args.get("projection_prng_key", 0),
+        )
+        d_initial = plugin_args.get(
+            "vera_d_initial",
+            plugin_args.get("d_initial", 0.1),
+        )
+        save_projection = plugin_args.get(
+            "vera_save_projection",
+            plugin_args.get("save_projection", False),
+        )
+        metadata["ss_vera_projection_prng_key"] = str(int(projection_key))
+        metadata["ss_vera_d_initial"] = str(float(d_initial))
+        metadata["ss_vera_save_projection"] = (
+            "true"
+            if str(save_projection).strip().lower() in {"1", "true", "yes", "on"}
+            else "false"
+        )
+
+    if getattr(cfg, "ortho_centered_gate", False):
+        metadata["ss_ortho_centered_gate"] = "true"
+
+    if getattr(cfg, "use_dora", False):
+        metadata["ss_network_spec"] = "dora"
+        metadata["ss_adapter_variant"] = "dora"
+        metadata["ss_dora_compatible_export"] = "true"
+
+    if cfg.num_registers > 0:
+        metadata["ss_num_registers"] = str(int(cfg.num_registers))
+        metadata["ss_register_insert_block"] = str(int(cfg.register_insert_block))
+
+    # FEI router params: router-source-specific scalars the loader needs to
+    # size the router input.
+    if cfg.router_source == "fei" and cfg.fei_feature_dim > 0:
+        metadata["ss_fei_feature_dim"] = str(int(cfg.fei_feature_dim))
+        metadata["ss_fei_sigma_low_div"] = str(float(cfg.fei_sigma_low_div))
+
+    # ChimeraHydra: pool split and router flags that cannot be reconstructed
+    # purely from the tensor keys.
+    if cfg.use_chimera_hydra:
+        metadata["ss_use_chimera_hydra"] = "true"
+        metadata["ss_num_experts_content"] = str(int(cfg.num_experts_content))
+        metadata["ss_num_experts_freq"] = str(int(cfg.num_experts_freq))
+        metadata["ss_chimera_fei_feature_dim"] = str(int(cfg.fei_feature_dim))
+        metadata["ss_chimera_sigma_feature_dim"] = str(int(cfg.sigma_feature_dim))
+        metadata["ss_chimera_fei_sigma_low_div"] = str(float(cfg.fei_sigma_low_div))
+        metadata["ss_chimera_freq_router_layer_norm"] = (
+            "true" if cfg.freq_router_layer_norm else "false"
+        )
+        metadata["ss_chimera_content_router_source"] = str(cfg.content_router_source)
+        if cfg.content_router_source == "crossattn_emb":
+            metadata["ss_chimera_content_router_layer_norm"] = (
+                "true" if cfg.content_router_layer_norm else "false"
+            )
+        if getattr(cfg, "chimera_centered_gate", False):
+            metadata["ss_chimera_centered_gate"] = "true"
+
+
+def strip_orig_mod_keys(state_dict):
+    """Strip torch.compile '_orig_mod_' from state_dict keys."""
+    new_sd = {}
+    for key, val in state_dict.items():
+        new_key = re.sub(r"(?<=_)_orig_mod_", "", key)
+        new_sd[new_key] = val
+    return new_sd
+
+
+def load_lora_network_weights(network, file):
+    if os.path.splitext(file)[1] == ".safetensors":
+        from safetensors.torch import load_file
+
+        weights_sd = load_file(file)
+    else:
+        weights_sd = torch.load(file, map_location="cpu")
+
+    # Stack per-expert hydra ups into fused lora_up_weight (training form).
+    # Also stacks per-expert `.lora_downs.{i}.weight` for the independent-A
+    # layout. No-op for plain LoRA.
+    weights_sd = _stack_lora_ups(weights_sd)
+    # Refuse split stacked-experts first; its discriminator is per-expert
+    # `lora_down_weight` 3-D, which the hydra refuser would otherwise
+    # short-circuit on the absent shared `lora_down.weight`.
+    weights_sd = _refuse_split_stacked_experts_keys(weights_sd)
+    weights_sd = _refuse_split_hydra_keys(weights_sd)
+    weights_sd = _refuse_unfused_attn_lora_keys(weights_sd)
+    weights_sd = _rename_dora_scale_for_load(weights_sd)
+
+    reabsorb_baked_inv_scale(network, weights_sd)
+
+    return network.load_state_dict(weights_sd, False)
+
+
+def reabsorb_baked_inv_scale(network, weights_sd: Dict[str, torch.Tensor]) -> None:
+    """Resume guard for baked (inv_scale-folded) checkpoints."""
+    for lora in network.unet_loras + network.text_encoder_loras:
+        if not getattr(lora, "_has_channel_scale", False):
+            continue
+        name = lora.lora_name
+        down_key = f"{name}.lora_down.weight"
+        if f"{name}.inv_scale" in weights_sd or down_key not in weights_sd:
+            continue
+        inv_scale = lora.inv_scale  # (in,) fp32, == 1/s_norm
+        down = weights_sd[down_key]
+        s_norm = (
+            inv_scale.to(device=down.device, dtype=torch.float)
+            .clamp_min(1e-12)
+            .reciprocal()
+        )
+        weights_sd[down_key] = (
+            down.to(torch.float) * s_norm.unsqueeze(0)
+        ).to(down.dtype)
+        weights_sd[f"{name}.inv_scale"] = inv_scale.clone()
+
+
+def save_lora_network_weights(network, file, dtype, metadata) -> None:
+    spec: NetworkSpec = getattr(network, "_network_spec", NETWORK_REGISTRY["lora"])
+    if metadata is None:
+        metadata = {}
+    stamp_lora_save_metadata(metadata, network.cfg, spec)
+
+    lora_save.save_network_weights(
+        network.state_dict(),
+        file=file,
+        dtype=dtype,
+        metadata=metadata,
+        save_variant=spec.save_variant,
+    )
