@@ -8,11 +8,6 @@ export function createStatusPollingBridge(target = globalThis) {
     let trainingSidebarSummaryLastTaskId = '';
     let trainingSidebarSummaryLastStatus = '';
     let trainingSidebarSummaryRefreshPromise = null;
-    let trainingStatusPollFailures = Number(target.trainingStatusPollFailures || 0);
-    let trainingStatusPollTimer = target.trainingStatusPollTimer || null;
-    let trainingStatusPollPromise = target.trainingStatusPollPromise || null;
-    let trainingStatusPollForceReplayMetrics = Boolean(target.trainingStatusPollForceReplayMetrics);
-
     // ── 状态轮询 ──
     function trainingStatusPollDelayMs() {
         const visible = !document.hidden;
@@ -25,31 +20,31 @@ export function createStatusPollingBridge(target = globalThis) {
 
     function scheduleStatusPoll(options = {}) {
         if (location.protocol === 'file:') return;
-        if (trainingStatusPollTimer) {
-            window.clearTimeout(trainingStatusPollTimer);
-            trainingStatusPollTimer = null;
+        if (target.trainingStatusPollTimer) {
+            window.clearTimeout(target.trainingStatusPollTimer);
+            target.trainingStatusPollTimer = null;
         }
         const delay = options.immediate ? 0 : trainingStatusPollDelayMs();
-        trainingStatusPollTimer = window.setTimeout(() => {
-            trainingStatusPollTimer = null;
+        target.trainingStatusPollTimer = window.setTimeout(() => {
+            target.trainingStatusPollTimer = null;
             void pollStatus({ forceReplayMetrics: options.forceReplayMetrics === true });
         }, delay);
     }
 
     async function pollStatus(options = {}) {
         if (options.forceReplayMetrics) {
-            trainingStatusPollForceReplayMetrics = true;
+            target.trainingStatusPollForceReplayMetrics = true;
         }
-        if (trainingStatusPollPromise) return trainingStatusPollPromise;
-        trainingStatusPollPromise = (async () => {
+        if (target.trainingStatusPollPromise) return target.trainingStatusPollPromise;
+        target.trainingStatusPollPromise = (async () => {
             if (isHistoryReviewMode()) return;
             try {
                 const status = await api('/api/training/status');
                 if (status.ok === false) throw new Error(status.error || '读取训练状态失败');
-                const forceReplayMetrics = trainingStatusPollForceReplayMetrics;
-                trainingStatusPollForceReplayMetrics = false;
-                if (trainingStatusPollFailures) {
-                    trainingStatusPollFailures = 0;
+                const forceReplayMetrics = target.trainingStatusPollForceReplayMetrics;
+                target.trainingStatusPollForceReplayMetrics = false;
+                if (target.trainingStatusPollFailures) {
+                    target.trainingStatusPollFailures = 0;
                     updateLogStatusText();
                 }
                 updateStatus({
@@ -83,18 +78,18 @@ export function createStatusPollingBridge(target = globalThis) {
                     await replayMetricsHistory();
                 }
             } catch (e) {
-                trainingStatusPollFailures += 1;
-                if (trainingStatusPollFailures < 3) return;
-                const message = `训练状态轮询连续失败 ${trainingStatusPollFailures} 次: ${e.message}`;
+                target.trainingStatusPollFailures += 1;
+                if (target.trainingStatusPollFailures < 3) return;
+                const message = `训练状态轮询连续失败 ${target.trainingStatusPollFailures} 次: ${e.message}`;
                 setLogStatus('状态轮询失败', 'error');
                 setTrainingHealthNotice(message, 'error');
-                if (trainingStatusPollFailures === 3) appendLog(`[状态] ${message}`);
+                if (target.trainingStatusPollFailures === 3) appendLog(`[状态] ${message}`);
             }
         })();
         try {
-            return await trainingStatusPollPromise;
+            return await target.trainingStatusPollPromise;
         } finally {
-            trainingStatusPollPromise = null;
+            target.trainingStatusPollPromise = null;
             scheduleStatusPoll();
         }
     }

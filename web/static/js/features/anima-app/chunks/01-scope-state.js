@@ -4,54 +4,7 @@
  */
 const ctx = globalThis.ctx;
     // ── 状态 ──
-    globalThis.fieldHelp = {};
-    globalThis.currentConfig = {};
-    globalThis.ws = null;
-    globalThis.lossChart = null;
-    globalThis.stepCounter = 0;
-    globalThis.trainingStatusPollFailures = 0;
-    globalThis.trainingStatusPollTimer = null;
-    globalThis.trainingStatusPollPromise = null;
-    globalThis.trainingStatusPollForceReplayMetrics = false;
-    globalThis.tomlStatusTimer = null;
-    globalThis.tomlFiles = [];
-    globalThis.tomlFileGroups = [];
-    globalThis.tomlFileMeta = {};
-    globalThis.currentTomlFile = '';
-    globalThis.tomlSavedContent = '';
-    globalThis.tomlDeleteConfirmFile = '';
-    globalThis.tomlDeleteConfirmTimer = null;
-    globalThis.tomlSaveConfirmFile = '';
-    globalThis.tomlSaveConfirmTimer = null;
-    globalThis.tomlManagerMode = 'project';
-    globalThis.configSwitchToastTimer = null;
-    globalThis.sharedDialogBusy = false;
-    globalThis.tomlGroupActionBusy = false;
-    globalThis.fileGroupDragState = null;
-    globalThis.fileGroupPointerDrag = null;
-    globalThis.fileGroupDropPreviewElement = null;
-    globalThis.fileGroupActiveDropTargetNode = null;
-    globalThis.fileGroupActiveDropPosition = '';
-    globalThis.datasetEditorDragState = null;
-    globalThis.datasetEditorPointerDrag = null;
-    globalThis.fileGroupDropTargets = new WeakMap();
-    globalThis.fileGroupDropTargetNodes = new Set();
     globalThis.FILE_GROUP_DROP_TARGET_ATTR = 'data-file-group-drop-target';
-    globalThis.configLoadSeq = 0;
-    globalThis.datasetLoadSeq = 0;
-    globalThis.stepEstimateSeq = 0;
-    globalThis.samplePromptsLoadSeq = 0;
-    globalThis.datasetPresetLoadSeq = 0;
-    globalThis.datasetPreviewLoadSeq = 0;
-    globalThis.configGroupHintSeq = 0;
-    globalThis.configFormState = {
-        activeCategory: 'required',
-        showAdvanced: false,
-        search: '',
-        expandedGroups: new Set(),
-        collapsedGroups: new Set(),
-        draftValues: new Map(),
-    };
     globalThis.RESOURCE_QUICK_PRESETS = [
         {
             id: 'gpu_full',
@@ -263,255 +216,29 @@ const ctx = globalThis.ctx;
         ['every_other', 5],
         ['adapter_aware', 6],
     ]);
-    globalThis.datasetCaptionSourceHelpSeq = 0;
-    globalThis.choiceGuideHintSeq = 0;
-    globalThis.selectionSnapshot = {
-        method: '',
-        variant: '',
-        preset: '',
-    };
-    globalThis.currentStepEstimate = null;
-    globalThis.stepEstimateStatus = { loading: false, error: '' };
-    globalThis.datasetEditorState = {
-        loading: false,
-        loaded: false,
-        dirty: false,
-        dataset_config: '',
-        datasets: [],
-        defaults: {},
-        error: '',
-    };
-    globalThis.datasetPresetState = {
-        loading: false,
-        dirty: false,
-        isNew: false,
-        selectedFile: '',
-        presets: [],
-        groups: [],
-        search: '',
-        datasets: [],
-        defaults: {},
-        readonly: false,
-        error: '',
-        status: '',
-    };
-    globalThis.datasetPreviewState = {
-        datasetIndex: 0,
-        source: 'source',
-        payload: null,
-    };
     globalThis.HIDDEN_DATASET_PRESET_FILES = new Set([
         'configs/datasets/easycontrol.toml',
         'configs/datasets/ip_adapter.toml',
     ]);
     globalThis.DATASET_PRESET_REQUEST_TIMEOUT_MS = 15000;
     globalThis.DATASET_PRESET_GROUP_STATE_KEY = 'anima_lora_dataset_preset_groups_v2';
-    globalThis.selectedConfigDatasetFile = '';
-    globalThis.selectedConfigDatasetSummary = null;
-    globalThis.outputRunState = {
-        loading: false,
-        runs: [],
-        selectedRun: '',
-        selectedKind: 'original',
-        search: '',
-        content: '',
-        file: '',
-        outputRoot: '',
-        error: '',
-        saveAsOpen: false,
-    };
-    globalThis.configDatasetPickerSearch = '';
-    globalThis.configDatasetPreviewRequestSeq = 0;
-    globalThis.configDatasetPreviewState = {
-        file: '',
-        loading: false,
-        payload: null,
-        error: '',
-    };
     globalThis.DEFAULT_SAMPLE_PROMPTS_PATH = 'configs/sample_prompts.txt';
-    globalThis.samplePromptsPath = DEFAULT_SAMPLE_PROMPTS_PATH;
-    globalThis.samplePromptsContent = '';
-    globalThis.samplePromptsMode = 'editor-inline';
-    globalThis.viewingHistoryTaskId = '';
-    globalThis.historyViewMode = 'live';
-    globalThis.currentHistoryTaskForResume = null;
-    globalThis.currentHistoryConfigGroup = null;
-    globalThis.currentHistoryTimelineSelection = [];
     globalThis.STAGE_RESOLUTION_STEPS_PER_EPOCH = 1000;
-    globalThis.stageResolutionState = {
-        enabled: false,
-        selectedIndex: 0,
-        stages: [
-            { name: 'EP1', epochs: 1, maxSide: 1024, downRange: 256, manualRepeats: false, repeats: 1 },
-            { name: 'EP2', epochs: 1, maxSide: 1536, downRange: 512, manualRepeats: false, repeats: 1 },
-        ],
-    };
-    globalThis.liveChartState = {
-        showLr: true,
-        rangeMode: 'all',
-    };
-    globalThis.continueTrainingSource = null;
-    globalThis.trainingSourceState = {
-        mode: 'fresh',
-        audit_status: 'ok',
-        full_resume: {
-            task_id: '',
-            checkpoint: '',
-            checkpoints: [],
-            default_checkpoint: '',
-            current_step: null,
-            target_total_steps: null,
-            remaining_steps: null,
-            resume_available: false,
-            audit_status: 'idle',
-            unavailable_reason: '',
-            estimate_error: '',
-            message: '',
-            diagnostic: {},
-        },
-        weight_hotstart: {
-            abs_path: '',
-            name: '',
-            kind: '',
-            compatible: false,
-            audit_status: 'idle',
-            unavailable_reason: '',
-        },
-    };
-    globalThis.continueLoraDialogState = {
-        loading: false,
-        taskId: '',
-        weights: [],
-        error: '',
-        message: '',
-    };
-    globalThis.trainingViewMode = 'live';
-    globalThis.historyTasks = [];
-    globalThis.showArchivedHistory = false;
-    globalThis.selectedHistoryTaskIds = new Set();
-    globalThis.historyManagerFilters = {
-        search: '',
-        kind: 'all',
-        state: 'all',
-        archived: 'active',
-        source: 'all',
-        sort: 'newest',
-    };
-    globalThis.historyCollectionWorkbenchTarget = '';
-    globalThis.historyCollectionSettings = {
-        collection_order: [],
-        config_group_order: {},
-    };
-    globalThis.historyCollectionSearch = '';
-    globalThis.historyConfigGroupSearch = '';
     globalThis.HISTORY_UNGROUPED_COLLECTION_KEY = 'collection:__ungrouped__';
-    globalThis.selectedHistoryCollectionKey = HISTORY_UNGROUPED_COLLECTION_KEY;
-    globalThis.historyCurrentVisibleTaskIds = [];
     globalThis.HISTORY_TASK_DRAG_MIME = 'application/x-anima-history-task-ids';
     globalThis.HISTORY_COLLECTION_DRAG_MIME = 'application/x-anima-history-collection';
     globalThis.HISTORY_CONFIG_GROUP_DRAG_MIME = 'application/x-anima-history-config-group';
-    globalThis.historyDragState = {
-        active: false,
-        taskIds: [],
-        sourceGroupKey: '',
-        activeDropTarget: '',
-        pending: false,
-        popover: {
-            open: false,
-            x: 0,
-            y: 0,
-            taskIds: [],
-            defaultName: '',
-        },
-    };
-    globalThis.historyCollectionDragState = {
-        active: false,
-        sourceValue: '',
-        activeDropTarget: '',
-        dropPosition: 'after',
-        pending: false,
-    };
-    globalThis.historyConfigGroupSortState = {
-        active: false,
-        sourceKey: '',
-        collectionKey: '',
-        activeDropTarget: '',
-        dropPosition: 'after',
-        pending: false,
-    };
-    globalThis.historyConfigGroupPointerDrag = null;
-    globalThis.historyCollectionPointerDrag = null;
-    globalThis.historyDragImageElement = null;
-    globalThis.historyConfigGroupDropPreviewElement = null;
-    globalThis.historyDropPopoverOutsideHandler = null;
-    globalThis.historyDropFeedback = { message: '', tone: '' };
-    globalThis.historyDropFeedbackTimer = null;
     globalThis.THEME_STORAGE_KEY = 'anima_lora_theme';
     globalThis.GPU_WHITELIST_STORAGE_KEY = 'anima_lora_gpu_whitelist';
-    globalThis.currentTrainingSource = {
-        method: 'lora',
-        methods_subdir: 'gui-methods',
-        file: 'configs/gui-methods/lora.toml',
-    };
     Object.assign(globalThis, ctx.catalog);
     globalThis.LOSS_WEIGHTING_DEPENDENT_FIELDS = new Map([
         ['min_snr_gamma', 'min_snr'],
         ['p2_gamma', 'p2'],
         ['p2_k', 'p2'],
     ]);
-    globalThis.datasetExperimentalScopeSelections = new Map();
-    globalThis.datasetExperimentalOpenStates = new Map();
-    globalThis.trainingRuntime = {
-        state: 'idle',
-        variant: '',
-        preset: '',
-        methodsSubdir: '',
-        job: '',
-        lastOutputAt: 0,
-        lastUiActivityAt: 0,
-        lastGpuUtil: null,
-        lastGpuTemp: null,
-        lastVramUsedGb: null,
-        lastVramTotalGb: null,
-        peakGpuUtil: null,
-        peakGpuTemp: null,
-        peakVramUsedGb: null,
-        quietHintShown: false,
-        lastTerminalMessage: '',
-        lastTerminalHint: '',
-        lastAnomalyMessage: '',
-        lastLogId: 0,
-        logLineCount: 0,
-        logBuffer: [],
-        logFlushPending: false,
-        outputDir: '',
-        sampleDir: '',
-        sampleConfig: null,
-        runDir: '',
-        runtimeConfigFile: '',
-        originalConfigFile: '',
-        datasetConfigFile: '',
-        modelCacheDir: '',
-        datasetCacheDir: '',
-        trainingOutputDir: '',
-        logsDir: '',
-        progressCurrent: 0,
-        progressTotal: 0,
-        progressLabel: '',
-        progressRate: '',
-        progressSecondsPerStep: null,
-        progressUpdatedAt: 0,
-    };
-
     globalThis.isLiveRunningState = function isLiveRunningState(state = trainingRuntime.state) {
         return state === 'running' || state === 'compiling';
     }
-    globalThis.globalSettings = null;
-    globalThis.previewFeature = null;
-    globalThis.queueFeature = null;
-    globalThis.historyDetailFeature = null;
-    globalThis.weightAnalysisFeature = null;
-    globalThis.environmentCheckFeature = null;
     globalThis.ensureWeightAnalysisFeature = function ensureWeightAnalysisFeature() {
         if (weightAnalysisFeature) return weightAnalysisFeature;
         weightAnalysisFeature = createWeightAnalysisFeature(ctx);

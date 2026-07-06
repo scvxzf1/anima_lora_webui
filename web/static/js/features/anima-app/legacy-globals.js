@@ -4,6 +4,21 @@ export function installLegacyGlobals(runtime) {
     globalThis.__animaAppContext = runtime.ctx;
 }
 
+export function installLegacyStateGlobals(runtime) {
+    for (const bucket of Object.values(runtime.state)) {
+        for (const key of Object.keys(bucket)) {
+            Object.defineProperty(globalThis, key, {
+                configurable: true,
+                enumerable: true,
+                get: () => bucket[key],
+                set: (value) => {
+                    bucket[key] = value;
+                },
+            });
+        }
+    }
+}
+
 export function installLegacyImageTestFeature(runtime, bridge) {
     runtime.features.imageTest = bridge;
     Object.defineProperty(globalThis, 'imageTestFeature', {

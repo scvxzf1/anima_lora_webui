@@ -29,7 +29,7 @@ ANIMA_APP_GLOBAL_THIS_BASELINE = {
     "js/features/anima-app/index.js": (0, 0),
     "js/features/anima-app/imports.js": (2, 1),
     "js/features/anima-app/runtime.js": (0, 0),
-    "js/features/anima-app/chunks/01-scope-state.js": (129, 1),
+    "js/features/anima-app/chunks/01-scope-state.js": (31, 1),
     "js/features/anima-app/chunks/01a-image-test-feature.js": (0, 0),
     "js/features/anima-app/chunks/02-ensure-history-detail-feature.js": (32, 0),
     "js/features/anima-app/chunks/03-parse-network-arg-entry.js": (31, 0),
@@ -400,6 +400,50 @@ def test_legacy_globals_is_the_only_new_global_bridge() -> None:
         )
 
     assert not failures
+
+
+def test_legacy_state_globals_proxy_runtime_state() -> None:
+    if not shutil.which("node"):
+        pytest.skip("node is required for anima-app runtime state bridge checks")
+    script = r"""
+import { createAnimaRuntime } from './web/static/js/features/anima-app/runtime.js';
+import { installLegacyStateGlobals } from './web/static/js/features/anima-app/legacy-globals.js';
+
+const runtime = createAnimaRuntime({});
+installLegacyStateGlobals(runtime);
+
+globalThis.currentConfig = { name: 'runtime-config' };
+globalThis.trainingStatusPollFailures = 2;
+runtime.state.training.trainingRuntime.state = 'running';
+
+const result = {
+    currentConfigName: runtime.state.config.currentConfig.name,
+    pollFailures: runtime.state.training.trainingStatusPollFailures,
+    trainingRuntimeState: globalThis.trainingRuntime.state,
+};
+
+for (const bucket of Object.values(runtime.state)) {
+    for (const key of Object.keys(bucket)) {
+        delete globalThis[key];
+    }
+}
+
+console.log(JSON.stringify(result));
+"""
+    result = subprocess.run(
+        ["node", "--input-type=module", "-e", script],
+        cwd=Path(__file__).resolve().parents[1],
+        text=True,
+        capture_output=True,
+        timeout=20,
+    )
+
+    assert result.returncode == 0, result.stderr or result.stdout
+    assert json.loads(result.stdout) == {
+        "currentConfigName": "runtime-config",
+        "pollFailures": 2,
+        "trainingRuntimeState": "running",
+    }
 
 
 def test_frontend_module_cache_tokens_match_entrypoint() -> None:
@@ -1712,8 +1756,8 @@ def test_live_training_rest_fallbacks_are_wired() -> None:
     assert "function isLiveRunningState" in source
     assert "function trainingStatusPollDelayMs" in source
     assert "function scheduleStatusPoll(options = {})" in source
-    assert "trainingStatusPollTimer = window.setTimeout" in source
-    assert "window.clearTimeout(trainingStatusPollTimer);" in source
+    assert "target.trainingStatusPollTimer = window.setTimeout" in source
+    assert "window.clearTimeout(target.trainingStatusPollTimer);" in source
     assert "if (!visible) return wsOpen ? (running ? 30000 : 120000) : 60000;" in poll_delay_section
     assert "if (!wsOpen) return running ? 5000 : 15000;" in poll_delay_section
     assert "return running ? 10000 : 60000;" in poll_delay_section
@@ -1721,11 +1765,11 @@ def test_live_training_rest_fallbacks_are_wired() -> None:
     assert "error_hint: status.error_hint" in poll_section
     assert "anomaly_message: status.anomaly_message || ''" in poll_section
     assert "if (options.forceReplayMetrics) {" in poll_section
-    assert "trainingStatusPollForceReplayMetrics = true;" in poll_section
-    assert "if (trainingStatusPollPromise) return trainingStatusPollPromise;" in poll_section
-    assert "const forceReplayMetrics = trainingStatusPollForceReplayMetrics;" in poll_section
-    assert "trainingStatusPollForceReplayMetrics = false;" in poll_section
-    assert "trainingStatusPollPromise = null;" in poll_section
+    assert "target.trainingStatusPollForceReplayMetrics = true;" in poll_section
+    assert "if (target.trainingStatusPollPromise) return target.trainingStatusPollPromise;" in poll_section
+    assert "const forceReplayMetrics = target.trainingStatusPollForceReplayMetrics;" in poll_section
+    assert "target.trainingStatusPollForceReplayMetrics = false;" in poll_section
+    assert "target.trainingStatusPollPromise = null;" in poll_section
     assert "scheduleStatusPoll();" in poll_section
     assert "applyStatusSnapshotFallbacks(status);" in poll_section
     assert "forceReplayMetrics || isLiveRunningState()" in poll_section
@@ -1891,6 +1935,8 @@ def test_training_queue_frontend_hooks_are_present() -> None:
     queue_render = _frontend_module_text("js/features/queue/render.js")
     queue_actions = _frontend_module_text("js/features/queue/actions.js")
     queue_enqueue = _frontend_module_text("js/features/queue/enqueue.js")
+    training_state_source = _frontend_module_text("js/features/anima-app/state/training-state.js")
+    legacy_globals_source = _frontend_module_text("js/features/anima-app/legacy-globals.js")
     queue_feature_source = "\n".join([
         queue_index,
         queue_state,
@@ -2060,13 +2106,14 @@ def test_training_queue_frontend_hooks_are_present() -> None:
     assert "await pollStatus();" in stop_section
     assert "await loadTrainingQueue();" in stop_section
     assert "setTrainingHealthNotice(message, 'error')" in stop_section
-    assert "globalThis.trainingStatusPollFailures = 0" in legacy_source
-    assert "globalThis.trainingStatusPollTimer = null" in legacy_source
-    assert "globalThis.trainingStatusPollPromise = null" in legacy_source
-    assert "globalThis.trainingStatusPollForceReplayMetrics = false" in legacy_source
+    assert "trainingStatusPollFailures: 0" in training_state_source
+    assert "trainingStatusPollTimer: null" in training_state_source
+    assert "trainingStatusPollPromise: null" in training_state_source
+    assert "trainingStatusPollForceReplayMetrics: false" in training_state_source
+    assert "installLegacyStateGlobals(runtime)" in legacy_globals_source
     assert "if (status.ok === false) throw new Error(status.error || '读取训练状态失败')" in poll_section
-    assert "if (trainingStatusPollPromise) return trainingStatusPollPromise;" in poll_section
-    assert "trainingStatusPollFailures < 3" in poll_section
+    assert "if (target.trainingStatusPollPromise) return target.trainingStatusPollPromise;" in poll_section
+    assert "target.trainingStatusPollFailures < 3" in poll_section
     assert "训练状态轮询连续失败" in poll_section
     assert "setTrainingHealthNotice(message, 'error')" in poll_section
     assert "async function enqueueTrainingQueueRequest" in queue_enqueue
@@ -3647,6 +3694,7 @@ def test_history_manager_frontend_hooks_are_present() -> None:
 
 def test_history_collection_drag_drop_frontend_hooks_are_present() -> None:
     source = APP_JS.read_text(encoding="utf-8")
+    history_state_source = _frontend_module_text("js/features/anima-app/state/history-state.js")
     css = STYLE_CSS.read_text(encoding="utf-8")
 
     workbench = _section(source, "function renderHistoryCollectionsWorkbench", "function renderHistoryManagerStats")
@@ -3657,18 +3705,18 @@ def test_history_collection_drag_drop_frontend_hooks_are_present() -> None:
     assert "globalThis.HISTORY_TASK_DRAG_MIME = 'application/x-anima-history-task-ids';" in source
     assert "globalThis.HISTORY_COLLECTION_DRAG_MIME = 'application/x-anima-history-collection';" in source
     assert "globalThis.HISTORY_CONFIG_GROUP_DRAG_MIME = 'application/x-anima-history-config-group';" in source
-    assert "globalThis.historyDragState = {" in source
+    assert "historyDragState: {" in history_state_source
     for key in ("active: false", "taskIds: []", "sourceGroupKey: ''", "activeDropTarget: ''", "pending: false", "popover: {"):
-        assert key in source
-    assert "globalThis.historyCollectionDragState = {" in source
+        assert key in history_state_source
+    assert "historyCollectionDragState: {" in history_state_source
     for key in ("sourceValue: ''", "dropPosition: 'after'", "pending: false"):
-        assert key in source
-    assert "globalThis.historyConfigGroupSortState = {" in source
+        assert key in history_state_source
+    assert "historyConfigGroupSortState: {" in history_state_source
     for key in ("sourceKey: ''", "collectionKey: ''", "activeDropTarget: ''", "dropPosition: 'after'"):
-        assert key in source
-    assert "globalThis.historyConfigGroupPointerDrag = null;" in source
-    assert "globalThis.historyConfigGroupDropPreviewElement = null;" in source
-    assert "globalThis.historyCollectionPointerDrag = null;" in source
+        assert key in history_state_source
+    assert "historyConfigGroupPointerDrag: null" in history_state_source
+    assert "historyConfigGroupDropPreviewElement: null" in history_state_source
+    assert "historyCollectionPointerDrag: null" in history_state_source
     assert "application/x-anima-history-task-ids" in source
     assert "application/x-anima-history-collection" in source
     assert "application/x-anima-history-config-group" in source

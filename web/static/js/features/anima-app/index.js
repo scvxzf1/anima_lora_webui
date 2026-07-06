@@ -4,6 +4,7 @@
 import {
     installLegacyGlobals,
     installLegacyImageTestFeature,
+    installLegacyStateGlobals,
     installLegacyStatusPolling,
 } from './legacy-globals.js?v=module-bootstrap-20260705-3';
 import { createAnimaRuntime } from './runtime.js?v=module-bootstrap-20260705-3';
@@ -11,6 +12,7 @@ import { createAnimaRuntime } from './runtime.js?v=module-bootstrap-20260705-3';
 export async function createAnimaApp(ctx) {
     const runtime = createAnimaRuntime(ctx);
     installLegacyGlobals(runtime);
+    installLegacyStateGlobals(runtime);
     await import('./imports.js?v=module-bootstrap-20260705-3');
     await import('./chunks/01-scope-state.js?v=module-bootstrap-20260705-3');
     const imageTestFeatureModule = await import('./chunks/01a-image-test-feature.js?v=module-bootstrap-20260705-3');
