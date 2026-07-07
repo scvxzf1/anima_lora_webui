@@ -313,6 +313,13 @@ function currentFileGroupActiveDropPosition() {
         placeFileGroupDropPreview(node, normalizedPosition);
     }
 
+    export function clearFileGroupDropTarget(node) {
+        node?.classList.remove('file-group-drop-before', 'file-group-drop-after', 'file-group-drop-inside');
+        if (!node || currentFileGroupActiveDropTargetNode() === node) {
+            clearFileGroupDropIndicators();
+        }
+    }
+
     export function createFileGroupDragHandle(payload, options = {}) {
         const handle = document.createElement('button');
         const disabled = Boolean(options.disabled);
@@ -426,7 +433,7 @@ function currentFileGroupActiveDropPosition() {
         row.addEventListener('dragover', updateDropTarget);
         row.addEventListener('dragleave', (event) => {
             if (fileGroupContainsRelatedTarget(row, event)) return;
-            row.classList.remove('file-group-drop-before', 'file-group-drop-after');
+            clearFileGroupDropTarget(row);
         });
         row.addEventListener('drop', async (event) => {
             const payload = currentFileGroupDragState();
@@ -469,7 +476,7 @@ function currentFileGroupActiveDropPosition() {
         list.addEventListener('dragover', updateDropTarget);
         list.addEventListener('dragleave', (event) => {
             if (fileGroupContainsRelatedTarget(list, event)) return;
-            list.classList.remove('file-group-drop-inside');
+            clearFileGroupDropTarget(list);
         });
         list.addEventListener('drop', async (event) => {
             const payload = currentFileGroupDragState();
@@ -509,7 +516,7 @@ function currentFileGroupActiveDropPosition() {
         node.addEventListener('dragover', updateDropTarget);
         node.addEventListener('dragleave', (event) => {
             if (fileGroupContainsRelatedTarget(node, event)) return;
-            node.classList.remove('file-group-drop-inside');
+            clearFileGroupDropTarget(node);
         });
         node.addEventListener('drop', async (event) => {
             const payload = currentFileGroupDragState();

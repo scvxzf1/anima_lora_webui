@@ -15,6 +15,7 @@ import { loadTomlFileList, updateConfigPageSummary } from '../helpers/toml-manag
 import { canDeleteTomlGroup, deleteTomlGroup, deleteTomlGroupButtonTitle } from '../helpers/toml-actions-bridge.js?v=module-bootstrap-20260707-93';
 import { enqueueTrainingQueueBatchRequest, isCliOnlySpdSource, showPreflightDialog } from '../helpers/training-launch-bridge.js?v=module-bootstrap-20260707-93';
 import {
+    createTomlGroup,
     renameTomlGroup,
     setTomlStatus,
     tomlFileDisplayName,
@@ -24,11 +25,12 @@ import {
 } from '../helpers/toml-action-state-bridge.js?v=module-bootstrap-20260707-93';
 import { api, val } from '../helpers/runtime-bridge.js?v=module-bootstrap-20260707-93';
 import { hasPendingConfigChanges, updateTomlSelectionUI } from '../helpers/toml-selection-bridge.js?v=module-bootstrap-20260707-93';
-import { createTomlZipBlob, downloadBlob, isTomlGroupDraggable, shouldShowTomlGroup } from '../helpers/toml-io-bridge.js?v=module-bootstrap-20260707-93';
+import { createTomlZipBlob, downloadBlob, getSortableTomlGroups, isTomlGroupDraggable, isTrainingTomlGroup, shouldShowTomlGroup } from '../helpers/toml-io-bridge.js?v=module-bootstrap-20260707-93';
 import { renderPreflightPending, showPreflightRequestError } from '../helpers/preflight-dialog-bridge.js?v=module-bootstrap-20260707-93';
 import { appendLog } from '../helpers/live-log-bridge.js?v=module-bootstrap-20260707-93';
 import { configureTomlDragBridge } from '../helpers/toml-drag-bridge.js?v=module-bootstrap-20260707-93';
 import { showTrainingView, updateTrainingQueueFromPayload } from '../helpers/queue-view-bridge.js?v=module-bootstrap-20260707-93';
+import { selectAndApplyTomlFile } from '../helpers/output-run-bridge.js?v=module-bootstrap-20260707-93';
 import { getTomlState } from '../helpers/toml-state-bridge.js?v=module-bootstrap-20260707-93';
 import { getTrainingState } from '../helpers/training-state-bridge.js?v=module-bootstrap-20260707-93';
 

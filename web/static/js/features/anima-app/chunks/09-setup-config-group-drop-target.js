@@ -31,6 +31,7 @@ import {
     updateDatasetPresetPageSummary,
 } from './07-render-config-dataset-picker-dialog.js?v=module-bootstrap-20260707-93';
 import {
+    clearFileGroupDropTarget,
     configGroupDropIndex,
     createFileGroupDragHandle,
     fileGroupContainsRelatedTarget,
@@ -97,7 +98,7 @@ function currentFileGroupDragState() {
         node.addEventListener('dragover', updateDropTarget);
         node.addEventListener('dragleave', (event) => {
             if (fileGroupContainsRelatedTarget(node, event)) return;
-            node.classList.remove('file-group-drop-before', 'file-group-drop-after');
+            clearFileGroupDropTarget(node);
         });
         node.addEventListener('drop', async (event) => {
             const payload = currentFileGroupDragState();

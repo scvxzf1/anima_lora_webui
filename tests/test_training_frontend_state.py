@@ -711,6 +711,7 @@ def test_state_bucket_bridges_reach_hotspot_chunks() -> None:
     toml_actions_source = _frontend_module_text("js/features/anima-app/chunks/23-move-current-toml-to-group.js")
     settings_source = _frontend_module_text("js/features/anima-app/chunks/26-load-global-settings.js")
     history_workbench_source = _frontend_module_text("js/features/anima-app/chunks/27-render-history-collections-workbench.js")
+    collection_search_source = _frontend_module_text("js/features/anima-app/chunks/28-history-collection-search-text.js")
     config_group_drag_source = _frontend_module_text("js/features/anima-app/chunks/29-start-history-config-group-pointer-drag.js")
     collection_drag_source = _frontend_module_text("js/features/anima-app/chunks/30-start-history-collection-pointer-drag.js")
     collection_card_source = _frontend_module_text("js/features/anima-app/chunks/31-create-history-collection-workbench-card.js")
@@ -720,6 +721,42 @@ def test_state_bucket_bridges_reach_hotspot_chunks() -> None:
     history_timeline_source = _frontend_module_text("js/features/anima-app/chunks/35-render-config-group-timeline.js")
     listeners_source = _frontend_module_text("js/features/anima-app/chunks/36-setup-event-listeners.js")
     training_source = _frontend_module_text("js/features/anima-app/chunks/37-config-training-source.js")
+
+    _assert_imports_from(
+        toml_drag_source,
+        "../helpers/output-run-bridge.js",
+        ("selectAndApplyTomlFile",),
+    )
+    _assert_imports_from(
+        toml_manager_source,
+        "../helpers/output-run-bridge.js",
+        ("loadTomlFile",),
+    )
+    _assert_imports_from(
+        toml_selection_source,
+        "../helpers/output-run-bridge.js",
+        ("loadTomlFile", "saveTomlFile"),
+    )
+    _assert_imports_from(
+        toml_action_state_source,
+        "../helpers/toml-selection-bridge.js",
+        ("updateTomlDirtyState",),
+    )
+    _assert_imports_from(
+        listeners_source,
+        "../helpers/output-run-bridge.js",
+        ("loadTomlFile", "selectAndApplyTomlFile"),
+    )
+    _assert_imports_from(
+        toml_drag_source,
+        "../helpers/toml-io-bridge.js",
+        ("getSortableTomlGroups", "isTrainingTomlGroup"),
+    )
+    _assert_imports_from(
+        toml_drag_source,
+        "../helpers/toml-action-state-bridge.js",
+        ("createTomlGroup",),
+    )
 
     for snippet in (
         "configureAppShellStateBridge(runtime.state.appShell);",
@@ -974,8 +1011,11 @@ def test_state_bucket_bridges_reach_hotspot_chunks() -> None:
         "const tomlState = getTomlState();",
         "const trainingState = getTrainingState();",
         "function currentOutputRunState() {",
+        "armTomlSaveConfirm,",
+        "isTomlLocked,",
         "tomlState.currentTomlFile = filePath;",
         "tomlState.tomlSavedContent = data.content || '';",
+        "updateTomlActionState,",
         "return await saveRawTomlContent(file, document.getElementById('toml-editor').value, { reloadConfig: currentTrainingSourceState().file === file });",
     ):
         assert snippet in output_run_source
@@ -1076,6 +1116,17 @@ def test_state_bucket_bridges_reach_hotspot_chunks() -> None:
         assert snippet in history_workbench_source
 
     for snippet in (
+        "const historyState = getHistoryState();",
+        "historyState.historyCollectionSettings.collection_order",
+        "historyCollectionsForWorkbench(historyState.historyTasks)",
+        "Array.from(historyState.selectedHistoryTaskIds)",
+        "historyState.historyDragState = {",
+        "historyState.historyConfigGroupSortState = {",
+        "historyState.selectedHistoryCollectionKey = clean ? `collection:${clean}` : HISTORY_UNGROUPED_COLLECTION_KEY;",
+    ):
+        assert snippet in collection_search_source
+
+    for snippet in (
         "const trainingState = getTrainingState();",
         "trainingState.lossChart?.setXLabel?.('step');",
         "trainingState.lossChart?.setData(chartPoints, { keepAll: true });",
@@ -1124,6 +1175,7 @@ def test_state_bucket_bridges_reach_hotspot_chunks() -> None:
         "const historyState = getHistoryState();",
         "historyState.selectedHistoryTaskIds = new Set(",
         "historyState.historyCollectionSettings = normalizeHistoryCollectionSettings({",
+        "historyTaskCollectionValue,",
     ):
         assert snippet in collection_state_source
 
@@ -2992,6 +3044,22 @@ def test_status_poll_refreshes_training_sidebar_summaries() -> None:
     assert "loadTrainingHistoryList()" in refresh_section
 
 
+def test_manual_history_refresh_announces_and_deduplicates_requests() -> None:
+    history_source = _frontend_module_text("js/features/anima-app/chunks/26-load-global-settings.js")
+    listener_source = _frontend_module_text("js/features/anima-app/chunks/36-setup-event-listeners.js")
+
+    assert "const HISTORY_REFRESH_BUTTON_LABELS = Object.freeze({" in history_source
+    assert "let historyListLoadPromise = null;" in history_source
+    assert "function setHistoryRefreshButtonState(state = 'idle') {" in history_source
+    assert "if (historyListLoadPromise) {" in history_source
+    assert "if (announce) setHistoryRefreshButtonState('pending');" in history_source
+    assert "if (announce) setHistoryRefreshButtonState(failed ? 'error' : 'ok');" in history_source
+    assert "historyListLoadPromise = null;" in history_source
+    assert "loadTrainingHistoryList(options = {})" in history_source
+    assert "on('btn-refresh-history', 'click', () => loadTrainingHistoryList({ announce: true }));" in listener_source
+    assert "on('btn-history-manager-refresh', 'click', () => loadTrainingHistoryList({ announce: true }));" in listener_source
+
+
 def test_log_replay_keeps_tqdm_average_rate_out_of_live_metrics() -> None:
     source = _frontend_module_text("js/features/anima-app/chunks/24-show-preflight-pending-dialog.js")
     section = _section(source, "function replayMetricsFromLogRecord", "function setLogStatus")
@@ -3143,6 +3211,7 @@ def test_training_queue_frontend_hooks_are_present() -> None:
     assert "btn-open-history-manager" in html
     assert "未归档 · 最新 6 个训练任务" in html
     assert "queueCurrentTrainingFromConfig" in listener_section
+    _assert_imports_from(legacy_source, "../helpers/queue-view-bridge.js", ("showTrainingView",))
     assert "on('btn-open-history-manager', 'click', () => showTrainingView('history'))" in listener_section
     assert "const mainWide = isQueue || isHistory;" in view_section
     assert "workspace.classList.toggle('main-wide', mainWide)" in view_section
@@ -4143,6 +4212,22 @@ def test_history_list_marks_queue_tasks() -> None:
     assert "来自队列" in queue_label
     assert "queue_attempt" in queue_label
     assert "historyQueueLabel(task)" in task_item
+
+
+def test_history_task_dialog_busy_state_uses_toml_state() -> None:
+    dialog_source = _frontend_module_text(
+        "js/features/anima-app/chunks/34-show-history-collection-select-dialog.js"
+    )
+    dialog_section = _section(
+        dialog_source,
+        "function showHistoryTaskDialog",
+        "function normalizeHistoryDetailTab",
+    )
+
+    assert "import { getTomlState }" in dialog_source
+    assert "const tomlState = getTomlState();" in dialog_source
+    assert "tomlState.sharedDialogBusy" in dialog_section
+    assert "sharedDialogBusy" not in dialog_section.replace("tomlState.sharedDialogBusy", "")
 
 
 def test_history_manager_frontend_hooks_are_present() -> None:
@@ -6007,6 +6092,7 @@ def test_file_group_drag_has_pointer_fallback() -> None:
     assert "function ensureFileGroupDropPreview" in drag_helpers
     assert "function placeFileGroupDropPreview" in drag_helpers
     assert "function removeFileGroupDropPreview" in drag_helpers
+    assert "function clearFileGroupDropTarget" in drag_helpers
     assert "释放后插入到这里" in drag_helpers
     assert "clearFileGroupDropIndicators({ keepPreview: true })" in drag_helpers
     assert "placeFileGroupDropPreview(node, position)" in drag_helpers
@@ -6035,6 +6121,9 @@ def test_file_group_drag_has_pointer_fallback() -> None:
     assert "position: 'inside'" in drop_targets
     assert "configFileDropIndex(group, targetFile, placeAfter, payload.file)" in drop_targets
     assert "configGroupDropIndex(options.getSortableGroups(), group.id, placeAfter, payload.groupId)" in drop_targets
+    assert "clearFileGroupDropTarget(row);" in drop_targets
+    assert "clearFileGroupDropTarget(list);" in drop_targets
+    assert "clearFileGroupDropTarget(node);" in drop_targets
 
     assert ".file-group-pointer-drag-active" in css
     assert ".file-group-drag-image-pointer" in css
