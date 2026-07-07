@@ -2,18 +2,39 @@
  * Mechanical split from the former monolithic app closure.
  * Keep this module focused; move newly edited behavior into domain modules.
  */
-const ctx = globalThis.ctx;
+import { HISTORY_UNGROUPED_COLLECTION_KEY } from '../helpers/app-constants.js?v=module-bootstrap-20260707-93';
+import { setHistoryDropFeedback } from '../helpers/history-collection-drag-bridge.js?v=module-bootstrap-20260707-93';
+import {
+    configureHistoryCollectionsBridge,
+    ensureHistoryCollectionOrderValue,
+    historyCollectionStorageKey,
+} from '../helpers/history-collections-bridge.js?v=module-bootstrap-20260707-93';
+import {
+    applyHistoryTaskIdsBatchAction,
+    createHistoryActionButton,
+    deleteHistoryTasksThorough,
+    loadConfigGroupTimeline,
+    showHistoryCollectionSelectDialog,
+    showHistoryTaskConfirmDialog,
+} from '../helpers/history-task-actions-bridge.js?v=module-bootstrap-20260707-93';
+import { configGroupLabel } from '../helpers/history-timeline-bridge.js?v=module-bootstrap-20260707-93';
+import { showTrainingView } from '../helpers/queue-view-bridge.js?v=module-bootstrap-20260707-93';
+import { openHistoryConfigGroupPreview } from '../helpers/preview-view-bridge.js?v=module-bootstrap-20260707-93';
+import { renderHistoryManager, saveHistoryCollectionSettings, normalizeHistoryCollectionSettings, uniqueStringList, normalizeHistoryConfigGroupOrder } from '../helpers/history-list-bridge.js?v=module-bootstrap-20260707-93';
+import { getHistoryState } from '../helpers/history-state-bridge.js?v=module-bootstrap-20260707-93';
 
-    globalThis.historyTaskCollectionLabel = function historyTaskCollectionLabel(task) {
+const historyState = getHistoryState();
+
+    export function historyTaskCollectionLabel(task) {
         return historyTaskCollectionValue(task) || '未分类';
     }
 
-    globalThis.historyTaskCollectionKey = function historyTaskCollectionKey(task) {
+    export function historyTaskCollectionKey(task) {
         const value = historyTaskCollectionValue(task);
         return value ? `collection:${value}` : HISTORY_UNGROUPED_COLLECTION_KEY;
     }
 
-    globalThis.historyConfigGroupCollectionMap = function historyConfigGroupCollectionMap(tasks) {
+    export function historyConfigGroupCollectionMap(tasks) {
         const map = new Map();
         for (const task of tasks) {
             const group = historyConfigGroupFromTask(task);
@@ -24,26 +45,26 @@ const ctx = globalThis.ctx;
         return map;
     }
 
-    globalThis.historyTaskIds = function historyTaskIds(tasks) {
+    export function historyTaskIds(tasks) {
         return (tasks || []).map((task) => task.id).filter(Boolean);
     }
 
-    globalThis.historyTasksAllSelected = function historyTasksAllSelected(tasks) {
+    export function historyTasksAllSelected(tasks) {
         const ids = historyTaskIds(tasks);
-        return ids.length > 0 && ids.every((id) => selectedHistoryTaskIds.has(id));
+        return ids.length > 0 && ids.every((id) => historyState.selectedHistoryTaskIds.has(id));
     }
 
-    globalThis.toggleHistoryTaskSelection = function toggleHistoryTaskSelection(tasks) {
+    export function toggleHistoryTaskSelection(tasks) {
         const ids = historyTaskIds(tasks);
-        const selected = ids.every((id) => selectedHistoryTaskIds.has(id));
+        const selected = ids.every((id) => historyState.selectedHistoryTaskIds.has(id));
         ids.forEach((id) => {
-            if (selected) selectedHistoryTaskIds.delete(id);
-            else selectedHistoryTaskIds.add(id);
+            if (selected) historyState.selectedHistoryTaskIds.delete(id);
+            else historyState.selectedHistoryTaskIds.add(id);
         });
         renderHistoryManager();
     }
 
-    globalThis.historyManagerGroupMetaParts = function historyManagerGroupMetaParts(tasks, extra = []) {
+    export function historyManagerGroupMetaParts(tasks, extra = []) {
         const trainingCount = tasks.filter((task) => task.job === 'training').length;
         const preprocessCount = tasks.filter((task) => task.job === 'preprocess').length;
         const errorCount = tasks.filter((task) => ['error', 'interrupted'].includes(task.state)).length;
@@ -60,7 +81,7 @@ const ctx = globalThis.ctx;
         ].filter(Boolean);
     }
 
-    globalThis.historyCompactGroupMetaParts = function historyCompactGroupMetaParts(tasks, extra = []) {
+    export function historyCompactGroupMetaParts(tasks, extra = []) {
         const trainingCount = tasks.filter((task) => task.job === 'training').length;
         const preprocessCount = tasks.filter((task) => task.job === 'preprocess').length;
         const errorCount = tasks.filter((task) => ['error', 'interrupted'].includes(task.state)).length;
@@ -77,34 +98,34 @@ const ctx = globalThis.ctx;
         ].filter(Boolean);
     }
 
-    globalThis.commonHistoryCollectionValue = function commonHistoryCollectionValue(tasks) {
+    export function commonHistoryCollectionValue(tasks) {
         const values = Array.from(new Set((tasks || []).map(historyTaskCollectionValue).filter(Boolean)));
         return values.length === 1 ? values[0] : '';
     }
 
-    globalThis.createHistoryManagerGroupButton = function createHistoryManagerGroupButton(label, handler, tone = '') {
+    export function createHistoryManagerGroupButton(label, handler, tone = '') {
         const btn = createHistoryActionButton(label, handler, tone);
         btn.classList.add('history-manager-group-action');
         return btn;
     }
 
-    globalThis.createHistoryConfigGroupMergeButton = function createHistoryConfigGroupMergeButton(group) {
+    export function createHistoryConfigGroupMergeButton(group) {
         const btn = createHistoryManagerGroupButton('查看', () => loadConfigGroupTimeline(group, { skipSelectionDialog: true }));
         btn.title = '查阅这个自动配置分组内的训练日志、Loss 曲线和任务明细';
         return btn;
     }
 
-    globalThis.createHistoryConfigGroupPreviewButton = function createHistoryConfigGroupPreviewButton(group) {
+    export function createHistoryConfigGroupPreviewButton(group) {
         const btn = createHistoryManagerGroupButton('预览', () => openHistoryConfigGroupPreview(group));
         btn.title = '汇总查看这个配置分组下所有训练任务的样张和权重';
         return btn;
     }
 
-    globalThis.canPreviewHistoryConfigGroup = function canPreviewHistoryConfigGroup(group) {
+    export function canPreviewHistoryConfigGroup(group) {
         return Boolean(group && group.methods_subdir && group.variant && group.methods_subdir !== '手动选择');
     }
 
-    globalThis.setHistoryCollectionForTasks = async function setHistoryCollectionForTasks(tasks, value = '', description = '') {
+    export async function setHistoryCollectionForTasks(tasks, value = '', description = '') {
         const ids = historyTaskIds(tasks);
         if (!ids.length) return;
         const group = await showHistoryCollectionSelectDialog({
@@ -117,7 +138,7 @@ const ctx = globalThis.ctx;
         await applyHistoryTaskIdsToCollection(ids, group.trim());
     }
 
-    globalThis.renameHistoryCollection = async function renameHistoryCollection(collection) {
+    export async function renameHistoryCollection(collection) {
         const oldValue = String(collection?.value || '').trim();
         if (!oldValue || collection?.is_ungrouped) return;
         const nextValue = await showHistoryCollectionSelectDialog({
@@ -138,19 +159,19 @@ const ctx = globalThis.ctx;
             const res = await applyHistoryTaskIdsBatchAction(ids, 'set_group', { group: clean });
             if (res === null) return;
         }
-        historyCollectionSettings = normalizeHistoryCollectionSettings({
-            ...historyCollectionSettings,
+        historyState.historyCollectionSettings = normalizeHistoryCollectionSettings({
+            ...historyState.historyCollectionSettings,
             collection_order: collectionOrder,
             config_group_order: configGroupOrder,
         });
-        await saveHistoryCollectionSettings(historyCollectionSettings);
-        selectedHistoryCollectionKey = newKey;
-        if (historyCollectionWorkbenchTarget === oldValue) historyCollectionWorkbenchTarget = clean;
+        await saveHistoryCollectionSettings(historyState.historyCollectionSettings);
+        historyState.selectedHistoryCollectionKey = newKey;
+        if (historyState.historyCollectionWorkbenchTarget === oldValue) historyState.historyCollectionWorkbenchTarget = clean;
         renderHistoryManager();
         setHistoryDropFeedback(`已重命名分组「${oldValue}」为「${clean}」。`, 'ok');
     }
 
-    globalThis.clearHistoryCollection = async function clearHistoryCollection(collection) {
+    export async function clearHistoryCollection(collection) {
         const value = String(collection?.value || '').trim();
         if (!value || collection?.is_ungrouped) return;
         const ids = historyTaskIds(collection.tasks || []);
@@ -168,18 +189,20 @@ const ctx = globalThis.ctx;
             if (res === null) return;
         }
         await removeHistoryCollectionSettingValue(value);
-        if (selectedHistoryCollectionKey === `collection:${value}`) selectedHistoryCollectionKey = HISTORY_UNGROUPED_COLLECTION_KEY;
-        if (historyCollectionWorkbenchTarget === value) historyCollectionWorkbenchTarget = '';
+        if (historyState.selectedHistoryCollectionKey === `collection:${value}`) {
+            historyState.selectedHistoryCollectionKey = HISTORY_UNGROUPED_COLLECTION_KEY;
+        }
+        if (historyState.historyCollectionWorkbenchTarget === value) historyState.historyCollectionWorkbenchTarget = '';
         renderHistoryManager();
         setHistoryDropFeedback(ids.length ? `已清空分组「${collection.label || value}」。` : `已删除空分组「${collection.label || value}」。`, 'ok');
     }
 
-    globalThis.renameHistoryCollectionOrderValue = function renameHistoryCollectionOrderValue(oldValue, newValue) {
+    export function renameHistoryCollectionOrderValue(oldValue, newValue) {
         const oldClean = String(oldValue || '').trim();
         const newClean = String(newValue || '').trim();
         const out = [];
         const seen = new Set();
-        for (const value of uniqueStringList(historyCollectionSettings.collection_order || [])) {
+        for (const value of uniqueStringList(historyState.historyCollectionSettings.collection_order || [])) {
             const next = value === oldClean ? newClean : value;
             if (!next || seen.has(next)) continue;
             out.push(next);
@@ -189,10 +212,10 @@ const ctx = globalThis.ctx;
         return out;
     }
 
-    globalThis.renameHistoryConfigGroupOrderKey = function renameHistoryConfigGroupOrderKey(oldValue, newValue) {
+    export function renameHistoryConfigGroupOrderKey(oldValue, newValue) {
         const oldKey = historyCollectionStorageKey(oldValue);
         const newKey = historyCollectionStorageKey(newValue);
-        const current = normalizeHistoryConfigGroupOrder(historyCollectionSettings.config_group_order);
+        const current = normalizeHistoryConfigGroupOrder(historyState.historyCollectionSettings.config_group_order);
         if (!oldKey || !newKey || oldKey === newKey) return current;
         const oldOrder = current[oldKey] || [];
         const newOrder = uniqueStringList([...(current[newKey] || []), ...oldOrder]);
@@ -201,40 +224,40 @@ const ctx = globalThis.ctx;
         return current;
     }
 
-    globalThis.removeHistoryCollectionSettingValue = async function removeHistoryCollectionSettingValue(value) {
+    export async function removeHistoryCollectionSettingValue(value) {
         const clean = String(value || '').trim();
-        if (!clean) return historyCollectionSettings;
+        if (!clean) return historyState.historyCollectionSettings;
         const settings = {
-            ...historyCollectionSettings,
-            collection_order: uniqueStringList(historyCollectionSettings.collection_order || []).filter((item) => item !== clean),
+            ...historyState.historyCollectionSettings,
+            collection_order: uniqueStringList(historyState.historyCollectionSettings.collection_order || []).filter((item) => item !== clean),
             config_group_order: Object.fromEntries(
-                Object.entries(normalizeHistoryConfigGroupOrder(historyCollectionSettings.config_group_order))
+                Object.entries(normalizeHistoryConfigGroupOrder(historyState.historyCollectionSettings.config_group_order))
                     .filter(([key]) => key !== historyCollectionStorageKey(clean)),
             ),
         };
         return saveHistoryCollectionSettings(settings);
     }
 
-    globalThis.setHistoryCollectionForTasksDirect = async function setHistoryCollectionForTasksDirect(tasks, value) {
+    export async function setHistoryCollectionForTasksDirect(tasks, value) {
         const ids = historyTaskIds(tasks);
         const group = String(value || '').trim();
         if (!ids.length || !group) return;
         await applyHistoryTaskIdsToCollection(ids, group);
     }
 
-    globalThis.applySelectedHistoryTasksToCollection = async function applySelectedHistoryTasksToCollection(value) {
+    export async function applySelectedHistoryTasksToCollection(value) {
         const ids = historyTaskIds(selectedHistoryTasks());
         if (!ids.length) return;
         await applyHistoryTaskIdsToCollection(ids, String(value || '').trim(), { clearSelection: true });
     }
 
-    globalThis.applyHistoryTaskIdsToCollection = async function applyHistoryTaskIdsToCollection(ids, group, options = {}) {
+    export async function applyHistoryTaskIdsToCollection(ids, group, options = {}) {
         const clean = String(group || '').trim();
         if (clean) await ensureHistoryCollectionOrderValue(clean);
         return applyHistoryTaskIdsBatchAction(ids, 'set_group', { group: clean }, options);
     }
 
-    globalThis.clearSelectedHistoryCollection = async function clearSelectedHistoryCollection() {
+    export async function clearSelectedHistoryCollection() {
         const tasks = selectedHistoryTasks();
         if (!tasks.length) return;
         const ok = await showHistoryTaskConfirmDialog({
@@ -247,7 +270,7 @@ const ctx = globalThis.ctx;
         await applyHistoryTaskIdsBatchAction(historyTaskIds(tasks), 'set_group', { group: '' }, { clearSelection: true });
     }
 
-    globalThis.clearHistoryCollectionForTasks = async function clearHistoryCollectionForTasks(tasks, description = '') {
+    export async function clearHistoryCollectionForTasks(tasks, description = '') {
         const ids = historyTaskIds(tasks);
         if (!ids.length) return;
         const ok = await showHistoryTaskConfirmDialog({
@@ -260,7 +283,7 @@ const ctx = globalThis.ctx;
         await applyHistoryTaskIdsBatchAction(ids, 'set_group', { group: '' });
     }
 
-    globalThis.archiveHistoryTasksByIds = async function archiveHistoryTasksByIds(tasks, archived, description = '') {
+    export async function archiveHistoryTasksByIds(tasks, archived, description = '') {
         const ids = historyTaskIds(tasks);
         if (!ids.length) return;
         const ok = await showHistoryTaskConfirmDialog({
@@ -273,23 +296,25 @@ const ctx = globalThis.ctx;
         await applyHistoryTaskIdsBatchAction(ids, archived ? 'archive' : 'unarchive');
     }
 
-    globalThis.deleteHistoryTasksByIds = async function deleteHistoryTasksByIds(tasks) {
+    export async function deleteHistoryTasksByIds(tasks) {
         await deleteHistoryTasksThorough(historyTaskIds(tasks));
     }
 
-    globalThis.syncHistorySelectionWithTasks = function syncHistorySelectionWithTasks() {
-        const valid = new Set(historyTasks.map((task) => task.id).filter(Boolean));
-        selectedHistoryTaskIds = new Set(Array.from(selectedHistoryTaskIds).filter((id) => valid.has(id)));
+    export function syncHistorySelectionWithTasks() {
+        const valid = new Set(historyState.historyTasks.map((task) => task.id).filter(Boolean));
+        historyState.selectedHistoryTaskIds = new Set(
+            Array.from(historyState.selectedHistoryTaskIds).filter((id) => valid.has(id))
+        );
     }
 
-    globalThis.selectedHistoryTasks = function selectedHistoryTasks() {
-        const ids = selectedHistoryTaskIds;
-        const visible = new Set(historyCurrentVisibleTaskIds);
+    export function selectedHistoryTasks() {
+        const ids = historyState.selectedHistoryTaskIds;
+        const visible = new Set(historyState.historyCurrentVisibleTaskIds);
         if (!visible.size) return [];
-        return historyTasks.filter((task) => ids.has(task.id) && visible.has(task.id));
+        return historyState.historyTasks.filter((task) => ids.has(task.id) && visible.has(task.id));
     }
 
-    globalThis.renderHistoryBulkBar = function renderHistoryBulkBar() {
+    export function renderHistoryBulkBar() {
         const bar = document.getElementById('history-bulk-bar');
         const summary = document.getElementById('history-bulk-summary');
         if (!bar || !summary) return;
@@ -298,7 +323,7 @@ const ctx = globalThis.ctx;
         summary.textContent = `已选 ${tasks.length} 项`;
     }
 
-    globalThis.syncHistoryFilterControls = function syncHistoryFilterControls() {
+    export function syncHistoryFilterControls() {
         const controls = {
             'history-manager-search': 'search',
             'history-filter-kind': 'kind',
@@ -309,28 +334,28 @@ const ctx = globalThis.ctx;
         };
         for (const [id, key] of Object.entries(controls)) {
             const el = document.getElementById(id);
-            if (el) el.value = historyManagerFilters[key] || historyManagerFilterDefault(key);
+            if (el) el.value = historyState.historyManagerFilters[key] || historyManagerFilterDefault(key);
         }
         const collectionSearch = document.getElementById('history-collection-search');
-        if (collectionSearch) collectionSearch.value = historyCollectionSearch || '';
+        if (collectionSearch) collectionSearch.value = historyState.historyCollectionSearch || '';
         const configGroupSearch = document.getElementById('history-config-group-search');
-        if (configGroupSearch) configGroupSearch.value = historyConfigGroupSearch || '';
+        if (configGroupSearch) configGroupSearch.value = historyState.historyConfigGroupSearch || '';
     }
 
-    globalThis.historyManagerFilterDefault = function historyManagerFilterDefault(key) {
+    export function historyManagerFilterDefault(key) {
         if (key === 'search') return '';
         if (key === 'archived') return 'active';
         if (key === 'sort') return 'newest';
         return 'all';
     }
 
-    globalThis.openHistoryCollectionsWorkbench = function openHistoryCollectionsWorkbench() {
+    export function openHistoryCollectionsWorkbench() {
         syncHistoryFilterControls();
         showTrainingView('history');
         renderHistoryManager();
     }
 
-    globalThis.groupHistoryTasks = function groupHistoryTasks(tasks) {
+    export function groupHistoryTasks(tasks) {
         const map = new Map();
         for (const task of tasks) {
             const group = historyConfigGroupFromTask(task);
@@ -348,7 +373,7 @@ const ctx = globalThis.ctx;
             });
     }
 
-    globalThis.historyConfigGroupFromTask = function historyConfigGroupFromTask(task) {
+    export function historyConfigGroupFromTask(task) {
         const methodsSubdir = String(task.methods_subdir || '-');
         const variant = String(task.variant || '-');
         const preset = String(task.preset || 'default');
@@ -369,13 +394,13 @@ const ctx = globalThis.ctx;
         };
     }
 
-    globalThis.configGroupKey = function configGroupKey(group) {
+    export function configGroupKey(group) {
         if (group?.key) return group.key;
         if (group?.history_group_key) return group.history_group_key;
         return [group.methods_subdir || '-', group.variant || '-', group.preset || 'default'].join('\u0001');
     }
 
-    globalThis.enrichHistoryGroup = function enrichHistoryGroup(group) {
+    export function enrichHistoryGroup(group) {
         const tasks = [...(group.tasks || [])].sort((a, b) => {
             const aTime = Number(a.started_at || 0);
             const bTime = Number(b.started_at || 0);
@@ -394,7 +419,7 @@ const ctx = globalThis.ctx;
         };
     }
 
-    globalThis.historyTaskDisplayName = function historyTaskDisplayName(task) {
+    export function historyTaskDisplayName(task) {
         if (!task) return '';
         const customName = String(task.name || '').trim();
         if (task.training_mode === 'continue_lora') {
@@ -413,16 +438,16 @@ const ctx = globalThis.ctx;
         return defaultName;
     }
 
-    globalThis.historyTaskIsArchived = function historyTaskIsArchived(task) {
+    export function historyTaskIsArchived(task) {
         if (Boolean(task?.archived)) return true;
         return task?.job === 'preprocess' && !task?.updated_at;
     }
 
-    globalThis.historyTaskRunPath = function historyTaskRunPath(task) {
+    export function historyTaskRunPath(task) {
         return String(task?.run_dir || task?.training_output_dir || task?.output_dir || '').trim();
     }
 
-    globalThis.historyResumeLabel = function historyResumeLabel(task) {
+    export function historyResumeLabel(task) {
         const resume = task?.resume_from || {};
         if (!resume || typeof resume !== 'object') return '';
         const checkpoint = String(resume.checkpoint_name || '').trim();
@@ -435,27 +460,27 @@ const ctx = globalThis.ctx;
         return resume.source_task_id ? '从检查点恢复' : '';
     }
 
-    globalThis.historyQueueLabel = function historyQueueLabel(task) {
+    export function historyQueueLabel(task) {
         const queueId = String(task?.queue_item_id || '').trim();
         if (!Boolean(task?.from_queue) && !queueId) return '';
         const attempt = Number(task?.queue_attempt || 1);
         return attempt > 1 ? `来自队列 · 第 ${attempt} 次尝试` : '来自队列';
     }
 
-    globalThis.historyContinueLabel = function historyContinueLabel(task) {
+    export function historyContinueLabel(task) {
         if (task?.training_mode !== 'continue_lora') return '';
         const kind = String(task.continue_from_weight_kind || 'LoRA').trim() || 'LoRA';
         const name = String(task.continue_from_weight_name || '').trim();
         return `权重热启动 ${kind}${name ? `: ${name}` : ''}`;
     }
 
-    globalThis.historyContinuePathLabel = function historyContinuePathLabel(task) {
+    export function historyContinuePathLabel(task) {
         if (task?.training_mode !== 'continue_lora') return '';
         const path = String(task.continue_from_weight_abs_path || '').trim();
         return path ? `基于: ${path}` : '';
     }
 
-    globalThis.runLabelFromPath = function runLabelFromPath(value) {
+    export function runLabelFromPath(value) {
         const text = String(value || '').replace(/\\/g, '/').trim();
         if (!text) return '';
         const parts = text.split('/').filter(Boolean);
@@ -466,11 +491,11 @@ const ctx = globalThis.ctx;
         return parts[parts.length - 1];
     }
 
-    globalThis.historyGroupDisplayLabel = function historyGroupDisplayLabel(group) {
+    export function historyGroupDisplayLabel(group) {
         return String(group?.display_label || group?.history_run_label || group?.label || configGroupLabel(group) || '').trim();
     }
 
-    globalThis.createHistoryGroupHeading = function createHistoryGroupHeading(group) {
+    export function createHistoryGroupHeading(group) {
         const heading = document.createElement('div');
         heading.className = 'task-history-group-title';
         const trainingCount = group.tasks.filter((task) => task.job === 'training').length;
@@ -507,3 +532,52 @@ const ctx = globalThis.ctx;
         }
         return heading;
     }
+
+configureHistoryCollectionsBridge({
+    historyTaskCollectionLabel,
+    historyTaskCollectionKey,
+    historyConfigGroupCollectionMap,
+    historyTaskIds,
+    historyTasksAllSelected,
+    toggleHistoryTaskSelection,
+    historyManagerGroupMetaParts,
+    historyCompactGroupMetaParts,
+    commonHistoryCollectionValue,
+    createHistoryManagerGroupButton,
+    createHistoryConfigGroupMergeButton,
+    createHistoryConfigGroupPreviewButton,
+    canPreviewHistoryConfigGroup,
+    setHistoryCollectionForTasks,
+    renameHistoryCollection,
+    clearHistoryCollection,
+    renameHistoryCollectionOrderValue,
+    renameHistoryConfigGroupOrderKey,
+    removeHistoryCollectionSettingValue,
+    setHistoryCollectionForTasksDirect,
+    applySelectedHistoryTasksToCollection,
+    applyHistoryTaskIdsToCollection,
+    clearSelectedHistoryCollection,
+    clearHistoryCollectionForTasks,
+    archiveHistoryTasksByIds,
+    deleteHistoryTasksByIds,
+    syncHistorySelectionWithTasks,
+    selectedHistoryTasks,
+    renderHistoryBulkBar,
+    syncHistoryFilterControls,
+    historyManagerFilterDefault,
+    openHistoryCollectionsWorkbench,
+    groupHistoryTasks,
+    historyConfigGroupFromTask,
+    configGroupKey,
+    enrichHistoryGroup,
+    historyTaskDisplayName,
+    historyTaskIsArchived,
+    historyTaskRunPath,
+    historyResumeLabel,
+    historyQueueLabel,
+    historyContinueLabel,
+    historyContinuePathLabel,
+    runLabelFromPath,
+    historyGroupDisplayLabel,
+    createHistoryGroupHeading,
+});

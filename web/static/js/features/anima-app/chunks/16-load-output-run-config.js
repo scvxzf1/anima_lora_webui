@@ -2,19 +2,53 @@
  * Mechanical split from the former monolithic app closure.
  * Keep this module focused; move newly edited behavior into domain modules.
  */
-const ctx = globalThis.ctx;
+import { applySelectedDatasetPresetToCurrentConfig } from '../helpers/dataset-preset-actions-bridge.js?v=module-bootstrap-20260707-93';
+import { collectChangedFormValues, prepareFormPatchValues, saveDatasetEditor } from '../helpers/config-form-bridge.js?v=module-bootstrap-20260707-93';
+import { configureOutputRunBridge } from '../helpers/output-run-bridge.js?v=module-bootstrap-20260707-93';
+import { loadTomlFileList, switchTomlManagerMode, updateConfigPageSummary } from '../helpers/toml-manager-bridge.js?v=module-bootstrap-20260707-93';
+import { handleDeletedTomlSelection, isMissingTomlFileResponse } from '../helpers/toml-actions-bridge.js?v=module-bootstrap-20260707-93';
+import { rememberSelectionSnapshot } from './13-update-dataset-editor-rows-setting-value.js?v=module-bootstrap-20260707-93';
+import { loadConfig } from '../helpers/app-shell-startup-bridge.js?v=module-bootstrap-20260707-93';
+import { getAppContext } from '../helpers/app-context-bridge.js?v=module-bootstrap-20260707-93';
+import { confirmDiscardTomlChanges, currentFormConfigFile, currentTomlEditorContentForFile, handlePendingConfigSwitch, hasPendingConfigChanges, hasUnsavedFormChanges, isTomlDirty, setBadge, updateTomlDirtyState, updateTomlSelectionUI } from '../helpers/toml-selection-bridge.js?v=module-bootstrap-20260707-93';
+import { getDatasetState } from '../helpers/dataset-state-bridge.js?v=module-bootstrap-20260707-93';
+import { getTomlState } from '../helpers/toml-state-bridge.js?v=module-bootstrap-20260707-93';
+import { getTrainingState } from '../helpers/training-state-bridge.js?v=module-bootstrap-20260707-93';
+import { api, val } from '../helpers/runtime-bridge.js?v=module-bootstrap-20260707-93';
+import { saveAsTargetGroups } from '../helpers/toml-io-bridge.js?v=module-bootstrap-20260707-93';
+import {
+    applyTomlLockState,
+    applyTomlToConfig,
+    resetTomlDeleteConfirm,
+    resetTomlSaveConfirm,
+    setTomlStatus,
+    tomlFileDisplayName,
+} from '../helpers/toml-action-state-bridge.js?v=module-bootstrap-20260707-93';
 
-    globalThis.loadOutputRunConfig = async function loadOutputRunConfig(runName, kind = 'original') {
-        const run = outputRunState.runs.find((item) => item.name === runName);
+const ctx = getAppContext();
+const datasetState = getDatasetState();
+const tomlState = getTomlState();
+const trainingState = getTrainingState();
+
+function currentOutputRunState() {
+    return datasetState.outputRunState || {};
+}
+
+function currentTrainingSourceState() {
+    return trainingState.currentTrainingSource || {};
+}
+
+    export async function loadOutputRunConfig(runName, kind = 'original') {
+        const run = currentOutputRunState().runs.find((item) => item.name === runName);
         if (!run) {
-            outputRunState = { ...outputRunState, selectedRun: '', content: '', file: '' };
+            datasetState.outputRunState = { ...currentOutputRunState(), selectedRun: '', content: '', file: '' };
             renderOutputRunManager();
             return;
         }
         const available = new Set((run.files || []).map((item) => item.kind));
         const selectedKind = available.has(kind) ? kind : preferredOutputRunKind(runName);
-        outputRunState = {
-            ...outputRunState,
+        datasetState.outputRunState = {
+            ...currentOutputRunState(),
             selectedRun: runName,
             selectedKind,
             content: '读取中...',
@@ -26,8 +60,8 @@ const ctx = globalThis.ctx;
         try {
             const data = await api(`/api/config/output-runs/read?run=${encodeURIComponent(runName)}&kind=${encodeURIComponent(selectedKind)}`);
             if (!data.ok) throw new Error(data.error || '读取运行配置失败');
-            outputRunState = {
-                ...outputRunState,
+            datasetState.outputRunState = {
+                ...currentOutputRunState(),
                 selectedRun: data.run || runName,
                 selectedKind: data.kind || selectedKind,
                 content: data.content || '',
@@ -37,8 +71,8 @@ const ctx = globalThis.ctx;
             renderOutputRunManager();
             setTomlStatus('', '');
         } catch (e) {
-            outputRunState = {
-                ...outputRunState,
+            datasetState.outputRunState = {
+                ...currentOutputRunState(),
                 content: '',
                 file: '',
                 error: e.message,
@@ -48,41 +82,41 @@ const ctx = globalThis.ctx;
         }
     }
 
-    globalThis.preferredOutputRunKind = function preferredOutputRunKind(runName = outputRunState.selectedRun) {
-        const run = outputRunState.runs.find((item) => item.name === runName);
+    export function preferredOutputRunKind(runName = currentOutputRunState().selectedRun) {
+        const run = currentOutputRunState().runs.find((item) => item.name === runName);
         const kinds = (run?.files || []).map((item) => item.kind);
-        if (kinds.includes(outputRunState.selectedKind)) return outputRunState.selectedKind;
+        if (kinds.includes(currentOutputRunState().selectedKind)) return currentOutputRunState().selectedKind;
         if (kinds.includes('original')) return 'original';
         if (kinds.includes('runtime')) return 'runtime';
         if (kinds.includes('dataset')) return 'dataset';
         return 'original';
     }
 
-    globalThis.renderOutputRunManager = function renderOutputRunManager() {
+    export function renderOutputRunManager() {
         renderOutputRunList();
         renderOutputRunDetail();
         updateOutputRunActionState();
         updateConfigPageSummary('output');
-        if (tomlManagerMode === 'output') {
+        if (tomlState.tomlManagerMode === 'output') {
             updateOutputRunSelectionUI();
         }
     }
 
-    globalThis.renderOutputRunList = function renderOutputRunList() {
+    export function renderOutputRunList() {
         const container = document.getElementById('output-run-list');
         if (!container) return;
         container.innerHTML = '';
-        if (outputRunState.loading) {
+        if (currentOutputRunState().loading) {
             const loading = document.createElement('div');
             loading.className = 'output-run-empty';
             loading.textContent = '正在读取全局输出文件夹...';
             container.appendChild(loading);
             return;
         }
-        if (outputRunState.error) {
+        if (currentOutputRunState().error) {
             const error = document.createElement('div');
             error.className = 'output-run-empty error';
-            error.textContent = outputRunState.error;
+            error.textContent = currentOutputRunState().error;
             container.appendChild(error);
             return;
         }
@@ -90,9 +124,9 @@ const ctx = globalThis.ctx;
         if (!runs.length) {
             const empty = document.createElement('div');
             empty.className = 'output-run-empty';
-            empty.textContent = outputRunState.search
+            empty.textContent = currentOutputRunState().search
                 ? '没有匹配的训练输出配置。'
-                : `没有在 ${outputRunState.outputRoot || '输出文件夹'} 找到训练配置。`;
+                : `没有在 ${currentOutputRunState().outputRoot || '输出文件夹'} 找到训练配置。`;
             container.appendChild(empty);
             return;
         }
@@ -100,7 +134,7 @@ const ctx = globalThis.ctx;
             const btn = document.createElement('button');
             btn.type = 'button';
             btn.className = 'output-run-item';
-            btn.classList.toggle('active', run.name === outputRunState.selectedRun);
+            btn.classList.toggle('active', run.name === currentOutputRunState().selectedRun);
             btn.dataset.run = run.name;
             btn.title = run.path || run.name;
             btn.addEventListener('click', () => loadOutputRunConfig(run.name, preferredOutputRunKind(run.name)));
@@ -117,7 +151,7 @@ const ctx = globalThis.ctx;
         }
     }
 
-    globalThis.renderOutputRunDetail = function renderOutputRunDetail() {
+    export function renderOutputRunDetail() {
         const run = selectedOutputRun();
         const title = document.getElementById('output-run-title');
         const meta = document.getElementById('output-run-meta');
@@ -128,7 +162,7 @@ const ctx = globalThis.ctx;
         if (meta) {
             meta.textContent = run
                 ? [run.path, run.mtime_text].filter(Boolean).join(' · ')
-                : `从 ${outputRunState.outputRoot || '全局输出文件夹'} 读取训练快照配置。`;
+                : `从 ${currentOutputRunState().outputRoot || '全局输出文件夹'} 读取训练快照配置。`;
         }
         if (tabs) {
             tabs.innerHTML = '';
@@ -143,7 +177,7 @@ const ctx = globalThis.ctx;
                 const btn = document.createElement('button');
                 btn.type = 'button';
                 btn.className = 'output-run-kind-btn';
-                btn.classList.toggle('active', file.kind === outputRunState.selectedKind);
+                btn.classList.toggle('active', file.kind === currentOutputRunState().selectedKind);
                 btn.textContent = file.label;
                 btn.title = file.file || file.filename;
                 btn.addEventListener('click', () => loadOutputRunConfig(run.name, file.kind));
@@ -151,19 +185,19 @@ const ctx = globalThis.ctx;
             }
         }
         if (viewer) {
-            viewer.value = outputRunState.content || '';
+            viewer.value = currentOutputRunState().content || '';
             viewer.placeholder = run ? '这个运行目录没有可显示的配置内容。' : '选择左侧运行目录后查看配置。';
         }
         if (saveAs) {
-            saveAs.hidden = !outputRunState.saveAsOpen;
+            saveAs.hidden = !currentOutputRunState().saveAsOpen;
         }
         renderOutputRunSaveAsControls();
     }
 
-    globalThis.renderOutputRunSaveAsControls = function renderOutputRunSaveAsControls() {
+    export function renderOutputRunSaveAsControls() {
         const input = document.getElementById('output-run-save-name');
         const select = document.getElementById('output-run-save-group');
-        if (input && !input.value && outputRunState.saveAsOpen) {
+        if (input && !input.value && currentOutputRunState().saveAsOpen) {
             input.value = outputRunSaveAsDefaultName();
         }
         if (!select) return;
@@ -179,10 +213,10 @@ const ctx = globalThis.ctx;
         select.value = groups.some((group) => group.id === current) ? current : (groups[0]?.id || 'imported');
     }
 
-    globalThis.filteredOutputRuns = function filteredOutputRuns() {
-        const query = outputRunState.search.trim().toLowerCase();
-        if (!query) return outputRunState.runs;
-        return outputRunState.runs.filter((run) => {
+    export function filteredOutputRuns() {
+        const query = currentOutputRunState().search.trim().toLowerCase();
+        if (!query) return currentOutputRunState().runs;
+        return currentOutputRunState().runs.filter((run) => {
             const haystack = [
                 run.name,
                 run.path,
@@ -193,24 +227,24 @@ const ctx = globalThis.ctx;
         });
     }
 
-    globalThis.selectedOutputRun = function selectedOutputRun() {
-        return outputRunState.runs.find((item) => item.name === outputRunState.selectedRun) || null;
+    export function selectedOutputRun() {
+        return currentOutputRunState().runs.find((item) => item.name === currentOutputRunState().selectedRun) || null;
     }
 
-    globalThis.updateOutputRunSelectionUI = function updateOutputRunSelectionUI() {
+    export function updateOutputRunSelectionUI() {
         const label = document.getElementById('toml-current-file');
         if (label) {
-            label.textContent = outputRunState.file || outputRunState.selectedRun || '训练输出配置';
+            label.textContent = currentOutputRunState().file || currentOutputRunState().selectedRun || '训练输出配置';
         }
         setBadge('toml-current-badge', false, '当前训练');
-        setBadge('toml-trainable-badge', Boolean(outputRunState.file), '只读快照');
-        setBadge('toml-lock-badge', Boolean(outputRunState.file), '只读');
+        setBadge('toml-trainable-badge', Boolean(currentOutputRunState().file), '只读快照');
+        setBadge('toml-lock-badge', Boolean(currentOutputRunState().file), '只读');
         setBadge('toml-dirty-badge', false, '未保存');
     }
 
-    globalThis.updateOutputRunActionState = function updateOutputRunActionState() {
+    export function updateOutputRunActionState() {
         const run = selectedOutputRun();
-        const hasContent = Boolean(outputRunState.content && outputRunState.file);
+        const hasContent = Boolean(currentOutputRunState().content && currentOutputRunState().file);
         const hasOriginal = Boolean(run?.has_original);
         setButtonDisabled('btn-copy-output-config', !hasContent);
         setButtonDisabled('btn-export-output-config', !hasContent);
@@ -223,12 +257,12 @@ const ctx = globalThis.ctx;
         }
     }
 
-    globalThis.setButtonDisabled = function setButtonDisabled(id, disabled) {
+    export function setButtonDisabled(id, disabled) {
         ctx.dom.setButtonDisabled(id, disabled);
     }
 
-    globalThis.copyOutputRunConfigContent = async function copyOutputRunConfigContent() {
-        const text = outputRunState.content || '';
+    export async function copyOutputRunConfigContent() {
+        const text = currentOutputRunState().content || '';
         if (!text) return;
         try {
             if (navigator.clipboard?.writeText) {
@@ -245,12 +279,12 @@ const ctx = globalThis.ctx;
         }
     }
 
-    globalThis.exportOutputRunConfig = function exportOutputRunConfig() {
-        if (!outputRunState.content) return;
-        const filename = outputRunState.file
-            ? outputRunState.file.split('/').pop()
-            : `${outputRunState.selectedRun || 'output-run'}.${outputRunState.selectedKind}.toml`;
-        const blob = new Blob([outputRunState.content], { type: 'application/toml;charset=utf-8' });
+    export function exportOutputRunConfig() {
+        if (!currentOutputRunState().content) return;
+        const filename = currentOutputRunState().file
+            ? currentOutputRunState().file.split('/').pop()
+            : `${currentOutputRunState().selectedRun || 'output-run'}.${currentOutputRunState().selectedKind}.toml`;
+        const blob = new Blob([currentOutputRunState().content], { type: 'application/toml;charset=utf-8' });
         const url = URL.createObjectURL(blob);
         const link = document.createElement('a');
         link.href = url;
@@ -262,7 +296,7 @@ const ctx = globalThis.ctx;
         setTomlStatus('ok', `已导出 ${filename}`);
     }
 
-    globalThis.openOutputRunSaveAs = function openOutputRunSaveAs() {
+    export function openOutputRunSaveAs() {
         const run = selectedOutputRun();
         if (!run) {
             setTomlStatus('error', '请先选择一个训练运行目录');
@@ -272,7 +306,7 @@ const ctx = globalThis.ctx;
             setTomlStatus('error', '这个运行目录没有 config.original.toml，不能复制为项目预设');
             return;
         }
-        outputRunState = { ...outputRunState, saveAsOpen: true };
+        datasetState.outputRunState = { ...currentOutputRunState(), saveAsOpen: true };
         renderOutputRunManager();
         const input = document.getElementById('output-run-save-name');
         if (input) {
@@ -282,12 +316,12 @@ const ctx = globalThis.ctx;
         }
     }
 
-    globalThis.closeOutputRunSaveAs = function closeOutputRunSaveAs() {
-        outputRunState = { ...outputRunState, saveAsOpen: false };
+    export function closeOutputRunSaveAs() {
+        datasetState.outputRunState = { ...currentOutputRunState(), saveAsOpen: false };
         renderOutputRunManager();
     }
 
-    globalThis.outputRunSaveAsDefaultName = function outputRunSaveAsDefaultName() {
+    export function outputRunSaveAsDefaultName() {
         const run = selectedOutputRun();
         const stem = String(run?.name || 'output_run')
             .replace(/-\d{8}-\d{6}(?:-\d+)?$/i, '')
@@ -296,7 +330,7 @@ const ctx = globalThis.ctx;
         return `${stem}_from_output`;
     }
 
-    globalThis.confirmOutputRunSaveAs = async function confirmOutputRunSaveAs() {
+    export async function confirmOutputRunSaveAs() {
         const run = selectedOutputRun();
         if (!run) return;
         const name = val('output-run-save-name') || outputRunSaveAsDefaultName();
@@ -314,8 +348,8 @@ const ctx = globalThis.ctx;
                 setTomlStatus('error', res.error || '复制为项目预设失败');
                 return;
             }
-            outputRunState = { ...outputRunState, saveAsOpen: false };
-            if (hasPendingConfigChanges(currentTomlFile)) {
+            datasetState.outputRunState = { ...currentOutputRunState(), saveAsOpen: false };
+            if (hasPendingConfigChanges(tomlState.currentTomlFile)) {
                 if (!(await confirmDiscardTomlChanges('复制完成后会回到项目预设并加载新文件，当前项目预设里已有未保存修改。是否继续？'))) {
                     return;
                 }
@@ -329,9 +363,9 @@ const ctx = globalThis.ctx;
         }
     }
 
-    globalThis.selectAndApplyTomlFile = async function selectAndApplyTomlFile(filePath) {
+    export async function selectAndApplyTomlFile(filePath) {
         if (!filePath) return false;
-        const previousFile = currentTomlFile;
+        const previousFile = tomlState.currentTomlFile;
         const previousSelect = document.getElementById('toml-file-select');
         const targetLabel = tomlFileDisplayName(filePath);
         const canSwitch = await handlePendingConfigSwitch({ targetLabel });
@@ -341,7 +375,7 @@ const ctx = globalThis.ctx;
             return false;
         }
         await loadTomlFile(filePath, { force: true });
-        const meta = tomlFileMeta[filePath];
+        const meta = tomlState.tomlFileMeta[filePath];
         if (!meta?.trainable) {
             setTomlStatus('error', '已打开该配置文件，但它不是完整训练配置，不能加载为当前训练入口');
             return false;
@@ -352,10 +386,10 @@ const ctx = globalThis.ctx;
         return true;
     }
 
-    globalThis.loadTomlFile = async function loadTomlFile(filePath, options = {}) {
+    export async function loadTomlFile(filePath, options = {}) {
         if (!options.force && !(await confirmDiscardTomlChanges('当前 TOML 有未保存修改，切换文件会丢失这些修改。是否继续？'))) {
             const select = document.getElementById('toml-file-select');
-            if (select) select.value = currentTomlFile || '';
+            if (select) select.value = tomlState.currentTomlFile || '';
             return;
         }
         resetTomlDeleteConfirm();
@@ -369,19 +403,19 @@ const ctx = globalThis.ctx;
             setTomlStatus('error', data.error || '读取配置文件失败');
             return;
         }
-        currentTomlFile = filePath;
+        tomlState.currentTomlFile = filePath;
         document.getElementById('toml-file-select').value = filePath;
-        tomlSavedContent = data.content || '';
-        document.getElementById('toml-editor').value = tomlSavedContent;
-        if (data.meta) tomlFileMeta[filePath] = data.meta;
+        tomlState.tomlSavedContent = data.content || '';
+        document.getElementById('toml-editor').value = tomlState.tomlSavedContent;
+        if (data.meta) tomlState.tomlFileMeta[filePath] = data.meta;
         updateTomlSelectionUI(filePath);
         applyTomlLockState(filePath);
         updateTomlDirtyState();
         setTomlStatus('', '');
     }
 
-    globalThis.saveTomlFile = async function saveTomlFile(options = {}) {
-        const selectedFile = currentTomlFile || val('toml-file-select');
+    export async function saveTomlFile(options = {}) {
+        const selectedFile = tomlState.currentTomlFile || val('toml-file-select');
         const formFile = currentFormConfigFile();
         const editorDirty = isTomlDirty();
         const formDirty = hasUnsavedFormChanges(formFile);
@@ -405,27 +439,27 @@ const ctx = globalThis.ctx;
                 setTomlStatus('error', '直接编辑器没有未保存的 TOML 文本修改');
                 return false;
             }
-            if (!options.skipConfirm && tomlSaveConfirmFile !== file) {
+            if (!options.skipConfirm && tomlState.tomlSaveConfirmFile !== file) {
                 armTomlSaveConfirm(file);
                 return false;
             }
             resetTomlSaveConfirm({ update: false });
-            return await saveRawTomlContent(file, document.getElementById('toml-editor').value, { reloadConfig: currentTrainingSource.file === file });
+            return await saveRawTomlContent(file, document.getElementById('toml-editor').value, { reloadConfig: currentTrainingSourceState().file === file });
         }
         if (editorDirty && formDirty && selectedFile !== formFile) {
             setTomlStatus('error', '右侧直接编辑器和左侧表单分别有未保存修改；请先保存或放弃直接编辑器内容，再保存表单配置。');
             updateTomlActionState(selectedFile);
             return false;
         }
-        if (editorDirty && !formDirty && !options.skipConfirm && tomlSaveConfirmFile !== file) {
+        if (editorDirty && !formDirty && !options.skipConfirm && tomlState.tomlSaveConfirmFile !== file) {
             armTomlSaveConfirm(file);
             return false;
         }
         resetTomlSaveConfirm({ update: false });
-        if (formDirty || currentTrainingSource.file === file) {
+        if (formDirty || currentTrainingSourceState().file === file) {
             const datasetApplied = await applySelectedDatasetPresetToCurrentConfig(file);
             if (!datasetApplied) return false;
-            const datasetWasDirty = datasetEditorState.dirty;
+            const datasetWasDirty = datasetState.datasetEditorState.dirty;
             if (datasetWasDirty) {
                 const datasetSaved = await saveDatasetEditor({ trainFile: file, reloadList: false });
                 if (!datasetSaved) return false;
@@ -443,17 +477,17 @@ const ctx = globalThis.ctx;
             }
         }
         const content = document.getElementById('toml-editor').value;
-        return await saveRawTomlContent(file, content, { reloadConfig: currentTrainingSource.file === file });
+        return await saveRawTomlContent(file, content, { reloadConfig: currentTrainingSourceState().file === file });
     }
 
-    globalThis.saveRawTomlContent = async function saveRawTomlContent(file, content, options = {}) {
+    export async function saveRawTomlContent(file, content, options = {}) {
         try {
             const res = await api('/api/config/raw', {
                 method: 'PUT',
                 body: JSON.stringify({ file, content }),
             });
             if (res.ok) {
-                tomlSavedContent = content;
+                tomlState.tomlSavedContent = content;
                 resetTomlSaveConfirm({ update: false });
                 updateTomlDirtyState();
                 setTomlStatus('ok', '✓ 已保存');
@@ -472,7 +506,7 @@ const ctx = globalThis.ctx;
         }
     }
 
-    globalThis.saveFormPatchToToml = async function saveFormPatchToToml(file, values) {
+    export async function saveFormPatchToToml(file, values) {
         try {
             const content = currentTomlEditorContentForFile(file);
             const preparedValues = await prepareFormPatchValues(values);
@@ -487,9 +521,9 @@ const ctx = globalThis.ctx;
                 return false;
             }
 
-            if (typeof res.content === 'string' && file === (currentTomlFile || val('toml-file-select'))) {
+            if (typeof res.content === 'string' && file === (tomlState.currentTomlFile || val('toml-file-select'))) {
                 document.getElementById('toml-editor').value = res.content;
-                tomlSavedContent = res.content;
+                tomlState.tomlSavedContent = res.content;
             }
             resetTomlSaveConfirm({ update: false });
             await loadConfig();
@@ -502,3 +536,28 @@ const ctx = globalThis.ctx;
             return false;
         }
     }
+
+configureOutputRunBridge({
+    loadOutputRunConfig,
+    preferredOutputRunKind,
+    renderOutputRunManager,
+    renderOutputRunList,
+    renderOutputRunDetail,
+    renderOutputRunSaveAsControls,
+    filteredOutputRuns,
+    selectedOutputRun,
+    updateOutputRunSelectionUI,
+    updateOutputRunActionState,
+    setButtonDisabled,
+    copyOutputRunConfigContent,
+    exportOutputRunConfig,
+    openOutputRunSaveAs,
+    closeOutputRunSaveAs,
+    outputRunSaveAsDefaultName,
+    confirmOutputRunSaveAs,
+    selectAndApplyTomlFile,
+    loadTomlFile,
+    saveTomlFile,
+    saveRawTomlContent,
+    saveFormPatchToToml,
+});

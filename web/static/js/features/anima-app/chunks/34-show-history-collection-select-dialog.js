@@ -2,9 +2,39 @@
  * Mechanical split from the former monolithic app closure.
  * Keep this module focused; move newly edited behavior into domain modules.
  */
-const ctx = globalThis.ctx;
+import {
+    formatSystemPercent,
+    formatSystemTemperature,
+    formatSystemVram,
+    historySystemSummary,
+} from '../../history-detail/system.js?v=module-bootstrap-20260707-93';
+import { ensurePreviewFeature } from '../helpers/feature-ensurers.js?v=module-bootstrap-20260707-93';
+import {
+    historyCollectionOptionSearchText,
+    historyCollectionSelectOptions,
+    historyTaskDisplayName,
+    moveHistoryCollectionValue,
+} from '../helpers/history-collections-bridge.js?v=module-bootstrap-20260707-93';
+import { configureHistoryTaskActionsBridge } from '../helpers/history-task-actions-bridge.js?v=module-bootstrap-20260707-93';
+import { clearResumeOptions, historyStateLabel, metricsWithProgressFallback, renderConfigGroupTimeline, renderHistoryPaths, renderResumePanelState } from '../helpers/history-timeline-bridge.js?v=module-bootstrap-20260707-93';
+import { renderTrainingRunSummary } from '../helpers/live-status-bridge.js?v=module-bootstrap-20260707-93';
+import { formatLr, lastValue, readConfigNumber } from '../../live-training/index.js?v=module-bootstrap-20260707-93';
+import { getHistoryState } from '../helpers/history-state-bridge.js?v=module-bootstrap-20260707-93';
+import { api } from '../helpers/runtime-bridge.js?v=module-bootstrap-20260707-93';
+import { escapeHtml } from './13-update-dataset-editor-rows-setting-value.js?v=module-bootstrap-20260707-93';
+import { setEtaMetricText, setMetricText, setText, setTrainingDashboardHeadState, syncLossChartEmptyState, updateDashboardProgressIdleState, updateTrainingToolbarState } from './03-parse-network-arg-entry.js?v=module-bootstrap-20260707-93';
+import { ensureHistoryDetailFeature } from '../helpers/history-detail-bridge.js?v=module-bootstrap-20260707-93';
+import { closeSharedHistoryTaskDialog, openSharedHistoryTaskDialog, sharedHistoryTaskDialogIsOpen, sharedHistoryTaskDialogParts } from '../helpers/toml-selection-bridge.js?v=module-bootstrap-20260707-93';
+import { renderLogOutputLines, setLogStatus } from '../helpers/live-log-bridge.js?v=module-bootstrap-20260707-93';
+import { showTrainingView } from '../helpers/queue-view-bridge.js?v=module-bootstrap-20260707-93';
+import { loadTrainingHistoryList, renderHistoryManager, renderTrainingHistoryList } from '../helpers/history-list-bridge.js?v=module-bootstrap-20260707-93';
+import { getTrainingState } from '../helpers/training-state-bridge.js?v=module-bootstrap-20260707-93';
 
-    globalThis.showHistoryCollectionSelectDialog = function showHistoryCollectionSelectDialog(options) {
+const historyState = getHistoryState();
+const trainingState = getTrainingState();
+
+
+    export function showHistoryCollectionSelectDialog(options) {
         const wrap = document.createElement('div');
         wrap.className = 'history-collection-select-dialog';
         let selectedValue = String(options.value || '').trim();
@@ -96,7 +126,7 @@ const ctx = globalThis.ctx;
         });
     }
 
-    globalThis.showHistoryTaskConfirmDialog = function showHistoryTaskConfirmDialog(options) {
+    export function showHistoryTaskConfirmDialog(options) {
         const wrap = document.createElement('div');
         wrap.className = 'history-task-dialog-message';
         const strong = document.createElement('strong');
@@ -116,7 +146,7 @@ const ctx = globalThis.ctx;
         });
     }
 
-    globalThis.showHistoryTaskMessageDialog = function showHistoryTaskMessageDialog(options = {}) {
+    export function showHistoryTaskMessageDialog(options = {}) {
         const wrap = document.createElement('div');
         wrap.className = ['history-task-dialog-message', `tone-${options.tone || 'info'}`].filter(Boolean).join(' ');
         const message = document.createElement('p');
@@ -141,7 +171,7 @@ const ctx = globalThis.ctx;
         });
     }
 
-    globalThis.showHistoryTaskDialog = function showHistoryTaskDialog(options) {
+    export function showHistoryTaskDialog(options) {
         const parts = sharedHistoryTaskDialogParts();
         if (!parts) {
             return Promise.resolve(null);
@@ -230,60 +260,60 @@ const ctx = globalThis.ctx;
         });
     }
 
-    globalThis.normalizeHistoryDetailTab = function normalizeHistoryDetailTab(tab) {
+    export function normalizeHistoryDetailTab(tab) {
         return ensureHistoryDetailFeature().normalizeHistoryDetailTab(tab);
     }
 
-    globalThis.renderHistoryManagerDetail = function renderHistoryManagerDetail(payload = ensureHistoryDetailFeature().getCurrentPayload(), options = {}) {
+    export function renderHistoryManagerDetail(payload = ensureHistoryDetailFeature().getCurrentPayload(), options = {}) {
         return ensureHistoryDetailFeature().renderHistoryManagerDetail(payload, options);
     }
 
-    globalThis.renderHistoryDetailDialog = function renderHistoryDetailDialog(payload = ensureHistoryDetailFeature().getCurrentPayload(), options = {}) {
+    export function renderHistoryDetailDialog(payload = ensureHistoryDetailFeature().getCurrentPayload(), options = {}) {
         return ensureHistoryDetailFeature().renderHistoryDetailDialog(payload, options);
     }
 
-    globalThis.closeHistoryDetailDialog = function closeHistoryDetailDialog() {
+    export function closeHistoryDetailDialog() {
         return ensureHistoryDetailFeature().closeHistoryDetailDialog();
     }
 
-    globalThis.isHistoryDetailDialogOpen = function isHistoryDetailDialogOpen() {
+    export function isHistoryDetailDialogOpen() {
         return ensureHistoryDetailFeature().isHistoryDetailDialogOpen();
     }
 
-    globalThis.shouldRenderInlineResumePanel = function shouldRenderInlineResumePanel() {
-        return historyViewMode !== 'live' && trainingViewMode === 'live';
+    export function shouldRenderInlineResumePanel() {
+        return historyState.historyViewMode !== 'live' && trainingState.trainingViewMode === 'live';
     }
 
-    globalThis.clearViewingHistoryTaskContext = function clearViewingHistoryTaskContext(payload = null) {
+    export function clearViewingHistoryTaskContext(payload = null) {
         if (payload?.mode === 'config_group') return;
-        viewingHistoryTaskId = '';
-        currentHistoryTaskForResume = null;
-        if (historyViewMode !== 'config_group') {
-            historyViewMode = 'live';
-            currentHistoryConfigGroup = null;
-            currentHistoryTimelineSelection = [];
+        historyState.viewingHistoryTaskId = '';
+        historyState.currentHistoryTaskForResume = null;
+        if (historyState.historyViewMode !== 'config_group') {
+            historyState.historyViewMode = 'live';
+            historyState.currentHistoryConfigGroup = null;
+            historyState.currentHistoryTimelineSelection = [];
         }
         renderResumePanelState();
     }
 
-    globalThis.handleHistoryDetailWindowKeydown = function handleHistoryDetailWindowKeydown(event) {
+    export function handleHistoryDetailWindowKeydown(event) {
         return ensureHistoryDetailFeature().handleHistoryDetailWindowKeydown(event);
     }
 
-    globalThis.restorePreviewWorkspaceFromHistoryDetail = function restorePreviewWorkspaceFromHistoryDetail() {
+    export function restorePreviewWorkspaceFromHistoryDetail() {
         return ensurePreviewFeature().restorePreviewWorkspaceFromHistoryDetail();
     }
 
-    globalThis.activateHistoryDetailPreview = function activateHistoryDetailPreview(payload) {
+    export function activateHistoryDetailPreview(payload) {
         return ensurePreviewFeature().activateHistoryDetailPreview(payload);
     }
 
-    globalThis.clearHistoryManagerDetail = function clearHistoryManagerDetail() {
-        viewingHistoryTaskId = '';
-        historyViewMode = 'live';
-        currentHistoryTaskForResume = null;
-        currentHistoryConfigGroup = null;
-        currentHistoryTimelineSelection = [];
+    export function clearHistoryManagerDetail() {
+        historyState.viewingHistoryTaskId = '';
+        historyState.historyViewMode = 'live';
+        historyState.currentHistoryTaskForResume = null;
+        historyState.currentHistoryConfigGroup = null;
+        historyState.currentHistoryTimelineSelection = [];
         ensureHistoryDetailFeature().clearHistoryDetailState();
         closeHistoryDetailDialog();
         clearResumeOptions();
@@ -291,19 +321,19 @@ const ctx = globalThis.ctx;
         renderHistoryManager();
     }
 
-    globalThis.selectedHistoryManagerResumeCheckpoint = function selectedHistoryManagerResumeCheckpoint() {
+    export function selectedHistoryManagerResumeCheckpoint() {
         return ensureHistoryDetailFeature().selectedHistoryManagerResumeCheckpoint();
     }
 
-    globalThis.resumeTrainingFromHistoryDetail = async function resumeTrainingFromHistoryDetail(queueMode) {
+    export async function resumeTrainingFromHistoryDetail(queueMode) {
         return ensureHistoryDetailFeature().resumeTrainingFromHistoryDetail(queueMode);
     }
 
-    globalThis.loadHistoryTask = async function loadHistoryTask(taskId, options = {}) {
+    export async function loadHistoryTask(taskId, options = {}) {
         return ensureHistoryDetailFeature().loadHistoryTask(taskId, options);
     }
 
-    globalThis.openSidebarHistoryTask = async function openSidebarHistoryTask(taskId) {
+    export async function openSidebarHistoryTask(taskId) {
         const id = String(taskId || '').trim();
         if (!id) return;
         try {
@@ -318,11 +348,11 @@ const ctx = globalThis.ctx;
             }
             showTrainingView('live');
             closeHistoryDetailDialog();
-            historyViewMode = 'task';
-            viewingHistoryTaskId = id;
-            currentHistoryConfigGroup = null;
-            currentHistoryTimelineSelection = [];
-            currentHistoryTaskForResume = payload.task || null;
+            historyState.historyViewMode = 'task';
+            historyState.viewingHistoryTaskId = id;
+            historyState.currentHistoryConfigGroup = null;
+            historyState.currentHistoryTimelineSelection = [];
+            historyState.currentHistoryTaskForResume = payload.task || null;
             ensureHistoryDetailFeature().clearHistoryDetailState();
             ensureHistoryDetailFeature().resetCurveHover();
             renderHistoryTask(payload);
@@ -336,26 +366,26 @@ const ctx = globalThis.ctx;
         }
     }
 
-    globalThis.refreshHistoryView = async function refreshHistoryView() {
-        if (historyViewMode === 'config_group' && currentHistoryConfigGroup) {
-            await loadConfigGroupTimeline(currentHistoryConfigGroup, {
-                taskIds: currentHistoryTimelineSelection,
+    export async function refreshHistoryView() {
+        if (historyState.historyViewMode === 'config_group' && historyState.currentHistoryConfigGroup) {
+            await loadConfigGroupTimeline(historyState.currentHistoryConfigGroup, {
+                taskIds: historyState.currentHistoryTimelineSelection,
                 skipSelectionDialog: true,
             });
             return;
         }
-        if (!viewingHistoryTaskId) return;
-        await openSidebarHistoryTask(viewingHistoryTaskId);
+        if (!historyState.viewingHistoryTaskId) return;
+        await openSidebarHistoryTask(historyState.viewingHistoryTaskId);
     }
 
-    globalThis.loadConfigGroupTimeline = async function loadConfigGroupTimeline(group, options = {}) {
+    export async function loadConfigGroupTimeline(group, options = {}) {
         if (!group?.history_group_key && (!group?.methods_subdir || !group?.variant)) return;
         const taskIds = Array.isArray(options.taskIds) ? options.taskIds.filter(Boolean) : [];
         const query = new URLSearchParams({
             methods_subdir: group.methods_subdir || '',
             variant: group.variant || '',
             preset: group.preset || 'default',
-            include_archived: showArchivedHistory ? '1' : '0',
+            include_archived: historyState.showArchivedHistory ? '1' : '0',
         });
         if (!taskIds.length && group.history_group_key) {
             query.set('group_key', group.history_group_key);
@@ -376,12 +406,12 @@ const ctx = globalThis.ctx;
             if (options.detailTab) {
                 ensureHistoryDetailFeature().setActiveTab(options.detailTab);
             }
-            historyViewMode = 'config_group';
-            viewingHistoryTaskId = '';
+            historyState.historyViewMode = 'config_group';
+            historyState.viewingHistoryTaskId = '';
             showTrainingView('history');
-            currentHistoryConfigGroup = payload.group || group;
-            currentHistoryTimelineSelection = (payload.summary?.selected_task_ids || taskIds || []).filter(Boolean);
-            currentHistoryTaskForResume = null;
+            historyState.currentHistoryConfigGroup = payload.group || group;
+            historyState.currentHistoryTimelineSelection = (payload.summary?.selected_task_ids || taskIds || []).filter(Boolean);
+            historyState.currentHistoryTaskForResume = null;
             clearResumeOptions();
             ensureHistoryDetailFeature().resetCurveHover();
             renderTrainingHistoryList();
@@ -396,13 +426,13 @@ const ctx = globalThis.ctx;
         }
     }
 
-    globalThis.historyTaskStepOffset = function historyTaskStepOffset(task) {
+    export function historyTaskStepOffset(task) {
         const resume = task?.resume_from || {};
         const step = Number(resume.checkpoint_step || 0);
         return Number.isFinite(step) && step > 0 ? step : 0;
     }
 
-    globalThis.historyLossChartPoints = function historyLossChartPoints(lossPoints, task) {
+    export function historyLossChartPoints(lossPoints, task) {
         const offset = historyTaskStepOffset(task);
         const out = [];
         let maxStep = null;
@@ -427,9 +457,9 @@ const ctx = globalThis.ctx;
         return out;
     }
 
-    globalThis.renderHistoryTask = function renderHistoryTask(payload) {
+    export function renderHistoryTask(payload) {
         const task = payload.task || {};
-        currentHistoryTaskForResume = task;
+        historyState.currentHistoryTaskForResume = task;
         const banner = document.getElementById('history-view-banner');
         const bannerTitle = document.getElementById('history-view-title');
         if (banner) banner.hidden = false;
@@ -470,14 +500,14 @@ const ctx = globalThis.ctx;
         const metrics = metricsWithProgressFallback(payload.metrics || [], logs);
         const lossPoints = metrics.filter((item) => item.loss !== undefined);
         const chartPoints = historyLossChartPoints(lossPoints, task);
-        lossChart?.setXLabel?.('step');
-        lossChart?.setScaleMode?.('step', {
+        trainingState.lossChart?.setXLabel?.('step');
+        trainingState.lossChart?.setScaleMode?.('step', {
             xRange: {
                 min: chartPoints[0]?.step,
                 max: chartPoints[chartPoints.length - 1]?.step,
             },
         });
-        lossChart?.setData(chartPoints, { keepAll: true });
+        trainingState.lossChart?.setData(chartPoints, { keepAll: true });
         syncLossChartEmptyState();
         const lastMetric = metrics[metrics.length - 1] || {};
         const lastLossMetric = lossPoints[lossPoints.length - 1] || {};
@@ -533,5 +563,32 @@ const ctx = globalThis.ctx;
         if (configOutput) configOutput.textContent = payload.config_toml || '# 无配置快照';
         renderHistoryPaths(task);
         renderResumePanelState();
-        if (trainingViewMode === 'history') renderHistoryManagerDetail(payload);
+        if (trainingState.trainingViewMode === 'history') renderHistoryManagerDetail(payload);
     }
+
+    configureHistoryTaskActionsBridge({
+        showHistoryCollectionSelectDialog,
+        showHistoryTaskConfirmDialog,
+        showHistoryTaskMessageDialog,
+        showHistoryTaskDialog,
+        normalizeHistoryDetailTab,
+        renderHistoryManagerDetail,
+        renderHistoryDetailDialog,
+        closeHistoryDetailDialog,
+        isHistoryDetailDialogOpen,
+        shouldRenderInlineResumePanel,
+        clearViewingHistoryTaskContext,
+        handleHistoryDetailWindowKeydown,
+        restorePreviewWorkspaceFromHistoryDetail,
+        activateHistoryDetailPreview,
+        clearHistoryManagerDetail,
+        selectedHistoryManagerResumeCheckpoint,
+        resumeTrainingFromHistoryDetail,
+        loadHistoryTask,
+        openSidebarHistoryTask,
+        refreshHistoryView,
+        loadConfigGroupTimeline,
+        historyTaskStepOffset,
+        historyLossChartPoints,
+        renderHistoryTask,
+    });

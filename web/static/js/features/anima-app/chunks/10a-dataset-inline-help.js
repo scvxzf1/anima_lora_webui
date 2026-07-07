@@ -1,6 +1,26 @@
 /**
  * Dataset editor inline help helpers and small advanced-field panels.
  */
+import { help } from '../../../config/catalog.js?v=module-bootstrap-20260707-93';
+import { createHelpContent } from '../helpers/config-field-ui-bridge.js?v=module-bootstrap-20260707-93';
+import { getDatasetState } from '../helpers/dataset-state-bridge.js?v=module-bootstrap-20260707-93';
+import { isDatasetTabActive } from '../helpers/dataset-render-bridge.js?v=module-bootstrap-20260707-93';
+import { currentTrainingConfigFile } from '../helpers/preflight-dialog-bridge.js?v=module-bootstrap-20260707-93';
+import {
+    updateDatasetEditorRow,
+    updateDatasetEditorRowSettingValue,
+} from './12-create-dataset-row-caption-source-mode-editor.js?v=module-bootstrap-20260707-93';
+
+const datasetState = getDatasetState();
+
+function currentDatasetPresetState() {
+    return datasetState.datasetPresetState || {};
+}
+
+function currentDatasetEditorState() {
+    return datasetState.datasetEditorState || {};
+}
+
 let datasetInlineHelpSeq = 0;
 
 function createDatasetInlineHelp(className = '') {
@@ -179,7 +199,13 @@ function createDatasetExperimentalNotice(helpDiv) {
     return { notice, detailBtn };
 }
 
-function createDatasetExperimentalAdvancedBody(row, index, overviewHelp) {
+function createDatasetExperimentalAdvancedBody(row, index, overviewHelp, deps) {
+    const {
+        createDatasetCaptionExtensionEditor,
+        createDatasetExperimentalScopePicker,
+        createDatasetPathFilterEditor,
+        createDatasetTriggerCloneEditor,
+    } = deps;
     const body = document.createElement('div');
     body.className = 'dataset-experimental-body';
     const overview = createDatasetExperimentalNotice(overviewHelp);
@@ -190,8 +216,8 @@ function createDatasetExperimentalAdvancedBody(row, index, overviewHelp) {
             '数据与路径规则',
             '决定程序如何枚举本地图片、筛选路径和读取文本标注。',
             [
-                globalThis.createDatasetPathFilterEditor(row, index),
-                globalThis.createDatasetCaptionExtensionEditor(row, index),
+                createDatasetPathFilterEditor(row, index),
+                createDatasetCaptionExtensionEditor(row, index),
             ],
             'dataset-advanced-data-rules',
         ),
@@ -199,9 +225,9 @@ function createDatasetExperimentalAdvancedBody(row, index, overviewHelp) {
             '训练行为与策略',
             '影响数据集权重、生效范围和运行时生成的训练副本。',
             [
-                globalThis.createDatasetExperimentalScopePicker(index),
+                createDatasetExperimentalScopePicker(index),
                 createDatasetIsRegEditor(row, index),
-                globalThis.createDatasetTriggerCloneEditor(row, index),
+                createDatasetTriggerCloneEditor(row, index),
             ],
             'dataset-advanced-training-rules',
         ),
@@ -211,19 +237,19 @@ function createDatasetExperimentalAdvancedBody(row, index, overviewHelp) {
 
 function datasetExperimentalOpenKey(index) {
     const context = isDatasetTabActive()
-        ? `preset:${datasetPresetState.selectedFile || 'new'}`
-        : `config:${datasetEditorState.dataset_config || (typeof currentTrainingConfigFile === 'function' ? currentTrainingConfigFile() : '') || 'current'}`;
+        ? `preset:${currentDatasetPresetState().selectedFile || 'new'}`
+        : `config:${currentDatasetEditorState().dataset_config || (typeof currentTrainingConfigFile === 'function' ? currentTrainingConfigFile() : '') || 'current'}`;
     return `${context}:${index}`;
 }
 
 function setDatasetExperimentalOpenState(index, open) {
-    datasetExperimentalOpenStates.set(datasetExperimentalOpenKey(index), Boolean(open));
+    datasetState.datasetExperimentalOpenStates.set(datasetExperimentalOpenKey(index), Boolean(open));
 }
 
 function datasetExperimentalOpenState(index, defaultOpen) {
     const key = datasetExperimentalOpenKey(index);
-    return datasetExperimentalOpenStates.has(key)
-        ? datasetExperimentalOpenStates.get(key)
+    return datasetState.datasetExperimentalOpenStates.has(key)
+        ? datasetState.datasetExperimentalOpenStates.get(key)
         : Boolean(defaultOpen);
 }
 

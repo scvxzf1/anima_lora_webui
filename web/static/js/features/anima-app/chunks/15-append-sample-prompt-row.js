@@ -2,9 +2,50 @@
  * Mechanical split from the former monolithic app closure.
  * Keep this module focused; move newly edited behavior into domain modules.
  */
-const ctx = globalThis.ctx;
+import { formatCompactNumber } from '../../history-detail/ui.js?v=module-bootstrap-20260707-93';
+import {
+    EXTRA_FIELD_HELP_ZH,
+    FIELD_HELP_ZH,
+    FIELD_LABEL_ZH,
+    FIELD_STRICT_SELECT_OPTIONS,
+    FORM_SECTION_DEFS,
+    NETWORK_ARG_FIELD_MAP,
+    help,
+} from '../../../config/catalog.js?v=module-bootstrap-20260707-93';
+import { normalizeLoraAdapterKind, normalizePrecisionPreference } from '../helpers/config-values.js?v=module-bootstrap-20260707-93';
+import { configureConfigFieldUiBridge } from '../helpers/config-field-ui-bridge.js?v=module-bootstrap-20260707-93';
+import { configureTomlManagerBridge } from '../helpers/toml-manager-bridge.js?v=module-bootstrap-20260707-93';
+import { handleDeletedTomlSelection } from '../helpers/toml-actions-bridge.js?v=module-bootstrap-20260707-93';
+import { loadOutputRunConfig, preferredOutputRunKind, renderOutputRunManager, updateOutputRunActionState, updateOutputRunSelectionUI } from '../helpers/output-run-bridge.js?v=module-bootstrap-20260707-93';
+import { confirmDiscardTomlChanges, setBadge, updateTomlDirtyState, updateTomlSelectionUI } from '../helpers/toml-selection-bridge.js?v=module-bootstrap-20260707-93';
+import { getConfigState } from '../helpers/config-state-bridge.js?v=module-bootstrap-20260707-93';
+import { getDatasetState } from '../helpers/dataset-state-bridge.js?v=module-bootstrap-20260707-93';
+import { getTomlState } from '../helpers/toml-state-bridge.js?v=module-bootstrap-20260707-93';
+import { getTrainingState } from '../helpers/training-state-bridge.js?v=module-bootstrap-20260707-93';
+import { filterTrainingTomlGroups, reorderTomlFileGroups } from '../helpers/toml-io-bridge.js?v=module-bootstrap-20260707-93';
+import { populateTomlFileSelect } from '../helpers/toml-drag-bridge.js?v=module-bootstrap-20260707-93';
+import { api, val } from '../helpers/runtime-bridge.js?v=module-bootstrap-20260707-93';
+import { updateConfigStickyPlacement } from './04-create-config-group-entry.js?v=module-bootstrap-20260707-93';
+import { handleFormFieldChange, markSamplePromptsEditorTouched } from './14-lora-adapter-kind-from-config.js?v=module-bootstrap-20260707-93';
+import {
+    applyTomlLockState,
+    setTomlStatus,
+} from '../helpers/toml-action-state-bridge.js?v=module-bootstrap-20260707-93';
 
-    globalThis.appendSamplePromptRow = function appendSamplePromptRow(rowsWrap, row) {
+const datasetState = getDatasetState();
+const configState = getConfigState();
+const tomlState = getTomlState();
+const trainingState = getTrainingState();
+
+function currentOutputRunState() {
+    return datasetState.outputRunState || {};
+}
+
+function currentTrainingSourceState() {
+    return trainingState.currentTrainingSource || {};
+}
+
+    export function appendSamplePromptRow(rowsWrap, row) {
         const item = document.createElement('div');
         item.className = 'sample-prompt-row';
 
@@ -45,7 +86,7 @@ const ctx = globalThis.ctx;
         updateSamplePromptRemoveButtons(rowsWrap);
     }
 
-    globalThis.createSamplePromptTextField = function createSamplePromptTextField(labelText, field, value) {
+    export function createSamplePromptTextField(labelText, field, value) {
         const label = document.createElement('label');
         label.className = 'sample-prompt-field sample-prompt-field-text';
         const span = document.createElement('span');
@@ -58,7 +99,7 @@ const ctx = globalThis.ctx;
         return label;
     }
 
-    globalThis.createSamplePromptInputField = function createSamplePromptInputField(labelText, field, value, type = 'text', step = '') {
+    export function createSamplePromptInputField(labelText, field, value, type = 'text', step = '') {
         const label = document.createElement('label');
         label.className = 'sample-prompt-field';
         const span = document.createElement('span');
@@ -75,13 +116,13 @@ const ctx = globalThis.ctx;
         return label;
     }
 
-    globalThis.clearSamplePromptRow = function clearSamplePromptRow(row) {
+    export function clearSamplePromptRow(row) {
         row.querySelectorAll('[data-sample-prompt-field]').forEach((input) => {
             input.value = '';
         });
     }
 
-    globalThis.updateSamplePromptRemoveButtons = function updateSamplePromptRemoveButtons(rowsWrap) {
+    export function updateSamplePromptRemoveButtons(rowsWrap) {
         const rows = rowsWrap.querySelectorAll('.sample-prompt-row');
         rows.forEach((row) => {
             const button = row.querySelector('.sample-prompt-remove');
@@ -90,7 +131,7 @@ const ctx = globalThis.ctx;
         });
     }
 
-    globalThis.isNumericField = function isNumericField(key, value) {
+    export function isNumericField(key, value) {
         const networkArgSpec = NETWORK_ARG_FIELD_MAP.get(key);
         if (networkArgSpec) {
             return ['integer', 'number'].includes(networkArgSpec.valueType);
@@ -112,7 +153,7 @@ const ctx = globalThis.ctx;
         ].includes(key);
     }
 
-    globalThis.isIntegerNumericField = function isIntegerNumericField(key, value) {
+    export function isIntegerNumericField(key, value) {
         const networkArgSpec = NETWORK_ARG_FIELD_MAP.get(key);
         if (networkArgSpec) return networkArgSpec.valueType === 'integer';
         if (key === 'network_alpha') return false;
@@ -131,11 +172,11 @@ const ctx = globalThis.ctx;
         ].includes(key) || Number.isInteger(value);
     }
 
-    globalThis.allowsNegativeNumberField = function allowsNegativeNumberField(key) {
+    export function allowsNegativeNumberField(key) {
         return ['b_cond_init', 'pe_lora_layer_from', 'save_last_n_epochs'].includes(key);
     }
 
-    globalThis.createSelectInput = function createSelectInput(key, value, options) {
+    export function createSelectInput(key, value, options) {
         const select = document.createElement('select');
         select.className = 'field-input field-select';
         select.dataset.valueType = fieldValueTypeForKey(key, value);
@@ -164,11 +205,11 @@ const ctx = globalThis.ctx;
         return select;
     }
 
-    globalThis.selectUsesStrictOptions = function selectUsesStrictOptions(key) {
+    export function selectUsesStrictOptions(key) {
         return Boolean(FIELD_STRICT_SELECT_OPTIONS?.has?.(key));
     }
 
-    globalThis.strictSelectCurrentValueLabel = function strictSelectCurrentValueLabel(key, value) {
+    export function strictSelectCurrentValueLabel(key, value) {
         if (key === 'block_swap_profile_jsonl') {
             return `自定义路径（旧值） / ${String(value ?? '')}`;
         }
@@ -177,14 +218,14 @@ const ctx = globalThis.ctx;
 
     Object.assign(FIELD_HELP_ZH, EXTRA_FIELD_HELP_ZH);
 
-    globalThis.fieldValueType = function fieldValueType(value) {
+    export function fieldValueType(value) {
         if (Array.isArray(value)) return 'array';
         if (typeof value === 'boolean') return 'boolean';
         if (typeof value === 'number') return 'number';
         return 'string';
     }
 
-    globalThis.fieldValueTypeForKey = function fieldValueTypeForKey(key, value) {
+    export function fieldValueTypeForKey(key, value) {
         const networkArgSpec = NETWORK_ARG_FIELD_MAP.get(key);
         if (networkArgSpec) {
             if (networkArgSpec.valueType === 'boolean' || networkArgSpec.valueType === 'booleanInt') return 'boolean';
@@ -199,13 +240,13 @@ const ctx = globalThis.ctx;
         return fieldValueType(value);
     }
 
-    globalThis.optionValue = function optionValue(value) {
+    export function optionValue(value) {
         if (value === null || value === undefined) return '';
         if (typeof value === 'boolean') return value ? 'true' : 'false';
         return String(value);
     }
 
-    globalThis.optionLabel = function optionLabel(key, value) {
+    export function optionLabel(key, value) {
         if (key === 'lora_adapter_kind') {
             return {
                 lora: '普通 LoRA',
@@ -285,7 +326,7 @@ const ctx = globalThis.ctx;
         return String(value);
     }
 
-    globalThis.generateDefaultHelp = function generateDefaultHelp(key, value) {
+    export function generateDefaultHelp(key, value) {
         const typeStr = Array.isArray(value) ? '数组' :
             typeof value === 'boolean' ? '布尔值 (true/false)' :
             typeof value === 'number' ? '数值' : '字符串';
@@ -302,7 +343,7 @@ const ctx = globalThis.ctx;
         );
     }
 
-    globalThis.sectionTitleForField = function sectionTitleForField(key) {
+    export function sectionTitleForField(key) {
         for (const section of FORM_SECTION_DEFS) {
             if ((section.keys || []).includes(key)) return section.title;
         }
@@ -312,7 +353,7 @@ const ctx = globalThis.ctx;
         return '高级配置';
     }
 
-    globalThis.createHelpContent = function createHelpContent(key, value) {
+    export function createHelpContent(key, value) {
         const spec = getHelpSpec(key, value);
         const content = document.createElement('div');
         content.className = 'help-content';
@@ -326,7 +367,7 @@ const ctx = globalThis.ctx;
         return content;
     }
 
-    globalThis.addHelpSection = function addHelpSection(parent, title, body, kind) {
+    export function addHelpSection(parent, title, body, kind) {
         if (body === undefined || body === null || body === '') return;
         if (Array.isArray(body) && body.length === 0) return;
 
@@ -355,11 +396,11 @@ const ctx = globalThis.ctx;
         parent.appendChild(section);
     }
 
-    globalThis.getHelpSpec = function getHelpSpec(key, value) {
+    export function getHelpSpec(key, value) {
         // 优先使用内置中文说明
         if (FIELD_HELP_ZH[key]) return FIELD_HELP_ZH[key];
         // 其次从服务端获取的 field help 中取英文（作为兜底）
-        const remote = fieldHelp[key];
+        const remote = configState.fieldHelp[key];
         if (remote) {
             const remoteText = remote.en || remote.ko || '';
             if (remoteText) {
@@ -378,7 +419,7 @@ const ctx = globalThis.ctx;
     }
 
     // ── TOML 编辑器 ──
-    globalThis.updateConfigPageSummary = function updateConfigPageSummary(mode = tomlManagerMode) {
+    export function updateConfigPageSummary(mode = tomlState.tomlManagerMode) {
         const modeLabel = document.getElementById('config-sidebar-mode-label');
         const countLabel = document.getElementById('config-sidebar-file-count');
         const countName = document.getElementById('config-sidebar-count-label');
@@ -396,15 +437,15 @@ const ctx = globalThis.ctx;
         }
         if (!countLabel) return;
         if (mode === 'output') {
-            countLabel.textContent = outputRunState.loading ? '...' : String((outputRunState.runs || []).length);
+            countLabel.textContent = currentOutputRunState().loading ? '...' : String((currentOutputRunState().runs || []).length);
             return;
         }
-        countLabel.textContent = String(tomlFiles.length || 0);
+        countLabel.textContent = String(tomlState.tomlFiles.length || 0);
     }
 
-    globalThis.setTomlManagerMode = function setTomlManagerMode(mode) {
+    export function setTomlManagerMode(mode) {
         const nextMode = mode === 'output' ? 'output' : 'project';
-        tomlManagerMode = nextMode;
+        tomlState.tomlManagerMode = nextMode;
         document.querySelectorAll('.toml-mode-btn').forEach((btn) => {
             btn.classList.toggle('active', btn.dataset.tomlMode === nextMode);
         });
@@ -427,27 +468,27 @@ const ctx = globalThis.ctx;
         updateConfigPageSummary(nextMode);
         if (nextMode === 'output') {
             const label = document.getElementById('toml-current-file');
-            if (label) label.textContent = outputRunState.file || outputRunState.selectedRun || '训练输出配置';
+            if (label) label.textContent = currentOutputRunState().file || currentOutputRunState().selectedRun || '训练输出配置';
             setBadge('toml-current-badge', false, '当前训练');
-            setBadge('toml-trainable-badge', Boolean(outputRunState.file), '只读快照');
-            setBadge('toml-lock-badge', Boolean(outputRunState.file), '只读');
+            setBadge('toml-trainable-badge', Boolean(currentOutputRunState().file), '只读快照');
+            setBadge('toml-lock-badge', Boolean(currentOutputRunState().file), '只读');
             setBadge('toml-dirty-badge', false, '未保存');
             updateOutputRunActionState();
-            if (!outputRunState.runs.length && !outputRunState.loading) {
+            if (!currentOutputRunState().runs.length && !currentOutputRunState().loading) {
                 loadOutputRuns();
             } else {
                 renderOutputRunManager();
             }
             return;
         }
-        updateTomlSelectionUI(currentTomlFile);
+        updateTomlSelectionUI(tomlState.currentTomlFile);
         updateTomlDirtyState();
         requestAnimationFrame(updateConfigStickyPlacement);
     }
 
-    globalThis.switchTomlManagerMode = async function switchTomlManagerMode(nextMode) {
+    export async function switchTomlManagerMode(nextMode) {
         const normalizedMode = nextMode === 'output' ? 'output' : 'project';
-        if (normalizedMode !== tomlManagerMode && normalizedMode === 'output' && hasPendingConfigChanges(currentTomlFile)) {
+        if (normalizedMode !== tomlState.tomlManagerMode && normalizedMode === 'output' && hasPendingConfigChanges(tomlState.currentTomlFile)) {
             if (!(await confirmDiscardTomlChanges('当前项目预设有未保存修改，切换到训练输出配置会暂时隐藏这些修改。是否继续？'))) {
                 return false;
             }
@@ -456,23 +497,23 @@ const ctx = globalThis.ctx;
         return true;
     }
 
-    globalThis.loadTomlFileList = async function loadTomlFileList(preferredFile = '', options = {}) {
+    export async function loadTomlFileList(preferredFile = '', options = {}) {
         const groups = await api('/api/config/file-groups?kind=training');
-        tomlFileGroups = filterTrainingTomlGroups(groups);
-        tomlFileMeta = {};
-        tomlFiles = [];
-        for (const group of tomlFileGroups) {
+        tomlState.tomlFileGroups = filterTrainingTomlGroups(groups);
+        tomlState.tomlFileMeta = {};
+        tomlState.tomlFiles = [];
+        for (const group of tomlState.tomlFileGroups) {
             for (const item of group.files || []) {
-                tomlFiles.push(item.path);
-                tomlFileMeta[item.path] = item;
+                tomlState.tomlFiles.push(item.path);
+                tomlState.tomlFileMeta[item.path] = item;
             }
         }
-        populateTomlFileSelect(reorderTomlFileGroups(tomlFileGroups));
-        if (preferredFile && !tomlFiles.includes(preferredFile) && currentTomlFile === preferredFile) {
+        populateTomlFileSelect(reorderTomlFileGroups(tomlState.tomlFileGroups));
+        if (preferredFile && !tomlState.tomlFiles.includes(preferredFile) && tomlState.currentTomlFile === preferredFile) {
             await handleDeletedTomlSelection(preferredFile, '当前配置文件已不存在或已被删除');
             return;
         }
-        if (preferredFile && tomlFiles.includes(preferredFile)) {
+        if (preferredFile && tomlState.tomlFiles.includes(preferredFile)) {
             await loadTomlFile(preferredFile, { force: options.force === true });
             return;
         }
@@ -487,21 +528,21 @@ const ctx = globalThis.ctx;
         }
     }
 
-    globalThis.loadDefaultTomlFile = async function loadDefaultTomlFile(options = {}) {
-        const variant = currentTrainingSource.method || val('variant-select');
-        const methodsSubdir = currentTrainingSource.methods_subdir || 'gui-methods';
-        const target = currentTrainingSource.file || `configs/${methodsSubdir}/${variant}.toml`;
-        if (tomlFiles.includes(target)) {
+    export async function loadDefaultTomlFile(options = {}) {
+        const variant = currentTrainingSourceState().method || val('variant-select');
+        const methodsSubdir = currentTrainingSourceState().methods_subdir || 'gui-methods';
+        const target = currentTrainingSourceState().file || `configs/${methodsSubdir}/${variant}.toml`;
+        if (tomlState.tomlFiles.includes(target)) {
             await loadTomlFile(target, { force: options.force === true });
-        } else if (tomlFiles.length > 0) {
-            await loadTomlFile(tomlFiles[0], { force: options.force === true });
+        } else if (tomlState.tomlFiles.length > 0) {
+            await loadTomlFile(tomlState.tomlFiles[0], { force: options.force === true });
         }
     }
 
-    globalThis.loadOutputRuns = async function loadOutputRuns(options = {}) {
+    export async function loadOutputRuns(options = {}) {
         if (location.protocol === 'file:') return;
-        outputRunState = {
-            ...outputRunState,
+        datasetState.outputRunState = {
+            ...currentOutputRunState(),
             loading: true,
             error: '',
         };
@@ -510,13 +551,13 @@ const ctx = globalThis.ctx;
             const data = await api('/api/config/output-runs');
             if (!data.ok) throw new Error(data.error || '读取训练输出配置失败');
             const runs = Array.isArray(data.runs) ? data.runs : [];
-            let selectedRun = outputRunState.selectedRun;
+            let selectedRun = currentOutputRunState().selectedRun;
             if (selectedRun && !runs.some((item) => item.name === selectedRun)) selectedRun = '';
             if (!selectedRun && runs.length && options.keepSelection !== true) {
                 selectedRun = runs[0].name || '';
             }
-            outputRunState = {
-                ...outputRunState,
+            datasetState.outputRunState = {
+                ...currentOutputRunState(),
                 loading: false,
                 runs,
                 outputRoot: data.output_root || '',
@@ -530,8 +571,8 @@ const ctx = globalThis.ctx;
                 updateOutputRunSelectionUI();
             }
         } catch (e) {
-            outputRunState = {
-                ...outputRunState,
+            datasetState.outputRunState = {
+                ...currentOutputRunState(),
                 loading: false,
                 runs: [],
                 content: '',
@@ -542,3 +583,35 @@ const ctx = globalThis.ctx;
             setTomlStatus('error', '读取训练输出配置失败: ' + e.message);
         }
     }
+
+configureConfigFieldUiBridge({
+    appendSamplePromptRow,
+    createSamplePromptTextField,
+    createSamplePromptInputField,
+    clearSamplePromptRow,
+    updateSamplePromptRemoveButtons,
+    isNumericField,
+    isIntegerNumericField,
+    allowsNegativeNumberField,
+    createSelectInput,
+    selectUsesStrictOptions,
+    strictSelectCurrentValueLabel,
+    fieldValueType,
+    fieldValueTypeForKey,
+    optionValue,
+    optionLabel,
+    generateDefaultHelp,
+    sectionTitleForField,
+    createHelpContent,
+    addHelpSection,
+    getHelpSpec,
+});
+
+configureTomlManagerBridge({
+    updateConfigPageSummary,
+    setTomlManagerMode,
+    switchTomlManagerMode,
+    loadTomlFileList,
+    loadDefaultTomlFile,
+    loadOutputRuns,
+});

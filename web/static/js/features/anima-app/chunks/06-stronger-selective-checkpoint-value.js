@@ -2,9 +2,56 @@
  * Mechanical split from the former monolithic app closure.
  * Keep this module focused; move newly edited behavior into domain modules.
  */
-const ctx = globalThis.ctx;
+import {
+    CONFIG_COMPACT_FIELD_GROUPS,
+    GLOBAL_MODEL_PATH_FIELDS,
+} from '../../../config/catalog.js?v=module-bootstrap-20260707-93';
+import { SELECTIVE_CHECKPOINT_STRENGTH } from '../helpers/app-constants.js?v=module-bootstrap-20260707-93';
+import { getAppShellState } from '../helpers/app-shell-state-bridge.js?v=module-bootstrap-20260707-93';
+import { originalConfigFieldValue, readFieldInputValue } from '../helpers/config-form-bridge.js?v=module-bootstrap-20260707-93';
+import { getConfigState } from '../helpers/config-state-bridge.js?v=module-bootstrap-20260707-93';
+import { getDatasetState } from '../helpers/dataset-state-bridge.js?v=module-bootstrap-20260707-93';
+import { datasetPresetByFile } from '../helpers/dataset-presets.js?v=module-bootstrap-20260707-93';
+import { historyTaskDisplayName } from '../helpers/history-collections-bridge.js?v=module-bootstrap-20260707-93';
+import {
+    ensureConfigDatasetPreview,
+    renderConfigDatasetPickerDialog,
+} from '../helpers/dataset-render-bridge.js?v=module-bootstrap-20260707-93';
+import { loadDatasetPresets } from './03-parse-network-arg-entry.js?v=module-bootstrap-20260707-93';
+import { createFieldRow, handleFormFieldChange } from './14-lora-adapter-kind-from-config.js?v=module-bootstrap-20260707-93';
+import {
+    setTomlStatus,
+    updateTomlActionState,
+} from '../helpers/toml-action-state-bridge.js?v=module-bootstrap-20260707-93';
+import { loadGlobalSettings, getGlobalModelPathOverrides } from '../helpers/global-settings-bridge.js?v=module-bootstrap-20260707-93';
+import { getHistoryState } from '../helpers/history-state-bridge.js?v=module-bootstrap-20260707-93';
+import { loadTrainingHistoryList } from '../helpers/history-list-bridge.js?v=module-bootstrap-20260707-93';
+import { api, val } from '../helpers/runtime-bridge.js?v=module-bootstrap-20260707-93';
+import { getTomlState } from '../helpers/toml-state-bridge.js?v=module-bootstrap-20260707-93';
+import { getTrainingState } from '../helpers/training-state-bridge.js?v=module-bootstrap-20260707-93';
+import { currentTrainingConfigFile } from '../helpers/preflight-dialog-bridge.js?v=module-bootstrap-20260707-93';
 
-    globalThis.strongerSelectiveCheckpointValue = function strongerSelectiveCheckpointValue(current, fallback) {
+const appShellState = getAppShellState();
+const configState = getConfigState();
+const datasetState = getDatasetState();
+const historyState = getHistoryState();
+const tomlState = getTomlState();
+const trainingState = getTrainingState();
+
+function currentConfigState() {
+    return configState.currentConfig || {};
+}
+
+function currentTrainingSourceState() {
+    return trainingState.currentTrainingSource || {};
+}
+
+function currentContinueTrainingSource() {
+    return trainingState.continueTrainingSource;
+}
+
+
+    export function strongerSelectiveCheckpointValue(current, fallback) {
         const currentKey = String(current ?? '').trim() || 'off';
         const fallbackKey = String(fallback ?? '').trim() || 'off';
         const currentStrength = SELECTIVE_CHECKPOINT_STRENGTH.get(currentKey);
@@ -14,7 +61,8 @@ const ctx = globalThis.ctx;
         return currentStrength >= fallbackStrength ? currentKey : fallbackKey;
     }
 
-    globalThis.resourceQuickCurrentValue = function resourceQuickCurrentValue(key) {
+    export function resourceQuickCurrentValue(key) {
+        const configFormState = configState.configFormState;
         const input = document.querySelector(`#config-form .field-input[data-key="${CSS.escape(key)}"]`);
         if (input) {
             return readFieldInputValue(input, originalConfigFieldValue(key));
@@ -25,8 +73,8 @@ const ctx = globalThis.ctx;
         return originalConfigFieldValue(key);
     }
 
-    globalThis.fillGlobalModelPathsIntoConfigForm = async function fillGlobalModelPathsIntoConfigForm() {
-        if (!globalSettings && location.protocol !== 'file:') {
+    export async function fillGlobalModelPathsIntoConfigForm() {
+        if (!appShellState.globalSettings && location.protocol !== 'file:') {
             await loadGlobalSettings();
         }
         const overrides = getGlobalModelPathOverrides();
@@ -61,7 +109,7 @@ const ctx = globalThis.ctx;
         );
     }
 
-    globalThis.appendFieldRows = function appendFieldRows(content, fields, groupClass) {
+    export function appendFieldRows(content, fields, groupClass) {
         const compactGroups = CONFIG_COMPACT_FIELD_GROUPS[groupClass] || [];
         const usedLayouts = new Set();
         let index = 0;
@@ -103,7 +151,7 @@ const ctx = globalThis.ctx;
         }
     }
 
-    globalThis.appendCompactGridFillers = function appendCompactGridFillers(grid) {
+    function appendCompactGridFillers(grid) {
         grid.querySelectorAll('.field-row-filler').forEach((node) => node.remove());
         const columnCount = compactGridColumnCount(grid);
         if (columnCount <= 1) return;
@@ -115,7 +163,7 @@ const ctx = globalThis.ctx;
         }
     }
 
-    globalThis.createCompactGridFiller = function createCompactGridFiller() {
+    function createCompactGridFiller() {
         const filler = document.createElement('div');
         filler.className = 'field-row field-row-compact field-row-filler';
         filler.setAttribute('aria-hidden', 'true');
@@ -123,14 +171,14 @@ const ctx = globalThis.ctx;
         return filler;
     }
 
-    globalThis.compactGridColumnCount = function compactGridColumnCount(grid) {
+    function compactGridColumnCount(grid) {
         if (!grid) return 0;
         if (grid.classList.contains('config-field-grid-4col')) return 4;
         if (grid.classList.contains('config-field-grid-3col')) return 3;
         return 2;
     }
 
-    globalThis.normalizeCompactGridColumns = function normalizeCompactGridColumns(grid) {
+    function normalizeCompactGridColumns(grid) {
         const count = grid.childElementCount;
         grid.classList.remove('config-field-grid-2col', 'config-field-grid-3col', 'config-field-grid-4col', 'config-field-grid-5col');
         if (count >= 4) {
@@ -142,7 +190,7 @@ const ctx = globalThis.ctx;
         }
     }
 
-    globalThis.createConfigDatasetPicker = function createConfigDatasetPicker() {
+    export function createConfigDatasetPicker() {
         const panel = document.createElement('div');
         panel.id = 'config-dataset-picker';
         panel.className = 'config-dataset-picker';
@@ -150,7 +198,7 @@ const ctx = globalThis.ctx;
         return panel;
     }
 
-    globalThis.renderConfigDatasetPicker = function renderConfigDatasetPicker(existingPanel = null) {
+    export function renderConfigDatasetPicker(existingPanel = null) {
         const panel = existingPanel || document.getElementById('config-dataset-picker');
         if (!panel) return;
         panel.innerHTML = '';
@@ -164,7 +212,7 @@ const ctx = globalThis.ctx;
         const openBtn = document.createElement('button');
         openBtn.type = 'button';
         openBtn.className = 'btn btn-small';
-        openBtn.textContent = selectedConfigDatasetFile ? '更换预设' : '选择预设';
+        openBtn.textContent = datasetState.selectedConfigDatasetFile ? '更换预设' : '选择预设';
         openBtn.title = '打开数据集预设弹窗，可以搜索并查看第一张原始图预览。';
         openBtn.addEventListener('click', openConfigDatasetPickerDialog);
         const manageBtn = document.createElement('button');
@@ -191,9 +239,10 @@ const ctx = globalThis.ctx;
         ensureConfigDatasetPreview();
     }
 
-    globalThis.createConfigDatasetCurrentSummary = function createConfigDatasetCurrentSummary() {
-        const preset = datasetPresetByFile(selectedConfigDatasetFile);
-        const summary = selectedConfigDatasetSummary || preset?.summary || {};
+    function createConfigDatasetCurrentSummary() {
+        const currentConfig = currentConfigState();
+        const preset = datasetPresetByFile(datasetState.selectedConfigDatasetFile);
+        const summary = datasetState.selectedConfigDatasetSummary || preset?.summary || {};
         const wrap = document.createElement('div');
         wrap.className = 'config-dataset-current';
 
@@ -201,19 +250,19 @@ const ctx = globalThis.ctx;
         info.className = 'config-dataset-current-info';
         const label = document.createElement('span');
         label.className = 'config-dataset-current-label';
-        label.textContent = selectedConfigDatasetFile ? '当前选中' : '当前状态';
+        label.textContent = datasetState.selectedConfigDatasetFile ? '当前选中' : '当前状态';
         const title = document.createElement('strong');
-        title.textContent = selectedConfigDatasetFile
-            ? (preset?.label || preset?.filename || selectedConfigDatasetFile)
+        title.textContent = datasetState.selectedConfigDatasetFile
+            ? (preset?.label || preset?.filename || datasetState.selectedConfigDatasetFile)
             : '不使用独立数据集预设';
         const path = document.createElement('code');
-        path.textContent = selectedConfigDatasetFile || '沿用当前训练配置文件中的数据集字段';
+        path.textContent = datasetState.selectedConfigDatasetFile || '沿用当前训练配置文件中的数据集字段';
         info.append(label, title, path);
 
         const meta = document.createElement('div');
         meta.className = 'config-dataset-current-meta';
         const state = document.createElement('span');
-        const isDirtySelection = selectedConfigDatasetFile !== (currentConfig.dataset_config || '');
+        const isDirtySelection = datasetState.selectedConfigDatasetFile !== (currentConfig.dataset_config || '');
         state.className = [
             'config-dataset-current-state',
             isDirtySelection ? 'dirty' : 'synced',
@@ -222,11 +271,11 @@ const ctx = globalThis.ctx;
             ? '未保存'
             : '已同步';
         const count = document.createElement('span');
-        count.textContent = selectedConfigDatasetFile
+        count.textContent = datasetState.selectedConfigDatasetFile
             ? `${Number(summary.dataset_count || 0)} 组 · 重复 ${Number(summary.repeat_total || 0)}`
             : '当前配置';
         const source = document.createElement('span');
-        source.textContent = selectedConfigDatasetFile && summary.source_dir
+        source.textContent = datasetState.selectedConfigDatasetFile && summary.source_dir
             ? `原始路径: ${summary.source_dir}`
             : '保存当前配置后才会写入训练 TOML';
         meta.append(state, count, source);
@@ -235,11 +284,11 @@ const ctx = globalThis.ctx;
         return wrap;
     }
 
-    globalThis.isConfigDatasetPickerDialogOpen = function isConfigDatasetPickerDialogOpen() {
+    export function isConfigDatasetPickerDialogOpen() {
         return Boolean(document.getElementById('config-dataset-picker-dialog')?.open);
     }
 
-    globalThis.openConfigDatasetPickerDialog = function openConfigDatasetPickerDialog() {
+    function openConfigDatasetPickerDialog() {
         const dialog = document.getElementById('config-dataset-picker-dialog');
         if (!dialog) return;
         renderConfigDatasetPickerDialog();
@@ -256,12 +305,12 @@ const ctx = globalThis.ctx;
         }
     }
 
-    globalThis.closeConfigDatasetPickerDialog = function closeConfigDatasetPickerDialog() {
+    export function closeConfigDatasetPickerDialog() {
         const dialog = document.getElementById('config-dataset-picker-dialog');
         if (dialog?.open) dialog.close();
     }
 
-    globalThis.openUnnamedDatasetDialog = function openUnnamedDatasetDialog() {
+    function openUnnamedDatasetDialog() {
         const dialog = document.getElementById('unnamed-dataset-dialog');
         if (!dialog) return;
         if (dialog.showModal && !dialog.open) {
@@ -271,12 +320,13 @@ const ctx = globalThis.ctx;
         }
     }
 
-    globalThis.renderContinueTrainingSource = function renderContinueTrainingSource() {
+    function renderContinueTrainingSource() {
         const summary = document.getElementById('continue-training-source-summary');
         const chooseBtn = document.getElementById('btn-open-continue-lora-dialog');
         const clearBtn = document.getElementById('btn-clear-continue-lora-source');
         if (!summary || !chooseBtn || !clearBtn) return;
         summary.innerHTML = '';
+        const continueTrainingSource = currentContinueTrainingSource();
         if (!continueTrainingSource) {
             const title = document.createElement('strong');
             title.textContent = '从零开始';
@@ -286,7 +336,7 @@ const ctx = globalThis.ctx;
             summary.className = 'continue-training-source-summary';
             chooseBtn.textContent = '选择 LoRA/LoHa/LoKr/GLoRA';
             clearBtn.hidden = true;
-            updateTomlActionState(currentTomlFile);
+            updateTomlActionState(tomlState.currentTomlFile);
             return;
         }
         const title = document.createElement('strong');
@@ -305,34 +355,25 @@ const ctx = globalThis.ctx;
         ].join(' ');
         chooseBtn.textContent = '更换权重';
         clearBtn.hidden = false;
-        updateTomlActionState(currentTomlFile);
+        updateTomlActionState(tomlState.currentTomlFile);
     }
 
-    globalThis.continueTrainingRequestPayload = function continueTrainingRequestPayload() {
-        if (!continueTrainingSource) return {};
-        return {
-            continue_from_weight_abs_path: continueTrainingSource.abs_path || '',
-            continue_from_weight_name: continueTrainingSource.name || '',
-            continue_from_weight_kind: continueTrainingSource.kind || '',
-        };
-    }
-
-    globalThis.clearContinueTrainingSource = function clearContinueTrainingSource() {
-        continueTrainingSource = null;
+    export function clearContinueTrainingSource() {
+        trainingState.continueTrainingSource = null;
         renderContinueTrainingSource();
         setTomlStatus('ok', '已恢复为从零训练');
     }
 
-    globalThis.openContinueLoraDialog = async function openContinueLoraDialog() {
+    export async function openContinueLoraDialog() {
         const dialog = document.getElementById('continue-lora-dialog');
         if (!dialog) return;
-        if (!historyTasks.length) {
+        if (!historyState.historyTasks.length) {
             await loadTrainingHistoryList();
         }
         renderContinueLoraHistoryTasks();
         const input = document.getElementById('continue-lora-path-input');
-        if (input && continueTrainingSource?.abs_path) {
-            input.value = continueTrainingSource.abs_path;
+        if (input && currentContinueTrainingSource()?.abs_path) {
+            input.value = currentContinueTrainingSource().abs_path;
         }
         if (dialog.showModal && !dialog.open) {
             dialog.showModal();
@@ -343,11 +384,11 @@ const ctx = globalThis.ctx;
         document.getElementById('continue-lora-path-input')?.focus({ preventScroll: true });
     }
 
-    globalThis.renderContinueLoraHistoryTasks = function renderContinueLoraHistoryTasks() {
+    function renderContinueLoraHistoryTasks() {
         const select = document.getElementById('continue-lora-history-task');
         if (!select) return;
-        const previous = continueLoraDialogState.taskId;
-        const tasks = historyTasks.filter((task) => task.job === 'training');
+        const previous = trainingState.continueLoraDialogState.taskId;
+        const tasks = historyState.historyTasks.filter((task) => task.job === 'training');
         select.innerHTML = '';
         const latest = document.createElement('option');
         latest.value = '';
@@ -362,34 +403,34 @@ const ctx = globalThis.ctx;
         if (previous && tasks.some((task) => task.id === previous)) {
             select.value = previous;
         } else {
-            continueLoraDialogState.taskId = '';
+            trainingState.continueLoraDialogState.taskId = '';
             select.value = '';
         }
     }
 
-    globalThis.loadContinueLoraWeights = async function loadContinueLoraWeights() {
+    export async function loadContinueLoraWeights() {
         const list = document.getElementById('continue-lora-weight-list');
         if (!list) return;
-        continueLoraDialogState.loading = true;
-        continueLoraDialogState.error = '';
+        trainingState.continueLoraDialogState.loading = true;
+        trainingState.continueLoraDialogState.error = '';
         renderContinueLoraWeights();
         try {
             const params = new URLSearchParams();
-            if (continueLoraDialogState.taskId) {
-                params.set('task_id', continueLoraDialogState.taskId);
+            if (trainingState.continueLoraDialogState.taskId) {
+                params.set('task_id', trainingState.continueLoraDialogState.taskId);
             }
             const suffix = params.toString() ? `?${params.toString()}` : '';
             const payload = await api(`/api/preview/weights${suffix}`);
-            continueLoraDialogState = {
-                ...continueLoraDialogState,
+            trainingState.continueLoraDialogState = {
+                ...trainingState.continueLoraDialogState,
                 loading: false,
                 weights: payload.weights || [],
                 error: payload.ok === false ? (payload.error || '读取权重失败') : '',
                 message: payload.message || '',
             };
         } catch (e) {
-            continueLoraDialogState = {
-                ...continueLoraDialogState,
+            trainingState.continueLoraDialogState = {
+                ...trainingState.continueLoraDialogState,
                 loading: false,
                 weights: [],
                 error: e.message || '读取权重失败',
@@ -398,23 +439,23 @@ const ctx = globalThis.ctx;
         renderContinueLoraWeights();
     }
 
-    globalThis.renderContinueLoraWeights = function renderContinueLoraWeights() {
+    function renderContinueLoraWeights() {
         const list = document.getElementById('continue-lora-weight-list');
         if (!list) return;
         list.innerHTML = '';
-        if (continueLoraDialogState.loading) {
+        if (trainingState.continueLoraDialogState.loading) {
             list.textContent = '正在读取历史权重...';
             return;
         }
-        if (continueLoraDialogState.error) {
-            list.textContent = continueLoraDialogState.error;
+        if (trainingState.continueLoraDialogState.error) {
+            list.textContent = trainingState.continueLoraDialogState.error;
             return;
         }
-        if (!continueLoraDialogState.weights.length) {
-            list.textContent = continueLoraDialogState.message || '没有可选择的 .safetensors 权重。';
+        if (!trainingState.continueLoraDialogState.weights.length) {
+            list.textContent = trainingState.continueLoraDialogState.message || '没有可选择的 .safetensors 权重。';
             return;
         }
-        for (const item of continueLoraDialogState.weights) {
+        for (const item of trainingState.continueLoraDialogState.weights) {
             const row = document.createElement('div');
             row.className = 'continue-lora-weight-item';
             const info = document.createElement('div');
@@ -433,14 +474,15 @@ const ctx = globalThis.ctx;
         }
     }
 
-    globalThis.setContinueLoraStatus = function setContinueLoraStatus(message, state = '') {
+    function setContinueLoraStatus(message, state = '') {
         const status = document.getElementById('continue-lora-inspect-status');
         if (!status) return;
         status.className = ['continue-lora-status', state].filter(Boolean).join(' ');
         status.textContent = message || '';
     }
 
-    globalThis.requestContinueLoraInspection = async function requestContinueLoraInspection(path) {
+    export async function requestContinueLoraInspection(path) {
+        const currentTrainingSource = currentTrainingSourceState();
         const variant = currentTrainingSource.method || val('variant-select');
         const preset = val('preset-select');
         const methodsSubdir = currentTrainingSource.methods_subdir || 'gui-methods';
@@ -456,7 +498,7 @@ const ctx = globalThis.ctx;
         });
     }
 
-    globalThis.selectContinueLoraWeight = async function selectContinueLoraWeight(path, options = {}) {
+    export async function selectContinueLoraWeight(path, options = {}) {
         const rawPath = String(path || '').trim();
         if (!rawPath) {
             setContinueLoraStatus('请填写 .safetensors 权重绝对路径。', 'error');
@@ -479,7 +521,7 @@ const ctx = globalThis.ctx;
                 }
                 return false;
             }
-            continueTrainingSource = payload;
+            trainingState.continueTrainingSource = payload;
             renderContinueTrainingSource();
             setContinueLoraStatus(payload.message || '已选择权重热启动来源。', 'ok');
             setTomlStatus('ok', `训练来源已设置为权重热启动 ${payload.kind} · ${payload.name}`);
@@ -498,7 +540,8 @@ const ctx = globalThis.ctx;
         }
     }
 
-    globalThis.refreshContinueTrainingSourceCompatibility = async function refreshContinueTrainingSourceCompatibility() {
+    export async function refreshContinueTrainingSourceCompatibility() {
+        const continueTrainingSource = currentContinueTrainingSource();
         if (!continueTrainingSource?.abs_path) {
             renderContinueTrainingSource();
             return true;
@@ -507,7 +550,7 @@ const ctx = globalThis.ctx;
         try {
             payload = await requestContinueLoraInspection(continueTrainingSource.abs_path);
         } catch (e) {
-            continueTrainingSource = {
+            trainingState.continueTrainingSource = {
                 ...continueTrainingSource,
                 compatible: false,
                 message: '无法重新检查权重热启动来源: ' + e.message,
@@ -516,7 +559,7 @@ const ctx = globalThis.ctx;
             return false;
         }
         if (!payload.ok) {
-            continueTrainingSource = {
+            trainingState.continueTrainingSource = {
                 ...continueTrainingSource,
                 compatible: false,
                 message: payload.error || '无法重新检查权重热启动来源。',
@@ -524,7 +567,7 @@ const ctx = globalThis.ctx;
             renderContinueTrainingSource();
             return false;
         }
-        continueTrainingSource = payload;
+        trainingState.continueTrainingSource = payload;
         renderContinueTrainingSource();
         return Boolean(payload.compatible);
     }

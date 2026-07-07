@@ -2,17 +2,39 @@
  * Mechanical split from the former monolithic app closure.
  * Keep this module focused; move newly edited behavior into domain modules.
  */
-const ctx = globalThis.ctx;
+import { isLiveRunningState } from '../../live-training/index.js?v=module-bootstrap-20260707-93';
+import { VARIANT_METHOD_FAMILY } from '../../../config/catalog.js?v=module-bootstrap-20260707-93';
+import {
+    configTrainingSourceMode,
+    trainingSourceLaunchReadiness,
+} from '../helpers/training-source-bridge.js?v=module-bootstrap-20260707-93';
+import { showHistoryTaskInputDialog } from '../helpers/history-task-actions-bridge.js?v=module-bootstrap-20260707-93';
+import { loadTomlFileList } from '../helpers/toml-manager-bridge.js?v=module-bootstrap-20260707-93';
+import { getMovableTomlGroups } from '../helpers/toml-actions-bridge.js?v=module-bootstrap-20260707-93';
+import { configureTomlActionStateBridge } from '../helpers/toml-action-state-bridge.js?v=module-bootstrap-20260707-93';
+import { loadConfig } from '../helpers/app-shell-startup-bridge.js?v=module-bootstrap-20260707-93';
+import { currentFormConfigFile, hasPendingConfigChanges, hasUnsavedFormChanges, isTomlDirty, showAppConfirmDialog } from '../helpers/toml-selection-bridge.js?v=module-bootstrap-20260707-93';
+import { api, populateSelect, val } from '../helpers/runtime-bridge.js?v=module-bootstrap-20260707-93';
+import { getTomlState } from '../helpers/toml-state-bridge.js?v=module-bootstrap-20260707-93';
+import { getTrainingState } from '../helpers/training-state-bridge.js?v=module-bootstrap-20260707-93';
+import { reorderTomlFileGroups } from '../helpers/toml-io-bridge.js?v=module-bootstrap-20260707-93';
+import { currentTrainingConfigFile } from '../helpers/preflight-dialog-bridge.js?v=module-bootstrap-20260707-93';
+import { renderTomlFileGroups } from '../helpers/toml-drag-bridge.js?v=module-bootstrap-20260707-93';
+import { rememberSelectionSnapshot } from './13-update-dataset-editor-rows-setting-value.js?v=module-bootstrap-20260707-93';
 
-    globalThis.updateTomlActionState = function updateTomlActionState(filePath) {
-        const selectedFile = filePath || currentTomlFile || val('toml-file-select') || '';
-        const meta = tomlFileMeta[selectedFile];
+const tomlState = getTomlState();
+const trainingState = getTrainingState();
+const trainingRuntime = trainingState.trainingRuntime;
+
+    export function updateTomlActionState(filePath) {
+        const selectedFile = filePath || tomlState.currentTomlFile || val('toml-file-select') || '';
+        const meta = tomlState.tomlFileMeta[selectedFile];
         const editorDirty = isTomlDirty();
         const formFile = currentFormConfigFile();
         const formDirty = hasUnsavedFormChanges(formFile);
         const dirty = editorDirty || formDirty;
         const saveFile = formDirty ? formFile : selectedFile;
-        const saveMeta = tomlFileMeta[saveFile] || (saveFile === selectedFile ? meta : undefined);
+        const saveMeta = tomlState.tomlFileMeta[saveFile] || (saveFile === selectedFile ? meta : undefined);
         const saveLocked = formDirty ? isTomlLocked(saveFile) : Boolean(saveMeta?.locked);
         const saveBtn = document.getElementById('btn-save-toml');
         if (saveBtn) {
@@ -68,7 +90,7 @@ const ctx = globalThis.ctx;
         if (deleteBtn) {
             const canDelete = Boolean(selectedFile && meta && !meta.locked && !dirty);
             if (!canDelete) resetTomlDeleteConfirm({ update: false });
-            const confirming = canDelete && tomlDeleteConfirmFile === selectedFile;
+            const confirming = canDelete && tomlState.tomlDeleteConfirmFile === selectedFile;
             deleteBtn.disabled = !canDelete;
             deleteBtn.textContent = confirming ? '确认删除配置' : '删除当前配置';
             deleteBtn.classList.toggle('btn-confirm-danger', confirming);
@@ -91,7 +113,7 @@ const ctx = globalThis.ctx;
             : { ready: true, checking: false, reason: '' };
         const sourceBlockedTitle = sourceReady.checking ? '正在审查续接来源，审查完成前不能启动。' : (sourceReady.reason || '训练来源审查未通过');
         const canStart = sourceMode === 'full_resume'
-            ? sourceReady.ready && !isLiveRunningState()
+            ? sourceReady.ready && !isLiveRunningState(trainingRuntime.state)
             : Boolean(trainingConfigFile) && !dirty && sourceReady.ready;
         if (startBtn) {
             startBtn.disabled = !canStart;
@@ -102,7 +124,7 @@ const ctx = globalThis.ctx;
                     : '开始训练';
             startBtn.title = !sourceReady.ready
                 ? sourceBlockedTitle
-                : sourceMode === 'full_resume' && isLiveRunningState()
+                : sourceMode === 'full_resume' && isLiveRunningState(trainingRuntime.state)
                     ? '当前已有任务在运行，请改用加入队列。'
                     : sourceMode === 'full_resume'
                         ? '使用历史任务冻结配置快照启动完整续训，当前表单不会覆盖历史配置。'
@@ -131,38 +153,38 @@ const ctx = globalThis.ctx;
         }
     }
 
-    globalThis.isTomlLocked = function isTomlLocked(filePath) {
-        return Boolean(tomlFileMeta[filePath]?.locked);
+    export function isTomlLocked(filePath) {
+        return Boolean(tomlState.tomlFileMeta[filePath]?.locked);
     }
 
-    globalThis.applyTomlLockState = function applyTomlLockState(filePath) {
+    export function applyTomlLockState(filePath) {
         const locked = isTomlLocked(filePath);
         setTomlEditorLocked(locked);
         updateTomlActionState(filePath);
     }
 
-    globalThis.setTomlEditorLocked = function setTomlEditorLocked(locked) {
+    export function setTomlEditorLocked(locked) {
         const editor = document.getElementById('toml-editor');
         editor.readOnly = locked;
         editor.title = locked ? '该配置文件已锁定，只能导出或使用新名称另存新配置' : '';
     }
 
-    globalThis.updateTomlEditorPanelState = function updateTomlEditorPanelState(filePath = currentTomlFile) {
+    export function updateTomlEditorPanelState(filePath = tomlState.currentTomlFile) {
         const panel = document.getElementById('toml-edit-panel');
         const manager = document.getElementById('config-project-workspace') || document.querySelector('.toml-manager');
         const directEditor = document.getElementById('config-direct-editor');
         const toggleBtn = document.getElementById('btn-toggle-toml-editor');
         const saveDirectBtn = document.getElementById('btn-save-toml-direct');
         const copyBtn = document.getElementById('btn-copy-toml');
-        const meta = tomlFileMeta[filePath];
+        const meta = tomlState.tomlFileMeta[filePath];
         const editorDirty = isTomlDirty();
         const formFile = currentFormConfigFile();
         const formDirty = hasUnsavedFormChanges(formFile);
         const dirty = editorDirty || formDirty;
         const locked = Boolean(meta?.locked);
-        const confirming = Boolean(filePath && tomlSaveConfirmFile === filePath);
+        const confirming = Boolean(filePath && tomlState.tomlSaveConfirmFile === filePath);
         if (toggleBtn) {
-            const open = Boolean(panel && !panel.hidden && tomlManagerMode === 'project');
+            const open = Boolean(panel && !panel.hidden && tomlState.tomlManagerMode === 'project');
             if (manager) manager.classList.toggle('toml-edit-open', open);
             if (directEditor) directEditor.hidden = !open;
             toggleBtn.disabled = !filePath;
@@ -190,21 +212,21 @@ const ctx = globalThis.ctx;
         }
     }
 
-    globalThis.toggleTomlEditorPanel = function toggleTomlEditorPanel() {
+    export function toggleTomlEditorPanel() {
         const panel = document.getElementById('toml-edit-panel');
         if (!panel) return;
-        if (!currentTomlFile) {
+        if (!tomlState.currentTomlFile) {
             setTomlStatus('error', '请先选择一个配置文件');
             return;
         }
         panel.hidden = !panel.hidden;
-        updateTomlEditorPanelState(currentTomlFile);
+        updateTomlEditorPanelState(tomlState.currentTomlFile);
         if (!panel.hidden) {
             document.getElementById('toml-editor')?.focus();
         }
     }
 
-    globalThis.copyTomlEditorContent = async function copyTomlEditorContent() {
+    export async function copyTomlEditorContent() {
         const editor = document.getElementById('toml-editor');
         if (!editor) return;
         try {
@@ -221,7 +243,7 @@ const ctx = globalThis.ctx;
         }
     }
 
-    globalThis.tomlLockLabel = function tomlLockLabel(meta) {
+    export function tomlLockLabel(meta) {
         if (!meta?.locked) return '';
         if (meta.system_locked) return '系统只读';
         if (meta.user_locked) return '用户锁定';
@@ -230,9 +252,9 @@ const ctx = globalThis.ctx;
         return meta.lock_reason_label || '只读';
     }
 
-    globalThis.tomlFileDisplayParts = function tomlFileDisplayParts(fileOrMeta) {
+    export function tomlFileDisplayParts(fileOrMeta) {
         const meta = typeof fileOrMeta === 'string'
-            ? (tomlFileMeta[fileOrMeta] || { path: fileOrMeta })
+            ? (tomlState.tomlFileMeta[fileOrMeta] || { path: fileOrMeta })
             : (fileOrMeta || {});
         const path = meta.path || '';
         const filename = meta.filename || (path ? path.split('/').pop() : '');
@@ -244,12 +266,12 @@ const ctx = globalThis.ctx;
         return parts;
     }
 
-    globalThis.tomlFileDisplayName = function tomlFileDisplayName(fileOrMeta) {
+    export function tomlFileDisplayName(fileOrMeta) {
         const parts = tomlFileDisplayParts(fileOrMeta);
         return parts.length ? parts.join(' / ') : '未命名配置文件';
     }
 
-    globalThis.lockTomlButtonTitle = function lockTomlButtonTitle(meta) {
+    export function lockTomlButtonTitle(meta) {
         if (!meta) return '请先选择一个配置文件';
         if (meta.system_locked) return '系统预设已内置锁定，不能手动解除';
         if (meta.group_locked) return '该文件属于只读分组，不能手动解除';
@@ -258,28 +280,28 @@ const ctx = globalThis.ctx;
         return '锁定当前文件，防止误保存';
     }
 
-    globalThis.deleteTomlButtonTitle = function deleteTomlButtonTitle(meta) {
+    export function deleteTomlButtonTitle(meta) {
         if (!meta) return '请先选择一个配置文件';
         if (meta.locked) return `${tomlLockLabel(meta) || '只读'}配置不能删除`;
         return '删除当前选中的配置文件';
     }
 
-    globalThis.resetTomlDeleteConfirm = function resetTomlDeleteConfirm(options = {}) {
-        if (tomlDeleteConfirmTimer) {
-            clearTimeout(tomlDeleteConfirmTimer);
-            tomlDeleteConfirmTimer = null;
+    export function resetTomlDeleteConfirm(options = {}) {
+        if (tomlState.tomlDeleteConfirmTimer) {
+            clearTimeout(tomlState.tomlDeleteConfirmTimer);
+            tomlState.tomlDeleteConfirmTimer = null;
         }
-        if (!tomlDeleteConfirmFile) return;
-        tomlDeleteConfirmFile = '';
+        if (!tomlState.tomlDeleteConfirmFile) return;
+        tomlState.tomlDeleteConfirmFile = '';
         if (options.update !== false) {
-            updateTomlActionState(currentTomlFile);
+            updateTomlActionState(tomlState.currentTomlFile);
         }
     }
 
-    globalThis.armTomlDeleteConfirm = function armTomlDeleteConfirm(file) {
+    export function armTomlDeleteConfirm(file) {
         resetTomlDeleteConfirm({ update: false });
-        tomlDeleteConfirmFile = file;
-        tomlDeleteConfirmTimer = setTimeout(() => {
+        tomlState.tomlDeleteConfirmFile = file;
+        tomlState.tomlDeleteConfirmTimer = setTimeout(() => {
             resetTomlDeleteConfirm();
             setTomlStatus('', '');
         }, 8000);
@@ -287,22 +309,22 @@ const ctx = globalThis.ctx;
         setTomlStatus('error', `再次点击“确认删除配置”才会删除: ${file}`);
     }
 
-    globalThis.resetTomlSaveConfirm = function resetTomlSaveConfirm(options = {}) {
-        if (tomlSaveConfirmTimer) {
-            clearTimeout(tomlSaveConfirmTimer);
-            tomlSaveConfirmTimer = null;
+    export function resetTomlSaveConfirm(options = {}) {
+        if (tomlState.tomlSaveConfirmTimer) {
+            clearTimeout(tomlState.tomlSaveConfirmTimer);
+            tomlState.tomlSaveConfirmTimer = null;
         }
-        if (!tomlSaveConfirmFile) return;
-        tomlSaveConfirmFile = '';
+        if (!tomlState.tomlSaveConfirmFile) return;
+        tomlState.tomlSaveConfirmFile = '';
         if (options.update !== false) {
-            updateTomlActionState(currentTomlFile);
+            updateTomlActionState(tomlState.currentTomlFile);
         }
     }
 
-    globalThis.armTomlSaveConfirm = function armTomlSaveConfirm(file) {
+    export function armTomlSaveConfirm(file) {
         resetTomlSaveConfirm({ update: false });
-        tomlSaveConfirmFile = file;
-        tomlSaveConfirmTimer = setTimeout(() => {
+        tomlState.tomlSaveConfirmFile = file;
+        tomlState.tomlSaveConfirmTimer = setTimeout(() => {
             resetTomlSaveConfirm();
             setTomlStatus('', '');
         }, 8000);
@@ -310,25 +332,25 @@ const ctx = globalThis.ctx;
         setTomlStatus('error', `再次点击“确认保存”才会写入当前配置: ${file}`);
     }
 
-    globalThis.setTomlStatus = function setTomlStatus(cls, text, options = {}) {
+    export function setTomlStatus(cls, text, options = {}) {
         const el = document.getElementById('toml-status');
-        if (tomlStatusTimer) {
-            clearTimeout(tomlStatusTimer);
-            tomlStatusTimer = null;
+        if (tomlState.tomlStatusTimer) {
+            clearTimeout(tomlState.tomlStatusTimer);
+            tomlState.tomlStatusTimer = null;
         }
         el.className = cls;
         el.textContent = text;
         if (cls === 'ok' && !options.persist) {
-            tomlStatusTimer = setTimeout(() => {
+            tomlState.tomlStatusTimer = setTimeout(() => {
                 el.textContent = '';
-                tomlStatusTimer = null;
+                tomlState.tomlStatusTimer = null;
             }, 3000);
         }
     }
 
-    globalThis.applyTomlToConfig = async function applyTomlToConfig(options = {}) {
-        const file = currentTomlFile || val('toml-file-select');
-        const meta = tomlFileMeta[file];
+    export async function applyTomlToConfig(options = {}) {
+        const file = tomlState.currentTomlFile || val('toml-file-select');
+        const meta = tomlState.tomlFileMeta[file];
         if (hasPendingConfigChanges(file)) {
             setTomlStatus('error', '当前配置尚未保存，请先保存更新当前选中配置或另存新配置，再加载选中配置');
             updateTomlActionState(file);
@@ -339,7 +361,7 @@ const ctx = globalThis.ctx;
             return;
         }
 
-        currentTrainingSource = {
+        trainingState.currentTrainingSource = {
             method: meta.method,
             methods_subdir: meta.methods_subdir || 'gui-methods',
             file: meta.path,
@@ -370,7 +392,7 @@ const ctx = globalThis.ctx;
         }
 
         await loadConfig();
-        renderTomlFileGroups(reorderTomlFileGroups(tomlFileGroups));
+        renderTomlFileGroups(reorderTomlFileGroups(tomlState.tomlFileGroups));
         updateTomlDirtyState();
         rememberSelectionSnapshot();
         if (!options.silent) {
@@ -378,9 +400,9 @@ const ctx = globalThis.ctx;
         }
     }
 
-    globalThis.toggleTomlUserLock = async function toggleTomlUserLock() {
-        const file = currentTomlFile || val('toml-file-select');
-        const meta = tomlFileMeta[file];
+    export async function toggleTomlUserLock() {
+        const file = tomlState.currentTomlFile || val('toml-file-select');
+        const meta = tomlState.tomlFileMeta[file];
         if (!file || !meta) {
             setTomlStatus('error', '请先选择一个配置文件');
             return;
@@ -422,11 +444,11 @@ const ctx = globalThis.ctx;
             });
             if (!res.ok) {
                 setTomlStatus('error', res.error || '锁定操作失败');
-                if (res.meta) tomlFileMeta[file] = res.meta;
+                if (res.meta) tomlState.tomlFileMeta[file] = res.meta;
                 updateTomlDirtyState();
                 return;
             }
-            if (res.meta) tomlFileMeta[file] = res.meta;
+            if (res.meta) tomlState.tomlFileMeta[file] = res.meta;
             await loadTomlFileList(file);
             applyTomlLockState(file);
             updateTomlDirtyState();
@@ -436,9 +458,9 @@ const ctx = globalThis.ctx;
         }
     }
 
-    globalThis.toggleTomlGroupLock = async function toggleTomlGroupLock(groupOrId) {
+    export async function toggleTomlGroupLock(groupOrId) {
         const group = typeof groupOrId === 'string'
-            ? tomlFileGroups.find((item) => item.id === groupOrId)
+            ? tomlState.tomlFileGroups.find((item) => item.id === groupOrId)
             : groupOrId;
         if (!group) {
             setTomlStatus('error', '分组不存在，请先刷新文件列表');
@@ -475,8 +497,8 @@ const ctx = globalThis.ctx;
                 }
                 lastResponse = res;
             }
-            await loadTomlFileList(currentTomlFile || '');
-            applyTomlLockState(currentTomlFile);
+            await loadTomlFileList(tomlState.currentTomlFile || '');
+            applyTomlLockState(tomlState.currentTomlFile);
             updateTomlDirtyState();
             setTomlStatus('ok', lastResponse?.message || (nextLocked ? '已锁定当前分组' : '已解除分组锁定'));
         } catch (e) {
@@ -484,7 +506,7 @@ const ctx = globalThis.ctx;
         }
     }
 
-    globalThis.createTomlGroup = async function createTomlGroup() {
+    export async function createTomlGroup() {
         const label = await showHistoryTaskInputDialog({
             title: '新建配置分组',
             description: '用于整理右侧 TOML 配置文件。新分组默认可训练，可移入 imported 配置。',
@@ -506,14 +528,14 @@ const ctx = globalThis.ctx;
                 setTomlStatus('error', res.error || '创建分组失败');
                 return;
             }
-            await loadTomlFileList(currentTomlFile || '');
+            await loadTomlFileList(tomlState.currentTomlFile || '');
             setTomlStatus('ok', res.message || '分组已创建');
         } catch (e) {
             setTomlStatus('error', '请求失败: ' + e.message);
         }
     }
 
-    globalThis.renameTomlGroup = async function renameTomlGroup(group) {
+    export async function renameTomlGroup(group) {
         const label = await showHistoryTaskInputDialog({
             title: '重命名配置分组',
             description: '只修改分组显示名称，不会改动配置文件路径。',
@@ -536,9 +558,34 @@ const ctx = globalThis.ctx;
                 setTomlStatus('error', res.error || '重命名分组失败');
                 return;
             }
-            await loadTomlFileList(currentTomlFile || '');
+            await loadTomlFileList(tomlState.currentTomlFile || '');
             setTomlStatus('ok', res.message || '分组已重命名');
         } catch (e) {
             setTomlStatus('error', '请求失败: ' + e.message);
         }
     }
+
+configureTomlActionStateBridge({
+    updateTomlActionState,
+    isTomlLocked,
+    applyTomlLockState,
+    setTomlEditorLocked,
+    updateTomlEditorPanelState,
+    toggleTomlEditorPanel,
+    copyTomlEditorContent,
+    tomlLockLabel,
+    tomlFileDisplayParts,
+    tomlFileDisplayName,
+    lockTomlButtonTitle,
+    deleteTomlButtonTitle,
+    resetTomlDeleteConfirm,
+    armTomlDeleteConfirm,
+    resetTomlSaveConfirm,
+    armTomlSaveConfirm,
+    setTomlStatus,
+    applyTomlToConfig,
+    toggleTomlUserLock,
+    toggleTomlGroupLock,
+    createTomlGroup,
+    renameTomlGroup,
+});

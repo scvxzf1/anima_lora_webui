@@ -5,11 +5,42 @@
 import {
     createNoDatasetRegularizationAdvancedFields,
     createNoDatasetRegularizationModePanel,
-} from './05a-no-dataset-regularization-mode.js?v=module-bootstrap-20260706-1';
+} from './05a-no-dataset-regularization-mode.js?v=module-bootstrap-20260707-93';
+import {
+    ADVANCED_CATEGORY_DEFAULT_OPEN_GROUPS,
+    FORM_CATEGORY_DEFS,
+    FORM_CATEGORY_SECTION_MAP,
+    STICKY_CONFIG_CATEGORY_IDS,
+} from '../../../config/catalog.js?v=module-bootstrap-20260707-93';
+import { STAGE_RESOLUTION_STEPS_PER_EPOCH } from '../helpers/app-constants.js?v=module-bootstrap-20260707-93';
+import { reloadCurrentConfig, renderConfigForm, syncConfigDraftFromForm } from '../helpers/app-shell-startup-bridge.js?v=module-bootstrap-20260707-93';
+import { getConfigState } from '../helpers/config-state-bridge.js?v=module-bootstrap-20260707-93';
+import { formatFieldName } from '../helpers/config-field-display.js?v=module-bootstrap-20260707-93';
+import { updateChangedFieldMarks } from '../helpers/toml-selection-bridge.js?v=module-bootstrap-20260707-93';
+import { createStepEstimatePanel, scheduleStepEstimatePanelRefresh } from './03-parse-network-arg-entry.js?v=module-bootstrap-20260707-93';
+import {
+    createFillGlobalModelPathsButton,
+    createNoDatasetRegularizationQuickPresetPanel,
+    createNoDatasetRegularizationQuickPresetsButton,
+    createResourceQuickPresetPanel,
+    createResourceQuickPresetsButton,
+    createStageResolutionChartPanel,
+    createStageResolutionEditor,
+    createStageResolutionSummary,
+    createStageResolutionTable,
+    drawStageResolutionChart,
+} from './05-create-stage-resolution-summary.js?v=module-bootstrap-20260707-93';
+import { appendFieldRows, createConfigDatasetPicker } from './06-stronger-selective-checkpoint-value.js?v=module-bootstrap-20260707-93';
 
-const ctx = globalThis.ctx;
+const configState = getConfigState();
+const configFormState = configState.configFormState;
+const stageResolutionState = configState.stageResolutionState;
 
-    globalThis.createConfigGroupEntry = function createConfigGroupEntry(name, fields, extraClass = '', description = '', defaultOpen = undefined, notice = '') {
+function currentConfigState() {
+    return configState.currentConfig || {};
+}
+
+    export function createConfigGroupEntry(name, fields, extraClass = '', description = '', defaultOpen = undefined, notice = '') {
         const categoryId = FORM_CATEGORY_SECTION_MAP.get(name) || 'advanced';
         return {
             name,
@@ -22,7 +53,7 @@ const ctx = globalThis.ctx;
         };
     }
 
-    globalThis.appendConfigGroupsByCategory = function appendConfigGroupsByCategory(container, groups) {
+    export function appendConfigGroupsByCategory(container, groups) {
         if (!groups.length) {
             container.appendChild(createConfigFormEmpty('当前配置没有可编辑字段。'));
             return;
@@ -84,15 +115,15 @@ const ctx = globalThis.ctx;
         requestAnimationFrame(updateConfigStickyPlacement);
     }
 
-    globalThis.normalizeConfigSearch = function normalizeConfigSearch(value) {
+    function normalizeConfigSearch(value) {
         return String(value || '').trim().toLowerCase();
     }
 
-    globalThis.configCategoryVisible = function configCategoryVisible(category, searchText = '') {
+    function configCategoryVisible(category, searchText = '') {
         return Boolean(searchText) || configFormState.showAdvanced || !category.advanced;
     }
 
-    globalThis.normalizeConfigActiveCategory = function normalizeConfigActiveCategory(categories) {
+    function normalizeConfigActiveCategory(categories) {
         if (!categories.length) return '';
         const ids = new Set(categories.map((category) => category.id));
         if (!ids.has(configFormState.activeCategory)) {
@@ -101,7 +132,7 @@ const ctx = globalThis.ctx;
         return configFormState.activeCategory;
     }
 
-    globalThis.selectConfigCategory = function selectConfigCategory(categoryId, options = {}) {
+    export function selectConfigCategory(categoryId, options = {}) {
         if (!categoryId) return;
         const category = FORM_CATEGORY_DEFS.find((item) => item.id === categoryId);
         syncConfigDraftFromForm();
@@ -110,19 +141,19 @@ const ctx = globalThis.ctx;
         }
         configFormState.activeCategory = categoryId;
         configFormState.search = '';
-        renderConfigForm(currentConfig);
+        renderConfigForm(currentConfigState());
         if (options.scrollToForm) {
             requestAnimationFrame(() => scrollConfigFormContentToTop('smooth'));
         }
     }
 
-    globalThis.scrollConfigFormContentToTop = function scrollConfigFormContentToTop(behavior = 'auto') {
+    function scrollConfigFormContentToTop(behavior = 'auto') {
         const scroller = document.querySelector('#tab-config .config-left');
         if (!scroller) return;
         scroller.scrollTo({ top: 0, behavior });
     }
 
-    globalThis.updateConfigStickyDirectory = function updateConfigStickyDirectory(categories, buckets, activeCategory, searchText) {
+    function updateConfigStickyDirectory(categories, buckets, activeCategory, searchText) {
         const visibleCategories = new Set(categories.map((category) => category.id));
         document.querySelectorAll('[data-sticky-config-category]').forEach((btn) => {
             const categoryId = btn.dataset.stickyConfigCategory || '';
@@ -141,7 +172,7 @@ const ctx = globalThis.ctx;
         });
     }
 
-    globalThis.updateConfigStickyPlacement = function updateConfigStickyPlacement() {
+    export function updateConfigStickyPlacement() {
         const bar = document.getElementById('config-sticky-actions');
         const workspace = document.getElementById('config-form-workspace');
         if (!bar || !workspace || workspace.hidden) return;
@@ -166,7 +197,7 @@ const ctx = globalThis.ctx;
         workspace.style.setProperty('--config-left-max-height', `${Math.round(availableHeight)}px`);
     }
 
-    globalThis.createConfigFormControls = function createConfigFormControls(allGroups, renderedGroups, searchText) {
+    function createConfigFormControls(allGroups, renderedGroups, searchText) {
         const controls = document.createElement('div');
         controls.className = 'config-form-controls';
         controls.appendChild(createConfigScopeStatus(allGroups, renderedGroups, searchText));
@@ -186,7 +217,7 @@ const ctx = globalThis.ctx;
         search.addEventListener('input', (event) => {
             syncConfigDraftFromForm();
             configFormState.search = event.target.value || '';
-            renderConfigForm(currentConfig);
+            renderConfigForm(currentConfigState());
             requestAnimationFrame(() => {
                 const next = document.getElementById('config-search-input');
                 if (next) {
@@ -205,7 +236,7 @@ const ctx = globalThis.ctx;
             event.preventDefault();
             syncConfigDraftFromForm();
             configFormState.search = '';
-            renderConfigForm(currentConfig);
+            renderConfigForm(currentConfigState());
             requestAnimationFrame(() => {
                 document.getElementById('config-search-input')?.focus();
             });
@@ -222,7 +253,7 @@ const ctx = globalThis.ctx;
         advancedInput.addEventListener('change', (event) => {
             syncConfigDraftFromForm();
             configFormState.showAdvanced = event.target.checked;
-            renderConfigForm(currentConfig);
+            renderConfigForm(currentConfigState());
         });
         const advancedText = document.createElement('span');
         advancedText.textContent = '显示高级配置';
@@ -250,7 +281,7 @@ const ctx = globalThis.ctx;
         return controls;
     }
 
-    globalThis.createConfigScopeStatus = function createConfigScopeStatus(allGroups, renderedGroups, searchText) {
+    function createConfigScopeStatus(allGroups, renderedGroups, searchText) {
         const active = FORM_CATEGORY_DEFS.find((category) => category.id === configFormState.activeCategory) || FORM_CATEGORY_DEFS[0];
         const total = allGroups.reduce((sum, group) => sum + group.fields.length, 0);
         const visible = renderedGroups.reduce((sum, group) => sum + group.fields.length, 0);
@@ -267,7 +298,7 @@ const ctx = globalThis.ctx;
         return scope;
     }
 
-    globalThis.filterConfigGroupEntry = function filterConfigGroupEntry(group, searchText) {
+    function filterConfigGroupEntry(group, searchText) {
         if (!searchText) return group;
         const groupMatched = configTextMatches([group.name, group.description, group.categoryId], searchText);
         const fields = groupMatched
@@ -277,31 +308,31 @@ const ctx = globalThis.ctx;
         return { ...group, fields };
     }
 
-    globalThis.configFieldMatchesSearch = function configFieldMatchesSearch(key, value, searchText) {
+    function configFieldMatchesSearch(key, value, searchText) {
         return configTextMatches([
             key,
             formatFieldName(key),
             value,
-            fieldHelp[key] ? JSON.stringify(fieldHelp[key]) : '',
+            configState.fieldHelp[key] ? JSON.stringify(configState.fieldHelp[key]) : '',
         ], searchText);
     }
 
-    globalThis.configTextMatches = function configTextMatches(parts, searchText) {
+    function configTextMatches(parts, searchText) {
         return parts.some((part) => String(part ?? '').toLowerCase().includes(searchText));
     }
 
-    globalThis.createConfigFormEmpty = function createConfigFormEmpty(text) {
+    function createConfigFormEmpty(text) {
         const empty = document.createElement('div');
         empty.className = 'config-form-empty';
         empty.textContent = text;
         return empty;
     }
 
-    globalThis.configCategoryIsAdvanced = function configCategoryIsAdvanced(categoryId) {
+    function configCategoryIsAdvanced(categoryId) {
         return Boolean(FORM_CATEGORY_DEFS.find((category) => category.id === categoryId)?.advanced);
     }
 
-    globalThis.configGroupIsCollapsed = function configGroupIsCollapsed(name, searchText = '', defaultOpen = undefined) {
+    function configGroupIsCollapsed(name, searchText = '', defaultOpen = undefined) {
         if (searchText) return false;
         if (configFormState.collapsedGroups.has(name)) return true;
         if (configFormState.expandedGroups.has(name)) return false;
@@ -311,7 +342,7 @@ const ctx = globalThis.ctx;
         return configCategoryIsAdvanced(FORM_CATEGORY_SECTION_MAP.get(name) || 'advanced');
     }
 
-    globalThis.createGroup = function createGroup(name, fields, extraClass = '', description = '', searchText = '', defaultOpen = undefined, notice = '') {
+    function createGroup(name, fields, extraClass = '', description = '', searchText = '', defaultOpen = undefined, notice = '') {
         const section = document.createElement('section');
         section.className = ['config-group', extraClass].filter(Boolean).join(' ');
         section.dataset.groupName = name;
@@ -362,7 +393,7 @@ const ctx = globalThis.ctx;
         });
         let hint = null;
         if (description) {
-            const hintId = `config-group-hint-${++configGroupHintSeq}`;
+            const hintId = `config-group-hint-${++configState.configGroupHintSeq}`;
             const btn = document.createElement('button');
             btn.className = 'info-toggle config-group-info-toggle';
             btn.textContent = '?';
@@ -428,7 +459,7 @@ const ctx = globalThis.ctx;
         return section;
     }
 
-    globalThis.createOpenStageResolutionDialogButton = function createOpenStageResolutionDialogButton() {
+    function createOpenStageResolutionDialogButton() {
         const btn = document.createElement('button');
         btn.id = 'btn-open-stage-resolution-dialog';
         btn.type = 'button';
@@ -439,7 +470,7 @@ const ctx = globalThis.ctx;
         return btn;
     }
 
-    globalThis.openStageResolutionDialog = function openStageResolutionDialog() {
+    function openStageResolutionDialog() {
         const dialog = document.getElementById('stage-resolution-dialog');
         if (!dialog) return;
         renderStageResolutionDialog();
@@ -451,7 +482,7 @@ const ctx = globalThis.ctx;
         requestAnimationFrame(drawStageResolutionChart);
     }
 
-    globalThis.normalizedStageResolutionStages = function normalizedStageResolutionStages() {
+    export function normalizedStageResolutionStages() {
         if (!Array.isArray(stageResolutionState.stages) || !stageResolutionState.stages.length) {
             stageResolutionState.stages = [
                 { name: 'EP1', epochs: 1, maxSide: 1024, downRange: 256, manualRepeats: false, repeats: 1 },
@@ -472,7 +503,7 @@ const ctx = globalThis.ctx;
         return stageResolutionState.stages;
     }
 
-    globalThis.stageResolutionMetrics = function stageResolutionMetrics() {
+    export function stageResolutionMetrics() {
         stageResolutionState.enabled = Boolean(stageResolutionState.enabled);
         const stages = normalizedStageResolutionStages();
         let cursorStep = 0;
@@ -540,13 +571,13 @@ const ctx = globalThis.ctx;
         };
     }
 
-    globalThis.stageResolutionStatus = function stageResolutionStatus(stage) {
+    export function stageResolutionStatus(stage) {
         if (stage.problems.length) return { tone: 'error', text: stage.problems[0] };
         if (stage.warnings.length) return { tone: 'warning', text: stage.warnings[0] };
         return { tone: 'ok', text: '就绪' };
     }
 
-    globalThis.renderStageResolutionDialog = function renderStageResolutionDialog() {
+    export function renderStageResolutionDialog() {
         const body = document.getElementById('stage-resolution-dialog-body');
         if (!body) return;
         const metrics = stageResolutionMetrics();

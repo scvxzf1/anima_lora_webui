@@ -1,6 +1,27 @@
 /**
  * No-dataset regularization intent layer for the config form.
  */
+import {
+    NO_DATASET_REGULARIZATION_ADVANCED_SUMMARY,
+    NO_DATASET_REGULARIZATION_ADVANCED_SUMMARY_OPEN,
+    NO_DATASET_REGULARIZATION_CACHE_PATCH,
+    NO_DATASET_REGULARIZATION_CONFLICT_MESSAGE,
+    NO_DATASET_REGULARIZATION_CONFLICT_MODE,
+    NO_DATASET_REGULARIZATION_DEFAULT_WEIGHT,
+    NO_DATASET_REGULARIZATION_DOP_CLASS_REQUIRED,
+    NO_DATASET_REGULARIZATION_MODE_SPECS,
+} from '../helpers/app-constants.js?v=module-bootstrap-20260707-93';
+import { originalConfigFieldValue, readFieldInputValue } from '../helpers/config-form-bridge.js?v=module-bootstrap-20260707-93';
+import { setFieldInputValue } from './13-update-dataset-editor-rows-setting-value.js?v=module-bootstrap-20260707-93';
+import {
+    configureNoDatasetRegularizationModePanelUpdater,
+    handleFormFieldChange,
+} from './14-lora-adapter-kind-from-config.js?v=module-bootstrap-20260707-93';
+import { appendFieldRows } from './06-stronger-selective-checkpoint-value.js?v=module-bootstrap-20260707-93';
+import {
+    setTomlStatus,
+} from '../helpers/toml-action-state-bridge.js?v=module-bootstrap-20260707-93';
+
     function createNoDatasetRegularizationModePanel() {
         const panel = document.createElement('div');
         panel.className = 'no-dataset-regularization-panel';
@@ -316,3 +337,5 @@ export {
     createNoDatasetRegularizationModePanel,
     updateNoDatasetRegularizationModePanel,
 };
+
+configureNoDatasetRegularizationModePanelUpdater(updateNoDatasetRegularizationModePanel);

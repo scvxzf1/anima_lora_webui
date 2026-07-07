@@ -2,10 +2,66 @@
  * Mechanical split from the former monolithic app closure.
  * Keep this module focused; move newly edited behavior into domain modules.
  */
-const ctx = globalThis.ctx;
+import { ensureQueueFeature } from '../helpers/feature-ensurers.js?v=module-bootstrap-20260707-93';
+import { isLiveRunningState } from '../../live-training/index.js?v=module-bootstrap-20260707-93';
+import {
+    configTrainingSourceMode,
+    continueTrainingRequestPayload,
+    ensureTrainingSourceReadyForLaunch,
+    startConfigFullResumeSource,
+    trainingSourceLaunchBlockReason,
+    trainingSourceLaunchSummary,
+} from '../helpers/training-source-bridge.js?v=module-bootstrap-20260707-93';
+import { showHistoryTaskConfirmDialog, showHistoryTaskDialog } from '../helpers/history-task-actions-bridge.js?v=module-bootstrap-20260707-93';
+import { returnToLiveTraining } from '../helpers/history-timeline-bridge.js?v=module-bootstrap-20260707-93';
+import { getGpuPicker } from '../helpers/app-shell-startup-bridge.js?v=module-bootstrap-20260707-93';
+import { configureTomlActionsBridge } from '../helpers/toml-actions-bridge.js?v=module-bootstrap-20260707-93';
+import { configureTrainingLaunchBridge } from '../helpers/training-launch-bridge.js?v=module-bootstrap-20260707-93';
+import { loadTomlFileList } from '../helpers/toml-manager-bridge.js?v=module-bootstrap-20260707-93';
+import { api, val } from '../helpers/runtime-bridge.js?v=module-bootstrap-20260707-93';
+import { setCurrentTrainingSourceFromVariant } from './13-update-dataset-editor-rows-setting-value.js?v=module-bootstrap-20260707-93';
+import { hasPendingConfigChanges, showAppConfirmDialog, updateTomlDirtyState, updateTomlSelectionUI } from '../helpers/toml-selection-bridge.js?v=module-bootstrap-20260707-93';
+import { isTrainingTomlGroup, reorderTomlFileGroups } from '../helpers/toml-io-bridge.js?v=module-bootstrap-20260707-93';
+import {
+    currentTrainingConfigFile,
+    isPreflightDialogOpen,
+    preflightPlainText,
+    renderPreflightPending,
+    renderPreflightResult,
+    showPreflightPendingDialog,
+    showPreflightRequestError,
+    startPreprocessFromPreflight,
+    waitForPreflightDialogClose,
+} from '../helpers/preflight-dialog-bridge.js?v=module-bootstrap-20260707-93';
+import { appendLog, recoverLiveTrainingState } from '../helpers/live-log-bridge.js?v=module-bootstrap-20260707-93';
+import {
+    applyTomlLockState,
+    armTomlDeleteConfirm,
+    resetTomlDeleteConfirm,
+    resetTomlSaveConfirm,
+    setTomlStatus,
+    tomlLockLabel,
+    updateTomlActionState,
+} from '../helpers/toml-action-state-bridge.js?v=module-bootstrap-20260707-93';
+import { getDatasetState } from '../helpers/dataset-state-bridge.js?v=module-bootstrap-20260707-93';
+import { getTomlState } from '../helpers/toml-state-bridge.js?v=module-bootstrap-20260707-93';
+import { getTrainingState } from '../helpers/training-state-bridge.js?v=module-bootstrap-20260707-93';
 
-    globalThis.moveCurrentTomlToGroup = async function moveCurrentTomlToGroup() {
-        const file = currentTomlFile || val('toml-file-select');
+const datasetState = getDatasetState();
+const tomlState = getTomlState();
+const trainingState = getTrainingState();
+const trainingRuntime = trainingState.trainingRuntime;
+
+function currentTrainingSourceState() {
+    return trainingState.currentTrainingSource || {};
+}
+
+function currentOutputRunState() {
+    return datasetState.outputRunState || {};
+}
+
+    export async function moveCurrentTomlToGroup() {
+        const file = tomlState.currentTomlFile || val('toml-file-select');
         if (!file) {
             setTomlStatus('error', '请先选择一个配置文件');
             return;
@@ -15,7 +71,7 @@ const ctx = globalThis.ctx;
             updateTomlActionState(file);
             return;
         }
-        const meta = tomlFileMeta[file];
+        const meta = tomlState.tomlFileMeta[file];
         if (meta?.locked) {
             setTomlStatus('error', `${tomlLockLabel(meta) || '只读'}配置不能移动分组`);
             return;
@@ -44,12 +100,12 @@ const ctx = globalThis.ctx;
         }
     }
 
-    globalThis.getMovableTomlGroups = function getMovableTomlGroups(currentGroupId = '') {
-        return reorderTomlFileGroups(tomlFileGroups)
+    export function getMovableTomlGroups(currentGroupId = '') {
+        return reorderTomlFileGroups(tomlState.tomlFileGroups)
             .filter((group) => isTrainingTomlGroup(group) && group.movable && !group.locked && !group.user_group_locked && group.id !== currentGroupId);
     }
 
-    globalThis.deleteTomlGroupButtonTitle = function deleteTomlGroupButtonTitle(group) {
+    export function deleteTomlGroupButtonTitle(group) {
         if (!group) return '配置分组不可用';
         if (group.user_group_locked) return '该分组已锁定，请先解除分组锁定后再删除';
         if (!group.deletable) return '系统固定分组或只读分组不能删除';
@@ -59,11 +115,11 @@ const ctx = globalThis.ctx;
             : `删除当前空分组“${group.label || group.id}”`;
     }
 
-    globalThis.canDeleteTomlGroup = function canDeleteTomlGroup(group) {
+    export function canDeleteTomlGroup(group) {
         return Boolean(group?.deletable && !group.user_group_locked);
     }
 
-    globalThis.showMoveTomlDialog = function showMoveTomlDialog(file, meta, groups) {
+    export function showMoveTomlDialog(file, meta, groups) {
         const wrap = document.createElement('div');
         wrap.className = 'toml-move-dialog-body';
 
@@ -115,7 +171,7 @@ const ctx = globalThis.ctx;
         });
     }
 
-    globalThis.deleteTomlGroup = async function deleteTomlGroup(group) {
+    export async function deleteTomlGroup(group) {
         if (!canDeleteTomlGroup(group)) {
             setTomlStatus('error', deleteTomlGroupButtonTitle(group));
             return;
@@ -151,16 +207,16 @@ const ctx = globalThis.ctx;
                 setTomlStatus('error', res.error || '删除分组失败');
                 return;
             }
-            await loadTomlFileList(currentTomlFile || '');
+            await loadTomlFileList(tomlState.currentTomlFile || '');
             setTomlStatus('ok', res.message || '分组已删除');
         } catch (e) {
             setTomlStatus('error', '请求失败: ' + e.message);
         }
     }
 
-    globalThis.deleteTomlFile = async function deleteTomlFile() {
-        const file = currentTomlFile || val('toml-file-select');
-        const meta = tomlFileMeta[file];
+    export async function deleteTomlFile() {
+        const file = tomlState.currentTomlFile || val('toml-file-select');
+        const meta = tomlState.tomlFileMeta[file];
         if (!file) {
             setTomlStatus('error', '请先选择一个配置文件');
             return;
@@ -180,7 +236,7 @@ const ctx = globalThis.ctx;
             return;
         }
 
-        if (tomlDeleteConfirmFile !== file) {
+        if (tomlState.tomlDeleteConfirmFile !== file) {
             armTomlDeleteConfirm(file);
             return;
         }
@@ -205,16 +261,16 @@ const ctx = globalThis.ctx;
         }
     }
 
-    globalThis.isMissingTomlFileResponse = function isMissingTomlFileResponse(res) {
+    export function isMissingTomlFileResponse(res) {
         return String(res?.error || '').includes('不存在') || String(res?.error || '').includes('已被删除');
     }
 
-    globalThis.handleDeletedTomlSelection = async function handleDeletedTomlSelection(file, message, options = {}) {
-        if (currentTrainingSource.file === file) {
+    export async function handleDeletedTomlSelection(file, message, options = {}) {
+        if (currentTrainingSourceState().file === file) {
             setCurrentTrainingSourceFromVariant(val('variant-select') || 'lora');
         }
-        delete tomlFileMeta[file];
-        tomlFiles = tomlFiles.filter((item) => item !== file);
+        delete tomlState.tomlFileMeta[file];
+        tomlState.tomlFiles = tomlState.tomlFiles.filter((item) => item !== file);
         clearCurrentTomlSelection();
         await loadTomlFileList('', { skipDefaultLoad: true });
         clearCurrentTomlSelection();
@@ -222,11 +278,11 @@ const ctx = globalThis.ctx;
         setTomlStatus(options.ok ? 'ok' : 'error', message, { persist: true });
     }
 
-    globalThis.clearCurrentTomlSelection = function clearCurrentTomlSelection() {
+    export function clearCurrentTomlSelection() {
         resetTomlDeleteConfirm({ update: false });
         resetTomlSaveConfirm({ update: false });
-        currentTomlFile = '';
-        tomlSavedContent = '';
+        tomlState.currentTomlFile = '';
+        tomlState.tomlSavedContent = '';
         const editor = document.getElementById('toml-editor');
         if (editor) {
             editor.value = '';
@@ -239,9 +295,9 @@ const ctx = globalThis.ctx;
         applyTomlLockState('');
     }
 
-    globalThis.restoreSystemTomlPresets = async function restoreSystemTomlPresets() {
-        const file = currentTomlFile || val('toml-file-select');
-        const meta = tomlFileMeta[file];
+    export async function restoreSystemTomlPresets() {
+        const file = tomlState.currentTomlFile || val('toml-file-select');
+        const meta = tomlState.tomlFileMeta[file];
         if (hasPendingConfigChanges(file)) {
             setTomlStatus('error', '当前配置尚未保存，请先保存更新当前选中配置或另存新配置，再还原系统预设');
             updateTomlActionState(file);
@@ -268,7 +324,7 @@ const ctx = globalThis.ctx;
                 return;
             }
 
-            const preferredFile = file && tomlFiles.includes(file) ? file : '';
+            const preferredFile = file && tomlState.tomlFiles.includes(file) ? file : '';
             await loadTomlFileList(preferredFile);
             const restoredCount = res.restored?.length || 0;
             const skippedCount = res.skipped?.length || 0;
@@ -280,30 +336,30 @@ const ctx = globalThis.ctx;
     }
 
     // ── 训练控制 ──
-    globalThis.startTraining = async function startTraining() {
+    export async function startTraining() {
         if (configTrainingSourceMode() === 'full_resume') {
             await startConfigFullResumeSource(false);
             return;
         }
         const selectedTrainingConfigFile = currentTrainingConfigFile();
-        if (tomlManagerMode !== 'output' || !outputRunState.file) {
-            if (hasPendingConfigChanges(currentTomlFile)) {
+        if (tomlState.tomlManagerMode !== 'output' || !currentOutputRunState().file) {
+            if (hasPendingConfigChanges(tomlState.currentTomlFile)) {
                 setTomlStatus('error', '当前配置有未保存修改，请先保存更新当前选中配置或另存新配置，再开始训练');
-                updateTomlActionState(currentTomlFile);
+                updateTomlActionState(tomlState.currentTomlFile);
                 document.querySelector('[data-tab="config"]')?.click();
                 return;
             }
         }
         if (!selectedTrainingConfigFile) {
-            const message = tomlManagerMode === 'output' && outputRunState.selectedRun
+            const message = tomlState.tomlManagerMode === 'output' && currentOutputRunState().selectedRun
                 ? '这个训练输出没有可直接继续训练的 config.runtime.toml，请先另存原始配置或选择其他运行目录'
                 : '请选择要训练的配置文件';
             setTomlStatus('error', message);
             return;
         }
-        const variant = currentTrainingSource.method || val('variant-select');
+        const variant = currentTrainingSourceState().method || val('variant-select');
         const preset = val('preset-select');
-        const methodsSubdir = currentTrainingSource.methods_subdir || 'gui-methods';
+        const methodsSubdir = currentTrainingSourceState().methods_subdir || 'gui-methods';
         if (!variant) return alert('请选择变体');
         if (isCliOnlySpdSource(variant, methodsSubdir)) {
             const message = 'SPD 是 CLI 实验配置，只能通过 tasks.py exp-spd / scripts/distill_spd.py 运行；Web 普通训练入口已拦截，避免误用 train.py。';
@@ -337,7 +393,7 @@ const ctx = globalThis.ctx;
         await startTrainingUnchecked(variant, preset, methodsSubdir, { willAutoPreprocess });
     }
 
-    globalThis.queueCurrentTrainingFromConfig = async function queueCurrentTrainingFromConfig() {
+    export async function queueCurrentTrainingFromConfig() {
         if (configTrainingSourceMode() === 'full_resume') {
             await startConfigFullResumeSource(true);
             return;
@@ -345,7 +401,7 @@ const ctx = globalThis.ctx;
         return ensureQueueFeature().queueCurrentTrainingFromConfig();
     }
 
-    globalThis.runPreflight = async function runPreflight(variant, preset, methodsSubdir) {
+    export async function runPreflight(variant, preset, methodsSubdir) {
         const pending = showPreflightPendingDialog({
             title: '训练前预检测',
             message: '正在检查模型路径、数据集路径和预处理启动环境...',
@@ -374,17 +430,17 @@ const ctx = globalThis.ctx;
         }
     }
 
-    globalThis.isCliOnlySpdSource = function isCliOnlySpdSource(variant, methodsSubdir) {
+    export function isCliOnlySpdSource(variant, methodsSubdir) {
         return String(methodsSubdir || '') === 'methods' && String(variant || '') === 'spd';
     }
 
-    globalThis.currentTrainingConfigIsRuntime = function currentTrainingConfigIsRuntime() {
+    export function currentTrainingConfigIsRuntime() {
         return currentTrainingConfigFile().replace(/\\/g, '/').endsWith('/config.runtime.toml');
     }
 
-    globalThis.chooseTrainingLaunchMode = async function chooseTrainingLaunchMode(options = {}) {
+    export async function chooseTrainingLaunchMode(options = {}) {
         const willAutoPreprocess = Boolean(options.willAutoPreprocess);
-        const isRunning = isLiveRunningState();
+        const isRunning = isLiveRunningState(trainingRuntime.state);
         const sourceDetail = trainingSourceLaunchSummary();
         if (isRunning) {
             const ok = await showAppConfirmDialog({
@@ -416,7 +472,7 @@ const ctx = globalThis.ctx;
         return queue ? 'queue' : 'cancel';
     }
 
-    globalThis.confirmTrainingLaunch = async function confirmTrainingLaunch(options = {}) {
+    export async function confirmTrainingLaunch(options = {}) {
         const willAutoPreprocess = Boolean(options.willAutoPreprocess);
         const sourceDetail = trainingSourceLaunchSummary();
         return showAppConfirmDialog({
@@ -430,7 +486,7 @@ const ctx = globalThis.ctx;
         });
     }
 
-    globalThis.startTrainingUnchecked = async function startTrainingUnchecked(variant, preset, methodsSubdir, options = {}) {
+    export async function startTrainingUnchecked(variant, preset, methodsSubdir, options = {}) {
         const willAutoPreprocess = Boolean(options.willAutoPreprocess);
         const mode = await chooseTrainingLaunchMode({ willAutoPreprocess });
         if (mode === 'cancel') return;
@@ -456,7 +512,7 @@ const ctx = globalThis.ctx;
                     methods_subdir: methodsSubdir,
                     config_file: currentTrainingConfigFile(),
                     extra_args: [],
-                    gpu_whitelist: gpuPicker.selectedGpuPayload(),
+                    gpu_whitelist: getGpuPicker()?.selectedGpuPayload?.() ?? [],
                     confirmed: true,
                     confirm_preprocess: willAutoPreprocess,
                     ...continueTrainingRequestPayload(),
@@ -482,25 +538,25 @@ const ctx = globalThis.ctx;
         }
     }
 
-    globalThis.enqueueTrainingFromConfig = async function enqueueTrainingFromConfig(variant, preset, methodsSubdir, options = {}) {
+    export async function enqueueTrainingFromConfig(variant, preset, methodsSubdir, options = {}) {
         return ensureQueueFeature().enqueueTrainingFromConfig(variant, preset, methodsSubdir, options);
     }
 
-    globalThis.enqueueTrainingQueueRequest = async function enqueueTrainingQueueRequest(options = {}) {
+    export async function enqueueTrainingQueueRequest(options = {}) {
         return ensureQueueFeature().enqueueTrainingQueueRequest(options);
     }
 
-    globalThis.enqueueTrainingQueueBatchRequest = async function enqueueTrainingQueueBatchRequest(options = {}) {
+    export async function enqueueTrainingQueueBatchRequest(options = {}) {
         return ensureQueueFeature().enqueueTrainingQueueBatchRequest(options);
     }
 
-    globalThis.enterLiveTrainingForNewRun = function enterLiveTrainingForNewRun() {
+    export function enterLiveTrainingForNewRun() {
         returnToLiveTraining({ refresh: false });
         document.querySelector('[data-tab="training"]')?.click();
         recoverLiveTrainingState();
     }
 
-    globalThis.showPreflightDialog = function showPreflightDialog(result, allowContinue, options = {}) {
+    export function showPreflightDialog(result, allowContinue, options = {}) {
         const dialog = document.getElementById('preflight-dialog');
         if (!dialog) {
             if (!allowContinue) return Promise.resolve('cancel');
@@ -520,3 +576,33 @@ const ctx = globalThis.ctx;
             }, { once: true });
         });
     }
+
+configureTomlActionsBridge({
+    moveCurrentTomlToGroup,
+    getMovableTomlGroups,
+    deleteTomlGroupButtonTitle,
+    canDeleteTomlGroup,
+    showMoveTomlDialog,
+    deleteTomlGroup,
+    deleteTomlFile,
+    isMissingTomlFileResponse,
+    handleDeletedTomlSelection,
+    clearCurrentTomlSelection,
+    restoreSystemTomlPresets,
+});
+
+configureTrainingLaunchBridge({
+    startTraining,
+    queueCurrentTrainingFromConfig,
+    runPreflight,
+    isCliOnlySpdSource,
+    currentTrainingConfigIsRuntime,
+    chooseTrainingLaunchMode,
+    confirmTrainingLaunch,
+    startTrainingUnchecked,
+    enqueueTrainingFromConfig,
+    enqueueTrainingQueueRequest,
+    enqueueTrainingQueueBatchRequest,
+    enterLiveTrainingForNewRun,
+    showPreflightDialog,
+});

@@ -12,6 +12,10 @@ export function parseProgressRateSeconds(value) {
     return amount;
 }
 
+export function isLiveRunningState(state) {
+    return state === 'running' || state === 'compiling';
+}
+
 export function formatEtaClock(date) {
     const pad = (value) => String(value).padStart(2, '0');
     const time = `${pad(date.getHours())}:${pad(date.getMinutes())}`;

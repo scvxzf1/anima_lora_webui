@@ -4,6 +4,18 @@
 
 本目录的材料默认不是当前实现说明。实现状态以 `docs/README.md` 指向的 `guidelines/`、`methods/`、`experimental/`、`structure/`、`configuration/`、`features/`、`findings/` 和 `optimizations/` 文档为准。
 
+## 2026-07-07 归档（第二批）
+
+| 文档 | 原因 |
+| --- | --- |
+| [anima-app-deglobalization.md](anima-app-deglobalization.md) | 阶段 0-3 已落地（85 轮，`globalThis` 从 1075 降到 270），剩余收尾工作由 `anima-app-legacy-bridge-cleanup.md` 接续 |
+
+## 2026-07-07 归档
+
+| 文档 | 原因 |
+| --- | --- |
+| [lora-network-decomposition.md](lora-network-decomposition.md) | `LoRANetwork` 分层拆分核心代码已落地，当前仅保留实施计划和历史上下文 |
+
 ## 2026-07-06 归档
 
 | 文档 | 原因 |

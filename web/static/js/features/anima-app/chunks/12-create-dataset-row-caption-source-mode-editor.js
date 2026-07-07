@@ -2,9 +2,46 @@
  * Mechanical split from the former monolithic app closure.
  * Keep this module focused; move newly edited behavior into domain modules.
  */
-const ctx = globalThis.ctx;
+import {
+    CAPTION_SOURCE_MODE_OPTIONS,
+    help,
+} from '../../../config/catalog.js?v=module-bootstrap-20260707-93';
+import {
+    captionSourceModeLabel,
+    normalizeCaptionSourceMode,
+} from '../helpers/caption-source.js?v=module-bootstrap-20260707-93';
+import { datasetConfigValue } from '../helpers/dataset-config-fields.js?v=module-bootstrap-20260707-93';
+import { setDatasetPresetStatus } from '../helpers/dataset-preset-actions-bridge.js?v=module-bootstrap-20260707-93';
+import {
+    normalizeDatasetDefaults,
+    normalizeDatasetEditorRows,
+} from '../helpers/dataset-values.js?v=module-bootstrap-20260707-93';
+import {
+    datasetPreviewImageToPreviewImage,
+    datasetPreviewValidationText,
+} from '../helpers/dataset-preview.js?v=module-bootstrap-20260707-93';
+import {
+    datasetEditorStateForActivePanel,
+    isDatasetTabActive,
+} from '../helpers/dataset-render-bridge.js?v=module-bootstrap-20260707-93';
+import { getDatasetState } from '../helpers/dataset-state-bridge.js?v=module-bootstrap-20260707-93';
+import { datasetPresetApi } from '../helpers/runtime-bridge.js?v=module-bootstrap-20260707-93';
+import { updateStepEstimatePanel } from './03-parse-network-arg-entry.js?v=module-bootstrap-20260707-93';
+import { markDatasetEditorDirty, setFieldInputValue, updateDatasetEditorRowsSettingValue } from './13-update-dataset-editor-rows-setting-value.js?v=module-bootstrap-20260707-93';
+import { openPreviewDialog, createPreviewDetailRow, copyText } from '../helpers/preview-view-bridge.js?v=module-bootstrap-20260707-93';
 
-    globalThis.createDatasetRowCaptionSourceModeEditor = function createDatasetRowCaptionSourceModeEditor(settings, index) {
+const datasetState = getDatasetState();
+
+function currentDatasetPresetState() {
+    return datasetState.datasetPresetState || {};
+}
+
+function currentDatasetPreviewState() {
+    return datasetState.datasetPreviewState || {};
+}
+
+
+    export function createDatasetRowCaptionSourceModeEditor(settings, index) {
         const current = normalizeCaptionSourceMode(settings.caption_source_mode, settings.prefer_json_caption);
         const panel = document.createElement('div');
         panel.className = 'dataset-caption-source';
@@ -18,7 +55,7 @@ const ctx = globalThis.ctx;
         titleRow.className = 'dataset-caption-source-title-row';
         const title = document.createElement('strong');
         title.textContent = '标注来源 / caption_source_mode';
-        const helpId = `dataset-caption-source-notes-${++datasetCaptionSourceHelpSeq}`;
+        const helpId = `dataset-caption-source-notes-${++datasetState.datasetCaptionSourceHelpSeq}`;
         const helpBtn = document.createElement('button');
         helpBtn.className = 'info-toggle dataset-caption-source-help-toggle';
         helpBtn.type = 'button';
@@ -90,7 +127,7 @@ const ctx = globalThis.ctx;
         return panel;
     }
 
-    globalThis.createDatasetRowSettingInput = function createDatasetRowSettingInput(index, key, type, settings) {
+    export function createDatasetRowSettingInput(index, key, type, settings) {
         let input;
         if (type === 'select') {
             input = document.createElement('select');
@@ -120,7 +157,7 @@ const ctx = globalThis.ctx;
         return input;
     }
 
-    globalThis.createDatasetPathField = function createDatasetPathField(index, key, label, value, placeholder) {
+    export function createDatasetPathField(index, key, label, value, placeholder) {
         const field = document.createElement('label');
         field.className = 'dataset-path-field';
         field.dataset.key = key;
@@ -143,18 +180,19 @@ const ctx = globalThis.ctx;
         return field;
     }
 
-    globalThis.openDatasetPreview = async function openDatasetPreview(index) {
-        if (!datasetPresetState.selectedFile) {
+    export async function openDatasetPreview(index) {
+        if (!currentDatasetPresetState().selectedFile) {
             setDatasetPresetStatus('请先选择一个数据集预设', 'error');
             return;
         }
-        if (datasetPresetState.dirty) {
+        if (currentDatasetPresetState().dirty) {
             setDatasetPresetStatus('请先保存当前数据集预设，再打开预览', 'error');
             return;
         }
-        datasetPreviewState.datasetIndex = index;
-        datasetPreviewState.source = 'source';
-        datasetPreviewState.payload = null;
+        const previewState = currentDatasetPreviewState();
+        previewState.datasetIndex = index;
+        previewState.source = 'source';
+        previewState.payload = null;
         const dialog = document.getElementById('dataset-preview-dialog');
         renderDatasetPreviewDialog({ loading: true });
         if (dialog?.showModal && !dialog.open) {
@@ -163,26 +201,27 @@ const ctx = globalThis.ctx;
         await loadDatasetPreviewImages();
     }
 
-    globalThis.loadDatasetPreviewImages = async function loadDatasetPreviewImages() {
-        const file = datasetPresetState.selectedFile;
+    export async function loadDatasetPreviewImages() {
+        const file = currentDatasetPresetState().selectedFile;
         if (!file) return;
-        const requestSeq = ++datasetPreviewLoadSeq;
+        const requestSeq = ++datasetState.datasetPreviewLoadSeq;
         renderDatasetPreviewDialog({ loading: true });
         try {
+            const previewState = currentDatasetPreviewState();
             const params = new URLSearchParams({
                 file,
-                dataset_index: String(datasetPreviewState.datasetIndex || 0),
+                dataset_index: String(previewState.datasetIndex || 0),
                 source: 'source',
                 limit: '120',
             });
             const payload = await datasetPresetApi(`/api/config/dataset-presets/images?${params.toString()}`);
-            if (requestSeq !== datasetPreviewLoadSeq) return;
+            if (requestSeq !== datasetState.datasetPreviewLoadSeq) return;
             if (!payload.ok) throw new Error(payload.error || '读取数据集预览失败');
-            datasetPreviewState.payload = payload;
+            previewState.payload = payload;
             renderDatasetPreviewDialog();
         } catch (e) {
-            if (requestSeq !== datasetPreviewLoadSeq) return;
-            datasetPreviewState.payload = {
+            if (requestSeq !== datasetState.datasetPreviewLoadSeq) return;
+            currentDatasetPreviewState().payload = {
                 ok: false,
                 error: e.message || '读取数据集预览失败',
                 images: [],
@@ -191,7 +230,7 @@ const ctx = globalThis.ctx;
         }
     }
 
-    globalThis.renderDatasetPreviewDialog = function renderDatasetPreviewDialog(options = {}) {
+    function renderDatasetPreviewDialog(options = {}) {
         const title = document.getElementById('dataset-preview-dialog-title');
         const meta = document.getElementById('dataset-preview-dialog-meta');
         const grid = document.getElementById('dataset-preview-grid');
@@ -199,7 +238,8 @@ const ctx = globalThis.ctx;
         const empty = document.getElementById('dataset-preview-empty');
         if (!title || !meta || !grid || !details || !empty) return;
 
-        const datasetNo = Number(datasetPreviewState.datasetIndex || 0) + 1;
+        const previewState = currentDatasetPreviewState();
+        const datasetNo = Number(previewState.datasetIndex || 0) + 1;
         title.textContent = `第 ${datasetNo} 组数据集预览`;
         if (options.loading) {
             meta.textContent = '正在读取图片和同名标注...';
@@ -210,7 +250,7 @@ const ctx = globalThis.ctx;
             return;
         }
 
-        const payload = datasetPreviewState.payload || {};
+        const payload = previewState.payload || {};
         if (payload.error) {
             meta.textContent = payload.error;
             grid.innerHTML = '';
@@ -238,14 +278,14 @@ const ctx = globalThis.ctx;
         }
     }
 
-    globalThis.renderDatasetPreviewDetails = function renderDatasetPreviewDetails(payload) {
+    function renderDatasetPreviewDetails(payload) {
         const details = document.getElementById('dataset-preview-details');
         if (!details) return;
         details.innerHTML = '';
         const row = payload.row || {};
         const settings = normalizeDatasetDefaults(payload.settings || row.settings || {});
         const items = [
-            ['数据集文件', payload.file || datasetPresetState.selectedFile || '-'],
+            ['数据集文件', payload.file || currentDatasetPresetState().selectedFile || '-'],
             ['当前目录', payload.directory || '-'],
             ['原始路径', row.source_dir || '-'],
             ['重复次数', row.num_repeats ?? '-'],
@@ -260,15 +300,7 @@ const ctx = globalThis.ctx;
         }
     }
 
-    globalThis.datasetPreviewValidationText = function datasetPreviewValidationText(settings) {
-        const validationNum = Number(settings.validation_split_num || 0);
-        if (validationNum > 0) return `固定 ${validationNum} 张`;
-        const validationSplit = Number(settings.validation_split ?? 0);
-        if (validationSplit > 0) return `比例 ${validationSplit}`;
-        return '关闭';
-    }
-
-    globalThis.createDatasetPreviewCard = function createDatasetPreviewCard(image) {
+    function createDatasetPreviewCard(image) {
         const card = document.createElement('article');
         card.className = 'dataset-preview-card';
         const imageWrap = document.createElement('button');
@@ -323,16 +355,7 @@ const ctx = globalThis.ctx;
         return card;
     }
 
-    globalThis.datasetPreviewImageToPreviewImage = function datasetPreviewImageToPreviewImage(image) {
-        return {
-            ...image,
-            detailContext: 'dataset',
-            sample: {},
-            source_task: null,
-        };
-    }
-
-    globalThis.copyDatasetCaptionText = async function copyDatasetCaptionText(text, button) {
+    async function copyDatasetCaptionText(text, button) {
         try {
             await copyText(text || '');
             const original = button.textContent;
@@ -347,101 +370,7 @@ const ctx = globalThis.ctx;
         }
     }
 
-    globalThis.normalizeNlTagMix = function normalizeNlTagMix(raw) {
-        const source = raw && typeof raw === 'object' ? raw : {};
-        const enabled = source.enabled === true || source.enabled === 'true';
-        const parsedRatio = Number(source.tag_ratio ?? source.tagRatio ?? DEFAULT_NL_TAG_MIX.tag_ratio);
-        const tagRatio = Number.isFinite(parsedRatio)
-            ? Math.min(1, Math.max(0, parsedRatio > 1 ? parsedRatio / 100 : parsedRatio))
-            : DEFAULT_NL_TAG_MIX.tag_ratio;
-        return {
-            enabled,
-            tag_ratio: tagRatio,
-        };
-    }
-
-    globalThis.nlTagMixSummary = function nlTagMixSummary(mix) {
-        const normalized = normalizeNlTagMix(mix);
-        const tagPercent = Math.round(normalized.tag_ratio * 100);
-        return `${tagPercent}% tag + ${100 - tagPercent}% nl`;
-    }
-
-    globalThis.normalizeTriggerClone = function normalizeTriggerClone(raw) {
-        const source = raw && typeof raw === 'object' ? raw : {};
-        return {
-            enabled: source.enabled === true || source.enabled === 'true',
-            prompt: String(source.prompt || '').trim(),
-            num_repeats: Math.max(1, Number.parseInt(source.num_repeats || 1, 10) || 1),
-        };
-    }
-
-    globalThis.normalizeDatasetEditorRows = function normalizeDatasetEditorRows(rows) {
-        return (rows || [])
-            .filter((row) => row && typeof row === 'object')
-            .map((row) => ({
-                source_dir: String(row.source_dir || row.source_image_dir || ''),
-                image_dir: String(row.image_dir || row.resized_image_dir || ''),
-                cache_dir: String(row.cache_dir || row.lora_cache_dir || ''),
-                num_repeats: Math.max(1, Number.parseInt(row.num_repeats || 1, 10) || 1),
-                recursive: row.recursive !== false && row.recursive !== 'false',
-                path_pattern: String(row.path_pattern || '*').trim() || '*',
-                is_reg: row.is_reg === true,
-                nl_tag_mix: normalizeNlTagMix(row.nl_tag_mix),
-                trigger_clone: normalizeTriggerClone(row.trigger_clone),
-                settings: normalizeDatasetRowSettings(row),
-            }));
-    }
-
-    globalThis.datasetRowsForPayload = function datasetRowsForPayload(rows) {
-        return normalizeDatasetEditorRows(rows).map((row) => ({
-            source_dir: row.source_dir,
-            image_dir: row.image_dir,
-            cache_dir: row.cache_dir,
-            num_repeats: row.num_repeats,
-            recursive: row.recursive,
-            path_pattern: row.path_pattern,
-            is_reg: row.is_reg,
-            nl_tag_mix: normalizeNlTagMix(row.nl_tag_mix),
-            trigger_clone: normalizeTriggerClone(row.trigger_clone),
-            settings: normalizeDatasetDefaults(row.settings || {}),
-        }));
-    }
-
-    globalThis.normalizeDatasetRowSettings = function normalizeDatasetRowSettings(row) {
-        if (row.settings && typeof row.settings === 'object') {
-            return normalizeDatasetDefaults(row.settings);
-        }
-        if ([...DATASET_SETTING_KEYS].some((key) => key in row)) {
-            return normalizeDatasetDefaults(row);
-        }
-        return {};
-    }
-
-    globalThis.normalizeDatasetDefaults = function normalizeDatasetDefaults(defaults) {
-        const raw = defaults && typeof defaults === 'object' ? defaults : {};
-        const preferJson = raw.prefer_json_caption === true || raw.prefer_json_caption === 'true';
-        const captionSourceMode = normalizeCaptionSourceMode(raw.caption_source_mode, preferJson);
-        const validationSeed = Number.parseInt(raw.validation_seed ?? 42, 10);
-        const priorLossWeight = Number(raw.prior_loss_weight ?? 1.0);
-        return {
-            resolution: Math.max(1, Number.parseInt(raw.resolution || 1024, 10) || 1024),
-            prior_loss_weight: Number.isFinite(priorLossWeight) ? Math.max(0, priorLossWeight) : 1.0,
-            enable_bucket: raw.enable_bucket !== false && raw.enable_bucket !== 'false',
-            min_bucket_reso: Math.max(1, Number.parseInt(raw.min_bucket_reso || 256, 10) || 256),
-            max_bucket_reso: Math.max(1, Number.parseInt(raw.max_bucket_reso || 1024, 10) || 1024),
-            bucket_reso_steps: Math.max(1, Number.parseInt(raw.bucket_reso_steps || 64, 10) || 64),
-            bucket_no_upscale: raw.bucket_no_upscale === true || raw.bucket_no_upscale === 'true',
-            validation_split: Math.max(0, Number(raw.validation_split ?? 0) || 0),
-            validation_split_num: Math.max(0, Number.parseInt(raw.validation_split_num || 0, 10) || 0),
-            validation_seed: Number.isFinite(validationSeed) ? Math.max(0, validationSeed) : 42,
-            caption_extension: String(raw.caption_extension || '.txt'),
-            keep_tokens: Math.max(0, Number.parseInt(raw.keep_tokens || 3, 10) || 0),
-            prefer_json_caption: preferJson,
-            caption_source_mode: captionSourceMode,
-        };
-    }
-
-    globalThis.updateDatasetDefault = function updateDatasetDefault(key, input) {
+    export function updateDatasetDefault(key, input) {
         const state = datasetEditorStateForActivePanel();
         const defaults = normalizeDatasetDefaults(state.defaults || {});
         if (input.type === 'checkbox') {
@@ -456,14 +385,14 @@ const ctx = globalThis.ctx;
             defaults[key] = input.value;
         }
         if (isDatasetTabActive()) {
-            datasetPresetState.defaults = defaults;
+            datasetState.datasetPresetState.defaults = defaults;
         } else {
-            datasetEditorState.defaults = defaults;
+            datasetState.datasetEditorState.defaults = defaults;
         }
         markDatasetEditorDirty();
     }
 
-    globalThis.updateDatasetEditorRow = function updateDatasetEditorRow(index, key, value) {
+    export function updateDatasetEditorRow(index, key, value) {
         const state = datasetEditorStateForActivePanel();
         const rows = normalizeDatasetEditorRows(state.datasets);
         if (!rows[index]) return;
@@ -475,9 +404,9 @@ const ctx = globalThis.ctx;
             ? Math.max(1, Number.parseInt(value || '1', 10) || 1)
             : value;
         if (isDatasetTabActive()) {
-            datasetPresetState.datasets = rows;
+            datasetState.datasetPresetState.datasets = rows;
         } else {
-            datasetEditorState.datasets = rows;
+            datasetState.datasetEditorState.datasets = rows;
         }
         if (!isDatasetTabActive() && index === 0 && key === 'source_dir') {
             setFieldInputValue('source_image_dir', value);
@@ -488,7 +417,7 @@ const ctx = globalThis.ctx;
         }
     }
 
-    globalThis.updateDatasetEditorRowSetting = function updateDatasetEditorRowSetting(index, key, input) {
+    function updateDatasetEditorRowSetting(index, key, input) {
         let value;
         if (input.type === 'checkbox') {
             value = input.checked;
@@ -504,6 +433,6 @@ const ctx = globalThis.ctx;
         updateDatasetEditorRowSettingValue(index, key, value);
     }
 
-    globalThis.updateDatasetEditorRowSettingValue = function updateDatasetEditorRowSettingValue(index, key, value) {
+    export function updateDatasetEditorRowSettingValue(index, key, value) {
         updateDatasetEditorRowsSettingValue([index], key, value);
     }

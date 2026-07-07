@@ -2,11 +2,45 @@
  * Mechanical split from the former monolithic app closure.
  * Keep this module focused; move newly edited behavior into domain modules.
  */
-const ctx = globalThis.ctx;
+import {
+    HISTORY_COLLECTION_DRAG_MIME,
+    HISTORY_TASK_DRAG_MIME,
+} from '../helpers/app-constants.js?v=module-bootstrap-20260707-93';
+import {
+    canBeginHistoryConfigGroupDrag,
+    closeHistoryDropPopover,
+    configureHistoryCollectionDragBridge,
+    clearHistoryConfigGroupSortIndicators,
+    clearHistoryConfigGroupSortTarget,
+    createHistoryDragImage,
+    finishHistoryConfigGroupPointerDrag,
+    finishHistoryDrag,
+    historyCollectionDropTargetFromPoint,
+    historyCollectionDropPosition,
+    historyConfigGroupDropPosition,
+    historyConfigGroupPointerTargetFromPoint,
+    historyDragTaskIdsForGroup,
+    moveItemNearList,
+    removeHistoryDragImage,
+    readHistoryDraggedConfigGroup,
+    reorderHistoryCollectionValue,
+    setHistoryConfigGroupSortTarget,
+    setHistoryDropFeedback,
+} from '../helpers/history-collection-drag-bridge.js?v=module-bootstrap-20260707-93';
+import {
+    configGroupKey,
+    configGroupOrderValues,
+    historyCollectionStorageKey,
+    historyTaskCollectionValue,
+} from '../helpers/history-collections-bridge.js?v=module-bootstrap-20260707-93';
+import { renderHistoryManager, saveHistoryCollectionSettings, uniqueStringList } from '../helpers/history-list-bridge.js?v=module-bootstrap-20260707-93';
+import { getHistoryState } from '../helpers/history-state-bridge.js?v=module-bootstrap-20260707-93';
 
-    globalThis.startHistoryConfigGroupPointerDrag = function startHistoryConfigGroupPointerDrag(event, group, options = {}, handle = null, fallback = { pointer: true }) {
+const historyState = getHistoryState();
+
+    export function startHistoryConfigGroupPointerDrag(event, group, options = {}, handle = null, fallback = { pointer: true }) {
         const usePointer = fallback.pointer !== false && 'pointerId' in event;
-        if (historyConfigGroupPointerDrag) return;
+        if (historyState.historyConfigGroupPointerDrag) return;
         if ((usePointer || fallback.mouse) && 'button' in event && event.button !== 0) return;
         if (usePointer && event.isPrimary === false) return;
         if (!canBeginHistoryConfigGroupDrag(group)) {
@@ -45,8 +79,8 @@ const ctx = globalThis.ctx;
             if (!drag.active) {
                 if (distance < 5) return;
                 closeHistoryDropPopover(false);
-                historyDragState = {
-                    ...historyDragState,
+                historyState.historyDragState = {
+                    ...historyState.historyDragState,
                     active: true,
                     taskIds,
                     sourceGroupKey: sourceKey,
@@ -59,7 +93,7 @@ const ctx = globalThis.ctx;
                         defaultName: '',
                     },
                 };
-                historyConfigGroupSortState = {
+                historyState.historyConfigGroupSortState = {
                     active: Boolean(sourceKey),
                     sourceKey,
                     collectionKey,
@@ -124,7 +158,7 @@ const ctx = globalThis.ctx;
         drag.onKeydown = (keyEvent) => {
             if (keyEvent.key === 'Escape') finishHistoryConfigGroupPointerDrag(false);
         };
-        historyConfigGroupPointerDrag = drag;
+        historyState.historyConfigGroupPointerDrag = drag;
         if (usePointer) {
             try {
                 dragHandle?.setPointerCapture?.(pointerId);
@@ -145,15 +179,15 @@ const ctx = globalThis.ctx;
         document.addEventListener('keydown', drag.onKeydown);
     }
 
-    globalThis.startHistoryConfigGroupMouseDrag = function startHistoryConfigGroupMouseDrag(event, group, options = {}, handle = null) {
+    export function startHistoryConfigGroupMouseDrag(event, group, options = {}, handle = null) {
         startHistoryConfigGroupPointerDrag(event, group, options, handle, { pointer: false, mouse: true });
     }
 
-    globalThis.startHistoryConfigGroupTouchDrag = function startHistoryConfigGroupTouchDrag(event, group, options = {}, handle = null) {
+    export function startHistoryConfigGroupTouchDrag(event, group, options = {}, handle = null) {
         startHistoryConfigGroupPointerDrag(event, group, options, handle, { pointer: false, touch: true });
     }
 
-    globalThis.reorderHistoryConfigGroupValue = async function reorderHistoryConfigGroupValue(sourceKey, targetKey, position, groups = [], collection = null) {
+    export async function reorderHistoryConfigGroupValue(sourceKey, targetKey, position, groups = [], collection = null) {
         const source = String(sourceKey || '').trim();
         const target = String(targetKey || '').trim();
         if (!source || !target) return false;
@@ -164,31 +198,32 @@ const ctx = globalThis.ctx;
             return false;
         }
         await saveHistoryCollectionSettings({
-            ...historyCollectionSettings,
+            ...historyState.historyCollectionSettings,
             config_group_order: {
-                ...(historyCollectionSettings.config_group_order || {}),
+                ...(historyState.historyCollectionSettings.config_group_order || {}),
                 [collectionKey]: nextOrder,
             },
         });
         return true;
     }
 
-    globalThis.dropHistoryConfigGroupToSort = async function dropHistoryConfigGroupToSort(event, targetGroup, options = {}) {
-        if (!historyConfigGroupSortState.active) return false;
+    export async function dropHistoryConfigGroupToSort(event, targetGroup, options = {}) {
+        if (!historyState.historyConfigGroupSortState.active) return false;
         const source = readHistoryDraggedConfigGroup(event);
         const targetKey = configGroupKey(targetGroup);
         const collectionKey = historyCollectionStorageKey(options.collection || '__all__');
         if (!source.groupKey || !targetKey || source.collectionKey !== collectionKey) return false;
         event.preventDefault();
         event.stopPropagation();
-        const position = historyConfigGroupSortState.dropPosition || historyConfigGroupDropPosition(event, event.currentTarget);
+        const position = historyState.historyConfigGroupSortState.dropPosition
+            || historyConfigGroupDropPosition(event, event.currentTarget);
         clearHistoryConfigGroupSortTarget(targetKey, event.currentTarget);
         if (source.groupKey === targetKey) {
             setHistoryDropFeedback('配置分组顺序未变化。', 'ok');
             finishHistoryDrag();
             return true;
         }
-        historyConfigGroupSortState.pending = true;
+        historyState.historyConfigGroupSortState.pending = true;
         try {
             const changed = await reorderHistoryConfigGroupValue(
                 source.groupKey,
@@ -207,8 +242,8 @@ const ctx = globalThis.ctx;
         return true;
     }
 
-    globalThis.readHistoryDraggedTaskIds = function readHistoryDraggedTaskIds(event) {
-        const fallback = historyDragState.taskIds || [];
+    export function readHistoryDraggedTaskIds(event) {
+        const fallback = historyState.historyDragState.taskIds || [];
         const transfer = event?.dataTransfer;
         const sources = [];
         try {
@@ -230,60 +265,65 @@ const ctx = globalThis.ctx;
         return uniqueStringList(fallback);
     }
 
-    globalThis.setHistoryDropTarget = function setHistoryDropTarget(id, element) {
-        if (!historyDragState.active || historyDragState.pending) return;
-        historyDragState.activeDropTarget = id;
+    export function setHistoryDropTarget(id, element) {
+        if (!historyState.historyDragState.active || historyState.historyDragState.pending) return;
+        historyState.historyDragState.activeDropTarget = id;
         document.querySelectorAll('.history-collection-card.drop-active').forEach((item) => {
             if (item !== element) item.classList.remove('drop-active');
         });
         element?.classList.add('drop-active');
     }
 
-    globalThis.clearHistoryDropTarget = function clearHistoryDropTarget(id, element) {
-        if (historyDragState.activeDropTarget === id) {
-            historyDragState.activeDropTarget = '';
+    export function clearHistoryDropTarget(id, element) {
+        if (historyState.historyDragState.activeDropTarget === id) {
+            historyState.historyDragState.activeDropTarget = '';
         }
         element?.classList.remove('drop-active');
     }
 
-    globalThis.clearHistoryDropIndicators = function clearHistoryDropIndicators() {
-        historyDragState.activeDropTarget = '';
+    export function clearHistoryDropIndicators() {
+        historyState.historyDragState.activeDropTarget = '';
         document.querySelectorAll('.history-collection-card.drop-active').forEach((item) => {
             item.classList.remove('drop-active');
         });
     }
 
-    globalThis.historyTasksByIds = function historyTasksByIds(ids) {
-        const taskMap = new Map(historyTasks.map((task) => [task.id, task]));
+    export function historyTasksByIds(ids) {
+        const taskMap = new Map(historyState.historyTasks.map((task) => [task.id, task]));
         return uniqueStringList(ids).map((id) => taskMap.get(id)).filter(Boolean);
     }
 
-    globalThis.historyDraggedTasksAlreadyInCollection = function historyDraggedTasksAlreadyInCollection(ids, groupValue) {
+    export function historyDraggedTasksAlreadyInCollection(ids, groupValue) {
         const clean = String(groupValue || '').trim();
         const taskIds = uniqueStringList(ids);
         const tasks = historyTasksByIds(taskIds);
         return tasks.length === taskIds.length && tasks.every((task) => historyTaskCollectionValue(task) === clean);
     }
 
-    globalThis.historyDropTargetDragEnter = function historyDropTargetDragEnter(event, targetId, element) {
-        if (!historyDragState.active || historyDragState.pending) return;
+    export function historyDropTargetDragEnter(event, targetId, element) {
+        if (!historyState.historyDragState.active || historyState.historyDragState.pending) return;
         event.preventDefault();
         event.stopPropagation();
         if (event.dataTransfer) event.dataTransfer.dropEffect = 'move';
         setHistoryDropTarget(targetId, element);
     }
 
-    globalThis.historyDropTargetDragLeave = function historyDropTargetDragLeave(event, targetId, element) {
+    export function historyDropTargetDragLeave(event, targetId, element) {
         if (element?.contains(event.relatedTarget)) return;
         clearHistoryDropTarget(targetId, element);
     }
 
-    globalThis.canBeginHistoryCollectionSort = function canBeginHistoryCollectionSort(collection) {
+    export function canBeginHistoryCollectionSort(collection) {
         const value = String(collection?.value || '').trim();
-        return Boolean(value && !collection?.is_ungrouped && !historyCollectionDragState.pending && !historyDragState.pending);
+        return Boolean(
+            value
+            && !collection?.is_ungrouped
+            && !historyState.historyCollectionDragState.pending
+            && !historyState.historyDragState.pending
+        );
     }
 
-    globalThis.beginHistoryCollectionDrag = function beginHistoryCollectionDrag(event, collection) {
+    export function beginHistoryCollectionDrag(event, collection) {
         const value = String(collection?.value || '').trim();
         if (!canBeginHistoryCollectionSort(collection)) {
             event.preventDefault();
@@ -291,7 +331,7 @@ const ctx = globalThis.ctx;
         }
         closeHistoryDropPopover(false);
         finishHistoryDrag();
-        historyCollectionDragState = {
+        historyState.historyCollectionDragState = {
             active: true,
             sourceValue: value,
             activeDropTarget: '',
@@ -307,8 +347,8 @@ const ctx = globalThis.ctx;
         document.querySelector('.history-collections-workbench')?.classList.add('collection-reordering');
     }
 
-    globalThis.finishHistoryCollectionDrag = function finishHistoryCollectionDrag() {
-        historyCollectionDragState = {
+    export function finishHistoryCollectionDrag() {
+        historyState.historyCollectionDragState = {
             active: false,
             sourceValue: '',
             activeDropTarget: '',
@@ -321,30 +361,30 @@ const ctx = globalThis.ctx;
         document.querySelector('.history-collections-workbench')?.classList.remove('collection-reordering');
     }
 
-    globalThis.clearHistoryCollectionSortIndicators = function clearHistoryCollectionSortIndicators() {
-        historyCollectionDragState.activeDropTarget = '';
+    export function clearHistoryCollectionSortIndicators() {
+        historyState.historyCollectionDragState.activeDropTarget = '';
         document.querySelectorAll('.history-collection-card.sort-active').forEach((item) => {
             item.classList.remove('sort-active', 'sort-before', 'sort-after');
         });
     }
 
-    globalThis.createHistoryCollectionPointerDragImage = function createHistoryCollectionPointerDragImage(label) {
+    export function createHistoryCollectionPointerDragImage(label) {
         removeHistoryDragImage();
         const image = document.createElement('div');
         image.className = 'history-drag-image history-collection-drag-image-pointer';
         image.textContent = label || '历史分组';
         document.body.appendChild(image);
-        historyDragImageElement = image;
+        historyState.historyDragImageElement = image;
         return image;
     }
 
-    globalThis.moveHistoryCollectionPointerDragImage = function moveHistoryCollectionPointerDragImage(image, x, y) {
+    export function moveHistoryCollectionPointerDragImage(image, x, y) {
         if (!image) return;
         image.style.left = `${x + 14}px`;
         image.style.top = `${y + 14}px`;
     }
 
-    globalThis.historyCollectionForPointerCard = function historyCollectionForPointerCard(card, allCollections = []) {
+    export function historyCollectionForPointerCard(card, allCollections = []) {
         if (!card) return null;
         const key = String(card.dataset.collectionKey || '').trim();
         const value = String(card.dataset.collectionValue || '').trim();
@@ -353,7 +393,7 @@ const ctx = globalThis.ctx;
             || null;
     }
 
-    globalThis.historyCollectionPointerTargetForCard = function historyCollectionPointerTargetForCard(card, x, y, allCollections = []) {
+    export function historyCollectionPointerTargetForCard(card, x, y, allCollections = []) {
         const collection = historyCollectionForPointerCard(card, allCollections);
         if (!collection) return null;
         return {
@@ -364,7 +404,7 @@ const ctx = globalThis.ctx;
         };
     }
 
-    globalThis.nearestHistoryCollectionPointerTarget = function nearestHistoryCollectionPointerTarget(x, y, allCollections = []) {
+    export function nearestHistoryCollectionPointerTarget(x, y, allCollections = []) {
         let best = null;
         document.querySelectorAll('.history-collection-card.nav-card').forEach((card) => {
             if (!card?.isConnected) return;
@@ -383,14 +423,14 @@ const ctx = globalThis.ctx;
         return target;
     }
 
-    globalThis.historyCollectionPointerTargetFromPoint = function historyCollectionPointerTargetFromPoint(x, y, allCollections = []) {
+    export function historyCollectionPointerTargetFromPoint(x, y, allCollections = []) {
         const origin = document.elementFromPoint(x, y);
         const card = origin instanceof Element ? origin.closest('.history-collection-card.nav-card') : null;
         return historyCollectionPointerTargetForCard(card, x, y, allCollections)
             || nearestHistoryCollectionPointerTarget(x, y, allCollections);
     }
 
-    globalThis.findHistoryCollectionPointerScroller = function findHistoryCollectionPointerScroller(origin) {
+    export function findHistoryCollectionPointerScroller(origin) {
         let node = origin instanceof Element ? origin : null;
         while (node && node !== document.body) {
             const style = window.getComputedStyle(node);
@@ -402,7 +442,7 @@ const ctx = globalThis.ctx;
         return document.scrollingElement;
     }
 
-    globalThis.autoScrollHistoryCollectionPointerDrag = function autoScrollHistoryCollectionPointerDrag(x, y) {
+    export function autoScrollHistoryCollectionPointerDrag(x, y) {
         const origin = document.elementFromPoint(x, y);
         const scroller = findHistoryCollectionPointerScroller(origin);
         if (!scroller) return;
@@ -416,8 +456,8 @@ const ctx = globalThis.ctx;
         if (delta) scroller.scrollBy({ top: delta, behavior: 'auto' });
     }
 
-    globalThis.cleanupHistoryCollectionPointerDrag = function cleanupHistoryCollectionPointerDrag() {
-        const drag = historyCollectionPointerDrag;
+    export function cleanupHistoryCollectionPointerDrag() {
+        const drag = historyState.historyCollectionPointerDrag;
         if (!drag) return null;
         document.removeEventListener('pointermove', drag.onMove);
         document.removeEventListener('pointerup', drag.onUp);
@@ -438,11 +478,11 @@ const ctx = globalThis.ctx;
         removeHistoryDragImage();
         drag.handle.classList.remove('dragging');
         document.body.classList.remove('history-collection-pointer-drag-active');
-        historyCollectionPointerDrag = null;
+        historyState.historyCollectionPointerDrag = null;
         return drag;
     }
 
-    globalThis.historyCollectionEventPoint = function historyCollectionEventPoint(event) {
+    export function historyCollectionEventPoint(event) {
         const touch = event.changedTouches?.[0] || event.touches?.[0];
         const x = touch?.clientX ?? event.clientX;
         const y = touch?.clientY ?? event.clientY;
@@ -450,7 +490,7 @@ const ctx = globalThis.ctx;
         return { x, y };
     }
 
-    globalThis.finishHistoryCollectionPointerDrag = async function finishHistoryCollectionPointerDrag(commit = false) {
+    export async function finishHistoryCollectionPointerDrag(commit = false) {
         const drag = cleanupHistoryCollectionPointerDrag();
         if (!drag) return;
         const source = drag.sourceValue;
@@ -464,7 +504,7 @@ const ctx = globalThis.ctx;
             finishHistoryCollectionDrag();
             return;
         }
-        historyCollectionDragState.pending = true;
+        historyState.historyCollectionDragState.pending = true;
         try {
             const changed = await reorderHistoryCollectionValue(source, target.value, target.position, drag.allCollections);
             setHistoryDropFeedback(changed ? `已调整「${source}」的位置。` : '分组顺序未变化。', 'ok');
@@ -475,3 +515,34 @@ const ctx = globalThis.ctx;
             renderHistoryManager();
         }
     }
+
+    configureHistoryCollectionDragBridge({
+        startHistoryConfigGroupPointerDrag,
+        startHistoryConfigGroupMouseDrag,
+        startHistoryConfigGroupTouchDrag,
+        reorderHistoryConfigGroupValue,
+        dropHistoryConfigGroupToSort,
+        readHistoryDraggedTaskIds,
+        setHistoryDropTarget,
+        clearHistoryDropTarget,
+        clearHistoryDropIndicators,
+        historyTasksByIds,
+        historyDraggedTasksAlreadyInCollection,
+        historyDropTargetDragEnter,
+        historyDropTargetDragLeave,
+        canBeginHistoryCollectionSort,
+        beginHistoryCollectionDrag,
+        finishHistoryCollectionDrag,
+        clearHistoryCollectionSortIndicators,
+        createHistoryCollectionPointerDragImage,
+        moveHistoryCollectionPointerDragImage,
+        historyCollectionForPointerCard,
+        historyCollectionPointerTargetForCard,
+        nearestHistoryCollectionPointerTarget,
+        historyCollectionPointerTargetFromPoint,
+        findHistoryCollectionPointerScroller,
+        autoScrollHistoryCollectionPointerDrag,
+        cleanupHistoryCollectionPointerDrag,
+        historyCollectionEventPoint,
+        finishHistoryCollectionPointerDrag,
+    });

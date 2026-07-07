@@ -2,11 +2,71 @@
  * Mechanical split from the former monolithic app closure.
  * Keep this module focused; move newly edited behavior into domain modules.
  */
-import { captureDatasetExperimentalOpenStates } from './10a-dataset-inline-help.js?v=module-bootstrap-20260706-1';
+import { captureDatasetExperimentalOpenStates } from './10a-dataset-inline-help.js?v=module-bootstrap-20260707-93';
+import { help } from '../../../config/catalog.js?v=module-bootstrap-20260707-93';
+import { DATASET_PRESET_GROUP_STATE_KEY } from '../helpers/app-constants.js?v=module-bootstrap-20260707-93';
+import { datasetConfigLabel, datasetConfigValue } from '../helpers/dataset-config-fields.js?v=module-bootstrap-20260707-93';
+import { createHelpContent } from '../helpers/config-field-ui-bridge.js?v=module-bootstrap-20260707-93';
+import {
+    deleteDatasetPresetGroup,
+    placeDatasetPresetFile,
+    placeDatasetPresetGroup,
+    renameDatasetPresetGroup,
+    setDatasetPresetStatus,
+} from '../helpers/dataset-preset-actions-bridge.js?v=module-bootstrap-20260707-93';
+import {
+    datasetPresetByFile,
+    isUnfiledDatasetGroup,
+} from '../helpers/dataset-presets.js?v=module-bootstrap-20260707-93';
+import { getConfigState } from '../helpers/config-state-bridge.js?v=module-bootstrap-20260707-93';
+import { getDatasetState } from '../helpers/dataset-state-bridge.js?v=module-bootstrap-20260707-93';
+import { configureDatasetRenderBridge } from '../helpers/dataset-render-bridge.js?v=module-bootstrap-20260707-93';
+import {
+    normalizeDatasetDefaults,
+    normalizeDatasetEditorRows,
+} from '../helpers/dataset-values.js?v=module-bootstrap-20260707-93';
+import { loadDatasetPreset } from './03-parse-network-arg-entry.js?v=module-bootstrap-20260707-93';
+import {
+    registerFileGroupDropTarget,
+    updateDatasetPresetPageSummary,
+} from './07-render-config-dataset-picker-dialog.js?v=module-bootstrap-20260707-93';
+import {
+    configGroupDropIndex,
+    createFileGroupDragHandle,
+    fileGroupContainsRelatedTarget,
+    finishFileGroupDrag,
+    markFileGroupDropTarget,
+    setupFileGroupHeaderDropTarget,
+    setupFileGroupListDropTarget,
+    setupFileGroupRowDropTarget,
+} from './08-origin-closest.js?v=module-bootstrap-20260707-93';
+import {
+    createDatasetConfigInput,
+    createDatasetEditorItem,
+} from './10-create-dataset-config-input.js?v=module-bootstrap-20260707-93';
+import { addDatasetEditorRow, datasetValidTargetIndices, escapeHtml } from './13-update-dataset-editor-rows-setting-value.js?v=module-bootstrap-20260707-93';
 
-const ctx = globalThis.ctx;
+const configState = getConfigState();
+const datasetState = getDatasetState();
 
-    globalThis.setupConfigGroupDropTarget = function setupConfigGroupDropTarget(node, group, options) {
+function currentConfigState() {
+    return configState.currentConfig || {};
+}
+
+function currentDatasetPresetState() {
+    return datasetState.datasetPresetState || {};
+}
+
+function currentDatasetEditorState() {
+    return datasetState.datasetEditorState || {};
+}
+
+function currentFileGroupDragState() {
+    return datasetState.fileGroupDragState || null;
+}
+
+
+    export function setupConfigGroupDropTarget(node, group, options) {
         registerFileGroupDropTarget(node, ({ payload, y }) => {
             if (!payload || payload.target !== 'group' || payload.scope !== options.scope) return null;
             if (payload.groupId === group?.id || !options.canDropOnGroup(group)) return null;
@@ -22,7 +82,7 @@ const ctx = globalThis.ctx;
             };
         });
         const updateDropTarget = (event) => {
-            const payload = fileGroupDragState;
+            const payload = currentFileGroupDragState();
             if (!payload || payload.target !== 'group' || payload.scope !== options.scope) return;
             if (payload.groupId === group?.id || !options.canDropOnGroup(group)) return;
             event.preventDefault();
@@ -40,7 +100,7 @@ const ctx = globalThis.ctx;
             node.classList.remove('file-group-drop-before', 'file-group-drop-after');
         });
         node.addEventListener('drop', async (event) => {
-            const payload = fileGroupDragState;
+            const payload = currentFileGroupDragState();
             if (!payload || payload.target !== 'group' || payload.scope !== options.scope) return;
             if (payload.groupId === group?.id || !options.canDropOnGroup(group)) return;
             event.preventDefault();
@@ -52,7 +112,8 @@ const ctx = globalThis.ctx;
         });
     }
 
-    globalThis.createDatasetPresetGroupNode = function createDatasetPresetGroupNode(group, stored) {
+    function createDatasetPresetGroupNode(group, stored) {
+        const datasetPresetState = currentDatasetPresetState();
         const files = group.files || [];
         const details = document.createElement('details');
         details.className = ['dataset-preset-group', !files.length ? 'empty' : '', group.locked ? 'readonly' : ''].filter(Boolean).join(' ');
@@ -101,12 +162,13 @@ const ctx = globalThis.ctx;
         return details;
     }
 
-    globalThis.getSortableDatasetPresetGroups = function getSortableDatasetPresetGroups() {
+    function getSortableDatasetPresetGroups() {
+        const datasetPresetState = currentDatasetPresetState();
         return (datasetPresetState.groups || [])
             .filter((group) => group.id && !group.system_locked && !group.locked && !group.user_group_locked && !isUnfiledDatasetGroup(group));
     }
 
-    globalThis.createDatasetPresetGroupDragHandle = function createDatasetPresetGroupDragHandle(group, details) {
+    function createDatasetPresetGroupDragHandle(group, details) {
         const disabled = !isDatasetPresetGroupDraggable(group);
         return createFileGroupDragHandle({
             target: 'group',
@@ -122,15 +184,18 @@ const ctx = globalThis.ctx;
         });
     }
 
-    globalThis.isDatasetPresetGroupDraggable = function isDatasetPresetGroupDraggable(group) {
+    function isDatasetPresetGroupDraggable(group) {
+        const datasetPresetState = currentDatasetPresetState();
         return Boolean(group?.id && !datasetPresetState.search.trim() && !group.system_locked && !group.locked && !group.user_group_locked && !isUnfiledDatasetGroup(group));
     }
 
-    globalThis.isDatasetPresetFileDraggable = function isDatasetPresetFileDraggable(preset, group) {
+    function isDatasetPresetFileDraggable(preset, group) {
+        const datasetPresetState = currentDatasetPresetState();
         return Boolean(preset?.path && group?.id && !datasetPresetState.search.trim() && !preset.readonly);
     }
 
-    globalThis.datasetPresetCanDropToGroup = function datasetPresetCanDropToGroup(group, payload) {
+    function datasetPresetCanDropToGroup(group, payload) {
+        const datasetPresetState = currentDatasetPresetState();
         return Boolean(
             payload?.file &&
             group?.id &&
@@ -142,7 +207,7 @@ const ctx = globalThis.ctx;
         );
     }
 
-    globalThis.datasetPresetDragOptions = function datasetPresetDragOptions() {
+    function datasetPresetDragOptions() {
         return {
             scope: 'dataset',
             rowSelector: '.dataset-preset-row',
@@ -151,7 +216,7 @@ const ctx = globalThis.ctx;
         };
     }
 
-    globalThis.datasetPresetGroupDragOptions = function datasetPresetGroupDragOptions() {
+    function datasetPresetGroupDragOptions() {
         return {
             scope: 'dataset',
             getSortableGroups: () => getSortableDatasetPresetGroups(),
@@ -160,7 +225,7 @@ const ctx = globalThis.ctx;
         };
     }
 
-    globalThis.createDatasetPresetGroupActions = function createDatasetPresetGroupActions(group) {
+    function createDatasetPresetGroupActions(group) {
         const wrap = document.createElement('span');
         wrap.className = 'dataset-preset-group-actions';
         if (group.renamable) {
@@ -177,7 +242,7 @@ const ctx = globalThis.ctx;
         return wrap.childElementCount ? wrap : null;
     }
 
-    globalThis.createDatasetPresetGroupActionButton = function createDatasetPresetGroupActionButton(label, handler, options = {}) {
+    function createDatasetPresetGroupActionButton(label, handler, options = {}) {
         const btn = document.createElement('button');
         btn.type = 'button';
         btn.className = [
@@ -197,7 +262,8 @@ const ctx = globalThis.ctx;
         return btn;
     }
 
-    globalThis.createDatasetPresetGroupFileRow = function createDatasetPresetGroupFileRow(preset, group) {
+    function createDatasetPresetGroupFileRow(preset, group) {
+        const datasetPresetState = currentDatasetPresetState();
         const row = document.createElement('div');
         row.className = 'dataset-preset-row';
         row.dataset.file = preset.path;
@@ -246,7 +312,7 @@ const ctx = globalThis.ctx;
         return row;
     }
 
-    globalThis.readDatasetPresetGroupState = function readDatasetPresetGroupState() {
+    function readDatasetPresetGroupState() {
         try {
             return JSON.parse(localStorage.getItem(DATASET_PRESET_GROUP_STATE_KEY) || '{}') || {};
         } catch (_) {
@@ -254,7 +320,7 @@ const ctx = globalThis.ctx;
         }
     }
 
-    globalThis.writeDatasetPresetGroupState = function writeDatasetPresetGroupState(state) {
+    function writeDatasetPresetGroupState(state) {
         try {
             localStorage.setItem(DATASET_PRESET_GROUP_STATE_KEY, JSON.stringify(state || {}));
         } catch (_) {
@@ -262,7 +328,8 @@ const ctx = globalThis.ctx;
         }
     }
 
-    globalThis.renderDatasetPresetHeader = function renderDatasetPresetHeader() {
+    function renderDatasetPresetHeader() {
+        const datasetPresetState = currentDatasetPresetState();
         const header = document.getElementById('dataset-preset-header');
         updateDatasetPresetPageSummary();
         if (!header) return;
@@ -303,7 +370,8 @@ const ctx = globalThis.ctx;
         updateDatasetPresetActionState();
     }
 
-    globalThis.updateDatasetPresetActionState = function updateDatasetPresetActionState() {
+    function updateDatasetPresetActionState() {
+        const datasetPresetState = currentDatasetPresetState();
         const saveBtn = document.getElementById('btn-save-dataset-preset');
         if (saveBtn) {
             saveBtn.disabled = datasetPresetState.readonly || !datasetPresetState.selectedFile || !datasetPresetState.dirty;
@@ -326,7 +394,7 @@ const ctx = globalThis.ctx;
         if (exportBtn) exportBtn.disabled = !datasetPresetState.selectedFile;
     }
 
-    globalThis.renderDatasetEditor = function renderDatasetEditor(existingPanel = null) {
+    function renderDatasetEditor(existingPanel = null) {
         const panel = existingPanel || document.getElementById('dataset-editor');
         if (!panel) return;
         captureDatasetExperimentalOpenStates(panel);
@@ -366,9 +434,9 @@ const ctx = globalThis.ctx;
         const rows = state.datasets.length
             ? state.datasets
             : normalizeDatasetEditorRows([{
-                source_dir: currentConfig.source_image_dir || '',
-                image_dir: currentConfig.resized_image_dir || '',
-                cache_dir: currentConfig.lora_cache_dir || '',
+                source_dir: currentConfigState().source_image_dir || '',
+                image_dir: currentConfigState().resized_image_dir || '',
+                cache_dir: currentConfigState().lora_cache_dir || '',
                 num_repeats: 1,
                 settings: normalizeDatasetDefaults(state.defaults || {}),
             }]);
@@ -399,7 +467,7 @@ const ctx = globalThis.ctx;
         }
     }
 
-    globalThis.refreshDatasetEditorItem = function refreshDatasetEditorItem(index) {
+    function refreshDatasetEditorItem(index) {
         const panel = document.getElementById('dataset-editor');
         if (!panel) return false;
         const state = datasetEditorStateForActivePanel();
@@ -415,7 +483,7 @@ const ctx = globalThis.ctx;
         return true;
     }
 
-    globalThis.refreshDatasetEditorItems = function refreshDatasetEditorItems(indices) {
+    function refreshDatasetEditorItems(indices) {
         const targets = datasetValidTargetIndices(indices, normalizeDatasetEditorRows(datasetEditorStateForActivePanel().datasets).length);
         if (!targets.length) return false;
         let updated = false;
@@ -425,40 +493,40 @@ const ctx = globalThis.ctx;
         return updated;
     }
 
-    globalThis.datasetEditorStateForActivePanel = function datasetEditorStateForActivePanel() {
-        return isDatasetTabActive() ? datasetPresetState : datasetEditorState;
+    function datasetEditorStateForActivePanel() {
+        return isDatasetTabActive() ? currentDatasetPresetState() : currentDatasetEditorState();
     }
 
-    globalThis.isDatasetTabActive = function isDatasetTabActive() {
+    function isDatasetTabActive() {
         return Boolean(document.getElementById('tab-datasets')?.classList.contains('active'));
     }
 
-    globalThis.setActiveDatasetRows = function setActiveDatasetRows(rows) {
+    function setActiveDatasetRows(rows) {
         if (isDatasetTabActive()) {
-            datasetPresetState.datasets = rows;
+            datasetState.datasetPresetState.datasets = rows;
         } else {
-            datasetEditorState.datasets = rows;
+            datasetState.datasetEditorState.datasets = rows;
         }
     }
 
-    globalThis.activeDatasetFileLabel = function activeDatasetFileLabel() {
+    function activeDatasetFileLabel() {
         if (isDatasetTabActive()) {
-            return datasetPresetState.selectedFile || '保存后生成 configs/datasets/<名称>.toml';
+            return currentDatasetPresetState().selectedFile || '保存后生成 configs/datasets/<名称>.toml';
         }
-        return datasetEditorState.dataset_config || currentConfig.dataset_config || '保存后自动生成 configs/datasets/<当前配置>.toml';
+        return currentDatasetEditorState().dataset_config || currentConfigState().dataset_config || '保存后自动生成 configs/datasets/<当前配置>.toml';
     }
 
-    globalThis.activeDatasetDirty = function activeDatasetDirty() {
-        return isDatasetTabActive() ? datasetPresetState.dirty : datasetEditorState.dirty;
+    function activeDatasetDirty() {
+        return isDatasetTabActive() ? currentDatasetPresetState().dirty : currentDatasetEditorState().dirty;
     }
 
-    globalThis.createDatasetDefaultsEditor = function createDatasetDefaultsEditor() {
+    function createDatasetDefaultsEditor() {
         const state = datasetEditorStateForActivePanel();
         const defaults = normalizeDatasetDefaults(state.defaults || {});
         if (isDatasetTabActive()) {
-            datasetPresetState.defaults = defaults;
+            datasetState.datasetPresetState.defaults = defaults;
         } else {
-            datasetEditorState.defaults = defaults;
+            datasetState.datasetEditorState.defaults = defaults;
         }
         const wrap = document.createElement('div');
         wrap.className = 'dataset-defaults-list';
@@ -512,3 +580,14 @@ const ctx = globalThis.ctx;
         }
         return wrap;
     }
+
+configureDatasetRenderBridge({
+    createDatasetPresetGroupNode,
+    datasetEditorStateForActivePanel,
+    isDatasetTabActive,
+    readDatasetPresetGroupState,
+    refreshDatasetEditorItem,
+    refreshDatasetEditorItems,
+    renderDatasetEditor,
+    renderDatasetPresetHeader,
+});

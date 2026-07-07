@@ -1,10 +1,24 @@
 /** Config-page training source modes. */
-const ctx = globalThis.ctx;
-
-const BASE_REFRESH_CONTINUE_SOURCE = globalThis.refreshContinueTrainingSourceCompatibility?.bind(globalThis);
-const BASE_SELECT_CONTINUE_WEIGHT = globalThis.selectContinueLoraWeight?.bind(globalThis);
-const BASE_CLEAR_CONTINUE_SOURCE = globalThis.clearContinueTrainingSource?.bind(globalThis);
-const CONFIG_TRAINING_SOURCE_DOM_CONTRACT = Object.freeze({
+import { isLiveRunningState } from '../../live-training/index.js?v=module-bootstrap-20260707-93';
+import { historyTaskDisplayName } from '../helpers/history-collections-bridge.js?v=module-bootstrap-20260707-93';
+import { readNonnegativeLiveNumber, readOptionalLiveNumber } from '../helpers/live-form-values.js?v=module-bootstrap-20260707-93';
+import { configureTrainingSourceBridge } from '../helpers/training-source-bridge.js?v=module-bootstrap-20260707-93';
+import { enterLiveTrainingForNewRun } from '../helpers/training-launch-bridge.js?v=module-bootstrap-20260707-93';
+import { clearContinueTrainingSource as BASE_CLEAR_CONTINUE_SOURCE, refreshContinueTrainingSourceCompatibility as BASE_REFRESH_CONTINUE_SOURCE, selectContinueLoraWeight as BASE_SELECT_CONTINUE_WEIGHT } from './06-stronger-selective-checkpoint-value.js?v=module-bootstrap-20260707-93';
+import {
+    setTomlStatus,
+    updateTomlActionState,
+} from '../helpers/toml-action-state-bridge.js?v=module-bootstrap-20260707-93';
+import { getGpuPicker } from '../helpers/app-shell-startup-bridge.js?v=module-bootstrap-20260707-93';
+import { renderPreflightPending, showPreflightRequestError } from '../helpers/preflight-dialog-bridge.js?v=module-bootstrap-20260707-93';
+import { appendLog } from '../helpers/live-log-bridge.js?v=module-bootstrap-20260707-93';
+import { getContinueTrainingSource, getTrainingSourceState, getTrainingState } from '../helpers/training-state-bridge.js?v=module-bootstrap-20260707-93';
+import { showTrainingView, updateTrainingQueueFromPayload } from '../helpers/queue-view-bridge.js?v=module-bootstrap-20260707-93';
+import { loadTrainingHistoryList } from '../helpers/history-list-bridge.js?v=module-bootstrap-20260707-93';
+import { api } from '../helpers/runtime-bridge.js?v=module-bootstrap-20260707-93';
+import { getHistoryState } from '../helpers/history-state-bridge.js?v=module-bootstrap-20260707-93';
+import { getTomlState } from '../helpers/toml-state-bridge.js?v=module-bootstrap-20260707-93';
+export const CONFIG_TRAINING_SOURCE_DOM_CONTRACT = Object.freeze({
     required: Object.freeze([
         'continue-training-source',
         'continue-training-source-summary',
@@ -23,12 +37,17 @@ const CONFIG_TRAINING_SOURCE_DOM_CONTRACT = Object.freeze({
         'preflight-dialog',
     ]),
 });
-globalThis.CONFIG_TRAINING_SOURCE_DOM_CONTRACT = CONFIG_TRAINING_SOURCE_DOM_CONTRACT;
+const historyState = getHistoryState();
+const tomlState = getTomlState();
+const trainingState = getTrainingState();
+const trainingRuntime = trainingState.trainingRuntime;
+
+function currentTrainingSourceState() {
+    return trainingState.currentTrainingSource || {};
+}
+
 function ensureTrainingSourceState() {
-    if (!globalThis.trainingSourceState) {
-        globalThis.trainingSourceState = { mode: 'fresh', audit_status: 'ok' };
-    }
-    const state = globalThis.trainingSourceState;
+    const state = getTrainingSourceState();
     state.mode = normalizeConfigTrainingSourceMode(state.mode);
     state.full_resume = {
         task_id: '',
@@ -61,10 +80,10 @@ function normalizeConfigTrainingSourceMode(mode) {
     return ['fresh', 'full_resume', 'weight_hotstart'].includes(mode) ? mode : 'fresh';
 }
 
-globalThis.configTrainingSourceMode = function configTrainingSourceMode() {
+export function configTrainingSourceMode() {
     return ensureTrainingSourceState().mode;
-};
-globalThis.setConfigTrainingSourceMode = async function setConfigTrainingSourceMode(mode, options = {}) {
+}
+export async function setConfigTrainingSourceMode(mode, options = {}) {
     const state = ensureTrainingSourceState();
     state.mode = normalizeConfigTrainingSourceMode(mode);
     renderContinueTrainingSource();
@@ -77,15 +96,15 @@ globalThis.setConfigTrainingSourceMode = async function setConfigTrainingSourceM
         state.audit_status = 'ok';
         renderContinueTrainingSource();
     }
-};
-globalThis.auditConfigTrainingSourceOnEnter = async function auditConfigTrainingSourceOnEnter() {
+}
+export async function auditConfigTrainingSourceOnEnter() {
     renderContinueTrainingSource();
     const mode = configTrainingSourceMode();
     if (mode === 'full_resume') return auditConfigFullResumeSource({ force: true });
     if (mode === 'weight_hotstart') return auditConfigWeightHotstartSource();
     return true;
-};
-globalThis.renderContinueTrainingSource = function renderContinueTrainingSource() {
+}
+export function renderContinueTrainingSource() {
     const state = ensureTrainingSourceState();
     const section = document.getElementById('continue-training-source');
     const summary = document.getElementById('continue-training-source-summary');
@@ -96,8 +115,8 @@ globalThis.renderContinueTrainingSource = function renderContinueTrainingSource(
     renderConfigFullResumePanel(state);
     renderConfigWeightHotstartPanel(state);
     renderConfigTrainingSourceStatus(state);
-    globalThis.updateTomlActionState?.(currentTomlFile);
-};
+    updateTomlActionState(tomlState.currentTomlFile);
+}
 function renderTrainingSourceModeButtons(mode) {
     document.querySelectorAll('[data-training-source-mode]').forEach((btn) => {
         const active = btn.dataset.trainingSourceMode === mode;
@@ -123,7 +142,7 @@ function renderTrainingSourceSummary(summary, state) {
     }
     if (state.mode === 'weight_hotstart') {
         syncWeightHotstartAuditFromContinue();
-        const source = globalThis.continueTrainingSource;
+        const source = getContinueTrainingSource();
         summary.classList.toggle('selected', Boolean(source?.abs_path && source.compatible !== false));
         summary.classList.toggle('incompatible', Boolean(!source?.abs_path || source.compatible === false));
         summary.append(
@@ -206,7 +225,7 @@ function renderConfigWeightHotstartPanel(state) {
     const detail = document.getElementById('config-weight-hotstart-detail');
     if (!panel || !chooseBtn || !clearBtn || !detail) return;
     panel.hidden = state.mode !== 'weight_hotstart';
-    const source = globalThis.continueTrainingSource;
+    const source = getContinueTrainingSource();
     chooseBtn.textContent = source?.abs_path ? '更换权重' : '选择权重';
     clearBtn.hidden = !source?.abs_path;
     detail.innerHTML = '';
@@ -242,7 +261,7 @@ function trainingSourceReadyText(state) {
     if (state.mode === 'weight_hotstart') return '权重热启动审查通过，将按当前配置从 Step 0 训练。';
     return '从零训练可启动。';
 }
-globalThis.trainingSourceLaunchReadiness = function trainingSourceLaunchReadiness() {
+export function trainingSourceLaunchReadiness() {
     const state = ensureTrainingSourceState();
     if (state.mode === 'fresh') return { ready: true, checking: false, reason: '' };
     if (state.mode === 'full_resume') {
@@ -256,7 +275,7 @@ globalThis.trainingSourceLaunchReadiness = function trainingSourceLaunchReadines
         if (full.audit_status !== 'ok' && !appendCompleted) return { ready: false, checking: false, reason: full.unavailable_reason || '完整续训来源审查未通过。' };
         return { ready: true, checking: false, reason: '' };
     }
-    const source = globalThis.continueTrainingSource;
+    const source = getContinueTrainingSource();
     const weight = state.weight_hotstart;
     if (weight.audit_status === 'checking') return { ready: false, checking: true, reason: '正在审查续接来源' };
     if (!source?.abs_path) return { ready: false, checking: false, reason: '请选择可加载的 .safetensors 权重后再启动权重热启动。' };
@@ -264,30 +283,31 @@ globalThis.trainingSourceLaunchReadiness = function trainingSourceLaunchReadines
         return { ready: false, checking: false, reason: weight.unavailable_reason || source.message || '权重热启动审查未通过。' };
     }
     return { ready: true, checking: false, reason: '' };
-};
-globalThis.trainingSourceLaunchBlockReason = function trainingSourceLaunchBlockReason() {
+}
+export function trainingSourceLaunchBlockReason() {
     return trainingSourceLaunchReadiness().reason || '训练来源审查未通过。';
-};
-globalThis.ensureTrainingSourceReadyForLaunch = async function ensureTrainingSourceReadyForLaunch() {
+}
+export async function ensureTrainingSourceReadyForLaunch() {
     const mode = configTrainingSourceMode();
     if (mode === 'full_resume') return auditConfigFullResumeSource({ force: true });
     if (mode === 'weight_hotstart') return auditConfigWeightHotstartSource();
     ensureTrainingSourceState().audit_status = 'ok';
     renderContinueTrainingSource();
     return true;
-};
-globalThis.continueTrainingRequestPayload = function continueTrainingRequestPayload() {
-    if (configTrainingSourceMode() !== 'weight_hotstart' || !globalThis.continueTrainingSource) return {};
+}
+export function continueTrainingRequestPayload() {
+    const source = getContinueTrainingSource();
+    if (configTrainingSourceMode() !== 'weight_hotstart' || !source) return {};
     return {
-        continue_from_weight_abs_path: globalThis.continueTrainingSource.abs_path || '',
-        continue_from_weight_name: globalThis.continueTrainingSource.name || '',
-        continue_from_weight_kind: globalThis.continueTrainingSource.kind || '',
+        continue_from_weight_abs_path: source.abs_path || '',
+        continue_from_weight_name: source.name || '',
+        continue_from_weight_kind: source.kind || '',
     };
-};
-globalThis.auditConfigFullResumeSource = async function auditConfigFullResumeSource(options = {}) {
+}
+export async function auditConfigFullResumeSource(options = {}) {
     const state = ensureTrainingSourceState();
     const full = state.full_resume;
-    if (!historyTasks.length && typeof loadTrainingHistoryList === 'function') {
+    if (!historyState.historyTasks.length && typeof loadTrainingHistoryList === 'function') {
         await loadTrainingHistoryList();
     }
     ensureFullResumeTaskSelection();
@@ -331,16 +351,16 @@ globalThis.auditConfigFullResumeSource = async function auditConfigFullResumeSou
     }
     renderContinueTrainingSource();
     return trainingSourceLaunchReadiness().ready;
-};
+}
 function setFullResumeAudit(status, reason) {
     const state = ensureTrainingSourceState();
     state.full_resume.audit_status = status;
     state.full_resume.unavailable_reason = reason || '';
     state.audit_status = status;
 }
-globalThis.auditConfigWeightHotstartSource = async function auditConfigWeightHotstartSource() {
+export async function auditConfigWeightHotstartSource() {
     const state = ensureTrainingSourceState();
-    if (!globalThis.continueTrainingSource?.abs_path) {
+    if (!getContinueTrainingSource()?.abs_path) {
         syncWeightHotstartAuditFromContinue(false, '请选择可加载的 .safetensors 权重后再启动权重热启动。');
         renderContinueTrainingSource();
         return false;
@@ -357,10 +377,10 @@ globalThis.auditConfigWeightHotstartSource = async function auditConfigWeightHot
     syncWeightHotstartAuditFromContinue(ok);
     renderContinueTrainingSource();
     return trainingSourceLaunchReadiness().ready;
-};
+}
 function syncWeightHotstartAuditFromContinue(ok = null, reason = '') {
     const state = ensureTrainingSourceState();
-    const source = globalThis.continueTrainingSource || {};
+    const source = getContinueTrainingSource() || {};
     const weight = state.weight_hotstart;
     weight.abs_path = source.abs_path || '';
     weight.name = source.name || '';
@@ -379,9 +399,9 @@ function syncWeightHotstartAuditFromContinue(ok = null, reason = '') {
     if (state.mode === 'weight_hotstart') state.audit_status = weight.audit_status;
 }
 function configFullResumeDurationOverrides() {
-    const epochs = readOptionalLiveNumber?.('max_train_epochs');
+    const epochs = readOptionalLiveNumber('max_train_epochs');
     if (epochs) return { max_train_epochs: epochs };
-    const steps = readNonnegativeLiveNumber?.('max_train_steps', 0) || 0;
+    const steps = readNonnegativeLiveNumber('max_train_steps', 0) || 0;
     return steps > 0 ? { max_train_steps: steps } : {};
 }
 function configFullResumeDurationText(duration) {
@@ -396,8 +416,8 @@ function configFullResumeCanAppendCompletedCheckpoint(item) {
     return Boolean((duration.max_train_epochs || duration.max_train_steps) && Number.isFinite(step) && Number.isFinite(target) && step >= target && integrity.complete !== false);
 }
 function configFullResumeCheckpointUsable(item) { return Boolean(item && (item.resume_available !== false || configFullResumeCanAppendCompletedCheckpoint(item))); }
-globalThis.startConfigFullResumeSource = async function startConfigFullResumeSource(queueMode = false) {
-    if (!queueMode && isLiveRunningState()) {
+export async function startConfigFullResumeSource(queueMode = false) {
+    if (!queueMode && isLiveRunningState(trainingRuntime.state)) {
         setTomlStatus('error', '当前已有训练或预处理在运行，请改用“加入队列”。', { persist: true });
         return;
     }
@@ -429,7 +449,7 @@ globalThis.startConfigFullResumeSource = async function startConfigFullResumeSou
                 task_id: task.id,
                 checkpoint: selected.path,
                 duration_overrides: durationOverrides,
-                gpu_whitelist: gpuPicker.selectedGpuPayload(),
+                gpu_whitelist: getGpuPicker()?.selectedGpuPayload?.() ?? [],
             }),
         });
         if (!res.ok) {
@@ -449,7 +469,7 @@ globalThis.startConfigFullResumeSource = async function startConfigFullResumeSou
     } catch (e) {
         showPreflightRequestError('完整续训请求失败: ' + e.message);
     }
-};
+}
 function ensureFullResumeTaskSelection() {
     const full = ensureTrainingSourceState().full_resume;
     const tasks = configResumeTaskCandidates();
@@ -477,14 +497,14 @@ function syncFullResumeCheckpointFields(selected) {
     full.resume_available = configFullResumeCheckpointUsable(selected);
     full.estimate_error = selected?.estimate_error || '';
 }
-globalThis.handleConfigFullResumeTaskChange = async function handleConfigFullResumeTaskChange(value) {
+export async function handleConfigFullResumeTaskChange(value) {
     const full = ensureTrainingSourceState().full_resume;
     full.task_id = value || '';
     full.checkpoint = '';
     full.checkpoints = [];
     await auditConfigFullResumeSource({ force: true });
-};
-globalThis.handleConfigFullResumeCheckpointChange = function handleConfigFullResumeCheckpointChange(value) {
+}
+export function handleConfigFullResumeCheckpointChange(value) {
     const full = ensureTrainingSourceState().full_resume;
     full.checkpoint = value || '';
     const selected = selectedConfigFullResumeCheckpointFromState();
@@ -495,9 +515,9 @@ globalThis.handleConfigFullResumeCheckpointChange = function handleConfigFullRes
         usable ? '' : (selected?.unavailable_reason || (!selected ? '请选择可用的 checkpoint-state。' : '')),
     );
     renderContinueTrainingSource();
-};
+}
 function configResumeTaskCandidates() {
-    return (historyTasks || [])
+    return (historyState.historyTasks || [])
         .filter((task) => task?.job === 'training' && task.id)
         .sort((a, b) => (Number(b.started_at || b.updated_at || 0) - Number(a.started_at || a.updated_at || 0)));
 }
@@ -537,64 +557,59 @@ function trainingSourceWeightStateText(state) {
     if (weight.audit_status === 'ok') return '审查通过 · 不恢复 optimizer / scheduler / 已完成步数';
     return weight.unavailable_reason || '等待权重审查';
 }
-globalThis.trainingSourceLaunchSummary = function trainingSourceLaunchSummary() {
+export function trainingSourceLaunchSummary() {
     const state = ensureTrainingSourceState();
     if (state.mode === 'full_resume') {
         const selected = selectedConfigFullResumeCheckpointFromState();
         const task = configFullResumeTaskById(state.full_resume.task_id);
         return `\n\n训练来源: 完整续训\n历史任务: ${task ? configFullResumeTaskLabel(task) : '-'}\n状态目录: ${selected?.path || '-'}\n${selected ? configResumeRemainingText(selected) : ''}`;
     }
-    if (state.mode === 'weight_hotstart' && globalThis.continueTrainingSource?.abs_path) {
-        const source = globalThis.continueTrainingSource;
+    if (state.mode === 'weight_hotstart' && getContinueTrainingSource()?.abs_path) {
+        const source = getContinueTrainingSource();
         return `\n\n训练来源: 权重热启动 ${source.kind || 'LoRA'} · ${source.name || ''}\n基于权重: ${source.abs_path}\n说明: 不恢复 optimizer、scheduler 和已完成步数`;
     }
     return '\n\n训练来源: 从零训练';
-};
-if (BASE_REFRESH_CONTINUE_SOURCE) {
-    globalThis.refreshContinueTrainingSourceCompatibility = async function refreshContinueTrainingSourceCompatibility() {
-        if (!globalThis.continueTrainingSource?.abs_path) {
-            syncWeightHotstartAuditFromContinue(configTrainingSourceMode() !== 'weight_hotstart');
-            renderContinueTrainingSource();
-            return configTrainingSourceMode() !== 'weight_hotstart';
-        }
-        if (configTrainingSourceMode() === 'weight_hotstart') {
-            ensureTrainingSourceState().weight_hotstart.audit_status = 'checking';
-            renderContinueTrainingSource();
-        }
-        const ok = await BASE_REFRESH_CONTINUE_SOURCE();
-        syncWeightHotstartAuditFromContinue(ok);
+}
+export async function refreshContinueTrainingSourceCompatibility() {
+    if (!getContinueTrainingSource()?.abs_path) {
+        syncWeightHotstartAuditFromContinue(configTrainingSourceMode() !== 'weight_hotstart');
         renderContinueTrainingSource();
-        return ok;
-    };
-}
-if (BASE_SELECT_CONTINUE_WEIGHT) {
-    globalThis.selectContinueLoraWeight = async function selectContinueLoraWeight(path, options = {}) {
-        const ok = await BASE_SELECT_CONTINUE_WEIGHT(path, options);
-        if (ok) {
-            ensureTrainingSourceState().mode = 'weight_hotstart';
-            syncWeightHotstartAuditFromContinue(true);
-            renderContinueTrainingSource();
-        }
-        return ok;
-    };
-}
-if (BASE_CLEAR_CONTINUE_SOURCE) {
-    globalThis.clearContinueTrainingSource = function clearContinueTrainingSource() {
-        BASE_CLEAR_CONTINUE_SOURCE();
-        const state = ensureTrainingSourceState();
-        state.mode = 'fresh';
-        state.weight_hotstart = {
-            abs_path: '',
-            name: '',
-            kind: '',
-            compatible: false,
-            audit_status: 'idle',
-            unavailable_reason: '',
-        };
+        return configTrainingSourceMode() !== 'weight_hotstart';
+    }
+    if (configTrainingSourceMode() === 'weight_hotstart') {
+        ensureTrainingSourceState().weight_hotstart.audit_status = 'checking';
         renderContinueTrainingSource();
-        setTomlStatus('ok', '已恢复为从零训练');
-    };
+    }
+    const ok = await BASE_REFRESH_CONTINUE_SOURCE();
+    syncWeightHotstartAuditFromContinue(ok);
+    renderContinueTrainingSource();
+    return ok;
 }
+export async function selectContinueLoraWeight(path, options = {}) {
+    const ok = await BASE_SELECT_CONTINUE_WEIGHT(path, options);
+    if (ok) {
+        ensureTrainingSourceState().mode = 'weight_hotstart';
+        syncWeightHotstartAuditFromContinue(true);
+        renderContinueTrainingSource();
+    }
+    return ok;
+}
+export function clearContinueTrainingSource() {
+    BASE_CLEAR_CONTINUE_SOURCE();
+    const state = ensureTrainingSourceState();
+    state.mode = 'fresh';
+    state.weight_hotstart = {
+        abs_path: '',
+        name: '',
+        kind: '',
+        compatible: false,
+        audit_status: 'idle',
+        unavailable_reason: '',
+    };
+    renderContinueTrainingSource();
+    setTomlStatus('ok', '已恢复为从零训练');
+}
+configureTrainingSourceBridge({ configTrainingSourceMode, setConfigTrainingSourceMode, auditConfigTrainingSourceOnEnter, renderContinueTrainingSource, trainingSourceLaunchReadiness, trainingSourceLaunchBlockReason, ensureTrainingSourceReadyForLaunch, continueTrainingRequestPayload, auditConfigFullResumeSource, auditConfigWeightHotstartSource, startConfigFullResumeSource, handleConfigFullResumeTaskChange, handleConfigFullResumeCheckpointChange, trainingSourceLaunchSummary, refreshContinueTrainingSourceCompatibility, selectContinueLoraWeight, clearContinueTrainingSource });
 function textNode(tag, text) {
     const node = document.createElement(tag);
     node.textContent = text || '';

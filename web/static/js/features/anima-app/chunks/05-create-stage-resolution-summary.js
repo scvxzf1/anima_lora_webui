@@ -2,9 +2,19 @@
  * Mechanical split from the former monolithic app closure.
  * Keep this module focused; move newly edited behavior into domain modules.
  */
-const ctx = globalThis.ctx;
+import { NO_DATASET_REGULARIZATION_QUICK_PRESETS, RESOURCE_QUICK_PRESETS } from '../helpers/app-constants.js?v=module-bootstrap-20260707-93';
+import { setFieldInputValue } from './13-update-dataset-editor-rows-setting-value.js?v=module-bootstrap-20260707-93';
+import { handleFormFieldChange } from './14-lora-adapter-kind-from-config.js?v=module-bootstrap-20260707-93';
+import { normalizedStageResolutionStages, renderStageResolutionDialog, stageResolutionMetrics, stageResolutionStatus } from './04-create-config-group-entry.js?v=module-bootstrap-20260707-93';
+import { fillGlobalModelPathsIntoConfigForm, resourceQuickCurrentValue, strongerSelectiveCheckpointValue } from './06-stronger-selective-checkpoint-value.js?v=module-bootstrap-20260707-93';
+import {
+    setTomlStatus,
+} from '../helpers/toml-action-state-bridge.js?v=module-bootstrap-20260707-93';
+import { getAppContext } from '../helpers/app-context-bridge.js?v=module-bootstrap-20260707-93';
 
-    globalThis.createStageResolutionSummary = function createStageResolutionSummary(metrics) {
+const ctx = getAppContext();
+
+    export function createStageResolutionSummary(metrics) {
         const wrap = document.createElement('div');
         wrap.className = 'stage-resolution-summary';
         const rows = [
@@ -28,7 +38,7 @@ const ctx = globalThis.ctx;
         return wrap;
     }
 
-    globalThis.createStageResolutionEnableControl = function createStageResolutionEnableControl(enabled) {
+    function createStageResolutionEnableControl(enabled) {
         const item = document.createElement('label');
         item.className = 'stage-resolution-summary-item stage-resolution-enable-control';
         const input = document.createElement('input');
@@ -48,12 +58,12 @@ const ctx = globalThis.ctx;
         return item;
     }
 
-    globalThis.setStageResolutionEnabled = function setStageResolutionEnabled(enabled) {
+    function setStageResolutionEnabled(enabled) {
         stageResolutionState.enabled = Boolean(enabled);
         renderStageResolutionDialog();
     }
 
-    globalThis.createStageResolutionChartPanel = function createStageResolutionChartPanel() {
+    export function createStageResolutionChartPanel() {
         const panel = document.createElement('section');
         panel.className = 'stage-resolution-chart-panel';
         const header = document.createElement('div');
@@ -75,7 +85,7 @@ const ctx = globalThis.ctx;
         return panel;
     }
 
-    globalThis.createStageResolutionEditor = function createStageResolutionEditor(stage) {
+    export function createStageResolutionEditor(stage) {
         const aside = document.createElement('aside');
         aside.className = 'stage-resolution-editor';
         const head = document.createElement('div');
@@ -101,7 +111,7 @@ const ctx = globalThis.ctx;
         return aside;
     }
 
-    globalThis.createStageResolutionInput = function createStageResolutionInput(labelText, key, value, type) {
+    function createStageResolutionInput(labelText, key, value, type) {
         const label = document.createElement('label');
         label.className = 'stage-resolution-field';
         const span = document.createElement('span');
@@ -119,7 +129,7 @@ const ctx = globalThis.ctx;
         return label;
     }
 
-    globalThis.createStageResolutionReadonly = function createStageResolutionReadonly(labelText, value) {
+    function createStageResolutionReadonly(labelText, value) {
         const label = document.createElement('label');
         label.className = 'stage-resolution-field';
         const span = document.createElement('span');
@@ -130,7 +140,7 @@ const ctx = globalThis.ctx;
         return label;
     }
 
-    globalThis.createStageResolutionRepeats = function createStageResolutionRepeats(stage) {
+    function createStageResolutionRepeats(stage) {
         const wrap = document.createElement('div');
         wrap.className = 'stage-resolution-field stage-resolution-repeat-field';
         const label = document.createElement('label');
@@ -154,7 +164,7 @@ const ctx = globalThis.ctx;
         return wrap;
     }
 
-    globalThis.createStageResolutionTable = function createStageResolutionTable(stages) {
+    export function createStageResolutionTable(stages) {
         const section = document.createElement('section');
         section.className = 'stage-resolution-table-panel';
         const head = document.createElement('div');
@@ -175,7 +185,7 @@ const ctx = globalThis.ctx;
         return section;
     }
 
-    globalThis.createStageResolutionTableRow = function createStageResolutionTableRow(stage) {
+    function createStageResolutionTableRow(stage) {
         const tr = document.createElement('tr');
         const selected = stage.index === stageResolutionState.selectedIndex;
         const status = stageResolutionStatus(stage);
@@ -200,7 +210,7 @@ const ctx = globalThis.ctx;
         return tr;
     }
 
-    globalThis.stageResolutionTableInputCell = function stageResolutionTableInputCell(stage, key, value, type) {
+    function stageResolutionTableInputCell(stage, key, value, type) {
         const td = document.createElement('td');
         const input = document.createElement('input');
         input.className = 'stage-resolution-table-input';
@@ -219,13 +229,13 @@ const ctx = globalThis.ctx;
         return td;
     }
 
-    globalThis.stageResolutionTableCell = function stageResolutionTableCell(text) {
+    function stageResolutionTableCell(text) {
         const td = document.createElement('td');
         td.textContent = text;
         return td;
     }
 
-    globalThis.stageResolutionStatusCell = function stageResolutionStatusCell(status) {
+    function stageResolutionStatusCell(status) {
         const td = document.createElement('td');
         const badge = document.createElement('span');
         badge.className = `stage-resolution-status ${status.tone}`;
@@ -234,7 +244,7 @@ const ctx = globalThis.ctx;
         return td;
     }
 
-    globalThis.stageResolutionActionCell = function stageResolutionActionCell(stage) {
+    function stageResolutionActionCell(stage) {
         const td = document.createElement('td');
         td.className = 'stage-resolution-actions';
         const up = stageResolutionActionButton('↑', '上移', () => moveStageResolutionPoint(stage.index, -1));
@@ -247,7 +257,7 @@ const ctx = globalThis.ctx;
         return td;
     }
 
-    globalThis.stageResolutionActionButton = function stageResolutionActionButton(text, title, handler) {
+    function stageResolutionActionButton(text, title, handler) {
         const btn = document.createElement('button');
         btn.type = 'button';
         btn.className = 'btn btn-small';
@@ -257,20 +267,20 @@ const ctx = globalThis.ctx;
         return btn;
     }
 
-    globalThis.updateSelectedStageResolutionField = function updateSelectedStageResolutionField(event) {
+    function updateSelectedStageResolutionField(event) {
         const key = event.target.dataset.stageField;
         const value = key === 'name' ? event.target.value : Number(event.target.value);
         updateStageResolutionStage(stageResolutionState.selectedIndex, { [key]: value });
     }
 
-    globalThis.updateStageResolutionStage = function updateStageResolutionStage(index, patch) {
+    function updateStageResolutionStage(index, patch) {
         const stages = normalizedStageResolutionStages();
         if (!stages[index]) return;
         stageResolutionState.stages[index] = { ...stages[index], ...patch };
         renderStageResolutionDialog();
     }
 
-    globalThis.addStageResolutionPoint = function addStageResolutionPoint() {
+    function addStageResolutionPoint() {
         const stages = normalizedStageResolutionStages();
         const last = stages[stages.length - 1] || { maxSide: 1024, downRange: 256 };
         stages.push({
@@ -285,7 +295,7 @@ const ctx = globalThis.ctx;
         renderStageResolutionDialog();
     }
 
-    globalThis.deleteStageResolutionPoint = function deleteStageResolutionPoint(index) {
+    function deleteStageResolutionPoint(index) {
         const stages = normalizedStageResolutionStages();
         if (stages.length <= 1) return;
         stages.splice(index, 1);
@@ -293,7 +303,7 @@ const ctx = globalThis.ctx;
         renderStageResolutionDialog();
     }
 
-    globalThis.moveStageResolutionPoint = function moveStageResolutionPoint(index, direction) {
+    function moveStageResolutionPoint(index, direction) {
         const stages = normalizedStageResolutionStages();
         const nextIndex = index + direction;
         if (nextIndex < 0 || nextIndex >= stages.length) return;
@@ -302,12 +312,12 @@ const ctx = globalThis.ctx;
         renderStageResolutionDialog();
     }
 
-    globalThis.selectStageResolutionPoint = function selectStageResolutionPoint(index) {
+    function selectStageResolutionPoint(index) {
         stageResolutionState.selectedIndex = index;
         renderStageResolutionDialog();
     }
 
-    globalThis.selectStageResolutionPointFromCanvas = function selectStageResolutionPointFromCanvas(event) {
+    function selectStageResolutionPointFromCanvas(event) {
         const canvas = event.currentTarget;
         const points = canvas._stageResolutionPoints || [];
         if (!points.length) return;
@@ -320,7 +330,7 @@ const ctx = globalThis.ctx;
         selectStageResolutionPoint(nearest.index);
     }
 
-    globalThis.drawStageResolutionChart = function drawStageResolutionChart() {
+    export function drawStageResolutionChart() {
         const canvas = document.getElementById('stage-resolution-chart');
         if (!canvas) return;
         const ctx = canvas.getContext('2d');
@@ -420,7 +430,7 @@ const ctx = globalThis.ctx;
         canvas._stageResolutionPoints = points;
     }
 
-    globalThis.createFillGlobalModelPathsButton = function createFillGlobalModelPathsButton() {
+    export function createFillGlobalModelPathsButton() {
         const btn = document.createElement('button');
         btn.id = 'btn-fill-global-model-paths';
         btn.type = 'button';
@@ -435,7 +445,7 @@ const ctx = globalThis.ctx;
         return btn;
     }
 
-    globalThis.createConfigQuickPresetsButton = function createConfigQuickPresetsButton(options, content, collapseBtn) {
+    function createConfigQuickPresetsButton(options, content, collapseBtn) {
         const groupName = options.groupName || '';
         const btn = document.createElement('button');
         if (options.id) btn.id = options.id;
@@ -468,7 +478,7 @@ const ctx = globalThis.ctx;
         return btn;
     }
 
-    globalThis.createConfigQuickPresetPanel = function createConfigQuickPresetPanel(options) {
+    function createConfigQuickPresetPanel(options) {
         const panel = document.createElement('div');
         panel.className = ['config-quick-presets', options.panelClass || ''].filter(Boolean).join(' ');
         panel.hidden = true;
@@ -492,7 +502,7 @@ const ctx = globalThis.ctx;
         return panel;
     }
 
-    globalThis.createResourceQuickPresetsButton = function createResourceQuickPresetsButton(content, collapseBtn) {
+    export function createResourceQuickPresetsButton(content, collapseBtn) {
         return createConfigQuickPresetsButton({
             id: 'btn-resource-quick-presets',
             className: 'config-resource-quick-toggle',
@@ -503,7 +513,7 @@ const ctx = globalThis.ctx;
         }, content, collapseBtn);
     }
 
-    globalThis.createResourceQuickPresetPanel = function createResourceQuickPresetPanel() {
+    export function createResourceQuickPresetPanel() {
         return createConfigQuickPresetPanel({
             panelClass: 'config-resource-quick-presets',
             groupName: '显存与速度优化',
@@ -515,7 +525,7 @@ const ctx = globalThis.ctx;
         });
     }
 
-    globalThis.applyResourceQuickPreset = function applyResourceQuickPreset(preset) {
+    function applyResourceQuickPreset(preset) {
         for (const [key, value] of Object.entries(resourceQuickPresetPatch(preset))) {
             setFieldInputValue(key, value);
         }
@@ -523,7 +533,7 @@ const ctx = globalThis.ctx;
         setTomlStatus('ok', `已填写显存与速度优化预设: ${preset.label}`);
     }
 
-    globalThis.resourceQuickPresetPatch = function resourceQuickPresetPatch(preset) {
+    function resourceQuickPresetPatch(preset) {
         const patch = {};
         for (const [key, value] of Object.entries(preset?.values || {})) {
             patch[key] = resourceQuickPresetValue(preset, key, value);
@@ -546,7 +556,7 @@ const ctx = globalThis.ctx;
         return patch;
     }
 
-    globalThis.resourceQuickPresetValue = function resourceQuickPresetValue(preset, key, value) {
+    function resourceQuickPresetValue(preset, key, value) {
         const strategy = preset?.merge?.[key] || '';
         if (strategy === 'max') {
             const current = Number(resourceQuickCurrentValue(key));
@@ -561,7 +571,7 @@ const ctx = globalThis.ctx;
         return value;
     }
 
-    globalThis.createNoDatasetRegularizationQuickPresetsButton = function createNoDatasetRegularizationQuickPresetsButton(content, collapseBtn) {
+    export function createNoDatasetRegularizationQuickPresetsButton(content, collapseBtn) {
         return createConfigQuickPresetsButton({
             id: 'btn-no-dataset-regularization-quick-presets',
             className: 'config-no-dataset-regularization-quick-toggle',
@@ -572,7 +582,7 @@ const ctx = globalThis.ctx;
         }, content, collapseBtn);
     }
 
-    globalThis.createNoDatasetRegularizationQuickPresetPanel = function createNoDatasetRegularizationQuickPresetPanel() {
+    export function createNoDatasetRegularizationQuickPresetPanel() {
         return createConfigQuickPresetPanel({
             panelClass: 'config-no-dataset-regularization-quick-presets',
             groupName: '无数据集正则化',
@@ -584,7 +594,7 @@ const ctx = globalThis.ctx;
         });
     }
 
-    globalThis.applyNoDatasetRegularizationQuickPreset = function applyNoDatasetRegularizationQuickPreset(preset) {
+    function applyNoDatasetRegularizationQuickPreset(preset) {
         for (const [key, value] of Object.entries(preset.values || {})) {
             setFieldInputValue(key, value);
         }

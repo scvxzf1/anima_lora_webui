@@ -2,9 +2,42 @@
  * Mechanical split from the former monolithic app closure.
  * Keep this module focused; move newly edited behavior into domain modules.
  */
-const ctx = globalThis.ctx;
+import { FILE_GROUP_DROP_TARGET_ATTR } from '../helpers/app-constants.js?v=module-bootstrap-20260707-93';
+import {
+    datasetPresetByFile,
+    datasetPresetGroupsForDisplay,
+    datasetPresetSummaryByFile,
+} from '../helpers/dataset-presets.js?v=module-bootstrap-20260707-93';
+import {
+    configureDatasetRenderBridge,
+    createDatasetPresetGroupNode,
+    readDatasetPresetGroupState,
+    renderDatasetEditor,
+} from '../helpers/dataset-render-bridge.js?v=module-bootstrap-20260707-93';
+import { getConfigState } from '../helpers/config-state-bridge.js?v=module-bootstrap-20260707-93';
+import { getDatasetState } from '../helpers/dataset-state-bridge.js?v=module-bootstrap-20260707-93';
+import { datasetPresetApi } from '../helpers/runtime-bridge.js?v=module-bootstrap-20260707-93';
+import { updateTomlDirtyState } from '../helpers/toml-selection-bridge.js?v=module-bootstrap-20260707-93';
+import { loadStepEstimate } from './03-parse-network-arg-entry.js?v=module-bootstrap-20260707-93';
+import { renderConfigDatasetPicker } from './06-stronger-selective-checkpoint-value.js?v=module-bootstrap-20260707-93';
+import { escapeHtml } from './13-update-dataset-editor-rows-setting-value.js?v=module-bootstrap-20260707-93';
 
-    globalThis.renderConfigDatasetPickerDialog = function renderConfigDatasetPickerDialog() {
+const configState = getConfigState();
+const datasetState = getDatasetState();
+
+function currentConfigState() {
+    return configState.currentConfig || {};
+}
+
+function currentDatasetPresetState() {
+    return datasetState.datasetPresetState || {};
+}
+
+function currentConfigDatasetPreviewState() {
+    return datasetState.configDatasetPreviewState || {};
+}
+
+    function renderConfigDatasetPickerDialog() {
         const dialog = document.getElementById('config-dataset-picker-dialog');
         const body = document.getElementById('config-dataset-picker-dialog-body');
         if (!dialog || !body) return;
@@ -16,10 +49,10 @@ const ctx = globalThis.ctx;
         search.type = 'search';
         search.className = 'field-input config-dataset-search';
         search.placeholder = '搜索数据集预设、路径或原始目录';
-        search.value = configDatasetPickerSearch;
+        search.value = datasetState.configDatasetPickerSearch;
         search.addEventListener('input', () => {
             const cursor = search.selectionStart ?? search.value.length;
-            configDatasetPickerSearch = search.value;
+            datasetState.configDatasetPickerSearch = search.value;
             renderConfigDatasetPickerDialog();
             const nextSearch = document.querySelector('#config-dataset-picker-dialog .config-dataset-search');
             if (nextSearch) {
@@ -37,23 +70,14 @@ const ctx = globalThis.ctx;
         body.appendChild(workspace);
     }
 
-    globalThis.datasetPresetOptionLabel = function datasetPresetOptionLabel(preset) {
-        const summary = preset?.summary || {};
-        const name = preset?.label || preset?.filename || preset?.path || '未命名预设';
-        const count = Number(summary.dataset_count || 0);
-        const repeats = Number(summary.repeat_total || 0);
-        const lock = preset?.readonly ? '只读 · ' : '';
-        return `${lock}${name} · ${count || 0} 组 · 重复 ${repeats || 0}`;
-    }
-
-    globalThis.createConfigDatasetPresetList = function createConfigDatasetPresetList() {
+    function createConfigDatasetPresetList() {
         const list = document.createElement('div');
         list.className = 'config-dataset-preset-list';
         const noneBtn = createConfigDatasetPresetButton(null);
         list.appendChild(noneBtn);
 
         const presets = filteredConfigDatasetPresets();
-        if (!presets.length && configDatasetPickerSearch.trim()) {
+        if (!presets.length && datasetState.configDatasetPickerSearch.trim()) {
             const empty = document.createElement('p');
             empty.className = 'config-dataset-picker-empty';
             empty.textContent = '没有匹配的数据集预设。';
@@ -67,11 +91,11 @@ const ctx = globalThis.ctx;
         return list;
     }
 
-    globalThis.createConfigDatasetPresetButton = function createConfigDatasetPresetButton(preset) {
+    function createConfigDatasetPresetButton(preset) {
         const isNone = !preset;
         const file = isNone ? '' : preset.path;
         const summary = preset?.summary || {};
-        const active = file === selectedConfigDatasetFile;
+        const active = file === datasetState.selectedConfigDatasetFile;
         const btn = document.createElement('button');
         btn.type = 'button';
         btn.className = [
@@ -95,9 +119,9 @@ const ctx = globalThis.ctx;
         return btn;
     }
 
-    globalThis.filteredConfigDatasetPresets = function filteredConfigDatasetPresets() {
-        const keyword = configDatasetPickerSearch.trim().toLowerCase();
-        const presets = datasetPresetState.presets || [];
+    function filteredConfigDatasetPresets() {
+        const keyword = datasetState.configDatasetPickerSearch.trim().toLowerCase();
+        const presets = currentDatasetPresetState().presets || [];
         if (!keyword) return presets;
         return presets.filter((preset) => {
             const summary = preset.summary || {};
@@ -110,7 +134,7 @@ const ctx = globalThis.ctx;
         });
     }
 
-    globalThis.createConfigDatasetPresetPreview = function createConfigDatasetPresetPreview() {
+    function createConfigDatasetPresetPreview() {
         const preview = document.createElement('div');
         preview.className = 'config-dataset-preview';
         const summary = document.createElement('div');
@@ -121,16 +145,16 @@ const ctx = globalThis.ctx;
         return preview;
     }
 
-    globalThis.createConfigDatasetPreviewImage = function createConfigDatasetPreviewImage() {
+    function createConfigDatasetPreviewImage() {
         const box = document.createElement('div');
         box.className = 'config-dataset-preview-image';
-        const state = configDatasetPreviewState;
-        if (!selectedConfigDatasetFile) {
+        const state = currentConfigDatasetPreviewState();
+        if (!datasetState.selectedConfigDatasetFile) {
             box.classList.add('empty');
             box.textContent = '选择一个数据集预设后，这里会显示第一张原始图。';
             return box;
         }
-        if (state.file !== selectedConfigDatasetFile || state.loading) {
+        if (state.file !== datasetState.selectedConfigDatasetFile || state.loading) {
             box.classList.add('empty');
             box.textContent = '正在读取第一张原始图...';
             return box;
@@ -165,22 +189,22 @@ const ctx = globalThis.ctx;
         return box;
     }
 
-    globalThis.createConfigDatasetSummary = function createConfigDatasetSummary() {
+    function createConfigDatasetSummary() {
         const wrap = document.createElement('div');
-        const preset = datasetPresetByFile(selectedConfigDatasetFile);
-        const summary = selectedConfigDatasetSummary || preset?.summary || {};
-        if (!selectedConfigDatasetFile) {
+        const preset = datasetPresetByFile(datasetState.selectedConfigDatasetFile);
+        const summary = datasetState.selectedConfigDatasetSummary || preset?.summary || {};
+        if (!datasetState.selectedConfigDatasetFile) {
             wrap.className = 'config-dataset-summary-empty';
             wrap.textContent = '未选择独立数据集预设；训练会沿用当前配置文件里的数据集字段。';
             return wrap;
         }
         const items = [
-            ['预设文件', selectedConfigDatasetFile],
+            ['预设文件', datasetState.selectedConfigDatasetFile],
             ['数据组数', String(summary.dataset_count || 0)],
             ['重复合计', String(summary.repeat_total || 0)],
             ['第 1 组原始路径', summary.source_dir || '-'],
         ];
-        if (selectedConfigDatasetFile !== (currentConfig.dataset_config || '')) {
+        if (datasetState.selectedConfigDatasetFile !== (currentConfigState().dataset_config || '')) {
             items.unshift(['状态', '未保存，保存当前配置后生效']);
         }
         for (const [label, value] of items) {
@@ -195,10 +219,10 @@ const ctx = globalThis.ctx;
         return wrap;
     }
 
-    globalThis.selectConfigDatasetPreset = async function selectConfigDatasetPreset(file) {
-        selectedConfigDatasetFile = file || '';
-        selectedConfigDatasetSummary = datasetPresetSummaryByFile(selectedConfigDatasetFile);
-        configDatasetPreviewState = {
+    async function selectConfigDatasetPreset(file) {
+        datasetState.selectedConfigDatasetFile = file || '';
+        datasetState.selectedConfigDatasetSummary = datasetPresetSummaryByFile(datasetState.selectedConfigDatasetFile);
+        datasetState.configDatasetPreviewState = {
             file: '',
             loading: false,
             payload: null,
@@ -210,31 +234,20 @@ const ctx = globalThis.ctx;
         await loadStepEstimate();
     }
 
-    globalThis.selectedDatasetConfigOverride = function selectedDatasetConfigOverride() {
-        const currentDataset = currentConfig?.dataset_config || '';
-        return selectedConfigDatasetFile === currentDataset ? null : (selectedConfigDatasetFile || '');
-    }
-
-    globalThis.datasetPresetByFile = function datasetPresetByFile(file) {
-        return (datasetPresetState.presets || []).find((item) => item.path === file) || null;
-    }
-
-    globalThis.datasetPresetSummaryByFile = function datasetPresetSummaryByFile(file) {
-        return datasetPresetByFile(file)?.summary || null;
-    }
-
-    globalThis.ensureConfigDatasetPreview = function ensureConfigDatasetPreview() {
-        if (!selectedConfigDatasetFile) return;
-        if (configDatasetPreviewState.file === selectedConfigDatasetFile && (configDatasetPreviewState.loading || configDatasetPreviewState.payload || configDatasetPreviewState.error)) {
+    function ensureConfigDatasetPreview() {
+        const previewState = currentConfigDatasetPreviewState();
+        if (!datasetState.selectedConfigDatasetFile) return;
+        if (previewState.file === datasetState.selectedConfigDatasetFile
+            && (previewState.loading || previewState.payload || previewState.error)) {
             return;
         }
-        loadConfigDatasetPresetPreview(selectedConfigDatasetFile);
+        loadConfigDatasetPresetPreview(datasetState.selectedConfigDatasetFile);
     }
 
-    globalThis.loadConfigDatasetPresetPreview = async function loadConfigDatasetPresetPreview(file) {
+    async function loadConfigDatasetPresetPreview(file) {
         if (!file || location.protocol === 'file:') return;
-        const requestSeq = ++configDatasetPreviewRequestSeq;
-        configDatasetPreviewState = {
+        const requestSeq = ++datasetState.configDatasetPreviewRequestSeq;
+        datasetState.configDatasetPreviewState = {
             file,
             loading: true,
             payload: null,
@@ -249,17 +262,17 @@ const ctx = globalThis.ctx;
                 limit: '1',
             });
             const payload = await datasetPresetApi(`/api/config/dataset-presets/images?${params.toString()}`);
-            if (requestSeq !== configDatasetPreviewRequestSeq || file !== selectedConfigDatasetFile) return;
+            if (requestSeq !== datasetState.configDatasetPreviewRequestSeq || file !== datasetState.selectedConfigDatasetFile) return;
             if (!payload.ok) throw new Error(payload.error || '读取数据集预览失败');
-            configDatasetPreviewState = {
+            datasetState.configDatasetPreviewState = {
                 file,
                 loading: false,
                 payload,
                 error: '',
             };
         } catch (e) {
-            if (requestSeq !== configDatasetPreviewRequestSeq || file !== selectedConfigDatasetFile) return;
-            configDatasetPreviewState = {
+            if (requestSeq !== datasetState.configDatasetPreviewRequestSeq || file !== datasetState.selectedConfigDatasetFile) return;
+            datasetState.configDatasetPreviewState = {
                 file,
                 loading: false,
                 payload: null,
@@ -269,7 +282,7 @@ const ctx = globalThis.ctx;
         renderConfigDatasetPreviewArea();
     }
 
-    globalThis.renderConfigDatasetPreviewArea = function renderConfigDatasetPreviewArea() {
+    function renderConfigDatasetPreviewArea() {
         const previews = document.querySelectorAll('.config-dataset-preview');
         if (!previews.length) return;
         previews.forEach((preview) => {
@@ -282,7 +295,7 @@ const ctx = globalThis.ctx;
         });
     }
 
-    globalThis.createDatasetEditor = function createDatasetEditor() {
+    export function createDatasetEditor() {
         const panel = document.createElement('div');
         panel.id = 'dataset-editor';
         panel.className = 'dataset-editor';
@@ -290,10 +303,11 @@ const ctx = globalThis.ctx;
         return panel;
     }
 
-    globalThis.renderDatasetPresetList = function renderDatasetPresetList() {
+    function renderDatasetPresetList() {
         const list = document.getElementById('dataset-preset-list');
         if (!list) return;
         list.innerHTML = '';
+        const datasetPresetState = currentDatasetPresetState();
         const presets = datasetPresetState.presets || [];
         const groups = datasetPresetGroupsForDisplay();
         updateDatasetPresetPageSummary();
@@ -331,9 +345,10 @@ const ctx = globalThis.ctx;
         }
     }
 
-    globalThis.updateDatasetPresetPageSummary = function updateDatasetPresetPageSummary() {
+    export function updateDatasetPresetPageSummary() {
         const summary = document.getElementById('dataset-page-summary');
         if (!summary) return;
+        const datasetPresetState = currentDatasetPresetState();
         const presets = datasetPresetState.presets || [];
         const groups = datasetPresetState.groups || [];
         const totalDatasets = presets.reduce((sum, preset) => sum + Number(preset.summary?.dataset_count || 0), 0);
@@ -358,100 +373,12 @@ const ctx = globalThis.ctx;
         }
     }
 
-    globalThis.datasetPresetGroupsForDisplay = function datasetPresetGroupsForDisplay() {
-        const keyword = datasetPresetState.search.trim().toLowerCase();
-        const presetMap = new Map((datasetPresetState.presets || []).map((preset) => [preset.path, preset]));
-        const sourceGroups = (datasetPresetState.groups || []).length
-            ? datasetPresetState.groups
-            : [{
-                id: 'datasets',
-                label: '数据集配置',
-                open: false,
-                kind: 'dataset',
-                files: datasetPresetState.presets || [],
-                movable: true,
-            }];
-        const covered = new Set();
-        const groups = [];
-
-        for (const rawGroup of sourceGroups) {
-            const files = (rawGroup.files || [])
-                .map((item) => presetMap.get(item.path) || item)
-                .filter((item) => item?.path && presetMap.has(item.path))
-                .filter((item) => datasetPresetMatchesSearch(item, keyword));
-            (rawGroup.files || []).forEach((item) => {
-                if (item?.path && presetMap.has(item.path)) covered.add(item.path);
-            });
-            if (keyword && !files.length) continue;
-            if (!files.length && rawGroup.kind !== 'dataset' && rawGroup.id !== 'datasets' && rawGroup.id !== 'unfiled_datasets') continue;
-            groups.push({ ...rawGroup, files });
-        }
-
-        const ungrouped = (datasetPresetState.presets || [])
-            .filter((preset) => !covered.has(preset.path))
-            .filter((preset) => datasetPresetMatchesSearch(preset, keyword));
-        if (ungrouped.length) {
-            groups.push({
-                id: 'unfiled_datasets',
-                label: '未分组数据集配置',
-                open: true,
-                kind: 'dataset',
-                movable: true,
-                files: ungrouped,
-            });
-        }
-        return sortDatasetPresetGroups(groups);
-    }
-
-    globalThis.isUnfiledDatasetGroup = function isUnfiledDatasetGroup(group) {
-        return group?.id === 'unfiled_datasets';
-    }
-
-    globalThis.sortDatasetPresetGroups = function sortDatasetPresetGroups(groups) {
-        return [...groups].sort((a, b) => {
-            if (isUnfiledDatasetGroup(a)) return -1;
-            if (isUnfiledDatasetGroup(b)) return 1;
-            return 0;
-        });
-    }
-
-    globalThis.orderDatasetPresetsForGroups = function orderDatasetPresetsForGroups(presets, groups) {
-        const presetMap = new Map((presets || []).map((preset) => [preset.path, preset]));
-        const ordered = [];
-        const seen = new Set();
-        for (const group of sortDatasetPresetGroups(groups || [])) {
-            for (const item of group.files || []) {
-                if (!item?.path || seen.has(item.path) || !presetMap.has(item.path)) continue;
-                ordered.push(presetMap.get(item.path));
-                seen.add(item.path);
-            }
-        }
-        for (const preset of presets || []) {
-            if (!preset?.path || seen.has(preset.path)) continue;
-            ordered.push(preset);
-        }
-        return ordered;
-    }
-
-    globalThis.datasetPresetMatchesSearch = function datasetPresetMatchesSearch(preset, keyword) {
-        if (!keyword) return true;
-        const summary = preset?.summary || {};
-        return [
-            preset?.label,
-            preset?.filename,
-            preset?.path,
-            summary.source_dir,
-            summary.image_dir,
-            summary.cache_dir,
-        ].some((value) => String(value || '').toLowerCase().includes(keyword));
-    }
-
-    globalThis.eventTargetClosest = function eventTargetClosest(event, selector) {
+    export function eventTargetClosest(event, selector) {
         const target = event?.target;
         return target instanceof Element ? target.closest(selector) : null;
     }
 
-    globalThis.createFileGroupDragImage = function createFileGroupDragImage(payload) {
+    function createFileGroupDragImage(payload) {
         const image = document.createElement('div');
         image.className = 'file-group-drag-image';
         image.textContent = payload.file || payload.groupId || '移动项目';
@@ -459,11 +386,11 @@ const ctx = globalThis.ctx;
         return image;
     }
 
-    globalThis.removeFileGroupDragImage = function removeFileGroupDragImage(image) {
+    export function removeFileGroupDragImage(image) {
         if (image?.parentNode) image.parentNode.removeChild(image);
     }
 
-    globalThis.setFileGroupDragData = function setFileGroupDragData(event, payload) {
+    export function setFileGroupDragData(event, payload) {
         const data = payload.file || payload.groupId || payload.target || 'move';
         const transfer = event?.dataTransfer;
         if (!transfer) return;
@@ -486,7 +413,7 @@ const ctx = globalThis.ctx;
         }
     }
 
-    globalThis.canBeginFileGroupDrag = function canBeginFileGroupDrag(payload, disabled) {
+    export function canBeginFileGroupDrag(payload, disabled) {
         if (disabled || (payload.canDrag && !payload.canDrag())) {
             if (payload.blockedMessage) payload.blockedMessage();
             return false;
@@ -494,26 +421,32 @@ const ctx = globalThis.ctx;
         return true;
     }
 
-    globalThis.beginFileGroupDrag = function beginFileGroupDrag(payload, handle) {
-        fileGroupDragState = payload;
+    export function beginFileGroupDrag(payload, handle) {
+        datasetState.fileGroupDragState = payload;
         payload.sourceElement?.classList.add('file-group-dragging');
         handle?.classList.add('dragging');
     }
 
-    globalThis.createFileGroupPointerDragImage = function createFileGroupPointerDragImage(payload) {
+    export function createFileGroupPointerDragImage(payload) {
         const image = createFileGroupDragImage(payload);
         image.classList.add('file-group-drag-image-pointer');
         return image;
     }
 
-    globalThis.moveFileGroupPointerDragImage = function moveFileGroupPointerDragImage(image, x, y) {
+    export function moveFileGroupPointerDragImage(image, x, y) {
         if (!image) return;
         image.style.left = `${x + 14}px`;
         image.style.top = `${y + 14}px`;
     }
 
-    globalThis.registerFileGroupDropTarget = function registerFileGroupDropTarget(node, resolve) {
+    export function registerFileGroupDropTarget(node, resolve) {
         node.setAttribute(FILE_GROUP_DROP_TARGET_ATTR, '1');
-        fileGroupDropTargets.set(node, resolve);
-        fileGroupDropTargetNodes.add(node);
+        datasetState.fileGroupDropTargets.set(node, resolve);
+        datasetState.fileGroupDropTargetNodes.add(node);
     }
+
+configureDatasetRenderBridge({
+    renderConfigDatasetPickerDialog,
+    ensureConfigDatasetPreview,
+    renderDatasetPresetList,
+});

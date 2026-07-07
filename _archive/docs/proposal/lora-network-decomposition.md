@@ -1,15 +1,18 @@
 # LoRANetwork 分层拆分迁移提案
 
-状态：活跃提案（核心代码拆分已落地）
+状态：已归档（核心代码拆分已落地）
 适用版本：当前 main
 入口命令：无，本文是 `networks/lora_anima/network.py` 的重构计划
 基线日期：2026-07-06
+归档日期：2026-07-07
 相关代码：
 - `networks/lora_anima/network.py`
 - `networks/lora_anima/config.py`
 - `networks/lora_anima/factory.py`
 - `networks/lora_anima/loading.py`
 - `networks/lora_anima/targeting.py`
+- `networks/lora_anima/builders.py`
+- `networks/lora_anima/module_builders.py`
 - `networks/lora_modules/*`
 - `networks/lora_save.py`
 - `tests/test_lora_network_construction.py`
@@ -92,8 +95,8 @@ networks/lora_anima/
   factory.py              # 已有：网络创建入口
   loading.py              # 已有：checkpoint key 兼容和拒绝逻辑
   targeting.py            # 已有：目标模块收集
-  builders.py             # 新增：网络组件构建编排
-  module_builders.py      # 新增：单个 LoRA module 创建和 class/kwargs 选择
+  builders.py             # 已落地：网络组件构建编排
+  module_builders.py      # 已落地：单个 LoRA module 创建和 class/kwargs 选择
   routing_state.py        # 新增：sigma/FEI/routing buffer wire/set/clear
   router_stats.py         # 新增：router stats、balance loss、grad stats
   routers.py              # 新增：GlobalRouter / FreqRouter / ContentRouter
@@ -167,7 +170,7 @@ timeout 60 .venv/bin/python -m ruff check --no-cache networks/lora_anima tests/t
 
 | 区域 | 当前内容 | 风险 |
 | --- | --- | --- |
-| 构建区 | `__init__` 内部 `create_modules()`、module class 选择、plugin kwargs、router 创建 | 改一处容易影响所有 adapter |
+| 构建区 | `__init__` 内部构建编排、router 创建；单个 module class 选择和 constructor kwargs 已拆到 `module_builders.py` | 改一处容易影响所有 adapter |
 | routing state | sigma/FEI/global/chimera buffer aliasing 和 clear/set 生命周期 | 容易破坏 `torch.compile` 指针稳定或 router 梯度 |
 | metrics/stats | balance loss、router stats、grad stats、metrics keys | 容易破坏日志、训练诊断和性能 |
 | persistence | metadata stamp、load key cleanup、save pipeline | 容易破坏 checkpoint 兼容 |
@@ -182,11 +185,11 @@ timeout 60 .venv/bin/python -m ruff check --no-cache networks/lora_anima tests/t
 | 2 | `router_stats.py` | 计算逻辑可纯函数化，已有 stats/metrics 测试 |
 | 3 | `optimizer_groups.py` | 可通过 param group 描述测试守住行为 |
 | 4 | `routing_state.py` | 收益大，但 aliasing/autograd 风险高，放到护栏更足后 |
-| 5 | `builders.py` | 涉及构建主路径，最后拆 |
+| 5 | `builders.py` / `module_builders.py` | 涉及构建主路径，最后拆 |
 
 ## 依赖图
 
-一句话：先做基线和护栏，再搬低风险逻辑，最后拆构建主路径。
+一句话：先做基线和护栏，再搬低风险逻辑，最后拆构建编排和单个 module 创建。
 
 ```mermaid
 flowchart TD
@@ -195,7 +198,7 @@ flowchart TD
     C --> D["阶段 3：抽 router_stats.py"]
     D --> E["阶段 4：抽 optimizer_groups.py"]
     E --> F["阶段 5：抽 routing_state.py"]
-    F --> G["阶段 6：抽 builders.py"]
+    F --> G["阶段 6：抽 builders.py / module_builders.py"]
     G --> H["阶段 7：缩小 network.py facade"]
 
     B --> I["每阶段保持 LoRANetwork 公共方法兼容"]
@@ -218,7 +221,7 @@ flowchart TD
 | 阶段 3 | 抽 router stats | 移出 stats、balance loss、grad stats、metrics 辅助 | 不改 metrics key | stats/metrics 测试通过 |
 | 阶段 4 | 抽 optimizer groups | 移出 param group 分组和 LR 描述 | 不改 LR 计算规则 | optimizer params 测试通过 |
 | 阶段 5 | 抽 routing state | 移出 shared buffer wire/set/clear | 不改 router 梯度路径 | aliasing/autograd 测试通过 |
-| 阶段 6 | 抽 builders | 移出 `create_modules()` 和模块 class 选择 | 不改目标模块集合 | construction/registry 测试通过 |
+| 阶段 6 | 抽 builders / module_builders | 移出 `create_modules()` 编排，并把单个 module 的 class/kwargs 组装放入 `module_builders.py` | 不改目标模块集合 | construction/registry 测试通过 |
 | 阶段 7 | 缩 facade | 删除死 shim，抽出 router 类，更新文档 | 不做算法重写 | `network.py` 明显变薄，职责稳定 |
 
 ## 任务卡片
@@ -233,7 +236,7 @@ flowchart TD
 | `L3-router-stats` | worker | 抽 `router_stats.py` | balance/stats/metrics 区 | 小补丁 | metrics key 不变，stats 测试通过 | 2h | `network.py`、`router_stats.py`、tests | workspace-write | Medium |
 | `L4-optimizer-groups` | worker | 抽 `optimizer_groups.py` | optimizer param group 区 | 小补丁 | LR 和 descriptions 不变 | 2h | `network.py`、`optimizer_groups.py`、tests | workspace-write | Medium |
 | `L5-routing-state` | worker | 抽 `routing_state.py` | wire/set/clear routing 区 | 分阶段补丁 | aliasing、autograd、clear 行为不变 | 3h | `network.py`、`routing_state.py`、tests | workspace-write | High |
-| `L6-builders` | worker | 抽 `builders.py` | `__init__` 构建区 | 分阶段补丁 | 构建出的 lora/reft/register 集合不变 | 3h+ | `network.py`、`builders.py`、tests | workspace-write | High |
+| `L6-builders` | worker | 抽 `builders.py` / `module_builders.py` | `__init__` 构建区 | 分阶段补丁 | 构建出的 lora/reft/register 集合不变 | 3h+ | `network.py`、`builders.py`、`module_builders.py`、tests | workspace-write | High |
 | `L7-facade-cleanup` | reviewer | 删除死 shim 和更新文档 | `network.py`、proposal、networks docs | 清理补丁 | `network.py` 只保留 facade 和兼容入口 | 60m | docs + small code cleanup | workspace-write | Medium |
 
 执行原则：
@@ -401,16 +404,18 @@ metrics
 - `set_fei()` 必须继续负责 global router firing + broadcast。
 - chimera freq router 仍要求同一步里 `set_sigma()` 先于 `set_fei()`。
 
-## 阶段 6：抽 builders.py
+## 阶段 6：抽 builders.py / module_builders.py
 
-一句话：最后再拆构建主路径，因为这里影响所有 adapter 是否被正确挂载。
+一句话：最后再拆构建主路径，`builders.py` 管编排，`module_builders.py` 管单个 module 的创建细节。
+
+当前落地形态：`builders.py` 只导入并调用 `module_builders.py::create_lora_modules()`；单个 LoRA module 的候选转换、effective class 选择和 constructor kwargs 组装都在 `module_builders.py`。
 
 建议移动：
 
 - `__init__` 内部 `create_modules()`
-- module class resolution
+- module class resolution（落到 `module_builders.py`）
 - router target regex 命中逻辑
-- per-variant constructor kwargs 组装
+- per-variant constructor kwargs 组装（落到 `module_builders.py`）
 - RegisterInjector 创建逻辑
 - global router / chimera router 创建辅助
 
@@ -419,6 +424,7 @@ metrics
 - 先引入 `BuildResult` 或轻量 dataclass，把 `unet_loras`、`text_encoder_loras`、`refts`、router refs、counter 一次性返回。
 - `LoRANetwork.__init__` 只接收结果并挂属性。
 - 不改现有 `LoRANetworkCfg` 字段语义。
+- 落地后职责保持清楚：`builders.py` 只做网络级构建编排，`module_builders.py` 负责单个 LoRA module 创建、module class 选择和 constructor kwargs。
 
 ## 验证矩阵
 
@@ -430,7 +436,7 @@ metrics
 | router stats | `timeout 60 .venv/bin/python -m pytest tests/test_chimera_router_stats.py tests/test_global_router.py` |
 | optimizer groups | `timeout 60 .venv/bin/python -m pytest tests/test_lora_register_tokens.py tests/test_network_registry.py` |
 | routing state | `timeout 60 .venv/bin/python -m pytest tests/test_hydra_sigma_band.py tests/test_global_router.py tests/test_router_compute.py` |
-| builders | `timeout 60 .venv/bin/python -m pytest tests/test_lora_network_construction.py tests/test_network_registry.py tests/test_method_network_lifecycle.py` |
+| builders / module_builders | `timeout 60 .venv/bin/python -m pytest tests/test_lora_network_construction.py tests/test_network_registry.py tests/test_method_network_lifecycle.py` |
 | 文档-only | `git diff --check -- docs/proposal docs/archive-index.md _archive/docs/proposal` |
 
 必要时再补：

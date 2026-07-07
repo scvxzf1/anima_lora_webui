@@ -2,9 +2,28 @@
  * Mechanical split from the former monolithic app closure.
  * Keep this module focused; move newly edited behavior into domain modules.
  */
-const ctx = globalThis.ctx;
+import { ensureQueueFeature } from '../helpers/feature-ensurers.js?v=module-bootstrap-20260707-93';
+import {
+    renderLiveTrainingDashboard,
+    renderTrainingRunSummary,
+    resetLiveSystemPeaks,
+} from '../helpers/live-status-bridge.js?v=module-bootstrap-20260707-93';
+import { closeHistoryDetailDialog, renderHistoryManagerDetail } from '../helpers/history-task-actions-bridge.js?v=module-bootstrap-20260707-93';
+import { ensureHistoryDetailFeature } from '../helpers/history-detail-bridge.js?v=module-bootstrap-20260707-93';
+import { getHistoryState } from '../helpers/history-state-bridge.js?v=module-bootstrap-20260707-93';
+import { configureHistoryTimelineBridge } from '../helpers/history-timeline-bridge.js?v=module-bootstrap-20260707-93';
+import { formatLr, lastValue, parseMetricsFromProgressLine } from '../../live-training/index.js?v=module-bootstrap-20260707-93';
+import { recoverLiveTrainingState, renderLogOutputLines, resetLogOutputLines, setLogStatus } from '../helpers/live-log-bridge.js?v=module-bootstrap-20260707-93';
+import { resetLiveMetricPlaceholders, setEtaMetricText, setMetricText, setText, setTrainingDashboardHeadState, syncLossChartEmptyState, updateDashboardProgressIdleState, updateTrainingToolbarState } from './03-parse-network-arg-entry.js?v=module-bootstrap-20260707-93';
+import { showTrainingView } from '../helpers/queue-view-bridge.js?v=module-bootstrap-20260707-93';
+import { loadTrainingHistoryList, renderTrainingHistoryList } from '../helpers/history-list-bridge.js?v=module-bootstrap-20260707-93';
+import { getTrainingState } from '../helpers/training-state-bridge.js?v=module-bootstrap-20260707-93';
 
-    globalThis.renderConfigGroupTimeline = function renderConfigGroupTimeline(payload) {
+const historyState = getHistoryState();
+const trainingState = getTrainingState();
+
+
+    export function renderConfigGroupTimeline(payload) {
         const group = payload.group || {};
         const summary = payload.summary || {};
         const banner = document.getElementById('history-view-banner');
@@ -49,14 +68,14 @@ const ctx = globalThis.ctx;
 
         const metrics = payload.metrics || [];
         const lossPoints = metrics.filter((item) => item.loss !== undefined);
-        lossChart?.setXLabel?.('step');
-        lossChart?.setScaleMode?.('step', {
+        trainingState.lossChart?.setXLabel?.('step');
+        trainingState.lossChart?.setScaleMode?.('step', {
             xRange: {
                 min: summary.start_display_step ?? lossPoints[0]?.display_step ?? lossPoints[0]?.step,
                 max: summary.end_display_step ?? lossPoints[lossPoints.length - 1]?.display_step ?? lossPoints[lossPoints.length - 1]?.step,
             },
         });
-        lossChart?.setData(lossPoints.map((item) => ({
+        trainingState.lossChart?.setData(lossPoints.map((item) => ({
             step: item.display_step || item.step || 0,
             loss: item.loss,
             lr: item.lr,
@@ -100,16 +119,16 @@ const ctx = globalThis.ctx;
         if (configOutput) configOutput.textContent = configGroupTimelineSummary(payload);
         renderConfigGroupPaths(payload);
         renderResumePanelState();
-        if (trainingViewMode === 'history') renderHistoryManagerDetail(payload);
+        if (trainingState.trainingViewMode === 'history') renderHistoryManagerDetail(payload);
     }
 
-    globalThis.formatGroupTimelineLogRecord = function formatGroupTimelineLogRecord(record) {
+    export function formatGroupTimelineLogRecord(record) {
         const taskPrefix = record.source_task_index ? `[任务${record.source_task_index}] ` : '';
         const kindPrefix = record.kind === 'progress' ? '[进度] ' : '';
         return `${taskPrefix}${kindPrefix}${record.line || ''}`;
     }
 
-    globalThis.configGroupTimelineSummary = function configGroupTimelineSummary(payload) {
+    export function configGroupTimelineSummary(payload) {
         const group = payload.group || {};
         const lines = [`# 手动合并查看: ${configGroupLabel(group)}`, ''];
         for (const segment of payload.segments || []) {
@@ -132,12 +151,12 @@ const ctx = globalThis.ctx;
         return lines.join('\n');
     }
 
-    globalThis.formatStepRange = function formatStepRange(start, end) {
+    export function formatStepRange(start, end) {
         if (start === undefined || start === null || end === undefined || end === null) return '-';
         return `${start} -> ${end}`;
     }
 
-    globalThis.renderConfigGroupPaths = function renderConfigGroupPaths(payload) {
+    export function renderConfigGroupPaths(payload) {
         const group = payload.group || {};
         const summary = payload.summary || {};
         const el = document.getElementById('history-paths');
@@ -164,14 +183,14 @@ const ctx = globalThis.ctx;
         }
     }
 
-    globalThis.configGroupLabel = function configGroupLabel(group) {
+    export function configGroupLabel(group) {
         if (group.methods_subdir === '手动选择') {
             return group.variant || '手动选择';
         }
         return group.history_run_label || group.history_group_label || group.label || `${group.methods_subdir || '-'} / ${group.variant || '-'} / ${group.preset || 'default'}`;
     }
 
-    globalThis.metricsWithProgressFallback = function metricsWithProgressFallback(metrics, logs) {
+    export function metricsWithProgressFallback(metrics, logs) {
         const out = [...metrics];
         const seen = new Set(out.map(metricIdentity));
         for (const record of logs || []) {
@@ -188,7 +207,7 @@ const ctx = globalThis.ctx;
         return out;
     }
 
-    globalThis.metricIdentity = function metricIdentity(item) {
+    export function metricIdentity(item) {
         return [
             item.step ?? '',
             item.loss != null ? Number(item.loss).toFixed(8) : '',
@@ -196,14 +215,14 @@ const ctx = globalThis.ctx;
         ].join('|');
     }
 
-    globalThis.returnToLiveTraining = function returnToLiveTraining(options = {}) {
+    export function returnToLiveTraining(options = {}) {
         const refresh = options.refresh !== false;
         showTrainingView('live');
-        viewingHistoryTaskId = '';
-        historyViewMode = 'live';
-        currentHistoryConfigGroup = null;
-        currentHistoryTimelineSelection = [];
-        currentHistoryTaskForResume = null;
+        historyState.viewingHistoryTaskId = '';
+        historyState.historyViewMode = 'live';
+        historyState.currentHistoryConfigGroup = null;
+        historyState.currentHistoryTimelineSelection = [];
+        historyState.currentHistoryTaskForResume = null;
         ensureHistoryDetailFeature().clearHistoryDetailState();
         closeHistoryDetailDialog();
         clearResumeOptions();
@@ -218,61 +237,61 @@ const ctx = globalThis.ctx;
         const paths = document.getElementById('history-paths');
         if (paths) paths.innerHTML = '';
         resetLogOutputLines();
-        trainingRuntime.logBuffer = [];
-        trainingRuntime.logFlushPending = false;
-        trainingRuntime.lastLogId = 0;
-        trainingRuntime.logLineCount = 0;
-        trainingRuntime.progressCurrent = 0;
-        trainingRuntime.progressTotal = 0;
-        trainingRuntime.progressLabel = '';
-        trainingRuntime.progressRate = '';
-        trainingRuntime.progressSecondsPerStep = null;
-        trainingRuntime.progressUpdatedAt = 0;
+        trainingState.trainingRuntime.logBuffer = [];
+        trainingState.trainingRuntime.logFlushPending = false;
+        trainingState.trainingRuntime.lastLogId = 0;
+        trainingState.trainingRuntime.logLineCount = 0;
+        trainingState.trainingRuntime.progressCurrent = 0;
+        trainingState.trainingRuntime.progressTotal = 0;
+        trainingState.trainingRuntime.progressLabel = '';
+        trainingState.trainingRuntime.progressRate = '';
+        trainingState.trainingRuntime.progressSecondsPerStep = null;
+        trainingState.trainingRuntime.progressUpdatedAt = 0;
         document.getElementById('progress-bar').style.width = '0%';
         document.getElementById('progress-text').textContent = '暂无正在运行的任务目录...';
         resetLiveMetricPlaceholders();
         resetLiveSystemPeaks();
         renderLiveTrainingDashboard();
-        stepCounter = 0;
-        lossChart?.clear();
+        trainingState.stepCounter = 0;
+        trainingState.lossChart?.clear();
         syncLossChartEmptyState();
-        lossChart?.setXLabel?.('step');
-        lossChart?.setScaleMode?.('index');
+        trainingState.lossChart?.setXLabel?.('step');
+        trainingState.lossChart?.setScaleMode?.('index');
         renderTrainingHistoryList();
         if (refresh) {
             recoverLiveTrainingState();
         }
     }
 
-    globalThis.loadResumeOptionsForTask = async function loadResumeOptionsForTask(taskId = viewingHistoryTaskId) {
+    export async function loadResumeOptionsForTask(taskId = historyState.viewingHistoryTaskId) {
         return ensureHistoryDetailFeature().loadResumeOptionsForTask(taskId);
     }
 
-    globalThis.clearResumeOptions = function clearResumeOptions() {
+    export function clearResumeOptions() {
         return ensureHistoryDetailFeature().clearResumeOptions();
     }
 
-    globalThis.renderResumePanelState = function renderResumePanelState() {
+    export function renderResumePanelState() {
         return ensureHistoryDetailFeature().renderResumePanelState();
     }
 
-    globalThis.selectedResumeCheckpoint = function selectedResumeCheckpoint() {
+    export function selectedResumeCheckpoint() {
         return ensureHistoryDetailFeature().selectedResumeCheckpoint();
     }
 
-    globalThis.resumeTrainingFromCheckpoint = async function resumeTrainingFromCheckpoint() {
+    export async function resumeTrainingFromCheckpoint() {
         return ensureHistoryDetailFeature().resumeTrainingFromCheckpoint();
     }
 
-    globalThis.queueResumeTrainingFromCheckpoint = async function queueResumeTrainingFromCheckpoint() {
+    export async function queueResumeTrainingFromCheckpoint() {
         return ensureQueueFeature().queueResumeTrainingFromCheckpoint();
     }
 
-    globalThis.setResumeStatus = function setResumeStatus(text, state = '') {
+    export function setResumeStatus(text, state = '') {
         return ensureHistoryDetailFeature().setResumeStatus(text, state);
     }
 
-    globalThis.renderHistoryPaths = function renderHistoryPaths(task, options = {}) {
+    export function renderHistoryPaths(task, options = {}) {
         const el = document.getElementById('history-paths');
         if (!el) return;
         el.innerHTML = '';
@@ -290,7 +309,7 @@ const ctx = globalThis.ctx;
         }
     }
 
-    globalThis.runtimePathItems = function runtimePathItems(task, options = {}) {
+    export function runtimePathItems(task, options = {}) {
         const includeHistory = options.includeHistory !== false;
         const absolutePath = (value, basePath = '') => historyAbsolutePath(value, task, basePath);
         const runDir = absolutePath(task.run_dir_abs || task.run_dir);
@@ -313,7 +332,7 @@ const ctx = globalThis.ctx;
         ].filter((item) => item && item[1]);
     }
 
-    globalThis.historyAbsolutePath = function historyAbsolutePath(value, task = {}, basePath = '') {
+    export function historyAbsolutePath(value, task = {}, basePath = '') {
         const raw = historyCleanPath(value);
         if (!raw) return '';
         if (historyIsSpecialPath(raw) || historyIsAbsolutePath(raw)) return historyTrimPath(raw);
@@ -333,7 +352,7 @@ const ctx = globalThis.ctx;
         return raw;
     }
 
-    globalThis.historyProjectRoot = function historyProjectRoot(task = {}) {
+    export function historyProjectRoot(task = {}) {
         const explicit = historyCleanPath(task.project_root_abs);
         if (historyIsAbsolutePath(explicit)) return historyTrimPath(explicit);
         const historyDir = historyCleanPath(task.history_dir_abs);
@@ -347,32 +366,32 @@ const ctx = globalThis.ctx;
         return '';
     }
 
-    globalThis.historyLooksProjectRelativePath = function historyLooksProjectRelativePath(value) {
+    export function historyLooksProjectRelativePath(value) {
         return /^(configs|image_dataset|library|logs|models|networks|output|post_image_dataset|scripts|tests|web)(\/|$)/.test(String(value || ''));
     }
 
-    globalThis.historyCleanPath = function historyCleanPath(value) {
+    export function historyCleanPath(value) {
         return String(value || '').trim().replace(/\\/g, '/');
     }
 
-    globalThis.historyIsAbsolutePath = function historyIsAbsolutePath(value) {
+    export function historyIsAbsolutePath(value) {
         return value.startsWith('/') || /^[A-Za-z]:\//.test(value);
     }
 
-    globalThis.historyIsSpecialPath = function historyIsSpecialPath(value) {
+    export function historyIsSpecialPath(value) {
         return /^[a-z][a-z0-9+.-]*:\/\//i.test(value);
     }
 
-    globalThis.historyTrimPath = function historyTrimPath(value) {
+    export function historyTrimPath(value) {
         if (value === '/' || /^[A-Za-z]:\/?$/.test(value)) return value;
         return value.replace(/\/+$/, '');
     }
 
-    globalThis.historyJoinPath = function historyJoinPath(base, path) {
+    export function historyJoinPath(base, path) {
         return `${historyTrimPath(base)}/${String(path || '').replace(/^\/+/, '')}`;
     }
 
-    globalThis.installSelectableHistoryPathText = function installSelectableHistoryPathText(el) {
+    export function installSelectableHistoryPathText(el) {
         if (!el) return;
         el.classList.add('history-detail-select-all');
         el.addEventListener('dblclick', (event) => {
@@ -386,7 +405,7 @@ const ctx = globalThis.ctx;
         });
     }
 
-    globalThis.historyArtifactUrl = function historyArtifactUrl(task, artifactKey, options = {}) {
+    export function historyArtifactUrl(task, artifactKey, options = {}) {
         const taskId = String(task?.id || '').trim();
         const key = String(artifactKey || '').trim();
         if (!taskId || !key) return '#';
@@ -396,7 +415,7 @@ const ctx = globalThis.ctx;
         return `/api/training/history/${encodeURIComponent(taskId)}/artifacts/${encodeURIComponent(key)}${suffix}`;
     }
 
-    globalThis.historyStateLabel = function historyStateLabel(state) {
+    export function historyStateLabel(state) {
         return {
             running: '运行中',
             idle: '完成',
@@ -404,5 +423,37 @@ const ctx = globalThis.ctx;
             interrupted: '已中断',
         }[state] || state || '未知';
     }
+
+    configureHistoryTimelineBridge({
+        renderConfigGroupTimeline,
+        formatGroupTimelineLogRecord,
+        configGroupTimelineSummary,
+        formatStepRange,
+        renderConfigGroupPaths,
+        configGroupLabel,
+        metricsWithProgressFallback,
+        metricIdentity,
+        returnToLiveTraining,
+        loadResumeOptionsForTask,
+        clearResumeOptions,
+        renderResumePanelState,
+        selectedResumeCheckpoint,
+        resumeTrainingFromCheckpoint,
+        queueResumeTrainingFromCheckpoint,
+        setResumeStatus,
+        renderHistoryPaths,
+        runtimePathItems,
+        historyAbsolutePath,
+        historyProjectRoot,
+        historyLooksProjectRelativePath,
+        historyCleanPath,
+        historyIsAbsolutePath,
+        historyIsSpecialPath,
+        historyTrimPath,
+        historyJoinPath,
+        installSelectableHistoryPathText,
+        historyArtifactUrl,
+        historyStateLabel,
+    });
 
     // ── 事件绑定 ──

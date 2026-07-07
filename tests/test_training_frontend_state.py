@@ -12,6 +12,7 @@ import pytest
 
 
 STATIC_DIR = Path(__file__).resolve().parents[1] / "web" / "static"
+REPO_ROOT = Path(__file__).resolve().parents[1]
 APP_JS_PATH = STATIC_DIR / "app.js"
 CHART_JS = STATIC_DIR / "chart.js"
 INDEX_HTML = STATIC_DIR / "index.html"
@@ -27,55 +28,82 @@ GLOBAL_THIS_OBJECT_ASSIGN_RE = re.compile(r"Object\.assign\(\s*globalThis\s*,")
 
 ANIMA_APP_GLOBAL_THIS_BASELINE = {
     "js/features/anima-app/index.js": (0, 0),
-    "js/features/anima-app/imports.js": (2, 1),
     "js/features/anima-app/runtime.js": (0, 0),
-    "js/features/anima-app/chunks/01-scope-state.js": (31, 1),
+    "js/features/anima-app/chunks/01-scope-state.js": (0, 0),
     "js/features/anima-app/chunks/01a-image-test-feature.js": (0, 0),
-    "js/features/anima-app/chunks/02-ensure-history-detail-feature.js": (32, 0),
-    "js/features/anima-app/chunks/03-parse-network-arg-entry.js": (31, 0),
-    "js/features/anima-app/chunks/04-create-config-group-entry.js": (24, 0),
-    "js/features/anima-app/chunks/05-create-stage-resolution-summary.js": (34, 0),
+    "js/features/anima-app/chunks/02-ensure-history-detail-feature.js": (0, 0),
+    "js/features/anima-app/chunks/03-parse-network-arg-entry.js": (0, 0),
+    "js/features/anima-app/chunks/04-create-config-group-entry.js": (0, 0),
+    "js/features/anima-app/chunks/05-create-stage-resolution-summary.js": (0, 0),
     "js/features/anima-app/chunks/05a-no-dataset-regularization-mode.js": (0, 0),
-    "js/features/anima-app/chunks/06-stronger-selective-checkpoint-value.js": (26, 0),
-    "js/features/anima-app/chunks/07-render-config-dataset-picker-dialog.js": (32, 0),
-    "js/features/anima-app/chunks/08-origin-closest.js": (24, 0),
-    "js/features/anima-app/chunks/09-setup-config-group-drop-target.js": (25, 0),
-    "js/features/anima-app/chunks/10-create-dataset-config-input.js": (25, 0),
+    "js/features/anima-app/chunks/06-stronger-selective-checkpoint-value.js": (0, 0),
+    "js/features/anima-app/chunks/07-render-config-dataset-picker-dialog.js": (0, 0),
+    "js/features/anima-app/chunks/08-origin-closest.js": (0, 0),
+    "js/features/anima-app/chunks/09-setup-config-group-drop-target.js": (0, 0),
+    "js/features/anima-app/chunks/10-create-dataset-config-input.js": (0, 0),
     "js/features/anima-app/chunks/10a-dataset-inline-help.js": (0, 0),
-    "js/features/anima-app/chunks/11-create-dataset-editor-row.js": (11, 0),
-    "js/features/anima-app/chunks/12-create-dataset-row-caption-source-mode-editor.js": (22, 0),
-    "js/features/anima-app/chunks/13-update-dataset-editor-rows-setting-value.js": (36, 0),
-    "js/features/anima-app/chunks/14-lora-adapter-kind-from-config.js": (38, 0),
-    "js/features/anima-app/chunks/15-append-sample-prompt-row.js": (26, 0),
-    "js/features/anima-app/chunks/16-load-output-run-config.js": (22, 0),
-    "js/features/anima-app/chunks/17-apply-selected-dataset-preset-to-current-config.js": (15, 0),
-    "js/features/anima-app/chunks/18-delete-dataset-preset-group.js": (32, 0),
-    "js/features/anima-app/chunks/19-current-sample-prompt-text.js": (30, 0),
-    "js/features/anima-app/chunks/20-can-drop-toml-file-to-group.js": (23, 0),
-    "js/features/anima-app/chunks/21-update-toml-selection-ui.js": (31, 0),
-    "js/features/anima-app/chunks/22-update-toml-action-state.js": (22, 0),
-    "js/features/anima-app/chunks/23-move-current-toml-to-group.js": (24, 0),
-    "js/features/anima-app/chunks/24-show-preflight-pending-dialog.js": (29, 0),
-    "js/features/anima-app/chunks/25-update-progress.js": (18, 1),
-    "js/features/anima-app/chunks/26-load-global-settings.js": (61, 0),
+    "js/features/anima-app/chunks/11-create-dataset-editor-row.js": (0, 0),
+    "js/features/anima-app/chunks/12-create-dataset-row-caption-source-mode-editor.js": (0, 0),
+    "js/features/anima-app/chunks/13-update-dataset-editor-rows-setting-value.js": (0, 0),
+    "js/features/anima-app/chunks/14-lora-adapter-kind-from-config.js": (0, 0),
+    "js/features/anima-app/chunks/15-append-sample-prompt-row.js": (0, 0),
+    "js/features/anima-app/chunks/16-load-output-run-config.js": (0, 0),
+    "js/features/anima-app/chunks/17-apply-selected-dataset-preset-to-current-config.js": (0, 0),
+    "js/features/anima-app/chunks/18-delete-dataset-preset-group.js": (0, 0),
+    "js/features/anima-app/chunks/19-current-sample-prompt-text.js": (0, 0),
+    "js/features/anima-app/chunks/20-can-drop-toml-file-to-group.js": (0, 0),
+    "js/features/anima-app/chunks/21-update-toml-selection-ui.js": (0, 0),
+    "js/features/anima-app/chunks/22-update-toml-action-state.js": (0, 0),
+    "js/features/anima-app/chunks/23-move-current-toml-to-group.js": (0, 0),
+    "js/features/anima-app/chunks/24-show-preflight-pending-dialog.js": (0, 0),
+    "js/features/anima-app/chunks/25-update-progress.js": (0, 0),
+    "js/features/anima-app/chunks/26-load-global-settings.js": (0, 0),
     "js/features/anima-app/chunks/26a-status-polling.js": (0, 0),
-    "js/features/anima-app/chunks/27-render-history-collections-workbench.js": (25, 0),
-    "js/features/anima-app/chunks/28-history-collection-search-text.js": (35, 0),
-    "js/features/anima-app/chunks/29-start-history-config-group-pointer-drag.js": (28, 0),
-    "js/features/anima-app/chunks/30-start-history-collection-pointer-drag.js": (20, 0),
-    "js/features/anima-app/chunks/31-create-history-collection-workbench-card.js": (18, 0),
-    "js/features/anima-app/chunks/32-history-task-collection-label.js": (46, 0),
-    "js/features/anima-app/chunks/33-create-history-task-item.js": (22, 0),
-    "js/features/anima-app/chunks/34-show-history-collection-select-dialog.js": (24, 0),
-    "js/features/anima-app/chunks/35-render-config-group-timeline.js": (29, 0),
-    "js/features/anima-app/chunks/36-setup-event-listeners.js": (7, 0),
-    "js/features/anima-app/chunks/37-config-training-source.js": (19, 0),
+    "js/features/anima-app/chunks/27-render-history-collections-workbench.js": (0, 0),
+    "js/features/anima-app/chunks/28-history-collection-search-text.js": (0, 0),
+    "js/features/anima-app/chunks/29-start-history-config-group-pointer-drag.js": (0, 0),
+    "js/features/anima-app/chunks/30-start-history-collection-pointer-drag.js": (0, 0),
+    "js/features/anima-app/chunks/31-create-history-collection-workbench-card.js": (0, 0),
+    "js/features/anima-app/chunks/32-history-task-collection-label.js": (0, 0),
+    "js/features/anima-app/chunks/33-create-history-task-item.js": (0, 0),
+    "js/features/anima-app/chunks/34-show-history-collection-select-dialog.js": (0, 0),
+    "js/features/anima-app/chunks/35-render-config-group-timeline.js": (0, 0),
+    "js/features/anima-app/chunks/36-setup-event-listeners.js": (0, 0),
+    "js/features/anima-app/chunks/37-config-training-source.js": (0, 0),
 }
-GLOBAL_THIS_BRIDGE_PATH = "js/features/anima-app/legacy-globals.js"
+LEGACY_GLOBALS_RELATIVE = "js/features/anima-app/legacy-globals.js"
+LEGACY_GLOBALS_PATH = STATIC_DIR / LEGACY_GLOBALS_RELATIVE
+LEGACY_GLOBALS_REPO_SCAN_ROOTS = (
+    REPO_ROOT / "anima_lora",
+    REPO_ROOT / "gui",
+    REPO_ROOT / "library",
+    REPO_ROOT / "scripts",
+    REPO_ROOT / "web",
+)
+LEGACY_GLOBALS_REPO_SCAN_FILES = (
+    REPO_ROOT / "inference.py",
+    REPO_ROOT / "tasks.py",
+    REPO_ROOT / "train.py",
+)
+LEGACY_GLOBALS_REPO_SCAN_SUFFIXES = {
+    ".css",
+    ".html",
+    ".js",
+    ".json",
+    ".jsx",
+    ".mjs",
+    ".py",
+    ".toml",
+    ".ts",
+    ".tsx",
+}
 GLOBAL_THIS_ALLOWED_OUTSIDE_ANIMA_APP = {
     "app.js": (1, 0),
 }
 GLOBAL_THIS_ZERO_WRITE_PREFIXES = (
+    "js/features/anima-app/features/",
+    "js/features/anima-app/helpers/",
+    "js/features/anima-app/runtime/",
     "js/features/app-shell/",
     "js/features/history-detail/",
     "js/features/image-test/",
@@ -132,6 +160,24 @@ def _frontend_module_text(relative_path: str) -> str:
     return path.read_text(encoding="utf-8")
 
 
+def _assert_imports_from(source: str, module_path: str, names: tuple[str, ...]) -> None:
+    pattern = re.compile(
+        r"import\s+\{(?P<body>[^}]*)\}\s+from\s+['\"]"
+        + re.escape(module_path)
+        + r"(?:\?[^'\"]*)?['\"]",
+        re.S,
+    )
+    imported: set[str] = set()
+    for match in pattern.finditer(source):
+        for raw_name in match.group("body").split(","):
+            name = raw_name.strip()
+            if not name:
+                continue
+            imported.add(name.split(" as ", 1)[0].strip())
+    missing = [name for name in names if name not in imported]
+    assert not missing, f"missing imports from {module_path}: {missing}"
+
+
 def _frontend_feature_text(*relative_paths: str) -> str:
     return "\n".join(_frontend_module_text(relative_path) for relative_path in relative_paths)
 
@@ -140,7 +186,6 @@ def _anima_app_container_text() -> str:
     graph = _frontend_module_graph()
     paths = [
         STATIC_DIR / "js/features/anima-app/index.js",
-        STATIC_DIR / "js/features/anima-app/imports.js",
         *sorted((STATIC_DIR / "js/features/anima-app/chunks").glob("*.js")),
     ]
     for path in paths:
@@ -252,6 +297,32 @@ def _global_this_write_lines(path: Path) -> list[str]:
     return lines
 
 
+def _legacy_globals_repo_scan_paths() -> list[Path]:
+    seen: set[Path] = set()
+    ordered: list[Path] = []
+
+    def add(path: Path) -> None:
+        resolved = path.resolve()
+        if resolved in seen or resolved == LEGACY_GLOBALS_PATH.resolve():
+            return
+        seen.add(resolved)
+        ordered.append(resolved)
+
+    for root in LEGACY_GLOBALS_REPO_SCAN_ROOTS:
+        if not root.exists():
+            continue
+        for path in sorted(root.rglob("*")):
+            if not path.is_file() or path.suffix not in LEGACY_GLOBALS_REPO_SCAN_SUFFIXES:
+                continue
+            add(path)
+
+    for path in LEGACY_GLOBALS_REPO_SCAN_FILES:
+        if path.is_file():
+            add(path)
+
+    return ordered
+
+
 def test_frontend_module_graph_follows_production_entrypoint() -> None:
     graph = _frontend_module_graph()
     relative = [path.relative_to(STATIC_DIR).as_posix() for path in graph]
@@ -260,9 +331,16 @@ def test_frontend_module_graph_follows_production_entrypoint() -> None:
     assert "chart.js" in relative
     assert "js/features/legacy-app.js" not in relative
     assert "js/features/anima-app/index.js" in relative
-    assert "js/features/anima-app/imports.js" in relative
+    assert "js/features/anima-app/imports.js" not in relative
     assert "js/features/anima-app/runtime.js" in relative
-    assert "js/features/anima-app/legacy-globals.js" in relative
+    assert "js/features/anima-app/runtime/api.js" in relative
+    assert "js/features/anima-app/runtime/dom.js" in relative
+    assert "js/features/anima-app/runtime/events.js" in relative
+    assert "js/features/anima-app/runtime/feature-registry.js" in relative
+    assert "js/features/anima-app/helpers/app-constants.js" in relative
+    assert "js/features/anima-app/helpers/feature-ensurers.js" in relative
+    assert "js/features/anima-app/helpers/history-artifacts.js" in relative
+    assert "js/features/anima-app/legacy-globals.js" not in relative
     assert any(path.startswith("js/features/anima-app/chunks/") for path in relative)
     assert "js/features/preview/index.js" in relative
     assert "js/features/preview/state.js" in relative
@@ -348,7 +426,7 @@ def test_anima_app_global_this_writes_do_not_grow() -> None:
     for relative, path in sorted(relative_paths.items()):
         if not relative.startswith("js/features/anima-app/"):
             continue
-        if relative in ANIMA_APP_GLOBAL_THIS_BASELINE or relative == GLOBAL_THIS_BRIDGE_PATH:
+        if relative in ANIMA_APP_GLOBAL_THIS_BASELINE:
             continue
         actual = _global_this_write_counts(path)
         if actual != (0, 0):
@@ -376,7 +454,7 @@ def test_split_frontend_features_do_not_write_global_this() -> None:
     assert not failures
 
 
-def test_legacy_globals_is_the_only_new_global_bridge() -> None:
+def test_anima_app_production_path_has_no_state_global_bridge() -> None:
     graph = _frontend_module_graph()
     failures: list[str] = []
 
@@ -385,71 +463,132 @@ def test_legacy_globals_is_the_only_new_global_bridge() -> None:
         actual = _global_this_write_counts(path)
         if actual == (0, 0):
             continue
-        if relative == GLOBAL_THIS_BRIDGE_PATH:
-            if actual[1] != 0:
-                failures.append(f"{relative}: legacy bridge must not use Object.assign(globalThis, ...)")
-            continue
         if relative in ANIMA_APP_GLOBAL_THIS_BASELINE:
             continue
         allowed = GLOBAL_THIS_ALLOWED_OUTSIDE_ANIMA_APP.get(relative)
         if allowed is not None and actual[0] <= allowed[0] and actual[1] <= allowed[1]:
             continue
         failures.append(
-            f"{relative}: only {GLOBAL_THIS_BRIDGE_PATH} may add new globalThis bridge writes: {actual}\n"
+            f"{relative}: anima-app 生产路径不应再引入新的 globalThis bridge writes: {actual}\n"
             + "\n".join(_global_this_write_lines(path))
         )
 
     assert not failures
 
 
-def test_legacy_globals_bridge_surface_stays_small() -> None:
-    source = _frontend_module_text("js/features/anima-app/legacy-globals.js")
+def test_legacy_globals_shim_is_deleted_and_unreachable() -> None:
+    index_source = _frontend_module_text("js/features/anima-app/index.js")
+    runtime_bridge_source = _frontend_module_text("js/features/anima-app/helpers/runtime-bridge.js")
 
-    for snippet in (
-        "globalThis.ctx = runtime.ctx;",
-        "globalThis.ensureImageTestFeature = bridge.ensureImageTestFeature;",
-        "globalThis.scheduleStatusPoll = bridge.scheduleStatusPoll;",
-        "globalThis.pollStatus = bridge.pollStatus;",
-    ):
-        assert snippet in source
+    assert not LEGACY_GLOBALS_PATH.exists()
+    assert not (STATIC_DIR / "js/features/anima-app/imports.js").exists()
+    assert "legacy-globals.js" not in index_source
+    assert "installLegacyImportGlobals" not in index_source
+    assert "importsModule" not in index_source
+    assert "installLegacyGlobals" not in index_source
+    assert "installLegacyImageTestFeature" not in index_source
+    assert "installLegacyStatusPolling" not in index_source
+    assert "configureAppContextBridge(runtime.ctx);" in index_source
+    assert "configureAppShellStateBridge(runtime.state.appShell);" in index_source
+    assert "configureConfigStateBridge(runtime.state.config);" in index_source
+    assert "configureDatasetStateBridge(runtime.state.dataset);" in index_source
+    assert "configureHistoryStateBridge(runtime.state.history);" in index_source
+    assert "configureRuntimeBridge(runtime);" in index_source
+    assert "configureTomlStateBridge(runtime.state.toml);" in index_source
+    assert "configureImageTestBridge(imageTestFeatureBridge.ensureImageTestFeature);" in index_source
+    assert "configureStatusPollingBridge(statusPollingBridge);" in index_source
+    assert "installLegacyStateGlobals(runtime);" not in index_source
+    assert "import { installLegacyStateGlobals }" not in index_source
+    assert "export function configureRuntimeBridge(runtime) {" in runtime_bridge_source
+    assert "export function api(...args) {" in runtime_bridge_source
+    assert "return requireRuntimeApi()(...args);" in runtime_bridge_source
+    assert "return requireRuntimeApi().datasetPresetApi(...args);" in runtime_bridge_source
+    assert "return requireRuntimeDom().val(...args);" in runtime_bridge_source
+    assert "return requireRuntimeDom().populateSelect(...args);" in runtime_bridge_source
 
-    for snippet in (
-        "__animaRuntime",
-        "__animaAppContext",
-        "Object.defineProperty(globalThis, 'imageTestFeature'",
-        "globalThis.trainingStatusPollDelayMs",
-        "globalThis.refreshTrainingSidebarSummariesFromPoll",
-        "globalThis.applyStatusSnapshotFallbacks",
-        "globalThis.hasStatusPayload",
-    ):
-        assert snippet not in source
+
+def test_legacy_globals_file_has_no_repo_source_consumers() -> None:
+    failures: list[str] = []
+
+    for path in _legacy_globals_repo_scan_paths():
+        source = path.read_text(encoding="utf-8")
+        matches = [
+            needle
+            for needle in ("legacy-globals.js", "installLegacyStateGlobals")
+            if needle in source
+        ]
+        if not matches:
+            continue
+        failures.append(
+            f"{path.relative_to(REPO_ROOT).as_posix()}: {', '.join(matches)}"
+        )
+
+    assert not failures
 
 
-def test_legacy_state_globals_proxy_runtime_state() -> None:
+def test_runtime_bridge_helpers_do_not_require_legacy_globals_shim() -> None:
     if not shutil.which("node"):
         pytest.skip("node is required for anima-app runtime state bridge checks")
     script = r"""
 import { createAnimaRuntime } from './web/static/js/features/anima-app/runtime.js';
-import { installLegacyStateGlobals } from './web/static/js/features/anima-app/legacy-globals.js';
+import {
+    api,
+    configureRuntimeBridge,
+    datasetPresetApi,
+    populateSelect,
+    val,
+} from './web/static/js/features/anima-app/helpers/runtime-bridge.js';
 
 const runtime = createAnimaRuntime({});
-installLegacyStateGlobals(runtime);
+const apiCalls = [];
+const populateCalls = [];
+const bridgeRuntime = {
+    api: Object.assign(
+    (...args) => {
+        apiCalls.push(['api', ...args]);
+        return { kind: 'api', args };
+    },
+    {
+        datasetPresetApi: (...args) => {
+            apiCalls.push(['datasetPresetApi', ...args]);
+            return { kind: 'datasetPresetApi', args };
+        },
+    },
+    ),
+    dom: {
+        val: (...args) => `value:${args.join('|')}`,
+        populateSelect: (...args) => {
+            populateCalls.push(args);
+            return { kind: 'populateSelect', args };
+        },
+    },
+};
+configureRuntimeBridge(bridgeRuntime);
 
-globalThis.currentConfig = { name: 'runtime-config' };
+globalThis.currentConfig = { name: 'shadow-config' };
 globalThis.trainingStatusPollFailures = 2;
 runtime.state.training.trainingRuntime.state = 'running';
 
 const result = {
-    currentConfigName: runtime.state.config.currentConfig.name,
+    currentConfigKeys: Object.keys(runtime.state.config.currentConfig).length,
     pollFailures: runtime.state.training.trainingStatusPollFailures,
-    trainingRuntimeState: globalThis.trainingRuntime.state,
+    runtimeTrainingState: runtime.state.training.trainingRuntime.state,
+    globalCurrentConfigName: globalThis.currentConfig.name,
+    hasTrainingRuntimeOnGlobal: Object.prototype.hasOwnProperty.call(globalThis, 'trainingRuntime'),
+    globalTrainingRuntimeType: typeof globalThis.trainingRuntime,
+    apiKind: api('/api/test', { method: 'POST' }).kind,
+    apiFirstPath: apiCalls[0]?.[1],
+    apiFirstMethod: apiCalls[0]?.[2]?.method,
+    datasetApiKind: datasetPresetApi('/api/datasets').kind,
+    datasetApiPath: apiCalls[1]?.[1],
+    valResult: val('variant-select'),
+    populateKind: populateSelect('preset-select', ['default'], 'default').kind,
+    populateTarget: populateCalls[0]?.[0],
+    populateDefault: populateCalls[0]?.[2],
 };
 
-for (const bucket of Object.values(runtime.state)) {
-    for (const key of Object.keys(bucket)) {
-        delete globalThis[key];
-    }
-}
+delete globalThis.currentConfig;
+delete globalThis.trainingStatusPollFailures;
 
 console.log(JSON.stringify(result));
 """
@@ -463,9 +602,858 @@ console.log(JSON.stringify(result));
 
     assert result.returncode == 0, result.stderr or result.stdout
     assert json.loads(result.stdout) == {
-        "currentConfigName": "runtime-config",
-        "pollFailures": 2,
-        "trainingRuntimeState": "running",
+        "currentConfigKeys": 0,
+        "pollFailures": 0,
+        "runtimeTrainingState": "running",
+        "globalCurrentConfigName": "shadow-config",
+        "hasTrainingRuntimeOnGlobal": False,
+        "globalTrainingRuntimeType": "undefined",
+        "apiKind": "api",
+        "apiFirstPath": "/api/test",
+        "apiFirstMethod": "POST",
+        "datasetApiKind": "datasetPresetApi",
+        "datasetApiPath": "/api/datasets",
+        "valResult": "value:variant-select",
+        "populateKind": "populateSelect",
+        "populateTarget": "preset-select",
+        "populateDefault": "default",
+    }
+
+
+def test_config_form_bridge_reaches_split_form_chunks() -> None:
+    bridge_source = _frontend_module_text("js/features/anima-app/helpers/config-form-bridge.js")
+    ensure_history_source = _frontend_module_text("js/features/anima-app/chunks/02-ensure-history-detail-feature.js")
+    bridge_names = (
+        "syncConfigDraftFromForm",
+        "updateConfigDraftFromInput",
+        "originalConfigFieldValue",
+        "displayConfigFieldValue",
+        "configDraftValueChanged",
+        "isActiveNetworkArgFieldKey",
+    )
+
+    for name in bridge_names:
+        assert f"{name}: (...args)" in bridge_source
+        assert f"export const {name}" in bridge_source
+        assert f"    {name}," in ensure_history_source
+
+    assert "configureConfigFormBridge({" in ensure_history_source
+    _assert_imports_from(
+        ensure_history_source,
+        "../helpers/config-form-bridge.js",
+        ("configureConfigFormBridge",),
+    )
+
+    required_imports = {
+        "js/features/anima-app/chunks/05a-no-dataset-regularization-mode.js": (
+            "originalConfigFieldValue",
+        ),
+        "js/features/anima-app/chunks/06-stronger-selective-checkpoint-value.js": (
+            "originalConfigFieldValue",
+        ),
+        "js/features/anima-app/chunks/13-update-dataset-editor-rows-setting-value.js": (
+            "configDraftValueChanged",
+            "originalConfigFieldValue",
+            "updateConfigDraftFromInput",
+        ),
+        "js/features/anima-app/chunks/14-lora-adapter-kind-from-config.js": (
+            "displayConfigFieldValue",
+            "isActiveNetworkArgFieldKey",
+            "originalConfigFieldValue",
+            "syncConfigDraftFromForm",
+        ),
+        "js/features/anima-app/chunks/18-delete-dataset-preset-group.js": (
+            "configDraftValueChanged",
+            "displayConfigFieldValue",
+            "isActiveNetworkArgFieldKey",
+            "originalConfigFieldValue",
+            "syncConfigDraftFromForm",
+        ),
+        "js/features/anima-app/chunks/21-update-toml-selection-ui.js": (
+            "configDraftValueChanged",
+            "isActiveNetworkArgFieldKey",
+            "originalConfigFieldValue",
+        ),
+    }
+    for relative_path, names in required_imports.items():
+        _assert_imports_from(
+            _frontend_module_text(relative_path),
+            "../helpers/config-form-bridge.js",
+            names,
+        )
+
+
+def test_state_bucket_bridges_reach_hotspot_chunks() -> None:
+    index_source = _frontend_module_text("js/features/anima-app/index.js")
+    scope_source = _frontend_module_text("js/features/anima-app/chunks/01-scope-state.js")
+    ensure_history_source = _frontend_module_text("js/features/anima-app/chunks/02-ensure-history-detail-feature.js")
+    dataset_runtime_source = _frontend_module_text("js/features/anima-app/chunks/03-parse-network-arg-entry.js")
+    config_groups_source = _frontend_module_text("js/features/anima-app/chunks/04-create-config-group-entry.js")
+    dataset_picker_source = _frontend_module_text("js/features/anima-app/chunks/06-stronger-selective-checkpoint-value.js")
+    config_dataset_dialog_source = _frontend_module_text("js/features/anima-app/chunks/07-render-config-dataset-picker-dialog.js")
+    file_group_drag_source = _frontend_module_text("js/features/anima-app/chunks/08-origin-closest.js")
+    dataset_group_source = _frontend_module_text("js/features/anima-app/chunks/09-setup-config-group-drop-target.js")
+    dataset_inline_help_source = _frontend_module_text("js/features/anima-app/chunks/10a-dataset-inline-help.js")
+    dataset_row_source = _frontend_module_text("js/features/anima-app/chunks/11-create-dataset-editor-row.js")
+    dataset_caption_source = _frontend_module_text("js/features/anima-app/chunks/12-create-dataset-row-caption-source-mode-editor.js")
+    dataset_guide_source = _frontend_module_text("js/features/anima-app/chunks/13-update-dataset-editor-rows-setting-value.js")
+    form_fields_source = _frontend_module_text("js/features/anima-app/chunks/14-lora-adapter-kind-from-config.js")
+    dataset_apply_source = _frontend_module_text("js/features/anima-app/chunks/17-apply-selected-dataset-preset-to-current-config.js")
+    config_form_patch_source = _frontend_module_text("js/features/anima-app/chunks/18-delete-dataset-preset-group.js")
+    toml_manager_source = _frontend_module_text("js/features/anima-app/chunks/15-append-sample-prompt-row.js")
+    output_run_source = _frontend_module_text("js/features/anima-app/chunks/16-load-output-run-config.js")
+    sample_prompts_source = _frontend_module_text("js/features/anima-app/chunks/19-current-sample-prompt-text.js")
+    preflight_source = _frontend_module_text("js/features/anima-app/chunks/24-show-preflight-pending-dialog.js")
+    progress_source = _frontend_module_text("js/features/anima-app/chunks/25-update-progress.js")
+    toml_drag_source = _frontend_module_text("js/features/anima-app/chunks/20-can-drop-toml-file-to-group.js")
+    toml_selection_source = _frontend_module_text("js/features/anima-app/chunks/21-update-toml-selection-ui.js")
+    toml_action_state_source = _frontend_module_text("js/features/anima-app/chunks/22-update-toml-action-state.js")
+    toml_actions_source = _frontend_module_text("js/features/anima-app/chunks/23-move-current-toml-to-group.js")
+    settings_source = _frontend_module_text("js/features/anima-app/chunks/26-load-global-settings.js")
+    history_workbench_source = _frontend_module_text("js/features/anima-app/chunks/27-render-history-collections-workbench.js")
+    config_group_drag_source = _frontend_module_text("js/features/anima-app/chunks/29-start-history-config-group-pointer-drag.js")
+    collection_drag_source = _frontend_module_text("js/features/anima-app/chunks/30-start-history-collection-pointer-drag.js")
+    collection_card_source = _frontend_module_text("js/features/anima-app/chunks/31-create-history-collection-workbench-card.js")
+    collection_state_source = _frontend_module_text("js/features/anima-app/chunks/32-history-task-collection-label.js")
+    history_item_source = _frontend_module_text("js/features/anima-app/chunks/33-create-history-task-item.js")
+    history_collection_dialog_source = _frontend_module_text("js/features/anima-app/chunks/34-show-history-collection-select-dialog.js")
+    history_timeline_source = _frontend_module_text("js/features/anima-app/chunks/35-render-config-group-timeline.js")
+    listeners_source = _frontend_module_text("js/features/anima-app/chunks/36-setup-event-listeners.js")
+    training_source = _frontend_module_text("js/features/anima-app/chunks/37-config-training-source.js")
+
+    for snippet in (
+        "configureAppShellStateBridge(runtime.state.appShell);",
+        "configureConfigStateBridge(runtime.state.config);",
+        "configureDatasetStateBridge(runtime.state.dataset);",
+        "configureHistoryStateBridge(runtime.state.history);",
+        "configureTomlStateBridge(runtime.state.toml);",
+        "createStatusPollingBridge(runtime.state.training)",
+    ):
+        assert snippet in index_source
+
+    assert "const appShellState = getAppShellState();" in scope_source
+    assert "configureQueueFeatureEnsurer(ctx, appShellState, {" in scope_source
+    assert "configurePreviewFeatureEnsurer(ctx, appShellState, {" in scope_source
+    assert "getTrainingViewMode: () => trainingState.trainingViewMode" in scope_source
+
+    for snippet in (
+        "const configState = getConfigState();",
+        "const datasetState = getDatasetState();",
+        "const tomlState = getTomlState();",
+        "const trainingState = getTrainingState();",
+        "const configFormState = configState.configFormState;",
+        "function currentConfigState() {",
+        "function currentTrainingSourceState() {",
+        "function currentContinueTrainingSource() {",
+        "getLossChart: () => trainingState.lossChart,",
+        "trainingState.lossChart = new MetricsChart(document.getElementById('loss-chart'), {",
+        "showLr: trainingState.liveChartState.showLr,",
+        "configState.fieldHelp = help;",
+        "if (!tomlState.currentTomlFile) {",
+        "const requestSeq = ++configState.configLoadSeq;",
+        "const currentTrainingSource = currentTrainingSourceState();",
+        "configState.currentConfig = data;",
+        "datasetState.selectedConfigDatasetFile = data.dataset_config || '';",
+        "if (currentContinueTrainingSource()?.abs_path) {",
+        "if (configState.samplePromptsMode === 'editor-file') {",
+        "configState.samplePromptsLoadSeq += 1;",
+        "updateTomlActionState(tomlState.currentTomlFile);",
+        "if (tomlState.tomlFiles.includes(tomlFile) && tomlState.currentTomlFile !== tomlFile) {",
+        "configState.configFormState.draftValues.clear();",
+        "if (key === 'sample_prompts' && configState.samplePromptsMode !== 'path') {",
+        "return configState.samplePromptsContent || '';",
+        "export function shouldRenderConfigSection(section, config = currentConfigState()) {",
+        "export function activeNetworkArgSpecs(config = currentConfigState()) {",
+    ):
+        assert snippet in ensure_history_source
+
+    for snippet in (
+        "const configState = getConfigState();",
+        "const configFormState = configState.configFormState;",
+        "const stageResolutionState = configState.stageResolutionState;",
+        "function currentConfigState() {",
+        "renderConfigForm(currentConfigState());",
+        "configState.fieldHelp[key] ? JSON.stringify(configState.fieldHelp[key]) : ''",
+        "const hintId = `config-group-hint-${++configState.configGroupHintSeq}`;",
+    ):
+        assert snippet in config_groups_source
+
+    for snippet in (
+        "const configState = getConfigState();",
+        "const datasetState = getDatasetState();",
+        "const trainingState = getTrainingState();",
+        "function currentTrainingSourceState() {",
+        "export async function loadStepEstimate(parentSeq = configState.configLoadSeq) {",
+        "const requestSeq = ++configState.stepEstimateSeq;",
+        "const requestSeq = ++datasetState.datasetLoadSeq;",
+        "datasetState.datasetEditorState = {",
+        "const requestSeq = ++datasetState.datasetPresetLoadSeq;",
+        "datasetState.selectedConfigDatasetSummary = datasetPresetSummaryByFile(datasetState.selectedConfigDatasetFile);",
+        "const trainingRuntime = trainingState.trainingRuntime;",
+    ):
+        assert snippet in dataset_runtime_source
+
+    for snippet in (
+        "const appShellState = getAppShellState();",
+        "const configState = getConfigState();",
+        "const datasetState = getDatasetState();",
+        "const historyState = getHistoryState();",
+        "const tomlState = getTomlState();",
+        "const trainingState = getTrainingState();",
+        "function currentTrainingSourceState() {",
+        "if (!appShellState.globalSettings && location.protocol !== 'file:') {",
+        "openBtn.textContent = datasetState.selectedConfigDatasetFile ? '更换预设' : '选择预设';",
+        "const continueTrainingSource = currentContinueTrainingSource();",
+        "updateTomlActionState(tomlState.currentTomlFile);",
+        "trainingState.continueTrainingSource = payload;",
+    ):
+        assert snippet in dataset_picker_source
+
+    for snippet in (
+        "const configState = getConfigState();",
+        "const datasetState = getDatasetState();",
+        "function currentConfigState() {",
+        "function currentDatasetPresetState() {",
+        "function currentConfigDatasetPreviewState() {",
+        "search.value = datasetState.configDatasetPickerSearch;",
+        "const active = file === datasetState.selectedConfigDatasetFile;",
+        "const summary = datasetState.selectedConfigDatasetSummary || preset?.summary || {};",
+        "if (datasetState.selectedConfigDatasetFile !== (currentConfigState().dataset_config || '')) {",
+        "datasetState.selectedConfigDatasetFile = file || '';",
+        "datasetState.configDatasetPreviewState = {",
+        "const requestSeq = ++datasetState.configDatasetPreviewRequestSeq;",
+        "datasetState.fileGroupDragState = payload;",
+        "datasetState.fileGroupDropTargets.set(node, resolve);",
+        "datasetState.fileGroupDropTargetNodes.add(node);",
+    ):
+        assert snippet in config_dataset_dialog_source
+
+    for snippet in (
+        "const datasetState = getDatasetState();",
+        "function currentFileGroupDragState() {",
+        "function currentFileGroupPointerDrag() {",
+        "function currentFileGroupDropPreviewElement() {",
+        "function currentFileGroupDropTargets() {",
+        "function currentFileGroupDropTargetNodes() {",
+        "function currentFileGroupActiveDropTargetNode() {",
+        "function currentFileGroupActiveDropPosition() {",
+        "const payload = currentFileGroupDragState();",
+        "const drag = currentFileGroupPointerDrag();",
+        "datasetState.fileGroupDropPreviewElement = preview;",
+        "datasetState.fileGroupPointerDrag = drag;",
+        "datasetState.fileGroupActiveDropTargetNode = node;",
+        "datasetState.fileGroupActiveDropPosition = normalizedPosition;",
+        "datasetState.fileGroupDragState = null;",
+    ):
+        assert snippet in file_group_drag_source
+
+    for snippet in (
+        "const configState = getConfigState();",
+        "const datasetState = getDatasetState();",
+        "function currentConfigState() {",
+        "function currentDatasetPresetState() {",
+        "function currentDatasetEditorState() {",
+        "function currentFileGroupDragState() {",
+        "const payload = currentFileGroupDragState();",
+        "const datasetPresetState = currentDatasetPresetState();",
+        "source_dir: currentConfigState().source_image_dir || '',",
+        "return isDatasetTabActive() ? currentDatasetPresetState() : currentDatasetEditorState();",
+        "datasetState.datasetPresetState.datasets = rows;",
+        "datasetState.datasetEditorState.datasets = rows;",
+        "return currentDatasetEditorState().dataset_config || currentConfigState().dataset_config || '保存后自动生成 configs/datasets/<当前配置>.toml';",
+    ):
+        assert snippet in dataset_group_source
+
+    for snippet in (
+        "const datasetState = getDatasetState();",
+        "function currentDatasetPresetState() {",
+        "function currentDatasetEditorState() {",
+        "`preset:${currentDatasetPresetState().selectedFile || 'new'}`",
+        "`config:${currentDatasetEditorState().dataset_config || (typeof currentTrainingConfigFile === 'function' ? currentTrainingConfigFile() : '') || 'current'}`",
+        "datasetState.datasetExperimentalOpenStates.set(datasetExperimentalOpenKey(index), Boolean(open));",
+        "return datasetState.datasetExperimentalOpenStates.has(key)",
+        "? datasetState.datasetExperimentalOpenStates.get(key)",
+    ):
+        assert snippet in dataset_inline_help_source
+
+    for snippet in (
+        "const datasetState = getDatasetState();",
+        "function currentDatasetPresetState() {",
+        "const presetState = currentDatasetPresetState();",
+        "previewBtn.disabled = !presetState.selectedFile || presetState.dirty;",
+    ):
+        assert snippet in dataset_row_source
+
+    for snippet in (
+        "const datasetState = getDatasetState();",
+        "function currentDatasetPresetState() {",
+        "function currentDatasetPreviewState() {",
+        "const helpId = `dataset-caption-source-notes-${++datasetState.datasetCaptionSourceHelpSeq}`;",
+        "if (!currentDatasetPresetState().selectedFile) {",
+        "const previewState = currentDatasetPreviewState();",
+        "const requestSeq = ++datasetState.datasetPreviewLoadSeq;",
+        "if (requestSeq !== datasetState.datasetPreviewLoadSeq) return;",
+        "currentDatasetPreviewState().payload = {",
+        "['数据集文件', payload.file || currentDatasetPresetState().selectedFile || '-'],",
+        "datasetState.datasetPresetState.defaults = defaults;",
+        "datasetState.datasetEditorState.defaults = defaults;",
+        "datasetState.datasetPresetState.datasets = rows;",
+        "datasetState.datasetEditorState.datasets = rows;",
+    ):
+        assert snippet in dataset_caption_source
+
+    for snippet in (
+        "const appShellState = getAppShellState();",
+        "const configState = getConfigState();",
+        "const datasetState = getDatasetState();",
+        "const trainingState = getTrainingState();",
+        "function currentConfigState() {",
+        "function currentTrainingSourceState() {",
+        "function datasetExperimentalScopeSelectionsState() {",
+        "datasetState.datasetPresetState.datasets = rows;",
+        "datasetState.datasetEditorState.datasets = rows;",
+        "const selectionSnapshot = configState.selectionSnapshot;",
+        "trainingState.currentTrainingSource = {",
+        "const helpId = `choice-guide-hint-${++configState.choiceGuideHintSeq}`;",
+        "const globalSettings = appShellState.globalSettings;",
+    ):
+        assert snippet in dataset_guide_source
+
+    for snippet in (
+        "const configState = getConfigState();",
+        "function currentConfigState() {",
+        "const configFormState = configState.configFormState;",
+        "const currentConfig = currentConfigState();",
+        "if (key === 'sample_prompts' && configState.samplePromptsMode !== 'path') {",
+        "if (configState.samplePromptsMode === 'path') {",
+        "const rawNetworkArgsChanged = configFormState.draftValues.has('network_args');",
+    ):
+        assert snippet in form_fields_source
+
+    for snippet in (
+        "const configState = getConfigState();",
+        "const datasetState = getDatasetState();",
+        "const tomlState = getTomlState();",
+        "const currentConfig = currentConfigState();",
+        "const nextDataset = datasetState.selectedConfigDatasetFile || '';",
+        "if (typeof res.content === 'string' && file === (tomlState.currentTomlFile || val('toml-file-select'))) {",
+        "tomlState.tomlSavedContent = res.content;",
+        "datasetState.datasetPresetState = {",
+    ):
+        assert snippet in dataset_apply_source
+
+    for snippet in (
+        "const configState = getConfigState();",
+        "const datasetState = getDatasetState();",
+        "const tomlState = getTomlState();",
+        "const trainingState = getTrainingState();",
+        "function currentTrainingSourceState() {",
+        "const configFormState = configState.configFormState;",
+        "const targetFile = options.trainFile || currentTrainingSource.file || tomlState.currentTomlFile || '';",
+        "tomlState.tomlSavedContent = res.train_content;",
+        "datasetState.datasetEditorState = {",
+        "if (configState.samplePromptsMode === 'path') {",
+        "nextValues.sample_prompts = saved.file || configState.samplePromptsPath;",
+    ):
+        assert snippet in config_form_patch_source
+
+    for snippet in (
+        "const configState = getConfigState();",
+        "const datasetState = getDatasetState();",
+        "const tomlState = getTomlState();",
+        "const trainingState = getTrainingState();",
+        "const remote = configState.fieldHelp[key];",
+        "export function updateConfigPageSummary(mode = tomlState.tomlManagerMode) {",
+        "datasetState.outputRunState = {",
+        "const target = currentTrainingSourceState().file || `configs/${methodsSubdir}/${variant}.toml`;",
+    ):
+        assert snippet in toml_manager_source
+
+    for snippet in (
+        "const datasetState = getDatasetState();",
+        "const tomlState = getTomlState();",
+        "const trainingState = getTrainingState();",
+        "function currentOutputRunState() {",
+        "tomlState.currentTomlFile = filePath;",
+        "tomlState.tomlSavedContent = data.content || '';",
+        "return await saveRawTomlContent(file, document.getElementById('toml-editor').value, { reloadConfig: currentTrainingSourceState().file === file });",
+    ):
+        assert snippet in output_run_source
+
+    for snippet in (
+        "const configState = getConfigState();",
+        "const tomlState = getTomlState();",
+        "const trainingState = getTrainingState();",
+        "const previousMode = configState.samplePromptsMode;",
+        "const requestSeq = ++configState.samplePromptsLoadSeq;",
+        "train_config_file: currentTrainingSourceState().file || tomlState.currentTomlFile || '',",
+        "trainingState.currentTrainingSource = {",
+    ):
+        assert snippet in sample_prompts_source
+
+    for snippet in (
+        "const tomlState = getTomlState();",
+        "const trainingState = getTrainingState();",
+        "const trainingRuntime = trainingState.trainingRuntime;",
+        "return currentTrainingSource.file || tomlState.currentTomlFile || val('toml-file-select') || '';",
+        "trainingState.ws = new WebSocket(",
+    ):
+        assert snippet in preflight_source
+
+    for snippet in (
+        "const trainingState = getTrainingState();",
+        "const trainingRuntime = trainingState.trainingRuntime;",
+        "const step = msg.step || ++trainingState.stepCounter;",
+        "trainingState.lossChart?.push(step, lossNumber, metadata);",
+        "trainingState.lossChart?.updatePointMetadata?.(msg.step, { lr: lrNumber });",
+    ):
+        assert snippet in progress_source
+
+    for snippet in (
+        "const tomlState = getTomlState();",
+        "const trainingState = getTrainingState();",
+        "return Boolean(item?.path && !item.locked && !hasPendingConfigChanges(tomlState.currentTomlFile));",
+        "if (tomlState.tomlFiles.includes(prev)) {",
+        "if (tomlState.tomlGroupActionBusy) return;",
+        "tomlState.tomlGroupActionBusy = true;",
+        "if (currentTrainingSourceState().file === item.path) tags.push('当前训练');",
+    ):
+        assert snippet in toml_drag_source
+
+    for snippet in (
+        "const configState = getConfigState();",
+        "const datasetState = getDatasetState();",
+        "const tomlState = getTomlState();",
+        "const trainingState = getTrainingState();",
+        "return currentTrainingSourceState().file || '';",
+        "const selectedFile = tomlState.currentTomlFile || val('toml-file-select') || '';",
+        "setBadge('toml-current-badge', Boolean(filePath && currentTrainingSourceState().file === filePath), '当前训练');",
+    ):
+        assert snippet in toml_selection_source
+
+    for snippet in (
+        "const tomlState = getTomlState();",
+        "const trainingState = getTrainingState();",
+        "const trainingRuntime = trainingState.trainingRuntime;",
+        "const selectedFile = filePath || tomlState.currentTomlFile || val('toml-file-select') || '';",
+        "const confirming = canDelete && tomlState.tomlDeleteConfirmFile === selectedFile;",
+        "return Boolean(tomlState.tomlFileMeta[filePath]?.locked);",
+        "const open = Boolean(panel && !panel.hidden && tomlState.tomlManagerMode === 'project');",
+        "trainingState.currentTrainingSource = {",
+    ):
+        assert snippet in toml_action_state_source
+
+    for snippet in (
+        "const datasetState = getDatasetState();",
+        "const tomlState = getTomlState();",
+        "const trainingState = getTrainingState();",
+        "const trainingRuntime = trainingState.trainingRuntime;",
+        "const file = tomlState.currentTomlFile || val('toml-file-select');",
+        "delete tomlState.tomlFileMeta[file];",
+        "tomlState.tomlFiles = tomlState.tomlFiles.filter((item) => item !== file);",
+        "tomlState.currentTomlFile = '';",
+        "if (tomlState.tomlManagerMode !== 'output' || !currentOutputRunState().file) {",
+        "const variant = currentTrainingSourceState().method || val('variant-select');",
+    ):
+        assert snippet in toml_actions_source
+
+    for snippet in (
+        "const appShellState = getAppShellState();",
+        "const historyState = getHistoryState();",
+        "const tomlState = getTomlState();",
+        "const trainingState = getTrainingState();",
+        "appShellState.globalSettings = data;",
+        "trainingState.trainingViewMode = ['live', 'queue', 'history'].includes(mode) ? mode : 'live';",
+        "historyState.historyTasks = payload.tasks || [];",
+    ):
+        assert snippet in settings_source
+
+    for snippet in (
+        "const historyState = getHistoryState();",
+        "historyState.historyCurrentVisibleTaskIds = historyTaskIds(currentVisibleTasks);",
+        "if (historyState.viewingHistoryTaskId === task.id && isHistoryDetailDialogOpen())",
+    ):
+        assert snippet in history_workbench_source
+
+    for snippet in (
+        "const trainingState = getTrainingState();",
+        "trainingState.lossChart?.setXLabel?.('step');",
+        "trainingState.lossChart?.setData(chartPoints, { keepAll: true });",
+    ):
+        assert snippet in history_collection_dialog_source
+
+    for snippet in (
+        "const trainingState = getTrainingState();",
+        "trainingState.lossChart?.setXLabel?.('step');",
+        "trainingState.lossChart?.setData(lossPoints.map((item) => ({",
+        "trainingState.lossChart?.clear();",
+    ):
+        assert snippet in history_timeline_source
+
+    for snippet in (
+        "const historyState = getHistoryState();",
+        "historyState.historyConfigGroupSortState.pending = true;",
+        "historyState.historyCollectionDragState = {",
+    ):
+        assert snippet in config_group_drag_source
+
+    for snippet in (
+        "const trainingState = getTrainingState();",
+        "trainingState.liveChartState.showLr = Boolean(event.target.checked);",
+        "trainingState.liveChartState.rangeMode = event.target.value || 'all';",
+    ):
+        assert snippet in listeners_source
+
+    for snippet in (
+        "const historyState = getHistoryState();",
+        "const trainingState = getTrainingState();",
+        "historyState.historyDragState.pending = true;",
+        "historyState.selectedHistoryCollectionKey = clean ? `collection:${clean}` : HISTORY_UNGROUPED_COLLECTION_KEY;",
+        "if (trainingState.trainingViewMode === 'history') renderHistoryManager();",
+    ):
+        assert snippet in collection_drag_source
+
+    for snippet in (
+        "const historyState = getHistoryState();",
+        "historyState.historyCollectionWorkbenchTarget =",
+        "historyState.historyCollectionSettings.collection_order",
+    ):
+        assert snippet in collection_card_source
+
+    for snippet in (
+        "const historyState = getHistoryState();",
+        "historyState.selectedHistoryTaskIds = new Set(",
+        "historyState.historyCollectionSettings = normalizeHistoryCollectionSettings({",
+    ):
+        assert snippet in collection_state_source
+
+    for snippet in (
+        "const historyState = getHistoryState();",
+        "if (task.id === historyState.viewingHistoryTaskId && isHistoryReviewMode())",
+        "historyState.currentHistoryTaskForResume = payload.task || null;",
+    ):
+        assert snippet in history_item_source
+
+    for snippet in (
+        "const historyState = getHistoryState();",
+        "const tomlState = getTomlState();",
+        "const trainingState = getTrainingState();",
+        "updateTomlActionState(tomlState.currentTomlFile);",
+        "if (!historyState.historyTasks.length && typeof loadTrainingHistoryList === 'function') {",
+        "return (historyState.historyTasks || [])",
+    ):
+        assert snippet in training_source
+
+
+def test_runtime_dataset_preset_api_timeout_contract() -> None:
+    if not shutil.which("node"):
+        pytest.skip("node is required for anima-app runtime api checks")
+    script = r"""
+import { createRuntimeApi } from './web/static/js/features/anima-app/runtime/api.js';
+
+const calls = [];
+const delays = [];
+const cleared = [];
+let lastTimeout = null;
+
+globalThis.window = {
+    setTimeout(callback, delay) {
+        delays.push(delay);
+        lastTimeout = callback;
+        return delays.length;
+    },
+    clearTimeout(id) {
+        cleared.push(id);
+    },
+};
+
+const api = createRuntimeApi({
+    api(url, opts = {}) {
+        calls.push({ url, opts: { ...opts } });
+        return Promise.resolve({ ok: true, url });
+    },
+});
+
+const first = await api.datasetPresetApi('/default', { method: 'GET' });
+const second = await api.datasetPresetApi('/custom', { method: 'POST', timeoutMs: 25, body: 'x' });
+
+let timeoutMessage = '';
+const slowApi = createRuntimeApi({
+    api(url, opts = {}) {
+        calls.push({ url, opts: { ...opts } });
+        return new Promise(() => {});
+    },
+});
+const pending = slowApi.datasetPresetApi('/slow', { timeoutMs: 12, marker: 'keep' }).catch((error) => {
+    timeoutMessage = error.message;
+});
+lastTimeout();
+await pending;
+
+console.log(JSON.stringify({
+    first,
+    second,
+    calls,
+    delays,
+    cleared,
+    timeoutMessage,
+}));
+"""
+    result = subprocess.run(
+        ["node", "--input-type=module", "-e", script],
+        cwd=Path(__file__).resolve().parents[1],
+        text=True,
+        capture_output=True,
+        timeout=20,
+    )
+
+    assert result.returncode == 0, result.stderr or result.stdout
+    assert json.loads(result.stdout) == {
+        "first": {"ok": True, "url": "/default"},
+        "second": {"ok": True, "url": "/custom"},
+        "calls": [
+            {"url": "/default", "opts": {"method": "GET"}},
+            {"url": "/custom", "opts": {"method": "POST", "body": "x"}},
+            {"url": "/slow", "opts": {"marker": "keep"}},
+        ],
+        "delays": [15000, 25, 12],
+        "cleared": [1, 2, 3],
+        "timeoutMessage": "数据集预设请求超时，请查看终端日志或刷新预设列表",
+    }
+
+
+def test_network_arg_helpers_are_exported() -> None:
+    if not shutil.which("node"):
+        pytest.skip("node is required for anima-app network arg helper checks")
+    script = r"""
+import {
+    coerceNetworkArgValue,
+    formatNetworkArg,
+    formatNetworkArgValue,
+    parseBooleanNetworkArg,
+    parseNetworkArgEntry,
+    stripNetworkArgQuotes,
+} from './web/static/js/features/anima-app/helpers/network-args.js';
+
+const result = {
+    parsed: parseNetworkArgEntry('rank="8"'),
+    quoted: stripNetworkArgQuotes("'hello'"),
+    trueValue: parseBooleanNetworkArg('yes'),
+    falseValue: parseBooleanNetworkArg('0', true),
+    integerValue: coerceNetworkArgValue('3.8', { valueType: 'integer', default: 1 }),
+    numberFallback: coerceNetworkArgValue('nope', { valueType: 'number', default: 0.5 }),
+    stringValue: coerceNetworkArgValue(null, { valueType: 'string', default: 'x' }),
+    formattedBoolean: formatNetworkArg({ arg: 'enabled', valueType: 'boolean', default: false }, 'yes'),
+    formattedNumber: formatNetworkArgValue({ valueType: 'number', default: 0.1 }, '2.5'),
+};
+
+console.log(JSON.stringify(result));
+"""
+    result = subprocess.run(
+        ["node", "--input-type=module", "-e", script],
+        cwd=Path(__file__).resolve().parents[1],
+        text=True,
+        capture_output=True,
+        timeout=20,
+    )
+
+    assert result.returncode == 0, result.stderr or result.stdout
+    assert json.loads(result.stdout) == {
+        "parsed": {"arg": "rank", "value": "8", "raw": 'rank="8"'},
+        "quoted": "hello",
+        "trueValue": True,
+        "falseValue": False,
+        "integerValue": 3,
+        "numberFallback": 0.5,
+        "stringValue": "x",
+        "formattedBoolean": "enabled=true",
+        "formattedNumber": "2.5",
+    }
+
+
+def test_form_value_helpers_are_exported() -> None:
+    if not shutil.which("node"):
+        pytest.skip("node is required for anima-app form value helper checks")
+    script = r"""
+import {
+    isBooleanLikeValue,
+    isNumberLikeValue,
+    normalizeBooleanLikeValue,
+    normalizeMultilineText,
+    parseArrayValue,
+    parseNumberValue,
+    valuesEqual,
+} from './web/static/js/features/anima-app/helpers/form-values.js';
+
+const result = {
+    emptyNumber: parseNumberValue('', ''),
+    fallbackNumber: parseNumberValue('', 7),
+    invalidNumber: parseNumberValue('nope', 3),
+    parsedJsonArray: parseArrayValue('["a", 2]'),
+    parsedCsvArray: parseArrayValue('a, b,, c'),
+    booleanEqual: valuesEqual(true, 'true'),
+    numberEqual: valuesEqual('2.0', 2),
+    booleanLike: isBooleanLikeValue('false'),
+    normalizedBoolean: normalizeBooleanLikeValue('true'),
+    numberLike: isNumberLikeValue('3.5'),
+    multiline: normalizeMultilineText(` a
+
+ b
+ `),
+};
+
+console.log(JSON.stringify(result));
+"""
+    result = subprocess.run(
+        ["node", "--input-type=module", "-e", script],
+        cwd=Path(__file__).resolve().parents[1],
+        text=True,
+        capture_output=True,
+        timeout=20,
+    )
+
+    assert result.returncode == 0, result.stderr or result.stdout
+    assert json.loads(result.stdout) == {
+        "emptyNumber": "",
+        "fallbackNumber": 7,
+        "invalidNumber": 3,
+        "parsedJsonArray": ["a", 2],
+        "parsedCsvArray": ["a", "b", "c"],
+        "booleanEqual": True,
+        "numberEqual": True,
+        "booleanLike": True,
+        "normalizedBoolean": True,
+        "numberLike": True,
+        "multiline": "a\nb",
+    }
+
+
+def test_config_value_helpers_are_exported() -> None:
+    if not shutil.which("node"):
+        pytest.skip("node is required for anima-app config value helper checks")
+    script = r"""
+import {
+    isTruthy,
+    loraAdapterFlagsForKind,
+    loraAdapterFlagsMatchConfig,
+    loraAdapterKindFromConfig,
+    normalizeLoraAdapterKind,
+    normalizePrecisionPreference,
+    precisionPreferenceFromConfig,
+    precisionPreferencePatch,
+} from './web/static/js/features/anima-app/helpers/config-values.js';
+
+const result = {
+    trueBoolean: isTruthy(true),
+    trueNumber: isTruthy(1),
+    trueString: isTruthy('true'),
+    falseString: isTruthy('false'),
+    glora: normalizeLoraAdapterKind(' GLoRA '),
+    fallback: normalizeLoraAdapterKind('unknown'),
+    kindFromConfig: loraAdapterKindFromConfig({ use_lokr: true }),
+    flags: loraAdapterFlagsForKind('vera'),
+    flagsMatch: loraAdapterFlagsMatchConfig('glora', { use_glora: 'true' }),
+    precision: normalizePrecisionPreference(' FP32 '),
+    derivedPrecision: precisionPreferenceFromConfig({ mixed_precision: 'no' }),
+    precisionPatch: precisionPreferencePatch('fp32', { full_fp16: true }),
+};
+
+console.log(JSON.stringify(result));
+"""
+    result = subprocess.run(
+        ["node", "--input-type=module", "-e", script],
+        cwd=Path(__file__).resolve().parents[1],
+        text=True,
+        capture_output=True,
+        timeout=20,
+    )
+
+    assert result.returncode == 0, result.stderr or result.stdout
+    assert json.loads(result.stdout) == {
+        "trueBoolean": True,
+        "trueNumber": True,
+        "trueString": True,
+        "falseString": False,
+        "glora": "glora",
+        "fallback": "lora",
+        "kindFromConfig": "lokr",
+        "flags": {"use_glora": False, "use_loha": False, "use_lokr": False, "use_vera": True},
+        "flagsMatch": True,
+        "precision": "fp32",
+        "derivedPrecision": "fp32",
+        "precisionPatch": {"mixed_precision": "no", "full_fp16": False},
+    }
+
+
+def test_optimizer_value_helpers_are_exported() -> None:
+    if not shutil.which("node"):
+        pytest.skip("node is required for anima-app optimizer value helper checks")
+    script = r"""
+import {
+    normalizeCameOptimizerArgs,
+    normalizeOptimizerArgArray,
+    normalizeOptimizerType,
+    optimizerArgEntryKey,
+    optimizerArgEntryValue,
+} from './web/static/js/features/anima-app/helpers/optimizer-values.js';
+
+const result = {
+    optimizer: normalizeOptimizerType(' CAME '),
+    key: optimizerArgEntryKey('betas=0.9,0.999'),
+    value: optimizerArgEntryValue('betas=0.9,0.999'),
+    csv: normalizeOptimizerArgArray('a=1, b=2'),
+    patched: normalizeCameOptimizerArgs(['betas=0.9,0.999', 'eps=1e-8']),
+};
+
+console.log(JSON.stringify(result));
+"""
+    result = subprocess.run(
+        ["node", "--input-type=module", "-e", script],
+        cwd=Path(__file__).resolve().parents[1],
+        text=True,
+        capture_output=True,
+        timeout=20,
+    )
+
+    assert result.returncode == 0, result.stderr or result.stdout
+    assert json.loads(result.stdout) == {
+        "optimizer": "came",
+        "key": "betas",
+        "value": "0.9,0.999",
+        "csv": ["a=1", "b=2"],
+        "patched": ["betas=0.9,0.999,0.9999", "eps=1e-8"],
+    }
+
+
+def test_history_artifact_helper_builds_urls() -> None:
+    if not shutil.which("node"):
+        pytest.skip("node is required for anima-app history artifact helper checks")
+    script = r"""
+import { makeHistoryArtifactUrl } from './web/static/js/features/anima-app/helpers/history-artifacts.js';
+
+const result = {
+    basic: makeHistoryArtifactUrl({ id: 'task 1' }, 'runtime-config'),
+    download: makeHistoryArtifactUrl({ id: 'task/2' }, 'logs/latest.txt', { download: true }),
+    missingTask: makeHistoryArtifactUrl({ id: '' }, 'logs'),
+    missingKey: makeHistoryArtifactUrl({ id: 'task' }, ''),
+};
+
+console.log(JSON.stringify(result));
+"""
+    result = subprocess.run(
+        ["node", "--input-type=module", "-e", script],
+        cwd=Path(__file__).resolve().parents[1],
+        text=True,
+        capture_output=True,
+        timeout=20,
+    )
+
+    assert result.returncode == 0, result.stderr or result.stdout
+    assert json.loads(result.stdout) == {
+        "basic": "/api/training/history/task%201/artifacts/runtime-config",
+        "download": "/api/training/history/task%2F2/artifacts/logs%2Flatest.txt?download=1",
+        "missingTask": "#",
+        "missingKey": "#",
     }
 
 
@@ -533,7 +1521,10 @@ def test_setup_event_dom_contract_matches_index_html() -> None:
         if f'id="{dom_id}"' not in html
     ]
     assert not missing
-    assert "globalThis.SETUP_EVENT_DOM_CONTRACT = SETUP_EVENT_DOM_CONTRACT;" in source
+    assert "export const SETUP_EVENT_DOM_CONTRACT = Object.freeze({" in source
+    assert "globalThis.SETUP_EVENT_DOM_CONTRACT" not in source
+    assert "export function setupEventListeners()" in source
+    assert "export function installBeginnerTooltips()" in source
     assert "ctx.dom.bindEvent(id, eventName, handler" in listener_section
     assert "[webui-dom-contract] missing required DOM node" in dom_source
     assert not re.search(r"document\.getElementById\([^\n]+?\)\??\.addEventListener", listener_section)
@@ -561,7 +1552,8 @@ def test_config_training_source_dom_contract_matches_index_html() -> None:
         if f'id="{dom_id}"' not in html
     ]
     assert not missing
-    assert "globalThis.CONFIG_TRAINING_SOURCE_DOM_CONTRACT = CONFIG_TRAINING_SOURCE_DOM_CONTRACT;" in source
+    assert "export const CONFIG_TRAINING_SOURCE_DOM_CONTRACT = Object.freeze({" in source
+    assert "globalThis.CONFIG_TRAINING_SOURCE_DOM_CONTRACT" not in source
 
 
 def test_queue_and_history_detail_literal_dom_ids_match_index_html() -> None:
@@ -696,7 +1688,19 @@ def test_anima_app_replaces_legacy_container_with_small_modules() -> None:
         for path in app_modules
         if len(path.read_text(encoding="utf-8").splitlines()) > 600
     ]
-    known_oversized = {"js/features/anima-app/chunks/37-config-training-source.js": 620}
+    known_oversized = {
+        "js/features/anima-app/chunks/02-ensure-history-detail-feature.js": 676,
+        "js/features/anima-app/chunks/05-create-stage-resolution-summary.js": 610,
+        "js/features/anima-app/chunks/11-create-dataset-editor-row.js": 607,
+        "js/features/anima-app/chunks/15-append-sample-prompt-row.js": 617,
+        "js/features/anima-app/chunks/20-can-drop-toml-file-to-group.js": 604,
+        "js/features/anima-app/chunks/23-move-current-toml-to-group.js": 608,
+        "js/features/anima-app/chunks/24-show-preflight-pending-dialog.js": 626,
+        "js/features/anima-app/chunks/26-load-global-settings.js": 694,
+        "js/features/anima-app/chunks/31-create-history-collection-workbench-card.js": 625,
+        "js/features/anima-app/chunks/36-setup-event-listeners.js": 615,
+        "js/features/anima-app/chunks/37-config-training-source.js": 634,
+    }
     unexpected_oversized = [path for path in oversized if path not in known_oversized]
     oversized_growth = [
         path
@@ -707,7 +1711,7 @@ def test_anima_app_replaces_legacy_container_with_small_modules() -> None:
     assert not (STATIC_DIR / "js/features/legacy-app.js").exists()
     assert "createAnimaApp(ctx).catch" in app_source
     assert "createLegacyApp" not in app_source
-    assert "globalThis.startAnimaApp" in anima_source
+    assert "return appShellModule.startAnimaApp();" in anima_source
     assert "js/features/live-training/index.js" in relative
     assert unexpected_oversized == []
     assert oversized_growth == []
@@ -790,6 +1794,7 @@ def test_live_training_progress_helpers_parse_runtime_text() -> None:
     script = r"""
 import {
     formatLr,
+    isLiveRunningState,
     lastValue,
     parseMetricsFromProgressLine,
     parseProgressRateSeconds,
@@ -824,6 +1829,12 @@ const results = {
         formatLr('bad'),
         formatLr(null),
     ],
+    liveStates: [
+        isLiveRunningState('running'),
+        isLiveRunningState('compiling'),
+        isLiveRunningState('idle'),
+        isLiveRunningState(''),
+    ],
 };
 console.log(JSON.stringify(results));
 """
@@ -849,6 +1860,7 @@ console.log(JSON.stringify(results));
         "lastValue": 0,
         "configNumbers": [1200, 0.0001, 5, None],
         "learningRates": ["1.00e-4", "-", "-"],
+        "liveStates": [True, True, False, False],
     }
 
 
@@ -893,6 +1905,7 @@ function node(id) {
             appendChild(child) { this.children.push(child); return child; },
             addEventListener() {},
             querySelector() { return null; },
+            closest() { return null; },
         };
         item.classList = makeClassList(item);
         nodes.set(id, item);
@@ -912,7 +1925,41 @@ globalThis.document = {
     createElement: (tag) => node(`created-${tag}-${nodes.size}`),
 };
 
-globalThis.trainingRuntime = {
+const logLines = [];
+const previewUpdates = [];
+globalThis.isHistoryReviewMode = () => false;
+globalThis.logLineTone = (line) => String(line || '').includes('ERROR') ? 'error' : 'info';
+globalThis.runtimePathItems = (task) => Object.entries(task).filter(([, value]) => value);
+globalThis.renderHistoryPaths = (task) => { node('history-paths').dataset.rendered = String(Boolean(task.output_dir)); };
+globalThis.refreshQueueRunningProgressViews = () => { node('queue-progress').dataset.refreshed = 'true'; };
+globalThis.appendLog = (line) => logLines.push(line);
+globalThis.previewFeature = {
+    updateRuntimeSampleState: (payload) => previewUpdates.push(payload),
+};
+globalThis.formatDuration = (seconds) => `${seconds}s`;
+    globalThis.copyText = async () => {};
+
+    const { configureAppShellStateBridge } = await import('./web/static/js/features/anima-app/helpers/app-shell-state-bridge.js?v=module-bootstrap-20260707-93');
+    const { configureAppContextBridge } = await import('./web/static/js/features/anima-app/helpers/app-context-bridge.js?v=module-bootstrap-20260707-93');
+    const { configureConfigStateBridge } = await import('./web/static/js/features/anima-app/helpers/config-state-bridge.js?v=module-bootstrap-20260707-93');
+    const { configureDatasetStateBridge } = await import('./web/static/js/features/anima-app/helpers/dataset-state-bridge.js?v=module-bootstrap-20260707-93');
+    const { configureHistoryStateBridge } = await import('./web/static/js/features/anima-app/helpers/history-state-bridge.js?v=module-bootstrap-20260707-93');
+    const { configureRuntimeBridge } = await import('./web/static/js/features/anima-app/helpers/runtime-bridge.js?v=module-bootstrap-20260707-93');
+    const { configureTomlStateBridge } = await import('./web/static/js/features/anima-app/helpers/toml-state-bridge.js?v=module-bootstrap-20260707-93');
+    const { configureTrainingStateBridge } = await import('./web/static/js/features/anima-app/helpers/training-state-bridge.js?v=module-bootstrap-20260707-93');
+    const { createAppShellState } = await import('./web/static/js/features/anima-app/state/app-shell-state.js?v=module-bootstrap-20260707-93');
+    const { createConfigState } = await import('./web/static/js/features/anima-app/state/config-state.js?v=module-bootstrap-20260707-93');
+    const { createDatasetState } = await import('./web/static/js/features/anima-app/state/dataset-state.js?v=module-bootstrap-20260707-93');
+    const { createHistoryState } = await import('./web/static/js/features/anima-app/state/history-state.js?v=module-bootstrap-20260707-93');
+    const { createTomlState } = await import('./web/static/js/features/anima-app/state/toml-state.js?v=module-bootstrap-20260707-93');
+    const { createTrainingState } = await import('./web/static/js/features/anima-app/state/training-state.js?v=module-bootstrap-20260707-93');
+    const appShellState = createAppShellState();
+    const configState = createConfigState();
+    const datasetState = createDatasetState();
+    const historyState = createHistoryState();
+    const tomlState = createTomlState();
+    const trainingState = createTrainingState();
+    Object.assign(trainingState.trainingRuntime, {
     state: 'idle',
     job: '',
     variant: '',
@@ -941,35 +1988,30 @@ globalThis.trainingRuntime = {
     outputDir: '',
     sampleDir: '',
     sampleConfig: null,
-};
+    });
+    globalThis.trainingRuntime = trainingState.trainingRuntime;
+    configureAppContextBridge(globalThis.ctx);
+    configureAppShellStateBridge(appShellState);
+    configureConfigStateBridge(configState);
+    configureDatasetStateBridge(datasetState);
+    configureHistoryStateBridge(historyState);
+    configureRuntimeBridge({
+        api: Object.assign(() => ({ ok: true }), {
+            datasetPresetApi: () => ({ ok: true, images: [] }),
+        }),
+        dom: {
+            val: () => '',
+            populateSelect: () => {},
+        },
+    });
+    configureTomlStateBridge(tomlState);
+    configureTrainingStateBridge(trainingState);
 
-const logLines = [];
-const previewUpdates = [];
-globalThis.isHistoryReviewMode = () => false;
-globalThis.isLiveRunningState = (state = trainingRuntime.state) => ['running', 'compiling'].includes(String(state || ''));
-globalThis.logLineTone = (line) => String(line || '').includes('ERROR') ? 'error' : 'info';
-globalThis.setMetricText = (id, value) => { node(id).textContent = String(value); };
-globalThis.setText = (id, value) => { node(id).textContent = String(value); };
-globalThis.setEtaMetricText = (info) => { node('metric-eta').textContent = info.text; };
-globalThis.updateDashboardProgressIdleState = (active) => { node('dashboard-progress').dataset.active = String(active); };
-globalThis.updateTrainingToolbarState = (state, text) => {
-    node('toolbar-state').dataset.state = state;
-    node('toolbar-state').textContent = text;
-};
-globalThis.setTrainingDashboardHeadState = (state) => { node('dashboard-head').dataset.state = state; };
-globalThis.runtimePathItems = (task) => Object.entries(task).filter(([, value]) => value);
-globalThis.renderHistoryPaths = (task) => { node('history-paths').dataset.rendered = String(Boolean(task.output_dir)); };
-globalThis.refreshQueueRunningProgressViews = () => { node('queue-progress').dataset.refreshed = 'true'; };
-globalThis.appendLog = (line) => logLines.push(line);
-globalThis.ensurePreviewFeature = () => ({
-    updateRuntimeSampleState: (payload) => previewUpdates.push(payload),
-});
-globalThis.formatDuration = (seconds) => `${seconds}s`;
-globalThis.copyText = async () => {};
+const featureEnsurers = await import('./web/static/js/features/anima-app/helpers/feature-ensurers.js?v=module-bootstrap-20260707-93');
+featureEnsurers.configurePreviewFeatureEnsurer(globalThis.ctx, globalThis, {});
+const liveStatus = await import('./web/static/js/features/anima-app/chunks/25-update-progress.js?dom-fixture');
 
-await import('./web/static/js/features/anima-app/chunks/25-update-progress.js?dom-fixture');
-
-globalThis.updateStatus({
+liveStatus.updateStatus({
     state: 'running',
     job: 'train',
     variant: 'lora',
@@ -981,7 +2023,7 @@ globalThis.updateStatus({
     run_dir: 'output/runs/job',
     runtime_config_file: 'output/runs/job/config.runtime.toml',
 });
-globalThis.updateProgress({
+liveStatus.updateProgress({
     label: 'train',
     current: 4,
     total: 10,
@@ -1044,13 +2086,16 @@ console.log(JSON.stringify({
 
 def test_preview_feature_modules_are_loaded_from_production_entrypoint() -> None:
     legacy_source = _anima_app_container_text()
+    feature_ensurers = _frontend_module_text("js/features/anima-app/helpers/feature-ensurers.js")
     preview_index = _frontend_module_text("js/features/preview/index.js")
     preview_state = _frontend_module_text("js/features/preview/state.js")
     preview_workspace = _frontend_module_text("js/features/preview/workspace.js")
     preview_images = _frontend_module_text("js/features/preview/images.js")
     css = STYLE_CSS.read_text(encoding="utf-8")
 
-    assert "createPreviewFeature(ctx, {" in legacy_source
+    assert "configurePreviewFeatureEnsurer(ctx, appShellState, {" in legacy_source
+    assert "createPreviewFeature(ctx, deps)" in feature_ensurers
+    assert "globalThis.ensurePreviewFeature" not in legacy_source
     for name in (
         "loadPreviewSettings",
         "savePreviewSettings",
@@ -1101,6 +2146,7 @@ def test_weight_analysis_feature_modules_are_loaded_from_production_entrypoint()
     weight_api = _frontend_module_text("js/features/weight-analysis/api.js")
     weight_render = _frontend_module_text("js/features/weight-analysis/render.js")
     weight_state = _frontend_module_text("js/features/weight-analysis/state.js")
+    feature_ensurers = _frontend_module_text("js/features/anima-app/helpers/feature-ensurers.js")
     tabs_source = _frontend_module_text("js/features/app-shell/tabs.js")
     html = INDEX_HTML.read_text(encoding="utf-8")
     css = STYLE_CSS.read_text(encoding="utf-8")
@@ -1108,8 +2154,8 @@ def test_weight_analysis_feature_modules_are_loaded_from_production_entrypoint()
     tab_setup = _section(tabs_source, "function setupTabs()", "return {")
     tooltip_section = _section(legacy_source, "function installBeginnerTooltips()", "// ── 工具函数 ──")
 
-    assert "createWeightAnalysisFeature(ctx)" in legacy_source
-    assert "ensureWeightAnalysisFeature().bindWeightAnalysisEvents();" in listener_section
+    assert "createWeightAnalysisFeature(ctx)" in feature_ensurers
+    assert "ensureWeightAnalysisFeature(ctx, appShellState).bindWeightAnalysisEvents();" in listener_section
     assert "if (nextTab === 'weight-analysis')" in tab_setup
     assert "ensureWeightAnalysisFeature().loadAnalysisWeights();" in tab_setup
     assert "bindWeightAnalysisEvents" in weight_index
@@ -1212,6 +2258,7 @@ def test_environment_check_feature_modules_are_loaded_from_production_entrypoint
     environment_api = _frontend_module_text("js/features/environment-check/api.js")
     environment_render = _frontend_module_text("js/features/environment-check/render.js")
     environment_state = _frontend_module_text("js/features/environment-check/state.js")
+    feature_ensurers = _frontend_module_text("js/features/anima-app/helpers/feature-ensurers.js")
     tabs_source = _frontend_module_text("js/features/app-shell/tabs.js")
     html = INDEX_HTML.read_text(encoding="utf-8")
     css = STYLE_CSS.read_text(encoding="utf-8")
@@ -1220,8 +2267,8 @@ def test_environment_check_feature_modules_are_loaded_from_production_entrypoint
     tooltip_section = _section(legacy_source, "function installBeginnerTooltips()", "// ── 工具函数 ──")
     routes_source = (STATIC_DIR.parents[0] / "routes" / "__init__.py").read_text(encoding="utf-8")
 
-    assert "createEnvironmentCheckFeature(ctx)" in legacy_source
-    assert "ensureEnvironmentCheckFeature().bindEnvironmentCheckEvents();" in listener_section
+    assert "createEnvironmentCheckFeature(ctx)" in feature_ensurers
+    assert "ensureEnvironmentCheckFeature(ctx, appShellState).bindEnvironmentCheckEvents();" in listener_section
     assert "if (nextTab === 'environment')" in tab_setup
     assert "ensureEnvironmentCheckFeature?.().loadEnvironmentCheck();" in tab_setup
     assert "bindEnvironmentCheckEvents" in environment_index
@@ -1685,7 +2732,7 @@ def test_global_ui_scale_override_controls_and_runtime_hooks_are_present() -> No
         "topLevelFields: GLOBAL_UI_TOP_LEVEL_OVERRIDE_FIELDS",
         "historyDetailFields: GLOBAL_UI_HISTORY_DETAIL_OVERRIDE_FIELDS",
         "applyHistoryDetailUIScale: (detailTab) => {",
-        "uiScaleController?.applyHistoryDetailScale?.(globalSettings || {}, detailTab || 'overview');",
+        "uiScaleController?.applyHistoryDetailScale?.(appShellState.globalSettings || {}, detailTab || 'overview');",
     ):
         assert snippet in ensure_history_source
 
@@ -1731,6 +2778,7 @@ def test_global_settings_cards_follow_requested_numbering_order() -> None:
 
 def test_new_training_launch_enters_live_monitoring() -> None:
     source = APP_JS.read_text(encoding="utf-8")
+    config_values = _frontend_module_text("js/features/anima-app/helpers/config-values.js")
     tabs_source = _frontend_module_text("js/features/app-shell/tabs.js")
     helper = _section(source, "function enterLiveTrainingForNewRun()", "function showPreflightDialog")
     tab_setup = _section(tabs_source, "function setupTabs()", "return {")
@@ -1755,12 +2803,12 @@ def test_return_to_live_training_clears_runtime_cursor() -> None:
     body = _section(source, "function returnToLiveTraining", "async function loadResumeOptionsForTask")
 
     for snippet in (
-        "viewingHistoryTaskId = '';",
-        "historyViewMode = 'live';",
-        "trainingRuntime.lastLogId = 0;",
-        "trainingRuntime.logLineCount = 0;",
-        "stepCounter = 0;",
-        "lossChart?.clear();",
+        "historyState.viewingHistoryTaskId = '';",
+        "historyState.historyViewMode = 'live';",
+        "trainingState.trainingRuntime.lastLogId = 0;",
+        "trainingState.trainingRuntime.logLineCount = 0;",
+        "trainingState.stepCounter = 0;",
+        "trainingState.lossChart?.clear();",
         "recoverLiveTrainingState();",
     ):
         assert snippet in body
@@ -1768,15 +2816,19 @@ def test_return_to_live_training_clears_runtime_cursor() -> None:
 
 def test_live_training_rest_fallbacks_are_wired() -> None:
     source = APP_JS.read_text(encoding="utf-8")
+    progress_source = _frontend_module_text("js/features/anima-app/chunks/25-update-progress.js")
+    live_training_source = _frontend_module_text("js/features/live-training/index.js")
     poll_delay_section = _section(source, "function trainingStatusPollDelayMs", "async function pollStatus")
     poll_section = _section(source, "async function pollStatus", "function applyStatusSnapshotFallbacks")
-    update_status = _section(source, "function updateStatus", "function resetLiveSystemPeaks")
-    health_section = _section(source, "function refreshTrainingHealth", "function parseMetricsFromProgressLine")
-    parse_metrics_section = _section(source, "function parseMetricsFromProgressLine", "function lastValue")
+    update_status = _section(progress_source, "function updateStatus", "function resetLiveSystemPeaks")
+    health_section = _section(progress_source, "function refreshTrainingHealth", "function formatDuration")
+    parse_metrics_section = _section(live_training_source, "function parseMetricsFromProgressLine", "function lastValue")
     recovery_section = _section(source, "async function recoverLiveTrainingState", "function updateProgress")
     ready_section = _section(source, "function startAnimaApp", "function chartTheme")
 
-    assert "function isLiveRunningState" in source
+    assert "function isLiveRunningState" in live_training_source
+    assert "globalThis.isLiveRunningState" not in source
+    assert "import { isLiveRunningState }" in _frontend_module_text("js/features/anima-app/chunks/26a-status-polling.js")
     assert "function trainingStatusPollDelayMs" in source
     assert "function scheduleStatusPoll(options = {})" in source
     assert "target.trainingStatusPollTimer = window.setTimeout" in source
@@ -1795,8 +2847,9 @@ def test_live_training_rest_fallbacks_are_wired() -> None:
     assert "target.trainingStatusPollPromise = null;" in poll_section
     assert "scheduleStatusPoll();" in poll_section
     assert "applyStatusSnapshotFallbacks(status);" in poll_section
-    assert "forceReplayMetrics || isLiveRunningState()" in poll_section
+    assert "forceReplayMetrics || isLiveRunningState(target.trainingRuntime?.state)" in poll_section
     assert "forceReplayMetrics || isLiveRunningState() || hasStatusPayload(status.latest_metric)" not in poll_section
+    assert "forceReplayMetrics || isLiveRunningState()" not in poll_section
     assert "function applyStatusSnapshotFallbacks(status = {})" in source
     assert "updateProgress(status.latest_progress, { replay: true });" in source
     assert "updateMetrics(status.latest_metric, { replay: true });" in source
@@ -1855,7 +2908,6 @@ globalThis.trainingStatusPollForceReplayMetrics = false;
 globalThis.trainingStatusPollFailures = 0;
 globalThis.historyTasks = [];
 globalThis.trainingRuntime = {};
-globalThis.isLiveRunningState = (state = '') => ['running', 'compiling'].includes(String(state || ''));
 globalThis.updateProgress = (payload, options) => calls.push({ kind: 'progress', payload, options });
 globalThis.updateMetrics = (payload, options) => calls.push({ kind: 'metric', payload, options });
 globalThis.updateSystem = (payload, options) => calls.push({ kind: 'system', payload, options });
@@ -1932,6 +2984,7 @@ def test_status_poll_refreshes_training_sidebar_summaries() -> None:
     assert "trainingSidebarSummaryRefreshPromise" in polling_source
     assert "refreshTrainingSidebarSummariesFromPoll(status);" in poll_section
     assert poll_section.index("updateStatus({") < poll_section.index("refreshTrainingSidebarSummariesFromPoll(status);")
+    assert "const historyTasks = readHistoryTasks();" in refresh_section
     assert "Array.isArray(historyTasks)" in refresh_section
     assert "&& historyTasks.some((task) => String(task.id || '') === taskId)" in refresh_section
     assert "now - trainingSidebarSummaryLastRefreshAt >= 15000" in refresh_section
@@ -1941,7 +2994,7 @@ def test_status_poll_refreshes_training_sidebar_summaries() -> None:
 
 def test_log_replay_keeps_tqdm_average_rate_out_of_live_metrics() -> None:
     source = _frontend_module_text("js/features/anima-app/chunks/24-show-preflight-pending-dialog.js")
-    section = _section(source, "function replayMetricsFromLogRecord", "globalThis.setLogStatus")
+    section = _section(source, "function replayMetricsFromLogRecord", "function setLogStatus")
 
     assert "const metrics = { ...parsed };" in section
     assert "delete metrics.rate;" in section
@@ -1952,14 +3005,16 @@ def test_log_replay_keeps_tqdm_average_rate_out_of_live_metrics() -> None:
 def test_training_queue_frontend_hooks_are_present() -> None:
     source = APP_JS.read_text(encoding="utf-8")
     legacy_source = _anima_app_container_text()
+    index_source = _frontend_module_text("js/features/anima-app/index.js")
+    preflight_source = _frontend_module_text("js/features/anima-app/chunks/24-show-preflight-pending-dialog.js")
     queue_index = _frontend_module_text("js/features/queue/index.js")
     queue_state = _frontend_module_text("js/features/queue/state.js")
     queue_api = _frontend_module_text("js/features/queue/api.js")
     queue_render = _frontend_module_text("js/features/queue/render.js")
     queue_actions = _frontend_module_text("js/features/queue/actions.js")
     queue_enqueue = _frontend_module_text("js/features/queue/enqueue.js")
+    feature_ensurers = _frontend_module_text("js/features/anima-app/helpers/feature-ensurers.js")
     training_state_source = _frontend_module_text("js/features/anima-app/state/training-state.js")
-    legacy_globals_source = _frontend_module_text("js/features/anima-app/legacy-globals.js")
     queue_feature_source = "\n".join([
         queue_index,
         queue_state,
@@ -1979,7 +3034,9 @@ def test_training_queue_frontend_hooks_are_present() -> None:
     view_section = _section(legacy_source, "function renderTrainingViewMode", "// ── 状态轮询 ──")
     stop_section = _section(legacy_source, "async function stopTraining()", "    // ── WebSocket ──")
     poll_section = _section(legacy_source, "async function pollStatus", "function applyStatusSnapshotFallbacks")
-    assert "createQueueFeature(ctx, {" in legacy_source
+    assert "configureQueueFeatureEnsurer(ctx, appShellState, {" in legacy_source
+    assert "createQueueFeature(ctx, deps)" in feature_ensurers
+    assert "globalThis.ensureQueueFeature" not in legacy_source
     assert "ensureQueueFeature().bindQueueEvents();" in listener_section
     for name in (
         "loadTrainingQueue",
@@ -2113,7 +3170,7 @@ def test_training_queue_frontend_hooks_are_present() -> None:
     assert "btn-clear-completed-queue" in manager_panel
     assert "btn-clear-canceled-queue" in manager_panel
 
-    ws_section = _section(source, "function handleWsMessage", "function appendLog")
+    ws_section = _section(preflight_source, "function handleWsMessage", "function appendLog")
     assert "case 'queue':" in ws_section
     assert "updateTrainingQueueFromPayload(msg);" in ws_section
 
@@ -2133,7 +3190,8 @@ def test_training_queue_frontend_hooks_are_present() -> None:
     assert "trainingStatusPollTimer: null" in training_state_source
     assert "trainingStatusPollPromise: null" in training_state_source
     assert "trainingStatusPollForceReplayMetrics: false" in training_state_source
-    assert "installLegacyStateGlobals(runtime)" in legacy_globals_source
+    assert "installLegacyStateGlobals(runtime)" not in index_source
+    assert "import { installLegacyStateGlobals }" not in index_source
     assert "if (status.ok === false) throw new Error(status.error || '读取训练状态失败')" in poll_section
     assert "if (target.trainingStatusPollPromise) return target.trainingStatusPollPromise;" in poll_section
     assert "target.trainingStatusPollFailures < 3" in poll_section
@@ -2253,6 +3311,7 @@ def test_config_toolbar_is_first_visible_config_row() -> None:
 def test_config_form_uses_navigation_search_and_progressive_disclosure() -> None:
     source = APP_JS.read_text(encoding="utf-8")
     css = STYLE_CSS.read_text(encoding="utf-8")
+    app_constants = _frontend_module_text("js/features/anima-app/helpers/app-constants.js")
     labels_options = (STATIC_DIR / "js" / "config" / "catalog" / "labels-options.js").read_text(encoding="utf-8")
 
     category_defs = _section(source, "const FORM_CATEGORY_DEFS = [", "const FORM_CATEGORY_SECTION_MAP")
@@ -2324,7 +3383,7 @@ def test_config_form_uses_navigation_search_and_progressive_disclosure() -> None
     assert "function updateChangedFieldMarks" in source
     assert "field-row-changed" in source
     assert "config-modified-count" in source
-    assert "if (selectedConfigDatasetFile !== (currentConfig.dataset_config || ''))" in source
+    assert "if (datasetState.selectedConfigDatasetFile !== (currentConfig.dataset_config || ''))" in source
     assert "const params = new URLSearchParams({" in load_steps
     assert "const configFile = currentTrainingConfigFile();" in load_steps
     assert "params.set('config_file', configFile);" in load_steps
@@ -2377,9 +3436,9 @@ def test_config_form_uses_navigation_search_and_progressive_disclosure() -> None
     assert "merge: {" in source
     assert "blocks_to_swap: 'max'" in source
     assert "selective_checkpoint: 'checkpoint_strength_max'" in source
-    quick_presets = _section(source, "globalThis.RESOURCE_QUICK_PRESETS = [", "globalThis.SELECTIVE_CHECKPOINT_STRENGTH")
+    quick_presets = _section(app_constants, "export const RESOURCE_QUICK_PRESETS = [", "export const NO_DATASET_REGULARIZATION_FIELD_KEYS")
     assert quick_presets.count("gradient_checkpointing: false") == 6
-    assert "globalThis.SELECTIVE_CHECKPOINT_STRENGTH = new Map([" in source
+    assert "export const SELECTIVE_CHECKPOINT_STRENGTH = new Map([" in app_constants
     assert "['mlp_only', 4]" in source
     assert "['every_other', 5]" in source
     assert "function resourceQuickPresetValue(preset, key, value)" in source
@@ -2394,7 +3453,7 @@ def test_config_form_uses_navigation_search_and_progressive_disclosure() -> None
     assert "NO_DATASET_REGULARIZATION_QUICK_PRESETS" in source
     for label in ["先验基线", "DOP 角色", "遮罩保护", "关闭"]:
         assert label in source
-    no_dataset_quick_presets = _section(source, "globalThis.NO_DATASET_REGULARIZATION_QUICK_PRESETS = [", "globalThis.SELECTIVE_CHECKPOINT_STRENGTH")
+    no_dataset_quick_presets = _section(app_constants, "export const NO_DATASET_REGULARIZATION_QUICK_PRESETS = [", "export const SELECTIVE_CHECKPOINT_STRENGTH")
     assert "prior_preservation_weight: 0.1" in no_dataset_quick_presets
     assert "blank_prompt_preservation: true" in no_dataset_quick_presets
     assert "diff_output_preservation_trigger: 'sks'" in no_dataset_quick_presets
@@ -2435,7 +3494,8 @@ def test_config_form_uses_navigation_search_and_progressive_disclosure() -> None
     assert "NO_DATASET_REGULARIZATION_CONFLICT_MESSAGE" in no_dataset_status
     assert "NO_DATASET_REGULARIZATION_DOP_CLASS_REQUIRED" in no_dataset_status
     assert "advanced.open = true;" in no_dataset_update
-    assert "updateNoDatasetRegularizationModePanel();" in source
+    assert "configureNoDatasetRegularizationModePanelUpdater(updateNoDatasetRegularizationModePanel);" in source
+    assert "updateNoDatasetRegularizationModePanelCallback();" in source
     for value in [
         "blocks_to_swap: 12",
         "blocks_to_swap: 16",
@@ -2524,7 +3584,7 @@ def test_config_form_uses_navigation_search_and_progressive_disclosure() -> None
     assert "className: 'config-group-no-dataset-regularization'" in no_dataset_reg_section
     assert "open: false," in no_dataset_reg_section
     assert "config-group-badge-experimental" in source
-    assert "LOSS_WEIGHTING_DEPENDENT_FIELDS = new Map([" in source
+    assert "export const LOSS_WEIGHTING_DEPENDENT_FIELDS = new Map([" in app_constants
     assert "['min_snr_gamma', 'min_snr']" in source
     assert "['p2_gamma', 'p2']" in source
     assert "['p2_k', 'p2']" in source
@@ -2639,7 +3699,8 @@ def test_preprocess_memory_profile_updates_cache_batch_inputs() -> None:
 
 def test_precision_preference_ui_maps_to_training_precision_fields() -> None:
     form_source = _frontend_module_text("js/features/anima-app/chunks/02-ensure-history-detail-feature.js")
-    helper_source = _frontend_module_text("js/features/anima-app/chunks/14-lora-adapter-kind-from-config.js")
+    helper_source = _frontend_module_text("js/features/anima-app/helpers/config-values.js")
+    form_helper_source = _frontend_module_text("js/features/anima-app/chunks/14-lora-adapter-kind-from-config.js")
     option_source = _frontend_module_text("js/features/anima-app/chunks/15-append-sample-prompt-row.js")
     patch_source = _frontend_module_text("js/features/anima-app/chunks/18-delete-dataset-preset-group.js")
     guide_source = _frontend_module_text("js/features/anima-app/chunks/13-update-dataset-editor-rows-setting-value.js")
@@ -2655,7 +3716,7 @@ def test_precision_preference_ui_maps_to_training_precision_fields() -> None:
     assert "return configFormState.draftValues.has(key)" in form_source
     assert ": precisionPreferenceFromConfig(currentConfig);" in form_source
     assert "key === 'mixed_precision' || key === 'full_fp16' || key === 'full_bf16'" in form_source
-    assert "Object.assign(liveConfig, precisionPreferencePatch(next, currentConfig));" in helper_source
+    assert "Object.assign(liveConfig, precisionPreferencePatch(next, currentConfig));" in form_helper_source
     assert "混合精度 / fp16/32" in option_source
     assert "全程 fp32 / full fp32" in option_source
     assert "'precision_preference' in nextValues" in patch_source
@@ -2734,26 +3795,27 @@ def test_soft_tokens_advanced_fields_match_training_defaults() -> None:
 def test_network_args_raw_editor_keeps_unmodified_split_controls_from_overwriting() -> None:
     source = APP_JS.read_text(encoding="utf-8")
     collect_section = _section(source, "function collectChangedFormValues", "function networkArgInputChanged")
-    live_section = _section(source, "function liveConfigFromForm", "function formatFieldName")
-    network_args_section = _section(source, "function collectNetworkArgsFromForm", "function formatNetworkArg")
+    live_section = _section(source, "function liveConfigFromForm", "function createFieldInput")
+    network_args_section = _section(source, "function collectNetworkArgsFromForm", "function prepareFormPatchValues")
 
     assert "const rawNetworkArgsChanged = 'network_args' in values;" in collect_section
     assert "{ skipUnchangedInputs: rawNetworkArgsChanged }" in collect_section
     assert "const rawNetworkArgsChanged = configFormState.draftValues.has('network_args');" in live_section
     assert "collectNetworkArgsFromForm(liveConfig, { skipUnchangedInputs: rawNetworkArgsChanged })" in live_section
-    assert "function collectNetworkArgsFromForm(baseConfig = currentConfig, options = {})" in network_args_section
+    assert "function collectNetworkArgsFromForm(baseConfig = currentConfigState(), options = {})" in network_args_section
     assert "if (options.skipUnchangedInputs && !networkArgInputChanged(input)) continue;" in network_args_section
 
 
 def test_config_form_keeps_dora_as_lora_addon_and_merges_exclusive_adapters() -> None:
     source = APP_JS.read_text(encoding="utf-8")
+    config_values = _frontend_module_text("js/features/anima-app/helpers/config-values.js")
     defaults = _section(source, "const FORM_UI_DEFAULTS = {", "const OPTIONAL_EMPTY_FIELDS")
     network_arg_specs = _section(source, "const NETWORK_ARG_FIELD_SPECS = [", "const NETWORK_ARG_FIELD_MAP")
     layout = _section(source, "const FORM_SECTION_DEFS = [", "const STICKY_CONFIG_CATEGORY_IDS")
     merged_fields = _section(source, "const CONFIG_FORM_MERGED_FIELDS = new Set([", "const DEPRECATED_CONFIG_FORM_FIELDS")
     render_section = _section(source, "function renderConfigForm", "function shouldRenderConfigSection")
     collect_section = _section(source, "function collectChangedFormValues", "function networkArgInputChanged")
-    live_section = _section(source, "function liveConfigFromForm", "function formatFieldName")
+    live_section = _section(source, "function liveConfigFromForm", "function createFieldInput")
     state_section = _section(source, "function readLoKrEnabled", "function currentLossWeightingScheme")
 
     assert "lora_adapter_kind: 'lora'" in defaults
@@ -2786,7 +3848,7 @@ def test_config_form_keeps_dora_as_lora_addon_and_merges_exclusive_adapters() ->
     assert "'lokr_use_einsum'," in source
     assert "'lokr_decompose_w2'," in source
     assert "if (NETWORK_ARG_FIELD_MAP.has(key)) return ALWAYS_VISIBLE_NETWORK_ARG_FIELDS.has(key);" in source
-    assert "function loraAdapterFlagsForKind" in source
+    assert "function loraAdapterFlagsForKind" in config_values
     assert "values.use_glora = flags.use_glora" in source
     assert "values.use_loha = flags.use_loha" in source
     assert "values.use_lokr = flags.use_lokr" in source
@@ -2921,12 +3983,13 @@ def test_sample_prompts_save_uses_current_training_config_context() -> None:
     body = _section(source, "async function saveSamplePrompts", "async function importTomlFile")
     prepare_body = _section(source, "async function prepareFormPatchValues", "function shouldSkipUiDefaultField")
 
-    assert "train_config_file: currentTrainingSource.file || currentTomlFile || ''" in body
+    assert "train_config_file: currentTrainingSourceState().file || tomlState.currentTomlFile || ''" in body
     assert "await saveSamplePrompts('');" not in prepare_body
 
 
 def test_config_form_save_reload_and_launch_share_training_config_file() -> None:
     source = APP_JS.read_text(encoding="utf-8")
+    preflight_source = _frontend_module_text("js/features/anima-app/chunks/24-show-preflight-pending-dialog.js")
     save_patch = _section(source, "async function saveFormPatchToToml", "function updateTomlActionState")
     dataset_apply = _frontend_module_text("js/features/anima-app/chunks/17-apply-selected-dataset-preset-to-current-config.js")
     action_state = _section(source, "function updateTomlActionState", "function isTomlLocked")
@@ -2936,17 +3999,17 @@ def test_config_form_save_reload_and_launch_share_training_config_file() -> None
     load_steps = _section(source, "async function loadStepEstimate", "async function loadDatasetEditor")
     run_preflight = _section(source, "async function runPreflight", "function isCliOnlySpdSource")
     start_unchecked = _section(source, "async function startTrainingUnchecked", "async function enqueueTrainingFromConfig")
-    current_file = _section(source, "function currentTrainingConfigFile", "function preflightPlainText")
+    current_file = _section(preflight_source, "function currentTrainingConfigFile", "function preflightPlainText")
 
     assert "const content = currentTomlEditorContentForFile(file);" in save_patch
     assert "if (content !== undefined) payload.content = content;" in save_patch
     assert "body: JSON.stringify(payload)" in save_patch
-    assert "file === (currentTomlFile || val('toml-file-select'))" in save_patch
+    assert "file === (tomlState.currentTomlFile || val('toml-file-select'))" in save_patch
     assert "currentTomlEditorContentForFile(file)" in dataset_apply
     assert "currentTomlEditorContentForFile(targetFile)" in source
     assert "await loadConfig();" in save_patch
     assert "function currentFormConfigFile" in source
-    assert "return currentTrainingSource.file || '';" in source
+    assert "return currentTrainingSourceState().file || '';" in source
     assert "currentTomlEditorContentForFile" in pending_changes
     assert "const formFile = currentFormConfigFile();" in action_state
     assert "const saveFile = formDirty ? formFile : selectedFile;" in action_state
@@ -2955,8 +4018,8 @@ def test_config_form_save_reload_and_launch_share_training_config_file() -> None
     assert "保存更新当前表单配置" in action_state
     assert "const file = !directEditorSave && formDirty ? formFile : selectedFile;" in save_toml
     assert "editorDirty && formDirty && selectedFile !== formFile" in save_toml
-    assert "currentConfig = data;" in load_config
-    assert "renderConfigForm(currentConfig);" in load_config
+    assert "configState.currentConfig = data;" in load_config
+    assert "renderConfigForm(data);" in load_config
     assert "const params = new URLSearchParams({ variant, preset, methods_subdir: methodsSubdir });" in load_config
     assert "if (configFile) params.set('config_file', configFile);" in load_config
     assert "const data = await api(`/api/config/merged?${params.toString()}`);" in load_config
@@ -2967,7 +4030,7 @@ def test_config_form_save_reload_and_launch_share_training_config_file() -> None
     assert "config_file: currentTrainingConfigFile()," in run_preflight
     assert "config_file: currentTrainingConfigFile()," in start_unchecked
     assert "return outputRunRuntimeFile();" in current_file
-    assert "return currentTrainingSource.file || currentTomlFile || val('toml-file-select') || '';" in current_file
+    assert "return currentTrainingSource.file || tomlState.currentTomlFile || val('toml-file-select') || '';" in current_file
 
 
 def test_config_training_source_modes_are_audited_before_launch() -> None:
@@ -2976,6 +4039,7 @@ def test_config_training_source_modes_are_audited_before_launch() -> None:
     config_source = _frontend_module_text("js/features/anima-app/chunks/37-config-training-source.js")
     action_state = _frontend_module_text("js/features/anima-app/chunks/22-update-toml-action-state.js")
     launch_source = _frontend_module_text("js/features/anima-app/chunks/23-move-current-toml-to-group.js")
+    training_state_source = _frontend_module_text("js/features/anima-app/state/training-state.js")
     queue_enqueue = _frontend_module_text("js/features/queue/enqueue.js")
     tabs_source = _frontend_module_text("js/features/app-shell/tabs.js")
     history_labels = _frontend_module_text("js/features/anima-app/chunks/32-history-task-collection-label.js")
@@ -3001,8 +4065,9 @@ def test_config_training_source_modes_are_audited_before_launch() -> None:
     assert "handleConfigFullResumeCheckpointChange" in listener_section
     assert "btn-refresh-config-full-resume" in listener_section
 
+    assert "mode: 'fresh'" in training_state_source
+
     for snippet in (
-        "mode: 'fresh'",
         "mode === 'full_resume'",
         "mode === 'weight_hotstart'",
         "auditConfigFullResumeSource",
@@ -3064,9 +4129,16 @@ def test_step_estimate_panel_shows_epoch_factor() -> None:
 
 def test_history_list_marks_queue_tasks() -> None:
     source = APP_JS.read_text(encoding="utf-8")
+    history_task_source = _frontend_module_text(
+        "js/features/anima-app/chunks/33-create-history-task-item.js"
+    )
 
     queue_label = _section(source, "function historyQueueLabel", "function historyContinueLabel")
-    task_item = _section(source, "function createHistoryTaskItem", "function createHistoryActionButton")
+    task_item = _section(
+        history_task_source,
+        "function createHistoryTaskItem",
+        "function compactPathLabel",
+    )
 
     assert "来自队列" in queue_label
     assert "queue_attempt" in queue_label
@@ -3346,7 +4418,7 @@ def test_history_manager_frontend_hooks_are_present() -> None:
     assert "openLiveSamplingPreview" in source
     assert "const historyTaskId = deps.getTrainingViewMode() === 'live'" in preview_index
     assert "state.selectedTaskId = historyTaskId;" in preview_index
-    assert "getViewingHistoryTaskId: () => viewingHistoryTaskId" in source
+    assert "getViewingHistoryTaskId: () => historyState.viewingHistoryTaskId" in source
     assert "event?.preventDefault?.()" in source
     assert "event?.stopPropagation?.()" in source
     assert "on('btn-preview-training-results', 'click', openCurrentTrainingPreview)" in listener_section
@@ -3401,12 +4473,14 @@ def test_history_manager_frontend_hooks_are_present() -> None:
     assert "/api/training/continue-lora/inspect" in history_detail_api
     assert "/api/training/queue/resume" in history_detail_api
     assert "/api/training/resume" in history_detail_api
-    assert "inspectContinueLoraWeight: (path) => (" in legacy_source
+    assert "import { requestContinueLoraInspection } from './06-stronger-selective-checkpoint-value.js?v=module-bootstrap-" in legacy_source
+    assert "inspectContinueLoraWeight: requestContinueLoraInspection" in legacy_source
+    assert "globalThis.requestContinueLoraInspection" not in legacy_source
     assert "正在审查可热启动权重..." in history_detail_source
     assert "reviewHistoryResumeWeights(rawWeights)" in history_detail_source
     assert "inspectHistoryResumeWeight(weightPath)" in history_detail_source
-    assert "return historyViewMode !== 'live';" in history_review_mode_section
-    assert "Boolean(viewingHistoryTaskId)" not in history_review_mode_section
+    assert "return historyState.historyViewMode !== 'live';" in history_review_mode_section
+    assert "Boolean(historyState.viewingHistoryTaskId)" not in history_review_mode_section
     assert "main.addEventListener('click', () => openSidebarHistoryTask(task.id))" in sidebar_task_item_section
     assert "createHistoryTaskPreviewButton(task)" in sidebar_task_item_section
     assert "createHistoryActionButton('查看', () => openSidebarHistoryTask(task.id))" in sidebar_task_item_section
@@ -3417,8 +4491,8 @@ def test_history_manager_frontend_hooks_are_present() -> None:
     assert "createHistoryActionButton('查看', () => loadHistoryTask(task.id))" in manager_row_section
     assert "function openSidebarHistoryTask" in source
     assert "renderHistoryTask(payload);" in source
-    assert "historyViewMode = 'task';" in source
-    assert "await openSidebarHistoryTask(viewingHistoryTaskId);" in source
+    assert "historyState.historyViewMode = 'task';" in source
+    assert "await openSidebarHistoryTask(historyState.viewingHistoryTaskId);" in source
     assert "showTrainingView('history')" not in load_task_section
     assert "renderHistoryTask(payload)" not in load_task_section
     assert "deps.setViewingHistoryTaskContext({" in load_task_section
@@ -3428,7 +4502,7 @@ def test_history_manager_frontend_hooks_are_present() -> None:
     assert "await dialog.loadResumeOptionsForTask(taskId);" in load_task_section
     assert "deps.clearViewingHistoryTaskContext?.(state.currentPayload);" in detail_section
     assert "function clearViewingHistoryTaskContext" in source
-    assert "currentHistoryTaskForResume = null;" in _section(source, "function clearViewingHistoryTaskContext", "function handleHistoryDetailWindowKeydown")
+    assert "historyState.currentHistoryTaskForResume = null;" in _section(source, "function clearViewingHistoryTaskContext", "function handleHistoryDetailWindowKeydown")
 
     assert "renderHistoryDetailDialog" in detail_section
     assert "renderHistoryDetailOverview" in detail_section
@@ -3717,6 +4791,7 @@ def test_history_manager_frontend_hooks_are_present() -> None:
 
 def test_history_collection_drag_drop_frontend_hooks_are_present() -> None:
     source = APP_JS.read_text(encoding="utf-8")
+    app_constants = _frontend_module_text("js/features/anima-app/helpers/app-constants.js")
     history_state_source = _frontend_module_text("js/features/anima-app/state/history-state.js")
     css = STYLE_CSS.read_text(encoding="utf-8")
 
@@ -3725,9 +4800,9 @@ def test_history_collection_drag_drop_frontend_hooks_are_present() -> None:
     collection_card = _section(source, "function createHistoryCollectionWorkbenchCard", "function createHistoryConfigGroupWorkbenchCard")
     config_card = _section(source, "function createHistoryConfigGroupWorkbenchCard", "function historyCollectionNamesForTasks")
 
-    assert "globalThis.HISTORY_TASK_DRAG_MIME = 'application/x-anima-history-task-ids';" in source
-    assert "globalThis.HISTORY_COLLECTION_DRAG_MIME = 'application/x-anima-history-collection';" in source
-    assert "globalThis.HISTORY_CONFIG_GROUP_DRAG_MIME = 'application/x-anima-history-config-group';" in source
+    assert "export const HISTORY_TASK_DRAG_MIME = 'application/x-anima-history-task-ids';" in app_constants
+    assert "export const HISTORY_COLLECTION_DRAG_MIME = 'application/x-anima-history-collection';" in app_constants
+    assert "export const HISTORY_CONFIG_GROUP_DRAG_MIME = 'application/x-anima-history-config-group';" in app_constants
     assert "historyDragState: {" in history_state_source
     for key in ("active: false", "taskIds: []", "sourceGroupKey: ''", "activeDropTarget: ''", "pending: false", "popover: {"):
         assert key in history_state_source
@@ -4527,10 +5602,33 @@ def test_history_detail_config_files_are_tool_ready() -> None:
     assert "selectAllTextOnDoubleClick(val)" in config_files
     assert "deps.historyArtifactUrl(task, artifactKey)" in config_files
     assert "deps.historyArtifactUrl(task, artifactKey, { download: true })" in config_files
-    assert "function makeHistoryArtifactUrl" in legacy_source
+    assert "function makeHistoryArtifactUrl" not in legacy_source
     assert "historyArtifactUrl: makeHistoryArtifactUrl" in legacy_source
+    assert "makeHistoryArtifactUrl(task, artifactKey" in _frontend_module_text(
+        "js/features/anima-app/helpers/history-artifacts.js"
+    )
     assert "choiceHelp, help" in _frontend_module_text("js/config/catalog.js")
-    assert "Object.assign(globalThis, ctx.catalog);" in legacy_source
+    assert "Object.assign(globalThis, ctx.catalog);" not in legacy_source
+    for catalog_user in (
+        "js/features/anima-app/chunks/02-ensure-history-detail-feature.js",
+        "js/features/anima-app/chunks/04-create-config-group-entry.js",
+        "js/features/anima-app/chunks/06-stronger-selective-checkpoint-value.js",
+        "js/features/anima-app/chunks/09-setup-config-group-drop-target.js",
+        "js/features/anima-app/chunks/10a-dataset-inline-help.js",
+        "js/features/anima-app/chunks/11-create-dataset-editor-row.js",
+        "js/features/anima-app/chunks/12-create-dataset-row-caption-source-mode-editor.js",
+        "js/features/anima-app/chunks/13-update-dataset-editor-rows-setting-value.js",
+        "js/features/anima-app/chunks/14-lora-adapter-kind-from-config.js",
+        "js/features/anima-app/chunks/15-append-sample-prompt-row.js",
+        "js/features/anima-app/chunks/18-delete-dataset-preset-group.js",
+        "js/features/anima-app/chunks/19-current-sample-prompt-text.js",
+        "js/features/anima-app/chunks/21-update-toml-selection-ui.js",
+        "js/features/anima-app/chunks/22-update-toml-action-state.js",
+        "js/features/anima-app/chunks/24-show-preflight-pending-dialog.js",
+        "js/features/anima-app/chunks/26-load-global-settings.js",
+        "js/features/anima-app/chunks/36-setup-event-listeners.js",
+    ):
+        assert "../../../config/catalog.js" in _frontend_module_text(catalog_user)
 
     for artifact in (
         "'runtime-config'",
@@ -4620,15 +5718,17 @@ def test_config_form_hides_retired_and_unread_fields() -> None:
 
 def test_config_form_auto_fixes_came_optimizer_args_frontend_hooks_are_present() -> None:
     source = APP_JS.read_text(encoding="utf-8")
-    compatibility_section = _section(source, "function normalizeOptimizerType", "function loraAdapterFlagsMatchConfig")
+    optimizer_helper = _frontend_module_text("js/features/anima-app/helpers/optimizer-values.js")
+    compatibility_section = _section(source, "function applyOptimizerCompatibilityPatch", "function createFieldRow")
     load_config_section = _section(source, "async function loadConfig()", "function syncConfigDraftFromForm")
     prepare_section = _section(source, "async function prepareFormPatchValues", "function shouldSkipUiDefaultField")
 
-    assert "function normalizeCameOptimizerArgs(args)" in compatibility_section
+    assert "export function normalizeOptimizerType(value)" in optimizer_helper
+    assert "export function normalizeCameOptimizerArgs(args)" in optimizer_helper
     assert "function applyOptimizerCompatibilityPatch(values)" in compatibility_section
     assert "normalizeOptimizerType(optimizerType) !== 'came'" in compatibility_section
-    assert "cameBetasNeedPatch(rawBetas)" in compatibility_section
-    assert "result[betasIndex] = 'betas=0.9,0.999,0.9999';" in compatibility_section
+    assert "cameBetasNeedPatch(rawBetas)" in optimizer_helper
+    assert "result[betasIndex] = 'betas=0.9,0.999,0.9999';" in optimizer_helper
     assert "const compatibilityPatch = applyConfigCompatibilityDrafts();" in load_config_section
     assert "function applyConfigCompatibilityDrafts()" in load_config_section
     assert "configFormState.draftValues.set(key, value);" in load_config_section
@@ -4747,9 +5847,10 @@ def test_balanced_16g_block_swap_fields_are_visible() -> None:
 def test_block_swap_profile_uses_strict_select_options() -> None:
     defaults_source = _frontend_module_text("js/config/catalog/defaults.js")
     input_source = _frontend_module_text("js/features/anima-app/chunks/14-lora-adapter-kind-from-config.js")
+    display_helper = _frontend_module_text("js/features/anima-app/helpers/config-field-display.js")
     option_source = _frontend_module_text("js/features/anima-app/chunks/15-append-sample-prompt-row.js")
     labels_options = _frontend_module_text("js/config/catalog/labels-options.js")
-    select_gate = _section(input_source, "function shouldRenderSelectInput", "function createFieldInput")
+    select_gate = display_helper
     input_factory = _section(input_source, "function createFieldInput", "function createSamplePromptsPathInput")
 
     assert "block_swap_profile_jsonl: 'off'" in defaults_source
@@ -4911,7 +6012,7 @@ def test_file_group_drag_has_pointer_fallback() -> None:
     assert "placeFileGroupDropPreview(node, position)" in drag_helpers
     assert "handle.addEventListener('pointerdown'" in handle_body
     assert "handle.addEventListener('mousedown'" in handle_body
-    assert "if (fileGroupPointerDrag) {" in handle_body
+    assert "if (currentFileGroupPointerDrag()) {" in handle_body
     assert "event.preventDefault();" in _section(handle_body, "handle.addEventListener('dragstart'", "if (!canBeginFileGroupDrag")
     assert "document.addEventListener('pointermove', drag.onMove, { passive: false })" in drag_helpers
     assert "document.addEventListener('pointerup', drag.onUp, { passive: false })" in drag_helpers
@@ -4927,9 +6028,10 @@ def test_file_group_drag_has_pointer_fallback() -> None:
     assert "fileGroupDropTargetNodes" in source
     assert "data-file-group-drop-target" in source
     assert "autoScrollFileGroupPointerDrag" in drag_helpers
-    assert "fileGroupActiveDropTargetNode === node && fileGroupActiveDropPosition === normalizedPosition" in source
+    assert "currentFileGroupActiveDropTargetNode() === node" in source
+    assert "currentFileGroupActiveDropPosition() === normalizedPosition" in source
 
-    assert drop_targets.count("registerFileGroupDropTarget") == 4
+    assert len(re.findall(r"\bregisterFileGroupDropTarget\(", drop_targets)) == 4
     assert "position: 'inside'" in drop_targets
     assert "configFileDropIndex(group, targetFile, placeAfter, payload.file)" in drop_targets
     assert "configGroupDropIndex(options.getSortableGroups(), group.id, placeAfter, payload.groupId)" in drop_targets
@@ -4955,14 +6057,15 @@ def test_dataset_preset_manager_is_isolated_from_config_page() -> None:
         "async function exportDatasetPreset()",
     )
     load_editor = _section(source, "async function loadDatasetEditor", "function renderDatasetEditor")
-    api_helpers = _section(source, "async function api(url, opts = {})", "function val(id)")
+    api_helpers = _frontend_module_text("js/features/anima-app/runtime/api.js")
     listener_section = _section(source, "function setupEventListeners", "function installBeginnerTooltips")
 
     assert "classList.contains('active')" in tab_active
     assert "closest('#tab-datasets')" not in tab_active
     assert "DATASET_PRESET_REQUEST_TIMEOUT_MS" in source
-    assert "async function datasetPresetApi" in api_helpers
+    assert "api.datasetPresetApi = async function datasetPresetApi" in api_helpers
     assert "数据集预设请求超时" in api_helpers
+    assert "ctx.api(url, opts)" in api_helpers
     assert "const managePresets = options.manage === true || (options.manage !== false && isDatasetTabActive());" in load_presets
     assert "if (!managePresets)" in load_presets
     assert "datasetPresetApi('/api/config/dataset-presets')" in load_presets
@@ -4988,12 +6091,13 @@ def test_dataset_preset_manager_is_isolated_from_config_page() -> None:
 
 def test_config_toml_manager_excludes_dataset_groups() -> None:
     source = APP_JS.read_text(encoding="utf-8")
+    toml_save_source = _frontend_module_text("js/features/anima-app/chunks/19-current-sample-prompt-text.js")
     css = STYLE_CSS.read_text(encoding="utf-8")
 
     load_toml = _section(source, "async function loadTomlFileList", "async function loadOutputRuns")
     toml_render = _section(source, "function renderTomlFileGroups", "function createTomlGroupActions")
     file_button = _section(source, "function createTomlFileButton", "function updateTomlSelectionUI")
-    save_as_groups = _section(source, "function saveAsTargetGroups", "async function moveTomlFileToGroup")
+    save_as_groups = _section(toml_save_source, "export function saveAsTargetGroups", "export async function moveTomlFileToGroup")
     helper_section = _section(source, "function isDatasetConfigGroup", "function populateTomlFileSelect")
     create_group = _section(source, "async function createTomlGroup", "async function renameTomlGroup")
     movable_groups = _section(source, "function getMovableTomlGroups", "function deleteTomlGroupButtonTitle")
@@ -5023,7 +6127,7 @@ def test_config_toml_manager_excludes_dataset_groups() -> None:
     assert "createTomlGroupOrderActions" not in source
     assert "createTomlFileOrderButton" not in source
     assert "toml-file-order-btn" not in css
-    assert "const trainingGroups = filterTrainingTomlGroups(tomlFileGroups);" in save_as_groups
+    assert "const trainingGroups = filterTrainingTomlGroups(tomlState.tomlFileGroups);" in save_as_groups
     assert "const imported = trainingGroups.find((group) => group.id === 'imported');" in save_as_groups
     assert "JSON.stringify({ label: label.trim(), kind: 'training' })" in create_group
     assert "isTrainingTomlGroup(group) && group.movable" in movable_groups
@@ -5060,18 +6164,27 @@ def test_dataset_json_caption_switch_ui_is_wired() -> None:
     defaults_editor = _section(source, "function createDatasetDefaultsEditor", "function createDatasetConfigInput")
     item_factory = _section(source, "function createDatasetEditorItem", "function createDatasetEditorRow")
     row_factory = _section(source, "function createDatasetEditorRow", "function createDatasetExperimentalFeaturesEditor")
+    dataset_editor_row_source = _frontend_module_text("js/features/anima-app/chunks/11-create-dataset-editor-row.js")
+    dataset_values_source = _frontend_module_text("js/features/anima-app/helpers/dataset-values.js")
+    dataset_update_source = _frontend_module_text(
+        "js/features/anima-app/chunks/12-create-dataset-row-caption-source-mode-editor.js"
+    )
     experimental_factory = _section(source, "function createDatasetExperimentalFeaturesEditor", "function createDatasetRowSettingsEditor")
     notice_factory = _section(source, "function createDatasetExperimentalNotice", "function createDatasetExperimentalAdvancedBody")
     advanced_body_factory = _section(source, "function createDatasetExperimentalAdvancedBody", "function datasetExperimentalOpenKey")
     inline_help_factory = _section(source, "function datasetExperimentalOpenKey", "function createDatasetIsRegEditor")
     is_reg_factory = _section(source, "function createDatasetIsRegEditor", "export {")
     caption_extension_factory = _section(source, "function createDatasetCaptionExtensionEditor", "function createDatasetNlTagMixEditor")
-    mix_factory = _section(source, "function createDatasetNlTagMixEditor", "function normalizeCaptionSourceMode")
+    mix_factory = _section(source, "function createDatasetNlTagMixEditor", "function createDatasetExperimentalScopePicker")
     help_specs = _section(source, "function datasetLocalHelpSpec", "function createDatasetHelpNode")
     caption_source_factory = _section(source, "function createDatasetRowCaptionSourceModeEditor", "function createDatasetRowSettingInput")
-    normalize_factory = _section(source, "function normalizeNlTagMix", "function updateDatasetDefault")
+    normalize_factory = dataset_values_source
     payload_factory = _section(source, "function datasetRowsForPayload", "function normalizeDatasetRowSettings")
-    row_update_factory = _section(source, "function updateDatasetEditorRowSetting", "function updateDatasetEditorRowNlTagMix")
+    row_update_factory = _section(
+        dataset_update_source,
+        "function updateDatasetEditorRowSetting",
+        "function updateDatasetEditorRowSettingValue",
+    )
 
     assert "通用标注设置" in defaults_editor
     assert "这里只保留 keep_tokens" in defaults_editor
@@ -5089,7 +6202,7 @@ def test_dataset_json_caption_switch_ui_is_wired() -> None:
     assert "createDatasetNlTagMixEditor(row, index)" in row_factory
     assert "实验性/高级/旧功能" in experimental_factory
     assert "dataset-experimental-features" in experimental_factory
-    assert "createDatasetExperimentalAdvancedBody(row, index, overviewHelp)" in experimental_factory
+    assert "createDatasetExperimentalAdvancedBody(row, index, overviewHelp, {" in experimental_factory
     assert "createDatasetExperimentalScopePicker(index)" in advanced_body_factory
     assert "createDatasetTriggerCloneEditor(row, index)" in advanced_body_factory
     assert "createDatasetCaptionExtensionEditor(row, index)" in advanced_body_factory
@@ -5138,7 +6251,9 @@ def test_dataset_json_caption_switch_ui_is_wired() -> None:
     assert ".dataset-trigger-clone" in css
     assert ".dataset-trigger-clone-summary" in css
 
-    trigger_clone_factory = _section(source, "function createDatasetTriggerCloneEditor", "function normalizeCaptionSourceMode")
+    trigger_clone_factory = dataset_editor_row_source[
+        dataset_editor_row_source.index("function createDatasetTriggerCloneEditor"):
+    ]
     assert "触发提示词图像克隆" in trigger_clone_factory
     assert "触发提示词" in trigger_clone_factory
     assert "克隆循环次数" in trigger_clone_factory
@@ -5229,11 +6344,12 @@ def test_dataset_editor_preserves_subset_filters_and_rederives_hidden_paths() ->
     experimental_factory = _section(source, "function createDatasetExperimentalFeaturesEditor", "function createDatasetRowSettingsEditor")
     advanced_body_factory = _section(source, "function createDatasetExperimentalAdvancedBody", "function datasetExperimentalOpenKey")
     filter_factory = _section(source, "function createDatasetPathFilterEditor", "function createDatasetRowSettingsEditor")
-    normalize_factory = _section(source, "function normalizeDatasetEditorRows", "function normalizeDatasetRowSettings")
-    defaults_factory = _section(source, "function normalizeDatasetDefaults", "function updateDatasetDefault")
+    dataset_values_source = _frontend_module_text("js/features/anima-app/helpers/dataset-values.js")
+    normalize_factory = _section(dataset_values_source, "function normalizeDatasetEditorRows", "function normalizeDatasetRowSettings")
+    defaults_factory = dataset_values_source[dataset_values_source.index("function normalizeDatasetDefaults"):]
     row_update_factory = _section(source, "function updateDatasetEditorRow(index", "function updateDatasetEditorRowSetting")
 
-    assert "createDatasetExperimentalAdvancedBody(row, index, overviewHelp)" in experimental_factory
+    assert "createDatasetExperimentalAdvancedBody(row, index, overviewHelp, {" in experimental_factory
     assert "createDatasetPathFilterEditor(row, index)" in advanced_body_factory
     assert "递归扫描子目录 / recursive" in filter_factory
     assert "路径筛选 / path_pattern" in filter_factory

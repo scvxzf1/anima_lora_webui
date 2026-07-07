@@ -2,9 +2,44 @@
  * Mechanical split from the former monolithic app closure.
  * Keep this module focused; move newly edited behavior into domain modules.
  */
-const ctx = globalThis.ctx;
+import { readTomlGroupState, writeTomlGroupState } from '../../toml-manager/group-state.js?v=module-bootstrap-20260707-93';
+import {
+    createFileGroupDragHandle,
+    setupFileGroupHeaderDropTarget,
+    setupFileGroupListDropTarget,
+    setupFileGroupRowDropTarget,
+} from './08-origin-closest.js?v=module-bootstrap-20260707-93';
+import { setupConfigGroupDropTarget } from './09-setup-config-group-drop-target.js?v=module-bootstrap-20260707-93';
+import { showHistoryTaskDialog } from '../helpers/history-task-actions-bridge.js?v=module-bootstrap-20260707-93';
+import { loadTomlFileList, updateConfigPageSummary } from '../helpers/toml-manager-bridge.js?v=module-bootstrap-20260707-93';
+import { canDeleteTomlGroup, deleteTomlGroup, deleteTomlGroupButtonTitle } from '../helpers/toml-actions-bridge.js?v=module-bootstrap-20260707-93';
+import { enqueueTrainingQueueBatchRequest, isCliOnlySpdSource, showPreflightDialog } from '../helpers/training-launch-bridge.js?v=module-bootstrap-20260707-93';
+import {
+    renameTomlGroup,
+    setTomlStatus,
+    tomlFileDisplayName,
+    tomlLockLabel,
+    toggleTomlGroupLock,
+    updateTomlActionState,
+} from '../helpers/toml-action-state-bridge.js?v=module-bootstrap-20260707-93';
+import { api, val } from '../helpers/runtime-bridge.js?v=module-bootstrap-20260707-93';
+import { hasPendingConfigChanges, updateTomlSelectionUI } from '../helpers/toml-selection-bridge.js?v=module-bootstrap-20260707-93';
+import { createTomlZipBlob, downloadBlob, isTomlGroupDraggable, shouldShowTomlGroup } from '../helpers/toml-io-bridge.js?v=module-bootstrap-20260707-93';
+import { renderPreflightPending, showPreflightRequestError } from '../helpers/preflight-dialog-bridge.js?v=module-bootstrap-20260707-93';
+import { appendLog } from '../helpers/live-log-bridge.js?v=module-bootstrap-20260707-93';
+import { configureTomlDragBridge } from '../helpers/toml-drag-bridge.js?v=module-bootstrap-20260707-93';
+import { showTrainingView, updateTrainingQueueFromPayload } from '../helpers/queue-view-bridge.js?v=module-bootstrap-20260707-93';
+import { getTomlState } from '../helpers/toml-state-bridge.js?v=module-bootstrap-20260707-93';
+import { getTrainingState } from '../helpers/training-state-bridge.js?v=module-bootstrap-20260707-93';
 
-    globalThis.canDropTomlFileToGroup = function canDropTomlFileToGroup(group) {
+const tomlState = getTomlState();
+const trainingState = getTrainingState();
+
+function currentTrainingSourceState() {
+    return trainingState.currentTrainingSource || {};
+}
+
+    export function canDropTomlFileToGroup(group) {
         return Boolean(
             group?.id &&
             isTrainingTomlGroup(group) &&
@@ -14,11 +49,11 @@ const ctx = globalThis.ctx;
         );
     }
 
-    globalThis.isTomlFileDraggable = function isTomlFileDraggable(item) {
-        return Boolean(item?.path && !item.locked && !hasPendingConfigChanges(currentTomlFile));
+    export function isTomlFileDraggable(item) {
+        return Boolean(item?.path && !item.locked && !hasPendingConfigChanges(tomlState.currentTomlFile));
     }
 
-    globalThis.createTomlGroupDragHandle = function createTomlGroupDragHandle(group, details) {
+    export function createTomlGroupDragHandle(group, details) {
         const disabled = !isTomlGroupDraggable(group);
         return createFileGroupDragHandle({
             target: 'group',
@@ -34,7 +69,7 @@ const ctx = globalThis.ctx;
         });
     }
 
-    globalThis.placeTomlGroup = async function placeTomlGroup(payload, index) {
+    export async function placeTomlGroup(payload, index) {
         const groupId = payload?.groupId;
         if (!groupId) return;
         try {
@@ -46,19 +81,19 @@ const ctx = globalThis.ctx;
                 setTomlStatus('error', res.error || '调整分组位置失败');
                 return;
             }
-            await loadTomlFileList(currentTomlFile || '');
+            await loadTomlFileList(tomlState.currentTomlFile || '');
             setTomlStatus('ok', res.message || '分组位置已更新');
         } catch (e) {
             setTomlStatus('error', '请求失败: ' + e.message);
         }
     }
 
-    globalThis.placeTomlFile = async function placeTomlFile(payload, groupId, index) {
+    export async function placeTomlFile(payload, groupId, index) {
         const file = payload?.file;
         if (!file || !groupId) return;
-        if (hasPendingConfigChanges(currentTomlFile)) {
+        if (hasPendingConfigChanges(tomlState.currentTomlFile)) {
             setTomlStatus('error', '当前配置尚未保存，请先保存或放弃修改后再拖动排序');
-            updateTomlActionState(currentTomlFile);
+            updateTomlActionState(tomlState.currentTomlFile);
             return;
         }
         try {
@@ -70,14 +105,14 @@ const ctx = globalThis.ctx;
                 setTomlStatus('error', res.error || '配置位置调整失败');
                 return;
             }
-            await loadTomlFileList(currentTomlFile || file);
+            await loadTomlFileList(tomlState.currentTomlFile || file);
             setTomlStatus('ok', res.message || '配置位置已更新');
         } catch (e) {
             setTomlStatus('error', '请求失败: ' + e.message);
         }
     }
 
-    globalThis.tomlFileDragOptions = function tomlFileDragOptions() {
+    export function tomlFileDragOptions() {
         return {
             scope: 'training',
             rowSelector: '.toml-file-row-wrap',
@@ -86,7 +121,7 @@ const ctx = globalThis.ctx;
         };
     }
 
-    globalThis.tomlGroupDragOptions = function tomlGroupDragOptions() {
+    export function tomlGroupDragOptions() {
         return {
             scope: 'training',
             getSortableGroups: () => getSortableTomlGroups(),
@@ -95,7 +130,7 @@ const ctx = globalThis.ctx;
         };
     }
 
-    globalThis.populateTomlFileSelect = function populateTomlFileSelect(groups) {
+    export function populateTomlFileSelect(groups) {
         const sel = document.getElementById('toml-file-select');
         const prev = sel.value;
         sel.innerHTML = '';
@@ -111,14 +146,14 @@ const ctx = globalThis.ctx;
             }
             sel.appendChild(optgroup);
         }
-        if (tomlFiles.includes(prev)) {
+        if (tomlState.tomlFiles.includes(prev)) {
             sel.value = prev;
         }
         renderTomlFileGroups(groups);
         updateConfigPageSummary('project');
     }
 
-    globalThis.renderTomlFileGroups = function renderTomlFileGroups(groups) {
+    export function renderTomlFileGroups(groups) {
         const container = document.getElementById('toml-file-groups');
         if (!container) return;
         container.innerHTML = '';
@@ -200,7 +235,7 @@ const ctx = globalThis.ctx;
                 writeTomlGroupState(next);
                 if (details.open) {
                     renderGroupFiles();
-                    updateTomlSelectionUI(currentTomlFile);
+                    updateTomlSelectionUI(tomlState.currentTomlFile);
                 }
             });
             details.appendChild(list);
@@ -208,10 +243,10 @@ const ctx = globalThis.ctx;
             fragment.appendChild(details);
         }
         container.appendChild(fragment);
-        updateTomlSelectionUI(currentTomlFile);
+        updateTomlSelectionUI(tomlState.currentTomlFile);
     }
 
-    globalThis.renderTomlFileGroupList = function renderTomlFileGroupList(list, group, files = group?.files || []) {
+    export function renderTomlFileGroupList(list, group, files = group?.files || []) {
         if (!list || list.dataset.rendered === '1') return;
         list.dataset.rendered = '1';
         const fragment = document.createDocumentFragment();
@@ -227,7 +262,7 @@ const ctx = globalThis.ctx;
         list.appendChild(fragment);
     }
 
-    globalThis.createTomlGroupActions = function createTomlGroupActions(group) {
+    export function createTomlGroupActions(group) {
         const wrap = document.createElement('span');
         wrap.className = 'toml-group-actions';
 
@@ -260,20 +295,20 @@ const ctx = globalThis.ctx;
         return wrap;
     }
 
-    globalThis.exportableTomlGroupFiles = function exportableTomlGroupFiles(group) {
+    export function exportableTomlGroupFiles(group) {
         return (group?.files || [])
             .filter((item) => item?.path && String(item.path).toLowerCase().endsWith('.toml'));
     }
 
-    globalThis.exportTomlGroup = async function exportTomlGroup(group) {
+    export async function exportTomlGroup(group) {
         const files = exportableTomlGroupFiles(group);
         if (!files.length) {
             setTomlStatus('error', '该分组没有可导出的 TOML 文件');
             return;
         }
-        if (hasPendingConfigChanges(currentTomlFile)) {
+        if (hasPendingConfigChanges(tomlState.currentTomlFile)) {
             setTomlStatus('error', '当前配置尚未保存，请先保存或放弃修改后再导出分组');
-            updateTomlActionState(currentTomlFile);
+            updateTomlActionState(tomlState.currentTomlFile);
             return;
         }
 
@@ -300,25 +335,25 @@ const ctx = globalThis.ctx;
         }
     }
 
-    globalThis.exportTomlGroupFilename = function exportTomlGroupFilename(group) {
+    export function exportTomlGroupFilename(group) {
         const raw = String(group?.label || group?.id || 'toml-group').trim();
         const safe = raw.replace(/[\\/:*?"<>|\r\n\t]+/g, '_').replace(/\s+/g, '_').replace(/^[._]+|[._]+$/g, '');
         return safe || 'toml-group';
     }
 
-    globalThis.queueableTomlGroupFiles = function queueableTomlGroupFiles(group) {
+    export function queueableTomlGroupFiles(group) {
         return (group?.files || [])
             .filter((item) => item?.path && item.trainable)
             .filter((item) => !String(item.path || '').replace(/\\/g, '/').startsWith('configs/datasets/'));
     }
 
-    globalThis.tomlItemQueueVariant = function tomlItemQueueVariant(item) {
+    export function tomlItemQueueVariant(item) {
         if (item?.method) return item.method;
         const filename = String(item?.filename || item?.path || '').split('/').pop() || '';
         return filename.toLowerCase().endsWith('.toml') ? filename.slice(0, -5) : filename;
     }
 
-    globalThis.tomlItemQueueEntry = function tomlItemQueueEntry(item, preset = '') {
+    export function tomlItemQueueEntry(item, preset = '') {
         const path = String(item?.path || '').trim();
         const methodsSubdir = String(item?.methods_subdir || '').trim() || 'imported';
         const label = tomlFileDisplayName(item);
@@ -333,7 +368,7 @@ const ctx = globalThis.ctx;
         };
     }
 
-    globalThis.tomlGroupQueueFailureLabel = function tomlGroupQueueFailureLabel(item, failure = {}, index = -1) {
+    export function tomlGroupQueueFailureLabel(item, failure = {}, index = -1) {
         const path = String(item?.path || item?.config_file || failure.config_file || '').trim();
         if (path) return path;
         const failureLabel = String(failure.label || failure.filename || item?.label || item?.filename || '').trim();
@@ -344,7 +379,7 @@ const ctx = globalThis.ctx;
         return fallbackIndex > 0 ? `第 ${fallbackIndex} 个配置` : '批量请求';
     }
 
-    globalThis.showTomlGroupQueueConfirmDialog = async function showTomlGroupQueueConfirmDialog(group, files) {
+    export async function showTomlGroupQueueConfirmDialog(group, files) {
         const wrap = document.createElement('div');
         wrap.className = 'history-task-dialog-message toml-group-queue-dialog';
 
@@ -377,15 +412,15 @@ const ctx = globalThis.ctx;
         });
     }
 
-    globalThis.enqueueTomlGroupToQueue = async function enqueueTomlGroupToQueue(group) {
+    export async function enqueueTomlGroupToQueue(group) {
         const files = queueableTomlGroupFiles(group);
         if (!files.length) {
             setTomlStatus('error', '该分组没有可加入队列的训练配置');
             return;
         }
-        if (hasPendingConfigChanges(currentTomlFile)) {
+        if (hasPendingConfigChanges(tomlState.currentTomlFile)) {
             setTomlStatus('error', '当前配置尚未保存，请先保存或放弃修改后再批量加入队列');
-            updateTomlActionState(currentTomlFile);
+            updateTomlActionState(tomlState.currentTomlFile);
             return;
         }
         const confirmed = await showTomlGroupQueueConfirmDialog(group, files);
@@ -450,7 +485,7 @@ const ctx = globalThis.ctx;
         setTomlStatus('ok', `已将 ${queued} 个配置加入训练队列`, { persist: true });
     }
 
-    globalThis.createTomlGroupActionButton = function createTomlGroupActionButton(label, handler, options = {}) {
+    export function createTomlGroupActionButton(label, handler, options = {}) {
         const btn = document.createElement('button');
         btn.type = 'button';
         btn.className = [
@@ -470,9 +505,9 @@ const ctx = globalThis.ctx;
         return btn;
     }
 
-    globalThis.runTomlGroupAction = function runTomlGroupAction(handler, button = null) {
-        if (tomlGroupActionBusy) return;
-        tomlGroupActionBusy = true;
+    export function runTomlGroupAction(handler, button = null) {
+        if (tomlState.tomlGroupActionBusy) return;
+        tomlState.tomlGroupActionBusy = true;
         if (button) button.disabled = true;
         Promise.resolve()
             .then(handler)
@@ -480,12 +515,12 @@ const ctx = globalThis.ctx;
                 setTomlStatus('error', '分组操作失败: ' + e.message);
             })
             .finally(() => {
-                tomlGroupActionBusy = false;
+                tomlState.tomlGroupActionBusy = false;
                 if (button?.isConnected) button.disabled = false;
             });
     }
 
-    globalThis.createTomlFileButton = function createTomlFileButton(item, group = null) {
+    export function createTomlFileButton(item, group = null) {
         const row = document.createElement('div');
         row.className = 'toml-file-row-wrap';
         row.dataset.file = item.path;
@@ -500,7 +535,7 @@ const ctx = globalThis.ctx;
             sourceElement: row,
             canDrag: () => isTomlFileDraggable(item),
             blockedMessage: () => {
-                const message = hasPendingConfigChanges(currentTomlFile)
+                const message = hasPendingConfigChanges(tomlState.currentTomlFile)
                     ? '当前配置尚未保存，请先保存或放弃修改后再拖动排序'
                     : '该配置文件不能拖动排序';
                 setTomlStatus('error', message);
@@ -531,7 +566,7 @@ const ctx = globalThis.ctx;
         meta.className = 'toml-file-meta';
         const tags = [];
         if (item.filename && item.filename !== item.label) tags.push(item.filename);
-        if (currentTrainingSource.file === item.path) tags.push('当前训练');
+        if (currentTrainingSourceState().file === item.path) tags.push('当前训练');
         const lockLabel = tomlLockLabel(item);
         if (lockLabel) tags.push(lockLabel);
         tags.push(item.trainable ? '可训练' : '非训练');
@@ -541,3 +576,29 @@ const ctx = globalThis.ctx;
         row.appendChild(btn);
         return row;
     }
+
+configureTomlDragBridge({
+    canDropTomlFileToGroup,
+    isTomlFileDraggable,
+    createTomlGroupDragHandle,
+    placeTomlGroup,
+    placeTomlFile,
+    tomlFileDragOptions,
+    tomlGroupDragOptions,
+    populateTomlFileSelect,
+    renderTomlFileGroups,
+    renderTomlFileGroupList,
+    createTomlGroupActions,
+    exportableTomlGroupFiles,
+    exportTomlGroup,
+    exportTomlGroupFilename,
+    queueableTomlGroupFiles,
+    tomlItemQueueVariant,
+    tomlItemQueueEntry,
+    tomlGroupQueueFailureLabel,
+    showTomlGroupQueueConfirmDialog,
+    enqueueTomlGroupToQueue,
+    createTomlGroupActionButton,
+    runTomlGroupAction,
+    createTomlFileButton,
+});

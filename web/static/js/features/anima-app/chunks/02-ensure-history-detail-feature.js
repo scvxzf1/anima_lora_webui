@@ -2,15 +2,103 @@
  * Mechanical split from the former monolithic app closure.
  * Keep this module focused; move newly edited behavior into domain modules.
  */
-const ctx = globalThis.ctx;
-const ALWAYS_VISIBLE_NETWORK_ARG_FIELDS = new Set([
-    'lokr_use_einsum',
-    'lokr_decompose_w2',
-    'lokr_factor_group_size',
-    'lokr_project_chunk_bytes',
-]);
+import { MetricsChart } from '../../../../chart.js?v=module-bootstrap-20260707-93';
+import { applyLoraAdapterDraft, applyOptimizerCompatibilityPatch } from './14-lora-adapter-kind-from-config.js?v=module-bootstrap-20260707-93';
+import { createGpuPicker } from '../../app-shell/gpu-picker.js?v=module-bootstrap-20260707-93';
+import { createTabController } from '../../app-shell/tabs.js?v=module-bootstrap-20260707-93';
+import { createThemeController } from '../../app-shell/theme.js?v=module-bootstrap-20260707-93';
+import { createUIScaleController } from '../../app-shell/ui-scale.js?v=module-bootstrap-20260707-93';
+import { createHistoryDetailFeature } from '../../history-detail/index.js?v=module-bootstrap-20260707-93';
+import { formatLr, lastValue } from '../../live-training/index.js?v=module-bootstrap-20260707-93';
+import { setupEventListeners } from './36-setup-event-listeners.js?v=module-bootstrap-20260707-93';
+import { loadDatasetPresets, loadStepEstimate, renderLiveChartPanel, resetLiveMetricPlaceholders, scheduleStepEstimatePanelRefresh, syncLiveChartControls, syncLossChartEmptyState } from './03-parse-network-arg-entry.js?v=module-bootstrap-20260707-93';
+import { activeMethodKey, clearCurrentTrainingSource, rememberSelectionSnapshot, setCurrentTrainingSourceFromVariant, updateChoiceGuide } from './13-update-dataset-editor-rows-setting-value.js?v=module-bootstrap-20260707-93';
+import { requestContinueLoraInspection } from './06-stronger-selective-checkpoint-value.js?v=module-bootstrap-20260707-93';
+import {
+    CHIMERA_UI_DEFAULT_FIELDS,
+    CONFIG_FORM_INTERNAL_KEYS,
+    CONFIG_FORM_MERGED_FIELDS,
+    DATASET_BLUEPRINT_FIELDS,
+    DEPRECATED_CONFIG_FORM_FIELDS,
+    FORM_SECTION_DEFS,
+    FORM_UI_DEFAULTS,
+    GLOBAL_UI_HISTORY_DETAIL_OVERRIDE_FIELDS,
+    GLOBAL_UI_TOP_LEVEL_OVERRIDE_FIELDS,
+    IP_ADAPTER_UI_DEFAULT_FIELDS,
+    METHOD_SCOPED_CONFIG_FORM_FIELDS,
+    NETWORK_ARG_FIELD_MAP,
+    NETWORK_ARG_FIELD_SPECS,
+    RETIRED_CONFIG_FORM_FIELDS,
+    SOFT_TOKENS_UI_DEFAULT_FIELDS,
+    SPD_UI_DEFAULT_FIELDS,
+    help,
+} from '../../../config/catalog.js?v=module-bootstrap-20260707-93';
+import { GPU_WHITELIST_STORAGE_KEY, THEME_STORAGE_KEY } from '../helpers/app-constants.js?v=module-bootstrap-20260707-93';
+import { isTruthy, loraAdapterFlagsMatchConfig, loraAdapterKindFromConfig, normalizeLoraAdapterKind, normalizePrecisionPreference, precisionPreferenceFromConfig } from '../helpers/config-values.js?v=module-bootstrap-20260707-93';
+import { datasetPresetSummaryByFile } from '../helpers/dataset-presets.js?v=module-bootstrap-20260707-93';
+import { isDatasetTabActive } from '../helpers/dataset-render-bridge.js?v=module-bootstrap-20260707-93';
+import { ensureEnvironmentCheckFeature, ensureWeightAnalysisFeature } from '../helpers/feature-ensurers.js?v=module-bootstrap-20260707-93';
+import { configureConfigFormBridge, networkArgFieldValueFromConfig, readFieldInputValue, shouldSkipUiDefaultField, updateDoRAFieldState, updateLoKrFieldState, updateLossWeightingFieldState, updateVeRAFieldState } from '../helpers/config-form-bridge.js?v=module-bootstrap-20260707-93';
+import { makeHistoryArtifactUrl } from '../helpers/history-artifacts.js?v=module-bootstrap-20260707-93';
+import { coerceNetworkArgValue, parseNetworkArgEntry } from '../helpers/network-args.js?v=module-bootstrap-20260707-93';
+import { parseArrayValue, valuesEqual } from '../helpers/form-values.js?v=module-bootstrap-20260707-93';
+import { auditConfigTrainingSourceOnEnter, refreshContinueTrainingSourceCompatibility, renderContinueTrainingSource, selectContinueLoraWeight } from '../helpers/training-source-bridge.js?v=module-bootstrap-20260707-93';
+import { loadDefaultTomlFile, loadTomlFileList } from '../helpers/toml-manager-bridge.js?v=module-bootstrap-20260707-93';
+import { refreshTrainingHealth } from '../helpers/live-status-bridge.js?v=module-bootstrap-20260707-93';
+import { canPreviewHistoryConfigGroup, historyContinueLabel, historyQueueLabel, historyResumeLabel, historyTaskDisplayName, historyTaskIsArchived } from '../helpers/history-collections-bridge.js?v=module-bootstrap-20260707-93';
+import { activateHistoryDetailPreview, archiveHistoryTask, clearViewingHistoryTaskContext, createHistoryActionButton, createHistoryTaskPreviewButton, deleteHistoryTask, historyLossChartPoints, historyTaskLabel, renameHistoryTask, restorePreviewWorkspaceFromHistoryDetail, shouldRenderInlineResumePanel, showHistoryTaskConfirmDialog } from '../helpers/history-task-actions-bridge.js?v=module-bootstrap-20260707-93';
+import { configGroupLabel, configGroupTimelineSummary, formatGroupTimelineLogRecord, formatStepRange, historyStateLabel, metricsWithProgressFallback, returnToLiveTraining, runtimePathItems } from '../helpers/history-timeline-bridge.js?v=module-bootstrap-20260707-93';
+import { appendConfigGroupsByCategory, createConfigGroupEntry } from './04-create-config-group-entry.js?v=module-bootstrap-20260707-93';
+import { setTomlStatus, updateTomlActionState } from '../helpers/toml-action-state-bridge.js?v=module-bootstrap-20260707-93';
+import { configureAppShellStartupBridge } from '../helpers/app-shell-startup-bridge.js?v=module-bootstrap-20260707-93';
+import { getAppShellState } from '../helpers/app-shell-state-bridge.js?v=module-bootstrap-20260707-93';
+import { getAppContext } from '../helpers/app-context-bridge.js?v=module-bootstrap-20260707-93';
+import { getConfigState } from '../helpers/config-state-bridge.js?v=module-bootstrap-20260707-93';
+import { getDatasetState } from '../helpers/dataset-state-bridge.js?v=module-bootstrap-20260707-93';
+import { getHistoryState } from '../helpers/history-state-bridge.js?v=module-bootstrap-20260707-93';
+import { loadGlobalSettings } from '../helpers/global-settings-bridge.js?v=module-bootstrap-20260707-93';
+import { configureHistoryDetailBridge } from '../helpers/history-detail-bridge.js?v=module-bootstrap-20260707-93';
+import { ensureImageTestFeature } from '../helpers/image-test-bridge.js?v=module-bootstrap-20260707-93';
+import { confirmDiscardTomlChanges, updateTomlDirtyState } from '../helpers/toml-selection-bridge.js?v=module-bootstrap-20260707-93';
+import { currentSamplePromptText, loadSamplePrompts } from '../helpers/sample-prompts-bridge.js?v=module-bootstrap-20260707-93';
+import { api, populateSelect, val } from '../helpers/runtime-bridge.js?v=module-bootstrap-20260707-93';
+import { downloadBlob } from '../helpers/toml-io-bridge.js?v=module-bootstrap-20260707-93';
+import { currentTrainingConfigFile } from '../helpers/preflight-dialog-bridge.js?v=module-bootstrap-20260707-93';
+import { appendLog, connectWebSocket, logLineTone, recoverLiveTrainingState } from '../helpers/live-log-bridge.js?v=module-bootstrap-20260707-93';
+import { scheduleStatusPoll } from '../helpers/status-polling-bridge.js?v=module-bootstrap-20260707-93';
+import { loadTrainingQueue, showTrainingView, resetTrainingExpandedStateOnLeave, updateTrainingQueueFromPayload } from '../helpers/queue-view-bridge.js?v=module-bootstrap-20260707-93';
+import { loadTrainingHistoryList, renderHistoryManager, renderTrainingHistoryList } from '../helpers/history-list-bridge.js?v=module-bootstrap-20260707-93';
+import { loadTomlFile } from '../helpers/output-run-bridge.js?v=module-bootstrap-20260707-93';
+import { loadPreviewSettings, normalizePreviewGroup, copyText } from '../helpers/preview-view-bridge.js?v=module-bootstrap-20260707-93';
+import { getTomlState } from '../helpers/toml-state-bridge.js?v=module-bootstrap-20260707-93';
+import { getTrainingState } from '../helpers/training-state-bridge.js?v=module-bootstrap-20260707-93';
 
-    globalThis.ensureHistoryDetailFeature = function ensureHistoryDetailFeature() {
+const ctx = getAppContext();
+const appShellState = getAppShellState();
+const configState = getConfigState();
+const datasetState = getDatasetState();
+const historyState = getHistoryState();
+const tomlState = getTomlState();
+const trainingState = getTrainingState();
+const configFormState = configState.configFormState;
+const ALWAYS_VISIBLE_NETWORK_ARG_FIELDS = new Set(['lokr_use_einsum', 'lokr_decompose_w2', 'lokr_factor_group_size', 'lokr_project_chunk_bytes']);
+let historyDetailFeature = null;
+let themeController = null;
+let uiScaleController = null;
+let gpuPicker = null;
+let tabController = null;
+
+function currentConfigState() { return configState.currentConfig || {}; }
+
+function currentTrainingSourceState() {
+    return trainingState.currentTrainingSource || {};
+}
+
+function currentContinueTrainingSource() {
+    return trainingState.continueTrainingSource || null;
+}
+
+    export function ensureHistoryDetailFeature() {
         if (historyDetailFeature) return historyDetailFeature;
         historyDetailFeature = createHistoryDetailFeature(ctx, {
             setViewingHistoryTaskContext: ({
@@ -20,15 +108,15 @@ const ALWAYS_VISIBLE_NETWORK_ARG_FIELDS = new Set([
                 configGroup = null,
                 timelineSelection = [],
             } = {}) => {
-                viewingHistoryTaskId = taskId || '';
-                historyViewMode = viewMode || 'live';
-                currentHistoryTaskForResume = task || null;
-                currentHistoryConfigGroup = configGroup || null;
-                currentHistoryTimelineSelection = Array.isArray(timelineSelection) ? timelineSelection : [];
+                historyState.viewingHistoryTaskId = taskId || '';
+                historyState.historyViewMode = viewMode || 'live';
+                historyState.currentHistoryTaskForResume = task || null;
+                historyState.currentHistoryConfigGroup = configGroup || null;
+                historyState.currentHistoryTimelineSelection = Array.isArray(timelineSelection) ? timelineSelection : [];
             },
-            getViewingHistoryTaskId: () => viewingHistoryTaskId,
-            getCurrentHistoryTaskForResume: () => currentHistoryTaskForResume,
-            setCurrentHistoryTaskForResume: (task) => { currentHistoryTaskForResume = task || null; },
+            getViewingHistoryTaskId: () => historyState.viewingHistoryTaskId,
+            getCurrentHistoryTaskForResume: () => historyState.currentHistoryTaskForResume,
+            setCurrentHistoryTaskForResume: (task) => { historyState.currentHistoryTaskForResume = task || null; },
             renderTrainingHistoryList,
             renderHistoryManager,
             loadTrainingHistoryList,
@@ -36,8 +124,8 @@ const ALWAYS_VISIBLE_NETWORK_ARG_FIELDS = new Set([
             returnToLiveTraining,
             clearViewingHistoryTaskContext,
             shouldRenderInlineResumePanel,
-            getTrainingViewMode: () => trainingViewMode,
-            getTrainingRuntime: () => trainingRuntime,
+            getTrainingViewMode: () => trainingState.trainingViewMode,
+            getTrainingRuntime: () => trainingState.trainingRuntime,
             activateHistoryDetailPreview,
             restorePreviewWorkspaceFromHistoryDetail,
             updateTrainingQueueFromPayload,
@@ -62,10 +150,7 @@ const ALWAYS_VISIBLE_NETWORK_ARG_FIELDS = new Set([
             copyText,
             downloadBlob,
             selectedGpuPayload: () => gpuPicker.selectedGpuPayload(),
-            inspectContinueLoraWeight: (path) => (
-                globalThis.requestContinueLoraInspection?.(path)
-                || Promise.resolve({ ok: false, error: '权重审查入口未初始化' })
-            ),
+            inspectContinueLoraWeight: requestContinueLoraInspection,
             selectContinueLoraWeight,
             showHistoryTaskConfirmDialog,
             formatLr,
@@ -77,22 +162,18 @@ const ALWAYS_VISIBLE_NETWORK_ARG_FIELDS = new Set([
             formatGroupTimelineLogRecord,
             logLineTone,
             applyHistoryDetailUIScale: (detailTab) => {
-                uiScaleController?.applyHistoryDetailScale?.(globalSettings || {}, detailTab || 'overview');
+                uiScaleController?.applyHistoryDetailScale?.(appShellState.globalSettings || {}, detailTab || 'overview');
             },
         });
         return historyDetailFeature;
     }
 
     // ── 初始化 ──
-    globalThis.themeController = null;
-    globalThis.uiScaleController = null;
-    globalThis.gpuPicker = null;
-    globalThis.tabController = null;
 
-    globalThis.startAnimaApp = async function startAnimaApp() {
+    export async function startAnimaApp() {
         themeController = createThemeController({
             storageKey: THEME_STORAGE_KEY,
-            getLossChart: () => lossChart,
+            getLossChart: () => trainingState.lossChart,
             chartTheme,
         });
         uiScaleController = createUIScaleController({
@@ -106,11 +187,11 @@ const ALWAYS_VISIBLE_NETWORK_ARG_FIELDS = new Set([
         tabController = createTabController({
             loadDatasetPresets,
             loadGlobalSettings,
-            ensureWeightAnalysisFeature,
-            ensureEnvironmentCheckFeature,
+            ensureWeightAnalysisFeature: () => ensureWeightAnalysisFeature(ctx, appShellState),
+            ensureEnvironmentCheckFeature: () => ensureEnvironmentCheckFeature(ctx, appShellState),
             ensureImageTestFeature,
             resetTrainingExpandedStateOnLeave,
-            resizeLiveChart: () => lossChart?.resize?.(),
+            resizeLiveChart: () => trainingState.lossChart?.resize?.(),
             auditConfigTrainingSourceOnEnter,
         });
 
@@ -118,12 +199,12 @@ const ALWAYS_VISIBLE_NETWORK_ARG_FIELDS = new Set([
             themeController.initThemeToggle();
             uiScaleController.initUIScale();
             tabController.setupTabs();
-            lossChart = new MetricsChart(document.getElementById('loss-chart'), {
+            trainingState.lossChart = new MetricsChart(document.getElementById('loss-chart'), {
                 emptyText: '',
-                showLr: liveChartState.showLr,
-                rangeMode: liveChartState.rangeMode,
+                showLr: trainingState.liveChartState.showLr,
+                rangeMode: trainingState.liveChartState.rangeMode,
             });
-            lossChart.setTheme(chartTheme());
+            trainingState.lossChart.setTheme(chartTheme());
             resetLiveMetricPlaceholders();
             syncLossChartEmptyState();
             syncLiveChartControls();
@@ -153,7 +234,7 @@ const ALWAYS_VISIBLE_NETWORK_ARG_FIELDS = new Set([
             await boot();
         }
     };
-    globalThis.chartTheme = function chartTheme() {
+    export function chartTheme() {
         const trainingRoot = document.getElementById('tab-training');
         const styles = getComputedStyle(trainingRoot || document.documentElement);
         const rootStyles = getComputedStyle(document.documentElement);
@@ -177,11 +258,11 @@ const ALWAYS_VISIBLE_NETWORK_ARG_FIELDS = new Set([
         };
     }
 
-    globalThis.isHistoryReviewMode = function isHistoryReviewMode() {
-        return historyViewMode !== 'live';
+    export function isHistoryReviewMode() {
+        return historyState.historyViewMode !== 'live';
     }
 
-    globalThis.openTutorialDialog = function openTutorialDialog() {
+    export function openTutorialDialog() {
         const dialog = document.getElementById('tutorial-dialog');
         if (!dialog) return;
         if (dialog.showModal && !dialog.open) {
@@ -192,7 +273,7 @@ const ALWAYS_VISIBLE_NETWORK_ARG_FIELDS = new Set([
     }
 
     // ── 加载初始数据 ──
-    globalThis.loadInitialData = async function loadInitialData() {
+    export async function loadInitialData() {
         if (location.protocol === 'file:') {
             await gpuPicker.loadGpuOptions();
             showStandaloneWarning();
@@ -204,7 +285,7 @@ const ALWAYS_VISIBLE_NETWORK_ARG_FIELDS = new Set([
                 api('/api/presets'),
                 api('/api/config/field-help'),
             ]);
-            fieldHelp = help;
+            configState.fieldHelp = help;
             populateSelect('method-select', methods, 'lora');
             populateSelect('preset-select', presets, 'default');
             await gpuPicker.loadGpuOptions();
@@ -218,7 +299,7 @@ const ALWAYS_VISIBLE_NETWORK_ARG_FIELDS = new Set([
             }
             const tomlListResult = await tomlListPromise;
             if (!tomlListResult.ok) throw tomlListResult.error;
-            if (!currentTomlFile) {
+            if (!tomlState.currentTomlFile) {
                 await loadDefaultTomlFile();
             }
             rememberSelectionSnapshot();
@@ -232,7 +313,7 @@ const ALWAYS_VISIBLE_NETWORK_ARG_FIELDS = new Set([
         }
     }
 
-    globalThis.showStandaloneWarning = function showStandaloneWarning() {
+    export function showStandaloneWarning() {
         const form = document.getElementById('config-form');
         form.innerHTML = '';
         const panel = document.createElement('div');
@@ -247,7 +328,7 @@ const ALWAYS_VISIBLE_NETWORK_ARG_FIELDS = new Set([
         setPreviewEmpty('静态打开没有后端 API，无法读取项目预览图。');
     }
 
-    globalThis.loadVariants = async function loadVariants({ reset = false } = {}) {
+    export async function loadVariants({ reset = false } = {}) {
         const method = val('method-select');
         const variants = await api(`/api/methods/${method}/variants`);
         populateSelect('variant-select', variants, reset ? (variants[0] || method) : method);
@@ -263,8 +344,9 @@ const ALWAYS_VISIBLE_NETWORK_ARG_FIELDS = new Set([
         return variants;
     }
 
-    globalThis.loadConfig = async function loadConfig() {
-        const requestSeq = ++configLoadSeq;
+    export async function loadConfig() {
+        const requestSeq = ++configState.configLoadSeq;
+        const currentTrainingSource = currentTrainingSourceState();
         const variant = currentTrainingSource.method || val('variant-select');
         const preset = val('preset-select');
         if (!variant) return;
@@ -273,33 +355,33 @@ const ALWAYS_VISIBLE_NETWORK_ARG_FIELDS = new Set([
         const configFile = currentTrainingConfigFile();
         if (configFile) params.set('config_file', configFile);
         const data = await api(`/api/config/merged?${params.toString()}`);
-        if (requestSeq !== configLoadSeq) return;
+        if (requestSeq !== configState.configLoadSeq) return;
         if (data?.ok === false) {
             setTomlStatus('error', data.error || '读取配置失败');
             return;
         }
         resetConfigFormDraft();
-        currentConfig = data;
-        selectedConfigDatasetFile = currentConfig.dataset_config || '';
-        selectedConfigDatasetSummary = datasetPresetSummaryByFile(selectedConfigDatasetFile);
-        renderConfigForm(currentConfig);
+        configState.currentConfig = data;
+        datasetState.selectedConfigDatasetFile = data.dataset_config || '';
+        datasetState.selectedConfigDatasetSummary = datasetPresetSummaryByFile(datasetState.selectedConfigDatasetFile);
+        renderConfigForm(data);
         scheduleStepEstimatePanelRefresh();
         const compatibilityPatch = applyConfigCompatibilityDrafts();
         renderContinueTrainingSource();
-        if (continueTrainingSource?.abs_path) {
+        if (currentContinueTrainingSource()?.abs_path) {
             await refreshContinueTrainingSourceCompatibility();
         }
-        if (samplePromptsMode === 'editor-file') {
-            loadSamplePrompts(samplePromptsPath, requestSeq);
+        if (configState.samplePromptsMode === 'editor-file') {
+            loadSamplePrompts(configState.samplePromptsPath, requestSeq);
         } else {
-            samplePromptsLoadSeq += 1;
+            configState.samplePromptsLoadSeq += 1;
         }
         loadStepEstimate(requestSeq);
         updateChoiceGuide();
-        updateTomlActionState(currentTomlFile);
+        updateTomlActionState(tomlState.currentTomlFile);
         // 同步加载对应的 TOML 文件到右侧编辑器
         const tomlFile = currentTrainingSource.file || `configs/${methodsSubdir}/${variant}.toml`;
-        if (tomlFiles.includes(tomlFile) && currentTomlFile !== tomlFile) {
+        if (tomlState.tomlFiles.includes(tomlFile) && tomlState.currentTomlFile !== tomlFile) {
             await loadTomlFile(tomlFile, { force: true });
         }
         if (Object.keys(compatibilityPatch).length > 0) {
@@ -308,7 +390,7 @@ const ALWAYS_VISIBLE_NETWORK_ARG_FIELDS = new Set([
         }
     }
 
-    globalThis.reloadCurrentConfig = async function reloadCurrentConfig() {
+    export async function reloadCurrentConfig() {
         if (!(await confirmDiscardTomlChanges('当前配置有未保存修改，刷新会重新读取表单和数据集设置并丢弃这些修改。是否继续？'))) {
             return;
         }
@@ -317,11 +399,11 @@ const ALWAYS_VISIBLE_NETWORK_ARG_FIELDS = new Set([
     }
 
     // ── 配置表单渲染 ──
-    globalThis.resetConfigFormDraft = function resetConfigFormDraft() {
-        configFormState.draftValues.clear();
+    export function resetConfigFormDraft() {
+        configState.configFormState.draftValues.clear();
     }
 
-    globalThis.applyConfigCompatibilityDrafts = function applyConfigCompatibilityDrafts() {
+    export function applyConfigCompatibilityDrafts() {
         const patch = applyOptimizerCompatibilityPatch({});
         for (const [key, value] of Object.entries(patch)) {
             configFormState.draftValues.set(key, value);
@@ -337,13 +419,13 @@ const ALWAYS_VISIBLE_NETWORK_ARG_FIELDS = new Set([
         return patch;
     }
 
-    globalThis.syncConfigDraftFromForm = function syncConfigDraftFromForm(options = {}) {
+    export function syncConfigDraftFromForm(options = {}) {
         document.querySelectorAll('#config-form .field-input[data-key]').forEach((input) => {
             updateConfigDraftFromInput(input, options);
         });
     }
 
-    globalThis.updateConfigDraftFromInput = function updateConfigDraftFromInput(input, options = {}) {
+    export function updateConfigDraftFromInput(input, options = {}) {
         const key = input?.dataset?.key;
         if (!key || CONFIG_FORM_INTERNAL_KEYS.has(key)) return;
         const original = originalConfigFieldValue(key);
@@ -359,9 +441,10 @@ const ALWAYS_VISIBLE_NETWORK_ARG_FIELDS = new Set([
         }
     }
 
-    globalThis.originalConfigFieldValue = function originalConfigFieldValue(key) {
-        if (key === 'sample_prompts' && samplePromptsMode !== 'path') {
-            return samplePromptsContent || '';
+    export function originalConfigFieldValue(key) {
+        const currentConfig = currentConfigState();
+        if (key === 'sample_prompts' && configState.samplePromptsMode !== 'path') {
+            return configState.samplePromptsContent || '';
         }
         if (key === 'precision_preference') {
             return precisionPreferenceFromConfig(currentConfig);
@@ -376,7 +459,8 @@ const ALWAYS_VISIBLE_NETWORK_ARG_FIELDS = new Set([
         return FORM_UI_DEFAULTS[key];
     }
 
-    globalThis.displayConfigFieldValue = function displayConfigFieldValue(key, value) {
+    export function displayConfigFieldValue(key, value) {
+        const currentConfig = currentConfigState();
         if (key === 'lora_adapter_kind') {
             return configFormState.draftValues.has(key)
                 ? configFormState.draftValues.get(key)
@@ -392,9 +476,10 @@ const ALWAYS_VISIBLE_NETWORK_ARG_FIELDS = new Set([
             : value;
     }
 
-    globalThis.configDraftValueChanged = function configDraftValueChanged(key, next, original = originalConfigFieldValue(key), options = {}) {
-        if (key === 'sample_prompts' && samplePromptsMode !== 'path') {
-            return String(next || '') !== String(samplePromptsContent || '');
+    export function configDraftValueChanged(key, next, original = originalConfigFieldValue(key), options = {}) {
+        const currentConfig = currentConfigState();
+        if (key === 'sample_prompts' && configState.samplePromptsMode !== 'path') {
+            return String(next || '') !== String(configState.samplePromptsContent || '');
         }
         if (key === 'precision_preference') {
             return normalizePrecisionPreference(next) !== precisionPreferenceFromConfig(currentConfig);
@@ -411,7 +496,7 @@ const ALWAYS_VISIBLE_NETWORK_ARG_FIELDS = new Set([
         return !valuesEqual(next, original);
     }
 
-    globalThis.renderConfigForm = function renderConfigForm(config) {
+    export function renderConfigForm(config) {
         const container = document.getElementById('config-form');
         container.innerHTML = '';
 
@@ -471,12 +556,12 @@ const ALWAYS_VISIBLE_NETWORK_ARG_FIELDS = new Set([
         updateLossWeightingFieldState();
     }
 
-    globalThis.shouldRenderConfigSection = function shouldRenderConfigSection(section, config = currentConfig) {
+    export function shouldRenderConfigSection(section, config = currentConfigState()) {
         if (!section?.method) return true;
         return activeMethodKey(config) === section.method;
     }
 
-    globalThis.shouldSkipConfigFormField = function shouldSkipConfigFormField(key, config = currentConfig) {
+    export function shouldSkipConfigFormField(key, config = currentConfigState()) {
         if (CONFIG_FORM_MERGED_FIELDS?.has?.(key)) return true;
         if (DEPRECATED_CONFIG_FORM_FIELDS.has(key)) return true;
         if (RETIRED_CONFIG_FORM_FIELDS.has(key)) return true;
@@ -486,7 +571,7 @@ const ALWAYS_VISIBLE_NETWORK_ARG_FIELDS = new Set([
         return !scopedFamilies.has(activeMethodKey(config));
     }
 
-    globalThis.shouldExposeUiDefaultField = function shouldExposeUiDefaultField(key, config, fieldsByKey = {}) {
+    export function shouldExposeUiDefaultField(key, config, fieldsByKey = {}) {
         if (key in fieldsByKey) return true;
         if (NETWORK_ARG_FIELD_MAP.has(key)) return ALWAYS_VISIBLE_NETWORK_ARG_FIELDS.has(key);
         const family = activeMethodKey(config);
@@ -497,7 +582,7 @@ const ALWAYS_VISIBLE_NETWORK_ARG_FIELDS = new Set([
         return true;
     }
 
-    globalThis.applyNetworkArgFields = function applyNetworkArgFields(fieldsByKey, config) {
+    export function applyNetworkArgFields(fieldsByKey, config) {
         const specs = activeNetworkArgSpecs(config);
         if (!specs.length) return;
         const argMap = parseNetworkArgMap(config?.network_args);
@@ -507,11 +592,11 @@ const ALWAYS_VISIBLE_NETWORK_ARG_FIELDS = new Set([
         }
     }
 
-    globalThis.isActiveNetworkArgFieldKey = function isActiveNetworkArgFieldKey(key, config = currentConfig) {
+    export function isActiveNetworkArgFieldKey(key, config = currentConfigState()) {
         return activeNetworkArgSpecs(config).some((spec) => spec.key === key);
     }
 
-    globalThis.collectSectionFields = function collectSectionFields(fieldsByKey, orderedKeys, consumed) {
+    export function collectSectionFields(fieldsByKey, orderedKeys, consumed) {
         const fields = [];
         for (const key of orderedKeys) {
             if (consumed.has(key) || !(key in fieldsByKey)) continue;
@@ -521,7 +606,7 @@ const ALWAYS_VISIBLE_NETWORK_ARG_FIELDS = new Set([
         return fields;
     }
 
-    globalThis.activeNetworkArgSpecs = function activeNetworkArgSpecs(config = currentConfig) {
+    export function activeNetworkArgSpecs(config = currentConfigState()) {
         const families = activeNetworkArgFamilies(config);
         const argMap = parseNetworkArgMap(config?.network_args);
         return NETWORK_ARG_FIELD_SPECS.filter((spec) =>
@@ -529,7 +614,7 @@ const ALWAYS_VISIBLE_NETWORK_ARG_FIELDS = new Set([
         );
     }
 
-    globalThis.activeNetworkArgFamilies = function activeNetworkArgFamilies(config = currentConfig) {
+    export function activeNetworkArgFamilies(config = currentConfigState()) {
         const families = new Set();
         const moduleName = String(config?.network_module || '');
         const method = activeMethodKey(config);
@@ -543,8 +628,7 @@ const ALWAYS_VISIBLE_NETWORK_ARG_FIELDS = new Set([
         }
         return families;
     }
-
-    globalThis.parseNetworkArgMap = function parseNetworkArgMap(networkArgs) {
+    export function parseNetworkArgMap(networkArgs) {
         const map = new Map();
         for (const raw of normalizeNetworkArgArray(networkArgs)) {
             const parsed = parseNetworkArgEntry(raw);
@@ -553,8 +637,39 @@ const ALWAYS_VISIBLE_NETWORK_ARG_FIELDS = new Set([
         return map;
     }
 
-    globalThis.normalizeNetworkArgArray = function normalizeNetworkArgArray(networkArgs) {
+    export function normalizeNetworkArgArray(networkArgs) {
         if (Array.isArray(networkArgs)) return networkArgs.map((item) => String(item));
         if (typeof networkArgs === 'string' && networkArgs.trim()) return parseArrayValue(networkArgs).map((item) => String(item));
         return [];
     }
+
+configureHistoryDetailBridge({
+    ensureHistoryDetailFeature,
+    getHistoryDetailFeature: () => historyDetailFeature,
+    isHistoryReviewMode,
+});
+
+configureConfigFormBridge({
+    syncConfigDraftFromForm,
+    updateConfigDraftFromInput,
+    originalConfigFieldValue,
+    displayConfigFieldValue,
+    configDraftValueChanged,
+    isActiveNetworkArgFieldKey,
+});
+
+configureAppShellStartupBridge({
+    startAnimaApp,
+    openTutorialDialog,
+    loadVariants,
+    loadConfig,
+    reloadCurrentConfig,
+    renderConfigForm,
+    syncConfigDraftFromForm,
+    parseNetworkArgMap,
+    normalizeNetworkArgArray,
+    getThemeController: () => themeController,
+    getUiScaleController: () => uiScaleController,
+    getGpuPicker: () => gpuPicker,
+    getTabController: () => tabController,
+});

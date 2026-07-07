@@ -2,9 +2,76 @@
  * Mechanical split from the former monolithic app closure.
  * Keep this module focused; move newly edited behavior into domain modules.
  */
-const ctx = globalThis.ctx;
+import {
+    DEFAULT_TRIGGER_CLONE,
+    METHOD_GUIDE_ZH,
+    PRESET_GUIDE_ZH,
+    VARIANT_GUIDE_ZH,
+    VARIANT_METHOD_FAMILY,
+    choiceHelp,
+} from '../../../config/catalog.js?v=module-bootstrap-20260707-93';
+import {
+    normalizeDatasetDefaults,
+    normalizeDatasetEditorRows,
+    normalizeNlTagMix,
+    normalizeTriggerClone,
+} from '../helpers/dataset-values.js?v=module-bootstrap-20260707-93';
+import {
+    isTruthy,
+    precisionPreferenceFromConfig,
+} from '../helpers/config-values.js?v=module-bootstrap-20260707-93';
+import {
+    choiceLine,
+    defaultMethodGuide,
+    defaultPresetGuide,
+    defaultVariantGuide,
+} from '../helpers/choice-guide.js?v=module-bootstrap-20260707-93';
+import {
+    compactList,
+    flagDetail,
+    valueDetail,
+} from '../helpers/config-field-display.js?v=module-bootstrap-20260707-93';
+import {
+    datasetEditorStateForActivePanel,
+    isDatasetTabActive,
+    refreshDatasetEditorItems,
+    renderDatasetEditor,
+    renderDatasetPresetHeader,
+} from '../helpers/dataset-render-bridge.js?v=module-bootstrap-20260707-93';
+import { getAppShellState } from '../helpers/app-shell-state-bridge.js?v=module-bootstrap-20260707-93';
+import { configDraftValueChanged, originalConfigFieldValue, updateConfigDraftFromInput } from '../helpers/config-form-bridge.js?v=module-bootstrap-20260707-93';
+import { handlePendingConfigSwitch, updateTomlDirtyState } from '../helpers/toml-selection-bridge.js?v=module-bootstrap-20260707-93';
+import { getConfigState } from '../helpers/config-state-bridge.js?v=module-bootstrap-20260707-93';
+import { getDatasetState } from '../helpers/dataset-state-bridge.js?v=module-bootstrap-20260707-93';
+import { selectedOutputRun } from '../helpers/output-run-bridge.js?v=module-bootstrap-20260707-93';
+import { val } from '../helpers/runtime-bridge.js?v=module-bootstrap-20260707-93';
+import { getAppContext } from '../helpers/app-context-bridge.js?v=module-bootstrap-20260707-93';
+import { getTrainingState } from '../helpers/training-state-bridge.js?v=module-bootstrap-20260707-93';
+import { updateStepEstimatePanel } from './03-parse-network-arg-entry.js?v=module-bootstrap-20260707-93';
 
-    globalThis.updateDatasetEditorRowsSettingValue = function updateDatasetEditorRowsSettingValue(indices, key, value, options = {}) {
+const ctx = getAppContext();
+const appShellState = getAppShellState();
+const configState = getConfigState();
+const datasetState = getDatasetState();
+const trainingState = getTrainingState();
+
+function currentConfigState() {
+    return configState.currentConfig || {};
+}
+
+function currentDatasetEditorState() {
+    return datasetState.datasetEditorState || {};
+}
+
+function currentTrainingSourceState() {
+    return trainingState.currentTrainingSource || {};
+}
+
+function datasetExperimentalScopeSelectionsState() {
+    return datasetState.datasetExperimentalScopeSelections;
+}
+
+    export function updateDatasetEditorRowsSettingValue(indices, key, value, options = {}) {
         const state = datasetEditorStateForActivePanel();
         const rows = normalizeDatasetEditorRows(state.datasets);
         const targets = datasetValidTargetIndices(indices, rows.length);
@@ -15,9 +82,9 @@ const ctx = globalThis.ctx;
             rows[targetIndex].settings = settings;
         }
         if (isDatasetTabActive()) {
-            datasetPresetState.datasets = rows;
+            datasetState.datasetPresetState.datasets = rows;
         } else {
-            datasetEditorState.datasets = rows;
+            datasetState.datasetEditorState.datasets = rows;
         }
         markDatasetEditorDirty();
         if (options.render === 'item') {
@@ -27,11 +94,11 @@ const ctx = globalThis.ctx;
         }
     }
 
-    globalThis.updateDatasetEditorRowNlTagMix = function updateDatasetEditorRowNlTagMix(index, nextMix, options = {}) {
+    export function updateDatasetEditorRowNlTagMix(index, nextMix, options = {}) {
         updateDatasetEditorRowsNlTagMix([index], nextMix, options);
     }
 
-    globalThis.updateDatasetEditorRowsNlTagMix = function updateDatasetEditorRowsNlTagMix(indices, nextMix, options = {}) {
+    export function updateDatasetEditorRowsNlTagMix(indices, nextMix, options = {}) {
         const state = datasetEditorStateForActivePanel();
         const rows = normalizeDatasetEditorRows(state.datasets);
         const targets = datasetValidTargetIndices(indices, rows.length);
@@ -41,9 +108,9 @@ const ctx = globalThis.ctx;
             rows[targetIndex].nl_tag_mix = mix;
         }
         if (isDatasetTabActive()) {
-            datasetPresetState.datasets = rows;
+            datasetState.datasetPresetState.datasets = rows;
         } else {
-            datasetEditorState.datasets = rows;
+            datasetState.datasetEditorState.datasets = rows;
         }
         markDatasetEditorDirty();
         if (options.render === false) {
@@ -52,7 +119,7 @@ const ctx = globalThis.ctx;
         refreshDatasetEditorItems(targets) || renderDatasetEditor();
     }
 
-    globalThis.updateDatasetEditorRowTriggerClone = function updateDatasetEditorRowTriggerClone(index, nextClone, options = {}) {
+    export function updateDatasetEditorRowTriggerClone(index, nextClone, options = {}) {
         const state = datasetEditorStateForActivePanel();
         const rows = normalizeDatasetEditorRows(state.datasets);
         if (!rows[index]) return;
@@ -61,9 +128,9 @@ const ctx = globalThis.ctx;
             ...nextClone,
         });
         if (isDatasetTabActive()) {
-            datasetPresetState.datasets = rows;
+            datasetState.datasetPresetState.datasets = rows;
         } else {
-            datasetEditorState.datasets = rows;
+            datasetState.datasetEditorState.datasets = rows;
         }
         markDatasetEditorDirty();
         if (options.render) {
@@ -71,52 +138,52 @@ const ctx = globalThis.ctx;
         }
     }
 
-    globalThis.datasetExperimentalScopeKey = function datasetExperimentalScopeKey(index) {
+    function datasetExperimentalScopeKey(index) {
         return `${isDatasetTabActive() ? 'dataset-preset' : 'config-dataset'}:${index}`;
     }
 
-    globalThis.datasetExperimentalScopeIndices = function datasetExperimentalScopeIndices(index, total = null) {
+    export function datasetExperimentalScopeIndices(index, total = null) {
         const state = datasetEditorStateForActivePanel();
         const count = total ?? normalizeDatasetEditorRows(state.datasets).length;
         const key = datasetExperimentalScopeKey(index);
-        const raw = datasetExperimentalScopeSelections.get(key) || [index];
+        const raw = datasetExperimentalScopeSelectionsState().get(key) || [index];
         const selected = datasetValidTargetIndices(raw, count);
         if (!selected.length && index >= 0 && index < count) {
             selected.push(index);
         }
-        datasetExperimentalScopeSelections.set(key, selected);
+        datasetExperimentalScopeSelectionsState().set(key, selected);
         return selected;
     }
 
-    globalThis.setDatasetExperimentalScopeIndices = function setDatasetExperimentalScopeIndices(index, indices) {
+    export function setDatasetExperimentalScopeIndices(index, indices) {
         const state = datasetEditorStateForActivePanel();
         const count = normalizeDatasetEditorRows(state.datasets).length;
         const selected = datasetValidTargetIndices(indices, count);
         if (!selected.length && index >= 0 && index < count) {
             selected.push(index);
         }
-        datasetExperimentalScopeSelections.set(datasetExperimentalScopeKey(index), selected);
+        datasetExperimentalScopeSelectionsState().set(datasetExperimentalScopeKey(index), selected);
     }
 
-	    globalThis.datasetValidTargetIndices = function datasetValidTargetIndices(indices, count) {
+	    export function datasetValidTargetIndices(indices, count) {
 	        return [...new Set((indices || [])
 	            .map((value) => Number.parseInt(value, 10))
 	            .filter((value) => Number.isInteger(value) && value >= 0 && value < count))]
 	            .sort((left, right) => left - right);
 	    }
 
-	    globalThis.setDatasetEditorRowsAfterSort = function setDatasetEditorRowsAfterSort(rows) {
-	        datasetExperimentalScopeSelections.clear();
+	    function setDatasetEditorRowsAfterSort(rows) {
+	        datasetExperimentalScopeSelectionsState().clear();
 	        if (isDatasetTabActive()) {
-	            datasetPresetState.datasets = rows;
+	            datasetState.datasetPresetState.datasets = rows;
 	        } else {
-	            datasetEditorState.datasets = rows;
+	            datasetState.datasetEditorState.datasets = rows;
 	        }
 	        markDatasetEditorDirty();
 	        renderDatasetEditor();
 	    }
 
-	    globalThis.moveDatasetEditorRow = function moveDatasetEditorRow(sourceIndex, targetIndex, placeAfter = false) {
+	    export function moveDatasetEditorRow(sourceIndex, targetIndex, placeAfter = false) {
 	        const rows = normalizeDatasetEditorRows(datasetEditorStateForActivePanel().datasets);
 	        if (rows.length <= 1) return false;
 	        if (sourceIndex < 0 || sourceIndex >= rows.length || targetIndex < 0 || targetIndex >= rows.length) return false;
@@ -131,20 +198,20 @@ const ctx = globalThis.ctx;
 	        return true;
 	    }
 
-	    globalThis.moveDatasetEditorRowToIndex = function moveDatasetEditorRowToIndex(sourceIndex, targetIndex) {
+	    export function moveDatasetEditorRowToIndex(sourceIndex, targetIndex) {
 	        const rows = normalizeDatasetEditorRows(datasetEditorStateForActivePanel().datasets);
 	        const clamped = Math.max(0, Math.min(rows.length - 1, targetIndex));
 	        if (clamped === sourceIndex) return false;
 	        return moveDatasetEditorRow(sourceIndex, clamped, clamped > sourceIndex);
 	    }
 
-	    globalThis.markDatasetEditorDirty = function markDatasetEditorDirty() {
+	    export function markDatasetEditorDirty() {
         if (isDatasetTabActive()) {
-            datasetPresetState.dirty = true;
-            datasetPresetState.status = '有未保存的数据集修改';
+            datasetState.datasetPresetState.dirty = true;
+            datasetState.datasetPresetState.status = '有未保存的数据集修改';
             renderDatasetPresetHeader();
         } else {
-            datasetEditorState.dirty = true;
+            datasetState.datasetEditorState.dirty = true;
             updateTomlDirtyState();
             updateStepEstimatePanel();
         }
@@ -155,7 +222,7 @@ const ctx = globalThis.ctx;
         }
     }
 
-    globalThis.addDatasetEditorRow = function addDatasetEditorRow() {
+    export function addDatasetEditorRow() {
         const state = datasetEditorStateForActivePanel();
         const rows = normalizeDatasetEditorRows(state.datasets);
         rows.push({
@@ -167,11 +234,11 @@ const ctx = globalThis.ctx;
             settings: normalizeDatasetDefaults(state.defaults || {}),
         });
         if (isDatasetTabActive()) {
-            datasetPresetState.datasets = rows;
-            datasetPresetState.dirty = true;
+            datasetState.datasetPresetState.datasets = rows;
+            datasetState.datasetPresetState.dirty = true;
         } else {
-            datasetEditorState.datasets = rows;
-            datasetEditorState.dirty = true;
+            datasetState.datasetEditorState.datasets = rows;
+            datasetState.datasetEditorState.dirty = true;
         }
         renderDatasetEditor();
         if (!isDatasetTabActive()) {
@@ -180,17 +247,17 @@ const ctx = globalThis.ctx;
         }
     }
 
-    globalThis.removeDatasetEditorRow = function removeDatasetEditorRow(index) {
+    export function removeDatasetEditorRow(index) {
         const state = datasetEditorStateForActivePanel();
         const rows = normalizeDatasetEditorRows(state.datasets);
         if (rows.length <= 1) return;
         rows.splice(index, 1);
         if (isDatasetTabActive()) {
-            datasetPresetState.datasets = rows;
-            datasetPresetState.dirty = true;
+            datasetState.datasetPresetState.datasets = rows;
+            datasetState.datasetPresetState.dirty = true;
         } else {
-            datasetEditorState.datasets = rows;
-            datasetEditorState.dirty = true;
+            datasetState.datasetEditorState.datasets = rows;
+            datasetState.datasetEditorState.dirty = true;
         }
         renderDatasetEditor();
         if (!isDatasetTabActive()) {
@@ -199,7 +266,8 @@ const ctx = globalThis.ctx;
         }
     }
 
-    globalThis.syncDatasetEditorToCompatFields = function syncDatasetEditorToCompatFields() {
+    export function syncDatasetEditorToCompatFields() {
+        const datasetEditorState = currentDatasetEditorState();
         const rows = normalizeDatasetEditorRows(datasetEditorState.datasets);
         const first = rows[0];
         if (!first) return;
@@ -211,7 +279,8 @@ const ctx = globalThis.ctx;
         }
     }
 
-    globalThis.setFieldInputValue = function setFieldInputValue(key, value) {
+    export function setFieldInputValue(key, value) {
+        const configFormState = configState.configFormState;
         const input = document.querySelector(`#config-form .field-input[data-key="${CSS.escape(key)}"]`);
         if (!input) {
             const original = originalConfigFieldValue(key);
@@ -230,50 +299,52 @@ const ctx = globalThis.ctx;
         updateConfigDraftFromInput(input);
     }
 
-    globalThis.escapeHtml = function escapeHtml(value) {
+    export function escapeHtml(value) {
         return ctx.format.escapeHtml(value);
     }
 
-    globalThis.setCurrentTrainingSourceFromVariant = function setCurrentTrainingSourceFromVariant(variant) {
+    export function setCurrentTrainingSourceFromVariant(variant) {
         if (!variant) {
             clearCurrentTrainingSource();
             return;
         }
         if (val('method-select') === 'spd' || variant === 'spd') {
-            currentTrainingSource = {
+            trainingState.currentTrainingSource = {
                 method: 'spd',
                 methods_subdir: 'methods',
                 file: 'configs/methods/spd.toml',
             };
             return;
         }
-        currentTrainingSource = {
+        trainingState.currentTrainingSource = {
             method: variant,
             methods_subdir: 'gui-methods',
             file: `configs/gui-methods/${variant}.toml`,
         };
     }
 
-    globalThis.clearCurrentTrainingSource = function clearCurrentTrainingSource() {
-        currentTrainingSource = {
+    export function clearCurrentTrainingSource() {
+        trainingState.currentTrainingSource = {
             method: '',
             methods_subdir: '',
             file: '',
         };
     }
 
-    globalThis.outputRunRuntimeFile = function outputRunRuntimeFile(run = selectedOutputRun()) {
+    export function outputRunRuntimeFile(run = selectedOutputRun()) {
         const runtime = (run?.files || []).find((item) => item.kind === 'runtime');
         return runtime?.file || '';
     }
 
-    globalThis.rememberSelectionSnapshot = function rememberSelectionSnapshot() {
+    export function rememberSelectionSnapshot() {
+        const selectionSnapshot = configState.selectionSnapshot;
         selectionSnapshot.method = val('method-select');
         selectionSnapshot.variant = val('variant-select');
         selectionSnapshot.preset = val('preset-select');
     }
 
-    globalThis.restoreSelectionSnapshot = function restoreSelectionSnapshot() {
+    export function restoreSelectionSnapshot() {
+        const selectionSnapshot = configState.selectionSnapshot;
         const methodSelect = document.getElementById('method-select');
         const variantSelect = document.getElementById('variant-select');
         const presetSelect = document.getElementById('preset-select');
@@ -290,7 +361,7 @@ const ctx = globalThis.ctx;
         updateChoiceGuide();
     }
 
-    globalThis.confirmBeforeConfigSelectionChange = async function confirmBeforeConfigSelectionChange(message) {
+    export async function confirmBeforeConfigSelectionChange(message) {
         const ok = await handlePendingConfigSwitch({
             targetLabel: '新的配置选择',
         });
@@ -298,7 +369,8 @@ const ctx = globalThis.ctx;
         return ok;
     }
 
-    globalThis.updateChoiceGuide = function updateChoiceGuide(config = currentConfig) {
+    export function updateChoiceGuide(config = currentConfigState()) {
+        const currentTrainingSource = currentTrainingSourceState();
         const container = document.getElementById('choice-guide');
         if (!container) return;
         container.innerHTML = '';
@@ -310,9 +382,9 @@ const ctx = globalThis.ctx;
         container.appendChild(createChoiceCard('预设', presetKey, PRESET_GUIDE_ZH, defaultPresetGuide(), presetGuideFromConfig(presetKey, config)));
     }
 
-    globalThis.createChoiceCard = function createChoiceCard(kind, key, guideMap, fallback, overrideGuide = null) {
+    export function createChoiceCard(kind, key, guideMap, fallback, overrideGuide = null) {
         const guide = overrideGuide || guideMap[key] || fallback;
-        const helpId = `choice-guide-hint-${++choiceGuideHintSeq}`;
+        const helpId = `choice-guide-hint-${++configState.choiceGuideHintSeq}`;
         const card = document.createElement('article');
         card.className = 'choice-card';
 
@@ -363,44 +435,8 @@ const ctx = globalThis.ctx;
         return card;
     }
 
-    globalThis.choiceLine = function choiceLine(label, text, extraClass = '') {
-        const line = document.createElement('p');
-        line.className = extraClass;
-        const strong = document.createElement('strong');
-        strong.textContent = `${label}: `;
-        line.appendChild(strong);
-        line.appendChild(document.createTextNode(text));
-        return line;
-    }
-
-    globalThis.defaultMethodGuide = function defaultMethodGuide() {
-        return choiceHelp(
-            '自定义方法',
-            '当前方法没有专门说明，通常表示它来自后端方法列表。',
-            '请结合变体 TOML 判断实际训练行为。',
-            '不确定时使用 lora。'
-        );
-    }
-
-    globalThis.defaultVariantGuide = function defaultVariantGuide() {
-        return choiceHelp(
-            '自定义变体',
-            '当前变体对应一个 gui-methods TOML 文件，里面才是实际训练参数。',
-            '自定义变体灵活，但需要自行确认字段组合是否合理。',
-            '不确定时从内置 lora 变体复制再改。'
-        );
-    }
-
-    globalThis.defaultPresetGuide = function defaultPresetGuide() {
-        return choiceHelp(
-            '自定义预设',
-            '当前预设来自 presets.toml 或自定义配置。',
-            '它会覆盖部分硬件、采样或性能参数。',
-            '不确定时使用 default。'
-        );
-    }
-
-    globalThis.activeMethodKey = function activeMethodKey(config = currentConfig) {
+    export function activeMethodKey(config = currentConfigState()) {
+        const currentTrainingSource = currentTrainingSourceState();
         const inferred = inferMethodFromConfig(config);
         if (inferred) return inferred;
         if (currentTrainingSource.methods_subdir === 'methods' && currentTrainingSource.method === 'spd') {
@@ -412,7 +448,8 @@ const ctx = globalThis.ctx;
         return val('method-select') || 'lora';
     }
 
-    globalThis.inferMethodFromConfig = function inferMethodFromConfig(config) {
+    export function inferMethodFromConfig(config) {
+        const currentTrainingSource = currentTrainingSourceState();
         if (!config || typeof config !== 'object') return '';
         const moduleName = String(config.network_module || '');
         if (currentTrainingSource.methods_subdir === 'methods' && currentTrainingSource.method === 'spd') return 'spd';
@@ -440,7 +477,7 @@ const ctx = globalThis.ctx;
         return '';
     }
 
-    globalThis.methodGuideFromConfig = function methodGuideFromConfig(methodKey, config = currentConfig) {
+    export function methodGuideFromConfig(methodKey, config = currentConfigState()) {
         const base = METHOD_GUIDE_ZH[methodKey] || defaultMethodGuide();
         const details = compactList([
             flagDetail('use_glora', 'GLoRA', config.use_glora),
@@ -464,7 +501,9 @@ const ctx = globalThis.ctx;
         };
     }
 
-    globalThis.configGuideFromCurrentSource = function configGuideFromCurrentSource(sourceKey, config = currentConfig) {
+    export function configGuideFromCurrentSource(sourceKey, config = currentConfigState()) {
+        const currentTrainingSource = currentTrainingSourceState();
+        const globalSettings = appShellState.globalSettings;
         const isImported = currentTrainingSource.methods_subdir === 'imported';
         const base = isImported
             ? choiceHelp(
@@ -489,7 +528,7 @@ const ctx = globalThis.ctx;
         };
     }
 
-    globalThis.presetGuideFromConfig = function presetGuideFromConfig(presetKey, config = currentConfig) {
+    export function presetGuideFromConfig(presetKey, config = currentConfigState()) {
         const base = PRESET_GUIDE_ZH[presetKey] || defaultPresetGuide();
         const details = compactList([
             valueDetail('precision_preference', precisionPreferenceFromConfig(config)),
@@ -505,14 +544,4 @@ const ctx = globalThis.ctx;
             summary: `${base.summary} 当前已合并后的预设/配置值如下。`,
             details,
         };
-    }
-
-    globalThis.isTruthy = function isTruthy(value) {
-        return value === true || value === 1 || value === '1' || String(value).toLowerCase() === 'true';
-    }
-
-    globalThis.normalizeLoraAdapterKind = function normalizeLoraAdapterKind(value) {
-        const text = String(value ?? '').trim().toLowerCase();
-        if (text === 'loha' || text === 'lokr' || text === 'glora' || text === 'vera') return text;
-        return 'lora';
     }

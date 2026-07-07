@@ -2,10 +2,52 @@
  * Mechanical split from the former monolithic app closure.
  * Keep this module focused; move newly edited behavior into domain modules.
  */
-const ctx = globalThis.ctx;
-const LOG_RENDER_BATCH_SIZE = 250;
+import { isLiveRunningState, parseMetricsFromProgressLine } from '../../live-training/index.js?v=module-bootstrap-20260707-93';
+import {
+    FIELD_LABEL_ZH,
+    MAX_LOG_LINES,
+} from '../../../config/catalog.js?v=module-bootstrap-20260707-93';
+import {
+    continueTrainingRequestPayload,
+    ensureTrainingSourceReadyForLaunch,
+    trainingSourceLaunchBlockReason,
+} from '../helpers/training-source-bridge.js?v=module-bootstrap-20260707-93';
+import {
+    chooseTrainingLaunchMode,
+    enqueueTrainingFromConfig,
+    enterLiveTrainingForNewRun,
+} from '../helpers/training-launch-bridge.js?v=module-bootstrap-20260707-93';
+import { showAppConfirmDialog } from '../helpers/toml-selection-bridge.js?v=module-bootstrap-20260707-93';
+import {
+    markTrainingActivity,
+    updateMetrics,
+    updateProgress,
+    updateStatus,
+    updateSystem,
+} from '../helpers/live-status-bridge.js?v=module-bootstrap-20260707-93';
+import { api, val } from '../helpers/runtime-bridge.js?v=module-bootstrap-20260707-93';
+import { getGpuPicker } from '../helpers/app-shell-startup-bridge.js?v=module-bootstrap-20260707-93';
+import { isHistoryReviewMode } from '../helpers/history-detail-bridge.js?v=module-bootstrap-20260707-93';
+import { renderResumePanelState } from '../helpers/history-timeline-bridge.js?v=module-bootstrap-20260707-93';
+import { outputRunRuntimeFile } from './13-update-dataset-editor-rows-setting-value.js?v=module-bootstrap-20260707-93';
+import { loadTrainingQueue, updateTrainingQueueFromPayload } from '../helpers/queue-view-bridge.js?v=module-bootstrap-20260707-93';
+import { pollStatus, scheduleStatusPoll } from '../helpers/status-polling-bridge.js?v=module-bootstrap-20260707-93';
+import { loadTrainingHistoryList } from '../helpers/history-list-bridge.js?v=module-bootstrap-20260707-93';
+import { configurePreflightDialogBridge } from '../helpers/preflight-dialog-bridge.js?v=module-bootstrap-20260707-93';
+import { configureLiveLogBridge } from '../helpers/live-log-bridge.js?v=module-bootstrap-20260707-93';
+import { getTomlState } from '../helpers/toml-state-bridge.js?v=module-bootstrap-20260707-93';
+import { getTrainingState } from '../helpers/training-state-bridge.js?v=module-bootstrap-20260707-93';
 
-    globalThis.showPreflightPendingDialog = function showPreflightPendingDialog(options = {}) {
+const LOG_RENDER_BATCH_SIZE = 250;
+const tomlState = getTomlState();
+const trainingState = getTrainingState();
+const trainingRuntime = trainingState.trainingRuntime;
+
+function currentTrainingSourceState() {
+    return trainingState.currentTrainingSource || {};
+}
+
+    export function showPreflightPendingDialog(options = {}) {
         const dialog = document.getElementById('preflight-dialog');
         const controller = new AbortController();
         if (!dialog) {
@@ -39,7 +81,7 @@ const LOG_RENDER_BATCH_SIZE = 250;
         };
     }
 
-    globalThis.renderPreflightPending = function renderPreflightPending(options = {}) {
+    export function renderPreflightPending(options = {}) {
         const dialog = document.getElementById('preflight-dialog');
         const heading = dialog?.querySelector('.preflight-header h2');
         const summary = document.getElementById('preflight-summary');
@@ -91,7 +133,7 @@ const LOG_RENDER_BATCH_SIZE = 250;
         }
     }
 
-    globalThis.showPreflightRequestError = function showPreflightRequestError(message) {
+    export function showPreflightRequestError(message) {
         const result = {
             ok: false,
             summary: { errors: 1, warnings: 0, checks: 1 },
@@ -116,12 +158,12 @@ const LOG_RENDER_BATCH_SIZE = 250;
         }
     }
 
-    globalThis.isPreflightDialogOpen = function isPreflightDialogOpen() {
+    export function isPreflightDialogOpen() {
         const dialog = document.getElementById('preflight-dialog');
         return Boolean(dialog?.open);
     }
 
-    globalThis.waitForPreflightDialogClose = function waitForPreflightDialogClose() {
+    export function waitForPreflightDialogClose() {
         const dialog = document.getElementById('preflight-dialog');
         if (!dialog?.open) return Promise.resolve();
         return new Promise((resolve) => {
@@ -129,7 +171,7 @@ const LOG_RENDER_BATCH_SIZE = 250;
         });
     }
 
-    globalThis.renderPreflightResult = function renderPreflightResult(result, allowContinue, options = {}) {
+    export function renderPreflightResult(result, allowContinue, options = {}) {
         const dialog = document.getElementById('preflight-dialog');
         const heading = dialog?.querySelector('.preflight-header h2');
         const summary = document.getElementById('preflight-summary');
@@ -200,7 +242,7 @@ const LOG_RENDER_BATCH_SIZE = 250;
         }
     }
 
-    globalThis.preflightCanStartPreprocess = function preflightCanStartPreprocess(result) {
+    export function preflightCanStartPreprocess(result) {
         const checks = result.checks || [];
         const errors = result.errors || [];
         const allowedErrorKeys = new Set(['training_images', 'resized_image_dir']);
@@ -213,7 +255,8 @@ const LOG_RENDER_BATCH_SIZE = 250;
         );
     }
 
-    globalThis.startPreprocessFromPreflight = async function startPreprocessFromPreflight(result) {
+    export async function startPreprocessFromPreflight(result) {
+        const currentTrainingSource = currentTrainingSourceState();
         const variant = result.variant || currentTrainingSource.method || val('variant-select');
         const preset = result.preset || val('preset-select');
         const methodsSubdir = result.methods_subdir || currentTrainingSource.methods_subdir || 'gui-methods';
@@ -245,7 +288,7 @@ const LOG_RENDER_BATCH_SIZE = 250;
                     confirmed: true,
                     confirm_train_after: true,
                     confirm_preprocess: true,
-                    gpu_whitelist: gpuPicker.selectedGpuPayload(),
+                    gpu_whitelist: getGpuPicker()?.selectedGpuPayload?.() ?? [],
                     ...continueTrainingRequestPayload(),
                 }),
             });
@@ -262,20 +305,21 @@ const LOG_RENDER_BATCH_SIZE = 250;
         }
     }
 
-    globalThis.currentTrainingConfigFile = function currentTrainingConfigFile() {
-        if (tomlManagerMode === 'output') {
+    export function currentTrainingConfigFile() {
+        const currentTrainingSource = currentTrainingSourceState();
+        if (tomlState.tomlManagerMode === 'output') {
             return outputRunRuntimeFile();
         }
-        return currentTrainingSource.file || currentTomlFile || val('toml-file-select') || '';
+        return currentTrainingSource.file || tomlState.currentTomlFile || val('toml-file-select') || '';
     }
 
-    globalThis.preflightPlainText = function preflightPlainText(result) {
+    export function preflightPlainText(result) {
         return (result.checks || [])
             .map((item) => `[${item.level}] ${item.key}: ${item.message}${item.path ? ` (${item.path})` : ''}`)
             .join('\n');
     }
 
-    globalThis.stopTraining = async function stopTraining() {
+    export async function stopTraining() {
         const stopBtn = document.getElementById('btn-stop-training');
         const ok = await showAppConfirmDialog({
             title: '停止训练',
@@ -305,35 +349,35 @@ const LOG_RENDER_BATCH_SIZE = 250;
             setLogStatus('停止训练失败', 'error');
             setTrainingHealthNotice(message, 'error');
         } finally {
-            if (stopBtn) stopBtn.disabled = wasDisabled || !isLiveRunningState();
+            if (stopBtn) stopBtn.disabled = wasDisabled || !isLiveRunningState(trainingRuntime.state);
         }
     }
 
     // ── WebSocket ──
-    globalThis.connectWebSocket = function connectWebSocket() {
+    export function connectWebSocket() {
         const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
         setLogStatus('连接中', 'warning');
-        ws = new WebSocket(`${proto}//${location.host}/ws/training`);
-        ws.onopen = () => {
+        trainingState.ws = new WebSocket(`${proto}//${location.host}/ws/training`);
+        trainingState.ws.onopen = () => {
             setLogStatus('已连接', 'ok');
             recoverLiveTrainingState();
         };
-        ws.onmessage = (e) => {
+        trainingState.ws.onmessage = (e) => {
             const msg = JSON.parse(e.data);
             handleWsMessage(msg);
         };
-        ws.onclose = () => {
+        trainingState.ws.onclose = () => {
             setLogStatus('已断开，准备重连', 'warning');
             scheduleStatusPoll({ immediate: true });
             setTimeout(connectWebSocket, 3000);
         };
-        ws.onerror = () => {
+        trainingState.ws.onerror = () => {
             setLogStatus('连接异常', 'error');
-            ws.close();
+            trainingState.ws.close();
         };
     }
 
-    globalThis.handleWsMessage = function handleWsMessage(msg) {
+    export function handleWsMessage(msg) {
         switch (msg.type) {
             case 'log':
                 if (isHistoryReviewMode()) break;
@@ -369,11 +413,11 @@ const LOG_RENDER_BATCH_SIZE = 250;
         }
     }
 
-    globalThis.appendLog = function appendLog(line) {
+    export function appendLog(line) {
         appendLogRecord({ line });
     }
 
-    globalThis.appendLogRecord = function appendLogRecord(record) {
+    export function appendLogRecord(record) {
         if (record?.id && record.id <= trainingRuntime.lastLogId) return;
         if (record?.id) trainingRuntime.lastLogId = record.id;
 
@@ -384,7 +428,7 @@ const LOG_RENDER_BATCH_SIZE = 250;
         scheduleLogFlush();
     }
 
-    globalThis.renderLogOutputLines = function renderLogOutputLines(lines, options = {}) {
+    export function renderLogOutputLines(lines, options = {}) {
         const el = document.getElementById('log-output');
         if (!el) return;
         const normalized = (lines || [])
@@ -417,28 +461,28 @@ const LOG_RENDER_BATCH_SIZE = 250;
         appendBatch();
     }
 
-    globalThis.currentLogOutputLines = function currentLogOutputLines() {
+    export function currentLogOutputLines() {
         if (Array.isArray(trainingRuntime.logOutputLines)) return [...trainingRuntime.logOutputLines];
         const el = document.getElementById('log-output');
         if (!el) return [];
         return el.textContent.split('\n').filter(Boolean);
     }
 
-    globalThis.resetLogOutputLines = function resetLogOutputLines() {
+    export function resetLogOutputLines() {
         trainingRuntime.logOutputLines = [];
         trainingRuntime.logRenderToken = (trainingRuntime.logRenderToken || 0) + 1;
         const el = document.getElementById('log-output');
         if (el) el.textContent = '';
     }
 
-    globalThis.scheduleLogRenderBatch = function scheduleLogRenderBatch(callback) {
+    export function scheduleLogRenderBatch(callback) {
         const schedule = window.requestAnimationFrame
             ? (fn) => window.requestAnimationFrame(fn)
             : (fn) => window.setTimeout(fn, 16);
         schedule(callback);
     }
 
-    globalThis.logLineTone = function logLineTone(line) {
+    export function logLineTone(line) {
         const text = String(line || '').toLowerCase();
         if (text.includes('traceback') || text.includes('exception') || text.includes('error') || text.includes('错误') || text.includes('异常') || text.includes('失败')) {
             return 'error';
@@ -455,7 +499,7 @@ const LOG_RENDER_BATCH_SIZE = 250;
         return 'info';
     }
 
-    globalThis.scheduleLogFlush = function scheduleLogFlush() {
+    export function scheduleLogFlush() {
         if (trainingRuntime.logFlushPending) return;
         trainingRuntime.logFlushPending = true;
         const schedule = window.requestAnimationFrame
@@ -464,7 +508,7 @@ const LOG_RENDER_BATCH_SIZE = 250;
         schedule(flushLogBuffer);
     }
 
-    globalThis.flushLogBuffer = function flushLogBuffer() {
+    export function flushLogBuffer() {
         trainingRuntime.logFlushPending = false;
         if (!trainingRuntime.logBuffer.length) return;
         const el = document.getElementById('log-output');
@@ -477,7 +521,7 @@ const LOG_RENDER_BATCH_SIZE = 250;
         updateLogStatusText();
     }
 
-    globalThis.replayTrainingLogs = async function replayTrainingLogs(options = {}) {
+    export async function replayTrainingLogs(options = {}) {
         if (isHistoryReviewMode()) return;
         const includeMetrics = options.includeMetrics !== false;
         try {
@@ -494,7 +538,7 @@ const LOG_RENDER_BATCH_SIZE = 250;
         }
     }
 
-    globalThis.replayMetricsHistory = async function replayMetricsHistory() {
+    export async function replayMetricsHistory() {
         if (isHistoryReviewMode()) return;
         try {
             const records = await api('/api/training/metrics');
@@ -506,7 +550,7 @@ const LOG_RENDER_BATCH_SIZE = 250;
         }
     }
 
-    globalThis.replayMetricsFromLogRecord = function replayMetricsFromLogRecord(record) {
+    export function replayMetricsFromLogRecord(record) {
         const line = record?.line || '';
         const parsed = parseMetricsFromProgressLine(line);
         if (!parsed || parsed.loss === undefined) return;
@@ -516,32 +560,67 @@ const LOG_RENDER_BATCH_SIZE = 250;
         updateMetrics({ ...metrics, ts: record.ts });
     }
 
-    globalThis.setLogStatus = function setLogStatus(text, state = '') {
+    export function setLogStatus(text, state = '') {
         const el = document.getElementById('log-status');
         if (!el) return;
         el.textContent = text;
         el.className = `log-status ${state}`.trim();
     }
 
-    globalThis.updateLogStatusText = function updateLogStatusText() {
-        const state = ws?.readyState === WebSocket.OPEN ? 'ok' : 'warning';
-        const text = ws?.readyState === WebSocket.OPEN
+    export function updateLogStatusText() {
+        const state = trainingState.ws?.readyState === WebSocket.OPEN ? 'ok' : 'warning';
+        const text = trainingState.ws?.readyState === WebSocket.OPEN
             ? `已连接 · ${trainingRuntime.logLineCount} 行`
             : `${trainingRuntime.logLineCount} 行`;
         setLogStatus(text, state);
     }
 
-    globalThis.setTrainingHealthNotice = function setTrainingHealthNotice(message, state = 'warning') {
+    export function setTrainingHealthNotice(message, state = 'warning') {
         const el = document.getElementById('training-health');
         if (!el) return;
         el.className = `training-health ${state}`.trim();
         el.textContent = message;
     }
 
-    globalThis.recoverLiveTrainingState = async function recoverLiveTrainingState() {
+    export async function recoverLiveTrainingState() {
         if (isHistoryReviewMode() || location.protocol === 'file:') return;
         await pollStatus({ forceReplayMetrics: true });
         await replayTrainingLogs({ includeMetrics: false });
         await replayMetricsHistory();
         await loadTrainingQueue();
     }
+
+configurePreflightDialogBridge({
+    showPreflightPendingDialog,
+    renderPreflightPending,
+    showPreflightRequestError,
+    isPreflightDialogOpen,
+    waitForPreflightDialogClose,
+    renderPreflightResult,
+    preflightCanStartPreprocess,
+    startPreprocessFromPreflight,
+    currentTrainingConfigFile,
+    preflightPlainText,
+});
+
+configureLiveLogBridge({
+    stopTraining,
+    connectWebSocket,
+    handleWsMessage,
+    appendLog,
+    appendLogRecord,
+    renderLogOutputLines,
+    currentLogOutputLines,
+    resetLogOutputLines,
+    scheduleLogRenderBatch,
+    logLineTone,
+    scheduleLogFlush,
+    flushLogBuffer,
+    replayTrainingLogs,
+    replayMetricsHistory,
+    replayMetricsFromLogRecord,
+    setLogStatus,
+    updateLogStatusText,
+    setTrainingHealthNotice,
+    recoverLiveTrainingState,
+});

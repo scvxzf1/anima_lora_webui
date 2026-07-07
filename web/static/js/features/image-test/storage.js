@@ -1,4 +1,4 @@
-import { normalizeImageTestHistoryRange } from './state.js?v=module-bootstrap-20260706-1';
+import { normalizeImageTestHistoryRange } from './state.js?v=module-bootstrap-20260707-93';
 
 export const IMAGE_TEST_UI_STORAGE_KEY = 'anima.imageTest.ui';
 export const IMAGE_TEST_UI_STORAGE_VERSION = 1;

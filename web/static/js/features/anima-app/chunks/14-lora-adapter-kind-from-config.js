@@ -2,9 +2,61 @@
  * Mechanical split from the former monolithic app closure.
  * Keep this module focused; move newly edited behavior into domain modules.
  */
-import { updateNoDatasetRegularizationModePanel } from './05a-no-dataset-regularization-mode.js?v=module-bootstrap-20260706-1';
+import { updateChoiceGuide } from './13-update-dataset-editor-rows-setting-value.js?v=module-bootstrap-20260707-93';
+import { updateStepEstimatePanel } from './03-parse-network-arg-entry.js?v=module-bootstrap-20260707-93';
+import { valuesEqual } from '../helpers/form-values.js?v=module-bootstrap-20260707-93';
+import {
+    isTruthy,
+    loraAdapterFlagsForKind,
+    loraAdapterFlagsMatchConfig,
+    loraAdapterKindFromConfig,
+    normalizeLoraAdapterKind,
+    normalizePrecisionPreference,
+    precisionPreferenceFromConfig,
+    precisionPreferencePatch,
+} from '../helpers/config-values.js?v=module-bootstrap-20260707-93';
+import { getConfigState } from '../helpers/config-state-bridge.js?v=module-bootstrap-20260707-93';
+import { normalizeCameOptimizerArgs, normalizeOptimizerType } from '../helpers/optimizer-values.js?v=module-bootstrap-20260707-93';
+import {
+    formatFieldName,
+    shouldRenderSelectInput,
+} from '../helpers/config-field-display.js?v=module-bootstrap-20260707-93';
+import {
+    allowsNegativeNumberField,
+    appendSamplePromptRow,
+    createHelpContent,
+    createSelectInput,
+    fieldValueTypeForKey,
+    isIntegerNumericField,
+    isNumericField,
+    updateSamplePromptRemoveButtons,
+} from '../helpers/config-field-ui-bridge.js?v=module-bootstrap-20260707-93';
+import {
+    blankSamplePromptRow,
+    parseSamplePromptRows,
+    samplePromptsContentNeedsTextMode,
+    serializeSamplePromptsEditor,
+} from '../../sample-prompts/model.js?v=module-bootstrap-20260707-93';
+import {
+    CONFIG_FORM_INTERNAL_KEYS,
+    FIELD_OPTIONS,
+    FORM_UI_DEFAULTS,
+    help,
+} from '../../../config/catalog.js?v=module-bootstrap-20260707-93';
+import { LOSS_WEIGHTING_DEPENDENT_FIELDS } from '../helpers/app-constants.js?v=module-bootstrap-20260707-93';
+import { applyLossWeightingFieldInputState, collectNetworkArgsFromForm, displayConfigFieldValue, isActiveNetworkArgFieldKey, originalConfigFieldValue, readDoRAAvailable, readFieldInputValue, readLoKrEnabled, readVeRAEnabled, setDoRADraftValue, syncConfigDraftFromForm, updateDoRAFieldState, updateLoKrFieldState, updateLossWeightingFieldState, updateVeRAFieldState } from '../helpers/config-form-bridge.js?v=module-bootstrap-20260707-93';
+import { updateTomlDirtyState } from '../helpers/toml-selection-bridge.js?v=module-bootstrap-20260707-93';
 
-const ctx = globalThis.ctx;
+let updateNoDatasetRegularizationModePanelCallback = () => {};
+const configState = getConfigState();
+
+function currentConfigState() {
+    return configState.currentConfig || {};
+}
+
+export function configureNoDatasetRegularizationModePanelUpdater(updater) {
+    updateNoDatasetRegularizationModePanelCallback = typeof updater === 'function' ? updater : () => {};
+}
 
     const PREPROCESS_MEMORY_PROFILE_VALUES = {
         auto: { preprocess_vae_cache_batch_size: 'auto', preprocess_text_cache_batch_size: 'auto' },
@@ -38,52 +90,9 @@ const ctx = globalThis.ctx;
         }
     }
 
-    globalThis.normalizePrecisionPreference = function normalizePrecisionPreference(value) {
-        const normalized = String(value || '').trim().toLowerCase();
-        if (normalized === 'fp16' || normalized === 'fp32') return normalized;
-        return 'bf16';
-    }
-
-    globalThis.precisionPreferenceFromConfig = function precisionPreferenceFromConfig(config = currentConfig) {
-        const mixedPrecision = String(config?.mixed_precision || '').trim().toLowerCase();
-        if (mixedPrecision === 'no') return 'fp32';
-        if (mixedPrecision === 'fp16' || isTruthy(config?.full_fp16)) return 'fp16';
-        return 'bf16';
-    }
-
-    globalThis.precisionPreferencePatch = function precisionPreferencePatch(preference, baseConfig = currentConfig) {
-        const normalized = normalizePrecisionPreference(preference);
-        const patch = {
-            mixed_precision: normalized === 'fp32' ? 'no' : normalized,
-        };
-        if (Object.prototype.hasOwnProperty.call(baseConfig || {}, 'full_fp16') || isTruthy(baseConfig?.full_fp16)) {
-            patch.full_fp16 = false;
-        }
-        if (Object.prototype.hasOwnProperty.call(baseConfig || {}, 'full_bf16') || isTruthy(baseConfig?.full_bf16)) {
-            patch.full_bf16 = false;
-        }
-        return patch;
-    }
-
-    globalThis.loraAdapterKindFromConfig = function loraAdapterKindFromConfig(config = currentConfig) {
-        if (isTruthy(config?.use_glora)) return 'glora';
-        if (isTruthy(config?.use_vera)) return 'vera';
-        if (isTruthy(config?.use_lokr)) return 'lokr';
-        if (isTruthy(config?.use_loha)) return 'loha';
-        return 'lora';
-    }
-
-    globalThis.loraAdapterFlagsForKind = function loraAdapterFlagsForKind(kind) {
-        const normalized = normalizeLoraAdapterKind(kind);
-        return {
-            use_glora: normalized === 'glora',
-            use_loha: normalized === 'loha',
-            use_lokr: normalized === 'lokr',
-            use_vera: normalized === 'vera',
-        };
-    }
-
-    globalThis.applyLoraAdapterDraft = function applyLoraAdapterDraft(kind) {
+    export function applyLoraAdapterDraft(kind) {
+        const configFormState = configState.configFormState;
+        const currentConfig = currentConfigState();
         const normalized = normalizeLoraAdapterKind(kind);
         const originalKind = loraAdapterKindFromConfig(currentConfig);
         if (normalized === originalKind && loraAdapterFlagsMatchConfig(normalized, currentConfig)) {
@@ -100,7 +109,9 @@ const ctx = globalThis.ctx;
         configFormState.draftValues.delete('use_vera');
     }
 
-    globalThis.readLiveLoraAdapterKind = function readLiveLoraAdapterKind() {
+    export function readLiveLoraAdapterKind() {
+        const configFormState = configState.configFormState;
+        const currentConfig = currentConfigState();
         if (configFormState.draftValues.has('lora_adapter_kind')) {
             return normalizeLoraAdapterKind(configFormState.draftValues.get('lora_adapter_kind'));
         }
@@ -111,7 +122,9 @@ const ctx = globalThis.ctx;
         return loraAdapterKindFromConfig(currentConfig);
     }
 
-    globalThis.applyLoraAdapterPatch = function applyLoraAdapterPatch(values) {
+    export function applyLoraAdapterPatch(values) {
+        const configFormState = configState.configFormState;
+        const currentConfig = currentConfigState();
         if (!configFormState.draftValues.has('lora_adapter_kind')) return values;
         const nextKind = normalizeLoraAdapterKind(configFormState.draftValues.get('lora_adapter_kind'));
         const flags = loraAdapterFlagsForKind(nextKind);
@@ -149,56 +162,8 @@ const ctx = globalThis.ctx;
         return values;
     }
 
-    globalThis.normalizeOptimizerType = function normalizeOptimizerType(value) {
-        return String(value ?? '').trim().toLowerCase();
-    }
-
-    globalThis.optimizerArgEntryKey = function optimizerArgEntryKey(raw) {
-        const text = String(raw || '').trim();
-        const splitAt = text.indexOf('=');
-        return splitAt > 0 ? text.slice(0, splitAt).trim().toLowerCase() : '';
-    }
-
-    globalThis.optimizerArgEntryValue = function optimizerArgEntryValue(raw) {
-        const text = String(raw || '').trim();
-        const splitAt = text.indexOf('=');
-        return splitAt > 0 ? text.slice(splitAt + 1).trim() : '';
-    }
-
-    globalThis.normalizeOptimizerArgArray = function normalizeOptimizerArgArray(value) {
-        if (Array.isArray(value)) return value.map((item) => String(item));
-        if (typeof value === 'string' && value.trim()) return parseArrayValue(value).map((item) => String(item));
-        return [];
-    }
-
-    globalThis.cameBetasNeedPatch = function cameBetasNeedPatch(rawBetas) {
-        const parts = String(rawBetas || '')
-            .split(',')
-            .map((item) => item.trim())
-            .filter(Boolean);
-        return parts.length === 2;
-    }
-
-    globalThis.normalizeCameOptimizerArgs = function normalizeCameOptimizerArgs(args) {
-        const result = normalizeOptimizerArgArray(args);
-        let betasIndex = -1;
-        for (let index = 0; index < result.length; index += 1) {
-            if (optimizerArgEntryKey(result[index]) === 'betas') {
-                betasIndex = index;
-                break;
-            }
-        }
-        if (betasIndex < 0) {
-            return result;
-        }
-        const rawBetas = optimizerArgEntryValue(result[betasIndex]);
-        if (cameBetasNeedPatch(rawBetas)) {
-            result[betasIndex] = 'betas=0.9,0.999,0.9999';
-        }
-        return result;
-    }
-
-    globalThis.applyOptimizerCompatibilityPatch = function applyOptimizerCompatibilityPatch(values) {
+    export function applyOptimizerCompatibilityPatch(values) {
+        const currentConfig = currentConfigState();
         const nextValues = { ...values };
         const optimizerType = 'optimizer_type' in nextValues ? nextValues.optimizer_type : currentConfig.optimizer_type;
         if (normalizeOptimizerType(optimizerType) !== 'came') return nextValues;
@@ -210,35 +175,8 @@ const ctx = globalThis.ctx;
         return nextValues;
     }
 
-    globalThis.loraAdapterFlagsMatchConfig = function loraAdapterFlagsMatchConfig(kind, config = currentConfig) {
-        const flags = loraAdapterFlagsForKind(kind);
-        return isTruthy(config?.use_glora) === flags.use_glora
-            && isTruthy(config?.use_loha) === flags.use_loha
-            && isTruthy(config?.use_lokr) === flags.use_lokr
-            && isTruthy(config?.use_vera) === flags.use_vera;
-    }
-
-    globalThis.compactList = function compactList(items) {
-        return items.filter((item) => item !== undefined && item !== null && String(item).trim() !== '');
-    }
-
-    globalThis.valueDetail = function valueDetail(key, value) {
-        if (value === undefined || value === null || value === '') return '';
-        return `${FIELD_LABEL_ZH[key] || key}: ${formatChoiceValue(value)}`;
-    }
-
-    globalThis.flagDetail = function flagDetail(key, label, value) {
-        if (value === undefined || value === null || value === '') return '';
-        return `${label}: ${isTruthy(value) ? '开启' : '关闭'}`;
-    }
-
-    globalThis.formatChoiceValue = function formatChoiceValue(value) {
-        if (Array.isArray(value)) return value.join(', ');
-        if (typeof value === 'boolean') return value ? 'true' : 'false';
-        return String(value);
-    }
-
-    globalThis.createFieldRow = function createFieldRow(key, value) {
+    export function createFieldRow(key, value) {
+        const configFormState = configState.configFormState;
         const row = document.createElement('div');
         row.className = 'field-row';
         row.dataset.key = key;
@@ -262,7 +200,7 @@ const ctx = globalThis.ctx;
         input.addEventListener('change', handleFormFieldChange);
         nameSpan.addEventListener('click', () => focusConfigFieldInput(input));
 
-        if (key === 'sample_prompts' && samplePromptsMode !== 'path') {
+        if (key === 'sample_prompts' && configState.samplePromptsMode !== 'path') {
             const labelStack = document.createElement('div');
             labelStack.className = 'field-label-stack';
             labelStack.appendChild(nameSpan);
@@ -309,7 +247,7 @@ const ctx = globalThis.ctx;
         return row;
     }
 
-    globalThis.focusConfigFieldInput = function focusConfigFieldInput(input) {
+    function focusConfigFieldInput(input) {
         if (!input) return;
         const target = input.matches?.('input, textarea, select, button')
             ? input
@@ -329,7 +267,7 @@ const ctx = globalThis.ctx;
         }
     }
 
-    globalThis.handleFormFieldChange = function handleFormFieldChange(event) {
+    export function handleFormFieldChange(event) {
         applyPreprocessMemoryProfileSelection(event);
         syncConfigDraftFromForm();
         updateTomlDirtyState();
@@ -338,16 +276,19 @@ const ctx = globalThis.ctx;
         updateVeRAFieldState();
         updateDoRAFieldState();
         updateLossWeightingFieldState();
-        updateNoDatasetRegularizationModePanel();
+        updateNoDatasetRegularizationModePanelCallback();
         updateChoiceGuideFromLiveForm();
     }
 
-    globalThis.updateChoiceGuideFromLiveForm = function updateChoiceGuideFromLiveForm() {
+    function updateChoiceGuideFromLiveForm() {
+        const currentConfig = currentConfigState();
         if (!currentConfig || Object.keys(currentConfig).length === 0) return;
         updateChoiceGuide(liveConfigFromForm());
     }
 
-    globalThis.liveConfigFromForm = function liveConfigFromForm() {
+    function liveConfigFromForm() {
+        const configFormState = configState.configFormState;
+        const currentConfig = currentConfigState();
         syncConfigDraftFromForm();
         const rawNetworkArgsChanged = configFormState.draftValues.has('network_args');
         const liveConfig = { ...(currentConfig || {}) };
@@ -371,18 +312,9 @@ const ctx = globalThis.ctx;
         return liveConfig;
     }
 
-    globalThis.formatFieldName = function formatFieldName(key) {
-        const label = FIELD_LABEL_ZH[key];
-        return label ? `${label} / ${key}` : key;
-    }
-
-    globalThis.shouldRenderSelectInput = function shouldRenderSelectInput(key, value) {
-        return Boolean(FIELD_OPTIONS[key]) && !Array.isArray(value);
-    }
-
-    globalThis.createFieldInput = function createFieldInput(key, value, options = {}) {
+    function createFieldInput(key, value, options = {}) {
         if (key === 'sample_prompts') {
-            if (samplePromptsMode === 'path') {
+            if (configState.samplePromptsMode === 'path') {
                 return createSamplePromptsPathInput(value);
             }
             return createSamplePromptsEditor(value, options.originalValue, options.hasDraftValue);
@@ -426,7 +358,7 @@ const ctx = globalThis.ctx;
         return input;
     }
 
-    globalThis.createSamplePromptsPathInput = function createSamplePromptsPathInput(value) {
+    function createSamplePromptsPathInput(value) {
         const input = document.createElement('input');
         input.type = 'text';
         input.className = 'field-input';
@@ -435,7 +367,7 @@ const ctx = globalThis.ctx;
         return input;
     }
 
-    globalThis.createSamplePromptsEditor = function createSamplePromptsEditor(value, originalValue = value, touched = false) {
+    function createSamplePromptsEditor(value, originalValue = value, touched = false) {
         const editor = document.createElement('div');
         editor.className = 'field-input sample-prompts-editor';
         editor.dataset.originalContent = originalValue ?? '';
@@ -461,7 +393,7 @@ const ctx = globalThis.ctx;
         return editor;
     }
 
-    globalThis.createSamplePromptAddButton = function createSamplePromptAddButton(rowsWrap) {
+    function createSamplePromptAddButton(rowsWrap) {
         const addBtn = document.createElement('button');
         addBtn.type = 'button';
         addBtn.className = 'btn btn-small sample-prompts-add-btn';
@@ -486,7 +418,7 @@ const ctx = globalThis.ctx;
         return addBtn;
     }
 
-    globalThis.createSamplePromptTextModeButton = function createSamplePromptTextModeButton(editor) {
+    function createSamplePromptTextModeButton(editor) {
         const btn = document.createElement('button');
         btn.type = 'button';
         btn.className = 'btn btn-small sample-prompts-add-btn sample-prompts-mode-btn';
@@ -505,7 +437,7 @@ const ctx = globalThis.ctx;
         return btn;
     }
 
-    globalThis.updateSamplePromptModeButtonState = function updateSamplePromptModeButtonState(btn, editor) {
+    function updateSamplePromptModeButtonState(btn, editor) {
         if (!btn || !editor) return;
         const textMode = editor.dataset.mode === 'text';
         btn.textContent = textMode ? '表格模式' : '文本模式';
@@ -513,7 +445,7 @@ const ctx = globalThis.ctx;
         btn.setAttribute('aria-pressed', String(textMode));
     }
 
-    globalThis.setSamplePromptsEditorContent = function setSamplePromptsEditorContent(editor, content) {
+    export function setSamplePromptsEditorContent(editor, content) {
         if (!editor) return;
         editor.dataset.originalContent = content || '';
         editor.dataset.touched = '0';
@@ -521,11 +453,11 @@ const ctx = globalThis.ctx;
         updateSamplePromptModeButtonState(editor.closest('.field-row')?.querySelector('[data-sample-prompts-mode-toggle]'), editor);
     }
 
-    globalThis.markSamplePromptsEditorTouched = function markSamplePromptsEditorTouched(editor) {
+    export function markSamplePromptsEditorTouched(editor) {
         if (editor) editor.dataset.touched = '1';
     }
 
-    globalThis.renderSamplePromptRows = function renderSamplePromptRows(editor, content) {
+    function renderSamplePromptRows(editor, content) {
         const rowsWrap = editor.querySelector('.sample-prompts-rows');
         if (!rowsWrap) return;
         rowsWrap.innerHTML = '';
@@ -546,7 +478,7 @@ const ctx = globalThis.ctx;
         updateSamplePromptRemoveButtons(rowsWrap);
     }
 
-    globalThis.switchSamplePromptsEditorToTextMode = function switchSamplePromptsEditorToTextMode(editor) {
+    function switchSamplePromptsEditorToTextMode(editor) {
         if (!editor || editor.dataset.mode === 'text') return;
         const rowsWrap = editor.querySelector('.sample-prompts-rows');
         if (!rowsWrap) return;
@@ -562,7 +494,7 @@ const ctx = globalThis.ctx;
         textarea.focus();
     }
 
-    globalThis.switchSamplePromptsEditorToTableMode = function switchSamplePromptsEditorToTableMode(editor) {
+    function switchSamplePromptsEditorToTableMode(editor) {
         if (!editor || editor.dataset.mode !== 'text') return;
         const rowsWrap = editor.querySelector('.sample-prompts-rows');
         if (!rowsWrap) return;

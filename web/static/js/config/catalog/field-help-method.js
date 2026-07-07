@@ -1,4 +1,4 @@
-import { help } from './help-builder.js?v=module-bootstrap-20260706-1';
+import { help } from './help-builder.js?v=module-bootstrap-20260707-93';
 
 export const FIELD_HELP_METHOD_ZH = {
     network_dim: help(

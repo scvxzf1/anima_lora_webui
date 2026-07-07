@@ -2,9 +2,23 @@
  * Mechanical split from the former monolithic app closure.
  * Keep this module focused; move newly edited behavior into domain modules.
  */
-const ctx = globalThis.ctx;
+import { datasetConfigLabel, datasetConfigValue } from '../helpers/dataset-config-fields.js?v=module-bootstrap-20260707-93';
+import { datasetEditorStateForActivePanel } from '../helpers/dataset-render-bridge.js?v=module-bootstrap-20260707-93';
+import { normalizeDatasetEditorRows } from '../helpers/dataset-values.js?v=module-bootstrap-20260707-93';
+import { compactPathLabel } from '../helpers/history-task-actions-bridge.js?v=module-bootstrap-20260707-93';
+import {
+    autoScrollFileGroupPointerDrag,
+    fileGroupContainsRelatedTarget,
+} from './08-origin-closest.js?v=module-bootstrap-20260707-93';
+import {
+    createDatasetEditorRow,
+    createDatasetExperimentalFeaturesEditor,
+} from './11-create-dataset-editor-row.js?v=module-bootstrap-20260707-93';
+import { updateDatasetDefault } from './12-create-dataset-row-caption-source-mode-editor.js?v=module-bootstrap-20260707-93';
+import { moveDatasetEditorRow, moveDatasetEditorRowToIndex } from './13-update-dataset-editor-rows-setting-value.js?v=module-bootstrap-20260707-93';
 
-    globalThis.createDatasetConfigInput = function createDatasetConfigInput(key, type, defaults) {
+
+    export function createDatasetConfigInput(key, type, defaults) {
         if (type === 'switch') {
             return createDatasetConfigSwitch(key, defaults);
         }
@@ -41,7 +55,7 @@ const ctx = globalThis.ctx;
         return input;
     }
 
-    globalThis.createDatasetConfigSwitch = function createDatasetConfigSwitch(key, defaults) {
+    function createDatasetConfigSwitch(key, defaults) {
         const checked = Boolean(defaults[key]);
         const wrap = document.createElement('label');
         wrap.className = ['dataset-json-switch', checked ? 'enabled' : ''].filter(Boolean).join(' ');
@@ -84,48 +98,25 @@ const ctx = globalThis.ctx;
         return wrap;
     }
 
-    globalThis.datasetConfigLabel = function datasetConfigLabel(key) {
-        const labels = {
-            resolution: '分辨率',
-            enable_bucket: '启用长宽比分桶',
-            min_bucket_reso: '最小桶边长',
-            max_bucket_reso: '最大桶边长',
-            bucket_reso_steps: '桶尺寸步长',
-            bucket_no_upscale: '禁止放大图片',
-            validation_split: '验证集比例',
-            validation_split_num: '固定验证数量',
-            validation_seed: '验证随机种子',
-            caption_extension: '文本标注扩展名',
-            keep_tokens: '保留前置 token',
-            prefer_json_caption: '优先 JSON 标注',
-            caption_source_mode: '标注来源',
-        };
-        return `${labels[key] || FIELD_LABEL_ZH[key] || key} / ${key}`;
-    }
-
-    globalThis.datasetConfigValue = function datasetConfigValue(key, defaults) {
-        return defaults[key] ?? '';
-    }
-
-	    globalThis.updateDatasetConfigValue = function updateDatasetConfigValue(key, input) {
+	    function updateDatasetConfigValue(key, input) {
 	        updateDatasetDefault(key, input);
 	    }
 
-	    globalThis.datasetEditorDragRows = function datasetEditorDragRows() {
+	    function datasetEditorDragRows() {
 	        return normalizeDatasetEditorRows(datasetEditorStateForActivePanel().datasets);
 	    }
 
-	    globalThis.datasetEditorCanDrag = function datasetEditorCanDrag() {
+	    function datasetEditorCanDrag() {
 	        return datasetEditorDragRows().length > 1;
 	    }
 
-	    globalThis.datasetEditorDragLabel = function datasetEditorDragLabel(index) {
+	    function datasetEditorDragLabel(index) {
 	        const row = datasetEditorDragRows()[index] || {};
 	        const path = String(row.source_dir || row.image_dir || '').trim();
 	        return path ? compactPathLabel(path) : `SUBSET ${index + 1}`;
 	    }
 
-	    globalThis.createDatasetEditorDragImage = function createDatasetEditorDragImage(index) {
+	    function createDatasetEditorDragImage(index) {
 	        const image = document.createElement('div');
 	        image.className = 'dataset-editor-drag-image';
 	        image.textContent = datasetEditorDragLabel(index);
@@ -133,30 +124,30 @@ const ctx = globalThis.ctx;
 	        return image;
 	    }
 
-	    globalThis.removeDatasetEditorDragImage = function removeDatasetEditorDragImage(image) {
+	    function removeDatasetEditorDragImage(image) {
 	        if (image?.parentNode) image.parentNode.removeChild(image);
 	    }
 
-	    globalThis.moveDatasetEditorDragImage = function moveDatasetEditorDragImage(image, x, y) {
+	    function moveDatasetEditorDragImage(image, x, y) {
 	        if (!image) return;
 	        image.style.left = `${x + 14}px`;
 	        image.style.top = `${y + 14}px`;
 	    }
 
-	    globalThis.beginDatasetEditorDrag = function beginDatasetEditorDrag(index, item, handle) {
+	    function beginDatasetEditorDrag(index, item, handle) {
 	        datasetEditorDragState = { index, sourceElement: item, handle };
 	        item?.classList.add('dataset-editor-item-dragging');
 	        handle?.classList.add('dragging');
 	        document.body.classList.add('dataset-editor-pointer-drag-active');
 	    }
 
-	    globalThis.clearDatasetEditorDropIndicators = function clearDatasetEditorDropIndicators() {
+	    function clearDatasetEditorDropIndicators() {
 	        document.querySelectorAll('.dataset-editor-drop-before, .dataset-editor-drop-after').forEach((node) => {
 	            node.classList.remove('dataset-editor-drop-before', 'dataset-editor-drop-after');
 	        });
 	    }
 
-	    globalThis.finishDatasetEditorDrag = function finishDatasetEditorDrag() {
+	    function finishDatasetEditorDrag() {
 	        datasetEditorDragState?.sourceElement?.classList.remove('dataset-editor-item-dragging');
 	        datasetEditorDragState?.handle?.classList.remove('dragging');
 	        document.body.classList.remove('dataset-editor-pointer-drag-active');
@@ -164,7 +155,7 @@ const ctx = globalThis.ctx;
 	        clearDatasetEditorDropIndicators();
 	    }
 
-	    globalThis.datasetEditorDropTargetFromPoint = function datasetEditorDropTargetFromPoint(x, y) {
+	    function datasetEditorDropTargetFromPoint(x, y) {
 	        const items = [...document.querySelectorAll('#dataset-editor .dataset-editor-item')];
 	        if (!items.length) return null;
 	        let best = null;
@@ -186,13 +177,13 @@ const ctx = globalThis.ctx;
 	        return best;
 	    }
 
-	    globalThis.markDatasetEditorDropTarget = function markDatasetEditorDropTarget(target) {
+	    function markDatasetEditorDropTarget(target) {
 	        clearDatasetEditorDropIndicators();
 	        if (!target?.node) return;
 	        target.node.classList.add(target.placeAfter ? 'dataset-editor-drop-after' : 'dataset-editor-drop-before');
 	    }
 
-	    globalThis.datasetEditorEventPoint = function datasetEditorEventPoint(event) {
+	    function datasetEditorEventPoint(event) {
 	        const touch = event.changedTouches?.[0] || event.touches?.[0];
 	        const x = touch?.clientX ?? event.clientX;
 	        const y = touch?.clientY ?? event.clientY;
@@ -200,7 +191,7 @@ const ctx = globalThis.ctx;
 	        return { x, y };
 	    }
 
-	    globalThis.finishDatasetEditorPointerDrag = function finishDatasetEditorPointerDrag(commit = false) {
+	    function finishDatasetEditorPointerDrag(commit = false) {
 	        const drag = datasetEditorPointerDrag;
 	        if (!drag) return;
 	        document.removeEventListener('pointermove', drag.onPointerMove);
@@ -228,7 +219,7 @@ const ctx = globalThis.ctx;
 	        }
 	    }
 
-	    globalThis.startDatasetEditorFallbackDrag = function startDatasetEditorFallbackDrag(event, index, item, handle, options = {}) {
+	    function startDatasetEditorFallbackDrag(event, index, item, handle, options = {}) {
 	        if (!datasetEditorCanDrag() || datasetEditorPointerDrag) return;
 	        if ((options.pointer || options.mouse) && 'button' in event && event.button !== 0) return;
 	        if (options.pointer && event.isPrimary === false) return;
@@ -316,19 +307,19 @@ const ctx = globalThis.ctx;
 	        document.addEventListener('keydown', drag.onKeydown);
 	    }
 
-	    globalThis.startDatasetEditorPointerDrag = function startDatasetEditorPointerDrag(event, index, item, handle) {
+	    function startDatasetEditorPointerDrag(event, index, item, handle) {
 	        startDatasetEditorFallbackDrag(event, index, item, handle, { pointer: true });
 	    }
 
-	    globalThis.startDatasetEditorMouseDrag = function startDatasetEditorMouseDrag(event, index, item, handle) {
+	    function startDatasetEditorMouseDrag(event, index, item, handle) {
 	        startDatasetEditorFallbackDrag(event, index, item, handle, { mouse: true });
 	    }
 
-	    globalThis.startDatasetEditorTouchDrag = function startDatasetEditorTouchDrag(event, index, item, handle) {
+	    function startDatasetEditorTouchDrag(event, index, item, handle) {
 	        startDatasetEditorFallbackDrag(event, index, item, handle, { touch: true });
 	    }
 
-	    globalThis.createDatasetEditorDragHandle = function createDatasetEditorDragHandle(index, item) {
+	    export function createDatasetEditorDragHandle(index, item) {
 	        const handle = document.createElement('button');
 	        const disabled = !datasetEditorCanDrag();
 	        handle.type = 'button';
@@ -382,7 +373,7 @@ const ctx = globalThis.ctx;
 	        return handle;
 	    }
 
-	    globalThis.setupDatasetEditorItemDropTarget = function setupDatasetEditorItemDropTarget(item, targetIndex) {
+	    function setupDatasetEditorItemDropTarget(item, targetIndex) {
 	        const updateDropTarget = (event) => {
 	            const sourceIndex = datasetEditorDragState?.index;
 	            if (!Number.isInteger(sourceIndex) || sourceIndex === targetIndex) return;
@@ -411,7 +402,7 @@ const ctx = globalThis.ctx;
 	        });
 	    }
 
-	    globalThis.createDatasetEditorItem = function createDatasetEditorItem(row, index) {
+	    export function createDatasetEditorItem(row, index) {
 	        const item = document.createElement('div');
 	        item.className = 'dataset-editor-item';
 	        item.dataset.index = String(index);

@@ -14,6 +14,8 @@
 
 | 文档 | 原因 |
 | --- | --- |
+| [anima-app-deglobalization.md](../_archive/docs/proposal/anima-app-deglobalization.md) | 阶段 0-3 已落地（85 轮，`globalThis` 从 1075 降到 270），剩余收尾由 `anima-app-legacy-bridge-cleanup.md` 接续 |
+| [lora-network-decomposition.md](../_archive/docs/proposal/lora-network-decomposition.md) | `LoRANetwork` 分层拆分核心代码已落地，当前仅保留实施计划和历史上下文 |
 | [upstream_high_value_merge_roadmap_2026-06-24.md](../_archive/docs/proposal/upstream_high_value_merge_roadmap_2026-06-24.md) | 上游合并路线图已执行，当前仅保留历史上下文 |
 | [upstream_merge_completion_report_2026-06-24.md](../_archive/docs/proposal/upstream_merge_completion_report_2026-06-24.md) | 上游合并完成报告，已经不是活跃提案 |
 | [upstream_merge_completion_report_2026-06-24_audit.md](../_archive/docs/proposal/upstream_merge_completion_report_2026-06-24_audit.md) | 上游合并完成报告审核记录 |

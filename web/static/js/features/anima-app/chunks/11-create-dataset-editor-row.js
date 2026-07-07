@@ -10,11 +10,33 @@ import {
     createDatasetInlineHelpButton,
     datasetExperimentalOpenState,
     datasetLocalHelpSpec,
-} from './10a-dataset-inline-help.js?v=module-bootstrap-20260706-1';
+} from './10a-dataset-inline-help.js?v=module-bootstrap-20260707-93';
+import { createDatasetEditorDragHandle } from './10-create-dataset-config-input.js?v=module-bootstrap-20260707-93';
+import { CAPTION_SOURCE_MODE_OPTIONS, help } from '../../../config/catalog.js?v=module-bootstrap-20260707-93';
+import { captionSourceModeLabel, normalizeCaptionSourceMode } from '../helpers/caption-source.js?v=module-bootstrap-20260707-93';
+import { createHelpContent } from '../helpers/config-field-ui-bridge.js?v=module-bootstrap-20260707-93';
+import { datasetConfigLabel, datasetConfigValue } from '../helpers/dataset-config-fields.js?v=module-bootstrap-20260707-93';
+import { getDatasetState } from '../helpers/dataset-state-bridge.js?v=module-bootstrap-20260707-93';
+import {
+    nlTagMixSummary,
+    normalizeDatasetDefaults,
+    normalizeDatasetEditorRows,
+    normalizeNlTagMix,
+    normalizeTriggerClone,
+} from '../helpers/dataset-values.js?v=module-bootstrap-20260707-93';
+import { datasetPreviewValidationText } from '../helpers/dataset-preview.js?v=module-bootstrap-20260707-93';
+import { datasetEditorStateForActivePanel, isDatasetTabActive, refreshDatasetEditorItem, renderDatasetEditor } from '../helpers/dataset-render-bridge.js?v=module-bootstrap-20260707-93';
+import { createDatasetPathField, createDatasetRowCaptionSourceModeEditor, createDatasetRowSettingInput, openDatasetPreview, updateDatasetEditorRow } from './12-create-dataset-row-caption-source-mode-editor.js?v=module-bootstrap-20260707-93';
+import { datasetExperimentalScopeIndices, escapeHtml, removeDatasetEditorRow, setDatasetExperimentalScopeIndices, updateDatasetEditorRowNlTagMix, updateDatasetEditorRowTriggerClone, updateDatasetEditorRowsSettingValue } from './13-update-dataset-editor-rows-setting-value.js?v=module-bootstrap-20260707-93';
 
-const ctx = globalThis.ctx;
+const datasetState = getDatasetState();
 
-	    globalThis.createDatasetEditorRow = function createDatasetEditorRow(row, index, item = null) {
+function currentDatasetPresetState() {
+    return datasetState.datasetPresetState || {};
+}
+
+
+	    export function createDatasetEditorRow(row, index, item = null) {
 	        const wrap = document.createElement('div');
 	        wrap.className = 'dataset-editor-row';
 	        wrap.dataset.index = String(index);
@@ -72,11 +94,12 @@ const ctx = globalThis.ctx;
         });
         headActions.appendChild(badges);
         if (isDatasetTabActive()) {
+            const presetState = currentDatasetPresetState();
             const previewBtn = document.createElement('button');
             previewBtn.type = 'button';
             previewBtn.className = 'btn btn-small';
             previewBtn.textContent = '预览图片和标注';
-            previewBtn.disabled = !datasetPresetState.selectedFile || datasetPresetState.dirty;
+            previewBtn.disabled = !presetState.selectedFile || presetState.dirty;
             previewBtn.title = previewBtn.disabled
                 ? '请先保存当前数据集预设，再预览磁盘中的图片和同名标注。'
                 : '打开这一组数据集的原始图预览，并读取同名 caption 标注。';
@@ -110,7 +133,7 @@ const ctx = globalThis.ctx;
         return wrap;
     }
 
-    globalThis.createDatasetExperimentalFeaturesEditor = function createDatasetExperimentalFeaturesEditor(row, index) {
+    export function createDatasetExperimentalFeaturesEditor(row, index) {
         const panel = document.createElement('details');
         panel.className = 'dataset-experimental-features';
         panel.dataset.index = String(index);
@@ -138,7 +161,12 @@ const ctx = globalThis.ctx;
         note.textContent = `对应第 ${index + 1} 组数据集`;
         head.append(titleRow, note);
 
-        const { body, detailBtn } = createDatasetExperimentalAdvancedBody(row, index, overviewHelp);
+        const { body, detailBtn } = createDatasetExperimentalAdvancedBody(row, index, overviewHelp, {
+            createDatasetCaptionExtensionEditor,
+            createDatasetExperimentalScopePicker,
+            createDatasetPathFilterEditor,
+            createDatasetTriggerCloneEditor,
+        });
         attachDatasetInlineHelp(
             overviewHelpBtn,
             overviewHelp,
@@ -158,7 +186,7 @@ const ctx = globalThis.ctx;
         return panel;
     }
 
-    globalThis.createDatasetPathFilterEditor = function createDatasetPathFilterEditor(row, index) {
+    export function createDatasetPathFilterEditor(row, index) {
         const panel = document.createElement('div');
         panel.className = 'dataset-path-filter-advanced';
         panel.dataset.index = String(index);
@@ -214,7 +242,7 @@ const ctx = globalThis.ctx;
         return panel;
     }
 
-    globalThis.createDatasetRepeatSettingField = function createDatasetRepeatSettingField(row, index) {
+    export function createDatasetRepeatSettingField(row, index) {
         const field = document.createElement('label');
         field.className = 'dataset-row-setting-field dataset-repeat-field dataset-repeat-setting-field';
 
@@ -239,7 +267,7 @@ const ctx = globalThis.ctx;
         return field;
     }
 
-    globalThis.createDatasetRowSettingsEditor = function createDatasetRowSettingsEditor(row, index) {
+    export function createDatasetRowSettingsEditor(row, index) {
         const settings = normalizeDatasetDefaults(row.settings || datasetEditorStateForActivePanel().defaults || {});
         const panel = document.createElement('div');
         panel.className = 'dataset-row-settings';
@@ -296,7 +324,7 @@ const ctx = globalThis.ctx;
         return panel;
     }
 
-    globalThis.createDatasetCaptionExtensionEditor = function createDatasetCaptionExtensionEditor(row, index) {
+    export function createDatasetCaptionExtensionEditor(row, index) {
         const settings = normalizeDatasetDefaults(row.settings || datasetEditorStateForActivePanel().defaults || {});
         const panel = document.createElement('div');
         panel.className = 'dataset-caption-extension-advanced';
@@ -347,7 +375,7 @@ const ctx = globalThis.ctx;
         return panel;
     }
 
-    globalThis.createDatasetNlTagMixEditor = function createDatasetNlTagMixEditor(row, index) {
+    export function createDatasetNlTagMixEditor(row, index) {
         const mix = normalizeNlTagMix(row.nl_tag_mix);
         const panel = document.createElement('div');
         panel.className = ['dataset-nl-tag-mix', mix.enabled ? 'enabled' : ''].filter(Boolean).join(' ');
@@ -434,7 +462,7 @@ const ctx = globalThis.ctx;
         return panel;
     }
 
-    globalThis.createDatasetExperimentalScopePicker = function createDatasetExperimentalScopePicker(index) {
+    export function createDatasetExperimentalScopePicker(index) {
         const state = datasetEditorStateForActivePanel();
         const rows = normalizeDatasetEditorRows(state.datasets);
         const selected = new Set(datasetExperimentalScopeIndices(index, rows.length));
@@ -502,7 +530,7 @@ const ctx = globalThis.ctx;
         return scope;
     }
 
-    globalThis.createDatasetTriggerCloneEditor = function createDatasetTriggerCloneEditor(row, index) {
+    export function createDatasetTriggerCloneEditor(row, index) {
         const clone = normalizeTriggerClone(row.trigger_clone);
         const panel = document.createElement('div');
         panel.className = ['dataset-trigger-clone', clone.enabled ? 'enabled' : ''].filter(Boolean).join(' ');
@@ -576,20 +604,4 @@ const ctx = globalThis.ctx;
 
         panel.append(toggle, prompt, repeats, summary, helpDiv);
         return panel;
-    }
-
-    globalThis.normalizeCaptionSourceMode = function normalizeCaptionSourceMode(value, preferJson = false) {
-        const raw = String(value || '').trim().toLowerCase().replace(/-/g, '_');
-        const allowed = new Set(CAPTION_SOURCE_MODE_OPTIONS.map((option) => option.value));
-        if (allowed.has(raw)) return raw;
-        if (raw === 'captions.json' || raw === 'diffpipeforge') return 'captions_json';
-        if (raw === '.json' || raw === 'same_stem_json') return 'json';
-        if (raw === '.txt' || raw === 'text') return 'txt';
-        return preferJson ? 'json' : 'auto';
-    }
-
-    globalThis.captionSourceModeLabel = function captionSourceModeLabel(value) {
-        const mode = normalizeCaptionSourceMode(value);
-        const option = CAPTION_SOURCE_MODE_OPTIONS.find((item) => item.value === mode);
-        return option ? `${option.label} (${option.detail})` : mode;
     }

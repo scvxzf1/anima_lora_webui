@@ -1,4 +1,4 @@
-import { help } from './help-builder.js?v=module-bootstrap-20260706-1';
+import { help } from './help-builder.js?v=module-bootstrap-20260707-93';
 
 export const FIELD_HELP_DATASET_ZH = {    source_image_dir: help(
         "旧配置里的原始数据集路径字段。",

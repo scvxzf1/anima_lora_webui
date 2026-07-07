@@ -2,65 +2,67 @@
  * Mechanical split from the former monolithic app closure.
  * Keep this module focused; move newly edited behavior into domain modules.
  */
-const ctx = globalThis.ctx;
+import { formatLossValue } from '../../history-detail/curve/data.js?v=module-bootstrap-20260707-93';
+import { formatCompactNumber, numberOrNull } from '../../history-detail/ui.js?v=module-bootstrap-20260707-93';
+import { formatLr } from '../../live-training/index.js?v=module-bootstrap-20260707-93';
+import { HIDDEN_DATASET_PRESET_FILES } from '../helpers/app-constants.js?v=module-bootstrap-20260707-93';
+import { getConfigState } from '../helpers/config-state-bridge.js?v=module-bootstrap-20260707-93';
+import { getDatasetState } from '../helpers/dataset-state-bridge.js?v=module-bootstrap-20260707-93';
+import {
+    normalizeDatasetDefaults,
+    normalizeDatasetEditorRows,
+} from '../helpers/dataset-values.js?v=module-bootstrap-20260707-93';
+import {
+    datasetPresetSummaryByFile,
+    orderDatasetPresetsForGroups,
+    selectedDatasetConfigOverride,
+    sortDatasetPresetGroups,
+} from '../helpers/dataset-presets.js?v=module-bootstrap-20260707-93';
+import {
+    renderConfigDatasetPickerDialog,
+    renderDatasetEditor,
+    renderDatasetPresetHeader,
+    renderDatasetPresetList,
+    isDatasetTabActive,
+} from '../helpers/dataset-render-bridge.js?v=module-bootstrap-20260707-93';
+import { readLiveNumber, readNonnegativeLiveNumber, readOptionalLiveNumber } from '../helpers/live-form-values.js?v=module-bootstrap-20260707-93';
+import { isCliOnlySpdSource } from '../helpers/training-launch-bridge.js?v=module-bootstrap-20260707-93';
+import { confirmUnsavedDiscard } from '../helpers/toml-selection-bridge.js?v=module-bootstrap-20260707-93';
+import { api, datasetPresetApi, val } from '../helpers/runtime-bridge.js?v=module-bootstrap-20260707-93';
+import { getTrainingState } from '../helpers/training-state-bridge.js?v=module-bootstrap-20260707-93';
+import { currentTrainingConfigFile } from '../helpers/preflight-dialog-bridge.js?v=module-bootstrap-20260707-93';
+import { escapeHtml } from './13-update-dataset-editor-rows-setting-value.js?v=module-bootstrap-20260707-93';
+import { isConfigDatasetPickerDialogOpen, renderConfigDatasetPicker } from './06-stronger-selective-checkpoint-value.js?v=module-bootstrap-20260707-93';
 
-    globalThis.parseNetworkArgEntry = function parseNetworkArgEntry(raw) {
-        const text = String(raw || '').trim();
-        const splitAt = text.indexOf('=');
-        if (splitAt <= 0) return null;
-        const arg = text.slice(0, splitAt).trim();
-        if (!arg) return null;
-        return {
-            arg,
-            value: stripNetworkArgQuotes(text.slice(splitAt + 1).trim()),
-            raw: text,
-        };
-    }
+const configState = getConfigState();
+const datasetState = getDatasetState();
+const trainingState = getTrainingState();
 
-    globalThis.stripNetworkArgQuotes = function stripNetworkArgQuotes(value) {
-        const text = String(value || '').trim();
-        if ((text.startsWith('"') && text.endsWith('"')) || (text.startsWith("'") && text.endsWith("'"))) {
-            return text.slice(1, -1);
-        }
-        return text;
-    }
+function currentTrainingSourceState() {
+    return trainingState.currentTrainingSource || {};
+}
 
-    globalThis.coerceNetworkArgValue = function coerceNetworkArgValue(value, spec) {
-        if (spec.valueType === 'boolean' || spec.valueType === 'booleanInt') {
-            return parseBooleanNetworkArg(value, spec.default);
-        }
-        if (spec.valueType === 'integer') {
-            const n = Number(value);
-            return Number.isFinite(n) ? Math.trunc(n) : spec.default;
-        }
-        if (spec.valueType === 'number') {
-            const n = Number(value);
-            return Number.isFinite(n) ? n : spec.default;
-        }
-        return String(value ?? spec.default ?? '');
-    }
+function currentDatasetEditorState() {
+    return datasetState.datasetEditorState || {};
+}
 
-    globalThis.parseBooleanNetworkArg = function parseBooleanNetworkArg(value, fallback = false) {
-        if (typeof value === 'boolean') return value;
-        if (value === 1 || value === 0) return Boolean(value);
-        const text = String(value ?? '').trim().toLowerCase();
-        if (['1', 'true', 'yes', 'on'].includes(text)) return true;
-        if (['0', 'false', 'no', 'off'].includes(text)) return false;
-        return Boolean(fallback);
-    }
+function currentDatasetPresetState() {
+    return datasetState.datasetPresetState || {};
+}
 
-    globalThis.loadStepEstimate = async function loadStepEstimate(parentSeq = configLoadSeq) {
-        const requestSeq = ++stepEstimateSeq;
+    export async function loadStepEstimate(parentSeq = configState.configLoadSeq) {
+        const requestSeq = ++configState.stepEstimateSeq;
+        const currentTrainingSource = currentTrainingSourceState();
         const variant = currentTrainingSource.method || val('variant-select');
         const preset = val('preset-select');
         const methodsSubdir = currentTrainingSource.methods_subdir || 'gui-methods';
         if (!variant || location.protocol === 'file:') return;
-        stepEstimateStatus = { loading: true, error: '' };
-        currentStepEstimate = null;
+        configState.stepEstimateStatus = { loading: true, error: '' };
+        configState.currentStepEstimate = null;
         scheduleStepEstimatePanelRefresh();
         if (isCliOnlySpdSource(variant, methodsSubdir)) {
-            stepEstimateStatus = { loading: false, error: 'SPD CLI 实验配置不使用 Web 步数估算。' };
-            currentStepEstimate = null;
+            configState.stepEstimateStatus = { loading: false, error: 'SPD CLI 实验配置不使用 Web 步数估算。' };
+            configState.currentStepEstimate = null;
             scheduleStepEstimatePanelRefresh();
             return;
         }
@@ -71,25 +73,27 @@ const ctx = globalThis.ctx;
             const datasetConfigOverride = selectedDatasetConfigOverride();
             if (datasetConfigOverride !== null) params.set('dataset_config', datasetConfigOverride);
             const data = await api(`/api/config/steps?${params.toString()}`);
-            if (parentSeq !== configLoadSeq || requestSeq !== stepEstimateSeq) return;
-            stepEstimateStatus = { loading: false, error: data?.ok === false ? (data.error || '步数估算失败') : '' };
-            currentStepEstimate = data?.ok === false ? null : data;
+            if (parentSeq !== configState.configLoadSeq || requestSeq !== configState.stepEstimateSeq) return;
+            configState.stepEstimateStatus = { loading: false, error: data?.ok === false ? (data.error || '步数估算失败') : '' };
+            configState.currentStepEstimate = data?.ok === false ? null : data;
         } catch (error) {
-            if (parentSeq !== configLoadSeq || requestSeq !== stepEstimateSeq) return;
-            stepEstimateStatus = { loading: false, error: error?.message || '步数估算失败' };
-            currentStepEstimate = null;
+            if (parentSeq !== configState.configLoadSeq || requestSeq !== configState.stepEstimateSeq) return;
+            configState.stepEstimateStatus = { loading: false, error: error?.message || '步数估算失败' };
+            configState.currentStepEstimate = null;
         }
         scheduleStepEstimatePanelRefresh();
     }
 
-    globalThis.loadDatasetEditor = async function loadDatasetEditor(parentSeq = configLoadSeq) {
-        const requestSeq = ++datasetLoadSeq;
+    export async function loadDatasetEditor(parentSeq = configState.configLoadSeq) {
+        const requestSeq = ++datasetState.datasetLoadSeq;
+        const currentTrainingSource = currentTrainingSourceState();
+        const datasetEditorState = currentDatasetEditorState();
         const variant = currentTrainingSource.method || val('variant-select');
         const preset = val('preset-select');
         const methodsSubdir = currentTrainingSource.methods_subdir || 'gui-methods';
         if (!variant || location.protocol === 'file:') return;
         if (isCliOnlySpdSource(variant, methodsSubdir)) {
-            datasetEditorState = {
+            datasetState.datasetEditorState = {
                 ...datasetEditorState,
                 loading: false,
                 loaded: false,
@@ -98,8 +102,8 @@ const ctx = globalThis.ctx;
             renderDatasetEditor();
             return;
         }
-        datasetEditorState.loading = true;
-        datasetEditorState.error = '';
+        datasetState.datasetEditorState.loading = true;
+        datasetState.datasetEditorState.error = '';
         renderDatasetEditor();
         try {
             const params = new URLSearchParams({ variant, preset, methods_subdir: methodsSubdir });
@@ -108,11 +112,11 @@ const ctx = globalThis.ctx;
             const datasetConfigOverride = selectedDatasetConfigOverride();
             if (datasetConfigOverride !== null) params.set('dataset_config', datasetConfigOverride);
             const data = await api(`/api/config/datasets?${params.toString()}`);
-            if (parentSeq !== configLoadSeq || requestSeq !== datasetLoadSeq) return;
+            if (parentSeq !== configState.configLoadSeq || requestSeq !== datasetState.datasetLoadSeq) return;
             if (!data.ok) {
                 throw new Error(data.error || '读取数据集配置失败');
             }
-            datasetEditorState = {
+            datasetState.datasetEditorState = {
                 loading: false,
                 loaded: true,
                 dirty: false,
@@ -122,8 +126,8 @@ const ctx = globalThis.ctx;
                 error: '',
             };
         } catch (e) {
-            if (parentSeq !== configLoadSeq || requestSeq !== datasetLoadSeq) return;
-            datasetEditorState = {
+            if (parentSeq !== configState.configLoadSeq || requestSeq !== datasetState.datasetLoadSeq) return;
+            datasetState.datasetEditorState = {
                 ...datasetEditorState,
                 loading: false,
                 loaded: false,
@@ -134,17 +138,18 @@ const ctx = globalThis.ctx;
         renderDatasetEditor();
     }
 
-    globalThis.loadDatasetPresets = async function loadDatasetPresets(options = {}) {
+    export async function loadDatasetPresets(options = {}) {
         if (location.protocol === 'file:') return false;
-        const requestSeq = ++datasetPresetLoadSeq;
+        const requestSeq = ++datasetState.datasetPresetLoadSeq;
+        const datasetPresetState = currentDatasetPresetState();
         const managePresets = options.manage === true || (options.manage !== false && isDatasetTabActive());
         if (managePresets) {
-            datasetPresetState.loading = true;
+            datasetState.datasetPresetState.loading = true;
             renderDatasetPresetList();
         }
         try {
             const data = await datasetPresetApi('/api/config/dataset-presets');
-            if (requestSeq !== datasetPresetLoadSeq) return false;
+            if (requestSeq !== datasetState.datasetPresetLoadSeq) return false;
             if (!data.ok) throw new Error(data.error || '读取数据集预设失败');
             const presets = (Array.isArray(data.presets) ? data.presets : [])
                 .filter((preset) => !HIDDEN_DATASET_PRESET_FILES.has(preset.path));
@@ -157,13 +162,13 @@ const ctx = globalThis.ctx;
                 }))
                 .filter((group) => group.kind === 'dataset' || group.files.length);
             const sortedGroups = sortDatasetPresetGroups(groups);
-            datasetPresetState.presets = orderDatasetPresetsForGroups(presets, sortedGroups);
-            datasetPresetState.groups = sortedGroups;
+            datasetState.datasetPresetState.presets = orderDatasetPresetsForGroups(presets, sortedGroups);
+            datasetState.datasetPresetState.groups = sortedGroups;
             if (managePresets) {
-                datasetPresetState.loading = false;
+                datasetState.datasetPresetState.loading = false;
             }
-            datasetPresetState.error = '';
-            selectedConfigDatasetSummary = datasetPresetSummaryByFile(selectedConfigDatasetFile);
+            datasetState.datasetPresetState.error = '';
+            datasetState.selectedConfigDatasetSummary = datasetPresetSummaryByFile(datasetState.selectedConfigDatasetFile);
             renderConfigDatasetPicker();
             if (!managePresets) {
                 if (isConfigDatasetPickerDialogOpen()) {
@@ -174,13 +179,13 @@ const ctx = globalThis.ctx;
             const preserveDirtySelection = datasetPresetState.dirty;
             const selectedDatasetVisible = presets.some((preset) => preset.path === datasetPresetState.selectedFile);
             if (!selectedDatasetVisible && !preserveDirtySelection) {
-                datasetPresetState.selectedFile = '';
+                datasetState.datasetPresetState.selectedFile = '';
             }
-            if (!preserveDirtySelection && options.selectCurrent !== false && selectedConfigDatasetFile && !datasetPresetState.selectedFile && presets.some((preset) => preset.path === selectedConfigDatasetFile)) {
-                datasetPresetState.selectedFile = selectedConfigDatasetFile;
+            if (!preserveDirtySelection && options.selectCurrent !== false && datasetState.selectedConfigDatasetFile && !datasetPresetState.selectedFile && presets.some((preset) => preset.path === datasetState.selectedConfigDatasetFile)) {
+                datasetState.datasetPresetState.selectedFile = datasetState.selectedConfigDatasetFile;
             }
             if (!preserveDirtySelection && !datasetPresetState.selectedFile && presets.length) {
-                datasetPresetState.selectedFile = presets[0].path;
+                datasetState.datasetPresetState.selectedFile = presets[0].path;
             }
             renderDatasetPresetList();
             renderDatasetPresetHeader();
@@ -191,11 +196,11 @@ const ctx = globalThis.ctx;
             }
             return true;
         } catch (e) {
-            if (requestSeq !== datasetPresetLoadSeq) return false;
+            if (requestSeq !== datasetState.datasetPresetLoadSeq) return false;
             if (managePresets) {
-                datasetPresetState.loading = false;
+                datasetState.datasetPresetState.loading = false;
             }
-            datasetPresetState.error = e.message || '读取数据集预设失败';
+            datasetState.datasetPresetState.error = e.message || '读取数据集预设失败';
             if (managePresets) {
                 renderDatasetPresetList();
                 renderDatasetPresetHeader();
@@ -212,7 +217,8 @@ const ctx = globalThis.ctx;
         }
     }
 
-    globalThis.loadDatasetPreset = async function loadDatasetPreset(file) {
+    export async function loadDatasetPreset(file) {
+        const datasetPresetState = currentDatasetPresetState();
         if (!file) return;
         if (datasetPresetState.dirty && !(await confirmUnsavedDiscard('当前数据集预设有未保存修改，切换会丢弃这些修改。是否继续？'))) {
             renderDatasetPresetList();
@@ -227,7 +233,7 @@ const ctx = globalThis.ctx;
         try {
             const data = await datasetPresetApi(`/api/config/dataset-presets/read?file=${encodeURIComponent(file)}`);
             if (!data.ok) throw new Error(data.error || '读取数据集预设失败');
-            datasetPresetState = {
+            datasetState.datasetPresetState = {
                 ...datasetPresetState,
                 loading: false,
                 dirty: false,
@@ -240,7 +246,7 @@ const ctx = globalThis.ctx;
                 status: '',
             };
         } catch (e) {
-            datasetPresetState = {
+            datasetState.datasetPresetState = {
                 ...datasetPresetState,
                 loading: false,
                 error: e.message || '读取数据集预设失败',
@@ -251,7 +257,7 @@ const ctx = globalThis.ctx;
         renderDatasetEditor();
     }
 
-    globalThis.createStepEstimatePanel = function createStepEstimatePanel() {
+    export function createStepEstimatePanel() {
         const panel = document.createElement('div');
         panel.id = 'step-estimate-panel';
         panel.className = 'step-estimate-panel';
@@ -272,7 +278,7 @@ const ctx = globalThis.ctx;
         return panel;
     }
 
-    globalThis.scheduleStepEstimatePanelRefresh = function scheduleStepEstimatePanelRefresh() {
+    export function scheduleStepEstimatePanelRefresh() {
         updateStepEstimatePanel();
         if (typeof requestAnimationFrame === 'function') {
             requestAnimationFrame(updateStepEstimatePanel);
@@ -281,7 +287,9 @@ const ctx = globalThis.ctx;
         setTimeout(updateStepEstimatePanel, 0);
     }
 
-    globalThis.updateStepEstimatePanel = function updateStepEstimatePanel() {
+    export function updateStepEstimatePanel() {
+        const currentStepEstimate = configState.currentStepEstimate;
+        const stepEstimateStatus = configState.stepEstimateStatus || { loading: false, error: '' };
         const panel = document.getElementById('step-estimate-panel');
         if (!panel) return;
         if (!currentStepEstimate) {
@@ -333,7 +341,8 @@ const ctx = globalThis.ctx;
         setText('step-estimate-note', note);
     }
 
-    globalThis.liveDatasetRowsForEstimate = function liveDatasetRowsForEstimate() {
+    function liveDatasetRowsForEstimate() {
+        const currentStepEstimate = configState.currentStepEstimate;
         const baseRows = Array.isArray(currentStepEstimate?.datasets) ? currentStepEstimate.datasets : [];
         return baseRows.length ? baseRows : [{
             index: 1,
@@ -349,7 +358,7 @@ const ctx = globalThis.ctx;
         }];
     }
 
-    globalThis.renderStepDatasetBreakdown = function renderStepDatasetBreakdown(datasets) {
+    function renderStepDatasetBreakdown(datasets) {
         const container = document.getElementById('step-dataset-breakdown');
         if (!container) return;
         container.innerHTML = '';
@@ -376,36 +385,7 @@ const ctx = globalThis.ctx;
         }
     }
 
-    globalThis.readLiveNumber = function readLiveNumber(key, fallback) {
-        const input = document.querySelector(`#config-form .field-input[data-key="${CSS.escape(key)}"]`);
-        if (!input) return Number(fallback) || 0;
-        const raw = input.type === 'checkbox' ? input.checked : input.value;
-        const n = Number(raw);
-        return Number.isFinite(n) && n > 0 ? n : (Number(fallback) || 0);
-    }
-
-    globalThis.readNonnegativeLiveNumber = function readNonnegativeLiveNumber(key, fallback = 0) {
-        const fallbackNumber = Math.max(0, Number(fallback) || 0);
-        const input = document.querySelector(`#config-form .field-input[data-key="${CSS.escape(key)}"]`);
-        if (!input) return fallbackNumber;
-        const raw = input.type === 'checkbox' ? input.checked : input.value;
-        const trimmed = String(raw).trim();
-        if (!trimmed) return fallbackNumber;
-        const n = Number(trimmed);
-        return Number.isFinite(n) && n >= 0 ? n : fallbackNumber;
-    }
-
-    globalThis.readOptionalLiveNumber = function readOptionalLiveNumber(key) {
-        const input = document.querySelector(`#config-form .field-input[data-key="${CSS.escape(key)}"]`);
-        if (!input) return null;
-        const raw = input.type === 'checkbox' ? input.checked : input.value;
-        const trimmed = String(raw).trim();
-        if (!trimmed) return null;
-        const n = Number(trimmed);
-        return Number.isFinite(n) && n > 0 ? n : null;
-    }
-
-    globalThis.setText = function setText(id, text) {
+    export function setText(id, text) {
         const el = document.getElementById(id);
         if (!el) return;
         el.textContent = text;
@@ -417,17 +397,17 @@ const ctx = globalThis.ctx;
         }
     }
 
-    globalThis.metricValueIsEmpty = function metricValueIsEmpty(value) {
+    export function metricValueIsEmpty(value) {
         const text = String(value ?? '').trim();
         return !text || text === '-' || text.toUpperCase() === 'N/A';
     }
 
-    globalThis.setMetricText = function setMetricText(id, value) {
+    export function setMetricText(id, value) {
         const text = metricValueIsEmpty(value) ? 'N/A' : String(value);
         setText(id, text);
     }
 
-    globalThis.setEtaMetricText = function setEtaMetricText(info = {}) {
+    export function setEtaMetricText(info = {}) {
         const el = document.getElementById('metric-eta');
         if (!el) return;
         const text = String(info.text || '').trim() || '待计算';
@@ -438,7 +418,7 @@ const ctx = globalThis.ctx;
         el.closest('.metric-item')?.classList.toggle('is-empty', empty);
     }
 
-    globalThis.resetLiveMetricPlaceholders = function resetLiveMetricPlaceholders(options = {}) {
+    export function resetLiveMetricPlaceholders(options = {}) {
         const includePrimary = options.primary !== false;
         const ids = [
             ...(includePrimary ? ['metric-loss', 'metric-lr', 'metric-step', 'metric-rate'] : ['metric-rate']),
@@ -454,7 +434,8 @@ const ctx = globalThis.ctx;
         setEtaMetricText({ text: '待计算', empty: true, title: '需要进度总数和速度后计算预计完成时间。' });
     }
 
-    globalThis.updateDashboardProgressIdleState = function updateDashboardProgressIdleState(active = null) {
+    export function updateDashboardProgressIdleState(active = null) {
+        const trainingRuntime = trainingState.trainingRuntime;
         const wrap = document.querySelector('#tab-training .training-dashboard-progress');
         const head = document.querySelector('#tab-training .training-dashboard-head');
         const text = document.getElementById('progress-text');
@@ -469,14 +450,15 @@ const ctx = globalThis.ctx;
         }
     }
 
-    globalThis.setTrainingDashboardHeadState = function setTrainingDashboardHeadState(state = 'idle') {
+    export function setTrainingDashboardHeadState(state = 'idle') {
         const head = document.querySelector('#tab-training .training-dashboard-head');
         if (!head) return;
         head.classList.remove('is-idle', 'is-running', 'is-compiling', 'is-error', 'is-history');
         head.classList.add(`is-${state || 'idle'}`);
     }
 
-    globalThis.syncLossChartEmptyState = function syncLossChartEmptyState() {
+    export function syncLossChartEmptyState() {
+        const lossChart = trainingState.lossChart;
         const shell = document.getElementById('loss-chart-shell');
         if (!shell) return;
         const pointCount = Array.isArray(lossChart?.data) ? lossChart.data.length : 0;
@@ -484,14 +466,16 @@ const ctx = globalThis.ctx;
         renderLiveChartPanel();
     }
 
-    globalThis.syncLiveChartControls = function syncLiveChartControls() {
+    export function syncLiveChartControls() {
+        const liveChartState = trainingState.liveChartState;
         const lrToggle = document.getElementById('live-chart-toggle-lr');
         if (lrToggle) lrToggle.checked = liveChartState.showLr;
         const rangeSelect = document.getElementById('live-chart-range');
         if (rangeSelect) rangeSelect.value = liveChartState.rangeMode;
     }
 
-    globalThis.liveChartVisiblePoints = function liveChartVisiblePoints(points = []) {
+    function liveChartVisiblePoints(points = []) {
+        const liveChartState = trainingState.liveChartState;
         const all = Array.isArray(points) ? points : [];
         const match = String(liveChartState.rangeMode || 'all').match(/^last(\d+)$/);
         if (!match) return all;
@@ -499,7 +483,9 @@ const ctx = globalThis.ctx;
         return Number.isFinite(count) && count > 0 ? all.slice(-count) : all;
     }
 
-    globalThis.renderLiveChartPanel = function renderLiveChartPanel() {
+    export function renderLiveChartPanel() {
+        const lossChart = trainingState.lossChart;
+        const liveChartState = trainingState.liveChartState;
         const points = Array.isArray(lossChart?.data) ? lossChart.data : [];
         lossChart?.setDisplayOptions?.({
             showLr: liveChartState.showLr,
@@ -518,7 +504,7 @@ const ctx = globalThis.ctx;
         }
     }
 
-    globalThis.setLiveChartStat = function setLiveChartStat(id, value, empty = null) {
+    function setLiveChartStat(id, value, empty = null) {
         const el = document.getElementById(id);
         if (!el) return;
         const text = metricValueIsEmpty(value) ? 'N/A' : String(value);
@@ -527,19 +513,19 @@ const ctx = globalThis.ctx;
         el.closest('.live-chart-stat')?.classList.toggle('is-empty', isEmpty);
     }
 
-    globalThis.liveChartStepRangeText = function liveChartStepRangeText(points = []) {
+    function liveChartStepRangeText(points = []) {
         if (!points.length) return 'N/A';
         const first = points[0]?.step;
         const last = points[points.length - 1]?.step;
         return `${formatStepLabel(first)} - ${formatStepLabel(last)}`;
     }
 
-    globalThis.formatStepLabel = function formatStepLabel(value) {
+    function formatStepLabel(value) {
         const number = Number(value);
         return Number.isFinite(number) ? String(Math.round(number)) : '-';
     }
 
-    globalThis.updateTrainingToolbarState = function updateTrainingToolbarState(state, label) {
+    export function updateTrainingToolbarState(state, label) {
         const safeState = state || 'idle';
         const stateEl = document.getElementById('training-toolbar-state');
         const textEl = document.getElementById('training-toolbar-state-text');

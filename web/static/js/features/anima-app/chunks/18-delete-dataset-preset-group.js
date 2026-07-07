@@ -2,9 +2,74 @@
  * Mechanical split from the former monolithic app closure.
  * Keep this module focused; move newly edited behavior into domain modules.
  */
-const ctx = globalThis.ctx;
+import { coerceNetworkArgValue, formatNetworkArg, parseNetworkArgEntry } from '../helpers/network-args.js?v=module-bootstrap-20260707-93';
+import {
+    datasetRowsForPayload,
+    normalizeDatasetDefaults,
+    normalizeDatasetEditorRows,
+} from '../helpers/dataset-values.js?v=module-bootstrap-20260707-93';
+import { getConfigState } from '../helpers/config-state-bridge.js?v=module-bootstrap-20260707-93';
+import { configDraftValueChanged, configureConfigFormBridge, displayConfigFieldValue, isActiveNetworkArgFieldKey, originalConfigFieldValue, syncConfigDraftFromForm } from '../helpers/config-form-bridge.js?v=module-bootstrap-20260707-93';
+import { fieldValueType } from '../helpers/config-field-ui-bridge.js?v=module-bootstrap-20260707-93';
+import { getDatasetState } from '../helpers/dataset-state-bridge.js?v=module-bootstrap-20260707-93';
+import {
+    configureDatasetPresetActionsBridge,
+    setDatasetPresetStatus,
+} from '../helpers/dataset-preset-actions-bridge.js?v=module-bootstrap-20260707-93';
+import { loadTomlFileList } from '../helpers/toml-manager-bridge.js?v=module-bootstrap-20260707-93';
+import { normalizeMultilineText, parseArrayValue, parseNumberValue, valuesEqual } from '../helpers/form-values.js?v=module-bootstrap-20260707-93';
+import {
+    normalizePrecisionPreference,
+    precisionPreferenceFromConfig,
+    precisionPreferencePatch,
+} from '../helpers/config-values.js?v=module-bootstrap-20260707-93';
+import { api, val } from '../helpers/runtime-bridge.js?v=module-bootstrap-20260707-93';
+import { loadDatasetPresets, loadStepEstimate } from './03-parse-network-arg-entry.js?v=module-bootstrap-20260707-93';
+import { serializeSamplePromptsEditor } from '../../sample-prompts/model.js?v=module-bootstrap-20260707-93';
+import { syncDatasetEditorToCompatFields } from './13-update-dataset-editor-rows-setting-value.js?v=module-bootstrap-20260707-93';
+import { applyLoraAdapterPatch, applyOptimizerCompatibilityPatch, readLiveLoraAdapterKind } from './14-lora-adapter-kind-from-config.js?v=module-bootstrap-20260707-93';
+import {
+    CONFIG_FORM_INTERNAL_KEYS,
+    FORM_UI_DEFAULTS,
+    FORM_UI_PERSIST_DEFAULT_FIELDS,
+    NETWORK_ARG_FIELD_MAP,
+    OPTIONAL_EMPTY_FIELDS,
+    OPTIONAL_EMPTY_NUMBER_FIELDS,
+} from '../../../config/catalog.js?v=module-bootstrap-20260707-93';
+import { LOSS_WEIGHTING_DEPENDENT_FIELDS } from '../helpers/app-constants.js?v=module-bootstrap-20260707-93';
+import { normalizeNetworkArgArray, parseNetworkArgMap } from '../helpers/app-shell-startup-bridge.js?v=module-bootstrap-20260707-93';
+import { renderDatasetEditor } from '../helpers/dataset-render-bridge.js?v=module-bootstrap-20260707-93';
+import { showHistoryTaskConfirmDialog } from '../helpers/history-task-actions-bridge.js?v=module-bootstrap-20260707-93';
+import { currentTomlEditorContentForFile, updateTomlDirtyState } from '../helpers/toml-selection-bridge.js?v=module-bootstrap-20260707-93';
+import { saveSamplePrompts } from '../helpers/sample-prompts-bridge.js?v=module-bootstrap-20260707-93';
+import { getTomlState } from '../helpers/toml-state-bridge.js?v=module-bootstrap-20260707-93';
+import {
+    setTomlStatus,
+} from '../helpers/toml-action-state-bridge.js?v=module-bootstrap-20260707-93';
+import { getTrainingState } from '../helpers/training-state-bridge.js?v=module-bootstrap-20260707-93';
 
-    globalThis.deleteDatasetPresetGroup = async function deleteDatasetPresetGroup(group) {
+const configState = getConfigState();
+const datasetState = getDatasetState();
+const tomlState = getTomlState();
+const trainingState = getTrainingState();
+
+function currentConfigState() {
+    return configState.currentConfig || {};
+}
+
+function currentDatasetEditorState() {
+    return datasetState.datasetEditorState || {};
+}
+
+function currentDatasetPresetState() {
+    return datasetState.datasetPresetState || {};
+}
+
+function currentTrainingSourceState() {
+    return trainingState.currentTrainingSource || {};
+}
+
+    export async function deleteDatasetPresetGroup(group) {
         if (!group?.id || !group.deletable) return;
         const count = (group.files || []).length;
         const ok = await showHistoryTaskConfirmDialog({
@@ -32,8 +97,9 @@ const ctx = globalThis.ctx;
         }
     }
 
-    globalThis.placeDatasetPresetGroup = async function placeDatasetPresetGroup(payload, index) {
+    export async function placeDatasetPresetGroup(payload, index) {
         const groupId = payload?.groupId;
+        const datasetPresetState = currentDatasetPresetState();
         if (!groupId) return;
         if (datasetPresetState.search.trim()) {
             setDatasetPresetStatus('筛选数据集预设时不能拖动排序，请先清空搜索', 'error');
@@ -55,8 +121,9 @@ const ctx = globalThis.ctx;
         }
     }
 
-    globalThis.placeDatasetPresetFile = async function placeDatasetPresetFile(payload, groupId, index) {
+    export async function placeDatasetPresetFile(payload, groupId, index) {
         const file = payload?.file;
+        const datasetPresetState = currentDatasetPresetState();
         if (!file || !groupId) return;
         if (datasetPresetState.search.trim()) {
             setDatasetPresetStatus('筛选数据集预设时不能拖动排序，请先清空搜索', 'error');
@@ -78,11 +145,14 @@ const ctx = globalThis.ctx;
         }
     }
 
-    globalThis.saveDatasetEditor = async function saveDatasetEditor(options = {}) {
+    export async function saveDatasetEditor(options = {}) {
+        const currentTrainingSource = currentTrainingSourceState();
+        const currentConfig = currentConfigState();
+        const datasetEditorState = currentDatasetEditorState();
         const variant = currentTrainingSource.method || val('variant-select');
         const preset = val('preset-select');
         const methodsSubdir = currentTrainingSource.methods_subdir || 'gui-methods';
-        const targetFile = options.trainFile || currentTrainingSource.file || currentTomlFile || '';
+        const targetFile = options.trainFile || currentTrainingSource.file || tomlState.currentTomlFile || '';
         const targetContent = options.trainContent ?? currentTomlEditorContentForFile(targetFile);
         const rows = normalizeDatasetEditorRows(datasetEditorState.datasets);
         const payloadRows = datasetRowsForPayload(rows);
@@ -111,25 +181,26 @@ const ctx = globalThis.ctx;
             }
             if (typeof res.train_content === 'string' && res.train_content) {
                 const editor = document.getElementById('toml-editor');
-                if (editor && targetFile === (currentTomlFile || val('toml-file-select'))) {
+                if (editor && targetFile === (tomlState.currentTomlFile || val('toml-file-select'))) {
                     editor.value = res.train_content;
-                    tomlSavedContent = res.train_content;
+                    tomlState.tomlSavedContent = res.train_content;
                 }
             }
-        datasetEditorState = {
-            loading: false,
-            loaded: true,
-            dirty: false,
-            dataset_config: res.dataset_config || datasetEditorState.dataset_config,
-            datasets: normalizeDatasetEditorRows(res.datasets || rows),
-            defaults: normalizeDatasetDefaults(res.defaults || datasetEditorState.defaults || {}),
-            error: '',
-        };
-        currentConfig.dataset_config = datasetEditorState.dataset_config;
-        if (datasetEditorState.datasets[0]) {
-            currentConfig.source_image_dir = datasetEditorState.datasets[0].source_dir;
-            currentConfig.resized_image_dir = datasetEditorState.datasets[0].image_dir;
-            currentConfig.lora_cache_dir = datasetEditorState.datasets[0].cache_dir;
+            datasetState.datasetEditorState = {
+                loading: false,
+                loaded: true,
+                dirty: false,
+                dataset_config: res.dataset_config || datasetEditorState.dataset_config,
+                datasets: normalizeDatasetEditorRows(res.datasets || rows),
+                defaults: normalizeDatasetDefaults(res.defaults || datasetEditorState.defaults || {}),
+                error: '',
+            };
+            const nextDatasetEditorState = currentDatasetEditorState();
+            currentConfig.dataset_config = nextDatasetEditorState.dataset_config;
+            if (nextDatasetEditorState.datasets[0]) {
+                currentConfig.source_image_dir = nextDatasetEditorState.datasets[0].source_dir;
+                currentConfig.resized_image_dir = nextDatasetEditorState.datasets[0].image_dir;
+                currentConfig.lora_cache_dir = nextDatasetEditorState.datasets[0].cache_dir;
             }
             syncDatasetEditorToCompatFields();
             renderDatasetEditor();
@@ -145,7 +216,9 @@ const ctx = globalThis.ctx;
         }
     }
 
-    globalThis.collectChangedFormValues = function collectChangedFormValues(options = {}) {
+    export function collectChangedFormValues(options = {}) {
+        const configFormState = configState.configFormState;
+        const currentConfig = currentConfigState();
         syncConfigDraftFromForm(options);
         const values = {};
         for (const [key, next] of configFormState.draftValues.entries()) {
@@ -163,14 +236,14 @@ const ctx = globalThis.ctx;
                 continue;
             }
             if (key === 'sample_prompts') {
-                if (samplePromptsMode === 'path') {
+                if (configState.samplePromptsMode === 'path') {
                     const original = typeof currentConfig.sample_prompts === 'string' ? currentConfig.sample_prompts : '';
                     if (!valuesEqual(next, original)) {
                         values[key] = next;
                     }
                     continue;
                 }
-                if (String(next || '') !== String(samplePromptsContent || '')) {
+                if (String(next || '') !== String(configState.samplePromptsContent || '')) {
                     values[key] = next;
                 }
                 continue;
@@ -229,7 +302,8 @@ const ctx = globalThis.ctx;
         return applyLoraAdapterPatch(values);
     }
 
-    globalThis.networkArgInputChanged = function networkArgInputChanged(input) {
+    export function networkArgInputChanged(input) {
+        const currentConfig = currentConfigState();
         const spec = NETWORK_ARG_FIELD_MAP.get(input.dataset.key);
         if (!spec) return false;
         const original = networkArgFieldValueFromConfig(spec, currentConfig);
@@ -237,12 +311,14 @@ const ctx = globalThis.ctx;
         return !valuesEqual(next, original);
     }
 
-    globalThis.networkArgFieldValueFromConfig = function networkArgFieldValueFromConfig(spec, config = currentConfig) {
+    export function networkArgFieldValueFromConfig(spec, config = currentConfigState()) {
         const argMap = parseNetworkArgMap(config?.network_args);
         return coerceNetworkArgValue(argMap.has(spec.arg) ? argMap.get(spec.arg) : spec.default, spec);
     }
 
-    globalThis.collectNetworkArgsFromForm = function collectNetworkArgsFromForm(baseConfig = currentConfig, options = {}) {
+    export function collectNetworkArgsFromForm(baseConfig = currentConfigState(), options = {}) {
+        const configFormState = configState.configFormState;
+        const currentConfig = currentConfigState();
         const baseArgs = normalizeNetworkArgArray(baseConfig?.network_args);
         const formValues = new Map();
         const changedKeys = new Set();
@@ -295,35 +371,18 @@ const ctx = globalThis.ctx;
         };
     }
 
-    globalThis.formatNetworkArg = function formatNetworkArg(spec, value) {
-        return `${spec.arg}=${formatNetworkArgValue(spec, value)}`;
-    }
-
-    globalThis.formatNetworkArgValue = function formatNetworkArgValue(spec, value) {
-        if (spec.valueType === 'booleanInt') return parseBooleanNetworkArg(value, spec.default) ? '1' : '0';
-        if (spec.valueType === 'boolean') return parseBooleanNetworkArg(value, spec.default) ? 'true' : 'false';
-        if (spec.valueType === 'integer') {
-            const n = Number(value);
-            return Number.isFinite(n) ? String(Math.trunc(n)) : String(spec.default);
-        }
-        if (spec.valueType === 'number') {
-            const n = Number(value);
-            return Number.isFinite(n) ? String(n) : String(spec.default);
-        }
-        return String(value ?? '').trim();
-    }
-
-    globalThis.prepareFormPatchValues = async function prepareFormPatchValues(values) {
+    export async function prepareFormPatchValues(values) {
+        const currentConfig = currentConfigState();
         const nextValues = applyOptimizerCompatibilityPatch(values);
         if ('precision_preference' in nextValues) {
             Object.assign(nextValues, precisionPreferencePatch(nextValues.precision_preference, currentConfig));
             delete nextValues.precision_preference;
         }
-        if ('sample_prompts' in nextValues && samplePromptsMode !== 'path') {
+        if ('sample_prompts' in nextValues && configState.samplePromptsMode !== 'path') {
             const promptText = String(nextValues.sample_prompts || '');
             if (promptText.trim()) {
                 const saved = await saveSamplePrompts(promptText);
-                nextValues.sample_prompts = saved.file || samplePromptsPath;
+                nextValues.sample_prompts = saved.file || configState.samplePromptsPath;
             } else {
                 nextValues.sample_prompts = '';
             }
@@ -331,14 +390,14 @@ const ctx = globalThis.ctx;
         return nextValues;
     }
 
-    globalThis.shouldSkipUiDefaultField = function shouldSkipUiDefaultField(key, value, options = {}) {
+    export function shouldSkipUiDefaultField(key, value, options = {}) {
         if (!(key in FORM_UI_DEFAULTS)) return false;
         if (options.persistDefaultFields && FORM_UI_PERSIST_DEFAULT_FIELDS.has(key)) return false;
         if (OPTIONAL_EMPTY_FIELDS.has(key) && value === '') return true;
         return valuesEqual(value, FORM_UI_DEFAULTS[key]);
     }
 
-    globalThis.readFieldInputValue = function readFieldInputValue(input, originalValue) {
+    export function readFieldInputValue(input, originalValue) {
         if (input.classList?.contains('sample-prompts-editor')) {
             if (input.dataset.touched !== '1') return input.dataset.originalContent || '';
             return serializeSamplePromptsEditor(input);
@@ -359,11 +418,11 @@ const ctx = globalThis.ctx;
         }
     }
 
-    globalThis.readLoKrEnabled = function readLoKrEnabled() {
+    export function readLoKrEnabled() {
         return readLiveLoraAdapterKind() === 'lokr';
     }
 
-    globalThis.updateLoKrFieldState = function updateLoKrFieldState() {
+    export function updateLoKrFieldState() {
         const enabled = readLoKrEnabled();
         const inputs = [
             document.querySelector('#config-form .field-input[data-key="lokr_factor"]'),
@@ -380,15 +439,16 @@ const ctx = globalThis.ctx;
         }
     }
 
-    globalThis.readVeRAEnabled = function readVeRAEnabled() {
+    export function readVeRAEnabled() {
         return readLiveLoraAdapterKind() === 'vera';
     }
 
-    globalThis.readDoRAAvailable = function readDoRAAvailable() {
+    export function readDoRAAvailable() {
         return readLiveLoraAdapterKind() === 'lora';
     }
 
-    globalThis.setDoRADraftValue = function setDoRADraftValue(value) {
+    export function setDoRADraftValue(value) {
+        const configFormState = configState.configFormState;
         const original = originalConfigFieldValue('dora_wd');
         if (configDraftValueChanged('dora_wd', value, original, { persistDefaultFields: true })) {
             configFormState.draftValues.set('dora_wd', value);
@@ -397,7 +457,7 @@ const ctx = globalThis.ctx;
         }
     }
 
-    globalThis.updateDoRAFieldState = function updateDoRAFieldState() {
+    export function updateDoRAFieldState() {
         const input = document.querySelector('#config-form .field-input[data-key="dora_wd"]');
         if (!input) return;
         const enabled = readDoRAAvailable();
@@ -411,7 +471,7 @@ const ctx = globalThis.ctx;
         if (row) row.classList.toggle('field-row-disabled', !enabled);
     }
 
-    globalThis.updateVeRAFieldState = function updateVeRAFieldState() {
+    export function updateVeRAFieldState() {
         const enabled = readVeRAEnabled();
         const inputs = [
             document.querySelector('#config-form .field-input[data-key="vera_projection_prng_key"]'),
@@ -426,7 +486,9 @@ const ctx = globalThis.ctx;
         }
     }
 
-    globalThis.currentLossWeightingScheme = function currentLossWeightingScheme() {
+    export function currentLossWeightingScheme() {
+        const configFormState = configState.configFormState;
+        const currentConfig = currentConfigState();
         const input = document.querySelector('#config-form .field-input[data-key="weighting_scheme"]');
         if (input) {
             return String(readFieldInputValue(input, originalConfigFieldValue('weighting_scheme')) || 'uniform');
@@ -437,7 +499,7 @@ const ctx = globalThis.ctx;
         return String(currentConfig?.weighting_scheme ?? FORM_UI_DEFAULTS.weighting_scheme ?? 'uniform');
     }
 
-    globalThis.lossWeightingFieldState = function lossWeightingFieldState(key) {
+    export function lossWeightingFieldState(key) {
         const requiredScheme = LOSS_WEIGHTING_DEPENDENT_FIELDS.get(key);
         if (!requiredScheme) return { enabled: true, requiredScheme: '', currentScheme: currentLossWeightingScheme() };
         const currentScheme = currentLossWeightingScheme();
@@ -448,19 +510,19 @@ const ctx = globalThis.ctx;
         };
     }
 
-    globalThis.lossWeightingDisabledHint = function lossWeightingDisabledHint(key, state = lossWeightingFieldState(key)) {
+    export function lossWeightingDisabledHint(key, state = lossWeightingFieldState(key)) {
         if (!state.requiredScheme) return '';
         return `仅 weighting_scheme = ${state.requiredScheme} 时生效；当前 ${state.currentScheme || 'uniform'}，不生效。`;
     }
 
-    globalThis.applyLossWeightingFieldInputState = function applyLossWeightingFieldInputState(input, key) {
+    export function applyLossWeightingFieldInputState(input, key) {
         if (!input || !LOSS_WEIGHTING_DEPENDENT_FIELDS.has(key)) return;
         const state = lossWeightingFieldState(key);
         input.disabled = !state.enabled;
         input.title = state.enabled ? '' : lossWeightingDisabledHint(key, state);
     }
 
-    globalThis.updateLossWeightingFieldState = function updateLossWeightingFieldState() {
+    export function updateLossWeightingFieldState() {
         for (const key of LOSS_WEIGHTING_DEPENDENT_FIELDS.keys()) {
             const input = document.querySelector(`#config-form .field-input[data-key="${CSS.escape(key)}"]`);
             if (!input) continue;
@@ -477,54 +539,31 @@ const ctx = globalThis.ctx;
         }
     }
 
-    globalThis.parseNumberValue = function parseNumberValue(raw, fallback) {
-        const trimmed = String(raw).trim();
-        if (trimmed === '' && fallback === '') return '';
-        if (trimmed === '') return fallback;
-        const n = Number(trimmed);
-        return Number.isFinite(n) ? n : fallback;
-    }
+configureDatasetPresetActionsBridge({
+    deleteDatasetPresetGroup,
+    placeDatasetPresetGroup,
+    placeDatasetPresetFile,
+});
 
-    globalThis.parseArrayValue = function parseArrayValue(raw) {
-        const trimmed = String(raw).trim();
-        if (!trimmed) return [];
-        try {
-            const parsed = JSON.parse(trimmed);
-            return Array.isArray(parsed) ? parsed : [parsed];
-        } catch {
-            return trimmed.split(',').map((item) => item.trim()).filter(Boolean);
-        }
-    }
-
-    globalThis.valuesEqual = function valuesEqual(a, b) {
-        if (isBooleanLikeValue(a) && isBooleanLikeValue(b)) {
-            return normalizeBooleanLikeValue(a) === normalizeBooleanLikeValue(b);
-        }
-        if (isNumberLikeValue(a) && isNumberLikeValue(b)) {
-            return Number(a) === Number(b);
-        }
-        return JSON.stringify(a) === JSON.stringify(b);
-    }
-
-    globalThis.isBooleanLikeValue = function isBooleanLikeValue(value) {
-        return value === true || value === false || value === 'true' || value === 'false';
-    }
-
-    globalThis.normalizeBooleanLikeValue = function normalizeBooleanLikeValue(value) {
-        return value === true || value === 'true';
-    }
-
-    globalThis.isNumberLikeValue = function isNumberLikeValue(value) {
-        if (typeof value === 'number') return Number.isFinite(value);
-        if (typeof value !== 'string') return false;
-        const trimmed = value.trim();
-        return trimmed !== '' && Number.isFinite(Number(trimmed));
-    }
-
-    globalThis.normalizeMultilineText = function normalizeMultilineText(value) {
-        return String(value || '')
-            .split(/\r?\n/)
-            .map((line) => line.trim())
-            .filter(Boolean)
-            .join('\n');
-    }
+configureConfigFormBridge({
+    saveDatasetEditor,
+    collectChangedFormValues,
+    networkArgInputChanged,
+    networkArgFieldValueFromConfig,
+    collectNetworkArgsFromForm,
+    prepareFormPatchValues,
+    shouldSkipUiDefaultField,
+    readFieldInputValue,
+    readLoKrEnabled,
+    updateLoKrFieldState,
+    readVeRAEnabled,
+    readDoRAAvailable,
+    setDoRADraftValue,
+    updateDoRAFieldState,
+    updateVeRAFieldState,
+    currentLossWeightingScheme,
+    lossWeightingFieldState,
+    lossWeightingDisabledHint,
+    applyLossWeightingFieldInputState,
+    updateLossWeightingFieldState,
+});

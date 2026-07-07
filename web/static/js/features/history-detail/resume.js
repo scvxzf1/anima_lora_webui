@@ -1,1 +1,1 @@
-export { createHistoryResumeFeature } from './resume/index.js?v=module-bootstrap-20260706-1';
+export { createHistoryResumeFeature } from './resume/index.js?v=module-bootstrap-20260707-93';

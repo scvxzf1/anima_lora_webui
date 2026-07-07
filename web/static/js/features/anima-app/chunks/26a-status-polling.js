@@ -2,17 +2,47 @@
  * Mechanical split from the former monolithic app closure.
  * Keep this module focused; move newly edited behavior into domain modules.
  */
+import { isLiveRunningState } from '../../live-training/index.js?v=module-bootstrap-20260707-93';
+import {
+    updateMetrics,
+    updateProgress,
+    updateStatus,
+    updateSystem,
+} from '../helpers/live-status-bridge.js?v=module-bootstrap-20260707-93';
+import { isHistoryReviewMode } from '../helpers/history-detail-bridge.js?v=module-bootstrap-20260707-93';
+import {
+    appendLog,
+    replayMetricsHistory,
+    replayTrainingLogs,
+    setLogStatus,
+    setTrainingHealthNotice,
+    updateLogStatusText,
+} from '../helpers/live-log-bridge.js?v=module-bootstrap-20260707-93';
+import { getHistoryState } from '../helpers/history-state-bridge.js?v=module-bootstrap-20260707-93';
+import { loadTrainingQueue } from '../helpers/queue-view-bridge.js?v=module-bootstrap-20260707-93';
+import { loadTrainingHistoryList } from '../helpers/history-list-bridge.js?v=module-bootstrap-20260707-93';
+import { api } from '../helpers/runtime-bridge.js?v=module-bootstrap-20260707-93';
+
 export function createStatusPollingBridge(target = globalThis) {
     // Keep polling bookkeeping inside the bridge while old callers still use global function names.
     let trainingSidebarSummaryLastRefreshAt = 0;
     let trainingSidebarSummaryLastTaskId = '';
     let trainingSidebarSummaryLastStatus = '';
     let trainingSidebarSummaryRefreshPromise = null;
+
+    function readHistoryTasks() {
+        try {
+            return getHistoryState().historyTasks;
+        } catch {
+            return target.historyTasks;
+        }
+    }
+
     // ── 状态轮询 ──
     function trainingStatusPollDelayMs() {
         const visible = !document.hidden;
-        const wsOpen = ws?.readyState === WebSocket.OPEN;
-        const running = isLiveRunningState();
+        const wsOpen = target.ws?.readyState === WebSocket.OPEN;
+        const running = isLiveRunningState(target.trainingRuntime?.state);
         if (!visible) return wsOpen ? (running ? 30000 : 120000) : 60000;
         if (!wsOpen) return running ? 5000 : 15000;
         return running ? 10000 : 60000;
@@ -72,9 +102,9 @@ export function createStatusPollingBridge(target = globalThis) {
                 });
                 applyStatusSnapshotFallbacks(status);
                 refreshTrainingSidebarSummariesFromPoll(status);
-                if ((status.last_log_id || 0) > trainingRuntime.lastLogId) {
+                if ((status.last_log_id || 0) > (target.trainingRuntime?.lastLogId || 0)) {
                     await replayTrainingLogs();
-                } else if (forceReplayMetrics || isLiveRunningState()) {
+                } else if (forceReplayMetrics || isLiveRunningState(target.trainingRuntime?.state)) {
                     await replayMetricsHistory();
                 }
             } catch (e) {
@@ -99,6 +129,7 @@ export function createStatusPollingBridge(target = globalThis) {
         const taskId = String(status.task_id || '').trim();
         const state = String(status.status || '').trim();
         const live = isLiveRunningState(state);
+        const historyTasks = readHistoryTasks();
         const knownTask = taskId && Array.isArray(historyTasks)
             && historyTasks.some((task) => String(task.id || '') === taskId);
         const taskChanged = taskId && taskId !== trainingSidebarSummaryLastTaskId;

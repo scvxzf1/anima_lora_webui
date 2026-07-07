@@ -4,28 +4,29 @@
  */
 import {
     calculateTrainingEtaMetricInfo,
-    formatEtaClock,
     formatLr,
-    isSameDate,
-    lastValue,
-    parseMetricsFromProgressLine,
+    isLiveRunningState,
     parseProgressRateSeconds,
-    readConfigNumber,
-} from '../../live-training/index.js?v=module-bootstrap-20260706-1';
+} from '../../live-training/index.js?v=module-bootstrap-20260707-93';
+import { ensurePreviewFeature } from '../helpers/feature-ensurers.js?v=module-bootstrap-20260707-93';
+import { configureLiveStatusBridge } from '../helpers/live-status-bridge.js?v=module-bootstrap-20260707-93';
+import { formatLossValue } from '../../history-detail/curve/data.js?v=module-bootstrap-20260707-93';
+import { formatSystemPercent, formatSystemTemperature } from '../../history-detail/system.js?v=module-bootstrap-20260707-93';
+import { formatCompactNumber, numberOrNull } from '../../history-detail/ui.js?v=module-bootstrap-20260707-93';
+import { getAppContext } from '../helpers/app-context-bridge.js?v=module-bootstrap-20260707-93';
+import { isHistoryReviewMode } from '../helpers/history-detail-bridge.js?v=module-bootstrap-20260707-93';
+import { appendLog, logLineTone } from '../helpers/live-log-bridge.js?v=module-bootstrap-20260707-93';
+import { copyText } from '../helpers/preview-view-bridge.js?v=module-bootstrap-20260707-93';
+import { renderHistoryPaths, runtimePathItems } from '../helpers/history-timeline-bridge.js?v=module-bootstrap-20260707-93';
+import { renderLiveChartPanel, resetLiveMetricPlaceholders, setEtaMetricText, setMetricText, setText, setTrainingDashboardHeadState, syncLossChartEmptyState, updateDashboardProgressIdleState, updateTrainingToolbarState } from './03-parse-network-arg-entry.js?v=module-bootstrap-20260707-93';
+import { refreshQueueRunningProgressViews } from '../helpers/queue-view-bridge.js?v=module-bootstrap-20260707-93';
+import { getTrainingState } from '../helpers/training-state-bridge.js?v=module-bootstrap-20260707-93';
 
-const ctx = globalThis.ctx;
+const ctx = getAppContext();
+const trainingState = getTrainingState();
+const trainingRuntime = trainingState.trainingRuntime;
 
-Object.assign(globalThis, {
-    formatEtaClock,
-    formatLr,
-    isSameDate,
-    lastValue,
-    parseMetricsFromProgressLine,
-    parseProgressRateSeconds,
-    readConfigNumber,
-});
-
-    globalThis.updateProgress = function updateProgress(msg, options = {}) {
+    export function updateProgress(msg, options = {}) {
         if (isHistoryReviewMode()) return;
         markTrainingActivity(msg.ts, { resetQuietHint: options.replay !== true });
         const previousCurrent = Number(trainingRuntime.progressCurrent || 0);
@@ -62,7 +63,7 @@ Object.assign(globalThis, {
         refreshQueueRunningProgressViews();
     }
 
-    globalThis.updateMetrics = function updateMetrics(msg, options = {}) {
+    export function updateMetrics(msg, options = {}) {
         if (isHistoryReviewMode()) return;
         markTrainingActivity(msg.ts, { resetQuietHint: options.replay !== true });
         const lrText = msg.lr !== undefined ? formatLr(msg.lr) : '';
@@ -76,16 +77,16 @@ Object.assign(globalThis, {
             }
         }
         if (msg.loss !== undefined && Number.isFinite(lossNumber)) {
-            const step = msg.step || ++stepCounter;
+            const step = msg.step || ++trainingState.stepCounter;
             const metadata = { rawStep: msg.step ?? step };
             if (Number.isFinite(lrNumber)) metadata.lr = lrNumber;
-            lossChart?.push(step, lossNumber, metadata);
+            trainingState.lossChart?.push(step, lossNumber, metadata);
             syncLossChartEmptyState();
         }
         if (msg.lr !== undefined) {
             setMetricText('metric-lr', lrText);
             if ((msg.loss === undefined || !Number.isFinite(lossNumber)) && Number.isFinite(lrNumber)) {
-                lossChart?.updatePointMetadata?.(msg.step, { lr: lrNumber });
+                trainingState.lossChart?.updatePointMetadata?.(msg.step, { lr: lrNumber });
             }
         }
         if (msg.step !== undefined) {
@@ -101,7 +102,7 @@ Object.assign(globalThis, {
         renderLiveTrainingDashboard();
     }
 
-    globalThis.updateStatus = function updateStatus(msg) {
+    export function updateStatus(msg) {
         if (isHistoryReviewMode()) return;
         const dot = document.querySelector('.dot');
         const text = document.getElementById('status-text');
@@ -178,13 +179,13 @@ Object.assign(globalThis, {
         refreshTrainingHealth();
     }
 
-    globalThis.liveStatusState = function liveStatusState(msg = {}) {
+    export function liveStatusState(msg = {}) {
         const state = String(msg.state || 'idle');
         if (state === 'idle' && terminalStatusMessage(msg)) return 'error';
         return state;
     }
 
-    globalThis.terminalStatusMessage = function terminalStatusMessage(msg = {}) {
+    export function terminalStatusMessage(msg = {}) {
         const state = String(msg.state || '');
         const hint = String(msg.error_hint || '').trim();
         const line = String(msg.message || msg.last_log_line || '').trim();
@@ -197,7 +198,7 @@ Object.assign(globalThis, {
         return lineIsError ? line : '';
     }
 
-    globalThis.resetLiveSystemPeaks = function resetLiveSystemPeaks() {
+    export function resetLiveSystemPeaks() {
         trainingRuntime.lastGpuUtil = null;
         trainingRuntime.lastGpuTemp = null;
         trainingRuntime.lastVramUsedGb = null;
@@ -208,7 +209,7 @@ Object.assign(globalThis, {
         resetLiveMetricPlaceholders({ primary: false });
     }
 
-    globalThis.clearRuntimeInfo = function clearRuntimeInfo() {
+    export function clearRuntimeInfo() {
         trainingRuntime.runDir = '';
         trainingRuntime.runtimeConfigFile = '';
         trainingRuntime.originalConfigFile = '';
@@ -219,7 +220,7 @@ Object.assign(globalThis, {
         trainingRuntime.logsDir = '';
     }
 
-    globalThis.applyRuntimeInfoToState = function applyRuntimeInfoToState(msg) {
+    export function applyRuntimeInfoToState(msg) {
         const fields = {
             run_dir: 'runDir',
             runtime_config_file: 'runtimeConfigFile',
@@ -237,7 +238,7 @@ Object.assign(globalThis, {
         }
     }
 
-    globalThis.renderCurrentRuntimePaths = function renderCurrentRuntimePaths() {
+    export function renderCurrentRuntimePaths() {
         if (isHistoryReviewMode()) return;
         const configPanel = document.getElementById('history-config-panel');
         const configTitle = document.getElementById('history-config-title');
@@ -265,7 +266,7 @@ Object.assign(globalThis, {
         renderHistoryPaths(task, { includeHistory: false });
     }
 
-    globalThis.currentRuntimeTaskInfo = function currentRuntimeTaskInfo() {
+    export function currentRuntimeTaskInfo() {
         return {
             run_dir: trainingRuntime.runDir,
             runtime_config_file: trainingRuntime.runtimeConfigFile,
@@ -280,7 +281,7 @@ Object.assign(globalThis, {
         };
     }
 
-    globalThis.updateSystem = function updateSystem(msg, options = {}) {
+    export function updateSystem(msg, options = {}) {
         if (isHistoryReviewMode()) return;
         if (msg.last_output_at) {
             markTrainingActivity(msg.last_output_at, { resetQuietHint: options.replay !== true });
@@ -323,7 +324,7 @@ Object.assign(globalThis, {
         refreshTrainingHealth();
     }
 
-    globalThis.formatRuntimeVram = function formatRuntimeVram(used, total) {
+    export function formatRuntimeVram(used, total) {
         const usedNumber = numberOrNull(used);
         if (usedNumber === null) return '-';
         const usedText = formatCompactNumber(usedNumber);
@@ -333,7 +334,7 @@ Object.assign(globalThis, {
         return totalText === '-' ? `${usedText} GB` : `${usedText} / ${totalText} GB`;
     }
 
-    globalThis.renderTrainingRunSummary = function renderTrainingRunSummary(items, fallback) {
+    export function renderTrainingRunSummary(items, fallback) {
         const el = document.getElementById('training-run-summary');
         if (!el) return;
         const entries = (Array.isArray(items) ? items : [])
@@ -373,12 +374,10 @@ Object.assign(globalThis, {
             value.title = item.value;
             wrap.append(label, value);
             wrap.addEventListener('click', async () => {
-                const copier = globalThis.copyText || ctx?.dom?.copyText;
-                if (!copier) return;
                 const feedback = el.querySelector('.training-run-summary-feedback');
                 let message = '';
                 try {
-                    await copier(item.value);
+                    await copyText(item.value);
                     wrap.classList.add('is-copied');
                     message = `${item.label}已复制`;
                 } catch (_) {
@@ -402,11 +401,11 @@ Object.assign(globalThis, {
         el.appendChild(feedback);
     }
 
-    globalThis.renderLiveTrainingDashboard = function renderLiveTrainingDashboard() {
+    export function renderLiveTrainingDashboard() {
         if (isHistoryReviewMode()) return;
         const stateMap = { idle: '空闲', running: '运行中', error: '错误', compiling: '编译中' };
         const jobLabel = trainingRuntime.job === 'preprocess' ? '预处理' : '训练';
-        const stateText = isLiveRunningState()
+        const stateText = isLiveRunningState(trainingRuntime.state)
             ? `${jobLabel}中`
             : (stateMap[trainingRuntime.state] || trainingRuntime.state || '空闲');
         setText('training-run-state', stateText);
@@ -414,8 +413,8 @@ Object.assign(globalThis, {
         if (stateEl) stateEl.className = `training-run-state ${trainingRuntime.state || 'idle'}`;
         setTrainingDashboardHeadState(trainingRuntime.state || 'idle');
         updateTrainingToolbarState(trainingRuntime.state || 'idle', stateText);
-        updateDashboardProgressIdleState(isLiveRunningState());
-        setText('training-run-title', isLiveRunningState() ? `当前${jobLabel}` : '当前监控');
+        updateDashboardProgressIdleState(isLiveRunningState(trainingRuntime.state));
+        setText('training-run-title', isLiveRunningState(trainingRuntime.state) ? `当前${jobLabel}` : '当前监控');
         setText('training-run-meta', [
             trainingRuntime.methodsSubdir ? `方法目录 ${trainingRuntime.methodsSubdir}` : '',
             trainingRuntime.variant ? `配置 ${trainingRuntime.variant}` : '',
@@ -430,9 +429,9 @@ Object.assign(globalThis, {
         setEtaMetricText(trainingEtaMetricInfo());
     }
 
-    globalThis.trainingEtaMetricInfo = function trainingEtaMetricInfo() {
+    export function trainingEtaMetricInfo() {
         return calculateTrainingEtaMetricInfo({
-            isRunning: isLiveRunningState(),
+            isRunning: isLiveRunningState(trainingRuntime.state),
             current: trainingRuntime.progressCurrent,
             total: trainingRuntime.progressTotal,
             progressSecondsPerStep: trainingRuntime.progressSecondsPerStep,
@@ -442,7 +441,7 @@ Object.assign(globalThis, {
         });
     }
 
-    globalThis.markTrainingActivity = function markTrainingActivity(ts, options = {}) {
+    export function markTrainingActivity(ts, options = {}) {
         const value = Number(ts);
         const ms = value > 100000000000 ? value : value * 1000;
         if (Number.isFinite(ms) && ms > 0) {
@@ -456,7 +455,7 @@ Object.assign(globalThis, {
         }
     }
 
-    globalThis.refreshTrainingHealth = function refreshTrainingHealth() {
+    export function refreshTrainingHealth() {
         const el = document.getElementById('training-health');
         const ageEl = document.getElementById('metric-log-age');
         if (!el || !ageEl) return;
@@ -467,7 +466,7 @@ Object.assign(globalThis, {
             return;
         }
 
-        const isRunning = isLiveRunningState();
+        const isRunning = isLiveRunningState(trainingRuntime.state);
         if (trainingRuntime.lastAnomalyMessage) {
             if (!isRunning) {
                 setMetricText('metric-log-age', 'N/A');
@@ -534,8 +533,11 @@ Object.assign(globalThis, {
             : `${jobName}运行中，最近 ${formatDuration(ageSeconds)} 前收到输出，GPU ${gpu}%。`;
     }
 
-    globalThis.formatDuration = function formatDuration(totalSeconds) {
+    export function formatDuration(totalSeconds) {
         return ctx.format.formatDuration(totalSeconds);
     }
+
+
+    configureLiveStatusBridge({ updateProgress, updateMetrics, updateStatus, liveStatusState, terminalStatusMessage, resetLiveSystemPeaks, clearRuntimeInfo, applyRuntimeInfoToState, renderCurrentRuntimePaths, currentRuntimeTaskInfo, updateSystem, formatRuntimeVram, renderTrainingRunSummary, renderLiveTrainingDashboard, trainingEtaMetricInfo, markTrainingActivity, refreshTrainingHealth, formatDuration });
 
     // ── 全局设置 ──

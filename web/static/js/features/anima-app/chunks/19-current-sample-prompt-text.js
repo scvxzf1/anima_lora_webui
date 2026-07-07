@@ -2,74 +2,108 @@
  * Mechanical split from the former monolithic app closure.
  * Keep this module focused; move newly edited behavior into domain modules.
  */
-const ctx = globalThis.ctx;
+import {
+    BLANK_PRESET_TEMPLATE_FILE,
+    BLANK_PRESET_TEMPLATE_LABEL,
+    FORM_UI_DEFAULTS,
+} from '../../../config/catalog.js?v=module-bootstrap-20260707-93';
+import { DEFAULT_SAMPLE_PROMPTS_PATH } from '../helpers/app-constants.js?v=module-bootstrap-20260707-93';
+import { collectChangedFormValues, prepareFormPatchValues } from '../helpers/config-form-bridge.js?v=module-bootstrap-20260707-93';
+import { applySelectedDatasetPresetToCurrentConfig } from '../helpers/dataset-preset-actions-bridge.js?v=module-bootstrap-20260707-93';
+import { showHistoryTaskDialog } from '../helpers/history-task-actions-bridge.js?v=module-bootstrap-20260707-93';
+import { loadTomlFileList } from '../helpers/toml-manager-bridge.js?v=module-bootstrap-20260707-93';
+import { setSamplePromptsEditorContent } from './14-lora-adapter-kind-from-config.js?v=module-bootstrap-20260707-93';
+import {
+    applyTomlLockState,
+    applyTomlToConfig,
+    setTomlStatus,
+    setTomlEditorLocked,
+} from '../helpers/toml-action-state-bridge.js?v=module-bootstrap-20260707-93';
+import { getConfigState } from '../helpers/config-state-bridge.js?v=module-bootstrap-20260707-93';
+import { getGlobalModelPathOverrides } from '../helpers/global-settings-bridge.js?v=module-bootstrap-20260707-93';
+import { confirmDiscardTomlChanges, handlePendingConfigSwitch, updateTomlDirtyState, updateTomlSelectionUI } from '../helpers/toml-selection-bridge.js?v=module-bootstrap-20260707-93';
+import { getAppContext } from '../helpers/app-context-bridge.js?v=module-bootstrap-20260707-93';
+import { getTomlState } from '../helpers/toml-state-bridge.js?v=module-bootstrap-20260707-93';
+import { getTrainingState } from '../helpers/training-state-bridge.js?v=module-bootstrap-20260707-93';
+import { api, val } from '../helpers/runtime-bridge.js?v=module-bootstrap-20260707-93';
+import { configureSamplePromptsBridge } from '../helpers/sample-prompts-bridge.js?v=module-bootstrap-20260707-93';
+import { configureTomlIoBridge } from '../helpers/toml-io-bridge.js?v=module-bootstrap-20260707-93';
 
-    globalThis.currentSamplePromptText = function currentSamplePromptText(config) {
+const ctx = getAppContext();
+const configState = getConfigState();
+const tomlState = getTomlState();
+const trainingState = getTrainingState();
+
+function currentTrainingSourceState() {
+    return trainingState.currentTrainingSource || {};
+}
+
+    export function currentSamplePromptText(config) {
         const raw = typeof config.sample_prompts === 'string' ? config.sample_prompts.trim() : '';
-        const previousMode = samplePromptsMode;
-        const previousPath = samplePromptsPath;
-        const previousContent = samplePromptsContent;
-        samplePromptsPath = DEFAULT_SAMPLE_PROMPTS_PATH;
-        samplePromptsContent = '';
+        const previousMode = configState.samplePromptsMode;
+        const previousPath = configState.samplePromptsPath;
+        const previousContent = configState.samplePromptsContent;
+        configState.samplePromptsPath = DEFAULT_SAMPLE_PROMPTS_PATH;
+        configState.samplePromptsContent = '';
 
         if (!raw) {
-            samplePromptsMode = 'editor-inline';
+            configState.samplePromptsMode = 'editor-inline';
             return FORM_UI_DEFAULTS.sample_prompts;
         }
         if (isEditableSamplePromptsTextFilePath(raw)) {
             const nextPath = normalizeSamplePromptsPath(raw);
-            samplePromptsMode = 'editor-file';
-            samplePromptsPath = nextPath;
+            configState.samplePromptsMode = 'editor-file';
+            configState.samplePromptsPath = nextPath;
             if (previousMode === 'editor-file' && previousPath === nextPath) {
-                samplePromptsContent = previousContent || '';
-                return samplePromptsContent || FORM_UI_DEFAULTS.sample_prompts;
+                configState.samplePromptsContent = previousContent || '';
+                return configState.samplePromptsContent || FORM_UI_DEFAULTS.sample_prompts;
             }
             return FORM_UI_DEFAULTS.sample_prompts;
         }
         if (isSamplePromptsFilePath(raw)) {
-            samplePromptsMode = 'path';
+            configState.samplePromptsMode = 'path';
             return raw;
         }
 
-        samplePromptsMode = 'editor-inline';
-        samplePromptsContent = raw;
+        configState.samplePromptsMode = 'editor-inline';
+        configState.samplePromptsContent = raw;
         return raw;
     }
 
-    globalThis.normalizeSamplePromptsPath = function normalizeSamplePromptsPath(value) {
+    export function normalizeSamplePromptsPath(value) {
         return String(value || '').replace(/\\/g, '/').trim();
     }
 
-    globalThis.isEditableSamplePromptsTextFilePath = function isEditableSamplePromptsTextFilePath(value) {
+    export function isEditableSamplePromptsTextFilePath(value) {
         const text = normalizeSamplePromptsPath(value);
         if (!text.toLowerCase().endsWith('.txt')) return false;
         if (!text.startsWith('configs/')) return false;
         return !text.split('/').includes('..');
     }
 
-    globalThis.isSamplePromptsFilePath = function isSamplePromptsFilePath(value) {
+    export function isSamplePromptsFilePath(value) {
         const text = normalizeSamplePromptsPath(value).toLowerCase();
         return text.endsWith('.txt') || text.endsWith('.toml') || text.endsWith('.json');
     }
 
-    globalThis.loadSamplePrompts = async function loadSamplePrompts(filePath = samplePromptsPath, parentSeq = configLoadSeq) {
+    export async function loadSamplePrompts(filePath = configState.samplePromptsPath, parentSeq = configState.configLoadSeq) {
         if (location.protocol === 'file:') return;
-        const requestSeq = ++samplePromptsLoadSeq;
+        const requestSeq = ++configState.samplePromptsLoadSeq;
         try {
-            const data = await api(`/api/config/sample-prompts?file=${encodeURIComponent(filePath || samplePromptsPath)}`);
-            if (parentSeq !== configLoadSeq || requestSeq !== samplePromptsLoadSeq) return;
+            const data = await api(`/api/config/sample-prompts?file=${encodeURIComponent(filePath || configState.samplePromptsPath)}`);
+            if (parentSeq !== configState.configLoadSeq || requestSeq !== configState.samplePromptsLoadSeq) return;
             if (data?.ok === false) {
                 throw new Error(data.error || '读取预览提示词失败');
             }
-            samplePromptsPath = data.file || samplePromptsPath;
-            samplePromptsContent = data.content || '';
+            configState.samplePromptsPath = data.file || configState.samplePromptsPath;
+            configState.samplePromptsContent = data.content || '';
             const input = document.querySelector('#config-form .field-input[data-key="sample_prompts"]');
             if (input) {
-                if (configFormState.draftValues.has('sample_prompts')) return;
+                if (configState.configFormState.draftValues.has('sample_prompts')) return;
                 if (input.classList?.contains('sample-prompts-editor')) {
-                    setSamplePromptsEditorContent(input, samplePromptsContent);
+                    setSamplePromptsEditorContent(input, configState.samplePromptsContent);
                 } else {
-                    input.value = samplePromptsContent;
+                    input.value = configState.samplePromptsContent;
                 }
             }
         } catch (e) {
@@ -77,24 +111,24 @@ const ctx = globalThis.ctx;
         }
     }
 
-    globalThis.saveSamplePrompts = async function saveSamplePrompts(content) {
+    export async function saveSamplePrompts(content) {
         const res = await api('/api/config/sample-prompts', {
             method: 'PUT',
             body: JSON.stringify({
-                file: samplePromptsPath,
-                train_config_file: currentTrainingSource.file || currentTomlFile || '',
+                file: configState.samplePromptsPath,
+                train_config_file: currentTrainingSourceState().file || tomlState.currentTomlFile || '',
                 content,
             }),
         });
         if (!res.ok) {
             throw new Error(res.error || '保存预览提示词失败');
         }
-        samplePromptsPath = res.file || samplePromptsPath;
-        samplePromptsContent = res.content || '';
+        configState.samplePromptsPath = res.file || configState.samplePromptsPath;
+        configState.samplePromptsContent = res.content || '';
         return res;
     }
 
-    globalThis.importTomlFile = async function importTomlFile() {
+    export async function importTomlFile() {
         if (!(await confirmDiscardTomlChanges('当前 TOML 有未保存修改，导入会覆盖编辑器内容。是否继续？'))) {
             return;
         }
@@ -104,14 +138,14 @@ const ctx = globalThis.ctx;
         input.click();
     }
 
-    globalThis.handleTomlImport = function handleTomlImport(event) {
+    export function handleTomlImport(event) {
         const file = event.target.files?.[0];
         if (!file) return;
 
         const reader = new FileReader();
         reader.onload = () => {
-            currentTomlFile = '';
-            tomlSavedContent = '';
+            tomlState.currentTomlFile = '';
+            tomlState.tomlSavedContent = '';
             document.getElementById('toml-current-file').textContent = `未保存导入: ${file.name}`;
             document.getElementById('toml-file-select').value = '';
             document.getElementById('toml-editor').value = reader.result || '';
@@ -127,31 +161,31 @@ const ctx = globalThis.ctx;
         reader.readAsText(file, 'utf-8');
     }
 
-    globalThis.exportTomlFile = function exportTomlFile() {
+    export function exportTomlFile() {
         const content = document.getElementById('toml-editor').value;
-        const file = currentTomlFile || val('toml-file-select');
+        const file = tomlState.currentTomlFile || val('toml-file-select');
         const filename = exportTomlFilename(file);
         downloadTomlContent(content, filename);
         setTomlStatus('ok', `已导出 ${filename}`);
     }
 
-    globalThis.downloadTomlContent = function downloadTomlContent(content, filename) {
+    export function downloadTomlContent(content, filename) {
         ctx.download.downloadText(content, filename, 'application/toml;charset=utf-8');
     }
 
-    globalThis.triggerDownload = function triggerDownload(url, filename) {
+    export function triggerDownload(url, filename) {
         ctx.download.triggerDownload(url, filename);
     }
 
-    globalThis.downloadBlob = function downloadBlob(blob, filename) {
+    export function downloadBlob(blob, filename) {
         ctx.download.downloadBlob(blob, filename);
     }
 
-    globalThis.createTomlZipBlob = function createTomlZipBlob(entries) {
+    export function createTomlZipBlob(entries) {
         return ctx.download.createZipBlob(entries, uniqueZipEntryName);
     }
 
-    globalThis.uniqueZipEntryName = function uniqueZipEntryName(name, usedNames) {
+    export function uniqueZipEntryName(name, usedNames) {
         const base = exportTomlFilename(name || 'config.toml');
         if (!usedNames.has(base)) {
             usedNames.add(base);
@@ -168,9 +202,9 @@ const ctx = globalThis.ctx;
         return candidate;
     }
 
-    globalThis.saveTomlAs = async function saveTomlAs() {
+    export async function saveTomlAs() {
         const editor = document.getElementById('toml-editor');
-        const currentFile = currentTomlFile;
+        const currentFile = tomlState.currentTomlFile;
         const target = await showTomlSaveAsDialog(currentFile);
         if (target === null) return;
 
@@ -184,7 +218,7 @@ const ctx = globalThis.ctx;
             setTomlStatus('error', '另存新配置失败: 新配置不能和当前选中文件同名');
             return;
         }
-        if (tomlFiles.includes(file)) {
+        if (tomlState.tomlFiles.includes(file)) {
             setTomlStatus('error', `${file} 已存在，请换一个新的配置名称`);
             return;
         }
@@ -204,13 +238,13 @@ const ctx = globalThis.ctx;
                 return;
             }
 
-            currentTrainingSource = {
+            trainingState.currentTrainingSource = {
                 method: file.split('/').pop().replace(/\.toml$/i, ''),
                 methods_subdir: 'imported',
                 file,
             };
-            currentTomlFile = file;
-            tomlSavedContent = content;
+            tomlState.currentTomlFile = file;
+            tomlState.tomlSavedContent = content;
             editor.value = content;
             const datasetApplied = await applySelectedDatasetPresetToCurrentConfig(file);
             if (!datasetApplied) {
@@ -221,7 +255,7 @@ const ctx = globalThis.ctx;
             }
             if (datasetApplied.applied) {
                 const editorAfterDataset = document.getElementById('toml-editor');
-                tomlSavedContent = editorAfterDataset?.value || tomlSavedContent;
+                tomlState.tomlSavedContent = editorAfterDataset?.value || tomlState.tomlSavedContent;
             }
             const moved = await moveTomlFileToGroup(file, targetGroupId);
             if (!moved) {
@@ -239,7 +273,7 @@ const ctx = globalThis.ctx;
         }
     }
 
-    globalThis.createBlankPresetFromLoraTemplate = async function createBlankPresetFromLoraTemplate() {
+    export async function createBlankPresetFromLoraTemplate() {
         let templateContent = '';
         try {
             const data = await api(`/api/config/raw?file=${encodeURIComponent(BLANK_PRESET_TEMPLATE_FILE)}`);
@@ -276,7 +310,7 @@ const ctx = globalThis.ctx;
             setTomlStatus('error', '创建空白预设配置失败: 不能覆盖 LoRA 标准模板');
             return;
         }
-        if (tomlFiles.includes(file)) {
+        if (tomlState.tomlFiles.includes(file)) {
             setTomlStatus('error', `${file} 已存在，请换一个新的配置名称`);
             return;
         }
@@ -315,7 +349,7 @@ const ctx = globalThis.ctx;
         }
     }
 
-    globalThis.previewPatchedTomlContent = async function previewPatchedTomlContent(file, content, values) {
+    export async function previewPatchedTomlContent(file, content, values) {
         const res = await api('/api/config/raw/patch-preview', {
             method: 'POST',
             body: JSON.stringify({ file, content, values }),
@@ -326,7 +360,7 @@ const ctx = globalThis.ctx;
         return typeof res.content === 'string' ? res.content : content;
     }
 
-    globalThis.showTomlSaveAsDialog = async function showTomlSaveAsDialog(currentFile, options = {}) {
+    export async function showTomlSaveAsDialog(currentFile, options = {}) {
         const wrap = document.createElement('div');
         wrap.className = 'toml-save-as-dialog-body';
 
@@ -399,8 +433,8 @@ const ctx = globalThis.ctx;
         });
     }
 
-    globalThis.saveAsTargetGroups = function saveAsTargetGroups() {
-        const trainingGroups = filterTrainingTomlGroups(tomlFileGroups);
+    export function saveAsTargetGroups() {
+        const trainingGroups = filterTrainingTomlGroups(tomlState.tomlFileGroups);
         const groups = reorderTomlFileGroups(trainingGroups)
             .filter((group) => group.trainable && group.movable && !group.locked && !group.user_group_locked);
         if (groups.some((group) => group.id === 'imported')) return groups;
@@ -415,7 +449,7 @@ const ctx = globalThis.ctx;
         }];
     }
 
-    globalThis.moveTomlFileToGroup = async function moveTomlFileToGroup(file, groupId) {
+    export async function moveTomlFileToGroup(file, groupId) {
         if (!groupId || groupId === 'imported') return true;
         try {
             const res = await api('/api/config/file-groups/move-file', {
@@ -433,7 +467,7 @@ const ctx = globalThis.ctx;
         }
     }
 
-    globalThis.normalizeTomlSaveAsPath = function normalizeTomlSaveAsPath(rawPath) {
+    export function normalizeTomlSaveAsPath(rawPath) {
         let file = String(rawPath || '').trim().replace(/\\/g, '/');
         file = file.replace(/^\/+/, '');
         if (!file) return '';
@@ -446,13 +480,13 @@ const ctx = globalThis.ctx;
         return file;
     }
 
-    globalThis.exportTomlFilename = function exportTomlFilename(filePath) {
+    export function exportTomlFilename(filePath) {
         const base = String(filePath || '').split('/').filter(Boolean).pop();
         if (!base) return 'anima-config.toml';
         return base.toLowerCase().endsWith('.toml') ? base : `${base}.toml`;
     }
 
-    globalThis.isFixedSystemTomlGroup = function isFixedSystemTomlGroup(group) {
+    export function isFixedSystemTomlGroup(group) {
         return Boolean(
             group.id === 'web_config' ||
             group.id === 'presets' ||
@@ -462,7 +496,7 @@ const ctx = globalThis.ctx;
         );
     }
 
-    globalThis.isDatasetConfigGroup = function isDatasetConfigGroup(group) {
+    export function isDatasetConfigGroup(group) {
         if (!group) return false;
         const id = String(group.id || '');
         const kind = String(group.kind || '').toLowerCase();
@@ -470,19 +504,19 @@ const ctx = globalThis.ctx;
         return (group.files || []).some((item) => String(item.path || '').replace(/\\/g, '/').startsWith('configs/datasets/'));
     }
 
-    globalThis.isTrainingTomlGroup = function isTrainingTomlGroup(group) {
+    export function isTrainingTomlGroup(group) {
         return Boolean(group) && !isDatasetConfigGroup(group);
     }
 
-    globalThis.filterTrainingTomlGroups = function filterTrainingTomlGroups(groups) {
+    export function filterTrainingTomlGroups(groups) {
         return (Array.isArray(groups) ? groups : []).filter(isTrainingTomlGroup);
     }
 
-    globalThis.shouldShowTomlGroup = function shouldShowTomlGroup(group) {
+    export function shouldShowTomlGroup(group) {
         return isTrainingTomlGroup(group) && !isFixedSystemTomlGroup(group);
     }
 
-    globalThis.reorderTomlFileGroups = function reorderTomlFileGroups(groups) {
+    export function reorderTomlFileGroups(groups) {
         return [...(groups || [])]
             .map((group, index) => ({ group, index }))
             .filter(({ group }) => isTrainingTomlGroup(group) && (group.user_managed || group.lockable || (group.files || []).length > 0))
@@ -495,12 +529,12 @@ const ctx = globalThis.ctx;
             .map((item) => item.group);
     }
 
-    globalThis.getSortableTomlGroups = function getSortableTomlGroups() {
-        return [...(tomlFileGroups || [])]
+    export function getSortableTomlGroups() {
+        return [...(tomlState.tomlFileGroups || [])]
             .filter((group) => isTomlGroupDraggable(group));
     }
 
-    globalThis.isTomlGroupDraggable = function isTomlGroupDraggable(group) {
+    export function isTomlGroupDraggable(group) {
         return Boolean(
             group?.id &&
             isTrainingTomlGroup(group) &&
@@ -510,3 +544,39 @@ const ctx = globalThis.ctx;
             (group.user_managed || group.lockable || (group.files || []).length > 0)
         );
     }
+
+configureSamplePromptsBridge({
+    currentSamplePromptText,
+    normalizeSamplePromptsPath,
+    isEditableSamplePromptsTextFilePath,
+    isSamplePromptsFilePath,
+    loadSamplePrompts,
+    saveSamplePrompts,
+});
+
+configureTomlIoBridge({
+    importTomlFile,
+    handleTomlImport,
+    exportTomlFile,
+    downloadTomlContent,
+    triggerDownload,
+    downloadBlob,
+    createTomlZipBlob,
+    uniqueZipEntryName,
+    saveTomlAs,
+    createBlankPresetFromLoraTemplate,
+    previewPatchedTomlContent,
+    showTomlSaveAsDialog,
+    saveAsTargetGroups,
+    moveTomlFileToGroup,
+    normalizeTomlSaveAsPath,
+    exportTomlFilename,
+    isFixedSystemTomlGroup,
+    isDatasetConfigGroup,
+    isTrainingTomlGroup,
+    filterTrainingTomlGroups,
+    shouldShowTomlGroup,
+    reorderTomlFileGroups,
+    getSortableTomlGroups,
+    isTomlGroupDraggable,
+});

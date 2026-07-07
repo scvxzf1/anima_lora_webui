@@ -2,8 +2,99 @@
  * Mechanical split from the former monolithic app closure.
  * Keep this module focused; move newly edited behavior into domain modules.
  */
-const ctx = globalThis.ctx;
-const SETUP_EVENT_DOM_CONTRACT = Object.freeze({
+import {
+    GLOBAL_UI_OVERRIDE_FIELDS,
+    help,
+} from '../../../config/catalog.js?v=module-bootstrap-20260707-93';
+import {
+    ensureEnvironmentCheckFeature,
+    ensureQueueFeature,
+    ensureWeightAnalysisFeature,
+} from '../helpers/feature-ensurers.js?v=module-bootstrap-20260707-93';
+import {
+    closeOutputRunSaveAs,
+    confirmOutputRunSaveAs,
+    copyOutputRunConfigContent,
+    exportOutputRunConfig,
+    openOutputRunSaveAs,
+    renderOutputRunList,
+    saveTomlFile,
+} from '../helpers/output-run-bridge.js?v=module-bootstrap-20260707-93';
+import { loadOutputRuns, setTomlManagerMode, switchTomlManagerMode } from '../helpers/toml-manager-bridge.js?v=module-bootstrap-20260707-93';
+import {
+    deleteTomlFile,
+    moveCurrentTomlToGroup,
+    restoreSystemTomlPresets,
+} from '../helpers/toml-actions-bridge.js?v=module-bootstrap-20260707-93';
+import {
+    queueCurrentTrainingFromConfig,
+    startTraining,
+} from '../helpers/training-launch-bridge.js?v=module-bootstrap-20260707-93';
+import {
+    copyDatasetPreset,
+    createDatasetPresetGroup,
+    createNewDatasetPreset,
+    deleteDatasetPreset,
+    exportDatasetPreset,
+    handleDatasetPresetImport,
+    importDatasetPreset,
+    renameDatasetPreset,
+    saveDatasetPresetEditor,
+} from '../helpers/dataset-preset-actions-bridge.js?v=module-bootstrap-20260707-93';
+import { renderDatasetPresetList } from '../helpers/dataset-render-bridge.js?v=module-bootstrap-20260707-93';
+import { historyManagerFilterDefault, openHistoryCollectionsWorkbench } from '../helpers/history-collections-bridge.js?v=module-bootstrap-20260707-93';
+import {
+    archiveSelectedHistoryTasks,
+    deleteSelectedHistoryTasks,
+    groupSelectedHistoryTasks,
+    mergeSelectedHistoryTasks,
+    refreshHistoryView,
+} from '../helpers/history-task-actions-bridge.js?v=module-bootstrap-20260707-93';
+import { loadResumeOptionsForTask, queueResumeTrainingFromCheckpoint, renderResumePanelState, resumeTrainingFromCheckpoint, returnToLiveTraining } from '../helpers/history-timeline-bridge.js?v=module-bootstrap-20260707-93';
+import { getAppShellState } from '../helpers/app-shell-state-bridge.js?v=module-bootstrap-20260707-93';
+import { getAppContext } from '../helpers/app-context-bridge.js?v=module-bootstrap-20260707-93';
+import { getDatasetState } from '../helpers/dataset-state-bridge.js?v=module-bootstrap-20260707-93';
+import { getHistoryState } from '../helpers/history-state-bridge.js?v=module-bootstrap-20260707-93';
+import { loadConfig, loadVariants, openTutorialDialog, reloadCurrentConfig } from '../helpers/app-shell-startup-bridge.js?v=module-bootstrap-20260707-93';
+import { ensureHistoryDetailFeature, isHistoryReviewMode } from '../helpers/history-detail-bridge.js?v=module-bootstrap-20260707-93';
+import { ensureImageTestFeature } from '../helpers/image-test-bridge.js?v=module-bootstrap-20260707-93';
+import { confirmDiscardTomlChanges, updateTomlDirtyState } from '../helpers/toml-selection-bridge.js?v=module-bootstrap-20260707-93';
+import { val } from '../helpers/runtime-bridge.js?v=module-bootstrap-20260707-93';
+import { getTomlState } from '../helpers/toml-state-bridge.js?v=module-bootstrap-20260707-93';
+import { createBlankPresetFromLoraTemplate, exportTomlFile, handleTomlImport, importTomlFile, saveTomlAs } from '../helpers/toml-io-bridge.js?v=module-bootstrap-20260707-93';
+import {
+    auditConfigFullResumeSource,
+    clearContinueTrainingSource,
+    handleConfigFullResumeCheckpointChange,
+    handleConfigFullResumeTaskChange,
+    selectContinueLoraWeight,
+    setConfigTrainingSourceMode,
+} from '../helpers/training-source-bridge.js?v=module-bootstrap-20260707-93';
+import { resetLogOutputLines, stopTraining, updateLogStatusText } from '../helpers/live-log-bridge.js?v=module-bootstrap-20260707-93';
+import { getTrainingState } from '../helpers/training-state-bridge.js?v=module-bootstrap-20260707-93';
+import { confirmBeforeConfigSelectionChange, rememberSelectionSnapshot, setCurrentTrainingSourceFromVariant, updateChoiceGuide } from './13-update-dataset-editor-rows-setting-value.js?v=module-bootstrap-20260707-93';
+import { loadDatasetPreviewImages } from './12-create-dataset-row-caption-source-mode-editor.js?v=module-bootstrap-20260707-93';
+import { loadDatasetPresets, renderLiveChartPanel } from './03-parse-network-arg-entry.js?v=module-bootstrap-20260707-93';
+import { selectConfigCategory, updateConfigStickyPlacement } from './04-create-config-group-entry.js?v=module-bootstrap-20260707-93';
+import { closeConfigDatasetPickerDialog, loadContinueLoraWeights, openContinueLoraDialog } from './06-stronger-selective-checkpoint-value.js?v=module-bootstrap-20260707-93';
+import {
+    applyTomlToConfig,
+    copyTomlEditorContent,
+    toggleTomlEditorPanel,
+    toggleTomlUserLock,
+} from '../helpers/toml-action-state-bridge.js?v=module-bootstrap-20260707-93';
+import { saveGlobalSettings, resetGlobalSettings, toggleGlobalSettingHelp, syncGlobalUIScaleOverrideField, syncAllGlobalUIScaleOverrideFields } from '../helpers/global-settings-bridge.js?v=module-bootstrap-20260707-93';
+import { savePreviewSettings, resetPreviewSettings, loadPreviewImages, loadPreviewWeights, setPreviewSource, openCurrentTrainingPreview, openLiveSamplingPreview, closePreviewPanel, togglePreviewWeightSort, changePreviewTask, restorePreviewWorkspaceAfterPanelClose } from '../helpers/preview-view-bridge.js?v=module-bootstrap-20260707-93';
+import { bindTrainingViewTabKeyboard } from '../helpers/queue-view-bridge.js?v=module-bootstrap-20260707-93';
+import { loadTrainingHistoryList, renderHistoryManager } from '../helpers/history-list-bridge.js?v=module-bootstrap-20260707-93';
+
+const ctx = getAppContext();
+const appShellState = getAppShellState();
+const datasetState = getDatasetState();
+const historyState = getHistoryState();
+const tomlState = getTomlState();
+const trainingState = getTrainingState();
+export const SETUP_EVENT_DOM_CONTRACT = Object.freeze({
     required: Object.freeze([
         'method-select',
         'variant-select',
@@ -111,9 +202,8 @@ const SETUP_EVENT_DOM_CONTRACT = Object.freeze({
     ]),
 });
 const REQUIRED_SETUP_EVENT_DOM_IDS = new Set(SETUP_EVENT_DOM_CONTRACT.required);
-globalThis.SETUP_EVENT_DOM_CONTRACT = SETUP_EVENT_DOM_CONTRACT;
 
-    globalThis.setupEventListeners = function setupEventListeners() {
+    export function setupEventListeners() {
         const on = (id, eventName, handler, listenerOptions) => {
             return ctx.dom.bindEvent(id, eventName, handler, {
                 contract: 'setupEventListeners',
@@ -154,11 +244,11 @@ globalThis.SETUP_EVENT_DOM_CONTRACT = SETUP_EVENT_DOM_CONTRACT;
         on('btn-start-from-config', 'click', startTraining);
         on('btn-queue-from-config', 'click', queueCurrentTrainingFromConfig);
         on('live-chart-toggle-lr', 'change', (event) => {
-            liveChartState.showLr = Boolean(event.target.checked);
+            trainingState.liveChartState.showLr = Boolean(event.target.checked);
             renderLiveChartPanel();
         });
         on('live-chart-range', 'change', (event) => {
-            liveChartState.rangeMode = event.target.value || 'all';
+            trainingState.liveChartState.rangeMode = event.target.value || 'all';
             renderLiveChartPanel();
         });
         document.querySelectorAll('[data-sticky-config-category]').forEach((btn) => {
@@ -181,7 +271,7 @@ globalThis.SETUP_EVENT_DOM_CONTRACT = SETUP_EVENT_DOM_CONTRACT;
             selectContinueLoraWeight(document.getElementById('continue-lora-path-input')?.value || '');
         });
         on('continue-lora-history-task', 'change', (event) => {
-            continueLoraDialogState.taskId = event.target.value || '';
+            trainingState.continueLoraDialogState.taskId = event.target.value || '';
             loadContinueLoraWeights();
         });
         on('btn-refresh-continue-lora-weights', 'click', loadContinueLoraWeights);
@@ -192,8 +282,8 @@ globalThis.SETUP_EVENT_DOM_CONTRACT = SETUP_EVENT_DOM_CONTRACT;
         on('btn-training-history-view', 'click', () => showTrainingView('history'));
         on('btn-open-history-manager', 'click', () => showTrainingView('history'));
         ensureQueueFeature().bindQueueEvents();
-        ensureWeightAnalysisFeature().bindWeightAnalysisEvents();
-        ensureEnvironmentCheckFeature().bindEnvironmentCheckEvents();
+        ensureWeightAnalysisFeature(ctx, appShellState).bindWeightAnalysisEvents();
+        ensureEnvironmentCheckFeature(ctx, appShellState).bindEnvironmentCheckEvents();
         ensureImageTestFeature().bindImageTestEvents();
         on('btn-apply-toml', 'click', applyTomlToConfig);
         on('btn-move-toml-group', 'click', moveCurrentTomlToGroup);
@@ -218,7 +308,7 @@ globalThis.SETUP_EVENT_DOM_CONTRACT = SETUP_EVENT_DOM_CONTRACT;
         on('btn-confirm-output-config-save-as', 'click', confirmOutputRunSaveAs);
         on('btn-cancel-output-config-save-as', 'click', closeOutputRunSaveAs);
         on('output-run-search', 'input', (event) => {
-            outputRunState = { ...outputRunState, search: event.target.value || '' };
+            datasetState.outputRunState = { ...datasetState.outputRunState, search: event.target.value || '' };
             renderOutputRunList();
         });
         on('btn-new-dataset-preset', 'click', createNewDatasetPreset);
@@ -232,7 +322,7 @@ globalThis.SETUP_EVENT_DOM_CONTRACT = SETUP_EVENT_DOM_CONTRACT;
         on('btn-create-dataset-preset-group', 'click', createDatasetPresetGroup);
         on('btn-refresh-dataset-presets', 'click', () => loadDatasetPresets({ selectCurrent: false, manage: true }));
         on('dataset-preset-search', 'input', (event) => {
-            datasetPresetState.search = event.target.value || '';
+            datasetState.datasetPresetState.search = event.target.value || '';
             renderDatasetPresetList();
         });
         on('btn-refresh-dataset-preview', 'click', loadDatasetPreviewImages);
@@ -242,7 +332,7 @@ globalThis.SETUP_EVENT_DOM_CONTRACT = SETUP_EVENT_DOM_CONTRACT;
             document.querySelector('[data-tab="datasets"]')?.click();
         });
         on('btn-reload-toml', 'click', async () => {
-            const file = currentTomlFile || val('toml-file-select');
+            const file = tomlState.currentTomlFile || val('toml-file-select');
             if (file && (await confirmDiscardTomlChanges('当前 TOML 有未保存修改，重新读取文件会丢失这些修改。是否继续？'))) {
                 loadTomlFile(file, { force: true });
             }
@@ -254,9 +344,9 @@ globalThis.SETUP_EVENT_DOM_CONTRACT = SETUP_EVENT_DOM_CONTRACT;
         on('btn-clear-log', 'click', () => {
             if (isHistoryReviewMode()) return;
             resetLogOutputLines();
-            trainingRuntime.logBuffer = [];
-            trainingRuntime.logFlushPending = false;
-            trainingRuntime.logLineCount = 0;
+            trainingState.trainingRuntime.logBuffer = [];
+            trainingState.trainingRuntime.logFlushPending = false;
+            trainingState.trainingRuntime.logLineCount = 0;
             updateLogStatusText();
         });
         on('btn-refresh-history', 'click', loadTrainingHistoryList);
@@ -270,11 +360,11 @@ globalThis.SETUP_EVENT_DOM_CONTRACT = SETUP_EVENT_DOM_CONTRACT;
         on('btn-history-bulk-group', 'click', groupSelectedHistoryTasks);
         on('btn-history-bulk-delete', 'click', deleteSelectedHistoryTasks);
         on('history-select-all', 'change', (event) => {
-            const visible = historyCurrentVisibleTaskIds;
+            const visible = historyState.historyCurrentVisibleTaskIds;
             if (event.target.checked) {
-                visible.forEach((id) => selectedHistoryTaskIds.add(id));
+                visible.forEach((id) => historyState.selectedHistoryTaskIds.add(id));
             } else {
-                visible.forEach((id) => selectedHistoryTaskIds.delete(id));
+                visible.forEach((id) => historyState.selectedHistoryTaskIds.delete(id));
             }
             renderHistoryManager();
         });
@@ -289,16 +379,16 @@ globalThis.SETUP_EVENT_DOM_CONTRACT = SETUP_EVENT_DOM_CONTRACT;
         for (const [id, key] of Object.entries(historyFilterMap)) {
             on(id, id === 'history-manager-search' ? 'input' : 'change', (event) => {
                 const value = event.target.value || historyManagerFilterDefault(key);
-                historyManagerFilters[key] = value;
+                historyState.historyManagerFilters[key] = value;
                 renderHistoryManager();
             });
         }
         on('history-collection-search', 'input', (event) => {
-            historyCollectionSearch = event.target.value || '';
+            historyState.historyCollectionSearch = event.target.value || '';
             renderHistoryManager();
         });
         on('history-config-group-search', 'input', (event) => {
-            historyConfigGroupSearch = event.target.value || '';
+            historyState.historyConfigGroupSearch = event.target.value || '';
             renderHistoryManager();
         });
         ensureHistoryDetailFeature().bindHistoryDetailEvents();
@@ -311,7 +401,7 @@ globalThis.SETUP_EVENT_DOM_CONTRACT = SETUP_EVENT_DOM_CONTRACT;
         on('btn-queue-resume-training', 'click', queueResumeTrainingFromCheckpoint);
         on('resume-checkpoint-select', 'change', renderResumePanelState);
         on('history-show-archived', 'change', (e) => {
-            showArchivedHistory = e.target.checked;
+            historyState.showArchivedHistory = e.target.checked;
             loadTrainingHistoryList();
         });
         document.querySelectorAll('.preview-source-btn').forEach((btn) => {
@@ -348,7 +438,7 @@ globalThis.SETUP_EVENT_DOM_CONTRACT = SETUP_EVENT_DOM_CONTRACT;
         setTomlManagerMode('project');
     }
 
-    globalThis.installBeginnerTooltips = function installBeginnerTooltips() {
+    export function installBeginnerTooltips() {
         const tips = {
             'method-select': '选择训练方法家族。新手通常选择 lora；LoKr、Hydra、ReFT 等属于进阶或实验方法。',
             'variant-select': '选择具体训练配置文件。它决定默认学习率、rank、缓存、方法开关等实际训练参数。',
@@ -523,35 +613,3 @@ globalThis.SETUP_EVENT_DOM_CONTRACT = SETUP_EVENT_DOM_CONTRACT;
     }
 
     // ── 工具函数 ──
-    globalThis.api = async function api(url, opts = {}) {
-        return ctx.api(url, opts);
-    }
-
-    globalThis.datasetPresetApi = async function datasetPresetApi(url, opts = {}) {
-        const timeoutMs = Number(opts.timeoutMs || DATASET_PRESET_REQUEST_TIMEOUT_MS);
-        const requestOpts = { ...opts };
-        delete requestOpts.timeoutMs;
-        let timeoutId = null;
-        try {
-            return await Promise.race([
-                api(url, requestOpts),
-                new Promise((_, reject) => {
-                    timeoutId = window.setTimeout(() => {
-                        reject(new Error('数据集预设请求超时，请查看终端日志或刷新预设列表'));
-                    }, timeoutMs);
-                }),
-            ]);
-        } finally {
-            if (timeoutId !== null) {
-                window.clearTimeout(timeoutId);
-            }
-        }
-    }
-
-    globalThis.val = function val(id) {
-        return ctx.dom.val(id);
-    }
-
-    globalThis.populateSelect = function populateSelect(id, items, preferred = '') {
-        ctx.dom.populateSelect(id, items, preferred);
-    }

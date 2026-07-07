@@ -2,22 +2,72 @@
  * Mechanical split from the former monolithic app closure.
  * Keep this module focused; move newly edited behavior into domain modules.
  */
-const ctx = globalThis.ctx;
+import { HISTORY_UNGROUPED_COLLECTION_KEY } from '../helpers/app-constants.js?v=module-bootstrap-20260707-93';
+import { openHistoryNewCollectionPopover, renderHistoryDropPopover } from '../helpers/history-collection-drag-bridge.js?v=module-bootstrap-20260707-93';
+import {
+    applySelectedHistoryTasksToCollection,
+    clearSelectedHistoryCollection,
+    configureHistoryCollectionsBridge,
+    createEmptyHistoryCollection,
+    createHistoryCollectionSearchEmptyCollection,
+    createHistoryCollectionWorkbenchCard,
+    createHistoryConfigGroupWorkbenchCard,
+    createHistoryCollectionsToolbarButton,
+    groupHistoryTasks,
+    historyConfigGroupCollectionMap,
+    historyCollectionByKey,
+    historyCollectionSearchText,
+    historyCollectionStorageKey,
+    historyCollectionsForWorkbench,
+    historyCollectionsPanelTitle,
+    historyConfigGroupSearchText,
+    historyContinueLabel,
+    historyGroupDisplayLabel,
+    historyQueueLabel,
+    historyResumeLabel,
+    historyTaskCollectionLabel,
+    historyTaskDisplayName,
+    historyTaskIds,
+    historyTaskIsArchived,
+    historyTaskCollectionValue,
+    runLabelFromPath,
+    sortHistoryManagerGroupTasks,
+    sortedHistoryConfigGroups,
+    syncHistoryFilterControls,
+} from '../helpers/history-collections-bridge.js?v=module-bootstrap-20260707-93';
+import {
+    archiveHistoryTask,
+    createHistoryActionButton,
+    createHistoryTaskConfigButton,
+    createHistoryTaskPreviewButton,
+    deleteHistoryTask,
+    groupSelectedHistoryTasks,
+    isHistoryDetailDialogOpen,
+    loadHistoryTask,
+} from '../helpers/history-task-actions-bridge.js?v=module-bootstrap-20260707-93';
+import { historyStateLabel } from '../helpers/history-timeline-bridge.js?v=module-bootstrap-20260707-93';
+import { renderHistoryManager } from '../helpers/history-list-bridge.js?v=module-bootstrap-20260707-93';
+import { getHistoryState } from '../helpers/history-state-bridge.js?v=module-bootstrap-20260707-93';
 
-    globalThis.renderHistoryCollectionsWorkbench = function renderHistoryCollectionsWorkbench(list, visible) {
+const historyState = getHistoryState();
+
+    export function renderHistoryCollectionsWorkbench(list, visible) {
         const workbench = document.createElement('div');
         workbench.className = 'history-collections-workbench compact';
-        if (historyDragState.active) workbench.classList.add('dragging');
-        if (historyDragState.pending) workbench.classList.add('drop-pending');
-        if (historyCollectionDragState.active) workbench.classList.add('collection-reordering');
+        if (historyState.historyDragState.active) workbench.classList.add('dragging');
+        if (historyState.historyDragState.pending) workbench.classList.add('drop-pending');
+        if (historyState.historyCollectionDragState.active) workbench.classList.add('collection-reordering');
 
         const allCollections = historyCollectionsForWorkbench(visible);
-        if (historyCollectionWorkbenchTarget && !allCollections.some((item) => item.value === historyCollectionWorkbenchTarget)) {
-            historyCollectionWorkbenchTarget = '';
+        if (
+            historyState.historyCollectionWorkbenchTarget
+            && !allCollections.some((item) => item.value === historyState.historyCollectionWorkbenchTarget)
+        ) {
+            historyState.historyCollectionWorkbenchTarget = '';
         }
         const smartSearch = historySmartSearchTerms();
-        const collectionSearchTerms = historySearchTerms(historyCollectionSearch, smartSearch.collection);
-        const configSearchTerms = historySearchTerms(historyConfigGroupSearch, smartSearch.config);
+        const collectionSearchTerms = historySearchTerms(historyState.historyCollectionSearch, smartSearch.collection);
+        const configSearchTerms = historySearchTerms(historyState.historyConfigGroupSearch, smartSearch.config);
         const configSearch = configSearchTerms.join(' ');
         const visibleCollections = visibleHistoryCollectionsForSearch(allCollections, collectionSearchTerms);
         const selectedCollection = selectedHistoryCollectionForWorkbench(allCollections, collectionSearchTerms);
@@ -31,8 +81,10 @@ const ctx = globalThis.ctx;
             || (configSearch && historyConfigGroupSearchText(group).includes(configSearch))
         );
         const currentVisibleTasks = uniqueHistoryTasks(visibleConfigGroups.flatMap((group) => group.tasks || []));
-        historyCurrentVisibleTaskIds = historyTaskIds(currentVisibleTasks);
-        const selectedTasks = currentVisibleTasks.filter((task) => task.id && selectedHistoryTaskIds.has(task.id));
+        historyState.historyCurrentVisibleTaskIds = historyTaskIds(currentVisibleTasks);
+        const selectedTasks = currentVisibleTasks.filter(
+            (task) => task.id && historyState.selectedHistoryTaskIds.has(task.id)
+        );
         const selectedGroups = selectedHistoryConfigGroups(visibleConfigGroups);
 
         const head = document.createElement('div');
@@ -65,7 +117,7 @@ const ctx = globalThis.ctx;
         const target = document.createElement('span');
         target.textContent = [
             `当前: ${selectedCollection.label}`,
-            historyCollectionWorkbenchTarget ? `目标: ${historyCollectionWorkbenchTarget}` : '',
+            historyState.historyCollectionWorkbenchTarget ? `目标: ${historyState.historyCollectionWorkbenchTarget}` : '',
             selectedTasks.length ? `已选: ${selectedTasks.length}` : '未选',
         ].filter(Boolean).join(' · ');
         toolbar.appendChild(target);
@@ -73,10 +125,10 @@ const ctx = globalThis.ctx;
             createHistoryCollectionsToolbarButton('设置分组', () => groupSelectedHistoryTasks(), !selectedTasks.length),
             createHistoryCollectionsToolbarButton('清除分组', () => clearSelectedHistoryCollection(), !selectedTasks.length),
         );
-        if (historyCollectionWorkbenchTarget) {
+        if (historyState.historyCollectionWorkbenchTarget) {
             toolbar.appendChild(createHistoryCollectionsToolbarButton(
                 '加入目标',
-                () => applySelectedHistoryTasksToCollection(historyCollectionWorkbenchTarget),
+                () => applySelectedHistoryTasksToCollection(historyState.historyCollectionWorkbenchTarget),
                 !selectedTasks.length,
             ));
         }
@@ -131,16 +183,16 @@ const ctx = globalThis.ctx;
         list.appendChild(workbench);
     }
 
-    globalThis.renderHistoryManagerStats = function renderHistoryManagerStats() {
+    export function renderHistoryManagerStats() {
         const el = document.getElementById('history-manager-stats');
         if (!el) return;
         const counts = {
-            total: historyTasks.length,
-            training: historyTasks.filter((task) => task.job === 'training').length,
-            preprocess: historyTasks.filter((task) => task.job === 'preprocess').length,
-            error: historyTasks.filter((task) => ['error', 'interrupted'].includes(task.state)).length,
-            archived: historyTasks.filter(historyTaskIsArchived).length,
-            queue: historyTasks.filter((task) => task.from_queue || task.queue_item_id).length,
+            total: historyState.historyTasks.length,
+            training: historyState.historyTasks.filter((task) => task.job === 'training').length,
+            preprocess: historyState.historyTasks.filter((task) => task.job === 'preprocess').length,
+            error: historyState.historyTasks.filter((task) => ['error', 'interrupted'].includes(task.state)).length,
+            archived: historyState.historyTasks.filter(historyTaskIsArchived).length,
+            queue: historyState.historyTasks.filter((task) => task.from_queue || task.queue_item_id).length,
         };
         el.innerHTML = '';
         [
@@ -160,16 +212,16 @@ const ctx = globalThis.ctx;
         });
     }
 
-    globalThis.applyHistoryStatFilter = function applyHistoryStatFilter(state) {
-        historyCollectionSearch = '';
-        historyConfigGroupSearch = '';
+    export function applyHistoryStatFilter(state) {
+        historyState.historyCollectionSearch = '';
+        historyState.historyConfigGroupSearch = '';
         const next = {
             search: '',
             kind: 'all',
             state: 'all',
             archived: 'all',
             source: 'all',
-            sort: historyManagerFilters.sort || 'newest',
+            sort: historyState.historyManagerFilters.sort || 'newest',
         };
         if (state === 'training' || state === 'preprocess') {
             next.kind = state;
@@ -180,83 +232,83 @@ const ctx = globalThis.ctx;
         } else if (state === 'queue') {
             next.source = 'queue';
         }
-        historyManagerFilters = next;
+        historyState.historyManagerFilters = next;
         syncHistoryFilterControls();
         renderHistoryManager();
     }
 
-    globalThis.historyStatFilterIsActive = function historyStatFilterIsActive(state) {
+    export function historyStatFilterIsActive(state) {
         const searchEmpty =
-            !String(historyManagerFilters.search || '').trim() &&
-            !String(historyCollectionSearch || '').trim() &&
-            !String(historyConfigGroupSearch || '').trim();
+            !String(historyState.historyManagerFilters.search || '').trim() &&
+            !String(historyState.historyCollectionSearch || '').trim() &&
+            !String(historyState.historyConfigGroupSearch || '').trim();
         const base =
             searchEmpty &&
-            Boolean(historyManagerFilters.sort || 'newest') &&
+            Boolean(historyState.historyManagerFilters.sort || 'newest') &&
             (state === 'archived'
-                ? historyManagerFilters.archived === 'archived'
-                : (historyManagerFilters.archived || 'active') === 'all');
+                ? historyState.historyManagerFilters.archived === 'archived'
+                : (historyState.historyManagerFilters.archived || 'active') === 'all');
         if (!base) return false;
         if (state === 'all') {
-            return historyManagerFilters.kind === 'all' &&
-                historyManagerFilters.state === 'all' &&
-                historyManagerFilters.source === 'all';
+            return historyState.historyManagerFilters.kind === 'all' &&
+                historyState.historyManagerFilters.state === 'all' &&
+                historyState.historyManagerFilters.source === 'all';
         }
         if (state === 'training' || state === 'preprocess') {
-            return historyManagerFilters.kind === state &&
-                historyManagerFilters.state === 'all' &&
-                historyManagerFilters.source === 'all';
+            return historyState.historyManagerFilters.kind === state &&
+                historyState.historyManagerFilters.state === 'all' &&
+                historyState.historyManagerFilters.source === 'all';
         }
         if (state === 'error') {
-            return historyManagerFilters.kind === 'all' &&
-                historyManagerFilters.state === 'error' &&
-                historyManagerFilters.source === 'all';
+            return historyState.historyManagerFilters.kind === 'all' &&
+                historyState.historyManagerFilters.state === 'error' &&
+                historyState.historyManagerFilters.source === 'all';
         }
         if (state === 'archived') {
-            return historyManagerFilters.kind === 'all' &&
-                historyManagerFilters.state === 'all' &&
-                historyManagerFilters.archived === 'archived' &&
-                historyManagerFilters.source === 'all';
+            return historyState.historyManagerFilters.kind === 'all' &&
+                historyState.historyManagerFilters.state === 'all' &&
+                historyState.historyManagerFilters.archived === 'archived' &&
+                historyState.historyManagerFilters.source === 'all';
         }
         if (state === 'queue') {
-            return historyManagerFilters.kind === 'all' &&
-                historyManagerFilters.state === 'all' &&
-                historyManagerFilters.source === 'queue';
+            return historyState.historyManagerFilters.kind === 'all' &&
+                historyState.historyManagerFilters.state === 'all' &&
+                historyState.historyManagerFilters.source === 'queue';
         }
         return false;
     }
 
-    globalThis.historyManagerFilteredTasks = function historyManagerFilteredTasks() {
+    export function historyManagerFilteredTasks() {
         return historyManagerVisibleTasks(historyManagerBaseFilteredTasks());
     }
 
-    globalThis.historyManagerBaseFilteredTasks = function historyManagerBaseFilteredTasks() {
+    export function historyManagerBaseFilteredTasks() {
         const search = historySmartSearchTerms().global;
-        const visible = historyTasks.filter((task) => {
-            if (historyManagerFilters.kind !== 'all' && task.job !== historyManagerFilters.kind) return false;
-            if (historyManagerFilters.state !== 'all') {
-                if (historyManagerFilters.state === 'error') {
+        const visible = historyState.historyTasks.filter((task) => {
+            if (historyState.historyManagerFilters.kind !== 'all' && task.job !== historyState.historyManagerFilters.kind) return false;
+            if (historyState.historyManagerFilters.state !== 'all') {
+                if (historyState.historyManagerFilters.state === 'error') {
                     if (!['error', 'interrupted'].includes(task.state)) return false;
-                } else if (task.state !== historyManagerFilters.state) {
+                } else if (task.state !== historyState.historyManagerFilters.state) {
                     return false;
                 }
             }
             const archived = historyTaskIsArchived(task);
-            if (historyManagerFilters.archived === 'active' && archived) return false;
-            if (historyManagerFilters.archived === 'archived' && !archived) return false;
-            if (!historyTaskMatchesSourceFilter(task, historyManagerFilters.source)) return false;
+            if (historyState.historyManagerFilters.archived === 'active' && archived) return false;
+            if (historyState.historyManagerFilters.archived === 'archived' && !archived) return false;
+            if (!historyTaskMatchesSourceFilter(task, historyState.historyManagerFilters.source)) return false;
             if (search && !historyTaskSearchText(task).includes(search)) return false;
             return true;
         });
-        visible.sort(historyTaskSortComparator(historyManagerFilters.sort));
+        visible.sort(historyTaskSortComparator(historyState.historyManagerFilters.sort));
         return visible;
     }
 
-    globalThis.historyManagerVisibleTasks = function historyManagerVisibleTasks(baseTasks) {
+    export function historyManagerVisibleTasks(baseTasks) {
         const base = baseTasks || [];
         const smartSearch = historySmartSearchTerms();
-        const collectionSearchTerms = historySearchTerms(historyCollectionSearch, smartSearch.collection);
-        const configSearchTerms = historySearchTerms(historyConfigGroupSearch, smartSearch.config);
+        const collectionSearchTerms = historySearchTerms(historyState.historyCollectionSearch, smartSearch.collection);
+        const configSearchTerms = historySearchTerms(historyState.historyConfigGroupSearch, smartSearch.config);
         const collections = historyCollectionsForWorkbench(base);
         const selectedCollection = selectedHistoryCollectionForWorkbench(collections, collectionSearchTerms);
         const visibleGroups = (selectedCollection.groups || [])
@@ -264,7 +316,7 @@ const ctx = globalThis.ctx;
         return uniqueHistoryTasks(visibleGroups.flatMap((group) => group.tasks || []));
     }
 
-    globalThis.uniqueHistoryTasks = function uniqueHistoryTasks(tasks) {
+    export function uniqueHistoryTasks(tasks) {
         const seen = new Set();
         const out = [];
         for (const task of tasks || []) {
@@ -273,11 +325,11 @@ const ctx = globalThis.ctx;
             seen.add(key);
             out.push(task);
         }
-        out.sort(historyTaskSortComparator(historyManagerFilters.sort));
+        out.sort(historyTaskSortComparator(historyState.historyManagerFilters.sort));
         return out;
     }
 
-    globalThis.historyTaskMatchesSourceFilter = function historyTaskMatchesSourceFilter(task, filter) {
+    export function historyTaskMatchesSourceFilter(task, filter) {
         if (!filter || filter === 'all') return true;
         if (filter === 'queue') return Boolean(task.from_queue || task.queue_item_id);
         if (filter === 'resume') return Boolean(task.resume_from?.source_task_id);
@@ -285,7 +337,7 @@ const ctx = globalThis.ctx;
         return true;
     }
 
-    globalThis.historyTaskSearchText = function historyTaskSearchText(task) {
+    export function historyTaskSearchText(task) {
         return [
             task.id,
             historyTaskDisplayName(task),
@@ -304,7 +356,7 @@ const ctx = globalThis.ctx;
         ].filter(Boolean).join('\n').toLowerCase();
     }
 
-    globalThis.historyTaskMatchesCollectionSearch = function historyTaskMatchesCollectionSearch(task, search) {
+    export function historyTaskMatchesCollectionSearch(task, search) {
         return [
             historyTaskCollectionLabel(task),
             historyTaskCollectionValue(task),
@@ -312,8 +364,8 @@ const ctx = globalThis.ctx;
         ].filter(Boolean).join('\n').toLowerCase().includes(search);
     }
 
-    globalThis.historySmartSearchTerms = function historySmartSearchTerms() {
-        const raw = String(historyManagerFilters.search || '').trim();
+    export function historySmartSearchTerms() {
+        const raw = String(historyState.historyManagerFilters.search || '').trim();
         const terms = { global: '', collection: '', config: '' };
         const match = raw.match(/^([^:：]+)\s*[:：]\s*(.*)$/);
         if (!match) {
@@ -333,44 +385,44 @@ const ctx = globalThis.ctx;
         return terms;
     }
 
-    globalThis.historySearchTerms = function historySearchTerms(...values) {
+    export function historySearchTerms(...values) {
         return values.map((value) => String(value || '').trim().toLowerCase()).filter(Boolean);
     }
 
-    globalThis.historySearchTextMatches = function historySearchTextMatches(text, terms) {
+    export function historySearchTextMatches(text, terms) {
         const haystack = String(text || '').toLowerCase();
         return terms.every((term) => haystack.includes(term));
     }
 
-    globalThis.historyCollectionMatchesSearch = function historyCollectionMatchesSearch(collection, terms) {
+    export function historyCollectionMatchesSearch(collection, terms) {
         if (!terms.length) return true;
         const text = historyCollectionSearchText(collection);
         const phrase = terms.join(' ');
         return historySearchTextMatches(text, terms) || Boolean(phrase && text.includes(phrase));
     }
 
-    globalThis.visibleHistoryCollectionsForSearch = function visibleHistoryCollectionsForSearch(collections, terms) {
+    export function visibleHistoryCollectionsForSearch(collections, terms) {
         return (collections || []).filter((collection) => historyCollectionMatchesSearch(collection, terms));
     }
 
-    globalThis.selectedHistoryCollectionForWorkbench = function selectedHistoryCollectionForWorkbench(collections, collectionSearchTerms = []) {
+    export function selectedHistoryCollectionForWorkbench(collections, collectionSearchTerms = []) {
         const allCollections = collections || [];
         const visibleCollections = visibleHistoryCollectionsForSearch(allCollections, collectionSearchTerms);
         if (collectionSearchTerms.length && !visibleCollections.length) {
-            selectedHistoryCollectionKey = 'collection:__search_empty__';
+            historyState.selectedHistoryCollectionKey = 'collection:__search_empty__';
             return createHistoryCollectionSearchEmptyCollection();
         }
         const candidates = collectionSearchTerms.length ? visibleCollections : allCollections;
-        const selected = historyCollectionByKey(candidates, selectedHistoryCollectionKey)
+        const selected = historyCollectionByKey(candidates, historyState.selectedHistoryCollectionKey)
             || (collectionSearchTerms.length ? candidates[0] : null)
-            || historyCollectionByKey(allCollections, selectedHistoryCollectionKey)
+            || historyCollectionByKey(allCollections, historyState.selectedHistoryCollectionKey)
             || historyCollectionByKey(allCollections, HISTORY_UNGROUPED_COLLECTION_KEY)
             || createEmptyHistoryCollection();
-        selectedHistoryCollectionKey = selected.key;
+        historyState.selectedHistoryCollectionKey = selected.key;
         return selected;
     }
 
-    globalThis.historyTaskSortComparator = function historyTaskSortComparator(mode) {
+    export function historyTaskSortComparator(mode) {
         return (a, b) => {
             if (mode === 'oldest') return (Number(a.started_at || 0) - Number(b.started_at || 0));
             if (mode === 'loss') return (Number(b.metric_count || 0) - Number(a.metric_count || 0)) || (Number(b.started_at || 0) - Number(a.started_at || 0));
@@ -380,20 +432,20 @@ const ctx = globalThis.ctx;
         };
     }
 
-    globalThis.createHistoryManagerRow = function createHistoryManagerRow(task) {
+    export function createHistoryManagerRow(task) {
         const row = document.createElement('article');
         row.className = 'history-manager-row';
-        if (viewingHistoryTaskId === task.id && isHistoryDetailDialogOpen()) row.classList.add('active');
+        if (historyState.viewingHistoryTaskId === task.id && isHistoryDetailDialogOpen()) row.classList.add('active');
         if (historyTaskIsArchived(task)) row.classList.add('archived');
 
         const select = document.createElement('label');
         select.className = 'history-row-select';
         const checkbox = document.createElement('input');
         checkbox.type = 'checkbox';
-        checkbox.checked = selectedHistoryTaskIds.has(task.id);
+        checkbox.checked = historyState.selectedHistoryTaskIds.has(task.id);
         checkbox.addEventListener('change', () => {
-            if (checkbox.checked) selectedHistoryTaskIds.add(task.id);
-            else selectedHistoryTaskIds.delete(task.id);
+            if (checkbox.checked) historyState.selectedHistoryTaskIds.add(task.id);
+            else historyState.selectedHistoryTaskIds.delete(task.id);
             renderHistoryManager();
         });
         select.appendChild(checkbox);
@@ -457,26 +509,26 @@ const ctx = globalThis.ctx;
         return row;
     }
 
-    globalThis.compactHistoryPathLabel = function compactHistoryPathLabel(value) {
+    export function compactHistoryPathLabel(value) {
         const text = String(value || '').trim();
         if (!text) return '';
         return runLabelFromPath(text) || text;
     }
 
-    globalThis.compactHistoryQueueLabel = function compactHistoryQueueLabel(task) {
+    export function compactHistoryQueueLabel(task) {
         if (!Boolean(task?.from_queue) && !String(task?.queue_item_id || '').trim()) return '';
         const attempt = Number(task?.queue_attempt || 1);
         return attempt > 1 ? `队列#${attempt}` : '队列';
     }
 
-    globalThis.compactHistoryContinueLabel = function compactHistoryContinueLabel(task) {
+    export function compactHistoryContinueLabel(task) {
         if (task?.training_mode !== 'continue_lora') return '';
         const kind = String(task.continue_from_weight_kind || 'LoRA').trim() || 'LoRA';
         const name = compactHistoryPathLabel(task.continue_from_weight_name || '');
         return name ? `续训 ${kind}:${name}` : `续训 ${kind}`;
     }
 
-    globalThis.compactHistoryResumeLabel = function compactHistoryResumeLabel(task) {
+    export function compactHistoryResumeLabel(task) {
         const resume = task?.resume_from || {};
         if (!resume || typeof resume !== 'object') return '';
         const checkpoint = compactHistoryPathLabel(resume.checkpoint_name || '');
@@ -489,7 +541,7 @@ const ctx = globalThis.ctx;
         return resume.source_task_id ? '恢复' : '';
     }
 
-    globalThis.createHistoryMoreActions = function createHistoryMoreActions(buttons) {
+    export function createHistoryMoreActions(buttons) {
         const menu = document.createElement('details');
         menu.className = 'history-more-actions';
         menu.addEventListener('click', (event) => event.stopPropagation());
@@ -506,6 +558,36 @@ const ctx = globalThis.ctx;
         return menu;
     }
 
-    globalThis.selectedHistoryConfigGroups = function selectedHistoryConfigGroups(groups) {
-        return (groups || []).filter((group) => historyTaskIds(group.tasks).some((id) => selectedHistoryTaskIds.has(id)));
+    export function selectedHistoryConfigGroups(groups) {
+        return (groups || []).filter(
+            (group) => historyTaskIds(group.tasks).some((id) => historyState.selectedHistoryTaskIds.has(id))
+        );
     }
+
+    configureHistoryCollectionsBridge({
+        renderHistoryCollectionsWorkbench,
+        renderHistoryManagerStats,
+        applyHistoryStatFilter,
+        historyStatFilterIsActive,
+        historyManagerFilteredTasks,
+        historyManagerBaseFilteredTasks,
+        historyManagerVisibleTasks,
+        uniqueHistoryTasks,
+        historyTaskMatchesSourceFilter,
+        historyTaskSearchText,
+        historyTaskMatchesCollectionSearch,
+        historySmartSearchTerms,
+        historySearchTerms,
+        historySearchTextMatches,
+        historyCollectionMatchesSearch,
+        visibleHistoryCollectionsForSearch,
+        selectedHistoryCollectionForWorkbench,
+        historyTaskSortComparator,
+        createHistoryManagerRow,
+        compactHistoryPathLabel,
+        compactHistoryQueueLabel,
+        compactHistoryContinueLabel,
+        compactHistoryResumeLabel,
+        createHistoryMoreActions,
+        selectedHistoryConfigGroups,
+    });

@@ -2,19 +2,60 @@
  * Mechanical split from the former monolithic app closure.
  * Keep this module focused; move newly edited behavior into domain modules.
  */
-const ctx = globalThis.ctx;
+import { FILE_GROUP_DROP_TARGET_ATTR } from '../helpers/app-constants.js?v=module-bootstrap-20260707-93';
+import { getDatasetState } from '../helpers/dataset-state-bridge.js?v=module-bootstrap-20260707-93';
+import {
+    beginFileGroupDrag,
+    canBeginFileGroupDrag,
+    createFileGroupPointerDragImage,
+    eventTargetClosest,
+    moveFileGroupPointerDragImage,
+    registerFileGroupDropTarget,
+    removeFileGroupDragImage,
+    setFileGroupDragData,
+} from './07-render-config-dataset-picker-dialog.js?v=module-bootstrap-20260707-93';
 
-    globalThis.originClosest = function originClosest(origin, selector) {
+const datasetState = getDatasetState();
+
+function currentFileGroupDragState() {
+    return datasetState.fileGroupDragState || null;
+}
+
+function currentFileGroupPointerDrag() {
+    return datasetState.fileGroupPointerDrag || null;
+}
+
+function currentFileGroupDropPreviewElement() {
+    return datasetState.fileGroupDropPreviewElement || null;
+}
+
+function currentFileGroupDropTargets() {
+    return datasetState.fileGroupDropTargets;
+}
+
+function currentFileGroupDropTargetNodes() {
+    return datasetState.fileGroupDropTargetNodes;
+}
+
+function currentFileGroupActiveDropTargetNode() {
+    return datasetState.fileGroupActiveDropTargetNode || null;
+}
+
+function currentFileGroupActiveDropPosition() {
+    return datasetState.fileGroupActiveDropPosition || '';
+}
+
+    function originClosest(origin, selector) {
         return origin instanceof Element ? origin.closest(selector) : null;
     }
 
-    globalThis.resolveFileGroupPointerDropTarget = function resolveFileGroupPointerDropTarget(x, y) {
-        const payload = fileGroupDragState;
+    function resolveFileGroupPointerDropTarget(x, y) {
+        const payload = currentFileGroupDragState();
         const origin = document.elementFromPoint(x, y);
         let node = origin;
         while (node && node !== document.documentElement) {
             if (node instanceof Element && node.hasAttribute(FILE_GROUP_DROP_TARGET_ATTR)) {
-                const resolve = fileGroupDropTargets.get(node);
+                const resolve = currentFileGroupDropTargets().get(node);
                 const target = resolve?.({ payload, x, y, origin });
                 if (target) return { node, ...target };
             }
@@ -23,11 +64,12 @@ const ctx = globalThis.ctx;
         return resolveNearestFileGroupDropTarget(x, y, origin, payload);
     }
 
-    globalThis.resolveNearestFileGroupDropTarget = function resolveNearestFileGroupDropTarget(x, y, origin, payload) {
+    function resolveNearestFileGroupDropTarget(x, y, origin, payload) {
         let best = null;
-        for (const node of fileGroupDropTargetNodes) {
+        const dropTargetNodes = currentFileGroupDropTargetNodes();
+        for (const node of dropTargetNodes) {
             if (!node?.isConnected || !(node instanceof Element)) {
-                fileGroupDropTargetNodes.delete(node);
+                dropTargetNodes.delete(node);
                 continue;
             }
             const rect = node.getBoundingClientRect();
@@ -37,7 +79,7 @@ const ctx = globalThis.ctx;
             const dy = y < rect.top ? rect.top - y : y > rect.bottom ? y - rect.bottom : 0;
             const distance = Math.hypot(dx, dy);
             if (distance > maxDistance) continue;
-            const resolve = fileGroupDropTargets.get(node);
+            const resolve = currentFileGroupDropTargets().get(node);
             const target = resolve?.({ payload, x, y, origin });
             if (!target) continue;
             if (!best || distance < best.distance) best = { node, distance, ...target };
@@ -47,7 +89,7 @@ const ctx = globalThis.ctx;
         return target;
     }
 
-    globalThis.markResolvedFileGroupDropTarget = function markResolvedFileGroupDropTarget(target) {
+    function markResolvedFileGroupDropTarget(target) {
         if (!target) {
             clearFileGroupDropIndicators();
             return;
@@ -58,15 +100,17 @@ const ctx = globalThis.ctx;
         markFileGroupDropTarget(target.node, target.position);
     }
 
-    globalThis.removeFileGroupDropPreview = function removeFileGroupDropPreview() {
-        if (fileGroupDropPreviewElement?.parentNode) {
-            fileGroupDropPreviewElement.parentNode.removeChild(fileGroupDropPreviewElement);
+    function removeFileGroupDropPreview() {
+        const preview = currentFileGroupDropPreviewElement();
+        if (preview?.parentNode) {
+            preview.parentNode.removeChild(preview);
         }
-        fileGroupDropPreviewElement = null;
+        datasetState.fileGroupDropPreviewElement = null;
     }
 
-    globalThis.ensureFileGroupDropPreview = function ensureFileGroupDropPreview() {
-        if (fileGroupDropPreviewElement?.isConnected) return fileGroupDropPreviewElement;
+    function ensureFileGroupDropPreview() {
+        const existingPreview = currentFileGroupDropPreviewElement();
+        if (existingPreview?.isConnected) return existingPreview;
         const preview = document.createElement('div');
         preview.className = 'file-group-drop-preview';
         preview.setAttribute('aria-hidden', 'true');
@@ -74,11 +118,11 @@ const ctx = globalThis.ctx;
         label.textContent = '释放后插入到这里';
         preview.appendChild(label);
         document.body.appendChild(preview);
-        fileGroupDropPreviewElement = preview;
+        datasetState.fileGroupDropPreviewElement = preview;
         return preview;
     }
 
-    globalThis.placeFileGroupDropPreview = function placeFileGroupDropPreview(node, position) {
+    function placeFileGroupDropPreview(node, position) {
         if (!node || position !== 'before' && position !== 'after') {
             removeFileGroupDropPreview();
             return;
@@ -95,7 +139,7 @@ const ctx = globalThis.ctx;
         preview.style.width = `${Math.max(40, rect.width - 8)}px`;
     }
 
-    globalThis.findScrollableFileGroupAncestor = function findScrollableFileGroupAncestor(origin) {
+    function findScrollableFileGroupAncestor(origin) {
         let node = origin instanceof Element ? origin : null;
         while (node && node !== document.body) {
             const style = window.getComputedStyle(node);
@@ -107,7 +151,7 @@ const ctx = globalThis.ctx;
         return document.scrollingElement;
     }
 
-    globalThis.autoScrollFileGroupPointerDrag = function autoScrollFileGroupPointerDrag(x, y) {
+    export function autoScrollFileGroupPointerDrag(x, y) {
         const origin = document.elementFromPoint(x, y);
         const scroller = findScrollableFileGroupAncestor(origin);
         if (!scroller) return;
@@ -125,8 +169,8 @@ const ctx = globalThis.ctx;
         if (delta) scroller.scrollBy({ top: delta, behavior: 'auto' });
     }
 
-    globalThis.cleanupFileGroupPointerDrag = function cleanupFileGroupPointerDrag() {
-        const drag = fileGroupPointerDrag;
+    function cleanupFileGroupPointerDrag() {
+        const drag = currentFileGroupPointerDrag();
         if (!drag) return null;
         document.removeEventListener('pointermove', drag.onMove);
         document.removeEventListener('pointerup', drag.onUp);
@@ -144,11 +188,11 @@ const ctx = globalThis.ctx;
         removeFileGroupDragImage(drag.image);
         document.body.classList.remove('file-group-pointer-drag-active');
         drag.handle?.classList.remove('dragging');
-        fileGroupPointerDrag = null;
+        datasetState.fileGroupPointerDrag = null;
         return drag;
     }
 
-    globalThis.finishFileGroupPointerDrag = function finishFileGroupPointerDrag(commit = false) {
+    function finishFileGroupPointerDrag(commit = false) {
         const drag = cleanupFileGroupPointerDrag();
         if (!drag) return;
         const target = commit && drag.active ? drag.currentDrop : null;
@@ -159,8 +203,8 @@ const ctx = globalThis.ctx;
         });
     }
 
-    globalThis.startFileGroupFallbackDrag = function startFileGroupFallbackDrag(event, payload, handle, disabled, options = {}) {
-        if (disabled || fileGroupPointerDrag) return;
+    function startFileGroupFallbackDrag(event, payload, handle, disabled, options = {}) {
+        if (disabled || currentFileGroupPointerDrag()) return;
         if ((options.pointer || options.mouse) && 'button' in event && event.button !== 0) return;
         if (options.pointer && event.isPrimary === false) return;
         event.preventDefault();
@@ -221,7 +265,7 @@ const ctx = globalThis.ctx;
         drag.onKeydown = (keyEvent) => {
             if (keyEvent.key === 'Escape') finishFileGroupPointerDrag(false);
         };
-        fileGroupPointerDrag = drag;
+        datasetState.fileGroupPointerDrag = drag;
         const addMouseFallbackListeners = () => {
             document.addEventListener('mousemove', drag.onMouseMove, { passive: false });
             document.addEventListener('mouseup', drag.onMouseUp, { passive: false });
@@ -242,33 +286,34 @@ const ctx = globalThis.ctx;
         document.addEventListener('keydown', drag.onKeydown);
     }
 
-    globalThis.startFileGroupPointerDrag = function startFileGroupPointerDrag(event, payload, handle, disabled) {
+    function startFileGroupPointerDrag(event, payload, handle, disabled) {
         startFileGroupFallbackDrag(event, payload, handle, disabled, { pointer: true });
     }
 
-    globalThis.startFileGroupMouseDrag = function startFileGroupMouseDrag(event, payload, handle, disabled) {
+    function startFileGroupMouseDrag(event, payload, handle, disabled) {
         startFileGroupFallbackDrag(event, payload, handle, disabled, { mouse: true });
     }
 
-    globalThis.markFileGroupDropTarget = function markFileGroupDropTarget(node, position) {
+    export function markFileGroupDropTarget(node, position) {
         if (!node || !position) {
             clearFileGroupDropIndicators();
             return;
         }
         const normalizedPosition = position === 'before' || position === 'after' ? position : 'inside';
-        if (fileGroupActiveDropTargetNode === node && fileGroupActiveDropPosition === normalizedPosition) {
+        if (currentFileGroupActiveDropTargetNode() === node
+            && currentFileGroupActiveDropPosition() === normalizedPosition) {
             node.classList.add(`file-group-drop-${normalizedPosition}`);
             placeFileGroupDropPreview(node, normalizedPosition);
             return;
         }
         clearFileGroupDropIndicators({ keepPreview: true });
-        fileGroupActiveDropTargetNode = node;
-        fileGroupActiveDropPosition = normalizedPosition;
+        datasetState.fileGroupActiveDropTargetNode = node;
+        datasetState.fileGroupActiveDropPosition = normalizedPosition;
         node.classList.add(`file-group-drop-${normalizedPosition}`);
         placeFileGroupDropPreview(node, normalizedPosition);
     }
 
-    globalThis.createFileGroupDragHandle = function createFileGroupDragHandle(payload, options = {}) {
+    export function createFileGroupDragHandle(payload, options = {}) {
         const handle = document.createElement('button');
         const disabled = Boolean(options.disabled);
         handle.type = 'button';
@@ -288,7 +333,7 @@ const ctx = globalThis.ctx;
             startFileGroupMouseDrag(event, payload, handle, disabled);
         });
         handle.addEventListener('dragstart', (event) => {
-            if (fileGroupPointerDrag) {
+            if (currentFileGroupPointerDrag()) {
                 event.preventDefault();
                 event.stopPropagation();
                 return;
@@ -308,24 +353,24 @@ const ctx = globalThis.ctx;
         return handle;
     }
 
-    globalThis.finishFileGroupDrag = function finishFileGroupDrag() {
-        fileGroupDragState?.sourceElement?.classList.remove('file-group-dragging');
-        fileGroupDragState = null;
+    export function finishFileGroupDrag() {
+        currentFileGroupDragState()?.sourceElement?.classList.remove('file-group-dragging');
+        datasetState.fileGroupDragState = null;
         clearFileGroupDropIndicators();
     }
 
-    globalThis.clearFileGroupDropIndicators = function clearFileGroupDropIndicators(options = {}) {
+    function clearFileGroupDropIndicators(options = {}) {
         if (!options.keepPreview) {
             removeFileGroupDropPreview();
         }
         document.querySelectorAll('.file-group-drop-before, .file-group-drop-after, .file-group-drop-inside').forEach((node) => {
             node.classList.remove('file-group-drop-before', 'file-group-drop-after', 'file-group-drop-inside');
         });
-        fileGroupActiveDropTargetNode = null;
-        fileGroupActiveDropPosition = '';
+        datasetState.fileGroupActiveDropTargetNode = null;
+        datasetState.fileGroupActiveDropPosition = '';
     }
 
-    globalThis.configFileDropIndex = function configFileDropIndex(group, targetFile, placeAfter, draggedFile) {
+    function configFileDropIndex(group, targetFile, placeAfter, draggedFile) {
         const files = (group?.files || [])
             .map((item) => item?.path)
             .filter((path) => path && path !== draggedFile);
@@ -334,7 +379,7 @@ const ctx = globalThis.ctx;
         return targetIndex + (placeAfter ? 1 : 0);
     }
 
-    globalThis.configGroupDropIndex = function configGroupDropIndex(groups, targetGroupId, placeAfter, draggedGroupId) {
+    export function configGroupDropIndex(groups, targetGroupId, placeAfter, draggedGroupId) {
         const ids = (groups || [])
             .map((group) => group?.id)
             .filter((id) => id && id !== draggedGroupId);
@@ -343,12 +388,12 @@ const ctx = globalThis.ctx;
         return targetIndex + (placeAfter ? 1 : 0);
     }
 
-    globalThis.fileGroupContainsRelatedTarget = function fileGroupContainsRelatedTarget(node, event) {
+    export function fileGroupContainsRelatedTarget(node, event) {
         const related = event?.relatedTarget;
         return related instanceof Node && node.contains(related);
     }
 
-    globalThis.setupFileGroupRowDropTarget = function setupFileGroupRowDropTarget(row, group, targetFile, options) {
+    export function setupFileGroupRowDropTarget(row, group, targetFile, options) {
         registerFileGroupDropTarget(row, ({ payload, y }) => {
             if (!payload || payload.target !== 'file' || payload.scope !== options.scope) return null;
             if (payload.file === targetFile && payload.groupId === group?.id) return null;
@@ -365,7 +410,7 @@ const ctx = globalThis.ctx;
             };
         });
         const updateDropTarget = (event) => {
-            const payload = fileGroupDragState;
+            const payload = currentFileGroupDragState();
             if (!payload || payload.target !== 'file' || payload.scope !== options.scope) return;
             if (payload.file === targetFile && payload.groupId === group?.id) return;
             if (!options.canDropToGroup(group, payload)) return;
@@ -384,7 +429,7 @@ const ctx = globalThis.ctx;
             row.classList.remove('file-group-drop-before', 'file-group-drop-after');
         });
         row.addEventListener('drop', async (event) => {
-            const payload = fileGroupDragState;
+            const payload = currentFileGroupDragState();
             if (!payload || payload.target !== 'file' || payload.scope !== options.scope) return;
             if (payload.file === targetFile && payload.groupId === group?.id) return;
             if (!options.canDropToGroup(group, payload)) return;
@@ -397,7 +442,7 @@ const ctx = globalThis.ctx;
         });
     }
 
-    globalThis.setupFileGroupListDropTarget = function setupFileGroupListDropTarget(list, group, options) {
+    export function setupFileGroupListDropTarget(list, group, options) {
         registerFileGroupDropTarget(list, ({ payload, origin }) => {
             if (!payload || payload.target !== 'file' || payload.scope !== options.scope) return null;
             if (originClosest(origin, options.rowSelector)) return null;
@@ -411,7 +456,7 @@ const ctx = globalThis.ctx;
             };
         });
         const updateDropTarget = (event) => {
-            const payload = fileGroupDragState;
+            const payload = currentFileGroupDragState();
             if (!payload || payload.target !== 'file' || payload.scope !== options.scope) return;
             if (eventTargetClosest(event, options.rowSelector)) return;
             if (!options.canDropToGroup(group, payload)) return;
@@ -427,7 +472,7 @@ const ctx = globalThis.ctx;
             list.classList.remove('file-group-drop-inside');
         });
         list.addEventListener('drop', async (event) => {
-            const payload = fileGroupDragState;
+            const payload = currentFileGroupDragState();
             if (!payload || payload.target !== 'file' || payload.scope !== options.scope) return;
             if (eventTargetClosest(event, options.rowSelector)) return;
             if (!options.canDropToGroup(group, payload)) return;
@@ -439,7 +484,7 @@ const ctx = globalThis.ctx;
         });
     }
 
-    globalThis.setupFileGroupHeaderDropTarget = function setupFileGroupHeaderDropTarget(node, group, options) {
+    export function setupFileGroupHeaderDropTarget(node, group, options) {
         registerFileGroupDropTarget(node, ({ payload }) => {
             if (!payload || payload.target !== 'file' || payload.scope !== options.scope) return null;
             if (!options.canDropToGroup(group, payload)) return null;
@@ -452,7 +497,7 @@ const ctx = globalThis.ctx;
             };
         });
         const updateDropTarget = (event) => {
-            const payload = fileGroupDragState;
+            const payload = currentFileGroupDragState();
             if (!payload || payload.target !== 'file' || payload.scope !== options.scope) return;
             if (!options.canDropToGroup(group, payload)) return;
             event.preventDefault();
@@ -467,7 +512,7 @@ const ctx = globalThis.ctx;
             node.classList.remove('file-group-drop-inside');
         });
         node.addEventListener('drop', async (event) => {
-            const payload = fileGroupDragState;
+            const payload = currentFileGroupDragState();
             if (!payload || payload.target !== 'file' || payload.scope !== options.scope) return;
             if (!options.canDropToGroup(group, payload)) return;
             event.preventDefault();

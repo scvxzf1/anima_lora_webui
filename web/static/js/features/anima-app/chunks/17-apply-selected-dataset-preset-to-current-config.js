@@ -2,10 +2,48 @@
  * Mechanical split from the former monolithic app closure.
  * Keep this module focused; move newly edited behavior into domain modules.
  */
-const ctx = globalThis.ctx;
+import {
+    datasetRowsForPayload,
+    normalizeDatasetDefaults,
+    normalizeDatasetEditorRows,
+} from '../helpers/dataset-values.js?v=module-bootstrap-20260707-93';
+import {
+    datasetPresetByFile,
+    datasetPresetSummaryByFile,
+} from '../helpers/dataset-presets.js?v=module-bootstrap-20260707-93';
+import { getConfigState } from '../helpers/config-state-bridge.js?v=module-bootstrap-20260707-93';
+import { getDatasetState } from '../helpers/dataset-state-bridge.js?v=module-bootstrap-20260707-93';
+import { configureDatasetPresetActionsBridge } from '../helpers/dataset-preset-actions-bridge.js?v=module-bootstrap-20260707-93';
+import {
+    renderDatasetEditor,
+    renderDatasetPresetHeader,
+    renderDatasetPresetList,
+} from '../helpers/dataset-render-bridge.js?v=module-bootstrap-20260707-93';
+import { showHistoryTaskInputDialog } from '../helpers/history-task-actions-bridge.js?v=module-bootstrap-20260707-93';
+import { confirmUnsavedDiscard, currentTomlEditorContentForFile, showAppConfirmDialog } from '../helpers/toml-selection-bridge.js?v=module-bootstrap-20260707-93';
+import { api, datasetPresetApi, val } from '../helpers/runtime-bridge.js?v=module-bootstrap-20260707-93';
+import { getTomlState } from '../helpers/toml-state-bridge.js?v=module-bootstrap-20260707-93';
+import { loadDatasetPreset, loadDatasetPresets, loadStepEstimate } from './03-parse-network-arg-entry.js?v=module-bootstrap-20260707-93';
+import { renderConfigDatasetPicker } from './06-stronger-selective-checkpoint-value.js?v=module-bootstrap-20260707-93';
+import {
+    setTomlStatus,
+} from '../helpers/toml-action-state-bridge.js?v=module-bootstrap-20260707-93';
 
-    globalThis.applySelectedDatasetPresetToCurrentConfig = async function applySelectedDatasetPresetToCurrentConfig(file) {
-        const nextDataset = selectedConfigDatasetFile || '';
+const configState = getConfigState();
+const datasetState = getDatasetState();
+const tomlState = getTomlState();
+
+function currentConfigState() {
+    return configState.currentConfig || {};
+}
+
+function currentDatasetPresetState() {
+    return datasetState.datasetPresetState || {};
+}
+
+    export async function applySelectedDatasetPresetToCurrentConfig(file) {
+        const currentConfig = currentConfigState();
+        const nextDataset = datasetState.selectedConfigDatasetFile || '';
         const currentDataset = currentConfig.dataset_config || '';
         if (!nextDataset || nextDataset === currentDataset) {
             if (!nextDataset && currentDataset) {
@@ -21,11 +59,11 @@ const ctx = globalThis.ctx;
                     setTomlStatus('error', res.error || '清除数据集预设失败');
                     return null;
                 }
-                if (typeof res.content === 'string' && file === (currentTomlFile || val('toml-file-select'))) {
+                if (typeof res.content === 'string' && file === (tomlState.currentTomlFile || val('toml-file-select'))) {
                     const editor = document.getElementById('toml-editor');
                     if (editor) {
                         editor.value = res.content;
-                        tomlSavedContent = res.content;
+                        tomlState.tomlSavedContent = res.content;
                     }
                 }
                 currentConfig.dataset_config = '';
@@ -46,11 +84,11 @@ const ctx = globalThis.ctx;
                 setTomlStatus('error', res.error || '应用数据集预设失败');
                 return null;
             }
-            if (typeof res.train_content === 'string' && file === (currentTomlFile || val('toml-file-select'))) {
+            if (typeof res.train_content === 'string' && file === (tomlState.currentTomlFile || val('toml-file-select'))) {
                 const editor = document.getElementById('toml-editor');
                 if (editor) {
                     editor.value = res.train_content;
-                    tomlSavedContent = res.train_content;
+                    tomlState.tomlSavedContent = res.train_content;
                 }
             }
             currentConfig.dataset_config = res.dataset_config || nextDataset;
@@ -65,7 +103,8 @@ const ctx = globalThis.ctx;
         }
     }
 
-    globalThis.saveDatasetPresetEditor = async function saveDatasetPresetEditor() {
+    export async function saveDatasetPresetEditor() {
+        const datasetPresetState = currentDatasetPresetState();
         if (datasetPresetState.readonly) {
             setDatasetPresetStatus('系统数据集预设只读，请复制后编辑', 'error');
             return null;
@@ -104,14 +143,14 @@ const ctx = globalThis.ctx;
                 }),
             });
             if (!res.ok) {
-                datasetPresetState.loading = false;
+                datasetState.datasetPresetState.loading = false;
                 renderDatasetPresetList();
                 renderDatasetPresetHeader();
                 renderDatasetEditor();
                 setDatasetPresetStatus(res.error || '保存数据集预设失败', 'error');
                 return null;
             }
-            datasetPresetState = {
+            datasetState.datasetPresetState = {
                 ...datasetPresetState,
                 loading: false,
                 selectedFile: res.file || file,
@@ -130,15 +169,15 @@ const ctx = globalThis.ctx;
                 setDatasetPresetStatus(message, 'warn');
                 return res;
             }
-            await loadDatasetPreset(datasetPresetState.selectedFile);
+            await loadDatasetPreset(datasetState.datasetPresetState.selectedFile);
             setDatasetPresetStatus(res.message || '已保存数据集预设', 'ok');
-            if (selectedConfigDatasetFile === datasetPresetState.selectedFile) {
-                selectedConfigDatasetSummary = datasetPresetSummaryByFile(selectedConfigDatasetFile);
+            if (datasetState.selectedConfigDatasetFile === datasetState.datasetPresetState.selectedFile) {
+                datasetState.selectedConfigDatasetSummary = datasetPresetSummaryByFile(datasetState.selectedConfigDatasetFile);
                 await loadStepEstimate();
             }
             return res;
         } catch (e) {
-            datasetPresetState.loading = false;
+            datasetState.datasetPresetState.loading = false;
             renderDatasetPresetList();
             renderDatasetPresetHeader();
             renderDatasetEditor();
@@ -147,7 +186,8 @@ const ctx = globalThis.ctx;
         }
     }
 
-    globalThis.createNewDatasetPreset = async function createNewDatasetPreset() {
+    export async function createNewDatasetPreset() {
+        const datasetPresetState = currentDatasetPresetState();
         if (datasetPresetState.dirty && !(await confirmUnsavedDiscard('当前数据集预设有未保存修改，新建会丢弃这些修改。是否继续？'))) return;
         const name = await showDatasetPresetNameDialog({
             title: '新建数据集预设',
@@ -160,7 +200,7 @@ const ctx = globalThis.ctx;
             setDatasetPresetStatus('数据集预设已存在，请换一个名称或使用复制/重命名', 'error');
             return;
         }
-        datasetPresetState = {
+        datasetState.datasetPresetState = {
             ...datasetPresetState,
             selectedFile: nextFile,
             datasets: normalizeDatasetEditorRows([{
@@ -182,7 +222,8 @@ const ctx = globalThis.ctx;
         renderDatasetEditor();
     }
 
-    globalThis.copyDatasetPreset = async function copyDatasetPreset() {
+    export async function copyDatasetPreset() {
+        const datasetPresetState = currentDatasetPresetState();
         if (!datasetPresetState.selectedFile) return;
         const name = await showDatasetPresetNameDialog({
             title: '复制数据集预设',
@@ -214,7 +255,8 @@ const ctx = globalThis.ctx;
         }
     }
 
-    globalThis.renameDatasetPreset = async function renameDatasetPreset() {
+    export async function renameDatasetPreset() {
+        const datasetPresetState = currentDatasetPresetState();
         const oldFile = datasetPresetState.selectedFile;
         if (!oldFile || datasetPresetState.readonly) return;
         const name = await showDatasetPresetNameDialog({
@@ -234,7 +276,7 @@ const ctx = globalThis.ctx;
                 setDatasetPresetStatus(del.error || '新预设已保存，但旧预设删除失败', 'error');
                 return;
             }
-            if (selectedConfigDatasetFile === oldFile) selectedConfigDatasetFile = nextFile;
+            if (datasetState.selectedConfigDatasetFile === oldFile) datasetState.selectedConfigDatasetFile = nextFile;
             await loadDatasetPresets({ selectCurrent: false, manage: true });
             await loadDatasetPreset(nextFile);
             renderConfigDatasetPicker();
@@ -244,7 +286,8 @@ const ctx = globalThis.ctx;
         }
     }
 
-    globalThis.copyDatasetPresetToName = async function copyDatasetPresetToName(name) {
+    export async function copyDatasetPresetToName(name) {
+        const datasetPresetState = currentDatasetPresetState();
         try {
             const res = await datasetPresetApi('/api/config/dataset-presets/save-as', {
                 method: 'POST',
@@ -265,7 +308,8 @@ const ctx = globalThis.ctx;
         }
     }
 
-    globalThis.deleteDatasetPreset = async function deleteDatasetPreset() {
+    export async function deleteDatasetPreset() {
+        const datasetPresetState = currentDatasetPresetState();
         const file = datasetPresetState.selectedFile;
         if (!file || datasetPresetState.readonly) return;
         const ok = await showAppConfirmDialog({
@@ -282,12 +326,12 @@ const ctx = globalThis.ctx;
                 setDatasetPresetStatus(res.error || '删除数据集预设失败', 'error');
                 return;
             }
-            if (selectedConfigDatasetFile === file) {
-                selectedConfigDatasetFile = '';
-                selectedConfigDatasetSummary = null;
+            if (datasetState.selectedConfigDatasetFile === file) {
+                datasetState.selectedConfigDatasetFile = '';
+                datasetState.selectedConfigDatasetSummary = null;
             }
-            datasetPresetState.selectedFile = '';
-            datasetPresetState.dirty = false;
+            datasetState.datasetPresetState.selectedFile = '';
+            datasetState.datasetPresetState.dirty = false;
             await loadDatasetPresets({ selectCurrent: false, manage: true });
             renderConfigDatasetPicker();
             setDatasetPresetStatus('已删除数据集预设', 'ok');
@@ -296,11 +340,11 @@ const ctx = globalThis.ctx;
         }
     }
 
-    globalThis.importDatasetPreset = function importDatasetPreset() {
+    export function importDatasetPreset() {
         document.getElementById('dataset-import-input')?.click();
     }
 
-    globalThis.handleDatasetPresetImport = async function handleDatasetPresetImport(event) {
+    export async function handleDatasetPresetImport(event) {
         const fileInput = event.target;
         const file = fileInput.files?.[0];
         if (!file) return;
@@ -313,8 +357,8 @@ const ctx = globalThis.ctx;
                 confirmText: '导入预设',
             });
             if (name === null) return;
-            datasetPresetState.loading = true;
-            datasetPresetState.error = '';
+            datasetState.datasetPresetState.loading = true;
+            datasetState.datasetPresetState.error = '';
             renderDatasetPresetList();
             renderDatasetPresetHeader();
             renderDatasetEditor();
@@ -324,15 +368,15 @@ const ctx = globalThis.ctx;
                 body: JSON.stringify({ name, content }),
             });
             if (!res.ok) {
-                datasetPresetState.loading = false;
+                datasetState.datasetPresetState.loading = false;
                 renderDatasetPresetList();
                 renderDatasetPresetHeader();
                 renderDatasetEditor();
                 setDatasetPresetStatus(res.error || '导入数据集预设失败', 'error');
                 return;
             }
-            datasetPresetState = {
-                ...datasetPresetState,
+            datasetState.datasetPresetState = {
+                ...currentDatasetPresetState(),
                 loading: false,
                 dirty: false,
                 isNew: false,
@@ -350,7 +394,7 @@ const ctx = globalThis.ctx;
             await loadDatasetPreset(res.file || target);
             setDatasetPresetStatus('已导入数据集预设', 'ok');
         } catch (e) {
-            datasetPresetState.loading = false;
+            datasetState.datasetPresetState.loading = false;
             renderDatasetPresetList();
             renderDatasetPresetHeader();
             renderDatasetEditor();
@@ -360,8 +404,8 @@ const ctx = globalThis.ctx;
         }
     }
 
-    globalThis.exportDatasetPreset = async function exportDatasetPreset() {
-        const file = datasetPresetState.selectedFile;
+    export async function exportDatasetPreset() {
+        const file = currentDatasetPresetState().selectedFile;
         if (!file) return;
         try {
             const data = await datasetPresetApi(`/api/config/dataset-presets/read?file=${encodeURIComponent(file)}`);
@@ -384,7 +428,7 @@ const ctx = globalThis.ctx;
         }
     }
 
-    globalThis.datasetPresetPathFromName = function datasetPresetPathFromName(name) {
+    export function datasetPresetPathFromName(name) {
         const stem = String(name || '')
             .replace(/\.toml$/i, '')
             .replace(/\\/g, '/')
@@ -395,7 +439,7 @@ const ctx = globalThis.ctx;
         return `configs/datasets/${stem}.toml`;
     }
 
-    globalThis.showDatasetPresetNameDialog = async function showDatasetPresetNameDialog(options = {}) {
+    export async function showDatasetPresetNameDialog(options = {}) {
         const name = await showHistoryTaskInputDialog({
             title: options.title || '数据集预设名称',
             description: options.description || '请输入数据集预设名称。',
@@ -413,8 +457,8 @@ const ctx = globalThis.ctx;
         return clean;
     }
 
-    globalThis.setDatasetPresetStatus = function setDatasetPresetStatus(message, level = '') {
-        datasetPresetState.status = message || '';
+    export function setDatasetPresetStatus(message, level = '') {
+        datasetState.datasetPresetState.status = message || '';
         const header = document.getElementById('dataset-preset-header');
         if (!header) return;
         let status = header.querySelector('.dataset-preset-status');
@@ -427,7 +471,7 @@ const ctx = globalThis.ctx;
         status.className = ['dataset-preset-status', level].filter(Boolean).join(' ');
     }
 
-    globalThis.createDatasetPresetGroup = async function createDatasetPresetGroup() {
+    export async function createDatasetPresetGroup() {
         const label = await showHistoryTaskInputDialog({
             title: '新建数据集分组',
             description: '只用于整理 configs/datasets 下的数据集预设，不会修改训练配置内容。',
@@ -460,7 +504,7 @@ const ctx = globalThis.ctx;
         }
     }
 
-    globalThis.renameDatasetPresetGroup = async function renameDatasetPresetGroup(group) {
+    export async function renameDatasetPresetGroup(group) {
         if (!group?.id || !group.renamable) return;
         const label = await showHistoryTaskInputDialog({
             title: '重命名数据集分组',
@@ -490,3 +534,21 @@ const ctx = globalThis.ctx;
             setDatasetPresetStatus('重命名数据集分组失败: ' + e.message, 'error');
         }
     }
+
+configureDatasetPresetActionsBridge({
+    applySelectedDatasetPresetToCurrentConfig,
+    saveDatasetPresetEditor,
+    createNewDatasetPreset,
+    copyDatasetPreset,
+    renameDatasetPreset,
+    copyDatasetPresetToName,
+    deleteDatasetPreset,
+    importDatasetPreset,
+    handleDatasetPresetImport,
+    exportDatasetPreset,
+    datasetPresetPathFromName,
+    showDatasetPresetNameDialog,
+    setDatasetPresetStatus,
+    createDatasetPresetGroup,
+    renameDatasetPresetGroup,
+});

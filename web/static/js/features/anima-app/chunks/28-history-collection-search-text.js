@@ -2,9 +2,34 @@
  * Mechanical split from the former monolithic app closure.
  * Keep this module focused; move newly edited behavior into domain modules.
  */
-const ctx = globalThis.ctx;
+import {
+    HISTORY_CONFIG_GROUP_DRAG_MIME,
+    HISTORY_TASK_DRAG_MIME,
+    HISTORY_UNGROUPED_COLLECTION_KEY,
+} from '../helpers/app-constants.js?v=module-bootstrap-20260707-93';
+import {
+    closeHistoryDropPopover,
+    configureHistoryCollectionDragBridge,
+    historyDraggedTasksAlreadyInCollection,
+    reorderHistoryConfigGroupValue,
+    setHistoryDropFeedback,
+} from '../helpers/history-collection-drag-bridge.js?v=module-bootstrap-20260707-93';
+import {
+    applyHistoryTaskIdsToCollection,
+    configureHistoryCollectionsBridge,
+    configGroupKey,
+    enrichHistoryCollection,
+    groupHistoryTasksByCollection,
+    historyCollectionComparator,
+    historyCollectionStorageKey,
+    historyGroupDisplayLabel,
+    historyTaskSearchText,
+    historyTaskIds,
+} from '../helpers/history-collections-bridge.js?v=module-bootstrap-20260707-93';
+import { renderHistoryManager, uniqueStringList } from '../helpers/history-list-bridge.js?v=module-bootstrap-20260707-93';
 
-    globalThis.historyCollectionSearchText = function historyCollectionSearchText(collection) {
+
+    export function historyCollectionSearchText(collection) {
         return [
             collection.label,
             collection.value,
@@ -14,7 +39,7 @@ const ctx = globalThis.ctx;
         ].filter(Boolean).join('\n').toLowerCase();
     }
 
-    globalThis.historyConfigGroupSearchText = function historyConfigGroupSearchText(group) {
+    export function historyConfigGroupSearchText(group) {
         return [
             historyGroupDisplayLabel(group),
             group.source_label,
@@ -24,7 +49,7 @@ const ctx = globalThis.ctx;
         ].filter(Boolean).join('\n').toLowerCase();
     }
 
-    globalThis.createEmptyHistoryCollection = function createEmptyHistoryCollection(value = '') {
+    export function createEmptyHistoryCollection(value = '') {
         const clean = String(value || '').trim();
         return enrichHistoryCollection({
             key: clean ? `collection:${clean}` : HISTORY_UNGROUPED_COLLECTION_KEY,
@@ -35,7 +60,7 @@ const ctx = globalThis.ctx;
         });
     }
 
-    globalThis.createHistoryCollectionSearchEmptyCollection = function createHistoryCollectionSearchEmptyCollection() {
+    export function createHistoryCollectionSearchEmptyCollection() {
         return enrichHistoryCollection({
             key: 'collection:__search_empty__',
             label: '无匹配分组',
@@ -45,7 +70,7 @@ const ctx = globalThis.ctx;
         });
     }
 
-    globalThis.normalizeHistoryCollectionForWorkbench = function normalizeHistoryCollectionForWorkbench(collection) {
+    export function normalizeHistoryCollectionForWorkbench(collection) {
         const clean = String(collection?.value || '').trim();
         return enrichHistoryCollection({
             ...(collection || {}),
@@ -57,7 +82,7 @@ const ctx = globalThis.ctx;
         });
     }
 
-    globalThis.historyCollectionsForWorkbench = function historyCollectionsForWorkbench(tasks) {
+    export function historyCollectionsForWorkbench(tasks) {
         const byKey = new Map();
         for (const collection of groupHistoryTasksByCollection(tasks || [])) {
             const normalized = normalizeHistoryCollectionForWorkbench(collection);
@@ -77,7 +102,7 @@ const ctx = globalThis.ctx;
         return Array.from(byKey.values()).sort(historyCollectionComparator);
     }
 
-    globalThis.historyCollectionSelectOptions = function historyCollectionSelectOptions() {
+    export function historyCollectionSelectOptions() {
         const collections = historyCollectionsForWorkbench(historyTasks);
         return collections.map((collection) => ({
             key: collection.key,
@@ -89,7 +114,7 @@ const ctx = globalThis.ctx;
         }));
     }
 
-    globalThis.historyCollectionOptionSearchText = function historyCollectionOptionSearchText(item) {
+    export function historyCollectionOptionSearchText(item) {
         return [
             item.label,
             item.value,
@@ -97,7 +122,7 @@ const ctx = globalThis.ctx;
         ].filter(Boolean).join('\n').toLowerCase();
     }
 
-    globalThis.historyCollectionsPanelTitle = function historyCollectionsPanelTitle(titleText, metaText) {
+    export function historyCollectionsPanelTitle(titleText, metaText) {
         const title = document.createElement('div');
         title.className = 'history-collections-panel-title';
         const titleEl = document.createElement('strong');
@@ -108,7 +133,7 @@ const ctx = globalThis.ctx;
         return title;
     }
 
-    globalThis.createHistoryCollectionsToolbarButton = function createHistoryCollectionsToolbarButton(label, handler, disabled = false, tone = '') {
+    export function createHistoryCollectionsToolbarButton(label, handler, disabled = false, tone = '') {
         const btn = document.createElement('button');
         btn.type = 'button';
         btn.className = ['task-history-action', tone].filter(Boolean).join(' ');
@@ -121,12 +146,12 @@ const ctx = globalThis.ctx;
         return btn;
     }
 
-    globalThis.stopHistoryGroupButtonPropagation = function stopHistoryGroupButtonPropagation(button) {
+    export function stopHistoryGroupButtonPropagation(button) {
         button.addEventListener('click', (event) => event.stopPropagation(), { capture: true });
         return button;
     }
 
-    globalThis.historyDragTaskIdsForGroup = function historyDragTaskIdsForGroup(group) {
+    export function historyDragTaskIdsForGroup(group) {
         const groupIds = historyTaskIds(group?.tasks || []);
         const visible = new Set(historyCurrentVisibleTaskIds);
         const selectedIds = Array.from(selectedHistoryTaskIds)
@@ -137,7 +162,7 @@ const ctx = globalThis.ctx;
         return groupIds;
     }
 
-    globalThis.createHistoryDragImage = function createHistoryDragImage(count) {
+    export function createHistoryDragImage(count) {
         removeHistoryDragImage();
         const image = document.createElement('div');
         image.className = 'history-drag-image';
@@ -147,18 +172,18 @@ const ctx = globalThis.ctx;
         return image;
     }
 
-    globalThis.removeHistoryDragImage = function removeHistoryDragImage() {
+    export function removeHistoryDragImage() {
         if (historyDragImageElement?.parentNode) {
             historyDragImageElement.parentNode.removeChild(historyDragImageElement);
         }
         historyDragImageElement = null;
     }
 
-    globalThis.canBeginHistoryConfigGroupDrag = function canBeginHistoryConfigGroupDrag(group) {
+    export function canBeginHistoryConfigGroupDrag(group) {
         return Boolean(!historyDragState.pending && !historyConfigGroupSortState.pending && historyTaskIds(group?.tasks || []).length);
     }
 
-    globalThis.beginHistoryConfigGroupDrag = function beginHistoryConfigGroupDrag(event, group, options = {}) {
+    export function beginHistoryConfigGroupDrag(event, group, options = {}) {
         if (historyDragState.pending) {
             event.preventDefault();
             return;
@@ -205,7 +230,7 @@ const ctx = globalThis.ctx;
         document.querySelector('.history-collections-workbench')?.classList.add('dragging');
     }
 
-    globalThis.finishHistoryDrag = function finishHistoryDrag() {
+    export function finishHistoryDrag() {
         removeHistoryDragImage();
         removeHistoryConfigGroupDropPreview();
         historyDragState.active = false;
@@ -229,7 +254,7 @@ const ctx = globalThis.ctx;
         document.querySelector('.history-collections-workbench')?.classList.remove('dragging');
     }
 
-    globalThis.readHistoryDraggedConfigGroup = function readHistoryDraggedConfigGroup(event) {
+    export function readHistoryDraggedConfigGroup(event) {
         try {
             const raw = event?.dataTransfer?.getData(HISTORY_CONFIG_GROUP_DRAG_MIME);
             if (raw) {
@@ -248,20 +273,20 @@ const ctx = globalThis.ctx;
         };
     }
 
-    globalThis.historyConfigGroupDropPosition = function historyConfigGroupDropPosition(event, element) {
+    export function historyConfigGroupDropPosition(event, element) {
         const rect = element?.getBoundingClientRect?.();
         if (!rect) return 'after';
         return Number(event?.clientY || 0) < rect.top + (rect.height / 2) ? 'before' : 'after';
     }
 
-    globalThis.removeHistoryConfigGroupDropPreview = function removeHistoryConfigGroupDropPreview() {
+    export function removeHistoryConfigGroupDropPreview() {
         if (historyConfigGroupDropPreviewElement?.parentNode) {
             historyConfigGroupDropPreviewElement.parentNode.removeChild(historyConfigGroupDropPreviewElement);
         }
         historyConfigGroupDropPreviewElement = null;
     }
 
-    globalThis.ensureHistoryConfigGroupDropPreview = function ensureHistoryConfigGroupDropPreview() {
+    export function ensureHistoryConfigGroupDropPreview() {
         if (historyConfigGroupDropPreviewElement?.isConnected) return historyConfigGroupDropPreviewElement;
         const preview = document.createElement('div');
         preview.className = 'history-config-group-drop-preview';
@@ -273,7 +298,7 @@ const ctx = globalThis.ctx;
         return preview;
     }
 
-    globalThis.placeHistoryConfigGroupDropPreview = function placeHistoryConfigGroupDropPreview(element, position) {
+    export function placeHistoryConfigGroupDropPreview(element, position) {
         const parent = element?.parentElement;
         if (!parent) return;
         const preview = ensureHistoryConfigGroupDropPreview();
@@ -288,7 +313,7 @@ const ctx = globalThis.ctx;
         if (preview.parentElement !== parent) parent.appendChild(preview);
     }
 
-    globalThis.setHistoryConfigGroupSortTarget = function setHistoryConfigGroupSortTarget(targetKey, position, element) {
+    export function setHistoryConfigGroupSortTarget(targetKey, position, element) {
         historyConfigGroupSortState.activeDropTarget = `config-sort:${targetKey || ''}`;
         historyConfigGroupSortState.dropPosition = position === 'before' ? 'before' : 'after';
         document.querySelectorAll('.history-config-group-card.config-sort-active').forEach((item) => {
@@ -301,7 +326,7 @@ const ctx = globalThis.ctx;
         placeHistoryConfigGroupDropPreview(element, historyConfigGroupSortState.dropPosition);
     }
 
-    globalThis.clearHistoryConfigGroupSortTarget = function clearHistoryConfigGroupSortTarget(targetKey, element) {
+    export function clearHistoryConfigGroupSortTarget(targetKey, element) {
         if (historyConfigGroupSortState.activeDropTarget === `config-sort:${targetKey || ''}`) {
             historyConfigGroupSortState.activeDropTarget = '';
             removeHistoryConfigGroupDropPreview();
@@ -309,7 +334,7 @@ const ctx = globalThis.ctx;
         element?.classList.remove('config-sort-active', 'config-sort-before', 'config-sort-after');
     }
 
-    globalThis.clearHistoryConfigGroupSortIndicators = function clearHistoryConfigGroupSortIndicators() {
+    export function clearHistoryConfigGroupSortIndicators() {
         historyConfigGroupSortState.activeDropTarget = '';
         removeHistoryConfigGroupDropPreview();
         document.querySelectorAll('.history-config-group-card.config-sort-active').forEach((item) => {
@@ -317,7 +342,7 @@ const ctx = globalThis.ctx;
         });
     }
 
-    globalThis.historyConfigGroupOrderDragEnter = function historyConfigGroupOrderDragEnter(event, group, element, options = {}) {
+    export function historyConfigGroupOrderDragEnter(event, group, element, options = {}) {
         if (!historyConfigGroupSortState.active || historyConfigGroupSortState.pending) return false;
         const source = readHistoryDraggedConfigGroup(event);
         const targetKey = configGroupKey(group);
@@ -331,7 +356,7 @@ const ctx = globalThis.ctx;
         return true;
     }
 
-    globalThis.historyConfigGroupOrderDragLeave = function historyConfigGroupOrderDragLeave(event, group, element) {
+    export function historyConfigGroupOrderDragLeave(event, group, element) {
         if (!historyConfigGroupSortState.active) return false;
         if (element?.contains(event.relatedTarget)) return true;
         if (historyConfigGroupDropPreviewElement?.contains(event.relatedTarget)) return true;
@@ -340,13 +365,13 @@ const ctx = globalThis.ctx;
         return true;
     }
 
-    globalThis.historyConfigGroupForPointerCard = function historyConfigGroupForPointerCard(card, groups = []) {
+    export function historyConfigGroupForPointerCard(card, groups = []) {
         if (!card) return null;
         const key = String(card.dataset.configGroupKey || '').trim();
         return (groups || []).find((group) => configGroupKey(group) === key) || null;
     }
 
-    globalThis.historyConfigGroupPointerTargetForCard = function historyConfigGroupPointerTargetForCard(card, x, y, groups = [], collection = null) {
+    export function historyConfigGroupPointerTargetForCard(card, x, y, groups = [], collection = null) {
         const group = historyConfigGroupForPointerCard(card, groups);
         if (!group) return null;
         return {
@@ -358,7 +383,7 @@ const ctx = globalThis.ctx;
         };
     }
 
-    globalThis.nearestHistoryConfigGroupPointerTarget = function nearestHistoryConfigGroupPointerTarget(x, y, groups = [], collection = null) {
+    export function nearestHistoryConfigGroupPointerTarget(x, y, groups = [], collection = null) {
         let best = null;
         document.querySelectorAll('.history-config-group-card').forEach((card) => {
             if (!card?.isConnected) return;
@@ -377,19 +402,19 @@ const ctx = globalThis.ctx;
         return target;
     }
 
-    globalThis.historyConfigGroupPointerTargetFromPoint = function historyConfigGroupPointerTargetFromPoint(x, y, groups = [], collection = null) {
+    export function historyConfigGroupPointerTargetFromPoint(x, y, groups = [], collection = null) {
         const origin = document.elementFromPoint(x, y);
         const card = origin instanceof Element ? origin.closest('.history-config-group-card') : null;
         return historyConfigGroupPointerTargetForCard(card, x, y, groups, collection)
             || nearestHistoryConfigGroupPointerTarget(x, y, groups, collection);
     }
 
-    globalThis.historyCollectionDropTargetFromPoint = function historyCollectionDropTargetFromPoint(x, y) {
+    export function historyCollectionDropTargetFromPoint(x, y) {
         const origin = document.elementFromPoint(x, y);
         return origin instanceof Element ? origin.closest('.history-collection-card.nav-card') : null;
     }
 
-    globalThis.cleanupHistoryConfigGroupPointerDrag = function cleanupHistoryConfigGroupPointerDrag() {
+    export function cleanupHistoryConfigGroupPointerDrag() {
         const drag = historyConfigGroupPointerDrag;
         if (!drag) return null;
         document.removeEventListener('pointermove', drag.onMove);
@@ -415,7 +440,7 @@ const ctx = globalThis.ctx;
         return drag;
     }
 
-    globalThis.finishHistoryConfigGroupPointerDrag = async function finishHistoryConfigGroupPointerDrag(commit = false) {
+    export async function finishHistoryConfigGroupPointerDrag(commit = false) {
         const drag = cleanupHistoryConfigGroupPointerDrag();
         if (!drag) return;
         const target = commit && drag.active ? drag.currentDrop : null;
@@ -451,7 +476,7 @@ const ctx = globalThis.ctx;
         }
     }
 
-    globalThis.dropHistoryTasksToCollectionLikePointer = async function dropHistoryTasksToCollectionLikePointer(targetCard, taskIds) {
+    export async function dropHistoryTasksToCollectionLikePointer(targetCard, taskIds) {
         const groupValue = String(targetCard.dataset.collectionValue || '').trim();
         const label = targetCard.querySelector('.history-collection-card-title strong')?.textContent || groupValue || '未分类';
         const clean = groupValue;
@@ -483,3 +508,44 @@ const ctx = globalThis.ctx;
             renderHistoryManager();
         }
     }
+
+    configureHistoryCollectionsBridge({
+        historyCollectionSearchText,
+        historyConfigGroupSearchText,
+        createEmptyHistoryCollection,
+        createHistoryCollectionSearchEmptyCollection,
+        normalizeHistoryCollectionForWorkbench,
+        historyCollectionsForWorkbench,
+        historyCollectionSelectOptions,
+        historyCollectionOptionSearchText,
+        historyCollectionsPanelTitle,
+        createHistoryCollectionsToolbarButton,
+        stopHistoryGroupButtonPropagation,
+    });
+
+    configureHistoryCollectionDragBridge({
+        historyDragTaskIdsForGroup,
+        createHistoryDragImage,
+        removeHistoryDragImage,
+        canBeginHistoryConfigGroupDrag,
+        beginHistoryConfigGroupDrag,
+        finishHistoryDrag,
+        readHistoryDraggedConfigGroup,
+        historyConfigGroupDropPosition,
+        removeHistoryConfigGroupDropPreview,
+        ensureHistoryConfigGroupDropPreview,
+        placeHistoryConfigGroupDropPreview,
+        setHistoryConfigGroupSortTarget,
+        clearHistoryConfigGroupSortTarget,
+        clearHistoryConfigGroupSortIndicators,
+        historyConfigGroupOrderDragEnter,
+        historyConfigGroupOrderDragLeave,
+        historyConfigGroupForPointerCard,
+        historyConfigGroupPointerTargetForCard,
+        nearestHistoryConfigGroupPointerTarget,
+        historyConfigGroupPointerTargetFromPoint,
+        historyCollectionDropTargetFromPoint,
+        cleanupHistoryConfigGroupPointerDrag,
+        finishHistoryConfigGroupPointerDrag,
+        dropHistoryTasksToCollectionLikePointer,
+    });

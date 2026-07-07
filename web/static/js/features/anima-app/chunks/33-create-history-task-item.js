@@ -2,12 +2,30 @@
  * Mechanical split from the former monolithic app closure.
  * Keep this module focused; move newly edited behavior into domain modules.
  */
-const ctx = globalThis.ctx;
+import {
+    applyHistoryTaskIdsToCollection,
+    historyContinueLabel,
+    historyContinuePathLabel,
+    historyQueueLabel,
+    historyResumeLabel,
+    historyTaskDisplayName,
+    historyTaskIds,
+    historyTaskIsArchived,
+    selectedHistoryTasks,
+} from '../helpers/history-collections-bridge.js?v=module-bootstrap-20260707-93';
+import { clearHistoryManagerDetail, configureHistoryTaskActionsBridge, isHistoryDetailDialogOpen, loadConfigGroupTimeline, loadHistoryTask, openSidebarHistoryTask, renderHistoryManagerDetail, showHistoryCollectionSelectDialog, showHistoryTaskConfirmDialog, showHistoryTaskDialog, showHistoryTaskMessageDialog } from '../helpers/history-task-actions-bridge.js?v=module-bootstrap-20260707-93';
+import { isHistoryReviewMode } from '../helpers/history-detail-bridge.js?v=module-bootstrap-20260707-93';
+import { historyStateLabel } from '../helpers/history-timeline-bridge.js?v=module-bootstrap-20260707-93';
+import { loadTrainingHistoryList, uniqueStringList } from '../helpers/history-list-bridge.js?v=module-bootstrap-20260707-93';
+import { api } from '../helpers/runtime-bridge.js?v=module-bootstrap-20260707-93';
+import { getHistoryState } from '../helpers/history-state-bridge.js?v=module-bootstrap-20260707-93';
 
-    globalThis.createHistoryTaskItem = function createHistoryTaskItem(task) {
+const historyState = getHistoryState();
+
+    export function createHistoryTaskItem(task) {
         const card = document.createElement('article');
         card.className = 'task-history-item';
-        if (task.id === viewingHistoryTaskId && isHistoryReviewMode()) card.classList.add('active');
+        if (task.id === historyState.viewingHistoryTaskId && isHistoryReviewMode()) card.classList.add('active');
         const archived = historyTaskIsArchived(task);
         if (archived) card.classList.add('archived');
 
@@ -68,7 +86,7 @@ const ctx = globalThis.ctx;
         return card;
     }
 
-    globalThis.compactPathLabel = function compactPathLabel(value) {
+    export function compactPathLabel(value) {
         const text = String(value || '').replace(/\\/g, '/').trim();
         if (!text) return '-';
         const parts = text.split('/').filter(Boolean);
@@ -79,7 +97,7 @@ const ctx = globalThis.ctx;
         return parts.length > 1 ? `.../${name}` : name;
     }
 
-    globalThis.createHistoryActionButton = function createHistoryActionButton(label, handler, tone = '') {
+    export function createHistoryActionButton(label, handler, tone = '') {
         const btn = document.createElement('button');
         btn.type = 'button';
         btn.className = ['task-history-action', tone].filter(Boolean).join(' ');
@@ -91,19 +109,19 @@ const ctx = globalThis.ctx;
         return btn;
     }
 
-    globalThis.createHistoryTaskPreviewButton = function createHistoryTaskPreviewButton(task) {
+    export function createHistoryTaskPreviewButton(task) {
         const btn = createHistoryActionButton('预览', () => loadHistoryTask(task.id, { detailTab: 'preview' }));
         btn.title = '只查看这一次训练任务的样张和权重；会在任务详情中打开。';
         return btn;
     }
 
-    globalThis.createHistoryTaskConfigButton = function createHistoryTaskConfigButton(task) {
+    export function createHistoryTaskConfigButton(task) {
         const btn = createHistoryActionButton('配置', () => loadHistoryTask(task.id, { detailTab: 'config_files' }));
         btn.title = '打开这条历史任务的配置快照';
         return btn;
     }
 
-    globalThis.applyHistoryTaskIdsBatchAction = async function applyHistoryTaskIdsBatchAction(taskIds, action, extra = {}, options = {}) {
+    export async function applyHistoryTaskIdsBatchAction(taskIds, action, extra = {}, options = {}) {
         const ids = (taskIds || []).filter(Boolean);
         if (!ids.length) return null;
         const res = await api('/api/training/history/batch', {
@@ -119,19 +137,19 @@ const ctx = globalThis.ctx;
             return null;
         }
         if (options.clearSelection) {
-            ids.forEach((id) => selectedHistoryTaskIds.delete(id));
+            ids.forEach((id) => historyState.selectedHistoryTaskIds.delete(id));
         }
         await loadTrainingHistoryList();
         return res;
     }
 
-    globalThis.applyHistoryBatchAction = async function applyHistoryBatchAction(action, extra = {}) {
+    export async function applyHistoryBatchAction(action, extra = {}) {
         const taskIds = historyTaskIds(selectedHistoryTasks());
         if (!taskIds.length) return null;
         return applyHistoryTaskIdsBatchAction(taskIds, action, extra, { clearSelection: true });
     }
 
-    globalThis.archiveSelectedHistoryTasks = async function archiveSelectedHistoryTasks(archived) {
+    export async function archiveSelectedHistoryTasks(archived) {
         const tasks = selectedHistoryTasks();
         if (!tasks.length) return;
         const ok = await showHistoryTaskConfirmDialog({
@@ -144,7 +162,7 @@ const ctx = globalThis.ctx;
         await applyHistoryBatchAction(archived ? 'archive' : 'unarchive');
     }
 
-    globalThis.groupSelectedHistoryTasks = async function groupSelectedHistoryTasks() {
+    export async function groupSelectedHistoryTasks() {
         const tasks = selectedHistoryTasks();
         if (!tasks.length) return;
         const group = await showHistoryCollectionSelectDialog({
@@ -157,12 +175,12 @@ const ctx = globalThis.ctx;
         await applyHistoryTaskIdsToCollection(historyTaskIds(selectedHistoryTasks()), group.trim(), { clearSelection: true });
     }
 
-    globalThis.deleteSelectedHistoryTasks = async function deleteSelectedHistoryTasks() {
+    export async function deleteSelectedHistoryTasks() {
         const taskIds = historyTaskIds(selectedHistoryTasks());
         await deleteHistoryTasksThorough(taskIds);
     }
 
-    globalThis.mergeSelectedHistoryTasks = async function mergeSelectedHistoryTasks() {
+    export async function mergeSelectedHistoryTasks() {
         const taskIds = selectedHistoryTasks()
             .filter((task) => task.job === 'training')
             .map((task) => task.id)
@@ -181,12 +199,12 @@ const ctx = globalThis.ctx;
         );
     }
 
-    globalThis.historyBatchDeleteUnavailable = function historyBatchDeleteUnavailable(res) {
+    export function historyBatchDeleteUnavailable(res) {
         const message = String(res?.error || res?.message || '').trim();
         return /\b405\b|method not allowed/i.test(message);
     }
 
-    globalThis.deleteHistoryTasksWithLegacyEndpoint = async function deleteHistoryTasksWithLegacyEndpoint(taskIds, options = {}) {
+    export async function deleteHistoryTasksWithLegacyEndpoint(taskIds, options = {}) {
         const ids = uniqueStringList(taskIds || []).filter(Boolean);
         if (!ids.length) return;
         if (!options.confirmed) {
@@ -214,8 +232,8 @@ const ctx = globalThis.ctx;
             }
         }
         const touchedIds = uniqueStringList(deletedIds);
-        touchedIds.forEach((id) => selectedHistoryTaskIds.delete(id));
-        if (touchedIds.includes(viewingHistoryTaskId)) {
+        touchedIds.forEach((id) => historyState.selectedHistoryTaskIds.delete(id));
+        if (touchedIds.includes(historyState.viewingHistoryTaskId)) {
             clearHistoryManagerDetail();
         }
         if (deletedIds.length) {
@@ -239,7 +257,7 @@ const ctx = globalThis.ctx;
         });
     }
 
-    globalThis.deleteHistoryTasksThorough = async function deleteHistoryTasksThorough(taskIds) {
+    export async function deleteHistoryTasksThorough(taskIds) {
         const ids = uniqueStringList(taskIds || []).filter(Boolean);
         if (!ids.length) return;
         let preview;
@@ -307,8 +325,8 @@ const ctx = globalThis.ctx;
                 return;
             }
             const cleanupErrors = Object.entries({ ...(res.cleanup_errors || {}), ...(res.runtime_cleanup_errors || {}) }).map(([path, error]) => `${path}: ${error}`);
-            selectedHistoryTaskIds.clear();
-            if (ids.includes(viewingHistoryTaskId)) clearHistoryManagerDetail();
+            historyState.selectedHistoryTaskIds.clear();
+            if (ids.includes(historyState.viewingHistoryTaskId)) clearHistoryManagerDetail();
             await loadTrainingHistoryList();
             if (cleanupErrors.length) await showHistoryTaskMessageDialog({ title: '历史记录已删除，部分文件未清理', message: '以下运行目录或历史记录残留需要手动检查。', detailLines: cleanupErrors, tone: 'warning' });
         } catch (e) {
@@ -320,7 +338,7 @@ const ctx = globalThis.ctx;
         }
     }
 
-    globalThis.showHistoryDeletePreviewDialog = async function showHistoryDeletePreviewDialog(preview) {
+    export async function showHistoryDeletePreviewDialog(preview) {
         const wrap = document.createElement('div');
         wrap.className = 'history-delete-preview';
         const summary = document.createElement('div');
@@ -362,7 +380,7 @@ const ctx = globalThis.ctx;
         return Boolean(finalConfirmed);
     }
 
-    globalThis.renameHistoryTask = async function renameHistoryTask(task) {
+    export async function renameHistoryTask(task) {
         const fallback = historyTaskDisplayName(task) || `${task.methods_subdir || '-'} / ${task.variant || '-'}`;
         const name = await showHistoryTaskInputDialog({
             title: '重命名任务',
@@ -376,7 +394,7 @@ const ctx = globalThis.ctx;
         await updateHistoryTaskMeta(task.id, { name: name.trim() });
     }
 
-    globalThis.regroupHistoryTask = async function regroupHistoryTask(task) {
+    export async function regroupHistoryTask(task) {
         const group = await showHistoryTaskInputDialog({
             title: '设置任务分组',
             description: '相同分组名的任务会在左侧任务列表中归到一起。留空表示未分组。',
@@ -389,7 +407,7 @@ const ctx = globalThis.ctx;
         await updateHistoryTaskMeta(task.id, { group: group.trim() });
     }
 
-    globalThis.archiveHistoryTask = async function archiveHistoryTask(task) {
+    export async function archiveHistoryTask(task) {
         const archived = historyTaskIsArchived(task);
         const ok = await showHistoryTaskConfirmDialog({
             title: archived ? '取消归档任务' : '归档任务',
@@ -403,11 +421,11 @@ const ctx = globalThis.ctx;
         await updateHistoryTaskMeta(task.id, { archived: !archived });
     }
 
-    globalThis.deleteHistoryTask = async function deleteHistoryTask(task) {
+    export async function deleteHistoryTask(task) {
         await deleteHistoryTasksThorough([task.id]);
     }
 
-    globalThis.updateHistoryTaskMeta = async function updateHistoryTaskMeta(taskId, patch) {
+    export async function updateHistoryTaskMeta(taskId, patch) {
         try {
             const res = await api(`/api/training/history/${encodeURIComponent(taskId)}`, {
                 method: 'PATCH',
@@ -422,10 +440,10 @@ const ctx = globalThis.ctx;
                 return;
             }
             await loadTrainingHistoryList();
-            if (viewingHistoryTaskId === taskId) {
+            if (historyState.viewingHistoryTaskId === taskId) {
                 const payload = await api(`/api/training/history/${encodeURIComponent(taskId)}`);
                 if (payload.ok) {
-                    currentHistoryTaskForResume = payload.task || null;
+                    historyState.currentHistoryTaskForResume = payload.task || null;
                     renderHistoryManagerDetail(payload, { open: isHistoryDetailDialogOpen() });
                 }
             }
@@ -438,11 +456,11 @@ const ctx = globalThis.ctx;
         }
     }
 
-    globalThis.historyTaskLabel = function historyTaskLabel(task) {
+    export function historyTaskLabel(task) {
         return historyTaskDisplayName(task) || `${task.methods_subdir || '-'} / ${task.variant || task.id}`;
     }
 
-    globalThis.showHistoryTaskInputDialog = function showHistoryTaskInputDialog(options) {
+    export function showHistoryTaskInputDialog(options) {
         const input = document.createElement('input');
         input.type = 'text';
         input.value = options.value || '';
@@ -467,3 +485,28 @@ const ctx = globalThis.ctx;
             getValue: () => input.value,
         });
     }
+
+configureHistoryTaskActionsBridge({
+    createHistoryTaskItem,
+    compactPathLabel,
+    createHistoryActionButton,
+    createHistoryTaskPreviewButton,
+    createHistoryTaskConfigButton,
+    applyHistoryTaskIdsBatchAction,
+    applyHistoryBatchAction,
+    archiveSelectedHistoryTasks,
+    groupSelectedHistoryTasks,
+    deleteSelectedHistoryTasks,
+    mergeSelectedHistoryTasks,
+    historyBatchDeleteUnavailable,
+    deleteHistoryTasksWithLegacyEndpoint,
+    deleteHistoryTasksThorough,
+    showHistoryDeletePreviewDialog,
+    renameHistoryTask,
+    regroupHistoryTask,
+    archiveHistoryTask,
+    deleteHistoryTask,
+    updateHistoryTaskMeta,
+    historyTaskLabel,
+    showHistoryTaskInputDialog,
+});

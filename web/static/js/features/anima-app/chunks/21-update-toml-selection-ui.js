@@ -2,9 +2,50 @@
  * Mechanical split from the former monolithic app closure.
  * Keep this module focused; move newly edited behavior into domain modules.
  */
-const ctx = globalThis.ctx;
+import {
+    CONFIG_FORM_INTERNAL_KEYS,
+    FORM_UI_DEFAULTS,
+    NETWORK_ARG_FIELD_MAP,
+} from '../../../config/catalog.js?v=module-bootstrap-20260707-93';
+import { captionSourceModeLabel } from '../helpers/caption-source.js?v=module-bootstrap-20260707-93';
+import { collectChangedFormValues, configDraftValueChanged, isActiveNetworkArgFieldKey, networkArgFieldValueFromConfig, originalConfigFieldValue, readFieldInputValue } from '../helpers/config-form-bridge.js?v=module-bootstrap-20260707-93';
+import {
+    normalizeDatasetDefaults,
+    normalizeDatasetEditorRows,
+    normalizeTriggerClone,
+} from '../helpers/dataset-values.js?v=module-bootstrap-20260707-93';
+import { formatFieldName } from '../helpers/config-field-display.js?v=module-bootstrap-20260707-93';
+import { showHistoryTaskConfirmDialog } from '../helpers/history-task-actions-bridge.js?v=module-bootstrap-20260707-93';
+import { saveTomlFile } from '../helpers/output-run-bridge.js?v=module-bootstrap-20260707-93';
+import { val } from '../helpers/runtime-bridge.js?v=module-bootstrap-20260707-93';
+import { getConfigState } from '../helpers/config-state-bridge.js?v=module-bootstrap-20260707-93';
+import { getDatasetState } from '../helpers/dataset-state-bridge.js?v=module-bootstrap-20260707-93';
+import { getTomlState } from '../helpers/toml-state-bridge.js?v=module-bootstrap-20260707-93';
+import { getTrainingState } from '../helpers/training-state-bridge.js?v=module-bootstrap-20260707-93';
+import { configureTomlSelectionBridge } from '../helpers/toml-selection-bridge.js?v=module-bootstrap-20260707-93';
+import {
+    isTomlLocked,
+    resetTomlSaveConfirm,
+    setTomlStatus,
+    tomlFileDisplayName,
+    tomlLockLabel,
+    updateTomlActionState,
+} from '../helpers/toml-action-state-bridge.js?v=module-bootstrap-20260707-93';
 
-    globalThis.updateTomlSelectionUI = function updateTomlSelectionUI(filePath) {
+const configState = getConfigState();
+const datasetState = getDatasetState();
+const tomlState = getTomlState();
+const trainingState = getTrainingState();
+
+function currentTrainingSourceState() {
+    return trainingState.currentTrainingSource || {};
+}
+
+function currentConfigState() {
+    return configState.currentConfig || {};
+}
+
+    export function updateTomlSelectionUI(filePath) {
         document.querySelectorAll('.toml-file-item').forEach((btn) => {
             btn.classList.toggle('active', btn.dataset.file === filePath);
         });
@@ -12,7 +53,7 @@ const ctx = globalThis.ctx;
         if (label) label.textContent = filePath ? tomlFileDisplayName(filePath) : '未保存导入内容';
         const applyBtn = document.getElementById('btn-apply-toml');
         if (applyBtn) {
-            const meta = tomlFileMeta[filePath];
+            const meta = tomlState.tomlFileMeta[filePath];
             const dirty = hasPendingConfigChanges(filePath);
             applyBtn.disabled = !meta?.trainable || dirty;
             applyBtn.title = dirty
@@ -22,43 +63,44 @@ const ctx = globalThis.ctx;
         updateTomlBadges(filePath);
     }
 
-    globalThis.isTomlDirty = function isTomlDirty() {
+    export function isTomlDirty() {
         const editor = document.getElementById('toml-editor');
         if (!editor) return false;
-        return editor.value !== tomlSavedContent;
+        return editor.value !== tomlState.tomlSavedContent;
     }
 
-    globalThis.currentFormConfigFile = function currentFormConfigFile() {
-        return currentTrainingSource.file || '';
+    export function currentFormConfigFile() {
+        return currentTrainingSourceState().file || '';
     }
 
-    globalThis.hasUnsavedFormChanges = function hasUnsavedFormChanges(filePath = currentFormConfigFile() || currentTomlFile) {
-        if (!filePath || currentTrainingSource.file !== filePath) return false;
-        if (!currentConfig || Object.keys(currentConfig).length === 0) return false;
-        return datasetEditorState.dirty
-            || selectedConfigDatasetFile !== (currentConfig.dataset_config || '')
+    export function hasUnsavedFormChanges(filePath = currentFormConfigFile() || tomlState.currentTomlFile) {
+        const currentConfig = currentConfigState();
+        if (!filePath || currentTrainingSourceState().file !== filePath) return false;
+        if (!Object.keys(currentConfig).length) return false;
+        return datasetState.datasetEditorState.dirty
+            || datasetState.selectedConfigDatasetFile !== (currentConfig.dataset_config || '')
             || Object.keys(collectChangedFormValues()).length > 0;
     }
 
-    globalThis.hasPendingConfigChanges = function hasPendingConfigChanges(filePath = currentTomlFile) {
+    export function hasPendingConfigChanges(filePath = tomlState.currentTomlFile) {
         const formFile = currentFormConfigFile();
         return isTomlDirty()
             || hasUnsavedFormChanges(filePath)
             || Boolean(formFile && formFile !== filePath && hasUnsavedFormChanges(formFile));
     }
 
-    globalThis.currentTomlEditorContentForFile = function currentTomlEditorContentForFile(filePath) {
-        const selectedFile = currentTomlFile || val('toml-file-select') || '';
+    export function currentTomlEditorContentForFile(filePath) {
+        const selectedFile = tomlState.currentTomlFile || val('toml-file-select') || '';
         if (!filePath || filePath !== selectedFile) return undefined;
         return document.getElementById('toml-editor')?.value || '';
     }
 
-    globalThis.confirmDiscardTomlChanges = async function confirmDiscardTomlChanges(message) {
-        if (!hasPendingConfigChanges(currentTomlFile)) return true;
+    export async function confirmDiscardTomlChanges(message) {
+        if (!hasPendingConfigChanges(tomlState.currentTomlFile)) return true;
         return confirmUnsavedDiscard(message);
     }
 
-    globalThis.confirmUnsavedDiscard = function confirmUnsavedDiscard(message) {
+    export function confirmUnsavedDiscard(message) {
         return showAppConfirmDialog({
             title: '未保存更改',
             description: '当前页面有尚未保存的修改',
@@ -69,14 +111,15 @@ const ctx = globalThis.ctx;
         });
     }
 
-    globalThis.collectPendingConfigChangeDetails = function collectPendingConfigChangeDetails(pending = pendingConfigSwitchState()) {
+    export function collectPendingConfigChangeDetails(pending = pendingConfigSwitchState()) {
         const changes = [];
+        const currentConfig = currentConfigState();
         if (pending.formDirty) {
-            if (selectedConfigDatasetFile !== (currentConfig.dataset_config || '')) {
+            if (datasetState.selectedConfigDatasetFile !== (currentConfig.dataset_config || '')) {
                 changes.push({
                     label: '数据集预设 / dataset_config',
                     original: currentConfig.dataset_config || '未设置',
-                    next: selectedConfigDatasetFile || '未设置',
+                    next: datasetState.selectedConfigDatasetFile || '未设置',
                 });
             }
             for (const [key, nextValue] of Object.entries(collectChangedFormValues())) {
@@ -86,11 +129,11 @@ const ctx = globalThis.ctx;
                     next: nextValue,
                 });
             }
-            if (datasetEditorState.dirty) {
+            if (datasetState.datasetEditorState.dirty) {
                 changes.push({
                     label: '多数据集路径与参数',
                     original: currentConfig.dataset_config || '当前配置内的数据集字段',
-                    next: summarizeDatasetEditorState(datasetEditorState),
+                    next: summarizeDatasetEditorState(datasetState.datasetEditorState),
                 });
             }
         }
@@ -98,16 +141,17 @@ const ctx = globalThis.ctx;
             const editorValue = document.getElementById('toml-editor')?.value || '';
             changes.push({
                 label: '直接编辑 TOML',
-                original: summarizeTextChange(tomlSavedContent),
+                original: summarizeTextChange(tomlState.tomlSavedContent),
                 next: summarizeTextChange(editorValue),
             });
         }
         return changes;
     }
 
-    globalThis.originalValueForChange = function originalValueForChange(key) {
-        if (key === 'sample_prompts' && samplePromptsMode !== 'path') {
-            return samplePromptsContent || '';
+    export function originalValueForChange(key) {
+        const currentConfig = currentConfigState();
+        if (key === 'sample_prompts' && configState.samplePromptsMode !== 'path') {
+            return configState.samplePromptsContent || '';
         }
         if (isActiveNetworkArgFieldKey(key)) {
             return networkArgFieldValueFromConfig(NETWORK_ARG_FIELD_MAP.get(key), currentConfig);
@@ -116,7 +160,7 @@ const ctx = globalThis.ctx;
         return FORM_UI_DEFAULTS[key];
     }
 
-    globalThis.summarizeDatasetEditorState = function summarizeDatasetEditorState(state) {
+    export function summarizeDatasetEditorState(state) {
         const rows = normalizeDatasetEditorRows(state.datasets || []);
         const parts = rows.map((row, index) => {
             const settings = normalizeDatasetDefaults(row.settings || state.defaults || {});
@@ -135,7 +179,7 @@ const ctx = globalThis.ctx;
         return parts.join('\n');
     }
 
-    globalThis.summarizeTextChange = function summarizeTextChange(text) {
+    export function summarizeTextChange(text) {
         const value = String(text || '');
         const lines = value.split(/\r?\n/).length;
         const chars = value.length;
@@ -143,7 +187,7 @@ const ctx = globalThis.ctx;
         return `${lines} 行 / ${chars} 字符\n${preview}`;
     }
 
-    globalThis.formatConfigChangeValue = function formatConfigChangeValue(value) {
+    export function formatConfigChangeValue(value) {
         let text;
         if (typeof value === 'string') {
             text = value;
@@ -158,23 +202,23 @@ const ctx = globalThis.ctx;
         return text.length > 600 ? `${text.slice(0, 600)}\n...` : text;
     }
 
-    globalThis.showConfigSwitchToast = function showConfigSwitchToast(filePath, stateText) {
+    export function showConfigSwitchToast(filePath, stateText) {
         const toast = document.getElementById('config-switch-toast');
         if (!toast) return;
-        if (configSwitchToastTimer) {
-            clearTimeout(configSwitchToastTimer);
-            configSwitchToastTimer = null;
+        if (tomlState.configSwitchToastTimer) {
+            clearTimeout(tomlState.configSwitchToastTimer);
+            tomlState.configSwitchToastTimer = null;
         }
-        const file = (filePath || currentTomlFile || '当前配置').split('/').pop() || '当前配置';
+        const file = (filePath || tomlState.currentTomlFile || '当前配置').split('/').pop() || '当前配置';
         toast.textContent = `${file}，${stateText}`;
         toast.hidden = false;
-        configSwitchToastTimer = setTimeout(() => {
+        tomlState.configSwitchToastTimer = setTimeout(() => {
             toast.hidden = true;
-            configSwitchToastTimer = null;
+            tomlState.configSwitchToastTimer = null;
         }, 2000);
     }
 
-    globalThis.handlePendingConfigSwitch = async function handlePendingConfigSwitch({ targetLabel = '' } = {}) {
+    export async function handlePendingConfigSwitch({ targetLabel = '' } = {}) {
         const pending = pendingConfigSwitchState();
         if (!pending.hasChanges) return true;
         const action = await showUnsavedConfigSwitchDialog({ pending, targetLabel });
@@ -189,9 +233,9 @@ const ctx = globalThis.ctx;
         return true;
     }
 
-    globalThis.pendingConfigSwitchState = function pendingConfigSwitchState() {
-        const editorFile = currentTomlFile || val('toml-file-select') || '';
-        const formFile = currentTrainingSource.file || '';
+    export function pendingConfigSwitchState() {
+        const editorFile = tomlState.currentTomlFile || val('toml-file-select') || '';
+        const formFile = currentTrainingSourceState().file || '';
         const editorDirty = isTomlDirty();
         const formDirty = hasUnsavedFormChanges(formFile);
         const dirtyFiles = [];
@@ -210,16 +254,16 @@ const ctx = globalThis.ctx;
         };
     }
 
-    globalThis.pendingToastLabel = function pendingToastLabel(pending) {
+    export function pendingToastLabel(pending) {
         const files = pending?.dirtyFiles || [];
         if (files.length > 1) {
             const first = files[0].split('/').pop() || files[0];
             return `${first} 等 ${files.length} 个配置`;
         }
-        return pending?.sourceFile || currentTomlFile || '当前配置';
+        return pending?.sourceFile || tomlState.currentTomlFile || '当前配置';
     }
 
-    globalThis.sharedHistoryTaskDialogParts = function sharedHistoryTaskDialogParts() {
+    export function sharedHistoryTaskDialogParts() {
         const dialog = document.getElementById('history-task-dialog');
         const title = document.getElementById('history-task-dialog-title');
         const desc = document.getElementById('history-task-dialog-desc');
@@ -232,11 +276,11 @@ const ctx = globalThis.ctx;
         return { dialog, title, desc, body, cancelBtn, confirmBtn, closeBtn, form };
     }
 
-    globalThis.sharedHistoryTaskDialogIsOpen = function sharedHistoryTaskDialogIsOpen(dialog) {
+    export function sharedHistoryTaskDialogIsOpen(dialog) {
         return Boolean(dialog?.open || dialog?.hasAttribute?.('open'));
     }
 
-    globalThis.openSharedHistoryTaskDialog = function openSharedHistoryTaskDialog(dialog) {
+    export function openSharedHistoryTaskDialog(dialog) {
         document.body.classList.remove('history-task-dialog-fallback-open');
         if (typeof dialog.showModal === 'function') {
             try {
@@ -252,7 +296,7 @@ const ctx = globalThis.ctx;
         document.body.classList.add('history-task-dialog-fallback-open');
     }
 
-    globalThis.closeSharedHistoryTaskDialog = function closeSharedHistoryTaskDialog(dialog, value, fallbackClose) {
+    export function closeSharedHistoryTaskDialog(dialog, value, fallbackClose) {
         dialog.returnValue = value || '';
         if (typeof dialog.close === 'function' && sharedHistoryTaskDialogIsOpen(dialog)) {
             try {
@@ -266,13 +310,13 @@ const ctx = globalThis.ctx;
         fallbackClose();
     }
 
-    globalThis.savePendingConfigSwitchChanges = async function savePendingConfigSwitchChanges(pending) {
+    export async function savePendingConfigSwitchChanges(pending) {
         if (pending.editorDirty) {
             const savedEditor = await saveTomlFile({ skipConfirm: true, source: 'switch' });
             if (!savedEditor) return false;
         }
         if (pending.formDirty && (!pending.editorDirty || pending.formFile !== pending.editorFile)) {
-            if (currentTomlFile !== pending.formFile) {
+            if (tomlState.currentTomlFile !== pending.formFile) {
                 await loadTomlFile(pending.formFile, { force: true });
             }
             const savedForm = await saveTomlFile({ skipConfirm: true, source: 'switch' });
@@ -281,16 +325,16 @@ const ctx = globalThis.ctx;
         return true;
     }
 
-    globalThis.showUnsavedConfigSwitchDialog = function showUnsavedConfigSwitchDialog({ pending = pendingConfigSwitchState(), targetLabel = '' } = {}) {
+    export function showUnsavedConfigSwitchDialog({ pending = pendingConfigSwitchState(), targetLabel = '' } = {}) {
         const parts = sharedHistoryTaskDialogParts();
         if (!parts) {
             return Promise.resolve('cancel');
         }
         const { dialog, title, desc, body, cancelBtn, confirmBtn, closeBtn, form } = parts;
-        if (sharedDialogBusy || sharedHistoryTaskDialogIsOpen(dialog)) {
+        if (tomlState.sharedDialogBusy || sharedHistoryTaskDialogIsOpen(dialog)) {
             return Promise.resolve('cancel');
         }
-        sharedDialogBusy = true;
+        tomlState.sharedDialogBusy = true;
 
         title.textContent = '有更改待保存';
         desc.textContent = targetLabel ? `即将切换到 ${targetLabel}` : '即将切换配置';
@@ -333,7 +377,7 @@ const ctx = globalThis.ctx;
                 confirmBtn.removeEventListener('click', closeClick);
                 dialog.removeEventListener('keydown', keydownDialog);
                 document.body.classList.remove('history-task-dialog-fallback-open');
-                sharedDialogBusy = false;
+                tomlState.sharedDialogBusy = false;
                 cancelBtn.hidden = false;
                 cancelBtn.value = 'cancel';
                 confirmBtn.value = 'confirm';
@@ -366,7 +410,7 @@ const ctx = globalThis.ctx;
         });
     }
 
-    globalThis.createConfigSwitchDialogBody = function createConfigSwitchDialogBody(pending = pendingConfigSwitchState()) {
+    export function createConfigSwitchDialogBody(pending = pendingConfigSwitchState()) {
         const wrap = document.createElement('div');
         wrap.className = 'config-switch-dialog-body';
 
@@ -401,7 +445,7 @@ const ctx = globalThis.ctx;
         return wrap;
     }
 
-    globalThis.createConfigSwitchChangeValue = function createConfigSwitchChangeValue(labelText, value) {
+    export function createConfigSwitchChangeValue(labelText, value) {
         const box = document.createElement('div');
         box.className = 'config-switch-change-value';
         const label = document.createElement('span');
@@ -412,7 +456,7 @@ const ctx = globalThis.ctx;
         return box;
     }
 
-    globalThis.showAppConfirmDialog = function showAppConfirmDialog(options) {
+    export function showAppConfirmDialog(options) {
         return showHistoryTaskConfirmDialog({
             title: options.title || '确认操作',
             description: options.description || '',
@@ -423,36 +467,37 @@ const ctx = globalThis.ctx;
         }).then(Boolean);
     }
 
-    globalThis.updateTomlDirtyState = function updateTomlDirtyState() {
-        if (!hasPendingConfigChanges(currentTomlFile)) {
+    export function updateTomlDirtyState() {
+        if (!hasPendingConfigChanges(tomlState.currentTomlFile)) {
             resetTomlSaveConfirm({ update: false });
         }
         updateChangedFieldMarks();
-        updateTomlBadges(currentTomlFile);
-        updateTomlActionState(currentTomlFile);
+        updateTomlBadges(tomlState.currentTomlFile);
+        updateTomlActionState(tomlState.currentTomlFile);
     }
 
-    globalThis.updateChangedFieldMarks = function updateChangedFieldMarks() {
+    export function updateChangedFieldMarks() {
         let changedCount = 0;
+        const currentConfig = currentConfigState();
         document.querySelectorAll('#config-form .field-input[data-key]').forEach((input) => {
             const changed = configFieldInputChanged(input);
             input.closest('.field-row')?.classList.toggle('field-row-changed', changed);
             if (changed) changedCount += 1;
         });
-        for (const [key, value] of configFormState.draftValues.entries()) {
+        for (const [key, value] of configState.configFormState.draftValues.entries()) {
             if (!document.querySelector(`#config-form .field-input[data-key="${CSS.escape(key)}"]`)
                 && configDraftValueChanged(key, value)) {
                 changedCount += 1;
             }
         }
-        if (selectedConfigDatasetFile !== (currentConfig.dataset_config || '')) {
+        if (datasetState.selectedConfigDatasetFile !== (currentConfig.dataset_config || '')) {
             changedCount += 1;
         }
         const count = document.getElementById('config-modified-count');
         if (count) count.textContent = String(changedCount);
     }
 
-    globalThis.configFieldInputChanged = function configFieldInputChanged(input) {
+    export function configFieldInputChanged(input) {
         const key = input?.dataset?.key;
         if (!key || CONFIG_FORM_INTERNAL_KEYS.has(key)) return false;
         const original = originalConfigFieldValue(key);
@@ -460,17 +505,51 @@ const ctx = globalThis.ctx;
         return configDraftValueChanged(key, next, original);
     }
 
-    globalThis.updateTomlBadges = function updateTomlBadges(filePath) {
-        const meta = tomlFileMeta[filePath];
-        setBadge('toml-current-badge', Boolean(filePath && currentTrainingSource.file === filePath), '当前训练');
+    export function updateTomlBadges(filePath) {
+        const meta = tomlState.tomlFileMeta[filePath];
+        setBadge('toml-current-badge', Boolean(filePath && currentTrainingSourceState().file === filePath), '当前训练');
         setBadge('toml-trainable-badge', Boolean(filePath), meta?.trainable ? '可训练' : '非训练');
         setBadge('toml-lock-badge', Boolean(meta?.locked), tomlLockLabel(meta) || '只读');
         setBadge('toml-dirty-badge', hasPendingConfigChanges(filePath), '未保存');
     }
 
-    globalThis.setBadge = function setBadge(id, visible, text) {
+    export function setBadge(id, visible, text) {
         const badge = document.getElementById(id);
         if (!badge) return;
         badge.hidden = !visible;
         badge.textContent = text;
     }
+
+configureTomlSelectionBridge({
+    updateTomlSelectionUI,
+    isTomlDirty,
+    currentFormConfigFile,
+    hasUnsavedFormChanges,
+    hasPendingConfigChanges,
+    currentTomlEditorContentForFile,
+    confirmDiscardTomlChanges,
+    confirmUnsavedDiscard,
+    collectPendingConfigChangeDetails,
+    originalValueForChange,
+    summarizeDatasetEditorState,
+    summarizeTextChange,
+    formatConfigChangeValue,
+    showConfigSwitchToast,
+    handlePendingConfigSwitch,
+    pendingConfigSwitchState,
+    pendingToastLabel,
+    sharedHistoryTaskDialogParts,
+    sharedHistoryTaskDialogIsOpen,
+    openSharedHistoryTaskDialog,
+    closeSharedHistoryTaskDialog,
+    savePendingConfigSwitchChanges,
+    showUnsavedConfigSwitchDialog,
+    createConfigSwitchDialogBody,
+    createConfigSwitchChangeValue,
+    showAppConfirmDialog,
+    updateTomlDirtyState,
+    updateChangedFieldMarks,
+    configFieldInputChanged,
+    updateTomlBadges,
+    setBadge,
+});
