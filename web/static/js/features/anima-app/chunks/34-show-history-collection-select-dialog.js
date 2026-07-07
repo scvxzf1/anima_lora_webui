@@ -29,9 +29,11 @@ import { renderLogOutputLines, setLogStatus } from '../helpers/live-log-bridge.j
 import { showTrainingView } from '../helpers/queue-view-bridge.js?v=module-bootstrap-20260707-93';
 import { loadTrainingHistoryList, renderHistoryManager, renderTrainingHistoryList } from '../helpers/history-list-bridge.js?v=module-bootstrap-20260707-93';
 import { getTrainingState } from '../helpers/training-state-bridge.js?v=module-bootstrap-20260707-93';
+import { getTomlState } from '../helpers/toml-state-bridge.js?v=module-bootstrap-20260707-93';
 
 const historyState = getHistoryState();
 const trainingState = getTrainingState();
+const tomlState = getTomlState();
 
 
     export function showHistoryCollectionSelectDialog(options) {
@@ -177,10 +179,10 @@ const trainingState = getTrainingState();
             return Promise.resolve(null);
         }
         const { dialog, title, desc, body, cancelBtn, confirmBtn, closeBtn, form } = parts;
-        if (sharedDialogBusy || sharedHistoryTaskDialogIsOpen(dialog)) {
+        if (tomlState.sharedDialogBusy || sharedHistoryTaskDialogIsOpen(dialog)) {
             return Promise.resolve(null);
         }
-        sharedDialogBusy = true;
+        tomlState.sharedDialogBusy = true;
 
         title.textContent = options.title || '任务操作';
         desc.textContent = options.description || '';
@@ -221,7 +223,7 @@ const trainingState = getTrainingState();
                 confirmBtn.removeEventListener('click', closeClick);
                 dialog.removeEventListener('keydown', keydownDialog);
                 document.body.classList.remove('history-task-dialog-fallback-open');
-                sharedDialogBusy = false;
+                tomlState.sharedDialogBusy = false;
                 cancelBtn.hidden = false;
                 cancelBtn.classList.remove('btn-primary');
                 confirmBtn.classList.remove('btn-danger');

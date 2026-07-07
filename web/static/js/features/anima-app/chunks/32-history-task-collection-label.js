@@ -8,6 +8,7 @@ import {
     configureHistoryCollectionsBridge,
     ensureHistoryCollectionOrderValue,
     historyCollectionStorageKey,
+    historyTaskCollectionValue,
 } from '../helpers/history-collections-bridge.js?v=module-bootstrap-20260707-93';
 import {
     applyHistoryTaskIdsBatchAction,

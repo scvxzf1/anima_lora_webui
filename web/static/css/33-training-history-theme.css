@@ -495,8 +495,10 @@
     align-self: start;
 }
 
-#tab-training .history-config-group-card.single-task .history-config-group-card-head > .history-config-group-card-actions {
+#tab-training .history-config-group-card-head > .history-config-group-card-actions,
+#tab-training .history-config-group-task-list .history-row-actions {
     background: transparent;
+    padding-left: 0;
 }
 
 #tab-training .history-collection-card.nav-card:hover,

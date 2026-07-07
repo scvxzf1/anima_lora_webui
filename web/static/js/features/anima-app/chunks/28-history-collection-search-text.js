@@ -27,7 +27,9 @@ import {
     historyTaskIds,
 } from '../helpers/history-collections-bridge.js?v=module-bootstrap-20260707-93';
 import { renderHistoryManager, uniqueStringList } from '../helpers/history-list-bridge.js?v=module-bootstrap-20260707-93';
+import { getHistoryState } from '../helpers/history-state-bridge.js?v=module-bootstrap-20260707-93';
 
+const historyState = getHistoryState();
 
     export function historyCollectionSearchText(collection) {
         return [
@@ -92,7 +94,7 @@ import { renderHistoryManager, uniqueStringList } from '../helpers/history-list-
             const ungrouped = createEmptyHistoryCollection();
             byKey.set(ungrouped.key, ungrouped);
         }
-        for (const value of uniqueStringList(historyCollectionSettings.collection_order || [])) {
+        for (const value of uniqueStringList(historyState.historyCollectionSettings.collection_order || [])) {
             const clean = String(value || '').trim();
             const key = clean ? `collection:${clean}` : HISTORY_UNGROUPED_COLLECTION_KEY;
             if (clean && !byKey.has(key)) {
@@ -103,7 +105,7 @@ import { renderHistoryManager, uniqueStringList } from '../helpers/history-list-
     }
 
     export function historyCollectionSelectOptions() {
-        const collections = historyCollectionsForWorkbench(historyTasks);
+        const collections = historyCollectionsForWorkbench(historyState.historyTasks);
         return collections.map((collection) => ({
             key: collection.key,
             label: collection.label,
@@ -153,8 +155,8 @@ import { renderHistoryManager, uniqueStringList } from '../helpers/history-list-
 
     export function historyDragTaskIdsForGroup(group) {
         const groupIds = historyTaskIds(group?.tasks || []);
-        const visible = new Set(historyCurrentVisibleTaskIds);
-        const selectedIds = Array.from(selectedHistoryTaskIds)
+        const visible = new Set(historyState.historyCurrentVisibleTaskIds);
+        const selectedIds = Array.from(historyState.selectedHistoryTaskIds)
             .filter((id) => id && (!visible.size || visible.has(id)));
         if (selectedIds.some((id) => groupIds.includes(id))) {
             return selectedIds;
@@ -168,23 +170,23 @@ import { renderHistoryManager, uniqueStringList } from '../helpers/history-list-
         image.className = 'history-drag-image';
         image.textContent = `${count} 条任务`;
         document.body.appendChild(image);
-        historyDragImageElement = image;
+        historyState.historyDragImageElement = image;
         return image;
     }
 
     export function removeHistoryDragImage() {
-        if (historyDragImageElement?.parentNode) {
-            historyDragImageElement.parentNode.removeChild(historyDragImageElement);
+        if (historyState.historyDragImageElement?.parentNode) {
+            historyState.historyDragImageElement.parentNode.removeChild(historyState.historyDragImageElement);
         }
-        historyDragImageElement = null;
+        historyState.historyDragImageElement = null;
     }
 
     export function canBeginHistoryConfigGroupDrag(group) {
-        return Boolean(!historyDragState.pending && !historyConfigGroupSortState.pending && historyTaskIds(group?.tasks || []).length);
+        return Boolean(!historyState.historyDragState.pending && !historyState.historyConfigGroupSortState.pending && historyTaskIds(group?.tasks || []).length);
     }
 
     export function beginHistoryConfigGroupDrag(event, group, options = {}) {
-        if (historyDragState.pending) {
+        if (historyState.historyDragState.pending) {
             event.preventDefault();
             return;
         }
@@ -194,8 +196,8 @@ import { renderHistoryManager, uniqueStringList } from '../helpers/history-list-
             return;
         }
         closeHistoryDropPopover(false);
-        historyDragState = {
-            ...historyDragState,
+        historyState.historyDragState = {
+            ...historyState.historyDragState,
             active: true,
             taskIds,
             sourceGroupKey: configGroupKey(group),
@@ -211,7 +213,7 @@ import { renderHistoryManager, uniqueStringList } from '../helpers/history-list-
         const payload = JSON.stringify(taskIds);
         const groupKey = configGroupKey(group);
         const collectionKey = historyCollectionStorageKey(options.collection || '__all__');
-        historyConfigGroupSortState = {
+        historyState.historyConfigGroupSortState = {
             active: Boolean(groupKey),
             sourceKey: groupKey,
             collectionKey,
@@ -233,11 +235,11 @@ import { renderHistoryManager, uniqueStringList } from '../helpers/history-list-
     export function finishHistoryDrag() {
         removeHistoryDragImage();
         removeHistoryConfigGroupDropPreview();
-        historyDragState.active = false;
-        historyDragState.taskIds = [];
-        historyDragState.sourceGroupKey = '';
-        historyDragState.activeDropTarget = '';
-        historyConfigGroupSortState = {
+        historyState.historyDragState.active = false;
+        historyState.historyDragState.taskIds = [];
+        historyState.historyDragState.sourceGroupKey = '';
+        historyState.historyDragState.activeDropTarget = '';
+        historyState.historyConfigGroupSortState = {
             active: false,
             sourceKey: '',
             collectionKey: '',
@@ -268,8 +270,8 @@ import { renderHistoryManager, uniqueStringList } from '../helpers/history-list-
             /* DataTransfer 在部分浏览器只能在 drop 阶段读取。 */
         }
         return {
-            groupKey: historyConfigGroupSortState.sourceKey || '',
-            collectionKey: historyConfigGroupSortState.collectionKey || '__all__',
+            groupKey: historyState.historyConfigGroupSortState.sourceKey || '',
+            collectionKey: historyState.historyConfigGroupSortState.collectionKey || '__all__',
         };
     }
 
@@ -280,21 +282,21 @@ import { renderHistoryManager, uniqueStringList } from '../helpers/history-list-
     }
 
     export function removeHistoryConfigGroupDropPreview() {
-        if (historyConfigGroupDropPreviewElement?.parentNode) {
-            historyConfigGroupDropPreviewElement.parentNode.removeChild(historyConfigGroupDropPreviewElement);
+        if (historyState.historyConfigGroupDropPreviewElement?.parentNode) {
+            historyState.historyConfigGroupDropPreviewElement.parentNode.removeChild(historyState.historyConfigGroupDropPreviewElement);
         }
-        historyConfigGroupDropPreviewElement = null;
+        historyState.historyConfigGroupDropPreviewElement = null;
     }
 
     export function ensureHistoryConfigGroupDropPreview() {
-        if (historyConfigGroupDropPreviewElement?.isConnected) return historyConfigGroupDropPreviewElement;
+        if (historyState.historyConfigGroupDropPreviewElement?.isConnected) return historyState.historyConfigGroupDropPreviewElement;
         const preview = document.createElement('div');
         preview.className = 'history-config-group-drop-preview';
         preview.setAttribute('aria-hidden', 'true');
         const label = document.createElement('span');
         label.textContent = '释放后插入到这里';
         preview.appendChild(label);
-        historyConfigGroupDropPreviewElement = preview;
+        historyState.historyConfigGroupDropPreviewElement = preview;
         return preview;
     }
 
@@ -314,28 +316,28 @@ import { renderHistoryManager, uniqueStringList } from '../helpers/history-list-
     }
 
     export function setHistoryConfigGroupSortTarget(targetKey, position, element) {
-        historyConfigGroupSortState.activeDropTarget = `config-sort:${targetKey || ''}`;
-        historyConfigGroupSortState.dropPosition = position === 'before' ? 'before' : 'after';
+        historyState.historyConfigGroupSortState.activeDropTarget = `config-sort:${targetKey || ''}`;
+        historyState.historyConfigGroupSortState.dropPosition = position === 'before' ? 'before' : 'after';
         document.querySelectorAll('.history-config-group-card.config-sort-active').forEach((item) => {
             if (item !== element) item.classList.remove('config-sort-active', 'config-sort-before', 'config-sort-after');
         });
         element?.classList.add(
             'config-sort-active',
-            historyConfigGroupSortState.dropPosition === 'before' ? 'config-sort-before' : 'config-sort-after',
+            historyState.historyConfigGroupSortState.dropPosition === 'before' ? 'config-sort-before' : 'config-sort-after',
         );
-        placeHistoryConfigGroupDropPreview(element, historyConfigGroupSortState.dropPosition);
+        placeHistoryConfigGroupDropPreview(element, historyState.historyConfigGroupSortState.dropPosition);
     }
 
     export function clearHistoryConfigGroupSortTarget(targetKey, element) {
-        if (historyConfigGroupSortState.activeDropTarget === `config-sort:${targetKey || ''}`) {
-            historyConfigGroupSortState.activeDropTarget = '';
+        if (historyState.historyConfigGroupSortState.activeDropTarget === `config-sort:${targetKey || ''}`) {
+            historyState.historyConfigGroupSortState.activeDropTarget = '';
             removeHistoryConfigGroupDropPreview();
         }
         element?.classList.remove('config-sort-active', 'config-sort-before', 'config-sort-after');
     }
 
     export function clearHistoryConfigGroupSortIndicators() {
-        historyConfigGroupSortState.activeDropTarget = '';
+        historyState.historyConfigGroupSortState.activeDropTarget = '';
         removeHistoryConfigGroupDropPreview();
         document.querySelectorAll('.history-config-group-card.config-sort-active').forEach((item) => {
             item.classList.remove('config-sort-active', 'config-sort-before', 'config-sort-after');
@@ -343,7 +345,7 @@ import { renderHistoryManager, uniqueStringList } from '../helpers/history-list-
     }
 
     export function historyConfigGroupOrderDragEnter(event, group, element, options = {}) {
-        if (!historyConfigGroupSortState.active || historyConfigGroupSortState.pending) return false;
+        if (!historyState.historyConfigGroupSortState.active || historyState.historyConfigGroupSortState.pending) return false;
         const source = readHistoryDraggedConfigGroup(event);
         const targetKey = configGroupKey(group);
         const collectionKey = historyCollectionStorageKey(options.collection || '__all__');
@@ -357,9 +359,9 @@ import { renderHistoryManager, uniqueStringList } from '../helpers/history-list-
     }
 
     export function historyConfigGroupOrderDragLeave(event, group, element) {
-        if (!historyConfigGroupSortState.active) return false;
+        if (!historyState.historyConfigGroupSortState.active) return false;
         if (element?.contains(event.relatedTarget)) return true;
-        if (historyConfigGroupDropPreviewElement?.contains(event.relatedTarget)) return true;
+        if (historyState.historyConfigGroupDropPreviewElement?.contains(event.relatedTarget)) return true;
         if (event.relatedTarget instanceof Element && event.relatedTarget.closest('.history-config-group-card-list')) return true;
         clearHistoryConfigGroupSortTarget(configGroupKey(group), element);
         return true;
@@ -415,7 +417,7 @@ import { renderHistoryManager, uniqueStringList } from '../helpers/history-list-
     }
 
     export function cleanupHistoryConfigGroupPointerDrag() {
-        const drag = historyConfigGroupPointerDrag;
+        const drag = historyState.historyConfigGroupPointerDrag;
         if (!drag) return null;
         document.removeEventListener('pointermove', drag.onMove);
         document.removeEventListener('pointerup', drag.onUp);
@@ -436,7 +438,7 @@ import { renderHistoryManager, uniqueStringList } from '../helpers/history-list-
         removeHistoryDragImage();
         drag.handle?.classList.remove('dragging');
         document.body.classList.remove('history-config-group-pointer-drag-active');
-        historyConfigGroupPointerDrag = null;
+        historyState.historyConfigGroupPointerDrag = null;
         return drag;
     }
 
@@ -458,7 +460,7 @@ import { renderHistoryManager, uniqueStringList } from '../helpers/history-list-
             finishHistoryDrag();
             return;
         }
-        historyConfigGroupSortState.pending = true;
+        historyState.historyConfigGroupSortState.pending = true;
         try {
             const changed = await reorderHistoryConfigGroupValue(
                 drag.sourceKey,
@@ -490,20 +492,20 @@ import { renderHistoryManager, uniqueStringList } from '../helpers/history-list-
             finishHistoryDrag();
             return;
         }
-        historyDragState.pending = true;
+        historyState.historyDragState.pending = true;
         document.querySelector('.history-collections-workbench')?.classList.add('drop-pending');
         try {
             const res = await applyHistoryTaskIdsToCollection(taskIds, clean, { clearSelection: true });
             if (res === null) {
                 setHistoryDropFeedback('移动失败，列表未更改。', 'error');
             } else {
-                selectedHistoryCollectionKey = clean ? `collection:${clean}` : HISTORY_UNGROUPED_COLLECTION_KEY;
+                historyState.selectedHistoryCollectionKey = clean ? `collection:${clean}` : HISTORY_UNGROUPED_COLLECTION_KEY;
                 setHistoryDropFeedback(`${taskIds.length} 条任务已移动到${clean ? `「${label || clean}」` : '未分类'}。`, 'ok');
             }
         } catch (e) {
             setHistoryDropFeedback(`移动失败: ${e.message}`, 'error');
         } finally {
-            historyDragState.pending = false;
+            historyState.historyDragState.pending = false;
             finishHistoryDrag();
             renderHistoryManager();
         }

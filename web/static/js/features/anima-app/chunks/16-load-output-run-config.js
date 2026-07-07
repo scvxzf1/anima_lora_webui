@@ -19,10 +19,13 @@ import { saveAsTargetGroups } from '../helpers/toml-io-bridge.js?v=module-bootst
 import {
     applyTomlLockState,
     applyTomlToConfig,
+    armTomlSaveConfirm,
+    isTomlLocked,
     resetTomlDeleteConfirm,
     resetTomlSaveConfirm,
     setTomlStatus,
     tomlFileDisplayName,
+    updateTomlActionState,
 } from '../helpers/toml-action-state-bridge.js?v=module-bootstrap-20260707-93';
 
 const ctx = getAppContext();

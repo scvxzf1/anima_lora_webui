@@ -16,7 +16,7 @@ import { normalizeLoraAdapterKind, normalizePrecisionPreference } from '../helpe
 import { configureConfigFieldUiBridge } from '../helpers/config-field-ui-bridge.js?v=module-bootstrap-20260707-93';
 import { configureTomlManagerBridge } from '../helpers/toml-manager-bridge.js?v=module-bootstrap-20260707-93';
 import { handleDeletedTomlSelection } from '../helpers/toml-actions-bridge.js?v=module-bootstrap-20260707-93';
-import { loadOutputRunConfig, preferredOutputRunKind, renderOutputRunManager, updateOutputRunActionState, updateOutputRunSelectionUI } from '../helpers/output-run-bridge.js?v=module-bootstrap-20260707-93';
+import { loadOutputRunConfig, loadTomlFile, preferredOutputRunKind, renderOutputRunManager, updateOutputRunActionState, updateOutputRunSelectionUI } from '../helpers/output-run-bridge.js?v=module-bootstrap-20260707-93';
 import { confirmDiscardTomlChanges, setBadge, updateTomlDirtyState, updateTomlSelectionUI } from '../helpers/toml-selection-bridge.js?v=module-bootstrap-20260707-93';
 import { getConfigState } from '../helpers/config-state-bridge.js?v=module-bootstrap-20260707-93';
 import { getDatasetState } from '../helpers/dataset-state-bridge.js?v=module-bootstrap-20260707-93';

@@ -16,9 +16,11 @@ import {
     confirmOutputRunSaveAs,
     copyOutputRunConfigContent,
     exportOutputRunConfig,
+    loadTomlFile,
     openOutputRunSaveAs,
     renderOutputRunList,
     saveTomlFile,
+    selectAndApplyTomlFile,
 } from '../helpers/output-run-bridge.js?v=module-bootstrap-20260707-93';
 import { loadOutputRuns, setTomlManagerMode, switchTomlManagerMode } from '../helpers/toml-manager-bridge.js?v=module-bootstrap-20260707-93';
 import {
@@ -85,7 +87,7 @@ import {
 } from '../helpers/toml-action-state-bridge.js?v=module-bootstrap-20260707-93';
 import { saveGlobalSettings, resetGlobalSettings, toggleGlobalSettingHelp, syncGlobalUIScaleOverrideField, syncAllGlobalUIScaleOverrideFields } from '../helpers/global-settings-bridge.js?v=module-bootstrap-20260707-93';
 import { savePreviewSettings, resetPreviewSettings, loadPreviewImages, loadPreviewWeights, setPreviewSource, openCurrentTrainingPreview, openLiveSamplingPreview, closePreviewPanel, togglePreviewWeightSort, changePreviewTask, restorePreviewWorkspaceAfterPanelClose } from '../helpers/preview-view-bridge.js?v=module-bootstrap-20260707-93';
-import { bindTrainingViewTabKeyboard } from '../helpers/queue-view-bridge.js?v=module-bootstrap-20260707-93';
+import { bindTrainingViewTabKeyboard, showTrainingView } from '../helpers/queue-view-bridge.js?v=module-bootstrap-20260707-93';
 import { loadTrainingHistoryList, renderHistoryManager } from '../helpers/history-list-bridge.js?v=module-bootstrap-20260707-93';
 
 const ctx = getAppContext();
@@ -349,10 +351,10 @@ const REQUIRED_SETUP_EVENT_DOM_IDS = new Set(SETUP_EVENT_DOM_CONTRACT.required);
             trainingState.trainingRuntime.logLineCount = 0;
             updateLogStatusText();
         });
-        on('btn-refresh-history', 'click', loadTrainingHistoryList);
+        on('btn-refresh-history', 'click', () => loadTrainingHistoryList({ announce: true }));
         on('btn-preview-training-results', 'click', openCurrentTrainingPreview);
         on('btn-live-sampling-preview', 'click', openLiveSamplingPreview);
-        on('btn-history-manager-refresh', 'click', loadTrainingHistoryList);
+        on('btn-history-manager-refresh', 'click', () => loadTrainingHistoryList({ announce: true }));
         on('btn-history-collections-workbench', 'click', openHistoryCollectionsWorkbench);
         on('btn-history-manager-merge', 'click', mergeSelectedHistoryTasks);
         on('btn-history-bulk-archive', 'click', () => archiveSelectedHistoryTasks(true));

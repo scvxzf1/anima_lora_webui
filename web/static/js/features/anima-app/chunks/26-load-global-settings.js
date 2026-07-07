@@ -34,6 +34,56 @@ const appShellState = getAppShellState();
 const historyState = getHistoryState();
 const tomlState = getTomlState();
 const trainingState = getTrainingState();
+const HISTORY_REFRESH_BUTTON_LABELS = Object.freeze({
+    'btn-refresh-history': '刷新任务列表',
+    'btn-history-manager-refresh': '刷新',
+});
+let historyListLoadPromise = null;
+let historyRefreshFeedbackTimer = null;
+
+function setHistoryRefreshButtonState(state = 'idle') {
+    if (historyRefreshFeedbackTimer) {
+        clearTimeout(historyRefreshFeedbackTimer);
+        historyRefreshFeedbackTimer = null;
+    }
+    const labels = {
+        idle: HISTORY_REFRESH_BUTTON_LABELS,
+        pending: {
+            'btn-refresh-history': '刷新中...',
+            'btn-history-manager-refresh': '刷新中...',
+        },
+        ok: {
+            'btn-refresh-history': '已刷新',
+            'btn-history-manager-refresh': '已刷新',
+        },
+        error: {
+            'btn-refresh-history': '刷新失败',
+            'btn-history-manager-refresh': '失败',
+        },
+    }[state] || HISTORY_REFRESH_BUTTON_LABELS;
+    const pending = state === 'pending';
+    for (const [id, defaultLabel] of Object.entries(HISTORY_REFRESH_BUTTON_LABELS)) {
+        const button = document.getElementById(id);
+        if (!button) continue;
+        button.disabled = pending;
+        button.setAttribute('aria-busy', pending ? 'true' : 'false');
+        button.dataset.refreshState = state;
+        button.textContent = labels[id] || defaultLabel;
+    }
+    if (!pending && state !== 'idle') {
+        historyRefreshFeedbackTimer = setTimeout(() => {
+            for (const [id, defaultLabel] of Object.entries(HISTORY_REFRESH_BUTTON_LABELS)) {
+                const button = document.getElementById(id);
+                if (!button) continue;
+                button.disabled = false;
+                button.setAttribute('aria-busy', 'false');
+                button.dataset.refreshState = 'idle';
+                button.textContent = defaultLabel;
+            }
+            historyRefreshFeedbackTimer = null;
+        }, 1400);
+    }
+}
 
     export function resolveGlobalUIScaleDefaultValue(snapshot = appShellState.globalSettings || {}) {
         const uiScaleController = getUiScaleController();
@@ -442,28 +492,42 @@ const trainingState = getTrainingState();
         }
     }
 
-    export async function loadTrainingHistoryList() {
+    export async function loadTrainingHistoryList(options = {}) {
         if (location.protocol === 'file:') return;
-        try {
-            const params = new URLSearchParams();
-            params.set('include_archived', '1');
-            const suffix = params.toString() ? `?${params.toString()}` : '';
-            const payload = await api(`/api/training/history${suffix}`);
-            historyState.historyTasks = payload.tasks || [];
-            await loadHistoryCollectionSettings();
-            renderTrainingHistoryList();
-            renderHistoryManager();
-            renderPreviewTaskSelect();
-            renderContinueTrainingSource();
-            setPreviewStatus('', '');
-        } catch (e) {
-            const list = document.getElementById('task-history-list');
-            if (list) list.textContent = '读取任务列表失败';
-            const managerList = document.getElementById('history-manager-list');
-            if (managerList) managerList.textContent = '读取历史任务失败';
-            renderPreviewTaskSelect();
-            setPreviewStatus('读取训练任务列表失败: ' + e.message, 'error');
+        const announce = Boolean(options?.announce);
+        if (historyListLoadPromise) {
+            if (announce) setHistoryRefreshButtonState('pending');
+            return historyListLoadPromise;
         }
+        if (announce) setHistoryRefreshButtonState('pending');
+        historyListLoadPromise = (async () => {
+            let failed = false;
+            try {
+                const params = new URLSearchParams();
+                params.set('include_archived', '1');
+                const suffix = params.toString() ? `?${params.toString()}` : '';
+                const payload = await api(`/api/training/history${suffix}`);
+                historyState.historyTasks = payload.tasks || [];
+                await loadHistoryCollectionSettings();
+                renderTrainingHistoryList();
+                renderHistoryManager();
+                renderPreviewTaskSelect();
+                renderContinueTrainingSource();
+                setPreviewStatus('', '');
+            } catch (e) {
+                failed = true;
+                const list = document.getElementById('task-history-list');
+                if (list) list.textContent = '读取任务列表失败';
+                const managerList = document.getElementById('history-manager-list');
+                if (managerList) managerList.textContent = '读取历史任务失败';
+                renderPreviewTaskSelect();
+                setPreviewStatus('读取训练任务列表失败: ' + e.message, 'error');
+            } finally {
+                if (announce) setHistoryRefreshButtonState(failed ? 'error' : 'ok');
+                historyListLoadPromise = null;
+            }
+        })();
+        return await historyListLoadPromise;
     }
 
     export async function loadHistoryCollectionSettings() {
