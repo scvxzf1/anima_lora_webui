@@ -288,3 +288,44 @@ timeout 60 .venv/bin/python -m pytest \
 - 既有计划：`docs/superpowers/plans/2026-07-11-dataset-page-stage-schedule-ia.md`
 - 既有设计：`docs/superpowers/specs/2026-07-11-dataset-page-stage-schedule-ia-design.md`
 - 仓库协议：`AGENTS.md`（外置配置、路径边界、测试 timeout 60、热点文件瘦身）
+
+---
+
+## 10. 五轮自动迭代协议
+
+一句话：每轮固定做「评分 → 前/后端审查 → 选优化项 → 写计划/测试门禁 → 复盘」，共 5 轮，形成可持久推进节奏。
+
+完整协议正文见：`docs/superpowers/specs/2026-07-11-five-round-auto-iteration-protocol.md`  
+迭代日志见：`docs/superpowers/plans/2026-07-11-fullstack-auto-iteration-log.md`  
+前端计划见：`docs/superpowers/plans/2026-07-11-frontend-config-optimization.md`
+
+### 10.1 规范评分结构（摘要）
+
+**后端 100：** 架构15 + 配置真相20 + 路径安全15 + 队列runtime15 + stage贯通10 + 测试15 + 可运维10  
+**前端 100：** 模块边界15 + 状态纯度15 + 过渡层15 + 测试15 + 热点10 + 性能10 + UX10 + a11y10  
+等级：A90+ / B80-89 / C70-79 / D<70
+
+### 10.2 五轮目标
+
+| 轮次 | 目标 |
+|---|---|
+| R1 | 基线评分 + 锁协议 + 收高风险清单 |
+| R2 | 后端真相/安全优先项对照落地 |
+| R3 | 前端优化配置项入计划 |
+| R4 | 全栈优先级合流 + debug 门禁固化 |
+| R5 | 冻结下阶段执行队列 |
+
+### 10.3 子代理分工
+
+| 角色 | 任务 |
+|---|---|
+| backend-auditor | 后端健康评分卡 |
+| frontend-auditor | 前端状态与优化项 |
+| planner | 合流、更新计划与日志 |
+| test-auditor | 测试门禁有效性 |
+
+### 10.4 严格 Debug 门禁（摘要）
+
+红测 → 最小实现 → 域包 ≤60s → 跨域回归 → 记日志。  
+不启真实长训；不删用户 history/queue/runtime。
+
