@@ -59,6 +59,12 @@ def test_sample_prompts_roundtrip_preserves_comments_blank_lines_and_spacing(tmp
     configs = root / "configs"
     configs.mkdir()
     monkeypatch.setattr(config_service, "ROOT", root)
+    monkeypatch.setattr(config_service, "CONFIGS_DIR", configs)
+    monkeypatch.setattr(
+        config_service,
+        "DEFAULT_SAMPLE_PROMPTS_FILE",
+        str(configs / "sample_prompts.txt"),
+    )
 
     original = "# 角色 A\n\n  masterpiece, best quality  \n# 角色 B\nsolo, 1girl\n"
     saved = config_service.save_sample_prompts_file(original, "configs/sample_prompts.txt")
@@ -142,4 +148,82 @@ def test_sample_prompts_put_route_forks_to_training_config_specific_file(
     assert (
         configs / "sample-prompts" / "imported" / "lora.txt"
     ).read_text(encoding="utf-8") == "# keep comment\n\nsolo, character a\n"
+
+
+def test_sample_prompts_fork_uses_external_configs_root(tmp_path: Path, monkeypatch):
+    """外置 configs_root 时，fork 后的 sample prompts 必须落在外置根内。"""
+    root = tmp_path / "project"
+    external = tmp_path / "ext-configs"
+    root.mkdir()
+    # 先写在项目 configs，再由 helper 挪到外置根（模拟外置部署）
+    project_configs = root / "configs"
+    (project_configs / "gui-methods").mkdir(parents=True)
+    (project_configs / "gui-methods" / "lora.toml").write_text(
+        'output_name = "demo"\n',
+        encoding="utf-8",
+    )
+    _patch_external_config_service_paths(monkeypatch, root, external)
+
+    from web.services.config import sample_prompts as sample_prompts_mod
+
+    monkeypatch.setattr(sample_prompts_mod, "ROOT", root, raising=False)
+    monkeypatch.setattr(sample_prompts_mod, "CONFIGS_DIR", external, raising=False)
+    monkeypatch.setattr(
+        sample_prompts_mod,
+        "DEFAULT_SAMPLE_PROMPTS_FILE",
+        str(external / "sample_prompts.txt"),
+        raising=False,
+    )
+
+    # 项目内再造一个假 configs，确保实现不会误写这里
+    leak_dir = root / "configs" / "sample-prompts" / "gui-methods"
+    leak_dir.mkdir(parents=True)
+
+    saved = config_service.save_sample_prompts_file(
+        "a\nb\n",
+        train_config_file="configs/gui-methods/lora.toml",
+    )
+    saved_path = external / "sample-prompts" / "gui-methods" / "lora.txt"
+    project_leak = leak_dir / "lora.txt"
+
+    assert saved["ok"] is True
+    assert saved["file"] == "configs/sample-prompts/gui-methods/lora.txt"
+    assert saved_path.exists()
+    assert saved_path.read_text(encoding="utf-8").splitlines()[0].strip() == "a"
+    assert project_leak.exists() is False
+
+
+def test_sample_prompts_load_uses_external_configs_root(tmp_path: Path, monkeypatch):
+    """外置 configs_root 时，读取也必须走外置根。"""
+    root = tmp_path / "project"
+    external = tmp_path / "ext-configs"
+    root.mkdir()
+    project_configs = root / "configs"
+    project_configs.mkdir()
+    (project_configs / "sample_prompts.txt").write_text(
+        "# note\nsolo, from external\n",
+        encoding="utf-8",
+    )
+    _patch_external_config_service_paths(monkeypatch, root, external)
+
+    # 外置挪走后，项目内再建一个旧路径文件，证明不能读到这里
+    (root / "configs").mkdir(exist_ok=True)
+    (root / "configs" / "sample_prompts.txt").write_text(
+        "solo, from project\n",
+        encoding="utf-8",
+    )
+
+    from web.services.config import sample_prompts as sample_prompts_mod
+
+    monkeypatch.setattr(sample_prompts_mod, "ROOT", root, raising=False)
+    monkeypatch.setattr(sample_prompts_mod, "CONFIGS_DIR", external, raising=False)
+    monkeypatch.setattr(
+        sample_prompts_mod,
+        "DEFAULT_SAMPLE_PROMPTS_FILE",
+        str(external / "sample_prompts.txt"),
+        raising=False,
+    )
+
+    loaded = config_service.load_sample_prompts_file("configs/sample_prompts.txt")
+    assert loaded["prompts"] == ["solo, from external"]
 
