@@ -500,13 +500,32 @@ flowchart TD
 
 ## 总验收清单（DoD）
 
-- [ ] Round1：backoff 能自动唤醒；launch fail 可按策略重试；image_test 越权路径被拒；save_raw schema 生效
-- [ ] Round2：configs 热切换同根；continue/image_test/preview/analysis allowlist 一致；ROOT 单一 accessor
-- [ ] Round3：队列默认策略/容量/时序可配置；错误分类驱动 retry
-- [ ] Round4：`test-backend-smoke` 可用；HTTP/WS 关键契约存在；跨域删除组合测锁定
-- [ ] 每个 Task 有红绿证据与 commit
-- [ ] 跨域最小回归包绿
-- [ ] 无未说明的 High 风险残留
+- [x] Round1：backoff 能自动唤醒；launch fail 可按策略重试；image_test 越权路径被拒；save_raw schema 生效
+- [x] Round2：configs 热切换同根；continue/image_test/preview/analysis allowlist 一致；ROOT 单一 accessor
+- [x] Round3：队列默认策略/容量/时序可配置；错误分类驱动 retry
+- [x] Round4：`test-backend-smoke` 可用；HTTP/WS 关键契约存在；跨域删除组合测锁定
+- [x] 每个 Task 有红绿证据与 commit
+- [x] 跨域最小回归包绿
+- [x] 无未说明的 High 风险残留
+
+### 执行台账（@ 6736e43b）
+
+| Task | Commit | 状态 |
+|---|---|---|
+| 1 wake | 137e655f | done |
+| 2 launch retry | 6fbea2c6 | done |
+| 3 image_test allowlist | 1116b1b8 | done |
+| 4 raw schema | b2663c00 | done |
+| 5 configs root | b6a4d64c | done |
+| 6 path policy | 99186363 | done |
+| 7 anima_home ROOT | 41c716be | done |
+| 8 training_policy | 211c2987 | done |
+| 9 failure class | 75dbdddc | done |
+| 10 smoke+HTTP/WS | 0b8ffe37 | done（补齐） |
+| 11 cross delete | a7849f8c | done（补齐） |
+| 12 methods+envelope | 6736e43b | done（补齐） |
+
+验证：`tasks.py test-backend-smoke` → 121 passed；跨域扩展包见本轮执行日志。
 
 ---
 
