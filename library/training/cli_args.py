@@ -1430,3 +1430,196 @@ def add_sd_saving_arguments(parser: argparse.ArgumentParser):
     parser.add_argument(
         "--use_safetensors", action="store_true", help="use safetensors format to save"
     )
+
+
+def setup_parser() -> argparse.ArgumentParser:
+    """Build the full Anima training ArgumentParser.
+
+    Extracted from train.py so the entrypoint stays a thin wrapper. Flag
+    surface and defaults must stay identical.
+    """
+    from library.anima import training as anima_train_utils
+    from library.config import loader as config_util
+    from library.log import add_logging_arguments
+    from library.models import sai_spec as sai_model_spec
+    from library.training.losses import add_custom_train_arguments
+
+    parser = argparse.ArgumentParser()
+
+    add_logging_arguments(parser)
+    add_sd_models_arguments(parser)
+    sai_model_spec.add_model_spec_arguments(parser)
+    add_dataset_arguments(parser, True, True, True)
+    add_training_arguments(parser, True)
+    add_masked_loss_arguments(parser)
+    add_optimizer_arguments(parser)
+    config_util.add_config_arguments(parser)
+    add_custom_train_arguments(parser)
+    add_dit_training_arguments(parser)
+    anima_train_utils.add_anima_training_arguments(parser)
+
+    parser.add_argument(
+        "--cpu_offload_checkpointing",
+        action="store_true",
+        help="[EXPERIMENTAL] enable offloading of tensors to CPU during checkpointing for U-Net or DiT, if supported"
+        "",
+    )
+    parser.add_argument(
+        "--no_metadata",
+        action="store_true",
+        help="do not save metadata in output model",
+    )
+    parser.add_argument(
+        "--save_model_as",
+        type=str,
+        default="safetensors",
+        choices=[None, "ckpt", "pt", "safetensors"],
+        help="format to save the model (default is .safetensors)",
+    )
+
+    parser.add_argument(
+        "--unet_lr",
+        type=float,
+        default=None,
+        help="learning rate for U-Net",
+    )
+    parser.add_argument(
+        "--text_encoder_lr",
+        type=float,
+        default=None,
+        nargs="*",
+        help="learning rate for Text Encoder, can be multiple",
+    )
+
+    add_network_arguments(parser)
+    parser.add_argument(
+        "--no_half_vae",
+        action="store_true",
+        help="do not use fp16",
+    )
+    parser.add_argument(
+        "--skip_until_initial_step",
+        action="store_true",
+        help="skip training until initial_step is reached",
+    )
+    parser.add_argument(
+        "--initial_epoch",
+        type=int,
+        default=None,
+        help="initial epoch number, 1 means first epoch (same as not specifying). NOTE: initial_epoch/step doesn't affect to lr scheduler. Which means lr scheduler will start from 0 without `--resume`."
+        + "",
+    )
+    parser.add_argument(
+        "--initial_step",
+        type=int,
+        default=None,
+        help="initial step number including all epochs, 0 means first step (same as not specifying). overwrites initial_epoch."
+        + "",
+    )
+    parser.add_argument(
+        "--validation_seed",
+        type=int,
+        default=None,
+        help="Validation seed for shuffling validation dataset, training `--seed` used otherwise",
+    )
+    parser.add_argument(
+        "--validation_split",
+        type=float,
+        default=0.0,
+        help="Split for validation images out of the training dataset",
+    )
+    parser.add_argument(
+        "--validation_split_num",
+        type=int,
+        default=0,
+        help=(
+            "Count-based validation split (number of held-out images). When "
+            "set (>0), wins over the fractional `--validation_split`. Also "
+            "determines how many samples CMMD evaluation generates per pass."
+        ),
+    )
+    parser.add_argument(
+        "--validate_every_n_steps",
+        type=int,
+        default=None,
+        help="Run validation on validation dataset every N steps. By default, validation will only occur every epoch if a validation dataset is available",
+    )
+    parser.add_argument(
+        "--validate_every_n_epochs",
+        type=int,
+        default=None,
+        help="Run validation dataset every N epochs. By default, validation will run every epoch if a validation dataset is available",
+    )
+    parser.add_argument(
+        "--max_validation_steps",
+        type=int,
+        default=None,
+        help="Max number of validation dataset items processed. By default, validation will run the entire validation dataset",
+    )
+    parser.add_argument(
+        "--validation_sigmas",
+        type=float,
+        nargs="+",
+        default=None,
+        help="Sigma values for validation loss (0.0~1.0). Low values = fine detail. Default: 0.1 0.4 0.7. (Legacy FM-val path — unused under the CMMD val replacement.)",
+    )
+    parser.add_argument(
+        "--validation_sample_steps",
+        type=int,
+        default=20,
+        help="Denoising steps used by CMMD validation when sampling each held-out item. Default 20.",
+    )
+    parser.add_argument(
+        "--validation_cfg_scale",
+        type=float,
+        default=1.0,
+        help="CFG scale used by CMMD validation. Default 1.0 (no CFG, fastest). Bump to 4.0 to match production sampling but generation cost ~2×.",
+    )
+    parser.add_argument(
+        "--use_cmmd",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Use CMMD (PE-Core MMD²) as the validation signal. Set "
+        "`use_cmmd = false` in the method TOML (or pass `--no-use_cmmd`) to "
+        "skip CMMD and run only the legacy per-σ FM-MSE val pass — useful "
+        "on tight VRAM where the PE encoder + sampling path doesn't fit.",
+    )
+    parser.add_argument(
+        "--validation_baselines",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Run each method adapter's validation baselines (e.g. IP-Adapter "
+        "no_ip / shuffled_ref) as FM-MSE delta diagnostics during validation. "
+        "Set `validation_baselines = false` in the method TOML (or pass "
+        "`--no-validation_baselines`) to skip them — each baseline adds a full "
+        "extra val forward per (batch, σ), so this roughly halves IP-Adapter "
+        "validation time when you don't need the deltas.",
+    )
+    parser.add_argument(
+        "--unsloth_offload_checkpointing",
+        action="store_true",
+        help="offload activations to CPU RAM using async non-blocking transfers (faster than --cpu_offload_checkpointing). "
+        "Cannot be used with --cpu_offload_checkpointing or --blocks_to_swap.",
+    )
+    parser.add_argument(
+        "--print-config",
+        dest="print_config",
+        action="store_true",
+        help="Dump the fully merged config (base → preset → method → CLI) as TOML "
+        "with provenance comments, then exit 0. Does not start training.",
+    )
+    parser.add_argument(
+        "--config-snapshot",
+        dest="config_snapshot",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Write output/<output_name>.snapshot.toml next to the checkpoint on every real "
+        "run (provenance + git SHA). Pass --no-config-snapshot to disable.",
+    )
+    parser.add_argument(
+        "--config-strict",
+        dest="config_strict",
+        action="store_true",
+        help="Treat config-schema warnings (unknown keys, off-list choices) as errors.",
+    )
+    return parser

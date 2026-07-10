@@ -284,6 +284,39 @@ def add_dataset_metadata(
 # ---------------------------------------------------------------------------
 
 
+
+def update_anima_metadata(metadata: dict[str, Any], args) -> None:
+    """Stamp Anima-specific training knobs into checkpoint metadata."""
+    metadata["ss_weighting_scheme"] = args.weighting_scheme
+    metadata["ss_logit_mean"] = args.logit_mean
+    metadata["ss_logit_std"] = args.logit_std
+    metadata["ss_mode_scale"] = args.mode_scale
+    metadata["ss_min_snr_gamma"] = str(getattr(args, "min_snr_gamma", None))
+    metadata["ss_p2_gamma"] = str(getattr(args, "p2_gamma", None))
+    metadata["ss_p2_k"] = str(getattr(args, "p2_k", None))
+    metadata["ss_velocity_direction_loss_weight"] = str(
+        getattr(args, "velocity_direction_loss_weight", 0.0)
+    )
+    metadata["ss_prior_preservation_weight"] = str(
+        getattr(args, "prior_preservation_weight", 0.0)
+    )
+    metadata["ss_blank_prompt_preservation"] = str(
+        getattr(args, "blank_prompt_preservation", False)
+    )
+    metadata["ss_diff_output_preservation_trigger"] = str(
+        getattr(args, "diff_output_preservation_trigger", None)
+    )
+    metadata["ss_diff_output_preservation_class"] = str(
+        getattr(args, "diff_output_preservation_class", None)
+    )
+    metadata["ss_inverted_mask_prior_weight"] = str(
+        getattr(args, "inverted_mask_prior_weight", 0.0)
+    )
+    metadata["ss_timestep_sampling"] = args.timestep_sampling
+    metadata["ss_sigmoid_scale"] = args.sigmoid_scale
+    metadata["ss_discrete_flow_shift"] = args.discrete_flow_shift
+
+
 def add_model_hash_metadata(metadata: dict[str, Any], args) -> None:
     """Add model name/hash and VAE name/hash entries to *metadata* in place."""
     from library.training.hashing import model_hash, calculate_sha256
