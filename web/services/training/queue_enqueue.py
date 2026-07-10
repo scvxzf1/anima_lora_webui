@@ -5,6 +5,7 @@ from __future__ import annotations
 import time
 from typing import Any
 
+from web.services.training.anomalies import classify_training_failure, should_auto_retry_failure
 from web.services.training.common import _format_ts, _int_or_none
 from web.services.training.gpu import normalize_gpu_whitelist as _normalize_gpu_whitelist
 from web.services.training.launch_support import _normalize_continue_lora_info
@@ -327,9 +328,14 @@ def _maybe_auto_retry(self, item: dict[str, Any] | None, *, reason: str = "") ->
     max_attempts = int(getattr(self, "_queue_max_attempts", 1) or 1)
     if attempt >= max_attempts:
         return None
-    if str(reason or "").strip().lower() in {"user_stop", "canceled", "cancelled"}:
+    kind = classify_training_failure(
+        reason=reason,
+        message=str(item.get("message") or ""),
+    )
+    if not should_auto_retry_failure(kind):
         return None
     retry = self._clone_queue_item_for_retry(item)
+    retry["failure_class"] = kind
     backoff = float(getattr(self, "_queue_retry_backoff_sec", 0.0) or 0.0)
     if backoff > 0:
         retry["next_run_at"] = time.time() + backoff
