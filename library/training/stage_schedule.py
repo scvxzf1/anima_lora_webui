@@ -1,10 +1,15 @@
 """Percent-based multi-dataset stage schedule for curriculum training.
 
-Stages bind to subset indices in the training dataset blueprint and cover
-``[start_pct, end_pct)`` of ``max_train_steps`` (last stage includes 100%).
+Stages cover ``[start_pct, end_pct)`` of ``max_train_steps`` (last stage
+includes 100%) and bind through ``subset_index``:
+
+- Multi-member ``DatasetGroup`` (typical WebUI multi-``[[datasets]]`` rows):
+  ``subset_index`` selects the **group member** (UI row).
+- Single dataset with multiple local subsets: ``subset_index`` selects a
+  local subset.
 
 Training assumes every stage's VAE/TE caches were prepared before start;
-switching only rebuilds bucket indices (no preprocess).
+switching only rebuilds bucket indices / member membership (no preprocess).
 """
 
 from __future__ import annotations
@@ -211,24 +216,104 @@ def snapshot_full_image_data(dataset: Any, *, force: bool = False) -> None:
         snap(force=force)
 
 
-def apply_active_subsets_to_dataset(dataset: Any, active_subset_indices: Optional[Iterable[int]]) -> bool:
-    """Filter ``dataset`` buckets to subsets in ``active_subset_indices``.
+def count_stage_targets(dataset: Any) -> int:
+    """Count stage-bindable targets for validation.
 
-    Returns True when the filter was applied successfully on at least one leaf.
+    WebUI multi-row presets usually become one DatasetGroup member per row
+    (often one local subset each). In that shape, stage ``subset_index`` means
+    **member index**. A single dataset with multiple local subsets still uses
+    local subset indices.
+    """
+    if dataset is None:
+        return 0
+    members = getattr(dataset, "datasets", None)
+    if isinstance(members, (list, tuple)) and members:
+        if len(members) > 1:
+            return len(members)
+        return count_stage_targets(members[0])
+    subsets = getattr(dataset, "subsets", None)
+    if isinstance(subsets, (list, tuple)):
+        return len(subsets)
+    return 0
+
+
+def _empty_leaf_dataset(member: Any) -> None:
+    """Empty a leaf dataset's live maps while preserving any full snapshot."""
+    has_snap = getattr(member, "has_full_image_data_snapshot", None)
+    snap = getattr(member, "snapshot_full_image_data", None)
+    if callable(snap) and callable(has_snap) and not has_snap():
+        snap(force=True)
+    elif callable(snap) and not callable(has_snap) and getattr(member, "_all_image_data", None) is None:
+        snap(force=True)
+
+    if hasattr(member, "image_data"):
+        member.image_data = {}
+    if hasattr(member, "image_to_subset"):
+        member.image_to_subset = {}
+    if hasattr(member, "num_train_images"):
+        member.num_train_images = 0
+    if hasattr(member, "num_reg_images"):
+        member.num_reg_images = 0
+    if hasattr(member, "buckets_indices"):
+        member.buckets_indices = []
+    if hasattr(member, "_length"):
+        member._length = 0
+    make_buckets = getattr(member, "make_buckets", None)
+    if callable(make_buckets):
+        try:
+            make_buckets(
+                constant_token_buckets=bool(getattr(member, "_constant_token_buckets", True))
+            )
+        except TypeError:
+            make_buckets()
+
+
+def apply_active_subsets_to_dataset(dataset: Any, active_subset_indices: Optional[Iterable[int]]) -> bool:
+    """Filter ``dataset`` to the active stage target(s).
+
+    Semantics:
+    - Leaf dataset: ``active_subset_indices`` are local subset indices.
+    - DatasetGroup with multiple members (WebUI multi-``[[datasets]]``):
+      indices select **group members**. Chosen members keep all local subsets;
+      others are emptied. This matches UI row index 0..N-1.
+    - Single-member group: local subset indices on that member.
+
     ``active_subset_indices is None`` restores the full training set.
     """
     if dataset is None:
         return False
-    if hasattr(dataset, "datasets"):
-        # DatasetGroup: apply to each member with the same index space on that
-        # member's own subsets (WebUI single-dataset multi-subset is the common case).
-        any_ok = False
-        for member in dataset.datasets:
-            if apply_active_subsets_to_dataset(member, active_subset_indices):
-                any_ok = True
-        if any_ok and hasattr(dataset, "refresh_concat_state"):
+
+    members = getattr(dataset, "datasets", None)
+    if isinstance(members, (list, tuple)) and members:
+        if len(members) > 1:
+            if active_subset_indices is None:
+                any_ok = False
+                for member in members:
+                    if apply_active_subsets_to_dataset(member, None):
+                        any_ok = True
+                if any_ok and hasattr(dataset, "refresh_concat_state"):
+                    dataset.refresh_concat_state()
+                return any_ok
+
+            active = {int(i) for i in active_subset_indices}
+            if not any(0 <= i < len(members) for i in active):
+                return False
+
+            any_ok = False
+            for index, member in enumerate(members):
+                if index in active:
+                    if apply_active_subsets_to_dataset(member, None):
+                        any_ok = True
+                else:
+                    _empty_leaf_dataset(member)
+            if any_ok and hasattr(dataset, "refresh_concat_state"):
+                dataset.refresh_concat_state()
+            return any_ok
+
+        ok = apply_active_subsets_to_dataset(members[0], active_subset_indices)
+        if ok and hasattr(dataset, "refresh_concat_state"):
             dataset.refresh_concat_state()
-        return any_ok
+        return ok
 
     rebuild = getattr(dataset, "rebuild_buckets_for_subsets", None)
     if callable(rebuild):

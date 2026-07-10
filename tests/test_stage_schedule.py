@@ -244,3 +244,104 @@ def test_partial_snapshot_blocks_later_stage_recovery():
     assert set(ds._all_image_data) == {"a1", "a2"}
     assert apply_active_subsets_to_dataset(ds, {1}) is False
     assert set(ds.image_data) == {"a1", "a2"}
+
+
+class _FakeGroupMember(_FakeBucketDataset):
+    """One DatasetGroup member with a single local subset (WebUI multi-[[datasets]])."""
+
+    def __init__(self, name: str, keys: list[str]):
+        super().__init__()
+        self.subsets = [_FakeSubset(name)]
+        self.image_data = {k: _FakeInfo(k) for k in keys}
+        self.image_to_subset = {k: self.subsets[0] for k in keys}
+        self.num_train_images = len(keys)
+        self._length = len(keys)
+        self.buckets_indices = list(keys)
+        self._all_image_data = None
+        self._all_image_to_subset = None
+
+
+class _FakeDatasetGroup:
+    def __init__(self, members):
+        self.datasets = list(members)
+        self.image_data = {}
+        self.num_train_images = 0
+        self.num_reg_images = 0
+        self.refresh_concat_state()
+
+    def refresh_concat_state(self):
+        self.image_data = {}
+        self.num_train_images = 0
+        self.num_reg_images = 0
+        for ds in self.datasets:
+            self.image_data.update(ds.image_data)
+            self.num_train_images += ds.num_train_images
+            self.num_reg_images += getattr(ds, "num_reg_images", 0)
+
+
+def test_apply_active_dataset_members_for_multi_dataset_group():
+    """Plan A: stage index selects DatasetGroup members, not local subset slots.
+
+    kesul-style layout: 3 members × 1 local subset each. UI rows 0/1/2 must map
+    to member0/1/2. Broadcasting local subset index 1/2 would empty every member.
+    """
+    from library.training.stage_schedule import (
+        apply_active_subsets_to_dataset,
+        snapshot_full_image_data,
+    )
+
+    m0 = _FakeGroupMember("res1024", ["a1", "a2"])
+    m1 = _FakeGroupMember("res512", ["b1"])
+    m2 = _FakeGroupMember("res1536", ["c1", "c2", "c3"])
+    group = _FakeDatasetGroup([m0, m1, m2])
+    snapshot_full_image_data(group, force=True)
+
+    assert apply_active_subsets_to_dataset(group, {0}) is True
+    assert set(group.image_data) == {"a1", "a2"}
+    assert set(m0.image_data) == {"a1", "a2"}
+    assert set(m1.image_data) == set()
+    assert set(m2.image_data) == set()
+
+    assert apply_active_subsets_to_dataset(group, {1}) is True
+    assert set(group.image_data) == {"b1"}
+
+    assert apply_active_subsets_to_dataset(group, {2}) is True
+    assert set(group.image_data) == {"c1", "c2", "c3"}
+
+    # Restore full set
+    assert apply_active_subsets_to_dataset(group, None) is True
+    assert set(group.image_data) == {"a1", "a2", "b1", "c1", "c2", "c3"}
+
+
+def test_count_stage_targets_for_dataset_group_members():
+    """Validation budget should use member count for multi-[[datasets]] groups."""
+    from library.training.stage_schedule import count_stage_targets
+
+    m0 = _FakeGroupMember("res1024", ["a1"])
+    m1 = _FakeGroupMember("res512", ["b1"])
+    m2 = _FakeGroupMember("res1536", ["c1"])
+    group = _FakeDatasetGroup([m0, m1, m2])
+    assert count_stage_targets(group) == 3
+
+    # Single dataset with multiple local subsets still counts local subsets.
+    leaf = _FakeBucketDataset()
+    assert count_stage_targets(leaf) == 2
+
+
+def test_six_thousand_steps_three_equal_stages():
+    """S=6000, three equal stages: boundaries at 0/2000/4000/6000."""
+    args = SimpleNamespace(
+        stage_schedule_enabled=True,
+        max_train_steps=6000,
+        stage_schedule=[
+            {"subset_index": 0, "start_pct": 0.0, "end_pct": 1 / 3},
+            {"subset_index": 1, "start_pct": 1 / 3, "end_pct": 2 / 3},
+            {"subset_index": 2, "start_pct": 2 / 3, "end_pct": 1.0},
+        ],
+    )
+    assert active_subset_indices_for_step(args, 0) == {0}
+    assert active_subset_indices_for_step(args, 1999) == {0}
+    assert active_subset_indices_for_step(args, 2000) == {1}
+    assert active_subset_indices_for_step(args, 3999) == {1}
+    assert active_subset_indices_for_step(args, 4000) == {2}
+    assert active_subset_indices_for_step(args, 5999) == {2}
