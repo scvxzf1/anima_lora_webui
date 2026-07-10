@@ -2730,6 +2730,18 @@ def test_stage_schedule_dialog_is_wired_from_dataset_group() -> None:
     assert "start_pct" in stage_ui
 
 
+
+
+def test_stage_schedule_subset_options_prefer_nonempty_dataset_rows() -> None:
+    """课表下拉不能被空的 datasetEditorState.datasets 挡住多行预设。"""
+    stage_ui = _frontend_module_text("js/features/config-form/stage-resolution.js")
+    assert "function pickDatasetRows" in stage_ui
+    assert "datasetPresetState?.datasets" in stage_ui
+    assert "Array.isArray(rows) && rows.length" in stage_ui
+    # Prefer source_dir for human labels when present.
+    assert "source_dir || row?.image_dir" in stage_ui or "source_dir || row.image_dir" in stage_ui
+
+
 def test_stage_schedule_ui_is_variable_n_not_hardcoded_three() -> None:
     """前端阶段模板支持可变 N，软上限 12，默认不是写死三段。"""
     stage_ui = _frontend_module_text("js/features/config-form/stage-resolution.js")

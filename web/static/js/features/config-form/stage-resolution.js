@@ -41,18 +41,29 @@ function readTotalSteps() {
     return steps > 0 ? steps : 0;
 }
 
+function pickDatasetRows(datasetState) {
+    // Prefer the active panel's non-empty row list. Empty arrays are truthy in JS,
+    // so a naive `a || b` would hide multi-row presets behind an empty editor state.
+    const candidates = [
+        datasetState.datasetPresetState?.datasets,
+        datasetState.datasetEditorState?.datasets,
+    ];
+    for (const rows of candidates) {
+        if (Array.isArray(rows) && rows.length) return rows;
+    }
+    return [];
+}
+
 function listSubsetOptions() {
     const datasetState = getDatasetState();
-    const rows = datasetState.datasetEditorState?.datasets
-        || datasetState.datasetPresetState?.datasets
-        || [];
+    const rows = pickDatasetRows(datasetState);
     if (!Array.isArray(rows) || !rows.length) {
         return [{ index: 0, label: 'SUBSET 1（当前数据集）', resolution: 1024 }];
     }
     return rows.map((row, index) => {
         const settings = row?.settings || {};
         const resolution = Number(settings.resolution) || 1024;
-        const path = String(row?.image_dir || row?.path || '').trim();
+        const path = String(row?.source_dir || row?.image_dir || row?.path || '').trim();
         const short = path ? path.split(/[\\/]/).filter(Boolean).slice(-2).join('/') : `子集 ${index + 1}`;
         return {
             index,
