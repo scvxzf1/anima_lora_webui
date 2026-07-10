@@ -160,6 +160,36 @@ flowchart LR
   IR4 --> IR5[IR5 收口]
 ```
 
+## IR1 结构预算快照（S0）
+
+日期：2026-07-11  
+分支：`feat/frontend-five-round-iteration`  
+基线健康分：61 / D
+
+| 指标 | 值 |
+|---|---:|
+| chunks | 45 |
+| bridges | 37 |
+| feature 目录 | 19 |
+
+预算规则（实现轮生效）：
+
+- `ALLOW_NEW_LOGIC_IN_CHUNKS=false`
+- `ALLOW_FEATURE_IMPORT_CHUNKS=false`（分域灰度）
+- `ALLOW_LEGACYROOT_FALLBACK=false`（分域灰度）
+
+重 chunk（按字节，Top 观察项，不作为一次删光目标）：
+
+- 以当前磁盘 `web/static/js/features/anima-app/chunks/*.js` 实时 `stat` 为准
+- 实现轮只允许把业务迁出 feature，禁止继续堆新业务进 chunk
+
+S0 验收：
+
+- [x] 评分卡与 features/docs 索引互链
+- [x] 结构预算快照入库
+- [x] 基线 61/D 记录
+- [x] 预算规则写入日志
+
 ## 备注
 
 - 旧版“前端 68/D、仅 F1-F5”材料已被本轮加强版替代。
