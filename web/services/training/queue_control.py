@@ -6,7 +6,10 @@ from typing import TYPE_CHECKING
 
 from web.services.training.common import _format_ts
 from web.services.training.service_state import (
+    _normalize_queue_auto_retry,
     _normalize_queue_failure_policy,
+    _normalize_queue_max_attempts,
+    _normalize_queue_retry_backoff,
     _queue_clearable_state_label,
 )
 
@@ -329,6 +332,9 @@ async def set_queue_settings(
     *,
     paused: bool | None = None,
     failure_policy: str | None = None,
+    auto_retry: bool | None = None,
+    max_attempts: int | None = None,
+    retry_backoff_sec: float | None = None,
 ) -> dict[str, Any]:
     if paused is not None:
         self._queue_paused = bool(paused)
@@ -336,6 +342,15 @@ async def set_queue_settings(
     if failure_policy is not None:
         self._queue_failure_policy = _normalize_queue_failure_policy(failure_policy)
         self._queue["failure_policy"] = self._queue_failure_policy
+    if auto_retry is not None:
+        self._queue_auto_retry = _normalize_queue_auto_retry(auto_retry)
+        self._queue["auto_retry"] = self._queue_auto_retry
+    if max_attempts is not None:
+        self._queue_max_attempts = _normalize_queue_max_attempts(max_attempts)
+        self._queue["max_attempts"] = self._queue_max_attempts
+    if retry_backoff_sec is not None:
+        self._queue_retry_backoff_sec = _normalize_queue_retry_backoff(retry_backoff_sec)
+        self._queue["retry_backoff_sec"] = self._queue_retry_backoff_sec
     self._save_queue()
     await self._broadcast_queue()
     if not self._queue_paused:

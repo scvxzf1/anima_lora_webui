@@ -1832,7 +1832,7 @@ def test_queue_management_routes_call_service():
         == 200
     )
     assert svc.calls == [
-        ("settings", {"paused": True, "failure_policy": "pause"}),
+        ("settings", {"paused": True, "failure_policy": "pause", "auto_retry": None, "max_attempts": None, "retry_backoff_sec": None}),
         ("retry", "q1"),
         ("cancel-all", None),
         ("cancel-waiting", None),
@@ -1841,3 +1841,137 @@ def test_queue_management_routes_call_service():
         ("clear-canceled", None),
         ("cancel", "q2", True),
     ]
+
+
+def test_queue_auto_retry_clones_until_max_attempts(tmp_path, monkeypatch):
+    _patch_queue_paths(tmp_path, monkeypatch)
+    retry_root = tmp_path / "retry-runs"
+    monkeypatch.setattr(training_service, "resolve_output_root", lambda: retry_root)
+    runtime = _runtime_payload(tmp_path, "auto-retry-run")
+    svc = TrainingService(web.Application())
+    svc._queue = {
+        "paused": False,
+        "failure_policy": "continue",
+        "auto_retry": True,
+        "max_attempts": 3,
+        "retry_backoff_sec": 0,
+        "items": [{
+            "id": "q1",
+            "state": "running",
+            "kind": "training",
+            "requires_preprocess": False,
+            "variant": "demo",
+            "preset": "default",
+            "methods_subdir": "imported",
+            "runtime_config_file": runtime["runtime_config_file"],
+            "source_config_file": "configs/imported/source.toml",
+            "extra_args": [],
+            "gpu_whitelist": [0],
+            "continue_info": {},
+            "resume_info": {},
+            "history_task_ids": ["h1"],
+            "attempt": 1,
+        }],
+    }
+    svc._queue_paused = False
+    svc._queue_failure_policy = "continue"
+    svc._queue_auto_retry = True
+    svc._queue_max_attempts = 3
+    svc._queue_retry_backoff_sec = 0
+    svc._current_queue_item_id = "q1"
+    svc.status = "running"
+    svc.current_job = "training"
+    dispatch_calls: list[bool] = []
+    monkeypatch.setattr(svc, "_schedule_queue_dispatch", lambda: dispatch_calls.append(True))
+
+    class FakeStdout:
+        async def read(self, _size):
+            return b""
+
+    class FakeProcess:
+        stdout = FakeStdout()
+
+        async def wait(self):
+            return 7
+
+    svc.process = FakeProcess()
+    asyncio.run(svc._read_output())
+
+    snapshot = svc.get_queue_snapshot()
+    assert snapshot["auto_retry"] is True
+    assert snapshot["max_attempts"] == 3
+    items = snapshot["items"]
+    assert any(item["id"] == "q1" and item["state"] == "error" for item in items)
+    retries = [item for item in items if item.get("retry_of") == "q1"]
+    assert len(retries) == 1
+    assert retries[0]["attempt"] == 2
+    assert retries[0]["state"] == "queued"
+    assert dispatch_calls == [True]
+
+    # second failure should still clone once more (attempt 3)
+    svc._current_queue_item_id = retries[0]["id"]
+    retries[0]["state"] = "running"
+    svc.status = "running"
+    svc.current_job = "training"
+    svc.process = FakeProcess()
+    asyncio.run(svc._read_output())
+    snapshot = svc.get_queue_snapshot()
+    retries = [item for item in snapshot["items"] if item.get("retry_of") == "q1"]
+    assert len(retries) == 2
+    assert max(item["attempt"] for item in retries) == 3
+
+    # third failure at attempt 3 should stop cloning
+    third = max(retries, key=lambda item: item["attempt"])
+    svc._current_queue_item_id = third["id"]
+    third["state"] = "running"
+    svc.status = "running"
+    svc.current_job = "training"
+    svc.process = FakeProcess()
+    asyncio.run(svc._read_output())
+    snapshot = svc.get_queue_snapshot()
+    retries = [item for item in snapshot["items"] if item.get("retry_of") == "q1"]
+    assert len(retries) == 2
+
+
+def test_queue_dispatch_skips_items_before_next_run_at(tmp_path, monkeypatch):
+    import time
+
+    _patch_queue_paths(tmp_path, monkeypatch)
+    svc = TrainingService(web.Application())
+    future = time.time() + 3600
+    svc._queue = {
+        "paused": False,
+        "failure_policy": "continue",
+        "auto_retry": True,
+        "max_attempts": 3,
+        "retry_backoff_sec": 30,
+        "items": [
+            {
+                "id": "later",
+                "state": "queued",
+                "next_run_at": future,
+                "variant": "demo",
+                "preset": "default",
+                "methods_subdir": "imported",
+            },
+            {
+                "id": "ready",
+                "state": "queued",
+                "next_run_at": None,
+                "variant": "demo2",
+                "preset": "default",
+                "methods_subdir": "imported",
+            },
+        ],
+    }
+    svc._queue_paused = False
+    started: list[str] = []
+
+    async def fake_start(item):
+        started.append(str(item.get("id")))
+        item["state"] = "running"
+
+    monkeypatch.setattr(svc, "_start_queue_item", fake_start)
+    asyncio.run(svc._dispatch_queue())
+    assert started == ["ready"]
+

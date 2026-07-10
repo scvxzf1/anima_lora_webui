@@ -281,7 +281,7 @@ def _clone_queue_item_for_retry(self, item: dict[str, Any]) -> dict[str, Any]:
         if key not in {
             "id", "state", "message", "created_at", "created_at_text",
             "started_at", "started_at_text", "finished_at", "finished_at_text",
-            "history_task_ids", "runtime_config_file", "runtime_info",
+            "history_task_ids", "runtime_config_file", "runtime_info", "next_run_at",
         }
     }
     retry.update({

@@ -80,6 +80,9 @@ class TrainingService:
             self._detected_error_hint: str = ""
             self._queue: dict[str, Any] = _load_training_queue_state()
             self._queue_paused: bool = bool(self._queue.get("paused", False))
+            self._queue_auto_retry: bool = bool(self._queue.get("auto_retry", False))
+            self._queue_max_attempts: int = int(self._queue.get("max_attempts", 1) or 1)
+            self._queue_retry_backoff_sec: float = float(self._queue.get("retry_backoff_sec", 0.0) or 0.0)
             self._queue_failure_policy: str = _normalize_queue_failure_policy(self._queue.get("failure_policy"))
             self._current_queue_item_id: str = ""
             self._queue_launching_item_id: str = ""

@@ -46,6 +46,9 @@ def _load_training_queue_state() -> dict[str, Any]:
         data["items"] = []
     data["paused"] = bool(data.get("paused", False))
     data["failure_policy"] = _normalize_queue_failure_policy(data.get("failure_policy"))
+    data["auto_retry"] = _normalize_queue_auto_retry(data.get("auto_retry"))
+    data["max_attempts"] = _normalize_queue_max_attempts(data.get("max_attempts"))
+    data["retry_backoff_sec"] = _normalize_queue_retry_backoff(data.get("retry_backoff_sec"))
     return data
 
 
@@ -125,6 +128,30 @@ def _normalize_config_group_order(value: Any) -> dict[str, list[str]]:
 def _normalize_queue_failure_policy(value: Any) -> str:
     text = str(value or "").strip().lower()
     return text if text in _queue_failure_policies() else "pause"
+
+
+def _normalize_queue_auto_retry(value: Any) -> bool:
+    if isinstance(value, bool):
+        return value
+    return str(value or "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _normalize_queue_max_attempts(value: Any) -> int:
+    try:
+        number = int(value)
+    except (TypeError, ValueError):
+        number = 1
+    return max(1, number)
+
+
+def _normalize_queue_retry_backoff(value: Any) -> float:
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        number = 0.0
+    if number < 0:
+        number = 0.0
+    return number
 
 
 def _queue_clearable_state_label(states: set[str]) -> str:

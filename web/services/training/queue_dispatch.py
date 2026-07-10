@@ -43,7 +43,18 @@ async def _dispatch_queue(self) -> None:
     async with self._launch_lock:
         if self._queue_paused or self.status == "running" or self._queue_launching_item_id:
             return
-        item = next((entry for entry in self._queue_items() if entry.get("state") == "queued"), None)
+        now = time.time()
+        item = next(
+            (
+                entry for entry in self._queue_items()
+                if entry.get("state") == "queued"
+                and (
+                    entry.get("next_run_at") in (None, "")
+                    or float(entry.get("next_run_at") or 0) <= now
+                )
+            ),
+            None,
+        )
         if item is None:
             return
         queue_item_id = str(item.get("id") or "")

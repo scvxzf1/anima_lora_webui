@@ -146,6 +146,22 @@ async def _read_output(self):
                 "finished_at": time.time(),
                 "finished_at_text": _format_ts(time.time()),
             })
+            failed_item = self._find_queue_item(queue_item_id)
+            if (
+                failed_item is not None
+                and bool(getattr(self, "_queue_auto_retry", False))
+                and int(failed_item.get("attempt") or 1) < int(getattr(self, "_queue_max_attempts", 1) or 1)
+            ):
+                retry = self._clone_queue_item_for_retry(failed_item)
+                backoff = float(getattr(self, "_queue_retry_backoff_sec", 0.0) or 0.0)
+                if backoff > 0:
+                    retry["next_run_at"] = time.time() + backoff
+                    retry["message"] = (
+                        f"第 {retry.get('attempt')} 次尝试，"
+                        f"{int(backoff)}s 后自动重试"
+                    )
+                self._queue_items().append(retry)
+                self._compact_queue()
         else:
             self._update_queue_item(queue_item_id, {
                 "state": "done",
