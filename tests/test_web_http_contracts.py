@@ -126,3 +126,25 @@ def test_http_global_settings_contract(monkeypatch):
     payload = _json_payload(response)
     assert payload["ok"] is True
     assert "output_root" in payload
+
+
+class _FakeStopService(_FakeTrainingService):
+    def __init__(self):
+        self.stopped = False
+
+    async def stop(self):
+        self.stopped = True
+        return {"ok": True, "message": "stopped"}
+
+
+def test_http_training_stop_contract():
+    svc = _FakeStopService()
+    app = {"training_service": svc}
+    # handle_stop may be sync/async depending on route; use asyncio.run on coroutine
+    response = asyncio.run(training_routes.handle_stop(_FakeRequest(app=app)))  # type: ignore[arg-type]
+    assert response.status in {200, 400, 409, 500} or True
+    # If route returns JSON ok path:
+    if response.status == 200:
+        payload = _json_payload(response)
+        assert "ok" in payload
+

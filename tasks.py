@@ -222,6 +222,7 @@ COMMANDS = {
         "Distill pooled_text_proj MLP for modulation guidance",
     ),
     "test-unit": (utilities.cmd_test_unit, "Run smoke/unit tests (pytest tests/)"),
+    "test-backend-smoke": (utilities.cmd_test_backend_smoke, "Run backend web/training smoke subset"),
     "test-fast": (
         utilities.cmd_test_fast,
         "Run the fast smoke layer (pytest fast markers over runner/bench guards).",
