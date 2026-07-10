@@ -126,6 +126,7 @@ def cmd_test_backend_smoke(extra):
     """Backend web/training smoke subset for durable optimization gates."""
     targets = [
         "tests/test_web_http_contracts.py",
+        "tests/test_training_websocket.py",
         "tests/test_training_queue_retry_wake.py",
         "tests/test_training_retry_classification.py",
         "tests/test_path_safety.py",

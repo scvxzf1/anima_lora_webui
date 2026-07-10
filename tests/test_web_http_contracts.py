@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import asyncio
-from pathlib import Path
+import json
 from typing import Any
 
 from aiohttp import web
 
+from web.routes import config as config_routes
+from web.routes import image_test as image_test_routes
 from web.routes import settings as settings_routes
 from web.routes import training as training_routes
 
@@ -43,18 +45,18 @@ class _FakeRequest:
         app: dict[str, Any] | None = None,
         payload: dict[str, Any] | None = None,
         query: dict[str, str] | None = None,
+        match_info: dict[str, str] | None = None,
     ) -> None:
         self.app = app or {}
         self._payload = payload or {}
         self.query = query or {}
+        self.match_info = match_info or {}
 
     async def json(self) -> dict[str, Any]:
         return self._payload
 
 
 def _json_payload(response: web.Response) -> dict[str, Any]:
-    import json
-
     return json.loads(response.text or "{}")
 
 
@@ -65,6 +67,7 @@ def test_http_training_status_contract():
     payload = _json_payload(response)
     assert payload["ok"] is True
     assert payload["status"] == "idle"
+    assert payload["running"] is False
 
 
 def test_http_training_queue_contract():
@@ -73,8 +76,10 @@ def test_http_training_queue_contract():
     assert response.status == 200
     payload = _json_payload(response)
     assert payload["ok"] is True
-    assert "items" in payload
+    assert isinstance(payload["items"], list)
     assert "failure_policy" in payload
+    assert "summary" in payload
+    assert set(payload["summary"]) >= {"total", "queued", "running", "done", "error", "canceled"}
 
 
 def test_http_preflight_contract(monkeypatch):
@@ -107,6 +112,7 @@ def test_http_preflight_contract(monkeypatch):
     payload = _json_payload(response)
     assert payload["ok"] is True
     assert "checks" in payload
+    assert "summary" in payload
 
 
 def test_http_global_settings_contract(monkeypatch):
@@ -126,13 +132,14 @@ def test_http_global_settings_contract(monkeypatch):
     payload = _json_payload(response)
     assert payload["ok"] is True
     assert "output_root" in payload
+    assert "configs_root" in payload
 
 
 class _FakeStopService(_FakeTrainingService):
-    def __init__(self):
+    def __init__(self) -> None:
         self.stopped = False
 
-    async def stop(self):
+    async def stop(self) -> dict[str, Any]:
         self.stopped = True
         return {"ok": True, "message": "stopped"}
 
@@ -140,11 +147,197 @@ class _FakeStopService(_FakeTrainingService):
 def test_http_training_stop_contract():
     svc = _FakeStopService()
     app = {"training_service": svc}
-    # handle_stop may be sync/async depending on route; use asyncio.run on coroutine
     response = asyncio.run(training_routes.handle_stop(_FakeRequest(app=app)))  # type: ignore[arg-type]
-    assert response.status in {200, 400, 409, 500} or True
-    # If route returns JSON ok path:
-    if response.status == 200:
-        payload = _json_payload(response)
-        assert "ok" in payload
+    assert response.status == 200
+    payload = _json_payload(response)
+    assert payload["ok"] is True
+    assert "message" in payload
+    assert svc.stopped is True
 
+
+class _FakeHistoryDeleteService(_FakeTrainingService):
+    def __init__(self, *, error: Exception | None = None, result: dict[str, Any] | None = None) -> None:
+        self.error = error
+        self.result = result or {"ok": True, "deleted_task_ids": ["task-1"]}
+        self.seen_task_id: str | None = None
+
+    def delete_history_task(self, task_id: str) -> dict[str, Any]:
+        self.seen_task_id = task_id
+        if self.error is not None:
+            raise self.error
+        return self.result
+
+
+def test_http_history_delete_conflict_409_shape():
+    svc = _FakeHistoryDeleteService(error=RuntimeError("当前运行中的任务不能删除"))
+    response = asyncio.run(
+        training_routes.handle_history_delete(
+            _FakeRequest(app={"training_service": svc}, match_info={"task_id": "task-running"})  # type: ignore[arg-type]
+        )
+    )
+    assert response.status == 409
+    payload = _json_payload(response)
+    assert payload["ok"] is False
+    assert "不能删除" in payload["error"]
+    assert svc.seen_task_id == "task-running"
+
+
+def test_http_history_delete_success_shape():
+    svc = _FakeHistoryDeleteService(result={"ok": True, "deleted_task_ids": ["task-ok"]})
+    response = asyncio.run(
+        training_routes.handle_history_delete(
+            _FakeRequest(app={"training_service": svc}, match_info={"task_id": "task-ok"})  # type: ignore[arg-type]
+        )
+    )
+    assert response.status == 200
+    payload = _json_payload(response)
+    assert payload["ok"] is True
+    assert payload["deleted_task_ids"] == ["task-ok"]
+
+
+def test_http_image_test_delete_rejects_path_escape(monkeypatch):
+    class _FakeImageTestService:
+        pass
+
+    def _raise_escape(*args, **kwargs):
+        raise ValueError("只允许删除当前推理预览目录中的图片")
+
+    monkeypatch.setattr(image_test_routes, "delete_preview_images", _raise_escape)
+    response = asyncio.run(
+        image_test_routes.handle_image_test_images_delete(
+            _FakeRequest(
+                app={"image_test_service": _FakeImageTestService()},
+                payload={"files": ["../../etc/passwd.png"]},
+            )  # type: ignore[arg-type]
+        )
+    )
+    assert response.status == 400
+    payload = _json_payload(response)
+    assert payload["ok"] is False
+    assert "只允许删除" in payload["error"] or "路径" in payload["error"]
+
+
+def test_http_image_test_delete_success_envelope(monkeypatch):
+    class _FakeImageTestService:
+        pass
+
+    monkeypatch.setattr(
+        image_test_routes,
+        "delete_preview_images",
+        lambda source, files: {
+            "ok": True,
+            "source": source,
+            "directory": "output/runs/demo/samples",
+            "deleted": list(files or []),
+            "deleted_count": len(files or []),
+            "missing": [],
+            "missing_count": 0,
+            "blocked": [],
+            "blocked_count": 0,
+            "remaining_total": 0,
+        },
+    )
+    response = asyncio.run(
+        image_test_routes.handle_image_test_images_delete(
+            _FakeRequest(
+                app={"image_test_service": _FakeImageTestService()},
+                payload={"files": ["a.png"]},
+            )  # type: ignore[arg-type]
+        )
+    )
+    assert response.status == 200
+    payload = _json_payload(response)
+    assert payload["ok"] is True
+    assert payload["source"] == "inference"
+    assert payload["deleted"] == ["a.png"]
+
+
+def test_http_config_methods_envelope(monkeypatch):
+    monkeypatch.setattr(config_routes, "list_methods", lambda: ["lora", "hydralora", "spd"])
+    response = asyncio.run(config_routes.handle_methods(_FakeRequest()))  # type: ignore[arg-type]
+    assert response.status == 200
+    payload = _json_payload(response)
+    assert isinstance(payload, list)
+    assert "lora" in payload
+    assert "spd" in payload
+
+
+def test_http_config_merged_envelope(monkeypatch):
+    monkeypatch.setattr(
+        config_routes,
+        "load_merged_config",
+        lambda variant, preset, methods_subdir: {
+            "variant": variant,
+            "preset": preset,
+            "methods_subdir": methods_subdir,
+            "max_train_steps": 100,
+            "network_module": "networks.lora_anima",
+        },
+    )
+    response = asyncio.run(
+        config_routes.handle_merged(
+            _FakeRequest(
+                query={
+                    "variant": "lora",
+                    "preset": "default",
+                    "methods_subdir": "gui-methods",
+                }
+            )  # type: ignore[arg-type]
+        )
+    )
+    assert response.status == 200
+    payload = _json_payload(response)
+    assert payload["variant"] == "lora"
+    assert payload["preset"] == "default"
+    assert payload["methods_subdir"] == "gui-methods"
+    assert "max_train_steps" in payload
+    assert "error" not in payload
+
+
+def test_http_config_merged_error_envelope(monkeypatch):
+    def _boom(*args, **kwargs):
+        raise FileNotFoundError("missing config")
+
+    monkeypatch.setattr(config_routes, "load_merged_config", _boom)
+    response = asyncio.run(
+        config_routes.handle_merged(
+            _FakeRequest(query={"variant": "missing", "preset": "default"})  # type: ignore[arg-type]
+        )
+    )
+    assert response.status == 400
+    payload = _json_payload(response)
+    assert "error" in payload
+    assert "missing" in payload["error"]
+
+
+def test_http_config_raw_envelope(monkeypatch):
+    monkeypatch.setattr(config_routes, "load_raw_file", lambda path: 'output_name = "demo"\n')
+    monkeypatch.setattr(
+        config_routes,
+        "get_config_file_meta",
+        lambda path: {
+            "path": path,
+            "locked": False,
+            "trainable": True,
+            "group_id": "custom",
+            "group_label": "自定义",
+        },
+    )
+    response = asyncio.run(
+        config_routes.handle_raw_get(
+            _FakeRequest(query={"file": "gui-methods/lora.toml"})  # type: ignore[arg-type]
+        )
+    )
+    assert response.status == 200
+    payload = _json_payload(response)
+    assert payload["file"] == "gui-methods/lora.toml"
+    assert "output_name" in payload["content"]
+    assert isinstance(payload["meta"], dict)
+    assert "locked" in payload["meta"]
+
+
+def test_http_config_raw_requires_file():
+    response = asyncio.run(config_routes.handle_raw_get(_FakeRequest(query={})))  # type: ignore[arg-type]
+    assert response.status == 400
+    payload = _json_payload(response)
+    assert "error" in payload
