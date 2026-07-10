@@ -2042,6 +2042,61 @@ def test_config_form_auto_fixes_came_optimizer_args_frontend_hooks_are_present()
     assert "const nextValues = applyOptimizerCompatibilityPatch(values);" in prepare_section
 
 
+def test_variant_guides_match_gui_methods_or_legacy_aliases() -> None:
+    """VARIANT_GUIDE_ZH 必须覆盖现网 gui-methods，ghost key 只能留在 legacy 别名里。"""
+    from pathlib import Path
+    import re
+
+    root = Path(__file__).resolve().parents[1]
+    gui = {p.stem for p in (root / "configs" / "gui-methods").glob("*.toml")}
+    guides = (root / "web" / "static" / "js" / "config" / "catalog" / "guides.js").read_text(encoding="utf-8")
+
+    assert "export const LEGACY_VARIANT_ALIASES" in guides
+
+    variant_block = re.search(
+        r"export const VARIANT_GUIDE_ZH = \{(.*?)^\};",
+        guides,
+        re.S | re.M,
+    )
+    assert variant_block is not None, "VARIANT_GUIDE_ZH block not found"
+    variant_keys = {
+        m.group(1) or m.group(2)
+        for m in re.finditer(
+            r"^\s{4}(?:'([^']+)'|([A-Za-z0-9_]+)):\s*choiceHelp\(",
+            variant_block.group(1),
+            re.M,
+        )
+    }
+    assert variant_keys, "VARIANT_GUIDE_ZH keys empty"
+
+    legacy_block = re.search(
+        r"export const LEGACY_VARIANT_ALIASES = Object\.freeze\(\{(.*?)^\}\);",
+        guides,
+        re.S | re.M,
+    )
+    assert legacy_block is not None, "LEGACY_VARIANT_ALIASES block not found"
+    legacy_keys = {
+        m.group(1) or m.group(2)
+        for m in re.finditer(
+            r"^\s{4}(?:'([^']+)'|([A-Za-z0-9_]+)):\s*\{",
+            legacy_block.group(1),
+            re.M,
+        )
+    }
+    assert legacy_keys, "LEGACY_VARIANT_ALIASES keys empty"
+
+    unknown = sorted(variant_keys - gui - legacy_keys)
+    assert unknown == [], f"variant guide keys not in gui-methods or LEGACY_VARIANT_ALIASES: {unknown}"
+
+    missing_live = sorted(gui - variant_keys)
+    assert missing_live == [], f"live gui-methods missing VARIANT_GUIDE_ZH entries: {missing_live}"
+
+    # Ghost keys must stay resolvable in VARIANT_GUIDE_ZH so old imports do not hard-crash.
+    for key in sorted(legacy_keys):
+        assert key in variant_keys, f"legacy alias {key} missing VARIANT_GUIDE_ZH entry"
+        assert re.search(rf"(?:'{re.escape(key)}'|{re.escape(key)}):\s*choiceHelp\(", variant_block.group(1)), key
+
+
 def test_balanced_16g_block_swap_fields_are_visible() -> None:
     source = APP_JS.read_text(encoding="utf-8")
     form_layout = _frontend_module_text("js/config/catalog/form-layout.js")
