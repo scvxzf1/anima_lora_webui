@@ -430,17 +430,20 @@ def _resolve_image_test_weight_path(
             enable_fallback_search=app is not None,
         )
     else:
-        if path.is_absolute():
-            resolved = path.resolve()
-        else:
-            # Relative paths must stay under repo root and may not escape via ..
-            resolved = (ROOT / path).resolve()
-            try:
-                resolved.relative_to(ROOT.resolve())
-            except ValueError as exc:
-                raise ValueError("LoRA 权重路径超出允许范围") from exc
-        if not path_safety.is_under_allowed_dirs(resolved, allowlist):
-            raise ValueError("LoRA 权重路径超出允许范围")
+        try:
+            resolved = path_safety.resolve_allowed_file(
+                clean,
+                root=ROOT,
+                allowed_dirs=allowlist,
+                require_suffix=".safetensors",
+            )
+        except ValueError as exc:
+            msg = str(exc)
+            if ".." in msg:
+                raise ValueError("LoRA 权重路径不允许包含 ..") from exc
+            if "只支持" in msg:
+                raise
+            raise ValueError("LoRA 权重路径超出允许范围") from exc
     if not resolved.exists() or not resolved.is_file():
         raise FileNotFoundError("LoRA 权重文件不存在")
     if not os.access(resolved, os.R_OK):

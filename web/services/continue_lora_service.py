@@ -61,21 +61,34 @@ def inspect_continue_lora_weight(
     cfg: Mapping[str, Any] | None = None,
     config_error: Exception | str | None = None,
     root: Path | None = None,
+    output_root: Path | None = None,
+    allowed_dirs: list[Path] | None = None,
 ) -> dict[str, Any]:
     del preset
     project_root = Path(root).resolve() if root is not None else Path.cwd().resolve()
     raw_path = str(path or "").strip()
     if not raw_path:
         raise ValueError("请填写 LoRA/LoHa/LoKr/GLoRA 权重路径")
-    weight_path = _resolve_display_path(raw_path, project_root)
-    if weight_path is None:
-        raise ValueError("权重路径不合法")
+    allow = list(allowed_dirs) if allowed_dirs is not None else path_safety.allowed_weight_dirs(
+        root=project_root,
+        output_root=output_root,
+    )
+    # Always include project root so relative in-repo paths keep working.
+    allow = path_safety.unique_resolved_dirs([*allow, project_root])
+    try:
+        weight_path = path_safety.resolve_allowed_file(
+            raw_path,
+            root=project_root,
+            allowed_dirs=allow,
+            require_suffix=".safetensors",
+        )
+    except ValueError as exc:
+        # Preserve prior wording for empty/illegal where possible
+        raise ValueError(str(exc) if str(exc) != "路径为空" else "请填写 LoRA/LoHa/LoKr/GLoRA 权重路径") from exc
     if not _path_exists(weight_path):
         raise FileNotFoundError("权重文件不存在")
     if not weight_path.is_file():
         raise ValueError("权重路径不是文件")
-    if weight_path.suffix.lower() != ".safetensors":
-        raise ValueError("只支持 .safetensors 权重文件")
     if not os.access(weight_path, os.R_OK):
         raise ValueError("权重文件不可读取")
 
