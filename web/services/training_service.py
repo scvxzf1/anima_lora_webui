@@ -90,6 +90,7 @@ class TrainingService:
             self._current_queue_item_id: str = ""
             self._queue_launching_item_id: str = ""
             self._queue_dispatch_task: asyncio.Task | None = None
+            self._queue_dispatch_wake_handle = None
             self._launch_lock = asyncio.Lock()
             _mark_orphaned_running_history_tasks()
             self._repair_queue_on_startup()
