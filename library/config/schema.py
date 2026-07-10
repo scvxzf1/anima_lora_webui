@@ -216,6 +216,37 @@ def populate_schema(
             source="manual",
         ),
     )
+
+    # Percent-based multi-dataset curriculum (WebUI 分阶段调度).
+    # stage_schedule is a TOML array of tables, e.g.
+    #   [[stage_schedule]]  — not valid; use inline array of tables:
+    #   stage_schedule = [ { name = "low", subset_index = 0, start_pct = 0.0, end_pct = 0.5 }, ... ]
+    CONFIG_SCHEMA.setdefault(
+        "stage_schedule_enabled",
+        ConfigKey(
+            name="stage_schedule_enabled",
+            type="bool",
+            default=False,
+            help=(
+                "When true, training switches active dataset subsets by percent of "
+                "max_train_steps using ``stage_schedule``. Caches must be prebuilt."
+            ),
+            source="manual",
+        ),
+    )
+    CONFIG_SCHEMA.setdefault(
+        "stage_schedule",
+        ConfigKey(
+            name="stage_schedule",
+            type="list",
+            default=None,
+            help=(
+                "Curriculum stages: list of {name, subset_index, start_pct, end_pct}. "
+                "Percentages are 0..1 of max_train_steps; stages must cover 0..1 without gaps."
+            ),
+            source="manual",
+        ),
+    )
     for _key, _default, _help in (
         (
             "preprocess_memory_profile",

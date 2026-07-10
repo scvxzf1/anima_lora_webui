@@ -350,6 +350,51 @@ def _normalize_patch_value(key: str, value: Any) -> Any:
         if isinstance(value, bool):
             return value
         return str(value).strip().lower() in {"1", "true", "yes", "on"}
+    if key == "stage_schedule_enabled":
+        if isinstance(value, bool):
+            return value
+        return str(value).strip().lower() in {"1", "true", "yes", "on"}
+    if key == "stage_schedule":
+        if value in ("", None):
+            return _DELETE_TOML_KEY
+        if isinstance(value, str):
+            import json
+
+            try:
+                value = json.loads(value)
+            except json.JSONDecodeError as exc:
+                raise ValueError("stage_schedule 必须是数组") from exc
+        if not isinstance(value, list):
+            raise ValueError("stage_schedule 必须是数组")
+        normalized_stages: list[dict[str, Any]] = []
+        for index, item in enumerate(value):
+            if not isinstance(item, dict):
+                raise ValueError(f"stage_schedule[{index}] 必须是对象")
+            start = item.get("start_pct", item.get("startPct", 0))
+            end = item.get("end_pct", item.get("endPct", 1))
+            try:
+                start_f = float(start)
+                end_f = float(end)
+            except (TypeError, ValueError) as exc:
+                raise ValueError(f"stage_schedule[{index}] 百分比无效") from exc
+            if start_f > 1.0 or end_f > 1.0:
+                start_f /= 100.0
+                end_f /= 100.0
+            subset_index = item.get("subset_index", item.get("subsetIndex", index))
+            try:
+                subset_i = int(subset_index)
+            except (TypeError, ValueError) as exc:
+                raise ValueError(f"stage_schedule[{index}].subset_index 必须是整数") from exc
+            normalized_stages.append(
+                {
+                    "name": str(item.get("name") or f"阶段{index + 1}").strip()
+                    or f"阶段{index + 1}",
+                    "subset_index": max(0, subset_i),
+                    "start_pct": max(0.0, min(1.0, start_f)),
+                    "end_pct": max(0.0, min(1.0, end_f)),
+                }
+            )
+        return normalized_stages
     return value
 
 

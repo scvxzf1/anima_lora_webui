@@ -540,6 +540,43 @@ class TrainingBootstrap:
         if n_workers > 0:
             dataloader_kwargs["prefetch_factor"] = args.dataloader_prefetch_factor
 
+        # Curriculum: pin the first stage's subset before measuring loader length
+        # so max_train_epochs→steps is not dominated by the full multi-subset set.
+        from library.training.stage_schedule import (
+            active_subset_indices_for_step,
+            apply_active_subsets_to_dataset,
+            parse_stage_specs,
+            snapshot_full_image_data,
+            stage_schedule_enabled,
+            validate_stage_specs,
+        )
+
+        if stage_schedule_enabled(args):
+            stages = parse_stage_specs(getattr(args, "stage_schedule", None))
+            subset_count = sum(len(ds.subsets) for ds in train_dataset_group.datasets)
+            problems = validate_stage_specs(stages, subset_count=subset_count)
+            if problems:
+                raise ValueError(
+                    "stage_schedule invalid: " + "; ".join(problems)
+                )
+            # Prefer an explicit max_train_steps when staging; epochs are ambiguous.
+            if args.max_train_epochs is not None and not (
+                getattr(args, "max_train_steps", 0) or 0
+            ):
+                accelerator.print(
+                    "[stage] max_train_epochs set without max_train_steps — "
+                    "steps will be derived from the first stage's dataset length only."
+                )
+            # Snapshot the full multi-subset map BEFORE the first stage filter.
+            # Filtering first would freeze stage-0 as the only recoverable set.
+            snapshot_full_image_data(train_dataset_group, force=True)
+            active0 = active_subset_indices_for_step(args, 0)
+            if not apply_active_subsets_to_dataset(train_dataset_group, active0):
+                raise ValueError(
+                    f"stage_schedule stage 0 produced an empty dataset "
+                    f"(subset_index={sorted(active0 or [])})"
+                )
+
         train_dataloader = torch.utils.data.DataLoader(
             train_dataset_group,
             shuffle=True,
@@ -563,6 +600,11 @@ class TrainingBootstrap:
             )
 
         train_dataset_group.set_max_train_steps(args.max_train_steps)
+        # Stash for loop-time stage switches (DataLoader rebuild).
+        args._stage_dataloader_kwargs = {
+            k: v for k, v in dataloader_kwargs.items() if k != "persistent_workers"
+        }
+        args._stage_train_dataset_group = train_dataset_group
         lr_scheduler = get_scheduler_fix(args, optimizer, accelerator.num_processes)
 
         return OptimizerBuildResult(

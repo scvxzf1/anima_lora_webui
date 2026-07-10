@@ -175,6 +175,100 @@ class DatasetBucketsMixin:
                 f"  {n_resized} masks needed runtime resize (size != bucket_reso)"
             )
 
+    def snapshot_full_image_data(self, *, force: bool = False) -> None:
+        """Freeze the full image map before any stage filter is applied.
+
+        Must be called while ``image_data`` still contains every subset.
+        Subsequent ``rebuild_buckets_for_subsets`` filters from this snapshot,
+        not from the already-filtered live map (otherwise later stages cannot
+        recover subsets that were filtered out earlier).
+        """
+        if not force and getattr(self, "_all_image_data", None) is not None:
+            return
+        if not self.image_data:
+            self._all_image_data = {}
+            self._all_image_to_subset = {}
+            return
+        self._all_image_data = dict(self.image_data)
+        self._all_image_to_subset = dict(self.image_to_subset)
+
+    def has_full_image_data_snapshot(self) -> bool:
+        return getattr(self, "_all_image_data", None) is not None
+
+    def rebuild_buckets_for_subsets(self, active_subset_indices=None) -> bool:
+        """Rebuild bucket indices using only images from selected subsets.
+
+        ``active_subset_indices=None`` restores all registered images.
+        Subset identity is the index in ``self.subsets``. Returns True when
+        membership was applied successfully. Does not re-encode caches.
+
+        Requires :meth:`snapshot_full_image_data` first. Lazily snapshotting
+        here is intentionally rejected when no snapshot exists: bootstrap may
+        already have filtered to stage 0, and a late snapshot would freeze that
+        partial set as "full".
+        """
+        if not self.has_full_image_data_snapshot():
+            # Safe only when live map is still the full set (no prior filter).
+            # Callers that filter before loop must snapshot explicitly.
+            if not self.image_data:
+                return False
+            self.snapshot_full_image_data()
+
+        if active_subset_indices is None:
+            allowed_subsets = None
+        else:
+            allowed = {int(i) for i in active_subset_indices}
+            allowed_subsets = {
+                subset
+                for index, subset in enumerate(self.subsets)
+                if index in allowed
+            }
+            if not allowed_subsets:
+                logger.warning(
+                    "rebuild_buckets_for_subsets: no subsets matched %s",
+                    sorted(allowed),
+                )
+                return False
+
+        source_data = self._all_image_data
+        source_map = self._all_image_to_subset
+        if allowed_subsets is None:
+            filtered = source_data
+            filtered_map = source_map
+        else:
+            filtered = {
+                key: info
+                for key, info in source_data.items()
+                if source_map.get(key) in allowed_subsets
+            }
+            filtered_map = {
+                key: source_map[key] for key in filtered if key in source_map
+            }
+
+        if not filtered:
+            logger.warning("rebuild_buckets_for_subsets: filtered image set is empty")
+            return False
+
+        self.image_data = dict(filtered)
+        self.image_to_subset = dict(filtered_map)
+        self.num_train_images = sum(
+            info.num_repeats
+            for info in filtered.values()
+            if not getattr(info, "is_reg", False)
+        )
+        self.num_reg_images = sum(
+            info.num_repeats
+            for info in filtered.values()
+            if getattr(info, "is_reg", False)
+        )
+
+        # Reset bucket manager; make_buckets reassigns from image_data.
+        constant_token = bool(getattr(self, "_constant_token_buckets", True))
+        self.bucket_manager = None
+        self._largest_bucket_index = None
+        self.make_buckets(constant_token_buckets=constant_token)
+        return True
+
     def shuffle_buckets(self):
         # set random seed for this epoch
         random.seed(self.seed + self.current_epoch)

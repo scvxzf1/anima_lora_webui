@@ -550,11 +550,18 @@ def run_training_session(trainer, args) -> None:
     initial_step = resume_plan.initial_step
     epoch_to_start = resume_plan.epoch_to_start
 
-    # Drop the train dataset-group local before loop entry — the
-    # dataloader already holds the data it needs. Keep val_dataset_group
-    # alive: CMMD validation enumerates its image_data to pair held-out
-    # references with generated samples.
-    del train_dataset_group
+    # Keep train_dataset_group when stage schedule needs mid-run rebuilds.
+    # Otherwise drop it before loop entry — the dataloader already holds
+    # the data it needs. Keep val_dataset_group alive: CMMD validation
+    # enumerates its image_data to pair held-out references with generated samples.
+    stage_dataset = getattr(args, "_stage_train_dataset_group", None) or train_dataset_group
+    stage_loader_kwargs = getattr(args, "_stage_dataloader_kwargs", None)
+    from library.training.stage_schedule import stage_schedule_enabled
+
+    if not stage_schedule_enabled(args):
+        del train_dataset_group
+        stage_dataset = None
+        stage_loader_kwargs = None
 
     loop_state = build_loop_state(
         trainer,
@@ -590,6 +597,8 @@ def run_training_session(trainer, args) -> None:
         initial_step=initial_step,
         metadata=metadata,
     )
+    loop_state.train_dataset_group = stage_dataset
+    loop_state.dataloader_kwargs = stage_loader_kwargs
     maybe_probe(
         trainer,
         "loop_ready",
