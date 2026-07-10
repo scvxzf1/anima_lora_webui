@@ -111,3 +111,20 @@ def test_training_gpu_helper_lists_available_gpus_with_injected_runner():
             "memory_total_gb": 24.0,
         },
     ]
+
+
+def test_system_monitor_samples_immediately_and_keeps_short_interval():
+    """Dashboard resource cards should not wait a long initial sleep."""
+    from pathlib import Path
+
+    constants = Path("web/services/training/constants.py").read_text(encoding="utf-8")
+    monitor = Path("web/services/training/live_monitor.py").read_text(encoding="utf-8")
+
+    assert "SYSTEM_MONITOR_INTERVAL_SECONDS = 2.0" in constants
+    assert "SYSTEM_MONITOR_INTERVAL_SECONDS" in monitor
+    assert "await asyncio.sleep(SYSTEM_MONITOR_INTERVAL_SECONDS)" in monitor
+    assert "await asyncio.sleep(5)" not in monitor
+    # First sample happens at the top of the loop, before sleeping.
+    sample_idx = monitor.index("stats = await get_gpu_stats(self.current_gpu_whitelist)")
+    sleep_idx = monitor.index("await asyncio.sleep(SYSTEM_MONITOR_INTERVAL_SECONDS)")
+    assert sample_idx < sleep_idx

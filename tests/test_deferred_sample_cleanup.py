@@ -14,28 +14,28 @@ def _section(source: str, start: str, end: str) -> str:
 
 
 def test_deferred_sample_decode_runs_on_interrupted_training_loop() -> None:
-    source = TRAIN_PY.read_text(encoding="utf-8")
+    source = (ROOT / "library" / "training" / "train_session.py").read_text(encoding="utf-8")
     train_tail = source[
-        source.index("with run_scope(self.progress_sink")
-        : source.index("if is_main_process and (args.save_state", source.index("with run_scope(self.progress_sink"))
+        source.index("with run_scope(trainer.progress_sink")
+        : source.index("if is_main_process and (args.save_state", source.index("with run_scope(trainer.progress_sink"))
     ]
 
     assert "training_loop_completed = False" in train_tail
     assert "finally:" in train_tail
     assert "if not training_loop_completed:" in train_tail
-    assert "_decode_deferred_samples_safely(" in train_tail
+    assert "decode_deferred_samples_safely(" in train_tail
     assert "optimizer_eval_fn=optimizer_eval_fn" in train_tail
 
 
 def test_deferred_sample_decode_still_runs_on_normal_completion() -> None:
-    source = TRAIN_PY.read_text(encoding="utf-8")
+    source = (ROOT / "library" / "training" / "train_session.py").read_text(encoding="utf-8")
     train_tail = source[
         source.index("accelerator.end_training()")
         : source.index("if is_main_process and (args.save_state", source.index("accelerator.end_training()"))
     ]
 
     assert "optimizer_eval_fn()" in train_tail
-    assert "_decode_deferred_samples_safely(accelerator, args, loop_state, vae)" in train_tail
+    assert "decode_deferred_samples_safely(accelerator, args, loop_state, vae)" in train_tail
 
 
 def test_sigterm_uses_keyboard_interrupt_cleanup_path() -> None:
@@ -95,36 +95,63 @@ def test_training_sample_prompts_cfg_and_dual_schedule_are_used() -> None:
 
 
 def test_sample_prompts_without_schedule_do_not_trigger_qwen3_or_te_cache() -> None:
-    source = TRAIN_PY.read_text(encoding="utf-8")
-    cache_fn = _section(source, "def cache_text_encoder_outputs_if_needed(", "    # endregion")
-    encoder_decision = _section(source, "sampling_enabled = _sample_preview_enabled(args)", "# Prepare accelerator")
+    train_source = TRAIN_PY.read_text(encoding="utf-8")
+    cache_source = (ROOT / "library" / "training" / "text_encoder_cache.py").read_text(encoding="utf-8")
+    session_source = (ROOT / "library" / "training" / "train_session.py").read_text(encoding="utf-8")
+    bootstrap_source = (ROOT / "library" / "training" / "train_bootstrap.py").read_text(encoding="utf-8")
 
-    assert "def _sample_preview_enabled(args) -> bool:" in source
-    assert "if text_encoders[0] is not None and _sample_preview_enabled(args):" in cache_fn
-    assert "sampling_enabled = _sample_preview_enabled(args)" in encoder_decision
+    cache_fn = _section(
+        cache_source,
+        "def cache_text_encoder_outputs_if_needed(",
+        "accelerator.wait_for_everyone()",
+    )
+    encoder_decision = _section(
+        session_source,
+        "sampling_enabled = sample_preview_enabled(args)",
+        "# Prepare accelerator",
+    )
+
+    assert "def sample_preview_enabled(args) -> bool:" in bootstrap_source
+    assert "if text_encoders[0] is not None and sample_preview_enabled(args):" in cache_fn
+    assert "sampling_enabled = sample_preview_enabled(args)" in encoder_decision
     assert "or sampling_enabled" in encoder_decision
     assert 'getattr(args, "sample_prompts", None)' not in encoder_decision
+    assert "from library.training.text_encoder_cache import (" in train_source
 
 
 def test_text_encoder_outputs_caching_strategy_receives_weight_dtype() -> None:
-    source = TRAIN_PY.read_text(encoding="utf-8")
-    strategy_fn = _section(source, "def get_text_encoder_outputs_caching_strategy(", "    def get_models_for_text_encoding")
-    encoder_decision = _section(source, "whether the Qwen3 text encoder needs loading at all.", "# Prepare accelerator")
+    train_source = TRAIN_PY.read_text(encoding="utf-8")
+    session_source = (ROOT / "library" / "training" / "train_session.py").read_text(encoding="utf-8")
+    strategy_fn = _section(
+        train_source,
+        "def get_text_encoder_outputs_caching_strategy(",
+        "    def get_models_for_text_encoding",
+    )
+    encoder_decision = _section(
+        session_source,
+        "whether the Qwen3 text encoder needs loading at all.",
+        "# Prepare accelerator",
+    )
 
     assert "def get_text_encoder_outputs_caching_strategy(self, args, weight_dtype: torch.dtype):" in strategy_fn
     assert "cache_dtype=weight_dtype" in strategy_fn
     assert "weight_dtype, _save_dtype = prepare_dtype(args)" in encoder_decision
-    assert "self.get_text_encoder_outputs_caching_strategy(args, weight_dtype)" in encoder_decision
+    assert "trainer.get_text_encoder_outputs_caching_strategy(args, weight_dtype)" in encoder_decision
 
 
 def test_cached_sample_prompt_snapshot_survives_prompt_file_edits() -> None:
     train_source = TRAIN_PY.read_text(encoding="utf-8")
+    cache_source = (ROOT / "library" / "training" / "text_encoder_cache.py").read_text(encoding="utf-8")
     anima_source = ANIMA_TRAINING.read_text(encoding="utf-8")
-    cache_fn = _section(train_source, "def cache_text_encoder_outputs_if_needed(", "    # endregion")
+    cache_fn = _section(
+        cache_source,
+        "def cache_text_encoder_outputs_if_needed(",
+        "accelerator.wait_for_everyone()",
+    )
     sample_images_fn = _section(anima_source, "def sample_images(", "def _sample_image_inference(")
 
     assert "self.sample_prompts_snapshot = None" in train_source
-    assert "self.sample_prompts_snapshot = [dict(prompt) for prompt in prompts]" in cache_fn
+    assert "trainer.sample_prompts_snapshot = [dict(prompt) for prompt in prompts]" in cache_fn
     assert "sample_prompts_snapshot=self.sample_prompts_snapshot" in train_source
     assert "sample_prompts_snapshot=None" in sample_images_fn
     assert "use_cached_prompt_snapshot = (" in sample_images_fn

@@ -574,7 +574,7 @@ T-LoRA mask 是共享 buffer，每个 denoising step 更新一次。
 
 - Web config/sample prompts：`tests/test_web_config_service.py`、`tests/test_config.py`。
 - Web global settings/preview paths：`tests/test_preview_service.py`。
-- Web training queue/runtime：`tests/test_training_queue.py`、`tests/test_training_resume.py`。
+- Web training queue/runtime：`tests/test_training_queue.py`、`tests/test_training_resume_*.py`、`tests/test_training_runtime_config_*.py`、`tests/test_training_history_*.py`。
 - Web frontend modules/history/preview hooks：`tests/test_training_frontend_state.py`。
 - Web weight analysis：`tests/test_weight_analysis_service.py`。
 - daemon/CLI launch：`tests/test_daemon.py`、`tests/test_runtime_harness_cli.py`、
@@ -590,7 +590,7 @@ T-LoRA mask 是共享 buffer，每个 denoising step 更新一次。
 - inference/editing：`tests/test_generation_request.py`、`tests/test_edit_dispatcher.py`、
   `tests/test_directedit_v_injection.py`、`tests/test_experimental_inference_tasks.py`。
 - training basics：`tests/test_training_bootstrap.py`、`tests/test_training_optimizers.py`、
-  `tests/test_training_resume.py`、`tests/test_training_gpu_selection.py`。
+  `tests/test_training_checkpointing.py`、`tests/test_training_gpu_selection.py`。
 - text strategy / bucket invariants：`tests/test_ensure_text_strategies.py`、
   `tests/test_constant_token_buckets.py`、`tests/test_native_flatten.py`。
 - tagger/captions：`tests/test_anima_tagger_dual_encoder.py`、`tests/test_caption_index.py`、

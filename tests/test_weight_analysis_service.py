@@ -249,3 +249,47 @@ def test_list_analysis_weights_reuses_training_weight_listing(tmp_path, monkeypa
     assert payload["weights"][0]["name"] == "listed.safetensors"
     assert payload["weights"][0]["abs_path"] == str(path.resolve())
     assert "不加载模型" in payload["analysis_note"]
+
+
+def test_path_safety_shared_header_and_allowlist_consistency(tmp_path, monkeypatch):
+    """Preview and weight analysis must share path_safety boundaries."""
+    root = _patch_weight_analysis_root(tmp_path, monkeypatch)
+    out = _training_output(root)
+    path = out / "shared.safetensors"
+    tensors = {
+        "lora_unet_blocks_1_mlp_layer1.lora_down.weight": torch.ones(1, 2),
+        "lora_unet_blocks_1_mlp_layer1.lora_up.weight": torch.ones(2, 1),
+        "lora_unet_blocks_1_mlp_layer1.alpha": torch.tensor(1.0),
+    }
+    metadata = {"ss_network_spec": "lora", "ss_output_name": "shared"}
+    save_file(tensors, str(path), metadata=metadata)
+    data = save(tensors, metadata=metadata)
+
+    from web.services import path_safety
+
+    file_meta, file_keys = weight_analysis_service._read_safetensors_header(path)
+    bytes_meta, bytes_keys = weight_analysis_service._read_safetensors_header_bytes(data)
+    shared_bytes_meta, shared_bytes_keys = path_safety.read_safetensors_header_bytes(data)
+
+    assert file_meta["ss_output_name"] == "shared"
+    assert bytes_meta == shared_bytes_meta == file_meta
+    assert bytes_keys == shared_bytes_keys
+    assert "lora_unet_blocks_1_mlp_layer1.lora_down.weight" in file_keys
+
+    task = {"id": "task-demo", "job": "training", "output_dir": str(out)}
+    preview_dirs = {str(p) for p in preview_service._allowed_weight_dirs(task)}
+    analysis_dirs = {str(p) for p in weight_analysis_service._allowed_weight_dirs(task)}
+    assert preview_dirs == analysis_dirs
+    assert str(out.resolve()) in preview_dirs or any(
+        str(out.resolve()).startswith(d + "/") or str(out.resolve()) == d for d in preview_dirs
+    )
+    # Shared helper must surface both configured and effective training dirs.
+    settings = {
+        "training_dir": "output/ckpt/sample",
+        "effective_training_dir": "output/runs/001-demo/training_output/sample",
+    }
+    assert path_safety.training_dirs_from_preview_settings(settings) == (
+        "output/ckpt/sample",
+        "output/runs/001-demo/training_output/sample",
+    )
+

@@ -366,6 +366,47 @@ def test_preview_image_absolute_file_allowed_under_global_output_root(tmp_path, 
     assert preview_service.resolve_preview_image(str(image_path)) == image_path.resolve()
 
 
+def test_delete_preview_images_removes_files_under_inference_dir(tmp_path, monkeypatch):
+    settings_file = tmp_path / "configs" / "web-ui-settings.toml"
+    settings_file.parent.mkdir(parents=True)
+    settings_file.write_text("", encoding="utf-8")
+    _patch_preview_settings_file(monkeypatch, settings_file, root=tmp_path)
+
+    preview_dir = tmp_path / "output" / "tests"
+    preview_dir.mkdir(parents=True)
+    image_path = preview_dir / "to-delete.png"
+    Image.new("RGB", (8, 8), color=(12, 34, 56)).save(image_path)
+
+    payload = preview_service.delete_preview_images("inference", ["output/tests/to-delete.png"])
+
+    assert payload["ok"] is True
+    assert payload["deleted_count"] == 1
+    assert payload["remaining_total"] == 0
+    assert not image_path.exists()
+
+
+def test_delete_preview_images_rejects_files_outside_current_inference_dir(tmp_path, monkeypatch):
+    settings_file = tmp_path / "configs" / "web-ui-settings.toml"
+    settings_file.parent.mkdir(parents=True)
+    settings_file.write_text("", encoding="utf-8")
+    _patch_preview_settings_file(monkeypatch, settings_file, root=tmp_path)
+
+    allowed_dir = tmp_path / "output" / "tests"
+    blocked_dir = tmp_path / "output" / "other"
+    allowed_dir.mkdir(parents=True)
+    blocked_dir.mkdir(parents=True)
+    blocked_image = blocked_dir / "blocked.png"
+    Image.new("RGB", (8, 8), color=(56, 34, 12)).save(blocked_image)
+
+    payload = preview_service.delete_preview_images("inference", ["output/other/blocked.png"])
+
+    assert payload["ok"] is False
+    assert payload["deleted_count"] == 0
+    assert payload["blocked_count"] == 1
+    assert "当前生图测试目录" in payload["blocked"][0]["error"]
+    assert blocked_image.exists()
+
+
 def test_training_preview_images_include_sample_details(tmp_path, monkeypatch):
     sample_dir = tmp_path / "sample"
     sample_dir.mkdir()
