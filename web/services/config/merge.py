@@ -120,11 +120,27 @@ def _display_path(path: Path) -> str:
 __all__ = ['list_methods', 'list_variants', 'list_all_variants', 'list_presets', 'load_merged_config', 'suggest_data_dirs', 'suggest_dataset_dirs', 'apply_auto_data_dirs']
 
 def list_methods() -> list[str]:
-    return [
+    """Discover method families from method/gui-method catalogs with stable fallback."""
+    known = [
         "lora", "lokr", "ortholora", "tlora", "hydralora",
         "reft", "chimera", "soft_tokens", "ip_adapter", "easycontrol",
         "spd",
     ]
+    found: list[str] = []
+    try:
+        methods_dir = Path(CONFIGS_DIR) / "methods"
+        if methods_dir.is_dir():
+            for path in sorted(methods_dir.glob("*.toml")):
+                name = path.stem
+                if name and name not in found:
+                    found.append(name)
+    except OSError:
+        pass
+    # Preserve known order first, then any extra discovered methods.
+    ordered = [name for name in known if name in found or True]
+    # Keep known always for UI stability even if file missing (compat).
+    extras = [name for name in found if name not in known]
+    return ordered + extras
 
 
 def list_variants(method: str) -> list[str]:
