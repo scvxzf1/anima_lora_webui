@@ -201,6 +201,44 @@ S0 验收：
 - [x] 基线 61/D 记录
 - [x] 预算规则写入日志
 
+
+## IR1 实现轮结果 — 2026-07-11
+
+| 项 | 值 |
+|---|---|
+| 分支 | `feat/frontend-five-round-iteration` |
+| HEAD | 见 `git log` 最新 |
+| 前端基线 | 61 / D（实现前） |
+| 本轮目标 | IR1：S0 + T0 + U0 + C2a |
+| 完成任务 | S0 预算快照；T0 baseline 同步；U0 CSS 止血；C2a guide/variant 同步 |
+| 测试门禁 | G0 11 passed；G1 22 passed；variant guide + misc 5 passed |
+| 熔断? | 否 |
+| 下轮焦点 | IR2：C3 命名分层、C4 快捷按钮 diff/门禁、T1 DOM contract |
+
+### 提交
+
+| Commit | 说明 |
+|---|---|
+| `91cf4c90` / `27624e29` | S0 结构预算快照 |
+| `e959bd1e` | T0 globalThis baseline + state facade |
+| `fcedf182` | U0 CSS cascade + shared-fields header |
+| `0c7393c8` | C2a variant guides sync |
+
+### 验收证据
+
+```text
+G0: 11 passed
+G1: 22 passed
+variant_guides + misc: 5 passed
+focused C2: test_variant_guides_match_gui_methods_or_legacy_aliases PASS
+```
+
+### 残留 Concerns
+
+- `tests/test_web_preflight_compat_matrix.py` 在本分支 collection 失败（ImportError `_write_selected_checkpoint_preflight_config`），属既有测试债，非 C2 引入。
+- `12-datasets-forge.css` 仍有同选择器半截规则，U0 未扩写集清理。
+- 健康分尚未正式复评上调；IR1 以护栏止血为主，IR2 再冲 70。
+
 ## 备注
 
 - 旧版“前端 68/D、仅 F1-F5”材料已被本轮加强版替代。
