@@ -1,194 +1,166 @@
 # 全栈五轮自动迭代日志
 
-状态：已完成 5 轮文档迭代（评分 + 审查合流 + 计划冻结）  
+状态：文档+审核五轮已完成；实现五轮待开工  
 分支：`docs/backend-config-optimization`  
-对照实现：`feat/backend-config-optimization`（后端 Task 1–10 代码已存在）  
-日期：2026-07-11
+日期：2026-07-11  
+HEAD 参考：以最新 docs 提交为准
 
 相关文档：
 
-- `docs/superpowers/specs/2026-07-11-five-round-auto-iteration-protocol.md`
-- `docs/superpowers/specs/2026-07-11-backend-config-optimization-design.md`
-- `docs/superpowers/plans/2026-07-11-backend-config-optimization.md`
-- `docs/superpowers/specs/2026-07-11-frontend-config-optimization-design.md`
-- `docs/superpowers/plans/2026-07-11-frontend-config-optimization.md`
+- 评分卡：`docs/features/frontend-health-scorecard.md`
+- 协议：`docs/superpowers/specs/2026-07-11-five-round-auto-iteration-protocol.md`
+- 前端设计：`docs/superpowers/specs/2026-07-11-frontend-config-optimization-design.md`
+- 前端计划：`docs/superpowers/plans/2026-07-11-frontend-config-optimization.md`
+- 后端设计/计划：`docs/superpowers/specs/2026-07-11-backend-config-optimization-design.md` / `docs/superpowers/plans/2026-07-11-backend-config-optimization.md`
 
 ---
 
 ## 评分口径（固定）
 
-### 后端 100
+前端加权：
 
-架构15 + 配置真相20 + 路径安全15 + 队列runtime15 + stage贯通10 + 测试15 + 可运维10
-
-### 前端 100
-
-模块边界15 + 状态纯度15 + 过渡层15 + 测试15 + 热点10 + 性能10 + UX10 + a11y10
-
-等级：A90+ / B80-89 / C70-79 / D<70
-
----
-
-### Round 1 — 2026-07-11 基线锁定
-
-| 项 | 值 |
-|---|---|
-| 分支 | docs/backend-config-optimization（auditor 采样曾漂移到 main，已用源码+feat 校正） |
-| 后端总分/等级 | **76 / C** |
-| 前端总分/等级 | **68 / D** |
-| 本轮焦点 | 规范评分结构；并行审后端健康 + 前端状态 |
-| 完成项 | 后端评分卡、前端模块地图与风险清单、五轮协议 |
-| 新增 High | 配置根热切换不完整；bridge 静默 no-op；chunks 继续增重；基线 sample prompts/image_test（对照 feat 后可关） |
-| 下轮焦点 | 后端 High 与优化计划/feat 落地对照 |
-| 测试门禁 | 只读审核 |
-| 熔断? | 否 |
-
-**后端分项（R1）**
-
-| 分项 | 分 |
+| 域 | 权重 |
 |---|---:|
-| 架构清晰度 | 11/15 |
-| 配置真相一致性 | 13/20 |
-| 路径/安全边界 | 12/15 |
-| 队列/runtime | 12/15 |
-| stage/resume/progress | 8/10 |
-| 测试可防御性 | 12/15 |
-| 可配置性/可运维 | 8/10 |
+| A 结构与迁移 | 30% |
+| B 测试与门禁 | 25% |
+| C CSS/DOM | 20% |
+| D 配置体验 | 25% |
 
-**前端分项（R1）**
+等级：A90+ / B80-89 / C70-79 / D60-69 / F<60
 
-| 分项 | 分 |
-|---|---:|
-| 模块边界 | 13/15 |
-| 状态纯度 | 9/15 |
-| 过渡层 | 7/15 |
-| 测试护栏 | 13/15 |
-| 热点控制 | 6/10 |
-| 性能 | 6/10 |
-| UX | 7/10 |
-| a11y | 7/10 |
+公式：`总分 = round(A*0.30 + B*0.25 + C*0.20 + D*0.25)`
 
 ---
 
-### Round 2 — 2026-07-11 后端落地对照
+## 子代理登记（本轮审核）
 
-| 项 | 值 |
-|---|---|
-| 分支 | 对照 `feat/backend-config-optimization` |
-| 后端总分/等级 | **84 / B** |
-| 前端总分/等级 | **68 / D** |
-| 本轮焦点 | 核对后端计划 Task1–10 是否已在 feat 落地 |
-| 完成项 | sample prompts 外置、image_test 收紧、stage 门禁、progress stage、auto_retry、history/queue roots、schema gate、merge core、http contracts、resume 诊断均有提交 |
-| 关闭 High | sample prompts 外置；image_test home 扫描；stage 无门禁；progress 无 stage；缺 auto_retry；history/queue 仅 env |
-| 残留 High/Med | CONFIGS_DIR 热切换快照；legacy facade；HTTP/WS 仅起步 |
-| 下轮焦点 | 前端优化配置项成文 |
-| 测试门禁 | 建议在 feat 跑后端跨域包（文档轮不强行改工作区） |
-| 熔断? | 否 |
-
-**后端上调依据**
-
-- 配置真相 +4；路径安全 +1；队列 +1；stage 贯通 +1；测试 +1；可运维 +0~1 → 约 84
+| agent | 角色 | 结果 |
+|---|---|---|
+| Herschel | structure-auditor | A=51；chunks/bridge/依赖方向 High |
+| Ramanujan | test-auditor | B=72；架构强、行为弱；五轮门禁包 |
+| Jason | css-ux-auditor | C=56；import 顺序/断头/DOM 契约 |
+| Plato | config-surface-auditor | D=65；来源/命名/快捷按钮/guide 漂移 |
 
 ---
 
-### Round 3 — 2026-07-11 前端计划冻结
+### Round 1 — 2026-07-11 基线评分结构冻结
 
 | 项 | 值 |
 |---|---|
 | 分支 | docs/backend-config-optimization |
-| 后端总分/等级 | 84 / B |
-| 前端总分/等级 | 68 / D |
-| 本轮焦点 | 前端优化配置项 → 设计 + 实施计划 |
-| 完成项 | frontend design/plan；Top5=路径 formatter、token 单源、bridge 收敛、import 并行、history 性能 |
-| 新增 High | 无 |
-| 下轮焦点 | 全栈合流 |
-| 测试门禁 | 前端域最小回归命令写入计划 |
+| 前端总分/等级 | **61 / D** |
+| A/B/C/D | 51 / 72 / 56 / 65 |
+| 本轮焦点 | 规范评分结构；并行审前端四域 |
+| 完成项 | 评分卡落地；四路子代理审核；协议升级为可执行门禁 |
+| 新增 High | chunks 主业务；legacyRoot 静默 no-op；FORM_UI_DEFAULTS 混层；guide 漂移；CSS 顺序/断头；行为门禁不足 |
+| 下轮焦点 | 把优化项收敛成双轨/三轨任务 |
+| 测试门禁 | 只读审核 + 规模扫描；未改生产代码 |
 | 熔断? | 否 |
 
 ---
 
-### Round 4 — 2026-07-11 全栈合流
+### Round 2 — 2026-07-11 优化配置项收敛
 
 | 项 | 值 |
 |---|---|
-| 分支 | docs/backend-config-optimization |
-| 后端总分/等级 | 84 / B |
-| 前端总分/等级 | 68 / D |
-| 本轮焦点 | 后端残留 + 前端优先项统一排序；debug 门禁固化 |
-| 完成项 | 统一执行优先级；协议生效；后端计划加入 Auto Iteration |
-| 合流优先级 | 1 协议互链 2 CONFIGS_DIR 热切换 3 路径 formatter 4 token 单源 5 bridge 6 真集成测 7 import/history 性能 |
-| 下轮焦点 | 冻结可开工队列 |
-| 测试门禁 | 后端跨域包 + 前端域包 |
+| 前端总分/等级 | 61 / D（无实现，不上调） |
+| 本轮焦点 | 工程债 + 配置体验债清单化 |
+| 完成项 | 工程轨 E0-E4；配置轨 C1-C6；交互壳 U0-U2/T0-T1 |
+| Top 优化配置项 | 1 来源徽标 2 guide 同步 3 命名分层 4 快捷按钮 diff/门禁 5 CSS 止血 6 baseline 同步 7 bridge fail-fast 8 path formatter |
+| 下轮焦点 | 写成详细可执行计划书 |
+| 测试门禁 | 门禁包 G0-G5 定义完成 |
 | 熔断? | 否 |
 
 ---
 
-### Round 5 — 2026-07-11 执行队列冻结
+### Round 3 — 2026-07-11 详细计划书冻结
 
 | 项 | 值 |
 |---|---|
-| 分支 | docs/backend-config-optimization |
-| 后端总分/等级 | 84 / B |
-| 前端总分/等级 | 68 / D（下阶段目标 ≥78） |
-| 本轮焦点 | 冻结下阶段可开工任务与验收 |
-| 完成项 | Sprint 队列、每项测试命令、完成定义 |
-| 新增 High | 无 |
-| 下轮焦点 | 实现轮（可并行 F1 与 CONFIGS_DIR） |
-| 测试门禁 | 见下 |
+| 前端总分/等级 | 61 / D |
+| 本轮焦点 | 产出可持久推进、严格 debug 的计划书 |
+| 完成项 | `2026-07-11-frontend-config-optimization.md` 重写为任务化计划（S/T/U/C/E + Freeze） |
+| 关键约束 | 每任务红绿测试；timeout 60；不碰用户数据；不新增 globalThis 业务总线 |
+| 下轮焦点 | 五轮实现映射与优先级合流 |
+| 测试门禁 | 计划内嵌 G0-G5 |
 | 熔断? | 否 |
 
-#### 冻结执行队列
+---
 
-| 序号 | 任务 | 计划 | 验收 |
-|---|---|---|---|
-| 1 | 统一路径 formatPathLabel + title | 前端 F1 | 前端域包 |
-| 2 | cache token 单源 | 前端 F2 | modules |
-| 3 | CONFIGS_DIR 热切换收敛 | 后端残留 P0 | env/global settings + preflight/sample prompts |
-| 4 | bridge 装配收敛 | 前端 F3 | modules + history/config_ui |
-| 5 | 启动 import 并行 | 前端 F4 | modules |
-| 6 | history 列表性能 | 前端 F5 | history |
-| 7 | configs_root 真集成测 | 后端测试债 | global settings + web config |
-| 8 | 合入 feat 前全回归 | 后端 | 后端跨域 + 前端域包 |
+### Round 4 — 2026-07-11 全栈优先级合流
 
-#### 下阶段完成定义
+| 项 | 值 |
+|---|---|
+| 前端总分/等级 | 61 / D |
+| 后端对照 | 仍参考 feat/backend-config-optimization 成果（约 84/B，历史日志） |
+| 本轮焦点 | 前端优先项与后端 provenance/compat 合流 |
+| 合流优先级 | 1 评分/协议 2 CSS/baseline 止血 3 guide/命名/快捷按钮 4 provenance UI 5 bridge/path 6 live compat 7 import/history 性能 8 docs/features 对齐 |
+| 完成项 | 设计中明确 FieldPresentation 与 backend provenance 复用 |
+| 下轮焦点 | 冻结实现五轮出口标准 |
+| 测试门禁 | 前端域包 + 配置 provenance/preflight |
+| 熔断? | 否 |
 
-- 前端健康度 ≥ 78
-- 后端合并 feat 后保持 ≥ 84，并关闭 CONFIGS_DIR 热切换 High
+---
+
+### Round 5 — 2026-07-11 实现队列冻结
+
+| 项 | 值 |
+|---|---|
+| 前端总分/等级 | 61 / D（实现前基线） |
+| 本轮焦点 | 冻结下一阶段可开工五轮 |
+| 完成项 | 实现轮 R1-R5 任务表、目标分、完成定义 |
+| 测试门禁 | 见下“实现五轮” |
+| 熔断? | 否 |
+
+#### 冻结的实现五轮
+
+| 实现轮 | 任务 | 目标分 | 硬门禁 |
+|---|---|---:|---|
+| IR1 | S0, T0, U0, C2a | 66 | G0 + G1 |
+| IR2 | C2b, C3, C4, T1 | 70 | G4 + T1/DOM |
+| IR3 | E1, E2, C1, C6 | 74 | G3/G4 + history/config |
+| IR4 | C5, E3, U1 | 76 | G1 + G4 |
+| IR5 | E4, U2, Freeze | 78+ | G5 |
+
+#### 完成定义
+
+- 前端健康分 >= 78，或明确残留 High
 - 每任务有红绿测试记录
+- guide/variant 与 gui-methods 同步
+- 关键 bridge 不再静默 no-op
+- CSS 入口顺序与 shared-fields 断头修复
+- docs/features 能描述真实主路径
 - 不新增 globalThis 业务导出
-- 不删除用户 history/queue/runtime
+- 不删除用户 history/queue/runtime/output
 
 ---
 
-## 五轮趋势
+## 五轮趋势（文档审核轮）
 
-| 轮次 | 后端 | 前端 | 关键变化 |
-|---|---:|---:|---|
-| R1 | 76C | 68D | 基线 |
-| R2 | 84B | 68D | 对照 feat 后端 Task 落地 |
-| R3 | 84B | 68D | 前端计划冻结 |
-| R4 | 84B | 68D | 全栈优先级合流 |
-| R5 | 84B | 68D | 执行队列冻结 |
+| 轮次 | 前端 | 关键变化 |
+|---|---:|---|
+| R1 | 61D | 评分结构 + 四域审核 |
+| R2 | 61D | 优化项收敛 |
+| R3 | 61D | 详细计划书 |
+| R4 | 61D | 前后端合流 |
+| R5 | 61D | 实现队列冻结 |
+
+说明：这 5 轮是**决策与文档迭代**，健康分不应虚高。真正提分从实现轮 IR1 开始，且必须带测试结果。
 
 ```mermaid
 flowchart LR
-  R1[R1 基线评分] --> R2[R2 后端对照]
-  R2 --> R3[R3 前端计划]
-  R3 --> R4[R4 全栈合流]
-  R4 --> R5[R5 队列冻结]
-  R5 --> X[实现轮 F1/F2/CONFIGS_DIR]
+  R1[R1 评分结构] --> R2[R2 优化项]
+  R2 --> R3[R3 计划书]
+  R3 --> R4[R4 合流]
+  R4 --> R5[R5 冻结]
+  R5 --> IR1[IR1 护栏止血]
+  IR1 --> IR2[IR2 配置可信]
+  IR2 --> IR3[IR3 来源/bridge]
+  IR3 --> IR4[IR4 兼容/性能]
+  IR4 --> IR5[IR5 收口]
 ```
-
-## 子代理登记
-
-| agent | 角色 | 状态 |
-|---|---|---|
-| Poincare | backend-auditor | 完成 76C |
-| Boyle | frontend-auditor | 完成 68 + Top5 |
-| Hume | protocol materials | 完成（协议素材） |
 
 ## 备注
 
-- 本 5 轮是文档与决策迭代，不是把 feat 代码强行 cherry-pick 进 docs 分支。
-- 实现阶段建议：合入 `feat/backend-config-optimization` 后端成果，同时推进前端 F1–F5。
-- 若继续自动迭代（R6+），必须带测试命令结果，不再只做评分空转。
+- 旧版“前端 68/D、仅 F1-F5”材料已被本轮加强版替代。
+- 若继续自动迭代，从 **IR1** 开工，不允许再只做评分空转。

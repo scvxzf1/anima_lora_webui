@@ -14,6 +14,7 @@
 | 理解模型和训练结构 | [structure/anima.md](structure/anima.md)、[structure/anima-optimizations.md](structure/anima-optimizations.md) |
 | 查配置、外置配置和路径规则 | [configuration/README.md](configuration/README.md) |
 | 查 WebUI / GUI 独立功能 | [features/README.md](features/README.md) |
+| 快速审核当前分支前端健康度 | [features/frontend-health-scorecard.md](features/frontend-health-scorecard.md)、[superpowers/specs/2026-07-11-five-round-auto-iteration-protocol.md](superpowers/specs/2026-07-11-five-round-auto-iteration-protocol.md) |
 | 查实验结论、审计和运行报告 | [findings/README.md](findings/README.md) |
 | 查仍可能推进的提案 | [proposal/README.md](proposal/README.md) |
 | 查历史或已完成提案 | [archive-index.md](archive-index.md) |

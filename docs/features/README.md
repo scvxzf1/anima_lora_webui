@@ -7,6 +7,7 @@
 | 文档 | 状态 | 说明 |
 | --- | --- | --- |
 | [ui-scale.md](ui-scale.md) | 当前功能说明 | WebUI UI 缩放设置、独立持久化和验证范围 |
+| [frontend-health-scorecard.md](frontend-health-scorecard.md) | 维护用评分入口 | 快速审核当前分支前端健康度的规范评分结构、基线与五轮门禁 |
 
 ## 维护规则
 
