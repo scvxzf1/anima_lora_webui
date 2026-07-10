@@ -183,6 +183,17 @@ flowchart LR
 - 以当前磁盘 `web/static/js/features/anima-app/chunks/*.js` 实时 `stat` 为准
 - 实现轮只允许把业务迁出 feature，禁止继续堆新业务进 chunk
 
+Top heavy chunks（bytes）：
+
+| bytes | file |
+|---:|---|
+| 28916 | `chunks/22-update-toml-action-state.js` |
+| 28705 | `chunks/27-render-history-collections-workbench.js` |
+| 28233 | `chunks/34-show-history-collection-select-dialog.js` |
+| 27725 | `chunks/03-parse-network-arg-entry.js` |
+| 27672 | `chunks/25-update-progress.js` |
+| 27526 | `chunks/09-setup-config-group-drop-target.js` |
+
 S0 验收：
 
 - [x] 评分卡与 features/docs 索引互链
