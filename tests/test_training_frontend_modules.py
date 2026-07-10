@@ -346,6 +346,11 @@ def test_frontend_css_import_cache_tokens_match_entrypoint() -> None:
     assert not mismatches
 
 
+def test_style_import_order_puts_responsive_last() -> None:
+    text = STYLE_CSS_PATH.read_text(encoding="utf-8")
+    assert text.index('90-responsive.css') > text.index('42-image-test.css')
+
+
 def test_anima_app_bootstrap_catches_startup_failures() -> None:
     source = APP_JS_PATH.read_text(encoding="utf-8")
 
