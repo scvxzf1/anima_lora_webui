@@ -24,7 +24,7 @@ export function createImageTestFeatureBridge(runtime) {
                 preset: dom.val('preset-select') || 'default',
             }),
             precisionPreferenceFromConfig,
-            openPreviewDialog: (image) => ensurePreviewFeature().openPreviewDialog(image),
+            openPreviewDialog: (...args) => ensurePreviewFeature().openPreviewDialog(...args),
         });
         return imageTestFeature;
     }

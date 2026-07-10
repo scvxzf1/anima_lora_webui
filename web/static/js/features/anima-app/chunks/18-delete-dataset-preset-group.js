@@ -26,6 +26,7 @@ import {
 import { api, val } from '../helpers/runtime-bridge.js?v=module-bootstrap-20260707-93';
 import { loadDatasetPresets, loadStepEstimate } from './03-parse-network-arg-entry.js?v=module-bootstrap-20260707-93';
 import { serializeSamplePromptsEditor } from '../../sample-prompts/model.js?v=module-bootstrap-20260707-93';
+import { renderConfigDatasetPicker } from './06-stronger-selective-checkpoint-value.js?v=module-bootstrap-20260707-93';
 import { syncDatasetEditorToCompatFields } from './13-update-dataset-editor-rows-setting-value.js?v=module-bootstrap-20260707-93';
 import { applyLoraAdapterPatch, applyOptimizerCompatibilityPatch, readLiveLoraAdapterKind } from './14-lora-adapter-kind-from-config.js?v=module-bootstrap-20260707-93';
 import {
@@ -196,7 +197,16 @@ function currentTrainingSourceState() {
                 error: '',
             };
             const nextDatasetEditorState = currentDatasetEditorState();
-            currentConfig.dataset_config = nextDatasetEditorState.dataset_config;
+            const nextDatasetConfig = nextDatasetEditorState.dataset_config || '';
+            currentConfig.dataset_config = nextDatasetConfig;
+            datasetState.selectedConfigDatasetFile = nextDatasetConfig;
+            datasetState.selectedConfigDatasetSummary = nextDatasetConfig ? (res.summary || null) : null;
+            datasetState.configDatasetPreviewState = {
+                file: '',
+                loading: false,
+                payload: null,
+                error: '',
+            };
             if (nextDatasetEditorState.datasets[0]) {
                 currentConfig.source_image_dir = nextDatasetEditorState.datasets[0].source_dir;
                 currentConfig.resized_image_dir = nextDatasetEditorState.datasets[0].image_dir;
@@ -204,7 +214,9 @@ function currentTrainingSourceState() {
             }
             syncDatasetEditorToCompatFields();
             renderDatasetEditor();
+            renderConfigDatasetPicker();
             updateTomlDirtyState();
+            await loadDatasetPresets({ selectCurrent: false, manage: false });
             await loadStepEstimate();
             if (options.reloadList !== false) {
                 await loadTomlFileList(targetFile);

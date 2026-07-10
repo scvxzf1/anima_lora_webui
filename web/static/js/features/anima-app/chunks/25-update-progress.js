@@ -138,13 +138,18 @@ const trainingRuntime = trainingState.trainingRuntime;
         if (msg.output_dir !== undefined) {
             trainingRuntime.outputDir = msg.output_dir || '';
         }
+        const shouldHydrateRuntimeSample = state !== 'idle';
         if (msg.sample_dir !== undefined) {
             trainingRuntime.sampleDir = msg.sample_dir || '';
-            ensurePreviewFeature().updateRuntimeSampleState({ sampleDir: trainingRuntime.sampleDir });
+            if (shouldHydrateRuntimeSample) {
+                ensurePreviewFeature().updateRuntimeSampleState({ sampleDir: trainingRuntime.sampleDir });
+            }
         }
         if (msg.sample_config !== undefined) {
             trainingRuntime.sampleConfig = msg.sample_config || null;
-            ensurePreviewFeature().updateRuntimeSampleState({ sampleConfig: trainingRuntime.sampleConfig });
+            if (shouldHydrateRuntimeSample) {
+                ensurePreviewFeature().updateRuntimeSampleState({ sampleConfig: trainingRuntime.sampleConfig });
+            }
         }
         applyRuntimeInfoToState(msg);
 
@@ -170,8 +175,8 @@ const trainingRuntime = trainingState.trainingRuntime;
             trainingRuntime.quietHintShown = false;
             trainingRuntime.job = '';
             refreshQueueRunningProgressViews();
-            if (!msg.output_dir) {
-                clearRuntimeInfo();
+            if (state === 'idle') {
+                resetLiveRuntimeSnapshot();
             }
         }
         renderCurrentRuntimePaths();
@@ -210,6 +215,9 @@ const trainingRuntime = trainingState.trainingRuntime;
     }
 
     export function clearRuntimeInfo() {
+        trainingRuntime.outputDir = '';
+        trainingRuntime.sampleDir = '';
+        trainingRuntime.sampleConfig = null;
         trainingRuntime.runDir = '';
         trainingRuntime.runtimeConfigFile = '';
         trainingRuntime.originalConfigFile = '';
@@ -218,6 +226,25 @@ const trainingRuntime = trainingState.trainingRuntime;
         trainingRuntime.datasetCacheDir = '';
         trainingRuntime.trainingOutputDir = '';
         trainingRuntime.logsDir = '';
+        ensurePreviewFeature().updateRuntimeSampleState({
+            sampleDir: '',
+            sampleConfig: null,
+        });
+    }
+
+    export function resetLiveRuntimeSnapshot() {
+        clearRuntimeInfo();
+        trainingRuntime.variant = '';
+        trainingRuntime.preset = '';
+        trainingRuntime.methodsSubdir = '';
+        trainingState.stepCounter = 0;
+        resetLiveMetricPlaceholders();
+        trainingState.lossChart?.clear?.();
+        trainingState.lossChart?.setXLabel?.('step');
+        trainingState.lossChart?.setScaleMode?.('index');
+        syncLossChartEmptyState();
+        setText('train-variant', '-');
+        setText('train-preset', '-');
     }
 
     export function applyRuntimeInfoToState(msg) {

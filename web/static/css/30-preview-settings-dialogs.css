@@ -1179,6 +1179,13 @@
     margin: 0;
     overflow-wrap: anywhere;
 }
+.preview-dialog-header-actions {
+    display: inline-flex;
+    align-items: center;
+    justify-content: flex-end;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+}
 .preview-dialog-body {
     display: grid;
     grid-template-columns: minmax(320px, 1fr) minmax(300px, 380px);
@@ -1209,6 +1216,9 @@
     color: var(--accent);
     font-size: 0.86rem;
     margin: 0 0 0.55rem;
+}
+.preview-dialog-status {
+    margin-bottom: 0.55rem;
 }
 
 .tutorial-dialog {

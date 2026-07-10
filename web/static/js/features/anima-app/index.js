@@ -9,6 +9,10 @@ import { configureHistoryStateBridge } from './helpers/history-state-bridge.js?v
 import { configureImageTestBridge } from './helpers/image-test-bridge.js?v=module-bootstrap-20260707-93';
 import { configureRuntimeBridge } from './helpers/runtime-bridge.js?v=module-bootstrap-20260707-93';
 import { configureStatusPollingBridge } from './helpers/status-polling-bridge.js?v=module-bootstrap-20260707-93';
+import { configureGlobalSettingsBridge } from './helpers/global-settings-bridge.js?v=module-bootstrap-20260707-93';
+import { configurePreviewViewBridge } from './helpers/preview-view-bridge.js?v=module-bootstrap-20260707-93';
+import { configureQueueViewBridge } from './helpers/queue-view-bridge.js?v=module-bootstrap-20260707-93';
+import { configureHistoryListBridge } from './helpers/history-list-bridge.js?v=module-bootstrap-20260707-93';
 import { configureTomlStateBridge } from './helpers/toml-state-bridge.js?v=module-bootstrap-20260707-93';
 import { configureTrainingStateBridge } from './helpers/training-state-bridge.js?v=module-bootstrap-20260707-93';
 import { createAnimaRuntime } from './runtime.js?v=module-bootstrap-20260707-93';
@@ -54,7 +58,19 @@ export async function createAnimaApp(ctx) {
     await import('./chunks/23-move-current-toml-to-group.js?v=module-bootstrap-20260707-93');
     await import('./chunks/24-show-preflight-pending-dialog.js?v=module-bootstrap-20260707-93');
     await import('./chunks/25-update-progress.js?v=module-bootstrap-20260707-93');
+    const globalSettingsModule = await import('./chunks/26a-global-settings.js?v=module-bootstrap-20260707-93');
+    const previewViewModule = await import('./chunks/26b-preview-view.js?v=module-bootstrap-20260707-93');
+    const queueViewModule = await import('./chunks/26c-queue-view.js?v=module-bootstrap-20260707-93');
+    const historyListModule = await import('./chunks/26d-history-list.js?v=module-bootstrap-20260707-93');
+    // Keep the compatibility barrel reachable for module-graph tests and older imports.
     await import('./chunks/26-load-global-settings.js?v=module-bootstrap-20260707-93');
+    configureGlobalSettingsBridge(globalSettingsModule);
+    configurePreviewViewBridge(previewViewModule);
+    configureQueueViewBridge({
+        ...queueViewModule,
+        resetTrainingExpandedStateOnLeave: historyListModule.resetTrainingExpandedStateOnLeave,
+    });
+    configureHistoryListBridge(historyListModule);
     const statusPollingModule = await import('./chunks/26a-status-polling.js?v=module-bootstrap-20260707-93');
     const statusPollingBridge = statusPollingModule.createStatusPollingBridge(runtime.state.training);
     runtime.features.statusPolling = statusPollingBridge;

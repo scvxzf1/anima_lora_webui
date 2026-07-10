@@ -1295,16 +1295,27 @@
 
 .image-test-history-card-actions {
     display: flex;
+    gap: 0.45rem;
     justify-content: flex-end;
+    flex-wrap: wrap;
     margin-top: 0.3rem;
 }
 
-.image-test-history-card-preview {
-    width: 100%;
+.image-test-history-card-preview,
+.image-test-history-card-delete {
+    flex: 1 1 0;
     justify-content: center;
+    min-width: 0;
+}
+
+.image-test-history-card-preview {
     border-color: color-mix(in srgb, var(--image-test-border) 84%, transparent);
     background: color-mix(in srgb, var(--image-test-field-bg) 72%, var(--image-test-panel-soft));
     color: var(--image-test-text);
+}
+
+.image-test-history-card-delete {
+    border-color: color-mix(in srgb, var(--image-test-danger) 34%, var(--image-test-border));
 }
 
 .image-test-empty {

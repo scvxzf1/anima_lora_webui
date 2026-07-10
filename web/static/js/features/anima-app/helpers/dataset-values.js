@@ -92,7 +92,7 @@ export function normalizeDatasetDefaults(defaults) {
         validation_split_num: Math.max(0, Number.parseInt(raw.validation_split_num || 0, 10) || 0),
         validation_seed: Number.isFinite(validationSeed) ? Math.max(0, validationSeed) : 42,
         caption_extension: String(raw.caption_extension || '.txt'),
-        keep_tokens: Math.max(0, Number.parseInt(raw.keep_tokens || 3, 10) || 0),
+        keep_tokens: Math.max(0, Number.parseInt(raw.keep_tokens ?? 3, 10) || 0),
         prefer_json_caption: preferJson,
         caption_source_mode: captionSourceMode,
     };

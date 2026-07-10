@@ -11,6 +11,7 @@ export function createImageTestRenderer({
     ctx,
     state,
     openPreviewDialog,
+    requestImageDelete,
     requestHistoryReload,
     initialHistoryFilter,
 }) {
@@ -18,6 +19,7 @@ export function createImageTestRenderer({
     const gallery = createImageTestGallery({
         formatBytes,
         openPreviewDialog,
+        requestImageDelete,
         requestHistoryReload,
         initialFilterValue: initialHistoryFilter,
     });

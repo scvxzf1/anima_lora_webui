@@ -2,6 +2,13 @@ export async function fetchImageTestStatus(ctx) {
     return ctx.api('/api/image-test/status');
 }
 
+export async function deleteImageTestImagesRequest(ctx, payload) {
+    return ctx.api('/api/image-test/images', {
+        method: 'DELETE',
+        body: JSON.stringify(payload),
+    });
+}
+
 export async function resolveImageTestWeightPathRequest(ctx, payload) {
     return ctx.api('/api/image-test/resolve-weight', {
         method: 'POST',

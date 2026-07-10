@@ -1,4 +1,5 @@
 import {
+    deleteImageTestImagesRequest,
     fetchImageTestGpus,
     fetchImageTestImages,
     fetchImageTestStatus,
@@ -23,6 +24,7 @@ export function createImageTestFeature(ctx, deps) {
         ctx,
         state,
         openPreviewDialog: deps.openPreviewDialog,
+        requestImageDelete: deleteImageFiles,
         initialHistoryFilter: draftStore.storedHistoryRange(),
         requestHistoryReload: (nextRange) => {
             draftStore.persistFromDom({ history_range: nextRange });
@@ -168,6 +170,36 @@ export function createImageTestFeature(ctx, deps) {
             if (requestSeq === state.imageRequestSeq) {
                 state.loadingImages = false;
             }
+        }
+    }
+
+    async function deleteImageFiles(images = []) {
+        const files = Array.from(new Set(
+            (Array.isArray(images) ? images : [])
+                .map((image) => String(image?.file || '').trim())
+                .filter(Boolean),
+        ));
+        if (!files.length) {
+            return { ok: false, error: '请先选择要删除的图片。' };
+        }
+        try {
+            const res = await deleteImageTestImagesRequest(ctx, { files });
+            await loadImageTestStatus({ refreshImages: false, force: true });
+            await loadImageTestImages({ force: true });
+            const deletedCount = Number(res?.deleted_count || 0);
+            const tone = res?.ok
+                ? 'ok'
+                : deletedCount > 0
+                    ? 'warning'
+                    : 'error';
+            renderer.setImageTestStatus(
+                res?.message || `已从硬盘永久删除 ${deletedCount || files.length} 张图片。`,
+                tone,
+            );
+            return res;
+        } catch (e) {
+            renderer.setImageTestStatus('删除失败: ' + e.message, 'error');
+            throw e;
         }
     }
 

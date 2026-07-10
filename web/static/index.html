@@ -17,7 +17,7 @@
             }
         })();
     </script>
-    <link rel="stylesheet" href="/static/style.css?v=frontend-chain-20260705-1">
+    <link rel="stylesheet" href="/static/style.css?v=frontend-chain-20260708-1">
 </head>
 <body>
     <header>
@@ -1135,7 +1135,7 @@
                                         <div class="help-content">
                                             <section class="help-section help-summary">
                                                 <div class="help-heading">作用</div>
-                                                <p>配置根目录位置，包含 base.toml、presets.toml、methods/、datasets/、web-training-history/、web-training-queue/ 等所有配置内容。支持相对路径（相对项目根）或绝对路径。</p>
+                                                <p>配置根目录位置，包含 base.toml、presets.toml、methods/、datasets/、web-training-history/、web-training-queue/ 等所有配置内容。支持相对路径（相对项目根）或绝对路径；保存后页面会自动刷新并切换到新的配置根目录。</p>
                                             </section>
                                             <section class="help-section">
                                                 <div class="help-heading">为什么</div>
@@ -1584,6 +1584,7 @@
                                 <span id="image-test-selection-note">Shift 连选仅覆盖当前已展开分组中的可见图片。</span>
                             </div>
                             <div class="image-test-selection-actions">
+                                <button id="btn-image-test-delete-selected" class="btn btn-small btn-subtle-danger" type="button">从硬盘永久删除</button>
                                 <button id="btn-image-test-export-merged" class="btn btn-small" type="button">导出合并图</button>
                                 <button id="btn-image-test-export-originals" class="btn btn-small" type="button">打包原图</button>
                                 <button id="btn-image-test-clear-selection" class="btn btn-small" type="button">清空选择</button>
@@ -1783,7 +1784,10 @@
                     <h2 id="preview-dialog-title">预览图</h2>
                     <p id="preview-dialog-meta"></p>
                 </div>
-                <button class="btn btn-small" value="close">关闭</button>
+                <div class="preview-dialog-header-actions">
+                    <button id="btn-preview-dialog-delete" class="btn btn-small btn-subtle-danger" type="button" hidden>从硬盘永久删除</button>
+                    <button class="btn btn-small" value="close">关闭</button>
+                </div>
             </div>
             <div class="preview-dialog-body">
                 <div class="preview-dialog-view">
@@ -1791,6 +1795,7 @@
                 </div>
                 <aside class="preview-dialog-info">
                     <h3>详细信息</h3>
+                    <div id="preview-dialog-status" class="preview-status" hidden></div>
                     <div id="preview-dialog-details" class="preview-dialog-details"></div>
                 </aside>
             </div>

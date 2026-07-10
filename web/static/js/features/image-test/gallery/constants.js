@@ -1,0 +1,15 @@
+export const DEFAULT_FILTER_VALUE = '7';
+export const DEFAULT_SELECTION_NOTE = 'Shift 连选仅覆盖当前已展开且当前可见的图片；Ctrl/⌘ 可增量点选。';
+export const DEFAULT_EXPANDED_DAYS = 7;
+export const GROUP_INITIAL_RENDER_COUNT = 24;
+export const GROUP_RENDER_INCREMENT = 24;
+export const GROUP_LOAD_MORE_ROOT_MARGIN = '320px 0px';
+export const GROUP_VIRTUALIZE_THRESHOLD = 48;
+export const GROUP_VIRTUAL_OVERSCAN_ROWS = 2;
+export const EXPORT_BACKGROUND = '#ffffff';
+export const EXPORT_CELL_BACKGROUND = '#f8fafc';
+export const EXPORT_TEXT = '#0f172a';
+export const EXPORT_META = '#475569';
+export const EXPORT_MAX_EDGE = 8192;
+export const EXPORT_CELL_MIN = 220;
+export const EXPORT_CELL_MAX = 1024;
