@@ -96,20 +96,37 @@ def max_history_items() -> int:
 
 
 def apply_training_policy_to_facade(policy: dict | None = None) -> dict:
-    """Apply durable training policy defaults onto training_service facade constants."""
+    """Apply durable training policy defaults onto training_service facade constants.
+
+    Capacity/monitor values are applied only when a persisted settings file
+    actually defines ``training_policy``. That keeps unit-test monkeypatches
+    of ``MAX_QUEUE_ITEMS`` / ``MAX_HISTORY_ITEMS`` stable in default envs.
+    """
     from web.services import settings_service, training_service as facade
 
+    settings_file = Path(settings_service.SETTINGS_FILE)
+    raw = {}
+    if settings_file.exists():
+        try:
+            import toml
+            raw = toml.loads(settings_file.read_text(encoding="utf-8"))
+        except Exception:
+            raw = {}
+    has_policy_section = isinstance(raw.get("training_policy"), dict) and bool(raw.get("training_policy"))
     data = policy if isinstance(policy, dict) else settings_service.get_training_policy()
-    max_queue = int(data.get("max_queue_items") or MAX_QUEUE_ITEMS)
-    max_history = int(data.get("max_history_items") or MAX_HISTORY_ITEMS)
-    monitor = float(data.get("system_monitor_interval_sec") or SYSTEM_MONITOR_INTERVAL_SECONDS)
-    facade.MAX_QUEUE_ITEMS = max(1, max_queue)
-    facade.MAX_HISTORY_ITEMS = max(1, max_history)
-    facade.SYSTEM_MONITOR_INTERVAL_SECONDS = max(0.2, monitor)
+    if has_policy_section or isinstance(policy, dict):
+        max_queue = int(data.get("max_queue_items") or MAX_QUEUE_ITEMS)
+        max_history = int(data.get("max_history_items") or MAX_HISTORY_ITEMS)
+        monitor = float(data.get("system_monitor_interval_sec") or SYSTEM_MONITOR_INTERVAL_SECONDS)
+        facade.MAX_QUEUE_ITEMS = max(1, max_queue)
+        facade.MAX_HISTORY_ITEMS = max(1, max_history)
+        facade.SYSTEM_MONITOR_INTERVAL_SECONDS = max(0.2, monitor)
     return {
-        "max_queue_items": facade.MAX_QUEUE_ITEMS,
-        "max_history_items": facade.MAX_HISTORY_ITEMS,
-        "system_monitor_interval_sec": facade.SYSTEM_MONITOR_INTERVAL_SECONDS,
+        "max_queue_items": int(getattr(facade, "MAX_QUEUE_ITEMS", MAX_QUEUE_ITEMS)),
+        "max_history_items": int(getattr(facade, "MAX_HISTORY_ITEMS", MAX_HISTORY_ITEMS)),
+        "system_monitor_interval_sec": float(
+            getattr(facade, "SYSTEM_MONITOR_INTERVAL_SECONDS", SYSTEM_MONITOR_INTERVAL_SECONDS)
+        ),
         "auto_retry": bool(data.get("auto_retry", False)),
         "max_attempts": int(data.get("max_attempts") or 1),
         "retry_backoff_sec": float(data.get("retry_backoff_sec") or 0.0),
