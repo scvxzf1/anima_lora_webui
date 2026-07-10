@@ -13,6 +13,7 @@ from typing import Any
 
 import toml
 
+from library.config import io as config_io
 from library.env import expand_env_vars_in_obj, get_configs_root, load_dotenv
 from web.services.config import common as _config_common
 from web.services.config.metadata import (
@@ -201,19 +202,19 @@ def load_merged_config(variant: str, preset: str, methods_subdir: str = "gui-met
     methods_dir = _safe_config_subdir(methods_subdir)
     if methods_dir is None:
         raise ValueError("配置目录不合法")
-    base = _load(CONFIGS_DIR / "base.toml")
-    presets_data = _load(PRESETS_FILE)
-    pset = presets_data.get(preset, {}) if isinstance(presets_data.get(preset), dict) else {}
-    meth = _load(methods_dir / f"{variant}.toml")
-
-    merged: dict[str, Any] = {}
-    for k, v in base.items():
-        if k not in ("general", "datasets"):
-            merged[k] = v
-    for k, v in pset.items():
-        merged[k] = v
-    for k, v in meth.items():
-        merged[k] = v
+    # Share flatten/alias/schema core with training merge, then apply WebUI-only
+    # auto data-dir derivation on top.
+    try:
+        merged = config_io.load_method_preset(
+            variant,
+            preset=preset,
+            configs_dir=str(CONFIGS_DIR),
+            methods_subdir=methods_subdir,
+            strict=False,
+        )
+    except FileNotFoundError as exc:
+        raise ValueError(str(exc)) from exc
+    merged = dict(merged)
     merged.setdefault("max_train_steps", DEFAULT_MAX_TRAIN_STEPS)
     merged = expand_env_vars_in_obj(merged)
     return apply_auto_data_dirs(merged)

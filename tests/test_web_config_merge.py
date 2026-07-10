@@ -243,3 +243,68 @@ def test_handle_merged_uses_selected_training_config_file(tmp_path: Path, monkey
     assert body["gradient_accumulation_steps"] == 2
     assert body["sample_ratio"] == 0.5
 
+
+def test_web_and_library_merge_agree_on_gui_method_defaults(tmp_path: Path, monkeypatch):
+    """Web load_merged_config and library load_method_preset share core defaults."""
+    from library.config.io import load_method_preset
+    from web.services.config import merge as web_merge
+
+    configs, _dataset_path = _write_minimal_config_tree(tmp_path)
+    # Provide a realistic gui-methods lora.toml + base/presets for both paths.
+    (configs / "gui-methods").mkdir(parents=True, exist_ok=True)
+    (configs / "base.toml").write_text(
+        "\n".join(
+            [
+                'source_image_dir = "image_dataset"',
+                'resized_image_dir = "post_image_dataset/resized"',
+                'lora_cache_dir = "post_image_dataset/lora"',
+                "max_train_steps = 1000",
+                'pretrained_model_name_or_path = "models/dit.safetensors"',
+                'qwen3 = "models/qwen.safetensors"',
+                'vae = "models/vae.safetensors"',
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    (configs / "presets.toml").write_text(
+        "[default]\nlearning_rate = 1e-4\n",
+        encoding="utf-8",
+    )
+    (configs / "gui-methods" / "lora.toml").write_text(
+        "\n".join(
+            [
+                'network_module = "networks.lora_anima"',
+                "network_dim = 16",
+                "network_alpha = 16",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    _patch_config_service_paths(monkeypatch, tmp_path)
+    monkeypatch.setattr(web_merge, "CONFIGS_DIR", configs, raising=False)
+    monkeypatch.setattr(web_merge, "PRESETS_FILE", configs / "presets.toml", raising=False)
+    monkeypatch.setattr(web_merge, "GUI_METHODS_DIR", configs / "gui-methods", raising=False)
+
+    web_cfg = web_merge.load_merged_config("lora", "default", "gui-methods")
+    lib_cfg = load_method_preset(
+        "lora",
+        "default",
+        configs_dir=str(configs),
+        methods_subdir="gui-methods",
+    )
+
+    core_keys = [
+        "network_module",
+        "network_dim",
+        "network_alpha",
+        "learning_rate",
+        "pretrained_model_name_or_path",
+        "qwen3",
+        "vae",
+        "max_train_steps",
+    ]
+    for key in core_keys:
+        assert web_cfg.get(key) == lib_cfg.get(key), key
+
