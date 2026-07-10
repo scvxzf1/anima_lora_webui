@@ -527,17 +527,50 @@ def test_resolve_image_test_weight_path_does_not_search_workspace_parent_tree(mo
         raise AssertionError("expected FileNotFoundError when workspace parent search is disabled")
 
 
-def test_resolve_image_test_weight_path_accepts_outside_previous_allowed_dirs(monkeypatch, tmp_path) -> None:
+def test_resolve_image_test_weight_path_rejects_outside_allowlist(monkeypatch, tmp_path) -> None:
     output_root = tmp_path / "output"
     output_root.mkdir(parents=True, exist_ok=True)
     outside_path = tmp_path / "outside" / "bad.safetensors"
     outside_path.parent.mkdir(parents=True, exist_ok=True)
     outside_path.write_bytes(b"stub")
     monkeypatch.setattr(image_test_service.settings_service, "resolve_output_root", lambda value=None: output_root)
+    monkeypatch.setattr(image_test_service, "ROOT", tmp_path / "repo")
+    (tmp_path / "repo").mkdir(parents=True, exist_ok=True)
 
-    resolved = image_test_service._resolve_image_test_weight_path(str(outside_path))
+    try:
+        image_test_service._resolve_image_test_weight_path(str(outside_path))
+    except ValueError as exc:
+        assert "允许范围" in str(exc)
+    else:
+        raise AssertionError("expected ValueError for outside allowlist path")
 
-    assert resolved == outside_path.resolve()
+
+def test_resolve_image_test_weight_path_rejects_parent_escape(monkeypatch, tmp_path) -> None:
+    output_root = tmp_path / "output"
+    output_root.mkdir(parents=True, exist_ok=True)
+    monkeypatch.setattr(image_test_service.settings_service, "resolve_output_root", lambda value=None: output_root)
+    monkeypatch.setattr(image_test_service, "ROOT", tmp_path / "repo")
+    (tmp_path / "repo").mkdir(parents=True, exist_ok=True)
+
+    try:
+        image_test_service._resolve_image_test_weight_path("../secret.safetensors")
+    except ValueError as exc:
+        assert ".." in str(exc) or "允许范围" in str(exc)
+    else:
+        raise AssertionError("expected ValueError for parent escape path")
+
+
+def test_resolve_image_test_weight_path_accepts_under_output_root(monkeypatch, tmp_path) -> None:
+    output_root = tmp_path / "output"
+    weight = output_root / "runs" / "ok.safetensors"
+    weight.parent.mkdir(parents=True, exist_ok=True)
+    weight.write_bytes(b"stub")
+    monkeypatch.setattr(image_test_service.settings_service, "resolve_output_root", lambda value=None: output_root)
+    monkeypatch.setattr(image_test_service, "ROOT", tmp_path / "repo")
+    (tmp_path / "repo").mkdir(parents=True, exist_ok=True)
+
+    resolved = image_test_service._resolve_image_test_weight_path(str(weight))
+    assert resolved == weight.resolve()
 
 
 def test_resolve_image_test_weight_path_rejects_missing_bare_filename(monkeypatch, tmp_path) -> None:

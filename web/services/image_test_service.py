@@ -27,6 +27,7 @@ from library.inference.selective_lora import (
 )
 from library.inference.request import GenerationRequest
 from web.services import config_service, settings_service
+from web.services import path_safety
 from web.services.preview_service import DEFAULT_INFERENCE_DIR
 from web.services.project_python import resolve_web_python_executable
 from web.services.settings_service import display_path
@@ -415,10 +416,13 @@ def _resolve_image_test_weight_path(
         raise ValueError("请填写 LoRA 权重路径")
     if not clean.lower().endswith(".safetensors"):
         raise ValueError("只支持 .safetensors 权重文件")
+    if ".." in Path(clean).parts:
+        raise ValueError("LoRA 权重路径不允许包含 ..")
     path = Path(clean)
+    preferred_dirs = _preferred_image_test_weight_dirs(app)
+    search_dirs = _search_image_test_weight_dirs(preferred_dirs)
+    allowlist = _image_test_weight_allowlist(preferred_dirs=preferred_dirs, search_dirs=search_dirs)
     if _is_image_test_weight_file_name_only(path):
-        preferred_dirs = _preferred_image_test_weight_dirs(app)
-        search_dirs = _search_image_test_weight_dirs(preferred_dirs)
         resolved = _resolve_image_test_weight_by_name(
             path.name,
             search_dirs=search_dirs,
@@ -426,12 +430,47 @@ def _resolve_image_test_weight_path(
             enable_fallback_search=app is not None,
         )
     else:
-        resolved = path.resolve() if path.is_absolute() else (ROOT / clean.lstrip("/")).resolve()
+        if path.is_absolute():
+            resolved = path.resolve()
+        else:
+            # Relative paths must stay under repo root and may not escape via ..
+            resolved = (ROOT / path).resolve()
+            try:
+                resolved.relative_to(ROOT.resolve())
+            except ValueError as exc:
+                raise ValueError("LoRA 权重路径超出允许范围") from exc
+        if not path_safety.is_under_allowed_dirs(resolved, allowlist):
+            raise ValueError("LoRA 权重路径超出允许范围")
     if not resolved.exists() or not resolved.is_file():
         raise FileNotFoundError("LoRA 权重文件不存在")
     if not os.access(resolved, os.R_OK):
         raise ValueError("LoRA 权重文件不可读取")
     return resolved
+
+
+def _image_test_weight_allowlist(
+    *,
+    preferred_dirs: list[Path],
+    search_dirs: list[Path],
+) -> list[Path]:
+    """Dirs that may host explicit weight paths for image_test."""
+    dirs: list[Path] = []
+    dirs.extend(preferred_dirs)
+    dirs.extend(search_dirs)
+    dirs.append(ROOT.resolve())
+    # Unique preserve order
+    out: list[Path] = []
+    seen: set[str] = set()
+    for d in dirs:
+        try:
+            key = str(Path(d).resolve())
+        except OSError:
+            continue
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(Path(key))
+    return out
 
 
 def _normalize_image_test_weight_value(value: str) -> str:
