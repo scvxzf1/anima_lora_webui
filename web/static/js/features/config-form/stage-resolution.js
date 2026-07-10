@@ -1,608 +1,773 @@
 /**
- * Stage-resolution UI and config quick-preset panels.
- * Moved out of anima-app mechanical chunks.
+ * Percent-based multi-dataset stage schedule UI (分阶段调度课表).
+ *
+ * Stages bind to subset indices from the active dataset editor and cover
+ * [start_pct, end_pct) of max_train_steps. Caches must be prebuilt.
  */
-import { NO_DATASET_REGULARIZATION_QUICK_PRESETS, RESOURCE_QUICK_PRESETS } from '../anima-app/helpers/app-constants.js?v=module-bootstrap-20260707-93';
-import { setFieldInputValue } from '../anima-app/chunks/13-update-dataset-editor-rows-setting-value.js?v=module-bootstrap-20260707-93';
-import { handleFormFieldChange } from '../anima-app/chunks/14-lora-adapter-kind-from-config.js?v=module-bootstrap-20260707-93';
-import { normalizedStageResolutionStages, renderStageResolutionDialog, stageResolutionMetrics, stageResolutionStatus } from '../anima-app/chunks/04-create-config-group-entry.js?v=module-bootstrap-20260707-93';
-import { fillGlobalModelPathsIntoConfigForm, resourceQuickCurrentValue, strongerSelectiveCheckpointValue } from '../anima-app/chunks/06-stronger-selective-checkpoint-value.js?v=module-bootstrap-20260707-93';
-import {
-    setTomlStatus,
-} from '../anima-app/helpers/toml-action-state-bridge.js?v=module-bootstrap-20260707-93';
 import { getAppContext } from '../anima-app/helpers/app-context-bridge.js?v=module-bootstrap-20260707-93';
 import { getConfigState } from '../anima-app/helpers/config-state-bridge.js?v=module-bootstrap-20260707-93';
+import { getDatasetState } from '../anima-app/helpers/dataset-state-bridge.js?v=module-bootstrap-20260707-93';
+import { setTomlStatus } from '../anima-app/helpers/toml-action-state-bridge.js?v=module-bootstrap-20260707-93';
 
 const ctx = getAppContext();
 const configState = getConfigState();
-const configFormState = configState.configFormState;
 const stageResolutionState = configState.stageResolutionState;
 
-    export function createStageResolutionSummary(metrics) {
-        const wrap = document.createElement('div');
-        wrap.className = 'stage-resolution-summary';
-        const rows = [
-            ['调度状态', metrics.enabled ? '已启用' : '未启用'],
-            ['阶段数', `${metrics.stages.length}`],
-            ['预计 steps', `${metrics.totalSteps}`],
-            ['配置检查', metrics.problemCount ? `${metrics.problemCount} 项错误` : (metrics.warningCount ? `${metrics.warningCount} 项提示` : '就绪')],
-            ['图片统计', '待接入'],
-        ];
-        wrap.appendChild(createStageResolutionEnableControl(metrics.enabled));
-        rows.forEach(([label, value]) => {
-            const item = document.createElement('div');
-            item.className = 'stage-resolution-summary-item';
-            const strong = document.createElement('strong');
-            strong.textContent = value;
-            const span = document.createElement('span');
-            span.textContent = label;
-            item.append(strong, span);
-            wrap.appendChild(item);
-        });
-        return wrap;
-    }
+const STAGE_COLORS = ['#5B8DEF', '#2DD4BF', '#A78BFA', '#F59E0B', '#F472B6', '#34D399'];
 
-    function createStageResolutionEnableControl(enabled) {
-        const item = document.createElement('label');
-        item.className = 'stage-resolution-summary-item stage-resolution-enable-control';
-        const input = document.createElement('input');
-        input.id = 'stage-resolution-enable-toggle';
-        input.type = 'checkbox';
-        input.checked = enabled;
-        input.addEventListener('change', (event) => {
-            setStageResolutionEnabled(event.target.checked);
-        });
-        const copy = document.createElement('span');
+function clamp01(value) {
+    const n = Number(value);
+    if (!Number.isFinite(n)) return 0;
+    return Math.max(0, Math.min(1, n));
+}
+
+function toFraction(value) {
+    const n = Number(value);
+    if (!Number.isFinite(n)) return 0;
+    return n > 1 ? clamp01(n / 100) : clamp01(n);
+}
+
+function pctLabel(fraction) {
+    return `${Math.round(clamp01(fraction) * 1000) / 10}%`;
+}
+
+function readTotalSteps() {
+    const draft = configState.configFormState?.draftValues;
+    const current = configState.currentConfig || {};
+    const raw = draft?.has?.('max_train_steps')
+        ? draft.get('max_train_steps')
+        : current.max_train_steps;
+    const steps = Math.round(Number(raw) || 0);
+    return steps > 0 ? steps : 0;
+}
+
+function listSubsetOptions() {
+    const datasetState = getDatasetState();
+    const rows = datasetState.datasetEditorState?.datasets
+        || datasetState.datasetPresetState?.datasets
+        || [];
+    if (!Array.isArray(rows) || !rows.length) {
+        return [{ index: 0, label: 'SUBSET 1（当前数据集）', resolution: 1024 }];
+    }
+    return rows.map((row, index) => {
+        const settings = row?.settings || {};
+        const resolution = Number(settings.resolution) || 1024;
+        const path = String(row?.image_dir || row?.path || '').trim();
+        const short = path ? path.split(/[\\/]/).filter(Boolean).slice(-2).join('/') : `子集 ${index + 1}`;
+        return {
+            index,
+            label: `SUBSET ${index + 1} · ${resolution}px · ${short || '未命名'}`,
+            resolution,
+        };
+    });
+}
+
+export function defaultStageScheduleStages() {
+    return [
+        { name: '阶段1', subset_index: 0, start_pct: 0, end_pct: 0.5 },
+        { name: '阶段2', subset_index: 1, start_pct: 0.5, end_pct: 1 },
+    ];
+}
+
+export function resolveStageScheduleSource(config = configState.currentConfig || {}) {
+    const draft = configState.configFormState?.draftValues;
+    const hasDraft = (key) => Boolean(draft?.has?.(key));
+    return {
+        stage_schedule_enabled: hasDraft('stage_schedule_enabled')
+            ? draft.get('stage_schedule_enabled')
+            : config.stage_schedule_enabled,
+        stage_schedule: hasDraft('stage_schedule')
+            ? draft.get('stage_schedule')
+            : config.stage_schedule,
+    };
+}
+
+export function hydrateStageScheduleFromConfig(config = {}) {
+    const source = resolveStageScheduleSource(config);
+    const enabled = Boolean(source.stage_schedule_enabled);
+    let stages = normalizeRawStages(source.stage_schedule);
+    if (!stages.length) stages = defaultStageScheduleStages();
+    stageResolutionState.enabled = enabled;
+    stageResolutionState.stages = stages;
+    stageResolutionState.selectedIndex = 0;
+    stageResolutionState._hydratedFromConfig = true;
+}
+
+function normalizeRawStages(raw) {
+    if (!Array.isArray(raw)) return [];
+    return raw.map((stage, index) => ({
+        name: String(stage?.name || `阶段${index + 1}`).trim() || `阶段${index + 1}`,
+        subset_index: Math.max(0, Math.round(Number(stage?.subset_index ?? stage?.subsetIndex ?? index) || 0)),
+        start_pct: toFraction(stage?.start_pct ?? stage?.startPct ?? 0),
+        end_pct: toFraction(stage?.end_pct ?? stage?.endPct ?? 1),
+    }));
+}
+
+export function normalizedStageResolutionStages() {
+    if (!Array.isArray(stageResolutionState.stages) || !stageResolutionState.stages.length) {
+        stageResolutionState.stages = defaultStageScheduleStages();
+    }
+    // Keep order; re-normalize pct and names only.
+    stageResolutionState.stages = stageResolutionState.stages.map((stage, index) => ({
+        name: String(stage.name || `阶段${index + 1}`).trim() || `阶段${index + 1}`,
+        subset_index: Math.max(0, Math.round(Number(stage.subset_index) || 0)),
+        start_pct: toFraction(stage.start_pct),
+        end_pct: toFraction(stage.end_pct),
+    }));
+    // Snap cover: first start 0, last end 1, adjacent seams.
+    if (stageResolutionState.stages.length) {
+        stageResolutionState.stages[0].start_pct = 0;
+        stageResolutionState.stages[stageResolutionState.stages.length - 1].end_pct = 1;
+        for (let i = 1; i < stageResolutionState.stages.length; i += 1) {
+            const prev = stageResolutionState.stages[i - 1];
+            const cur = stageResolutionState.stages[i];
+            // Prefer previous end as seam when close; otherwise leave and flag in metrics.
+            if (Math.abs(prev.end_pct - cur.start_pct) < 1e-6) {
+                cur.start_pct = prev.end_pct;
+            }
+        }
+    }
+    stageResolutionState.selectedIndex = Math.max(
+        0,
+        Math.min(stageResolutionState.selectedIndex || 0, stageResolutionState.stages.length - 1),
+    );
+    return stageResolutionState.stages;
+}
+
+export function stageSchedulePayload() {
+    const stages = normalizedStageResolutionStages().map((stage) => ({
+        name: stage.name,
+        subset_index: stage.subset_index,
+        start_pct: stage.start_pct,
+        end_pct: stage.end_pct,
+    }));
+    return {
+        stage_schedule_enabled: Boolean(stageResolutionState.enabled),
+        stage_schedule: stages,
+    };
+}
+
+export function stageResolutionMetrics() {
+    stageResolutionState.enabled = Boolean(stageResolutionState.enabled);
+    const stages = normalizedStageResolutionStages();
+    const totalSteps = readTotalSteps();
+    const options = listSubsetOptions();
+    const optionByIndex = new Map(options.map((item) => [item.index, item]));
+    const ranges = stages.map((stage, index) => {
+        const problems = [];
+        const warnings = [];
+        if (!(stage.end_pct > stage.start_pct + 1e-9)) problems.push('区间为空');
+        if (!optionByIndex.has(stage.subset_index) && options.length) {
+            warnings.push('子集索引可能超出当前数据集');
+        }
+        if (index > 0) {
+            const prev = stages[index - 1];
+            if (Math.abs(prev.end_pct - stage.start_pct) > 1e-6) {
+                if (stage.start_pct < prev.end_pct - 1e-6) problems.push('与上一段重叠');
+                else problems.push('与上一段未贴齐');
+            }
+        }
+        if (index === 0 && Math.abs(stage.start_pct) > 1e-6) problems.push('须从 0% 开始');
+        if (index === stages.length - 1 && Math.abs(stage.end_pct - 1) > 1e-6) problems.push('须到 100%');
+        const opt = optionByIndex.get(stage.subset_index);
+        const startStep = totalSteps ? Math.floor(totalSteps * stage.start_pct) : null;
+        const endStep = totalSteps ? Math.floor(totalSteps * stage.end_pct) : null;
+        return {
+            ...stage,
+            index,
+            resolution: opt?.resolution ?? null,
+            subsetLabel: opt?.label || `SUBSET ${stage.subset_index + 1}`,
+            startStep,
+            endStep,
+            steps: startStep != null && endStep != null ? Math.max(0, endStep - startStep) : null,
+            problems,
+            warnings,
+            color: STAGE_COLORS[index % STAGE_COLORS.length],
+        };
+    });
+    const problemCount = ranges.filter((item) => item.problems.length).length;
+    const warningCount = ranges.filter((item) => item.warnings.length).length;
+    return {
+        enabled: stageResolutionState.enabled,
+        stages: ranges,
+        totalSteps,
+        problemCount,
+        warningCount,
+        selected: ranges[stageResolutionState.selectedIndex] || ranges[0],
+        subsetOptions: options,
+    };
+}
+
+export function stageResolutionStatus(stage) {
+    if (stage.problems?.length) return { tone: 'error', text: stage.problems[0] };
+    if (stage.warnings?.length) return { tone: 'warning', text: stage.warnings[0] };
+    return { tone: 'ok', text: '就绪' };
+}
+
+export function createStageResolutionSummary(metrics) {
+    const wrap = document.createElement('div');
+    wrap.className = 'stage-resolution-summary';
+    wrap.appendChild(createStageResolutionEnableControl(metrics.enabled));
+    const rows = [
+        ['阶段数', `${metrics.stages.length}`],
+        ['总步数 S', metrics.totalSteps ? String(metrics.totalSteps) : '未锁定'],
+        ['覆盖', metrics.problemCount ? '有问题' : '0–100%'],
+        ['检查', metrics.problemCount ? `${metrics.problemCount} 项错误` : (metrics.warningCount ? `${metrics.warningCount} 项提示` : '就绪')],
+        ['说明', '按总步数 % 切换子集'],
+    ];
+    rows.forEach(([label, value]) => {
+        const item = document.createElement('div');
+        item.className = 'stage-resolution-summary-item';
         const strong = document.createElement('strong');
-        strong.textContent = '启用阶段调度';
-        const hint = document.createElement('span');
-        hint.textContent = enabled ? '将用于阶段方案' : '草稿，不影响训练';
-        copy.append(strong, hint);
-        item.append(input, copy);
-        return item;
-    }
-
-    function setStageResolutionEnabled(enabled) {
-        stageResolutionState.enabled = Boolean(enabled);
-        renderStageResolutionDialog();
-    }
-
-    export function createStageResolutionChartPanel() {
-        const panel = document.createElement('section');
-        panel.className = 'stage-resolution-chart-panel';
-        const header = document.createElement('div');
-        header.className = 'stage-resolution-panel-head';
-        const title = document.createElement('div');
-        title.innerHTML = '<strong>阶段折线</strong><span>点表示阶段，阴影表示该阶段的单边范围。</span>';
-        const addBtn = document.createElement('button');
-        addBtn.type = 'button';
-        addBtn.className = 'btn btn-small';
-        addBtn.textContent = '新增阶段';
-        addBtn.addEventListener('click', addStageResolutionPoint);
-        header.append(title, addBtn);
-        const canvas = document.createElement('canvas');
-        canvas.id = 'stage-resolution-chart';
-        canvas.width = 720;
-        canvas.height = 280;
-        canvas.addEventListener('click', selectStageResolutionPointFromCanvas);
-        panel.append(header, canvas);
-        return panel;
-    }
-
-    export function createStageResolutionEditor(stage) {
-        const aside = document.createElement('aside');
-        aside.className = 'stage-resolution-editor';
-        const head = document.createElement('div');
-        head.className = 'stage-resolution-panel-head';
-        const title = document.createElement('div');
-        title.innerHTML = '<strong>当前点编辑器</strong><span>修改后立即同步折线图和阶段表。</span>';
-        head.appendChild(title);
-        aside.appendChild(head);
-        if (!stage) return aside;
-
-        const fields = document.createElement('div');
-        fields.className = 'stage-resolution-fields';
-        fields.append(
-            createStageResolutionInput('阶段名', 'name', stage.name, 'text'),
-            createStageResolutionInput('epochs', 'epochs', stage.epochs, 'number'),
-            createStageResolutionInput('单边最大值', 'maxSide', stage.maxSide, 'number'),
-            createStageResolutionInput('向下波动', 'downRange', stage.downRange, 'number'),
-            createStageResolutionReadonly('单边最小值', `${Math.max(0, stage.minSide || 0)}`),
-            createStageResolutionReadonly('预计图片数', '待统计'),
-            createStageResolutionRepeats(stage)
-        );
-        aside.appendChild(fields);
-        return aside;
-    }
-
-    function createStageResolutionInput(labelText, key, value, type) {
-        const label = document.createElement('label');
-        label.className = 'stage-resolution-field';
+        strong.textContent = value;
         const span = document.createElement('span');
-        span.textContent = labelText;
-        const input = document.createElement('input');
-        input.type = type;
-        input.value = value;
-        input.dataset.stageField = key;
-        if (type === 'number') {
-            input.min = key === 'epochs' ? '1' : '0';
-            input.step = '1';
-        }
-        input.addEventListener('input', updateSelectedStageResolutionField);
-        label.append(span, input);
-        return label;
-    }
+        span.textContent = label;
+        item.append(strong, span);
+        wrap.appendChild(item);
+    });
+    return wrap;
+}
 
-    function createStageResolutionReadonly(labelText, value) {
-        const label = document.createElement('label');
-        label.className = 'stage-resolution-field';
-        const span = document.createElement('span');
-        span.textContent = labelText;
-        const output = document.createElement('output');
-        output.textContent = value;
-        label.append(span, output);
-        return label;
-    }
-
-    function createStageResolutionRepeats(stage) {
-        const wrap = document.createElement('div');
-        wrap.className = 'stage-resolution-field stage-resolution-repeat-field';
-        const label = document.createElement('label');
-        const check = document.createElement('input');
-        check.type = 'checkbox';
-        check.checked = stage.manualRepeats;
-        check.addEventListener('change', (event) => {
-            updateStageResolutionStage(stage.index, { manualRepeats: event.target.checked });
-        });
-        label.append(check, document.createTextNode('手动 repeats'));
-        const input = document.createElement('input');
-        input.type = 'number';
-        input.min = '1';
-        input.step = '1';
-        input.value = stage.autoRepeats;
-        input.disabled = !stage.manualRepeats;
-        input.addEventListener('input', (event) => {
-            updateStageResolutionStage(stage.index, { repeats: Math.max(1, Math.round(Number(event.target.value) || 1)) });
-        });
-        wrap.append(label, input);
-        return wrap;
-    }
-
-    export function createStageResolutionTable(stages) {
-        const section = document.createElement('section');
-        section.className = 'stage-resolution-table-panel';
-        const head = document.createElement('div');
-        head.className = 'stage-resolution-panel-head';
-        const title = document.createElement('div');
-        title.innerHTML = '<strong>阶段表</strong><span>每行对应一个阶段点。</span>';
-        head.appendChild(title);
-        const tableWrap = document.createElement('div');
-        tableWrap.className = 'stage-resolution-table-wrap';
-        const table = document.createElement('table');
-        table.className = 'stage-resolution-table';
-        table.innerHTML = '<thead><tr><th>阶段</th><th>epochs</th><th>单边最大</th><th>向下波动</th><th>step 范围</th><th>分辨率范围</th><th>图片</th><th>repeats</th><th>状态</th><th>操作</th></tr></thead>';
-        const tbody = document.createElement('tbody');
-        stages.forEach((stage) => tbody.appendChild(createStageResolutionTableRow(stage)));
-        table.appendChild(tbody);
-        tableWrap.appendChild(table);
-        section.append(head, tableWrap);
-        return section;
-    }
-
-    function createStageResolutionTableRow(stage) {
-        const tr = document.createElement('tr');
-        const selected = stage.index === stageResolutionState.selectedIndex;
-        const status = stageResolutionStatus(stage);
-        tr.className = selected ? 'selected' : '';
-        tr.dataset.stageIndex = String(stage.index);
-        tr.append(
-            stageResolutionTableInputCell(stage, 'name', stage.name, 'text'),
-            stageResolutionTableInputCell(stage, 'epochs', stage.epochs, 'number'),
-            stageResolutionTableInputCell(stage, 'maxSide', stage.maxSide, 'number'),
-            stageResolutionTableInputCell(stage, 'downRange', stage.downRange, 'number'),
-            stageResolutionTableCell(`${stage.startStep}-${stage.endStep}`),
-            stageResolutionTableCell(`${Math.max(0, stage.minSide)}-${stage.maxSide}`),
-            stageResolutionTableCell('待统计'),
-            stageResolutionTableCell(`${stage.autoRepeats}`),
-            stageResolutionStatusCell(status),
-            stageResolutionActionCell(stage)
-        );
-        tr.addEventListener('click', (event) => {
-            if (event.target.closest('button')) return;
-            selectStageResolutionPoint(stage.index);
-        });
-        return tr;
-    }
-
-    function stageResolutionTableInputCell(stage, key, value, type) {
-        const td = document.createElement('td');
-        const input = document.createElement('input');
-        input.className = 'stage-resolution-table-input';
-        input.type = type;
-        input.value = value;
-        if (type === 'number') {
-            input.min = key === 'epochs' ? '1' : '0';
-            input.step = '1';
-        }
-        input.addEventListener('click', (event) => event.stopPropagation());
-        input.addEventListener('input', (event) => {
-            const next = key === 'name' ? event.target.value : Number(event.target.value);
-            updateStageResolutionStage(stage.index, { [key]: next });
-        });
-        td.appendChild(input);
-        return td;
-    }
-
-    function stageResolutionTableCell(text) {
-        const td = document.createElement('td');
-        td.textContent = text;
-        return td;
-    }
-
-    function stageResolutionStatusCell(status) {
-        const td = document.createElement('td');
-        const badge = document.createElement('span');
-        badge.className = `stage-resolution-status ${status.tone}`;
-        badge.textContent = status.text;
-        td.appendChild(badge);
-        return td;
-    }
-
-    function stageResolutionActionCell(stage) {
-        const td = document.createElement('td');
-        td.className = 'stage-resolution-actions';
-        const up = stageResolutionActionButton('↑', '上移', () => moveStageResolutionPoint(stage.index, -1));
-        const down = stageResolutionActionButton('↓', '下移', () => moveStageResolutionPoint(stage.index, 1));
-        const del = stageResolutionActionButton('删', '删除', () => deleteStageResolutionPoint(stage.index));
-        up.disabled = stage.index <= 0;
-        down.disabled = stage.index >= stageResolutionState.stages.length - 1;
-        del.disabled = stageResolutionState.stages.length <= 1;
-        td.append(up, down, del);
-        return td;
-    }
-
-    function stageResolutionActionButton(text, title, handler) {
-        const btn = document.createElement('button');
-        btn.type = 'button';
-        btn.className = 'btn btn-small';
-        btn.textContent = text;
-        btn.title = title;
-        btn.addEventListener('click', handler);
-        return btn;
-    }
-
-    function updateSelectedStageResolutionField(event) {
-        const key = event.target.dataset.stageField;
-        const value = key === 'name' ? event.target.value : Number(event.target.value);
-        updateStageResolutionStage(stageResolutionState.selectedIndex, { [key]: value });
-    }
-
-    function updateStageResolutionStage(index, patch) {
-        const stages = normalizedStageResolutionStages();
-        if (!stages[index]) return;
-        stageResolutionState.stages[index] = { ...stages[index], ...patch };
+function createStageResolutionEnableControl(enabled) {
+    const item = document.createElement('label');
+    item.className = 'stage-resolution-summary-item stage-resolution-enable-control';
+    const input = document.createElement('input');
+    input.id = 'stage-resolution-enable-toggle';
+    input.type = 'checkbox';
+    input.checked = enabled;
+    input.addEventListener('change', (event) => {
+        stageResolutionState.enabled = Boolean(event.target.checked);
         renderStageResolutionDialog();
-    }
+    });
+    const copy = document.createElement('span');
+    const strong = document.createElement('strong');
+    strong.textContent = '启用分阶段调度';
+    const hint = document.createElement('span');
+    hint.textContent = enabled
+        ? '训练将按总步数百分比切换数据集子集'
+        : '关闭时保持全程使用当前数据集（现有行为）';
+    copy.append(strong, hint);
+    item.append(input, copy);
+    return item;
+}
 
-    function addStageResolutionPoint() {
-        const stages = normalizedStageResolutionStages();
-        const last = stages[stages.length - 1] || { maxSide: 1024, downRange: 256 };
+export function createStageResolutionChartPanel() {
+    const panel = document.createElement('section');
+    panel.className = 'stage-resolution-chart-panel';
+    const header = document.createElement('div');
+    header.className = 'stage-resolution-panel-head';
+    const title = document.createElement('div');
+    title.innerHTML = '<strong>时间轴课表</strong><span>色带宽度 = 进度百分比；段数可变（2/3/N）。</span>';
+    const actions = document.createElement('div');
+    actions.className = 'stage-resolution-actions';
+    const addBtn = document.createElement('button');
+    addBtn.type = 'button';
+    addBtn.className = 'btn btn-small';
+    addBtn.textContent = '新增阶段';
+    addBtn.addEventListener('click', addStageResolutionPoint);
+    const twoBtn = document.createElement('button');
+    twoBtn.type = 'button';
+    twoBtn.className = 'btn btn-small';
+    twoBtn.textContent = '两段模板';
+    twoBtn.addEventListener('click', () => applyStageTemplate(2));
+    const threeBtn = document.createElement('button');
+    threeBtn.type = 'button';
+    threeBtn.className = 'btn btn-small';
+    threeBtn.textContent = '三段模板';
+    threeBtn.addEventListener('click', () => applyStageTemplate(3));
+    actions.append(twoBtn, threeBtn, addBtn);
+    header.append(title, actions);
+    const canvas = document.createElement('canvas');
+    canvas.id = 'stage-resolution-chart';
+    canvas.width = 720;
+    canvas.height = 160;
+    canvas.addEventListener('click', selectStageResolutionPointFromCanvas);
+    panel.append(header, canvas);
+    return panel;
+}
+
+export function createStageResolutionEditor(stage, metrics) {
+    const aside = document.createElement('aside');
+    aside.className = 'stage-resolution-editor';
+    const head = document.createElement('div');
+    head.className = 'stage-resolution-panel-head';
+    const title = document.createElement('div');
+    title.innerHTML = '<strong>当前阶段</strong><span>绑定数据集子集，编辑起止 %。</span>';
+    head.appendChild(title);
+    aside.appendChild(head);
+    if (!stage) return aside;
+
+    const fields = document.createElement('div');
+    fields.className = 'stage-resolution-fields';
+    fields.append(
+        createTextField('阶段名', 'name', stage.name),
+        createSubsetSelect(stage, metrics.subsetOptions),
+        createNumberField('起始 %', 'start_pct', Math.round(stage.start_pct * 1000) / 10),
+        createNumberField('结束 %', 'end_pct', Math.round(stage.end_pct * 1000) / 10),
+        createReadonlyField('分辨率', stage.resolution != null ? `${stage.resolution}px` : '—'),
+        createReadonlyField(
+            '步数区间',
+            stage.startStep != null
+                ? `${stage.startStep}–${stage.endStep}（约 ${stage.steps} 步）`
+                : '请先设定 max_train_steps',
+        ),
+    );
+    aside.appendChild(fields);
+    return aside;
+}
+
+function createTextField(labelText, key, value) {
+    const label = document.createElement('label');
+    label.className = 'stage-resolution-field';
+    const span = document.createElement('span');
+    span.textContent = labelText;
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.value = value;
+    input.dataset.stageField = key;
+    input.addEventListener('change', updateSelectedStageResolutionField);
+    label.append(span, input);
+    return label;
+}
+
+function createNumberField(labelText, key, value) {
+    const label = document.createElement('label');
+    label.className = 'stage-resolution-field';
+    const span = document.createElement('span');
+    span.textContent = labelText;
+    const input = document.createElement('input');
+    input.type = 'number';
+    input.min = '0';
+    input.max = '100';
+    input.step = '0.1';
+    input.value = value;
+    input.dataset.stageField = key;
+    input.addEventListener('change', updateSelectedStageResolutionField);
+    label.append(span, input);
+    return label;
+}
+
+function createReadonlyField(labelText, value) {
+    const label = document.createElement('label');
+    label.className = 'stage-resolution-field';
+    const span = document.createElement('span');
+    span.textContent = labelText;
+    const output = document.createElement('output');
+    output.textContent = value;
+    label.append(span, output);
+    return label;
+}
+
+function createSubsetSelect(stage, options) {
+    const label = document.createElement('label');
+    label.className = 'stage-resolution-field';
+    const span = document.createElement('span');
+    span.textContent = '数据集子集';
+    const select = document.createElement('select');
+    select.dataset.stageField = 'subset_index';
+    (options || []).forEach((opt) => {
+        const option = document.createElement('option');
+        option.value = String(opt.index);
+        option.textContent = opt.label;
+        if (opt.index === stage.subset_index) option.selected = true;
+        select.appendChild(option);
+    });
+    if (!(options || []).some((opt) => opt.index === stage.subset_index)) {
+        const option = document.createElement('option');
+        option.value = String(stage.subset_index);
+        option.textContent = `SUBSET ${stage.subset_index + 1}（配置中的索引）`;
+        option.selected = true;
+        select.appendChild(option);
+    }
+    select.addEventListener('change', updateSelectedStageResolutionField);
+    label.append(span, select);
+    return label;
+}
+
+export function createStageResolutionTable(stages) {
+    const section = document.createElement('section');
+    section.className = 'stage-resolution-table-panel';
+    const head = document.createElement('div');
+    head.className = 'stage-resolution-panel-head';
+    const title = document.createElement('div');
+    title.innerHTML = '<strong>阶段表</strong><span>每行绑定一个子集；N 可变。</span>';
+    head.appendChild(title);
+    const tableWrap = document.createElement('div');
+    tableWrap.className = 'stage-resolution-table-wrap';
+    const table = document.createElement('table');
+    table.className = 'stage-resolution-table';
+    table.innerHTML = '<thead><tr><th>阶段</th><th>子集</th><th>分辨率</th><th>起%</th><th>止%</th><th>步数</th><th>状态</th><th>操作</th></tr></thead>';
+    const tbody = document.createElement('tbody');
+    stages.forEach((stage) => tbody.appendChild(createStageResolutionTableRow(stage)));
+    table.appendChild(tbody);
+    tableWrap.appendChild(table);
+    section.append(head, tableWrap);
+    return section;
+}
+
+function createStageResolutionTableRow(stage) {
+    const tr = document.createElement('tr');
+    tr.className = stage.index === stageResolutionState.selectedIndex ? 'selected' : '';
+    tr.dataset.stageIndex = String(stage.index);
+    tr.addEventListener('click', () => selectStageResolutionPoint(stage.index));
+    const status = stageResolutionStatus(stage);
+    tr.append(
+        cell(stage.name),
+        cell(`#${stage.subset_index}`),
+        cell(stage.resolution != null ? String(stage.resolution) : '—'),
+        cell(pctLabel(stage.start_pct)),
+        cell(pctLabel(stage.end_pct)),
+        cell(stage.steps != null ? String(stage.steps) : '—'),
+        statusCell(status),
+        actionCell(stage),
+    );
+    return tr;
+}
+
+function cell(text) {
+    const td = document.createElement('td');
+    td.textContent = text;
+    return td;
+}
+
+function statusCell(status) {
+    const td = document.createElement('td');
+    const badge = document.createElement('span');
+    badge.className = `stage-resolution-status ${status.tone}`;
+    badge.textContent = status.text;
+    td.appendChild(badge);
+    return td;
+}
+
+function actionCell(stage) {
+    const td = document.createElement('td');
+    td.className = 'stage-resolution-actions';
+    const up = actionButton('↑', () => moveStageResolutionPoint(stage.index, -1));
+    const down = actionButton('↓', () => moveStageResolutionPoint(stage.index, 1));
+    const del = actionButton('删', () => deleteStageResolutionPoint(stage.index));
+    up.disabled = stage.index <= 0;
+    down.disabled = stage.index >= stageResolutionState.stages.length - 1;
+    del.disabled = stageResolutionState.stages.length <= 1;
+    td.append(up, down, del);
+    return td;
+}
+
+function actionButton(text, handler) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'btn btn-small';
+    btn.textContent = text;
+    btn.addEventListener('click', (event) => {
+        event.stopPropagation();
+        handler();
+    });
+    return btn;
+}
+
+function updateSelectedStageResolutionField(event) {
+    const key = event.target.dataset.stageField;
+    let value = event.target.value;
+    if (key === 'subset_index') value = Math.max(0, Math.round(Number(value) || 0));
+    if (key === 'start_pct' || key === 'end_pct') value = toFraction(Number(value));
+    updateStageResolutionStage(stageResolutionState.selectedIndex, { [key]: value });
+}
+
+function updateStageResolutionStage(index, patch) {
+    const stages = normalizedStageResolutionStages();
+    if (!stages[index]) return;
+    const next = { ...stages[index], ...patch };
+    // Keep adjacent seams when editing end/start.
+    if ('end_pct' in patch && stages[index + 1]) {
+        stages[index + 1] = { ...stages[index + 1], start_pct: next.end_pct };
+    }
+    if ('start_pct' in patch && stages[index - 1]) {
+        stages[index - 1] = { ...stages[index - 1], end_pct: next.start_pct };
+    }
+    stages[index] = next;
+    stageResolutionState.stages = stages;
+    renderStageResolutionDialog();
+}
+
+function applyStageTemplate(count) {
+    const n = Math.max(1, Math.min(12, Math.round(Number(count) || 2)));
+    const options = listSubsetOptions();
+    const stages = [];
+    for (let i = 0; i < n; i += 1) {
         stages.push({
-            name: `EP${stages.length + 1}`,
-            epochs: 1,
-            maxSide: Math.max(256, Number(last.maxSide || 1024) + 512),
-            downRange: Math.max(64, Number(last.downRange || 256)),
-            manualRepeats: false,
-            repeats: 1,
+            name: `阶段${i + 1}`,
+            subset_index: Math.min(i, Math.max(0, options.length - 1)),
+            start_pct: i / n,
+            end_pct: (i + 1) / n,
         });
-        stageResolutionState.selectedIndex = stages.length - 1;
+    }
+    stageResolutionState.stages = stages;
+    stageResolutionState.selectedIndex = 0;
+    renderStageResolutionDialog();
+}
+
+function addStageResolutionPoint() {
+    const stages = normalizedStageResolutionStages();
+    const last = stages[stages.length - 1];
+    if (!last) {
+        stageResolutionState.stages = defaultStageScheduleStages();
         renderStageResolutionDialog();
+        return;
     }
+    const mid = (last.start_pct + last.end_pct) / 2;
+    last.end_pct = mid;
+    stages.push({
+        name: `阶段${stages.length + 1}`,
+        subset_index: last.subset_index,
+        start_pct: mid,
+        end_pct: 1,
+    });
+    stageResolutionState.stages = stages;
+    stageResolutionState.selectedIndex = stages.length - 1;
+    renderStageResolutionDialog();
+}
 
-    function deleteStageResolutionPoint(index) {
-        const stages = normalizedStageResolutionStages();
-        if (stages.length <= 1) return;
-        stages.splice(index, 1);
-        stageResolutionState.selectedIndex = Math.max(0, Math.min(index, stages.length - 1));
-        renderStageResolutionDialog();
-    }
-
-    function moveStageResolutionPoint(index, direction) {
-        const stages = normalizedStageResolutionStages();
-        const nextIndex = index + direction;
-        if (nextIndex < 0 || nextIndex >= stages.length) return;
-        [stages[index], stages[nextIndex]] = [stages[nextIndex], stages[index]];
-        stageResolutionState.selectedIndex = nextIndex;
-        renderStageResolutionDialog();
-    }
-
-    function selectStageResolutionPoint(index) {
-        stageResolutionState.selectedIndex = index;
-        renderStageResolutionDialog();
-    }
-
-    function selectStageResolutionPointFromCanvas(event) {
-        const canvas = event.currentTarget;
-        const points = canvas._stageResolutionPoints || [];
-        if (!points.length) return;
-        const rect = canvas.getBoundingClientRect();
-        const x = event.clientX - rect.left;
-        let nearest = points[0];
-        for (const point of points) {
-            if (Math.abs(point.x - x) < Math.abs(nearest.x - x)) nearest = point;
+function deleteStageResolutionPoint(index) {
+    const stages = normalizedStageResolutionStages();
+    if (stages.length <= 1) return;
+    stages.splice(index, 1);
+    stages[0].start_pct = 0;
+    stages[stages.length - 1].end_pct = 1;
+    // Re-equalize seams lightly.
+    for (let i = 1; i < stages.length; i += 1) {
+        if (stages[i].start_pct < stages[i - 1].end_pct) {
+            stages[i].start_pct = stages[i - 1].end_pct;
         }
-        selectStageResolutionPoint(nearest.index);
     }
+    stageResolutionState.stages = stages;
+    stageResolutionState.selectedIndex = Math.max(0, Math.min(index, stages.length - 1));
+    renderStageResolutionDialog();
+}
 
-    export function drawStageResolutionChart() {
-        const canvas = document.getElementById('stage-resolution-chart');
-        if (!canvas) return;
-        const ctx = canvas.getContext('2d');
-        const metrics = stageResolutionMetrics();
-        const stages = metrics.stages;
-        const rect = canvas.getBoundingClientRect();
-        const width = Math.max(320, Math.floor(rect.width || 720));
-        const height = Math.max(220, Math.floor(rect.height || 280));
-        const ratio = Math.max(1, Math.min(window.devicePixelRatio || 1, 2));
-        canvas.width = Math.round(width * ratio);
-        canvas.height = Math.round(height * ratio);
-        ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
-        ctx.clearRect(0, 0, width, height);
+function moveStageResolutionPoint(index, direction) {
+    const stages = normalizedStageResolutionStages();
+    const nextIndex = index + direction;
+    if (nextIndex < 0 || nextIndex >= stages.length) return;
+    [stages[index], stages[nextIndex]] = [stages[nextIndex], stages[index]];
+    // After reorder, redistribute equal slices to keep a valid cover.
+    const n = stages.length;
+    stages.forEach((stage, i) => {
+        stage.start_pct = i / n;
+        stage.end_pct = (i + 1) / n;
+    });
+    stageResolutionState.stages = stages;
+    stageResolutionState.selectedIndex = nextIndex;
+    renderStageResolutionDialog();
+}
 
-        const styles = getComputedStyle(document.documentElement);
-        const accent = styles.getPropertyValue('--accent').trim() || '#4fc3f7';
-        const warning = styles.getPropertyValue('--warning').trim() || '#f0c36a';
-        const danger = styles.getPropertyValue('--danger').trim() || '#ef5350';
-        const grid = styles.getPropertyValue('--chart-grid').trim() || '#2a3a5e';
-        const text = styles.getPropertyValue('--text-dim').trim() || '#8892a4';
-        const success = styles.getPropertyValue('--success').trim() || '#22c55e';
-        const pad = { top: 24, right: 38, bottom: 38, left: 46 };
-        const plotW = width - pad.left - pad.right;
-        const plotH = height - pad.top - pad.bottom;
-        if (!stages.length || plotW <= 0 || plotH <= 0) return;
+function selectStageResolutionPoint(index) {
+    stageResolutionState.selectedIndex = index;
+    renderStageResolutionDialog();
+}
 
-        const values = stages.flatMap((stage) => [stage.maxSide, Math.max(0, stage.minSide)]);
-        let minY = Math.min(...values);
-        let maxY = Math.max(...values);
-        if (minY === maxY) {
-            minY -= 128;
-            maxY += 128;
+function selectStageResolutionPointFromCanvas(event) {
+    const canvas = event.currentTarget;
+    const bands = canvas._stageResolutionBands || [];
+    if (!bands.length) return;
+    const rect = canvas.getBoundingClientRect();
+    const x = event.clientX - rect.left;
+    const hit = bands.find((band) => x >= band.x0 && x <= band.x1) || bands[0];
+    selectStageResolutionPoint(hit.index);
+}
+
+export function drawStageResolutionChart() {
+    const canvas = document.getElementById('stage-resolution-chart');
+    if (!canvas) return;
+    const metrics = stageResolutionMetrics();
+    const stages = metrics.stages;
+    const ctx2d = canvas.getContext('2d');
+    const rect = canvas.getBoundingClientRect();
+    const width = Math.max(320, Math.floor(rect.width || 720));
+    const height = Math.max(140, Math.floor(rect.height || 160));
+    const ratio = Math.max(1, Math.min(window.devicePixelRatio || 1, 2));
+    canvas.width = Math.round(width * ratio);
+    canvas.height = Math.round(height * ratio);
+    ctx2d.setTransform(ratio, 0, 0, ratio, 0, 0);
+    ctx2d.clearRect(0, 0, width, height);
+
+    const styles = getComputedStyle(document.documentElement);
+    const text = styles.getPropertyValue('--text-dim').trim() || '#8892a4';
+    const grid = styles.getPropertyValue('--chart-grid').trim() || '#2a3a5e';
+    const pad = { top: 28, right: 16, bottom: 28, left: 16 };
+    const plotW = width - pad.left - pad.right;
+    const plotH = height - pad.top - pad.bottom;
+    if (!stages.length || plotW <= 0 || plotH <= 0) return;
+
+    // Track background.
+    ctx2d.fillStyle = grid;
+    ctx2d.globalAlpha = 0.25;
+    ctx2d.fillRect(pad.left, pad.top + plotH * 0.25, plotW, plotH * 0.5);
+    ctx2d.globalAlpha = 1;
+
+    const bands = [];
+    stages.forEach((stage) => {
+        const x0 = pad.left + stage.start_pct * plotW;
+        const x1 = pad.left + stage.end_pct * plotW;
+        const w = Math.max(2, x1 - x0);
+        ctx2d.fillStyle = stage.color;
+        ctx2d.globalAlpha = stage.index === stageResolutionState.selectedIndex ? 0.92 : 0.72;
+        ctx2d.fillRect(x0, pad.top + plotH * 0.15, w, plotH * 0.7);
+        ctx2d.globalAlpha = 1;
+        ctx2d.fillStyle = '#0b1220';
+        ctx2d.font = 'bold 12px monospace';
+        ctx2d.textAlign = 'center';
+        const label = stage.resolution != null ? String(stage.resolution) : stage.name;
+        if (w > 36) {
+            ctx2d.fillText(label, x0 + w / 2, pad.top + plotH * 0.55);
         }
-        minY = Math.max(0, Math.floor(minY / 128) * 128);
-        maxY = Math.ceil(maxY / 128) * 128;
-        const yFor = (value) => pad.top + (1 - ((value - minY) / Math.max(1, maxY - minY))) * plotH;
-        const xFor = (index) => stages.length === 1
-            ? pad.left + plotW / 2
-            : pad.left + (plotW * index / (stages.length - 1));
+        bands.push({ index: stage.index, x0, x1 });
+    });
 
-        ctx.strokeStyle = grid;
-        ctx.lineWidth = 0.5;
-        ctx.fillStyle = text;
-        ctx.font = '10px monospace';
-        ctx.textAlign = 'right';
-        for (let i = 0; i <= 4; i += 1) {
-            const y = pad.top + (plotH * i / 4);
-            const value = maxY - ((maxY - minY) * i / 4);
-            ctx.beginPath();
-            ctx.moveTo(pad.left, y);
-            ctx.lineTo(width - pad.right, y);
-            ctx.stroke();
-            ctx.fillText(String(Math.round(value)), pad.left - 8, y + 3);
-        }
-
-        const points = [];
-        stages.forEach((stage, index) => {
-            const x = xFor(index);
-            const yMax = yFor(stage.maxSide);
-            const yMin = yFor(Math.max(0, stage.minSide));
-            const status = stageResolutionStatus(stage);
-            const color = status.tone === 'error' ? danger : (status.tone === 'warning' ? warning : accent);
-            ctx.fillStyle = color;
-            ctx.globalAlpha = 0.16;
-            ctx.fillRect(x - 24, yMax, 48, Math.max(2, yMin - yMax));
-            ctx.globalAlpha = 1;
-            points.push({ x, y: yMax, index });
-        });
-
-        ctx.strokeStyle = accent;
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        points.forEach((point, index) => {
-            if (index === 0) ctx.moveTo(point.x, point.y);
-            else ctx.lineTo(point.x, point.y);
-        });
-        ctx.stroke();
-
-        points.forEach((point) => {
-            const stage = stages[point.index];
-            const status = stageResolutionStatus(stage);
-            const selected = point.index === stageResolutionState.selectedIndex;
-            const color = status.tone === 'error' ? danger : (status.tone === 'warning' ? warning : success);
-            ctx.fillStyle = color;
-            ctx.strokeStyle = selected ? warning : accent;
-            ctx.lineWidth = selected ? 3 : 1.5;
-            ctx.beginPath();
-            ctx.arc(point.x, point.y, selected ? 6 : 4.5, 0, Math.PI * 2);
-            ctx.fill();
-            ctx.stroke();
-
-            ctx.fillStyle = text;
-            ctx.font = '10px monospace';
-            ctx.textAlign = 'center';
-            ctx.fillText(`${stage.startStep}-${stage.endStep}`, point.x, height - 18);
-        });
-        canvas._stageResolutionPoints = points;
+    // Axis labels.
+    ctx2d.fillStyle = text;
+    ctx2d.font = '10px monospace';
+    ctx2d.textAlign = 'left';
+    ctx2d.fillText('0%', pad.left, height - 10);
+    ctx2d.textAlign = 'right';
+    ctx2d.fillText('100%', width - pad.right, height - 10);
+    if (metrics.totalSteps) {
+        ctx2d.textAlign = 'center';
+        ctx2d.fillText(`S = ${metrics.totalSteps} steps`, width / 2, 16);
+    } else {
+        ctx2d.textAlign = 'center';
+        ctx2d.fillText('请设定 max_train_steps 以换算绝对步数', width / 2, 16);
     }
+    canvas._stageResolutionBands = bands;
+}
 
-    export function createFillGlobalModelPathsButton() {
-        const btn = document.createElement('button');
-        btn.id = 'btn-fill-global-model-paths';
-        btn.type = 'button';
-        btn.className = 'btn btn-small config-group-title-action';
-        btn.textContent = '填写全局路径配置';
-        btn.title = '用全局设置里的三项基础模型路径覆盖当前配置表单';
-        btn.addEventListener('click', () => {
-            fillGlobalModelPathsIntoConfigForm().catch((e) => {
-                setTomlStatus('error', '填写全局路径配置失败: ' + e.message);
-            });
-        });
-        return btn;
+export function renderStageResolutionDialog() {
+    const body = document.getElementById('stage-resolution-dialog-body');
+    if (!body) return;
+    const metrics = stageResolutionMetrics();
+    body.innerHTML = '';
+    body.appendChild(createStageResolutionSummary(metrics));
+
+    const workspace = document.createElement('div');
+    workspace.className = 'stage-resolution-workspace';
+    workspace.appendChild(createStageResolutionChartPanel());
+    workspace.appendChild(createStageResolutionEditor(metrics.selected, metrics));
+    body.appendChild(workspace);
+    body.appendChild(createStageResolutionTable(metrics.stages));
+
+    const foot = document.createElement('div');
+    foot.className = 'stage-resolution-actions';
+    foot.style.justifyContent = 'flex-end';
+    const note = document.createElement('span');
+    note.className = 'stage-resolution-status';
+    note.style.marginRight = 'auto';
+    note.textContent = '预处理须在开训前完成各子集缓存；训练中只切换索引。';
+    const applyBtn = document.createElement('button');
+    applyBtn.type = 'button';
+    applyBtn.className = 'btn btn-primary';
+    applyBtn.textContent = '应用到配置草稿';
+    applyBtn.addEventListener('click', applyStageScheduleToDraft);
+    foot.append(note, applyBtn);
+    body.appendChild(foot);
+    requestAnimationFrame(drawStageResolutionChart);
+}
+
+function applyStageScheduleToDraft() {
+    const metrics = stageResolutionMetrics();
+    if (metrics.enabled && metrics.problemCount) {
+        setTomlStatus('error', `阶段课表有 ${metrics.problemCount} 项错误，请先修正`);
+        return;
     }
-
-    function createConfigQuickPresetsButton(options, content, collapseBtn) {
-        const groupName = options.groupName || '';
-        const btn = document.createElement('button');
-        if (options.id) btn.id = options.id;
-        btn.type = 'button';
-        btn.className = ['btn btn-small config-group-title-action config-quick-preset-toggle', options.className || ''].filter(Boolean).join(' ');
-        btn.textContent = options.text || '快速填写';
-        btn.title = options.showTitle || `显示${groupName}预设，一键填写当前表单`;
-        btn.setAttribute('aria-expanded', 'false');
-        btn.addEventListener('click', () => {
-            const panel = content.querySelector(`.${options.panelClass}`);
-            if (!panel) return;
-            const nextVisible = panel.hidden;
-            panel.hidden = !nextVisible;
-            btn.classList.toggle('active', nextVisible);
-            btn.setAttribute('aria-expanded', String(nextVisible));
-            btn.title = nextVisible
-                ? (options.hideTitle || `收起${groupName}快速预设`)
-                : (options.showTitle || `显示${groupName}预设，一键填写当前表单`);
-            if (nextVisible && content.hidden) {
-                content.hidden = false;
-                collapseBtn.textContent = '收起';
-                collapseBtn.setAttribute('aria-expanded', 'true');
-                collapseBtn.title = '收起这个配置区';
-                if (groupName) {
-                    configFormState.expandedGroups.add(groupName);
-                    configFormState.collapsedGroups.delete(groupName);
-                }
-            }
-        });
-        return btn;
+    const payload = stageSchedulePayload();
+    const draft = configState.configFormState.draftValues;
+    draft.set('stage_schedule_enabled', payload.stage_schedule_enabled);
+    draft.set('stage_schedule', payload.stage_schedule);
+    // Refresh inline summary + dirty badges without full form rebuild when possible.
+    const summaryHost = document.querySelector('#config-form .stage-schedule-inline-summary');
+    if (summaryHost?.parentElement) {
+        summaryHost.replaceWith(createStageScheduleInlineSummary());
     }
-
-    function createConfigQuickPresetPanel(options) {
-        const panel = document.createElement('div');
-        panel.className = ['config-quick-presets', options.panelClass || ''].filter(Boolean).join(' ');
-        panel.hidden = true;
-        panel.setAttribute('aria-label', options.ariaLabel || `${options.groupName || '配置'}快速预设`);
-
-        const label = document.createElement('span');
-        label.className = 'config-quick-label';
-        label.textContent = options.label || '快速预设';
-        panel.appendChild(label);
-
-        for (const preset of options.presets || []) {
-            const btn = document.createElement('button');
-            btn.type = 'button';
-            btn.className = 'btn btn-small config-quick-preset-btn';
-            if (options.datasetKey) btn.dataset[options.datasetKey] = preset.id;
-            btn.textContent = preset.label;
-            btn.title = preset.note;
-            btn.addEventListener('click', () => options.applyPreset(preset));
-            panel.appendChild(btn);
-        }
-        return panel;
+    try {
+        const root = globalThis;
+        root.updateTomlDirtyState?.();
+        root.updateConfigEditingIdentity?.();
+    } catch (_) {
+        // optional during partial loads
     }
+    setTomlStatus(
+        'ok',
+        payload.stage_schedule_enabled
+            ? `已写入分阶段调度（${payload.stage_schedule.length} 段），保存 TOML 后生效`
+            : '已关闭分阶段调度（保存 TOML 后生效）',
+    );
+}
 
-    export function createResourceQuickPresetsButton(content, collapseBtn) {
-        return createConfigQuickPresetsButton({
-            id: 'btn-resource-quick-presets',
-            className: 'config-resource-quick-toggle',
-            panelClass: 'config-resource-quick-presets',
-            groupName: '显存与速度优化',
-            showTitle: '显示显存与速度优化预设，一键填写当前表单',
-            hideTitle: '收起显存与速度优化快速预设',
-        }, content, collapseBtn);
+export function createOpenStageResolutionDialogButton() {
+    const btn = document.createElement('button');
+    btn.id = 'btn-open-stage-resolution-dialog';
+    btn.type = 'button';
+    btn.className = 'btn btn-small config-group-title-action';
+    btn.textContent = '分阶段调度';
+    btn.title = '按总训练步数百分比切换数据集子集';
+    btn.addEventListener('click', openStageResolutionDialog);
+    return btn;
+}
+
+export function openStageResolutionDialog() {
+    const dialog = document.getElementById('stage-resolution-dialog');
+    if (!dialog) {
+        setTomlStatus('error', '找不到阶段课表对话框，请刷新页面');
+        return;
     }
+    // Always re-sync from draft || currentConfig so switching configs cannot leak stages.
+    hydrateStageScheduleFromConfig(configState.currentConfig || {});
+    renderStageResolutionDialog();
+    if (dialog.showModal && !dialog.open) dialog.showModal();
+    else if (!dialog.open) dialog.setAttribute('open', 'open');
+    requestAnimationFrame(drawStageResolutionChart);
+}
 
-    export function createResourceQuickPresetPanel() {
-        return createConfigQuickPresetPanel({
-            panelClass: 'config-resource-quick-presets',
-            groupName: '显存与速度优化',
-            ariaLabel: '显存与速度优化快速预设',
-            label: '快速预设',
-            presets: RESOURCE_QUICK_PRESETS,
-            datasetKey: 'resourcePreset',
-            applyPreset: applyResourceQuickPreset,
-        });
+export function createStageScheduleInlineSummary() {
+    const source = resolveStageScheduleSource(configState.currentConfig || {});
+    const enabled = Boolean(source.stage_schedule_enabled);
+    const stages = normalizeRawStages(source.stage_schedule);
+    const draft = configState.configFormState?.draftValues;
+    const dirty = Boolean(
+        draft?.has?.('stage_schedule')
+        || draft?.has?.('stage_schedule_enabled'),
+    );
+    const wrap = document.createElement('div');
+    wrap.className = [
+        'stage-schedule-inline-summary',
+        enabled ? 'is-enabled' : 'is-disabled',
+        dirty ? 'is-dirty' : '',
+    ].filter(Boolean).join(' ');
+    wrap.dataset.searchText = '分阶段调度 stage_schedule dataset 数据集 课表';
+    const title = document.createElement('strong');
+    title.textContent = enabled ? '分阶段调度已启用' : '分阶段调度未启用';
+    const detail = document.createElement('span');
+    if (enabled && stages.length) {
+        const cover = stages.reduce((sum, stage) => {
+            const start = Math.max(0, Math.min(1, Number(stage.start_pct) || 0));
+            const end = Math.max(0, Math.min(1, Number(stage.end_pct) || 0));
+            return sum + Math.max(0, end - start);
+        }, 0);
+        detail.textContent = `${stages.length} 段 · 覆盖约 ${Math.round(cover * 1000) / 10}%${dirty ? ' · 未保存' : ''}`;
+    } else {
+        detail.textContent = dirty ? '草稿已修改，保存 TOML 后生效' : '按总步数百分比切换数据集子集';
     }
+    const openBtn = document.createElement('button');
+    openBtn.type = 'button';
+    openBtn.className = 'btn btn-small';
+    openBtn.textContent = '编辑课表';
+    openBtn.addEventListener('click', openStageResolutionDialog);
+    wrap.append(title, detail, openBtn);
+    return wrap;
+}
 
-    function applyResourceQuickPreset(preset) {
-        for (const [key, value] of Object.entries(resourceQuickPresetPatch(preset))) {
-            setFieldInputValue(key, value);
-        }
-        handleFormFieldChange();
-        setTomlStatus('ok', `已填写显存与速度优化预设: ${preset.label}`);
-    }
-
-    function resourceQuickPresetPatch(preset) {
-        const patch = {};
-        for (const [key, value] of Object.entries(preset?.values || {})) {
-            patch[key] = resourceQuickPresetValue(preset, key, value);
-        }
-
-        const selectiveCheckpoint = String(
-            patch.selective_checkpoint ?? resourceQuickCurrentValue('selective_checkpoint') ?? 'off'
-        ).trim();
-        if (selectiveCheckpoint && selectiveCheckpoint !== 'off') {
-            patch.gradient_checkpointing = false;
-            patch.cpu_offload_checkpointing = false;
-            patch.unsloth_offload_checkpointing = false;
-        }
-
-        const blocksToSwap = Number(patch.blocks_to_swap ?? resourceQuickCurrentValue('blocks_to_swap'));
-        if (Number.isFinite(blocksToSwap) && blocksToSwap > 0) {
-            patch.cpu_offload_checkpointing = false;
-            patch.unsloth_offload_checkpointing = false;
-        }
-        return patch;
-    }
-
-    function resourceQuickPresetValue(preset, key, value) {
-        const strategy = preset?.merge?.[key] || '';
-        if (strategy === 'max') {
-            const current = Number(resourceQuickCurrentValue(key));
-            const next = Number(value);
-            if (Number.isFinite(current) && Number.isFinite(next)) {
-                return Math.max(current, next);
-            }
-        }
-        if (strategy === 'checkpoint_strength_max') {
-            return strongerSelectiveCheckpointValue(resourceQuickCurrentValue(key), value);
-        }
-        return value;
-    }
-
-    export function createNoDatasetRegularizationQuickPresetsButton(content, collapseBtn) {
-        return createConfigQuickPresetsButton({
-            id: 'btn-no-dataset-regularization-quick-presets',
-            className: 'config-no-dataset-regularization-quick-toggle',
-            panelClass: 'config-no-dataset-regularization-quick-presets',
-            groupName: '无数据集正则化',
-            showTitle: '显示无数据集正则化预设，一键填写当前表单',
-            hideTitle: '收起无数据集正则化快速预设',
-        }, content, collapseBtn);
-    }
-
-    export function createNoDatasetRegularizationQuickPresetPanel() {
-        return createConfigQuickPresetPanel({
-            panelClass: 'config-no-dataset-regularization-quick-presets',
-            groupName: '无数据集正则化',
-            ariaLabel: '无数据集正则化快速预设',
-            label: '快速填写',
-            presets: NO_DATASET_REGULARIZATION_QUICK_PRESETS,
-            datasetKey: 'noDatasetRegularizationPreset',
-            applyPreset: applyNoDatasetRegularizationQuickPreset,
-        });
-    }
-
-    function applyNoDatasetRegularizationQuickPreset(preset) {
-        for (const [key, value] of Object.entries(preset.values || {})) {
-            setFieldInputValue(key, value);
-        }
-        handleFormFieldChange();
-        const extra = preset.id === 'dop_roles' ? '，还需要填写泛化类别作为 DOP 类提示，例如 woman / character，并重新生成文本缓存' : '';
-        setTomlStatus('ok', `已填写无数据集正则化预设: ${preset.label}${extra}`);
-    }
+// Compatibility exports used by old chunk imports / quick-preset panel co-location.
+export {
+    createFillGlobalModelPathsButton,
+    createResourceQuickPresetsButton,
+    createResourceQuickPresetPanel,
+    createNoDatasetRegularizationQuickPresetsButton,
+    createNoDatasetRegularizationQuickPresetPanel,
+} from './stage-resolution-presets.js?v=module-bootstrap-20260707-93';
