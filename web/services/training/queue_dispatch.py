@@ -136,6 +136,7 @@ async def _dispatch_queue(self) -> None:
             })
             self._current_queue_item_id = ""
             self.status = "idle"
+            self._maybe_auto_retry(item, reason="launch_failure")
             self._save_queue()
         finally:
             if failed and self._queue_launching_item_id == queue_item_id:
@@ -159,6 +160,7 @@ async def _dispatch_queue(self) -> None:
             })
             self._current_queue_item_id = ""
             self.status = "idle"
+            self._maybe_auto_retry(item, reason="launch_failure")
             self._save_queue()
         finally:
             if self._queue_launching_item_id == queue_item_id:

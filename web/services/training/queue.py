@@ -25,6 +25,7 @@ enqueue_training = _queue_enqueue_impl.enqueue_training
 enqueue_training_batch = _queue_enqueue_impl.enqueue_training_batch
 enqueue_resume_from_history_task = _queue_enqueue_impl.enqueue_resume_from_history_task
 _clone_queue_item_for_retry = _queue_enqueue_impl._clone_queue_item_for_retry
+_maybe_auto_retry = _queue_enqueue_impl._maybe_auto_retry
 
 move_queue_item = _queue_control_impl.move_queue_item
 cancel_queue_item = _queue_control_impl.cancel_queue_item

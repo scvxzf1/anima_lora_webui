@@ -161,6 +161,7 @@ class TrainingService:
         '_batch_delete_history_tasks': 'history',
         '_build_resume_payload': 'history',
         '_clone_queue_item_for_retry': 'queue',
+        '_maybe_auto_retry': 'queue',
         '_compact_queue': 'queue',
         '_compute_rate': 'live_monitor',
         '_compute_structured_rate': 'live_monitor',

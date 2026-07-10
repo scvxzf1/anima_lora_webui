@@ -98,3 +98,115 @@ def test_queue_dispatch_reschedules_single_wake_timer(tmp_path, monkeypatch):
         svc._queue_dispatch_wake_handle = None
 
     asyncio.run(run())
+
+
+def test_queue_launch_failure_can_auto_retry(tmp_path, monkeypatch):
+    """Launch failures should share process-fail auto_retry path."""
+    from tests.test_training_queue import _runtime_payload
+    from web.services import training_service
+
+    _patch_queue_paths(tmp_path, monkeypatch)
+    retry_root = tmp_path / "retry-runs"
+    monkeypatch.setattr(training_service, "resolve_output_root", lambda: retry_root)
+    runtime = _runtime_payload(tmp_path, "launch-fail-run")
+
+    svc = TrainingService(web.Application())
+    svc._queue = {
+        "paused": False,
+        "failure_policy": "continue",
+        "auto_retry": True,
+        "max_attempts": 2,
+        "retry_backoff_sec": 0,
+        "items": [
+            {
+                "id": "q-launch",
+                "state": "queued",
+                "kind": "training",
+                "requires_preprocess": False,
+                "variant": "demo",
+                "preset": "default",
+                "methods_subdir": "imported",
+                "runtime_config_file": runtime["runtime_config_file"],
+                "source_config_file": "configs/imported/source.toml",
+                "extra_args": [],
+                "gpu_whitelist": [],
+                "continue_info": {},
+                "resume_info": {},
+                "attempt": 1,
+            }
+        ],
+    }
+    svc._queue_paused = False
+    svc._queue_failure_policy = "continue"
+    svc._queue_auto_retry = True
+    svc._queue_max_attempts = 2
+    svc._queue_retry_backoff_sec = 0
+
+    async def boom(item):
+        raise RuntimeError("simulated launch failure")
+
+    async def fake_broadcast():
+        return None
+
+    monkeypatch.setattr(svc, "_start_queue_item", boom)
+    monkeypatch.setattr(svc, "_broadcast_queue", fake_broadcast)
+    # Prevent immediate re-dispatch so this test locks clone semantics only.
+    schedule_calls: list[bool] = []
+    monkeypatch.setattr(svc, "_schedule_queue_dispatch", lambda: schedule_calls.append(True))
+
+    asyncio.run(svc._dispatch_queue())
+    items = svc._queue_items()
+    assert any(item.get("id") == "q-launch" and item.get("state") == "error" for item in items)
+    retries = [item for item in items if item.get("retry_of") == "q-launch"]
+    assert len(retries) == 1
+    assert retries[0]["attempt"] == 2
+    assert retries[0]["state"] == "queued"
+    assert schedule_calls  # launch fail path still asks for another dispatch
+
+
+def test_queue_launch_failure_skips_retry_when_auto_retry_disabled(tmp_path, monkeypatch):
+    from tests.test_training_queue import _runtime_payload
+    from web.services import training_service
+
+    _patch_queue_paths(tmp_path, monkeypatch)
+    monkeypatch.setattr(training_service, "resolve_output_root", lambda: tmp_path / "retry-runs")
+    runtime = _runtime_payload(tmp_path, "launch-fail-off")
+    svc = TrainingService(web.Application())
+    svc._queue = {
+        "paused": False,
+        "failure_policy": "continue",
+        "auto_retry": False,
+        "max_attempts": 3,
+        "retry_backoff_sec": 0,
+        "items": [
+            {
+                "id": "q-off",
+                "state": "queued",
+                "kind": "training",
+                "requires_preprocess": False,
+                "variant": "demo",
+                "preset": "default",
+                "methods_subdir": "imported",
+                "runtime_config_file": runtime["runtime_config_file"],
+                "source_config_file": "configs/imported/source.toml",
+                "extra_args": [],
+                "attempt": 1,
+            }
+        ],
+    }
+    svc._queue_paused = False
+    svc._queue_failure_policy = "continue"
+    svc._queue_auto_retry = False
+    svc._queue_max_attempts = 3
+
+    async def boom(item):
+        raise RuntimeError("no retry")
+
+    async def fake_broadcast():
+        return None
+
+    monkeypatch.setattr(svc, "_start_queue_item", boom)
+    monkeypatch.setattr(svc, "_broadcast_queue", fake_broadcast)
+    asyncio.run(svc._dispatch_queue())
+    assert not any(item.get("retry_of") == "q-off" for item in svc._queue_items())
+

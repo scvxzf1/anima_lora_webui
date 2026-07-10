@@ -309,3 +309,36 @@ def _clone_queue_item_for_retry(self, item: dict[str, Any]) -> dict[str, Any]:
         "runtime_info": _runtime_meta(runtime),
     })
     return retry
+
+
+
+
+def _maybe_auto_retry(self, item: dict[str, Any] | None, *, reason: str = "") -> dict[str, Any] | None:
+    """Clone a failed queue item when auto_retry policy allows.
+
+    Shared by process-exit failures and launch failures so attempt counting,
+    max_attempts, and next_run_at backoff stay consistent.
+    """
+    if item is None:
+        return None
+    if not bool(getattr(self, "_queue_auto_retry", False)):
+        return None
+    attempt = int(item.get("attempt") or 1)
+    max_attempts = int(getattr(self, "_queue_max_attempts", 1) or 1)
+    if attempt >= max_attempts:
+        return None
+    if str(reason or "").strip().lower() in {"user_stop", "canceled", "cancelled"}:
+        return None
+    retry = self._clone_queue_item_for_retry(item)
+    backoff = float(getattr(self, "_queue_retry_backoff_sec", 0.0) or 0.0)
+    if backoff > 0:
+        retry["next_run_at"] = time.time() + backoff
+        retry["message"] = (
+            f"第 {retry.get('attempt')} 次尝试，"
+            f"{int(backoff)}s 后自动重试"
+        )
+    if reason:
+        retry.setdefault("retry_reason", str(reason))
+    self._queue_items().append(retry)
+    self._compact_queue()
+    return retry
