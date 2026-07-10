@@ -345,3 +345,48 @@ def test_six_thousand_steps_three_equal_stages():
     assert active_subset_indices_for_step(args, 3999) == {1}
     assert active_subset_indices_for_step(args, 4000) == {2}
     assert active_subset_indices_for_step(args, 5999) == {2}
+
+
+def test_group_member_switch_updates_concat_length():
+    """Emptied members must report zero length so ConcatDataset/DataLoader shrink."""
+    from library.training.stage_schedule import (
+        apply_active_subsets_to_dataset,
+        snapshot_full_image_data,
+    )
+
+    class _LenMember(_FakeGroupMember):
+        def __len__(self):
+            return int(getattr(self, "_length", 0) or 0)
+
+    class _LenGroup(_FakeDatasetGroup):
+        def __init__(self, members):
+            super().__init__(members)
+            self.cumulative_sizes = []
+            self.refresh_concat_state()
+
+        def refresh_concat_state(self):
+            super().refresh_concat_state()
+            # Mirror torch ConcatDataset.cumsum on member lengths.
+            total = 0
+            sizes = []
+            for ds in self.datasets:
+                total += len(ds)
+                sizes.append(total)
+            self.cumulative_sizes = sizes
+
+        def __len__(self):
+            return int(self.cumulative_sizes[-1]) if self.cumulative_sizes else 0
+
+    m0 = _LenMember("res1024", ["a1", "a2"])  # len 2
+    m1 = _LenMember("res512", ["b1"])  # len 1
+    m2 = _LenMember("res1536", ["c1", "c2", "c3"])  # len 3
+    group = _LenGroup([m0, m1, m2])
+    snapshot_full_image_data(group, force=True)
+    assert len(group) == 6
+
+    assert apply_active_subsets_to_dataset(group, {1}) is True
+    assert len(m0) == 0
+    assert len(m1) == 1
+    assert len(m2) == 0
+    assert len(group) == 1
+    assert set(group.image_data) == {"b1"}
