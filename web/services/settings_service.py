@@ -7,10 +7,10 @@ from typing import Any
 
 import toml
 
-from library.env import get_configs_root, get_training_history_root, get_training_queue_root
+from library.env import anima_home, get_configs_root, get_training_history_root, get_training_queue_root
 from web.services._dynamic_path import DynamicPath
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = anima_home()
 
 
 def _default_settings_file() -> Path:

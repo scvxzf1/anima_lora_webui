@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from library.env import anima_home
+
 import asyncio
 from collections import deque
 from datetime import datetime
@@ -32,7 +34,7 @@ from web.services.preview_service import DEFAULT_INFERENCE_DIR
 from web.services.project_python import resolve_web_python_executable
 from web.services.settings_service import display_path
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = anima_home()
 IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".webp", ".bmp"}
 ALLOWED_SAMPLERS = {"euler", "er_sde", "lcm"}
 ALLOWED_ATTN_MODES = {"flash", "torch", "sageattn", "flex", "xformers", "sdpa"}

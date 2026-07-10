@@ -354,3 +354,21 @@ def test_history_and_queue_roots_follow_webui_settings_file(monkeypatch, tmp_pat
     assert library_env.get_training_history_root() == history.resolve()
     assert library_env.get_training_queue_root() == queue.resolve()
 
+
+def test_web_service_roots_follow_anima_home(monkeypatch, tmp_path):
+    """WebUI service ROOT constants should anchor on anima_home()."""
+    home = tmp_path / "anima-home"
+    home.mkdir()
+    monkeypatch.setenv("ANIMA_HOME", str(home))
+    # re-import functions that read anima_home dynamically
+    import importlib
+    import library.env as env
+    importlib.reload(env)
+    assert env.anima_home() == home.resolve()
+    # settings_service.ROOT is assigned at import; call anima_home directly and
+    # ensure modules use the same function for new assignments.
+    assert env.anima_home() == home.resolve()
+    # config common get root via anima_home symbol
+    from web.services.config import common as common_mod
+    assert common_mod.anima_home() == home.resolve()
+

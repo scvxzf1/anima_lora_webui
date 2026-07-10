@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from library.env import anima_home
+
 from datetime import datetime
 
 import re
@@ -15,7 +17,7 @@ from PIL import Image
 from web.services import path_safety, settings_service
 from web.services.preview.context import call, get
 
-ROOT = Path(__file__).resolve().parents[3]
+ROOT = anima_home()
 CONFIGS_DIR = settings_service.CONFIGS_DIR
 SETTINGS_FILE = settings_service.SETTINGS_FILE
 
