@@ -12,6 +12,8 @@ import os
 from pathlib import Path
 from typing import Any, Mapping
 
+from web.services import path_safety
+
 CONTINUE_LORA_KINDS = {"LoRA", "DoRA", "LoHa", "LoKr", "GLoRA"}
 CONTINUE_LORA_ACCEPTED_LORA_SPECS = {
     "",
@@ -102,15 +104,7 @@ def inspect_continue_lora_weight(
 
 
 def _read_safetensors_header(path: Path) -> tuple[dict[str, str], list[str]]:
-    try:
-        from safetensors import safe_open
-
-        with safe_open(path, framework="pt", device="cpu") as f:
-            metadata = {str(k): str(v) for k, v in (f.metadata() or {}).items()}
-            keys = list(f.keys())
-        return metadata, keys
-    except Exception as exc:
-        raise ValueError(f"读取 safetensors 权重失败: {exc}") from exc
+    return path_safety.read_safetensors_header(path)
 
 
 def _detect_continue_lora_kind(keys: list[str], metadata: dict[str, str]) -> str:
@@ -300,30 +294,14 @@ def _truthy(value: Any) -> bool:
 
 
 def _resolve_display_path(value: str, root: Path) -> Path | None:
-    raw = str(value or "").replace("\\", "/").strip()
-    if not raw:
-        return None
-    path = Path(raw)
-    if path.is_absolute():
-        return path.resolve()
-    return (root / path).resolve()
+    return path_safety.resolve_display_path(value, root=root)
 
 
 def _display_project_path(value: str | Path, root: Path) -> str:
-    raw = str(value or "").replace("\\", "/").strip()
-    if not raw:
-        return ""
-    path = Path(raw)
-    if not path.is_absolute():
-        return path.as_posix().strip("/")
-    try:
-        return path.resolve().relative_to(root.resolve()).as_posix()
-    except ValueError:
-        return raw
+    return path_safety.display_project_path(value, root=root)
 
 
 def _path_exists(path: Path) -> bool:
-    try:
-        return path.exists()
-    except OSError:
-        return False
+    return path_safety.path_exists(path)
+
+

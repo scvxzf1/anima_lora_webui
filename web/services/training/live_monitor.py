@@ -7,77 +7,36 @@ here so HTTP routes and WebSocket payloads remain unchanged.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+import asyncio
+import json
+import re
+import time
+from typing import Any
 
-if TYPE_CHECKING:
-    import asyncio
-    import json
-    import re
-    import time
-    from typing import Any
-
-    from web.services.training_service import (
-        OUTPUT_READ_SIZE,
-        TQDM_RE,
-        _clean_output_record,
-        _extract_float_metric,
-        _first_record_separator,
-        _float_or_none,
-        _format_ts,
-        _get_gpu_stats,
-        _int_or_none,
-        _live_metric_key,
-        _message_with_error_hint,
-        _metric_from_progress_jsonl_event,
-        _progress_event_key,
-        _progress_event_wall_ts,
-        _step_rate_text_from_sample,
-        classify_training_error,
-    )
-
-
-_LOCAL_IMPL_NAMES = {
-    "_bind_legacy",
-    "get_status_snapshot",
-    "_read_output",
-    "_drain_output_buffer",
-    "_handle_output_record",
-    "_record_metric",
-    "_reset_metric_runtime_state",
-    "_reset_progress_rate_state",
-    "_remember_lr_change_log",
-    "_tail_progress_jsonl",
-    "_ingest_progress_jsonl",
-    "_handle_progress_jsonl_event",
-    "_maybe_note_error_hint",
-    "_remember_log",
-    "_compute_rate",
-    "_compute_structured_rate",
-    "_extract_metrics_from_tqdm",
-    "_extract_metrics_from_log",
-    "_monitor_system",
-    "_broadcast_progress",
-    "_broadcast",
-}
-
-
-def _bind_legacy() -> None:
-    """Bind legacy module globals lazily after training_service has loaded."""
-    from web.services import training_service as legacy
-
-    for name, value in vars(legacy).items():
-        if name.startswith("__") or name in _LOCAL_IMPL_NAMES:
-            continue
-        globals()[name] = value
-
+from web.services.training.anomalies import (
+    _message_with_error_hint,
+    classify_training_error,
+    format_training_anomaly,
+)
+from web.services.training.common import _float_or_none, _format_ts, _int_or_none
+from web.services.training.constants import (
+    OUTPUT_READ_SIZE,
+    SYSTEM_MONITOR_INTERVAL_SECONDS,
+    TQDM_RE,
+)
+from web.services.training.history_timeline import _step_rate_text_from_sample
+from web.services.training.live_utils import (
+    _clean_output_record,
+    _extract_float_metric,
+    _first_record_separator,
+    _json_safe_training_payload,
+    _live_metric_key,
+    _metric_from_progress_jsonl_event,
+    _progress_event_key,
+    _progress_event_wall_ts,
+)
 
 def get_status_snapshot(self) -> dict[str, Any]:
-    _bind_legacy()
-    from web.services.training_service import (
-        _json_safe_training_payload,
-        format_training_anomaly,
-    )
-
     snapshot = {
         "status": self.status,
         "variant": self.current_variant,
@@ -110,7 +69,6 @@ def get_status_snapshot(self) -> dict[str, Any]:
     return _json_safe_training_payload(snapshot)
 
 async def _read_output(self):
-    _bind_legacy()
     assert self.process and self.process.stdout
     try:
         buffer = ""
@@ -200,7 +158,6 @@ async def _read_output(self):
     self._schedule_queue_dispatch()
 
 async def _drain_output_buffer(self, buffer: str) -> str:
-    _bind_legacy()
     """同时处理普通换行和 tqdm 常用的回车刷新。"""
     while True:
         split_at = _first_record_separator(buffer)
@@ -212,7 +169,6 @@ async def _drain_output_buffer(self, buffer: str) -> str:
             await self._handle_output_record(record)
 
 async def _handle_output_record(self, text: str):
-    _bind_legacy()
     text = _clean_output_record(text)
     if not text:
         return
@@ -248,7 +204,6 @@ async def _handle_output_record(self, text: str):
         await self._record_metric(metrics)
 
 async def _record_metric(self, metrics: dict[str, Any]) -> None:
-    _bind_legacy()
     item = dict(metrics)
     item.setdefault("ts", time.time())
     key = _live_metric_key(item)
@@ -263,13 +218,11 @@ async def _record_metric(self, metrics: dict[str, Any]) -> None:
         await self._broadcast({"type": "log", **lr_log_record})
 
 def _reset_metric_runtime_state(self) -> None:
-    _bind_legacy()
     self._metrics_history = []
     self._metric_seen_keys = set()
     self._last_lr_log_text = ""
 
 def _reset_progress_rate_state(self) -> None:
-    _bind_legacy()
     self._anchor = None
     self._stdout_rate_last = None
     self._stdout_rate_samples.clear()
@@ -277,7 +230,6 @@ def _reset_progress_rate_state(self) -> None:
     self._structured_rate_samples.clear()
 
 def _remember_lr_change_log(self, metric: dict[str, Any]) -> dict[str, Any] | None:
-    _bind_legacy()
     lr = _float_or_none(metric.get("lr"))
     if lr is None:
         return None
@@ -293,14 +245,12 @@ def _remember_lr_change_log(self, metric: dict[str, Any]) -> dict[str, Any] | No
     return self._remember_log("metric", f"[学习率] {step_text}{change_text}", ts=ts)
 
 async def _tail_progress_jsonl(self) -> None:
-    _bind_legacy()
     while self.status == "running" and self._progress_jsonl_path:
         await self._ingest_progress_jsonl()
         await asyncio.sleep(1.0)
     await self._ingest_progress_jsonl(final=True)
 
 async def _ingest_progress_jsonl(self, *, final: bool = False) -> None:
-    _bind_legacy()
     path = self._progress_jsonl_path
     if path is None or not path.exists():
         return
@@ -339,7 +289,6 @@ async def _ingest_progress_jsonl(self, *, final: bool = False) -> None:
         await self._handle_progress_jsonl_event(event)
 
 async def _handle_progress_jsonl_event(self, event: dict[str, Any]) -> None:
-    _bind_legacy()
     ev = str(event.get("ev") or "").strip()
     ts = _progress_event_wall_ts(event, self.current_task_dir)
 
@@ -397,7 +346,6 @@ async def _handle_progress_jsonl_event(self, event: dict[str, Any]) -> None:
         await self._broadcast({"type": "log", **record})
 
 async def _maybe_note_error_hint(self, text: str, *, ts: float | None = None) -> str:
-    _bind_legacy()
     hint = classify_training_error(text)
     if not hint:
         return self._detected_error_hint
@@ -409,7 +357,6 @@ async def _maybe_note_error_hint(self, text: str, *, ts: float | None = None) ->
     return hint
 
 def _remember_log(self, kind: str, line: str, ts: float | None = None) -> dict[str, Any]:
-    _bind_legacy()
     record = {
         "id": self._next_log_id,
         "kind": kind,
@@ -424,7 +371,6 @@ def _remember_log(self, kind: str, line: str, ts: float | None = None) -> dict[s
     return record
 
 def _compute_rate(self, cur: int, tot: int) -> str:
-    _bind_legacy()
     del tot
     rate, last = _step_rate_text_from_sample(
         self._stdout_rate_last,
@@ -436,7 +382,6 @@ def _compute_rate(self, cur: int, tot: int) -> str:
     return rate
 
 def _compute_structured_rate(self, step: int, ts: float) -> str:
-    _bind_legacy()
     rate, last = _step_rate_text_from_sample(
         self._structured_rate_last,
         self._structured_rate_samples,
@@ -447,7 +392,6 @@ def _compute_structured_rate(self, step: int, ts: float) -> str:
     return rate
 
 def _extract_metrics_from_tqdm(self, line: str, step: int) -> dict | None:
-    _bind_legacy()
     parts = line.split(",")
     metrics: dict[str, Any] = {"step": step, "ts": time.time()}
     found = False
@@ -474,7 +418,6 @@ def _extract_metrics_from_tqdm(self, line: str, step: int) -> dict | None:
     return metrics if found else None
 
 def _extract_metrics_from_log(self, line: str) -> dict | None:
-    _bind_legacy()
     metrics: dict[str, Any] = {"ts": time.time()}
     found = False
     lower = line.lower()
@@ -505,27 +448,27 @@ def _extract_metrics_from_log(self, line: str) -> dict | None:
     return metrics if found else None
 
 async def _monitor_system(self):
-    _bind_legacy()
+    # Sample immediately on launch, then keep a short cadence so the
+    # dashboard "资源与活动" panel tracks preprocess/training GPU load.
     while self.status == "running":
-        stats = await _get_gpu_stats(self.current_gpu_whitelist)
+        from web.services.training.gpu_async import get_gpu_stats
+
+        stats = await get_gpu_stats(self.current_gpu_whitelist)
         if stats:
             stats["last_output_at"] = self._last_output_at
             stats["ts"] = time.time()
             self._latest_system_stats = dict(stats)
             self._append_history_jsonl("system.jsonl", stats)
             await self._broadcast({"type": "system", **stats})
-        await asyncio.sleep(5)
+        await asyncio.sleep(SYSTEM_MONITOR_INTERVAL_SECONDS)
 
 async def _broadcast_progress(self, msg: dict[str, Any]) -> None:
-    _bind_legacy()
     payload = {"type": "progress", **msg}
     self._latest_progress = dict(payload)
     await self._broadcast(payload)
 
 async def _broadcast(self, msg: dict):
-    _bind_legacy()
     import json
-    from web.services.training_service import _json_safe_training_payload
     data = json.dumps(_json_safe_training_payload(msg), ensure_ascii=False)
     dead = set()
     for ws in self._ws_clients:
