@@ -79,6 +79,7 @@ function currentConfigState() { return configState.currentConfig || {}; }
     export function updateConfigDraftFromInput(input, options = {}) {
         const key = input?.dataset?.key;
         if (!key || CONFIG_FORM_INTERNAL_KEYS.has(key)) return;
+        if (key === 'stage_schedule' || key === 'stage_schedule_enabled') return;
         const original = originalConfigFieldValue(key);
         const next = readFieldInputValue(input, original);
         if (key === 'lora_adapter_kind') {
@@ -213,6 +214,7 @@ function currentConfigState() { return configState.currentConfig || {}; }
     }
 
     export function shouldSkipConfigFormField(key, config = currentConfigState()) {
+        if (key === 'stage_schedule' || key === 'stage_schedule_enabled') return true;
         if (CONFIG_FORM_MERGED_FIELDS?.has?.(key)) return true;
         if (DEPRECATED_CONFIG_FORM_FIELDS.has(key)) return true;
         if (RETIRED_CONFIG_FORM_FIELDS.has(key)) return true;

@@ -12,8 +12,9 @@ import {
 } from './08-origin-closest.js?v=module-bootstrap-20260707-93';
 import {
     createDatasetEditorRow,
-    createDatasetExperimentalFeaturesEditor,
 } from './11-create-dataset-editor-row.js?v=module-bootstrap-20260707-93';
+import { getDatasetState } from '../helpers/dataset-state-bridge.js?v=module-bootstrap-20260707-93';
+import { renderDatasetEditor } from '../helpers/dataset-render-bridge.js?v=module-bootstrap-20260707-93';
 import { updateDatasetDefault } from './12-create-dataset-row-caption-source-mode-editor.js?v=module-bootstrap-20260707-93';
 import { moveDatasetEditorRow, moveDatasetEditorRowToIndex } from './13-update-dataset-editor-rows-setting-value.js?v=module-bootstrap-20260707-93';
 
@@ -406,10 +407,15 @@ import { moveDatasetEditorRow, moveDatasetEditorRowToIndex } from './13-update-d
 	        const item = document.createElement('div');
 	        item.className = 'dataset-editor-item';
 	        item.dataset.index = String(index);
+	        const datasetState = getDatasetState();
+	        item.classList.toggle('is-selected', index === datasetState.selectedDatasetIndex);
 	        setupDatasetEditorItemDropTarget(item, index);
-	        item.append(
-	            createDatasetEditorRow(row, index, item),
-	            createDatasetExperimentalFeaturesEditor(row, index),
-	        );
+	        item.addEventListener('click', (event) => {
+	            if (event.target.closest('button, input, select, textarea, a, label, summary, .dataset-editor-drag-handle')) return;
+	            if (datasetState.selectedDatasetIndex === index) return;
+	            datasetState.selectedDatasetIndex = index;
+	            renderDatasetEditor();
+	        });
+	        item.append(createDatasetEditorRow(row, index, item));
 	        return item;
 	    }

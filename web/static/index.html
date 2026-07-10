@@ -1911,6 +1911,32 @@
 
     <div id="config-switch-toast" class="config-switch-toast" role="status" aria-live="polite" hidden></div>
 
+    <dialog id="dataset-experimental-dialog" class="preview-dialog dataset-experimental-dialog" aria-labelledby="dataset-experimental-dialog-title">
+        <form method="dialog">
+            <div class="preview-dialog-header">
+                <div>
+                    <h2 id="dataset-experimental-dialog-title">实验性/高级</h2>
+                    <p>仅编辑当前选中的数据集子集。</p>
+                </div>
+                <button class="btn btn-small" value="close" type="submit">关闭</button>
+            </div>
+            <div id="dataset-experimental-dialog-body" class="dataset-experimental-dialog-body"></div>
+        </form>
+    </dialog>
+
+    <dialog id="stage-resolution-dialog" class="preview-dialog stage-resolution-dialog" aria-labelledby="stage-resolution-dialog-title">
+        <form method="dialog">
+            <div class="preview-dialog-header">
+                <div>
+                    <h2 id="stage-resolution-dialog-title">分阶段调度课表</h2>
+                    <p>按总训练步数百分比切换数据集子集。请先完成各子集预处理缓存；段数可变（2/3/N）。</p>
+                </div>
+                <button class="btn btn-small" value="close" type="submit">关闭</button>
+            </div>
+            <div id="stage-resolution-dialog-body" class="stage-resolution-dialog-body"></div>
+        </form>
+    </dialog>
+
     <script type="module" src="/static/app.js?v=module-bootstrap-20260707-93"></script>
 </body>
 </html>

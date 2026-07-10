@@ -13,6 +13,7 @@ export function createDatasetState() {
         fileGroupDropTargetNodes: new Set(),
         datasetEditorDragState: null,
         datasetEditorPointerDrag: null,
+        selectedDatasetIndex: 0,
         datasetEditorState: {
             loading: false,
             loaded: false,

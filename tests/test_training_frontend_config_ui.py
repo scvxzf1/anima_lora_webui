@@ -1977,18 +1977,18 @@ def test_step_estimate_panel_shows_epoch_factor() -> None:
 
 
 def test_output_scope_group_does_not_expose_unwired_stage_resolution_dialog() -> None:
+    """输出范围分组不挂标题级主按钮；分阶段 dialog 由数据集顶栏 / 只读摘要打开。"""
     source = APP_JS.read_text(encoding="utf-8")
     html = INDEX_HTML.read_text(encoding="utf-8")
+    group_entry = _frontend_module_text("js/features/anima-app/chunks/04-create-config-group-entry.js")
 
     section = _section(source, "title: '输出格式与训练范围'", "title: '方法内部与实验架构'")
-    create_group = _section(source, "function createGroup", "function createOpenStageResolutionDialogButton")
 
     assert "className: 'config-group-output-scope'" in section
-    assert "header.appendChild(createOpenStageResolutionDialogButton());" not in create_group
-    assert 'id="stage-resolution-dialog"' not in html
-    assert 'class="preview-dialog stage-resolution-dialog"' not in html
-    assert "stage-resolution-dialog-body" not in html
-    assert "btn-open-stage-resolution-dialog" not in _section(source, "function installBeginnerTooltips", "// ── 工具函数 ──")
+    assert "header.appendChild(createOpenStageResolutionDialogButton());" not in group_entry
+    assert "createOpenStageResolutionDialogButton" not in group_entry
+    assert 'id="stage-resolution-dialog"' in html
+    assert "btn-dataset-open-stage-schedule" in _frontend_module_text("js/features/dataset-editor/toolbar.js")
 
 
 def test_config_form_hides_retired_and_unread_fields() -> None:
@@ -2485,8 +2485,9 @@ def test_dataset_json_caption_switch_ui_is_wired() -> None:
     assert "createDatasetEditorItem(row, index)" in source
     assert "dataset-editor-item" in item_factory
     assert "createDatasetEditorRow(row, index, item)" in item_factory
-    assert "createDatasetExperimentalFeaturesEditor(row, index)" in item_factory
-    assert "createDatasetExperimentalFeaturesEditor(row, index)" not in row_factory
+    # 实验性编辑迁入弹窗后，主列表 item 不再内嵌折叠区
+    assert "createDatasetExperimentalFeaturesEditor(row, index)" not in item_factory
+    assert "createDatasetExperimentalFeaturesEditor(row, index)" in _frontend_module_text("js/features/dataset-editor/experimental-dialog.js")
     assert "createDatasetRowCaptionSourceModeEditor(settings, index)" in row_factory
     assert "createDatasetNlTagMixEditor(row, index)" in row_factory
     assert "实验性/高级/旧功能" in experimental_factory
@@ -2689,3 +2690,112 @@ def test_dataset_editor_drag_has_browser_fallbacks() -> None:
     assert ".dataset-editor-drop-after::after" in css
     assert ".dataset-editor-pointer-drag-active" in css
 
+
+
+def test_dataset_page_toolbar_hosts_experimental_and_stage_entries() -> None:
+    """数据集页顶栏承载实验性 + 分阶段入口；配置页不再当主编辑面。"""
+    toolbar = _frontend_module_text("js/features/dataset-editor/toolbar.js")
+    editor_chunk = _frontend_module_text("js/features/anima-app/chunks/09-setup-config-group-drop-target.js")
+    assert "btn-dataset-open-experimental" in toolbar
+    assert "btn-dataset-open-stage-schedule" in toolbar
+    assert "createDatasetEditorToolbarActions" in toolbar
+    assert "createDatasetEditorToolbarActions" in editor_chunk
+    assert "btn-dataset-open-stage-schedule" in editor_chunk or "createDatasetEditorToolbarActions" in editor_chunk
+
+
+def test_stage_schedule_primary_entry_moves_to_dataset_page() -> None:
+    """分阶段主入口迁到数据集页后，配置分组只读摘要，不再挂 createOpenStageResolutionDialogButton。"""
+    group_entry = _frontend_module_text("js/features/anima-app/chunks/04-create-config-group-entry.js")
+    toolbar = _frontend_module_text("js/features/dataset-editor/toolbar.js")
+    stage_ui = _frontend_module_text("js/features/config-form/stage-resolution.js")
+
+    assert "createOpenStageResolutionDialogButton" not in group_entry
+    assert "createStageScheduleInlineSummary" in group_entry
+    assert "btn-dataset-open-stage-schedule" in toolbar
+    assert "Always re-sync from draft || currentConfig" in stage_ui
+    assert "key === 'stage_schedule' || key === 'stage_schedule_enabled'" in _frontend_module_text(
+        "js/features/config-form/index.js"
+    )
+
+
+def test_stage_schedule_dialog_is_wired_from_dataset_group() -> None:
+    """分阶段 dialog 由数据集顶栏打开，字段仍写训练配置 stage_schedule*。"""
+    html = INDEX_HTML.read_text(encoding="utf-8")
+    toolbar = _frontend_module_text("js/features/dataset-editor/toolbar.js")
+    stage_ui = _frontend_module_text("js/features/config-form/stage-resolution.js")
+    assert 'id="stage-resolution-dialog"' in html
+    assert "btn-dataset-open-stage-schedule" in toolbar
+    assert "stage_schedule_enabled" in stage_ui
+    assert "subset_index" in stage_ui
+    assert "start_pct" in stage_ui
+
+
+def test_stage_schedule_ui_is_variable_n_not_hardcoded_three() -> None:
+    """前端阶段模板支持可变 N，软上限 12，默认不是写死三段。"""
+    stage_ui = _frontend_module_text("js/features/config-form/stage-resolution.js")
+    assert "applyStageTemplate(2)" in stage_ui
+    assert "Math.min(12" in stage_ui or "Math.min(12," in stage_ui
+    assert "defaultStageScheduleStages" in stage_ui
+    assert "阶段3" not in stage_ui.split("defaultStageScheduleStages")[1].split("export function")[0]
+    assert "均分当前段" in stage_ui
+    assert "applyStageTemplate(Math.max(1, stageResolutionState.stages.length || 2))" in stage_ui
+
+
+def test_dataset_experimental_dialog_edits_selected_subset_only() -> None:
+    """实验性控件进入弹窗，只编辑当前选中子集；主列表不再内嵌折叠区。"""
+    html = INDEX_HTML.read_text(encoding="utf-8")
+    dialog = _frontend_module_text("js/features/dataset-editor/experimental-dialog.js")
+    row = _frontend_module_text("js/features/dataset-editor/row.js")
+    item = _frontend_module_text("js/features/anima-app/chunks/10-create-dataset-config-input.js")
+
+    assert 'id="dataset-experimental-dialog"' in html
+    assert "openDatasetExperimentalDialog" in dialog
+    assert "selectedDatasetIndex" in row
+    assert "createDatasetExperimentalFeaturesEditor(row, index)" in dialog
+    # 主列表不再默认拼接卡内实验性折叠
+    assert "createDatasetExperimentalFeaturesEditor(row, index)" not in item
+
+
+def test_dataset_main_card_keeps_only_high_frequency_settings() -> None:
+    """主卡只保留高频 settings；低频桶/验证细节进实验性弹窗。"""
+    row = _frontend_module_text("js/features/dataset-editor/row.js")
+    dialog = _frontend_module_text("js/features/dataset-editor/experimental-dialog.js")
+    settings_factory = _section(
+        row,
+        "function createDatasetRowSettingsEditor",
+        "function createDatasetAdvancedSettingsEditor",
+    )
+    advanced_settings_factory = _section(
+        row,
+        "function createDatasetAdvancedSettingsEditor",
+        "function createDatasetCaptionExtensionEditor",
+    )
+    experimental_factory = _section(
+        row,
+        "function createDatasetExperimentalFeaturesEditor",
+        "function createDatasetPathFilterEditor",
+    )
+
+    assert "['resolution', 'number']" in settings_factory
+    assert "['enable_bucket', 'select']" in settings_factory
+    assert "['validation_split', 'number']" in settings_factory
+    assert "createDatasetRepeatSettingField(row, index)" in settings_factory
+    assert "['min_bucket_reso', 'number']" not in settings_factory
+    assert "['max_bucket_reso', 'number']" not in settings_factory
+    assert "['bucket_reso_steps', 'number']" not in settings_factory
+    assert "['bucket_no_upscale', 'select']" not in settings_factory
+    assert "['validation_split_num', 'number']" not in settings_factory
+    assert "['validation_seed', 'number']" not in settings_factory
+
+    for key, type_name in (
+        ("min_bucket_reso", "number"),
+        ("max_bucket_reso", "number"),
+        ("bucket_reso_steps", "number"),
+        ("bucket_no_upscale", "select"),
+        ("validation_split_num", "number"),
+        ("validation_seed", "number"),
+    ):
+        assert f"['{key}', '{type_name}']" in advanced_settings_factory
+    assert "createDatasetRowSettingInput(index, key, type, settings)" in advanced_settings_factory
+    assert "createDatasetAdvancedSettingsEditor(row, index)" in experimental_factory
+    assert "createDatasetExperimentalFeaturesEditor(row, index)" in dialog

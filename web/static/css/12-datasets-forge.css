@@ -284,6 +284,14 @@
 
 #tab-datasets .dataset-preset-manager-actions .btn,
 #tab-datasets .dataset-preset-manager-head .btn,
+
+#tab-datasets .dataset-editor-toolbar-actions {
+    display: inline-flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+}
+
 #tab-datasets .dataset-editor-actions .btn,
 #tab-datasets .dataset-row-head-actions .btn {
     min-height: 36px;
@@ -1535,3 +1543,43 @@
     color: var(--text);
     font-family: monospace;
     font-size: 0.68rem;
+
+
+/* Selected dataset card + experimental dialog (Task3) */
+#tab-datasets .dataset-editor-item.is-selected > .dataset-editor-row,
+#tab-datasets .dataset-editor-row.is-selected {
+    border-color: color-mix(in srgb, var(--dataset-accent) 72%, var(--dataset-border-strong));
+    box-shadow:
+        0 0 0 1px color-mix(in srgb, var(--dataset-accent) 34%, transparent),
+        var(--dataset-shadow);
+}
+
+#tab-datasets .dataset-editor-item.is-selected > .dataset-editor-row::before,
+#tab-datasets .dataset-editor-row.is-selected::before {
+    background: linear-gradient(90deg, var(--dataset-accent), color-mix(in srgb, var(--dataset-accent) 45%, var(--dataset-success)));
+}
+
+.dataset-experimental-dialog {
+    width: min(920px, calc(100vw - 2rem));
+}
+
+.dataset-experimental-dialog-body {
+    display: grid;
+    gap: 0.65rem;
+    min-height: min(520px, calc(100vh - 12rem));
+    overflow: auto;
+    padding: 0.75rem;
+}
+
+.dataset-experimental-dialog-body .dataset-experimental-features.is-dialog-embedded {
+    border-style: solid;
+    background: var(--dataset-panel-bg);
+}
+
+.dataset-experimental-dialog-body .dataset-experimental-features.is-dialog-embedded > .dataset-experimental-head {
+    cursor: default;
+}
+
+.dataset-experimental-dialog-body .dataset-experimental-features.is-dialog-embedded > .dataset-experimental-head::after {
+    display: none;
+}
