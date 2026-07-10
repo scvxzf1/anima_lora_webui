@@ -785,3 +785,29 @@ def test_raw_patch_roundtrips_stage_schedule_array(tmp_path: Path, monkeypatch):
     assert "stage_schedule" in loaded
     assert "stage_schedule_enabled = true" in loaded.lower() or "stage_schedule_enabled = true" in loaded
 
+
+def test_save_raw_file_rejects_invalid_choice(tmp_path: Path, monkeypatch):
+    configs, _dataset_path = _write_minimal_config_tree(tmp_path)
+    _patch_config_service_paths(monkeypatch, tmp_path)
+    train_rel = "configs/imported/lora.toml"
+    original = (configs / "imported" / "lora.toml").read_text(encoding="utf-8")
+    bad = original + "\npreprocess_precision_preference = \"nope\"\n"
+
+    ok, msg = config_service.save_raw_file(train_rel, bad)
+    assert ok is False
+    assert "preprocess_precision_preference" in msg
+    assert (configs / "imported" / "lora.toml").read_text(encoding="utf-8") == original
+
+
+def test_patch_raw_file_surfaces_unknown_key_warning(tmp_path: Path, monkeypatch):
+    configs, _dataset_path = _write_minimal_config_tree(tmp_path)
+    _patch_config_service_paths(monkeypatch, tmp_path)
+    train_rel = "configs/imported/lora.toml"
+    ok, msg, content, changed = config_service.patch_raw_file_values(
+        train_rel,
+        {"custom_user_flag": True},
+    )
+    assert ok is True, msg
+    assert "custom_user_flag" in changed
+    assert "警告" in msg or "unknown key" in msg
+

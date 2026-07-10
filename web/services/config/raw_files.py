@@ -7,7 +7,7 @@ imported directly without pulling in the legacy facade.
 
 from __future__ import annotations
 
-from web.services.config.schema_gate import validate_patch_values
+from web.services.config.schema_gate import validate_config_mapping, validate_patch_values
 
 from functools import wraps
 from pathlib import Path
@@ -170,12 +170,19 @@ def save_raw_file(
     toml = _toml_module()
     tomlkit = _tomlkit_module()
     try:
-        toml.loads(content)
+        parsed = toml.loads(content)
         content = _normalize_saved_raw_config_content(content)
+        parsed = toml.loads(content)
     except (toml.TomlDecodeError, tomlkit.exceptions.TOMLKitError) as e:
         return False, f"TOML 语法错误: {e}"
     except ValueError as e:
         return False, str(e)
+    if isinstance(parsed, dict):
+        schema_errors, schema_warnings = validate_config_mapping(parsed)
+        if schema_errors:
+            return False, "; ".join(schema_errors)
+        # warnings intentionally not blocking full-file save; callers can re-check via preflight
+        _ = schema_warnings
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(content, encoding="utf-8")
     return True, "保存成功"
@@ -219,7 +226,7 @@ def patch_raw_file_values(
         return False, msg, "", []
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(next_content, encoding="utf-8")
-    return True, "保存成功", next_content, changed
+    return True, msg or "保存成功", next_content, changed
 
 
 def preview_raw_file_patch(
@@ -231,7 +238,7 @@ def preview_raw_file_patch(
     ok, msg, _path, next_content, changed = _prepare_raw_file_patch(rel_path, values, content=content)
     if not ok:
         return False, msg, "", []
-    return True, "预览成功", next_content, changed
+    return True, msg or "预览成功", next_content, changed
 
 
 def _prepare_raw_file_patch(
@@ -256,7 +263,7 @@ def _prepare_raw_file_patch(
         for key, value in values.items()
         if key not in ui_only_fields and key not in retired_fields
     }
-    schema_errors, _schema_warnings = validate_patch_values(values)
+    schema_errors, schema_warnings = validate_patch_values(values)
     if schema_errors:
         return False, "; ".join(schema_errors), None, "", []
 
@@ -270,7 +277,10 @@ def _prepare_raw_file_patch(
         return False, f"TOML 更新失败: {e}", None, "", []
 
     changed_keys = {*values.keys(), *removed_keys, *compatibility_keys}
-    return True, "保存成功", path, next_content, sorted(changed_keys)
+    ok_msg = "保存成功"
+    if schema_warnings:
+        ok_msg = f"保存成功（警告: {'; '.join(schema_warnings)}）"
+    return True, ok_msg, path, next_content, sorted(changed_keys)
 
 
 def _restore_dataset_config_after_failed_train_patch(path: Path, existed: bool, previous_content: str) -> None:
