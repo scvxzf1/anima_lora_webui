@@ -222,6 +222,9 @@ async def enqueue_resume_from_history_task(
         resume_info["duration_overrides"] = runtime["resume_duration"]
         resume_info["target_total_steps"] = runtime["resume_duration"].get("target_total_steps")
         resume_info["remaining_steps"] = runtime["resume_duration"].get("append_steps")
+        for key in ("stage_before", "stage_after", "warning"):
+            if key in runtime["resume_duration"] and runtime["resume_duration"].get(key) is not None:
+                resume_info[key] = runtime["resume_duration"][key]
     now = time.time()
     item = {
         "id": _new_queue_item_id(

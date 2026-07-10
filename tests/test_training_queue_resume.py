@@ -123,3 +123,81 @@ def test_queue_resume_incomplete_state_marks_item_error(tmp_path, monkeypatch):
     assert "缺少 scheduler.bin" in item["message"]
     assert svc._queue_paused is True
 
+
+def test_queue_resume_duration_override_reports_stage_shift(tmp_path, monkeypatch):
+    """追加步数后按新总步重算阶段，并返回 before/after 诊断。"""
+    history_dir, task_id, state_dir = _write_resume_history(tmp_path)
+    snapshot_path = history_dir / task_id / "config.snapshot.toml"
+    snapshot_path.write_text(
+        snapshot_path.read_text(encoding="utf-8")
+        + "\n".join(
+            [
+                "stage_schedule_enabled = true",
+                "[[stage_schedule]]",
+                'name = "low"',
+                "subset_index = 0",
+                "start_pct = 0.0",
+                "end_pct = 0.5",
+                "[[stage_schedule]]",
+                'name = "high"',
+                "subset_index = 1",
+                "start_pct = 0.5",
+                "end_pct = 1.0",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(training_service, "HISTORY_DIR", history_dir)
+    _patch_resume_runtime_output_root(monkeypatch, tmp_path)
+    _patch_queue_storage(monkeypatch, tmp_path)
+
+    svc = TrainingService(web.Application())
+    svc._schedule_queue_dispatch = lambda: None
+
+    result = asyncio.run(
+        svc.enqueue_resume_from_history_task(
+            task_id,
+            str(state_dir),
+            duration_overrides={"max_train_steps": 7},
+        )
+    )
+
+    assert result["ok"] is True
+    resume_info = result["item"]["resume_info"]
+    # original 100 steps @42 -> 0.42 (low); new total 49 @42 -> ~0.857 (high)
+    assert resume_info["stage_before"]["index"] == 0
+    assert resume_info["stage_before"]["name"] == "low"
+    assert abs(resume_info["stage_before"]["progress"] - 0.42) < 1e-9
+    assert resume_info["stage_after"]["index"] == 1
+    assert resume_info["stage_after"]["name"] == "high"
+    assert abs(resume_info["stage_after"]["progress"] - (42 / 49)) < 1e-9
+    assert "追加步数后阶段边界已按新总步数重算" in str(resume_info.get("warning") or "")
+    duration = resume_info["duration_overrides"]
+    assert duration["stage_before"] == resume_info["stage_before"]
+    assert duration["stage_after"] == resume_info["stage_after"]
+
+
+def test_queue_resume_without_stage_schedule_skips_stage_diagnosis(tmp_path, monkeypatch):
+    history_dir, task_id, state_dir = _write_resume_history(tmp_path)
+    monkeypatch.setattr(training_service, "HISTORY_DIR", history_dir)
+    _patch_resume_runtime_output_root(monkeypatch, tmp_path)
+    _patch_queue_storage(monkeypatch, tmp_path)
+
+    svc = TrainingService(web.Application())
+    svc._schedule_queue_dispatch = lambda: None
+
+    result = asyncio.run(
+        svc.enqueue_resume_from_history_task(
+            task_id,
+            str(state_dir),
+            duration_overrides={"max_train_steps": 7},
+        )
+    )
+
+    resume_info = result["item"]["resume_info"]
+    assert "stage_before" not in resume_info or resume_info.get("stage_before") is None
+    assert "stage_after" not in resume_info or resume_info.get("stage_after") is None
+    assert not resume_info.get("warning")
+
+
