@@ -2693,14 +2693,13 @@ def test_dataset_editor_drag_has_browser_fallbacks() -> None:
 
 def test_dataset_page_toolbar_hosts_experimental_and_stage_entries() -> None:
     """数据集页顶栏承载实验性 + 分阶段入口；配置页不再当主编辑面。"""
-    dataset_state = _frontend_module_text("js/features/anima-app/state/dataset-state.js")
-    # 新模块落地后改为读真实文件；Task1 先断言状态字段存在。
-    assert "selectedDatasetIndex" in dataset_state
-
-    # Task1 只强制 selectedDatasetIndex；dialog 宿主与顶栏入口后续任务再收紧。
-    # 当前 index.html 尚未挂载 stage-resolution-dialog，且现有测试仍断言其不在配置页暴露。
-    html = INDEX_HTML.read_text(encoding="utf-8")
-    assert isinstance(html, str) and html
+    toolbar = _frontend_module_text("js/features/dataset-editor/toolbar.js")
+    editor_chunk = _frontend_module_text("js/features/anima-app/chunks/09-setup-config-group-drop-target.js")
+    assert "btn-dataset-open-experimental" in toolbar
+    assert "btn-dataset-open-stage-schedule" in toolbar
+    assert "createDatasetEditorToolbarActions" in toolbar
+    assert "createDatasetEditorToolbarActions" in editor_chunk
+    assert "btn-dataset-open-stage-schedule" in editor_chunk or "createDatasetEditorToolbarActions" in editor_chunk
 
 
 def test_stage_schedule_primary_entry_moves_to_dataset_page() -> None:

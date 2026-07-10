@@ -46,6 +46,7 @@ import {
     createDatasetEditorItem,
 } from './10-create-dataset-config-input.js?v=module-bootstrap-20260707-93';
 import { addDatasetEditorRow, datasetValidTargetIndices, escapeHtml } from './13-update-dataset-editor-rows-setting-value.js?v=module-bootstrap-20260707-93';
+import { createDatasetEditorToolbarActions } from '../../dataset-editor/toolbar.js?v=module-bootstrap-20260707-93';
 
 const configState = getConfigState();
 const datasetState = getDatasetState();
@@ -408,13 +409,14 @@ function currentFileGroupDragState() {
         title.innerHTML = '<strong>多数据集路径</strong><span>每一行是一组数据：填写原始图路径、重复次数和分桶参数；缩放图与 LoRA 缓存会在训练运行目录中自动生成。</span>';
         const actions = document.createElement('div');
         actions.className = 'dataset-editor-actions';
+        const toolbar = createDatasetEditorToolbarActions();
         const addBtn = document.createElement('button');
         addBtn.type = 'button';
         addBtn.className = 'btn btn-small';
         addBtn.textContent = '添加数据集';
         addBtn.title = '新增一组数据集路径。适合把多个角色、画风或批次一起训练，并给每组设置独立重复次数。';
         addBtn.addEventListener('click', addDatasetEditorRow);
-        actions.append(addBtn);
+        actions.append(toolbar, addBtn);
         header.append(title, actions);
         panel.appendChild(header);
 

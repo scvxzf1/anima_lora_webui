@@ -284,6 +284,14 @@
 
 #tab-datasets .dataset-preset-manager-actions .btn,
 #tab-datasets .dataset-preset-manager-head .btn,
+
+#tab-datasets .dataset-editor-toolbar-actions {
+    display: inline-flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+}
+
 #tab-datasets .dataset-editor-actions .btn,
 #tab-datasets .dataset-row-head-actions .btn {
     min-height: 36px;
