@@ -189,6 +189,16 @@ function currentDatasetPresetState() {
             { openDetails: true },
         );
 
+        const advancedSettings = createDatasetAdvancedSettingsEditor(row, index);
+        const notice = body.querySelector('.dataset-experimental-notice');
+        const overviewHelpNode = body.querySelector('.dataset-experimental-overview-help');
+        if (overviewHelpNode && overviewHelpNode.nextSibling) {
+            body.insertBefore(advancedSettings, overviewHelpNode.nextSibling);
+        } else if (notice && notice.nextSibling) {
+            body.insertBefore(advancedSettings, notice.nextSibling);
+        } else {
+            body.insertBefore(advancedSettings, body.firstChild);
+        }
         panel.append(head, body);
         return panel;
     }
@@ -281,11 +291,59 @@ function currentDatasetPresetState() {
         const fields = [
             ['resolution', 'number'],
             ['enable_bucket', 'select'],
+            ['validation_split', 'number'],
+        ];
+        const helpDiv = document.createElement('div');
+        helpDiv.className = 'field-help dataset-row-settings-help';
+
+        for (const [key, type] of fields) {
+            const field = document.createElement('div');
+            field.className = 'dataset-row-setting-field';
+            const labelRow = document.createElement('div');
+            labelRow.className = 'dataset-row-setting-label';
+            const label = document.createElement('span');
+            label.className = 'field-name';
+            label.textContent = datasetConfigLabel(key);
+            label.title = key;
+            labelRow.appendChild(label);
+
+            const btn = document.createElement('button');
+            btn.className = 'info-toggle dataset-row-help-toggle';
+            btn.textContent = '?';
+            btn.type = 'button';
+            btn.title = '查看填写建议、好处、代价、风险和推荐';
+            btn.addEventListener('click', () => {
+                const wasActive = btn.classList.contains('active');
+                panel.querySelectorAll('.dataset-row-help-toggle.active').forEach((activeBtn) => {
+                    activeBtn.classList.remove('active');
+                });
+                helpDiv.classList.remove('visible');
+                helpDiv.innerHTML = '';
+                if (wasActive) return;
+                btn.classList.add('active');
+                helpDiv.appendChild(createHelpContent(key, datasetConfigValue(key, settings)));
+                helpDiv.classList.add('visible');
+            });
+            labelRow.appendChild(btn);
+
+            field.appendChild(labelRow);
+            field.appendChild(createDatasetRowSettingInput(index, key, type, settings));
+            panel.appendChild(field);
+        }
+        panel.appendChild(createDatasetRepeatSettingField(row, index));
+        panel.appendChild(helpDiv);
+        return panel;
+    }
+
+    export function createDatasetAdvancedSettingsEditor(row, index) {
+        const settings = normalizeDatasetDefaults(row.settings || datasetEditorStateForActivePanel().defaults || {});
+        const panel = document.createElement('div');
+        panel.className = 'dataset-row-settings dataset-advanced-settings';
+        const fields = [
             ['min_bucket_reso', 'number'],
             ['max_bucket_reso', 'number'],
             ['bucket_reso_steps', 'number'],
             ['bucket_no_upscale', 'select'],
-            ['validation_split', 'number'],
             ['validation_split_num', 'number'],
             ['validation_seed', 'number'],
         ];
@@ -326,7 +384,6 @@ function currentDatasetPresetState() {
             field.appendChild(createDatasetRowSettingInput(index, key, type, settings));
             panel.appendChild(field);
         }
-        panel.appendChild(createDatasetRepeatSettingField(row, index));
         panel.appendChild(helpDiv);
         return panel;
     }

@@ -2743,3 +2743,48 @@ def test_dataset_experimental_dialog_edits_selected_subset_only() -> None:
     assert "createDatasetExperimentalFeaturesEditor(row, index)" in dialog
     # 主列表不再默认拼接卡内实验性折叠
     assert "createDatasetExperimentalFeaturesEditor(row, index)" not in item
+
+
+def test_dataset_main_card_keeps_only_high_frequency_settings() -> None:
+    """主卡只保留高频 settings；低频桶/验证细节进实验性弹窗。"""
+    row = _frontend_module_text("js/features/dataset-editor/row.js")
+    dialog = _frontend_module_text("js/features/dataset-editor/experimental-dialog.js")
+    settings_factory = _section(
+        row,
+        "function createDatasetRowSettingsEditor",
+        "function createDatasetAdvancedSettingsEditor",
+    )
+    advanced_settings_factory = _section(
+        row,
+        "function createDatasetAdvancedSettingsEditor",
+        "function createDatasetCaptionExtensionEditor",
+    )
+    experimental_factory = _section(
+        row,
+        "function createDatasetExperimentalFeaturesEditor",
+        "function createDatasetPathFilterEditor",
+    )
+
+    assert "['resolution', 'number']" in settings_factory
+    assert "['enable_bucket', 'select']" in settings_factory
+    assert "['validation_split', 'number']" in settings_factory
+    assert "createDatasetRepeatSettingField(row, index)" in settings_factory
+    assert "['min_bucket_reso', 'number']" not in settings_factory
+    assert "['max_bucket_reso', 'number']" not in settings_factory
+    assert "['bucket_reso_steps', 'number']" not in settings_factory
+    assert "['bucket_no_upscale', 'select']" not in settings_factory
+    assert "['validation_split_num', 'number']" not in settings_factory
+    assert "['validation_seed', 'number']" not in settings_factory
+
+    for key, type_name in (
+        ("min_bucket_reso", "number"),
+        ("max_bucket_reso", "number"),
+        ("bucket_reso_steps", "number"),
+        ("bucket_no_upscale", "select"),
+        ("validation_split_num", "number"),
+        ("validation_seed", "number"),
+    ):
+        assert f"['{key}', '{type_name}']" in advanced_settings_factory
+    assert "createDatasetRowSettingInput(index, key, type, settings)" in advanced_settings_factory
+    assert "createDatasetAdvancedSettingsEditor(row, index)" in experimental_factory
+    assert "createDatasetExperimentalFeaturesEditor(row, index)" in dialog
