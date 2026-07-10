@@ -37,6 +37,9 @@ def reload_runtime_storage_state(service: TrainingService | None) -> None:
     service._queue = _load_training_queue_state()
     service._queue_paused = bool(service._queue.get("paused", False))
     service._queue_failure_policy = _normalize_queue_failure_policy(service._queue.get("failure_policy"))
+    service._queue_auto_retry = bool(service._queue.get("auto_retry", False))
+    service._queue_max_attempts = int(service._queue.get("max_attempts", 1) or 1)
+    service._queue_retry_backoff_sec = float(service._queue.get("retry_backoff_sec", 0.0) or 0.0)
 
 class TrainingService:
     def __init__(self, app: web.Application):

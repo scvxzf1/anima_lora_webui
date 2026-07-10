@@ -188,3 +188,31 @@ def test_settings_route_returns_400_for_invalid_payload(monkeypatch):
 
     assert response.status == 400
     assert body == {"ok": False, "error": "输出文件夹不能为空"}
+
+
+def test_save_global_settings_persists_history_and_queue_roots(tmp_path, monkeypatch):
+    settings_file = tmp_path / "configs" / "web-ui-settings.toml"
+    settings_file.parent.mkdir(parents=True, exist_ok=True)
+    settings_file.write_text(
+        "[global]\noutput_root = \"output/runs\"\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(settings_service, "ROOT", tmp_path)
+    monkeypatch.setattr(settings_service, "SETTINGS_FILE", settings_file)
+    monkeypatch.setattr(library_env, "project_root", lambda: tmp_path)
+
+    saved = settings_service.save_global_settings(
+        {
+            "output_root": "output/runs",
+            "history_root": "alt-history",
+            "queue_root": "alt-queue",
+        }
+    )
+
+    assert saved["ok"] is True
+    override = toml.loads((tmp_path / ".anima-webui-settings.toml").read_text(encoding="utf-8"))
+    assert override["paths"]["history_root"] == "alt-history"
+    assert override["paths"]["queue_root"] == "alt-queue"
+    assert library_env.get_training_history_root() == (tmp_path / "alt-history").resolve()
+    assert library_env.get_training_queue_root() == (tmp_path / "alt-queue").resolve()
+

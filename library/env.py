@@ -116,6 +116,29 @@ def _resolve_project_relative_override(value: str, *, label: str) -> Path:
     return path.resolve()
 
 
+
+def _webui_paths_section() -> dict[str, str]:
+    """Read project-local ``.anima-webui-settings.toml [paths]`` overrides."""
+    webui_paths_file = project_root() / ".anima-webui-settings.toml"
+    if not webui_paths_file.exists():
+        return {}
+    try:
+        import toml
+
+        raw = toml.loads(webui_paths_file.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+    section = raw.get("paths", {}) if isinstance(raw, dict) else {}
+    if not isinstance(section, dict):
+        return {}
+    out: dict[str, str] = {}
+    for key, value in section.items():
+        text_value = str(value or "").strip()
+        if text_value:
+            out[str(key)] = text_value
+    return out
+
+
 def get_configs_root() -> Path:
     """获取配置根目录，支持 WebUI 设置和环境变量覆盖。
 
@@ -163,11 +186,19 @@ def get_training_history_root() -> Path:
     """获取训练历史根目录。
 
     优先级：
-    1. ANIMA_TRAINING_HISTORY_ROOT 环境变量
-    2. 默认 configs_root/web-training-history
+    1. WebUI .anima-webui-settings.toml [paths].history_root
+    2. ANIMA_TRAINING_HISTORY_ROOT 环境变量
+    3. 默认 configs_root/web-training-history
     """
     # 确保 .env 已加载
     load_dotenv()
+
+    webui_value = _webui_paths_section().get("history_root", "").strip()
+    if webui_value:
+        return _resolve_project_relative_override(
+            webui_value,
+            label="history_root",
+        )
 
     env_value = os.environ.get("ANIMA_TRAINING_HISTORY_ROOT")
     if env_value:
@@ -182,11 +213,19 @@ def get_training_queue_root() -> Path:
     """获取训练队列根目录。
 
     优先级：
-    1. ANIMA_TRAINING_QUEUE_ROOT 环境变量
-    2. 默认 configs_root/web-training-queue
+    1. WebUI .anima-webui-settings.toml [paths].queue_root
+    2. ANIMA_TRAINING_QUEUE_ROOT 环境变量
+    3. 默认 configs_root/web-training-queue
     """
     # 确保 .env 已加载
     load_dotenv()
+
+    webui_value = _webui_paths_section().get("queue_root", "").strip()
+    if webui_value:
+        return _resolve_project_relative_override(
+            webui_value,
+            label="queue_root",
+        )
 
     env_value = os.environ.get("ANIMA_TRAINING_QUEUE_ROOT")
     if env_value:

@@ -7,7 +7,7 @@ from typing import Any
 
 import toml
 
-from library.env import get_configs_root
+from library.env import get_configs_root, get_training_history_root, get_training_queue_root
 from web.services._dynamic_path import DynamicPath
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -30,6 +30,8 @@ GLOBAL_MODEL_PATH_KEYS = (
 )
 GLOBAL_CONFIG_PATH_KEYS = (
     "configs_root",
+    "history_root",
+    "queue_root",
 )
 GLOBAL_UI_OVERRIDE_KEYS = (
     "ui_scale_config",
@@ -114,9 +116,14 @@ def save_global_settings(data: dict[str, Any]) -> dict[str, Any]:
     target_settings_file.parent.mkdir(parents=True, exist_ok=True)
     target_settings_file.write_text(toml.dumps(raw), encoding="utf-8")
 
-    # 如果设置了 configs_root，同时保存到项目根目录的专用配置文件
-    if "configs_root" in data:
-        _save_configs_root_override(data["configs_root"])
+    # 如果设置了路径覆盖，同时保存到项目根目录的专用配置文件
+    path_overrides = {
+        key: data[key]
+        for key in ("configs_root", "history_root", "queue_root")
+        if key in data
+    }
+    if path_overrides:
+        _save_path_overrides(path_overrides)
 
     saved = _load_settings(target_settings_file)
     return {
@@ -172,6 +179,22 @@ def _load_settings(settings_file: Path | None = None) -> dict[str, Any]:
         settings["configs_root"] = actual_configs_root.relative_to(ROOT).as_posix()
     except ValueError:
         settings["configs_root"] = actual_configs_root.as_posix()
+    try:
+        history_root = get_training_history_root().resolve()
+        settings["history_root"] = history_root.relative_to(ROOT).as_posix()
+    except Exception:
+        try:
+            settings["history_root"] = get_training_history_root().as_posix()
+        except Exception:
+            settings["history_root"] = settings.get("history_root") or ""
+    try:
+        queue_root = get_training_queue_root().resolve()
+        settings["queue_root"] = queue_root.relative_to(ROOT).as_posix()
+    except Exception:
+        try:
+            settings["queue_root"] = get_training_queue_root().as_posix()
+        except Exception:
+            settings["queue_root"] = settings.get("queue_root") or ""
 
     return settings
 
@@ -191,6 +214,8 @@ def _default_global_settings(*, settings_file: Path | None = None) -> dict[str, 
     return {
         "output_root": DEFAULT_OUTPUT_ROOT,
         "configs_root": "configs",
+        "history_root": "",
+        "queue_root": "",
         "ui_scale": DEFAULT_UI_SCALE,
         **{key: DEFAULT_UI_SCALE_OVERRIDE for key in GLOBAL_UI_OVERRIDE_KEYS},
         **_load_base_model_path_defaults(settings_file=settings_file),
@@ -321,28 +346,33 @@ def _settings_file_for_configs_root(value: Any) -> Path:
     return configs_dir / "web-ui-settings.toml"
 
 
-def _save_configs_root_override(configs_root: str) -> None:
-    """保存 configs_root 到项目根目录的专用配置文件。"""
+def _save_path_overrides(path_values: dict[str, Any]) -> None:
+    """保存 configs/history/queue root 到项目根目录的专用配置文件。"""
     webui_paths_file = ROOT / ".anima-webui-settings.toml"
 
-    # 读取现有配置
-    raw = {}
+    raw: dict[str, Any] = {}
     if webui_paths_file.exists():
         try:
             raw = toml.loads(webui_paths_file.read_text(encoding="utf-8"))
         except toml.TomlDecodeError:
             raw = {}
 
-    # 更新 paths.configs_root
     if "paths" not in raw or not isinstance(raw["paths"], dict):
         raw["paths"] = {}
 
-    normalized = _normalize_config_path(configs_root)
-    if normalized:
-        raw["paths"]["configs_root"] = normalized
-    else:
-        # 空值表示使用默认，从配置中删除
-        raw["paths"].pop("configs_root", None)
+    for key, value in path_values.items():
+        if key not in {"configs_root", "history_root", "queue_root"}:
+            continue
+        normalized = _normalize_config_path(value)
+        if normalized:
+            raw["paths"][key] = normalized
+        else:
+            # 空值表示使用默认，从配置中删除
+            raw["paths"].pop(key, None)
 
-    # 保存
     webui_paths_file.write_text(toml.dumps(raw), encoding="utf-8")
+
+
+def _save_configs_root_override(configs_root: str) -> None:
+    """兼容旧调用：只写 configs_root。"""
+    _save_path_overrides({"configs_root": configs_root})
