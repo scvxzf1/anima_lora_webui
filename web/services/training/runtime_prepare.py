@@ -32,6 +32,7 @@ from web.services.training.runtime_paths import (
 )
 from web.services.training import runtime_datasets as _runtime_datasets
 from web.services.training.runtime_state import _write_runtime_run_meta
+from web.services.config.preflight_stage_schedule import validate_stage_schedule_or_raise
 
 _bool_value_for_row = _runtime_datasets._bool_value_for_row
 _prepare_runtime_nl_tag_mix_source = _runtime_datasets._prepare_runtime_nl_tag_mix_source
@@ -112,6 +113,8 @@ def _prepare_web_runtime_config(
     source_rows = _dataset_rows_for_estimate(cfg)
     if not source_rows:
         raise ValueError("请先配置至少一个数据集路径")
+
+    validate_stage_schedule_or_raise(cfg, dataset_rows=source_rows)
 
     runtime_rows: list[dict[str, Any]] = []
     dataset_cache_dir = layout["dataset_cache_dir"]

@@ -30,6 +30,7 @@ from web.services.config.preflight_compat import (
     _web_python_executable,
     training_sample_sampler_status,
 )
+from web.services.config.preflight_stage_schedule import check_stage_schedule
 from web.services.config.preflight_dataset_checks import (
     _check_cache_sidecar_pattern,
     _check_cache_sidecars,
@@ -205,6 +206,11 @@ def preflight_training_config(
     _check_dataset_source_paths(cfg, add)
     _check_dataset_paths(cfg, add, check_runtime_dirs=runtime_config)
     _check_training_sample_config(cfg, add)
+    check_stage_schedule(
+        cfg,
+        dataset_rows=_dataset_rows_for_estimate(cfg),
+        add=add,
+    )
     if not runtime_config:
         _check_web_preprocess_environment(add)
     if runtime_config:
