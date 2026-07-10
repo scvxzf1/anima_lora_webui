@@ -725,3 +725,41 @@ def test_raw_file_helpers_remain_available_from_legacy_module(tmp_path: Path, mo
     for name in expected_shims:
         assert getattr(legacy_config, name) is raw_file_shims[name]
 
+
+def test_patch_raw_file_rejects_invalid_choice(tmp_path: Path, monkeypatch):
+    configs, _dataset_path = _write_minimal_config_tree(tmp_path)
+    _patch_config_service_paths(monkeypatch, tmp_path)
+    train_rel = "configs/imported/lora.toml"
+    original = (configs / "imported" / "lora.toml").read_text(encoding="utf-8")
+
+    ok, msg, content, changed = config_service.patch_raw_file_values(
+        train_rel,
+        {
+            "preprocess_precision_preference": "nope",
+        },
+    )
+
+    assert ok is False
+    assert "preprocess_precision_preference" in msg
+    assert content == ""
+    assert changed == []
+    assert (configs / "imported" / "lora.toml").read_text(encoding="utf-8") == original
+
+
+def test_patch_raw_file_warns_unknown_key_but_still_saves(tmp_path: Path, monkeypatch):
+    # unknown key is warning-only for preflight; raw patch currently allows custom fields
+    # unless choices/type fails. Keep custom key writable for compatibility.
+    configs, _dataset_path = _write_minimal_config_tree(tmp_path)
+    _patch_config_service_paths(monkeypatch, tmp_path)
+    train_rel = "configs/imported/lora.toml"
+
+    ok, msg, content, changed = config_service.patch_raw_file_values(
+        train_rel,
+        {
+            "custom_user_flag": True,
+        },
+    )
+    assert ok is True, msg
+    assert "custom_user_flag" in changed
+    assert "custom_user_flag" in content
+

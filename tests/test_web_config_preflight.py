@@ -1285,3 +1285,42 @@ def test_prepare_web_runtime_config_rejects_invalid_stage_schedule(tmp_path: Pat
             source_config_file="configs/imported/bad-stage.toml",
         )
 
+
+def test_preflight_warns_unknown_config_key(tmp_path: Path, monkeypatch):
+    configs, _dataset_path = _write_minimal_config_tree(tmp_path)
+    _patch_config_service_paths(monkeypatch, tmp_path)
+    models = tmp_path / "models"
+    models.mkdir(exist_ok=True)
+    for name in (
+        "diffusion_models/anima-base-v1.0.safetensors",
+        "text_encoders/qwen_3_06b_base.safetensors",
+        "vae/qwen_image_vae.safetensors",
+    ):
+        path = models / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(b"model")
+    source = tmp_path / "image_dataset" / "a"
+    source.mkdir(parents=True)
+    Image.new("RGB", (8, 8), color=(1, 2, 3)).save(source / "a.png")
+    selected = configs / "imported" / "unknown.toml"
+    selected.write_text(
+        "\n".join(
+            [
+                'output_name = "unknown-demo"',
+                'source_image_dir = "image_dataset/a"',
+                "custom_unknown_key = true",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    result = config_service.preflight_training_config(
+        "lora",
+        "default",
+        "imported",
+        config_file="configs/imported/unknown.toml",
+    )
+    warnings = [c for c in result["checks"] if c.get("level") == "warning" and c.get("key") == "schema"]
+    assert warnings
+    assert any("custom_unknown_key" in c.get("message", "") for c in warnings)
+

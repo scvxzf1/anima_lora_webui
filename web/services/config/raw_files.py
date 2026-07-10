@@ -7,6 +7,8 @@ imported directly without pulling in the legacy facade.
 
 from __future__ import annotations
 
+from web.services.config.schema_gate import validate_patch_values
+
 from functools import wraps
 from pathlib import Path
 from typing import Any
@@ -254,6 +256,9 @@ def _prepare_raw_file_patch(
         for key, value in values.items()
         if key not in ui_only_fields and key not in retired_fields
     }
+    schema_errors, _schema_warnings = validate_patch_values(values)
+    if schema_errors:
+        return False, "; ".join(schema_errors), None, "", []
 
     source = content if content is not None else load_raw_file(rel_path)
     try:
