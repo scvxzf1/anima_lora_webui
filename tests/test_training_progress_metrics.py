@@ -314,3 +314,52 @@ def test_extract_metrics_from_log_accepts_nan_and_infinity_loss():
     assert metric["loss"] != metric["loss"]
     assert metric["lr"] == float("inf")
 
+
+def test_progress_parser_reads_stage_fields():
+    event = {
+        "ev": "step",
+        "global_step": 10,
+        "epoch": 1,
+        "loss": 0.1,
+        "stage_index": 1,
+        "stage_name": "mid",
+    }
+    parsed = progress_parser.metric_from_progress_jsonl_event(event, 123.0)
+    assert parsed is not None
+    assert parsed["stage_index"] == 1
+    assert parsed["stage_name"] == "mid"
+
+
+def test_progress_parser_keeps_compat_when_stage_fields_missing():
+    event = {
+        "ev": "step",
+        "global_step": 10,
+        "epoch": 1,
+        "loss": 0.2,
+    }
+    parsed = progress_parser.metric_from_progress_jsonl_event(event, 10.0)
+    assert parsed == {"ts": 10.0, "step": 10, "epoch": 1, "loss": 0.2}
+
+
+def test_progress_sink_emits_stage_fields(tmp_path):
+    from library.training.progress import ProgressSink
+
+    path = tmp_path / "run.progress.jsonl"
+    sink = ProgressSink(str(path), run="demo", method="lora", preset="default", t0=0.0)
+    sink.run_start(total_steps=10, total_epochs=1, pid=1)
+    sink.log(
+        {
+            "loss": 0.5,
+            "stage_index": 0,
+            "stage_name": "low",
+        },
+        global_step=3,
+        epoch=1,
+    )
+    sink.close()
+    lines = path.read_text(encoding="utf-8").strip().splitlines()
+    step_event = __import__("json").loads(lines[-1])
+    assert step_event["ev"] == "step"
+    assert step_event["stage_index"] == 0
+    assert step_event["stage_name"] == "low"
+

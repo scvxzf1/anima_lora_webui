@@ -467,6 +467,19 @@ def run_training_loop(trainer, state: LoopState) -> None:
     state.metadata["ss_training_finished_at"] = str(time.time())
 
 
+def _current_stage_fields(state: LoopState) -> dict[str, object]:
+    """Return optional stage_index/stage_name for progress events."""
+    if int(getattr(state, "stage_index", -1)) < 0:
+        return {}
+    fields: dict[str, object] = {"stage_index": int(state.stage_index)}
+    stages = parse_stage_specs(getattr(state.args, "stage_schedule", None))
+    if 0 <= state.stage_index < len(stages):
+        name = str(stages[state.stage_index].name or "").strip()
+        if name:
+            fields["stage_name"] = name
+    return fields
+
+
 def _maybe_apply_stage_schedule(state: LoopState, *, force: bool = False) -> None:
     """Switch active subset filter when progress crosses a stage boundary."""
     args = state.args
@@ -882,6 +895,7 @@ def _log_step(
         logs["recent_s_per_step"] = f"{recent_step_seconds:.2f}"
     logs["avr_loss"] = avr_loss
     logs.update(memory_logs)
+    logs.update(_current_stage_fields(state))
     _unwrapped_net = state.accelerator.unwrap_model(state.network)
     # Refresh router_H only on log cadence — get_router_entropy → full
     # get_router_stats compute (with D2H syncs) is wasted if the only
