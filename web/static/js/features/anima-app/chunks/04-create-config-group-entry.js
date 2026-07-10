@@ -12,7 +12,6 @@ import {
     FORM_CATEGORY_SECTION_MAP,
     STICKY_CONFIG_CATEGORY_IDS,
 } from '../../../config/catalog.js?v=module-bootstrap-20260707-93';
-import { STAGE_RESOLUTION_STEPS_PER_EPOCH } from '../helpers/app-constants.js?v=module-bootstrap-20260707-93';
 import { reloadCurrentConfig, renderConfigForm, syncConfigDraftFromForm } from '../helpers/app-shell-startup-bridge.js?v=module-bootstrap-20260707-93';
 import { getConfigState } from '../helpers/config-state-bridge.js?v=module-bootstrap-20260707-93';
 import { formatFieldName } from '../helpers/config-field-display.js?v=module-bootstrap-20260707-93';
@@ -24,11 +23,7 @@ import {
     createNoDatasetRegularizationQuickPresetsButton,
     createResourceQuickPresetPanel,
     createResourceQuickPresetsButton,
-    createStageResolutionChartPanel,
-    createStageResolutionEditor,
-    createStageResolutionSummary,
-    createStageResolutionTable,
-    drawStageResolutionChart,
+    createStageScheduleInlineSummary,
 } from './05-create-stage-resolution-summary.js?v=module-bootstrap-20260707-93';
 import { appendFieldRows, createConfigDatasetPicker } from './06-stronger-selective-checkpoint-value.js?v=module-bootstrap-20260707-93';
 
@@ -440,6 +435,8 @@ function currentConfigState() {
         section.appendChild(header);
         if (extraClass === 'config-group-data') {
             content.appendChild(createConfigDatasetPicker());
+            // 只读课表摘要；主编辑入口在数据集页顶栏。
+            content.appendChild(createStageScheduleInlineSummary());
         }
         if (extraClass === 'config-group-resource') {
             content.appendChild(createResourceQuickPresetPanel());
@@ -457,139 +454,4 @@ function currentConfigState() {
         }
         section.appendChild(content);
         return section;
-    }
-
-    function createOpenStageResolutionDialogButton() {
-        const btn = document.createElement('button');
-        btn.id = 'btn-open-stage-resolution-dialog';
-        btn.type = 'button';
-        btn.className = 'btn btn-small config-group-title-action';
-        btn.textContent = '阶段调度';
-        btn.title = '打开阶段分辨率调度面板';
-        btn.addEventListener('click', openStageResolutionDialog);
-        return btn;
-    }
-
-    function openStageResolutionDialog() {
-        const dialog = document.getElementById('stage-resolution-dialog');
-        if (!dialog) return;
-        renderStageResolutionDialog();
-        if (dialog.showModal && !dialog.open) {
-            dialog.showModal();
-        } else if (!dialog.open) {
-            dialog.setAttribute('open', 'open');
-        }
-        requestAnimationFrame(drawStageResolutionChart);
-    }
-
-    export function normalizedStageResolutionStages() {
-        if (!Array.isArray(stageResolutionState.stages) || !stageResolutionState.stages.length) {
-            stageResolutionState.stages = [
-                { name: 'EP1', epochs: 1, maxSide: 1024, downRange: 256, manualRepeats: false, repeats: 1 },
-            ];
-        }
-        stageResolutionState.stages = stageResolutionState.stages.map((stage, index) => ({
-            name: String(stage.name || `EP${index + 1}`).trim() || `EP${index + 1}`,
-            epochs: Number(stage.epochs) || 0,
-            maxSide: Number(stage.maxSide) || 0,
-            downRange: Number(stage.downRange) || 0,
-            manualRepeats: Boolean(stage.manualRepeats),
-            repeats: Math.max(1, Math.round(Number(stage.repeats) || 1)),
-        }));
-        stageResolutionState.selectedIndex = Math.max(
-            0,
-            Math.min(stageResolutionState.selectedIndex || 0, stageResolutionState.stages.length - 1)
-        );
-        return stageResolutionState.stages;
-    }
-
-    export function stageResolutionMetrics() {
-        stageResolutionState.enabled = Boolean(stageResolutionState.enabled);
-        const stages = normalizedStageResolutionStages();
-        let cursorStep = 0;
-        const ranges = stages.map((stage, index) => {
-            const epochs = Number(stage.epochs);
-            const maxSide = Number(stage.maxSide);
-            const downRange = Number(stage.downRange);
-            const minSide = maxSide - downRange;
-            const startStep = cursorStep;
-            const steps = Math.max(0, epochs) * STAGE_RESOLUTION_STEPS_PER_EPOCH;
-            cursorStep += steps;
-            const problems = [];
-            const warnings = [];
-            if (!Number.isFinite(epochs) || epochs <= 0) problems.push('epochs 必须大于 0');
-            if (!Number.isFinite(maxSide) || maxSide <= 0) problems.push('单边最大值无效');
-            if (!Number.isFinite(downRange) || downRange <= 0) problems.push('向下波动必须大于 0');
-            if (Number.isFinite(minSide) && minSide <= 0) problems.push('单边最小值无效');
-            if (Number.isFinite(minSide) && Number.isFinite(maxSide) && minSide >= maxSide) problems.push('范围为空');
-            return {
-                ...stage,
-                index,
-                startStep,
-                endStep: cursorStep,
-                steps,
-                minSide,
-                imageCount: null,
-                autoRepeats: stage.manualRepeats ? stage.repeats : 1,
-                problems,
-                warnings,
-            };
-        });
-
-        for (let i = 0; i < ranges.length; i += 1) {
-            for (let j = i + 1; j < ranges.length; j += 1) {
-                const a = ranges[i];
-                const b = ranges[j];
-                if (a.problems.length || b.problems.length) continue;
-                const overlaps = Math.max(a.minSide, b.minSide) < Math.min(a.maxSide, b.maxSide);
-                if (overlaps) {
-                    a.warnings.push('范围重叠');
-                    b.warnings.push('范围重叠');
-                }
-            }
-        }
-        const sorted = ranges
-            .filter((item) => !item.problems.length)
-            .slice()
-            .sort((a, b) => a.minSide - b.minSide);
-        for (let i = 1; i < sorted.length; i += 1) {
-            if (sorted[i].minSide > sorted[i - 1].maxSide) {
-                sorted[i - 1].warnings.push('存在断档');
-                sorted[i].warnings.push('存在断档');
-            }
-        }
-
-        const problemCount = ranges.filter((item) => item.problems.length).length;
-        const warningCount = ranges.filter((item) => item.warnings.length).length;
-        return {
-            enabled: stageResolutionState.enabled,
-            stages: ranges,
-            totalSteps: cursorStep,
-            problemCount,
-            warningCount,
-            selected: ranges[stageResolutionState.selectedIndex] || ranges[0],
-        };
-    }
-
-    export function stageResolutionStatus(stage) {
-        if (stage.problems.length) return { tone: 'error', text: stage.problems[0] };
-        if (stage.warnings.length) return { tone: 'warning', text: stage.warnings[0] };
-        return { tone: 'ok', text: '就绪' };
-    }
-
-    export function renderStageResolutionDialog() {
-        const body = document.getElementById('stage-resolution-dialog-body');
-        if (!body) return;
-        const metrics = stageResolutionMetrics();
-        body.innerHTML = '';
-        body.appendChild(createStageResolutionSummary(metrics));
-
-        const workspace = document.createElement('div');
-        workspace.className = 'stage-resolution-workspace';
-        workspace.appendChild(createStageResolutionChartPanel());
-        workspace.appendChild(createStageResolutionEditor(metrics.selected));
-        body.appendChild(workspace);
-
-        body.appendChild(createStageResolutionTable(metrics.stages));
-        requestAnimationFrame(drawStageResolutionChart);
     }

@@ -1977,18 +1977,18 @@ def test_step_estimate_panel_shows_epoch_factor() -> None:
 
 
 def test_output_scope_group_does_not_expose_unwired_stage_resolution_dialog() -> None:
+    """输出范围分组不挂标题级主按钮；分阶段 dialog 由数据集顶栏 / 只读摘要打开。"""
     source = APP_JS.read_text(encoding="utf-8")
     html = INDEX_HTML.read_text(encoding="utf-8")
+    group_entry = _frontend_module_text("js/features/anima-app/chunks/04-create-config-group-entry.js")
 
     section = _section(source, "title: '输出格式与训练范围'", "title: '方法内部与实验架构'")
-    create_group = _section(source, "function createGroup", "function createOpenStageResolutionDialogButton")
 
     assert "className: 'config-group-output-scope'" in section
-    assert "header.appendChild(createOpenStageResolutionDialogButton());" not in create_group
-    assert 'id="stage-resolution-dialog"' not in html
-    assert 'class="preview-dialog stage-resolution-dialog"' not in html
-    assert "stage-resolution-dialog-body" not in html
-    assert "btn-open-stage-resolution-dialog" not in _section(source, "function installBeginnerTooltips", "// ── 工具函数 ──")
+    assert "header.appendChild(createOpenStageResolutionDialogButton());" not in group_entry
+    assert "createOpenStageResolutionDialogButton" not in group_entry
+    assert 'id="stage-resolution-dialog"' in html
+    assert "btn-dataset-open-stage-schedule" in _frontend_module_text("js/features/dataset-editor/toolbar.js")
 
 
 def test_config_form_hides_retired_and_unread_fields() -> None:
@@ -2704,12 +2704,30 @@ def test_dataset_page_toolbar_hosts_experimental_and_stage_entries() -> None:
 
 
 def test_stage_schedule_primary_entry_moves_to_dataset_page() -> None:
-    """分阶段主入口迁到数据集页后，配置分组不再要求 createOpenStageResolutionDialogButton。"""
+    """分阶段主入口迁到数据集页后，配置分组只读摘要，不再挂 createOpenStageResolutionDialogButton。"""
     group_entry = _frontend_module_text("js/features/anima-app/chunks/04-create-config-group-entry.js")
-    # Task3/5 完成后改为：
-    # assert "createOpenStageResolutionDialogButton" not in group_entry
-    # assert "createStageScheduleInlineSummary" in group_entry
-    assert "createStageScheduleInlineSummary" in group_entry or "createOpenStageResolutionDialogButton" in group_entry
+    toolbar = _frontend_module_text("js/features/dataset-editor/toolbar.js")
+    stage_ui = _frontend_module_text("js/features/config-form/stage-resolution.js")
+
+    assert "createOpenStageResolutionDialogButton" not in group_entry
+    assert "createStageScheduleInlineSummary" in group_entry
+    assert "btn-dataset-open-stage-schedule" in toolbar
+    assert "Always re-sync from draft || currentConfig" in stage_ui
+    assert "key === 'stage_schedule' || key === 'stage_schedule_enabled'" in _frontend_module_text(
+        "js/features/config-form/index.js"
+    )
+
+
+def test_stage_schedule_dialog_is_wired_from_dataset_group() -> None:
+    """分阶段 dialog 由数据集顶栏打开，字段仍写训练配置 stage_schedule*。"""
+    html = INDEX_HTML.read_text(encoding="utf-8")
+    toolbar = _frontend_module_text("js/features/dataset-editor/toolbar.js")
+    stage_ui = _frontend_module_text("js/features/config-form/stage-resolution.js")
+    assert 'id="stage-resolution-dialog"' in html
+    assert "btn-dataset-open-stage-schedule" in toolbar
+    assert "stage_schedule_enabled" in stage_ui
+    assert "subset_index" in stage_ui
+    assert "start_pct" in stage_ui
 
 
 def test_dataset_experimental_dialog_edits_selected_subset_only() -> None:

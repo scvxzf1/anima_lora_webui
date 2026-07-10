@@ -745,12 +745,15 @@ export function createStageScheduleInlineSummary() {
     title.textContent = enabled ? '分阶段调度已启用' : '分阶段调度未启用';
     const detail = document.createElement('span');
     if (enabled && stages.length) {
-        const cover = stages.reduce((sum, stage) => {
-            const start = Math.max(0, Math.min(1, Number(stage.start_pct) || 0));
-            const end = Math.max(0, Math.min(1, Number(stage.end_pct) || 0));
-            return sum + Math.max(0, end - start);
-        }, 0);
-        detail.textContent = `${stages.length} 段 · 覆盖约 ${Math.round(cover * 1000) / 10}%${dirty ? ' · 未保存' : ''}`;
+        const options = listSubsetOptions();
+        const optionByIndex = new Map(options.map((item) => [item.index, item]));
+        const resChain = stages.map((stage) => {
+            const opt = optionByIndex.get(stage.subset_index);
+            if (opt?.resolution != null) return `${opt.resolution}px`;
+            return `S${Number(stage.subset_index) + 1}`;
+        }).join('→');
+        const subsetChain = stages.map((stage) => Number(stage.subset_index) + 1).join('→');
+        detail.textContent = `${stages.length} 段 · subset ${subsetChain} · ${resChain}${dirty ? ' · 未保存' : ''}`;
     } else {
         detail.textContent = dirty ? '草稿已修改，保存 TOML 后生效' : '按总步数百分比切换数据集子集';
     }
