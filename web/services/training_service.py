@@ -90,6 +90,18 @@ class TrainingService:
             self._current_queue_item_id: str = ""
             self._queue_launching_item_id: str = ""
             self._queue_dispatch_task: asyncio.Task | None = None
+            try:
+                from web.services.training.constants import apply_training_policy_to_facade
+                policy = apply_training_policy_to_facade()
+                # Only seed in-memory defaults when queue file did not specify values.
+                if "auto_retry" not in (self._queue or {}):
+                    self._queue_auto_retry = bool(policy.get("auto_retry", False))
+                if "max_attempts" not in (self._queue or {}):
+                    self._queue_max_attempts = int(policy.get("max_attempts") or 1)
+                if "retry_backoff_sec" not in (self._queue or {}):
+                    self._queue_retry_backoff_sec = float(policy.get("retry_backoff_sec") or 0.0)
+            except Exception:
+                pass
             self._queue_dispatch_wake_handle = None
             self._launch_lock = asyncio.Lock()
             _mark_orphaned_running_history_tasks()

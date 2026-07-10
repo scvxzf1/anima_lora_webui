@@ -248,3 +248,26 @@ def test_save_global_settings_persists_history_and_queue_roots(tmp_path, monkeyp
     assert library_env.get_training_history_root() == (tmp_path / "alt-history").resolve()
     assert library_env.get_training_queue_root() == (tmp_path / "alt-queue").resolve()
 
+
+def test_training_policy_settings_roundtrip_and_clamp(tmp_path, monkeypatch):
+    settings_file = tmp_path / "web-ui-settings.toml"
+    monkeypatch.setattr(settings_service, "SETTINGS_FILE", settings_file)
+    saved = settings_service.save_training_policy(
+        {
+            "auto_retry": True,
+            "max_attempts": 99,
+            "retry_backoff_sec": 99999,
+            "max_queue_items": 5,
+            "max_history_items": 12,
+        }
+    )
+    assert saved["ok"] is True
+    assert saved["auto_retry"] is True
+    assert saved["max_attempts"] == 10  # clamp
+    assert saved["retry_backoff_sec"] == 3600.0
+    assert saved["max_queue_items"] == 10  # floor
+    assert saved["max_history_items"] == 12
+    loaded = settings_service.get_training_policy()
+    assert loaded["auto_retry"] is True
+    assert loaded["max_attempts"] == 10
+

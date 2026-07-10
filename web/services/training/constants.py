@@ -86,3 +86,31 @@ def max_queue_items() -> int:
     from web.services import training_service as facade
 
     return int(facade.MAX_QUEUE_ITEMS)
+
+
+def max_history_items() -> int:
+    """Return history list cap (monkeypatchable via training_service)."""
+    from web.services import training_service as facade
+
+    return int(getattr(facade, "MAX_HISTORY_ITEMS", MAX_HISTORY_ITEMS))
+
+
+def apply_training_policy_to_facade(policy: dict | None = None) -> dict:
+    """Apply durable training policy defaults onto training_service facade constants."""
+    from web.services import settings_service, training_service as facade
+
+    data = policy if isinstance(policy, dict) else settings_service.get_training_policy()
+    max_queue = int(data.get("max_queue_items") or MAX_QUEUE_ITEMS)
+    max_history = int(data.get("max_history_items") or MAX_HISTORY_ITEMS)
+    monitor = float(data.get("system_monitor_interval_sec") or SYSTEM_MONITOR_INTERVAL_SECONDS)
+    facade.MAX_QUEUE_ITEMS = max(1, max_queue)
+    facade.MAX_HISTORY_ITEMS = max(1, max_history)
+    facade.SYSTEM_MONITOR_INTERVAL_SECONDS = max(0.2, monitor)
+    return {
+        "max_queue_items": facade.MAX_QUEUE_ITEMS,
+        "max_history_items": facade.MAX_HISTORY_ITEMS,
+        "system_monitor_interval_sec": facade.SYSTEM_MONITOR_INTERVAL_SECONDS,
+        "auto_retry": bool(data.get("auto_retry", False)),
+        "max_attempts": int(data.get("max_attempts") or 1),
+        "retry_backoff_sec": float(data.get("retry_backoff_sec") or 0.0),
+    }

@@ -53,6 +53,90 @@ GLOBAL_UI_KEYS = (
 )
 
 
+
+
+def get_training_policy() -> dict[str, Any]:
+    """Return durable training/queue policy defaults from web-ui-settings."""
+    raw = _load_raw_settings()
+    section = raw.get("training_policy") if isinstance(raw.get("training_policy"), dict) else {}
+    defaults = _default_training_policy()
+    out = dict(defaults)
+    for key, value in section.items():
+        if key in defaults:
+            out[key] = value
+    return {
+        "ok": True,
+        **_normalize_training_policy(out),
+        "defaults": defaults,
+    }
+
+
+def save_training_policy(data: dict[str, Any]) -> dict[str, Any]:
+    """Persist training/queue policy defaults (API-only, no frontend required)."""
+    settings_file = Path(SETTINGS_FILE)
+    raw = _load_raw_settings(settings_file)
+    current = raw.get("training_policy") if isinstance(raw.get("training_policy"), dict) else {}
+    merged = {**_default_training_policy(), **current, **(data or {})}
+    normalized = _normalize_training_policy(merged)
+    raw["training_policy"] = {
+        key: normalized[key]
+        for key in _default_training_policy()
+    }
+    settings_file.parent.mkdir(parents=True, exist_ok=True)
+    settings_file.write_text(toml.dumps(raw), encoding="utf-8")
+    return {"ok": True, **normalized}
+
+
+def _default_training_policy() -> dict[str, Any]:
+    return {
+        "auto_retry": False,
+        "max_attempts": 1,
+        "retry_backoff_sec": 0.0,
+        "max_queue_items": 200,
+        "max_history_items": 100,
+        "system_monitor_interval_sec": 2.0,
+        "progress_poll_interval_sec": 1.0,
+        "stop_grace_sec": 3.0,
+    }
+
+
+def _normalize_training_policy(data: dict[str, Any]) -> dict[str, Any]:
+    defaults = _default_training_policy()
+    auto_retry = data.get("auto_retry", defaults["auto_retry"])
+    if isinstance(auto_retry, str):
+        auto_retry = auto_retry.strip().lower() in {"1", "true", "yes", "on"}
+    else:
+        auto_retry = bool(auto_retry)
+
+    def _clamp_int(value: Any, default: int, lo: int, hi: int) -> int:
+        try:
+            n = int(value)
+        except (TypeError, ValueError):
+            n = default
+        return max(lo, min(hi, n))
+
+    def _clamp_float(value: Any, default: float, lo: float, hi: float) -> float:
+        try:
+            n = float(value)
+        except (TypeError, ValueError):
+            n = default
+        return max(lo, min(hi, n))
+
+    return {
+        "auto_retry": auto_retry,
+        "max_attempts": _clamp_int(data.get("max_attempts"), defaults["max_attempts"], 1, 10),
+        "retry_backoff_sec": _clamp_float(data.get("retry_backoff_sec"), defaults["retry_backoff_sec"], 0.0, 3600.0),
+        "max_queue_items": _clamp_int(data.get("max_queue_items"), defaults["max_queue_items"], 10, 2000),
+        "max_history_items": _clamp_int(data.get("max_history_items"), defaults["max_history_items"], 10, 5000),
+        "system_monitor_interval_sec": _clamp_float(
+            data.get("system_monitor_interval_sec"), defaults["system_monitor_interval_sec"], 0.5, 30.0
+        ),
+        "progress_poll_interval_sec": _clamp_float(
+            data.get("progress_poll_interval_sec"), defaults["progress_poll_interval_sec"], 0.2, 10.0
+        ),
+        "stop_grace_sec": _clamp_float(data.get("stop_grace_sec"), defaults["stop_grace_sec"], 0.5, 60.0),
+    }
+
 def get_global_settings() -> dict[str, Any]:
     settings = _load_settings()
     defaults = _default_global_settings()
