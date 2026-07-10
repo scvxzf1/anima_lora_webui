@@ -532,9 +532,10 @@ def _preferred_image_test_weight_dirs(app: web.Application | None = None) -> lis
 
 def _search_image_test_weight_dirs(preferred_dirs: list[Path]) -> list[Path]:
     roots: list[Path] = []
-    workspace_root = ROOT.parent.parent.resolve()
     model_roots = _image_test_model_search_dirs()
-    for path in [*preferred_dirs, *model_roots, workspace_root]:
+    # Keep search bounded to preferred output dirs + configured model roots.
+    # Do not walk the broader workspace tree by default.
+    for path in [*preferred_dirs, *model_roots]:
         resolved = path.resolve()
         if any(_is_same_or_child_path(resolved, existing) for existing in roots):
             continue
@@ -543,7 +544,18 @@ def _search_image_test_weight_dirs(preferred_dirs: list[Path]) -> list[Path]:
     return roots
 
 
+def _image_test_allow_home_search() -> bool:
+    settings = _image_test_global_model_settings()
+    raw = settings.get("image_test_allow_home_search", False)
+    if isinstance(raw, bool):
+        return raw
+    return str(raw).strip().lower() in {"1", "true", "yes", "on"}
+
+
 def _fallback_image_test_weight_dirs(existing_roots: list[Path]) -> list[Path]:
+    # Home rglob is opt-in only; default remains closed for safety/perf.
+    if not _image_test_allow_home_search():
+        return []
     home_dir = Path.home().resolve()
     if any(_is_same_or_child_path(home_dir, existing) for existing in existing_roots):
         return []

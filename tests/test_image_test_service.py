@@ -459,7 +459,7 @@ def test_resolve_image_test_weight_path_accepts_bare_filename_from_global_model_
     assert resolved == external_weight.resolve()
 
 
-def test_resolve_image_test_weight_path_accepts_bare_filename_from_user_home(monkeypatch, tmp_path) -> None:
+def test_resolve_image_test_weight_path_does_not_search_home_by_default(monkeypatch, tmp_path) -> None:
     output_root = tmp_path / "output"
     output_root.mkdir(parents=True, exist_ok=True)
     home_dir = tmp_path / "user-home"
@@ -467,12 +467,64 @@ def test_resolve_image_test_weight_path_accepts_bare_filename_from_user_home(mon
     external_weight.parent.mkdir(parents=True, exist_ok=True)
     external_weight.write_bytes(b"stub")
     monkeypatch.setattr(image_test_service.settings_service, "resolve_output_root", lambda value=None: output_root)
+    monkeypatch.setattr(
+        image_test_service.settings_service,
+        "get_global_settings",
+        lambda: {},
+    )
+    monkeypatch.setenv("HOME", str(home_dir))
+    app = {"training_service": SimpleNamespace(current_output_dir="", current_sample_dir="")}
+
+    try:
+        image_test_service._resolve_image_test_weight_path("elsewhere.safetensors", app=app)
+    except FileNotFoundError as exc:
+        assert "未找到对应的 LoRA / LokR 权重文件" in str(exc)
+    else:
+        raise AssertionError("expected FileNotFoundError when home search is disabled")
+
+
+def test_resolve_image_test_weight_path_can_opt_in_home_search(monkeypatch, tmp_path) -> None:
+    output_root = tmp_path / "output"
+    output_root.mkdir(parents=True, exist_ok=True)
+    home_dir = tmp_path / "user-home"
+    external_weight = home_dir / "random" / "loras" / "elsewhere.safetensors"
+    external_weight.parent.mkdir(parents=True, exist_ok=True)
+    external_weight.write_bytes(b"stub")
+    monkeypatch.setattr(image_test_service.settings_service, "resolve_output_root", lambda value=None: output_root)
+    monkeypatch.setattr(
+        image_test_service.settings_service,
+        "get_global_settings",
+        lambda: {"image_test_allow_home_search": True},
+    )
     monkeypatch.setenv("HOME", str(home_dir))
     app = {"training_service": SimpleNamespace(current_output_dir="", current_sample_dir="")}
 
     resolved = image_test_service._resolve_image_test_weight_path("elsewhere.safetensors", app=app)
 
     assert resolved == external_weight.resolve()
+
+
+def test_resolve_image_test_weight_path_does_not_search_workspace_parent_tree(monkeypatch, tmp_path) -> None:
+    output_root = tmp_path / "project" / "output"
+    output_root.mkdir(parents=True, exist_ok=True)
+    workspace_hit = tmp_path / "sibling-project" / "mystery.safetensors"
+    workspace_hit.parent.mkdir(parents=True, exist_ok=True)
+    workspace_hit.write_bytes(b"stub")
+    monkeypatch.setattr(image_test_service, "ROOT", tmp_path / "project")
+    monkeypatch.setattr(image_test_service.settings_service, "resolve_output_root", lambda value=None: output_root)
+    monkeypatch.setattr(
+        image_test_service.settings_service,
+        "get_global_settings",
+        lambda: {},
+    )
+    app = {"training_service": SimpleNamespace(current_output_dir="", current_sample_dir="")}
+
+    try:
+        image_test_service._resolve_image_test_weight_path("mystery.safetensors", app=app)
+    except FileNotFoundError as exc:
+        assert "未找到对应的 LoRA / LokR 权重文件" in str(exc)
+    else:
+        raise AssertionError("expected FileNotFoundError when workspace parent search is disabled")
 
 
 def test_resolve_image_test_weight_path_accepts_outside_previous_allowed_dirs(monkeypatch, tmp_path) -> None:
