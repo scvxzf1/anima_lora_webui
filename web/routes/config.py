@@ -136,7 +136,7 @@ async def handle_merged(request: web.Request) -> web.Response:
         )
         return web.json_response(config)
     except Exception as e:
-        return web.json_response({"error": str(e)}, status=400)
+        return web.json_response({"ok": False, "error": str(e)}, status=400)
 
 
 async def handle_steps(request: web.Request) -> web.Response:
@@ -390,7 +390,7 @@ async def handle_output_run_save_as(request: web.Request) -> web.Response:
 async def handle_raw_get(request: web.Request) -> web.Response:
     file_path = request.query.get("file", "")
     if not file_path:
-        return web.json_response({"error": "缺少 file 参数"}, status=400)
+        return web.json_response({"ok": False, "error": "缺少 file 参数"}, status=400)
     content = load_raw_file(file_path)
     return web.json_response({"file": file_path, "content": content, "meta": get_config_file_meta(file_path)})
 
@@ -400,7 +400,7 @@ async def handle_raw_put(request: web.Request) -> web.Response:
     file_path = data.get("file", "")
     content = data.get("content", "")
     if not file_path:
-        return web.json_response({"error": "缺少 file 参数"}, status=400)
+        return web.json_response({"ok": False, "error": "缺少 file 参数"}, status=400)
     ok, msg = save_raw_file(file_path, content)
     if ok:
         return web.json_response({"ok": True, "message": msg})
@@ -413,7 +413,7 @@ async def handle_raw_patch(request: web.Request) -> web.Response:
     values = data.get("values", {})
     content = data.get("content")
     if not file_path:
-        return web.json_response({"error": "缺少 file 参数"}, status=400)
+        return web.json_response({"ok": False, "error": "缺少 file 参数"}, status=400)
     ok, msg, next_content, changed = patch_raw_file_values(file_path, values, content=content)
     if ok:
         return web.json_response({
@@ -432,7 +432,7 @@ async def handle_raw_patch_preview(request: web.Request) -> web.Response:
     values = data.get("values", {})
     content = data.get("content")
     if not file_path:
-        return web.json_response({"error": "缺少 file 参数"}, status=400)
+        return web.json_response({"ok": False, "error": "缺少 file 参数"}, status=400)
     ok, msg, next_content, changed = preview_raw_file_patch(file_path, values, content=content)
     if ok:
         return web.json_response({
@@ -467,7 +467,7 @@ async def handle_raw_save_as(request: web.Request) -> web.Response:
     file_path = data.get("file", "")
     content = data.get("content", "")
     if not file_path:
-        return web.json_response({"error": "缺少 file 参数"}, status=400)
+        return web.json_response({"ok": False, "error": "缺少 file 参数"}, status=400)
     ok, msg = save_raw_file(file_path, content, overwrite=False)
     if ok:
         return web.json_response({"ok": True, "file": file_path, "message": msg})
@@ -502,7 +502,7 @@ async def handle_config_lock(request: web.Request) -> web.Response:
     file_path = data.get("file", "")
     locked = bool(data.get("locked", False))
     if not file_path:
-        return web.json_response({"error": "缺少 file 参数"}, status=400)
+        return web.json_response({"ok": False, "error": "缺少 file 参数"}, status=400)
     ok, msg, meta = set_user_file_lock(file_path, locked)
     if ok:
         return web.json_response({"ok": True, "file": file_path, "locked": locked, "message": msg, "meta": meta})
@@ -514,7 +514,7 @@ async def handle_config_group_lock(request: web.Request) -> web.Response:
     group_id = data.get("group", "")
     locked = bool(data.get("locked", False))
     if not group_id:
-        return web.json_response({"error": "缺少 group 参数"}, status=400)
+        return web.json_response({"ok": False, "error": "缺少 group 参数"}, status=400)
     ok, msg, group = set_user_group_lock(group_id, locked)
     if ok:
         return web.json_response({"ok": True, "group": group_id, "locked": locked, "message": msg, "meta": group})

@@ -306,6 +306,7 @@ def test_http_config_merged_error_envelope(monkeypatch):
     )
     assert response.status == 400
     payload = _json_payload(response)
+    assert payload.get("ok") is False
     assert "error" in payload
     assert "missing" in payload["error"]
 

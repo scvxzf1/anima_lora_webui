@@ -120,7 +120,7 @@ def _display_path(path: Path) -> str:
 __all__ = ['list_methods', 'list_variants', 'list_all_variants', 'list_presets', 'load_merged_config', 'suggest_data_dirs', 'suggest_dataset_dirs', 'apply_auto_data_dirs']
 
 def list_methods() -> list[str]:
-    """Discover method families from method/gui-method catalogs with stable fallback."""
+    """Discover method families from configs/methods; known only orders names."""
     known = [
         "lora", "lokr", "ortholora", "tlora", "hydralora",
         "reft", "chimera", "soft_tokens", "ip_adapter", "easycontrol",
@@ -136,9 +136,8 @@ def list_methods() -> list[str]:
                     found.append(name)
     except OSError:
         pass
-    # Preserve known order first, then any extra discovered methods.
-    ordered = [name for name in known if name in found or True]
-    # Keep known always for UI stability even if file missing (compat).
+    # known only orders; missing files must not appear as ghosts.
+    ordered = [name for name in known if name in found]
     extras = [name for name in found if name not in known]
     return ordered + extras
 
