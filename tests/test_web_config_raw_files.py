@@ -763,3 +763,25 @@ def test_patch_raw_file_warns_unknown_key_but_still_saves(tmp_path: Path, monkey
     assert "custom_user_flag" in changed
     assert "custom_user_flag" in content
 
+
+def test_raw_patch_roundtrips_stage_schedule_array(tmp_path: Path, monkeypatch):
+    configs, _dataset_path = _write_minimal_config_tree(tmp_path)
+    _patch_config_service_paths(monkeypatch, tmp_path)
+    train_rel = "configs/imported/lora.toml"
+    stages = [
+        {"name": "a", "subset_index": 0, "start_pct": 0.0, "end_pct": 0.5},
+        {"name": "b", "subset_index": 1, "start_pct": 0.5, "end_pct": 1.0},
+    ]
+    ok, msg, content, changed = config_service.patch_raw_file_values(
+        train_rel,
+        {
+            "stage_schedule_enabled": True,
+            "stage_schedule": stages,
+        },
+    )
+    assert ok is True, msg
+    assert "stage_schedule" in changed
+    loaded = config_service.load_raw_file(train_rel)
+    assert "stage_schedule" in loaded
+    assert "stage_schedule_enabled = true" in loaded.lower() or "stage_schedule_enabled = true" in loaded
+

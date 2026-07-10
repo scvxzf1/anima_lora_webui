@@ -227,3 +227,21 @@ def test_partial_snapshot_blocks_later_stage_recovery():
     assert set(ds._all_image_data) == {"a1", "a2"}
     assert apply_active_subsets_to_dataset(ds, {1}) is False
     assert set(ds.image_data) == {"a1", "a2"}
+
+
+def test_validate_five_stage_equal_split():
+    stages = [
+        {
+            "name": f"s{i}",
+            "subset_index": 0,
+            "start_pct": i / 5,
+            "end_pct": (i + 1) / 5,
+        }
+        for i in range(5)
+    ]
+    specs = parse_stage_specs(normalize_stage_dicts(stages))
+    assert validate_stage_specs(specs, subset_count=1) == []
+    assert resolve_stage_index(specs, 0.0) == 0
+    assert resolve_stage_index(specs, 0.2) == 1
+    assert resolve_stage_index(specs, 0.99) == 4
+
