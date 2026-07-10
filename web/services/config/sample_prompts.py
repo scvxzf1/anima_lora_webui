@@ -51,45 +51,19 @@ _SYNC_NAMES = (
     "LOGGER",
 )
 
-_LEGACY_STATE_NAMES = (
-    "ROOT",
-    "CONFIGS_DIR",
-    "GUI_METHODS_DIR",
-    "IMPORTED_CONFIGS_DIR",
-    "PRESETS_FILE",
-    "WEB_FILE_GROUPS_FILE",
-    "WEB_USER_LOCKS_FILE",
-    "DEFAULT_SAMPLE_PROMPTS_FILE",
-    "DATASET_PRESETS_DIR",
-    "resolve_output_root",
-    "_display_settings_path",
-    "LOGGER",
-)
-
-_LEGACY_HELPER_NAMES = (
-    "_safe_resolve",
-    "_normalize_config_rel_path",
-)
-
 
 def _sync_from_facade() -> None:
     from web.services import config_service as _facade
 
+    if hasattr(_facade, "_sync_legacy_from_facade"):
+        _facade._sync_legacy_from_facade()
     _exported_names = set(globals().get("__all__", ()))
-    _legacy_module = getattr(_facade, "_legacy", None)
     for _name in _SYNC_NAMES:
         if not hasattr(_facade, _name):
             continue
         _value = getattr(_facade, _name)
         if _name not in _exported_names:
             globals()[_name] = _value
-        if _legacy_module is not None and _name in _LEGACY_STATE_NAMES:
-            setattr(_legacy_module, _name, _value)
-    for _name in _LEGACY_HELPER_NAMES:
-        if _legacy_module is not None and hasattr(_legacy_module, _name):
-            globals()[_name] = getattr(_legacy_module, _name)
-        elif hasattr(_facade, _name):
-            globals()[_name] = getattr(_facade, _name)
 
 
 def _exported(fn):

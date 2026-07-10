@@ -64,38 +64,16 @@ _SYNC_NAMES = (
     "LOGGER",
 )
 
-_LEGACY_RAW_FILE_SHIM_NAMES = {
-    "save_raw_file",
-    "load_raw_file",
-    "delete_raw_file",
-    "patch_raw_file_values",
-    "preview_raw_file_patch",
-}
-_LEGACY_FILE_GROUP_SHIM_NAMES = {
-    "get_config_file_meta",
-    "list_config_file_groups",
-    "move_config_file_to_group",
-}
-_LEGACY_SYNC_NAMES = tuple(
-    _name for _name in _SYNC_NAMES
-    if _name not in _LEGACY_RAW_FILE_SHIM_NAMES
-    and _name not in _LEGACY_FILE_GROUP_SHIM_NAMES
-)
-
-
 def _sync_from_facade() -> None:
     from web.services import config_service as _facade
 
     _exported_names = set(globals().get("__all__", ()))
-    _legacy_module = getattr(_facade, "_legacy", None)
     for _name in _SYNC_NAMES:
         if not hasattr(_facade, _name):
             continue
         _value = getattr(_facade, _name)
         if _name not in _exported_names:
             globals()[_name] = _value
-        if _legacy_module is not None and _name in _LEGACY_SYNC_NAMES:
-            setattr(_legacy_module, _name, _value)
 
 
 def _exported(fn):

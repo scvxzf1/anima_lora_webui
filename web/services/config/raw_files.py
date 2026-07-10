@@ -11,76 +11,54 @@ from functools import wraps
 from pathlib import Path
 from typing import Any
 
+from library.env import get_configs_root, load_dotenv
+from web.services.config import file_groups as _file_groups
 from web.services.config import paths as _config_paths
-from web.services.config.file_groups import (
-    _load_user_locks,
-    _lock_reason_message,
-    _safe_resolve,
-    _save_user_locks,
-    get_config_file_meta,
-)
 
 _DELETE_TOML_KEY = object()
+
+ROOT = Path(__file__).resolve().parents[3]
+CONFIGS_DIR = get_configs_root()
+GUI_METHODS_DIR = CONFIGS_DIR / "gui-methods"
+IMPORTED_CONFIGS_DIR = CONFIGS_DIR / "imported"
+PRESETS_FILE = CONFIGS_DIR / "presets.toml"
+WEB_FILE_GROUPS_FILE = CONFIGS_DIR / "web-file-groups.toml"
+WEB_USER_LOCKS_FILE = CONFIGS_DIR / "web-user-locks.toml"
+DATASET_PRESETS_DIR = CONFIGS_DIR / "datasets"
+
+load_dotenv()
 
 _SYNC_NAMES = (
     "ROOT",
     "CONFIGS_DIR",
-    "GUI_METHODS_DIR",
-    "IMPORTED_CONFIGS_DIR",
-    "PRESETS_FILE",
     "WEB_FILE_GROUPS_FILE",
     "WEB_USER_LOCKS_FILE",
-    "DATASET_PRESETS_DIR",
-    "resolve_output_root",
-    "_display_settings_path",
-    "save_raw_file",
-    "load_raw_file",
-    "delete_raw_file",
-    "patch_raw_file_values",
-    "preview_raw_file_patch",
-    "get_config_file_meta",
-    "list_config_file_groups",
-    "move_config_file_to_group",
-    "_inspect_network_weight",
-    "LOGGER",
 )
 
-_LEGACY_HELPER_NAMES = (
-    "_safe_resolve",
-    "_normalize_config_rel_path",
-    "_load_user_locks",
-    "_save_user_locks",
-    "_lock_reason_message",
-)
-_LEGACY_FILE_GROUP_SHIM_NAMES = {
+_LOCAL_HELPER_NAMES = {
     "get_config_file_meta",
-    "list_config_file_groups",
-    "move_config_file_to_group",
 }
+
+_FILE_GROUP_SYNC_NAMES = (
+    "ROOT",
+    "CONFIGS_DIR",
+    "WEB_FILE_GROUPS_FILE",
+    "WEB_USER_LOCKS_FILE",
+)
 
 
 def _sync_from_facade() -> None:
     from web.services import config_service as _facade
 
+    if hasattr(_facade, "_sync_legacy_from_facade"):
+        _facade._sync_legacy_from_facade()
     _exported_names = set(globals().get("__all__", ()))
-    _legacy_module = getattr(_facade, "_legacy", None)
     for _name in _SYNC_NAMES:
         if not hasattr(_facade, _name):
             continue
         _value = getattr(_facade, _name)
-        if _name not in _exported_names:
+        if _name not in _exported_names and _name not in _LOCAL_HELPER_NAMES:
             globals()[_name] = _value
-        if (
-            _legacy_module is not None
-            and _name not in _exported_names
-            and _name not in _LEGACY_FILE_GROUP_SHIM_NAMES
-        ):
-            setattr(_legacy_module, _name, _value)
-    for _name in _LEGACY_HELPER_NAMES:
-        if _legacy_module is not None and hasattr(_legacy_module, _name):
-            globals()[_name] = getattr(_legacy_module, _name)
-        elif hasattr(_facade, _name):
-            globals()[_name] = getattr(_facade, _name)
 
 
 def _exported(fn):
@@ -112,6 +90,54 @@ def _metadata_value(name: str):
 
 def _normalize_config_rel_path(rel_path: str) -> str:
     return _config_paths.normalize_config_rel_path(rel_path)
+
+
+def _safe_resolve(rel_path: str) -> Path | None:
+    return _config_paths.safe_resolve(rel_path, root=ROOT, configs_dir=CONFIGS_DIR)
+
+
+def _sync_file_groups_from_local() -> None:
+    for _name in _FILE_GROUP_SYNC_NAMES:
+        if _name in globals():
+            setattr(_file_groups, _name, globals()[_name])
+
+
+def _call_file_groups_impl(name: str, *args, **kwargs):
+    _sync_file_groups_from_local()
+    exported = getattr(_file_groups, name)
+    impl = getattr(exported, "__wrapped__", exported)
+    return impl(*args, **kwargs)
+
+
+def get_config_file_meta(
+    rel_path: str,
+    group_id: str | None = None,
+    group_label: str | None = None,
+    locked: bool | None = None,
+    trainable: bool | None = None,
+    methods_subdir: str | None = None,
+) -> dict[str, Any]:
+    return _call_file_groups_impl(
+        "get_config_file_meta",
+        rel_path,
+        group_id,
+        group_label,
+        locked,
+        trainable,
+        methods_subdir,
+    )
+
+
+def _load_user_locks() -> tuple[set[str], set[str]]:
+    return _call_file_groups_impl("_load_user_locks")
+
+
+def _save_user_locks(file_locks: set[str], group_locks: set[str]) -> None:
+    return _call_file_groups_impl("_save_user_locks", file_locks, group_locks)
+
+
+def _lock_reason_message(meta: dict[str, Any]) -> str:
+    return _call_file_groups_impl("_lock_reason_message", meta)
 
 
 __all__ = ['load_raw_file', 'save_raw_file', 'delete_raw_file', 'patch_raw_file_values', 'preview_raw_file_patch', '_prepare_raw_file_patch', '_restore_dataset_config_after_failed_train_patch', '_patch_toml_top_level', '_normalize_patch_value', '_normalize_saved_raw_config_content', '_normalize_saved_raw_config_content_with_changed_keys', '_is_blank_output_name']
@@ -362,5 +388,16 @@ def _normalize_saved_raw_config_content_with_changed_keys(content: str) -> tuple
 
 
 
+_SYNC_WRAPPED_EXPORTS = {
+    "load_raw_file",
+    "save_raw_file",
+    "delete_raw_file",
+    "patch_raw_file_values",
+    "preview_raw_file_patch",
+    "_prepare_raw_file_patch",
+}
+
+
 for _name in __all__:
-    globals()[_name] = _exported(globals()[_name])
+    if _name in _SYNC_WRAPPED_EXPORTS:
+        globals()[_name] = _exported(globals()[_name])

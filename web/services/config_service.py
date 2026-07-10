@@ -42,6 +42,21 @@ def _sync_legacy_from_facade() -> None:
             setattr(_legacy, _name, globals()[_name])
 
 
+def set_configs_root(configs_dir: str | Path) -> Path:
+    """Hot-swap the active WebUI config root for subsequent config requests."""
+    resolved = Path(configs_dir).resolve()
+    globals()["CONFIGS_DIR"] = resolved
+    globals()["GUI_METHODS_DIR"] = resolved / "gui-methods"
+    globals()["IMPORTED_CONFIGS_DIR"] = resolved / "imported"
+    globals()["PRESETS_FILE"] = resolved / "presets.toml"
+    globals()["WEB_FILE_GROUPS_FILE"] = resolved / "web-file-groups.toml"
+    globals()["WEB_USER_LOCKS_FILE"] = resolved / "web-user-locks.toml"
+    globals()["DEFAULT_SAMPLE_PROMPTS_FILE"] = str(resolved / "sample_prompts.txt")
+    globals()["DATASET_PRESETS_DIR"] = resolved / "datasets"
+    _sync_legacy_from_facade()
+    return resolved
+
+
 def _load(p):
     _sync_legacy_from_facade()
     return _legacy._load(p)
@@ -86,11 +101,18 @@ def _is_builtin_default_data_dir(value: str):
 # while implementation responsibility moves into web.services.config.* modules.
 from web.services.config.datasets import (  # noqa: E402,F401
     _build_dataset_config_doc,
+    _caption_detection_counts_text,
     _classify_nl_tag_caption_text,
+    _count_images,
+    _count_source_images,
     _dataset_config_path_from_cfg,
+    _dataset_image_files,
     _dataset_rows_for_estimate,
     _dataset_rows_from_config,
+    _nl_tag_mix_available_count,
+    _nl_tag_mix_caption_counts,
     _nl_tag_mix_caption_source,
+    _nl_tag_mix_enabled,
     _nl_tag_mix_image_files,
     _normalize_dataset_defaults,
     _normalize_dataset_rows,
