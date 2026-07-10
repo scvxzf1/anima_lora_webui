@@ -123,6 +123,38 @@ def test_config_service_set_configs_root_updates_synced_paths(tmp_path, monkeypa
     assert config_service.DATASET_PRESETS_DIR == resolved / "datasets"
 
 
+def test_set_configs_root_hot_swaps_domain_module_roots(tmp_path, monkeypatch):
+    """Hot-swapped configs root must update domain modules, not only the facade."""
+    from web.services.config import (
+        common as common_mod,
+        merge as merge_mod,
+        preflight_runtime as preflight_runtime_mod,
+        raw_files as raw_files_mod,
+        sample_prompts as sample_prompts_mod,
+    )
+
+    # Keep originals restorable so this test does not leak root changes.
+    for mod in (
+        config_service,
+        common_mod,
+        merge_mod,
+        preflight_runtime_mod,
+        raw_files_mod,
+        sample_prompts_mod,
+    ):
+        monkeypatch.setattr(mod, "CONFIGS_DIR", getattr(mod, "CONFIGS_DIR"), raising=False)
+
+    resolved = config_service.set_configs_root(tmp_path / "hot-swap-configs")
+
+    assert config_service.CONFIGS_DIR == resolved
+    assert common_mod.CONFIGS_DIR == resolved
+    assert merge_mod.CONFIGS_DIR == resolved
+    assert preflight_runtime_mod.CONFIGS_DIR == resolved
+    assert raw_files_mod.CONFIGS_DIR == resolved
+    assert sample_prompts_mod.CONFIGS_DIR == resolved
+    assert Path(sample_prompts_mod.DEFAULT_SAMPLE_PROMPTS_FILE) == resolved / "sample_prompts.txt"
+
+
 def test_global_settings_frontend_reload_after_configs_root_switch():
     source = GLOBAL_SETTINGS_JS.read_text(encoding="utf-8")
 

@@ -15,6 +15,19 @@ ROOT = Path(__file__).resolve().parents[3]
 CONFIGS_DIR = get_configs_root()
 
 
+def get_configs_dir() -> Path:
+    """Return the active WebUI configs root (hot-swap aware)."""
+    return Path(CONFIGS_DIR)
+
+
+def set_configs_dir(configs_dir: str | Path) -> Path:
+    """Update the shared configs root used by common path helpers."""
+    global CONFIGS_DIR
+    resolved = Path(configs_dir).resolve()
+    CONFIGS_DIR = resolved
+    return resolved
+
+
 def _load(p: Path) -> dict:
     if not p.exists():
         return {}

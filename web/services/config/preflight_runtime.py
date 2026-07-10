@@ -10,7 +10,7 @@ from functools import wraps
 from pathlib import Path
 from typing import Any
 
-from library.env import expand_env_vars
+from library.env import expand_env_vars, get_configs_root
 from web.services.config import paths as _config_paths
 
 
@@ -19,7 +19,7 @@ def _missing_facade_dependency(*args, **kwargs):
 
 
 ROOT = Path(__file__).resolve().parents[3]
-CONFIGS_DIR = ROOT / "configs"
+CONFIGS_DIR = get_configs_root()
 
 
 def _safe_resolve(rel_path: str) -> Path | None:
