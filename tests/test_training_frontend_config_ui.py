@@ -2485,8 +2485,9 @@ def test_dataset_json_caption_switch_ui_is_wired() -> None:
     assert "createDatasetEditorItem(row, index)" in source
     assert "dataset-editor-item" in item_factory
     assert "createDatasetEditorRow(row, index, item)" in item_factory
-    assert "createDatasetExperimentalFeaturesEditor(row, index)" in item_factory
-    assert "createDatasetExperimentalFeaturesEditor(row, index)" not in row_factory
+    # 实验性编辑迁入弹窗后，主列表 item 不再内嵌折叠区
+    assert "createDatasetExperimentalFeaturesEditor(row, index)" not in item_factory
+    assert "createDatasetExperimentalFeaturesEditor(row, index)" in _frontend_module_text("js/features/dataset-editor/experimental-dialog.js")
     assert "createDatasetRowCaptionSourceModeEditor(settings, index)" in row_factory
     assert "createDatasetNlTagMixEditor(row, index)" in row_factory
     assert "实验性/高级/旧功能" in experimental_factory
@@ -2709,3 +2710,18 @@ def test_stage_schedule_primary_entry_moves_to_dataset_page() -> None:
     # assert "createOpenStageResolutionDialogButton" not in group_entry
     # assert "createStageScheduleInlineSummary" in group_entry
     assert "createStageScheduleInlineSummary" in group_entry or "createOpenStageResolutionDialogButton" in group_entry
+
+
+def test_dataset_experimental_dialog_edits_selected_subset_only() -> None:
+    """实验性控件进入弹窗，只编辑当前选中子集；主列表不再内嵌折叠区。"""
+    html = INDEX_HTML.read_text(encoding="utf-8")
+    dialog = _frontend_module_text("js/features/dataset-editor/experimental-dialog.js")
+    row = _frontend_module_text("js/features/dataset-editor/row.js")
+    item = _frontend_module_text("js/features/anima-app/chunks/10-create-dataset-config-input.js")
+
+    assert 'id="dataset-experimental-dialog"' in html
+    assert "openDatasetExperimentalDialog" in dialog
+    assert "selectedDatasetIndex" in row
+    assert "createDatasetExperimentalFeaturesEditor(row, index)" in dialog
+    # 主列表不再默认拼接卡内实验性折叠
+    assert "createDatasetExperimentalFeaturesEditor(row, index)" not in item

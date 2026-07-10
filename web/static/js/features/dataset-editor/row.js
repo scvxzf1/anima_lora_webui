@@ -40,6 +40,13 @@ function currentDatasetPresetState() {
 	        const wrap = document.createElement('div');
 	        wrap.className = 'dataset-editor-row';
 	        wrap.dataset.index = String(index);
+	        wrap.classList.toggle('is-selected', index === datasetState.selectedDatasetIndex);
+	        wrap.addEventListener('click', (event) => {
+	            if (event.target.closest('button, input, select, textarea, a, label, summary, .dataset-editor-drag-handle')) return;
+	            if (datasetState.selectedDatasetIndex === index) return;
+	            datasetState.selectedDatasetIndex = index;
+	            renderDatasetEditor();
+	        });
 	        const head = document.createElement('div');
 	        head.className = 'dataset-row-head';
         const titleBox = document.createElement('div');
