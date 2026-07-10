@@ -62,6 +62,23 @@ def test_resolve_stage_index_boundaries():
     assert resolve_stage_index(specs, 1.0) == 1
 
 
+def test_validate_five_stage_cover_and_resolve():
+    specs = parse_stage_specs(
+        [
+            {"subset_index": 0, "start_pct": 0.0, "end_pct": 0.2},
+            {"subset_index": 1, "start_pct": 0.2, "end_pct": 0.4},
+            {"subset_index": 0, "start_pct": 0.4, "end_pct": 0.6},
+            {"subset_index": 2, "start_pct": 0.6, "end_pct": 0.8},
+            {"subset_index": 1, "start_pct": 0.8, "end_pct": 1.0},
+        ]
+    )
+    assert validate_stage_specs(specs, subset_count=3) == []
+    assert resolve_stage_index(specs, 0.0) == 0
+    assert resolve_stage_index(specs, 0.2) == 1
+    assert resolve_stage_index(specs, 0.599) == 2
+    assert resolve_stage_index(specs, 1.0) == 4
+
+
 def test_active_subset_for_step():
     args = SimpleNamespace(
         stage_schedule_enabled=True,

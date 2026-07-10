@@ -2730,6 +2730,17 @@ def test_stage_schedule_dialog_is_wired_from_dataset_group() -> None:
     assert "start_pct" in stage_ui
 
 
+def test_stage_schedule_ui_is_variable_n_not_hardcoded_three() -> None:
+    """前端阶段模板支持可变 N，软上限 12，默认不是写死三段。"""
+    stage_ui = _frontend_module_text("js/features/config-form/stage-resolution.js")
+    assert "applyStageTemplate(2)" in stage_ui
+    assert "Math.min(12" in stage_ui or "Math.min(12," in stage_ui
+    assert "defaultStageScheduleStages" in stage_ui
+    assert "阶段3" not in stage_ui.split("defaultStageScheduleStages")[1].split("export function")[0]
+    assert "均分当前段" in stage_ui
+    assert "applyStageTemplate(Math.max(1, stageResolutionState.stages.length || 2))" in stage_ui
+
+
 def test_dataset_experimental_dialog_edits_selected_subset_only() -> None:
     """实验性控件进入弹窗，只编辑当前选中子集；主列表不再内嵌折叠区。"""
     html = INDEX_HTML.read_text(encoding="utf-8")

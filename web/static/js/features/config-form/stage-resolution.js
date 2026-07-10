@@ -275,7 +275,14 @@ export function createStageResolutionChartPanel() {
     threeBtn.className = 'btn btn-small';
     threeBtn.textContent = '三段模板';
     threeBtn.addEventListener('click', () => applyStageTemplate(3));
-    actions.append(twoBtn, threeBtn, addBtn);
+    const equalBtn = document.createElement('button');
+    equalBtn.type = 'button';
+    equalBtn.className = 'btn btn-small';
+    equalBtn.textContent = '均分当前段';
+    equalBtn.addEventListener('click', () => {
+        applyStageTemplate(Math.max(1, stageResolutionState.stages.length || 2));
+    });
+    actions.append(twoBtn, threeBtn, equalBtn, addBtn);
     header.append(title, actions);
     const canvas = document.createElement('canvas');
     canvas.id = 'stage-resolution-chart';
