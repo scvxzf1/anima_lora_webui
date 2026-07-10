@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from aiohttp import web
 
+from web.services import config_service, settings_service, training_service
 from web.services.settings_service import get_global_settings, save_global_settings
 
 
@@ -19,6 +20,10 @@ async def handle_global_settings_get(request: web.Request) -> web.Response:
 async def handle_global_settings_put(request: web.Request) -> web.Response:
     data = await request.json()
     try:
-        return web.json_response(save_global_settings(data))
+        payload = save_global_settings(data)
+        if "configs_root" in data:
+            config_service.set_configs_root(settings_service.SETTINGS_FILE.parent)
+            training_service.reload_runtime_storage_state(request.app.get("training_service"))
+        return web.json_response(payload)
     except ValueError as e:
         return web.json_response({"ok": False, "error": str(e)}, status=400)

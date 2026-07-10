@@ -8,10 +8,17 @@ from typing import Any
 import toml
 
 from library.env import get_configs_root
+from web.services._dynamic_path import DynamicPath
 
 ROOT = Path(__file__).resolve().parents[2]
-CONFIGS_DIR = get_configs_root()
-SETTINGS_FILE = CONFIGS_DIR / "web-ui-settings.toml"
+
+
+def _default_settings_file() -> Path:
+    return get_configs_root() / "web-ui-settings.toml"
+
+
+SETTINGS_FILE = DynamicPath(_default_settings_file)
+CONFIGS_DIR = DynamicPath(lambda: SETTINGS_FILE.parent)
 
 DEFAULT_OUTPUT_ROOT = "output/runs"
 DEFAULT_UI_SCALE = 100
@@ -55,15 +62,23 @@ def get_global_settings() -> dict[str, Any]:
 
 
 def save_global_settings(data: dict[str, Any]) -> dict[str, Any]:
-    current = _load_settings()
+    current_settings_file = Path(SETTINGS_FILE)
+    current = _load_settings(current_settings_file)
     output_root = _normalize_output_root(
         str(data.get("output_root", current["output_root"]) or DEFAULT_OUTPUT_ROOT),
         allow_empty=False,
     )
-    raw = _load_raw_settings()
-    section = raw.get("global") if isinstance(raw.get("global"), dict) else {}
-    defaults = _default_global_settings()
-    next_global = {**section, "output_root": output_root}
+    current_raw = _load_raw_settings(current_settings_file)
+    current_section = current_raw.get("global") if isinstance(current_raw.get("global"), dict) else {}
+    target_settings_file = _settings_file_for_payload(data, current_settings_file)
+    target_raw = _load_raw_settings(target_settings_file)
+    target_section = target_raw.get("global") if isinstance(target_raw.get("global"), dict) else {}
+    defaults = _default_global_settings(settings_file=target_settings_file)
+    next_global = {
+        **target_section,
+        **current_section,
+        "output_root": output_root,
+    }
     for key in GLOBAL_MODEL_PATH_KEYS:
         if key in data:
             value = _normalize_global_model_path(data.get(key))
@@ -73,7 +88,7 @@ def save_global_settings(data: dict[str, Any]) -> dict[str, Any]:
     for key in GLOBAL_CONFIG_PATH_KEYS:
         if key in data:
             value = _normalize_config_path(data.get(key))
-            next_global[key] = value or current.get(key) or defaults.get(key, "")
+            next_global[key] = value or defaults.get(key, "")
         elif key not in next_global:
             next_global[key] = current.get(key, "") or defaults.get(key, "")
     if "ui_scale" in data:
@@ -89,22 +104,27 @@ def save_global_settings(data: dict[str, Any]) -> dict[str, Any]:
             next_global.pop(key, None)
         else:
             next_global[key] = value
+    raw = {
+        **current_raw,
+        **target_raw,
+    }
     raw["global"] = {
         **next_global,
     }
-    SETTINGS_FILE.parent.mkdir(parents=True, exist_ok=True)
-    SETTINGS_FILE.write_text(toml.dumps(raw), encoding="utf-8")
+    target_settings_file.parent.mkdir(parents=True, exist_ok=True)
+    target_settings_file.write_text(toml.dumps(raw), encoding="utf-8")
 
     # 如果设置了 configs_root，同时保存到项目根目录的专用配置文件
     if "configs_root" in data:
         _save_configs_root_override(data["configs_root"])
 
-    saved = _load_settings()
+    saved = _load_settings(target_settings_file)
     return {
         "ok": True,
         "message": "全局设置已保存",
+        "requires_reload": current_settings_file.resolve() != target_settings_file.resolve(),
         **saved,
-        "defaults": _default_global_settings(),
+        "defaults": _default_global_settings(settings_file=target_settings_file),
     }
 
 
@@ -120,9 +140,10 @@ def display_path(path: Path) -> str:
         return str(path.resolve())
 
 
-def _load_settings() -> dict[str, Any]:
-    defaults = _default_global_settings()
-    raw = _load_raw_settings()
+def _load_settings(settings_file: Path | None = None) -> dict[str, Any]:
+    settings_file = settings_file or Path(SETTINGS_FILE)
+    defaults = _default_global_settings(settings_file=settings_file)
+    raw = _load_raw_settings(settings_file)
     section = raw.get("global", {}) if isinstance(raw, dict) else {}
     if not isinstance(section, dict):
         return defaults
@@ -146,7 +167,7 @@ def _load_settings() -> dict[str, Any]:
             settings[key] = value if value is not None else defaults.get(key)
 
     # 显示当前实际使用的配置根目录（包括环境变量）
-    actual_configs_root = CONFIGS_DIR
+    actual_configs_root = settings_file.parent.resolve()
     try:
         settings["configs_root"] = actual_configs_root.relative_to(ROOT).as_posix()
     except ValueError:
@@ -155,29 +176,31 @@ def _load_settings() -> dict[str, Any]:
     return settings
 
 
-def _load_raw_settings() -> dict[str, Any]:
-    if not SETTINGS_FILE.exists():
+def _load_raw_settings(settings_file: Path | None = None) -> dict[str, Any]:
+    settings_file = settings_file or Path(SETTINGS_FILE)
+    if not settings_file.exists():
         return {}
     try:
-        raw = toml.loads(SETTINGS_FILE.read_text(encoding="utf-8"))
+        raw = toml.loads(settings_file.read_text(encoding="utf-8"))
     except toml.TomlDecodeError:
         return {}
     return raw if isinstance(raw, dict) else {}
 
 
-def _default_global_settings() -> dict[str, Any]:
+def _default_global_settings(*, settings_file: Path | None = None) -> dict[str, Any]:
     return {
         "output_root": DEFAULT_OUTPUT_ROOT,
         "configs_root": "configs",
         "ui_scale": DEFAULT_UI_SCALE,
         **{key: DEFAULT_UI_SCALE_OVERRIDE for key in GLOBAL_UI_OVERRIDE_KEYS},
-        **_load_base_model_path_defaults(),
+        **_load_base_model_path_defaults(settings_file=settings_file),
     }
 
 
-def _load_base_model_path_defaults() -> dict[str, str]:
+def _load_base_model_path_defaults(*, settings_file: Path | None = None) -> dict[str, str]:
     defaults = {key: "" for key in GLOBAL_MODEL_PATH_KEYS}
-    base_file = SETTINGS_FILE.parent / "base.toml"
+    settings_file = settings_file or Path(SETTINGS_FILE)
+    base_file = settings_file.parent / "base.toml"
     if not base_file.exists():
         return defaults
     try:
@@ -281,6 +304,21 @@ def resolve_config_path(key: str, value: str | None = None) -> Path:
     if path.is_absolute():
         return path.resolve()
     return (ROOT / normalized).resolve()
+
+
+def _settings_file_for_payload(data: dict[str, Any], current_settings_file: Path) -> Path:
+    if "configs_root" not in data:
+        return current_settings_file.resolve()
+    return _settings_file_for_configs_root(data.get("configs_root"))
+
+
+def _settings_file_for_configs_root(value: Any) -> Path:
+    normalized = _normalize_config_path(value)
+    if not normalized:
+        normalized = "configs"
+    path = Path(normalized)
+    configs_dir = path.resolve() if path.is_absolute() else (ROOT / normalized).resolve()
+    return configs_dir / "web-ui-settings.toml"
 
 
 def _save_configs_root_override(configs_root: str) -> None:
