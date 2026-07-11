@@ -40,6 +40,19 @@ timeout 60 .venv/bin/python -m pytest \
 
 ---
 
+## 1.1 五轮迭代冻结基线（2026-07-11）
+
+| 项 | 值 |
+|---|---|
+| 分支 | `feat/frontend-five-round-iteration` |
+| HEAD | 见迭代日志最新 Freeze 段 |
+| 估计健康分 | **78 / C+**（目标 IR5；以门禁与结构债消化为准，非正式人工全表复评） |
+| 结构 | features 19 / chunks 45 / bridges 37 / dom_ids 449 / docs/features 9 |
+| 已完成轮次 | IR1→IR5（C3/C4/T1/E1/E2/C1/C6/C5/E3/U1/E4/U2） |
+| 残留 High | 无阻塞级；preflight matrix ImportError 为既有测试债；多 bridge silent legacyRoot 未全清；C5 status 仍可能覆盖其他消息 |
+
+---
+
 ## 2. 快速审核流程（15–30 分钟）
 
 ```mermaid

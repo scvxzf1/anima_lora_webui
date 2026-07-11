@@ -367,3 +367,42 @@ history: see ir4-g3-history.txt
 - C5 仍可能覆盖其他 toml status（仅清理自身 live 文案）
 - E3 并行后 chunk 间隐式初始化竞态需实机观察
 - preflight matrix ImportError 仍在
+
+
+## IR5 实现轮结果 — 2026-07-11
+
+| 项 | 值 |
+|---|---|
+| 分支 | `feat/frontend-five-round-iteration` |
+| HEAD | `f1a3e2d1`（Freeze 提交后更新） |
+| 本轮目标 | IR5：E4 history 分片渲染、U2 docs/features、Freeze |
+| 完成任务 | E4 chunked render + size budget fix；U2 6 篇功能文档 + ui-scale 用户向；Freeze 门禁与评分基线 |
+| 测试门禁 | G0 13；G1 modules/dom/state 28；history 14；modules 19；config/dom focused 见 final 文件 |
+| 熔断? | 否（E4 曾触发 chunk>600 与 hooks 断言，当轮修复） |
+| 健康分（估） | **78 / C+** |
+| 状态 | **五轮实现路径冻结** |
+
+### 提交
+
+| Commit | 说明 |
+|---|---|
+| `23eddada` | E4：history 列表分片渲染 |
+| `2e1da16a` | U2：docs/features 对齐真实 UI |
+| `d0b4b363` | E4：chunk 27 行数预算修复 |
+| `f1a3e2d1` | E4：history hooks 测试适配搬家 |
+
+### 验收证据
+
+```text
+history suite: 14 passed
+modules: 19 passed
+G1 (modules+dom+state): 28 passed
+config/dom focused: see config-dom-final.txt
+```
+
+### 冻结未完成项
+
+- 其余 bridge 域 fail-fast 未铺开
+- C5 live 警告仍可能覆盖其他 toml status
+- preflight compat matrix ImportError（既有）
+- 完整人工健康度评分表逐格复评可另开维护轮
