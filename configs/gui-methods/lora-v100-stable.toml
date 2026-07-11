@@ -1,0 +1,59 @@
+# gui-methods/lora-v100-stable.toml — Plain LoRA for Tesla V100 16GB.
+#
+# Goal: reproduce the "won't OOM easily" feel of lora-scripts-next standard
+# Anima (Kohya path), without relying on fp16 as a magic memory saver.
+#
+# Compared with default base.toml / gui-methods/lora.toml:
+#   - mixed_precision: bf16 -> fp16          (V100 has no native bf16)
+#   - attn_mode:       flash -> torch       (SDPA; avoid hard flash dependency)
+#   - torch_compile:   true  -> false       (keep the first-run path simple)
+#   - gradient_checkpointing: on            (trade compute for activation VRAM)
+#   - blocks_to_swap:  8                    (offload block weights)
+#   - network_dim:     32 -> 16             (lighter adapter / optimizer state)
+#
+# Notes:
+#   - Default base.toml still uses mixed_precision=bf16; train startup now
+#     auto-switches bf16 -> fp16 on pre-Ampere GPUs (sm<8).
+#   - fp16 path auto-enables DiT fp32 residual guards before compile.
+#   - pre-Ampere + fp16 forces VAE to fp32 unless --half_vae is set.
+#   - Do NOT enable full_fp16. Keep trainable LoRA weights in fp32 by default.
+#   - V100 + fp16 already auto-enables lora_fp32_compute in bootstrap.
+#   - Prefer max ~1024-class resolution first; very long edges still can OOM.
+#   - If still tight: blocks_to_swap=12/16, or lower network_dim further.
+#   - If mem_efficient SDPA is unavailable and math backend materializes
+#     O(N^2) scores, fix attention backend before raising swap further.
+#
+# Suggested launch:
+#   .venv/bin/python tasks.py lora-gui GUI_PRESETS=lora-v100-stable
+#   # or print merged config:
+#   .venv/bin/python tasks.py print-config METHOD=lora-v100-stable PRESET=default methods_subdir=gui-methods
+
+network_dim = 16
+network_alpha = 16
+
+learning_rate = 2e-5
+max_train_epochs = 4
+save_every_n_epochs = 2
+checkpointing_epochs = 2
+
+use_shuffled_caption_variants = true
+cache_llm_adapter_outputs = true
+caption_dropout_rate = 0.1
+
+output_name = "anima_v100_stable"
+use_cmmd = false
+
+# --- V100 16GB stability knobs ---
+mixed_precision = "fp16"
+attn_mode = "torch"
+torch_compile = false
+gradient_checkpointing = true
+unsloth_offload_checkpointing = false
+blocks_to_swap = 8
+activation_memory_budget = 0.85
+
+[variant]
+family = "lora"
+label = "LoRA (V100 16GB stable)"
+description = "Plain LoRA aligned to lora-scripts-next stable defaults for Tesla V100 16GB: fp16, torch SDPA, checkpointing, blocks_to_swap=8, compile off."
+order = 31
