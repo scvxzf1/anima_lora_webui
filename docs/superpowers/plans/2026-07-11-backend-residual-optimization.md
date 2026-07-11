@@ -737,3 +737,15 @@ Which approach?
 | S-R1 resolve 统一 | ✅ | preview/analysis 走 resolve_allowed_file |
 | T-R4/T-R6/T-R7 | ✅ | 集成测 + 英文 checkpoint classify |
 | smoke 扩包 | ✅ | 140 passed |
+
+
+---
+
+## Round B 执行台账（部分）
+
+| 项 | 状态 | 说明 |
+|---|---|---|
+| C-R3/C-R9 structured warnings | ✅ | save/patch 返回 warnings；HTTP 带 `warnings[]` |
+| C-R2/C-R11 configs_root broadcast | ✅ | 广播覆盖 file_groups/datasets/output_runs 等 |
+| C-R6 mutation envelope | 部分 | raw mutation 已带 ok/error/warnings；list 仍裸数组（兼容） |
+| smoke | ✅ | 144 passed |
