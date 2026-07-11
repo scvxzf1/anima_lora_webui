@@ -17,6 +17,7 @@ import { getTrainingState } from '../helpers/training-state-bridge.js?v=module-b
 import { api, val } from '../helpers/runtime-bridge.js?v=module-bootstrap-20260707-93';
 import { saveAsTargetGroups } from '../helpers/toml-io-bridge.js?v=module-bootstrap-20260707-93';
 import {
+import { summarizeDirtyDiff } from '../../config-form/field-presentation.js?v=module-bootstrap-20260707-93';
     applyTomlLockState,
     applyTomlToConfig,
     armTomlSaveConfirm,
@@ -469,6 +470,9 @@ function currentTrainingSourceState() {
             }
             const changedValues = collectChangedFormValues({ persistDefaultFields: true });
             if (Object.keys(changedValues).length > 0) {
+                if (!options.skipConfirm) {
+                    setTomlStatus('pending', summarizeDirtyDiff(changedValues), { persist: true });
+                }
                 return await saveFormPatchToToml(file, changedValues);
             }
             if (datasetApplied.applied || datasetWasDirty) {

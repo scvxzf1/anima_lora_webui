@@ -2968,3 +2968,27 @@ def test_dataset_main_card_keeps_only_high_frequency_settings() -> None:
     assert "createDatasetRowSettingInput(index, key, type, settings)" in advanced_settings_factory
     assert "createDatasetAdvancedSettingsEditor(row, index)" in experimental_factory
     assert "createDatasetExperimentalFeaturesEditor(row, index)" in dialog
+
+def test_field_presentation_provenance_and_presave_dirty_summary() -> None:
+    """FieldPresentation helper + badge/pre-save dirty summary hooks must exist."""
+    presentation = _frontend_module_text("js/features/config-form/field-presentation.js")
+    field_row = _frontend_module_text("js/features/anima-app/chunks/14-lora-adapter-kind-from-config.js")
+    save_source = _frontend_module_text("js/features/anima-app/chunks/16-load-output-run-config.js")
+    css = (STATIC_DIR / "css" / "13-shared-fields.css").read_text(encoding="utf-8")
+
+    assert "export function buildFieldPresentation" in presentation
+    assert "export function fieldSourceBadgeLabel" in presentation
+    assert "export function summarizeDirtyDiff" in presentation
+    assert "source: 'config'" in presentation or "source = 'config'" in presentation
+    assert "ui_default" in presentation
+    assert "isDirty" in presentation
+
+    assert "buildFieldPresentation" in field_row
+    assert "field-source-badge" in field_row
+    assert "fieldSourceBadgeLabel" in field_row
+
+    assert "summarizeDirtyDiff" in save_source
+    assert "保存前将写入" in presentation
+    assert "setTomlStatus('pending', summarizeDirtyDiff(changedValues)" in save_source
+    assert ".field-source-badge" in css
+

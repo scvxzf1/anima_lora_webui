@@ -5,6 +5,8 @@
 import { updateChoiceGuide } from './13-update-dataset-editor-rows-setting-value.js?v=module-bootstrap-20260707-93';
 import { updateStepEstimatePanel } from './03-parse-network-arg-entry.js?v=module-bootstrap-20260707-93';
 import { valuesEqual } from '../helpers/form-values.js?v=module-bootstrap-20260707-93';
+import { buildFieldPresentation, fieldSourceBadgeLabel } from '../../config-form/field-presentation.js?v=module-bootstrap-20260707-93';
+import { FORM_UI_DEFAULTS } from '../../../config/catalog.js?v=module-bootstrap-20260707-93';
 import {
     isTruthy,
     loraAdapterFlagsForKind,
@@ -192,6 +194,23 @@ export function configureNoDatasetRegularizationModePanelUpdater(updater) {
         nameSpan.className = 'field-name';
         nameSpan.textContent = formatFieldName(key);
         nameSpan.title = `${key}，点击聚焦输入项`;
+        const presentation = buildFieldPresentation(key, {
+            currentConfig: currentConfigState(),
+            uiDefaults: FORM_UI_DEFAULTS,
+            isDirty: hasDraftValue,
+            value: displayValue,
+        });
+        const badgeLabel = fieldSourceBadgeLabel(presentation);
+        if (badgeLabel) {
+            const badge = document.createElement('span');
+            badge.className = 'field-source-badge';
+            badge.dataset.source = presentation.source;
+            badge.dataset.key = key;
+            if (presentation.isDirty) badge.classList.add('is-dirty');
+            badge.textContent = badgeLabel;
+            badge.title = `字段来源：${presentation.source}`;
+            nameSpan.appendChild(badge);
+        }
 
         const input = createFieldInput(key, displayValue, { originalValue, hasDraftValue });
         input.dataset.key = key;
