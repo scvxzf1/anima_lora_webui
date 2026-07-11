@@ -374,7 +374,7 @@ history: see ir4-g3-history.txt
 | 项 | 值 |
 |---|---|
 | 分支 | `feat/frontend-five-round-iteration` |
-| HEAD | `f1a3e2d1`（Freeze 提交后更新） |
+| HEAD | `94acf647` |
 | 本轮目标 | IR5：E4 history 分片渲染、U2 docs/features、Freeze |
 | 完成任务 | E4 chunked render + size budget fix；U2 6 篇功能文档 + ui-scale 用户向；Freeze 门禁与评分基线 |
 | 测试门禁 | G0 13；G1 modules/dom/state 28；history 14；modules 19；config/dom focused 见 final 文件 |
