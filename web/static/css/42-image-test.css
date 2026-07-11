@@ -35,7 +35,7 @@
 #tab-image-test {
     margin: -1rem -1.5rem;
     min-height: calc(100vh - 59px);
-    padding: 1.2rem 1.5rem 1.6rem;
+    padding: 0.75rem 1rem 1rem;
     background: var(--image-test-page-bg);
     color: var(--image-test-text);
 }
@@ -101,8 +101,8 @@
 #tab-image-test .image-test-panel-head strong {
     display: block;
     color: var(--image-test-muted);
-    font-size: 0.72rem;
-    font-weight: 800;
+    font-size: var(--font-size-meta);
+    font-weight: 700;
     letter-spacing: 0;
     text-transform: uppercase;
 }
@@ -117,7 +117,7 @@
 .image-test-panel-head span,
 .image-test-main-head span {
     color: var(--image-test-muted);
-    font-size: 0.7rem;
+    font-size: var(--font-size-meta);
     line-height: 1.35;
 }
 
@@ -151,8 +151,8 @@
 
 .image-test-summary-item span {
     color: var(--image-test-faint);
-    font-size: 0.58rem;
-    font-weight: 850;
+    font-size: var(--font-size-meta);
+    font-weight: 700;
     text-transform: uppercase;
     line-height: 1;
 }
@@ -160,7 +160,7 @@
 .image-test-summary-item strong {
     color: var(--image-test-text);
     font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
-    font-size: 0.68rem;
+    font-size: 0.8rem;
     line-height: 1.22;
     overflow-wrap: anywhere;
 }
@@ -1531,4 +1531,41 @@
             "slider"
             "number";
     }
+}
+
+
+/* instrument image-test workspace */
+#tab-image-test textarea,
+#tab-image-test .image-test-prompt,
+#tab-image-test .image-test-prompt-input {
+    min-height: 8.5rem;
+    font-size: var(--font-size-field);
+    line-height: 1.4;
+}
+#tab-image-test input,
+#tab-image-test select {
+    min-height: var(--control-height);
+    font-size: var(--font-size-field);
+}
+#tab-image-test label,
+#tab-image-test .field-name {
+    font-size: var(--font-size-field-label);
+}
+#tab-image-test .image-test-log,
+#tab-image-test .image-test-command,
+#tab-image-test .image-test-runtime {
+    font-size: var(--font-size-meta);
+    opacity: 0.92;
+}
+#tab-image-test .btn-primary,
+#tab-image-test #btn-start-image-test,
+#tab-image-test #btn-run-image-test {
+    min-height: var(--control-height);
+    font-weight: 750;
+}
+#tab-image-test .image-test-sidebar .btn:not(.btn-primary):not(.btn-danger) {
+    font-weight: 650;
+}
+#tab-image-test .image-test-main {
+    min-width: 0;
 }

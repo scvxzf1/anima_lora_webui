@@ -71,7 +71,7 @@
     gap: 1rem;
     align-items: start;
     min-height: calc(100vh - 59px);
-    padding: 1.15rem clamp(0.9rem, 2vw, 1.65rem) 1.65rem;
+    padding: 0.75rem clamp(0.75rem, 1.6vw, 1.1rem) 1rem;
 }
 
 .weight-analysis-topbar {
@@ -97,41 +97,41 @@
 
 .weight-analysis-hero {
     display: flex;
-    gap: 0.9rem;
+    gap: 0.55rem;
     align-items: center;
-    min-height: 86px;
-    padding: 1.05rem 1.18rem;
-    border-radius: 18px;
+    min-height: 3.5rem;
+    padding: 0.55rem 0.75rem;
+    border-radius: 8px;
     background:
-        linear-gradient(135deg, rgb(var(--analysis-accent-rgb) / 0.16), rgb(var(--analysis-violet-rgb) / 0.10)),
+        linear-gradient(135deg, rgb(var(--analysis-accent-rgb) / 0.10), rgb(var(--analysis-violet-rgb) / 0.06)),
         var(--analysis-panel-bg);
 }
 
 .weight-analysis-eyebrow {
     display: inline-flex;
-    color: var(--analysis-accent);
+    color: var(--analysis-muted);
     font-family: var(--analysis-mono);
-    font-size: 0.68rem;
-    font-weight: 800;
-    letter-spacing: 0.06em;
-    line-height: 1.3;
+    font-size: var(--font-size-meta);
+    font-weight: 700;
+    letter-spacing: 0;
+    line-height: 1.25;
     text-transform: uppercase;
 }
 
 .weight-analysis-hero .weight-analysis-eyebrow {
     flex: 0 0 auto;
     align-self: flex-start;
-    padding: 0.2rem 0.44rem;
-    border: 1px solid rgb(var(--analysis-accent-rgb) / 0.28);
-    border-radius: 999px;
-    background: rgb(var(--analysis-accent-rgb) / 0.10);
+    padding: 0.1rem 0.35rem;
+    border: 1px solid rgb(var(--analysis-accent-rgb) / 0.18);
+    border-radius: 4px;
+    background: rgb(var(--analysis-accent-rgb) / 0.06);
 }
 
 .weight-analysis-hero h2 {
-    margin: 0 0 0.34rem;
+    margin: 0 0 0.18rem;
     color: var(--analysis-text);
-    font-size: clamp(1.34rem, 2.2vw, 2rem);
-    line-height: 1.12;
+    font-size: 1.15rem;
+    line-height: 1.2;
 }
 
 .weight-analysis-hero p,
@@ -141,8 +141,8 @@
 .weight-analysis-summary-head p,
 .weight-analysis-candidate p {
     color: var(--analysis-muted);
-    font-size: 0.78rem;
-    line-height: 1.55;
+    font-size: var(--font-size-meta);
+    line-height: 1.4;
 }
 
 .weight-analysis-top-actions {
@@ -153,7 +153,7 @@
     justify-content: flex-end;
     padding: 0.78rem;
     border: 1px solid var(--analysis-border);
-    border-radius: 18px;
+    border-radius: 8px;
     background: var(--analysis-panel-bg);
     box-shadow: var(--analysis-shadow-soft);
     backdrop-filter: blur(18px);
@@ -162,15 +162,15 @@
 .weight-analysis-top-actions .btn,
 .weight-analysis-import-actions .btn,
 .weight-analysis-toggle-candidates {
-    min-height: 38px;
+    min-height: var(--control-height);
     border-color: var(--analysis-border);
-    border-radius: 999px;
+    border-radius: 5px;
     background: var(--analysis-field-bg);
     color: var(--analysis-text);
     cursor: pointer;
-    font-size: 0.78rem;
-    font-weight: 800;
-    transition: border-color 180ms ease, background 180ms ease, color 180ms ease, box-shadow 180ms ease, transform 180ms ease;
+    font-size: 0.82rem;
+    font-weight: 700;
+    transition: border-color 160ms ease, background 160ms ease, color 160ms ease, box-shadow 160ms ease;
 }
 
 .weight-analysis-top-actions .btn:hover:not(:disabled),
@@ -207,7 +207,7 @@
     display: grid;
     gap: 0.95rem;
     padding: 1rem;
-    border-radius: 18px;
+    border-radius: 8px;
 }
 
 .weight-analysis-import-head {
@@ -546,7 +546,7 @@
     flex-direction: column;
     min-height: 315px;
     padding: 0.95rem;
-    border-radius: 18px;
+    border-radius: 8px;
     box-shadow: var(--analysis-shadow-soft);
 }
 
@@ -888,7 +888,7 @@
     display: grid;
     gap: 0.8rem;
     padding: 0.95rem;
-    border-radius: 18px;
+    border-radius: 8px;
     background:
         linear-gradient(135deg, rgb(var(--analysis-violet-rgb) / 0.15), transparent 48%),
         var(--analysis-panel-bg);

@@ -203,3 +203,19 @@
 - Tests: contract 12 GREEN；history 16 passed / 1 baseline fail (`selectedHistoryCollectionKey` JS hook 断言，非 CSS)
 - Decision: continue
 
+### R4-tools (Task 8–11)
+- Goal: ΔW / 全局设置 / 环境检测 / 生图测试 对齐仪器台
+- Write set:
+  - `40-weight-analysis.css`
+  - `30-preview-settings-dialogs.css`（设置段落）
+  - `41-environment-check.css`
+  - `42-image-test.css`
+  - cache `frontend-chain-20260712-reskin-r4`
+- Changes:
+  - ΔW：hero/导入区变薄，eyebrow 降噪，按钮 control-height
+  - 设置：sidebar/header 压缩，路径控件 token 字号/高度，保存 primary 唯一强调
+  - 环境：标题与工具条变薄，摘要数字更大，错误/警告优先视觉
+  - 生图：左侧参数可读，提示词更高，日志/命令降级，主按钮强调
+- Tests: visual/dom/css-cache GREEN；modules 全量 1 baseline fail（JS module bootstrap ir9 vs ir6 不一致，非本轮 CSS）
+- Decision: continue
+

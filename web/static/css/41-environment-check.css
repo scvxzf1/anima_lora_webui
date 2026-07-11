@@ -69,7 +69,7 @@
     align-content: start;
     grid-column: 1;
     grid-row: 1;
-    padding: 1.35rem 1.65rem 1.7rem;
+    padding: 0.75rem 1rem 1rem;
     background: var(--env-page-bg);
 }
 
@@ -102,29 +102,29 @@
 #tab-environment .environment-check-eyebrow,
 #tab-environment .environment-check-card-label {
     display: block;
-    color: var(--env-accent);
-    font-size: 0.64rem;
-    font-weight: 800;
+    color: var(--env-muted);
+    font-size: var(--font-size-meta);
+    font-weight: 700;
     letter-spacing: 0;
-    line-height: 1.3;
+    line-height: 1.25;
     text-transform: uppercase;
 }
 
 #tab-environment .environment-check-title-block strong {
     display: block;
-    margin-top: 0.35rem;
-    color: var(--env-accent);
-    font-size: 2rem;
-    line-height: 1.08;
+    margin-top: 0.15rem;
+    color: var(--env-text);
+    font-size: 1.15rem;
+    line-height: 1.15;
     overflow-wrap: anywhere;
 }
 
 #tab-environment .environment-check-title-block span:not(.environment-check-breadcrumb) {
     display: block;
-    margin-top: 0.25rem;
+    margin-top: 0.15rem;
     color: var(--env-muted);
     font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-    font-size: 0.88rem;
+    font-size: var(--font-size-meta);
     overflow-wrap: anywhere;
 }
 
@@ -140,9 +140,9 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 0.75rem;
-    margin-bottom: 1rem;
-    padding: 1rem 1.25rem;
+    gap: 0.55rem;
+    margin-bottom: 0.65rem;
+    padding: 0.55rem 0.75rem;
     position: relative;
 }
 
@@ -183,14 +183,14 @@
 }
 
 #tab-environment .environment-check-actions .btn {
-    min-height: 40px;
+    min-height: var(--control-height);
     border-radius: 5px;
-    font-size: 0.88rem;
+    font-size: 0.82rem;
     font-weight: 700;
 }
 
 #tab-environment .environment-check-actions .btn-primary {
-    box-shadow: 0 8px 18px color-mix(in srgb, var(--env-accent-strong) 24%, transparent);
+    box-shadow: none;
 }
 
 #tab-environment .environment-check-platform-card {
@@ -391,7 +391,7 @@
 
 #tab-environment .environment-check-summary-stat small {
     color: var(--env-muted);
-    font-size: 0.6rem;
+    font-size: var(--font-size-meta);
 }
 
 #tab-environment .environment-check-scope {
@@ -408,7 +408,7 @@
 
 #tab-environment .environment-check-scope span {
     color: var(--env-muted);
-    font-size: 0.58rem;
+    font-size: var(--font-size-meta);
     font-weight: 800;
     text-transform: uppercase;
 }
@@ -471,4 +471,22 @@
     #tab-environment .environment-check-summary {
         grid-template-columns: 1fr;
     }
+}
+
+
+/* instrument env report hierarchy */
+#tab-environment .environment-check-summary-stat strong,
+#tab-environment .environment-check-stat strong {
+    font-size: 1.2rem;
+    font-weight: 800;
+}
+#tab-environment .environment-check-item.ok,
+#tab-environment .environment-check-card.ok {
+    opacity: 0.9;
+}
+#tab-environment .environment-check-item.error,
+#tab-environment .environment-check-item.fail,
+#tab-environment .environment-check-item.warning,
+#tab-environment .environment-check-item.warn {
+    box-shadow: inset 3px 0 0 currentColor;
 }
