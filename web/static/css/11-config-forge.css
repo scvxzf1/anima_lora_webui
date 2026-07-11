@@ -19,7 +19,7 @@
     --config-success: #86efac;
     --config-cyan: #67e8f9;
     --config-amber: #f0c36a;
-    --config-shadow: 0 16px 34px rgba(0, 0, 0, 0.18);
+    --config-shadow: 0 10px 22px rgba(0, 0, 0, 0.16);
     margin: -1rem -1.5rem;
     min-height: calc(100vh - 59px);
     background: var(--config-page-bg);
@@ -46,7 +46,7 @@
     --config-success: #16803c;
     --config-cyan: #0e7490;
     --config-amber: #b7791f;
-    --config-shadow: 0 18px 42px rgba(64, 65, 130, 0.12);
+    --config-shadow: 0 10px 22px rgba(64, 65, 130, 0.08);
 }
 
 #tab-config .config-forge-layout {
@@ -98,7 +98,7 @@
     color: var(--config-faint);
     font-size: var(--font-size-meta);
     font-weight: 650;
-    letter-spacing: 0.04em;
+    letter-spacing: 0;
     line-height: 1;
 }
 
@@ -113,7 +113,7 @@
     color: var(--config-faint);
     font-size: var(--font-size-meta);
     font-weight: 650;
-    letter-spacing: 0.04em;
+    letter-spacing: 0;
     line-height: 1.25;
     text-transform: uppercase;
 }
@@ -166,7 +166,7 @@
 
 #tab-config .config-page-summary-stat small {
     color: var(--config-muted);
-    font-size: 0.58rem;
+    font-size: var(--font-size-meta);
 }
 
 #tab-config .toml-mode-tabs {
@@ -221,7 +221,7 @@
 
 #tab-config .toml-current-file span {
     color: var(--config-muted);
-    font-size: 0.58rem;
+    font-size: var(--font-size-meta);
     font-weight: 800;
     text-transform: uppercase;
 }
@@ -244,7 +244,7 @@
     border-radius: 5px;
     background: var(--config-panel-bg);
     color: var(--config-accent);
-    font-size: 0.6rem;
+    font-size: var(--font-size-meta);
     line-height: 1;
     padding: 0.18rem 0.34rem;
 }
@@ -324,7 +324,7 @@
     min-height: 1rem;
     padding: 0 1rem 0.5rem;
     color: var(--config-muted);
-    font-size: 0.66rem;
+    font-size: var(--font-size-meta);
 }
 
 #tab-config .toml-manager,
@@ -375,7 +375,7 @@
 
 #tab-config .toml-group-title {
     color: var(--config-muted);
-    font-size: 0.62rem;
+    font-size: var(--font-size-meta);
     letter-spacing: 0;
     text-transform: uppercase;
 }
@@ -439,7 +439,7 @@
 
 #tab-config .toml-file-meta {
     color: var(--config-muted);
-    font-size: 0.6rem;
+    font-size: var(--font-size-meta);
     line-height: 1.2;
 }
 
@@ -450,7 +450,7 @@
     border-radius: 5px;
     background: var(--config-field-bg);
     color: var(--config-muted);
-    font-size: 0.6rem;
+    font-size: var(--font-size-meta);
     line-height: 1.1;
     padding: 0.1rem 0.32rem;
 }
@@ -754,7 +754,7 @@
 #tab-config .config-form-scope span {
     color: var(--config-muted);
     flex: 0 0 auto;
-    font-size: 0.58rem;
+    font-size: var(--font-size-meta);
     font-weight: 900;
     line-height: 1;
     text-transform: uppercase;
@@ -776,7 +776,7 @@
     flex: 1 1 auto;
     min-width: 0;
     color: var(--config-muted);
-    font-size: 0.62rem;
+    font-size: var(--font-size-meta);
     font-style: normal;
     line-height: 1;
     overflow: hidden;
@@ -825,7 +825,7 @@
     gap: 0.28rem 0.34rem;
     justify-content: flex-end;
     color: var(--config-muted);
-    font-size: 0.66rem;
+    font-size: var(--font-size-meta);
     white-space: nowrap;
 }
 
@@ -913,7 +913,7 @@
 
 #tab-config .config-group-count {
     color: var(--config-muted);
-    font-size: 0.6rem;
+    font-size: var(--font-size-meta);
     font-style: normal;
     font-weight: 900;
     line-height: 1;
@@ -929,7 +929,7 @@
     background: var(--config-field-bg);
     color: var(--config-muted);
     cursor: pointer;
-    font-size: 0.64rem;
+    font-size: var(--font-size-meta);
     font-weight: 800;
 }
 
@@ -1262,7 +1262,7 @@
 
 #tab-config .config-sticky-tab em {
     color: inherit;
-    font-size: 0.64rem;
+    font-size: var(--font-size-meta);
     font-weight: 600;
     opacity: 0.85;
 }

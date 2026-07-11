@@ -18,7 +18,7 @@
     --env-success: #86efac;
     --env-cyan: #67e8f9;
     --env-amber: #f0c36a;
-    --env-shadow: 0 16px 34px rgba(0, 0, 0, 0.18);
+    --env-shadow: 0 10px 22px rgba(0, 0, 0, 0.16);
     margin: -1rem -1.5rem;
     min-height: calc(100vh - 59px);
     background: var(--env-page-bg);
@@ -44,7 +44,7 @@
     --env-success: #16803c;
     --env-cyan: #0e7490;
     --env-amber: #b7791f;
-    --env-shadow: 0 18px 42px rgba(64, 65, 130, 0.12);
+    --env-shadow: 0 10px 22px rgba(64, 65, 130, 0.08);
 }
 
 #tab-environment .environment-forge-layout {
@@ -344,7 +344,7 @@
     content: "CHECKS";
     display: block;
     color: var(--env-accent);
-    font-size: 0.62rem;
+    font-size: var(--font-size-meta);
     font-weight: 900;
     letter-spacing: 0;
     line-height: 1;

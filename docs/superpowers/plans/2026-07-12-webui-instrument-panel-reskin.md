@@ -1008,3 +1008,11 @@ git commit -m "docs: close WebUI instrument panel reskin implementation"
 
 Placeholder scan: none  
 Task dependency order: Task 0 → 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 → 9 → 10 → 11 → 12 → 13 → 14
+
+## Implementation status (2026-07-12)
+
+- Branch: `feat/webui-instrument-panel-reskin`
+- R1–R5 CSS instrument reskin implemented in worktree.
+- Final CSS cache token: `frontend-chain-20260712-reskin-r5`
+- Scope kept: visual only; no DOM id / feature / config-item removal.
+- Known non-CSS baseline test failures may still appear in live/history/modules suites (JS bridges / local gui-methods).

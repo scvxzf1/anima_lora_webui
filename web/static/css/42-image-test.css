@@ -28,7 +28,7 @@
     --image-test-backdrop: rgba(8, 12, 24, 0.7);
     --image-test-danger: #ff8a80;
     --image-test-success: #86efac;
-    --image-test-shadow: 0 16px 34px rgba(0, 0, 0, 0.18);
+    --image-test-shadow: 0 10px 22px rgba(0, 0, 0, 0.16);
     --image-test-shadow-soft: 0 1px 0 rgba(255, 255, 255, 0.045), 0 18px 40px rgba(3, 7, 18, 0.2);
 }
 
@@ -70,8 +70,8 @@
     --image-test-backdrop: rgba(17, 24, 39, 0.34);
     --image-test-danger: #c91010;
     --image-test-success: #16803c;
-    --image-test-shadow: 0 18px 42px rgba(64, 65, 130, 0.12);
-    --image-test-shadow-soft: 0 1px 0 rgba(255, 255, 255, 0.72), 0 18px 42px rgba(64, 65, 130, 0.11);
+    --image-test-shadow: 0 10px 22px rgba(64, 65, 130, 0.08);
+    --image-test-shadow-soft: 0 1px 0 rgba(255, 255, 255, 0.72), 0 10px 22px rgba(64, 65, 130, 0.08);
 }
 
 .image-test-layout {
@@ -469,7 +469,7 @@
 
 .image-test-layer-group-head span {
     color: var(--image-test-faint);
-    font-size: 0.66rem;
+    font-size: var(--font-size-meta);
     font-weight: 800;
 }
 
@@ -543,7 +543,7 @@
 
 .image-test-layer-row-name span {
     color: var(--image-test-faint);
-    font-size: 0.64rem;
+    font-size: var(--font-size-meta);
     line-height: 1.25;
 }
 
@@ -893,7 +893,7 @@
 
 .image-test-run-metric span {
     color: var(--image-test-faint);
-    font-size: 0.58rem;
+    font-size: var(--font-size-meta);
     font-weight: 800;
     line-height: 1.2;
     text-transform: uppercase;
@@ -925,7 +925,7 @@
 .image-test-request-row span,
 .image-test-request-block span {
     color: var(--image-test-faint);
-    font-size: 0.62rem;
+    font-size: var(--font-size-meta);
     font-weight: 800;
     line-height: 1.2;
     text-transform: uppercase;
@@ -1173,7 +1173,7 @@
     border-radius: 999px;
     background: color-mix(in srgb, var(--image-test-success) 10%, var(--image-test-field-bg));
     color: var(--image-test-success);
-    font-size: 0.62rem;
+    font-size: var(--font-size-meta);
     font-weight: 850;
 }
 
@@ -1218,7 +1218,7 @@
 
 .image-test-history-load-more-meta {
     color: var(--image-test-faint);
-    font-size: 0.66rem;
+    font-size: var(--font-size-meta);
     font-weight: 700;
 }
 
@@ -1290,7 +1290,7 @@
 
 .image-test-history-card-time {
     color: var(--image-test-faint);
-    font-size: 0.62rem;
+    font-size: var(--font-size-meta);
 }
 
 .image-test-history-card-actions {
@@ -1399,7 +1399,7 @@
 
 #tab-image-test .preview-card-meta span {
     color: var(--image-test-muted);
-    font-size: 0.66rem;
+    font-size: var(--font-size-meta);
 }
 
 #tab-image-test .preview-card-meta .preview-card-filename {

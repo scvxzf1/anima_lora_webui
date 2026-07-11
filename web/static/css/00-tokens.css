@@ -63,7 +63,7 @@
     --status-error: var(--danger);
 
     /* Functional elevation, short and quiet */
-    --panel-shadow: 0 10px 24px rgba(2, 8, 20, 0.34);
+    --panel-shadow: 0 8px 18px rgba(2, 8, 20, 0.28);
 }
 
 :root[data-theme="light"] {

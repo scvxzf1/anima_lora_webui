@@ -219,3 +219,16 @@
 - Tests: visual/dom/css-cache GREEN；modules 全量 1 baseline fail（JS module bootstrap ir9 vs ir6 不一致，非本轮 CSS）
 - Decision: continue
 
+### R5 (Task 12–14)
+- Goal: 深色精修、残留小字/重阴影清理、响应式可读地板、契约冻结与文档收口
+- Write set:
+  - page forge CSS leftovers (tiny fonts -> meta, softer shadows)
+  - `00-tokens.css` panel-shadow
+  - `90-responsive.css` field floor
+  - cache `frontend-chain-20260712-reskin-r5`
+  - iteration log
+- Tests: G0 contract 12 GREEN
+- High open: none
+- Medium open: 已知 JS bridge / module bootstrap / 本地 mfu gui-methods 基线失败与 CSS 无关
+- Decision: complete
+

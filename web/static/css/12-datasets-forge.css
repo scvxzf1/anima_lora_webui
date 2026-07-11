@@ -754,7 +754,7 @@
 
 #tab-datasets .dataset-row-badge small {
     color: var(--dataset-muted);
-    font-size: 0.56rem;
+    font-size: var(--font-size-meta);
     font-weight: 800;
     text-transform: uppercase;
 }
@@ -931,7 +931,7 @@
 
 #tab-datasets .dataset-caption-source-option small {
     margin-top: 0.08rem;
-    font-size: 0.66rem;
+    font-size: var(--font-size-meta);
     line-height: 1.25;
 }
 
@@ -1169,7 +1169,7 @@
     border: 1px solid var(--dataset-border);
     border-radius: 4px;
     color: var(--dataset-accent);
-    font-size: 0.66rem;
+    font-size: var(--font-size-meta);
     font-weight: 800;
 }
 
@@ -1516,7 +1516,7 @@
 
 .dataset-preview-card-body span {
     color: var(--text-dim);
-    font-size: 0.66rem;
+    font-size: var(--font-size-meta);
 }
 
 .dataset-preview-caption {

@@ -711,7 +711,7 @@
     color: var(--analysis-text);
     cursor: pointer;
     font-family: var(--analysis-mono);
-    font-size: 0.64rem;
+    font-size: var(--font-size-meta);
     font-weight: 900;
 }
 
@@ -811,7 +811,7 @@
     background: var(--analysis-panel-soft);
     color: var(--analysis-accent);
     font-family: var(--analysis-mono);
-    font-size: 0.66rem;
+    font-size: var(--font-size-meta);
     font-weight: 900;
     white-space: nowrap;
 }
@@ -850,14 +850,14 @@
 
 .weight-analysis-candidate-stats em {
     color: var(--analysis-muted);
-    font-size: 0.62rem;
+    font-size: var(--font-size-meta);
     font-style: normal;
 }
 
 .weight-analysis-candidate-stats strong {
     color: var(--analysis-text);
     font-family: var(--analysis-mono);
-    font-size: 0.65rem;
+    font-size: var(--font-size-meta);
 }
 
 .weight-analysis-sparkline {
@@ -1048,7 +1048,7 @@
         );
     color: var(--analysis-text);
     font-family: var(--analysis-mono);
-    font-size: 0.64rem;
+    font-size: var(--font-size-meta);
     font-weight: 800;
     transition: opacity 160ms ease, transform 160ms ease, outline-color 160ms ease;
 }

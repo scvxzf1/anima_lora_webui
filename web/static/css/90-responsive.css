@@ -538,3 +538,22 @@
         gap: 0.12rem;
     }
 }
+
+
+/* instrument responsive floor: keep field/control readable under 1000/720 */
+@media (max-width: 1000px) {
+    .field-name,
+    .field-input,
+    .field-select,
+    .btn {
+        font-size: max(0.84rem, var(--font-size-field));
+    }
+}
+@media (max-width: 720px) {
+    .field-name,
+    .field-input,
+    .field-select {
+        font-size: max(0.86rem, var(--font-size-field));
+        min-height: var(--control-height);
+    }
+}
