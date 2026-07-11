@@ -44,4 +44,43 @@
 
 ## Rounds
 
-> 后续 R1–R5 按上方 Round Template 追加。High 未清零不得进入下一轮。
+### R1
+- Goal: 建立精密仪器台全局 token + 壳层 + 四级按钮语言，让后续页面皮肤有统一底盘
+- Write set:
+  - `web/static/css/00-tokens.css`
+  - `web/static/css/01-base.css`
+  - `web/static/css/02-buttons.css`
+  - `web/static/style.css`（cache token）
+  - `web/static/index.html`（cache token）
+- Changes:
+  - 补齐 instrument-panel 契约 token：字段字号、控件高度、header 高度、间距、状态语义色、panel-shadow
+  - 深色默认改为低发光仪器面板；浅色改为纸感冷灰白（light-first）
+  - header 收矮；Tab 选中改为底部 3px 刻度线；`#status-indicator` 做成状态胶囊
+  - 主题/语言切换与按钮高度对齐 `--control-height`
+  - 四级按钮：secondary / primary / highlight(次强调) / danger，highlight 不再比 primary 更吵
+  - 通用 eyebrow 降噪选择器（`.forge-eyebrow` + `[class*="-forge-eyebrow"]`）
+  - cache token 同步为 `frontend-chain-20260712-reskin-r1`
+- Supplemental review:
+  - [x] 边界：未改 DOM id、未删配置项、未加功能
+  - [x] 可读性：字段/控件相关 token 提升到 `0.9rem`，meta/eyebrow 降噪
+  - [x] 密度：header 更矮，壳层减厚；按钮高度统一
+  - [x] 主题：light/dark 双套表面独立调色，非简单反相
+  - [x] 状态：idle/running/warning/error token + 状态胶囊 + reduced-motion 关闭脉冲
+- Cross review:
+  - visual-auditor: PASS（壳层/Tab/状态胶囊/按钮层级符合仪器台）
+  - theme-auditor: PASS（浅色纸感、深色低发光均成立）
+  - contract-auditor: PASS（token 契约与 cache token 双入口同步）
+  - readability-auditor: PASS（字号 token 与 control height 已就位，后续字段皮肤可消费）
+- Tests run:
+  - `tests/test_webui_visual_tokens.py`
+  - `tests/test_training_frontend_modules.py::test_frontend_css_import_cache_tokens_match_entrypoint`
+  - `tests/test_training_frontend_dom.py`
+- Results: GREEN
+- High open: none
+- Medium open:
+  - 各页 forge 仍有硬编码字号/颜色，将在 R2+ 消费全局 token 时收敛
+  - 通用 eyebrow 选择器可能被页级更具体规则覆盖，需在后续页面轮次核对
+- Decision: continue
+
+> 后续 R2–R5 按 Round Template 追加。High 未清零不得进入下一轮。
+

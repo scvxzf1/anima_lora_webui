@@ -16,41 +16,55 @@ body {
 header {
     display: flex;
     align-items: center;
-    gap: 1.5rem;
-    padding: 0.75rem 1.5rem;
+    gap: 0.9rem;
+    min-height: var(--header-height);
+    padding: 0.55rem 1rem;
     background: var(--bg-card);
     border-bottom: 1px solid var(--border);
     position: sticky;
     top: 0;
     z-index: 100;
+    box-shadow: 0 1px 0 color-mix(in srgb, var(--border) 55%, transparent);
 }
 
 header h1 {
-    font-size: 1.1rem;
+    font-size: 1rem;
     font-weight: 600;
+    letter-spacing: 0;
     color: var(--text);
     white-space: nowrap;
 }
 
-nav { display: flex; gap: 0.25rem; }
+nav {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.2rem;
+}
 
 .tab-btn {
     background: transparent;
     border: 1px solid transparent;
     color: var(--text-dim);
-    padding: 0.4rem 1rem;
+    min-height: var(--control-height);
+    padding: 0.28rem 0.78rem;
     border-radius: var(--radius);
     cursor: pointer;
-    font-size: 0.85rem;
-    transition: all 0.15s;
+    font-size: 0.9rem;
+    line-height: 1.2;
+    transition: color 0.15s, background 0.15s, border-color 0.15s, box-shadow 0.15s;
 }
-.tab-btn:hover { color: var(--text); background: var(--bg-input); }
+.tab-btn:hover {
+    color: var(--text);
+    background: var(--surface-raised);
+    border-color: color-mix(in srgb, var(--border) 70%, transparent);
+}
 .tab-btn.active {
     color: var(--text);
-    border-color: var(--border);
-    background: var(--surface-raised-strong);
+    border-color: transparent;
+    background: transparent;
     box-shadow: inset 0 -3px 0 var(--accent);
-    font-weight: 600;
+    font-weight: 650;
 }
 
 .tab-btn.active:focus-visible {
@@ -59,10 +73,22 @@ nav { display: flex; gap: 0.25rem; }
 
 #status-indicator {
     margin-left: auto;
-    display: flex;
+    display: inline-flex;
     align-items: center;
     gap: 0.4rem;
-    font-size: 0.8rem;
+    min-height: calc(var(--control-height) - 0.15rem);
+    padding: 0.2rem 0.55rem;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    background: var(--surface-raised);
+    color: var(--text-dim);
+    font-size: var(--font-size-meta);
+    line-height: 1.2;
+    white-space: nowrap;
+}
+
+#status-indicator #status-text {
+    color: var(--text-dim);
 }
 
 .tutorial-open-btn {
@@ -70,42 +96,60 @@ nav { display: flex; gap: 0.25rem; }
     white-space: nowrap;
 }
 
+.language-toggle,
 .theme-toggle {
     display: inline-flex;
     align-items: center;
     gap: 0.42rem;
-    min-height: 30px;
+    min-height: var(--control-height);
     padding: 0.28rem 0.58rem;
     border: 1px solid var(--border);
     border-radius: var(--radius);
     background: var(--bg-input);
-    color: var(--text);
+    color: var(--text-dim);
     cursor: pointer;
-    font-size: 0.76rem;
+    font-size: var(--font-size-meta);
     white-space: nowrap;
     transition: border-color 0.15s, color 0.15s, background 0.15s;
 }
+.language-toggle:hover,
 .theme-toggle:hover {
     border-color: var(--accent);
     color: var(--accent);
+    background: var(--surface-tint);
 }
 .theme-toggle-swatch {
-    width: 16px;
-    height: 16px;
+    width: 14px;
+    height: 14px;
     border: 1px solid var(--border);
     border-radius: 50%;
     background: linear-gradient(135deg, #ffffff 0 50%, #16213e 50% 100%);
     box-shadow: inset 0 0 0 2px var(--bg-card);
 }
 .dot {
-    width: 8px; height: 8px;
+    width: 8px;
+    height: 8px;
     border-radius: 50%;
     display: inline-block;
+    flex: 0 0 auto;
 }
-.dot.idle { background: var(--text-dim); }
-.dot.running { background: var(--success); animation: pulse 1.5s infinite; }
+.dot.idle { background: var(--status-idle); }
+.dot.running { background: var(--status-running); animation: pulse 1.5s infinite; }
 .dot.compiling { background: var(--accent); animation: pulse 1.5s infinite; }
-.dot.error { background: var(--danger); }
+.dot.error { background: var(--status-error); }
+.dot.warning { background: var(--status-warning); }
+
+/* Shared eyebrow micro-label: quieter than Chinese titles. */
+.forge-eyebrow,
+[class*="-forge-eyebrow"] {
+    display: inline-block;
+    font-size: var(--font-size-eyebrow);
+    font-weight: 650;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    line-height: 1.2;
+}
 
 button:focus {
     outline: none;
@@ -151,8 +195,14 @@ textarea:focus-visible {
     }
 }
 
+@media (prefers-reduced-motion: reduce) {
+    .dot.running,
+    .dot.compiling {
+        animation: none;
+    }
+}
+
 main { padding: 1rem 1.5rem; }
 
 .tab-content { display: none; }
 .tab-content.active { display: block; }
-
