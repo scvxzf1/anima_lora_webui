@@ -135,7 +135,33 @@ def _batch_delete_history_tasks(self, payload: dict[str, Any], task_ids: list[st
             if path is None or not _path_exists(path):
                 continue
             try:
-                shutil.rmtree(path)
+                from library.cache_pool.gc import safe_rmtree_run_dir
+                from library.cache_pool.refs import release_ref
+                from library.cache_pool.store import pool_entry_dir, default_pool_root
+                import json as _json
+                meta_path = path / "run.meta.json"
+                if meta_path.is_file():
+                    try:
+                        meta = _json.loads(meta_path.read_text(encoding="utf-8"))
+                    except Exception:
+                        meta = {}
+                    bindings = meta.get("dataset_cache_bindings") if isinstance(meta, dict) else None
+                    run_id = path.name
+                    if isinstance(bindings, list):
+                        for binding in bindings:
+                            if not isinstance(binding, dict):
+                                continue
+                            pool_path = str(binding.get("pool_path") or "").strip()
+                            if not pool_path:
+                                continue
+                            entry = Path(pool_path)
+                            if not entry.is_absolute():
+                                resolved = _resolve_display_path(pool_path)
+                                if resolved is not None:
+                                    entry = resolved
+                            if entry.is_dir():
+                                release_ref(entry, run_id)
+                safe_rmtree_run_dir(path)
                 deleted_runtime_dirs.append(str(item.get("path") or ""))
             except OSError as exc:
                 runtime_cleanup_errors[str(item.get("path") or "")] = str(exc)
