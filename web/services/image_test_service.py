@@ -32,7 +32,7 @@ from web.services import config_service, settings_service
 from web.services import path_safety
 from web.services.preview_service import DEFAULT_INFERENCE_DIR
 from web.services.project_python import resolve_web_python_executable
-from web.services.settings_service import display_path
+from web.services.settings_service import display_path, resolve_image_test_save_root
 
 ROOT = anima_home()
 IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".webp", ".bmp"}
@@ -57,7 +57,7 @@ class ImageTestService:
         self.finished_at: float | None = None
         self.exit_code: int | None = None
         self.error: str = ""
-        self.output_dir: Path = _resolve_save_dir(DEFAULT_INFERENCE_DIR)
+        self.output_dir: Path = _resolve_save_dir(resolve_image_test_save_root())
         self.command: list[str] = []
         self.last_request: dict[str, Any] = {}
         self._logs: deque[str] = deque(maxlen=MAX_LOG_LINES)
@@ -283,7 +283,10 @@ def _normalize_image_test_request(
         "anima_selective_strength": anima_selective_strength,
         "anima_selective_blocks": anima_selective_blocks,
         "anima_selective_block_strengths": anima_selective_block_strengths,
-        "save_path": DEFAULT_INFERENCE_DIR,
+        "save_path": (
+            str(payload.get("save_path") or "").strip()
+            or resolve_image_test_save_root()
+        ),
         "config": cfg,
     }
 

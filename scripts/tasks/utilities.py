@@ -142,6 +142,9 @@ def cmd_test_backend_smoke(extra):
         "tests/test_web_config_raw_files.py",
         "tests/test_schema_gate_observability.py",
         "tests/test_raw_file_warnings_contract.py",
+        "tests/test_queue_item_retry_override.py",
+        "tests/test_settings_image_test_save_root.py",
+        "tests/test_path_allowlist_freeze.py",
         "tests/test_image_test_service.py",
     ]
     run([PY, "-m", "pytest", "-q", *targets, *extra])
