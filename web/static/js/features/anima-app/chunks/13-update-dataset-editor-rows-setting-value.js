@@ -7,7 +7,6 @@ import {
     METHOD_GUIDE_ZH,
     PRESET_GUIDE_ZH,
     VARIANT_GUIDE_ZH,
-    VARIANT_METHOD_FAMILY,
     choiceHelp,
 } from '../../../config/catalog.js?v=module-bootstrap-20260711-ir1';
 import {
@@ -39,17 +38,20 @@ import {
     renderDatasetPresetHeader,
 } from '../helpers/dataset-render-bridge.js?v=module-bootstrap-20260711-ir1';
 import { getAppShellState } from '../helpers/app-shell-state-bridge.js?v=module-bootstrap-20260711-ir1';
-import { configDraftValueChanged, originalConfigFieldValue, updateConfigDraftFromInput } from '../helpers/config-form-bridge.js?v=module-bootstrap-20260711-ir1';
+import { escapeHtml, setFieldInputValue } from '../../config-form/field-input.js?v=module-bootstrap-20260711-ir1';
+import {
+    clearCurrentTrainingSource,
+    setCurrentTrainingSourceFromVariant,
+} from '../../training-source/source-state.js?v=module-bootstrap-20260711-ir1';
+import { outputRunRuntimeFile } from '../../output-run/runtime-file.js?v=module-bootstrap-20260711-ir1';
+import { activeMethodKey, inferMethodFromConfig } from '../../config-form/method-key.js?v=module-bootstrap-20260711-ir1';
 import { handlePendingConfigSwitch, updateTomlDirtyState } from '../helpers/toml-selection-bridge.js?v=module-bootstrap-20260711-ir1';
 import { getConfigState } from '../helpers/config-state-bridge.js?v=module-bootstrap-20260711-ir1';
 import { getDatasetState } from '../helpers/dataset-state-bridge.js?v=module-bootstrap-20260711-ir1';
-import { selectedOutputRun } from '../helpers/output-run-bridge.js?v=module-bootstrap-20260711-ir1';
 import { val } from '../helpers/runtime-bridge.js?v=module-bootstrap-20260711-ir1';
-import { getAppContext } from '../helpers/app-context-bridge.js?v=module-bootstrap-20260711-ir1';
 import { getTrainingState } from '../helpers/training-state-bridge.js?v=module-bootstrap-20260711-ir1';
 import { updateStepEstimatePanel } from './03-parse-network-arg-entry.js?v=module-bootstrap-20260711-ir1';
 
-const ctx = getAppContext();
 const appShellState = getAppShellState();
 const configState = getConfigState();
 const datasetState = getDatasetState();
@@ -70,6 +72,17 @@ function currentTrainingSourceState() {
 function datasetExperimentalScopeSelectionsState() {
     return datasetState.datasetExperimentalScopeSelections;
 }
+
+export {
+    setFieldInputValue,
+    escapeHtml,
+    setCurrentTrainingSourceFromVariant,
+    clearCurrentTrainingSource,
+    outputRunRuntimeFile,
+    activeMethodKey,
+    inferMethodFromConfig,
+};
+
 
     export function updateDatasetEditorRowsSettingValue(indices, key, value, options = {}) {
         const state = datasetEditorStateForActivePanel();
@@ -279,62 +292,6 @@ function datasetExperimentalScopeSelectionsState() {
         }
     }
 
-    export function setFieldInputValue(key, value) {
-        const configFormState = configState.configFormState;
-        const input = document.querySelector(`#config-form .field-input[data-key="${CSS.escape(key)}"]`);
-        if (!input) {
-            const original = originalConfigFieldValue(key);
-            if (configDraftValueChanged(key, value, original)) {
-                configFormState.draftValues.set(key, value);
-            } else {
-                configFormState.draftValues.delete(key);
-            }
-            return;
-        }
-        if (input.type === 'checkbox') {
-            input.checked = Boolean(value);
-        } else {
-            input.value = value ?? '';
-        }
-        updateConfigDraftFromInput(input);
-    }
-
-    export function escapeHtml(value) {
-        return ctx.format.escapeHtml(value);
-    }
-
-    export function setCurrentTrainingSourceFromVariant(variant) {
-        if (!variant) {
-            clearCurrentTrainingSource();
-            return;
-        }
-        if (val('method-select') === 'spd' || variant === 'spd') {
-            trainingState.currentTrainingSource = {
-                method: 'spd',
-                methods_subdir: 'methods',
-                file: 'configs/methods/spd.toml',
-            };
-            return;
-        }
-        trainingState.currentTrainingSource = {
-            method: variant,
-            methods_subdir: 'gui-methods',
-            file: `configs/gui-methods/${variant}.toml`,
-        };
-    }
-
-    export function clearCurrentTrainingSource() {
-        trainingState.currentTrainingSource = {
-            method: '',
-            methods_subdir: '',
-            file: '',
-        };
-    }
-
-    export function outputRunRuntimeFile(run = selectedOutputRun()) {
-        const runtime = (run?.files || []).find((item) => item.kind === 'runtime');
-        return runtime?.file || '';
-    }
 
     export function rememberSelectionSnapshot() {
         const selectionSnapshot = configState.selectionSnapshot;
@@ -435,47 +392,6 @@ function datasetExperimentalScopeSelectionsState() {
         return card;
     }
 
-    export function activeMethodKey(config = currentConfigState()) {
-        const currentTrainingSource = currentTrainingSourceState();
-        const inferred = inferMethodFromConfig(config);
-        if (inferred) return inferred;
-        if (currentTrainingSource.methods_subdir === 'methods' && currentTrainingSource.method === 'spd') {
-            return 'spd';
-        }
-        if (currentTrainingSource.methods_subdir === 'gui-methods') {
-            return VARIANT_METHOD_FAMILY[currentTrainingSource.method] || val('method-select') || 'lora';
-        }
-        return val('method-select') || 'lora';
-    }
-
-    export function inferMethodFromConfig(config) {
-        const currentTrainingSource = currentTrainingSourceState();
-        if (!config || typeof config !== 'object') return '';
-        const moduleName = String(config.network_module || '');
-        if (currentTrainingSource.methods_subdir === 'methods' && currentTrainingSource.method === 'spd') return 'spd';
-        if ('dit_path' in config && 'iterations' in config && currentTrainingSource.method === 'spd') return 'spd';
-        if (isTruthy(config.use_glora)) return 'glora';
-        if (isTruthy(config.use_vera)) return 'vera';
-        if (isTruthy(config.use_lokr)) return 'lokr';
-        if (isTruthy(config.use_loha)) return 'loha';
-        if (isTruthy(config.use_easycontrol) || moduleName.includes('easycontrol')) return 'easycontrol';
-        if (isTruthy(config.use_ip_adapter) || moduleName.includes('ip_adapter')) return 'ip_adapter';
-        if (moduleName.includes('soft_tokens')) return 'soft_tokens';
-        if (isTruthy(config.add_reft) || ('reft_dim' in config && Number(config.reft_dim) > 0)) return 'reft';
-        if (
-            isTruthy(config.use_hydra) ||
-            isTruthy(config.use_sigma_router) ||
-            String(config.use_moe_style || 'false') !== 'false' ||
-            moduleName.includes('chimera') ||
-            moduleName.includes('hydra')
-        ) {
-            if (moduleName.includes('chimera') || 'content_router_source' in config) return 'chimera';
-            return 'hydralora';
-        }
-        if (isTruthy(config.use_timestep_mask)) return 'tlora';
-        if (isTruthy(config.use_ortho)) return 'ortholora';
-        return '';
-    }
 
     export function methodGuideFromConfig(methodKey, config = currentConfigState()) {
         const base = METHOD_GUIDE_ZH[methodKey] || defaultMethodGuide();

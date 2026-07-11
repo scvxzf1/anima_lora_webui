@@ -6,7 +6,7 @@ import { showHistoryTaskConfirmDialog, showHistoryTaskDialog } from '../anima-ap
 import { configureTomlActionsBridge } from '../anima-app/helpers/toml-actions-bridge.js?v=module-bootstrap-20260711-ir1';
 import { loadTomlFileList } from '../anima-app/helpers/toml-manager-bridge.js?v=module-bootstrap-20260711-ir1';
 import { api, val } from '../anima-app/helpers/runtime-bridge.js?v=module-bootstrap-20260711-ir1';
-import { setCurrentTrainingSourceFromVariant } from '../anima-app/chunks/13-update-dataset-editor-rows-setting-value.js?v=module-bootstrap-20260711-ir1';
+import { setCurrentTrainingSourceFromVariant } from '../training-source/source-state.js?v=module-bootstrap-20260711-ir1';
 import { hasPendingConfigChanges, showAppConfirmDialog, updateTomlDirtyState, updateTomlSelectionUI } from '../anima-app/helpers/toml-selection-bridge.js?v=module-bootstrap-20260711-ir1';
 import { isTrainingTomlGroup, reorderTomlFileGroups } from '../anima-app/helpers/toml-io-bridge.js?v=module-bootstrap-20260711-ir1';
 import {

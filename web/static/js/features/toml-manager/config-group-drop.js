@@ -45,7 +45,8 @@ import {
     createDatasetConfigInput,
     createDatasetEditorItem,
 } from '../anima-app/chunks/10-create-dataset-config-input.js?v=module-bootstrap-20260711-ir1';
-import { addDatasetEditorRow, datasetValidTargetIndices, escapeHtml } from '../anima-app/chunks/13-update-dataset-editor-rows-setting-value.js?v=module-bootstrap-20260711-ir1';
+import { escapeHtml } from '../config-form/field-input.js?v=module-bootstrap-20260711-ir1';
+import { addDatasetEditorRow, datasetValidTargetIndices } from '../anima-app/chunks/13-update-dataset-editor-rows-setting-value.js?v=module-bootstrap-20260711-ir1';
 import { createDatasetEditorToolbarActions } from '../dataset-editor/toolbar.js?v=module-bootstrap-20260711-ir1';
 
 const configState = getConfigState();

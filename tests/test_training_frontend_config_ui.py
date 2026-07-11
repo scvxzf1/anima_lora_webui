@@ -63,8 +63,8 @@ def test_config_form_bridge_reaches_split_form_chunks() -> None:
     )
 
     for name in bridge_names:
-        assert f"{name}: (...args)" in bridge_source
-        assert f"export const {name}" in bridge_source
+        assert f"export function {name}(...args)" in bridge_source
+        assert f"requireConfigFormHandler('{name}')" in bridge_source
         assert f"    {name}," in ensure_history_source
 
     assert "configureConfigFormBridge({" in ensure_history_source
@@ -82,7 +82,7 @@ def test_config_form_bridge_reaches_split_form_chunks() -> None:
         "js/features/anima-app/chunks/06-stronger-selective-checkpoint-value.js": (
             "originalConfigFieldValue",
         ),
-        "js/features/anima-app/chunks/13-update-dataset-editor-rows-setting-value.js": (
+        "js/features/config-form/field-input.js": (
             "configDraftValueChanged",
             "originalConfigFieldValue",
             "updateConfigDraftFromInput",
@@ -107,9 +107,14 @@ def test_config_form_bridge_reaches_split_form_chunks() -> None:
         ),
     }
     for relative_path, names in required_imports.items():
+        bridge_from = (
+            "../anima-app/helpers/config-form-bridge.js"
+            if relative_path.startswith("js/features/config-form/")
+            else "../helpers/config-form-bridge.js"
+        )
         _assert_imports_from(
             _frontend_module_text(relative_path),
-            "../helpers/config-form-bridge.js",
+            bridge_from,
             names,
         )
 

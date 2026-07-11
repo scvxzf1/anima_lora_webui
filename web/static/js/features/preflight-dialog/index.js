@@ -23,7 +23,7 @@ import {
 } from '../anima-app/helpers/live-status-bridge.js?v=module-bootstrap-20260711-ir1';
 import { api, val } from '../anima-app/helpers/runtime-bridge.js?v=module-bootstrap-20260711-ir1';
 import { getGpuPicker } from '../anima-app/helpers/app-shell-startup-bridge.js?v=module-bootstrap-20260711-ir1';
-import { outputRunRuntimeFile } from '../anima-app/chunks/13-update-dataset-editor-rows-setting-value.js?v=module-bootstrap-20260711-ir1';
+import { outputRunRuntimeFile } from '../output-run/runtime-file.js?v=module-bootstrap-20260711-ir1';
 import { loadTrainingQueue, updateTrainingQueueFromPayload } from '../anima-app/helpers/queue-view-bridge.js?v=module-bootstrap-20260711-ir1';
 import { scheduleStatusPoll } from '../anima-app/helpers/status-polling-bridge.js?v=module-bootstrap-20260711-ir1';
 import { loadTrainingHistoryList } from '../anima-app/helpers/history-list-bridge.js?v=module-bootstrap-20260711-ir1';

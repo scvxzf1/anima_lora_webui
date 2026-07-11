@@ -22,8 +22,10 @@ import {
 } from '../anima-app/chunks/03-parse-network-arg-entry.js?v=module-bootstrap-20260711-ir1';
 import {
     clearCurrentTrainingSource,
-    rememberSelectionSnapshot,
     setCurrentTrainingSourceFromVariant,
+} from '../training-source/source-state.js?v=module-bootstrap-20260711-ir1';
+import {
+    rememberSelectionSnapshot,
     updateChoiceGuide,
 } from '../anima-app/chunks/13-update-dataset-editor-rows-setting-value.js?v=module-bootstrap-20260711-ir1';
 import { requestContinueLoraInspection } from '../anima-app/chunks/06-stronger-selective-checkpoint-value.js?v=module-bootstrap-20260711-ir1';
