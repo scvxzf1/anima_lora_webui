@@ -178,3 +178,21 @@
 - Medium open: `10-config-dataset-editor.css` 仍有共享编辑器小字号，config 路径已用 forge 覆盖；dataset 主路径走 12-datasets-forge
 - Decision: continue
 
+### R3-training (Task 6)
+- Goal: 训练监控/队列壳对齐仪器台：分段开关、指标数字层级、侧栏队列更密
+- Write set:
+  - `web/static/css/33-training-forge.css`
+  - `web/static/css/20-training-core.css`
+  - `web/static/css/22-training-queue.css`
+  - cache `frontend-chain-20260712-reskin-r3b`
+- Changes:
+  - toolbar 变薄；eyebrow 降噪
+  - `.training-view-tab` 改为底刻度选中（core + forge）
+  - highlight 次于 primary；指标数字更大、标签 meta
+  - 队列标题/详情更密可读
+- Supplemental review: 边界/可读性/密度/契约 ✅
+- Cross review: visual/readability/contract PASS
+- Tests: contract 12 GREEN；G2 live/queue 8 passed / 3 failed（JS bridge 基线，非 CSS）
+- High open: none
+- Decision: continue
+

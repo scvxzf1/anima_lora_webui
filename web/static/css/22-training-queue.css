@@ -27,11 +27,11 @@
 }
 .training-queue-section-head strong {
     color: var(--text);
-    font-size: 0.82rem;
+    font-size: 0.84rem;
 }
 .training-queue-section-head span {
     color: var(--text-dim);
-    font-size: 0.68rem;
+    font-size: var(--font-size-meta);
     font-weight: 700;
 }
 .training-queue-section summary.training-queue-section-head {
@@ -89,12 +89,12 @@
 }
 .training-queue-manager-title strong {
     color: var(--text);
-    font-size: 0.82rem;
+    font-size: 0.88rem;
     overflow-wrap: anywhere;
 }
 .training-queue-manager-title span {
     color: var(--text-dim);
-    font-size: 0.7rem;
+    font-size: var(--font-size-meta);
     line-height: 1.4;
     overflow-wrap: anywhere;
 }
@@ -108,7 +108,7 @@
 }
 .training-queue-details {
     color: var(--text-dim);
-    font-size: 0.7rem;
+    font-size: var(--font-size-meta);
     position: relative;
     z-index: 1;
 }
