@@ -63,3 +63,23 @@ def test_import_networks_then_lora_modules_is_stable():
     assert "lora" in networks.NETWORK_REGISTRY
     assert hasattr(lora_modules, "LoRAModule")
     assert registry.NETWORK_REGISTRY is networks.NETWORK_REGISTRY
+
+
+def test_public_facade_still_exports_registry_api():
+    import networks
+    for name in (
+        "NETWORK_REGISTRY",
+        "NetworkSpec",
+        "resolve_network_spec",
+        "register_network_spec",
+        "ensure_builtin_plugins_loaded",
+        "ModuleCreationContext",
+    ):
+        assert hasattr(networks, name)
+
+
+def test_resolve_network_spec_still_selects_lora_by_default():
+    from networks import resolve_network_spec
+    spec = resolve_network_spec({})
+    assert spec.name == "lora"
+
