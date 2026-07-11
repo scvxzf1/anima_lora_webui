@@ -25,7 +25,7 @@ import { getTrainingState } from '../anima-app/helpers/training-state-bridge.js?
 import { filterTrainingTomlGroups, reorderTomlFileGroups } from '../anima-app/helpers/toml-io-bridge.js?v=module-bootstrap-20260711-ir1';
 import { populateTomlFileSelect } from '../anima-app/helpers/toml-drag-bridge.js?v=module-bootstrap-20260711-ir1';
 import { api, val } from '../anima-app/helpers/runtime-bridge.js?v=module-bootstrap-20260711-ir1';
-import { updateConfigStickyPlacement } from '../anima-app/chunks/04-create-config-group-entry.js?v=module-bootstrap-20260711-ir1';
+import { updateConfigStickyPlacement } from '../config-form/group-entry.js?v=module-bootstrap-20260711-ir1';
 import {
     applyTomlLockState,
     setTomlStatus,

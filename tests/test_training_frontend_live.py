@@ -315,7 +315,49 @@ configureQueueViewBridge({
 
 const featureEnsurers = await import('./web/static/js/features/anima-app/helpers/feature-ensurers.js?v=module-bootstrap-20260711-ir1');
 featureEnsurers.configurePreviewFeatureEnsurer(globalThis.ctx, globalThis, {});
+
+const { configureHistoryDetailBridge } = await import('./web/static/js/features/anima-app/helpers/history-detail-bridge.js?v=module-bootstrap-20260711-ir1');
+configureHistoryDetailBridge({
+    isHistoryReviewMode: () => false,
+    ensureHistoryDetailFeature: () => ({}),
+    openHistoryDetailDialog: () => {},
+});
+const { configureLiveStatusBridge } = await import('./web/static/js/features/anima-app/helpers/live-status-bridge.js?v=module-bootstrap-20260711-ir1');
+// liveStatus module will overwrite these after import if needed; provide safe no-ops for early calls
+configureLiveStatusBridge({
+    updateProgress: () => {},
+    updateStatus: () => {},
+    updateDashboard: () => {},
+    clearProgress: () => {},
+    setStatusIndicator: () => {},
+});
+
+
+const { configureLiveLogBridge } = await import('./web/static/js/features/anima-app/helpers/live-log-bridge.js?v=module-bootstrap-20260711-ir1');
+configureLiveLogBridge({
+    logLineTone: () => '',
+    appendLog: () => {},
+    clearLogs: () => {},
+    renderLogs: () => {},
+});
+
+
+const { configureHistoryTimelineBridge } = await import('./web/static/js/features/anima-app/helpers/history-timeline-bridge.js?v=module-bootstrap-20260711-ir1');
+configureHistoryTimelineBridge({
+    runtimePathItems: () => [],
+    renderHistoryPaths: () => {},
+    historyAbsolutePath: (v) => String(v || ''),
+    historyStateLabel: (v) => String(v || ''),
+    returnToLiveTraining: () => {},
+});
+
 const liveStatus = await import('./web/static/js/features/anima-app/chunks/25-update-progress.js?dom-fixture');
+configureLiveStatusBridge({
+    updateProgress: (...args) => liveStatus.updateProgress?.(...args),
+    updateStatus: (...args) => liveStatus.updateStatus?.(...args),
+    updateDashboard: (...args) => liveStatus.updateDashboard?.(...args),
+});
+
 
 liveStatus.updateStatus({
     state: 'running',
@@ -558,7 +600,49 @@ configureTrainingStateBridge(trainingState);
 
 const featureEnsurers = await import('./web/static/js/features/anima-app/helpers/feature-ensurers.js?v=module-bootstrap-20260711-ir1');
 featureEnsurers.configurePreviewFeatureEnsurer(globalThis.ctx, globalThis, {});
+
+const { configureHistoryDetailBridge } = await import('./web/static/js/features/anima-app/helpers/history-detail-bridge.js?v=module-bootstrap-20260711-ir1');
+configureHistoryDetailBridge({
+    isHistoryReviewMode: () => false,
+    ensureHistoryDetailFeature: () => ({}),
+    openHistoryDetailDialog: () => {},
+});
+const { configureLiveStatusBridge } = await import('./web/static/js/features/anima-app/helpers/live-status-bridge.js?v=module-bootstrap-20260711-ir1');
+// liveStatus module will overwrite these after import if needed; provide safe no-ops for early calls
+configureLiveStatusBridge({
+    updateProgress: () => {},
+    updateStatus: () => {},
+    updateDashboard: () => {},
+    clearProgress: () => {},
+    setStatusIndicator: () => {},
+});
+
+
+const { configureLiveLogBridge } = await import('./web/static/js/features/anima-app/helpers/live-log-bridge.js?v=module-bootstrap-20260711-ir1');
+configureLiveLogBridge({
+    logLineTone: () => '',
+    appendLog: () => {},
+    clearLogs: () => {},
+    renderLogs: () => {},
+});
+
+
+const { configureHistoryTimelineBridge } = await import('./web/static/js/features/anima-app/helpers/history-timeline-bridge.js?v=module-bootstrap-20260711-ir1');
+configureHistoryTimelineBridge({
+    runtimePathItems: () => [],
+    renderHistoryPaths: () => {},
+    historyAbsolutePath: (v) => String(v || ''),
+    historyStateLabel: (v) => String(v || ''),
+    returnToLiveTraining: () => {},
+});
+
 const liveStatus = await import('./web/static/js/features/anima-app/chunks/25-update-progress.js?idle-dom-fixture');
+configureLiveStatusBridge({
+    updateProgress: (...args) => liveStatus.updateProgress?.(...args),
+    updateStatus: (...args) => liveStatus.updateStatus?.(...args),
+    updateDashboard: (...args) => liveStatus.updateDashboard?.(...args),
+});
+
 
 liveStatus.updateStatus({
     state: 'running',
@@ -640,7 +724,8 @@ console.log(JSON.stringify({
 
 def test_return_to_live_training_clears_runtime_cursor() -> None:
     source = APP_JS.read_text(encoding="utf-8")
-    body = _section(source, "function returnToLiveTraining", "async function loadResumeOptionsForTask")
+    timeline_impl = _frontend_module_text("js/features/anima-app/chunks/35-render-config-group-timeline.js")
+    body = _section(timeline_impl, "function returnToLiveTraining", "async function loadResumeOptionsForTask")
 
     for snippet in (
         "historyState.viewingHistoryTaskId = '';",
@@ -756,10 +841,66 @@ globalThis.trainingStatusPollForceReplayMetrics = false;
 globalThis.trainingStatusPollFailures = 0;
 globalThis.historyTasks = [];
 globalThis.trainingRuntime = {};
-globalThis.updateProgress = (payload, options) => calls.push({ kind: 'progress', payload, options });
-globalThis.updateMetrics = (payload, options) => calls.push({ kind: 'metric', payload, options });
-globalThis.updateSystem = (payload, options) => calls.push({ kind: 'system', payload, options });
+// status-polling imports update* from live-status-bridge, not globalThis.
+globalThis.updateProgress = () => {};
+globalThis.updateMetrics = () => {};
+globalThis.updateSystem = () => {};
 
+const { configureAppContextBridge: configureAppContextBridgeForSnapshot } = await import('./web/static/js/features/anima-app/helpers/app-context-bridge.js?v=module-bootstrap-20260711-ir1');
+const { configureAppShellStateBridge: configureAppShellStateBridgeForSnapshot } = await import('./web/static/js/features/anima-app/helpers/app-shell-state-bridge.js?v=module-bootstrap-20260711-ir1');
+const { configureConfigStateBridge: configureConfigStateBridgeForSnapshot } = await import('./web/static/js/features/anima-app/helpers/config-state-bridge.js?v=module-bootstrap-20260711-ir1');
+const { configureDatasetStateBridge: configureDatasetStateBridgeForSnapshot } = await import('./web/static/js/features/anima-app/helpers/dataset-state-bridge.js?v=module-bootstrap-20260711-ir1');
+const { configureHistoryStateBridge: configureHistoryStateBridgeForSnapshot } = await import('./web/static/js/features/anima-app/helpers/history-state-bridge.js?v=module-bootstrap-20260711-ir1');
+const { configureTomlStateBridge: configureTomlStateBridgeForSnapshot } = await import('./web/static/js/features/anima-app/helpers/toml-state-bridge.js?v=module-bootstrap-20260711-ir1');
+const { configureTrainingStateBridge: configureTrainingStateBridgeForSnapshot } = await import('./web/static/js/features/anima-app/helpers/training-state-bridge.js?v=module-bootstrap-20260711-ir1');
+const { configureRuntimeBridge: configureRuntimeBridgeForSnapshot } = await import('./web/static/js/features/anima-app/helpers/runtime-bridge.js?v=module-bootstrap-20260711-ir1');
+const { createAppShellState: createAppShellStateForSnapshot } = await import('./web/static/js/features/anima-app/state/app-shell-state.js?v=module-bootstrap-20260711-ir1');
+const { createConfigState: createConfigStateForSnapshot } = await import('./web/static/js/features/anima-app/state/config-state.js?v=module-bootstrap-20260711-ir1');
+const { createDatasetState: createDatasetStateForSnapshot } = await import('./web/static/js/features/anima-app/state/dataset-state.js?v=module-bootstrap-20260711-ir1');
+const { createHistoryState: createHistoryStateForSnapshot } = await import('./web/static/js/features/anima-app/state/history-state.js?v=module-bootstrap-20260711-ir1');
+const { createTomlState: createTomlStateForSnapshot } = await import('./web/static/js/features/anima-app/state/toml-state.js?v=module-bootstrap-20260711-ir1');
+const { createTrainingState: createTrainingStateForSnapshot } = await import('./web/static/js/features/anima-app/state/training-state.js?v=module-bootstrap-20260711-ir1');
+configureAppContextBridgeForSnapshot(globalThis.ctx || {});
+configureAppShellStateBridgeForSnapshot(createAppShellStateForSnapshot());
+configureConfigStateBridgeForSnapshot(createConfigStateForSnapshot());
+configureDatasetStateBridgeForSnapshot(createDatasetStateForSnapshot());
+configureHistoryStateBridgeForSnapshot(createHistoryStateForSnapshot());
+configureTomlStateBridgeForSnapshot(createTomlStateForSnapshot());
+configureTrainingStateBridgeForSnapshot(createTrainingStateForSnapshot());
+configureRuntimeBridgeForSnapshot({ api: globalThis.ctx?.api, timers: {} });
+const { configureLiveLogBridge: configureLiveLogBridgeForSnapshot } = await import('./web/static/js/features/anima-app/helpers/live-log-bridge.js?v=module-bootstrap-20260711-ir1');
+configureLiveLogBridgeForSnapshot({ logLineTone: () => '', appendLog: () => {}, clearLogs: () => {}, renderLogs: () => {} });
+const { configureHistoryDetailBridge: configureHistoryDetailBridgeForSnapshot } = await import('./web/static/js/features/anima-app/helpers/history-detail-bridge.js?v=module-bootstrap-20260711-ir1');
+configureHistoryDetailBridgeForSnapshot({ isHistoryReviewMode: () => false, ensureHistoryDetailFeature: () => ({}), openHistoryDetailDialog: () => {} });
+const { configureQueueViewBridge: configureQueueViewBridgeForSnapshot } = await import('./web/static/js/features/anima-app/helpers/queue-view-bridge.js?v=module-bootstrap-20260711-ir1');
+configureQueueViewBridgeForSnapshot({ refreshQueueRunningProgressViews: () => {} });
+const { configureLiveStatusBridge: configureLiveStatusBridgeForSnapshot } = await import('./web/static/js/features/anima-app/helpers/live-status-bridge.js?v=module-bootstrap-20260711-ir1');
+const recordLiveStatus = (kind) => (payload, options) => {
+    calls.push({ kind, payload, options });
+};
+configureLiveStatusBridgeForSnapshot({
+    updateProgress: recordLiveStatus('progress'),
+    updateStatus: () => {},
+    updateDashboard: () => {},
+    updateMetrics: recordLiveStatus('metric'),
+    updateSystem: recordLiveStatus('system'),
+    liveStatusState: () => ({}),
+    terminalStatusMessage: () => '',
+    resetLiveSystemPeaks: () => {},
+    clearRuntimeInfo: () => {},
+    applyRuntimeInfoToState: () => {},
+    renderCurrentRuntimePaths: () => {},
+    currentRuntimeTaskInfo: () => ({}),
+    formatRuntimeVram: () => '',
+    renderTrainingRunSummary: () => {},
+    renderLiveTrainingDashboard: () => {},
+    trainingEtaMetricInfo: () => ({}),
+    markTrainingActivity: () => {},
+    refreshTrainingHealth: () => {},
+    formatDuration: () => '',
+    clearProgress: () => {},
+    setStatusIndicator: () => {},
+});
 const statusPollingModule = await import('./web/static/js/features/anima-app/chunks/26a-status-polling.js?snapshot-fixture');
 Object.assign(globalThis, statusPollingModule.createStatusPollingBridge(globalThis));
 

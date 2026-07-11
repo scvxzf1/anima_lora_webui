@@ -40,7 +40,7 @@ import {
 import { coerceNetworkArgValue, parseNetworkArgEntry } from '../anima-app/helpers/network-args.js?v=module-bootstrap-20260711-ir1';
 import { parseArrayValue, valuesEqual } from '../anima-app/helpers/form-values.js?v=module-bootstrap-20260711-ir1';
 import { activeMethodKey } from '../anima-app/chunks/13-update-dataset-editor-rows-setting-value.js?v=module-bootstrap-20260711-ir1';
-import { appendConfigGroupsByCategory, createConfigGroupEntry } from '../anima-app/chunks/04-create-config-group-entry.js?v=module-bootstrap-20260711-ir1';
+import { appendConfigGroupsByCategory, createConfigGroupEntry } from './group-entry.js?v=module-bootstrap-20260711-ir1';
 import { getConfigState } from '../anima-app/helpers/config-state-bridge.js?v=module-bootstrap-20260711-ir1';
 import { currentSamplePromptText } from '../anima-app/helpers/sample-prompts-bridge.js?v=module-bootstrap-20260711-ir1';
 

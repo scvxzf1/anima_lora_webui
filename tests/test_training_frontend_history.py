@@ -169,7 +169,8 @@ def test_history_list_marks_queue_tasks() -> None:
         "js/features/anima-app/chunks/33-create-history-task-item.js"
     )
 
-    queue_label = _section(source, "function historyQueueLabel", "function historyContinueLabel")
+    queue_impl = _frontend_module_text("js/features/anima-app/chunks/32-history-task-collection-label.js")
+    queue_label = _section(queue_impl, "function historyQueueLabel", "function historyContinueLabel")
     task_item = _section(
         history_task_source,
         "function createHistoryTaskItem",
@@ -860,10 +861,13 @@ def test_history_collection_drag_drop_frontend_hooks_are_present() -> None:
     history_state_source = _frontend_module_text("js/features/anima-app/state/history-state.js")
     css = STYLE_CSS.read_text(encoding="utf-8")
 
-    workbench = _section(source, "function renderHistoryCollectionsWorkbench", "function renderHistoryManagerStats")
+    workbench_impl = _frontend_module_text("js/features/anima-app/chunks/27-render-history-collections-workbench.js")
+    workbench = _section(workbench_impl, "function renderHistoryCollectionsWorkbench", "function renderHistoryManagerStats")
     drag_helpers = _section(source, "function historyDragTaskIdsForGroup", "function createHistoryCollectionWorkbenchCard")
-    collection_card = _section(source, "function createHistoryCollectionWorkbenchCard", "function createHistoryConfigGroupWorkbenchCard")
-    config_card = _section(source, "function createHistoryConfigGroupWorkbenchCard", "function historyCollectionNamesForTasks")
+    card_impl = _frontend_module_text("js/features/history-list/workbench-cards.js")
+    collection_card = _section(card_impl, "function createHistoryCollectionWorkbenchCard", "function createHistoryConfigGroupWorkbenchCard")
+    config_card_impl = _frontend_module_text("js/features/history-list/workbench-cards.js")
+    config_card = _section(config_card_impl, "function createHistoryConfigGroupWorkbenchCard", "function historyCollectionNamesForTasks")
 
     assert "export const HISTORY_TASK_DRAG_MIME = 'application/x-anima-history-task-ids';" in app_constants
     assert "export const HISTORY_COLLECTION_DRAG_MIME = 'application/x-anima-history-collection';" in app_constants
@@ -1362,10 +1366,10 @@ def test_history_detail_config_files_are_tool_ready() -> None:
     for catalog_user in (
         "js/features/app-shell/startup.js",
         "js/features/config-form/index.js",
-        "js/features/anima-app/chunks/04-create-config-group-entry.js",
+        "js/features/config-form/group-entry.js",
         "js/features/anima-app/chunks/06-stronger-selective-checkpoint-value.js",
-        "js/features/anima-app/chunks/09-setup-config-group-drop-target.js",
-        "js/features/anima-app/chunks/10a-dataset-inline-help.js",
+        "js/features/toml-manager/config-group-drop.js",
+        "js/features/dataset-editor/inline-help.js",
         "js/features/dataset-editor/row.js",
         "js/features/anima-app/chunks/12-create-dataset-row-caption-source-mode-editor.js",
         "js/features/anima-app/chunks/13-update-dataset-editor-rows-setting-value.js",

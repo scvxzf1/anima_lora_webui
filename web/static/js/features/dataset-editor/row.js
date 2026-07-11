@@ -10,7 +10,7 @@ import {
     createDatasetInlineHelpButton,
     datasetExperimentalOpenState,
     datasetLocalHelpSpec,
-} from '../anima-app/chunks/10a-dataset-inline-help.js?v=module-bootstrap-20260711-ir1';
+} from './inline-help.js?v=module-bootstrap-20260711-ir1';
 import { createDatasetEditorDragHandle } from '../anima-app/chunks/10-create-dataset-config-input.js?v=module-bootstrap-20260711-ir1';
 import { CAPTION_SOURCE_MODE_OPTIONS, help } from '../../config/catalog.js?v=module-bootstrap-20260711-ir1';
 import { captionSourceModeLabel, normalizeCaptionSourceMode } from '../anima-app/helpers/caption-source.js?v=module-bootstrap-20260711-ir1';

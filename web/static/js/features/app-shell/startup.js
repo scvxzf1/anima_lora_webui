@@ -10,7 +10,7 @@ import { createLanguageController } from './language.js?v=module-bootstrap-20260
 import { createUIScaleController } from './ui-scale.js?v=module-bootstrap-20260711-ir1';
 import { createHistoryDetailFeature } from '../history-detail/index.js?v=module-bootstrap-20260711-ir1';
 import { formatLr, lastValue } from '../live-training/index.js?v=module-bootstrap-20260711-ir1';
-import { setupEventListeners } from '../anima-app/chunks/36-setup-event-listeners.js?v=module-bootstrap-20260711-ir1';
+import { setupEventListeners } from './event-listeners.js?v=module-bootstrap-20260711-ir1';
 import {
     loadDatasetPresets,
     loadStepEstimate,

@@ -8,8 +8,8 @@ import {
     setupFileGroupHeaderDropTarget,
     setupFileGroupListDropTarget,
     setupFileGroupRowDropTarget,
-} from '../anima-app/chunks/08-origin-closest.js?v=module-bootstrap-20260711-ir1';
-import { setupConfigGroupDropTarget } from '../anima-app/chunks/09-setup-config-group-drop-target.js?v=module-bootstrap-20260711-ir1';
+} from './file-group-drag.js?v=module-bootstrap-20260711-ir1';
+import { setupConfigGroupDropTarget } from './config-group-drop.js?v=module-bootstrap-20260711-ir1';
 import { showHistoryTaskDialog } from '../anima-app/helpers/history-task-actions-bridge.js?v=module-bootstrap-20260711-ir1';
 import { loadTomlFileList, updateConfigPageSummary } from '../anima-app/helpers/toml-manager-bridge.js?v=module-bootstrap-20260711-ir1';
 import { canDeleteTomlGroup, deleteTomlGroup, deleteTomlGroupButtonTitle } from '../anima-app/helpers/toml-actions-bridge.js?v=module-bootstrap-20260711-ir1';
