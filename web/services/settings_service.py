@@ -51,6 +51,9 @@ GLOBAL_UI_KEYS = (
     "ui_scale",
     *GLOBAL_UI_OVERRIDE_KEYS,
 )
+GLOBAL_IMAGE_TEST_KEYS = (
+    "image_test_allow_home_search",
+)
 
 
 
@@ -137,6 +140,14 @@ def _normalize_training_policy(data: dict[str, Any]) -> dict[str, Any]:
         "stop_grace_sec": _clamp_float(data.get("stop_grace_sec"), defaults["stop_grace_sec"], 0.5, 60.0),
     }
 
+
+def _normalize_bool_setting(value: Any, *, default: bool = False) -> bool:
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        return value
+    return str(value).strip().lower() in {"1", "true", "yes", "on"}
+
 def get_global_settings() -> dict[str, Any]:
     settings = _load_settings()
     defaults = _default_global_settings()
@@ -190,6 +201,11 @@ def save_global_settings(data: dict[str, Any]) -> dict[str, Any]:
             next_global.pop(key, None)
         else:
             next_global[key] = value
+    for key in GLOBAL_IMAGE_TEST_KEYS:
+        if key in data:
+            next_global[key] = _normalize_bool_setting(data.get(key), default=False)
+        elif key not in next_global:
+            next_global[key] = bool(current.get(key, defaults.get(key, False)))
     raw = {
         **current_raw,
         **target_raw,
@@ -256,6 +272,11 @@ def _load_settings(settings_file: Path | None = None) -> dict[str, Any]:
         if key in section:
             value = _normalize_ui_setting(key, section.get(key))
             settings[key] = value if value is not None else defaults.get(key)
+    for key in GLOBAL_IMAGE_TEST_KEYS:
+        if key in section:
+            settings[key] = _normalize_bool_setting(section.get(key), default=bool(defaults.get(key, False)))
+        else:
+            settings[key] = bool(defaults.get(key, False))
 
     # 显示当前实际使用的配置根目录（包括环境变量）
     actual_configs_root = settings_file.parent.resolve()
@@ -301,6 +322,7 @@ def _default_global_settings(*, settings_file: Path | None = None) -> dict[str, 
         "history_root": "",
         "queue_root": "",
         "ui_scale": DEFAULT_UI_SCALE,
+        "image_test_allow_home_search": False,
         **{key: DEFAULT_UI_SCALE_OVERRIDE for key in GLOBAL_UI_OVERRIDE_KEYS},
         **_load_base_model_path_defaults(settings_file=settings_file),
     }

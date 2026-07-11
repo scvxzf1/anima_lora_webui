@@ -93,7 +93,9 @@ class TrainingService:
             try:
                 from web.services.training.constants import apply_training_policy_to_facade
                 policy = apply_training_policy_to_facade()
-                # Only seed in-memory defaults when queue file did not specify values.
+                # Seed in-memory defaults from global training_policy only when
+                # queue.json did not specify those runtime keys (policy default
+                # vs queue runtime override). Present keys always win.
                 if "auto_retry" not in (self._queue or {}):
                     self._queue_auto_retry = bool(policy.get("auto_retry", False))
                 if "max_attempts" not in (self._queue or {}):

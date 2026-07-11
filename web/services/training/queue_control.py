@@ -336,6 +336,12 @@ async def set_queue_settings(
     max_attempts: int | None = None,
     retry_backoff_sec: float | None = None,
 ) -> dict[str, Any]:
+    """Update queue *runtime* settings (queue.json), not global training_policy.
+
+    Global defaults live in web-ui-settings.toml [training_policy]. Values written
+    here become queue.json runtime overrides and will not be overwritten by later
+    policy changes until keys are removed from the queue file.
+    """
     if paused is not None:
         self._queue_paused = bool(paused)
         self._queue["paused"] = self._queue_paused

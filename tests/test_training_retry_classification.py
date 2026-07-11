@@ -33,3 +33,9 @@ def test_classify_process_exit_can_retry():
     kind = classify_training_failure(reason="process_exit", returncode=7)
     assert kind == "process_exit"
     assert should_auto_retry_failure(kind) is True
+
+
+def test_classify_english_checkpoint_missing():
+    kind = classify_training_failure(reason="error", message="checkpoint missing for resume")
+    assert kind == "checkpoint_missing"
+    assert should_auto_retry_failure(kind) is False

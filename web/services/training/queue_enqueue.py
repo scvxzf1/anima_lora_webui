@@ -314,7 +314,14 @@ def _clone_queue_item_for_retry(self, item: dict[str, Any]) -> dict[str, Any]:
 
 
 
-def _maybe_auto_retry(self, item: dict[str, Any] | None, *, reason: str = "") -> dict[str, Any] | None:
+def _maybe_auto_retry(
+    self,
+    item: dict[str, Any] | None,
+    *,
+    reason: str = "",
+    message: str = "",
+    stop_requested: bool = False,
+) -> dict[str, Any] | None:
     """Clone a failed queue item when auto_retry policy allows.
 
     Shared by process-exit failures and launch failures so attempt counting,
@@ -330,7 +337,8 @@ def _maybe_auto_retry(self, item: dict[str, Any] | None, *, reason: str = "") ->
         return None
     kind = classify_training_failure(
         reason=reason,
-        message=str(item.get("message") or ""),
+        message=str(message or item.get("message") or ""),
+        stop_requested=bool(stop_requested),
     )
     if not should_auto_retry_failure(kind):
         return None

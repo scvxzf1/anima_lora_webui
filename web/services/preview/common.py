@@ -201,28 +201,27 @@ def _resolve_preview_file(value: str, *, allowed_sample_dir: str | None = None) 
 
 
 def _resolve_weight_file(value: str, *, task: dict[str, Any] | None = None) -> Path:
-    clean = str(value or "").replace("\\", "/").strip()
-    if not clean:
-        raise ValueError("路径不能为空")
-    path = Path(clean)
+    """Resolve weight path via shared path_safety allowlist policy."""
     root = _root()
-    if path.is_absolute():
-        resolved = path.resolve()
-    else:
-        normalized = call("_normalize_project_file", clean)
-        resolved = (root / normalized).resolve()
-        try:
-            resolved.relative_to(root.resolve())
-        except ValueError as exc:
-            raise ValueError("权重路径必须在项目目录内") from exc
-
-    for allowed in call("_allowed_weight_dirs", task):
-        try:
-            resolved.relative_to(allowed)
-            return resolved
-        except ValueError:
-            continue
-    raise ValueError("权重文件只允许从训练输出目录或全局输出目录下载")
+    # Use local helper (not facade call) so tests/monkeypatches on this module apply.
+    allowed = _allowed_weight_dirs(task)
+    try:
+        return path_safety.resolve_allowed_file(
+            value,
+            root=root,
+            allowed_dirs=allowed,
+            require_suffix=".safetensors",
+        )
+    except ValueError as exc:
+        msg = str(exc)
+        if "路径为空" in msg:
+            raise ValueError("路径不能为空") from exc
+        if ".." in msg:
+            raise ValueError("权重路径不能包含 ..") from exc
+        if "只支持" in msg:
+            raise ValueError("只支持 .safetensors 权重文件") from exc
+        # Keep legacy user-facing wording for outside/project escapes.
+        raise ValueError("权重文件只允许从训练输出目录或全局输出目录下载") from exc
 
 
 def _resolve_allowed_sample_dir(value: str | None) -> Path | None:

@@ -38,6 +38,12 @@ def _training_datetime():
 
 
 def _load_training_queue_state() -> dict[str, Any]:
+    """Load queue.json runtime state.
+
+    Retry policy keys (auto_retry / max_attempts / retry_backoff_sec) are only
+    normalized when present in the file. Missing keys stay absent so
+    TrainingService can seed them from global training_policy defaults.
+    """
     data = _read_training_queue_state()
     if not isinstance(data, dict):
         data = {}
@@ -46,9 +52,13 @@ def _load_training_queue_state() -> dict[str, Any]:
         data["items"] = []
     data["paused"] = bool(data.get("paused", False))
     data["failure_policy"] = _normalize_queue_failure_policy(data.get("failure_policy"))
-    data["auto_retry"] = _normalize_queue_auto_retry(data.get("auto_retry"))
-    data["max_attempts"] = _normalize_queue_max_attempts(data.get("max_attempts"))
-    data["retry_backoff_sec"] = _normalize_queue_retry_backoff(data.get("retry_backoff_sec"))
+    # Do not invent retry keys on load — absent means "use global policy seed".
+    if "auto_retry" in data:
+        data["auto_retry"] = _normalize_queue_auto_retry(data.get("auto_retry"))
+    if "max_attempts" in data:
+        data["max_attempts"] = _normalize_queue_max_attempts(data.get("max_attempts"))
+    if "retry_backoff_sec" in data:
+        data["retry_backoff_sec"] = _normalize_queue_retry_backoff(data.get("retry_backoff_sec"))
     return data
 
 
@@ -141,7 +151,7 @@ def _normalize_queue_max_attempts(value: Any) -> int:
         number = int(value)
     except (TypeError, ValueError):
         number = 1
-    return max(1, number)
+    return max(1, min(10, number))
 
 
 def _normalize_queue_retry_backoff(value: Any) -> float:
@@ -151,7 +161,7 @@ def _normalize_queue_retry_backoff(value: Any) -> float:
         number = 0.0
     if number < 0:
         number = 0.0
-    return number
+    return min(3600.0, number)
 
 
 def _queue_clearable_state_label(states: set[str]) -> str:

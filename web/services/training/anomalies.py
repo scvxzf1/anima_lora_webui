@@ -166,7 +166,11 @@ def classify_training_failure(
     if stop_requested or str(reason or "").strip().lower() in {"user_stop", "canceled", "cancelled"}:
         return "user_stop"
     text = f"{reason}\n{message}".lower()
-    if "train_state.json" in text or "检查点" in text or "checkpoint" in text and "missing" in text:
+    if (
+        "train_state.json" in text
+        or "检查点" in f"{reason}\n{message}"
+        or ("checkpoint" in text and "missing" in text)
+    ):
         return "checkpoint_missing"
     if "续训检查点状态已不存在" in f"{reason}\n{message}":
         return "checkpoint_missing"
