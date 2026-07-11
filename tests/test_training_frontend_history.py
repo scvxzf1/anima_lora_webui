@@ -173,7 +173,10 @@ def test_history_list_marks_queue_tasks() -> None:
         "js/features/anima-app/chunks/33-create-history-task-item.js"
     )
 
-    queue_impl = _frontend_module_text("js/features/anima-app/chunks/32-history-task-collection-label.js")
+    queue_impl = _frontend_feature_text(
+        "js/features/anima-app/chunks/32-history-task-collection-label.js",
+        "js/features/history-list/task-collections.js",
+    )
     queue_label = _section(queue_impl, "function historyQueueLabel", "function historyContinueLabel")
     task_item = _section(
         history_task_source,
@@ -187,8 +190,9 @@ def test_history_list_marks_queue_tasks() -> None:
 
 
 def test_history_task_dialog_busy_state_uses_toml_state() -> None:
-    dialog_source = _frontend_module_text(
-        "js/features/anima-app/chunks/34-show-history-collection-select-dialog.js"
+    dialog_source = _frontend_feature_text(
+        "js/features/anima-app/chunks/34-show-history-collection-select-dialog.js",
+        "js/features/history-list/task-dialogs.js",
     )
     dialog_section = _section(
         dialog_source,
@@ -245,13 +249,17 @@ def test_history_manager_frontend_hooks_are_present() -> None:
     history_section = _frontend_feature_text(
         "js/features/history-list/list.js",
         "js/features/anima-app/chunks/27-render-history-collections-workbench.js",
+        "js/features/history-list/collections-workbench.js",
         "js/features/anima-app/chunks/28-history-collection-search-text.js",
         "js/features/history-list/workbench-cards.js",
         "js/features/history-list/workbench-collection-card.js",
         "js/features/history-list/workbench-config-group-card.js",
         "js/features/history-list/workbench-order.js",
         "js/features/anima-app/chunks/32-history-task-collection-label.js",
+        "js/features/history-list/task-collections.js",
         "js/features/anima-app/chunks/33-create-history-task-item.js",
+        "js/features/anima-app/chunks/34-show-history-collection-select-dialog.js",
+        "js/features/history-list/task-dialogs.js",
         "js/features/anima-app/helpers/history-collections-bridge.js",
     )
     detail_section = history_detail_source
@@ -868,7 +876,10 @@ def test_history_collection_drag_drop_frontend_hooks_are_present() -> None:
     history_state_source = _frontend_module_text("js/features/anima-app/state/history-state.js")
     css = STYLE_CSS.read_text(encoding="utf-8")
 
-    workbench_impl = _frontend_module_text("js/features/anima-app/chunks/27-render-history-collections-workbench.js")
+    workbench_impl = _frontend_feature_text(
+        "js/features/anima-app/chunks/27-render-history-collections-workbench.js",
+        "js/features/history-list/collections-workbench.js",
+    )
     workbench = _section(workbench_impl, "function renderHistoryCollectionsWorkbench", "function renderHistoryManagerStats")
     drag_helpers = _section(source, "function historyDragTaskIdsForGroup", "function createHistoryCollectionWorkbenchCard")
     card_impl = _frontend_feature_text(
@@ -1447,8 +1458,9 @@ def test_history_detail_config_files_are_tool_ready() -> None:
 def test_history_workbench_renders_items_in_chunks() -> None:
     """Large history workbench lists should append cards in rAF chunks, not one blocking loop only."""
     helper = _frontend_module_text("js/features/history-list/chunked-render.js")
-    workbench = _frontend_module_text(
-        "js/features/anima-app/chunks/27-render-history-collections-workbench.js"
+    workbench = _frontend_feature_text(
+        "js/features/anima-app/chunks/27-render-history-collections-workbench.js",
+        "js/features/history-list/collections-workbench.js",
     )
 
     assert "export function appendNodesInChunks" in helper
