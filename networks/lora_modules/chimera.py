@@ -37,9 +37,9 @@ from typing import Dict, List, Optional
 import torch
 
 from networks.attn_fuse import match_fused_spec
-from networks.lora_modules.base import BaseLoRAModule, _absorb_channel_scale
-from networks.lora_modules.custom_autograd import lora_down_project
-from networks.lora_modules.lora import defuse_standard_qkv
+from .base import BaseLoRAModule, _absorb_channel_scale
+from .custom_autograd import lora_down_project
+from .lora import defuse_standard_qkv
 
 logger = logging.getLogger(__name__)
 

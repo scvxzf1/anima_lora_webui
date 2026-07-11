@@ -1,21 +1,21 @@
 # LoRA module building blocks. Public API re-exported here so
 # `from networks.lora_modules import LoRAModule, ...` works unchanged.
 
-from networks.lora_modules.base import BaseLoRAModule, _absorb_channel_scale
-from networks.lora_modules.chimera import (
+from .base import BaseLoRAModule, _absorb_channel_scale
+from .chimera import (
     ChimeraHydraInferenceModule,
     ChimeraHydraLoRAModule,
 )
-from networks.lora_modules.dora import DoRALoRAModule
-from networks.lora_modules.hydra import HydraLoRAModule, _sigma_sinusoidal_features
-from networks.lora_modules.lora import LoRAModule
-from networks.lora_modules.ortho import (
+from .dora import DoRALoRAModule
+from .hydra import HydraLoRAModule, _sigma_sinusoidal_features
+from .lora import LoRAModule
+from .ortho import (
     OrthoHydraLoRAModule,
     OrthoLoRAModule,
 )
-from networks.lora_modules.reft import ReFTModule
-from networks.lora_modules.stacked_experts import StackedExpertsLoRAModule
-from networks.lora_modules.step_expert import StepExpertLoRAModule
+from .reft import ReFTModule
+from .stacked_experts import StackedExpertsLoRAModule
+from .step_expert import StepExpertLoRAModule
 
 __all__ = [
     "BaseLoRAModule",

@@ -11,7 +11,7 @@ from typing import Optional
 
 import torch
 
-from networks.lora_modules.lora import LoRAModule
+from .lora import LoRAModule
 
 
 class DoRALoRAModule(LoRAModule):
