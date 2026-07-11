@@ -101,6 +101,11 @@ export const FORM_SECTION_DEFS = [
             'preprocess_text_cache_batch_size',
             'preprocess_memory_profile',
             'preprocess_precision_preference',
+            'reuse_dataset_cache_copy',
+            'reuse_vae_latents',
+            'reuse_text_encoder_cache',
+            'cache_fingerprint_mode',
+            'force_rebuild_preprocess_cache',
             'gradient_checkpointing',
             'precision_preference',
             'lr_warmup_steps',
@@ -426,7 +431,7 @@ export const CONFIG_COMPACT_FIELD_GROUPS = {
         },
         {
             className: 'config-field-grid-3col',
-            keys: ['preprocess_vae_cache_batch_size', 'preprocess_text_cache_batch_size', 'preprocess_memory_profile'],
+            keys: ['preprocess_vae_cache_batch_size', 'preprocess_text_cache_batch_size', 'preprocess_memory_profile', 'reuse_dataset_cache_copy', 'reuse_vae_latents', 'reuse_text_encoder_cache', 'cache_fingerprint_mode', 'force_rebuild_preprocess_cache'],
         },
         {
             className: 'config-field-grid-2col config-field-grid-inline-flags',
