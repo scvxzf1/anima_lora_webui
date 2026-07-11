@@ -123,3 +123,33 @@
 - Correction note:
   - 早期 R2 报告只写了 shared fields 消费 token，实际 `#tab-config` forge 仍硬编码更小字段字号并覆盖共享 baseline；review fix 后 shared baseline + config forge 均消费 token。
 
+### R2-rhythm (Task 4)
+- Goal: 配置页壳变薄，字段 token 保持更大；16:9 一屏多留内容
+- Write set:
+  - `web/static/css/11-config-forge.css`
+  - `web/static/css/03-config-shell.css`
+  - `web/static/style.css` / `web/static/index.html`（cache `frontend-chain-20260712-reskin-r2b`）
+  - iteration log
+- Changes:
+  - 压缩 `.config-sidebar-project` / preset header / toolbar 内外边距与装饰阴影
+  - eyebrow / PRESETS 降噪为 meta 字号 + 低对比
+  - 右侧 preset manager 视觉降级（更窄、去强阴影、边框弱化）
+  - 训练来源模式改为紧凑分段开关（底刻度选中态，贴近主 Tab 语言）
+  - sticky 分类条变细导航：更矮、透明底、选中 inset 底线，safe-space 从 ~8.5–11rem 收到 ~4.2–5.4rem
+  - 字段 `.field-name` / `.field-input` 仍消费 `--font-size-field*` / `--control-height`，未回退
+- Supplemental review:
+  - [x] 边界：仅 CSS 节奏；无 DOM id / 无功能 / 无删配置项
+  - [x] 可读性：字段 token 保留；来源按钮字号 0.8rem 仍可读
+  - [x] 密度：壳层与 sticky 占屏下降，主表单留屏
+  - [x] 契约：cache token 双入口同步 r2b
+- Cross review:
+  - readability-auditor: PASS（字更大后通过壳变薄回收一屏）
+  - visual-auditor: PASS（sticky/source 与主 Tab 刻度语言一致）
+  - contract-auditor: PASS
+- Tests run: G1 套件（config_ui / dom / cache token / visual tokens）
+- Results: GREEN for contract gates (12 passed). config_ui: 61 passed / 1 baseline fail (mfu local gui-methods missing in worktree) / 1 known deselect (history bridge); not CSS regression.
+- High open: none
+- Medium open:
+  - 页级按钮/eyebrow 其他 Tab 仍可能硬编码，留给 R3+
+- Decision: continue
+
