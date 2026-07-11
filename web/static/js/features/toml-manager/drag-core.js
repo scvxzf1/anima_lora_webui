@@ -1,7 +1,7 @@
 /**
  * TOML group/file drag placement helpers.
  */
-import { createFileGroupDragHandle } from './file-group-drag.js?v=module-bootstrap-20260711-ir6';
+import { createFileGroupDragHandle } from './file-group-drag.js?v=module-bootstrap-20260711-ir9';
 import { loadTomlFileList } from '../anima-app/helpers/toml-manager-bridge.js?v=module-bootstrap-20260711-ir6';
 import {
     setTomlStatus,
@@ -63,7 +63,7 @@ export async function placeTomlGroup(payload, index) {
     }
 }
 
-export async function placeTomlFile(payload, groupId, index) {
+export async function placeTomlFile(payload, groupId, index, placeOptions = {}) {
     const file = payload?.file;
     if (!file || !groupId) return;
     if (hasPendingConfigChanges(tomlState.currentTomlFile)) {
@@ -74,7 +74,19 @@ export async function placeTomlFile(payload, groupId, index) {
     try {
         const res = await api('/api/config/file-groups/place', {
             method: 'POST',
-            body: JSON.stringify({ target: 'file', file, group: groupId, index }),
+            body: JSON.stringify({
+                target: 'file',
+                file,
+                group: groupId,
+                index,
+                ...(placeOptions?.anchor ? {
+                    anchor: placeOptions.anchor,
+                    position: placeOptions.position === 'before' ? 'before' : 'after',
+                } : {}),
+                ...(Array.isArray(placeOptions?.order) && placeOptions.order.length ? {
+                    order: placeOptions.order,
+                } : {}),
+            }),
         });
         if (!res.ok) {
             setTomlStatus('error', res.error || '配置位置调整失败');

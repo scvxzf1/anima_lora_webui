@@ -18,4 +18,4 @@ export {
     registerFileGroupDropTarget,
     removeFileGroupDragImage,
     setFileGroupDragData,
-} from '../../toml-manager/file-group-drag.js?v=module-bootstrap-20260711-ir6';
+} from '../../toml-manager/file-group-drag.js?v=module-bootstrap-20260711-ir9';

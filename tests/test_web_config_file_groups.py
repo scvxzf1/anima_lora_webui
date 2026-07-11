@@ -835,6 +835,135 @@ def test_place_config_file_in_group_uses_exact_drop_index(tmp_path: Path, monkey
         "configs/imported/beta.toml",
     ]
 
+
+
+def test_place_config_file_in_group_accepts_full_order_list(tmp_path: Path, monkeypatch):
+    """同组排序可直接提交完整 order，结果必须与 DOM 新顺序一致。"""
+    configs, _dataset_path = _write_minimal_config_tree(tmp_path)
+    names = ["rokkotsu_goddess", "ichika", "colorize", "kesul-anima", "rokkotsu_5_14"]
+    for name in names:
+        (configs / "datasets" / f"{name}.toml").write_text(
+            f'[[datasets]]\nsource_dir = "/tmp/{name}"\nnum_repeats = 1\n',
+            encoding="utf-8",
+        )
+    order_lines = ",\n  ".join(f'"configs/datasets/{name}.toml"' for name in names)
+    (configs / "web-file-groups.toml").write_text(
+        "\n".join(
+            [
+                "[[groups]]",
+                'id = "datasets"',
+                'label = "数据集配置"',
+                'kind = "dataset"',
+                "open = true",
+                "locked = false",
+                'patterns = ["configs/datasets/*.toml"]',
+                "order = [",
+                f"  {order_lines}",
+                "]",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    _patch_config_service_paths(monkeypatch, tmp_path)
+
+    desired = [
+        "configs/datasets/ichika.toml",
+        "configs/datasets/colorize.toml",
+        "configs/datasets/kesul-anima.toml",
+        "configs/datasets/rokkotsu_goddess.toml",
+        "configs/datasets/rokkotsu_5_14.toml",
+    ]
+    ok, message, group = config_service.place_config_file_in_group(
+        "configs/datasets/rokkotsu_goddess.toml",
+        "datasets",
+        0,
+        "configs/datasets/ichika.toml",  # 故意给错锚点
+        "before",
+        desired,
+    )
+    assert ok is True, message
+    assert [item["path"] for item in group["files"]] == desired
+
+
+def test_place_config_file_in_group_same_group_uses_anchor_before_after(tmp_path: Path, monkeypatch):
+    """同组排序以 anchor+position 为准，避免 index 与显示顺序错位。"""
+    configs, _dataset_path = _write_minimal_config_tree(tmp_path)
+    names = ["one", "two", "three", "four", "five"]
+    for name in names:
+        (configs / "datasets" / f"{name}.toml").write_text(
+            f'[[datasets]]\nsource_dir = "/tmp/{name}"\nnum_repeats = 1\n',
+            encoding="utf-8",
+        )
+    order_lines = ",\n  ".join(f'"configs/datasets/{name}.toml"' for name in names)
+    (configs / "web-file-groups.toml").write_text(
+        "\n".join(
+            [
+                "[[groups]]",
+                'id = "datasets"',
+                'label = "数据集配置"',
+                'kind = "dataset"',
+                "open = true",
+                "locked = false",
+                'patterns = ["configs/datasets/*.toml"]',
+                "order = [",
+                f"  {order_lines}",
+                "]",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    _patch_config_service_paths(monkeypatch, tmp_path)
+
+    def stems(group):
+        return [Path(item["path"]).stem for item in group["files"]]
+
+    # after two
+    ok, message, group = config_service.place_config_file_in_group(
+        "configs/datasets/one.toml",
+        "datasets",
+        99,  # 故意给错 index，验证 anchor 优先
+        "configs/datasets/two.toml",
+        "after",
+    )
+    assert ok is True, message
+    assert stems(group) == ["two", "one", "three", "four", "five"]
+
+    # reset via place to original by anchors step by step is hard; rewrite order and re-place
+    ok, message, group = config_service.place_config_file_in_group(
+        "configs/datasets/one.toml",
+        "datasets",
+        0,
+        "configs/datasets/two.toml",
+        "before",
+    )
+    assert ok is True, message
+    assert stems(group) == ["one", "two", "three", "four", "five"]
+
+    ok, message, group = config_service.place_config_file_in_group(
+        "configs/datasets/one.toml",
+        "datasets",
+        0,
+        "configs/datasets/four.toml",
+        "after",
+    )
+    assert ok is True, message
+    assert stems(group) == ["two", "three", "four", "one", "five"]
+
+    response = asyncio.run(config_routes.handle_file_group_place(_JsonRequest({
+        "target": "file",
+        "file": "configs/datasets/one.toml",
+        "group": "datasets",
+        "index": 0,
+        "anchor": "configs/datasets/three.toml",
+        "position": "after",
+    })))
+    assert response.status == 200
+    body = json.loads(response.text)
+    assert [Path(item["path"]).stem for item in body["group"]["files"]] == [
+        "two", "three", "one", "four", "five",
+    ]
+
+
 def test_place_config_file_rejects_cross_kind_and_locked_targets(tmp_path: Path, monkeypatch):
     configs, _dataset_path = _write_minimal_config_tree(tmp_path)
     (configs / "datasets" / "character.toml").write_text(

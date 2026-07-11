@@ -8,7 +8,7 @@ import { compactPathLabel } from '../anima-app/helpers/history-task-actions-brid
 import {
     autoScrollFileGroupPointerDrag,
     fileGroupContainsRelatedTarget,
-} from '../toml-manager/file-group-drag.js?v=module-bootstrap-20260711-ir6';
+} from '../toml-manager/file-group-drag.js?v=module-bootstrap-20260711-ir9';
 import { createDatasetEditorRow } from './row.js?v=module-bootstrap-20260711-ir6';
 import { getDatasetState } from '../anima-app/helpers/dataset-state-bridge.js?v=module-bootstrap-20260711-ir6';
 import { renderDatasetEditor } from '../anima-app/helpers/dataset-render-bridge.js?v=module-bootstrap-20260711-ir6';

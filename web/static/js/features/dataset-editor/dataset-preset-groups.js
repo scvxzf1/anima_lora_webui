@@ -28,8 +28,8 @@ import {
     setupFileGroupHeaderDropTarget,
     setupFileGroupListDropTarget,
     setupFileGroupRowDropTarget,
-} from '../toml-manager/file-group-drag.js?v=module-bootstrap-20260711-ir6';
-import { setupConfigGroupDropTarget } from '../toml-manager/config-group-drop-target.js?v=module-bootstrap-20260711-ir6';
+} from '../toml-manager/file-group-drag.js?v=module-bootstrap-20260711-ir9';
+import { setupConfigGroupDropTarget } from '../toml-manager/config-group-drop-target.js?v=module-bootstrap-20260711-ir9';
 import { escapeHtml } from '../config-form/field-input.js?v=module-bootstrap-20260711-ir6';
 
 const datasetState = getDatasetState();

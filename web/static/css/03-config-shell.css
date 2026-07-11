@@ -835,6 +835,9 @@
     outline-offset: -2px;
     background: var(--surface-tint);
 }
+.file-group-drop-host {
+    position: relative;
+}
 .file-group-drop-preview {
     align-items: center;
     background: color-mix(in srgb, var(--accent) 14%, var(--bg-card));
@@ -847,13 +850,15 @@
     font-weight: 800;
     gap: 0.42rem;
     height: 28px;
-    left: 0;
+    left: 0.25rem;
     padding: 0 0.72rem;
     pointer-events: none;
-    position: fixed;
+    position: absolute;
+    right: 0.25rem;
     top: 0;
     transform: translateY(-50%);
-    z-index: 10020;
+    width: auto;
+    z-index: 20;
 }
 .file-group-drop-preview::before,
 .file-group-drop-preview::after {

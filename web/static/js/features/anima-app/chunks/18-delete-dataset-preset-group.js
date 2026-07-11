@@ -122,7 +122,7 @@ function currentTrainingSourceState() {
         }
     }
 
-    export async function placeDatasetPresetFile(payload, groupId, index) {
+    export async function placeDatasetPresetFile(payload, groupId, index, placeOptions = {}) {
         const file = payload?.file;
         const datasetPresetState = currentDatasetPresetState();
         if (!file || !groupId) return;
@@ -131,9 +131,22 @@ function currentTrainingSourceState() {
             return;
         }
         try {
+            const body = {
+                target: 'file',
+                file,
+                group: groupId,
+                index,
+            };
+            if (placeOptions?.anchor) {
+                body.anchor = placeOptions.anchor;
+                body.position = placeOptions.position === 'before' ? 'before' : 'after';
+            }
+            if (Array.isArray(placeOptions?.order) && placeOptions.order.length) {
+                body.order = placeOptions.order;
+            }
             const res = await api('/api/config/file-groups/place', {
                 method: 'POST',
-                body: JSON.stringify({ target: 'file', file, group: groupId, index }),
+                body: JSON.stringify(body),
             });
             if (!res.ok) {
                 setDatasetPresetStatus(res.error || '数据集预设位置调整失败', 'error');

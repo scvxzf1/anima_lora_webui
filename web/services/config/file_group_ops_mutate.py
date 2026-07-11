@@ -185,6 +185,9 @@ def place_config_file_in_group(
     rel_path: str,
     group_id: str,
     index: Any | None = None,
+    anchor: Any | None = None,
+    position: Any | None = None,
+    order: Any | None = None,
 ) -> tuple[bool, str, dict[str, Any] | None]:
     normalized_file = _normalize_config_rel_path(rel_path)
     target_group_id = _normalize_group_id(group_id)
@@ -216,13 +219,44 @@ def place_config_file_in_group(
             exclude.append(normalized_file)
         spec["exclude"] = sorted(dict.fromkeys(exclude))
 
-    current_files = [
+    existing_files = [
         item["path"]
         for item in _build_config_file_group(target).get("files", [])
-        if item.get("path") != normalized_file
     ]
-    target_index = _place_index(index, len(current_files))
-    current_files.insert(target_index, normalized_file)
+    existing_set = set(existing_files)
+
+    # 1) 前端若给出完整 DOM 新顺序，直接采用（同组排序最稳）。
+    requested_order: list[str] = []
+    if isinstance(order, (list, tuple)):
+        for raw in order:
+            path_item = _normalize_config_rel_path(str(raw or "").strip())
+            if not path_item or path_item in requested_order:
+                continue
+            if path_item == normalized_file or path_item in existing_set:
+                requested_order.append(path_item)
+    if normalized_file not in requested_order and requested_order:
+        # 容错：order 漏了拖动项时补到末尾
+        requested_order.append(normalized_file)
+
+    if requested_order:
+        # 保留目标组里未出现在 DOM 顺序中的其余文件，追加在尾部，避免 pattern 组丢项。
+        tail = [path for path in existing_files if path not in requested_order and path != normalized_file]
+        current_files = [*requested_order, *tail]
+        if normalized_file not in current_files:
+            current_files.append(normalized_file)
+    else:
+        current_files = [path for path in existing_files if path != normalized_file]
+        # 2) 锚点 before/after
+        anchor_path = _normalize_config_rel_path(str(anchor or "").strip()) if anchor else ""
+        place_pos = str(position or "").strip().lower()
+        if anchor_path and anchor_path in current_files:
+            anchor_index = current_files.index(anchor_path)
+            target_index = anchor_index + (1 if place_pos == "after" else 0)
+            target_index = max(0, min(target_index, len(current_files)))
+        else:
+            # 3) 兼容旧 index
+            target_index = _place_index(index, len(current_files))
+        current_files.insert(target_index, normalized_file)
 
     target.setdefault("files", [])
     target["files"] = _config_group_path_list([*target["files"], normalized_file])

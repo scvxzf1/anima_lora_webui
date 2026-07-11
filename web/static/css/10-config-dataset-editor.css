@@ -546,7 +546,8 @@
     color: color-mix(in srgb, var(--danger-subtle) 52%, var(--text));
 }
 
-.dataset-preset-group-list {
+.dataset-preset-group-list,
+.dataset-preset-group-list.file-group-drop-host {
     position: relative;
     display: flex;
     flex-direction: column;

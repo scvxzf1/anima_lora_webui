@@ -42,7 +42,7 @@ export async function createAnimaApp(ctx) {
         import('./chunks/06-stronger-selective-checkpoint-value.js?v=module-bootstrap-20260711-ir6'),
         import('./chunks/07-render-config-dataset-picker-dialog.js?v=module-bootstrap-20260711-ir6'),
         import('./chunks/08-origin-closest.js?v=module-bootstrap-20260711-ir6'),
-        import('./chunks/09-setup-config-group-drop-target.js?v=module-bootstrap-20260711-ir6'),
+        import('./chunks/09-setup-config-group-drop-target.js?v=module-bootstrap-20260711-ir9'),
         import('./chunks/10-create-dataset-config-input.js?v=module-bootstrap-20260711-ir6'),
         import('./chunks/10a-dataset-inline-help.js?v=module-bootstrap-20260711-ir6'),
         import('./chunks/11-create-dataset-editor-row.js?v=module-bootstrap-20260711-ir6'),

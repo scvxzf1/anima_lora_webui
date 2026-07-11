@@ -215,6 +215,7 @@ export function registerFileGroupDropTarget(node, resolve) {
         const label = document.createElement('span');
         label.textContent = '释放后插入到这里';
         preview.appendChild(label);
+        // 先挂 body，真正定位时会挪到父列表（与历史任务预览一致）。
         document.body.appendChild(preview);
         datasetState.fileGroupDropPreviewElement = preview;
         return preview;
@@ -225,16 +226,25 @@ export function registerFileGroupDropTarget(node, resolve) {
             removeFileGroupDropPreview();
             return;
         }
-        const rect = node.getBoundingClientRect?.();
-        if (!rect || rect.width <= 0 || rect.height <= 0) {
+        // 对齐历史任务：预览挂到父列表，用 offsetTop，滚动时也不会和指示线错位。
+        const parent = node.parentElement;
+        if (!parent) {
             removeFileGroupDropPreview();
             return;
         }
+        parent.classList.add('file-group-drop-host');
         const preview = ensureFileGroupDropPreview();
-        preview.dataset.position = position;
-        preview.style.left = `${rect.left + 4}px`;
-        preview.style.top = `${position === 'before' ? rect.top : rect.bottom}px`;
-        preview.style.width = `${Math.max(40, rect.width - 8)}px`;
+        const placement = position === 'before' ? 'before' : 'after';
+        const parentStyle = window.getComputedStyle(parent);
+        const gap = Number.parseFloat(parentStyle.rowGap || parentStyle.gap || '0') || 0;
+        const top = placement === 'before'
+            ? Math.max(0, node.offsetTop - (gap / 2))
+            : node.offsetTop + node.offsetHeight + (gap / 2);
+        preview.dataset.position = placement;
+        preview.style.left = '';
+        preview.style.width = '';
+        preview.style.top = `${top}px`;
+        if (preview.parentElement !== parent) parent.appendChild(preview);
     }
 
     function findScrollableFileGroupAncestor(origin) {
@@ -484,6 +494,30 @@ export function finishFileGroupDrag() {
         datasetState.fileGroupActiveDropTargetNode = null;
         datasetState.fileGroupActiveDropPosition = '';
     }
+
+
+export function moveFileNearList(list, sourceValue, targetValue, position = 'after') {
+    const out = [];
+    const seen = new Set();
+    for (const raw of list || []) {
+        const value = String(raw || '').trim();
+        if (!value || seen.has(value)) continue;
+        seen.add(value);
+        out.push(value);
+    }
+    const source = String(sourceValue || '').trim();
+    const target = String(targetValue || '').trim();
+    if (!source || !out.includes(source)) return out;
+    const original = [...out];
+    out.splice(out.indexOf(source), 1);
+    let index = out.length;
+    if (target) {
+        const targetIndex = out.indexOf(target);
+        index = targetIndex < 0 ? out.length : targetIndex + (position === 'after' ? 1 : 0);
+    }
+    out.splice(Math.max(0, Math.min(out.length, index)), 0, source);
+    return out.length === original.length && out.every((value, idx) => value === original[idx]) ? original : out;
+}
 
 export function configFileDropIndex(group, targetFile, placeAfter, draggedFile) {
         const files = (group?.files || [])

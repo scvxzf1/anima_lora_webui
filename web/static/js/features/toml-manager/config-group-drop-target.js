@@ -9,7 +9,7 @@ import {
     finishFileGroupDrag,
     markFileGroupDropTarget,
     registerFileGroupDropTarget,
-} from './file-group-drag.js?v=module-bootstrap-20260711-ir6';
+} from './file-group-drag.js?v=module-bootstrap-20260711-ir9';
 
 const datasetState = getDatasetState();
 

@@ -7,8 +7,8 @@ import {
     setupFileGroupHeaderDropTarget,
     setupFileGroupListDropTarget,
     setupFileGroupRowDropTarget,
-} from './file-group-drag.js?v=module-bootstrap-20260711-ir6';
-import { setupConfigGroupDropTarget } from './config-group-drop.js?v=module-bootstrap-20260711-ir6';
+} from './file-group-drag.js?v=module-bootstrap-20260711-ir9';
+import { setupConfigGroupDropTarget } from './config-group-drop.js?v=module-bootstrap-20260711-ir9';
 import { updateConfigPageSummary } from '../anima-app/helpers/toml-manager-bridge.js?v=module-bootstrap-20260711-ir6';
 import { canDeleteTomlGroup, deleteTomlGroup, deleteTomlGroupButtonTitle } from '../anima-app/helpers/toml-actions-bridge.js?v=module-bootstrap-20260711-ir6';
 import {

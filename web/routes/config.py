@@ -576,6 +576,9 @@ async def handle_file_group_place(request: web.Request) -> web.Response:
             data.get("file", ""),
             data.get("group", ""),
             data.get("index"),
+            data.get("anchor"),
+            data.get("position"),
+            data.get("order"),
         )
     elif target == "group":
         ok, msg, group = place_config_file_group(

@@ -1,17 +1,18 @@
 /**
  * File-group drop target wiring (row/list/header).
+ * Same-list reorder: always resolve by pointer Y, then submit full DOM order.
  */
 import { getDatasetState } from '../anima-app/helpers/dataset-state-bridge.js?v=module-bootstrap-20260711-ir6';
 import {
     clearFileGroupDropTarget,
-    configFileDropIndex,
     eventTargetClosest,
     fileGroupContainsRelatedTarget,
     finishFileGroupDrag,
     markFileGroupDropTarget,
+    moveFileNearList,
     originClosest,
     registerFileGroupDropTarget,
-} from './file-group-drag-core.js?v=module-bootstrap-20260711-ir6';
+} from './file-group-drag-core.js?v=module-bootstrap-20260711-ir9';
 
 const datasetState = getDatasetState();
 
@@ -20,131 +21,118 @@ function currentFileGroupDragState() {
 }
 
 function rowPathFromNode(row) {
-    return row?.dataset?.file || '';
+    return String(row?.dataset?.file || '').trim();
+}
+
+export function fileGroupOrderFromDom(list, rowSelector) {
+    if (!(list instanceof Element)) return [];
+    return Array.from(list.querySelectorAll(rowSelector || '.dataset-preset-row, .toml-file-row-wrap'))
+        .map((node) => rowPathFromNode(node))
+        .filter(Boolean);
+}
+
+function rowDropPosition(row, y) {
+    const rect = row.getBoundingClientRect();
+    if (!rect || rect.height <= 0) return 'after';
+    return y < rect.top + rect.height / 2 ? 'before' : 'after';
+}
+
+function nearestRowByY(rows, payloadFile, y) {
+    let best = null;
+    for (const row of rows) {
+        const file = rowPathFromNode(row);
+        if (!file || file === payloadFile) continue;
+        const rect = row.getBoundingClientRect();
+        if (rect.width <= 0 || rect.height <= 0) continue;
+        // 点在行内：优先用该行；点在行外：按到行边界距离。
+        const inside = y >= rect.top && y <= rect.bottom;
+        const dy = inside ? 0 : (y < rect.top ? rect.top - y : y - rect.bottom);
+        const midBias = Math.abs(y - (rect.top + rect.height / 2)) * 0.0001;
+        const score = dy + midBias;
+        if (!best || score < best.score || (score === best.score && inside && !best.inside)) {
+            best = { row, file, score, inside, rect };
+        }
+    }
+    return best;
 }
 
 /**
- * 同组排序的唯一落点算法：
- * 1. 从 DOM 读取当前行顺序
- * 2. 先排除正在拖动的项
- * 3. 用各行中点决定插入下标
- * 这样 “1 拖到 4 下方” 不会再卡成 after(2)。
+ * 始终按 Y 选目标行，不信任 drop 事件落在哪一行。
+ * 提交完整 nextOrder，后端直接写 order。
  */
-export function resolveFileGroupRowPlacement(listOrRows, options, payload, y) {
+export function resolveFileGroupSameListDrop(list, group, options, payload, y) {
     if (!payload || payload.target !== 'file' || payload.scope !== options.scope) return null;
-    const rows = (listOrRows instanceof Element
-        ? Array.from(listOrRows.querySelectorAll?.(options.rowSelector) || [])
-        : Array.from(listOrRows || [])
-    ).filter((node) => node instanceof Element);
-
-    const items = [];
-    for (const row of rows) {
-        const file = rowPathFromNode(row);
-        if (!file || file === payload.file) continue;
-        const rect = row.getBoundingClientRect();
-        if (rect.width <= 0 || rect.height <= 0) continue;
-        items.push({ row, file, rect });
-    }
-    if (!items.length) {
-        return {
-            node: listOrRows instanceof Element ? listOrRows : null,
-            position: 'inside',
-            index: 0,
-            placeAfter: false,
-            targetFile: '',
-        };
-    }
-
-    for (let index = 0; index < items.length; index += 1) {
-        const item = items[index];
-        const mid = item.rect.top + item.rect.height / 2;
-        if (y < mid) {
-            return {
-                node: item.row,
-                position: 'before',
-                index,
-                placeAfter: false,
-                targetFile: item.file,
-            };
-        }
-    }
-
-    const last = items[items.length - 1];
-    return {
-        node: last.row,
-        position: 'after',
-        index: items.length,
-        placeAfter: true,
-        targetFile: last.file,
-    };
-}
-
-function resolveFileGroupListDropTarget(list, group, options, payload, y) {
     if (!options.canDropToGroup(group, payload)) return null;
-    const placement = resolveFileGroupRowPlacement(list, options, payload, y);
-    if (!placement) return null;
 
-    if (!placement.targetFile) {
+    const rowSelector = options.rowSelector || '.dataset-preset-row, .toml-file-row-wrap';
+    const rows = Array.from(list?.querySelectorAll?.(rowSelector) || [])
+        .filter((node) => node instanceof Element);
+    if (!rows.length) {
         return {
             node: list,
             position: 'inside',
             drop: async () => {
-                const index = (group?.files || []).filter((item) => item?.path && item.path !== payload.file).length;
-                await options.onDrop(payload, group.id, index);
+                await options.onDrop(payload, group.id, 0, { order: [payload.file] });
             },
         };
     }
 
-    return {
-        node: placement.node,
-        position: placement.position,
-        drop: async () => {
-            // placement.index 已是“剔除拖动项后”的插入下标，直接使用，避免二次换算漂移。
-            await options.onDrop(payload, group.id, placement.index);
-        },
-    };
-}
-
-function resolveFileGroupRowDropTarget(row, group, targetFile, options, payload, y) {
-    if (!payload || payload.target !== 'file' || payload.scope !== options.scope) return null;
-    if (payload.file === targetFile && payload.groupId === group?.id) return null;
-    if (!options.canDropToGroup(group, payload)) return null;
-
-    const list = row.parentElement;
-    if (list) {
-        const placement = resolveFileGroupRowPlacement(list, options, payload, y);
-        if (placement?.targetFile) {
-            return {
-                node: placement.node,
-                position: placement.position,
-                drop: async () => {
-                    await options.onDrop(payload, group.id, placement.index);
-                },
-            };
-        }
+    const nearest = nearestRowByY(rows, payload.file, y);
+    if (!nearest) {
+        const order = fileGroupOrderFromDom(list, rowSelector).filter((path) => path !== payload.file);
+        order.push(payload.file);
+        return {
+            node: list,
+            position: 'inside',
+            drop: async () => {
+                await options.onDrop(payload, group.id, order.length - 1, { order });
+            },
+        };
     }
 
-    // 兜底：没有父列表时退回单行 before/after。
-    const rect = row.getBoundingClientRect();
-    const placeAfter = y > rect.top + rect.height / 2;
-    const position = placeAfter ? 'after' : 'before';
+    const targetFile = nearest.file;
+    const position = rowDropPosition(nearest.row, y);
+    const currentOrder = fileGroupOrderFromDom(list, rowSelector);
+    const nextOrder = moveFileNearList(currentOrder, payload.file, targetFile, position);
+    const remaining = currentOrder.filter((path) => path !== payload.file);
+    const anchorIndex = remaining.indexOf(targetFile);
+    const index = anchorIndex < 0
+        ? remaining.length
+        : anchorIndex + (position === 'after' ? 1 : 0);
+
+    const unchanged = nextOrder.length === currentOrder.length
+        && nextOrder.every((path, idx) => path === currentOrder[idx]);
+
     return {
-        node: row,
+        node: nearest.row,
         position,
         drop: async () => {
-            const index = configFileDropIndex(group, targetFile, placeAfter, payload.file);
-            await options.onDrop(payload, group.id, index);
+            if (unchanged) return;
+            await options.onDrop(payload, group.id, index, {
+                anchor: targetFile,
+                position,
+                order: nextOrder,
+            });
         },
     };
 }
 
 export function setupFileGroupRowDropTarget(row, group, targetFile, options) {
-    registerFileGroupDropTarget(row, ({ payload, y }) => (
-        resolveFileGroupRowDropTarget(row, group, targetFile, options, payload, y)
-    ));
+    registerFileGroupDropTarget(row, ({ payload, y }) => {
+        if (!payload || payload.target !== 'file' || payload.scope !== options.scope) return null;
+        if (payload.file === targetFile && payload.groupId === group?.id) return null;
+        if (!options.canDropToGroup(group, payload)) return null;
+        const list = row.parentElement;
+        return resolveFileGroupSameListDrop(list, group, options, payload, y);
+    });
+
     const updateDropTarget = (event) => {
         const payload = currentFileGroupDragState();
-        const resolved = resolveFileGroupRowDropTarget(row, group, targetFile, options, payload, event.clientY);
+        if (!payload || payload.target !== 'file' || payload.scope !== options.scope) return;
+        if (payload.file === targetFile && payload.groupId === group?.id) return;
+        if (!options.canDropToGroup(group, payload)) return;
+        const list = row.parentElement;
+        const resolved = resolveFileGroupSameListDrop(list, group, options, payload, event.clientY);
         if (!resolved) return;
         event.preventDefault();
         event.stopPropagation();
@@ -155,6 +143,7 @@ export function setupFileGroupRowDropTarget(row, group, targetFile, options) {
         }
         markFileGroupDropTarget(resolved.node, resolved.position);
     };
+
     row.addEventListener('dragenter', updateDropTarget);
     row.addEventListener('dragover', updateDropTarget);
     row.addEventListener('dragleave', (event) => {
@@ -165,8 +154,8 @@ export function setupFileGroupRowDropTarget(row, group, targetFile, options) {
     row.addEventListener('drop', async (event) => {
         const payload = currentFileGroupDragState();
         if (!payload || payload.target !== 'file' || payload.scope !== options.scope) return;
-        // 松手时按最终坐标重算，避免沿用旧 hover 落点。
-        const resolved = resolveFileGroupRowDropTarget(row, group, targetFile, options, payload, event.clientY)
+        const list = row.parentElement;
+        const resolved = resolveFileGroupSameListDrop(list, group, options, payload, event.clientY)
             || row._animaRowDrop;
         row._animaRowDrop = null;
         if (!resolved) return;
@@ -181,13 +170,14 @@ export function setupFileGroupListDropTarget(list, group, options) {
     registerFileGroupDropTarget(list, ({ payload, origin, y }) => {
         if (!payload || payload.target !== 'file' || payload.scope !== options.scope) return null;
         if (originClosest(origin, options.rowSelector)) return null;
-        return resolveFileGroupListDropTarget(list, group, options, payload, y);
+        return resolveFileGroupSameListDrop(list, group, options, payload, y);
     });
+
     const updateDropTarget = (event) => {
         const payload = currentFileGroupDragState();
         if (!payload || payload.target !== 'file' || payload.scope !== options.scope) return;
         if (eventTargetClosest(event, options.rowSelector)) return;
-        const resolved = resolveFileGroupListDropTarget(list, group, options, payload, event.clientY);
+        const resolved = resolveFileGroupSameListDrop(list, group, options, payload, event.clientY);
         if (!resolved) return;
         event.preventDefault();
         event.stopPropagation();
@@ -198,6 +188,7 @@ export function setupFileGroupListDropTarget(list, group, options) {
         }
         markFileGroupDropTarget(resolved.node, resolved.position);
     };
+
     list.addEventListener('dragenter', updateDropTarget);
     list.addEventListener('dragover', updateDropTarget);
     list.addEventListener('dragleave', (event) => {
@@ -209,7 +200,7 @@ export function setupFileGroupListDropTarget(list, group, options) {
         const payload = currentFileGroupDragState();
         if (!payload || payload.target !== 'file' || payload.scope !== options.scope) return;
         if (eventTargetClosest(event, options.rowSelector)) return;
-        const resolved = resolveFileGroupListDropTarget(list, group, options, payload, event.clientY)
+        const resolved = resolveFileGroupSameListDrop(list, group, options, payload, event.clientY)
             || list._animaListDrop;
         list._animaListDrop = null;
         if (!resolved) return;
@@ -227,8 +218,11 @@ export function setupFileGroupHeaderDropTarget(node, group, options) {
         return {
             position: 'inside',
             drop: async () => {
-                const index = (group?.files || []).filter((item) => item?.path && item.path !== payload.file).length;
-                await options.onDrop(payload, group.id, index);
+                const order = (group?.files || [])
+                    .map((item) => item?.path)
+                    .filter((path) => path && path !== payload.file);
+                order.push(payload.file);
+                await options.onDrop(payload, group.id, order.length - 1, { order });
             },
         };
     });
@@ -253,8 +247,11 @@ export function setupFileGroupHeaderDropTarget(node, group, options) {
         if (!options.canDropToGroup(group, payload)) return;
         event.preventDefault();
         event.stopPropagation();
-        const index = (group?.files || []).filter((item) => item?.path && item.path !== payload.file).length;
-        await options.onDrop(payload, group.id, index);
+        const order = (group?.files || [])
+            .map((item) => item?.path)
+            .filter((path) => path && path !== payload.file);
+        order.push(payload.file);
+        await options.onDrop(payload, group.id, order.length - 1, { order });
         finishFileGroupDrag();
     });
 }
