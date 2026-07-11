@@ -722,3 +722,18 @@ Plan complete and saved to `docs/superpowers/plans/2026-07-11-backend-residual-o
 2. **Inline Execution** - 本会话按 executing-plans 批量推进并设检查点  
 
 Which approach?
+
+
+---
+
+## Round A' 执行台账（@ 17d6a52e）
+
+| 项 | 状态 | 说明 |
+|---|---|---|
+| C-R1 methods | ✅ 先前完成 | 6736e43b |
+| T-R1 policy layers | ✅ | load 不再伪造 missing keys；测 lock seed/不覆盖 |
+| T-R3 clamp | ✅ | attempts 1–10，backoff 0–3600 |
+| S-R2 home_search | ✅ | 全局 settings 一等字段 |
+| S-R1 resolve 统一 | ✅ | preview/analysis 走 resolve_allowed_file |
+| T-R4/T-R6/T-R7 | ✅ | 集成测 + 英文 checkpoint classify |
+| smoke 扩包 | ✅ | 140 passed |
