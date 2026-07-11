@@ -7,6 +7,7 @@ from library.cache_pool.fingerprint import (
     scan_input_inventory,
 )
 from library.cache_pool.mount import mount_dir
+from library.cache_pool.policy import CacheReusePolicy, parse_cache_reuse_policy
 from library.cache_pool.refs import acquire_ref, list_orphans, release_ref
 from library.cache_pool.store import (
     default_pool_root,
@@ -24,6 +25,8 @@ __all__ = [
     "default_pool_root",
     "list_orphans",
     "mount_dir",
+    "parse_cache_reuse_policy",
+    "CacheReusePolicy",
     "pool_entry_dir",
     "publish_pool_entry",
     "read_manifest",

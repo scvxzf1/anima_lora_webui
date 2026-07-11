@@ -99,6 +99,71 @@ def _key_from_action(action: argparse.Action) -> Optional[ConfigKey]:
     )
 
 
+
+def ensure_cache_reuse_schema_keys() -> None:
+    """Register WebUI preprocess cache-reuse keys (manual, not argparse)."""
+    CONFIG_SCHEMA.setdefault(
+        "reuse_dataset_cache_copy",
+        ConfigKey(
+            name="reuse_dataset_cache_copy",
+            type="bool",
+            default=True,
+            help=(
+                "When true, WebUI mounts shared cache_pool resized/lora into the "
+                "run dataset_cache instead of always copytree-ing a private tree."
+            ),
+            source="manual",
+        ),
+    )
+    CONFIG_SCHEMA.setdefault(
+        "reuse_vae_latents",
+        ConfigKey(
+            name="reuse_vae_latents",
+            type="bool",
+            default=True,
+            help="When true, skip VAE latent encode if matching sidecars exist.",
+            source="manual",
+        ),
+    )
+    CONFIG_SCHEMA.setdefault(
+        "reuse_text_encoder_cache",
+        ConfigKey(
+            name="reuse_text_encoder_cache",
+            type="bool",
+            default=True,
+            help="When true, skip text-encoder cache encode if matching sidecars exist.",
+            source="manual",
+        ),
+    )
+    CONFIG_SCHEMA.setdefault(
+        "cache_fingerprint_mode",
+        ConfigKey(
+            name="cache_fingerprint_mode",
+            type="str",
+            default="light",
+            choices=("light", "content"),
+            help=(
+                "Fingerprint mode for shared cache pool keys: light uses "
+                "path+size+mtime; content also hashes input image/caption bytes."
+            ),
+            source="manual",
+        ),
+    )
+    CONFIG_SCHEMA.setdefault(
+        "force_rebuild_preprocess_cache",
+        ConfigKey(
+            name="force_rebuild_preprocess_cache",
+            type="bool",
+            default=False,
+            help=(
+                "When true, rebuild preprocess caches for this run into private "
+                "run dirs (does not silently overwrite shared pool)."
+            ),
+            source="manual",
+        ),
+    )
+
+
 def populate_schema(
     parser: argparse.ArgumentParser,
     extras: Optional[dict[str, ConfigKey]] = None,
@@ -216,6 +281,8 @@ def populate_schema(
             source="manual",
         ),
     )
+
+    ensure_cache_reuse_schema_keys()
 
     # Percent-based multi-dataset curriculum (WebUI 分阶段调度).
     # stage_schedule is a TOML array of tables, e.g.
