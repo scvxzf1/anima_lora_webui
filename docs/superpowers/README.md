@@ -33,6 +33,7 @@
 | --- | --- |
 | [plans/2026-07-11-fullstack-auto-iteration-log.md](plans/2026-07-11-fullstack-auto-iteration-log.md) | 全栈自动迭代日志 |
 | [plans/2026-07-11-frontend-config-optimization.md](plans/2026-07-11-frontend-config-optimization.md) | 前端配置优化执行计划 |
+| [plans/2026-07-11-web-frontend-boulder-audit.md](plans/2026-07-11-web-frontend-boulder-audit.md) | Web 前端石山只读体检执行计划 |
 | [plans/2026-07-11-backend-config-optimization.md](plans/2026-07-11-backend-config-optimization.md) | 后端配置优化执行计划 |
 | [plans/2026-07-11-backend-next-optimization.md](plans/2026-07-11-backend-next-optimization.md) | 后端下一轮优化执行计划 |
 | [plans/2026-07-11-backend-residual-optimization.md](plans/2026-07-11-backend-residual-optimization.md) | 后端残留优化执行计划 |
