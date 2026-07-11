@@ -404,6 +404,9 @@ async def _handle_queue_start_data(request: web.Request, data: dict) -> web.Resp
                 "requires_confirmation": True,
                 "requires_preprocess_confirmation": needs_preprocess,
             }, status=409)
+        item_auto_retry = data.get("auto_retry") if "auto_retry" in data else None
+        item_max_attempts = data.get("max_attempts") if "max_attempts" in data else None
+        item_retry_backoff = data.get("retry_backoff_sec") if "retry_backoff_sec" in data else None
         payload = await svc.enqueue_training(
             variant,
             preset,
@@ -414,6 +417,9 @@ async def _handle_queue_start_data(request: web.Request, data: dict) -> web.Resp
             continue_info=continue_info,
             requires_preprocess=needs_preprocess,
             start_paused=start_paused,
+            auto_retry=item_auto_retry,
+            max_attempts=int(item_max_attempts) if item_max_attempts is not None else None,
+            retry_backoff_sec=float(item_retry_backoff) if item_retry_backoff is not None else None,
         )
         return web.json_response(payload)
     except (FileNotFoundError, ValueError) as e:

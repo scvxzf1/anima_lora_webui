@@ -164,6 +164,39 @@ def _normalize_queue_retry_backoff(value: Any) -> float:
     return min(3600.0, number)
 
 
+
+def resolve_item_retry_policy(
+    item: dict[str, Any] | None,
+    *,
+    queue_auto_retry: bool,
+    queue_max_attempts: int,
+    queue_retry_backoff_sec: float,
+) -> dict[str, Any]:
+    """Resolve effective retry policy with item > queue precedence.
+
+    Only keys explicitly present on the item (and not None) override the
+    corresponding queue runtime value. Each key may override independently.
+    """
+    src = item if isinstance(item, dict) else {}
+    if "auto_retry" in src and src.get("auto_retry") is not None:
+        auto_retry = _normalize_queue_auto_retry(src.get("auto_retry"))
+    else:
+        auto_retry = _normalize_queue_auto_retry(queue_auto_retry)
+    if "max_attempts" in src and src.get("max_attempts") is not None:
+        max_attempts = _normalize_queue_max_attempts(src.get("max_attempts"))
+    else:
+        max_attempts = _normalize_queue_max_attempts(queue_max_attempts)
+    if "retry_backoff_sec" in src and src.get("retry_backoff_sec") is not None:
+        retry_backoff_sec = _normalize_queue_retry_backoff(src.get("retry_backoff_sec"))
+    else:
+        retry_backoff_sec = _normalize_queue_retry_backoff(queue_retry_backoff_sec)
+    return {
+        "auto_retry": bool(auto_retry),
+        "max_attempts": int(max_attempts),
+        "retry_backoff_sec": float(retry_backoff_sec),
+    }
+
+
 def _queue_clearable_state_label(states: set[str]) -> str:
     clean = {str(state or "").strip() for state in states}
     labels = _queue_clearable_state_labels()
