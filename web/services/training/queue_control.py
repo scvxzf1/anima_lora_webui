@@ -125,6 +125,13 @@ async def retry_queue_item(self, item_id: str) -> dict[str, Any]:
     if item.get("state") == "running":
         raise ValueError("运行中的队列任务不能重新入队")
     retry = self._clone_queue_item_for_retry(item)
+    # Manual retry is operator-driven: mark source and reset attempt counter so
+    # policy max_attempts does not inherit the failed chain's attempt count.
+    retry["manual_retry"] = True
+    retry["retry_source"] = "manual"
+    retry["attempt"] = 1
+    retry.pop("next_run_at", None)
+    retry["message"] = "手动重新加入队列，等待调度"
     self._queue_items().append(retry)
     self._compact_queue()
     self._save_queue()

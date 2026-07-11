@@ -795,3 +795,14 @@ Which approach?
 | batch-start 双别名 | ✅ | `/batch/start` + `/batch-start` |
 | smoke | ✅ | 纳入 `test-backend-smoke` |
 
+---
+
+## 纯后端补刀（C-R2 强制 import / S-R8 / T-R10 light）
+
+| 项 | 状态 | 说明 |
+|---|---|---|
+| configs_root broadcast 强制 import | ✅ | 未加载模块也会 import 后 setattr |
+| broadcast 矩阵测 | ✅ | `test_configs_root_broadcast_matrix.py` |
+| environment effective roots | ✅ | platform.effective_roots + web_runtime checks |
+| manual retry 标记 | ✅ | `manual_retry`/`retry_source=manual`，attempt 重置为 1 |
+

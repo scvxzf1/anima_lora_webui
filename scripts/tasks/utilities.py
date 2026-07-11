@@ -127,6 +127,9 @@ def cmd_test_backend_smoke(extra):
     targets = [
         "tests/test_web_http_contracts.py",
         "tests/test_web_route_registry.py",
+        "tests/test_queue_manual_retry.py",
+        "tests/test_environment_effective_roots.py",
+        "tests/test_configs_root_broadcast_matrix.py",
         "tests/test_training_websocket.py",
         "tests/test_training_queue_retry_wake.py",
         "tests/test_training_retry_classification.py",

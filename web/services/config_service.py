@@ -75,7 +75,12 @@ def _configs_root_path_updates(resolved: Path) -> dict[str, object]:
 
 
 def _broadcast_configs_root(resolved: Path) -> None:
-    """Push hot-swapped path roots into loaded domain modules."""
+    """Push hot-swapped path roots into loaded domain modules.
+
+    Modules listed in ``_CONFIGS_ROOT_SYNC_MODULES`` are imported if needed so a
+    late first-import does not re-seed stale ``get_configs_root()`` constants.
+    """
+    import importlib
     import sys
 
     from web.services.config import common as _config_common
@@ -85,7 +90,11 @@ def _broadcast_configs_root(resolved: Path) -> None:
     for module_name in _CONFIGS_ROOT_SYNC_MODULES:
         module = sys.modules.get(module_name)
         if module is None:
-            continue
+            try:
+                module = importlib.import_module(module_name)
+            except Exception:
+                LOGGER.debug("configs_root broadcast skip unloadable module %s", module_name, exc_info=True)
+                continue
         for name, value in updates.items():
             if hasattr(module, name):
                 setattr(module, name, value)
