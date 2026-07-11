@@ -16,8 +16,8 @@ import { getTomlState } from '../helpers/toml-state-bridge.js?v=module-bootstrap
 import { getTrainingState } from '../helpers/training-state-bridge.js?v=module-bootstrap-20260707-93';
 import { api, val } from '../helpers/runtime-bridge.js?v=module-bootstrap-20260707-93';
 import { saveAsTargetGroups } from '../helpers/toml-io-bridge.js?v=module-bootstrap-20260707-93';
-import {
 import { summarizeDirtyDiff } from '../../config-form/field-presentation.js?v=module-bootstrap-20260707-93';
+import {
     applyTomlLockState,
     applyTomlToConfig,
     armTomlSaveConfirm,

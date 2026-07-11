@@ -119,6 +119,11 @@ export const FORM_UI_DEFAULTS = {
     prefer_json_caption: false,
     caption_source_mode: 'auto',
 };
+export const FORM_UI_ONLY_DEFAULT_KEYS = new Set([
+    // UI low-VRAM / convenience fallbacks that intentionally differ from configs/base.toml.
+    'gradient_checkpointing',
+]);
+
 export const OPTIONAL_EMPTY_FIELDS = new Set([
     'sample_prompts',
     'sample_every_n_epochs',

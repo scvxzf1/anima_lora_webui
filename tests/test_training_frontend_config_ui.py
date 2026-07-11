@@ -2992,3 +2992,54 @@ def test_field_presentation_provenance_and_presave_dirty_summary() -> None:
     assert "setTomlStatus('pending', summarizeDirtyDiff(changedValues)" in save_source
     assert ".field-source-badge" in css
 
+def test_form_ui_defaults_and_help_align_with_base_facts() -> None:
+    """Critical FORM_UI_DEFAULTS / help text must not contradict configs/base.toml facts.
+
+    UI-only fallbacks that intentionally diverge must be listed in
+    FORM_UI_ONLY_DEFAULT_KEYS instead of silently pretending to be merge defaults.
+    """
+    import tomllib
+
+    base = tomllib.loads((REPO_ROOT / "configs" / "base.toml").read_text(encoding="utf-8"))
+    assert base["lr_scheduler"] == "cosine"
+    assert base["optimizer_type"] == "AdamW"
+    assert base["lr_warmup_steps"] == 0.05
+    assert base["gradient_checkpointing"] is False
+    assert base["use_custom_down_autograd"] is False
+
+    defaults_source = _frontend_module_text("js/config/catalog/defaults.js")
+    help_source = _frontend_module_text("js/config/catalog/field-help-training.js")
+    defaults_block = _section(
+        defaults_source,
+        "export const FORM_UI_DEFAULTS = {",
+        "export const OPTIONAL_EMPTY_FIELDS",
+    )
+
+    # lr_scheduler is owned by the merge chain (base=cosine); do not ship a conflicting UI default.
+    assert "lr_scheduler:" not in defaults_block
+
+    lr_help = _section(help_source, "lr_scheduler: help(", "lr_warmup_steps: help(")
+    assert "默认 constant" not in lr_help
+    assert "cosine" in lr_help
+    assert "base" in lr_help
+
+    optimizer_help = _section(help_source, "optimizer_type: help(", "optimizer_args: help(")
+    assert "默认 AdamW" in optimizer_help
+
+    # gradient_checkpointing: FORM_UI true is a low-VRAM UI fallback, not base (false).
+    assert "gradient_checkpointing: true" in defaults_block
+    ui_only = _section(
+        defaults_source,
+        "export const FORM_UI_ONLY_DEFAULT_KEYS = new Set([",
+        "]);",
+    )
+    assert "'gradient_checkpointing'" in ui_only
+
+    custom_down_help = _section(
+        help_source,
+        "use_custom_down_autograd: help(",
+        "log_every_n_steps: help(",
+    )
+    assert "默认 true" not in custom_down_help
+    assert "false" in custom_down_help
+
