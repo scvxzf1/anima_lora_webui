@@ -6,10 +6,28 @@ from library.cache_pool.fingerprint import (
     compute_fingerprint,
     scan_input_inventory,
 )
+from library.cache_pool.mount import mount_dir
+from library.cache_pool.refs import acquire_ref, list_orphans, release_ref
+from library.cache_pool.store import (
+    default_pool_root,
+    pool_entry_dir,
+    publish_pool_entry,
+    read_manifest,
+    write_manifest,
+)
 
 __all__ = [
     "SCHEMA_VERSION",
+    "acquire_ref",
     "build_preprocess_signature",
     "compute_fingerprint",
+    "default_pool_root",
+    "list_orphans",
+    "mount_dir",
+    "pool_entry_dir",
+    "publish_pool_entry",
+    "read_manifest",
+    "release_ref",
     "scan_input_inventory",
+    "write_manifest",
 ]
