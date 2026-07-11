@@ -11,7 +11,7 @@ for _k, _v in vars(_frontend_support).items():
         globals()[_k] = _v
 
 def test_setup_event_dom_contract_matches_index_html() -> None:
-    source = _frontend_module_text("js/features/app-shell/event-listeners.js")
+    source = _frontend_feature_text("js/features/app-shell/event-listeners.js", "js/features/app-shell/event-listeners-contract.js", "js/features/app-shell/event-listeners-setup.js", "js/features/app-shell/beginner-tooltips.js")
     dom_source = _frontend_module_text("js/shared/dom.js")
     html = INDEX_HTML.read_text(encoding="utf-8")
     listener_section = _section(source, "function setupEventListeners", "function installBeginnerTooltips")

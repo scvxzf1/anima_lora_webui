@@ -337,6 +337,8 @@ def _anima_app_container_text() -> str:
         STATIC_DIR / "js/features/config-form/stage-resolution.js",
         STATIC_DIR / "js/features/config-form/stage-resolution-model.js",
         STATIC_DIR / "js/features/config-form/stage-resolution-ui.js",
+        STATIC_DIR / "js/features/config-form/stage-resolution-ui-widgets.js",
+        STATIC_DIR / "js/features/config-form/stage-resolution-ui-dialog.js",
         STATIC_DIR / "js/features/config-form/form-fields.js",
         STATIC_DIR / "js/features/config-form/form-fields-adapters.js",
         STATIC_DIR / "js/features/config-form/form-fields-sample.js",
@@ -349,6 +351,7 @@ def _anima_app_container_text() -> str:
         STATIC_DIR / "js/features/dataset-editor/row-settings.js",
         STATIC_DIR / "js/features/dataset-editor/row-settings-basic.js",
         STATIC_DIR / "js/features/dataset-editor/row-settings-experimental.js",
+        STATIC_DIR / "js/features/dataset-editor/dataset-render.js",
 
         STATIC_DIR / "js/features/dataset-editor/row-fields.js",
         STATIC_DIR / "js/features/dataset-editor/preview.js",
@@ -370,6 +373,9 @@ def _anima_app_container_text() -> str:
 
         STATIC_DIR / "js/features/training-launch/index.js",
         STATIC_DIR / "js/features/app-shell/event-listeners.js",
+        STATIC_DIR / "js/features/app-shell/event-listeners-contract.js",
+        STATIC_DIR / "js/features/app-shell/event-listeners-setup.js",
+        STATIC_DIR / "js/features/app-shell/beginner-tooltips.js",
     ]
     for path in paths:
         assert path.resolve() in graph, f"{path.relative_to(STATIC_DIR).as_posix()} is not reachable"
@@ -440,7 +446,7 @@ def _section(source: str, start: str, end: str) -> str:
 
 
 def _setup_event_dom_contract() -> dict[str, set[str]]:
-    source = _frontend_module_text("js/features/app-shell/event-listeners.js")
+    source = _frontend_feature_text("js/features/app-shell/event-listeners.js", "js/features/app-shell/event-listeners-contract.js", "js/features/app-shell/event-listeners-setup.js", "js/features/app-shell/beginner-tooltips.js")
     contract: dict[str, set[str]] = {}
     for key in ("required", "optional"):
         match = re.search(rf"{key}:\s*Object\.freeze\(\[(.*?)\]\)", source, re.S)

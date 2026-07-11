@@ -164,7 +164,14 @@ def test_global_settings_frontend_reload_after_configs_root_switch():
 
 
 def test_global_settings_tooltips_and_help_describe_configs_root_reload():
-    listeners = EVENT_LISTENERS_JS.read_text(encoding="utf-8")
+    listeners = "\n".join(
+        path.read_text(encoding="utf-8")
+        for path in (
+            EVENT_LISTENERS_JS,
+            EVENT_LISTENERS_JS.with_name("event-listeners-setup.js"),
+            EVENT_LISTENERS_JS.with_name("beginner-tooltips.js"),
+        )
+    )
     html = INDEX_HTML.read_text(encoding="utf-8")
 
     assert "修改配置根目录后页面会自动刷新" in listeners

@@ -476,9 +476,9 @@ def test_weight_analysis_feature_modules_are_loaded_from_production_entrypoint()
     tabs_source = _frontend_module_text("js/features/app-shell/tabs.js")
     html = INDEX_HTML.read_text(encoding="utf-8")
     css = STYLE_CSS.read_text(encoding="utf-8")
-    listener_section = _section(legacy_source, "function setupEventListeners", "function installBeginnerTooltips")
+    listener_section = _section(legacy_source, "export function setupEventListeners", "export function installBeginnerTooltips")
     tab_setup = _section(tabs_source, "function setupTabs()", "return {")
-    tooltip_section = _section(legacy_source, "function installBeginnerTooltips()", "// ── 工具函数 ──")
+    tooltip_section = _section(legacy_source, "export function installBeginnerTooltips()", "// ── 工具函数 ──")
 
     assert "createWeightAnalysisFeature(ctx)" in feature_ensurers
     assert "ensureWeightAnalysisFeature(ctx, appShellState).bindWeightAnalysisEvents();" in listener_section
@@ -588,9 +588,9 @@ def test_environment_check_feature_modules_are_loaded_from_production_entrypoint
     tabs_source = _frontend_module_text("js/features/app-shell/tabs.js")
     html = INDEX_HTML.read_text(encoding="utf-8")
     css = STYLE_CSS.read_text(encoding="utf-8")
-    listener_section = _section(legacy_source, "function setupEventListeners", "function installBeginnerTooltips")
+    listener_section = _section(legacy_source, "export function setupEventListeners", "export function installBeginnerTooltips")
     tab_setup = _section(tabs_source, "function setupTabs()", "return {")
-    tooltip_section = _section(legacy_source, "function installBeginnerTooltips()", "// ── 工具函数 ──")
+    tooltip_section = _section(legacy_source, "export function installBeginnerTooltips()", "// ── 工具函数 ──")
     routes_source = (STATIC_DIR.parents[0] / "routes" / "__init__.py").read_text(encoding="utf-8")
 
     assert "createEnvironmentCheckFeature(ctx)" in feature_ensurers
@@ -658,9 +658,9 @@ def test_image_test_feature_modules_are_loaded_from_production_entrypoint() -> N
     tabs_source = _frontend_module_text("js/features/app-shell/tabs.js")
     html = INDEX_HTML.read_text(encoding="utf-8")
     css = STYLE_CSS.read_text(encoding="utf-8")
-    listener_section = _section(legacy_source, "function setupEventListeners", "function installBeginnerTooltips")
+    listener_section = _section(legacy_source, "export function setupEventListeners", "export function installBeginnerTooltips")
     tab_setup = _section(tabs_source, "function setupTabs()", "return {")
-    tooltip_section = _section(legacy_source, "function installBeginnerTooltips()", "// ── 工具函数 ──")
+    tooltip_section = _section(legacy_source, "export function installBeginnerTooltips()", "// ── 工具函数 ──")
     routes_source = (STATIC_DIR.parents[0] / "routes" / "__init__.py").read_text(encoding="utf-8")
     server_source = (STATIC_DIR.parents[0] / "server.py").read_text(encoding="utf-8")
 

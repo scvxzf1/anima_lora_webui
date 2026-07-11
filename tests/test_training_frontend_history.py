@@ -132,7 +132,7 @@ def test_image_test_ui_draft_persistence_and_history_reload_hooks_exist() -> Non
 
 def test_manual_history_refresh_announces_and_deduplicates_requests() -> None:
     history_source = _frontend_module_text("js/features/history-list/list.js")
-    listener_source = _frontend_module_text("js/features/app-shell/event-listeners.js")
+    listener_source = _frontend_feature_text("js/features/app-shell/event-listeners.js", "js/features/app-shell/event-listeners-contract.js", "js/features/app-shell/event-listeners-setup.js", "js/features/app-shell/beginner-tooltips.js")
 
     assert "const HISTORY_REFRESH_BUTTON_LABELS = Object.freeze({" in history_source
     assert "let historyListLoadPromise = null;" in history_source
@@ -1369,7 +1369,7 @@ def test_history_detail_config_files_are_tool_ready() -> None:
         "js/features/config-form/group-entry.js",
         "js/features/config-form/resource-values.js",
         "js/features/config-form/field-rows.js",
-        "js/features/toml-manager/config-group-drop.js",
+        "js/features/dataset-editor/dataset-render.js",
         "js/features/dataset-editor/inline-help.js",
         "js/features/dataset-editor/row.js",
         "js/features/dataset-editor/row-fields.js",
@@ -1385,7 +1385,7 @@ def test_history_detail_config_files_are_tool_ready() -> None:
         "js/features/preflight-dialog/index.js",
         "js/features/live-log/index.js",
         "js/features/global-settings/settings.js",
-        "js/features/app-shell/event-listeners.js",
+        "js/features/app-shell/event-listeners-setup.js",
     ):
         source = _frontend_module_text(catalog_user)
         assert (

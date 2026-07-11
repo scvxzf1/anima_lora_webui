@@ -138,7 +138,7 @@ def test_state_bucket_bridges_reach_hotspot_chunks() -> None:
     dataset_picker_source = _frontend_feature_text("js/features/anima-app/chunks/06-stronger-selective-checkpoint-value.js", "js/features/config-form/resource-values.js", "js/features/config-form/field-rows.js", "js/features/config-form/dataset-picker.js", "js/features/training-source/continue-lora.js")
     config_dataset_dialog_source = _frontend_feature_text("js/features/anima-app/chunks/07-render-config-dataset-picker-dialog.js", "js/features/config-form/dataset-picker-dialog.js", "js/features/dataset-editor/preset-page.js", "js/features/toml-manager/file-group-drag.js", "js/features/toml-manager/file-group-drag-core.js", "js/features/toml-manager/file-group-drag-targets.js")
     file_group_drag_source = _frontend_feature_text("js/features/anima-app/chunks/08-origin-closest.js", "js/features/toml-manager/file-group-drag.js", "js/features/toml-manager/file-group-drag-core.js", "js/features/toml-manager/file-group-drag-targets.js")
-    dataset_group_source = _frontend_feature_text("js/features/anima-app/chunks/09-setup-config-group-drop-target.js", "js/features/toml-manager/config-group-drop.js")
+    dataset_group_source = _frontend_feature_text("js/features/anima-app/chunks/09-setup-config-group-drop-target.js", "js/features/toml-manager/config-group-drop.js", "js/features/toml-manager/config-group-drop-target.js", "js/features/dataset-editor/dataset-render.js")
     dataset_inline_help_source = _frontend_feature_text("js/features/anima-app/chunks/10a-dataset-inline-help.js", "js/features/dataset-editor/inline-help.js")
     dataset_row_source = _chunk11_compat_text()
     dataset_caption_source = _frontend_feature_text("js/features/anima-app/chunks/12-create-dataset-row-caption-source-mode-editor.js", "js/features/dataset-editor/row-fields.js", "js/features/dataset-editor/preview.js")
@@ -167,7 +167,7 @@ def test_state_bucket_bridges_reach_hotspot_chunks() -> None:
     history_item_source = _frontend_module_text("js/features/anima-app/chunks/33-create-history-task-item.js")
     history_collection_dialog_source = _frontend_module_text("js/features/anima-app/chunks/34-show-history-collection-select-dialog.js")
     history_timeline_source = _frontend_module_text("js/features/anima-app/chunks/35-render-config-group-timeline.js")
-    listeners_source = _frontend_module_text("js/features/app-shell/event-listeners.js")
+    listeners_source = _frontend_feature_text("js/features/app-shell/event-listeners.js", "js/features/app-shell/event-listeners-contract.js", "js/features/app-shell/event-listeners-setup.js", "js/features/app-shell/beginner-tooltips.js")
     training_source = _frontend_module_text("js/features/training-source/index.js")
 
     _assert_imports_from(
@@ -946,7 +946,7 @@ def test_global_ui_scale_override_controls_and_runtime_hooks_are_present() -> No
     html = INDEX_HTML.read_text(encoding="utf-8")
     defaults_source = _frontend_module_text("js/config/catalog/defaults.js")
     settings_source = _frontend_module_text("js/features/global-settings/settings.js")
-    listeners_source = _frontend_module_text("js/features/app-shell/event-listeners.js")
+    listeners_source = _frontend_feature_text("js/features/app-shell/event-listeners.js", "js/features/app-shell/event-listeners-contract.js", "js/features/app-shell/event-listeners-setup.js", "js/features/app-shell/beginner-tooltips.js")
     ensure_history_source = _chunk02_compat_text()
     ui_scale_source = _frontend_module_text("js/features/app-shell/ui-scale.js")
     history_dialog_source = _frontend_module_text("js/features/history-detail/dialog.js")
@@ -1245,7 +1245,7 @@ def test_launch_readiness_panel_is_removed() -> None:
     source = APP_JS.read_text(encoding="utf-8")
     html = INDEX_HTML.read_text(encoding="utf-8")
     css = STYLE_CSS.read_text(encoding="utf-8")
-    listeners_source = _frontend_module_text("js/features/app-shell/event-listeners.js")
+    listeners_source = _frontend_feature_text("js/features/app-shell/event-listeners.js", "js/features/app-shell/event-listeners-contract.js", "js/features/app-shell/event-listeners-setup.js", "js/features/app-shell/beginner-tooltips.js")
     action_source = _frontend_module_text("js/features/anima-app/chunks/22-update-toml-action-state.js")
 
     listener_section = _section(listeners_source, "function setupEventListeners", "function installBeginnerTooltips")
@@ -2485,7 +2485,7 @@ def test_file_group_drag_has_pointer_fallback() -> None:
         "js/features/toml-manager/file-group-drag.js",
         "js/features/toml-manager/file-group-drag-core.js",
         "js/features/toml-manager/file-group-drag-targets.js",
-        "js/features/toml-manager/config-group-drop.js",
+        "js/features/toml-manager/config-group-drop.js", "js/features/toml-manager/config-group-drop-target.js", "js/features/dataset-editor/dataset-render.js",
         "js/features/anima-app/helpers/app-constants.js",
     )
     css = STYLE_CSS.read_text(encoding="utf-8")
@@ -2927,6 +2927,8 @@ def test_dataset_page_toolbar_hosts_experimental_and_stage_entries() -> None:
     editor_chunk = _frontend_feature_text(
         "js/features/anima-app/chunks/09-setup-config-group-drop-target.js",
         "js/features/toml-manager/config-group-drop.js",
+        "js/features/toml-manager/config-group-drop-target.js",
+        "js/features/dataset-editor/dataset-render.js",
     )
     assert "btn-dataset-open-experimental" in toolbar
     assert "btn-dataset-open-stage-schedule" in toolbar
@@ -2942,7 +2944,7 @@ def test_stage_schedule_primary_entry_moves_to_dataset_page() -> None:
         "js/features/config-form/group-entry.js",
     )
     toolbar = _frontend_module_text("js/features/dataset-editor/toolbar.js")
-    stage_ui = _frontend_feature_text("js/features/config-form/stage-resolution.js", "js/features/config-form/stage-resolution-model.js", "js/features/config-form/stage-resolution-ui.js")
+    stage_ui = _frontend_feature_text("js/features/config-form/stage-resolution.js", "js/features/config-form/stage-resolution-model.js", "js/features/config-form/stage-resolution-ui.js", "js/features/config-form/stage-resolution-ui-widgets.js", "js/features/config-form/stage-resolution-ui-dialog.js")
 
     assert "createOpenStageResolutionDialogButton" not in group_entry
     assert "createStageScheduleInlineSummary" in group_entry
@@ -2957,7 +2959,7 @@ def test_stage_schedule_dialog_is_wired_from_dataset_group() -> None:
     """分阶段 dialog 由数据集顶栏打开，字段仍写训练配置 stage_schedule*。"""
     html = INDEX_HTML.read_text(encoding="utf-8")
     toolbar = _frontend_module_text("js/features/dataset-editor/toolbar.js")
-    stage_ui = _frontend_feature_text("js/features/config-form/stage-resolution.js", "js/features/config-form/stage-resolution-model.js", "js/features/config-form/stage-resolution-ui.js")
+    stage_ui = _frontend_feature_text("js/features/config-form/stage-resolution.js", "js/features/config-form/stage-resolution-model.js", "js/features/config-form/stage-resolution-ui.js", "js/features/config-form/stage-resolution-ui-widgets.js", "js/features/config-form/stage-resolution-ui-dialog.js")
     assert 'id="stage-resolution-dialog"' in html
     assert "btn-dataset-open-stage-schedule" in toolbar
     assert "stage_schedule_enabled" in stage_ui
@@ -2969,7 +2971,7 @@ def test_stage_schedule_dialog_is_wired_from_dataset_group() -> None:
 
 def test_stage_schedule_subset_options_prefer_nonempty_dataset_rows() -> None:
     """课表下拉不能被空的 datasetEditorState.datasets 挡住多行预设。"""
-    stage_ui = _frontend_feature_text("js/features/config-form/stage-resolution.js", "js/features/config-form/stage-resolution-model.js", "js/features/config-form/stage-resolution-ui.js")
+    stage_ui = _frontend_feature_text("js/features/config-form/stage-resolution.js", "js/features/config-form/stage-resolution-model.js", "js/features/config-form/stage-resolution-ui.js", "js/features/config-form/stage-resolution-ui-widgets.js", "js/features/config-form/stage-resolution-ui-dialog.js")
     assert "function pickDatasetRows" in stage_ui
     assert "datasetPresetState?.datasets" in stage_ui
     assert "Array.isArray(rows) && rows.length" in stage_ui
@@ -2979,7 +2981,7 @@ def test_stage_schedule_subset_options_prefer_nonempty_dataset_rows() -> None:
 
 def test_stage_schedule_ui_is_variable_n_not_hardcoded_three() -> None:
     """前端阶段模板支持可变 N，软上限 12，默认不是写死三段。"""
-    stage_ui = _frontend_feature_text("js/features/config-form/stage-resolution.js", "js/features/config-form/stage-resolution-model.js", "js/features/config-form/stage-resolution-ui.js")
+    stage_ui = _frontend_feature_text("js/features/config-form/stage-resolution.js", "js/features/config-form/stage-resolution-model.js", "js/features/config-form/stage-resolution-ui.js", "js/features/config-form/stage-resolution-ui-widgets.js", "js/features/config-form/stage-resolution-ui-dialog.js")
     assert "applyStageTemplate(2)" in stage_ui
     assert "Math.min(12" in stage_ui or "Math.min(12," in stage_ui
     assert "defaultStageScheduleStages" in stage_ui
