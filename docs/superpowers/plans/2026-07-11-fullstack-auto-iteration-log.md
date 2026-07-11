@@ -328,3 +328,42 @@ chunk16: ESM parse OK (runtime bridge-not-configured expected in node)
 - E2 仅模板化 history-task-actions，其余 bridge 仍有 silent legacyRoot。
 - E1 history chunk 仍有本地 compactPathLabel 兼容面。
 - 既有 preflight compat matrix collection ImportError 仍在。
+
+
+## IR4 实现轮结果 — 2026-07-11
+
+| 项 | 值 |
+|---|---|
+| 分支 | `feat/frontend-five-round-iteration` |
+| HEAD | `072f87cb` |
+| 本轮目标 | IR4：C5 live 兼容、E3 启动 import 并行、U1 DOM 注册表分桶 |
+| 完成任务 | C5 live compat + sticky clear；E3 Promise.all 分组并行；U1 queue/history/preview/settings 契约 |
+| 测试门禁 | G0 13；modules 19；config focused 5；history 见 g3 文件 |
+| 熔断? | 否（C5 评审 Important 已当轮修 sticky clear） |
+| 健康分（估） | ~76 / C+（目标 IR4） |
+| 下轮焦点 | IR5：E4 history 性能、U2 docs、Freeze |
+
+### 提交
+
+| Commit | 说明 |
+|---|---|
+| `1e01dedb` | C5：live 兼容警告 |
+| `7e177d3e` | C5：冲突消除后清理 sticky 警告 |
+| `8bee47ac` | U1：workflow DOM 分桶契约 |
+| `072f87cb` | E3：anima-app 启动 import 并行 |
+
+### 验收证据
+
+```text
+G0: 13 passed
+modules: 19 passed
+config focused: 5 passed
+DOM: 8 passed
+history: see ir4-g3-history.txt
+```
+
+### 残留 Concerns
+
+- C5 仍可能覆盖其他 toml status（仅清理自身 live 文案）
+- E3 并行后 chunk 间隐式初始化竞态需实机观察
+- preflight matrix ImportError 仍在
