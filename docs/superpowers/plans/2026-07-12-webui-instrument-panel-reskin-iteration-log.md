@@ -232,3 +232,62 @@
 - Medium open: 已知 JS bridge / module bootstrap / 本地 mfu gui-methods 基线失败与 CSS 无关
 - Decision: complete
 
+### R5-final (Task 13–14 closeout)
+- Goal: 总回归、契约冻结、文档收口
+- Final cache token: `frontend-chain-20260712-reskin-r5`
+- Branch HEAD: `472ef8bc` merged into local `main` (ff)
+- DOM id delta vs `webui/main`: removed 0 / added 0
+- Dual CSS cache entrypoints: match
+
+#### Supplemental Review (final)
+- [x] 无新功能
+- [x] 无配置项减少/隐藏
+- [x] 无 DOM id 改动
+- [x] 字段可读性提升（`--font-size-field*` / `--control-height`）
+- [x] 16:9 密度用壳变薄补偿
+- [x] 浅色主展示可用（light-first tokens）
+- [x] 深色独立精修（低发光 panel-shadow）
+- [x] 状态/focus 清楚（状态胶囊 + 底刻度 Tab）
+
+#### Cross Review (final)
+- visual-auditor: PASS — 七 Tab 统一仪器台语言；hero/eyebrow 降噪
+- readability-auditor: PASS — 主字段/控件不再依赖 0.68–0.78rem 硬编码主路径
+- theme-auditor: PASS — 浅色纸感 + 深色低发光
+- contract-auditor: PASS — visual token 测试 + css cache 双入口 + DOM id 守恒
+
+#### Gate
+- commands:
+  - `pytest tests/test_webui_visual_tokens.py tests/test_training_frontend_modules.py::test_frontend_css_import_cache_tokens_match_entrypoint tests/test_training_frontend_dom.py`
+- results: GREEN 12 passed (fresh on main)
+- known non-CSS baselines (not introduced by reskin; no JS files changed):
+  - modules: `test_frontend_module_cache_tokens_match_entrypoint` (chunk ir9 vs entry ir6)
+  - live: config/live-status bridge not configured in isolated node harness
+  - history: `selectedHistoryCollectionKey` hook assertion
+  - config_ui: local `mfu_rokkotsu_*` gui-methods missing in some checkouts; history bridge deselect
+- decision: complete / High=0
+
+## Final Retro
+### 改前痛点
+- 字段/按钮偏小，默认缩放阅读费力
+- 各 Tab forge 皮肤各自为政
+- 装饰壳层厚，16:9 下内容留屏差
+
+### 改后结果
+- 全局 token + 四级按钮 + 仪器台壳层
+- 配置/数据集/训练/历史/ΔW/设置/环境/生图统一节奏
+- 字更大 + 壳更薄；CSS 契约测试落地
+
+### 未做项（YAGNI）
+- 不改 JS 业务与 DOM id
+- 不重做布局架构
+- 不修与本换皮无关的 JS bridge / module bootstrap 基线失败
+
+### 残留 Medium/Low
+- Medium: 部分非主字段路径仍有 `0.68rem` 级 meta/badge 硬编码（不挡主字段可读）
+- Medium: `10-config-dataset-editor.css` 共享编辑器小字号仍可能出现在非 forge 路径
+- Low: worktree/git gc loose objects 噪音
+
+### Merge
+- 本地 `main` 已 fast-forward 包含全部实现提交
+- 相对 `webui/main` ahead 14；未自动 push（需用户明确“推送到线上”）
+
