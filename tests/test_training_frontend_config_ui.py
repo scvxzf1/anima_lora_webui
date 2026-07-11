@@ -79,8 +79,9 @@ def test_config_form_bridge_reaches_split_form_chunks() -> None:
         "js/features/anima-app/chunks/05a-no-dataset-regularization-mode.js": (
             "originalConfigFieldValue",
         ),
-        "js/features/anima-app/chunks/06-stronger-selective-checkpoint-value.js": (
+        "js/features/config-form/resource-values.js": (
             "originalConfigFieldValue",
+            "readFieldInputValue",
         ),
         "js/features/config-form/field-input.js": (
             "configDraftValueChanged",
@@ -125,7 +126,7 @@ def test_state_bucket_bridges_reach_hotspot_chunks() -> None:
     ensure_history_source = _chunk02_compat_text()
     dataset_runtime_source = _frontend_module_text("js/features/anima-app/chunks/03-parse-network-arg-entry.js")
     config_groups_source = _frontend_feature_text("js/features/anima-app/chunks/04-create-config-group-entry.js", "js/features/config-form/group-entry.js")
-    dataset_picker_source = _frontend_module_text("js/features/anima-app/chunks/06-stronger-selective-checkpoint-value.js")
+    dataset_picker_source = _frontend_feature_text("js/features/anima-app/chunks/06-stronger-selective-checkpoint-value.js", "js/features/config-form/resource-values.js", "js/features/config-form/field-rows.js", "js/features/config-form/dataset-picker.js", "js/features/training-source/continue-lora.js")
     config_dataset_dialog_source = _frontend_module_text("js/features/anima-app/chunks/07-render-config-dataset-picker-dialog.js")
     file_group_drag_source = _frontend_feature_text("js/features/anima-app/chunks/08-origin-closest.js", "js/features/toml-manager/file-group-drag.js")
     dataset_group_source = _frontend_feature_text("js/features/anima-app/chunks/09-setup-config-group-drop-target.js", "js/features/toml-manager/config-group-drop.js")

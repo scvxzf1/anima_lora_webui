@@ -25,7 +25,8 @@ import {
     createResourceQuickPresetsButton,
     createStageScheduleInlineSummary,
 } from '../anima-app/chunks/05-create-stage-resolution-summary.js?v=module-bootstrap-20260711-ir1';
-import { appendFieldRows, createConfigDatasetPicker } from '../anima-app/chunks/06-stronger-selective-checkpoint-value.js?v=module-bootstrap-20260711-ir1';
+import { appendFieldRows } from './field-rows.js?v=module-bootstrap-20260711-ir1';
+import { createConfigDatasetPicker } from './dataset-picker.js?v=module-bootstrap-20260711-ir1';
 
 const configState = getConfigState();
 const configFormState = configState.configFormState;

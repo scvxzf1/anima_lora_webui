@@ -7,7 +7,7 @@ import { historyTaskDisplayName } from '../anima-app/helpers/history-collections
 import { readNonnegativeLiveNumber, readOptionalLiveNumber } from '../anima-app/helpers/live-form-values.js?v=module-bootstrap-20260711-ir1';
 import { configureTrainingSourceBridge } from '../anima-app/helpers/training-source-bridge.js?v=module-bootstrap-20260711-ir1';
 import { enterLiveTrainingForNewRun } from '../anima-app/helpers/training-launch-bridge.js?v=module-bootstrap-20260711-ir1';
-import { clearContinueTrainingSource as BASE_CLEAR_CONTINUE_SOURCE, refreshContinueTrainingSourceCompatibility as BASE_REFRESH_CONTINUE_SOURCE, selectContinueLoraWeight as BASE_SELECT_CONTINUE_WEIGHT } from '../anima-app/chunks/06-stronger-selective-checkpoint-value.js?v=module-bootstrap-20260711-ir1';
+import { clearContinueTrainingSource as BASE_CLEAR_CONTINUE_SOURCE, refreshContinueTrainingSourceCompatibility as BASE_REFRESH_CONTINUE_SOURCE, selectContinueLoraWeight as BASE_SELECT_CONTINUE_WEIGHT } from './continue-lora.js?v=module-bootstrap-20260711-ir1';
 import {
     setTomlStatus,
     updateTomlActionState,

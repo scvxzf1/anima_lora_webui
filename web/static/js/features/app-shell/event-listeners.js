@@ -79,7 +79,8 @@ import { confirmBeforeConfigSelectionChange, rememberSelectionSnapshot, updateCh
 import { loadDatasetPreviewImages } from '../anima-app/chunks/12-create-dataset-row-caption-source-mode-editor.js?v=module-bootstrap-20260711-ir1';
 import { loadDatasetPresets, renderLiveChartPanel } from '../anima-app/chunks/03-parse-network-arg-entry.js?v=module-bootstrap-20260711-ir1';
 import { selectConfigCategory, updateConfigStickyPlacement } from '../config-form/group-entry.js?v=module-bootstrap-20260711-ir1';
-import { closeConfigDatasetPickerDialog, loadContinueLoraWeights, openContinueLoraDialog } from '../anima-app/chunks/06-stronger-selective-checkpoint-value.js?v=module-bootstrap-20260711-ir1';
+import { closeConfigDatasetPickerDialog } from '../config-form/dataset-picker.js?v=module-bootstrap-20260711-ir1';
+import { loadContinueLoraWeights, openContinueLoraDialog } from '../training-source/continue-lora.js?v=module-bootstrap-20260711-ir1';
 import {
     applyTomlToConfig,
     copyTomlEditorContent,
