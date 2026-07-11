@@ -9,7 +9,7 @@ import { currentTrainingConfigFile } from '../anima-app/helpers/preflight-dialog
 import {
     updateDatasetEditorRow,
     updateDatasetEditorRowSettingValue,
-} from '../anima-app/chunks/12-create-dataset-row-caption-source-mode-editor.js?v=module-bootstrap-20260711-ir1';
+} from './row-fields.js?v=module-bootstrap-20260711-ir1';
 
 const datasetState = getDatasetState();
 

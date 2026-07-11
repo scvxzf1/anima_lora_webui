@@ -1372,7 +1372,7 @@ def test_history_detail_config_files_are_tool_ready() -> None:
         "js/features/toml-manager/config-group-drop.js",
         "js/features/dataset-editor/inline-help.js",
         "js/features/dataset-editor/row.js",
-        "js/features/anima-app/chunks/12-create-dataset-row-caption-source-mode-editor.js",
+        "js/features/dataset-editor/row-fields.js",
         "js/features/config-form/choice-guide-ui.js",
         "js/features/dataset-editor/mutations.js",
         "js/features/config-form/form-fields.js",

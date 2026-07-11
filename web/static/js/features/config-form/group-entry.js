@@ -5,7 +5,7 @@
 import {
     createNoDatasetRegularizationAdvancedFields,
     createNoDatasetRegularizationModePanel,
-} from '../anima-app/chunks/05a-no-dataset-regularization-mode.js?v=module-bootstrap-20260711-ir1';
+} from './no-dataset-regularization.js?v=module-bootstrap-20260711-ir1';
 import {
     ADVANCED_CATEGORY_DEFAULT_OPEN_GROUPS,
     FORM_CATEGORY_DEFS,
@@ -24,7 +24,7 @@ import {
     createResourceQuickPresetPanel,
     createResourceQuickPresetsButton,
     createStageScheduleInlineSummary,
-} from '../anima-app/chunks/05-create-stage-resolution-summary.js?v=module-bootstrap-20260711-ir1';
+} from './stage-resolution.js?v=module-bootstrap-20260711-ir1';
 import { appendFieldRows } from './field-rows.js?v=module-bootstrap-20260711-ir1';
 import { createConfigDatasetPicker } from './dataset-picker.js?v=module-bootstrap-20260711-ir1';
 

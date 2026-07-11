@@ -13,7 +13,7 @@ import {
     registerFileGroupDropTarget,
     removeFileGroupDragImage,
     setFileGroupDragData,
-} from '../anima-app/chunks/07-render-config-dataset-picker-dialog.js?v=module-bootstrap-20260711-ir1';
+} from '../config-form/dataset-picker-dialog.js?v=module-bootstrap-20260711-ir1';
 
 const datasetState = getDatasetState();
 

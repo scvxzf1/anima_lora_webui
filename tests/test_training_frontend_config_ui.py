@@ -76,7 +76,7 @@ def test_config_form_bridge_reaches_split_form_chunks() -> None:
     )
 
     required_imports = {
-        "js/features/anima-app/chunks/05a-no-dataset-regularization-mode.js": (
+        "js/features/config-form/no-dataset-regularization.js": (
             "originalConfigFieldValue",
         ),
         "js/features/config-form/resource-values.js": (
@@ -127,12 +127,12 @@ def test_state_bucket_bridges_reach_hotspot_chunks() -> None:
     dataset_runtime_source = _frontend_feature_text("js/features/anima-app/chunks/03-parse-network-arg-entry.js", "js/features/config-form/step-estimate.js", "js/features/dataset-editor/load.js", "js/features/live-training/dashboard-ui.js")
     config_groups_source = _frontend_feature_text("js/features/anima-app/chunks/04-create-config-group-entry.js", "js/features/config-form/group-entry.js")
     dataset_picker_source = _frontend_feature_text("js/features/anima-app/chunks/06-stronger-selective-checkpoint-value.js", "js/features/config-form/resource-values.js", "js/features/config-form/field-rows.js", "js/features/config-form/dataset-picker.js", "js/features/training-source/continue-lora.js")
-    config_dataset_dialog_source = _frontend_module_text("js/features/anima-app/chunks/07-render-config-dataset-picker-dialog.js")
+    config_dataset_dialog_source = _frontend_feature_text("js/features/anima-app/chunks/07-render-config-dataset-picker-dialog.js", "js/features/config-form/dataset-picker-dialog.js")
     file_group_drag_source = _frontend_feature_text("js/features/anima-app/chunks/08-origin-closest.js", "js/features/toml-manager/file-group-drag.js")
     dataset_group_source = _frontend_feature_text("js/features/anima-app/chunks/09-setup-config-group-drop-target.js", "js/features/toml-manager/config-group-drop.js")
     dataset_inline_help_source = _frontend_feature_text("js/features/anima-app/chunks/10a-dataset-inline-help.js", "js/features/dataset-editor/inline-help.js")
     dataset_row_source = _chunk11_compat_text()
-    dataset_caption_source = _frontend_module_text("js/features/anima-app/chunks/12-create-dataset-row-caption-source-mode-editor.js")
+    dataset_caption_source = _frontend_feature_text("js/features/anima-app/chunks/12-create-dataset-row-caption-source-mode-editor.js", "js/features/dataset-editor/row-fields.js")
     dataset_guide_source = _frontend_feature_text("js/features/anima-app/chunks/13-update-dataset-editor-rows-setting-value.js", "js/features/config-form/choice-guide-ui.js", "js/features/dataset-editor/mutations.js", "js/features/training-source/source-state.js", "js/features/config-form/field-input.js", "js/features/config-form/method-key.js")
     form_fields_source = _frontend_feature_text("js/features/anima-app/chunks/14-lora-adapter-kind-from-config.js", "js/features/config-form/form-fields.js")
     dataset_apply_source = _frontend_module_text("js/features/anima-app/chunks/17-apply-selected-dataset-preset-to-current-config.js")
@@ -1137,6 +1137,10 @@ globalThis.loadTrainingQueue = async () => {};
 globalThis.loadTrainingHistoryList = async () => {};
 
 const { configureRuntimeBridge } = await import('./web/static/js/features/anima-app/helpers/runtime-bridge.js?v=module-bootstrap-20260711-ir1');
+const { configureHistoryDetailBridge } = await import('./web/static/js/features/anima-app/helpers/history-detail-bridge.js?v=module-bootstrap-20260711-ir1');
+configureHistoryDetailBridge({
+    isHistoryReviewMode: () => false,
+});
 configureRuntimeBridge({
     api: async () => ({
         ok: true,
@@ -1232,9 +1236,11 @@ def test_launch_readiness_panel_is_removed() -> None:
     source = APP_JS.read_text(encoding="utf-8")
     html = INDEX_HTML.read_text(encoding="utf-8")
     css = STYLE_CSS.read_text(encoding="utf-8")
+    listeners_source = _frontend_module_text("js/features/app-shell/event-listeners.js")
+    action_source = _frontend_module_text("js/features/anima-app/chunks/22-update-toml-action-state.js")
 
-    listener_section = _section(source, "function setupEventListeners", "function installBeginnerTooltips")
-    action_state = _section(source, "function updateTomlActionState", "function isTomlLocked")
+    listener_section = _section(listeners_source, "function setupEventListeners", "function installBeginnerTooltips")
+    action_state = _section(action_source, "function updateTomlActionState", "function isTomlLocked")
 
     assert "launch-readiness" not in html
     assert "launch-readiness" not in css
@@ -1749,9 +1755,14 @@ def test_soft_tokens_advanced_fields_match_training_defaults() -> None:
 
 def test_network_args_raw_editor_keeps_unmodified_split_controls_from_overwriting() -> None:
     source = APP_JS.read_text(encoding="utf-8")
-    collect_section = _section(source, "function collectChangedFormValues", "function networkArgInputChanged")
-    live_section = _section(source, "function liveConfigFromForm", "function createFieldInput")
-    network_args_section = _section(source, "function collectNetworkArgsFromForm", "function prepareFormPatchValues")
+    collect_impl = _frontend_module_text("js/features/anima-app/chunks/18-delete-dataset-preset-group.js")
+    form_fields = _frontend_feature_text(
+        "js/features/anima-app/chunks/14-lora-adapter-kind-from-config.js",
+        "js/features/config-form/form-fields.js",
+    )
+    collect_section = _section(collect_impl, "function collectChangedFormValues", "function networkArgInputChanged")
+    live_section = _section(form_fields, "function liveConfigFromForm", "function createFieldInput")
+    network_args_section = _section(collect_impl, "function collectNetworkArgsFromForm", "function prepareFormPatchValues")
 
     assert "const rawNetworkArgsChanged = 'network_args' in values;" in collect_section
     assert "{ skipUnchangedInputs: rawNetworkArgsChanged }" in collect_section
@@ -1842,15 +1853,25 @@ def test_sample_prompts_save_uses_current_training_config_context() -> None:
 def test_config_form_save_reload_and_launch_share_training_config_file() -> None:
     source = APP_JS.read_text(encoding="utf-8")
     preflight_source = _frontend_feature_text("js/features/preflight-dialog/index.js", "js/features/live-log/index.js")
-    save_patch = _section(source, "async function saveFormPatchToToml", "function updateTomlActionState")
+    output_run_source = _frontend_module_text("js/features/anima-app/chunks/16-load-output-run-config.js")
+    action_source = _frontend_module_text("js/features/anima-app/chunks/22-update-toml-action-state.js")
+    step_estimate_source = _frontend_feature_text(
+        "js/features/anima-app/chunks/03-parse-network-arg-entry.js",
+        "js/features/config-form/step-estimate.js",
+        "js/features/dataset-editor/load.js",
+    )
+    save_patch = _section(output_run_source, "async function saveFormPatchToToml", "configureOutputRunBridge")
     dataset_apply = _frontend_module_text("js/features/anima-app/chunks/17-apply-selected-dataset-preset-to-current-config.js")
-    action_state = _section(source, "function updateTomlActionState", "function isTomlLocked")
-    save_toml = _section(source, "async function saveTomlFile", "async function saveRawTomlContent")
-    pending_changes = _section(source, "function hasUnsavedFormChanges", "function collectPendingConfigChangeDetails")
-    load_config = _section(source, "async function loadConfig", "async function reloadCurrentConfig")
-    load_steps = _section(source, "async function loadStepEstimate", "async function loadDatasetEditor")
-    run_preflight = _section(source, "async function runPreflight", "function isCliOnlySpdSource")
-    start_unchecked = _section(source, "async function startTrainingUnchecked", "async function enqueueTrainingFromConfig")
+    action_state = _section(action_source, "function updateTomlActionState", "function isTomlLocked")
+    save_toml = _section(output_run_source, "async function saveTomlFile", "async function saveRawTomlContent")
+    selection_source = _frontend_module_text("js/features/anima-app/chunks/21-update-toml-selection-ui.js")
+    pending_changes = _section(selection_source, "function hasUnsavedFormChanges", "function collectPendingConfigChangeDetails")
+    startup_source = _frontend_module_text("js/features/app-shell/startup.js")
+    load_config = _section(startup_source, "async function loadConfig", "async function reloadCurrentConfig")
+    load_steps = _section(step_estimate_source, "async function loadStepEstimate", "async function loadDatasetEditor")
+    launch_source = _frontend_module_text("js/features/training-launch/index.js")
+    run_preflight = _section(launch_source, "async function runPreflight", "function isCliOnlySpdSource")
+    start_unchecked = _section(launch_source, "async function startTrainingUnchecked", "async function enqueueTrainingFromConfig")
     current_file = _section(preflight_source, "function currentTrainingConfigFile", "function preflightPlainText")
 
     assert "const content = currentTomlEditorContentForFile(file);" in save_patch
@@ -1971,8 +1992,9 @@ def test_weight_hotstart_audit_keeps_pending_state_until_refresh_finishes() -> N
 
 def test_optional_number_fields_can_be_cleared() -> None:
     source = APP_JS.read_text(encoding="utf-8")
+    form_values_source = _frontend_module_text("js/features/anima-app/chunks/18-delete-dataset-preset-group.js")
     optional_numbers = _section(source, "const OPTIONAL_EMPTY_NUMBER_FIELDS = new Set([", "const FORM_UI_PERSIST_DEFAULT_FIELDS")
-    reader = _section(source, "function readFieldInputValue", "function readLoKrEnabled")
+    reader = _section(form_values_source, "function readFieldInputValue", "function readLoKrEnabled")
 
     for key in ("sample_every_n_epochs", "sample_every_n_steps", "max_train_epochs"):
         assert f"'{key}'" in optional_numbers
@@ -2000,7 +2022,10 @@ def test_output_scope_group_does_not_expose_unwired_stage_resolution_dialog() ->
     """输出范围分组不挂标题级主按钮；分阶段 dialog 由数据集顶栏 / 只读摘要打开。"""
     source = APP_JS.read_text(encoding="utf-8")
     html = INDEX_HTML.read_text(encoding="utf-8")
-    group_entry = _frontend_module_text("js/features/anima-app/chunks/04-create-config-group-entry.js")
+    group_entry = _frontend_feature_text(
+        "js/features/anima-app/chunks/04-create-config-group-entry.js",
+        "js/features/config-form/group-entry.js",
+    )
 
     section = _section(source, "title: '输出格式与训练范围'", "title: '方法内部与实验架构'")
 
@@ -2302,9 +2327,10 @@ def test_balanced_16g_block_swap_fields_are_visible() -> None:
     assert "vera_save_projection: [false, true]" in labels_options
     assert "network_dim: [" not in labels_options
     assert "network_alpha: [" not in labels_options
-    numeric_field_section = _section(source, "function isNumericField", "function isIntegerNumericField")
-    integer_field_section = _section(source, "function isIntegerNumericField", "function allowsNegativeNumberField")
-    negative_field_section = _section(source, "function allowsNegativeNumberField", "function createSelectInput")
+    field_ui_source = _frontend_module_text("js/features/sample-prompts/row-ui.js")
+    numeric_field_section = _section(field_ui_source, "function isNumericField", "function isIntegerNumericField")
+    integer_field_section = _section(field_ui_source, "function isIntegerNumericField", "function allowsNegativeNumberField")
+    negative_field_section = _section(field_ui_source, "function allowsNegativeNumberField", "function createSelectInput")
     assert "'network_dim'," in numeric_field_section
     assert "'sample_every_n_steps'," in numeric_field_section
     assert "'blocks_to_swap'," in numeric_field_section
@@ -2564,15 +2590,21 @@ def test_config_dataset_editor_save_syncs_picker_selection_and_summary() -> None
 def test_config_toml_manager_excludes_dataset_groups() -> None:
     source = APP_JS.read_text(encoding="utf-8")
     toml_save_source = _frontend_module_text("js/features/anima-app/chunks/19-current-sample-prompt-text.js")
+    toml_drag_source = _frontend_module_text("js/features/toml-manager/drag.js")
+    toml_actions_source = _frontend_module_text("js/features/toml-manager/actions.js")
+    action_state_source = _frontend_module_text("js/features/anima-app/chunks/22-update-toml-action-state.js")
     css = STYLE_CSS.read_text(encoding="utf-8")
 
-    load_toml = _section(source, "async function loadTomlFileList", "async function loadOutputRuns")
-    toml_render = _section(source, "function renderTomlFileGroups", "function createTomlGroupActions")
-    file_button = _section(source, "function createTomlFileButton", "function updateTomlSelectionUI")
+    load_toml = _section(_frontend_module_text("js/features/toml-manager/mode.js"), "async function loadTomlFileList", "async function loadOutputRuns")
+    toml_render = _section(toml_drag_source, "function renderTomlFileGroups", "function createTomlGroupActions")
+    file_button = _section(toml_drag_source, "function createTomlFileButton", "configureTomlDragBridge")
     save_as_groups = _section(toml_save_source, "export function saveAsTargetGroups", "export async function moveTomlFileToGroup")
-    helper_section = _section(source, "function isDatasetConfigGroup", "function populateTomlFileSelect")
-    create_group = _section(source, "async function createTomlGroup", "async function renameTomlGroup")
-    movable_groups = _section(source, "function getMovableTomlGroups", "function deleteTomlGroupButtonTitle")
+    helper_section = _frontend_feature_text(
+        "js/features/anima-app/chunks/19-current-sample-prompt-text.js",
+        "js/features/toml-manager/drag.js",
+    )
+    create_group = _section(action_state_source, "async function createTomlGroup", "async function renameTomlGroup")
+    movable_groups = _section(toml_actions_source, "function getMovableTomlGroups", "function deleteTomlGroupButtonTitle")
 
     assert "/api/config/file-groups?kind=training" in load_toml
     assert "tomlFileGroups = filterTrainingTomlGroups(groups);" in load_toml
@@ -2638,9 +2670,7 @@ def test_dataset_json_caption_switch_ui_is_wired() -> None:
     row_factory = _section(source, "function createDatasetEditorRow", "function createDatasetExperimentalFeaturesEditor")
     dataset_editor_row_source = _chunk11_compat_text()
     dataset_values_source = _frontend_module_text("js/features/anima-app/helpers/dataset-values.js")
-    dataset_update_source = _frontend_module_text(
-        "js/features/anima-app/chunks/12-create-dataset-row-caption-source-mode-editor.js"
-    )
+    dataset_update_source = _frontend_feature_text("js/features/anima-app/chunks/12-create-dataset-row-caption-source-mode-editor.js", "js/features/dataset-editor/row-fields.js")
     experimental_factory = _section(source, "function createDatasetExperimentalFeaturesEditor", "function createDatasetRowSettingsEditor")
     notice_factory = _section(source, "function createDatasetExperimentalNotice", "function createDatasetExperimentalAdvancedBody")
     advanced_body_factory = _section(source, "function createDatasetExperimentalAdvancedBody", "function datasetExperimentalOpenKey")
@@ -2878,7 +2908,10 @@ def test_dataset_editor_drag_has_browser_fallbacks() -> None:
 def test_dataset_page_toolbar_hosts_experimental_and_stage_entries() -> None:
     """数据集页顶栏承载实验性 + 分阶段入口；配置页不再当主编辑面。"""
     toolbar = _frontend_module_text("js/features/dataset-editor/toolbar.js")
-    editor_chunk = _frontend_module_text("js/features/anima-app/chunks/09-setup-config-group-drop-target.js")
+    editor_chunk = _frontend_feature_text(
+        "js/features/anima-app/chunks/09-setup-config-group-drop-target.js",
+        "js/features/toml-manager/config-group-drop.js",
+    )
     assert "btn-dataset-open-experimental" in toolbar
     assert "btn-dataset-open-stage-schedule" in toolbar
     assert "createDatasetEditorToolbarActions" in toolbar
@@ -2888,7 +2921,10 @@ def test_dataset_page_toolbar_hosts_experimental_and_stage_entries() -> None:
 
 def test_stage_schedule_primary_entry_moves_to_dataset_page() -> None:
     """分阶段主入口迁到数据集页后，配置分组只读摘要，不再挂 createOpenStageResolutionDialogButton。"""
-    group_entry = _frontend_module_text("js/features/anima-app/chunks/04-create-config-group-entry.js")
+    group_entry = _frontend_feature_text(
+        "js/features/anima-app/chunks/04-create-config-group-entry.js",
+        "js/features/config-form/group-entry.js",
+    )
     toolbar = _frontend_module_text("js/features/dataset-editor/toolbar.js")
     stage_ui = _frontend_module_text("js/features/config-form/stage-resolution.js")
 
@@ -2941,7 +2977,7 @@ def test_dataset_experimental_dialog_edits_selected_subset_only() -> None:
     html = INDEX_HTML.read_text(encoding="utf-8")
     dialog = _frontend_module_text("js/features/dataset-editor/experimental-dialog.js")
     row = _frontend_module_text("js/features/dataset-editor/row.js")
-    item = _frontend_module_text("js/features/anima-app/chunks/10-create-dataset-config-input.js")
+    item = _frontend_feature_text("js/features/anima-app/chunks/10-create-dataset-config-input.js", "js/features/dataset-editor/config-input.js")
 
     assert 'id="dataset-experimental-dialog"' in html
     assert "openDatasetExperimentalDialog" in dialog

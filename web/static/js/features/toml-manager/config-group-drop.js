@@ -29,7 +29,7 @@ import { loadDatasetPreset } from '../dataset-editor/load.js?v=module-bootstrap-
 import {
     registerFileGroupDropTarget,
     updateDatasetPresetPageSummary,
-} from '../anima-app/chunks/07-render-config-dataset-picker-dialog.js?v=module-bootstrap-20260711-ir1';
+} from '../config-form/dataset-picker-dialog.js?v=module-bootstrap-20260711-ir1';
 import {
     clearFileGroupDropTarget,
     configGroupDropIndex,
@@ -44,7 +44,7 @@ import {
 import {
     createDatasetConfigInput,
     createDatasetEditorItem,
-} from '../anima-app/chunks/10-create-dataset-config-input.js?v=module-bootstrap-20260711-ir1';
+} from '../dataset-editor/config-input.js?v=module-bootstrap-20260711-ir1';
 import { escapeHtml } from '../config-form/field-input.js?v=module-bootstrap-20260711-ir1';
 import { addDatasetEditorRow, datasetValidTargetIndices } from '../dataset-editor/mutations.js?v=module-bootstrap-20260711-ir1';
 import { createDatasetEditorToolbarActions } from '../dataset-editor/toolbar.js?v=module-bootstrap-20260711-ir1';

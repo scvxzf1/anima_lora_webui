@@ -941,8 +941,9 @@ def test_format_path_label_contract_and_call_sites() -> None:
     history_item = _frontend_module_text(
         "js/features/anima-app/chunks/33-create-history-task-item.js"
     )
-    dataset_input = _frontend_module_text(
-        "js/features/anima-app/chunks/10-create-dataset-config-input.js"
+    dataset_input = _frontend_feature_text(
+        "js/features/anima-app/chunks/10-create-dataset-config-input.js",
+        "js/features/dataset-editor/config-input.js",
     )
 
     assert "export function formatPathLabel" in format_source
