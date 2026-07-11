@@ -411,3 +411,231 @@ def test_bootstrap_compiles_after_apply_load_and_gradient_checkpointing(monkeypa
     assert compile_idx > events.index("load_weights")
     assert compile_idx > events.index("unet_grad_ckpt")
     assert compile_idx > events.index("network_grad_ckpt")
+
+
+def test_maybe_enable_fp32_residual_only_for_fp16_anima():
+    calls: list[str] = []
+
+    class DummyAnima:
+        def enable_fp32_residual(self):
+            calls.append("enable")
+
+    class OtherUNet:
+        def enable_fp32_residual(self):
+            calls.append("other")
+
+    assert (
+        TrainingBootstrap.maybe_enable_fp32_residual(
+            SimpleNamespace(mixed_precision="fp16"),
+            DummyAnima(),
+            anima_cls=DummyAnima,
+        )
+        is True
+    )
+    assert calls == ["enable"]
+
+    assert (
+        TrainingBootstrap.maybe_enable_fp32_residual(
+            SimpleNamespace(mixed_precision="bf16"),
+            DummyAnima(),
+            anima_cls=DummyAnima,
+        )
+        is False
+    )
+    assert (
+        TrainingBootstrap.maybe_enable_fp32_residual(
+            SimpleNamespace(mixed_precision="fp16"),
+            OtherUNet(),
+            anima_cls=DummyAnima,
+        )
+        is False
+    )
+    assert calls == ["enable"]
+
+
+def test_bootstrap_enables_fp32_residual_before_compile(monkeypatch):
+    events: list[str] = []
+
+    class FakeNetwork:
+        extra_seq_tokens = 0
+
+        def apply_to(self, *args, **kwargs):
+            del args, kwargs
+            events.append("apply_to")
+
+        def load_weights(self, path):
+            events.append("load_weights")
+            return {"path": path}
+
+        def enable_gradient_checkpointing(self):
+            events.append("network_grad_ckpt")
+
+    fake_module = ModuleType("fake_fp32_residual_network")
+    fake_module.create_network = lambda *args, **kwargs: FakeNetwork()
+
+    class FakeTrainer:
+        def post_process_network(self, *args, **kwargs):
+            return None
+
+        def is_train_text_encoder(self, args):
+            return False
+
+        def get_text_encoders_train_flags(self, args, text_encoders):
+            return []
+
+    class FakeAccelerator:
+        device = "cpu"
+
+        def print(self, *args, **kwargs):
+            return None
+
+    class FakeUnet:
+        def enable_gradient_checkpointing(self, cpu_offload=False):
+            del cpu_offload
+            events.append("unet_grad_ckpt")
+
+        def enable_fp32_residual(self):
+            events.append("enable_fp32_residual")
+
+    def fake_compile_blocks_for_training(unet, network, **kwargs):
+        del unet, network, kwargs
+        events.append("compile")
+
+    import library.runtime.harness as harness
+
+    # Treat FakeUnet as Anima for the bootstrap type gate.
+    monkeypatch.setattr(
+        "library.anima.models.Anima",
+        FakeUnet,
+        raising=False,
+    )
+    # Also cover the helper's anima_cls path if bootstrap imports models module.
+    import library.anima.models as anima_models
+
+    monkeypatch.setattr(anima_models, "Anima", FakeUnet)
+
+    args = SimpleNamespace(
+        network_module="fake_fp32_residual_network",
+        base_weights=None,
+        base_weights_multiplier=None,
+        dim_from_weights=False,
+        network_weights="fake-network.safetensors",
+        network_dropout=None,
+        network_dim=4,
+        network_alpha=4.0,
+        scale_weight_norms=False,
+        network_train_text_encoder_only=False,
+        gradient_checkpointing=True,
+        cpu_offload_checkpointing=False,
+        torch_compile=True,
+        mixed_precision="fp16",
+        blocks_to_swap=0,
+        network_args=None,
+        dynamo_backend="eager",
+        compile_inductor_mode=None,
+        bucket_resolutions=None,
+        compile_dynamic_seq=False,
+        activation_memory_budget=1.0,
+        partitioner_recompute_views=False,
+        partitioner_aggressive_recomputation=False,
+    )
+
+    monkeypatch.setattr("importlib.import_module", lambda name: fake_module)
+    monkeypatch.setattr(
+        harness, "compile_blocks_for_training", fake_compile_blocks_for_training
+    )
+    result = TrainingBootstrap().create_and_apply_network(
+        FakeTrainer(),
+        args,
+        FakeAccelerator(),
+        vae=None,
+        text_encoder=[],
+        unet=FakeUnet(),
+        text_encoders=[],
+        weight_dtype=None,
+    )
+
+    assert result is not None
+    assert "enable_fp32_residual" in events
+    enable_idx = events.index("enable_fp32_residual")
+    compile_idx = events.index("compile")
+    assert enable_idx > events.index("apply_to")
+    assert enable_idx > events.index("load_weights")
+    assert enable_idx > events.index("unet_grad_ckpt")
+    assert enable_idx > events.index("network_grad_ckpt")
+    assert enable_idx < compile_idx
+
+
+def test_bootstrap_enables_fp32_residual_even_without_compile(monkeypatch):
+    events: list[str] = []
+
+    class FakeNetwork:
+        extra_seq_tokens = 0
+
+        def apply_to(self, *args, **kwargs):
+            del args, kwargs
+            events.append("apply_to")
+
+        def enable_gradient_checkpointing(self):
+            return None
+
+    fake_module = ModuleType("fake_fp32_residual_no_compile_network")
+    fake_module.create_network = lambda *args, **kwargs: FakeNetwork()
+
+    class FakeTrainer:
+        def post_process_network(self, *args, **kwargs):
+            return None
+
+        def is_train_text_encoder(self, args):
+            return False
+
+        def get_text_encoders_train_flags(self, args, text_encoders):
+            return []
+
+    class FakeAccelerator:
+        device = "cpu"
+
+        def print(self, *args, **kwargs):
+            return None
+
+    class FakeUnet:
+        def enable_fp32_residual(self):
+            events.append("enable_fp32_residual")
+
+    import library.anima.models as anima_models
+
+    monkeypatch.setattr(anima_models, "Anima", FakeUnet)
+    monkeypatch.setattr("importlib.import_module", lambda name: fake_module)
+
+    args = SimpleNamespace(
+        network_module="fake_fp32_residual_no_compile_network",
+        base_weights=None,
+        base_weights_multiplier=None,
+        dim_from_weights=False,
+        network_weights=None,
+        network_dropout=None,
+        network_dim=4,
+        network_alpha=4.0,
+        scale_weight_norms=False,
+        network_train_text_encoder_only=False,
+        gradient_checkpointing=False,
+        cpu_offload_checkpointing=False,
+        torch_compile=False,
+        mixed_precision="fp16",
+        blocks_to_swap=0,
+        network_args=None,
+    )
+
+    result = TrainingBootstrap().create_and_apply_network(
+        FakeTrainer(),
+        args,
+        FakeAccelerator(),
+        vae=None,
+        text_encoder=[],
+        unet=FakeUnet(),
+        text_encoders=[],
+        weight_dtype=None,
+    )
+
+    assert result is not None
+    assert events == ["apply_to", "enable_fp32_residual"]

@@ -145,6 +145,20 @@ class TrainingBootstrap:
         return net_kwargs
 
     @staticmethod
+    def maybe_enable_fp32_residual(args, unet, *, anima_cls) -> bool:
+        """Enable Anima residual fp32 guards for fp16 mixed precision runs.
+
+        Must run after adapter apply/load/grad-ckpt and before compile_blocks,
+        because dynamo specializes block._forward on the per-module flag.
+        """
+        if getattr(args, "mixed_precision", None) != "fp16":
+            return False
+        if not isinstance(unet, anima_cls):
+            return False
+        unet.enable_fp32_residual()
+        return True
+
+    @staticmethod
     def should_auto_enable_lora_fp32_compute(args, accelerator, net_kwargs: dict) -> bool:
         if "lora_fp32_compute" in net_kwargs:
             return False
@@ -391,6 +405,20 @@ class TrainingBootstrap:
                 if flag and t_enc.supports_gradient_checkpointing:
                     t_enc.gradient_checkpointing_enable()
             network.enable_gradient_checkpointing()
+
+        # fp16 overflow guard — MUST run before compile_blocks below: dynamo
+        # specializes block._forward on the per-module fp32_residual bool.
+        from library.anima import models as anima_models
+
+        if self.maybe_enable_fp32_residual(
+            args, unet, anima_cls=anima_models.Anima
+        ):
+            logger.info(
+                "fp16 mixed precision: enabled fp32 residual accumulation "
+                "(DiT residual stream exceeds fp16 range; prevents NaN). "
+                "Sublayer matmuls still run fp16 under autocast; bf16/fp32 "
+                "runs are unaffected."
+            )
 
         # Native-shape flattening + per-block torch.compile. COMPILE LAST:
         # after adapter monkey-patches, optional weight load, and checkpoint
