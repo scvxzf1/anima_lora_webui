@@ -123,7 +123,14 @@ Postfix 当前用户入口在 [guidelines/training.md#postfix](guidelines/traini
 | [configuration/external-configs.md](configuration/external-configs.md) | `ANIMA_CONFIGS_ROOT` 和 WebUI 外置配置根目录说明 |
 | [configuration/implementation-report.md](configuration/implementation-report.md) | 外置配置实现报告 |
 | [features/README.md](features/README.md) | 功能文档分区索引 |
-| [features/ui-scale.md](features/ui-scale.md) | WebUI UI 缩放独立设置 |
+| [features/config-workbench.md](features/config-workbench.md) | 配置工作台：预设、表单、启动与续接 |
+| [features/dataset-editor.md](features/dataset-editor.md) | 数据集蓝图编辑器 |
+| [features/training-queue.md](features/training-queue.md) | 训练队列管理 |
+| [features/history-collections.md](features/history-collections.md) | 历史任务与集合 |
+| [features/preview.md](features/preview.md) | 训练/推理预览与权重列表 |
+| [features/global-settings.md](features/global-settings.md) | 全局输出、模型、配置根与界面设置 |
+| [features/ui-scale.md](features/ui-scale.md) | WebUI UI 缩放（默认与分页面） |
+| [features/frontend-health-scorecard.md](features/frontend-health-scorecard.md) | 前端健康度评分卡（维护用） |
 
 ## Findings And Proposals
 
