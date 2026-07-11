@@ -106,16 +106,19 @@ def setup_config_routes(app: web.Application) -> None:
 
 
 async def handle_methods(request: web.Request) -> web.Response:
-    return web.json_response(list_methods())
+    items = list(list_methods() or [])
+    return web.json_response({"ok": True, "items": items})
 
 
 async def handle_variants(request: web.Request) -> web.Response:
     method = request.match_info["method"]
-    return web.json_response(list_variants(method))
+    items = list(list_variants(method) or [])
+    return web.json_response({"ok": True, "items": items, "method": method})
 
 
 async def handle_presets(request: web.Request) -> web.Response:
-    return web.json_response(list_presets())
+    items = list(list_presets() or [])
+    return web.json_response({"ok": True, "items": items})
 
 
 async def handle_merged(request: web.Request) -> web.Response:

@@ -257,9 +257,30 @@ def test_http_config_methods_envelope(monkeypatch):
     response = asyncio.run(config_routes.handle_methods(_FakeRequest()))  # type: ignore[arg-type]
     assert response.status == 200
     payload = _json_payload(response)
-    assert isinstance(payload, list)
-    assert "lora" in payload
-    assert "spd" in payload
+    assert payload.get("ok") is True
+    assert isinstance(payload.get("items"), list)
+    assert "lora" in payload["items"]
+    assert "spd" in payload["items"]
+
+
+def test_http_config_variants_envelope(monkeypatch):
+    monkeypatch.setattr(config_routes, "list_variants", lambda method: [method, f"{method}-8gb"])
+    response = asyncio.run(
+        config_routes.handle_variants(_FakeRequest(match_info={"method": "lora"}))  # type: ignore[arg-type]
+    )
+    assert response.status == 200
+    payload = _json_payload(response)
+    assert payload.get("ok") is True
+    assert payload.get("items") == ["lora", "lora-8gb"]
+
+
+def test_http_config_presets_envelope(monkeypatch):
+    monkeypatch.setattr(config_routes, "list_presets", lambda: ["default", "low_vram"])
+    response = asyncio.run(config_routes.handle_presets(_FakeRequest()))  # type: ignore[arg-type]
+    assert response.status == 200
+    payload = _json_payload(response)
+    assert payload.get("ok") is True
+    assert "default" in payload["items"]
 
 
 def test_http_config_merged_envelope(monkeypatch):

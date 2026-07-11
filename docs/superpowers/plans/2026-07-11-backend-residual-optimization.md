@@ -773,3 +773,14 @@ Which approach?
 | S-R6 save_root | ✅ | `image_test_save_root` 空回退 `output/tests` |
 | smoke | ✅ | 162 passed |
 
+---
+
+## C-R6 渐进 list envelope（Round C 后补刀）
+
+| 项 | 状态 | 说明 |
+|---|---|---|
+| methods/variants/presets | ✅ | 成功体 `{ok:true, items:[...]}` |
+| 前端双读 | ✅ | `startup.js` / chunk22 兼容裸数组与 items |
+| merged 读接口 | 仍裸 dict | 兼容故意保留；失败仍 `ok:false` |
+| 契约测 | ✅ | `test_web_http_contracts` methods/variants/presets |
+
