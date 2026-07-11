@@ -10,14 +10,17 @@ from typing import Any
 
 
 def default_pool_root() -> Path:
-    """Return ``<output_root>/cache_pool``.
+    """Return shared pool root next to WebUI runs root.
 
-    Prefer settings_service when available; fall back to project ``output/cache_pool``.
+    ``resolve_output_root()`` defaults to ``output/runs``; the pool lives at
+    ``output/cache_pool`` (sibling of runs), matching the design spec.
     """
     try:
         from web.services.settings_service import resolve_output_root
 
-        return Path(resolve_output_root()) / "cache_pool"
+        runs_root = Path(resolve_output_root())
+        # output/runs -> output/cache_pool; absolute custom roots -> <parent>/cache_pool
+        return runs_root.parent / "cache_pool"
     except Exception:
         from library.env import project_root
 

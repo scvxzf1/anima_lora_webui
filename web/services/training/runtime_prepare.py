@@ -37,6 +37,7 @@ from web.services.config.preflight_stage_schedule import validate_stage_schedule
 _bool_value_for_row = _runtime_datasets._bool_value_for_row
 _prepare_runtime_nl_tag_mix_source = _runtime_datasets._prepare_runtime_nl_tag_mix_source
 _prepare_runtime_trigger_clone_source = _runtime_datasets._prepare_runtime_trigger_clone_source
+_bind_subset_to_cache_pool = _runtime_datasets._bind_subset_to_cache_pool
 
 
 def _resolve_training_runtime_info(
@@ -117,13 +118,14 @@ def _prepare_web_runtime_config(
     validate_stage_schedule_or_raise(cfg, dataset_rows=source_rows)
 
     runtime_rows: list[dict[str, Any]] = []
+    dataset_cache_bindings: list[dict[str, Any]] = []
     dataset_cache_dir = layout["dataset_cache_dir"]
+    from library.cache_pool.store import default_pool_root
+    pool_root = default_pool_root()
+    run_id = run_dir.name
     for index, row in enumerate(source_rows, start=1):
         group_dir = dataset_cache_dir / f"dataset-{index:02d}"
-        resized_dir = group_dir / "resized"
-        lora_dir = group_dir / "lora"
-        resized_dir.mkdir(parents=True, exist_ok=True)
-        lora_dir.mkdir(parents=True, exist_ok=True)
+        group_dir.mkdir(parents=True, exist_ok=True)
         source_dir = str(
             row.get("source_dir")
             or row.get("source_image_dir")
@@ -131,10 +133,21 @@ def _prepare_web_runtime_config(
             or ""
         ).strip()
         source_dir = _prepare_runtime_nl_tag_mix_source(row, group_dir, source_dir)
+        binding = _bind_subset_to_cache_pool(
+            cfg=cfg,
+            row=row,
+            group_dir=group_dir,
+            pool_root=pool_root,
+            run_id=run_id,
+            source_dir=source_dir,
+            resized_name="resized",
+            lora_name="lora",
+        )
+        dataset_cache_bindings.append({**binding, "subset_index": index, "kind": "primary"})
         runtime_rows.append({
             "source_dir": source_dir,
-            "image_dir": _display_settings_path(resized_dir),
-            "cache_dir": _display_settings_path(lora_dir),
+            "image_dir": binding["image_dir"],
+            "cache_dir": binding["cache_dir"],
             "num_repeats": row.get("num_repeats") or 1,
             "recursive": _bool_value_for_row(row.get("recursive"), True),
             "path_pattern": _normalize_path_pattern(row.get("path_pattern")),
@@ -143,17 +156,26 @@ def _prepare_web_runtime_config(
         trigger_clone = _normalize_trigger_clone(row.get("trigger_clone"))
         if trigger_clone["enabled"]:
             clone_source_dir = _prepare_runtime_trigger_clone_source(row, group_dir, source_dir)
-            clone_resized_dir = group_dir / "trigger-clone-resized"
-            clone_lora_dir = group_dir / "trigger-clone-lora"
-            clone_resized_dir.mkdir(parents=True, exist_ok=True)
-            clone_lora_dir.mkdir(parents=True, exist_ok=True)
             clone_settings = dict(row.get("settings") if isinstance(row.get("settings"), dict) else {})
             clone_settings["caption_source_mode"] = CAPTION_SOURCE_CAPTIONS_JSON
             clone_settings["prefer_json_caption"] = False
+            clone_row = dict(row)
+            clone_row["settings"] = clone_settings
+            clone_binding = _bind_subset_to_cache_pool(
+                cfg=cfg,
+                row=clone_row,
+                group_dir=group_dir,
+                pool_root=pool_root,
+                run_id=f"{run_id}-clone-{index}",
+                source_dir=clone_source_dir,
+                resized_name="trigger-clone-resized",
+                lora_name="trigger-clone-lora",
+            )
+            dataset_cache_bindings.append({**clone_binding, "subset_index": index, "kind": "trigger_clone"})
             runtime_rows.append({
                 "source_dir": clone_source_dir,
-                "image_dir": _display_settings_path(clone_resized_dir),
-                "cache_dir": _display_settings_path(clone_lora_dir),
+                "image_dir": clone_binding["image_dir"],
+                "cache_dir": clone_binding["cache_dir"],
                 "num_repeats": trigger_clone["num_repeats"],
                 "recursive": _bool_value_for_row(row.get("recursive"), True),
                 "path_pattern": _normalize_path_pattern(row.get("path_pattern")),
@@ -204,6 +226,8 @@ def _prepare_web_runtime_config(
             "runtime_config_file": _display_settings_path(runtime_config_path),
             "original_config_file": _display_settings_path(original_config_path),
             "dataset_config_file": _display_settings_path(dataset_config_path),
+            "cache_pool_root": _display_settings_path(pool_root),
+            "dataset_cache_bindings": dataset_cache_bindings,
         },
     )
     return _build_runtime_payload(
