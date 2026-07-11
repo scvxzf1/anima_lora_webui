@@ -7,6 +7,7 @@
 | 文档 | 状态 | 说明 |
 | --- | --- | --- |
 | [config-workbench.md](config-workbench.md) | 用户功能说明 | 配置页：预设管理、表单编辑、启动训练与加入队列 |
+| [preprocess-cache-reuse.md](preprocess-cache-reuse.md) | 用户功能说明 | 预处理缓存复用：共享池、A/B/C 开关与删历史语义 |
 | [dataset-editor.md](dataset-editor.md) | 用户功能说明 | 数据集页：可复用 dataset 蓝图、分组与预览 |
 | [training-queue.md](training-queue.md) | 用户功能说明 | 训练页队列：排队、暂停、失败策略与批量中止 |
 | [history-collections.md](history-collections.md) | 用户功能说明 | 历史任务与集合：筛选、归档、批量操作与详情 |

@@ -465,4 +465,45 @@ export const EXTRA_FIELD_HELP_ZH = {
         ['太小会拒绝较大条件 latent。'],
         '默认 4096；低显存实验可谨慎降低。'
     ),
+
+    reuse_dataset_cache_copy: help(
+        '复用 WebUI 数据集缓存拷贝（共享池挂载）。',
+        '开启后，相同数据指纹的 run 会把 resized/lora 挂到 output/cache_pool，而不是每次 copytree 一份私有目录。关闭则物化到本 run 私有 dataset_cache。',
+        ['重复测试同一数据集时显著节省磁盘与准备时间。'],
+        ['依赖共享池；删历史默认不删池。'],
+        ['数据改了却不强制重建时，可能读到旧缓存。'],
+        '日常重复测建议开启；需要完全隔离时关闭。'
+    ),
+    reuse_vae_latents: help(
+        '复用已有 VAE latent 缓存。',
+        '开启时已有匹配 *_anima.npz 会跳过重算；关闭或强制重建时会 --overwrite 重算。',
+        ['避免重复 VAE 编码。'],
+        ['改分辨率/过滤规则后应关闭或强制重建。'],
+        ['过期 latent 会导致训练错分布。'],
+        '默认开启。'
+    ),
+    reuse_text_encoder_cache: help(
+        '复用已有文本编码缓存。',
+        '开启时已有匹配 *_anima_te.safetensors 会跳过；关闭或强制重建时重算。',
+        ['避免重复 TE 编码。'],
+        ['改 caption / TE 相关设置后应关闭或强制重建。'],
+        ['过期 TE 缓存会导致条件错误。'],
+        '默认开启。'
+    ),
+    cache_fingerprint_mode: help(
+        '共享缓存指纹模式。',
+        'light：路径 + 预处理签名 + 文件 size/mtime；content：额外 hash 输入图与 caption 内容（不 hash npz/te）。',
+        ['light 快，适合日常；content 更稳，大集更慢。'],
+        ['content 会多扫一遍输入文件。'],
+        ['模式不同会生成不同池条目。'],
+        '默认 light；怀疑静默脏缓存时切 content。'
+    ),
+    force_rebuild_preprocess_cache: help(
+        '强制重建预处理缓存。',
+        '为 true 时本次写入本 run 私有 cache，不静默覆盖共享池。用完建议改回 false。',
+        ['确保本次用最新数据重建。'],
+        ['更慢、占更多临时空间。'],
+        ['忘记关回 false 会每次都重建。'],
+        '改数据后临时打开一次。'
+    ),
 };

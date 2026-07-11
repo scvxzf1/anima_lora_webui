@@ -208,6 +208,11 @@ def main() -> None:
         default="bfloat16",
         help="Text encoder / LLM adapter compute dtype (default: bfloat16).",
     )
+    parser.add_argument(
+        "--overwrite",
+        action="store_true",
+        help="Re-encode and replace existing text-encoder sidecars.",
+    )
     args = parser.parse_args()
 
     from library.anima import weights as anima_utils
@@ -307,6 +312,7 @@ def main() -> None:
         diff_output_preservation_class=args.diff_output_preservation_class,
         min_pixels=args.min_pixels,
         progress=tqdm_progress("Caching text embeddings"),
+        overwrite=bool(getattr(args, "overwrite", False)),
     )
     print(
         f"\nText embedding caching complete: {stats.written} cached, "

@@ -21,6 +21,24 @@ from web.services.training.runtime_paths import (
 )
 
 
+def _display_logical_path(path: Path) -> str:
+    """Project-relative display path without following symlinks.
+
+    ``settings_service.display_path`` uses ``Path.resolve()``, which would turn a
+    run ``dataset_cache/.../resized`` symlink into the shared pool path and break
+    runtime dataset path contracts / tests.
+    """
+    path = Path(path)
+    root = Path(config_service.ROOT).absolute()
+    abs_path = path.absolute()
+    try:
+        return abs_path.relative_to(root).as_posix()
+    except ValueError:
+        return abs_path.as_posix()
+
+
+
+
 def _normalize_path_pattern(*args, **kwargs):
     return config_service._normalize_path_pattern(*args, **kwargs)
 
@@ -514,3 +532,157 @@ def _copy_runtime_dataset_dir(source: str, target: Path) -> None:
 def _is_materialized_runtime_source_dir(path: Path) -> bool:
     parts = {part.lower() for part in path.parts}
     return path.name in {"source", "trigger-clone-source"} and "dataset_cache" in parts
+
+
+def _bind_subset_to_cache_pool(
+    *,
+    cfg: dict[str, Any],
+    row: dict[str, Any],
+    group_dir: Path,
+    pool_root: Path,
+    run_id: str,
+    source_dir: str,
+    resized_name: str = "resized",
+    lora_name: str = "lora",
+) -> dict[str, Any]:
+    """Compute fingerprint and mount/copy shared pool into run dataset_cache.
+
+    Returns binding metadata for run.meta.json and the display paths to use.
+    """
+    from library.cache_pool.fingerprint import (
+        build_preprocess_signature,
+        compute_fingerprint,
+        scan_input_inventory,
+    )
+    from library.cache_pool.mount import mount_dir
+    from library.cache_pool.policy import parse_cache_reuse_policy
+    from library.cache_pool.refs import acquire_ref
+    from library.cache_pool.store import (
+        pool_entry_dir,
+        publish_pool_entry,
+        read_manifest,
+        write_manifest,
+    )
+
+    policy = parse_cache_reuse_policy(cfg)
+    source_path = _resolve_display_path(source_dir)
+    resized_dst = group_dir / resized_name
+    lora_dst = group_dir / lora_name
+
+    if source_path is None or not source_path.is_dir():
+        resized_dst.mkdir(parents=True, exist_ok=True)
+        lora_dst.mkdir(parents=True, exist_ok=True)
+        return {
+            "fingerprint": "",
+            "pool_path": "",
+            "link_mode": "private",
+            "reuse_flags": {
+                "A": policy.reuse_dataset_cache_copy,
+                "B": policy.reuse_vae_latents,
+                "C": policy.reuse_text_encoder_cache,
+            },
+            "fingerprint_mode": policy.fingerprint_mode,
+            "image_dir": _display_logical_path(resized_dst),
+            "cache_dir": _display_logical_path(lora_dst),
+        }
+
+    settings = row.get("settings") if isinstance(row.get("settings"), dict) else {}
+    preprocess_settings = (
+        settings.get("preprocess")
+        if isinstance(settings.get("preprocess"), dict)
+        else settings
+    )
+    sig = build_preprocess_signature(cfg, preprocess_settings if isinstance(preprocess_settings, dict) else None)
+    inv = scan_input_inventory(
+        source_path,
+        recursive=_bool_value_for_row(row.get("recursive"), True),
+        path_pattern=_normalize_path_pattern(row.get("path_pattern")),
+        caption_mode=str(settings.get("caption_source_mode") or "txt"),
+    )
+    fp = compute_fingerprint(
+        mode=policy.fingerprint_mode,
+        source_dir=source_path,
+        inventory=inv,
+        preprocess_signature=sig,
+        normalized_source=str(source_path.resolve()),
+    )
+    entry = pool_entry_dir(pool_root, fp)
+    link_mode = "copy"
+
+    if policy.force_rebuild:
+        if resized_dst.exists() or resized_dst.is_symlink():
+            if resized_dst.is_symlink() or resized_dst.is_file():
+                resized_dst.unlink()
+            else:
+                shutil.rmtree(resized_dst)
+        if lora_dst.exists() or lora_dst.is_symlink():
+            if lora_dst.is_symlink() or lora_dst.is_file():
+                lora_dst.unlink()
+            else:
+                shutil.rmtree(lora_dst)
+        resized_dst.mkdir(parents=True, exist_ok=True)
+        lora_dst.mkdir(parents=True, exist_ok=True)
+        link_mode = "private"
+    else:
+        manifest = read_manifest(entry)
+        if manifest is None:
+            staging = pool_root / f".staging-{fp}-{run_id}"
+            if staging.exists():
+                shutil.rmtree(staging)
+            (staging / "resized").mkdir(parents=True)
+            (staging / "lora").mkdir(parents=True)
+            write_manifest(
+                staging,
+                {
+                    "schema_version": "1",
+                    "fingerprint": fp,
+                    "mode": policy.fingerprint_mode,
+                    "preprocess_signature": sig,
+                },
+            )
+            entry = publish_pool_entry(
+                pool_root,
+                fp,
+                staging_dir=staging,
+                manifest=read_manifest(staging) or {
+                    "schema_version": "1",
+                    "fingerprint": fp,
+                    "mode": policy.fingerprint_mode,
+                },
+            )
+        if policy.reuse_dataset_cache_copy:
+            link_mode = mount_dir(entry / "resized", resized_dst)
+            mount_dir(entry / "lora", lora_dst)
+        else:
+            if resized_dst.exists() or resized_dst.is_symlink():
+                if resized_dst.is_symlink() or resized_dst.is_file():
+                    resized_dst.unlink()
+                else:
+                    shutil.rmtree(resized_dst)
+            if lora_dst.exists() or lora_dst.is_symlink():
+                if lora_dst.is_symlink() or lora_dst.is_file():
+                    lora_dst.unlink()
+                else:
+                    shutil.rmtree(lora_dst)
+            resized_dst.mkdir(parents=True, exist_ok=True)
+            lora_dst.mkdir(parents=True, exist_ok=True)
+            if (entry / "resized").exists():
+                _copy_runtime_dataset_dir(str(entry / "resized"), resized_dst)
+            if (entry / "lora").exists():
+                _copy_runtime_dataset_dir(str(entry / "lora"), lora_dst)
+            link_mode = "copy"
+        acquire_ref(entry, run_id)
+
+    return {
+        "fingerprint": fp,
+        "pool_path": _display_logical_path(entry),
+        "link_mode": link_mode,
+        "reuse_flags": {
+            "A": policy.reuse_dataset_cache_copy,
+            "B": policy.reuse_vae_latents,
+            "C": policy.reuse_text_encoder_cache,
+        },
+        "fingerprint_mode": policy.fingerprint_mode,
+        "image_dir": _display_logical_path(resized_dst),
+        "cache_dir": _display_logical_path(lora_dst),
+    }

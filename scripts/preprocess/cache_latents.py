@@ -48,6 +48,11 @@ def main() -> None:
         default="bfloat16",
         help="VAE compute dtype (default: bfloat16).",
     )
+    parser.add_argument(
+        "--overwrite",
+        action="store_true",
+        help="Re-encode and replace existing latent sidecars.",
+    )
     args = parser.parse_args()
 
     from library.models import qwen_vae as qwen_image_autoencoder_kl
@@ -77,6 +82,7 @@ def main() -> None:
         path_pattern=args.path_pattern,
         batch_size=args.batch_size,
         progress=tqdm_progress("Caching latents"),
+        overwrite=bool(args.overwrite),
     )
     print(
         f"\nLatent caching complete: {stats.written} cached, "

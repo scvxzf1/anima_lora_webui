@@ -158,6 +158,7 @@ def cache_text_embeddings(
     min_pixels: int = 500_000,
     verbose: bool = True,
     progress: ProgressFn | None = None,
+    overwrite: bool = False,
 ) -> PreprocessStats:
     """Encode captions for every image under ``data_dir``.
 
@@ -225,7 +226,7 @@ def cache_text_embeddings(
         to_encode: list[tuple[Path, CaptionSource, Path]] = []
         for img_path, caption in batch:
             cache_path = _te_cache_path(img_path, cache_dir, data_dir)
-            if cache_path.exists():
+            if cache_path.exists() and not overwrite:
                 stats.skipped += 1
                 if progress is not None:
                     progress(1, detail=f"skip {img_path.name}")

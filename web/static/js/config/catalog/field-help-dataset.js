@@ -10,7 +10,7 @@ export const FIELD_HELP_DATASET_ZH = {    source_image_dir: help(
     ),
     resized_image_dir: help(
         "旧配置里的缩放图目录字段。",
-        "WebUI 每次运行会在全局输出文件夹下创建独立 dataset_cache/dataset-xx/resized，并在运行时配置里覆盖这里。普通用户不需要手动填写。",
+        "WebUI 运行时会为每次 run 准备 dataset_cache/dataset-xx/resized；开启“复用数据集缓存拷贝”时会挂到共享 cache_pool，否则仍是本 run 私有目录。普通用户不需要手动填写。",
         ["保留它可以兼容旧配置和命令行流程。"],
         ["Web 运行时会使用本次运行目录，占用额外磁盘。"],
         ["如果手动改旧路径，可能和 Web 本次运行目录不一致，排错会更绕。"],
@@ -18,7 +18,7 @@ export const FIELD_HELP_DATASET_ZH = {    source_image_dir: help(
     ),
     lora_cache_dir: help(
         "旧配置里的 LoRA 缓存目录字段。",
-        "WebUI 每次运行会在全局输出文件夹下创建独立 dataset_cache/dataset-xx/lora，并在运行时配置里覆盖这里。",
+        "WebUI 运行时会为每次 run 准备 dataset_cache/dataset-xx/lora；开启缓存复用时挂共享 cache_pool，关闭则用本 run 私有目录。",
         ["缓存 latent 和文本编码后，训练阶段不用重复编码。"],
         ["缓存会占用磁盘，尤其是大数据集。"],
         ["旧缓存和新图片、新 caption 不匹配时，会训练到过期内容。"],
