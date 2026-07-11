@@ -6,7 +6,6 @@ import { updateChoiceGuide } from './13-update-dataset-editor-rows-setting-value
 import { updateStepEstimatePanel } from './03-parse-network-arg-entry.js?v=module-bootstrap-20260707-93';
 import { valuesEqual } from '../helpers/form-values.js?v=module-bootstrap-20260707-93';
 import { buildFieldPresentation, fieldSourceBadgeLabel } from '../../config-form/field-presentation.js?v=module-bootstrap-20260707-93';
-import { FORM_UI_DEFAULTS } from '../../../config/catalog.js?v=module-bootstrap-20260707-93';
 import {
     isTruthy,
     loraAdapterFlagsForKind,
