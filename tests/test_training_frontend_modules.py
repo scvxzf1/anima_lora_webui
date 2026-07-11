@@ -934,3 +934,75 @@ def test_image_test_feature_modules_are_loaded_from_production_entrypoint() -> N
     ):
         assert tooltip_id in tooltip_section
 
+
+def test_format_path_label_contract_and_call_sites() -> None:
+    """Shared path labels support length/basename/parent-basename and keep full-path titles."""
+    format_source = _frontend_module_text("js/shared/format.js")
+    history_item = _frontend_module_text(
+        "js/features/anima-app/chunks/33-create-history-task-item.js"
+    )
+    dataset_input = _frontend_module_text(
+        "js/features/anima-app/chunks/10-create-dataset-config-input.js"
+    )
+
+    assert "export function formatPathLabel" in format_source
+    assert "export function compactPathLabel" in format_source
+    assert re.search(r"mode\s*[:=]\s*['\"]length['\"]", format_source)
+    assert "basename" in format_source
+    assert "parent-basename" in format_source
+    assert re.search(
+        r"function compactPathLabel\([^)]*\)\s*\{[^}]*formatPathLabel\(",
+        format_source,
+        re.S,
+    )
+
+    task_item = _section(
+        history_item,
+        "function createHistoryTaskItem",
+        "function compactPathLabel",
+    )
+    assert "pathText.title" in task_item or "pathText.setAttribute('title'" in task_item
+    assert "continueText.title" in task_item or "continueText.setAttribute('title'" in task_item
+    assert (
+        "formatPathLabel" in history_item
+        or "compactPathLabel(pathValue)" in task_item
+    )
+    assert "formatPathLabel" in dataset_input or "compactPathLabel(path)" in dataset_input
+
+    if not shutil.which("node"):
+        pytest.skip("node is required for formatPathLabel behavior checks")
+
+    script = r"""
+import { formatPathLabel, compactPathLabel } from './web/static/js/shared/format.js';
+
+const longPath = '/data/very/long/nested/project/datasets/my-subset-images-folder-name';
+const result = {
+  lengthCompat: compactPathLabel(longPath, 24),
+  lengthExplicit: formatPathLabel(longPath, { mode: 'length', maxLength: 24 }),
+  lengthDefault: formatPathLabel(longPath),
+  basename: formatPathLabel(longPath, { mode: 'basename' }),
+  parentBasename: formatPathLabel(longPath, { mode: 'parent-basename' }),
+  short: formatPathLabel('short/path', { mode: 'length', maxLength: 64 }),
+  emptyBasename: formatPathLabel('', { mode: 'basename' }),
+  windows: formatPathLabel('C:\\Users\\me\\datasets\\cats', { mode: 'parent-basename' }),
+};
+console.log(JSON.stringify(result));
+"""
+    proc = subprocess.run(
+        ["node", "--input-type=module", "-e", script],
+        cwd=REPO_ROOT,
+        text=True,
+        capture_output=True,
+        timeout=20,
+    )
+    assert proc.returncode == 0, proc.stderr or proc.stdout
+    payload = json.loads(proc.stdout)
+    assert payload["basename"] == "my-subset-images-folder-name"
+    assert payload["parentBasename"] == "datasets/my-subset-images-folder-name"
+    assert payload["lengthCompat"] == payload["lengthExplicit"]
+    assert "…" in payload["lengthCompat"]
+    assert payload["lengthCompat"] != '/data/very/long/nested/project/datasets/my-subset-images-folder-name'
+    assert len(payload["lengthDefault"]) <= 64 or "…" in payload["lengthDefault"]
+    assert payload["short"] == "short/path"
+    assert payload["windows"] == "datasets/cats"
+

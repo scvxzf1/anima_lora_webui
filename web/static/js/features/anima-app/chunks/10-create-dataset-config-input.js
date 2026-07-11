@@ -117,10 +117,17 @@ import { moveDatasetEditorRow, moveDatasetEditorRowToIndex } from './13-update-d
 	        return path ? compactPathLabel(path) : `SUBSET ${index + 1}`;
 	    }
 
+	    function datasetEditorDragFullPath(index) {
+	        const row = datasetEditorDragRows()[index] || {};
+	        return String(row.source_dir || row.image_dir || '').trim();
+	    }
+
 	    function createDatasetEditorDragImage(index) {
 	        const image = document.createElement('div');
 	        image.className = 'dataset-editor-drag-image';
+	        const fullPath = datasetEditorDragFullPath(index);
 	        image.textContent = datasetEditorDragLabel(index);
+	        if (fullPath) image.title = fullPath;
 	        document.body.appendChild(image);
 	        return image;
 	    }
