@@ -28,7 +28,7 @@ import { datasetPreviewValidationText } from '../anima-app/helpers/dataset-previ
 import { datasetEditorStateForActivePanel, isDatasetTabActive, refreshDatasetEditorItem, renderDatasetEditor } from '../anima-app/helpers/dataset-render-bridge.js?v=module-bootstrap-20260711-ir1';
 import { createDatasetPathField, createDatasetRowCaptionSourceModeEditor, createDatasetRowSettingInput, openDatasetPreview, updateDatasetEditorRow } from '../anima-app/chunks/12-create-dataset-row-caption-source-mode-editor.js?v=module-bootstrap-20260711-ir1';
 import { escapeHtml } from '../config-form/field-input.js?v=module-bootstrap-20260711-ir1';
-import { datasetExperimentalScopeIndices, removeDatasetEditorRow, setDatasetExperimentalScopeIndices, updateDatasetEditorRowNlTagMix, updateDatasetEditorRowTriggerClone, updateDatasetEditorRowsSettingValue } from '../anima-app/chunks/13-update-dataset-editor-rows-setting-value.js?v=module-bootstrap-20260711-ir1';
+import { datasetExperimentalScopeIndices, removeDatasetEditorRow, setDatasetExperimentalScopeIndices, updateDatasetEditorRowNlTagMix, updateDatasetEditorRowTriggerClone, updateDatasetEditorRowsSettingValue } from './mutations.js?v=module-bootstrap-20260711-ir1';
 
 const datasetState = getDatasetState();
 

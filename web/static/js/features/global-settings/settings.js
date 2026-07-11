@@ -9,7 +9,7 @@ import {
     help,
 } from '../../config/catalog.js?v=module-bootstrap-20260711-ir1';
 import { loadOutputRuns } from '../anima-app/helpers/toml-manager-bridge.js?v=module-bootstrap-20260711-ir1';
-import { updateChoiceGuide } from '../anima-app/chunks/13-update-dataset-editor-rows-setting-value.js?v=module-bootstrap-20260711-ir1';
+import { updateChoiceGuide } from '../config-form/choice-guide-ui.js?v=module-bootstrap-20260711-ir1';
 import { getUiScaleController } from '../anima-app/helpers/app-shell-startup-bridge.js?v=module-bootstrap-20260711-ir1';
 import { getAppShellState } from '../anima-app/helpers/app-shell-state-bridge.js?v=module-bootstrap-20260711-ir1';
 import { getHistoryDetailFeature } from '../anima-app/helpers/history-detail-bridge.js?v=module-bootstrap-20260711-ir1';

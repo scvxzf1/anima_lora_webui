@@ -27,7 +27,7 @@ import {
 import {
     rememberSelectionSnapshot,
     updateChoiceGuide,
-} from '../anima-app/chunks/13-update-dataset-editor-rows-setting-value.js?v=module-bootstrap-20260711-ir1';
+} from '../config-form/choice-guide-ui.js?v=module-bootstrap-20260711-ir1';
 import { requestContinueLoraInspection } from '../anima-app/chunks/06-stronger-selective-checkpoint-value.js?v=module-bootstrap-20260711-ir1';
 import {
     GLOBAL_UI_HISTORY_DETAIL_OVERRIDE_FIELDS,

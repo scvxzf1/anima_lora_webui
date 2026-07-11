@@ -75,7 +75,7 @@ import {
 import { resetLogOutputLines, stopTraining, updateLogStatusText } from '../anima-app/helpers/live-log-bridge.js?v=module-bootstrap-20260711-ir1';
 import { getTrainingState } from '../anima-app/helpers/training-state-bridge.js?v=module-bootstrap-20260711-ir1';
 import { setCurrentTrainingSourceFromVariant } from '../training-source/source-state.js?v=module-bootstrap-20260711-ir1';
-import { confirmBeforeConfigSelectionChange, rememberSelectionSnapshot, updateChoiceGuide } from '../anima-app/chunks/13-update-dataset-editor-rows-setting-value.js?v=module-bootstrap-20260711-ir1';
+import { confirmBeforeConfigSelectionChange, rememberSelectionSnapshot, updateChoiceGuide } from '../config-form/choice-guide-ui.js?v=module-bootstrap-20260711-ir1';
 import { loadDatasetPreviewImages } from '../anima-app/chunks/12-create-dataset-row-caption-source-mode-editor.js?v=module-bootstrap-20260711-ir1';
 import { loadDatasetPresets, renderLiveChartPanel } from '../anima-app/chunks/03-parse-network-arg-entry.js?v=module-bootstrap-20260711-ir1';
 import { selectConfigCategory, updateConfigStickyPlacement } from '../config-form/group-entry.js?v=module-bootstrap-20260711-ir1';
