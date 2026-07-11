@@ -1,6 +1,6 @@
 # 后端 Round C 产品决策设计
 
-> 状态：设计已确认，待实施计划  
+> 状态：Round C 已实施（worktree）  
 > 分支：`feat/backend-config-optimization`  
 > 工作区：`.worktrees/backend-config-optimization`  
 > 基线：`61ac90b0`（Round B' 后）  
@@ -239,14 +239,14 @@ timeout 180 $PY tasks.py test-backend-smoke
 
 ## 8. 完成定义（Round C）
 
-- [ ] T-R2：effective policy helper + enqueue 透传 + `_maybe_auto_retry` 使用 item 优先
-- [ ] T-R2 测试：关重试 / 提高 attempts / 缺键回退 / clone 保留
-- [ ] S-R6：settings 键 + 空回退 + 默认 save 路径
-- [ ] S-R6 测试：空回退 / 自定义 / 禁 `..` / 显式 save_path 优先
-- [ ] S-R3/S-R4：冻结测 + 文档声明不收紧
-- [ ] smoke 绿（含新测）
-- [ ] residual / Round C 台账更新
-- [ ] 健康度自评 ≥ 90（A-）目标可陈述
+- [x] T-R2：effective policy helper + enqueue 透传 + `_maybe_auto_retry` 使用 item 优先
+- [x] T-R2 测试：关重试 / 提高 attempts / 缺键回退 / clone 保留
+- [x] S-R6：settings 键 + 空回退 + 默认 save 路径
+- [x] S-R6 测试：空回退 / 自定义 / 禁 `..` / 显式 save_path 优先
+- [x] S-R3/S-R4：冻结测 + 文档声明不收紧
+- [x] smoke 绿（含新测）
+- [x] residual / Round C 台账更新
+- [x] 健康度自评 ≥ 90（A-）目标可陈述
 
 ## 9. 健康度预期
 

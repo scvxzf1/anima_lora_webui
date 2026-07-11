@@ -433,3 +433,14 @@ EOF
 ## 执行
 
 本会话默认 **Inline Execution**（用户已 spec 确认并要求推进）。
+
+---
+
+## 执行台账
+
+| Task | 状态 | 提交 |
+|---|---|---|
+| T-R2 helper + maybe_auto_retry + enqueue | ✅ | 08fc1a07 及后续 |
+| S-R6 image_test_save_root | ✅ | 本轮 |
+| S-R3/S-R4 冻结 + smoke | ✅ | 162 passed |
+

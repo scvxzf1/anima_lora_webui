@@ -762,3 +762,14 @@ Which approach?
 | T-R5 WS `type=queue` 契约 | ✅ | `test_ws_training_queue_broadcast_contract` |
 | smoke | ✅ | 148 passed（含 `test_schema_gate_observability.py`） |
 
+---
+
+## Round C 执行台账
+
+| 项 | 状态 | 说明 |
+|---|---|---|
+| S-R3/S-R4 路径 | ✅ 冻结不收紧 | `test_path_allowlist_freeze.py` |
+| T-R2 item retry | ✅ | `resolve_item_retry_policy` + enqueue 透传 + `_maybe_auto_retry` |
+| S-R6 save_root | ✅ | `image_test_save_root` 空回退 `output/tests` |
+| smoke | ✅ | 162 passed |
+
