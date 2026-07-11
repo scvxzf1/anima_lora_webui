@@ -43,10 +43,12 @@ def resolve_mixed_precision(
     if major < 8:
         args.mixed_precision = "fp16"
         logger.warning(
-            "GPU sm_%d0 has no native bf16 (bf16 autocast runs the slower "
+            "GPU sm_%d%d has no native bf16 (bf16 autocast runs the slower "
             "fp32 emulation) — auto-switching --mixed_precision from bf16 to "
-            "fp16. Pass --mixed_precision bf16 explicitly to keep bf16.",
+            "fp16. On pre-Ampere GPUs this switch applies whenever the value is "
+            "bf16 (default or explicit); Ampere+ keeps bf16 natively.",
             major,
+            _minor,
         )
 
 
