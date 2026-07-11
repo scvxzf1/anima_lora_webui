@@ -1006,3 +1006,86 @@ console.log(JSON.stringify(result));
     assert payload["short"] == "short/path"
     assert payload["windows"] == "datasets/cats"
 
+def test_history_task_actions_bridge_fails_fast_when_unconfigured() -> None:
+    """Unconfigured history-task-actions methods must throw instead of silent no-op."""
+    bridge_source = _frontend_module_text(
+        "js/features/anima-app/helpers/history-task-actions-bridge.js"
+    )
+    index_source = _frontend_module_text("js/features/anima-app/index.js")
+    chunk33 = _frontend_module_text(
+        "js/features/anima-app/chunks/33-create-history-task-item.js"
+    )
+    chunk34 = _frontend_module_text(
+        "js/features/anima-app/chunks/34-show-history-collection-select-dialog.js"
+    )
+
+    assert "legacyRoot = globalThis" not in bridge_source
+    assert "legacyRoot.createHistoryTaskItem" not in bridge_source
+    assert "configureHistoryTaskActionsBridge" in bridge_source
+    assert "history-task-actions" in bridge_source
+    assert "bridge not configured" in bridge_source
+    assert "configureHistoryTaskActionsBridge({" in chunk33
+    assert "configureHistoryTaskActionsBridge({" in chunk34
+    assert "chunks/33-create-history-task-item.js" in index_source
+    assert "chunks/34-show-history-collection-select-dialog.js" in index_source
+    assert index_source.index("chunks/33-create-history-task-item.js") < index_source.index(
+        "chunks/34-show-history-collection-select-dialog.js"
+    )
+
+    if not shutil.which("node"):
+        pytest.skip("node is required for history-task-actions bridge fail-fast checks")
+
+    script = r"""
+const {
+  configureHistoryTaskActionsBridge,
+  deleteHistoryTask,
+  loadHistoryTask,
+  showHistoryTaskConfirmDialog,
+} = await import('./web/static/js/features/anima-app/helpers/history-task-actions-bridge.js');
+
+const unconfigured = [];
+for (const [name, fn] of [
+  ['deleteHistoryTask', deleteHistoryTask],
+  ['loadHistoryTask', loadHistoryTask],
+  ['showHistoryTaskConfirmDialog', showHistoryTaskConfirmDialog],
+]) {
+  try {
+    fn({ id: 'task-1' });
+    unconfigured.push({ name, ok: true });
+  } catch (error) {
+    unconfigured.push({
+      name,
+      ok: false,
+      message: String(error && error.message ? error.message : error),
+    });
+  }
+}
+
+let configuredMessage = '';
+configureHistoryTaskActionsBridge({
+  deleteHistoryTask: (task) => `deleted:${task.id}`,
+});
+try {
+  configuredMessage = deleteHistoryTask({ id: 'task-9' });
+} catch (error) {
+  configuredMessage = `error:${error && error.message ? error.message : error}`;
+}
+
+console.log(JSON.stringify({ unconfigured, configuredMessage }));
+"""
+    proc = subprocess.run(
+        ["node", "--input-type=module", "-e", script],
+        cwd=REPO_ROOT,
+        text=True,
+        capture_output=True,
+        timeout=20,
+    )
+    assert proc.returncode == 0, proc.stderr or proc.stdout
+    payload = json.loads(proc.stdout)
+    assert payload["configuredMessage"] == "deleted:task-9"
+    assert len(payload["unconfigured"]) == 3
+    for item in payload["unconfigured"]:
+        assert item["ok"] is False, item
+        assert "history-task-actions" in item["message"]
+        assert "not configured" in item["message"]
+
