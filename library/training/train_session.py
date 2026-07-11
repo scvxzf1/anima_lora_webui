@@ -129,6 +129,11 @@ def run_training_session(trainer, args) -> None:
         args, train_dataset_group, val_dataset_group
     )  # may change some args
 
+    # Resolve mixed precision before the first prepare_dtype() so TE cache
+    # strategy and Accelerator share the finalized autocast dtype. Accelerator()
+    # bakes the autocast dtype at construction time.
+    resolve_mixed_precision(args)
+
     # Set the text-encoder-outputs caching strategy now (before the model
     # load) so the cache-completeness probe below can use it to decide
     # whether the Qwen3 text encoder needs loading at all.
@@ -193,10 +198,6 @@ def run_training_session(trainer, args) -> None:
         or sampling_enabled
         or trainer.is_train_text_encoder(args)
     )
-
-    # Resolve mixed precision BEFORE prepare_accelerator: Accelerator() bakes
-    # the autocast dtype at construction time.
-    resolve_mixed_precision(args)
 
     # Prepare accelerator
     logger.info("preparing accelerator")

@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+from pathlib import Path
 import types
 
 import pytest
 
 from library.training.precision_policy import resolve_mixed_precision
+
+ROOT = Path(__file__).resolve().parents[1]
 
 
 def _fake_args(mp="bf16"):
@@ -71,3 +74,18 @@ def test_missing_mixed_precision_attr_is_safe(monkeypatch):
     args = types.SimpleNamespace()
     resolve_mixed_precision(args)
     assert not hasattr(args, "mixed_precision")
+
+
+def test_train_session_resolves_mixed_precision_before_first_prepare_dtype():
+    source = (ROOT / "library" / "training" / "train_session.py").read_text(
+        encoding="utf-8"
+    )
+    resolve_idx = source.find("resolve_mixed_precision(args)")
+    first_prepare_idx = source.find("prepare_dtype(args)")
+    accelerator_idx = source.find("prepare_accelerator(args)")
+    assert resolve_idx != -1
+    assert first_prepare_idx != -1
+    assert accelerator_idx != -1
+    assert resolve_idx < first_prepare_idx
+    assert resolve_idx < accelerator_idx
+
