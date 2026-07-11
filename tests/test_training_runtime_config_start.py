@@ -72,7 +72,7 @@ def test_saved_form_values_are_frozen_into_runtime_config(tmp_path, monkeypatch)
         "masterpiece, character test\n",
         train_config_file="configs/imported/522.toml",
     )
-    ok, msg, content, changed = config_service.patch_raw_file_values(
+    ok, msg, content, changed, _warnings = config_service.patch_raw_file_values(
         "configs/imported/522.toml",
         {
             "network_dim": 32,

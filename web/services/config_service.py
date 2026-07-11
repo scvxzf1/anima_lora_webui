@@ -42,18 +42,71 @@ def _sync_legacy_from_facade() -> None:
             setattr(_legacy, _name, globals()[_name])
 
 
+_CONFIGS_ROOT_SYNC_MODULES = (
+    "web.services.config.common",
+    "web.services.config.merge",
+    "web.services.config.preflight_runtime",
+    "web.services.config.raw_files",
+    "web.services.config.sample_prompts",
+    "web.services.config.file_groups",
+    "web.services.config.file_group_runtime",
+    "web.services.config.datasets",
+    "web.services.config.dataset_media",
+    "web.services.config.dataset_editor",
+    "web.services.config.dataset_rows",
+    "web.services.config.dataset_preset_paths",
+    "web.services.config.dataset_presets_api",
+    "web.services.config.output_runs",
+    "web.services.config._legacy",
+)
+
+
+def _configs_root_path_updates(resolved: Path) -> dict[str, object]:
+    return {
+        "CONFIGS_DIR": resolved,
+        "GUI_METHODS_DIR": resolved / "gui-methods",
+        "IMPORTED_CONFIGS_DIR": resolved / "imported",
+        "PRESETS_FILE": resolved / "presets.toml",
+        "WEB_FILE_GROUPS_FILE": resolved / "web-file-groups.toml",
+        "WEB_USER_LOCKS_FILE": resolved / "web-user-locks.toml",
+        "DEFAULT_SAMPLE_PROMPTS_FILE": str(resolved / "sample_prompts.txt"),
+        "DATASET_PRESETS_DIR": resolved / "datasets",
+    }
+
+
+def _broadcast_configs_root(resolved: Path) -> None:
+    """Push hot-swapped path roots into loaded domain modules.
+
+    Modules listed in ``_CONFIGS_ROOT_SYNC_MODULES`` are imported if needed so a
+    late first-import does not re-seed stale ``get_configs_root()`` constants.
+    """
+    import importlib
+    import sys
+
+    from web.services.config import common as _config_common
+
+    updates = _configs_root_path_updates(resolved)
+    _config_common.set_configs_dir(resolved)
+    for module_name in _CONFIGS_ROOT_SYNC_MODULES:
+        module = sys.modules.get(module_name)
+        if module is None:
+            try:
+                module = importlib.import_module(module_name)
+            except Exception:
+                LOGGER.debug("configs_root broadcast skip unloadable module %s", module_name, exc_info=True)
+                continue
+        for name, value in updates.items():
+            if hasattr(module, name):
+                setattr(module, name, value)
+
+
 def set_configs_root(configs_dir: str | Path) -> Path:
     """Hot-swap the active WebUI config root for subsequent config requests."""
     resolved = Path(configs_dir).resolve()
-    globals()["CONFIGS_DIR"] = resolved
-    globals()["GUI_METHODS_DIR"] = resolved / "gui-methods"
-    globals()["IMPORTED_CONFIGS_DIR"] = resolved / "imported"
-    globals()["PRESETS_FILE"] = resolved / "presets.toml"
-    globals()["WEB_FILE_GROUPS_FILE"] = resolved / "web-file-groups.toml"
-    globals()["WEB_USER_LOCKS_FILE"] = resolved / "web-user-locks.toml"
-    globals()["DEFAULT_SAMPLE_PROMPTS_FILE"] = str(resolved / "sample_prompts.txt")
-    globals()["DATASET_PRESETS_DIR"] = resolved / "datasets"
+    for name, value in _configs_root_path_updates(resolved).items():
+        globals()[name] = value
     _sync_legacy_from_facade()
+    _broadcast_configs_root(resolved)
     return resolved
 
 

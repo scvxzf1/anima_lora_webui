@@ -112,7 +112,7 @@ def test_saved_web_form_values_reach_runtime_config_and_train_loader(tmp_path, m
         "preprocess_precision_preference": "fp16",
     }
 
-    ok, msg, _content, changed = config_service.patch_raw_file_values(
+    ok, msg, _content, changed, _warnings = config_service.patch_raw_file_values(
         train_file,
         saved_values,
         content=train_path.read_text(encoding="utf-8"),

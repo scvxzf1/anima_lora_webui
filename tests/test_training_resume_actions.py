@@ -282,3 +282,57 @@ def test_resume_history_meta_inherits_source_group(tmp_path, monkeypatch):
     assert task["history_source_config_file"] == "configs/imported/demo.toml"
     assert task["history_run_label"] == "demo-resume-20260523-130000"
 
+
+def test_resume_from_history_duration_override_reports_stage_shift(tmp_path, monkeypatch):
+    history_dir, task_id, state_dir = _write_resume_history(tmp_path)
+    snapshot_path = history_dir / task_id / "config.snapshot.toml"
+    snapshot_path.write_text(
+        snapshot_path.read_text(encoding="utf-8")
+        + "\n".join(
+            [
+                "stage_schedule_enabled = true",
+                "[[stage_schedule]]",
+                'name = "mid"',
+                "subset_index = 0",
+                "start_pct = 0.0",
+                "end_pct = 1.0",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(training_service, "HISTORY_DIR", history_dir)
+    _patch_resume_runtime_output_root(monkeypatch, tmp_path)
+    monkeypatch.setattr(
+        config_service,
+        "estimate_training_steps",
+        lambda *_args, **_kwargs: {"total_steps": 100},
+    )
+
+    svc = TrainingService(web.Application())
+    captured = {}
+
+    async def fake_start(variant, preset, extra_args, methods_subdir, **kwargs):
+        captured.update(kwargs)
+        svc.current_task_id = "new-task"
+
+    svc.start = fake_start
+
+    result = asyncio.run(
+        svc.resume_from_history_task(
+            task_id,
+            str(state_dir),
+            duration_overrides={"max_train_steps": 7},
+        )
+    )
+
+    assert result["ok"] is True
+    assert result["stage_before"]["name"] == "mid"
+    assert abs(result["stage_before"]["progress"] - 0.42) < 1e-9
+    assert abs(result["stage_after"]["progress"] - (42 / 49)) < 1e-9
+    assert "追加步数后阶段边界已按新总步数重算" in str(result.get("warning") or "")
+    resume_info = captured["resume_info"]
+    assert resume_info["stage_before"]["progress"] == result["stage_before"]["progress"]
+    assert resume_info["stage_after"]["progress"] == result["stage_after"]["progress"]
+    assert resume_info["warning"] == result["warning"]
+

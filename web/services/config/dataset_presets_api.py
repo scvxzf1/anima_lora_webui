@@ -376,7 +376,7 @@ def save_dataset_preset(
     _ensure_training_dataset_rows(clean_rows)
     cfg = _normalize_dataset_defaults(defaults or {})
     content = _build_dataset_config_doc(clean_rows, cfg)
-    ok, msg = save_raw_file(normalized, content, overwrite=overwrite)
+    ok, msg, _warnings = save_raw_file(normalized, content, overwrite=overwrite)
     if not ok:
         raise ValueError(msg)
     LOGGER.info(
@@ -469,10 +469,10 @@ def apply_dataset_preset_to_training_config(
         "lora_cache_dir": first["cache_dir"],
         "prior_loss_weight": compatibility_defaults["prior_loss_weight"],
     }
-    ok, msg, _path, next_content, changed = _prepare_raw_file_patch(train_rel, values, content=train_content)
+    ok, msg, _path, next_content, changed, _warnings = _prepare_raw_file_patch(train_rel, values, content=train_content)
     if not ok:
         raise ValueError(msg)
-    ok, msg = save_raw_file(train_rel, next_content, overwrite=True)
+    ok, msg, _warnings = save_raw_file(train_rel, next_content, overwrite=True)
     if not ok:
         raise ValueError(msg)
     return {

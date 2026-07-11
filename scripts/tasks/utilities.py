@@ -122,6 +122,38 @@ def cmd_test_unit(extra):
     run([PY, "-m", "pytest", "-q", "tests/", *extra])
 
 
+def cmd_test_backend_smoke(extra):
+    """Backend web/training smoke subset for durable optimization gates."""
+    targets = [
+        "tests/test_web_http_contracts.py",
+        "tests/test_web_route_registry.py",
+        "tests/test_queue_manual_retry.py",
+        "tests/test_environment_effective_roots.py",
+        "tests/test_configs_root_broadcast_matrix.py",
+        "tests/test_training_websocket.py",
+        "tests/test_training_queue_retry_wake.py",
+        "tests/test_training_retry_classification.py",
+        "tests/test_training_retry_integration.py",
+        "tests/test_queue_policy_layers.py",
+        "tests/test_settings_image_test_flags.py",
+        "tests/test_path_safety.py",
+        "tests/test_path_resolve_unified.py",
+        "tests/test_method_discovery.py",
+        "tests/test_cross_domain_delete_boundaries.py",
+        "tests/test_stage_schedule.py",
+        "tests/test_env_config_paths.py",
+        "tests/test_global_settings_runtime.py",
+        "tests/test_web_config_raw_files.py",
+        "tests/test_schema_gate_observability.py",
+        "tests/test_raw_file_warnings_contract.py",
+        "tests/test_queue_item_retry_override.py",
+        "tests/test_settings_image_test_save_root.py",
+        "tests/test_path_allowlist_freeze.py",
+        "tests/test_image_test_service.py",
+    ]
+    run([PY, "-m", "pytest", "-q", *targets, *extra])
+
+
 def cmd_test_fast(extra):
     """Run the fast smoke layer for task runners and bench safety guards."""
     run([PY, "-m", "pytest", "-q", "-m", "fast and not slow", *FAST_TEST_TARGETS, *extra])

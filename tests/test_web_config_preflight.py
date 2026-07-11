@@ -1124,3 +1124,203 @@ def test_runtime_preflight_checks_nested_training_images_and_cache_sidecars(
     assert by_key["latent_cache"]["level"] == "ok"
     assert by_key["text_cache"]["level"] == "ok"
 
+
+
+def _write_stage_schedule_preflight_config(
+    tmp_path: Path,
+    monkeypatch,
+    *,
+    stage_schedule_enabled: bool,
+    stage_schedule: list[dict],
+    subset_count: int = 1,
+) -> str:
+    configs, dataset_path = _write_minimal_config_tree(tmp_path)
+    _patch_config_service_paths(monkeypatch, tmp_path)
+    models = tmp_path / "models"
+    models.mkdir(exist_ok=True)
+    for name in (
+        "diffusion_models/anima-base-v1.0.safetensors",
+        "text_encoders/qwen_3_06b_base.safetensors",
+        "vae/qwen_image_vae.safetensors",
+    ):
+        path = models / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(b"model")
+
+    source_dirs = []
+    for idx in range(subset_count):
+        source = tmp_path / "image_dataset" / f"set{idx}"
+        source.mkdir(parents=True, exist_ok=True)
+        Image.new("RGB", (8, 8), color=(10 + idx, 20, 30)).save(source / "a.png")
+        source_dirs.append(source)
+
+    dataset_lines = ["[[datasets]]", ""]
+    for source in source_dirs:
+        dataset_lines.extend(
+            [
+                "[[datasets.subsets]]",
+                f'image_dir = "{source.as_posix()}"',
+                "num_repeats = 1",
+                "",
+            ]
+        )
+    dataset_path.write_text("\n".join(dataset_lines), encoding="utf-8")
+
+    selected = configs / "imported" / "stage.toml"
+    lines = [
+        'output_name = "stage-demo"',
+        'dataset_config = "configs/datasets/lora.toml"',
+        f"stage_schedule_enabled = {'true' if stage_schedule_enabled else 'false'}",
+        "stage_schedule = [",
+    ]
+    for stage in stage_schedule:
+        lines.append(
+            "  { "
+            f'name = "{stage["name"]}", '
+            f'subset_index = {int(stage["subset_index"])}, '
+            f'start_pct = {float(stage["start_pct"])}, '
+            f'end_pct = {float(stage["end_pct"])}'
+            " },"
+        )
+    lines.append("]")
+    selected.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return "configs/imported/stage.toml"
+
+
+def test_preflight_rejects_invalid_stage_schedule_gap(tmp_path: Path, monkeypatch):
+    config_file = _write_stage_schedule_preflight_config(
+        tmp_path,
+        monkeypatch,
+        stage_schedule_enabled=True,
+        stage_schedule=[
+            {"name": "a", "subset_index": 0, "start_pct": 0.0, "end_pct": 0.4},
+            {"name": "b", "subset_index": 0, "start_pct": 0.6, "end_pct": 1.0},
+        ],
+        subset_count=1,
+    )
+    result = config_service.preflight_training_config(
+        "lora",
+        "default",
+        "imported",
+        config_file=config_file,
+    )
+    assert result["ok"] is False
+    stage_checks = [c for c in result["checks"] if c.get("key") == "stage_schedule"]
+    assert stage_checks
+    assert any("贴齐" in c.get("message", "") or "stage" in c.get("message", "").lower() for c in stage_checks)
+
+
+def test_preflight_rejects_stage_subset_out_of_range(tmp_path: Path, monkeypatch):
+    config_file = _write_stage_schedule_preflight_config(
+        tmp_path,
+        monkeypatch,
+        stage_schedule_enabled=True,
+        stage_schedule=[
+            {"name": "a", "subset_index": 3, "start_pct": 0.0, "end_pct": 1.0},
+        ],
+        subset_count=1,
+    )
+    result = config_service.preflight_training_config(
+        "lora",
+        "default",
+        "imported",
+        config_file=config_file,
+    )
+    assert result["ok"] is False
+    stage_checks = [c for c in result["checks"] if c.get("key") == "stage_schedule"]
+    assert any("subset_index" in c.get("message", "") for c in stage_checks)
+
+
+def test_prepare_web_runtime_config_rejects_invalid_stage_schedule(tmp_path: Path, monkeypatch):
+    from web.services import training_service
+
+    configs, dataset_path = _write_minimal_config_tree(tmp_path)
+    _patch_config_service_paths(monkeypatch, tmp_path)
+    output_root = tmp_path / "output" / "runs"
+    output_root.mkdir(parents=True)
+    monkeypatch.setattr(training_service, "resolve_output_root", lambda: output_root)
+    monkeypatch.setattr(
+        "web.services.training.runtime_prepare.resolve_output_root",
+        lambda: output_root,
+        raising=False,
+    )
+
+    source = tmp_path / "image_dataset" / "a"
+    source.mkdir(parents=True)
+    Image.new("RGB", (8, 8), color=(1, 2, 3)).save(source / "a.png")
+    dataset_path.write_text(
+        "\n".join(
+            [
+                "[[datasets]]",
+                "",
+                "[[datasets.subsets]]",
+                f'image_dir = "{source.as_posix()}"',
+                "num_repeats = 1",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    selected = configs / "imported" / "bad-stage.toml"
+    selected.write_text(
+        "\n".join(
+            [
+                'output_name = "bad-stage"',
+                'dataset_config = "configs/datasets/lora.toml"',
+                "stage_schedule_enabled = true",
+                "stage_schedule = [",
+                '  { name = "a", subset_index = 0, start_pct = 0.0, end_pct = 0.3 },',
+                '  { name = "b", subset_index = 0, start_pct = 0.5, end_pct = 1.0 },',
+                "]",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="stage_schedule"):
+        training_service._prepare_web_runtime_config(
+            "lora",
+            "default",
+            "imported",
+            source_config_file="configs/imported/bad-stage.toml",
+        )
+
+
+def test_preflight_warns_unknown_config_key(tmp_path: Path, monkeypatch):
+    configs, _dataset_path = _write_minimal_config_tree(tmp_path)
+    _patch_config_service_paths(monkeypatch, tmp_path)
+    models = tmp_path / "models"
+    models.mkdir(exist_ok=True)
+    for name in (
+        "diffusion_models/anima-base-v1.0.safetensors",
+        "text_encoders/qwen_3_06b_base.safetensors",
+        "vae/qwen_image_vae.safetensors",
+    ):
+        path = models / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(b"model")
+    source = tmp_path / "image_dataset" / "a"
+    source.mkdir(parents=True)
+    Image.new("RGB", (8, 8), color=(1, 2, 3)).save(source / "a.png")
+    selected = configs / "imported" / "unknown.toml"
+    selected.write_text(
+        "\n".join(
+            [
+                'output_name = "unknown-demo"',
+                'source_image_dir = "image_dataset/a"',
+                "custom_unknown_key = true",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    result = config_service.preflight_training_config(
+        "lora",
+        "default",
+        "imported",
+        config_file="configs/imported/unknown.toml",
+    )
+    warnings = [c for c in result["checks"] if c.get("level") == "warning" and c.get("key") == "schema"]
+    assert warnings
+    assert any("custom_unknown_key" in c.get("message", "") for c in warnings)
+

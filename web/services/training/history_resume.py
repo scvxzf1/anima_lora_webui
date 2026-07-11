@@ -23,6 +23,20 @@ from web.services.training.history_runtime import (
 )
 from web.services.training.resume import _resume_state_integrity_unavailable_reason
 
+def _attach_resume_stage_diagnosis(
+    resume_info: dict[str, Any],
+    runtime: dict[str, Any],
+) -> dict[str, Any]:
+    """Copy stage diagnosis from resume_duration into resume_info."""
+    duration = runtime.get("resume_duration") if isinstance(runtime.get("resume_duration"), dict) else {}
+    if not duration:
+        return resume_info
+    for key in ("stage_before", "stage_after", "warning"):
+        if key in duration and duration.get(key) is not None:
+            resume_info[key] = duration[key]
+    return resume_info
+
+
 async def resume_from_history_task(
     self,
     task_id: str,
@@ -46,6 +60,7 @@ async def resume_from_history_task(
         resume_info["duration_overrides"] = runtime["resume_duration"]
         resume_info["target_total_steps"] = runtime["resume_duration"].get("target_total_steps")
         resume_info["remaining_steps"] = runtime["resume_duration"].get("append_steps")
+        _attach_resume_stage_diagnosis(resume_info, runtime)
     config_file = str(runtime.get("runtime_config_file") or _display_project_path(str(snapshot_path)))
     source_config_file = str(runtime.get("history_source_config_file") or task.get("history_source_config_file") or "")
 
@@ -63,12 +78,16 @@ async def resume_from_history_task(
         use_runtime_dir=False,
     )
 
-    return {
+    payload = {
         "ok": True,
         "message": "已从检查点继续训练",
         "task_id": self.current_task_id,
         "checkpoint": selected,
     }
+    for key in ("stage_before", "stage_after", "warning"):
+        if key in resume_info:
+            payload[key] = resume_info[key]
+    return payload
 
 def _build_resume_payload(
     self,

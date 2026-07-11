@@ -246,7 +246,7 @@ def test_blank_preset_template_can_receive_global_model_paths(tmp_path: Path, mo
         ]
     )
 
-    ok, msg, content, changed = config_service.preview_raw_file_patch(
+    ok, msg, content, changed, _warnings = config_service.preview_raw_file_patch(
         "configs/imported/new_blank.toml",
         {
             "pretrained_model_name_or_path": "${ANIMA_DIT_MODEL}",

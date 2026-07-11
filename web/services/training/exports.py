@@ -80,6 +80,9 @@ _normalize_history_collection_settings = _service_state_impl._normalize_history_
 _normalize_unique_string_list = _service_state_impl._normalize_unique_string_list
 _normalize_config_group_order = _service_state_impl._normalize_config_group_order
 _normalize_queue_failure_policy = _service_state_impl._normalize_queue_failure_policy
+_normalize_queue_retry_backoff = _service_state_impl._normalize_queue_retry_backoff
+_normalize_queue_max_attempts = _service_state_impl._normalize_queue_max_attempts
+_normalize_queue_auto_retry = _service_state_impl._normalize_queue_auto_retry
 _queue_clearable_state_label = _service_state_impl._queue_clearable_state_label
 _new_queue_item_id = _service_state_impl._new_queue_item_id
 _normalize_history_task_ids = _service_state_impl._normalize_history_task_ids
@@ -236,6 +239,9 @@ __all__ = [
     '_normalize_unique_string_list',
     '_normalize_config_group_order',
     '_normalize_queue_failure_policy',
+    '_normalize_queue_retry_backoff',
+    '_normalize_queue_max_attempts',
+    '_normalize_queue_auto_retry',
     '_queue_clearable_state_label',
     '_new_queue_item_id',
     '_normalize_history_task_ids',

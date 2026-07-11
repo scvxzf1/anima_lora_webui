@@ -144,3 +144,53 @@ def _float_or_none(value: Any) -> float | None:
         return float(str(value))
     except (TypeError, ValueError):
         return None
+
+
+def classify_training_failure(
+    *,
+    reason: str = "",
+    message: str = "",
+    returncode: int | None = None,
+    stop_requested: bool = False,
+) -> str:
+    """Classify a queue/process failure for auto-retry decisions.
+
+    Returns one of:
+    - user_stop
+    - checkpoint_missing
+    - oom
+    - process_exit
+    - launch_failure
+    - unknown
+    """
+    if stop_requested or str(reason or "").strip().lower() in {"user_stop", "canceled", "cancelled"}:
+        return "user_stop"
+    text = f"{reason}\n{message}".lower()
+    if (
+        "train_state.json" in text
+        or "检查点" in f"{reason}\n{message}"
+        or ("checkpoint" in text and "missing" in text)
+    ):
+        return "checkpoint_missing"
+    if "续训检查点状态已不存在" in f"{reason}\n{message}":
+        return "checkpoint_missing"
+    if "缺少" in f"{reason}\n{message}" and (".bin" in text or "scheduler" in text or "optimizer" in text):
+        return "checkpoint_missing"
+    if CUDA_OOM_RE.search(f"{reason}\n{message}") or "out of memory" in text or "oom" == str(reason).lower():
+        return "oom"
+    if str(reason or "").strip().lower() == "launch_failure":
+        return "launch_failure"
+    if str(reason or "").strip().lower() == "process_exit" or returncode not in (None, 0):
+        return "process_exit"
+    return "unknown"
+
+
+def should_auto_retry_failure(kind: str) -> bool:
+    """Return whether a classified failure is eligible for auto_retry."""
+    return str(kind or "").strip().lower() in {
+        "oom",
+        "process_exit",
+        "launch_failure",
+        "unknown",
+    }
+

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from library.env import anima_home
+
 import asyncio
 from collections import deque
 from datetime import datetime
@@ -27,11 +29,12 @@ from library.inference.selective_lora import (
 )
 from library.inference.request import GenerationRequest
 from web.services import config_service, settings_service
+from web.services import path_safety
 from web.services.preview_service import DEFAULT_INFERENCE_DIR
 from web.services.project_python import resolve_web_python_executable
-from web.services.settings_service import display_path
+from web.services.settings_service import display_path, resolve_image_test_save_root
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = anima_home()
 IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".webp", ".bmp"}
 ALLOWED_SAMPLERS = {"euler", "er_sde", "lcm"}
 ALLOWED_ATTN_MODES = {"flash", "torch", "sageattn", "flex", "xformers", "sdpa"}
@@ -54,7 +57,7 @@ class ImageTestService:
         self.finished_at: float | None = None
         self.exit_code: int | None = None
         self.error: str = ""
-        self.output_dir: Path = _resolve_save_dir(DEFAULT_INFERENCE_DIR)
+        self.output_dir: Path = _resolve_save_dir(resolve_image_test_save_root())
         self.command: list[str] = []
         self.last_request: dict[str, Any] = {}
         self._logs: deque[str] = deque(maxlen=MAX_LOG_LINES)
@@ -280,7 +283,10 @@ def _normalize_image_test_request(
         "anima_selective_strength": anima_selective_strength,
         "anima_selective_blocks": anima_selective_blocks,
         "anima_selective_block_strengths": anima_selective_block_strengths,
-        "save_path": DEFAULT_INFERENCE_DIR,
+        "save_path": (
+            str(payload.get("save_path") or "").strip()
+            or resolve_image_test_save_root()
+        ),
         "config": cfg,
     }
 
@@ -415,10 +421,13 @@ def _resolve_image_test_weight_path(
         raise ValueError("请填写 LoRA 权重路径")
     if not clean.lower().endswith(".safetensors"):
         raise ValueError("只支持 .safetensors 权重文件")
+    if ".." in Path(clean).parts:
+        raise ValueError("LoRA 权重路径不允许包含 ..")
     path = Path(clean)
+    preferred_dirs = _preferred_image_test_weight_dirs(app)
+    search_dirs = _search_image_test_weight_dirs(preferred_dirs)
+    allowlist = _image_test_weight_allowlist(preferred_dirs=preferred_dirs, search_dirs=search_dirs)
     if _is_image_test_weight_file_name_only(path):
-        preferred_dirs = _preferred_image_test_weight_dirs(app)
-        search_dirs = _search_image_test_weight_dirs(preferred_dirs)
         resolved = _resolve_image_test_weight_by_name(
             path.name,
             search_dirs=search_dirs,
@@ -426,12 +435,50 @@ def _resolve_image_test_weight_path(
             enable_fallback_search=app is not None,
         )
     else:
-        resolved = path.resolve() if path.is_absolute() else (ROOT / clean.lstrip("/")).resolve()
+        try:
+            resolved = path_safety.resolve_allowed_file(
+                clean,
+                root=ROOT,
+                allowed_dirs=allowlist,
+                require_suffix=".safetensors",
+            )
+        except ValueError as exc:
+            msg = str(exc)
+            if ".." in msg:
+                raise ValueError("LoRA 权重路径不允许包含 ..") from exc
+            if "只支持" in msg:
+                raise
+            raise ValueError("LoRA 权重路径超出允许范围") from exc
     if not resolved.exists() or not resolved.is_file():
         raise FileNotFoundError("LoRA 权重文件不存在")
     if not os.access(resolved, os.R_OK):
         raise ValueError("LoRA 权重文件不可读取")
     return resolved
+
+
+def _image_test_weight_allowlist(
+    *,
+    preferred_dirs: list[Path],
+    search_dirs: list[Path],
+) -> list[Path]:
+    """Dirs that may host explicit weight paths for image_test."""
+    dirs: list[Path] = []
+    dirs.extend(preferred_dirs)
+    dirs.extend(search_dirs)
+    dirs.append(ROOT.resolve())
+    # Unique preserve order
+    out: list[Path] = []
+    seen: set[str] = set()
+    for d in dirs:
+        try:
+            key = str(Path(d).resolve())
+        except OSError:
+            continue
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(Path(key))
+    return out
 
 
 def _normalize_image_test_weight_value(value: str) -> str:
@@ -532,9 +579,10 @@ def _preferred_image_test_weight_dirs(app: web.Application | None = None) -> lis
 
 def _search_image_test_weight_dirs(preferred_dirs: list[Path]) -> list[Path]:
     roots: list[Path] = []
-    workspace_root = ROOT.parent.parent.resolve()
     model_roots = _image_test_model_search_dirs()
-    for path in [*preferred_dirs, *model_roots, workspace_root]:
+    # Keep search bounded to preferred output dirs + configured model roots.
+    # Do not walk the broader workspace tree by default.
+    for path in [*preferred_dirs, *model_roots]:
         resolved = path.resolve()
         if any(_is_same_or_child_path(resolved, existing) for existing in roots):
             continue
@@ -543,7 +591,18 @@ def _search_image_test_weight_dirs(preferred_dirs: list[Path]) -> list[Path]:
     return roots
 
 
+def _image_test_allow_home_search() -> bool:
+    settings = _image_test_global_model_settings()
+    raw = settings.get("image_test_allow_home_search", False)
+    if isinstance(raw, bool):
+        return raw
+    return str(raw).strip().lower() in {"1", "true", "yes", "on"}
+
+
 def _fallback_image_test_weight_dirs(existing_roots: list[Path]) -> list[Path]:
+    # Home rglob is opt-in only; default remains closed for safety/perf.
+    if not _image_test_allow_home_search():
+        return []
     home_dir = Path.home().resolve()
     if any(_is_same_or_child_path(home_dir, existing) for existing in existing_roots):
         return []

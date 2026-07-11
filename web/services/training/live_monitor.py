@@ -146,6 +146,8 @@ async def _read_output(self):
                 "finished_at": time.time(),
                 "finished_at_text": _format_ts(time.time()),
             })
+            failed_item = self._find_queue_item(queue_item_id)
+            self._maybe_auto_retry(failed_item, reason="process_exit")
         else:
             self._update_queue_item(queue_item_id, {
                 "state": "done",

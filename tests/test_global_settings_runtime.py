@@ -123,6 +123,38 @@ def test_config_service_set_configs_root_updates_synced_paths(tmp_path, monkeypa
     assert config_service.DATASET_PRESETS_DIR == resolved / "datasets"
 
 
+def test_set_configs_root_hot_swaps_domain_module_roots(tmp_path, monkeypatch):
+    """Hot-swapped configs root must update domain modules, not only the facade."""
+    from web.services.config import (
+        common as common_mod,
+        merge as merge_mod,
+        preflight_runtime as preflight_runtime_mod,
+        raw_files as raw_files_mod,
+        sample_prompts as sample_prompts_mod,
+    )
+
+    # Keep originals restorable so this test does not leak root changes.
+    for mod in (
+        config_service,
+        common_mod,
+        merge_mod,
+        preflight_runtime_mod,
+        raw_files_mod,
+        sample_prompts_mod,
+    ):
+        monkeypatch.setattr(mod, "CONFIGS_DIR", getattr(mod, "CONFIGS_DIR"), raising=False)
+
+    resolved = config_service.set_configs_root(tmp_path / "hot-swap-configs")
+
+    assert config_service.CONFIGS_DIR == resolved
+    assert common_mod.CONFIGS_DIR == resolved
+    assert merge_mod.CONFIGS_DIR == resolved
+    assert preflight_runtime_mod.CONFIGS_DIR == resolved
+    assert raw_files_mod.CONFIGS_DIR == resolved
+    assert sample_prompts_mod.CONFIGS_DIR == resolved
+    assert Path(sample_prompts_mod.DEFAULT_SAMPLE_PROMPTS_FILE) == resolved / "sample_prompts.txt"
+
+
 def test_global_settings_frontend_reload_after_configs_root_switch():
     source = GLOBAL_SETTINGS_JS.read_text(encoding="utf-8")
 
@@ -188,3 +220,90 @@ def test_settings_route_returns_400_for_invalid_payload(monkeypatch):
 
     assert response.status == 400
     assert body == {"ok": False, "error": "输出文件夹不能为空"}
+
+
+def test_save_global_settings_persists_history_and_queue_roots(tmp_path, monkeypatch):
+    settings_file = tmp_path / "configs" / "web-ui-settings.toml"
+    settings_file.parent.mkdir(parents=True, exist_ok=True)
+    settings_file.write_text(
+        "[global]\noutput_root = \"output/runs\"\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(settings_service, "ROOT", tmp_path)
+    monkeypatch.setattr(settings_service, "SETTINGS_FILE", settings_file)
+    monkeypatch.setattr(library_env, "project_root", lambda: tmp_path)
+
+    saved = settings_service.save_global_settings(
+        {
+            "output_root": "output/runs",
+            "history_root": "alt-history",
+            "queue_root": "alt-queue",
+        }
+    )
+
+    assert saved["ok"] is True
+    override = toml.loads((tmp_path / ".anima-webui-settings.toml").read_text(encoding="utf-8"))
+    assert override["paths"]["history_root"] == "alt-history"
+    assert override["paths"]["queue_root"] == "alt-queue"
+    assert library_env.get_training_history_root() == (tmp_path / "alt-history").resolve()
+    assert library_env.get_training_queue_root() == (tmp_path / "alt-queue").resolve()
+
+
+def test_training_policy_settings_roundtrip_and_clamp(tmp_path, monkeypatch):
+    settings_file = tmp_path / "web-ui-settings.toml"
+    monkeypatch.setattr(settings_service, "SETTINGS_FILE", settings_file)
+    saved = settings_service.save_training_policy(
+        {
+            "auto_retry": True,
+            "max_attempts": 99,
+            "retry_backoff_sec": 99999,
+            "max_queue_items": 5,
+            "max_history_items": 12,
+        }
+    )
+    assert saved["ok"] is True
+    assert saved["auto_retry"] is True
+    assert saved["max_attempts"] == 10  # clamp
+    assert saved["retry_backoff_sec"] == 3600.0
+    assert saved["max_queue_items"] == 10  # floor
+    assert saved["max_history_items"] == 12
+    loaded = settings_service.get_training_policy()
+    assert loaded["auto_retry"] is True
+    assert loaded["max_attempts"] == 10
+
+
+
+def test_set_configs_root_hot_swaps_file_groups_datasets_output_runs(tmp_path, monkeypatch):
+    """Broadcast must cover file_groups/datasets/output_runs family modules."""
+    from web.services.config import (
+        datasets as datasets_mod,
+        file_group_runtime as file_group_runtime_mod,
+        file_groups as file_groups_mod,
+        output_runs as output_runs_mod,
+    )
+
+    modules = (
+        config_service,
+        datasets_mod,
+        file_groups_mod,
+        file_group_runtime_mod,
+        output_runs_mod,
+    )
+    for mod in modules:
+        if hasattr(mod, "CONFIGS_DIR"):
+            monkeypatch.setattr(mod, "CONFIGS_DIR", getattr(mod, "CONFIGS_DIR"), raising=False)
+        if hasattr(mod, "IMPORTED_CONFIGS_DIR"):
+            monkeypatch.setattr(mod, "IMPORTED_CONFIGS_DIR", getattr(mod, "IMPORTED_CONFIGS_DIR"), raising=False)
+
+    resolved = config_service.set_configs_root(tmp_path / "broadcast-more")
+    assert config_service.CONFIGS_DIR == resolved
+    assert file_groups_mod.CONFIGS_DIR == resolved
+    assert file_group_runtime_mod.CONFIGS_DIR == resolved
+    assert datasets_mod.CONFIGS_DIR == resolved
+    assert output_runs_mod.CONFIGS_DIR == resolved
+    if hasattr(file_groups_mod, "IMPORTED_CONFIGS_DIR"):
+        assert file_groups_mod.IMPORTED_CONFIGS_DIR == resolved / "imported"
+    if hasattr(datasets_mod, "IMPORTED_CONFIGS_DIR"):
+        assert datasets_mod.IMPORTED_CONFIGS_DIR == resolved / "imported"
+    if hasattr(output_runs_mod, "IMPORTED_CONFIGS_DIR"):
+        assert output_runs_mod.IMPORTED_CONFIGS_DIR == resolved / "imported"

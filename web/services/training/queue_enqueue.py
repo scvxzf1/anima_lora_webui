@@ -5,6 +5,13 @@ from __future__ import annotations
 import time
 from typing import Any
 
+from web.services.training.anomalies import classify_training_failure, should_auto_retry_failure
+from web.services.training.service_state import (
+    resolve_item_retry_policy,
+    _normalize_queue_auto_retry,
+    _normalize_queue_max_attempts,
+    _normalize_queue_retry_backoff,
+)
 from web.services.training.common import _format_ts, _int_or_none
 from web.services.training.gpu import normalize_gpu_whitelist as _normalize_gpu_whitelist
 from web.services.training.launch_support import _normalize_continue_lora_info
@@ -46,6 +53,9 @@ async def enqueue_training(
     continue_info: dict[str, Any] | None = None,
     requires_preprocess: bool = True,
     start_paused: bool = False,
+    auto_retry: bool | None = None,
+    max_attempts: int | None = None,
+    retry_backoff_sec: float | None = None,
 ) -> dict[str, Any]:
     extra = list(extra_args or [])
     gpu_selection = _normalize_gpu_whitelist(gpu_whitelist)
@@ -96,6 +106,12 @@ async def enqueue_training(
         "finished_at_text": "",
         "runtime_info": _runtime_meta(runtime) if runtime else {},
     }
+    if auto_retry is not None:
+        item["auto_retry"] = _normalize_queue_auto_retry(auto_retry)
+    if max_attempts is not None:
+        item["max_attempts"] = _normalize_queue_max_attempts(max_attempts)
+    if retry_backoff_sec is not None:
+        item["retry_backoff_sec"] = _normalize_queue_retry_backoff(retry_backoff_sec)
     if start_paused:
         self._queue_paused = True
         self._queue["paused"] = True
@@ -161,6 +177,9 @@ async def enqueue_training_batch(
                 continue_info=raw.get("continue_info") if isinstance(raw.get("continue_info"), dict) else None,
                 requires_preprocess=requires_preprocess,
                 start_paused=start_paused,
+                auto_retry=raw.get("auto_retry") if "auto_retry" in raw else None,
+                max_attempts=raw.get("max_attempts") if "max_attempts" in raw else None,
+                retry_backoff_sec=raw.get("retry_backoff_sec") if "retry_backoff_sec" in raw else None,
             )
         except Exception as exc:
             failure = {
@@ -222,6 +241,9 @@ async def enqueue_resume_from_history_task(
         resume_info["duration_overrides"] = runtime["resume_duration"]
         resume_info["target_total_steps"] = runtime["resume_duration"].get("target_total_steps")
         resume_info["remaining_steps"] = runtime["resume_duration"].get("append_steps")
+        for key in ("stage_before", "stage_after", "warning"):
+            if key in runtime["resume_duration"] and runtime["resume_duration"].get(key) is not None:
+                resume_info[key] = runtime["resume_duration"][key]
     now = time.time()
     item = {
         "id": _new_queue_item_id(
@@ -281,7 +303,7 @@ def _clone_queue_item_for_retry(self, item: dict[str, Any]) -> dict[str, Any]:
         if key not in {
             "id", "state", "message", "created_at", "created_at_text",
             "started_at", "started_at_text", "finished_at", "finished_at_text",
-            "history_task_ids", "runtime_config_file", "runtime_info",
+            "history_task_ids", "runtime_config_file", "runtime_info", "next_run_at",
         }
     }
     retry.update({
@@ -305,4 +327,56 @@ def _clone_queue_item_for_retry(self, item: dict[str, Any]) -> dict[str, Any]:
         "finished_at_text": "",
         "runtime_info": _runtime_meta(runtime),
     })
+    return retry
+
+
+
+
+def _maybe_auto_retry(
+    self,
+    item: dict[str, Any] | None,
+    *,
+    reason: str = "",
+    message: str = "",
+    stop_requested: bool = False,
+) -> dict[str, Any] | None:
+    """Clone a failed queue item when auto_retry policy allows.
+
+    Shared by process-exit failures and launch failures so attempt counting,
+    max_attempts, and next_run_at backoff stay consistent.
+    """
+    if item is None:
+        return None
+    policy = resolve_item_retry_policy(
+        item,
+        queue_auto_retry=bool(getattr(self, "_queue_auto_retry", False)),
+        queue_max_attempts=int(getattr(self, "_queue_max_attempts", 1) or 1),
+        queue_retry_backoff_sec=float(getattr(self, "_queue_retry_backoff_sec", 0.0) or 0.0),
+    )
+    if not bool(policy.get("auto_retry")):
+        return None
+    attempt = int(item.get("attempt") or 1)
+    max_attempts = int(policy.get("max_attempts") or 1)
+    if attempt >= max_attempts:
+        return None
+    kind = classify_training_failure(
+        reason=reason,
+        message=str(message or item.get("message") or ""),
+        stop_requested=bool(stop_requested),
+    )
+    if not should_auto_retry_failure(kind):
+        return None
+    retry = self._clone_queue_item_for_retry(item)
+    retry["failure_class"] = kind
+    backoff = float(policy.get("retry_backoff_sec") or 0.0)
+    if backoff > 0:
+        retry["next_run_at"] = time.time() + backoff
+        retry["message"] = (
+            f"第 {retry.get('attempt')} 次尝试，"
+            f"{int(backoff)}s 后自动重试"
+        )
+    if reason:
+        retry.setdefault("retry_reason", str(reason))
+    self._queue_items().append(retry)
+    self._compact_queue()
     return retry

@@ -6,7 +6,10 @@ from typing import TYPE_CHECKING
 
 from web.services.training.common import _format_ts
 from web.services.training.service_state import (
+    _normalize_queue_auto_retry,
     _normalize_queue_failure_policy,
+    _normalize_queue_max_attempts,
+    _normalize_queue_retry_backoff,
     _queue_clearable_state_label,
 )
 
@@ -122,6 +125,13 @@ async def retry_queue_item(self, item_id: str) -> dict[str, Any]:
     if item.get("state") == "running":
         raise ValueError("运行中的队列任务不能重新入队")
     retry = self._clone_queue_item_for_retry(item)
+    # Manual retry is operator-driven: mark source and reset attempt counter so
+    # policy max_attempts does not inherit the failed chain's attempt count.
+    retry["manual_retry"] = True
+    retry["retry_source"] = "manual"
+    retry["attempt"] = 1
+    retry.pop("next_run_at", None)
+    retry["message"] = "手动重新加入队列，等待调度"
     self._queue_items().append(retry)
     self._compact_queue()
     self._save_queue()
@@ -329,13 +339,31 @@ async def set_queue_settings(
     *,
     paused: bool | None = None,
     failure_policy: str | None = None,
+    auto_retry: bool | None = None,
+    max_attempts: int | None = None,
+    retry_backoff_sec: float | None = None,
 ) -> dict[str, Any]:
+    """Update queue *runtime* settings (queue.json), not global training_policy.
+
+    Global defaults live in web-ui-settings.toml [training_policy]. Values written
+    here become queue.json runtime overrides and will not be overwritten by later
+    policy changes until keys are removed from the queue file.
+    """
     if paused is not None:
         self._queue_paused = bool(paused)
         self._queue["paused"] = self._queue_paused
     if failure_policy is not None:
         self._queue_failure_policy = _normalize_queue_failure_policy(failure_policy)
         self._queue["failure_policy"] = self._queue_failure_policy
+    if auto_retry is not None:
+        self._queue_auto_retry = _normalize_queue_auto_retry(auto_retry)
+        self._queue["auto_retry"] = self._queue_auto_retry
+    if max_attempts is not None:
+        self._queue_max_attempts = _normalize_queue_max_attempts(max_attempts)
+        self._queue["max_attempts"] = self._queue_max_attempts
+    if retry_backoff_sec is not None:
+        self._queue_retry_backoff_sec = _normalize_queue_retry_backoff(retry_backoff_sec)
+        self._queue["retry_backoff_sec"] = self._queue_retry_backoff_sec
     self._save_queue()
     await self._broadcast_queue()
     if not self._queue_paused:

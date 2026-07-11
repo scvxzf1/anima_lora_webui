@@ -29,6 +29,16 @@ import torch
 from accelerate import Accelerator
 from tqdm import tqdm
 
+from library.training.stage_schedule import (
+    active_subset_indices_for_step,
+    apply_active_subsets_to_dataset,
+    log_stage_switch,
+    parse_stage_specs,
+    progress_from_steps,
+    resolve_stage_index,
+    stage_schedule_enabled,
+)
+
 from library import train_util
 from library.datasets import LossRecorder
 from library.runtime.device import clean_memory_on_device
@@ -130,6 +140,11 @@ class LoopState:
 
     profile_range: Optional[tuple]
     on_step_start_for_network: Callable
+
+    # Optional curriculum schedule: underlying dataset + loader factory kwargs.
+    train_dataset_group: Any = None
+    dataloader_kwargs: Optional[dict] = None
+    stage_index: int = -1
 
     global_step: int = 0
     profile_started: bool = False
@@ -406,6 +421,7 @@ def run_training_loop(trainer, state: LoopState) -> None:
     """
     args = state.args
     accelerator = state.accelerator
+    _maybe_apply_stage_schedule(state, force=True)
 
     for epoch in range(state.epoch_to_start, state.num_train_epochs):
         accelerator.print(f"\nepoch {epoch + 1}/{state.num_train_epochs}\n")
@@ -418,6 +434,8 @@ def run_training_loop(trainer, state: LoopState) -> None:
         )
 
         _run_epoch_steps(trainer, state, epoch)
+        if state.global_step >= args.max_train_steps:
+            break
         _run_epoch_validation(trainer, state, epoch)
         _log_epoch_average(trainer, state, epoch)
         _run_adapter_epoch_hooks(trainer, state)
@@ -449,9 +467,81 @@ def run_training_loop(trainer, state: LoopState) -> None:
     state.metadata["ss_training_finished_at"] = str(time.time())
 
 
+def _current_stage_fields(state: LoopState) -> dict[str, object]:
+    """Return optional stage_index/stage_name for progress events."""
+    if int(getattr(state, "stage_index", -1)) < 0:
+        return {}
+    fields: dict[str, object] = {"stage_index": int(state.stage_index)}
+    stages = parse_stage_specs(getattr(state.args, "stage_schedule", None))
+    if 0 <= state.stage_index < len(stages):
+        name = str(stages[state.stage_index].name or "").strip()
+        if name:
+            fields["stage_name"] = name
+    return fields
+
+
+def _maybe_apply_stage_schedule(state: LoopState, *, force: bool = False) -> None:
+    """Switch active subset filter when progress crosses a stage boundary."""
+    args = state.args
+    if not stage_schedule_enabled(args):
+        return
+    if state.train_dataset_group is None or not state.dataloader_kwargs:
+        return
+
+    stages = parse_stage_specs(getattr(args, "stage_schedule", None))
+    if not stages:
+        return
+    progress = progress_from_steps(state.global_step, int(args.max_train_steps or 1))
+    next_index = resolve_stage_index(stages, progress)
+    if not force and next_index == state.stage_index:
+        return
+
+    active = active_subset_indices_for_step(args, state.global_step)
+    applied = apply_active_subsets_to_dataset(state.train_dataset_group, active)
+    if not applied:
+        # Do not advance stage_index: keep previous membership and fail loudly.
+        raise RuntimeError(
+            "stage schedule switch failed: filtered dataset is empty "
+            f"(target_stage={next_index}, subset_indices={sorted(active or [])}, "
+            f"step={state.global_step}/{args.max_train_steps}). "
+            "Ensure snapshot_full_image_data ran before the first stage filter."
+        )
+
+    # Rebuild DataLoader so workers and __len__ see the new indices.
+    # accelerator.prepare is not re-run; stage switch is single-process-local
+    # dataset membership only (batch content still goes through the prepared
+    # path via the same collate_fn).
+    kwargs = dict(state.dataloader_kwargs)
+    # Avoid inheriting a dead iterator / stale length under persistent workers.
+    kwargs["persistent_workers"] = False
+    state.train_dataloader = torch.utils.data.DataLoader(
+        state.train_dataset_group,
+        shuffle=True,
+        **kwargs,
+    )
+    state.stage_index = next_index
+    stage = stages[next_index]
+    log_stage_switch(
+        stage,
+        next_index,
+        state.global_step,
+        int(args.max_train_steps or 1),
+    )
+    state.accelerator.print(
+        f"[stage] #{next_index + 1} {stage.name or ''} "
+        f"subset={stage.subset_index} "
+        f"@ step {state.global_step}/{args.max_train_steps}"
+    )
+
+
 def _run_epoch_steps(trainer, state: LoopState, epoch: int) -> None:
     """Inner per-step loop: walk the dataloader, execute the accumulate
-    scope, run sample / save / log / step-validation ticks."""
+    scope, run sample / save / log / step-validation ticks.
+
+    When a percent-based stage schedule is enabled, crossing a stage boundary
+    rebuilds the dataset indices and DataLoader, then continues consuming the
+    new loader until the epoch budget or max_train_steps is hit.
+    """
     args = state.args
     accelerator = state.accelerator
 
@@ -462,43 +552,63 @@ def _run_epoch_steps(trainer, state: LoopState, epoch: int) -> None:
         )
         state.initial_step = 1
 
-    for step, batch in enumerate(skipped_dataloader or state.train_dataloader):
-        state.current_step.value = state.global_step
-        if state.initial_step > 0:
-            state.initial_step -= 1
-            continue
+    step = -1
+    while state.global_step < args.max_train_steps:
+        _maybe_apply_stage_schedule(state)
+        loader = skipped_dataloader or state.train_dataloader
+        skipped_dataloader = None
+        stage_at_start = state.stage_index
+        for batch in loader:
+            step += 1
+            state.current_step.value = state.global_step
+            if state.initial_step > 0:
+                state.initial_step -= 1
+                continue
 
-        _profiler_step_begin(state)
+            _profiler_step_begin(state)
+            loss = _run_step(trainer, state, batch)
+            _profiler_step_end(state)
 
-        loss = _run_step(trainer, state, batch)
+            keys_scaled, mean_norm, maximum_norm, max_mean_logs = _maybe_scale_norm(state)
 
-        _profiler_step_end(state)
+            if accelerator.sync_gradients:
+                state.progress_bar.update(1)
+                state.global_step += 1
+                _record_recent_step_seconds(state, state.global_step)
+                _sample_at_step(trainer, state)
+                state.saver.maybe_save_step(state.network, state.global_step, epoch)
+                state.optimizer_train_fn()
 
-        keys_scaled, mean_norm, maximum_norm, max_mean_logs = _maybe_scale_norm(state)
+            _log_step(
+                trainer,
+                state,
+                loss=loss,
+                step=step,
+                epoch=epoch,
+                keys_scaled=keys_scaled,
+                mean_norm=mean_norm,
+                maximum_norm=maximum_norm,
+                max_mean_logs=max_mean_logs,
+            )
+            _maybe_run_step_validation(trainer, state, epoch)
 
-        if accelerator.sync_gradients:
-            state.progress_bar.update(1)
-            state.global_step += 1
-            _record_recent_step_seconds(state, state.global_step)
-            _sample_at_step(trainer, state)
-            state.saver.maybe_save_step(state.network, state.global_step, epoch)
-            state.optimizer_train_fn()
+            if state.global_step >= args.max_train_steps:
+                return
 
-        _log_step(
-            trainer,
-            state,
-            loss=loss,
-            step=step,
-            epoch=epoch,
-            keys_scaled=keys_scaled,
-            mean_norm=mean_norm,
-            maximum_norm=maximum_norm,
-            max_mean_logs=max_mean_logs,
-        )
-        _maybe_run_step_validation(trainer, state, epoch)
-
-        if state.global_step >= args.max_train_steps:
-            break
+            if (
+                stage_schedule_enabled(args)
+                and state.train_dataset_group is not None
+                and stage_at_start >= 0
+            ):
+                stages = parse_stage_specs(getattr(args, "stage_schedule", None))
+                progress = progress_from_steps(
+                    state.global_step, int(args.max_train_steps or 1)
+                )
+                if stages and resolve_stage_index(stages, progress) != state.stage_index:
+                    break
+        else:
+            # Exhausted current loader without mid-epoch stage change.
+            return
 
 
 def _run_step(trainer, state: LoopState, batch) -> torch.Tensor:
@@ -785,6 +895,7 @@ def _log_step(
         logs["recent_s_per_step"] = f"{recent_step_seconds:.2f}"
     logs["avr_loss"] = avr_loss
     logs.update(memory_logs)
+    logs.update(_current_stage_fields(state))
     _unwrapped_net = state.accelerator.unwrap_model(state.network)
     # Refresh router_H only on log cadence — get_router_entropy → full
     # get_router_stats compute (with D2H syncs) is wasted if the only

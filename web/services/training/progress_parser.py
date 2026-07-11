@@ -204,7 +204,14 @@ def metric_from_progress_jsonl_event(event: dict[str, Any], ts: float, *, rate: 
         if lr is not None:
             metric["lr"] = lr
 
-    return metric if any(key in metric for key in ("loss", "lr", "cmmd")) else None
+    stage_index = int_or_none(event.get("stage_index"))
+    if stage_index is not None:
+        metric["stage_index"] = stage_index
+    stage_name = event.get("stage_name")
+    if stage_name is not None and str(stage_name).strip() != "":
+        metric["stage_name"] = str(stage_name)
+
+    return metric if any(key in metric for key in ("loss", "lr", "cmmd", "stage_index", "stage_name")) else None
 
 
 def progress_event_loss(event: dict[str, Any]) -> float | None:

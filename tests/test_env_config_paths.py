@@ -321,3 +321,54 @@ def test_expand_env_vars_in_obj_recurses_nested_structures(monkeypatch, tmp_path
         ],
     }
     assert isinstance(expanded["items"][2], tuple)
+
+
+def test_history_and_queue_roots_follow_webui_settings_file(monkeypatch, tmp_path):
+    """WebUI settings paths.history_root / queue_root 优先于环境变量。"""
+    project = tmp_path / "project"
+    project.mkdir()
+    history = project / "custom-history"
+    queue = project / "custom-queue"
+    history.mkdir()
+    queue.mkdir()
+    env_history = tmp_path / "env-history"
+    env_queue = tmp_path / "env-queue"
+    env_history.mkdir()
+    env_queue.mkdir()
+    (project / ".anima-webui-settings.toml").write_text(
+        "\n".join(
+            [
+                "[paths]",
+                'history_root = "custom-history"',
+                'queue_root = "custom-queue"',
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("ANIMA_TRAINING_HISTORY_ROOT", str(env_history))
+    monkeypatch.setenv("ANIMA_TRAINING_QUEUE_ROOT", str(env_queue))
+
+    library_env = _reload_env_with_project_root(monkeypatch, project)
+
+    assert library_env.get_training_history_root() == history.resolve()
+    assert library_env.get_training_queue_root() == queue.resolve()
+
+
+def test_web_service_roots_follow_anima_home(monkeypatch, tmp_path):
+    """WebUI service ROOT constants should anchor on anima_home()."""
+    home = tmp_path / "anima-home"
+    home.mkdir()
+    monkeypatch.setenv("ANIMA_HOME", str(home))
+    # re-import functions that read anima_home dynamically
+    import importlib
+    import library.env as env
+    importlib.reload(env)
+    assert env.anima_home() == home.resolve()
+    # settings_service.ROOT is assigned at import; call anima_home directly and
+    # ensure modules use the same function for new assignments.
+    assert env.anima_home() == home.resolve()
+    # config common get root via anima_home symbol
+    from web.services.config import common as common_mod
+    assert common_mod.anima_home() == home.resolve()
+

@@ -7,10 +7,10 @@ from typing import Any
 
 import toml
 
-from library.env import get_configs_root
+from library.env import anima_home, get_configs_root, get_training_history_root, get_training_queue_root
 from web.services._dynamic_path import DynamicPath
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = anima_home()
 
 
 def _default_settings_file() -> Path:
@@ -30,6 +30,8 @@ GLOBAL_MODEL_PATH_KEYS = (
 )
 GLOBAL_CONFIG_PATH_KEYS = (
     "configs_root",
+    "history_root",
+    "queue_root",
 )
 GLOBAL_UI_OVERRIDE_KEYS = (
     "ui_scale_config",
@@ -49,7 +51,105 @@ GLOBAL_UI_KEYS = (
     "ui_scale",
     *GLOBAL_UI_OVERRIDE_KEYS,
 )
+GLOBAL_IMAGE_TEST_KEYS = (
+    "image_test_allow_home_search",
+)
+GLOBAL_IMAGE_TEST_PATH_KEYS = (
+    "image_test_save_root",
+)
 
+
+
+
+def get_training_policy() -> dict[str, Any]:
+    """Return durable training/queue policy defaults from web-ui-settings."""
+    raw = _load_raw_settings()
+    section = raw.get("training_policy") if isinstance(raw.get("training_policy"), dict) else {}
+    defaults = _default_training_policy()
+    out = dict(defaults)
+    for key, value in section.items():
+        if key in defaults:
+            out[key] = value
+    return {
+        "ok": True,
+        **_normalize_training_policy(out),
+        "defaults": defaults,
+    }
+
+
+def save_training_policy(data: dict[str, Any]) -> dict[str, Any]:
+    """Persist training/queue policy defaults (API-only, no frontend required)."""
+    settings_file = Path(SETTINGS_FILE)
+    raw = _load_raw_settings(settings_file)
+    current = raw.get("training_policy") if isinstance(raw.get("training_policy"), dict) else {}
+    merged = {**_default_training_policy(), **current, **(data or {})}
+    normalized = _normalize_training_policy(merged)
+    raw["training_policy"] = {
+        key: normalized[key]
+        for key in _default_training_policy()
+    }
+    settings_file.parent.mkdir(parents=True, exist_ok=True)
+    settings_file.write_text(toml.dumps(raw), encoding="utf-8")
+    return {"ok": True, **normalized}
+
+
+def _default_training_policy() -> dict[str, Any]:
+    return {
+        "auto_retry": False,
+        "max_attempts": 1,
+        "retry_backoff_sec": 0.0,
+        "max_queue_items": 200,
+        "max_history_items": 100,
+        "system_monitor_interval_sec": 2.0,
+        "progress_poll_interval_sec": 1.0,
+        "stop_grace_sec": 3.0,
+    }
+
+
+def _normalize_training_policy(data: dict[str, Any]) -> dict[str, Any]:
+    defaults = _default_training_policy()
+    auto_retry = data.get("auto_retry", defaults["auto_retry"])
+    if isinstance(auto_retry, str):
+        auto_retry = auto_retry.strip().lower() in {"1", "true", "yes", "on"}
+    else:
+        auto_retry = bool(auto_retry)
+
+    def _clamp_int(value: Any, default: int, lo: int, hi: int) -> int:
+        try:
+            n = int(value)
+        except (TypeError, ValueError):
+            n = default
+        return max(lo, min(hi, n))
+
+    def _clamp_float(value: Any, default: float, lo: float, hi: float) -> float:
+        try:
+            n = float(value)
+        except (TypeError, ValueError):
+            n = default
+        return max(lo, min(hi, n))
+
+    return {
+        "auto_retry": auto_retry,
+        "max_attempts": _clamp_int(data.get("max_attempts"), defaults["max_attempts"], 1, 10),
+        "retry_backoff_sec": _clamp_float(data.get("retry_backoff_sec"), defaults["retry_backoff_sec"], 0.0, 3600.0),
+        "max_queue_items": _clamp_int(data.get("max_queue_items"), defaults["max_queue_items"], 10, 2000),
+        "max_history_items": _clamp_int(data.get("max_history_items"), defaults["max_history_items"], 10, 5000),
+        "system_monitor_interval_sec": _clamp_float(
+            data.get("system_monitor_interval_sec"), defaults["system_monitor_interval_sec"], 0.5, 30.0
+        ),
+        "progress_poll_interval_sec": _clamp_float(
+            data.get("progress_poll_interval_sec"), defaults["progress_poll_interval_sec"], 0.2, 10.0
+        ),
+        "stop_grace_sec": _clamp_float(data.get("stop_grace_sec"), defaults["stop_grace_sec"], 0.5, 60.0),
+    }
+
+
+def _normalize_bool_setting(value: Any, *, default: bool = False) -> bool:
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        return value
+    return str(value).strip().lower() in {"1", "true", "yes", "on"}
 
 def get_global_settings() -> dict[str, Any]:
     settings = _load_settings()
@@ -104,6 +204,16 @@ def save_global_settings(data: dict[str, Any]) -> dict[str, Any]:
             next_global.pop(key, None)
         else:
             next_global[key] = value
+    for key in GLOBAL_IMAGE_TEST_KEYS:
+        if key in data:
+            next_global[key] = _normalize_bool_setting(data.get(key), default=False)
+        elif key not in next_global:
+            next_global[key] = bool(current.get(key, defaults.get(key, False)))
+    for key in GLOBAL_IMAGE_TEST_PATH_KEYS:
+        if key in data:
+            next_global[key] = _normalize_image_test_save_root(data.get(key))
+        elif key not in next_global:
+            next_global[key] = str(current.get(key, defaults.get(key, "")) or "")
     raw = {
         **current_raw,
         **target_raw,
@@ -114,9 +224,14 @@ def save_global_settings(data: dict[str, Any]) -> dict[str, Any]:
     target_settings_file.parent.mkdir(parents=True, exist_ok=True)
     target_settings_file.write_text(toml.dumps(raw), encoding="utf-8")
 
-    # 如果设置了 configs_root，同时保存到项目根目录的专用配置文件
-    if "configs_root" in data:
-        _save_configs_root_override(data["configs_root"])
+    # 如果设置了路径覆盖，同时保存到项目根目录的专用配置文件
+    path_overrides = {
+        key: data[key]
+        for key in ("configs_root", "history_root", "queue_root")
+        if key in data
+    }
+    if path_overrides:
+        _save_path_overrides(path_overrides)
 
     saved = _load_settings(target_settings_file)
     return {
@@ -127,6 +242,36 @@ def save_global_settings(data: dict[str, Any]) -> dict[str, Any]:
         "defaults": _default_global_settings(settings_file=target_settings_file),
     }
 
+
+
+
+def _normalize_image_test_save_root(value: Any) -> str:
+    """Normalize image_test save root; empty means fallback to output/tests."""
+    clean = str(value or "").replace("\\", "/").strip()
+    if not clean:
+        return ""
+    path = Path(clean)
+    if ".." in path.parts:
+        raise ValueError("image_test 保存目录不能包含 ..")
+    if path.is_absolute():
+        return path.resolve().as_posix()
+    return path.as_posix().lstrip("/").rstrip("/")
+
+
+def resolve_image_test_save_root(value: str | None = None) -> str:
+    """Return effective image_test save dir display path (never empty)."""
+    if value is None:
+        raw = _load_settings().get("image_test_save_root", "")
+    else:
+        raw = value
+    try:
+        normalized = _normalize_image_test_save_root(raw)
+    except ValueError:
+        normalized = ""
+    if normalized:
+        return normalized
+    # Compatible default used by image_test / preview inference dir.
+    return "output/tests"
 
 def resolve_output_root(value: str | None = None) -> Path:
     output_root = value if value is not None else _load_settings()["output_root"]
@@ -165,6 +310,19 @@ def _load_settings(settings_file: Path | None = None) -> dict[str, Any]:
         if key in section:
             value = _normalize_ui_setting(key, section.get(key))
             settings[key] = value if value is not None else defaults.get(key)
+    for key in GLOBAL_IMAGE_TEST_KEYS:
+        if key in section:
+            settings[key] = _normalize_bool_setting(section.get(key), default=bool(defaults.get(key, False)))
+        else:
+            settings[key] = bool(defaults.get(key, False))
+    for key in GLOBAL_IMAGE_TEST_PATH_KEYS:
+        if key in section:
+            try:
+                settings[key] = _normalize_image_test_save_root(section.get(key))
+            except ValueError:
+                settings[key] = str(defaults.get(key, "") or "")
+        else:
+            settings[key] = str(defaults.get(key, "") or "")
 
     # 显示当前实际使用的配置根目录（包括环境变量）
     actual_configs_root = settings_file.parent.resolve()
@@ -172,6 +330,22 @@ def _load_settings(settings_file: Path | None = None) -> dict[str, Any]:
         settings["configs_root"] = actual_configs_root.relative_to(ROOT).as_posix()
     except ValueError:
         settings["configs_root"] = actual_configs_root.as_posix()
+    try:
+        history_root = get_training_history_root().resolve()
+        settings["history_root"] = history_root.relative_to(ROOT).as_posix()
+    except Exception:
+        try:
+            settings["history_root"] = get_training_history_root().as_posix()
+        except Exception:
+            settings["history_root"] = settings.get("history_root") or ""
+    try:
+        queue_root = get_training_queue_root().resolve()
+        settings["queue_root"] = queue_root.relative_to(ROOT).as_posix()
+    except Exception:
+        try:
+            settings["queue_root"] = get_training_queue_root().as_posix()
+        except Exception:
+            settings["queue_root"] = settings.get("queue_root") or ""
 
     return settings
 
@@ -191,7 +365,11 @@ def _default_global_settings(*, settings_file: Path | None = None) -> dict[str, 
     return {
         "output_root": DEFAULT_OUTPUT_ROOT,
         "configs_root": "configs",
+        "history_root": "",
+        "queue_root": "",
         "ui_scale": DEFAULT_UI_SCALE,
+        "image_test_allow_home_search": False,
+        "image_test_save_root": "",
         **{key: DEFAULT_UI_SCALE_OVERRIDE for key in GLOBAL_UI_OVERRIDE_KEYS},
         **_load_base_model_path_defaults(settings_file=settings_file),
     }
@@ -321,28 +499,33 @@ def _settings_file_for_configs_root(value: Any) -> Path:
     return configs_dir / "web-ui-settings.toml"
 
 
-def _save_configs_root_override(configs_root: str) -> None:
-    """保存 configs_root 到项目根目录的专用配置文件。"""
+def _save_path_overrides(path_values: dict[str, Any]) -> None:
+    """保存 configs/history/queue root 到项目根目录的专用配置文件。"""
     webui_paths_file = ROOT / ".anima-webui-settings.toml"
 
-    # 读取现有配置
-    raw = {}
+    raw: dict[str, Any] = {}
     if webui_paths_file.exists():
         try:
             raw = toml.loads(webui_paths_file.read_text(encoding="utf-8"))
         except toml.TomlDecodeError:
             raw = {}
 
-    # 更新 paths.configs_root
     if "paths" not in raw or not isinstance(raw["paths"], dict):
         raw["paths"] = {}
 
-    normalized = _normalize_config_path(configs_root)
-    if normalized:
-        raw["paths"]["configs_root"] = normalized
-    else:
-        # 空值表示使用默认，从配置中删除
-        raw["paths"].pop("configs_root", None)
+    for key, value in path_values.items():
+        if key not in {"configs_root", "history_root", "queue_root"}:
+            continue
+        normalized = _normalize_config_path(value)
+        if normalized:
+            raw["paths"][key] = normalized
+        else:
+            # 空值表示使用默认，从配置中删除
+            raw["paths"].pop(key, None)
 
-    # 保存
     webui_paths_file.write_text(toml.dumps(raw), encoding="utf-8")
+
+
+def _save_configs_root_override(configs_root: str) -> None:
+    """兼容旧调用：只写 configs_root。"""
+    _save_path_overrides({"configs_root": configs_root})

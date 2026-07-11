@@ -404,6 +404,9 @@ async def _handle_queue_start_data(request: web.Request, data: dict) -> web.Resp
                 "requires_confirmation": True,
                 "requires_preprocess_confirmation": needs_preprocess,
             }, status=409)
+        item_auto_retry = data.get("auto_retry") if "auto_retry" in data else None
+        item_max_attempts = data.get("max_attempts") if "max_attempts" in data else None
+        item_retry_backoff = data.get("retry_backoff_sec") if "retry_backoff_sec" in data else None
         payload = await svc.enqueue_training(
             variant,
             preset,
@@ -414,6 +417,9 @@ async def _handle_queue_start_data(request: web.Request, data: dict) -> web.Resp
             continue_info=continue_info,
             requires_preprocess=needs_preprocess,
             start_paused=start_paused,
+            auto_retry=item_auto_retry,
+            max_attempts=int(item_max_attempts) if item_max_attempts is not None else None,
+            retry_backoff_sec=float(item_retry_backoff) if item_retry_backoff is not None else None,
         )
         return web.json_response(payload)
     except (FileNotFoundError, ValueError) as e:
@@ -587,10 +593,16 @@ async def handle_queue_settings(request: web.Request) -> web.Response:
     data = await request.json()
     paused = data.get("paused") if "paused" in data else None
     failure_policy = data.get("failure_policy") if "failure_policy" in data else None
+    auto_retry = data.get("auto_retry") if "auto_retry" in data else None
+    max_attempts = data.get("max_attempts") if "max_attempts" in data else None
+    retry_backoff_sec = data.get("retry_backoff_sec") if "retry_backoff_sec" in data else None
     try:
         return web.json_response(await svc.set_queue_settings(
             paused=bool(paused) if paused is not None else None,
             failure_policy=str(failure_policy) if failure_policy is not None else None,
+            auto_retry=bool(auto_retry) if auto_retry is not None else None,
+            max_attempts=int(max_attempts) if max_attempts is not None else None,
+            retry_backoff_sec=float(retry_backoff_sec) if retry_backoff_sec is not None else None,
         ))
     except ValueError as e:
         return web.json_response({"ok": False, "error": str(e)}, status=400)

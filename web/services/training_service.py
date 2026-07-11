@@ -37,6 +37,9 @@ def reload_runtime_storage_state(service: TrainingService | None) -> None:
     service._queue = _load_training_queue_state()
     service._queue_paused = bool(service._queue.get("paused", False))
     service._queue_failure_policy = _normalize_queue_failure_policy(service._queue.get("failure_policy"))
+    service._queue_auto_retry = bool(service._queue.get("auto_retry", False))
+    service._queue_max_attempts = int(service._queue.get("max_attempts", 1) or 1)
+    service._queue_retry_backoff_sec = float(service._queue.get("retry_backoff_sec", 0.0) or 0.0)
 
 class TrainingService:
     def __init__(self, app: web.Application):
@@ -80,10 +83,28 @@ class TrainingService:
             self._detected_error_hint: str = ""
             self._queue: dict[str, Any] = _load_training_queue_state()
             self._queue_paused: bool = bool(self._queue.get("paused", False))
+            self._queue_auto_retry: bool = bool(self._queue.get("auto_retry", False))
+            self._queue_max_attempts: int = int(self._queue.get("max_attempts", 1) or 1)
+            self._queue_retry_backoff_sec: float = float(self._queue.get("retry_backoff_sec", 0.0) or 0.0)
             self._queue_failure_policy: str = _normalize_queue_failure_policy(self._queue.get("failure_policy"))
             self._current_queue_item_id: str = ""
             self._queue_launching_item_id: str = ""
             self._queue_dispatch_task: asyncio.Task | None = None
+            try:
+                from web.services.training.constants import apply_training_policy_to_facade
+                policy = apply_training_policy_to_facade()
+                # Seed in-memory defaults from global training_policy only when
+                # queue.json did not specify those runtime keys (policy default
+                # vs queue runtime override). Present keys always win.
+                if "auto_retry" not in (self._queue or {}):
+                    self._queue_auto_retry = bool(policy.get("auto_retry", False))
+                if "max_attempts" not in (self._queue or {}):
+                    self._queue_max_attempts = int(policy.get("max_attempts") or 1)
+                if "retry_backoff_sec" not in (self._queue or {}):
+                    self._queue_retry_backoff_sec = float(policy.get("retry_backoff_sec") or 0.0)
+            except Exception:
+                pass
+            self._queue_dispatch_wake_handle = None
             self._launch_lock = asyncio.Lock()
             _mark_orphaned_running_history_tasks()
             self._repair_queue_on_startup()
@@ -154,6 +175,7 @@ class TrainingService:
         '_batch_delete_history_tasks': 'history',
         '_build_resume_payload': 'history',
         '_clone_queue_item_for_retry': 'queue',
+        '_maybe_auto_retry': 'queue',
         '_compact_queue': 'queue',
         '_compute_rate': 'live_monitor',
         '_compute_structured_rate': 'live_monitor',

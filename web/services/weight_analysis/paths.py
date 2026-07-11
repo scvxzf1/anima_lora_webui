@@ -115,25 +115,24 @@ def list_analysis_weights(
 
 
 def resolve_analysis_weight(value: str, *, task: dict[str, Any] | None = None) -> Path:
-    clean = _normalize_user_path_value(value)
-    if not clean:
-        raise ValueError("请填写权重路径")
-    path = Path(clean)
-    if ".." in path.parts:
-        raise ValueError("权重路径不能包含 ..")
-    if path.is_absolute():
-        resolved = path.resolve()
-    else:
-        resolved = (_root() / clean.lstrip("/")).resolve()
-        try:
-            resolved.relative_to(_root().resolve())
-        except ValueError as exc:
-            raise ValueError("权重路径必须在项目目录内") from exc
-
-    if resolved.suffix.lower() not in WEIGHT_EXTS:
-        raise ValueError("只支持 .safetensors 权重文件")
-    if not _is_under_allowed_weight_dir(resolved, task=task):
-        raise ValueError("权重文件只允许从训练输出目录或全局输出目录读取")
+    """Resolve analysis weight path via shared path_safety allowlist policy."""
+    allowed = _allowed_weight_dirs(task=task)
+    try:
+        resolved = path_safety.resolve_allowed_file(
+            value,
+            root=_root(),
+            allowed_dirs=allowed,
+            require_suffix=".safetensors",
+        )
+    except ValueError as exc:
+        msg = str(exc)
+        if "路径为空" in msg:
+            raise ValueError("请填写权重路径") from exc
+        if ".." in msg:
+            raise ValueError("权重路径不能包含 ..") from exc
+        if "只支持" in msg:
+            raise ValueError("只支持 .safetensors 权重文件") from exc
+        raise ValueError("权重文件只允许从训练输出目录或全局输出目录读取") from exc
     if not resolved.exists() or not resolved.is_file():
         raise FileNotFoundError("权重文件不存在")
     if not os.access(resolved, os.R_OK):

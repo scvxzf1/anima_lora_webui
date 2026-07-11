@@ -163,3 +163,45 @@ def read_safetensors_metadata(path: Path) -> dict[str, str]:
         return metadata
     except Exception:
         return {}
+
+
+def contains_parent_ref(value: str | Path) -> bool:
+    """Return True if any path part is ``..`` after normalization."""
+    raw = normalize_user_path_value(str(value or ""))
+    if not raw:
+        return False
+    return ".." in Path(raw).parts
+
+
+def resolve_allowed_file(
+    value: str,
+    *,
+    root: Path,
+    allowed_dirs: Iterable[Path],
+    require_suffix: str | None = ".safetensors",
+) -> Path:
+    """Resolve a user path and require it to live under ``allowed_dirs``.
+
+    Relative paths are rooted at ``root`` and may not contain ``..``.
+    Absolute paths must still fall under the allowlist.
+    """
+    raw = normalize_user_path_value(value)
+    if not raw:
+        raise ValueError("路径为空")
+    if contains_parent_ref(raw):
+        raise ValueError("路径不允许包含 ..")
+    path = Path(raw)
+    if path.is_absolute():
+        resolved = path.resolve()
+    else:
+        resolved = (Path(root) / path).resolve()
+        try:
+            resolved.relative_to(Path(root).resolve())
+        except ValueError as exc:
+            raise ValueError("路径超出允许范围") from exc
+    if require_suffix and resolved.suffix.lower() != require_suffix.lower():
+        raise ValueError(f"只支持 {require_suffix} 文件")
+    if not is_under_allowed_dirs(resolved, allowed_dirs):
+        raise ValueError("路径超出允许范围")
+    return resolved
+

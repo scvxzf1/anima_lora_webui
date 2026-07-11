@@ -8,7 +8,10 @@ from typing import Any
 from web.services.training.common import _format_ts, _positive_int_or_none
 from web.services.training.constants import max_queue_items, queue_dir
 from web.services.training.service_state import (
+    _normalize_queue_auto_retry,
     _normalize_queue_failure_policy,
+    _normalize_queue_max_attempts,
+    _normalize_queue_retry_backoff,
     _write_training_queue_state,
 )
 
@@ -51,6 +54,9 @@ def get_queue_snapshot(self) -> dict[str, Any]:
         "ok": True,
         "paused": self._queue_paused,
         "failure_policy": self._queue_failure_policy,
+        "auto_retry": bool(getattr(self, "_queue_auto_retry", False)),
+        "max_attempts": int(getattr(self, "_queue_max_attempts", 1) or 1),
+        "retry_backoff_sec": float(getattr(self, "_queue_retry_backoff_sec", 0.0) or 0.0),
         "status": self.status,
         "current_item_id": self._current_queue_item_id,
         "summary": summary,
@@ -89,11 +95,32 @@ def _normalize_queue(self) -> None:
         self._queue.get("failure_policy", self._queue_failure_policy)
     )
     self._queue["failure_policy"] = self._queue_failure_policy
+    self._queue_auto_retry = _normalize_queue_auto_retry(
+        self._queue.get("auto_retry", getattr(self, "_queue_auto_retry", False))
+    )
+    self._queue["auto_retry"] = self._queue_auto_retry
+    self._queue_max_attempts = _normalize_queue_max_attempts(
+        self._queue.get("max_attempts", getattr(self, "_queue_max_attempts", 1))
+    )
+    self._queue["max_attempts"] = self._queue_max_attempts
+    self._queue_retry_backoff_sec = _normalize_queue_retry_backoff(
+        self._queue.get("retry_backoff_sec", getattr(self, "_queue_retry_backoff_sec", 0.0))
+    )
+    self._queue["retry_backoff_sec"] = self._queue_retry_backoff_sec
     for item in self._queue["items"]:
         if not isinstance(item, dict):
             continue
         item.setdefault("retry_of", "")
         item["attempt"] = max(1, _positive_int_or_none(item.get("attempt")) or 1)
+        try:
+            next_run_raw = item.get("next_run_at")
+            item["next_run_at"] = (
+                float(next_run_raw)
+                if next_run_raw not in (None, "")
+                else None
+            )
+        except (TypeError, ValueError):
+            item["next_run_at"] = None
 
 
 def _queue_items(self) -> list[dict[str, Any]]:
@@ -165,6 +192,9 @@ def _save_queue(self) -> None:
     queue_dir().mkdir(parents=True, exist_ok=True)
     self._queue["paused"] = self._queue_paused
     self._queue["failure_policy"] = self._queue_failure_policy
+    self._queue["auto_retry"] = bool(getattr(self, "_queue_auto_retry", False))
+    self._queue["max_attempts"] = int(getattr(self, "_queue_max_attempts", 1) or 1)
+    self._queue["retry_backoff_sec"] = float(getattr(self, "_queue_retry_backoff_sec", 0.0) or 0.0)
     self._queue["updated_at"] = time.time()
     self._queue["updated_at_text"] = _format_ts(self._queue["updated_at"])
     _write_training_queue_state(self._queue)

@@ -373,7 +373,8 @@ const trainingRuntime = trainingState.trainingRuntime;
                 methodSelect.value = 'spd';
             }
             const variantSelect = document.getElementById('variant-select');
-            const variants = await api('/api/methods/spd/variants');
+            const variantsPayload = await api('/api/methods/spd/variants');
+            const variants = Array.isArray(variantsPayload) ? variantsPayload : (variantsPayload?.items || []);
             populateSelect('variant-select', variants, 'spd');
         } else if (meta.methods_subdir === 'gui-methods') {
             const methodFamily = VARIANT_METHOD_FAMILY[meta.method] || meta.method || 'lora';
@@ -383,7 +384,8 @@ const trainingRuntime = trainingState.trainingRuntime;
             }
             const variantSelect = document.getElementById('variant-select');
             if (![...variantSelect.options].some((opt) => opt.value === meta.method)) {
-                const variants = await api(`/api/methods/${encodeURIComponent(methodFamily)}/variants`);
+                const variantsPayload = await api(`/api/methods/${encodeURIComponent(methodFamily)}/variants`);
+                const variants = Array.isArray(variantsPayload) ? variantsPayload : (variantsPayload?.items || []);
                 populateSelect('variant-select', variants, meta.method);
             }
             if ([...variantSelect.options].some((opt) => opt.value === meta.method)) {

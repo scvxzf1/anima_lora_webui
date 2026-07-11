@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+from library.env import anima_home
+
 from pathlib import Path
 import re
 
-ROOT = Path(__file__).resolve().parents[3]
+ROOT = anima_home()
 WEIGHT_EXTS = {".safetensors"}
 MAX_ANALYSIS_WEIGHT_LIMIT = 500
 MAX_METADATA_ITEMS = 80

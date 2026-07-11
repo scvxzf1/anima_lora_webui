@@ -28,12 +28,58 @@ def _schedule_queue_dispatch(self) -> None:
     if self._queue_dispatch_task and not self._queue_dispatch_task.done():
         return
     if not any(item.get("state") == "queued" for item in self._queue_items()):
+        _cancel_queue_dispatch_wake(self)
         return
     try:
         loop = asyncio.get_running_loop()
     except RuntimeError:
         return
     self._queue_dispatch_task = loop.create_task(self._dispatch_queue())
+
+
+def _cancel_queue_dispatch_wake(self) -> None:
+    handle = getattr(self, "_queue_dispatch_wake_handle", None)
+    if handle is None:
+        return
+    handle.cancel()
+    self._queue_dispatch_wake_handle = None
+
+
+def _schedule_queue_dispatch_wake(self, when: float) -> None:
+    """Arm a single timer to re-dispatch when the earliest next_run_at is due."""
+    if self._queue_paused or self.status == "running" or self._queue_launching_item_id:
+        return
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        return
+    delay = max(0.0, float(when) - time.time())
+    prev = getattr(self, "_queue_dispatch_wake_handle", None)
+    if prev is not None:
+        prev.cancel()
+
+    def _wake() -> None:
+        self._queue_dispatch_wake_handle = None
+        self._schedule_queue_dispatch()
+
+    self._queue_dispatch_wake_handle = loop.call_later(delay, _wake)
+
+
+def _earliest_queued_next_run_at(self) -> float | None:
+    soonest: float | None = None
+    for entry in self._queue_items():
+        if entry.get("state") != "queued":
+            continue
+        raw = entry.get("next_run_at")
+        if raw in (None, ""):
+            continue
+        try:
+            ts = float(raw)
+        except (TypeError, ValueError):
+            continue
+        if soonest is None or ts < soonest:
+            soonest = ts
+    return soonest
 
 
 async def _dispatch_queue(self) -> None:
@@ -43,9 +89,26 @@ async def _dispatch_queue(self) -> None:
     async with self._launch_lock:
         if self._queue_paused or self.status == "running" or self._queue_launching_item_id:
             return
-        item = next((entry for entry in self._queue_items() if entry.get("state") == "queued"), None)
+        now = time.time()
+        item = next(
+            (
+                entry for entry in self._queue_items()
+                if entry.get("state") == "queued"
+                and (
+                    entry.get("next_run_at") in (None, "")
+                    or float(entry.get("next_run_at") or 0) <= now
+                )
+            ),
+            None,
+        )
         if item is None:
+            wake_at = _earliest_queued_next_run_at(self)
+            if wake_at is not None:
+                _schedule_queue_dispatch_wake(self, wake_at)
+            else:
+                _cancel_queue_dispatch_wake(self)
             return
+        _cancel_queue_dispatch_wake(self)
         queue_item_id = str(item.get("id") or "")
         if not queue_item_id:
             return
@@ -73,6 +136,7 @@ async def _dispatch_queue(self) -> None:
             })
             self._current_queue_item_id = ""
             self.status = "idle"
+            self._maybe_auto_retry(item, reason="launch_failure")
             self._save_queue()
         finally:
             if failed and self._queue_launching_item_id == queue_item_id:
@@ -96,6 +160,7 @@ async def _dispatch_queue(self) -> None:
             })
             self._current_queue_item_id = ""
             self.status = "idle"
+            self._maybe_auto_retry(item, reason="launch_failure")
             self._save_queue()
         finally:
             if self._queue_launching_item_id == queue_item_id:

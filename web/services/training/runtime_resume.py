@@ -32,6 +32,12 @@ from web.services.training.runtime_state import (
     _write_runtime_run_meta,
 )
 
+from library.training.stage_schedule import (
+    parse_stage_specs,
+    progress_from_steps,
+    resolve_stage_index,
+)
+
 _bool_value_for_row = _runtime_datasets._bool_value_for_row
 _clone_runtime_dataset_rows = _runtime_datasets._clone_runtime_dataset_rows
 
@@ -175,6 +181,8 @@ def _apply_resume_duration_overrides(
             "steps_per_epoch": None,
         }
 
+    # Capture pre-override max steps for stage % diagnosis (global step / max_train_steps).
+    previous_max_steps = _positive_int_value(runtime_cfg.get("max_train_steps"))
     target_total_steps = current_step + append_steps
     runtime_cfg["max_train_steps"] = target_total_steps
     runtime_cfg.pop("max_train_epochs", None)
@@ -183,8 +191,62 @@ def _apply_resume_duration_overrides(
         "append_steps": append_steps,
         "target_total_steps": target_total_steps,
     })
+    diagnosis = diagnose_resume_stage_shift(
+        runtime_cfg,
+        resume_step=current_step,
+        previous_max_steps=previous_max_steps,
+        target_total_steps=target_total_steps,
+    )
+    if diagnosis:
+        info.update(diagnosis)
     return info
 
+
+
+def diagnose_resume_stage_shift(
+    runtime_cfg: dict[str, Any],
+    *,
+    resume_step: int,
+    previous_max_steps: int | None,
+    target_total_steps: int,
+) -> dict[str, Any]:
+    """Return stage_before / stage_after / warning when schedule is enabled.
+
+    Stage progress stays global: ``global_step / max_train_steps``. Appending
+    resume steps changes the denominator, so the same checkpoint step can land
+    in a different stage after the override.
+    """
+    if not bool(runtime_cfg.get("stage_schedule_enabled")):
+        return {}
+    stages = parse_stage_specs(runtime_cfg.get("stage_schedule"))
+    if not stages:
+        return {}
+
+    before_total = int(previous_max_steps) if previous_max_steps and previous_max_steps > 0 else int(target_total_steps)
+    after_total = max(1, int(target_total_steps))
+    step = max(0, int(resume_step))
+
+    progress_before = progress_from_steps(step, before_total)
+    progress_after = progress_from_steps(step, after_total)
+    idx_before = resolve_stage_index(stages, progress_before)
+    idx_after = resolve_stage_index(stages, progress_after)
+    stage_before = {
+        "index": idx_before,
+        "name": stages[idx_before].name or f"阶段{idx_before + 1}",
+        "progress": progress_before,
+    }
+    stage_after = {
+        "index": idx_after,
+        "name": stages[idx_after].name or f"阶段{idx_after + 1}",
+        "progress": progress_after,
+    }
+    # Duration override rewrites max_train_steps; always surface the recomputed boundary.
+    warning = "追加步数后阶段边界已按新总步数重算"
+    return {
+        "stage_before": stage_before,
+        "stage_after": stage_after,
+        "warning": warning,
+    }
 
 def _normalize_resume_duration_overrides(duration_overrides: dict[str, Any] | None) -> dict[str, int]:
     if not isinstance(duration_overrides, dict):

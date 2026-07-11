@@ -97,13 +97,59 @@ def run_environment_check() -> dict[str, Any]:
         else:
             add("warning", "cuda_available", "PyTorch 未检测到 CUDA", group="gpu_stack")
     try:
+        from library.env import get_configs_root, get_training_history_root, get_training_queue_root
         from web.services.settings_service import resolve_output_root
-        root = resolve_output_root()
-        root.mkdir(parents=True, exist_ok=True)
-        t = root / ".env_probe"
+
+        configs_root = Path(get_configs_root()).resolve()
+        output_root = Path(resolve_output_root()).resolve()
+        history_root = Path(get_training_history_root()).resolve()
+        queue_root = Path(get_training_queue_root()).resolve()
+        info["effective_roots"] = {
+            "project_root": str(Path(ROOT).resolve()),
+            "configs_root": str(configs_root),
+            "output_root": str(output_root),
+            "history_root": str(history_root),
+            "queue_root": str(queue_root),
+        }
+        add(
+            "ok",
+            "effective_configs_root",
+            f"配置根: {configs_root}",
+            path=configs_root,
+            group="web_runtime",
+        )
+        add(
+            "ok",
+            "effective_output_root",
+            f"输出根: {output_root}",
+            path=output_root,
+            group="web_runtime",
+        )
+        add(
+            "ok",
+            "effective_history_root",
+            f"历史根: {history_root}",
+            path=history_root,
+            group="web_runtime",
+        )
+        add(
+            "ok",
+            "effective_queue_root",
+            f"队列根: {queue_root}",
+            path=queue_root,
+            group="web_runtime",
+        )
+        output_root.mkdir(parents=True, exist_ok=True)
+        t = output_root / ".env_probe"
         t.write_text("ok", encoding="utf-8")
         t.unlink(missing_ok=True)
-        add("ok", "output_root_writable", f"输出根目录可写: {root}", path=root, group="web_runtime")
+        add(
+            "ok",
+            "output_root_writable",
+            f"输出根目录可写: {output_root}",
+            path=output_root,
+            group="web_runtime",
+        )
     except Exception as e:
         add("warning", "web_runtime", str(e), group="web_runtime")
     errors = [c for c in checks if c["level"] == "error"]

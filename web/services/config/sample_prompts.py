@@ -74,16 +74,26 @@ def _exported(fn):
 
     return wrapper
 
-__all__ = ['load_sample_prompts_file', 'save_sample_prompts_file', '_normalize_prompt_file_path', '_sample_prompts_path_for_config']
+__all__ = [
+    "load_sample_prompts_file",
+    "save_sample_prompts_file",
+    "_normalize_prompt_file_path",
+    "_sample_prompts_path_for_config",
+]
+
 
 def load_sample_prompts_file(rel_path: str | None = None) -> dict[str, Any]:
     normalized = _normalize_prompt_file_path(rel_path or DEFAULT_SAMPLE_PROMPTS_FILE)
-    path = (ROOT / normalized).resolve()
+    path = _resolve_prompt_path(normalized)
     if not path.exists():
         return {"ok": True, "file": normalized, "content": "", "prompts": []}
     content = path.read_text(encoding="utf-8")
     lines = content.splitlines()
-    prompts = [line.strip() for line in lines if line.strip() and not line.lstrip().startswith("#")]
+    prompts = [
+        line.strip()
+        for line in lines
+        if line.strip() and not line.lstrip().startswith("#")
+    ]
     return {
         "ok": True,
         "file": normalized,
@@ -98,13 +108,19 @@ def save_sample_prompts_file(
     *,
     train_config_file: str | None = None,
 ) -> dict[str, Any]:
-    normalized = _normalize_prompt_file_path(rel_path or DEFAULT_SAMPLE_PROMPTS_FILE)
+    # Fork path takes precedence; avoid validating a stale absolute default first.
     if train_config_file:
         normalized = _sample_prompts_path_for_config(train_config_file)
+    else:
+        normalized = _normalize_prompt_file_path(rel_path or DEFAULT_SAMPLE_PROMPTS_FILE)
     text = str(content or "")
     lines = text.splitlines()
-    prompts = [line.strip() for line in lines if line.strip() and not line.lstrip().startswith("#")]
-    path = (ROOT / normalized).resolve()
+    prompts = [
+        line.strip()
+        for line in lines
+        if line.strip() and not line.lstrip().startswith("#")
+    ]
+    path = _resolve_prompt_path(normalized)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(text, encoding="utf-8")
     return {
@@ -116,24 +132,59 @@ def save_sample_prompts_file(
     }
 
 
+def _logical_configs_path_from_absolute(absolute: Path) -> str | None:
+    """Map an absolute path onto the logical ``configs/...`` namespace."""
+    resolved = absolute.resolve()
+    configs_root = Path(CONFIGS_DIR).resolve()
+    try:
+        rel = resolved.relative_to(configs_root).as_posix()
+        return "configs" if rel in {"", "."} else f"configs/{rel}"
+    except ValueError:
+        pass
+
+    # Stale absolute defaults from a previous configs root (common in tests/hot-swap).
+    parts = resolved.parts
+    if "sample-prompts" in parts:
+        idx = parts.index("sample-prompts")
+        tail = Path(*parts[idx:]).as_posix()
+        return f"configs/{tail}"
+    if resolved.name == "sample_prompts.txt":
+        return "configs/sample_prompts.txt"
+    return None
+
+
 def _normalize_prompt_file_path(value: str) -> str:
     clean = str(value or "").replace("\\", "/").strip()
     if not clean:
-        clean = DEFAULT_SAMPLE_PROMPTS_FILE
+        clean = "configs/sample_prompts.txt"
     path = Path(clean)
     if path.is_absolute():
-        try:
-            clean = path.resolve().relative_to(ROOT.resolve()).as_posix()
-        except ValueError as exc:
-            raise ValueError("提示词文件必须在项目目录内") from exc
+        logical = _logical_configs_path_from_absolute(path)
+        if logical is None:
+            raise ValueError("提示词文件必须位于 configs 根内")
+        clean = logical
         path = Path(clean)
     if ".." in path.parts:
         raise ValueError("提示词文件路径不能包含 ..")
     if path.suffix.lower() != ".txt":
         raise ValueError("提示词文件必须是 .txt")
-    if not path.as_posix().startswith("configs/"):
+    posix = path.as_posix().lstrip("/")
+    if posix != "configs" and not posix.startswith("configs/"):
         raise ValueError("提示词文件必须保存在 configs/ 下")
-    return path.as_posix().lstrip("/")
+    return posix
+
+
+def _resolve_prompt_path(rel_or_abs: str) -> Path:
+    """Resolve a logical ``configs/...`` prompt path onto the active configs root."""
+    normalized = _normalize_prompt_file_path(rel_or_abs)
+    path = _safe_resolve(normalized)
+    if path is None:
+        raise ValueError("无效 sample prompts 路径")
+    try:
+        path.resolve().relative_to(Path(CONFIGS_DIR).resolve())
+    except ValueError as exc:
+        raise ValueError("sample prompts 必须位于 configs 根内") from exc
+    return path
 
 
 def _sample_prompts_path_for_config(train_config_file: str) -> str:
@@ -141,14 +192,18 @@ def _sample_prompts_path_for_config(train_config_file: str) -> str:
     config_path = _safe_resolve(normalized_config)
     if config_path is None or Path(normalized_config).suffix.lower() != ".toml":
         raise ValueError("训练配置文件路径不合法")
-    try:
-        rel_to_configs = Path(normalized_config).relative_to("configs")
-    except ValueError as exc:
-        raise ValueError("训练配置文件必须保存在 configs/ 下") from exc
-    prompt_path = Path("configs") / "sample-prompts" / rel_to_configs.with_suffix(".txt")
+    clean = Path(normalized_config).as_posix().lstrip("/")
+    if clean == "configs":
+        rel_to_configs = Path(".")
+    elif clean.startswith("configs/"):
+        rel_to_configs = Path(clean.removeprefix("configs/"))
+    else:
+        try:
+            rel_to_configs = config_path.resolve().relative_to(Path(CONFIGS_DIR).resolve())
+        except ValueError as exc:
+            raise ValueError("训练配置文件必须保存在 configs/ 下") from exc
+    prompt_path = Path("configs") / "sample-prompts" / Path(rel_to_configs).with_suffix(".txt")
     return _normalize_prompt_file_path(prompt_path.as_posix())
-
-
 
 
 for _name in __all__:

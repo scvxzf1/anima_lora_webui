@@ -318,6 +318,14 @@ function setPreviewEmpty(message) {
         }
     }
 
+
+    function asItemList(payload) {
+        // C-R6 progressive envelope: prefer {ok, items}, keep bare array compatibility.
+        if (Array.isArray(payload)) return payload;
+        if (payload && Array.isArray(payload.items)) return payload.items;
+        return [];
+    }
+
     // ── 加载初始数据 ──
     export async function loadInitialData() {
         if (location.protocol === 'file:') {
@@ -326,14 +334,14 @@ function setPreviewEmpty(message) {
             return;
         }
         try {
-            const [methods, presets, help] = await Promise.all([
+            const [methodsPayload, presetsPayload, help] = await Promise.all([
                 api('/api/methods'),
                 api('/api/presets'),
                 api('/api/config/field-help'),
             ]);
             configState.fieldHelp = help;
-            populateSelect('method-select', methods, 'lora');
-            populateSelect('preset-select', presets, 'default');
+            populateSelect('method-select', asItemList(methodsPayload), 'lora');
+            populateSelect('preset-select', asItemList(presetsPayload), 'default');
             await gpuPicker.loadGpuOptions();
             const variants = await loadVariants();
             const tomlListPromise = loadTomlFileList('', { deferDefaultLoad: true })
@@ -376,7 +384,8 @@ function setPreviewEmpty(message) {
 
     export async function loadVariants({ reset = false } = {}) {
         const method = val('method-select');
-        const variants = await api(`/api/methods/${method}/variants`);
+        const variantsPayload = await api(`/api/methods/${method}/variants`);
+        const variants = asItemList(variantsPayload);
         populateSelect('variant-select', variants, reset ? (variants[0] || method) : method);
         const selectedVariant = val('variant-select');
         if (!selectedVariant) {
