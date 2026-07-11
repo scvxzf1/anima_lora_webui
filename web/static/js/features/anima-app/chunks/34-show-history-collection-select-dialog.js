@@ -7,29 +7,29 @@ import {
     formatSystemTemperature,
     formatSystemVram,
     historySystemSummary,
-} from '../../history-detail/system.js?v=module-bootstrap-20260707-93';
-import { ensurePreviewFeature } from '../helpers/feature-ensurers.js?v=module-bootstrap-20260707-93';
+} from '../../history-detail/system.js?v=module-bootstrap-20260711-ir1';
+import { ensurePreviewFeature } from '../helpers/feature-ensurers.js?v=module-bootstrap-20260711-ir1';
 import {
     historyCollectionOptionSearchText,
     historyCollectionSelectOptions,
     historyTaskDisplayName,
     moveHistoryCollectionValue,
-} from '../helpers/history-collections-bridge.js?v=module-bootstrap-20260707-93';
-import { configureHistoryTaskActionsBridge } from '../helpers/history-task-actions-bridge.js?v=module-bootstrap-20260707-93';
-import { clearResumeOptions, historyStateLabel, metricsWithProgressFallback, renderConfigGroupTimeline, renderHistoryPaths, renderResumePanelState } from '../helpers/history-timeline-bridge.js?v=module-bootstrap-20260707-93';
-import { renderTrainingRunSummary } from '../helpers/live-status-bridge.js?v=module-bootstrap-20260707-93';
-import { formatLr, lastValue, readConfigNumber } from '../../live-training/index.js?v=module-bootstrap-20260707-93';
-import { getHistoryState } from '../helpers/history-state-bridge.js?v=module-bootstrap-20260707-93';
-import { api } from '../helpers/runtime-bridge.js?v=module-bootstrap-20260707-93';
-import { escapeHtml } from './13-update-dataset-editor-rows-setting-value.js?v=module-bootstrap-20260707-93';
-import { setEtaMetricText, setMetricText, setText, setTrainingDashboardHeadState, syncLossChartEmptyState, updateDashboardProgressIdleState, updateTrainingToolbarState } from './03-parse-network-arg-entry.js?v=module-bootstrap-20260707-93';
-import { ensureHistoryDetailFeature } from '../helpers/history-detail-bridge.js?v=module-bootstrap-20260707-93';
-import { closeSharedHistoryTaskDialog, openSharedHistoryTaskDialog, sharedHistoryTaskDialogIsOpen, sharedHistoryTaskDialogParts } from '../helpers/toml-selection-bridge.js?v=module-bootstrap-20260707-93';
-import { renderLogOutputLines, setLogStatus } from '../helpers/live-log-bridge.js?v=module-bootstrap-20260707-93';
-import { showTrainingView } from '../helpers/queue-view-bridge.js?v=module-bootstrap-20260707-93';
-import { loadTrainingHistoryList, renderHistoryManager, renderTrainingHistoryList } from '../helpers/history-list-bridge.js?v=module-bootstrap-20260707-93';
-import { getTrainingState } from '../helpers/training-state-bridge.js?v=module-bootstrap-20260707-93';
-import { getTomlState } from '../helpers/toml-state-bridge.js?v=module-bootstrap-20260707-93';
+} from '../helpers/history-collections-bridge.js?v=module-bootstrap-20260711-ir1';
+import { configureHistoryTaskActionsBridge } from '../helpers/history-task-actions-bridge.js?v=module-bootstrap-20260711-ir1';
+import { clearResumeOptions, historyStateLabel, metricsWithProgressFallback, renderConfigGroupTimeline, renderHistoryPaths, renderResumePanelState } from '../helpers/history-timeline-bridge.js?v=module-bootstrap-20260711-ir1';
+import { renderTrainingRunSummary } from '../helpers/live-status-bridge.js?v=module-bootstrap-20260711-ir1';
+import { formatLr, lastValue, readConfigNumber } from '../../live-training/index.js?v=module-bootstrap-20260711-ir1';
+import { getHistoryState } from '../helpers/history-state-bridge.js?v=module-bootstrap-20260711-ir1';
+import { api } from '../helpers/runtime-bridge.js?v=module-bootstrap-20260711-ir1';
+import { escapeHtml } from './13-update-dataset-editor-rows-setting-value.js?v=module-bootstrap-20260711-ir1';
+import { setEtaMetricText, setMetricText, setText, setTrainingDashboardHeadState, syncLossChartEmptyState, updateDashboardProgressIdleState, updateTrainingToolbarState } from './03-parse-network-arg-entry.js?v=module-bootstrap-20260711-ir1';
+import { ensureHistoryDetailFeature } from '../helpers/history-detail-bridge.js?v=module-bootstrap-20260711-ir1';
+import { closeSharedHistoryTaskDialog, openSharedHistoryTaskDialog, sharedHistoryTaskDialogIsOpen, sharedHistoryTaskDialogParts } from '../helpers/toml-selection-bridge.js?v=module-bootstrap-20260711-ir1';
+import { renderLogOutputLines, setLogStatus } from '../helpers/live-log-bridge.js?v=module-bootstrap-20260711-ir1';
+import { showTrainingView } from '../helpers/queue-view-bridge.js?v=module-bootstrap-20260711-ir1';
+import { loadTrainingHistoryList, renderHistoryManager, renderTrainingHistoryList } from '../helpers/history-list-bridge.js?v=module-bootstrap-20260711-ir1';
+import { getTrainingState } from '../helpers/training-state-bridge.js?v=module-bootstrap-20260711-ir1';
+import { getTomlState } from '../helpers/toml-state-bridge.js?v=module-bootstrap-20260711-ir1';
 
 const historyState = getHistoryState();
 const trainingState = getTrainingState();

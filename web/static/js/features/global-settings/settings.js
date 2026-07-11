@@ -7,14 +7,14 @@ import {
     GLOBAL_SETTING_INPUTS,
     GLOBAL_UI_OVERRIDE_FIELDS,
     help,
-} from '../../config/catalog.js?v=module-bootstrap-20260707-93';
-import { loadOutputRuns } from '../anima-app/helpers/toml-manager-bridge.js?v=module-bootstrap-20260707-93';
-import { updateChoiceGuide } from '../anima-app/chunks/13-update-dataset-editor-rows-setting-value.js?v=module-bootstrap-20260707-93';
-import { getUiScaleController } from '../anima-app/helpers/app-shell-startup-bridge.js?v=module-bootstrap-20260707-93';
-import { getAppShellState } from '../anima-app/helpers/app-shell-state-bridge.js?v=module-bootstrap-20260707-93';
-import { getHistoryDetailFeature } from '../anima-app/helpers/history-detail-bridge.js?v=module-bootstrap-20260707-93';
-import { api } from '../anima-app/helpers/runtime-bridge.js?v=module-bootstrap-20260707-93';
-import { getTomlState } from '../anima-app/helpers/toml-state-bridge.js?v=module-bootstrap-20260707-93';
+} from '../../config/catalog.js?v=module-bootstrap-20260711-ir1';
+import { loadOutputRuns } from '../anima-app/helpers/toml-manager-bridge.js?v=module-bootstrap-20260711-ir1';
+import { updateChoiceGuide } from '../anima-app/chunks/13-update-dataset-editor-rows-setting-value.js?v=module-bootstrap-20260711-ir1';
+import { getUiScaleController } from '../anima-app/helpers/app-shell-startup-bridge.js?v=module-bootstrap-20260711-ir1';
+import { getAppShellState } from '../anima-app/helpers/app-shell-state-bridge.js?v=module-bootstrap-20260711-ir1';
+import { getHistoryDetailFeature } from '../anima-app/helpers/history-detail-bridge.js?v=module-bootstrap-20260711-ir1';
+import { api } from '../anima-app/helpers/runtime-bridge.js?v=module-bootstrap-20260711-ir1';
+import { getTomlState } from '../anima-app/helpers/toml-state-bridge.js?v=module-bootstrap-20260711-ir1';
 
 const appShellState = getAppShellState();
 const tomlState = getTomlState();

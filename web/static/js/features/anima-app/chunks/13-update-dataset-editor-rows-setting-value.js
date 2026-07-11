@@ -9,45 +9,45 @@ import {
     VARIANT_GUIDE_ZH,
     VARIANT_METHOD_FAMILY,
     choiceHelp,
-} from '../../../config/catalog.js?v=module-bootstrap-20260707-93';
+} from '../../../config/catalog.js?v=module-bootstrap-20260711-ir1';
 import {
     normalizeDatasetDefaults,
     normalizeDatasetEditorRows,
     normalizeNlTagMix,
     normalizeTriggerClone,
-} from '../helpers/dataset-values.js?v=module-bootstrap-20260707-93';
+} from '../helpers/dataset-values.js?v=module-bootstrap-20260711-ir1';
 import {
     isTruthy,
     precisionPreferenceFromConfig,
-} from '../helpers/config-values.js?v=module-bootstrap-20260707-93';
+} from '../helpers/config-values.js?v=module-bootstrap-20260711-ir1';
 import {
     choiceLine,
     defaultMethodGuide,
     defaultPresetGuide,
     defaultVariantGuide,
-} from '../helpers/choice-guide.js?v=module-bootstrap-20260707-93';
+} from '../helpers/choice-guide.js?v=module-bootstrap-20260711-ir1';
 import {
     compactList,
     flagDetail,
     valueDetail,
-} from '../helpers/config-field-display.js?v=module-bootstrap-20260707-93';
+} from '../helpers/config-field-display.js?v=module-bootstrap-20260711-ir1';
 import {
     datasetEditorStateForActivePanel,
     isDatasetTabActive,
     refreshDatasetEditorItems,
     renderDatasetEditor,
     renderDatasetPresetHeader,
-} from '../helpers/dataset-render-bridge.js?v=module-bootstrap-20260707-93';
-import { getAppShellState } from '../helpers/app-shell-state-bridge.js?v=module-bootstrap-20260707-93';
-import { configDraftValueChanged, originalConfigFieldValue, updateConfigDraftFromInput } from '../helpers/config-form-bridge.js?v=module-bootstrap-20260707-93';
-import { handlePendingConfigSwitch, updateTomlDirtyState } from '../helpers/toml-selection-bridge.js?v=module-bootstrap-20260707-93';
-import { getConfigState } from '../helpers/config-state-bridge.js?v=module-bootstrap-20260707-93';
-import { getDatasetState } from '../helpers/dataset-state-bridge.js?v=module-bootstrap-20260707-93';
-import { selectedOutputRun } from '../helpers/output-run-bridge.js?v=module-bootstrap-20260707-93';
-import { val } from '../helpers/runtime-bridge.js?v=module-bootstrap-20260707-93';
-import { getAppContext } from '../helpers/app-context-bridge.js?v=module-bootstrap-20260707-93';
-import { getTrainingState } from '../helpers/training-state-bridge.js?v=module-bootstrap-20260707-93';
-import { updateStepEstimatePanel } from './03-parse-network-arg-entry.js?v=module-bootstrap-20260707-93';
+} from '../helpers/dataset-render-bridge.js?v=module-bootstrap-20260711-ir1';
+import { getAppShellState } from '../helpers/app-shell-state-bridge.js?v=module-bootstrap-20260711-ir1';
+import { configDraftValueChanged, originalConfigFieldValue, updateConfigDraftFromInput } from '../helpers/config-form-bridge.js?v=module-bootstrap-20260711-ir1';
+import { handlePendingConfigSwitch, updateTomlDirtyState } from '../helpers/toml-selection-bridge.js?v=module-bootstrap-20260711-ir1';
+import { getConfigState } from '../helpers/config-state-bridge.js?v=module-bootstrap-20260711-ir1';
+import { getDatasetState } from '../helpers/dataset-state-bridge.js?v=module-bootstrap-20260711-ir1';
+import { selectedOutputRun } from '../helpers/output-run-bridge.js?v=module-bootstrap-20260711-ir1';
+import { val } from '../helpers/runtime-bridge.js?v=module-bootstrap-20260711-ir1';
+import { getAppContext } from '../helpers/app-context-bridge.js?v=module-bootstrap-20260711-ir1';
+import { getTrainingState } from '../helpers/training-state-bridge.js?v=module-bootstrap-20260711-ir1';
+import { updateStepEstimatePanel } from './03-parse-network-arg-entry.js?v=module-bootstrap-20260711-ir1';
 
 const ctx = getAppContext();
 const appShellState = getAppShellState();

@@ -1,4 +1,4 @@
-import { createZipDataBlob, downloadBlob as triggerBlobDownload } from '../../../shared/download.js?v=module-bootstrap-20260707-93';
+import { createZipDataBlob, downloadBlob as triggerBlobDownload } from '../../../shared/download.js?v=module-bootstrap-20260711-ir1';
 import {
     EXPORT_BACKGROUND,
     EXPORT_CELL_BACKGROUND,
@@ -7,7 +7,7 @@ import {
     EXPORT_MAX_EDGE,
     EXPORT_META,
     EXPORT_TEXT,
-} from './constants.js?v=module-bootstrap-20260707-93';
+} from './constants.js?v=module-bootstrap-20260711-ir1';
 import {
     imageDownloadName,
     imageKey,
@@ -16,7 +16,7 @@ import {
     normalizeZipEntryName,
     originalsZipFileName,
     trimExportLabel,
-} from './image-meta.js?v=module-bootstrap-20260707-93';
+} from './image-meta.js?v=module-bootstrap-20260711-ir1';
 
 export async function fetchImageBytes(image) {
     const response = await fetch(image.url, { credentials: 'same-origin' });

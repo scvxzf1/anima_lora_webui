@@ -1,4 +1,4 @@
-import { choiceHelp } from '../../../config/catalog.js?v=module-bootstrap-20260707-93';
+import { choiceHelp } from '../../../config/catalog.js?v=module-bootstrap-20260711-ir1';
 
 export function choiceLine(label, text, extraClass = '') {
     const line = document.createElement('p');

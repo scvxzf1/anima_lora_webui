@@ -2,26 +2,26 @@
  * Config-page training source modes (fresh / full resume / weight hotstart).
  * Moved out of anima-app mechanical chunks.
  */
-import { isLiveRunningState } from '../live-training/index.js?v=module-bootstrap-20260707-93';
-import { historyTaskDisplayName } from '../anima-app/helpers/history-collections-bridge.js?v=module-bootstrap-20260707-93';
-import { readNonnegativeLiveNumber, readOptionalLiveNumber } from '../anima-app/helpers/live-form-values.js?v=module-bootstrap-20260707-93';
-import { configureTrainingSourceBridge } from '../anima-app/helpers/training-source-bridge.js?v=module-bootstrap-20260707-93';
-import { enterLiveTrainingForNewRun } from '../anima-app/helpers/training-launch-bridge.js?v=module-bootstrap-20260707-93';
-import { clearContinueTrainingSource as BASE_CLEAR_CONTINUE_SOURCE, refreshContinueTrainingSourceCompatibility as BASE_REFRESH_CONTINUE_SOURCE, selectContinueLoraWeight as BASE_SELECT_CONTINUE_WEIGHT } from '../anima-app/chunks/06-stronger-selective-checkpoint-value.js?v=module-bootstrap-20260707-93';
+import { isLiveRunningState } from '../live-training/index.js?v=module-bootstrap-20260711-ir1';
+import { historyTaskDisplayName } from '../anima-app/helpers/history-collections-bridge.js?v=module-bootstrap-20260711-ir1';
+import { readNonnegativeLiveNumber, readOptionalLiveNumber } from '../anima-app/helpers/live-form-values.js?v=module-bootstrap-20260711-ir1';
+import { configureTrainingSourceBridge } from '../anima-app/helpers/training-source-bridge.js?v=module-bootstrap-20260711-ir1';
+import { enterLiveTrainingForNewRun } from '../anima-app/helpers/training-launch-bridge.js?v=module-bootstrap-20260711-ir1';
+import { clearContinueTrainingSource as BASE_CLEAR_CONTINUE_SOURCE, refreshContinueTrainingSourceCompatibility as BASE_REFRESH_CONTINUE_SOURCE, selectContinueLoraWeight as BASE_SELECT_CONTINUE_WEIGHT } from '../anima-app/chunks/06-stronger-selective-checkpoint-value.js?v=module-bootstrap-20260711-ir1';
 import {
     setTomlStatus,
     updateTomlActionState,
-} from '../anima-app/helpers/toml-action-state-bridge.js?v=module-bootstrap-20260707-93';
-import { getGpuPicker } from '../anima-app/helpers/app-shell-startup-bridge.js?v=module-bootstrap-20260707-93';
-import { renderPreflightPending, showPreflightRequestError } from '../anima-app/helpers/preflight-dialog-bridge.js?v=module-bootstrap-20260707-93';
-import { appendLog } from '../anima-app/helpers/live-log-bridge.js?v=module-bootstrap-20260707-93';
-import { getContinueTrainingSource, getTrainingSourceState, getTrainingState } from '../anima-app/helpers/training-state-bridge.js?v=module-bootstrap-20260707-93';
-import { showTrainingView, updateTrainingQueueFromPayload } from '../anima-app/helpers/queue-view-bridge.js?v=module-bootstrap-20260707-93';
-import { loadTrainingHistoryList } from '../anima-app/helpers/history-list-bridge.js?v=module-bootstrap-20260707-93';
-import { api } from '../anima-app/helpers/runtime-bridge.js?v=module-bootstrap-20260707-93';
-import { getHistoryState } from '../anima-app/helpers/history-state-bridge.js?v=module-bootstrap-20260707-93';
-import { getTomlState } from '../anima-app/helpers/toml-state-bridge.js?v=module-bootstrap-20260707-93';
-import { optionNodeLocal, summaryLine, textNode } from '../anima-app/helpers/training-source-ui.js?v=module-bootstrap-20260707-93';
+} from '../anima-app/helpers/toml-action-state-bridge.js?v=module-bootstrap-20260711-ir1';
+import { getGpuPicker } from '../anima-app/helpers/app-shell-startup-bridge.js?v=module-bootstrap-20260711-ir1';
+import { renderPreflightPending, showPreflightRequestError } from '../anima-app/helpers/preflight-dialog-bridge.js?v=module-bootstrap-20260711-ir1';
+import { appendLog } from '../anima-app/helpers/live-log-bridge.js?v=module-bootstrap-20260711-ir1';
+import { getContinueTrainingSource, getTrainingSourceState, getTrainingState } from '../anima-app/helpers/training-state-bridge.js?v=module-bootstrap-20260711-ir1';
+import { showTrainingView, updateTrainingQueueFromPayload } from '../anima-app/helpers/queue-view-bridge.js?v=module-bootstrap-20260711-ir1';
+import { loadTrainingHistoryList } from '../anima-app/helpers/history-list-bridge.js?v=module-bootstrap-20260711-ir1';
+import { api } from '../anima-app/helpers/runtime-bridge.js?v=module-bootstrap-20260711-ir1';
+import { getHistoryState } from '../anima-app/helpers/history-state-bridge.js?v=module-bootstrap-20260711-ir1';
+import { getTomlState } from '../anima-app/helpers/toml-state-bridge.js?v=module-bootstrap-20260711-ir1';
+import { optionNodeLocal, summaryLine, textNode } from '../anima-app/helpers/training-source-ui.js?v=module-bootstrap-20260711-ir1';
 export const CONFIG_TRAINING_SOURCE_DOM_CONTRACT = Object.freeze({
     required: Object.freeze([
         'continue-training-source',

@@ -2,33 +2,33 @@
  * Mechanical split from the former monolithic app closure.
  * Keep this module focused; move newly edited behavior into domain modules.
  */
-import { coerceNetworkArgValue, formatNetworkArg, parseNetworkArgEntry } from '../helpers/network-args.js?v=module-bootstrap-20260707-93';
+import { coerceNetworkArgValue, formatNetworkArg, parseNetworkArgEntry } from '../helpers/network-args.js?v=module-bootstrap-20260711-ir1';
 import {
     datasetRowsForPayload,
     normalizeDatasetDefaults,
     normalizeDatasetEditorRows,
-} from '../helpers/dataset-values.js?v=module-bootstrap-20260707-93';
-import { getConfigState } from '../helpers/config-state-bridge.js?v=module-bootstrap-20260707-93';
-import { configDraftValueChanged, configureConfigFormBridge, displayConfigFieldValue, isActiveNetworkArgFieldKey, originalConfigFieldValue, syncConfigDraftFromForm } from '../helpers/config-form-bridge.js?v=module-bootstrap-20260707-93';
-import { fieldValueType } from '../helpers/config-field-ui-bridge.js?v=module-bootstrap-20260707-93';
-import { getDatasetState } from '../helpers/dataset-state-bridge.js?v=module-bootstrap-20260707-93';
+} from '../helpers/dataset-values.js?v=module-bootstrap-20260711-ir1';
+import { getConfigState } from '../helpers/config-state-bridge.js?v=module-bootstrap-20260711-ir1';
+import { configDraftValueChanged, configureConfigFormBridge, displayConfigFieldValue, isActiveNetworkArgFieldKey, originalConfigFieldValue, syncConfigDraftFromForm } from '../helpers/config-form-bridge.js?v=module-bootstrap-20260711-ir1';
+import { fieldValueType } from '../helpers/config-field-ui-bridge.js?v=module-bootstrap-20260711-ir1';
+import { getDatasetState } from '../helpers/dataset-state-bridge.js?v=module-bootstrap-20260711-ir1';
 import {
     configureDatasetPresetActionsBridge,
     setDatasetPresetStatus,
-} from '../helpers/dataset-preset-actions-bridge.js?v=module-bootstrap-20260707-93';
-import { loadTomlFileList } from '../helpers/toml-manager-bridge.js?v=module-bootstrap-20260707-93';
-import { normalizeMultilineText, parseArrayValue, parseNumberValue, valuesEqual } from '../helpers/form-values.js?v=module-bootstrap-20260707-93';
+} from '../helpers/dataset-preset-actions-bridge.js?v=module-bootstrap-20260711-ir1';
+import { loadTomlFileList } from '../helpers/toml-manager-bridge.js?v=module-bootstrap-20260711-ir1';
+import { normalizeMultilineText, parseArrayValue, parseNumberValue, valuesEqual } from '../helpers/form-values.js?v=module-bootstrap-20260711-ir1';
 import {
     normalizePrecisionPreference,
     precisionPreferenceFromConfig,
     precisionPreferencePatch,
-} from '../helpers/config-values.js?v=module-bootstrap-20260707-93';
-import { api, val } from '../helpers/runtime-bridge.js?v=module-bootstrap-20260707-93';
-import { loadDatasetPresets, loadStepEstimate } from './03-parse-network-arg-entry.js?v=module-bootstrap-20260707-93';
-import { serializeSamplePromptsEditor } from '../../sample-prompts/model.js?v=module-bootstrap-20260707-93';
-import { renderConfigDatasetPicker } from './06-stronger-selective-checkpoint-value.js?v=module-bootstrap-20260707-93';
-import { syncDatasetEditorToCompatFields } from './13-update-dataset-editor-rows-setting-value.js?v=module-bootstrap-20260707-93';
-import { applyLoraAdapterPatch, applyOptimizerCompatibilityPatch, readLiveLoraAdapterKind } from './14-lora-adapter-kind-from-config.js?v=module-bootstrap-20260707-93';
+} from '../helpers/config-values.js?v=module-bootstrap-20260711-ir1';
+import { api, val } from '../helpers/runtime-bridge.js?v=module-bootstrap-20260711-ir1';
+import { loadDatasetPresets, loadStepEstimate } from './03-parse-network-arg-entry.js?v=module-bootstrap-20260711-ir1';
+import { serializeSamplePromptsEditor } from '../../sample-prompts/model.js?v=module-bootstrap-20260711-ir1';
+import { renderConfigDatasetPicker } from './06-stronger-selective-checkpoint-value.js?v=module-bootstrap-20260711-ir1';
+import { syncDatasetEditorToCompatFields } from './13-update-dataset-editor-rows-setting-value.js?v=module-bootstrap-20260711-ir1';
+import { applyLoraAdapterPatch, applyOptimizerCompatibilityPatch, readLiveLoraAdapterKind } from './14-lora-adapter-kind-from-config.js?v=module-bootstrap-20260711-ir1';
 import {
     CONFIG_FORM_INTERNAL_KEYS,
     FORM_UI_DEFAULTS,
@@ -36,18 +36,18 @@ import {
     NETWORK_ARG_FIELD_MAP,
     OPTIONAL_EMPTY_FIELDS,
     OPTIONAL_EMPTY_NUMBER_FIELDS,
-} from '../../../config/catalog.js?v=module-bootstrap-20260707-93';
-import { LOSS_WEIGHTING_DEPENDENT_FIELDS } from '../helpers/app-constants.js?v=module-bootstrap-20260707-93';
-import { normalizeNetworkArgArray, parseNetworkArgMap } from '../helpers/app-shell-startup-bridge.js?v=module-bootstrap-20260707-93';
-import { renderDatasetEditor } from '../helpers/dataset-render-bridge.js?v=module-bootstrap-20260707-93';
-import { showHistoryTaskConfirmDialog } from '../helpers/history-task-actions-bridge.js?v=module-bootstrap-20260707-93';
-import { currentTomlEditorContentForFile, updateTomlDirtyState } from '../helpers/toml-selection-bridge.js?v=module-bootstrap-20260707-93';
-import { saveSamplePrompts } from '../helpers/sample-prompts-bridge.js?v=module-bootstrap-20260707-93';
-import { getTomlState } from '../helpers/toml-state-bridge.js?v=module-bootstrap-20260707-93';
+} from '../../../config/catalog.js?v=module-bootstrap-20260711-ir1';
+import { LOSS_WEIGHTING_DEPENDENT_FIELDS } from '../helpers/app-constants.js?v=module-bootstrap-20260711-ir1';
+import { normalizeNetworkArgArray, parseNetworkArgMap } from '../helpers/app-shell-startup-bridge.js?v=module-bootstrap-20260711-ir1';
+import { renderDatasetEditor } from '../helpers/dataset-render-bridge.js?v=module-bootstrap-20260711-ir1';
+import { showHistoryTaskConfirmDialog } from '../helpers/history-task-actions-bridge.js?v=module-bootstrap-20260711-ir1';
+import { currentTomlEditorContentForFile, updateTomlDirtyState } from '../helpers/toml-selection-bridge.js?v=module-bootstrap-20260711-ir1';
+import { saveSamplePrompts } from '../helpers/sample-prompts-bridge.js?v=module-bootstrap-20260711-ir1';
+import { getTomlState } from '../helpers/toml-state-bridge.js?v=module-bootstrap-20260711-ir1';
 import {
     setTomlStatus,
-} from '../helpers/toml-action-state-bridge.js?v=module-bootstrap-20260707-93';
-import { getTrainingState } from '../helpers/training-state-bridge.js?v=module-bootstrap-20260707-93';
+} from '../helpers/toml-action-state-bridge.js?v=module-bootstrap-20260711-ir1';
+import { getTrainingState } from '../helpers/training-state-bridge.js?v=module-bootstrap-20260711-ir1';
 
 const configState = getConfigState();
 const datasetState = getDatasetState();

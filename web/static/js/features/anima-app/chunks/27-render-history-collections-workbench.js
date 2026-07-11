@@ -2,8 +2,8 @@
  * Mechanical split from the former monolithic app closure.
  * Keep this module focused; move newly edited behavior into domain modules.
  */
-import { HISTORY_UNGROUPED_COLLECTION_KEY } from '../helpers/app-constants.js?v=module-bootstrap-20260707-93';
-import { openHistoryNewCollectionPopover, renderHistoryDropPopover } from '../helpers/history-collection-drag-bridge.js?v=module-bootstrap-20260707-93';
+import { HISTORY_UNGROUPED_COLLECTION_KEY } from '../helpers/app-constants.js?v=module-bootstrap-20260711-ir1';
+import { openHistoryNewCollectionPopover, renderHistoryDropPopover } from '../helpers/history-collection-drag-bridge.js?v=module-bootstrap-20260711-ir1';
 import {
     applySelectedHistoryTasksToCollection,
     clearSelectedHistoryCollection,
@@ -34,7 +34,7 @@ import {
     sortHistoryManagerGroupTasks,
     sortedHistoryConfigGroups,
     syncHistoryFilterControls,
-} from '../helpers/history-collections-bridge.js?v=module-bootstrap-20260707-93';
+} from '../helpers/history-collections-bridge.js?v=module-bootstrap-20260711-ir1';
 import {
     archiveHistoryTask,
     createHistoryActionButton,
@@ -44,11 +44,11 @@ import {
     groupSelectedHistoryTasks,
     isHistoryDetailDialogOpen,
     loadHistoryTask,
-} from '../helpers/history-task-actions-bridge.js?v=module-bootstrap-20260707-93';
-import { historyStateLabel } from '../helpers/history-timeline-bridge.js?v=module-bootstrap-20260707-93';
-import { renderHistoryManager } from '../helpers/history-list-bridge.js?v=module-bootstrap-20260707-93';
-import { fillHistoryWorkbenchCardLists } from '../../history-list/workbench-chunk-fill.js?v=module-bootstrap-20260707-93';
-import { getHistoryState } from '../helpers/history-state-bridge.js?v=module-bootstrap-20260707-93';
+} from '../helpers/history-task-actions-bridge.js?v=module-bootstrap-20260711-ir1';
+import { historyStateLabel } from '../helpers/history-timeline-bridge.js?v=module-bootstrap-20260711-ir1';
+import { renderHistoryManager } from '../helpers/history-list-bridge.js?v=module-bootstrap-20260711-ir1';
+import { fillHistoryWorkbenchCardLists } from '../../history-list/workbench-chunk-fill.js?v=module-bootstrap-20260711-ir1';
+import { getHistoryState } from '../helpers/history-state-bridge.js?v=module-bootstrap-20260711-ir1';
 
 const historyState = getHistoryState();
 

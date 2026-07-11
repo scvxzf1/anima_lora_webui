@@ -231,6 +231,7 @@ export const HISTORY_TASK_DRAG_MIME = 'application/x-anima-history-task-ids';
 export const HISTORY_COLLECTION_DRAG_MIME = 'application/x-anima-history-collection';
 export const HISTORY_CONFIG_GROUP_DRAG_MIME = 'application/x-anima-history-config-group';
 export const THEME_STORAGE_KEY = 'anima_lora_theme';
+export const LANGUAGE_STORAGE_KEY = 'anima_lora_language';
 export const GPU_WHITELIST_STORAGE_KEY = 'anima_lora_gpu_whitelist';
 export const LOSS_WEIGHTING_DEPENDENT_FIELDS = new Map([
     ['min_snr_gamma', 'min_snr'],

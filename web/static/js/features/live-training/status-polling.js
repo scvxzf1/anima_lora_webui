@@ -2,14 +2,14 @@
  * Live training status polling bridge.
  * Moved out of anima-app mechanical chunks.
  */
-import { isLiveRunningState } from './index.js?v=module-bootstrap-20260707-93';
+import { isLiveRunningState } from './index.js?v=module-bootstrap-20260711-ir1';
 import {
     updateMetrics,
     updateProgress,
     updateStatus,
     updateSystem,
-} from '../anima-app/helpers/live-status-bridge.js?v=module-bootstrap-20260707-93';
-import { isHistoryReviewMode } from '../anima-app/helpers/history-detail-bridge.js?v=module-bootstrap-20260707-93';
+} from '../anima-app/helpers/live-status-bridge.js?v=module-bootstrap-20260711-ir1';
+import { isHistoryReviewMode } from '../anima-app/helpers/history-detail-bridge.js?v=module-bootstrap-20260711-ir1';
 import {
     appendLog,
     replayMetricsHistory,
@@ -17,11 +17,11 @@ import {
     setLogStatus,
     setTrainingHealthNotice,
     updateLogStatusText,
-} from '../anima-app/helpers/live-log-bridge.js?v=module-bootstrap-20260707-93';
-import { getHistoryState } from '../anima-app/helpers/history-state-bridge.js?v=module-bootstrap-20260707-93';
-import { loadTrainingQueue } from '../anima-app/helpers/queue-view-bridge.js?v=module-bootstrap-20260707-93';
-import { loadTrainingHistoryList } from '../anima-app/helpers/history-list-bridge.js?v=module-bootstrap-20260707-93';
-import { api } from '../anima-app/helpers/runtime-bridge.js?v=module-bootstrap-20260707-93';
+} from '../anima-app/helpers/live-log-bridge.js?v=module-bootstrap-20260711-ir1';
+import { getHistoryState } from '../anima-app/helpers/history-state-bridge.js?v=module-bootstrap-20260711-ir1';
+import { loadTrainingQueue } from '../anima-app/helpers/queue-view-bridge.js?v=module-bootstrap-20260711-ir1';
+import { loadTrainingHistoryList } from '../anima-app/helpers/history-list-bridge.js?v=module-bootstrap-20260711-ir1';
+import { api } from '../anima-app/helpers/runtime-bridge.js?v=module-bootstrap-20260711-ir1';
 
 export function createStatusPollingBridge(target = globalThis) {
     // Keep polling bookkeeping inside the bridge while old callers still use global function names.

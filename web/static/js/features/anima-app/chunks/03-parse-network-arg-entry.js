@@ -2,37 +2,37 @@
  * Mechanical split from the former monolithic app closure.
  * Keep this module focused; move newly edited behavior into domain modules.
  */
-import { formatLossValue } from '../../history-detail/curve/data.js?v=module-bootstrap-20260707-93';
-import { formatCompactNumber, numberOrNull } from '../../history-detail/ui.js?v=module-bootstrap-20260707-93';
-import { formatLr } from '../../live-training/index.js?v=module-bootstrap-20260707-93';
-import { HIDDEN_DATASET_PRESET_FILES } from '../helpers/app-constants.js?v=module-bootstrap-20260707-93';
-import { getConfigState } from '../helpers/config-state-bridge.js?v=module-bootstrap-20260707-93';
-import { getDatasetState } from '../helpers/dataset-state-bridge.js?v=module-bootstrap-20260707-93';
+import { formatLossValue } from '../../history-detail/curve/data.js?v=module-bootstrap-20260711-ir1';
+import { formatCompactNumber, numberOrNull } from '../../history-detail/ui.js?v=module-bootstrap-20260711-ir1';
+import { formatLr } from '../../live-training/index.js?v=module-bootstrap-20260711-ir1';
+import { HIDDEN_DATASET_PRESET_FILES } from '../helpers/app-constants.js?v=module-bootstrap-20260711-ir1';
+import { getConfigState } from '../helpers/config-state-bridge.js?v=module-bootstrap-20260711-ir1';
+import { getDatasetState } from '../helpers/dataset-state-bridge.js?v=module-bootstrap-20260711-ir1';
 import {
     normalizeDatasetDefaults,
     normalizeDatasetEditorRows,
-} from '../helpers/dataset-values.js?v=module-bootstrap-20260707-93';
+} from '../helpers/dataset-values.js?v=module-bootstrap-20260711-ir1';
 import {
     datasetPresetSummaryByFile,
     orderDatasetPresetsForGroups,
     selectedDatasetConfigOverride,
     sortDatasetPresetGroups,
-} from '../helpers/dataset-presets.js?v=module-bootstrap-20260707-93';
+} from '../helpers/dataset-presets.js?v=module-bootstrap-20260711-ir1';
 import {
     renderConfigDatasetPickerDialog,
     renderDatasetEditor,
     renderDatasetPresetHeader,
     renderDatasetPresetList,
     isDatasetTabActive,
-} from '../helpers/dataset-render-bridge.js?v=module-bootstrap-20260707-93';
-import { readLiveNumber, readNonnegativeLiveNumber, readOptionalLiveNumber } from '../helpers/live-form-values.js?v=module-bootstrap-20260707-93';
-import { isCliOnlySpdSource } from '../helpers/training-launch-bridge.js?v=module-bootstrap-20260707-93';
-import { confirmUnsavedDiscard } from '../helpers/toml-selection-bridge.js?v=module-bootstrap-20260707-93';
-import { api, datasetPresetApi, val } from '../helpers/runtime-bridge.js?v=module-bootstrap-20260707-93';
-import { getTrainingState } from '../helpers/training-state-bridge.js?v=module-bootstrap-20260707-93';
-import { currentTrainingConfigFile } from '../helpers/preflight-dialog-bridge.js?v=module-bootstrap-20260707-93';
-import { escapeHtml } from './13-update-dataset-editor-rows-setting-value.js?v=module-bootstrap-20260707-93';
-import { isConfigDatasetPickerDialogOpen, renderConfigDatasetPicker } from './06-stronger-selective-checkpoint-value.js?v=module-bootstrap-20260707-93';
+} from '../helpers/dataset-render-bridge.js?v=module-bootstrap-20260711-ir1';
+import { readLiveNumber, readNonnegativeLiveNumber, readOptionalLiveNumber } from '../helpers/live-form-values.js?v=module-bootstrap-20260711-ir1';
+import { isCliOnlySpdSource } from '../helpers/training-launch-bridge.js?v=module-bootstrap-20260711-ir1';
+import { confirmUnsavedDiscard } from '../helpers/toml-selection-bridge.js?v=module-bootstrap-20260711-ir1';
+import { api, datasetPresetApi, val } from '../helpers/runtime-bridge.js?v=module-bootstrap-20260711-ir1';
+import { getTrainingState } from '../helpers/training-state-bridge.js?v=module-bootstrap-20260711-ir1';
+import { currentTrainingConfigFile } from '../helpers/preflight-dialog-bridge.js?v=module-bootstrap-20260711-ir1';
+import { escapeHtml } from './13-update-dataset-editor-rows-setting-value.js?v=module-bootstrap-20260711-ir1';
+import { isConfigDatasetPickerDialogOpen, renderConfigDatasetPicker } from './06-stronger-selective-checkpoint-value.js?v=module-bootstrap-20260711-ir1';
 
 const configState = getConfigState();
 const datasetState = getDatasetState();

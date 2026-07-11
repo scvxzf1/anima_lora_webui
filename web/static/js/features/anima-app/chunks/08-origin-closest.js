@@ -2,8 +2,8 @@
  * Mechanical split from the former monolithic app closure.
  * Keep this module focused; move newly edited behavior into domain modules.
  */
-import { FILE_GROUP_DROP_TARGET_ATTR } from '../helpers/app-constants.js?v=module-bootstrap-20260707-93';
-import { getDatasetState } from '../helpers/dataset-state-bridge.js?v=module-bootstrap-20260707-93';
+import { FILE_GROUP_DROP_TARGET_ATTR } from '../helpers/app-constants.js?v=module-bootstrap-20260711-ir1';
+import { getDatasetState } from '../helpers/dataset-state-bridge.js?v=module-bootstrap-20260711-ir1';
 import {
     beginFileGroupDrag,
     canBeginFileGroupDrag,
@@ -13,7 +13,7 @@ import {
     registerFileGroupDropTarget,
     removeFileGroupDragImage,
     setFileGroupDragData,
-} from './07-render-config-dataset-picker-dialog.js?v=module-bootstrap-20260707-93';
+} from './07-render-config-dataset-picker-dialog.js?v=module-bootstrap-20260711-ir1';
 
 const datasetState = getDatasetState();
 

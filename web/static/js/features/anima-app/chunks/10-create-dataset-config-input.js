@@ -2,21 +2,21 @@
  * Mechanical split from the former monolithic app closure.
  * Keep this module focused; move newly edited behavior into domain modules.
  */
-import { datasetConfigLabel, datasetConfigValue } from '../helpers/dataset-config-fields.js?v=module-bootstrap-20260707-93';
-import { datasetEditorStateForActivePanel } from '../helpers/dataset-render-bridge.js?v=module-bootstrap-20260707-93';
-import { normalizeDatasetEditorRows } from '../helpers/dataset-values.js?v=module-bootstrap-20260707-93';
-import { compactPathLabel } from '../helpers/history-task-actions-bridge.js?v=module-bootstrap-20260707-93';
+import { datasetConfigLabel, datasetConfigValue } from '../helpers/dataset-config-fields.js?v=module-bootstrap-20260711-ir1';
+import { datasetEditorStateForActivePanel } from '../helpers/dataset-render-bridge.js?v=module-bootstrap-20260711-ir1';
+import { normalizeDatasetEditorRows } from '../helpers/dataset-values.js?v=module-bootstrap-20260711-ir1';
+import { compactPathLabel } from '../helpers/history-task-actions-bridge.js?v=module-bootstrap-20260711-ir1';
 import {
     autoScrollFileGroupPointerDrag,
     fileGroupContainsRelatedTarget,
-} from './08-origin-closest.js?v=module-bootstrap-20260707-93';
+} from './08-origin-closest.js?v=module-bootstrap-20260711-ir1';
 import {
     createDatasetEditorRow,
-} from './11-create-dataset-editor-row.js?v=module-bootstrap-20260707-93';
-import { getDatasetState } from '../helpers/dataset-state-bridge.js?v=module-bootstrap-20260707-93';
-import { renderDatasetEditor } from '../helpers/dataset-render-bridge.js?v=module-bootstrap-20260707-93';
-import { updateDatasetDefault } from './12-create-dataset-row-caption-source-mode-editor.js?v=module-bootstrap-20260707-93';
-import { moveDatasetEditorRow, moveDatasetEditorRowToIndex } from './13-update-dataset-editor-rows-setting-value.js?v=module-bootstrap-20260707-93';
+} from './11-create-dataset-editor-row.js?v=module-bootstrap-20260711-ir1';
+import { getDatasetState } from '../helpers/dataset-state-bridge.js?v=module-bootstrap-20260711-ir1';
+import { renderDatasetEditor } from '../helpers/dataset-render-bridge.js?v=module-bootstrap-20260711-ir1';
+import { updateDatasetDefault } from './12-create-dataset-row-caption-source-mode-editor.js?v=module-bootstrap-20260711-ir1';
+import { moveDatasetEditorRow, moveDatasetEditorRowToIndex } from './13-update-dataset-editor-rows-setting-value.js?v=module-bootstrap-20260711-ir1';
 
 
     export function createDatasetConfigInput(key, type, defaults) {

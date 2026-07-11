@@ -10,24 +10,24 @@ import {
     createDatasetInlineHelpButton,
     datasetExperimentalOpenState,
     datasetLocalHelpSpec,
-} from '../anima-app/chunks/10a-dataset-inline-help.js?v=module-bootstrap-20260707-93';
-import { createDatasetEditorDragHandle } from '../anima-app/chunks/10-create-dataset-config-input.js?v=module-bootstrap-20260707-93';
-import { CAPTION_SOURCE_MODE_OPTIONS, help } from '../../config/catalog.js?v=module-bootstrap-20260707-93';
-import { captionSourceModeLabel, normalizeCaptionSourceMode } from '../anima-app/helpers/caption-source.js?v=module-bootstrap-20260707-93';
-import { createHelpContent } from '../anima-app/helpers/config-field-ui-bridge.js?v=module-bootstrap-20260707-93';
-import { datasetConfigLabel, datasetConfigValue } from '../anima-app/helpers/dataset-config-fields.js?v=module-bootstrap-20260707-93';
-import { getDatasetState } from '../anima-app/helpers/dataset-state-bridge.js?v=module-bootstrap-20260707-93';
+} from '../anima-app/chunks/10a-dataset-inline-help.js?v=module-bootstrap-20260711-ir1';
+import { createDatasetEditorDragHandle } from '../anima-app/chunks/10-create-dataset-config-input.js?v=module-bootstrap-20260711-ir1';
+import { CAPTION_SOURCE_MODE_OPTIONS, help } from '../../config/catalog.js?v=module-bootstrap-20260711-ir1';
+import { captionSourceModeLabel, normalizeCaptionSourceMode } from '../anima-app/helpers/caption-source.js?v=module-bootstrap-20260711-ir1';
+import { createHelpContent } from '../anima-app/helpers/config-field-ui-bridge.js?v=module-bootstrap-20260711-ir1';
+import { datasetConfigLabel, datasetConfigValue } from '../anima-app/helpers/dataset-config-fields.js?v=module-bootstrap-20260711-ir1';
+import { getDatasetState } from '../anima-app/helpers/dataset-state-bridge.js?v=module-bootstrap-20260711-ir1';
 import {
     nlTagMixSummary,
     normalizeDatasetDefaults,
     normalizeDatasetEditorRows,
     normalizeNlTagMix,
     normalizeTriggerClone,
-} from '../anima-app/helpers/dataset-values.js?v=module-bootstrap-20260707-93';
-import { datasetPreviewValidationText } from '../anima-app/helpers/dataset-preview.js?v=module-bootstrap-20260707-93';
-import { datasetEditorStateForActivePanel, isDatasetTabActive, refreshDatasetEditorItem, renderDatasetEditor } from '../anima-app/helpers/dataset-render-bridge.js?v=module-bootstrap-20260707-93';
-import { createDatasetPathField, createDatasetRowCaptionSourceModeEditor, createDatasetRowSettingInput, openDatasetPreview, updateDatasetEditorRow } from '../anima-app/chunks/12-create-dataset-row-caption-source-mode-editor.js?v=module-bootstrap-20260707-93';
-import { datasetExperimentalScopeIndices, escapeHtml, removeDatasetEditorRow, setDatasetExperimentalScopeIndices, updateDatasetEditorRowNlTagMix, updateDatasetEditorRowTriggerClone, updateDatasetEditorRowsSettingValue } from '../anima-app/chunks/13-update-dataset-editor-rows-setting-value.js?v=module-bootstrap-20260707-93';
+} from '../anima-app/helpers/dataset-values.js?v=module-bootstrap-20260711-ir1';
+import { datasetPreviewValidationText } from '../anima-app/helpers/dataset-preview.js?v=module-bootstrap-20260711-ir1';
+import { datasetEditorStateForActivePanel, isDatasetTabActive, refreshDatasetEditorItem, renderDatasetEditor } from '../anima-app/helpers/dataset-render-bridge.js?v=module-bootstrap-20260711-ir1';
+import { createDatasetPathField, createDatasetRowCaptionSourceModeEditor, createDatasetRowSettingInput, openDatasetPreview, updateDatasetEditorRow } from '../anima-app/chunks/12-create-dataset-row-caption-source-mode-editor.js?v=module-bootstrap-20260711-ir1';
+import { datasetExperimentalScopeIndices, escapeHtml, removeDatasetEditorRow, setDatasetExperimentalScopeIndices, updateDatasetEditorRowNlTagMix, updateDatasetEditorRowTriggerClone, updateDatasetEditorRowsSettingValue } from '../anima-app/chunks/13-update-dataset-editor-rows-setting-value.js?v=module-bootstrap-20260711-ir1';
 
 const datasetState = getDatasetState();
 

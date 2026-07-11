@@ -17,7 +17,7 @@
             }
         })();
     </script>
-    <link rel="stylesheet" href="/static/style.css?v=frontend-chain-20260711-1">
+    <link rel="stylesheet" href="/static/style.css?v=frontend-chain-20260711-7">
 </head>
 <body>
     <header>
@@ -36,6 +36,10 @@
             <span id="status-text">空闲</span>
         </div>
         <button id="btn-open-tutorial" class="btn btn-small tutorial-open-btn" type="button">基础教程</button>
+        <button id="language-toggle" class="language-toggle" type="button" aria-pressed="false" data-language="zh-CN" title="切换到 English" hidden>
+            <span class="language-toggle-glyph" aria-hidden="true">文A</span>
+            <span id="language-toggle-text">English</span>
+        </button>
         <button id="theme-toggle" class="theme-toggle" type="button" aria-pressed="false">
             <span class="theme-toggle-swatch" aria-hidden="true"></span>
             <span id="theme-toggle-text">浅色主题</span>
@@ -1937,6 +1941,6 @@
         </form>
     </dialog>
 
-    <script type="module" src="/static/app.js?v=module-bootstrap-20260707-93"></script>
+    <script type="module" src="/static/app.js?v=module-bootstrap-20260711-ir1"></script>
 </body>
 </html>

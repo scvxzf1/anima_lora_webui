@@ -1,13 +1,13 @@
 /** Gallery controller wiring for image-test feature. */
-import { createGalleryExport } from './export.js?v=module-bootstrap-20260707-93';
-import { createLoadMoreApi, findGroupSection } from './load-more.js?v=module-bootstrap-20260707-93';
-import { createVirtualWindowApi } from './virtual-window.js?v=module-bootstrap-20260707-93';
-import { createSelectionApi } from './selection.js?v=module-bootstrap-20260707-93';
-import { createCardsApi } from './cards.js?v=module-bootstrap-20260707-93';
-import { createHistoryGroupsApi } from './history-groups.js?v=module-bootstrap-20260707-93';
-import { imageKey } from './image-meta.js?v=module-bootstrap-20260707-93';
-import { normalizeImageTestHistoryRange } from '../state.js?v=module-bootstrap-20260707-93';
-import { DEFAULT_FILTER_VALUE } from './constants.js?v=module-bootstrap-20260707-93';
+import { createGalleryExport } from './export.js?v=module-bootstrap-20260711-ir1';
+import { createLoadMoreApi, findGroupSection } from './load-more.js?v=module-bootstrap-20260711-ir1';
+import { createVirtualWindowApi } from './virtual-window.js?v=module-bootstrap-20260711-ir1';
+import { createSelectionApi } from './selection.js?v=module-bootstrap-20260711-ir1';
+import { createCardsApi } from './cards.js?v=module-bootstrap-20260711-ir1';
+import { createHistoryGroupsApi } from './history-groups.js?v=module-bootstrap-20260711-ir1';
+import { imageKey } from './image-meta.js?v=module-bootstrap-20260711-ir1';
+import { normalizeImageTestHistoryRange } from '../state.js?v=module-bootstrap-20260711-ir1';
+import { DEFAULT_FILTER_VALUE } from './constants.js?v=module-bootstrap-20260711-ir1';
 
 export function createInitialGalleryState(initialFilterValue = DEFAULT_FILTER_VALUE) {
     return {

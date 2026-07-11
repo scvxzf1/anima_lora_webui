@@ -1,36 +1,34 @@
 /**
  * Mechanical split from the former monolithic app closure.
  * Keep this module focused; move newly edited behavior into domain modules.
- */
 import {
     CONFIG_COMPACT_FIELD_GROUPS,
     GLOBAL_MODEL_PATH_FIELDS,
-} from '../../../config/catalog.js?v=module-bootstrap-20260707-93';
-import { SELECTIVE_CHECKPOINT_STRENGTH } from '../helpers/app-constants.js?v=module-bootstrap-20260711-1';
-import { getAppShellState } from '../helpers/app-shell-state-bridge.js?v=module-bootstrap-20260707-93';
-import { originalConfigFieldValue, readFieldInputValue } from '../helpers/config-form-bridge.js?v=module-bootstrap-20260707-93';
-import { getConfigState } from '../helpers/config-state-bridge.js?v=module-bootstrap-20260707-93';
-import { getDatasetState } from '../helpers/dataset-state-bridge.js?v=module-bootstrap-20260707-93';
-import { datasetPresetByFile } from '../helpers/dataset-presets.js?v=module-bootstrap-20260707-93';
-import { historyTaskDisplayName } from '../helpers/history-collections-bridge.js?v=module-bootstrap-20260707-93';
+} from '../../../config/catalog.js?v=module-bootstrap-20260711-ir1';
+import { SELECTIVE_CHECKPOINT_STRENGTH } from '../helpers/app-constants.js?v=module-bootstrap-20260711-ir1';
+import { getAppShellState } from '../helpers/app-shell-state-bridge.js?v=module-bootstrap-20260711-ir1';
+import { originalConfigFieldValue, readFieldInputValue } from '../helpers/config-form-bridge.js?v=module-bootstrap-20260711-ir1';
+import { getConfigState } from '../helpers/config-state-bridge.js?v=module-bootstrap-20260711-ir1';
+import { getDatasetState } from '../helpers/dataset-state-bridge.js?v=module-bootstrap-20260711-ir1';
+import { datasetPresetByFile } from '../helpers/dataset-presets.js?v=module-bootstrap-20260711-ir1';
+import { historyTaskDisplayName } from '../helpers/history-collections-bridge.js?v=module-bootstrap-20260711-ir1';
 import {
     ensureConfigDatasetPreview,
     renderConfigDatasetPickerDialog,
-} from '../helpers/dataset-render-bridge.js?v=module-bootstrap-20260707-93';
-import { loadDatasetPresets } from './03-parse-network-arg-entry.js?v=module-bootstrap-20260707-93';
-import { createFieldRow, handleFormFieldChange } from './14-lora-adapter-kind-from-config.js?v=module-bootstrap-20260707-93';
+} from '../helpers/dataset-render-bridge.js?v=module-bootstrap-20260711-ir1';
+import { loadDatasetPresets } from './03-parse-network-arg-entry.js?v=module-bootstrap-20260711-ir1';
+import { createFieldRow, handleFormFieldChange } from './14-lora-adapter-kind-from-config.js?v=module-bootstrap-20260711-ir1';
 import {
     setTomlStatus,
     updateTomlActionState,
-} from '../helpers/toml-action-state-bridge.js?v=module-bootstrap-20260707-93';
-import { loadGlobalSettings, getGlobalModelPathOverrides } from '../helpers/global-settings-bridge.js?v=module-bootstrap-20260707-93';
-import { getHistoryState } from '../helpers/history-state-bridge.js?v=module-bootstrap-20260707-93';
-import { loadTrainingHistoryList } from '../helpers/history-list-bridge.js?v=module-bootstrap-20260707-93';
-import { api, val } from '../helpers/runtime-bridge.js?v=module-bootstrap-20260707-93';
-import { getTomlState } from '../helpers/toml-state-bridge.js?v=module-bootstrap-20260707-93';
-import { getTrainingState } from '../helpers/training-state-bridge.js?v=module-bootstrap-20260707-93';
-import { currentTrainingConfigFile } from '../helpers/preflight-dialog-bridge.js?v=module-bootstrap-20260707-93';
-
+} from '../helpers/toml-action-state-bridge.js?v=module-bootstrap-20260711-ir1';
+import { loadGlobalSettings, getGlobalModelPathOverrides } from '../helpers/global-settings-bridge.js?v=module-bootstrap-20260711-ir1';
+import { getHistoryState } from '../helpers/history-state-bridge.js?v=module-bootstrap-20260711-ir1';
+import { loadTrainingHistoryList } from '../helpers/history-list-bridge.js?v=module-bootstrap-20260711-ir1';
+import { api, val } from '../helpers/runtime-bridge.js?v=module-bootstrap-20260711-ir1';
+import { getTomlState } from '../helpers/toml-state-bridge.js?v=module-bootstrap-20260711-ir1';
+import { getTrainingState } from '../helpers/training-state-bridge.js?v=module-bootstrap-20260711-ir1';
+import { currentTrainingConfigFile } from '../helpers/preflight-dialog-bridge.js?v=module-bootstrap-20260711-ir1';
 const appShellState = getAppShellState();
 const configState = getConfigState();
 const datasetState = getDatasetState();
@@ -49,7 +47,6 @@ function currentTrainingSourceState() {
 function currentContinueTrainingSource() {
     return trainingState.continueTrainingSource;
 }
-
 
     export function strongerSelectiveCheckpointValue(current, fallback) {
         const currentKey = String(current ?? '').trim() || 'off';

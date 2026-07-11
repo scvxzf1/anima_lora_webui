@@ -4,10 +4,10 @@
  * Stages bind to subset indices from the active dataset editor and cover
  * [start_pct, end_pct) of max_train_steps. Caches must be prebuilt.
  */
-import { getAppContext } from '../anima-app/helpers/app-context-bridge.js?v=module-bootstrap-20260707-93';
-import { getConfigState } from '../anima-app/helpers/config-state-bridge.js?v=module-bootstrap-20260707-93';
-import { getDatasetState } from '../anima-app/helpers/dataset-state-bridge.js?v=module-bootstrap-20260707-93';
-import { setTomlStatus } from '../anima-app/helpers/toml-action-state-bridge.js?v=module-bootstrap-20260707-93';
+import { getAppContext } from '../anima-app/helpers/app-context-bridge.js?v=module-bootstrap-20260711-ir1';
+import { getConfigState } from '../anima-app/helpers/config-state-bridge.js?v=module-bootstrap-20260711-ir1';
+import { getDatasetState } from '../anima-app/helpers/dataset-state-bridge.js?v=module-bootstrap-20260711-ir1';
+import { setTomlStatus } from '../anima-app/helpers/toml-action-state-bridge.js?v=module-bootstrap-20260711-ir1';
 
 const ctx = getAppContext();
 const configState = getConfigState();
@@ -791,4 +791,4 @@ export {
     createResourceQuickPresetPanel,
     createNoDatasetRegularizationQuickPresetsButton,
     createNoDatasetRegularizationQuickPresetPanel,
-} from './stage-resolution-presets.js?v=module-bootstrap-20260707-93';
+} from './stage-resolution-presets.js?v=module-bootstrap-20260711-ir1';

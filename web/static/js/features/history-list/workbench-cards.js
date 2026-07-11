@@ -2,7 +2,7 @@
  * History collections workbench cards + ordering helpers.
  * Moved out of anima-app mechanical chunks.
  */
-import { HISTORY_UNGROUPED_COLLECTION_KEY } from '../anima-app/helpers/app-constants.js?v=module-bootstrap-20260707-93';
+import { HISTORY_UNGROUPED_COLLECTION_KEY } from '../anima-app/helpers/app-constants.js?v=module-bootstrap-20260711-ir1';
 import {
     beginHistoryCollectionDrag,
     beginHistoryConfigGroupDrag,
@@ -26,7 +26,7 @@ import {
     startHistoryCollectionMouseDrag,
     startHistoryCollectionPointerDrag,
     startHistoryCollectionTouchDrag,
-} from '../anima-app/helpers/history-collection-drag-bridge.js?v=module-bootstrap-20260707-93';
+} from '../anima-app/helpers/history-collection-drag-bridge.js?v=module-bootstrap-20260711-ir1';
 import {
     applySelectedHistoryTasksToCollection,
     clearHistoryCollection,
@@ -54,7 +54,7 @@ import {
     setHistoryCollectionForTasks,
     setHistoryCollectionForTasksDirect,
     toggleHistoryTaskSelection,
-} from '../anima-app/helpers/history-collections-bridge.js?v=module-bootstrap-20260707-93';
+} from '../anima-app/helpers/history-collections-bridge.js?v=module-bootstrap-20260711-ir1';
 import {
     archiveHistoryTask,
     createHistoryActionButton,
@@ -62,10 +62,10 @@ import {
     createHistoryTaskPreviewButton,
     deleteHistoryTask,
     loadHistoryTask,
-} from '../anima-app/helpers/history-task-actions-bridge.js?v=module-bootstrap-20260707-93';
-import { historyStateLabel } from '../anima-app/helpers/history-timeline-bridge.js?v=module-bootstrap-20260707-93';
-import { renderHistoryManager, saveHistoryCollectionSettings, uniqueStringList } from '../anima-app/helpers/history-list-bridge.js?v=module-bootstrap-20260707-93';
-import { getHistoryState } from '../anima-app/helpers/history-state-bridge.js?v=module-bootstrap-20260707-93';
+} from '../anima-app/helpers/history-task-actions-bridge.js?v=module-bootstrap-20260711-ir1';
+import { historyStateLabel } from '../anima-app/helpers/history-timeline-bridge.js?v=module-bootstrap-20260711-ir1';
+import { renderHistoryManager, saveHistoryCollectionSettings, uniqueStringList } from '../anima-app/helpers/history-list-bridge.js?v=module-bootstrap-20260711-ir1';
+import { getHistoryState } from '../anima-app/helpers/history-state-bridge.js?v=module-bootstrap-20260711-ir1';
 
 const historyState = getHistoryState();
 

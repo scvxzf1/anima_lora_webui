@@ -1,5 +1,5 @@
-import { getConfigState } from './config-state-bridge.js?v=module-bootstrap-20260707-93';
-import { getDatasetState } from './dataset-state-bridge.js?v=module-bootstrap-20260707-93';
+import { getConfigState } from './config-state-bridge.js?v=module-bootstrap-20260711-ir1';
+import { getDatasetState } from './dataset-state-bridge.js?v=module-bootstrap-20260711-ir1';
 
 export function selectedDatasetConfigOverride() {
     const configState = getConfigState();

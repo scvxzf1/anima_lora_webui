@@ -2,34 +2,34 @@
  * Mechanical split from the former monolithic app closure.
  * Keep this module focused; move newly edited behavior into domain modules.
  */
-import { captureDatasetExperimentalOpenStates } from './10a-dataset-inline-help.js?v=module-bootstrap-20260707-93';
-import { help } from '../../../config/catalog.js?v=module-bootstrap-20260707-93';
-import { DATASET_PRESET_GROUP_STATE_KEY } from '../helpers/app-constants.js?v=module-bootstrap-20260707-93';
-import { datasetConfigLabel, datasetConfigValue } from '../helpers/dataset-config-fields.js?v=module-bootstrap-20260707-93';
-import { createHelpContent } from '../helpers/config-field-ui-bridge.js?v=module-bootstrap-20260707-93';
+import { captureDatasetExperimentalOpenStates } from './10a-dataset-inline-help.js?v=module-bootstrap-20260711-ir1';
+import { help } from '../../../config/catalog.js?v=module-bootstrap-20260711-ir1';
+import { DATASET_PRESET_GROUP_STATE_KEY } from '../helpers/app-constants.js?v=module-bootstrap-20260711-ir1';
+import { datasetConfigLabel, datasetConfigValue } from '../helpers/dataset-config-fields.js?v=module-bootstrap-20260711-ir1';
+import { createHelpContent } from '../helpers/config-field-ui-bridge.js?v=module-bootstrap-20260711-ir1';
 import {
     deleteDatasetPresetGroup,
     placeDatasetPresetFile,
     placeDatasetPresetGroup,
     renameDatasetPresetGroup,
     setDatasetPresetStatus,
-} from '../helpers/dataset-preset-actions-bridge.js?v=module-bootstrap-20260707-93';
+} from '../helpers/dataset-preset-actions-bridge.js?v=module-bootstrap-20260711-ir1';
 import {
     datasetPresetByFile,
     isUnfiledDatasetGroup,
-} from '../helpers/dataset-presets.js?v=module-bootstrap-20260707-93';
-import { getConfigState } from '../helpers/config-state-bridge.js?v=module-bootstrap-20260707-93';
-import { getDatasetState } from '../helpers/dataset-state-bridge.js?v=module-bootstrap-20260707-93';
-import { configureDatasetRenderBridge } from '../helpers/dataset-render-bridge.js?v=module-bootstrap-20260707-93';
+} from '../helpers/dataset-presets.js?v=module-bootstrap-20260711-ir1';
+import { getConfigState } from '../helpers/config-state-bridge.js?v=module-bootstrap-20260711-ir1';
+import { getDatasetState } from '../helpers/dataset-state-bridge.js?v=module-bootstrap-20260711-ir1';
+import { configureDatasetRenderBridge } from '../helpers/dataset-render-bridge.js?v=module-bootstrap-20260711-ir1';
 import {
     normalizeDatasetDefaults,
     normalizeDatasetEditorRows,
-} from '../helpers/dataset-values.js?v=module-bootstrap-20260707-93';
-import { loadDatasetPreset } from './03-parse-network-arg-entry.js?v=module-bootstrap-20260707-93';
+} from '../helpers/dataset-values.js?v=module-bootstrap-20260711-ir1';
+import { loadDatasetPreset } from './03-parse-network-arg-entry.js?v=module-bootstrap-20260711-ir1';
 import {
     registerFileGroupDropTarget,
     updateDatasetPresetPageSummary,
-} from './07-render-config-dataset-picker-dialog.js?v=module-bootstrap-20260707-93';
+} from './07-render-config-dataset-picker-dialog.js?v=module-bootstrap-20260711-ir1';
 import {
     clearFileGroupDropTarget,
     configGroupDropIndex,
@@ -40,13 +40,13 @@ import {
     setupFileGroupHeaderDropTarget,
     setupFileGroupListDropTarget,
     setupFileGroupRowDropTarget,
-} from './08-origin-closest.js?v=module-bootstrap-20260707-93';
+} from './08-origin-closest.js?v=module-bootstrap-20260711-ir1';
 import {
     createDatasetConfigInput,
     createDatasetEditorItem,
-} from './10-create-dataset-config-input.js?v=module-bootstrap-20260707-93';
-import { addDatasetEditorRow, datasetValidTargetIndices, escapeHtml } from './13-update-dataset-editor-rows-setting-value.js?v=module-bootstrap-20260707-93';
-import { createDatasetEditorToolbarActions } from '../../dataset-editor/toolbar.js?v=module-bootstrap-20260707-93';
+} from './10-create-dataset-config-input.js?v=module-bootstrap-20260711-ir1';
+import { addDatasetEditorRow, datasetValidTargetIndices, escapeHtml } from './13-update-dataset-editor-rows-setting-value.js?v=module-bootstrap-20260711-ir1';
+import { createDatasetEditorToolbarActions } from '../../dataset-editor/toolbar.js?v=module-bootstrap-20260711-ir1';
 
 const configState = getConfigState();
 const datasetState = getDatasetState();

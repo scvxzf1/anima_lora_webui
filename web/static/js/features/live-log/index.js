@@ -2,26 +2,26 @@
  * Live training log stream / websocket helpers.
  * Moved out of anima-app mechanical chunks.
  */
-import { isLiveRunningState, parseMetricsFromProgressLine } from '../live-training/index.js?v=module-bootstrap-20260707-93';
+import { isLiveRunningState, parseMetricsFromProgressLine } from '../live-training/index.js?v=module-bootstrap-20260711-ir1';
 import {
     MAX_LOG_LINES,
-} from '../../config/catalog.js?v=module-bootstrap-20260707-93';
+} from '../../config/catalog.js?v=module-bootstrap-20260711-ir1';
 import {
     markTrainingActivity,
     updateMetrics,
     updateProgress,
     updateStatus,
     updateSystem,
-} from '../anima-app/helpers/live-status-bridge.js?v=module-bootstrap-20260707-93';
-import { api } from '../anima-app/helpers/runtime-bridge.js?v=module-bootstrap-20260707-93';
-import { showAppConfirmDialog } from '../anima-app/helpers/toml-selection-bridge.js?v=module-bootstrap-20260707-93';
-import { isHistoryReviewMode } from '../anima-app/helpers/history-detail-bridge.js?v=module-bootstrap-20260707-93';
-import { renderResumePanelState } from '../anima-app/helpers/history-timeline-bridge.js?v=module-bootstrap-20260707-93';
-import { loadTrainingQueue, updateTrainingQueueFromPayload } from '../anima-app/helpers/queue-view-bridge.js?v=module-bootstrap-20260707-93';
-import { loadTrainingHistoryList } from '../anima-app/helpers/history-list-bridge.js?v=module-bootstrap-20260707-93';
-import { pollStatus, scheduleStatusPoll } from '../anima-app/helpers/status-polling-bridge.js?v=module-bootstrap-20260707-93';
-import { configureLiveLogBridge } from '../anima-app/helpers/live-log-bridge.js?v=module-bootstrap-20260707-93';
-import { getTrainingState } from '../anima-app/helpers/training-state-bridge.js?v=module-bootstrap-20260707-93';
+} from '../anima-app/helpers/live-status-bridge.js?v=module-bootstrap-20260711-ir1';
+import { api } from '../anima-app/helpers/runtime-bridge.js?v=module-bootstrap-20260711-ir1';
+import { showAppConfirmDialog } from '../anima-app/helpers/toml-selection-bridge.js?v=module-bootstrap-20260711-ir1';
+import { isHistoryReviewMode } from '../anima-app/helpers/history-detail-bridge.js?v=module-bootstrap-20260711-ir1';
+import { renderResumePanelState } from '../anima-app/helpers/history-timeline-bridge.js?v=module-bootstrap-20260711-ir1';
+import { loadTrainingQueue, updateTrainingQueueFromPayload } from '../anima-app/helpers/queue-view-bridge.js?v=module-bootstrap-20260711-ir1';
+import { loadTrainingHistoryList } from '../anima-app/helpers/history-list-bridge.js?v=module-bootstrap-20260711-ir1';
+import { pollStatus, scheduleStatusPoll } from '../anima-app/helpers/status-polling-bridge.js?v=module-bootstrap-20260711-ir1';
+import { configureLiveLogBridge } from '../anima-app/helpers/live-log-bridge.js?v=module-bootstrap-20260711-ir1';
+import { getTrainingState } from '../anima-app/helpers/training-state-bridge.js?v=module-bootstrap-20260711-ir1';
 
 const LOG_RENDER_BATCH_SIZE = 250;
 const trainingState = getTrainingState();

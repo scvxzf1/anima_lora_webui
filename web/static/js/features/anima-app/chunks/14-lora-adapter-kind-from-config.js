@@ -2,12 +2,12 @@
  * Mechanical split from the former monolithic app closure.
  * Keep this module focused; move newly edited behavior into domain modules.
  */
-import { updateChoiceGuide } from './13-update-dataset-editor-rows-setting-value.js?v=module-bootstrap-20260707-93';
-import { updateStepEstimatePanel } from './03-parse-network-arg-entry.js?v=module-bootstrap-20260707-93';
-import { valuesEqual } from '../helpers/form-values.js?v=module-bootstrap-20260707-93';
-import { collectLiveCompatIssues, formatLiveCompatStatus } from '../../config-form/live-compat.js?v=module-bootstrap-20260707-93';
-import { setTomlStatus } from '../helpers/toml-action-state-bridge.js?v=module-bootstrap-20260707-93';
-import { buildFieldPresentation, fieldSourceBadgeLabel } from '../../config-form/field-presentation.js?v=module-bootstrap-20260707-93';
+import { updateChoiceGuide } from './13-update-dataset-editor-rows-setting-value.js?v=module-bootstrap-20260711-ir1';
+import { updateStepEstimatePanel } from './03-parse-network-arg-entry.js?v=module-bootstrap-20260711-ir1';
+import { valuesEqual } from '../helpers/form-values.js?v=module-bootstrap-20260711-ir1';
+import { collectLiveCompatIssues, formatLiveCompatStatus } from '../../config-form/live-compat.js?v=module-bootstrap-20260711-ir1';
+import { setTomlStatus } from '../helpers/toml-action-state-bridge.js?v=module-bootstrap-20260711-ir1';
+import { buildFieldPresentation, fieldSourceBadgeLabel } from '../../config-form/field-presentation.js?v=module-bootstrap-20260711-ir1';
 import {
     isTruthy,
     loraAdapterFlagsForKind,
@@ -17,13 +17,13 @@ import {
     normalizePrecisionPreference,
     precisionPreferenceFromConfig,
     precisionPreferencePatch,
-} from '../helpers/config-values.js?v=module-bootstrap-20260707-93';
-import { getConfigState } from '../helpers/config-state-bridge.js?v=module-bootstrap-20260707-93';
-import { normalizeCameOptimizerArgs, normalizeOptimizerType } from '../helpers/optimizer-values.js?v=module-bootstrap-20260707-93';
+} from '../helpers/config-values.js?v=module-bootstrap-20260711-ir1';
+import { getConfigState } from '../helpers/config-state-bridge.js?v=module-bootstrap-20260711-ir1';
+import { normalizeCameOptimizerArgs, normalizeOptimizerType } from '../helpers/optimizer-values.js?v=module-bootstrap-20260711-ir1';
 import {
     formatFieldName,
     shouldRenderSelectInput,
-} from '../helpers/config-field-display.js?v=module-bootstrap-20260707-93';
+} from '../helpers/config-field-display.js?v=module-bootstrap-20260711-ir1';
 import {
     allowsNegativeNumberField,
     appendSamplePromptRow,
@@ -33,22 +33,22 @@ import {
     isIntegerNumericField,
     isNumericField,
     updateSamplePromptRemoveButtons,
-} from '../helpers/config-field-ui-bridge.js?v=module-bootstrap-20260707-93';
+} from '../helpers/config-field-ui-bridge.js?v=module-bootstrap-20260711-ir1';
 import {
     blankSamplePromptRow,
     parseSamplePromptRows,
     samplePromptsContentNeedsTextMode,
     serializeSamplePromptsEditor,
-} from '../../sample-prompts/model.js?v=module-bootstrap-20260707-93';
+} from '../../sample-prompts/model.js?v=module-bootstrap-20260711-ir1';
 import {
     CONFIG_FORM_INTERNAL_KEYS,
     FIELD_OPTIONS,
     FORM_UI_DEFAULTS,
     help,
-} from '../../../config/catalog.js?v=module-bootstrap-20260707-93';
-import { LOSS_WEIGHTING_DEPENDENT_FIELDS } from '../helpers/app-constants.js?v=module-bootstrap-20260707-93';
-import { applyLossWeightingFieldInputState, collectNetworkArgsFromForm, displayConfigFieldValue, isActiveNetworkArgFieldKey, originalConfigFieldValue, readDoRAAvailable, readFieldInputValue, readLoKrEnabled, readVeRAEnabled, setDoRADraftValue, syncConfigDraftFromForm, updateDoRAFieldState, updateLoKrFieldState, updateLossWeightingFieldState, updateVeRAFieldState } from '../helpers/config-form-bridge.js?v=module-bootstrap-20260707-93';
-import { updateTomlDirtyState } from '../helpers/toml-selection-bridge.js?v=module-bootstrap-20260707-93';
+} from '../../../config/catalog.js?v=module-bootstrap-20260711-ir1';
+import { LOSS_WEIGHTING_DEPENDENT_FIELDS } from '../helpers/app-constants.js?v=module-bootstrap-20260711-ir1';
+import { applyLossWeightingFieldInputState, collectNetworkArgsFromForm, displayConfigFieldValue, isActiveNetworkArgFieldKey, originalConfigFieldValue, readDoRAAvailable, readFieldInputValue, readLoKrEnabled, readVeRAEnabled, setDoRADraftValue, syncConfigDraftFromForm, updateDoRAFieldState, updateLoKrFieldState, updateLossWeightingFieldState, updateVeRAFieldState } from '../helpers/config-form-bridge.js?v=module-bootstrap-20260711-ir1';
+import { updateTomlDirtyState } from '../helpers/toml-selection-bridge.js?v=module-bootstrap-20260711-ir1';
 
 let updateNoDatasetRegularizationModePanelCallback = () => {};
 const configState = getConfigState();

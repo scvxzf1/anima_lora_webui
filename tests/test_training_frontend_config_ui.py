@@ -1595,7 +1595,7 @@ def test_config_form_uses_navigation_search_and_progressive_disclosure() -> None
     assert "keys: ['blocks_to_swap', 'block_swap_transfer_dtype', 'block_swap_restore_mode', 'selective_checkpoint', 'selective_checkpoint_blocks']" in resource_compact
     assert "keys: ['block_swap_profile_jsonl', 'memory_probe_jsonl', 'memory_probe_max_steps']" in resource_compact
     assert "keys: ['peak_probe_jsonl', 'peak_probe_max_steps', 'peak_probe_level']" in resource_compact
-    assert "keys: ['preprocess_vae_cache_batch_size', 'preprocess_text_cache_batch_size', 'preprocess_memory_profile']" in resource_compact
+    assert "keys: ['preprocess_vae_cache_batch_size', 'preprocess_text_cache_batch_size', 'preprocess_memory_profile', 'reuse_dataset_cache_copy', 'reuse_vae_latents', 'reuse_text_encoder_cache', 'cache_fingerprint_mode', 'force_rebuild_preprocess_cache']" in resource_compact
     assert "keys: ['attn_mode', 'torch_compile', 'compile_block_scope', 'compile_inductor_mode']" in resource_compact
     assert "'preprocess_precision_preference'," in optimization_section
     assert "'precision_preference'," in optimization_section

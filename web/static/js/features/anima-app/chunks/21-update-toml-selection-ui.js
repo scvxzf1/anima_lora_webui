@@ -6,23 +6,23 @@ import {
     CONFIG_FORM_INTERNAL_KEYS,
     FORM_UI_DEFAULTS,
     NETWORK_ARG_FIELD_MAP,
-} from '../../../config/catalog.js?v=module-bootstrap-20260707-93';
-import { captionSourceModeLabel } from '../helpers/caption-source.js?v=module-bootstrap-20260707-93';
-import { collectChangedFormValues, configDraftValueChanged, isActiveNetworkArgFieldKey, networkArgFieldValueFromConfig, originalConfigFieldValue, readFieldInputValue } from '../helpers/config-form-bridge.js?v=module-bootstrap-20260707-93';
+} from '../../../config/catalog.js?v=module-bootstrap-20260711-ir1';
+import { captionSourceModeLabel } from '../helpers/caption-source.js?v=module-bootstrap-20260711-ir1';
+import { collectChangedFormValues, configDraftValueChanged, isActiveNetworkArgFieldKey, networkArgFieldValueFromConfig, originalConfigFieldValue, readFieldInputValue } from '../helpers/config-form-bridge.js?v=module-bootstrap-20260711-ir1';
 import {
     normalizeDatasetDefaults,
     normalizeDatasetEditorRows,
     normalizeTriggerClone,
-} from '../helpers/dataset-values.js?v=module-bootstrap-20260707-93';
-import { formatFieldName } from '../helpers/config-field-display.js?v=module-bootstrap-20260707-93';
-import { showHistoryTaskConfirmDialog } from '../helpers/history-task-actions-bridge.js?v=module-bootstrap-20260707-93';
-import { loadTomlFile, saveTomlFile } from '../helpers/output-run-bridge.js?v=module-bootstrap-20260707-93';
-import { val } from '../helpers/runtime-bridge.js?v=module-bootstrap-20260707-93';
-import { getConfigState } from '../helpers/config-state-bridge.js?v=module-bootstrap-20260707-93';
-import { getDatasetState } from '../helpers/dataset-state-bridge.js?v=module-bootstrap-20260707-93';
-import { getTomlState } from '../helpers/toml-state-bridge.js?v=module-bootstrap-20260707-93';
-import { getTrainingState } from '../helpers/training-state-bridge.js?v=module-bootstrap-20260707-93';
-import { configureTomlSelectionBridge } from '../helpers/toml-selection-bridge.js?v=module-bootstrap-20260707-93';
+} from '../helpers/dataset-values.js?v=module-bootstrap-20260711-ir1';
+import { formatFieldName } from '../helpers/config-field-display.js?v=module-bootstrap-20260711-ir1';
+import { showHistoryTaskConfirmDialog } from '../helpers/history-task-actions-bridge.js?v=module-bootstrap-20260711-ir1';
+import { loadTomlFile, saveTomlFile } from '../helpers/output-run-bridge.js?v=module-bootstrap-20260711-ir1';
+import { val } from '../helpers/runtime-bridge.js?v=module-bootstrap-20260711-ir1';
+import { getConfigState } from '../helpers/config-state-bridge.js?v=module-bootstrap-20260711-ir1';
+import { getDatasetState } from '../helpers/dataset-state-bridge.js?v=module-bootstrap-20260711-ir1';
+import { getTomlState } from '../helpers/toml-state-bridge.js?v=module-bootstrap-20260711-ir1';
+import { getTrainingState } from '../helpers/training-state-bridge.js?v=module-bootstrap-20260711-ir1';
+import { configureTomlSelectionBridge } from '../helpers/toml-selection-bridge.js?v=module-bootstrap-20260711-ir1';
 import {
     isTomlLocked,
     resetTomlSaveConfirm,
@@ -30,7 +30,7 @@ import {
     tomlFileDisplayName,
     tomlLockLabel,
     updateTomlActionState,
-} from '../helpers/toml-action-state-bridge.js?v=module-bootstrap-20260707-93';
+} from '../helpers/toml-action-state-bridge.js?v=module-bootstrap-20260711-ir1';
 
 const configState = getConfigState();
 const datasetState = getDatasetState();

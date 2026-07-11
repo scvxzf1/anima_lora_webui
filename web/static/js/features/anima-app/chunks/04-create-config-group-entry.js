@@ -5,18 +5,18 @@
 import {
     createNoDatasetRegularizationAdvancedFields,
     createNoDatasetRegularizationModePanel,
-} from './05a-no-dataset-regularization-mode.js?v=module-bootstrap-20260707-93';
+} from './05a-no-dataset-regularization-mode.js?v=module-bootstrap-20260711-ir1';
 import {
     ADVANCED_CATEGORY_DEFAULT_OPEN_GROUPS,
     FORM_CATEGORY_DEFS,
     FORM_CATEGORY_SECTION_MAP,
     STICKY_CONFIG_CATEGORY_IDS,
-} from '../../../config/catalog.js?v=module-bootstrap-20260707-93';
-import { reloadCurrentConfig, renderConfigForm, syncConfigDraftFromForm } from '../helpers/app-shell-startup-bridge.js?v=module-bootstrap-20260707-93';
-import { getConfigState } from '../helpers/config-state-bridge.js?v=module-bootstrap-20260707-93';
-import { formatFieldName } from '../helpers/config-field-display.js?v=module-bootstrap-20260707-93';
-import { updateChangedFieldMarks } from '../helpers/toml-selection-bridge.js?v=module-bootstrap-20260707-93';
-import { createStepEstimatePanel, scheduleStepEstimatePanelRefresh } from './03-parse-network-arg-entry.js?v=module-bootstrap-20260707-93';
+} from '../../../config/catalog.js?v=module-bootstrap-20260711-ir1';
+import { reloadCurrentConfig, renderConfigForm, syncConfigDraftFromForm } from '../helpers/app-shell-startup-bridge.js?v=module-bootstrap-20260711-ir1';
+import { getConfigState } from '../helpers/config-state-bridge.js?v=module-bootstrap-20260711-ir1';
+import { formatFieldName } from '../helpers/config-field-display.js?v=module-bootstrap-20260711-ir1';
+import { updateChangedFieldMarks } from '../helpers/toml-selection-bridge.js?v=module-bootstrap-20260711-ir1';
+import { createStepEstimatePanel, scheduleStepEstimatePanelRefresh } from './03-parse-network-arg-entry.js?v=module-bootstrap-20260711-ir1';
 import {
     createFillGlobalModelPathsButton,
     createNoDatasetRegularizationQuickPresetPanel,
@@ -24,8 +24,8 @@ import {
     createResourceQuickPresetPanel,
     createResourceQuickPresetsButton,
     createStageScheduleInlineSummary,
-} from './05-create-stage-resolution-summary.js?v=module-bootstrap-20260707-93';
-import { appendFieldRows, createConfigDatasetPicker } from './06-stronger-selective-checkpoint-value.js?v=module-bootstrap-20260707-93';
+} from './05-create-stage-resolution-summary.js?v=module-bootstrap-20260711-ir1';
+import { appendFieldRows, createConfigDatasetPicker } from './06-stronger-selective-checkpoint-value.js?v=module-bootstrap-20260711-ir1';
 
 const configState = getConfigState();
 const configFormState = configState.configFormState;
@@ -185,9 +185,12 @@ function currentConfigState() {
         const barRect = bar.getBoundingClientRect();
         const barStyle = window.getComputedStyle(bar);
         const bottomOffset = Number.parseFloat(barStyle.bottom) || 20;
-        const safeSpace = Math.ceil(barRect.height + bottomOffset + 18);
+        // Keep the scroller bottom above the sticky directory bar, and leave
+        // extra padding so the last fields can scroll fully into view.
+        const barReserve = Math.ceil(barRect.height + bottomOffset + 20);
+        const safeSpace = barReserve + 36;
         const scrollerRect = scroller.getBoundingClientRect();
-        const availableHeight = Math.max(180, window.innerHeight - scrollerRect.top - 16);
+        const availableHeight = Math.max(180, window.innerHeight - scrollerRect.top - barReserve);
         workspace.style.setProperty('--config-sticky-safe-space', `${safeSpace}px`);
         workspace.style.setProperty('--config-left-max-height', `${Math.round(availableHeight)}px`);
     }

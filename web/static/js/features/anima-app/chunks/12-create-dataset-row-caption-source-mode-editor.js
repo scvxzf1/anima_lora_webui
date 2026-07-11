@@ -5,30 +5,30 @@
 import {
     CAPTION_SOURCE_MODE_OPTIONS,
     help,
-} from '../../../config/catalog.js?v=module-bootstrap-20260707-93';
+} from '../../../config/catalog.js?v=module-bootstrap-20260711-ir1';
 import {
     captionSourceModeLabel,
     normalizeCaptionSourceMode,
-} from '../helpers/caption-source.js?v=module-bootstrap-20260707-93';
-import { datasetConfigValue } from '../helpers/dataset-config-fields.js?v=module-bootstrap-20260707-93';
-import { setDatasetPresetStatus } from '../helpers/dataset-preset-actions-bridge.js?v=module-bootstrap-20260707-93';
+} from '../helpers/caption-source.js?v=module-bootstrap-20260711-ir1';
+import { datasetConfigValue } from '../helpers/dataset-config-fields.js?v=module-bootstrap-20260711-ir1';
+import { setDatasetPresetStatus } from '../helpers/dataset-preset-actions-bridge.js?v=module-bootstrap-20260711-ir1';
 import {
     normalizeDatasetDefaults,
     normalizeDatasetEditorRows,
-} from '../helpers/dataset-values.js?v=module-bootstrap-20260707-93';
+} from '../helpers/dataset-values.js?v=module-bootstrap-20260711-ir1';
 import {
     datasetPreviewImageToPreviewImage,
     datasetPreviewValidationText,
-} from '../helpers/dataset-preview.js?v=module-bootstrap-20260707-93';
+} from '../helpers/dataset-preview.js?v=module-bootstrap-20260711-ir1';
 import {
     datasetEditorStateForActivePanel,
     isDatasetTabActive,
-} from '../helpers/dataset-render-bridge.js?v=module-bootstrap-20260707-93';
-import { getDatasetState } from '../helpers/dataset-state-bridge.js?v=module-bootstrap-20260707-93';
-import { datasetPresetApi } from '../helpers/runtime-bridge.js?v=module-bootstrap-20260707-93';
-import { updateStepEstimatePanel } from './03-parse-network-arg-entry.js?v=module-bootstrap-20260707-93';
-import { markDatasetEditorDirty, setFieldInputValue, updateDatasetEditorRowsSettingValue } from './13-update-dataset-editor-rows-setting-value.js?v=module-bootstrap-20260707-93';
-import { openPreviewDialog, createPreviewDetailRow, copyText } from '../helpers/preview-view-bridge.js?v=module-bootstrap-20260707-93';
+} from '../helpers/dataset-render-bridge.js?v=module-bootstrap-20260711-ir1';
+import { getDatasetState } from '../helpers/dataset-state-bridge.js?v=module-bootstrap-20260711-ir1';
+import { datasetPresetApi } from '../helpers/runtime-bridge.js?v=module-bootstrap-20260711-ir1';
+import { updateStepEstimatePanel } from './03-parse-network-arg-entry.js?v=module-bootstrap-20260711-ir1';
+import { markDatasetEditorDirty, setFieldInputValue, updateDatasetEditorRowsSettingValue } from './13-update-dataset-editor-rows-setting-value.js?v=module-bootstrap-20260711-ir1';
+import { openPreviewDialog, createPreviewDetailRow, copyText } from '../helpers/preview-view-bridge.js?v=module-bootstrap-20260711-ir1';
 
 const datasetState = getDatasetState();
 

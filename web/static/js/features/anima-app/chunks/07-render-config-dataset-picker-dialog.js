@@ -2,25 +2,25 @@
  * Mechanical split from the former monolithic app closure.
  * Keep this module focused; move newly edited behavior into domain modules.
  */
-import { FILE_GROUP_DROP_TARGET_ATTR } from '../helpers/app-constants.js?v=module-bootstrap-20260707-93';
+import { FILE_GROUP_DROP_TARGET_ATTR } from '../helpers/app-constants.js?v=module-bootstrap-20260711-ir1';
 import {
     datasetPresetByFile,
     datasetPresetGroupsForDisplay,
     datasetPresetSummaryByFile,
-} from '../helpers/dataset-presets.js?v=module-bootstrap-20260707-93';
+} from '../helpers/dataset-presets.js?v=module-bootstrap-20260711-ir1';
 import {
     configureDatasetRenderBridge,
     createDatasetPresetGroupNode,
     readDatasetPresetGroupState,
     renderDatasetEditor,
-} from '../helpers/dataset-render-bridge.js?v=module-bootstrap-20260707-93';
-import { getConfigState } from '../helpers/config-state-bridge.js?v=module-bootstrap-20260707-93';
-import { getDatasetState } from '../helpers/dataset-state-bridge.js?v=module-bootstrap-20260707-93';
-import { datasetPresetApi } from '../helpers/runtime-bridge.js?v=module-bootstrap-20260707-93';
-import { updateTomlDirtyState } from '../helpers/toml-selection-bridge.js?v=module-bootstrap-20260707-93';
-import { loadStepEstimate } from './03-parse-network-arg-entry.js?v=module-bootstrap-20260707-93';
-import { renderConfigDatasetPicker } from './06-stronger-selective-checkpoint-value.js?v=module-bootstrap-20260707-93';
-import { escapeHtml } from './13-update-dataset-editor-rows-setting-value.js?v=module-bootstrap-20260707-93';
+} from '../helpers/dataset-render-bridge.js?v=module-bootstrap-20260711-ir1';
+import { getConfigState } from '../helpers/config-state-bridge.js?v=module-bootstrap-20260711-ir1';
+import { getDatasetState } from '../helpers/dataset-state-bridge.js?v=module-bootstrap-20260711-ir1';
+import { datasetPresetApi } from '../helpers/runtime-bridge.js?v=module-bootstrap-20260711-ir1';
+import { updateTomlDirtyState } from '../helpers/toml-selection-bridge.js?v=module-bootstrap-20260711-ir1';
+import { loadStepEstimate } from './03-parse-network-arg-entry.js?v=module-bootstrap-20260711-ir1';
+import { renderConfigDatasetPicker } from './06-stronger-selective-checkpoint-value.js?v=module-bootstrap-20260711-ir1';
+import { escapeHtml } from './13-update-dataset-editor-rows-setting-value.js?v=module-bootstrap-20260711-ir1';
 
 const configState = getConfigState();
 const datasetState = getDatasetState();

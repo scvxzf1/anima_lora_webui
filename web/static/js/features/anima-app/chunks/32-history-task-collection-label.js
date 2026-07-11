@@ -2,14 +2,14 @@
  * Mechanical split from the former monolithic app closure.
  * Keep this module focused; move newly edited behavior into domain modules.
  */
-import { HISTORY_UNGROUPED_COLLECTION_KEY } from '../helpers/app-constants.js?v=module-bootstrap-20260707-93';
-import { setHistoryDropFeedback } from '../helpers/history-collection-drag-bridge.js?v=module-bootstrap-20260707-93';
+import { HISTORY_UNGROUPED_COLLECTION_KEY } from '../helpers/app-constants.js?v=module-bootstrap-20260711-ir1';
+import { setHistoryDropFeedback } from '../helpers/history-collection-drag-bridge.js?v=module-bootstrap-20260711-ir1';
 import {
     configureHistoryCollectionsBridge,
     ensureHistoryCollectionOrderValue,
     historyCollectionStorageKey,
     historyTaskCollectionValue,
-} from '../helpers/history-collections-bridge.js?v=module-bootstrap-20260707-93';
+} from '../helpers/history-collections-bridge.js?v=module-bootstrap-20260711-ir1';
 import {
     applyHistoryTaskIdsBatchAction,
     createHistoryActionButton,
@@ -17,12 +17,12 @@ import {
     loadConfigGroupTimeline,
     showHistoryCollectionSelectDialog,
     showHistoryTaskConfirmDialog,
-} from '../helpers/history-task-actions-bridge.js?v=module-bootstrap-20260707-93';
-import { configGroupLabel } from '../helpers/history-timeline-bridge.js?v=module-bootstrap-20260707-93';
-import { showTrainingView } from '../helpers/queue-view-bridge.js?v=module-bootstrap-20260707-93';
-import { openHistoryConfigGroupPreview } from '../helpers/preview-view-bridge.js?v=module-bootstrap-20260707-93';
-import { renderHistoryManager, saveHistoryCollectionSettings, normalizeHistoryCollectionSettings, uniqueStringList, normalizeHistoryConfigGroupOrder } from '../helpers/history-list-bridge.js?v=module-bootstrap-20260707-93';
-import { getHistoryState } from '../helpers/history-state-bridge.js?v=module-bootstrap-20260707-93';
+} from '../helpers/history-task-actions-bridge.js?v=module-bootstrap-20260711-ir1';
+import { configGroupLabel } from '../helpers/history-timeline-bridge.js?v=module-bootstrap-20260711-ir1';
+import { showTrainingView } from '../helpers/queue-view-bridge.js?v=module-bootstrap-20260711-ir1';
+import { openHistoryConfigGroupPreview } from '../helpers/preview-view-bridge.js?v=module-bootstrap-20260711-ir1';
+import { renderHistoryManager, saveHistoryCollectionSettings, normalizeHistoryCollectionSettings, uniqueStringList, normalizeHistoryConfigGroupOrder } from '../helpers/history-list-bridge.js?v=module-bootstrap-20260711-ir1';
+import { getHistoryState } from '../helpers/history-state-bridge.js?v=module-bootstrap-20260711-ir1';
 
 const historyState = getHistoryState();
 

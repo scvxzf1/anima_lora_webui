@@ -1,4 +1,4 @@
-import { parseArrayValue } from './form-values.js?v=module-bootstrap-20260707-93';
+import { parseArrayValue } from './form-values.js?v=module-bootstrap-20260711-ir1';
 
 export function normalizeOptimizerType(value) {
     return String(value ?? '').trim().toLowerCase();

@@ -1,15 +1,15 @@
 /**
  * Dataset editor inline help helpers and small advanced-field panels.
  */
-import { help } from '../../../config/catalog.js?v=module-bootstrap-20260707-93';
-import { createHelpContent } from '../helpers/config-field-ui-bridge.js?v=module-bootstrap-20260707-93';
-import { getDatasetState } from '../helpers/dataset-state-bridge.js?v=module-bootstrap-20260707-93';
-import { isDatasetTabActive } from '../helpers/dataset-render-bridge.js?v=module-bootstrap-20260707-93';
-import { currentTrainingConfigFile } from '../helpers/preflight-dialog-bridge.js?v=module-bootstrap-20260707-93';
+import { help } from '../../../config/catalog.js?v=module-bootstrap-20260711-ir1';
+import { createHelpContent } from '../helpers/config-field-ui-bridge.js?v=module-bootstrap-20260711-ir1';
+import { getDatasetState } from '../helpers/dataset-state-bridge.js?v=module-bootstrap-20260711-ir1';
+import { isDatasetTabActive } from '../helpers/dataset-render-bridge.js?v=module-bootstrap-20260711-ir1';
+import { currentTrainingConfigFile } from '../helpers/preflight-dialog-bridge.js?v=module-bootstrap-20260711-ir1';
 import {
     updateDatasetEditorRow,
     updateDatasetEditorRowSettingValue,
-} from './12-create-dataset-row-caption-source-mode-editor.js?v=module-bootstrap-20260707-93';
+} from './12-create-dataset-row-caption-source-mode-editor.js?v=module-bootstrap-20260711-ir1';
 
 const datasetState = getDatasetState();
 

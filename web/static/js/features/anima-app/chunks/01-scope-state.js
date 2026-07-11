@@ -5,11 +5,11 @@
 import {
     configurePreviewFeatureEnsurer,
     configureQueueFeatureEnsurer,
-} from '../helpers/feature-ensurers.js?v=module-bootstrap-20260707-93';
-import { getAppShellState } from '../helpers/app-shell-state-bridge.js?v=module-bootstrap-20260707-93';
-import { getAppContext } from '../helpers/app-context-bridge.js?v=module-bootstrap-20260707-93';
-import { getDatasetState } from '../helpers/dataset-state-bridge.js?v=module-bootstrap-20260707-93';
-import { getHistoryState } from '../helpers/history-state-bridge.js?v=module-bootstrap-20260707-93';
+} from '../helpers/feature-ensurers.js?v=module-bootstrap-20260711-ir1';
+import { getAppShellState } from '../helpers/app-shell-state-bridge.js?v=module-bootstrap-20260711-ir1';
+import { getAppContext } from '../helpers/app-context-bridge.js?v=module-bootstrap-20260711-ir1';
+import { getDatasetState } from '../helpers/dataset-state-bridge.js?v=module-bootstrap-20260711-ir1';
+import { getHistoryState } from '../helpers/history-state-bridge.js?v=module-bootstrap-20260711-ir1';
 import {
     configTrainingSourceMode,
     continueTrainingRequestPayload,
@@ -18,26 +18,26 @@ import {
     selectContinueLoraWeight,
     startConfigFullResumeSource,
     trainingSourceLaunchBlockReason,
-} from '../helpers/training-source-bridge.js?v=module-bootstrap-20260707-93';
+} from '../helpers/training-source-bridge.js?v=module-bootstrap-20260711-ir1';
 import {
     currentTrainingConfigIsRuntime,
     isCliOnlySpdSource,
     showPreflightDialog,
-} from '../helpers/training-launch-bridge.js?v=module-bootstrap-20260707-93';
-import { canPreviewHistoryConfigGroup, historyConfigGroupFromTask, historyTaskIsArchived, runLabelFromPath } from '../helpers/history-collections-bridge.js?v=module-bootstrap-20260707-93';
-import { historyTaskLabel, loadConfigGroupTimeline, loadHistoryTask, showHistoryTaskConfirmDialog } from '../helpers/history-task-actions-bridge.js?v=module-bootstrap-20260707-93';
-import { configGroupLabel, historyStateLabel } from '../helpers/history-timeline-bridge.js?v=module-bootstrap-20260707-93';
-import { getGpuPicker } from '../helpers/app-shell-startup-bridge.js?v=module-bootstrap-20260707-93';
-import { ensureHistoryDetailFeature } from '../helpers/history-detail-bridge.js?v=module-bootstrap-20260707-93';
-import { hasPendingConfigChanges, showAppConfirmDialog } from '../helpers/toml-selection-bridge.js?v=module-bootstrap-20260707-93';
-import { currentTrainingConfigFile, renderPreflightPending, showPreflightRequestError } from '../helpers/preflight-dialog-bridge.js?v=module-bootstrap-20260707-93';
-import { appendLog } from '../helpers/live-log-bridge.js?v=module-bootstrap-20260707-93';
-import { renderTrainingViewMode, showTrainingView } from '../helpers/queue-view-bridge.js?v=module-bootstrap-20260707-93';
-import { loadTrainingHistoryList } from '../helpers/history-list-bridge.js?v=module-bootstrap-20260707-93';
-import { renderDatasetImageDialogDetails } from '../helpers/preview-view-bridge.js?v=module-bootstrap-20260707-93';
-import { setTomlStatus, updateTomlActionState } from '../helpers/toml-action-state-bridge.js?v=module-bootstrap-20260707-93';
-import { getTomlState } from '../helpers/toml-state-bridge.js?v=module-bootstrap-20260707-93';
-import { getTrainingState } from '../helpers/training-state-bridge.js?v=module-bootstrap-20260707-93';
+} from '../helpers/training-launch-bridge.js?v=module-bootstrap-20260711-ir1';
+import { canPreviewHistoryConfigGroup, historyConfigGroupFromTask, historyTaskIsArchived, runLabelFromPath } from '../helpers/history-collections-bridge.js?v=module-bootstrap-20260711-ir1';
+import { historyTaskLabel, loadConfigGroupTimeline, loadHistoryTask, showHistoryTaskConfirmDialog } from '../helpers/history-task-actions-bridge.js?v=module-bootstrap-20260711-ir1';
+import { configGroupLabel, historyStateLabel } from '../helpers/history-timeline-bridge.js?v=module-bootstrap-20260711-ir1';
+import { getGpuPicker } from '../helpers/app-shell-startup-bridge.js?v=module-bootstrap-20260711-ir1';
+import { ensureHistoryDetailFeature } from '../helpers/history-detail-bridge.js?v=module-bootstrap-20260711-ir1';
+import { hasPendingConfigChanges, showAppConfirmDialog } from '../helpers/toml-selection-bridge.js?v=module-bootstrap-20260711-ir1';
+import { currentTrainingConfigFile, renderPreflightPending, showPreflightRequestError } from '../helpers/preflight-dialog-bridge.js?v=module-bootstrap-20260711-ir1';
+import { appendLog } from '../helpers/live-log-bridge.js?v=module-bootstrap-20260711-ir1';
+import { renderTrainingViewMode, showTrainingView } from '../helpers/queue-view-bridge.js?v=module-bootstrap-20260711-ir1';
+import { loadTrainingHistoryList } from '../helpers/history-list-bridge.js?v=module-bootstrap-20260711-ir1';
+import { renderDatasetImageDialogDetails } from '../helpers/preview-view-bridge.js?v=module-bootstrap-20260711-ir1';
+import { setTomlStatus, updateTomlActionState } from '../helpers/toml-action-state-bridge.js?v=module-bootstrap-20260711-ir1';
+import { getTomlState } from '../helpers/toml-state-bridge.js?v=module-bootstrap-20260711-ir1';
+import { getTrainingState } from '../helpers/training-state-bridge.js?v=module-bootstrap-20260711-ir1';
 
 const ctx = getAppContext();
 const appShellState = getAppShellState();

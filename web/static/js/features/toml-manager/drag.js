@@ -2,18 +2,18 @@
  * TOML group drag/drop, render, export, and queue helpers.
  * Moved out of anima-app mechanical chunks.
  */
-import { readTomlGroupState, writeTomlGroupState } from './group-state.js?v=module-bootstrap-20260707-93';
+import { readTomlGroupState, writeTomlGroupState } from './group-state.js?v=module-bootstrap-20260711-ir1';
 import {
     createFileGroupDragHandle,
     setupFileGroupHeaderDropTarget,
     setupFileGroupListDropTarget,
     setupFileGroupRowDropTarget,
-} from '../anima-app/chunks/08-origin-closest.js?v=module-bootstrap-20260707-93';
-import { setupConfigGroupDropTarget } from '../anima-app/chunks/09-setup-config-group-drop-target.js?v=module-bootstrap-20260707-93';
-import { showHistoryTaskDialog } from '../anima-app/helpers/history-task-actions-bridge.js?v=module-bootstrap-20260707-93';
-import { loadTomlFileList, updateConfigPageSummary } from '../anima-app/helpers/toml-manager-bridge.js?v=module-bootstrap-20260707-93';
-import { canDeleteTomlGroup, deleteTomlGroup, deleteTomlGroupButtonTitle } from '../anima-app/helpers/toml-actions-bridge.js?v=module-bootstrap-20260707-93';
-import { enqueueTrainingQueueBatchRequest, isCliOnlySpdSource, showPreflightDialog } from '../anima-app/helpers/training-launch-bridge.js?v=module-bootstrap-20260707-93';
+} from '../anima-app/chunks/08-origin-closest.js?v=module-bootstrap-20260711-ir1';
+import { setupConfigGroupDropTarget } from '../anima-app/chunks/09-setup-config-group-drop-target.js?v=module-bootstrap-20260711-ir1';
+import { showHistoryTaskDialog } from '../anima-app/helpers/history-task-actions-bridge.js?v=module-bootstrap-20260711-ir1';
+import { loadTomlFileList, updateConfigPageSummary } from '../anima-app/helpers/toml-manager-bridge.js?v=module-bootstrap-20260711-ir1';
+import { canDeleteTomlGroup, deleteTomlGroup, deleteTomlGroupButtonTitle } from '../anima-app/helpers/toml-actions-bridge.js?v=module-bootstrap-20260711-ir1';
+import { enqueueTrainingQueueBatchRequest, isCliOnlySpdSource, showPreflightDialog } from '../anima-app/helpers/training-launch-bridge.js?v=module-bootstrap-20260711-ir1';
 import {
     createTomlGroup,
     renameTomlGroup,
@@ -22,17 +22,17 @@ import {
     tomlLockLabel,
     toggleTomlGroupLock,
     updateTomlActionState,
-} from '../anima-app/helpers/toml-action-state-bridge.js?v=module-bootstrap-20260707-93';
-import { api, val } from '../anima-app/helpers/runtime-bridge.js?v=module-bootstrap-20260707-93';
-import { hasPendingConfigChanges, updateTomlSelectionUI } from '../anima-app/helpers/toml-selection-bridge.js?v=module-bootstrap-20260707-93';
-import { createTomlZipBlob, downloadBlob, getSortableTomlGroups, isTomlGroupDraggable, isTrainingTomlGroup, shouldShowTomlGroup } from '../anima-app/helpers/toml-io-bridge.js?v=module-bootstrap-20260707-93';
-import { renderPreflightPending, showPreflightRequestError } from '../anima-app/helpers/preflight-dialog-bridge.js?v=module-bootstrap-20260707-93';
-import { appendLog } from '../anima-app/helpers/live-log-bridge.js?v=module-bootstrap-20260707-93';
-import { configureTomlDragBridge } from '../anima-app/helpers/toml-drag-bridge.js?v=module-bootstrap-20260707-93';
-import { showTrainingView, updateTrainingQueueFromPayload } from '../anima-app/helpers/queue-view-bridge.js?v=module-bootstrap-20260707-93';
-import { selectAndApplyTomlFile } from '../anima-app/helpers/output-run-bridge.js?v=module-bootstrap-20260707-93';
-import { getTomlState } from '../anima-app/helpers/toml-state-bridge.js?v=module-bootstrap-20260707-93';
-import { getTrainingState } from '../anima-app/helpers/training-state-bridge.js?v=module-bootstrap-20260707-93';
+} from '../anima-app/helpers/toml-action-state-bridge.js?v=module-bootstrap-20260711-ir1';
+import { api, val } from '../anima-app/helpers/runtime-bridge.js?v=module-bootstrap-20260711-ir1';
+import { hasPendingConfigChanges, updateTomlSelectionUI } from '../anima-app/helpers/toml-selection-bridge.js?v=module-bootstrap-20260711-ir1';
+import { createTomlZipBlob, downloadBlob, getSortableTomlGroups, isTomlGroupDraggable, isTrainingTomlGroup, shouldShowTomlGroup } from '../anima-app/helpers/toml-io-bridge.js?v=module-bootstrap-20260711-ir1';
+import { renderPreflightPending, showPreflightRequestError } from '../anima-app/helpers/preflight-dialog-bridge.js?v=module-bootstrap-20260711-ir1';
+import { appendLog } from '../anima-app/helpers/live-log-bridge.js?v=module-bootstrap-20260711-ir1';
+import { configureTomlDragBridge } from '../anima-app/helpers/toml-drag-bridge.js?v=module-bootstrap-20260711-ir1';
+import { showTrainingView, updateTrainingQueueFromPayload } from '../anima-app/helpers/queue-view-bridge.js?v=module-bootstrap-20260711-ir1';
+import { selectAndApplyTomlFile } from '../anima-app/helpers/output-run-bridge.js?v=module-bootstrap-20260711-ir1';
+import { getTomlState } from '../anima-app/helpers/toml-state-bridge.js?v=module-bootstrap-20260711-ir1';
+import { getTrainingState } from '../anima-app/helpers/training-state-bridge.js?v=module-bootstrap-20260711-ir1';
 
 const tomlState = getTomlState();
 const trainingState = getTrainingState();

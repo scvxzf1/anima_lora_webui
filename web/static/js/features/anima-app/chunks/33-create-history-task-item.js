@@ -12,13 +12,13 @@ import {
     historyTaskIds,
     historyTaskIsArchived,
     selectedHistoryTasks,
-} from '../helpers/history-collections-bridge.js?v=module-bootstrap-20260707-93';
-import { clearHistoryManagerDetail, configureHistoryTaskActionsBridge, isHistoryDetailDialogOpen, loadConfigGroupTimeline, loadHistoryTask, openSidebarHistoryTask, renderHistoryManagerDetail, showHistoryCollectionSelectDialog, showHistoryTaskConfirmDialog, showHistoryTaskDialog, showHistoryTaskMessageDialog } from '../helpers/history-task-actions-bridge.js?v=module-bootstrap-20260707-93';
-import { isHistoryReviewMode } from '../helpers/history-detail-bridge.js?v=module-bootstrap-20260707-93';
-import { historyStateLabel } from '../helpers/history-timeline-bridge.js?v=module-bootstrap-20260707-93';
-import { loadTrainingHistoryList, uniqueStringList } from '../helpers/history-list-bridge.js?v=module-bootstrap-20260707-93';
-import { api } from '../helpers/runtime-bridge.js?v=module-bootstrap-20260707-93';
-import { getHistoryState } from '../helpers/history-state-bridge.js?v=module-bootstrap-20260707-93';
+} from '../helpers/history-collections-bridge.js?v=module-bootstrap-20260711-ir1';
+import { clearHistoryManagerDetail, configureHistoryTaskActionsBridge, isHistoryDetailDialogOpen, loadConfigGroupTimeline, loadHistoryTask, openSidebarHistoryTask, renderHistoryManagerDetail, showHistoryCollectionSelectDialog, showHistoryTaskConfirmDialog, showHistoryTaskDialog, showHistoryTaskMessageDialog } from '../helpers/history-task-actions-bridge.js?v=module-bootstrap-20260711-ir1';
+import { isHistoryReviewMode } from '../helpers/history-detail-bridge.js?v=module-bootstrap-20260711-ir1';
+import { historyStateLabel } from '../helpers/history-timeline-bridge.js?v=module-bootstrap-20260711-ir1';
+import { loadTrainingHistoryList, uniqueStringList } from '../helpers/history-list-bridge.js?v=module-bootstrap-20260711-ir1';
+import { api } from '../helpers/runtime-bridge.js?v=module-bootstrap-20260711-ir1';
+import { getHistoryState } from '../helpers/history-state-bridge.js?v=module-bootstrap-20260711-ir1';
 
 const historyState = getHistoryState();
 
