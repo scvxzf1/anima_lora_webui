@@ -196,3 +196,10 @@
 - High open: none
 - Decision: continue
 
+### R3-history (Task 7)
+- Goal: 训练历史壳降噪，批量条工具化，控件 token 化
+- Write set: `33-training-history-theme.css`, `21-history-panels.css`, cache `reskin-r3c`
+- Changes: head/stats/tools/bulk/grid 压缩；eyebrow meta；输入 `--control-height`；集合面板标题降噪
+- Tests: contract 12 GREEN；history 16 passed / 1 baseline fail (`selectedHistoryCollectionKey` JS hook 断言，非 CSS)
+- Decision: continue
+

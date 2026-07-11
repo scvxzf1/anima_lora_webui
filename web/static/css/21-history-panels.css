@@ -54,8 +54,8 @@
 }
 .history-collections-title span {
     color: var(--text-dim);
-    font-size: 0.72rem;
-    line-height: 1.45;
+    font-size: var(--font-size-meta);
+    line-height: 1.35;
 }
 .history-collections-workbench.compact .history-collections-title span {
     font-size: 0.64rem;
@@ -93,7 +93,7 @@
 .history-collections-stats span {
     color: var(--text-dim);
     display: block;
-    font-size: 0.62rem;
+    font-size: var(--font-size-meta);
     margin-top: 0.1rem;
 }
 .history-collections-workbench.compact .history-collections-stats span {
@@ -158,12 +158,12 @@
     justify-content: space-between;
 }
 .history-collections-panel-title strong {
-    color: var(--accent);
-    font-size: 0.78rem;
+    color: var(--text);
+    font-size: 0.82rem;
 }
 .history-collections-panel-title span {
     color: var(--text-dim);
-    font-size: 0.66rem;
+    font-size: var(--font-size-meta);
 }
 .history-collection-card-list,
 .history-config-group-card-list {
