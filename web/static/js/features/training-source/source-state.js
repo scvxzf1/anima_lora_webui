@@ -2,8 +2,8 @@
  * Training source method/variant path helpers.
  * Extracted from anima-app chunk 13.
  */
-import { getTrainingState } from '../anima-app/helpers/training-state-bridge.js?v=module-bootstrap-20260711-ir1';
-import { val } from '../anima-app/helpers/runtime-bridge.js?v=module-bootstrap-20260711-ir1';
+import { getTrainingState } from '../anima-app/helpers/training-state-bridge.js?v=module-bootstrap-20260711-ir2';
+import { val } from '../anima-app/helpers/runtime-bridge.js?v=module-bootstrap-20260711-ir2';
 
 const trainingState = getTrainingState();
 

@@ -2,8 +2,8 @@
  * Mechanical split from the former monolithic app closure.
  * Keep this module focused; move newly edited behavior into domain modules.
  */
-import { FILE_GROUP_DROP_TARGET_ATTR } from '../anima-app/helpers/app-constants.js?v=module-bootstrap-20260711-ir1';
-import { getDatasetState } from '../anima-app/helpers/dataset-state-bridge.js?v=module-bootstrap-20260711-ir1';
+import { FILE_GROUP_DROP_TARGET_ATTR } from '../anima-app/helpers/app-constants.js?v=module-bootstrap-20260711-ir2';
+import { getDatasetState } from '../anima-app/helpers/dataset-state-bridge.js?v=module-bootstrap-20260711-ir2';
 const datasetState = getDatasetState();
 
 function currentFileGroupDragState() {

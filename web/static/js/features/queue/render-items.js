@@ -9,7 +9,7 @@ import {
     queueShortId,
     queueGpuLabel,
     queueStateLabel,
-} from './render-labels.js?v=module-bootstrap-20260711-ir1';
+} from './render-labels.js?v=module-bootstrap-20260711-ir2';
 
 export function createQueueItemRenderers({ state, deps, actions }) {
     function createTrainingQueueSection(section) {

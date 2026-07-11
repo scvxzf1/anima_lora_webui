@@ -2,17 +2,17 @@
  * Dataset editor item drag/drop and list item shell.
  * Extracted from former chunk 10 / config-input.
  */
-import { datasetEditorStateForActivePanel } from '../anima-app/helpers/dataset-render-bridge.js?v=module-bootstrap-20260711-ir1';
-import { normalizeDatasetEditorRows } from '../anima-app/helpers/dataset-values.js?v=module-bootstrap-20260711-ir1';
-import { compactPathLabel } from '../anima-app/helpers/history-task-actions-bridge.js?v=module-bootstrap-20260711-ir1';
+import { datasetEditorStateForActivePanel } from '../anima-app/helpers/dataset-render-bridge.js?v=module-bootstrap-20260711-ir2';
+import { normalizeDatasetEditorRows } from '../anima-app/helpers/dataset-values.js?v=module-bootstrap-20260711-ir2';
+import { compactPathLabel } from '../anima-app/helpers/history-task-actions-bridge.js?v=module-bootstrap-20260711-ir2';
 import {
     autoScrollFileGroupPointerDrag,
     fileGroupContainsRelatedTarget,
-} from '../toml-manager/file-group-drag.js?v=module-bootstrap-20260711-ir1';
-import { createDatasetEditorRow } from './row.js?v=module-bootstrap-20260711-ir1';
-import { getDatasetState } from '../anima-app/helpers/dataset-state-bridge.js?v=module-bootstrap-20260711-ir1';
-import { renderDatasetEditor } from '../anima-app/helpers/dataset-render-bridge.js?v=module-bootstrap-20260711-ir1';
-import { moveDatasetEditorRow, moveDatasetEditorRowToIndex } from './mutations.js?v=module-bootstrap-20260711-ir1';
+} from '../toml-manager/file-group-drag.js?v=module-bootstrap-20260711-ir2';
+import { createDatasetEditorRow } from './row.js?v=module-bootstrap-20260711-ir2';
+import { getDatasetState } from '../anima-app/helpers/dataset-state-bridge.js?v=module-bootstrap-20260711-ir2';
+import { renderDatasetEditor } from '../anima-app/helpers/dataset-render-bridge.js?v=module-bootstrap-20260711-ir2';
+import { moveDatasetEditorRow, moveDatasetEditorRowToIndex } from './mutations.js?v=module-bootstrap-20260711-ir2';
 
 const datasetState = getDatasetState();
 let datasetEditorDragState = null;

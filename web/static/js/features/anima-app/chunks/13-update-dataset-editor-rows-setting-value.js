@@ -5,16 +5,16 @@
 export {
     setFieldInputValue,
     escapeHtml,
-} from '../../config-form/field-input.js?v=module-bootstrap-20260711-ir1';
+} from '../../config-form/field-input.js?v=module-bootstrap-20260711-ir2';
 export {
     setCurrentTrainingSourceFromVariant,
     clearCurrentTrainingSource,
-} from '../../training-source/source-state.js?v=module-bootstrap-20260711-ir1';
-export { outputRunRuntimeFile } from '../../output-run/runtime-file.js?v=module-bootstrap-20260711-ir1';
+} from '../../training-source/source-state.js?v=module-bootstrap-20260711-ir2';
+export { outputRunRuntimeFile } from '../../output-run/runtime-file.js?v=module-bootstrap-20260711-ir2';
 export {
     activeMethodKey,
     inferMethodFromConfig,
-} from '../../config-form/method-key.js?v=module-bootstrap-20260711-ir1';
+} from '../../config-form/method-key.js?v=module-bootstrap-20260711-ir2';
 export {
     updateDatasetEditorRowsSettingValue,
     updateDatasetEditorRowNlTagMix,
@@ -29,7 +29,7 @@ export {
     addDatasetEditorRow,
     removeDatasetEditorRow,
     syncDatasetEditorToCompatFields,
-} from '../../dataset-editor/mutations.js?v=module-bootstrap-20260711-ir1';
+} from '../../dataset-editor/mutations.js?v=module-bootstrap-20260711-ir2';
 export {
     rememberSelectionSnapshot,
     restoreSelectionSnapshot,
@@ -39,4 +39,4 @@ export {
     methodGuideFromConfig,
     configGuideFromCurrentSource,
     presetGuideFromConfig,
-} from '../../config-form/choice-guide-ui.js?v=module-bootstrap-20260711-ir1';
+} from '../../config-form/choice-guide-ui.js?v=module-bootstrap-20260711-ir2';

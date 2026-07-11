@@ -1,2 +1,2 @@
 /** Global settings feature entry. */
-export * from './settings.js?v=module-bootstrap-20260711-ir1';
+export * from './settings.js?v=module-bootstrap-20260711-ir2';

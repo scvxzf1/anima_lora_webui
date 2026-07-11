@@ -1,7 +1,7 @@
 /**
  * LoRA adapter / optimizer compatibility helpers for config form fields.
  */
-import { valuesEqual } from '../anima-app/helpers/form-values.js?v=module-bootstrap-20260711-ir1';
+import { valuesEqual } from '../anima-app/helpers/form-values.js?v=module-bootstrap-20260711-ir2';
 import {
     loraAdapterFlagsForKind,
     loraAdapterFlagsMatchConfig,
@@ -10,10 +10,10 @@ import {
     normalizePrecisionPreference,
     precisionPreferenceFromConfig,
     precisionPreferencePatch,
-} from '../anima-app/helpers/config-values.js?v=module-bootstrap-20260711-ir1';
-import { getConfigState } from '../anima-app/helpers/config-state-bridge.js?v=module-bootstrap-20260711-ir1';
-import { normalizeCameOptimizerArgs, normalizeOptimizerType } from '../anima-app/helpers/optimizer-values.js?v=module-bootstrap-20260711-ir1';
-import { setDoRADraftValue } from '../anima-app/helpers/config-form-bridge.js?v=module-bootstrap-20260711-ir1';
+} from '../anima-app/helpers/config-values.js?v=module-bootstrap-20260711-ir2';
+import { getConfigState } from '../anima-app/helpers/config-state-bridge.js?v=module-bootstrap-20260711-ir2';
+import { normalizeCameOptimizerArgs, normalizeOptimizerType } from '../anima-app/helpers/optimizer-values.js?v=module-bootstrap-20260711-ir2';
+import { setDoRADraftValue } from '../anima-app/helpers/config-form-bridge.js?v=module-bootstrap-20260711-ir2';
 
 const configState = getConfigState();
 

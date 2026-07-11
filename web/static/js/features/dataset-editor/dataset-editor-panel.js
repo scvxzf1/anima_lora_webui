@@ -2,20 +2,20 @@
  * Dataset editor panel rendering and active-row helpers.
  */
 
-import { captureDatasetExperimentalOpenStates } from './inline-help.js?v=module-bootstrap-20260711-ir1';
-import { help } from '../../config/catalog.js?v=module-bootstrap-20260711-ir1';
-import { datasetConfigLabel, datasetConfigValue } from '../anima-app/helpers/dataset-config-fields.js?v=module-bootstrap-20260711-ir1';
-import { createHelpContent } from '../anima-app/helpers/config-field-ui-bridge.js?v=module-bootstrap-20260711-ir1';
-import { getConfigState } from '../anima-app/helpers/config-state-bridge.js?v=module-bootstrap-20260711-ir1';
-import { getDatasetState } from '../anima-app/helpers/dataset-state-bridge.js?v=module-bootstrap-20260711-ir1';
+import { captureDatasetExperimentalOpenStates } from './inline-help.js?v=module-bootstrap-20260711-ir2';
+import { help } from '../../config/catalog.js?v=module-bootstrap-20260711-ir2';
+import { datasetConfigLabel, datasetConfigValue } from '../anima-app/helpers/dataset-config-fields.js?v=module-bootstrap-20260711-ir2';
+import { createHelpContent } from '../anima-app/helpers/config-field-ui-bridge.js?v=module-bootstrap-20260711-ir2';
+import { getConfigState } from '../anima-app/helpers/config-state-bridge.js?v=module-bootstrap-20260711-ir2';
+import { getDatasetState } from '../anima-app/helpers/dataset-state-bridge.js?v=module-bootstrap-20260711-ir2';
 import {
     normalizeDatasetDefaults,
     normalizeDatasetEditorRows,
-} from '../anima-app/helpers/dataset-values.js?v=module-bootstrap-20260711-ir1';
-import { createDatasetConfigInput } from './config-input.js?v=module-bootstrap-20260711-ir1';
-import { createDatasetEditorItem } from './item-drag.js?v=module-bootstrap-20260711-ir1';
-import { addDatasetEditorRow, datasetValidTargetIndices } from './mutations.js?v=module-bootstrap-20260711-ir1';
-import { createDatasetEditorToolbarActions } from './toolbar.js?v=module-bootstrap-20260711-ir1';
+} from '../anima-app/helpers/dataset-values.js?v=module-bootstrap-20260711-ir2';
+import { createDatasetConfigInput } from './config-input.js?v=module-bootstrap-20260711-ir2';
+import { createDatasetEditorItem } from './item-drag.js?v=module-bootstrap-20260711-ir2';
+import { addDatasetEditorRow, datasetValidTargetIndices } from './mutations.js?v=module-bootstrap-20260711-ir2';
+import { createDatasetEditorToolbarActions } from './toolbar.js?v=module-bootstrap-20260711-ir2';
 
 const configState = getConfigState();
 const datasetState = getDatasetState();

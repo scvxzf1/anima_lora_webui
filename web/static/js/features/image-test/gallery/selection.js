@@ -1,5 +1,5 @@
-import { DEFAULT_SELECTION_NOTE } from './constants.js?v=module-bootstrap-20260711-ir1';
-import { imageKey } from './image-meta.js?v=module-bootstrap-20260711-ir1';
+import { DEFAULT_SELECTION_NOTE } from './constants.js?v=module-bootstrap-20260711-ir2';
+import { imageKey } from './image-meta.js?v=module-bootstrap-20260711-ir2';
 
 /**
  * 选择状态 / 工具栏 / 批量删除。

@@ -1,14 +1,14 @@
 /**
  * Anima LoRA Web UI — ES module bootstrap.
  */
-import { MetricsChart } from './chart.js?v=module-bootstrap-20260711-ir1';
-import { createCatalog } from './js/config/catalog.js?v=module-bootstrap-20260711-ir1';
-import { createAnimaApp } from './js/features/anima-app/index.js?v=module-bootstrap-20260711-ir1';
-import { createApiClient } from './js/shared/api.js?v=module-bootstrap-20260711-ir1';
-import * as dom from './js/shared/dom.js?v=module-bootstrap-20260711-ir1';
-import * as download from './js/shared/download.js?v=module-bootstrap-20260711-ir1';
-import * as format from './js/shared/format.js?v=module-bootstrap-20260711-ir1';
-import { createAppContext } from './js/state/create-app-context.js?v=module-bootstrap-20260711-ir1';
+import { MetricsChart } from './chart.js?v=module-bootstrap-20260711-ir2';
+import { createCatalog } from './js/config/catalog.js?v=module-bootstrap-20260711-ir2';
+import { createAnimaApp } from './js/features/anima-app/index.js?v=module-bootstrap-20260711-ir2';
+import { createApiClient } from './js/shared/api.js?v=module-bootstrap-20260711-ir2';
+import * as dom from './js/shared/dom.js?v=module-bootstrap-20260711-ir2';
+import * as download from './js/shared/download.js?v=module-bootstrap-20260711-ir2';
+import * as format from './js/shared/format.js?v=module-bootstrap-20260711-ir2';
+import { createAppContext } from './js/state/create-app-context.js?v=module-bootstrap-20260711-ir2';
 
 const ctx = createAppContext({
     api: createApiClient(),

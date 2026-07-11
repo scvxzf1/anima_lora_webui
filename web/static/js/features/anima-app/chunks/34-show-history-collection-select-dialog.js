@@ -2,7 +2,7 @@
  * Compatibility shim.
  * Domain truth: js/features/history-list/task-dialogs.js
  */
-import { configureHistoryTaskActionsBridge } from '../helpers/history-task-actions-bridge.js?v=module-bootstrap-20260711-ir1';
+import { configureHistoryTaskActionsBridge } from '../helpers/history-task-actions-bridge.js?v=module-bootstrap-20260711-ir2';
 import {
     showHistoryCollectionSelectDialog,
     showHistoryTaskConfirmDialog,
@@ -28,7 +28,7 @@ import {
     historyTaskStepOffset,
     historyLossChartPoints,
     renderHistoryTask,
-} from '../../history-list/task-dialogs.js?v=module-bootstrap-20260711-ir1';
+} from '../../history-list/task-dialogs.js?v=module-bootstrap-20260711-ir2';
 
 export {
     showHistoryCollectionSelectDialog,
@@ -55,7 +55,7 @@ export {
     historyTaskStepOffset,
     historyLossChartPoints,
     renderHistoryTask,
-} from '../../history-list/task-dialogs.js?v=module-bootstrap-20260711-ir1';
+} from '../../history-list/task-dialogs.js?v=module-bootstrap-20260711-ir2';
 
 configureHistoryTaskActionsBridge({
         showHistoryCollectionSelectDialog,

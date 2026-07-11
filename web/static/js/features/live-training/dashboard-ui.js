@@ -2,10 +2,10 @@
  * Live training dashboard metric / chart UI helpers.
  * Extracted from anima-app chunk 03.
  */
-import { formatLossValue } from '../history-detail/curve/data.js?v=module-bootstrap-20260711-ir1';
-import { numberOrNull } from '../history-detail/ui.js?v=module-bootstrap-20260711-ir1';
-import { formatLr } from './index.js?v=module-bootstrap-20260711-ir1';
-import { getTrainingState } from '../anima-app/helpers/training-state-bridge.js?v=module-bootstrap-20260711-ir1';
+import { formatLossValue } from '../history-detail/curve/data.js?v=module-bootstrap-20260711-ir2';
+import { numberOrNull } from '../history-detail/ui.js?v=module-bootstrap-20260711-ir2';
+import { formatLr } from './index.js?v=module-bootstrap-20260711-ir2';
+import { getTrainingState } from '../anima-app/helpers/training-state-bridge.js?v=module-bootstrap-20260711-ir2';
 
 const trainingState = getTrainingState();
 

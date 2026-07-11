@@ -2,7 +2,7 @@
  * TOML group drag/drop, render, export, and queue helpers public surface.
  * Implementation split across drag-core.js, drag-actions.js, drag-render.js.
  */
-import { configureTomlDragBridge } from '../anima-app/helpers/toml-drag-bridge.js?v=module-bootstrap-20260711-ir1';
+import { configureTomlDragBridge } from '../anima-app/helpers/toml-drag-bridge.js?v=module-bootstrap-20260711-ir2';
 import {
     canDropTomlFileToGroup,
     isTomlFileDraggable,
@@ -11,7 +11,7 @@ import {
     placeTomlFile,
     tomlFileDragOptions,
     tomlGroupDragOptions,
-} from './drag-core.js?v=module-bootstrap-20260711-ir1';
+} from './drag-core.js?v=module-bootstrap-20260711-ir2';
 import {
     exportableTomlGroupFiles,
     exportTomlGroup,
@@ -24,14 +24,14 @@ import {
     enqueueTomlGroupToQueue,
     createTomlGroupActionButton,
     runTomlGroupAction,
-} from './drag-actions.js?v=module-bootstrap-20260711-ir1';
+} from './drag-actions.js?v=module-bootstrap-20260711-ir2';
 import {
     populateTomlFileSelect,
     renderTomlFileGroups,
     renderTomlFileGroupList,
     createTomlGroupActions,
     createTomlFileButton,
-} from './drag-render.js?v=module-bootstrap-20260711-ir1';
+} from './drag-render.js?v=module-bootstrap-20260711-ir2';
 
 export {
     canDropTomlFileToGroup,

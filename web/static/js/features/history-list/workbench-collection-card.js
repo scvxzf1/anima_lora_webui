@@ -14,7 +14,7 @@ import {
     startHistoryCollectionMouseDrag,
     startHistoryCollectionPointerDrag,
     startHistoryCollectionTouchDrag,
-} from '../anima-app/helpers/history-collection-drag-bridge.js?v=module-bootstrap-20260711-ir1';
+} from '../anima-app/helpers/history-collection-drag-bridge.js?v=module-bootstrap-20260711-ir2';
 import {
     applySelectedHistoryTasksToCollection,
     clearHistoryCollection,
@@ -22,12 +22,12 @@ import {
     createHistoryMoreActions,
     historyCompactGroupMetaParts,
     renameHistoryCollection,
-} from '../anima-app/helpers/history-collections-bridge.js?v=module-bootstrap-20260711-ir1';
-import { renderHistoryManager } from '../anima-app/helpers/history-list-bridge.js?v=module-bootstrap-20260711-ir1';
-import { getHistoryState } from '../anima-app/helpers/history-state-bridge.js?v=module-bootstrap-20260711-ir1';
+} from '../anima-app/helpers/history-collections-bridge.js?v=module-bootstrap-20260711-ir2';
+import { renderHistoryManager } from '../anima-app/helpers/history-list-bridge.js?v=module-bootstrap-20260711-ir2';
+import { getHistoryState } from '../anima-app/helpers/history-state-bridge.js?v=module-bootstrap-20260711-ir2';
 import {
     moveHistoryCollection,
-} from './workbench-order.js?v=module-bootstrap-20260711-ir1';
+} from './workbench-order.js?v=module-bootstrap-20260711-ir2';
 
 const historyState = getHistoryState();
 

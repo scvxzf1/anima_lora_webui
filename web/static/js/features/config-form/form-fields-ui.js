@@ -1,18 +1,18 @@
 /**
  * Config form field rows, live change handling, and field input factory.
  */
-import { updateChoiceGuide } from './choice-guide-ui.js?v=module-bootstrap-20260711-ir1';
-import { updateStepEstimatePanel } from './step-estimate.js?v=module-bootstrap-20260711-ir1';
-import { valuesEqual } from '../anima-app/helpers/form-values.js?v=module-bootstrap-20260711-ir1';
-import { collectLiveCompatIssues, formatLiveCompatStatus } from './live-compat.js?v=module-bootstrap-20260711-ir1';
-import { setTomlStatus } from '../anima-app/helpers/toml-action-state-bridge.js?v=module-bootstrap-20260711-ir1';
-import { buildFieldPresentation, fieldSourceBadgeLabel } from './field-presentation.js?v=module-bootstrap-20260711-ir1';
-import { isTruthy } from '../anima-app/helpers/config-values.js?v=module-bootstrap-20260711-ir1';
-import { getConfigState } from '../anima-app/helpers/config-state-bridge.js?v=module-bootstrap-20260711-ir1';
+import { updateChoiceGuide } from './choice-guide-ui.js?v=module-bootstrap-20260711-ir2';
+import { updateStepEstimatePanel } from './step-estimate.js?v=module-bootstrap-20260711-ir2';
+import { valuesEqual } from '../anima-app/helpers/form-values.js?v=module-bootstrap-20260711-ir2';
+import { collectLiveCompatIssues, formatLiveCompatStatus } from './live-compat.js?v=module-bootstrap-20260711-ir2';
+import { setTomlStatus } from '../anima-app/helpers/toml-action-state-bridge.js?v=module-bootstrap-20260711-ir2';
+import { buildFieldPresentation, fieldSourceBadgeLabel } from './field-presentation.js?v=module-bootstrap-20260711-ir2';
+import { isTruthy } from '../anima-app/helpers/config-values.js?v=module-bootstrap-20260711-ir2';
+import { getConfigState } from '../anima-app/helpers/config-state-bridge.js?v=module-bootstrap-20260711-ir2';
 import {
     formatFieldName,
     shouldRenderSelectInput,
-} from '../anima-app/helpers/config-field-display.js?v=module-bootstrap-20260711-ir1';
+} from '../anima-app/helpers/config-field-display.js?v=module-bootstrap-20260711-ir2';
 import {
     allowsNegativeNumberField,
     createHelpContent,
@@ -20,14 +20,14 @@ import {
     fieldValueTypeForKey,
     isIntegerNumericField,
     isNumericField,
-} from '../anima-app/helpers/config-field-ui-bridge.js?v=module-bootstrap-20260711-ir1';
+} from '../anima-app/helpers/config-field-ui-bridge.js?v=module-bootstrap-20260711-ir2';
 import {
     CONFIG_FORM_INTERNAL_KEYS,
     FIELD_OPTIONS,
     FORM_UI_DEFAULTS,
     help,
-} from '../../config/catalog.js?v=module-bootstrap-20260711-ir1';
-import { LOSS_WEIGHTING_DEPENDENT_FIELDS } from '../anima-app/helpers/app-constants.js?v=module-bootstrap-20260711-ir1';
+} from '../../config/catalog.js?v=module-bootstrap-20260711-ir2';
+import { LOSS_WEIGHTING_DEPENDENT_FIELDS } from '../anima-app/helpers/app-constants.js?v=module-bootstrap-20260711-ir2';
 import {
     applyLossWeightingFieldInputState,
     collectNetworkArgsFromForm,
@@ -43,14 +43,14 @@ import {
     updateLoKrFieldState,
     updateLossWeightingFieldState,
     updateVeRAFieldState,
-} from '../anima-app/helpers/config-form-bridge.js?v=module-bootstrap-20260711-ir1';
-import { updateTomlDirtyState } from '../anima-app/helpers/toml-selection-bridge.js?v=module-bootstrap-20260711-ir1';
+} from '../anima-app/helpers/config-form-bridge.js?v=module-bootstrap-20260711-ir2';
+import { updateTomlDirtyState } from '../anima-app/helpers/toml-selection-bridge.js?v=module-bootstrap-20260711-ir2';
 import {
     createSamplePromptAddButton,
     createSamplePromptTextModeButton,
     createSamplePromptsEditor,
     createSamplePromptsPathInput,
-} from './form-fields-sample.js?v=module-bootstrap-20260711-ir1';
+} from './form-fields-sample.js?v=module-bootstrap-20260711-ir2';
 
 let updateNoDatasetRegularizationModePanelCallback = () => {};
 const configState = getConfigState();
@@ -62,13 +62,6 @@ function currentConfigState() {
 export function configureNoDatasetRegularizationModePanelUpdater(updater) {
     updateNoDatasetRegularizationModePanelCallback = typeof updater === 'function' ? updater : () => {};
 }
-
-const PREPROCESS_MEMORY_PROFILE_VALUES = {
-    auto: { preprocess_vae_cache_batch_size: 'auto', preprocess_text_cache_batch_size: 'auto' },
-    low_vram: { preprocess_vae_cache_batch_size: 1, preprocess_text_cache_batch_size: 4 },
-    balanced: { preprocess_vae_cache_batch_size: 2, preprocess_text_cache_batch_size: 8 },
-    speed: { preprocess_vae_cache_batch_size: 4, preprocess_text_cache_batch_size: 16 },
-};
 
 const PREPROCESS_MEMORY_PROFILE_VALUES = {
     auto: { preprocess_vae_cache_batch_size: 'auto', preprocess_text_cache_batch_size: 'auto' },

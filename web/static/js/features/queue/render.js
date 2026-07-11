@@ -2,15 +2,15 @@
  * Training queue renderer facade.
  * Labels: render-labels.js · Item builders: render-items.js
  */
-import { queueManagerSections, queueSummaryCounts } from './state.js?v=module-bootstrap-20260711-ir1';
+import { queueManagerSections, queueSummaryCounts } from './state.js?v=module-bootstrap-20260711-ir2';
 import {
     queueEmptyStateText,
     queueFailurePolicyLabel,
     queueFilterCount,
     queueFilterLabel,
     queueManagerStatusText,
-} from './render-labels.js?v=module-bootstrap-20260711-ir1';
-import { createQueueItemRenderers } from './render-items.js?v=module-bootstrap-20260711-ir1';
+} from './render-labels.js?v=module-bootstrap-20260711-ir2';
+import { createQueueItemRenderers } from './render-items.js?v=module-bootstrap-20260711-ir2';
 
 export function createQueueRenderer({ state, deps, actions }) {
     const items = createQueueItemRenderers({ state, deps, actions });

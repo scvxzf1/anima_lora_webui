@@ -4,8 +4,8 @@
  */
 export {
     createDatasetConfigInput,
-} from '../../dataset-editor/config-input.js?v=module-bootstrap-20260711-ir1';
+} from '../../dataset-editor/config-input.js?v=module-bootstrap-20260711-ir2';
 export {
     createDatasetEditorDragHandle,
     createDatasetEditorItem,
-} from '../../dataset-editor/item-drag.js?v=module-bootstrap-20260711-ir1';
+} from '../../dataset-editor/item-drag.js?v=module-bootstrap-20260711-ir2';

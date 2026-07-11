@@ -2,7 +2,7 @@
  * Config form draft/render helpers.
  * Moved out of anima-app mechanical chunks.
  */
-import { applyLoraAdapterDraft, applyOptimizerCompatibilityPatch } from './form-fields.js?v=module-bootstrap-20260711-ir1';
+import { applyLoraAdapterDraft, applyOptimizerCompatibilityPatch } from './form-fields.js?v=module-bootstrap-20260711-ir2';
 import {
     CHIMERA_UI_DEFAULT_FIELDS,
     CONFIG_FORM_INTERNAL_KEYS,
@@ -18,7 +18,7 @@ import {
     RETIRED_CONFIG_FORM_FIELDS,
     SOFT_TOKENS_UI_DEFAULT_FIELDS,
     SPD_UI_DEFAULT_FIELDS,
-} from '../../config/catalog.js?v=module-bootstrap-20260711-ir1';
+} from '../../config/catalog.js?v=module-bootstrap-20260711-ir2';
 import {
     isTruthy,
     loraAdapterFlagsMatchConfig,
@@ -26,7 +26,7 @@ import {
     normalizeLoraAdapterKind,
     normalizePrecisionPreference,
     precisionPreferenceFromConfig,
-} from '../anima-app/helpers/config-values.js?v=module-bootstrap-20260711-ir1';
+} from '../anima-app/helpers/config-values.js?v=module-bootstrap-20260711-ir2';
 import {
     configureConfigFormBridge,
     networkArgFieldValueFromConfig,
@@ -36,13 +36,13 @@ import {
     updateLoKrFieldState,
     updateLossWeightingFieldState,
     updateVeRAFieldState,
-} from '../anima-app/helpers/config-form-bridge.js?v=module-bootstrap-20260711-ir1';
-import { coerceNetworkArgValue, parseNetworkArgEntry } from '../anima-app/helpers/network-args.js?v=module-bootstrap-20260711-ir1';
-import { parseArrayValue, valuesEqual } from '../anima-app/helpers/form-values.js?v=module-bootstrap-20260711-ir1';
-import { activeMethodKey } from './method-key.js?v=module-bootstrap-20260711-ir1';
-import { appendConfigGroupsByCategory, createConfigGroupEntry } from './group-entry.js?v=module-bootstrap-20260711-ir1';
-import { getConfigState } from '../anima-app/helpers/config-state-bridge.js?v=module-bootstrap-20260711-ir1';
-import { currentSamplePromptText } from '../anima-app/helpers/sample-prompts-bridge.js?v=module-bootstrap-20260711-ir1';
+} from '../anima-app/helpers/config-form-bridge.js?v=module-bootstrap-20260711-ir2';
+import { coerceNetworkArgValue, parseNetworkArgEntry } from '../anima-app/helpers/network-args.js?v=module-bootstrap-20260711-ir2';
+import { parseArrayValue, valuesEqual } from '../anima-app/helpers/form-values.js?v=module-bootstrap-20260711-ir2';
+import { activeMethodKey } from './method-key.js?v=module-bootstrap-20260711-ir2';
+import { appendConfigGroupsByCategory, createConfigGroupEntry } from './group-entry.js?v=module-bootstrap-20260711-ir2';
+import { getConfigState } from '../anima-app/helpers/config-state-bridge.js?v=module-bootstrap-20260711-ir2';
+import { currentSamplePromptText } from '../anima-app/helpers/sample-prompts-bridge.js?v=module-bootstrap-20260711-ir2';
 
 const configState = getConfigState();
 const configFormState = configState.configFormState;

@@ -5,27 +5,27 @@
 import {
     CAPTION_SOURCE_MODE_OPTIONS,
     help,
-} from '../../config/catalog.js?v=module-bootstrap-20260711-ir1';
+} from '../../config/catalog.js?v=module-bootstrap-20260711-ir2';
 import {
     captionSourceModeLabel,
     normalizeCaptionSourceMode,
-} from '../anima-app/helpers/caption-source.js?v=module-bootstrap-20260711-ir1';
-import { datasetConfigValue } from '../anima-app/helpers/dataset-config-fields.js?v=module-bootstrap-20260711-ir1';
+} from '../anima-app/helpers/caption-source.js?v=module-bootstrap-20260711-ir2';
+import { datasetConfigValue } from '../anima-app/helpers/dataset-config-fields.js?v=module-bootstrap-20260711-ir2';
 import {
     normalizeDatasetDefaults,
     normalizeDatasetEditorRows,
-} from '../anima-app/helpers/dataset-values.js?v=module-bootstrap-20260711-ir1';
+} from '../anima-app/helpers/dataset-values.js?v=module-bootstrap-20260711-ir2';
 import {
     datasetEditorStateForActivePanel,
     isDatasetTabActive,
-} from '../anima-app/helpers/dataset-render-bridge.js?v=module-bootstrap-20260711-ir1';
-import { getDatasetState } from '../anima-app/helpers/dataset-state-bridge.js?v=module-bootstrap-20260711-ir1';
-import { updateStepEstimatePanel } from '../config-form/step-estimate.js?v=module-bootstrap-20260711-ir1';
-import { setFieldInputValue } from '../config-form/field-input.js?v=module-bootstrap-20260711-ir1';
+} from '../anima-app/helpers/dataset-render-bridge.js?v=module-bootstrap-20260711-ir2';
+import { getDatasetState } from '../anima-app/helpers/dataset-state-bridge.js?v=module-bootstrap-20260711-ir2';
+import { updateStepEstimatePanel } from '../config-form/step-estimate.js?v=module-bootstrap-20260711-ir2';
+import { setFieldInputValue } from '../config-form/field-input.js?v=module-bootstrap-20260711-ir2';
 import {
     markDatasetEditorDirty,
     updateDatasetEditorRowsSettingValue,
-} from './mutations.js?v=module-bootstrap-20260711-ir1';
+} from './mutations.js?v=module-bootstrap-20260711-ir2';
 
 const datasetState = getDatasetState();
 

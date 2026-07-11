@@ -6,16 +6,16 @@ import {
     datasetPresetByFile,
     datasetPresetGroupsForDisplay,
     datasetPresetSummaryByFile,
-} from '../anima-app/helpers/dataset-presets.js?v=module-bootstrap-20260711-ir1';
+} from '../anima-app/helpers/dataset-presets.js?v=module-bootstrap-20260711-ir2';
 import {
     configureDatasetRenderBridge,
-} from '../anima-app/helpers/dataset-render-bridge.js?v=module-bootstrap-20260711-ir1';
-import { getConfigState } from '../anima-app/helpers/config-state-bridge.js?v=module-bootstrap-20260711-ir1';
-import { getDatasetState } from '../anima-app/helpers/dataset-state-bridge.js?v=module-bootstrap-20260711-ir1';
-import { datasetPresetApi } from '../anima-app/helpers/runtime-bridge.js?v=module-bootstrap-20260711-ir1';
-import { updateTomlDirtyState } from '../anima-app/helpers/toml-selection-bridge.js?v=module-bootstrap-20260711-ir1';
-import { loadStepEstimate } from './step-estimate.js?v=module-bootstrap-20260711-ir1';
-import { renderConfigDatasetPicker } from './dataset-picker.js?v=module-bootstrap-20260711-ir1';
+} from '../anima-app/helpers/dataset-render-bridge.js?v=module-bootstrap-20260711-ir2';
+import { getConfigState } from '../anima-app/helpers/config-state-bridge.js?v=module-bootstrap-20260711-ir2';
+import { getDatasetState } from '../anima-app/helpers/dataset-state-bridge.js?v=module-bootstrap-20260711-ir2';
+import { datasetPresetApi } from '../anima-app/helpers/runtime-bridge.js?v=module-bootstrap-20260711-ir2';
+import { updateTomlDirtyState } from '../anima-app/helpers/toml-selection-bridge.js?v=module-bootstrap-20260711-ir2';
+import { loadStepEstimate } from './step-estimate.js?v=module-bootstrap-20260711-ir2';
+import { renderConfigDatasetPicker } from './dataset-picker.js?v=module-bootstrap-20260711-ir2';
 
 const configState = getConfigState();
 const datasetState = getDatasetState();

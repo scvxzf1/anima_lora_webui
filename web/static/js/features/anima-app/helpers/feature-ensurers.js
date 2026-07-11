@@ -1,7 +1,7 @@
-import { createEnvironmentCheckFeature } from '../../environment-check/index.js?v=module-bootstrap-20260711-ir1';
-import { createPreviewFeature } from '../../preview/index.js?v=module-bootstrap-20260711-ir1';
-import { createQueueFeature } from '../../queue/index.js?v=module-bootstrap-20260711-ir1';
-import { createWeightAnalysisFeature } from '../../weight-analysis/index.js?v=module-bootstrap-20260711-ir1';
+import { createEnvironmentCheckFeature } from '../../environment-check/index.js?v=module-bootstrap-20260711-ir2';
+import { createPreviewFeature } from '../../preview/index.js?v=module-bootstrap-20260711-ir2';
+import { createQueueFeature } from '../../queue/index.js?v=module-bootstrap-20260711-ir2';
+import { createWeightAnalysisFeature } from '../../weight-analysis/index.js?v=module-bootstrap-20260711-ir2';
 
 let previewFeatureConfig = null;
 let queueFeatureConfig = null;

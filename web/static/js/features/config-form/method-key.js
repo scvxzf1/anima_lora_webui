@@ -2,11 +2,11 @@
  * Active method inference for config form scoping.
  * Extracted from anima-app chunk 13.
  */
-import { VARIANT_METHOD_FAMILY } from '../../config/catalog.js?v=module-bootstrap-20260711-ir1';
-import { isTruthy } from '../anima-app/helpers/config-values.js?v=module-bootstrap-20260711-ir1';
-import { getConfigState } from '../anima-app/helpers/config-state-bridge.js?v=module-bootstrap-20260711-ir1';
-import { getTrainingState } from '../anima-app/helpers/training-state-bridge.js?v=module-bootstrap-20260711-ir1';
-import { val } from '../anima-app/helpers/runtime-bridge.js?v=module-bootstrap-20260711-ir1';
+import { VARIANT_METHOD_FAMILY } from '../../config/catalog.js?v=module-bootstrap-20260711-ir2';
+import { isTruthy } from '../anima-app/helpers/config-values.js?v=module-bootstrap-20260711-ir2';
+import { getConfigState } from '../anima-app/helpers/config-state-bridge.js?v=module-bootstrap-20260711-ir2';
+import { getTrainingState } from '../anima-app/helpers/training-state-bridge.js?v=module-bootstrap-20260711-ir2';
+import { val } from '../anima-app/helpers/runtime-bridge.js?v=module-bootstrap-20260711-ir2';
 
 const configState = getConfigState();
 const trainingState = getTrainingState();

@@ -1,4 +1,4 @@
-import { historyDetailEmptyText } from './ui.js?v=module-bootstrap-20260711-ir1';
+import { historyDetailEmptyText } from './ui.js?v=module-bootstrap-20260711-ir2';
 
 export function createHistoryDetailWorkspace({ deps }) {
     function renderHistoryDetailPreview(payload) {

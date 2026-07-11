@@ -5,18 +5,18 @@
 import {
     createNoDatasetRegularizationAdvancedFields,
     createNoDatasetRegularizationModePanel,
-} from './no-dataset-regularization.js?v=module-bootstrap-20260711-ir1';
+} from './no-dataset-regularization.js?v=module-bootstrap-20260711-ir2';
 import {
     ADVANCED_CATEGORY_DEFAULT_OPEN_GROUPS,
     FORM_CATEGORY_DEFS,
     FORM_CATEGORY_SECTION_MAP,
     STICKY_CONFIG_CATEGORY_IDS,
-} from '../../config/catalog.js?v=module-bootstrap-20260711-ir1';
-import { reloadCurrentConfig, renderConfigForm, syncConfigDraftFromForm } from '../anima-app/helpers/app-shell-startup-bridge.js?v=module-bootstrap-20260711-ir1';
-import { getConfigState } from '../anima-app/helpers/config-state-bridge.js?v=module-bootstrap-20260711-ir1';
-import { formatFieldName } from '../anima-app/helpers/config-field-display.js?v=module-bootstrap-20260711-ir1';
-import { updateChangedFieldMarks } from '../anima-app/helpers/toml-selection-bridge.js?v=module-bootstrap-20260711-ir1';
-import { createStepEstimatePanel, scheduleStepEstimatePanelRefresh } from './step-estimate.js?v=module-bootstrap-20260711-ir1';
+} from '../../config/catalog.js?v=module-bootstrap-20260711-ir2';
+import { reloadCurrentConfig, renderConfigForm, syncConfigDraftFromForm } from '../anima-app/helpers/app-shell-startup-bridge.js?v=module-bootstrap-20260711-ir2';
+import { getConfigState } from '../anima-app/helpers/config-state-bridge.js?v=module-bootstrap-20260711-ir2';
+import { formatFieldName } from '../anima-app/helpers/config-field-display.js?v=module-bootstrap-20260711-ir2';
+import { updateChangedFieldMarks } from '../anima-app/helpers/toml-selection-bridge.js?v=module-bootstrap-20260711-ir2';
+import { createStepEstimatePanel, scheduleStepEstimatePanelRefresh } from './step-estimate.js?v=module-bootstrap-20260711-ir2';
 import {
     createFillGlobalModelPathsButton,
     createNoDatasetRegularizationQuickPresetPanel,
@@ -24,9 +24,9 @@ import {
     createResourceQuickPresetPanel,
     createResourceQuickPresetsButton,
     createStageScheduleInlineSummary,
-} from './stage-resolution.js?v=module-bootstrap-20260711-ir1';
-import { appendFieldRows } from './field-rows.js?v=module-bootstrap-20260711-ir1';
-import { createConfigDatasetPicker } from './dataset-picker.js?v=module-bootstrap-20260711-ir1';
+} from './stage-resolution.js?v=module-bootstrap-20260711-ir2';
+import { appendFieldRows } from './field-rows.js?v=module-bootstrap-20260711-ir2';
+import { createConfigDatasetPicker } from './dataset-picker.js?v=module-bootstrap-20260711-ir2';
 
 const configState = getConfigState();
 const configFormState = configState.configFormState;

@@ -2,7 +2,7 @@
  * Compatibility shim.
  * Domain truth: js/features/history-list/collections-workbench.js
  */
-import { configureHistoryCollectionsBridge } from '../helpers/history-collections-bridge.js?v=module-bootstrap-20260711-ir1';
+import { configureHistoryCollectionsBridge } from '../helpers/history-collections-bridge.js?v=module-bootstrap-20260711-ir2';
 import {
     renderHistoryCollectionsWorkbench,
     renderHistoryManagerStats,
@@ -29,7 +29,7 @@ import {
     compactHistoryResumeLabel,
     createHistoryMoreActions,
     selectedHistoryConfigGroups,
-} from '../../history-list/collections-workbench.js?v=module-bootstrap-20260711-ir1';
+} from '../../history-list/collections-workbench.js?v=module-bootstrap-20260711-ir2';
 
 export {
     renderHistoryCollectionsWorkbench,
@@ -57,7 +57,7 @@ export {
     compactHistoryResumeLabel,
     createHistoryMoreActions,
     selectedHistoryConfigGroups,
-} from '../../history-list/collections-workbench.js?v=module-bootstrap-20260711-ir1';
+} from '../../history-list/collections-workbench.js?v=module-bootstrap-20260711-ir2';
 
 configureHistoryCollectionsBridge({
         renderHistoryCollectionsWorkbench,

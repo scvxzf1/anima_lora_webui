@@ -8,10 +8,10 @@ export {
     createDatasetRowSettingsEditor,
     createDatasetAdvancedSettingsEditor,
     createDatasetCaptionExtensionEditor,
-} from './row-settings-basic.js?v=module-bootstrap-20260711-ir1';
+} from './row-settings-basic.js?v=module-bootstrap-20260711-ir2';
 
 export {
     createDatasetNlTagMixEditor,
     createDatasetExperimentalScopePicker,
     createDatasetTriggerCloneEditor,
-} from './row-settings-experimental.js?v=module-bootstrap-20260711-ir1';
+} from './row-settings-experimental.js?v=module-bootstrap-20260711-ir2';

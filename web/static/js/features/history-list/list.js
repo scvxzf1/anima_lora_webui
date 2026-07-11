@@ -2,17 +2,17 @@
  * Training history list/manager helpers.
  * Moved out of anima-app mechanical chunks.
  */
-import { renderContinueTrainingSource } from '../anima-app/helpers/training-source-bridge.js?v=module-bootstrap-20260711-ir1';
-import { historyManagerBaseFilteredTasks, historyManagerVisibleTasks, historyTaskIds, historyTaskIsArchived, renderHistoryBulkBar, renderHistoryCollectionsWorkbench, renderHistoryManagerStats, selectedHistoryTasks, syncHistorySelectionWithTasks } from '../anima-app/helpers/history-collections-bridge.js?v=module-bootstrap-20260711-ir1';
-import { createHistoryTaskItem, renderHistoryDetailDialog } from '../anima-app/helpers/history-task-actions-bridge.js?v=module-bootstrap-20260711-ir1';
-import { getHistoryState } from '../anima-app/helpers/history-state-bridge.js?v=module-bootstrap-20260711-ir1';
-import { appendLog } from '../anima-app/helpers/live-log-bridge.js?v=module-bootstrap-20260711-ir1';
+import { renderContinueTrainingSource } from '../anima-app/helpers/training-source-bridge.js?v=module-bootstrap-20260711-ir2';
+import { historyManagerBaseFilteredTasks, historyManagerVisibleTasks, historyTaskIds, historyTaskIsArchived, renderHistoryBulkBar, renderHistoryCollectionsWorkbench, renderHistoryManagerStats, selectedHistoryTasks, syncHistorySelectionWithTasks } from '../anima-app/helpers/history-collections-bridge.js?v=module-bootstrap-20260711-ir2';
+import { createHistoryTaskItem, renderHistoryDetailDialog } from '../anima-app/helpers/history-task-actions-bridge.js?v=module-bootstrap-20260711-ir2';
+import { getHistoryState } from '../anima-app/helpers/history-state-bridge.js?v=module-bootstrap-20260711-ir2';
+import { appendLog } from '../anima-app/helpers/live-log-bridge.js?v=module-bootstrap-20260711-ir2';
 import {
     renderPreviewTaskSelect,
     setPreviewStatus,
-} from '../anima-app/helpers/preview-view-bridge.js?v=module-bootstrap-20260711-ir1';
-import { api } from '../anima-app/helpers/runtime-bridge.js?v=module-bootstrap-20260711-ir1';
-import { getTrainingState } from '../anima-app/helpers/training-state-bridge.js?v=module-bootstrap-20260711-ir1';
+} from '../anima-app/helpers/preview-view-bridge.js?v=module-bootstrap-20260711-ir2';
+import { api } from '../anima-app/helpers/runtime-bridge.js?v=module-bootstrap-20260711-ir2';
+import { getTrainingState } from '../anima-app/helpers/training-state-bridge.js?v=module-bootstrap-20260711-ir2';
 
 const historyState = getHistoryState();
 const trainingState = getTrainingState();

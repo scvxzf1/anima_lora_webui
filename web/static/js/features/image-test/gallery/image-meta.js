@@ -1,7 +1,7 @@
 import {
     IMAGE_TEST_HISTORY_RANGE_OPTIONS,
     daysForImageTestHistoryRange,
-} from '../state.js?v=module-bootstrap-20260711-ir1';
+} from '../state.js?v=module-bootstrap-20260711-ir2';
 
 export function emptyMessageForCurrentFilter(payload, filterValue) {
     if (Array.isArray(payload.images) && payload.images.length) {

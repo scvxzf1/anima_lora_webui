@@ -18,7 +18,7 @@ export {
     stageResolutionStatus,
     stageSchedulePayload,
     toFraction,
-} from './stage-resolution-model.js?v=module-bootstrap-20260711-ir1';
+} from './stage-resolution-model.js?v=module-bootstrap-20260711-ir2';
 
 export {
     createOpenStageResolutionDialogButton,
@@ -30,7 +30,7 @@ export {
     drawStageResolutionChart,
     openStageResolutionDialog,
     renderStageResolutionDialog,
-} from './stage-resolution-ui.js?v=module-bootstrap-20260711-ir1';
+} from './stage-resolution-ui.js?v=module-bootstrap-20260711-ir2';
 
 // Compatibility exports used by old chunk imports / quick-preset panel co-location.
 export {
@@ -39,4 +39,4 @@ export {
     createResourceQuickPresetPanel,
     createNoDatasetRegularizationQuickPresetsButton,
     createNoDatasetRegularizationQuickPresetPanel,
-} from './stage-resolution-presets.js?v=module-bootstrap-20260711-ir1';
+} from './stage-resolution-presets.js?v=module-bootstrap-20260711-ir2';

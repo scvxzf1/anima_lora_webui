@@ -1,9 +1,9 @@
 /**
  * Stage schedule widgets: summary, editor, table, and stage mutations.
  */
-import { getAppContext } from '../anima-app/helpers/app-context-bridge.js?v=module-bootstrap-20260711-ir1';
-import { getConfigState } from '../anima-app/helpers/config-state-bridge.js?v=module-bootstrap-20260711-ir1';
-import { setTomlStatus } from '../anima-app/helpers/toml-action-state-bridge.js?v=module-bootstrap-20260711-ir1';
+import { getAppContext } from '../anima-app/helpers/app-context-bridge.js?v=module-bootstrap-20260711-ir2';
+import { getConfigState } from '../anima-app/helpers/config-state-bridge.js?v=module-bootstrap-20260711-ir2';
+import { setTomlStatus } from '../anima-app/helpers/toml-action-state-bridge.js?v=module-bootstrap-20260711-ir2';
 import {
     STAGE_COLORS,
     clamp01,
@@ -20,7 +20,7 @@ import {
     stageSchedulePayload,
     toFraction,
     normalizeRawStages,
-} from './stage-resolution-model.js?v=module-bootstrap-20260711-ir1';
+} from './stage-resolution-model.js?v=module-bootstrap-20260711-ir2';
 
 const ctx = getAppContext();
 const configState = getConfigState();

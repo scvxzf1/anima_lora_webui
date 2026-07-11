@@ -9,7 +9,7 @@ import {
     historyDetailRunRoot,
     historyDetailSection,
     selectAllTextOnDoubleClick,
-} from './ui.js?v=module-bootstrap-20260711-ir1';
+} from './ui.js?v=module-bootstrap-20260711-ir2';
 
 export function createHistoryConfigFilesRenderer({ ctx, deps }) {
     const historyDetailCopyButton = (value, label) => createHistoryDetailCopyButton(ctx.dom.copyText, value, label);

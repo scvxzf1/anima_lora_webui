@@ -2,13 +2,13 @@
  * History collections workbench cards + ordering helpers.
  * Implementation: workbench-collection-card / workbench-config-group-card / workbench-order.
  */
-import { configureHistoryCollectionsBridge } from '../anima-app/helpers/history-collections-bridge.js?v=module-bootstrap-20260711-ir1';
+import { configureHistoryCollectionsBridge } from '../anima-app/helpers/history-collections-bridge.js?v=module-bootstrap-20260711-ir2';
 import {
     createHistoryCollectionWorkbenchCard,
-} from './workbench-collection-card.js?v=module-bootstrap-20260711-ir1';
+} from './workbench-collection-card.js?v=module-bootstrap-20260711-ir2';
 import {
     createHistoryConfigGroupWorkbenchCard,
-} from './workbench-config-group-card.js?v=module-bootstrap-20260711-ir1';
+} from './workbench-config-group-card.js?v=module-bootstrap-20260711-ir2';
 import {
     historyCollectionNamesForTasks,
     moveItemInList,
@@ -26,15 +26,15 @@ import {
     enrichHistoryCollection,
     sortHistoryManagerGroupTasks,
     historyTaskCollectionValue,
-} from './workbench-order.js?v=module-bootstrap-20260711-ir1';
+} from './workbench-order.js?v=module-bootstrap-20260711-ir2';
 
 export {
     createHistoryCollectionWorkbenchCard,
-} from './workbench-collection-card.js?v=module-bootstrap-20260711-ir1';
+} from './workbench-collection-card.js?v=module-bootstrap-20260711-ir2';
 
 export {
     createHistoryConfigGroupWorkbenchCard,
-} from './workbench-config-group-card.js?v=module-bootstrap-20260711-ir1';
+} from './workbench-config-group-card.js?v=module-bootstrap-20260711-ir2';
 
 export {
     historyCollectionNamesForTasks,
@@ -53,7 +53,7 @@ export {
     enrichHistoryCollection,
     sortHistoryManagerGroupTasks,
     historyTaskCollectionValue,
-} from './workbench-order.js?v=module-bootstrap-20260711-ir1';
+} from './workbench-order.js?v=module-bootstrap-20260711-ir2';
 
 configureHistoryCollectionsBridge({
     createHistoryCollectionWorkbenchCard,

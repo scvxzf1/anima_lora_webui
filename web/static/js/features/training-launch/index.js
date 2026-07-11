@@ -2,8 +2,8 @@
  * Training launch / preflight orchestration helpers.
  * Moved out of anima-app mechanical chunks.
  */
-import { ensureQueueFeature } from '../anima-app/helpers/feature-ensurers.js?v=module-bootstrap-20260711-ir1';
-import { isLiveRunningState } from '../live-training/index.js?v=module-bootstrap-20260711-ir1';
+import { ensureQueueFeature } from '../anima-app/helpers/feature-ensurers.js?v=module-bootstrap-20260711-ir2';
+import { isLiveRunningState } from '../live-training/index.js?v=module-bootstrap-20260711-ir2';
 import {
     configTrainingSourceMode,
     continueTrainingRequestPayload,
@@ -11,16 +11,16 @@ import {
     startConfigFullResumeSource,
     trainingSourceLaunchBlockReason,
     trainingSourceLaunchSummary,
-} from '../anima-app/helpers/training-source-bridge.js?v=module-bootstrap-20260711-ir1';
-import { showHistoryTaskConfirmDialog } from '../anima-app/helpers/history-task-actions-bridge.js?v=module-bootstrap-20260711-ir1';
-import { returnToLiveTraining } from '../anima-app/helpers/history-timeline-bridge.js?v=module-bootstrap-20260711-ir1';
-import { getGpuPicker } from '../anima-app/helpers/app-shell-startup-bridge.js?v=module-bootstrap-20260711-ir1';
-import { configureTrainingLaunchBridge } from '../anima-app/helpers/training-launch-bridge.js?v=module-bootstrap-20260711-ir1';
-import { api, val } from '../anima-app/helpers/runtime-bridge.js?v=module-bootstrap-20260711-ir1';
+} from '../anima-app/helpers/training-source-bridge.js?v=module-bootstrap-20260711-ir2';
+import { showHistoryTaskConfirmDialog } from '../anima-app/helpers/history-task-actions-bridge.js?v=module-bootstrap-20260711-ir2';
+import { returnToLiveTraining } from '../anima-app/helpers/history-timeline-bridge.js?v=module-bootstrap-20260711-ir2';
+import { getGpuPicker } from '../anima-app/helpers/app-shell-startup-bridge.js?v=module-bootstrap-20260711-ir2';
+import { configureTrainingLaunchBridge } from '../anima-app/helpers/training-launch-bridge.js?v=module-bootstrap-20260711-ir2';
+import { api, val } from '../anima-app/helpers/runtime-bridge.js?v=module-bootstrap-20260711-ir2';
 import {
     hasPendingConfigChanges,
     showAppConfirmDialog,
-} from '../anima-app/helpers/toml-selection-bridge.js?v=module-bootstrap-20260711-ir1';
+} from '../anima-app/helpers/toml-selection-bridge.js?v=module-bootstrap-20260711-ir2';
 import {
     currentTrainingConfigFile,
     isPreflightDialogOpen,
@@ -31,15 +31,15 @@ import {
     showPreflightRequestError,
     startPreprocessFromPreflight,
     waitForPreflightDialogClose,
-} from '../anima-app/helpers/preflight-dialog-bridge.js?v=module-bootstrap-20260711-ir1';
-import { appendLog, recoverLiveTrainingState } from '../anima-app/helpers/live-log-bridge.js?v=module-bootstrap-20260711-ir1';
+} from '../anima-app/helpers/preflight-dialog-bridge.js?v=module-bootstrap-20260711-ir2';
+import { appendLog, recoverLiveTrainingState } from '../anima-app/helpers/live-log-bridge.js?v=module-bootstrap-20260711-ir2';
 import {
     setTomlStatus,
     updateTomlActionState,
-} from '../anima-app/helpers/toml-action-state-bridge.js?v=module-bootstrap-20260711-ir1';
-import { getDatasetState } from '../anima-app/helpers/dataset-state-bridge.js?v=module-bootstrap-20260711-ir1';
-import { getTomlState } from '../anima-app/helpers/toml-state-bridge.js?v=module-bootstrap-20260711-ir1';
-import { getTrainingState } from '../anima-app/helpers/training-state-bridge.js?v=module-bootstrap-20260711-ir1';
+} from '../anima-app/helpers/toml-action-state-bridge.js?v=module-bootstrap-20260711-ir2';
+import { getDatasetState } from '../anima-app/helpers/dataset-state-bridge.js?v=module-bootstrap-20260711-ir2';
+import { getTomlState } from '../anima-app/helpers/toml-state-bridge.js?v=module-bootstrap-20260711-ir2';
+import { getTrainingState } from '../anima-app/helpers/training-state-bridge.js?v=module-bootstrap-20260711-ir2';
 
 const datasetState = getDatasetState();
 const tomlState = getTomlState();

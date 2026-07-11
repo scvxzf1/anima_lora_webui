@@ -1,8 +1,8 @@
 /**
  * Stage schedule chart, dialog shell, and inline summary.
  */
-import { getConfigState } from '../anima-app/helpers/config-state-bridge.js?v=module-bootstrap-20260711-ir1';
-import { setTomlStatus } from '../anima-app/helpers/toml-action-state-bridge.js?v=module-bootstrap-20260711-ir1';
+import { getConfigState } from '../anima-app/helpers/config-state-bridge.js?v=module-bootstrap-20260711-ir2';
+import { setTomlStatus } from '../anima-app/helpers/toml-action-state-bridge.js?v=module-bootstrap-20260711-ir2';
 import {
     hydrateStageScheduleFromConfig,
     listSubsetOptions,
@@ -10,13 +10,13 @@ import {
     stageResolutionMetrics,
     stageSchedulePayload,
     normalizeRawStages,
-} from './stage-resolution-model.js?v=module-bootstrap-20260711-ir1';
+} from './stage-resolution-model.js?v=module-bootstrap-20260711-ir2';
 import {
     createStageResolutionSummary,
     createStageResolutionChartPanel,
     createStageResolutionEditor,
     createStageResolutionTable,
-} from './stage-resolution-ui-widgets.js?v=module-bootstrap-20260711-ir1';
+} from './stage-resolution-ui-widgets.js?v=module-bootstrap-20260711-ir2';
 
 const configState = getConfigState();
 const stageResolutionState = configState.stageResolutionState;

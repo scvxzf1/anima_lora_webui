@@ -4,8 +4,8 @@
  */
 import {
     CONFIG_COMPACT_FIELD_GROUPS,
-} from '../../config/catalog.js?v=module-bootstrap-20260711-ir1';
-import { createFieldRow } from './form-fields.js?v=module-bootstrap-20260711-ir1';
+} from '../../config/catalog.js?v=module-bootstrap-20260711-ir2';
+import { createFieldRow } from './form-fields.js?v=module-bootstrap-20260711-ir2';
 
 export function appendFieldRows(content, fields, groupClass) {
     const compactGroups = CONFIG_COMPACT_FIELD_GROUPS[groupClass] || [];

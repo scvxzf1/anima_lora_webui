@@ -1,13 +1,13 @@
 /**
  * History task collection labels, grouping, bulk actions, and filters.
  */
-import { HISTORY_UNGROUPED_COLLECTION_KEY } from '../anima-app/helpers/app-constants.js?v=module-bootstrap-20260711-ir1';
-import { setHistoryDropFeedback } from '../anima-app/helpers/history-collection-drag-bridge.js?v=module-bootstrap-20260711-ir1';
+import { HISTORY_UNGROUPED_COLLECTION_KEY } from '../anima-app/helpers/app-constants.js?v=module-bootstrap-20260711-ir2';
+import { setHistoryDropFeedback } from '../anima-app/helpers/history-collection-drag-bridge.js?v=module-bootstrap-20260711-ir2';
 import {
     ensureHistoryCollectionOrderValue,
     historyCollectionStorageKey,
     historyTaskCollectionValue,
-} from '../anima-app/helpers/history-collections-bridge.js?v=module-bootstrap-20260711-ir1';
+} from '../anima-app/helpers/history-collections-bridge.js?v=module-bootstrap-20260711-ir2';
 import {
     applyHistoryTaskIdsBatchAction,
     createHistoryActionButton,
@@ -15,12 +15,12 @@ import {
     loadConfigGroupTimeline,
     showHistoryCollectionSelectDialog,
     showHistoryTaskConfirmDialog,
-} from '../anima-app/helpers/history-task-actions-bridge.js?v=module-bootstrap-20260711-ir1';
-import { configGroupLabel } from '../anima-app/helpers/history-timeline-bridge.js?v=module-bootstrap-20260711-ir1';
-import { showTrainingView } from '../anima-app/helpers/queue-view-bridge.js?v=module-bootstrap-20260711-ir1';
-import { openHistoryConfigGroupPreview } from '../anima-app/helpers/preview-view-bridge.js?v=module-bootstrap-20260711-ir1';
-import { renderHistoryManager, saveHistoryCollectionSettings, normalizeHistoryCollectionSettings, uniqueStringList, normalizeHistoryConfigGroupOrder } from '../anima-app/helpers/history-list-bridge.js?v=module-bootstrap-20260711-ir1';
-import { getHistoryState } from '../anima-app/helpers/history-state-bridge.js?v=module-bootstrap-20260711-ir1';
+} from '../anima-app/helpers/history-task-actions-bridge.js?v=module-bootstrap-20260711-ir2';
+import { configGroupLabel } from '../anima-app/helpers/history-timeline-bridge.js?v=module-bootstrap-20260711-ir2';
+import { showTrainingView } from '../anima-app/helpers/queue-view-bridge.js?v=module-bootstrap-20260711-ir2';
+import { openHistoryConfigGroupPreview } from '../anima-app/helpers/preview-view-bridge.js?v=module-bootstrap-20260711-ir2';
+import { renderHistoryManager, saveHistoryCollectionSettings, normalizeHistoryCollectionSettings, uniqueStringList, normalizeHistoryConfigGroupOrder } from '../anima-app/helpers/history-list-bridge.js?v=module-bootstrap-20260711-ir2';
+import { getHistoryState } from '../anima-app/helpers/history-state-bridge.js?v=module-bootstrap-20260711-ir2';
 
 const historyState = getHistoryState();
 

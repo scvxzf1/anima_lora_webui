@@ -19,12 +19,12 @@ export {
     configFileDropIndex,
     configGroupDropIndex,
     fileGroupContainsRelatedTarget,
-} from './file-group-drag-core.js?v=module-bootstrap-20260711-ir1';
+} from './file-group-drag-core.js?v=module-bootstrap-20260711-ir2';
 
 export {
     setupFileGroupRowDropTarget,
     setupFileGroupListDropTarget,
     setupFileGroupHeaderDropTarget,
-} from './file-group-drag-targets.js?v=module-bootstrap-20260711-ir1';
+} from './file-group-drag-targets.js?v=module-bootstrap-20260711-ir2';
 
 // file-group-drag module end

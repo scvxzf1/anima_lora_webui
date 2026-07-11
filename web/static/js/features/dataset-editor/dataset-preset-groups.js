@@ -2,21 +2,21 @@
  * Dataset preset group list rendering, drag/drop, and header action state.
  */
 
-import { DATASET_PRESET_GROUP_STATE_KEY } from '../anima-app/helpers/app-constants.js?v=module-bootstrap-20260711-ir1';
+import { DATASET_PRESET_GROUP_STATE_KEY } from '../anima-app/helpers/app-constants.js?v=module-bootstrap-20260711-ir2';
 import {
     deleteDatasetPresetGroup,
     placeDatasetPresetFile,
     placeDatasetPresetGroup,
     renameDatasetPresetGroup,
     setDatasetPresetStatus,
-} from '../anima-app/helpers/dataset-preset-actions-bridge.js?v=module-bootstrap-20260711-ir1';
+} from '../anima-app/helpers/dataset-preset-actions-bridge.js?v=module-bootstrap-20260711-ir2';
 import {
     datasetPresetByFile,
     isUnfiledDatasetGroup,
-} from '../anima-app/helpers/dataset-presets.js?v=module-bootstrap-20260711-ir1';
-import { getDatasetState } from '../anima-app/helpers/dataset-state-bridge.js?v=module-bootstrap-20260711-ir1';
-import { loadDatasetPreset } from './load.js?v=module-bootstrap-20260711-ir1';
-import { updateDatasetPresetPageSummary } from './preset-page.js?v=module-bootstrap-20260711-ir1';
+} from '../anima-app/helpers/dataset-presets.js?v=module-bootstrap-20260711-ir2';
+import { getDatasetState } from '../anima-app/helpers/dataset-state-bridge.js?v=module-bootstrap-20260711-ir2';
+import { loadDatasetPreset } from './load.js?v=module-bootstrap-20260711-ir2';
+import { updateDatasetPresetPageSummary } from './preset-page.js?v=module-bootstrap-20260711-ir2';
 import {
     clearFileGroupDropTarget,
     configGroupDropIndex,
@@ -28,9 +28,9 @@ import {
     setupFileGroupHeaderDropTarget,
     setupFileGroupListDropTarget,
     setupFileGroupRowDropTarget,
-} from '../toml-manager/file-group-drag.js?v=module-bootstrap-20260711-ir1';
-import { setupConfigGroupDropTarget } from '../toml-manager/config-group-drop-target.js?v=module-bootstrap-20260711-ir1';
-import { escapeHtml } from '../config-form/field-input.js?v=module-bootstrap-20260711-ir1';
+} from '../toml-manager/file-group-drag.js?v=module-bootstrap-20260711-ir2';
+import { setupConfigGroupDropTarget } from '../toml-manager/config-group-drop-target.js?v=module-bootstrap-20260711-ir2';
+import { escapeHtml } from '../config-form/field-input.js?v=module-bootstrap-20260711-ir2';
 
 const datasetState = getDatasetState();
 

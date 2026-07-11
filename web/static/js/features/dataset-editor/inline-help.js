@@ -1,15 +1,15 @@
 /**
  * Dataset editor inline help helpers and small advanced-field panels.
  */
-import { help } from '../../config/catalog.js?v=module-bootstrap-20260711-ir1';
-import { createHelpContent } from '../anima-app/helpers/config-field-ui-bridge.js?v=module-bootstrap-20260711-ir1';
-import { getDatasetState } from '../anima-app/helpers/dataset-state-bridge.js?v=module-bootstrap-20260711-ir1';
-import { isDatasetTabActive } from '../anima-app/helpers/dataset-render-bridge.js?v=module-bootstrap-20260711-ir1';
-import { currentTrainingConfigFile } from '../anima-app/helpers/preflight-dialog-bridge.js?v=module-bootstrap-20260711-ir1';
+import { help } from '../../config/catalog.js?v=module-bootstrap-20260711-ir2';
+import { createHelpContent } from '../anima-app/helpers/config-field-ui-bridge.js?v=module-bootstrap-20260711-ir2';
+import { getDatasetState } from '../anima-app/helpers/dataset-state-bridge.js?v=module-bootstrap-20260711-ir2';
+import { isDatasetTabActive } from '../anima-app/helpers/dataset-render-bridge.js?v=module-bootstrap-20260711-ir2';
+import { currentTrainingConfigFile } from '../anima-app/helpers/preflight-dialog-bridge.js?v=module-bootstrap-20260711-ir2';
 import {
     updateDatasetEditorRow,
     updateDatasetEditorRowSettingValue,
-} from './row-fields.js?v=module-bootstrap-20260711-ir1';
+} from './row-fields.js?v=module-bootstrap-20260711-ir2';
 
 const datasetState = getDatasetState();
 

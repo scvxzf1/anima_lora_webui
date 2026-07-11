@@ -9,7 +9,7 @@ import {
     finishFileGroupDrag,
     markFileGroupDropTarget,
     registerFileGroupDropTarget,
-} from './file-group-drag-core.js?v=module-bootstrap-20260711-ir1';
+} from './file-group-drag-core.js?v=module-bootstrap-20260711-ir2';
 
 export function setupFileGroupRowDropTarget(row, group, targetFile, options) {
     registerFileGroupDropTarget(row, ({ payload, y }) => {

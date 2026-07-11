@@ -5,7 +5,7 @@
 import {
     HISTORY_COLLECTION_DRAG_MIME,
     HISTORY_UNGROUPED_COLLECTION_KEY,
-} from '../helpers/app-constants.js?v=module-bootstrap-20260711-ir1';
+} from '../helpers/app-constants.js?v=module-bootstrap-20260711-ir2';
 import {
     autoScrollHistoryCollectionPointerDrag,
     canBeginHistoryCollectionSort,
@@ -21,7 +21,7 @@ import {
     historyDraggedTasksAlreadyInCollection,
     moveHistoryCollectionPointerDragImage,
     readHistoryDraggedTaskIds,
-} from '../helpers/history-collection-drag-bridge.js?v=module-bootstrap-20260711-ir1';
+} from '../helpers/history-collection-drag-bridge.js?v=module-bootstrap-20260711-ir2';
 import {
     applyHistoryTaskIdsToCollection,
     collectionOrderValues,
@@ -30,10 +30,10 @@ import {
     historyCollectionSelectOptions,
     historyManagerFilteredTasks,
     historyTaskIsArchived,
-} from '../helpers/history-collections-bridge.js?v=module-bootstrap-20260711-ir1';
-import { renderHistoryManager, saveHistoryCollectionSettings, uniqueStringList } from '../helpers/history-list-bridge.js?v=module-bootstrap-20260711-ir1';
-import { getHistoryState } from '../helpers/history-state-bridge.js?v=module-bootstrap-20260711-ir1';
-import { getTrainingState } from '../helpers/training-state-bridge.js?v=module-bootstrap-20260711-ir1';
+} from '../helpers/history-collections-bridge.js?v=module-bootstrap-20260711-ir2';
+import { renderHistoryManager, saveHistoryCollectionSettings, uniqueStringList } from '../helpers/history-list-bridge.js?v=module-bootstrap-20260711-ir2';
+import { getHistoryState } from '../helpers/history-state-bridge.js?v=module-bootstrap-20260711-ir2';
+import { getTrainingState } from '../helpers/training-state-bridge.js?v=module-bootstrap-20260711-ir2';
 
 const historyState = getHistoryState();
 const trainingState = getTrainingState();
