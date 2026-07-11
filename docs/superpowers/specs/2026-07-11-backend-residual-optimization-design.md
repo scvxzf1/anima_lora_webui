@@ -340,3 +340,12 @@ timeout 180 $PY tasks.py test-backend-smoke
 | resolve 统一后老绝对路径失败 | 明确 allowlist；可配 extra_roots | 临时加 root，不重开 home 默认扫描 |
 | clamp 收紧后旧 queue.json 被夹 | normalize 时 clamp 并测 | 放宽上限仅限运维文档 |
 | WS 契约测 flaky | 用 aiohttp test client + 可控 fake service | 先锁 snapshot schema，再锁实时流 |
+
+---
+
+## Round B' 进度备注（实现后回写）
+
+- C-R5：`schema_gate.get_schema_load_status()`；load 失败写 warning，不再静默空返回。
+- C-R4：明确 top-level scalar gate；nested dict/list 不进 false error。
+- T-R5：WS `type=queue` 快照字段契约补测。
+- smoke：148 passed。

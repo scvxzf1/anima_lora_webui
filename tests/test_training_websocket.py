@@ -98,3 +98,72 @@ def test_ws_training_route_registers_path():
     training_routes.setup_training_routes(app)
     paths = {route.resource.canonical for route in app.router.routes() if route.resource}
     assert "/ws/training" in paths
+
+
+def test_ws_training_queue_broadcast_contract():
+    """T-R5: type=queue payload must carry snapshot required fields."""
+
+    async def _run() -> None:
+        svc = _FakeWsTrainingService()
+
+        async def _broadcast_queue() -> None:
+            payload = {
+                "type": "queue",
+                "ok": True,
+                "paused": False,
+                "failure_policy": "continue",
+                "auto_retry": False,
+                "max_attempts": 1,
+                "retry_backoff_sec": 0.0,
+                "status": "idle",
+                "current_item_id": "",
+                "summary": {
+                    "total": 0,
+                    "queued": 0,
+                    "running": 0,
+                    "done": 0,
+                    "error": 0,
+                    "canceled": 0,
+                },
+                "items": [],
+            }
+            dead: set[web.WebSocketResponse] = set()
+            import json as _json
+            data = _json.dumps(payload, ensure_ascii=False)
+            for ws in list(svc._ws_clients):
+                try:
+                    await ws.send_str(data)
+                except (ConnectionResetError, RuntimeError):
+                    dead.add(ws)
+            svc._ws_clients -= dead
+
+        svc.broadcast_queue = _broadcast_queue  # type: ignore[attr-defined]
+        client = await _build_client(svc)
+        try:
+            ws = await client.ws_connect("/ws/training")
+            for _ in range(50):
+                if svc.subscribed:
+                    break
+                await asyncio.sleep(0.01)
+            assert svc.subscribed
+
+            await svc.broadcast_queue()
+            msg = await asyncio.wait_for(ws.receive(), timeout=2.0)
+            assert msg.type == WSMsgType.TEXT
+            payload = json.loads(msg.data)
+            assert payload["type"] == "queue"
+            assert payload["ok"] is True
+            assert "paused" in payload
+            assert "failure_policy" in payload
+            assert "auto_retry" in payload
+            assert "max_attempts" in payload
+            assert "retry_backoff_sec" in payload
+            assert "summary" in payload and isinstance(payload["summary"], dict)
+            assert "items" in payload and isinstance(payload["items"], list)
+            for key in ("total", "queued", "running", "done", "error", "canceled"):
+                assert key in payload["summary"]
+            await ws.close()
+        finally:
+            await client.close()
+
+    asyncio.run(_run())

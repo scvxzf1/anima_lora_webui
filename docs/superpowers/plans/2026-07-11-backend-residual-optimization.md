@@ -749,3 +749,16 @@ Which approach?
 | C-R2/C-R11 configs_root broadcast | ✅ | 广播覆盖 file_groups/datasets/output_runs 等 |
 | C-R6 mutation envelope | 部分 | raw mutation 已带 ok/error/warnings；list 仍裸数组（兼容） |
 | smoke | ✅ | 144 passed |
+
+
+---
+
+## Round B' 执行台账（C-R4/C-R5 + T-R5 queue）
+
+| 项 | 状态 | 说明 |
+|---|---|---|
+| C-R5 schema 加载失败可观测 | ✅ | `get_schema_load_status` + load 失败 warning，禁止静默 no-op |
+| C-R4 nested/dict 边界 | ✅ | top-level scalar only；nested table/list 跳过；文档化 + 测 |
+| T-R5 WS `type=queue` 契约 | ✅ | `test_ws_training_queue_broadcast_contract` |
+| smoke | ✅ | 148 passed（含 `test_schema_gate_observability.py`） |
+
