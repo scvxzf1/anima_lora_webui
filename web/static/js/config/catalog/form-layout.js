@@ -177,6 +177,7 @@ export const FORM_SECTION_DEFS = [
         title: '缓存与预处理',
         description: '控制 latent、文本编码器和方法特征缓存；换图片、caption、分桶参数后通常需要重建。',
         open: false,
+        className: 'config-group-cache-preprocess',
         keys: [
             'use_vae_cache',
             'use_text_cache',
@@ -478,6 +479,17 @@ export const CONFIG_COMPACT_FIELD_GROUPS = {
         {
             className: 'config-field-grid-4col',
             keys: ['min_snr_gamma', 'p2_gamma', 'p2_k', 'velocity_direction_loss_weight'],
+        },
+    ],
+    'config-group-cache-preprocess': [
+        {
+            className: 'config-field-grid-2col config-field-grid-inline-flags',
+            keys: [
+                'use_vae_cache',
+                'use_text_cache',
+                'cache_llm_adapter_outputs',
+                'skip_cache_check',
+            ],
         },
     ],
     'config-group-no-dataset-regularization': [
