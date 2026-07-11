@@ -3057,6 +3057,8 @@ def test_live_compat_warnings_mirror_key_conflict_codes() -> None:
     assert "collectLiveCompatIssues" in field_change
     assert "updateLiveCompatWarningsFromForm" in field_change
     assert "setTomlStatus" in field_change
+    assert "live 兼容" in field_change
+    assert "wasLiveCompat" in field_change or "includes('live 兼容')" in field_change or 'includes("live 兼容")' in field_change
 
     if not shutil.which("node"):
         return

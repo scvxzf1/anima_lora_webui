@@ -304,7 +304,14 @@ export function configureNoDatasetRegularizationModePanelUpdater(updater) {
     function updateLiveCompatWarningsFromForm() {
         const liveConfig = liveConfigFromForm();
         const issues = collectLiveCompatIssues(liveConfig);
-        if (!issues.length) return;
+        const statusEl = document.getElementById('toml-status');
+        const previous = String(statusEl?.textContent || '');
+        const wasLiveCompat = previous.includes('live 兼容');
+        if (!issues.length) {
+            // Clear only our live-compat sticky message; leave other status text alone.
+            if (wasLiveCompat) setTomlStatus('', '');
+            return;
+        }
         const message = formatLiveCompatStatus(issues);
         const severity = issues.some((item) => item.severity === 'error') ? 'error' : 'pending';
         setTomlStatus(severity, message);
