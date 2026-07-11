@@ -605,8 +605,9 @@
 #tab-datasets .dataset-repeat-field span,
 #tab-datasets .dataset-row-setting-label .field-name {
     color: var(--dataset-text);
-    font-size: 0.72rem;
+    font-size: var(--font-size-field-label);
     font-weight: 800;
+    line-height: 1.25;
     text-transform: uppercase;
 }
 

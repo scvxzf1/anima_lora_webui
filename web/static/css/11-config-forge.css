@@ -971,8 +971,10 @@
 #tab-config .field-name {
     color: var(--config-muted);
     cursor: pointer;
-    font-size: 0.72rem;
+    font-size: var(--font-size-field-label);
     font-weight: 800;
+    line-height: 1.25;
+    min-height: var(--control-height);
     transition: color 0.14s ease;
 }
 
@@ -985,9 +987,9 @@
 }
 
 #tab-config .field-input {
-    min-height: 34px;
+    min-height: var(--control-height);
     padding: 0.3rem 0.52rem;
-    font-size: 0.82rem;
+    font-size: var(--font-size-field);
 }
 
 #tab-config input[type="checkbox"].field-input {
@@ -1029,15 +1031,16 @@
 }
 
 #tab-config .config-field-grid .field-name {
-    font-size: 0.68rem;
-    line-height: 1.15;
-    min-height: 18px;
+    font-size: var(--font-size-field-label);
+    line-height: 1.25;
+    min-height: var(--control-height);
+    overflow-wrap: anywhere;
 }
 
 #tab-config .config-field-grid .field-input {
-    min-height: 32px;
+    min-height: var(--control-height);
     padding: 0.28rem 0.44rem;
-    font-size: 0.78rem;
+    font-size: var(--font-size-field);
 }
 
 #tab-config .sample-prompts-editor.field-input {
