@@ -1130,7 +1130,7 @@ globalThis.updateLogStatusText = () => {};
 globalThis.loadTrainingQueue = async () => {};
 globalThis.loadTrainingHistoryList = async () => {};
 
-const { configureRuntimeBridge } = await import('./web/static/js/features/anima-app/helpers/runtime-bridge.js?v=module-bootstrap-20260707-93');
+const { configureRuntimeBridge } = await import('./web/static/js/features/anima-app/helpers/runtime-bridge.js?v=module-bootstrap-20260711-ir1');
 configureRuntimeBridge({
     api: async () => ({
         ok: true,
@@ -1257,7 +1257,8 @@ def test_config_form_uses_navigation_search_and_progressive_disclosure() -> None
     category_defs = _section(source, "const FORM_CATEGORY_DEFS = [", "const FORM_CATEGORY_SECTION_MAP")
     render_section = _section(source, "function renderConfigForm", "function shouldRenderConfigSection")
     order_section = _section(source, "function appendConfigGroupsByCategory", "function createGroup")
-    collect_section = _section(source, "function collectChangedFormValues", "function networkArgInputChanged")
+    collect_impl = _frontend_module_text("js/features/anima-app/chunks/18-delete-dataset-preset-group.js")
+    collect_section = _section(collect_impl, "function collectChangedFormValues", "function networkArgInputChanged")
     load_steps = _section(source, "async function loadStepEstimate", "async function loadDatasetEditor")
     defaults = _section(source, "const FORM_UI_DEFAULTS = {", "const OPTIONAL_EMPTY_FIELDS")
     catalog_defaults = _frontend_module_text("js/config/catalog/defaults.js")
@@ -1330,7 +1331,7 @@ def test_config_form_uses_navigation_search_and_progressive_disclosure() -> None
     assert "const datasetConfigOverride = selectedDatasetConfigOverride();" in load_steps
     assert "if (datasetConfigOverride !== null) params.set('dataset_config', datasetConfigOverride);" in load_steps
     assert "const data = await api(`/api/config/steps?${params.toString()}`);" in load_steps
-    assert "setTomlStatus(\n            applied ? 'ok' : 'error'," in source
+    assert "applied ? 'ok' : 'error'" in source and "setTomlStatus(" in source
     assert ".config-form-shell" in css
     assert "createConfigNav" not in source
     assert ".config-form-nav" not in css

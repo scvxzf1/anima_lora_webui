@@ -1,65 +1,44 @@
-const legacyRoot = globalThis;
+const configFormHandlers = Object.create(null);
 
-const configFormBridge = {
-    saveDatasetEditor: (...args) => legacyRoot.saveDatasetEditor?.(...args),
-    collectChangedFormValues: (...args) => legacyRoot.collectChangedFormValues?.(...args),
-    networkArgInputChanged: (...args) => legacyRoot.networkArgInputChanged?.(...args),
-    networkArgFieldValueFromConfig: (...args) => legacyRoot.networkArgFieldValueFromConfig?.(...args),
-    collectNetworkArgsFromForm: (...args) => legacyRoot.collectNetworkArgsFromForm?.(...args),
-    prepareFormPatchValues: (...args) => legacyRoot.prepareFormPatchValues?.(...args),
-    shouldSkipUiDefaultField: (...args) => legacyRoot.shouldSkipUiDefaultField?.(...args),
-    syncConfigDraftFromForm: (...args) => legacyRoot.syncConfigDraftFromForm?.(...args),
-    updateConfigDraftFromInput: (...args) => legacyRoot.updateConfigDraftFromInput?.(...args),
-    originalConfigFieldValue: (...args) => legacyRoot.originalConfigFieldValue?.(...args),
-    displayConfigFieldValue: (...args) => legacyRoot.displayConfigFieldValue?.(...args),
-    configDraftValueChanged: (...args) => legacyRoot.configDraftValueChanged?.(...args),
-    isActiveNetworkArgFieldKey: (...args) => legacyRoot.isActiveNetworkArgFieldKey?.(...args),
-    readFieldInputValue: (...args) => legacyRoot.readFieldInputValue?.(...args),
-    readLoKrEnabled: (...args) => legacyRoot.readLoKrEnabled?.(...args),
-    updateLoKrFieldState: (...args) => legacyRoot.updateLoKrFieldState?.(...args),
-    readVeRAEnabled: (...args) => legacyRoot.readVeRAEnabled?.(...args),
-    readDoRAAvailable: (...args) => legacyRoot.readDoRAAvailable?.(...args),
-    setDoRADraftValue: (...args) => legacyRoot.setDoRADraftValue?.(...args),
-    updateDoRAFieldState: (...args) => legacyRoot.updateDoRAFieldState?.(...args),
-    updateVeRAFieldState: (...args) => legacyRoot.updateVeRAFieldState?.(...args),
-    currentLossWeightingScheme: (...args) => legacyRoot.currentLossWeightingScheme?.(...args),
-    lossWeightingFieldState: (...args) => legacyRoot.lossWeightingFieldState?.(...args),
-    lossWeightingDisabledHint: (...args) => legacyRoot.lossWeightingDisabledHint?.(...args),
-    applyLossWeightingFieldInputState: (...args) => legacyRoot.applyLossWeightingFieldInputState?.(...args),
-    updateLossWeightingFieldState: (...args) => legacyRoot.updateLossWeightingFieldState?.(...args),
-};
+function requireConfigFormHandler(name) {
+    const handler = configFormHandlers[name];
+    if (typeof handler !== 'function') {
+        throw new Error(`[config-form] bridge not configured: ${name}`);
+    }
+    return handler;
+}
 
 export function configureConfigFormBridge(handlers = {}) {
     for (const [key, handler] of Object.entries(handlers)) {
-        if (typeof handler === 'function' && key in configFormBridge) {
-            configFormBridge[key] = handler;
+        if (typeof handler === 'function') {
+            configFormHandlers[key] = handler;
         }
     }
 }
 
-export const saveDatasetEditor = (...args) => configFormBridge.saveDatasetEditor(...args);
-export const collectChangedFormValues = (...args) => configFormBridge.collectChangedFormValues(...args);
-export const networkArgInputChanged = (...args) => configFormBridge.networkArgInputChanged(...args);
-export const networkArgFieldValueFromConfig = (...args) => configFormBridge.networkArgFieldValueFromConfig(...args);
-export const collectNetworkArgsFromForm = (...args) => configFormBridge.collectNetworkArgsFromForm(...args);
-export const prepareFormPatchValues = (...args) => configFormBridge.prepareFormPatchValues(...args);
-export const shouldSkipUiDefaultField = (...args) => configFormBridge.shouldSkipUiDefaultField(...args);
-export const syncConfigDraftFromForm = (...args) => configFormBridge.syncConfigDraftFromForm(...args);
-export const updateConfigDraftFromInput = (...args) => configFormBridge.updateConfigDraftFromInput(...args);
-export const originalConfigFieldValue = (...args) => configFormBridge.originalConfigFieldValue(...args);
-export const displayConfigFieldValue = (...args) => configFormBridge.displayConfigFieldValue(...args);
-export const configDraftValueChanged = (...args) => configFormBridge.configDraftValueChanged(...args);
-export const isActiveNetworkArgFieldKey = (...args) => configFormBridge.isActiveNetworkArgFieldKey(...args);
-export const readFieldInputValue = (...args) => configFormBridge.readFieldInputValue(...args);
-export const readLoKrEnabled = (...args) => configFormBridge.readLoKrEnabled(...args);
-export const updateLoKrFieldState = (...args) => configFormBridge.updateLoKrFieldState(...args);
-export const readVeRAEnabled = (...args) => configFormBridge.readVeRAEnabled(...args);
-export const readDoRAAvailable = (...args) => configFormBridge.readDoRAAvailable(...args);
-export const setDoRADraftValue = (...args) => configFormBridge.setDoRADraftValue(...args);
-export const updateDoRAFieldState = (...args) => configFormBridge.updateDoRAFieldState(...args);
-export const updateVeRAFieldState = (...args) => configFormBridge.updateVeRAFieldState(...args);
-export const currentLossWeightingScheme = (...args) => configFormBridge.currentLossWeightingScheme(...args);
-export const lossWeightingFieldState = (...args) => configFormBridge.lossWeightingFieldState(...args);
-export const lossWeightingDisabledHint = (...args) => configFormBridge.lossWeightingDisabledHint(...args);
-export const applyLossWeightingFieldInputState = (...args) => configFormBridge.applyLossWeightingFieldInputState(...args);
-export const updateLossWeightingFieldState = (...args) => configFormBridge.updateLossWeightingFieldState(...args);
+export function saveDatasetEditor(...args) { return requireConfigFormHandler('saveDatasetEditor')(...args); }
+export function collectChangedFormValues(...args) { return requireConfigFormHandler('collectChangedFormValues')(...args); }
+export function networkArgInputChanged(...args) { return requireConfigFormHandler('networkArgInputChanged')(...args); }
+export function networkArgFieldValueFromConfig(...args) { return requireConfigFormHandler('networkArgFieldValueFromConfig')(...args); }
+export function collectNetworkArgsFromForm(...args) { return requireConfigFormHandler('collectNetworkArgsFromForm')(...args); }
+export function prepareFormPatchValues(...args) { return requireConfigFormHandler('prepareFormPatchValues')(...args); }
+export function shouldSkipUiDefaultField(...args) { return requireConfigFormHandler('shouldSkipUiDefaultField')(...args); }
+export function syncConfigDraftFromForm(...args) { return requireConfigFormHandler('syncConfigDraftFromForm')(...args); }
+export function updateConfigDraftFromInput(...args) { return requireConfigFormHandler('updateConfigDraftFromInput')(...args); }
+export function originalConfigFieldValue(...args) { return requireConfigFormHandler('originalConfigFieldValue')(...args); }
+export function displayConfigFieldValue(...args) { return requireConfigFormHandler('displayConfigFieldValue')(...args); }
+export function configDraftValueChanged(...args) { return requireConfigFormHandler('configDraftValueChanged')(...args); }
+export function isActiveNetworkArgFieldKey(...args) { return requireConfigFormHandler('isActiveNetworkArgFieldKey')(...args); }
+export function readFieldInputValue(...args) { return requireConfigFormHandler('readFieldInputValue')(...args); }
+export function readLoKrEnabled(...args) { return requireConfigFormHandler('readLoKrEnabled')(...args); }
+export function updateLoKrFieldState(...args) { return requireConfigFormHandler('updateLoKrFieldState')(...args); }
+export function readVeRAEnabled(...args) { return requireConfigFormHandler('readVeRAEnabled')(...args); }
+export function readDoRAAvailable(...args) { return requireConfigFormHandler('readDoRAAvailable')(...args); }
+export function setDoRADraftValue(...args) { return requireConfigFormHandler('setDoRADraftValue')(...args); }
+export function updateDoRAFieldState(...args) { return requireConfigFormHandler('updateDoRAFieldState')(...args); }
+export function updateVeRAFieldState(...args) { return requireConfigFormHandler('updateVeRAFieldState')(...args); }
+export function currentLossWeightingScheme(...args) { return requireConfigFormHandler('currentLossWeightingScheme')(...args); }
+export function lossWeightingFieldState(...args) { return requireConfigFormHandler('lossWeightingFieldState')(...args); }
+export function lossWeightingDisabledHint(...args) { return requireConfigFormHandler('lossWeightingDisabledHint')(...args); }
+export function applyLossWeightingFieldInputState(...args) { return requireConfigFormHandler('applyLossWeightingFieldInputState')(...args); }
+export function updateLossWeightingFieldState(...args) { return requireConfigFormHandler('updateLossWeightingFieldState')(...args); }

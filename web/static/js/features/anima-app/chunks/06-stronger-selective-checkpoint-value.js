@@ -1,6 +1,7 @@
 /**
  * Mechanical split from the former monolithic app closure.
  * Keep this module focused; move newly edited behavior into domain modules.
+ */
 import {
     CONFIG_COMPACT_FIELD_GROUPS,
     GLOBAL_MODEL_PATH_FIELDS,
@@ -35,7 +36,6 @@ const datasetState = getDatasetState();
 const historyState = getHistoryState();
 const tomlState = getTomlState();
 const trainingState = getTrainingState();
-
 function currentConfigState() {
     return configState.currentConfig || {};
 }
@@ -48,105 +48,105 @@ function currentContinueTrainingSource() {
     return trainingState.continueTrainingSource;
 }
 
-    export function strongerSelectiveCheckpointValue(current, fallback) {
-        const currentKey = String(current ?? '').trim() || 'off';
-        const fallbackKey = String(fallback ?? '').trim() || 'off';
-        const currentStrength = SELECTIVE_CHECKPOINT_STRENGTH.get(currentKey);
-        const fallbackStrength = SELECTIVE_CHECKPOINT_STRENGTH.get(fallbackKey);
-        if (currentStrength === undefined) return fallbackKey;
-        if (fallbackStrength === undefined) return currentKey;
-        return currentStrength >= fallbackStrength ? currentKey : fallbackKey;
+export function strongerSelectiveCheckpointValue(current, fallback) {
+    const currentKey = String(current ?? '').trim() || 'off';
+    const fallbackKey = String(fallback ?? '').trim() || 'off';
+    const currentStrength = SELECTIVE_CHECKPOINT_STRENGTH.get(currentKey);
+    const fallbackStrength = SELECTIVE_CHECKPOINT_STRENGTH.get(fallbackKey);
+    if (currentStrength === undefined) return fallbackKey;
+    if (fallbackStrength === undefined) return currentKey;
+    return currentStrength >= fallbackStrength ? currentKey : fallbackKey;
+}
+
+export function resourceQuickCurrentValue(key) {
+    const configFormState = configState.configFormState;
+    const input = document.querySelector(`#config-form .field-input[data-key="${CSS.escape(key)}"]`);
+    if (input) {
+        return readFieldInputValue(input, originalConfigFieldValue(key));
+    }
+    if (configFormState.draftValues.has(key)) {
+        return configFormState.draftValues.get(key);
+    }
+    return originalConfigFieldValue(key);
+}
+
+export async function fillGlobalModelPathsIntoConfigForm() {
+    if (!appShellState.globalSettings && location.protocol !== 'file:') {
+        await loadGlobalSettings();
+    }
+    const overrides = getGlobalModelPathOverrides();
+    const entries = GLOBAL_MODEL_PATH_FIELDS
+        .map(([key]) => [key, overrides[key]])
+        .filter(([, value]) => String(value || '').trim());
+    if (!entries.length) {
+        setTomlStatus('error', '全局设置里还没有可填写的基础模型路径');
+        return;
     }
 
-    export function resourceQuickCurrentValue(key) {
-        const configFormState = configState.configFormState;
+    const confirmed = await showAppConfirmDialog({
+        title: '是否确认覆盖',
+        description: '填写全局路径配置',
+        message: '将用全局设置里的基础模型路径覆盖当前配置表单中的同名字段。',
+        confirmText: '是',
+        cancelText: '否',
+    });
+    if (!confirmed) return;
+
+    let applied = 0;
+    for (const [key, value] of entries) {
         const input = document.querySelector(`#config-form .field-input[data-key="${CSS.escape(key)}"]`);
-        if (input) {
-            return readFieldInputValue(input, originalConfigFieldValue(key));
-        }
-        if (configFormState.draftValues.has(key)) {
-            return configFormState.draftValues.get(key);
-        }
-        return originalConfigFieldValue(key);
+        if (!input) continue;
+        input.value = value;
+        applied += 1;
     }
+    handleFormFieldChange();
+    setTomlStatus(
+        applied ? 'ok' : 'error',
+        applied ? '已填写全局路径配置，请保存当前配置后再训练' : '当前表单没有可覆盖的基础模型路径字段'
+    );
+}
 
-    export async function fillGlobalModelPathsIntoConfigForm() {
-        if (!appShellState.globalSettings && location.protocol !== 'file:') {
-            await loadGlobalSettings();
-        }
-        const overrides = getGlobalModelPathOverrides();
-        const entries = GLOBAL_MODEL_PATH_FIELDS
-            .map(([key]) => [key, overrides[key]])
-            .filter(([, value]) => String(value || '').trim());
-        if (!entries.length) {
-            setTomlStatus('error', '全局设置里还没有可填写的基础模型路径');
-            return;
-        }
+export function appendFieldRows(content, fields, groupClass) {
+    const compactGroups = CONFIG_COMPACT_FIELD_GROUPS[groupClass] || [];
+    const usedLayouts = new Set();
+    let index = 0;
 
-        const confirmed = await showAppConfirmDialog({
-            title: '是否确认覆盖',
-            description: '填写全局路径配置',
-            message: '将用全局设置里的基础模型路径覆盖当前配置表单中的同名字段。',
-            confirmText: '是',
-            cancelText: '否',
+    while (index < fields.length) {
+        const [key] = fields[index];
+        const compactLayout = compactGroups.find((layout) => {
+            if (usedLayouts.has(layout)) return false;
+            return layout.keys.includes(key);
         });
-        if (!confirmed) return;
 
-        let applied = 0;
-        for (const [key, value] of entries) {
-            const input = document.querySelector(`#config-form .field-input[data-key="${CSS.escape(key)}"]`);
-            if (!input) continue;
-            input.value = value;
-            applied += 1;
+        if (!compactLayout) {
+            content.appendChild(createFieldRow(fields[index][0], fields[index][1]));
+            index += 1;
+            continue;
         }
-        handleFormFieldChange();
-        setTomlStatus(
-            applied ? 'ok' : 'error',
-            applied ? '已填写全局路径配置，请保存当前配置后再训练' : '当前表单没有可覆盖的基础模型路径字段'
-        );
-    }
 
-    export function appendFieldRows(content, fields, groupClass) {
-        const compactGroups = CONFIG_COMPACT_FIELD_GROUPS[groupClass] || [];
-        const usedLayouts = new Set();
-        let index = 0;
+        usedLayouts.add(compactLayout);
+        const compactKeys = new Set(compactLayout.keys);
+        const grid = document.createElement('div');
+        grid.className = ['config-field-grid', compactLayout.className].filter(Boolean).join(' ');
 
-        while (index < fields.length) {
-            const [key] = fields[index];
-            const compactLayout = compactGroups.find((layout) => {
-                if (usedLayouts.has(layout)) return false;
-                return layout.keys.includes(key);
-            });
+        while (index < fields.length && compactKeys.has(fields[index][0])) {
+            const [compactKey, compactValue] = fields[index];
+            const row = createFieldRow(compactKey, compactValue);
+            row.classList.add('field-row-compact');
+            grid.appendChild(row);
+            index += 1;
+        }
 
-            if (!compactLayout) {
-                content.appendChild(createFieldRow(fields[index][0], fields[index][1]));
-                index += 1;
-                continue;
-            }
-
-            usedLayouts.add(compactLayout);
-            const compactKeys = new Set(compactLayout.keys);
-            const grid = document.createElement('div');
-            grid.className = ['config-field-grid', compactLayout.className].filter(Boolean).join(' ');
-
-            while (index < fields.length && compactKeys.has(fields[index][0])) {
-                const [compactKey, compactValue] = fields[index];
-                const row = createFieldRow(compactKey, compactValue);
-                row.classList.add('field-row-compact');
-                grid.appendChild(row);
-                index += 1;
-            }
-
-            if (grid.childElementCount <= 1) {
-                const onlyRow = grid.firstElementChild;
-                if (onlyRow) content.appendChild(onlyRow);
-            } else {
-                normalizeCompactGridColumns(grid);
-                appendCompactGridFillers(grid);
-                content.appendChild(grid);
-            }
+        if (grid.childElementCount <= 1) {
+            const onlyRow = grid.firstElementChild;
+            if (onlyRow) content.appendChild(onlyRow);
+        } else {
+            normalizeCompactGridColumns(grid);
+            appendCompactGridFillers(grid);
+            content.appendChild(grid);
         }
     }
+}
 
     function appendCompactGridFillers(grid) {
         grid.querySelectorAll('.field-row-filler').forEach((node) => node.remove());
@@ -217,54 +217,54 @@ function currentContinueTrainingSource() {
         }
     }
 
-    export function createConfigDatasetPicker() {
-        const panel = document.createElement('div');
-        panel.id = 'config-dataset-picker';
-        panel.className = 'config-dataset-picker';
-        renderConfigDatasetPicker(panel);
-        return panel;
+export function createConfigDatasetPicker() {
+    const panel = document.createElement('div');
+    panel.id = 'config-dataset-picker';
+    panel.className = 'config-dataset-picker';
+    renderConfigDatasetPicker(panel);
+    return panel;
+}
+
+export function renderConfigDatasetPicker(existingPanel = null) {
+    const panel = existingPanel || document.getElementById('config-dataset-picker');
+    if (!panel) return;
+    panel.innerHTML = '';
+
+    const header = document.createElement('div');
+    header.className = 'config-dataset-picker-header';
+    const title = document.createElement('div');
+    title.innerHTML = '<strong>数据集预设</strong><span>当前配置只保留选择摘要；搜索、选择和预览在弹窗中完成。</span>';
+    const actions = document.createElement('div');
+    actions.className = 'config-dataset-picker-actions';
+    const openBtn = document.createElement('button');
+    openBtn.type = 'button';
+    openBtn.className = 'btn btn-small';
+    openBtn.textContent = datasetState.selectedConfigDatasetFile ? '更换预设' : '选择预设';
+    openBtn.title = '打开数据集预设弹窗，可以搜索并查看第一张原始图预览。';
+    openBtn.addEventListener('click', openConfigDatasetPickerDialog);
+    const manageBtn = document.createElement('button');
+    manageBtn.type = 'button';
+    manageBtn.className = 'btn btn-small';
+    manageBtn.textContent = '管理数据集';
+    manageBtn.addEventListener('click', () => document.querySelector('[data-tab="datasets"]')?.click());
+    const refreshBtn = document.createElement('button');
+    refreshBtn.type = 'button';
+    refreshBtn.className = 'btn btn-small';
+    refreshBtn.textContent = '刷新预设';
+    refreshBtn.addEventListener('click', () => loadDatasetPresets({ selectCurrent: false, manage: false }));
+    actions.append(openBtn, manageBtn, refreshBtn);
+    header.append(title, actions);
+    panel.appendChild(header);
+
+    const body = document.createElement('div');
+    body.className = 'config-dataset-picker-body';
+    body.appendChild(createConfigDatasetCurrentSummary());
+    panel.appendChild(body);
+    if (isConfigDatasetPickerDialogOpen()) {
+        renderConfigDatasetPickerDialog();
     }
-
-    export function renderConfigDatasetPicker(existingPanel = null) {
-        const panel = existingPanel || document.getElementById('config-dataset-picker');
-        if (!panel) return;
-        panel.innerHTML = '';
-
-        const header = document.createElement('div');
-        header.className = 'config-dataset-picker-header';
-        const title = document.createElement('div');
-        title.innerHTML = '<strong>数据集预设</strong><span>当前配置只保留选择摘要；搜索、选择和预览在弹窗中完成。</span>';
-        const actions = document.createElement('div');
-        actions.className = 'config-dataset-picker-actions';
-        const openBtn = document.createElement('button');
-        openBtn.type = 'button';
-        openBtn.className = 'btn btn-small';
-        openBtn.textContent = datasetState.selectedConfigDatasetFile ? '更换预设' : '选择预设';
-        openBtn.title = '打开数据集预设弹窗，可以搜索并查看第一张原始图预览。';
-        openBtn.addEventListener('click', openConfigDatasetPickerDialog);
-        const manageBtn = document.createElement('button');
-        manageBtn.type = 'button';
-        manageBtn.className = 'btn btn-small';
-        manageBtn.textContent = '管理数据集';
-        manageBtn.addEventListener('click', () => document.querySelector('[data-tab="datasets"]')?.click());
-        const refreshBtn = document.createElement('button');
-        refreshBtn.type = 'button';
-        refreshBtn.className = 'btn btn-small';
-        refreshBtn.textContent = '刷新预设';
-        refreshBtn.addEventListener('click', () => loadDatasetPresets({ selectCurrent: false, manage: false }));
-        actions.append(openBtn, manageBtn, refreshBtn);
-        header.append(title, actions);
-        panel.appendChild(header);
-
-        const body = document.createElement('div');
-        body.className = 'config-dataset-picker-body';
-        body.appendChild(createConfigDatasetCurrentSummary());
-        panel.appendChild(body);
-        if (isConfigDatasetPickerDialogOpen()) {
-            renderConfigDatasetPickerDialog();
-        }
-        ensureConfigDatasetPreview();
-    }
+    ensureConfigDatasetPreview();
+}
 
     function createConfigDatasetCurrentSummary() {
         const currentConfig = currentConfigState();
@@ -311,9 +311,9 @@ function currentContinueTrainingSource() {
         return wrap;
     }
 
-    export function isConfigDatasetPickerDialogOpen() {
-        return Boolean(document.getElementById('config-dataset-picker-dialog')?.open);
-    }
+export function isConfigDatasetPickerDialogOpen() {
+    return Boolean(document.getElementById('config-dataset-picker-dialog')?.open);
+}
 
     function openConfigDatasetPickerDialog() {
         const dialog = document.getElementById('config-dataset-picker-dialog');
@@ -332,10 +332,10 @@ function currentContinueTrainingSource() {
         }
     }
 
-    export function closeConfigDatasetPickerDialog() {
-        const dialog = document.getElementById('config-dataset-picker-dialog');
-        if (dialog?.open) dialog.close();
-    }
+export function closeConfigDatasetPickerDialog() {
+    const dialog = document.getElementById('config-dataset-picker-dialog');
+    if (dialog?.open) dialog.close();
+}
 
     function openUnnamedDatasetDialog() {
         const dialog = document.getElementById('unnamed-dataset-dialog');
@@ -385,31 +385,31 @@ function currentContinueTrainingSource() {
         updateTomlActionState(tomlState.currentTomlFile);
     }
 
-    export function clearContinueTrainingSource() {
-        trainingState.continueTrainingSource = null;
-        renderContinueTrainingSource();
-        setTomlStatus('ok', '已恢复为从零训练');
-    }
+export function clearContinueTrainingSource() {
+    trainingState.continueTrainingSource = null;
+    renderContinueTrainingSource();
+    setTomlStatus('ok', '已恢复为从零训练');
+}
 
-    export async function openContinueLoraDialog() {
-        const dialog = document.getElementById('continue-lora-dialog');
-        if (!dialog) return;
-        if (!historyState.historyTasks.length) {
-            await loadTrainingHistoryList();
-        }
-        renderContinueLoraHistoryTasks();
-        const input = document.getElementById('continue-lora-path-input');
-        if (input && currentContinueTrainingSource()?.abs_path) {
-            input.value = currentContinueTrainingSource().abs_path;
-        }
-        if (dialog.showModal && !dialog.open) {
-            dialog.showModal();
-        } else if (!dialog.open) {
-            dialog.setAttribute('open', 'open');
-        }
-        await loadContinueLoraWeights();
-        document.getElementById('continue-lora-path-input')?.focus({ preventScroll: true });
+export async function openContinueLoraDialog() {
+    const dialog = document.getElementById('continue-lora-dialog');
+    if (!dialog) return;
+    if (!historyState.historyTasks.length) {
+        await loadTrainingHistoryList();
     }
+    renderContinueLoraHistoryTasks();
+    const input = document.getElementById('continue-lora-path-input');
+    if (input && currentContinueTrainingSource()?.abs_path) {
+        input.value = currentContinueTrainingSource().abs_path;
+    }
+    if (dialog.showModal && !dialog.open) {
+        dialog.showModal();
+    } else if (!dialog.open) {
+        dialog.setAttribute('open', 'open');
+    }
+    await loadContinueLoraWeights();
+    document.getElementById('continue-lora-path-input')?.focus({ preventScroll: true });
+}
 
     function renderContinueLoraHistoryTasks() {
         const select = document.getElementById('continue-lora-history-task');
@@ -435,36 +435,36 @@ function currentContinueTrainingSource() {
         }
     }
 
-    export async function loadContinueLoraWeights() {
-        const list = document.getElementById('continue-lora-weight-list');
-        if (!list) return;
-        trainingState.continueLoraDialogState.loading = true;
-        trainingState.continueLoraDialogState.error = '';
-        renderContinueLoraWeights();
-        try {
-            const params = new URLSearchParams();
-            if (trainingState.continueLoraDialogState.taskId) {
-                params.set('task_id', trainingState.continueLoraDialogState.taskId);
-            }
-            const suffix = params.toString() ? `?${params.toString()}` : '';
-            const payload = await api(`/api/preview/weights${suffix}`);
-            trainingState.continueLoraDialogState = {
-                ...trainingState.continueLoraDialogState,
-                loading: false,
-                weights: payload.weights || [],
-                error: payload.ok === false ? (payload.error || '读取权重失败') : '',
-                message: payload.message || '',
-            };
-        } catch (e) {
-            trainingState.continueLoraDialogState = {
-                ...trainingState.continueLoraDialogState,
-                loading: false,
-                weights: [],
-                error: e.message || '读取权重失败',
-            };
+export async function loadContinueLoraWeights() {
+    const list = document.getElementById('continue-lora-weight-list');
+    if (!list) return;
+    trainingState.continueLoraDialogState.loading = true;
+    trainingState.continueLoraDialogState.error = '';
+    renderContinueLoraWeights();
+    try {
+        const params = new URLSearchParams();
+        if (trainingState.continueLoraDialogState.taskId) {
+            params.set('task_id', trainingState.continueLoraDialogState.taskId);
         }
-        renderContinueLoraWeights();
+        const suffix = params.toString() ? `?${params.toString()}` : '';
+        const payload = await api(`/api/preview/weights${suffix}`);
+        trainingState.continueLoraDialogState = {
+            ...trainingState.continueLoraDialogState,
+            loading: false,
+            weights: payload.weights || [],
+            error: payload.ok === false ? (payload.error || '读取权重失败') : '',
+            message: payload.message || '',
+        };
+    } catch (e) {
+        trainingState.continueLoraDialogState = {
+            ...trainingState.continueLoraDialogState,
+            loading: false,
+            weights: [],
+            error: e.message || '读取权重失败',
+        };
     }
+    renderContinueLoraWeights();
+}
 
     function renderContinueLoraWeights() {
         const list = document.getElementById('continue-lora-weight-list');
@@ -508,93 +508,93 @@ function currentContinueTrainingSource() {
         status.textContent = message || '';
     }
 
-    export async function requestContinueLoraInspection(path) {
-        const currentTrainingSource = currentTrainingSourceState();
-        const variant = currentTrainingSource.method || val('variant-select');
-        const preset = val('preset-select');
-        const methodsSubdir = currentTrainingSource.methods_subdir || 'gui-methods';
-        return api('/api/training/continue-lora/inspect', {
-            method: 'POST',
-            body: JSON.stringify({
-                path,
-                variant,
-                preset,
-                methods_subdir: methodsSubdir,
-                config_file: currentTrainingConfigFile(),
-            }),
-        });
-    }
+export async function requestContinueLoraInspection(path) {
+    const currentTrainingSource = currentTrainingSourceState();
+    const variant = currentTrainingSource.method || val('variant-select');
+    const preset = val('preset-select');
+    const methodsSubdir = currentTrainingSource.methods_subdir || 'gui-methods';
+    return api('/api/training/continue-lora/inspect', {
+        method: 'POST',
+        body: JSON.stringify({
+            path,
+            variant,
+            preset,
+            methods_subdir: methodsSubdir,
+            config_file: currentTrainingConfigFile(),
+        }),
+    });
+}
 
-    export async function selectContinueLoraWeight(path, options = {}) {
-        const rawPath = String(path || '').trim();
-        if (!rawPath) {
-            setContinueLoraStatus('请填写 .safetensors 权重绝对路径。', 'error');
-            return false;
-        }
-        setContinueLoraStatus('正在检查权重结构与当前变体兼容性...', 'pending');
-        try {
-            const payload = await requestContinueLoraInspection(rawPath);
-            if (!payload.ok) {
-                setContinueLoraStatus(payload.error || '权重检测失败。', 'error');
-                if (!document.getElementById('continue-lora-dialog')?.open) {
-                    alert(payload.error || '权重检测失败。');
-                }
-                return false;
-            }
-            if (!payload.compatible) {
-                setContinueLoraStatus(payload.message || '当前配置与这个权重不兼容。', 'warning');
-                if (!document.getElementById('continue-lora-dialog')?.open) {
-                    alert(payload.message || '当前配置与这个权重不兼容。');
-                }
-                return false;
-            }
-            trainingState.continueTrainingSource = payload;
-            renderContinueTrainingSource();
-            setContinueLoraStatus(payload.message || '已选择权重热启动来源。', 'ok');
-            setTomlStatus('ok', `训练来源已设置为权重热启动 ${payload.kind} · ${payload.name}`);
-            if (options.switchToConfig !== false) {
-                document.querySelector('[data-tab="config"]')?.click();
-            }
-            const dialog = document.getElementById('continue-lora-dialog');
-            if (dialog?.open && options.keepDialogOpen !== true) dialog.close();
-            return true;
-        } catch (e) {
-            setContinueLoraStatus('权重检测请求失败: ' + e.message, 'error');
-            if (!document.getElementById('continue-lora-dialog')?.open) {
-                alert('权重检测请求失败: ' + e.message);
-            }
-            return false;
-        }
+export async function selectContinueLoraWeight(path, options = {}) {
+    const rawPath = String(path || '').trim();
+    if (!rawPath) {
+        setContinueLoraStatus('请填写 .safetensors 权重绝对路径。', 'error');
+        return false;
     }
-
-    export async function refreshContinueTrainingSourceCompatibility() {
-        const continueTrainingSource = currentContinueTrainingSource();
-        if (!continueTrainingSource?.abs_path) {
-            renderContinueTrainingSource();
-            return true;
-        }
-        let payload;
-        try {
-            payload = await requestContinueLoraInspection(continueTrainingSource.abs_path);
-        } catch (e) {
-            trainingState.continueTrainingSource = {
-                ...continueTrainingSource,
-                compatible: false,
-                message: '无法重新检查权重热启动来源: ' + e.message,
-            };
-            renderContinueTrainingSource();
-            return false;
-        }
+    setContinueLoraStatus('正在检查权重结构与当前变体兼容性...', 'pending');
+    try {
+        const payload = await requestContinueLoraInspection(rawPath);
         if (!payload.ok) {
-            trainingState.continueTrainingSource = {
-                ...continueTrainingSource,
-                compatible: false,
-                message: payload.error || '无法重新检查权重热启动来源。',
-            };
-            renderContinueTrainingSource();
+            setContinueLoraStatus(payload.error || '权重检测失败。', 'error');
+            if (!document.getElementById('continue-lora-dialog')?.open) {
+                alert(payload.error || '权重检测失败。');
+            }
+            return false;
+        }
+        if (!payload.compatible) {
+            setContinueLoraStatus(payload.message || '当前配置与这个权重不兼容。', 'warning');
+            if (!document.getElementById('continue-lora-dialog')?.open) {
+                alert(payload.message || '当前配置与这个权重不兼容。');
+            }
             return false;
         }
         trainingState.continueTrainingSource = payload;
         renderContinueTrainingSource();
-        return Boolean(payload.compatible);
+        setContinueLoraStatus(payload.message || '已选择权重热启动来源。', 'ok');
+        setTomlStatus('ok', `训练来源已设置为权重热启动 ${payload.kind} · ${payload.name}`);
+        if (options.switchToConfig !== false) {
+            document.querySelector('[data-tab="config"]')?.click();
+        }
+        const dialog = document.getElementById('continue-lora-dialog');
+        if (dialog?.open && options.keepDialogOpen !== true) dialog.close();
+        return true;
+    } catch (e) {
+        setContinueLoraStatus('权重检测请求失败: ' + e.message, 'error');
+        if (!document.getElementById('continue-lora-dialog')?.open) {
+            alert('权重检测请求失败: ' + e.message);
+        }
+        return false;
     }
+}
+
+export async function refreshContinueTrainingSourceCompatibility() {
+    const continueTrainingSource = currentContinueTrainingSource();
+    if (!continueTrainingSource?.abs_path) {
+        renderContinueTrainingSource();
+        return true;
+    }
+    let payload;
+    try {
+        payload = await requestContinueLoraInspection(continueTrainingSource.abs_path);
+    } catch (e) {
+        trainingState.continueTrainingSource = {
+            ...continueTrainingSource,
+            compatible: false,
+            message: '无法重新检查权重热启动来源: ' + e.message,
+        };
+        renderContinueTrainingSource();
+        return false;
+    }
+    if (!payload.ok) {
+        trainingState.continueTrainingSource = {
+            ...continueTrainingSource,
+            compatible: false,
+            message: payload.error || '无法重新检查权重热启动来源。',
+        };
+        renderContinueTrainingSource();
+        return false;
+    }
+    trainingState.continueTrainingSource = payload;
+    renderContinueTrainingSource();
+    return Boolean(payload.compatible);
+}
