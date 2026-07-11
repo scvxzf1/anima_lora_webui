@@ -28,9 +28,10 @@ def _chunk31_compat_text() -> str:
 
 CHUNK11_REL = "js/features/anima-app/chunks/11-create-dataset-editor-row.js"
 DATASET_EDITOR_ROW_REL = "js/features/dataset-editor/row.js"
+DATASET_EDITOR_ROW_SETTINGS_REL = "js/features/dataset-editor/row-settings.js"
 
 def _chunk11_compat_text() -> str:
-    return _frontend_feature_text(CHUNK11_REL, DATASET_EDITOR_ROW_REL)
+    return _frontend_feature_text(CHUNK11_REL, DATASET_EDITOR_ROW_REL, DATASET_EDITOR_ROW_SETTINGS_REL)
 
 CHUNK23_REL = "js/features/anima-app/chunks/23-move-current-toml-to-group.js"
 TOML_ACTIONS_REL = "js/features/toml-manager/actions.js"
@@ -127,8 +128,8 @@ def test_state_bucket_bridges_reach_hotspot_chunks() -> None:
     dataset_runtime_source = _frontend_feature_text("js/features/anima-app/chunks/03-parse-network-arg-entry.js", "js/features/config-form/step-estimate.js", "js/features/dataset-editor/load.js", "js/features/live-training/dashboard-ui.js")
     config_groups_source = _frontend_feature_text("js/features/anima-app/chunks/04-create-config-group-entry.js", "js/features/config-form/group-entry.js")
     dataset_picker_source = _frontend_feature_text("js/features/anima-app/chunks/06-stronger-selective-checkpoint-value.js", "js/features/config-form/resource-values.js", "js/features/config-form/field-rows.js", "js/features/config-form/dataset-picker.js", "js/features/training-source/continue-lora.js")
-    config_dataset_dialog_source = _frontend_feature_text("js/features/anima-app/chunks/07-render-config-dataset-picker-dialog.js", "js/features/config-form/dataset-picker-dialog.js", "js/features/dataset-editor/preset-page.js", "js/features/toml-manager/file-group-drag.js")
-    file_group_drag_source = _frontend_feature_text("js/features/anima-app/chunks/08-origin-closest.js", "js/features/toml-manager/file-group-drag.js")
+    config_dataset_dialog_source = _frontend_feature_text("js/features/anima-app/chunks/07-render-config-dataset-picker-dialog.js", "js/features/config-form/dataset-picker-dialog.js", "js/features/dataset-editor/preset-page.js", "js/features/toml-manager/file-group-drag.js", "js/features/toml-manager/file-group-drag-core.js", "js/features/toml-manager/file-group-drag-targets.js")
+    file_group_drag_source = _frontend_feature_text("js/features/anima-app/chunks/08-origin-closest.js", "js/features/toml-manager/file-group-drag.js", "js/features/toml-manager/file-group-drag-core.js", "js/features/toml-manager/file-group-drag-targets.js")
     dataset_group_source = _frontend_feature_text("js/features/anima-app/chunks/09-setup-config-group-drop-target.js", "js/features/toml-manager/config-group-drop.js")
     dataset_inline_help_source = _frontend_feature_text("js/features/anima-app/chunks/10a-dataset-inline-help.js", "js/features/dataset-editor/inline-help.js")
     dataset_row_source = _chunk11_compat_text()
@@ -2474,6 +2475,8 @@ def test_file_group_drag_has_pointer_fallback() -> None:
     source = _frontend_feature_text(
         "js/features/anima-app/chunks/08-origin-closest.js",
         "js/features/toml-manager/file-group-drag.js",
+        "js/features/toml-manager/file-group-drag-core.js",
+        "js/features/toml-manager/file-group-drag-targets.js",
         "js/features/toml-manager/config-group-drop.js",
         "js/features/anima-app/helpers/app-constants.js",
     )
@@ -2931,7 +2934,7 @@ def test_stage_schedule_primary_entry_moves_to_dataset_page() -> None:
         "js/features/config-form/group-entry.js",
     )
     toolbar = _frontend_module_text("js/features/dataset-editor/toolbar.js")
-    stage_ui = _frontend_module_text("js/features/config-form/stage-resolution.js")
+    stage_ui = _frontend_feature_text("js/features/config-form/stage-resolution.js", "js/features/config-form/stage-resolution-model.js", "js/features/config-form/stage-resolution-ui.js")
 
     assert "createOpenStageResolutionDialogButton" not in group_entry
     assert "createStageScheduleInlineSummary" in group_entry
@@ -2946,7 +2949,7 @@ def test_stage_schedule_dialog_is_wired_from_dataset_group() -> None:
     """分阶段 dialog 由数据集顶栏打开，字段仍写训练配置 stage_schedule*。"""
     html = INDEX_HTML.read_text(encoding="utf-8")
     toolbar = _frontend_module_text("js/features/dataset-editor/toolbar.js")
-    stage_ui = _frontend_module_text("js/features/config-form/stage-resolution.js")
+    stage_ui = _frontend_feature_text("js/features/config-form/stage-resolution.js", "js/features/config-form/stage-resolution-model.js", "js/features/config-form/stage-resolution-ui.js")
     assert 'id="stage-resolution-dialog"' in html
     assert "btn-dataset-open-stage-schedule" in toolbar
     assert "stage_schedule_enabled" in stage_ui
@@ -2958,7 +2961,7 @@ def test_stage_schedule_dialog_is_wired_from_dataset_group() -> None:
 
 def test_stage_schedule_subset_options_prefer_nonempty_dataset_rows() -> None:
     """课表下拉不能被空的 datasetEditorState.datasets 挡住多行预设。"""
-    stage_ui = _frontend_module_text("js/features/config-form/stage-resolution.js")
+    stage_ui = _frontend_feature_text("js/features/config-form/stage-resolution.js", "js/features/config-form/stage-resolution-model.js", "js/features/config-form/stage-resolution-ui.js")
     assert "function pickDatasetRows" in stage_ui
     assert "datasetPresetState?.datasets" in stage_ui
     assert "Array.isArray(rows) && rows.length" in stage_ui
@@ -2968,7 +2971,7 @@ def test_stage_schedule_subset_options_prefer_nonempty_dataset_rows() -> None:
 
 def test_stage_schedule_ui_is_variable_n_not_hardcoded_three() -> None:
     """前端阶段模板支持可变 N，软上限 12，默认不是写死三段。"""
-    stage_ui = _frontend_module_text("js/features/config-form/stage-resolution.js")
+    stage_ui = _frontend_feature_text("js/features/config-form/stage-resolution.js", "js/features/config-form/stage-resolution-model.js", "js/features/config-form/stage-resolution-ui.js")
     assert "applyStageTemplate(2)" in stage_ui
     assert "Math.min(12" in stage_ui or "Math.min(12," in stage_ui
     assert "defaultStageScheduleStages" in stage_ui
@@ -2981,7 +2984,7 @@ def test_dataset_experimental_dialog_edits_selected_subset_only() -> None:
     """实验性控件进入弹窗，只编辑当前选中子集；主列表不再内嵌折叠区。"""
     html = INDEX_HTML.read_text(encoding="utf-8")
     dialog = _frontend_module_text("js/features/dataset-editor/experimental-dialog.js")
-    row = _frontend_module_text("js/features/dataset-editor/row.js")
+    row = _frontend_feature_text("js/features/dataset-editor/row.js", "js/features/dataset-editor/row-settings.js")
     item = _frontend_feature_text("js/features/anima-app/chunks/10-create-dataset-config-input.js", "js/features/dataset-editor/config-input.js", "js/features/dataset-editor/item-drag.js")
 
     assert 'id="dataset-experimental-dialog"' in html
@@ -2994,7 +2997,7 @@ def test_dataset_experimental_dialog_edits_selected_subset_only() -> None:
 
 def test_dataset_main_card_keeps_only_high_frequency_settings() -> None:
     """主卡只保留高频 settings；低频桶/验证细节进实验性弹窗。"""
-    row = _frontend_module_text("js/features/dataset-editor/row.js")
+    row = _frontend_feature_text("js/features/dataset-editor/row.js", "js/features/dataset-editor/row-settings.js")
     dialog = _frontend_module_text("js/features/dataset-editor/experimental-dialog.js")
     settings_factory = _section(
         row,
