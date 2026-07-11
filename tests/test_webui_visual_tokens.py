@@ -47,3 +47,28 @@ def test_style_entry_keeps_token_first() -> None:
         if line.strip().startswith("@import url(\"./css/")
     )
     assert "00-tokens.css" in first_import
+
+
+def test_design_system_extended_tokens_are_defined() -> None:
+    required = [
+        "--font-size-title",
+        "--font-size-section",
+        "--font-size-mono",
+        "--control-height-sm",
+        "--control-height-md",
+        "--control-height-lg",
+        "--space-5",
+        "--surface-page",
+        "--surface-panel",
+        "--surface-input",
+        "--surface-sticky",
+        "--status-success",
+        "--panel-shadow-soft",
+    ]
+    root = Path(__file__).resolve().parents[1]
+    blob = (root / "web/static/css/00-tokens.css").read_text(encoding="utf-8")
+    extend = root / "web/static/css/ds/00-tokens-extend.css"
+    if extend.exists():
+        blob += "\n" + extend.read_text(encoding="utf-8")
+    missing = [name for name in required if name not in blob]
+    assert not missing, f"missing design-system tokens: {missing}"
