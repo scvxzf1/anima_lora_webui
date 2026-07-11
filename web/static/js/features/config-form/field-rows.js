@@ -5,7 +5,7 @@
 import {
     CONFIG_COMPACT_FIELD_GROUPS,
 } from '../../config/catalog.js?v=module-bootstrap-20260711-ir1';
-import { createFieldRow } from '../anima-app/chunks/14-lora-adapter-kind-from-config.js?v=module-bootstrap-20260711-ir1';
+import { createFieldRow } from './form-fields.js?v=module-bootstrap-20260711-ir1';
 
 export function appendFieldRows(content, fields, groupClass) {
     const compactGroups = CONFIG_COMPACT_FIELD_GROUPS[groupClass] || [];

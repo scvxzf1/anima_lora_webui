@@ -1375,7 +1375,7 @@ def test_history_detail_config_files_are_tool_ready() -> None:
         "js/features/anima-app/chunks/12-create-dataset-row-caption-source-mode-editor.js",
         "js/features/config-form/choice-guide-ui.js",
         "js/features/dataset-editor/mutations.js",
-        "js/features/anima-app/chunks/14-lora-adapter-kind-from-config.js",
+        "js/features/config-form/form-fields.js",
         "js/features/sample-prompts/row-ui.js",
         "js/features/anima-app/chunks/18-delete-dataset-preset-group.js",
         "js/features/anima-app/chunks/19-current-sample-prompt-text.js",

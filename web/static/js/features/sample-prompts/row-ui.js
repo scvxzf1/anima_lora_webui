@@ -15,7 +15,7 @@ import {
 import { normalizeLoraAdapterKind, normalizePrecisionPreference } from '../anima-app/helpers/config-values.js?v=module-bootstrap-20260711-ir1';
 import { configureConfigFieldUiBridge } from '../anima-app/helpers/config-field-ui-bridge.js?v=module-bootstrap-20260711-ir1';
 import { getConfigState } from '../anima-app/helpers/config-state-bridge.js?v=module-bootstrap-20260711-ir1';
-import { handleFormFieldChange, markSamplePromptsEditorTouched } from '../anima-app/chunks/14-lora-adapter-kind-from-config.js?v=module-bootstrap-20260711-ir1';
+import { handleFormFieldChange, markSamplePromptsEditorTouched } from '../config-form/form-fields.js?v=module-bootstrap-20260711-ir1';
 
 const configState = getConfigState();
 

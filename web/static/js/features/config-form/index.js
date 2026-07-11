@@ -2,7 +2,7 @@
  * Config form draft/render helpers.
  * Moved out of anima-app mechanical chunks.
  */
-import { applyLoraAdapterDraft, applyOptimizerCompatibilityPatch } from '../anima-app/chunks/14-lora-adapter-kind-from-config.js?v=module-bootstrap-20260711-ir1';
+import { applyLoraAdapterDraft, applyOptimizerCompatibilityPatch } from './form-fields.js?v=module-bootstrap-20260711-ir1';
 import {
     CHIMERA_UI_DEFAULT_FIELDS,
     CONFIG_FORM_INTERNAL_KEYS,

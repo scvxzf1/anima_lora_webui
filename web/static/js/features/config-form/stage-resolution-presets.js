@@ -4,7 +4,7 @@
  */
 import { NO_DATASET_REGULARIZATION_QUICK_PRESETS, RESOURCE_QUICK_PRESETS } from '../anima-app/helpers/app-constants.js?v=module-bootstrap-20260711-ir1';
 import { setFieldInputValue } from './field-input.js?v=module-bootstrap-20260711-ir1';
-import { handleFormFieldChange } from '../anima-app/chunks/14-lora-adapter-kind-from-config.js?v=module-bootstrap-20260711-ir1';
+import { handleFormFieldChange } from './form-fields.js?v=module-bootstrap-20260711-ir1';
 import { fillGlobalModelPathsIntoConfigForm, resourceQuickCurrentValue, strongerSelectiveCheckpointValue } from './resource-values.js?v=module-bootstrap-20260711-ir1';
 import { setTomlStatus } from '../anima-app/helpers/toml-action-state-bridge.js?v=module-bootstrap-20260711-ir1';
 import { getConfigState } from '../anima-app/helpers/config-state-bridge.js?v=module-bootstrap-20260711-ir1';

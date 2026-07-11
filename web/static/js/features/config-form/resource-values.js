@@ -9,7 +9,7 @@ import { SELECTIVE_CHECKPOINT_STRENGTH } from '../anima-app/helpers/app-constant
 import { getAppShellState } from '../anima-app/helpers/app-shell-state-bridge.js?v=module-bootstrap-20260711-ir1';
 import { originalConfigFieldValue, readFieldInputValue } from '../anima-app/helpers/config-form-bridge.js?v=module-bootstrap-20260711-ir1';
 import { getConfigState } from '../anima-app/helpers/config-state-bridge.js?v=module-bootstrap-20260711-ir1';
-import { handleFormFieldChange } from '../anima-app/chunks/14-lora-adapter-kind-from-config.js?v=module-bootstrap-20260711-ir1';
+import { handleFormFieldChange } from './form-fields.js?v=module-bootstrap-20260711-ir1';
 import { setTomlStatus } from '../anima-app/helpers/toml-action-state-bridge.js?v=module-bootstrap-20260711-ir1';
 import { loadGlobalSettings, getGlobalModelPathOverrides } from '../anima-app/helpers/global-settings-bridge.js?v=module-bootstrap-20260711-ir1';
 import { showAppConfirmDialog } from '../anima-app/helpers/toml-selection-bridge.js?v=module-bootstrap-20260711-ir1';

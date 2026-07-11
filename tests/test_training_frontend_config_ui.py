@@ -88,7 +88,7 @@ def test_config_form_bridge_reaches_split_form_chunks() -> None:
             "originalConfigFieldValue",
             "updateConfigDraftFromInput",
         ),
-        "js/features/anima-app/chunks/14-lora-adapter-kind-from-config.js": (
+        "js/features/config-form/form-fields.js": (
             "displayConfigFieldValue",
             "isActiveNetworkArgFieldKey",
             "originalConfigFieldValue",
@@ -134,7 +134,7 @@ def test_state_bucket_bridges_reach_hotspot_chunks() -> None:
     dataset_row_source = _chunk11_compat_text()
     dataset_caption_source = _frontend_module_text("js/features/anima-app/chunks/12-create-dataset-row-caption-source-mode-editor.js")
     dataset_guide_source = _frontend_feature_text("js/features/anima-app/chunks/13-update-dataset-editor-rows-setting-value.js", "js/features/config-form/choice-guide-ui.js", "js/features/dataset-editor/mutations.js", "js/features/training-source/source-state.js", "js/features/config-form/field-input.js", "js/features/config-form/method-key.js")
-    form_fields_source = _frontend_module_text("js/features/anima-app/chunks/14-lora-adapter-kind-from-config.js")
+    form_fields_source = _frontend_feature_text("js/features/anima-app/chunks/14-lora-adapter-kind-from-config.js", "js/features/config-form/form-fields.js")
     dataset_apply_source = _frontend_module_text("js/features/anima-app/chunks/17-apply-selected-dataset-preset-to-current-config.js")
     config_form_patch_source = _frontend_module_text("js/features/anima-app/chunks/18-delete-dataset-preset-group.js")
     toml_manager_source = _chunk15_compat_text()
@@ -1631,7 +1631,7 @@ def test_config_form_uses_navigation_search_and_progressive_disclosure() -> None
 
 
 def test_preprocess_memory_profile_updates_cache_batch_inputs() -> None:
-    source = _frontend_module_text("js/features/anima-app/chunks/14-lora-adapter-kind-from-config.js")
+    source = _frontend_feature_text("js/features/anima-app/chunks/14-lora-adapter-kind-from-config.js", "js/features/config-form/form-fields.js")
 
     assert "const PREPROCESS_MEMORY_PROFILE_VALUES = {" in source
     assert "auto: { preprocess_vae_cache_batch_size: 'auto', preprocess_text_cache_batch_size: 'auto' }" in source
@@ -1647,7 +1647,7 @@ def test_preprocess_memory_profile_updates_cache_batch_inputs() -> None:
 def test_precision_preference_ui_maps_to_training_precision_fields() -> None:
     form_source = _chunk02_compat_text()
     helper_source = _frontend_module_text("js/features/anima-app/helpers/config-values.js")
-    form_helper_source = _frontend_module_text("js/features/anima-app/chunks/14-lora-adapter-kind-from-config.js")
+    form_helper_source = _frontend_feature_text("js/features/anima-app/chunks/14-lora-adapter-kind-from-config.js", "js/features/config-form/form-fields.js")
     option_source = _chunk15_compat_text()
     patch_source = _frontend_module_text("js/features/anima-app/chunks/18-delete-dataset-preset-group.js")
     guide_source = _frontend_feature_text("js/features/anima-app/chunks/13-update-dataset-editor-rows-setting-value.js", "js/features/config-form/choice-guide-ui.js")
@@ -1756,14 +1756,19 @@ def test_network_args_raw_editor_keeps_unmodified_split_controls_from_overwritin
 def test_config_form_keeps_dora_as_lora_addon_and_merges_exclusive_adapters() -> None:
     source = APP_JS.read_text(encoding="utf-8")
     config_values = _frontend_module_text("js/features/anima-app/helpers/config-values.js")
+    form_fields = _frontend_feature_text(
+        "js/features/anima-app/chunks/14-lora-adapter-kind-from-config.js",
+        "js/features/config-form/form-fields.js",
+    )
+    collect_impl = _frontend_module_text("js/features/anima-app/chunks/18-delete-dataset-preset-group.js")
     defaults = _section(source, "const FORM_UI_DEFAULTS = {", "const OPTIONAL_EMPTY_FIELDS")
     network_arg_specs = _section(source, "const NETWORK_ARG_FIELD_SPECS = [", "const NETWORK_ARG_FIELD_MAP")
     layout = _section(source, "const FORM_SECTION_DEFS = [", "const STICKY_CONFIG_CATEGORY_IDS")
     merged_fields = _section(source, "const CONFIG_FORM_MERGED_FIELDS = new Set([", "const DEPRECATED_CONFIG_FORM_FIELDS")
     render_section = _section(source, "function renderConfigForm", "function shouldRenderConfigSection")
-    collect_section = _section(source, "function collectChangedFormValues", "function networkArgInputChanged")
-    live_section = _section(source, "function liveConfigFromForm", "function createFieldInput")
-    state_section = _section(source, "function readLoKrEnabled", "function currentLossWeightingScheme")
+    collect_section = _section(collect_impl, "function collectChangedFormValues", "function networkArgInputChanged")
+    live_section = _section(form_fields, "function liveConfigFromForm", "function createFieldInput")
+    state_section = _section(collect_impl, "function readLoKrEnabled", "function currentLossWeightingScheme")
 
     assert "lora_adapter_kind: 'lora'" in defaults
     assert "dora_wd: false" in defaults
@@ -2032,8 +2037,14 @@ def test_config_form_hides_retired_and_unread_fields() -> None:
 def test_config_form_auto_fixes_came_optimizer_args_frontend_hooks_are_present() -> None:
     source = APP_JS.read_text(encoding="utf-8")
     optimizer_helper = _frontend_module_text("js/features/anima-app/helpers/optimizer-values.js")
-    compatibility_section = _section(source, "function applyOptimizerCompatibilityPatch", "function createFieldRow")
-    load_config_section = _section(source, "async function loadConfig()", "function syncConfigDraftFromForm")
+    form_fields = _frontend_feature_text(
+        "js/features/anima-app/chunks/14-lora-adapter-kind-from-config.js",
+        "js/features/config-form/form-fields.js",
+    )
+    config_form = _frontend_module_text("js/features/config-form/index.js")
+    startup = _frontend_module_text("js/features/app-shell/startup.js")
+    compatibility_section = _section(form_fields, "function applyOptimizerCompatibilityPatch", "function createFieldRow")
+    load_config_section = _section(startup + "\n" + config_form, "async function loadConfig()", "function syncConfigDraftFromForm")
     prepare_section = _section(source, "async function prepareFormPatchValues", "function shouldSkipUiDefaultField")
 
     assert "export function normalizeOptimizerType(value)" in optimizer_helper
@@ -2304,7 +2315,7 @@ def test_balanced_16g_block_swap_fields_are_visible() -> None:
 
 def test_block_swap_profile_uses_strict_select_options() -> None:
     defaults_source = _frontend_module_text("js/config/catalog/defaults.js")
-    input_source = _frontend_module_text("js/features/anima-app/chunks/14-lora-adapter-kind-from-config.js")
+    input_source = _frontend_feature_text("js/features/anima-app/chunks/14-lora-adapter-kind-from-config.js", "js/features/config-form/form-fields.js")
     display_helper = _frontend_module_text("js/features/anima-app/helpers/config-field-display.js")
     option_source = _chunk15_compat_text()
     labels_options = _frontend_module_text("js/config/catalog/labels-options.js")
@@ -2979,7 +2990,7 @@ def test_dataset_main_card_keeps_only_high_frequency_settings() -> None:
 def test_field_presentation_provenance_and_presave_dirty_summary() -> None:
     """FieldPresentation helper + badge/pre-save dirty summary hooks must exist."""
     presentation = _frontend_module_text("js/features/config-form/field-presentation.js")
-    field_row = _frontend_module_text("js/features/anima-app/chunks/14-lora-adapter-kind-from-config.js")
+    field_row = _frontend_feature_text("js/features/anima-app/chunks/14-lora-adapter-kind-from-config.js", "js/features/config-form/form-fields.js")
     save_source = _frontend_module_text("js/features/anima-app/chunks/16-load-output-run-config.js")
     css = (STATIC_DIR / "css" / "13-shared-fields.css").read_text(encoding="utf-8")
 
@@ -3053,7 +3064,7 @@ def test_form_ui_defaults_and_help_align_with_base_facts() -> None:
 def test_live_compat_warnings_mirror_key_conflict_codes() -> None:
     """Live compat helper surfaces key conflict codes without replacing preflight."""
     source = _frontend_module_text("js/features/config-form/live-compat.js")
-    field_change = _frontend_module_text("js/features/anima-app/chunks/14-lora-adapter-kind-from-config.js")
+    field_change = _frontend_feature_text("js/features/anima-app/chunks/14-lora-adapter-kind-from-config.js", "js/features/config-form/form-fields.js")
 
     assert "export function collectLiveCompatIssues" in source
     assert "export function formatLiveCompatStatus" in source
