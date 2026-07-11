@@ -65,6 +65,40 @@ def test_gated_residual_add_overflow_guard():
     assert torch.isfinite(guarded).all()
 
 
+def test_final_layer_fp32_residual_projection_stays_finite():
+    """FinalLayer fp32_residual path stays finite when naive fp16 projection overflows."""
+    layer = FinalLayer(
+        hidden_size=4,
+        spatial_patch_size=1,
+        temporal_patch_size=1,
+        out_channels=2,
+        use_adaln_lora=False,
+    ).half()
+    with torch.no_grad():
+        layer.adaln_modulation[1].weight.zero_()
+        # Second half of adaln outputs is scale; amplify post-LN features into fp16 danger zone.
+        layer.adaln_modulation[1].weight[4:, :].fill_(50.0)
+        # Non-uniform projection so mean-zero LN features cannot cancel.
+        layer.linear.weight.zero_()
+        layer.linear.weight[:, 0] = 400.0
+
+    # Asymmetric token so LayerNorm keeps a large positive first channel.
+    x = torch.tensor([[[[[100.0, -1.0, -1.0, -1.0]]]]], dtype=torch.float16)
+    emb = torch.ones(1, 1, 4, dtype=torch.float16)
+
+    layer.fp32_residual = False
+    naive = layer(x, emb)
+    assert naive.dtype == torch.float16
+    assert torch.isinf(naive).any()
+
+    layer.fp32_residual = True
+    guarded = layer(x, emb)
+    assert guarded.dtype == torch.float32
+    assert torch.isfinite(guarded).all()
+    # Same overflow case projected in fp32 must remain finite and non-trivial.
+    assert guarded.abs().max() > 0
+
+
 def test_enable_fp32_residual_propagates_to_all_modules():
     anima = _tiny_anima(num_blocks=3)
     assert all(not b.fp32_residual for b in anima.blocks)

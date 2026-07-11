@@ -1354,6 +1354,7 @@ class Block(nn.Module):
         self.cross_attn.init_weights()
         self.mlp.init_weights()
 
+    # Production `_forward` uses `_gated_residual_add`; this is the non-gated helper.
     def _residual_add(self, a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
         if not self.fp32_residual:
             return a + b
