@@ -1139,6 +1139,9 @@ class FinalLayer(nn.Module):
                 nn.Linear(hidden_size, self.n_adaln_chunks * hidden_size, bias=False),
             )
 
+        # Runtime flag, not weight state. Must not live in init_weights().
+        self.fp32_residual = False
+
         self.init_weights()
 
     def init_weights(self) -> None:
@@ -1153,6 +1156,10 @@ class FinalLayer(nn.Module):
             torch.nn.init.zeros_(self.adaln_modulation[1].weight)
 
         self.layer_norm.reset_parameters()
+
+    def _fp32_project(self, x_modulated: torch.Tensor) -> torch.Tensor:
+        with torch.autocast(device_type=x_modulated.device.type, enabled=False):
+            return torch.nn.functional.linear(x_modulated, self.linear.weight.float())
 
     def forward(
         self,
@@ -1181,6 +1188,14 @@ class FinalLayer(nn.Module):
 
         shift_B_T_1_1_D = shift_B_T_D[:, :, None, None, :]
         scale_B_T_1_1_D = scale_B_T_D[:, :, None, None, :]
+
+        if self.fp32_residual:
+            normed = self.layer_norm(x_B_T_H_W_D)
+            x_modulated = (
+                normed.float() * (1.0 + scale_B_T_1_1_D.float())
+                + shift_B_T_1_1_D.float()
+            )
+            return self._fp32_project(x_modulated)
 
         x_B_T_H_W_D = (
             self.layer_norm(x_B_T_H_W_D) * (1 + scale_B_T_1_1_D) + shift_B_T_1_1_D
@@ -1263,6 +1278,7 @@ class Block(nn.Module):
         self.mlp.layer1_checkpointing = False
         self._peak_probe = None
         self._block_idx = None
+        self.fp32_residual = False
 
     def enable_gradient_checkpointing(
         self, cpu_offload: bool = False, unsloth_offload: bool = False
@@ -1337,6 +1353,21 @@ class Block(nn.Module):
         self.self_attn.init_weights()
         self.cross_attn.init_weights()
         self.mlp.init_weights()
+
+    def _residual_add(self, a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
+        if not self.fp32_residual:
+            return a + b
+        return a.float() + b.float()
+
+    def _gated_residual_add(
+        self,
+        residual: torch.Tensor,
+        gate: torch.Tensor,
+        branch: torch.Tensor,
+    ) -> torch.Tensor:
+        if not self.fp32_residual:
+            return residual + gate * branch
+        return residual.float() + gate.float() * branch.float()
 
     def _forward(
         self,
@@ -1447,7 +1478,9 @@ class Block(nn.Module):
                 block_idx=self._block_idx,
                 block_phase="self_attn",
             )
-        x_B_T_H_W_D = x_B_T_H_W_D + gate_self_attn_B_T_1_1_D * result
+        x_B_T_H_W_D = self._gated_residual_add(
+            x_B_T_H_W_D, gate_self_attn_B_T_1_1_D, result
+        )
         if record_ops:
             record_peak_probe_event(
                 peak_probe,
@@ -1489,7 +1522,9 @@ class Block(nn.Module):
                 block_idx=self._block_idx,
                 block_phase="cross_attn",
             )
-        x_B_T_H_W_D = result * gate_cross_attn_B_T_1_1_D + x_B_T_H_W_D
+        x_B_T_H_W_D = self._gated_residual_add(
+            x_B_T_H_W_D, gate_cross_attn_B_T_1_1_D, result
+        )
         if record_ops:
             record_peak_probe_event(
                 peak_probe,
@@ -1530,7 +1565,9 @@ class Block(nn.Module):
                 block_idx=self._block_idx,
                 block_phase="mlp",
             )
-        x_B_T_H_W_D = x_B_T_H_W_D + gate_mlp_B_T_1_1_D * result
+        x_B_T_H_W_D = self._gated_residual_add(
+            x_B_T_H_W_D, gate_mlp_B_T_1_1_D, result
+        )
         if record_ops:
             record_peak_probe_event(
                 peak_probe,
@@ -1839,6 +1876,12 @@ class Anima(nn.Module):
     def disable_gradient_checkpointing(self):
         for block in self.blocks:
             block.disable_gradient_checkpointing()
+
+    def enable_fp32_residual(self) -> None:
+        """Promote residual stream / final projection to fp32-safe path for fp16."""
+        for block in self.blocks:
+            block.fp32_residual = True
+        self.final_layer.fp32_residual = True
 
     def enable_peak_probe(self, probe=None):
         """Attach an opt-in fine-grained peak probe to DiT blocks."""
