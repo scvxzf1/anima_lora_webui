@@ -77,7 +77,8 @@ import { getTrainingState } from '../anima-app/helpers/training-state-bridge.js?
 import { setCurrentTrainingSourceFromVariant } from '../training-source/source-state.js?v=module-bootstrap-20260711-ir1';
 import { confirmBeforeConfigSelectionChange, rememberSelectionSnapshot, updateChoiceGuide } from '../config-form/choice-guide-ui.js?v=module-bootstrap-20260711-ir1';
 import { loadDatasetPreviewImages } from '../anima-app/chunks/12-create-dataset-row-caption-source-mode-editor.js?v=module-bootstrap-20260711-ir1';
-import { loadDatasetPresets, renderLiveChartPanel } from '../anima-app/chunks/03-parse-network-arg-entry.js?v=module-bootstrap-20260711-ir1';
+import { loadDatasetPresets } from '../dataset-editor/load.js?v=module-bootstrap-20260711-ir1';
+import { renderLiveChartPanel } from '../live-training/dashboard-ui.js?v=module-bootstrap-20260711-ir1';
 import { selectConfigCategory, updateConfigStickyPlacement } from '../config-form/group-entry.js?v=module-bootstrap-20260711-ir1';
 import { closeConfigDatasetPickerDialog } from '../config-form/dataset-picker.js?v=module-bootstrap-20260711-ir1';
 import { loadContinueLoraWeights, openContinueLoraDialog } from '../training-source/continue-lora.js?v=module-bootstrap-20260711-ir1';

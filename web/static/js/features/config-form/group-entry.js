@@ -16,7 +16,7 @@ import { reloadCurrentConfig, renderConfigForm, syncConfigDraftFromForm } from '
 import { getConfigState } from '../anima-app/helpers/config-state-bridge.js?v=module-bootstrap-20260711-ir1';
 import { formatFieldName } from '../anima-app/helpers/config-field-display.js?v=module-bootstrap-20260711-ir1';
 import { updateChangedFieldMarks } from '../anima-app/helpers/toml-selection-bridge.js?v=module-bootstrap-20260711-ir1';
-import { createStepEstimatePanel, scheduleStepEstimatePanelRefresh } from '../anima-app/chunks/03-parse-network-arg-entry.js?v=module-bootstrap-20260711-ir1';
+import { createStepEstimatePanel, scheduleStepEstimatePanelRefresh } from './step-estimate.js?v=module-bootstrap-20260711-ir1';
 import {
     createFillGlobalModelPathsButton,
     createNoDatasetRegularizationQuickPresetPanel,

@@ -124,7 +124,7 @@ def test_state_bucket_bridges_reach_hotspot_chunks() -> None:
     index_source = _frontend_module_text("js/features/anima-app/index.js")
     scope_source = _frontend_module_text("js/features/anima-app/chunks/01-scope-state.js")
     ensure_history_source = _chunk02_compat_text()
-    dataset_runtime_source = _frontend_module_text("js/features/anima-app/chunks/03-parse-network-arg-entry.js")
+    dataset_runtime_source = _frontend_feature_text("js/features/anima-app/chunks/03-parse-network-arg-entry.js", "js/features/config-form/step-estimate.js", "js/features/dataset-editor/load.js", "js/features/live-training/dashboard-ui.js")
     config_groups_source = _frontend_feature_text("js/features/anima-app/chunks/04-create-config-group-entry.js", "js/features/config-form/group-entry.js")
     dataset_picker_source = _frontend_feature_text("js/features/anima-app/chunks/06-stronger-selective-checkpoint-value.js", "js/features/config-form/resource-values.js", "js/features/config-form/field-rows.js", "js/features/config-form/dataset-picker.js", "js/features/training-source/continue-lora.js")
     config_dataset_dialog_source = _frontend_module_text("js/features/anima-app/chunks/07-render-config-dataset-picker-dialog.js")
@@ -1259,13 +1259,21 @@ def test_config_form_uses_navigation_search_and_progressive_disclosure() -> None
     css = STYLE_CSS.read_text(encoding="utf-8")
     app_constants = _frontend_module_text("js/features/anima-app/helpers/app-constants.js")
     labels_options = (STATIC_DIR / "js" / "config" / "catalog" / "labels-options.js").read_text(encoding="utf-8")
+    step_estimate_source = _frontend_feature_text(
+        "js/features/anima-app/chunks/03-parse-network-arg-entry.js",
+        "js/features/config-form/step-estimate.js",
+        "js/features/dataset-editor/load.js",
+    )
+    field_rows_source = _frontend_module_text("js/features/config-form/field-rows.js")
+    dataset_picker_source = _frontend_module_text("js/features/config-form/dataset-picker.js")
+    field_input_source = _frontend_module_text("js/features/config-form/field-input.js")
 
     category_defs = _section(source, "const FORM_CATEGORY_DEFS = [", "const FORM_CATEGORY_SECTION_MAP")
     render_section = _section(source, "function renderConfigForm", "function shouldRenderConfigSection")
     order_section = _section(source, "function appendConfigGroupsByCategory", "function createGroup")
     collect_impl = _frontend_module_text("js/features/anima-app/chunks/18-delete-dataset-preset-group.js")
     collect_section = _section(collect_impl, "function collectChangedFormValues", "function networkArgInputChanged")
-    load_steps = _section(source, "async function loadStepEstimate", "async function loadDatasetEditor")
+    load_steps = _section(step_estimate_source, "async function loadStepEstimate", "async function loadDatasetEditor")
     defaults = _section(source, "const FORM_UI_DEFAULTS = {", "const OPTIONAL_EMPTY_FIELDS")
     catalog_defaults = _frontend_module_text("js/config/catalog/defaults.js")
     catalog_form_layout = _frontend_module_text("js/config/catalog/form-layout.js")
@@ -1463,11 +1471,11 @@ def test_config_form_uses_navigation_search_and_progressive_disclosure() -> None
     fp8_preset = _section(source, "id: 'fp8_swap_test'", "id: 'vram_saver'")
     assert "block_swap_profile_jsonl: 'off'" in balanced_preset
     assert "block_swap_profile_jsonl: 'auto'" in fp8_preset
-    set_field_section = _section(source, "function setFieldInputValue", "function escapeHtml")
+    set_field_section = _section(field_input_source, "function setFieldInputValue", "function escapeHtml")
     assert "configDraftValueChanged(key, value, original)" in set_field_section
     assert "configFormState.draftValues.delete(key);" in set_field_section
     assert "input.value = value ?? '';" in set_field_section
-    compact_grid_section = _section(source, "function appendFieldRows", "function createConfigDatasetPicker")
+    compact_grid_section = field_rows_source
     compact_field_css = _section(css, ".config-field-grid-3col .field-main", ".field-label-stack")
     filler_css = _section(css, ".config-field-grid .field-row-filler", ".config-field-grid .field-row-filler::before")
     config_filler_css = _section(css, "#tab-config .config-field-grid .field-row-filler", "#tab-config .config-field-grid .field-row:focus-within")

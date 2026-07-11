@@ -12,14 +12,16 @@ import { createHistoryDetailFeature } from '../history-detail/index.js?v=module-
 import { formatLr, lastValue } from '../live-training/index.js?v=module-bootstrap-20260711-ir1';
 import { setupEventListeners } from './event-listeners.js?v=module-bootstrap-20260711-ir1';
 import {
-    loadDatasetPresets,
     loadStepEstimate,
+    scheduleStepEstimatePanelRefresh,
+} from '../config-form/step-estimate.js?v=module-bootstrap-20260711-ir1';
+import { loadDatasetPresets } from '../dataset-editor/load.js?v=module-bootstrap-20260711-ir1';
+import {
     renderLiveChartPanel,
     resetLiveMetricPlaceholders,
-    scheduleStepEstimatePanelRefresh,
     syncLiveChartControls,
     syncLossChartEmptyState,
-} from '../anima-app/chunks/03-parse-network-arg-entry.js?v=module-bootstrap-20260711-ir1';
+} from '../live-training/dashboard-ui.js?v=module-bootstrap-20260711-ir1';
 import {
     clearCurrentTrainingSource,
     setCurrentTrainingSourceFromVariant,

@@ -9,7 +9,7 @@ import {
     ensureConfigDatasetPreview,
     renderConfigDatasetPickerDialog,
 } from '../anima-app/helpers/dataset-render-bridge.js?v=module-bootstrap-20260711-ir1';
-import { loadDatasetPresets } from '../anima-app/chunks/03-parse-network-arg-entry.js?v=module-bootstrap-20260711-ir1';
+import { loadDatasetPresets } from '../dataset-editor/load.js?v=module-bootstrap-20260711-ir1';
 
 const configState = getConfigState();
 const datasetState = getDatasetState();

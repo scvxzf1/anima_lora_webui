@@ -25,7 +25,7 @@ import {
     normalizeDatasetDefaults,
     normalizeDatasetEditorRows,
 } from '../anima-app/helpers/dataset-values.js?v=module-bootstrap-20260711-ir1';
-import { loadDatasetPreset } from '../anima-app/chunks/03-parse-network-arg-entry.js?v=module-bootstrap-20260711-ir1';
+import { loadDatasetPreset } from '../dataset-editor/load.js?v=module-bootstrap-20260711-ir1';
 import {
     registerFileGroupDropTarget,
     updateDatasetPresetPageSummary,

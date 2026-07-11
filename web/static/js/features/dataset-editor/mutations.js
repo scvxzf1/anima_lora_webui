@@ -19,7 +19,7 @@ import {
 import { setFieldInputValue } from '../config-form/field-input.js?v=module-bootstrap-20260711-ir1';
 import { updateTomlDirtyState } from '../anima-app/helpers/toml-selection-bridge.js?v=module-bootstrap-20260711-ir1';
 import { getDatasetState } from '../anima-app/helpers/dataset-state-bridge.js?v=module-bootstrap-20260711-ir1';
-import { updateStepEstimatePanel } from '../anima-app/chunks/03-parse-network-arg-entry.js?v=module-bootstrap-20260711-ir1';
+import { updateStepEstimatePanel } from '../config-form/step-estimate.js?v=module-bootstrap-20260711-ir1';
 
 const datasetState = getDatasetState();
 

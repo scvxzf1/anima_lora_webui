@@ -3,7 +3,7 @@
  * Extracted from anima-app chunk 14.
  */
 import { updateChoiceGuide } from './choice-guide-ui.js?v=module-bootstrap-20260711-ir1';
-import { updateStepEstimatePanel } from '../anima-app/chunks/03-parse-network-arg-entry.js?v=module-bootstrap-20260711-ir1';
+import { updateStepEstimatePanel } from './step-estimate.js?v=module-bootstrap-20260711-ir1';
 import { valuesEqual } from '../anima-app/helpers/form-values.js?v=module-bootstrap-20260711-ir1';
 import { collectLiveCompatIssues, formatLiveCompatStatus } from './live-compat.js?v=module-bootstrap-20260711-ir1';
 import { setTomlStatus } from '../anima-app/helpers/toml-action-state-bridge.js?v=module-bootstrap-20260711-ir1';
