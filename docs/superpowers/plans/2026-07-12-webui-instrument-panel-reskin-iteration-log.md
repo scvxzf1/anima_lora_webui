@@ -84,3 +84,36 @@
 
 > 后续 R2–R5 按 Round Template 追加。High 未清零不得进入下一轮。
 
+### R2
+- Goal: 共享表单可读性（字段/控件字更大），用更紧凑的 help 换 16:9 密度，不删字段
+- Write set:
+  - `web/static/css/13-shared-fields.css`
+  - `web/static/style.css`（cache token）
+  - `web/static/index.html`（cache token）
+- Changes:
+  - `.field-name` / `.field-input` / `.field-select` 统一消费 `--font-size-field-label`、`--font-size-field`、`--control-height`
+  - `.field-row` 行距改为 `0.4rem 0.7rem`：比卡片更紧、比不可读行更高
+  - 3/4 列与 inline-flags 不再把标签压到 `0.7rem`，改为 token 字号 + `overflow-wrap`
+  - `.field-help` / `.help-content` 默认更收敛：更小字号、更紧 gap/padding，展开仍可读，不默认撑爆一屏
+  - cache token 同步为 `frontend-chain-20260712-reskin-r2`
+- Supplemental review:
+  - [x] 边界：仅共享字段 CSS + cache token；未改 DOM id、未删配置项
+  - [x] 可读性：字段标签/输入从 ~0.78rem 提升到 token 0.9rem
+  - [x] 密度：用 help 收敛而不是回退字段字号
+  - [ ] 主题：本轮不改主题 token
+  - [x] 契约：cache token 双入口同步到 r2
+- Cross review:
+  - visual-auditor: PASS (shared fields 消费 token，help 收敛不抢主字段)
+  - readability-auditor: PASS (标签/输入 0.9rem token；3/4 列不再压到 0.7rem)
+  - contract-auditor: PASS (cache token 双入口 r2；无 DOM id/配置项删除)
+- Tests run:
+  - `tests/test_webui_visual_tokens.py`
+  - `tests/test_training_frontend_modules.py::test_frontend_css_import_cache_tokens_match_entrypoint`
+  - `tests/test_training_frontend_dom.py`
+  - 注：完整 `test_training_frontend_config_ui.py` 因超时跳过；本轮无 JS/DOM 契约改动
+- Results: GREEN
+- High open: none
+- Medium open:
+  - 页级 forge override 仍可能局部硬编码字号（Task 2 carryover）；本轮只改 shared fields
+- Decision: continue
+

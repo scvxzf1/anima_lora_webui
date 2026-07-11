@@ -17,7 +17,7 @@
 
 .field-row {
     position: relative;
-    padding: 0.35rem 0.75rem;
+    padding: 0.4rem 0.7rem;
     border-bottom: 1px solid var(--border-soft);
 }
 .field-row:last-child { border-bottom: none; }
@@ -111,7 +111,10 @@
     grid-column: 1;
     grid-row: 1;
     min-width: 0;
-    font-size: 0.7rem;
+    font-size: var(--font-size-field-label);
+    line-height: 1.25;
+    overflow-wrap: anywhere;
+    hyphens: auto;
 }
 .config-field-grid-3col .field-input,
 .config-field-grid-4col .field-input {
@@ -147,7 +150,9 @@
 .config-field-grid-inline-flags .field-name {
     grid-column: 1;
     min-width: 0;
-    font-size: 0.7rem;
+    font-size: var(--font-size-field-label);
+    line-height: 1.25;
+    overflow-wrap: anywhere;
 }
 
 .config-field-grid-inline-flags input[type="checkbox"].field-input {
@@ -175,11 +180,12 @@
 }
 
 .config-field-grid .field-help {
-    padding-top: 0.45rem;
+    padding-top: 0.28rem;
 }
 
 .config-field-grid .help-content {
     grid-template-columns: 1fr;
+    gap: 0.22rem;
 }
 
 .config-field-grid .help-summary {
@@ -349,17 +355,17 @@
 .field-name {
     display: flex;
     align-items: center;
-    font-size: 0.78rem;
+    font-size: var(--font-size-field-label);
     font-family: inherit;
     font-weight: 600;
     color: var(--text);
     white-space: normal;
     overflow-wrap: anywhere;
-    line-height: 1.3;
+    line-height: 1.25;
     flex: 0 0 min(320px, 42%);
     min-width: 200px;
     max-width: 360px;
-    min-height: 28px;
+    min-height: var(--control-height);
     padding-top: 0;
 }
 
@@ -377,20 +383,26 @@
 }
 
 .field-input {
-    min-height: 28px;
+    min-height: var(--control-height);
 }
 
 input[type="checkbox"].field-input {
     flex-shrink: 0;
 }
 
-.field-input {
+.field-input,
+.field-select,
+input.field-input,
+select.field-input,
+textarea.field-input {
     background: var(--bg-input);
     border: 1px solid var(--border);
     color: var(--text);
-    padding: 0.25rem 0.4rem;
+    padding: 0.28rem 0.45rem;
     border-radius: 4px;
-    font-size: 0.78rem;
+    min-height: var(--control-height);
+    font-size: var(--font-size-field);
+    line-height: 1.3;
     font-family: monospace;
     font-weight: 500;
     flex: 1;
@@ -503,26 +515,27 @@ input[type="checkbox"].field-input {
 .info-toggle.active { color: var(--accent); border-color: var(--accent); background: var(--surface-tint-strong); }
 
 .field-help {
-    font-size: 0.72rem;
+    font-size: var(--font-size-meta);
     color: var(--text-dim);
-    padding: 0.45rem 0 0.25rem 0;
-    margin-top: 0.25rem;
+    padding: 0.28rem 0 0.12rem 0;
+    margin-top: 0.12rem;
     display: none;
-    line-height: 1.45;
+    line-height: 1.32;
+    max-height: none;
 }
 .field-help.visible { display: block; }
 
 .help-content {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 0.35rem;
+    gap: 0.22rem;
 }
 .help-section {
     background: var(--surface-raised);
     border: 1px solid var(--border-soft);
     border-left: 2px solid var(--accent);
     border-radius: 4px;
-    padding: 0.38rem 0.48rem;
+    padding: 0.26rem 0.38rem;
     min-width: 0;
 }
 .help-summary {
@@ -530,19 +543,22 @@ input[type="checkbox"].field-input {
 }
 .help-heading {
     color: var(--accent);
-    font-size: 0.68rem;
+    font-size: var(--font-size-meta);
     font-weight: 700;
-    margin-bottom: 0.18rem;
+    margin-bottom: 0.1rem;
+    line-height: 1.25;
 }
 .help-section p,
 .help-section ul {
     margin: 0;
+    font-size: var(--font-size-meta);
+    line-height: 1.32;
 }
 .help-section ul {
-    padding-left: 1rem;
+    padding-left: 0.9rem;
 }
 .help-section li {
-    margin: 0.08rem 0;
+    margin: 0.04rem 0;
 }
 .help-cost {
     border-left-color: var(--warning);
