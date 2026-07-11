@@ -153,6 +153,69 @@ def _positive_int(value: Any) -> int | None:
     return n if n > 0 else None
 
 
+
+def _reuse_overwrite_args(row: dict, *, kind: str) -> list[str]:
+    """Return ``--overwrite`` when policy asks to rebuild VAE or TE.
+
+    Reads row-level overrides first, then global path overrides / env via
+    ``load_path_overrides`` keys if present on the row.
+    """
+    from library.cache_pool.policy import parse_cache_reuse_policy
+
+    # Prefer explicit row flags, then flatten common cfg keys from row.
+    cfg = {}
+    for key in (
+        "reuse_dataset_cache_copy",
+        "reuse_vae_latents",
+        "reuse_text_encoder_cache",
+        "cache_fingerprint_mode",
+        "force_rebuild_preprocess_cache",
+    ):
+        if key in row:
+            cfg[key] = row[key]
+    # Also allow nested settings.
+    settings = row.get("settings") if isinstance(row.get("settings"), dict) else {}
+    for key in list(cfg.keys()) or []:
+        pass
+    for key in (
+        "reuse_dataset_cache_copy",
+        "reuse_vae_latents",
+        "reuse_text_encoder_cache",
+        "cache_fingerprint_mode",
+        "force_rebuild_preprocess_cache",
+    ):
+        if key not in cfg and key in settings:
+            cfg[key] = settings[key]
+    # Fall back to process path overrides (merged training config).
+    try:
+        from scripts.tasks._common import load_path_overrides  # type: ignore
+    except Exception:
+        load_path_overrides = None
+    if load_path_overrides is not None:
+        try:
+            overrides = load_path_overrides()
+            if isinstance(overrides, dict):
+                for key in (
+                    "reuse_dataset_cache_copy",
+                    "reuse_vae_latents",
+                    "reuse_text_encoder_cache",
+                    "cache_fingerprint_mode",
+                    "force_rebuild_preprocess_cache",
+                ):
+                    if key not in cfg and key in overrides:
+                        cfg[key] = overrides[key]
+        except Exception:
+            pass
+    policy = parse_cache_reuse_policy(cfg)
+    if policy.force_rebuild:
+        return ["--overwrite"]
+    if kind == "vae" and not policy.reuse_vae_latents:
+        return ["--overwrite"]
+    if kind == "te" and not policy.reuse_text_encoder_cache:
+        return ["--overwrite"]
+    return []
+
+
 def _preprocess_cache_batch_sizes() -> tuple[int, int]:
     from ._common import _path_overrides  # local import: avoids unused circular
 
@@ -545,6 +608,7 @@ def _run_preprocess_vae(row: dict[str, Any], extra: list[str]) -> None:
             "64",
             *_recursive_args(row),
             *_path_pattern_args(row),
+            *_reuse_overwrite_args(row, kind="vae"),
             *extra,
         ]
     )
@@ -616,6 +680,7 @@ def _run_preprocess_te(
             *_recursive_args(row),
             *_path_pattern_args(row),
             *mp_args,
+            *_reuse_overwrite_args(row, kind="te"),
             *extra,
         ]
     )
