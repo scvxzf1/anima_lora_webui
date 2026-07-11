@@ -37,8 +37,11 @@ def test_training_queue_frontend_hooks_are_present() -> None:
 
     queue_section = queue_feature_source
     listener_section = _section(legacy_source, "function setupEventListeners", "function installBeginnerTooltips")
-    group_actions_impl = _frontend_module_text("js/features/toml-manager/drag.js")
-    group_actions = _section(group_actions_impl, "function createTomlGroupActions", "function createTomlGroupActionButton")
+    group_actions_impl = _frontend_feature_text(
+        "js/features/toml-manager/drag-render.js",
+        "js/features/toml-manager/drag-actions.js",
+    )
+    group_actions = group_actions_impl
     current_queue = _section(queue_enqueue, "async function queueCurrentTrainingFromConfig", "async function enqueueTrainingFromConfig")
     enqueue_section = _section(queue_enqueue, "async function enqueueTrainingFromConfig", "async function enqueueTrainingQueueRequest")
     queue_view_source = _frontend_module_text("js/features/queue/view-mode.js")

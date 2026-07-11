@@ -337,11 +337,19 @@ def _anima_app_container_text() -> str:
         STATIC_DIR / "js/features/config-form/stage-resolution.js",
         STATIC_DIR / "js/features/config-form/stage-resolution-model.js",
         STATIC_DIR / "js/features/config-form/stage-resolution-ui.js",
+        STATIC_DIR / "js/features/config-form/form-fields.js",
+        STATIC_DIR / "js/features/config-form/form-fields-adapters.js",
+        STATIC_DIR / "js/features/config-form/form-fields-sample.js",
+        STATIC_DIR / "js/features/config-form/form-fields-ui.js",
+
         STATIC_DIR / "js/features/sample-prompts/row-ui.js",
         STATIC_DIR / "js/features/toml-manager/mode.js",
         STATIC_DIR / "js/features/history-list/workbench-cards.js",
         STATIC_DIR / "js/features/dataset-editor/row.js",
         STATIC_DIR / "js/features/dataset-editor/row-settings.js",
+        STATIC_DIR / "js/features/dataset-editor/row-settings-basic.js",
+        STATIC_DIR / "js/features/dataset-editor/row-settings-experimental.js",
+
         STATIC_DIR / "js/features/dataset-editor/row-fields.js",
         STATIC_DIR / "js/features/dataset-editor/preview.js",
         STATIC_DIR / "js/features/dataset-editor/config-input.js",
@@ -356,6 +364,10 @@ def _anima_app_container_text() -> str:
         STATIC_DIR / "js/features/live-training/dashboard-ui.js",
         STATIC_DIR / "js/features/toml-manager/actions.js",
         STATIC_DIR / "js/features/toml-manager/drag.js",
+        STATIC_DIR / "js/features/toml-manager/drag-core.js",
+        STATIC_DIR / "js/features/toml-manager/drag-actions.js",
+        STATIC_DIR / "js/features/toml-manager/drag-render.js",
+
         STATIC_DIR / "js/features/training-launch/index.js",
         STATIC_DIR / "js/features/app-shell/event-listeners.js",
     ]

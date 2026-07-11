@@ -29,9 +29,11 @@ def _chunk31_compat_text() -> str:
 CHUNK11_REL = "js/features/anima-app/chunks/11-create-dataset-editor-row.js"
 DATASET_EDITOR_ROW_REL = "js/features/dataset-editor/row.js"
 DATASET_EDITOR_ROW_SETTINGS_REL = "js/features/dataset-editor/row-settings.js"
+DATASET_EDITOR_ROW_SETTINGS_BASIC_REL = "js/features/dataset-editor/row-settings-basic.js"
+DATASET_EDITOR_ROW_SETTINGS_EXPERIMENTAL_REL = "js/features/dataset-editor/row-settings-experimental.js"
 
 def _chunk11_compat_text() -> str:
-    return _frontend_feature_text(CHUNK11_REL, DATASET_EDITOR_ROW_REL, DATASET_EDITOR_ROW_SETTINGS_REL)
+    return _frontend_feature_text(CHUNK11_REL, DATASET_EDITOR_ROW_REL, DATASET_EDITOR_ROW_SETTINGS_REL, DATASET_EDITOR_ROW_SETTINGS_BASIC_REL, DATASET_EDITOR_ROW_SETTINGS_EXPERIMENTAL_REL)
 
 CHUNK23_REL = "js/features/anima-app/chunks/23-move-current-toml-to-group.js"
 TOML_ACTIONS_REL = "js/features/toml-manager/actions.js"
@@ -44,7 +46,13 @@ CHUNK20_REL = "js/features/anima-app/chunks/20-can-drop-toml-file-to-group.js"
 TOML_DRAG_REL = "js/features/toml-manager/drag.js"
 
 def _chunk20_compat_text() -> str:
-    return _frontend_feature_text(CHUNK20_REL, TOML_DRAG_REL)
+    return _frontend_feature_text(
+        CHUNK20_REL,
+        TOML_DRAG_REL,
+        "js/features/toml-manager/drag-core.js",
+        "js/features/toml-manager/drag-actions.js",
+        "js/features/toml-manager/drag-render.js",
+    )
 
 def _chunk02_compat_text() -> str:
     """Shim + domain truth, matching the post-split chunk02 barrel."""
@@ -89,7 +97,7 @@ def test_config_form_bridge_reaches_split_form_chunks() -> None:
             "originalConfigFieldValue",
             "updateConfigDraftFromInput",
         ),
-        "js/features/config-form/form-fields.js": (
+        "js/features/config-form/form-fields-ui.js": (
             "displayConfigFieldValue",
             "isActiveNetworkArgFieldKey",
             "originalConfigFieldValue",
@@ -135,7 +143,7 @@ def test_state_bucket_bridges_reach_hotspot_chunks() -> None:
     dataset_row_source = _chunk11_compat_text()
     dataset_caption_source = _frontend_feature_text("js/features/anima-app/chunks/12-create-dataset-row-caption-source-mode-editor.js", "js/features/dataset-editor/row-fields.js", "js/features/dataset-editor/preview.js")
     dataset_guide_source = _frontend_feature_text("js/features/anima-app/chunks/13-update-dataset-editor-rows-setting-value.js", "js/features/config-form/choice-guide-ui.js", "js/features/dataset-editor/mutations.js", "js/features/training-source/source-state.js", "js/features/config-form/field-input.js", "js/features/config-form/method-key.js")
-    form_fields_source = _frontend_feature_text("js/features/anima-app/chunks/14-lora-adapter-kind-from-config.js", "js/features/config-form/form-fields.js")
+    form_fields_source = _frontend_feature_text("js/features/anima-app/chunks/14-lora-adapter-kind-from-config.js", "js/features/config-form/form-fields.js", "js/features/config-form/form-fields-adapters.js", "js/features/config-form/form-fields-sample.js", "js/features/config-form/form-fields-ui.js")
     dataset_apply_source = _frontend_module_text("js/features/anima-app/chunks/17-apply-selected-dataset-preset-to-current-config.js")
     config_form_patch_source = _frontend_module_text("js/features/anima-app/chunks/18-delete-dataset-preset-group.js")
     toml_manager_source = _chunk15_compat_text()
@@ -1646,7 +1654,7 @@ def test_config_form_uses_navigation_search_and_progressive_disclosure() -> None
 
 
 def test_preprocess_memory_profile_updates_cache_batch_inputs() -> None:
-    source = _frontend_feature_text("js/features/anima-app/chunks/14-lora-adapter-kind-from-config.js", "js/features/config-form/form-fields.js")
+    source = _frontend_feature_text("js/features/anima-app/chunks/14-lora-adapter-kind-from-config.js", "js/features/config-form/form-fields.js", "js/features/config-form/form-fields-adapters.js", "js/features/config-form/form-fields-sample.js", "js/features/config-form/form-fields-ui.js")
 
     assert "const PREPROCESS_MEMORY_PROFILE_VALUES = {" in source
     assert "auto: { preprocess_vae_cache_batch_size: 'auto', preprocess_text_cache_batch_size: 'auto' }" in source
@@ -1662,7 +1670,7 @@ def test_preprocess_memory_profile_updates_cache_batch_inputs() -> None:
 def test_precision_preference_ui_maps_to_training_precision_fields() -> None:
     form_source = _chunk02_compat_text()
     helper_source = _frontend_module_text("js/features/anima-app/helpers/config-values.js")
-    form_helper_source = _frontend_feature_text("js/features/anima-app/chunks/14-lora-adapter-kind-from-config.js", "js/features/config-form/form-fields.js")
+    form_helper_source = _frontend_feature_text("js/features/anima-app/chunks/14-lora-adapter-kind-from-config.js", "js/features/config-form/form-fields.js", "js/features/config-form/form-fields-adapters.js", "js/features/config-form/form-fields-sample.js", "js/features/config-form/form-fields-ui.js")
     option_source = _chunk15_compat_text()
     patch_source = _frontend_module_text("js/features/anima-app/chunks/18-delete-dataset-preset-group.js")
     guide_source = _frontend_feature_text("js/features/anima-app/chunks/13-update-dataset-editor-rows-setting-value.js", "js/features/config-form/choice-guide-ui.js")
@@ -1759,7 +1767,7 @@ def test_network_args_raw_editor_keeps_unmodified_split_controls_from_overwritin
     collect_impl = _frontend_module_text("js/features/anima-app/chunks/18-delete-dataset-preset-group.js")
     form_fields = _frontend_feature_text(
         "js/features/anima-app/chunks/14-lora-adapter-kind-from-config.js",
-        "js/features/config-form/form-fields.js",
+        "js/features/config-form/form-fields.js", "js/features/config-form/form-fields-adapters.js", "js/features/config-form/form-fields-sample.js", "js/features/config-form/form-fields-ui.js",
     )
     collect_section = _section(collect_impl, "function collectChangedFormValues", "function networkArgInputChanged")
     live_section = _section(form_fields, "function liveConfigFromForm", "function createFieldInput")
@@ -1778,7 +1786,7 @@ def test_config_form_keeps_dora_as_lora_addon_and_merges_exclusive_adapters() ->
     config_values = _frontend_module_text("js/features/anima-app/helpers/config-values.js")
     form_fields = _frontend_feature_text(
         "js/features/anima-app/chunks/14-lora-adapter-kind-from-config.js",
-        "js/features/config-form/form-fields.js",
+        "js/features/config-form/form-fields.js", "js/features/config-form/form-fields-adapters.js", "js/features/config-form/form-fields-sample.js", "js/features/config-form/form-fields-ui.js",
     )
     collect_impl = _frontend_module_text("js/features/anima-app/chunks/18-delete-dataset-preset-group.js")
     defaults = _section(source, "const FORM_UI_DEFAULTS = {", "const OPTIONAL_EMPTY_FIELDS")
@@ -2073,7 +2081,7 @@ def test_config_form_auto_fixes_came_optimizer_args_frontend_hooks_are_present()
     optimizer_helper = _frontend_module_text("js/features/anima-app/helpers/optimizer-values.js")
     form_fields = _frontend_feature_text(
         "js/features/anima-app/chunks/14-lora-adapter-kind-from-config.js",
-        "js/features/config-form/form-fields.js",
+        "js/features/config-form/form-fields.js", "js/features/config-form/form-fields-adapters.js", "js/features/config-form/form-fields-sample.js", "js/features/config-form/form-fields-ui.js",
     )
     config_form = _frontend_module_text("js/features/config-form/index.js")
     startup = _frontend_module_text("js/features/app-shell/startup.js")
@@ -2350,12 +2358,12 @@ def test_balanced_16g_block_swap_fields_are_visible() -> None:
 
 def test_block_swap_profile_uses_strict_select_options() -> None:
     defaults_source = _frontend_module_text("js/config/catalog/defaults.js")
-    input_source = _frontend_feature_text("js/features/anima-app/chunks/14-lora-adapter-kind-from-config.js", "js/features/config-form/form-fields.js")
+    input_source = _frontend_feature_text("js/features/anima-app/chunks/14-lora-adapter-kind-from-config.js", "js/features/config-form/form-fields.js", "js/features/config-form/form-fields-adapters.js", "js/features/config-form/form-fields-sample.js", "js/features/config-form/form-fields-ui.js")
     display_helper = _frontend_module_text("js/features/anima-app/helpers/config-field-display.js")
     option_source = _chunk15_compat_text()
     labels_options = _frontend_module_text("js/config/catalog/labels-options.js")
     select_gate = display_helper
-    input_factory = _section(input_source, "function createFieldInput", "function createSamplePromptsPathInput")
+    input_factory = _frontend_module_text("js/features/config-form/form-fields-ui.js")
 
     assert "block_swap_profile_jsonl: 'off'" in defaults_source
     assert "block_swap_profile_jsonl: ['off', 'auto']" in labels_options
@@ -2598,18 +2606,18 @@ def test_config_dataset_editor_save_syncs_picker_selection_and_summary() -> None
 def test_config_toml_manager_excludes_dataset_groups() -> None:
     source = APP_JS.read_text(encoding="utf-8")
     toml_save_source = _frontend_module_text("js/features/anima-app/chunks/19-current-sample-prompt-text.js")
-    toml_drag_source = _frontend_module_text("js/features/toml-manager/drag.js")
+    toml_drag_source = _frontend_feature_text("js/features/toml-manager/drag-core.js", "js/features/toml-manager/drag-actions.js", "js/features/toml-manager/drag-render.js", "js/features/toml-manager/drag.js")
     toml_actions_source = _frontend_module_text("js/features/toml-manager/actions.js")
     action_state_source = _frontend_module_text("js/features/anima-app/chunks/22-update-toml-action-state.js")
     css = STYLE_CSS.read_text(encoding="utf-8")
 
     load_toml = _section(_frontend_module_text("js/features/toml-manager/mode.js"), "async function loadTomlFileList", "async function loadOutputRuns")
-    toml_render = _section(toml_drag_source, "function renderTomlFileGroups", "function createTomlGroupActions")
-    file_button = _section(toml_drag_source, "function createTomlFileButton", "configureTomlDragBridge")
+    toml_render = _section(toml_drag_source, "export function renderTomlFileGroups", "export function createTomlGroupActions")
+    file_button = _section(toml_drag_source, "export function createTomlFileButton", "configureTomlDragBridge")
     save_as_groups = _section(toml_save_source, "export function saveAsTargetGroups", "export async function moveTomlFileToGroup")
     helper_section = _frontend_feature_text(
         "js/features/anima-app/chunks/19-current-sample-prompt-text.js",
-        "js/features/toml-manager/drag.js",
+        "js/features/toml-manager/drag-core.js", "js/features/toml-manager/drag-actions.js", "js/features/toml-manager/drag-render.js", "js/features/toml-manager/drag.js",
     )
     create_group = _section(action_state_source, "async function createTomlGroup", "async function renameTomlGroup")
     movable_groups = _section(toml_actions_source, "function getMovableTomlGroups", "function deleteTomlGroupButtonTitle")
@@ -2984,7 +2992,7 @@ def test_dataset_experimental_dialog_edits_selected_subset_only() -> None:
     """实验性控件进入弹窗，只编辑当前选中子集；主列表不再内嵌折叠区。"""
     html = INDEX_HTML.read_text(encoding="utf-8")
     dialog = _frontend_module_text("js/features/dataset-editor/experimental-dialog.js")
-    row = _frontend_feature_text("js/features/dataset-editor/row.js", "js/features/dataset-editor/row-settings.js")
+    row = _frontend_feature_text("js/features/dataset-editor/row.js", "js/features/dataset-editor/row-settings.js", "js/features/dataset-editor/row-settings-basic.js", "js/features/dataset-editor/row-settings-experimental.js")
     item = _frontend_feature_text("js/features/anima-app/chunks/10-create-dataset-config-input.js", "js/features/dataset-editor/config-input.js", "js/features/dataset-editor/item-drag.js")
 
     assert 'id="dataset-experimental-dialog"' in html
@@ -2997,7 +3005,7 @@ def test_dataset_experimental_dialog_edits_selected_subset_only() -> None:
 
 def test_dataset_main_card_keeps_only_high_frequency_settings() -> None:
     """主卡只保留高频 settings；低频桶/验证细节进实验性弹窗。"""
-    row = _frontend_feature_text("js/features/dataset-editor/row.js", "js/features/dataset-editor/row-settings.js")
+    row = _frontend_feature_text("js/features/dataset-editor/row.js", "js/features/dataset-editor/row-settings.js", "js/features/dataset-editor/row-settings-basic.js", "js/features/dataset-editor/row-settings-experimental.js")
     dialog = _frontend_module_text("js/features/dataset-editor/experimental-dialog.js")
     settings_factory = _section(
         row,
@@ -3042,7 +3050,7 @@ def test_dataset_main_card_keeps_only_high_frequency_settings() -> None:
 def test_field_presentation_provenance_and_presave_dirty_summary() -> None:
     """FieldPresentation helper + badge/pre-save dirty summary hooks must exist."""
     presentation = _frontend_module_text("js/features/config-form/field-presentation.js")
-    field_row = _frontend_feature_text("js/features/anima-app/chunks/14-lora-adapter-kind-from-config.js", "js/features/config-form/form-fields.js")
+    field_row = _frontend_feature_text("js/features/anima-app/chunks/14-lora-adapter-kind-from-config.js", "js/features/config-form/form-fields.js", "js/features/config-form/form-fields-adapters.js", "js/features/config-form/form-fields-sample.js", "js/features/config-form/form-fields-ui.js")
     save_source = _frontend_module_text("js/features/anima-app/chunks/16-load-output-run-config.js")
     css = (STATIC_DIR / "css" / "13-shared-fields.css").read_text(encoding="utf-8")
 
@@ -3116,7 +3124,7 @@ def test_form_ui_defaults_and_help_align_with_base_facts() -> None:
 def test_live_compat_warnings_mirror_key_conflict_codes() -> None:
     """Live compat helper surfaces key conflict codes without replacing preflight."""
     source = _frontend_module_text("js/features/config-form/live-compat.js")
-    field_change = _frontend_feature_text("js/features/anima-app/chunks/14-lora-adapter-kind-from-config.js", "js/features/config-form/form-fields.js")
+    field_change = _frontend_feature_text("js/features/anima-app/chunks/14-lora-adapter-kind-from-config.js", "js/features/config-form/form-fields.js", "js/features/config-form/form-fields-adapters.js", "js/features/config-form/form-fields-sample.js", "js/features/config-form/form-fields-ui.js")
 
     assert "export function collectLiveCompatIssues" in source
     assert "export function formatLiveCompatStatus" in source
