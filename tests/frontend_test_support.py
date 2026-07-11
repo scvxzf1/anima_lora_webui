@@ -44,6 +44,91 @@ CRITICAL_WORKFLOW_DOM_IDS = frozenset(
 )
 
 
+
+# Workflow DOM contracts (required/optional). Keep small; do not inventory all ids.
+WORKFLOW_DOM_CONTRACTS: dict[str, dict[str, frozenset[str]]] = {
+    "queue": {
+        "required": frozenset(
+            {
+                "btn-training-queue-view",
+                "btn-refresh-queue",
+                "btn-open-queue-manager",
+                "training-queue-list",
+                "training-queue-summary",
+            }
+        ),
+        "optional": frozenset(
+            {
+                "btn-toggle-queue-pause",
+                "training-queue-manager",
+                "btn-cancel-all-queue",
+                "btn-clear-completed-queue",
+            }
+        ),
+    },
+    "history": {
+        "required": frozenset(
+            {
+                "btn-training-history-view",
+                "btn-refresh-history",
+                "btn-open-history-manager",
+                "task-history-list",
+                "btn-history-manager-refresh",
+            }
+        ),
+        "optional": frozenset(
+            {
+                "btn-history-collections-workbench",
+                "history-manager-search",
+                "history-show-archived",
+            }
+        ),
+    },
+    "preview": {
+        "required": frozenset(
+            {
+                "tab-preview",
+                "btn-preview-training-results",
+                "btn-refresh-preview",
+                "preview-workspace",
+                "preview-grid",
+            }
+        ),
+        "optional": frozenset(
+            {
+                "preview-page-mount",
+                "btn-save-preview-settings",
+                "preview-settings-status",
+            }
+        ),
+    },
+    "settings": {
+        "required": frozenset(
+            {
+                "tab-settings",
+                "btn-save-global-settings",
+                "global-output-root",
+                "global-pretrained-model-path",
+                "global-configs-root",
+            }
+        ),
+        "optional": frozenset(
+            {
+                "global-ui-scale",
+                "global-qwen3-path",
+                "global-vae-path",
+            }
+        ),
+    },
+}
+
+
+def workflow_dom_contract(name: str) -> dict[str, frozenset[str]]:
+    """Return required/optional DOM id sets for a named workflow bucket."""
+    if name not in WORKFLOW_DOM_CONTRACTS:
+        raise KeyError(f"unknown workflow DOM contract: {name}")
+    return WORKFLOW_DOM_CONTRACTS[name]
+
 def missing_dom_ids_in_html(html: str, dom_ids: set[str] | frozenset[str]) -> set[str]:
     """Return DOM ids that do not appear as id="..." attributes in HTML."""
     return {dom_id for dom_id in dom_ids if f'id="{dom_id}"' not in html}
