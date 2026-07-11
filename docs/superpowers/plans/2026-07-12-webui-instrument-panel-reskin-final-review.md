@@ -26,3 +26,11 @@
 
 ## Recommendation
 Keep local main as source of truth for this work. Push `webui/main` only when operator requests online publish.
+
+## Fresh gate evidence (main @ cf02a6b6)
+- G0 visual/css-cache/dom + misc: 16 passed
+- config_ui (2 known deselects): 61 passed
+- queue/state/weight/image-test: all green
+- history/live/modules: known non-CSS baselines only
+- post-merge fix: `test_training_frontend_misc.py` contracts updated for denser chrome
+
