@@ -286,3 +286,45 @@ T1 review: Spec ✅ / Quality Approved (Minor only)
 - T1：node smoke 仅语法；critical id 手写同步。
 - 既有：`tests/test_web_preflight_compat_matrix.py` collection ImportError 仍在，G4 全包勿当回归信号。
 - 正式评分卡复评放到 IR3 收口一并做。
+
+
+## IR3 实现轮结果 — 2026-07-11
+
+| 项 | 值 |
+|---|---|
+| 分支 | `feat/frontend-five-round-iteration` |
+| HEAD | `bced3dc0` |
+| 本轮目标 | IR3：E1 formatPathLabel、E2 bridge fail-fast、C1 provenance、C6 defaults |
+| 完成任务 | E1 路径 formatter；E2 history-task-actions fail-fast；C1 字段来源徽标+保存前 dirty；C6 base 事实校准；C1 Critical import 修复 |
+| 测试门禁 | G0 12；modules 18；config focused 5；provenance 2 |
+| 结构快照 | features 19 / chunks 45 (14433 lines) / bridges 37 (1874 lines) / dom_ids 449 |
+| 熔断? | 否（C1 曾 Critical import，当轮修复后恢复） |
+| 健康分（估） | ~74 / C（目标 IR3） |
+| 下轮焦点 | IR4：C5 live 兼容提示、E3 import 并行、U1 关键 DOM 注册表等 |
+
+### 提交
+
+| Commit | 说明 |
+|---|---|
+| `b4561658` | E1：`formatPathLabel` + path title |
+| `3ca7b3ed` | E2：history-task-actions bridge fail-fast |
+| `d70c4b3f` | C1：provenance badge + pre-save dirty |
+| `d9968bb2` | C1：去掉重复 FORM_UI_DEFAULTS import |
+| `bced3dc0` | C1 Critical：修复 chunk16 import 语法；C6 help/defaults 对齐 base |
+
+### 验收证据
+
+```text
+G0: 12 passed
+modules: 18 passed
+config focused (field_presentation|form_ui_defaults|resource_*|progressive_disclosure): 5 passed
+provenance: 2 passed
+chunk16: ESM parse OK (runtime bridge-not-configured expected in node)
+```
+
+### 残留 Concerns
+
+- C1 provenance 仍是前端 best-effort（config/ui_default/draft），非完整后端 layer stack。
+- E2 仅模板化 history-task-actions，其余 bridge 仍有 silent legacyRoot。
+- E1 history chunk 仍有本地 compactPathLabel 兼容面。
+- 既有 preflight compat matrix collection ImportError 仍在。
