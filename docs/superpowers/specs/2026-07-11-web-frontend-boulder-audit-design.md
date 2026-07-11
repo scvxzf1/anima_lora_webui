@@ -1,6 +1,6 @@
 # Web 前端石山体检设计（只读诊断）
 
-状态：已确认设计（待执行审计快照）  
+状态：审计快照已填写（只读体检完成；当前工作树）  
 适用版本：当前工作树（执行时以 `git rev-parse --short HEAD` 与 dirty 摘要为准）  
 日期：2026-07-11  
 评分入口：`docs/features/frontend-health-scorecard.md`  
@@ -201,11 +201,11 @@ timeout 60 .venv/bin/python -m pytest \
 
 | 域 | R0 设计基线 | IR5 估计 | 本次实测 |
 |---|---:|---:|---:|
-| A 结构与迁移 | 51 | （见 scorecard / 迭代日志） | TBD |
-| B 测试与门禁 | 72 | TBD | TBD |
-| C CSS/DOM | 56 | TBD | TBD |
-| D 配置体验 | 65 | TBD | TBD |
-| **总分** | **61 / D** | **~78 / C+** | **TBD** |
+| A 结构与迁移 | 51 | （见 scorecard / 迭代日志） | **62**（见 §8） |
+| B 测试与门禁 | 72 | （IR5 估计偏高） | **67**（见 §8） |
+| C CSS/DOM | 56 | （IR5 估计） | **73**（见 §8） |
+| D 配置体验 | 65 | （IR5 估计） | **75**（见 §8） |
+| **总分** | **61 / D** | **~78 / C+** | **69 / D**（见 §8） |
 
 说明：R0 数字来自 `2026-07-11-frontend-config-optimization-design.md`；IR5 来自 `frontend-health-scorecard.md` 冻结段。执行审计时不得只复制 IR5，必须填实测。
 
@@ -311,39 +311,103 @@ flowchart TD
 
 ## 8. 审计快照（执行后填写）
 
-状态：尚未执行
+状态：**已执行**（当前工作树，含未提交 dirty）
 
 | 项 | 值 |
 |---|---|
-| 分支 | TBD |
-| HEAD | TBD |
-| dirty 摘要 | TBD |
-| 总分 / 等级 | TBD |
-| 护栏结果 | TBD |
+| 分支 | `docs/web-frontend-boulder-audit` |
+| HEAD | `5f99cf33` |
+| dirty 摘要 | **45** 项未提交；top：`web` 31 / `docs` 7 / `_archive` 2 / `tests` 2；采集 `2026-07-11T15:59:26+08:00` |
+| 总分 / 等级 | **69 / D** |
+| 护栏结果 | **13 passed, 1 failed**（`test_frontend_module_cache_tokens_match_entrypoint`：部分模块 token 为 `module-bootstrap-20260711-1`，入口期望 `module-bootstrap-20260707-93`） |
 
 ### 8.1 分数表
 
 | 域 | R0 | IR5 估计 | 本次实测 | 证据摘要 |
 |---|---:|---:|---:|---|
-| A | 51 | | | |
-| B | 72 | | | |
-| C | 56 | | | |
-| D | 65 | | | |
-| **总分** | **61** | **~78** | | |
+| A 结构与迁移 | 51 | ~70 档（估计） | **62** | 入口薄（`app.js` 30 行）；`index.js` 已 `Promise.all`；shim-like chunk **16/45**；fail-fast bridge **11**；但仍有 heavy chunk **27**、`legacyRoot` bridge **24**、反向 import **27 边 / 12 文件**；`anima-app` **17736** 行仍为最大域 |
+| B 测试与门禁 | 72 | 高 | **67** | frontend 测试 8 文件 / **7551** 行；固定门禁 13 绿 1 红（cache token）；架构护栏仍在，行为面相对 modules/config 偏厚、state 极薄（10 行） |
+| C CSS/DOM | 56 | 中高 | **73** | `90-responsive` 在 import **末位**；DOM id **451** 无重复；`docs/features` **10** 篇；CSS 总行 **20218**，Top：`21-history-panels` 3192 / dataset-editor 2270 / training-forge 2174 |
+| D 配置体验 | 65 | 高 | **75** | provenance / `ui_default` / liveCompat / dirty / `formatPathLabel` / guides 均在代码中可定位；gui-methods **20** 与 guides 文本粗对齐无缺失；体验逻辑仍大量落在 chunks；status 写点仍多（~27 文件），IR5 提到的消息覆盖风险未排除 |
+| **总分** | **61 / D** | **~78 / C+** | **69 / D** | `round(62*0.30+67*0.25+73*0.20+75*0.25)=69` |
+
+**相对 IR5 偏低的原因（实测口径）：**
+
+1. 结构过渡层未退役到 IR5 叙事水平（24 silent legacyRoot + 12 文件反向依赖 + 27 重 chunk）。  
+2. 当前工作树 cache token 护栏红灯，B 域不能按“全绿门禁”给分。  
+3. IR5 分数本身为估计/目标口径，非本次同尺全表复评。
 
 ### 8.2 Top10 债
 
-（执行后按 §6 模板填写）
+| id | severity | domain | title | evidence | impact | suggested_next | do_not |
+|---|---|---|---|---|---|---|---|
+| Boulder-A1 | High | A | 24 个 bridge 仍 `legacyRoot=globalThis` 静默转发 | `helpers/*-bridge.js` 扫描：legacy_only 24（如 `history-collections-bridge.js`、`toml-*-bridge.js`）；failfast_only 11 | 正确性：未 configure 时 no-op，难排查 | P0：按调用频率把 history/toml/config 类 bridge 改为 fail-fast 或显式 handler | 一次删光全部 bridge |
+| Boulder-A2 | High | A | feature → chunks 反向依赖仍在 | 27 边 / 12 文件，如 `config-form/index.js`、`dataset-editor/row.js`、`toml-manager/*`、`app-shell/*` | 维护：依赖方向反，搬家必环 | P0：按域切断，真相迁入 feature 再让 chunk 变 shim | 只改 import 路径不搬实现 |
+| Boulder-A3 | High | A | chunks 仍是业务主仓 | heavy≥200：**27**；chunks 总行 **14447**；shim-like 仅 16 | 迁移永久化 | P1：禁止新业务进 chunks；按 history/config/dataset 分批搬家 | 一次性删除 45 chunks |
+| Boulder-B1 | High | B | 模块 cache token 与入口不一致（护栏红） | pytest：`test_frontend_module_cache_tokens_match_entrypoint` failed；`module-bootstrap-20260711-1` vs `…20260707-93` | 缓存一致性/可回归 | P0：在改前端的同一写集对齐 token（本审计不修业务） | 为消红灯关测试 |
+| Boulder-A4 | Med | A | `anima-app` 体量仍碾压其它域 | domain lines：anima-app 17736 ≫ history-detail 4438 | 维护成本 | P1：持续把 chunk/helpers 职责外迁 | 在 anima-app 继续堆新大函数 |
+| Boulder-C1 | Med | C | 巨型 CSS 文件 | `21-history-panels.css` 3192；dataset-editor 2270；training-forge 2174；总 20218 | 可维护性/冲突面 | P2：按面板拆分，不动视觉语义 | 全局格式化重排无关 CSS |
+| Boulder-C2 | Med | C | DOM id 契约过大 | `index.html` ~1947 行；id **451**（无重复） | 改 UI 脆、测试成本高 | P2：关键 id 注册表 + 契约测试扩展 | 无测试批量改 id |
+| Boulder-D1 | Med | D | 配置体验实现仍穿透 chunks | provenance/liveCompat/dirty 命中多在 `chunks/14-…`、`18-…` 等 | 体验与结构债耦合 | P1：随 A2 搬家把体验逻辑收进 `config-form` | 在 chunk 里继续加 provenance 分支 |
+| Boulder-D2 | Med | D | status 写点分散，消息互盖风险残留 | ~27 文件触及 status/setTomlStatus 等；IR5 亦提示 C5 覆盖 | 体验：提示被冲掉 | P2：统一 status owner / 优先级 | 再加平行 setStatus 通道 |
+| Boulder-B2 | Med | B | 行为级测试不均 | `config_ui` 3101 行 vs `state` 10 行；history/queue 有、交互仿真仍偏契约 | 重构回归盲区 | P2：补关键状态机/桥接顺序测试 | 只加字符串快照锁死文案 |
+
+**Low（附录）**
+
+- forge 皮肤 CSS 重复（多份 `*-forge.css`）  
+- chunk 文件名与职责不对齐（机械拆分遗留）  
+- `docs/features` 已有 10 篇，但仍缺 image-test / weight-analysis 等独立说明  
 
 ### 8.3 先别动 / 可先动
 
-（执行后填写）
+**先别动**
+
+- 一次删除全部 45 chunks 或 37 bridges  
+- 无 DOM 契约测试下批量改 `index.html` id  
+- 未标 `ui_only` 就改保存写入默认值语义  
+- 为了本审计去改/提交无关的 45 项 dirty 业务改动  
+- 碰 `history` / `queue` / `output` / `models` 用户数据  
+
+**可先动（需另开实现 plan，不在本审计）**
+
+1. 对齐 cache token 护栏（若继续在脏前端上开发）  
+2. 高频 bridge fail-fast（history/toml/config）  
+3. 切断 `config-form` / `dataset-editor` / `toml-manager` → chunks 反向边  
+4. 选 1 个 heavy chunk 域做搬家样板  
+5. 拆 `21-history-panels.css` 或补 image-test 文档  
+
+**最小下一步**
+
+- 诊断任务到此可结束。  
+- 若要拆山：对 **Boulder-A1+A2** 或 **B1 token** 另开 `writing-plans` 实现计划。  
+- 本分支仅保留审计文档提交；不要把工作区其它 `web/static` dirty 混进审计 commit。
 
 ### 8.4 命令与扫描摘要
 
-（执行后粘贴关键输出摘要，非全文日志）
+```text
+branch: docs/web-frontend-boulder-audit
+HEAD: 5f99cf33
+dirty_count: 45 (web:31, docs:7, tests:2, ...)
+features: 19
+chunks: 45 / lines 14447 (shim_like 16, heavy_ge_200 27)
+bridges: 37 / lines 1837 (legacyRoot 24, failfast-style 11, neither 2)
+reverse_import_edges: 27 (unique files 12)
+app.js: 30 lines; anima-app/index.js: 106 lines; Promise.all: true
+css_files: 22 / total_lines 20218; 90-responsive: last import
+dom_id_count: 451 unique; duplicate_ids: 0
+docs/features: 10
+gui-methods: 20; guides.js text covers stems: yes
+pytest gate: 13 passed, 1 failed (cache tokens) in 7.17s; exit_code=1
+score: A62 B67 C73 D75 => 69/D
+```
 
----
+证据落盘（git-ignore 工作区，可不提交）：
+
+- `.superpowers/sdd/boulder-audit-evidence/task1-meta.md`
+- `.superpowers/sdd/boulder-audit-evidence/task2-structure.md`
+- `.superpowers/sdd/boulder-audit-evidence/task3-tests.md`
+- `.superpowers/sdd/boulder-audit-evidence/task4-css-dom.md`
+- `.superpowers/sdd/boulder-audit-evidence/task5-config-surface.md`
 
 ## 9. 风险
 
@@ -362,13 +426,13 @@ flowchart TD
 
 全部满足才算本诊断任务完成：
 
-- [ ] 四域分数 + 总分/等级已给出，且每域有证据
-- [ ] 与 R0、IR5 有对比表
-- [ ] High/Med Top10 债字段完整
-- [ ] 写明先别动 / 可先动
-- [ ] 未改业务代码与用户数据
-- [ ] 本 design + 审计快照已落盘，用户可审
-- [ ] 给出最小下一步（停诊断 or 转 writing-plans）
+- [x] 四域分数 + 总分/等级已给出，且每域有证据
+- [x] 与 R0、IR5 有对比表
+- [x] High/Med Top10 债字段完整
+- [x] 写明先别动 / 可先动
+- [x] 未改业务代码与用户数据
+- [x] 本 design + 审计快照已落盘，用户可审
+- [x] 给出最小下一步（停诊断 or 转 writing-plans）
 
 设计阶段 DoD（本文首次落盘）：
 
@@ -376,7 +440,7 @@ flowchart TD
 - [x] 第 1–3 节设计已口头确认
 - [x] 本文件写入 `docs/superpowers/specs/`
 - [x] 索引可达（`docs/superpowers/README.md`）
-- [ ] 用户审阅本 spec 后，再执行 §7 审计并填 §8
+- [x] 用户审阅本 spec 后，再执行 §7 审计并填 §8
 
 ---
 
