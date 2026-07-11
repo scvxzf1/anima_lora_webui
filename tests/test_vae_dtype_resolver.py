@@ -68,3 +68,12 @@ def test_capability_probe_failure_keeps_weight_dtype(monkeypatch, caplog):
     with caplog.at_level("WARNING"):
         dtype = resolve_vae_dtype(args, torch.float16)
     assert dtype == torch.float16
+
+
+def test_half_vae_cli_flag_exists():
+    import train
+
+    parser = train.setup_parser()
+    actions = {a.dest for a in parser._actions}
+    assert "half_vae" in actions
+    assert "no_half_vae" in actions

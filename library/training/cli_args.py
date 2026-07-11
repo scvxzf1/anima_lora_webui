@@ -1495,7 +1495,21 @@ def setup_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--no_half_vae",
         action="store_true",
-        help="do not use fp16",
+        help=(
+            "Run the VAE in fp32 (never half). Forces fp32 unconditionally on "
+            "every GPU and precision."
+        ),
+    )
+    parser.add_argument(
+        "--half_vae",
+        action="store_true",
+        help=(
+            "Explicitly allow the VAE to run in half precision, overriding the "
+            "automatic fp32 protection that kicks in on pre-Ampere GPUs (sm<8, "
+            "e.g. V100/T4) under fp16 training. NOT recommended there: fp16 VAE "
+            "decode can produce artifacts (花图/糊图). No-op on Ampere+ or under "
+            "bf16/fp32."
+        ),
     )
     parser.add_argument(
         "--skip_until_initial_step",

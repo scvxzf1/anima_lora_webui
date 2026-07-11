@@ -35,6 +35,10 @@ from library.training.metadata import (
     finalize_metadata,
 )
 from library.training.method_adapter import SetupCtx
+from library.training.precision_policy import (
+    resolve_mixed_precision,
+    resolve_vae_dtype,
+)
 from library.training.progress import ProgressSink, run_scope
 from library.training.probes import attach_peak_probe_to_network, maybe_probe, maybe_probe_components
 from library.training.train_bootstrap import (
@@ -190,6 +194,10 @@ def run_training_session(trainer, args) -> None:
         or trainer.is_train_text_encoder(args)
     )
 
+    # Resolve mixed precision BEFORE prepare_accelerator: Accelerator() bakes
+    # the autocast dtype at construction time.
+    resolve_mixed_precision(args)
+
     # Prepare accelerator
     logger.info("preparing accelerator")
     accelerator = prepare_accelerator(args)
@@ -247,7 +255,7 @@ def run_training_session(trainer, args) -> None:
     # mixed precision dtype
     weight_dtype, save_dtype = prepare_dtype(args)
     vae_dtype = (
-        (torch.float32 if args.no_half_vae else weight_dtype)
+        resolve_vae_dtype(args, weight_dtype)
         if trainer.cast_vae(args)
         else None
     )
