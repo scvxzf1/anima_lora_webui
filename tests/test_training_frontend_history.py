@@ -372,7 +372,11 @@ def test_history_manager_frontend_hooks_are_present() -> None:
     assert "createHistoryManagerCollectionSection" not in source
     assert "createHistoryManagerConfigGroupSection" not in source
     assert "list.dataset.groupMode = 'collections';" in history_section
-    assert "collection: selectedCollection" in history_section
+    workbench_fill = _frontend_module_text("js/features/history-list/workbench-chunk-fill.js")
+    assert (
+        "collection: selectedCollection" in history_section
+        or "collection: selectedCollection" in workbench_fill
+    )
     assert "history-current-group-content" in history_section
     assert "history-collection-nav" in history_section
     assert "HISTORY_UNGROUPED_COLLECTION_KEY" in source
