@@ -3043,3 +3043,57 @@ def test_form_ui_defaults_and_help_align_with_base_facts() -> None:
     assert "默认 true" not in custom_down_help
     assert "false" in custom_down_help
 
+def test_live_compat_warnings_mirror_key_conflict_codes() -> None:
+    """Live compat helper surfaces key conflict codes without replacing preflight."""
+    source = _frontend_module_text("js/features/config-form/live-compat.js")
+    field_change = _frontend_module_text("js/features/anima-app/chunks/14-lora-adapter-kind-from-config.js")
+
+    assert "export function collectLiveCompatIssues" in source
+    assert "export function formatLiveCompatStatus" in source
+    assert "selective_full_gradient_checkpointing" in source
+    assert "block_swap_soft_tokens" in source
+    assert "不替代" in source or "Does NOT replace" in source or "preflight" in source
+
+    assert "collectLiveCompatIssues" in field_change
+    assert "updateLiveCompatWarningsFromForm" in field_change
+    assert "setTomlStatus" in field_change
+
+    if not shutil.which("node"):
+        return
+
+    script = r"""
+import { collectLiveCompatIssues, formatLiveCompatStatus } from './web/static/js/features/config-form/live-compat.js';
+const selective = collectLiveCompatIssues({
+  selective_checkpoint: 'mlp_only',
+  gradient_checkpointing: true,
+});
+const soft = collectLiveCompatIssues({
+  blocks_to_swap: 8,
+  network_module: 'networks.methods.soft_tokens',
+});
+const ok = collectLiveCompatIssues({
+  selective_checkpoint: 'off',
+  gradient_checkpointing: true,
+  blocks_to_swap: 0,
+});
+console.log(JSON.stringify({
+  selectiveCodes: selective.map((i) => i.code),
+  softCodes: soft.map((i) => i.code),
+  okCount: ok.length,
+  formatted: formatLiveCompatStatus(selective),
+}));
+"""
+    proc = subprocess.run(
+        ["node", "--input-type=module", "-e", script],
+        cwd=REPO_ROOT,
+        text=True,
+        capture_output=True,
+        timeout=20,
+    )
+    assert proc.returncode == 0, proc.stderr or proc.stdout
+    payload = json.loads(proc.stdout)
+    assert "selective_full_gradient_checkpointing" in payload["selectiveCodes"]
+    assert "block_swap_soft_tokens" in payload["softCodes"]
+    assert payload["okCount"] == 0
+    assert "live 兼容" in payload["formatted"]
+

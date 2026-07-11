@@ -5,6 +5,8 @@
 import { updateChoiceGuide } from './13-update-dataset-editor-rows-setting-value.js?v=module-bootstrap-20260707-93';
 import { updateStepEstimatePanel } from './03-parse-network-arg-entry.js?v=module-bootstrap-20260707-93';
 import { valuesEqual } from '../helpers/form-values.js?v=module-bootstrap-20260707-93';
+import { collectLiveCompatIssues, formatLiveCompatStatus } from '../../config-form/live-compat.js?v=module-bootstrap-20260707-93';
+import { setTomlStatus } from '../helpers/toml-action-state-bridge.js?v=module-bootstrap-20260707-93';
 import { buildFieldPresentation, fieldSourceBadgeLabel } from '../../config-form/field-presentation.js?v=module-bootstrap-20260707-93';
 import {
     isTruthy,
@@ -296,6 +298,16 @@ export function configureNoDatasetRegularizationModePanelUpdater(updater) {
         updateLossWeightingFieldState();
         updateNoDatasetRegularizationModePanelCallback();
         updateChoiceGuideFromLiveForm();
+        updateLiveCompatWarningsFromForm();
+    }
+
+    function updateLiveCompatWarningsFromForm() {
+        const liveConfig = liveConfigFromForm();
+        const issues = collectLiveCompatIssues(liveConfig);
+        if (!issues.length) return;
+        const message = formatLiveCompatStatus(issues);
+        const severity = issues.some((item) => item.severity === 'error') ? 'error' : 'pending';
+        setTomlStatus(severity, message);
     }
 
     function updateChoiceGuideFromLiveForm() {

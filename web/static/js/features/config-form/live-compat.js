@@ -1,0 +1,86 @@
+/**
+ * Live (non-blocking) compatibility warnings for the config form.
+ * Mirrors a small subset of library/training/compat_matrix.py codes for UX only.
+ * Does NOT replace server preflight.
+ */
+
+/**
+ * @typedef {Object} LiveCompatIssue
+ * @property {string} code
+ * @property {string} key
+ * @property {'error'|'warning'} severity
+ * @property {string} message
+ */
+
+function boolValue(value, fallback = false) {
+    if (typeof value === 'boolean') return value;
+    if (value == null) return fallback;
+    if (typeof value === 'number') return Boolean(value);
+    const text = String(value).trim().toLowerCase();
+    if (['1', 'true', 'yes', 'on'].includes(text)) return true;
+    if (['0', 'false', 'no', 'off', 'none', ''].includes(text)) return false;
+    return fallback;
+}
+
+function intValue(value, fallback = 0) {
+    const n = Number(value);
+    return Number.isFinite(n) ? Math.trunc(n) : fallback;
+}
+
+/**
+ * @param {Record<string, unknown>} config
+ * @returns {LiveCompatIssue[]}
+ */
+export function collectLiveCompatIssues(config = {}) {
+    const issues = [];
+    const selective = String(config.selective_checkpoint ?? 'off').trim().toLowerCase() || 'off';
+    const gradientCheckpointing = boolValue(config.gradient_checkpointing, false);
+    const blocksToSwap = intValue(config.blocks_to_swap, 0);
+    const networkModule = String(config.network_module ?? '');
+    const selectiveEnabled = selective !== 'off' && selective !== '';
+    const blockSwapEnabled = blocksToSwap > 0;
+    const softTokens = /soft_tokens/i.test(networkModule);
+
+    if (selectiveEnabled && gradientCheckpointing) {
+        issues.push({
+            code: 'selective_full_gradient_checkpointing',
+            key: 'gradient_checkpointing',
+            severity: 'error',
+            message:
+                'live 兼容：selective_checkpoint 不能与完整 gradient_checkpointing 同时开启（保存/训练前 preflight 也会拦截）。',
+        });
+    }
+
+    if (blockSwapEnabled && softTokens) {
+        issues.push({
+            code: 'block_swap_soft_tokens',
+            key: 'blocks_to_swap',
+            severity: 'error',
+            message:
+                'live 兼容：blocks_to_swap 不支持 Soft Tokens；请保持 blocks_to_swap=0（preflight 仍会正式校验）。',
+        });
+    }
+
+    if (blockSwapEnabled && boolValue(config.cpu_offload_checkpointing, false)) {
+        issues.push({
+            code: 'block_swap_cpu_offload',
+            key: 'cpu_offload_checkpointing',
+            severity: 'error',
+            message:
+                'live 兼容：blocks_to_swap 不能与 cpu_offload_checkpointing 同时开启。',
+        });
+    }
+
+    return issues;
+}
+
+/**
+ * @param {LiveCompatIssue[]} issues
+ * @returns {string}
+ */
+export function formatLiveCompatStatus(issues) {
+    if (!issues?.length) return '';
+    const head = issues[0];
+    const more = issues.length > 1 ? `（另有 ${issues.length - 1} 条）` : '';
+    return `${head.message}${more}`;
+}
