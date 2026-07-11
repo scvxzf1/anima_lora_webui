@@ -56,7 +56,7 @@ export async function createAnimaApp(ctx) {
         import('./chunks/19-current-sample-prompt-text.js?v=module-bootstrap-20260707-93'),
         import('./chunks/20-can-drop-toml-file-to-group.js?v=module-bootstrap-20260707-93'),
         import('./chunks/21-update-toml-selection-ui.js?v=module-bootstrap-20260707-93'),
-        import('./chunks/22-update-toml-action-state.js?v=module-bootstrap-20260711-c6'),
+        import('./chunks/22-update-toml-action-state.js?v=module-bootstrap-20260707-93'),
         import('./chunks/23-move-current-toml-to-group.js?v=module-bootstrap-20260707-93'),
         import('./chunks/24-show-preflight-pending-dialog.js?v=module-bootstrap-20260707-93'),
         import('./chunks/25-update-progress.js?v=module-bootstrap-20260707-93'),

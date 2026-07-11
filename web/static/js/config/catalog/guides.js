@@ -277,6 +277,18 @@ export const VARIANT_GUIDE_ZH = {
         '参数量小；推理链路和普通 LoRA 不同。',
         '只建议方法实验。'
     ),
+    mfu_rokkotsu_cached: choiceHelp(
+        'MFU 肋骨缓存对照',
+        'bench/MFU 用 LoKr 变体：固定缓存数据集与 sample prompts，偏吞吐与收敛对照。',
+        '路径和缓存假设很强；不是通用新手配置，也不适合直接当生产默认。',
+        '只在跑 MFU/肋骨缓存对照或吞吐探针时选。'
+    ),
+    mfu_rokkotsu_plain_lora_ckpt: choiceHelp(
+        'MFU 肋骨 plain LoRA',
+        'bench/MFU 用 plain LoRA 对照变体，关闭 LoKr，便于和 cached LoKr 配置做同数据对比。',
+        '仍绑定专用数据集与 sample prompts；变量少，但不是通用训练入口。',
+        '需要 plain LoRA 对照 MFU 结果时选。'
+    ),
     spd: choiceHelp(
         'SPD 实验配置（实验别名）',
         'configs/methods/spd.toml 是专用 distill_spd 脚本配置，包含数据目录、迭代数和 SPD schedule。',
