@@ -19,7 +19,11 @@ def test_training_queue_frontend_hooks_are_present() -> None:
     queue_index = _frontend_module_text("js/features/queue/index.js")
     queue_state = _frontend_module_text("js/features/queue/state.js")
     queue_api = _frontend_module_text("js/features/queue/api.js")
-    queue_render = _frontend_module_text("js/features/queue/render.js")
+    queue_render = _frontend_feature_text(
+        "js/features/queue/render.js",
+        "js/features/queue/render-labels.js",
+        "js/features/queue/render-items.js",
+    )
     queue_actions = _frontend_module_text("js/features/queue/actions.js")
     queue_enqueue = _frontend_module_text("js/features/queue/enqueue.js")
     feature_ensurers = _frontend_module_text("js/features/anima-app/helpers/feature-ensurers.js")

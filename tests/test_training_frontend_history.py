@@ -46,7 +46,11 @@ def test_queue_and_history_detail_literal_dom_ids_match_index_html() -> None:
     html = INDEX_HTML.read_text(encoding="utf-8")
     ids_by_module = {
         "queue/render.js": _literal_get_element_by_id_targets(
-            _frontend_module_text("js/features/queue/render.js")
+            _frontend_feature_text(
+                "js/features/queue/render.js",
+                "js/features/queue/render-labels.js",
+                "js/features/queue/render-items.js",
+            )
         ),
         "queue/actions.js": _literal_get_element_by_id_targets(
             _frontend_module_text("js/features/queue/actions.js")
@@ -243,6 +247,9 @@ def test_history_manager_frontend_hooks_are_present() -> None:
         "js/features/anima-app/chunks/27-render-history-collections-workbench.js",
         "js/features/anima-app/chunks/28-history-collection-search-text.js",
         "js/features/history-list/workbench-cards.js",
+        "js/features/history-list/workbench-collection-card.js",
+        "js/features/history-list/workbench-config-group-card.js",
+        "js/features/history-list/workbench-order.js",
         "js/features/anima-app/chunks/32-history-task-collection-label.js",
         "js/features/anima-app/chunks/33-create-history-task-item.js",
         "js/features/anima-app/helpers/history-collections-bridge.js",
@@ -864,10 +871,14 @@ def test_history_collection_drag_drop_frontend_hooks_are_present() -> None:
     workbench_impl = _frontend_module_text("js/features/anima-app/chunks/27-render-history-collections-workbench.js")
     workbench = _section(workbench_impl, "function renderHistoryCollectionsWorkbench", "function renderHistoryManagerStats")
     drag_helpers = _section(source, "function historyDragTaskIdsForGroup", "function createHistoryCollectionWorkbenchCard")
-    card_impl = _frontend_module_text("js/features/history-list/workbench-cards.js")
+    card_impl = _frontend_feature_text(
+        "js/features/history-list/workbench-cards.js",
+        "js/features/history-list/workbench-collection-card.js",
+        "js/features/history-list/workbench-config-group-card.js",
+        "js/features/history-list/workbench-order.js",
+    )
     collection_card = _section(card_impl, "function createHistoryCollectionWorkbenchCard", "function createHistoryConfigGroupWorkbenchCard")
-    config_card_impl = _frontend_module_text("js/features/history-list/workbench-cards.js")
-    config_card = _section(config_card_impl, "function createHistoryConfigGroupWorkbenchCard", "function historyCollectionNamesForTasks")
+    config_card = _section(card_impl, "function createHistoryConfigGroupWorkbenchCard", "function historyCollectionNamesForTasks")
 
     assert "export const HISTORY_TASK_DRAG_MIME = 'application/x-anima-history-task-ids';" in app_constants
     assert "export const HISTORY_COLLECTION_DRAG_MIME = 'application/x-anima-history-collection';" in app_constants

@@ -22,9 +22,18 @@ def _chunk15_compat_text() -> str:
 
 CHUNK31_REL = "js/features/anima-app/chunks/31-create-history-collection-workbench-card.js"
 HISTORY_WORKBENCH_CARDS_REL = "js/features/history-list/workbench-cards.js"
+HISTORY_WORKBENCH_COLLECTION_CARD_REL = "js/features/history-list/workbench-collection-card.js"
+HISTORY_WORKBENCH_CONFIG_GROUP_CARD_REL = "js/features/history-list/workbench-config-group-card.js"
+HISTORY_WORKBENCH_ORDER_REL = "js/features/history-list/workbench-order.js"
 
 def _chunk31_compat_text() -> str:
-    return _frontend_feature_text(CHUNK31_REL, HISTORY_WORKBENCH_CARDS_REL)
+    return _frontend_feature_text(
+        CHUNK31_REL,
+        HISTORY_WORKBENCH_CARDS_REL,
+        HISTORY_WORKBENCH_COLLECTION_CARD_REL,
+        HISTORY_WORKBENCH_CONFIG_GROUP_CARD_REL,
+        HISTORY_WORKBENCH_ORDER_REL,
+    )
 
 CHUNK11_REL = "js/features/anima-app/chunks/11-create-dataset-editor-row.js"
 DATASET_EDITOR_ROW_REL = "js/features/dataset-editor/row.js"
