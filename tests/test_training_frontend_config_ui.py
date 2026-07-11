@@ -1371,7 +1371,7 @@ def test_config_form_uses_navigation_search_and_progressive_disclosure() -> None
     assert "function createConfigQuickPresetsButton" in source
     assert "function createConfigQuickPresetPanel" in source
     assert "RESOURCE_QUICK_PRESETS" in source
-    for label in ["全 GPU", "Balanced 16G", "FP8 测试", "更省显存", "LoKr 16G", "OOM 兜底"]:
+    for label in ["快捷·全 GPU", "快捷·Balanced 16G", "快捷·FP8 测试", "快捷·更省显存", "快捷·LoKr 16G", "快捷·OOM 兜底"]:
         assert label in source
     assert "merge: {" in source
     assert "blocks_to_swap: 'max'" in source
@@ -2095,6 +2095,62 @@ def test_variant_guides_match_gui_methods_or_legacy_aliases() -> None:
     for key in sorted(legacy_keys):
         assert key in variant_keys, f"legacy alias {key} missing VARIANT_GUIDE_ZH entry"
         assert re.search(rf"(?:'{re.escape(key)}'|{re.escape(key)}):\s*choiceHelp\(", variant_block.group(1)), key
+
+
+def test_resource_naming_three_layers_are_distinguished() -> None:
+    """硬件 preset / 方法变体 / 资源快捷按钮三层文案必须可区分。"""
+    app_constants = _frontend_module_text("js/features/anima-app/helpers/app-constants.js")
+    guides = _frontend_module_text("js/config/catalog/guides.js")
+
+    quick_presets = _section(
+        app_constants,
+        "export const RESOURCE_QUICK_PRESETS = [",
+        "export const NO_DATASET_REGULARIZATION_FIELD_KEYS",
+    )
+    for preset_id in (
+        "gpu_full",
+        "balanced_16g",
+        "fp8_swap_test",
+        "vram_saver",
+        "lokr_16g_rescue",
+        "oom_fallback",
+    ):
+        assert f"id: '{preset_id}'" in quick_presets
+
+    note_lines = [line for line in quick_presets.splitlines() if "note:" in line]
+    assert len(note_lines) >= 6
+    for line in note_lines:
+        assert (
+            "快捷" in line
+            or "一键资源" in line
+            or "快捷资源" in line
+        ), f"resource quick preset note missing layer word: {line}"
+
+    lokr_quick = _section(quick_presets, "id: 'lokr_16g_rescue'", "id: 'oom_fallback'")
+    assert (
+        "仅 LoKr" in lokr_quick
+        or "方法变体专用" in lokr_quick
+        or "LoKr 专用" in lokr_quick
+    )
+    assert "快捷" in lokr_quick or "快捷资源" in lokr_quick or "一键资源" in lokr_quick
+
+    preset_start = guides.index("export const PRESET_GUIDE_ZH = {")
+    preset_guide = guides[preset_start:]
+    low_vram_guide = _section(preset_guide, "low_vram: choiceHelp(", "low_vram_blockswap: choiceHelp(")
+    balanced_guide = _section(preset_guide, "balanced_16g: choiceHelp(", "graft: choiceHelp(")
+    assert "硬件预设" in low_vram_guide
+    assert "硬件预设" in balanced_guide
+    # balanced_16g 是硬件 preset，不能混入 LoKr 方法专用描述。
+    assert "LoKr 专用" not in balanced_guide
+    assert "lokr_factor_group_size" not in balanced_guide
+    assert "仅 LoKr" not in balanced_guide
+
+    variant_start = guides.index("export const VARIANT_GUIDE_ZH = {")
+    variant_guide = guides[variant_start:preset_start]
+    lora8_guide = _section(variant_guide, "'lora-8gb': choiceHelp(", "ortholora: choiceHelp(")
+    assert "方法变体" in lora8_guide
+    assert "硬件预设" not in lora8_guide
+    assert "快捷资源" not in lora8_guide
 
 
 def test_balanced_16g_block_swap_fields_are_visible() -> None:

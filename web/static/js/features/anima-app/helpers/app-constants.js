@@ -3,8 +3,8 @@ export const FILE_GROUP_DROP_TARGET_ATTR = 'data-file-group-drop-target';
 export const RESOURCE_QUICK_PRESETS = [
     {
         id: 'gpu_full',
-        label: '全 GPU',
-        note: '显存充足优先；最快，不做 block swap。',
+        label: '快捷·全 GPU',
+        note: '快捷资源：显存充足优先；最快，不做 block swap。',
         values: {
             blocks_to_swap: 0,
             block_swap_transfer_dtype: 'bf16',
@@ -20,8 +20,8 @@ export const RESOURCE_QUICK_PRESETS = [
     },
     {
         id: 'balanced_16g',
-        label: 'Balanced 16G',
-        note: '推荐 16GB；约省 4GB，速度损失较低。',
+        label: '快捷·Balanced 16G',
+        note: '快捷资源：推荐 16GB；约省 4GB，速度损失较低。不是硬件 preset 本身。',
         values: {
             blocks_to_swap: 12,
             block_swap_transfer_dtype: 'bf16',
@@ -37,8 +37,8 @@ export const RESOURCE_QUICK_PRESETS = [
     },
     {
         id: 'fp8_swap_test',
-        label: 'FP8 测试',
-        note: '实验项；压缩 frozen base block 传输，只用于对照测试。',
+        label: '快捷·FP8 测试',
+        note: '快捷资源：实验项；压缩 frozen base block 传输，只用于对照测试。',
         values: {
             blocks_to_swap: 12,
             block_swap_transfer_dtype: 'fp8_e4m3',
@@ -54,8 +54,8 @@ export const RESOURCE_QUICK_PRESETS = [
     },
     {
         id: 'vram_saver',
-        label: '更省显存',
-        note: '交换 16 块；更省显存，训练会更慢。',
+        label: '快捷·更省显存',
+        note: '快捷资源：交换 16 块；更省显存，训练会更慢。',
         values: {
             blocks_to_swap: 16,
             block_swap_transfer_dtype: 'bf16',
@@ -69,8 +69,8 @@ export const RESOURCE_QUICK_PRESETS = [
     },
     {
         id: 'lokr_16g_rescue',
-        label: 'LoKr 16G',
-        note: 'LoKr 专用；实测交换 23 块，分组 8 作为当前速度默认。',
+        label: '快捷·LoKr 16G',
+        note: '快捷资源：仅 LoKr / 方法变体专用；实测交换 23 块，分组 8 作为当前速度默认。',
         values: {
             blocks_to_swap: 23,
             block_swap_transfer_dtype: 'bf16',
@@ -88,8 +88,8 @@ export const RESOURCE_QUICK_PRESETS = [
     },
     {
         id: 'oom_fallback',
-        label: 'OOM 兜底',
-        note: '仍然 OOM 时用；开启 mlp_only 重算。',
+        label: '快捷·OOM 兜底',
+        note: '快捷资源：仍然 OOM 时用；开启 mlp_only 重算。',
         values: {
             blocks_to_swap: 12,
             block_swap_transfer_dtype: 'bf16',
