@@ -12,6 +12,182 @@ import { getConfigState } from '../anima-app/helpers/config-state-bridge.js?v=mo
 const configState = getConfigState();
 const configFormState = configState.configFormState;
 
+function normalizeQuickPresetMethodToken(value) {
+    return String(value ?? '').trim().toLowerCase();
+}
+
+function sameQuickPresetValue(left, right) {
+    if (left === right) return true;
+    if (left == null && right == null) return true;
+    if (typeof left === 'boolean' || typeof right === 'boolean') {
+        return Boolean(left) === Boolean(right);
+    }
+    const leftNum = Number(left);
+    const rightNum = Number(right);
+    if (Number.isFinite(leftNum) && Number.isFinite(rightNum) && String(left).trim() !== '' && String(right).trim() !== '') {
+        return leftNum === rightNum;
+    }
+    return String(left ?? '') === String(right ?? '');
+}
+
+function formatQuickPresetValue(value) {
+    if (value === undefined) return '未设置';
+    if (value === null) return 'null';
+    if (typeof value === 'boolean') return value ? 'true' : 'false';
+    if (typeof value === 'string' && value.trim() === '') return '空';
+    return String(value);
+}
+
+export function resolveQuickPresetMethodFamily(source = {}) {
+    if (source == null) return '';
+    if (typeof source === 'string' || typeof source === 'number' || typeof source === 'boolean') {
+        return normalizeQuickPresetMethodToken(source);
+    }
+
+    const adapterKind = normalizeQuickPresetMethodToken(
+        source.lora_adapter_kind
+        ?? source.adapter_kind
+        ?? source.methodFamily
+        ?? source.method_family
+    );
+    if (adapterKind === 'lokr' || adapterKind === 'loha' || adapterKind === 'glora' || adapterKind === 'vera' || adapterKind === 'lora') {
+        return adapterKind;
+    }
+
+    const flagMap = [
+        ['use_lokr', 'lokr'],
+        ['use_loha', 'loha'],
+        ['use_glora', 'glora'],
+        ['use_vera', 'vera'],
+    ];
+    for (const [flag, family] of flagMap) {
+        const raw = source[flag];
+        if (raw === true || raw === 1 || raw === '1' || String(raw).toLowerCase() === 'true') {
+            return family;
+        }
+    }
+
+    const method = normalizeQuickPresetMethodToken(
+        source.method
+        ?? source.network_module
+        ?? source.variant
+        ?? source.selectedMethod
+    );
+    if (!method) return '';
+    if (method.includes('lokr')) return 'lokr';
+    if (method.includes('loha')) return 'loha';
+    if (method.includes('glora')) return 'glora';
+    if (method.includes('vera')) return 'vera';
+    return method;
+}
+
+export function isQuickPresetApplicable(preset, methodFamily) {
+    const allowed = Array.isArray(preset?.applicableMethods)
+        ? preset.applicableMethods.map(normalizeQuickPresetMethodToken).filter(Boolean)
+        : [];
+    if (!allowed.length) {
+        return { ok: true };
+    }
+
+    const family = resolveQuickPresetMethodFamily(methodFamily);
+    const tokens = new Set();
+    if (family) {
+        tokens.add(family);
+        if (family === 'lokr') tokens.add('use_lokr');
+        if (family === 'loha') tokens.add('use_loha');
+        if (family === 'glora') tokens.add('use_glora');
+        if (family === 'vera') tokens.add('use_vera');
+    }
+    if (methodFamily && typeof methodFamily === 'object') {
+        for (const [key, value] of Object.entries(methodFamily)) {
+            const token = normalizeQuickPresetMethodToken(key);
+            if (!token) continue;
+            if (value === true || value === 1 || value === '1' || String(value).toLowerCase() === 'true') {
+                tokens.add(token);
+            }
+            if (token === 'lora_adapter_kind' || token === 'method' || token === 'methodfamily') {
+                const normalized = resolveQuickPresetMethodFamily(value);
+                if (normalized) tokens.add(normalized);
+            }
+        }
+    }
+
+    const matched = allowed.some((item) => tokens.has(item));
+    if (matched) return { ok: true };
+    const label = family || '当前方法';
+    return {
+        ok: false,
+        reason: `${preset?.label || '该快捷资源'}仅适用于 ${allowed.join('/')}，当前是 ${label}`,
+    };
+}
+
+export function previewQuickPresetDiff(preset, currentValues = {}) {
+    const values = currentValues && typeof currentValues === 'object' ? currentValues : {};
+    const patch = values.__patch && typeof values.__patch === 'object'
+        ? values.__patch
+        : (preset?.values || {});
+    const diffs = [];
+    for (const [key, toValue] of Object.entries(patch || {})) {
+        if (key === '__patch') continue;
+        const fromValue = Object.prototype.hasOwnProperty.call(values, key) ? values[key] : undefined;
+        if (sameQuickPresetValue(fromValue, toValue)) continue;
+        diffs.push({
+            key,
+            from: fromValue,
+            to: toValue,
+        });
+    }
+    return diffs;
+}
+
+function readCurrentQuickPresetMethodSource() {
+    const currentConfig = configState.currentConfig || {};
+    const draft = configFormState?.draftValues;
+    const source = { ...currentConfig };
+
+    const formKeys = ['lora_adapter_kind', 'use_lokr', 'use_loha', 'use_glora', 'use_vera'];
+    for (const key of formKeys) {
+        const input = document.querySelector(`#config-form .field-input[data-key="${CSS.escape(key)}"]`);
+        if (input) {
+            if (input.type === 'checkbox') {
+                source[key] = input.checked;
+            } else {
+                source[key] = input.value;
+            }
+            continue;
+        }
+        if (draft?.has?.(key)) {
+            source[key] = draft.get(key);
+        }
+    }
+
+    const methodSelect = document.getElementById('method-select');
+    if (methodSelect?.value) source.method = methodSelect.value;
+    const variantSelect = document.getElementById('variant-select');
+    if (variantSelect?.value) source.variant = variantSelect.value;
+    return source;
+}
+
+function collectCurrentQuickPresetValues(keys = []) {
+    const values = {};
+    for (const key of keys) {
+        values[key] = resourceQuickCurrentValue(key);
+    }
+    return values;
+}
+
+function formatQuickPresetDiffSummary(diffs, limit = 4) {
+    if (!diffs.length) return '没有字段变化';
+    const parts = diffs.slice(0, limit).map((item) => (
+        `${item.key}: ${formatQuickPresetValue(item.from)} → ${formatQuickPresetValue(item.to)}`
+    ));
+    if (diffs.length > limit) {
+        parts.push(`…另有 ${diffs.length - limit} 项`);
+    }
+    return parts.join('；');
+}
+
+
 export function createFillGlobalModelPathsButton() {
     const btn = document.createElement('button');
     btn.id = 'btn-fill-global-model-paths';
@@ -71,13 +247,30 @@ function createConfigQuickPresetPanel(options) {
     label.textContent = options.label || '快速预设';
     panel.appendChild(label);
 
+    const methodGuard = Boolean(options.methodGuard);
     for (const preset of options.presets || []) {
         const btn = document.createElement('button');
         btn.type = 'button';
         btn.className = 'btn btn-small config-quick-preset-btn';
         if (options.datasetKey) btn.dataset[options.datasetKey] = preset.id;
         btn.textContent = preset.label;
-        btn.title = preset.note;
+        btn.title = preset.note || '';
+
+        if (methodGuard) {
+            const applicability = isQuickPresetApplicable(preset, readCurrentQuickPresetMethodSource());
+            if (!applicability.ok) {
+                btn.disabled = true;
+                btn.setAttribute('aria-disabled', 'true');
+                btn.title = `${preset.note || preset.label}（${applicability.reason}）`;
+                btn.addEventListener('click', (event) => {
+                    event.preventDefault();
+                    setTomlStatus('error', applicability.reason);
+                });
+                panel.appendChild(btn);
+                continue;
+            }
+        }
+
         btn.addEventListener('click', () => options.applyPreset(preset));
         panel.appendChild(btn);
     }
@@ -103,16 +296,35 @@ export function createResourceQuickPresetPanel() {
         label: '快速预设',
         presets: RESOURCE_QUICK_PRESETS,
         datasetKey: 'resourcePreset',
+        methodGuard: true,
         applyPreset: applyResourceQuickPreset,
     });
 }
 
 function applyResourceQuickPreset(preset) {
+    const methodSource = readCurrentQuickPresetMethodSource();
+    const applicability = isQuickPresetApplicable(preset, methodSource);
+    if (!applicability.ok) {
+        setTomlStatus('error', applicability.reason || `${preset.label}不适用于当前方法`);
+        return;
+    }
+
+    const patch = resourceQuickPresetPatch(preset);
+    const currentValues = collectCurrentQuickPresetValues(Object.keys(patch));
+    const diffs = previewQuickPresetDiff(preset, { ...currentValues, __patch: patch });
+    if (!diffs.length) {
+        setTomlStatus('ok', `${preset.label}：当前已是相同配置，无需修改`);
+        return;
+    }
+
     for (const [key, value] of Object.entries(resourceQuickPresetPatch(preset))) {
         setFieldInputValue(key, value);
     }
     handleFormFieldChange();
-    setTomlStatus('ok', `已填写显存与速度优化预设: ${preset.label}`);
+    setTomlStatus(
+        'ok',
+        `已填写 ${preset.label}；将修改 ${diffs.length} 个字段：${formatQuickPresetDiffSummary(diffs)}`
+    );
 }
 
 function resourceQuickPresetPatch(preset) {

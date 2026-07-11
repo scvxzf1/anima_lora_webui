@@ -71,6 +71,7 @@ export const RESOURCE_QUICK_PRESETS = [
         id: 'lokr_16g_rescue',
         label: '快捷·LoKr 16G',
         note: '快捷资源：仅 LoKr / 方法变体专用；实测交换 23 块，分组 8 作为当前速度默认。',
+        applicableMethods: ['lokr', 'use_lokr'],
         values: {
             blocks_to_swap: 23,
             block_swap_transfer_dtype: 'bf16',

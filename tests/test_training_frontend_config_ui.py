@@ -2153,6 +2153,52 @@ def test_resource_naming_three_layers_are_distinguished() -> None:
     assert "快捷资源" not in lora8_guide
 
 
+def test_resource_quick_preset_diff_preview_and_method_guards_exist() -> None:
+    """快捷资源按钮需提供 diff 预览与方法门禁接口。"""
+    app_constants = _frontend_module_text("js/features/anima-app/helpers/app-constants.js")
+    presets_source = _frontend_module_text("js/features/config-form/stage-resolution-presets.js")
+    source = APP_JS.read_text(encoding="utf-8")
+
+    assert "export function previewQuickPresetDiff" in presets_source
+    assert "export function isQuickPresetApplicable" in presets_source
+    assert "export function resolveQuickPresetMethodFamily" in presets_source
+    assert "previewQuickPresetDiff(" in source
+    assert "isQuickPresetApplicable(" in source
+
+    quick_presets = _section(
+        app_constants,
+        "export const RESOURCE_QUICK_PRESETS = [",
+        "export const NO_DATASET_REGULARIZATION_FIELD_KEYS",
+    )
+    lokr_quick = _section(quick_presets, "id: 'lokr_16g_rescue'", "id: 'oom_fallback'")
+    assert "applicableMethods:" in lokr_quick
+    assert "'lokr'" in lokr_quick
+    assert "use_lokr" in lokr_quick
+
+    fp8_quick = _section(quick_presets, "id: 'fp8_swap_test'", "id: 'vram_saver'")
+    oom_quick = _section(quick_presets, "id: 'oom_fallback'", "];")
+    assert "实验" in fp8_quick
+    assert "兜底" in oom_quick or "OOM" in oom_quick
+
+    apply_block = _section(
+        presets_source,
+        "function applyResourceQuickPreset",
+        "function resourceQuickPresetPatch",
+    )
+    assert "previewQuickPresetDiff" in apply_block
+    assert "isQuickPresetApplicable" in apply_block
+    assert "setTomlStatus(" in apply_block
+    assert "将修改" in apply_block or "将改动" in apply_block
+
+    panel_block = _section(
+        presets_source,
+        "function createConfigQuickPresetPanel",
+        "export function createResourceQuickPresetsButton",
+    )
+    assert "isQuickPresetApplicable" in panel_block or "applicableMethods" in panel_block
+    assert "disabled" in panel_block or "aria-disabled" in panel_block
+
+
 def test_balanced_16g_block_swap_fields_are_visible() -> None:
     source = APP_JS.read_text(encoding="utf-8")
     form_layout = _frontend_module_text("js/config/catalog/form-layout.js")
