@@ -1,53 +1,38 @@
-const legacyRoot = globalThis;
+const configFieldUiHandlers = Object.create(null);
 
-const configFieldUiBridge = {
-    appendSamplePromptRow: (...args) => legacyRoot.appendSamplePromptRow?.(...args),
-    createSamplePromptTextField: (...args) => legacyRoot.createSamplePromptTextField?.(...args),
-    createSamplePromptInputField: (...args) => legacyRoot.createSamplePromptInputField?.(...args),
-    clearSamplePromptRow: (...args) => legacyRoot.clearSamplePromptRow?.(...args),
-    updateSamplePromptRemoveButtons: (...args) => legacyRoot.updateSamplePromptRemoveButtons?.(...args),
-    isNumericField: (...args) => legacyRoot.isNumericField?.(...args),
-    isIntegerNumericField: (...args) => legacyRoot.isIntegerNumericField?.(...args),
-    allowsNegativeNumberField: (...args) => legacyRoot.allowsNegativeNumberField?.(...args),
-    createSelectInput: (...args) => legacyRoot.createSelectInput?.(...args),
-    selectUsesStrictOptions: (...args) => legacyRoot.selectUsesStrictOptions?.(...args),
-    strictSelectCurrentValueLabel: (...args) => legacyRoot.strictSelectCurrentValueLabel?.(...args),
-    fieldValueType: (...args) => legacyRoot.fieldValueType?.(...args),
-    fieldValueTypeForKey: (...args) => legacyRoot.fieldValueTypeForKey?.(...args),
-    optionValue: (...args) => legacyRoot.optionValue?.(...args),
-    optionLabel: (...args) => legacyRoot.optionLabel?.(...args),
-    generateDefaultHelp: (...args) => legacyRoot.generateDefaultHelp?.(...args),
-    sectionTitleForField: (...args) => legacyRoot.sectionTitleForField?.(...args),
-    createHelpContent: (...args) => legacyRoot.createHelpContent?.(...args),
-    addHelpSection: (...args) => legacyRoot.addHelpSection?.(...args),
-    getHelpSpec: (...args) => legacyRoot.getHelpSpec?.(...args),
-};
+function requireConfigFieldUiHandler(name) {
+    const handler = configFieldUiHandlers[name];
+    if (typeof handler !== 'function') {
+        throw new Error(`[config-field-ui] bridge not configured: ${name}`);
+    }
+    return handler;
+}
 
 export function configureConfigFieldUiBridge(handlers = {}) {
     for (const [key, handler] of Object.entries(handlers)) {
-        if (typeof handler === 'function' && key in configFieldUiBridge) {
-            configFieldUiBridge[key] = handler;
+        if (typeof handler === 'function') {
+            configFieldUiHandlers[key] = handler;
         }
     }
 }
 
-export const appendSamplePromptRow = (...args) => configFieldUiBridge.appendSamplePromptRow(...args);
-export const createSamplePromptTextField = (...args) => configFieldUiBridge.createSamplePromptTextField(...args);
-export const createSamplePromptInputField = (...args) => configFieldUiBridge.createSamplePromptInputField(...args);
-export const clearSamplePromptRow = (...args) => configFieldUiBridge.clearSamplePromptRow(...args);
-export const updateSamplePromptRemoveButtons = (...args) => configFieldUiBridge.updateSamplePromptRemoveButtons(...args);
-export const isNumericField = (...args) => configFieldUiBridge.isNumericField(...args);
-export const isIntegerNumericField = (...args) => configFieldUiBridge.isIntegerNumericField(...args);
-export const allowsNegativeNumberField = (...args) => configFieldUiBridge.allowsNegativeNumberField(...args);
-export const createSelectInput = (...args) => configFieldUiBridge.createSelectInput(...args);
-export const selectUsesStrictOptions = (...args) => configFieldUiBridge.selectUsesStrictOptions(...args);
-export const strictSelectCurrentValueLabel = (...args) => configFieldUiBridge.strictSelectCurrentValueLabel(...args);
-export const fieldValueType = (...args) => configFieldUiBridge.fieldValueType(...args);
-export const fieldValueTypeForKey = (...args) => configFieldUiBridge.fieldValueTypeForKey(...args);
-export const optionValue = (...args) => configFieldUiBridge.optionValue(...args);
-export const optionLabel = (...args) => configFieldUiBridge.optionLabel(...args);
-export const generateDefaultHelp = (...args) => configFieldUiBridge.generateDefaultHelp(...args);
-export const sectionTitleForField = (...args) => configFieldUiBridge.sectionTitleForField(...args);
-export const createHelpContent = (...args) => configFieldUiBridge.createHelpContent(...args);
-export const addHelpSection = (...args) => configFieldUiBridge.addHelpSection(...args);
-export const getHelpSpec = (...args) => configFieldUiBridge.getHelpSpec(...args);
+export function appendSamplePromptRow(...args) { return requireConfigFieldUiHandler('appendSamplePromptRow')(...args); }
+export function createSamplePromptTextField(...args) { return requireConfigFieldUiHandler('createSamplePromptTextField')(...args); }
+export function createSamplePromptInputField(...args) { return requireConfigFieldUiHandler('createSamplePromptInputField')(...args); }
+export function clearSamplePromptRow(...args) { return requireConfigFieldUiHandler('clearSamplePromptRow')(...args); }
+export function updateSamplePromptRemoveButtons(...args) { return requireConfigFieldUiHandler('updateSamplePromptRemoveButtons')(...args); }
+export function isNumericField(...args) { return requireConfigFieldUiHandler('isNumericField')(...args); }
+export function isIntegerNumericField(...args) { return requireConfigFieldUiHandler('isIntegerNumericField')(...args); }
+export function allowsNegativeNumberField(...args) { return requireConfigFieldUiHandler('allowsNegativeNumberField')(...args); }
+export function createSelectInput(...args) { return requireConfigFieldUiHandler('createSelectInput')(...args); }
+export function selectUsesStrictOptions(...args) { return requireConfigFieldUiHandler('selectUsesStrictOptions')(...args); }
+export function strictSelectCurrentValueLabel(...args) { return requireConfigFieldUiHandler('strictSelectCurrentValueLabel')(...args); }
+export function fieldValueType(...args) { return requireConfigFieldUiHandler('fieldValueType')(...args); }
+export function fieldValueTypeForKey(...args) { return requireConfigFieldUiHandler('fieldValueTypeForKey')(...args); }
+export function optionValue(...args) { return requireConfigFieldUiHandler('optionValue')(...args); }
+export function optionLabel(...args) { return requireConfigFieldUiHandler('optionLabel')(...args); }
+export function generateDefaultHelp(...args) { return requireConfigFieldUiHandler('generateDefaultHelp')(...args); }
+export function sectionTitleForField(...args) { return requireConfigFieldUiHandler('sectionTitleForField')(...args); }
+export function createHelpContent(...args) { return requireConfigFieldUiHandler('createHelpContent')(...args); }
+export function addHelpSection(...args) { return requireConfigFieldUiHandler('addHelpSection')(...args); }
+export function getHelpSpec(...args) { return requireConfigFieldUiHandler('getHelpSpec')(...args); }

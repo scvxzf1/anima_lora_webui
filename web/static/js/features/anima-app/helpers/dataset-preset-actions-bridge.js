@@ -1,49 +1,36 @@
-const legacyRoot = globalThis;
+const datasetPresetActionsHandlers = Object.create(null);
 
-const datasetPresetActionsBridge = {
-    applySelectedDatasetPresetToCurrentConfig: (...args) => legacyRoot.applySelectedDatasetPresetToCurrentConfig?.(...args),
-    saveDatasetPresetEditor: (...args) => legacyRoot.saveDatasetPresetEditor?.(...args),
-    createNewDatasetPreset: (...args) => legacyRoot.createNewDatasetPreset?.(...args),
-    copyDatasetPreset: (...args) => legacyRoot.copyDatasetPreset?.(...args),
-    renameDatasetPreset: (...args) => legacyRoot.renameDatasetPreset?.(...args),
-    copyDatasetPresetToName: (...args) => legacyRoot.copyDatasetPresetToName?.(...args),
-    deleteDatasetPreset: (...args) => legacyRoot.deleteDatasetPreset?.(...args),
-    importDatasetPreset: (...args) => legacyRoot.importDatasetPreset?.(...args),
-    handleDatasetPresetImport: (...args) => legacyRoot.handleDatasetPresetImport?.(...args),
-    exportDatasetPreset: (...args) => legacyRoot.exportDatasetPreset?.(...args),
-    datasetPresetPathFromName: (...args) => legacyRoot.datasetPresetPathFromName?.(...args),
-    showDatasetPresetNameDialog: (...args) => legacyRoot.showDatasetPresetNameDialog?.(...args),
-    setDatasetPresetStatus: (...args) => legacyRoot.setDatasetPresetStatus?.(...args),
-    createDatasetPresetGroup: (...args) => legacyRoot.createDatasetPresetGroup?.(...args),
-    renameDatasetPresetGroup: (...args) => legacyRoot.renameDatasetPresetGroup?.(...args),
-    deleteDatasetPresetGroup: (...args) => legacyRoot.deleteDatasetPresetGroup?.(...args),
-    placeDatasetPresetGroup: (...args) => legacyRoot.placeDatasetPresetGroup?.(...args),
-    placeDatasetPresetFile: (...args) => legacyRoot.placeDatasetPresetFile?.(...args),
-};
+function requireDatasetPresetActionsHandler(name) {
+    const handler = datasetPresetActionsHandlers[name];
+    if (typeof handler !== 'function') {
+        throw new Error(`[dataset-preset-actions] bridge not configured: ${name}`);
+    }
+    return handler;
+}
 
 export function configureDatasetPresetActionsBridge(handlers = {}) {
     for (const [key, handler] of Object.entries(handlers)) {
-        if (typeof handler === 'function' && key in datasetPresetActionsBridge) {
-            datasetPresetActionsBridge[key] = handler;
+        if (typeof handler === 'function') {
+            datasetPresetActionsHandlers[key] = handler;
         }
     }
 }
 
-export const applySelectedDatasetPresetToCurrentConfig = (...args) => datasetPresetActionsBridge.applySelectedDatasetPresetToCurrentConfig(...args);
-export const saveDatasetPresetEditor = (...args) => datasetPresetActionsBridge.saveDatasetPresetEditor(...args);
-export const createNewDatasetPreset = (...args) => datasetPresetActionsBridge.createNewDatasetPreset(...args);
-export const copyDatasetPreset = (...args) => datasetPresetActionsBridge.copyDatasetPreset(...args);
-export const renameDatasetPreset = (...args) => datasetPresetActionsBridge.renameDatasetPreset(...args);
-export const copyDatasetPresetToName = (...args) => datasetPresetActionsBridge.copyDatasetPresetToName(...args);
-export const deleteDatasetPreset = (...args) => datasetPresetActionsBridge.deleteDatasetPreset(...args);
-export const importDatasetPreset = (...args) => datasetPresetActionsBridge.importDatasetPreset(...args);
-export const handleDatasetPresetImport = (...args) => datasetPresetActionsBridge.handleDatasetPresetImport(...args);
-export const exportDatasetPreset = (...args) => datasetPresetActionsBridge.exportDatasetPreset(...args);
-export const datasetPresetPathFromName = (...args) => datasetPresetActionsBridge.datasetPresetPathFromName(...args);
-export const showDatasetPresetNameDialog = (...args) => datasetPresetActionsBridge.showDatasetPresetNameDialog(...args);
-export const setDatasetPresetStatus = (...args) => datasetPresetActionsBridge.setDatasetPresetStatus(...args);
-export const createDatasetPresetGroup = (...args) => datasetPresetActionsBridge.createDatasetPresetGroup(...args);
-export const renameDatasetPresetGroup = (...args) => datasetPresetActionsBridge.renameDatasetPresetGroup(...args);
-export const deleteDatasetPresetGroup = (...args) => datasetPresetActionsBridge.deleteDatasetPresetGroup(...args);
-export const placeDatasetPresetGroup = (...args) => datasetPresetActionsBridge.placeDatasetPresetGroup(...args);
-export const placeDatasetPresetFile = (...args) => datasetPresetActionsBridge.placeDatasetPresetFile(...args);
+export function applySelectedDatasetPresetToCurrentConfig(...args) { return requireDatasetPresetActionsHandler('applySelectedDatasetPresetToCurrentConfig')(...args); }
+export function saveDatasetPresetEditor(...args) { return requireDatasetPresetActionsHandler('saveDatasetPresetEditor')(...args); }
+export function createNewDatasetPreset(...args) { return requireDatasetPresetActionsHandler('createNewDatasetPreset')(...args); }
+export function copyDatasetPreset(...args) { return requireDatasetPresetActionsHandler('copyDatasetPreset')(...args); }
+export function renameDatasetPreset(...args) { return requireDatasetPresetActionsHandler('renameDatasetPreset')(...args); }
+export function copyDatasetPresetToName(...args) { return requireDatasetPresetActionsHandler('copyDatasetPresetToName')(...args); }
+export function deleteDatasetPreset(...args) { return requireDatasetPresetActionsHandler('deleteDatasetPreset')(...args); }
+export function importDatasetPreset(...args) { return requireDatasetPresetActionsHandler('importDatasetPreset')(...args); }
+export function handleDatasetPresetImport(...args) { return requireDatasetPresetActionsHandler('handleDatasetPresetImport')(...args); }
+export function exportDatasetPreset(...args) { return requireDatasetPresetActionsHandler('exportDatasetPreset')(...args); }
+export function datasetPresetPathFromName(...args) { return requireDatasetPresetActionsHandler('datasetPresetPathFromName')(...args); }
+export function showDatasetPresetNameDialog(...args) { return requireDatasetPresetActionsHandler('showDatasetPresetNameDialog')(...args); }
+export function setDatasetPresetStatus(...args) { return requireDatasetPresetActionsHandler('setDatasetPresetStatus')(...args); }
+export function createDatasetPresetGroup(...args) { return requireDatasetPresetActionsHandler('createDatasetPresetGroup')(...args); }
+export function renameDatasetPresetGroup(...args) { return requireDatasetPresetActionsHandler('renameDatasetPresetGroup')(...args); }
+export function deleteDatasetPresetGroup(...args) { return requireDatasetPresetActionsHandler('deleteDatasetPresetGroup')(...args); }
+export function placeDatasetPresetGroup(...args) { return requireDatasetPresetActionsHandler('placeDatasetPresetGroup')(...args); }
+export function placeDatasetPresetFile(...args) { return requireDatasetPresetActionsHandler('placeDatasetPresetFile')(...args); }

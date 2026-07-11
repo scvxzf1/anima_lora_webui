@@ -1,213 +1,118 @@
-const legacyRoot = globalThis;
+const historyCollectionsHandlers = Object.create(null);
 
-const historyCollectionsBridge = {
-    historyTaskCollectionLabel: (...args) => legacyRoot.historyTaskCollectionLabel?.(...args),
-    historyTaskCollectionKey: (...args) => legacyRoot.historyTaskCollectionKey?.(...args),
-    historyConfigGroupCollectionMap: (...args) => legacyRoot.historyConfigGroupCollectionMap?.(...args),
-    historyTaskIds: (...args) => legacyRoot.historyTaskIds?.(...args),
-    historyTasksAllSelected: (...args) => legacyRoot.historyTasksAllSelected?.(...args),
-    toggleHistoryTaskSelection: (...args) => legacyRoot.toggleHistoryTaskSelection?.(...args),
-    historyManagerGroupMetaParts: (...args) => legacyRoot.historyManagerGroupMetaParts?.(...args),
-    historyCompactGroupMetaParts: (...args) => legacyRoot.historyCompactGroupMetaParts?.(...args),
-    commonHistoryCollectionValue: (...args) => legacyRoot.commonHistoryCollectionValue?.(...args),
-    createHistoryManagerGroupButton: (...args) => legacyRoot.createHistoryManagerGroupButton?.(...args),
-    createHistoryConfigGroupMergeButton: (...args) => legacyRoot.createHistoryConfigGroupMergeButton?.(...args),
-    createHistoryConfigGroupPreviewButton: (...args) => legacyRoot.createHistoryConfigGroupPreviewButton?.(...args),
-    canPreviewHistoryConfigGroup: (...args) => legacyRoot.canPreviewHistoryConfigGroup?.(...args),
-    setHistoryCollectionForTasks: (...args) => legacyRoot.setHistoryCollectionForTasks?.(...args),
-    renameHistoryCollection: (...args) => legacyRoot.renameHistoryCollection?.(...args),
-    clearHistoryCollection: (...args) => legacyRoot.clearHistoryCollection?.(...args),
-    renameHistoryCollectionOrderValue: (...args) => legacyRoot.renameHistoryCollectionOrderValue?.(...args),
-    renameHistoryConfigGroupOrderKey: (...args) => legacyRoot.renameHistoryConfigGroupOrderKey?.(...args),
-    removeHistoryCollectionSettingValue: (...args) => legacyRoot.removeHistoryCollectionSettingValue?.(...args),
-    setHistoryCollectionForTasksDirect: (...args) => legacyRoot.setHistoryCollectionForTasksDirect?.(...args),
-    applySelectedHistoryTasksToCollection: (...args) => legacyRoot.applySelectedHistoryTasksToCollection?.(...args),
-    applyHistoryTaskIdsToCollection: (...args) => legacyRoot.applyHistoryTaskIdsToCollection?.(...args),
-    clearSelectedHistoryCollection: (...args) => legacyRoot.clearSelectedHistoryCollection?.(...args),
-    clearHistoryCollectionForTasks: (...args) => legacyRoot.clearHistoryCollectionForTasks?.(...args),
-    archiveHistoryTasksByIds: (...args) => legacyRoot.archiveHistoryTasksByIds?.(...args),
-    deleteHistoryTasksByIds: (...args) => legacyRoot.deleteHistoryTasksByIds?.(...args),
-    syncHistorySelectionWithTasks: (...args) => legacyRoot.syncHistorySelectionWithTasks?.(...args),
-    selectedHistoryTasks: (...args) => legacyRoot.selectedHistoryTasks?.(...args),
-    renderHistoryBulkBar: (...args) => legacyRoot.renderHistoryBulkBar?.(...args),
-    syncHistoryFilterControls: (...args) => legacyRoot.syncHistoryFilterControls?.(...args),
-    historyManagerFilterDefault: (...args) => legacyRoot.historyManagerFilterDefault?.(...args),
-    openHistoryCollectionsWorkbench: (...args) => legacyRoot.openHistoryCollectionsWorkbench?.(...args),
-    createHistoryCollectionWorkbenchCard: (...args) => legacyRoot.createHistoryCollectionWorkbenchCard?.(...args),
-    createHistoryConfigGroupWorkbenchCard: (...args) => legacyRoot.createHistoryConfigGroupWorkbenchCard?.(...args),
-    historyCollectionNamesForTasks: (...args) => legacyRoot.historyCollectionNamesForTasks?.(...args),
-    moveItemInList: (...args) => legacyRoot.moveItemInList?.(...args),
-    collectionOrderValues: (...args) => legacyRoot.collectionOrderValues?.(...args),
-    moveHistoryCollection: (...args) => legacyRoot.moveHistoryCollection?.(...args),
-    moveHistoryCollectionValue: (...args) => legacyRoot.moveHistoryCollectionValue?.(...args),
-    ensureHistoryCollectionOrderValue: (...args) => legacyRoot.ensureHistoryCollectionOrderValue?.(...args),
-    configGroupOrderValues: (...args) => legacyRoot.configGroupOrderValues?.(...args),
-    moveHistoryConfigGroup: (...args) => legacyRoot.moveHistoryConfigGroup?.(...args),
-    groupHistoryTasksByCollection: (...args) => legacyRoot.groupHistoryTasksByCollection?.(...args),
-    historyCollectionComparator: (...args) => legacyRoot.historyCollectionComparator?.(...args),
-    historyCollectionStorageKey: (...args) => legacyRoot.historyCollectionStorageKey?.(...args),
-    historyCollectionByKey: (...args) => legacyRoot.historyCollectionByKey?.(...args),
-    sortedHistoryConfigGroups: (...args) => legacyRoot.sortedHistoryConfigGroups?.(...args),
-    enrichHistoryCollection: (...args) => legacyRoot.enrichHistoryCollection?.(...args),
-    sortHistoryManagerGroupTasks: (...args) => legacyRoot.sortHistoryManagerGroupTasks?.(...args),
-    historyTaskCollectionValue: (...args) => legacyRoot.historyTaskCollectionValue?.(...args),
-    historyCollectionSearchText: (...args) => legacyRoot.historyCollectionSearchText?.(...args),
-    historyConfigGroupSearchText: (...args) => legacyRoot.historyConfigGroupSearchText?.(...args),
-    createEmptyHistoryCollection: (...args) => legacyRoot.createEmptyHistoryCollection?.(...args),
-    createHistoryCollectionSearchEmptyCollection: (...args) => legacyRoot.createHistoryCollectionSearchEmptyCollection?.(...args),
-    normalizeHistoryCollectionForWorkbench: (...args) => legacyRoot.normalizeHistoryCollectionForWorkbench?.(...args),
-    historyCollectionsForWorkbench: (...args) => legacyRoot.historyCollectionsForWorkbench?.(...args),
-    historyCollectionSelectOptions: (...args) => legacyRoot.historyCollectionSelectOptions?.(...args),
-    historyCollectionOptionSearchText: (...args) => legacyRoot.historyCollectionOptionSearchText?.(...args),
-    historyCollectionsPanelTitle: (...args) => legacyRoot.historyCollectionsPanelTitle?.(...args),
-    createHistoryCollectionsToolbarButton: (...args) => legacyRoot.createHistoryCollectionsToolbarButton?.(...args),
-    stopHistoryGroupButtonPropagation: (...args) => legacyRoot.stopHistoryGroupButtonPropagation?.(...args),
-    groupHistoryTasks: (...args) => legacyRoot.groupHistoryTasks?.(...args),
-    historyConfigGroupFromTask: (...args) => legacyRoot.historyConfigGroupFromTask?.(...args),
-    configGroupKey: (...args) => legacyRoot.configGroupKey?.(...args),
-    enrichHistoryGroup: (...args) => legacyRoot.enrichHistoryGroup?.(...args),
-    historyTaskDisplayName: (...args) => legacyRoot.historyTaskDisplayName?.(...args),
-    historyTaskIsArchived: (...args) => legacyRoot.historyTaskIsArchived?.(...args),
-    historyTaskRunPath: (...args) => legacyRoot.historyTaskRunPath?.(...args),
-    historyResumeLabel: (...args) => legacyRoot.historyResumeLabel?.(...args),
-    historyQueueLabel: (...args) => legacyRoot.historyQueueLabel?.(...args),
-    historyContinueLabel: (...args) => legacyRoot.historyContinueLabel?.(...args),
-    historyContinuePathLabel: (...args) => legacyRoot.historyContinuePathLabel?.(...args),
-    runLabelFromPath: (...args) => legacyRoot.runLabelFromPath?.(...args),
-    historyGroupDisplayLabel: (...args) => legacyRoot.historyGroupDisplayLabel?.(...args),
-    createHistoryGroupHeading: (...args) => legacyRoot.createHistoryGroupHeading?.(...args),
-    renderHistoryCollectionsWorkbench: (...args) => legacyRoot.renderHistoryCollectionsWorkbench?.(...args),
-    renderHistoryManagerStats: (...args) => legacyRoot.renderHistoryManagerStats?.(...args),
-    applyHistoryStatFilter: (...args) => legacyRoot.applyHistoryStatFilter?.(...args),
-    historyStatFilterIsActive: (...args) => legacyRoot.historyStatFilterIsActive?.(...args),
-    historyManagerFilteredTasks: (...args) => legacyRoot.historyManagerFilteredTasks?.(...args),
-    historyManagerBaseFilteredTasks: (...args) => legacyRoot.historyManagerBaseFilteredTasks?.(...args),
-    historyManagerVisibleTasks: (...args) => legacyRoot.historyManagerVisibleTasks?.(...args),
-    uniqueHistoryTasks: (...args) => legacyRoot.uniqueHistoryTasks?.(...args),
-    historyTaskMatchesSourceFilter: (...args) => legacyRoot.historyTaskMatchesSourceFilter?.(...args),
-    historyTaskSearchText: (...args) => legacyRoot.historyTaskSearchText?.(...args),
-    historyTaskMatchesCollectionSearch: (...args) => legacyRoot.historyTaskMatchesCollectionSearch?.(...args),
-    historySmartSearchTerms: (...args) => legacyRoot.historySmartSearchTerms?.(...args),
-    historySearchTerms: (...args) => legacyRoot.historySearchTerms?.(...args),
-    historySearchTextMatches: (...args) => legacyRoot.historySearchTextMatches?.(...args),
-    historyCollectionMatchesSearch: (...args) => legacyRoot.historyCollectionMatchesSearch?.(...args),
-    visibleHistoryCollectionsForSearch: (...args) => legacyRoot.visibleHistoryCollectionsForSearch?.(...args),
-    selectedHistoryCollectionForWorkbench: (...args) => legacyRoot.selectedHistoryCollectionForWorkbench?.(...args),
-    historyTaskSortComparator: (...args) => legacyRoot.historyTaskSortComparator?.(...args),
-    createHistoryManagerRow: (...args) => legacyRoot.createHistoryManagerRow?.(...args),
-    compactHistoryPathLabel: (...args) => legacyRoot.compactHistoryPathLabel?.(...args),
-    compactHistoryQueueLabel: (...args) => legacyRoot.compactHistoryQueueLabel?.(...args),
-    compactHistoryContinueLabel: (...args) => legacyRoot.compactHistoryContinueLabel?.(...args),
-    compactHistoryResumeLabel: (...args) => legacyRoot.compactHistoryResumeLabel?.(...args),
-    createHistoryMoreActions: (...args) => legacyRoot.createHistoryMoreActions?.(...args),
-    selectedHistoryConfigGroups: (...args) => legacyRoot.selectedHistoryConfigGroups?.(...args),
-};
+function requireHistoryCollectionsHandler(name) {
+    const handler = historyCollectionsHandlers[name];
+    if (typeof handler !== 'function') {
+        throw new Error(`[history-collections] bridge not configured: ${name}`);
+    }
+    return handler;
+}
 
 export function configureHistoryCollectionsBridge(handlers = {}) {
     for (const [key, handler] of Object.entries(handlers)) {
-        if (typeof handler === 'function' && key in historyCollectionsBridge) {
-            historyCollectionsBridge[key] = handler;
+        if (typeof handler === 'function') {
+            historyCollectionsHandlers[key] = handler;
         }
     }
 }
 
-export const historyTaskCollectionLabel = (...args) => historyCollectionsBridge.historyTaskCollectionLabel(...args);
-export const historyTaskCollectionKey = (...args) => historyCollectionsBridge.historyTaskCollectionKey(...args);
-export const historyConfigGroupCollectionMap = (...args) => historyCollectionsBridge.historyConfigGroupCollectionMap(...args);
-export const historyTaskIds = (...args) => historyCollectionsBridge.historyTaskIds(...args);
-export const historyTasksAllSelected = (...args) => historyCollectionsBridge.historyTasksAllSelected(...args);
-export const toggleHistoryTaskSelection = (...args) => historyCollectionsBridge.toggleHistoryTaskSelection(...args);
-export const historyManagerGroupMetaParts = (...args) => historyCollectionsBridge.historyManagerGroupMetaParts(...args);
-export const historyCompactGroupMetaParts = (...args) => historyCollectionsBridge.historyCompactGroupMetaParts(...args);
-export const commonHistoryCollectionValue = (...args) => historyCollectionsBridge.commonHistoryCollectionValue(...args);
-export const createHistoryManagerGroupButton = (...args) => historyCollectionsBridge.createHistoryManagerGroupButton(...args);
-export const createHistoryConfigGroupMergeButton = (...args) => historyCollectionsBridge.createHistoryConfigGroupMergeButton(...args);
-export const createHistoryConfigGroupPreviewButton = (...args) => historyCollectionsBridge.createHistoryConfigGroupPreviewButton(...args);
-export const canPreviewHistoryConfigGroup = (...args) => historyCollectionsBridge.canPreviewHistoryConfigGroup(...args);
-export const setHistoryCollectionForTasks = (...args) => historyCollectionsBridge.setHistoryCollectionForTasks(...args);
-export const renameHistoryCollection = (...args) => historyCollectionsBridge.renameHistoryCollection(...args);
-export const clearHistoryCollection = (...args) => historyCollectionsBridge.clearHistoryCollection(...args);
-export const renameHistoryCollectionOrderValue = (...args) => historyCollectionsBridge.renameHistoryCollectionOrderValue(...args);
-export const renameHistoryConfigGroupOrderKey = (...args) => historyCollectionsBridge.renameHistoryConfigGroupOrderKey(...args);
-export const removeHistoryCollectionSettingValue = (...args) => historyCollectionsBridge.removeHistoryCollectionSettingValue(...args);
-export const setHistoryCollectionForTasksDirect = (...args) => historyCollectionsBridge.setHistoryCollectionForTasksDirect(...args);
-export const applySelectedHistoryTasksToCollection = (...args) => historyCollectionsBridge.applySelectedHistoryTasksToCollection(...args);
-export const applyHistoryTaskIdsToCollection = (...args) => historyCollectionsBridge.applyHistoryTaskIdsToCollection(...args);
-export const clearSelectedHistoryCollection = (...args) => historyCollectionsBridge.clearSelectedHistoryCollection(...args);
-export const clearHistoryCollectionForTasks = (...args) => historyCollectionsBridge.clearHistoryCollectionForTasks(...args);
-export const archiveHistoryTasksByIds = (...args) => historyCollectionsBridge.archiveHistoryTasksByIds(...args);
-export const deleteHistoryTasksByIds = (...args) => historyCollectionsBridge.deleteHistoryTasksByIds(...args);
-export const syncHistorySelectionWithTasks = (...args) => historyCollectionsBridge.syncHistorySelectionWithTasks(...args);
-export const selectedHistoryTasks = (...args) => historyCollectionsBridge.selectedHistoryTasks(...args);
-export const renderHistoryBulkBar = (...args) => historyCollectionsBridge.renderHistoryBulkBar(...args);
-export const syncHistoryFilterControls = (...args) => historyCollectionsBridge.syncHistoryFilterControls(...args);
-export const historyManagerFilterDefault = (...args) => historyCollectionsBridge.historyManagerFilterDefault(...args);
-export const openHistoryCollectionsWorkbench = (...args) => historyCollectionsBridge.openHistoryCollectionsWorkbench(...args);
-export const createHistoryCollectionWorkbenchCard = (...args) => historyCollectionsBridge.createHistoryCollectionWorkbenchCard(...args);
-export const createHistoryConfigGroupWorkbenchCard = (...args) => historyCollectionsBridge.createHistoryConfigGroupWorkbenchCard(...args);
-export const historyCollectionNamesForTasks = (...args) => historyCollectionsBridge.historyCollectionNamesForTasks(...args);
-export const moveItemInList = (...args) => historyCollectionsBridge.moveItemInList(...args);
-export const collectionOrderValues = (...args) => historyCollectionsBridge.collectionOrderValues(...args);
-export const moveHistoryCollection = (...args) => historyCollectionsBridge.moveHistoryCollection(...args);
-export const moveHistoryCollectionValue = (...args) => historyCollectionsBridge.moveHistoryCollectionValue(...args);
-export const ensureHistoryCollectionOrderValue = (...args) => historyCollectionsBridge.ensureHistoryCollectionOrderValue(...args);
-export const configGroupOrderValues = (...args) => historyCollectionsBridge.configGroupOrderValues(...args);
-export const moveHistoryConfigGroup = (...args) => historyCollectionsBridge.moveHistoryConfigGroup(...args);
-export const groupHistoryTasksByCollection = (...args) => historyCollectionsBridge.groupHistoryTasksByCollection(...args);
-export const historyCollectionComparator = (...args) => historyCollectionsBridge.historyCollectionComparator(...args);
-export const historyCollectionStorageKey = (...args) => historyCollectionsBridge.historyCollectionStorageKey(...args);
-export const historyCollectionByKey = (...args) => historyCollectionsBridge.historyCollectionByKey(...args);
-export const sortedHistoryConfigGroups = (...args) => historyCollectionsBridge.sortedHistoryConfigGroups(...args);
-export const enrichHistoryCollection = (...args) => historyCollectionsBridge.enrichHistoryCollection(...args);
-export const sortHistoryManagerGroupTasks = (...args) => historyCollectionsBridge.sortHistoryManagerGroupTasks(...args);
-export const historyTaskCollectionValue = (...args) => historyCollectionsBridge.historyTaskCollectionValue(...args);
-export const historyCollectionSearchText = (...args) => historyCollectionsBridge.historyCollectionSearchText(...args);
-export const historyConfigGroupSearchText = (...args) => historyCollectionsBridge.historyConfigGroupSearchText(...args);
-export const createEmptyHistoryCollection = (...args) => historyCollectionsBridge.createEmptyHistoryCollection(...args);
-export const createHistoryCollectionSearchEmptyCollection = (...args) => historyCollectionsBridge.createHistoryCollectionSearchEmptyCollection(...args);
-export const normalizeHistoryCollectionForWorkbench = (...args) => historyCollectionsBridge.normalizeHistoryCollectionForWorkbench(...args);
-export const historyCollectionsForWorkbench = (...args) => historyCollectionsBridge.historyCollectionsForWorkbench(...args);
-export const historyCollectionSelectOptions = (...args) => historyCollectionsBridge.historyCollectionSelectOptions(...args);
-export const historyCollectionOptionSearchText = (...args) => historyCollectionsBridge.historyCollectionOptionSearchText(...args);
-export const historyCollectionsPanelTitle = (...args) => historyCollectionsBridge.historyCollectionsPanelTitle(...args);
-export const createHistoryCollectionsToolbarButton = (...args) => historyCollectionsBridge.createHistoryCollectionsToolbarButton(...args);
-export const stopHistoryGroupButtonPropagation = (...args) => historyCollectionsBridge.stopHistoryGroupButtonPropagation(...args);
-export const groupHistoryTasks = (...args) => historyCollectionsBridge.groupHistoryTasks(...args);
-export const historyConfigGroupFromTask = (...args) => historyCollectionsBridge.historyConfigGroupFromTask(...args);
-export const configGroupKey = (...args) => historyCollectionsBridge.configGroupKey(...args);
-export const enrichHistoryGroup = (...args) => historyCollectionsBridge.enrichHistoryGroup(...args);
-export const historyTaskDisplayName = (...args) => historyCollectionsBridge.historyTaskDisplayName(...args);
-export const historyTaskIsArchived = (...args) => historyCollectionsBridge.historyTaskIsArchived(...args);
-export const historyTaskRunPath = (...args) => historyCollectionsBridge.historyTaskRunPath(...args);
-export const historyResumeLabel = (...args) => historyCollectionsBridge.historyResumeLabel(...args);
-export const historyQueueLabel = (...args) => historyCollectionsBridge.historyQueueLabel(...args);
-export const historyContinueLabel = (...args) => historyCollectionsBridge.historyContinueLabel(...args);
-export const historyContinuePathLabel = (...args) => historyCollectionsBridge.historyContinuePathLabel(...args);
-export const runLabelFromPath = (...args) => historyCollectionsBridge.runLabelFromPath(...args);
-export const historyGroupDisplayLabel = (...args) => historyCollectionsBridge.historyGroupDisplayLabel(...args);
-export const createHistoryGroupHeading = (...args) => historyCollectionsBridge.createHistoryGroupHeading(...args);
-export const renderHistoryCollectionsWorkbench = (...args) => historyCollectionsBridge.renderHistoryCollectionsWorkbench(...args);
-export const renderHistoryManagerStats = (...args) => historyCollectionsBridge.renderHistoryManagerStats(...args);
-export const applyHistoryStatFilter = (...args) => historyCollectionsBridge.applyHistoryStatFilter(...args);
-export const historyStatFilterIsActive = (...args) => historyCollectionsBridge.historyStatFilterIsActive(...args);
-export const historyManagerFilteredTasks = (...args) => historyCollectionsBridge.historyManagerFilteredTasks(...args);
-export const historyManagerBaseFilteredTasks = (...args) => historyCollectionsBridge.historyManagerBaseFilteredTasks(...args);
-export const historyManagerVisibleTasks = (...args) => historyCollectionsBridge.historyManagerVisibleTasks(...args);
-export const uniqueHistoryTasks = (...args) => historyCollectionsBridge.uniqueHistoryTasks(...args);
-export const historyTaskMatchesSourceFilter = (...args) => historyCollectionsBridge.historyTaskMatchesSourceFilter(...args);
-export const historyTaskSearchText = (...args) => historyCollectionsBridge.historyTaskSearchText(...args);
-export const historyTaskMatchesCollectionSearch = (...args) => historyCollectionsBridge.historyTaskMatchesCollectionSearch(...args);
-export const historySmartSearchTerms = (...args) => historyCollectionsBridge.historySmartSearchTerms(...args);
-export const historySearchTerms = (...args) => historyCollectionsBridge.historySearchTerms(...args);
-export const historySearchTextMatches = (...args) => historyCollectionsBridge.historySearchTextMatches(...args);
-export const historyCollectionMatchesSearch = (...args) => historyCollectionsBridge.historyCollectionMatchesSearch(...args);
-export const visibleHistoryCollectionsForSearch = (...args) => historyCollectionsBridge.visibleHistoryCollectionsForSearch(...args);
-export const selectedHistoryCollectionForWorkbench = (...args) => historyCollectionsBridge.selectedHistoryCollectionForWorkbench(...args);
-export const historyTaskSortComparator = (...args) => historyCollectionsBridge.historyTaskSortComparator(...args);
-export const createHistoryManagerRow = (...args) => historyCollectionsBridge.createHistoryManagerRow(...args);
-export const compactHistoryPathLabel = (...args) => historyCollectionsBridge.compactHistoryPathLabel(...args);
-export const compactHistoryQueueLabel = (...args) => historyCollectionsBridge.compactHistoryQueueLabel(...args);
-export const compactHistoryContinueLabel = (...args) => historyCollectionsBridge.compactHistoryContinueLabel(...args);
-export const compactHistoryResumeLabel = (...args) => historyCollectionsBridge.compactHistoryResumeLabel(...args);
-export const createHistoryMoreActions = (...args) => historyCollectionsBridge.createHistoryMoreActions(...args);
-export const selectedHistoryConfigGroups = (...args) => historyCollectionsBridge.selectedHistoryConfigGroups(...args);
+export function historyTaskCollectionLabel(...args) { return requireHistoryCollectionsHandler('historyTaskCollectionLabel')(...args); }
+export function historyTaskCollectionKey(...args) { return requireHistoryCollectionsHandler('historyTaskCollectionKey')(...args); }
+export function historyConfigGroupCollectionMap(...args) { return requireHistoryCollectionsHandler('historyConfigGroupCollectionMap')(...args); }
+export function historyTaskIds(...args) { return requireHistoryCollectionsHandler('historyTaskIds')(...args); }
+export function historyTasksAllSelected(...args) { return requireHistoryCollectionsHandler('historyTasksAllSelected')(...args); }
+export function toggleHistoryTaskSelection(...args) { return requireHistoryCollectionsHandler('toggleHistoryTaskSelection')(...args); }
+export function historyManagerGroupMetaParts(...args) { return requireHistoryCollectionsHandler('historyManagerGroupMetaParts')(...args); }
+export function historyCompactGroupMetaParts(...args) { return requireHistoryCollectionsHandler('historyCompactGroupMetaParts')(...args); }
+export function commonHistoryCollectionValue(...args) { return requireHistoryCollectionsHandler('commonHistoryCollectionValue')(...args); }
+export function createHistoryManagerGroupButton(...args) { return requireHistoryCollectionsHandler('createHistoryManagerGroupButton')(...args); }
+export function createHistoryConfigGroupMergeButton(...args) { return requireHistoryCollectionsHandler('createHistoryConfigGroupMergeButton')(...args); }
+export function createHistoryConfigGroupPreviewButton(...args) { return requireHistoryCollectionsHandler('createHistoryConfigGroupPreviewButton')(...args); }
+export function canPreviewHistoryConfigGroup(...args) { return requireHistoryCollectionsHandler('canPreviewHistoryConfigGroup')(...args); }
+export function setHistoryCollectionForTasks(...args) { return requireHistoryCollectionsHandler('setHistoryCollectionForTasks')(...args); }
+export function renameHistoryCollection(...args) { return requireHistoryCollectionsHandler('renameHistoryCollection')(...args); }
+export function clearHistoryCollection(...args) { return requireHistoryCollectionsHandler('clearHistoryCollection')(...args); }
+export function renameHistoryCollectionOrderValue(...args) { return requireHistoryCollectionsHandler('renameHistoryCollectionOrderValue')(...args); }
+export function renameHistoryConfigGroupOrderKey(...args) { return requireHistoryCollectionsHandler('renameHistoryConfigGroupOrderKey')(...args); }
+export function removeHistoryCollectionSettingValue(...args) { return requireHistoryCollectionsHandler('removeHistoryCollectionSettingValue')(...args); }
+export function setHistoryCollectionForTasksDirect(...args) { return requireHistoryCollectionsHandler('setHistoryCollectionForTasksDirect')(...args); }
+export function applySelectedHistoryTasksToCollection(...args) { return requireHistoryCollectionsHandler('applySelectedHistoryTasksToCollection')(...args); }
+export function applyHistoryTaskIdsToCollection(...args) { return requireHistoryCollectionsHandler('applyHistoryTaskIdsToCollection')(...args); }
+export function clearSelectedHistoryCollection(...args) { return requireHistoryCollectionsHandler('clearSelectedHistoryCollection')(...args); }
+export function clearHistoryCollectionForTasks(...args) { return requireHistoryCollectionsHandler('clearHistoryCollectionForTasks')(...args); }
+export function archiveHistoryTasksByIds(...args) { return requireHistoryCollectionsHandler('archiveHistoryTasksByIds')(...args); }
+export function deleteHistoryTasksByIds(...args) { return requireHistoryCollectionsHandler('deleteHistoryTasksByIds')(...args); }
+export function syncHistorySelectionWithTasks(...args) { return requireHistoryCollectionsHandler('syncHistorySelectionWithTasks')(...args); }
+export function selectedHistoryTasks(...args) { return requireHistoryCollectionsHandler('selectedHistoryTasks')(...args); }
+export function renderHistoryBulkBar(...args) { return requireHistoryCollectionsHandler('renderHistoryBulkBar')(...args); }
+export function syncHistoryFilterControls(...args) { return requireHistoryCollectionsHandler('syncHistoryFilterControls')(...args); }
+export function historyManagerFilterDefault(...args) { return requireHistoryCollectionsHandler('historyManagerFilterDefault')(...args); }
+export function openHistoryCollectionsWorkbench(...args) { return requireHistoryCollectionsHandler('openHistoryCollectionsWorkbench')(...args); }
+export function createHistoryCollectionWorkbenchCard(...args) { return requireHistoryCollectionsHandler('createHistoryCollectionWorkbenchCard')(...args); }
+export function createHistoryConfigGroupWorkbenchCard(...args) { return requireHistoryCollectionsHandler('createHistoryConfigGroupWorkbenchCard')(...args); }
+export function historyCollectionNamesForTasks(...args) { return requireHistoryCollectionsHandler('historyCollectionNamesForTasks')(...args); }
+export function moveItemInList(...args) { return requireHistoryCollectionsHandler('moveItemInList')(...args); }
+export function collectionOrderValues(...args) { return requireHistoryCollectionsHandler('collectionOrderValues')(...args); }
+export function moveHistoryCollection(...args) { return requireHistoryCollectionsHandler('moveHistoryCollection')(...args); }
+export function moveHistoryCollectionValue(...args) { return requireHistoryCollectionsHandler('moveHistoryCollectionValue')(...args); }
+export function ensureHistoryCollectionOrderValue(...args) { return requireHistoryCollectionsHandler('ensureHistoryCollectionOrderValue')(...args); }
+export function configGroupOrderValues(...args) { return requireHistoryCollectionsHandler('configGroupOrderValues')(...args); }
+export function moveHistoryConfigGroup(...args) { return requireHistoryCollectionsHandler('moveHistoryConfigGroup')(...args); }
+export function groupHistoryTasksByCollection(...args) { return requireHistoryCollectionsHandler('groupHistoryTasksByCollection')(...args); }
+export function historyCollectionComparator(...args) { return requireHistoryCollectionsHandler('historyCollectionComparator')(...args); }
+export function historyCollectionStorageKey(...args) { return requireHistoryCollectionsHandler('historyCollectionStorageKey')(...args); }
+export function historyCollectionByKey(...args) { return requireHistoryCollectionsHandler('historyCollectionByKey')(...args); }
+export function sortedHistoryConfigGroups(...args) { return requireHistoryCollectionsHandler('sortedHistoryConfigGroups')(...args); }
+export function enrichHistoryCollection(...args) { return requireHistoryCollectionsHandler('enrichHistoryCollection')(...args); }
+export function sortHistoryManagerGroupTasks(...args) { return requireHistoryCollectionsHandler('sortHistoryManagerGroupTasks')(...args); }
+export function historyTaskCollectionValue(...args) { return requireHistoryCollectionsHandler('historyTaskCollectionValue')(...args); }
+export function historyCollectionSearchText(...args) { return requireHistoryCollectionsHandler('historyCollectionSearchText')(...args); }
+export function historyConfigGroupSearchText(...args) { return requireHistoryCollectionsHandler('historyConfigGroupSearchText')(...args); }
+export function createEmptyHistoryCollection(...args) { return requireHistoryCollectionsHandler('createEmptyHistoryCollection')(...args); }
+export function createHistoryCollectionSearchEmptyCollection(...args) { return requireHistoryCollectionsHandler('createHistoryCollectionSearchEmptyCollection')(...args); }
+export function normalizeHistoryCollectionForWorkbench(...args) { return requireHistoryCollectionsHandler('normalizeHistoryCollectionForWorkbench')(...args); }
+export function historyCollectionsForWorkbench(...args) { return requireHistoryCollectionsHandler('historyCollectionsForWorkbench')(...args); }
+export function historyCollectionSelectOptions(...args) { return requireHistoryCollectionsHandler('historyCollectionSelectOptions')(...args); }
+export function historyCollectionOptionSearchText(...args) { return requireHistoryCollectionsHandler('historyCollectionOptionSearchText')(...args); }
+export function historyCollectionsPanelTitle(...args) { return requireHistoryCollectionsHandler('historyCollectionsPanelTitle')(...args); }
+export function createHistoryCollectionsToolbarButton(...args) { return requireHistoryCollectionsHandler('createHistoryCollectionsToolbarButton')(...args); }
+export function stopHistoryGroupButtonPropagation(...args) { return requireHistoryCollectionsHandler('stopHistoryGroupButtonPropagation')(...args); }
+export function groupHistoryTasks(...args) { return requireHistoryCollectionsHandler('groupHistoryTasks')(...args); }
+export function historyConfigGroupFromTask(...args) { return requireHistoryCollectionsHandler('historyConfigGroupFromTask')(...args); }
+export function configGroupKey(...args) { return requireHistoryCollectionsHandler('configGroupKey')(...args); }
+export function enrichHistoryGroup(...args) { return requireHistoryCollectionsHandler('enrichHistoryGroup')(...args); }
+export function historyTaskDisplayName(...args) { return requireHistoryCollectionsHandler('historyTaskDisplayName')(...args); }
+export function historyTaskIsArchived(...args) { return requireHistoryCollectionsHandler('historyTaskIsArchived')(...args); }
+export function historyTaskRunPath(...args) { return requireHistoryCollectionsHandler('historyTaskRunPath')(...args); }
+export function historyResumeLabel(...args) { return requireHistoryCollectionsHandler('historyResumeLabel')(...args); }
+export function historyQueueLabel(...args) { return requireHistoryCollectionsHandler('historyQueueLabel')(...args); }
+export function historyContinueLabel(...args) { return requireHistoryCollectionsHandler('historyContinueLabel')(...args); }
+export function historyContinuePathLabel(...args) { return requireHistoryCollectionsHandler('historyContinuePathLabel')(...args); }
+export function runLabelFromPath(...args) { return requireHistoryCollectionsHandler('runLabelFromPath')(...args); }
+export function historyGroupDisplayLabel(...args) { return requireHistoryCollectionsHandler('historyGroupDisplayLabel')(...args); }
+export function createHistoryGroupHeading(...args) { return requireHistoryCollectionsHandler('createHistoryGroupHeading')(...args); }
+export function renderHistoryCollectionsWorkbench(...args) { return requireHistoryCollectionsHandler('renderHistoryCollectionsWorkbench')(...args); }
+export function renderHistoryManagerStats(...args) { return requireHistoryCollectionsHandler('renderHistoryManagerStats')(...args); }
+export function applyHistoryStatFilter(...args) { return requireHistoryCollectionsHandler('applyHistoryStatFilter')(...args); }
+export function historyStatFilterIsActive(...args) { return requireHistoryCollectionsHandler('historyStatFilterIsActive')(...args); }
+export function historyManagerFilteredTasks(...args) { return requireHistoryCollectionsHandler('historyManagerFilteredTasks')(...args); }
+export function historyManagerBaseFilteredTasks(...args) { return requireHistoryCollectionsHandler('historyManagerBaseFilteredTasks')(...args); }
+export function historyManagerVisibleTasks(...args) { return requireHistoryCollectionsHandler('historyManagerVisibleTasks')(...args); }
+export function uniqueHistoryTasks(...args) { return requireHistoryCollectionsHandler('uniqueHistoryTasks')(...args); }
+export function historyTaskMatchesSourceFilter(...args) { return requireHistoryCollectionsHandler('historyTaskMatchesSourceFilter')(...args); }
+export function historyTaskSearchText(...args) { return requireHistoryCollectionsHandler('historyTaskSearchText')(...args); }
+export function historyTaskMatchesCollectionSearch(...args) { return requireHistoryCollectionsHandler('historyTaskMatchesCollectionSearch')(...args); }
+export function historySmartSearchTerms(...args) { return requireHistoryCollectionsHandler('historySmartSearchTerms')(...args); }
+export function historySearchTerms(...args) { return requireHistoryCollectionsHandler('historySearchTerms')(...args); }
+export function historySearchTextMatches(...args) { return requireHistoryCollectionsHandler('historySearchTextMatches')(...args); }
+export function historyCollectionMatchesSearch(...args) { return requireHistoryCollectionsHandler('historyCollectionMatchesSearch')(...args); }
+export function visibleHistoryCollectionsForSearch(...args) { return requireHistoryCollectionsHandler('visibleHistoryCollectionsForSearch')(...args); }
+export function selectedHistoryCollectionForWorkbench(...args) { return requireHistoryCollectionsHandler('selectedHistoryCollectionForWorkbench')(...args); }
+export function historyTaskSortComparator(...args) { return requireHistoryCollectionsHandler('historyTaskSortComparator')(...args); }
+export function createHistoryManagerRow(...args) { return requireHistoryCollectionsHandler('createHistoryManagerRow')(...args); }
+export function compactHistoryPathLabel(...args) { return requireHistoryCollectionsHandler('compactHistoryPathLabel')(...args); }
+export function compactHistoryQueueLabel(...args) { return requireHistoryCollectionsHandler('compactHistoryQueueLabel')(...args); }
+export function compactHistoryContinueLabel(...args) { return requireHistoryCollectionsHandler('compactHistoryContinueLabel')(...args); }
+export function compactHistoryResumeLabel(...args) { return requireHistoryCollectionsHandler('compactHistoryResumeLabel')(...args); }
+export function createHistoryMoreActions(...args) { return requireHistoryCollectionsHandler('createHistoryMoreActions')(...args); }
+export function selectedHistoryConfigGroups(...args) { return requireHistoryCollectionsHandler('selectedHistoryConfigGroups')(...args); }

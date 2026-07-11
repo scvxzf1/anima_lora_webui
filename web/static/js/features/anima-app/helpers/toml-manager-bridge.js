@@ -1,25 +1,24 @@
-const legacyRoot = globalThis;
+const tomlManagerHandlers = Object.create(null);
 
-const tomlManagerBridge = {
-    updateConfigPageSummary: (...args) => legacyRoot.updateConfigPageSummary?.(...args),
-    setTomlManagerMode: (...args) => legacyRoot.setTomlManagerMode?.(...args),
-    switchTomlManagerMode: (...args) => legacyRoot.switchTomlManagerMode?.(...args),
-    loadTomlFileList: (...args) => legacyRoot.loadTomlFileList?.(...args),
-    loadDefaultTomlFile: (...args) => legacyRoot.loadDefaultTomlFile?.(...args),
-    loadOutputRuns: (...args) => legacyRoot.loadOutputRuns?.(...args),
-};
+function requireTomlManagerHandler(name) {
+    const handler = tomlManagerHandlers[name];
+    if (typeof handler !== 'function') {
+        throw new Error(`[toml-manager] bridge not configured: ${name}`);
+    }
+    return handler;
+}
 
 export function configureTomlManagerBridge(handlers = {}) {
     for (const [key, handler] of Object.entries(handlers)) {
-        if (typeof handler === 'function' && key in tomlManagerBridge) {
-            tomlManagerBridge[key] = handler;
+        if (typeof handler === 'function') {
+            tomlManagerHandlers[key] = handler;
         }
     }
 }
 
-export const updateConfigPageSummary = (...args) => tomlManagerBridge.updateConfigPageSummary(...args);
-export const setTomlManagerMode = (...args) => tomlManagerBridge.setTomlManagerMode(...args);
-export const switchTomlManagerMode = (...args) => tomlManagerBridge.switchTomlManagerMode(...args);
-export const loadTomlFileList = (...args) => tomlManagerBridge.loadTomlFileList(...args);
-export const loadDefaultTomlFile = (...args) => tomlManagerBridge.loadDefaultTomlFile(...args);
-export const loadOutputRuns = (...args) => tomlManagerBridge.loadOutputRuns(...args);
+export function updateConfigPageSummary(...args) { return requireTomlManagerHandler('updateConfigPageSummary')(...args); }
+export function setTomlManagerMode(...args) { return requireTomlManagerHandler('setTomlManagerMode')(...args); }
+export function switchTomlManagerMode(...args) { return requireTomlManagerHandler('switchTomlManagerMode')(...args); }
+export function loadTomlFileList(...args) { return requireTomlManagerHandler('loadTomlFileList')(...args); }
+export function loadDefaultTomlFile(...args) { return requireTomlManagerHandler('loadDefaultTomlFile')(...args); }
+export function loadOutputRuns(...args) { return requireTomlManagerHandler('loadOutputRuns')(...args); }
