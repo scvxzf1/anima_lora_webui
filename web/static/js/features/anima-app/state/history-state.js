@@ -60,6 +60,7 @@ export function createHistoryState() {
         historyConfigGroupDropPreviewElement: null,
         historyDropPopoverOutsideHandler: null,
         historyDropFeedback: { message: '', tone: '' },
+        historyWorkbenchRenderSignal: null,
         historyDropFeedbackTimer: null,
     };
 }

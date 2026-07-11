@@ -47,11 +47,17 @@ import {
 } from '../helpers/history-task-actions-bridge.js?v=module-bootstrap-20260707-93';
 import { historyStateLabel } from '../helpers/history-timeline-bridge.js?v=module-bootstrap-20260707-93';
 import { renderHistoryManager } from '../helpers/history-list-bridge.js?v=module-bootstrap-20260707-93';
+import { renderItemsInChunks } from '../../history-list/chunked-render.js?v=module-bootstrap-20260707-93';
 import { getHistoryState } from '../helpers/history-state-bridge.js?v=module-bootstrap-20260707-93';
 
 const historyState = getHistoryState();
 
     export function renderHistoryCollectionsWorkbench(list, visible) {
+        if (historyState.historyWorkbenchRenderSignal) {
+            historyState.historyWorkbenchRenderSignal.cancelled = true;
+        }
+        const renderSignal = { cancelled: false };
+        historyState.historyWorkbenchRenderSignal = renderSignal;
         const workbench = document.createElement('div');
         workbench.className = 'history-collections-workbench compact';
         if (historyState.historyDragState.active) workbench.classList.add('dragging');
@@ -152,12 +158,15 @@ const historyState = getHistoryState();
             empty.textContent = selectedCollection.is_ungrouped ? '未分类暂无任务。' : '该分组暂无任务。';
             configList.appendChild(empty);
         } else {
-            for (const group of visibleConfigGroups) {
-                configList.appendChild(createHistoryConfigGroupWorkbenchCard(group, splitCollections, {
+            renderItemsInChunks(
+                configList,
+                visibleConfigGroups,
+                (group) => createHistoryConfigGroupWorkbenchCard(group, splitCollections, {
                     groups: configGroups,
                     collection: selectedCollection,
-                }));
-            }
+                }),
+                { signal: renderSignal },
+            );
         }
         configPanel.appendChild(configList);
 
@@ -172,9 +181,12 @@ const historyState = getHistoryState();
         collectionPanel.appendChild(collectionPanelHead);
         const collectionList = document.createElement('div');
         collectionList.className = 'history-collection-card-list';
-        for (const collection of visibleCollections) {
-            collectionList.appendChild(createHistoryCollectionWorkbenchCard(collection, selectedTasks.length, allCollections));
-        }
+        renderItemsInChunks(
+            collectionList,
+            visibleCollections,
+            (collection) => createHistoryCollectionWorkbenchCard(collection, selectedTasks.length, allCollections),
+            { signal: renderSignal },
+        );
         collectionPanel.appendChild(collectionList);
 
         body.append(configPanel, collectionPanel);
