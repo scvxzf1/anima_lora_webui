@@ -25,10 +25,41 @@ export function formatDuration(totalSeconds) {
     return restMinutes ? `${hours}h ${restMinutes}m` : `${hours}h`;
 }
 
-export function compactPathLabel(value, maxLength = 64) {
-    const text = String(value || '');
+function normalizePathSeparators(value) {
+    return String(value ?? '').replace(/\\/g, '/');
+}
+
+function pathSegments(value) {
+    return normalizePathSeparators(value).split('/').filter(Boolean);
+}
+
+export function formatPathLabel(path, options = {}) {
+    const mode = options?.mode || 'length';
+    const maxLength = Number.isFinite(Number(options?.maxLength))
+        ? Math.max(1, Number(options.maxLength))
+        : 64;
+    const text = String(path ?? '');
+
+    if (mode === 'basename') {
+        const parts = pathSegments(text);
+        return parts.length ? parts[parts.length - 1] : text;
+    }
+
+    if (mode === 'parent-basename') {
+        const parts = pathSegments(text);
+        if (parts.length >= 2) {
+            return `${parts[parts.length - 2]}/${parts[parts.length - 1]}`;
+        }
+        return parts.length ? parts[parts.length - 1] : text;
+    }
+
+    // mode: length (default) - middle-ellipsis for long paths
     if (text.length <= maxLength) return text;
     const head = Math.max(8, Math.floor((maxLength - 1) * 0.42));
     const tail = Math.max(8, maxLength - head - 1);
     return `${text.slice(0, head)}…${text.slice(-tail)}`;
+}
+
+export function compactPathLabel(value, maxLength = 64) {
+    return formatPathLabel(value, { mode: 'length', maxLength });
 }

@@ -1,0 +1,82 @@
+# 数据集编辑器
+
+状态：稳定
+适用版本：当前 WebUI 主界面
+入口命令：
+
+```bash
+.venv/bin/python tasks.py web --host 127.0.0.1 --port 20102
+```
+
+相关代码：
+
+- `web/static/index.html`（`data-tab="datasets"` / `#tab-datasets`）
+- `web/services/config/` 中的 dataset 预设读写
+- `tests/test_web_config_datasets.py`
+
+---
+
+## 1. 这是干什么的
+
+一句话：在「数据集」页管理 `configs/datasets/` 下可复用的数据集蓝图，再给训练配置引用。
+
+你可以：
+
+- 新建 / 复制 / 重命名 / 删除数据集预设
+- 分组整理、导入导出
+- 编辑每个 subset 的路径、caption、缓存、正则化等
+- 预览原始图片与 caption
+
+---
+
+## 2. 入口
+
+1. 打开顶部导航 **数据集**。
+2. 左侧列表选择一个数据集预设。
+3. 右侧编辑器修改字段。
+4. 点 **保存**。
+5. 回到 **配置** 页，让训练配置引用该数据集预设，或按表单里的数据集选择器绑定。
+
+常用按钮：
+
+- **新建预设 / 复制 / 重命名 / 新建分组**
+- **导入 / 导出**
+- **删除**
+- **刷新**
+
+---
+
+## 3. 关键配置项
+
+| 项目 | 说明 |
+| --- | --- |
+| 预设文件 | 落在配置根目录下的 `datasets/` |
+| 图片路径 / 源路径 | 训练图片所在目录；同名 `.txt` 常作 caption |
+| caption 偏好 | 如 prefer json caption 等 caption 读取策略 |
+| cache / training 相关目录 | 可按 subset 保留独立缓存路径 |
+| regularization | 正则化数据行与权重 |
+| 校验划分 | validation split；为 0 时相当于关闭校验 |
+| 图片预览 | 读取所选行的图片与 caption，只读预览 |
+
+数据集页改的是“数据蓝图”，不是立刻开始训练。训练真正使用哪份数据，以配置页绑定结果和启动时 runtime 冻结为准。
+
+---
+
+## 4. 危险项
+
+- **删除数据集预设**：会删掉 `configs/datasets/` 里的蓝图文件；已启动任务不会自动回滚，但新任务会找不到该预设。
+- **改路径但不重建缓存**：VAE / text / PE sidecar 与路径绑定；路径变了却继续用旧 cache，容易训到脏缓存。
+- **导入同名预设**：默认可能拒绝覆盖，避免误覆盖；覆盖前先确认目标文件。
+- **系统只读预设**：可能允许另存，不允许直接改源文件。
+- **正则化权重 / validation 设置**：填错会改变训练步数估计和真实训练行为。
+
+---
+
+## 5. 相关测试
+
+```bash
+timeout 60 .venv/bin/python -m pytest \
+  tests/test_web_config_datasets.py \
+  tests/test_web_config_estimation.py \
+  -q
+```

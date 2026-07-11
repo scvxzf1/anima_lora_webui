@@ -18,6 +18,122 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 APP_JS_PATH = STATIC_DIR / "app.js"
 CHART_JS = STATIC_DIR / "chart.js"
 INDEX_HTML = STATIC_DIR / "index.html"
+
+# Critical workflow anchors used by save/queue/start/history/preview/settings paths.
+# Keep this intentionally small; do not expand into a full DOM inventory.
+CRITICAL_WORKFLOW_DOM_IDS = frozenset(
+    {
+        # config workflow
+        "btn-load-config",
+        "btn-save-toml",
+        "btn-queue-from-config",
+        "btn-start-from-config",
+        "config-form",
+        # training control
+        "btn-stop-training",
+        "status-indicator",
+        "status-text",
+        # global settings
+        "btn-save-global-settings",
+        "tab-settings",
+        # history / preview
+        "btn-refresh-history",
+        "btn-preview-training-results",
+        "task-history-list",
+    }
+)
+
+
+
+# Workflow DOM contracts (required/optional). Keep small; do not inventory all ids.
+WORKFLOW_DOM_CONTRACTS: dict[str, dict[str, frozenset[str]]] = {
+    "queue": {
+        "required": frozenset(
+            {
+                "btn-training-queue-view",
+                "btn-refresh-queue",
+                "btn-open-queue-manager",
+                "training-queue-list",
+                "training-queue-summary",
+            }
+        ),
+        "optional": frozenset(
+            {
+                "btn-toggle-queue-pause",
+                "training-queue-manager",
+                "btn-cancel-all-queue",
+                "btn-clear-completed-queue",
+            }
+        ),
+    },
+    "history": {
+        "required": frozenset(
+            {
+                "btn-training-history-view",
+                "btn-refresh-history",
+                "btn-open-history-manager",
+                "task-history-list",
+                "btn-history-manager-refresh",
+            }
+        ),
+        "optional": frozenset(
+            {
+                "btn-history-collections-workbench",
+                "history-manager-search",
+                "history-show-archived",
+            }
+        ),
+    },
+    "preview": {
+        "required": frozenset(
+            {
+                "tab-preview",
+                "btn-preview-training-results",
+                "btn-refresh-preview",
+                "preview-workspace",
+                "preview-grid",
+            }
+        ),
+        "optional": frozenset(
+            {
+                "preview-page-mount",
+                "btn-save-preview-settings",
+                "preview-settings-status",
+            }
+        ),
+    },
+    "settings": {
+        "required": frozenset(
+            {
+                "tab-settings",
+                "btn-save-global-settings",
+                "global-output-root",
+                "global-pretrained-model-path",
+                "global-configs-root",
+            }
+        ),
+        "optional": frozenset(
+            {
+                "global-ui-scale",
+                "global-qwen3-path",
+                "global-vae-path",
+            }
+        ),
+    },
+}
+
+
+def workflow_dom_contract(name: str) -> dict[str, frozenset[str]]:
+    """Return required/optional DOM id sets for a named workflow bucket."""
+    if name not in WORKFLOW_DOM_CONTRACTS:
+        raise KeyError(f"unknown workflow DOM contract: {name}")
+    return WORKFLOW_DOM_CONTRACTS[name]
+
+def missing_dom_ids_in_html(html: str, dom_ids: set[str] | frozenset[str]) -> set[str]:
+    """Return DOM ids that do not appear as id="..." attributes in HTML."""
+    return {dom_id for dom_id in dom_ids if f'id="{dom_id}"' not in html}
+
+
 STYLE_CSS_PATH = STATIC_DIR / "style.css"
 MODULE_IMPORT_RE = re.compile(
     r"""(?:(?:import|export)\s+(?:[^'"]*?\s+from\s+)?|import\(\s*)['"]([^'"]+\.js(?:\?[^'"]*)?)['"]"""
@@ -63,6 +179,10 @@ ANIMA_APP_GLOBAL_THIS_BASELINE = {
     "js/features/anima-app/chunks/25-update-progress.js": (0, 0),
     "js/features/anima-app/chunks/26-load-global-settings.js": (0, 0),
     "js/features/anima-app/chunks/26a-status-polling.js": (0, 0),
+    "js/features/anima-app/chunks/26a-global-settings.js": (0, 0),
+    "js/features/anima-app/chunks/26b-preview-view.js": (0, 0),
+    "js/features/anima-app/chunks/26c-queue-view.js": (0, 0),
+    "js/features/anima-app/chunks/26d-history-list.js": (0, 0),
     "js/features/anima-app/chunks/27-render-history-collections-workbench.js": (0, 0),
     "js/features/anima-app/chunks/28-history-collection-search-text.js": (0, 0),
     "js/features/anima-app/chunks/29-start-history-config-group-pointer-drag.js": (0, 0),
@@ -310,6 +430,23 @@ def _config_training_source_dom_contract() -> dict[str, set[str]]:
         assert match, f"missing config training source DOM contract bucket: {key}"
         contract[key] = set(re.findall(r"'([^']+)'", match.group(1)))
     return contract
+
+
+def node_syntax_check(relative_module: str) -> subprocess.CompletedProcess[str]:
+    """Run `node --check` on a static JS module when node is available."""
+    node = shutil.which("node")
+    if not node:
+        raise RuntimeError("node is not available on PATH")
+    target = (STATIC_DIR / relative_module).resolve()
+    assert target.is_file(), f"missing static module for node --check: {relative_module}"
+    assert STATIC_DIR.resolve() in target.parents or target == STATIC_DIR.resolve()
+    return subprocess.run(
+        [node, "--check", str(target)],
+        cwd=str(REPO_ROOT),
+        capture_output=True,
+        text=True,
+        check=False,
+    )
 
 
 def _literal_get_element_by_id_targets(source: str) -> set[str]:

@@ -346,6 +346,11 @@ def test_frontend_css_import_cache_tokens_match_entrypoint() -> None:
     assert not mismatches
 
 
+def test_style_import_order_puts_responsive_last() -> None:
+    text = STYLE_CSS_PATH.read_text(encoding="utf-8")
+    assert text.index('90-responsive.css') > text.index('42-image-test.css')
+
+
 def test_anima_app_bootstrap_catches_startup_failures() -> None:
     source = APP_JS_PATH.read_text(encoding="utf-8")
 
@@ -928,4 +933,217 @@ def test_image_test_feature_modules_are_loaded_from_production_entrypoint() -> N
         "image-test",
     ):
         assert tooltip_id in tooltip_section
+
+
+def test_format_path_label_contract_and_call_sites() -> None:
+    """Shared path labels support length/basename/parent-basename and keep full-path titles."""
+    format_source = _frontend_module_text("js/shared/format.js")
+    history_item = _frontend_module_text(
+        "js/features/anima-app/chunks/33-create-history-task-item.js"
+    )
+    dataset_input = _frontend_module_text(
+        "js/features/anima-app/chunks/10-create-dataset-config-input.js"
+    )
+
+    assert "export function formatPathLabel" in format_source
+    assert "export function compactPathLabel" in format_source
+    assert re.search(r"mode\s*[:=]\s*['\"]length['\"]", format_source)
+    assert "basename" in format_source
+    assert "parent-basename" in format_source
+    assert re.search(
+        r"function compactPathLabel\([^)]*\)\s*\{[^}]*formatPathLabel\(",
+        format_source,
+        re.S,
+    )
+
+    task_item = _section(
+        history_item,
+        "function createHistoryTaskItem",
+        "function compactPathLabel",
+    )
+    assert "pathText.title" in task_item or "pathText.setAttribute('title'" in task_item
+    assert "continueText.title" in task_item or "continueText.setAttribute('title'" in task_item
+    assert (
+        "formatPathLabel" in history_item
+        or "compactPathLabel(pathValue)" in task_item
+    )
+    assert "formatPathLabel" in dataset_input or "compactPathLabel(path)" in dataset_input
+
+    if not shutil.which("node"):
+        pytest.skip("node is required for formatPathLabel behavior checks")
+
+    script = r"""
+import { formatPathLabel, compactPathLabel } from './web/static/js/shared/format.js';
+
+const longPath = '/data/very/long/nested/project/datasets/my-subset-images-folder-name';
+const result = {
+  lengthCompat: compactPathLabel(longPath, 24),
+  lengthExplicit: formatPathLabel(longPath, { mode: 'length', maxLength: 24 }),
+  lengthDefault: formatPathLabel(longPath),
+  basename: formatPathLabel(longPath, { mode: 'basename' }),
+  parentBasename: formatPathLabel(longPath, { mode: 'parent-basename' }),
+  short: formatPathLabel('short/path', { mode: 'length', maxLength: 64 }),
+  emptyBasename: formatPathLabel('', { mode: 'basename' }),
+  windows: formatPathLabel('C:\\Users\\me\\datasets\\cats', { mode: 'parent-basename' }),
+};
+console.log(JSON.stringify(result));
+"""
+    proc = subprocess.run(
+        ["node", "--input-type=module", "-e", script],
+        cwd=REPO_ROOT,
+        text=True,
+        capture_output=True,
+        timeout=20,
+    )
+    assert proc.returncode == 0, proc.stderr or proc.stdout
+    payload = json.loads(proc.stdout)
+    assert payload["basename"] == "my-subset-images-folder-name"
+    assert payload["parentBasename"] == "datasets/my-subset-images-folder-name"
+    assert payload["lengthCompat"] == payload["lengthExplicit"]
+    assert "…" in payload["lengthCompat"]
+    assert payload["lengthCompat"] != '/data/very/long/nested/project/datasets/my-subset-images-folder-name'
+    assert len(payload["lengthDefault"]) <= 64 or "…" in payload["lengthDefault"]
+    assert payload["short"] == "short/path"
+    assert payload["windows"] == "datasets/cats"
+
+def test_anima_app_startup_import_groups_use_promise_all() -> None:
+    """Independent chunk imports should load in Promise.all batches without reordering bridge configure."""
+    index_source = _frontend_module_text("js/features/anima-app/index.js")
+
+    assert "Promise.all(" in index_source
+    assert index_source.count("Promise.all(") >= 2
+
+    # State bridges must still configure before any chunk import work starts.
+    first_chunk_import = min(
+        index_source.index("chunks/01-scope-state.js"),
+        index_source.index("chunks/01a-image-test-feature.js"),
+    )
+    assert index_source.index("configureAppContextBridge(runtime.ctx);") < first_chunk_import
+    assert index_source.index("configureRuntimeBridge(runtime);") < first_chunk_import
+    assert index_source.index("configureTrainingStateBridge(runtime.state.training);") < first_chunk_import
+
+    # Image-test and app-shell remain special serial stages.
+    assert index_source.index("chunks/01a-image-test-feature.js") < index_source.index(
+        "configureImageTestBridge(imageTestFeatureBridge.ensureImageTestFeature);"
+    )
+    assert index_source.index("configureImageTestBridge(imageTestFeatureBridge.ensureImageTestFeature);") < index_source.index(
+        "chunks/02-ensure-history-detail-feature.js"
+    )
+
+    # 26a-d modules must load before their configure*Bridge calls.
+    assert index_source.index("chunks/26a-global-settings.js") < index_source.index(
+        "configureGlobalSettingsBridge(globalSettingsModule);"
+    )
+    assert index_source.index("chunks/26b-preview-view.js") < index_source.index(
+        "configurePreviewViewBridge(previewViewModule);"
+    )
+    assert index_source.index("chunks/26c-queue-view.js") < index_source.index(
+        "configureQueueViewBridge({"
+    )
+    assert index_source.index("chunks/26d-history-list.js") < index_source.index(
+        "configureHistoryListBridge(historyListModule);"
+    )
+    assert index_source.index("configureHistoryListBridge(historyListModule);") < index_source.index(
+        "chunks/26a-status-polling.js"
+    )
+    assert index_source.index("chunks/26a-status-polling.js") < index_source.index(
+        "configureStatusPollingBridge(statusPollingBridge);"
+    )
+
+    # History task-actions self-configure still keeps 33 before 34 in source order.
+    assert index_source.index("chunks/33-create-history-task-item.js") < index_source.index(
+        "chunks/34-show-history-collection-select-dialog.js"
+    )
+
+    # Mid-range and history groups should both be Promise.all targets.
+    mid_marker = "chunks/03-parse-network-arg-entry.js"
+    history_marker = "chunks/27-render-history-collections-workbench.js"
+    assert mid_marker in index_source
+    assert history_marker in index_source
+    assert "Promise.all(" in index_source[index_source.index(mid_marker) - 200 : index_source.index(mid_marker) + 80]
+    assert "Promise.all(" in index_source[index_source.index(history_marker) - 200 : index_source.index(history_marker) + 80]
+
+
+def test_history_task_actions_bridge_fails_fast_when_unconfigured() -> None:
+    """Unconfigured history-task-actions methods must throw instead of silent no-op."""
+    bridge_source = _frontend_module_text(
+        "js/features/anima-app/helpers/history-task-actions-bridge.js"
+    )
+    index_source = _frontend_module_text("js/features/anima-app/index.js")
+    chunk33 = _frontend_module_text(
+        "js/features/anima-app/chunks/33-create-history-task-item.js"
+    )
+    chunk34 = _frontend_module_text(
+        "js/features/anima-app/chunks/34-show-history-collection-select-dialog.js"
+    )
+
+    assert "legacyRoot = globalThis" not in bridge_source
+    assert "legacyRoot.createHistoryTaskItem" not in bridge_source
+    assert "configureHistoryTaskActionsBridge" in bridge_source
+    assert "history-task-actions" in bridge_source
+    assert "bridge not configured" in bridge_source
+    assert "configureHistoryTaskActionsBridge({" in chunk33
+    assert "configureHistoryTaskActionsBridge({" in chunk34
+    assert "chunks/33-create-history-task-item.js" in index_source
+    assert "chunks/34-show-history-collection-select-dialog.js" in index_source
+    assert index_source.index("chunks/33-create-history-task-item.js") < index_source.index(
+        "chunks/34-show-history-collection-select-dialog.js"
+    )
+
+    if not shutil.which("node"):
+        pytest.skip("node is required for history-task-actions bridge fail-fast checks")
+
+    script = r"""
+const {
+  configureHistoryTaskActionsBridge,
+  deleteHistoryTask,
+  loadHistoryTask,
+  showHistoryTaskConfirmDialog,
+} = await import('./web/static/js/features/anima-app/helpers/history-task-actions-bridge.js');
+
+const unconfigured = [];
+for (const [name, fn] of [
+  ['deleteHistoryTask', deleteHistoryTask],
+  ['loadHistoryTask', loadHistoryTask],
+  ['showHistoryTaskConfirmDialog', showHistoryTaskConfirmDialog],
+]) {
+  try {
+    fn({ id: 'task-1' });
+    unconfigured.push({ name, ok: true });
+  } catch (error) {
+    unconfigured.push({
+      name,
+      ok: false,
+      message: String(error && error.message ? error.message : error),
+    });
+  }
+}
+
+let configuredMessage = '';
+configureHistoryTaskActionsBridge({
+  deleteHistoryTask: (task) => `deleted:${task.id}`,
+});
+try {
+  configuredMessage = deleteHistoryTask({ id: 'task-9' });
+} catch (error) {
+  configuredMessage = `error:${error && error.message ? error.message : error}`;
+}
+
+console.log(JSON.stringify({ unconfigured, configuredMessage }));
+"""
+    proc = subprocess.run(
+        ["node", "--input-type=module", "-e", script],
+        cwd=REPO_ROOT,
+        text=True,
+        capture_output=True,
+        timeout=20,
+    )
+    assert proc.returncode == 0, proc.stderr or proc.stdout
+    payload = json.loads(proc.stdout)
+    assert payload["configuredMessage"] == "deleted:task-9"
+    assert len(payload["unconfigured"]) == 3
+    for item in payload["unconfigured"]:
+        assert item["ok"] is False, item
+        assert "history-task-actions" in item["message"]
+        assert "not configured" in item["message"]
 

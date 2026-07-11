@@ -59,11 +59,14 @@ const historyState = getHistoryState();
         pathLabel.textContent = '目录';
         const pathText = document.createElement('code');
         pathText.textContent = compactPathLabel(pathValue);
+        if (pathValue) pathText.title = String(pathValue);
         paths.append(pathLabel, pathText);
         const continuePath = historyContinuePathLabel(task);
         if (continuePath) {
+            const continueFull = continuePath.replace(/^基于:\s*/, '');
             const continueText = document.createElement('code');
-            continueText.textContent = compactPathLabel(continuePath.replace(/^基于:\s*/, ''));
+            continueText.textContent = compactPathLabel(continueFull);
+            if (continueFull) continueText.title = String(continueFull);
             paths.appendChild(continueText);
         }
         const counts = document.createElement('em');

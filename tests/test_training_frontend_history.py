@@ -372,7 +372,11 @@ def test_history_manager_frontend_hooks_are_present() -> None:
     assert "createHistoryManagerCollectionSection" not in source
     assert "createHistoryManagerConfigGroupSection" not in source
     assert "list.dataset.groupMode = 'collections';" in history_section
-    assert "collection: selectedCollection" in history_section
+    workbench_fill = _frontend_module_text("js/features/history-list/workbench-chunk-fill.js")
+    assert (
+        "collection: selectedCollection" in history_section
+        or "collection: selectedCollection" in workbench_fill
+    )
     assert "history-current-group-content" in history_section
     assert "history-collection-nav" in history_section
     assert "HISTORY_UNGROUPED_COLLECTION_KEY" in source
@@ -1421,4 +1425,73 @@ def test_history_detail_config_files_are_tool_ready() -> None:
     assert ".history-detail-config-files > .history-detail-section" in css
     assert ".history-detail-kv > div" in css
     assert ".history-detail-kv div" not in css
+
+def test_history_workbench_renders_items_in_chunks() -> None:
+    """Large history workbench lists should append cards in rAF chunks, not one blocking loop only."""
+    helper = _frontend_module_text("js/features/history-list/chunked-render.js")
+    workbench = _frontend_module_text(
+        "js/features/anima-app/chunks/27-render-history-collections-workbench.js"
+    )
+
+    assert "export function appendNodesInChunks" in helper
+    assert "export function renderItemsInChunks" in helper
+    assert "HISTORY_RENDER_CHUNK_SIZE" in helper
+    assert "requestAnimationFrame" in helper
+
+    assert "fillHistoryWorkbenchCardLists" in workbench
+    fill_helper = _frontend_module_text("js/features/history-list/workbench-chunk-fill.js")
+    assert "renderItemsInChunks" in fill_helper
+    assert "historyWorkbenchRenderSignal" in workbench
+    assert "createHistoryConfigGroupWorkbenchCard" in workbench
+    assert "createHistoryCollectionWorkbenchCard" in workbench
+
+    if not shutil.which("node"):
+        return
+
+    script = r"""
+import { appendNodesInChunks, HISTORY_RENDER_CHUNK_SIZE } from './web/static/js/features/history-list/chunked-render.js';
+
+class FakeNode {
+  constructor(name='div') { this.name = name; this.children = []; }
+  appendChild(node) { this.children.push(node); return node; }
+}
+class FakeFragment extends FakeNode {
+  constructor() { super('fragment'); }
+}
+
+// Minimal DOM polyfill for pure chunk scheduling test
+const parent = new FakeNode('parent');
+globalThis.document = {
+  createDocumentFragment: () => new FakeFragment(),
+};
+let frames = 0;
+globalThis.requestAnimationFrame = (fn) => {
+  frames += 1;
+  setTimeout(fn, 0);
+  return frames;
+};
+
+const nodes = Array.from({ length: 50 }, (_, i) => new FakeNode(`n${i}`));
+const { done } = appendNodesInChunks(parent, nodes, { chunkSize: 10 });
+await done;
+const childCount = parent.children.reduce((sum, node) => sum + (node.children?.length || 0), parent.children.length);
+// fragments count as children; total leaf nodes should be 50 across fragments
+let leaves = 0;
+for (const child of parent.children) {
+  if (child.children?.length) leaves += child.children.length;
+  else leaves += 1;
+}
+console.log(JSON.stringify({ leaves, frames, chunk: HISTORY_RENDER_CHUNK_SIZE }));
+"""
+    proc = subprocess.run(
+        ["node", "--input-type=module", "-e", script],
+        cwd=REPO_ROOT,
+        text=True,
+        capture_output=True,
+        timeout=20,
+    )
+    assert proc.returncode == 0, proc.stderr or proc.stdout
+    payload = json.loads(proc.stdout)
+    assert payload["leaves"] == 50
+    assert payload["frames"] >= 1
 

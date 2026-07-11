@@ -144,3 +144,63 @@ def test_top_level_tab_buttons_have_matching_content_sections() -> None:
     assert "activeName !== 'preview'" in source
     assert "document.getElementById('tab-preview')?.classList.remove('active');" in source
 
+
+def test_critical_workflow_dom_ids_are_present_in_index_html() -> None:
+    """Critical save/queue/start/history/preview/settings anchors must stay in index.html."""
+    html = INDEX_HTML.read_text(encoding="utf-8")
+    critical_ids = CRITICAL_WORKFLOW_DOM_IDS
+
+    assert isinstance(critical_ids, frozenset)
+    assert critical_ids == frozenset(
+        {
+            # config workflow
+            "btn-load-config",
+            "btn-save-toml",
+            "btn-queue-from-config",
+            "btn-start-from-config",
+            "config-form",
+            # training control
+            "btn-stop-training",
+            "status-indicator",
+            "status-text",
+            # global settings
+            "btn-save-global-settings",
+            "tab-settings",
+            # history / preview
+            "btn-refresh-history",
+            "btn-preview-training-results",
+            "task-history-list",
+        }
+    )
+
+    missing = missing_dom_ids_in_html(html, critical_ids)
+    assert not missing, f"critical workflow DOM ids missing from index.html: {sorted(missing)}"
+
+
+def test_optional_node_syntax_smoke_for_shared_dom_helper() -> None:
+    """Minimal node harness smoke: syntax-check a pure shared DOM helper module."""
+    if not shutil.which("node"):
+        pytest.skip("node is optional for DOM contract smoke")
+    result = node_syntax_check("js/shared/dom.js")
+    assert result.returncode == 0, result.stderr or result.stdout
+
+
+def test_workflow_dom_contracts_match_index_html() -> None:
+    """Queue/history/preview/settings required ids stay in index.html (no rename explosion)."""
+    html = INDEX_HTML.read_text(encoding="utf-8")
+    expected_buckets = {"queue", "history", "preview", "settings"}
+    assert set(WORKFLOW_DOM_CONTRACTS) == expected_buckets
+
+    for name in sorted(expected_buckets):
+        contract = workflow_dom_contract(name)
+        assert "required" in contract and "optional" in contract
+        assert contract["required"], f"{name} required set must not be empty"
+        # optional may be empty, but keep disjoint when both present
+        overlap = contract["required"] & contract["optional"]
+        assert not overlap, f"{name} required/optional overlap: {sorted(overlap)}"
+        missing_required = missing_dom_ids_in_html(html, contract["required"])
+        assert not missing_required, f"{name} required missing: {sorted(missing_required)}"
+        missing_optional = missing_dom_ids_in_html(html, contract["optional"])
+        assert not missing_optional, f"{name} optional missing: {sorted(missing_optional)}"
+
+

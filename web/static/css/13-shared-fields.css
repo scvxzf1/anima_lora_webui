@@ -1,4 +1,15 @@
 /* Shared field, help and form-control styles. */
+.dataset-preview-caption pre {
+    max-height: 7.5rem;
+    margin: 0;
+    padding: 0.42rem;
+    overflow: auto;
+    border: 1px solid var(--border-soft);
+    border-radius: 4px;
+    background: var(--bg-input);
+    color: var(--text);
+    font-family: monospace;
+    font-size: 0.68rem;
     line-height: 1.45;
     white-space: pre-wrap;
     overflow-wrap: anywhere;
@@ -10,6 +21,33 @@
     border-bottom: 1px solid var(--border-soft);
 }
 .field-row:last-child { border-bottom: none; }
+.field-source-badge {
+    display: inline-flex;
+    align-items: center;
+    margin-left: 0.4rem;
+    padding: 0 0.35rem;
+    border-radius: 4px;
+    font-size: 0.72rem;
+    line-height: 1.4;
+    letter-spacing: 0;
+    color: var(--muted-text, #8b93a7);
+    background: color-mix(in srgb, var(--panel-border, #3a4154) 35%, transparent);
+    vertical-align: middle;
+}
+.field-source-badge[data-source="draft"],
+.field-source-badge.is-dirty {
+    color: #f0c674;
+    background: color-mix(in srgb, #f0c674 18%, transparent);
+}
+.field-source-badge[data-source="ui_default"] {
+    color: #7aa2f7;
+    background: color-mix(in srgb, #7aa2f7 16%, transparent);
+}
+.field-source-badge[data-source="config"] {
+    color: #9ece6a;
+    background: color-mix(in srgb, #9ece6a 14%, transparent);
+}
+
 .field-row-changed {
     box-shadow: inset 3px 0 0 var(--warning);
 }

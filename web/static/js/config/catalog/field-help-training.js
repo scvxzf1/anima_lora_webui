@@ -109,12 +109,12 @@ export const FIELD_HELP_TRAINING_ZH = {    learning_rate: help(
     ),
     lr_scheduler: help(
         "学习率调度策略。",
-        "constant 表示固定学习率；constant_with_warmup 表示先线性热身再固定；也可用 cosine、lulu_loss_gated_cosine 等调度。",
+        "base 默认 cosine；constant 表示固定学习率；constant_with_warmup 表示先线性热身再固定；也可用 cosine_with_restarts、polynomial、lulu_loss_gated_cosine 等调度。",
         ["调度可以让训练后期更平滑。"],
         ["多一个超参维度，需要搭配总步数理解。"],
         ["constant_with_warmup 只需要 lr_warmup_steps，热身结束后不会继续衰减。"],
         ["不合适的调度可能过早降低学习率；lulu 调度器的细调参数走 lr_scheduler_args。"],
-        "默认 constant，先保持。"
+        "先沿用 base/merge 的 cosine，除非你有明确理由改。"
     ),
     lr_warmup_steps: help(
         "学习率预热步数。",
@@ -538,11 +538,11 @@ export const FIELD_HELP_TRAINING_ZH = {    learning_rate: help(
     ),
     use_custom_down_autograd: help(
         "使用自定义 LoRA down 矩阵反向实现。",
-        "保持 base 默认。",
+        "保持 base 默认 false；只有确认需要时再打开。",
         ["可能降低显存或改善性能。"],
         ["属于底层优化，不方便调试。"],
         ["若遇到 autograd 异常，需要作为排错开关。"],
-        "默认 true；出错时再尝试关闭。"
+        "默认 false；确认收益后再打开。"
     ),
     log_every_n_steps: help(
         "每多少训练步记录一次日志。",

@@ -1,70 +1,88 @@
-## UI缩放功能实现总结
+# UI 缩放
 
-### 功能描述
-在WebUI的全局设置中添加了"缩放比例"配置项，允许用户调整整个界面的缩放大小。
+状态：稳定
+适用版本：当前 WebUI 主界面
+入口命令：
 
-### 修改文件
+```bash
+.venv/bin/python tasks.py web --host 127.0.0.1 --port 20102
+```
 
-#### 后端
-1. **web/services/settings_service.py**
-   - 添加 `DEFAULT_UI_SCALE = 100` 常量
-   - 添加 `GLOBAL_UI_KEYS = ("ui_scale",)` 元组
-   - 在 `save_global_settings()` 中添加UI设置处理逻辑
-   - 在 `_load_settings()` 中添加UI设置加载逻辑
-   - 在 `_default_global_settings()` 中添加默认值
-   - 添加 `_normalize_ui_setting()` 函数，限制缩放范围在 25%-400%
+相关代码：
 
-#### 前端 - HTML
-2. **web/static/index.html**
-   - 在全局设置页面的"输出文件夹"和"基础模型路径"之间插入新的"界面设置"卡片
-   - 添加 `<input id="global-ui-scale" type="number">` 输入框
-   - 添加帮助文档说明
-   - 更新全局设置概览统计（1个输出根目录 + 1个界面设置 + 3个模型路径）
-   - 更新cache token为 `20260625-1`
+- `web/static/index.html`（全局设置 · 界面设置）
+- `web/services/settings_service.py`
+- `web/static/js/features/app-shell/ui-scale.js`
+- `tests/test_ui_scale_settings.py`
 
-#### 前端 - JavaScript
-3. **web/static/js/features/app-shell/ui-scale.js** (新文件)
-   - 创建 `createUIScaleController()` 函数
-   - 提供 `applyUIScale()` 方法应用缩放
-   - 提供 `applyScaleFromSettings()` 方法从全局设置加载缩放
-   - 通过CSS变量 `--ui-scale` 和 `root.style.fontSize` 应用缩放
+---
 
-4. **web/static/js/config/catalog/defaults.js**
-   - 添加 `GLOBAL_UI_FIELDS = [['ui_scale', 'global-ui-scale']]`
-   - 将其注册到 `GLOBAL_SETTING_INPUTS`
+## 1. 这是干什么的
 
-5. **web/static/js/features/anima-app/imports.js**
-   - 导入 `createUIScaleController`
-   - 添加到全局导出
+一句话：把 WebUI 整体或单个页面放大/缩小，适配不同屏幕和视力习惯。
 
-6. **web/static/js/features/anima-app/chunks/02-ensure-history-detail-feature.js**
-   - 在 `startAnimaApp()` 中初始化 `uiScaleController`
-   - 在 `boot()` 中调用 `uiScaleController.initUIScale()`
+缩放分两层：
 
-7. **web/static/js/features/anima-app/chunks/26-load-global-settings.js**
-   - 在 `loadGlobalSettings()` 中调用 `uiScaleController?.applyScaleFromSettings?.(data)`
-   - 在 `saveGlobalSettings()` 中调用 `uiScaleController?.applyScaleFromSettings?.(globalSettings)`
+1. **默认缩放比例**：全站兜底
+2. **独立比例**：某个主页面或历史详情子页取消“跟随默认”后单独保存
 
-8. **web/static/js/features/anima-app/index.js**
-   - 更新所有chunk imports的cache token
+---
 
-### 使用方法
-1. 启动WebUI：`.venv/bin/python tasks.py web`
-2. 打开浏览器访问 WebUI
-3. 点击顶部导航栏的"全局设置"标签
-4. 在"界面设置"卡片中找到"缩放比例 (%)"输入框
-5. 输入期望的缩放百分比（25-400，默认100）
-6. 点击"保存更新当前选中配置"按钮
-7. 界面会立即应用新的缩放比例
+## 2. 入口
 
-### 技术实现
-- 通过修改 `document.documentElement.style.fontSize` 实现缩放
-- 设置CSS变量 `--ui-scale` 供其他样式使用
-- 缩放值存储在 `configs/web-ui-settings.toml` 的 `[global]` section
-- 页面加载时自动从全局设置读取并应用缩放
+1. 打开 **全局设置**。
+2. 找到 **界面设置**。
+3. 改 **缩放比例 (%)**。
+4. 需要时展开：
+   - **主页面独立比例**
+   - **历史详情独立比例**
+5. 取消某页的 **跟随默认**，再填该页自己的百分比。
+6. 点 **保存全局设置**。
 
-### 验证
-所有修改的文件已通过语法检查：
-- Python: `python -m py_compile` ✓
-- JavaScript: `node --check` ✓
-- 逻辑正确性已验证
+取值范围：`25`–`400`，步进通常为 `5`。
+推荐：`75`–`150`。默认：`100`。
+
+---
+
+## 3. 关键配置项
+
+| 配置 | 作用 |
+| --- | --- |
+| 默认缩放比例 | 所有“跟随默认”的页面使用这个值 |
+| 配置 / 数据集 / 训练 / ΔW 分析 / 生图测试 / 全局设置 / 环境检测 | 主页面独立比例 |
+| 历史概览 / 训练分析 / 样张与权重 / 日志 / 配置与文件 | 历史详情内容区独立比例 |
+| 跟随默认 | 勾选后忽略该页独立值，回到默认比例 |
+
+说明：
+
+- 历史详情独立比例只作用于详情内容，不改标题栏和关闭按钮。
+- 设置保存在全局设置里，刷新页面后仍会生效。
+
+---
+
+## 4. 危险项
+
+- **设得太小（接近 25%）**：按钮和字会挤在一起，难操作。
+- **设得太大（接近 400%）**：一屏装不下，频繁滚动。
+- **只改了输入框没保存**：不会持久化。
+- **某些页面取消跟随默认后忘记改回去**：会表现为“只有这一页大小不对”。
+
+---
+
+## 5. 相关测试
+
+```bash
+timeout 60 .venv/bin/python -m pytest \
+  tests/test_ui_scale_settings.py \
+  tests/test_preview_service.py \
+  -q
+```
+
+前端 DOM / 设置字段挂钩可配合：
+
+```bash
+timeout 60 .venv/bin/python -m pytest \
+  tests/test_training_frontend_state.py \
+  tests/test_training_frontend_dom.py \
+  -q
+```

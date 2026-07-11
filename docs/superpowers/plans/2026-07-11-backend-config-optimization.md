@@ -22,6 +22,19 @@
 
 ---
 
+## Auto Iteration
+
+本计划接入五轮自动迭代协议：
+
+- 协议：`docs/superpowers/specs/2026-07-11-five-round-auto-iteration-protocol.md`
+- 设计补充：`docs/superpowers/specs/2026-07-11-backend-config-optimization-design.md` §10
+- 日志：`docs/superpowers/plans/2026-07-11-fullstack-auto-iteration-log.md`
+- 前端计划：`docs/superpowers/plans/2026-07-11-frontend-config-optimization.md`
+
+每轮必须更新：后端评分卡、前端评分卡、本轮焦点、测试门禁、下轮焦点。
+
+**对照实现分支：** `feat/backend-config-optimization` 已落地本计划 Task1–10 代码（sample prompts、image_test、stage 门禁、progress stage、auto_retry、history/queue roots、schema、merge core、http contracts、resume 诊断）。文档分支保留计划真相；合并时以测试绿为准。
+
 ## File Map
 
 | 文件 | 职责 |

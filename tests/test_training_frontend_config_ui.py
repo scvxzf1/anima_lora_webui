@@ -1371,7 +1371,7 @@ def test_config_form_uses_navigation_search_and_progressive_disclosure() -> None
     assert "function createConfigQuickPresetsButton" in source
     assert "function createConfigQuickPresetPanel" in source
     assert "RESOURCE_QUICK_PRESETS" in source
-    for label in ["全 GPU", "Balanced 16G", "FP8 测试", "更省显存", "LoKr 16G", "OOM 兜底"]:
+    for label in ["快捷·全 GPU", "快捷·Balanced 16G", "快捷·FP8 测试", "快捷·更省显存", "快捷·LoKr 16G", "快捷·OOM 兜底"]:
         assert label in source
     assert "merge: {" in source
     assert "blocks_to_swap: 'max'" in source
@@ -2040,6 +2040,163 @@ def test_config_form_auto_fixes_came_optimizer_args_frontend_hooks_are_present()
     assert "configFormState.draftValues.set(key, value);" in load_config_section
     assert "已自动修正 CAME optimizer_args 的 betas 格式" in load_config_section
     assert "const nextValues = applyOptimizerCompatibilityPatch(values);" in prepare_section
+
+
+def test_variant_guides_match_gui_methods_or_legacy_aliases() -> None:
+    """VARIANT_GUIDE_ZH 必须覆盖现网 gui-methods，ghost key 只能留在 legacy 别名里。"""
+    from pathlib import Path
+    import re
+
+    root = Path(__file__).resolve().parents[1]
+    gui = {p.stem for p in (root / "configs" / "gui-methods").glob("*.toml")}
+    guides = (root / "web" / "static" / "js" / "config" / "catalog" / "guides.js").read_text(encoding="utf-8")
+
+    assert "export const LEGACY_VARIANT_ALIASES" in guides
+
+    variant_block = re.search(
+        r"export const VARIANT_GUIDE_ZH = \{(.*?)^\};",
+        guides,
+        re.S | re.M,
+    )
+    assert variant_block is not None, "VARIANT_GUIDE_ZH block not found"
+    variant_keys = {
+        m.group(1) or m.group(2)
+        for m in re.finditer(
+            r"^\s{4}(?:'([^']+)'|([A-Za-z0-9_]+)):\s*choiceHelp\(",
+            variant_block.group(1),
+            re.M,
+        )
+    }
+    assert variant_keys, "VARIANT_GUIDE_ZH keys empty"
+
+    legacy_block = re.search(
+        r"export const LEGACY_VARIANT_ALIASES = Object\.freeze\(\{(.*?)^\}\);",
+        guides,
+        re.S | re.M,
+    )
+    assert legacy_block is not None, "LEGACY_VARIANT_ALIASES block not found"
+    legacy_keys = {
+        m.group(1) or m.group(2)
+        for m in re.finditer(
+            r"^\s{4}(?:'([^']+)'|([A-Za-z0-9_]+)):\s*\{",
+            legacy_block.group(1),
+            re.M,
+        )
+    }
+    assert legacy_keys, "LEGACY_VARIANT_ALIASES keys empty"
+
+    unknown = sorted(variant_keys - gui - legacy_keys)
+    assert unknown == [], f"variant guide keys not in gui-methods or LEGACY_VARIANT_ALIASES: {unknown}"
+
+    missing_live = sorted(gui - variant_keys)
+    assert missing_live == [], f"live gui-methods missing VARIANT_GUIDE_ZH entries: {missing_live}"
+
+    # Ghost keys must stay resolvable in VARIANT_GUIDE_ZH so old imports do not hard-crash.
+    for key in sorted(legacy_keys):
+        assert key in variant_keys, f"legacy alias {key} missing VARIANT_GUIDE_ZH entry"
+        assert re.search(rf"(?:'{re.escape(key)}'|{re.escape(key)}):\s*choiceHelp\(", variant_block.group(1)), key
+
+
+def test_resource_naming_three_layers_are_distinguished() -> None:
+    """硬件 preset / 方法变体 / 资源快捷按钮三层文案必须可区分。"""
+    app_constants = _frontend_module_text("js/features/anima-app/helpers/app-constants.js")
+    guides = _frontend_module_text("js/config/catalog/guides.js")
+
+    quick_presets = _section(
+        app_constants,
+        "export const RESOURCE_QUICK_PRESETS = [",
+        "export const NO_DATASET_REGULARIZATION_FIELD_KEYS",
+    )
+    for preset_id in (
+        "gpu_full",
+        "balanced_16g",
+        "fp8_swap_test",
+        "vram_saver",
+        "lokr_16g_rescue",
+        "oom_fallback",
+    ):
+        assert f"id: '{preset_id}'" in quick_presets
+
+    note_lines = [line for line in quick_presets.splitlines() if "note:" in line]
+    assert len(note_lines) >= 6
+    for line in note_lines:
+        assert (
+            "快捷" in line
+            or "一键资源" in line
+            or "快捷资源" in line
+        ), f"resource quick preset note missing layer word: {line}"
+
+    lokr_quick = _section(quick_presets, "id: 'lokr_16g_rescue'", "id: 'oom_fallback'")
+    assert (
+        "仅 LoKr" in lokr_quick
+        or "方法变体专用" in lokr_quick
+        or "LoKr 专用" in lokr_quick
+    )
+    assert "快捷" in lokr_quick or "快捷资源" in lokr_quick or "一键资源" in lokr_quick
+
+    preset_start = guides.index("export const PRESET_GUIDE_ZH = {")
+    preset_guide = guides[preset_start:]
+    low_vram_guide = _section(preset_guide, "low_vram: choiceHelp(", "low_vram_blockswap: choiceHelp(")
+    balanced_guide = _section(preset_guide, "balanced_16g: choiceHelp(", "graft: choiceHelp(")
+    assert "硬件预设" in low_vram_guide
+    assert "硬件预设" in balanced_guide
+    # balanced_16g 是硬件 preset，不能混入 LoKr 方法专用描述。
+    assert "LoKr 专用" not in balanced_guide
+    assert "lokr_factor_group_size" not in balanced_guide
+    assert "仅 LoKr" not in balanced_guide
+
+    variant_start = guides.index("export const VARIANT_GUIDE_ZH = {")
+    variant_guide = guides[variant_start:preset_start]
+    lora8_guide = _section(variant_guide, "'lora-8gb': choiceHelp(", "ortholora: choiceHelp(")
+    assert "方法变体" in lora8_guide
+    assert "硬件预设" not in lora8_guide
+    assert "快捷资源" not in lora8_guide
+
+
+def test_resource_quick_preset_diff_preview_and_method_guards_exist() -> None:
+    """快捷资源按钮需提供 diff 预览与方法门禁接口。"""
+    app_constants = _frontend_module_text("js/features/anima-app/helpers/app-constants.js")
+    presets_source = _frontend_module_text("js/features/config-form/stage-resolution-presets.js")
+    source = APP_JS.read_text(encoding="utf-8")
+
+    assert "export function previewQuickPresetDiff" in presets_source
+    assert "export function isQuickPresetApplicable" in presets_source
+    assert "export function resolveQuickPresetMethodFamily" in presets_source
+    assert "previewQuickPresetDiff(" in source
+    assert "isQuickPresetApplicable(" in source
+
+    quick_presets = _section(
+        app_constants,
+        "export const RESOURCE_QUICK_PRESETS = [",
+        "export const NO_DATASET_REGULARIZATION_FIELD_KEYS",
+    )
+    lokr_quick = _section(quick_presets, "id: 'lokr_16g_rescue'", "id: 'oom_fallback'")
+    assert "applicableMethods:" in lokr_quick
+    assert "'lokr'" in lokr_quick
+    assert "use_lokr" in lokr_quick
+
+    fp8_quick = _section(quick_presets, "id: 'fp8_swap_test'", "id: 'vram_saver'")
+    oom_quick = _section(quick_presets, "id: 'oom_fallback'", "];")
+    assert "实验" in fp8_quick
+    assert "兜底" in oom_quick or "OOM" in oom_quick
+
+    apply_block = _section(
+        presets_source,
+        "function applyResourceQuickPreset",
+        "function resourceQuickPresetPatch",
+    )
+    assert "previewQuickPresetDiff" in apply_block
+    assert "isQuickPresetApplicable" in apply_block
+    assert "setTomlStatus(" in apply_block
+    assert "将修改" in apply_block or "将改动" in apply_block
+
+    panel_block = _section(
+        presets_source,
+        "function createConfigQuickPresetPanel",
+        "export function createResourceQuickPresetsButton",
+    )
+    assert "isQuickPresetApplicable" in panel_block or "applicableMethods" in panel_block
+    assert "disabled" in panel_block or "aria-disabled" in panel_block
 
 
 def test_balanced_16g_block_swap_fields_are_visible() -> None:
@@ -2811,3 +2968,134 @@ def test_dataset_main_card_keeps_only_high_frequency_settings() -> None:
     assert "createDatasetRowSettingInput(index, key, type, settings)" in advanced_settings_factory
     assert "createDatasetAdvancedSettingsEditor(row, index)" in experimental_factory
     assert "createDatasetExperimentalFeaturesEditor(row, index)" in dialog
+
+def test_field_presentation_provenance_and_presave_dirty_summary() -> None:
+    """FieldPresentation helper + badge/pre-save dirty summary hooks must exist."""
+    presentation = _frontend_module_text("js/features/config-form/field-presentation.js")
+    field_row = _frontend_module_text("js/features/anima-app/chunks/14-lora-adapter-kind-from-config.js")
+    save_source = _frontend_module_text("js/features/anima-app/chunks/16-load-output-run-config.js")
+    css = (STATIC_DIR / "css" / "13-shared-fields.css").read_text(encoding="utf-8")
+
+    assert "export function buildFieldPresentation" in presentation
+    assert "export function fieldSourceBadgeLabel" in presentation
+    assert "export function summarizeDirtyDiff" in presentation
+    assert "source: 'config'" in presentation or "source = 'config'" in presentation
+    assert "ui_default" in presentation
+    assert "isDirty" in presentation
+
+    assert "buildFieldPresentation" in field_row
+    assert "field-source-badge" in field_row
+    assert "fieldSourceBadgeLabel" in field_row
+
+    assert "summarizeDirtyDiff" in save_source
+    assert "保存前将写入" in presentation
+    assert "setTomlStatus('pending', summarizeDirtyDiff(changedValues)" in save_source
+    assert ".field-source-badge" in css
+
+def test_form_ui_defaults_and_help_align_with_base_facts() -> None:
+    """Critical FORM_UI_DEFAULTS / help text must not contradict configs/base.toml facts.
+
+    UI-only fallbacks that intentionally diverge must be listed in
+    FORM_UI_ONLY_DEFAULT_KEYS instead of silently pretending to be merge defaults.
+    """
+    import tomllib
+
+    base = tomllib.loads((REPO_ROOT / "configs" / "base.toml").read_text(encoding="utf-8"))
+    assert base["lr_scheduler"] == "cosine"
+    assert base["optimizer_type"] == "AdamW"
+    assert base["lr_warmup_steps"] == 0.05
+    assert base["gradient_checkpointing"] is False
+    assert base["use_custom_down_autograd"] is False
+
+    defaults_source = _frontend_module_text("js/config/catalog/defaults.js")
+    help_source = _frontend_module_text("js/config/catalog/field-help-training.js")
+    defaults_block = _section(
+        defaults_source,
+        "export const FORM_UI_DEFAULTS = {",
+        "export const OPTIONAL_EMPTY_FIELDS",
+    )
+
+    # lr_scheduler is owned by the merge chain (base=cosine); do not ship a conflicting UI default.
+    assert "lr_scheduler:" not in defaults_block
+
+    lr_help = _section(help_source, "lr_scheduler: help(", "lr_warmup_steps: help(")
+    assert "默认 constant" not in lr_help
+    assert "cosine" in lr_help
+    assert "base" in lr_help
+
+    optimizer_help = _section(help_source, "optimizer_type: help(", "optimizer_args: help(")
+    assert "默认 AdamW" in optimizer_help
+
+    # gradient_checkpointing: FORM_UI true is a low-VRAM UI fallback, not base (false).
+    assert "gradient_checkpointing: true" in defaults_block
+    ui_only = _section(
+        defaults_source,
+        "export const FORM_UI_ONLY_DEFAULT_KEYS = new Set([",
+        "]);",
+    )
+    assert "'gradient_checkpointing'" in ui_only
+
+    custom_down_help = _section(
+        help_source,
+        "use_custom_down_autograd: help(",
+        "log_every_n_steps: help(",
+    )
+    assert "默认 true" not in custom_down_help
+    assert "false" in custom_down_help
+
+def test_live_compat_warnings_mirror_key_conflict_codes() -> None:
+    """Live compat helper surfaces key conflict codes without replacing preflight."""
+    source = _frontend_module_text("js/features/config-form/live-compat.js")
+    field_change = _frontend_module_text("js/features/anima-app/chunks/14-lora-adapter-kind-from-config.js")
+
+    assert "export function collectLiveCompatIssues" in source
+    assert "export function formatLiveCompatStatus" in source
+    assert "selective_full_gradient_checkpointing" in source
+    assert "block_swap_soft_tokens" in source
+    assert "不替代" in source or "Does NOT replace" in source or "preflight" in source
+
+    assert "collectLiveCompatIssues" in field_change
+    assert "updateLiveCompatWarningsFromForm" in field_change
+    assert "setTomlStatus" in field_change
+    assert "live 兼容" in field_change
+    assert "wasLiveCompat" in field_change or "includes('live 兼容')" in field_change or 'includes("live 兼容")' in field_change
+
+    if not shutil.which("node"):
+        return
+
+    script = r"""
+import { collectLiveCompatIssues, formatLiveCompatStatus } from './web/static/js/features/config-form/live-compat.js';
+const selective = collectLiveCompatIssues({
+  selective_checkpoint: 'mlp_only',
+  gradient_checkpointing: true,
+});
+const soft = collectLiveCompatIssues({
+  blocks_to_swap: 8,
+  network_module: 'networks.methods.soft_tokens',
+});
+const ok = collectLiveCompatIssues({
+  selective_checkpoint: 'off',
+  gradient_checkpointing: true,
+  blocks_to_swap: 0,
+});
+console.log(JSON.stringify({
+  selectiveCodes: selective.map((i) => i.code),
+  softCodes: soft.map((i) => i.code),
+  okCount: ok.length,
+  formatted: formatLiveCompatStatus(selective),
+}));
+"""
+    proc = subprocess.run(
+        ["node", "--input-type=module", "-e", script],
+        cwd=REPO_ROOT,
+        text=True,
+        capture_output=True,
+        timeout=20,
+    )
+    assert proc.returncode == 0, proc.stderr or proc.stdout
+    payload = json.loads(proc.stdout)
+    assert "selective_full_gradient_checkpointing" in payload["selectiveCodes"]
+    assert "block_swap_soft_tokens" in payload["softCodes"]
+    assert payload["okCount"] == 0
+    assert "live 兼容" in payload["formatted"]
+

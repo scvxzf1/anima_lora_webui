@@ -93,6 +93,45 @@ export const METHOD_GUIDE_ZH = {
     ),
 };
 
+export const LEGACY_VARIANT_ALIASES = Object.freeze({
+    // 历史/实验别名：旧导入配置仍可能引用这些 key，保留 guide 避免 UI 硬崩。
+    lora_longer: {
+        family: 'lora',
+        status: 'historical',
+        note: '历史更长训练 LoRA 变体；现网优先用 lora 或自定义轮数。',
+    },
+    tlora_ortho: {
+        family: 'tlora',
+        status: 'historical',
+        note: '历史 T-LoRA+Ortho 别名；现网默认对应 tlora / tlora-8gb。',
+    },
+    hydralora_sigma: {
+        family: 'hydralora',
+        status: 'historical',
+        note: '历史 Hydra sigma 路由别名；现网主变体是 hydralora。',
+    },
+    hydralora_experimental: {
+        family: 'hydralora',
+        status: 'experimental',
+        note: '实验向 Hydra 配置别名，不在 gui-methods 现网列表中。',
+    },
+    hydralora_fei: {
+        family: 'hydralora',
+        status: 'experimental',
+        note: '历史/实验 FEI 路由 Hydra 别名。',
+    },
+    fera: {
+        family: 'hydralora',
+        status: 'experimental',
+        note: '历史 FeRA 独立 A 专家结构别名。',
+    },
+    spd: {
+        family: 'spd',
+        status: 'experimental',
+        note: 'SPD CLI 实验配置入口；不走普通 train.py。',
+    },
+});
+
 export const VARIANT_GUIDE_ZH = {
     lora: choiceHelp(
         '普通 LoRA',
@@ -101,15 +140,21 @@ export const VARIANT_GUIDE_ZH = {
         '新手和大多数正式训练从这里开始。'
     ),
     lora_longer: choiceHelp(
-        '更长 LoRA',
+        '更长 LoRA（历史别名）',
         '架构接近普通 LoRA，但偏向更长或更充分的训练配置。',
         '适合默认轮数还欠拟合的数据；代价是训练更久、过拟合风险更高。',
         '样张还不够像时再切。'
     ),
+    lora_signal_probe: choiceHelp(
+        'LoRA 信号探针',
+        '小 rank、步数驱动的快速 plain LoRA 探针配置，用于收敛/对照实验。',
+        '启动快、变量少；不适合正式长训，也不应叠加复杂 adapter。',
+        '只做短跑信号探针或 A/B 时选。'
+    ),
     'lora-8gb': choiceHelp(
-        '低显存 LoRA',
-        '面向 8GB/低显存环境，开启梯度检查点和卸载相关设置。',
-        '更不容易 OOM；代价是训练明显变慢。',
+        '方法变体：低显存 LoRA',
+        '方法变体：面向 8GB/低显存环境，开启梯度检查点和卸载相关设置。',
+        '更不容易 OOM；代价是训练明显变慢。这是方法变体，不是硬件 preset，也不是资源快捷按钮。',
         '默认配置爆显存时选。'
     ),
     ortholora: choiceHelp(
@@ -118,14 +163,32 @@ export const VARIANT_GUIDE_ZH = {
         '更重视结构化更新；代价是训练机制更复杂。',
         '概念容易互相污染时试。'
     ),
+    hydralora: choiceHelp(
+        'HydraLoRA',
+        '共享 down + 多专家 up 的 sigma 路由 Hydra 主变体，默认按时间步分桶。',
+        '容量和阶段分工更强；代价是显存、速度和调参复杂度更高。',
+        '普通 LoRA 不够表达时再试。'
+    ),
+    'hydralora-8gb': choiceHelp(
+        '低显存 HydraLoRA',
+        '与 hydralora 同架构，额外打开梯度检查点和卸载相关设置。',
+        '更不容易 OOM；代价是训练明显变慢。',
+        '默认 Hydra 爆显存时选。'
+    ),
     tlora: choiceHelp(
         'T-LoRA',
         '启用时间步 rank mask，不加正交约束。',
         '比普通 LoRA 更关注去噪阶段差异；代价是多一个 min_rank 维度。',
         '想单独测试 T-LoRA 时选。'
     ),
+    'tlora-8gb': choiceHelp(
+        '低显存 T-LoRA + Ortho',
+        '与默认 tlora（含 Ortho）同架构，面向 8GB/低显存打开检查点与卸载。',
+        '更不容易 OOM；代价是训练更慢。',
+        '默认 T-LoRA 爆显存时选。'
+    ),
     tlora_ortho: choiceHelp(
-        'T-LoRA + OrthoLoRA',
+        'T-LoRA + OrthoLoRA（历史别名）',
         '时间步 rank mask 和正交约束叠加。',
         '泛用进阶配置，兼顾结构阶段和更新约束；训练理解成本比普通 LoRA 高。',
         '有经验后可作为默认进阶选择。'
@@ -143,25 +206,25 @@ export const VARIANT_GUIDE_ZH = {
         '只建议对照实验使用。'
     ),
     hydralora_sigma: choiceHelp(
-        'Hydra Sigma',
+        'Hydra Sigma（历史别名）',
         '共享 down 矩阵，多专家 up，按 sigma/时间步路由。',
         '专家能按去噪阶段分工；代价是训练和推理更复杂。',
         '想研究时间步专家分工时选。'
     ),
     hydralora_experimental: choiceHelp(
-        'Hydra 实验版',
+        'Hydra 实验版（实验别名）',
         '更激进的 Hydra Sigma 配置，包含更多专家或硬分桶设置。',
         '探索空间更大；风险是专家利用不均、调参成本高。',
         '只建议实验用。'
     ),
     hydralora_fei: choiceHelp(
-        'Hydra FEI',
+        'Hydra FEI（实验别名）',
         'Hydra 结构使用 FEI 特征作为路由信号。',
         '比纯 sigma 路由多一个内容/特征维度；代价是依赖 FEI 特征缓存和路由稳定性。',
         '需要 FEI 路由时选。'
     ),
     fera: choiceHelp(
-        'FeRA',
+        'FeRA（实验别名）',
         '独立 A 矩阵的 FEI 路由专家结构。',
         '容量更高、专家更独立；代价是参数、显存和训练复杂度更高。',
         '普通 Hydra 不够时再试。'
@@ -215,7 +278,7 @@ export const VARIANT_GUIDE_ZH = {
         '只建议方法实验。'
     ),
     spd: choiceHelp(
-        'SPD 实验配置',
+        'SPD 实验配置（实验别名）',
         'configs/methods/spd.toml 是专用 distill_spd 脚本配置，包含数据目录、迭代数和 SPD schedule。',
         'Web 表单可补全常用字段；普通 Web 训练/预处理会明确拦截，避免误走 train.py。',
         '运行时使用 CLI：tasks.py exp-spd，测试使用 exp-test-spd。'
@@ -224,56 +287,56 @@ export const VARIANT_GUIDE_ZH = {
 
 export const PRESET_GUIDE_ZH = {
     default: choiceHelp(
-        '默认预设',
-        '不额外改硬件/采样覆盖，使用方法变体自己的训练配置。',
-        '行为最可预测；如果显存不足，需要切低显存方案。',
+        '硬件预设：默认',
+        '硬件预设：不额外改硬件/采样覆盖，使用方法变体自己的训练配置。',
+        '行为最可预测；如果显存不足，需要切低显存硬件预设。',
         '新手默认选这个。'
     ),
     low_vram: choiceHelp(
-        '低显存预设',
-        '开启梯度检查点和 CPU 卸载，降低显存峰值。',
-        '更不容易 OOM；代价是训练速度下降。',
+        '硬件预设：低显存',
+        '硬件预设：开启梯度检查点和 CPU 卸载，降低显存峰值。',
+        '更不容易 OOM；代价是训练速度下降。这是硬件预设，不是方法变体，也不是表单里的资源快捷按钮。',
         '显存不够时选。'
     ),
     low_vram_blockswap: choiceHelp(
-        '低显存交换块',
-        '使用 block swap 作为主要省显存手段，默认交换 8 个 DiT 块。',
+        '硬件预设：低显存交换块',
+        '硬件预设：使用 block swap 作为主要省显存手段，默认交换 8 个 DiT 块。',
         '比 Unsloth 保命模式更轻；显存压力仍高时再提高交换块数。',
         '想手动对比交换块效率时选。'
     ),
     balanced_16g: choiceHelp(
-        'Balanced 16G',
-        '预测式 DiT block swap 默认交换 12 个 frozen base blocks，并保持 LoRA/router/trainable adapter 常驻 GPU。',
-        '目标是省出约 4GB，同时把速度损失控制在较低范围；默认不开 Unsloth 和选择性重算。',
+        '硬件预设：Balanced 16G',
+        '硬件预设：预测式 DiT block swap 默认交换 12 个 frozen base blocks，并保持 LoRA/router/trainable adapter 常驻 GPU。',
+        '目标是省出约 4GB，同时把速度损失控制在较低范围；默认不开 Unsloth 和选择性重算。这是硬件预设，不是方法变体配置，也不是表单资源快捷按钮。',
         '16GB 显卡优先选它；仍 OOM 时再试 mlp_only 选择性重算。'
     ),
     graft: choiceHelp(
-        '交换块预设',
-        '提高 blocks_to_swap，把更多 DiT 块放到 CPU/GPU 间交换。',
+        '硬件预设：交换块',
+        '硬件预设：提高 blocks_to_swap，把更多 DiT 块放到 CPU/GPU 间交换。',
         '进一步省显存；代价是训练会更慢。',
         '低显存仍 OOM 时再试。'
     ),
     half: choiceHelp(
-        '半量采样',
-        '每轮约使用 50% 数据。',
+        '硬件预设：半量采样',
+        '硬件预设：每轮约使用 50% 数据。',
         '快速试跑；结果不能代表完整训练。',
         '验证流程或粗调参数时用。'
     ),
     quarter: choiceHelp(
-        '四分之一采样',
-        '每轮约使用 25% 数据。',
+        '硬件预设：四分之一采样',
+        '硬件预设：每轮约使用 25% 数据。',
         '更快试跑；训练信号更不完整。',
         '只用于快速排错。'
     ),
     tenth: choiceHelp(
-        '十分之一采样',
-        '每轮约使用 10% 数据。',
+        '硬件预设：十分之一采样',
+        '硬件预设：每轮约使用 10% 数据。',
         '启动和验证最快；几乎不能判断最终质量。',
         '只用于流程冒烟。'
     ),
     debug: choiceHelp(
-        '调试采样',
-        '每轮约使用 1% 数据。',
+        '硬件预设：调试采样',
+        '硬件预设：每轮约使用 1% 数据。',
         '最快发现配置/代码错误；完全不适合看训练效果。',
         '开发排错用，不建议正式训练。'
     ),
