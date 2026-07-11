@@ -6,9 +6,9 @@ from typing import Any, Mapping
 
 import torch
 
-from networks.plugins.loha.module import LoHaModule
-from networks.plugins.loha.save import save_loha_weights
-from networks.registry import (
+from .module import LoHaModule
+from .save import save_loha_weights
+from ...registry_api import (
     ContinueWeightDetectionContext,
     NetworkSpec,
     WeightDetectionContext,

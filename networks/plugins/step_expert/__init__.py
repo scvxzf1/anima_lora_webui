@@ -7,8 +7,8 @@ from typing import Any, Mapping
 
 import torch
 
-from networks.lora_modules.step_expert import StepExpertLoRAModule
-from networks.registry import (
+from ...lora_modules.step_expert_lora import StepExpertLoRAModule
+from ...registry_api import (
     ContinueWeightDetectionContext,
     ModuleCreationContext,
     NetworkSpec,

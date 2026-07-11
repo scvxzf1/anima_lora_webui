@@ -6,7 +6,7 @@ from typing import Dict, Optional
 
 import torch
 
-from networks.attn_fuse import match_fused_spec
+from ...attn_fuse import match_fused_spec
 
 
 def defuse_glora_qkv(state_dict: Dict[str, torch.Tensor]) -> None:

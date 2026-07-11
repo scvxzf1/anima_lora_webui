@@ -6,16 +6,16 @@ from typing import Any, Mapping
 
 import torch
 
-from networks.plugins.lokr.autograd import (
+from .autograd import (
     DEFAULT_LOKR_GROUPED_DELTA_BACKEND,
     DEFAULT_LOKR_GROUPED_DELTA_BACKWARD_BACKEND,
     DEFAULT_LOKR_PROJECT_CHUNK_BYTES,
     normalize_lokr_grouped_delta_backward_backend,
     normalize_lokr_grouped_delta_backend,
 )
-from networks.plugins.lokr.module import LoKrModule
-from networks.plugins.lokr.save import save_lokr_weights
-from networks.registry import (
+from .module import LoKrModule
+from .save import save_lokr_weights
+from ...registry_api import (
     ContinueWeightDetectionContext,
     ModuleCreationContext,
     NetworkSpec,

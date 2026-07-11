@@ -36,7 +36,7 @@ from typing import Dict, List, Optional
 
 import torch
 
-from networks.attn_fuse import match_fused_spec
+from ..attn_fuse import match_fused_spec
 from .base import BaseLoRAModule, _absorb_channel_scale
 from .custom_autograd import lora_down_project
 from .lora import defuse_standard_qkv

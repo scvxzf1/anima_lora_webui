@@ -28,7 +28,7 @@ from typing import Dict, List, Optional
 
 import torch
 
-from networks.attn_fuse import match_fused_spec
+from ..attn_fuse import match_fused_spec
 from .base import BaseLoRAModule
 from .router_state import (
     _clear_routing_weights,

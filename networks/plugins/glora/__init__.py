@@ -6,10 +6,10 @@ from typing import Any, Mapping
 
 import torch
 
-from networks.attn_fuse import iter_split_groups
-from networks.plugins.glora.module import GLoRAModule
-from networks.plugins.glora.save import save_glora_weights
-from networks.registry import (
+from ...attn_fuse import iter_split_groups
+from .module import GLoRAModule
+from .save import save_glora_weights
+from ...registry_api import (
     ContinueWeightDetectionContext,
     NetworkSpec,
     WeightDetectionContext,

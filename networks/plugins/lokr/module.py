@@ -9,8 +9,8 @@ import torch
 import torch.nn.functional as F
 
 from library.runtime.peak_probe import record_peak_probe_event
-from networks.lora_modules.base import BaseLoRAModule
-from networks.plugins.lokr.autograd import (
+from ...lora_modules.base import BaseLoRAModule
+from .autograd import (
     DEFAULT_LOKR_GROUPED_DELTA_BACKEND,
     DEFAULT_LOKR_GROUPED_DELTA_BACKWARD_BACKEND,
     DEFAULT_LOKR_PROJECT_CHUNK_BYTES,

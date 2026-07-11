@@ -8,7 +8,7 @@ import math
 import torch
 import torch.nn.functional as F
 
-from networks.lora_modules.base import BaseLoRAModule
+from ...lora_modules.base import BaseLoRAModule
 
 logger = logging.getLogger(__name__)
 

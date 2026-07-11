@@ -83,3 +83,40 @@ def test_resolve_network_spec_still_selects_lora_by_default():
     spec = resolve_network_spec({})
     assert spec.name == "lora"
 
+
+def test_registry_leaf_path_has_no_absolute_networks_imports():
+    """Critical path modules must not absolute-import networks.* package paths."""
+    offenders: list[str] = []
+    for rel in (
+        "networks/registry.py",
+        "networks/core_specs.py",
+        "networks/registry_api.py",
+        "networks/lora_modules/lora.py",
+        "networks/lora_modules/hydra.py",
+        "networks/lora_modules/chimera.py",
+        "networks/lora_modules/stacked_experts.py",
+        "networks/plugins/step_expert/__init__.py",
+        "networks/plugins/lokr/__init__.py",
+    ):
+        path = REPO_ROOT / rel
+        if not path.exists():
+            continue
+        for mod in _iter_absolute_imports(path):
+            if mod == "networks" or mod.startswith("networks."):
+                offenders.append(f"{rel}: {mod}")
+    assert offenders == []
+
+
+def test_import_lora_modules_before_networks_is_stable():
+    """Reverse import order should also leave registry usable."""
+    for name in list(sys.modules):
+        if name == "networks" or name.startswith("networks."):
+            del sys.modules[name]
+
+    lora_modules = importlib.import_module("networks.lora_modules")
+    networks = importlib.import_module("networks")
+    registry = importlib.import_module("networks.registry")
+
+    assert hasattr(lora_modules, "LoRAModule")
+    assert "lora" in networks.NETWORK_REGISTRY
+    assert registry.NETWORK_REGISTRY is networks.NETWORK_REGISTRY

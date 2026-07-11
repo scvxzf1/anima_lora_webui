@@ -18,7 +18,7 @@ import torch
 import torch.nn.functional as F
 from torch.nn.init import _calculate_correct_fan
 
-from networks.lora_modules.base import BaseLoRAModule
+from ...lora_modules.base import BaseLoRAModule
 
 logger = logging.getLogger(__name__)
 

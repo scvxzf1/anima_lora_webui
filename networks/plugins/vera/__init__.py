@@ -6,10 +6,10 @@ from typing import Any, Mapping
 
 import torch
 
-from networks.plugins.vera.module import VeRAModule, make_projection_bank
-from networks.plugins.vera.save import save_vera_weights
-from networks.attn_fuse import iter_split_groups
-from networks.registry import (
+from .module import VeRAModule, make_projection_bank
+from .save import save_vera_weights
+from ...attn_fuse import iter_split_groups
+from ...registry_api import (
     ContinueWeightDetectionContext,
     ModuleCreationContext,
     NetworkSpec,

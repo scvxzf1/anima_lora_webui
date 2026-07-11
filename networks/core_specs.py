@@ -85,12 +85,12 @@ _CORE_SPEC_NAMES: Tuple[str, ...] = (
 def register_core_network_specs() -> None:
     """Register built-in LoRA-family NetworkSpec entries once."""
 
-    from networks.registry import NETWORK_REGISTRY, NetworkSpec, register_network_spec
+    from .registry_api import NETWORK_REGISTRY, NetworkSpec, register_network_spec
 
     if any(name in NETWORK_REGISTRY for name in _CORE_SPEC_NAMES):
         return
 
-    from networks.lora_modules import (
+    from .lora_modules import (
         ChimeraHydraLoRAModule,
         DoRALoRAModule,
         HydraLoRAModule,

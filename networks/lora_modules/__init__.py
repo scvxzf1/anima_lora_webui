@@ -15,7 +15,7 @@ from .ortho import (
 )
 from .reft import ReFTModule
 from .stacked_experts import StackedExpertsLoRAModule
-from .step_expert import StepExpertLoRAModule
+from .step_expert_lora import StepExpertLoRAModule
 
 __all__ = [
     "BaseLoRAModule",
