@@ -5,9 +5,9 @@ from typing import Dict, List, Optional
 
 import torch
 
-from networks.lora_modules.base import BaseLoRAModule
-from networks.lora_modules.custom_autograd import lora_down_project
-from networks.lora_modules.router_state import (
+from .base import BaseLoRAModule
+from .custom_autograd import lora_down_project
+from .router_state import (
     _apply_sigma_band_mask,
     _clear_fei_feature_cache,
     _clear_routing_weights,

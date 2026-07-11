@@ -16,8 +16,8 @@ import math
 
 import torch
 
-from networks.lora_modules.base import BaseLoRAModule
-from networks.lora_modules.custom_autograd import lora_down_project
+from .base import BaseLoRAModule
+from .custom_autograd import lora_down_project
 
 logger = logging.getLogger(__name__)
 

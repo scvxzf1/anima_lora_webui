@@ -8,7 +8,7 @@ from typing import Dict, List
 import torch
 
 from networks.attn_fuse import match_fused_spec
-from networks.lora_modules.base import BaseLoRAModule
+from .base import BaseLoRAModule
 
 logger = logging.getLogger(__name__)
 

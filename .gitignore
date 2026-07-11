@@ -52,3 +52,6 @@ _archive/
 !_archive/proposals/
 !_archive/proposals/dpdmd.md
 gui/gui_settings.json
+
+# Local git worktrees
+.worktrees/
