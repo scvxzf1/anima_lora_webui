@@ -784,3 +784,14 @@ Which approach?
 | merged 读接口 | 仍裸 dict | 兼容故意保留；失败仍 `ok:false` |
 | 契约测 | ✅ | `test_web_http_contracts` methods/variants/presets |
 
+---
+
+## Q-R5 route registry
+
+| 项 | 状态 | 说明 |
+|---|---|---|
+| REQUIRED_ROUTES 清单 | ✅ | bootstrap/training/config/settings/preview 关键面 |
+| `setup_routes` 完整性测 | ✅ | `tests/test_web_route_registry.py` |
+| batch-start 双别名 | ✅ | `/batch/start` + `/batch-start` |
+| smoke | ✅ | 纳入 `test-backend-smoke` |
+
