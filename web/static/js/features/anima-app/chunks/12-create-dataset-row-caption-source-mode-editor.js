@@ -1,14 +1,16 @@
 /**
  * Compatibility barrel for former chunk 12.
- * Implementation: js/features/dataset-editor/row-fields.js
+ * Implementations live in dataset-editor/row-fields.js and preview.js.
  */
 export {
     createDatasetPathField,
     createDatasetRowCaptionSourceModeEditor,
     createDatasetRowSettingInput,
-    loadDatasetPreviewImages,
-    openDatasetPreview,
     updateDatasetDefault,
     updateDatasetEditorRow,
     updateDatasetEditorRowSettingValue,
 } from '../../dataset-editor/row-fields.js?v=module-bootstrap-20260711-ir1';
+export {
+    loadDatasetPreviewImages,
+    openDatasetPreview,
+} from '../../dataset-editor/preview.js?v=module-bootstrap-20260711-ir1';

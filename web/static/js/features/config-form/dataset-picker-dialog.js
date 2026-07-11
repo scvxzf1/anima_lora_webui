@@ -1,8 +1,7 @@
 /**
- * Config dataset picker dialog, dataset editor shell, and file-group drag primitives.
- * Extracted from anima-app chunk 07.
+ * Config form dataset-preset picker dialog and preview.
+ * Extracted from former chunk 07 / dataset dialog module.
  */
-import { FILE_GROUP_DROP_TARGET_ATTR } from '../anima-app/helpers/app-constants.js?v=module-bootstrap-20260711-ir1';
 import {
     datasetPresetByFile,
     datasetPresetGroupsForDisplay,
@@ -10,9 +9,6 @@ import {
 } from '../anima-app/helpers/dataset-presets.js?v=module-bootstrap-20260711-ir1';
 import {
     configureDatasetRenderBridge,
-    createDatasetPresetGroupNode,
-    readDatasetPresetGroupState,
-    renderDatasetEditor,
 } from '../anima-app/helpers/dataset-render-bridge.js?v=module-bootstrap-20260711-ir1';
 import { getConfigState } from '../anima-app/helpers/config-state-bridge.js?v=module-bootstrap-20260711-ir1';
 import { getDatasetState } from '../anima-app/helpers/dataset-state-bridge.js?v=module-bootstrap-20260711-ir1';
@@ -20,7 +16,6 @@ import { datasetPresetApi } from '../anima-app/helpers/runtime-bridge.js?v=modul
 import { updateTomlDirtyState } from '../anima-app/helpers/toml-selection-bridge.js?v=module-bootstrap-20260711-ir1';
 import { loadStepEstimate } from './step-estimate.js?v=module-bootstrap-20260711-ir1';
 import { renderConfigDatasetPicker } from './dataset-picker.js?v=module-bootstrap-20260711-ir1';
-import { escapeHtml } from './field-input.js?v=module-bootstrap-20260711-ir1';
 
 const configState = getConfigState();
 const datasetState = getDatasetState();
@@ -295,158 +290,7 @@ function currentConfigDatasetPreviewState() {
         });
     }
 
-export function createDatasetEditor() {
-        const panel = document.createElement('div');
-        panel.id = 'dataset-editor';
-        panel.className = 'dataset-editor';
-        renderDatasetEditor(panel);
-        return panel;
-    }
-
-    function renderDatasetPresetList() {
-        const list = document.getElementById('dataset-preset-list');
-        if (!list) return;
-        list.innerHTML = '';
-        const datasetPresetState = currentDatasetPresetState();
-        const presets = datasetPresetState.presets || [];
-        const groups = datasetPresetGroupsForDisplay();
-        updateDatasetPresetPageSummary();
-        const showErrorAsEmptyState = datasetPresetState.error && !presets.length;
-        if (datasetPresetState.loading && !presets.length) {
-            const loading = document.createElement('p');
-            loading.className = 'dataset-preset-empty';
-            loading.textContent = '正在读取数据集预设...';
-            list.appendChild(loading);
-            return;
-        }
-        if (showErrorAsEmptyState) {
-            const error = document.createElement('p');
-            error.className = 'dataset-preset-empty error';
-            error.textContent = datasetPresetState.error;
-            list.appendChild(error);
-        }
-        if (!presets.length && !groups.length) {
-            const empty = document.createElement('p');
-            empty.className = 'dataset-preset-empty';
-            empty.textContent = datasetPresetState.error ? '读取数据集预设失败。' : '还没有数据集预设。';
-            list.appendChild(empty);
-            return;
-        }
-        if (!groups.length) {
-            const empty = document.createElement('p');
-            empty.className = 'dataset-preset-empty';
-            empty.textContent = '没有匹配的数据集预设。';
-            list.appendChild(empty);
-            return;
-        }
-        const stored = readDatasetPresetGroupState();
-        for (const group of groups) {
-            list.appendChild(createDatasetPresetGroupNode(group, stored));
-        }
-    }
-
-export function updateDatasetPresetPageSummary() {
-        const summary = document.getElementById('dataset-page-summary');
-        if (!summary) return;
-        const datasetPresetState = currentDatasetPresetState();
-        const presets = datasetPresetState.presets || [];
-        const groups = datasetPresetState.groups || [];
-        const totalDatasets = presets.reduce((sum, preset) => sum + Number(preset.summary?.dataset_count || 0), 0);
-        const totalRepeats = presets.reduce((sum, preset) => sum + Number(preset.summary?.repeat_total || 0), 0);
-        summary.innerHTML = '';
-        [
-            ['预设', presets.length],
-            ['分组', groups.length || 1],
-            ['子集', totalDatasets],
-            ['重复', totalRepeats],
-        ].forEach(([label, value]) => {
-            const item = document.createElement('span');
-            item.className = 'dataset-page-summary-stat';
-            item.innerHTML = `<strong>${escapeHtml(String(value))}</strong><small>${escapeHtml(label)}</small>`;
-            summary.appendChild(item);
-        });
-        if (datasetPresetState.dirty) {
-            const dirty = document.createElement('span');
-            dirty.className = 'dataset-page-summary-dirty';
-            dirty.textContent = '当前预设未保存';
-            summary.appendChild(dirty);
-        }
-    }
-
-export function eventTargetClosest(event, selector) {
-        const target = event?.target;
-        return target instanceof Element ? target.closest(selector) : null;
-    }
-
-    function createFileGroupDragImage(payload) {
-        const image = document.createElement('div');
-        image.className = 'file-group-drag-image';
-        image.textContent = payload.file || payload.groupId || '移动项目';
-        document.body.appendChild(image);
-        return image;
-    }
-
-export function removeFileGroupDragImage(image) {
-        if (image?.parentNode) image.parentNode.removeChild(image);
-    }
-
-export function setFileGroupDragData(event, payload) {
-        const data = payload.file || payload.groupId || payload.target || 'move';
-        const transfer = event?.dataTransfer;
-        if (!transfer) return;
-        let image = null;
-        try {
-            transfer.setData('text/plain', data);
-            transfer.setData('application/x-anima-file-group', JSON.stringify({
-                target: payload.target || '',
-                scope: payload.scope || '',
-                file: payload.file || '',
-                groupId: payload.groupId || '',
-            }));
-            transfer.effectAllowed = 'move';
-            image = createFileGroupDragImage(payload);
-            transfer.setDragImage(image, 12, 12);
-        } catch (e) {
-            /* 部分浏览器会限制 DataTransfer 写入；内存态拖拽仍可继续。 */
-        } finally {
-            if (image) window.setTimeout(() => removeFileGroupDragImage(image), 0);
-        }
-    }
-
-export function canBeginFileGroupDrag(payload, disabled) {
-        if (disabled || (payload.canDrag && !payload.canDrag())) {
-            if (payload.blockedMessage) payload.blockedMessage();
-            return false;
-        }
-        return true;
-    }
-
-export function beginFileGroupDrag(payload, handle) {
-        datasetState.fileGroupDragState = payload;
-        payload.sourceElement?.classList.add('file-group-dragging');
-        handle?.classList.add('dragging');
-    }
-
-export function createFileGroupPointerDragImage(payload) {
-        const image = createFileGroupDragImage(payload);
-        image.classList.add('file-group-drag-image-pointer');
-        return image;
-    }
-
-export function moveFileGroupPointerDragImage(image, x, y) {
-        if (!image) return;
-        image.style.left = `${x + 14}px`;
-        image.style.top = `${y + 14}px`;
-    }
-
-export function registerFileGroupDropTarget(node, resolve) {
-        node.setAttribute(FILE_GROUP_DROP_TARGET_ATTR, '1');
-        datasetState.fileGroupDropTargets.set(node, resolve);
-        datasetState.fileGroupDropTargetNodes.add(node);
-    }
-
 configureDatasetRenderBridge({
     renderConfigDatasetPickerDialog,
     ensureConfigDatasetPreview,
-    renderDatasetPresetList,
 });

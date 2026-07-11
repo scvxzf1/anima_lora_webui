@@ -4,17 +4,6 @@
  */
 import { FILE_GROUP_DROP_TARGET_ATTR } from '../anima-app/helpers/app-constants.js?v=module-bootstrap-20260711-ir1';
 import { getDatasetState } from '../anima-app/helpers/dataset-state-bridge.js?v=module-bootstrap-20260711-ir1';
-import {
-    beginFileGroupDrag,
-    canBeginFileGroupDrag,
-    createFileGroupPointerDragImage,
-    eventTargetClosest,
-    moveFileGroupPointerDragImage,
-    registerFileGroupDropTarget,
-    removeFileGroupDragImage,
-    setFileGroupDragData,
-} from '../config-form/dataset-picker-dialog.js?v=module-bootstrap-20260711-ir1';
-
 const datasetState = getDatasetState();
 
 function currentFileGroupDragState() {
@@ -44,6 +33,79 @@ function currentFileGroupActiveDropTargetNode() {
 function currentFileGroupActiveDropPosition() {
     return datasetState.fileGroupActiveDropPosition || '';
 }
+
+// File-group drag primitives (from former chunk 07).
+export function eventTargetClosest(event, selector) {
+        const target = event?.target;
+        return target instanceof Element ? target.closest(selector) : null;
+    }
+
+function createFileGroupDragImage(payload) {
+        const image = document.createElement('div');
+        image.className = 'file-group-drag-image';
+        image.textContent = payload.file || payload.groupId || '移动项目';
+        document.body.appendChild(image);
+        return image;
+    }
+
+export function removeFileGroupDragImage(image) {
+        if (image?.parentNode) image.parentNode.removeChild(image);
+    }
+
+export function setFileGroupDragData(event, payload) {
+        const data = payload.file || payload.groupId || payload.target || 'move';
+        const transfer = event?.dataTransfer;
+        if (!transfer) return;
+        let image = null;
+        try {
+            transfer.setData('text/plain', data);
+            transfer.setData('application/x-anima-file-group', JSON.stringify({
+                target: payload.target || '',
+                scope: payload.scope || '',
+                file: payload.file || '',
+                groupId: payload.groupId || '',
+            }));
+            transfer.effectAllowed = 'move';
+            image = createFileGroupDragImage(payload);
+            transfer.setDragImage(image, 12, 12);
+        } catch (e) {
+            /* 部分浏览器会限制 DataTransfer 写入；内存态拖拽仍可继续。 */
+        } finally {
+            if (image) window.setTimeout(() => removeFileGroupDragImage(image), 0);
+        }
+    }
+
+export function canBeginFileGroupDrag(payload, disabled) {
+        if (disabled || (payload.canDrag && !payload.canDrag())) {
+            if (payload.blockedMessage) payload.blockedMessage();
+            return false;
+        }
+        return true;
+    }
+
+export function beginFileGroupDrag(payload, handle) {
+        datasetState.fileGroupDragState = payload;
+        payload.sourceElement?.classList.add('file-group-dragging');
+        handle?.classList.add('dragging');
+    }
+
+export function createFileGroupPointerDragImage(payload) {
+        const image = createFileGroupDragImage(payload);
+        image.classList.add('file-group-drag-image-pointer');
+        return image;
+    }
+
+export function moveFileGroupPointerDragImage(image, x, y) {
+        if (!image) return;
+        image.style.left = `${x + 14}px`;
+        image.style.top = `${y + 14}px`;
+    }
+
+export function registerFileGroupDropTarget(node, resolve) {
+        node.setAttribute(FILE_GROUP_DROP_TARGET_ATTR, '1');
+        datasetState.fileGroupDropTargets.set(node, resolve);
+        datasetState.fileGroupDropTargetNodes.add(node);
+    }
 
     function originClosest(origin, selector) {
         return origin instanceof Element ? origin.closest(selector) : null;
@@ -529,3 +591,5 @@ export function setupFileGroupHeaderDropTarget(node, group, options) {
         finishFileGroupDrag();
     });
 }
+
+// file-group-drag module end

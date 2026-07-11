@@ -26,10 +26,7 @@ import {
     normalizeDatasetEditorRows,
 } from '../anima-app/helpers/dataset-values.js?v=module-bootstrap-20260711-ir1';
 import { loadDatasetPreset } from '../dataset-editor/load.js?v=module-bootstrap-20260711-ir1';
-import {
-    registerFileGroupDropTarget,
-    updateDatasetPresetPageSummary,
-} from '../config-form/dataset-picker-dialog.js?v=module-bootstrap-20260711-ir1';
+import { updateDatasetPresetPageSummary } from '../dataset-editor/preset-page.js?v=module-bootstrap-20260711-ir1';
 import {
     clearFileGroupDropTarget,
     configGroupDropIndex,
@@ -37,14 +34,13 @@ import {
     fileGroupContainsRelatedTarget,
     finishFileGroupDrag,
     markFileGroupDropTarget,
+    registerFileGroupDropTarget,
     setupFileGroupHeaderDropTarget,
     setupFileGroupListDropTarget,
     setupFileGroupRowDropTarget,
 } from './file-group-drag.js?v=module-bootstrap-20260711-ir1';
-import {
-    createDatasetConfigInput,
-    createDatasetEditorItem,
-} from '../dataset-editor/config-input.js?v=module-bootstrap-20260711-ir1';
+import { createDatasetConfigInput } from '../dataset-editor/config-input.js?v=module-bootstrap-20260711-ir1';
+import { createDatasetEditorItem } from '../dataset-editor/item-drag.js?v=module-bootstrap-20260711-ir1';
 import { escapeHtml } from '../config-form/field-input.js?v=module-bootstrap-20260711-ir1';
 import { addDatasetEditorRow, datasetValidTargetIndices } from '../dataset-editor/mutations.js?v=module-bootstrap-20260711-ir1';
 import { createDatasetEditorToolbarActions } from '../dataset-editor/toolbar.js?v=module-bootstrap-20260711-ir1';

@@ -127,12 +127,12 @@ def test_state_bucket_bridges_reach_hotspot_chunks() -> None:
     dataset_runtime_source = _frontend_feature_text("js/features/anima-app/chunks/03-parse-network-arg-entry.js", "js/features/config-form/step-estimate.js", "js/features/dataset-editor/load.js", "js/features/live-training/dashboard-ui.js")
     config_groups_source = _frontend_feature_text("js/features/anima-app/chunks/04-create-config-group-entry.js", "js/features/config-form/group-entry.js")
     dataset_picker_source = _frontend_feature_text("js/features/anima-app/chunks/06-stronger-selective-checkpoint-value.js", "js/features/config-form/resource-values.js", "js/features/config-form/field-rows.js", "js/features/config-form/dataset-picker.js", "js/features/training-source/continue-lora.js")
-    config_dataset_dialog_source = _frontend_feature_text("js/features/anima-app/chunks/07-render-config-dataset-picker-dialog.js", "js/features/config-form/dataset-picker-dialog.js")
+    config_dataset_dialog_source = _frontend_feature_text("js/features/anima-app/chunks/07-render-config-dataset-picker-dialog.js", "js/features/config-form/dataset-picker-dialog.js", "js/features/dataset-editor/preset-page.js", "js/features/toml-manager/file-group-drag.js")
     file_group_drag_source = _frontend_feature_text("js/features/anima-app/chunks/08-origin-closest.js", "js/features/toml-manager/file-group-drag.js")
     dataset_group_source = _frontend_feature_text("js/features/anima-app/chunks/09-setup-config-group-drop-target.js", "js/features/toml-manager/config-group-drop.js")
     dataset_inline_help_source = _frontend_feature_text("js/features/anima-app/chunks/10a-dataset-inline-help.js", "js/features/dataset-editor/inline-help.js")
     dataset_row_source = _chunk11_compat_text()
-    dataset_caption_source = _frontend_feature_text("js/features/anima-app/chunks/12-create-dataset-row-caption-source-mode-editor.js", "js/features/dataset-editor/row-fields.js")
+    dataset_caption_source = _frontend_feature_text("js/features/anima-app/chunks/12-create-dataset-row-caption-source-mode-editor.js", "js/features/dataset-editor/row-fields.js", "js/features/dataset-editor/preview.js")
     dataset_guide_source = _frontend_feature_text("js/features/anima-app/chunks/13-update-dataset-editor-rows-setting-value.js", "js/features/config-form/choice-guide-ui.js", "js/features/dataset-editor/mutations.js", "js/features/training-source/source-state.js", "js/features/config-form/field-input.js", "js/features/config-form/method-key.js")
     form_fields_source = _frontend_feature_text("js/features/anima-app/chunks/14-lora-adapter-kind-from-config.js", "js/features/config-form/form-fields.js")
     dataset_apply_source = _frontend_module_text("js/features/anima-app/chunks/17-apply-selected-dataset-preset-to-current-config.js")
@@ -2471,7 +2471,12 @@ def test_dataset_preset_page_has_group_manager_controls() -> None:
 
 
 def test_file_group_drag_has_pointer_fallback() -> None:
-    source = APP_JS.read_text(encoding="utf-8")
+    source = _frontend_feature_text(
+        "js/features/anima-app/chunks/08-origin-closest.js",
+        "js/features/toml-manager/file-group-drag.js",
+        "js/features/toml-manager/config-group-drop.js",
+        "js/features/anima-app/helpers/app-constants.js",
+    )
     css = STYLE_CSS.read_text(encoding="utf-8")
 
     drag_helpers = _section(source, "function setFileGroupDragData", "function createFileGroupDragHandle")
@@ -2670,7 +2675,7 @@ def test_dataset_json_caption_switch_ui_is_wired() -> None:
     row_factory = _section(source, "function createDatasetEditorRow", "function createDatasetExperimentalFeaturesEditor")
     dataset_editor_row_source = _chunk11_compat_text()
     dataset_values_source = _frontend_module_text("js/features/anima-app/helpers/dataset-values.js")
-    dataset_update_source = _frontend_feature_text("js/features/anima-app/chunks/12-create-dataset-row-caption-source-mode-editor.js", "js/features/dataset-editor/row-fields.js")
+    dataset_update_source = _frontend_feature_text("js/features/anima-app/chunks/12-create-dataset-row-caption-source-mode-editor.js", "js/features/dataset-editor/row-fields.js", "js/features/dataset-editor/preview.js")
     experimental_factory = _section(source, "function createDatasetExperimentalFeaturesEditor", "function createDatasetRowSettingsEditor")
     notice_factory = _section(source, "function createDatasetExperimentalNotice", "function createDatasetExperimentalAdvancedBody")
     advanced_body_factory = _section(source, "function createDatasetExperimentalAdvancedBody", "function datasetExperimentalOpenKey")
@@ -2977,7 +2982,7 @@ def test_dataset_experimental_dialog_edits_selected_subset_only() -> None:
     html = INDEX_HTML.read_text(encoding="utf-8")
     dialog = _frontend_module_text("js/features/dataset-editor/experimental-dialog.js")
     row = _frontend_module_text("js/features/dataset-editor/row.js")
-    item = _frontend_feature_text("js/features/anima-app/chunks/10-create-dataset-config-input.js", "js/features/dataset-editor/config-input.js")
+    item = _frontend_feature_text("js/features/anima-app/chunks/10-create-dataset-config-input.js", "js/features/dataset-editor/config-input.js", "js/features/dataset-editor/item-drag.js")
 
     assert 'id="dataset-experimental-dialog"' in html
     assert "openDatasetExperimentalDialog" in dialog
