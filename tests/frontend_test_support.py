@@ -352,6 +352,9 @@ def _anima_app_container_text() -> str:
         STATIC_DIR / "js/features/dataset-editor/row-settings-basic.js",
         STATIC_DIR / "js/features/dataset-editor/row-settings-experimental.js",
         STATIC_DIR / "js/features/dataset-editor/dataset-render.js",
+        STATIC_DIR / "js/features/dataset-editor/dataset-preset-groups.js",
+        STATIC_DIR / "js/features/dataset-editor/dataset-editor-panel.js",
+        STATIC_DIR / "js/features/dataset-editor/index.js",
 
         STATIC_DIR / "js/features/dataset-editor/row-fields.js",
         STATIC_DIR / "js/features/dataset-editor/preview.js",

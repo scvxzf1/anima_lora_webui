@@ -16,6 +16,7 @@ import {
     scheduleStepEstimatePanelRefresh,
 } from '../config-form/step-estimate.js?v=module-bootstrap-20260711-ir1';
 import { loadDatasetPresets } from '../dataset-editor/load.js?v=module-bootstrap-20260711-ir1';
+import '../dataset-editor/index.js?v=module-bootstrap-20260711-ir1';
 import {
     renderLiveChartPanel,
     resetLiveMetricPlaceholders,

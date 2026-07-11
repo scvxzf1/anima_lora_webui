@@ -173,7 +173,7 @@ export function renderTomlFileGroupList(list, group, files = group?.files || [])
         fragment.appendChild(empty);
     }
     files.forEach((item, index) => {
-        fragment.appendChild(createTomlFileButton(item, group, index, files.length));
+        fragment.appendChild(createTomlFileButton(item, group));
     });
     list.appendChild(fragment);
 }

@@ -138,7 +138,7 @@ def test_state_bucket_bridges_reach_hotspot_chunks() -> None:
     dataset_picker_source = _frontend_feature_text("js/features/anima-app/chunks/06-stronger-selective-checkpoint-value.js", "js/features/config-form/resource-values.js", "js/features/config-form/field-rows.js", "js/features/config-form/dataset-picker.js", "js/features/training-source/continue-lora.js")
     config_dataset_dialog_source = _frontend_feature_text("js/features/anima-app/chunks/07-render-config-dataset-picker-dialog.js", "js/features/config-form/dataset-picker-dialog.js", "js/features/dataset-editor/preset-page.js", "js/features/toml-manager/file-group-drag.js", "js/features/toml-manager/file-group-drag-core.js", "js/features/toml-manager/file-group-drag-targets.js")
     file_group_drag_source = _frontend_feature_text("js/features/anima-app/chunks/08-origin-closest.js", "js/features/toml-manager/file-group-drag.js", "js/features/toml-manager/file-group-drag-core.js", "js/features/toml-manager/file-group-drag-targets.js")
-    dataset_group_source = _frontend_feature_text("js/features/anima-app/chunks/09-setup-config-group-drop-target.js", "js/features/toml-manager/config-group-drop.js", "js/features/toml-manager/config-group-drop-target.js", "js/features/dataset-editor/dataset-render.js")
+    dataset_group_source = _frontend_feature_text("js/features/anima-app/chunks/09-setup-config-group-drop-target.js", "js/features/toml-manager/config-group-drop.js", "js/features/toml-manager/config-group-drop-target.js", "js/features/dataset-editor/dataset-render.js", "js/features/dataset-editor/dataset-preset-groups.js", "js/features/dataset-editor/dataset-editor-panel.js", "js/features/dataset-editor/index.js")
     dataset_inline_help_source = _frontend_feature_text("js/features/anima-app/chunks/10a-dataset-inline-help.js", "js/features/dataset-editor/inline-help.js")
     dataset_row_source = _chunk11_compat_text()
     dataset_caption_source = _frontend_feature_text("js/features/anima-app/chunks/12-create-dataset-row-caption-source-mode-editor.js", "js/features/dataset-editor/row-fields.js", "js/features/dataset-editor/preview.js")
@@ -2410,12 +2410,39 @@ def test_config_page_hides_unimplemented_dataset_placeholder() -> None:
 
 
 def test_dataset_preset_page_has_group_manager_controls() -> None:
-    source = APP_JS.read_text(encoding="utf-8")
+    # APP_JS 全局拼接会先撞到 dataset-render-bridge 的桩函数，这里显式聚合真实实现。
+    source = _frontend_feature_text(
+        "js/features/dataset-editor/preset-page.js",
+        "js/features/dataset-editor/dataset-preset-groups.js",
+        "js/features/dataset-editor/dataset-editor-panel.js",
+        "js/features/dataset-editor/dataset-render.js",
+        "js/features/dataset-editor/index.js",
+        "js/features/dataset-editor/load.js",
+        "js/features/toml-manager/file-group-drag.js",
+        "js/features/toml-manager/file-group-drag-core.js",
+        "js/features/toml-manager/file-group-drag-targets.js",
+        "js/features/toml-manager/config-group-drop.js",
+        "js/features/toml-manager/config-group-drop-target.js",
+        "js/features/toml-manager/drag-core.js",
+        "js/features/anima-app/helpers/app-constants.js",
+        "js/features/anima-app/helpers/dataset-presets.js",
+        "js/features/anima-app/chunks/17-apply-selected-dataset-preset-to-current-config.js",
+        "js/features/anima-app/chunks/18-delete-dataset-preset-group.js",
+    )
     html = INDEX_HTML.read_text(encoding="utf-8")
     css = STYLE_CSS.read_text(encoding="utf-8")
 
     list_body = _section(source, "function renderDatasetPresetList", "function renderDatasetPresetHeader")
-    listener_section = _section(source, "function setupEventListeners", "function installBeginnerTooltips")
+    listener_section = _section(
+        _frontend_feature_text(
+            "js/features/app-shell/event-listeners.js",
+            "js/features/app-shell/event-listeners-contract.js",
+            "js/features/app-shell/event-listeners-setup.js",
+            "js/features/app-shell/beginner-tooltips.js",
+        ),
+        "function setupEventListeners",
+        "function installBeginnerTooltips",
+    )
 
     assert "dataset-preset-manager" in html
     assert "dataset-preset-search" in html
@@ -2485,7 +2512,7 @@ def test_file_group_drag_has_pointer_fallback() -> None:
         "js/features/toml-manager/file-group-drag.js",
         "js/features/toml-manager/file-group-drag-core.js",
         "js/features/toml-manager/file-group-drag-targets.js",
-        "js/features/toml-manager/config-group-drop.js", "js/features/toml-manager/config-group-drop-target.js", "js/features/dataset-editor/dataset-render.js",
+        "js/features/toml-manager/config-group-drop.js", "js/features/toml-manager/config-group-drop-target.js", "js/features/dataset-editor/dataset-render.js", "js/features/dataset-editor/dataset-preset-groups.js", "js/features/dataset-editor/dataset-editor-panel.js", "js/features/dataset-editor/index.js",
         "js/features/anima-app/helpers/app-constants.js",
     )
     css = STYLE_CSS.read_text(encoding="utf-8")
@@ -2928,7 +2955,7 @@ def test_dataset_page_toolbar_hosts_experimental_and_stage_entries() -> None:
         "js/features/anima-app/chunks/09-setup-config-group-drop-target.js",
         "js/features/toml-manager/config-group-drop.js",
         "js/features/toml-manager/config-group-drop-target.js",
-        "js/features/dataset-editor/dataset-render.js",
+        "js/features/dataset-editor/dataset-render.js", "js/features/dataset-editor/dataset-preset-groups.js", "js/features/dataset-editor/dataset-editor-panel.js", "js/features/dataset-editor/index.js",
     )
     assert "btn-dataset-open-experimental" in toolbar
     assert "btn-dataset-open-stage-schedule" in toolbar
