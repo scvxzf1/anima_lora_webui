@@ -1,0 +1,165 @@
+/* Design-system primitives for console controls. */
+
+.ui-btn {
+    min-height: var(--control-height-md);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: var(--surface-input);
+    color: var(--text-dim);
+    font-size: var(--font-size-field);
+    font-weight: 650;
+    padding: 0.2rem 0.7rem;
+    cursor: pointer;
+}
+.ui-btn:hover {
+    border-color: var(--accent);
+    color: var(--text);
+}
+.ui-btn:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+}
+.ui-btn--primary {
+    border-color: var(--accent-strong);
+    background: var(--accent-strong);
+    color: var(--on-accent);
+    font-weight: 750;
+}
+.ui-btn--primary:hover {
+    border-color: var(--accent);
+    background: var(--accent);
+    color: var(--on-accent);
+}
+.ui-btn--highlight {
+    border-color: color-mix(in srgb, var(--accent) 42%, var(--border));
+    background: color-mix(in srgb, var(--accent) 12%, var(--surface-input));
+    color: var(--text);
+}
+.ui-btn--highlight:hover,
+.ui-btn--highlight.active {
+    border-color: var(--accent);
+    background: color-mix(in srgb, var(--accent) 18%, var(--surface-input));
+    color: var(--text);
+}
+.ui-btn--danger {
+    border-color: color-mix(in srgb, var(--danger) 50%, var(--border));
+    background: color-mix(in srgb, var(--danger) 10%, transparent);
+    color: var(--danger);
+}
+.ui-btn--danger:hover {
+    border-color: var(--danger);
+    background: color-mix(in srgb, var(--danger) 16%, transparent);
+}
+
+.ui-field {
+    display: grid;
+    gap: var(--space-1);
+    min-width: 0;
+}
+.ui-field__label {
+    color: var(--text);
+    font-size: var(--font-size-field-label);
+    font-weight: 700;
+    min-height: var(--control-height-md);
+    display: inline-flex;
+    align-items: center;
+}
+.ui-field__control,
+.ui-field input,
+.ui-field select,
+.ui-field textarea {
+    min-height: var(--control-height-md);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: var(--surface-input);
+    color: var(--text);
+    font-size: var(--font-size-field);
+}
+.ui-field__control:focus,
+.ui-field input:focus,
+.ui-field select:focus,
+.ui-field textarea:focus {
+    outline: none;
+    border-color: var(--accent);
+}
+.ui-field__help {
+    color: var(--text-muted);
+    font-size: var(--font-size-meta);
+    line-height: 1.35;
+}
+
+.ui-segmented {
+    display: inline-flex;
+    gap: 0.12rem;
+    padding: 0.12rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: var(--surface-input);
+}
+.ui-segmented__btn {
+    min-height: var(--control-height-sm);
+    border: 0;
+    border-radius: 4px;
+    background: transparent;
+    color: var(--text-dim);
+    font-size: 0.8rem;
+    font-weight: 650;
+    padding: 0.16rem 0.55rem;
+    box-shadow: none;
+    cursor: pointer;
+}
+.ui-segmented__btn:hover {
+    color: var(--text);
+    background: var(--surface-tint-hover);
+}
+.ui-segmented__btn.is-active,
+.ui-segmented__btn.active {
+    color: var(--text);
+    font-weight: 750;
+    background: transparent;
+    box-shadow: inset 0 -2px 0 var(--accent);
+}
+
+.ui-card {
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    background: var(--surface-panel);
+    box-shadow: var(--panel-shadow-soft);
+}
+.ui-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-2);
+    min-height: calc(var(--control-height-md) + 0.85rem);
+    padding: 0.42rem 0.85rem;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface-panel);
+}
+.ui-sidebar {
+    background: color-mix(in srgb, var(--surface-panel) 94%, var(--surface-page));
+    border-color: var(--border);
+}
+.ui-stat {
+    display: grid;
+    gap: 0.12rem;
+    min-width: 0;
+}
+.ui-stat__value {
+    color: var(--text);
+    font-size: 1.28rem;
+    font-weight: 800;
+    line-height: 1.05;
+}
+.ui-stat__label {
+    color: var(--text-dim);
+    font-size: var(--font-size-meta);
+    font-weight: 700;
+}
+.ui-sticky {
+    position: sticky;
+    z-index: 40;
+    background: var(--surface-sticky);
+    backdrop-filter: blur(8px);
+    box-shadow: none;
+}

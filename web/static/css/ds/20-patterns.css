@@ -1,0 +1,54 @@
+/* Design-system layout patterns for console pages. */
+
+.page-shell {
+    min-height: calc(100vh - var(--header-height));
+    background: var(--surface-page);
+    color: var(--text);
+}
+
+.workbench {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) clamp(240px, 22vw, 320px);
+    gap: 0;
+    align-items: stretch;
+    min-height: calc(100vh - var(--header-height));
+}
+.workbench--sidebar-left {
+    grid-template-columns: clamp(240px, 22vw, 320px) minmax(0, 1fr);
+}
+
+.monitor-board {
+    display: grid;
+    grid-template-rows: auto auto auto minmax(0, 1fr);
+    gap: var(--space-2);
+    min-width: 0;
+}
+.monitor-board__metrics {
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: var(--space-2);
+}
+.monitor-board__body {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(220px, 300px);
+    gap: var(--space-2);
+    min-height: 0;
+}
+
+.history-board {
+    display: grid;
+    grid-template-columns: minmax(280px, 340px) minmax(0, 1fr);
+    gap: 0;
+    min-height: calc(100vh - var(--header-height));
+}
+.history-board__tools {
+    display: grid;
+    gap: var(--space-2);
+    padding: var(--space-3);
+    border-right: 1px solid var(--border);
+    background: var(--surface-panel);
+}
+.history-board__main {
+    min-width: 0;
+    padding: var(--space-3);
+}

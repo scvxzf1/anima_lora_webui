@@ -41,3 +41,23 @@
 - Results: GREEN
 - High open: none
 - Decision: continue
+
+### P0 (Task 1–4)
+- Goal: 设计系统底座 token + primitives + patterns + 契约
+- Write set:
+  - tests/test_webui_visual_tokens.py
+  - tests/test_webui_design_system.py
+  - web/static/css/ds/00-tokens-extend.css
+  - web/static/css/ds/10-primitives.css
+  - web/static/css/ds/20-patterns.css
+  - style.css / index.html cache `frontend-chain-20260712-ds-p0`
+- Changes:
+  - 红灯契约后实现系统层
+  - ui-btn/field/segmented/card/toolbar/sidebar/stat/sticky
+  - page-shell/workbench/monitor-board/history-board
+- Supplemental review: 无功能/无 DOM id/无配置项删减
+- Cross review: visual/readability/contract PASS for system layer
+- Tests: G0 17 passed
+- High open: none
+- Decision: continue
+

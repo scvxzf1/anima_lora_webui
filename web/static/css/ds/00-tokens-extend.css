@@ -1,0 +1,31 @@
+/* Design-system token extension on top of instrument-panel tokens. */
+:root {
+    --font-size-title: 1.15rem;
+    --font-size-section: 0.95rem;
+    --font-size-mono: 0.8rem;
+
+    --control-height-sm: calc(var(--control-height) - 0.25rem);
+    --control-height-md: var(--control-height);
+    --control-height-lg: calc(var(--control-height) + 0.25rem);
+
+    --space-5: 1.25rem;
+
+    --radius-sm: 4px;
+    --radius-md: var(--radius);
+
+    --surface-page: var(--bg);
+    --surface-panel: var(--bg-card);
+    --surface-input: var(--bg-input);
+    --surface-sticky: color-mix(in srgb, var(--bg-card) 92%, transparent);
+
+    --status-success: var(--success);
+    --panel-shadow-soft: 0 6px 14px rgba(2, 8, 20, 0.16);
+}
+
+:root[data-theme="light"] {
+    --surface-page: var(--bg);
+    --surface-panel: var(--bg-card);
+    --surface-input: var(--bg-input);
+    --surface-sticky: color-mix(in srgb, var(--bg-card) 94%, transparent);
+    --panel-shadow-soft: 0 6px 14px rgba(15, 23, 42, 0.05);
+}
