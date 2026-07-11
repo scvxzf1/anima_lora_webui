@@ -406,3 +406,63 @@ config/dom focused: see config-dom-final.txt
 - C5 live 警告仍可能覆盖其他 toml status
 - preflight compat matrix ImportError（既有）
 - 完整人工健康度评分表逐格复评可另开维护轮
+
+## IR1–IR5 复跑实现轮 — 2026-07-11（当前工作树）
+
+| 项 | 值 |
+|---|---|
+| 分支 | `feat/frontend-ir1-ir5-rerun` |
+| HEAD | 见 `git log -1` |
+| 背景 | 历史日志声称 IR1→IR5 已完成并合入 main，但复评石山体检为 **69/D**，且 G0 cache token 回归红灯 |
+| 本轮目标 | 从 IR1 门禁止血起复跑到 IR5 验收，收敛残留 High |
+
+### 完成任务
+
+| 轮 | 内容 | 证据 |
+|---|---|---|
+| IR1 | 统一 `module-bootstrap` token；chunk06 预算/导出修复；preprocess 布局断言对齐 | G0/G1：**32 passed**（modules+dom+state+live 关键） |
+| IR2 | 复验 C3/C4/T1 产物仍在；DOM/config focused 绿 | config focused：**7 passed**；DOM contract 仍在 `frontend_test_support.WORKFLOW_DOM_CONTRACTS` |
+| IR3 | 扩展 E2：8 个高频 silent bridge → fail-fast；E1/C1/C6 产物复验 | fail-fast bridge 增加；`formatPathLabel` / field-presentation / defaults 仍在 |
+| IR4 | 复验 C5 live-compat、E3 `Promise.all`、U1 DOM 分桶 | `live-compat.js` 存在；index `Promise.all`；history/queue/live：**25 passed** |
+| IR5 | 复验 E4 chunked history、U2 docs/features；Freeze 记分 | `history-list/chunked-render.js`；`docs/features` 10 篇 |
+
+### 提交
+
+| Commit | 说明 |
+|---|---|
+| `8022adc6` | IR1：统一 module cache tokens + chunk 预算 + 配置断言 |
+| `dee2f55e` | IR2/IR3：高频 bridge fail-fast + live/config fixture 适配 |
+
+### 门禁摘要（复跑）
+
+```text
+G1 (modules+dom+state) + live critical + progressive: 32 passed
+history+queue+live: 25 passed
+config focused (presentation/defaults/naming/quick/guides/live/provenance): 7 passed, 54 deselected
+```
+
+### 健康分复评（实测口径）
+
+| 域 | 复跑前石山体检 | 本轮后估 | 说明 |
+|---|---:|---:|---|
+| A 结构 | 62 | **68** | 高频 bridge fail-fast 扩展；仍有 silent legacyRoot 与反向 import |
+| B 门禁 | 67 | **76** | G0/G1/G2/G3/G4 聚焦全绿 |
+| C CSS/DOM | 73 | **73** | 无大改；responsive 仍末位 |
+| D 配置体验 | 75 | **76** | 产物仍在；断言与 cache-reuse 字段对齐 |
+| **总分** | **69 / D** | **73 / C** | `round(68*0.30+76*0.25+73*0.20+76*0.25)=73` |
+
+未达 IR5 原目标 78 的主因：结构过渡层（chunks 主业务、剩余 legacyRoot、feature→chunks 反向依赖）仍在。
+
+### 冻结未完成项
+
+1. 其余 silent `legacyRoot` bridge 未全清  
+2. feature → chunks 反向依赖未切断  
+3. heavy chunks 业务搬家未完成  
+4. preflight compat matrix ImportError（既有测试债，本轮未扩写集）  
+5. C5 status 写点分散、可能互盖  
+
+### 下轮建议
+
+- 优先：剩余 bridge fail-fast 或按域切断 config/dataset/toml 反向边  
+- 或：正式人工全表复评 scorecard 后开新一轮结构债
+
