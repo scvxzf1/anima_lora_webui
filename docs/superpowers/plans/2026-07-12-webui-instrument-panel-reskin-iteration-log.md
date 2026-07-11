@@ -153,3 +153,28 @@
   - 页级按钮/eyebrow 其他 Tab 仍可能硬编码，留给 R3+
 - Decision: continue
 
+### R3-datasets (Task 5)
+- Goal: 数据集页对齐仪器台：索引板列表、按钮权重、行参数可读，壳变薄
+- Write set:
+  - `web/static/css/12-datasets-forge.css`
+  - `web/static/style.css` / `web/static/index.html`（cache `frontend-chain-20260712-reskin-r3`）
+- Changes:
+  - sidebar/project/header/list chrome 压缩，阴影降级
+  - 搜索/路径/重复/分桶输入消费 `--control-height` / `--font-size-field`
+  - 列表项更易点选；分组头更薄；保存按钮唯一 primary
+  - 行参数区更醒目；高级区二次降级
+- Supplemental review:
+  - [x] 边界：仅 CSS；无 DOM id / 无功能 / 无删配置项
+  - [x] 可读性：字段字号 token 对齐
+  - [x] 密度：壳变薄
+  - [x] 契约：cache token 双入口 r3
+- Cross review:
+  - visual-auditor: PASS
+  - readability-auditor: PASS
+  - contract-auditor: PASS
+- Tests run: visual tokens + dom + cache token
+- Results: GREEN (12 passed)
+- High open: none
+- Medium open: `10-config-dataset-editor.css` 仍有共享编辑器小字号，config 路径已用 forge 覆盖；dataset 主路径走 12-datasets-forge
+- Decision: continue
+
