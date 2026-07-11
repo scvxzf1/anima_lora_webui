@@ -1006,6 +1006,64 @@ console.log(JSON.stringify(result));
     assert payload["short"] == "short/path"
     assert payload["windows"] == "datasets/cats"
 
+def test_anima_app_startup_import_groups_use_promise_all() -> None:
+    """Independent chunk imports should load in Promise.all batches without reordering bridge configure."""
+    index_source = _frontend_module_text("js/features/anima-app/index.js")
+
+    assert "Promise.all(" in index_source
+    assert index_source.count("Promise.all(") >= 2
+
+    # State bridges must still configure before any chunk import work starts.
+    first_chunk_import = min(
+        index_source.index("chunks/01-scope-state.js"),
+        index_source.index("chunks/01a-image-test-feature.js"),
+    )
+    assert index_source.index("configureAppContextBridge(runtime.ctx);") < first_chunk_import
+    assert index_source.index("configureRuntimeBridge(runtime);") < first_chunk_import
+    assert index_source.index("configureTrainingStateBridge(runtime.state.training);") < first_chunk_import
+
+    # Image-test and app-shell remain special serial stages.
+    assert index_source.index("chunks/01a-image-test-feature.js") < index_source.index(
+        "configureImageTestBridge(imageTestFeatureBridge.ensureImageTestFeature);"
+    )
+    assert index_source.index("configureImageTestBridge(imageTestFeatureBridge.ensureImageTestFeature);") < index_source.index(
+        "chunks/02-ensure-history-detail-feature.js"
+    )
+
+    # 26a-d modules must load before their configure*Bridge calls.
+    assert index_source.index("chunks/26a-global-settings.js") < index_source.index(
+        "configureGlobalSettingsBridge(globalSettingsModule);"
+    )
+    assert index_source.index("chunks/26b-preview-view.js") < index_source.index(
+        "configurePreviewViewBridge(previewViewModule);"
+    )
+    assert index_source.index("chunks/26c-queue-view.js") < index_source.index(
+        "configureQueueViewBridge({"
+    )
+    assert index_source.index("chunks/26d-history-list.js") < index_source.index(
+        "configureHistoryListBridge(historyListModule);"
+    )
+    assert index_source.index("configureHistoryListBridge(historyListModule);") < index_source.index(
+        "chunks/26a-status-polling.js"
+    )
+    assert index_source.index("chunks/26a-status-polling.js") < index_source.index(
+        "configureStatusPollingBridge(statusPollingBridge);"
+    )
+
+    # History task-actions self-configure still keeps 33 before 34 in source order.
+    assert index_source.index("chunks/33-create-history-task-item.js") < index_source.index(
+        "chunks/34-show-history-collection-select-dialog.js"
+    )
+
+    # Mid-range and history groups should both be Promise.all targets.
+    mid_marker = "chunks/03-parse-network-arg-entry.js"
+    history_marker = "chunks/27-render-history-collections-workbench.js"
+    assert mid_marker in index_source
+    assert history_marker in index_source
+    assert "Promise.all(" in index_source[index_source.index(mid_marker) - 200 : index_source.index(mid_marker) + 80]
+    assert "Promise.all(" in index_source[index_source.index(history_marker) - 200 : index_source.index(history_marker) + 80]
+
+
 def test_history_task_actions_bridge_fails_fast_when_unconfigured() -> None:
     """Unconfigured history-task-actions methods must throw instead of silent no-op."""
     bridge_source = _frontend_module_text(
