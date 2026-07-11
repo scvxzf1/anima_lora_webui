@@ -401,10 +401,10 @@ async def handle_raw_put(request: web.Request) -> web.Response:
     content = data.get("content", "")
     if not file_path:
         return web.json_response({"ok": False, "error": "缺少 file 参数"}, status=400)
-    ok, msg = save_raw_file(file_path, content)
+    ok, msg, warnings = save_raw_file(file_path, content)
     if ok:
-        return web.json_response({"ok": True, "message": msg})
-    return web.json_response({"ok": False, "error": msg}, status=400)
+        return web.json_response({"ok": True, "message": msg, "warnings": warnings})
+    return web.json_response({"ok": False, "error": msg, "warnings": warnings}, status=400)
 
 
 async def handle_raw_patch(request: web.Request) -> web.Response:
@@ -414,7 +414,9 @@ async def handle_raw_patch(request: web.Request) -> web.Response:
     content = data.get("content")
     if not file_path:
         return web.json_response({"ok": False, "error": "缺少 file 参数"}, status=400)
-    ok, msg, next_content, changed = patch_raw_file_values(file_path, values, content=content)
+    ok, msg, next_content, changed, warnings = patch_raw_file_values(
+        file_path, values, content=content
+    )
     if ok:
         return web.json_response({
             "ok": True,
@@ -422,8 +424,9 @@ async def handle_raw_patch(request: web.Request) -> web.Response:
             "message": msg,
             "content": next_content,
             "changed": changed,
+            "warnings": warnings,
         })
-    return web.json_response({"ok": False, "error": msg}, status=400)
+    return web.json_response({"ok": False, "error": msg, "warnings": warnings}, status=400)
 
 
 async def handle_raw_patch_preview(request: web.Request) -> web.Response:
@@ -433,7 +436,9 @@ async def handle_raw_patch_preview(request: web.Request) -> web.Response:
     content = data.get("content")
     if not file_path:
         return web.json_response({"ok": False, "error": "缺少 file 参数"}, status=400)
-    ok, msg, next_content, changed = preview_raw_file_patch(file_path, values, content=content)
+    ok, msg, next_content, changed, warnings = preview_raw_file_patch(
+        file_path, values, content=content
+    )
     if ok:
         return web.json_response({
             "ok": True,
@@ -441,8 +446,9 @@ async def handle_raw_patch_preview(request: web.Request) -> web.Response:
             "message": msg,
             "content": next_content,
             "changed": changed,
+            "warnings": warnings,
         })
-    return web.json_response({"ok": False, "error": msg}, status=400)
+    return web.json_response({"ok": False, "error": msg, "warnings": warnings}, status=400)
 
 
 async def handle_raw_delete(request: web.Request) -> web.Response:
@@ -468,9 +474,14 @@ async def handle_raw_save_as(request: web.Request) -> web.Response:
     content = data.get("content", "")
     if not file_path:
         return web.json_response({"ok": False, "error": "缺少 file 参数"}, status=400)
-    ok, msg = save_raw_file(file_path, content, overwrite=False)
+    ok, msg, warnings = save_raw_file(file_path, content, overwrite=False)
     if ok:
-        return web.json_response({"ok": True, "file": file_path, "message": msg})
+        return web.json_response({
+            "ok": True,
+            "file": file_path,
+            "message": msg,
+            "warnings": warnings,
+        })
     return web.json_response({"ok": False, "error": msg}, status=400)
 
 

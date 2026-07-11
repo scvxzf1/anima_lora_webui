@@ -157,35 +157,43 @@ def save_raw_file(
     *,
     allow_locked: bool = False,
     overwrite: bool = True,
-) -> tuple[bool, str]:
+) -> tuple[bool, str, list[str]]:
+    """Save a raw TOML config file.
+
+    Returns ``(ok, message, warnings)``. ``warnings`` carries schema unknown-key
+    notices and never blocks a successful save (invalid choices still error).
+    """
     normalized = _normalize_config_rel_path(rel_path)
     path = _safe_resolve(normalized)
     if path is None:
-        return False, "路径不合法"
+        return False, "路径不合法", []
     if path.exists() and not overwrite:
-        return False, "配置文件已存在，请换一个新的名称"
+        return False, "配置文件已存在，请换一个新的名称", []
     meta = get_config_file_meta(normalized)
     if meta.get("locked") and not allow_locked:
-        return False, f"{_lock_reason_message(meta)}，请使用新名称保存新配置后编辑"
+        return False, f"{_lock_reason_message(meta)}，请使用新名称保存新配置后编辑", []
     toml = _toml_module()
     tomlkit = _tomlkit_module()
+    schema_warnings: list[str] = []
     try:
         parsed = toml.loads(content)
         content = _normalize_saved_raw_config_content(content)
         parsed = toml.loads(content)
     except (toml.TomlDecodeError, tomlkit.exceptions.TOMLKitError) as e:
-        return False, f"TOML 语法错误: {e}"
+        return False, f"TOML 语法错误: {e}", []
     except ValueError as e:
-        return False, str(e)
+        return False, str(e), []
     if isinstance(parsed, dict):
         schema_errors, schema_warnings = validate_config_mapping(parsed)
         if schema_errors:
-            return False, "; ".join(schema_errors)
-        # warnings intentionally not blocking full-file save; callers can re-check via preflight
-        _ = schema_warnings
+            return False, "; ".join(schema_errors), list(schema_warnings or [])
+        schema_warnings = [str(item) for item in (schema_warnings or [])]
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(content, encoding="utf-8")
-    return True, "保存成功"
+    message = "保存成功"
+    if schema_warnings:
+        message = f"保存成功（警告: {'; '.join(schema_warnings)}）"
+    return True, message, schema_warnings
 
 
 def delete_raw_file(rel_path: str) -> tuple[bool, str]:
@@ -220,13 +228,15 @@ def patch_raw_file_values(
     values: dict[str, Any],
     *,
     content: str | None = None,
-) -> tuple[bool, str, str, list[str]]:
-    ok, msg, path, next_content, changed = _prepare_raw_file_patch(rel_path, values, content=content)
+) -> tuple[bool, str, str, list[str], list[str]]:
+    ok, msg, path, next_content, changed, warnings = _prepare_raw_file_patch(
+        rel_path, values, content=content
+    )
     if not ok or path is None:
-        return False, msg, "", []
+        return False, msg, "", [], list(warnings or [])
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(next_content, encoding="utf-8")
-    return True, msg or "保存成功", next_content, changed
+    return True, msg or "保存成功", next_content, changed, list(warnings or [])
 
 
 def preview_raw_file_patch(
@@ -234,11 +244,13 @@ def preview_raw_file_patch(
     values: dict[str, Any],
     *,
     content: str | None = None,
-) -> tuple[bool, str, str, list[str]]:
-    ok, msg, _path, next_content, changed = _prepare_raw_file_patch(rel_path, values, content=content)
+) -> tuple[bool, str, str, list[str], list[str]]:
+    ok, msg, _path, next_content, changed, warnings = _prepare_raw_file_patch(
+        rel_path, values, content=content
+    )
     if not ok:
-        return False, msg, "", []
-    return True, msg or "预览成功", next_content, changed
+        return False, msg, "", [], list(warnings or [])
+    return True, msg or "预览成功", next_content, changed, list(warnings or [])
 
 
 def _prepare_raw_file_patch(
@@ -246,16 +258,16 @@ def _prepare_raw_file_patch(
     values: dict[str, Any],
     *,
     content: str | None = None,
-) -> tuple[bool, str, Path | None, str, list[str]]:
+) -> tuple[bool, str, Path | None, str, list[str], list[str]]:
     normalized = _normalize_config_rel_path(rel_path)
     path = _safe_resolve(normalized)
     if path is None:
-        return False, "路径不合法", None, "", []
+        return False, "路径不合法", None, "", [], []
     meta = get_config_file_meta(normalized)
     if meta.get("locked"):
-        return False, f"{_lock_reason_message(meta)}，请使用新名称保存新配置后编辑", None, "", []
+        return False, f"{_lock_reason_message(meta)}，请使用新名称保存新配置后编辑", None, "", [], []
     if not isinstance(values, dict):
-        return False, "字段补丁格式不合法", None, "", []
+        return False, "字段补丁格式不合法", None, "", [], []
     ui_only_fields = _metadata_value("UI_ONLY_CONFIG_FIELDS")
     retired_fields = _metadata_value("RETIRED_TOP_LEVEL_CONFIG_FIELDS")
     values = {
@@ -264,8 +276,9 @@ def _prepare_raw_file_patch(
         if key not in ui_only_fields and key not in retired_fields
     }
     schema_errors, schema_warnings = validate_patch_values(values)
+    schema_warnings = [str(item) for item in (schema_warnings or [])]
     if schema_errors:
-        return False, "; ".join(schema_errors), None, "", []
+        return False, "; ".join(schema_errors), None, "", [], schema_warnings
 
     source = content if content is not None else load_raw_file(rel_path)
     try:
@@ -274,13 +287,13 @@ def _prepare_raw_file_patch(
         next_content, compatibility_keys = _normalize_saved_raw_config_content_with_changed_keys(next_content)
         _toml_module().loads(next_content)
     except Exception as e:
-        return False, f"TOML 更新失败: {e}", None, "", []
+        return False, f"TOML 更新失败: {e}", None, "", [], schema_warnings
 
     changed_keys = {*values.keys(), *removed_keys, *compatibility_keys}
     ok_msg = "保存成功"
     if schema_warnings:
         ok_msg = f"保存成功（警告: {'; '.join(schema_warnings)}）"
-    return True, ok_msg, path, next_content, sorted(changed_keys)
+    return True, ok_msg, path, next_content, sorted(changed_keys), schema_warnings
 
 
 def _restore_dataset_config_after_failed_train_patch(path: Path, existed: bool, previous_content: str) -> None:

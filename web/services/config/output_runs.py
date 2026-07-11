@@ -165,7 +165,7 @@ def save_output_run_config_as(run: str, name: str, target_group: str | None = No
         if not group or not group.get("movable") or group.get("locked"):
             raise ValueError("目标分组不可用或已锁定")
 
-    ok, msg = save_raw_file(target, content, overwrite=False)
+    ok, msg, _warnings = save_raw_file(target, content, overwrite=False)
     if not ok:
         raise ValueError(msg)
 

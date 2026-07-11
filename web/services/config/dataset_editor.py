@@ -204,7 +204,7 @@ def save_dataset_editor(
             "lora_cache_dir": first["cache_dir"],
             "prior_loss_weight": compatibility_defaults["prior_loss_weight"],
         }
-        ok, msg, _train_path, next_content, _changed = _prepare_raw_file_patch(train_rel, values, content=train_content)
+        ok, msg, _train_path, next_content, _changed, _warnings = _prepare_raw_file_patch(train_rel, values, content=train_content)
         if not ok:
             raise ValueError(msg)
 
@@ -232,11 +232,11 @@ def save_dataset_editor(
     )
     dataset_existed = dataset_path.exists()
     previous_dataset_doc = dataset_path.read_text(encoding="utf-8") if dataset_existed else ""
-    ok, msg = raw_file_saver(dataset_rel, dataset_doc, overwrite=True)
+    ok, msg, *_rest = raw_file_saver(dataset_rel, dataset_doc, overwrite=True)
     if not ok:
         raise ValueError(msg)
     if train_rel:
-        ok, msg = raw_file_saver(train_rel, next_content, overwrite=True)
+        ok, msg, *_rest = raw_file_saver(train_rel, next_content, overwrite=True)
         if not ok:
             _restore_dataset_config_after_failed_train_patch(dataset_path, dataset_existed, previous_dataset_doc)
             raise ValueError(msg)

@@ -122,7 +122,7 @@ def test_save_dataset_editor_restores_dataset_when_train_write_fails(tmp_path: P
     def fail_train_save(rel_path: str, content: str, **kwargs):
         if rel_path == "configs/imported/lora.toml":
             return False, "训练 TOML 写入失败"
-        return original_save_raw_file(rel_path, content, **kwargs)
+        return original_save_raw_file(rel_path, content, **kwargs)  # returns (ok,msg,warnings)
 
     original_save_raw_file = config_service.save_raw_file
     monkeypatch.setattr(config_service, "save_raw_file", fail_train_save)
@@ -151,7 +151,7 @@ def test_raw_patch_ignores_dataset_picker_ui_field(tmp_path: Path, monkeypatch):
     _patch_config_service_paths(monkeypatch, tmp_path)
     train_rel = "configs/imported/lora.toml"
 
-    ok, msg, content, changed = config_service.patch_raw_file_values(
+    ok, msg, content, changed, _warnings = config_service.patch_raw_file_values(
         train_rel,
         {
             "dataset_config_picker": "configs/datasets/character_a.toml",

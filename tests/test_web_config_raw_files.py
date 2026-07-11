@@ -208,7 +208,7 @@ def test_raw_patch_persists_preprocess_precision_preference(
     _patch_config_service_paths(monkeypatch, tmp_path)
     train_rel = "configs/imported/lora.toml"
 
-    ok, msg, content, changed = config_service.patch_raw_file_values(
+    ok, msg, content, changed, _warnings = config_service.patch_raw_file_values(
         train_rel,
         {
             "preprocess_precision_preference": value,
@@ -229,7 +229,7 @@ def test_raw_patch_rejects_blank_output_name(tmp_path: Path, monkeypatch):
     train_rel = "configs/imported/lora.toml"
     original = (configs / "imported" / "lora.toml").read_text(encoding="utf-8")
 
-    ok, msg, content, changed = config_service.patch_raw_file_values(
+    ok, msg, content, changed, _warnings = config_service.patch_raw_file_values(
         train_rel,
         {
             "output_name": "   ",
@@ -259,7 +259,7 @@ def test_raw_patch_clears_optional_sample_schedule_fields(tmp_path: Path, monkey
         encoding="utf-8",
     )
 
-    ok, msg, content, changed = config_service.patch_raw_file_values(
+    ok, msg, content, changed, _warnings = config_service.patch_raw_file_values(
         train_rel,
         {
             "sample_every_n_epochs": "",
@@ -280,7 +280,7 @@ def test_raw_patch_writes_non_blank_sample_schedule_fields_as_int(tmp_path: Path
     configs, _dataset_path = _write_minimal_config_tree(tmp_path)
     _patch_config_service_paths(monkeypatch, tmp_path)
 
-    ok, msg, content, changed = config_service.patch_raw_file_values(
+    ok, msg, content, changed, _warnings = config_service.patch_raw_file_values(
         "configs/imported/lora.toml",
         {
             "sample_every_n_epochs": "4",
@@ -311,7 +311,7 @@ def test_raw_patch_clears_optional_max_train_epochs_field(tmp_path: Path, monkey
         encoding="utf-8",
     )
 
-    ok, msg, content, changed = config_service.patch_raw_file_values(
+    ok, msg, content, changed, _warnings = config_service.patch_raw_file_values(
         train_rel,
         {
             "max_train_epochs": "",
@@ -329,7 +329,7 @@ def test_raw_patch_writes_non_blank_max_train_epochs_as_int(tmp_path: Path, monk
     _write_minimal_config_tree(tmp_path)
     _patch_config_service_paths(monkeypatch, tmp_path)
 
-    ok, msg, content, changed = config_service.patch_raw_file_values(
+    ok, msg, content, changed, _warnings = config_service.patch_raw_file_values(
         "configs/imported/lora.toml",
         {
             "max_train_epochs": "6",
@@ -368,7 +368,7 @@ def test_raw_patch_writes_spd_fields_to_nested_tables(tmp_path: Path, monkeypatc
     )
     _patch_config_service_paths(monkeypatch, tmp_path)
 
-    ok, msg, content, changed = config_service.patch_raw_file_values(
+    ok, msg, content, changed, _warnings = config_service.patch_raw_file_values(
         "configs/imported/spd.toml",
         {
             "channel_scaling_alpha": 0.25,
@@ -422,7 +422,7 @@ def test_raw_patch_removes_retired_config_fields(tmp_path: Path, monkeypatch):
     )
     _patch_config_service_paths(monkeypatch, tmp_path)
 
-    ok, msg, content, changed = config_service.patch_raw_file_values(
+    ok, msg, content, changed, _warnings = config_service.patch_raw_file_values(
         train_rel,
         {
             "per_channel_scaling": False,
@@ -464,7 +464,7 @@ def test_raw_patch_auto_fixes_came_two_beta_optimizer_args(tmp_path: Path, monke
     )
     _patch_config_service_paths(monkeypatch, tmp_path)
 
-    ok, msg, content, changed = config_service.patch_raw_file_values(
+    ok, msg, content, changed, _warnings = config_service.patch_raw_file_values(
         train_rel,
         {
             "output_name": "clean",
@@ -484,7 +484,7 @@ def test_save_raw_file_rejects_blank_output_name(tmp_path: Path, monkeypatch):
     configs, _dataset_path = _write_minimal_config_tree(tmp_path)
     _patch_config_service_paths(monkeypatch, tmp_path)
 
-    ok, msg = config_service.save_raw_file(
+    ok, msg, _warnings = config_service.save_raw_file(
         "configs/imported/blank.toml",
         'output_name = "   "\n',
     )
@@ -498,7 +498,7 @@ def test_save_raw_file_auto_fixes_came_two_beta_optimizer_args(tmp_path: Path, m
     configs, _dataset_path = _write_minimal_config_tree(tmp_path)
     _patch_config_service_paths(monkeypatch, tmp_path)
 
-    ok, msg = config_service.save_raw_file(
+    ok, msg, _warnings = config_service.save_raw_file(
         "configs/imported/came.toml",
         "\n".join(
             [
@@ -518,7 +518,7 @@ def test_save_raw_file_does_not_touch_non_came_two_beta_optimizer_args(tmp_path:
     configs, _dataset_path = _write_minimal_config_tree(tmp_path)
     _patch_config_service_paths(monkeypatch, tmp_path)
 
-    ok, msg = config_service.save_raw_file(
+    ok, msg, _warnings = config_service.save_raw_file(
         "configs/imported/adamw.toml",
         "\n".join(
             [
@@ -540,7 +540,7 @@ def test_save_raw_file_keeps_came_three_beta_optimizer_args(tmp_path: Path, monk
     configs, _dataset_path = _write_minimal_config_tree(tmp_path)
     _patch_config_service_paths(monkeypatch, tmp_path)
 
-    ok, msg = config_service.save_raw_file(
+    ok, msg, _warnings = config_service.save_raw_file(
         "configs/imported/came_ready.toml",
         "\n".join(
             [
@@ -604,14 +604,14 @@ def test_raw_file_helpers_remain_available_from_legacy_module(tmp_path: Path, mo
     monkeypatch.setattr(legacy_config, "WEB_USER_LOCKS_FILE", configs / "web-user-locks.toml")
 
     assert legacy_config.load_raw_file("../outside.toml") == ""
-    outside_ok, outside_msg = legacy_config.save_raw_file(
+    outside_ok, outside_msg, _outside_warnings = legacy_config.save_raw_file(
         "../outside.toml",
         'output_name = "outside"\n',
     )
     assert outside_ok is False
     assert "路径不合法" in outside_msg
 
-    outside_patch_ok, outside_patch_msg, outside_path, outside_content, outside_changed = (
+    outside_patch_ok, outside_patch_msg, outside_path, outside_content, outside_changed, _outside_patch_warnings = (
         legacy_config._prepare_raw_file_patch(
             "../outside.toml",
             {"output_name": "outside"},
@@ -628,7 +628,7 @@ def test_raw_file_helpers_remain_available_from_legacy_module(tmp_path: Path, mo
     assert "路径不合法" in outside_delete_msg
 
     rel_path = "configs/imported/legacy_raw.toml"
-    ok, msg = legacy_config.save_raw_file(
+    ok, msg, _warnings = legacy_config.save_raw_file(
         rel_path,
         "\n".join(
             [
@@ -648,7 +648,7 @@ def test_raw_file_helpers_remain_available_from_legacy_module(tmp_path: Path, mo
     assert 'output_name = "legacy_raw"' in loaded
     assert 'betas=0.9,0.999,0.9999' in loaded
 
-    preview_ok, preview_msg, path, preview_content, preview_changed = legacy_config._prepare_raw_file_patch(
+    preview_ok, preview_msg, path, preview_content, preview_changed, _preview_warnings = legacy_config._prepare_raw_file_patch(
         rel_path,
         {
             "output_name": "legacy_next",
@@ -664,7 +664,7 @@ def test_raw_file_helpers_remain_available_from_legacy_module(tmp_path: Path, mo
     assert "precision_preference" not in preview_content
     assert "use_hydra" not in preview_content
 
-    patched_ok, patched_msg, patched_content, changed = legacy_config.patch_raw_file_values(
+    patched_ok, patched_msg, patched_content, changed, _patched_warnings = legacy_config.patch_raw_file_values(
         rel_path,
         {
             "output_name": "legacy_next",
@@ -681,7 +681,7 @@ def test_raw_file_helpers_remain_available_from_legacy_module(tmp_path: Path, mo
     assert "precision_preference" not in saved
     assert "use_hydra" not in saved
 
-    public_preview_ok, public_preview_msg, public_preview_content, public_preview_changed = (
+    public_preview_ok, public_preview_msg, public_preview_content, public_preview_changed, _public_preview_warnings = (
         legacy_config.preview_raw_file_patch(
             rel_path,
             {"output_name": "legacy_preview"},
@@ -732,7 +732,7 @@ def test_patch_raw_file_rejects_invalid_choice(tmp_path: Path, monkeypatch):
     train_rel = "configs/imported/lora.toml"
     original = (configs / "imported" / "lora.toml").read_text(encoding="utf-8")
 
-    ok, msg, content, changed = config_service.patch_raw_file_values(
+    ok, msg, content, changed, _warnings = config_service.patch_raw_file_values(
         train_rel,
         {
             "preprocess_precision_preference": "nope",
@@ -753,7 +753,7 @@ def test_patch_raw_file_warns_unknown_key_but_still_saves(tmp_path: Path, monkey
     _patch_config_service_paths(monkeypatch, tmp_path)
     train_rel = "configs/imported/lora.toml"
 
-    ok, msg, content, changed = config_service.patch_raw_file_values(
+    ok, msg, content, changed, _warnings = config_service.patch_raw_file_values(
         train_rel,
         {
             "custom_user_flag": True,
@@ -772,7 +772,7 @@ def test_raw_patch_roundtrips_stage_schedule_array(tmp_path: Path, monkeypatch):
         {"name": "a", "subset_index": 0, "start_pct": 0.0, "end_pct": 0.5},
         {"name": "b", "subset_index": 1, "start_pct": 0.5, "end_pct": 1.0},
     ]
-    ok, msg, content, changed = config_service.patch_raw_file_values(
+    ok, msg, content, changed, _warnings = config_service.patch_raw_file_values(
         train_rel,
         {
             "stage_schedule_enabled": True,
@@ -793,7 +793,7 @@ def test_save_raw_file_rejects_invalid_choice(tmp_path: Path, monkeypatch):
     original = (configs / "imported" / "lora.toml").read_text(encoding="utf-8")
     bad = original + "\npreprocess_precision_preference = \"nope\"\n"
 
-    ok, msg = config_service.save_raw_file(train_rel, bad)
+    ok, msg, _warnings = config_service.save_raw_file(train_rel, bad)
     assert ok is False
     assert "preprocess_precision_preference" in msg
     assert (configs / "imported" / "lora.toml").read_text(encoding="utf-8") == original
@@ -803,7 +803,7 @@ def test_patch_raw_file_surfaces_unknown_key_warning(tmp_path: Path, monkeypatch
     configs, _dataset_path = _write_minimal_config_tree(tmp_path)
     _patch_config_service_paths(monkeypatch, tmp_path)
     train_rel = "configs/imported/lora.toml"
-    ok, msg, content, changed = config_service.patch_raw_file_values(
+    ok, msg, content, changed, _warnings = config_service.patch_raw_file_values(
         train_rel,
         {"custom_user_flag": True},
     )

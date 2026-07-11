@@ -140,6 +140,7 @@ def cmd_test_backend_smoke(extra):
         "tests/test_env_config_paths.py",
         "tests/test_global_settings_runtime.py",
         "tests/test_web_config_raw_files.py",
+        "tests/test_raw_file_warnings_contract.py",
         "tests/test_image_test_service.py",
     ]
     run([PY, "-m", "pytest", "-q", *targets, *extra])

@@ -48,6 +48,16 @@ _CONFIGS_ROOT_SYNC_MODULES = (
     "web.services.config.preflight_runtime",
     "web.services.config.raw_files",
     "web.services.config.sample_prompts",
+    "web.services.config.file_groups",
+    "web.services.config.file_group_runtime",
+    "web.services.config.datasets",
+    "web.services.config.dataset_media",
+    "web.services.config.dataset_editor",
+    "web.services.config.dataset_rows",
+    "web.services.config.dataset_preset_paths",
+    "web.services.config.dataset_presets_api",
+    "web.services.config.output_runs",
+    "web.services.config._legacy",
 )
 
 

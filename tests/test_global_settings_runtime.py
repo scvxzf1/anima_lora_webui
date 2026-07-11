@@ -271,3 +271,39 @@ def test_training_policy_settings_roundtrip_and_clamp(tmp_path, monkeypatch):
     assert loaded["auto_retry"] is True
     assert loaded["max_attempts"] == 10
 
+
+
+def test_set_configs_root_hot_swaps_file_groups_datasets_output_runs(tmp_path, monkeypatch):
+    """Broadcast must cover file_groups/datasets/output_runs family modules."""
+    from web.services.config import (
+        datasets as datasets_mod,
+        file_group_runtime as file_group_runtime_mod,
+        file_groups as file_groups_mod,
+        output_runs as output_runs_mod,
+    )
+
+    modules = (
+        config_service,
+        datasets_mod,
+        file_groups_mod,
+        file_group_runtime_mod,
+        output_runs_mod,
+    )
+    for mod in modules:
+        if hasattr(mod, "CONFIGS_DIR"):
+            monkeypatch.setattr(mod, "CONFIGS_DIR", getattr(mod, "CONFIGS_DIR"), raising=False)
+        if hasattr(mod, "IMPORTED_CONFIGS_DIR"):
+            monkeypatch.setattr(mod, "IMPORTED_CONFIGS_DIR", getattr(mod, "IMPORTED_CONFIGS_DIR"), raising=False)
+
+    resolved = config_service.set_configs_root(tmp_path / "broadcast-more")
+    assert config_service.CONFIGS_DIR == resolved
+    assert file_groups_mod.CONFIGS_DIR == resolved
+    assert file_group_runtime_mod.CONFIGS_DIR == resolved
+    assert datasets_mod.CONFIGS_DIR == resolved
+    assert output_runs_mod.CONFIGS_DIR == resolved
+    if hasattr(file_groups_mod, "IMPORTED_CONFIGS_DIR"):
+        assert file_groups_mod.IMPORTED_CONFIGS_DIR == resolved / "imported"
+    if hasattr(datasets_mod, "IMPORTED_CONFIGS_DIR"):
+        assert datasets_mod.IMPORTED_CONFIGS_DIR == resolved / "imported"
+    if hasattr(output_runs_mod, "IMPORTED_CONFIGS_DIR"):
+        assert output_runs_mod.IMPORTED_CONFIGS_DIR == resolved / "imported"
